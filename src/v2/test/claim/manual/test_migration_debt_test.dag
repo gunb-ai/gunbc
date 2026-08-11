@@ -21,7 +21,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // the population it measured. This asserts exact two-direction identity
 // equality between the discovered Rust test modules and the declared retained
 // rows, so the wall cannot be satisfied by a count that merely fell.
-test fn retained_rust_kernel_wall_holds() -> Bool {
+test fn retained_rust_kernel_wall_holds_against_live_tree() -> Bool {
   return retained_rust_kernel_wall_holds_live()
 }
 

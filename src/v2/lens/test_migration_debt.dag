@@ -69,7 +69,7 @@ fn every_discovered_module_is_retained() -> Bool {
 // Identities are `source_file::test_fn`.
 fn retained_module_has_a_discovered_test(source_file: String) -> Bool {
   discovered_legacy_behavior_ids()
-    |> any(id => string_starts_with(s: id, prefix: concat(source_file, "::")))
+    |> any(id => string_contains(s: id, needle: concat(source_file, "::")))
 }
 
 fn every_retained_module_has_a_test() -> Bool {

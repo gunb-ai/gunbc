@@ -47,6 +47,7 @@ fn retained_legacy_rust_test_modules() -> List<RetainedLegacyRustTestModule> {
     retained_field_of_fractions_single_declaration,
     retained_field_of_fractions_construction,
     retained_whole_tree_wiring_enum,
+    retained_helpers,
   ]
 }
 
@@ -113,4 +114,17 @@ data retained_whole_tree_wiring_enum: RetainedLegacyRustTestModule = RetainedLeg
   source_file: "whole_tree_wiring_enum_test.rs",
   purpose: "Green-by-execution anchor for the gunbc#5364 whole-tree wiring-liveness enumeration widening: cli_run::whole_tree_resolved_ctx resolves every .dag module under the given source roots in one pass, so decl-facts enumeration sees fn-arrow decls across the WHOLE tree rather than one per-entry closure. The claim is about the seed's whole-tree resolve entry, which the substrate reaches only per-entry." as NonEmptyStr,
   dissolution: UnboundDissolution { description: "The substrate gains a whole-tree resolve entry whose enumeration the floor can observe directly, at which point the anchor migrates." as NonEmptyStr },
+}
+
+// The shared harness for the retained kernel, and a retained module in its own
+// right: it carries three self-tests over module-index construction and
+// ephemeral source-root resolution that every other retained module depends on
+// for correct fixture assembly. It is declared rather than excluded because the
+// wall is an exact identity join — silently filtering one discovered module out
+// of the comparison would be the empty-observation narrow applied to the wall
+// that exists to prevent exactly that.
+data retained_helpers: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
+  source_file: "helpers.rs",
+  purpose: "Shared fixture/harness surface for the retained kernel (workspace root, module-index construction, ephemeral generated source roots), carrying three self-tests: co-root last-wins on duplicate module names, ephemeral generated source-root resolution, and duplicate-name scanning without panic. Every retained module assembles its fixtures through it." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "The retained kernel empties as its modules migrate, at which point the harness has no consumer and is deleted with the last row." as NonEmptyStr },
 }

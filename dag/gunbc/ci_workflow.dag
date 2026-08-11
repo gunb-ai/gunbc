@@ -346,7 +346,7 @@ fn ci_v1_compiler_tests_compile_gate_run_script() -> String {
 
 fn ci_v1_compiler_tests_compile_gate_step() -> Step {
   RunStep {
-    name: Present { value: "cargo test -p v1-compiler-tests --release --no-run (compile-contract gate; reuses release v1-compiler)" },
+    name: Present { value: "cargo test -p v1-compiler-tests --release (retained-kernel execution gate; reuses release v1-compiler)" },
     id: none,
     run: ci_v1_compiler_tests_compile_gate_run_script(),
     shell: none,
