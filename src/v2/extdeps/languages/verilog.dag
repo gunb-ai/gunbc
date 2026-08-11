@@ -5,7 +5,7 @@ import std.integer { Signedness }
 import v2.std.node { Symbol }
 import v2.std.grammar {
   StampClass,
-  StampBinding, FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
+  StampBinding, FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_nonterminal_occurrence, grammar_formal_production, grammar_formal_terminal, grammar_formal_terminal_bound }
 import v2.std.compilers.lexing {
   CharClassPattern,
   IdentContinueChar,
@@ -622,7 +622,17 @@ fn verilog_lex() -> LexRules {
         verilog_lex_token(token_class: ^verilog_token_ident, pattern: verilog_identifier_pattern()),
         verilog_lex_token(token_class: ^verilog_token_kw_module, pattern: KeywordPattern { text: "module" }),
         verilog_lex_token(token_class: ^verilog_token_kw_endmodule, pattern: KeywordPattern { text: "endmodule" }),
-        verilog_lex_token(token_class: ^verilog_token_semicolon, pattern: LiteralPattern { text: ";" })
+        verilog_lex_token(token_class: ^verilog_token_kw_input, pattern: KeywordPattern { text: "input" }),
+        verilog_lex_token(token_class: ^verilog_token_kw_output, pattern: KeywordPattern { text: "output" }),
+        verilog_lex_token(token_class: ^verilog_token_kw_wire, pattern: KeywordPattern { text: "wire" }),
+        verilog_lex_token(token_class: ^verilog_token_kw_assign, pattern: KeywordPattern { text: "assign" }),
+        verilog_lex_token(token_class: ^verilog_token_semicolon, pattern: LiteralPattern { text: ";" }),
+        verilog_lex_token(token_class: ^verilog_token_lparen, pattern: LiteralPattern { text: "(" }),
+        verilog_lex_token(token_class: ^verilog_token_rparen, pattern: LiteralPattern { text: ")" }),
+        verilog_lex_token(token_class: ^verilog_token_comma, pattern: LiteralPattern { text: "," }),
+        verilog_lex_token(token_class: ^verilog_token_equals, pattern: LiteralPattern { text: "=" }),
+        verilog_lex_token(token_class: ^verilog_token_ampersand, pattern: LiteralPattern { text: "&" }),
+        verilog_lex_token(token_class: ^verilog_token_tilde, pattern: LiteralPattern { text: "~" })
       ]
     }
   }
@@ -666,6 +676,110 @@ fn verilog_source_text_module_formal_production() -> FormalProduction {
       grammar_formal_terminal(identity: ^verilog_token_kw_endmodule)
     ]
   }
+}
+
+// THE BOUNDED EMISSION PROFILE, as formal productions rather than a printer. Every byte of the
+// interlock module derives from these rows: the keywords, the punctuation, the whitespace and the
+// operators are grammar facts here, so product.compute_board can construct structure and own no
+// Verilog syntax at all.
+//
+// COMPOSITION IS THE POINT. The port list is right-recursive rather than three hard-coded slots,
+// so a module with two or four ports is the same grammar — a fixed arity would prove a fixture,
+// not a module grammar. Expressions nest through their own nonterminals for the same reason: a
+// row whose token list happened to spell the whole module would only be the hand serializer
+// moved into data.
+fn verilog_emission_formal_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^verilog_production_direction,
+      rhs: [grammar_formal_terminal(identity: ^verilog_token_kw_input)]
+    ),
+    grammar_formal_production(
+      lhs: ^verilog_production_direction,
+      rhs: [grammar_formal_terminal(identity: ^verilog_token_kw_output)]
+    ),
+    grammar_formal_production(
+      lhs: ^verilog_production_ansi_port,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_direction),
+        grammar_formal_terminal(identity: ^verilog_token_kw_wire),
+        grammar_formal_terminal_bound(identity: ^verilog_token_ident, binding: ^verilog_binding_port_name)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^verilog_production_port_list,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^verilog_production_ansi_port)]
+    ),
+    grammar_formal_production(
+      lhs: ^verilog_production_port_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_ansi_port),
+        grammar_formal_terminal(identity: ^verilog_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_port_list)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^verilog_production_expr_primary,
+      rhs: [grammar_formal_terminal_bound(identity: ^verilog_token_ident, binding: ^verilog_binding_expr_name)]
+    ),
+    grammar_formal_production(
+      lhs: ^verilog_production_expr_unary,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr_primary)]
+    ),
+    grammar_formal_production(
+      lhs: ^verilog_production_expr_unary,
+      rhs: [
+        grammar_formal_terminal(identity: ^verilog_token_tilde),
+        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr_unary)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^verilog_production_expr_conjunction,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr_unary)]
+    ),
+    grammar_formal_production(
+      lhs: ^verilog_production_expr_conjunction,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr_unary),
+        grammar_formal_terminal(identity: ^verilog_token_ampersand),
+        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr_conjunction)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^verilog_production_continuous_assign,
+      rhs: [
+        grammar_formal_terminal(identity: ^verilog_token_kw_assign),
+        grammar_formal_terminal_bound(identity: ^verilog_token_ident, binding: ^verilog_binding_assign_lhs),
+        grammar_formal_terminal(identity: ^verilog_token_equals),
+        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr_conjunction),
+        grammar_formal_terminal(identity: ^verilog_token_semicolon)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^verilog_production_assign_list,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: ^verilog_production_continuous_assign)]
+    ),
+    grammar_formal_production(
+      lhs: ^verilog_production_assign_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_continuous_assign),
+        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_assign_list)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^verilog_production_ansi_module_decl,
+      rhs: [
+        grammar_formal_terminal(identity: ^verilog_token_kw_module),
+        grammar_formal_terminal_bound(identity: ^verilog_token_ident, binding: ^verilog_binding_module_name),
+        grammar_formal_terminal(identity: ^verilog_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_port_list),
+        grammar_formal_terminal(identity: ^verilog_token_rparen),
+        grammar_formal_terminal(identity: ^verilog_token_semicolon),
+        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_assign_list),
+        grammar_formal_terminal(identity: ^verilog_token_kw_endmodule)
+      ]
+    )
+  ]
 }
 
 fn verilog_ingest_grammar_schema() -> GrammarSchema {
