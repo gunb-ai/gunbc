@@ -8,6 +8,8 @@ import std.occurrence_binding {
   OccurrenceBound,
   OccurrenceUnbound,
   OccurrenceAmbiguous,
+  AmbiguousBindingCandidates,
+  BindingCandidate,
 }
 import std.occurrence_identity {
   OccurrenceId,
@@ -947,7 +949,7 @@ fn bound_reference_population_fold_step(
             more_failures_reversed: concat([projection], acc.more_failures_reversed),
           }
       }
-    ReferenceBindingProjectionAmbiguous { occurrence: _ } =>
+    ReferenceBindingProjectionAmbiguous { occurrence: _, candidates: _ } =>
       match acc.first_failure {
         Absent =>
           BoundReferencePopulationBuild {
@@ -2295,10 +2297,17 @@ fn reference_derived_clause_e_production_from_assembled_closure(
   }
 }
 
+data reference_binding_ambiguous_candidates_note: String = "AMBIGUITY CARRIES ITS CANDIDATES, and the reason it must is that the information was already computed and then discarded here. resolve_reference_occurrence_binding returns OccurrenceAmbiguous { occurrence, candidates }, and this projection used to match `candidates: _` -- so a caller learned THAT a reference was ambiguous and never WHICH declarations competed, which is the fact an operator needs to discharge it and the fact a pool-independence claim is actually about. A count is not an identity: two ambiguity outcomes with the same cardinality over different declarations are different states with different remedies.
+
+The carrier is the upstream AmbiguousBindingCandidates<OccurrenceId> itself rather than a local list, for two reasons. It is the single authority for this shape, so re-spelling it here would be the nicknaming DESIGN section 3 forbids; and it is head-plus-second-plus-tail, so a one-candidate `ambiguity` has no constructor -- at-least-two-ness is structural rather than checked, and an arm that fabricated a single-candidate ambiguity cannot be written."
+
 type ReferenceBindingProjection
   = ReferenceBindingProjectionBound { provider: BoundReferenceProvider }
   | ReferenceBindingProjectionUnbound { occurrence: OccurrenceId }
-  | ReferenceBindingProjectionAmbiguous { occurrence: OccurrenceId }
+  | ReferenceBindingProjectionAmbiguous {
+      occurrence: OccurrenceId,
+      candidates: AmbiguousBindingCandidates<OccurrenceId>,
+    }
   | ReferenceBindingProjectionTransportRefused { refusal: OccurrenceTransportRefusal }
   | ReferenceBindingProjectionModulePathRefused { refusal: OccurrenceModulePathIndexRefusal }
   | ReferenceBindingProjectionExposureRefused { refusal: DeclarationExposureIndexRefusal }
@@ -2354,8 +2363,11 @@ fn resolve_reference_via_structural_candidates(
       match result {
         OccurrenceUnbound { occurrence: _ } =>
           ReferenceBindingProjectionUnbound { occurrence: reference.occurrence }
-        OccurrenceAmbiguous { occurrence: _, candidates: _ } =>
-          ReferenceBindingProjectionAmbiguous { occurrence: reference.occurrence }
+        OccurrenceAmbiguous { occurrence: _, candidates: candidates } =>
+          ReferenceBindingProjectionAmbiguous {
+            occurrence: reference.occurrence,
+            candidates: candidates,
+          }
         OccurrenceBound { binding: binding } =>
           let declaration_occurrence = binding.candidate.containment.terminal
           match module_of_occurrence(

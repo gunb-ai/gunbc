@@ -37,9 +37,11 @@ pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
-pub use crate::std_occurrence_binding::OccurrenceBindingResult;
 use crate::std_occurrence_binding::OccurrenceBindingResult::{
     OccurrenceAmbiguous, OccurrenceBound, OccurrenceUnbound,
+};
+pub use crate::std_occurrence_binding::{
+    AmbiguousBindingCandidates, BindingCandidate, OccurrenceBindingResult,
 };
 pub use crate::std_occurrence_binding_resolve::resolve_reference_occurrence_binding;
 pub use crate::std_occurrence_binding_resolve::OccurrenceReferenceBindingOutcome;
@@ -1271,23 +1273,23 @@ pub fn bound_reference_population_fold_step(
                 }),
             }
         }
-        ReferenceBindingProjection::ReferenceBindingProjectionAmbiguous {
-            occurrence: _, ..
-        } => match acc.first_failure.clone() {
-            None => Rc::new(BoundReferencePopulationBuild {
-                providers_reversed: acc.providers_reversed.clone(),
-                first_failure: Some(projection.clone()),
-                more_failures_reversed: acc.more_failures_reversed.clone(),
-            }),
-            Some(_) => Rc::new(BoundReferencePopulationBuild {
-                providers_reversed: acc.providers_reversed.clone(),
-                first_failure: acc.first_failure.clone(),
-                more_failures_reversed: v1_rt::concat(
-                    Rc::new(vec![projection.clone()]),
-                    acc.more_failures_reversed.clone(),
-                ),
-            }),
-        },
+        ReferenceBindingProjection::ReferenceBindingProjectionAmbiguous { .. } => {
+            match acc.first_failure.clone() {
+                None => Rc::new(BoundReferencePopulationBuild {
+                    providers_reversed: acc.providers_reversed.clone(),
+                    first_failure: Some(projection.clone()),
+                    more_failures_reversed: acc.more_failures_reversed.clone(),
+                }),
+                Some(_) => Rc::new(BoundReferencePopulationBuild {
+                    providers_reversed: acc.providers_reversed.clone(),
+                    first_failure: acc.first_failure.clone(),
+                    more_failures_reversed: v1_rt::concat(
+                        Rc::new(vec![projection.clone()]),
+                        acc.more_failures_reversed.clone(),
+                    ),
+                }),
+            }
+        }
         ReferenceBindingProjection::ReferenceBindingProjectionTransportRefused {
             refusal: _,
             ..
@@ -2989,6 +2991,15 @@ pub fn reference_derived_clause_e_production_from_assembled_closure(
 }
 }
 
+pub fn reference_binding_ambiguous_candidates_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "AMBIGUITY CARRIES ITS CANDIDATES, and the reason it must is that the information was already computed and then discarded here. resolve_reference_occurrence_binding returns OccurrenceAmbiguous { occurrence, candidates }, and this projection used to match `candidates: _` -- so a caller learned THAT a reference was ambiguous and never WHICH declarations competed, which is the fact an operator needs to discharge it and the fact a pool-independence claim is actually about. A count is not an identity: two ambiguity outcomes with the same cardinality over different declarations are different states with different remedies.\n\nThe carrier is the upstream AmbiguousBindingCandidates<OccurrenceId> itself rather than a local list, for two reasons. It is the single authority for this shape, so re-spelling it here would be the nicknaming DESIGN section 3 forbids; and it is head-plus-second-plus-tail, so a one-candidate `ambiguity` has no constructor -- at-least-two-ness is structural rather than checked, and an arm that fabricated a single-candidate ambiguity cannot be written.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ReferenceBindingProjection {
@@ -3000,6 +3011,7 @@ pub enum ReferenceBindingProjection {
     },
     ReferenceBindingProjectionAmbiguous {
         occurrence: OccurrenceId,
+        candidates: Rc<AmbiguousBindingCandidates<OccurrenceId>>,
     },
     ReferenceBindingProjectionTransportRefused {
         refusal: Rc<OccurrenceTransportRefusal>,
@@ -3094,9 +3106,10 @@ pub fn resolve_reference_via_structural_candidates(
                         occurrence: reference.occurrence.clone(),
                     },
                 ),
-                OccurrenceBindingResult::OccurrenceAmbiguous { .. } => Rc::new(
+                OccurrenceBindingResult::OccurrenceAmbiguous { candidates, .. } => Rc::new(
                     ReferenceBindingProjection::ReferenceBindingProjectionAmbiguous {
                         occurrence: reference.occurrence.clone(),
+                        candidates: candidates.clone(),
                     },
                 ),
                 OccurrenceBindingResult::OccurrenceBound {

@@ -1,6 +1,6 @@
 module v1.tests.claim.import_deletion_bridge_witness
 
-import std.types { Bool, String, List, Int, NonEmptyStr }
+import std.types { Bool, String, List, Int, NonEmptyStr, FilePath }
 import std.occurrence_identity {
   OccurrenceId, OccurrenceIndexEntry, OccurrenceTransport,
   ReferenceOccurrence, DeclarationOccurrence,
@@ -11,6 +11,8 @@ import std.occurrence_binding_candidates {
   AssembledCrossFileBindingClosure,
   AssembledCrossFileBindingClosureReady,
   AssembledCrossFileBindingClosureRefused,
+  AssembledCrossFileBindingClosureRefusal,
+  AssembledCrossFileBindingClosureModulePathFileRefused,
   assemble_cross_file_binding_closure,
   BoundReferenceProvider,
   BoundReferencePopulation,
@@ -31,6 +33,7 @@ import std.occurrence_binding_candidates {
   reference_derived_dependency_projection,
   ModulePathFileIndexRefusal,
   ModulePathFileIndexRefused,
+  ModulePathFileConflict,
   CrossFileBindingProvenance,
   CrossFileBindingProvenancePopulation,
   AllCrossFileBindingsBound,
@@ -47,6 +50,10 @@ import std.occurrence_binding_candidates {
   CrossFileProviderExportedExposure,
   ReferenceBindingProjectionBound,
   resolve_reference_binding_via_structural_candidates,
+}
+import std.occurrence_binding {
+  AmbiguousBindingCandidates,
+  BindingCandidate,
 }
 import v1.gunbc.occurrence_binding_parser_walk {
   ParsedOccurrenceBindingSource,
@@ -68,11 +75,11 @@ CONSEQUENCE FOR THIS WITNESS, stated rather than worked around: it cannot both l
 
 data import_deletion_bridge_offline_recipe: String = "OFFLINE LOCAL RECIPE (requires the v1 parser pool, exactly as the sibling occurrence_binding_parser_walk witness does). This file lives under src/v1/tests/claim/ and NOT under dag/test/claim/ for a structural reason, not a filing preference: it imports v1.gunbc.occurrence_binding_parser_walk, and the compile-clean gate compiles dag + src/v2 only, so a copy under dag/ fails to resolve the module it exists to exercise. Placing it here is the same resolution the sibling witness already made.
 
-  target/release/claim_batch --source-root dag --source-root src/v1 --source-root src/v2 --entry src/v1/tests/claim/import_deletion_bridge_witness_test.dag --functions witness_import_less_reference_reaches_the_real_provider,witness_subject_does_not_bind_without_its_provider,witness_consumer_carries_no_import_declaration --claim-run --wet
+  target/release/claim_batch --source-root dag --source-root src/v1 --source-root src/v2 --entry src/v1/tests/claim/import_deletion_bridge_witness_test.dag --claim-run --wet
 
-ALL THREE FUNCTIONS ARE IN THAT ROSTER ON PURPOSE, INCLUDING THE EXPECTED-RED ONE. An earlier revision listed only the two controls, which made the claim that the positive red stays visible untrue: the documented recipe did not run it and this directory is not discovery-enrolled, so nothing executed it at all. Exactly one expected semantic red is carried here — witness_import_less_reference_reaches_the_real_provider — and it is named rather than implied.
+THE FUNCTION LIST IS DELIBERATELY NOT ENUMERATED. This file is enrolled file-grain, so the empty-function authority expands it, and a hand-copied roster of test fn names beside a file that already names them is a second representation that rots on the next rename. An earlier revision carried such a list, and it named three functions -- two of which no longer exist and one of which was described as an expected red. NOTHING HERE IS EXPECTED RED ANY MORE: the positive keystone greened when role-directed minting landed, and the provider is SUPPLIED by this file rather than discovered from the tree, which is stated on the keystone itself so the green is not read as provider discovery.
 
-STATED PLAINLY BECAUSE IT IS A REAL COVERAGE GAP, NOT A DETAIL: witnesses here are not per-PR discovery-enrolled, so these controls execute locally and on demand rather than on every change. DISSOLVE-ON is the sibling's, unchanged and shared rather than re-minted: witness_layer_roots admits src/v1 for parser-transport witnesses without Node ambiguity, or the execution corpus carries per-entry source roots — then this recipe deletes and discovery enrollment suffices."
+STATED PLAINLY BECAUSE IT IS A REAL COVERAGE GAP, NOT A DETAIL: witnesses here are not per-PR discovery-enrolled, so these controls execute locally and on demand rather than on every change. DISSOLVE-ON is the sibling's, unchanged and shared rather than re-minted: witness_layer_roots admits src/v1 for parser-transport witnesses without Node ambiguity, or the execution corpus carries per-entry source roots -- then this recipe deletes and discovery enrollment suffices."
 
 data bridge_witness_note: String = "CHECKPOINT 1 OF IMPORT DELETION — the bridge from the real source population to production occurrence binding, proven on the largest falsifier rather than on a fixture pair.
 
@@ -135,6 +142,7 @@ fn idb_candidates() -> List<IdbCandidate> {
     IdbCandidate { file: idb_malformed_source_path, source: idb_malformed_source() },
     IdbCandidate { file: idb_partial_consumer_source_path, source: idb_partial_consumer_source() },
     IdbCandidate { file: idb_same_file_source_path, source: idb_same_file_source() },
+    IdbCandidate { file: idb_conflicting_source_path, source: idb_conflicting_source() },
   ]
 }
 
@@ -148,6 +156,12 @@ data idb_second_provider_source_path: String = "dag/test/fixture/import_deletion
 
 fn idb_second_provider_source() -> String {
   "module test.fixture.import_deletion_bridge.second_live_tree\n\ntype LiveTreeDisposition\n  = ReadsLiveTree\n  | SubstrateInputsOnly\n"
+}
+
+data idb_conflicting_source_path: String = "dag/test/fixture/import_deletion_bridge/live_tree_second_home.dag"
+
+fn idb_conflicting_source() -> String {
+  "module v2.std.live_tree\n\ntype LiveTreeDispositionElsewhere\n  = ElsewhereOne\n  | ElsewhereTwo\n"
 }
 
 data idb_malformed_source_path: String = "dag/test/fixture/import_deletion_bridge/malformed_provider.dag"
@@ -184,7 +198,7 @@ type IdbBridge
   = IdbBridgeProjected { projection: ReferenceDerivedDependencyProjection }
   | IdbBridgeWalkRefused { refusal: StructuralBindingIndexRefusal }
   | IdbBridgeIndexRefused { refusal: ModulePathFileIndexRefusal }
-  | IdbBridgeAssemblyRefused
+  | IdbBridgeAssemblyRefused { refusal: AssembledCrossFileBindingClosureRefusal }
   | IdbBridgeParseRefused { file: String }
   | IdbBridgeCandidateUnknown { file: String }
   | IdbBridgeSelectionRefused { observed: Int }
@@ -281,7 +295,8 @@ fn idb_project_from_assembled(
   expected_references: Int
 ) -> IdbBridge {
   match closure {
-    AssembledCrossFileBindingClosureRefused { refusal: _ } => IdbBridgeAssemblyRefused
+    AssembledCrossFileBindingClosureRefused { refusal: refusal } =>
+      IdbBridgeAssemblyRefused { refusal: refusal }
     AssembledCrossFileBindingClosureReady {
       transport: t, inputs: i, module_files: rows, consumer_file: _,
     } =>
@@ -565,5 +580,185 @@ test fn witness_reference_count_mismatch_refuses() -> Bool {
   ) {
     IdbBridgeSelectionRefused { observed: n } => n == 2
     _ => false
+  }
+}
+
+data idb_ambiguity_note: String = "AMBIGUITY MUST NAME THE COMPETING DECLARATIONS. Two admissible providers each declare LiveTreeDisposition, so the reference has two candidates and cannot be bound. The requirement is not that the count is two -- two ambiguity outcomes with the same cardinality over different declarations are different states with different remedies -- so this asserts the EXACT declaration identities: the two candidate terminals differ from each other, and each is a declaration of this name present in the assembled transport.
+
+The identities are available because the carrier was repaired to keep them. resolve_reference_occurrence_binding already returned OccurrenceAmbiguous { occurrence, candidates } and the projection discarded the candidates with `candidates: _`; it now carries the upstream AmbiguousBindingCandidates<OccurrenceId> itself, so this control reads production data rather than a local reconstruction."
+
+fn idb_declaration_occurrences_named(
+  transport: OccurrenceTransport,
+  name: String
+) -> List<OccurrenceId> {
+  fold(transport.declarations, init: idb_no_occurrence_ids(), f: (acc, declaration) =>
+    match idb_index_entry_for_occurrence(transport: transport, occurrence: declaration.occurrence) {
+      Absent => acc
+      Present { value: entry } =>
+        match entry.projection.authored_name == name {
+          true => concat(acc, [declaration.occurrence])
+          false => acc
+        }
+    })
+}
+
+fn idb_no_occurrence_ids() -> List<OccurrenceId> { [] }
+
+fn idb_occurrence_in(ids: List<OccurrenceId>, id: OccurrenceId) -> Bool {
+  fold(ids, init: false, f: (found, candidate) => found || (candidate.value == id.value))
+}
+
+fn idb_ambiguity_candidates_for_two_providers() -> AmbiguousBindingCandidates<OccurrenceId>? {
+  match idb_bridge_for(
+    consumer_path: idb_consumer_source_path,
+    provider_paths: [idb_live_tree_source_path, idb_second_provider_source_path],
+    subject_names: [idb_subject_name],
+    expected_references: 2,
+  ) {
+    IdbBridgeProjected {
+      projection: ReferenceDerivedDependencyProjectionBindingRefused {
+        population: ReferencePopulationRefused { first_failure: failure, more_failures: _ },
+      },
+    } =>
+      match failure {
+        ReferenceBindingProjectionAmbiguous { occurrence: _, candidates: candidates } =>
+          Present { value: candidates }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+fn idb_two_provider_transport_declarations() -> List<OccurrenceId> {
+  match first(idb_closure_row_for(path: idb_consumer_source_path, grounding: ModuleLocalMemberExposure)) {
+    Absent => idb_no_occurrence_ids()
+    Present { value: consumer_row } =>
+      match assemble_cross_file_binding_closure(
+        consumer: consumer_row,
+        providers: concat(
+          idb_closure_row_for(path: idb_live_tree_source_path, grounding: CrossFileProviderExportedExposure),
+          idb_closure_row_for(path: idb_second_provider_source_path, grounding: CrossFileProviderExportedExposure),
+        ),
+      ) {
+        AssembledCrossFileBindingClosureRefused { refusal: _ } => idb_no_occurrence_ids()
+        AssembledCrossFileBindingClosureReady {
+          transport: t, inputs: _, module_files: _, consumer_file: _,
+        } => idb_declaration_occurrences_named(transport: t, name: idb_subject_name)
+      }
+  }
+}
+
+test fn witness_two_providers_refuse_as_ambiguous_naming_both_candidates() -> Bool {
+  match idb_ambiguity_candidates_for_two_providers() {
+    Absent => false
+    Present { value: candidates } =>
+      let first_id = candidates.first.containment.terminal
+      let second_id = candidates.second.containment.terminal
+      let declared = idb_two_provider_transport_declarations()
+      !(first_id.value == second_id.value)
+        && idb_occurrence_in(ids: declared, id: first_id)
+        && idb_occurrence_in(ids: declared, id: second_id)
+        && length(declared) == 2
+  }
+}
+
+data idb_module_storage_note: String = "MODULE-TO-FILE CONTRADICTIONS MUST REFUSE, not resolve to one of the two answers. Two candidate files declare the SAME module path, so the module-to-file index has no single answer for it. That is a contradiction about storage, and either arm that catches it is a typed refusal -- what may never happen is a successful projection that silently picked a file, because the loader would then bring in one home and ignore the other.
+
+WHICH stage refuses is measured, not assumed: closure ASSEMBLY refuses, before the module-to-file index is ever built by this file, because assembly validates the accumulated rows itself. A first version of this control tolerated either that arm or an index refusal, which is a two-answer assertion -- it would have passed had the contradiction moved between the two stages, and it would not have said which stage held the line. Narrowing it to the arm that actually fires required a second repair of the same information-discarding class the ambiguity carrier had: this file was collapsing the assembly refusal to a bare marker, so the exact contradiction was unavailable to assert. It now carries AssembledCrossFileBindingClosureRefusal through, and this row names the module path and both competing files."
+
+test fn witness_conflicting_module_storage_refuses() -> Bool {
+  let bridge = idb_bridge_for(
+    consumer_path: idb_consumer_source_path,
+    provider_paths: [idb_live_tree_source_path, idb_conflicting_source_path],
+    subject_names: [idb_subject_name],
+    expected_references: 2,
+  )
+  match bridge {
+    IdbBridgeAssemblyRefused { refusal: refusal } =>
+      match refusal {
+        AssembledCrossFileBindingClosureModulePathFileRefused { refusal: index_refusal } =>
+          match index_refusal {
+            ModulePathFileConflict { module_path: m, first_file: a, second_file: b } =>
+              (m as String) == idb_provider_module_name
+                && !((a as String) == (b as String))
+                && ((a as String) == idb_live_tree_source_path
+                  || (a as String) == idb_conflicting_source_path)
+                && ((b as String) == idb_live_tree_source_path
+                  || (b as String) == idb_conflicting_source_path)
+            _ => false
+          }
+      }
+    _ => false
+  }
+}
+
+data idb_missing_storage_note: String = "A MISSING module-to-file row must surface as a file-projection refusal, not as a dropped edge. This control supplies the production projection with an index from which the provider module's row has been REMOVED, so the binding succeeds and only the storage join fails -- which is exactly the state where an implementation that silently omitted the edge would under-load the closure while reporting success."
+
+fn idb_index_without_provider_module() -> Map<String, FilePath>? {
+  match first(idb_closure_row_for(path: idb_consumer_source_path, grounding: ModuleLocalMemberExposure)) {
+    Absent => none
+    Present { value: consumer_row } =>
+      match assemble_cross_file_binding_closure(
+        consumer: consumer_row,
+        providers: idb_closure_row_for(
+          path: idb_live_tree_source_path, grounding: CrossFileProviderExportedExposure,
+        ),
+      ) {
+        AssembledCrossFileBindingClosureRefused { refusal: _ } => none
+        AssembledCrossFileBindingClosureReady {
+          transport: _, inputs: _, module_files: rows, consumer_file: _,
+        } =>
+          Present {
+            value: fold(rows, init: empty_map(), f: (acc, row) =>
+              match (row.module_path as String) == idb_provider_module_name {
+                true => acc
+                false => map_insert(acc, row.module_path as String, row.file_path)
+              }),
+          }
+      }
+  }
+}
+
+fn idb_population_for_supplied_provider() -> BoundReferencePopulation? {
+  match first(idb_closure_row_for(path: idb_consumer_source_path, grounding: ModuleLocalMemberExposure)) {
+    Absent => none
+    Present { value: consumer_row } =>
+      match assemble_cross_file_binding_closure(
+        consumer: consumer_row,
+        providers: idb_closure_row_for(
+          path: idb_live_tree_source_path, grounding: CrossFileProviderExportedExposure,
+        ),
+      ) {
+        AssembledCrossFileBindingClosureRefused { refusal: _ } => none
+        AssembledCrossFileBindingClosureReady {
+          transport: t, inputs: i, module_files: _, consumer_file: _,
+        } =>
+          match structural_binding_walk_selected_references(
+            transport: t, inputs: i,
+            references: idb_references_in_names(transport: t, names: [idb_subject_name]),
+          ) {
+            StructuralBindingWalkRefused { refusal: _ } => none
+            StructuralBindingWalkReady { population: population } => Present { value: population }
+          }
+      }
+  }
+}
+
+test fn witness_missing_provider_module_storage_row_refuses_file_projection() -> Bool {
+  match idb_population_for_supplied_provider() {
+    Absent => false
+    Present { value: population } =>
+      match idb_index_without_provider_module() {
+        Absent => false
+        Present { value: pruned } =>
+          match reference_derived_dependency_projection(
+            population: population, module_files: pruned,
+          ) {
+            ReferenceDerivedDependencyProjectionFileRefused {
+              first_failure: _, more_failures: _,
+            } => true
+            _ => false
+          }
+      }
   }
 }
