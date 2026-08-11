@@ -82,7 +82,7 @@ fn probe_leg(context: FleetSshExecutionContext, host: String, principal: String,
     Absent => none
     Present { value: words } => Present {
       value: ssh_session_exec_portable_words(
-        argv: shape_fleet_ssh_exec(
+        client_args: shape_fleet_ssh_exec(
           context: context,
           target: SshTarget {
             endpoint: fleet_probe_endpoint_for(host: host) as NonEmptyStr,

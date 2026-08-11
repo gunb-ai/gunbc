@@ -300,9 +300,30 @@ fn openssh_exact_credential_options(identity_file: NonEmptyStr) -> List<SshClien
 // -F takes its value as a following word rather than an -o pair, so this projects the ConfigFile
 // option to the flag OpenSSH actually documents while keeping one serializer as the authority for
 // what the value is.
+//
+// EVERY OTHER VARIANT SERIALIZES NORMALLY rather than falling into a wildcard returning []. The
+// wildcard form was caught by v2.lens.non_fold_residue and it was two defects, not a style point: a
+// FABRICATED ABSENCE (an empty list is not the rendering of an option, it is the absence of an
+// answer wearing a List) and silent extensibility -- a sixteenth SshClientOption would have rendered
+// as nothing at all and been read as a legitimate projection that simply produced no words. With no
+// wildcard, adding a variant makes this match non-exhaustive and the compiler says so.
 fn serialize_ssh_config_file_flag(option: SshClientOption) -> List<String> {
   match option {
     ConfigFile { path: p } => ["-F", p as String]
-    _ => []
+    StrictHostKeyChecking { value: _ } => serialize_ssh_client_option(option: option)
+    UserKnownHostsFile { path: _ } => serialize_ssh_client_option(option: option)
+    GlobalKnownHostsFile { path: _ } => serialize_ssh_client_option(option: option)
+    KnownHostsCommand { command: _ } => serialize_ssh_client_option(option: option)
+    VerifyHostKeyDNS { value: _ } => serialize_ssh_client_option(option: option)
+    UpdateHostKeys { value: _ } => serialize_ssh_client_option(option: option)
+    BatchMode { enabled: _ } => serialize_ssh_client_option(option: option)
+    ConnectTimeout { seconds: _ } => serialize_ssh_client_option(option: option)
+    IdentityFile { path: _ } => serialize_ssh_client_option(option: option)
+    IdentitiesOnly { enabled: _ } => serialize_ssh_client_option(option: option)
+    IdentityAgent { path: _ } => serialize_ssh_client_option(option: option)
+    PreferredAuthentications { methods: _ } => serialize_ssh_client_option(option: option)
+    PasswordAuthentication { enabled: _ } => serialize_ssh_client_option(option: option)
+    KbdInteractiveAuthentication { enabled: _ } => serialize_ssh_client_option(option: option)
+    User { name: _ } => serialize_ssh_client_option(option: option)
   }
 }

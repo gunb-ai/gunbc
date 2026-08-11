@@ -189,7 +189,7 @@ fn known_hosts_endpoint_conflict(rows: List<KnownHostKeyRow>) -> String? {
   fold(endpoints, init: none, f: fn(acc, e) {
     match acc {
       Present { value: _ } => acc
-      _ => if length(filter(endpoints, x => x == e)) > 1 {
+      Absent => if length(filter(endpoints, x => x == e)) > 1 {
         Present { value: join(["endpoint ", e, " is enrolled more than once, so known_hosts would accept any of its keys while the registry reads as pinning one"], "") }
       } else { none }
     }
@@ -519,7 +519,13 @@ fn portable_remote_words_strings(words: PortableRemoteWords) -> List<String> {
   concat([words.first.value as String], map(words.more, w => w.value as String))
 }
 
-// THE TERMINAL SHAPER. It takes the sealed context and nothing a caller could widen: there is no
+// THE TERMINAL SHAPER, returning CLIENT ARGS -- everything after argv[0]. It does NOT prepend `ssh`,
+// because the executable position belongs to the operation declaration: a shaper that returned the
+// whole argv would put argv[0] under caller control, which std.operation_argv refuses on the ground
+// that a caller deciding WHICH PROGRAM RUNS is strictly worse than a hardcoded list. An earlier
+// revision did exactly that and the corpus wall caught it within one CI run.
+//
+// It takes the sealed context and nothing a caller could widen: there is no
 // options parameter to prepend into, so the first-obtained-value hazard has no surface. Every option
 // is derived here from the context -- trust from the anchor, credential from the binding, ambient
 // suppression unconditionally -- and the principal is projected to an explicit User option rather
@@ -543,7 +549,7 @@ fn shape_fleet_ssh_exec(
   )
   concat(
     concat(
-      concat(["ssh"], flat_map(config_suppression, o => serialize_ssh_config_file_flag(option: o))),
+      flat_map(config_suppression, o => serialize_ssh_config_file_flag(option: o)),
       serialize_ssh_client_options(options: derived),
     ),
     concat([target.endpoint as String, "--"], portable_remote_words_strings(words: words)),

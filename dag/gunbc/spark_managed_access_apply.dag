@@ -69,7 +69,7 @@ fn privileged_leg(
     Absent => ApplyRefused { cause: "the privileged invocation is not expressible as portable remote words" }
     Present { value: words } => {
       let r = ssh_session_exec_portable_words_with_stdin(
-        argv: shape_fleet_ssh_exec(
+        client_args: shape_fleet_ssh_exec(
           context: context,
           target: SshTarget {
             endpoint: fleet_probe_endpoint_for(host: host) as NonEmptyStr,
@@ -102,7 +102,7 @@ fn managed_principal_leg(
     Absent => ApplyRefused { cause: "non-portable remote word" }
     Present { value: words } => {
       let r = ssh_session_exec_portable_words_with_stdin(
-        argv: shape_fleet_ssh_exec(
+        client_args: shape_fleet_ssh_exec(
           context: context,
           target: SshTarget {
             endpoint: fleet_probe_endpoint_for(host: host) as NonEmptyStr,

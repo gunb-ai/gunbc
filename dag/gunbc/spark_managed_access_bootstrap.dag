@@ -61,7 +61,7 @@ fn observation_for(
   fold(observations, init: none, f: fn(acc, o) {
     match acc {
       Present { value: _ } => acc
-      _ => if (o.host as String) == (host as String) && (o.principal_login_name as String) == (login as String) {
+      Absent => if (o.host as String) == (host as String) && (o.principal_login_name as String) == (login as String) {
         Present { value: o }
       } else { none }
     }
