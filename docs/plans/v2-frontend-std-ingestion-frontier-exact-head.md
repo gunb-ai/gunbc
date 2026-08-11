@@ -33,12 +33,42 @@ wrapper-retention carrier while the actual refusal sits further down. Every reas
 
 ## The rows
 
-| module | stage | notes |
-| --- | --- | --- |
-| `dag/std/primitives.dag` | ACCEPTED | |
-| `src/v2/test/claim/manual/cross_tree_constructor_binding_test.dag` | **parse** | the entry; **accepted** in the historical receipt |
+Each row below is one executed `classify_member` call at this head. `NOT RE-OBSERVED` is its own
+state and is never filled in from the historical receipt.
 
-*(table completed below as the sweep lands)*
+| module | stage at `c03be069687` | historical (`e588031201`) | |
+| --- | --- | --- | --- |
+| `src/v2/test/claim/manual/cross_tree_constructor_binding_test.dag` | **PARSE** | accepted | **diverged** |
+| `dag/std/primitives.dag` | ACCEPTED | accepted | |
+| `src/v2/std/collection.dag` | ACCEPTED | accepted | |
+| `src/v2/std/witness.dag` | ACCEPTED | accepted | |
+| `dag/std/types.dag` | LEX | lex | |
+| `dag/std/algebra.dag` | **LEX** | normalize | **diverged** |
+| `src/v2/std/logic.dag` | NORM_RETAINED | normalize | |
+| `src/v2/std/optional.dag` | NORM_RETAINED | normalize | |
+| `src/v2/std/diagnostic.dag` | NORM_RETAINED | normalize | |
+| `dag/std/occurrence_identity.dag` | NORM_RETAINED | normalize | |
+| `src/v2/std/node.dag` | **NOT RE-OBSERVED** | parse | probe exceeded its 900s budget |
+| `dag/std/content_hash.dag` | *pending* | parse | |
+| `src/v2/std/live_tree.dag` | *pending* | normalize (graft) | |
+| `dag/std/error_primitives.dag` | *pending* | normalize (graft) | |
+| `src/v2/std/algebra.dag` | *pending* | **uncaptured** | never captured in either receipt |
+
+`NOT RE-OBSERVED` is recorded for `src/v2/std/node.dag` because the interpreted probe did not
+complete inside its budget, not because the member was found to be well-formed. A budget
+interruption is an interruption plus a lower bound on cost — it is never a verdict about the
+subject, and it may not be discharged by copying a value measured on a different tree.
+
+## The population, restated
+
+- **normalize retention contract violations: 4** — `logic`, `optional`, `diagnostic`,
+  `occurrence_identity`. The historical receipt's five became four when `dag/std/algebra.dag`
+  moved to lex.
+- **lex walls: 2** — `types.dag` and `algebra.dag`, and they are **independent causes**
+  (see below); one repair does not close the other.
+- **the entry itself now rejects**, which the historical receipt's "behaviour differs by POSITION"
+  section treated as the accepting side of its open question. That asymmetry cannot be
+  re-derived from these rows as stated, and the open question is not closed by this receipt.
 
 ## What changed against the historical receipt
 

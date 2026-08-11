@@ -2,97 +2,16 @@ module gunbc.test.claim.normalize_retention_contract_probe_test
 
 import v2.std.text { String }
 import v2.std.logic { Bool }
-import v2.std.algebra { fold_list }
-import v2.std.collection { List }
 import v2.std.node { Symbol }
-import v2.std.grammar { ParseTree }
-import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics }
-import v2.std.compilers.lexing { lex_artifact_semantic_tokens }
-import v2.compiler.tokenize { lex_walk_artifact }
-import v2.compiler.parse { parse_module, ParseArtifact }
-import v2.compiler.normalize { normalize }
-import v2.extdeps.languages.dag { dag_lex_rules, dag_grammar }
-import extdeps.filesystem.filesystem_io
+import gunbc.tools.frontier_ingestion_probe { classify_source, reasons_contain }
 
-data normalize_retention_contract_probe_note: String = "MEASUREMENT PROBE for the normalize retention-then-rejection contract violation named in docs/plans/v2-frontend-std-ingestion-frontier.md. Normalize declares a lowered | wrapper-retained\{cause\} frontier whose contract is counted, corpus stays green; its own module-grain well_formed gate then rejects the tree those retentions live in. Reason assertions are CONTAINMENT reads, never head reads: rejected_with_pending PREPENDS accepted-carrier diagnostics to a later rejection, so the head is systematically the retention carrier and not the cause."
+data permanent_witness_scope_note: String = "WHAT THIS WITNESS MAY ASSERT, and why the live-corpus rows are NOT here. A required witness whose success depends on the current defects continuing to exist inverts the moment the defect is repaired: it would go RED on the repair and GREEN on a regression. So the assertions below validate the STAGE CLASSIFIER and the containment-read discipline on synthetic specimens whose stage is a property of the specimen rather than of the frontier. The per-member live population is a revision-scoped OBSERVATION recorded in docs/plans/v2-frontend-std-ingestion-frontier-exact-head.md and reproducible from gunbc.tools.frontier_ingestion_probe, which is deliberately NOT a test module for exactly this reason. The classifier is imported from that one authority rather than restated here, so the thing under test and the thing used for measurement cannot drift apart."
 
-fn artifact_tree(artifact: ParseArtifact) -> ParseTree {
-  artifact.tree
-}
+data header_only_source: String = "module frontier_probe\n"
 
-fn diagnostic_reason(d: Diagnostic) -> Symbol {
-  d.reason
-}
+data unterminated_string_source: String = "module frontier_probe\n\ndata d: String = \"unterminated\n"
 
-fn all_reasons(d: NonEmptyDiagnostics) -> List<Symbol> {
-  fold_list(xs: d.tail, empty: [diagnostic_reason(d: d.head)], cons: fn(acc, item) {
-    concat(acc, [diagnostic_reason(d: item)])
-  })
-}
-
-fn reasons_contain(reasons: List<Symbol>, sym: Symbol) -> Bool {
-  fold_list(xs: reasons, empty: false, cons: fn(acc, r) {
-    acc || (r == sym)
-  })
-}
-
-fn classify_normalize_reasons(rs: List<Symbol>) -> String {
-  if (rs |> count) == 0 {
-    "ACCEPTED"
-  } else if reasons_contain(reasons: rs, sym: ^namespace_graft_body_dissolved_refused) {
-    "NORM_GRAFT_REFUSED"
-  } else if reasons_contain(reasons: rs, sym: ^body_lowering_reason_wrapper_retained_emitted)
-    && reasons_contain(reasons: rs, sym: ^normalize_reason_post_normalize_not_well_formed) {
-    "NORM_RETAINED"
-  } else {
-    "NORM_OTHER"
-  }
-}
-
-fn classify_source(source: String) -> String {
-  match lex_walk_artifact(source: source, file: ^retention_probe, rules: dag_lex_rules()) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => "LEX"
-    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
-      match parse_module(tokens: lex_artifact_semantic_tokens(artifact: a), grammar: dag_grammar()) {
-        v2.std.diagnostic.Rejected { diagnostics: _ } => "PARSE"
-        v2.std.diagnostic.Accepted { value: artifact, diagnostics: _ } =>
-          match normalize(parse_tree: artifact_tree(artifact: artifact)) {
-            v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => "ACCEPTED"
-            v2.std.diagnostic.Rejected { diagnostics: d } =>
-              classify_normalize_reasons(rs: all_reasons(d: d))
-          }
-      }
-  }
-}
-
-fn classify_member(path: String) -> String {
-  let r = filesystem_read(path: path)
-  classify_source(source: r.content)
-}
-
-fn m_entry() -> String { classify_member(path: "src/v2/test/claim/manual/cross_tree_constructor_binding_test.dag") }
-fn m_primitives() -> String { classify_member(path: "dag/std/primitives.dag") }
-fn m_collection() -> String { classify_member(path: "src/v2/std/collection.dag") }
-fn m_witness() -> String { classify_member(path: "src/v2/std/witness.dag") }
-fn m_types() -> String { classify_member(path: "dag/std/types.dag") }
-fn m_node() -> String { classify_member(path: "src/v2/std/node.dag") }
-fn m_content_hash() -> String { classify_member(path: "dag/std/content_hash.dag") }
-fn m_dag_algebra() -> String { classify_member(path: "dag/std/algebra.dag") }
-fn m_v2_algebra() -> String { classify_member(path: "src/v2/std/algebra.dag") }
-fn m_logic() -> String { classify_member(path: "src/v2/std/logic.dag") }
-fn m_optional() -> String { classify_member(path: "src/v2/std/optional.dag") }
-fn m_diagnostic() -> String { classify_member(path: "src/v2/std/diagnostic.dag") }
-fn m_occurrence() -> String { classify_member(path: "dag/std/occurrence_identity.dag") }
-fn m_live_tree() -> String { classify_member(path: "src/v2/std/live_tree.dag") }
-fn m_error_primitives() -> String { classify_member(path: "dag/std/error_primitives.dag") }
-
-data header_only_source: String = "module retention_probe\n"
-
-data unterminated_string_source: String = "module retention_probe\n\ndata d: String = \"unterminated\n"
-
-data unbalanced_brace_source: String = "module retention_probe\n\nfn f() -> Int {\n  1\n"
-
-data permanent_witness_scope_note: String = "WHAT THIS WITNESS MAY ASSERT, and why the live-corpus rows are NOT here. A required witness whose success depends on the current defects continuing to exist inverts the moment the defect is repaired: it would go RED on the repair and GREEN on a regression. So the durable assertions below validate the STAGE CLASSIFIER and the containment-read discipline on synthetic specimens whose stage is a property of the specimen rather than of the frontier. The per-member live population is a revision-scoped OBSERVATION and lives in docs/plans/v2-frontend-std-ingestion-frontier-exact-head.md, reproducible from the m_* fns in this module, which are deliberately NOT test declarations for exactly this reason."
+data unbalanced_brace_source: String = "module frontier_probe\n\nfn f() -> Int {\n  1\n"
 
 test fn classifier_separates_accepted() -> Bool {
   classify_source(source: header_only_source) == "ACCEPTED"

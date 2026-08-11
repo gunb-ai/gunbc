@@ -1,0 +1,87 @@
+module gunbc.tools.frontier_ingestion_probe
+
+import v2.std.text { String }
+import v2.std.logic { Bool }
+import v2.std.algebra { fold_list }
+import v2.std.collection { List }
+import v2.std.node { Symbol }
+import v2.std.grammar { ParseTree }
+import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics }
+import v2.std.compilers.lexing { lex_artifact_semantic_tokens }
+import v2.compiler.tokenize { lex_walk_artifact }
+import v2.compiler.parse { parse_module, ParseArtifact }
+import v2.compiler.normalize { normalize }
+import v2.extdeps.languages.dag { dag_lex_rules, dag_grammar }
+import extdeps.filesystem.filesystem_io
+
+data frontier_ingestion_probe_note: String = "THE REPRODUCTION INSTRUMENT for docs/plans/v2-frontend-std-ingestion-frontier-exact-head.md, deliberately homed OUTSIDE a *_test.dag module. Its per-member fns read the live tree and report which frontend stage a std module currently reaches. That reading is a revision-scoped OBSERVATION of the present frontier, not a claim that must hold: promoting it to a test declaration would enroll an assertion whose success depends on the current defects continuing to exist, so it would go RED on the repair and GREEN on a regression. The durable claims — that the stage classifier separates its states and that reasons are read by containment — live in gunbc.test.claim.normalize_retention_contract_probe_test and import classify_source from here, so there is one classifier authority and not two.\n\nReason reads are CONTAINMENT reads, never head reads: rejected_with_pending PREPENDS accepted-carrier diagnostics (the wrapper-retention carriers, which are not failures) to a later rejection, so the head of the list is systematically the retention carrier rather than the cause.\n\nStages are DISTINCT STATES. An earlier draft returned an empty reason list for both 'normalize accepted' and 'lex/parse rejected', which is the empty-observation narrow: an unlexable member read as an accepted one. classify_source matches each stage's Outcome in sequence so that collapse is unrepresentable."
+
+fn artifact_tree(artifact: ParseArtifact) -> ParseTree {
+  artifact.tree
+}
+
+fn diagnostic_reason(d: Diagnostic) -> Symbol {
+  d.reason
+}
+
+fn all_reasons(d: NonEmptyDiagnostics) -> List<Symbol> {
+  fold_list(xs: d.tail, empty: [diagnostic_reason(d: d.head)], cons: fn(acc, item) {
+    concat(acc, [diagnostic_reason(d: item)])
+  })
+}
+
+fn reasons_contain(reasons: List<Symbol>, sym: Symbol) -> Bool {
+  fold_list(xs: reasons, empty: false, cons: fn(acc, r) {
+    acc || (r == sym)
+  })
+}
+
+fn classify_normalize_reasons(rs: List<Symbol>) -> String {
+  if (rs |> count) == 0 {
+    "ACCEPTED"
+  } else if reasons_contain(reasons: rs, sym: ^namespace_graft_body_dissolved_refused) {
+    "NORM_GRAFT_REFUSED"
+  } else if reasons_contain(reasons: rs, sym: ^body_lowering_reason_wrapper_retained_emitted)
+    && reasons_contain(reasons: rs, sym: ^normalize_reason_post_normalize_not_well_formed) {
+    "NORM_RETAINED"
+  } else {
+    "NORM_OTHER"
+  }
+}
+
+fn classify_source(source: String) -> String {
+  match lex_walk_artifact(source: source, file: ^frontier_probe, rules: dag_lex_rules()) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => "LEX"
+    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
+      match parse_module(tokens: lex_artifact_semantic_tokens(artifact: a), grammar: dag_grammar()) {
+        v2.std.diagnostic.Rejected { diagnostics: _ } => "PARSE"
+        v2.std.diagnostic.Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact_tree(artifact: artifact)) {
+            v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+            v2.std.diagnostic.Rejected { diagnostics: d } =>
+              classify_normalize_reasons(rs: all_reasons(d: d))
+          }
+      }
+  }
+}
+
+fn classify_member(path: String) -> String {
+  let r = filesystem_read(path: path)
+  classify_source(source: r.content)
+}
+
+fn m_entry() -> String { classify_member(path: "src/v2/test/claim/manual/cross_tree_constructor_binding_test.dag") }
+fn m_primitives() -> String { classify_member(path: "dag/std/primitives.dag") }
+fn m_collection() -> String { classify_member(path: "src/v2/std/collection.dag") }
+fn m_witness() -> String { classify_member(path: "src/v2/std/witness.dag") }
+fn m_types() -> String { classify_member(path: "dag/std/types.dag") }
+fn m_node() -> String { classify_member(path: "src/v2/std/node.dag") }
+fn m_content_hash() -> String { classify_member(path: "dag/std/content_hash.dag") }
+fn m_dag_algebra() -> String { classify_member(path: "dag/std/algebra.dag") }
+fn m_v2_algebra() -> String { classify_member(path: "src/v2/std/algebra.dag") }
+fn m_logic() -> String { classify_member(path: "src/v2/std/logic.dag") }
+fn m_optional() -> String { classify_member(path: "src/v2/std/optional.dag") }
+fn m_diagnostic() -> String { classify_member(path: "src/v2/std/diagnostic.dag") }
+fn m_occurrence() -> String { classify_member(path: "dag/std/occurrence_identity.dag") }
+fn m_live_tree() -> String { classify_member(path: "src/v2/std/live_tree.dag") }
+fn m_error_primitives() -> String { classify_member(path: "dag/std/error_primitives.dag") }
