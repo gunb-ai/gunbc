@@ -30,6 +30,8 @@ import product.compute_board.spice_projection {
   SpiceSliceProjected,
   SpiceSliceRefused,
   TerminalOnNoNet,
+  TerminalOnMultipleNets,
+  DuplicateModelBinding,
   project_analog_to_spice,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -183,6 +185,8 @@ test fn w_unmodelled_element_refuses_and_emits_nothing() -> Bool {
         ModelFidelityNotEmittable { part: _, model_card: _ } => false
         ComponentModelBindingMissing { part: _ } => false
         TerminalOnNoNet { part: _ } => false
+        TerminalOnMultipleNets { part: _ } => false
+        DuplicateModelBinding { component: _ } => false
       }
     SpiceSliceProjected { receipt: _ } => false
   }
@@ -215,6 +219,8 @@ test fn w_vendor_subcircuit_refuses_rather_than_emitting_an_ideal_part() -> Bool
         ElectricalModelUnavailable { part: _ } => false
         ComponentModelBindingMissing { part: _ } => false
         TerminalOnNoNet { part: _ } => false
+        TerminalOnMultipleNets { part: _ } => false
+        DuplicateModelBinding { component: _ } => false
       }
     SpiceSliceProjected { receipt: _ } => false
   }
@@ -231,6 +237,8 @@ test fn w_missing_binding_is_not_an_absent_model() -> Bool {
         ElectricalModelUnavailable { part: _ } => false
         ModelFidelityNotEmittable { part: _, model_card: _ } => false
         TerminalOnNoNet { part: _ } => false
+        TerminalOnMultipleNets { part: _ } => false
+        DuplicateModelBinding { component: _ } => false
       }
     SpiceSliceProjected { receipt: _ } => false
   }
@@ -264,7 +272,82 @@ test fn w_terminal_on_no_net_refuses_rather_than_defaulting_to_reference() -> Bo
         ElectricalModelUnavailable { part: _ } => false
         ModelFidelityNotEmittable { part: _, model_card: _ } => false
         ComponentModelBindingMissing { part: _ } => false
+        TerminalOnMultipleNets { part: _ } => false
+        DuplicateModelBinding { component: _ } => false
       }
     SpiceSliceProjected { receipt: _ } => false
+  }
+}
+
+// AMBIGUITY IS NOT A MODEL STANDING. Two bindings for one component were resolved by list order:
+// binding_for takes the first match, so an ideal row and a vendor-subcircuit row for the same
+// part emitted or refused depending on which was authored first. Both orders are asserted,
+// because a check that only tried one would pass on a lookup that still silently prefers a
+// position — the wall has to hold regardless of which row an editor happened to type first.
+test fn w_duplicate_model_binding_refuses_in_either_order() -> Bool {
+  match project(
+    components: [sense_resistor],
+    bindings: [ideal_binding(c: sense_resistor), subcircuit_binding(c: sense_resistor)]
+  ) {
+    SpiceSliceRefused { cause: c } =>
+      match c {
+        DuplicateModelBinding { component: id } =>
+          (id as String) == "sense"
+            && match project(
+              components: [sense_resistor],
+              bindings: [subcircuit_binding(c: sense_resistor), ideal_binding(c: sense_resistor)]
+            ) {
+              SpiceSliceRefused { cause: c2 } =>
+                match c2 { DuplicateModelBinding { component: _ } => true, _ => false }
+              SpiceSliceProjected { receipt: _ } => false
+            }
+        _ => false
+      }
+    SpiceSliceProjected { receipt: _ } => false
+  }
+}
+
+// A TERMINAL ON TWO NETS IS A SHORT, and it is a different circuit from the one this deck would
+// otherwise describe. The earlier check asked only whether net_of_terminal answered, so this
+// case took the first net and emitted a clean-simulating deck for a board that is not the
+// modelled one — the exact failure the module's note claims to prevent for floating terminals,
+// left open for shorted ones. The positive control below shares every fixture except the extra
+// net, so the refusal is attributable to the short and nothing else.
+fn shorted_circuit() -> AnalogCircuitIntent {
+  AnalogCircuitIntent {
+    title: "standby rail slice",
+    components: [sense_resistor],
+    nets: append(nets_for(components: [sense_resistor]), items: [
+      ElectricalNet {
+        identity: "shorting_net" as NetIdentity,
+        members: [terminal_ref(component: sense_resistor.identity, terminal: sense_resistor.positive_terminal)],
+      },
+    ]),
+  }
+}
+
+test fn w_terminal_on_two_nets_refuses_as_a_short() -> Bool {
+  match project_analog_to_spice(
+    article_identity: fixture_identity,
+    intent: shorted_circuit(),
+    bindings: [ideal_binding(c: sense_resistor)],
+    reference: return_net
+  ) {
+    SpiceSliceRefused { cause: c } =>
+      match c {
+        TerminalOnMultipleNets { part: p } => (p as String) == "series sense resistor"
+        _ => false
+      }
+    SpiceSliceProjected { receipt: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL the short refusal needs. Same component, same binding, same reference —
+// only the extra net removed. Without this, a refusal arm that fired on every one-resistor
+// circuit would satisfy the test above and prove nothing about shorts.
+test fn w_same_circuit_without_the_extra_net_emits() -> Bool {
+  match project(components: [sense_resistor], bindings: [ideal_binding(c: sense_resistor)]) {
+    SpiceSliceProjected { receipt: r } => r.source == "standby rail slice\nRsense rail 0 10k"
+    SpiceSliceRefused { cause: _ } => false
   }
 }

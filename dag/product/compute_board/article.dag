@@ -128,22 +128,19 @@ type PlatformFirmwareContract {
   production_signing: ProductionSigningStanding
 }
 
-// The physical interface EXISTS with typed pending causes rather than prose, and an earlier
-// revision named the WRONG cause: it said Millimeter is unsigned, therefore an interior board
-// origin is unrepresentable, therefore an operator ruling on signedness is required. No such
-// ruling is open. SPATIAL-2 (gunbc#8091, branch spatial-2-affine) has already decided it —
-// Millimeter stays a nonnegative magnitude, SignedMillimeterComponent is the signed component
-// on an oriented axis, and the coordinate/displacement distinction lives in Point versus Vector
-// and their operations rather than in two scalar aliases. So the blocker is that the carrier
-// has not LANDED, which is a different fact with a different remedy than a decision being open.
+// The physical interface EXISTS with typed pending causes rather than prose, and this list has
+// now SHRUNK by one because a cause was discharged rather than reworded. Two earlier revisions
+// were wrong in different ways: the first said Millimeter is unsigned, therefore an interior
+// board origin is unrepresentable, therefore an operator ruling on signedness is required — no
+// such ruling was ever open. The second corrected the cause to "the affine carrier has not
+// landed", which was true when written. SPATIAL-2 (#8091) has since landed on main, so that
+// cause is discharged and is deleted rather than kept as a satisfied row.
 //
-// What genuinely remains beyond that landing is the sub-millimetre quantum — #8091 fixes the
-// quantum at millimetres, which cannot express a 0.5 mm pitch or a 100 um trace — and the
-// shape/topology work that follows it. Each is its own cause so a reader can tell which one
-// moved.
+// What remains is genuinely independent of it: #8091 fixes the quantum at millimetres, which
+// cannot express a 0.5 mm pitch or a 100 um trace, and shape/topology follows separately. Each
+// is its own cause so a reader can tell which one moved.
 type PhysicalRealizationPendingCause
-  = RequiresSpatialAffineSubstrateLanded
-  | RequiresExactSubMillimeterCoordinateQuantum
+  = RequiresExactSubMillimeterCoordinateQuantum
   | RequiresShapeAndTopology
   | RequiresPackageFootprintAuthority
 
@@ -209,7 +206,6 @@ data board_power_interlock_bonds: List<ElectricalBond> = [
 
 data board_power_interlock_physical: PhysicalRealizationStanding = PhysicalRealizationPending {
   causes: [
-    RequiresSpatialAffineSubstrateLanded,
     RequiresExactSubMillimeterCoordinateQuantum,
     RequiresShapeAndTopology,
     RequiresPackageFootprintAuthority,
