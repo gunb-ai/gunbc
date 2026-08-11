@@ -6,6 +6,9 @@ use self::CostBound::*;
 use self::PolynomialExponent::*;
 use self::RecursionShape::*;
 use self::SubValueRelation::*;
+pub use crate::std_checked_arithmetic::{
+    checked_int_add, checked_int_multiply, checked_int_optional,
+};
 pub use crate::std_computation::tree_size_bound;
 use crate::std_computation::CallPattern::*;
 use crate::std_computation::IterationPrimitive::*;
@@ -705,74 +708,6 @@ pub struct RecurrenceForm {
     pub work_exponent: i64,
 }
 
-pub fn int_add_checked(a: i64, b: i64) -> Option<i64> {
-    if (b.clone() > 0) {
-        if (a.clone() > (9223372036854775807 - b.clone())) {
-            None
-        } else {
-            Some((a.clone() + b.clone()))
-        }
-    } else {
-        if (b.clone() < 0) {
-            if (a.clone() < (((0 - 9223372036854775807) - 1) - b.clone())) {
-                None
-            } else {
-                Some((a.clone() + b.clone()))
-            }
-        } else {
-            Some(a.clone())
-        }
-    }
-}
-
-pub fn int_mul_checked(a: i64, b: i64) -> Option<i64> {
-    if (b.clone() == 0) {
-        Some(0)
-    } else {
-        if (a.clone() == 0) {
-            Some(0)
-        } else {
-            if (b.clone() == -1) {
-                if (a.clone() == ((0 - 9223372036854775807) - 1)) {
-                    None
-                } else {
-                    Some((0 - a.clone()))
-                }
-            } else {
-                if (b.clone() > 0) {
-                    if (a.clone() > 0) {
-                        if (a.clone() > (9223372036854775807 / b.clone())) {
-                            None
-                        } else {
-                            Some((a.clone() * b.clone()))
-                        }
-                    } else {
-                        if (a.clone() < (((0 - 9223372036854775807) - 1) / b.clone())) {
-                            None
-                        } else {
-                            Some((a.clone() * b.clone()))
-                        }
-                    }
-                } else {
-                    if (a.clone() > 0) {
-                        if (b.clone() < (((0 - 9223372036854775807) - 1) / a.clone())) {
-                            None
-                        } else {
-                            Some((a.clone() * b.clone()))
-                        }
-                    } else {
-                        if (b.clone() < (9223372036854775807 / a.clone())) {
-                            None
-                        } else {
-                            Some((a.clone() * b.clone()))
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 pub fn bounded_int_pow_exponent(k: i64) -> Option<i64> {
     if (k.clone() < 0) {
         None
@@ -812,8 +747,10 @@ pub fn int_pow_bounded(base: i64, exp: i64) -> Option<i64> {
                                 }
                             } else {
                                 match int_pow_bounded(base.clone(), (exp.clone() - 1)) {
-                                    Some(prev) => match int_mul_checked(base.clone(), prev.clone())
-                                    {
+                                    Some(prev) => match checked_int_optional(checked_int_multiply(
+                                        base.clone(),
+                                        prev.clone(),
+                                    )) {
                                         Some(prod) => Some(prod.clone()),
                                         None => None,
                                     },
@@ -841,11 +778,11 @@ pub fn ceil_log_iter(mut base: i64, mut argument: i64, mut k: i64, mut power: i6
         if (power.clone() >= argument.clone()) {
             break Some(k.clone());
         } else {
-            match int_mul_checked(power.clone(), base.clone()) {
+            match checked_int_optional(checked_int_multiply(power.clone(), base.clone())) {
                 None => {
                     break None;
                 }
-                Some(next_power) => match int_add_checked(k.clone(), 1) {
+                Some(next_power) => match checked_int_optional(checked_int_add(k.clone(), 1)) {
                     None => {
                         break None;
                     }

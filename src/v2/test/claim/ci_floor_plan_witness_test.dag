@@ -1009,7 +1009,7 @@ test fn floor_plan_carries_disjoint_ordinary_and_postcondition_budgets() -> Bool
         Present { value: postcondition } =>
           (millisecond_count(m: ordinary) == minute_count(m: gunbc_ci_ordinary_floor_budget_minutes) * 60000)
             && (millisecond_count(m: postcondition) == minute_count(m: gunbc_ci_admission_postcondition_budget_minutes) * 60000)
-            && (millisecond_count(m: ordinary) + millisecond_count(m: postcondition) == 60 * 60000)
+            && (millisecond_count(m: ordinary) + millisecond_count(m: postcondition) == 85 * 60000)
       }
   }
 }

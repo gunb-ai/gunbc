@@ -1,0 +1,241 @@
+module std.checked_arithmetic
+
+import std.nat { Nat }
+
+// THE FINITE-MACHINE INTEGER BOUNDARY, in one place.
+//
+// std.integer models Int as AbelianGroup<GroupCompletion<Nat>> - the mathematical integers, which
+// have no bound. Every realization of that model does: the v1 seed and the emitted Rust both carry
+// an Int as i64. Those are two different statements, and code that says "this operation is total
+// and exact" while running on the second one is asserting the first about the second.
+//
+// So the bound is a REALIZATION fact, declared once here, and every operation that could cross it
+// answers with a typed outcome naming the operation and its operands rather than producing a
+// number the machine could not have computed.
+//
+// PRE-CHECK, NEVER POST-CHECK. Each function decides whether the operation WOULD cross the bound
+// before performing it. Evaluating a * b and then inspecting the product is not a check: by then
+// the machine operation has already overflowed, and what is being inspected is whatever the
+// realization did about it - wrap, saturate, trap, or nothing at all. Every comparison below is
+// arranged so that its own intermediates stay inside the bound.
+//
+// WHY THIS MODULE EXISTS RATHER THAN std.integer, which is where the integer authority otherwise
+// lives: std.integer imports std.induction (for int_pow_bounded), and the import graph's one
+// structural law is acyclicity (DESIGN section 3), so the checked operations cannot live in
+// std.integer while std.induction consumes them. Homing them apart is what lets BOTH reach them,
+// which is the reachability half of being an authority at all - a concept half the corpus cannot
+// import is not a single authority (std.measure clock_basis_authority_reachability_note records
+// the same lesson from the other direction). DISSOLVE-ON: if the std.integer -> std.induction edge
+// inverts (int_pow_bounded's derived-constant consumer moving, or the bound itself grounding on the
+// cited language primitive rows in extdeps.languages.rust.primitives rather than a literal here),
+// these declarations fold into std.integer and this module deletes.
+
+data checked_arithmetic_bound_note: String = "The bound is stated as i64's inclusive range because that is what the seed and the emitted Rust actually use. It is one literal pair here, replacing the six copies that were open-coded inside std.induction's checked operations - the same constant repeated per call site is the redundancy DESIGN section 2 names, and a repeated bound is worse than most because a single stale copy is a silently wrong answer rather than a compile error. GROUNDING FRONTIER, stated rather than implied: extdeps.languages.rust.primitives already carries i64's range as a cited row (range_min_inclusive / range_max_inclusive), and extdeps.languages.go.primitives carries the same numbers for its own int64. This module does NOT yet consume those rows, because they are String-typed wire values on language-surface rows and decoding them is its own increment. Until it does, this is a second representation of a cited fact - declared debt, not a claim of grounding."
+
+fn int_inclusive_max() -> Int {
+  9223372036854775807
+}
+
+// Stated as a subtraction from the maximum rather than as its own literal, because the asymmetry IS
+// the fact: two's complement has one more negative value than positive, which is exactly why
+// negation overflows at the minimum and nowhere else.
+fn int_inclusive_min() -> Int {
+  0 - int_inclusive_max() - 1
+}
+
+type IntegerArithmeticOperation
+  = IntegerAdd
+  | IntegerSubtract
+  | IntegerMultiply
+  | IntegerNegate
+
+// Operands are a coproduct rather than a pair with an optional right-hand side. An `rhs: Int?`
+// would make Absent mean "this operation is unary", which is a second meaning for a carrier that
+// already means "no value" - the state-space conflation DESIGN's failure-mode list names. A unary
+// operation has one operand; that is a different shape, not a missing field.
+type CheckedIntOperands
+  = UnaryOperand { value: Int }
+  | BinaryOperands { lhs: Int, rhs: Int }
+
+// The overflow CAUSE is its own record rather than a pair of fields inlined into the arm, because
+// downstream results carry it verbatim: a spatial operation that refuses because one component
+// crossed the bound reports THIS cause, not a re-spelling of it. An arm is not a type, so an
+// inlined pair would have forced every consumer to redeclare the two fields - the second
+// representation DESIGN section 3 forbids, appearing at exactly the seam where the fact travels.
+type IntegerOverflow {
+  operation: IntegerArithmeticOperation
+  operands: CheckedIntOperands
+}
+
+type CheckedInt
+  = CheckedIntReady { value: Int }
+  | CheckedIntOverflow { cause: IntegerOverflow }
+
+fn checked_int_add(a: Int, b: Int) -> CheckedInt {
+  if b > 0 {
+    if a > int_inclusive_max() - b {
+      CheckedIntOverflow { cause: IntegerOverflow { operation: IntegerAdd, operands: BinaryOperands { lhs: a, rhs: b } } }
+    } else {
+      CheckedIntReady { value: a + b }
+    }
+  } else {
+    if b < 0 {
+      if a < int_inclusive_min() - b {
+        CheckedIntOverflow { cause: IntegerOverflow { operation: IntegerAdd, operands: BinaryOperands { lhs: a, rhs: b } } }
+      } else {
+        CheckedIntReady { value: a + b }
+      }
+    } else {
+      CheckedIntReady { value: a }
+    }
+  }
+}
+
+fn checked_int_subtract(a: Int, b: Int) -> CheckedInt {
+  if b > 0 {
+    if a < int_inclusive_min() + b {
+      CheckedIntOverflow { cause: IntegerOverflow { operation: IntegerSubtract, operands: BinaryOperands { lhs: a, rhs: b } } }
+    } else {
+      CheckedIntReady { value: a - b }
+    }
+  } else {
+    if b < 0 {
+      if a > int_inclusive_max() + b {
+        CheckedIntOverflow { cause: IntegerOverflow { operation: IntegerSubtract, operands: BinaryOperands { lhs: a, rhs: b } } }
+      } else {
+        CheckedIntReady { value: a - b }
+      }
+    } else {
+      CheckedIntReady { value: a }
+    }
+  }
+}
+
+// The ONE value with no negation: two's complement's extra negative. Every other input is safe.
+fn checked_int_negate(a: Int) -> CheckedInt {
+  if a == int_inclusive_min() {
+    CheckedIntOverflow { cause: IntegerOverflow { operation: IntegerNegate, operands: UnaryOperand { value: a } } }
+  } else {
+    CheckedIntReady { value: 0 - a }
+  }
+}
+
+// Division-based bound tests, one per sign quadrant. For nonzero b, a * b crosses the bound exactly
+// when a lies outside [min/b, max/b] - and both quotients are computed from the bound itself, so no
+// intermediate here can overflow. The b == -1 case is separated because min / -1 is itself the
+// unrepresentable value the negation arm names.
+fn checked_int_multiply(a: Int, b: Int) -> CheckedInt {
+  if b == 0 {
+    CheckedIntReady { value: 0 }
+  } else {
+    if a == 0 {
+      CheckedIntReady { value: 0 }
+    } else {
+      if b == (0 - 1) {
+        if a == int_inclusive_min() {
+          CheckedIntOverflow { cause: IntegerOverflow { operation: IntegerMultiply, operands: BinaryOperands { lhs: a, rhs: b } } }
+        } else {
+          CheckedIntReady { value: 0 - a }
+        }
+      } else {
+        if b > 0 {
+          if a > 0 {
+            if a > int_inclusive_max() / b {
+              CheckedIntOverflow { cause: IntegerOverflow { operation: IntegerMultiply, operands: BinaryOperands { lhs: a, rhs: b } } }
+            } else {
+              CheckedIntReady { value: a * b }
+            }
+          } else {
+            if a < int_inclusive_min() / b {
+              CheckedIntOverflow { cause: IntegerOverflow { operation: IntegerMultiply, operands: BinaryOperands { lhs: a, rhs: b } } }
+            } else {
+              CheckedIntReady { value: a * b }
+            }
+          }
+        } else {
+          if a > 0 {
+            if b < int_inclusive_min() / a {
+              CheckedIntOverflow { cause: IntegerOverflow { operation: IntegerMultiply, operands: BinaryOperands { lhs: a, rhs: b } } }
+            } else {
+              CheckedIntReady { value: a * b }
+            }
+          } else {
+            if b < int_inclusive_max() / a {
+              CheckedIntOverflow { cause: IntegerOverflow { operation: IntegerMultiply, operands: BinaryOperands { lhs: a, rhs: b } } }
+            } else {
+              CheckedIntReady { value: a * b }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// The projection to Optional, for the callers that predate the typed outcome and only branch on
+// whether a value exists. It is a LOSSY read and deliberately named as one: it discards the
+// operation and operands the overflow arm carries. New consumers should match CheckedInt directly;
+// this exists so std.induction's existing Int?-returning surface can consume the single authority
+// without its own signature change becoming part of this increment.
+fn checked_int_optional(r: CheckedInt) -> Int? {
+  match r {
+    CheckedIntReady { value: v } => Present { value: v }
+    CheckedIntOverflow { cause: _ } => none
+  }
+}
+
+// THE ONE SIGNED-TO-UNSIGNED CROSSING, and the reason it is a function rather than an inline guard.
+//
+// It replaces int_to_nat_nonnegative in std.euclidean_geometry, which read `if value < 0 { 0 } else
+// { value }` under a comment saying that clamping a negative to zero would fabricate an answer. It
+// clamped anyway - the absorbing fallback DESIGN section 5 forbids, sitting directly beneath its own
+// description, and reachable by any caller rather than only by the squaring paths whose comment
+// claimed to justify it.
+//
+// Here no arm maps a negative input to a nonnegative output. A magnitude is the input's distance
+// from zero, each branch returns a value the branch itself proves nonnegative, and the ONE input
+// with no representable magnitude - the minimum, whose absolute value is one past the maximum -
+// refuses with the same negation cause the negation operation reports, because that is literally
+// what fails.
+type CheckedNat
+  = CheckedNatReady { value: Nat }
+  | CheckedNatOverflow { cause: IntegerOverflow }
+
+fn checked_int_magnitude(a: Int) -> CheckedNat {
+  if a == int_inclusive_min() {
+    CheckedNatOverflow { cause: IntegerOverflow { operation: IntegerNegate, operands: UnaryOperand { value: a } } }
+  } else {
+    CheckedNatReady { value: nat_magnitude(a: a) }
+  }
+}
+
+data nat_magnitude_residue_note: String = "WHY THIS IS A SEPARATE FUNCTION, and what remains unguarded about it. The Int-to-Nat crossing is admitted at a function RETURN position (std.coercion grounded_primitive_coproduct_identities registers Int -> Nat as an identity: a Nat IS an Int, grounded construction-side by the numeric tower), but not in a record-field position, so the crossing cannot happen inside the CheckedNatReady literal and has to be its own declaration. THE RESIDUE, named rather than left for a reader to find: nat_magnitude is correct for every input except the minimum representable value, whose magnitude is one past the maximum and where the realization's negation overflows. checked_int_magnitude is the sanctioned entry and refuses exactly that input. This is strictly better than the int_to_nat_nonnegative it replaces - no input maps to a fabricated zero, and the one unrepresentable case has a typed refusal rather than a silent clamp - but it is NOT a construction wall: nothing stops a caller invoking nat_magnitude directly. DISSOLVE-ON: a record-field-position crossing (which makes the guard and the crossing one expression) or sole_constructor over the magnitude carrier."
+
+fn nat_magnitude(a: Int) -> Nat {
+  if a < 0 { 0 - a } else { a }
+}
+
+// Chaining, so a caller composing several operations propagates the FIRST cause rather than
+// discovering at the end that something failed. Without these every composite site would re-nest
+// the same match, which is the per-site duplication that makes one site eventually differ.
+fn checked_add_results(a: CheckedInt, b: CheckedInt) -> CheckedInt {
+  match a {
+    CheckedIntOverflow { cause: c } => CheckedIntOverflow { cause: c }
+    CheckedIntReady { value: av } =>
+      match b {
+        CheckedIntOverflow { cause: c } => CheckedIntOverflow { cause: c }
+        CheckedIntReady { value: bv } => checked_int_add(a: av, b: bv)
+      }
+  }
+}
+
+fn checked_subtract_results(a: CheckedInt, b: CheckedInt) -> CheckedInt {
+  match a {
+    CheckedIntOverflow { cause: c } => CheckedIntOverflow { cause: c }
+    CheckedIntReady { value: av } =>
+      match b {
+        CheckedIntOverflow { cause: c } => CheckedIntOverflow { cause: c }
+        CheckedIntReady { value: bv } => checked_int_subtract(a: av, b: bv)
+      }
+  }
+}
