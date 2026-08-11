@@ -37,6 +37,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.compilers.lexing { Token }
 import v2.std.compilers.target_model {
+  ProducedDeclUnwired,
   TargetModel, target_model_emit_transforms_empty
 }
 import v2.std.coercion { Identity }
@@ -143,6 +144,7 @@ fn ingest_fixture_bundle_with_rules(rules: Node) -> Node {
 
 fn ingest_fixture_model_from_bundle(bundle: Node) -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: bundle,
     lex: dag_lex(),
     binding_spellings: dag_binding_spellings(),
