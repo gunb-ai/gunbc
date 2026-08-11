@@ -10274,13 +10274,15 @@ fn run() -> Result<ExitCode, ExitCode> {
     };
 
     // Install the host-effect trace policy from the .dag authority FIRST — before the
-    // naming-hygiene walk below and every subsequent corpus read — so `[file] read` /
+    // naming-hygiene walk and every subsequent corpus read — so `[file] read` /
     // `[rest]` / `[hermetic:mock]` etc. are funnelled per `gunbc.output_policy`
     // (Instrumentation is Suppressed at Normal, the CI default) instead of flooding the
     // floor log. Installing AFTER the walk (the prior order) left the walk's whole-tree
     // read at the `Full` default — ~2.3k `[file] read` lines, the firehose the
-    // observation-emit census (`gunbc.observation_emit_census`) targets. The walk still
-    // runs before plan evaluation, so a naming violation stays the cheapest failure.
+    // observation-emit census (`gunbc.observation_emit_census`) targets. That ordering
+    // requirement is unchanged by #8140: the walk moved AFTER plan evaluation (it is now
+    // demand-directed on `schedules_discovery`), so this install precedes it by even
+    // more, and the walk's whole-tree read is still policy-funnelled.
     v1_compiler::cli_run::install_output_policy(&source_roots);
     // Install the per-target group-marker syntax (GitHub Actions `::group::` vs a
     // plain-terminal header) from the .dag authority, so the parallel walk folds each
