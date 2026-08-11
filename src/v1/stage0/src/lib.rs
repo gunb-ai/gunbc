@@ -45,6 +45,7 @@ pub mod gunbc_rust_decl_type_overlay;
 pub mod gunbc_stage0_crate_layout_generated;
 pub mod gunbc_stage0_crate_partition_generated;
 pub mod std_algebra;
+pub mod std_checked_arithmetic;
 pub mod std_coercion;
 pub mod std_computation;
 pub mod std_constructors;

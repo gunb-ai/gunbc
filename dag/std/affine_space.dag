@@ -1,6 +1,16 @@
 module std.affine_space
 
 import std.integer { Int }
+import std.checked_arithmetic {
+  CheckedInt,
+  CheckedIntReady,
+  CheckedIntOverflow,
+  IntegerOverflow,
+  checked_int_add,
+  checked_int_subtract,
+  checked_int_negate,
+  checked_int_multiply,
+}
 import std.measure {
   SignedMillimeterComponent,
   signed_millimeter_component,
@@ -92,80 +102,153 @@ fn zero_vector3<F>() -> Vector3<F> {
   vector3(x: 0, y: 0, z: 0)
 }
 
-// Point + Vector -> Point. Translation is EXACT in integer millimetres, which is why it is in this
-// first slice at all: no approximation policy is needed to move a location by a displacement.
-fn translate_point3<F>(point: Point3<F>, by: Vector3<F>) -> Point3<F> {
-  point3(
-    x: signed_millimeter_component_count(m: point.x) + signed_millimeter_component_count(m: by.x),
-    y: signed_millimeter_component_count(m: point.y) + signed_millimeter_component_count(m: by.y),
-    z: signed_millimeter_component_count(m: point.z) + signed_millimeter_component_count(m: by.z),
+// THE MATHEMATICS IS EXACT; THE FINITE MACHINE REALIZATION MAY REFUSE. Those are two statements and
+// this slice used to make only the first. Translation of a point by a displacement is exact in
+// integer millimetres - no approximation policy is needed to move a location - and the model's Int
+// is unbounded. The realization's is not: every one of these operations runs on i64 in the seed and
+// in emitted Rust, where a sum of two large coordinates has no representable result. Declaring the
+// operation total while running it on a bounded carrier is the overclaim, not the arithmetic.
+//
+// So each operation answers SpatialArithmeticResult<T>, and the refusal carries the exact
+// IntegerOverflow cause std.checked_arithmetic produced: which operation, on which operands. A
+// caller that cannot proceed knows precisely what could not be computed, and no caller receives a
+// wrapped number described as a location.
+type SpatialArithmeticResult<T>
+  = SpatialArithmeticReady { value: T }
+  | SpatialArithmeticRefused { cause: IntegerOverflow }
+
+// FIRST CROSSING WINS, and every component is computed before the fold rather than after a partial
+// result exists. There is no arm here that produces a value from some components and a default for
+// the rest: a vector with one unrepresentable component is not a vector.
+fn vector3_from_checked<F>(x: CheckedInt, y: CheckedInt, z: CheckedInt) -> SpatialArithmeticResult<Vector3<F>> {
+  match x {
+    CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+    CheckedIntReady { value: xv } =>
+      match y {
+        CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+        CheckedIntReady { value: yv } =>
+          match z {
+            CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+            CheckedIntReady { value: zv } =>
+              SpatialArithmeticReady { value: vector3(x: xv, y: yv, z: zv) }
+          }
+      }
+  }
+}
+
+fn point3_from_checked<F>(x: CheckedInt, y: CheckedInt, z: CheckedInt) -> SpatialArithmeticResult<Point3<F>> {
+  match x {
+    CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+    CheckedIntReady { value: xv } =>
+      match y {
+        CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+        CheckedIntReady { value: yv } =>
+          match z {
+            CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+            CheckedIntReady { value: zv } =>
+              SpatialArithmeticReady { value: point3(x: xv, y: yv, z: zv) }
+          }
+      }
+  }
+}
+
+fn vector2_from_checked<F>(x: CheckedInt, y: CheckedInt) -> SpatialArithmeticResult<Vector2<F>> {
+  match x {
+    CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+    CheckedIntReady { value: xv } =>
+      match y {
+        CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+        CheckedIntReady { value: yv } => SpatialArithmeticReady { value: vector2(x: xv, y: yv) }
+      }
+  }
+}
+
+fn point2_from_checked<F>(x: CheckedInt, y: CheckedInt) -> SpatialArithmeticResult<Point2<F>> {
+  match x {
+    CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+    CheckedIntReady { value: xv } =>
+      match y {
+        CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
+        CheckedIntReady { value: yv } => SpatialArithmeticReady { value: point2(x: xv, y: yv) }
+      }
+  }
+}
+
+// Point + Vector -> Point.
+fn translate_point3<F>(point: Point3<F>, by: Vector3<F>) -> SpatialArithmeticResult<Point3<F>> {
+  point3_from_checked(
+    x: checked_int_add(a: signed_millimeter_component_count(m: point.x), b: signed_millimeter_component_count(m: by.x)),
+    y: checked_int_add(a: signed_millimeter_component_count(m: point.y), b: signed_millimeter_component_count(m: by.y)),
+    z: checked_int_add(a: signed_millimeter_component_count(m: point.z), b: signed_millimeter_component_count(m: by.z)),
   )
 }
 
 // Point - Point -> Vector. The result is a displacement, not a location, and not a distance: it is
 // signed and directional. Its NORM is the nonnegative physical distance, and that lives in
 // std.euclidean_geometry because it is the operation that stops being exact.
-fn displacement_between3<F>(from: Point3<F>, to: Point3<F>) -> Vector3<F> {
-  vector3(
-    x: signed_millimeter_component_count(m: to.x) - signed_millimeter_component_count(m: from.x),
-    y: signed_millimeter_component_count(m: to.y) - signed_millimeter_component_count(m: from.y),
-    z: signed_millimeter_component_count(m: to.z) - signed_millimeter_component_count(m: from.z),
+fn displacement_between3<F>(from: Point3<F>, to: Point3<F>) -> SpatialArithmeticResult<Vector3<F>> {
+  vector3_from_checked(
+    x: checked_int_subtract(a: signed_millimeter_component_count(m: to.x), b: signed_millimeter_component_count(m: from.x)),
+    y: checked_int_subtract(a: signed_millimeter_component_count(m: to.y), b: signed_millimeter_component_count(m: from.y)),
+    z: checked_int_subtract(a: signed_millimeter_component_count(m: to.z), b: signed_millimeter_component_count(m: from.z)),
   )
 }
 
-fn add_vector3<F>(a: Vector3<F>, b: Vector3<F>) -> Vector3<F> {
-  vector3(
-    x: signed_millimeter_component_count(m: a.x) + signed_millimeter_component_count(m: b.x),
-    y: signed_millimeter_component_count(m: a.y) + signed_millimeter_component_count(m: b.y),
-    z: signed_millimeter_component_count(m: a.z) + signed_millimeter_component_count(m: b.z),
+fn add_vector3<F>(a: Vector3<F>, b: Vector3<F>) -> SpatialArithmeticResult<Vector3<F>> {
+  vector3_from_checked(
+    x: checked_int_add(a: signed_millimeter_component_count(m: a.x), b: signed_millimeter_component_count(m: b.x)),
+    y: checked_int_add(a: signed_millimeter_component_count(m: a.y), b: signed_millimeter_component_count(m: b.y)),
+    z: checked_int_add(a: signed_millimeter_component_count(m: a.z), b: signed_millimeter_component_count(m: b.z)),
   )
 }
 
-fn subtract_vector3<F>(a: Vector3<F>, b: Vector3<F>) -> Vector3<F> {
-  vector3(
-    x: signed_millimeter_component_count(m: a.x) - signed_millimeter_component_count(m: b.x),
-    y: signed_millimeter_component_count(m: a.y) - signed_millimeter_component_count(m: b.y),
-    z: signed_millimeter_component_count(m: a.z) - signed_millimeter_component_count(m: b.z),
+fn subtract_vector3<F>(a: Vector3<F>, b: Vector3<F>) -> SpatialArithmeticResult<Vector3<F>> {
+  vector3_from_checked(
+    x: checked_int_subtract(a: signed_millimeter_component_count(m: a.x), b: signed_millimeter_component_count(m: b.x)),
+    y: checked_int_subtract(a: signed_millimeter_component_count(m: a.y), b: signed_millimeter_component_count(m: b.y)),
+    z: checked_int_subtract(a: signed_millimeter_component_count(m: a.z), b: signed_millimeter_component_count(m: b.z)),
   )
 }
 
-fn negate_vector3<F>(v: Vector3<F>) -> Vector3<F> {
-  vector3(
-    x: 0 - signed_millimeter_component_count(m: v.x),
-    y: 0 - signed_millimeter_component_count(m: v.y),
-    z: 0 - signed_millimeter_component_count(m: v.z),
+// Negation refuses at exactly one input per component - the minimum representable value, whose
+// negation is the one integer two's complement omits.
+fn negate_vector3<F>(v: Vector3<F>) -> SpatialArithmeticResult<Vector3<F>> {
+  vector3_from_checked(
+    x: checked_int_negate(a: signed_millimeter_component_count(m: v.x)),
+    y: checked_int_negate(a: signed_millimeter_component_count(m: v.y)),
+    z: checked_int_negate(a: signed_millimeter_component_count(m: v.z)),
   )
 }
 
 // Scaling by an integer is exact. Scaling by a ratio is NOT offered: it would need a rounding
 // policy, and inventing one here would put approximation into the affine layer before the
 // numeric seam is decided.
-fn scale_vector3<F>(v: Vector3<F>, factor: Int) -> Vector3<F> {
-  vector3(
-    x: signed_millimeter_component_count(m: v.x) * factor,
-    y: signed_millimeter_component_count(m: v.y) * factor,
-    z: signed_millimeter_component_count(m: v.z) * factor,
+fn scale_vector3<F>(v: Vector3<F>, factor: Int) -> SpatialArithmeticResult<Vector3<F>> {
+  vector3_from_checked(
+    x: checked_int_multiply(a: signed_millimeter_component_count(m: v.x), b: factor),
+    y: checked_int_multiply(a: signed_millimeter_component_count(m: v.y), b: factor),
+    z: checked_int_multiply(a: signed_millimeter_component_count(m: v.z), b: factor),
   )
 }
 
-fn translate_point2<F>(point: Point2<F>, by: Vector2<F>) -> Point2<F> {
-  point2(
-    x: signed_millimeter_component_count(m: point.x) + signed_millimeter_component_count(m: by.x),
-    y: signed_millimeter_component_count(m: point.y) + signed_millimeter_component_count(m: by.y),
+fn translate_point2<F>(point: Point2<F>, by: Vector2<F>) -> SpatialArithmeticResult<Point2<F>> {
+  point2_from_checked(
+    x: checked_int_add(a: signed_millimeter_component_count(m: point.x), b: signed_millimeter_component_count(m: by.x)),
+    y: checked_int_add(a: signed_millimeter_component_count(m: point.y), b: signed_millimeter_component_count(m: by.y)),
   )
 }
 
-fn displacement_between2<F>(from: Point2<F>, to: Point2<F>) -> Vector2<F> {
-  vector2(
-    x: signed_millimeter_component_count(m: to.x) - signed_millimeter_component_count(m: from.x),
-    y: signed_millimeter_component_count(m: to.y) - signed_millimeter_component_count(m: from.y),
+fn displacement_between2<F>(from: Point2<F>, to: Point2<F>) -> SpatialArithmeticResult<Vector2<F>> {
+  vector2_from_checked(
+    x: checked_int_subtract(a: signed_millimeter_component_count(m: to.x), b: signed_millimeter_component_count(m: from.x)),
+    y: checked_int_subtract(a: signed_millimeter_component_count(m: to.y), b: signed_millimeter_component_count(m: from.y)),
   )
 }
 
-fn add_vector2<F>(a: Vector2<F>, b: Vector2<F>) -> Vector2<F> {
-  vector2(
-    x: signed_millimeter_component_count(m: a.x) + signed_millimeter_component_count(m: b.x),
-    y: signed_millimeter_component_count(m: a.y) + signed_millimeter_component_count(m: b.y),
+fn add_vector2<F>(a: Vector2<F>, b: Vector2<F>) -> SpatialArithmeticResult<Vector2<F>> {
+  vector2_from_checked(
+    x: checked_int_add(a: signed_millimeter_component_count(m: a.x), b: signed_millimeter_component_count(m: b.x)),
+    y: checked_int_add(a: signed_millimeter_component_count(m: a.y), b: signed_millimeter_component_count(m: b.y)),
   )
 }
 
@@ -182,15 +265,21 @@ type QuarterTurns
   | ThreeQuarters
 
 // Rotation about +Z, right-handed: (x, y) -> (-y, x) per quarter turn. Z is unchanged.
-fn rotate_quarter_turns_about_z<F>(v: Vector3<F>, turns: QuarterTurns) -> Vector3<F> {
+//
+// A PERMUTATION CAN STILL REFUSE. Rotation moves components between axes and negates some of them,
+// and the negation is where the bound bites: a component at the minimum representable value has no
+// negation, so the quarter turn of such a vector has no representable result. NoTurn is the one arm
+// that cannot refuse, because it negates nothing - and it is written through the same checked path
+// rather than short-circuited, so no arm produces a vector by a route the others do not take.
+fn rotate_quarter_turns_about_z<F>(v: Vector3<F>, turns: QuarterTurns) -> SpatialArithmeticResult<Vector3<F>> {
   let x = signed_millimeter_component_count(m: v.x)
   let y = signed_millimeter_component_count(m: v.y)
   let z = signed_millimeter_component_count(m: v.z)
   match turns {
-    NoTurn => vector3(x: x, y: y, z: z)
-    OneQuarter => vector3(x: 0 - y, y: x, z: z)
-    TwoQuarters => vector3(x: 0 - x, y: 0 - y, z: z)
-    ThreeQuarters => vector3(x: y, y: 0 - x, z: z)
+    NoTurn => vector3_from_checked(x: CheckedIntReady { value: x }, y: CheckedIntReady { value: y }, z: CheckedIntReady { value: z })
+    OneQuarter => vector3_from_checked(x: checked_int_negate(a: y), y: CheckedIntReady { value: x }, z: CheckedIntReady { value: z })
+    TwoQuarters => vector3_from_checked(x: checked_int_negate(a: x), y: checked_int_negate(a: y), z: CheckedIntReady { value: z })
+    ThreeQuarters => vector3_from_checked(x: CheckedIntReady { value: y }, y: checked_int_negate(a: x), z: CheckedIntReady { value: z })
   }
 }
 
@@ -209,19 +298,25 @@ type ZQuarterTurnTransform3<From, To> {
   translation: Vector3<To>
 }
 
+// TWO STAGES, EITHER OF WHICH CAN REFUSE, and the first refusal is returned verbatim rather than
+// re-labelled: if the rotation could not be computed, the caller learns that a negation crossed the
+// bound, not that a translation did.
 fn apply_z_quarter_turn_transform3<From, To>(
   transform: ZQuarterTurnTransform3<From, To>,
   point: Point3<From>,
-) -> Point3<To> {
+) -> SpatialArithmeticResult<Point3<To>> {
   let as_displacement = vector3(
     x: signed_millimeter_component_count(m: point.x),
     y: signed_millimeter_component_count(m: point.y),
     z: signed_millimeter_component_count(m: point.z),
   )
-  let rotated = rotate_quarter_turns_about_z(v: as_displacement, turns: transform.rotation_about_z)
-  point3(
-    x: signed_millimeter_component_count(m: rotated.x) + signed_millimeter_component_count(m: transform.translation.x),
-    y: signed_millimeter_component_count(m: rotated.y) + signed_millimeter_component_count(m: transform.translation.y),
-    z: signed_millimeter_component_count(m: rotated.z) + signed_millimeter_component_count(m: transform.translation.z),
-  )
+  match rotate_quarter_turns_about_z(v: as_displacement, turns: transform.rotation_about_z) {
+    SpatialArithmeticRefused { cause: c } => SpatialArithmeticRefused { cause: c }
+    SpatialArithmeticReady { value: rotated } =>
+      point3_from_checked(
+        x: checked_int_add(a: signed_millimeter_component_count(m: rotated.x), b: signed_millimeter_component_count(m: transform.translation.x)),
+        y: checked_int_add(a: signed_millimeter_component_count(m: rotated.y), b: signed_millimeter_component_count(m: transform.translation.y)),
+        z: checked_int_add(a: signed_millimeter_component_count(m: rotated.z), b: signed_millimeter_component_count(m: transform.translation.z)),
+      )
+  }
 }

@@ -90,6 +90,9 @@ pub mod std_computation;
 #[path = "../../stage0/src/std_termination.rs"]
 pub mod std_termination;
 #[rustfmt::skip]
+#[path = "../../stage0/src/std_checked_arithmetic.rs"]
+pub mod std_checked_arithmetic;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_induction.rs"]
 pub mod std_induction;
 #[rustfmt::skip]

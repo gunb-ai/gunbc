@@ -59,6 +59,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "std_syntax",
         "std_computation",
         "std_termination",
+        "std_checked_arithmetic",
         "std_induction",
         "std_iteration",
         "std_graph",
