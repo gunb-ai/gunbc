@@ -69,13 +69,6 @@ fn ready_point_equals(r: SpatialArithmeticResult<Point3<RoomFrame>>, b: Point3<R
   }
 }
 
-fn ready_square_millimeter_is(r: SpatialArithmeticResult<Nat>, expected: Nat) -> Bool {
-  match r {
-    SpatialArithmeticRefused { cause: _ } => false
-    SpatialArithmeticReady { value: n } => n == expected
-  }
-}
-
 fn norm_squared_is(v: Vector3<RoomFrame>, expected: Nat) -> Bool {
   match norm_squared3(v: v) {
     SpatialArithmeticRefused { cause: _ } => false
