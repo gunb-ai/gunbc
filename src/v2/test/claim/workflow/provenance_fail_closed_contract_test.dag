@@ -30,6 +30,9 @@ import v2.workflow.affected_set_floor_runner {
   Refused,
   DiffObservationRefusal,
   FrontierQueryRefusal,
+  SubjectObservationRefusal,
+  DependencyObservationRefusal,
+  DispositionAuthorityRefusal,
   floor_precompute_would_skip,
   floor_witness_run_disposition
 }
@@ -85,6 +88,9 @@ test fn provenance_fail_closed_contract_holds() -> Bool {
       match cause {
         FrontierQueryRefusal { reason: reason } => reason == "provenance unavailable"
         DiffObservationRefusal { reason: _ } => false
+        SubjectObservationRefusal { reason: _ } => false
+        DependencyObservationRefusal { reason: _ } => false
+        DispositionAuthorityRefusal { reason: _ } => false
       }
     RunWitness { reason: _ } => false
     SkipAssumedGreen => false

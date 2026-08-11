@@ -31,6 +31,9 @@ import v1.gunbc.namespace_reference_derived_closure_production_observations {
   namespace_structural_binding_observations_a_through_d,
 }
 import std.types { Bool, Int, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data namespace_reference_derived_closure_production_admissions_witness_note: String = "N3-A production and assessment witnesses under src/v1/tests/claim — outside witness_layer_roots compile-clean entries, scheduled via v1_claim_scoped_witness_batch (dag plus src/v1 envelope). v1 production returns neutral ReferenceBindingObservation carriers; assess_reference_binding_observation projects capability admissions here. The namespace-structural-observations roadmap row stays ExecutionContractUnspecified until a semantic closing carrier lands (prior variant-presence predicate retracted 2026-08-04). Discriminating RED: witness_closing_contract_still_reds_until_dependency_clauses_land exercises the parent frontier count."
 

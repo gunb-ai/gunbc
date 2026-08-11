@@ -23,9 +23,22 @@ type FloorRerunFrontier
   = FrontierProduced { nodes: List<Node> }
   | FrontierFailClosed { reason: String }
 
+// Cause FAMILIES, not one arm per leaf failure. Each family names a distinct
+// ignorance state whose remedy differs; the leaf detail stays in `reason` so a
+// new failure mode inside a family costs no arm. The three added families let a
+// consumer that admits expensive work off this disposition state what it does
+// about evidence that is neither a diff gap nor a frontier gap: a subject that
+// is not the tree we measured, a dependency population that could not be
+// derived, and a declared disposition the derived facts contradict. Overloading
+// FrontierQueryRefusal with those would re-collapse three remedies into one
+// label, which is the state-space conflation this coproduct exists to have
+// deleted.
 type WitnessRefusalCause
   = DiffObservationRefusal { reason: String }
   | FrontierQueryRefusal { reason: String }
+  | SubjectObservationRefusal { reason: String }
+  | DependencyObservationRefusal { reason: String }
+  | DispositionAuthorityRefusal { reason: String }
 
 type WitnessRunDisposition
   = RunWitness { reason: String }

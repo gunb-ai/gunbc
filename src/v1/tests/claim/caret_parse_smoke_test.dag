@@ -26,6 +26,9 @@ import v1.compiler.parse {
 }
 import v1.compiler.compile { compile_sources, compile_to_resolved, SourceFile }
 import v1.compiler.artifact { Rust }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data caret_parse_smoke_parser_transport_enrollment: String = "Scheduled per PR through gunbc.ci_layer_roots v1_claim_scoped_witness_entries and v1_claim_scoped_witness_batch, enrolled by scoped_witness_batches; v2.workflow.ci_floor_plan gunbc_ci_floor_ordinary_batches folds those generic instances into the floor. The scoped batch supplies exactly dag plus src/v1 without widening ordinary witness discovery. Local reproduction: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/caret_parse_smoke_test.dag --functions w_caret_tokenizes_as_sh_caret,w_caret_paren_tokenizes_as_caret_then_lparen,w_parse_caret_ident_produces_literal,w_parse_caret_paren_produces_discriminant_call,w_parse_expr_caret_paren_full_pipeline,w_parse_expr_caret_var_arg_produces_discriminant_call,w_parse_module_let_caret_paren. The native compile and emit claims remain on cargo test -p v1-compiler --lib caret_parse_smoke_native_compile_emit_witnesses until v1.compile_sources is interpreter-runnable (same map_keys gap as probe_emit_interp.dag)."
 

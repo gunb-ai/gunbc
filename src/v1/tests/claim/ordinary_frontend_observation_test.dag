@@ -5,6 +5,9 @@ import v1.compiler.frontend_observation {
   OrdinaryFrontendObservation,
   observe_ordinary_frontend
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Enrollment: the v1_claim_scoped_witness_entries roster (dag + src/v1), the
 // same scoped batch caret_parse_smoke_test rides. The roster module is named

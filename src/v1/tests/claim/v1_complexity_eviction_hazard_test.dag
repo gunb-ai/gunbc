@@ -13,6 +13,9 @@ import v1.compiler.complexity {
   lookup_summary,
   evict_summary,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data eviction_hazard_home_note: String = "Homed under src/v1/tests/claim/ because it IMPORTS v1.compiler.complexity to execute the seed, and that is the only home with an EXECUTING consumer for a v1-importing witness: gunbc.ci_layer_roots v1_claim_scoped_witness_entries runs this directory on the scoped batch whose source roots are exactly dag plus src/v1. Two earlier homes were tried and both were wrong, each refuted by the floor rather than by argument. dag/test/claim/long/ failed compile-clean at the import line (unresolved import: module v1.compiler.complexity not found) — a dag/ entry cannot import v1 under compile-clean scope, though it CAN reach v1 declarations through decl_facts pool roots, which is how the sibling resolution census works. src/v2/test/manual/ compiled, but the witness-admission wall refused it: an OfflineLocalRecipe directory stopped being an admission answer on 2026-08-04, because a directory cannot decide that a witness runs, and moving a file under an offline path executes it NOWHERE. That refusal is the same coverage-by-illusion this census argues against, caught in the census itself."
 
