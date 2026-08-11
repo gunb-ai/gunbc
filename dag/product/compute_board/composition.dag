@@ -4,6 +4,7 @@ import std.types { String, NonEmptyStr, List }
 import std.nat { Nat }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.cpu.ampere_altra_package {
+  ContactMapPubliclyAvailableNotIngested,
   ContactPopulationIncomplete,
   DuplicateContactDesignator,
   MissingUpstreamDesignCollateral,
@@ -85,7 +86,8 @@ type CollateralRefusal
   | MemoryTopologyNotEstablished { reason: NonEmptyStr }
 
 type DesignIncompleteRefusal
-  = RequiredCapabilityUnsatisfied { capability: BoardCapability }
+  = PublishedAuthorityNotIngested { document: NonEmptyStr }
+  | RequiredCapabilityUnsatisfied { capability: BoardCapability }
   | UnearnedComponentPresent { designator: NonEmptyStr }
   | PackageContactPopulationIncomplete { expected: Nat, resolved: Nat }
   | DuplicatePackageContact { designator: NonEmptyStr }
@@ -124,6 +126,12 @@ fn project_contact_map_standing(
   match standing {
     PackageContactMapAdmitted { resolved: _ } =>
       BoardReadiness { collateral: [], design: [], manufacturing: [] }
+    ContactMapPubliclyAvailableNotIngested { document: d, authority: _ } =>
+      BoardReadiness {
+        collateral: [],
+        design: [PublishedAuthorityNotIngested { document: d }],
+        manufacturing: [],
+      }
     MissingUpstreamDesignCollateral { subject: s, access_route: _ } =>
       BoardReadiness {
         collateral: [PackageContactMapUnavailable { subject: s }],

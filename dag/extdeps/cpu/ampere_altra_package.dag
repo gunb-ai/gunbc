@@ -13,6 +13,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data ampere_altra_rev_a1_datasheet_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "amperecomputing.com/assets/Altra_Max_Rev_A1_DS_v1_15_20230809_b7cdce449e_424d129849.pdf"
+  }
+}
+
 data ampere_customer_reference_boards_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
@@ -20,13 +27,29 @@ data ampere_customer_reference_boards_authority: ExternalAuthority = ExternalAut
   }
 }
 
-// VERIFIED LIVE 2026-08-11 by fetching the product-brief locator. Quoted exactly from the
-// response: "4926-Pin FCLGA"; "8 Channels 72-bit DDR4-3200 with ECC"; "Up to 16 DIMMs (2DPC)
-// and 4 TB total memory"; "128 Lanes PCIe Gen4 (optional 64 lane CCIX for multi-socket
-// support)". The 4926 figure agrees with the contact_count already carried on
-// extdeps.cpu.ampere's CpuSocket rows, which is a consistency check across two independent
-// reads of the same upstream, not a second authority for one fact.
-data ampere_altra_package_note: String = "THE ALTRA-FAMILY PACKAGE, AT THE GRAIN PUBLIC MATERIAL SUPPORTS — AND THE EXPLICIT BOUNDARY WHERE IT STOPS. The public brief establishes the MAGNITUDE of the board problem: a 4926-contact FCLGA package, eight 72-bit DDR4-3200 ECC channels, up to sixteen DIMMs at two per channel, and 128 PCIe Gen4 lanes. It does not establish anything a board can be designed from. The per-contact identity map, the power sequencing requirements, the admitted memory topologies, the escape rules, and the mandatory support circuitry are NOT public: Ampere states its motherboard design packages, UEFI source, OpenBMC source, and CPLD source are available through Customer Connect to customers, partners, and distributors under NDA. So the honest standing of this package is 'magnitude known, design collateral absent', and that is modelled as a typed refusal rather than as an empty contact list. THE REASON THIS MATTERS MORE THAN IT LOOKS: an empty List<PackageContact> and an unobtainable contact map are different states with different remedies — the first says we have not done the work, the second says the work cannot begin until a business prerequisite clears — and collapsing them into 'zero contacts' is the empty-observation narrow DESIGN names, where an observation that could not express what it saw renders as a verdict about the world. A SECOND BOUNDARY, NOT YET RESOLVED ANYWHERE IN THIS REPOSITORY: this repository is public. NDA-obtained contact maps cannot land in it, and the publication-capability thread that would have decided where they may live records that the Stage-0 placement gate was DELETED with no replacement ontology selected. So even after Customer Connect access, the ingestion has no admitted home. That is a live blocker on the Altra path, stated here beside the refusal it causes rather than discovered later by someone who assumed an NDA was the only prerequisite."
+// VERIFIED LIVE 2026-08-11 by fetching the product brief AND by extracting the text of the
+// cited Altra Max Rev A1 datasheet PDF (Issue 1.15). Quoted from the brief: "4926-Pin FCLGA";
+// "8 Channels 72-bit DDR4-3200 with ECC"; "Up to 16 DIMMs (2DPC) and 4 TB total memory";
+// "128 Lanes PCIe Gen4". Read from the datasheet itself: section 3 Mechanical Data gives the
+// package as 77.080 mm x 67.000 mm; section 5 is "Pin Assignment - Sorted by Pin Number",
+// Table 4, thirty-five sheets of PIN # to SIGNAL NAME; section 6 carries Signal Descriptions
+// with 6.1 Reserved Pins naming all thirty-nine explicitly; section 9 is Power Supply
+// Sequencing, split into SoC and PCP domains.
+data ampere_altra_package_note: String = "THE ALTRA PACKAGE PINOUT IS PUBLIC, AND AN EARLIER REVISION OF THIS MODULE SAID IT WAS NOT. That revision declared the per-contact map, the power sequencing and the admitted memory topologies to be NDA-only, and refused on that basis. It was wrong, and the way it was wrong is worth keeping: the claim was reasoned from the fact that Ampere's reference board collateral IS under NDA, and never checked against the datasheet this repository was already citing. The refusal was therefore well-typed, executed on the real acceptance path, defended by a passing witness, and false — a fabricated verdict wearing every mark of a grounded one. THE ACTUAL SPLIT, read from the documents. PUBLIC, in the Rev A1 datasheet Issue 1.15: the complete pin assignment table (section 5, Table 4, thirty-five sheets), the signal functional descriptions with widths, directions and I/O types (section 6.2, Table 6), the thirty-nine reserved pins by designator (section 6.1), the pin summary decomposition (Table 5), mechanical data (section 3), electrical specifications (section 7) and power supply sequencing for both the SoC and PCP domains (section 9). NDA, via Customer Connect: the reference BOARD collateral — the Mt. Jade, Mt. Collins, Mt. Bonnell and Mt. Snow motherboard design packages, plus UEFI, OpenBMC and CPLD source. Those are board designs, not package facts, and conflating the two is what produced the error. WHAT REMAINS GENUINELY UNRESOLVED, and it is NOT availability: every page of the datasheet is footed 'Ampere Computing Proprietary', so transcribing its tables into this public repository is a licensing question rather than an access one. That question is open and is not answered by the pinout being downloadable. TWO READING TRAPS IN THE SIGNAL NAMES, recorded because both are easy to get backwards. The DDR4_/DDR5_/DDR6_/DDR7_ prefixes are CHANNEL indices four through seven, not memory generations — section 6.2 groups them as 'DDR[0:7]' across eight DDR4 channels and the shared rail is named VDDQ_DDR4567. And Table 4 states it 'does not list the depopulated pins on the package', so a row count taken from that table is not automatically the package population; the completeness authority is Table 5, carried below."
+
+// Table 5, Pin Summary, cited to the datasheet. This is the completeness authority a contact
+// map must join against — and it cross-foots exactly, which is why it is carried as its parts
+// rather than as the total alone: a transcription that drops a group fails the sum instead of
+// silently reducing the population it claims to cover.
+data altra_signal_pin_count: Nat = 1960
+
+data altra_power_and_ground_pin_count: Nat = 2927
+
+data altra_reserved_pin_count: Nat = 39
+
+fn altra_pin_summary_total() -> Nat {
+  altra_signal_pin_count + altra_power_and_ground_pin_count + altra_reserved_pin_count
+}
 
 type AltraPackageFamily
   = | AltraFcLga4926
@@ -74,6 +97,7 @@ type PackageContactMap {
 // three to the same reader and make the Altra blocker indistinguishable from a typo.
 type PackageContactMapStanding
   = PackageContactMapAdmitted { resolved: Nat }
+  | ContactMapPubliclyAvailableNotIngested { document: NonEmptyStr, authority: ExternalAuthority }
   | MissingUpstreamDesignCollateral { subject: NonEmptyStr, access_route: ExternalAuthority }
   | ContactPopulationIncomplete { expected: Nat, resolved: Nat }
   | DuplicateContactDesignator { designator: NonEmptyStr }
@@ -128,11 +152,23 @@ fn admit_package_contact_map(map: PackageContactMap, expected: Nat) -> PackageCo
   }
 }
 
-// The live standing of the Altra package in THIS repository, today. It refuses, and the
-// refusal names the access route so the next action is addressable rather than implied.
+// The live standing of the Altra package in THIS repository, today. It still refuses, but for
+// the correct reason and to the correct owner: the map is published and this repository has
+// not ingested it. That is OUR unfinished work, not a business prerequisite, and the two route
+// to different people — which is exactly the distinction the three refusal families exist to
+// preserve, and exactly the one the previous revision got backwards.
 fn altra_fclga_4926_contact_map_standing() -> PackageContactMapStanding {
+  ContactMapPubliclyAvailableNotIngested {
+    document: "Ampere Altra Max Rev A1 datasheet Issue 1.15, section 5 Table 4 (pin assignment), section 6 Table 6 (signal descriptions), Table 5 (pin summary)",
+    authority: ampere_altra_rev_a1_datasheet_authority,
+  }
+}
+
+// What IS behind the NDA, kept as a separate standing because it is a separate subject: the
+// reference BOARD design packages and the firmware sources, none of which are package facts.
+fn altra_reference_board_collateral_standing() -> PackageContactMapStanding {
   MissingUpstreamDesignCollateral {
-    subject: "Ampere Altra family FCLGA-4926 package contact map, power sequencing, and admitted memory topologies",
+    subject: "Ampere reference motherboard design packages (Mt. Jade, Mt. Collins, Mt. Bonnell, Mt. Snow) with UEFI, OpenBMC and CPLD source",
     access_route: ampere_customer_reference_boards_authority,
   }
 }

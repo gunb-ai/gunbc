@@ -16,8 +16,11 @@ import extdeps.ipc.dpmx {
 import extdeps.ucamco.gerber { gerber_semantic_carriage }
 import extdeps.cpu.ampere_altra_package {
   AltraFcLga4926,
+  ContactMapPubliclyAvailableNotIngested,
   ContactPopulationIncomplete,
   DuplicateContactDesignator,
+  altra_pin_summary_total,
+  altra_reference_board_collateral_standing,
   FunctionUnstated,
   MissingUpstreamDesignCollateral,
   PackageContact,
@@ -128,21 +131,49 @@ test fn w_duplicate_designator_refuses_at_correct_count() -> Bool {
   }
 }
 
-// GAP-0's live claim: the Altra path refuses TODAY, on the acceptance path, for absent design
-// collateral — and it lands in the COLLATERAL family, not the design family, because the
-// remedy is a business prerequisite rather than engineering work.
-test fn w_altra_standing_refuses_as_collateral_not_design() -> Bool {
+// GAP-0's live claim, CORRECTED. The Altra pin map is PUBLIC (Rev A1 datasheet Issue 1.15,
+// section 5 Table 4), so the standing is 'published and not yet ingested' — our unfinished
+// work, landing in the DESIGN family. An earlier revision of this witness asserted the
+// opposite and passed, which is the whole lesson: a refusal can be typed, executed and green
+// while naming the wrong owner, and no amount of test discipline catches that. Only reading
+// the document did.
+test fn w_altra_contact_map_is_published_and_lands_in_design_family() -> Bool {
   match altra_fclga_4926_contact_map_standing() {
-    MissingUpstreamDesignCollateral { subject: _, access_route: _ } => {
+    ContactMapPubliclyAvailableNotIngested { document: _, authority: _ } => {
       let readiness = board_readiness(
         intent: narrow_compute_node_intent,
         components: [],
         contact_standing: altra_fclga_4926_contact_map_standing()
       )
-      list_count(xs: readiness.collateral) == 1 && !board_is_ready(r: readiness)
+      list_is_empty(xs: readiness.collateral) && !board_is_ready(r: readiness)
     }
     _ => false
   }
+}
+
+// The genuinely NDA-bound subject is the reference BOARD collateral, and it must still land in
+// the COLLATERAL family. Both arms are asserted together because the correction is precisely
+// that these two are different subjects with different owners; a witness on either alone would
+// have passed under the wrong model too.
+test fn w_reference_board_collateral_remains_a_collateral_refusal() -> Bool {
+  match altra_reference_board_collateral_standing() {
+    MissingUpstreamDesignCollateral { subject: _, access_route: _ } => {
+      let readiness = board_readiness(
+        intent: narrow_compute_node_intent,
+        components: [],
+        contact_standing: altra_reference_board_collateral_standing()
+      )
+      list_count(xs: readiness.collateral) == 1
+    }
+    _ => false
+  }
+}
+
+// The cited pin summary cross-foots: 1960 signal + 2927 power/ground + 39 reserved = 4926,
+// which is the same total the product brief prints independently. Two documents agreeing is
+// what makes this a completeness authority rather than a transcribed number.
+test fn w_pin_summary_cross_foots_to_declared_package_count() -> Bool {
+  altra_pin_summary_total() == altra_fclga_4926_declared_contact_count
 }
 
 // An empty board leaves every contract capability unsatisfied. Ten requirements, ten holes:
