@@ -355,29 +355,17 @@ fn import_closure_bfs_walk(
   }
 }
 
-data dependency_adjacency_reuse_law: String = "DEPENDENCY ADJACENCY IS A FACT POPULATION, NOT AN ENTRY PROPERTY. build_dependency_adjacency depends only on the edge and module-declaration populations. An entry path selects the BFS seed after that population exists; it does not change the population. A batch asking for several entry closures therefore constructs one adjacency and walks it from several seeds. Reconstructing the adjacency inside every entry query multiplies whole-tree preparation by the request count while returning the same closure. dependency_closure_from_adjacency is the batch seam; dependency_closure remains the single-query convenience wrapper."
-
-fn dependency_closure_from_adjacency(
-  entry_path: String,
-  adjacency: Map<String, List<String>>
-) -> FreeMonoid<String> {
-  import_closure_bfs_walk(
-    state: ImportClosureBfsState {
-      reached: list_snoc_item(xs: no_paths, item: entry_path),
-      queue: list_snoc_item(xs: no_paths, item: entry_path)
-    },
-    adjacency: adjacency
-  )
-}
-
 fn dependency_closure(
   entry_path: String,
   edges: List<ModuleDependencyEdge>,
   nodes: List<ModuleDeclarationFact>
 ) -> FreeMonoid<String> {
   let adjacency = build_dependency_adjacency(edges: edges, nodes: nodes)
-  dependency_closure_from_adjacency(
-    entry_path: entry_path,
+  import_closure_bfs_walk(
+    state: ImportClosureBfsState {
+      reached: list_snoc_item(xs: no_paths, item: entry_path),
+      queue: list_snoc_item(xs: no_paths, item: entry_path)
+    },
     adjacency: adjacency
   )
 }

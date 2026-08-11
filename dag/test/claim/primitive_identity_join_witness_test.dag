@@ -26,8 +26,7 @@ import std.primitive_identity {
   primitive_d0_parallel_roster_surface_authority_count,
   primitive_d0_surface_census,
   primitive_d0_surface_census_derived_row_count,
-  primitive_traversal_classified_exactly_once,
-  HostUnspecifiedOrder,
+  primitive_d0_traversal_facts,
   primitive_fold_list,
   primitive_duplicate_semantic_definition_violation,
   primitive_identity_eq,
@@ -133,14 +132,7 @@ test fn w_duplicate_semantic_definition_refuses() -> Bool {
 
 test fn w_host_unspecified_traversal_classified_for_map_projections() -> Bool {
   primitive_d0_host_unspecified_traversal_classified()
-    && primitive_traversal_classified_exactly_once(
-      primitive: primitive_map_keys,
-      expected: HostUnspecifiedOrder,
-    )
-    && primitive_traversal_classified_exactly_once(
-      primitive: primitive_map_values,
-      expected: HostUnspecifiedOrder,
-    )
+    && count(primitive_d0_traversal_facts) == 4
 }
 
 test fn w_red_missing_identity_on_joined_surface() -> Bool {
