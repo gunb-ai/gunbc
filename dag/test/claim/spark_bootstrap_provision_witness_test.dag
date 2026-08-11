@@ -1,0 +1,845 @@
+module test.claim.spark_bootstrap_provision_witness
+
+// Adding ANY explicit import scopes this witness's resolution, so the subject module -- previously
+// reached by bare reference through pool coincidence -- must now be named too. That is the correct
+// direction (a witness should carry its own edge to its subject), but the transition is abrupt:
+// one import turned every bare reference into "no such function".
+import gunbc.spark_bootstrap_provision {
+  SparkCredentialKind, FactoryHotspotCredential, AdministratorCredential,
+  SparkCredentialOccurrence, spark_srv5, spark_srv6, spark_credential_occurrence,
+  spark_credential_population, spark_occurrence_eq, spark_credential_kind_eq,
+  SparkSecretAllocation, SparkSecretAllocated, SparkSecretAllocationPending, spark_secret_allocation,
+  SparkLegacyContainerStanding, ObservedLegacyUnbound, spark_legacy_containers,
+  FleetCloudConvergence, FleetCloudGrantAdministrator, FleetCloudPrincipalKey,
+  FleetCloudConvergencePrincipal, FleetCloudGrantAdministratorPrincipal,
+  FleetCloudPrincipalAllocationStanding, CloudPrincipalUnallocated, CloudPrincipalReported,
+  CloudPrincipalAllocated, fleet_cloud_principal_standing,
+  principal_role_admits_operation, principal_role_admits_operation_ref,
+  no_principal_can_both_grant_and_read,
+  SecretManagerOperation, SmGetSecret, SmGetIamPolicy, SmSetIamPolicy, SmAddVersion,
+  SmAccessVersion, SmDisableVersion, SmDestroyVersion,
+  SparkRosterIdentity, AccessScopeEvolution, FrozenAtGrant, TracksNamespaceMembership,
+  SparkGrantApproval, GrantApprovedBy, GrantApprovalPending, GrantApprovalNotSought,
+  SparkCloudContext, SparkCloudScope, SparkCloudGrant, AccessGrantCell,
+  spark_cloud_grant_decision, spark_principal_decision, spark_actuation_decision,
+  spark_cloud_access_request, spark_cell_eq, spark_cell_in, spark_iam_delta,
+  SparkObservedEtag, SparkEtagObserved, SparkEtagMissing,
+  admit_spark_iam_write, SparkIamWriteAdmitted, SparkIamWriteRefused,
+  ExternalAccessDemand, SelectedSparkEffect, DemandProjection, DemandDerived, DemandIncomplete,
+  spark_plan_demand, spark_demand_for_selected, spark_demand_decision,
+  WifCredentialIssuanceStanding, WifIssuanceObserved, WifIssuanceUnobserved,
+  spark_wif_issuance_standing,
+  EffectiveAccessStanding, EffectiveAccessExact, EffectiveAccessOverbroad,
+  EffectiveAccessPartiallyObserved, EffectiveAccessUnobserved,
+  SecretConsumer, SecretDemandStanding, SecretDemandActive, SecretDemandRetainedForRecovery,
+  SecretDemandRetiredAfterOobe, SecretDemandUnobserved, secret_demand_is_active,
+  HostPrivilegeObservation, ServiceInstallScope, SystemUnitScope, ContainerScope,
+  UserUnitScope, InstallScopeUnobserved, derive_install_scope, srv5_privilege_observation
+}
+
+import extdeps.cloud.gcp.secret_manager {
+  SmAccessVersionEffect, SmAddVersionEffect, SmDestroyVersionEffect, sm_operation_ref
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Controls over the Spark credential population model. The prior revision of this witness proved
+// least-privilege properties of an IAM binding set that has since been deleted along with the
+// patterns that applied it; those controls are not carried forward, because the thing they
+// constrained no longer exists and a control retained past its subject is a green assertion about
+// nothing. What replaces them constrains the population and the classification of legacy state.
+
+data spark_witness_scope_note: String = "These controls cover the credential population, the pending state of every external allocation, and the refusal of the two legacy containers as authorities. They do not cover actuation, which this module no longer performs. The prior least-privilege controls were deleted with the binding set they described rather than kept: they would have continued passing while constraining code that had been removed."
+
+fn spark_population_has(host: HostIdentity, kind: SparkCredentialKind) -> Bool {
+  fold(spark_credential_population(), init: false, f: (acc, o) =>
+    acc || (o.host == host && spark_credential_kind_eq(a: o.kind, b: kind)))
+}
+
+fn spark_allocation_is_pending(a: SparkSecretAllocation) -> Bool {
+  match a {
+    SparkSecretAllocated { occurrence: _, handle: _ } => false
+    SparkSecretAllocationPending { occurrence: _ } => true
+  }
+}
+
+// CONTROL 1: the population is exactly the four host-by-kind occurrences. This is the control that
+// reds on the specific error the prior revision shipped -- two globally-named credentials standing
+// for a per-device population.
+test fn spark_population_is_four_host_scoped_occurrences() -> Bool {
+  spark_credential_population().length() == 4
+    && spark_population_has(host: spark_srv5(), kind: FactoryHotspotCredential)
+    && spark_population_has(host: spark_srv5(), kind: AdministratorCredential)
+    && spark_population_has(host: spark_srv6(), kind: FactoryHotspotCredential)
+    && spark_population_has(host: spark_srv6(), kind: AdministratorCredential)
+}
+
+// CONTROL 2: occurrences are distinguished by BOTH axes. A kind-only or host-only identity would
+// still satisfy control 1's count while fusing two real credentials, and fusing them is the exact
+// failure that makes one AddVersion silently become a prior version of another credential.
+test fn spark_occurrence_identity_uses_both_axes() -> Bool {
+  let a = spark_credential_occurrence(host: spark_srv5(), kind: FactoryHotspotCredential)
+  let b = spark_credential_occurrence(host: spark_srv6(), kind: FactoryHotspotCredential)
+  let c = spark_credential_occurrence(host: spark_srv5(), kind: AdministratorCredential)
+  !spark_occurrence_eq(a: a, b: b)
+    && !spark_occurrence_eq(a: a, b: c)
+    && spark_occurrence_eq(a: a, b: spark_credential_occurrence(host: spark_srv5(), kind: FactoryHotspotCredential))
+}
+
+// CONTROL 3: no occurrence carries an allocated external handle. Pending is the honest state while
+// nothing has allocated one, and this control reds if a plausible-looking secret id is ever
+// authored here rather than allocated -- the fabrication the carried-never-derived naming law
+// forbids.
+test fn spark_allocations_are_all_pending() -> Bool {
+  fold(spark_credential_population(), init: true, f: (acc, o) =>
+    acc && spark_allocation_is_pending(a: spark_secret_allocation(occurrence: o)))
+}
+
+// CONTROL 5: both legacy containers classify as observed-unbound, and there are exactly two of
+// them. They are starting state, never accepted output; this reds if either is promoted into the
+// allocation path.
+fn spark_legacy_is_unbound(c: SparkLegacyContainerStanding) -> Bool {
+  match c {
+    ObservedLegacyUnbound { handle: h } => h != ""
+  }
+}
+
+test fn spark_legacy_containers_are_observed_unbound() -> Bool {
+  spark_legacy_containers.length() == 2
+    && fold(spark_legacy_containers, init: true, f: (acc, c) => acc && spark_legacy_is_unbound(c: c))
+}
+
+// CONTROL 6: the legacy population is strictly smaller than the credential population. Stated as a
+// standing inequality rather than as prose, because "two containers exist" reads like progress
+// toward four and is not: neither can be the authority for a per-device hotspot credential.
+test fn spark_legacy_containers_do_not_cover_the_population() -> Bool {
+  spark_legacy_containers.length() < spark_credential_population().length()
+}
+
+// ── Container classification controls ─────────────────────────────────────────────────────
+
+fn spark_allocated_specimen() -> SparkSecretAllocation {
+  SparkSecretAllocated {
+    occurrence: spark_credential_occurrence(host: spark_srv5(), kind: AdministratorCredential),
+    handle: "fixture-allocated-handle"
+  }
+}
+
+fn spark_pending_specimen() -> SparkSecretAllocation {
+  spark_secret_allocation(occurrence: spark_credential_occurrence(host: spark_srv5(), kind: AdministratorCredential))
+}
+
+fn spark_verdict_is_refused(v: SparkContainerVerdict) -> Bool {
+  match v {
+    SparkContainerRefused { cause: _ } => true
+    SparkContainerCreateRequired => false
+    SparkContainerConverged { handle: _ } => false
+    SparkContainerConflicted { handle: _, cause: _ } => false
+  }
+}
+
+fn spark_verdict_is_conflicted(v: SparkContainerVerdict) -> Bool {
+  match v {
+    SparkContainerConflicted { handle: _, cause: _ } => true
+    SparkContainerRefused { cause: _ } => false
+    SparkContainerCreateRequired => false
+    SparkContainerConverged { handle: _ } => false
+  }
+}
+
+fn spark_verdict_is_converged(v: SparkContainerVerdict) -> Bool {
+  match v {
+    SparkContainerConverged { handle: _ } => true
+    SparkContainerConflicted { handle: _, cause: _ } => false
+    SparkContainerRefused { cause: _ } => false
+    SparkContainerCreateRequired => false
+  }
+}
+
+fn spark_verdict_is_create_required(v: SparkContainerVerdict) -> Bool {
+  match v {
+    SparkContainerCreateRequired => true
+    SparkContainerConverged { handle: _ } => false
+    SparkContainerConflicted { handle: _, cause: _ } => false
+    SparkContainerRefused { cause: _ } => false
+  }
+}
+
+// CONTROL 8: an unallocated occurrence cannot be observed. The alternative -- computing a probable
+// name and observing that -- is the reverse inference the naming law forbids.
+test fn spark_unallocated_occurrence_refuses_observation() -> Bool {
+  spark_verdict_is_refused(v: classify_spark_container(
+    allocation: spark_pending_specimen(),
+    observation: SparkContainerAbsent))
+}
+
+// CONTROL 9: absent means create; versionless-present means converged. The two ordinary arms.
+test fn spark_absent_creates_and_empty_container_converges() -> Bool {
+  spark_verdict_is_create_required(v: classify_spark_container(
+    allocation: spark_allocated_specimen(),
+    observation: SparkContainerAbsent))
+    && spark_verdict_is_converged(v: classify_spark_container(
+         allocation: spark_allocated_specimen(),
+         observation: SparkContainerPresent { handle: "fixture-allocated-handle", version_count: 0 }))
+}
+
+// CONTROL 10, the discriminating one: a container that already carries a version is CONFLICTED,
+// never converged. This is the control that reds if someone makes the classifier tolerant to get a
+// run green -- and tolerance here means writing a second live credential for one occurrence.
+test fn spark_container_with_existing_version_conflicts() -> Bool {
+  spark_verdict_is_conflicted(v: classify_spark_container(
+    allocation: spark_allocated_specimen(),
+    observation: SparkContainerPresent { handle: "fixture-allocated-handle", version_count: 1 }))
+}
+
+// CONTROL 11: an unreadable container refuses. It does not fall through to create, which would
+// attempt a write against a resource whose state is unknown.
+test fn spark_unreadable_container_refuses() -> Bool {
+  spark_verdict_is_refused(v: classify_spark_container(
+    allocation: spark_allocated_specimen(),
+    observation: SparkContainerUnreadable { cause: "permission denied reading the secret" }))
+}
+
+// ── IAM delta controls ────────────────────────────────────────────────────────────────────
+
+fn spark_accessor_role() -> String { "roles/secretmanager.secretAccessor" }
+fn spark_admin_role() -> String { "roles/secretmanager.admin" }
+fn spark_owned_a() -> String { "serviceAccount:owned-a@example.iam.gserviceaccount.com" }
+fn spark_owned_b() -> String { "serviceAccount:owned-b@example.iam.gserviceaccount.com" }
+fn spark_foreign() -> String { "user:someone-elses-grant@example.com" }
+
+fn spark_bcell(role: String, member: String) -> GcpIamBindingCell {
+  GcpIamBindingCell { role: role, member: member, condition: none }
+}
+
+// The owned universe is a set of CELLS. This model owns owned-a and owned-b under the accessor
+// role only; it deliberately does NOT own either of them under admin, so an admin binding on a
+// member we otherwise recognise is still someone else's grant.
+fn spark_owned_universe() -> List<GcpIamBindingCell> {
+  [
+    spark_bcell(role: spark_accessor_role(), member: spark_owned_a()),
+    spark_bcell(role: spark_accessor_role(), member: spark_owned_b())
+  ]
+}
+
+// CONTROL 12, the one that matters most: a cell OUTSIDE the owned universe is preserved, and is
+// neither removed nor treated as drift. A blind SetIamPolicy drops exactly this cell, which is the
+// defect the deleted pattern shipped.
+test fn spark_iam_preserves_unrelated_bindings() -> Bool {
+  let d = spark_iam_delta(
+    observed: [
+      spark_bcell(role: spark_accessor_role(), member: spark_owned_a()),
+      spark_bcell(role: spark_accessor_role(), member: spark_foreign())
+    ],
+    desired_owned: [spark_bcell(role: spark_accessor_role(), member: spark_owned_a())],
+    owned_universe: spark_owned_universe())
+  d.preserve.length() == 1
+    && spark_cell_in(c: spark_bcell(role: spark_accessor_role(), member: spark_foreign()), xs: d.preserve)
+    && d.remove.length() == 0
+    && d.add.length() == 0
+}
+
+// CONTROL 13: a stale OWNED cell is removed, and a missing desired cell is added. Removal is scoped
+// to the owned universe, so this proves the diff acts where it has authority.
+test fn spark_iam_removes_stale_owned_and_adds_missing() -> Bool {
+  let d = spark_iam_delta(
+    observed: [spark_bcell(role: spark_accessor_role(), member: spark_owned_b())],
+    desired_owned: [spark_bcell(role: spark_accessor_role(), member: spark_owned_a())],
+    owned_universe: spark_owned_universe())
+  d.add.length() == 1
+    && spark_cell_in(c: spark_bcell(role: spark_accessor_role(), member: spark_owned_a()), xs: d.add)
+    && d.remove.length() == 1
+    && spark_cell_in(c: spark_bcell(role: spark_accessor_role(), member: spark_owned_b()), xs: d.remove)
+}
+
+// CONTROL 13b: THE CLAIM THE MEMBER-GRAIN DIFF COULD NOT MAKE. The same member is observed under
+// admin and desired under accessor. At member grain this reads "already present, nothing to do" and
+// the admin binding survives a reconcile that meant to demote it. At cell grain the accessor cell
+// is an add, and the admin cell is preserved rather than removed because this model does not own
+// that member under that role -- so the demotion is visible AND the reconcile stays inside its
+// authority instead of silently revoking a grant someone else made.
+test fn spark_iam_distinguishes_two_roles_for_one_member() -> Bool {
+  let d = spark_iam_delta(
+    observed: [spark_bcell(role: spark_admin_role(), member: spark_owned_a())],
+    desired_owned: [spark_bcell(role: spark_accessor_role(), member: spark_owned_a())],
+    owned_universe: spark_owned_universe())
+  d.add.length() == 1
+    && spark_cell_in(c: spark_bcell(role: spark_accessor_role(), member: spark_owned_a()), xs: d.add)
+    && d.remove.length() == 0
+    && d.preserve.length() == 1
+    && spark_cell_in(c: spark_bcell(role: spark_admin_role(), member: spark_owned_a()), xs: d.preserve)
+}
+
+// CONTROL 13c: a condition is part of cell identity. The same role and member under a DIFFERENT
+// condition is a different grant, so an unconditional observed cell does not satisfy a desired
+// conditional one. Collapsing these would let a time-boxed grant be silently satisfied by a
+// permanent one already in place.
+test fn spark_iam_treats_a_condition_as_part_of_identity() -> Bool {
+  let bounded = GcpIamBindingCell {
+    role: spark_accessor_role(),
+    member: spark_owned_a(),
+    condition: IamCondition { title: "until-cutover", expression: "request.time < timestamp(\"2026-09-01T00:00:00Z\")", description: none }
+  }
+  !spark_cell_eq(a: bounded, b: spark_bcell(role: spark_accessor_role(), member: spark_owned_a()))
+    && spark_cell_eq(a: bounded, b: bounded)
+}
+
+// CONTROL 14: a write with no observed etag refuses. Without it a concurrent update is overwritten
+// with no signal at all.
+test fn spark_iam_write_without_etag_refuses() -> Bool {
+  let d = spark_iam_delta(observed: [], desired_owned: [], owned_universe: spark_owned_universe())
+  match admit_spark_iam_write(observed_etag: SparkEtagMissing, delta: d) {
+    SparkIamWriteRefused { cause: _ } => true
+    SparkIamWriteAdmitted { etag: _, delta: _ } => false
+  }
+}
+
+// ── Materialization controls ──────────────────────────────────────────────────────────────
+
+fn spark_identity_specimen() -> SparkMaterializationIdentity {
+  SparkMaterializationIdentity {
+    occurrence: spark_credential_occurrence(host: spark_srv5(), kind: AdministratorCredential),
+    payload_identity: "fixture-payload-identity"
+  }
+}
+
+fn spark_receipt_with(readback: SparkReadbackVerdict) -> SparkMaterializationReceipt {
+  SparkMaterializationReceipt {
+    identity: spark_identity_specimen(),
+    handle: "fixture-allocated-handle",
+    exact_version: "7",
+    readback: readback
+  }
+}
+
+fn spark_decision_is_refused(d: SparkMaterializationDecision) -> Bool {
+  match d {
+    SparkMaterializeRefused { cause: _ } => true
+    SparkMaterializeOnce { identity: _ } => false
+    SparkMaterializeNoop { exact_version: _ } => false
+    SparkMaterializeObserveStore { identity: _ } => false
+  }
+}
+
+fn spark_decision_is_observe(d: SparkMaterializationDecision) -> Bool {
+  match d {
+    SparkMaterializeObserveStore { identity: _ } => true
+    SparkMaterializeRefused { cause: _ } => false
+    SparkMaterializeOnce { identity: _ } => false
+    SparkMaterializeNoop { exact_version: _ } => false
+  }
+}
+
+fn spark_decision_is_noop(d: SparkMaterializationDecision) -> Bool {
+  match d {
+    SparkMaterializeNoop { exact_version: _ } => true
+    SparkMaterializeObserveStore { identity: _ } => false
+    SparkMaterializeRefused { cause: _ } => false
+    SparkMaterializeOnce { identity: _ } => false
+  }
+}
+
+// CONTROL 15, the one that prevents version sprawl: an issued-but-unconfirmed attempt resolves by
+// OBSERVING the store. It must never reach MaterializeOnce, because a lost process outcome is not
+// evidence the write did not land.
+test fn spark_issued_unconfirmed_observes_never_rewrites() -> Bool {
+  spark_decision_is_observe(d: decide_spark_materialization(
+    record: SparkAttemptIssuedUnconfirmed { identity: spark_identity_specimen() }))
+}
+
+// CONTROL 16: a confirmed receipt whose readback matched is a Noop naming the exact version. This
+// is what makes a resumed run reuse the version rather than mint a second credential.
+test fn spark_confirmed_receipt_is_noop_at_exact_version() -> Bool {
+  spark_decision_is_noop(d: decide_spark_materialization(
+    record: SparkAttemptConfirmed { receipt: spark_receipt_with(readback: SparkReadbackMatched { version: "7" }) }))
+}
+
+// CONTROL 17: a mismatched or unavailable readback REFUSES. A receipt is not discharged by having
+// been written; it is discharged by an independent read agreeing with it.
+test fn spark_bad_readback_refuses() -> Bool {
+  spark_decision_is_refused(d: decide_spark_materialization(
+    record: SparkAttemptConfirmed { receipt: spark_receipt_with(readback: SparkReadbackMismatched { version: "7" }) }))
+    && spark_decision_is_refused(d: decide_spark_materialization(
+         record: SparkAttemptConfirmed { receipt: spark_receipt_with(readback: SparkReadbackUnavailable { cause: "version disabled" }) }))
+}
+
+// CONTROL 18, rewritten after a fabricated-success finding: an exact version ADDRESS is admitted,
+// and admission alone produces no Matched verdict. The prior control asserted that a non-latest
+// string yields Matched, which encoded the defect rather than catching it -- the control and the
+// bug agreed. Matching now requires two identities that actually agree.
+test fn spark_version_address_is_not_a_payload_match() -> Bool {
+  let admitted = admit_spark_readback_version(version: "7")
+  let refused = admit_spark_readback_version(version: "latest")
+  let addr_ok = match admitted {
+    SparkVersionAddressAdmitted { version: _ } => true
+    SparkVersionAddressRefused { cause: _ } => false
+  }
+  let latest_refused = match refused {
+    SparkVersionAddressRefused { cause: _ } => true
+    SparkVersionAddressAdmitted { version: _ } => false
+  }
+  let agreeing = match compare_spark_readback(address: admitted, expected_identity: "id-a", observed_identity: "id-a") {
+    SparkReadbackMatched { version: _ } => true
+    SparkReadbackMismatched { version: _ } => false
+    SparkReadbackUnavailable { cause: _ } => false
+  }
+  let disagreeing = match compare_spark_readback(address: admitted, expected_identity: "id-a", observed_identity: "id-b") {
+    SparkReadbackMismatched { version: _ } => true
+    SparkReadbackMatched { version: _ } => false
+    SparkReadbackUnavailable { cause: _ } => false
+  }
+  addr_ok && latest_refused && agreeing && disagreeing
+}
+
+// CONTROL 18b: the receipt must JOIN its own fields. A receipt naming version 7 whose readback
+// verified version 8 previously produced Noop, because nothing compared them.
+test fn spark_receipt_version_must_match_its_readback() -> Bool {
+  spark_decision_is_refused(d: decide_spark_materialization(
+    record: SparkAttemptConfirmed { receipt: spark_receipt_with(readback: SparkReadbackMatched { version: "8" }) }))
+}
+
+// CONTROL 18c: a first write is reachable ONLY through a journaled attempt. The deleted public
+// constructor let any caller mint the apply decision, which made at-most-once advisory.
+test fn spark_first_write_requires_a_journaled_attempt() -> Bool {
+  let journaled = decide_spark_materialization(record: SparkAttemptJournaled { identity: spark_identity_specimen() })
+  let unjournaled = decide_spark_materialization(record: SparkAttemptNone)
+  let is_once = match journaled {
+    SparkMaterializeOnce { identity: _ } => true
+    SparkMaterializeNoop { exact_version: _ } => false
+    SparkMaterializeObserveStore { identity: _ } => false
+    SparkMaterializeRefused { cause: _ } => false
+  }
+  is_once && spark_decision_is_refused(d: unjournaled)
+}
+
+// CONTROL 19, the asymmetry wall: a factory hotspot credential cannot be GENERATED. Generating one
+// fabricates an observation of physical hardware, and the administrator arm proves the refusal is
+// kind-specific rather than a blanket ban on generation.
+test fn spark_factory_hotspot_cannot_be_generated() -> Bool {
+  let gen = GeneratedInRun { recipe: "random-24-char" }
+  let refused = match admit_spark_material_source(kind: FactoryHotspotCredential, source: gen) {
+    SparkSourceRefused { cause: _ } => true
+    SparkSourceAdmitted { source: _ } => false
+  }
+  let admin_ok = match admit_spark_material_source(kind: AdministratorCredential, source: gen) {
+    SparkSourceAdmitted { source: _ } => true
+    SparkSourceRefused { cause: _ } => false
+  }
+  let observed_ok = match admit_spark_material_source(kind: FactoryHotspotCredential, source: ObservedFromDevice { note: "read from device label" }) {
+    SparkSourceAdmitted { source: _ } => true
+    SparkSourceRefused { cause: _ } => false
+  }
+  refused && admin_ok && observed_ok
+}
+
+// ── Access-policy controls ────────────────────────────────────────────────────────────────
+// Independence is tested as a property of the GRANT. None of these controls mention a username, a
+// uid, or a service-account count, because none of those decide who may do what to which resource.
+
+fn spark_srv5_secret() -> NonEmptyStr { "spark-srv5-administrator" }
+fn spark_srv6_secret() -> NonEmptyStr { "spark-srv6-administrator" }
+fn spark_srv7_secret() -> NonEmptyStr { "spark-srv7-administrator" }
+
+// SYNTHETIC fixture roster and grant context. These describe a fictional grant; they observe no
+// live approval and stand for no real authorization.
+fn spark_fixture_roster() -> SparkRosterIdentity {
+  SparkRosterIdentity { roster: "spark-fixture-population", revision: "fixture-rev-0" }
+}
+
+fn spark_fixture_context() -> SparkCloudContext {
+  SparkCloudContext {
+    workflow: "fixture-workflow",
+    revision: "fixture-rev-0",
+    purpose: "witness fixture; no live grant",
+    duration_seconds: 600,
+    max_uses: 1,
+    approval: GrantApprovalNotSought
+  }
+}
+
+fn spark_pair_grant() -> SparkCloudGrant {
+  SparkCloudGrant {
+    principal: FleetCloudConvergencePrincipal { role: FleetCloudConvergence {} },
+    operations: [SmGetSecret, SmGetIamPolicy, SmAddVersion, SmAccessVersion],
+    scope: SparkCloudScope { resources: [spark_srv5_secret(), spark_srv6_secret()], evolution: FrozenAtGrant { frozen_at: spark_fixture_roster() } },
+    context: spark_fixture_context()
+  }
+}
+
+fn spark_srv5_only_grant() -> SparkCloudGrant {
+  SparkCloudGrant {
+    principal: FleetCloudConvergencePrincipal { role: FleetCloudConvergence {} },
+    operations: [SmAccessVersion],
+    scope: SparkCloudScope { resources: [spark_srv5_secret()], evolution: FrozenAtGrant { frozen_at: spark_fixture_roster() } },
+    context: spark_fixture_context()
+  }
+}
+
+fn spark_permits(d: AccessDecision) -> Bool {
+  match d {
+    Permit => true
+    Deny { refusal: _ } => false
+  }
+}
+
+fn spark_allocated_principal() -> FleetCloudPrincipalAllocationStanding {
+  CloudPrincipalAllocated {
+    principal: FleetCloudConvergencePrincipal { role: FleetCloudConvergence {} },
+    member: "serviceAccount:fixture@example.iam.gserviceaccount.com",
+    readback: "fixture readback"
+  }
+}
+
+fn spark_cell(op: SecretManagerOperation, r: NonEmptyStr) -> AccessGrantCell {
+  AccessGrantCell { operation: op, resource: r }
+}
+
+// CONTROL 20: a grant over srv5 cannot authorize the same operation on srv6.
+test fn spark_grant_over_srv5_does_not_reach_srv6() -> Bool {
+  spark_permits(d: spark_cloud_grant_decision(grant: spark_srv5_only_grant(), cell: spark_cell(op: SmAccessVersion, r: spark_srv5_secret())))
+    && !spark_permits(d: spark_cloud_grant_decision(grant: spark_srv5_only_grant(), cell: spark_cell(op: SmAccessVersion, r: spark_srv6_secret())))
+}
+
+// CONTROL 21: one global principal with one exact grant reaches BOTH admitted resources -- fine
+// grain comes from the grant, not from proliferating principals -- and still cannot reach srv7.
+// This is the control that would red if a frozen scope silently tracked namespace membership.
+test fn spark_pair_grant_reaches_both_and_not_a_third() -> Bool {
+  spark_permits(d: spark_cloud_grant_decision(grant: spark_pair_grant(), cell: spark_cell(op: SmAccessVersion, r: spark_srv5_secret())))
+    && spark_permits(d: spark_cloud_grant_decision(grant: spark_pair_grant(), cell: spark_cell(op: SmAccessVersion, r: spark_srv6_secret())))
+    && !spark_permits(d: spark_cloud_grant_decision(grant: spark_pair_grant(), cell: spark_cell(op: SmAccessVersion, r: spark_srv7_secret())))
+}
+
+// CONTROL 22: operations do not imply one another. Reading a version does not authorize writing
+// one, and writing one does not authorize destroying one -- the two escalations that matter most,
+// since AddVersion is irreversible-by-sprawl and DestroyVersion erases bytes with no inverse.
+test fn spark_operations_do_not_imply_one_another() -> Bool {
+  let read_only = SparkCloudGrant {
+    principal: FleetCloudConvergencePrincipal { role: FleetCloudConvergence {} },
+    operations: [SmAccessVersion],
+    scope: SparkCloudScope { resources: [spark_srv5_secret()], evolution: FrozenAtGrant { frozen_at: spark_fixture_roster() } },
+    context: spark_fixture_context()
+  }
+  let writer = SparkCloudGrant {
+    principal: FleetCloudConvergencePrincipal { role: FleetCloudConvergence {} },
+    operations: [SmAddVersion],
+    scope: SparkCloudScope { resources: [spark_srv5_secret()], evolution: FrozenAtGrant { frozen_at: spark_fixture_roster() } },
+    context: spark_fixture_context()
+  }
+  !spark_permits(d: spark_cloud_grant_decision(grant: read_only, cell: spark_cell(op: SmAddVersion, r: spark_srv5_secret())))
+    && !spark_permits(d: spark_cloud_grant_decision(grant: writer, cell: spark_cell(op: SmDestroyVersion, r: spark_srv5_secret())))
+}
+
+// CONTROL 23, the honesty control: a REPORTED principal cannot authorize actuation. This is the
+// one that reds if the carrier is ever edited back to claiming Allocated on second-hand evidence,
+// which is exactly what the prior revision did while its own note said otherwise.
+fn spark_reported_principal_fixture() -> FleetCloudPrincipalAllocationStanding {
+  CloudPrincipalReported {
+    principal: FleetCloudConvergencePrincipal { role: FleetCloudConvergence {} },
+    reported_member: "serviceAccount:fixture@example.iam.gserviceaccount.com",
+    source: "fixture"
+  }
+}
+
+// Uses a FIXTURE, never the live standing. An earlier revision asserted this against
+// fleet_cloud_principal_standing(), which meant grounding the principal by observation would have
+// RED this control -- a control that forbids progress rather than forbidding the defect. That is
+// the second time that shape appeared in this module; the invariant is about the Reported arm, so
+// the Reported arm is what it must be given.
+test fn spark_reported_principal_cannot_actuate() -> Bool {
+  let cell = spark_cell(op: SmAccessVersion, r: spark_srv5_secret())
+  !spark_permits(d: spark_actuation_decision(
+        standing: spark_reported_principal_fixture(), grant: spark_pair_grant(), cell: cell))
+    && spark_permits(d: spark_actuation_decision(
+         standing: spark_allocated_principal(), grant: spark_pair_grant(), cell: cell))
+}
+
+// CONTROL 25, recut after an overclaim: the standing is PARTIALLY OBSERVED, never an exact
+// missing-cell verdict. testIamPermissions returns empty for a nonexistent resource and is
+// diagnostic-only, so silence cannot establish absence. This control reds if anyone upgrades the
+// standing to Exact or Incomplete without an instrument that can support it.
+test fn spark_effective_access_is_only_partially_observed() -> Bool {
+  match spark_effective_access_standing() {
+    EffectiveAccessPartiallyObserved { positively_observed: p, requested_but_not_returned: r, overbreadth_unobserved_cause: _ } =>
+      p.length() == 1 && r.length() > 0
+    EffectiveAccessExact { observed_cells: _ } => false
+    EffectiveAccessOverbroad { extra_cells: _ } => false
+    EffectiveAccessUnobserved { cause: _ } => false
+  }
+}
+
+// CONTROL 26: WIF issuance is observed SEPARATELY from any capability claim. The credential path
+// working is not evidence about what the credential may reach.
+test fn spark_wif_issuance_is_its_own_observation() -> Bool {
+  match spark_wif_issuance_standing() {
+    WifIssuanceObserved { principal: _, workflow: _, revision: _, receipt: _ } => true
+    WifIssuanceUnobserved { cause: _ } => false
+  }
+}
+
+// CONTROL 24: the conjunction is real. An allocated principal still cannot reach a resource outside
+// scope, so principal admission does not override grant scope.
+test fn spark_allocated_principal_still_bounded_by_scope() -> Bool {
+  !spark_permits(d: spark_actuation_decision(
+    standing: spark_allocated_principal(),
+    grant: spark_pair_grant(),
+    cell: spark_cell(op: SmAccessVersion, r: spark_srv7_secret())))
+}
+
+// CONTROL 27: NO PRINCIPAL CAN BOTH GRANT AND READ. This is the property the two-principal split
+// exists to buy, and it is checked over BOTH roles rather than asserted in a comment. If either
+// role were later widened to hold setIamPolicy alongside versions.access, a workflow holding that
+// one credential could bind itself to a secret and then read it, which is the self-serving grant
+// path the split is meant to make unreachable.
+test fn no_spark_principal_can_both_grant_and_read() -> Bool {
+  no_principal_can_both_grant_and_read(principal: FleetCloudConvergencePrincipal { role: FleetCloudConvergence {} })
+    && no_principal_can_both_grant_and_read(principal: FleetCloudGrantAdministratorPrincipal { role: FleetCloudGrantAdministrator {} })
+}
+
+// CONTROL 28: the split is a real partition of authority, not two names over one capability set.
+// The data plane reaches payloads and never policy; the control plane reaches policy and never
+// payloads. A revision that collapsed them into one role would red here in both directions.
+test fn spark_principal_roles_partition_payload_from_policy() -> Bool {
+  principal_role_admits_operation(principal: FleetCloudConvergencePrincipal { role: FleetCloudConvergence {} }, op: SmAccessVersion)
+    && !principal_role_admits_operation(principal: FleetCloudConvergencePrincipal { role: FleetCloudConvergence {} }, op: SmSetIamPolicy)
+    && !principal_role_admits_operation(principal: FleetCloudConvergencePrincipal { role: FleetCloudConvergence {} }, op: SmGetIamPolicy)
+    && principal_role_admits_operation(principal: FleetCloudGrantAdministratorPrincipal { role: FleetCloudGrantAdministrator {} }, op: SmSetIamPolicy)
+    && !principal_role_admits_operation(principal: FleetCloudGrantAdministratorPrincipal { role: FleetCloudGrantAdministrator {} }, op: SmAccessVersion)
+    && !principal_role_admits_operation(principal: FleetCloudGrantAdministratorPrincipal { role: FleetCloudGrantAdministrator {} }, op: SmAddVersion)
+}
+
+// CONTROL 29: the request projects into the KERNEL's shape rather than being judged locally. If
+// this module ever grew its own request record, this would stop type-checking against
+// effect_access_request and the parallel-access-system regression would be caught at the seam.
+test fn spark_grant_projects_into_the_access_kernel() -> Bool {
+  let req = spark_cloud_access_request(
+    grant: spark_srv5_only_grant(),
+    cell: spark_cell(op: SmAccessVersion, r: spark_srv5_secret()),
+    evidence: spark_wif_issuance_standing())
+  (req.object as String) == (spark_srv5_secret() as String)
+    && req.context.value.max_uses == 1
+    && (req.context.value.workflow as String) == "fixture-workflow"
+}
+
+// CONTROL 30: FrozenAtGrant NAMES what it was frozen against. A frozen scope whose roster identity
+// is unrecoverable is a label, not a mechanism -- nothing could then distinguish the original grant
+// from one silently widened later. This reds if the roster identity is dropped from the arm.
+test fn frozen_scope_names_the_roster_it_was_frozen_at() -> Bool {
+  match spark_srv5_only_grant().scope.evolution {
+    FrozenAtGrant { frozen_at: r } =>
+      (r.roster as String) == "spark-fixture-population" && (r.revision as String) == "fixture-rev-0"
+    TracksNamespaceMembership { roster: _ } => false
+  }
+}
+
+// CONTROL 31: the role CEILING refuses independently of the grant, and the refusal is located
+// against the RIGHT subject. A grant that names setIamPolicy for the convergence principal is
+// refused even though the grant lists the operation and the resource is in scope -- because no IAM
+// binding could make that legal. The subject in the refusal must be the administrator's own label
+// when the administrator is the one refused, which a hard-coded subject string could not produce.
+test fn ceiling_refuses_and_locates_against_the_actual_subject() -> Bool {
+  let over_grant = SparkCloudGrant {
+    principal: FleetCloudConvergencePrincipal { role: FleetCloudConvergence {} },
+    operations: [SmSetIamPolicy],
+    scope: SparkCloudScope { resources: [spark_srv5_secret()], evolution: FrozenAtGrant { frozen_at: spark_fixture_roster() } },
+    context: spark_fixture_context()
+  }
+  match spark_cloud_grant_decision(grant: over_grant, cell: spark_cell(op: SmSetIamPolicy, r: spark_srv5_secret())) {
+    Permit => false
+    Deny { refusal: rf } => rf.location.subject == "FleetCloudConvergence"
+  }
+}
+
+// CONTROL 32: the same refusal against the administrator principal locates against ITS label, so
+// the subject is genuinely derived. With the prior hard-coded literal this claim was unsatisfiable.
+test fn refusal_subject_is_derived_not_literal() -> Bool {
+  let admin_grant = SparkCloudGrant {
+    principal: FleetCloudGrantAdministratorPrincipal { role: FleetCloudGrantAdministrator {} },
+    operations: [SmAccessVersion],
+    scope: SparkCloudScope { resources: [spark_srv5_secret()], evolution: FrozenAtGrant { frozen_at: spark_fixture_roster() } },
+    context: spark_fixture_context()
+  }
+  match spark_cloud_grant_decision(grant: admin_grant, cell: spark_cell(op: SmAccessVersion, r: spark_srv5_secret())) {
+    Permit => false
+    Deny { refusal: rf } => rf.location.subject == "FleetCloudGrantAdministrator"
+  }
+}
+
+// ── Demand-derivation controls ────────────────────────────────────────────────────────────
+fn demand_secret_a() -> NonEmptyStr { "projects/p/secrets/alpha" }
+fn demand_secret_b() -> NonEmptyStr { "projects/p/secrets/beta" }
+
+fn demand_executor() -> FleetCloudPrincipalKey {
+  FleetCloudConvergencePrincipal { role: FleetCloudConvergence {} }
+}
+
+fn demand_cells_of(sel: List<SelectedSparkEffect>) -> List<ExternalAccessDemand> {
+  match spark_plan_demand(selected: sel, executor: demand_executor(), context: spark_fixture_context()) {
+    DemandDerived { cells: c } => c
+    DemandIncomplete { step: _, operation: _, cause: _ } => []
+  }
+}
+
+// CONTROL 1: selecting AccessVersion(A) produces exactly its own demand -- one cell, the right
+// permission, and the resource taken from the effect rather than from any roster.
+test fn selecting_access_version_adds_exactly_its_demand() -> Bool {
+  let cells = demand_cells_of(sel: [
+    SelectedSparkEffect { step: "read-fleet-key", effect: SmAccessVersionEffect { secret: demand_secret_a() } }
+  ])
+  count(cells) == 1
+    && match cells |> first {
+      Absent => false
+      Present { value: c } =>
+        (c.permission as String) == "secretmanager.versions.access"
+          && (c.resource as String) == (demand_secret_a() as String)
+          && c.invocation.operation == "AccessVersion"
+          && (c.source_effect as String) == "read-fleet-key"
+    }
+}
+
+// CONTROL 2: removing the effect removes the demand, with NO policy edit. This is the property
+// that makes demand derived rather than authored -- an authored roster would still list it.
+test fn removing_the_effect_removes_the_demand() -> Bool {
+  count(demand_cells_of(sel: [])) == 0
+}
+
+// CONTROL 5: THE CROSS PRODUCT IS GONE. AccessVersion(A) + AddVersion(B) is exactly two cells --
+// access on A and add on B -- never four. The old operations x resources roster produced the
+// four-cell population, which silently granted write on A and read on B.
+test fn two_effects_produce_exactly_two_cells_not_a_cross_product() -> Bool {
+  let cells = demand_cells_of(sel: [
+    SelectedSparkEffect { step: "read-a", effect: SmAccessVersionEffect { secret: demand_secret_a() } },
+    SelectedSparkEffect { step: "write-b", effect: SmAddVersionEffect { secret: demand_secret_b() } }
+  ])
+  count(cells) == 2
+    && count(cells |> filter(c => (c.permission as String) == "secretmanager.versions.access" && (c.resource as String) == (demand_secret_a() as String))) == 1
+    && count(cells |> filter(c => (c.permission as String) == "secretmanager.versions.add" && (c.resource as String) == (demand_secret_b() as String))) == 1
+    && count(cells |> filter(c => (c.permission as String) == "secretmanager.versions.add" && (c.resource as String) == (demand_secret_a() as String))) == 0
+    && count(cells |> filter(c => (c.permission as String) == "secretmanager.versions.access" && (c.resource as String) == (demand_secret_b() as String))) == 0
+}
+
+// CONTROL 3: an UNSELECTED effect produces no demand. Code that merely exists in the repository is
+// not a request for access; only a selected effect is.
+test fn an_unselected_destroy_produces_no_demand() -> Bool {
+  count(demand_cells_of(sel: [
+    SelectedSparkEffect { step: "read-a", effect: SmAccessVersionEffect { secret: demand_secret_a() } }
+  ]) |> filter(c => c.invocation.operation == "DestroyVersion")) == 0
+}
+
+// CONTROL 4: a SELECTED DestroyVersion produces a real demand AND the policy ceiling refuses it.
+// Both halves matter: the demand must be visible (so the request is not hidden), and the ceiling
+// must refuse (so selecting a dangerous call does not authorize it).
+test fn selected_destroy_produces_demand_and_is_refused() -> Bool {
+  let cells = demand_cells_of(sel: [
+    SelectedSparkEffect { step: "destroy-a", effect: SmDestroyVersionEffect { secret: demand_secret_a() } }
+  ])
+  count(cells) == 1
+    && match cells |> first {
+      Absent => false
+      Present { value: c } =>
+        (c.permission as String) == "secretmanager.versions.destroy"
+          && match spark_demand_decision(demand: c) {
+            Permit => false
+            Deny { refusal: _ } => true
+          }
+    }
+}
+
+// CONTROL 4b: the administrator's policy demand is admitted by ITS ceiling while the data plane's
+// same request would not be -- the split is enforced on derived demand, not only on grants.
+test fn ceiling_admits_policy_read_only_for_the_administrator() -> Bool {
+  let admin_cell = ExternalAccessDemand {
+    source_effect: "read-policy",
+    executor: FleetCloudGrantAdministratorPrincipal { role: FleetCloudGrantAdministrator {} },
+    invocation: sm_operation_ref(operation: "GetSecretIamPolicy"),
+    permission: "secretmanager.secrets.getIamPolicy",
+    resource: demand_secret_a(),
+    context: spark_fixture_context()
+  }
+  let data_cell = ExternalAccessDemand {
+    source_effect: "read-policy",
+    executor: demand_executor(),
+    invocation: sm_operation_ref(operation: "GetSecretIamPolicy"),
+    permission: "secretmanager.secrets.getIamPolicy",
+    resource: demand_secret_a(),
+    context: spark_fixture_context()
+  }
+  match spark_demand_decision(demand: admin_cell) {
+    Permit =>
+      match spark_demand_decision(demand: data_cell) {
+        Permit => false
+        Deny { refusal: _ } => true
+      }
+    Deny { refusal: _ } => false
+  }
+}
+
+// CONTROL 9a: a credential with NO active consumer produces no routine demand. The post-OOBE
+// hotspot credential is the live specimen: it existed in the four-credential roster and therefore
+// read as an outstanding obligation, which made it an automatic serving blocker. Retired and
+// retained standings are both inactive, and each is distinct from "we have not looked".
+test fn a_secret_with_no_active_consumer_creates_no_demand() -> Bool {
+  !secret_demand_is_active(standing: SecretDemandRetiredAfterOobe {
+    secret: "projects/p/secrets/hotspot", reason: "both Sparks are past out-of-box setup" })
+    && !secret_demand_is_active(standing: SecretDemandRetainedForRecovery {
+      secret: "projects/p/secrets/admin", recovery_consumer: "recovery workflow" })
+    && !secret_demand_is_active(standing: SecretDemandUnobserved {
+      secret: "projects/p/secrets/serving-api", cause: "pinned artifact not yet selected" })
+}
+
+// CONTROL 9b: an active standing needs a NAMED consumer. An Active arm carrying an empty consumer
+// list claims consumers exist while naming none, so the arm's name must not stand in for the fact.
+test fn active_demand_requires_a_named_consumer() -> Bool {
+  secret_demand_is_active(standing: SecretDemandActive {
+    secret: "projects/p/secrets/fleet-key",
+    consumers: [SecretConsumer {
+      consumer: "managed host-access convergence executor",
+      operation: sm_operation_ref(operation: "AccessVersion") }] })
+    && !secret_demand_is_active(standing: SecretDemandActive {
+      secret: "projects/p/secrets/fleet-key", consumers: [] })
+}
+
+// CONTROL 10a (POSITIVE DIRECTION): the OBSERVED srv5 facts must produce the user-scope arm.
+// sudo -n refused and the container socket refusing the admitted principal are one cause with two
+// consequences, so user scope is the derived consequence -- not a preference someone recorded.
+test fn observed_srv5_privilege_derives_user_unit_scope() -> Bool {
+  match derive_install_scope(observation: srv5_privilege_observation()) {
+    UserUnitScope { host: h, ground: _ } => (h as String) == "srv5"
+    SystemUnitScope { host: _ } => false
+    ContainerScope { host: _ } => false
+    InstallScopeUnobserved { host: _, cause: _ } => false
+  }
+}
+
+// CONTROL 10b (NEGATIVE DIRECTION): the derivation must REFUSE to claim system-unit or container
+// installability against those same facts. Without this direction the function is a name -- it
+// could return SystemUnitScope for a host with no privilege and control 10a would still pass,
+// which is the inert-mechanism class: wrong in exactly the way it exists to prevent, silently.
+test fn no_privilege_never_derives_system_or_container_scope() -> Bool {
+  match derive_install_scope(observation: HostPrivilegeObservation {
+    host: "srv5", passwordless_sudo: false, container_socket_admits_principal: false }) {
+    SystemUnitScope { host: _ } => false
+    ContainerScope { host: _ } => false
+    UserUnitScope { host: _, ground: _ } => true
+    InstallScopeUnobserved { host: _, cause: _ } => false
+  }
+}
+
+// CONTROL 10c: the derivation is a FUNCTION of privilege, not a constant. A host that DOES hold
+// passwordless sudo derives system scope, and one whose container socket admits the principal
+// derives container scope. Without this, 10a/10b would both pass on a function hardwired to
+// return user scope, and the derivation would be indistinguishable from a declaration.
+test fn privilege_actually_selects_the_scope() -> Bool {
+  match derive_install_scope(observation: HostPrivilegeObservation {
+    host: "srvX", passwordless_sudo: true, container_socket_admits_principal: false }) {
+    SystemUnitScope { host: h } => (h as String) == "srvX"
+    ContainerScope { host: _ } => false
+    UserUnitScope { host: _, ground: _ } => false
+    InstallScopeUnobserved { host: _, cause: _ } => false
+  } && match derive_install_scope(observation: HostPrivilegeObservation {
+    host: "srvY", passwordless_sudo: false, container_socket_admits_principal: true }) {
+    ContainerScope { host: h } => (h as String) == "srvY"
+    SystemUnitScope { host: _ } => false
+    UserUnitScope { host: _, ground: _ } => false
+    InstallScopeUnobserved { host: _, cause: _ } => false
+  }
+}

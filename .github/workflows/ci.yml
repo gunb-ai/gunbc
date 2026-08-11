@@ -242,7 +242,7 @@ jobs:
   ci:
     runs-on: [self-hosted, linux, arm64]
     needs: [build, regen, heal_generated_artifacts]
-    timeout-minutes: 135
+    timeout-minutes: 140
     if: "!cancelled()"
     steps:
       - name: "Refuse when an upstream job already established this branch is red (fails fast instead of skipping: a skipped job reports success to the required check)"
@@ -346,6 +346,15 @@ jobs:
           if [ -f "$d/memory.peak" ]; then echo "[calibration] floor_peak_post=$(cat "$d/memory.peak") floor_outcome=${{ steps.floor.outcome }} cgroup=$d (observation label: floor_outcome=success is an EXACT point; any other outcome is a CENSORED lower bound - the process was killed while exceeding the read, so true demand is strictly greater. scope per the floor_peak_pre line: reset=ok means this IS the floor peak; scope=span compares against pre_peak)"; else echo "[calibration] floor_peak_post floor_outcome=${{ steps.floor.outcome }} scope=unavailable (no memory.peak ancestor)"; fi
         env:
           GUNBC_FLOOR_PHASE_JOURNAL: target/floor-phase-journal.tsv
+        if: always()
+        timeout-minutes: 5
+      - name: Upload floor receipts (TSV authority for cost/drift rows)
+        uses: actions/upload-artifact@v4
+        with:
+          name: floor-receipts
+          path: target/floor-*
+          if-no-files-found: warn
+          retention-days: 14
         if: always()
         timeout-minutes: 5
   heal_generated_artifacts:

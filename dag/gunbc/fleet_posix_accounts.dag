@@ -1,12 +1,18 @@
 module gunbc.fleet_posix_accounts
 
-import extdeps.access.posix { PosixUser }
+import extdeps.access.posix { PosixUser, PosixLoginName }
+import std.nat { Nat }
+import std.types { Timestamp }
+import gunbc.fleet_lifecycle_observation { ProcessReceipt }
+import extdeps.ssh { SshPublicKey }
+import std.content_hash { Fnv1a64Structural }
 import extdeps.sudo.nopasswd_execute_probe {
   SudoNopasswdProbeKind,
   NopasswdExecuteCheck,
   NopasswdGrantListCheck,
 }
-import std.types { NonEmptyStr, List, String, Bool }
+import std.types { NonEmptyStr, List, String, Bool, Int }
+import product.placement_supply { HostIdentity }
 import std.disposition { Disposition, Terminal, Scaffold, ConstructionMechanism }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.effects { ExecuteEffect }
@@ -63,34 +69,44 @@ data srv1_ci_deploy_runner_principal: DeployRunnerPrincipal = DeployRunnerPrinci
   job_user: "ghrunner",
 }
 
+// ONE semantic principal population. The two new arms are PRINCIPAL IDENTITIES, not accounts:
+// they carry policy and no operating-system label, because fleet-automation@gunbc is an SSH key
+// comment and never was a username. What a principal IS lives here; what it is CALLED on a given
+// host is an allocation, and the two are joined only by an executed observation.
 type FleetPosixAccountKey
   = FleetAccountRoot
   | FleetAccountOperator
   | FleetAccountCiRunner
   | FleetAccountSrv3Host
+  | FleetAccountAutomation
+  | FleetAccountInferenceService
 
 data fleet_posix_root_user: PosixUser = PosixUser {
   name: "root",
   uid: 0,
   gid: 0,
+  shell: LoginShellUnobserved,
 }
 
 data fleet_posix_operator_user: PosixUser = PosixUser {
   name: "briansrls",
   uid: 1000,
   gid: 1000,
+  shell: LoginShellUnobserved,
 }
 
 data fleet_posix_ci_runner_user: PosixUser = PosixUser {
   name: "ghrunner",
   uid: 1001,
   gid: 1001,
+  shell: LoginShellUnobserved,
 }
 
 data fleet_posix_srv3_host_user: PosixUser = PosixUser {
   name: "ubuntu",
   uid: 1000,
   gid: 1000,
+  shell: LoginShellUnobserved,
 }
 
 data fleet_posix_root_declared_probe: PosixAccountDeclaredProbe = PosixAccountDeclaredProbe {
@@ -161,32 +177,572 @@ fn fleet_posix_srv3_host_sudo_grants() -> List<PosixSudoGrant> {
   []
 }
 
-fn fleet_posix_principal(key: FleetPosixAccountKey) -> GroundedPosixPrincipal {
+
+// ---------------------------------------------------------------------------------------------
+// NAME REQUIREMENTS -- what a name must BE, kept separate from what it must SPELL.
+//
+// The hostname authority already separates HostIdentity from an allocated DnsLabel, and an
+// unallocated host cannot recover a label by parsing its identity. This is that decomposition at
+// account grain. It exists because the opposite was tried in this very module and reverted: static
+// usernames gunbc / gunbc-inference put the role back into the string, and once a role is legible
+// in a label, consumers start reading the label as authority.
+//
+// NOT one universal name type. DNS labels, POSIX login names, unit names and secret resource names
+// have different grammars, different collision domains and different external authorities. What is
+// shared is the REQUIREMENTS vocabulary; the lexical authority stays with the target namespace.
+data name_requirements_authority_note: String = "Meaning lives in typed identity; human friendliness, protocol legality, stability and collision behaviour live in explicit requirements; the resulting string is an allocated handle -- stable where required, arbitrary where meaning would be dangerous, and never parsed back into authority. Modeled after the reverted static-username commit demonstrated the alternative: a readable role in the label is indistinguishable, to every downstream consumer, from identity."
+
+type NameAudience = MachineOnly | HumanObservable | HumanEntered
+
+type NameHumanFactors = Opaque | Compact | Pronounceable | OperatorMeaningful
+
+// TWO INDEPENDENT AXES, corrected: an earlier revision made NoDomainMeaning and MnemonicOnly peer
+// variants of one coproduct, which is a false exclusion. A pronounceable arbitrary word is BOTH a
+// mnemonic for a human AND free of domain meaning -- that combination is precisely what an
+// automation label should be, and the fused coproduct made it unrepresentable.
+type NameSemanticContent
+  = EncodesNoDomainMeaning
+  | EncodesAuthorityMeaning { authority: DeclarationRef }
+
+type NameAuthorityRole = PresentationOnly | OperationalHandle | ExternalIdentityAuthority
+
+type NameStability
+  = PerAttempt
+  | StableForOccurrence
+  | StableAcrossReplacement
+  | StableUntilExplicitRetirement
+
+// CONSISTENCY IS FOUR REQUIREMENTS, NOT ONE, and fusing them is how the reverted commit asserted
+// cross-host equality ("an account whose uid differs per host is not one identity") when what it
+// actually needed was per-occurrence STABILITY. Reproducibility = same subject/scheme/attempt gives
+// the same candidate. Persistence = an allocated name survives reapply. Uniformity = whether two
+// occurrences must share a spelling. Uniqueness = whether one namespace admits a collision. Only
+// uniformity is modeled here as a choice; the others are laws stated on the allocation.
+type NameScopeIdentity = NonEmptyStr where brand("NameScopeIdentity")
+type NameSchemeIdentity = NonEmptyStr where brand("NameSchemeIdentity")
+
+type NameUniformity
+  = IndependentPerOccurrence
+  | EqualWithinScope { scope: NameScopeIdentity }
+
+type NameAllocationMethod
+  = ExplicitAllocation
+  | VersionedProjection { scheme: NameSchemeIdentity }
+  | UpstreamObserved
+
+type NameRetirement = ReusableAfterRetirement | Tombstoned
+
+// SPLIT: what a name must BE is not the same fact as how it is CHOSEN and retired. Allocation
+// method, collision scope and retirement are policy about the allocation process; they are not
+// characteristics of the string.
+type NameIntent {
+  audience: NameAudience
+  human_factors: NameHumanFactors
+  semantic_content: NameSemanticContent
+  authority_role: NameAuthorityRole
+  stability: NameStability
+  uniformity: NameUniformity
+}
+
+type NameAllocationPolicy {
+  method: NameAllocationMethod
+  collision_scope: NameScopeIdentity
+  retirement: NameRetirement
+}
+
+type NameRequirements {
+  intent: NameIntent
+  allocation_policy: NameAllocationPolicy
+}
+
+// ---------------------------------------------------------------------------------------------
+// PRINCIPAL INTENT -- total over every semantic principal, and carrying NO name and NO uid.
+// ---------------------------------------------------------------------------------------------
+
+// HumanAccessOnly is a STRUCTURAL policy, not a comment. FleetAccountOperator was broad enough that
+// automation already bound to it -- host_identity_access and ci_deploy_access both resolve it today
+// -- so the fusion is live rather than hypothetical. Rather than rename the arm (20 call sites, a
+// separate migration), the constraint is carried where a consumer can read it.
+type FleetLoginPolicy
+  = HumanAccessOnly
+  | KeyOnlyAutomation
+  | NoLoginServiceIdentity
+  | LegacyHostAccount
+
+type FleetPrincipalIntent {
+  principal: FleetPosixAccountKey
+  login_policy: FleetLoginPolicy
+  name_requirements: NameRequirements
+  sudo_grants: List<PosixSudoGrant>
+}
+
+data automation_name_requirements: NameRequirements = NameRequirements {
+  intent: NameIntent {
+    audience: HumanObservable,
+    human_factors: Pronounceable,
+    semantic_content: EncodesNoDomainMeaning,
+    authority_role: OperationalHandle,
+    stability: StableForOccurrence,
+    uniformity: IndependentPerOccurrence,
+  },
+  allocation_policy: NameAllocationPolicy {
+    method: ExplicitAllocation,
+    collision_scope: "host-local-posix" as NameScopeIdentity,
+    retirement: Tombstoned,
+  },
+}
+
+data service_name_requirements: NameRequirements = NameRequirements {
+  intent: NameIntent {
+    audience: MachineOnly,
+    human_factors: Opaque,
+    semantic_content: EncodesNoDomainMeaning,
+    authority_role: OperationalHandle,
+    stability: StableForOccurrence,
+    uniformity: IndependentPerOccurrence,
+  },
+  allocation_policy: NameAllocationPolicy {
+    method: ExplicitAllocation,
+    collision_scope: "host-local-posix" as NameScopeIdentity,
+    retirement: Tombstoned,
+  },
+}
+
+// The human exception, stated as requirements rather than as an apology: a person must be able to
+// know and type this name, so readability and cross-scope uniformity are genuine requirements here
+// and nowhere else.
+data human_access_name_requirements: NameRequirements = NameRequirements {
+  intent: NameIntent {
+    audience: HumanEntered,
+    human_factors: OperatorMeaningful,
+    semantic_content: EncodesNoDomainMeaning,
+    authority_role: OperationalHandle,
+    stability: StableUntilExplicitRetirement,
+    uniformity: EqualWithinScope { scope: "fleet-human-access" as NameScopeIdentity },
+  },
+  allocation_policy: NameAllocationPolicy {
+    method: ExplicitAllocation,
+    collision_scope: "fleet-human-access" as NameScopeIdentity,
+    retirement: Tombstoned,
+  },
+}
+
+data legacy_name_requirements: NameRequirements = NameRequirements {
+  intent: NameIntent {
+    audience: HumanObservable,
+    human_factors: OperatorMeaningful,
+    semantic_content: EncodesNoDomainMeaning,
+    authority_role: OperationalHandle,
+    stability: StableUntilExplicitRetirement,
+    uniformity: IndependentPerOccurrence,
+  },
+  allocation_policy: NameAllocationPolicy {
+    method: UpstreamObserved,
+    collision_scope: "host-local-posix" as NameScopeIdentity,
+    retirement: Tombstoned,
+  },
+}
+
+fn fleet_principal_intent(key: FleetPosixAccountKey) -> FleetPrincipalIntent {
   match key {
     FleetAccountRoot =>
-      GroundedPosixPrincipal {
-        posix: fleet_posix_root_user,
+      FleetPrincipalIntent {
+        principal: key,
+        login_policy: LegacyHostAccount,
+        name_requirements: legacy_name_requirements,
         sudo_grants: fleet_posix_root_sudo_grants(),
-        declared_probe: fleet_posix_root_declared_probe,
       }
     FleetAccountOperator =>
-      GroundedPosixPrincipal {
-        posix: fleet_posix_operator_user,
+      FleetPrincipalIntent {
+        principal: key,
+        login_policy: HumanAccessOnly,
+        name_requirements: human_access_name_requirements,
         sudo_grants: fleet_posix_operator_sudo_grants(),
-        declared_probe: fleet_posix_operator_declared_probe,
       }
     FleetAccountCiRunner =>
-      GroundedPosixPrincipal {
-        posix: fleet_posix_ci_runner_user,
+      FleetPrincipalIntent {
+        principal: key,
+        login_policy: LegacyHostAccount,
+        name_requirements: legacy_name_requirements,
         sudo_grants: fleet_posix_ci_runner_sudo_grants(),
-        declared_probe: fleet_posix_ci_runner_declared_probe,
       }
     FleetAccountSrv3Host =>
-      GroundedPosixPrincipal {
-        posix: fleet_posix_srv3_host_user,
+      FleetPrincipalIntent {
+        principal: key,
+        login_policy: LegacyHostAccount,
+        name_requirements: legacy_name_requirements,
         sudo_grants: fleet_posix_srv3_host_sudo_grants(),
-        declared_probe: fleet_posix_srv3_host_declared_probe,
       }
+    FleetAccountAutomation =>
+      FleetPrincipalIntent {
+        principal: key,
+        login_policy: KeyOnlyAutomation,
+        name_requirements: automation_name_requirements,
+        sudo_grants: fleet_posix_automation_sudo_grants(),
+      }
+    FleetAccountInferenceService =>
+      FleetPrincipalIntent {
+        principal: key,
+        login_policy: NoLoginServiceIdentity,
+        name_requirements: service_name_requirements,
+        sudo_grants: fleet_posix_inference_service_sudo_grants(),
+      }
+  }
+}
+
+// ONE closed privileged operation, consuming the EXISTING helper-path authority in this module
+// rather than declaring a second one with the same literal (the reverted commit did exactly that).
+// The probe is grant-list rather than execute-check because the helper is not installed yet, and
+// this module's own materialization note reserves grant-list for precisely that case: an absent
+// binary and an absent grant are different states with different remedies.
+fn fleet_posix_automation_sudo_grants() -> List<PosixSudoGrant> {
+  [
+    PosixSudoGrant {
+      command_path: gunbc_deploy_privileged_helper_path,
+      probe: NopasswdGrantListCheck,
+    },
+  ]
+}
+
+// EMPTY BY CONSTRUCTION. The served process runs a model and answers requests; it never needs to
+// change the host it runs on, under either a persistent or a supervisor-managed identity.
+fn fleet_posix_inference_service_sudo_grants() -> List<PosixSudoGrant> {
+  []
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// ALLOCATION -- the host-local handle, and the numeric identity, kept apart from both.
+// ---------------------------------------------------------------------------------------------
+
+// A UID is not a username and not a principal. An inode records the NUMBER, so a uid change is an
+// ownership migration rather than a rename, which is why numeric identity is stronger and more
+// operationally load-bearing than the label. It is scoped to an identity DOMAIN: two independent
+// hosts share nothing numerically unless something makes them, so equality across srv5 and srv6 is
+// permitted but never required, and is never evidence of one principal.
+type PosixIdentityDomain
+  = HostLocalIdentityDomain { host: HostIdentity }
+  | SharedNumericOwnershipDomain { identity: NonEmptyStr, members: List<HostIdentity> }
+
+type PosixAccountOccurrence {
+  host: HostIdentity
+  principal: FleetPosixAccountKey
+}
+
+type PosixAccountAllocation {
+  occurrence: PosixAccountOccurrence
+  local_name: PosixLoginName
+  uid: Int
+  gid: Int
+  domain: PosixIdentityDomain
+  name_scheme: NameSchemeIdentity
+  name_attempt: Nat
+}
+
+type PosixAccountAllocationConflict
+  = LocalNameOccupied { name: NonEmptyStr }
+  | NumericIdentityOccupied { uid: Int }
+  | AllocationContradictsObservation
+
+// Three states, not an Optional. "Never allocated", "allocated" and "allocation refused because
+// something already holds the name or number" have different remedies, and a two-valued answer
+// would force the apply to guess which one it was looking at.
+// SUBJECT-BOUND. An unallocated standing that does not say WHICH occurrence is unallocated can be
+// produced for srv5 and consumed as srv6's answer with nothing to detect the swap -- the copied-
+// receipt failure at allocation grain. Conflicts carry first-plus-rest so an EMPTY conflict
+// population has no constructor: "conflicted, with no causes" is not a state.
+type PosixAccountAllocationStanding
+  = AccountUnallocated { occurrence: PosixAccountOccurrence }
+  | AccountAllocated { allocation: PosixAccountAllocation }
+  | AccountAllocationConflict {
+      occurrence: PosixAccountOccurrence
+      first: PosixAccountAllocationConflict
+      more: List<PosixAccountAllocationConflict>
+    }
+
+// ---------------------------------------------------------------------------------------------
+// GROUNDING -- six states, because Optional collapses six remedies into one absence.
+// ---------------------------------------------------------------------------------------------
+
+data grounding_outcome_note: String = "Absent cannot carry a remedy. Intent-absent, allocated-but-unapplied, applied-but-unobserved, observation-contradicts-allocation, drifted and grounded are six different situations with six different next actions, and an Optional answer makes them one. Only PrincipalGrounded may enter live SSH or deployment access -- that is the construction wall replacing the reverted commit's attempt to present a desired account as a grounded one."
+
+type PosixAccountConflict
+  = ObservedNameDiffersFromAllocation { observed: NonEmptyStr, allocated: NonEmptyStr }
+  | ObservedUidDiffersFromAllocation { observed: Int, allocated: Int }
+  | ObservationSubjectMismatch { observed_host: HostIdentity, allocated_host: HostIdentity }
+
+// THE OBSERVATION CARRIES ITS OWN SUBJECT, never a copy of the desired allocation. Copying the
+// allocation in would make every observation agree with the plan by construction -- the authored-
+// versus-executed defect this whole split exists to end, reproduced inside its own repair. The
+// grounding fold now compares the two subjects and reports a mismatch as drift.
+//
+// RECEIPT-BACKED. Without these fields any caller can author a record asserting an account exists,
+// which is #8068's authored-versus-executed defect at account grain: the carrier would prove an
+// account was DESCRIBED, never that a command ran. effect_receipt is our own record of the
+// execution (exit status observed by the dispatcher, and an attempt identity distinguishing two
+// runs against one subject); raw_output_identity pins the bytes the decode consumed, so a decoder
+// change is detectable; observed_at is when, not whether.
+type PosixAccountObservation {
+  occurrence: PosixAccountOccurrence
+  observed_user: PosixUser
+  effect_receipt: ProcessReceipt
+  raw_output_identity: Fnv1a64Structural
+  observed_at: Timestamp
+}
+
+// ACCOUNT GROUNDING IS NOT ACCESS GROUNDING, and fusing them is why the earlier fold could call an
+// account grounded while copying DESIRED sudo grants into the result -- proving policy, never that
+// the sudoers entry was ever installed. Four facts, and each may hold while the next does not:
+//
+//   account exists and matches its allocation
+//   the exact authorized-key population is observed
+//   the login policy is observed (key-only, password refused)
+//   the narrow privileged capability is observed to execute
+//
+// Only HostAccessGrounded may authorize a serving deployment. That progression -- account created,
+// key login proven, narrow privilege proven, host subsumed -- is the whole srv5 canary.
+type PosixAccessObservation {
+  account: PosixAccountObservation
+  observed_authorized_keys: List<SshPublicKey>
+  password_login_refused: Bool
+  privileged_probe_succeeded: Bool
+}
+
+type HostAccessOutcome
+  = HostAccessGrounded { principal: GroundedPosixPrincipal }
+  | HostAccessAccountNotGrounded { account_outcome: GroundedPosixPrincipalOutcome }
+  | HostAccessKeyPopulationDrifted { expected: List<SshPublicKey>, observed: List<SshPublicKey> }
+  | HostAccessPasswordLoginStillAdmitted
+  | HostAccessPrivilegeNotProven
+
+// The join that a serving deployment must consult. Note the ORDER is not cosmetic: an account that
+// is not grounded cannot have its key population meaningfully compared, and a host still admitting
+// password login is not subsumed however good its key population looks.
+fn ground_host_access(
+  intent: FleetPrincipalIntent,
+  standing: PosixAccountAllocationStanding,
+  access: PosixAccessObservation,
+) -> HostAccessOutcome {
+  let account = ground_posix_principal(
+    intent: intent,
+    standing: standing,
+    observation: Present { value: access.account },
+  )
+  match account {
+    PrincipalGrounded { principal: p } =>
+      if !access.password_login_refused {
+        HostAccessPasswordLoginStillAdmitted
+      } else {
+        if !access.privileged_probe_succeeded {
+          HostAccessPrivilegeNotProven
+        } else {
+          HostAccessGrounded { principal: p }
+        }
+      }
+    PrincipalRequiresHostScope { principal: _ } => HostAccessAccountNotGrounded { account_outcome: account }
+    PrincipalUnallocated { occurrence: _ } => HostAccessAccountNotGrounded { account_outcome: account }
+    PrincipalAllocationConflicted { occurrence: _, first: _, more: _ } => HostAccessAccountNotGrounded { account_outcome: account }
+    PrincipalUnobserved { allocation: _ } => HostAccessAccountNotGrounded { account_outcome: account }
+    PrincipalDrifted { allocation: _, first: _, more: _ } => HostAccessAccountNotGrounded { account_outcome: account }
+  }
+}
+
+// PrincipalRequiresHostScope is the state whose ABSENCE forced the fabrication. An account is
+// per-host, so a host-less question about a host-scoped principal has no answer -- and the legacy
+// accessor asks exactly that question, because it predates the occurrence split and takes no host.
+// Without this arm the only way to keep that accessor total was to invent a principal, which is
+// what UNALLOCATED-PRINCIPAL was. The missing state was the defect; the poison value was its
+// symptom.
+type GroundedPosixPrincipalOutcome
+  = PrincipalGrounded { principal: GroundedPosixPrincipal }
+  | PrincipalRequiresHostScope { principal: FleetPosixAccountKey }
+  | PrincipalUnallocated { occurrence: PosixAccountOccurrence }
+  | PrincipalAllocationConflicted {
+      occurrence: PosixAccountOccurrence
+      first: PosixAccountAllocationConflict
+      more: List<PosixAccountAllocationConflict>
+    }
+  | PrincipalUnobserved { allocation: PosixAccountAllocation }
+  | PrincipalDrifted {
+      allocation: PosixAccountAllocation
+      first: PosixAccountConflict
+      more: List<PosixAccountConflict>
+    }
+
+// The join. An observation whose account does not match what was allocated is DRIFT, reported with
+// both sides, never silently accepted and never rounded to "absent".
+fn ground_posix_principal(
+  intent: FleetPrincipalIntent,
+  standing: PosixAccountAllocationStanding,
+  observation: PosixAccountObservation?,
+) -> GroundedPosixPrincipalOutcome {
+  match standing {
+    AccountUnallocated { occurrence: occ } => PrincipalUnallocated { occurrence: occ }
+    AccountAllocationConflict { occurrence: occ, first: f, more: m } =>
+      PrincipalAllocationConflicted { occurrence: occ, first: f, more: m }
+    AccountAllocated { allocation: a } =>
+      match observation {
+        Absent => PrincipalUnobserved
+        Present { value: o } =>
+          if o.occurrence.host != a.occurrence.host {
+            PrincipalDrifted {
+              allocation: a,
+              first: ObservationSubjectMismatch { observed_host: o.occurrence.host, allocated_host: a.occurrence.host },
+              more: [],
+            }
+          } else {
+          if o.observed_user.name != a.local_name {
+            PrincipalDrifted {
+              allocation: a,
+              first: ObservedNameDiffersFromAllocation { observed: o.observed_user.name, allocated: a.local_name },
+              more: [],
+            }
+          } else {
+            if o.observed_user.uid != a.uid {
+              PrincipalDrifted {
+                allocation: a,
+                first: ObservedUidDiffersFromAllocation { observed: o.observed_user.uid, allocated: a.uid },
+                more: [],
+              }
+            } else {
+              PrincipalGrounded {
+                principal: GroundedPosixPrincipal {
+                  posix: o.observed_user,
+                  sudo_grants: intent.sudo_grants,
+                  declared_probe: PosixAccountDeclaredProbe {
+                    probed_at: o.observed_at,
+                    probe_command: concat("id ", o.observed_user.name as String) as NonEmptyStr,
+                    host: a.occurrence.host as NonEmptyStr,
+                  },
+                },
+              }
+            }
+          }
+          }
+      }
+  }
+}
+
+// THE SPARKS TODAY: both automation occurrences are UNALLOCATED. No name has been chosen, no uid
+// reserved, and nothing has been applied -- so nothing here can render useradd, User=, a home path,
+// sudoers or authorized_keys, which is the point. This is the honest starting standing, not a
+// placeholder waiting to be filled with a static name.
+fn spark_automation_allocation_standing(host: HostIdentity) -> PosixAccountAllocationStanding {
+  AccountUnallocated {
+    occurrence: PosixAccountOccurrence { host: host, principal: FleetAccountAutomation },
+  }
+}
+
+// UNSELECTED, not unallocated. Answering "unallocated" would already have chosen a persistent
+// /etc/passwd account, before the serving runtime exists to say whether a supervisor-managed
+// dynamic identity is sufficient. Choosing a realization by default is the same fusion one layer
+// down.
+type ServicePrincipalRealizationStanding
+  = ServicePrincipalRealizationUnselected
+  | DynamicServicePrincipal { supervisor: NonEmptyStr }
+  | PersistentServiceAccount { allocation: PosixAccountAllocationStanding }
+
+fn spark_inference_realization_standing(host: HostIdentity) -> ServicePrincipalRealizationStanding {
+  ServicePrincipalRealizationUnselected
+}
+
+
+
+// TOTAL PER-ACCOUNT ACCESSORS for the four legacy principals. These exist because their accounts
+// WERE observed on srv1/srv3, so the question "what is this account" has an answer that needs no
+// host parameter and no optional. Callers asking about a legacy srv1 account use these; callers
+// asking about a host-scoped principal must go through ground_posix_principal with an occurrence.
+// The split is what lets the fabricated placeholder be deleted instead of relocated.
+fn fleet_posix_root_principal() -> GroundedPosixPrincipal {
+  GroundedPosixPrincipal {
+    posix: fleet_posix_root_user,
+    sudo_grants: fleet_posix_root_sudo_grants(),
+    declared_probe: fleet_posix_root_declared_probe,
+  }
+}
+
+fn fleet_posix_operator_principal() -> GroundedPosixPrincipal {
+  GroundedPosixPrincipal {
+    posix: fleet_posix_operator_user,
+    sudo_grants: fleet_posix_operator_sudo_grants(),
+    declared_probe: fleet_posix_operator_declared_probe,
+  }
+}
+
+fn fleet_posix_ci_runner_principal() -> GroundedPosixPrincipal {
+  GroundedPosixPrincipal {
+    posix: fleet_posix_ci_runner_user,
+    sudo_grants: fleet_posix_ci_runner_sudo_grants(),
+    declared_probe: fleet_posix_ci_runner_declared_probe,
+  }
+}
+
+fn fleet_posix_srv3_host_principal() -> GroundedPosixPrincipal {
+  GroundedPosixPrincipal {
+    posix: fleet_posix_srv3_host_user,
+    sudo_grants: fleet_posix_srv3_host_sudo_grants(),
+    declared_probe: fleet_posix_srv3_host_declared_probe,
+  }
+}
+
+
+// The legacy call sites all ask about an srv1/srv3 account that WAS observed. This keeps them total
+// without reintroducing a fabricated value: the four legacy keys are grounded, and the two
+// host-scoped principals REFUSE here rather than returning an inventable placeholder. A caller that
+// wants those must go through ground_posix_principal with an occurrence.
+fn fleet_posix_legacy_principal(key: FleetPosixAccountKey) -> GroundedPosixPrincipal? {
+  match fleet_posix_principal(key: key) {
+    PrincipalGrounded { principal: p } => Present { value: p }
+    PrincipalRequiresHostScope { principal: _ } => none
+    PrincipalUnallocated { occurrence: _ } => none
+    PrincipalAllocationConflicted { occurrence: _, first: _, more: _ } => none
+    PrincipalUnobserved { allocation: _ } => none
+    PrincipalDrifted { allocation: _, first: _, more: _ } => none
+  }
+}
+
+// THE LEGACY ACCESSOR, now returning an OUTCOME. Its four legacy keys resolve to accounts observed
+// on srv1/srv3 and keep working. Its two new keys cannot be answered here at all -- not because the
+// accounts are missing, but because this function takes no host and an account is per-host. That is
+// PrincipalRequiresHostScope, and it is the honest answer a fabricated principal was standing in
+// for. Dissolve-on: the legacy four migrate to receipt-backed allocation+observation rows and this
+// accessor is deleted in favour of ground_posix_principal.
+fn fleet_posix_principal(key: FleetPosixAccountKey) -> GroundedPosixPrincipalOutcome {
+  match key {
+    FleetAccountRoot =>
+      PrincipalGrounded {
+        principal: GroundedPosixPrincipal {
+          posix: fleet_posix_root_user,
+          sudo_grants: fleet_posix_root_sudo_grants(),
+          declared_probe: fleet_posix_root_declared_probe,
+        },
+      }
+    FleetAccountOperator =>
+      PrincipalGrounded {
+        principal: GroundedPosixPrincipal {
+          posix: fleet_posix_operator_user,
+          sudo_grants: fleet_posix_operator_sudo_grants(),
+          declared_probe: fleet_posix_operator_declared_probe,
+        },
+      }
+    FleetAccountCiRunner =>
+      PrincipalGrounded {
+        principal: GroundedPosixPrincipal {
+          posix: fleet_posix_ci_runner_user,
+          sudo_grants: fleet_posix_ci_runner_sudo_grants(),
+          declared_probe: fleet_posix_ci_runner_declared_probe,
+        },
+      }
+    FleetAccountSrv3Host =>
+      PrincipalGrounded {
+        principal: GroundedPosixPrincipal {
+          posix: fleet_posix_srv3_host_user,
+          sudo_grants: fleet_posix_srv3_host_sudo_grants(),
+          declared_probe: fleet_posix_srv3_host_declared_probe,
+        },
+      }
+    FleetAccountAutomation => PrincipalRequiresHostScope { principal: key }
+    FleetAccountInferenceService => PrincipalRequiresHostScope { principal: key }
   }
 }
 
@@ -205,16 +761,16 @@ fn posix_declared_probe_names_principal(p: GroundedPosixPrincipal) -> Bool {
 
 fn fleet_posix_account_from_name(name: NonEmptyStr) -> GroundedPosixPrincipal? {
   match name == fleet_posix_root_user.name {
-    true => Present { value: fleet_posix_principal(key: FleetAccountRoot) }
+    true => Present { value: fleet_posix_root_principal() }
     false =>
       match name == fleet_posix_operator_user.name {
-        true => Present { value: fleet_posix_principal(key: FleetAccountOperator) }
+        true => Present { value: fleet_posix_operator_principal() }
         false =>
           match name == fleet_posix_ci_runner_user.name {
-            true => Present { value: fleet_posix_principal(key: FleetAccountCiRunner) }
+            true => Present { value: fleet_posix_ci_runner_principal() }
             false =>
               match name == fleet_posix_srv3_host_user.name {
-                true => Present { value: fleet_posix_principal(key: FleetAccountSrv3Host) }
+                true => Present { value: fleet_posix_srv3_host_principal() }
                 false => Absent
               }
           }
@@ -237,3 +793,121 @@ fn fleet_posix_account_exists(name: NonEmptyStr) -> Bool {
     Absent => false
   }
 }
+
+
+// ── Reported contradiction of an authored row ─────────────────────────────────────────────
+// fleet_posix_ci_runner_user carries uid 1001 / gid 1001 and a declared_probe claiming
+// probe_command "id ghrunner" on srv1. A live readback of that exact command on that exact host
+// returns 999 / 987, reported by witty-raven-412 (msg_051d4971) from srv1 AND srv2.
+//
+// The defect is not the integers. It is that the declared_probe STAMPS a probe whose own output
+// contradicts the values beside it, so either the probe never ran or its result was discarded for
+// authored numbers. A wrong integer is visible; a provenance stamp is what made it look checked.
+// That is the authored-versus-executed class at account grain, inside the module whose header text
+// already warns that declared_probe is authored provenance and not live observation.
+//
+// This is recorded as a REPORTED contradiction rather than a correction. Overwriting the row with
+// 999/987 would replace one authored pair with another that I cannot verify from this session --
+// better sourced, still not executed here. A PosixAccountObservation is deliberately NOT minted
+// either: that carrier requires a ProcessReceipt and a raw-output identity precisely so an account
+// cannot be asserted without a command having run, and fabricating one to record someone else's
+// reading would defeat the wall it exists to be. The DISAGREEMENT is the durable fact.
+type ReportedAccountContradiction {
+  account: FleetPosixAccountKey
+  modeled_uid: Int
+  modeled_gid: Int
+  reported_uid: Int
+  reported_gid: Int
+  reported_shell: PosixLoginShell
+  hosts: List<HostIdentity>
+  source: NonEmptyStr
+}
+
+fn fleet_ci_runner_reported_contradiction() -> ReportedAccountContradiction {
+  ReportedAccountContradiction {
+    account: FleetAccountCiRunner,
+    modeled_uid: 1001,
+    modeled_gid: 1001,
+    reported_uid: 999,
+    reported_gid: 987,
+    reported_shell: LoginShellObserved { path: "/usr/sbin/nologin" },
+    hosts: ["srv1", "srv2"],
+    source: "witty-raven-412 msg_051d4971; live getent on srv1 and srv2; not verified by this session"
+  }
+}
+
+fn reported_contradiction_is_open(c: ReportedAccountContradiction) -> Bool {
+  c.modeled_uid != c.reported_uid || c.modeled_gid != c.reported_gid
+}
+
+data fleet_account_contradiction_dissolve_on: String = "dissolve-on: fleet_posix_ci_runner_user carries authored uid/gid contradicted by a live readback on two hosts, and its declared_probe stamps a probe whose own command returns the contradicting values. DISSOLVES WHEN a PosixAccountObservation with a real ProcessReceipt grounds the ghrunner row through deploy_access_check_observed, at which point the observed values replace the authored ones and this contradiction row is deleted rather than kept beside them. Until then the model must not report the ghrunner account as grounded."
+
+// The stale duplicate is a filesystem-grain second representation of one grant authority, and it
+// has a consequence beyond tidiness: srv1's effective privilege is the UNION of both files, so a
+// grant readback that reads one file reports a strict subset of real privilege and would classify
+// an over-granted host as exact.
+data srv1_duplicate_sudoers_dropin_note: String = "srv1 carries /etc/sudoers.d/gunbc-deploy.bak-wavec-verify-179889 duplicating the managed grant list, reported by witty-raven-412 (msg_051d4971). Effective privilege is the union of both files, so any effective-access observation that reads a single dropin under-reports it. An effective-grant readback must enumerate the whole sudoers.d population before classifying a host exact."
+
+
+// ── The applied FleetAccountAutomation allocation ─────────────────────────────────────────
+// Label gunbc-fleet, the same on every host. Same-label is not a claim about independence: the
+// operator's ruling makes independence a property of the grant (principal x operation x resource x
+// context), so a matching or differing string changes no identity, no authorized resource, no
+// permitted operation, and no key or sudo policy. Occurrences stay distinct because occurrence
+// identity is host x role.
+//
+// Applied on srv1 and srv2 by witty-raven-412 under the four allocation conditions, with preflight
+// receipts showing no pre-existing account or group (so nothing was adopted) and no sshd allow-list
+// that would silently exclude the principal. srv3 and srv4 are NOT allocated: unreachable, and an
+// unreachable host has no allocation rather than a presumed one.
+//
+// Reported, with source, not independently verified here -- same discipline as every other cloud
+// and host row this session did not execute itself.
+type FleetAutomationAllocationStanding
+  = AutomationAllocationApplied {
+      host: HostIdentity
+      user: PosixUser
+      source: NonEmptyStr
+    }
+  | AutomationAllocationPending { host: HostIdentity, cause: NonEmptyStr }
+
+fn fleet_automation_user_on(host: HostIdentity) -> PosixUser {
+  PosixUser {
+    name: "gunbc-fleet",
+    uid: 1001,
+    gid: 1001,
+    shell: LoginShellObserved { path: "/bin/bash" },
+  }
+}
+
+fn fleet_automation_allocations() -> List<FleetAutomationAllocationStanding> {
+  [
+    AutomationAllocationApplied {
+      host: "srv1",
+      user: fleet_automation_user_on(host: "srv1"),
+      source: "witty-raven-412 msg_f7cbef82; password LOCKED, sudo NONE verified, authorized_keys 0600 single line"
+    },
+    AutomationAllocationApplied {
+      host: "srv2",
+      user: fleet_automation_user_on(host: "srv2"),
+      source: "witty-raven-412 msg_f7cbef82; password LOCKED, sudo NONE verified, authorized_keys 0600 single line"
+    },
+    AutomationAllocationPending { host: "srv3", cause: "host unreachable from the allocating session; key refused at its address" },
+    AutomationAllocationPending { host: "srv4", cause: "no address available to the allocating session" }
+  ]
+}
+
+fn automation_allocation_is_applied(a: FleetAutomationAllocationStanding) -> Bool {
+  match a {
+    AutomationAllocationApplied { host: _, user: _, source: _ } => true
+    AutomationAllocationPending { host: _, cause: _ } => false
+  }
+}
+
+// THE NUMERIC COINCIDENCE, carried because it is a reading hazard rather than a defect. gunbc-fleet
+// landed on uid 1001 because 1001 was the next free id on those hosts -- and 1001/1001 is exactly
+// what the ghrunner row WRONGLY claims. Two rows now read 1001 for different accounts on the same
+// host. The numbers are not identity, so nothing is broken; but a reader comparing uids to decide
+// which account a file belongs to would fuse them, and that is precisely why the ghrunner
+// contradiction must be resolved by observation rather than left standing.
+data automation_uid_coincidence_note: String = "gunbc-fleet is uid 1001 on srv1 and srv2 (next free id). fleet_posix_ci_runner_user also claims 1001, wrongly -- ghrunner is 999/987 on both hosts. Two rows reading the same number for different accounts is a reading hazard, not a collision: uid is host-local and is never fleet principal identity. It raises the priority of grounding the ghrunner row, because a reader who does treat a uid as identity would now fuse the automation account with the CI runner."

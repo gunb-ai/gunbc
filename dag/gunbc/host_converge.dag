@@ -146,7 +146,11 @@ fn converge_verdict_label(v: ConvergeVerdict) -> String {
 fn converge_verdict_meet(a: ConvergeVerdict, b: ConvergeVerdict) -> ConvergeVerdict {
   match a {
     Absent => Absent
-    Drifted => match b { Absent => Absent  _ => Drifted }
+    Drifted => match b {
+      Absent => Absent
+      Drifted => Drifted
+      VerdictConverged => Drifted
+    }
     VerdictConverged => b
   }
 }
