@@ -1,70 +1,32 @@
 module test.claim.climbing_hold_catalog_witness
 
 import std.types { NonEmptyStr }
+import std.nat { Nat }
+import std.measure { millimeter }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.climbing_holds.types {
-  ClimbingHoldCatalogRow, HoldFixationInterface,
+  ClimbingHoldCatalogRow, HoldFixationInterface, ConservativeClearanceEnvelope,
+  CatalogLengthReading, SourceNativeLength, Inch, RoundedUpFromSourceReading,
   ImperialUncThread, SingleFlatMountingFace,
-  VendorPageRead, SampleMeasured, SearchSummaryOnly, DimensionUnread,
-  SkuResolved, SkuAmbiguous, SkuUnread,
+  ProductSkuObserved, ProductSkuUnread,
+  VendorPageRead, SampleMeasured, SearchSummaryOnly, DimensionUnread, OperatorRelayedDocument,
   ShapeArtifactHeld, ShapeArtifactAbsent,
   dimension_evidence_is_spendable, hold_may_render_silhouette,
-  hold_fixation_is_placeable, hold_envelope_is_spendable,
+  hold_mounting_axis_is_locatable, hold_clearance_is_admissible, hold_lift_role_is_admissible,
 }
 import extdeps.climbing_holds.atomik {
-  atomik_xl_arrow_down_climb_jug, atomik_bolt_on_frame,
+  atomik_xl_arrow_down_climb_jug, atomik_bolt_on_frame, atomik_page_relay,
 }
 
-data climbing_hold_witness_note: NonEmptyStr = "These witnesses guard a refusal, which is the hardest kind of claim to test honestly. A witness that only checks 'the unverified row refuses' passes just as well when the gate is hard-wired to false, so each refusal below is paired with a control that must pass. Without the paired control the suite would be exactly the failure it exists to prevent: a check that passes while measuring nothing."
+data climbing_hold_witness_note: NonEmptyStr = "These guard REFUSALS, which is the hardest kind of claim to test honestly: a witness that only checks 'the incomplete row refuses' passes equally well against a gate hard-wired to false. Every refusal below is therefore paired with a control that must PASS, and the readiness levels are checked separately rather than through one broad predicate."
 
-// The row's envelope came from a search summary, so it must not be spendable.
-test fn witness_search_summary_envelope_is_not_spendable() -> Bool {
-  !hold_envelope_is_spendable(row: atomik_xl_arrow_down_climb_jug)
-}
+data readiness_split_note: NonEmptyStr = "RECUT. An earlier witness was named witness_placeability_does_not_depend_on_shape_or_envelope and asserted that a thread plus a flat face made the hold PLACEABLE. That overclaimed: real placement also needs anti-rotation location, bolt length, T-nut and backing geometry, panel thickness, rear clearance, edge distance, interference with board, cable and cleat, and grasp clearance. What a thread and a flat face establish is only that the primary bolt AXIS can be located. The claim is now split into axis location, clearance admissibility, silhouette rendering, and lift-role admission, each witnessed on its own."
 
-// PAIRED CONTROL for the witness above. dimension_evidence_is_spendable must ADMIT real readings,
-// otherwise the refusal proves nothing about provenance and only proves the function is constant.
-// A measured sample and a vendor page both pass; the search summary and an unread field both fail.
-test fn witness_dimension_spendability_discriminates_by_provenance() -> Bool {
-  let vendor_authority: ExternalAuthority = ExternalAuthority {
-    uri: Uri {
-      scheme: Https
-      locator: "www.atomikclimbingholds.com/xl-arrow-shaped-down-climb-jug"
-    }
-  }
-  dimension_evidence_is_spendable(
-    evidence: SampleMeasured { receipt: "calipered sample, three positions, recorded" },
-  )
-    && dimension_evidence_is_spendable(
-         evidence: VendorPageRead { authority: vendor_authority, read_on: "not yet read" },
-       )
-    && !dimension_evidence_is_spendable(
-         evidence: SearchSummaryOnly { obligation: "read the page" },
-       )
-    && !dimension_evidence_is_spendable(
-         evidence: DimensionUnread { obligation: "read the page" },
-       )
-}
-
-// No shape artifact is held, so no silhouette may be drawn.
-test fn witness_absent_shape_refuses_silhouette() -> Bool {
-  !hold_may_render_silhouette(row: atomik_xl_arrow_down_climb_jug)
-}
-
-// The fixation cannot yet place a fastener: neither the thread nor the mounting face has been
-// read. This is the field that must NOT be filled by market convention.
-test fn witness_fixation_is_not_yet_placeable() -> Bool {
-  !hold_fixation_is_placeable(row: atomik_xl_arrow_down_climb_jug)
-}
-
-// PAIRED CONTROL for the witness above, and the load-bearing claim of this whole module. Supply a
-// thread and a flat mounting face and the SAME row becomes placeable — while its shape stays
-// absent and its envelope stays unspendable. That is the retracted inference stated as a testable
-// fact: a bolt-on hold's fastener placement depends on its frame and interface, NOT on its
-// silhouette. The design carrier deleted the hold because it could not be drawn; this proves
-// drawability was never the blocker.
-test fn witness_placeability_does_not_depend_on_shape_or_envelope() -> Bool {
+// AXIS. Shape is genuinely irrelevant to locating the bolt axis, and this is the surviving true
+// half of the retracted reasoning's inverse: the hold was deleted because it could not be drawn,
+// and drawing was never what located the fastener.
+test fn witness_mounting_axis_needs_no_shape_or_envelope() -> Bool {
   let known_fixation: HoldFixationInterface = HoldFixationInterface {
     primary_bolt_thread: ImperialUncThread { designation: "3/8-16 UNC" },
     primary_bolt_count: 1,
@@ -73,26 +35,104 @@ test fn witness_placeability_does_not_depend_on_shape_or_envelope() -> Bool {
     mounting_face: SingleFlatMountingFace,
     frame: atomik_bolt_on_frame,
   }
-  let placeable_but_unknown_shape: ClimbingHoldCatalogRow = ClimbingHoldCatalogRow {
-    product_name: atomik_xl_arrow_down_climb_jug.product_name,
-    sku_identity: atomik_xl_arrow_down_climb_jug.sku_identity,
+  let axis_known: ClimbingHoldCatalogRow = ClimbingHoldCatalogRow {
+    naming: atomik_xl_arrow_down_climb_jug.naming,
     material: atomik_xl_arrow_down_climb_jug.material,
     fixation: known_fixation,
-    envelope: atomik_xl_arrow_down_climb_jug.envelope,
+    source_width: atomik_xl_arrow_down_climb_jug.source_width,
+    source_height: atomik_xl_arrow_down_climb_jug.source_height,
+    source_projection: atomik_xl_arrow_down_climb_jug.source_projection,
+    clearance_envelope: atomik_xl_arrow_down_climb_jug.clearance_envelope,
     grasp: atomik_xl_arrow_down_climb_jug.grasp,
     shape: atomik_xl_arrow_down_climb_jug.shape,
   }
-  hold_fixation_is_placeable(row: placeable_but_unknown_shape)
-    && !hold_may_render_silhouette(row: placeable_but_unknown_shape)
-    && !hold_envelope_is_spendable(row: placeable_but_unknown_shape)
+  hold_mounting_axis_is_locatable(row: axis_known)
+    && !hold_may_render_silhouette(row: axis_known)
 }
 
-// A brand plus a descriptive phrase is not an identity. Two catalog paths surfaced for what may be
-// one product or two, and the row must keep saying so rather than picking the prettier name.
-test fn witness_sku_identity_stays_ambiguous() -> Bool {
-  match atomik_xl_arrow_down_climb_jug.sku_identity {
-    SkuAmbiguous { candidate_names: names, obligation: _ } => count(names) >= 2
-    SkuResolved { sku_code: _, authority: _ } => false
-    SkuUnread { obligation: _ } => false
+// And the real row's axis is NOT locatable, because its thread and mounting face are unread. This
+// is the paired refusal for the control above.
+test fn witness_real_row_axis_is_not_yet_locatable() -> Bool {
+  !hold_mounting_axis_is_locatable(row: atomik_xl_arrow_down_climb_jug)
+}
+
+// CLEARANCE. A relayed page reading IS spendable for reserving space, so the real row's clearance
+// is admissible - this is a genuine PASS, not a refusal, and it is what the upgraded provenance
+// bought.
+test fn witness_relayed_reading_admits_clearance() -> Bool {
+  hold_clearance_is_admissible(row: atomik_xl_arrow_down_climb_jug)
+}
+
+// Paired refusal: drop the same row's envelope back to a search summary and clearance refuses.
+// This proves the clearance gate reads PROVENANCE rather than merely the presence of numbers.
+test fn witness_search_summary_envelope_refuses_clearance() -> Bool {
+  let downgraded: ClimbingHoldCatalogRow = ClimbingHoldCatalogRow {
+    naming: atomik_xl_arrow_down_climb_jug.naming,
+    material: atomik_xl_arrow_down_climb_jug.material,
+    fixation: atomik_xl_arrow_down_climb_jug.fixation,
+    source_width: atomik_xl_arrow_down_climb_jug.source_width,
+    source_height: atomik_xl_arrow_down_climb_jug.source_height,
+    source_projection: atomik_xl_arrow_down_climb_jug.source_projection,
+    clearance_envelope: ConservativeClearanceEnvelope {
+      width_mm: millimeter(count: 166),
+      height_mm: millimeter(count: 191),
+      projection_mm: millimeter(count: 77),
+      derivation: RoundedUpFromSourceReading { source_note: "same numbers, weaker provenance" },
+      evidence: SearchSummaryOnly { obligation: "read the page" },
+    },
+    grasp: atomik_xl_arrow_down_climb_jug.grasp,
+    shape: atomik_xl_arrow_down_climb_jug.shape,
   }
+  !hold_clearance_is_admissible(row: downgraded)
+}
+
+// PROVENANCE LADDER. Relayed and first-party readings and measurements are spendable; a search
+// summary and an unread field are not. Without this the refusals above prove only that a constant
+// is constant.
+test fn witness_evidence_spendability_discriminates() -> Bool {
+  dimension_evidence_is_spendable(evidence: SampleMeasured { receipt: "calipered, three positions" })
+    && dimension_evidence_is_spendable(
+         evidence: VendorPageRead { authority: atomik_page_relay, read_on: "unused in this tree" },
+       )
+    && dimension_evidence_is_spendable(
+         evidence: OperatorRelayedDocument { authority: atomik_page_relay, relay_note: "relayed" },
+       )
+    && !dimension_evidence_is_spendable(evidence: SearchSummaryOnly { obligation: "read it" })
+    && !dimension_evidence_is_spendable(evidence: DimensionUnread { obligation: "read it" })
+}
+
+// RENDERING. No shape artifact, so no silhouette. An envelope box is admissible in a clearance
+// view when labelled as one; it may never stand in for the visible hold body.
+test fn witness_absent_shape_refuses_silhouette() -> Bool {
+  !hold_may_render_silhouette(row: atomik_xl_arrow_down_climb_jug)
+}
+
+// LIFT ROLE. The strictest gate, and the one no catalog can ever satisfy. Even granting a locatable
+// axis and admissible clearance, the lift role refuses without a proof-load receipt against the
+// exact assembly - because a vendor's climbing-wall standing is evidence about a different load
+// path, cycle count, panel stock and failure consequence.
+test fn witness_lift_role_refuses_without_proof_load() -> Bool {
+  !hold_lift_role_is_admissible(row: atomik_xl_arrow_down_climb_jug, proof_load_receipt_held: true)
+    && !hold_lift_role_is_admissible(row: atomik_xl_arrow_down_climb_jug, proof_load_receipt_held: false)
+}
+
+// NAMING. Two spellings from one page are an alias, not two orderable products. The earlier row
+// asserted SkuAmbiguous, which is a claim about the vendor's catalog made from a wording
+// difference. The order code stays unread, because only an order code establishes a SKU.
+test fn witness_naming_is_alias_with_sku_unread() -> Bool {
+  count(atomik_xl_arrow_down_climb_jug.naming.marketing_aliases) == 1
+    && match atomik_xl_arrow_down_climb_jug.naming.manufacturer_sku {
+         ProductSkuObserved { value: _, authority: _ } => false
+         ProductSkuUnread { obligation: _ } => true
+       }
+}
+
+// SOURCE PRESERVATION. The vendor states 6-1/2 in; the row stores 13/2 exactly and the rounded
+// 166 mm lives only in the derived clearance box. If a later edit collapses these into one integer
+// field, the fraction is unrecoverable and no reader can tell a measured 166 from a rounded 165.1.
+test fn witness_source_reading_survives_conversion() -> Bool {
+  atomik_xl_arrow_down_climb_jug.source_width.value.numerator == 13
+    && atomik_xl_arrow_down_climb_jug.source_width.value.denominator == 2
+    && atomik_xl_arrow_down_climb_jug.source_projection.value.numerator == 3
+    && atomik_xl_arrow_down_climb_jug.source_projection.value.denominator == 1
 }

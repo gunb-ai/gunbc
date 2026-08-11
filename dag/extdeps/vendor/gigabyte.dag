@@ -3,7 +3,8 @@ module extdeps.vendor.gigabyte
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 
-import extdeps.external_authority { ExternalAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -11,6 +12,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "www.gigabyte.com"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.gigabyte",
+      decl_name: "gigabyte",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data gigabyte: Vendor<Hardware> = Vendor { legal_name: "GIGA-BYTE Technology Co., Ltd." }

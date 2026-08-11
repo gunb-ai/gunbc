@@ -5,7 +5,8 @@ import std.nat { Nat }
 import extdeps.boards.types { BaseboardCatalogRow }
 import extdeps.vendor.gigabyte { gigabyte }
 
-import extdeps.external_authority { ExternalAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -13,6 +14,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "www.gigabyte.com/Enterprise/Server-Motherboard/MP72-HB0-rev-30"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.boards.gigabyte",
+      decl_name: "gigabyte_mp72_hb0_catalog",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 data gigabyte_mp72_hb0_reseller_authority: ExternalAuthority = ExternalAuthority {

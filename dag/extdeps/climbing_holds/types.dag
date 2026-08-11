@@ -4,7 +4,8 @@ import std.types { NonEmptyStr, List }
 import std.nat { Nat }
 import std.measure { Millimeter }
 import std.content_hash { ContentHash }
-import extdeps.external_authority { ExternalAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -12,6 +13,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "en.wikipedia.org/wiki/Climbing_hold"
   }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.climbing_holds.types",
+      decl_name: "ClimbingHoldCatalogRow",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
 }
 
 // A climbing hold is a bolt-on or screw-on gripping part. This module owns what a hold IS as a
@@ -127,16 +140,39 @@ data operator_relay_note: NonEmptyStr = "Vendor and reference hosts are unreacha
 // any thread appearing here must have come from a vendor document or a measured sample.
 data hold_mounting_convention_note: NonEmptyStr = "Bolt-on holds pass a hex-head bolt into a t-nut already set in the panel; screw-on holds use several small screws. The general reference states the convention and states NO thread designation, so a thread may only enter this tree from a vendor document or a measurement."
 
-// A nominal envelope is a clearance box, never a datum. Vendors state hold sizes in fractional
-// inches; this carrier is integer millimetres, so any imperial nominal entering it has been
-// ROUNDED. Rounding a clearance box UP stays conservative — the part still fits inside what was
-// reserved — and rounding a datum in either direction silently moves a hole. Consumers may reserve
-// space with this and may not dimension from it.
-type HoldNominalEnvelope {
+// The source reading, preserved EXACTLY as the vendor states it. Vendors give hold sizes in
+// fractional inches; this tree's Millimeter is integer-valued, so every imperial nominal that
+// enters it is rounded. An earlier version of this module stored only the rounded result, which
+// silently destroyed the reading: 6-1/2 in became 166 mm and the 1/2 was gone, so no later reader
+// could tell a measured 166 from a rounded 165.1, and no one could re-check the conversion against
+// what the vendor actually said. A source value and a derived value are different facts and are
+// stored separately.
+type SourceLengthUnit = Inch | MillimetreExact
+
+type SourceNativeLength {
+  numerator: Nat
+  denominator: Nat
+  unit: SourceLengthUnit
+}
+
+type CatalogLengthReading {
+  value: SourceNativeLength
+  evidence: DimensionEvidence
+}
+
+// The DERIVED clearance box, and only that. It is named for what it may be used for, because the
+// previous name — HoldNominalEnvelope — invited exactly the misuse the rounding forbids: a reader
+// sees "nominal envelope" and dimensions from it. Rounding UP is conservative for reserving space
+// and wrong in both directions for a datum, so this type may reserve and may never dimension.
+type ClearanceEnvelopeDerivation
+  = RoundedUpFromSourceReading { source_note: NonEmptyStr }
+  | MeasuredWithMargin { receipt: NonEmptyStr }
+
+type ConservativeClearanceEnvelope {
   width_mm: Millimeter
   height_mm: Millimeter
   projection_mm: Millimeter
-  rounding_note: NonEmptyStr
+  derivation: ClearanceEnvelopeDerivation
   evidence: DimensionEvidence
 }
 
@@ -158,11 +194,16 @@ type HoldGraspKind
 
 type HoldGraspProfile {
   kind: HoldGraspKind
-  lip_width_mm: Millimeter
-  lip_thickness_mm: Millimeter
+  usable_internal_width: CatalogLengthReading
+  lip_thickness: CatalogLengthReading
   incut_note: NonEmptyStr
-  evidence: DimensionEvidence
 }
+
+// usable_internal_width replaces an earlier lip_width_mm, and the rename is a correction rather
+// than tidying. The earlier field recorded "5 in wide lip" from a search summary; the vendor page
+// distinguishes the LIP from the usable internal width, which is the smaller of the two and the
+// one a hand actually occupies. Storing the larger number under a name a reader takes for grip
+// room overstates the hold in the direction that matters for a two-handed carry.
 
 // Exact shape is stored as a content-addressed artifact and never as hand-authored vertices. A
 // mesh transcribed into this language would be thousands of unreviewable numbers whose agreement
@@ -180,20 +221,35 @@ type HoldShapeEvidence
     }
   | ShapeArtifactAbsent { obligation: NonEmptyStr }
 
-// SKU identity is its own standing because a brand plus a descriptive phrase is not an identity.
-// Two holds in one vendor's catalog can carry near-identical names and different geometry, and a
-// row that cannot say which one it means cannot be ordered.
-type SkuIdentityStanding
-  = SkuResolved { sku_code: NonEmptyStr, authority: ExternalAuthority }
-  | SkuAmbiguous { candidate_names: List<NonEmptyStr>, obligation: NonEmptyStr }
-  | SkuUnread { obligation: NonEmptyStr }
+// Product naming and orderable identity are TWO facts, and conflating them was a real error in the
+// first version of this module. That version recorded two observed name spellings as SkuAmbiguous
+// — asserting a genuine catalog fork between two orderable products. The names are the vendor's own
+// page title and a reversed-word-order restatement in its description: one product with a
+// marketing alias, not two SKUs. SkuAmbiguous is a strong claim about the vendor's catalog and it
+// was made from a wording difference.
+//
+// The separation below states only what is observed: a canonical page title, whatever aliases the
+// same page uses for itself, and a manufacturer SKU that stays unread until an actual order code
+// appears. SkuAmbiguous is not reintroduced, because "two names" is not evidence of "two products";
+// only two order codes are.
+type ProductSkuStanding
+  = ProductSkuObserved { value: NonEmptyStr, authority: ExternalAuthority }
+  | ProductSkuUnread { obligation: NonEmptyStr }
+
+type ProductNameStanding {
+  canonical_page_title: NonEmptyStr
+  marketing_aliases: List<NonEmptyStr>
+  manufacturer_sku: ProductSkuStanding
+}
 
 type ClimbingHoldCatalogRow {
-  product_name: NonEmptyStr
-  sku_identity: SkuIdentityStanding
+  naming: ProductNameStanding
   material: HoldMaterial
   fixation: HoldFixationInterface
-  envelope: HoldNominalEnvelope
+  source_width: CatalogLengthReading
+  source_height: CatalogLengthReading
+  source_projection: CatalogLengthReading
+  clearance_envelope: ConservativeClearanceEnvelope
   grasp: HoldGraspProfile
   shape: HoldShapeEvidence
 }
@@ -210,11 +266,21 @@ fn hold_may_render_silhouette(row: ClimbingHoldCatalogRow) -> Bool {
   }
 }
 
-// Whether the row's mounting interface is complete enough to place a fastener. This is the
-// question the retracted reasoning got wrong, and it is deliberately INDEPENDENT of shape: a hold
-// whose silhouette is unknown can still be drilled for, because the drill point is the frame
-// origin and the frame does not depend on the sculpt.
-fn hold_fixation_is_placeable(row: ClimbingHoldCatalogRow) -> Bool {
+// NARROWED, and the old name was an overclaim. This previously read hold_fixation_is_placeable,
+// which says the hold can be PLACED — and a thread plus a flat face establishes nothing of the
+// kind. Real placement on a panel also needs the anti-rotation location, bolt length, T-nut and
+// backing geometry, panel thickness, rear hardware clearance, edge distance, interference with
+// board, cable and cleat, grasp clearance, and the actual envelope. What a thread and a flat face
+// DO establish is narrower and still worth having: the primary bolt axis can be located, so the
+// drill point is known.
+//
+// The distinction matters because the broad name would have re-run the original error in the
+// opposite direction. The retracted reasoning deleted the hold by treating "cannot be drawn" as
+// "cannot be placed". A function called placeable that ignores collision and clearance would have
+// let the hold be treated as fully sited while its shape was still unknown — the same conflation,
+// now flattering instead of damning. Shape is unnecessary for naming the axis and NECESSARY for
+// collision, grasp clearance and silhouette.
+fn hold_mounting_axis_is_locatable(row: ClimbingHoldCatalogRow) -> Bool {
   let thread_known = match row.fixation.primary_bolt_thread {
     ImperialUncThread { designation: _ } => true
     MetricCoarseThread { designation: _ } => true
@@ -242,8 +308,20 @@ fn dimension_evidence_is_spendable(evidence: DimensionEvidence) -> Bool {
   }
 }
 
-fn hold_envelope_is_spendable(row: ClimbingHoldCatalogRow) -> Bool {
-  dimension_evidence_is_spendable(evidence: row.envelope.evidence)
+// Clearance is a SEPARATE readiness from axis location, and it is the one that needs a real
+// envelope. A hold whose bolt axis is known but whose size is a search summary can be drilled for
+// and cannot be checked against the board keep-out, the cleat, the cables or a hand.
+fn hold_clearance_is_admissible(row: ClimbingHoldCatalogRow) -> Bool {
+  dimension_evidence_is_spendable(evidence: row.clearance_envelope.evidence)
+}
+
+// The lift role is the strictest of the three and depends on BOTH a complete mounting stack and a
+// proof-load receipt against the exact assembly. Neither exists, and catalog data can never supply
+// the second: a vendor's climbing-wall standing is evidence about a different load path.
+fn hold_lift_role_is_admissible(row: ClimbingHoldCatalogRow, proof_load_receipt_held: Bool) -> Bool {
+  hold_mounting_axis_is_locatable(row: row)
+    && hold_clearance_is_admissible(row: row)
+    && proof_load_receipt_held
 }
 
 data climbing_hold_scope_note: NonEmptyStr = "This module models holds as purchasable parts. It says nothing about whether a hold is fit for any particular load, and a vendor's climbing-wall standing does not transfer to another use: loading direction, cycle count, panel stock, edge distance and failure consequence all differ. A consumer carrying a hold outside climbing owes its own qualification receipt."
