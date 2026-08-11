@@ -68,7 +68,7 @@ import product.placement_supply { HostIdentity }
 // workflow is hand-applying (operator ruling, 2026-08-10).
 data multi_principal_probe_hosts: List<String> = ["srv3", "srv4", "srv5", "srv6"]
 
-data multi_principal_probe_principals: List<String> = ["ubuntu", "briansrls", "ghrunner", "root"]
+data multi_principal_probe_principals: List<String> = ["ubuntu", "briansrls", "ghrunner", "root", "gunbc-automation"]
 
 data fleet_multi_principal_probe_receipt_path: String = "target/fleet-multi-principal-probe-receipt.txt"
 

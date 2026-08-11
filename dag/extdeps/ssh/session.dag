@@ -87,6 +87,27 @@ service ssh.Session {
     }
   }
 
+  operation ExecPortableWordsWithStdin {
+    input { argv: List<String>, stdin_payload: String }
+    output {
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [argv]
+      stdin: stdin_payload
+    }
+    exit {
+      0 => Unit
+      nonzero => String "ssh portable-words exec with stdin failed"
+    }
+    mock_response {
+      0 => { exit_code: 0, success: true, stdout: "mock-ssh-portable-words-stdin", stderr: "" } "hermetic"
+    }
+  }
+
   operation ExecScript {
     input { host: NonEmptyStr, script: String }
     output {
@@ -156,6 +177,16 @@ fn ssh_session_exec_argv(host: NonEmptyStr, argv: List<String>) -> SshSessionExe
 
 fn ssh_session_exec_portable_words(argv: List<String>) -> SshSessionExecResult {
   let result = ssh.Session.ExecPortableWords(argv: argv)
+  ssh_session_exec_result_from_service(
+    exit_code: result.exit_code,
+    success: result.success,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  )
+}
+
+fn ssh_session_exec_portable_words_with_stdin(argv: List<String>, stdin_payload: String) -> SshSessionExecResult {
+  let result = ssh.Session.ExecPortableWordsWithStdin(argv: argv, stdin_payload: stdin_payload)
   ssh_session_exec_result_from_service(
     exit_code: result.exit_code,
     success: result.success,
