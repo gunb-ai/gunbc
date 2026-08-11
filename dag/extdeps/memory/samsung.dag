@@ -13,13 +13,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data lrdimm_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "en.wikipedia.org/wiki/Registered_memory"
-  }
-}
-
 data stick_capacity_bytes: ByteSize = byte_size(34359738368)
 
 // Part-number decode, each axis landing on the field that already models it rather
