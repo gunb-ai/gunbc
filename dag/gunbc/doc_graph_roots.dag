@@ -1475,6 +1475,25 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the falsifier-build→falsifier job split merges to main (P0 cgroup hygiene landed) AND Class B witness root-cause is landed on its carrier with the five named witnesses green on the falsifier cadence — then surviving facts migrate to DESIGN open-thread or a registered gunbc.plan.Plan row and this bind deletes with the doc.") },
   },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "v2-frontend-std-ingestion-frontier",
+    primary_work: DeclarationRef { module_path: "v2.compiler.normalize", decl_name: "normalize", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "v2.compiler.parse", decl_name: "parse_module", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.compiler.tokenize", decl_name: "lex_walk_artifact", field: WholeDeclaration },
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the measured frontier closes: the v2 frontend ingests the std substrate modules this receipt records as rejecting, at each of the three stages it attributes them to — normalize's retention-then-rejection contract violation first, then the lex and parse gaps — and the per-module stage-and-reason table describes shipped behaviour rather than a standing frontier, at which point the receipt and this bind delete together. Registered at subject grain: the bound declarations are the three frontend stages whose movement would make the table false, not every module its rows name.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
+    slug: "four-lane-closeout-and-root",
+    primary_work: DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "five_minute_ci_gate_program_note", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "gunbc.ci_workflow_expressions", decl_name: "ci_concurrency_group", field: WholeDeclaration },
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the six findings this note records outlive their archived lanes only until each has a carrier of its own: the rejected_with_pending diagnostic-order defect, the entry-vs-member position divergence, the three-entrypoint admission divergence, the standing section 4c population that makes a full-corpus compile exit 1, the floor-gated deploy, and the run_id concurrency key. When each is either fixed or carried as a typed row, the note is a historical account and deletes with this bind. It is registered rather than deleted today because four sessions were archived holding these measurements and nothing else records them — but a cross-lane status narrative is the parallel-ledger shape DESIGN section 6 warns about, so its home is a question for the operator, not a settled one.") },
+  },
 ]
 
 fn hand_authored_doc_graph_roots() -> List<String> {
