@@ -23,12 +23,14 @@ import std.realization_schedule {
   CorpusWitnessKind,
   ExecutionWitnessKind,
   NativeBundleWitnessKind,
-  schedule_witness_entry_eq,
 }
 import v2.workflow.floor_discovery {
   FloorDiscoveryRequest,
   floor_discovery_request_identity,
 }
+import v2.std.algebra { list_reverse }
+import v2.std.collection { Map, group_by }
+import v2.std.optional { Absent, Present }
 
 data prepared_floor_subject_authority_note: String = "The prepared floor subject is an opaque semantic identity over the exact discovery request, selected witness identities, and the existing std.materialization_provider ResolveClosureRequest keys. It deliberately does NOT carry MultiEntryIndex or any other compiler container. ProviderProbe is the host read-back seam and provider_serve remains the one request/artifact binding authority. A miss, damaged artifact, incomplete artifact, wrong key, wrong content, or wrong hash family remains the corresponding typed ProviderLookup inside PreparedFloorProviderRefused. There is no cold-construction or fallback arm. SequentialChildProcess may therefore realize this identity as verified materialized resolved-closure artifacts while SharedWalkProcess may realize it as live capabilities; neither realization changes the semantic identity. FIRST CONSUMER: the scoped-witness population named by ROADMAP ci-scoped-worker-shared-substrate. The old scoped cold constructor may delete only after that consumer can serve every exact selected identity through this contract."
 
@@ -160,26 +162,53 @@ fn prepared_claim_subject_identity(
   }
 }
 
-fn prepared_floor_entry_requests_for_witness(
+data no_prepared_floor_entry_requests: List<PreparedFloorEntryRequest> = []
+data no_prepared_floor_entry_probes: List<PreparedFloorEntryProbe> = []
+
+type PreparedFloorIdentityIndex {
+  selected: Map<ScheduleWitnessEntry, List<PreparedFloorEntryRequest>>
+  probes: Map<ScheduleWitnessEntry, List<PreparedFloorEntryProbe>>
+}
+
+fn prepared_floor_identity_index(
   selected: List<PreparedFloorEntryRequest>,
+  probes: List<PreparedFloorEntryProbe>,
+) -> PreparedFloorIdentityIndex {
+  PreparedFloorIdentityIndex {
+    selected: group_by(xs: selected, key_fn: fn(entry) { entry.witness }),
+    probes: group_by(xs: probes, key_fn: fn(entry) { entry.witness }),
+  }
+}
+
+fn prepared_floor_entry_requests_for_witness(
+  index: PreparedFloorIdentityIndex,
   witness: ScheduleWitnessEntry,
 ) -> List<PreparedFloorEntryRequest> {
-  selected |> filter(entry => schedule_witness_entry_eq(a: entry.witness, b: witness))
+  match index.selected.lookup(witness) {
+    Present { value: entries } => entries
+    Absent => no_prepared_floor_entry_requests
+  }
 }
 
 fn prepared_floor_probes_for_witness(
-  probes: List<PreparedFloorEntryProbe>,
+  index: PreparedFloorIdentityIndex,
   witness: ScheduleWitnessEntry,
 ) -> List<PreparedFloorEntryProbe> {
-  probes |> filter(entry => schedule_witness_entry_eq(a: entry.witness, b: witness))
+  match index.probes.lookup(witness) {
+    Present { value: probes } => probes
+    Absent => no_prepared_floor_entry_probes
+  }
 }
+
+data prepared_floor_identity_index_cost_law: String = "THE SELECTED/PROBE JOIN IS INDEXED ON THE EXISTING ScheduleWitnessEntry IDENTITY. The former duplicate, missing, unexpected, and serve lookups filtered an entire population once per row, so preparing n witnesses performed quadratic identity comparisons before any artifact could be served. One multiplicity-preserving group_by per side produces the exact buckets all five consumers need: duplicate checks retain every duplicate row in input order; missing and unexpected checks ask whether the opposite bucket is empty; serving reads the already-proven singleton probe bucket. There is no digest-key shortcut and therefore no collision state — the map key is ScheduleWitnessEntry itself, whose structural equality is the same entry/function/kind grain as schedule_witness_entry_eq."
 
 fn prepared_floor_duplicate_selected_identities(
   selected: List<PreparedFloorEntryRequest>,
+  index: PreparedFloorIdentityIndex,
 ) -> List<ScheduleWitnessEntry> {
   selected
     |> filter(entry => prepared_floor_entry_requests_for_witness(
-      selected: selected,
+      index: index,
       witness: entry.witness,
     ).count() > 1)
     |> map(entry => entry.witness)
@@ -187,10 +216,11 @@ fn prepared_floor_duplicate_selected_identities(
 
 fn prepared_floor_duplicate_probe_identities(
   probes: List<PreparedFloorEntryProbe>,
+  index: PreparedFloorIdentityIndex,
 ) -> List<ScheduleWitnessEntry> {
   probes
     |> filter(entry => prepared_floor_probes_for_witness(
-      probes: probes,
+      index: index,
       witness: entry.witness,
     ).count() > 1)
     |> map(entry => entry.witness)
@@ -198,23 +228,23 @@ fn prepared_floor_duplicate_probe_identities(
 
 fn prepared_floor_missing_probe_identities(
   selected: List<PreparedFloorEntryRequest>,
-  probes: List<PreparedFloorEntryProbe>,
+  index: PreparedFloorIdentityIndex,
 ) -> List<ScheduleWitnessEntry> {
   selected
     |> filter(entry => prepared_floor_probes_for_witness(
-      probes: probes,
+      index: index,
       witness: entry.witness,
     ).count() == 0)
     |> map(entry => entry.witness)
 }
 
 fn prepared_floor_unexpected_probe_identities(
-  selected: List<PreparedFloorEntryRequest>,
   probes: List<PreparedFloorEntryProbe>,
+  index: PreparedFloorIdentityIndex,
 ) -> List<ScheduleWitnessEntry> {
   probes
     |> filter(entry => prepared_floor_entry_requests_for_witness(
-      selected: selected,
+      index: index,
       witness: entry.witness,
     ).count() == 0)
     |> map(entry => entry.witness)
@@ -226,7 +256,7 @@ type PreparedFloorServeFold
 
 fn prepared_floor_serve_one(
   request: PreparedFloorSubjectRequest,
-  probes: List<PreparedFloorEntryProbe>,
+  index: PreparedFloorIdentityIndex,
   state: PreparedFloorServeFold,
   entry: PreparedFloorEntryRequest,
 ) -> PreparedFloorServeFold {
@@ -234,7 +264,7 @@ fn prepared_floor_serve_one(
     PreparedFloorServeStopped { cause: c } => PreparedFloorServeStopped { cause: c }
     PreparedFloorServeContinue { entries: entries } => {
       let probe = prepared_floor_probes_for_witness(
-        probes: probes,
+        index: index,
         witness: entry.witness,
       ).first().probe
       match provider_serve(
@@ -246,10 +276,10 @@ fn prepared_floor_serve_one(
       ) {
         ProviderHit { artifact: artifact, identity: _ } =>
           PreparedFloorServeContinue {
-            entries: concat(entries, [PreparedFloorEntryArtifact {
+            entries: concat([PreparedFloorEntryArtifact {
               witness: entry.witness,
               artifact: artifact,
-            }]),
+            }], entries),
           }
         other => PreparedFloorServeStopped {
           cause: PreparedFloorProviderRefused {
@@ -262,14 +292,29 @@ fn prepared_floor_serve_one(
   }
 }
 
+data prepared_floor_serve_accumulator_cost_law: String = "THE SERVE FOLD PREPENDS AND REVERSES ONCE. Right-appending one artifact to the growing prefix copied the accumulated list on every selected witness, making the success path quadratic even after identity lookup was indexed. prepared_floor_serve_one now conses the singleton artifact before the accumulator; prepared_floor_subject_serve reverses exactly once at the successful boundary so PreparedFloorSubjectReady.entries remains in selected-request order. The exact_prepared_artifact_set_serves control observes that order and reds if the terminal reverse is removed."
+
 fn prepared_floor_subject_serve(
   request: PreparedFloorSubjectRequest,
   probes: List<PreparedFloorEntryProbe>,
 ) -> PreparedFloorSubjectServe {
-  let duplicate_selected = prepared_floor_duplicate_selected_identities(selected: request.selected)
-  let duplicate_probes = prepared_floor_duplicate_probe_identities(probes: probes)
-  let missing = prepared_floor_missing_probe_identities(selected: request.selected, probes: probes)
-  let unexpected = prepared_floor_unexpected_probe_identities(selected: request.selected, probes: probes)
+  let index = prepared_floor_identity_index(selected: request.selected, probes: probes)
+  let duplicate_selected = prepared_floor_duplicate_selected_identities(
+    selected: request.selected,
+    index: index,
+  )
+  let duplicate_probes = prepared_floor_duplicate_probe_identities(
+    probes: probes,
+    index: index,
+  )
+  let missing = prepared_floor_missing_probe_identities(
+    selected: request.selected,
+    index: index,
+  )
+  let unexpected = prepared_floor_unexpected_probe_identities(
+    probes: probes,
+    index: index,
+  )
   if duplicate_selected.count() > 0 {
     PreparedFloorSubjectRefused {
       cause: PreparedFloorDuplicateSelectedIdentities { duplicates: duplicate_selected }
@@ -291,14 +336,14 @@ fn prepared_floor_subject_serve(
       init: PreparedFloorServeContinue { entries: [] },
       f: (state, entry) => prepared_floor_serve_one(
         request: request,
-        probes: probes,
+        index: index,
         state: state,
         entry: entry,
       )
     ) {
       PreparedFloorServeContinue { entries: entries } => PreparedFloorSubjectReady {
         identity: prepared_claim_subject_identity(request: request),
-        entries: entries,
+        entries: list_reverse(xs: entries),
       }
       PreparedFloorServeStopped { cause: cause } => PreparedFloorSubjectRefused { cause: cause }
     }
