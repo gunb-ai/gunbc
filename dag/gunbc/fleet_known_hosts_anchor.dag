@@ -1,6 +1,6 @@
 module gunbc.fleet_known_hosts_anchor
 
-import std.types { String, Bool, List, NonEmptyStr }
+import std.types { String, Bool, List, NonEmptyStr, PathSegment, path_segment_is_safe }
 import std.algebra { trim }
 import std.resources { Network }
 import std.content_hash {
@@ -80,8 +80,27 @@ type KnownHostsAnchor sole_constructor {
 // -- and the caller is the only party that knows what an attempt IS here (a CI job, a dispatched
 // convergence, one operator invocation). Making it explicit also keeps it out of ambient state,
 // which is the failure the whole anchor exists to close.
-type FleetSshAttemptIdentity {
-  value: NonEmptyStr
+//
+// IT IS A PATH SEGMENT, and the earlier revision wrapping a bare NonEmptyStr in a record was the
+// nicknaming defect: a record field named `value` carrying a String says nothing the String did not
+// already say, so it minted a second name for a concept without grounding it. What the value
+// actually IS is decided by its use -- it is concatenated into target/fleet-ssh-attempt-<id>/ -- so
+// as a bare string it was neither path-safe nor wire-safe, and an attempt id containing a slash or a
+// `..` would have escaped the directory that is supposed to be its ownership boundary. This is the
+// same grounding gunbc.merge_admission_subject WalkAttemptId already reached for the same reason,
+// and reaching for it a second way rather than reusing the shape would itself be the fork.
+//
+// fleet_ssh_attempt_identity is the only constructor and REFUSES rather than sanitizing: a caller
+// whose attempt id is unsafe has a naming problem this module cannot resolve on their behalf, and
+// quietly rewriting it would hand back an identity that is not the one they hold.
+type FleetSshAttemptIdentity = PathSegment where brand("FleetSshAttemptIdentity")
+
+fn fleet_ssh_attempt_identity(raw: String) -> FleetSshAttemptIdentity? {
+  if path_segment_is_safe(raw: raw) {
+    Present { value: raw as FleetSshAttemptIdentity }
+  } else {
+    none
+  }
 }
 
 // The sole mint, admitted to exactly one production declaration. Sealing matters here for the same
@@ -169,7 +188,7 @@ fn fleet_known_hosts_registry_identity() -> ContentHash {
 // The filename carries the registry digest, so the path is a claim the readback then verifies.
 fn fleet_known_hosts_anchor_path(attempt: FleetSshAttemptIdentity) -> NonEmptyStr {
   join([
-    "target/fleet-ssh-attempt-", attempt.value as String,
+    "target/fleet-ssh-attempt-", attempt as String,
     "/known-hosts-", serialize_content_hash(hash: fleet_known_hosts_registry_identity()) as String,
   ], "") as NonEmptyStr
 }
@@ -228,7 +247,7 @@ func materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> K
               concat(
                 [join([
                   "known-hosts-anchor path=", path as String,
-                  " attempt=", attempt.value as String, " identity=", serialize_content_hash(hash: registry_identity) as String,
+                  " attempt=", attempt as String, " identity=", serialize_content_hash(hash: registry_identity) as String,
                   " rows=", to_string(length(fleet_host_key_enrollments)), "\n",
                 ], "")],
                 map(fleet_host_key_enrollments, k => join([
