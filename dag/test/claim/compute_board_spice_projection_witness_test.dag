@@ -1,7 +1,6 @@
 module test.claim.compute_board_spice_projection_witness
 
 import std.types { String, List }
-import std.nat { Nat }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import v2.extdeps.formats.spice { Ground }
@@ -22,7 +21,7 @@ import product.compute_board.spice_projection {
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-fn list_count<T>(xs: List<T>) -> Nat {
+fn list_count<T>(xs: List<T>) -> Int {
   fold(xs, init: 0, f: (acc, _) => acc + 1)
 }
 
@@ -89,20 +88,20 @@ fn slice_with(elements: List<SliceElement>) -> BoardSlice {
   BoardSlice { title: "standby rail slice", source: rail_source(), elements: elements }
 }
 
-// POSITIVE CONTROL, ON THE PROJECTED NETLIST STRUCTURE. It asserts the deck actually built —
-// one source statement plus one statement per element — rather than that the projected arm was
-// reached, because reaching an arm proves the match and nothing about its content.
+// POSITIVE CONTROL ON THE PROJECTED NETLIST STRUCTURE — one source statement plus one per
+// element. It asserts the deck was built, not merely that the projected arm was reached.
 //
-// WHY THIS DOES NOT ASSERT EMITTED BYTES, stated rather than quietly scoped: a byte-level
-// control was written first and could not run, because v2.extdeps.formats.spice's spice_emit
-// returns an unwrapped Optional variant where its signature declares String. It reproduces on
-// that module's own constructors with no code from this lane involved — a fifteen-line deck of
-// one resistor emits a value that string_contains rejects as a Variant, on both the empty-title
-// and non-empty-title paths, and an `as String` cast does not change it. That is a defect in
-// the emitter, not in this projection, and repairing another module's emit path inside this
-// change would bury it. The byte-exact receipt is therefore OWED, not delivered: this lane
-// claims a structurally correct deck and a proven refusal wall, and claims nothing about the
-// text SPICE would receive.
+// WHY NOT ON EMITTED BYTES, stated precisely because an earlier revision of this file got the
+// diagnosis wrong TWICE. The first attempt blamed spice_emit outright. The second blamed this
+// lane for passing a native list literal where the module wants its Cons/Empty free monoid —
+// which was a real bug here and is fixed — and then claimed the byte receipt was therefore
+// available. It is not. What execution actually shows: v2.extdeps.formats.spice's OWN golden
+// fixture, spice_rc_tran_deck, emits correctly through spice_emit_ngspice inside its own test
+// (both its witnesses pass, untouched), and that SAME fixture returns a value string_contains
+// rejects as a Variant when spice_emit is called on it FROM THIS MODULE. Same input, same
+// function, different calling module, different result. So the boundary is cross-module, not
+// the deck and not the emitter's logic — which is a materially different and more serious
+// finding than either earlier description, and it is not repaired here.
 test fn w_modelled_slice_projects_expected_statement_count() -> Bool {
   match project_slice_to_spice(slice: slice_with(elements: [modelled_resistor(), modelled_capacitor()])) {
     SpiceSliceProjected { netlist: n } => list_count(xs: n.body) == 3

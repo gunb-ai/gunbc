@@ -1,6 +1,7 @@
 module product.compute_board.spice_projection
 
 import std.types { String, NonEmptyStr, List }
+import std.algebra { Cons, Empty }
 import extdeps.external_authority { ExternalAuthority }
 import v2.std.node { Symbol }
 import v2.extdeps.formats.spice {
@@ -19,7 +20,7 @@ import v2.extdeps.formats.spice {
   spice_emit,
 }
 
-data spice_projection_note: String = "A SPICE DECK AS A PROJECTION OF A SELECTED BOARD SLICE, NOT AS THE BOARD. SPICE is appropriate for regulator and power-tree behaviour, startup and sequencing slices, supervisory circuits, termination networks, and power-integrity experiments where models exist; it is NOT the manufacturing netlist and not a simulation of a whole motherboard. THE WALL THIS MODULE EXISTS FOR: a simulation carries model provenance, so an element whose vendor model this repository does not hold REFUSES the projection instead of receiving a generic ideal part. That substitution is the tempting move and it is the worst available one — an ideal capacitor in place of a real one produces a plausible waveform, so the deficit disappears into a result that looks like evidence. A NOTE ON THE EMITTER THIS FEEDS: v2.extdeps.formats.spice's spice_emit answers the empty string when its body fold yields Absent, which is an absorbing arm in that module rather than a refusal. This projection therefore refuses BEFORE emission and never depends on the emitter's failure behaviour to report a problem; the emitter's own arm is a separate finding on a separate module and is not repaired here."
+data spice_projection_note: String = "A SPICE DECK AS A PROJECTION OF A SELECTED BOARD SLICE, NOT AS THE BOARD. SPICE is appropriate for regulator and power-tree behaviour, startup and sequencing slices, supervisory circuits, termination networks, and power-integrity experiments where models exist; it is NOT the manufacturing netlist and not a simulation of a whole motherboard. THE WALL THIS MODULE EXISTS FOR: a simulation carries model provenance, so an element whose vendor model this repository does not hold REFUSES the projection instead of receiving a generic ideal part. That substitution is the tempting move and it is the worst available one — an ideal capacitor in place of a real one produces a plausible waveform, so the deficit disappears into a result that looks like evidence. A NOTE ON THE EMITTER THIS FEEDS, WITH ITS DIAGNOSIS CORRECTED TWICE: this lane first reported spice_emit as returning an unwrapped Optional, then re-reported the cause as its own native-list-versus-free-monoid bug. The list bug was real and is fixed here. The remaining fact is narrower and stranger: the spice module's own golden fixture emits correctly inside the module's own test, and the same fixture through spice_emit called from ANOTHER module yields a value string_contains rejects as a Variant. The seam is cross-module, it is not this projection's, and it is not repaired here. This projection refuses BEFORE emission regardless, so it never depends on the emitter's failure behaviour to report a problem."
 
 // Whether an element may enter a simulation at all. There are exactly two states and the
 // absent one is a typed refusal cause, not a default: the difference between 'the vendor
@@ -106,10 +107,31 @@ fn source_component(s: SliceSource) -> Component {
   }
 }
 
+// The deck body is v2.extdeps.formats.spice's Cons/Empty free monoid, NOT a native list
+// literal. That distinction is load-bearing and cost this lane a false finding: an earlier
+// revision built the body with [ ... ], the module's fold_list did not fold it, and the
+// resulting value reached string_contains as a Variant — which was written up as a defect in
+// spice_emit. It is not one. spice_emit works on its own constructors, as its existing
+// ngspice golden test proves by execution. The real fact is the model-realization list fork
+// DESIGN's open threads already track, and the correct response was to build the carrier the
+// module actually consumes.
+//
+// Two linear passes rather than one, deliberately: folding the elements directly onto the
+// source produces the deck reversed, and reversing once at the end is linear where appending
+// per element would be quadratic.
+fn statements_reversed(slice: BoardSlice) -> List<DeckStatement> {
+  fold(
+    slice.elements,
+    init: Cons { head: DeckComponent { component: source_component(s: slice.source) }, tail: Empty },
+    f: fn(acc, e) { Cons { head: DeckComponent { component: element_component(e: e) }, tail: acc } }
+  )
+}
+
 fn slice_statements(slice: BoardSlice) -> List<DeckStatement> {
-  append(
-    [DeckComponent { component: source_component(s: slice.source) }],
-    items: slice.elements |> map(e => DeckComponent { component: element_component(e: e) })
+  fold_list(
+    xs: statements_reversed(slice: slice),
+    empty: Empty,
+    cons: fn(acc, x) { Cons { head: x, tail: acc } }
   )
 }
 

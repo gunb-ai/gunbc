@@ -1,7 +1,6 @@
 module test.claim.compute_board_readiness_witness
 
 import std.types { NonEmptyStr, List }
-import std.nat { Nat }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.ipc.dpmx {
@@ -15,8 +14,7 @@ import extdeps.ipc.dpmx {
 }
 import extdeps.ucamco.gerber { gerber_semantic_carriage }
 import extdeps.cpu.ampere_altra_package {
-  AltraFcLga4926,
-  ContactMapPubliclyAvailableNotIngested,
+    ContactMapPubliclyAvailableNotIngested,
   ContactPopulationIncomplete,
   DuplicateContactDesignator,
   altra_pin_summary_total,
@@ -29,8 +27,9 @@ import extdeps.cpu.ampere_altra_package {
   PackageContactMapStanding,
   PowerSupplyContact,
   admit_package_contact_map,
-  altra_fclga_4926_contact_map_standing,
-  altra_fclga_4926_declared_contact_count,
+  altra_contact_map_standing,
+  altra_declared_contact_count,
+  altra_fclga_socket,
 }
 import product.compute_board.intent {
   Compute,
@@ -67,7 +66,7 @@ fn list_is_empty<T>(xs: List<T>) -> Bool {
   fold(xs, init: true, f: (acc, _) => false)
 }
 
-fn list_count<T>(xs: List<T>) -> Nat {
+fn list_count<T>(xs: List<T>) -> Int {
   fold(xs, init: 0, f: (acc, _) => acc + 1)
 }
 
@@ -81,7 +80,7 @@ fn contact(designator: NonEmptyStr) -> PackageContact {
 // test's name.
 fn three_contact_map() -> PackageContactMap {
   PackageContactMap {
-    family: AltraFcLga4926,
+    socket: altra_fclga_socket,
     contacts: [contact(designator: "A1"), contact(designator: "A2"), contact(designator: "A3")],
     authority: witness_authority,
   }
@@ -89,7 +88,7 @@ fn three_contact_map() -> PackageContactMap {
 
 fn duplicated_contact_map() -> PackageContactMap {
   PackageContactMap {
-    family: AltraFcLga4926,
+    socket: altra_fclga_socket,
     contacts: [contact(designator: "A1"), contact(designator: "A2"), contact(designator: "A1")],
     authority: witness_authority,
   }
@@ -114,7 +113,7 @@ test fn w_exact_population_admits() -> Bool {
 test fn w_stub_population_refuses_against_declared_package_count() -> Bool {
   match admit_package_contact_map(
     map: three_contact_map(),
-    expected: altra_fclga_4926_declared_contact_count
+    expected: altra_declared_contact_count()
   ) {
     ContactPopulationIncomplete { expected: e, resolved: r } => e == 4926 && r == 3
     _ => false
@@ -138,12 +137,12 @@ test fn w_duplicate_designator_refuses_at_correct_count() -> Bool {
 // while naming the wrong owner, and no amount of test discipline catches that. Only reading
 // the document did.
 test fn w_altra_contact_map_is_published_and_lands_in_design_family() -> Bool {
-  match altra_fclga_4926_contact_map_standing() {
+  match altra_contact_map_standing() {
     ContactMapPubliclyAvailableNotIngested { document: _, authority: _ } => {
       let readiness = board_readiness(
         intent: narrow_compute_node_intent,
         components: [],
-        contact_standing: altra_fclga_4926_contact_map_standing()
+        contact_standing: altra_contact_map_standing()
       )
       list_is_empty(xs: readiness.collateral) && !board_is_ready(r: readiness)
     }
@@ -173,7 +172,7 @@ test fn w_reference_board_collateral_remains_a_collateral_refusal() -> Bool {
 // which is the same total the product brief prints independently. Two documents agreeing is
 // what makes this a completeness authority rather than a transcribed number.
 test fn w_pin_summary_cross_foots_to_declared_package_count() -> Bool {
-  altra_pin_summary_total() == altra_fclga_4926_declared_contact_count
+  altra_pin_summary_total() == altra_declared_contact_count()
 }
 
 // An empty board leaves every contract capability unsatisfied. Ten requirements, ten holes:

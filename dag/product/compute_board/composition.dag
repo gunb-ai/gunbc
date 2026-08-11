@@ -1,7 +1,6 @@
 module product.compute_board.composition
 
 import std.types { String, NonEmptyStr, List }
-import std.nat { Nat }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.cpu.ampere_altra_package {
   ContactMapPubliclyAvailableNotIngested,
@@ -89,7 +88,7 @@ type DesignIncompleteRefusal
   = PublishedAuthorityNotIngested { document: NonEmptyStr }
   | RequiredCapabilityUnsatisfied { capability: BoardCapability }
   | UnearnedComponentPresent { designator: NonEmptyStr }
-  | PackageContactPopulationIncomplete { expected: Nat, resolved: Nat }
+  | PackageContactPopulationIncomplete { expected: Int, resolved: Int }
   | DuplicatePackageContact { designator: NonEmptyStr }
 
 type ManufacturingRefusal
