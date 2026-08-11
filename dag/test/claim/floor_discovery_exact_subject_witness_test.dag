@@ -1,7 +1,7 @@
 module test.claim.floor_discovery_exact_subject_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { CommitSha, List, String }
+import std.types { List, String }
 import std.execution_mode { ExecutionMode, Hermetic, Wet }
 import std.content_hash { Fnv1a64Structural, Sha1Digest, content_hash_atom }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId }
@@ -21,12 +21,33 @@ import v2.workflow.floor_discovery {
   floor_discovery_subject_bind,
   floor_discovery_request_bind,
   floor_discovery_request_identity,
+  floor_discovery_commit_id,
+  floor_discovery_tree_id,
+}
+import v2.workflow.floor_discovery_transport {
+  TransportNeedsTree,
+  TransportNeedsTrackedWorktree,
+  TransportNeedsUntrackedWorktree,
+  TransportNeedsPublication,
+  TransportRefused,
+  TransportReady,
+  CommitObserved,
+  TreeObserved,
+  TrackedWorktreeObserved,
+  UntrackedWorktreeObserved,
+  SnapshotPublished,
+  floor_discovery_transport_initialize,
+  floor_discovery_transport_observe,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data tested_commit: CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-data other_commit: CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+data tested_commit: GitObjectId = GitSha1ObjectId {
+  digest: Sha1Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+}
+data other_commit: GitObjectId = GitSha1ObjectId {
+  digest: Sha1Digest { hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+}
 
 data tested_tree: GitObjectId = GitSha1ObjectId {
   digest: Sha1Digest { hex: "1111111111111111111111111111111111111111" }
@@ -45,13 +66,13 @@ fn tool_identity() -> Fnv1a64Structural {
 }
 
 fn subject_fx(
-  commit: CommitSha,
+  commit: GitObjectId,
   tree: GitObjectId,
   roots: List<String>,
 ) -> FloorDiscoverySubject {
   FloorDiscoverySubject {
-    tested_commit: commit,
-    tested_tree: tree,
+    tested_commit: floor_discovery_commit_id(object_id: commit),
+    tested_tree: floor_discovery_tree_id(object_id: tree),
     source_roots: roots,
     execution_authority_source_roots: ["dag", "src/v2"],
     naming_authority_identity: naming_identity(),
@@ -201,6 +222,51 @@ test fn canonical_request_identity_matches_bootstrap_golden() -> Bool {
   floor_discovery_request_identity(request: canonical_request()).digest == "f8e90d00ba0ad7f8"
 }
 
+test fn transport_preserves_exact_subject_and_refuses_dirty_worktree() -> Bool {
+  let request = canonical_request()
+  let after_commit = floor_discovery_transport_observe(
+    state: floor_discovery_transport_initialize(request: request),
+    observation: CommitObserved { commit: floor_discovery_commit_id(object_id: tested_commit) },
+  )
+  let after_tree = floor_discovery_transport_observe(
+    state: after_commit,
+    observation: TreeObserved { tree: floor_discovery_tree_id(object_id: tested_tree) },
+  )
+  match floor_discovery_transport_observe(
+    state: after_tree,
+    observation: TrackedWorktreeObserved { matches_commit: false },
+  ) {
+    TransportRefused { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn transport_requires_clean_worktree_before_publication() -> Bool {
+  let request = canonical_request()
+  let s0 = floor_discovery_transport_initialize(request: request)
+  let s1 = floor_discovery_transport_observe(
+    state: s0,
+    observation: CommitObserved { commit: floor_discovery_commit_id(object_id: tested_commit) },
+  )
+  let s2 = floor_discovery_transport_observe(
+    state: s1,
+    observation: TreeObserved { tree: floor_discovery_tree_id(object_id: tested_tree) },
+  )
+  let s3 = floor_discovery_transport_observe(
+    state: s2,
+    observation: TrackedWorktreeObserved { matches_commit: true },
+  )
+  let s4 = floor_discovery_transport_observe(
+    state: s3,
+    observation: UntrackedWorktreeObserved { paths: [] },
+  )
+  let s5 = floor_discovery_transport_observe(state: s4, observation: SnapshotPublished)
+  match s5 {
+    TransportReady => true
+    _ => false
+  }
+}
+
 test fn all_floor_discovery_exact_subject_controls_hold() -> Bool {
   exact_subject_binds()
     && wrong_commit_refuses_at_commit_coordinate()
@@ -212,4 +278,6 @@ test fn all_floor_discovery_exact_subject_controls_hold() -> Bool {
     && exact_request_binds()
     && commit_and_tree_each_move_request_identity()
     && canonical_request_identity_matches_bootstrap_golden()
+    && transport_preserves_exact_subject_and_refuses_dirty_worktree()
+    && transport_requires_clean_worktree_before_publication()
 }

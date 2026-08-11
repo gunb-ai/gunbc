@@ -1,0 +1,148 @@
+module v2.workflow.floor_discovery_transport
+
+import std.types { Bool, List, String }
+import extdeps.git.object_store { git_object_id_eq }
+import v2.workflow.floor_discovery {
+  FloorDiscoveryCommitId,
+  FloorDiscoveryTreeId,
+  FloorDiscoveryRequest,
+  FloorDiscoverySubjectBinding,
+}
+import v2.std.optional { Absent, Present }
+
+data floor_discovery_transport_authority_note: String = "The transport is a host-effect boundary, not a second discovery implementation. It sequences the existing typed Git/filesystem observations and hands their results to v2.workflow.floor_discovery; it owns neither request identity nor snapshot semantics. A missing, mismatched, or damaged observation stops the transport with a located refusal. There is deliberately no recompute arm. The current Rust snapshot module is the transitional realization of this state machine; generated host-effect transport dissolves that mirror when this state machine is generated and its verified artifact is consumed directly."
+
+type FloorDiscoveryTransportAction
+  = ObserveSelectedCommit
+  | ObserveSelectedTree { commit: FloorDiscoveryCommitId }
+  | ObserveTrackedWorktree { commit: FloorDiscoveryCommitId }
+  | ObserveUntrackedWorktree { tree: FloorDiscoveryTreeId }
+  | PublishVerifiedSnapshot { request: FloorDiscoveryRequest }
+
+type FloorDiscoveryTransportObservation
+  = CommitObserved { commit: FloorDiscoveryCommitId }
+  | TreeObserved { tree: FloorDiscoveryTreeId }
+  | TrackedWorktreeObserved { matches_commit: Bool }
+  | UntrackedWorktreeObserved { paths: List<String> }
+  | SnapshotPublished
+  | TransportObservationRefused { cause: String }
+
+type FloorDiscoveryTransportRefusal
+  = TransportCommitMismatch { expected: FloorDiscoveryCommitId, observed: FloorDiscoveryCommitId }
+  | TransportTreeMismatch { expected: FloorDiscoveryTreeId, observed: FloorDiscoveryTreeId }
+  | TransportTrackedWorktreeDirty
+  | TransportUntrackedWorktree { path: String }
+  | TransportSubjectRefused { cause: FloorDiscoverySubjectBinding }
+  | TransportObservationRefusalCause { cause: String }
+
+type FloorDiscoveryTransportState
+  = TransportNeedsCommit { request: FloorDiscoveryRequest }
+  | TransportNeedsTree { request: FloorDiscoveryRequest }
+  | TransportNeedsTrackedWorktree { request: FloorDiscoveryRequest }
+  | TransportNeedsUntrackedWorktree { request: FloorDiscoveryRequest }
+  | TransportNeedsPublication { request: FloorDiscoveryRequest }
+  | TransportRefused { cause: FloorDiscoveryTransportRefusal }
+  | TransportReady
+
+fn floor_discovery_transport_initialize(
+  request: FloorDiscoveryRequest,
+) -> FloorDiscoveryTransportState {
+  TransportNeedsCommit { request: request }
+}
+
+fn floor_discovery_transport_next(
+  state: FloorDiscoveryTransportState,
+) -> FloorDiscoveryTransportAction? {
+  match state {
+    TransportNeedsCommit { request: _ } => Present { value: ObserveSelectedCommit }
+    TransportNeedsTree { request: request } =>
+      Present { value: ObserveSelectedTree { commit: request.subject.tested_commit } }
+    TransportNeedsTrackedWorktree { request: request } =>
+      Present { value: ObserveTrackedWorktree { commit: request.subject.tested_commit } }
+    TransportNeedsUntrackedWorktree { request: request } =>
+      Present { value: ObserveUntrackedWorktree { tree: request.subject.tested_tree } }
+    TransportNeedsPublication { request: request } =>
+      Present { value: PublishVerifiedSnapshot { request: request } }
+    TransportRefused { cause: _ } => Absent
+    TransportReady => Absent
+  }
+}
+
+fn floor_discovery_transport_observe(
+  state: FloorDiscoveryTransportState,
+  observation: FloorDiscoveryTransportObservation,
+) -> FloorDiscoveryTransportState {
+  match state {
+    TransportNeedsCommit { request: request } => match observation {
+      CommitObserved { commit: observed } => {
+        if git_object_id_eq(left: observed.object_id, right: request.subject.tested_commit.object_id) {
+          TransportNeedsTree { request: request }
+        } else {
+          TransportRefused {
+            cause: TransportCommitMismatch {
+              expected: request.subject.tested_commit,
+              observed: observed,
+            }
+          }
+        }
+      }
+      TransportObservationRefused { cause: cause } =>
+        TransportRefused { cause: TransportObservationRefusalCause { cause: cause } }
+      _ => TransportRefused {
+        cause: TransportObservationRefusalCause { cause: "commit observation arrived in the wrong phase" }
+      }
+    }
+    TransportNeedsTree { request: request } => match observation {
+      TreeObserved { tree: observed } => {
+        if git_object_id_eq(left: observed.object_id, right: request.subject.tested_tree.object_id) {
+          TransportNeedsTrackedWorktree { request: request }
+        } else {
+          TransportRefused {
+            cause: TransportTreeMismatch {
+              expected: request.subject.tested_tree,
+              observed: observed,
+            }
+          }
+        }
+      }
+      TransportObservationRefused { cause: cause } =>
+        TransportRefused { cause: TransportObservationRefusalCause { cause: cause } }
+      _ => TransportRefused {
+        cause: TransportObservationRefusalCause { cause: "tree observation arrived in the wrong phase" }
+      }
+    }
+    TransportNeedsTrackedWorktree { request: request } => match observation {
+      TrackedWorktreeObserved { matches_commit: true } =>
+        TransportNeedsUntrackedWorktree { request: request }
+      TrackedWorktreeObserved { matches_commit: false } =>
+        TransportRefused { cause: TransportTrackedWorktreeDirty }
+      TransportObservationRefused { cause: cause } =>
+        TransportRefused { cause: TransportObservationRefusalCause { cause: cause } }
+      _ => TransportRefused {
+        cause: TransportObservationRefusalCause { cause: "tracked worktree observation arrived in the wrong phase" }
+      }
+    }
+    TransportNeedsUntrackedWorktree { request: request } => match observation {
+      UntrackedWorktreeObserved { paths: paths } => match paths.first() {
+        Present { value: path } =>
+          TransportRefused { cause: TransportUntrackedWorktree { path: path } }
+        Absent => TransportNeedsPublication { request: request }
+      }
+      TransportObservationRefused { cause: cause } =>
+        TransportRefused { cause: TransportObservationRefusalCause { cause: cause } }
+      _ => TransportRefused {
+        cause: TransportObservationRefusalCause { cause: "untracked worktree observation arrived in the wrong phase" }
+      }
+    }
+    TransportNeedsPublication { request: request } => match observation {
+      SnapshotPublished => TransportReady
+      TransportObservationRefused { cause: cause } =>
+        TransportRefused { cause: TransportObservationRefusalCause { cause: cause } }
+      _ => TransportRefused {
+        cause: TransportObservationRefusalCause { cause: "publication observation arrived in the wrong phase" }
+      }
+    }
+    TransportRefused { cause: cause } => TransportRefused { cause: cause }
+    TransportReady => TransportReady
+  }
+}

@@ -1,6 +1,6 @@
 module test.claim.floor_preparation_witness
 
-import std.types { Bool, CommitSha, List, String }
+import std.types { Bool, List, String }
 import std.content_hash { Fnv1a64Structural, Sha1Digest, content_hash_atom }
 import std.execution_mode { Hermetic }
 import std.measure { byte_size }
@@ -25,6 +25,8 @@ import std.materialization_provider {
 import v2.workflow.floor_discovery {
   FloorDiscoverySubject,
   FloorDiscoveryRequest,
+  floor_discovery_commit_id,
+  floor_discovery_tree_id,
 }
 import v2.workflow.floor_preparation {
   ResolveSelectedClosuresV1,
@@ -43,7 +45,9 @@ import v2.workflow.floor_preparation {
   prepared_floor_subject_serve,
 }
 
-data tested_commit: CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data tested_commit: GitObjectId = GitSha1ObjectId {
+  digest: Sha1Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+}
 
 data tested_tree: GitObjectId = GitSha1ObjectId {
   digest: Sha1Digest { hex: "1111111111111111111111111111111111111111" }
@@ -52,8 +56,8 @@ data tested_tree: GitObjectId = GitSha1ObjectId {
 fn discovery_request() -> FloorDiscoveryRequest {
   FloorDiscoveryRequest {
     subject: FloorDiscoverySubject {
-      tested_commit: tested_commit,
-      tested_tree: tested_tree,
+      tested_commit: floor_discovery_commit_id(object_id: tested_commit),
+      tested_tree: floor_discovery_tree_id(object_id: tested_tree),
       source_roots: ["dag", "src/v2"],
       execution_authority_source_roots: ["dag", "src/v2"],
       naming_authority_identity: content_hash_atom(value: "floor-preparation-naming-fixture"),
