@@ -404,6 +404,15 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "v2-frontend-std-ingestion-frontier",
+    primary_work: DeclarationRef { module_path: "v2.compiler.normalize", decl_name: "normalize", field: WholeDeclaration },
+    additional_works: [
+
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the frontier this receipt measures is closed and the rows describe shipped ingestion rather than a measured gap; the row deletes with the document. Bound to normalize at subject grain because that is the terminal stage of the measured chain and where the majority of the rejections it records land — the tokenize and parse gaps it also names are reached through the same run. Registered when the document was found unreachable from every doc-graph root: it landed in gunbc#8114 without a binding, and the only prose naming it does so inside a code span rather than a markdown link, so no doc reaches it either.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "four-lane-closeout-and-root",
     primary_work: DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "five_minute_ci_gate_program_note", field: WholeDeclaration },
     additional_works: [
