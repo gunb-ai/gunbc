@@ -146,8 +146,17 @@ data witness_row_cost_migration_disclosure_site: CensusedEmitSite = CensusedEmit
   marker: "[witness-row-cost-migration-disclosure]" as NonEmptyStr,
   source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
   disposition: CountedFrontierSite {
-    reason: "per-floor-pass mandatory-migration disclosure lines (gunbc.witness_row_cost's migration threshold gate) — per-row verdict plus a worst-5 summary, mirroring witness_row_cost_drift_site's shape; still a raw tag family" as NonEmptyStr,
+    reason: "falsifier-cadence mandatory-migration disclosure lines (gunbc.witness_row_cost's migration threshold gate) — the per-row verdict body is cadence-scoped exactly as witness_row_cost_site/witness_row_cost_drift_site are, and the per-PR floor keeps only the worst-5 rows plus the [receipt] summary naming the TSV; still a raw tag family. DESCRIPTION CORRECTED: this row previously read 'per-floor-pass ... per-row verdict plus a worst-5 summary', which described the pre-#8126 behavior where all 8,614 rows printed on every floor run; the row was not updated when the emit was gated, so the census described a cadence the seed no longer had" as NonEmptyStr,
     dissolution: unbound_dissolution(description: "fold into ObservationEvent-native emission once the disclosure speaks the observation vocabulary, same trigger as witness_row_cost_site/witness_row_cost_drift_site")
+  }
+}
+
+data compile_clean_cost_drift_site: CensusedEmitSite = CensusedEmitSite {
+  marker: "[compile-clean-cost-drift]" as NonEmptyStr,
+  source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
+  disposition: CountedFrontierSite {
+    reason: "falsifier-cadence compile-clean leg cost drift lines (gunbc.ci_spec gunbc_ci_compile_clean_clamp_note's per-row 2x comparator) — cadence-scoped body, per-PR keeps the [receipt] summary naming the TSV; still a raw tag family. ROSTER HOLE CLOSED: this family and its sibling [compile-clean-cost] were LIVE tags that never appeared on this roster at all, which observation_emit_roster_completeness_note's bidirectional rule forbids — every known live tag family must be rostered, not only the reverse. They escaped because the roster is manually enumerated, which is the same 'a new tag can escape unless somebody remembers' gap the completeness scaffold declares. [compile-clean-cost] needs no row: #8126 deleted its emit outright once the floor-receipts artifact gave the TSV a transport" as NonEmptyStr,
+    dissolution: unbound_dissolution(description: "fold into ObservationEvent-native drift emission, same trigger as witness_row_cost_drift_site; the cadence gate itself dissolves earlier, when falsifier.yml gains the floor-receipts upload ci.yml now carries and the log stops being machine-data transport")
   }
 }
 
@@ -176,6 +185,7 @@ data observation_emit_roster: List<CensusedEmitSite> = [
   witness_row_cost_site,
   witness_row_cost_drift_site,
   witness_row_cost_migration_disclosure_site,
+  compile_clean_cost_drift_site,
   selection_degradation_site
 ]
 
