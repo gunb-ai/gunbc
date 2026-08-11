@@ -37,7 +37,9 @@ import v2.std.collection { List }
 import v2.std.live_read {
   LiveReadSelectionProjection,
   LiveReadSelectionClassified,
-  LiveReadSelectionRefused
+  LiveReadSelectionRefused,
+  LocalRead,
+  RuntimeRead
 }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -89,5 +91,40 @@ test fn specimen_classifies_as_runtime_read() -> Bool {
     LiveReadSelectionClassified { classification: c } =>
       classification_has_runtime_read(classification: c)
     LiveReadSelectionRefused { cause: _ } => false
+  }
+}
+
+// THE DISCRIMINATING HALF OF THE PAIR, and the reason one witness was not enough.
+// specimen_classifies_as_runtime_read is false in TWO states that are opposites on
+// the safety axis: Classified{LocalRead}, which is the strongest safe-to-skip verdict
+// the selection seam has and is therefore the harm, and Refused, which is fail-closed
+// and licenses nothing. A single Bool cannot separate them, so on its own the
+// UNDER-selection claim would rest on the note beside it — and no Accepted program can
+// read a note (DESIGN 4c). This claim carries the other bit, so the pair has a unique
+// signature per reachable state:
+//
+//   Classified{LocalRead}   -> (false, false)  today; both red, so the red is agreement
+//   Classified{RuntimeRead} -> (true,  true)   after the traversal repair; both rows delete
+//   Refused{cause}          -> (false, true)   this claim greens ALONE
+//
+// That third row is why the polarity is worth the second evaluation: a drift from
+// LocalRead to Refused is a real change of state with a different remedy, and it would
+// otherwise be invisible because the first claim stays red either way. Greening alone
+// makes it a StaleKnownRed refusal against its own admission row, which is the loud,
+// typed, located signal the floor already knows how to route.
+//
+// It is admitted expected-red rather than landing as an ordinary green witness because
+// it costs the same ~14s evaluation as its sibling, and the long-eval budget is coupled
+// to expected-red across today's population (exact_witness_admission_witness_test
+// every_declared_long_budget_row_is_also_expected_red_today). Asserting the desired
+// state keeps this inside that population instead of retiring that claim.
+test fn specimen_does_not_classify_as_local_read() -> Bool {
+  match specimen_projection() {
+    LiveReadSelectionClassified { classification: c } =>
+      match c {
+        LocalRead => false
+        RuntimeRead { carriers: _ } => true
+      }
+    LiveReadSelectionRefused { cause: _ } => true
   }
 }
