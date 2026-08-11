@@ -4,9 +4,16 @@ import std.types { String, NonEmptyStr, List }
 
 data digital_control_note: String = "THE BOARD'S DIGITAL CONTROL INTENT, LANGUAGE-NEUTRAL BY CONSTRUCTION. This is what a board-management interlock DOES, expressed as signals and equations; it names no target language and carries no target syntax. There is no body_lexeme here and no place to put one: an equation is a tree over signal references and boolean operators, so 'assign power_permit = conditioned_good & ~fault;' cannot be authored at this layer — it can only be DERIVED by a projection that owns Verilog spelling. THE REASON THIS MATTERS more than it looks: the moment a target string can be written in the intent, the intent stops being the authority and becomes a container for pre-rendered output, and every other projection of the same board silently disagrees with it. SIGNAL IDENTITY IS A BRANDED NAME, not a substrate Symbol, and that is a deliberate departure from how v2.extdeps.formats.spice does it. That module carries a hand-written Symbol-to-spelling table covering exactly r1/c1/v1/n1/n2, because the substrate offers no general projection from a Symbol to its text — so anything it emits is bounded by a five-entry lookup nobody can extend without editing the language module. A branded identifier carries its own spelling, is validated at construction, and needs no such table."
 
-// A signal name that is legal to render into a hardware description language. Validity is
-// checked where the identifier is built, so an unrenderable name cannot reach a projection —
-// rather than being discovered by a serializer that then has to decide what to do about it.
+// A LOGICAL signal identity. It is a nominal brand and nothing more, and an earlier revision of
+// this comment claimed otherwise — it said validity was checked at construction so an
+// unrenderable name could not reach a projection. That was false: `where brand(...)` is the same
+// naming brand the corpus uses for CacheInterfaceId and ArtifactKindId, and it validates nothing.
+// A space, a newline or a target keyword constructs one fine.
+//
+// The correction is not to bolt a predicate onto this type, because target legality is not a
+// property of a logical signal at all: a name legal in Verilog may be illegal elsewhere. Identity
+// and target spelling are separate facts, joined per target — see the binding table in
+// product.compute_board.verilog_projection, which is where Verilog lexical admission belongs.
 type SignalName = NonEmptyStr where brand("SignalName")
 
 type SignalDirection

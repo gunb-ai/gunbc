@@ -77,31 +77,68 @@ type ComponentInstance {
   provisions: List<CapabilityProvision>
 }
 
+// THE WILDCARD ARMS ARE GONE, and that is not tidiness. `_ => 0` on a closed coproduct means a
+// provision variant added later contributes zero to every quantity silently — the board would
+// simply under-count and still report a verdict. Exhausting the variants makes the addition a
+// typecheck failure at every projection that has to decide what the new provision contributes.
+
 fn provision_cores(p: CapabilityProvision) -> Nat {
   match p {
     ProvidesCores { cores: c } => hardware_thread_count_value(t: c)
-    _ => 0
+    ProvidesMemoryCapacity { capacity: _ } => 0
+    ProvidesNetworkPaths { paths: _ } => 0
+    ProvidesBootStoragePaths { paths: _ } => 0
+    ProvidesManagement { power_control: _, console: _, recovery: _ } => 0
+    ProvidesPowerBoundary => 0
+    ProvidesCoolingContract => 0
+    ProvidesFirmwareInterface { boot_flash: _, write_protect: _, recovery_path: _ } => 0
+    ProvidesManufactureAndBringUp { programming_surface: _, test_access: _ } => 0
+    ProvidesMechanicalEnvelope => 0
   }
 }
 
 fn provision_memory_bytes(p: CapabilityProvision) -> Nat {
   match p {
     ProvidesMemoryCapacity { capacity: c } => byte_size_count(b: c)
-    _ => 0
+    ProvidesCores { cores: _ } => 0
+    ProvidesNetworkPaths { paths: _ } => 0
+    ProvidesBootStoragePaths { paths: _ } => 0
+    ProvidesManagement { power_control: _, console: _, recovery: _ } => 0
+    ProvidesPowerBoundary => 0
+    ProvidesCoolingContract => 0
+    ProvidesFirmwareInterface { boot_flash: _, write_protect: _, recovery_path: _ } => 0
+    ProvidesManufactureAndBringUp { programming_surface: _, test_access: _ } => 0
+    ProvidesMechanicalEnvelope => 0
   }
 }
 
 fn provision_network_paths(p: CapabilityProvision) -> Nat {
   match p {
     ProvidesNetworkPaths { paths: n } => n
-    _ => 0
+    ProvidesCores { cores: _ } => 0
+    ProvidesMemoryCapacity { capacity: _ } => 0
+    ProvidesBootStoragePaths { paths: _ } => 0
+    ProvidesManagement { power_control: _, console: _, recovery: _ } => 0
+    ProvidesPowerBoundary => 0
+    ProvidesCoolingContract => 0
+    ProvidesFirmwareInterface { boot_flash: _, write_protect: _, recovery_path: _ } => 0
+    ProvidesManufactureAndBringUp { programming_surface: _, test_access: _ } => 0
+    ProvidesMechanicalEnvelope => 0
   }
 }
 
 fn provision_boot_paths(p: CapabilityProvision) -> Nat {
   match p {
     ProvidesBootStoragePaths { paths: n } => n
-    _ => 0
+    ProvidesCores { cores: _ } => 0
+    ProvidesMemoryCapacity { capacity: _ } => 0
+    ProvidesNetworkPaths { paths: _ } => 0
+    ProvidesManagement { power_control: _, console: _, recovery: _ } => 0
+    ProvidesPowerBoundary => 0
+    ProvidesCoolingContract => 0
+    ProvidesFirmwareInterface { boot_flash: _, write_protect: _, recovery_path: _ } => 0
+    ProvidesManufactureAndBringUp { programming_surface: _, test_access: _ } => 0
+    ProvidesMechanicalEnvelope => 0
   }
 }
 

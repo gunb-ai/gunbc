@@ -1,220 +1,184 @@
 module product.compute_board.spice_projection
 
 import std.types { String, NonEmptyStr, List }
-import std.algebra { Cons, Empty }
-import extdeps.external_authority { ExternalAuthority }
-import v2.std.node { Symbol }
-import v2.extdeps.formats.spice {
-  Capacitor,
-  Component,
-  DeckComponent,
-  DeckStatement,
-  Ground,
-  Named,
-  NamedNode,
-  NodeRef,
-  Resistor,
-  SpiceNetlist,
-  SpiceValue,
-  VoltageSource,
-  spice_emit,
+import std.nat { Nat }
+import std.measure { measure_count }
+import product.compute_board.analog {
+  AnalogCircuitIntent,
+  CapacitanceNanofarads,
+  ComponentInstanceIdentity,
+  ComponentModelBinding,
+  ElectricalComponentInstance,
+  ElectricalModelAbsent,
+  ElectricalModelCited,
+  ElectricalModelStanding,
+  IdealLumped,
+  IndependentVoltageSource,
+  VendorSubcircuit,
+  NetIdentity,
+  PassiveCapacitor,
+  PassiveResistor,
+  PotentialSourceVolts,
+  ResistanceKilohms,
+  net_of_terminal,
+  terminal_ref,
 }
 
-data spice_projection_note: String = "A SPICE DECK AS A PROJECTION OF A SELECTED BOARD SLICE, NOT AS THE BOARD. SPICE is appropriate for regulator and power-tree behaviour, startup and sequencing slices, supervisory circuits, termination networks, and power-integrity experiments where models exist; it is NOT the manufacturing netlist and not a simulation of a whole motherboard. THE WALL THIS MODULE EXISTS FOR: a simulation carries model provenance, so an element whose vendor model this repository does not hold REFUSES the projection instead of receiving a generic ideal part. That substitution is the tempting move and it is the worst available one — an ideal capacitor in place of a real one produces a plausible waveform, so the deficit disappears into a result that looks like evidence. A NOTE ON THE EMITTER THIS FEEDS, WITH ITS DIAGNOSIS CORRECTED TWICE: this lane first reported spice_emit as returning an unwrapped Optional, then re-reported the cause as its own native-list-versus-free-monoid bug. The list bug was real and is fixed here. The remaining fact is narrower and stranger: the spice module's own golden fixture emits correctly inside the module's own test, and the same fixture through spice_emit called from ANOTHER module yields a value string_contains rejects as a Variant. The seam is cross-module, it is not this projection's, and it is not repaired here. This projection refuses BEFORE emission regardless, so it never depends on the emitter's failure behaviour to report a problem."
-
-// Whether an element may enter a simulation at all. There are exactly two states and the
-// absent one is a typed refusal cause, not a default: the difference between 'the vendor
-// publishes a model and we cite it' and 'no model exists' is the difference between a result
-// and a guess.
-// The fidelity an element is modelled AT, which the previous revision left implicit and
-// thereby overclaimed. A SPICE passive written as "C1 n1 0 100n" IS an ideal lumped element:
-// it has no ESR, no ESL, no bias or temperature dependence. Citing a vendor model card and
-// then emitting that line does not deliver the vendor model — it delivers the ideal part while
-// the type says otherwise, which is precisely the substitution this module was written to
-// forbid, performed by the module itself.
-//
-// So fidelity is explicit and the unemittable arm REFUSES. A vendor subcircuit would have to
-// travel as a .SUBCKT or .MODEL binding, this projection emits neither, and until it does a
-// VendorSubcircuit element cannot be projected at all. That is a smaller capability honestly
-// bounded rather than a larger one asserted.
-type ModelFidelity
-  = IdealLumped
-  | VendorSubcircuit
-
-type ElectricalModelStanding
-  = ElectricalModelCited { model_card: NonEmptyStr, fidelity: ModelFidelity, authority: ExternalAuthority }
-  | ElectricalModelAbsent
-
-type PassiveKind
-  = ResistiveElement
-  | CapacitiveElement
-
-type SliceElement {
-  designator: Symbol
-  part: NonEmptyStr
-  kind: PassiveKind
-  n_plus: NodeRef
-  n_minus: NodeRef
-  value_lexeme: String
-  model: ElectricalModelStanding
-}
-
-type SliceSource {
-  designator: Symbol
-  node: NodeRef
-  value_lexeme: String
-}
-
-type BoardSlice {
-  title: String
-  source: SliceSource
-  elements: List<SliceElement>
-}
+data spice_projection_note: String = "SPICE AS A PROJECTION OF A LANGUAGE-NEUTRAL ANALOG INTENT. Every piece of SPICE spelling for this article lives in this module and nowhere upstream: the element letter, the node names, the reference node '0', and the magnitude SUFFIXES. That last one is the correction that mattered — an earlier revision carried value_lexeme: '10k' in the model, which is a SPICE spelling of a resistance, so the supposed authority was holding target syntax. The magnitude is now a typed measure and 'k' is derived here from the variant's declared scale. THE PRIOR SHAPE WAS WORSE THAN A STRAY STRING: the board article held a BoardSlice imported FROM this module, so the article depended on one of its own targets and 'the article feeds every interface' was true only because that interface had already decided what the article looked like. WHAT THIS MODULE REFUSES BEFORE EMITTING A BYTE: an element with no model binding at all, an element whose vendor model this profile cannot render, and a TERMINAL ON NO NET. That last refusal is not pedantry — a floating terminal and a grounded one are different circuits, and defaulting the first to the second emits a deck that simulates cleanly and describes a different board."
 
 type SpiceProjectionRefusal
   = ElectricalModelUnavailable { part: NonEmptyStr }
   | ModelFidelityNotEmittable { part: NonEmptyStr, model_card: NonEmptyStr }
+  | ComponentModelBindingMissing { part: NonEmptyStr }
+  | TerminalOnNoNet { part: NonEmptyStr }
+
+// The receipt carries the article identity, so an emission is traceable to the root that
+// produced it. Without this, two unrelated articles with equal extracted fields produce
+// indistinguishable output and 'one article feeds both projections' is a convention in a
+// witness rather than a property of the types.
+type SpiceEmissionReceipt {
+  source_article: NonEmptyStr
+  source: String
+}
 
 type SpiceProjection
-  = SpiceSliceProjected { netlist: SpiceNetlist }
+  = SpiceSliceProjected { receipt: SpiceEmissionReceipt }
   | SpiceSliceRefused { cause: SpiceProjectionRefusal }
 
-fn element_model_absent(e: SliceElement) -> Bool {
-  match e.model {
-    ElectricalModelAbsent => true
-    ElectricalModelCited { model_card: _, fidelity: _, authority: _ } => false
+fn element_letter(c: ElectricalComponentInstance) -> String {
+  match c.role {
+    PassiveResistor => "R"
+    PassiveCapacitor => "C"
+    IndependentVoltageSource => "V"
   }
 }
 
-fn element_unemittable_fidelity(e: SliceElement) -> NonEmptyStr? {
-  match e.model {
-    ElectricalModelAbsent => none
-    ElectricalModelCited { model_card: mc, fidelity: f, authority: _ } =>
+fn value_spelling(c: ElectricalComponentInstance) -> String {
+  match c.value {
+    ResistanceKilohms { magnitude: m } => concat(to_string(measure_count(m)), "k")
+    CapacitanceNanofarads { magnitude: m } => concat(to_string(measure_count(m)), "n")
+    PotentialSourceVolts { magnitude: m } => to_string(measure_count(m))
+  }
+}
+
+fn binding_for(bindings: List<ComponentModelBinding>, c: ElectricalComponentInstance) -> ElectricalModelStanding? {
+  fold(bindings, init: none, f: fn(acc, b) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        if (b.component as String) == (c.identity as String) { Present { value: b.standing } } else { none }
+    }
+  })
+}
+
+fn standing_refusal(c: ElectricalComponentInstance, s: ElectricalModelStanding) -> SpiceProjectionRefusal? {
+  match s {
+    ElectricalModelAbsent => Present { value: ElectricalModelUnavailable { part: c.part } }
+    ElectricalModelCited { model_card: mc, fidelity: f } =>
       match f {
         IdealLumped => none
-        VendorSubcircuit => Present { value: mc }
+        VendorSubcircuit => Present { value: ModelFidelityNotEmittable { part: c.part, model_card: mc } }
       }
   }
 }
 
-fn first_unemittable_element(elements: List<SliceElement>) -> SliceElement? {
-  fold(elements, init: none, f: fn(acc, e) {
-    match acc {
-      Present { value: found } => Present { value: found }
-      Absent =>
-        match element_unemittable_fidelity(e: e) {
-          Present { value: _ } => Present { value: e }
-          Absent => none
-        }
-    }
-  })
-}
-
-fn unemittable_model_card(e: SliceElement) -> NonEmptyStr {
-  match element_unemittable_fidelity(e: e) {
-    Present { value: mc } => mc
-    Absent => "unknown"
-  }
-}
-
-fn first_unmodelled_element(elements: List<SliceElement>) -> SliceElement? {
-  fold(elements, init: none, f: fn(acc, e) {
-    match acc {
-      Present { value: found } => Present { value: found }
-      Absent => if element_model_absent(e: e) { Present { value: e } } else { none }
-    }
-  })
-}
-
-fn element_component(e: SliceElement) -> Component {
-  match e.kind {
-    ResistiveElement =>
-      Resistor {
-        name: e.designator,
-        n_plus: e.n_plus,
-        n_minus: e.n_minus,
-        value: SpiceValue { lexeme: e.value_lexeme },
-      }
-    CapacitiveElement =>
-      Capacitor {
-        name: e.designator,
-        n_plus: e.n_plus,
-        n_minus: e.n_minus,
-        value: SpiceValue { lexeme: e.value_lexeme },
+fn terminals_are_netted(intent: AnalogCircuitIntent, c: ElectricalComponentInstance) -> Bool {
+  match net_of_terminal(intent: intent, t: terminal_ref(component: c.identity, terminal: c.positive_terminal)) {
+    Absent => false
+    Present { value: _ } =>
+      match net_of_terminal(intent: intent, t: terminal_ref(component: c.identity, terminal: c.negative_terminal)) {
+        Absent => false
+        Present { value: _ } => true
       }
   }
 }
 
-fn source_component(s: SliceSource) -> Component {
-  VoltageSource {
-    name: s.designator,
-    n_plus: s.node,
-    n_minus: Ground,
-    value: SpiceValue { lexeme: s.value_lexeme },
-  }
-}
-
-// The deck body is v2.extdeps.formats.spice's Cons/Empty free monoid, NOT a native list
-// literal. That distinction is load-bearing and cost this lane a false finding: an earlier
-// revision built the body with [ ... ], the module's fold_list did not fold it, and the
-// resulting value reached string_contains as a Variant — which was written up as a defect in
-// spice_emit. It is not one. spice_emit works on its own constructors, as its existing
-// ngspice golden test proves by execution. The real fact is the model-realization list fork
-// DESIGN's open threads already track, and the correct response was to build the carrier the
-// module actually consumes.
-//
-// Two linear passes rather than one, deliberately: folding the elements directly onto the
-// source produces the deck reversed, and reversing once at the end is linear where appending
-// per element would be quadratic.
-fn statements_reversed(slice: BoardSlice) -> List<DeckStatement> {
-  fold(
-    slice.elements,
-    init: Cons { head: DeckComponent { component: source_component(s: slice.source) }, tail: Empty },
-    f: fn(acc, e) { Cons { head: DeckComponent { component: element_component(e: e) }, tail: acc } }
-  )
-}
-
-fn slice_statements(slice: BoardSlice) -> List<DeckStatement> {
-  fold_list(
-    xs: statements_reversed(slice: slice),
-    empty: Empty,
-    cons: fn(acc, x) { Cons { head: x, tail: acc } }
-  )
-}
-
-// The projection. The refusal arm fires on the FIRST unmodelled element and names it by PART,
-// not by designator: the actionable fact is which device has no published model, and the same
-// part sitting at four designators is one procurement question, not four. That the substrate
-// offers no general Symbol-to-String projection (v2.extdeps.formats.spice carries a small
-// hand-written spelling table instead) is a real limitation of the emitter this feeds, and it
-// is why the part label is carried rather than derived from the designator.
-fn project_slice_to_spice(slice: BoardSlice) -> SpiceProjection {
-  match first_unmodelled_element(elements: slice.elements) {
-    Present { value: e } =>
-      SpiceSliceRefused {
-        cause: ElectricalModelUnavailable { part: e.part },
-      }
-    Absent =>
-      match first_unemittable_element(elements: slice.elements) {
-        Present { value: e } =>
-          SpiceSliceRefused {
-            cause: ModelFidelityNotEmittable { part: e.part, model_card: unemittable_model_card(e: e) },
-          }
+fn component_refusal(
+  intent: AnalogCircuitIntent,
+  bindings: List<ComponentModelBinding>,
+  c: ElectricalComponentInstance
+) -> SpiceProjectionRefusal? {
+  match binding_for(bindings: bindings, c: c) {
+    Absent => Present { value: ComponentModelBindingMissing { part: c.part } }
+    Present { value: s } =>
+      match standing_refusal(c: c, s: s) {
+        Present { value: r } => Present { value: r }
         Absent =>
-          SpiceSliceProjected {
-            netlist: SpiceNetlist { title: slice.title, body: slice_statements(slice: slice) },
+          if terminals_are_netted(intent: intent, c: c) {
+            none
+          } else {
+            Present { value: TerminalOnNoNet { part: c.part } }
           }
       }
   }
 }
 
-fn projected_deck_text(projection: SpiceProjection) -> String? {
-  match projection {
-    SpiceSliceProjected { netlist: n } => Present { value: spice_emit(netlist: n) }
-    SpiceSliceRefused { cause: _ } => none
+fn first_refusal(
+  intent: AnalogCircuitIntent,
+  bindings: List<ComponentModelBinding>
+) -> SpiceProjectionRefusal? {
+  fold(intent.components, init: none, f: fn(acc, c) {
+    match acc {
+      Present { value: r } => Present { value: r }
+      Absent => component_refusal(intent: intent, bindings: bindings, c: c)
+    }
+  })
+}
+
+// The reference net renders as SPICE node 0, and WHICH net is the reference is supplied by the
+// caller rather than inferred from a name. No net acquires reference status by being spelled
+// "gnd", which is the same discipline the bonding decomposition applies one layer up.
+fn node_spelling(
+  intent: AnalogCircuitIntent,
+  reference: NetIdentity,
+  c: ElectricalComponentInstance,
+  positive: Bool
+) -> String {
+  let t = if positive {
+    terminal_ref(component: c.identity, terminal: c.positive_terminal)
+  } else {
+    terminal_ref(component: c.identity, terminal: c.negative_terminal)
+  }
+  match net_of_terminal(intent: intent, t: t) {
+    Present { value: n } => if (n as String) == (reference as String) { "0" } else { n as String }
+    Absent => "0"
   }
 }
 
-fn named_node(name: Symbol) -> NodeRef {
-  Named { node: NamedNode { name: name } }
+fn component_line(intent: AnalogCircuitIntent, reference: NetIdentity, c: ElectricalComponentInstance) -> String {
+  concat(
+    concat(concat(element_letter(c: c), c.identity as String), " "),
+    concat(
+      concat(node_spelling(intent: intent, reference: reference, c: c, positive: true), " "),
+      concat(
+        concat(node_spelling(intent: intent, reference: reference, c: c, positive: false), " "),
+        value_spelling(c: c)
+      )
+    )
+  )
+}
+
+fn body_text(intent: AnalogCircuitIntent, reference: NetIdentity) -> String {
+  fold(intent.components, init: "", f: fn(acc, c) {
+    let line = component_line(intent: intent, reference: reference, c: c)
+    if acc == "" { line } else { concat(concat(acc, "\n"), line) }
+  })
+}
+
+fn project_analog_to_spice(
+  article_identity: NonEmptyStr,
+  intent: AnalogCircuitIntent,
+  bindings: List<ComponentModelBinding>,
+  reference: NetIdentity
+) -> SpiceProjection {
+  match first_refusal(intent: intent, bindings: bindings) {
+    Present { value: r } => SpiceSliceRefused { cause: r }
+    Absent =>
+      SpiceSliceProjected {
+        receipt: SpiceEmissionReceipt {
+          source_article: article_identity,
+          source: concat(concat(intent.title as String, "\n"), body_text(intent: intent, reference: reference)),
+        },
+      }
+  }
 }

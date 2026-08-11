@@ -1,220 +1,270 @@
 module test.claim.compute_board_spice_projection_witness
 
-import std.types { String, List }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import v2.extdeps.formats.spice { Ground, spice_emit }
-import product.compute_board.spice_projection {
-  BoardSlice,
-  CapacitiveElement,
+import std.types { String, NonEmptyStr, List }
+import std.measure { Measure }
+import product.compute_board.analog {
+  AnalogCircuitIntent,
+  CapacitanceNanofarads,
+  ComponentInstanceIdentity,
+  ComponentModelBinding,
+  ElectricalComponentInstance,
   ElectricalModelAbsent,
   ElectricalModelCited,
+  ElectricalNet,
   IdealLumped,
-  ModelFidelityNotEmittable,
+  IndependentVoltageSource,
+  NetIdentity,
+  PassiveCapacitor,
+  PassiveResistor,
+  PotentialSourceVolts,
+  ResistanceKilohms,
+  TerminalIdentity,
   VendorSubcircuit,
+  terminal_ref,
+}
+import product.compute_board.spice_projection {
+  ComponentModelBindingMissing,
   ElectricalModelUnavailable,
-  ResistiveElement,
-  SliceElement,
-  SliceSource,
+  ModelFidelityNotEmittable,
+  SpiceProjection,
   SpiceSliceProjected,
   SpiceSliceRefused,
-  named_node,
-  project_slice_to_spice,
-  projected_deck_text,
+  TerminalOnNoNet,
+  project_analog_to_spice,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// A SYNTHETIC fixture authority, deliberately unresolvable. An earlier revision cited Ucamco's
-// Gerber page as the electrical-model authority for a passive, which is a real page about an
-// unrelated subject — a fixture citation that reads as grounded and is not. Where a fixture
-// needs an authority-shaped value and no real authority is being claimed, the locator says so.
-data synthetic_fixture_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https,
-    locator: "example.invalid/synthetic-witness-fixture-not-a-real-model-authority"
-  }
+// SYNTHETIC FIXTURES, sized to the boundaries they cross and no larger. Nothing here is a
+// realistic-looking circuit chosen for verisimilitude: each fixture is the smallest one that
+// crosses exactly one modelled boundary, per the witness-cost rule.
+data fixture_identity: NonEmptyStr = "synthetic fixture rev 0"
+
+data rail_net: NetIdentity = "rail" as NetIdentity
+
+data return_net: NetIdentity = "rtn" as NetIdentity
+
+data sense_resistor: ElectricalComponentInstance = ElectricalComponentInstance {
+  identity: "sense" as ComponentInstanceIdentity,
+  part: "series sense resistor",
+  role: PassiveResistor,
+  positive_terminal: "1" as TerminalIdentity,
+  negative_terminal: "2" as TerminalIdentity,
+  value: ResistanceKilohms { magnitude: Measure { count: 10 } },
 }
 
-// Symbols are restricted to the spelling table v2.extdeps.formats.spice actually carries
-// (r1 / c1 / v1 / n1). That is a real bound on the emitter, so the fixture is sized to what
-// can be emitted rather than to what would look realistic — a larger deck would exercise no
-// further behaviour and would only be prettier.
-fn modelled_resistor() -> SliceElement {
-  SliceElement {
-    designator: ^r1,
-    part: "series sense resistor",
-    kind: ResistiveElement,
-    n_plus: named_node(name: ^n1),
-    n_minus: Ground,
-    value_lexeme: "10k",
-    model: ElectricalModelCited {
-      model_card: "ideal lumped passive at declared fidelity",
-      fidelity: IdealLumped,
-      authority: synthetic_fixture_authority,
+data decoupling_capacitor: ElectricalComponentInstance = ElectricalComponentInstance {
+  identity: "decap" as ComponentInstanceIdentity,
+  part: "bulk decoupling capacitor",
+  role: PassiveCapacitor,
+  positive_terminal: "1" as TerminalIdentity,
+  negative_terminal: "2" as TerminalIdentity,
+  value: CapacitanceNanofarads { magnitude: Measure { count: 100 } },
+}
+
+data rail_supply: ElectricalComponentInstance = ElectricalComponentInstance {
+  identity: "rail_src" as ComponentInstanceIdentity,
+  part: "standby rail source",
+  role: IndependentVoltageSource,
+  positive_terminal: "1" as TerminalIdentity,
+  negative_terminal: "2" as TerminalIdentity,
+  value: PotentialSourceVolts { magnitude: Measure { count: 12 } },
+}
+
+fn nets_for(components: List<ElectricalComponentInstance>) -> List<ElectricalNet> {
+  [
+    ElectricalNet {
+      identity: rail_net,
+      members: fold(components, init: [], f: fn(acc, c) {
+        append(acc, items: [terminal_ref(component: c.identity, terminal: c.positive_terminal)])
+      }),
     },
-  }
-}
-
-fn modelled_capacitor() -> SliceElement {
-  SliceElement {
-    designator: ^c1,
-    part: "bulk decoupling capacitor",
-    kind: CapacitiveElement,
-    n_plus: named_node(name: ^n1),
-    n_minus: Ground,
-    value_lexeme: "100n",
-    model: ElectricalModelCited {
-      model_card: "ideal lumped passive at declared fidelity",
-      fidelity: IdealLumped,
-      authority: synthetic_fixture_authority,
+    ElectricalNet {
+      identity: return_net,
+      members: fold(components, init: [], f: fn(acc, c) {
+        append(acc, items: [terminal_ref(component: c.identity, terminal: c.negative_terminal)])
+      }),
     },
+  ]
+}
+
+fn circuit_with(components: List<ElectricalComponentInstance>) -> AnalogCircuitIntent {
+  AnalogCircuitIntent {
+    title: "standby rail slice",
+    components: components,
+    nets: nets_for(components: components),
   }
 }
 
-fn unmodelled_capacitor() -> SliceElement {
-  SliceElement {
-    designator: ^c1,
-    part: "bulk decoupling capacitor",
-    kind: CapacitiveElement,
-    n_plus: named_node(name: ^n1),
-    n_minus: Ground,
-    value_lexeme: "100n",
-    model: ElectricalModelAbsent,
+fn ideal_binding(c: ElectricalComponentInstance) -> ComponentModelBinding {
+  ComponentModelBinding {
+    component: c.identity,
+    standing: ElectricalModelCited { model_card: "ideal lumped passive at declared fidelity", fidelity: IdealLumped },
   }
 }
 
-fn vendor_subcircuit_capacitor() -> SliceElement {
-  SliceElement {
-    designator: ^c1,
-    part: "bulk decoupling capacitor",
-    kind: CapacitiveElement,
-    n_plus: named_node(name: ^n1),
-    n_minus: Ground,
-    value_lexeme: "100n",
-    model: ElectricalModelCited {
-      model_card: "vendor ESR/ESL subcircuit",
-      fidelity: VendorSubcircuit,
-      authority: synthetic_fixture_authority,
-    },
+fn absent_binding(c: ElectricalComponentInstance) -> ComponentModelBinding {
+  ComponentModelBinding { component: c.identity, standing: ElectricalModelAbsent }
+}
+
+fn subcircuit_binding(c: ElectricalComponentInstance) -> ComponentModelBinding {
+  ComponentModelBinding {
+    component: c.identity,
+    standing: ElectricalModelCited { model_card: "vendor ESR/ESL subcircuit", fidelity: VendorSubcircuit },
   }
 }
 
-fn rail_source() -> SliceSource {
-  SliceSource { designator: ^v1, node: named_node(name: ^n1), value_lexeme: "12" }
-}
-
-fn slice_with(elements: List<SliceElement>) -> BoardSlice {
-  BoardSlice { title: "standby rail slice", source: rail_source(), elements: elements }
-}
-
-// POSITIVE CONTROL ON EMITTED BYTES — merge-bar item 7, delivered rather than owed.
-//
-// The three-attempt diagnosis behind this is kept because each wrong answer was more confident
-// than the last. (1) "spice_emit returns an unwrapped Optional." (2) "no, this lane passed a
-// native list where the module folds a Cons/Empty free monoid" — a real bug here, fixed, but
-// not the cause. (3) "the seam is cross-module: the module's own fixture works inside it and
-// fails from outside." Also wrong. The actual cause is two lines long: spice_text_concat was
-// defined as list_append, the FREE MONOID append, applied to String. String is not a free
-// monoid in the realization, so every concatenated result came back a Cons/Empty structure.
-// The builtin concat was always available. Fixed at the root in v2.extdeps.formats.spice, and
-// that module's own ngspice goldens still pass, so the repair is behaviour-preserving where it
-// already worked and behaviour-restoring where it did not.
-test fn w_modelled_slice_emits_expected_deck_bytes() -> Bool {
-  match project_slice_to_spice(slice: slice_with(elements: [modelled_resistor(), modelled_capacitor()])) {
-    SpiceSliceProjected { netlist: n } => {
-      let text = spice_emit(netlist: n)
-      string_contains(s: text, pattern: "standby rail slice")
-        && string_contains(s: text, pattern: "V1 n1 0 12")
-        && string_contains(s: text, pattern: "R1 n1 0 10k")
-        && string_contains(s: text, pattern: "C1 n1 0 100n")
-    }
-    SpiceSliceRefused { cause: _ } => false
-  }
-}
-
-// Ordering is a property of the deck, not an accident of the fold: the source line precedes the
-// element lines. A contains-only assertion cannot see this, which is why it is asserted as one
-// contiguous byte run.
-test fn w_emitted_deck_orders_source_before_elements() -> Bool {
-  match project_slice_to_spice(slice: slice_with(elements: [modelled_resistor(), modelled_capacitor()])) {
-    SpiceSliceProjected { netlist: n } =>
-      string_contains(s: spice_emit(netlist: n), pattern: "V1 n1 0 12\nR1 n1 0 10k\nC1 n1 0 100n")
-    SpiceSliceRefused { cause: _ } => false
-  }
-}
-
-// THE WALL. One element loses its model and the whole slice refuses, naming the part. The
-// forbidden behaviour is not an error message — it is a deck that still emits, with an ideal
-// part quietly standing in for the one we could not model.
-test fn w_unmodelled_element_refuses_and_emits_nothing() -> Bool {
-  let projection = project_slice_to_spice(
-    slice: slice_with(elements: [modelled_resistor(), unmodelled_capacitor()])
+fn project(
+  components: List<ElectricalComponentInstance>,
+  bindings: List<ComponentModelBinding>
+) -> SpiceProjection {
+  project_analog_to_spice(
+    article_identity: fixture_identity,
+    intent: circuit_with(components: components),
+    bindings: bindings,
+    reference: return_net
   )
-  match projection {
+}
+
+// POSITIVE CONTROL ON EMITTED BYTES, as full equality. A contains-check passes on a deck with an
+// extra element, a missing element, a reordered netlist or a wrong reference node — four
+// different circuits — so the whole deck is pinned as one contiguous string. The reference net
+// renders as node 0 because the CALLER named it, not because it is spelled "rtn".
+//
+// The three-attempt diagnosis behind this emission is kept because each wrong answer was more
+// confident than the last. (1) "spice_emit returns an unwrapped Optional." (2) "a native list
+// was passed where the module folds a Cons/Empty free monoid" — a real bug, fixed, not the
+// cause. (3) "the seam is cross-module." Also wrong. The actual cause was two lines:
+// spice_text_concat was defined as list_append, the FREE MONOID append, applied to String.
+test fn w_modelled_circuit_emits_expected_deck_bytes() -> Bool {
+  match project(
+    components: [rail_supply, sense_resistor, decoupling_capacitor],
+    bindings: [ideal_binding(c: rail_supply), ideal_binding(c: sense_resistor), ideal_binding(c: decoupling_capacitor)]
+  ) {
+    SpiceSliceProjected { receipt: r } =>
+      r.source == "standby rail slice\nVrail_src rail 0 12\nRsense rail 0 10k\nCdecap rail 0 100n"
+        && (r.source_article as String) == "synthetic fixture rev 0"
+    SpiceSliceRefused { cause: _ } => false
+  }
+}
+
+// PERTURB EXACTLY ONE TYPED VALUE and the deck must change. This is what makes the byte equality
+// above an oracle rather than a pinned constant: the emission is a function of the model.
+data perturbed_resistor: ElectricalComponentInstance = ElectricalComponentInstance {
+  identity: "sense" as ComponentInstanceIdentity,
+  part: "series sense resistor",
+  role: PassiveResistor,
+  positive_terminal: "1" as TerminalIdentity,
+  negative_terminal: "2" as TerminalIdentity,
+  value: ResistanceKilohms { magnitude: Measure { count: 47 } },
+}
+
+test fn w_one_perturbed_value_changes_the_deck() -> Bool {
+  match project(components: [perturbed_resistor], bindings: [ideal_binding(c: perturbed_resistor)]) {
+    SpiceSliceProjected { receipt: r } =>
+      r.source == "standby rail slice\nRsense rail 0 47k"
+        && r.source != "standby rail slice\nRsense rail 0 10k"
+    SpiceSliceRefused { cause: _ } => false
+  }
+}
+
+// THE WALL. One element loses its model and the whole projection refuses, naming the part. The
+// forbidden behaviour is not a missing error message — it is a deck that still emits, with an
+// ideal part quietly standing in for the one we could not model.
+test fn w_unmodelled_element_refuses_and_emits_nothing() -> Bool {
+  match project(
+    components: [sense_resistor, decoupling_capacitor],
+    bindings: [ideal_binding(c: sense_resistor), absent_binding(c: decoupling_capacitor)]
+  ) {
     SpiceSliceRefused { cause: c } =>
       match c {
-        ElectricalModelUnavailable { part: p } => {
-          let emitted = projected_deck_text(projection: projection)
-          p == "bulk decoupling capacitor" && match emitted { Absent => true, _ => false }
-        }
+        ElectricalModelUnavailable { part: p } => (p as String) == "bulk decoupling capacitor"
         ModelFidelityNotEmittable { part: _, model_card: _ } => false
+        ComponentModelBindingMissing { part: _ } => false
+        TerminalOnNoNet { part: _ } => false
       }
-    SpiceSliceProjected { netlist: _ } => false
+    SpiceSliceProjected { receipt: _ } => false
   }
 }
 
-// The discriminating pair: the SAME slice differing only in model standing must land on
-// opposite arms. Without this, the refusal claim above is satisfied by a projection that
-// refuses everything.
+// The discriminating pair: the SAME circuit differing only in model standing lands on opposite
+// arms. Without this, the refusal above is satisfied by a projection that refuses everything.
 test fn w_model_standing_alone_decides_the_arm() -> Bool {
-  let modelled = project_slice_to_spice(slice: slice_with(elements: [modelled_capacitor()]))
-  let unmodelled = project_slice_to_spice(slice: slice_with(elements: [unmodelled_capacitor()]))
-  match modelled {
-    SpiceSliceProjected { netlist: _ } =>
-      match unmodelled {
+  match project(components: [decoupling_capacitor], bindings: [ideal_binding(c: decoupling_capacitor)]) {
+    SpiceSliceProjected { receipt: _ } =>
+      match project(components: [decoupling_capacitor], bindings: [absent_binding(c: decoupling_capacitor)]) {
         SpiceSliceRefused { cause: _ } => true
-        SpiceSliceProjected { netlist: _ } => false
+        SpiceSliceProjected { receipt: _ } => false
       }
     SpiceSliceRefused { cause: _ } => false
   }
 }
 
-// THE OVERCLAIM THIS ARM CLOSES. A cited vendor subcircuit cannot be emitted by this
-// projection — it emits no .SUBCKT or .MODEL binding — so it REFUSES rather than emitting an
-// ideal "C1 n1 0 100n" line while the type claims a vendor model stands behind it. That
-// silent downgrade is the same substitution the absent-model wall forbids, and an earlier
-// revision performed it: admission checked only that a model card was PRESENT, and every
-// admitted element emitted as an ideal lumped part regardless.
+// A cited VENDOR SUBCIRCUIT cannot be emitted by this profile — it emits no .SUBCKT or .MODEL
+// binding — so it refuses rather than emitting an ideal line while the type claims a vendor
+// model stands behind it. That silent downgrade is the same substitution the absent-model wall
+// forbids, and an earlier revision performed it: admission checked only that a model card was
+// PRESENT, and every admitted element emitted as an ideal lumped part regardless.
 test fn w_vendor_subcircuit_refuses_rather_than_emitting_an_ideal_part() -> Bool {
-  match project_slice_to_spice(slice: slice_with(elements: [vendor_subcircuit_capacitor()])) {
+  match project(components: [decoupling_capacitor], bindings: [subcircuit_binding(c: decoupling_capacitor)]) {
     SpiceSliceRefused { cause: c } =>
       match c {
         ModelFidelityNotEmittable { part: p, model_card: mc } =>
-          p == "bulk decoupling capacitor" && mc == "vendor ESR/ESL subcircuit"
+          (p as String) == "bulk decoupling capacitor" && (mc as String) == "vendor ESR/ESL subcircuit"
         ElectricalModelUnavailable { part: _ } => false
+        ComponentModelBindingMissing { part: _ } => false
+        TerminalOnNoNet { part: _ } => false
       }
-    SpiceSliceProjected { netlist: _ } => false
+    SpiceSliceProjected { receipt: _ } => false
   }
 }
 
-// The three-way discrimination, asserted together: absent model, unemittable fidelity, and
-// emittable fidelity must land on three different outcomes. Any two collapsing is the defect.
-test fn w_three_model_standings_land_on_three_outcomes() -> Bool {
-  let absent = project_slice_to_spice(slice: slice_with(elements: [unmodelled_capacitor()]))
-  let subckt = project_slice_to_spice(slice: slice_with(elements: [vendor_subcircuit_capacitor()]))
-  let ideal = project_slice_to_spice(slice: slice_with(elements: [modelled_capacitor()]))
-  match absent {
-    SpiceSliceRefused { cause: ElectricalModelUnavailable { part: _ } } =>
-      match subckt {
-        SpiceSliceRefused { cause: ModelFidelityNotEmittable { part: _, model_card: _ } } =>
-          match ideal {
-            SpiceSliceProjected { netlist: _ } => true
-            _ => false
-          }
-        _ => false
+// NO BINDING AT ALL is its own arm, distinct from a binding that says the model is absent. The
+// first means nobody asked; the second means someone looked and there is none. Collapsing them
+// would make an omitted row read as a recorded negative result.
+test fn w_missing_binding_is_not_an_absent_model() -> Bool {
+  match project(components: [decoupling_capacitor], bindings: []) {
+    SpiceSliceRefused { cause: c } =>
+      match c {
+        ComponentModelBindingMissing { part: p } => (p as String) == "bulk decoupling capacitor"
+        ElectricalModelUnavailable { part: _ } => false
+        ModelFidelityNotEmittable { part: _, model_card: _ } => false
+        TerminalOnNoNet { part: _ } => false
       }
-    _ => false
+    SpiceSliceProjected { receipt: _ } => false
+  }
+}
+
+// A FLOATING TERMINAL AND A GROUNDED ONE ARE DIFFERENT CIRCUITS. The fixture nets only the
+// positive terminals, so the negative terminals sit on no net; the projection refuses rather
+// than defaulting them to the reference node and emitting a deck that simulates cleanly and
+// describes a different board.
+data floating_circuit: AnalogCircuitIntent = AnalogCircuitIntent {
+  title: "standby rail slice",
+  components: [sense_resistor],
+  nets: [
+    ElectricalNet {
+      identity: rail_net,
+      members: [terminal_ref(component: sense_resistor.identity, terminal: sense_resistor.positive_terminal)],
+    },
+  ],
+}
+
+test fn w_terminal_on_no_net_refuses_rather_than_defaulting_to_reference() -> Bool {
+  match project_analog_to_spice(
+    article_identity: fixture_identity,
+    intent: floating_circuit,
+    bindings: [ideal_binding(c: sense_resistor)],
+    reference: return_net
+  ) {
+    SpiceSliceRefused { cause: c } =>
+      match c {
+        TerminalOnNoNet { part: p } => (p as String) == "series sense resistor"
+        ElectricalModelUnavailable { part: _ } => false
+        ModelFidelityNotEmittable { part: _, model_card: _ } => false
+        ComponentModelBindingMissing { part: _ } => false
+      }
+    SpiceSliceProjected { receipt: _ } => false
   }
 }

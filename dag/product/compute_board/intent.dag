@@ -53,19 +53,28 @@ fn requirement_capability(r: CapabilityRequirement) -> BoardCapability {
   }
 }
 
-fn capability_eq(a: BoardCapability, b: BoardCapability) -> Bool {
-  match a {
-    Compute => match b { Compute => true, _ => false }
-    Memory => match b { Memory => true, _ => false }
-    Networking => match b { Networking => true, _ => false }
-    BootStorage => match b { BootStorage => true, _ => false }
-    Management => match b { Management => true, _ => false }
-    PowerBoundary => match b { PowerBoundary => true, _ => false }
-    CoolingContract => match b { CoolingContract => true, _ => false }
-    FirmwareInterface => match b { FirmwareInterface => true, _ => false }
-    DebugAndManufacture => match b { DebugAndManufacture => true, _ => false }
-    Mechanics => match b { Mechanics => true, _ => false }
+// Equality via ONE ordinal projection rather than a ten-by-ten nested match. The nested form
+// carried a wildcard arm per row, which meant a new capability compared unequal to everything
+// including itself in nine of them and nobody would hear about it. Here a new variant is a
+// typecheck failure in exactly one place, and equality is derived from the ordinal rather than
+// being restated per pair.
+fn capability_ordinal(c: BoardCapability) -> Int {
+  match c {
+    Compute => 0
+    Memory => 1
+    Networking => 2
+    BootStorage => 3
+    Management => 4
+    PowerBoundary => 5
+    CoolingContract => 6
+    FirmwareInterface => 7
+    DebugAndManufacture => 8
+    Mechanics => 9
   }
+}
+
+fn capability_eq(a: BoardCapability, b: BoardCapability) -> Bool {
+  capability_ordinal(c: a) == capability_ordinal(c: b)
 }
 
 type ComputeBoardIntent {
