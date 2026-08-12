@@ -12,6 +12,10 @@ data artifact_line_library: String = "\{\"reason\":\"compiler-artifact\",\"targe
 
 data artifact_line_empty_path: String = "\{\"reason\":\"compiler-artifact\",\"target\":\{\"name\":\"gunbc\",\"kind\":[\"bin\"]\},\"executable\":\"\"\}"
 
+data artifact_line_no_executable_member: String = "\{\"reason\":\"compiler-artifact\",\"target\":\{\"name\":\"gunbc\",\"kind\":[\"bin\"]\}\}"
+
+data artifact_line_executable_not_a_string: String = "\{\"reason\":\"compiler-artifact\",\"target\":\{\"name\":\"gunbc\",\"kind\":[\"bin\"]\},\"executable\":[\"/w/target/debug/gunbc\"]\}"
+
 data compiler_message_line: String = "\{\"reason\":\"compiler-message\",\"message\":\{\"rendered\":\"warning: unused\"\}\}"
 
 data build_script_line: String = "\{\"reason\":\"build-script-executed\",\"package_id\":\"libc 0.2\"\}"
@@ -73,8 +77,9 @@ test fn an_artifact_for_a_different_target_does_not_satisfy_the_request() -> Boo
     CargoArtifactSelected { executable: _ } => false
     CargoArtifactAmbiguous { target_name: _, count: _ } => false
     CargoArtifactWithoutExecutable { target_name: _ } => false
-    CargoArtifactExecutablePathEmpty { target_name: _ } => false
-    CargoArtifactExecutableNotAString { target_name: _ } => false
+    CargoArtifactExecutablePathEmpty { target_name: _, line_number: _ } => false
+    CargoArtifactExecutableNotAString { target_name: _, line_number: _ } => false
+    CargoMessageExecutableAbsent { line_number: _ } => false
     CargoMessageLineUnparseable { line_number: _ } => false
     CargoMessageLineNotAnObject { line_number: _ } => false
     CargoMessageReasonAbsent { line_number: _ } => false
@@ -95,8 +100,9 @@ test fn two_artifacts_for_one_target_refuse_instead_of_picking_one() -> Bool {
     CargoArtifactSelected { executable: _ } => false
     CargoArtifactAbsent { target_name: _ } => false
     CargoArtifactWithoutExecutable { target_name: _ } => false
-    CargoArtifactExecutablePathEmpty { target_name: _ } => false
-    CargoArtifactExecutableNotAString { target_name: _ } => false
+    CargoArtifactExecutablePathEmpty { target_name: _, line_number: _ } => false
+    CargoArtifactExecutableNotAString { target_name: _, line_number: _ } => false
+    CargoMessageExecutableAbsent { line_number: _ } => false
     CargoMessageLineUnparseable { line_number: _ } => false
     CargoMessageLineNotAnObject { line_number: _ } => false
     CargoMessageReasonAbsent { line_number: _ } => false
@@ -117,8 +123,9 @@ test fn a_null_executable_is_its_own_state_not_an_absence() -> Bool {
     CargoArtifactSelected { executable: _ } => false
     CargoArtifactAbsent { target_name: _ } => false
     CargoArtifactAmbiguous { target_name: _, count: _ } => false
-    CargoArtifactExecutablePathEmpty { target_name: _ } => false
-    CargoArtifactExecutableNotAString { target_name: _ } => false
+    CargoArtifactExecutablePathEmpty { target_name: _, line_number: _ } => false
+    CargoArtifactExecutableNotAString { target_name: _, line_number: _ } => false
+    CargoMessageExecutableAbsent { line_number: _ } => false
     CargoMessageLineUnparseable { line_number: _ } => false
     CargoMessageLineNotAnObject { line_number: _ } => false
     CargoMessageReasonAbsent { line_number: _ } => false
@@ -140,8 +147,9 @@ test fn an_unreadable_line_refuses_the_decode_and_names_its_line() -> Bool {
     CargoArtifactAbsent { target_name: _ } => false
     CargoArtifactAmbiguous { target_name: _, count: _ } => false
     CargoArtifactWithoutExecutable { target_name: _ } => false
-    CargoArtifactExecutablePathEmpty { target_name: _ } => false
-    CargoArtifactExecutableNotAString { target_name: _ } => false
+    CargoArtifactExecutablePathEmpty { target_name: _, line_number: _ } => false
+    CargoArtifactExecutableNotAString { target_name: _, line_number: _ } => false
+    CargoMessageExecutableAbsent { line_number: _ } => false
     CargoMessageLineNotAnObject { line_number: _ } => false
     CargoMessageReasonAbsent { line_number: _ } => false
     CargoMessageReasonNotAString { line_number: _ } => false
@@ -162,8 +170,9 @@ test fn a_message_carrying_no_reason_refuses() -> Bool {
     CargoArtifactAbsent { target_name: _ } => false
     CargoArtifactAmbiguous { target_name: _, count: _ } => false
     CargoArtifactWithoutExecutable { target_name: _ } => false
-    CargoArtifactExecutablePathEmpty { target_name: _ } => false
-    CargoArtifactExecutableNotAString { target_name: _ } => false
+    CargoArtifactExecutablePathEmpty { target_name: _, line_number: _ } => false
+    CargoArtifactExecutableNotAString { target_name: _, line_number: _ } => false
+    CargoMessageExecutableAbsent { line_number: _ } => false
     CargoMessageLineUnparseable { line_number: _ } => false
     CargoMessageLineNotAnObject { line_number: _ } => false
     CargoMessageReasonNotAString { line_number: _ } => false
@@ -184,8 +193,9 @@ test fn two_reason_members_on_one_line_refuse_instead_of_last_wins() -> Bool {
     CargoArtifactAbsent { target_name: _ } => false
     CargoArtifactAmbiguous { target_name: _, count: _ } => false
     CargoArtifactWithoutExecutable { target_name: _ } => false
-    CargoArtifactExecutablePathEmpty { target_name: _ } => false
-    CargoArtifactExecutableNotAString { target_name: _ } => false
+    CargoArtifactExecutablePathEmpty { target_name: _, line_number: _ } => false
+    CargoArtifactExecutableNotAString { target_name: _, line_number: _ } => false
+    CargoMessageExecutableAbsent { line_number: _ } => false
     CargoMessageLineUnparseable { line_number: _ } => false
     CargoMessageLineNotAnObject { line_number: _ } => false
     CargoMessageReasonAbsent { line_number: _ } => false
@@ -201,12 +211,13 @@ test fn an_empty_executable_path_refuses_rather_than_becoming_a_file_path() -> B
     lines: [artifact_line_empty_path, build_finished_line],
     target_name: "gunbc"
   ) {
-    CargoArtifactExecutablePathEmpty { target_name: t } => t == "gunbc"
+    CargoArtifactExecutablePathEmpty { target_name: t, line_number: n } => t == "gunbc" && n == 1
     CargoArtifactSelected { executable: _ } => false
     CargoArtifactAbsent { target_name: _ } => false
     CargoArtifactAmbiguous { target_name: _, count: _ } => false
     CargoArtifactWithoutExecutable { target_name: _ } => false
-    CargoArtifactExecutableNotAString { target_name: _ } => false
+    CargoArtifactExecutableNotAString { target_name: _, line_number: _ } => false
+    CargoMessageExecutableAbsent { line_number: _ } => false
     CargoMessageLineUnparseable { line_number: _ } => false
     CargoMessageLineNotAnObject { line_number: _ } => false
     CargoMessageReasonAbsent { line_number: _ } => false
@@ -243,8 +254,9 @@ test fn a_blank_line_inside_the_stream_still_refuses() -> Bool {
     CargoArtifactAbsent { target_name: _ } => false
     CargoArtifactAmbiguous { target_name: _, count: _ } => false
     CargoArtifactWithoutExecutable { target_name: _ } => false
-    CargoArtifactExecutablePathEmpty { target_name: _ } => false
-    CargoArtifactExecutableNotAString { target_name: _ } => false
+    CargoArtifactExecutablePathEmpty { target_name: _, line_number: _ } => false
+    CargoArtifactExecutableNotAString { target_name: _, line_number: _ } => false
+    CargoMessageExecutableAbsent { line_number: _ } => false
     CargoMessageLineNotAnObject { line_number: _ } => false
     CargoMessageReasonAbsent { line_number: _ } => false
     CargoMessageReasonNotAString { line_number: _ } => false
@@ -264,8 +276,9 @@ test fn an_empty_stream_is_absent_rather_than_a_parse_refusal() -> Bool {
     CargoArtifactSelected { executable: _ } => false
     CargoArtifactAmbiguous { target_name: _, count: _ } => false
     CargoArtifactWithoutExecutable { target_name: _ } => false
-    CargoArtifactExecutablePathEmpty { target_name: _ } => false
-    CargoArtifactExecutableNotAString { target_name: _ } => false
+    CargoArtifactExecutablePathEmpty { target_name: _, line_number: _ } => false
+    CargoArtifactExecutableNotAString { target_name: _, line_number: _ } => false
+    CargoMessageExecutableAbsent { line_number: _ } => false
     CargoMessageLineUnparseable { line_number: _ } => false
     CargoMessageLineNotAnObject { line_number: _ } => false
     CargoMessageReasonAbsent { line_number: _ } => false
@@ -313,8 +326,9 @@ test fn the_real_build_script_build_collision_refuses_as_ambiguous() -> Bool {
     CargoArtifactSelected { executable: _ } => false
     CargoArtifactAbsent { target_name: _ } => false
     CargoArtifactWithoutExecutable { target_name: _ } => false
-    CargoArtifactExecutablePathEmpty { target_name: _ } => false
-    CargoArtifactExecutableNotAString { target_name: _ } => false
+    CargoArtifactExecutablePathEmpty { target_name: _, line_number: _ } => false
+    CargoArtifactExecutableNotAString { target_name: _, line_number: _ } => false
+    CargoMessageExecutableAbsent { line_number: _ } => false
     CargoMessageLineUnparseable { line_number: _ } => false
     CargoMessageLineNotAnObject { line_number: _ } => false
     CargoMessageReasonAbsent { line_number: _ } => false
@@ -335,8 +349,80 @@ test fn a_real_library_artifact_reports_no_executable() -> Bool {
     CargoArtifactSelected { executable: _ } => false
     CargoArtifactAbsent { target_name: _ } => false
     CargoArtifactAmbiguous { target_name: _, count: _ } => false
-    CargoArtifactExecutablePathEmpty { target_name: _ } => false
-    CargoArtifactExecutableNotAString { target_name: _ } => false
+    CargoArtifactExecutablePathEmpty { target_name: _, line_number: _ } => false
+    CargoArtifactExecutableNotAString { target_name: _, line_number: _ } => false
+    CargoMessageExecutableAbsent { line_number: _ } => false
+    CargoMessageLineUnparseable { line_number: _ } => false
+    CargoMessageLineNotAnObject { line_number: _ } => false
+    CargoMessageReasonAbsent { line_number: _ } => false
+    CargoMessageReasonNotAString { line_number: _ } => false
+    CargoMessageMemberDuplicated { line_number: _, key: _ } => false
+    CargoMessageTargetNotAnObject { line_number: _ } => false
+    CargoMessageTargetNameAbsent { line_number: _ } => false
+    CargoMessageTargetNameNotAString { line_number: _ } => false
+  }
+}
+
+data absent_versus_null_executable_note: String = "THE DISCRIMINATING PAIR for the absent-vs-null split. Cargo documents executable as present-and-null for a target with no runnable binary, so an explicit null is a legitimate result while an absent member means the message does not satisfy the compiler-artifact shape at all. An earlier revision collapsed both into no-executable, which let a drifted or truncated message answer confidently as `this target has no binary` — this module's own thesis failing inside the module, since the point is that the path must be the one cargo NAMED. These two claims are stated together deliberately: either one alone passes under the collapse, and only the pair distinguishes the two upstream facts. Grounded in the recording rather than in argument: all 124 compiler-artifact messages in the 143-message capture carry the executable key (123 explicit null, one string), so absence is not a shape a healthy build produces."
+
+test fn an_artifact_message_with_no_executable_member_refuses() -> Bool {
+  match select_from(
+    lines: [build_script_line, artifact_line_no_executable_member, build_finished_line],
+    target_name: "gunbc"
+  ) {
+    CargoMessageExecutableAbsent { line_number: n } => n == 2
+    CargoArtifactSelected { executable: _ } => false
+    CargoArtifactAbsent { target_name: _ } => false
+    CargoArtifactAmbiguous { target_name: _, count: _ } => false
+    CargoArtifactWithoutExecutable { target_name: _ } => false
+    CargoArtifactExecutablePathEmpty { target_name: _, line_number: _ } => false
+    CargoArtifactExecutableNotAString { target_name: _, line_number: _ } => false
+    CargoMessageLineUnparseable { line_number: _ } => false
+    CargoMessageLineNotAnObject { line_number: _ } => false
+    CargoMessageReasonAbsent { line_number: _ } => false
+    CargoMessageReasonNotAString { line_number: _ } => false
+    CargoMessageMemberDuplicated { line_number: _, key: _ } => false
+    CargoMessageTargetNotAnObject { line_number: _ } => false
+    CargoMessageTargetNameAbsent { line_number: _ } => false
+    CargoMessageTargetNameNotAString { line_number: _ } => false
+  }
+}
+
+test fn an_explicit_null_executable_is_still_a_legitimate_result() -> Bool {
+  match select_from(
+    lines: [build_script_line, artifact_line_library, build_finished_line],
+    target_name: "v1_compiler"
+  ) {
+    CargoArtifactWithoutExecutable { target_name: t } => t == "v1_compiler"
+    CargoArtifactSelected { executable: _ } => false
+    CargoArtifactAbsent { target_name: _ } => false
+    CargoArtifactAmbiguous { target_name: _, count: _ } => false
+    CargoArtifactExecutablePathEmpty { target_name: _, line_number: _ } => false
+    CargoArtifactExecutableNotAString { target_name: _, line_number: _ } => false
+    CargoMessageExecutableAbsent { line_number: _ } => false
+    CargoMessageLineUnparseable { line_number: _ } => false
+    CargoMessageLineNotAnObject { line_number: _ } => false
+    CargoMessageReasonAbsent { line_number: _ } => false
+    CargoMessageReasonNotAString { line_number: _ } => false
+    CargoMessageMemberDuplicated { line_number: _, key: _ } => false
+    CargoMessageTargetNotAnObject { line_number: _ } => false
+    CargoMessageTargetNameAbsent { line_number: _ } => false
+    CargoMessageTargetNameNotAString { line_number: _ } => false
+  }
+}
+
+test fn a_non_string_executable_refuses_and_names_its_line() -> Bool {
+  match select_from(
+    lines: [build_script_line, artifact_line_executable_not_a_string, build_finished_line],
+    target_name: "gunbc"
+  ) {
+    CargoArtifactExecutableNotAString { target_name: t, line_number: n } => t == "gunbc" && n == 2
+    CargoArtifactSelected { executable: _ } => false
+    CargoArtifactAbsent { target_name: _ } => false
+    CargoArtifactAmbiguous { target_name: _, count: _ } => false
+    CargoArtifactWithoutExecutable { target_name: _ } => false
+    CargoArtifactExecutablePathEmpty { target_name: _, line_number: _ } => false
+    CargoMessageExecutableAbsent { line_number: _ } => false
     CargoMessageLineUnparseable { line_number: _ } => false
     CargoMessageLineNotAnObject { line_number: _ } => false
     CargoMessageReasonAbsent { line_number: _ } => false

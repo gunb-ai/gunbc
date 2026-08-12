@@ -62,7 +62,7 @@ data cargo_message_line_separator: String = "\n"
 // apart: the first is a wrong target name or a lib-only crate, the second is a build
 // that did not run or did not produce the target at all.
 type CargoArtifactHit
-  = CargoArtifactHitExecutable { path: String }
+  = CargoArtifactHitExecutable { path: String, line_number: Int }
   | CargoArtifactHitWithoutExecutable
 
 // CargoArtifactAmbiguous is refused rather than resolved first-wins or last-wins:
@@ -76,8 +76,9 @@ type CargoArtifactSelection
   | CargoArtifactAbsent { target_name: String }
   | CargoArtifactAmbiguous { target_name: String, count: Int }
   | CargoArtifactWithoutExecutable { target_name: String }
-  | CargoArtifactExecutablePathEmpty { target_name: String }
-  | CargoArtifactExecutableNotAString { target_name: String }
+  | CargoArtifactExecutablePathEmpty { target_name: String, line_number: Int }
+  | CargoArtifactExecutableNotAString { target_name: String, line_number: Int }
+  | CargoMessageExecutableAbsent { line_number: Int }
   | CargoMessageLineUnparseable { line_number: Int }
   | CargoMessageLineNotAnObject { line_number: Int }
   | CargoMessageReasonAbsent { line_number: Int }
@@ -161,10 +162,25 @@ fn cargo_message_target_name(doc: JsonValue, line_number: Int) -> CargoTargetNam
 }
 
 // Cargo documents executable as present-and-null for a target that produces no
-// runnable binary. An ABSENT member lands on the same arm rather than refusing:
-// both say this target produced no executable, and the consumer's remedy for the
-// two is identical, so splitting them would be a distinction with no different
-// action behind it.
+// runnable binary. An explicit null is therefore a LEGITIMATE RESULT — this target
+// has no binary — while an ABSENT member means the message does not satisfy the
+// modeled compiler-artifact shape at all: drift, truncation, or something that is
+// not the message we think it is.
+//
+// An earlier revision collapsed those two into one no-executable value, on the
+// stated ground that the consumer's remedy is identical. It is not, and the
+// collapse was this module's own thesis failing inside the module: the whole point
+// here is that the artifact path must be the one cargo NAMED, and reading a message
+// that does not meet the shape as a legitimate library result is that same
+// substitution, one level down — a malformed message answering confidently as "this
+// target has no binary". Every other shape failure in this decode refuses by name
+// (missing reason, missing target name, wrong type, duplicate member, unreadable
+// line); this was the one exception, and it had no reason to be one.
+//
+// MEASURED, not argued: across the 143-message recording, all 124 compiler-artifact
+// messages carry the executable key — 123 explicit null, one string. ZERO absent. So
+// the absent case is not a shape cargo produces on a healthy build, which is exactly
+// why it must refuse rather than resolve.
 //
 // The executable read names every JsonValue variant instead of asking a local
 // is-it-null predicate first. An earlier revision minted cargo_message_is_null
@@ -194,7 +210,9 @@ fn cargo_message_artifact_hit(
         selection: CargoMessageLineNotAnObject { line_number: line_number }
       }
     JsonMemberAbsent =>
-      CargoScanning { hits: [CargoArtifactHitWithoutExecutable], line_number: line_number }
+      CargoScanRefused {
+        selection: CargoMessageExecutableAbsent { line_number: line_number }
+      }
     JsonMemberFound { value: exe } =>
       match exe {
         JsonNull =>
@@ -204,24 +222,36 @@ fn cargo_message_artifact_hit(
           }
         JsonString { value: path } =>
           CargoScanning {
-            hits: [CargoArtifactHitExecutable { path: path }],
+            hits: [CargoArtifactHitExecutable { path: path, line_number: line_number }],
             line_number: line_number
           }
         JsonBool { value: _ } =>
           CargoScanRefused {
-            selection: CargoArtifactExecutableNotAString { target_name: target_name }
+            selection: CargoArtifactExecutableNotAString {
+              target_name: target_name,
+              line_number: line_number
+            }
           }
         JsonNumber { lexeme: _ } =>
           CargoScanRefused {
-            selection: CargoArtifactExecutableNotAString { target_name: target_name }
+            selection: CargoArtifactExecutableNotAString {
+              target_name: target_name,
+              line_number: line_number
+            }
           }
         JsonArray { elements: _ } =>
           CargoScanRefused {
-            selection: CargoArtifactExecutableNotAString { target_name: target_name }
+            selection: CargoArtifactExecutableNotAString {
+              target_name: target_name,
+              line_number: line_number
+            }
           }
         JsonObject { members: _ } =>
           CargoScanRefused {
-            selection: CargoArtifactExecutableNotAString { target_name: target_name }
+            selection: CargoArtifactExecutableNotAString {
+              target_name: target_name,
+              line_number: line_number
+            }
           }
       }
   }
@@ -323,9 +353,12 @@ fn cargo_selection_from_hit(
   match hit {
     CargoArtifactHitWithoutExecutable =>
       CargoArtifactWithoutExecutable { target_name: target_name }
-    CargoArtifactHitExecutable { path: path } =>
+    CargoArtifactHitExecutable { path: path, line_number: line_number } =>
       if path.length() == 0 {
-        CargoArtifactExecutablePathEmpty { target_name: target_name }
+        CargoArtifactExecutablePathEmpty {
+          target_name: target_name,
+          line_number: line_number
+        }
       } else {
         CargoArtifactSelected { executable: path as FilePath }
       }
@@ -389,8 +422,9 @@ fn cargo_artifact_selected_path(selection: CargoArtifactSelection) -> FilePath? 
     CargoArtifactAbsent { target_name: _ } => none
     CargoArtifactAmbiguous { target_name: _, count: _ } => none
     CargoArtifactWithoutExecutable { target_name: _ } => none
-    CargoArtifactExecutablePathEmpty { target_name: _ } => none
-    CargoArtifactExecutableNotAString { target_name: _ } => none
+    CargoArtifactExecutablePathEmpty { target_name: _, line_number: _ } => none
+    CargoArtifactExecutableNotAString { target_name: _, line_number: _ } => none
+    CargoMessageExecutableAbsent { line_number: _ } => none
     CargoMessageLineUnparseable { line_number: _ } => none
     CargoMessageLineNotAnObject { line_number: _ } => none
     CargoMessageReasonAbsent { line_number: _ } => none
