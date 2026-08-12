@@ -128,6 +128,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/ucamco/gerber.dag",
   "dag/extdeps/cpu/ampere_altra_package.dag",
   "dag/extdeps/ssh/client_options.dag",
+  "dag/extdeps/ollama/api.dag",
   "dag/extdeps/automation/playwright.dag",
   "dag/extdeps/package.dag",
   "dag/extdeps/npm.dag",
