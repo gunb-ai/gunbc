@@ -12,6 +12,8 @@ import extdeps.firmware.types {
   prerequisite_evidence_verdict,
 }
 import extdeps.boards.asrock_rack {
+  asrock_altrad8ud_bios_310_push_accepted_at_bmc_322,
+  asrock_altrad8ud_bios_310_push_refused_at_bmc_207,
   asrock_altrad8ud_bios_openbmc_prerequisite_evidence,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -20,6 +22,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // The declared minimum on the BIOS 3.10 OpenBMC-tar release row. Named here so
 // the witness compares the SAME number the catalog declares.
+data reversed_evidence: List<FirmwarePrerequisiteObservation> = [
+  asrock_altrad8ud_bios_310_push_accepted_at_bmc_322,
+  asrock_altrad8ud_bios_310_push_refused_at_bmc_207,
+]
+
 data declared_minimum: FirmwareSemanticVersion = firmware_semantic_version(major: 3, minor: 22, patch: 0)
 
 // The executed pair supports the declared minimum, and the positive arm says
@@ -30,11 +37,52 @@ test fn executed_pair_supports_the_declared_minimum_as_an_upper_bound() -> Bool 
     minimum: declared_minimum,
     observations: asrock_altrad8ud_bios_openbmc_prerequisite_evidence,
   ) {
-    PrerequisiteConsistentUpperBound { highest_refusal: r, accepted_at: a } =>
-      r.major == 2 && r.minor == 7 && a.major == 3 && a.minor == 22
-    PrerequisiteContradictedByAcceptanceBelowMinimum { accepted_at: _ } => false
-    PrerequisiteContradictedByRefusalAtOrAboveMinimum { refused_at: _ } => false
-    PrerequisiteEvidenceAbsent => false
+    PrerequisiteConsistentUpperBound { highest_refusal: r, lowest_acceptance: a } =>
+      match r {
+        Present { value: rv } =>
+          match a {
+            Present { value: av } =>
+              rv.major == 2 && rv.minor == 7 && av.major == 3 && av.minor == 22
+            Absent => false
+          }
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// ORDER INDEPENDENCE. The same observations authored in the opposite order
+// must produce the same bounds. The previous accumulator kept whichever bound
+// it saw first and discarded the rest, so this control is what distinguishes
+// a real max/min from a first-wins fold that greens on one authoring order.
+test fn the_bounds_do_not_depend_on_authoring_order() -> Bool {
+  prerequisite_evidence_verdict(
+    minimum: declared_minimum,
+    observations: reversed_evidence,
+  ) == prerequisite_evidence_verdict(
+    minimum: declared_minimum,
+    observations: asrock_altrad8ud_bios_openbmc_prerequisite_evidence,
+  )
+}
+
+// A bound with no observation behind it is ABSENT, never filled in from the
+// declared minimum. Acceptance-only evidence has no refusal to report, and
+// reporting one would fabricate a push that never happened.
+test fn an_acceptance_only_history_reports_no_refusal_bound() -> Bool {
+  match prerequisite_evidence_verdict(
+    minimum: declared_minimum,
+    observations: [asrock_altrad8ud_bios_310_push_accepted_at_bmc_322],
+  ) {
+    PrerequisiteConsistentUpperBound { highest_refusal: r, lowest_acceptance: a } =>
+      match r {
+        Absent =>
+          match a {
+            Present { value: av } => av.major == 3 && av.minor == 22
+            Absent => false
+          }
+        Present { value: _ } => false
+      }
+    _ => false
   }
 }
 

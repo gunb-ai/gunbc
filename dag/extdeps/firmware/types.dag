@@ -2,7 +2,7 @@ module extdeps.firmware.types
 
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size }
-import std.types { EpochMs, NonEmptyStr }
+import std.types { EpochMs, NonEmptyStr, List, Present, Absent, list_length }
 import extdeps.crypto.hash { Digest }
 import extdeps.boards.types { BaseboardModel }
 import extdeps.external_authority { ExternalAuthority }
@@ -143,10 +143,19 @@ type FirmwarePrerequisiteObservation {
 // that interval, so a declared 3.22.00 is an upper bound and may be stricter
 // than the vendor requires — the safe direction, and the positive arm says so
 // rather than claiming the threshold was measured.
+//
+// BOTH BOUNDS ARE OPTIONAL, and that is the correction that matters. An
+// earlier revision stored the DECLARED MINIMUM into whichever bound had no
+// observation yet, so a verdict backed only by an acceptance reported a
+// highest_refusal that never happened — a fabricated plausible value in the
+// exact field a consumer reads to judge how well-bounded the threshold is
+// (DESIGN section 5). It was also order-dependent: later observations were
+// discarded once a bound was set, so the same evidence in a different order
+// gave different bounds. Absent now means absent.
 type PrerequisiteEvidenceVerdict
   = PrerequisiteConsistentUpperBound {
-      highest_refusal: FirmwareSemanticVersion
-      accepted_at: FirmwareSemanticVersion
+      highest_refusal: FirmwareSemanticVersion?
+      lowest_acceptance: FirmwareSemanticVersion?
     }
   | PrerequisiteContradictedByAcceptanceBelowMinimum {
       accepted_at: FirmwareSemanticVersion
@@ -156,37 +165,68 @@ type PrerequisiteEvidenceVerdict
     }
   | PrerequisiteEvidenceAbsent
 
-fn prerequisite_observation_contradicts(
-  minimum: FirmwareSemanticVersion,
-  observation: FirmwarePrerequisiteObservation,
-) -> PrerequisiteEvidenceVerdict {
-  match observation.outcome {
-    PushAcceptedByTarget =>
-      if firmware_semantic_version_at_least(
-        observed: observation.gating_version,
-        minimum: minimum,
-      ) {
-        PrerequisiteEvidenceAbsent
-      } else {
-        PrerequisiteContradictedByAcceptanceBelowMinimum {
-          accepted_at: observation.gating_version,
-        }
-      }
-    PushRefusedByTarget { diagnostic: _ } =>
-      if firmware_semantic_version_at_least(
-        observed: observation.gating_version,
-        minimum: minimum,
-      ) {
-        PrerequisiteContradictedByRefusalAtOrAboveMinimum {
-          refused_at: observation.gating_version,
-        }
-      } else {
-        PrerequisiteEvidenceAbsent
-      }
-  }
+fn higher_version(
+  a: FirmwareSemanticVersion,
+  b: FirmwareSemanticVersion,
+) -> FirmwareSemanticVersion {
+  if firmware_semantic_version_at_least(observed: a, minimum: b) { a } else { b }
 }
 
-fn prerequisite_evidence_verdict(
+fn lower_version(
+  a: FirmwareSemanticVersion,
+  b: FirmwareSemanticVersion,
+) -> FirmwareSemanticVersion {
+  if firmware_semantic_version_at_least(observed: a, minimum: b) { b } else { a }
+}
+
+// The strongest refusal observed, over every refusal. Order-independent by
+// construction: max is associative and commutative, so the fold cannot depend
+// on authoring order the way the previous first-wins accumulator did.
+fn highest_refused_version(
+  observations: List<FirmwarePrerequisiteObservation>,
+) -> FirmwareSemanticVersion? {
+  fold(
+    observations,
+    init: Absent,
+    f: (acc, observation) =>
+      match observation.outcome {
+        PushAcceptedByTarget => acc
+        PushRefusedByTarget { diagnostic: _ } =>
+          match acc {
+            Absent => Present { value: observation.gating_version }
+            Present { value: current } =>
+              Present {
+                value: higher_version(a: current, b: observation.gating_version),
+              }
+          }
+      },
+  )
+}
+
+// The weakest acceptance observed. This is the tighter of the two bounds on
+// the true threshold, since anything at or above it demonstrably works.
+fn lowest_accepted_version(
+  observations: List<FirmwarePrerequisiteObservation>,
+) -> FirmwareSemanticVersion? {
+  fold(
+    observations,
+    init: Absent,
+    f: (acc, observation) =>
+      match observation.outcome {
+        PushRefusedByTarget { diagnostic: _ } => acc
+        PushAcceptedByTarget =>
+          match acc {
+            Absent => Present { value: observation.gating_version }
+            Present { value: current } =>
+              Present {
+                value: lower_version(a: current, b: observation.gating_version),
+              }
+          }
+      },
+  )
+}
+
+fn prerequisite_contradiction(
   minimum: FirmwareSemanticVersion,
   observations: List<FirmwarePrerequisiteObservation>,
 ) -> PrerequisiteEvidenceVerdict {
@@ -195,41 +235,35 @@ fn prerequisite_evidence_verdict(
     init: PrerequisiteEvidenceAbsent,
     f: (acc, observation) =>
       match acc {
-        PrerequisiteContradictedByAcceptanceBelowMinimum { accepted_at: a } =>
-          PrerequisiteContradictedByAcceptanceBelowMinimum { accepted_at: a }
-        PrerequisiteContradictedByRefusalAtOrAboveMinimum { refused_at: r } =>
-          PrerequisiteContradictedByRefusalAtOrAboveMinimum { refused_at: r }
-        PrerequisiteConsistentUpperBound { highest_refusal: h, accepted_at: a } =>
-          match prerequisite_observation_contradicts(
-            minimum: minimum,
-            observation: observation,
-          ) {
-            PrerequisiteEvidenceAbsent =>
-              PrerequisiteConsistentUpperBound { highest_refusal: h, accepted_at: a }
-            other => other
-          }
         PrerequisiteEvidenceAbsent =>
-          match prerequisite_observation_contradicts(
+          prerequisite_observation_contradicts(
             minimum: minimum,
             observation: observation,
-          ) {
-            PrerequisiteEvidenceAbsent =>
-              match observation.outcome {
-                PushAcceptedByTarget =>
-                  PrerequisiteConsistentUpperBound {
-                    highest_refusal: minimum,
-                    accepted_at: observation.gating_version,
-                  }
-                PushRefusedByTarget { diagnostic: _ } =>
-                  PrerequisiteConsistentUpperBound {
-                    highest_refusal: observation.gating_version,
-                    accepted_at: minimum,
-                  }
-              }
-            other => other
-          }
+          )
+        other => other
       },
   )
+}
+
+fn prerequisite_evidence_verdict(
+  minimum: FirmwareSemanticVersion,
+  observations: List<FirmwarePrerequisiteObservation>,
+) -> PrerequisiteEvidenceVerdict {
+  match prerequisite_contradiction(minimum: minimum, observations: observations) {
+    PrerequisiteContradictedByAcceptanceBelowMinimum { accepted_at: a } =>
+      PrerequisiteContradictedByAcceptanceBelowMinimum { accepted_at: a }
+    PrerequisiteContradictedByRefusalAtOrAboveMinimum { refused_at: r } =>
+      PrerequisiteContradictedByRefusalAtOrAboveMinimum { refused_at: r }
+    _ =>
+      match list_length(observations) {
+        0 => PrerequisiteEvidenceAbsent
+        _ =>
+          PrerequisiteConsistentUpperBound {
+            highest_refusal: highest_refused_version(observations: observations),
+            lowest_acceptance: lowest_accepted_version(observations: observations),
+          }
+      }
+  }
 }
 
 fn firmware_semantic_version_at_least(

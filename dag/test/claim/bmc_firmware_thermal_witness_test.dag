@@ -37,8 +37,10 @@ import extdeps.bmc.types {
   bmc_fan_curve_sensor_unavailable_duty,
   redfish_thermal_query_verdict,
 }
+import extdeps.firmware.types { firmware_semantic_version }
 import extdeps.boards.asrock_rack {
   asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog,
+  asrock_altrad8ud_openbmc_3_22_00_capabilities,
   asrock_altrad8ud_openbmc_3_22_00_redfish_surface,
   asrock_altrad8ud_openbmc_2_07_00_capabilities,
   asrock_altrad8ud_openbmc_3_06_00_capabilities,
