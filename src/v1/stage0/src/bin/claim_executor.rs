@@ -10576,7 +10576,25 @@ fn run() -> Result<ExitCode, ExitCode> {
             // first. Publication waits until the plan-derived budgets are known — a request
             // missing them would force the child to evaluate the plan for the very values this
             // carrier exists to hand it.
-            published_scoped_rows = batches.iter().flatten().cloned().collect();
+            // Clone the SCOPED rows only. The publishable population is a small handful of
+            // batches; cloning every runnable in the plan and filtering afterwards copies the
+            // whole corpus roster to keep a few rows, which is the cost shape §6 forbids
+            // independently of how large the plan happens to be today.
+            published_scoped_rows = batches
+                .iter()
+                .flatten()
+                .filter(|runnable| {
+                    matches!(
+                        runnable,
+                        Runnable::ScopedWitnessBatch {
+                            process_isolation: ScopedProcessIsolation::SequentialChildProcess
+                                | ScopedProcessIsolation::FreshJobProcess,
+                            ..
+                        }
+                    )
+                })
+                .cloned()
+                .collect();
             batches.retain(|batch| {
                 !batch.iter().any(|runnable| {
                     matches!(
