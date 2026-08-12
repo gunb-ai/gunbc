@@ -11,7 +11,8 @@ import v2.std.operation_argv {
   ArgvMaterializationRefused,
   operation_argv_cause_label,
 }
-import gunbc.typed_argv_exec {
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh,
   typed_argv_exec_over_ssh,
   typed_argv_shell_safe_refusal_argv,
   TypedArgvExecConverged,
@@ -55,15 +56,34 @@ fn hostname_short_read_local() -> HostnameShortCapture {
   hostname_short_value_from_stdout(success: result.success, stdout: result.value)
 }
 
+// ONE OUTCOME HANDLER, TWO PRODUCERS. The SshShell and FleetSsh paths differ only in HOW the leg is
+// obtained -- an endpoint plus an assembled invocation, versus a sealed context that cannot be
+// constructed without a verified anchor -- and not at all in how its result is read. Splitting the
+// handler out is what keeps the second path from being a copy of the first with two lines changed,
+// which is how the corpus acquired one site requiring host-key verification and another disabling it.
+fn hostname_short_capture_from_outcome(outcome: TypedArgvExecOutcome) -> HostnameShortCapture {
+  match outcome {
+    TypedArgvExecConverged { result: r } =>
+      hostname_short_value_from_stdout(success: r.success, stdout: r.stdout)
+    TypedArgvExecRefused { reason: why } => HostnameShortCaptureRefused { reason: why }
+  }
+}
+
 fn hostname_short_read_ssh_argv(host: NonEmptyStr, argv: List<String>) -> HostnameShortCapture {
   match typed_argv_shell_safe_refusal_argv(argv: argv) {
     Present { value: why } => HostnameShortCaptureRefused { reason: why }
-    Absent =>
-      match typed_argv_exec_over_ssh(host: host, argv: argv) {
-        TypedArgvExecConverged { result: r } =>
-          hostname_short_value_from_stdout(success: r.success, stdout: r.stdout)
-        TypedArgvExecRefused { reason: why } => HostnameShortCaptureRefused { reason: why }
-      }
+    Absent => hostname_short_capture_from_outcome(outcome: typed_argv_exec_over_ssh(host: host, argv: argv))
+  }
+}
+
+fn hostname_short_read_fleet_ssh(target: SshTarget, context: FleetSshExecutionContext) -> HostnameShortCapture {
+  match hostname_short_read_operation_argv() {
+    ArgvMaterialized { argv: argv } =>
+      hostname_short_capture_from_outcome(
+        outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv),
+      )
+    ArgvMaterializationRefused { at: _, cause: c } =>
+      HostnameShortCaptureRefused { reason: operation_argv_cause_label(cause: c) }
   }
 }
 
@@ -79,7 +99,7 @@ fn hostname_short_read(transport: HostEffectTransport) -> HostnameShortCapture {
   match transport {
     LocalShell => hostname_short_read_local()
     SshShell { ssh_host: h } => hostname_short_read_ssh(host: h)
-    FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
+    FleetSsh { target: t, context: c } => hostname_short_read_fleet_ssh(target: t, context: c)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       HostnameShortCaptureRefused {
         reason: "hostname -s read refused EmitArtifactThenThinRun transport",
