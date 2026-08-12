@@ -7,7 +7,7 @@ import extdeps.shell
 import extdeps.cargo_build
 import gunbc.self_host_artifact_materialization
 import v2.compiler.self_host.generation {
-  ArtifactIdentity,
+  GeneratedArtifactIdentity,
   ArtifactMaterialized,
   ArtifactNotMaterialized,
   GenerationIdentity,
@@ -151,7 +151,7 @@ test fn the_digest_is_of_the_file_cargo_named_not_of_some_other_real_file() -> B
 data crate_main_variant: String = "fn main() \{ println!(\"gunbc artifact axis fixture, second program\"); \}\n"
 
 type TwoBuilds
-  = TwoBuilds { first: ArtifactIdentity, second: ArtifactIdentity }
+  = TwoBuilds { first: GeneratedArtifactIdentity, second: GeneratedArtifactIdentity }
   | TwoBuildsSetupRefused { cause: String }
 
 // MEASURED, and it is why both claims below build in ONE directory. A Rust debug binary
@@ -221,14 +221,14 @@ fn build_twice_in_one_dir(first_source: String, second_source: String) -> TwoBui
   }
 }
 
-fn axis_is_materialized(a: ArtifactIdentity) -> Bool {
+fn axis_is_materialized(a: GeneratedArtifactIdentity) -> Bool {
   match a {
     ArtifactMaterialized { digest: _ } => true
     ArtifactNotMaterialized => false
   }
 }
 
-fn axis_identity(artifact: ArtifactIdentity) -> GenerationIdentity {
+fn axis_identity(artifact: GeneratedArtifactIdentity) -> GenerationIdentity {
   GenerationIdentity {
     producer_compiler: symbol_identity_digest(sym: "axis-derivation-producer-compiler"),
     source_closure: symbol_identity_digest(sym: "axis-derivation-source-closure"),
