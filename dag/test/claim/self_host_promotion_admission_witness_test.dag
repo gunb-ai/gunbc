@@ -1,7 +1,7 @@
 module test.claim.self_host_promotion_admission_witness
 
 import v2.compiler.self_host.generation {
-  ArtifactIdentity,
+  GeneratedArtifactIdentity,
   ArtifactMaterialized,
   ArtifactNotMaterialized,
   observed_artifact_digest,
@@ -49,7 +49,7 @@ fn pa_admitted(o: PromotionOutcome) -> Bool {
   }
 }
 
-fn pa_artifact(hex: String) -> ArtifactIdentity {
+fn pa_artifact(hex: String) -> GeneratedArtifactIdentity {
   match sha512_hex_digest(hex: hex) {
     Present { value: d } =>
       ArtifactMaterialized { digest: observed_artifact_digest(observed: d) }
