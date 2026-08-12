@@ -316,6 +316,17 @@ fn gunbc_ci_host_usable_ram_for(host: HostIdentity) -> HostUsableRam {
   }
 }
 
+data host_usable_ram_ceiling_note: String = "THE CEILING PROJECTION LIVES ONCE, BESIDE THE CARRIER. gunbc.ci_budget_tree and gunbc.fleet_host_budget each grew a byte-identical fold over HostUsableRam when they migrated off nominal DIMM capacity, which is the duplication DESIGN 2 forbids and exactly the shape that lets two budget models drift apart again — the defect the migration existed to close.\n\nIt does NOT absorb gunbc.ci_runner_placement host_usable_ram_or_refusal, which folds the same coproduct to a different answer on purpose. That one is LOUD: an unmeasured host yields a typed, located refusal that becomes PlanUnsound. This one is a total ceiling for budget arithmetic, where zero is the fail-closed reading because an unknown ceiling admits nothing. Same input, two honest consumers, two results — collapsing them would force one caller to accept the other's failure semantics."
+
+fn host_usable_ram_ceiling_bytes(host: HostIdentity) -> ByteSize {
+  match gunbc_ci_host_usable_ram_for(host: host) {
+    HostUsableRamMeasured { bytes: b, provenance: _ } => b
+    HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => b
+    HostUsableRamUnmeasured => byte_size(0)
+  }
+}
+
+
 data gunbc_ci_concurrent_runs_conservative_high_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {

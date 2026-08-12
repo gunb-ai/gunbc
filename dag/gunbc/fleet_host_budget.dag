@@ -43,6 +43,7 @@ import gunbc.ci_floor_measurement {
   HostUsableRamConservativeLowerBound,
   HostUsableRamUnmeasured,
   gunbc_ci_host_usable_ram_for,
+  host_usable_ram_ceiling_bytes,
   OomdEnforcementEvidence,
   OomdEnforced,
   OomdUnverified,
@@ -165,14 +166,6 @@ fn resolve_compile_pool(nproc: HardwareThreadCount, host: ByteSize, citation: Jo
       CompilePoolUnresolved { reason: "jobserver config citation absent: the compile pool is sized by the admitted build tokens (tokens * mib_per_job); refuse to size the pool — and therefore to claim the host allocation conserves — without the cited installer knobs" }
     JobserverCited { config: cfg, provenance: _ } =>
       CompilePoolDerived { bytes: jobserver_build_pool_bytes(nproc: nproc, mem_total: host, cfg: cfg) }
-  }
-}
-
-fn fleet_host_usable_ram_ceiling(host: HostIdentity) -> ByteSize {
-  match gunbc_ci_host_usable_ram_for(host: host) {
-    HostUsableRamMeasured { bytes: b, provenance: _ } => b
-    HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => b
-    HostUsableRamUnmeasured => byte_size(0)
   }
 }
 
@@ -396,7 +389,7 @@ fn fleet_host_plan_for_offer(
     Present { value: cpu } =>
       fleet_host_plan_for(
         name: offer.supply.physical.identity,
-        host: fleet_host_usable_ram_ceiling(host: offer.supply.physical.identity),
+        host: host_usable_ram_ceiling_bytes(host: offer.supply.physical.identity),
         overhead: overhead,
         nproc: cpu_facts_threads(cpu: cpu),
         runner: gha_runner_container,
