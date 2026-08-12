@@ -13,6 +13,7 @@ import v2.compiler.self_host.generation {
 import v2.compiler.self_host.promotion_admission {
   BehaviorAgrees,
   BehaviorDiverges,
+  BehavioralComparisonObservation,
   BehavioralCorpus,
   BehavioralEquivalenceReceipt,
   BuildFailed,
@@ -31,6 +32,9 @@ import v2.compiler.self_host.promotion_admission {
   PromotionOutcome,
   SelfHostCandidate,
   admit_promotion,
+  build_receipt_from_observation,
+  equivalence_receipt_from_observation,
+  fault_receipt_from_observation,
   Promoted,
   PromotionRefused,
   promotion_refusal_carries
@@ -140,8 +144,10 @@ fn pa_build(
 }
 
 // classical_not over 2 inputs, plus classical_and and classical_or over 4 pairs each:
-// the population dag/tools/self_host_logic_behavioral_transport actually walks.
-data pa_corpus_cases: Int = 12
+// 2 + 4 + 4, the population dag/tools/self_host_logic_behavioral_transport actually
+// walks — measured by compiling its driver and reading the count the driver reports,
+// not by counting the loops in the source.
+data pa_corpus_cases: Int = 10
 
 fn pa_corpus(expected: Int) -> BehavioralCorpus {
   BehavioralCorpus {
@@ -246,12 +252,12 @@ fn pa_good() -> SelfHostCandidate {
     ),
     candidate_equivalence: pa_equivalence(
       subject: pa_candidate_identity(),
-      cases: 12,
+      cases: pa_corpus_cases,
       outcome: Observed { value: BehaviorAgrees }
     ),
     successor_equivalence: pa_equivalence(
       subject: pa_successor_identity(),
-      cases: 12,
+      cases: pa_corpus_cases,
       outcome: Observed { value: BehaviorAgrees }
     ),
     discriminating_fault: pa_fault(
@@ -338,12 +344,12 @@ test fn uncaught_planted_fault_is_refused() -> Bool {
       ),
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
-        cases: 12,
+        cases: pa_corpus_cases,
         outcome: Observed { value: BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
-        cases: 12,
+        cases: pa_corpus_cases,
         outcome: Observed { value: BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
@@ -383,12 +389,12 @@ test fn unavailable_fault_observation_is_refused_not_assumed_equivalent() -> Boo
       ),
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
-        cases: 12,
+        cases: pa_corpus_cases,
         outcome: Observed { value: BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
-        cases: 12,
+        cases: pa_corpus_cases,
         outcome: Observed { value: BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
@@ -479,12 +485,12 @@ test fn receipt_from_a_different_toolchain_is_refused_as_stale() -> Bool {
       ),
       candidate_equivalence: pa_equivalence(
         subject: stale_subject,
-        cases: 12,
+        cases: pa_corpus_cases,
         outcome: Observed { value: BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
-        cases: 12,
+        cases: pa_corpus_cases,
         outcome: Observed { value: BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
@@ -521,12 +527,12 @@ test fn failed_successor_build_is_refused() -> Bool {
       ),
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
-        cases: 12,
+        cases: pa_corpus_cases,
         outcome: Observed { value: BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
-        cases: 12,
+        cases: pa_corpus_cases,
         outcome: Observed { value: BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
@@ -564,12 +570,12 @@ test fn candidate_cannot_authorize_its_own_provenance() -> Bool {
       ),
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
-        cases: 12,
+        cases: pa_corpus_cases,
         outcome: Observed { value: BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
-        cases: 12,
+        cases: pa_corpus_cases,
         outcome: Observed { value: BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
@@ -617,7 +623,7 @@ test fn candidate_as_its_own_oracle_is_refused() -> Bool {
       candidate_equivalence: self_oracle,
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
-        cases: 12,
+        cases: pa_corpus_cases,
         outcome: Observed { value: BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
@@ -672,12 +678,12 @@ test fn unmaterialized_candidate_artifact_is_refused_at_promotion() -> Bool {
       ),
       candidate_equivalence: pa_equivalence(
         subject: unbuilt_identity,
-        cases: 12,
+        cases: pa_corpus_cases,
         outcome: Observed { value: BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
-        cases: 12,
+        cases: pa_corpus_cases,
         outcome: Observed { value: BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
@@ -728,12 +734,12 @@ test fn spliced_candidate_and_successor_chains_are_refused() -> Bool {
       ),
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
-        cases: 12,
+        cases: pa_corpus_cases,
         outcome: Observed { value: BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
-        cases: 12,
+        cases: pa_corpus_cases,
         outcome: Observed { value: BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
@@ -773,12 +779,12 @@ test fn fault_proven_on_a_different_corpus_is_refused() -> Bool {
       ),
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
-        cases: 12,
+        cases: pa_corpus_cases,
         outcome: Observed { value: BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
-        cases: 12,
+        cases: pa_corpus_cases,
         outcome: Observed { value: BehaviorAgrees }
       ),
       discriminating_fault: pa_fault_on(
@@ -838,12 +844,12 @@ test fn same_identity_different_seed_splice_is_refused() -> Bool {
       ),
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
-        cases: 12,
+        cases: pa_corpus_cases,
         outcome: Observed { value: BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
-        cases: 12,
+        cases: pa_corpus_cases,
         outcome: Observed { value: BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
@@ -869,7 +875,7 @@ test fn same_identity_different_seed_splice_is_refused() -> Bool {
 
 // DISCRIMINATING RED for the population join, and the exact shape that promoted before
 // it existed: both receipts name the corpus, both report agreement, both are fresh, and
-// the successor compared ONE case where the corpus declares twelve. A partially emitted
+// the successor compared ONE case where the corpus declares ten. A partially emitted
 // compiler produces precisely this — it runs, it agrees on what it reached, and it never
 // reached the rest. Under the label-only join the two receipts agreed and the bundle was
 // admitted; the count sat beside the name proving nothing.
@@ -999,5 +1005,120 @@ test fn same_named_corpus_declaring_two_sizes_is_refused() -> Bool {
     && promotion_refusal_carries(
       o: o,
       cause: ^refusal_corpus_mismatch_across_receipts
+    )
+}
+
+// The observation → receipt seam. A transport observes outcomes; it does not name the
+// generation it measured. These prove the projections carry the observed verdict and the
+// declared corpus through unchanged, so a transport cannot quietly improve its own
+// evidence on the way into a receipt.
+fn pa_observation(
+  build: ObservedVerdict<BuildOutcome>,
+  equivalence: ObservedVerdict<EquivalenceOutcome>,
+  fault: ObservedVerdict<FaultOutcome>
+) -> BehavioralComparisonObservation {
+  BehavioralComparisonObservation {
+    corpus: pa_corpus(expected: pa_corpus_cases),
+    cases_compared: pa_corpus_cases,
+    build: build,
+    equivalence: equivalence,
+    fault: fault
+  }
+}
+
+fn pa_bundle_from_observation(
+  o: BehavioralComparisonObservation
+) -> SelfHostCandidate {
+  pa_bundle(
+    candidate_build: build_receipt_from_observation(
+      o: o,
+      subject: pa_candidate_identity()
+    ),
+    successor_build: build_receipt_from_observation(
+      o: o,
+      subject: pa_successor_identity()
+    ),
+    candidate_equivalence: equivalence_receipt_from_observation(
+      o: o,
+      subject: pa_candidate_identity(),
+      oracle: pa_seed_identity()
+    ),
+    successor_equivalence: equivalence_receipt_from_observation(
+      o: o,
+      subject: pa_successor_identity(),
+      oracle: pa_seed_identity()
+    ),
+    discriminating_fault: fault_receipt_from_observation(
+      o: o,
+      subject: pa_candidate_identity(),
+      planted_fault: "classical_not called on mismatched input"
+    ),
+    candidate_provenance: pa_provenance(
+      subject: pa_candidate_identity(),
+      producer: pa_seed_identity()
+    ),
+    successor_provenance: pa_provenance(
+      subject: pa_successor_identity(),
+      producer: pa_candidate_identity()
+    )
+  )
+}
+
+// The positive control: a fully observed run, projected into receipts, is admitted. It
+// is what makes the two REDs below discriminating rather than a mechanism that refuses
+// everything routed through the seam.
+test fn fully_observed_run_projects_into_an_admitted_promotion() -> Bool {
+  pa_admitted(
+    o: admit_promotion(
+      c: pa_bundle_from_observation(
+        o: pa_observation(
+          build: Observed { value: BuildGreen },
+          equivalence: Observed { value: BehaviorAgrees },
+          fault: Observed { value: FaultCaught }
+        )
+      )
+    )
+  )
+}
+
+// DISCRIMINATING RED. This is the shape the transport's superseded conjunction produced
+// whenever the planted-fault process died for its own reasons: the run was nonzero, the
+// fault was never reported, and the old test read the exit code as proof of teeth. Routed
+// through the seam as the unavailable observation it actually is, admission refuses under
+// its own name instead of inheriting a verdict from an exit status.
+test fn unreported_fault_observation_refuses_through_the_seam() -> Bool {
+  let o = admit_promotion(
+    c: pa_bundle_from_observation(
+      o: pa_observation(
+        build: Observed { value: BuildGreen },
+        equivalence: Observed { value: BehaviorAgrees },
+        fault: ObservationUnavailable { cause: ^slb_fault_run_unreported }
+      )
+    )
+  )
+  !pa_admitted(o: o)
+    && promotion_refusal_carries(
+      o: o,
+      cause: ^refusal_receipt_observation_unavailable
+    )
+}
+
+// DISCRIMINATING RED for the other half: a build that did not happen cannot yield a
+// behavioral verdict, and the observation says so rather than reporting agreement over a
+// comparison that never ran.
+test fn unbuilt_run_refuses_through_the_seam() -> Bool {
+  let o = admit_promotion(
+    c: pa_bundle_from_observation(
+      o: pa_observation(
+        build: ObservationUnavailable { cause: ^slb_stage_incomplete },
+        equivalence: ObservationUnavailable { cause: ^slb_comparison_did_not_run },
+        fault: ObservationUnavailable { cause: ^slb_fault_run_did_not_run }
+      )
+    )
+  )
+  !pa_admitted(o: o)
+    && promotion_refusal_carries(
+      o: o,
+      cause: ^refusal_receipt_observation_unavailable
     )
 }

@@ -57,7 +57,7 @@ type BuildOutcome
 
 // A corpus is a NAME plus the population that name stands for. Carrying the name
 // alone made the label decorative in exactly the way an unjoined field always is: two
-// receipts could agree that they ran "the logic truth table" while one compared twelve
+// receipts could agree that they ran "the logic truth table" while one compared ten
 // cases and the other compared one, and admission read the matching labels as matching
 // runs. A truncated successor run is the shape that mattered — it is what a partially
 // emitted compiler produces — and it promoted.
@@ -123,6 +123,62 @@ type SelfHostCandidate {
   successor_provenance: GenerationProvenanceReceipt
 }
 
+// WHAT A COMPARISON RUN LEARNS, separated from what it does not.
+//
+// A transport executes emit → compile → run → compare against the seed oracle and
+// learns exactly three things: whether the driver built, whether behavior agreed, and
+// whether a planted fault was caught. It does NOT learn the six generation axes — those
+// are derived from the build's own inputs and artifacts, elsewhere. Fusing them would
+// put the transport in the position of asserting the identity of the thing it measured,
+// which is the self-authorization hole one layer down: a run that names its own subject
+// can name a subject that agrees with whatever it found.
+//
+// So the observation carries outcomes and a corpus, and the identities arrive from the
+// caller at assembly time. That seam is the point: the same three projections below turn
+// one observation into receipts about ANY declared generation, so a transport is a
+// realization handler rather than a fact about which generation was under test.
+type BehavioralComparisonObservation {
+  corpus: BehavioralCorpus
+  cases_compared: Int
+  build: ObservedVerdict<BuildOutcome>
+  equivalence: ObservedVerdict<EquivalenceOutcome>
+  fault: ObservedVerdict<FaultOutcome>
+}
+
+fn build_receipt_from_observation(
+  o: BehavioralComparisonObservation,
+  subject: GenerationIdentity
+) -> BuildReceipt {
+  BuildReceipt { subject: subject, outcome: o.build }
+}
+
+fn equivalence_receipt_from_observation(
+  o: BehavioralComparisonObservation,
+  subject: GenerationIdentity,
+  oracle: GenerationIdentity
+) -> BehavioralEquivalenceReceipt {
+  BehavioralEquivalenceReceipt {
+    subject: subject,
+    oracle: oracle,
+    corpus: o.corpus,
+    cases_compared: o.cases_compared,
+    outcome: o.equivalence
+  }
+}
+
+fn fault_receipt_from_observation(
+  o: BehavioralComparisonObservation,
+  subject: GenerationIdentity,
+  planted_fault: String
+) -> DiscriminatingFaultReceipt {
+  DiscriminatingFaultReceipt {
+    subject: subject,
+    corpus: o.corpus,
+    planted_fault: planted_fault,
+    outcome: o.fault
+  }
+}
+
 type PromotionRefusalCause
   = StaleReceiptSubject { receipt: Symbol, axis: Symbol }
   | ReceiptObservationUnavailable { receipt: Symbol, cause: Symbol }
@@ -185,7 +241,7 @@ fn build_receipt_causes(
 // A corpus of zero cases is agreement over nothing, so the DECLARED population is
 // checked here: admitting it would be the vacuous-green failure, since every claim
 // quantified over an empty population is true. The check reads the corpus rather than
-// the run, because a run reporting zero against a corpus declaring twelve is a
+// the run, because a run reporting zero against a corpus declaring ten is a
 // truncation the population join names precisely, not an empty corpus.
 //
 // The population join is what makes cases_compared load-bearing rather than a number
