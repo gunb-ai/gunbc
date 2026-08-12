@@ -1,9 +1,8 @@
 module test.claim.memory_part_selection_witness_test
 
 import std.types { Bool, List, list_length }
-import std.nat { Nat }
 import std.currency { CurrencyCode, Eur, Usd }
-import std.measure { ByteSize, byte_size, money_amount_micro }
+import std.measure { ByteSize, MoneyAmountMicro, byte_size, money_amount_micro }
 import extdeps.vendor.samsung { samsung }
 import extdeps.boards.types { AsrockRackAltrad8ud1l2t }
 import extdeps.memory.types {
@@ -102,11 +101,11 @@ data unobserved_failure: PlatformTrainingFailure = PlatformTrainingFailure {
 fn candidate_at_price(
   module: DramModuleCatalogRow,
   currency: CurrencyCode,
-  unit_price_micros: Nat,
+  unit_price: MoneyAmountMicro,
 ) -> PartCandidate {
   PartCandidate {
     module: module,
-    unit_price: money_amount_micro(count: unit_price_micros),
+    unit_price: unit_price,
     currency: currency,
     sticks_required: 8,
     qualification: PartQualificationUnobserved,
@@ -114,18 +113,30 @@ fn candidate_at_price(
 }
 
 fn cheap_lrdimm_candidate(currency: CurrencyCode) -> PartCandidate {
-  candidate_at_price(module: lrdimm_32g, currency: currency, unit_price_micros: 60000000)
+  candidate_at_price(
+    module: lrdimm_32g,
+    currency: currency,
+    unit_price: money_amount_micro(count: 60000000),
+  )
 }
 
 fn dearer_rdimm_candidate(currency: CurrencyCode) -> PartCandidate {
-  candidate_at_price(module: rdimm_32g, currency: currency, unit_price_micros: 100000000)
+  candidate_at_price(
+    module: rdimm_32g,
+    currency: currency,
+    unit_price: money_amount_micro(count: 100000000),
+  )
 }
 
 fn candidate_of(
   module: DramModuleCatalogRow,
   currency: CurrencyCode,
 ) -> PartCandidate {
-  candidate_at_price(module: module, currency: currency, unit_price_micros: 100000000)
+  candidate_at_price(
+    module: module,
+    currency: currency,
+    unit_price: money_amount_micro(count: 100000000),
+  )
 }
 
 // WHAT AN ASSOCIATION LICENSES. gunbc holds MREP at
