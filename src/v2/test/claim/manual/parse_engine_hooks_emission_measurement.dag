@@ -2,7 +2,7 @@ module v2.test.claim.manual.parse_engine_hooks_emission_measurement
 
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
-import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest, V2Tree }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.compiler.self_host.candidate_generation {
   ArtifactProduced,
   AssemblyRejected,
