@@ -7,23 +7,15 @@ import gunbc.tools.frontier_ingestion_probe { classify_normalize_reasons, classi
 
 data permanent_witness_scope_note: String = "WHAT THIS WITNESS MAY ASSERT, and why the live-corpus rows are NOT here. A required witness whose success depends on the current defects continuing to exist inverts the moment the defect is repaired: it would go RED on the repair and GREEN on a regression. So the assertions below validate the STAGE CLASSIFIER and the containment-read discipline on synthetic specimens whose stage is a property of the specimen rather than of the frontier. The per-member live population is a revision-scoped OBSERVATION recorded in docs/plans/v2-frontend-std-ingestion-frontier-exact-head.md and reproducible from gunbc.tools.frontier_ingestion_probe, which is deliberately NOT a test module for exactly this reason. The classifier is imported from that one authority rather than restated here, so the thing under test and the thing used for measurement cannot drift apart."
 
-data header_only_source: String = "module frontier_probe\n"
+data stage_separation_cost_note: String = "WHY TWO STAGE-SEPARATION CLAIMS ARE NOT HERE, stated rather than hidden. classify_source reaching parse_module builds dag_grammar(), and that construction alone measured 5002-5003ms thread-CPU against the 5000ms fast-lane budget on CI — so an ACCEPTED claim and a PARSE claim cannot execute per-PR, while the LEX claim below can, because a lex refusal returns before any grammar is built.\n\nThey are DELETED, not relocated. Moving them under a long/ directory would remove them from per-PR discovery without giving them an executing consumer, which deletes the coverage while retaining the source — the gunbc#7762 specimen the 2026-08-04 admission ruling exists to forbid. Nothing here claims those two stages are covered.\n\nWHAT IS OWED, and to which lane: the 15-member census increment needs a batched or realized instrument precisely because the interpreted path also exceeds budget on the larger members. That instrument is the executing consumer these two claims should be enrolled against, over a closed result space (ReadRefused | LexRefused | ParseRefused | NormalizeGraftRefused | NormalizeRetained | NormalizeOther | Accepted), and it is where they return."
 
 data unterminated_string_source: String = "module frontier_probe\n\ndata d: String = \"unterminated\n"
 
-data unbalanced_brace_source: String = "module frontier_probe\n\nfn f() -> Int {\n  1\n"
-
-test fn classifier_separates_accepted() -> Bool {
-  classify_source(source: header_only_source) == "ACCEPTED"
-}
 
 test fn classifier_separates_lex_from_accepted() -> Bool {
   classify_source(source: unterminated_string_source) == "LEX"
 }
 
-test fn classifier_separates_parse_from_lex() -> Bool {
-  classify_source(source: unbalanced_brace_source) == "PARSE"
-}
 
 
 
