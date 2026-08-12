@@ -193,15 +193,6 @@ fn roster_order_verdict(roster: SourceClosureRoster) -> RosterOrderVerdict {
   ).verdict
 }
 
-fn roster_is_canonically_ordered(roster: SourceClosureRoster) -> Bool {
-  match roster_order_verdict(roster: roster) {
-    RosterCanonicallyOrdered => true
-    RosterNotAscending { at_member: _ } => false
-    RosterDuplicateMember { at_member: _ } => false
-    RosterMemberIdentityEmpty => false
-  }
-}
-
 fn member_identity_digest(identity: String) -> Hash {
   symbol_identity_digest(sym: identity)
 }
@@ -342,11 +333,4 @@ fn generation_identity_agrees(
       generation_axis_agrees(left: left, right: right, axis: axis)
     }
   )
-}
-
-fn generation_artifact_is_materialized(identity: GenerationIdentity) -> Bool {
-  match identity.materialized_artifact {
-    ArtifactMaterialized { digest: _ } => true
-    ArtifactNotMaterialized => false
-  }
 }

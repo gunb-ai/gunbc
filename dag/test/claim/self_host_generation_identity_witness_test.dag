@@ -26,7 +26,6 @@ import v2.compiler.self_host.generation {
   generation_axis_symbol,
   generation_identity_agrees,
   generation_identity_mismatched_axes,
-  roster_is_canonically_ordered,
   roster_order_verdict,
   source_closure_axis_digest
 }
@@ -275,7 +274,7 @@ fn gi_roster_empty_identity() -> SourceClosureRoster {
 }
 
 test fn canonical_roster_admits_and_yields_a_digest() -> Bool {
-  roster_is_canonically_ordered(roster: gi_roster_canonical())
+  gi_ordered(roster: gi_roster_canonical())
     && match source_closure_axis_digest(roster: gi_roster_canonical()) {
       SourceClosureAxisDigest { digest: _ } => true
       SourceClosureAxisRefused { verdict: _ } => false
@@ -293,7 +292,7 @@ test fn canonical_roster_admits_and_yields_a_digest() -> Bool {
 // producer) and must not fold anyway (which would make the same closure report as
 // two different generations).
 test fn reordered_roster_refuses_naming_the_offending_member() -> Bool {
-  !roster_is_canonically_ordered(roster: gi_roster_reordered())
+  !gi_ordered(roster: gi_roster_reordered())
     && match source_closure_axis_digest(roster: gi_roster_reordered()) {
       SourceClosureAxisDigest { digest: _ } => false
       SourceClosureAxisRefused { verdict: v } =>
@@ -309,7 +308,7 @@ test fn reordered_roster_refuses_naming_the_offending_member() -> Bool {
 // DISCRIMINATING RED. A duplicated member is its OWN verdict, not folded into the
 // ordering refusal — two different producer defects with two different remedies.
 test fn duplicate_member_refuses_as_a_distinct_verdict() -> Bool {
-  !roster_is_canonically_ordered(roster: gi_roster_duplicate())
+  !gi_ordered(roster: gi_roster_duplicate())
     && match source_closure_axis_digest(roster: gi_roster_duplicate()) {
       SourceClosureAxisDigest { digest: _ } => false
       SourceClosureAxisRefused { verdict: v } =>
@@ -357,6 +356,17 @@ test fn axis_symbols_are_pairwise_distinct() -> Bool {
         ) == 1
       }
     )
+}
+
+// Test-side projection over the roster verdict coproduct; the authority exposes the
+// verdict itself, not a Bool (review 51217).
+fn gi_ordered(roster: SourceClosureRoster) -> Bool {
+  match roster_order_verdict(roster: roster) {
+    RosterCanonicallyOrdered => true
+    RosterNotAscending { at_member: _ } => false
+    RosterDuplicateMember { at_member: _ } => false
+    RosterMemberIdentityEmpty => false
+  }
 }
 
 // FORGERY CONTROL. Text that is not a valid SHA-512 digest cannot become a

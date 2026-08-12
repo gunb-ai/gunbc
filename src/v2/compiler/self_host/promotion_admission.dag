@@ -1,11 +1,12 @@
 module v2.compiler.self_host.promotion_admission
 
 import v2.compiler.self_host.generation {
+  ArtifactMaterialized,
+  ArtifactNotMaterialized,
   CandidateGeneration,
   GenerationAxis,
   GenerationIdentity,
   SuccessorGeneration,
-  generation_artifact_is_materialized,
   generation_axis_symbol,
   generation_identity_mismatched_axes
 }
@@ -112,7 +113,7 @@ type PromotionRefusalCause
   | DiscriminatingFaultNotCaught { at_case: String }
   | EmptyBehavioralCorpus { receipt: Symbol }
   | ProvenanceNotDeclaredProducer { receipt: Symbol }
-  | ArtifactNotMaterialized { receipt: Symbol }
+  | PromotionArtifactNotMaterialized { receipt: Symbol }
   | OracleNotDeclaredSeed { receipt: Symbol }
   | SuccessorNotProducedByCandidate
   | CorpusMismatchAcrossReceipts { receipt: Symbol }
@@ -274,10 +275,10 @@ fn artifact_causes(
   receipt: Symbol,
   identity: GenerationIdentity
 ) -> List<PromotionRefusalCause> {
-  if generation_artifact_is_materialized(identity: identity) {
-    freemonoid_empty()
-  } else {
-    [ArtifactNotMaterialized { receipt: receipt }]
+  match identity.materialized_artifact {
+    ArtifactMaterialized { digest: _ } => freemonoid_empty()
+    ArtifactNotMaterialized =>
+      [PromotionArtifactNotMaterialized { receipt: receipt }]
   }
 }
 
@@ -389,13 +390,6 @@ fn admit_promotion(c: SelfHostCandidate) -> PromotionOutcome {
   }
 }
 
-fn promotion_is_admitted(o: PromotionOutcome) -> Bool {
-  match o {
-    Promoted { successor: _, cases_compared: _ } => true
-    PromotionRefused { causes: _ } => false
-  }
-}
-
 fn promotion_refusal_carries(o: PromotionOutcome, cause: Symbol) -> Bool {
   match o {
     Promoted { successor: _, cases_compared: _ } => false
@@ -426,7 +420,7 @@ fn promotion_refusal_cause_symbol(c: PromotionRefusalCause) -> Symbol {
     EmptyBehavioralCorpus { receipt: _ } => ^refusal_empty_behavioral_corpus
     ProvenanceNotDeclaredProducer { receipt: _ } =>
       ^refusal_provenance_not_declared_producer
-    ArtifactNotMaterialized { receipt: _ } => ^refusal_artifact_not_materialized
+    PromotionArtifactNotMaterialized { receipt: _ } => ^refusal_artifact_not_materialized
     OracleNotDeclaredSeed { receipt: _ } => ^refusal_oracle_not_declared_seed
     SuccessorNotProducedByCandidate => ^refusal_successor_not_produced_by_candidate
     CorpusMismatchAcrossReceipts { receipt: _ } => ^refusal_corpus_mismatch_across_receipts

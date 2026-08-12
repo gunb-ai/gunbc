@@ -27,15 +27,27 @@ import v2.compiler.self_host.promotion_admission {
   Observed,
   ObservationUnavailable,
   ObservedVerdict,
+  PromotionOutcome,
   SelfHostCandidate,
   admit_promotion,
-  promotion_is_admitted,
+  Promoted,
+  PromotionRefused,
   promotion_refusal_carries
 }
 import v2.std.logic { Bool }
 import v2.std.node { Hash, symbol_identity_digest }
 import v2.std.optional { Absent, Present }
 import std.content_hash { sha512_hex_digest }
+
+// Test-side projection. The authority carrier deliberately exposes no is_* Bool over
+// PromotionOutcome (review 51217, predicate-dissolution): a witness must return Bool,
+// so the collapse belongs here, at the assertion boundary, not on the admission API.
+fn pa_admitted(o: PromotionOutcome) -> Bool {
+  match o {
+    Promoted { successor: _, cases_compared: _ } => true
+    PromotionRefused { causes: _ } => false
+  }
+}
 
 fn pa_artifact(hex: String) -> ArtifactIdentity {
   match sha512_hex_digest(hex: hex) {
@@ -222,7 +234,7 @@ fn pa_good() -> SelfHostCandidate {
 // fixed-point authority this exact candidate would have been REFUSED for the sole
 // reason that its emitted source bytes were not the seed's.
 test fn source_different_but_behaviorally_equivalent_is_promoted() -> Bool {
-  promotion_is_admitted(o: admit_promotion(c: pa_good()))
+  pa_admitted(o: admit_promotion(c: pa_good()))
 }
 
 // THE OTHER HALF, and the one that matters more. Every identity axis here is
@@ -265,7 +277,7 @@ test fn byte_identical_but_behaviorally_wrong_is_refused() -> Bool {
       successor_provenance: pa_provenance(subject: ident, producer: ident)
     }
   )
-  !promotion_is_admitted(o: o)
+  !pa_admitted(o: o)
     && promotion_refusal_carries(o: o, cause: ^refusal_behavior_diverged_from_oracle)
 }
 
@@ -309,7 +321,7 @@ test fn uncaught_planted_fault_is_refused() -> Bool {
       )
     )
   )
-  !promotion_is_admitted(o: o)
+  !pa_admitted(o: o)
     && promotion_refusal_carries(o: o, cause: ^refusal_discriminating_fault_not_caught)
 }
 
@@ -352,7 +364,7 @@ test fn unavailable_fault_observation_is_refused_not_assumed_equivalent() -> Boo
       )
     )
   )
-  !promotion_is_admitted(o: o)
+  !pa_admitted(o: o)
     && promotion_refusal_carries(
       o: o,
       cause: ^refusal_receipt_observation_unavailable
@@ -395,7 +407,7 @@ test fn empty_behavioral_corpus_is_refused() -> Bool {
       )
     )
   )
-  !promotion_is_admitted(o: o)
+  !pa_admitted(o: o)
     && promotion_refusal_carries(o: o, cause: ^refusal_empty_behavioral_corpus)
 }
 
@@ -445,7 +457,7 @@ test fn receipt_from_a_different_toolchain_is_refused_as_stale() -> Bool {
       )
     )
   )
-  !promotion_is_admitted(o: o)
+  !pa_admitted(o: o)
     && promotion_refusal_carries(o: o, cause: ^refusal_stale_receipt_subject)
 }
 
@@ -487,7 +499,7 @@ test fn failed_successor_build_is_refused() -> Bool {
       )
     )
   )
-  !promotion_is_admitted(o: o)
+  !pa_admitted(o: o)
     && promotion_refusal_carries(o: o, cause: ^refusal_build_not_green)
 }
 
@@ -530,7 +542,7 @@ test fn candidate_cannot_authorize_its_own_provenance() -> Bool {
       )
     )
   )
-  !promotion_is_admitted(o: o)
+  !pa_admitted(o: o)
     && promotion_refusal_carries(
       o: o,
       cause: ^refusal_provenance_not_declared_producer
@@ -578,7 +590,7 @@ test fn candidate_as_its_own_oracle_is_refused() -> Bool {
       )
     )
   )
-  !promotion_is_admitted(o: o)
+  !pa_admitted(o: o)
     && promotion_refusal_carries(o: o, cause: ^refusal_oracle_not_declared_seed)
 }
 
@@ -638,7 +650,7 @@ test fn unmaterialized_candidate_artifact_is_refused_at_promotion() -> Bool {
       )
     }
   )
-  !promotion_is_admitted(o: o)
+  !pa_admitted(o: o)
     && promotion_refusal_carries(o: o, cause: ^refusal_artifact_not_materialized)
 }
 
@@ -694,7 +706,7 @@ test fn spliced_candidate_and_successor_chains_are_refused() -> Bool {
       )
     }
   )
-  !promotion_is_admitted(o: o)
+  !pa_admitted(o: o)
     && promotion_refusal_carries(
       o: o,
       cause: ^refusal_successor_not_produced_by_candidate
@@ -741,7 +753,7 @@ test fn fault_proven_on_a_different_corpus_is_refused() -> Bool {
       )
     )
   )
-  !promotion_is_admitted(o: o)
+  !pa_admitted(o: o)
     && promotion_refusal_carries(
       o: o,
       cause: ^refusal_corpus_mismatch_across_receipts
