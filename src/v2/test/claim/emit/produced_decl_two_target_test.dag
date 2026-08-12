@@ -74,8 +74,7 @@ test fn produced_decl_unwired_target_still_refuses() -> Bool {
 // The golden is written as a literal rather than composed from
 // emit_module_decl_separator, so the expected text does not share an ancestor with
 // the implementation that produces it.
-data two_target_rust_module_golden: String =
-  "fn add(x: i32, y: i32) -> i32 { x + y }\n\nfn add2(x: i32, y: i32) -> i32 { x + y }\n\n"
+data two_target_rust_module_golden: String = "fn add(x: i32, y: i32) -> i32 { x + y }\n\nfn add2(x: i32, y: i32) -> i32 { x + y }\n\n"
 
 fn tt_module_text(target: TargetModel, first: Symbol, second: Symbol) -> Outcome<String> {
   match table_fixture_add_decl_node(fn_name: first) {
