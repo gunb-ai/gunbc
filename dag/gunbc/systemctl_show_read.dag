@@ -5,7 +5,7 @@ import std.algebra { trim }
 import std.types { String, NonEmptyStr, List }
 import extdeps.systemd.systemctl
 import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire }
-import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell }
+import gunbc.host_effect { fleet_ssh_leaf_unmigrated_refused, HostEffectTransport, LocalShell, SshShell }
 import v2.std.operation_argv {
   ArgvMaterialization,
   ArgvMaterialized,
@@ -93,6 +93,7 @@ fn systemctl_show_property_read(
   match transport {
     LocalShell => systemctl_show_property_read_local(unit: unit, property: property)
     SshShell { ssh_host: h } => systemctl_show_property_read_ssh(host: h, unit: unit, property: property)
+    FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       SystemdPropertyCaptureRefused {
         reason: "systemctl show refused EmitArtifactThenThinRun transport",

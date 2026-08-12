@@ -8,7 +8,7 @@ import gunbc.hostname_read {
   HostnameShortCaptured,
   HostnameShortCaptureRefused,
 }
-import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
+import gunbc.host_effect { fleet_ssh_leaf_unmigrated_refused, HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
 import gunbc.typed_argv_exec {
   typed_argv_exec_over_ssh,
   typed_argv_shell_safe_refusal_argv,
@@ -90,6 +90,7 @@ fn hostname_set_apply(
   match transport {
     LocalShell => hostname_set_local(desired: desired)
     SshShell { ssh_host: h } => hostname_set_ssh(hostnamectl_path: hostnamectl_path, host: h, desired: desired)
+    FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       HostnameSetCasApplyFailed { stderr: "EmitArtifactThenThinRun unsupported for hostname set" }
   }

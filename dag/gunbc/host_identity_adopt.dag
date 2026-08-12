@@ -41,6 +41,7 @@ fn srv2_host_identity_os_target() -> NodeControlPlane {
 fn host_identity_transport_label(transport: HostEffectTransport) -> String {
   match transport {
     SshShell { ssh_host: h } => concat("SshShell:", h)
+    FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
     LocalShell => "LocalShell"
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => "EmitArtifactThenThinRun"
   }

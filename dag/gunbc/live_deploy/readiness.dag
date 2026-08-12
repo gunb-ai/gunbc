@@ -66,7 +66,7 @@ import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
   deploy_access_decision_reason,
 }
-import gunbc.host_effect {
+import gunbc.host_effect { fleet_ssh_leaf_unmigrated_refused,
   HostEffectTransport,
   LocalShell,
   SshShell,
@@ -148,6 +148,7 @@ fn live_deploy_healthz_get_for_port(port: Int, transport: HostEffectTransport) -
   match transport {
     LocalShell => live_deploy_healthz_get_local(port: port)
     SshShell { ssh_host: h } => live_deploy_healthz_get_ssh(port: port, host: h)
+    FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       HealthzEffectiveRead {
         body: "",

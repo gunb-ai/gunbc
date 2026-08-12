@@ -4,7 +4,7 @@ import std.algebra { trim }
 
 import std.types { String, NonEmptyStr, List }
 import extdeps.systemd.systemctl
-import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
+import gunbc.host_effect { fleet_ssh_leaf_unmigrated_refused, HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
 import v2.std.operation_argv {
   ArgvMaterialization,
   ArgvMaterialized,
@@ -80,6 +80,7 @@ fn systemctl_status_read(transport: HostEffectTransport, unit: NonEmptyStr) -> U
   match transport {
     LocalShell => systemctl_status_read_local(unit: unit)
     SshShell { ssh_host: h } => systemctl_status_read_ssh(host: h, unit: unit)
+    FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       UnitStatusCaptureRefused {
         reason: "systemctl status refused EmitArtifactThenThinRun transport",

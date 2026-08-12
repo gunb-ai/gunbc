@@ -4,7 +4,7 @@ import std.algebra { trim }
 
 import std.types { String, NonEmptyStr, List, Bool }
 import extdeps.tools.hostname
-import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
+import gunbc.host_effect { fleet_ssh_leaf_unmigrated_refused, HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
 import v2.std.operation_argv {
   ArgvMaterialization,
   ArgvMaterialized,
@@ -79,6 +79,7 @@ fn hostname_short_read(transport: HostEffectTransport) -> HostnameShortCapture {
   match transport {
     LocalShell => hostname_short_read_local()
     SshShell { ssh_host: h } => hostname_short_read_ssh(host: h)
+    FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       HostnameShortCaptureRefused {
         reason: "hostname -s read refused EmitArtifactThenThinRun transport",
