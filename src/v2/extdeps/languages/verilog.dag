@@ -14,6 +14,7 @@ import v2.std.node {
   TypeNode,
 }
 import v2.std.collection { List, Map, empty_map, map_insert }
+import v2.std.compilers.target_model { TargetModel, ProducedDeclUnwired }
 import v2.std.grammar {
   StampClass,
   StampBinding, FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_nonterminal_occurrence, grammar_formal_production, grammar_formal_terminal, grammar_formal_terminal_bound, grammar_formal_terminal_free, formal_production_for_lhs_exact, derive_grammar_relation_row_node }
@@ -1192,7 +1193,8 @@ fn verilog_emission_target_model() -> TargetModel {
     binding_spellings: verilog_binding_spellings(),
     token_class_emit_transforms: verilog_emit_layout_transforms(),
     authority_source_text: "",
-    runtime_row: target_emit_host_runtime_row_unconfigured
+    runtime_row: target_emit_host_runtime_row_unconfigured,
+    produced_decl_support: ProducedDeclUnwired
   }
 }
 
@@ -1219,7 +1221,8 @@ fn verilog_target_model_with_single_row(row: Node) -> TargetModel {
     binding_spellings: verilog_binding_spellings(),
     token_class_emit_transforms: verilog_emit_layout_transforms(),
     authority_source_text: "",
-    runtime_row: target_emit_host_runtime_row_unconfigured
+    runtime_row: target_emit_host_runtime_row_unconfigured,
+    produced_decl_support: ProducedDeclUnwired
   }
 }
 
