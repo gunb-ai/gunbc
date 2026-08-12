@@ -1,0 +1,36 @@
+module v2.test.fixture.frontier_probe_cause_location_manifest_fixture
+
+import v2.compiler.self_host.frontier_probe_types {
+  AssembleRejectionDetail,
+  CauseLocationTextual,
+  FrontierProbeReceipt,
+  FrontierProbeDetailAbsent,
+  NonEmptySymbolChain,
+  OtherAssembleRefusal,
+  ProbeStageAssemble,
+  UnknownProbeCause
+}
+import std.algebra { Empty }
+import v2.std.diagnostic { ByteRange }
+import v2.std.text { String }
+
+data frontier_probe_cause_location_manifest_fixture_note: String = "REAL EMITTED BYTES, not hand-authored. The receipt below is copied verbatim out of a host_frontier_probe_survey_manifest.dag produced by the frontier_probe_survey bin at source_commit 395ae126c6095b3cca1c84e8c33dd20456782d3d, survey_executable sha256 6fdbc1a51f5767e91803877103cb5c38afa13ea098242fdd22136bbaa008c0e0, over module src/v2/compiler/use_site_verdict.dag. It exists so the RELOAD half of the round-trip is checkable in CI without running a survey: the emitter can only be proven to produce parseable, typecheckable, field-preserving text by feeding its actual output back through the front end. A hand-written approximation would test the fixture author's idea of the format instead of the emitter's, which is the failure this fixture is here to prevent. Regenerate by rerunning the bin from a clean detached worktree and copying the receipt verbatim; if the emitter's rendering changes, this fixture must be regenerated rather than edited by hand."
+
+data frontier_probe_cause_location_emitted_receipt: FrontierProbeReceipt = FrontierProbeReceipt {
+  module_path: "src/v2/compiler/use_site_verdict.dag",
+  blocker_class: UnknownProbeCause { reason: ^tokenize_lex_e1_unrecognized_char },
+  located_stage: ProbeStageAssemble,
+  located_reason: ^tokenize_lex_e1_unrecognized_char,
+  detail: FrontierProbeDetailAbsent,
+  assemble_detail: AssembleRejectionDetail {
+    rejection_chain: NonEmptySymbolChain {
+      head: ^tokenize_lex_e1_unrecognized_char,
+      tail: Empty
+    },
+    cause: OtherAssembleRefusal { reason: ^tokenize_lex_e1_unrecognized_char },
+    at: CauseLocationTextual {
+      file: "dag/std/algebra.dag",
+      extent: ByteRange { start: 28138, end: 28138 }
+    }
+  }
+}

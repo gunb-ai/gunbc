@@ -65,7 +65,8 @@ test fn overlap_evidence_binds_exact_row_not_global_roster() -> Bool {
   match detail {
     AssembleRejectionDetail {
       cause: GrammarChoiceOverlap { rows: rows },
-      rejection_chain: _
+      rejection_chain: _,
+      at: _
     } =>
       match rows {
         NonEmptyGrammarChoiceAmbiguityRows {
@@ -164,7 +165,8 @@ test fn overlap_stage_attaches_evidence_when_diagnostics_stripped() -> Bool {
   match detail {
     AssembleRejectionDetail {
       cause: GrammarChoiceOverlap { rows: rows },
-      rejection_chain: _
+      rejection_chain: _,
+      at: _
     } =>
       match rows {
         NonEmptyGrammarChoiceAmbiguityRows {

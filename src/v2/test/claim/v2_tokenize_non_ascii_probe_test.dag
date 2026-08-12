@@ -1,0 +1,64 @@
+module v2.test.claim.v2_tokenize_non_ascii_probe
+
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data v2_tokenize_non_ascii_probe_note: String = "SH-D minimal reproducer for the measured use_site_verdict blocker. The real-closure probe measured located_reason ^tokenize_lex_e1_unrecognized_char, NOT the ^parse_grammar_choice_overlap_residue its frontier row records. The manifest was ruled out as the instrument: it carries the non-ASCII bytes through verbatim. These fixtures ask the narrower question the closure cannot isolate — does the v2 lexer reject a non-ASCII character that appears INSIDE a string literal, which is where every occurrence in the std closure lives (prose glyphs). Fixtures, not a closure walk, so this costs milliseconds instead of the ~80s a real-ingest arm costs. The ASCII control must ACCEPT or the probe proves nothing about non-ASCII."
+
+test fn ascii_string_literal_tokenizes_control_holds() -> Bool {
+  match tokenize(
+    text: "data x: String = \"plain\"",
+    file: ^probe,
+    rules: dag_language_model().lex
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn non_ascii_glyph_in_string_literal_rejects_as_unrecognized_char() -> Bool {
+  match tokenize(
+    text: "data x: String = \"🟡\"",
+    file: ^probe,
+    rules: dag_language_model().lex
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: ds } => ds.head.reason == ^tokenize_lex_e1_unrecognized_char
+  }
+}
+
+test fn non_ascii_arrow_in_string_literal_rejects_as_unrecognized_char() -> Bool {
+  match tokenize(
+    text: "data x: String = \"a → b\"",
+    file: ^probe,
+    rules: dag_language_model().lex
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: ds } => ds.head.reason == ^tokenize_lex_e1_unrecognized_char
+  }
+}
+
+test fn non_ascii_glyph_in_string_literal_is_accepted() -> Bool {
+  match tokenize(
+    text: "data x: String = \"🟡\"",
+    file: ^probe,
+    rules: dag_language_model().lex
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn non_ascii_arrow_in_string_literal_is_accepted() -> Bool {
+  match tokenize(
+    text: "data x: String = \"a → b\"",
+    file: ^probe,
+    rules: dag_language_model().lex
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}

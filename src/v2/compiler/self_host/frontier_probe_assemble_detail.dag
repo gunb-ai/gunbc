@@ -110,10 +110,7 @@ fn assemble_rejection_cause_from_parse_stage(
   } else {
     match non_empty_grammar_choice_ambiguity_rows_from_parse_stage(d: d) {
       Present { value: rows } => GrammarChoiceOverlap { rows: rows }
-      Absent => OtherAssembleRefusal {
-        reason: d.head.diagnostic.reason,
-        at: frontier_probe_cause_location_from_locus(at: d.head.diagnostic.at)
-      }
+      Absent => OtherAssembleRefusal { reason: d.head.diagnostic.reason }
     }
   }
 }
@@ -282,10 +279,7 @@ fn assemble_rejection_cause_from_diagnostics(
       Absent => MissingModuleIdentityUnavailable
     }
   } else {
-    OtherAssembleRefusal {
-      reason: d.head.reason,
-      at: frontier_probe_cause_location_from_locus(at: d.head.at)
-    }
+    OtherAssembleRefusal { reason: d.head.reason }
   }
 }
 
@@ -322,7 +316,8 @@ fn frontier_probe_assemble_detail_from_parse_stage(
 ) -> FrontierProbeAssembleDetail {
   AssembleRejectionDetail {
     rejection_chain: non_empty_symbol_chain_from_non_empty_parse_stage(d: d),
-    cause: assemble_rejection_cause_from_parse_stage(d: d)
+    cause: assemble_rejection_cause_from_parse_stage(d: d),
+    at: frontier_probe_cause_location_from_locus(at: d.head.diagnostic.at)
   }
 }
 
@@ -331,7 +326,8 @@ fn frontier_probe_assemble_detail_from_rejection(
 ) -> FrontierProbeAssembleDetail {
   AssembleRejectionDetail {
     rejection_chain: non_empty_symbol_chain_from_non_empty_diagnostics(d: d),
-    cause: assemble_rejection_cause_from_diagnostics(d: d)
+    cause: assemble_rejection_cause_from_diagnostics(d: d),
+    at: frontier_probe_cause_location_from_locus(at: d.head.at)
   }
 }
 
@@ -346,7 +342,8 @@ fn frontier_probe_assemble_detail_from_rejection_with_overlap_stage(
         rejection_chain: non_empty_symbol_chain_from_non_empty_diagnostics(d: d),
         cause: assemble_rejection_cause_from_parse_stage(
           d: non_empty_parse_stage_diagnostics_merged(d: d, overlap_stage: stage)
-        )
+        ),
+        at: frontier_probe_cause_location_from_locus(at: d.head.at)
       }
   }
 }

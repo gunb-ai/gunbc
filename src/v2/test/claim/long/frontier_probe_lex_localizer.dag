@@ -1,0 +1,34 @@
+module v2.test.long.frontier_probe_lex_localizer
+
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.algebra { fold_list }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.text { String }
+import v2.test.workflow.host_source_root_ingest_manifest { host_source_root_ingest }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data frontier_probe_lex_localizer_note: String = "SH-D localizer, NOT a witness. The use_site_verdict closure measures ^tokenize_lex_e1_unrecognized_char and two guesses have already been refuted by execution: non-ASCII inside string literals tokenizes fine (emoji and arrow, ASCII control accepting), and a standalone leading // annotation block tokenizes fine. Guessing is the wrong instrument. This folds the SAME source text the ingest carries through v2 tokenize per file and returns the first file_path that refuses, so the search is one run over the real bytes rather than a sequence of hypotheses. Returns the empty string if every file tokenizes, which would relocate the refusal to assembly rather than lexing and is itself a decisive answer."
+
+fn first_failing_lex_file() -> String {
+  fold_list(
+    xs: host_source_root_ingest,
+    empty: "",
+    cons: fn(acc, r) {
+      if acc != "" {
+        acc
+      } else {
+        match tokenize(
+          text: r.source.carried,
+          file: ^probe,
+          rules: dag_language_model().lex
+        ) {
+          Accepted { value: _, diagnostics: _ } => ""
+          Rejected { diagnostics: _ } => r.artifact.file_path
+        }
+      }
+    }
+  )
+}

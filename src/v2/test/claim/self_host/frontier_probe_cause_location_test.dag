@@ -5,19 +5,17 @@ import v2.compiler.parse_diagnostic {
   parse_stage_diagnostic_from_diagnostic_only
 }
 import v2.compiler.self_host.frontier_probe_assemble_detail {
-  assemble_rejection_cause_from_parse_stage
+  frontier_probe_assemble_detail_from_parse_stage
 }
 import v2.compiler.self_host.frontier_probe_types {
-  AssembleMissingModule,
+  AssembleRejectionDetail,
+  NonEmptySymbolChain,
+  CauseLocationNodeNotSerializable,
+  CauseLocationPort,
   CauseLocationTextual,
-  CauseLocationUnavailable,
-  GrammarChoiceOverlap,
-  MaskedAssembleRefusal,
-  MaskedAssembleRefusalWithoutEvidence,
-  MissingModuleIdentityUnavailable,
-  OtherAssembleRefusal
+  NoFrontierProbeDetail
 }
-import std.algebra { Empty }
+import std.algebra { Cons, Empty }
 import v2.std.diagnostic {
   ByteRange,
   Diagnostic,
@@ -25,21 +23,37 @@ import v2.std.diagnostic {
   Unavailable,
   UserInputBoundary,
   WholeFile,
-  node_locus
+  node_locus,
+  port_locus
 }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 
-data frontier_probe_cause_location_test_note: String = "Discriminating controls for the cause-location field on OtherAssembleRefusal. The field exists because that arm is the catch-all: its reason symbol alone does not say WHICH file refused, and recovering the file previously meant lexing an entire closure by hand. These are FIXTURES, not a pipeline walk, so they cost milliseconds and stay per-PR affordable. The byte range is asserted exactly, not merely for presence: an implementation that preserved the file but substituted WholeFile would satisfy a presence check while destroying the position that makes the field worth carrying. The Unavailable arm is exercised too, because Locus admits NodeLocus and PortLocus, which have no manifest serialization — the projection must classify them rather than error, so one unrepresentable position cannot abort a whole survey."
+data frontier_probe_cause_location_test_note: String = "Discriminating controls for the refusal location on AssembleRejectionDetail. The location exists because a reason symbol alone does not say WHICH file refused: recovering that previously meant folding tokenize over an entire import closure by hand. These are FIXTURES, not a pipeline walk, so they cost milliseconds. The byte range is asserted EXACTLY rather than for presence — an implementation that kept the file but substituted WholeFile would pass a presence check while destroying the position that makes the field worth carrying, and that substitution is the executed RED for these claims. All three Locus arms are exercised: a port is real serializable data and keeps its symbol, and only a Node, which has no manifest rendering, reaches the not-serializable arm. A two-diagnostic control pins the PAIRING: with a second diagnostic carrying a different reason at a different position, the reason and the location must both come from the head, so neither field can be drawn from a diagnostic the other did not come from. The location is asserted on the DETAIL and never inside the cause, because a clustering key reads the cause and two modules refusing for the same reason at different positions are the same detailed cause."
 
-data cause_location_probe_file: Symbol = ^cause_location_probe_file_symbol
+fn detail_location_of(d: Diagnostic) -> Symbol {
+  match frontier_probe_assemble_detail_from_parse_stage(
+    d: NonEmptyParseStageDiagnostics {
+      head: parse_stage_diagnostic_from_diagnostic_only(d: d),
+      tail: Empty
+    }
+  ) {
+    NoFrontierProbeDetail => ^no_detail
+    AssembleRejectionDetail { rejection_chain: _, cause: _, at: a } =>
+      match a {
+        CauseLocationTextual { file: _, extent: _ } => ^location_is_textual
+        CauseLocationPort { port: p } => p
+        CauseLocationNodeNotSerializable => ^location_is_node_not_serializable
+      }
+  }
+}
 
 fn textual_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^cause_location_probe_unclassified_reason,
     at: Textual {
-      file: cause_location_probe_file,
+      file: ^cause_location_probe_file_symbol,
       extent: ByteRange { start: 7, end: 9 }
     },
     correction: Unavailable { reason: UserInputBoundary }
@@ -54,58 +68,98 @@ fn node_locus_diagnostic() -> Diagnostic {
   }
 }
 
-fn cause_from(d: Diagnostic) -> Symbol {
-  match assemble_rejection_cause_from_parse_stage(
-    d: NonEmptyParseStageDiagnostics {
-      head: parse_stage_diagnostic_from_diagnostic_only(d: d),
-      tail: Empty
-    }
-  ) {
-    GrammarChoiceOverlap { rows: _ } => ^not_other_refusal
-    MaskedAssembleRefusal { overlap_evidence: _, remaining_chain: _ } => ^not_other_refusal
-    MaskedAssembleRefusalWithoutEvidence { remaining_chain: _ } => ^not_other_refusal
-    AssembleMissingModule { requested: _ } => ^not_other_refusal
-    MissingModuleIdentityUnavailable => ^not_other_refusal
-    OtherAssembleRefusal { reason: _, at: a } =>
-      match a {
-        CauseLocationTextual { file: f, extent: _ } => f
-        CauseLocationUnavailable { reason: u } => u
-      }
+fn port_locus_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^cause_location_probe_unclassified_reason,
+    at: port_locus(port: ^cause_location_probe_port),
+    correction: Unavailable { reason: UserInputBoundary }
   }
 }
 
 fn textual_extent_start() -> Int {
-  match assemble_rejection_cause_from_parse_stage(
+  match frontier_probe_assemble_detail_from_parse_stage(
     d: NonEmptyParseStageDiagnostics {
       head: parse_stage_diagnostic_from_diagnostic_only(d: textual_diagnostic()),
       tail: Empty
     }
   ) {
-    GrammarChoiceOverlap { rows: _ } => 0 - 1
-    MaskedAssembleRefusal { overlap_evidence: _, remaining_chain: _ } => 0 - 1
-    MaskedAssembleRefusalWithoutEvidence { remaining_chain: _ } => 0 - 1
-    AssembleMissingModule { requested: _ } => 0 - 1
-    MissingModuleIdentityUnavailable => 0 - 1
-    OtherAssembleRefusal { reason: _, at: a } =>
+    NoFrontierProbeDetail => 0 - 1
+    AssembleRejectionDetail { rejection_chain: _, cause: _, at: a } =>
       match a {
         CauseLocationTextual { file: _, extent: e } =>
           match e {
             WholeFile => 0 - 2
             ByteRange { start: s, end: _ } => s
           }
-        CauseLocationUnavailable { reason: _ } => 0 - 3
+        CauseLocationPort { port: _ } => 0 - 3
+        CauseLocationNodeNotSerializable => 0 - 4
       }
   }
 }
 
-test fn textual_locus_preserves_the_file_holds() -> Bool {
-  cause_from(d: textual_diagnostic()) == cause_location_probe_file
+fn two_diagnostic_stage() -> NonEmptyParseStageDiagnostics {
+  NonEmptyParseStageDiagnostics {
+    head: parse_stage_diagnostic_from_diagnostic_only(d: textual_diagnostic()),
+    tail: Cons {
+      head: parse_stage_diagnostic_from_diagnostic_only(d: later_diagnostic()),
+      tail: Empty
+    }
+  }
+}
+
+fn later_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^cause_location_probe_second_reason,
+    at: Textual {
+      file: ^cause_location_probe_other_file_symbol,
+      extent: ByteRange { start: 99, end: 101 }
+    },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+fn paired_start_of_two() -> Int {
+  match frontier_probe_assemble_detail_from_parse_stage(d: two_diagnostic_stage()) {
+    NoFrontierProbeDetail => 0 - 1
+    AssembleRejectionDetail { rejection_chain: _, cause: _, at: a } =>
+      match a {
+        CauseLocationTextual { file: _, extent: e } =>
+          match e {
+            WholeFile => 0 - 2
+            ByteRange { start: s, end: _ } => s
+          }
+        CauseLocationPort { port: _ } => 0 - 3
+        CauseLocationNodeNotSerializable => 0 - 4
+      }
+  }
+}
+
+fn paired_reason_of_two() -> Symbol {
+  match frontier_probe_assemble_detail_from_parse_stage(d: two_diagnostic_stage()) {
+    NoFrontierProbeDetail => ^no_detail
+    AssembleRejectionDetail { rejection_chain: c, cause: _, at: _ } =>
+      match c {
+        NonEmptySymbolChain { head: h, tail: _ } => h
+      }
+  }
+}
+
+test fn location_and_reason_are_drawn_from_the_same_diagnostic_holds() -> Bool {
+  paired_start_of_two() == 7 && paired_reason_of_two() == ^cause_location_probe_unclassified_reason
+}
+
+test fn textual_locus_reaches_the_textual_arm_holds() -> Bool {
+  detail_location_of(d: textual_diagnostic()) == ^location_is_textual
 }
 
 test fn textual_locus_preserves_the_exact_byte_range_holds() -> Bool {
   textual_extent_start() == 7
 }
 
-test fn node_locus_projects_to_unavailable_rather_than_erroring_holds() -> Bool {
-  cause_from(d: node_locus_diagnostic()) == ^cause_location_node_locus_not_serializable
+test fn port_locus_keeps_its_port_rather_than_degrading_holds() -> Bool {
+  detail_location_of(d: port_locus_diagnostic()) == ^cause_location_probe_port
+}
+
+test fn node_locus_reaches_the_not_serializable_arm_holds() -> Bool {
+  detail_location_of(d: node_locus_diagnostic()) == ^location_is_node_not_serializable
 }

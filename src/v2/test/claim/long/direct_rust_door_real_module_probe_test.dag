@@ -1,0 +1,84 @@
+module v2.test.long.direct_rust_door_real_module_probe
+
+import v2.compiler.self_host.candidate_generation {
+  ArtifactProduced,
+  AssemblyRejected,
+  EmissionRejected,
+  InferenceRejected,
+  ProducerReceiptRejected,
+  ProvenancedRustEmissionObservation,
+  observe_provenanced_rust_emission_from_ingest
+}
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.test.workflow.host_source_root_ingest_manifest {
+  host_compiler_closure_admission,
+  host_source_root_ingest
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data direct_rust_door_real_module_probe_note: String = "SH-D D1-zero instrument: drives the v2 direct Rust door (observe_provenanced_rust_emission_from_ingest) against a REAL compiler module's import closure, supplied by the host_source_root_ingest_manifest overlay that discover_source_root_ingest --entry writes. This is the first real-module use of the door: direct_rust_door_production_group is hardwired to direct_rust_door_fixture (direct_rust_door_module_path names the fixture file), so no existing consumer observes a production module through it. Five mutually exclusive one-arm probes, not one pass/fail: a Bool witness cannot report WHICH stage stopped, so the arm that greens IS the measurement and the other four must red. Run per module via the local recipe below; the module under test is whichever entry the overlay manifest was generated for, which is why no module path is named here. LOCAL RECIPE: (1) discover_source_root_ingest --source-root src/v2 --source-root dag --entry <module.dag> --emit-manifest target/door-probe/host_source_root_ingest_manifest.dag; (2) claim_batch --source-root src/v2 --source-root dag --source-root target/door-probe --entry src/v2/test/claim/long/direct_rust_door_real_module_probe_test.dag --functions <the five below>. NOT ADMITTED for CI: walks the real pipeline, so it needs an explicit gunbc.explicit_witness_admission row with a declared cost before any cadence carries it — a long/ path is not admission."
+
+fn direct_rust_door_real_module_observation() -> ProvenancedRustEmissionObservation {
+  observe_provenanced_rust_emission_from_ingest(
+    ingest: host_source_root_ingest,
+    admission: host_compiler_closure_admission,
+    target: rust_target_model(),
+    module_path: direct_rust_door_real_module_path
+  )
+}
+
+data direct_rust_door_real_module_path: String = "src/v2/compiler/use_site_verdict.dag"
+
+test fn real_module_door_stops_at_assembly() -> Bool {
+  match direct_rust_door_real_module_observation() {
+    AssemblyRejected { diagnostics: _ } => true
+    InferenceRejected { diagnostics: _ } => false
+    EmissionRejected { diagnostics: _ } => false
+    ProducerReceiptRejected { diagnostics: _ } => false
+    ArtifactProduced { artifact: _ } => false
+  }
+}
+
+test fn real_module_door_stops_at_inference() -> Bool {
+  match direct_rust_door_real_module_observation() {
+    AssemblyRejected { diagnostics: _ } => false
+    InferenceRejected { diagnostics: _ } => true
+    EmissionRejected { diagnostics: _ } => false
+    ProducerReceiptRejected { diagnostics: _ } => false
+    ArtifactProduced { artifact: _ } => false
+  }
+}
+
+test fn real_module_door_stops_at_emission() -> Bool {
+  match direct_rust_door_real_module_observation() {
+    AssemblyRejected { diagnostics: _ } => false
+    InferenceRejected { diagnostics: _ } => false
+    EmissionRejected { diagnostics: _ } => true
+    ProducerReceiptRejected { diagnostics: _ } => false
+    ArtifactProduced { artifact: _ } => false
+  }
+}
+
+test fn real_module_door_stops_at_producer_receipt() -> Bool {
+  match direct_rust_door_real_module_observation() {
+    AssemblyRejected { diagnostics: _ } => false
+    InferenceRejected { diagnostics: _ } => false
+    EmissionRejected { diagnostics: _ } => false
+    ProducerReceiptRejected { diagnostics: _ } => true
+    ArtifactProduced { artifact: _ } => false
+  }
+}
+
+test fn real_module_door_produces_artifact() -> Bool {
+  match direct_rust_door_real_module_observation() {
+    AssemblyRejected { diagnostics: _ } => false
+    InferenceRejected { diagnostics: _ } => false
+    EmissionRejected { diagnostics: _ } => false
+    ProducerReceiptRejected { diagnostics: _ } => false
+    ArtifactProduced { artifact: _ } => true
+  }
+}
