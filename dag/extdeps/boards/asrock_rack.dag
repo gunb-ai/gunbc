@@ -131,7 +131,6 @@ data asrock_altrad8ud_openbmc_2_07_00_redfish_surface: BmcRedfishSurfaceRow = Bm
   firmware: asrock_altrad8ud_openbmc_2_07_00_capabilities.firmware,
   shape: BmcRedfishSurfaceShape {
     thermal_surface: RedfishThermalSubsystemSensorCollection,
-    chassis_sensor_collection_member_count: 51,
     fan_control_surface: RedfishFanControlResourceAbsent,
   },
 }
@@ -140,7 +139,6 @@ data asrock_altrad8ud_openbmc_3_22_00_redfish_surface: BmcRedfishSurfaceRow = Bm
   firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
   shape: BmcRedfishSurfaceShape {
     thermal_surface: RedfishLegacyChassisThermal,
-    chassis_sensor_collection_member_count: 9,
     fan_control_surface: RedfishInitialDutyControlResource,
   },
 }

@@ -126,11 +126,27 @@ type BmcFanRebootPersistenceReceipt {
   observed_at: EpochMs
 }
 
-// Re-observed 2026-08-12 after the 2026-08-11 flash: VERSION_ID=3.22.00 read
-// from /etc/os-release over authenticated BMC SSH. The prior row still said
-// 2.07.00, which is the observation this change stops being able to leave
-// behind — the surface below is now derived from THIS field.
-data srv3_bmc_firmware_observation: BmcFirmwareObservation = BmcFirmwareObservation {
+// AN OBSERVATION IS IMMUTABLE; only which one is CURRENT advances. An earlier
+// revision of this change edited the single srv3 row in place from 2.07.00 to
+// 3.22.00, which moved every receipt that referenced it — so the July
+// update-service snapshot silently began claiming it had been taken under
+// firmware that was installed in August. That is the same temporal-authority
+// defect this change set out to fix, relocated one field sideways: a receipt
+// must keep the firmware identity it was actually observed under, and a later
+// flash may not rewrite the past by reference.
+data srv3_bmc_firmware_2_07_00_observation: BmcFirmwareObservation = BmcFirmwareObservation {
+  endpoint: srv3_baseboard.bmc,
+  firmware: BmcFirmwareVersion {
+    family: OpenBmc,
+    version: firmware_semantic_version(major: 2, minor: 7, patch: 0),
+  },
+  evidence_scope: HistoricalEvidenceSnapshot,
+  observed_at: 1785110400000,
+}
+
+// Observed 2026-08-12 after the 2026-08-11 flash: VERSION_ID=3.22.00 read from
+// /etc/os-release over authenticated BMC SSH.
+data srv3_bmc_firmware_3_22_00_observation: BmcFirmwareObservation = BmcFirmwareObservation {
   endpoint: srv3_baseboard.bmc,
   firmware: BmcFirmwareVersion {
     family: OpenBmc,
@@ -139,6 +155,10 @@ data srv3_bmc_firmware_observation: BmcFirmwareObservation = BmcFirmwareObservat
   evidence_scope: HistoricalEvidenceSnapshot,
   observed_at: 1786843200000,
 }
+
+// The CURRENT standing. This is the only row that advances on a flash, and it
+// advances by re-binding rather than by mutation, so nothing historical moves.
+data srv3_bmc_firmware_observation: BmcFirmwareObservation = srv3_bmc_firmware_3_22_00_observation
 
 data srv4_bmc_firmware_observation: BmcFirmwareObservation = BmcFirmwareObservation {
   endpoint: srv4_baseboard.bmc,
@@ -165,8 +185,11 @@ data srv4_bmc_redfish_surface: BmcRedfishSurfaceDerivation = bmc_redfish_surface
   observation: srv4_bmc_firmware_observation,
 )
 
+// Bound to the 2.07.00 observation it was actually taken under. No 3.22.00
+// update-service receipt exists for srv3 yet; when one is measured it lands as
+// a NEW row rather than by re-pointing this one.
 data srv3_bmc_update_service_observation: BmcUpdateServiceObservation = BmcUpdateServiceObservation {
-  firmware: srv3_bmc_firmware_observation,
+  firmware: srv3_bmc_firmware_2_07_00_observation,
   http_push_uri: "/redfish/v1/UpdateService/update",
   multipart_http_push_uri: "/redfish/v1/UpdateService/update",
   active_bmc_image_id: "c1789ba5",

@@ -19,7 +19,7 @@ import std.measure {
   percent_count,
 }
 import std.nat { Nat }
-import std.types { Bool, EpochMs, HttpStatus, Int, List, NonEmptyStr }
+import std.types { Bool, EpochMs, HttpStatus, Int, List, NonEmptyStr, list_length }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -142,7 +142,6 @@ type RedfishFanControlSurface
 // second authority to disagree with.
 type BmcRedfishSurfaceShape {
   thermal_surface: RedfishThermalTelemetrySurface
-  chassis_sensor_collection_member_count: Nat
   fan_control_surface: RedfishFanControlSurface
 }
 
@@ -160,25 +159,32 @@ type BmcRedfishSurfaceRow {
 type BmcRedfishSurfaceDerivation
   = SurfaceShapeKnown { shape: BmcRedfishSurfaceShape }
   | SurfaceShapeUncatalogued { firmware: BmcFirmwareVersion }
+  | SurfaceShapeAmbiguous { firmware: BmcFirmwareVersion, matches: Nat }
+
+fn bmc_redfish_surface_matches(
+  catalog: List<BmcRedfishSurfaceRow>,
+  firmware: BmcFirmwareVersion,
+) -> List<BmcRedfishSurfaceRow> {
+  filter(catalog, row => row.firmware == firmware)
+}
 
 fn bmc_redfish_surface_for(
   catalog: List<BmcRedfishSurfaceRow>,
   firmware: BmcFirmwareVersion,
 ) -> BmcRedfishSurfaceDerivation {
-  fold(
-    catalog,
-    init: SurfaceShapeUncatalogued { firmware: firmware },
-    f: (acc, row) =>
-      match acc {
-        SurfaceShapeKnown { shape: s } => SurfaceShapeKnown { shape: s }
-        SurfaceShapeUncatalogued { firmware: f } =>
-          if row.firmware == f {
-            SurfaceShapeKnown { shape: row.shape }
-          } else {
-            SurfaceShapeUncatalogued { firmware: f }
-          }
-      },
-  )
+  let matches = bmc_redfish_surface_matches(catalog: catalog, firmware: firmware)
+  let count = list_length(matches)
+  if count == 0 {
+    SurfaceShapeUncatalogued { firmware: firmware }
+  } else if count == 1 {
+    fold(
+      matches,
+      init: SurfaceShapeUncatalogued { firmware: firmware },
+      f: (acc, row) => SurfaceShapeKnown { shape: row.shape },
+    )
+  } else {
+    SurfaceShapeAmbiguous { firmware: firmware, matches: count }
+  }
 }
 
 // The per-host projection. It takes the host's firmware OBSERVATION and the
