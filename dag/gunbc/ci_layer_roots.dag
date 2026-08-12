@@ -217,6 +217,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: unbound_dissolution(description: "the crate-layout artifact moves to host-driven generation with the index supplied at the boundary; rows delete together (crate_layout_transport_exclusion_note)")
   },
   WitnessExclusionRow {
+    pattern: "module_storage_row_supply_test.dag",
+    classification: OfflineLocalRecipe,
+    reason: "transport-run witness consumed by v2.workflow.module_binding_supply_transport, exactly the crate_layout posture (crate_layout_transport_exclusion_note): it projects off the derived ModuleStorageIndex, and the live index exists only inside that transport's overlay, so a hermetic discovery run reads host_module_bindings = Empty and REFUSES. That refusal is the vacuity guard working, not a defect -- correct behaviour, wrong lane. It is enrolled in that transport's ClaimRun roster; do NOT give it bin_witness_wet_entries rows",
+    dissolution: unbound_dissolution(description: "the module-binding index is supplied at the boundary rather than through an overlay source root; this row deletes with the crate_layout family (crate_layout_transport_exclusion_note)")
+  },
+  WitnessExclusionRow {
     pattern: "self_host/compiler_closure_emit_from_ingest_test.dag",
     classification: OfflineLocalRecipe,
     reason: "transport-run witness (crate_layout_transport_exclusion_note). One of its five fns is separately quarantined known-red at function grain (gunbc.explicit_witness_admission); that is a different fact about that fn, not a restatement of this file-grain transport exclusion",

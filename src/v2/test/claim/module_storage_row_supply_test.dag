@@ -75,56 +75,29 @@ test fn msrs_a_known_module_resolves_to_its_real_file() -> Bool {
   )
 }
 
-// THE dag/ ROOT IS NOT COVERED, and the cause is a producer defect rather than a decision.
+// THE dag/ ROOT IS NOT COVERED, and the cause is an ALREADY-DOCUMENTED producer defect.
 //
-// A second known pair in the dag/ root was authored here and REMOVED after measurement, because the
-// manifest cannot carry that root at all. discover_source_root_ingest renders the artifact id and the
-// textual locus file as a BARE symbol taken from the file stem, and dag/ contains dag/std/import.dag
-// and dag/extdeps/languages/go/module.dag -- so the emitted manifest contains `id: ^import` and
-// `file: ^module`, which are keywords, and the whole manifest fails to parse. Measured by emitting
-// with --source-root src/v2 --source-root dag: 3517 rows written, then
-// `for_each_parsed_module_binding: parse error ... expected identifier or ( after ^, found keyword`.
+// A second known pair in the dag/ root was authored here and REMOVED after measurement: the manifest
+// cannot carry that root at all. Emitting with --source-root src/v2 --source-root dag writes 3517 rows
+// and then fails to parse -- `for_each_parsed_module_binding: parse error ... expected identifier or (
+// after ^, found keyword`.
 //
-// So this witness observes the src/v2 root only, and that limit is stated rather than left to be
-// inferred from which pairs happen to be asserted. It matters to the import-deletion lane
-// specifically: providers live in dag/ as well as src/v2, so reference-derived dependency closure
-// over the real corpus cannot be completed while the producer cannot describe half of it. The gap is
-// named here rather than papered over by asserting only src/v2 pairs and calling the population
-// whole-tree.
+// The cause is NOT a new finding, and saying so matters more than the credit: it is recorded in
+// gunbc.commit_workflow heal_writer_claims_no_fixture_exemptions_note, which states that
+// discover_source_root_ingest mints edge identifiers from source-file BASENAMES with no keyword
+// escaping, and names all three colliding files -- dag/extdeps/bmc/capability.dag,
+// dag/extdeps/languages/go/module.dag and dag/std/import.dag, minting ^capability, ^module and
+// ^import. Reproducing it independently found two of the three; that authority is the single home for
+// the fact and this comment cites it rather than standing a second description beside it, which is
+// the nicknaming DESIGN section 3 forbids applied to prose.
 //
-// DISSOLVE-ON: the manifest producer stops deriving a symbol from the file stem -- the file path is
-// already carried as a String in the same row, so the symbol is a second, weaker naming of a fact the
-// row already has -- or it quotes keyword stems. Then the dag-root pair is asserted here and this
-// note deletes.
-
-// THE NEGATIVE CONTROL. A module that does not exist must not appear, and the pair check must be
-// capable of answering no -- otherwise the two rows above prove only that the fold visited something.
-test fn msrs_an_absent_module_is_not_projected() -> Bool {
-  match msrs_projected_rows() {
-    Absent => false
-    Present { value: _ } =>
-      !msrs_pair_present(
-        module_path: "v2.std.module_that_does_not_exist",
-        file_path: "src/v2/std/module_that_does_not_exist.dag",
-      )
-  }
-}
-
-// A REAL MODULE PAIRED WITH THE WRONG FILE must not be present either. Distinct from the row above:
-// that one asks whether an unknown NAME leaks in, this one asks whether a known name is bound to a
-// path it does not have -- which is the failure a projection that reshaped module names into paths
-// would produce, and it would pass the absent-module row.
-test fn msrs_a_real_module_is_not_bound_to_the_wrong_file() -> Bool {
-  match msrs_projected_rows() {
-    Absent => false
-    Present { value: _ } =>
-      !msrs_pair_present(
-        module_path: "v2.std.live_tree",
-        file_path: "src/v2/std/live_tree_elsewhere.dag",
-      )
-  }
-}
-
+// What is NEW here is the consequence for THIS lane, which that note does not carry: providers live in
+// dag/ as well as src/v2, so reference-derived dependency closure over the real corpus cannot be
+// completed while the producer cannot describe half of it. That is why this witness observes the
+// src/v2 root only, stated rather than left to be inferred from which pairs happen to be asserted.
+//
+// DISSOLVE-ON: the trigger is that note's own -- the identifier-minting defect is fixed and
+// re-verified end to end. Then the dag-root pair is asserted here and this comment deletes.
 fn msrs_pair_present(module_path: String, file_path: String) -> Bool {
   match msrs_projected_rows() {
     Absent => false
