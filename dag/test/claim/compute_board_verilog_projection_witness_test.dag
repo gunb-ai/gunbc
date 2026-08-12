@@ -21,6 +21,7 @@ import product.compute_board.verilog_projection {
   DrivenSignalIsNotAnOutput,
   ReferencedSignalUndeclared,
   SignalSpellingNotAdmissible,
+  DuplicateSignalBinding,
   SignalSpellingUnbound,
   VerilogBinding,
   VerilogModuleEmitted,
@@ -119,6 +120,7 @@ test fn w_driving_an_input_refuses() -> Bool {
         ReferencedSignalUndeclared { equation_driven: _ } => false
         SignalSpellingUnbound { signal: _ } => false
         SignalSpellingNotAdmissible { signal: _, spelling: _ } => false
+        DuplicateSignalBinding { signal: _ } => false
       }
     VerilogModuleEmitted { receipt: _ } => false
   }
@@ -152,6 +154,7 @@ test fn w_undeclared_signal_reference_refuses() -> Bool {
         DrivenSignalIsNotAnOutput { signal: _ } => false
         SignalSpellingUnbound { signal: _ } => false
         SignalSpellingNotAdmissible { signal: _, spelling: _ } => false
+        DuplicateSignalBinding { signal: _ } => false
       }
     VerilogModuleEmitted { receipt: _ } => false
   }
@@ -194,6 +197,7 @@ fn refused_with_spelling(intent: DigitalControlIntent, bindings: List<VerilogBin
         DrivenSignalIsNotAnOutput { signal: _ } => false
         ReferencedSignalUndeclared { equation_driven: _ } => false
         SignalSpellingUnbound { signal: _ } => false
+        DuplicateSignalBinding { signal: _ } => false
       }
     VerilogModuleEmitted { receipt: _ } => false
   }
@@ -214,4 +218,45 @@ test fn w_production_bindings_are_admitted() -> Bool {
     VerilogModuleEmitted { receipt: r } => r.source == expected_interlock_verilog
     VerilogProjectionRefused { cause: _ } => false
   }
+}
+
+// TWO SPELLINGS FOR ONE SIGNAL IS NO SPELLING. spelling_for took the first match, so the emitted
+// module used one spelling while the binding table plainly carried two — a rename that edited
+// only one row would emit the stale name and nothing would report it. Both orders are asserted
+// because a lookup that still preferred a position would satisfy a single-order check.
+data doubly_spelled_bindings: List<VerilogBinding> = [
+  VerilogBinding { signal: "board_power_interlock" as SignalName, spelling: "board_power_interlock" },
+  VerilogBinding { signal: conditioned_good_signal, spelling: "conditioned_good" },
+  VerilogBinding { signal: conditioned_good_signal, spelling: "pg_ok" },
+  VerilogBinding { signal: fault_signal, spelling: "fault" },
+  VerilogBinding { signal: power_permit_signal, spelling: "power_permit" },
+  VerilogBinding { signal: reset_release_signal, spelling: "reset_release" },
+]
+
+data doubly_spelled_bindings_reversed: List<VerilogBinding> = [
+  VerilogBinding { signal: "board_power_interlock" as SignalName, spelling: "board_power_interlock" },
+  VerilogBinding { signal: conditioned_good_signal, spelling: "pg_ok" },
+  VerilogBinding { signal: conditioned_good_signal, spelling: "conditioned_good" },
+  VerilogBinding { signal: fault_signal, spelling: "fault" },
+  VerilogBinding { signal: power_permit_signal, spelling: "power_permit" },
+  VerilogBinding { signal: reset_release_signal, spelling: "reset_release" },
+]
+
+fn refuses_as_duplicate(bindings: List<VerilogBinding>) -> Bool {
+  match project(intent: board_power_interlock_intent, bindings: bindings) {
+    VerilogProjectionRefused { cause: c } =>
+      match c {
+        DuplicateSignalBinding { signal: s } => (s as String) == "conditioned_good"
+        DrivenSignalIsNotAnOutput { signal: _ } => false
+        ReferencedSignalUndeclared { equation_driven: _ } => false
+        SignalSpellingUnbound { signal: _ } => false
+        SignalSpellingNotAdmissible { signal: _, spelling: _ } => false
+      }
+    VerilogModuleEmitted { receipt: _ } => false
+  }
+}
+
+test fn w_duplicate_signal_binding_refuses_in_either_order() -> Bool {
+  refuses_as_duplicate(bindings: doubly_spelled_bindings)
+    && refuses_as_duplicate(bindings: doubly_spelled_bindings_reversed)
 }

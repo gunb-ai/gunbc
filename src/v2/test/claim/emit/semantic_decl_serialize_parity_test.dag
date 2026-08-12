@@ -23,6 +23,7 @@ import v2.std.compilers.semantic_decl_emission {
 import v2.std.compilers.lexing { LexRules }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.compilers.target_model {
+  ProducedDeclUnwired,
   TargetModel,
   concrete_syntax_token_list_from_node,
   target_model_emit_transforms_empty,
@@ -73,6 +74,7 @@ fn serialize_surface_with_target(surface: Node, rules: Node, target: TargetModel
 
 fn bool_serialize_target(lex: LexRules, bindings: Map<Symbol, String>) -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: target_model_type_conj_node(
       children: [
         target_model_named_edge(

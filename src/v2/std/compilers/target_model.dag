@@ -123,6 +123,42 @@ import v2.std.fold_assembly { node_list_from_node }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, UriScheme }
 
+// Produced-declaration support is a TARGET-owned rendering, opaque to the compiler.
+// The compiler asks a target for a produced declaration and receives a bodied-arrow
+// scaffold; it does not know whether a signature leads with a keyword or a return
+// type, which side of a parameter the type sits on, whether a return arrow exists, or
+// how the declaration closes. Rust owns Rust order in the Rust module, C owns C order
+// in the C module, and a new target registers by supplying a renderer -- never by an
+// edit here.
+//
+// Why this is not the debt that a compiler-side slot template would have been: a
+// template puts ORDER in the compiler, so the terminal architecture deletes it. A
+// renderer puts order in the TARGET, where realization belongs, so when the
+// GrammarRelationRow forward reading lands each renderer's BODY changes to derive
+// from rows while this SEAM -- compiler asks, target renders -- survives untouched.
+// That is the test of whether the seam was cut in the right place.
+//
+// The limit that remains, named rather than left for a third target to discover: the
+// compiler no longer knows how a declaration CLOSES, but still knows it is prefix then
+// body then suffix, because that is TargetBodiedArrowStatementScaffold's shape -- a
+// pre-existing type shared by every bodied arrow and consumed by 06_translate. A
+// target whose signature follows its body needs the body-scaffold lane, not this seam.
+//
+// scaffold_relation_rule_name and scaffold_base_row carry no ordering, spelling or
+// closing assumption: they name WHICH grammar row the scaffold attaches to and supply
+// the bare row to attach it to. The compiler looks the name up and re-attaches
+// opaquely. The row is deliberately BARE -- a target's ordinary translation rules
+// already hold a row with a fixed scaffold attached, and re-attaching to that one
+// would append a second bodied-scaffold edge whose first, fixed entry would win every
+// lookup, emitting one declaration's signature for every declaration.
+type ProducedDeclSupport
+  = ProducedDeclUnwired
+  | ProducedDeclWired {
+      render: fn(Node) -> Outcome<TargetBodiedArrowStatementScaffold>
+      scaffold_relation_rule_name: Symbol
+      scaffold_base_row: Node
+    }
+
 type TargetModel {
   bundle: Node
   lex: LexRules
@@ -130,6 +166,7 @@ type TargetModel {
   token_class_emit_transforms: Map<Symbol, fn(String) -> String>
   authority_source_text: String
   runtime_row: TargetEmitHostRuntimeRow
+  produced_decl_support: ProducedDeclSupport
 }
 
 fn target_model_declared_inhabitants(target: TargetModel) -> Outcome<Node> {
@@ -157,6 +194,7 @@ fn target_model_make_with_emit_transforms(
   runtime_row: TargetEmitHostRuntimeRow
 ) -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: bundle,
     lex: lex,
     binding_spellings: binding_spellings,
@@ -10921,6 +10959,44 @@ fn target_value_semantics_carriers_merge_atoms(
   )
 }
 
+// Installs a per-declaration body scaffold into the target's translation rules.
+// The scaffold comes from the TARGET's own renderer, so nothing here knows the
+// signature's shape; this only decides WHERE the rendered scaffold attaches.
+// The base row is the BARE one carried by ProducedDeclWired, never the target's
+// ordinary rule -- that one already has a fixed scaffold attached, and appending a
+// second bodied-scaffold edge would let the fixed one win every lookup, emitting a
+// single declaration's signature for every declaration.
+fn target_model_with_produced_scaffold(
+  target: TargetModel,
+  rule_name: Symbol,
+  base_row: Node,
+  scaffold: TargetBodiedArrowStatementScaffold
+) -> TargetModel {
+  TargetModel {
+    produced_decl_support: target.produced_decl_support,
+    bundle: target_model_bundle_replace_edge_target(
+      bundle: target.bundle,
+      edge_name: ^target_model_edge_translation_rules,
+      new_target: target_model_type_conj_node(
+        children: [
+          target_model_named_edge(
+            name: rule_name,
+            target: grammar_relation_row_attach_bodied_scaffold(
+              row: base_row,
+              scaffold: scaffold
+            )
+          )
+        ]
+      )
+    ),
+    lex: target.lex,
+    binding_spellings: target.binding_spellings,
+    token_class_emit_transforms: target.token_class_emit_transforms,
+    authority_source_text: target.authority_source_text,
+    runtime_row: target.runtime_row
+  }
+}
+
 fn target_model_augment_use_site_ownership_catalog(
   target: TargetModel,
   derived_rows: List<TargetUseSiteOwnershipRealization>
@@ -10949,6 +11025,7 @@ fn target_model_augment_use_site_ownership_catalog(
           Present { value: catalog } =>
             outcome_accepted(
               TargetModel {
+                produced_decl_support: target.produced_decl_support,
                 bundle: target_model_bundle_replace_edge_target(
                   bundle: target.bundle,
                   edge_name: ^target_model_edge_use_site_ownership_realizations,
@@ -10998,6 +11075,7 @@ fn target_model_augment_value_semantics_carriers(
           Present { value: carriers_node } =>
             outcome_accepted(
               TargetModel {
+                produced_decl_support: target.produced_decl_support,
                 bundle: target_model_bundle_replace_edge_target(
                   bundle: target.bundle,
                   edge_name: ^target_model_edge_value_semantics_carriers,

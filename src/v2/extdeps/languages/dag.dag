@@ -105,6 +105,7 @@ import v2.std.node {
 }
 import v2.std.node_query { find_named_child }
 import v2.std.compilers.target_model {
+  ProducedDeclUnwired,
   CanonicalOperation,
   ConcreteSyntaxToken,
   FixedToken,
@@ -3592,6 +3593,7 @@ fn dag_target_model_bundle_with_fidelity_quotient(quotient: Node) -> Node {
 
 fn dag_target_model_with_fidelity_quotient(quotient: Node) -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: dag_target_model_bundle_with_fidelity_quotient(quotient: quotient),
     lex: dag_lex(),
     binding_spellings: dag_binding_spellings(),
@@ -3969,6 +3971,7 @@ fn dag_type_decl_structural_lex() -> LexRules {
 
 fn dag_type_decl_structural_target_model() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: Node {
       kind: TypeNode { connective: Conj },
       children: [
@@ -5222,6 +5225,7 @@ fn dag_bodied_fn_target_model(
   match runtime_row {
     Present { value: row } =>
       TargetModel {
+        produced_decl_support: ProducedDeclUnwired,
         bundle: dag_bodied_fn_target_model_bundle_node(spec: spec),
         lex: dag_lex(),
         binding_spellings: dag_binding_spellings(),
@@ -5231,6 +5235,7 @@ fn dag_bodied_fn_target_model(
       }
     Absent =>
       TargetModel {
+        produced_decl_support: ProducedDeclUnwired,
         bundle: dag_bodied_fn_target_model_bundle_node(spec: spec),
         lex: dag_lex(),
         binding_spellings: dag_binding_spellings(),
@@ -5585,6 +5590,7 @@ fn dag_field_access_target_model() -> TargetModel {
 
 fn dag_target_model() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: dag_target_model_node(),
     lex: dag_lex(),
     binding_spellings: dag_binding_spellings(),

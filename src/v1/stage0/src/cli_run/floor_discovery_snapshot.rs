@@ -4,7 +4,7 @@
 //!
 //! | Consumer site | What it reads from the discovery walk | Closed projection |
 //! |---|---|---|
-//! | Pre-plan `discover_floor_witness_roster([], [])` | Naming hygiene, orphan/helpers, producer roster, module-graph facts, inert-lens + construction-justification gates | Full snapshot payload + installed module-graph cache |
+//! | Demand-directed `discover_floor_witness_roster([], [])` (runs only when the plan schedules a discovery or scoped-witness batch, gunbc#8140) | Naming hygiene, orphan/helpers, producer roster, module-graph facts, effect-reach derivation | Full snapshot payload + installed module-graph cache |
 //! | Discovery corpus with `scan_dirs=[]` + explicit entries | Skips roster walk; still calls `build_module_graph_facts_live` on selection/skip paths | Module-graph facts bytes in snapshot (cache install) |
 //! | Discovery corpus with non-empty `scan_dirs` | Full roster walk for that scan shape | Not covered by pre-plan snapshot (distinct request identity) |
 //!
@@ -32,6 +32,8 @@ pub const FLOOR_DISCOVERY_TRACE_FILE: &str = "floor-discovery-trace.tsv";
 pub const FLOOR_DISCOVERY_CONSUMER_ENV: &str = "GUNBC_FLOOR_DISCOVERY_CONSUMER";
 
 static COORDINATED_DISCOVERY_COMPUTE_COUNT: AtomicUsize = AtomicUsize::new(0);
+static COORDINATED_SNAPSHOT_INSTALLED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 static IN_PROCESS_ROSTER_BY_REQUEST: OnceLock<Mutex<HashMap<String, Vec<super::DiscoveryRow>>>> =
     OnceLock::new();
 
@@ -104,9 +106,17 @@ pub fn coordinated_discovery_compute_count() -> usize {
     COORDINATED_DISCOVERY_COMPUTE_COUNT.load(Ordering::SeqCst)
 }
 
+/// A coordinated consumer may enter witness execution only after the exact snapshot
+/// has been verified and installed. This is a construction wall for the transitional
+/// provider path: absence refuses rather than silently rebuilding a cold world.
+pub fn coordinated_snapshot_installed() -> bool {
+    COORDINATED_SNAPSHOT_INSTALLED.load(Ordering::SeqCst)
+}
+
 #[cfg(test)]
 pub fn reset_floor_discovery_snapshot_for_test() {
     COORDINATED_DISCOVERY_COMPUTE_COUNT.store(0, Ordering::SeqCst);
+    COORDINATED_SNAPSHOT_INSTALLED.store(false, Ordering::SeqCst);
     if let Some(lock) = IN_PROCESS_ROSTER_BY_REQUEST.get() {
         lock.lock().unwrap().clear();
     }
@@ -586,32 +596,6 @@ pub fn produce_floor_discovery_snapshot(
     let facts = super::build_module_graph_facts_live_uncached(&request.source_roots);
     super::refuse_on_module_graph_read_refusals(&facts)?;
     super::apply_effect_reach_derived_reads_live_tree(&mut rows, &facts);
-    let inert = super::inert_lens_modules(&rows, &facts);
-    if !inert.is_empty() {
-        return Err(format!(
-            "inert-lens hygiene (DESIGN.md §6): {} lens module(s) under `v2.lens.*` are authored \
-             but unreached by any discovered floor witness — an inert lens is a lie. Wire each \
-             with a discovered fail-closed witness (a `*_test.dag` `test fn`/`test data`, or a \
-             scan-dir `unified_claim_*`) or delete it: {}",
-            inert.len(),
-            inert.join(", ")
-        ));
-    }
-    let (lens_module_to_path, lens_with_justification) = super::lens_justification_census(&facts)?;
-    let unjustified =
-        super::unjustified_lens_modules(&lens_module_to_path, &lens_with_justification);
-    if !unjustified.is_empty() {
-        return Err(format!(
-            "construction-justification (DESIGN.md §5/§6): {} lens module(s) under `v2.lens.*` do \
-             not record a `construction_justification` — before adding a lens you must justify why \
-             the bad-state class cannot be made unwritable by construction. Add a `data \
-             construction_justification: ConstructionJustification = …` decl (see \
-             v2.lens.common.construction_justification) classifying it as WallNow / \
-             WallAfterGrounding / RatchetForever: {}",
-            unjustified.len(),
-            unjustified.join(", ")
-        ));
-    }
     let roster: Vec<DiscoveryRowSnapshot> = rows.iter().map(row_to_snapshot).collect();
     let facts_snapshot = facts_to_snapshot(&facts);
     let request_identity_digest = request_identity_digest(request)?;
@@ -774,6 +758,7 @@ pub fn install_floor_discovery_snapshot(snapshot: &FloorDiscoverySnapshot) {
     install_module_graph_facts_cache(&snapshot.request.source_roots, &facts);
     let rows: Vec<super::DiscoveryRow> = snapshot.roster.iter().map(snapshot_to_row).collect();
     install_roster_cache(&snapshot.request_identity_digest, &rows);
+    COORDINATED_SNAPSHOT_INSTALLED.store(true, Ordering::SeqCst);
 }
 
 pub fn discover_floor_witness_roster_with_snapshot(

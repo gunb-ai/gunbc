@@ -12,7 +12,7 @@ import extdeps.languages.c.emit {
 import v2.extdeps.languages.c_decl {
   c_semantic_decl_emission_bundle_node
 }
-import std.algebra { Empty }
+import std.algebra { Cons, Empty }
 import std.graph {
   CallGraph,
   GraphEdge,
@@ -21,9 +21,12 @@ import std.graph {
 import std.types { Int, NonEmptyStr, String }
 import v2.std.algebra { any, length }
 import v2.std.collection {
+  Absent,
   List,
   Map,
+  Present,
   empty_map,
+  list_at_optional,
   map_insert
 }
 import v2.std.optional {
@@ -50,14 +53,39 @@ import v2.std.grammar {
   grammar_relation_tokens_node
 }
 import v2.std.compilers.target_model {
+  InfixToken,
+  canonical_operation_op_add,
+  Prepend,
+  ProducedDeclSupport,
+  ProducedDeclUnwired,
+  ProducedDeclWired,
+  StatementSequenced,
+  TargetBindLetShape,
+  TargetBindingRefShape,
+  TargetCallApplyShape,
+  TargetClosureShape,
+  TargetConditionalShape,
+  TargetEffectApplyShape,
+  TargetFieldAccessShape,
+  TargetLoopShape,
+  TargetMatchShape,
+  TargetPrimitiveApplyShape,
+  TargetRecordConstructShape,
+  TargetValueExpressionProjection,
+  target_operator_realization_node,
+  target_operator_realizations_catalog_node,
+  value_expr_projection_bundle_node,
+  TargetBodiedArrowStatementScaffold,
   TargetModel,
   ConcreteSyntaxToken,
   FixedToken,
   BoundToken,
+  derive_bodied_arrow_scaffold,
   target_model_emit_transforms_empty,
   concrete_syntax_token_class,
   concrete_syntax_token_to_node
 }
+import v2.std.node_query { node_positional_child_targets }
 import v2.std.host_transport {
   EmitHostRuntimeRow,
   EmittedWithSuffix,
@@ -91,6 +119,16 @@ import v2.std.compilers.compilation_unit {
   type_definition_row_identity
 }
 import v2.std.logic { Bool }
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
 import v2.std.node {
   Arrow,
   Atom,
@@ -889,6 +927,84 @@ fn c_add_declared_inhabitants_root() -> Node {
   }
 }
 
+
+// C's minimal value-expression surface, enough to project the shared fixture body
+// (a binding-ref plus op_add). Forms C has not yet modeled carry token classes with
+// no lex rule, so reaching one REFUSES at serialization rather than emitting
+// fabricated text -- the fail-closed property the lex-miss arm already provides.
+fn c_value_expression_projection() -> TargetValueExpressionProjection {
+  TargetValueExpressionProjection {
+    binding_ref_form: TargetBindingRefShape { ident_token: ^c_token_ident },
+    primitive_apply_form: TargetPrimitiveApplyShape {
+      open: ^c_token_lparen,
+      close: ^c_token_rparen,
+      separator: ^c_token_comma
+    },
+    callable_apply_form: TargetCallApplyShape {
+      callee_ident_token: ^c_token_ident,
+      open: ^c_token_lparen,
+      separator: ^c_token_comma,
+      close: ^c_token_rparen
+    },
+    closure_form: TargetClosureShape {
+      fn_token: ^c_token_unwired_closure,
+      open: ^c_token_lparen,
+      separator: ^c_token_comma,
+      close: ^c_token_rparen,
+      body_open: ^c_token_lbrace,
+      body_close: ^c_token_rbrace,
+      param_ident_token: ^c_token_ident
+    },
+    effect_apply_form: TargetEffectApplyShape {
+      callees: [],
+      open: ^c_token_lparen,
+      close: ^c_token_rparen,
+      separator: ^c_token_comma
+    },
+    conditional_form: TargetConditionalShape {
+      if_token: ^c_token_unwired_if,
+      then_token: ^c_token_lbrace,
+      else_token: ^c_token_unwired_else
+    },
+    let_form: TargetBindLetShape {
+      let_token: ^c_token_unwired_let,
+      assign_token: ^c_token_unwired_assign,
+      in_token: ^c_token_semicolon
+    },
+    loop_form: TargetLoopShape { loop_token: ^c_token_unwired_loop },
+    record_construct_form: TargetRecordConstructShape {
+      open: ^c_token_lbrace,
+      close: ^c_token_rbrace,
+      separator: ^c_token_comma,
+      assign: ^c_token_unwired_assign,
+      record_literal_names_type: Prepend
+    },
+    field_access_form: TargetFieldAccessShape { dot: ^c_token_unwired_dot },
+    match_form: TargetMatchShape {
+      match_token: ^c_token_unwired_match,
+      scrutinee_open: ^c_token_lparen,
+      scrutinee_close: ^c_token_rparen,
+      open: ^c_token_lbrace,
+      close: ^c_token_rbrace,
+      fat_arrow: ^c_token_unwired_fat_arrow,
+      arm_separator: ^c_token_comma
+    },
+    block_evaluation_mode: StatementSequenced {
+      return_token: ^c_token_kw_return,
+      statement_terminator: ^c_token_semicolon
+    }
+  }
+}
+
+fn c_operator_realizations_catalog_node() -> Node {
+  target_operator_realizations_catalog_node(rows: [
+    target_operator_realization_node(
+      operation: canonical_operation_op_add(),
+      shape: InfixToken { token: ^c_token_plus }
+    )
+  ])
+}
+
 fn c_target_model_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -900,6 +1016,14 @@ fn c_target_model_node() -> Node {
       c_named_edge(
         name: ^target_model_edge_semantic_decl_emission,
         target: c_semantic_decl_emission_bundle_node()
+      ),
+      c_named_edge(
+        name: ^target_model_edge_value_expression_projection,
+        target: value_expr_projection_bundle_node(projection: c_value_expression_projection())
+      ),
+      c_named_edge(
+        name: ^target_model_edge_operator_realizations,
+        target: c_operator_realizations_catalog_node()
       )
     ],
     occurrence_id: SyntheticOccurrence
@@ -915,6 +1039,22 @@ fn c_binding_spellings() -> Map<Symbol, String> {
     ),
     ^c_binding_param_y,
     "y"
+  )
+}
+
+fn c_binding_spellings_with_dag_fixture() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(c_binding_spellings(), ^dag_binding_type_int, "int "),
+        ^dag_binding_param_x,
+        "x"
+      ),
+      ^dag_binding_param_y,
+      "y"
+    ),
+    ^c_binding_fn_add,
+    "add"
   )
 }
 
@@ -1038,6 +1178,7 @@ fn c_type_decl_inject_fault_runtime_row() -> TargetEmitHostRuntimeRow {
 
 fn c_type_decl_target_model() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: c_target_model_node(),
     lex: c_lex(),
     binding_spellings: c_binding_spellings(),
@@ -1047,11 +1188,197 @@ fn c_type_decl_target_model() -> TargetModel {
   }
 }
 
+
+// C owns C's signature order here, and it is NOT Rust's: the return type comes
+// FIRST, each parameter is TYPE then NAME with no label separator, and there is no
+// return arrow. C is statement-sequenced, so the scaffold carries a return token
+// before the body and a terminator after it. The compiler is not edited to support
+// any of this -- C supplies its own renderer and its own spellings.
+fn c_produced_type_tokens(type_node: Node) -> Outcome<List<ConcreteSyntaxToken>> {
+  match type_node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      outcome_accepted(value: [BoundToken { token_class: ^c_token_ident, binding: id }])
+    _ =>
+      outcome_rejected(
+        d: c_produced_decl_diagnostic(reason: ^c_produced_signature_type_unsupported, node: type_node)
+      )
+  }
+}
+
+fn c_produced_decl_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn c_produced_one_param_tokens(edge: Edge) -> Outcome<List<ConcreteSyntaxToken>> {
+  match edge.label {
+    Named { name: pname } =>
+      bind_outcome(
+        o: c_produced_type_tokens(type_node: edge.target),
+        f: fn(type_toks) {
+          outcome_accepted(
+            value: list_append(
+              left: type_toks,
+              right: [BoundToken { token_class: ^c_token_ident, binding: pname }]
+            )
+          )
+        }
+      )
+    Positional =>
+      outcome_rejected(
+        d: c_produced_decl_diagnostic(reason: ^c_produced_signature_param_unnamed, node: edge.target)
+      )
+  }
+}
+
+fn c_produced_params_tail_tokens(params: List<Edge>) -> Outcome<List<ConcreteSyntaxToken>> {
+  match params {
+    Empty => outcome_accepted(value: Empty)
+    Cons { head: e, tail: rest } =>
+      bind_outcome(
+        o: c_produced_one_param_tokens(edge: e),
+        f: fn(toks) {
+          bind_outcome(
+            o: c_produced_params_tail_tokens(params: rest),
+            f: fn(rest_toks) {
+              outcome_accepted(
+                value: list_append(
+                  left: list_append(left: [FixedToken { token_class: ^c_token_comma }], right: toks),
+                  right: rest_toks
+                )
+              )
+            }
+          )
+        }
+      )
+  }
+}
+
+fn c_produced_params_tokens(params: List<Edge>) -> Outcome<List<ConcreteSyntaxToken>> {
+  match params {
+    Empty => outcome_accepted(value: Empty)
+    Cons { head: e, tail: rest } =>
+      bind_outcome(
+        o: c_produced_one_param_tokens(edge: e),
+        f: fn(first_toks) {
+          bind_outcome(
+            o: c_produced_params_tail_tokens(params: rest),
+            f: fn(rest_toks) {
+              outcome_accepted(value: list_append(left: first_toks, right: rest_toks))
+            }
+          )
+        }
+      )
+  }
+}
+
+fn c_produced_signature_from_name_and_arrow(
+  fn_name: Symbol,
+  arrow: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+    Present { value: domain } =>
+      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
+        Present { value: codomain } =>
+          bind_outcome(
+            o: c_produced_type_tokens(type_node: codomain),
+            f: fn(ret_toks) {
+              bind_outcome(
+                o: c_produced_params_tokens(params: domain.children),
+                f: fn(param_toks) {
+                  outcome_accepted(
+                    value: list_append(
+                      left: list_append(
+                        left: ret_toks,
+                        right: [
+                          BoundToken { token_class: ^c_token_ident, binding: fn_name },
+                          FixedToken { token_class: ^c_token_lparen }
+                        ]
+                      ),
+                      right: list_append(
+                        left: param_toks,
+                        right: [
+                          FixedToken { token_class: ^c_token_rparen },
+                          FixedToken { token_class: ^c_token_lbrace }
+                        ]
+                      )
+                    )
+                  )
+                }
+              )
+            }
+          )
+        Absent =>
+          outcome_rejected(
+            d: c_produced_decl_diagnostic(reason: ^c_produced_signature_codomain_missing, node: arrow)
+          )
+      }
+    Absent =>
+      outcome_rejected(
+        d: c_produced_decl_diagnostic(reason: ^c_produced_signature_domain_missing, node: arrow)
+      )
+  }
+}
+
+fn c_produced_decl_render(decl: Node) -> Outcome<TargetBodiedArrowStatementScaffold> {
+  match decl.kind {
+    TypeNode { connective: Conj } =>
+      match list_at_optional(xs: decl.children, index: 0) {
+        Present { value: decl_edge } =>
+          match decl_edge.label {
+            Named { name: fn_name } =>
+              bind_outcome(
+                o: c_produced_signature_from_name_and_arrow(
+                  fn_name: fn_name,
+                  arrow: decl_edge.target
+                ),
+                f: fn(signature_with_open) {
+                  outcome_accepted(
+                    derive_bodied_arrow_scaffold(
+                      signature_with_open: signature_with_open,
+                      block_close: [FixedToken { token_class: ^c_token_rbrace }],
+                      mode: StatementSequenced {
+                        return_token: ^c_token_kw_return,
+                        statement_terminator: ^c_token_semicolon
+                      }
+                    )
+                  )
+                }
+              )
+            Positional =>
+              outcome_rejected(
+                d: c_produced_decl_diagnostic(reason: ^c_produced_decl_unnamed, node: decl)
+              )
+          }
+        Absent =>
+          outcome_rejected(
+            d: c_produced_decl_diagnostic(reason: ^c_produced_decl_empty, node: decl)
+          )
+      }
+    _ =>
+      outcome_rejected(
+        d: c_produced_decl_diagnostic(reason: ^c_produced_decl_not_conj, node: decl)
+      )
+  }
+}
+
+fn c_produced_decl_support() -> ProducedDeclSupport {
+  ProducedDeclWired {
+    render: c_produced_decl_render,
+    scaffold_relation_rule_name: ^c_relation_rule_fn_add,
+    scaffold_base_row: c_grammar_relation_row_node(row: c_grammar_relation_row())
+  }
+}
+
 fn c_target_model() -> TargetModel {
   TargetModel {
+    produced_decl_support: c_produced_decl_support(),
     bundle: c_target_model_node(),
     lex: c_lex(),
-    binding_spellings: c_binding_spellings(),
+    binding_spellings: c_binding_spellings_with_dag_fixture(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: c_source_text,
     runtime_row: c_runtime_row()

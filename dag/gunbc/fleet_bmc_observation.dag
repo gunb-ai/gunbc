@@ -7,7 +7,6 @@ import extdeps.bmc.capability {
   BmcFirmwareVersion,
   BmcEvidenceTemporalScope,
   HistoricalEvidenceSnapshot,
-  bmc_firmware_semantic_version,
 }
 import extdeps.bmc.types {
   BmcConfigPersistenceObservation,
@@ -72,6 +71,7 @@ import std.state_durability {
   StateRealizationIdentity,
 }
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
+import extdeps.firmware.types { firmware_semantic_version }
 
 type BmcFanTachReceipt {
   sensor: NonEmptyStr
@@ -129,7 +129,7 @@ data srv3_bmc_firmware_observation: BmcFirmwareObservation = BmcFirmwareObservat
   endpoint: srv3_baseboard.bmc,
   firmware: BmcFirmwareVersion {
     family: OpenBmc,
-    version: bmc_firmware_semantic_version(major: 2, minor: 7, patch: 0),
+    version: firmware_semantic_version(major: 2, minor: 7, patch: 0),
   },
   evidence_scope: HistoricalEvidenceSnapshot,
   observed_at: 1785110400000,
@@ -139,7 +139,7 @@ data srv4_bmc_firmware_observation: BmcFirmwareObservation = BmcFirmwareObservat
   endpoint: srv4_baseboard.bmc,
   firmware: BmcFirmwareVersion {
     family: OpenBmc,
-    version: bmc_firmware_semantic_version(major: 3, minor: 22, patch: 0),
+    version: firmware_semantic_version(major: 3, minor: 22, patch: 0),
   },
   evidence_scope: HistoricalEvidenceSnapshot,
   observed_at: 1785110400000,

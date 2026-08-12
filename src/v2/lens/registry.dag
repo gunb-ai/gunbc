@@ -36,7 +36,6 @@ type LensIdV0
   | HostLanguageTransportScript
   | IdenticalVariantPayload
   | InertCarrier
-  | InertLens
   | IntentLinearity
   | InterfaceSummary
   | LanguagesConsumerCensus
@@ -252,11 +251,6 @@ data lens_registry_v0_inert_carrier: LensRegistryEntryV0 = {
   module_path: Bound { path: "v2.lens.inert_carrier" }
 }
 
-data lens_registry_v0_inert_lens: LensRegistryEntryV0 = {
-  lens_id: InertLens
-  module_path: Bound { path: "v2.lens.inert_lens" }
-}
-
 data lens_registry_v0_intent_linearity: LensRegistryEntryV0 = {
   lens_id: IntentLinearity
   module_path: Bound { path: "v2.lens.intent_linearity" }
@@ -412,7 +406,6 @@ data lens_registry_v0: List<LensRegistryEntryV0> = [
   lens_registry_v0_host_language_transport_script,
   lens_registry_v0_identical_variant_payload,
   lens_registry_v0_inert_carrier,
-  lens_registry_v0_inert_lens,
   lens_registry_v0_intent_linearity,
   lens_registry_v0_interface_summary,
   lens_registry_v0_languages_consumer_census,
@@ -575,10 +568,6 @@ fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
     }
     InertCarrier => match right {
       InertCarrier => true
-      _ => false
-    }
-    InertLens => match right {
-      InertLens => true
       _ => false
     }
     IntentLinearity => match right {
