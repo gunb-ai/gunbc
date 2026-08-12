@@ -815,7 +815,17 @@ data observation_renders_nothing_disposition: Disposition = Terminal {
 // Routine rollup — the fold that makes the collapse in law 4 actually happen.
 // ---------------------------------------------------------------------------
 
-data observation_rollup_note: String = "The module already carried the HIERARCHY (ObservationSubject is a containment path; ObservationGrain names its levels) and the DENSITY (observation_class_density: routine collapses, anomalies expand, summaries always show). What it did not carry is the operation that turns those two facts into one line instead of hundreds: a fold that accumulates routine leaf events into the ancestor subject at a declared grain. Measured on a green floor run (31480965027, 6188 console lines): 4110 lines were one-per-passing-witness, 1074 per-entry retention rows, 359 compile micro-events, 91 raw worker polls, and 26 semantic heartbeats — 99.6% leaf facts against the handful of lines that answer what is running and whether it is healthy. Density alone could not fix that, because collapsible is a per-line formatting verdict and the defect is that 4110 events became 4110 lines at all. Accumulation is the missing operation, and it belongs here beside the vocabulary it folds rather than in a renderer, so every renderer projects the same counts."
+// The module already carried the HIERARCHY (ObservationSubject is a containment path;
+// ObservationGrain names its levels) and the DENSITY (observation_class_density: routine collapses,
+// anomalies expand, summaries always show). What it did not carry is the operation that turns those
+// two facts into one line instead of hundreds: a fold that accumulates routine leaf events into the
+// ancestor subject at a declared grain. Measured on a green floor run (31480965027, 6188 console
+// lines): 4110 lines were one-per-passing-witness, 1074 per-entry retention rows, 359 compile
+// micro-events, 91 raw worker polls, and 26 semantic heartbeats — 99.6% leaf facts against the
+// handful of lines that answer what is running and whether it is healthy. Density alone could not
+// fix that, because collapsible is a per-line formatting verdict and the defect is that 4110 events
+// became 4110 lines at all. Accumulation is the missing operation, and it belongs here beside the
+// vocabulary it folds rather than in a renderer, so every renderer projects the same counts.
 
 type ObservationCounts {
   begun: Nat
@@ -826,7 +836,12 @@ type ObservationCounts {
   timed_out: Nat
 }
 
-data observation_counts_anomalies_counted_note: String = "Anomaly classes are COUNTED here even though they are never collapsed. Counting and emission are orthogonal axes and fusing them loses the summary: a batch conclusion that says `0 failed` is only trustworthy if failures were tallied on the same fold that tallied the passes, and a rollup that skipped them could only ever report an absence it never looked for. The collapse decision stays where it already lives (observation_class_density); this record answers how many, not whether to print."
+// Anomaly classes are COUNTED here even though they are never collapsed. Counting and emission are
+// orthogonal axes and fusing them loses the summary: a batch conclusion that says `0 failed` is
+// only trustworthy if failures were tallied on the same fold that tallied the passes, and a rollup
+// that skipped them could only ever report an absence it never looked for. The collapse decision
+// stays where it already lives (observation_class_density); this record answers how many, not
+// whether to print.
 
 fn observation_counts_zero() -> ObservationCounts {
   ObservationCounts { begun: 0, done: 0, skipped: 0, refused: 0, failed: 0, timed_out: 0 }
@@ -866,7 +881,13 @@ fn observation_subject_prefix_at_grain(
   }
 }
 
-data observation_prefix_at_grain_absent_note: String = "Absent means the subject has no segment at the requested grain — a run-scoped event asked for its batch ancestor, or a malformed subject that skipped a level. It is NOT the empty prefix and NOT the subject itself, because either substitution would silently attribute an event to a scope nobody observed it in, which is the empty-observation narrow DESIGN names: rendering `could not locate the ancestor` as `belongs to the root`. The length check is what distinguishes the two: a well-formed path of the target depth keeps exactly target+1 segments, so a skipped level fails the count rather than closing the gap."
+// Absent means the subject has no segment at the requested grain — a run-scoped event asked for its
+// batch ancestor, or a malformed subject that skipped a level. It is NOT the empty prefix and NOT
+// the subject itself, because either substitution would silently attribute an event to a scope
+// nobody observed it in, which is the empty-observation narrow DESIGN names: rendering `could not
+// locate the ancestor` as `belongs to the root`. The length check is what distinguishes the two: a
+// well-formed path of the target depth keeps exactly target+1 segments, so a skipped level fails
+// the count rather than closing the gap.
 
 type ObservationRollup {
   subject: ObservationSubject
@@ -882,7 +903,12 @@ type ObservationRollupAccept
   = RollupAccepted { rollup: ObservationRollup }
   | RollupSubjectOutOfScope { subject: ObservationSubject }
 
-data observation_rollup_out_of_scope_note: String = "An event whose subject the rollup does not contain is REFUSED, not silently dropped and not folded anyway. Both silent arms are the absorbing fallback in miniature: folding a foreign event inflates a batch's counts with work that happened elsewhere, and dropping it makes the count quietly incomplete while still reading as a total. The caller holds the rollup roster and knows which one should have matched, so the refusal carries the subject that found no home and the caller decides — open a rollup, or surface the event on its own."
+// An event whose subject the rollup does not contain is REFUSED, not silently dropped and not
+// folded anyway. Both silent arms are the absorbing fallback in miniature: folding a foreign event
+// inflates a batch's counts with work that happened elsewhere, and dropping it makes the count
+// quietly incomplete while still reading as a total. The caller holds the rollup roster and knows
+// which one should have matched, so the refusal carries the subject that found no home and the
+// caller decides — open a rollup, or surface the event on its own.
 
 fn observation_rollup_accept(
   rollup: ObservationRollup,
