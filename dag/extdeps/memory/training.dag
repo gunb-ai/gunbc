@@ -1,0 +1,118 @@
+module extdeps.memory.training
+
+import std.types { Bool, Int, List, NonEmptyStr }
+import std.measure { ByteSize, BitWidth, bit_width, byte_size, byte_size_count, bit_width_count }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.memory.types {
+  DimmBuffering,
+  DramGeneration,
+  DramModuleCatalogRow,
+  JedecDdrGenerationCatalogRow,
+  LoadReduced,
+  Registered,
+  Unbuffered,
+  dram_data_chips_per_rank,
+  dram_module_is_realizable,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.jedec.org/standards-documents/docs/jesd79-4a"
+  }
+}
+
+// WHY A TRAINING-STEP MODEL RATHER THAN A BLOCKLIST.
+//
+// "Avoid 4Rx4 LRDIMM" is a conclusion, and a conclusion authored as a rule
+// cannot be re-derived, cannot explain itself to a buyer, and cannot extend to
+// a part nobody has tried. What actually happened is mechanical: initialization
+// runs a SEQUENCE OF CALIBRATION STEPS, the set of steps depends on the
+// module's construction, and a platform that fails one step implicates exactly
+// those modules that must execute it. Encoding the steps makes the avoidance
+// list a DERIVED consequence, and makes the reason legible at the point of
+// purchase.
+type MemoryTrainingStep
+  // Host-to-DRAM PHY calibration. Every module executes these regardless of
+  // buffering, so a failure here implicates nothing about module class.
+  = PhyWriteLeveling
+  | PhyReadGateLeveling
+  | PhyReadLeveling
+  | PhyVrefdqCalibration
+  // Data-buffer calibration. These exist ONLY on load-reduced modules, which
+  // interpose a buffer between the DRAM and the host. A registered module has
+  // no data buffer and never executes them — that is why the discriminator
+  // below is structural rather than statistical.
+  | LrdimmDataBufferMrep
+  | LrdimmDataBufferWriteLeveling
+  | LrdimmDataBufferReadTraining
+
+data phy_training_steps: List<MemoryTrainingStep> = [
+  PhyWriteLeveling,
+  PhyReadGateLeveling,
+  PhyReadLeveling,
+  PhyVrefdqCalibration,
+]
+
+data lrdimm_data_buffer_training_steps: List<MemoryTrainingStep> = [
+  LrdimmDataBufferMrep,
+  LrdimmDataBufferWriteLeveling,
+  LrdimmDataBufferReadTraining,
+]
+
+// The step set a module must complete, DERIVED from its construction. This is
+// the single place the RDIMM/LRDIMM distinction becomes a set difference
+// rather than a preference.
+fn training_steps_required(module: DramModuleCatalogRow) -> List<MemoryTrainingStep> {
+  match module.buffering {
+    LoadReduced => concat(phy_training_steps, lrdimm_data_buffer_training_steps)
+    Registered => phy_training_steps
+    Unbuffered => phy_training_steps
+  }
+}
+
+fn module_executes_step(module: DramModuleCatalogRow, step: MemoryTrainingStep) -> Bool {
+  any(training_steps_required(module: module), s => s == step)
+}
+
+// CAPACITY FORCES TOPOLOGY, and this is derived from JEDEC die density rather
+// than asserted from market observation. A module's required die density is
+// capacity / (data chips per rank * ranks). When the density a simple low-rank
+// module would need exceeds the largest monolithic die the generation defines,
+// that capacity is UNREACHABLE without adding ranks or stacking — which is
+// precisely how 64GB DDR4 came to exist as quad-rank LRDIMM before 16Gbit dies
+// shipped, and why the CHEAPEST 64GB DDR4 parts are disproportionately the
+// load-reduced ones. The buyer's intuition that a lower speed grade is simply
+// a discount is therefore wrong at capacities near the density ceiling: the
+// older part is not the same module clocked slower, it is a different topology.
+fn hypothetical_module_at_rank_count(
+  module: DramModuleCatalogRow,
+  rank_count: Int,
+) -> DramModuleCatalogRow {
+  DramModuleCatalogRow {
+    part_number: module.part_number,
+    manufacturer: module.manufacturer,
+    generation: module.generation,
+    capacity_bytes: module.capacity_bytes,
+    data_rate_mts: module.data_rate_mts,
+    ecc: module.ecc,
+    buffering: Registered,
+    chip_width: module.chip_width,
+    rank_count: rank_count,
+  }
+}
+
+// Can this capacity be built as an ordinary low-rank registered module in this
+// generation, or does reaching it REQUIRE extra ranks or die stacking?
+fn capacity_reachable_as_dual_rank_registered(
+  module: DramModuleCatalogRow,
+  jedec: JedecDdrGenerationCatalogRow,
+) -> Bool {
+  dram_module_is_realizable(
+    module: hypothetical_module_at_rank_count(module: module, rank_count: 2),
+    jedec: jedec,
+  )
+}
+
+data memory_training_step_note: String = "The step sets here are the structural claim this model rests on: a load-reduced module interposes a data buffer between the DRAM and the host, so it must calibrate that buffer, and a registered module has no such buffer and therefore cannot fail a buffer-calibration step. That is a difference in KIND, not in reliability, which is what makes it usable as a purchase filter rather than as a probability. It is also why the same failure reproduced on two different modules of one family and never on the registered parts the host ran previously. MREP is the DDR4 data-buffer read-phase calibration step; it is named explicitly because it is the step observed failing on the ALTRAD8UD-1L2T platform, both on gunbc's own hosts and in an independent public report carrying byte-identical controller status words. The PHY steps are listed for completeness and to keep the model honest in the other direction: a PHY-step failure would implicate every module class equally and would NOT support a buffering-based purchase rule."

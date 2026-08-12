@@ -1,0 +1,135 @@
+module gunbc.host_memory_qualification
+
+import std.types { Bool, EpochMs, List, NonEmptyStr }
+import std.nat { Nat }
+import product.placement_supply { HostIdentity }
+import extdeps.boards.types { BaseboardModel, DimmPopulation }
+import extdeps.external_authority { ExternalAuthority }
+
+// FOUR INDEPENDENT STANDINGS. None derives another, and that independence is
+// the whole content of this module.
+//
+// The 2026-08-11 incident ran aground on exactly this collapse: once all eight
+// modules reported trained, "the memory works" was treated as established, and
+// the remaining failure was attributed to firmware, then to a watchdog, then
+// to heat — three wrong theories, each costing an experiment — before the
+// memory returned as the leading hypothesis. Training success is evidence
+// about training and about nothing downstream of it.
+
+// Does the BOARD accept this CLASS of module at all (RDIMM / LRDIMM / rank
+// count / capacity)? A vendor's generic statement of support.
+type DimmClassSupport
+  = ClassSupportedByBoard
+  | ClassUnsupportedByBoard
+  | ClassSupportUnobserved
+
+// Is the EXACT PART qualified? Generic class support is not part
+// qualification, and conflating them is how an unvalidated module reaches a
+// production host. A part's absence from a vendor list is NOT a proof of
+// incompatibility — it is the absence of a positive result, which is a
+// materially weaker and differently-actionable fact.
+type SpecificPartQualification
+  = ListedInVendorAvl {
+      avl_authority: ExternalAuthority
+      avl_issue: NonEmptyStr
+    }
+  | NotListedInVendorAvl {
+      avl_authority: ExternalAuthority
+      avl_issue: NonEmptyStr
+    }
+  | PartQualificationUnobserved
+
+// Did DDR training complete? This is the ONLY axis the 2026-08-11 BIOS
+// upgrade moved.
+type DdrTrainingOutcome
+  = TrainingOperational { dimm_mask: NonEmptyStr }
+  | TrainingFailed { detail: NonEmptyStr }
+  | TrainingOutcomeUnobserved
+
+// Did the HOST actually boot? Downstream of training and independent of it.
+type HostBootOutcome
+  = BootReachedOperatingSystem
+  | RepeatingFirmwareReset { token: NonEmptyStr, cycles: Nat }
+  | BootStalledWithoutReset
+  | BootOutcomeUnobserved
+
+type HostMemoryStanding {
+  host: HostIdentity
+  part_number: NonEmptyStr
+  population: List<NonEmptyStr>
+  class_support: DimmClassSupport
+  part_qualification: SpecificPartQualification
+  training: DdrTrainingOutcome
+  boot: HostBootOutcome
+  observed_at: EpochMs
+}
+
+// The load-bearing negative. There is deliberately NO function deriving boot
+// from training, or qualification from class support: the compiler should make
+// the collapse unwritable rather than warn about it. This predicate exists so
+// a consumer can ASK whether the downstream question is still open, and it
+// answers from the boot axis alone.
+fn host_boot_is_established(standing: HostMemoryStanding) -> Bool {
+  match standing.boot {
+    BootReachedOperatingSystem => true
+    RepeatingFirmwareReset { token: _, cycles: _ } => false
+    BootStalledWithoutReset => false
+    BootOutcomeUnobserved => false
+  }
+}
+
+data host_memory_qualification_note: String = "Written after the 2026-08-11 srv3/srv4 incident, where the collapse of these four axes into one 'does the RAM work' question cost three refuted hypotheses. The four axes stood as follows for Samsung M386A4G40DM0-CPB (32GB, 4Rx4, DDR4-2133 LRDIMM) in an eight-module population on ALTRAD8UD-1L2T: class support TRUE (the board states generic RDIMM and LRDIMM support); specific part qualification NOT LISTED in the Ampere Altra Family AVL issue 1.15 of December 2025, which contains neither this part number nor the M386A4G40 family nor any 2133 entry, and whose qualified Samsung 32GB rows are 1Rx4 or 2Rx4 at 2666/2933/3200 while its 4Rx4 rows are 128GB parts tested at 3200; training OPERATIONAL with mask 0x5555 on both hosts after BIOS 3.10; boot REPEATING FIRMWARE RESET at token E588. Absence from an AVL is not a proof of incompatibility and this module does not encode it as one — it is the absence of a positive qualification result, which is why NotListedInVendorAvl is a distinct variant from an unobserved qualification and from a refutation. The documented ALTRAD8UD populations are A1; A1+E1; A1+B1+E1+F1; and A1 through H1: note that the four-module population is NOT one-per-channel, so the diagnostic plan this module's admission check refuses is a real plan that was about to be executed."
+
+// CAUSAL EXPERIMENTS ARE RECEIPTS, NOT PROSE. Each records what was actually
+// done, so a later reader can re-judge the verdict against the intervention
+// rather than inheriting the conclusion.
+type ExperimentVerdict
+  = HypothesisSupported
+  | HypothesisRefuted
+  // The intervention was WEAKER than the one that would settle the question.
+  // Distinct from Refuted because the hypothesis remains live and the
+  // experiment is repeatable in a stronger form.
+  | HypothesisWeakenedByIntervention { performed: NonEmptyStr, required: NonEmptyStr }
+  | ExperimentInconclusive { reason: NonEmptyStr }
+
+type CausalExperimentReceipt {
+  hypothesis: NonEmptyStr
+  intervention: NonEmptyStr
+  observation: NonEmptyStr
+  verdict: ExperimentVerdict
+  observed_at: EpochMs
+}
+
+data srv3_incident_experiments: List<CausalExperimentReceipt> = [
+  CausalExperimentReceipt {
+    hypothesis: "Old host firmware caused the DDR training failure",
+    intervention: "BMC 2.07.00 -> 3.22.00, then BIOS 2.06 -> 3.10 (reference code 0ACRB_021)",
+    observation: "srv3 changed from per-controller WRLVL errors and 'DDR initialization failure. Can't fall back!' to 'DDR: Operational DIMM: 0x00005555' across all eight modules",
+    verdict: HypothesisSupported,
+    observed_at: 1786580000000,
+  },
+  CausalExperimentReceipt {
+    hypothesis: "The powermon 306-second timeout caused the reset loop",
+    intervention: "systemctl stop power-monitor.service on srv4; loop re-observed",
+    observation: "No further 'force reset on state:1' entries, and the host continued to emit E588 and restart itself",
+    verdict: HypothesisRefuted,
+    observed_at: 1786580000000,
+  },
+  CausalExperimentReceipt {
+    hypothesis: "DIMM_HOT thermal events caused E588",
+    intervention: "phosphor-pid-control stopped, all eight PWM channels forced to 255, host powered off to cool, then single cold start",
+    observation: "E588 recurred on the first cold cycle with DIMM temperatures 62-69C rather than 80C; DIMM_HOT assertions rose only AFTER hours of repeated retraining, while the first E588 predated them",
+    verdict: HypothesisRefuted,
+    observed_at: 1786580000000,
+  },
+  CausalExperimentReceipt {
+    hypothesis: "Stale UEFI NVRAM caused E588",
+    intervention: "CMOS cable removed for approximately one second and reconnected",
+    observation: "The P012 -> E588 -> restart sequence survived unchanged across two subsequent cycles",
+    verdict: HypothesisWeakenedByIntervention {
+      performed: "CMOS cable interrupted briefly; BMC lost power and its console log rotated",
+      required: "vendor procedure: remove the battery AND short the CLRMOS1 contact pads with standby power absent",
+    },
+    observed_at: 1786580000000,
+  },
+]

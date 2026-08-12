@@ -1,6 +1,6 @@
 module extdeps.boards.types
 
-import std.types { NonEmptyStr }
+import std.types { Bool, List, NonEmptyStr }
 import std.bmc { BmcFirmwareFamily, BmcEndpoint }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
@@ -27,4 +27,38 @@ type BaseboardCatalogRow {
 type ServerBaseboard {
   catalog: BaseboardCatalogRow
   bmc: BmcEndpoint
+}
+
+// The documented DIMM populations for a board. A population that is not on
+// this list is not a smaller version of a supported one — it is an
+// unsupported configuration whose failure proves nothing about the modules.
+type DimmPopulation {
+  board: BaseboardModel
+  slots: List<NonEmptyStr>
+  authority: ExternalAuthority
+}
+
+type PopulationAdmission
+  = PopulationSupported
+  | PopulationUnsupported { slots: List<NonEmptyStr> }
+
+fn population_slots_match(a: List<NonEmptyStr>, b: List<NonEmptyStr>) -> Bool {
+  count(a) == count(b)
+    && fold(a, init: true, f: (acc, s) => acc && any(b, p => p == s))
+}
+
+// Fail-closed: a population absent from the documented list is REFUSED rather
+// than assumed workable. Testing an unsupported population and reading its
+// failure as a verdict on the modules is a fabricated conclusion, and the
+// original plan for this incident — "four modules, one per channel" — was
+// exactly such a population.
+fn admit_population(
+  candidate: List<NonEmptyStr>,
+  documented: List<DimmPopulation>,
+) -> PopulationAdmission {
+  if any(documented, p => population_slots_match(a: p.slots, b: candidate)) {
+    PopulationSupported
+  } else {
+    PopulationUnsupported { slots: candidate }
+  }
 }

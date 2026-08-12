@@ -1,6 +1,6 @@
 module extdeps.boards.asrock_rack
 
-import extdeps.boards.types { BaseboardCatalogRow }
+import extdeps.boards.types { BaseboardCatalogRow, DimmPopulation }
 import extdeps.vendor.asrock_rack { asrock_rack }
 import extdeps.bmc.webui.nbd_proxy { BmcwebNbdProxyEndpointVariant, VmSlotIndexEndpoint, NbdSlotEndpoint }
 import extdeps.bmc.types {
@@ -11,10 +11,16 @@ import extdeps.bmc.types {
   FanPidAggregatedEntry,
   FanPidIndependentEntries,
 }
-import extdeps.bmc.capability {
-  BmcFirmwareSemanticVersion,
-  HistoricalEvidenceSnapshot,
-  bmc_firmware_semantic_version,
+import extdeps.bmc.capability { HistoricalEvidenceSnapshot }
+import extdeps.firmware.types {
+  BmcController,
+  NoFirmwarePrerequisite,
+  RequiresMinimumTargetFirmware,
+  FirmwareReleaseRow,
+  FirmwareSemanticVersion,
+  HostBios,
+  InstantFlashRom,
+  firmware_semantic_version,
 }
 import std.measure { celsius, percent, positive_celsius_delta, positive_measure_count }
 
@@ -78,7 +84,7 @@ data altrad8ud_openbmc_2_07_00_serial_console_probe: NonEmptyStr = "Historical p
 data asrock_altrad8ud_openbmc_2_07_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
   firmware: BmcFirmwareVersion {
     family: OpenBmc,
-    version: bmc_firmware_semantic_version(major: 2, minor: 7, patch: 0),
+    version: firmware_semantic_version(major: 2, minor: 7, patch: 0),
   },
   capabilities: altrad8ud_openbmc_2_07_00_capabilities_list,
 }
@@ -86,7 +92,7 @@ data asrock_altrad8ud_openbmc_2_07_00_capabilities: BmcFirmwareCapabilityRow = B
 data asrock_altrad8ud_openbmc_3_06_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
   firmware: BmcFirmwareVersion {
     family: OpenBmc,
-    version: bmc_firmware_semantic_version(major: 3, minor: 6, patch: 0),
+    version: firmware_semantic_version(major: 3, minor: 6, patch: 0),
   },
   capabilities: altrad8ud_openbmc_base_capabilities,
 }
@@ -96,7 +102,7 @@ data asrock_altrad8ud_openbmc_3_06_00_catalog_authority: ExternalAuthority = asr
 data asrock_altrad8ud_openbmc_3_22_00_capabilities: BmcFirmwareCapabilityRow = BmcFirmwareCapabilityRow {
   firmware: BmcFirmwareVersion {
     family: OpenBmc,
-    version: bmc_firmware_semantic_version(major: 3, minor: 22, patch: 0),
+    version: firmware_semantic_version(major: 3, minor: 22, patch: 0),
   },
   capabilities: altrad8ud_openbmc_base_capabilities,
 }
@@ -231,7 +237,7 @@ data asrock_srv3_live_readonly_probe_rows: List<BmcLiveReadOnlyProbeRow> = [
   },
 ]
 
-data asrock_srv3_live_probe_firmware_version: BmcFirmwareSemanticVersion = bmc_firmware_semantic_version(
+data asrock_srv3_live_probe_firmware_version: FirmwareSemanticVersion = firmware_semantic_version(
   major: 2,
   minor: 7,
   patch: 0,
@@ -284,3 +290,116 @@ fn live_probe_confirms_nbd_slot_ws_absent() -> Bool {
     verdict: ProbeAbsent
   )
 }
+
+// Vendor firmware releases for this board, cited to the product download page.
+// BMC and BIOS are separate FirmwareTarget rows because they are separately
+// versioned and separately flashed: srv4 runs BMC 03.22.00 and still fails to
+// boot, so "this host is on the current firmware" is not a single fact.
+data asrock_altrad8ud_bios_3_10_instant_flash_release: FirmwareReleaseRow = FirmwareReleaseRow {
+  board: AsrockRackAltrad8ud1l2t,
+  target: HostBios,
+  version: firmware_semantic_version(major: 3, minor: 10, patch: 0),
+  released_on: 1776124800000,
+  image_kind: InstantFlashRom,
+  image_uri: Uri {
+    scheme: Https
+    locator: "download.asrock.com/BIOS/Server/ALTRAD8UD-1L2T(3.10)ROM.zip"
+  },
+  image_bytes: 5359089,
+  image_digest: Present {
+    value: sha256_digest(
+      hex: "4338f8f23c86ca8fe1a27267153739893b3c27d72f6c09c7af8fbfd22347a223",
+    ),
+  },
+  release_notes: "1. Updated RC to 0ACRB_021  2. Enhanced system compatibility",
+  prerequisite: NoFirmwarePrerequisite,
+  authority: asrock_altrad8ud_download_authority,
+}
+
+data asrock_altrad8ud_bios_3_10_openbmc_release: FirmwareReleaseRow = FirmwareReleaseRow {
+  board: AsrockRackAltrad8ud1l2t,
+  target: HostBios,
+  version: firmware_semantic_version(major: 3, minor: 10, patch: 0),
+  released_on: 1776124800000,
+  image_kind: OpenBmcWebUiTar,
+  image_uri: Uri {
+    scheme: Https
+    locator: "download.asrock.com/BIOS/Server/ALTRAD8UD-1L2T(3.10)TAR.zip"
+  },
+  image_bytes: 5359341,
+  image_digest: Present {
+    value: sha256_digest(
+      hex: "7693421cd665dd674f919856b1d3a46ecdbd80df2626665dcf0376f9cb7b7eb4",
+    ),
+  },
+  release_notes: "1. Updated RC to 0ACRB_021  2. Enhanced system compatibility",
+  prerequisite: RequiresMinimumTargetFirmware {
+    target: BmcController,
+    minimum: firmware_semantic_version(major: 3, minor: 22, patch: 0),
+  },
+  authority: asrock_altrad8ud_download_authority,
+}
+
+// The bytes the BMC UpdateService actually consumes: the OpenBMC-packaged tar
+// INSIDE the distribution zip above, carrying its own MANIFEST. Modeled apart
+// from the zip because the push artifact and the download artifact are two
+// different byte sequences with two different digests, and pushing the zip
+// (or the raw .ROM) to the UpdateService is a different act from pushing this.
+data asrock_altrad8ud_bios_3_10_obmc_push_artifact_name: NonEmptyStr = "obmc-bios-altrad8ud-1l2t-3.10.all.tar"
+
+data asrock_altrad8ud_bios_3_10_obmc_push_artifact_bytes: Nat = 33566720
+
+data asrock_altrad8ud_bios_3_10_obmc_push_artifact_digest: Digest = sha256_digest(
+  hex: "e3bb2a26b863f24045e9e3bc950a89cbe3f8a86d7dc1c6c7a243f3afe35416ec",
+)
+
+data asrock_altrad8ud_bios_3_10_obmc_manifest_purpose: NonEmptyStr = "xyz.openbmc_project.Software.Version.VersionPurpose.Host"
+
+data asrock_altrad8ud_bios_3_10_obmc_manifest_machine_name: NonEmptyStr = "altrad8ud-1l2t"
+
+data asrock_altrad8ud_bmc_3_22_00_release: FirmwareReleaseRow = FirmwareReleaseRow {
+  board: AsrockRackAltrad8ud1l2t,
+  target: BmcController,
+  version: firmware_semantic_version(major: 3, minor: 22, patch: 0),
+  released_on: 1776124800000,
+  image_kind: OpenBmcWebUiTar,
+  image_uri: Uri {
+    scheme: Https
+    locator: "www.asrockrack.com/general/productdetail.asp?Model=ALTRAD8UD-1L2T"
+  },
+  image_bytes: 29056000,
+  image_digest: Absent,
+  release_notes: "1. A password change is enforced upon the first login to the WebUI  2. Improved BMC web information  3. Enhanced BMC system compatibility",
+  prerequisite: NoFirmwarePrerequisite,
+  authority: asrock_altrad8ud_download_authority,
+}
+
+data asrock_altrad8ud_firmware_release_catalog: List<FirmwareReleaseRow> = [
+  asrock_altrad8ud_bios_3_10_instant_flash_release,
+  asrock_altrad8ud_bios_3_10_openbmc_release,
+  asrock_altrad8ud_bmc_3_22_00_release,
+]
+
+data asrock_altrad8ud_firmware_release_note: String = "Cited from the ALTRAD8UD-1L2T product download table; all rows dated 2026-04-14. The BIOS rows are the load-bearing ones for the 2026-08-11 fleet incident: 'Updated RC to 0ACRB_021' is the MEMORY REFERENCE CODE, and srv3 fails DDR training on Samsung M386A4G40DM0-CPB 32GB 4Rx4 LRDIMMs while running DRAM FW 220414 (2022) under BL1 built 2023-05-17, emitting per-controller WRLVL errors and 'DDR initialization failure. Can't fall back!' on all eight controllers. ONE RELEASE, TWO PACKAGINGS, and they are not interchangeable: the ROM zip carries a bare 33554432-byte ALTRAD8UD-1L2T_3.10.ROM applied from BIOS setup by Instant Flash, which is unreachable on a host that cannot POST; the TAR zip carries obmc-bios-altrad8ud-1l2t-3.10.all.tar, whose MANIFEST declares purpose=...VersionPurpose.Host, version=3.10, MachineName=altrad8ud-1l2t, Type=bios, and which is what the BMC UpdateService consumes out-of-band. Every byte count and digest here was MEASURED on 2026-08-11 by acquiring the artifact and hashing it, never transcribed: the ROM zip at 5359089 bytes, the TAR zip at 5359341, the inner push tar at 33566720. The TAR locator was not published on the product page — it was found by probing the vendor download host and confirmed by HTTP 200 plus successful extraction, so it is weaker provenance than a page-published link and should be re-derived if the vendor reorganizes. The BMC 03.22.00 row remains digest-Absent with an unobserved locator: its image_bytes is the page's stated 27.71MB converted, NOT a Content-Length, so it must not be treated as a fetchable artifact until its own locator is observed."
+
+data asrock_altrad8ud_bios_openbmc_prerequisite_receipt: String = "The BIOS 3.10 OpenBMC-tar prerequisite (BMC >= 3.22.00) is an EXECUTED observation, not an inference from the vendor page, which states no such dependency. On 2026-08-11 the identical 33566720-byte obmc-bios-altrad8ud-1l2t-3.10.all.tar was pushed to two hosts of this board model. srv3 (BMC 2.07.00) accepted the upload, untarred it, and refused at the vendor flash script: 'Invalid ExtendedVersion: primary-all. Please check MANIFEST file!', with phosphor-image-updater logging 'Bios upgrade failed.' and Redfish reporting TaskState=Exception carrying NO machine-readable cause — the cause was only readable in the BMC journal over authenticated SSH. srv4 (BMC 3.22.00) accepted the same bytes. The minimum is therefore witnessed at 3.22.00 as an upper bound on the true threshold: versions between 2.07.00 and 3.22.00 (3.06.00 exists in the capability catalog) are UNTESTED, so the row may be stricter than the vendor requirement, which is the safe direction. The Instant Flash ROM packaging carries NoFirmwarePrerequisite because it never passes through the BMC at all; that asymmetry is why the prerequisite is a property of the PACKAGING and not of the release."
+
+// The DOCUMENTED DIMM populations. A population absent from this list is an
+// unsupported configuration whose boot failure proves nothing about the
+// modules installed in it — note in particular that the four-module
+// population is A1+B1+E1+F1 and is NOT one module per channel.
+data asrock_altrad8ud_documented_dimm_populations: List<DimmPopulation> = [
+  DimmPopulation { board: AsrockRackAltrad8ud1l2t, slots: ["A1"], authority: extdeps_external_authority_anchor },
+  DimmPopulation { board: AsrockRackAltrad8ud1l2t, slots: ["A1", "E1"], authority: extdeps_external_authority_anchor },
+  DimmPopulation { board: AsrockRackAltrad8ud1l2t, slots: ["A1", "B1", "E1", "F1"], authority: extdeps_external_authority_anchor },
+  DimmPopulation {
+    board: AsrockRackAltrad8ud1l2t,
+    slots: ["A1", "B1", "C1", "D1", "E1", "F1", "G1", "H1"],
+    authority: extdeps_external_authority_anchor,
+  },
+]
+
+// Board integration facts only: HOW the Ampere consoles are routed. The board
+// does not own the meanings of Ampere SCP tokens, and its ordinary AMI POST
+// code table is a different namespace that does not decode P012/E588/P029.
+data asrock_altrad8ud_scp_console_tcp_port: Nat = 2202

@@ -1,0 +1,169 @@
+module gunbc.memory_part_selection
+
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
+import std.measure { ByteSize, byte_size_count }
+import extdeps.boards.types { AsrockRackAltrad8ud1l2t, BaseboardModel }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.memory.types { DramModuleCatalogRow, JedecDdrGenerationCatalogRow }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_download_authority }
+import extdeps.memory.training {
+  LrdimmDataBufferMrep,
+  MemoryTrainingStep,
+  capacity_reachable_as_dual_rank_registered,
+  module_executes_step,
+  training_steps_required,
+}
+import gunbc.host_memory_qualification { SpecificPartQualification }
+
+// HOW WE KNOW A STEP FAILS. Not all evidence is equal, and a selection model
+// that flattens these would let the weakest link carry the strongest verdict.
+type TrainingEvidenceStanding
+  // The platform's own syndrome register named the failing step. This is the
+  // strongest form and is NOT what gunbc currently holds for MREP.
+  = DecodedFromPlatformSyndrome { register: NonEmptyStr }
+  // A vendor or third party reported the step by name alongside status words
+  // byte-identical to ours. Strong, but an association rather than a decode:
+  // it establishes that the same failure signature carries that step's name,
+  // not that our platform's registers were read and interpreted.
+  | AssociatedByIdenticalSignature { signature: NonEmptyStr, source: ExternalAuthority }
+  // The step is inferred from position in the boot sequence only.
+  | InferredFromSequencePosition
+  | EvidenceUnobserved
+
+type PlatformTrainingFailure {
+  board: BaseboardModel
+  step: MemoryTrainingStep
+  standing: TrainingEvidenceStanding
+  // The module population the failure was observed with. A step failure seen
+  // only in a sparse population is weaker support for rejecting a part in a
+  // full population, so the observation carries its own conditions.
+  observed_population: List<NonEmptyStr>
+  observed_at: EpochMs
+}
+
+// A candidate part is IMPLICATED when it must execute a step this platform has
+// been observed to fail. This is the whole selection rule, and note what it is
+// not: there is no list of forbidden part numbers, no vendor preference, and no
+// appeal to a qualification list. Those are separate axes handled below.
+type PartImplication
+  = PartNotImplicated
+  | PartImplicatedByFailingStep {
+      step: MemoryTrainingStep
+      standing: TrainingEvidenceStanding
+    }
+
+fn implication_for_step(
+  candidate: DramModuleCatalogRow,
+  failure: PlatformTrainingFailure,
+) -> PartImplication {
+  if module_executes_step(module: candidate, step: failure.step) {
+    PartImplicatedByFailingStep { step: failure.step, standing: failure.standing }
+  } else {
+    PartNotImplicated
+  }
+}
+
+fn part_implication(
+  candidate: DramModuleCatalogRow,
+  failures: List<PlatformTrainingFailure>,
+) -> PartImplication {
+  fold(
+    failures,
+    init: PartNotImplicated,
+    f: (acc, failure) =>
+      match acc {
+        PartImplicatedByFailingStep { step: s, standing: st } =>
+          PartImplicatedByFailingStep { step: s, standing: st }
+        PartNotImplicated => implication_for_step(candidate: candidate, failure: failure)
+      },
+  )
+}
+
+// THE SECOND RISK AXIS, kept separate because it has a different cause. A part
+// whose capacity is unreachable as a plain dual-rank registered module in its
+// generation had to be built with extra ranks or stacked die — so at that
+// capacity, "cheaper and slower" systematically selects the exotic topology.
+// This is derived from JEDEC die density, not from price observation.
+type TopologyPressure
+  = CapacityReachableConventionally
+  | CapacityForcesExoticTopology { capacity_bytes: ByteSize }
+
+fn topology_pressure(
+  candidate: DramModuleCatalogRow,
+  jedec: JedecDdrGenerationCatalogRow,
+) -> TopologyPressure {
+  if capacity_reachable_as_dual_rank_registered(module: candidate, jedec: jedec) {
+    CapacityReachableConventionally
+  } else {
+    CapacityForcesExoticTopology { capacity_bytes: candidate.capacity_bytes }
+  }
+}
+
+// A candidate for an ordering decision. Price is carried as an integer minor
+// unit and is deliberately NOT compared across currencies here.
+type PartCandidate {
+  module: DramModuleCatalogRow
+  unit_price_minor: Int
+  currency: NonEmptyStr
+  sticks_required: Int
+  qualification: SpecificPartQualification
+}
+
+fn candidate_total_capacity_bytes(candidate: PartCandidate) -> Int {
+  byte_size_count(b: candidate.module.capacity_bytes) * candidate.sticks_required
+}
+
+fn candidate_total_price_minor(candidate: PartCandidate) -> Int {
+  candidate.unit_price_minor * candidate.sticks_required
+}
+
+// PARETO SELECTION. Three objectives, and the implication axis is NOT one of
+// them: an implicated part is REFUSED before the frontier is computed, because
+// trading "it might not train" against price is how the failing modules were
+// bought in the first place. Pareto ranks the parts that could work; it does
+// not price the risk of parts we have mechanical reason to reject.
+fn candidate_admissible(
+  candidate: PartCandidate,
+  failures: List<PlatformTrainingFailure>,
+) -> Bool {
+  match part_implication(candidate: candidate.module, failures: failures) {
+    PartNotImplicated => true
+    PartImplicatedByFailingStep { step: _, standing: _ } => false
+  }
+}
+
+// a dominates b when it is at least as good on every objective and strictly
+// better on one. More capacity is better; less total price is better; a higher
+// data rate is better (it is headroom, and the platform downclocks to the
+// slowest module present).
+fn candidate_dominates(a: PartCandidate, b: PartCandidate) -> Bool {
+  let cap_a = candidate_total_capacity_bytes(candidate: a)
+  let cap_b = candidate_total_capacity_bytes(candidate: b)
+  let price_a = candidate_total_price_minor(candidate: a)
+  let price_b = candidate_total_price_minor(candidate: b)
+  let rate_a = a.module.data_rate_mts
+  let rate_b = b.module.data_rate_mts
+  (cap_a >= cap_b && price_a <= price_b && rate_a >= rate_b)
+    && (cap_a > cap_b || price_a < price_b || rate_a > rate_b)
+}
+
+fn pareto_frontier(
+  candidates: List<PartCandidate>,
+  failures: List<PlatformTrainingFailure>,
+) -> List<PartCandidate> {
+  let admissible = candidates |> filter(c => candidate_admissible(candidate: c, failures: failures))
+  admissible |> filter(c => !any(admissible, other => candidate_dominates(a: other, b: c)))
+}
+
+data altrad8ud_mrep_failure_observation: PlatformTrainingFailure = PlatformTrainingFailure {
+  board: AsrockRackAltrad8ud1l2t,
+  step: LrdimmDataBufferMrep,
+  standing: AssociatedByIdenticalSignature {
+    signature: "SK[0]: 00120001 / MC[0]: 00f100b4",
+    source: asrock_altrad8ud_download_authority,
+  },
+  observed_population: ["A1"],
+  observed_at: 1786590000000,
+}
+
+data memory_part_selection_note: String = "The selection rule is mechanical and derived: a candidate is refused when it must execute a training step this platform has been observed to fail. For the ALTRAD8UD-1L2T that step is the DDR4 data-buffer read-phase calibration (MREP), so every load-reduced module is refused and every registered module is admitted, INDEPENDENT of vendor, part number, capacity, speed grade, or presence on any approved-vendor list. That independence is the point: an ordering workflow can shop the whole market instead of a list, and can explain each refusal by naming the step. THE EVIDENCE STANDING IS DELIBERATELY NOT THE STRONGEST ONE AVAILABLE. gunbc has not decoded its own platform syndrome register; what it has is a public report from the same board model naming MREP alongside controller status words byte-identical to its own (SK[0]: 00120001, MC[0]: 00f100b4), plus two different modules of one family failing identically in a documented-supported single-slot population while registered modules ran in that machine for years. That is AssociatedByIdenticalSignature, not DecodedFromPlatformSyndrome, and the difference is live rather than pedantic: Ampere documents SCP register B5 as carrying a per-DIMM training syndrome whose primary-syndrome field distinguishes DRAM VREFDQ failure from LRDIMM data-buffer training failure from LRDIMM data-buffer software-training failure, with B4 selecting the slot. Reading B5 for slot 0 would upgrade this row to a decode and would additionally discriminate WHICH buffer-training failure occurred. It was not read because neither the BMC nor the session host carries an ipmitool binary and no other transport to the SCP register file has been established. The observed_population is recorded as A1 alone because that is where the signature was captured; the eight-module population trained successfully and failed later at a different token, which this model does NOT treat as the same failure. The second axis, topology pressure, is derived rather than observed: when a capacity cannot be reached as a dual-rank registered module within the generation's monolithic die-density ceiling, that capacity forces extra ranks or stacking, which is why 64GB DDR4 at older speed grades is disproportionately load-reduced while 32GB is not. A buyer economizing on speed grade at 64GB is therefore not buying the same module more slowly, and the model derives that from JEDEC density rather than asserting it from market prices."

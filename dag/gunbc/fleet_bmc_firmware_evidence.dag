@@ -11,10 +11,10 @@ import extdeps.bmc.capability {
   BmcFirmwareObservation,
   BmcFirmwareVersion,
   bmc_firmware_capability_row_for,
-  bmc_firmware_semantic_version,
 }
 import gunbc.fleet_intent { srv1_baseboard, srv2_baseboard }
 import gunbc.fleet_bmc_observation {
+import extdeps.firmware.types { firmware_semantic_version }
   srv3_bmc_firmware_observation,
   srv4_bmc_firmware_observation,
 }
@@ -97,7 +97,7 @@ data srv1_bmc_firmware_attestation: BmcFirmwareAttestation = BmcFirmwareAttestat
   endpoint: srv1_baseboard.bmc,
   firmware: BmcFirmwareVersion {
     family: OpenBmc,
-    version: bmc_firmware_semantic_version(major: 2, minor: 7, patch: 0),
+    version: firmware_semantic_version(major: 2, minor: 7, patch: 0),
   },
   attested_by: "briansrls",
   attested_at: 1786320000000,
@@ -107,7 +107,7 @@ data srv2_bmc_firmware_attestation: BmcFirmwareAttestation = BmcFirmwareAttestat
   endpoint: srv2_baseboard.bmc,
   firmware: BmcFirmwareVersion {
     family: OpenBmc,
-    version: bmc_firmware_semantic_version(major: 2, minor: 7, patch: 0),
+    version: firmware_semantic_version(major: 2, minor: 7, patch: 0),
   },
   attested_by: "briansrls",
   attested_at: 1786320000000,

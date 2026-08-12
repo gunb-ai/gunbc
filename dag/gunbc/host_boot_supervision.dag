@@ -1,0 +1,115 @@
+module gunbc.host_boot_supervision
+
+import std.types { Bool, EpochMs, List, NonEmptyStr }
+import std.nat { Nat }
+import product.placement_supply { HostIdentity }
+
+// TWO INDEPENDENT SUPERVISORS CAN RESET A HOST, and the fleet modeled
+// neither. Both were discovered live on 2026-08-11 while diagnosing a boot
+// loop, and the diagnosis was wrong until they were separated: with one
+// stopped the host still cycled, which is what proved the loop was NOT a
+// supervision timeout at all.
+//
+// Modeling them as one "watchdog" field would rebuild exactly the confusion
+// that cost that hour — they have different owners, different mechanisms,
+// different observability, and only one of them is configurable.
+type HostBootSupervisor
+  // OpenBMC's standard boot watchdog, a systemd unit with D-Bus properties
+  // (Enabled, Interval, ExpireAction). Observed INACTIVE on srv4.
+  = PhosphorWatchdogPowerOn
+  // The vendor's power monitor (power-monitor.service, /usr/bin/powermon).
+  // Emits "force reset on state:1" and drives obmc-host-force-warm-reboot.
+  // Observed ACTIVE on srv4. It is a compiled binary invoked with NO
+  // arguments and NO configuration file, so its interval is not readable.
+  | PowerMonForceReset
+
+type SupervisorRunState
+  = SupervisorActive
+  | SupervisorInactive
+  | SupervisorRunStateUnobserved
+
+// The interval axis is deliberately NOT a plain Nat. powermon's period is
+// not configuration this repository can read — it was MEASURED from eleven
+// consecutive reset timestamps in the BMC journal, all 5m06s apart. A
+// measured period and a declared setting are different epistemic objects:
+// the first can drift with firmware and carries a sample count, the second
+// can be changed. Storing 306 in a field named "interval" would present a
+// measurement as a setting, and the next reader would try to edit it.
+type SupervisorIntervalKnowledge
+  = IntervalDeclared { seconds: Nat }
+  | IntervalMeasured { seconds: Nat, samples: Nat, observed_at: EpochMs }
+  | IntervalUnknown
+
+type HostBootSupervisorObservation {
+  host: HostIdentity
+  supervisor: HostBootSupervisor
+  run_state: SupervisorRunState
+  interval: SupervisorIntervalKnowledge
+  observed_at: EpochMs
+}
+
+// Boot progress as the host itself reports it on the serial console, which
+// is a DIFFERENT and strictly richer surface than Redfish BootProgress.
+// Redfish reported LastState=None throughout every failure in this incident
+// — it distinguished nothing — while the console carried the exact postcode
+// and error code. A model that consumes only BootProgress cannot see any of
+// this, which is why the console codes are first-class here.
+type HostBootCode
+  = HostBootCheckpoint { code: NonEmptyStr }
+  | HostBootError { code: NonEmptyStr }
+
+type HostBootStallSignature {
+  host: HostIdentity
+  // The last checkpoint reached before the failure.
+  last_checkpoint: NonEmptyStr
+  // The error code emitted at the failure, if the host emitted one. Absent
+  // means the host went silent WITHOUT an error, which is a different fault
+  // from an error-and-reset and must not be rendered as the same state.
+  error_code: NonEmptyStr?
+  // How many complete cycles of this signature were observed. One occurrence
+  // is an event; a repeating identical signature is a deterministic fault,
+  // and the two justify different responses.
+  observed_cycles: Nat
+  observed_at: EpochMs
+}
+
+type HostBootLoopCause
+  // The host emitted an error and restarted itself. No supervisor involved.
+  = HostSelfResetOnError { code: NonEmptyStr }
+  // A supervisor's timer expired and forced the reset.
+  | SupervisorForcedReset { supervisor: HostBootSupervisor }
+  // The host went silent and a supervisor eventually reset it: the two are
+  // CONFOUNDED until one supervisor is stopped and the loop is re-observed.
+  // This arm exists because it was the real state of knowledge for an hour,
+  // and collapsing it into either neighbour would have been a guess.
+  | LoopCauseConfounded { candidates: List<HostBootSupervisor> }
+  | LoopCauseUnobserved
+
+// Discriminating a self-reset from a forced reset requires stopping the
+// supervisor and observing whether the loop PERSISTS. Nothing about the
+// loop's shape alone decides it — a 306-second period looks exactly like a
+// timeout whether or not a timeout causes it.
+fn host_boot_loop_cause(
+  signature: HostBootStallSignature,
+  supervisor_stopped: Bool,
+  looped_after_stop: Bool,
+) -> HostBootLoopCause {
+  match signature.error_code {
+    Present { value: code } =>
+      if supervisor_stopped && looped_after_stop {
+        HostSelfResetOnError { code: code }
+      } else {
+        LoopCauseConfounded {
+          candidates: [PowerMonForceReset, PhosphorWatchdogPowerOn],
+        }
+      }
+    Absent =>
+      if supervisor_stopped && looped_after_stop {
+        LoopCauseUnobserved
+      } else {
+        LoopCauseConfounded {
+          candidates: [PowerMonForceReset, PhosphorWatchdogPowerOn],
+        }
+      }
+  }
+}
