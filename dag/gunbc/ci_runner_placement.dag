@@ -32,7 +32,7 @@ import extdeps.cpu { cpu_facts_threads }
 import gunbc.ci_floor_measurement {
   HostUsableRam,
   HostUsableRamMeasured,
-  HostUsableRamFleetSubstitution,
+  HostUsableRamConservativeLowerBound,
   HostUsableRamUnmeasured,
   gunbc_ci_host_usable_ram_for,
   HostFixedOverhead,
@@ -255,7 +255,7 @@ fn host_session_slice_bytes(host: HostIdentity) -> ByteSize {
   }
 }
 
-data host_usable_ram_note: String = "CONSERVATION IS CHECKED AGAINST OS-USABLE RAM, NOT THE DIMM TOTAL, and the difference decides admissions at exactly the width this change lands on. compute_host_ram_bytes_total sums the populated modules — 128GiB nominal — while the OS sees 134217728000 bytes (125GiB) after firmware and kernel reservations; gunbc.ci_fleet fleet_host_memory_nominal_vs_usable_note exists specifically to say these are two facts and must not be conflated, and this wall was quietly conflating them by checking against the nominal figure.\n\nThat is a 3GiB overstatement of what the host can hold, and it is not academic here. An eighth 14GiB slot on a managed host sums to 125.6GiB, which PASSES against 128GiB nominal and FAILS against 125GiB usable — so the pre-existing wall would have admitted a width the machine cannot carry, by charging memory that does not exist. The seventh slot fits under both readings; the eighth is precisely where the conflation would have bitten.\n\nHONEST RESIDUAL: per-host MemTotal is unobserved. gunbc_ci_host.memory is a fleet-level MemTotal-shaped authority and every host in this fleet is the same board at the same population, so it stands in for all four — a substitution that is safe in the conservative direction (it is the smaller number) and would stop being safe the moment a host with different RAM enrolls. Dissolve-on: a per-host MemTotal read, the same quiescent /proc/meminfo reach that grounds the fixed overhead and gates the oomd verification."
+data host_usable_ram_note: String = "HISTORICAL — WHY CONSERVATION IS CHECKED AGAINST OS-USABLE RAM RATHER THAN THE DIMM TOTAL. Retained as the reasoning that put the usable figure here, and rewritten because its closing paragraph became FALSE: it argued that every host in the fleet carried the same board at the same population, so one figure could stand in for all four, and named the enrolment of a differently populated host as the condition that would end that. The 2026-08-11 DIMM replacement ended it. A note asserting a live premise that has since been falsified is not stale commentary — it is a second, contradicting authority sitting beside the carrier that replaced it, so the falsified half is stated as history here and the current relation lives in gunbc.ci_floor_measurement gunbc_ci_host_usable_ram_kind_note.\n\nWHAT REMAINS TRUE AND LOAD-BEARING: compute_host_ram_bytes_total sums the populated modules — nominal DIMM capacity — while the OS sees less after firmware and kernel reservations, and gunbc.ci_fleet fleet_host_memory_nominal_vs_usable_note exists specifically to say these are two facts that must not be conflated. The margin decides admissions rather than being academic: at the 128 GiB nominal / 125 GiB usable population this wall was built against, an eighth 14 GiB slot sums to 125.6 GiB, which PASSES against nominal and FAILS against usable — so checking the nominal figure would admit a width the machine cannot carry, by spending memory that does not exist. The seventh slot fit under both readings; the eighth is exactly where the conflation bit."
 
 type HostUsableRamResolution
   = HostUsableRamResolved { bytes: ByteSize }
@@ -266,7 +266,7 @@ data host_usable_ram_grain_note: String = "THE FLEET CONSTANT IS GONE AND THE GR
 fn host_usable_ram_or_refusal(host: HostIdentity, r: HostUsableRam) -> HostUsableRamResolution {
   match r {
     HostUsableRamMeasured { bytes: b, provenance: _ } => HostUsableRamResolved { bytes: b }
-    HostUsableRamFleetSubstitution { bytes: b, reason: _ } => HostUsableRamResolved { bytes: b }
+    HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => HostUsableRamResolved { bytes: b }
     HostUsableRamUnmeasured =>
       HostUsableRamUnresolved {
         reason: concat("host OS-usable RAM is unclassified, so the ceiling every other charge in this budget is checked against is unknown: refuse to derive a runner width rather than borrow another host's MemTotal (which is how a correct sum acquires a fabricated premise). Classify it in gunbc.ci_floor_measurement gunbc_ci_host_usable_ram_for. Host: ", host)

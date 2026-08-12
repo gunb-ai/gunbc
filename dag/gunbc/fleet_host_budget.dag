@@ -18,7 +18,7 @@ import extdeps.accounting.budget { Appropriation, LineItem }
 import product.budget_tree { BudgetNode, BudgetClaim, Guaranteed, node_conserves }
 import product.placement_supply { HostIdentity }
 import gunbc.ci_fleet { ComputeOffer }
-import gunbc.fleet_intent { compute_host_ram_bytes_total, compute_host_primary_cpu }
+import gunbc.fleet_intent { compute_host_primary_cpu }
 import extdeps.cpu { cpu_facts_threads }
 import extdeps.jobserver {
   JobserverConfig,
@@ -38,6 +38,11 @@ import gunbc.fleet_container {
   gha_runner_container,
 }
 import gunbc.ci_floor_measurement {
+  HostUsableRam,
+  HostUsableRamMeasured,
+  HostUsableRamConservativeLowerBound,
+  HostUsableRamUnmeasured,
+  gunbc_ci_host_usable_ram_for,
   OomdEnforcementEvidence,
   OomdEnforced,
   OomdUnverified,
@@ -163,6 +168,14 @@ fn resolve_compile_pool(nproc: HardwareThreadCount, host: ByteSize, citation: Jo
   }
 }
 
+fn fleet_host_usable_ram_ceiling(host: HostIdentity) -> ByteSize {
+  match gunbc_ci_host_usable_ram_for(host: host) {
+    HostUsableRamMeasured { bytes: b, provenance: _ } => b
+    HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => b
+    HostUsableRamUnmeasured => byte_size(0)
+  }
+}
+
 fn appropriation_of(b: ByteSize) -> Appropriation<Memory, One> {
   Appropriation { ceiling: b }
 }
@@ -172,10 +185,6 @@ fn overhead_claim(overhead: ByteSize) -> BudgetClaim {
     item: LineItem { purpose: "host_fixed_overhead", amount: overhead },
     priority: Guaranteed,
   }
-}
-
-fn host_ram_of(offer: ComputeOffer) -> ByteSize {
-  compute_host_ram_bytes_total(host: offer.supply.physical)
 }
 
 fn child_node(name: String, b: ByteSize) -> BudgetNode {
@@ -387,7 +396,7 @@ fn fleet_host_plan_for_offer(
     Present { value: cpu } =>
       fleet_host_plan_for(
         name: offer.supply.physical.identity,
-        host: compute_host_ram_bytes_total(host: offer.supply.physical),
+        host: fleet_host_usable_ram_ceiling(host: offer.supply.physical.identity),
         overhead: overhead,
         nproc: cpu_facts_threads(cpu: cpu),
         runner: gha_runner_container,
