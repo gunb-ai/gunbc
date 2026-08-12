@@ -3823,13 +3823,6 @@ macro_rules! v1_bridge_family_arms {
                 arm "v4_bridge.data_init_decl_facts_live" { "data_init_decl_facts_live" } =>
                     crate::coproduct_reflection::eval_data_init_decl_facts_live($ctx, &$args),
             }
-            family INERT_LENS_BRIDGE_FNS "v2.lens.inert_lens"
-                lookup_eval_call_bridge_lens_inert_lens eval_call_bridge__v2_lens_inert_lens_arm {
-                arm "v4_bridge.inert_lens_unreached_module_count" { "inert_lens_unreached_module_count" } =>
-                    Ok(Value::Int(crate::cli_run::inert_lens_unreached_module_count())),
-                arm "v4_bridge.inert_lens_top_level_module_count" { "inert_lens_top_level_module_count" } =>
-                    Ok(Value::Int(crate::cli_run::inert_lens_top_level_module_count())),
-            }
         }
     };
 }
@@ -11789,6 +11782,36 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(list_value(items)))
             },
 
+            arm "free_call.dependency_resolution_facts" { "dependency_resolution_facts" } => {
+                let pool_roots =
+                    expect_str_list($positional.first().copied(), "dependency_resolution_facts")?;
+                let importer_roots =
+                    expect_str_list($positional.get(1).copied(), "dependency_resolution_facts")?;
+                let exclude_substrings =
+                    expect_str_list($positional.get(2).copied(), "dependency_resolution_facts")?;
+                // Reference-first exact union through the ONE dedup authority, then the
+                // import_module -> target_module rename. Both halves are the host twin of what
+                // `v2.lens.module_graph` used to compose in the interpreter; the composition moved
+                // because it measured 104,943ms against 151ms for the two leaves it combines.
+                let facts = crate::cli_run::dependency_resolution_facts(
+                    &pool_roots,
+                    &importer_roots,
+                    &exclude_substrings,
+                );
+                let mut items: Vec<Value> = Vec::new();
+                for f in facts {
+                    items.push(Value::Record {
+                        type_name: $ctx.sym("ModuleDependencyEdge"),
+                        fields: Rc::new(sorted_fields(vec![
+                            ($ctx.sym("path"), Value::Str(f.path)),
+                            ($ctx.sym("target_declared"), Value::Bool(f.target_declared)),
+                            ($ctx.sym("target_module"), Value::Str(f.import_module)),
+                        ])),
+                    });
+                }
+                Ok(Some(list_value(items)))
+            },
+
             arm "free_call.concept_decl_facts" { "concept_decl_facts" } => {
                 let pool_roots = expect_str_list($positional.first().copied(), "concept_decl_facts")?;
                 Ok(Some(crate::coproduct_reflection::eval_concept_decl_facts(
@@ -12278,13 +12301,6 @@ macro_rules! v1_builtin_arms {
             },
             arm "free_call.inert_carrier_declared_count" { "inert_carrier_declared_count" } => Ok(Some(Value::Int(
                 crate::cli_run::inert_carrier_declared_count_live(),
-            ))),
-
-            arm "free_call.inert_lens_unreached_module_count" { "inert_lens_unreached_module_count" } => Ok(Some(Value::Int(
-                crate::cli_run::inert_lens_unreached_module_count(),
-            ))),
-            arm "free_call.inert_lens_top_level_module_count" { "inert_lens_top_level_module_count" } => Ok(Some(Value::Int(
-                crate::cli_run::inert_lens_top_level_module_count(),
             ))),
 
             arm "free_call.non_fold_residue_count" { "non_fold_residue_count" } => Ok(Some(Value::Int(crate::cli_run::non_fold_residue_count()))),

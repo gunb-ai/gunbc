@@ -30,6 +30,7 @@ fn ts_import_pipeline_spellings(third_seg: Symbol, third_spell: String) -> Map<S
 
 fn ts_import_pipeline_target(third_seg: Symbol, third_spell: String) -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: ts_target_model_node(),
     lex: ts_lex(),
     binding_spellings: ts_import_pipeline_spellings(
