@@ -1,6 +1,7 @@
 module gunbc.output_policy
 
 import extdeps.github.log_annotations { neutralize_workflow_commands, subject_text_line_guard }
+import std.observation { ObservationGrain, BatchGrain }
 
 type Verbosity = Quiet | Normal | Verbose
 
@@ -70,6 +71,27 @@ type ChannelPolicy {
   progress: OutputDecision
   shell_trace: OutputDecision
   instrumentation: OutputDecision
+  routine_rollup_grain: ObservationGrain?
+}
+
+// The display grain, and the reason it is NOT another OutputDecision variant.
+// Suppressed | Condensed | Full are per-line formatting verdicts: each says what becomes of ONE
+// line. The defect they cannot describe is that 4110 passing witnesses became 4110 lines at all, and
+// no shorter spelling of a line fixes that — accumulating a batch's routine descendants into one
+// conclusion is a fold over the stream, so the policy states the GRAIN to fold to and the fold lives
+// in std.observation where the containment path already is.
+// Absent means render at leaf grain, which is what Verbose asks for: the operator has explicitly
+// asked to see the individual work. Present{BatchGrain} is Normal and Quiet, where the leaf
+// identities live in the receipt artifact and the console carries batch conclusions, dwell
+// heartbeats, and anomalies at their exact leaf subject.
+// No new grain taxonomy is minted: BatchSegment and the floor plan already name the high-level work,
+// and a second phase enum beside them would be the nickname DESIGN section 3 forbids.
+fn routine_rollup_grain_for(verbosity: Verbosity) -> ObservationGrain? {
+  match verbosity {
+    Quiet => Present { value: BatchGrain }
+    Normal => Present { value: BatchGrain }
+    Verbose => none
+  }
 }
 
 fn channel_policy(verbosity: Verbosity) -> ChannelPolicy {
@@ -79,6 +101,7 @@ fn channel_policy(verbosity: Verbosity) -> ChannelPolicy {
     progress: channel_decision(channel: Progress, verbosity: verbosity)
     shell_trace: channel_decision(channel: ShellTrace, verbosity: verbosity)
     instrumentation: channel_decision(channel: Instrumentation, verbosity: verbosity)
+    routine_rollup_grain: routine_rollup_grain_for(verbosity: verbosity)
   }
 }
 

@@ -10,6 +10,7 @@ import v2.extdeps.languages.rust_test {
   rust_call_lex
 }
 import v2.std.compilers.target_model {
+  ProducedDeclUnwired,
   TargetModel,
   target_model_emit_transforms_empty
 }
@@ -207,6 +208,7 @@ data rust_call_helper_eval_subgraph: Node = Node {
 
 fn rust_call_target_model(authority_source_text: String) -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: rust_target_model_bundle_core(),
     lex: rust_call_lex(),
     binding_spellings: rust_call_binding_spellings(),

@@ -62,6 +62,7 @@ import gunbc.typed_argv_exec {
   TypedArgvExecRefused,
 }
 import extdeps.bmc.types { RedfishSystemAction }
+import gunbc.output_policy { OutcomeIsData }
 import gunbc.fleet_intent { ComputeHost, srv1_host, compute_host_primary_cpu }
 import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
 import gunbc.host_converge { HostConverge, FreshStandup, ExistingHostQuiescentReload, gunbc_apply_mode_for_host }
@@ -454,7 +455,10 @@ fn shell_exec_failure_reason_headered(observed: ShellExecObserved, header: Strin
 fn shell_exec_failure_reason(observed: ShellExecObserved) -> String {
   shell_exec_failure_reason_headered(
     observed: observed,
-    header: "host_effect_apply: shell exec returned a nonzero exit code; fail-closed, no fabricated convergence",
+    header: concat(
+      "host_effect_apply: shell exec returned a nonzero exit code (exit=",
+      concat(to_string(observed.exit_code), "); fail-closed, no fabricated convergence"),
+    ),
   )
 }
 
@@ -1243,7 +1247,7 @@ fn provision_build_cache_reconcile_shell_observed(
 fn run_shell_transport(script: RetainedShellScript, transport: HostEffectTransport) -> ShellExecObserved {
   match transport {
     LocalShell => {
-      let result = shell.Exec.Run(script: retained_shell_script_to_transport(rss: script))
+      let result = shell.Exec.Run(script: retained_shell_script_to_transport(rss: script), expect: OutcomeIsData)
       ShellExecObserved {
         exit_code: result.exit_code,
         success: result.success,

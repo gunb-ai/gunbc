@@ -58,9 +58,7 @@ fn duplicate_row_keys_refuse() -> Bool {
 fn shadows_are_exactly_the_known_named_set() -> Bool {
   let free = shadowed_spellings(rows: v1_interpreter_primitive_arms() |> filter(r => r.form == FreeCall))
   let method = shadowed_spellings(rows: v1_interpreter_primitive_arms() |> filter(r => r.form == MethodCall))
-  count(free) == 2
-    && (free |> any(x => x == "inert_lens_unreached_module_count"))
-    && (free |> any(x => x == "inert_lens_top_level_module_count"))
+  count(free) == 0
     && count(method) == 1
     && (method |> all(x => x == "lookup"))
     && !form_has_no_shadowed_spelling(rows: [
