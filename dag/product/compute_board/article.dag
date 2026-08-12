@@ -9,7 +9,7 @@ import product.compute_board.digital_control {
 }
 import product.compute_board.analog {
   AnalogCircuitIntent,
-  CapacitanceNanofarads,
+  CapacitorInstance,
   ComponentInstanceIdentity,
   ComponentModelBinding,
   ElectricalComponentInstance,
@@ -17,12 +17,9 @@ import product.compute_board.analog {
   ElectricalNet,
   ElectricalTerminalRef,
   IdealLumped,
-  IndependentVoltageSource,
+  IndependentVoltageSourceInstance,
   NetIdentity,
-  PassiveCapacitor,
-  PassiveResistor,
-  PotentialSourceVolts,
-  ResistanceKilohms,
+  ResistorInstance,
   TerminalIdentity,
   terminal_ref,
 }
@@ -257,34 +254,31 @@ fn article_manufacturing_profile_selected(a: BoardPowerInterfaceArticle) -> Bool
 // inside a witness module, so the production authority had no production instance and every
 // claim about "one article feeding both projections" was a statement about a test fixture. A
 // root that exists only in its own test is not a root.
-data pg_conditioning_resistor: ElectricalComponentInstance = ElectricalComponentInstance {
-  // The instance identity carries NO element letter. SPICE derives 'R' from the role, so an
-  // identity spelled "R1" would emit "RR1" — and the fix is not to strip a prefix at emission
-  // but to keep the target's naming convention out of the identity in the first place.
+// The instance identity carries NO element letter. SPICE derives 'R' from the constructor, so an
+// identity spelled "R1" would emit "RR1" — and the fix is not to strip a prefix at emission but to
+// keep the target's naming convention out of the identity in the first place.
+data pg_conditioning_resistor: ElectricalComponentInstance = ResistorInstance {
   identity: "pg_cond" as ComponentInstanceIdentity,
   part: "power-good conditioning resistor",
-  role: PassiveResistor,
   positive_terminal: "1" as TerminalIdentity,
   negative_terminal: "2" as TerminalIdentity,
-  value: ResistanceKilohms { magnitude: Measure { count: 10 } },
+  resistance: Measure { count: 10 },
 }
 
-data pg_conditioning_capacitor: ElectricalComponentInstance = ElectricalComponentInstance {
+data pg_conditioning_capacitor: ElectricalComponentInstance = CapacitorInstance {
   identity: "pg_filt" as ComponentInstanceIdentity,
   part: "power-good conditioning capacitor",
-  role: PassiveCapacitor,
   positive_terminal: "1" as TerminalIdentity,
   negative_terminal: "2" as TerminalIdentity,
-  value: CapacitanceNanofarads { magnitude: Measure { count: 100 } },
+  capacitance: Measure { count: 100 },
 }
 
-data logic_supply_source: ElectricalComponentInstance = ElectricalComponentInstance {
+data logic_supply_source: ElectricalComponentInstance = IndependentVoltageSourceInstance {
   identity: "logic_in" as ComponentInstanceIdentity,
   part: "logic supply input",
-  role: IndependentVoltageSource,
   positive_terminal: "1" as TerminalIdentity,
   negative_terminal: "2" as TerminalIdentity,
-  value: PotentialSourceVolts { magnitude: Measure { count: 12 } },
+  potential_difference: Measure { count: 12 },
 }
 
 data pg_raw_net: NetIdentity = "pg_raw" as NetIdentity
