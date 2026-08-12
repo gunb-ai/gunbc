@@ -1,0 +1,105 @@
+module v2.workflow.ci_v1_compiler_test_targets_compile_gate_emit
+
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { List }
+import v2.std.effect_plan { Do, EffectPlan, EffectPlanStep }
+import v2.std.operation_argv {
+  OperationRef,
+  operation_argv_bind_text_list
+}
+import v2.std.orchestration { FailFast }
+import v2.std.text { String }
+import v2.workflow.effect_plan_bash_materialize {
+  BashBoundOperationInvocation,
+  EffectPlanBashMaterializationRefused,
+  EffectPlanBashMaterialized,
+  bash_bind_operation_invocation_host_env_executable,
+  effect_plan_bash_materialize,
+  effect_plan_bash_refusal_label
+}
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+
+data ci_v1_compiler_test_targets_compile_gate_cargo_path: String = "dag/extdeps/rust/cargo_build.dag"
+data ci_v1_compiler_test_targets_compile_gate_cargo_service: String = "cargo.Build"
+data ci_v1_compiler_test_targets_compile_gate_cargo_operation: String = "Check"
+data ci_v1_compiler_test_targets_compile_gate_cargo_bin_env_var: String = "CARGO_BIN"
+
+data ci_v1_compiler_test_targets_compile_gate_package: String = "v1-compiler"
+
+data ci_v1_compiler_test_targets_compile_gate_refusal_prefix: String = "__GUNBC_EFFECT_PLAN_BASH_REFUSED__ v1-compiler test-targets compile gate: "
+
+data ci_v1_compiler_test_targets_compile_gate_authority_note: String = "Build-job COMPILE gate for v1-compiler's own test targets — the population no CI gate compiled. Measured hole, 2026-08-12: v1-compiler carries 24 files with cfg(test) modules and NOTHING compiled them, so a test module referencing helpers it cannot see sat on main with every gate green. The specimen: coordinated_consumer_refuses_corpus_without_verified_snapshot in cli_run.rs's discovery_summary_merge_tests called with_env_test_lock / EnvGuard / FLOOR_DISCOVERY_CONSUMER_ENV across a module boundary with no import, giving 4 E0425/E0433 errors on `v1-compiler (lib test)` that the release build (binaries only), the partition gate (7 generated crates, no test targets, and zero cfg(test) among them), and the v1-compiler-tests gate (a DIFFERENT workspace crate) all structurally cannot see.
+
+WHY THIS IS NOT A NEXTEST RE-ENROLLMENT, which gunbc.commit_workflow commit_gate_rust_suite_removed_disposition rejects: every rationale in that ruling is a fact about EXECUTION — ~37 GiB, red on main, seed runtime, ~42min. This is cargo.Build.Check, compile-only, and it does not run a single test. It is the same separable-fact argument that re-enrolled fmt (2026-07-15) and the v1-compiler-tests compile half (2026-07-31); this closes the third and last uncovered target class rather than returning the removed suite.
+
+SCOPED TO -p v1-compiler DELIBERATELY, not --workspace: the 7 stage0 partition crates already get cargo.Build.Check from ci_stage0_partition_compile_gate AND carry zero cfg(test) files (measured, all seven), and v1-compiler-tests is compiled and executed by its own gate. A workspace-wide check would therefore re-check lib targets already covered and buy nothing — the DESIGN 2 duplicated-work shape. This gate's population is exactly what is uncovered.
+
+ON --all-targets AS A WORKFLOW PARAMETER: DESIGN 3 names a bare --all-targets in an extdeps argv as the tell that business policy leaked downward, and v2.lens.extdeps_shape_transport_policy reds on it. That reading is respected here rather than evaded — the flag is supplied by THIS workflow module through extra_args, exactly as ci_stage0_partition_compile_gate_extra_args supplies -p, so extdeps.cargo_build keeps the agnostic operation shape and the policy stays at the workflow layer that owns it.
+
+WHAT THIS GATE DOES NOT DO: it does not execute v1-compiler's lib tests. Compiling a test module proves its references resolve; it does not prove its assertions hold. The 24 files' tests still have no executing consumer on any CI path, so absence of a red here is not evidence that any of them passes — including the five union_dedup_import_facts_law tests gunbc#8162 added to the very file this gate's specimen came from."
+
+data ci_v1_compiler_test_targets_compile_gate_execution_gap_note: String = "The execution half is deliberately NOT bundled, and its cost is the reason to decide it separately rather than the reason to skip it. Compile is 99s measured whole-workspace on a remote runner (b33a9c03d, cargo check --workspace --all-targets, cold), so the scoped figure is bounded above by that; execution cost for v1-compiler's lib tests is UNMEASURED because main's lib test target does not currently compile, which is precisely the defect this gate catches. Measure it on a green tree before proposing it, and price it against the retained-kernel gate that already runs 30 tests. Enrolling execution is a strict improvement over this gate, never a substitute for it: a compile gate refuses in ~1.5min and needs no test to be correct, while execution needs every retained test to be green first."
+
+data ci_v1_compiler_test_targets_compile_gate_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.workflow.ci_v1_compiler_test_targets_compile_gate_emit",
+    decl_name: "ci_v1_compiler_test_targets_compile_gate_script",
+    field: WholeDeclaration
+  }
+}
+
+data ci_v1_compiler_test_targets_compile_gate_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_v1_compiler_test_targets_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for one extdeps.cargo_build cargo.Build.Check invocation; DISSOLVES WHEN bash-emit (#5828 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operation — the same de-fork ci_stage0_partition_compile_gate_script, ci_v1_compiler_tests_compile_gate_script and ci_fmt_gate_line await")
+
+fn ci_v1_compiler_test_targets_compile_gate_extra_args() -> List<String> {
+  ["-p", ci_v1_compiler_test_targets_compile_gate_package, "--all-targets"]
+}
+
+fn ci_v1_compiler_test_targets_compile_gate_check_step() -> BashBoundOperationInvocation {
+  bash_bind_operation_invocation_host_env_executable(
+    at: OperationRef {
+      path: ci_v1_compiler_test_targets_compile_gate_cargo_path,
+      service: ci_v1_compiler_test_targets_compile_gate_cargo_service,
+      operation: ci_v1_compiler_test_targets_compile_gate_cargo_operation
+    },
+    bindings: [
+      operation_argv_bind_text_list(
+        name: "extra_args",
+        items: ci_v1_compiler_test_targets_compile_gate_extra_args()
+      )
+    ],
+    env_var: ci_v1_compiler_test_targets_compile_gate_cargo_bin_env_var
+  )
+}
+
+fn ci_v1_compiler_test_targets_compile_gate_steps() -> List<EffectPlanStep<BashBoundOperationInvocation>> {
+  [Do { effect: ci_v1_compiler_test_targets_compile_gate_check_step() }]
+}
+
+fn ci_v1_compiler_test_targets_compile_gate_intent() -> EffectPlan<BashBoundOperationInvocation> {
+  EffectPlan {
+    steps: ci_v1_compiler_test_targets_compile_gate_steps(),
+    on_failure: FailFast
+  }
+}
+
+fn ci_v1_compiler_test_targets_compile_gate_render(
+  plan: EffectPlan<BashBoundOperationInvocation>
+) -> String {
+  match effect_plan_bash_materialize(plan: plan) {
+    EffectPlanBashMaterialized { source: source } => source
+    EffectPlanBashMaterializationRefused { refusal: refusal } =>
+      concat(
+        ci_v1_compiler_test_targets_compile_gate_refusal_prefix,
+        effect_plan_bash_refusal_label(refusal: refusal)
+      )
+  }
+}
+
+fn ci_v1_compiler_test_targets_compile_gate_script() -> String {
+  concat(
+    concat("# ", concat(dissolution_description(condition: ci_v1_compiler_test_targets_compile_gate_shell_emit_dissolution_trigger), "\n")),
+    concat(ci_v1_compiler_test_targets_compile_gate_render(plan: ci_v1_compiler_test_targets_compile_gate_intent()), "\n")
+  )
+}
