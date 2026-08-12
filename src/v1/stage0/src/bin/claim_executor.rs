@@ -10593,10 +10593,22 @@ fn run() -> Result<ExitCode, ExitCode> {
         Some(FloorWorkerRole::Scoped { batch_id }) => {
             // The batch comes from the VERIFIED request, not from a re-evaluated plan. There is no
             // fallback arm: a child that cannot prove it was handed this work refuses.
-            let request = match scoped_execution_request_for(batch_id) {
-                Ok(request) => request,
-                Err(msg) => {
-                    eprintln!("claim_executor: scoped floor worker request refusal: {msg}");
+            //
+            // The request is READ here, never re-loaded. A second `scoped_execution_request_for`
+            // would repeat the disk read, the duplicate refusal and the subject verification that
+            // already ran above — double-paid compute inside the very boundary this change exists
+            // to delete (review 51433). The refusal below is not the verification: it is the
+            // structural fact that this arm is reachable only when the earlier one produced a
+            // request, refused rather than unwrapped so a future edit that breaks the pairing
+            // stops the line instead of panicking.
+            let request = match &scoped_request {
+                Some(request) => request.clone(),
+                None => {
+                    let msg = format!(
+                        "scoped floor worker for batch `{batch_id}` reached execution with no \
+                         verified request in hand — refused"
+                    );
+                    eprintln!("claim_executor: {msg}");
                     let _ = write_floor_worker_terminal("refused", &msg);
                     return Err(ExitCode::from(1));
                 }
