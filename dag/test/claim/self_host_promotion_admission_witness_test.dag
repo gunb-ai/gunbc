@@ -13,6 +13,7 @@ import v2.compiler.self_host.generation {
 import v2.compiler.self_host.promotion_admission {
   BehaviorAgrees,
   BehaviorDiverges,
+  BehavioralCorpus,
   BehavioralEquivalenceReceipt,
   BuildFailed,
   BuildGreen,
@@ -138,15 +139,43 @@ fn pa_build(
   BuildReceipt { subject: subject, outcome: outcome }
 }
 
+// classical_not over 2 inputs, plus classical_and and classical_or over 4 pairs each:
+// the population dag/tools/self_host_logic_behavioral_transport actually walks.
+data pa_corpus_cases: Int = 12
+
+fn pa_corpus(expected: Int) -> BehavioralCorpus {
+  BehavioralCorpus {
+    identity: "std-logic-classical-truth-table",
+    expected_cases: expected
+  }
+}
+
+// The ordinary fixture runs exactly the corpus it declares. Every witness that means
+// to disturb the population says so by calling the _on form, so a bundle drifting off
+// its declared corpus is visible at the call site rather than hidden in a default.
 fn pa_equivalence(
   subject: GenerationIdentity,
+  cases: Int,
+  outcome: ObservedVerdict<EquivalenceOutcome>
+) -> BehavioralEquivalenceReceipt {
+  pa_equivalence_on(
+    subject: subject,
+    corpus: pa_corpus(expected: pa_corpus_cases),
+    cases: cases,
+    outcome: outcome
+  )
+}
+
+fn pa_equivalence_on(
+  subject: GenerationIdentity,
+  corpus: BehavioralCorpus,
   cases: Int,
   outcome: ObservedVerdict<EquivalenceOutcome>
 ) -> BehavioralEquivalenceReceipt {
   BehavioralEquivalenceReceipt {
     subject: subject,
     oracle: pa_seed_identity(),
-    corpus: "std-logic-classical-truth-table",
+    corpus: corpus,
     cases_compared: cases,
     outcome: outcome
   }
@@ -156,9 +185,21 @@ fn pa_fault(
   subject: GenerationIdentity,
   outcome: ObservedVerdict<FaultOutcome>
 ) -> DiscriminatingFaultReceipt {
+  pa_fault_on(
+    subject: subject,
+    corpus: pa_corpus(expected: pa_corpus_cases),
+    outcome: outcome
+  )
+}
+
+fn pa_fault_on(
+  subject: GenerationIdentity,
+  corpus: BehavioralCorpus,
+  outcome: ObservedVerdict<FaultOutcome>
+) -> DiscriminatingFaultReceipt {
   DiscriminatingFaultReceipt {
     subject: subject,
-    corpus: "std-logic-classical-truth-table",
+    corpus: corpus,
     planted_fault: "classical_not called on mismatched input",
     outcome: outcome
   }
@@ -256,8 +297,8 @@ test fn byte_identical_but_behaviorally_wrong_is_refused() -> Bool {
       candidate_equivalence: BehavioralEquivalenceReceipt {
         subject: ident,
         oracle: ident,
-        corpus: "std-logic-classical-truth-table",
-        cases_compared: 12,
+        corpus: pa_corpus(expected: pa_corpus_cases),
+        cases_compared: pa_corpus_cases,
         outcome: Observed {
           value: BehaviorDiverges { at_case: "classical_and(True,False)" }
         }
@@ -265,8 +306,8 @@ test fn byte_identical_but_behaviorally_wrong_is_refused() -> Bool {
       successor_equivalence: BehavioralEquivalenceReceipt {
         subject: ident,
         oracle: ident,
-        corpus: "std-logic-classical-truth-table",
-        cases_compared: 12,
+        corpus: pa_corpus(expected: pa_corpus_cases),
+        cases_compared: pa_corpus_cases,
         outcome: Observed { value: BehaviorAgrees }
       },
       discriminating_fault: pa_fault(
@@ -383,18 +424,21 @@ test fn empty_behavioral_corpus_is_refused() -> Bool {
         subject: pa_successor_identity(),
         outcome: Observed { value: BuildGreen }
       ),
-      candidate_equivalence: pa_equivalence(
+      candidate_equivalence: pa_equivalence_on(
         subject: pa_candidate_identity(),
+        corpus: pa_corpus(expected: 0),
         cases: 0,
         outcome: Observed { value: BehaviorAgrees }
       ),
-      successor_equivalence: pa_equivalence(
+      successor_equivalence: pa_equivalence_on(
         subject: pa_successor_identity(),
-        cases: 12,
+        corpus: pa_corpus(expected: 0),
+        cases: 0,
         outcome: Observed { value: BehaviorAgrees }
       ),
-      discriminating_fault: pa_fault(
+      discriminating_fault: pa_fault_on(
         subject: pa_candidate_identity(),
+        corpus: pa_corpus(expected: 0),
         outcome: Observed { value: FaultCaught }
       ),
       candidate_provenance: pa_provenance(
@@ -556,8 +600,8 @@ test fn candidate_as_its_own_oracle_is_refused() -> Bool {
   let self_oracle = BehavioralEquivalenceReceipt {
     subject: pa_candidate_identity(),
     oracle: pa_candidate_identity(),
-    corpus: "std-logic-classical-truth-table",
-    cases_compared: 12,
+    corpus: pa_corpus(expected: pa_corpus_cases),
+    cases_compared: pa_corpus_cases,
     outcome: Observed { value: BehaviorAgrees }
   }
   let o = admit_promotion(
@@ -737,12 +781,14 @@ test fn fault_proven_on_a_different_corpus_is_refused() -> Bool {
         cases: 12,
         outcome: Observed { value: BehaviorAgrees }
       ),
-      discriminating_fault: DiscriminatingFaultReceipt {
+      discriminating_fault: pa_fault_on(
         subject: pa_candidate_identity(),
-        corpus: "SOME-OTHER-corpus",
-        planted_fault: "classical_not called on mismatched input",
+        corpus: BehavioralCorpus {
+          identity: "SOME-OTHER-corpus",
+          expected_cases: pa_corpus_cases
+        },
         outcome: Observed { value: FaultCaught }
-      },
+      ),
       candidate_provenance: pa_provenance(
         subject: pa_candidate_identity(),
         producer: pa_seed_identity()
@@ -818,5 +864,140 @@ test fn same_identity_different_seed_splice_is_refused() -> Bool {
     && promotion_refusal_carries(
       o: o,
       cause: ^refusal_successor_not_produced_by_candidate
+    )
+}
+
+// DISCRIMINATING RED for the population join, and the exact shape that promoted before
+// it existed: both receipts name the corpus, both report agreement, both are fresh, and
+// the successor compared ONE case where the corpus declares twelve. A partially emitted
+// compiler produces precisely this — it runs, it agrees on what it reached, and it never
+// reached the rest. Under the label-only join the two receipts agreed and the bundle was
+// admitted; the count sat beside the name proving nothing.
+test fn truncated_successor_run_is_refused() -> Bool {
+  let o = admit_promotion(
+    c: pa_bundle(
+      candidate_build: pa_build(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      successor_build: pa_build(
+        subject: pa_successor_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      candidate_equivalence: pa_equivalence(
+        subject: pa_candidate_identity(),
+        cases: pa_corpus_cases,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      successor_equivalence: pa_equivalence(
+        subject: pa_successor_identity(),
+        cases: 1,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      discriminating_fault: pa_fault(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: FaultCaught }
+      ),
+      candidate_provenance: pa_provenance(
+        subject: pa_candidate_identity(),
+        producer: pa_seed_identity()
+      ),
+      successor_provenance: pa_provenance(
+        subject: pa_successor_identity(),
+        producer: pa_candidate_identity()
+      )
+    )
+  )
+  !pa_admitted(o: o)
+    && promotion_refusal_carries(o: o, cause: ^refusal_corpus_population_mismatch)
+}
+
+// The mirror: a run comparing MORE cases than its corpus declares did not execute the
+// corpus it names. Refusing only the truncation would let the bar be raised silently by
+// whatever the runner happened to do, which is the same unjoined-number defect pointing
+// the other way.
+test fn overlong_run_against_its_declared_corpus_is_refused() -> Bool {
+  let o = admit_promotion(
+    c: pa_bundle(
+      candidate_build: pa_build(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      successor_build: pa_build(
+        subject: pa_successor_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      candidate_equivalence: pa_equivalence(
+        subject: pa_candidate_identity(),
+        cases: pa_corpus_cases + 5,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      successor_equivalence: pa_equivalence(
+        subject: pa_successor_identity(),
+        cases: pa_corpus_cases,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      discriminating_fault: pa_fault(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: FaultCaught }
+      ),
+      candidate_provenance: pa_provenance(
+        subject: pa_candidate_identity(),
+        producer: pa_seed_identity()
+      ),
+      successor_provenance: pa_provenance(
+        subject: pa_successor_identity(),
+        producer: pa_candidate_identity()
+      )
+    )
+  )
+  !pa_admitted(o: o)
+    && promotion_refusal_carries(o: o, cause: ^refusal_corpus_population_mismatch)
+}
+
+// DISCRIMINATING RED for the second half of the corpus join. Both receipts name the SAME
+// corpus and each runs exactly the population IT declares, so every per-receipt check
+// passes and the label join passes — yet the two ran different corpora under one name.
+// Joining identity alone admits this; joining the declared size too refuses it.
+test fn same_named_corpus_declaring_two_sizes_is_refused() -> Bool {
+  let o = admit_promotion(
+    c: pa_bundle(
+      candidate_build: pa_build(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      successor_build: pa_build(
+        subject: pa_successor_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      candidate_equivalence: pa_equivalence(
+        subject: pa_candidate_identity(),
+        cases: pa_corpus_cases,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      successor_equivalence: pa_equivalence_on(
+        subject: pa_successor_identity(),
+        corpus: pa_corpus(expected: 3),
+        cases: 3,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      discriminating_fault: pa_fault(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: FaultCaught }
+      ),
+      candidate_provenance: pa_provenance(
+        subject: pa_candidate_identity(),
+        producer: pa_seed_identity()
+      ),
+      successor_provenance: pa_provenance(
+        subject: pa_successor_identity(),
+        producer: pa_candidate_identity()
+      )
+    )
+  )
+  !pa_admitted(o: o)
+    && promotion_refusal_carries(
+      o: o,
+      cause: ^refusal_corpus_mismatch_across_receipts
     )
 }
