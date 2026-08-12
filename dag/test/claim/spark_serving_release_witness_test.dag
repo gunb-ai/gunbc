@@ -1,5 +1,7 @@
 module test.claim.spark_serving_release_witness_test
 
+import std.cache_interface { ArtifactIdentity }
+
 import std.types { String, Bool, List, Int, NonEmptyStr }
 import std.measure { byte_size }
 import gunbc.spark_serving_release {

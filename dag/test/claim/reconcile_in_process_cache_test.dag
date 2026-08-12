@@ -1,5 +1,7 @@
 module test.claim.reconcile_in_process_cache
 
+import std.cache_interface { ArtifactIdentity }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data shared_subject_digest: ContentHash = content_hash_of_value(value: "reconcile-in-process-witness-shared-subject-digest")
