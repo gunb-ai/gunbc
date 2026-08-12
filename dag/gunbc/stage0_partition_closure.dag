@@ -267,12 +267,26 @@ fn module_is_emitted(basename: String) -> Bool {
 //
 // THE HOIST DID NOT DELIVER THAT COST BACK, and this sentence exists because the first review of
 // it read the paragraph above as a measured win. Measured AFTER: 177.6s, against the 173.6s
-// baseline -- no improvement, inside run-to-run noise. The live fact producers dominate and are
-// already memoized host-side, so removing this redundancy moved a term that was never the term.
-// It is kept because re-reading one file once per outbound edge is redundant work regardless of
-// the realized n (DESIGN section 6 again: n is not a time-stable fact), NOT because it made the
-// witness affordable. What made the mechanism witnesses affordable was moving them off the live
-// verdict entirely.
+// baseline -- no improvement, inside run-to-run noise. It is kept because re-reading one file once
+// per outbound edge is redundant work regardless of the realized n (DESIGN section 6 again: n is
+// not a time-stable fact), NOT because it made the witness affordable. What made the mechanism
+// witnesses affordable was moving them off the live verdict entirely.
+//
+// WHY THE HOIST MOVED NOTHING -- CORRECTED 2026-08-12, and the correction matters more than the
+// hoist. This paragraph used to explain the null result by saying "the live fact producers
+// dominate and are already memoized host-side". That was never measured and it is false. Measured
+// per term, one process, live corpus: import_resolution_facts_live 146ms,
+// reference_derived_import_resolution_facts_live 5ms, the interpreted union and dedup of the two
+// 104,943ms, all of dependency_resolution_facts_live 112,261ms. The host leaves are 151ms of
+// 112,261ms. What dominated was the INTERPRETED COMPOSITION over those leaves, so the hoist moved
+// a real redundancy that was never the term, and the stated explanation pointed the next reader at
+// the one part of the pipeline that was already cheap.
+//
+// That composition is now native (v2.lens.module_graph dependency_resolution_facts_live over the
+// builtin, single dedup authority v1_compiler.cli_run union_dedup_import_facts_reference_first),
+// and this census measures 68,224ms against its unchanged 180,000ms long-lane ceiling, from
+// 180,600ms failing. The identity and order law is unchanged and proven by live-corpus row-for-row
+// parity against the interpreted spelling before it was deleted.
 //
 // Reading absent content as the empty string is not a fallback: a module with no emitted file
 // cannot confirm a reference, and the empty string confirms nothing, so the arm returns exactly

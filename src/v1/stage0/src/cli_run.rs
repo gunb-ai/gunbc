@@ -43158,3 +43158,81 @@ mod annotation_erased_scan_projection {
         );
     }
 }
+
+#[cfg(test)]
+mod union_dedup_import_facts_law {
+    //! The dedup that carries the edge population's identity and order law, tested on synthetic
+    //! rows so the law is decided by a controlled fixture rather than by whatever the live corpus
+    //! happens to contain. The live-corpus check is a separate receipt: the native producer was
+    //! held to the interpreted spelling row-for-row in order before that spelling was deleted.
+
+    use super::*;
+
+    fn fact(path: &str, module: &str, declared: bool) -> ImportResolutionFactRaw {
+        ImportResolutionFactRaw {
+            path: path.to_string(),
+            import_module: module.to_string(),
+            target_declared: declared,
+        }
+    }
+
+    /// Reference-first is not cosmetic: `module_impact_query` derives edge provenance by
+    /// membership in the import-only population, so which copy of a dual-backed fact survives
+    /// decides how that edge classifies.
+    #[test]
+    fn reference_copy_survives_when_both_sides_carry_the_same_fact() {
+        let out = union_dedup_import_facts_reference_first(
+            vec![fact("a.dag", "m.one", true)],
+            vec![fact("a.dag", "m.one", true)],
+        );
+        assert_eq!(out.len(), 1, "the duplicate must collapse: {out:?}");
+        assert_eq!(out[0].path, "a.dag");
+    }
+
+    /// Order is observable downstream — `module_target_index_from` conses targets in arrival
+    /// order — so the union must be reference rows first, then import rows, each in input order.
+    #[test]
+    fn order_is_reference_rows_then_import_rows_each_in_input_order() {
+        let out = union_dedup_import_facts_reference_first(
+            vec![fact("r1.dag", "m.r1", true), fact("r2.dag", "m.r2", true)],
+            vec![fact("i1.dag", "m.i1", true), fact("i2.dag", "m.i2", true)],
+        );
+        let seen: Vec<&str> = out.iter().map(|f| f.path.as_str()).collect();
+        assert_eq!(seen, vec!["r1.dag", "r2.dag", "i1.dag", "i2.dag"]);
+    }
+
+    /// THE FIELD THE CENSUS EXISTS TO JUDGE. An unresolved target is a `target_declared: false`
+    /// row; identity is the full triple, so the two declared-ness variants of one (path, module)
+    /// pair are DIFFERENT facts and both must survive. A dedup keyed on (path, module) alone
+    /// would pass every other assertion here and silently destroy the census's subject.
+    #[test]
+    fn declaredness_variants_of_one_pair_are_distinct_facts() {
+        let out = union_dedup_import_facts_reference_first(
+            vec![fact("a.dag", "m.one", true)],
+            vec![fact("a.dag", "m.one", false)],
+        );
+        assert_eq!(out.len(), 2, "declaredness is part of identity: {out:?}");
+        assert!(out[0].target_declared, "reference copy first");
+        assert!(!out[1].target_declared, "the unresolved row survives");
+    }
+
+    /// First occurrence wins, and later duplicates never reorder what already landed.
+    #[test]
+    fn first_occurrence_is_kept_and_later_duplicates_do_not_reorder() {
+        let out = union_dedup_import_facts_reference_first(
+            vec![
+                fact("a.dag", "m.one", true),
+                fact("b.dag", "m.two", true),
+                fact("a.dag", "m.one", true),
+            ],
+            vec![fact("b.dag", "m.two", true), fact("c.dag", "m.three", true)],
+        );
+        let seen: Vec<&str> = out.iter().map(|f| f.path.as_str()).collect();
+        assert_eq!(seen, vec!["a.dag", "b.dag", "c.dag"]);
+    }
+
+    #[test]
+    fn empty_inputs_produce_an_empty_population() {
+        assert!(union_dedup_import_facts_reference_first(vec![], vec![]).is_empty());
+    }
+}
