@@ -588,7 +588,7 @@ fn aggregate_batch_runtime_units(results: &[ClaimResult]) -> FloorRuntimeUnitCou
 /// policy mapping and plan roster enrollment are delegated to `.dag` eval
 /// (`gunbc_ci_floor_batch_stop_policy_for_github_event`,
 /// `gunbc_ci_floor_plan_uses_batch_stop_policy`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum FloorBatchStopPolicy {
     StopBeforeDependents,
     FullLedger,
@@ -10076,6 +10076,11 @@ struct ScopedExecutionRequest {
     /// longer evaluates the plan that produced them.
     fast_lane_eval_budget_ms: Option<u64>,
     ordinary_budget_ms: Option<u64>,
+    /// Also plan-derived, and the reason the first two CI runs of this change died: the stop
+    /// policy is resolved UNCONDITIONALLY for every worker, so a child with no plan context
+    /// refused there after the ordinary walk had already succeeded. It is the parent's decision
+    /// in exactly the sense the rest of this carrier is — freeze it, hand it over.
+    batch_stop_policy: FloorBatchStopPolicy,
 }
 
 impl ScopedExecutionRequest {
@@ -10099,6 +10104,7 @@ fn scoped_execution_requests_from_rows(
     rows: &[Runnable],
     fast_lane_eval_budget_ms: Option<u64>,
     ordinary_budget_ms: Option<u64>,
+    batch_stop_policy: FloorBatchStopPolicy,
 ) -> Result<Vec<ScopedExecutionRequest>, String> {
     let (tested_commit, tested_tree) = v1_compiler::cli_run::floor_tested_commit_and_tree()?;
     let tool_identity = v1_compiler::cli_run::floor_tool_identity()?;
@@ -10135,6 +10141,7 @@ fn scoped_execution_requests_from_rows(
                 process_isolation: *isolation,
                 fast_lane_eval_budget_ms,
                 ordinary_budget_ms,
+                batch_stop_policy,
             });
         }
     }
@@ -10215,22 +10222,32 @@ fn scoped_execution_request_for(batch_id: &str) -> Result<ScopedExecutionRequest
     let request = matching[0].clone();
     let (tested_commit, tested_tree) = v1_compiler::cli_run::floor_tested_commit_and_tree()?;
     let tool_identity = v1_compiler::cli_run::floor_tool_identity()?;
+    refuse_subject_mismatch(&request, &tested_commit, &tested_tree, &tool_identity)?;
+    Ok(request)
+}
+
+/// The subject comparison, separated from the observation that supplies it so a control can drive
+/// the production decision rather than restate its field comparisons (review 51445). Observing the
+/// live commit, tree and tool is git and filesystem work; deciding whether they match a frozen
+/// request is not, and only the second is what refuses.
+fn refuse_subject_mismatch(
+    request: &ScopedExecutionRequest,
+    tested_commit: &str,
+    tested_tree: &str,
+    tool_identity: &str,
+) -> Result<(), String> {
     if request.tested_commit != tested_commit
         || request.tested_tree != tested_tree
         || request.tool_identity != tool_identity
     {
         return Err(format!(
-            "scoped execution request for batch `{batch_id}` was frozen against a different subject \
-             (request {}/{}/{}, observed {}/{}/{}) — execution refused",
-            request.tested_commit,
-            request.tested_tree,
-            request.tool_identity,
-            tested_commit,
-            tested_tree,
-            tool_identity
+            "scoped execution request for batch `{}` was frozen against a different subject \
+             (request {}/{}/{}, observed {tested_commit}/{tested_tree}/{tool_identity}) — \
+             execution refused",
+            request.batch_id, request.tested_commit, request.tested_tree, request.tool_identity,
         ));
     }
-    Ok(request)
+    Ok(())
 }
 
 /// Whether a worker executes witness rows, and whether it must derive a witness roster.
@@ -10547,10 +10564,16 @@ fn run() -> Result<ExitCode, ExitCode> {
             match plan_ctx.as_ref() {
                 Some(ctx) => ctx,
                 None => {
-                    eprintln!(
-                        "claim_executor: {} requires the ordinary plan context, which a scoped child does not have (fail-closed)",
+                    // WRITE THE TERMINAL. Without it the coordinator observes only `exited:1` and
+                    // reports "worker returned before producing a walk terminal receipt" — a
+                    // located refusal rendered as an unlocated absence, which is what hid this
+                    // exact defect through two full CI floors.
+                    let msg = format!(
+                        "{} requires the ordinary plan context, which a scoped child does not have (fail-closed)",
                         $what
                     );
+                    eprintln!("claim_executor: {msg}");
+                    let _ = write_floor_worker_terminal("refused", &msg);
                     return Err(ExitCode::from(1));
                 }
             }
@@ -10569,7 +10592,6 @@ fn run() -> Result<ExitCode, ExitCode> {
     // (review 49917, cursor/composer-2.5).
     let plan_declared_no_finalization = floor_finalization.is_none();
     let mut published_scoped_rows: Vec<Runnable> = Vec::new();
-    let mut scoped_request_budgets: Option<(Option<u64>, Option<u64>)> = None;
     match floor_worker_role.as_ref() {
         Some(FloorWorkerRole::Ordinary) => {
             // The child rows leave `batches` on the retain below, so capture their exact payload
@@ -10619,8 +10641,12 @@ fn run() -> Result<ExitCode, ExitCode> {
             // structural fact that this arm is reachable only when the earlier one produced a
             // request, refused rather than unwrapped so a future edit that breaks the pairing
             // stops the line instead of panicking.
-            let request = match &scoped_request {
-                Some(request) => request.clone(),
+            // The pairing check stays even though this arm now consumes nothing off the request:
+            // reaching execution as a scoped worker with no verified request in hand is the state
+            // this whole change exists to make impossible, and it must stop the line where it is
+            // observed rather than surface later as a missing value.
+            match &scoped_request {
+                Some(_) => {}
                 None => {
                     let msg = format!(
                         "scoped floor worker for batch `{batch_id}` reached execution with no \
@@ -10630,10 +10656,11 @@ fn run() -> Result<ExitCode, ExitCode> {
                     let _ = write_floor_worker_terminal("refused", &msg);
                     return Err(ExitCode::from(1));
                 }
-            };
-            scoped_request_budgets =
-                Some((request.fast_lane_eval_budget_ms, request.ordinary_budget_ms));
-            batches = vec![vec![request.to_runnable()]];
+            }
+            // `batches` already IS this request's single row — it came from the walk plan built
+            // above out of the same verified request, so rebuilding it here would be a second
+            // construction of one decision (review 51445). What this arm still owes is the
+            // surrounding shape: a scoped child runs its batch and nothing else.
             on_success_stages.clear();
             floor_finalization = None;
         }
@@ -10730,11 +10757,11 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
     }
     phase_mark("naming-hygiene walk");
-    let fast_lane_eval_budget_ms: Option<u64> = if let Some((fast_lane, _)) = scoped_request_budgets
-    {
+    let fast_lane_eval_budget_ms: Option<u64> = if let Some(request) = &scoped_request {
         // Carried by the verified request: the child reads this budget but no longer evaluates
-        // the plan that declares it.
-        fast_lane
+        // the plan that declares it. Read off the request itself rather than a second tuple
+        // copied out of it — one value, one home.
+        request.fast_lane_eval_budget_ms
     } else if executes_witness_rows {
         match run_value(
             plan_ctx_or_refuse!("fast-lane eval budget"),
@@ -10757,21 +10784,6 @@ fn run() -> Result<ExitCode, ExitCode> {
     } else {
         None
     };
-    // PUBLISH THE EXACT SCOPED WORK. Everything a child needs is now known: its frozen batch, the
-    // subject it was frozen against, and the plan-derived budgets it reads while executing. With
-    // this on disk a child has no remaining reason to resolve or evaluate the plan.
-    if matches!(floor_worker_role, Some(FloorWorkerRole::Ordinary)) {
-        if let Err(msg) = scoped_execution_requests_from_rows(
-            &published_scoped_rows,
-            fast_lane_eval_budget_ms,
-            ordinary_budget_ms,
-        )
-        .and_then(|requests| write_scoped_execution_requests(&requests))
-        {
-            eprintln!("claim_executor: ordinary floor worker scoped request refusal: {msg}");
-            return Err(ExitCode::from(1));
-        }
-    }
     let falsifier_self_host_wet_budgets = if plan_function == "gunbc_falsifier_plan" {
         FalsifierSelfHostWetBudgets {
             wall_budget_ms: match read_positive_budget_ms(
@@ -10912,8 +10924,33 @@ fn run() -> Result<ExitCode, ExitCode> {
     } else {
         None
     };
-    let batch_stop_policy =
-        resolve_floor_batch_stop_policy(plan_ctx_or_refuse!("batch stop policy"), &plan_function);
+    // A scoped child does not re-derive this: the parent resolved it against the plan and froze
+    // it into the request. Reading it from the plan here is what made the child refuse after the
+    // ordinary walk had already passed — this site is unconditional for every worker.
+    let batch_stop_policy = match &scoped_request {
+        Some(request) => request.batch_stop_policy,
+        None => resolve_floor_batch_stop_policy(
+            plan_ctx_or_refuse!("batch stop policy"),
+            &plan_function,
+        ),
+    };
+    // PUBLISH THE EXACT SCOPED WORK, and publish it HERE: everything a child needs must already
+    // be known, which includes the stop policy resolved just above. Publishing earlier is what
+    // shipped a request missing a plan-derived value the child then had no way to obtain, so it
+    // refused mid-floor with the ordinary walk already paid for.
+    if matches!(floor_worker_role, Some(FloorWorkerRole::Ordinary)) {
+        if let Err(msg) = scoped_execution_requests_from_rows(
+            &published_scoped_rows,
+            fast_lane_eval_budget_ms,
+            ordinary_budget_ms,
+            batch_stop_policy,
+        )
+        .and_then(|requests| write_scoped_execution_requests(&requests))
+        {
+            eprintln!("claim_executor: ordinary floor worker scoped request refusal: {msg}");
+            return Err(ExitCode::from(1));
+        }
+    }
     // THE COST WALL (Piece 3 derived clamp): the floor plan's per-batch clamp params, read
     // fail-closed at arm time (the fast-lane-budget pattern). Scoped to the full floor plan only:
     // the plan-artifact shortcut runs a single batch of the same schedule and the falsifier
@@ -17114,6 +17151,7 @@ mod scoped_execution_request_tests {
             process_isolation: ScopedProcessIsolation::SequentialChildProcess,
             fast_lane_eval_budget_ms: Some(5_000),
             ordinary_budget_ms: Some(60_000),
+            batch_stop_policy: FloorBatchStopPolicy::StopBeforeDependents,
         }
     }
 
@@ -17181,8 +17219,10 @@ mod scoped_execution_request_tests {
 
     /// PLANTED WRONG SUBJECT. Selection alone is not verification: a request frozen against another
     /// commit, tree, or tool must refuse rather than execute against whatever is on disk. This
-    /// pins the comparison itself — the loader's own check runs against the live repository and is
-    /// exercised by the floor.
+    /// drives the PRODUCTION refusal on each axis — an earlier revision asserted field inequality
+    /// on hand-authored data, which restates the comparison instead of exercising it and would
+    /// have stayed green if the loader stopped consulting one axis (review 51445). Observing the
+    /// live subject is git work and stays with the floor; deciding on it is what refuses here.
     #[test]
     fn planted_wrong_subject_differs_on_every_axis() {
         let frozen = request("v1_claim_scoped", vec![entry("alpha")]);
@@ -17203,21 +17243,59 @@ mod scoped_execution_request_tests {
                 "other-tool".to_string(),
             ),
         ] {
-            let mismatched = frozen.tested_commit != commit
-                || frozen.tested_tree != tree
-                || frozen.tool_identity != tool;
+            let refusal = refuse_subject_mismatch(&frozen, &commit, &tree, &tool)
+                .expect_err("a subject perturbed on any axis must refuse");
             assert!(
-                mismatched,
-                "each planted subject must differ on exactly the axis it perturbs"
+                refusal.contains("frozen against a different subject")
+                    && refusal.contains(&frozen.batch_id),
+                "the refusal must say what it refused and for which batch: {refusal}"
             );
         }
 
-        // The unperturbed subject must NOT read as a mismatch — otherwise the check above would
-        // pass for a reason unrelated to what it claims.
-        let same = frozen.tested_commit != frozen.tested_commit
-            || frozen.tested_tree != frozen.tested_tree
-            || frozen.tool_identity != frozen.tool_identity;
-        assert!(!same, "an identical subject must not read as mismatched");
+        // The unperturbed subject must be ACCEPTED — otherwise the refusals above would pass for a
+        // reason unrelated to what they claim (a check that refuses everything is not a check).
+        refuse_subject_mismatch(
+            &frozen,
+            &frozen.tested_commit,
+            &frozen.tested_tree,
+            &frozen.tool_identity,
+        )
+        .expect("the subject it was frozen against must be accepted");
+    }
+
+    /// THE DEFECT TWO FULL CI FLOORS PAID FOR. `resolve_floor_batch_stop_policy` is read
+    /// unconditionally by every worker, so a scoped child — which has no plan context by
+    /// construction after this change — refused there AFTER the ordinary walk had already
+    /// succeeded, and the coordinator reported it as "worker returned before producing a walk
+    /// terminal receipt" because the refusal path exited without writing one.
+    ///
+    /// The wall is that every plan-derived value a child reads must travel ON the request. This
+    /// pins the population: adding a plan read to the child's path without adding its field here
+    /// fails, rather than being discovered by a 70-minute floor.
+    #[test]
+    fn every_plan_derived_value_the_child_reads_travels_on_the_request() {
+        let frozen = request("v1_claim_scoped", vec![entry("alpha")]);
+
+        // Each of these is read by a scoped child at execution time and is derived from the plan
+        // the child no longer evaluates. Absence is not "default it" — it is unrepresentable.
+        assert_eq!(frozen.fast_lane_eval_budget_ms, Some(5_000));
+        assert_eq!(frozen.ordinary_budget_ms, Some(60_000));
+        assert_eq!(
+            frozen.batch_stop_policy,
+            FloorBatchStopPolicy::StopBeforeDependents
+        );
+
+        // And they must survive the transport — a field the parent freezes but the JSON drops
+        // puts the child right back where it was, reading a plan it does not have.
+        let encoded = serde_json::to_string(&vec![frozen.clone()]).expect("serializes");
+        let decoded: Vec<ScopedExecutionRequest> =
+            serde_json::from_str(&encoded).expect("round-trips");
+        assert_eq!(
+            decoded[0].fast_lane_eval_budget_ms,
+            frozen.fast_lane_eval_budget_ms
+        );
+        assert_eq!(decoded[0].ordinary_budget_ms, frozen.ordinary_budget_ms);
+        assert_eq!(decoded[0].batch_stop_policy, frozen.batch_stop_policy);
     }
 
     /// cursor review 51430 found this: the manifest this carrier replaces refused a duplicate
