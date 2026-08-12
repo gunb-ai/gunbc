@@ -9,6 +9,7 @@ import std.measure {
   ByteSize,
   BasisPoint,
   measure_le,
+  measure_add,
   millisecond,
   millisecond_count,
   millisecond_to_nanosecond,
@@ -893,10 +894,66 @@ type ObservationRollup {
   subject: ObservationSubject
   counts: ObservationCounts
   active_leaf: ObservationSubject?
+  elapsed: Measured<Nanosecond>
+  peak_rss: Measured<ByteSize>
+  measurement_absent: Nat
 }
 
+// elapsed ACCUMULATES the measured walls and peak_rss keeps the MAXIMUM measured reading, because a
+// batch summary answers two different questions with them: how much work-time the batch spent, and
+// how close it came to the memory envelope. Summing rss would be meaningless (leaf readings overlap
+// in time) and maximising elapsed would report the slowest leaf as the batch cost.
+// measurement_absent counts the events whose reading was MeasuredUnavailable. Without it a partially
+// measured batch would report a sum that silently omits its unmeasured members while reading as a
+// total — the same shape as a count-completeness claim that only counts what it remembered to look
+// at. The renderer can then say `41m02s over 4,878 witnesses (12 unmeasured)` rather than implying
+// full coverage, and a rollup where every reading was absent stays MeasuredUnavailable rather than
+// collapsing to a fabricated zero.
+
 fn observation_rollup_open(subject: ObservationSubject) -> ObservationRollup {
-  ObservationRollup { subject: subject, counts: observation_counts_zero(), active_leaf: Absent }
+  ObservationRollup {
+    subject: subject,
+    counts: observation_counts_zero(),
+    active_leaf: none,
+    elapsed: MeasuredUnavailable { cause: "no measured observation folded yet" },
+    peak_rss: MeasuredUnavailable { cause: "no measured observation folded yet" },
+    measurement_absent: 0,
+  }
+}
+
+fn observation_rollup_add_elapsed(
+  acc: Measured<Nanosecond>,
+  reading: Measured<Nanosecond>,
+) -> Measured<Nanosecond> {
+  match reading {
+    MeasuredUnavailable { cause: _ } => acc
+    MeasuredValue { value: v } =>
+      match acc {
+        MeasuredUnavailable { cause: _ } => MeasuredValue { value: v }
+        MeasuredValue { value: a } => MeasuredValue { value: measure_add(a: a, b: v) }
+      }
+  }
+}
+
+fn observation_rollup_max_rss(
+  acc: Measured<ByteSize>,
+  reading: Measured<ByteSize>,
+) -> Measured<ByteSize> {
+  match reading {
+    MeasuredUnavailable { cause: _ } => acc
+    MeasuredValue { value: v } =>
+      match acc {
+        MeasuredUnavailable { cause: _ } => MeasuredValue { value: v }
+        MeasuredValue { value: a } => if measure_le(a: a, b: v) { MeasuredValue { value: v } } else { acc }
+      }
+  }
+}
+
+fn observation_measurement_absent_delta(reading: Measured<Nanosecond>) -> Nat {
+  match reading {
+    MeasuredUnavailable { cause: _ } => 1
+    MeasuredValue { value: _ } => 0
+  }
 }
 
 type ObservationRollupAccept
@@ -920,6 +977,9 @@ fn observation_rollup_accept(
         subject: rollup.subject,
         counts: observation_counts_accept(counts: rollup.counts, c: observation_event_class(event: event)),
         active_leaf: Present { value: event.subject },
+        elapsed: observation_rollup_add_elapsed(acc: rollup.elapsed, reading: observation_wall(event: event)),
+        peak_rss: observation_rollup_max_rss(acc: rollup.peak_rss, reading: event.rss),
+        measurement_absent: rollup.measurement_absent + observation_measurement_absent_delta(reading: observation_wall(event: event)),
       }
     }
   } else {

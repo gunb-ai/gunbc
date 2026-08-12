@@ -15,10 +15,11 @@ import std.observation {
   observation_rollup_accept,
   observation_subject_prefix_at_grain,
   observation_durations_wall,
-  Measured, MeasuredUnavailable,
+  observation_durations_wall_unavailable,
+  Measured, MeasuredUnavailable, MeasuredValue,
   observation_subject_contains,
 }
-import std.measure { Nanosecond }
+import std.measure { Nanosecond, ByteSize, nanosecond, nanosecond_count, byte_size, byte_size_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -59,8 +60,68 @@ fn event_at(subject: ObservationSubject, transition: ObservationTransition) -> O
   ObservationEvent {
     subject: subject,
     transition: transition,
-    durations: observation_durations_wall(elapsed: 1000),
-    rss: MeasuredUnavailable { cause: "synthetic rollup fixture reads no cgroup" },
+    durations: observation_durations_wall(elapsed: nanosecond(count: 1000)),
+    rss: MeasuredValue { value: byte_size(count: 2048) },
+  }
+}
+
+fn unmeasured_event_at(subject: ObservationSubject, transition: ObservationTransition) -> ObservationEvent {
+  ObservationEvent {
+    subject: subject,
+    transition: transition,
+    durations: observation_durations_wall_unavailable(cause: "synthetic fixture withholds the clock"),
+    rss: MeasuredUnavailable { cause: "synthetic fixture reads no cgroup" },
+  }
+}
+
+test fn elapsed_sums_only_measured_walls_and_counts_the_absent_ones() -> Bool {
+  let folded = fold_events(
+    rollup: observation_rollup_open(subject: batch_subject()),
+    events: [
+      event_at(subject: leaf_subject(entry: "dag/a.dag"), transition: Concluded { outcome: Done }),
+      event_at(subject: leaf_subject(entry: "dag/b.dag"), transition: Concluded { outcome: Done }),
+      unmeasured_event_at(subject: leaf_subject(entry: "dag/c.dag"), transition: Concluded { outcome: Done }),
+    ],
+  )
+  let summed = match folded.elapsed {
+    MeasuredUnavailable { cause: _ } => false
+    MeasuredValue { value: v } => nanosecond_count(n: v) == 2000
+  }
+  summed && folded.measurement_absent == 1 && folded.counts.done == 3
+}
+
+test fn RED_a_wholly_unmeasured_batch_stays_unavailable_rather_than_reporting_zero() -> Bool {
+  let folded = fold_events(
+    rollup: observation_rollup_open(subject: batch_subject()),
+    events: [
+      unmeasured_event_at(subject: leaf_subject(entry: "dag/a.dag"), transition: Concluded { outcome: Done }),
+      unmeasured_event_at(subject: leaf_subject(entry: "dag/b.dag"), transition: Concluded { outcome: Done }),
+    ],
+  )
+  match folded.elapsed {
+    MeasuredUnavailable { cause: _ } => folded.measurement_absent == 2
+    MeasuredValue { value: _ } => false
+  }
+}
+
+test fn peak_rss_keeps_the_maximum_reading_not_the_last_or_the_sum() -> Bool {
+  let big = ObservationEvent {
+    subject: leaf_subject(entry: "dag/big.dag"),
+    transition: Concluded { outcome: Done },
+    durations: observation_durations_wall(elapsed: nanosecond(count: 1000)),
+    rss: MeasuredValue { value: byte_size(count: 9000) },
+  }
+  let folded = fold_events(
+    rollup: observation_rollup_open(subject: batch_subject()),
+    events: [
+      event_at(subject: leaf_subject(entry: "dag/a.dag"), transition: Concluded { outcome: Done }),
+      big,
+      event_at(subject: leaf_subject(entry: "dag/b.dag"), transition: Concluded { outcome: Done }),
+    ],
+  )
+  match folded.peak_rss {
+    MeasuredUnavailable { cause: _ } => false
+    MeasuredValue { value: v } => byte_size_count(b: v) == 9000
   }
 }
 
