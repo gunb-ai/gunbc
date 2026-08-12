@@ -310,10 +310,19 @@ fn promotion_refusal_causes(c: SelfHostCandidate) -> List<PromotionRefusalCause>
   // each half's receipts join internally and nothing proves the two halves are one
   // chain. Splicing two valid chains would let a successor inherit admission from a
   // candidate that never produced it.
+  // Joined on the whole declared producer, not on its identity alone. Two distinct
+  // candidates can share an identity while descending from DIFFERENT seeds, and the
+  // type promises a single chain, so an identity-only join leaves that splice
+  // admissible and unwitnessed (review 51231).
   let chain_causes = if length(
     xs: generation_identity_mismatched_axes(
       left: candidate_identity,
       right: c.successor.produced_by_candidate.identity
+    )
+  ) == 0 && length(
+    xs: generation_identity_mismatched_axes(
+      left: c.candidate.produced_by_seed.identity,
+      right: c.successor.produced_by_candidate.produced_by_seed.identity
     )
   ) == 0 {
     freemonoid_empty()
