@@ -4,10 +4,12 @@ import std.types { Bool, Int, List }
 import std.measure { millimeter_count, signed_millimeter_component_count }
 import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity, coordinate_frame_identity_eq }
 import std.affine_space { Point2, Point3, point2, point3 }
-import std.euclidean_geometry { AxisDirection3, PositiveX, NegativeX, PositiveY, NegativeY, PositiveZ, NegativeZ }
+import std.euclidean_geometry {
+  AxisDirection3, PositiveX, NegativeX, PositiveY, NegativeY, PositiveZ, NegativeZ,
+  Axis3, Axis3X, Axis3Y, Axis3Z,
+}
 import std.orthogonal_geometry {
   Axis2, Axis2X, Axis2Y,
-  Axis3, Axis3X, Axis3Y, Axis3Z,
   OrthogonalConstruction, OrthogonalReady, OrthogonalRefused,
   OrthogonalRefusal, SegmentEndpointsCoincide, SegmentNotAxisAligned, ExtentNotPositive,
   OrthogonalFrameMismatch, LoopTooFewVertices, LoopEdgeNotAxisAligned,
@@ -16,11 +18,11 @@ import std.orthogonal_geometry {
   OrthogonalRotation3, orthogonal_rotation3, rotation_x_image, rotation_y_image, rotation_z_image,
   AxisAlignedSegment2, axis_aligned_segment2, segment2_axis, segment2_length,
   AxisAlignedRectangle2, axis_aligned_rectangle2, rectangle2_width, rectangle2_height,
-  Plane3, plane3, plane3_contains_point,
+  Plane3, plane3, plane3_contains_point, plane3_normal_axis,
   AxisAlignedBox3, axis_aligned_box3, box3_contains_point, box3_overlaps,
   BoundingBox3, bounding_box3, bounding_box3_min, bounding_box3_max,
   OrthogonalLoop2, orthogonal_loop2, loop2_vertices,
-  AxisAlignedSurface3, axis_aligned_surface3,
+  AxisAlignedSurface3, axis_aligned_surface3, surface3_plane, surface3_frame,
   OrthogonalPrism3, orthogonal_prism3, prism3_height,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -257,6 +259,10 @@ test fn bounding_box_is_derived_and_refuses_emptiness() -> Bool {
   derived && coplanar_still_bounds && empty && cross_frame
 }
 
+// surface_plane_is_derived pins what the deleted Plane3 parameter used to be able to lie about:
+// the minted surface's plane is Z-normal, at the offset given, in the extent's own frame. A
+// cross-frame arm is not written because the mint now takes only one frame-bearing input - the
+// mismatch it used to refuse has no representation.
 test fn plane_surface_and_prism_hold() -> Bool {
   let floor_plane = plane3(frame: room(), normal_axis: Axis3Z, offset: 0)
   let on_plane = plane3_contains_point(plane: floor_plane, p: p3(x: 500, y: 500, z: 0))
@@ -265,23 +271,26 @@ test fn plane_surface_and_prism_hold() -> Bool {
   let surface = match axis_aligned_rectangle2(min: p2(x: 0, y: 0), max: p2(x: 4000, y: 3000)) {
     OrthogonalRefused { cause: _ } => false
     OrthogonalReady { value: rect } =>
-      match axis_aligned_surface3(plane: floor_plane, extent: rect) {
+      match axis_aligned_surface3(offset: 0, extent: rect) {
         OrthogonalReady { value: _ } => true
         OrthogonalRefused { cause: _ } => false
       }
   }
-  let surface_cross_frame = match axis_aligned_rectangle2(min: point2(frame: building(), x: 0, y: 0), max: point2(frame: building(), x: 10, y: 10)) {
+  let surface_plane_is_derived = match axis_aligned_rectangle2(min: point2(frame: building(), x: 0, y: 0), max: point2(frame: building(), x: 10, y: 10)) {
     OrthogonalRefused { cause: _ } => false
     OrthogonalReady { value: rect } =>
-      match axis_aligned_surface3(plane: floor_plane, extent: rect) {
-        OrthogonalReady { value: _ } => false
-        OrthogonalRefused { cause: c } => match c { OrthogonalFrameMismatch { expected: _, observed: _ } => true _ => false }
+      match axis_aligned_surface3(offset: 250, extent: rect) {
+        OrthogonalRefused { cause: _ } => false
+        OrthogonalReady { value: sf } =>
+          axis3_same(a: plane3_normal_axis(p: surface3_plane(s: sf)), b: Axis3Z)
+            && coordinate_frame_identity_eq(a: surface3_frame(s: sf), b: building())
+            && plane3_contains_point(plane: surface3_plane(s: sf), p: point3(frame: building(), x: 5, y: 5, z: 250))
       }
   }
   let prism = match orthogonal_loop2(vertices: [p2(x: 0, y: 0), p2(x: 4000, y: 0), p2(x: 4000, y: 3000), p2(x: 0, y: 3000)]) {
     OrthogonalRefused { cause: _ } => false
     OrthogonalReady { value: l } =>
-      match orthogonal_prism3(footprint: l, extrusion_axis: Axis3Z, low: 0, high: 2400) {
+      match orthogonal_prism3(footprint: l, low: 0, high: 2400) {
         OrthogonalReady { value: pr } => millimeter_count(m: prism3_height(p: pr)) == 2400
         OrthogonalRefused { cause: _ } => false
       }
@@ -289,10 +298,10 @@ test fn plane_surface_and_prism_hold() -> Bool {
   let flat_prism = match orthogonal_loop2(vertices: [p2(x: 0, y: 0), p2(x: 4000, y: 0), p2(x: 4000, y: 3000), p2(x: 0, y: 3000)]) {
     OrthogonalRefused { cause: _ } => false
     OrthogonalReady { value: l } =>
-      match orthogonal_prism3(footprint: l, extrusion_axis: Axis3Z, low: 2400, high: 2400) {
+      match orthogonal_prism3(footprint: l, low: 2400, high: 2400) {
         OrthogonalReady { value: _ } => false
         OrthogonalRefused { cause: c } => match c { ExtentNotPositive { axis: a } => axis3_same(a: a, b: Axis3Z) _ => false }
       }
   }
-  on_plane && off_plane && other_frame_not_on_plane && surface && surface_cross_frame && prism && flat_prism
+  on_plane && off_plane && other_frame_not_on_plane && surface && surface_plane_is_derived && prism && flat_prism
 }

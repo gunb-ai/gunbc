@@ -8,6 +8,8 @@ import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity
 import std.affine_space { Point2, Point3, point2, point3 }
 import std.euclidean_geometry {
   AxisDirection3, PositiveX, NegativeX, PositiveY, NegativeY, PositiveZ, NegativeZ,
+  axis_direction_axis, axis_direction_is_negative, axis_direction_of,
+  Axis3, Axis3X, Axis3Y, Axis3Z, axis3_index, axis3_eq,
 }
 
 // SPATIAL-3A: EXACT ORTHOGONAL GEOMETRY. Everything here is closed under integer millimetre
@@ -50,11 +52,6 @@ type Axis2
   = Axis2X
   | Axis2Y
 
-type Axis3
-  = Axis3X
-  | Axis3Y
-  | Axis3Z
-
 // TYPED REFUSALS, ONE PER INVALID STATE THIS MODULE CAN BE ASKED FOR. A single string reason would
 // make every one of these the same fact to a consumer, and they have different remedies: a
 // coincident pair of endpoints is an authoring slip, a frame mismatch is a composition error, and a
@@ -75,47 +72,6 @@ type OrthogonalConstruction<T>
   = OrthogonalReady { value: T }
   | OrthogonalRefused { cause: OrthogonalRefusal }
 
-fn axis3_index(a: Axis3) -> Int {
-  match a {
-    Axis3X => 0
-    Axis3Y => 1
-    Axis3Z => 2
-  }
-}
-
-fn axis3_eq(a: Axis3, b: Axis3) -> Bool {
-  axis3_index(a: a) == axis3_index(a: b)
-}
-
-fn axis_direction_axis(d: AxisDirection3) -> Axis3 {
-  match d {
-    PositiveX => Axis3X
-    NegativeX => Axis3X
-    PositiveY => Axis3Y
-    NegativeY => Axis3Y
-    PositiveZ => Axis3Z
-    NegativeZ => Axis3Z
-  }
-}
-
-fn axis_direction_is_negative(d: AxisDirection3) -> Bool {
-  match d {
-    PositiveX => false
-    NegativeX => true
-    PositiveY => false
-    NegativeY => true
-    PositiveZ => false
-    NegativeZ => true
-  }
-}
-
-fn axis_direction_of(axis: Axis3, negative: Bool) -> AxisDirection3 {
-  match axis {
-    Axis3X => if negative { NegativeX } else { PositiveX }
-    Axis3Y => if negative { NegativeY } else { PositiveY }
-    Axis3Z => if negative { NegativeZ } else { PositiveZ }
-  }
-}
 
 // THE 24 ORIENTATION-PRESERVING SIGNED AXIS PERMUTATIONS, AND THEY ARE 24 BY CONSTRUCTION RATHER
 // THAN BY ENUMERATION OR BY A DETERMINANT CHECK.
@@ -629,12 +585,24 @@ type AxisAlignedSurface3 sole_constructor {
   extent: AxisAlignedRectangle2
 }
 
-fn axis_aligned_surface3(plane: Plane3, extent: AxisAlignedRectangle2) -> OrthogonalConstruction<AxisAlignedSurface3> {
-  if !coordinate_frame_identity_eq(a: plane.frame, b: extent.frame) {
-    OrthogonalRefused { cause: OrthogonalFrameMismatch { expected: plane.frame, observed: extent.frame } }
-  } else {
-    OrthogonalReady { value: AxisAlignedSurface3 { plane: plane, extent: extent } }
-  }
+// THE PLANE IS DERIVED FROM THE RECTANGLE, NOT SUPPLIED BESIDE IT. An earlier revision took a
+// Plane3 parameter and checked only that the frames matched, which left a real invalid state
+// writable: AxisAlignedRectangle2 is built from Point2, whose x and y ARE the frame's X and Y
+// components, so an XY rectangle paired with a Y-normal or X-normal plane mints a surface whose
+// coordinates do not lie in its own plane. Refusing that pairing would have been validation
+// conceding the state is writable (DESIGN section 5); removing the parameter leaves it with no
+// representation. The frame-mismatch arm went with it - there is now only one frame in play.
+//
+// The cost of the construction is stated rather than hidden: this mints XY-plane surfaces only.
+// A genuinely X-normal or Y-normal surface needs a 2D carrier that records which plane its two
+// coordinates span, which the band does not have; the parameter did not deliver that generality,
+// it silently mis-delivered it. Dissolve-on: a plane-carrying 2D rectangle, at which point the
+// plane is read from the extent rather than constructed here.
+fn axis_aligned_surface3(offset: Int, extent: AxisAlignedRectangle2) -> OrthogonalConstruction<AxisAlignedSurface3> {
+  OrthogonalReady { value: AxisAlignedSurface3 {
+    plane: plane3(frame: rectangle2_frame(r: extent), normal_axis: Axis3Z, offset: offset),
+    extent: extent,
+  } }
 }
 
 fn surface3_plane(s: AxisAlignedSurface3) -> Plane3 { s.plane }
@@ -650,18 +618,23 @@ fn surface3_frame(s: AxisAlignedSurface3) -> CoordinateFrameIdentity { s.plane.f
 // is a surface, and admitting it makes every volume and containment operation carry a special case.
 type OrthogonalPrism3 sole_constructor {
   footprint: OrthogonalLoop2
-  extrusion_axis: Axis3
   low: SignedMillimeterComponent
   high: SignedMillimeterComponent
 }
 
-fn orthogonal_prism3(footprint: OrthogonalLoop2, extrusion_axis: Axis3, low: Int, high: Int) -> OrthogonalConstruction<OrthogonalPrism3> {
+// THE EXTRUSION AXIS IS DERIVED, NOT SUPPLIED. It was an Axis3 parameter, and any of the three was
+// accepted once the height was positive - so extruding an XY footprint along X or Y was writable
+// and geometrically undefined. OrthogonalLoop2 is a loop of Point2, whose components are the
+// frame's X and Y, so the only axis a footprint can be extruded along is Z. Deleting the parameter
+// and the field is the construction fix; refusing a non-Z argument would have been the validation
+// one (DESIGN section 5). Same dissolve-on as the surface above: a plane-carrying 2D loop is what
+// would make a genuinely X- or Y-extruded prism representable.
+fn orthogonal_prism3(footprint: OrthogonalLoop2, low: Int, high: Int) -> OrthogonalConstruction<OrthogonalPrism3> {
   if high <= low {
-    OrthogonalRefused { cause: ExtentNotPositive { axis: extrusion_axis } }
+    OrthogonalRefused { cause: ExtentNotPositive { axis: Axis3Z } }
   } else {
     OrthogonalReady { value: OrthogonalPrism3 {
       footprint: footprint,
-      extrusion_axis: extrusion_axis,
       low: signed_millimeter_component(count: low),
       high: signed_millimeter_component(count: high),
     } }
