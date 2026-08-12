@@ -52,8 +52,9 @@ mod phase_profile;
 pub(crate) mod test_module_hygiene_bridge;
 pub use floor_discovery_snapshot::{
     append_discovery_trace_row, build_floor_discovery_request,
-    discover_floor_witness_roster_with_snapshot, request_identity_digest,
-    verify_floor_discovery_terminal_for_coordinator, FloorDiscoveryConsumerRole,
+    discover_floor_witness_roster_with_snapshot, floor_tested_commit_and_tree, floor_tool_identity,
+    request_identity_digest, verify_floor_discovery_terminal_for_coordinator,
+    FloorDiscoveryConsumerRole,
 };
 #[doc(hidden)]
 pub use materialization_provider_consumer::{
@@ -21009,7 +21010,7 @@ pub(crate) fn refuse_on_module_graph_read_refusals(
 /// docs/plans/affected-set-differential-falsifier.md). PredictOnly computes would-skip
 /// per row, RECORDS the prediction, and runs the row anyway — the falsifier cadence
 /// compares predictions against cold verdicts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum NodeFrontierSelectionMode {
     Off,
     Applied,
