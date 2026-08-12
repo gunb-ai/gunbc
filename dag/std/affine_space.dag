@@ -16,6 +16,7 @@ import std.measure {
   signed_millimeter_component,
   signed_millimeter_component_count,
 }
+import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity_eq }
 
 // SPATIAL-2: the affine layer. It exists because "can a measurement be negative" was the wrong
 // question. A length is never negative; a COORDINATE and a DISPLACEMENT are, and they are negative
@@ -37,11 +38,19 @@ import std.measure {
 // are distinct types, an attempt to add two points does not typecheck. This mirrors the affine /
 // cardinal split product.placement_supply already draws between a rack POSITION and a rack HEIGHT.
 //
-// FRAMES RIDE IN THE TYPE. Point3<F> carries its coordinate frame as a phantom parameter - the
-// same shape std.measure already uses, where Measure<Q, S, M> holds only a count and carries its
-// quantity and scale phantom. So subtracting a room-local point from a building-global point is
-// not a refusal to be checked at runtime; it does not typecheck. That is the stronger of the two
-// options, and it is available here rather than merely preferable.
+// FRAMES ARE CARRIED BY THE VALUE, NOT BY THE TYPE - and the previous revision of this paragraph
+// claimed the opposite, so the correction is recorded rather than quietly swapped. It read: a point
+// carries its frame as a phantom parameter, so subtracting a room-local point from a building-global
+// point "does not typecheck ... the stronger of the two options". Measured on the production
+// compile-and-run path 2026-08-11: that program compiles clean and returns 9. The v1 seed's
+// argument-position judge compares nominal head names and discards applied type arguments, so
+// Point3 matched Point3 and the frames were never looked at.
+//
+// The seam is now `frame: CoordinateFrameIdentity` on every point and vector, and every operation
+// below compares the identities its operands actually carry. std.coordinate_frame holds the full
+// account, including why the compiler repair that landed with it closes the call boundary but not
+// the producer side. The claim this layer supports is frame consistency BY CHECKED DERIVATION.
+// It is NOT true that cross-frame programs are unwritable.
 //
 // FRAMES ARE RIGHT-HANDED ORTHOGONAL CARTESIAN, and that is a property of this slice rather than a
 // runtime choice. An earlier revision declared Handedness = RightHanded | LeftHanded on a
@@ -52,75 +61,111 @@ import std.measure {
 // consumer needs one, and frame metadata - display identity, a human-facing origin description -
 // lands with the spatial-world carrier that actually registers frames.
 
-type Vector3<F> {
+type Vector3 {
+  frame: CoordinateFrameIdentity
   x: SignedMillimeterComponent
   y: SignedMillimeterComponent
   z: SignedMillimeterComponent
 }
 
-type Point3<F> {
+type Point3 {
+  frame: CoordinateFrameIdentity
   x: SignedMillimeterComponent
   y: SignedMillimeterComponent
   z: SignedMillimeterComponent
 }
 
-type Vector2<F> {
+type Vector2 {
+  frame: CoordinateFrameIdentity
   x: SignedMillimeterComponent
   y: SignedMillimeterComponent
 }
 
-type Point2<F> {
+type Point2 {
+  frame: CoordinateFrameIdentity
   x: SignedMillimeterComponent
   y: SignedMillimeterComponent
 }
 
-fn vector3<F>(x: Int, y: Int, z: Int) -> Vector3<F> {
+fn vector3(frame: CoordinateFrameIdentity, x: Int, y: Int, z: Int) -> Vector3 {
   Vector3 {
+    frame: frame,
     x: signed_millimeter_component(count: x),
     y: signed_millimeter_component(count: y),
     z: signed_millimeter_component(count: z),
   }
 }
 
-fn point3<F>(x: Int, y: Int, z: Int) -> Point3<F> {
+fn point3(frame: CoordinateFrameIdentity, x: Int, y: Int, z: Int) -> Point3 {
   Point3 {
+    frame: frame,
     x: signed_millimeter_component(count: x),
     y: signed_millimeter_component(count: y),
     z: signed_millimeter_component(count: z),
   }
 }
 
-fn vector2<F>(x: Int, y: Int) -> Vector2<F> {
-  Vector2 { x: signed_millimeter_component(count: x), y: signed_millimeter_component(count: y) }
+fn vector2(frame: CoordinateFrameIdentity, x: Int, y: Int) -> Vector2 {
+  Vector2 { frame: frame, x: signed_millimeter_component(count: x), y: signed_millimeter_component(count: y) }
 }
 
-fn point2<F>(x: Int, y: Int) -> Point2<F> {
-  Point2 { x: signed_millimeter_component(count: x), y: signed_millimeter_component(count: y) }
+fn point2(frame: CoordinateFrameIdentity, x: Int, y: Int) -> Point2 {
+  Point2 { frame: frame, x: signed_millimeter_component(count: x), y: signed_millimeter_component(count: y) }
 }
 
-fn zero_vector3<F>() -> Vector3<F> {
-  vector3(x: 0, y: 0, z: 0)
+fn zero_vector3(frame: CoordinateFrameIdentity) -> Vector3 {
+  vector3(frame: frame, x: 0, y: 0, z: 0)
 }
 
-// THE MATHEMATICS IS EXACT; THE FINITE MACHINE REALIZATION MAY REFUSE. Those are two statements and
-// this slice used to make only the first. Translation of a point by a displacement is exact in
-// integer millimetres - no approximation policy is needed to move a location - and the model's Int
-// is unbounded. The realization's is not: every one of these operations runs on i64 in the seed and
-// in emitted Rust, where a sum of two large coordinates has no representable result. Declaring the
-// operation total while running it on a bounded carrier is the overclaim, not the arithmetic.
+// THE MATHEMATICS IS EXACT; THE FINITE MACHINE REALIZATION MAY REFUSE, AND THE OPERANDS MAY NOT
+// BELONG TOGETHER. Those are two independent ways one operation has no answer, and they are separate
+// arms rather than one "failed" arm because the remedies differ absolutely: an overflow means the
+// question was right and the carrier too small, a frame mismatch means the question was meaningless.
+// Collapsing them would be the state-space conflation DESIGN 5 names.
 //
-// So each operation answers SpatialArithmeticResult<T>, and the refusal carries the exact
-// IntegerOverflow cause std.checked_arithmetic produced: which operation, on which operands. A
-// caller that cannot proceed knows precisely what could not be computed, and no caller receives a
-// wrapped number described as a location.
-type SpatialArithmeticResult<T>
-  = SpatialArithmeticReady { value: T }
+// ONE RESULT TYPE, NOT TWO NESTED ONES. An earlier sketch of this repair proposed a separate
+// FrameRelationResult wrapping the arithmetic result. That forks the "this operation may have no
+// answer" concept in two and forces every caller to unwrap twice for a question that is one
+// question; the causes are what differ, and a coproduct is exactly the carrier for that (DESIGN 2).
+// THE REFUSAL NAMES ROLES, NOT AN "EXPECTED" AND AN "OBSERVED". An earlier cut of this carrier had
+// exactly those two fields, and they are misleading for a SYMMETRIC operation: in add_vector3(a, b)
+// neither frame is normatively expected - the first operand merely happens to establish the result's
+// frame, so calling it "expected" reports an artefact of argument order as though it were a
+// requirement. The operation identity and the relation that was required make the refusal readable
+// without knowing which operand the implementation looked at first.
+type SpatialOperationIdentity
+  = OpTranslatePoint3
+  | OpDisplacementBetween3
+  | OpAddVector3
+  | OpSubtractVector3
+  | OpTranslatePoint2
+  | OpDisplacementBetween2
+  | OpAddVector2
+  | OpDot3
+  | OpCross3
+  | OpApplyZQuarterTurnTransform3
+
+type SpatialFrameRelation
+  = SameFrameOperandsRequired
+  | TransformSourceFrameRequired
+  | TransformTranslationInDestinationRequired
+
+type SpatialFrameRefusal {
+  operation: SpatialOperationIdentity
+  left_frame: CoordinateFrameIdentity
+  right_frame: CoordinateFrameIdentity
+  relation: SpatialFrameRelation
+}
+
+type SpatialResult<T>
+  = SpatialReady { value: T }
   | SpatialArithmeticRefused { cause: IntegerOverflow }
+  | SpatialFrameRefused { refusal: SpatialFrameRefusal }
 
 // FIRST CROSSING WINS, and every component is computed before the fold rather than after a partial
 // result exists. There is no arm here that produces a value from some components and a default for
 // the rest: a vector with one unrepresentable component is not a vector.
-fn vector3_from_checked<F>(x: CheckedInt, y: CheckedInt, z: CheckedInt) -> SpatialArithmeticResult<Vector3<F>> {
+fn vector3_from_checked(frame: CoordinateFrameIdentity, x: CheckedInt, y: CheckedInt, z: CheckedInt) -> SpatialResult<Vector3> {
   match x {
     CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
     CheckedIntReady { value: xv } =>
@@ -130,13 +175,13 @@ fn vector3_from_checked<F>(x: CheckedInt, y: CheckedInt, z: CheckedInt) -> Spati
           match z {
             CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
             CheckedIntReady { value: zv } =>
-              SpatialArithmeticReady { value: vector3(x: xv, y: yv, z: zv) }
+              SpatialReady { value: vector3(frame: frame, x: xv, y: yv, z: zv) }
           }
       }
   }
 }
 
-fn point3_from_checked<F>(x: CheckedInt, y: CheckedInt, z: CheckedInt) -> SpatialArithmeticResult<Point3<F>> {
+fn point3_from_checked(frame: CoordinateFrameIdentity, x: CheckedInt, y: CheckedInt, z: CheckedInt) -> SpatialResult<Point3> {
   match x {
     CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
     CheckedIntReady { value: xv } =>
@@ -146,74 +191,107 @@ fn point3_from_checked<F>(x: CheckedInt, y: CheckedInt, z: CheckedInt) -> Spatia
           match z {
             CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
             CheckedIntReady { value: zv } =>
-              SpatialArithmeticReady { value: point3(x: xv, y: yv, z: zv) }
+              SpatialReady { value: point3(frame: frame, x: xv, y: yv, z: zv) }
           }
       }
   }
 }
 
-fn vector2_from_checked<F>(x: CheckedInt, y: CheckedInt) -> SpatialArithmeticResult<Vector2<F>> {
+fn vector2_from_checked(frame: CoordinateFrameIdentity, x: CheckedInt, y: CheckedInt) -> SpatialResult<Vector2> {
   match x {
     CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
     CheckedIntReady { value: xv } =>
       match y {
         CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
-        CheckedIntReady { value: yv } => SpatialArithmeticReady { value: vector2(x: xv, y: yv) }
+        CheckedIntReady { value: yv } => SpatialReady { value: vector2(frame: frame, x: xv, y: yv) }
       }
   }
 }
 
-fn point2_from_checked<F>(x: CheckedInt, y: CheckedInt) -> SpatialArithmeticResult<Point2<F>> {
+fn point2_from_checked(frame: CoordinateFrameIdentity, x: CheckedInt, y: CheckedInt) -> SpatialResult<Point2> {
   match x {
     CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
     CheckedIntReady { value: xv } =>
       match y {
         CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
-        CheckedIntReady { value: yv } => SpatialArithmeticReady { value: point2(x: xv, y: yv) }
+        CheckedIntReady { value: yv } => SpatialReady { value: point2(frame: frame, x: xv, y: yv) }
       }
   }
 }
 
-// Point + Vector -> Point.
-fn translate_point3<F>(point: Point3<F>, by: Vector3<F>) -> SpatialArithmeticResult<Point3<F>> {
-  point3_from_checked(
-    x: checked_int_add(a: signed_millimeter_component_count(m: point.x), b: signed_millimeter_component_count(m: by.x)),
-    y: checked_int_add(a: signed_millimeter_component_count(m: point.y), b: signed_millimeter_component_count(m: by.y)),
-    z: checked_int_add(a: signed_millimeter_component_count(m: point.z), b: signed_millimeter_component_count(m: by.z)),
-  )
+// THE FRAME CHECK PRECEDES THE ARITHMETIC IN EVERY OPERATION BELOW, and the order is load-bearing
+// rather than stylistic: if two operands are in different frames there is no question to overflow.
+// Reporting an overflow for a meaningless subtraction would name the wrong cause, and reporting
+// either one for both would be the conflation the result type exists to prevent.
+//
+// EXPECTED IS THE OPERAND THAT DEFINES THE RESULT'S FRAME - the point being translated, the origin
+// of a displacement, the left operand of a composition, the transform's declared source. OBSERVED is
+// the one that disagreed with it. A caller reading a refusal therefore learns which value was out of
+// place, not merely that two frames differed.
+fn translate_point3(point: Point3, by: Vector3) -> SpatialResult<Point3> {
+  if !coordinate_frame_identity_eq(a: point.frame, b: by.frame) {
+    SpatialFrameRefused { refusal: SpatialFrameRefusal { operation: OpTranslatePoint3, left_frame: point.frame, right_frame: by.frame, relation: SameFrameOperandsRequired } }
+  } else {
+    point3_from_checked(
+      frame: point.frame,
+      x: checked_int_add(a: signed_millimeter_component_count(m: point.x), b: signed_millimeter_component_count(m: by.x)),
+      y: checked_int_add(a: signed_millimeter_component_count(m: point.y), b: signed_millimeter_component_count(m: by.y)),
+      z: checked_int_add(a: signed_millimeter_component_count(m: point.z), b: signed_millimeter_component_count(m: by.z)),
+    )
+  }
 }
 
 // Point - Point -> Vector. The result is a displacement, not a location, and not a distance: it is
 // signed and directional. Its NORM is the nonnegative physical distance, and that lives in
 // std.euclidean_geometry because it is the operation that stops being exact.
-fn displacement_between3<F>(from: Point3<F>, to: Point3<F>) -> SpatialArithmeticResult<Vector3<F>> {
-  vector3_from_checked(
-    x: checked_int_subtract(a: signed_millimeter_component_count(m: to.x), b: signed_millimeter_component_count(m: from.x)),
-    y: checked_int_subtract(a: signed_millimeter_component_count(m: to.y), b: signed_millimeter_component_count(m: from.y)),
-    z: checked_int_subtract(a: signed_millimeter_component_count(m: to.z), b: signed_millimeter_component_count(m: from.z)),
-  )
+//
+// THIS IS THE OPERATION THE MEASUREMENT CAUGHT. A RoomFrame origin and a BuildingFrame destination
+// reached it and it answered 9. It now answers SpatialFrameRefused, and the witness that proves so
+// is the regression control for the whole recut.
+fn displacement_between3(from: Point3, to: Point3) -> SpatialResult<Vector3> {
+  if !coordinate_frame_identity_eq(a: from.frame, b: to.frame) {
+    SpatialFrameRefused { refusal: SpatialFrameRefusal { operation: OpDisplacementBetween3, left_frame: from.frame, right_frame: to.frame, relation: SameFrameOperandsRequired } }
+  } else {
+    vector3_from_checked(
+      frame: from.frame,
+      x: checked_int_subtract(a: signed_millimeter_component_count(m: to.x), b: signed_millimeter_component_count(m: from.x)),
+      y: checked_int_subtract(a: signed_millimeter_component_count(m: to.y), b: signed_millimeter_component_count(m: from.y)),
+      z: checked_int_subtract(a: signed_millimeter_component_count(m: to.z), b: signed_millimeter_component_count(m: from.z)),
+    )
+  }
 }
 
-fn add_vector3<F>(a: Vector3<F>, b: Vector3<F>) -> SpatialArithmeticResult<Vector3<F>> {
-  vector3_from_checked(
-    x: checked_int_add(a: signed_millimeter_component_count(m: a.x), b: signed_millimeter_component_count(m: b.x)),
-    y: checked_int_add(a: signed_millimeter_component_count(m: a.y), b: signed_millimeter_component_count(m: b.y)),
-    z: checked_int_add(a: signed_millimeter_component_count(m: a.z), b: signed_millimeter_component_count(m: b.z)),
-  )
+fn add_vector3(a: Vector3, b: Vector3) -> SpatialResult<Vector3> {
+  if !coordinate_frame_identity_eq(a: a.frame, b: b.frame) {
+    SpatialFrameRefused { refusal: SpatialFrameRefusal { operation: OpAddVector3, left_frame: a.frame, right_frame: b.frame, relation: SameFrameOperandsRequired } }
+  } else {
+    vector3_from_checked(
+      frame: a.frame,
+      x: checked_int_add(a: signed_millimeter_component_count(m: a.x), b: signed_millimeter_component_count(m: b.x)),
+      y: checked_int_add(a: signed_millimeter_component_count(m: a.y), b: signed_millimeter_component_count(m: b.y)),
+      z: checked_int_add(a: signed_millimeter_component_count(m: a.z), b: signed_millimeter_component_count(m: b.z)),
+    )
+  }
 }
 
-fn subtract_vector3<F>(a: Vector3<F>, b: Vector3<F>) -> SpatialArithmeticResult<Vector3<F>> {
-  vector3_from_checked(
-    x: checked_int_subtract(a: signed_millimeter_component_count(m: a.x), b: signed_millimeter_component_count(m: b.x)),
-    y: checked_int_subtract(a: signed_millimeter_component_count(m: a.y), b: signed_millimeter_component_count(m: b.y)),
-    z: checked_int_subtract(a: signed_millimeter_component_count(m: a.z), b: signed_millimeter_component_count(m: b.z)),
-  )
+fn subtract_vector3(a: Vector3, b: Vector3) -> SpatialResult<Vector3> {
+  if !coordinate_frame_identity_eq(a: a.frame, b: b.frame) {
+    SpatialFrameRefused { refusal: SpatialFrameRefusal { operation: OpSubtractVector3, left_frame: a.frame, right_frame: b.frame, relation: SameFrameOperandsRequired } }
+  } else {
+    vector3_from_checked(
+      frame: a.frame,
+      x: checked_int_subtract(a: signed_millimeter_component_count(m: a.x), b: signed_millimeter_component_count(m: b.x)),
+      y: checked_int_subtract(a: signed_millimeter_component_count(m: a.y), b: signed_millimeter_component_count(m: b.y)),
+      z: checked_int_subtract(a: signed_millimeter_component_count(m: a.z), b: signed_millimeter_component_count(m: b.z)),
+    )
+  }
 }
 
 // Negation refuses at exactly one input per component - the minimum representable value, whose
-// negation is the one integer two's complement omits.
-fn negate_vector3<F>(v: Vector3<F>) -> SpatialArithmeticResult<Vector3<F>> {
+// negation is the one integer two's complement omits. One operand, so no frame can disagree.
+fn negate_vector3(v: Vector3) -> SpatialResult<Vector3> {
   vector3_from_checked(
+    frame: v.frame,
     x: checked_int_negate(a: signed_millimeter_component_count(m: v.x)),
     y: checked_int_negate(a: signed_millimeter_component_count(m: v.y)),
     z: checked_int_negate(a: signed_millimeter_component_count(m: v.z)),
@@ -223,33 +301,49 @@ fn negate_vector3<F>(v: Vector3<F>) -> SpatialArithmeticResult<Vector3<F>> {
 // Scaling by an integer is exact. Scaling by a ratio is NOT offered: it would need a rounding
 // policy, and inventing one here would put approximation into the affine layer before the
 // numeric seam is decided.
-fn scale_vector3<F>(v: Vector3<F>, factor: Int) -> SpatialArithmeticResult<Vector3<F>> {
+fn scale_vector3(v: Vector3, factor: Int) -> SpatialResult<Vector3> {
   vector3_from_checked(
+    frame: v.frame,
     x: checked_int_multiply(a: signed_millimeter_component_count(m: v.x), b: factor),
     y: checked_int_multiply(a: signed_millimeter_component_count(m: v.y), b: factor),
     z: checked_int_multiply(a: signed_millimeter_component_count(m: v.z), b: factor),
   )
 }
 
-fn translate_point2<F>(point: Point2<F>, by: Vector2<F>) -> SpatialArithmeticResult<Point2<F>> {
-  point2_from_checked(
-    x: checked_int_add(a: signed_millimeter_component_count(m: point.x), b: signed_millimeter_component_count(m: by.x)),
-    y: checked_int_add(a: signed_millimeter_component_count(m: point.y), b: signed_millimeter_component_count(m: by.y)),
-  )
+fn translate_point2(point: Point2, by: Vector2) -> SpatialResult<Point2> {
+  if !coordinate_frame_identity_eq(a: point.frame, b: by.frame) {
+    SpatialFrameRefused { refusal: SpatialFrameRefusal { operation: OpTranslatePoint2, left_frame: point.frame, right_frame: by.frame, relation: SameFrameOperandsRequired } }
+  } else {
+    point2_from_checked(
+      frame: point.frame,
+      x: checked_int_add(a: signed_millimeter_component_count(m: point.x), b: signed_millimeter_component_count(m: by.x)),
+      y: checked_int_add(a: signed_millimeter_component_count(m: point.y), b: signed_millimeter_component_count(m: by.y)),
+    )
+  }
 }
 
-fn displacement_between2<F>(from: Point2<F>, to: Point2<F>) -> SpatialArithmeticResult<Vector2<F>> {
-  vector2_from_checked(
-    x: checked_int_subtract(a: signed_millimeter_component_count(m: to.x), b: signed_millimeter_component_count(m: from.x)),
-    y: checked_int_subtract(a: signed_millimeter_component_count(m: to.y), b: signed_millimeter_component_count(m: from.y)),
-  )
+fn displacement_between2(from: Point2, to: Point2) -> SpatialResult<Vector2> {
+  if !coordinate_frame_identity_eq(a: from.frame, b: to.frame) {
+    SpatialFrameRefused { refusal: SpatialFrameRefusal { operation: OpDisplacementBetween2, left_frame: from.frame, right_frame: to.frame, relation: SameFrameOperandsRequired } }
+  } else {
+    vector2_from_checked(
+      frame: from.frame,
+      x: checked_int_subtract(a: signed_millimeter_component_count(m: to.x), b: signed_millimeter_component_count(m: from.x)),
+      y: checked_int_subtract(a: signed_millimeter_component_count(m: to.y), b: signed_millimeter_component_count(m: from.y)),
+    )
+  }
 }
 
-fn add_vector2<F>(a: Vector2<F>, b: Vector2<F>) -> SpatialArithmeticResult<Vector2<F>> {
-  vector2_from_checked(
-    x: checked_int_add(a: signed_millimeter_component_count(m: a.x), b: signed_millimeter_component_count(m: b.x)),
-    y: checked_int_add(a: signed_millimeter_component_count(m: a.y), b: signed_millimeter_component_count(m: b.y)),
-  )
+fn add_vector2(a: Vector2, b: Vector2) -> SpatialResult<Vector2> {
+  if !coordinate_frame_identity_eq(a: a.frame, b: b.frame) {
+    SpatialFrameRefused { refusal: SpatialFrameRefusal { operation: OpAddVector2, left_frame: a.frame, right_frame: b.frame, relation: SameFrameOperandsRequired } }
+  } else {
+    vector2_from_checked(
+      frame: a.frame,
+      x: checked_int_add(a: signed_millimeter_component_count(m: a.x), b: signed_millimeter_component_count(m: b.x)),
+      y: checked_int_add(a: signed_millimeter_component_count(m: a.y), b: signed_millimeter_component_count(m: b.y)),
+    )
+  }
 }
 
 // QUARTER TURNS ONLY, and this is the numeric policy made structural rather than documented.
@@ -264,28 +358,36 @@ type QuarterTurns
   | TwoQuarters
   | ThreeQuarters
 
-// Rotation about +Z, right-handed: (x, y) -> (-y, x) per quarter turn. Z is unchanged.
+// Rotation about +Z, right-handed: (x, y) -> (-y, x) per quarter turn. Z is unchanged. The rotated
+// vector stays in the frame it started in - a rotation within a frame is not a change of frame.
 //
 // A PERMUTATION CAN STILL REFUSE. Rotation moves components between axes and negates some of them,
 // and the negation is where the bound bites: a component at the minimum representable value has no
 // negation, so the quarter turn of such a vector has no representable result. NoTurn is the one arm
 // that cannot refuse, because it negates nothing - and it is written through the same checked path
 // rather than short-circuited, so no arm produces a vector by a route the others do not take.
-fn rotate_quarter_turns_about_z<F>(v: Vector3<F>, turns: QuarterTurns) -> SpatialArithmeticResult<Vector3<F>> {
+fn rotate_quarter_turns_about_z(v: Vector3, turns: QuarterTurns) -> SpatialResult<Vector3> {
   let x = signed_millimeter_component_count(m: v.x)
   let y = signed_millimeter_component_count(m: v.y)
   let z = signed_millimeter_component_count(m: v.z)
   match turns {
-    NoTurn => vector3_from_checked(x: CheckedIntReady { value: x }, y: CheckedIntReady { value: y }, z: CheckedIntReady { value: z })
-    OneQuarter => vector3_from_checked(x: checked_int_negate(a: y), y: CheckedIntReady { value: x }, z: CheckedIntReady { value: z })
-    TwoQuarters => vector3_from_checked(x: checked_int_negate(a: x), y: checked_int_negate(a: y), z: CheckedIntReady { value: z })
-    ThreeQuarters => vector3_from_checked(x: CheckedIntReady { value: y }, y: checked_int_negate(a: x), z: CheckedIntReady { value: z })
+    NoTurn => vector3_from_checked(frame: v.frame, x: CheckedIntReady { value: x }, y: CheckedIntReady { value: y }, z: CheckedIntReady { value: z })
+    OneQuarter => vector3_from_checked(frame: v.frame, x: checked_int_negate(a: y), y: CheckedIntReady { value: x }, z: CheckedIntReady { value: z })
+    TwoQuarters => vector3_from_checked(frame: v.frame, x: checked_int_negate(a: x), y: checked_int_negate(a: y), z: CheckedIntReady { value: z })
+    ThreeQuarters => vector3_from_checked(frame: v.frame, x: CheckedIntReady { value: y }, y: checked_int_negate(a: x), z: CheckedIntReady { value: z })
   }
 }
 
-// A frame-to-frame transform. Both frames are phantom parameters, so applying a RoomFrame point to
-// a ZQuarterTurnTransform3<BuildingFrame, SiteFrame> does not typecheck - the cross-frame error is
-// unwritable rather than refused.
+// A FRAME-TO-FRAME TRANSFORM, whose two frames are now DATA it carries rather than phantom
+// parameters it advertised. The previous revision said applying a RoomFrame point to a
+// ZQuarterTurnTransform3<BuildingFrame, SiteFrame> "does not typecheck - the cross-frame error is
+// unwritable rather than refused". Measured false with the rest of the phantom claim; the transform
+// now declares its source and destination and apply checks both.
+//
+// THE TRANSLATION BELONGS TO THE DESTINATION FRAME. Rotation happens in the source frame and the
+// translation is then applied in the target's coordinates, so a translation carrying any other
+// frame is a construction error - checked at apply, because a record literal is reachable from
+// anywhere and this carrier is not sealed.
 //
 // THE NAME STATES THE CAPABILITY. An earlier revision called this Transform3, which claims the
 // general affine transform, while the field was and is rotation about +Z only. The narrower name is
@@ -293,30 +395,44 @@ fn rotate_quarter_turns_about_z<F>(v: Vector3<F>, turns: QuarterTurns) -> Spatia
 // quarter turn about +Z plus a 3D translation is exactly what planar room layout needs, and a later
 // physical consumer should derive the orientation operation it actually requires rather than
 // inherit a preselected rotation group.
-type ZQuarterTurnTransform3<From, To> {
+type ZQuarterTurnTransform3 {
+  from_frame: CoordinateFrameIdentity
+  to_frame: CoordinateFrameIdentity
   rotation_about_z: QuarterTurns
-  translation: Vector3<To>
+  translation: Vector3
 }
 
-// TWO STAGES, EITHER OF WHICH CAN REFUSE, and the first refusal is returned verbatim rather than
+// THREE STAGES, ANY OF WHICH CAN REFUSE, and the first refusal is returned verbatim rather than
 // re-labelled: if the rotation could not be computed, the caller learns that a negation crossed the
 // bound, not that a translation did.
-fn apply_z_quarter_turn_transform3<From, To>(
-  transform: ZQuarterTurnTransform3<From, To>,
-  point: Point3<From>,
-) -> SpatialArithmeticResult<Point3<To>> {
-  let as_displacement = vector3(
-    x: signed_millimeter_component_count(m: point.x),
-    y: signed_millimeter_component_count(m: point.y),
-    z: signed_millimeter_component_count(m: point.z),
-  )
-  match rotate_quarter_turns_about_z(v: as_displacement, turns: transform.rotation_about_z) {
-    SpatialArithmeticRefused { cause: c } => SpatialArithmeticRefused { cause: c }
-    SpatialArithmeticReady { value: rotated } =>
-      point3_from_checked(
-        x: checked_int_add(a: signed_millimeter_component_count(m: rotated.x), b: signed_millimeter_component_count(m: transform.translation.x)),
-        y: checked_int_add(a: signed_millimeter_component_count(m: rotated.y), b: signed_millimeter_component_count(m: transform.translation.y)),
-        z: checked_int_add(a: signed_millimeter_component_count(m: rotated.z), b: signed_millimeter_component_count(m: transform.translation.z)),
-      )
+//
+// The rotation runs on a displacement built in the SOURCE frame from the point's components, which
+// is why that intermediate carries point.frame; the sum then lands in the destination frame.
+fn apply_z_quarter_turn_transform3(
+  transform: ZQuarterTurnTransform3,
+  point: Point3,
+) -> SpatialResult<Point3> {
+  if !coordinate_frame_identity_eq(a: transform.from_frame, b: point.frame) {
+    SpatialFrameRefused { refusal: SpatialFrameRefusal { operation: OpApplyZQuarterTurnTransform3, left_frame: transform.from_frame, right_frame: point.frame, relation: TransformSourceFrameRequired } }
+  } else if !coordinate_frame_identity_eq(a: transform.to_frame, b: transform.translation.frame) {
+    SpatialFrameRefused { refusal: SpatialFrameRefusal { operation: OpApplyZQuarterTurnTransform3, left_frame: transform.to_frame, right_frame: transform.translation.frame, relation: TransformTranslationInDestinationRequired } }
+  } else {
+    let as_displacement = vector3(
+      frame: point.frame,
+      x: signed_millimeter_component_count(m: point.x),
+      y: signed_millimeter_component_count(m: point.y),
+      z: signed_millimeter_component_count(m: point.z),
+    )
+    match rotate_quarter_turns_about_z(v: as_displacement, turns: transform.rotation_about_z) {
+      SpatialArithmeticRefused { cause: c } => SpatialArithmeticRefused { cause: c }
+      SpatialFrameRefused { refusal: fr } => SpatialFrameRefused { refusal: fr }
+      SpatialReady { value: rotated } =>
+        point3_from_checked(
+          frame: transform.to_frame,
+          x: checked_int_add(a: signed_millimeter_component_count(m: rotated.x), b: signed_millimeter_component_count(m: transform.translation.x)),
+          y: checked_int_add(a: signed_millimeter_component_count(m: rotated.y), b: signed_millimeter_component_count(m: transform.translation.y)),
+          z: checked_int_add(a: signed_millimeter_component_count(m: rotated.z), b: signed_millimeter_component_count(m: transform.translation.z)),
+        )
+    }
   }
 }
