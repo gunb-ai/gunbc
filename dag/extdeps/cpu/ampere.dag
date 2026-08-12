@@ -162,3 +162,17 @@ data altra_q6430_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   l3_cache: ampere_altra_classic_l3_cache_geometry,
   l3_cache_citations: ampere_altra_classic_l3_cache_citations,
 }
+
+// The Approved Vendor List: Ampere's positive qualification results for
+// memory on the Altra family. Absence of a part from this list is the absence
+// of a positive result, NOT a negative result — see
+// gunbc.host_memory_qualification SpecificPartQualification, which keeps those
+// two states distinct.
+data ampere_altra_avl_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "connect-admin.amperecomputing.com/api/secure-file-download/download-regular/?documentId=ppuyl31kktnze6gbof70xitc"
+  }
+}
+
+data ampere_altra_avl_current_issue: NonEmptyStr = "1.15 (December 2025)"

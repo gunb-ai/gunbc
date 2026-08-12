@@ -34,8 +34,13 @@ type AdmissionSettle
 type NativeFleetSettle
   = EnrollmentLandedFleetRateOpen {}
 
+// SkipProofWithdrawn added 2026-08-11 (gunbc#8146). The type had exactly one
+// variant, so the receipt could not express "the proof was withdrawn" — a
+// single-variant settle carrier is a claim with no way to be false, which is
+// how ClosedSkipProofLanded outlived the evidence it names.
 type WarmHitSettle
   = ClosedSkipProofLanded {}
+  | SkipProofWithdrawn { reason: NonEmptyStr }
 
 type RetentionSettle
   = ClosedReject {}
@@ -170,7 +175,9 @@ fn native_fleet_settle() -> NativeFleetSettle {
 }
 
 fn warm_hit_settle() -> WarmHitSettle {
-  ClosedSkipProofLanded {}
+  SkipProofWithdrawn {
+    reason: "PREVIOUS: ClosedSkipProofLanded on cross_process_hit_skips_semantic_recompute. WITHDRAWN 2026-08-11 (gunbc#8146): the module carrying that proof, v1_compiler_tests.resolve_cross_process_cache_test, was executed for the first time under the retained-kernel cutover and reports 53 passed / 3 FAILED in 1321s, so it cannot be enrolled in the required gate (it both fails and exceeds the 15-minute step budget). The skip proof itself was not among the failures, but it has no executing consumer while the module is unenrollable. This corrects a reported rung to the one executed evidence establishes rather than lowering a real one — the Landed claim was inflated from the day the suite went --no-run. RESTORATION: fix the failures, bring the module under budget, re-declare it in test.retirement.model." as NonEmptyStr
+  }
 }
 
 fn retention_settle() -> RetentionSettle {

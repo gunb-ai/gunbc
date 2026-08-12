@@ -10,6 +10,19 @@ import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
 import std.logic { Bool }
+import std.integer { Int }
+import v2.compiler.self_host.promotion_admission {
+  BehavioralComparisonObservation,
+  BehavioralCorpus,
+  BehaviorAgrees,
+  BehaviorDiverges,
+  BuildFailed,
+  BuildGreen,
+  FaultCaught,
+  FaultNotCaught,
+  Observed,
+  ObservationUnavailable
+}
 import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
 
 
@@ -18,11 +31,38 @@ data slb_doc: String = "Wave 1 Gate 4 (weak self-host behavioral receipt) for da
 
 data slb_logic_source_rel: String = "dag/std/logic.dag"
 
-data slb_driver_main_source: String = "use v1_compiled::std_logic as emitted;\nuse v1_compiler::std_logic as seed;\n\nfn eq(e: emitted::Classical, s: seed::Classical) -> bool {\n    matches!(\n        (e, s),\n        (emitted::Classical::True, seed::Classical::True)\n            | (emitted::Classical::False, seed::Classical::False)\n    )\n}\n\nfn main() {\n    let inject_fault = std::env::args().any(|a| a == \"--inject-fault\");\n    let vals = [emitted::Classical::True, emitted::Classical::False];\n    let svals = [seed::Classical::True, seed::Classical::False];\n    let mut all_pass = true;\n\n    for i in 0..2 {\n        let call_on = if inject_fault && i == 0 { vals[1] } else { vals[i] };\n        let er = emitted::classical_not(call_on);\n        let sr = seed::classical_not(svals[i]);\n        let ok = eq(er, sr);\n        println!(\"not({:?}) emitted={:?} seed={:?} eq={}\", vals[i], er, sr, ok);\n        all_pass = all_pass && ok;\n    }\n\n    for i in 0..2 {\n        for j in 0..2 {\n            let er = emitted::classical_and(vals[i], vals[j]);\n            let sr = seed::classical_and(svals[i], svals[j]);\n            let ok = eq(er, sr);\n            println!(\"and({:?},{:?}) emitted={:?} seed={:?} eq={}\", vals[i], vals[j], er, sr, ok);\n            all_pass = all_pass && ok;\n\n            let er2 = emitted::classical_or(vals[i], vals[j]);\n            let sr2 = seed::classical_or(svals[i], svals[j]);\n            let ok2 = eq(er2, sr2);\n            println!(\"or({:?},{:?}) emitted={:?} seed={:?} eq={}\", vals[i], vals[j], er2, sr2, ok2);\n            all_pass = all_pass && ok2;\n        }\n    }\n\n    if all_pass {\n        println!(\"SELF_HOST_LOGIC_BEHAVIORAL_RECEIPT: PASS\");\n        std::process::exit(0);\n    } else {\n        println!(\"SELF_HOST_LOGIC_BEHAVIORAL_RECEIPT: FAIL\");\n        std::process::exit(1);\n    }\n}\n"
+data slb_driver_main_source: String = "use v1_compiled::std_logic as emitted;\nuse v1_compiler::std_logic as seed;\n\nfn eq(e: emitted::Classical, s: seed::Classical) -> bool {\n    matches!(\n        (e, s),\n        (emitted::Classical::True, seed::Classical::True)\n            | (emitted::Classical::False, seed::Classical::False)\n    )\n}\n\nfn main() {\n    let inject_fault = std::env::args().any(|a| a == \"--inject-fault\");\n    let vals = [emitted::Classical::True, emitted::Classical::False];\n    let svals = [seed::Classical::True, seed::Classical::False];\n    let mut all_pass = true;\n    let mut cases = 0;\n\n    for i in 0..2 {\n        let call_on = if inject_fault && i == 0 { vals[1] } else { vals[i] };\n        let er = emitted::classical_not(call_on);\n        let sr = seed::classical_not(svals[i]);\n        let ok = eq(er, sr);\n        println!(\"not({:?}) emitted={:?} seed={:?} eq={}\", vals[i], er, sr, ok);\n        all_pass = all_pass && ok;\n        cases += 1;\n    }\n\n    for i in 0..2 {\n        for j in 0..2 {\n            let er = emitted::classical_and(vals[i], vals[j]);\n            let sr = seed::classical_and(svals[i], svals[j]);\n            let ok = eq(er, sr);\n            println!(\"and({:?},{:?}) emitted={:?} seed={:?} eq={}\", vals[i], vals[j], er, sr, ok);\n            all_pass = all_pass && ok;\n            cases += 1;\n\n            let er2 = emitted::classical_or(vals[i], vals[j]);\n            let sr2 = seed::classical_or(svals[i], svals[j]);\n            let ok2 = eq(er2, sr2);\n            println!(\"or({:?},{:?}) emitted={:?} seed={:?} eq={}\", vals[i], vals[j], er2, sr2, ok2);\n            all_pass = all_pass && ok2;\n            cases += 1;\n        }\n    }\n\n    println!(\"SELF_HOST_LOGIC_CASES_COMPARED: {}\", cases);\n\n    if all_pass {\n        println!(\"SELF_HOST_LOGIC_BEHAVIORAL_RECEIPT: PASS\");\n        std::process::exit(0);\n    } else {\n        println!(\"SELF_HOST_LOGIC_BEHAVIORAL_RECEIPT: FAIL\");\n        std::process::exit(1);\n    }\n}\n"
 
 data slb_scaffold_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: slb_driver_main_source + slb_cargo_toml — the hand-written Rust equivalence-comparison driver (imports emitted v1_compiled::std_logic and seed v1_compiler::std_logic, walks the Classical truth table, --inject-fault RED control) and its driver-crate manifest, both String carriers. These are the meta-harness scaffold for the weak self-host receipt, not a forked emit path: the module content under test (dag/std/logic.dag) is read live and emitted by the real gunbc binary; only the seed-vs-emitted oracle around it is authored by hand. Static config/driver strings handed to typed host ops (not modeled-emit-fn output spliced through string ops). DISSOLVES WHEN a modeled self-host behavioral-equivalence harness producer emits the comparison driver + manifest (parallel to emit_host_transport's typed-op migration) — retire these two string carriers then.")
 
 data slb_receipt_pass_marker: String = "SELF_HOST_LOGIC_BEHAVIORAL_RECEIPT: PASS"
+
+data slb_receipt_fail_marker: String = "SELF_HOST_LOGIC_BEHAVIORAL_RECEIPT: FAIL"
+
+// classical_not over 2 inputs, plus classical_and and classical_or over 4 input pairs
+// each: 2 + 4 + 4. This is the DECLARED population; the driver reports the count it
+// actually walked, and slb_cases_marker joins the two. Before that join the driver could
+// compare any subset and still print PASS, because PASS reported agreement over whatever
+// it happened to reach rather than over the corpus it claims.
+//
+// The first draft of this row said 12 while the sentence above it said 2 + 4 + 4, and
+// the driver was measured walking 10 — a count sitting beside a description, joined to
+// nothing, which is the same defect the join exists to close. It was caught by compiling
+// the driver and reading its own reported count, not by re-reading either.
+data slb_corpus_cases: Int = 10
+
+data slb_corpus_identity: String = "std-logic-classical-truth-table"
+
+fn slb_cases_marker() -> String {
+  concat("SELF_HOST_LOGIC_CASES_COMPARED: ", to_string(slb_corpus_cases))
+}
+
+fn slb_corpus() -> BehavioralCorpus {
+  BehavioralCorpus {
+    identity: slb_corpus_identity,
+    expected_cases: slb_corpus_cases
+  }
+}
 
 fn slb_repo_path(root: String, rel: String) -> String {
   concat(root, concat("/", rel))
@@ -37,7 +77,7 @@ fn slb_cargo_toml(root: String) -> String {
   )
 }
 
-fn slb_behavioral_receipt_holds() -> Bool {
+fn slb_comparison_observation() -> BehavioralComparisonObservation {
   let root = git.Inspect.Toplevel()
   let logic_read = Filesystem.Read(path: slb_repo_path(root: root.path, rel: slb_logic_source_rel))
 
@@ -77,12 +117,112 @@ fn slb_behavioral_receipt_holds() -> Bool {
   let cleanup_src = shell.Remove.RecursiveForce(path: scratch_src.path)
   let cleanup_out = shell.Remove.RecursiveForce(path: out_dir.path)
 
-  logic_read.success
+  let staged = logic_read.success
     && scratch_src.success && scratch_src_std.success && logic_written.success
     && out_dir.success && gunbc_built && emit.success
     && manifest.success && main_rs.success
-    && build.success
-    && pass_run.success && string_contains(s: pass_run.stdout, pattern: slb_receipt_pass_marker)
-    && (fault_run.success == false)
     && cleanup_src.success && cleanup_out.success
+
+  // A step that never ran yields no verdict about the step after it. Reporting an
+  // un-run comparison as divergence would be ⊥-as-ignorance, and reporting it as
+  // agreement ⊤-as-ignorance; both are the shape DESIGN §5 forbids, so a staging or
+  // build failure makes the downstream observations unavailable UNDER THEIR OWN CAUSE
+  // rather than collapsing into either verdict.
+  let ran = staged && build.success
+
+  let build_verdict = if !staged {
+    ObservationUnavailable { cause: ^slb_stage_incomplete }
+  } else if build.success {
+    Observed { value: BuildGreen }
+  } else {
+    Observed { value: BuildFailed { cause: ^slb_driver_build_failed } }
+  }
+
+  // Agreement is the PASS marker plus the count marker, never exit status alone. The
+  // count marker is what makes PASS mean "agreed over the declared corpus" instead of
+  // "agreed over whatever it reached": the driver prints the number of cases it walked
+  // and this joins it to slb_corpus_cases, so a driver that compared a subset and
+  // passed on that subset no longer reports agreement.
+  let compared_declared_corpus = string_contains(
+    s: pass_run.stdout,
+    pattern: slb_cases_marker()
+  )
+  let equivalence_verdict = if !ran {
+    ObservationUnavailable { cause: ^slb_comparison_did_not_run }
+  } else if !compared_declared_corpus {
+    ObservationUnavailable { cause: ^slb_comparison_population_unreported }
+  } else if pass_run.success
+    && string_contains(s: pass_run.stdout, pattern: slb_receipt_pass_marker) {
+    Observed { value: BehaviorAgrees }
+  } else if string_contains(s: pass_run.stdout, pattern: slb_receipt_fail_marker) {
+    Observed { value: BehaviorDiverges { at_case: pass_run.stdout } }
+  } else {
+    ObservationUnavailable { cause: ^slb_comparison_unreported }
+  }
+
+  // THE FAIL-OPEN THIS CLOSES. The superseded conjunction accepted the planted fault as
+  // caught on `fault_run.success == false` — a nonzero exit and nothing more. Any
+  // unrelated failure of that process reads as a caught fault under that test: a panic
+  // on startup, an argument the driver stopped understanding, a missing shared library.
+  // The one run whose entire job is to prove the corpus has teeth was the one run whose
+  // outcome was inferred from an exit code, so the RED control could rot into a process
+  // that dies for its own reasons and still vouches for the receipt.
+  //
+  // Catching the fault now requires the driver to REPORT the divergence it was made to
+  // find, over the declared corpus. A nonzero exit with no such report is unavailable,
+  // not caught.
+  let fault_verdict = if !ran {
+    ObservationUnavailable { cause: ^slb_fault_run_did_not_run }
+  } else if fault_run.success {
+    Observed {
+      value: FaultNotCaught { at_case: "planted fault run exited zero" }
+    }
+  } else if string_contains(s: fault_run.stdout, pattern: slb_cases_marker())
+    && string_contains(s: fault_run.stdout, pattern: slb_receipt_fail_marker) {
+    Observed { value: FaultCaught }
+  } else {
+    ObservationUnavailable { cause: ^slb_fault_run_unreported }
+  }
+
+  BehavioralComparisonObservation {
+    corpus: slb_corpus(),
+    cases_compared: slb_corpus_cases,
+    build: build_verdict,
+    equivalence: equivalence_verdict,
+    fault: fault_verdict
+  }
+}
+
+// The enrolled witness surface, unchanged in name and signature so the falsifier wet
+// lane keeps its consumer. It is now a PROJECTION of the observation rather than the
+// authority: the receipt holds when the driver built, behavior agreed with the seed
+// over the declared corpus, and the planted fault was reported caught. Every other
+// combination — including every unavailable observation — is false, and the observation
+// itself says which, so the deficit stays countable rather than collapsing to one bit.
+fn slb_behavioral_receipt_holds() -> Bool {
+  let o = slb_comparison_observation()
+  match o.build {
+    Observed { value: b } =>
+      match b {
+        BuildGreen =>
+          match o.equivalence {
+            Observed { value: e } =>
+              match e {
+                BehaviorAgrees =>
+                  match o.fault {
+                    Observed { value: f } =>
+                      match f {
+                        FaultCaught => true
+                        FaultNotCaught { at_case: _ } => false
+                      }
+                    ObservationUnavailable { cause: _ } => false
+                  }
+                BehaviorDiverges { at_case: _ } => false
+              }
+            ObservationUnavailable { cause: _ } => false
+          }
+        BuildFailed { cause: _ } => false
+      }
+    ObservationUnavailable { cause: _ } => false
+  }
 }
