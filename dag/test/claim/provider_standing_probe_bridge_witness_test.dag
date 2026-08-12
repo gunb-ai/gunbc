@@ -317,7 +317,15 @@ test fn witness_capacity_unknown_is_not_capacity() -> Bool {
   let unknown = provider_limit_observation_from_codex_bucket(
     credential: press_bucket_credential(),
     verdict: CodexBucketCapacityUnknown { limit_id: "codex" as NonEmptyStr })
-  (match unknown { LimitObservationUnobserved { reason: _ } => true _ => false })
+  (match unknown {
+    LimitSubjectUnobserved { subject: s, native_token: _, reason: _ } =>
+      match s {
+        ProviderNativeLimitBucket { credential: _, native_key: k } =>
+          k == ("codex" as NonEmptyStr)
+        _ => false
+      }
+    _ => false
+  })
     && !limit_observations_are_selection_eligible(
       observations: [unknown], draw: draw_on(native_key: "codex" as NonEmptyStr))
 }
