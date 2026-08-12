@@ -333,7 +333,7 @@ fn frontier_probe_survey_receipt_paths_match(
   )
 }
 
-data frontier_gap_clustering_derivation_note: String = "The dominant reason is READ OFF the receipts, never supplied by the branch that fired. Before this, clustering counted blocker CLASSES and then wrote a hardcoded located_reason literal per branch (^parse_grammar_choice_overlap_residue for the realization branch, and so on), so a verdict reported a reason no receipt had to carry: two modules whose measured refusals differ were indistinguishable, and the one measured survey to date carries ^tokenize_lex_e1_unrecognized_char, which no branch could ever name. count_receipts_with_located_reason existed with zero callers throughout. CommonRoot now requires UNANIMITY rather than a plurality: any plurality bar is a threshold, and a threshold is the smuggled heuristic a closed system never needs — a survey where one reason covers every receipt has a common root, and one where it does not is heterogeneous with its true distinct count. An empty survey has no measured reason, so it cannot be a CommonRoot; it reports a distinct count of zero, which says exactly that. Cost: distinct reasons are collected in one pass and counted once each, so the fold is d*n over the distinct set rather than n*n over the receipts."
+data frontier_gap_clustering_derivation_note: String = "The dominant reason is READ OFF the receipts, never supplied by the branch that fired. Before this, clustering counted blocker CLASSES and then wrote a hardcoded located_reason literal per branch (^parse_grammar_choice_overlap_residue for the realization branch, and so on), so a verdict reported a reason no receipt had to carry: two modules whose measured refusals differ were indistinguishable, and the one measured survey to date carries ^tokenize_lex_e1_unrecognized_char, which no branch could ever name. count_receipts_with_located_reason existed with zero callers throughout. CommonRoot now requires UNANIMITY rather than a plurality: any plurality bar is a threshold, and a threshold is the smuggled heuristic a closed system never needs — a survey where one reason covers every receipt has a common root, and one where it does not is heterogeneous with its true distinct count. An empty survey has no measured reason, so it cannot be a CommonRoot; it reports a distinct count of zero, which says exactly that. Cost: distinct reasons are collected in one pass and counted once each, so the fold is d*n over the distinct set rather than n*n over the receipts. The tally runs only on the unanimous arm, where its result is consumed; the heterogeneous arm needs the distinct count alone and computing a tally it discards would be a cost-shape defect regardless of how small the survey is (review 51421)."
 
 type FrontierReasonTally = ReasonTally { reason: Symbol, count: Int }
 
@@ -375,18 +375,24 @@ fn dominant_located_reason_tally(xs: List<FrontierProbeReceipt>) -> FrontierReas
   )
 }
 
+fn common_root_from_tally(top: FrontierReasonTally, module_count: Int) -> FrontierGapClusterVerdict {
+  CommonRoot {
+    dominant_located_reason: top.reason,
+    dominant_module_count: top.count,
+    module_count: module_count
+  }
+}
+
 fn frontier_gap_clustering_from_receipts(
   xs: List<FrontierProbeReceipt>,
   module_count: Int
 ) -> FrontierGapClusterVerdict {
   let distinct_count = length(xs: distinct_located_reasons(xs: xs))
-  let top = dominant_located_reason_tally(xs: xs)
   if distinct_count == 1 {
-    CommonRoot {
-      dominant_located_reason: top.reason,
-      dominant_module_count: top.count,
+    common_root_from_tally(
+      top: dominant_located_reason_tally(xs: xs),
       module_count: module_count
-    }
+    )
   } else {
     HeterogeneousGaps {
       distinct_located_reason_count: distinct_count,
