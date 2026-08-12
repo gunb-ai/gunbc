@@ -1,0 +1,190 @@
+module v2.test.claim.verilog_interlock_emission_test
+
+import v2.std.node { Node, Symbol }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.grammar { FormalProduction, Holds, Violates }
+import v2.extdeps.languages.verilog {
+  verilog_ansi_port,
+  verilog_assign_list_one,
+  verilog_binary_application,
+  verilog_continuous_assign,
+  verilog_target_model_with_single_row,
+  verilog_interlock_emitted,
+  verilog_module_declaration,
+  verilog_port_list_cons,
+  verilog_port_list_one,
+  verilog_relation_row_for,
+  verilog_signal_reference,
+  verilog_unary_application,
+  verilog_emission_formal_productions_reversed,
+  verilog_relation_row_for_productions,
+}
+import v2.compiler.translate { target_serialize_relation_row_from_model_bounded }
+import v2.std.compilers.target_model { render_target_text }
+
+data verilog_emission_note: String = "THE PROOF THAT TARGET EMISSION COMPOSES. These bytes are produced by the GENERIC serializer walking derived relation rows — no Verilog branch exists in the compiler and no Verilog spelling is authored here. The module frame, the recursive port list, the nested expressions and every space and newline come from the target's productions and layout profile. The oracle is the exact source product.compute_board.verilog_projection prints today by hand, which is what makes this a replacement rather than a second implementation."
+
+data expected_interlock_verilog: String = "module board_power_interlock (\n  input  wire conditioned_good,\n  input  wire fault,\n  output wire power_permit,\n  output wire reset_release\n);\n  assign power_permit = (conditioned_good & ~fault);\n  assign reset_release = (conditioned_good & power_permit);\nendmodule\n"
+
+fn emit(emitted: Node) -> String {
+  match verilog_relation_row_for(lhs: ^verilog_production_ansi_module_decl, emitted: emitted) {
+    Holds { value: row } =>
+      match target_serialize_relation_row_from_model_bounded(
+        4096,
+        verilog_target_model_with_single_row(row: row),
+        emitted
+      ) {
+        Accepted { value: text, diagnostics: _ } => render_target_text(t: text)
+        Rejected { diagnostics: _ } => "EMISSION_REFUSED"
+      }
+    Violates { diagnostic: _ } => "ROW_NOT_DERIVED"
+  }
+}
+
+// THE POSITIVE CONTROL, as full byte equality rather than a contains-check. A substring assertion
+// would pass on a module with a duplicated port, a missing assignment, or wrong indentation —
+// four different circuits' worth of difference — so the whole artifact is pinned at once.
+test fn w_interlock_emits_expected_bytes_through_the_generic_fold() -> Bool {
+  emit(emitted: verilog_interlock_emitted()) == expected_interlock_verilog
+}
+
+// EVERY ROW MUST DERIVE, which is what keeps the rules population honest. The population is built
+// through a helper that yields an empty node when derivation fails, and an empty row cannot match
+// anything — so a silent derivation failure would surface only as a distant row-not-found. This
+// asserts the fallback is UNREACHABLE rather than trusting that it is.
+fn row_derives(lhs: Symbol, emitted: Node) -> Bool {
+  match verilog_relation_row_for(lhs: lhs, emitted: emitted) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
+  }
+}
+
+test fn w_every_relation_row_derives() -> Bool {
+  row_derives(lhs: ^verilog_production_ansi_module_decl, emitted: verilog_interlock_emitted())
+    && row_derives(lhs: ^verilog_production_ansi_port, emitted: first_port())
+    && row_derives(lhs: ^verilog_production_expr, emitted: verilog_signal_reference(name: ^verilog_interlock_fault))
+    && row_derives(lhs: ^verilog_production_expr, emitted: negated_fault())
+    && row_derives(lhs: ^verilog_production_continuous_assign, emitted: permit_assignment())
+}
+
+fn first_port() -> Node {
+  verilog_ansi_port(direction: ^verilog_interlock_dir_input, name: ^verilog_interlock_conditioned_good)
+}
+
+fn negated_fault() -> Node {
+  verilog_unary_application(
+    operator: ^verilog_interlock_op_not,
+    operand: verilog_signal_reference(name: ^verilog_interlock_fault)
+  )
+}
+
+fn permit_assignment() -> Node {
+  verilog_continuous_assign(
+    lhs: ^verilog_interlock_power_permit,
+    value: verilog_binary_application(
+      left: verilog_signal_reference(name: ^verilog_interlock_conditioned_good),
+      operator: ^verilog_interlock_op_and,
+      right: negated_fault()
+    )
+  )
+}
+
+// PERTURBING THE EXPRESSION CHANGES THE EXPRESSION AND NOTHING ELSE. Dropping the negation must
+// alter the emitted bytes — otherwise the emission is not a function of the model and the equality
+// above pins a constant — while the module frame and every port stay byte-identical.
+fn unnegated_module() -> Node {
+  verilog_module_declaration(
+    name: ^verilog_interlock_module_name,
+    ports: interlock_ports(),
+    assignments: verilog_assign_list_one(
+      assignment: verilog_continuous_assign(
+        lhs: ^verilog_interlock_power_permit,
+        value: verilog_binary_application(
+          left: verilog_signal_reference(name: ^verilog_interlock_conditioned_good),
+          operator: ^verilog_interlock_op_and,
+          right: verilog_signal_reference(name: ^verilog_interlock_fault)
+        )
+      )
+    )
+  )
+}
+
+test fn w_expression_perturbation_changes_the_bytes() -> Bool {
+  emit(emitted: unnegated_module()) != expected_interlock_verilog
+    && string_contains(s: emit(emitted: unnegated_module()), pattern: "(conditioned_good & fault)")
+    && !string_contains(s: emit(emitted: unnegated_module()), pattern: "~")
+}
+
+test fn w_expression_perturbation_leaves_the_port_region_intact() -> Bool {
+  string_contains(
+    s: emit(emitted: unnegated_module()),
+    pattern: "module board_power_interlock (\n  input  wire conditioned_good,\n  input  wire fault,\n  output wire power_permit,\n  output wire reset_release\n);\n"
+  )
+}
+
+fn interlock_ports() -> Node {
+  verilog_port_list_cons(
+    port: first_port(),
+    rest: verilog_port_list_cons(
+      port: verilog_ansi_port(direction: ^verilog_interlock_dir_input, name: ^verilog_interlock_fault),
+      rest: verilog_port_list_cons(
+        port: verilog_ansi_port(direction: ^verilog_interlock_dir_output, name: ^verilog_interlock_power_permit),
+        rest: verilog_port_list_one(
+          port: verilog_ansi_port(direction: ^verilog_interlock_dir_output, name: ^verilog_interlock_reset_release)
+        )
+      )
+    )
+  )
+}
+
+// THE PORT LIST IS A GRAMMAR, NOT THREE SLOTS. A two-port module emits through the same
+// productions as a four-port one, which is the claim a fixed-arity encoding could not make. The
+// assignment region is unchanged, so the difference is attributable to the port population.
+fn two_port_module() -> Node {
+  verilog_module_declaration(
+    name: ^verilog_interlock_module_name,
+    ports: verilog_port_list_cons(
+      port: first_port(),
+      rest: verilog_port_list_one(
+        port: verilog_ansi_port(direction: ^verilog_interlock_dir_output, name: ^verilog_interlock_power_permit)
+      )
+    ),
+    assignments: verilog_assign_list_one(assignment: permit_assignment())
+  )
+}
+
+test fn w_port_population_changes_only_the_port_region() -> Bool {
+  string_contains(
+    s: emit(emitted: two_port_module()),
+    pattern: "module board_power_interlock (\n  input  wire conditioned_good,\n  output wire power_permit\n);\n"
+  )
+    && string_contains(
+      s: emit(emitted: two_port_module()),
+      pattern: "  assign power_permit = (conditioned_good & ~fault);\n"
+    )
+    && !string_contains(s: emit(emitted: two_port_module()), pattern: "reset_release")
+}
+
+// NO PRODUCTION IS SELECTED BY POSITION. Deriving against the reversed population must produce
+// byte-identical output; if it did not, selection would be first-match and the grammar would be
+// an ordered table pretending to be a relation. An earlier version of this control asserted a
+// production COUNT, which proves nothing about order and is a literal measured from the same
+// tree it checks.
+fn emit_with(productions: List<FormalProduction>, emitted: Node) -> String {
+  match verilog_relation_row_for_productions(productions: productions, lhs: ^verilog_production_ansi_module_decl, emitted: emitted) {
+    Holds { value: row } =>
+      match target_serialize_relation_row_from_model_bounded(
+        4096,
+        verilog_target_model_with_single_row(row: row),
+        emitted
+      ) {
+        Accepted { value: text, diagnostics: _ } => render_target_text(t: text)
+        Rejected { diagnostics: _ } => "EMISSION_REFUSED"
+      }
+    Violates { diagnostic: _ } => "ROW_NOT_DERIVED"
+  }
+}
+
+test fn w_production_order_does_not_change_the_bytes() -> Bool {
+  emit_with(productions: verilog_emission_formal_productions_reversed(), emitted: verilog_interlock_emitted()) == expected_interlock_verilog
+}
