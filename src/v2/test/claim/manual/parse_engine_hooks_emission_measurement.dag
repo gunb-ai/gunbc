@@ -25,6 +25,8 @@ data measurement_note: String = "MEASUREMENT INSTRUMENT, not a witness. Delibera
 
 data pmh_module_source: String = "module data_probe\n\ndata probe_value: Int = 7\n"
 
+data pmh_fn_module_source: String = "module data_probe\n\nfn probe_value() -> Int { 7 }\n"
+
 data pmh_artifact: Artifact = Artifact {
   kind: SourceFile,
   id: ^pmh_ingest_artifact,
@@ -82,5 +84,34 @@ fn measure_control_fn_module_stage() -> String {
     EmissionRejected { diagnostics: _ } => "CONTROL=EmissionRejected"
     ProducerReceiptRejected { diagnostics: _ } => "CONTROL=ProducerReceiptRejected"
     ArtifactProduced { artifact: _ } => "CONTROL=ArtifactProduced"
+  }
+}
+
+// SECOND CONTROL, isolating the one variable the first control leaves confounded.
+// The door control differs from the subject in TWO ways: fn-versus-data AND its
+// own ingest/admission wiring. This one holds my wiring, my module name, my
+// admission and my artifact fixed and changes ONLY the declaration form, so a
+// stage difference here is attributable to data-versus-fn and to nothing else.
+// If this also reported AssemblyRejected, the subject reading would be about my
+// instrument rather than about module-level data.
+data pmh_fn_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: Medium { carried: pmh_fn_module_source, fidelity: Lossless },
+  artifact: pmh_artifact,
+  compilation_unit: ^pmh_data_probe_cu,
+  source_root: V2Tree
+}
+
+fn measure_synthetic_fn_module_stage() -> String {
+  match observe_provenanced_rust_emission_from_ingest(
+    ingest: Cons { head: pmh_fn_read, tail: Empty },
+    admission: pmh_admission(),
+    target: rust_target_model(),
+    module_path: "src/v2/compiler/parse_engine_hooks.dag"
+  ) {
+    AssemblyRejected { diagnostics: _ } => "SYNTHFN=AssemblyRejected"
+    InferenceRejected { diagnostics: _ } => "SYNTHFN=InferenceRejected"
+    EmissionRejected { diagnostics: _ } => "SYNTHFN=EmissionRejected"
+    ProducerReceiptRejected { diagnostics: _ } => "SYNTHFN=ProducerReceiptRejected"
+    ArtifactProduced { artifact: _ } => "SYNTHFN=ArtifactProduced"
   }
 }
