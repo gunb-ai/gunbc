@@ -1,0 +1,60 @@
+module v2.test.claim.manual.parse_engine_hooks_emission_measurement
+
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest, V2Tree }
+import v2.compiler.self_host.candidate_generation {
+  ArtifactProduced,
+  AssemblyRejected,
+  EmissionRejected,
+  InferenceRejected,
+  ProducerReceiptRejected,
+  observe_provenanced_rust_emission_from_ingest
+}
+import v2.extdeps.languages.rust { rust_target_model }
+import std.algebra { Cons, Empty }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.text { String }
+
+data measurement_note: String = "MEASUREMENT INSTRUMENT, not a witness. Deliberately plain fns so nothing enrolls. Answers one question by execution: which stage of observe_provenanced_rust_emission_from_ingest first refuses for a module-level data declaration, which is the shape parse_engine_hooks is made of. The historical blocker description says emission is absent for module-level data; this measures whether that is still where it stops, because building a renderer from a description rather than a measurement is how a lane spends days on a stage the pipeline never reaches."
+
+data pmh_module_source: String = "module data_probe\n\ndata probe_value: Int = 7\n"
+
+data pmh_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^pmh_ingest_artifact,
+  file_path: "src/v2/test/claim/manual/parse_engine_hooks_emission_measurement.dag"
+}
+
+data pmh_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: Medium { carried: pmh_module_source, fidelity: Lossless },
+  artifact: pmh_artifact,
+  compilation_unit: ^pmh_data_probe_cu,
+  source_root: V2Tree
+}
+
+fn pmh_ingest() -> SourceRootIngest {
+  Cons { head: pmh_read, tail: Empty }
+}
+
+fn pmh_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject { name: Cons { head: ^data_probe, tail: Empty } },
+    imports: Empty
+  }
+}
+
+fn measure_module_data_emission_stage() -> String {
+  match observe_provenanced_rust_emission_from_ingest(
+    ingest: pmh_ingest(),
+    admission: pmh_admission(),
+    target: rust_target_model(),
+    module_path: "src/v2/compiler/parse_engine_hooks.dag"
+  ) {
+    AssemblyRejected { diagnostics: _ } => "STAGE=AssemblyRejected"
+    InferenceRejected { diagnostics: _ } => "STAGE=InferenceRejected"
+    EmissionRejected { diagnostics: _ } => "STAGE=EmissionRejected"
+    ProducerReceiptRejected { diagnostics: _ } => "STAGE=ProducerReceiptRejected"
+    ArtifactProduced { artifact: _ } => "STAGE=ArtifactProduced"
+  }
+}
