@@ -2,7 +2,16 @@ module v2.extdeps.languages.verilog
 
 import v2.std.nat { Nat }
 import std.integer { Signedness }
-import v2.std.node { Symbol }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Node,
+  Positional,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode,
+}
 import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.grammar {
   StampClass,
@@ -803,6 +812,89 @@ fn verilog_emission_formal_productions() -> List<FormalProduction> {
 // expression. The oracle needs both. Splitting the class is what makes the layout expressible;
 // the two classes lex the same literal, which is a REPARSE question and is called out in the
 // module note rather than papered over here.
+fn verilog_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn verilog_conj(children: List<Edge>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: children,
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn verilog_slot(target: Node) -> Edge {
+  Edge { label: Positional, target: target }
+}
+
+// THE EMITTED NODE CARRIES ONE SLOT PER VARIABLE POSITION, and its ARITY is what the backward
+// selector matches on. That is why the expression forms have one, two and three slots rather than
+// sharing a shape and relying on a discriminant nobody compares: a signal reference carries its
+// name, a unary application carries operator and operand, a binary one carries operand, operator
+// and operand. Concrete punctuation contributes no slot, which is exactly why the parentheses and
+// the keywords are invisible here and live entirely in the layout profile.
+fn verilog_signal_reference(name: Symbol) -> Node {
+  verilog_conj(children: [verilog_slot(target: verilog_atom(id: name))])
+}
+
+fn verilog_unary_application(operator: Symbol, operand: Node) -> Node {
+  verilog_conj(children: [
+    verilog_slot(target: verilog_atom(id: operator)),
+    verilog_slot(target: operand)
+  ])
+}
+
+fn verilog_binary_application(left: Node, operator: Symbol, right: Node) -> Node {
+  verilog_conj(children: [
+    verilog_slot(target: left),
+    verilog_slot(target: verilog_atom(id: operator)),
+    verilog_slot(target: right)
+  ])
+}
+
+fn verilog_ansi_port(direction: Symbol, name: Symbol) -> Node {
+  verilog_conj(children: [
+    verilog_slot(target: verilog_atom(id: direction)),
+    verilog_slot(target: verilog_atom(id: name))
+  ])
+}
+
+fn verilog_port_list_one(port: Node) -> Node {
+  verilog_conj(children: [verilog_slot(target: port)])
+}
+
+fn verilog_port_list_cons(port: Node, rest: Node) -> Node {
+  verilog_conj(children: [verilog_slot(target: port), verilog_slot(target: rest)])
+}
+
+fn verilog_continuous_assign(lhs: Symbol, value: Node) -> Node {
+  verilog_conj(children: [
+    verilog_slot(target: verilog_atom(id: lhs)),
+    verilog_slot(target: value)
+  ])
+}
+
+fn verilog_assign_list_one(assignment: Node) -> Node {
+  verilog_conj(children: [verilog_slot(target: assignment)])
+}
+
+fn verilog_assign_list_cons(assignment: Node, rest: Node) -> Node {
+  verilog_conj(children: [verilog_slot(target: assignment), verilog_slot(target: rest)])
+}
+
+fn verilog_module_declaration(name: Symbol, ports: Node, assignments: Node) -> Node {
+  verilog_conj(children: [
+    verilog_slot(target: verilog_atom(id: name)),
+    verilog_slot(target: ports),
+    verilog_slot(target: assignments)
+  ])
+}
+
 fn verilog_emit_layout_transforms() -> Map<Symbol, fn(String) -> String> {
   map_insert(
     map_insert(
