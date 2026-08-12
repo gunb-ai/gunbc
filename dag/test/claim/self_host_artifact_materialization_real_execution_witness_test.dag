@@ -6,6 +6,17 @@ import extdeps.filesystem.filesystem_io
 import extdeps.shell
 import extdeps.cargo_build
 import gunbc.self_host_artifact_materialization
+import v2.compiler.self_host.generation {
+  ArtifactIdentity,
+  ArtifactMaterialized,
+  ArtifactNotMaterialized,
+  GenerationIdentity,
+  MaterializedArtifactAxis,
+  generation_axis_symbol,
+  generation_identity_mismatched_axes
+}
+import v2.std.algebra { for_all, length }
+import v2.std.node { symbol_identity_digest }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -28,6 +39,10 @@ type BuiltFixture
   | FixtureSetupRefused { cause: String }
 
 fn build_fixture_once(target_name: String) -> BuiltFixture {
+  build_fixture_from_source(target_name: target_name, main_source: crate_main)
+}
+
+fn build_fixture_from_source(target_name: String, main_source: String) -> BuiltFixture {
   let dir = shell.Mktemp.Dir()
   if !dir.success {
     FixtureSetupRefused { cause: "mktemp -d failed" }
@@ -36,7 +51,7 @@ fn build_fixture_once(target_name: String) -> BuiltFixture {
     let manifest = "{root}/Cargo.toml"
     let main_rs = "{root}/main.rs"
     let wrote_manifest = Filesystem.Write(path: manifest, content: crate_manifest)
-    let wrote_main = Filesystem.Write(path: main_rs, content: crate_main)
+    let wrote_main = Filesystem.Write(path: main_rs, content: main_source)
     if !wrote_manifest.success || !wrote_main.success {
       FixtureSetupRefused { cause: "fixture crate write failed" }
     } else {
@@ -130,5 +145,127 @@ test fn the_digest_is_of_the_file_cargo_named_not_of_some_other_real_file() -> B
         ArtifactMaterializationPathRefused { selection: _ } => false
         ArtifactMaterializationDigestRefused { executable: _, cause: _ } => false
       }
+  }
+}
+
+data crate_main_variant: String = "fn main() \{ println!(\"gunbc artifact axis fixture, second program\"); \}\n"
+
+data build_path_is_in_the_bytes_note: String = "MEASURED, and it is why both claims below build in ONE directory. A Rust debug binary embeds its build path, so the SAME source compiled in two different temp directories produces DIFFERENT bytes and therefore a different digest, while the same directory rebuilt produces byte-identical output. Verified directly: two mktemp dirs, one source, two digests; one dir built twice, one digest.
+
+THAT INVALIDATES THE OBVIOUS FIXTURE SHAPE. A claim that builds source A in dir 1 and source B in dir 2 and observes the artifact axis move proves nothing about the source, because the path difference alone accounts for it — the claim would pass unchanged if both sources were identical. That is the same non-discriminating shape as asserting a field is populated: something moved, and the fixture cannot say what. Holding the directory fixed and varying only main.rs makes the byte difference attributable to the source, which is the whole point of a per-axis derivation claim.
+
+CONSEQUENCE FOR THE AXIS, worth naming rather than leaving for someone to hit. The artifact digest is not a pure function of the five model-side axes: it also carries build location. Relocating an otherwise identical build reports as a moved artifact axis. That direction is fail-closed — a false INVALIDATION, never a false agreement, so nothing is silently admitted — but it means artifact-axis equality across hosts or workspaces is not expected to hold and must not be treated as a reproducibility oracle. Making it one needs --remap-path-prefix or an equivalent, which is a build-configuration decision this lane does not own."
+
+type TwoBuilds
+  = TwoBuilds { first: ArtifactIdentity, second: ArtifactIdentity }
+  | TwoBuildsSetupRefused { cause: String }
+
+fn build_twice_in_one_dir(first_source: String, second_source: String) -> TwoBuilds {
+  let dir = shell.Mktemp.Dir()
+  if !dir.success {
+    TwoBuildsSetupRefused { cause: "mktemp -d failed" }
+  } else {
+    let root = trim(dir.path as String)
+    let manifest = "{root}/Cargo.toml"
+    let main_rs = "{root}/main.rs"
+    let wrote_manifest = Filesystem.Write(path: manifest, content: crate_manifest)
+    let wrote_first = Filesystem.Write(path: main_rs, content: first_source)
+    if !wrote_manifest.success || !wrote_first.success {
+      TwoBuildsSetupRefused { cause: "fixture crate write failed" }
+    } else {
+      let first = gunbc.self_host_artifact_materialization.artifact_identity_of(
+        outcome: gunbc.self_host_artifact_materialization.materialize_artifact_wet(
+          workdir: root, manifest_path: manifest, target_dir: "{root}/target",
+          target_name: fixture_target_name, extra_args: []
+        )
+      )
+      let wrote_second = Filesystem.Write(path: main_rs, content: second_source)
+      if !wrote_second.success {
+        TwoBuildsSetupRefused { cause: "second fixture source write failed" }
+      } else {
+        TwoBuilds {
+          first: first,
+          second: gunbc.self_host_artifact_materialization.artifact_identity_of(
+            outcome: gunbc.self_host_artifact_materialization.materialize_artifact_wet(
+              workdir: root, manifest_path: manifest, target_dir: "{root}/target",
+              target_name: fixture_target_name, extra_args: []
+            )
+          )
+        }
+      }
+    }
+  }
+}
+
+fn axis_is_materialized(a: ArtifactIdentity) -> Bool {
+  match a {
+    ArtifactMaterialized { digest: _ } => true
+    ArtifactNotMaterialized => false
+  }
+}
+
+fn axis_identity(artifact: ArtifactIdentity) -> GenerationIdentity {
+  GenerationIdentity {
+    producer_compiler: symbol_identity_digest(sym: "axis-derivation-producer-compiler"),
+    source_closure: symbol_identity_digest(sym: "axis-derivation-source-closure"),
+    target_model: symbol_identity_digest(sym: "axis-derivation-target-model"),
+    toolchain: symbol_identity_digest(sym: "axis-derivation-toolchain"),
+    build_configuration: symbol_identity_digest(sym: "axis-derivation-build-configuration"),
+    materialized_artifact: artifact
+  }
+}
+
+fn moved_axis_count(both: TwoBuilds) -> Int {
+  match both {
+    TwoBuildsSetupRefused { cause: _ } => 0 - 1
+    TwoBuilds { first: f, second: s } =>
+      if !axis_is_materialized(a: f) || !axis_is_materialized(a: s) {
+        0 - 1
+      } else {
+        length(
+          xs: generation_identity_mismatched_axes(
+            left: axis_identity(artifact: f),
+            right: axis_identity(artifact: s)
+          )
+        )
+      }
+  }
+}
+
+test fn changing_only_the_source_bytes_names_exactly_the_artifact_axis() -> Bool {
+  let both = build_twice_in_one_dir(
+    first_source: crate_main,
+    second_source: crate_main_variant
+  )
+  match both {
+    TwoBuildsSetupRefused { cause: _ } => false
+    TwoBuilds { first: f, second: s } =>
+      axis_is_materialized(a: f)
+        && axis_is_materialized(a: s)
+        && moved_axis_count(both: both) == 1
+        && for_all(
+          xs: generation_identity_mismatched_axes(
+            left: axis_identity(artifact: f),
+            right: axis_identity(artifact: s)
+          ),
+          predicate: fn(named) {
+            generation_axis_symbol(axis: named) ==
+              generation_axis_symbol(axis: MaterializedArtifactAxis)
+          }
+        )
+  }
+}
+
+test fn rebuilding_identical_source_in_place_moves_no_axis() -> Bool {
+  let both = build_twice_in_one_dir(
+    first_source: crate_main,
+    second_source: crate_main
+  )
+  match both {
+    TwoBuildsSetupRefused { cause: _ } => false
+    TwoBuilds { first: f, second: s } =>
+      axis_is_materialized(a: f)
+        && axis_is_materialized(a: s)
+        && moved_axis_count(both: both) == 0
   }
 }
