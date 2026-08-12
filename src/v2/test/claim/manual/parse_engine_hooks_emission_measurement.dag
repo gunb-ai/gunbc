@@ -21,6 +21,8 @@ import v2.extdeps.languages.rust { rust_target_model }
 import std.algebra { Cons, Empty }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.text { String }
+import v2.std.node { Symbol }
+
 
 data measurement_note: String = "MEASUREMENT INSTRUMENT, not a witness. Deliberately plain fns so nothing enrolls. Answers one question by execution: which stage of observe_provenanced_rust_emission_from_ingest first refuses for a module-level data declaration, which is the shape parse_engine_hooks is made of. The historical blocker description says emission is absent for module-level data; this measures whether that is still where it stops, because building a renderer from a description rather than a measurement is how a lane spends days on a stage the pipeline never reaches."
 
@@ -146,5 +148,40 @@ fn measure_door_shaped_data_module_stage() -> String {
     EmissionRejected { diagnostics: _ } => "DATASUBJ=EmissionRejected"
     ProducerReceiptRejected { diagnostics: _ } => "DATASUBJ=ProducerReceiptRejected"
     ArtifactProduced { artifact: _ } => "DATASUBJ=ArtifactProduced"
+  }
+}
+
+// The REASON, not only the stage. A stage name says where it stopped; the
+// diagnostic reason says what it objected to, and only the second one tells
+// anyone what to build. Reported with the diagnostic count because a single
+// reason read off a multi-diagnostic refusal would misrepresent the refusal
+// as narrower than it is.
+fn measure_door_shaped_data_reason() -> Symbol {
+  match observe_provenanced_rust_emission_from_ingest(
+    ingest: Cons { head: pmh_door_shaped_read, tail: Empty },
+    admission: direct_rust_door_admission(),
+    target: rust_target_model(),
+    module_path: direct_rust_door_module_path
+  ) {
+    AssemblyRejected { diagnostics: d } => d.head.reason
+    InferenceRejected { diagnostics: d } => d.head.reason
+    EmissionRejected { diagnostics: d } => d.head.reason
+    ProducerReceiptRejected { diagnostics: d } => d.head.reason
+    ArtifactProduced { artifact: _ } => ^no_refusal_artifact_was_produced
+  }
+}
+
+fn measure_control_fn_reason() -> Symbol {
+  match observe_provenanced_rust_emission_from_ingest(
+    ingest: direct_rust_door_ingest(),
+    admission: direct_rust_door_admission(),
+    target: rust_target_model(),
+    module_path: direct_rust_door_module_path
+  ) {
+    AssemblyRejected { diagnostics: d } => d.head.reason
+    InferenceRejected { diagnostics: d } => d.head.reason
+    EmissionRejected { diagnostics: d } => d.head.reason
+    ProducerReceiptRejected { diagnostics: d } => d.head.reason
+    ArtifactProduced { artifact: _ } => ^no_refusal_artifact_was_produced
   }
 }
