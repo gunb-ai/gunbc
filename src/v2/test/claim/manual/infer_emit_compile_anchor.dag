@@ -9,6 +9,7 @@ data anchor_stub_empty_conj: Node = Node {
 }
 
 data anchor_stub_target_model: TargetModel = TargetModel {
+  produced_decl_support: ProducedDeclUnwired,
   bundle: anchor_stub_empty_conj,
   lex: VoidLexRules,
   binding_spellings: empty_map(),

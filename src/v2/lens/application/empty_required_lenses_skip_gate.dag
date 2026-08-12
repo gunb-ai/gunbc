@@ -8,7 +8,8 @@ import v2.compiler.compile {
   Validated,
   validate_then_compile
 }
-import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
+import v2.std.compilers.target_model {
+  ProducedDeclUnwired, TargetModel, target_model_emit_transforms_empty }
 import v2.std.compilers.lexing { VoidLexRules }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
 import v2.std.logic { Bool }
@@ -27,6 +28,7 @@ import v2.std.verification {
 import v2.test.manual.infer_ground_add { fixture_add_resolved_tree }
 
 data empty_lenses_target_model_stub: TargetModel = TargetModel {
+  produced_decl_support: ProducedDeclUnwired,
   bundle: Node {
     kind: TypeNode { connective: Conj },
     children: [],

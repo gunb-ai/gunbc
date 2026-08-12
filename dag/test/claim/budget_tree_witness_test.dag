@@ -1,5 +1,7 @@
 module test.claim.budget_tree_witness
 
+import std.measure { Memory, One, byte_size }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn claim(name: String, amount: std.nat.Nat, p: BudgetPriority) -> BudgetClaim {
@@ -85,4 +87,3 @@ test fn witness_reconcile_guaranteed_shortfall() -> Bool {
 test fn witness_method_is_zero_based() -> Bool {
   budget_tree_method == ZeroBased
 }
-

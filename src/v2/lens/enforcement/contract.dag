@@ -31,7 +31,6 @@ import v2.lens.registry {
   lens_registry_v0_host_language_transport_script,
   lens_registry_v0_identical_variant_payload,
   lens_registry_v0_inert_carrier,
-  lens_registry_v0_inert_lens,
   lens_registry_v0_intent_linearity,
   lens_registry_v0_interface_summary,
   lens_registry_v0_languages_consumer_census,
@@ -332,15 +331,6 @@ data lens_contract_inert_carrier: LensContract = {
   boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: RealizationDispatch } }
 }
 
-data lens_contract_inert_lens: LensContract = {
-  entry: lens_registry_v0_inert_lens,
-  mode: AuditOnly,
-  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  consumer_witness: NoConsumerWitness,
-  exemptions: [],
-  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: RealizationDispatch } }
-}
-
 data lens_contract_intent_linearity: LensContract = {
   entry: lens_registry_v0_intent_linearity,
   mode: AuditOnly,
@@ -582,7 +572,6 @@ data lens_contract_registry: List<LensContract> = [
   lens_contract_host_language_transport_script,
   lens_contract_identical_variant_payload,
   lens_contract_inert_carrier,
-  lens_contract_inert_lens,
   lens_contract_intent_linearity,
   lens_contract_interface_summary,
   lens_contract_languages_consumer_census,

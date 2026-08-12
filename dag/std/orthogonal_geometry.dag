@@ -1,0 +1,660 @@
+module std.orthogonal_geometry
+
+import std.types { Bool, NonEmptyStr, List }
+import std.integer { Int }
+import std.nat { Nat }
+import std.measure { Millimeter, millimeter, SignedMillimeterComponent, signed_millimeter_component, signed_millimeter_component_count }
+import std.checked_arithmetic { IntegerOverflow }
+import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity_eq }
+import std.affine_space { Point2, Point3, point2, point3 }
+import std.euclidean_geometry {
+  AxisDirection3, PositiveX, NegativeX, PositiveY, NegativeY, PositiveZ, NegativeZ,
+  axis_direction_axis, axis_direction_is_negative, axis_direction_of,
+  Axis3, Axis3X, Axis3Y, Axis3Z, axis3_index, axis3_eq,
+}
+
+// SPATIAL-3A: EXACT ORTHOGONAL GEOMETRY. Everything here is closed under integer millimetre
+// arithmetic - no square roots, no trigonometry, no rounding policy - which is the whole reason the
+// band exists at this point in the program rather than after an approximate-numeric realization.
+// Rectilinear architectural geometry (rooms, walls, slabs, openings, racks) is expressible exactly,
+// so it should be, and the layer that needs a real number should be the one that pays for it.
+//
+// WHAT THIS BAND DOES NOT CLAIM, stated first because the tempting overclaim is the one adjacent to
+// it: there are NO general polygon Boolean operations here. Union, intersection and difference of
+// arbitrary orthogonal loops are absent, not stubbed, not approximated. Rectilinear Booleans are
+// exactly representable in principle, but they need a sweep with a canonical output ordering and a
+// degeneracy policy for touching-but-not-overlapping edges, and inventing that policy underneath a
+// name like `union` is how a plausible wrong region reaches a consumer. They arrive when a consumer
+// needs them, with their own witnesses.
+//
+// THE WALLS ARE CONSTRUCTION, NOT VALIDATION. Every carrier below is `sole_constructor`, so its
+// record literal cannot be written and no cast can reach it from any other module (DESIGN section
+// 4b, rung four for these classes): the only route to a value is the mint beside it, and the mint
+// refuses. A degenerate segment, a non-closed loop, a zero-extent box and a non-coplanar surface
+// therefore have no constructor anywhere outside this module rather than being checked after the
+// fact by a caller who might not check.
+//
+// FRAMES ARE CHECKED, NOT ASSUMED. Every mint taking more than one located value compares the
+// carried CoordinateFrameIdentity of its inputs and refuses a mismatch. This is the same authority
+// std.affine_space uses and for the same measured reason - see std.coordinate_frame for why the
+// frame is carried data rather than a type parameter.
+
+// TWO CARRIERS DELIBERATELY NOT MINTED, recorded rather than silently omitted (DESIGN section 3 -
+// the nicknaming rule). The band's sketch named both `AxisAlignedSegment2` and `OrthogonalSegment2`,
+// and both `AxisAlignedSurface3` and `OrthogonalSurface3`. In two dimensions a segment whose
+// endpoints differ on exactly one axis IS the orthogonal segment - the two names denote the same
+// set, and minting both would be one concept with two authorities, which is the violation that gets
+// consolidated later at cost. The same holds for a planar rectangle lying in an axis-perpendicular
+// plane. If a consumer ever needs a segment that is perpendicular to a NEIGHBOUR without being
+// parallel to a global axis - a rotated rectilinear loop - that is a genuinely different concept and
+// earns its own carrier then, most likely as a loop plus an OrthogonalRotation3 rather than as a
+// second segment type.
+type Axis2
+  = Axis2X
+  | Axis2Y
+
+// TYPED REFUSALS, ONE PER INVALID STATE THIS MODULE CAN BE ASKED FOR. A single string reason would
+// make every one of these the same fact to a consumer, and they have different remedies: a
+// coincident pair of endpoints is an authoring slip, a frame mismatch is a composition error, and a
+// self-intersecting loop is a geometry error. They are distinguished here so a caller can act.
+type OrthogonalRefusal
+  = SegmentEndpointsCoincide
+  | SegmentNotAxisAligned
+  | ExtentNotPositive { axis: Axis3 }
+  | OrthogonalFrameMismatch { expected: CoordinateFrameIdentity, observed: CoordinateFrameIdentity }
+  | LoopTooFewVertices { supplied: Int }
+  | LoopEdgeNotAxisAligned
+  | LoopEdgesNotPerpendicular
+  | LoopSelfIntersects
+  | RotationAxesParallel
+  | BoundingBoxHasNoPoints
+  | ShellArithmeticRefused { cause: IntegerOverflow }
+  | SpacesInterpenetrate
+
+type OrthogonalConstruction<T>
+  = OrthogonalReady { value: T }
+  | OrthogonalRefused { cause: OrthogonalRefusal }
+
+
+// THE 24 ORIENTATION-PRESERVING SIGNED AXIS PERMUTATIONS, AND THEY ARE 24 BY CONSTRUCTION RATHER
+// THAN BY ENUMERATION OR BY A DETERMINANT CHECK.
+//
+// A rotation is fixed by where it sends +X and +Y: six choices for the image of X, and then four
+// perpendicular choices for the image of Y, giving exactly 6 x 4 = 24. The image of Z is DERIVED as
+// the cross product of the other two, which is what makes every reachable value orientation-
+// preserving: a right-handed cross product cannot produce a reflection, so determinant -1 is not a
+// state that gets checked and rejected - it has no representation.
+//
+// The two alternatives were both worse. Enumerating 24 named variants is a table to get wrong once
+// and to maintain forever, and it makes composition a 24x24 case analysis. Storing three images and
+// checking the determinant concedes that the reflected state is writable and then validates it away,
+// which is the construction-over-validation inversion DESIGN section 5 names.
+type OrthogonalRotation3 sole_constructor {
+  x_image: AxisDirection3
+  y_image: AxisDirection3
+}
+
+// Cross product of two PERPENDICULAR signed unit axes. The caller establishes perpendicularity; this
+// is total over that domain and its result for parallel inputs would be meaningless, which is
+// exactly why the only mint that calls it refuses parallel axes first.
+// SIGN COMPOSES AS A PRODUCT OF THREE SIGNS: the two operands' and the base orientation's, where
+// the base is positive exactly when (a, b) is a cyclic pair - (X,Y), (Y,Z), (Z,X). Written as
+// booleans, "the result is negative" is the XOR of the operand-sign disagreement with the
+// anti-cyclic base, which reduces to equality with `cyclic`. An earlier revision wrote the exact
+// negation of that and derived NegativeZ for the identity rotation X x Y; the orientation control
+// caught it, which is the whole reason that control asserts a derived value rather than only that
+// construction succeeded.
+fn perpendicular_axis_cross(a: AxisDirection3, b: AxisDirection3) -> AxisDirection3 {
+  let ia = axis3_index(a: axis_direction_axis(d: a))
+  let ib = axis3_index(a: axis_direction_axis(d: b))
+  let third = 3 - ia - ib
+  let cyclic = ((ib - ia) + 3) % 3 == 1
+  let operand_signs_disagree = axis_direction_is_negative(d: a) != axis_direction_is_negative(d: b)
+  let third_axis = if third == 0 { Axis3X } else { if third == 1 { Axis3Y } else { Axis3Z } }
+  axis_direction_of(axis: third_axis, negative: operand_signs_disagree == cyclic)
+}
+
+fn orthogonal_rotation3(x_image: AxisDirection3, y_image: AxisDirection3) -> OrthogonalConstruction<OrthogonalRotation3> {
+  if axis3_eq(a: axis_direction_axis(d: x_image), b: axis_direction_axis(d: y_image)) {
+    OrthogonalRefused { cause: RotationAxesParallel }
+  } else {
+    OrthogonalReady { value: OrthogonalRotation3 { x_image: x_image, y_image: y_image } }
+  }
+}
+
+fn rotation_x_image(r: OrthogonalRotation3) -> AxisDirection3 { r.x_image }
+
+fn rotation_y_image(r: OrthogonalRotation3) -> AxisDirection3 { r.y_image }
+
+// DERIVED, NEVER STORED. Storing z_image beside the other two would admit a record whose three
+// images disagree - the reflection this construction exists to exclude - so it is computed on
+// demand from the two that are stored (DESIGN section 2: one authority, no second representation).
+fn rotation_z_image(r: OrthogonalRotation3) -> AxisDirection3 {
+  perpendicular_axis_cross(a: r.x_image, b: r.y_image)
+}
+
+// A SEGMENT PARALLEL TO A COORDINATE AXIS. The axis is DERIVED from the endpoints rather than
+// supplied beside them: a caller-supplied axis is a second representation of a fact the endpoints
+// already determine, and the two can disagree.
+//
+// Both degenerate and diagonal inputs refuse, and they refuse DIFFERENTLY. Coincident endpoints are
+// a segment with no direction - a point wearing a segment's type, whose direction and length every
+// consumer would then have to special-case. A diagonal is a real segment this exact kernel cannot
+// represent. Same rejection, different fact, so a caller can tell an authoring slip from a modelling
+// limit.
+type AxisAlignedSegment2 sole_constructor {
+  frame: CoordinateFrameIdentity
+  start: Point2
+  end: Point2
+  axis: Axis2
+}
+
+fn axis_aligned_segment2(start: Point2, end: Point2) -> OrthogonalConstruction<AxisAlignedSegment2> {
+  if !coordinate_frame_identity_eq(a: start.frame, b: end.frame) {
+    OrthogonalRefused { cause: OrthogonalFrameMismatch { expected: start.frame, observed: end.frame } }
+  } else {
+    let dx = signed_millimeter_component_count(m: end.x) - signed_millimeter_component_count(m: start.x)
+    let dy = signed_millimeter_component_count(m: end.y) - signed_millimeter_component_count(m: start.y)
+    if (dx == 0 && dy == 0) {
+      OrthogonalRefused { cause: SegmentEndpointsCoincide }
+    } else if (dx != 0 && dy != 0) {
+      OrthogonalRefused { cause: SegmentNotAxisAligned }
+    } else {
+      OrthogonalReady { value: AxisAlignedSegment2 {
+        frame: start.frame,
+        start: start,
+        end: end,
+        axis: if dx != 0 { Axis2X } else { Axis2Y },
+      } }
+    }
+  }
+}
+
+fn segment2_start(s: AxisAlignedSegment2) -> Point2 { s.start }
+fn segment2_end(s: AxisAlignedSegment2) -> Point2 { s.end }
+fn segment2_axis(s: AxisAlignedSegment2) -> Axis2 { s.axis }
+fn segment2_frame(s: AxisAlignedSegment2) -> CoordinateFrameIdentity { s.frame }
+
+// Length is exact and nonnegative: one coordinate difference, magnitude taken. No root is involved
+// precisely because the segment is axis-aligned, which is the property the carrier guarantees.
+fn segment2_length(s: AxisAlignedSegment2) -> Millimeter {
+  let dx = signed_millimeter_component_count(m: s.end.x) - signed_millimeter_component_count(m: s.start.x)
+  let dy = signed_millimeter_component_count(m: s.end.y) - signed_millimeter_component_count(m: s.start.y)
+  let d = dx + dy
+  millimeter(count: if d < 0 { 0 - d } else { d })
+}
+
+// AN AXIS-ALIGNED RECTANGLE, held as its two extreme corners rather than as an origin plus a width
+// and a height. The corner pair is what makes "positive extent on both axes" a single comparison the
+// mint can perform, and it is also the form every consumer of a rectangle actually wants: a caller
+// with an origin and a size can compute the far corner, while a caller with two corners handed an
+// origin-plus-size carrier has to do signed arithmetic to recover what it already had.
+//
+// DEGENERATE IS REFUSED, not admitted as a thin rectangle. A rectangle with zero width is a segment
+// and a rectangle with zero height is a segment; admitting either means every downstream area,
+// containment and intersection operation carries a special case for a shape that is not a rectangle.
+type AxisAlignedRectangle2 sole_constructor {
+  frame: CoordinateFrameIdentity
+  min: Point2
+  max: Point2
+}
+
+fn axis_aligned_rectangle2(min: Point2, max: Point2) -> OrthogonalConstruction<AxisAlignedRectangle2> {
+  if !coordinate_frame_identity_eq(a: min.frame, b: max.frame) {
+    OrthogonalRefused { cause: OrthogonalFrameMismatch { expected: min.frame, observed: max.frame } }
+  } else if signed_millimeter_component_count(m: max.x) <= signed_millimeter_component_count(m: min.x) {
+    OrthogonalRefused { cause: ExtentNotPositive { axis: Axis3X } }
+  } else if signed_millimeter_component_count(m: max.y) <= signed_millimeter_component_count(m: min.y) {
+    OrthogonalRefused { cause: ExtentNotPositive { axis: Axis3Y } }
+  } else {
+    OrthogonalReady { value: AxisAlignedRectangle2 { frame: min.frame, min: min, max: max } }
+  }
+}
+
+fn rectangle2_min(r: AxisAlignedRectangle2) -> Point2 { r.min }
+fn rectangle2_max(r: AxisAlignedRectangle2) -> Point2 { r.max }
+fn rectangle2_frame(r: AxisAlignedRectangle2) -> CoordinateFrameIdentity { r.frame }
+
+fn rectangle2_width(r: AxisAlignedRectangle2) -> Millimeter {
+  millimeter(count: signed_millimeter_component_count(m: r.max.x) - signed_millimeter_component_count(m: r.min.x))
+}
+
+fn rectangle2_height(r: AxisAlignedRectangle2) -> Millimeter {
+  millimeter(count: signed_millimeter_component_count(m: r.max.y) - signed_millimeter_component_count(m: r.min.y))
+}
+
+// AN AXIS-PERPENDICULAR PLANE, named by the axis it is perpendicular TO and the coordinate at which
+// it sits. This is the only plane family exactly representable here: a plane at any other
+// orientation needs a normal whose components are not all zero-or-one, and normalising it needs a
+// root. That restriction is the carrier's meaning rather than a limitation hidden inside it - a
+// general plane is a different carrier, arriving with the approximate-numeric realization.
+type Plane3 sole_constructor {
+  frame: CoordinateFrameIdentity
+  normal_axis: Axis3
+  offset: SignedMillimeterComponent
+}
+
+fn plane3(frame: CoordinateFrameIdentity, normal_axis: Axis3, offset: Int) -> Plane3 {
+  Plane3 { frame: frame, normal_axis: normal_axis, offset: signed_millimeter_component(count: offset) }
+}
+
+fn plane3_frame(p: Plane3) -> CoordinateFrameIdentity { p.frame }
+fn plane3_normal_axis(p: Plane3) -> Axis3 { p.normal_axis }
+fn plane3_offset(p: Plane3) -> SignedMillimeterComponent { p.offset }
+
+fn point3_component_on_axis(p: Point3, axis: Axis3) -> Int {
+  match axis {
+    Axis3X => signed_millimeter_component_count(m: p.x)
+    Axis3Y => signed_millimeter_component_count(m: p.y)
+    Axis3Z => signed_millimeter_component_count(m: p.z)
+  }
+}
+
+fn plane3_contains_point(plane: Plane3, p: Point3) -> Bool {
+  coordinate_frame_identity_eq(a: plane.frame, b: p.frame)
+    && point3_component_on_axis(p: p, axis: plane.normal_axis) == signed_millimeter_component_count(m: plane.offset)
+}
+
+// AN AXIS-ALIGNED BOX, the 3D sibling of the rectangle and refused on the same grounds in three
+// axes rather than two. The refusal NAMES WHICH AXIS collapsed, because "the box is degenerate" sends
+// a caller to inspect three numbers when the mint already knows which one is wrong.
+type AxisAlignedBox3 sole_constructor {
+  frame: CoordinateFrameIdentity
+  min: Point3
+  max: Point3
+}
+
+fn axis_aligned_box3(min: Point3, max: Point3) -> OrthogonalConstruction<AxisAlignedBox3> {
+  if !coordinate_frame_identity_eq(a: min.frame, b: max.frame) {
+    OrthogonalRefused { cause: OrthogonalFrameMismatch { expected: min.frame, observed: max.frame } }
+  } else if signed_millimeter_component_count(m: max.x) <= signed_millimeter_component_count(m: min.x) {
+    OrthogonalRefused { cause: ExtentNotPositive { axis: Axis3X } }
+  } else if signed_millimeter_component_count(m: max.y) <= signed_millimeter_component_count(m: min.y) {
+    OrthogonalRefused { cause: ExtentNotPositive { axis: Axis3Y } }
+  } else if signed_millimeter_component_count(m: max.z) <= signed_millimeter_component_count(m: min.z) {
+    OrthogonalRefused { cause: ExtentNotPositive { axis: Axis3Z } }
+  } else {
+    OrthogonalReady { value: AxisAlignedBox3 { frame: min.frame, min: min, max: max } }
+  }
+}
+
+fn box3_min(b: AxisAlignedBox3) -> Point3 { b.min }
+fn box3_max(b: AxisAlignedBox3) -> Point3 { b.max }
+fn box3_frame(b: AxisAlignedBox3) -> CoordinateFrameIdentity { b.frame }
+
+fn box3_contains_point(b: AxisAlignedBox3, p: Point3) -> Bool {
+  coordinate_frame_identity_eq(a: b.frame, b: p.frame)
+    && signed_millimeter_component_count(m: p.x) >= signed_millimeter_component_count(m: b.min.x)
+    && signed_millimeter_component_count(m: p.x) <= signed_millimeter_component_count(m: b.max.x)
+    && signed_millimeter_component_count(m: p.y) >= signed_millimeter_component_count(m: b.min.y)
+    && signed_millimeter_component_count(m: p.y) <= signed_millimeter_component_count(m: b.max.y)
+    && signed_millimeter_component_count(m: p.z) >= signed_millimeter_component_count(m: b.min.z)
+    && signed_millimeter_component_count(m: p.z) <= signed_millimeter_component_count(m: b.max.z)
+}
+
+// TWO BOXES OVERLAP IFF THEY OVERLAP ON ALL THREE AXES, and touching faces do NOT overlap. That
+// boundary convention is stated because it is a real choice with consequences: two rooms sharing a
+// wall plane are adjacent, not intersecting, and a containment test that called them intersecting
+// would report every neighbour as a collision.
+fn box3_overlaps(a: AxisAlignedBox3, b: AxisAlignedBox3) -> OrthogonalConstruction<Bool> {
+  if !coordinate_frame_identity_eq(a: a.frame, b: b.frame) {
+    OrthogonalRefused { cause: OrthogonalFrameMismatch { expected: a.frame, observed: b.frame } }
+  } else {
+    let overlaps_x = signed_millimeter_component_count(m: a.min.x) < signed_millimeter_component_count(m: b.max.x)
+      && signed_millimeter_component_count(m: b.min.x) < signed_millimeter_component_count(m: a.max.x)
+    let overlaps_y = signed_millimeter_component_count(m: a.min.y) < signed_millimeter_component_count(m: b.max.y)
+      && signed_millimeter_component_count(m: b.min.y) < signed_millimeter_component_count(m: a.max.y)
+    let overlaps_z = signed_millimeter_component_count(m: a.min.z) < signed_millimeter_component_count(m: b.max.z)
+      && signed_millimeter_component_count(m: b.min.z) < signed_millimeter_component_count(m: a.max.z)
+    OrthogonalReady { value: overlaps_x && overlaps_y && overlaps_z }
+  }
+}
+
+// A BOUNDING BOX IS DERIVED, NEVER AUTHORED. It is the one construction here that cannot be wrong
+// given a nonempty input, so it takes points rather than corners and computes the extremes. The
+// empty list is the only refusal: the bounding box of nothing is not a degenerate box, it is a
+// question with no answer, and returning a zero-extent box at the origin would be a fabricated one.
+//
+// It deliberately returns the CORNERS rather than an AxisAlignedBox3: a set of coplanar points has
+// no positive extent on the axis they share, and that is not a defect in the input. A caller that
+// needs a box passes the corners to axis_aligned_box3 and receives the degeneracy refusal with the
+// axis named, which is strictly more information than this function collapsing the two cases.
+type BoundingBox3 sole_constructor {
+  frame: CoordinateFrameIdentity
+  min: Point3
+  max: Point3
+}
+
+fn min_int(a: Int, b: Int) -> Int { if a < b { a } else { b } }
+fn max_int(a: Int, b: Int) -> Int { if a > b { a } else { b } }
+
+fn bounding_box3(points: List<Point3>) -> OrthogonalConstruction<BoundingBox3> {
+  match points |> first {
+    Absent => OrthogonalRefused { cause: BoundingBoxHasNoPoints }
+    Present { value: head } =>
+      let frame_mismatch = fold(points, init: none, f: (acc, p) =>
+        match acc {
+          Present { value: _ } => acc
+          Absent => if coordinate_frame_identity_eq(a: head.frame, b: p.frame) { none } else { Present { value: p.frame } }
+        })
+      match frame_mismatch {
+        Present { value: other } =>
+          OrthogonalRefused { cause: OrthogonalFrameMismatch { expected: head.frame, observed: other } }
+        Absent =>
+          let lo_x = fold(points, init: signed_millimeter_component_count(m: head.x), f: (acc, p) => min_int(a: acc, b: signed_millimeter_component_count(m: p.x)))
+          let lo_y = fold(points, init: signed_millimeter_component_count(m: head.y), f: (acc, p) => min_int(a: acc, b: signed_millimeter_component_count(m: p.y)))
+          let lo_z = fold(points, init: signed_millimeter_component_count(m: head.z), f: (acc, p) => min_int(a: acc, b: signed_millimeter_component_count(m: p.z)))
+          let hi_x = fold(points, init: signed_millimeter_component_count(m: head.x), f: (acc, p) => max_int(a: acc, b: signed_millimeter_component_count(m: p.x)))
+          let hi_y = fold(points, init: signed_millimeter_component_count(m: head.y), f: (acc, p) => max_int(a: acc, b: signed_millimeter_component_count(m: p.y)))
+          let hi_z = fold(points, init: signed_millimeter_component_count(m: head.z), f: (acc, p) => max_int(a: acc, b: signed_millimeter_component_count(m: p.z)))
+          OrthogonalReady { value: BoundingBox3 {
+            frame: head.frame,
+            min: point3(frame: head.frame, x: lo_x, y: lo_y, z: lo_z),
+            max: point3(frame: head.frame, x: hi_x, y: hi_y, z: hi_z),
+          } }
+      }
+  }
+}
+
+fn bounding_box3_min(b: BoundingBox3) -> Point3 { b.min }
+fn bounding_box3_max(b: BoundingBox3) -> Point3 { b.max }
+
+// A CLOSED RECTILINEAR LOOP. The vertices are held in order and closure is IMPLICIT - the last
+// vertex connects to the first - rather than being expressed by repeating the first vertex at the
+// end. A repeated closing vertex is a second representation of a fact the carrier already
+// guarantees, and it makes "is this loop closed" a runtime question about list contents instead of
+// something true by construction.
+//
+// FOUR WALLS, and each refuses distinctly because each sends a caller somewhere different:
+// CLOSURE IS NOT A REFUSAL ARM because it is not a reachable state: the last vertex connects to the
+// first by construction, so there is no unclosed loop for a mint to reject. A LoopNotClosed variant
+// was declared here and never emitted, and an unreachable refusal is rung inflation on the sum -
+// a consumer reads it as a live failure mode and writes a handler for a state nothing produces.
+// The same held for a SurfaceNotInPlane arm: a surface is a Plane3 plus a 2D rectangle, so
+// non-coplanarity has no representation either. Both deleted (cursor review 51202).
+//   - at least four vertices, since three axis-aligned edges cannot close
+//   - one frame across every vertex
+//   - every edge axis-aligned (consecutive vertices differ on exactly one axis)
+//   - consecutive edges perpendicular (the axis alternates, including across the closing edge)
+//   - no self-intersection
+type OrthogonalLoop2 sole_constructor {
+  frame: CoordinateFrameIdentity
+  vertices: List<Point2>
+}
+
+fn point2_x(p: Point2) -> Int { signed_millimeter_component_count(m: p.x) }
+fn point2_y(p: Point2) -> Int { signed_millimeter_component_count(m: p.y) }
+
+fn point2_same_position(a: Point2, b: Point2) -> Bool {
+  point2_x(p: a) == point2_x(p: b) && point2_y(p: a) == point2_y(p: b)
+}
+
+// An edge's axis is X when the y coordinates agree and y when the x coordinates agree; a diagonal
+// or a zero-length step has neither, and answers `none` rather than a defaulted axis.
+fn loop_edge_axis(a: Point2, b: Point2) -> Axis2? {
+  let dx = point2_x(p: b) - point2_x(p: a)
+  let dy = point2_y(p: b) - point2_y(p: a)
+  if dx != 0 && dy == 0 {
+    Present { value: Axis2X }
+  } else if dy != 0 && dx == 0 {
+    Present { value: Axis2Y }
+  } else {
+    none
+  }
+}
+
+fn axis2_eq(a: Axis2, b: Axis2) -> Bool {
+  match a {
+    Axis2X => match b { Axis2X => true  Axis2Y => false }
+    Axis2Y => match b { Axis2X => false Axis2Y => true }
+  }
+}
+
+// TWO AXIS-ALIGNED SEGMENTS INTERSECT IFF THEY OVERLAP ON BOTH AXES, which is the whole reason this
+// band restricts itself to axis-aligned geometry: the general segment-intersection predicate needs
+// cross products and a degeneracy analysis, and this one is four integer comparisons. Endpoints
+// count (closed ranges) because two non-adjacent edges of a simple loop must not even touch.
+fn ranges_overlap(a_lo: Int, a_hi: Int, b_lo: Int, b_hi: Int) -> Bool {
+  min_int(a: a_lo, b: a_hi) <= max_int(a: b_lo, b: b_hi)
+    && min_int(a: b_lo, b: b_hi) <= max_int(a: a_lo, b: a_hi)
+}
+
+fn segments_touch(a1: Point2, a2: Point2, b1: Point2, b2: Point2) -> Bool {
+  ranges_overlap(a_lo: point2_x(p: a1), a_hi: point2_x(p: a2), b_lo: point2_x(p: b1), b_hi: point2_x(p: b2))
+    && ranges_overlap(a_lo: point2_y(p: a1), a_hi: point2_y(p: a2), b_lo: point2_y(p: b1), b_hi: point2_y(p: b2))
+}
+
+// Adjacency is MODULAR: edge i neighbours i-1 and i+1, and edge 0 neighbours edge n-1 across the
+// implicit closure - exactly the pair a non-modular comparison forgets, admitting a loop whose
+// closing edge lies along its first.
+fn edges_are_adjacent(i: Int, j: Int, n: Int) -> Bool {
+  i == j || ((i + 1) % n) == j || ((j + 1) % n) == i
+}
+
+fn any_repeated_vertex(vertices: List<Point2>) -> Bool {
+  fold(vertices |> enumerate, init: false, f: (acc, pair) =>
+    if acc {
+      true
+    } else {
+      fold(vertices |> enumerate, init: false, f: (inner, other) =>
+        inner || (other.first > pair.first && point2_same_position(a: pair.second, b: other.second)))
+    })
+}
+
+fn any_nonadjacent_edges_touch(edges: List<LoopEdge>, n: Int) -> Bool {
+  fold(edges |> enumerate, init: false, f: (acc, a_pair) =>
+    if acc {
+      true
+    } else {
+      fold(edges |> enumerate, init: false, f: (inner, b_pair) =>
+        if inner || edges_are_adjacent(i: a_pair.first, j: b_pair.first, n: n) || b_pair.first < a_pair.first {
+          inner
+        } else {
+          segments_touch(
+            a1: a_pair.second.start, a2: a_pair.second.end,
+            b1: b_pair.second.start, b2: b_pair.second.end)
+        })
+    })
+}
+
+// EDGES ARE MATERIALISED ONCE, and this is a cost-shape fix rather than a tidy-up (DESIGN 6, bare
+// minimum cost - a proven quadratic fold is always fixed, and "n is small for a room" is not a
+// time-stable fact because reuse changes n). The first cut read vertex i through
+// `vertices |> skip(i) |> first`, which is linear in i, inside a fold over all vertices - quadratic
+// for each linear pass - and inside a NESTED fold for the pairwise edge test, which made that test
+// cubic rather than the quadratic it looks like. The pairwise comparison is inherently quadratic;
+// the indexing was not, and that is the part that was a defect.
+//
+// The accumulator carries the previous vertex so the pass is linear, and it conses rather than
+// appending because `concat(list, [x])` is itself quadratic - the closing edge is added after the
+// single reverse.
+type LoopEdge {
+  start: Point2
+  end: Point2
+}
+
+type LoopEdgeAccum {
+  edges: List<LoopEdge>
+  prev: Point2?
+}
+
+fn loop_edges(vertices: List<Point2>) -> List<LoopEdge> {
+  match vertices |> first {
+    Absent => []
+    Present { value: head } =>
+      let acc = fold(vertices, init: LoopEdgeAccum { edges: [], prev: none }, f: (a, v) =>
+        match a.prev {
+          Absent => LoopEdgeAccum { edges: a.edges, prev: Present { value: v } }
+          Present { value: p } =>
+            LoopEdgeAccum { edges: concat([LoopEdge { start: p, end: v }], a.edges), prev: Present { value: v } }
+        })
+      match acc.prev {
+        Absent => reverse(acc.edges)
+        Present { value: last } => reverse(concat([LoopEdge { start: last, end: head }], acc.edges))
+      }
+  }
+}
+
+fn loop_edge_axis_of(e: LoopEdge) -> Axis2? {
+  loop_edge_axis(a: e.start, b: e.end)
+}
+
+fn any_edge_unaligned(edges: List<LoopEdge>) -> Bool {
+  fold(edges, init: false, f: (acc, e) => acc || loop_edge_axis_of(e: e) == none)
+}
+
+// PERPENDICULARITY IS READ OFF CONSECUTIVE EDGES IN ONE PASS, closing edge included: the fold
+// carries the previous edge's axis and the first edge's axis, and compares the last against the
+// first at the end. A non-modular pass would forget exactly the closing pair.
+type AxisPassAccum {
+  parallel_found: Bool
+  first_axis: Axis2?
+  prev_axis: Axis2?
+}
+
+fn axis2_opt_parallel(a: Axis2?, b: Axis2?) -> Bool {
+  match a {
+    Absent => true
+    Present { value: av } =>
+      match b {
+        Absent => true
+        Present { value: bv } => axis2_eq(a: av, b: bv)
+      }
+  }
+}
+
+fn any_adjacent_edges_parallel(edges: List<LoopEdge>) -> Bool {
+  let acc = fold(edges, init: AxisPassAccum { parallel_found: false, first_axis: none, prev_axis: none }, f: (a, e) =>
+    let this_axis = loop_edge_axis_of(e: e)
+    match a.prev_axis {
+      Absent => AxisPassAccum { parallel_found: a.parallel_found, first_axis: this_axis, prev_axis: this_axis }
+      Present { value: _ } =>
+        AxisPassAccum {
+          parallel_found: a.parallel_found || axis2_opt_parallel(a: a.prev_axis, b: this_axis),
+          first_axis: a.first_axis,
+          prev_axis: this_axis,
+        }
+    })
+  acc.parallel_found || axis2_opt_parallel(a: acc.prev_axis, b: acc.first_axis)
+}
+
+fn orthogonal_loop2(vertices: List<Point2>) -> OrthogonalConstruction<OrthogonalLoop2> {
+  let n = vertices |> count
+  if n < 4 {
+    OrthogonalRefused { cause: LoopTooFewVertices { supplied: n } }
+  } else {
+    match vertices |> first {
+      Absent => OrthogonalRefused { cause: LoopTooFewVertices { supplied: n } }
+      Present { value: head } =>
+        let frame_mismatch = fold(vertices, init: none, f: (acc, p) =>
+          match acc {
+            Present { value: _ } => acc
+            Absent => if coordinate_frame_identity_eq(a: head.frame, b: p.frame) { none } else { Present { value: p.frame } }
+          })
+        match frame_mismatch {
+          Present { value: other } =>
+            OrthogonalRefused { cause: OrthogonalFrameMismatch { expected: head.frame, observed: other } }
+          Absent =>
+            let edges = loop_edges(vertices: vertices)
+            if any_edge_unaligned(edges: edges) {
+              OrthogonalRefused { cause: LoopEdgeNotAxisAligned }
+            } else if any_adjacent_edges_parallel(edges: edges) {
+              OrthogonalRefused { cause: LoopEdgesNotPerpendicular }
+            } else if any_repeated_vertex(vertices: vertices) {
+              OrthogonalRefused { cause: LoopSelfIntersects }
+            } else if any_nonadjacent_edges_touch(edges: edges, n: n) {
+              OrthogonalRefused { cause: LoopSelfIntersects }
+            } else {
+              OrthogonalReady { value: OrthogonalLoop2 { frame: head.frame, vertices: vertices } }
+            }
+        }
+    }
+  }
+}
+
+fn loop2_vertices(l: OrthogonalLoop2) -> List<Point2> { l.vertices }
+fn loop2_frame(l: OrthogonalLoop2) -> CoordinateFrameIdentity { l.frame }
+
+// A RECTANGLE LYING IN AN AXIS-PERPENDICULAR PLANE. The plane fixes one coordinate and the
+// rectangle supplies the other two, so the surface is a plane plus a 2D rectangle rather than four
+// 3D corners: four corners admit a non-planar quadrilateral, and checking coplanarity afterwards
+// concedes that the non-planar state is writable. Here it has no representation.
+//
+// The 2D rectangle's axes are the plane's two IN-PLANE axes, taken in ascending index order (a
+// plane perpendicular to Y is spanned by X then Z). That ordering is a convention this carrier owns
+// and states, so a consumer reading `min.x` knows which physical axis it is looking at.
+type AxisAlignedSurface3 sole_constructor {
+  plane: Plane3
+  extent: AxisAlignedRectangle2
+}
+
+// THE PLANE IS DERIVED FROM THE RECTANGLE, NOT SUPPLIED BESIDE IT. An earlier revision took a
+// Plane3 parameter and checked only that the frames matched, which left a real invalid state
+// writable: AxisAlignedRectangle2 is built from Point2, whose x and y ARE the frame's X and Y
+// components, so an XY rectangle paired with a Y-normal or X-normal plane mints a surface whose
+// coordinates do not lie in its own plane. Refusing that pairing would have been validation
+// conceding the state is writable (DESIGN section 5); removing the parameter leaves it with no
+// representation. The frame-mismatch arm went with it - there is now only one frame in play.
+//
+// The cost of the construction is stated rather than hidden: this mints XY-plane surfaces only.
+// A genuinely X-normal or Y-normal surface needs a 2D carrier that records which plane its two
+// coordinates span, which the band does not have; the parameter did not deliver that generality,
+// it silently mis-delivered it. Dissolve-on: a plane-carrying 2D rectangle, at which point the
+// plane is read from the extent rather than constructed here.
+// The mint is TOTAL and says so in its return type. Once the plane is derived there is no invalid
+// input left for it to reject, and keeping the OrthogonalConstruction wrapper would advertise a
+// refusal that no arm can produce - the same rung inflation on the shape that the deleted
+// LoopNotClosed and SurfaceNotInPlane arms were on the sum. Every caller stops paying a match for
+// an arm that cannot arrive.
+fn axis_aligned_surface3(offset: Int, extent: AxisAlignedRectangle2) -> AxisAlignedSurface3 {
+  AxisAlignedSurface3 {
+    plane: plane3(frame: rectangle2_frame(r: extent), normal_axis: Axis3Z, offset: offset),
+    extent: extent,
+  }
+}
+
+fn surface3_plane(s: AxisAlignedSurface3) -> Plane3 { s.plane }
+fn surface3_extent(s: AxisAlignedSurface3) -> AxisAlignedRectangle2 { s.extent }
+fn surface3_frame(s: AxisAlignedSurface3) -> CoordinateFrameIdentity { s.plane.frame }
+
+// A PRISM IS A RECTILINEAR FOOTPRINT EXTRUDED BETWEEN TWO PARALLEL PLANES, which is what a room, a
+// slab and a wall all are. It is held as the loop plus the extrusion axis and two offsets rather
+// than as a 3D solid, because that is the form the footprint was authored in and re-deriving it
+// from a solid would need the face decomposition the band does not have.
+//
+// The extrusion refuses a non-positive height for the reason the box does: a prism of zero height
+// is a surface, and admitting it makes every volume and containment operation carry a special case.
+type OrthogonalPrism3 sole_constructor {
+  footprint: OrthogonalLoop2
+  low: SignedMillimeterComponent
+  high: SignedMillimeterComponent
+}
+
+// THE EXTRUSION AXIS IS DERIVED, NOT SUPPLIED. It was an Axis3 parameter, and any of the three was
+// accepted once the height was positive - so extruding an XY footprint along X or Y was writable
+// and geometrically undefined. OrthogonalLoop2 is a loop of Point2, whose components are the
+// frame's X and Y, so the only axis a footprint can be extruded along is Z. Deleting the parameter
+// and the field is the construction fix; refusing a non-Z argument would have been the validation
+// one (DESIGN section 5). Same dissolve-on as the surface above: a plane-carrying 2D loop is what
+// would make a genuinely X- or Y-extruded prism representable.
+fn orthogonal_prism3(footprint: OrthogonalLoop2, low: Int, high: Int) -> OrthogonalConstruction<OrthogonalPrism3> {
+  if high <= low {
+    OrthogonalRefused { cause: ExtentNotPositive { axis: Axis3Z } }
+  } else {
+    OrthogonalReady { value: OrthogonalPrism3 {
+      footprint: footprint,
+      low: signed_millimeter_component(count: low),
+      high: signed_millimeter_component(count: high),
+    } }
+  }
+}
+
+fn prism3_footprint(p: OrthogonalPrism3) -> OrthogonalLoop2 { p.footprint }
+fn prism3_frame(p: OrthogonalPrism3) -> CoordinateFrameIdentity { p.footprint.frame }
+
+fn prism3_low(p: OrthogonalPrism3) -> SignedMillimeterComponent { p.low }
+fn prism3_high(p: OrthogonalPrism3) -> SignedMillimeterComponent { p.high }
+
+fn prism3_height(p: OrthogonalPrism3) -> Millimeter {
+  millimeter(count: signed_millimeter_component_count(m: p.high) - signed_millimeter_component_count(m: p.low))
+}

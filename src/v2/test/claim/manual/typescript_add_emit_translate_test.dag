@@ -34,7 +34,8 @@ import v2.extdeps.languages.typescript {
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
-import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
+import v2.std.compilers.target_model {
+  ProducedDeclUnwired, TargetModel, target_model_emit_transforms_empty }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v2.test.manual.infer_ground_add {
   infer_receipt_context
@@ -102,6 +103,7 @@ data typescript_add_bitwise_semantics_node: Node = ts_number_bitwise_semantics_n
 data typescript_add_target_model: TargetModel = ts_target_model()
 
 data typescript_add_poisoned_authority_target_model: TargetModel = TargetModel {
+  produced_decl_support: ProducedDeclUnwired,
   bundle: ts_target_model_node(),
   lex: ts_fn_add_lex(),
   binding_spellings: ts_binding_spellings(),
@@ -117,6 +119,7 @@ data typescript_add_empty_translation_rules_bundle: Node = Node {
 }
 
 data typescript_add_missing_translation_rules_target: TargetModel = TargetModel {
+  produced_decl_support: ProducedDeclUnwired,
   bundle: typescript_add_empty_translation_rules_bundle,
   lex: ts_fn_add_lex(),
   binding_spellings: empty_map(),

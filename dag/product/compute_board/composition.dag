@@ -223,7 +223,7 @@ fn capability_satisfied(components: List<ComponentInstance>, cap: BoardCapabilit
   })
 }
 
-fn unsatisfied_capabilities(
+fn unsatisfied_board_capabilities(
   intent: ComputeBoardIntent,
   components: List<ComponentInstance>
 ) -> List<BoardCapability> {
@@ -346,7 +346,7 @@ fn composition_readiness(
   BoardReadiness {
     collateral: [],
     design: append(
-      unsatisfied_capabilities(intent: intent, components: components)
+      unsatisfied_board_capabilities(intent: intent, components: components)
         |> map(cap => RequiredCapabilityUnsatisfied { capability: cap }),
       items: unearned_components(components: components)
         |> map(c => UnearnedComponentPresent { designator: c.designator })

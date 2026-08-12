@@ -43,6 +43,7 @@ import v2.std.node {
   node_synthetic
 }
 import v2.std.compilers.target_model {
+  ProducedDeclUnwired,
   BoundToken,
   ConcreteSyntaxToken,
   FixedToken,
@@ -121,6 +122,7 @@ fn add_body_fold_target_model_bundle(operator_catalog: Node) -> Node {
 
 fn add_body_fold_target_model_minus_catalog() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: add_body_fold_target_model_bundle(
       operator_catalog: add_body_fold_operator_catalog_minus()
     ),
@@ -134,6 +136,7 @@ fn add_body_fold_target_model_minus_catalog() -> TargetModel {
 
 fn add_body_fold_target_model_missing_operator_catalog() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: add_body_fold_target_model_bundle(
       operator_catalog: add_body_fold_operator_catalog_empty()
     ),

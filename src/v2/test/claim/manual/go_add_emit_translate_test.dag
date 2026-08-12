@@ -39,7 +39,8 @@ import v2.extdeps.languages.go {
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
-import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
+import v2.std.compilers.target_model {
+  ProducedDeclUnwired, TargetModel, target_model_emit_transforms_empty }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v2.test.manual.infer_ground_add {
   infer_receipt_context
@@ -104,6 +105,7 @@ data go_add_int_overflow_node: Node = go_overflow_node(
 data go_add_target_model: TargetModel = go_target_model()
 
 data go_add_poisoned_authority_target_model: TargetModel = TargetModel {
+  produced_decl_support: ProducedDeclUnwired,
   bundle: go_target_model_node(),
   lex: go_lex(),
   binding_spellings: go_binding_spellings(),
@@ -119,6 +121,7 @@ data go_add_empty_translation_rules_bundle: Node = Node {
 }
 
 data go_add_missing_translation_rules_target: TargetModel = TargetModel {
+  produced_decl_support: ProducedDeclUnwired,
   bundle: go_add_empty_translation_rules_bundle,
   lex: go_lex(),
   binding_spellings: empty_map(),
