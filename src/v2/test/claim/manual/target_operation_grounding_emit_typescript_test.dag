@@ -1,6 +1,7 @@
 module v2.test.manual.target_operation_grounding_emit_typescript
 
 import v2.std.compilers.target_model {
+  ProducedDeclUnwired,
   CanonicalOperation,
   InfixToken,
   IsLess,
@@ -77,6 +78,7 @@ fn op_grounding_test_bundle() -> Node {
 
 fn op_grounding_test_model() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: op_grounding_test_bundle(),
     lex: op_grounding_test_lex(),
     binding_spellings: ts_binding_spellings(),
