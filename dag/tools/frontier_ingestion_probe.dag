@@ -38,9 +38,16 @@ fn reasons_contain(reasons: List<Symbol>, sym: Symbol) -> Bool {
   })
 }
 
+// An EMPTY reason set is not an accepted stage; it is an impossible input. classify_source
+// handles a genuine Accepted outcome before ever calling here, and a rejection carries
+// NonEmptyDiagnostics, so production cannot supply an empty list. Mapping empty to ACCEPTED
+// would render a missing observation as a successful stage — the same collapse this instrument
+// exists to remove. It is its own invalid state, and deliberately NOT NORM_OTHER, which would
+// only move the collapse somewhere quieter. The structurally strongest form takes
+// NonEmptyDiagnostics directly; that is owed with the census instrument.
 fn classify_normalize_reasons(rs: List<Symbol>) -> String {
   if (rs |> count) == 0 {
-    "ACCEPTED"
+    "NORM_REASON_SET_INVALID_EMPTY"
   } else if reasons_contain(reasons: rs, sym: ^namespace_graft_body_dissolved_refused) {
     "NORM_GRAFT_REFUSED"
   } else if reasons_contain(reasons: rs, sym: ^body_lowering_reason_wrapper_retained_emitted)

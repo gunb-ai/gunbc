@@ -39,6 +39,10 @@ test fn classifier_reads_retention_pair_behind_a_prepended_diagnostic() -> Bool 
   ) == "NORM_RETAINED"
 }
 
+test fn empty_reason_set_is_invalid_not_accepted_RED() -> Bool {
+  classify_normalize_reasons(rs: []) == "NORM_REASON_SET_INVALID_EMPTY"
+}
+
 test fn classifier_calls_a_plain_rejection_other() -> Bool {
   classify_normalize_reasons(rs: [^body_lowering_reason_unsupported_form]) == "NORM_OTHER"
 }
@@ -47,9 +51,6 @@ test fn classifier_does_not_call_retention_alone_retained_RED() -> Bool {
   classify_normalize_reasons(rs: [^body_lowering_reason_wrapper_retained_emitted]) == "NORM_OTHER"
 }
 
-test fn classifier_calls_an_empty_reason_list_accepted() -> Bool {
-  classify_normalize_reasons(rs: []) == "ACCEPTED"
-}
 
 test fn containment_read_finds_reason_behind_prepended_carrier() -> Bool {
   reasons_contain(
