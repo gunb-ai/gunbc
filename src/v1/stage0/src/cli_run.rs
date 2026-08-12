@@ -5450,7 +5450,6 @@ pub fn import_closure_from_facts(
 /// corpus on every `resolve_transitively` call (Phase 1 perf receipt, DESIGN §2).
 #[derive(Clone)]
 pub struct ModuleGraphFactsLive {
-    pub(crate) edges: Vec<ImportResolutionFactRaw>,
     pub(crate) nodes: Vec<ModuleDeclarationFactRaw>,
     pub(crate) adjacency: HashMap<String, Vec<String>>,
     // Workspace-relative paths of `nodes`, precomputed once per facts build: the
@@ -5480,14 +5479,13 @@ pub struct ModuleGraphFactsLive {
     // repo path. Built once here so `reference_only_direct_import_modules` (the typed-module
     // content-key's reference-derived import term) does not re-derive it per module.
     pub(crate) path_to_module: HashMap<String, String>,
-    // Every in-scope `.dag` path the importer walk SAW on disk (whether or not it produced
-    // facts), and every observed path whose content read refused. The producers skip an
-    // unreadable file at scan time, so without these rows a vanished module is
-    // indistinguishable from an absent one — the fail-open undercount every consumer of these
-    // facts must refuse on, never absorb (operator review 2026-07-28, PR #7384). The
-    // inert-lens census this arm was written for is deleted (gunbc#8141); effect-reach
-    // derivation and the cross-worker snapshot transport are the live consumers.
-    pub(crate) observed_paths: HashSet<String>,
+    // The producers skip an unreadable file at scan time, so a vanished module would be
+    // indistinguishable from an absent one; every recorded refusal therefore stops the build
+    // (`refuse_on_module_graph_read_refusals`) rather than being absorbed (operator review
+    // 2026-07-28, PR #7384). The companion `observed_paths` INVENTORY is deliberately not
+    // retained here: it is produced and asserted on at the observation
+    // (`ImportResolutionObservation`), and no consumer of the facts ever read it, so keeping it
+    // on this struct only widened the cross-worker snapshot payload (gunbc Cut 4).
     pub(crate) read_refusals: Vec<(String, String)>,
 }
 
@@ -6003,14 +6001,12 @@ pub(crate) fn build_module_graph_facts_live_uncached(
         .map(|n| (workspace_relative_repo_path(&n.path), n.module.clone()))
         .collect();
     ModuleGraphFactsLive {
-        edges,
         nodes,
         adjacency,
         selection_adjacency,
         declared_paths,
         reference_unaccounted,
         path_to_module,
-        observed_paths: observation.observed_paths,
         read_refusals: observation.read_refusals,
     }
 }
@@ -29211,14 +29207,12 @@ mod module_graph_read_refusal_tests {
             })
             .collect();
         ModuleGraphFactsLive {
-            edges: edge_rows,
             nodes: node_rows,
             adjacency: adjacency.clone(),
             selection_adjacency: adjacency,
             declared_paths,
             reference_unaccounted: std::collections::HashSet::new(),
             path_to_module,
-            observed_paths: std::collections::HashSet::new(),
             read_refusals: Vec::new(),
         }
     }
@@ -29291,7 +29285,6 @@ mod module_graph_read_refusal_tests {
         // the file is present in the inventory, produced no module declaration, and
         // the refusal (not absence) is the surfaced state.
         let mut facts = synthetic_facts(&[("v2.lens.good_probe", "target/x/good.dag")], &[]);
-        facts.observed_paths = observation.observed_paths;
         facts.read_refusals = observation.read_refusals;
         let err = super::refuse_on_module_graph_read_refusals(&facts)
             .expect_err("the facts build must refuse while a path is unreadable");
@@ -29328,10 +29321,6 @@ mod module_graph_read_refusal_tests {
             super::refuse_on_module_graph_read_refusals(&live).is_ok(),
             "live corpus must scan without read refusals: {:?}",
             live.read_refusals
-        );
-        assert!(
-            !live.observed_paths.is_empty(),
-            "live corpus inventory must be non-empty (non-vacuity)"
         );
     }
 }
@@ -41330,90 +41319,6 @@ mod import_closure_equivalence_tests {
             }
         }
         entries
-    }
-
-    /// Pre-BFS fixpoint from `origin/main` — retained for perf receipt only.
-    fn import_closure_from_facts_fixpoint_legacy(
-        entry_path: &str,
-        edges: &[super::ImportResolutionFactRaw],
-        nodes: &[super::ModuleDeclarationFactRaw],
-    ) -> Vec<String> {
-        let entry_path = workspace_relative_repo_path(entry_path);
-        let mut reached: Vec<String> = vec![entry_path];
-        let fuel = nodes.len();
-        for _ in 0..fuel {
-            let before = reached.len();
-            let mut next = reached.clone();
-            for importer in &reached {
-                let importer_norm = workspace_relative_repo_path(importer);
-                for edge in edges {
-                    if workspace_relative_repo_path(&edge.path) != importer_norm {
-                        continue;
-                    }
-                    for node in nodes {
-                        if node.module == edge.import_module {
-                            let path = workspace_relative_repo_path(&node.path);
-                            if !next.iter().any(|p| p == &path) {
-                                next.push(path);
-                            }
-                        }
-                    }
-                }
-            }
-            if next.len() == before {
-                break;
-            }
-            reached = next;
-        }
-        reached
-    }
-
-    /// Manual perf receipt (P4): `cargo test -p v1-compiler --lib import_closure_bfs_vs_fixpoint_perf_receipt -- --ignored --nocapture`
-    #[test]
-    #[ignore = "manual perf receipt: import_closure BFS vs fixpoint on floor witness roster"]
-    fn import_closure_bfs_vs_fixpoint_perf_receipt() {
-        use std::time::Instant;
-
-        const CLOSURE_CALLS_PER_ENTRY: usize = 2;
-
-        let roots = default_source_roots();
-        let entries: Vec<String> = floor_witness_entry_paths_for_oracle().into_iter().collect();
-        let facts = super::build_module_graph_facts_live(&roots);
-        let call_count = entries.len() * CLOSURE_CALLS_PER_ENTRY;
-
-        let t0 = Instant::now();
-        for entry_rel in &entries {
-            for _ in 0..CLOSURE_CALLS_PER_ENTRY {
-                let _ = import_closure_from_facts_fixpoint_legacy(
-                    entry_rel,
-                    &facts.edges,
-                    &facts.nodes,
-                );
-            }
-        }
-        let fixpoint_ms = t0.elapsed().as_secs_f64() * 1000.0;
-
-        let t1 = Instant::now();
-        for entry_rel in &entries {
-            for _ in 0..CLOSURE_CALLS_PER_ENTRY {
-                let _ = super::import_closure_live_paths_with_facts(entry_rel, &facts);
-            }
-        }
-        let bfs_ms = t1.elapsed().as_secs_f64() * 1000.0;
-
-        let speedup = fixpoint_ms / bfs_ms.max(0.001);
-        eprintln!(
-            "import_closure perf receipt: entries={} calls={} fixpoint_ms={:.1} bfs_ms={:.1} speedup={:.1}x",
-            entries.len(),
-            call_count,
-            fixpoint_ms,
-            bfs_ms,
-            speedup
-        );
-        assert!(
-            bfs_ms < fixpoint_ms,
-            "BFS should beat fixpoint on floor roster (fixpoint={fixpoint_ms:.1}ms bfs={bfs_ms:.1}ms)"
-        );
     }
 
     #[test]

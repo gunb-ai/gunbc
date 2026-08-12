@@ -9,6 +9,45 @@
 //! | Discovery corpus with non-empty `scan_dirs` | Full roster walk for that scan shape | Not covered by pre-plan snapshot (distinct request identity) |
 //!
 //! Coordinator before scoped spawn: terminal receipt + request identity digest + payload digest.
+//!
+//! ## Module-graph field census (gunbc Cut 4)
+//!
+//! `ModuleGraphFactsSnapshot` transports the module-graph facts so the scoped child's
+//! `build_module_graph_facts_live` call is a cache hit rather than a second whole-corpus
+//! acquisition. A field earns its place in that payload only by having a live reader; the
+//! census below is by exact reader, not by plausibility.
+//!
+//! | Field | Live production reader |
+//! |---|---|
+//! | `nodes` | `runtime_data_dependency_touched_via_carrier_closure`, `declared_source_refs_axis_for_entry` |
+//! | `adjacency` | `import_closure_live_paths_with_facts`, `repo_paths_match_touched`, `collect_sorted_decl_lines_for_file`, `census_exclude_derive::derive_census_exclude_closure` |
+//! | `selection_adjacency` | `entry_file_touched_via_import_closure` |
+//! | `reference_unaccounted` | `entry_file_touched_via_import_closure` |
+//! | `declared_paths` | `declared_repo_paths`, `declares_repo_path` |
+//! | `path_to_module` | `reference_only_direct_import_modules` |
+//! | `read_refusals` | `refuse_on_module_graph_read_refusals` |
+//!
+//! Two fields were carried with NO production reader at all and are deleted:
+//!
+//! - `edges` — consumed only as a local inside `build_module_graph_facts_live_uncached` (it
+//!   builds `adjacency` and `selection_adjacency` and is then dead). Its one reader on the
+//!   struct was `import_closure_bfs_vs_fixpoint_perf_receipt`, an `#[ignore]`d manual receipt
+//!   timing a legacy fixpoint that exists only inside that test; receipt and legacy helper are
+//!   deleted with the field. At the corpus's ~17.4k import lines this was the payload's largest
+//!   term — one `{path, import_module, target_declared}` row per edge, serialized, digested into
+//!   `module_graph_facts_digest`, written by the producer, read and reconstructed by the child.
+//! - `observed_paths` — the source inventory (~3.5k paths). Its stated job, distinguishing a
+//!   vanished module from an absent one, is done by `read_refusals`, which is what
+//!   `refuse_on_module_graph_read_refusals` actually reads; the inventory itself is produced and
+//!   asserted on at `ImportResolutionObservation`, which is unchanged. Retaining a second copy on
+//!   the facts struct only widened the payload.
+//!
+//! DECLARED SCOPE LOSS: nothing downstream can ask the facts value for the raw edge list or the
+//! inventory any more. Both remain available at the observation, one call above.
+//!
+//! OPEN, and deliberately not claimed here: the seven surviving fields each have a production
+//! reader, which is NOT the same fact as "the coordinated scoped child reads it". That question
+//! is a runtime one and is answered by measurement, not by this table.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
@@ -66,13 +105,11 @@ pub struct DiscoveryRowSnapshot {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModuleGraphFactsSnapshot {
-    pub edges: Vec<super::ImportResolutionFactRaw>,
     pub nodes: Vec<super::ModuleDeclarationFactRaw>,
     pub adjacency: BTreeMap<String, Vec<String>>,
     pub selection_adjacency: BTreeMap<String, Vec<String>>,
     pub reference_unaccounted: Vec<String>,
     pub path_to_module: BTreeMap<String, String>,
-    pub observed_paths: Vec<String>,
     pub read_refusals: Vec<(String, String)>,
     pub declared_paths: Vec<String>,
 }
@@ -416,7 +453,6 @@ pub fn append_discovery_trace_row(
 
 fn facts_to_snapshot(facts: &super::ModuleGraphFactsLive) -> ModuleGraphFactsSnapshot {
     ModuleGraphFactsSnapshot {
-        edges: facts.edges.clone(),
         nodes: facts.nodes.clone(),
         adjacency: facts
             .adjacency
@@ -434,7 +470,6 @@ fn facts_to_snapshot(facts: &super::ModuleGraphFactsLive) -> ModuleGraphFactsSna
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect(),
-        observed_paths: facts.observed_paths.iter().cloned().collect(),
         read_refusals: facts.read_refusals.clone(),
         declared_paths: facts.declared_paths.iter().cloned().collect(),
     }
@@ -442,7 +477,6 @@ fn facts_to_snapshot(facts: &super::ModuleGraphFactsLive) -> ModuleGraphFactsSna
 
 fn snapshot_to_facts(snapshot: &ModuleGraphFactsSnapshot) -> super::ModuleGraphFactsLive {
     super::ModuleGraphFactsLive {
-        edges: snapshot.edges.clone(),
         nodes: snapshot.nodes.clone(),
         adjacency: snapshot
             .adjacency
@@ -460,7 +494,6 @@ fn snapshot_to_facts(snapshot: &ModuleGraphFactsSnapshot) -> super::ModuleGraphF
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect(),
-        observed_paths: snapshot.observed_paths.iter().cloned().collect(),
         read_refusals: snapshot.read_refusals.clone(),
         declared_paths: snapshot.declared_paths.iter().cloned().collect(),
     }
@@ -856,13 +889,11 @@ mod tests {
 
     fn minimal_snapshot(request: FloorDiscoveryRequest) -> FloorDiscoverySnapshot {
         let facts = ModuleGraphFactsSnapshot {
-            edges: vec![],
             nodes: vec![],
             adjacency: BTreeMap::new(),
             selection_adjacency: BTreeMap::new(),
             reference_unaccounted: vec![],
             path_to_module: BTreeMap::new(),
-            observed_paths: vec![],
             read_refusals: vec![],
             declared_paths: vec![],
         };
@@ -997,24 +1028,20 @@ mod tests {
             naming_hygiene_refusal: None,
             orphan_helper_refusal: None,
             module_graph_facts: ModuleGraphFactsSnapshot {
-                edges: vec![],
                 nodes: vec![],
                 adjacency: BTreeMap::new(),
                 selection_adjacency: BTreeMap::new(),
                 reference_unaccounted: vec![],
                 path_to_module: BTreeMap::new(),
-                observed_paths: vec![],
                 read_refusals: vec![],
                 declared_paths: vec![],
             },
             module_graph_facts_digest: digest_facts_snapshot(&ModuleGraphFactsSnapshot {
-                edges: vec![],
                 nodes: vec![],
                 adjacency: BTreeMap::new(),
                 selection_adjacency: BTreeMap::new(),
                 reference_unaccounted: vec![],
                 path_to_module: BTreeMap::new(),
-                observed_paths: vec![],
                 read_refusals: vec![],
                 declared_paths: vec![],
             }),
@@ -1052,24 +1079,20 @@ mod tests {
             naming_hygiene_refusal: None,
             orphan_helper_refusal: None,
             module_graph_facts: ModuleGraphFactsSnapshot {
-                edges: vec![],
                 nodes: vec![],
                 adjacency: BTreeMap::new(),
                 selection_adjacency: BTreeMap::new(),
                 reference_unaccounted: vec![],
                 path_to_module: BTreeMap::new(),
-                observed_paths: vec![],
                 read_refusals: vec![],
                 declared_paths: vec![],
             },
             module_graph_facts_digest: digest_facts_snapshot(&ModuleGraphFactsSnapshot {
-                edges: vec![],
                 nodes: vec![],
                 adjacency: BTreeMap::new(),
                 selection_adjacency: BTreeMap::new(),
                 reference_unaccounted: vec![],
                 path_to_module: BTreeMap::new(),
-                observed_paths: vec![],
                 read_refusals: vec![],
                 declared_paths: vec![],
             }),
