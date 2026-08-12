@@ -24,7 +24,7 @@
 //! | `selection_adjacency` | `entry_file_touched_via_import_closure` |
 //! | `reference_unaccounted` | `entry_file_touched_via_import_closure` |
 //! | `declared_paths` | `declared_repo_paths`, `declares_repo_path` |
-//! | `path_to_module` | `reference_only_direct_import_modules` |
+//! | `path_to_module` | the discovery witness run loop (an entry with no module identity refuses rather than fabricating a `DeclarationRef`), `declared_source_refs_axis_for_entry` |
 //! | `read_refusals` | `refuse_on_module_graph_read_refusals` |
 //!
 //! Two fields were carried with NO production reader at all and are deleted:
