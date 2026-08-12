@@ -1743,30 +1743,7 @@ fn belt_observe_from_result(
   }
 }
 
-fn belt_observe_for_instance(instance: HostDashboardInstance) -> BeltObserve {
-  let ls = tmux_ls_argv_for_instance(instance: instance)
-  if belt_program_available(program: ls.program) {
-    let result = gunbc.WitnessBin.Run(
-      workdir: belt_observe_workdir,
-      bin_path: ls.program as FilePath,
-      args: ls.args,
-      expect: OutcomeIsData,
-    )
-    belt_observe_from_result(
-      success: result.success,
-      stdout: result.stdout,
-      stderr: result.stderr,
-    )
-  } else {
-    ObserveRefused {
-      reason: "belt_observe: tmux not found on PATH; cannot observe belt session set; fail-closed (no blind spawn/reap on an unknowable observed set)",
-    }
-  }
-}
-
-fn belt_observe() -> BeltObserve {
-  belt_observe_for_instance(instance: srv1_live_dashboard_instance())
-}
+data belt_observe_entry_dissolution_note: String = "belt_observe and belt_observe_for_instance ARE DELETED. They observed the tmux session NAME set only, so a retained dead pane read as a live agent — the defect this arc removed. Both dispatch and tick now call belt_sessions_observe_for_instance, which classifies each row's process evidence.\n\nbelt_observe_from_result SURVIVES DELIBERATELY and is now reached only by witnesses. Its subject is the tmux stdout parse (nonzero exit with no documented no-server marker, unparseable line, empty set), and deleting it would delete that evidence along with the caller — the §4b rule is that a climb dissolves the lower-rung production handling, never the discriminating evidence that the higher rung stays real. Its parse duty is subsumed by classify_tmux_session_list, which the live observer uses; the dissolve-on is those parse witnesses being re-pointed at classify_tmux_session_list with the refusal cases preserved one-for-one, at which point this function and this note go together."
 
 type BeltPassOutcome
   = BeltPassRecorded
@@ -4767,7 +4744,7 @@ fn belt_dispatch_label_band_key(wire_label: String) -> String {
   }
 }
 
-data belt_dispatch_all_status_labels_note: String = "The full wire-label set, GROUNDED in belt_dispatch_status_label rather than hand-listed (§3): one exemplar per BeltDispatchResult variant, mapped through the label authority. The exemplar roster is the single manual enumeration the closed variant set forces — the same enumeration witness_dispatch_status_labels_pin_wire_contract already pins — and it is fail-closed twice: an 8th variant makes belt_dispatch_status_label's match non-exhaustive (compiler-caught), and gunbc.roadmap_component derives the DispatchButton's terminal states from THIS list and cross-checks totality both directions (a label with no state row, a state with no label — each red), so the button's state set cannot silently drift from the served contract. This is the projection the dispatch-button incident (2026-07-23) needed: one authority for the wire vocabulary, consumed by the JSON body, the page ok-predicate, and now the component state totality."
+data belt_dispatch_all_status_labels_note: String = "The full wire-label set, GROUNDED in belt_dispatch_status_label rather than hand-listed (§3): one exemplar per BeltDispatchResult variant, mapped through the label authority. The exemplar roster is the single manual enumeration the closed variant set forces — the same enumeration witness_dispatch_status_labels_pin_wire_contract already pins — and it is fail-closed twice: a NEW variant makes belt_dispatch_status_label's match non-exhaustive (compiler-caught), and gunbc.roadmap_component derives the DispatchButton's terminal states from THIS list and cross-checks totality both directions (a label with no state row, a state with no label — each red), so the button's state set cannot silently drift from the served contract. This is the projection the dispatch-button incident (2026-07-23) needed: one authority for the wire vocabulary, consumed by the JSON body, the page ok-predicate, and now the component state totality."
 
 fn belt_dispatch_result_exemplars() -> List<BeltDispatchResult> {
   [
