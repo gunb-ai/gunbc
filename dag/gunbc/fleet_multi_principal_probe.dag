@@ -284,7 +284,13 @@ func spark_managed_access_standing_wet(attempt_raw: String, identity_file: Strin
     }
   }
   let w = Filesystem.Write(path: spark_standing_receipt_path, content: body)
-  if w.success { ExitSuccess } else {
+  if !w.success {
     exit_failure(reason: join(["spark standing receipt write failed: ", w.error], ""))
+  } else {
+    if string_contains(s: body, pattern: "REFUSED") {
+      exit_failure(reason: join(["spark managed-access standing could not be observed:\n", body], ""))
+    } else {
+      ExitSuccess
+    }
   }
 }
