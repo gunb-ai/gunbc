@@ -4,6 +4,7 @@ import std.types { Bool, List, list_length }
 import std.currency { CurrencyCode, Eur, Usd }
 import std.measure { ByteSize, byte_size, money_amount_micro }
 import extdeps.vendor.samsung { samsung }
+import extdeps.boards.types { AsrockRackAltrad8ud1l2t }
 import extdeps.memory.types {
   DramModuleCatalogRow,
   LoadReduced,
@@ -17,9 +18,13 @@ import gunbc.memory_part_selection {
   CandidateAdmissible,
   CandidateCurrencyMismatch,
   CandidateImplicated,
+  CandidateSampleRequired,
+  DecodedFromPlatformSyndrome,
+  EvidenceUnobserved,
   PartCandidate,
   PartImplicatedByFailingStep,
   PartNotImplicated,
+  PartSampleQualificationRequired,
   PlatformTrainingFailure,
   altrad8ud_mrep_failure_observation,
   candidate_admission,
@@ -62,6 +67,25 @@ data rdimm_32g: DramModuleCatalogRow = DramModuleCatalogRow {
 
 data observed_failures: List<PlatformTrainingFailure> = [altrad8ud_mrep_failure_observation]
 
+// The same failure at DECODED standing. Only the evidence differs, which is
+// what makes the severity comparison below discriminating.
+data decoded_failure: PlatformTrainingFailure = PlatformTrainingFailure {
+  board: AsrockRackAltrad8ud1l2t,
+  step: LrdimmDataBufferMrep,
+  standing: DecodedFromPlatformSyndrome { register: "B5" },
+  observed_population: ["A1"],
+  observed_at: 1786590000000,
+}
+
+// The same failure with NO evidence behind it.
+data unobserved_failure: PlatformTrainingFailure = PlatformTrainingFailure {
+  board: AsrockRackAltrad8ud1l2t,
+  step: LrdimmDataBufferMrep,
+  standing: EvidenceUnobserved,
+  observed_population: ["A1"],
+  observed_at: 1786590000000,
+}
+
 fn candidate_of(
   module: DramModuleCatalogRow,
   currency: CurrencyCode,
@@ -75,24 +99,61 @@ fn candidate_of(
   }
 }
 
-// THE RULE. A load-reduced module must execute MREP, which this board has been
-// observed to fail, so it is implicated by the step rather than by its part
-// number.
-test fn load_reduced_module_is_implicated_by_the_failing_step() -> Bool {
-  match part_implication(candidate: lrdimm_32g, failures: observed_failures) {
-    PartImplicatedByFailingStep { step: _, standing: _ } => true
+// WHAT AN ASSOCIATION LICENSES. gunbc holds MREP at
+// AssociatedByIdenticalSignature, so another load-reduced module is a
+// buy-one-and-test candidate — NOT a refusal. An earlier revision answered
+// PartImplicatedByFailingStep here, which is how a single association
+// removed most of the 64GB DDR4 market by construction.
+test fn an_association_requires_a_sample_rather_than_refusing() -> Bool {
+  match part_implication(
+    candidate: lrdimm_32g,
+    failures: observed_failures,
+    target_board: AsrockRackAltrad8ud1l2t,
+  ) {
+    PartSampleQualificationRequired { step: _, standing: _ } => true
+    PartImplicatedByFailingStep { step: _, standing: _ } => false
     PartNotImplicated => false
   }
 }
 
-// RED control on the discriminating axis: an otherwise identical registered
-// module has no data buffer, cannot execute MREP, and is NOT implicated. If
-// the rule were keyed on vendor, capacity, generation or rank it would answer
-// the same for both fixtures.
-test fn registered_module_of_same_family_is_not_implicated() -> Bool {
-  match part_implication(candidate: rdimm_32g, failures: observed_failures) {
+// The severity is a function of EVIDENCE, not of the step. Same board, same
+// step, same module — decoded from this platform's own syndrome register, so
+// the refusal is earned.
+test fn a_decoded_syndrome_does_refuse() -> Bool {
+  match part_implication(
+    candidate: lrdimm_32g,
+    failures: [decoded_failure],
+    target_board: AsrockRackAltrad8ud1l2t,
+  ) {
+    PartImplicatedByFailingStep { step: _, standing: _ } => true
+    _ => false
+  }
+}
+
+// FAIL-OPEN CONTROL IN THE OTHER DIRECTION: an unevidenced row must not
+// implicate anything at all. Refusing on EvidenceUnobserved would let a row
+// nobody measured remove parts from the market.
+test fn an_unobserved_standing_implicates_nothing() -> Bool {
+  match part_implication(
+    candidate: lrdimm_32g,
+    failures: [unobserved_failure],
+    target_board: AsrockRackAltrad8ud1l2t,
+  ) {
     PartNotImplicated => true
-    PartImplicatedByFailingStep { step: _, standing: _ } => false
+    _ => false
+  }
+}
+
+// RED control on the structural axis: an otherwise identical registered module
+// has no data buffer, cannot execute MREP, and is untouched at ANY standing.
+test fn registered_module_is_untouched_even_by_a_decoded_failure() -> Bool {
+  match part_implication(
+    candidate: rdimm_32g,
+    failures: [decoded_failure],
+    target_board: AsrockRackAltrad8ud1l2t,
+  ) {
+    PartNotImplicated => true
+    _ => false
   }
 }
 
@@ -108,30 +169,29 @@ test fn cross_currency_candidate_is_refused_not_ranked() -> Bool {
     candidate: candidate_of(module: rdimm_32g, currency: Eur),
     failures: observed_failures,
     declared_currency: Usd,
+    target_board: AsrockRackAltrad8ud1l2t,
   ) {
     CandidateCurrencyMismatch { declared: _, candidate_currency: _ } => true
-    CandidateAdmissible => false
-    CandidateImplicated { step: _, standing: _ } => false
+    _ => false
   }
 }
 
-// Positive control: the SAME candidate in the declared currency is admissible,
-// so the refusal above is discriminating on currency and not on the candidate.
 test fn same_candidate_in_declared_currency_is_admissible() -> Bool {
   match candidate_admission(
     candidate: candidate_of(module: rdimm_32g, currency: Usd),
     failures: observed_failures,
     declared_currency: Usd,
+    target_board: AsrockRackAltrad8ud1l2t,
   ) {
     CandidateAdmissible => true
-    CandidateCurrencyMismatch { declared: _, candidate_currency: _ } => false
-    CandidateImplicated { step: _, standing: _ } => false
+    _ => false
   }
 }
 
-// The implicated candidate is refused BEFORE the frontier is computed, so the
-// frontier never trades "it might not train" against price.
-test fn frontier_excludes_the_implicated_candidate() -> Bool {
+// THE MARKET IS NOT SHRUNK BY AN ASSOCIATION. Both candidates stay on the
+// frontier under the evidence gunbc actually holds; the load-reduced one is
+// flagged sample-required rather than dropped.
+test fn an_association_leaves_both_candidates_on_the_frontier() -> Bool {
   let front = pareto_frontier(
     candidates: [
       candidate_of(module: lrdimm_32g, currency: Usd),
@@ -139,21 +199,40 @@ test fn frontier_excludes_the_implicated_candidate() -> Bool {
     ],
     failures: observed_failures,
     declared_currency: Usd,
+    target_board: AsrockRackAltrad8ud1l2t,
   )
-  list_length(front) == 1
+  list_length(front) == 2
+    && match candidate_admission(
+      candidate: candidate_of(module: lrdimm_32g, currency: Usd),
+      failures: observed_failures,
+      declared_currency: Usd,
+      target_board: AsrockRackAltrad8ud1l2t,
+    ) {
+      CandidateSampleRequired { step: _, standing: _ } => true
+      _ => false
+    }
 }
 
-// RED control: with NO observed platform failure, the load-reduced module is
-// admitted — the refusal comes from the observation, not from a preference
-// baked into the model.
-test fn without_an_observed_failure_the_load_reduced_module_is_admitted() -> Bool {
+// Positive control that the frontier CAN still drop a part: at decoded
+// standing the load-reduced candidate is refused before ranking.
+test fn a_decoded_refusal_does_drop_the_candidate_from_the_frontier() -> Bool {
   let front = pareto_frontier(
     candidates: [
       candidate_of(module: lrdimm_32g, currency: Usd),
       candidate_of(module: rdimm_32g, currency: Usd),
     ],
-    failures: [],
+    failures: [decoded_failure],
     declared_currency: Usd,
+    target_board: AsrockRackAltrad8ud1l2t,
   )
-  list_length(front) == 2
+  list_length(front) == 1
+    && match candidate_admission(
+      candidate: candidate_of(module: lrdimm_32g, currency: Usd),
+      failures: [decoded_failure],
+      declared_currency: Usd,
+      target_board: AsrockRackAltrad8ud1l2t,
+    ) {
+      CandidateImplicated { step: _, standing: _ } => true
+      _ => false
+    }
 }
