@@ -858,6 +858,8 @@ name = "v1-compiler-tests"
 version = "0.1.0"
 dependencies = [
  "im",
+ "serde",
+ "serde_json",
  "v1-compiler",
 ]
 
