@@ -98,6 +98,34 @@ test fn msrs_a_known_module_resolves_to_its_real_file() -> Bool {
 //
 // DISSOLVE-ON: the trigger is that note's own -- the identifier-minting defect is fixed and
 // re-verified end to end. Then the dag-root pair is asserted here and this comment deletes.
+// THE NEGATIVE CONTROL. A module that does not exist must not appear, and the pair check must be
+// capable of answering no -- otherwise the positive rows prove only that the fold visited something.
+test fn msrs_an_absent_module_is_not_projected() -> Bool {
+  match msrs_projected_rows() {
+    Absent => false
+    Present { value: _ } =>
+      !msrs_pair_present(
+        module_path: "v2.std.module_that_does_not_exist",
+        file_path: "src/v2/std/module_that_does_not_exist.dag",
+      )
+  }
+}
+
+// A REAL MODULE PAIRED WITH THE WRONG FILE must not be present either. Distinct from the row above:
+// that one asks whether an unknown NAME leaks in, this one asks whether a known name is bound to a
+// path it does not have -- the failure a projection that reshaped module names into paths would
+// produce, and it would pass the absent-module row.
+test fn msrs_a_real_module_is_not_bound_to_the_wrong_file() -> Bool {
+  match msrs_projected_rows() {
+    Absent => false
+    Present { value: _ } =>
+      !msrs_pair_present(
+        module_path: "v2.std.live_tree",
+        file_path: "src/v2/std/live_tree_elsewhere.dag",
+      )
+  }
+}
+
 fn msrs_pair_present(module_path: String, file_path: String) -> Bool {
   match msrs_projected_rows() {
     Absent => false

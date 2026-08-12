@@ -55,6 +55,20 @@ fn mbs_emit_args(overlay_dir: String) -> List<String> {
   ]
 }
 
+data module_binding_supply_claims: List<ClaimRun> = [
+  ClaimRun { entry: mbs_entry, function: "module_binding_host_manifest_is_populated" },
+  ClaimRun { entry: mbs_entry, function: "module_binding_host_resolves_a_known_compiler_module" },
+  ClaimRun { entry: mbs_entry, function: "module_binding_host_agrees_with_parse_oracle" },
+  ClaimRun { entry: mbs_layout_entry, function: "projection_refuses_on_absent_index" },
+  ClaimRun { entry: mbs_layout_entry, function: "transition_parity_host_index_agrees_with_hand_rows" },
+  ClaimRun { entry: mbs_layout_entry, function: "crate_layout_witnesses" },
+  ClaimRun { entry: mbs_row_supply_entry, function: "msrs_real_tree_rows_project" },
+  ClaimRun { entry: mbs_row_supply_entry, function: "msrs_every_manifest_binding_projects_to_a_row" },
+  ClaimRun { entry: mbs_row_supply_entry, function: "msrs_a_known_module_resolves_to_its_real_file" },
+  ClaimRun { entry: mbs_row_supply_entry, function: "msrs_an_absent_module_is_not_projected" },
+  ClaimRun { entry: mbs_row_supply_entry, function: "msrs_a_real_module_is_not_bound_to_the_wrong_file" }
+]
+
 func run_module_binding_supply_gate_ready(root: String) -> Bool {
   let target_ready = shell.Mkdir.Parents(path: concat(root, "/target"))
   if target_ready.success {
@@ -70,19 +84,7 @@ func run_module_binding_supply_gate_ready(root: String) -> Bool {
       let ran = if emitted.success {
         run_gunbc_claims(
           source_roots: mbs_claim_source_roots(overlay_dir: overlay.path),
-          claims: [
-            ClaimRun { entry: mbs_entry, function: "module_binding_host_manifest_is_populated" },
-            ClaimRun { entry: mbs_entry, function: "module_binding_host_resolves_a_known_compiler_module" },
-            ClaimRun { entry: mbs_entry, function: "module_binding_host_agrees_with_parse_oracle" },
-            ClaimRun { entry: mbs_layout_entry, function: "projection_refuses_on_absent_index" },
-            ClaimRun { entry: mbs_layout_entry, function: "transition_parity_host_index_agrees_with_hand_rows" },
-            ClaimRun { entry: mbs_layout_entry, function: "crate_layout_witnesses" },
-            ClaimRun { entry: mbs_row_supply_entry, function: "msrs_real_tree_rows_project" },
-            ClaimRun { entry: mbs_row_supply_entry, function: "msrs_every_manifest_binding_projects_to_a_row" },
-            ClaimRun { entry: mbs_row_supply_entry, function: "msrs_a_known_module_resolves_to_its_real_file" },
-            ClaimRun { entry: mbs_row_supply_entry, function: "msrs_an_absent_module_is_not_projected" },
-            ClaimRun { entry: mbs_row_supply_entry, function: "msrs_a_real_module_is_not_bound_to_the_wrong_file" }
-          ]
+          claims: module_binding_supply_claims
         )
       } else {
         false
