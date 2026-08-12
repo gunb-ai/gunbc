@@ -1,6 +1,7 @@
 module gunbc.self_host_artifact_materialization
 
-import std.types { Bool, FilePath, Int, NonEmptyStr, String }
+import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
+import extdeps.cargo_build
 import std.content_hash { Sha512Digest }
 import extdeps.cargo_message {
   CargoArtifactSelection,
@@ -24,7 +25,8 @@ import extdeps.cargo_message {
 import extdeps.tools.sha512sum {
   Sha512FileObservation,
   Sha512FileObserved,
-  Sha512FileObservationRefused
+  Sha512FileObservationRefused,
+  sha512sum_observe_file
 }
 import v2.compiler.self_host.generation {
   ArtifactIdentity,
@@ -150,6 +152,49 @@ fn materialization_outcome_from_path(
     ArtifactPathReported { executable: exe } =>
       materialization_from_digest(executable: exe, observation: observation)
   }
+}
+
+// The wet composition, and the ONLY function here that reaches the host. It is thin on
+// purpose: it makes three service calls and carries no decision the two pure folds above
+// do not already make, so the per-PR hermetic corpus keeps every arm under execution and
+// the wet cadence only has to prove that the real cargo and the real sha512sum reach them.
+//
+// THE DIGEST IS TAKEN ONLY FOR A PATH CARGO REPORTED, and the match below is what makes
+// that structural rather than a discipline: the non-reported arms have no executable to
+// hand sha512sum, so they produce a refusal that says exactly that. Those arms discard it
+// — materialization_outcome_from_path answers from the path alone — but the cause is true
+// as written, so if a later edit ever did consult it the result stays fail-closed instead
+// of naming a file nothing observed.
+fn materialize_artifact_wet(
+  workdir: FilePath,
+  manifest_path: FilePath,
+  target_dir: FilePath,
+  target_name: String,
+  extra_args: List<String>
+) -> ArtifactMaterializationOutcome {
+  let build = cargo.Build.BuildManifestMessages(
+    workdir: workdir,
+    manifest_path: manifest_path,
+    target_dir: target_dir,
+    extra_args: extra_args
+  )
+  let path = select_artifact_path(
+    build_success: build.success,
+    build_stdout: build.stdout,
+    target_name: target_name
+  )
+  let observation = match path {
+    ArtifactPathReported { executable: exe } => sha512sum_observe_file(path: exe)
+    ArtifactPathBuildFailed { target_name: _ } =>
+      Sha512FileObservationRefused {
+        cause: "no artifact path was reported, so no file was digested" as NonEmptyStr
+      }
+    ArtifactPathRefused { selection: _ } =>
+      Sha512FileObservationRefused {
+        cause: "no artifact path was reported, so no file was digested" as NonEmptyStr
+      }
+  }
+  materialization_outcome_from_path(path: path, observation: observation)
 }
 
 // The projection into the generation carrier. ArtifactMaterialized is reachable from

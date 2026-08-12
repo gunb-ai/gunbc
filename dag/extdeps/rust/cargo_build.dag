@@ -64,6 +64,20 @@ service cargo.Build {
     }
   }
 
+  operation BuildManifestMessages {
+    input { workdir: FilePath, manifest_path: FilePath, target_dir: FilePath, extra_args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["env", "-C", "{workdir}", "CARGO_TARGET_DIR={target_dir}", "cargo", "build", "--message-format=json", "--manifest-path", "{manifest_path}", extra_args] }
+    exit {
+      0 => Unit
+      101 => String "Compilation failed"
+    }
+  }
+
   operation Test {
     input { extra_args: List<String> = [] }
     output {
