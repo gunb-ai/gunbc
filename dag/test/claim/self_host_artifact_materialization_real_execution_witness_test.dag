@@ -1,0 +1,134 @@
+module test.claim.self_host_artifact_materialization_real_execution_witness
+
+import std.types { Bool, FilePath, String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.filesystem.filesystem_io
+import extdeps.shell
+import extdeps.cargo_build
+import gunbc.self_host_artifact_materialization
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data real_execution_home_doc: String = "Wet execution witness for the artifact axis: it writes a real minimal crate into a real mktemp directory, runs a REAL cargo build through cargo.Build.BuildManifestMessages, decodes cargo's own JSON message stream, and digests the file cargo named with a REAL sha512sum. shell.Mktemp.Dir, Filesystem.Write and cargo.Build.* have no mock_response, so the hermetic discovery corpus refuses this file by construction; it is excluded from discovery (gunbc.ci_layer_roots witness_exclusion_frontier) and enrolled in bin_witness_wet_entries, same lane as the other real-execution witnesses. The pure decision folds are witnessed hermetically on every PR in test.claim.self_host_artifact_materialization_witness — this file adds only what a fixture cannot supply: that the flag cargo is actually invoked with produces the stream the decode expects, and that the path in that stream is a file sha512sum can read."
+
+data why_the_crate_is_this_small_doc: String = "The crate is one no-dependency bin because the witness cost derives from what it proves (DESIGN witness-cost ruling): the subject is the round trip from a real cargo invocation to a real digest, and the smallest crate that crosses that boundary is the requirement plus one. A larger or realistic-looking crate would buy verisimilitude and nothing else, and a dependency would make the witness need a registry it has no reason to reach. Each claim builds its OWN crate in its OWN mktemp directory and nothing is shared between them, which is why the cost is stated as three builds of a no-dependency hello-world rather than one. This file therefore does NOT witness the one-build-one-artifact control the lane owes: that control is about reusing a built artifact across invocations, and asserting it here — where every claim deliberately starts from an empty target directory — would be naming a property nothing in this file exercises."
+
+data crate_manifest: String = "[package]\nname = \"gunbc-artifact-axis-fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"gunbc-artifact-axis-fixture\"\npath = \"main.rs\"\n\n[workspace]\n"
+
+data crate_main: String = "fn main() \{ println!(\"gunbc artifact axis fixture\"); \}\n"
+
+data fixture_target_name: String = "gunbc-artifact-axis-fixture"
+
+data mktemp_path_is_untrimmed_note: String = "shell.Mktemp.Dir models path as FilePath taken straight from stdout, and mktemp prints a trailing newline, so the value carries it. Interpolating it into a longer path therefore puts a newline INSIDE the path and every subsequent write refuses — which is how this witness first failed, at the fixture write rather than anywhere near the subject. Trimming here is a call-site repair, not the fix: the modeling gap is that the operation projects a line of stdout to FilePath without saying the projection strips the terminator. It is left alone deliberately because the same field is consumed raw at other call sites whose transports tolerate it, so changing the shared operation is a separate change with its own blast radius, not a rider on this one."
+
+data digest_identity_claim_is_permanent_note: String = "the_digest_is_of_the_file_cargo_named_not_of_some_other_real_file DOES NOT RETIRE, and this note exists because it will one day look redundant. Today it is the only claim in this file that fails when the producer digests the WRONG REAL FILE: materialization, the carried path, and the refusal arms all stay green under that mutation, because none of them is a function of which file was read. ObservedArtifactDigest is sole_constructor over a validated digest and carries no referent, so wrong-file is writable at the mint and invisible to every consumer downstream of it — forgery-from-text is closed, forgery-from-a-different-real-file is not. RUNG, HONESTLY: mechanically preventable, and this claim IS the mechanism — not a backstop to a construction wall, because no such wall exists here. Three were proposed and all three were measured and abandoned, which is why the rung is stated rather than promised. Sealing the mint to an observation binding digest to subject would make 39 hermetic claims unconstructible across two lanes; sealing this producer's input is worse, because Sha512FileObservation is an extdeps type with 35 construction sites and two production consumers (gunbc.package_delivery, gunbc.provider_wire_evidence) that have no stake in this lane and would pay for a guarantee they did not ask for; and a narrower sealed observation closes the production hole only to require an admitted test-construction path, which is the escape hatch DESIGN §5 forbids wearing a better name. The circle is not an accident of these carriers: wrong-file is unforgeable only if an observation cannot be hand-authored, and every hermetic arm exists BECAUSE it can be. NEXT-RUNG TRIGGER, and it is the repository's already-tracked one rather than a coined local one: DESIGN §4b unforgeable construction for carrier-borne invariants, whose candidate wall sole_constructor is recorded as UNVERIFIED for generic refinement carriers and construction forms. This lane is downstream of that wall, not a reason for it. If it lands, this claim becomes the executed evidence that the higher rung stays real (§4b dissolution-on-climb: production machinery dissolves, discriminating evidence stays enrolled) — deleting it then would recreate specification-without-execution one rung up."
+
+type BuiltFixture
+  = BuiltFixture { outcome: ArtifactMaterializationOutcome }
+  | FixtureSetupRefused { cause: String }
+
+fn build_fixture_once(target_name: String) -> BuiltFixture {
+  let dir = shell.Mktemp.Dir()
+  if !dir.success {
+    FixtureSetupRefused { cause: "mktemp -d failed" }
+  } else {
+    let root = trim(dir.path as String)
+    let manifest = "{root}/Cargo.toml"
+    let main_rs = "{root}/main.rs"
+    let wrote_manifest = Filesystem.Write(path: manifest, content: crate_manifest)
+    let wrote_main = Filesystem.Write(path: main_rs, content: crate_main)
+    if !wrote_manifest.success || !wrote_main.success {
+      FixtureSetupRefused { cause: "fixture crate write failed" }
+    } else {
+      BuiltFixture {
+        outcome: gunbc.self_host_artifact_materialization.materialize_artifact_wet(
+          workdir: root,
+          manifest_path: manifest,
+          target_dir: "{root}/target",
+          target_name: target_name,
+          extra_args: []
+        )
+      }
+    }
+  }
+}
+
+fn observed_path_or_empty(built: BuiltFixture) -> String {
+  match built {
+    FixtureSetupRefused { cause: _ } => ""
+    BuiltFixture { outcome: o } =>
+      match gunbc.self_host_artifact_materialization.materialized_executable(outcome: o) {
+        Present { value: p } => p
+        Absent => ""
+      }
+  }
+}
+
+fn materialized(built: BuiltFixture) -> Bool {
+  match built {
+    FixtureSetupRefused { cause: _ } => false
+    BuiltFixture { outcome: o } =>
+      match gunbc.self_host_artifact_materialization.artifact_identity_of(outcome: o) {
+        ArtifactMaterialized { digest: _ } => true
+        ArtifactNotMaterialized => false
+      }
+  }
+}
+
+test fn a_real_cargo_build_materializes_through_the_real_digest() -> Bool {
+  materialized(built: build_fixture_once(target_name: fixture_target_name))
+}
+
+test fn the_materialized_path_is_the_one_the_real_cargo_stream_named() -> Bool {
+  let path = observed_path_or_empty(built: build_fixture_once(target_name: fixture_target_name))
+  string_contains(path, fixture_target_name) && string_contains(path, "/target/")
+}
+
+test fn a_target_the_build_never_produced_refuses_and_does_not_materialize() -> Bool {
+  let built = build_fixture_once(target_name: "a-target-this-crate-does-not-define")
+  match built {
+    FixtureSetupRefused { cause: _ } => false
+    BuiltFixture { outcome: o } =>
+      match o {
+        ArtifactMaterializationPathRefused { selection: s } =>
+          match s {
+            CargoArtifactAbsent { target_name: t } => t == "a-target-this-crate-does-not-define"
+            CargoArtifactSelected { executable: _ } => false
+            CargoArtifactAmbiguous { target_name: _, count: _ } => false
+            CargoArtifactWithoutExecutable { target_name: _ } => false
+            CargoArtifactExecutablePathEmpty { target_name: _, line_number: _ } => false
+            CargoArtifactExecutableNotAString { target_name: _, line_number: _ } => false
+            CargoMessageExecutableAbsent { line_number: _ } => false
+            CargoMessageLineUnparseable { line_number: _ } => false
+            CargoMessageLineNotAnObject { line_number: _ } => false
+            CargoMessageReasonAbsent { line_number: _ } => false
+            CargoMessageReasonNotAString { line_number: _ } => false
+            CargoMessageMemberDuplicated { line_number: _, key: _ } => false
+            CargoMessageTargetNotAnObject { line_number: _ } => false
+            CargoMessageTargetNameAbsent { line_number: _ } => false
+            CargoMessageTargetNameNotAString { line_number: _ } => false
+          }
+        ArtifactMaterializationObserved { executable: _, digest: _ } => false
+        ArtifactMaterializationBuildFailed { target_name: _ } => false
+        ArtifactMaterializationDigestRefused { executable: _, cause: _ } => false
+      }
+  }
+}
+
+
+test fn the_digest_is_of_the_file_cargo_named_not_of_some_other_real_file() -> Bool {
+  match build_fixture_once(target_name: fixture_target_name) {
+    FixtureSetupRefused { cause: _ } => false
+    BuiltFixture { outcome: o } =>
+      match o {
+        ArtifactMaterializationObserved { executable: exe, digest: d } =>
+          match sha512sum_observe_file(path: exe) {
+            Sha512FileObserved { digest: again } => (d as String) == (again as String)
+            Sha512FileObservationRefused { cause: _ } => false
+          }
+        ArtifactMaterializationBuildFailed { target_name: _ } => false
+        ArtifactMaterializationPathRefused { selection: _ } => false
+        ArtifactMaterializationDigestRefused { executable: _, cause: _ } => false
+      }
+  }
+}
