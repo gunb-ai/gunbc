@@ -647,10 +647,8 @@ fn verilog_lex() -> LexRules {
         verilog_lex_token(token_class: ^verilog_token_kw_wire, pattern: KeywordPattern { text: "wire" }),
         verilog_lex_token(token_class: ^verilog_token_kw_assign, pattern: KeywordPattern { text: "assign" }),
         verilog_lex_token(token_class: ^verilog_token_semicolon, pattern: LiteralPattern { text: ";" }),
-        verilog_lex_token(token_class: ^verilog_token_header_lparen, pattern: LiteralPattern { text: "(" }),
-        verilog_lex_token(token_class: ^verilog_token_header_rparen, pattern: LiteralPattern { text: ")" }),
-        verilog_lex_token(token_class: ^verilog_token_expr_lparen, pattern: LiteralPattern { text: "(" }),
-        verilog_lex_token(token_class: ^verilog_token_expr_rparen, pattern: LiteralPattern { text: ")" }),
+        verilog_lex_token(token_class: ^verilog_token_lparen, pattern: LiteralPattern { text: "(" }),
+        verilog_lex_token(token_class: ^verilog_token_rparen, pattern: LiteralPattern { text: ")" }),
         verilog_lex_token(token_class: ^verilog_token_comma, pattern: LiteralPattern { text: "," }),
         verilog_lex_token(token_class: ^verilog_token_equals, pattern: LiteralPattern { text: "=" }),
         verilog_lex_token(token_class: ^verilog_token_unary_operator, pattern: LiteralPattern { text: "~" }),
@@ -763,11 +761,11 @@ fn verilog_emission_formal_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^verilog_production_expr,
       rhs: [
-        grammar_formal_terminal(identity: ^verilog_token_expr_lparen),
+        grammar_formal_terminal(identity: ^verilog_token_lparen),
         grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr),
         grammar_formal_terminal_free(identity: ^verilog_token_binary_operator),
         grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr),
-        grammar_formal_terminal(identity: ^verilog_token_expr_rparen)
+        grammar_formal_terminal(identity: ^verilog_token_rparen)
       ]
     ),
     grammar_formal_production(
@@ -796,9 +794,9 @@ fn verilog_emission_formal_productions() -> List<FormalProduction> {
       rhs: [
         grammar_formal_terminal(identity: ^verilog_token_kw_module),
         grammar_formal_terminal_free(identity: ^verilog_token_ident),
-        grammar_formal_terminal(identity: ^verilog_token_header_lparen),
+        grammar_formal_terminal_free(identity: ^verilog_token_lparen),
         grammar_formal_nonterminal_occurrence(identity: ^verilog_production_port_list),
-        grammar_formal_terminal(identity: ^verilog_token_header_rparen),
+        grammar_formal_terminal_free(identity: ^verilog_token_rparen),
         grammar_formal_terminal(identity: ^verilog_token_semicolon),
         grammar_formal_nonterminal_occurrence(identity: ^verilog_production_assign_list),
         grammar_formal_terminal(identity: ^verilog_token_kw_endmodule)
@@ -891,10 +889,18 @@ fn verilog_assign_list_cons(assignment: Node, rest: Node) -> Node {
   verilog_conj(children: [verilog_slot(target: assignment), verilog_slot(target: rest)])
 }
 
+// THE HEADER PARENTHESES ARE BOUND SLOTS, and that is what lets ONE lexical class serve both the
+// port list and an expression. A transform is keyed by token class, so two classes were needed to
+// give " (\n" in the header and "(" inside an expression — and two classes lexing the same literal
+// would have made reparse ambiguous, since the lexer cannot know which one it is looking at. A
+// bound slot takes its spelling from its emitted atom instead, so the header carries its own
+// layout and the expression parens stay bare. One class, no lexical ambiguity, same bytes.
 fn verilog_module_declaration(name: Symbol, ports: Node, assignments: Node) -> Node {
   verilog_conj(children: [
     verilog_slot(target: verilog_atom(id: name)),
+    verilog_slot(target: verilog_atom(id: ^verilog_header_open)),
     verilog_slot(target: ports),
+    verilog_slot(target: verilog_atom(id: ^verilog_header_close)),
     verilog_slot(target: assignments)
   ])
 }
@@ -909,14 +915,14 @@ fn verilog_emit_layout_transforms() -> Map<Symbol, fn(String) -> String> {
               map_insert(
                 map_insert(
                   map_insert(empty_map(), ^verilog_token_kw_module, fn(s) { concat(s, " ") }),
-                  ^verilog_token_header_lparen,
-                  fn(s) { concat(" ", concat(s, "\n")) }
+                  ^verilog_token_kw_wire,
+                  fn(s) { concat(s, " ") }
                 ),
                 ^verilog_token_comma,
                 fn(s) { concat(s, "\n") }
               ),
-              ^verilog_token_header_rparen,
-              fn(s) { concat("\n", s) }
+              ^verilog_token_semicolon,
+              fn(s) { concat(s, "\n") }
             ),
             ^verilog_token_semicolon,
             fn(s) { concat(s, "\n") }
@@ -1002,7 +1008,15 @@ fn verilog_binding_spellings() -> Map<Symbol, String> {
             map_insert(
               map_insert(
                 map_insert(
-                  map_insert(empty_map(), ^verilog_interlock_op_not, "~"),
+                  map_insert(
+                    map_insert(
+                      map_insert(empty_map(), ^verilog_interlock_op_not, "~"),
+                      ^verilog_header_open,
+                      " (\n"
+                    ),
+                    ^verilog_header_close,
+                    "\n)"
+                  ),
                   ^verilog_interlock_module_name,
                   "board_power_interlock"
                 ),
@@ -1271,7 +1285,15 @@ fn verilog_base_spellings() -> Map<Symbol, String> {
     map_insert(
       map_insert(
         map_insert(
-          map_insert(empty_map(), ^verilog_dir_input, "  input  "),
+          map_insert(
+            map_insert(
+              map_insert(empty_map(), ^verilog_header_open, " (\n"),
+              ^verilog_header_close,
+              "\n)"
+            ),
+            ^verilog_dir_input,
+            "  input  "
+          ),
           ^verilog_dir_output,
           "  output "
         ),
