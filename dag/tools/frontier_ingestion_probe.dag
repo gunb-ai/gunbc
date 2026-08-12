@@ -128,7 +128,7 @@ fn classify_member(m: FrontierMember) -> MemberObservation {
 }
 
 fn observe_roster() -> List<MemberObservation> {
-  fold_list(xs: frontier_roster, empty: [], cons: fn(acc, m) {
+  fold_list(xs: frontier_roster, empty: [] as List<MemberObservation>, cons: fn(acc, m) {
     concat(acc, [classify_member(m: m)])
   })
 }

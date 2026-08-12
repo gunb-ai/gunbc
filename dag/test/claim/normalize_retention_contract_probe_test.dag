@@ -5,7 +5,7 @@ import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.collection { List }
 import v2.std.algebra { fold_list }
-import v2.std.diagnostic { NonEmptyDiagnostics, module_unavailable_diagnostic }
+import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics, module_unavailable_diagnostic }
 import gunbc.tools.frontier_ingestion_probe {
   FrontendStage,
   MemberObservation,
@@ -40,7 +40,7 @@ fn classify_reasons(first: Symbol, rest: List<Symbol>) -> FrontendStage {
   classify_normalize_diagnostics(
     d: NonEmptyDiagnostics {
       head: module_unavailable_diagnostic(reason: first, module_file: ^frontier_probe),
-      tail: fold_list(xs: rest, empty: [], cons: fn(acc, r) {
+      tail: fold_list(xs: rest, empty: [] as List<Diagnostic>, cons: fn(acc, r) {
         concat(acc, [module_unavailable_diagnostic(reason: r, module_file: ^frontier_probe)])
       }),
     }
@@ -137,13 +137,13 @@ test fn stage_labels_are_pairwise_distinct() -> Bool {
 // incomplete, and a count comparison would not catch it once a sixteenth stray observation
 // existed. Dropping exactly one roster label is the smallest input that separates the two.
 fn observations_for_whole_roster() -> List<MemberObservation> {
-  fold_list(xs: frontier_roster, empty: [], cons: fn(acc, m) {
+  fold_list(xs: frontier_roster, empty: [] as List<MemberObservation>, cons: fn(acc, m) {
     concat(acc, [MemberObservation { label: m.label, stage: NormalizeOther }])
   })
 }
 
 fn observations_missing_one() -> List<MemberObservation> {
-  fold_list(xs: frontier_roster, empty: [], cons: fn(acc, m) {
+  fold_list(xs: frontier_roster, empty: [] as List<MemberObservation>, cons: fn(acc, m) {
     if m.label == ^entry {
       acc
     } else {
@@ -162,7 +162,7 @@ test fn census_missing_one_member_is_incomplete_RED() -> Bool {
 
 // A count equality would accept this: fifteen observations, none of them a roster member.
 test fn census_of_the_right_size_but_wrong_members_is_incomplete_RED() -> Bool {
-  let wrong = fold_list(xs: frontier_roster, empty: [], cons: fn(acc, m) {
+  let wrong = fold_list(xs: frontier_roster, empty: [] as List<MemberObservation>, cons: fn(acc, m) {
     concat(acc, [MemberObservation { label: ^not_a_roster_member, stage: NormalizeOther }])
   })
   census_is_complete(obs: wrong) == false
