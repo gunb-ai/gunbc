@@ -13,6 +13,7 @@ fn effect_io_binding_spellings() -> Map<Symbol, String> {
 
 fn effect_io_target_model() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: ts_target_model_node(),
     lex: ts_fn_add_lex(),
     binding_spellings: effect_io_binding_spellings(),

@@ -1730,13 +1730,8 @@ pub fn type_node_is_callable(n: Rc<Node>) -> bool {
 }
 
 pub fn module_skips_direct_call_arg_check(module_name: String) -> bool {
-    {
-        let is_v4 = ((v1_rt::string_length(&module_name) >= 3)
-            && (v1_rt::substring(&module_name, 0, 3) == "v2.".to_string()));
-        let is_compiler_substrate = ((v1_rt::string_length(&module_name) >= 13)
-            && (v1_rt::substring(&module_name, 0, 13) == "v1.compiler.".to_string()));
-        (is_v4.clone() || is_compiler_substrate.clone())
-    }
+    ((v1_rt::string_length(&module_name) >= 3)
+        && (v1_rt::substring(&module_name, 0, 3) == "v2.".to_string()))
 }
 
 pub fn brand_grounds_transparently_to(

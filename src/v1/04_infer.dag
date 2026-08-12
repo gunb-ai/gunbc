@@ -1064,10 +1064,27 @@ fn type_node_is_callable(n: Node) -> Bool {
   n.params |> count > 0
 }
 
+// THE v1.compiler.* ARM IS DELETED RATHER THAN REPAIRED, and the deletion preserves live behaviour
+// by construction rather than by argument. It read:
+//
+//   string_length(s: module_name) >= 13 && substring(s: module_name, start: 0, end: 13) == "v1.compiler."
+//
+// "v1.compiler." is TWELVE characters, so a thirteen-character slice could never equal it. The arm
+// has never returned true, for any module, since it was written - compiler modules have been
+// receiving the direct-call argument judgment the whole time, and the corpus is green under it.
+//
+// There are two candidate fixes and only one is honest. Changing 13 to 12 would ACTIVATE an
+// exemption that has never been in force, silencing a judgment the tree currently passes: a
+// behaviour change wearing the costume of a typo fix, and one that would need evidence of false
+// positives nobody has. Deleting the arm keeps live behaviour exactly and removes the dead branch
+// together with the claim attached to it - direct_call_shape_wall_note describes this exemption as
+// protecting the TYPE judgment in compiler modules from representation-gap false positives, and
+// that protection was never real. A comment asserting a wall that does not exist is the inert
+// mechanism DESIGN 6 names.
+//
+// The v2. arm is untouched and DOES fire.
 fn module_skips_direct_call_arg_check(module_name: String) -> Bool {
-  let is_v4 = string_length(s: module_name) >= 3 && substring(s: module_name, start: 0, end: 3) == "v2."
-  let is_compiler_substrate = string_length(s: module_name) >= 13 && substring(s: module_name, start: 0, end: 13) == "v1.compiler."
-  is_v4 || is_compiler_substrate
+  string_length(s: module_name) >= 3 && substring(s: module_name, start: 0, end: 3) == "v2."
 }
 
 fn brand_grounds_transparently_to(name: String, other: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {

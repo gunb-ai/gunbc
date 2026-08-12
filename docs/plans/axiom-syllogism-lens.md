@@ -130,7 +130,7 @@ The witness homes at `dag/test/claim/design_argument_witness_test.dag`, floor-di
 | --- | --- | --- |
 | acyclicity / cycle detection | `graph_has_multi_node_scc` | `std/graph.dag` |
 | forward/reverse adjacency, DFS | `forward_adjacency` · `reverse_adjacency` · `dfs_finish_order` | `std/graph.dag` |
-| reachability `universe ∖ reachable(roots)` | the inert-lens / doc-graph BFS shape | `inert_lens_modules` (`cli_run.rs`) · `doc_reachability_project.rs` |
+| reachability `universe ∖ reachable(roots)` | the inert-lens / doc-graph BFS shape | `doc_reachability_project.rs` (was also `inert_lens_modules`, DELETED gunbc#8141) |
 | truth-value / syllogistic structure | `Classical = True \| False` | `std/logic.dag` |
 | well-founded / acyclic grounding | initial-algebra + size-change | `std/induction.dag` |
 | fail-closed lens verdict carrier | `LensVerdict` (Holds/Violation/NotApplicable/Unrealized) | `std/lens_verdict.dag` |

@@ -14,7 +14,8 @@ import v2.extdeps.languages.c {
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Medium }
-import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
+import v2.std.compilers.target_model {
+  ProducedDeclUnwired, TargetModel, target_model_emit_transforms_empty }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v2.std.cardinality { termination_proof_witness_for_node }
 import v2.std.collection {
@@ -81,6 +82,7 @@ data c_add_empty_translation_rules_bundle: Node = Node {
 }
 
 data c_add_missing_translation_rules_target: TargetModel = TargetModel {
+  produced_decl_support: ProducedDeclUnwired,
   bundle: c_add_empty_translation_rules_bundle,
   lex: c_lex(),
   binding_spellings: empty_map(),

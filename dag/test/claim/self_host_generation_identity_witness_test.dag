@@ -1,0 +1,390 @@
+module test.claim.self_host_generation_identity_witness
+
+import v2.compiler.self_host.generation {
+  ArtifactIdentity,
+  ArtifactMaterialized,
+  ArtifactNotMaterialized,
+  observed_artifact_digest,
+  BuildConfigurationAxis,
+  GenerationAxis,
+  GenerationIdentity,
+  MaterializedArtifactAxis,
+  ProducerCompilerAxis,
+  RosterCanonicallyOrdered,
+  RosterDuplicateMember,
+  RosterMemberIdentityEmpty,
+  RosterNotAscending,
+  SourceClosureAxis,
+  SourceClosureAxisDigest,
+  SourceClosureAxisRefused,
+  SourceClosureMember,
+  SourceClosureRoster,
+  TargetModelAxis,
+  ToolchainAxis,
+  generation_axes,
+  generation_axis_agrees,
+  generation_axis_symbol,
+  generation_identity_agrees,
+  generation_identity_mismatched_axes,
+  roster_order_verdict,
+  source_closure_axis_digest
+}
+import v2.std.algebra { fold_list, for_all, length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node { Hash, symbol_identity_digest }
+import v2.std.optional { Absent, Present }
+import std.content_hash { sha512_hex_digest }
+
+data gi_artifact_baseline_hex: String = "8f31919534d1585a005d999df89eea61ae2aee36ed7f943b768f251bc38c7cbdd927d3dd88c1a1b9322552ee85bf2f866acfc2e9e9d718a6b4195e86b0943316"
+
+data gi_artifact_moved_hex: String = "f316fd8378b70362bcac957857fd6dd68292084d75a44bcdaaac7a113384ad78e6412513a229f7fdb0204a113fa17cb876304eb478d9099296a49ad209954edd"
+
+// An artifact identity is reachable ONLY through the validating mint. An unparseable
+// digest yields ArtifactNotMaterialized rather than a fabricated one, which admission
+// then refuses by name — the honest arm, and strictly better than a green axis
+// derived from bytes nobody observed.
+fn gi_artifact(hex: String) -> ArtifactIdentity {
+  match sha512_hex_digest(hex: hex) {
+    Present { value: d } =>
+      ArtifactMaterialized { digest: observed_artifact_digest(observed: d) }
+    Absent => ArtifactNotMaterialized
+  }
+}
+
+fn gi_digest(label: String) -> Hash {
+  symbol_identity_digest(sym: label)
+}
+
+fn gi_baseline() -> GenerationIdentity {
+  GenerationIdentity {
+    producer_compiler: gi_digest(label: "producer-compiler-baseline"),
+    source_closure: gi_digest(label: "source-closure-baseline"),
+    target_model: gi_digest(label: "target-model-baseline"),
+    toolchain: gi_digest(label: "toolchain-baseline"),
+    build_configuration: gi_digest(label: "build-configuration-baseline"),
+    materialized_artifact: gi_artifact(hex: gi_artifact_baseline_hex)
+  }
+}
+
+// One perturbation per axis. Each moves EXACTLY one fact and holds the other five
+// fixed, so a carrier that folded the six into a single scalar would be unable to
+// tell these six apart — which is precisely what the per-axis assertions below
+// falsify.
+fn gi_perturbed(axis: GenerationAxis) -> GenerationIdentity {
+  let base = gi_baseline()
+  match axis {
+    ProducerCompilerAxis =>
+      GenerationIdentity {
+        producer_compiler: gi_digest(label: "producer-compiler-MOVED"),
+        source_closure: base.source_closure,
+        target_model: base.target_model,
+        toolchain: base.toolchain,
+        build_configuration: base.build_configuration,
+        materialized_artifact: base.materialized_artifact
+      }
+    SourceClosureAxis =>
+      GenerationIdentity {
+        producer_compiler: base.producer_compiler,
+        source_closure: gi_digest(label: "source-closure-MOVED"),
+        target_model: base.target_model,
+        toolchain: base.toolchain,
+        build_configuration: base.build_configuration,
+        materialized_artifact: base.materialized_artifact
+      }
+    TargetModelAxis =>
+      GenerationIdentity {
+        producer_compiler: base.producer_compiler,
+        source_closure: base.source_closure,
+        target_model: gi_digest(label: "target-model-MOVED"),
+        toolchain: base.toolchain,
+        build_configuration: base.build_configuration,
+        materialized_artifact: base.materialized_artifact
+      }
+    ToolchainAxis =>
+      GenerationIdentity {
+        producer_compiler: base.producer_compiler,
+        source_closure: base.source_closure,
+        target_model: base.target_model,
+        toolchain: gi_digest(label: "toolchain-MOVED"),
+        build_configuration: base.build_configuration,
+        materialized_artifact: base.materialized_artifact
+      }
+    BuildConfigurationAxis =>
+      GenerationIdentity {
+        producer_compiler: base.producer_compiler,
+        source_closure: base.source_closure,
+        target_model: base.target_model,
+        toolchain: base.toolchain,
+        build_configuration: gi_digest(label: "build-configuration-MOVED"),
+        materialized_artifact: base.materialized_artifact
+      }
+    MaterializedArtifactAxis =>
+      GenerationIdentity {
+        producer_compiler: base.producer_compiler,
+        source_closure: base.source_closure,
+        target_model: base.target_model,
+        toolchain: base.toolchain,
+        build_configuration: base.build_configuration,
+        materialized_artifact: gi_artifact(hex: gi_artifact_moved_hex)
+      }
+  }
+}
+
+// POSITIVE CONTROL. An identity agrees with itself on every axis.
+test fn generation_identity_agrees_with_itself() -> Bool {
+  generation_identity_agrees(left: gi_baseline(), right: gi_baseline())
+}
+
+// THE KEYSTONE DISCRIMINATING RED, stated as a conjunction rather than as six
+// separate greens so a silently-dropped arm cannot pass unnoticed. For every one of
+// the six axes: perturbing that axis alone must (a) break overall agreement, (b)
+// report exactly ONE mismatched axis, and (c) report THAT axis by name. Clause (c)
+// is what a single opaque compiler_identity scalar cannot satisfy — it would fail
+// (b) and (c) together by reporting an undifferentiated mismatch.
+test fn each_axis_perturbation_names_exactly_its_own_axis() -> Bool {
+  for_all(
+    xs: generation_axes,
+    predicate: fn(axis) {
+      let moved = gi_perturbed(axis: axis)
+      let mismatched = generation_identity_mismatched_axes(
+        left: gi_baseline(),
+        right: moved
+      )
+      !generation_identity_agrees(left: gi_baseline(), right: moved)
+        && length(xs: mismatched) == 1
+        && for_all(
+          xs: mismatched,
+          predicate: fn(named) {
+            generation_axis_symbol(axis: named) ==
+              generation_axis_symbol(axis: axis)
+          }
+        )
+        && !generation_axis_agrees(
+          left: gi_baseline(),
+          right: moved,
+          axis: axis
+        )
+    }
+  )
+}
+
+// The five axes NOT perturbed must still agree, so a perturbation cannot be reported
+// as a whole-identity smear. Without this, an implementation that marked every axis
+// mismatched on any change would pass the naming assertion above by accident.
+test fn perturbing_one_axis_leaves_the_other_five_agreeing() -> Bool {
+  for_all(
+    xs: generation_axes,
+    predicate: fn(moved_axis) {
+      let moved = gi_perturbed(axis: moved_axis)
+      for_all(
+        xs: generation_axes,
+        predicate: fn(other) {
+          generation_axis_symbol(axis: other) ==
+            generation_axis_symbol(axis: moved_axis)
+            || generation_axis_agrees(
+              left: gi_baseline(),
+              right: moved,
+              axis: other
+            )
+        }
+      )
+    }
+  )
+}
+
+fn gi_unbuilt() -> GenerationIdentity {
+  let base = gi_baseline()
+  GenerationIdentity {
+    producer_compiler: base.producer_compiler,
+    source_closure: base.source_closure,
+    target_model: base.target_model,
+    toolchain: base.toolchain,
+    build_configuration: base.build_configuration,
+    materialized_artifact: ArtifactNotMaterialized
+  }
+}
+
+// THE EMPTY-OBSERVATION NARROW CONTROL. Two generations that were never built do
+// NOT agree on the artifact axis. Neither side carries an observed artifact, so
+// answering `true` would render "we could not observe either artifact" as "the
+// artifacts agree" — ⊥-as-ignorance reported as ⊥-as-answer. This is the arm most
+// likely to be quietly relaxed later, which is why it is asserted in both
+// directions: unbuilt-vs-unbuilt and unbuilt-vs-built.
+test fn two_unmaterialized_artifacts_do_not_agree() -> Bool {
+  !generation_axis_agrees(
+    left: gi_unbuilt(),
+    right: gi_unbuilt(),
+    axis: MaterializedArtifactAxis
+  )
+    && !generation_identity_agrees(left: gi_unbuilt(), right: gi_unbuilt())
+    && !generation_axis_agrees(
+      left: gi_unbuilt(),
+      right: gi_baseline(),
+      axis: MaterializedArtifactAxis
+    )
+}
+
+fn gi_member(identity: String, content: String) -> SourceClosureMember {
+  SourceClosureMember {
+    identity: identity,
+    content: gi_digest(label: content)
+  }
+}
+
+fn gi_roster_canonical() -> SourceClosureRoster {
+  SourceClosureRoster {
+    members: [
+      gi_member(identity: "a_module", content: "a-content"),
+      gi_member(identity: "b_module", content: "b-content"),
+      gi_member(identity: "c_module", content: "c-content")
+    ]
+  }
+}
+
+// The SAME set of members, enumerated in a different order. A digest folded over
+// host traversal order would silently report this as a different generation; this
+// carrier refuses it instead, so the disorder is visible rather than laundered.
+fn gi_roster_reordered() -> SourceClosureRoster {
+  SourceClosureRoster {
+    members: [
+      gi_member(identity: "b_module", content: "b-content"),
+      gi_member(identity: "a_module", content: "a-content"),
+      gi_member(identity: "c_module", content: "c-content")
+    ]
+  }
+}
+
+fn gi_roster_duplicate() -> SourceClosureRoster {
+  SourceClosureRoster {
+    members: [
+      gi_member(identity: "a_module", content: "a-content"),
+      gi_member(identity: "a_module", content: "a-content-again"),
+      gi_member(identity: "c_module", content: "c-content")
+    ]
+  }
+}
+
+fn gi_roster_empty_identity() -> SourceClosureRoster {
+  SourceClosureRoster {
+    members: [
+      gi_member(identity: "", content: "nameless-content")
+    ]
+  }
+}
+
+test fn canonical_roster_admits_and_yields_a_digest() -> Bool {
+  gi_ordered(roster: gi_roster_canonical())
+    && match source_closure_axis_digest(roster: gi_roster_canonical()) {
+      SourceClosureAxisDigest { digest: _ } => true
+      SourceClosureAxisRefused { verdict: _ } => false
+    }
+    && match roster_order_verdict(roster: gi_roster_canonical()) {
+      RosterCanonicallyOrdered => true
+      RosterNotAscending { at_member: _ } => false
+      RosterDuplicateMember { at_member: _ } => false
+      RosterMemberIdentityEmpty => false
+    }
+}
+
+// DISCRIMINATING RED. A reordered roster REFUSES by name and does not produce a
+// digest. It must not silently re-sort (which would hide an order-unstable
+// producer) and must not fold anyway (which would make the same closure report as
+// two different generations).
+test fn reordered_roster_refuses_naming_the_offending_member() -> Bool {
+  !gi_ordered(roster: gi_roster_reordered())
+    && match source_closure_axis_digest(roster: gi_roster_reordered()) {
+      SourceClosureAxisDigest { digest: _ } => false
+      SourceClosureAxisRefused { verdict: v } =>
+        match v {
+          RosterNotAscending { at_member: m } => m == "a_module"
+          RosterCanonicallyOrdered => false
+          RosterDuplicateMember { at_member: _ } => false
+          RosterMemberIdentityEmpty => false
+        }
+    }
+}
+
+// DISCRIMINATING RED. A duplicated member is its OWN verdict, not folded into the
+// ordering refusal — two different producer defects with two different remedies.
+test fn duplicate_member_refuses_as_a_distinct_verdict() -> Bool {
+  !gi_ordered(roster: gi_roster_duplicate())
+    && match source_closure_axis_digest(roster: gi_roster_duplicate()) {
+      SourceClosureAxisDigest { digest: _ } => false
+      SourceClosureAxisRefused { verdict: v } =>
+        match v {
+          RosterDuplicateMember { at_member: m } => m == "a_module"
+          RosterCanonicallyOrdered => false
+          RosterNotAscending { at_member: _ } => false
+          RosterMemberIdentityEmpty => false
+        }
+    }
+}
+
+test fn empty_member_identity_refuses() -> Bool {
+  match source_closure_axis_digest(roster: gi_roster_empty_identity()) {
+    SourceClosureAxisDigest { digest: _ } => false
+    SourceClosureAxisRefused { verdict: v } =>
+      match v {
+        RosterMemberIdentityEmpty => true
+        RosterCanonicallyOrdered => false
+        RosterNotAscending { at_member: _ } => false
+        RosterDuplicateMember { at_member: _ } => false
+      }
+  }
+}
+
+// The six axis symbols must be pairwise distinct. If two axes shared a symbol, the
+// naming assertion above would still pass while a stale refusal pointed a reader at
+// the wrong fact — the defect this whole carrier exists to prevent.
+test fn axis_symbols_are_pairwise_distinct() -> Bool {
+  length(xs: generation_axes) == 6
+    && for_all(
+      xs: generation_axes,
+      predicate: fn(left) {
+        fold_list(
+          xs: generation_axes,
+          empty: 0,
+          cons: fn(acc, right) {
+            if generation_axis_symbol(axis: left) ==
+              generation_axis_symbol(axis: right) {
+              acc + 1
+            } else {
+              acc
+            }
+          }
+        ) == 1
+      }
+    )
+}
+
+// Test-side projection over the roster verdict coproduct; the authority exposes the
+// verdict itself, not a Bool (review 51217).
+fn gi_ordered(roster: SourceClosureRoster) -> Bool {
+  match roster_order_verdict(roster: roster) {
+    RosterCanonicallyOrdered => true
+    RosterNotAscending { at_member: _ } => false
+    RosterDuplicateMember { at_member: _ } => false
+    RosterMemberIdentityEmpty => false
+  }
+}
+
+// FORGERY CONTROL. Text that is not a valid SHA-512 digest cannot become a
+// materialized artifact. Before ObservedArtifactDigest was sole_constructor over a
+// validated digest, the axis was typed as the structural Hash that
+// symbol_identity_digest mints from ANY symbol, so an artifact identity could be
+// authored with no build, no file and no observation behind it.
+test fn unobserved_text_cannot_become_a_materialized_artifact() -> Bool {
+  match gi_artifact(hex: "not-a-digest") {
+    ArtifactMaterialized { digest: _ } => false
+    ArtifactNotMaterialized => true
+  }
+    && match gi_artifact(hex: "") {
+      ArtifactMaterialized { digest: _ } => false
+      ArtifactNotMaterialized => true
+    }
+    && match gi_artifact(hex: gi_artifact_baseline_hex) {
+      ArtifactMaterialized { digest: _ } => true
+      ArtifactNotMaterialized => false
+    }
+}

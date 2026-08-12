@@ -44,7 +44,8 @@ import v2.extdeps.languages.rust {
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
-import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
+import v2.std.compilers.target_model {
+  ProducedDeclUnwired, TargetModel, target_model_emit_transforms_empty }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v2.test.manual.infer_ground_add {
   infer_receipt_context
@@ -105,6 +106,7 @@ data rust_add_emitted_root: Node = rust_fixture_emitted_add_fn
 data rust_add_target_model: TargetModel = rust_target_model()
 
 data rust_add_poisoned_authority_target_model: TargetModel = TargetModel {
+  produced_decl_support: ProducedDeclUnwired,
   bundle: rust_target_model_node(),
   lex: rust_fn_add_lex(),
   binding_spellings: rust_binding_spellings(),
@@ -120,6 +122,7 @@ data rust_add_empty_translation_rules_bundle: Node = Node {
 }
 
 data rust_add_missing_translation_rules_target: TargetModel = TargetModel {
+  produced_decl_support: ProducedDeclUnwired,
   bundle: rust_add_empty_translation_rules_bundle,
   lex: rust_fn_add_lex(),
   binding_spellings: empty_map(),
