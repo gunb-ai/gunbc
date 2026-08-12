@@ -21,12 +21,17 @@ import gunbc.tools.frontier_ingestion_probe {
   frontend_stage_label,
   frontier_roster,
   census_is_complete,
+  reconcile_census,
+  CensusExact,
+  CensusMissingMember,
+  CensusDuplicateMember,
+  CensusUnrosteredObservation,
   reasons_contain,
 }
 
 data permanent_witness_scope_note: String = "WHAT THIS WITNESS MAY ASSERT, and why the live-corpus rows are NOT here. A required witness whose success depends on the current defects continuing to exist inverts the moment the defect is repaired: it would go RED on the repair and GREEN on a regression. So the assertions below validate the STAGE CLASSIFIER, the containment-read discipline, and the roster join on specimens whose stage is a property of the specimen rather than of the frontier. The per-member live population is a revision-scoped OBSERVATION recorded in docs/plans/v2-frontend-std-ingestion-frontier-exact-head.md and reproducible from gunbc.tools.frontier_ingestion_probe, which is deliberately NOT a test module for exactly this reason. Every classifier and roster symbol is imported from that one authority rather than restated here, so the thing under test and the thing used for measurement cannot drift apart."
 
-data stage_separation_cost_note: String = "WHY TWO STAGE-SEPARATION CLAIMS ARE NOT HERE, stated rather than hidden. classify_source reaching parse_module builds dag_grammar(), and that construction alone measured 5002-5003ms thread-CPU against the 5000ms fast-lane budget on CI — so an ACCEPTED claim and a PARSE claim cannot execute per-PR, while the LEX claim below can, because a lex refusal returns before any grammar is built.\n\nThey are DELETED, not relocated. Moving them under a long/ directory would remove them from per-PR discovery without giving them an executing consumer, which deletes the coverage while retaining the source — the gunbc#7762 specimen the 2026-08-04 admission ruling exists to forbid. Nothing here claims those two stages are covered.\n\nWHAT IS OWED, and to which lane: the 15-member census needs a batched or realized instrument precisely because the interpreted path also exceeds budget on the larger members. Closing the result space and making completeness a join (this increment) does not discharge that; it only means the instrument those two claims return to now has a total verdict type and a denominator to join against."
+data stage_separation_cost_note: String = "WHY TWO STAGE-SEPARATION CLAIMS ARE NOT HERE, stated rather than hidden. classify_source reaching parse_module builds dag_grammar(), and that construction alone measured 5002-5003ms thread-CPU against the 5000ms fast-lane budget on CI — so an ACCEPTED claim and a PARSE claim cannot execute per-PR, while the LEX claim below can, because a lex refusal returns before any grammar is built.\n\nThey are DELETED, not relocated. Moving them under a long/ directory would remove them from per-PR discovery without giving them an executing consumer, which deletes the coverage while retaining the source — the gunbc#7762 specimen the 2026-08-04 admission ruling exists to forbid. Nothing here claims those two stages are covered.\n\nWHAT IS OWED, and to which lane: the 15-member census needs a batched or realized instrument precisely because the interpreted path also exceeds budget on the larger members. Closing the result space and reconciling the census against the roster (this increment) does not discharge that; it only means the instrument those two claims return to now has a total verdict type and a denominator to join against."
 
 data empty_reason_set_control_retirement_note: String = "WHERE THE EMPTY-REASON-SET RED WENT. A previous revision asserted classify_normalize_reasons(rs: []) == NORM_REASON_SET_INVALID_EMPTY, guarding the collapse in which a missing observation reads as an accepted stage. The classifier now takes NonEmptyDiagnostics, whose head field is not optional, so that input has no representation and the arm it exercised has no subject.\n\nThis is the one case where the dissolution rule's keep-the-evidence clause does not apply, and the distinction is worth being exact about: the rule preserves a discriminating control when the invalid state stays WRITABLE and a mechanism keeps it out. Here the state became unwritable, so the control cannot be authored at all — not because it was judged redundant, but because it has no input. Retaining it would require re-widening the parameter type to admit the value it tests, which is the wall itself run backwards. The class did not stop being guarded; it stopped being expressible."
 
@@ -133,9 +138,9 @@ test fn stage_labels_are_pairwise_distinct() -> Bool {
 
 
 // The roster join, exercised on SYNTHETIC observations so it never reads the live tree. The
-// discriminating half is the second claim: a census that observed every member but one must be
-// incomplete, and a count comparison would not catch it once a sixteenth stray observation
-// existed. Dropping exactly one roster label is the smallest input that separates the two.
+// covering direction is below; the two directions it alone accepts — a stray observation and a
+// doubled member — are exercised further down, because each is a census containing every roster
+// member and so passes any per-label existence check.
 fn observations_for_whole_roster() -> List<MemberObservation> {
   fold_list(xs: frontier_roster, empty: [] as List<MemberObservation>, cons: fn(acc, m) {
     concat(acc, [MemberObservation { label: m.label, stage: NormalizeOther }])
@@ -166,4 +171,44 @@ test fn census_of_the_right_size_but_wrong_members_is_incomplete_RED() -> Bool {
     concat(acc, [MemberObservation { label: ^not_a_roster_member, stage: NormalizeOther }])
   })
   census_is_complete(obs: wrong) == false
+}
+
+
+// THE TWO DIRECTIONS THE COVERING HALF ALONE ACCEPTED. Both censuses below contain every roster
+// member, so a per-label existence check passes on each. They are the discriminating inputs for
+// reconciliation, and each names its own offending label rather than reporting a bare false.
+test fn census_with_an_unrostered_observation_is_refused_RED() -> Bool {
+  let strayed = concat(
+    observations_for_whole_roster(),
+    [MemberObservation { label: ^not_a_roster_member, stage: NormalizeOther }]
+  )
+  match reconcile_census(obs: strayed) {
+    CensusUnrosteredObservation { label: l } => l == ^not_a_roster_member
+    _ => false
+  }
+}
+
+test fn census_observing_one_member_twice_is_refused_RED() -> Bool {
+  let doubled = concat(
+    observations_for_whole_roster(),
+    [MemberObservation { label: ^entry, stage: NormalizeOther }]
+  )
+  match reconcile_census(obs: doubled) {
+    CensusDuplicateMember { label: l } => l == ^entry
+    _ => false
+  }
+}
+
+test fn census_missing_one_member_names_that_member() -> Bool {
+  match reconcile_census(obs: observations_missing_one()) {
+    CensusMissingMember { label: l } => l == ^entry
+    _ => false
+  }
+}
+
+test fn whole_roster_census_reconciles_exactly() -> Bool {
+  match reconcile_census(obs: observations_for_whole_roster()) {
+    CensusExact => true
+    _ => false
+  }
 }
