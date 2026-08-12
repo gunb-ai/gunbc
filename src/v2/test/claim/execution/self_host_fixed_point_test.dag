@@ -14,7 +14,7 @@ import v2.std.node {
 import v2.compiler.self_host {
   canonical_emitted_bytes_digest,
   fixed_point_scaffold,
-  self_host_equality_authority,
+  regen_staleness_authority,
   self_host_fixpoint_equal,
   self_host_fixpoint_witness,
   self_host_fixed_point_digests_match,
@@ -127,7 +127,7 @@ test fn self_host_fixpoint_equal_carries_emitted_bytes_authority() -> Bool {
       node: stage_candidate_equal_emitted(),
       source: models.stage2_regen_emitted_source
     )
-  ).over == self_host_equality_authority
+  ).over == regen_staleness_authority
 }
 
 test fn self_host_snake_closes_on_equal_stages() -> Bool {
