@@ -14486,6 +14486,36 @@ pub fn make_eval_context(
 /// decision logic lives entirely in .dag; this only transports the evaluated
 /// verdicts across the seed↔.dag boundary. Best-effort: if the policy module can't
 /// be resolved/evaluated, the funnel keeps its `Full` fallback (pre-funnel behavior).
+/// Decode one channel's evaluated `gunbc.output_policy.OutputDecision` variant.
+///
+/// REFUSES an unrecognised or absent variant instead of answering `Full`. The
+/// distinction the previous arm erased: a module that cannot be resolved is an
+/// environment fact the caller already treats as best-effort, but a variant this
+/// seed does not recognise is DRIFT between the .dag authority and its
+/// realization — the authority grew an arm the seed cannot honour. Answering
+/// `Full` there is the worst available reply, because `Full` is the pre-funnel
+/// behaviour: a new decision would decode as "unchanged", emit no diagnostic, and
+/// read as landed while doing nothing. Found while adding the rollup grain the
+/// batch-grain projection needs (DESIGN section 5 — a failure arm must refuse,
+/// never widen).
+fn decode_output_decision(
+    channel: &str,
+    observed_variant: Option<&str>,
+) -> Result<v1_interpreter::OutputDecision, String> {
+    use v1_interpreter::OutputDecision;
+    match observed_variant {
+        Some("Suppressed") => Ok(OutputDecision::Suppressed),
+        Some("Condensed") => Ok(OutputDecision::Condensed),
+        Some("Full") => Ok(OutputDecision::Full),
+        Some(other) => Err(format!(
+            "output policy drift: gunbc.output_policy resolved channel `{channel}` to OutputDecision variant `{other}`, which this seed does not decode. The .dag authority and its seed realization disagree; refusing rather than substituting Full (which is the pre-funnel behaviour and would read as landed)."
+        )),
+        None => Err(format!(
+            "output policy drift: gunbc.output_policy resolved channel `{channel}` to a value that is not an OutputDecision variant. Refusing rather than substituting Full."
+        )),
+    }
+}
+
 pub fn install_output_policy(source_roots: &[String]) {
     use v1_interpreter::{OutputDecision, Value};
     let (verbose, quiet) = match v1_interpreter::cli_verbosity() {
@@ -14515,17 +14545,26 @@ pub fn install_output_policy(source_roots: &[String]) {
         return;
     };
     let decision = |name: &str| -> OutputDecision {
-        match ctx.field(fields, name) {
+        let observed = match ctx.field(fields, name) {
             Some(Value::Variant { variant_name, .. }) => {
                 if ctx.sym_eq(*variant_name, "Suppressed") {
-                    OutputDecision::Suppressed
+                    Some("Suppressed")
                 } else if ctx.sym_eq(*variant_name, "Condensed") {
-                    OutputDecision::Condensed
+                    Some("Condensed")
+                } else if ctx.sym_eq(*variant_name, "Full") {
+                    Some("Full")
                 } else {
-                    OutputDecision::Full
+                    None
                 }
             }
-            _ => OutputDecision::Full,
+            _ => None,
+        };
+        match decode_output_decision(name, observed) {
+            Ok(d) => d,
+            Err(diagnostic) => {
+                eprintln!("::error::{diagnostic}");
+                std::process::exit(1);
+            }
         }
     };
     v1_interpreter::set_output_policy([
@@ -43098,5 +43137,57 @@ mod annotation_erased_scan_projection {
             vec!["std.decl_ref".to_string()],
             "a real reference to the same module must still produce the edge"
         );
+    }
+}
+
+#[cfg(test)]
+mod output_policy_decode_tests {
+    use super::decode_output_decision;
+    use crate::v1_interpreter::OutputDecision;
+
+    // matches! rather than assert_eq! deliberately: OutputDecision carries no Debug,
+    // and deriving one on an interpreter carrier so a test can print it would be the
+    // test dictating the shape of the thing it observes.
+    #[test]
+    fn known_variants_decode_to_their_decision() {
+        assert!(matches!(
+            decode_output_decision("claim_result", Some("Suppressed")),
+            Ok(OutputDecision::Suppressed)
+        ));
+        assert!(matches!(
+            decode_output_decision("claim_result", Some("Condensed")),
+            Ok(OutputDecision::Condensed)
+        ));
+        assert!(matches!(
+            decode_output_decision("claim_result", Some("Full")),
+            Ok(OutputDecision::Full)
+        ));
+    }
+
+    // The discriminating control: before this repair an unrecognised variant answered
+    // Full, which is the pre-funnel behaviour — so an arm added to the .dag authority
+    // would have decoded as "unchanged" with no diagnostic. The refusal must name the
+    // channel and the variant, because those are the two facts needed to locate the
+    // drift between authority and seed.
+    #[test]
+    fn an_unrecognised_variant_refuses_instead_of_answering_full() {
+        let err = match decode_output_decision("claim_result", Some("RolledUp")) {
+            Ok(_) => panic!("an unknown OutputDecision variant must refuse, not decode"),
+            Err(e) => e,
+        };
+        assert!(
+            err.contains("claim_result"),
+            "refusal names the channel: {err}"
+        );
+        assert!(err.contains("RolledUp"), "refusal names the variant: {err}");
+    }
+
+    #[test]
+    fn an_absent_variant_refuses_instead_of_answering_full() {
+        let err = match decode_output_decision("progress", None) {
+            Ok(_) => panic!("a non-variant policy field must refuse, not decode"),
+            Err(e) => e,
+        };
+        assert!(err.contains("progress"), "refusal names the channel: {err}");
     }
 }
