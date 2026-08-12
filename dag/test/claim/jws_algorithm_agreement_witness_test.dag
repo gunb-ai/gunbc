@@ -1,11 +1,14 @@
 module test.claim.jws_algorithm_agreement_witness
 
-import std.types { Bool, NonEmptyStr }
+import std.types { Bool, String, Int, NonEmptyStr }
 import extdeps.auth.jwks {
   JwkRsa, JwkEllipticCurve, JwkOctetSequence, JwkUnsupportedKeyType,
   jws_algorithm_rs256,
 }
 import extdeps.auth.jws {
+  JwsCompactSplitOk, JwsCompactUnsecured,
+  JwsCompactLooksEncrypted, JwsCompactMalformed,
+  jws_split_compact, jws_segments,
   JwsAlgorithmAgreed, JwsAlgorithmUnsecuredRefused,
   JwsAlgorithmKeyTypeMismatch, JwsAlgorithmUnsupported,
   jws_algorithm_agreement, jws_algorithm_is_agreed, jws_algorithm_none,
@@ -71,4 +74,61 @@ test fn jws_algorithm_agreement_keystone_holds() -> Bool {
     && witness_hmac_algorithm_against_an_rsa_key_is_a_mismatch()
     && witness_rs256_agrees_only_with_an_rsa_key()
     && witness_unmodeled_key_type_refuses_rather_than_skipping()
+    && witness_three_segments_split_with_the_signing_input()
+    && witness_signing_input_excludes_the_signature()
+    && witness_two_segments_is_unsecured_not_merely_malformed()
+    && witness_five_segments_is_named_as_encrypted()
+    && witness_wrong_segment_counts_refuse()
+}
+
+// RFC 7515 section 7.1. The counts are named separately because a verifier that
+// splits on periods and reads position two has historically accepted both an
+// unsecured JWS and a JWE as though they were signed tokens.
+test fn witness_three_segments_split_with_the_signing_input() -> Bool {
+  match jws_split_compact(token: "aGVhZGVy.cGF5bG9hZA.c2ln") {
+    JwsCompactSplitOk { parts: p } =>
+      p.header_b64u == "aGVhZGVy"
+        && p.payload_b64u == "cGF5bG9hZA"
+        && p.signature_b64u == "c2ln"
+        && p.signing_input == "aGVhZGVy.cGF5bG9hZA"
+    _ => false
+  }
+}
+
+// The signing input is the ENCODED segments joined — not the payload alone and
+// nothing decoded. A verifier checking a signature over the wrong bytes rejects
+// valid tokens, or can be steered.
+test fn witness_signing_input_excludes_the_signature() -> Bool {
+  match jws_split_compact(token: "aGVhZGVy.cGF5bG9hZA.c2ln") {
+    JwsCompactSplitOk { parts: p } =>
+      !string_contains(s: p.signing_input as String, pattern: "c2ln")
+    _ => false
+  }
+}
+
+test fn witness_two_segments_is_unsecured_not_merely_malformed() -> Bool {
+  match jws_split_compact(token: "aGVhZGVy.cGF5bG9hZA.") {
+    JwsCompactUnsecured => true
+    _ => false
+  }
+}
+
+test fn witness_five_segments_is_named_as_encrypted() -> Bool {
+  match jws_split_compact(token: "a.b.c.d.e") {
+    JwsCompactLooksEncrypted { segment_count: n } => n == 5
+    _ => false
+  }
+}
+
+test fn witness_wrong_segment_counts_refuse() -> Bool {
+  (match jws_split_compact(token: "aGVhZGVy") {
+    JwsCompactMalformed { segment_count: n } => n == 1
+    _ => false
+  })
+    && (match jws_split_compact(token: "a.b") {
+      JwsCompactMalformed { segment_count: n } => n == 2
+      _ => false
+    })
+    && jws_segments(token: "a.b.c").length() == 3
+    && jws_segments(token: "").length() == 1
 }

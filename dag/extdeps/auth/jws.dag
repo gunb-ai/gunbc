@@ -7,7 +7,7 @@ module extdeps.auth.jws
 // extdeps.auth.jwt holds the claims and states that decoding them proves nothing. This module is
 // the structure between them.
 
-import std.types { NonEmptyStr, Bool }
+import std.types { String, NonEmptyStr, Int, Bool, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.auth.jwks {
@@ -22,7 +22,92 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data jws_compact_split_deferred_note: String = "THE COMPACT SPLIT IS NOT MODELLED HERE YET, and the reason is a missing substrate primitive rather than a decision about JWS. RFC 7515 section 7.1 splits on periods, and this corpus has no general string split, index-of or substring — text is consumed by positional char folds (extdeps.auth.jwt jwt_first_colon_from is the idiom). Writing the split means writing that fold, and writing it badly means a verifier that reads the wrong bytes.\\n\\nWHAT IS DEFERRED WITH IT, named so nobody assumes it exists: the three-segment check that refuses a two-segment unsecured JWS and a five-segment JWE, and the signing input — the ASCII of `header_b64u . payload_b64u`, the ENCODED segments joined, which is what a signature is actually over.\\n\\nWhat is NOT deferred is below: the algorithm-agreement rule. It needs no string surgery and it is where the JWS confusion attacks live, so it lands first.\\n\\nDissolve-on: a positional separator fold with a discriminating control per wrong segment count."
+data jws_compact_note: String = "RFC 7515 section 7.1: the compact serialization is exactly three base64url segments joined by two periods — header, payload, signature.\\n\\nTHE SEGMENT COUNT IS A SECURITY FACT, not a parsing detail, which is why each wrong count refuses by its own name. Two segments with an empty third is the UNSECURED JWS of section 6, a token carrying no signature at all; five segments is a JWE (RFC 7516), an encrypted object a JWS verifier cannot interpret. Both have been accepted as valid tokens by verifiers that split on periods and read whatever landed in position two.\\n\\nTHE SEGMENTER IS LOCAL AND THAT IS A COMPROMISE, stated rather than hidden. Splitting a string on a separator is not a JWS concept — it belongs in std — but no general split, index-of or substring exists in this corpus, and minting a std primitive is not a decision to take inside a JWS module at the end of an unrelated change. So jws_segments is scoped to its subject and named for it. Dissolve-on: a general std separator fold lands and this function becomes a call to it. If a second consumer needs the same scan before that happens, the fork is the signal to promote it rather than copy it."
+
+data jws_period_code_point: Int = 46
+
+type JwsSegmentScan {
+  segments: List<String>
+  current: String
+}
+
+fn jws_scan_from(s: String, i: Int, len: Int, acc: JwsSegmentScan) -> JwsSegmentScan {
+  if i >= len {
+    JwsSegmentScan { segments: concat(acc.segments, [acc.current]), current: "" }
+  } else {
+    let ch = char_at(s, i)
+    if code_point(ch: ch) == jws_period_code_point {
+      jws_scan_from(
+        s: s, i: i + 1, len: len,
+        acc: JwsSegmentScan { segments: concat(acc.segments, [acc.current]), current: "" },
+      )
+    } else {
+      jws_scan_from(
+        s: s, i: i + 1, len: len,
+        acc: JwsSegmentScan { segments: acc.segments, current: join([acc.current, ch], "") },
+      )
+    }
+  }
+}
+
+fn jws_segments(token: String) -> List<String> {
+  jws_scan_from(
+    s: token, i: 0, len: string_length(s: token),
+    acc: JwsSegmentScan { segments: [], current: "" },
+  ).segments
+}
+
+type JwsCompactParts {
+  header_b64u: NonEmptyStr
+  payload_b64u: String
+  signature_b64u: NonEmptyStr
+  signing_input: NonEmptyStr
+}
+
+type JwsCompactSplit
+  = JwsCompactSplitOk { parts: JwsCompactParts }
+  | JwsCompactUnsecured
+  | JwsCompactLooksEncrypted { segment_count: Int }
+  | JwsCompactMalformed { segment_count: Int }
+
+data jws_signing_input_note: String = "RFC 7515 section 5.2 step 8: what a signature covers is the ASCII of `header_b64u . payload_b64u` — the ENCODED segments joined by a period, not the decoded bytes and not the payload alone. It is carried on the split rather than rebuilt later, because reconstructing it from decoded parts is exactly where a re-encoding difference produces a different signing input, and a verifier checking a signature over the wrong bytes rejects valid tokens or can be steered."
+
+fn jws_split_compact(token: String) -> JwsCompactSplit {
+  let segs = jws_segments(token: token)
+  let n = count(segs)
+  if n == 5 {
+    JwsCompactLooksEncrypted { segment_count: n }
+  } else if n != 3 {
+    JwsCompactMalformed { segment_count: n }
+  } else {
+    match segs.first() {
+      Absent => JwsCompactMalformed { segment_count: n }
+      Present { value: h } =>
+        match segs.skip(n: 1).first() {
+          Absent => JwsCompactMalformed { segment_count: n }
+          Present { value: p } =>
+            match segs.skip(n: 2).first() {
+              Absent => JwsCompactMalformed { segment_count: n }
+              Present { value: sig } =>
+                if sig.length() == 0 {
+                  JwsCompactUnsecured
+                } else if h.length() == 0 {
+                  JwsCompactMalformed { segment_count: n }
+                } else {
+                  JwsCompactSplitOk {
+                    parts: JwsCompactParts {
+                      header_b64u: h as NonEmptyStr,
+                      payload_b64u: p,
+                      signature_b64u: sig as NonEmptyStr,
+                      signing_input: join([h, ".", p], "") as NonEmptyStr,
+                    },
+                  }
+                }
+            }
+        }
+    }
+  }
+}
 
 data jws_algorithm_agreement_note: String = "THE HEADER DOES NOT GET TO CHOOSE THE ALGORITHM. This is the JWS confusion attack and it has broken real verifiers twice over, both times because the code read `alg` out of the token and then did what the token asked.\\n\\nThe `none` variant: a forger strips the signature, sets alg to none, and any verifier that dispatches on the header accepts an unsigned token as authenticated. RFC 7515 section 6 defines that algorithm for contexts where integrity is guaranteed some other way; a verifier holding a public key is not such a context, so none is refused here unconditionally rather than treated as an algorithm that happens to fail.\\n\\nThe HMAC substitution: a forger takes an RSA verifier's PUBLIC key — which is public, that being the point — sets alg to HS256, and signs the token with that key as an HMAC secret. A verifier that passes the key material to whichever primitive the header names then verifies it successfully, because the attacker had the key. The defense is not a stronger primitive; it is refusing to let the header select one. A key of type RSA verifies RSA signatures and nothing else.\\n\\nSo agreement is decided from the KEY, and the header's claim is only ever checked against it. This runs today, with no bignum: it is structure, and the structure is where the attack lives."
 
