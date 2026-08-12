@@ -51,6 +51,10 @@ import gunbc.provider_standing {
   ProviderAccountLimit,
   LimitObservedAvailable,
   LimitUnavailableUntilReset,
+  NativeCauseReported,
+  NativeCauseUnreported,
+  LimitResetAt,
+  LimitResetInstantUnobserved,
   LimitSubjectUnobserved,
   limit_observations_are_selection_eligible,
   ProviderStandingFromFact,
@@ -269,6 +273,8 @@ test fn provider_standing_probe_bridge_keystone_holds() -> Bool {
     && witness_absent_and_malformed_accounts_never_entitle()
     && witness_realm_decodes_from_the_captured_account_read_shape()
     && witness_chatgpt_account_without_plan_type_is_malformed_not_unnamed()
+    && witness_reported_cause_and_reset_survive_the_projection()
+    && witness_unreported_cause_is_not_the_bucket_id()
 }
 
 // ---------------------------------------------------------------------------
@@ -318,8 +324,8 @@ test fn witness_codex_bucket_projects_to_native_bucket_never_account_scope() -> 
     _ => false
   })
     && (match exhausted {
-      LimitUnavailableUntilReset { subject: s, native_token: t, reason: _ } =>
-        t == "codex"
+      LimitUnavailableUntilReset { subject: s, cause: c, reset: _, reason: _ } =>
+        (match c { NativeCauseUnreported => true _ => false })
           && (match s {
             ProviderNativeLimitBucket { credential: _, native_key: k } => k == "codex"
             ProviderAccountLimit { credential: _ } => false
@@ -510,4 +516,49 @@ test fn witness_chatgpt_account_without_plan_type_is_malformed_not_unnamed() -> 
     CodexChatgptRealm { plan: CodexPlanTypeMalformed { cause: _ } } => true
     _ => false
   }
+}
+
+data native_cause_fallback_witness_note: String = "THIS FILE USED TO ASSERT THE DEFECT. witness_codex_bucket_projects_to_native_bucket_never_account_scope checked `t == \"codex\"` against a fixture declaring `reached_type: none` — so the value it pinned was the projection substituting the bucket id for a cause the wire never gave. A green witness was holding the fallback in place as the contract, which is the shape DESIGN §5 names when a degradation gets enshrined by the test that was supposed to catch it.\n\nThe pair below is what the old fixture could not distinguish: one bucket reports a cause and a reset, one reports neither, and they must not project to the same thing."
+
+fn exhausted_codex_bucket_with_reported_cause() -> CodexRateLimitBucketVerdict {
+  CodexBucketUnavailableUntilReset {
+    limit_id: "codex" as NonEmptyStr,
+    reached_type: Present { value: "rate_limit_reached" as NonEmptyStr },
+    resets_at: Present { value: 1786000000 },
+  }
+}
+
+test fn witness_reported_cause_and_reset_survive_the_projection() -> Bool {
+  let reported = provider_limit_observation_from_codex_bucket(
+    credential: press_bucket_credential(),
+    verdict: exhausted_codex_bucket_with_reported_cause())
+  match reported {
+    LimitUnavailableUntilReset { subject: _, cause: c, reset: r, reason: _ } =>
+      (match c {
+        NativeCauseReported { token: t } => t == ("rate_limit_reached" as NonEmptyStr)
+        NativeCauseUnreported => false
+      })
+        && (match r {
+          LimitResetAt { at: a } => a == 1786000000
+          LimitResetInstantUnobserved => false
+        })
+    _ => false
+  }
+}
+
+test fn witness_unreported_cause_is_not_the_bucket_id() -> Bool {
+  let silent = provider_limit_observation_from_codex_bucket(
+    credential: press_bucket_credential(), verdict: exhausted_codex_bucket())
+  let reported = provider_limit_observation_from_codex_bucket(
+    credential: press_bucket_credential(),
+    verdict: exhausted_codex_bucket_with_reported_cause())
+  (match silent {
+    LimitUnavailableUntilReset { subject: _, cause: NativeCauseUnreported, reset: LimitResetInstantUnobserved, reason: _ } => true
+    _ => false
+  })
+    && (match reported {
+      LimitUnavailableUntilReset { subject: _, cause: NativeCauseUnreported, reset: _, reason: _ } => false
+      LimitUnavailableUntilReset { subject: _, cause: _, reset: _, reason: _ } => true
+      _ => false
+    })
 }
