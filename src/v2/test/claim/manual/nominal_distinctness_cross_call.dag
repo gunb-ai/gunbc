@@ -66,7 +66,8 @@ import v2.std.runtime {
   TransformInterpreter,
   ValueInterpreter
 }
-import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
+import v2.std.compilers.target_model {
+  ProducedDeclUnwired, TargetModel, target_model_emit_transforms_empty }
 import v2.std.verification {
   CompilesClaim,
   DiagnosticClaim,
@@ -87,6 +88,7 @@ data nominal_distinct_records_source: Medium<String> = Medium { carried: "module
 data nominal_distinct_brands_source: Medium<String> = Medium { carried: "module nominal.distinct.desugared_brands.probe\n\ntype IntentId {\n  value: String\n}\n\ntype IssueId {\n  value: String\n}\n\nfn expects_intent(x: IntentId) -> String = x.value\n\nfn call_site(i: IssueId) -> String = expects_intent(i)\n", fidelity: Lossless }
 data nominal_distinct_control_source: Medium<String> = Medium { carried: "module nominal.distinct.control.probe\n\ntype WrapA {\n  value: Int\n}\n\nfn expects_a(x: WrapA) -> Int = x.value\n\nfn call_site(a: WrapA) -> Int = expects_a(a)\n", fidelity: Lossless }
 data nominal_distinct_compile_target: TargetModel = TargetModel {
+  produced_decl_support: ProducedDeclUnwired,
   bundle: rust_target_model_node(),
   lex: rust_fn_add_lex(),
   binding_spellings: rust_binding_spellings(),

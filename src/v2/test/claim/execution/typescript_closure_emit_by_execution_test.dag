@@ -15,6 +15,7 @@ fn ts_closure_binding_spellings() -> Map<Symbol, String> {
 
 fn ts_closure_target_model() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: ts_target_model_node(),
     lex: ts_lex(),
     binding_spellings: ts_closure_binding_spellings(),
