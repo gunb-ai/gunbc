@@ -121,8 +121,6 @@ test fn mounting_one_asset_twice_refuses() -> Bool {
   }
 }
 
-// THE JOIN, IN MICROMETRES so the 0.1 mm survives: 18U is 800100 um, a 2400 mm room is 2400000 um,
-// and the headroom is the exact difference rather than a figure rounded on the way through.
 // EXACTLY FULL: four 4U chassis and the cited 2U row fill all 18 units, so free capacity is zero
 // and not a refusal. This is the boundary the invariant behind rack_units_free rests on - a
 // difference that reaches exactly zero without going negative. An earlier revision of this claim
