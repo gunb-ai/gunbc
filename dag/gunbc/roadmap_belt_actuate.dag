@@ -21,7 +21,7 @@ import gunbc.roadmap_belt {
   belt_reconcile_refusal_count,
   roadmap_belt_default_capacity,
   roadmap_belt_default_run_state,
-  DispatchMember, DesiredMember, ObservedMember,
+  DispatchMember, DesiredMember, ObservedMember, dispatch_member_key,
 }
 import extdeps.languages.json.emit {
   JsonValue,
@@ -2087,6 +2087,53 @@ fn belt_tick_empty_reconcile(state: BeltRunState) -> BeltReconcile {
 
 data belt_tick_note: String = "The re-runnable belt driver: observe the live session set -> decide via belt_reconcile (the sole belt decision; belt_step is its degenerate spawn-only precursor) -> actuate each planned spawn/teardown through the fail-closed exec seam. Idempotent by construction: a spawned session is observed present on the next tick, keying to its ready node as Unchanged -> noop, so re-ticking never double-spawns (the observed set closes the loop the pure decision cannot). ObserveRefused blocks spawn/reap only — verify and publish still run on their own evidence authorities (operator P1, 2026-08-02)."
 
+data belt_tick_lifecycle_note: String = "THE TIMER IS A DISPATCH ACTUATOR TOO (review artifact 51237, both P0s). The dead-pane fix and the revision gate reached the click path only. This tick passed the whole observed session list into belt_reconcile, which maps EVERY present row to an observed member and counts live.length() as occupied — so a retained dead pane stayed a member (desired + present = Unchanged, no respawn) and still consumed a capacity slot. It also never consulted the deployed revision, so a drifted host refused a click and spawned on a timer.\n\nBOTH PATHS NOW CONSUME ONE SEAM. belt_revision_admission gates the tick before any spawn or reap. A refusal blocks spawn and teardown ONLY: verification and publication continue, because they read independently bound receipts and already run when tmux observation refuses — stopping them would widen a spawn-admission refusal into a work stoppage.\n\nCLEANUP PRECEDES START, DEFERRED ONE TICK. A stale pane is excluded from observed membership, so the node becomes a spawn candidate — but spawning it THIS tick would collide with the tmux session name that still exists, because spawn runs before teardown here. So a stale node's spawn is withheld this tick and its teardown is planned; the next tick observes it Absent and spawns normally. That is why the fix is a partition plus a deferral rather than a filter.\n\nLivenessUnobserved and MultiplicityConflict are neither cleaned nor spawned: they are counted refusals. An unobserved pane might be running, so tearing it down could kill live work, and spawning beside it could double-run the node."
+
+type BeltTickSessionPartition {
+  running: List<DispatchLiveSession>
+  stale: List<DispatchLiveSession>
+  refused: List<DispatchLiveSession>
+}
+
+fn belt_tick_classify_sessions(live: List<DispatchLiveSession>) -> BeltTickSessionPartition {
+  BeltTickSessionPartition {
+    running: filter(live, s =>
+      match belt_session_liveness_from_process(session_name: s.session_name, process: s.worker.process) {
+        BeltSessionRunning { session_name: _, command: _ } => true
+        _ => false
+      }),
+    stale: filter(live, s =>
+      match belt_session_liveness_from_process(session_name: s.session_name, process: s.worker.process) {
+        BeltSessionStaleTerminal { session_name: _, detail: _ } => true
+        _ => false
+      }),
+    refused: filter(live, s =>
+      match belt_session_liveness_from_process(session_name: s.session_name, process: s.worker.process) {
+        BeltSessionLivenessUnobserved { session_name: _, reason: _ } => true
+        _ => false
+      }),
+  }
+}
+
+data belt_tick_revision_drift_reason: String = "belt tick refused: deployed tree is not the admitted fleet revision; spawn and reap withheld"
+data belt_tick_revision_unobserved_reason: String = "belt tick refused: deployed revision could not be observed; spawn and reap withheld"
+
+fn belt_tick_revision_refused(
+  instance: HostDashboardInstance,
+  state: BeltRunState,
+  reason: String,
+) -> BeltTickResult {
+  BeltTickResult {
+    observe_refused: true,
+    observe_refusal_reason: reason,
+    reconcile: belt_tick_empty_reconcile(state: state),
+    spawn_outcomes: [],
+    teardown_outcomes: [],
+    verify_outcomes: belt_verify_attempts_for_instance(instance: instance),
+    publish_outcomes: belt_publish_attempts_for_instance(instance: instance),
+  }
+}
+
 fn belt_tick_for_instance(
   instance: HostDashboardInstance,
   state: BeltRunState,
@@ -2105,10 +2152,37 @@ fn belt_tick_for_instance(
         verify_outcomes: belt_verify_attempts_for_instance(instance: instance),
         publish_outcomes: belt_publish_attempts_for_instance(instance: instance),
       }
-    Observed { live: live } => {
-      let r = belt_reconcile(state: state, frontier: frontier, live: live, cap: cap)
-      let spawn_outcomes = r.spawns |> map(m => belt_actuate_spawn_member(m: m, workdir: spawn_workdir))
-      let teardown_outcomes = r.teardowns |> map(m => belt_actuate_teardown_member(m: m))
+    Observed { live: live } =>
+      match belt_revision_admission(
+        standing: fleet_revision_standing(repo: instance.repo_root),
+      ) {
+        BeltRevisionRefusedDrifted { desired: d, local: l } =>
+          belt_tick_revision_refused(
+            instance: instance,
+            state: state,
+            reason: join([belt_tick_revision_drift_reason, " desired=", d, " local=", l], ""),
+          )
+        BeltRevisionRefusedUnobserved { cause: c } =>
+          belt_tick_revision_refused(
+            instance: instance,
+            state: state,
+            reason: join([belt_tick_revision_unobserved_reason, " cause=", c], ""),
+          )
+        BeltRevisionAdmitted { revision: _ } => {
+      let classified = belt_tick_classify_sessions(live: live)
+      let r = belt_reconcile(
+        state: state,
+        frontier: frontier,
+        live: classified.running,
+        cap: cap,
+      )
+      let deferred_ids = map(classified.stale, s => s.node_id)
+      let admitted_spawns = filter(r.spawns, m =>
+        !any(deferred_ids, id => id == dispatch_member_key(m: m)))
+      let spawn_outcomes = admitted_spawns |> map(m => belt_actuate_spawn_member(m: m, workdir: spawn_workdir))
+      let stale_teardowns = map(classified.stale, s => ObservedMember { node_id: s.node_id, session: s })
+      let teardown_outcomes =
+        concat(r.teardowns, stale_teardowns) |> map(m => belt_actuate_teardown_member(m: m))
       BeltTickResult {
         observe_refused: false,
         observe_refusal_reason: "",
@@ -2118,7 +2192,8 @@ fn belt_tick_for_instance(
         verify_outcomes: belt_verify_attempts_for_instance(instance: instance),
         publish_outcomes: belt_publish_attempts_for_instance(instance: instance),
       }
-    }
+        }
+      }
   }
 }
 

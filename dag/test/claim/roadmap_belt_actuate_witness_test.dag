@@ -103,6 +103,7 @@ import gunbc.roadmap_belt_actuate {
   DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchAuthorityRefused, DispatchSpawnFailed,
   DispatchStaleSession, DispatchSessionLivenessUnobserved,
   BeltSessionMultiplicityConflict,
+  belt_tick_classify_sessions,
   BeltRevisionAdmitted, BeltRevisionRefusedDrifted, BeltRevisionRefusedUnobserved,
   belt_revision_admission,
 }
@@ -1863,4 +1864,28 @@ test fn witness_revision_admission_fold_drives_all_three_arms() -> Bool {
       }
     Absent => false
   }
+}
+
+// THE BELT-GRAIN CONTROL (review artifact 51237, P0 #2). The previous
+// dead-pane witness proved a helper Boolean and said nothing about the
+// continuously running reconciler, which received the whole session list and
+// counted every present row as an occupied member. This asserts the partition
+// the tick actually feeds to belt_reconcile: a stale pane is NOT running, so it
+// neither occupies capacity nor reads as Unchanged, and an unobserved pane is
+// in neither bucket — it is a counted refusal, because tearing it down could
+// kill live work and spawning beside it could double-run the node.
+test fn witness_tick_partition_is_lifecycle_aware_not_presence_aware() -> Bool {
+  let part = belt_tick_classify_sessions(live: [
+    live_session_with_process(
+      node_id: "run", process: WorkerProcessRunning { command: "codex" as NonEmptyStr }),
+    live_session_with_process(
+      node_id: "dead", process: WorkerProcessExited { exit_code: 0, last_command: "codex" }),
+    live_session(node_id: "unknown", verdict: Converged),
+  ])
+  part.running.length() == 1
+    && part.stale.length() == 1
+    && part.refused.length() == 1
+    && all(part.running, s => s.node_id == "run")
+    && all(part.stale, s => s.node_id == "dead")
+    && all(part.refused, s => s.node_id == "unknown")
 }
