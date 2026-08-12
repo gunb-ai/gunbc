@@ -28,7 +28,7 @@ import extdeps.filesystem.linux {
 }
 import gunbc.fleet_bmc_observation {
   srv3_bmc_firmware_observation,
-  srv3_bmc_redfish_surface_observation,
+  srv3_bmc_redfish_surface,
   srv3_bmc_update_service_observation,
   srv4_bmc_config_persistence_observation,
   srv4_bmc_fan_active_config_digest,
@@ -37,7 +37,7 @@ import gunbc.fleet_bmc_observation {
   srv4_bmc_fan_observed_curve,
   srv4_bmc_fan_perturbation_generation,
   srv4_bmc_firmware_observation,
-  srv4_bmc_redfish_surface_observation,
+  srv4_bmc_redfish_surface,
   srv4_bmc_update_service_observation,
 }
 import gunbc.fleet_bmc_state { srv4_bmc_fan_reboot_persistence_receipt }
@@ -54,15 +54,14 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn firmware_and_redfish_surfaces_are_literal_versioned_observations() -> Bool {
-  srv3_bmc_firmware_observation.firmware.version.major == 2
-    && srv3_bmc_firmware_observation.firmware.version.minor == 7
+// The firmware VERSION is the per-host observation and the only one. srv3 was
+// flashed to 3.22.00 on 2026-08-11 and re-observed 2026-08-12; the surface it
+// presents is no longer asserted here, because it is no longer stored here.
+test fn firmware_versions_are_the_per_host_observation() -> Bool {
+  srv3_bmc_firmware_observation.firmware.version.major == 3
+    && srv3_bmc_firmware_observation.firmware.version.minor == 22
     && srv4_bmc_firmware_observation.firmware.version.major == 3
     && srv4_bmc_firmware_observation.firmware.version.minor == 22
-    && srv3_bmc_redfish_surface_observation.thermal_surface == RedfishThermalSubsystemSensorCollection
-    && srv3_bmc_redfish_surface_observation.fan_control_surface == RedfishFanControlResourceAbsent
-    && srv4_bmc_redfish_surface_observation.thermal_surface == RedfishLegacyChassisThermal
-    && srv4_bmc_redfish_surface_observation.fan_control_surface == RedfishInitialDutyControlResource
 }
 
 test fn update_surface_receipts_do_not_claim_an_available_backup_image() -> Bool {

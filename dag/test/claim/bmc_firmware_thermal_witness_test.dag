@@ -11,6 +11,10 @@ import extdeps.bmc.capability {
   bmc_firmware_observation_intent_verdict,
 }
 import extdeps.bmc.types {
+  BmcFirmwareVersion,
+  SurfaceShapeKnown,
+  SurfaceShapeUncatalogued,
+  bmc_redfish_surface_for,
   BmcConfigPersistenceUnsupported,
   BmcFanAggregatedControllerTopology,
   BmcFanCurve,
@@ -33,6 +37,8 @@ import extdeps.bmc.types {
   redfish_thermal_query_verdict,
 }
 import extdeps.boards.asrock_rack {
+  asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog,
+  asrock_altrad8ud_openbmc_2_07_00_capabilities,
   asrock_altrad8ud_openbmc_3_06_00_capabilities,
   asrock_altrad8ud_openbmc_2_07_00_fan_policy_observation,
   asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation,
@@ -42,7 +48,7 @@ import extdeps.crypto.hash { sha256_digest }
 import gunbc.fleet_bmc_observation {
   BmcFanRebootPersistenceReceipt,
   srv3_bmc_firmware_observation,
-  srv3_bmc_redfish_surface_observation,
+  srv3_bmc_redfish_surface,
   srv3_bmc_update_service_observation,
   srv4_bmc_config_persistence_observation,
   srv4_bmc_fan_active_config_digest,
@@ -52,7 +58,7 @@ import gunbc.fleet_bmc_observation {
   srv4_bmc_fan_observed_config_path,
   srv4_bmc_fan_perturbation_generation,
   srv4_bmc_firmware_observation,
-  srv4_bmc_redfish_surface_observation,
+  srv4_bmc_redfish_surface,
   srv4_bmc_update_service_observation,
 }
 import gunbc.fleet_bmc_state {
@@ -312,13 +318,58 @@ test fn approved_exact_firmware_artifact_builds_a_typed_srv3_update_plan() -> Bo
     }
 }
 
-test fn redfish_surface_difference_is_observed_not_inferred() -> Bool {
-  srv3_bmc_redfish_surface_observation.thermal_surface == RedfishThermalSubsystemSensorCollection
-    && srv3_bmc_redfish_surface_observation.chassis_sensor_collection_member_count == 51
-    && srv3_bmc_redfish_surface_observation.fan_control_surface == RedfishFanControlResourceAbsent
-    && srv4_bmc_redfish_surface_observation.thermal_surface == RedfishLegacyChassisThermal
-    && srv4_bmc_redfish_surface_observation.chassis_sensor_collection_member_count == 9
-    && srv4_bmc_redfish_surface_observation.fan_control_surface == RedfishInitialDutyControlResource
+// The surface is a FUNCTION OF THE IMAGE. Both fleet hosts run OpenBMC
+// 3.22.00, so both derive the same shape — and this witness would have gone
+// red the moment srv3 was flashed under the old per-host model, which is
+// exactly what it failed to do. It replaces a check that asserted srv3's
+// 2.07.00 constants as literals and therefore stayed green while describing
+// a surface srv3 no longer had.
+test fn hosts_on_the_same_image_derive_the_same_surface() -> Bool {
+  match srv3_bmc_redfish_surface {
+    SurfaceShapeKnown { shape: s3 } =>
+      match srv4_bmc_redfish_surface {
+        SurfaceShapeKnown { shape: s4 } =>
+          s3 == s4
+            && s3.thermal_surface == RedfishLegacyChassisThermal
+            && s3.chassis_sensor_collection_member_count == 9
+            && s3.fan_control_surface == RedfishInitialDutyControlResource
+        SurfaceShapeUncatalogued { firmware: _ } => false
+      }
+    SurfaceShapeUncatalogued { firmware: _ } => false
+  }
+}
+
+// RED control: the derivation is discriminating on VERSION. The same board's
+// 2.07.00 image derives a materially different shape, so the agreement above
+// is a fact about the two hosts sharing an image rather than the catalog
+// answering the same way regardless of input.
+test fn a_different_image_derives_a_different_surface() -> Bool {
+  match bmc_redfish_surface_for(
+    catalog: asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog,
+    firmware: asrock_altrad8ud_openbmc_2_07_00_capabilities.firmware,
+  ) {
+    SurfaceShapeKnown { shape: s } =>
+      s.thermal_surface == RedfishThermalSubsystemSensorCollection
+        && s.chassis_sensor_collection_member_count == 51
+        && s.fan_control_surface == RedfishFanControlResourceAbsent
+    SurfaceShapeUncatalogued { firmware: _ } => false
+  }
+}
+
+// Fail-closed arm: an uncatalogued image REFUSES rather than resolving to a
+// nearest neighbour or a default. This is the arm that makes the next flash
+// loud instead of silently wrong.
+test fn an_uncatalogued_image_refuses_to_derive_a_surface() -> Bool {
+  match bmc_redfish_surface_for(
+    catalog: asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog,
+    firmware: BmcFirmwareVersion {
+      family: OpenBmc,
+      version: firmware_semantic_version(major: 4, minor: 0, patch: 0),
+    },
+  ) {
+    SurfaceShapeUncatalogued { firmware: _ } => true
+    SurfaceShapeKnown { shape: _ } => false
+  }
 }
 
 test fn both_observed_thermal_query_shapes_are_complete() -> Bool {

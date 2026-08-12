@@ -4,6 +4,12 @@ import extdeps.boards.types { BaseboardCatalogRow, DimmPopulation }
 import extdeps.vendor.asrock_rack { asrock_rack }
 import extdeps.bmc.webui.nbd_proxy { BmcwebNbdProxyEndpointVariant, VmSlotIndexEndpoint, NbdSlotEndpoint }
 import extdeps.bmc.types {
+  BmcRedfishSurfaceRow,
+  BmcRedfishSurfaceShape,
+  RedfishFanControlResourceAbsent,
+  RedfishInitialDutyControlResource,
+  RedfishLegacyChassisThermal,
+  RedfishThermalSubsystemSensorCollection,
   BmcFanControllerShape,
   BmcFanCurve,
   BmcFanCurveStep,
@@ -114,6 +120,34 @@ data asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog: List<BmcFirmwareCapa
 ]
 
 data asrock_altrad8ud_shipped_bmc_firmware_capabilities: BmcFirmwareCapabilityRow = asrock_altrad8ud_openbmc_2_07_00_capabilities
+
+// REDFISH SURFACE BY IMAGE. One row per catalogued OpenBMC build for this
+// board; the surface a host presents is derived from its observed version
+// rather than authored beside it (see BmcRedfishSurfaceShape).
+data asrock_altrad8ud_openbmc_2_07_00_redfish_surface: BmcRedfishSurfaceRow = BmcRedfishSurfaceRow {
+  firmware: asrock_altrad8ud_openbmc_2_07_00_capabilities.firmware,
+  shape: BmcRedfishSurfaceShape {
+    thermal_surface: RedfishThermalSubsystemSensorCollection,
+    chassis_sensor_collection_member_count: 51,
+    fan_control_surface: RedfishFanControlResourceAbsent,
+  },
+}
+
+data asrock_altrad8ud_openbmc_3_22_00_redfish_surface: BmcRedfishSurfaceRow = BmcRedfishSurfaceRow {
+  firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
+  shape: BmcRedfishSurfaceShape {
+    thermal_surface: RedfishLegacyChassisThermal,
+    chassis_sensor_collection_member_count: 9,
+    fan_control_surface: RedfishInitialDutyControlResource,
+  },
+}
+
+data asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog: List<BmcRedfishSurfaceRow> = [
+  asrock_altrad8ud_openbmc_2_07_00_redfish_surface,
+  asrock_altrad8ud_openbmc_3_22_00_redfish_surface,
+]
+
+data asrock_altrad8ud_redfish_surface_catalog_note: String = "Each row is the surface an OpenBMC build for this board serves, keyed by version alone, because that is what decides it: bmcweb's compiled resource set is a property of the image. The 3.22.00 row was MEASURED on both fleet hosts simultaneously on 2026-08-12 by authenticated BMC SSH and loopback Redfish, which is what makes it a catalog row rather than a per-host note — srv3 (192.168.1.192) and srv4 (192.168.1.195), independently flashed on different days, returned legacy Chassis Thermal 200, ThermalSubsystem 404, ThermalSubsystem/Fans 404, a 9-member Sensors collection, and a byte-identical Thermal key shape (12974 and 12975 bytes, differing only in a reading value). Two independently-arrived-at hosts agreeing on every axis is the evidence that the shape is a function of the image; one host would only have established what that host does. The 2.07.00 row is the historical pre-upgrade snapshot for srv3 and is retained because the catalog must still answer for an un-upgraded host, not because any fleet member currently runs it."
 
 data asrock_altrad8ud_factory_temp_soc_fan_curve_steps: List<BmcFanCurveStep> = [
   BmcFanCurveStep { at_or_above: celsius(40), duty: percent(30) },

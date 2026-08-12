@@ -9,12 +9,13 @@ import extdeps.bmc.capability {
   HistoricalEvidenceSnapshot,
 }
 import extdeps.bmc.types {
+  BmcRedfishSurfaceDerivation,
+  bmc_redfish_surface_of_host,
   BmcConfigPersistenceObservation,
   BmcFanCurve,
   BmcFanCurveStep,
   BmcFanPolicyObservation,
   BmcOverlayConfigObserved,
-  BmcRedfishSurfaceObservation,
   BmcUpdateServiceObservation,
   FanPidAggregatedEntry,
   On,
@@ -26,7 +27,7 @@ import extdeps.bmc.types {
   ResetGracefulRestart,
   RedfishThermalSubsystemSensorCollection,
 }
-import extdeps.boards.asrock_rack { asrock_altrad8ud_factory_fan_config_digest }
+import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog, asrock_altrad8ud_factory_fan_config_digest }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.filesystem.linux {
   LinuxFilePublicationProtocol,
@@ -125,14 +126,18 @@ type BmcFanRebootPersistenceReceipt {
   observed_at: EpochMs
 }
 
+// Re-observed 2026-08-12 after the 2026-08-11 flash: VERSION_ID=3.22.00 read
+// from /etc/os-release over authenticated BMC SSH. The prior row still said
+// 2.07.00, which is the observation this change stops being able to leave
+// behind — the surface below is now derived from THIS field.
 data srv3_bmc_firmware_observation: BmcFirmwareObservation = BmcFirmwareObservation {
   endpoint: srv3_baseboard.bmc,
   firmware: BmcFirmwareVersion {
     family: OpenBmc,
-    version: firmware_semantic_version(major: 2, minor: 7, patch: 0),
+    version: firmware_semantic_version(major: 3, minor: 22, patch: 0),
   },
   evidence_scope: HistoricalEvidenceSnapshot,
-  observed_at: 1785110400000,
+  observed_at: 1786843200000,
 }
 
 data srv4_bmc_firmware_observation: BmcFirmwareObservation = BmcFirmwareObservation {
@@ -145,19 +150,20 @@ data srv4_bmc_firmware_observation: BmcFirmwareObservation = BmcFirmwareObservat
   observed_at: 1785110400000,
 }
 
-data srv3_bmc_redfish_surface_observation: BmcRedfishSurfaceObservation = BmcRedfishSurfaceObservation {
-  firmware: srv3_bmc_firmware_observation,
-  thermal_surface: RedfishThermalSubsystemSensorCollection,
-  chassis_sensor_collection_member_count: 51,
-  fan_control_surface: RedfishFanControlResourceAbsent,
-}
+// DERIVED, not authored. Each host contributes only its observed firmware
+// version; the surface comes from the board catalog. This is what closes the
+// staleness class: after srv3's 2026-08-11 flash there is no per-host copy
+// left to go stale, and updating its firmware observation below moves its
+// surface with it in one motion.
+data srv3_bmc_redfish_surface: BmcRedfishSurfaceDerivation = bmc_redfish_surface_of_host(
+  catalog: asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog,
+  observation: srv3_bmc_firmware_observation,
+)
 
-data srv4_bmc_redfish_surface_observation: BmcRedfishSurfaceObservation = BmcRedfishSurfaceObservation {
-  firmware: srv4_bmc_firmware_observation,
-  thermal_surface: RedfishLegacyChassisThermal,
-  chassis_sensor_collection_member_count: 9,
-  fan_control_surface: RedfishInitialDutyControlResource,
-}
+data srv4_bmc_redfish_surface: BmcRedfishSurfaceDerivation = bmc_redfish_surface_of_host(
+  catalog: asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog,
+  observation: srv4_bmc_firmware_observation,
+)
 
 data srv3_bmc_update_service_observation: BmcUpdateServiceObservation = BmcUpdateServiceObservation {
   firmware: srv3_bmc_firmware_observation,
