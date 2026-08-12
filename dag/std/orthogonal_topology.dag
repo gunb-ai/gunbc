@@ -113,6 +113,40 @@ fn space_footprint(s: EnclosedSpace) -> OrthogonalLoop2 { prism3_footprint(p: s.
 fn space_height(s: EnclosedSpace) -> Millimeter { prism3_height(p: s.shell.prism) }
 fn space_walls(s: EnclosedSpace) -> List<ShellWall> { shell_walls(s: s.shell) }
 
+// STRUCTURAL EQUALITY OVER THE BOUNDARY, which is the only thing a space is. Two spaces are the
+// same when they occupy the same volume in the same frame; there is no identity field to compare
+// because identity is the product layer's fact, not geometry's (std.spatial_knowledge makes the
+// same separation deliberately). A consumer wanting "is this the same ROOM" is asking a different
+// question and must ask it of the layer that allocates room identities.
+fn space_eq(a: EnclosedSpace, b: EnclosedSpace) -> Bool {
+  coordinate_frame_identity_eq(a: space_frame(s: a), b: space_frame(s: b))
+    && signed_millimeter_component_count(m: prism3_low(p: a.shell.prism)) == signed_millimeter_component_count(m: prism3_low(p: b.shell.prism))
+    && signed_millimeter_component_count(m: prism3_high(p: a.shell.prism)) == signed_millimeter_component_count(m: prism3_high(p: b.shell.prism))
+    && vertices_eq(a: loop2_vertices(l: space_footprint(s: a)), b: loop2_vertices(l: space_footprint(s: b)))
+}
+
+type VertexWalk {
+  rest: List<Point2>
+  same: Bool
+}
+
+fn vertices_eq(a: List<Point2>, b: List<Point2>) -> Bool {
+  if length(a) != length(b) {
+    false
+  } else {
+    let walked = fold(a, init: VertexWalk { rest: b, same: true }, f: (acc, v) =>
+      match acc.rest |> first {
+        Absent => VertexWalk { rest: [], same: false }
+        Present { value: w } =>
+          VertexWalk {
+            rest: acc.rest |> skip(1),
+            same: acc.same && point2_x(p: v) == point2_x(p: w) && point2_y(p: v) == point2_y(p: w),
+          }
+      })
+    walked.same
+  }
+}
+
 // THE SHOELACE SUM, CHECKED AT EVERY STEP. The sum is twice the signed area, and for a closed
 // integer loop it is always even, so halving it is exact rather than a rounding policy. Each term
 // is a product of two coordinates and can leave the range on its own, so the fold carries a
