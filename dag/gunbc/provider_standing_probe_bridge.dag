@@ -34,7 +34,6 @@ import gunbc.provider_standing {
 import gunbc.codex_app_server_press {
   CodexAccountStandingReceipt,
   AmbientCodexCredentialContext,
-  CodexAccountStandingEvidence,
   CodexRateLimitBucketVerdict,
   CodexBucketCapacityAvailable,
   CodexBucketUnavailableUntilReset,
@@ -300,17 +299,7 @@ fn provider_limit_observations_from_codex_buckets(
   }
 }
 
-fn provider_limit_observations_from_codex_press_evidence(
-  credential: ProviderLimitCredentialIdentity,
-  evidence: CodexAccountStandingEvidence,
-) -> List<ProviderLimitObservation> {
-  provider_limit_observations_from_codex_buckets(
-    credential: credential,
-    buckets: evidence.rate_limit_buckets,
-  )
-}
-
-data codex_press_credential_binding_note: String = "THE CREDENTIAL COMES FROM THE RECEIPT, NOT FROM THE CALLER (review artifact 51237 handback item 1). provider_limit_observations_from_codex_press_evidence takes the credential identity and the evidence as INDEPENDENT arguments, so nothing stops a caller taking buckets observed under one CODEX_HOME and publishing them as the standing of a different credential. The standing would be honestly decoded and attached to the wrong account — a forgery no arm refuses, because both arguments are individually valid.\n\nThe receipt already carries the answer: CodexAccountPreflightSubject.credential is the exact ambient context the trip ran under. So the receipt-taking entry point DERIVES the identity from that subject and gives the caller no place to supply one. The evidence-taking form remains for callers that genuinely hold only evidence, but it is no longer the way a receipt reaches the standing.\n\nCODEX_HOME is the identity because it IS the isolation mechanism (extdeps.llm.codex_auth codex_state_root_isolation_note): two homes are two credential stores, and one home is one account's tokens."
+data codex_press_credential_binding_note: String = "THE CREDENTIAL COMES FROM THE RECEIPT, NOT FROM THE CALLER (review artifact 51237 handback item 1). provider_limit_observations_from_codex_press_evidence takes the credential identity and the evidence as INDEPENDENT arguments, so nothing stops a caller taking buckets observed under one CODEX_HOME and publishing them as the standing of a different credential. The standing would be honestly decoded and attached to the wrong account — a forgery no arm refuses, because both arguments are individually valid.\n\nThe receipt already carries the answer: CodexAccountPreflightSubject.credential is the exact ambient context the trip ran under. So the receipt-taking entry point DERIVES the identity from that subject and gives the caller no place to supply one. The evidence-taking form remains for callers that genuinely hold only evidence, but it is no longer the way a receipt reaches the standing.\n\nCODEX_HOME is the identity because it IS the isolation mechanism (extdeps.llm.codex_auth codex_state_root_isolation_note): two homes are two credential stores, and one home is one account's tokens.\\n\\nTHE FIRST FIX WAS INCOMPLETE AND THAT IS THE POINT OF THIS PARAGRAPH. Adding the receipt-taking entry point did not remove the forgery — provider_limit_observations_from_codex_press_evidence still took a credential and an evidence record as independent arguments, so the exact construction the correction was meant to eliminate stayed reachable beside the corrected one. A safe path added next to an unsafe path leaves the unsafe path. It is deleted; the only production entry consumes the complete receipt, and the bucket-list helper takes an already-bound credential rather than a free one."
 
 fn codex_press_credential_identity(
   credential: AmbientCodexCredentialContext,
