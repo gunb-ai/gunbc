@@ -11,6 +11,7 @@ import v2.extdeps.languages.rust {
 import v2.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules }
 import v2.std.compilers.target_model {
   ConditionalClosedByToken,
+  ConditionalDelimiting,
   ConditionalSelfDelimiting,
   TargetConditionalShape,
   TargetModel,
@@ -102,17 +103,20 @@ fn cld_projection_with(conditional_form: TargetConditionalShape) -> TargetValueE
   }
 }
 
+fn cld_delimiting_for(delimiting_closed: Bool) -> ConditionalDelimiting {
+  if delimiting_closed {
+    ConditionalClosedByToken { close_token: ^rust_token_rbrace }
+  } else {
+    ConditionalSelfDelimiting
+  }
+}
+
 fn cld_conditional_form_with(delimiting_closed: Bool) -> TargetConditionalShape {
   TargetConditionalShape {
     if_token: ^rust_token_kw_if,
     then_token: ^rust_token_lbrace,
     else_token: ^rust_token_unwired_else,
-    delimiting:
-      if delimiting_closed {
-        ConditionalClosedByToken { close_token: ^rust_token_rbrace }
-      } else {
-        ConditionalSelfDelimiting
-      }
+    delimiting: cld_delimiting_for(delimiting_closed: delimiting_closed)
   }
 }
 
