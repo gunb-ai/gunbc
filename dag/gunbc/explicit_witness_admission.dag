@@ -145,14 +145,6 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolution: unbound_dissolution(description: "that lane lands imported-variant value bindings, this witness runs green, and this row deletes")
   ),
   known_red_probe(
-    entry: "src/v1/tests/claim/parser_module_value_declaration_expected_red_test.dag",
-    f: "witness_module_scope_value_declaration_binds_its_name",
-    kind: CorpusWitnessKind,
-    budget: FastLaneEvalBudget,
-    reason: "a module-scope value declaration binds no name in the v1 parser, so a cross-file bare reference to a module datum cannot bind and the reference-derived closure is short by every module-value edge. Located at parsed_occurrence_role_for_node, which classifies a bodied node by the absence of a type annotation. Owner: the import-deletion lane. Distinct from the type/constructor/field holes role-directed minting closed.",
-    dissolution: unbound_dissolution(description: "the parser mints the module-value declaration and the category decision lands; then this row moves into parser_declaration_category_matrix_witness_test beside the forms that already hold")
-  ),
-  known_red_probe(
     entry: "src/v2/test/claim/manual/english_emit_add_test.dag",
     f: "english_emit_add_ingest_round_trip_holds",
     kind: CorpusWitnessKind,
