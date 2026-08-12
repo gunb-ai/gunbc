@@ -1,0 +1,66 @@
+module extdeps.auth.jws
+// RFC 7515: the algorithm-agreement rule that decides WHICH key may verify a token. This is the
+// part of verification that needs no arithmetic — and it is the part the historical attacks live
+// in, so it lands before the exponentiation exists rather than after.
+//
+// extdeps.auth.jwks holds the keys and states why the signature check itself cannot run here.
+// extdeps.auth.jwt holds the claims and states that decoding them proves nothing. This module is
+// the structure between them.
+
+import std.types { NonEmptyStr, Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.auth.jwks {
+  JwkKeyType, JwkRsa, JwkEllipticCurve, JwkOctetSequence, JwkUnsupportedKeyType,
+  jws_algorithm_rs256,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "datatracker.ietf.org/doc/html/rfc7515"
+  }
+}
+
+data jws_compact_split_deferred_note: String = "THE COMPACT SPLIT IS NOT MODELLED HERE YET, and the reason is a missing substrate primitive rather than a decision about JWS. RFC 7515 section 7.1 splits on periods, and this corpus has no general string split, index-of or substring — text is consumed by positional char folds (extdeps.auth.jwt jwt_first_colon_from is the idiom). Writing the split means writing that fold, and writing it badly means a verifier that reads the wrong bytes.\\n\\nWHAT IS DEFERRED WITH IT, named so nobody assumes it exists: the three-segment check that refuses a two-segment unsecured JWS and a five-segment JWE, and the signing input — the ASCII of `header_b64u . payload_b64u`, the ENCODED segments joined, which is what a signature is actually over.\\n\\nWhat is NOT deferred is below: the algorithm-agreement rule. It needs no string surgery and it is where the JWS confusion attacks live, so it lands first.\\n\\nDissolve-on: a positional separator fold with a discriminating control per wrong segment count."
+
+data jws_algorithm_agreement_note: String = "THE HEADER DOES NOT GET TO CHOOSE THE ALGORITHM. This is the JWS confusion attack and it has broken real verifiers twice over, both times because the code read `alg` out of the token and then did what the token asked.\\n\\nThe `none` variant: a forger strips the signature, sets alg to none, and any verifier that dispatches on the header accepts an unsigned token as authenticated. RFC 7515 section 6 defines that algorithm for contexts where integrity is guaranteed some other way; a verifier holding a public key is not such a context, so none is refused here unconditionally rather than treated as an algorithm that happens to fail.\\n\\nThe HMAC substitution: a forger takes an RSA verifier's PUBLIC key — which is public, that being the point — sets alg to HS256, and signs the token with that key as an HMAC secret. A verifier that passes the key material to whichever primitive the header names then verifies it successfully, because the attacker had the key. The defense is not a stronger primitive; it is refusing to let the header select one. A key of type RSA verifies RSA signatures and nothing else.\\n\\nSo agreement is decided from the KEY, and the header's claim is only ever checked against it. This runs today, with no bignum: it is structure, and the structure is where the attack lives."
+
+type JwsAlgorithmAgreement
+  = JwsAlgorithmAgreed { algorithm: NonEmptyStr }
+  | JwsAlgorithmUnsecuredRefused
+  | JwsAlgorithmKeyTypeMismatch { header_algorithm: NonEmptyStr }
+  | JwsAlgorithmUnsupported { header_algorithm: NonEmptyStr }
+
+data jws_algorithm_none: NonEmptyStr = "none" as NonEmptyStr
+
+fn jws_algorithm_agreement(
+  header_algorithm: NonEmptyStr,
+  key_type: JwkKeyType,
+) -> JwsAlgorithmAgreement {
+  if header_algorithm == jws_algorithm_none {
+    JwsAlgorithmUnsecuredRefused
+  } else {
+    match key_type {
+      JwkRsa =>
+        if header_algorithm == jws_algorithm_rs256 {
+          JwsAlgorithmAgreed { algorithm: jws_algorithm_rs256 }
+        } else {
+          JwsAlgorithmKeyTypeMismatch { header_algorithm: header_algorithm }
+        }
+      JwkOctetSequence => JwsAlgorithmKeyTypeMismatch { header_algorithm: header_algorithm }
+      JwkEllipticCurve => JwsAlgorithmUnsupported { header_algorithm: header_algorithm }
+      JwkUnsupportedKeyType { name: _ } =>
+        JwsAlgorithmUnsupported { header_algorithm: header_algorithm }
+    }
+  }
+}
+
+fn jws_algorithm_is_agreed(agreement: JwsAlgorithmAgreement) -> Bool {
+  match agreement {
+    JwsAlgorithmAgreed { algorithm: _ } => true
+    JwsAlgorithmUnsecuredRefused => false
+    JwsAlgorithmKeyTypeMismatch { header_algorithm: _ } => false
+    JwsAlgorithmUnsupported { header_algorithm: _ } => false
+  }
+}
