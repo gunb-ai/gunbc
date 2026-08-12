@@ -60,10 +60,7 @@ fn population_slots_match(a: List<NonEmptyStr>, b: List<NonEmptyStr>) -> Bool {
     && fold(
       a,
       init: true,
-      f: (acc, s) =>
-        acc
-          && slot_occurrence_count(slots: a, slot: s)
-            == slot_occurrence_count(slots: b, slot: s),
+      f: (acc, s) => acc && (slot_occurrence_count(slots: a, slot: s) == slot_occurrence_count(slots: b, slot: s)),
     )
 }
 
