@@ -16,11 +16,18 @@ test fn allocation_conserves_when_pools_fit() -> Bool {
 
 data per_host_width_red_controls_note: String = "THE FOUR CONTROLS BELOW ARE THE POINT OF THE PER-HOST SPLIT, and each one goes red against a specific way of getting this wrong rather than against a changed number. Every input is the live authority except the WIDTH under test, which is perturbed by exactly one slot — so a control cannot pass by coincidence and cannot be repaired by editing a literal.\n\nThe pair matters more than either half. Asserting only that the committed widths fit would be satisfied by a wall that returns true for everything, which is exactly the wall this change replaced (it charged session_pool: 0 on every host and would have passed srv1 at seven slots). Asserting only the refusals would be satisfied by a wall that refuses everything. Together they pin the boundary at the slot, in both directions, on both host classes.\n\nWhy srv1 refuses at 6 and srv3 refuses at 8: srv1 owes the sessions reservation its roster entry declares and carries the legacy overhead allowance, srv3 owes neither and carries the measured bound. Same per-slot ceiling, same host RAM, different admissible width — which is the whole claim, stated as arithmetic that fails if either per-host fact is wrong."
 
+fn usable_ram_of(host: HostIdentity) -> ByteSize {
+  match host_usable_ram_or_refusal(host: host, r: gunbc_ci_host_usable_ram_for(host: host)) {
+    HostUsableRamResolved { bytes: b } => b
+    HostUsableRamUnresolved { reason: _ } => byte_size(0)
+  }
+}
+
 fn conserves_at_width(host: HostIdentity, slots: Int) -> Bool {
   host_allocation_conserves(
-    host: host_os_usable_ram_bytes(),
+    host: usable_ram_of(host: host),
     overhead: host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead_for(host: host)),
-    headroom: oomd_actuation_floor(host: host_os_usable_ram_bytes()),
+    headroom: oomd_actuation_floor(host: usable_ram_of(host: host)),
     runner_pool: gunbc_runner_slot_demand_sum_memory_max(
       slots: slots,
       per_slot: gunbc_runner_slot_desired().memory_max
@@ -75,9 +82,9 @@ test fn session_hosts_refuse_the_managed_width() -> Bool {
 
 test fn charging_zero_sessions_would_have_admitted_the_overcommit() -> Bool {
   host_allocation_conserves(
-    host: host_os_usable_ram_bytes(),
+    host: usable_ram_of(host: operator_host_srv1),
     overhead: host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead_for(host: operator_host_srv1)),
-    headroom: oomd_actuation_floor(host: host_os_usable_ram_bytes()),
+    headroom: oomd_actuation_floor(host: usable_ram_of(host: operator_host_srv1)),
     runner_pool: gunbc_runner_slot_demand_sum_memory_max(
       slots: 6,
       per_slot: gunbc_runner_slot_desired().memory_max
@@ -112,4 +119,96 @@ test fn sessions_subtract_from_the_same_budget() -> Bool {
 
 test fn max_concurrent_sessions_falls_out_of_pool() -> Bool {
   max_concurrent_sessions(session_pool: gunbc.fleet_host_budget.session_pool_bytes(active_sessions: 12)) == 12
+}
+
+data per_host_usable_ram_controls_note: String = "THE GRAIN IS THE CLAIM, so these controls test the SPLIT rather than the number. Every host still resolves to the same substitution figure today — that is deliberate, and committed_width_fits_on_every_host above already pins that the derived widths did not move. What these add is that the lookup is genuinely per-host and that an unclassified host REFUSES instead of borrowing, which is the property the old fleet-level read could not have.\n\nThe refusal control is the load-bearing one. The function it replaces took no host argument at all and summed a synthetic ComputeHost that is not a member of the fold it served, so there was no unclassified-host case to get wrong — and correspondingly no way to notice one. An unknown host reaching this wall now produces a located refusal, the same shape the overhead axis beside it already had."
+
+data differential_witness_note: String = "ASSERTING THAT FOUR LOOKUPS RETURN A POSITIVE NUMBER DOES NOT TEST A PER-HOST GRAIN, which is what the first version of this witness did. Four branches returning one shared declaration satisfy it exactly as well as four independent host facts do, so it would have passed unchanged against the fleet constant this change replaces — a witness that cannot fail for the reason it exists.\n\nThe grain is only observable DIFFERENTIALLY: perturb one host and prove that host's answer moves while the others hold. Since all four rows deliberately carry the same figure today, the perturbation has to come from a synthetic lookup rather than the live rows, so what is pinned is the SHAPE of the dispatch — that it is keyed by host at all — which is precisely the property the old signature could not have had, since it took no host argument."
+
+fn synthetic_usable_ram_for(host: HostIdentity) -> HostUsableRam {
+  if (host as String) == (operator_host_srv3 as String) {
+    HostUsableRamMeasured { bytes: byte_size(268435456000), provenance: "synthetic fixture: srv3 alone perturbed to prove the lookup is keyed by host" }
+  } else {
+    gunbc_ci_host_usable_ram_for(host: host)
+  }
+}
+
+fn synthetic_bytes_of(host: HostIdentity) -> Int {
+  match host_usable_ram_or_refusal(host: host, r: synthetic_usable_ram_for(host: host)) {
+    HostUsableRamResolved { bytes: b } => byte_size_count(b: b)
+    HostUsableRamUnresolved { reason: _ } => 0
+  }
+}
+
+test fn every_enrolled_host_resolves_its_own_usable_ram() -> Bool {
+  byte_size_count(b: usable_ram_of(host: operator_host_srv1)) > 0
+    && byte_size_count(b: usable_ram_of(host: operator_host_srv2)) > 0
+    && byte_size_count(b: usable_ram_of(host: operator_host_srv3)) > 0
+    && byte_size_count(b: usable_ram_of(host: operator_host_srv4)) > 0
+}
+
+test fn perturbing_one_host_moves_only_that_host() -> Bool {
+  synthetic_bytes_of(host: operator_host_srv3) == 268435456000
+    && synthetic_bytes_of(host: operator_host_srv1) == byte_size_count(b: usable_ram_of(host: operator_host_srv1))
+    && synthetic_bytes_of(host: operator_host_srv2) == byte_size_count(b: usable_ram_of(host: operator_host_srv2))
+    && synthetic_bytes_of(host: operator_host_srv4) == byte_size_count(b: usable_ram_of(host: operator_host_srv4))
+    && synthetic_bytes_of(host: operator_host_srv3) != byte_size_count(b: usable_ram_of(host: operator_host_srv3))
+}
+
+test fn a_larger_host_reading_is_not_admissible_as_a_lower_bound() -> Bool {
+  match gunbc_ci_host_usable_ram_for(host: operator_host_srv3) {
+    HostUsableRamMeasured { bytes: _, provenance: _ } => false
+    HostUsableRamUnmeasured => false
+    HostUsableRamConservativeLowerBound { bytes: b, basis: _ } =>
+      byte_size_count(b: b) <= byte_size_count(b: usable_ram_of(host: operator_host_srv3))
+  }
+}
+
+test fn unclassified_host_refuses_rather_than_borrowing() -> Bool {
+  match host_usable_ram_or_refusal(
+    host: "srv-not-enrolled" as HostIdentity,
+    r: gunbc_ci_host_usable_ram_for(host: "srv-not-enrolled" as HostIdentity)
+  ) {
+    HostUsableRamResolved { bytes: _ } => false
+    HostUsableRamUnresolved { reason: r } => string_contains(s: r, pattern: "srv-not-enrolled")
+  }
+}
+
+test fn middle_arm_is_a_bound_not_a_measurement() -> Bool {
+  match gunbc_ci_host_usable_ram_for(host: operator_host_srv3) {
+    HostUsableRamMeasured { bytes: _, provenance: _ } => false
+    HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => byte_size_count(b: b) == 134217728000
+    HostUsableRamUnmeasured => false
+  }
+}
+
+data derived_width_probe_note: String = "WHAT THIS PROBE IS FOR, stated plainly because it asserts about a function that does not exist yet. host_memory_admitted_width returns hand-authored literals 5/5/7/7, while gunbc.runner_slot_allocation gunbc_runner_slot_width_ruling_note describes those numbers as falling out of the conservation arithmetic — 'neither number is authored here as a target; both are the largest width the wall will pass'. That is a claim about a derivation nobody wrote: the arithmetic was run by hand once and its answers were typed in beside the wall that checks them, which is the second-representation shape DESIGN 5 names, and it is why raising a host's RAM does not raise its width.\n\nThis probe runs the derivation the note describes and asserts it reproduces every literal exactly. It is evidence for replacing them with the derivation, and until then it is a live consumer that reds if the two ever disagree — which is the failure the current arrangement cannot detect, because nothing recomputes the literals.\n\nIt lives in a test module deliberately: the production derivation needs the overhead, session and headroom charges, and those sit downstream of runner_slot_allocation, so writing it in place would close an import cycle. Resolving that is a structural change, not a line edit."
+
+fn derived_memory_admitted_width(host: HostIdentity) -> Int {
+  let usable = usable_ram_of(host: host)
+  let after_overhead = byte_size_saturating_sub(
+    total: usable,
+    reserved: host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead_for(host: host))
+  )
+  let after_session = byte_size_saturating_sub(
+    total: after_overhead,
+    reserved: host_session_slice_bytes(host: host)
+  )
+  let available = byte_size_saturating_sub(
+    total: after_session,
+    reserved: oomd_actuation_floor(host: usable)
+  )
+  measure_fit_count_floor(capacity: available, each: gunbc_runner_slot_desired().memory_max)
+}
+
+test fn derived_width_reproduces_every_authored_literal() -> Bool {
+  derived_memory_admitted_width(host: operator_host_srv1) == host_memory_admitted_width(host: operator_host_srv1)
+    && derived_memory_admitted_width(host: operator_host_srv2) == host_memory_admitted_width(host: operator_host_srv2)
+    && derived_memory_admitted_width(host: operator_host_srv3) == host_memory_admitted_width(host: operator_host_srv3)
+    && derived_memory_admitted_width(host: operator_host_srv4) == host_memory_admitted_width(host: operator_host_srv4)
+}
+
+test fn derived_width_reproduces_the_two_host_classes() -> Bool {
+  derived_memory_admitted_width(host: operator_host_srv1) == 5
+    && derived_memory_admitted_width(host: operator_host_srv3) == 7
 }
