@@ -62,17 +62,72 @@ fn frontend_stage_label(s: FrontendStage) -> String {
 
 // Equality is STRUCTURAL, never a label comparison. Routing it through frontend_stage_label
 // would make the renderer the semantic authority: a presentation rename would silently change
-// which stages compare equal, and a newly added stage would inherit whatever its label collided
-// with. The pairwise-distinctness claim over labels is then about rendering only, which is what
-// it should have been.
+// which stages compare equal. The pairwise-distinctness claim over labels is then about
+// rendering only, which is what it should have been.
+//
+// Every inner arm is ENUMERATED rather than closed with a wildcard, and the verbosity is the
+// point. A `_ => false` inner arm is non-fold residue over a closed coproduct — the class
+// v2.lens.non_fold_residue counts and refuses unrostered — and it is that for a reason worth
+// paying six times six lines for: with wildcards, adding a seventh stage leaves this function
+// compiling and quietly answering false for every comparison involving it. Enumerated, the
+// addition fails to typecheck at all thirty-six positions, so the new stage cannot be introduced
+// without deciding its equality against each existing one.
 fn frontend_stage_eq(a: FrontendStage, b: FrontendStage) -> Bool {
   match a {
-    LexRefused => match b { LexRefused => true  _ => false }
-    ParseRefused => match b { ParseRefused => true  _ => false }
-    NormalizeGraftRefused => match b { NormalizeGraftRefused => true  _ => false }
-    NormalizeRetained => match b { NormalizeRetained => true  _ => false }
-    NormalizeOther => match b { NormalizeOther => true  _ => false }
-    NormalizeAccepted => match b { NormalizeAccepted => true  _ => false }
+    LexRefused =>
+      match b {
+        LexRefused => true
+        ParseRefused => false
+        NormalizeGraftRefused => false
+        NormalizeRetained => false
+        NormalizeOther => false
+        NormalizeAccepted => false
+      }
+    ParseRefused =>
+      match b {
+        LexRefused => false
+        ParseRefused => true
+        NormalizeGraftRefused => false
+        NormalizeRetained => false
+        NormalizeOther => false
+        NormalizeAccepted => false
+      }
+    NormalizeGraftRefused =>
+      match b {
+        LexRefused => false
+        ParseRefused => false
+        NormalizeGraftRefused => true
+        NormalizeRetained => false
+        NormalizeOther => false
+        NormalizeAccepted => false
+      }
+    NormalizeRetained =>
+      match b {
+        LexRefused => false
+        ParseRefused => false
+        NormalizeGraftRefused => false
+        NormalizeRetained => true
+        NormalizeOther => false
+        NormalizeAccepted => false
+      }
+    NormalizeOther =>
+      match b {
+        LexRefused => false
+        ParseRefused => false
+        NormalizeGraftRefused => false
+        NormalizeRetained => false
+        NormalizeOther => true
+        NormalizeAccepted => false
+      }
+    NormalizeAccepted =>
+      match b {
+        LexRefused => false
+        ParseRefused => false
+        NormalizeGraftRefused => false
+        NormalizeRetained => false
+        NormalizeOther => false
+        NormalizeAccepted => true
+      }
   }
 }
 
