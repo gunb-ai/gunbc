@@ -11,6 +11,9 @@ import gunbc.provider_standing_probe_bridge {
   codex_press_credential_identity,
   provider_limit_observation_from_codex_bucket,
   provider_limit_observations_from_codex_buckets,
+  provider_entitlement_from_codex_realm,
+  provider_entitlement_from_codex_plan_reading,
+  codex_plan_is_entitling,
 }
 import gunbc.codex_app_server_press {
   AmbientCodexCredentialContext,
@@ -18,7 +21,25 @@ import gunbc.codex_app_server_press {
   CodexBucketCapacityAvailable,
   CodexBucketUnavailableUntilReset,
   CodexBucketCapacityUnknown,
+  CodexAccountRealm,
+  CodexApiKeyRealm,
+  CodexAmazonBedrockRealm,
+  CodexChatgptRealm,
+  CodexAccountRealmAbsent,
+  CodexAccountRealmUnrecognizedType,
+  CodexAccountRealmUnobserved,
+  CodexPlanTypeObserved,
+  CodexPlanTypeUnrecognized,
+  CodexPlanTypeMalformed,
+  codex_account_realm_from_result,
 }
+import extdeps.llm.codex_app_server {
+  CodexPlanFree,
+  CodexPlanPro,
+  CodexPlanUnknown,
+  CodexPlanEnterprise,
+}
+import extdeps.languages.json.parse { parse_json }
 import gunbc.provider_standing {
   ProviderLimitObservation,
   LimitDispatchDrawUnspecified,
@@ -38,6 +59,8 @@ import gunbc.provider_standing {
   AuthenticationCredentialsAbsent,
   AuthenticationProfilePresentTokenAbsent,
   EntitlementObservationUnobserved,
+  EntitlementObservedAvailable,
+  EntitlementRejected,
   LimitObservationUnobserved,
   InstallationStandingUnobserved,
   ToolEnvironmentStandingUnobserved,
@@ -240,6 +263,12 @@ test fn provider_standing_probe_bridge_keystone_holds() -> Bool {
     && witness_undecoded_bucket_does_not_refuse_a_measured_sibling()
     && witness_undecoded_bucket_still_refuses_its_own_draw_and_unnamed_draws()
     && witness_credential_identity_tracks_the_observed_codex_home()
+    && witness_pro_subscription_is_the_only_arm_that_entitles()
+    && witness_upstream_unknown_plan_is_not_a_yes()
+    && witness_stale_pin_is_unobserved_while_wrong_realm_is_rejected()
+    && witness_absent_and_malformed_accounts_never_entitle()
+    && witness_realm_decodes_from_the_captured_account_read_shape()
+    && witness_chatgpt_account_without_plan_type_is_malformed_not_unnamed()
 }
 
 // ---------------------------------------------------------------------------
@@ -402,4 +431,83 @@ test fn witness_credential_identity_tracks_the_observed_codex_home() -> Bool {
       }
     _ => false
   })
+}
+
+// ---------------------------------------------------------------------------
+// PRESS-0 step 2 — entitlement decoded from account/read.
+//
+// The press decoded `account` to "the object was nonempty" and stopped, so an
+// apiKey platform credential, an amazonBedrock contract and a personal ChatGPT
+// subscription all reached the same Ready. These witness the union decode and
+// the gunbc policy over it, and the discriminating pairs are the ones where a
+// rejection and an unobserved must NOT collapse into each other.
+
+data entitlement_realm_witness_note: String = "THE TWO NEGATIVES ARE DIFFERENT NEGATIVES. A Bedrock account is REJECTED — read successfully, wrong realization, the answer is no. An unrecognized plan string is UNOBSERVED — upstream moved and our pin is stale, the answer is not yet. Both refuse dispatch today, which is exactly why a witness that only checked `not available` would pass while the model conflated them: the first is permanent until the credential changes, the second is repaired by updating a roster."
+
+fn chatgpt_realm_on(plan_wire: String) -> CodexAccountRealm {
+  match parse_json(s: plan_wire) {
+    Absent => CodexAccountRealmUnobserved { reason: "fixture did not parse" as NonEmptyStr }
+    Present { value: v } => codex_account_realm_from_result(result: v)
+  }
+}
+
+test fn witness_pro_subscription_is_the_only_arm_that_entitles() -> Bool {
+  let entitled = provider_entitlement_from_codex_realm(
+    realm: CodexChatgptRealm { plan: CodexPlanTypeObserved { plan: CodexPlanPro } })
+  let api_key = provider_entitlement_from_codex_realm(realm: CodexApiKeyRealm)
+  let bedrock = provider_entitlement_from_codex_realm(realm: CodexAmazonBedrockRealm)
+  (match entitled { EntitlementObservedAvailable => true _ => false })
+    && (match api_key { EntitlementRejected { reason: _ } => true _ => false })
+    && (match bedrock { EntitlementRejected { reason: _ } => true _ => false })
+}
+
+test fn witness_upstream_unknown_plan_is_not_a_yes() -> Bool {
+  let unknown = provider_entitlement_from_codex_realm(
+    realm: CodexChatgptRealm { plan: CodexPlanTypeObserved { plan: CodexPlanUnknown } })
+  !codex_plan_is_entitling(plan: CodexPlanUnknown)
+    && (match unknown { EntitlementRejected { reason: _ } => true _ => false })
+    && codex_plan_is_entitling(plan: CodexPlanPro)
+    && codex_plan_is_entitling(plan: CodexPlanEnterprise)
+    && !codex_plan_is_entitling(plan: CodexPlanFree)
+}
+
+test fn witness_stale_pin_is_unobserved_while_wrong_realm_is_rejected() -> Bool {
+  let stale_plan = provider_entitlement_from_codex_plan_reading(
+    reading: CodexPlanTypeUnrecognized { native: "quantum_max" as NonEmptyStr })
+  let stale_realm = provider_entitlement_from_codex_realm(
+    realm: CodexAccountRealmUnrecognizedType { native: "azureEntra" as NonEmptyStr })
+  let wrong_realm = provider_entitlement_from_codex_realm(realm: CodexAmazonBedrockRealm)
+  (match stale_plan { EntitlementObservationUnobserved { reason: _ } => true _ => false })
+    && (match stale_realm { EntitlementObservationUnobserved { reason: _ } => true _ => false })
+    && (match wrong_realm { EntitlementRejected { reason: _ } => true _ => false })
+}
+
+test fn witness_absent_and_malformed_accounts_never_entitle() -> Bool {
+  let absent = provider_entitlement_from_codex_realm(realm: CodexAccountRealmAbsent)
+  let malformed = provider_entitlement_from_codex_plan_reading(
+    reading: CodexPlanTypeMalformed { cause: "no planType" as NonEmptyStr })
+  (match absent { EntitlementObservationUnobserved { reason: _ } => true _ => false })
+    && (match malformed { EntitlementObservationUnobserved { reason: _ } => true _ => false })
+}
+
+test fn witness_realm_decodes_from_the_captured_account_read_shape() -> Bool {
+  let chatgpt = chatgpt_realm_on(
+    plan_wire: "{\"account\":{\"type\":\"chatgpt\",\"planType\":\"pro\",\"email\":\"REDACTED@example.invalid\"},\"requiresOpenaiAuth\":true}")
+  let api_key = chatgpt_realm_on(plan_wire: "{\"account\":{\"type\":\"apiKey\"}}")
+  let null_account = chatgpt_realm_on(
+    plan_wire: "{\"account\":null,\"requiresOpenaiAuth\":true}")
+  (match chatgpt {
+    CodexChatgptRealm { plan: CodexPlanTypeObserved { plan: CodexPlanPro } } => true
+    _ => false
+  })
+    && (match api_key { CodexApiKeyRealm => true _ => false })
+    && (match null_account { CodexAccountRealmAbsent => true _ => false })
+}
+
+test fn witness_chatgpt_account_without_plan_type_is_malformed_not_unnamed() -> Bool {
+  let no_plan = chatgpt_realm_on(plan_wire: "{\"account\":{\"type\":\"chatgpt\"}}")
+  match no_plan {
+    CodexChatgptRealm { plan: CodexPlanTypeMalformed { cause: _ } } => true
+    _ => false
+  }
 }
