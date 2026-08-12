@@ -1,7 +1,7 @@
 module v2.test.emit.produced_decl_two_target
 
 import v2.test.complexity_gate.table_fixture_add_subject_producer { table_fixture_add_decl_node }
-import v2.compiler.emit_produced { emit_produced_decl }
+import v2.compiler.emit_produced { emit_produced_decl, emit_produced_module }
 import v2.extdeps.languages.c { c_target_model }
 import v2.extdeps.languages.cpp { cpp_target_model }
 import v2.extdeps.languages.rust { rust_target_model }
@@ -61,4 +61,65 @@ test fn produced_decl_two_targets_render_own_order() -> Bool {
 test fn produced_decl_unwired_target_still_refuses() -> Bool {
   tt_refuses(target: cpp_target_model(), fn_name: ^rust_binding_fn_add)
     && tt_emits(target: rust_target_model(), fn_name: ^rust_binding_fn_add, golden: two_target_rust_golden)
+}
+
+// emit_produced_module is the module-level fold, and this PR changed its signature
+// and the target threading through it. Its two existing consumers do not execute --
+// one is a legacy frozen row and the other was not scheduled -- so without this
+// witness the change would be compiled and unrun, while a PRODUCTION caller
+// (v2.workflow.realization_attempt, the canonical realization attempt) depends on it.
+// Scope is exactly what changed: accumulation, separator, final medium, threading.
+// The inherited coverage gap on those two consumers is NOT addressed here.
+//
+// The golden is written as a literal rather than composed from
+// emit_module_decl_separator, so the expected text does not share an ancestor with
+// the implementation that produces it.
+data two_target_rust_module_golden: String =
+  "fn add(x: i32, y: i32) -> i32 { x + y }\n\nfn add2(x: i32, y: i32) -> i32 { x + y }\n\n"
+
+fn tt_module_text(target: TargetModel, first: Symbol, second: Symbol) -> Outcome<String> {
+  match table_fixture_add_decl_node(fn_name: first) {
+    Accepted { value: d1, diagnostics: _ } =>
+      match table_fixture_add_decl_node(fn_name: second) {
+        Accepted { value: d2, diagnostics: _ } =>
+          match emit_produced_module(decls: [d1, d2], target: target) {
+            Accepted { value: medium, diagnostics: _ } =>
+              Accepted { value: medium.carried, diagnostics: None }
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn tt_module_matches(
+  target: TargetModel,
+  first: Symbol,
+  second: Symbol,
+  golden: String
+) -> Bool {
+  match tt_module_text(target: target, first: first, second: second) {
+    Accepted { value: text, diagnostics: _ } => text == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// The swapped-order arm is the discriminating RED: it holds the same two
+// declarations and the same target, so only the fold's accumulation ORDER can
+// distinguish them. A fold that dropped, duplicated or reordered a declaration, or
+// that failed to thread the target through, cannot satisfy both arms.
+test fn produced_decl_module_folds_declarations_in_order() -> Bool {
+  tt_module_matches(
+    target: rust_target_model(),
+    first: ^rust_binding_fn_add,
+    second: ^rust_binding_fn_add2,
+    golden: two_target_rust_module_golden
+  )
+    && !tt_module_matches(
+      target: rust_target_model(),
+      first: ^rust_binding_fn_add2,
+      second: ^rust_binding_fn_add,
+      golden: two_target_rust_module_golden
+    )
 }
