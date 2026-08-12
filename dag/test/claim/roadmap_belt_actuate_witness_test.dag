@@ -106,10 +106,6 @@ import gunbc.roadmap_belt_actuate {
   belt_tick_classify_sessions,
   BeltRevisionAdmitted, BeltRevisionRefusedDrifted, BeltRevisionRefusedUnobserved,
   belt_revision_admission,
-}
-import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
-import gunbc.fleet_desired_observe {
-  RevisionConverged, RevisionDrifted, RevisionUnobserved,
   DispatchRevisionDrifted, DispatchRevisionUnobserved,
   belt_dispatch_result_ok,
   belt_dispatch_status_label,
@@ -149,6 +145,10 @@ import gunbc.fleet_desired_observe {
   UnknownSpawnWorkdir,
   srv1_live_dashboard_instance,
   srv1_green_dashboard_instance,
+}
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
+import gunbc.fleet_desired_observe {
+  RevisionConverged, RevisionDrifted, RevisionUnobserved,
 }
 import extdeps.languages.json.emit { serialize_json }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -1885,7 +1885,37 @@ test fn witness_tick_partition_is_lifecycle_aware_not_presence_aware() -> Bool {
   part.running.length() == 1
     && part.stale.length() == 1
     && part.refused.length() == 1
+    && part.conflicted.length() == 0
     && all(part.running, s => s.node_id == "run")
     && all(part.stale, s => s.node_id == "dead")
     && all(part.refused, s => s.node_id == "unknown")
+}
+
+// Review artifact 51285, finding 1: `refused` was partitioned and never read, so an
+// unobserved-but-present session left its node looking ABSENT to belt_reconcile and
+// spawnable — beside a pane that might be running. Nothing running means nothing
+// occupies capacity; the point is that nothing is spawned either.
+test fn witness_tick_defers_every_non_running_class() -> Bool {
+  let part = belt_tick_classify_sessions(live: [
+    live_session(node_id: "unknown", verdict: Converged),
+  ])
+  part.running.length() == 0
+    && part.refused.length() == 1
+    && part.stale.length() == 0
+    && part.conflicted.length() == 0
+}
+
+// Finding 2: multiplicity is a NODE fact. Two rows for one node landed in two buckets
+// because each row's process state was read in isolation, so the tick acted on an
+// ambiguity the click path refuses. Neither row may be classified running.
+test fn witness_tick_multiplicity_is_a_node_fact() -> Bool {
+  let part = belt_tick_classify_sessions(live: [
+    live_session_with_process(
+      node_id: "a", process: WorkerProcessRunning { command: "codex" as NonEmptyStr }),
+    live_session_with_process(
+      node_id: "a", process: WorkerProcessExited { exit_code: 0, last_command: "codex" }),
+  ])
+  part.conflicted.length() == 2
+    && part.running.length() == 0
+    && part.stale.length() == 0
 }
