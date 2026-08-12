@@ -1,0 +1,167 @@
+module test.claim.jwks_witness
+
+import std.types { Bool, String, NonEmptyStr, Int, List }
+import extdeps.auth.jwks {
+  Jwk, JwkSet, JwkKeyId, JwkKeyIdPresent, JwkKeyIdAbsent,
+  JwkRsa, JwkEllipticCurve, JwkOctetSequence, JwkUnsupportedKeyType,
+  JwkRsaMaterial, JwkMaterialUnmodeled, JwkRsaPublicKey,
+  JwkDecoded, JwkDecodeRefused,
+  JwkSelected, JwkSelectionAbsent, JwkSelectionAmbiguous,
+  JwsVerificationUnavailable, JwsVerificationRefused,
+  jwk_key_type_of_wire, jwk_decode, jwk_select_by_kid,
+  jws_verification_unavailable, jws_verification_is_authenticated,
+  jws_algorithm_rs256,
+}
+import extdeps.languages.json.parse { parse_json }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data jwks_witness_note: String = "The load-bearing claim of this module is a NEGATIVE one — that nothing here can report a signature as authenticated — so it is witnessed first and directly. The decode and selection claims are ordinary, but the selection one is worth reading twice: RFC 7517 does not require kid uniqueness, so two keys can share one, and picking the first would decide which key authenticates a credential on list order."
+
+// THE CLAIM THAT MATTERS. No verdict this module can construct reports authentication. If a
+// success arm is ever added, this witness must be the thing that forces its author to look at
+// the seam note first.
+test fn witness_no_verdict_reports_authenticated() -> Bool {
+  !jws_verification_is_authenticated(verdict: jws_verification_unavailable())
+    && !jws_verification_is_authenticated(
+      verdict: JwsVerificationRefused { reason: "malformed signature" as NonEmptyStr })
+}
+
+test fn witness_unavailable_names_the_missing_capability_and_algorithm() -> Bool {
+  match jws_verification_unavailable() {
+    JwsVerificationUnavailable { reason: r, algorithm: a } =>
+      a == jws_algorithm_rs256
+        && string_contains(s: r as String, pattern: "no signature-verification handler is bound")
+    _ => false
+  }
+}
+
+test fn witness_registered_key_types_decode_and_unknown_is_named_not_refused() -> Bool {
+  (match jwk_key_type_of_wire(raw: "RSA") { JwkRsa => true _ => false })
+    && (match jwk_key_type_of_wire(raw: "EC") { JwkEllipticCurve => true _ => false })
+    && (match jwk_key_type_of_wire(raw: "oct") { JwkOctetSequence => true _ => false })
+    && (match jwk_key_type_of_wire(raw: "OKP") {
+      JwkUnsupportedKeyType { name: n } => n == "OKP"
+      _ => false
+    })
+}
+
+data fixture_rsa_jwk: String = "{\"kty\":\"RSA\",\"kid\":\"k1\",\"n\":\"0vx7ag\",\"e\":\"AQAB\"}"
+data fixture_rsa_jwk_no_exponent: String = "{\"kty\":\"RSA\",\"kid\":\"k1\",\"n\":\"0vx7ag\"}"
+data fixture_jwk_no_kty: String = "{\"kid\":\"k1\",\"n\":\"0vx7ag\",\"e\":\"AQAB\"}"
+data fixture_ec_jwk: String = "{\"kty\":\"EC\",\"kid\":\"k2\",\"crv\":\"P-256\"}"
+
+fn decode_fixture(s: String) -> Bool {
+  match parse_json(s: s) {
+    Present { value: v } =>
+      match jwk_decode(v: v) {
+        JwkDecoded { jwk: _ } => true
+        JwkDecodeRefused { reason: _ } => false
+      }
+    Absent => false
+  }
+}
+
+test fn witness_rsa_jwk_decodes_with_both_parameters() -> Bool {
+  match parse_json(s: fixture_rsa_jwk) {
+    Present { value: v } =>
+      match jwk_decode(v: v) {
+        JwkDecoded { jwk: k } =>
+          match k.material {
+            JwkRsaMaterial { key: rsa } =>
+              rsa.modulus_b64u == "0vx7ag" && rsa.exponent_b64u == "AQAB"
+            _ => false
+          }
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// An RSA key missing a required parameter REFUSES rather than decoding to a key with a hole in
+// it — a JWK that reaches a verifier without its exponent cannot verify anything, and the useful
+// moment to say so is at the decode.
+test fn witness_incomplete_rsa_jwk_refuses() -> Bool {
+  !decode_fixture(s: fixture_rsa_jwk_no_exponent)
+    && !decode_fixture(s: fixture_jwk_no_kty)
+}
+
+// An unmodeled key type is NOT a decode failure: the key we need may be sitting beside it in the
+// same set, and refusing the whole set because one member is unfamiliar is the wrong granularity.
+test fn witness_unmodeled_key_type_decodes_without_material() -> Bool {
+  match parse_json(s: fixture_ec_jwk) {
+    Present { value: v } =>
+      match jwk_decode(v: v) {
+        JwkDecoded { jwk: k } =>
+          match k.material {
+            JwkMaterialUnmodeled { key_type: _ } => true
+            _ => false
+          }
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+fn rsa_key(kid: String) -> Jwk {
+  Jwk {
+    key_id: JwkKeyIdPresent { kid: kid as NonEmptyStr },
+    key_type: JwkRsa,
+    material: JwkRsaMaterial {
+      key: JwkRsaPublicKey {
+        modulus_b64u: "0vx7ag" as NonEmptyStr,
+        exponent_b64u: "AQAB" as NonEmptyStr,
+      },
+    },
+  }
+}
+
+test fn witness_kid_selection_finds_the_unique_key() -> Bool {
+  match jwk_select_by_kid(
+    set: JwkSet { keys: [rsa_key(kid: "k1"), rsa_key(kid: "k2")] },
+    kid: "k2" as NonEmptyStr,
+  ) {
+    JwkSelected { jwk: k } => match k.key_id {
+      JwkKeyIdPresent { kid: found } => found == "k2"
+      JwkKeyIdAbsent => false
+    }
+    _ => false
+  }
+}
+
+// THE DISCRIMINATING ONE. RFC 7517 does not require kid uniqueness, so a duplicate kid is a real
+// wire state — and first-wins would silently decide which key authenticates a credential. Absent
+// and ambiguous stay distinct because their remedies differ: refresh the key set, versus the set
+// is malformed and refreshing will not help.
+test fn witness_duplicate_kid_refuses_rather_than_picking_one() -> Bool {
+  let dup = jwk_select_by_kid(
+    set: JwkSet { keys: [rsa_key(kid: "k1"), rsa_key(kid: "k1")] },
+    kid: "k1" as NonEmptyStr,
+  )
+  let missing = jwk_select_by_kid(
+    set: JwkSet { keys: [rsa_key(kid: "k1")] },
+    kid: "k9" as NonEmptyStr,
+  )
+  (match dup { JwkSelectionAmbiguous { kid: k, count: n } => k == "k1" && n == 2 _ => false })
+    && (match missing { JwkSelectionAbsent { kid: k } => k == "k9" _ => false })
+}
+
+test fn witness_empty_key_set_is_absent_not_a_selection() -> Bool {
+  match jwk_select_by_kid(set: JwkSet { keys: [] }, kid: "k1" as NonEmptyStr) {
+    JwkSelectionAbsent { kid: _ } => true
+    _ => false
+  }
+}
+
+test fn jwks_keystone_holds() -> Bool {
+  witness_no_verdict_reports_authenticated()
+    && witness_unavailable_names_the_missing_capability_and_algorithm()
+    && witness_registered_key_types_decode_and_unknown_is_named_not_refused()
+    && witness_rsa_jwk_decodes_with_both_parameters()
+    && witness_incomplete_rsa_jwk_refuses()
+    && witness_unmodeled_key_type_decodes_without_material()
+    && witness_kid_selection_finds_the_unique_key()
+    && witness_duplicate_kid_refuses_rather_than_picking_one()
+    && witness_empty_key_set_is_absent_not_a_selection()
+}
