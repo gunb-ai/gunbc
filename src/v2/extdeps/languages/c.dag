@@ -50,6 +50,7 @@ import v2.std.grammar {
   grammar_relation_tokens_node
 }
 import v2.std.compilers.target_model {
+  ProducedDeclUnwired,
   TargetModel,
   ConcreteSyntaxToken,
   FixedToken,
@@ -1038,6 +1039,7 @@ fn c_type_decl_inject_fault_runtime_row() -> TargetEmitHostRuntimeRow {
 
 fn c_type_decl_target_model() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: c_target_model_node(),
     lex: c_lex(),
     binding_spellings: c_binding_spellings(),
@@ -1049,6 +1051,7 @@ fn c_type_decl_target_model() -> TargetModel {
 
 fn c_target_model() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: c_target_model_node(),
     lex: c_lex(),
     binding_spellings: c_binding_spellings(),

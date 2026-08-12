@@ -2,6 +2,7 @@ module v2.test.rung_5_6_common
 
 
 data rung56_emit_host_python_target_model: TargetModel = TargetModel {
+  produced_decl_support: ProducedDeclUnwired,
   bundle: rung34_emit_host_rust_target_model.bundle,
   lex: VoidLexRules,
   binding_spellings: empty_map(),
@@ -11,6 +12,7 @@ data rung56_emit_host_python_target_model: TargetModel = TargetModel {
 }
 
 data rung56_emit_host_go_target_model: TargetModel = TargetModel {
+  produced_decl_support: ProducedDeclUnwired,
   bundle: rung34_emit_host_rust_target_model.bundle,
   lex: VoidLexRules,
   binding_spellings: empty_map(),

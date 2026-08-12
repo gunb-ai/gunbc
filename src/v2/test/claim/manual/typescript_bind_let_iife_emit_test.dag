@@ -17,6 +17,7 @@ fn bind_let_binding_spellings() -> Map<Symbol, String> {
 
 fn bind_let_target_model() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: ts_target_model_node(),
     lex: ts_lex(),
     binding_spellings: bind_let_binding_spellings(),

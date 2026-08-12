@@ -96,13 +96,20 @@ import gunbc.roadmap_belt_actuate {
   BeltStopResult, StopDisabled,
   BeltNodeLookup, NodeFound, NodeMissing, AuthorityProjectionRefused,
   belt_find_node_in,
-  belt_node_session_live,
   belt_node_session_liveness,
   BeltSessionLiveness, BeltSessionRunning, BeltSessionStaleTerminal,
   BeltSessionLivenessUnobserved, BeltSessionAbsent,
   BeltDispatchResult, DispatchSpawned, DispatchAlreadyLive, DispatchDisabled, DispatchNodeNotFound,
   DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchAuthorityRefused, DispatchSpawnFailed,
   DispatchStaleSession, DispatchSessionLivenessUnobserved,
+  BeltSessionMultiplicityConflict,
+  belt_tick_classify_sessions,
+  BeltRevisionAdmitted, BeltRevisionRefusedDrifted, BeltRevisionRefusedUnobserved,
+  belt_revision_admission,
+}
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
+import gunbc.fleet_desired_observe {
+  RevisionConverged, RevisionDrifted, RevisionUnobserved,
   DispatchRevisionDrifted, DispatchRevisionUnobserved,
   belt_dispatch_result_ok,
   belt_dispatch_status_label,
@@ -498,46 +505,58 @@ test fn witness_find_node_first_wins_on_duplicate() -> Bool {
 // got a positive acknowledgement with no agent. Both are replaced rather than kept beside
 // the new ones, because the true arm asserted the exact behaviour that is now wrong.
 test fn witness_node_session_running_is_live() -> Bool {
-  belt_node_session_live(
+  match belt_node_session_liveness(
     live: [live_session_with_process(
       node_id: "a",
       process: WorkerProcessRunning { command: "codex" as NonEmptyStr },
     )],
     node_id: "a",
-  )
+  ) {
+    BeltSessionRunning { session_name: _, command: c } => c == "codex"
+    _ => false
+  }
 }
 
 test fn witness_node_session_absent_is_not_live() -> Bool {
-  !belt_node_session_live(
+  match belt_node_session_liveness(
     live: [live_session_with_process(
       node_id: "a",
       process: WorkerProcessRunning { command: "codex" as NonEmptyStr },
     )],
     node_id: "b",
-  )
+  ) {
+    BeltSessionAbsent => true
+    _ => false
+  }
 }
 
 // THE DISCRIMINATING RED for the dead-pane defect: a present session whose pane exited is
 // NOT live, so it cannot suppress a spawn. Under the prior any(node_id) check this returned
 // true and the click was answered "already_live".
 test fn witness_retained_dead_pane_is_not_live() -> Bool {
-  !belt_node_session_live(
+  match belt_node_session_liveness(
     live: [live_session_with_process(
       node_id: "a",
       process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
     )],
     node_id: "a",
-  )
+  ) {
+    BeltSessionStaleTerminal { session_name: _, detail: _ } => true
+    _ => false
+  }
 }
 
 // The honest third state refuses in BOTH directions: it is not live (so it never reports a
 // running agent) and it is not the absent path either — the dispatch fold routes it to
 // DispatchSessionLivenessUnobserved rather than spawning blind.
 test fn witness_unobserved_liveness_is_not_live() -> Bool {
-  !belt_node_session_live(
+  match belt_node_session_liveness(
     live: [live_session(node_id: "a", verdict: Converged)],
     node_id: "a",
-  )
+  ) {
+    BeltSessionLivenessUnobserved { session_name: _, reason: _ } => true
+    _ => false
+  }
 }
 
 test fn witness_session_liveness_is_four_valued() -> Bool {
@@ -634,11 +653,12 @@ fn band_key_for_label(label: String) -> String {
 }
 
 test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
-  belt_dispatch_label_band_rows().length() == 12
+  belt_dispatch_label_band_rows().length() == 13
     && band_key_for_label(label: "stale_session") == "loud"
     && band_key_for_label(label: "session_liveness_unobserved") == "loud"
     && band_key_for_label(label: "deployed_revision_drifted") == "loud"
     && band_key_for_label(label: "deployed_revision_unobserved") == "loud"
+    && band_key_for_label(label: "session_multiplicity_conflict") == "loud"
     && band_key_for_label(label: "spawned") == "ok"
     && band_key_for_label(label: "already_live") == "ok"
     && band_key_for_label(label: "disabled") == "fail"
@@ -681,6 +701,7 @@ fn d4_wire_contract_labels() -> List<String> {
     "session_liveness_unobserved",
     "deployed_revision_drifted",
     "deployed_revision_unobserved",
+    "session_multiplicity_conflict",
   ]
 }
 
@@ -1777,4 +1798,94 @@ test fn witness_unobserved_receipt_names_its_cause() -> Bool {
     s: serialize_json(v: belt_dispatch_result_json_value(
       r: DispatchRevisionUnobserved { node_id: "a", cause: "HEAD undecodable" })),
     pattern: "\"cause\": \"HEAD undecodable\"")
+}
+
+// Handback items 3 and 4 (review artifact 51237).
+
+fn dup_running() -> DispatchLiveSession {
+  live_session_with_process(
+    node_id: "a", process: WorkerProcessRunning { command: "codex" as NonEmptyStr })
+}
+
+fn dup_stale() -> DispatchLiveSession {
+  live_session_with_process(
+    node_id: "a", process: WorkerProcessExited { exit_code: 0, last_command: "codex" })
+}
+
+test fn witness_two_sessions_for_one_node_refuse_and_name_both() -> Bool {
+  match belt_node_session_liveness(live: [dup_running(), dup_stale()], node_id: "a") {
+    BeltSessionMultiplicityConflict { session_names: names, session_count: n } =>
+      n == 2 && string_contains(s: names, pattern: ",")
+    _ => false
+  }
+}
+
+// THE DISCRIMINATING ONE: under first() these two orders answered Running and
+// StaleTerminal respectively — same observation, different verdict, no signal.
+test fn witness_multiplicity_verdict_is_order_independent() -> Bool {
+  let forward = belt_node_session_liveness(live: [dup_running(), dup_stale()], node_id: "a")
+  let reverse = belt_node_session_liveness(live: [dup_stale(), dup_running()], node_id: "a")
+  (match forward { BeltSessionMultiplicityConflict { session_names: _, session_count: a } =>
+    match reverse { BeltSessionMultiplicityConflict { session_names: _, session_count: b } => a == b _ => false }
+    _ => false })
+}
+
+fn witness_oid_or_refuse(hex: String) -> GitObjectId? {
+  git_object_id_from_untagged_hex(hex: hex)
+}
+
+data witness_desired_hex: String = "1111111111111111111111111111111111111111"
+data witness_local_hex: String = "2222222222222222222222222222222222222222"
+
+// The gate itself, not its output arms: deleting the fleet_revision_standing match
+// would leave every constructed-arm witness green, so drive the fold directly.
+test fn witness_revision_admission_fold_drives_all_three_arms() -> Bool {
+  let unobserved = belt_revision_admission(
+    standing: RevisionUnobserved { cause: "HEAD undecodable" })
+  match witness_oid_or_refuse(hex: witness_desired_hex) {
+    Present { value: d_oid } =>
+      match witness_oid_or_refuse(hex: witness_local_hex) {
+        Present { value: l_oid } => {
+          let converged = belt_revision_admission(
+            standing: RevisionConverged { revision: d_oid })
+          let drifted = belt_revision_admission(
+            standing: RevisionDrifted { desired: d_oid, local: l_oid })
+          (match converged { BeltRevisionAdmitted { revision: _ } => true _ => false })
+            && (match drifted {
+              BeltRevisionRefusedDrifted { desired: d, local: l } => d != l
+              _ => false
+            })
+            && (match unobserved {
+              BeltRevisionRefusedUnobserved { cause: c } => c == "HEAD undecodable"
+              _ => false
+            })
+        }
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// THE BELT-GRAIN CONTROL (review artifact 51237, P0 #2). The previous
+// dead-pane witness proved a helper Boolean and said nothing about the
+// continuously running reconciler, which received the whole session list and
+// counted every present row as an occupied member. This asserts the partition
+// the tick actually feeds to belt_reconcile: a stale pane is NOT running, so it
+// neither occupies capacity nor reads as Unchanged, and an unobserved pane is
+// in neither bucket — it is a counted refusal, because tearing it down could
+// kill live work and spawning beside it could double-run the node.
+test fn witness_tick_partition_is_lifecycle_aware_not_presence_aware() -> Bool {
+  let part = belt_tick_classify_sessions(live: [
+    live_session_with_process(
+      node_id: "run", process: WorkerProcessRunning { command: "codex" as NonEmptyStr }),
+    live_session_with_process(
+      node_id: "dead", process: WorkerProcessExited { exit_code: 0, last_command: "codex" }),
+    live_session(node_id: "unknown", verdict: Converged),
+  ])
+  part.running.length() == 1
+    && part.stale.length() == 1
+    && part.refused.length() == 1
+    && all(part.running, s => s.node_id == "run")
+    && all(part.stale, s => s.node_id == "dead")
+    && all(part.refused, s => s.node_id == "unknown")
 }

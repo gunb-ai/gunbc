@@ -16,7 +16,8 @@ import v2.test.manual.python_add_emit_translate {
   python_add_inferred_tree
 }
 import v2.std.collection { Map, empty_map, map_insert }
-import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
+import v2.std.compilers.target_model {
+  ProducedDeclUnwired, TargetModel, target_model_emit_transforms_empty }
 import v2.std.diagnostic {
   Accepted,
   None,
@@ -51,6 +52,7 @@ fn python_add_emit_perturbed_binding_spellings() -> Map<Symbol, String> {
 
 fn python_add_emit_perturbed_target_model() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: python_target_model_node(),
     lex: python_lex(),
     binding_spellings: python_add_emit_perturbed_binding_spellings(),
