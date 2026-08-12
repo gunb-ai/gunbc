@@ -44,6 +44,74 @@ type SparkApplyOutcome
   = ApplyConverged { detail: String }
   | ApplyRefused { cause: String }
 
+// ONE STEP: the effect that was attempted, joined to what happened. The join is the point -- an
+// outcome floating free of the effect it belongs to is exactly what forced the receipt to be read
+// as prose, because reconstructing "which one refused" meant parsing the text back out.
+type SparkApplyStep {
+  effect_label: String
+  outcome: SparkApplyOutcome
+}
+
+// THE WHOLE APPLY, as a population rather than a paragraph. Head-plus-tail so an apply that attempted
+// nothing has no constructor: reporting an apply with zero steps would be indistinguishable from one
+// where everything converged, which is the shape a caller most wants to trust.
+type SparkApplyReport
+  = ApplyAttempted { first: SparkApplyStep, more: List<SparkApplyStep> }
+  | ApplyNotAttempted { cause: String }
+
+fn spark_apply_steps(report: SparkApplyReport) -> List<SparkApplyStep> {
+  match report {
+    ApplyAttempted { first: f, more: m } => concat([f], m)
+    ApplyNotAttempted { cause: _ } => []
+  }
+}
+
+// THE VERDICT IS DERIVED FROM THE STEPS, never from the receipt text. This replaces
+// string_contains(body, "REFUSED"), which was the prose-decision defect this branch was built to
+// remove and which I reintroduced one layer up: a spelling change in any label silently turned a
+// refusal into a success, and nothing structural prevented it. A step whose outcome is ApplyRefused
+// is now unignorable because the fold matches the variant.
+//
+// ApplyNotAttempted is NOT converged and NOT a refused step -- it is the arm for "we never got as
+// far as attempting", which has a different remedy from "we attempted and were refused" and must not
+// be folded into either.
+fn spark_apply_converged(report: SparkApplyReport) -> Bool {
+  match report {
+    ApplyNotAttempted { cause: _ } => false
+    ApplyAttempted { first: f, more: m } =>
+      fold(concat([f], m), init: true, f: fn(acc, step) {
+        match step.outcome {
+          ApplyConverged { detail: _ } => acc
+          ApplyRefused { cause: _ } => false
+        }
+      })
+  }
+}
+
+fn spark_apply_first_refusal(report: SparkApplyReport) -> String? {
+  match report {
+    ApplyNotAttempted { cause: c } => Present { value: c }
+    ApplyAttempted { first: f, more: m } =>
+      fold(concat([f], m), init: none, f: fn(acc, step) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => match step.outcome {
+            ApplyConverged { detail: _ } => none
+            ApplyRefused { cause: c } => Present { value: join([step.effect_label, ": ", c], "") }
+          }
+        }
+      })
+  }
+}
+
+fn spark_apply_report_text(report: SparkApplyReport) -> String {
+  match report {
+    ApplyNotAttempted { cause: c } => join(["  not-attempted ", c, "\n"], "")
+    ApplyAttempted { first: f, more: m } =>
+      join(map(concat([f], m), s => join(["  ", s.effect_label, "  ", apply_outcome_label(outcome: s.outcome), "\n"], "")), "")
+  }
+}
+
 fn apply_outcome_label(outcome: SparkApplyOutcome) -> String {
   match outcome {
     ApplyConverged { detail: d } => join(["converged ", d], "")
@@ -88,6 +156,13 @@ fn privileged_leg(
   }
 }
 
+// WHAT THE PROOF STEP PROVES, AND WHAT IT DOES NOT, learned from the refusal control: with a wrong
+// credential all four privileged effects refused while this step still reported converged, because
+// the account already existed from an earlier successful run. That is correct -- the step asks
+// whether the managed principal accepts a key-only authentication, and it did -- but it means the
+// step is NOT evidence that this run created anything. The report's fold is what catches the failure;
+// a reader taking the last green line as the verdict would have concluded the opposite.
+//
 // An UNPRIVILEGED leg as the newly created account, which is what proves the account is reachable
 // key-only. Deliberately a separate connection under a different principal rather than a check run
 // from inside the privileged session: a privileged session can read /etc/passwd and conclude the
@@ -186,13 +261,10 @@ data spark_apply_receipt_path: String = "target/spark-managed-access-apply-recei
 // scheduling this -- a timer, a CI step, a convergence loop -- would have recorded a successful
 // apply against a host where nothing was applied.
 //
-// Deciding on a "REFUSED" substring is deliberately marked as the weak form it is: the receipt is
-// String-typed, so the exit has no typed outcome to consult. That is the same prose-decision defect
-// this module's own history contains (string_contains(receipt, "outcome=refused") in the old
-// enrollment path), and it is being repeated here knowingly rather than pretended away.
-// 🟡 dissolve-on: the apply returns a typed outcome population -- List<SparkApplyOutcome> joined to
-// its effect -- and the exit folds over THAT, at which point the substring test is deleted and a
-// spelling change can no longer turn a refusal into a success.
+// THE SUBSTRING TEST IS GONE, and its dissolution condition is discharged rather than carried: the
+// apply now builds a SparkApplyReport -- steps joining each effect to its outcome -- and the exit
+// folds over that population. A spelling change in any label can no longer turn a refusal into a
+// success, because the fold matches the variant and never reads the text.
 //
 // THE APPLY, ordered so that each step's evidence is the next step's precondition. The key-only
 // authentication proof runs LAST and as the managed principal, so a receipt reporting it converged
@@ -212,15 +284,14 @@ func spark_managed_access_apply_wet(
     identity_file: identity_file as NonEmptyStr,
     public_material: fleet_automation_ssh_key.material as NonEmptyStr,
   )
-  let body = match fleet_ssh_attempt_identity(raw: attempt_raw) {
-    Absent => "spark managed-access apply REFUSED: attempt identity is not a safe path segment\n"
+  let report = match fleet_ssh_attempt_identity(raw: attempt_raw) {
+    Absent => ApplyNotAttempted { cause: "attempt identity is not a safe path segment" }
     Present { value: attempt } => {
       let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
       match fleet_ssh_execution_context_of(outcome: materialization, credential: credential) {
-        Absent => join([
-          "spark managed-access apply REFUSED before any ssh leg: ",
-          known_hosts_materialization_receipt(outcome: materialization), "\n",
-        ], "")
+        Absent => ApplyNotAttempted {
+          cause: join(["trust could not be established, so no ssh leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""),
+        }
         Present { value: context } => {
           let create = privileged_leg(
             context: context, host: host, admin_principal: admin_principal,
@@ -245,27 +316,35 @@ func spark_managed_access_apply_wet(
           let proof = managed_principal_leg(
             context: context, host: host, managed_principal: spark_managed_login, raw_words: ["id", "-un"],
           )
-          join([
-            "spark managed-access apply host=", host, " at=", now as String,
-            " credential_identity=", serialize_content_hash(hash: credential.credential_identity) as String, "\n",
-            "  create-managed-account            ", apply_outcome_label(outcome: create), "\n",
-            "  install-fleet-authorized-key      ", apply_outcome_label(outcome: key), "\n",
-            "  install-narrow-privilege-grant    ", apply_outcome_label(outcome: grant), "\n",
-            "  create-no-login-service-identity  ", apply_outcome_label(outcome: inference), "\n",
-            "  prove-key-only-authentication     ", apply_outcome_label(outcome: proof), "\n",
-          ], "")
+          ApplyAttempted {
+            first: SparkApplyStep { effect_label: "create-managed-account          ", outcome: create },
+            more: [
+              SparkApplyStep { effect_label: "install-fleet-authorized-key   ", outcome: key },
+              SparkApplyStep { effect_label: "install-narrow-privilege-grant ", outcome: grant },
+              SparkApplyStep { effect_label: "create-no-login-service-identity", outcome: inference },
+              SparkApplyStep { effect_label: "prove-key-only-authentication  ", outcome: proof },
+            ],
+          }
         }
       }
     }
   }
+  let body = join([
+    "spark managed-access apply host=", host, " at=", now as String,
+    " credential_identity=", serialize_content_hash(hash: credential.credential_identity) as String, "\n",
+    spark_apply_report_text(report: report),
+  ], "")
   let w = Filesystem.Write(path: spark_apply_receipt_path, content: body)
   if !w.success {
     exit_failure(reason: join(["spark apply receipt write failed: ", w.error], ""))
   } else {
-    if string_contains(s: body, pattern: "REFUSED") {
-      exit_failure(reason: join(["spark managed-access apply did not converge:\n", body], ""))
-    } else {
+    if spark_apply_converged(report: report) {
       ExitSuccess
+    } else {
+      match spark_apply_first_refusal(report: report) {
+        Present { value: why } => exit_failure(reason: join(["spark managed-access apply did not converge -- ", why], ""))
+        Absent => exit_failure(reason: "spark managed-access apply did not converge and produced no refusal, which is a contradiction in the report")
+      }
     }
   }
 }
