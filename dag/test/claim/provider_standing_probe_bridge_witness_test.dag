@@ -1,6 +1,6 @@
 module test.claim.provider_standing_probe_bridge_witness
 
-import std.types { Bool, String, NonEmptyStr }
+import std.types { Bool, String, NonEmptyStr, FilePath, List }
 import v2.std.algebra { list_head, HeadFound, HeadAbsent }
 import extdeps.llm.cli_lifecycle {
   CodexCliProvider,
@@ -8,10 +8,12 @@ import extdeps.llm.cli_lifecycle {
   ProviderInstanceFieldUnobserved,
 }
 import gunbc.provider_standing_probe_bridge {
+  codex_press_credential_identity,
   provider_limit_observation_from_codex_bucket,
   provider_limit_observations_from_codex_buckets,
 }
 import gunbc.codex_app_server_press {
+  AmbientCodexCredentialContext,
   CodexRateLimitBucketVerdict,
   CodexBucketCapacityAvailable,
   CodexBucketUnavailableUntilReset,
@@ -237,6 +239,7 @@ test fn provider_standing_probe_bridge_keystone_holds() -> Bool {
     && witness_no_buckets_is_a_located_unobserved_not_an_empty_list()
     && witness_undecoded_bucket_does_not_refuse_a_measured_sibling()
     && witness_undecoded_bucket_still_refuses_its_own_draw_and_unnamed_draws()
+    && witness_credential_identity_tracks_the_observed_codex_home()
 }
 
 // ---------------------------------------------------------------------------
@@ -371,4 +374,24 @@ test fn witness_undecoded_bucket_still_refuses_its_own_draw_and_unnamed_draws() 
           })
       _ => false
     })
+}
+
+// Handback item 1 (review artifact 51237): evidence observed under one
+// CODEX_HOME must not be publishable as another credential's standing. The
+// receipt path gives the caller no argument to supply, so the only way to
+// change the credential is to change the home the trip actually ran under —
+// which is the fact, not a label. Two homes therefore never collide.
+test fn witness_credential_identity_tracks_the_observed_codex_home() -> Bool {
+  let a = codex_press_credential_identity(
+    credential: AmbientCodexCredentialContext { codex_home: "/srv/codex-a" as FilePath })
+  let b = codex_press_credential_identity(
+    credential: AmbientCodexCredentialContext { codex_home: "/srv/codex-b" as FilePath })
+  (match a {
+    LimitCredentialLabel { label: la } =>
+      match b {
+        LimitCredentialLabel { label: lb } => la != lb && la == "/srv/codex-a"
+        _ => false
+      }
+    _ => false
+  })
 }
