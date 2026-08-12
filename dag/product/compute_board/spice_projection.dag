@@ -27,6 +27,10 @@ import product.compute_board.analog {
   net_of_terminal,
   terminal_ref,
 }
+import product.compute_board.admission {
+  AdmittedBoardPowerInterfaceArticle,
+  admitted_article,
+}
 import product.compute_board.article {
   BoardArticleIdentity,
   BoardPowerInterfaceArticle,
@@ -236,7 +240,8 @@ fn project_analog_to_spice(
 // one article's identity paired with another article's circuit was perfectly constructible and
 // the resulting receipt would name a board it does not describe. Taking the article closes that
 // by construction: there is one value, and both facts are read out of it here.
-fn project_article_to_spice(article: BoardPowerInterfaceArticle) -> SpiceProjection {
+fn project_article_to_spice(admitted: AdmittedBoardPowerInterfaceArticle) -> SpiceProjection {
+  let article = admitted_article(a: admitted)
   project_analog_to_spice(
     article_identity: article.identity,
     intent: article.analog,

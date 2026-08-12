@@ -44,6 +44,10 @@ import product.compute_board.digital_control {
   intent_declares_signal,
   signal_direction_is_output,
 }
+import product.compute_board.admission {
+  AdmittedBoardPowerInterfaceArticle,
+  admitted_article,
+}
 import product.compute_board.article {
   BoardArticleIdentity,
   BoardPowerInterfaceArticle,
@@ -355,10 +359,15 @@ data power_interlock_verilog_bindings: List<VerilogBinding> = [
 // arrive as ONE value, so a receipt cannot name an article whose control logic it did not
 // render. The binding table stays a parameter because a spelling table is a fact about a target,
 // not about the board — a second Verilog-speaking consumer may legitimately spell it otherwise.
+// It takes the ADMITTED article rather than the article. A projection that accepts any article
+// has to trust that whoever called it checked the board's own coherence first, and the sealed
+// wrapper removes the trust: an article with two components sharing an identity, or an output
+// nothing drives, has no route to this function at all.
 fn project_article_to_verilog(
-  article: BoardPowerInterfaceArticle,
+  admitted: AdmittedBoardPowerInterfaceArticle,
   bindings: List<VerilogBinding>
 ) -> VerilogProjection {
+  let article = admitted_article(a: admitted)
   project_intent_to_verilog(
     article_identity: article.identity,
     intent: article.digital_control,

@@ -32,6 +32,12 @@ import product.compute_board.article {
   power_interlock_article,
   power_good_model_bindings,
 }
+import product.compute_board.admission {
+  AdmittedBoardPowerInterfaceArticle,
+  BoardArticleAdmitted,
+  BoardArticleRefused,
+  admit_board_article,
+}
 import product.compute_board.verilog_projection {
   VerilogModuleEmitted,
   VerilogProjectionRefused,
@@ -55,11 +61,32 @@ data expected_verilog_source: String = "module board_power_interlock (\n  input 
 // receipt is what makes this a claim about a shared root rather than a coincidence between two
 // fixtures: without it, two unrelated articles with equal extracted fields emit indistinguishable
 // output and this witness would still be green.
+// THE PRODUCTION ARTICLE IS ADMITTED HERE, and that is the whole flow rather than a preamble:
+// nothing constructs an AdmittedBoardPowerInterfaceArticle except admit_board_article, so this
+// match is the only route by which the production article reaches either projection. A refused
+// article fails the witness rather than being projected anyway.
+fn admitted_production_article() -> AdmittedBoardPowerInterfaceArticle? {
+  match admit_board_article(a: power_interlock_article) {
+    BoardArticleAdmitted { article: adm } => Present { value: adm }
+    BoardArticleRefused { causes: _ } => none
+  }
+}
+
+test fn w_the_production_article_is_admitted() -> Bool {
+  match admitted_production_article() {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 test fn w_one_article_feeds_both_emissions() -> Bool {
-  match project_article_to_spice(article: power_interlock_article) {
+  match admitted_production_article() {
+    Absent => false
+    Present { value: admitted } =>
+  match project_article_to_spice(admitted: admitted) {
     SpiceSliceProjected { receipt: sr } =>
       match project_article_to_verilog(
-        article: power_interlock_article,
+        admitted: admitted,
         bindings: power_interlock_verilog_bindings
       ) {
         VerilogModuleEmitted { receipt: vr } =>
@@ -71,6 +98,7 @@ test fn w_one_article_feeds_both_emissions() -> Bool {
         VerilogProjectionRefused { cause: _ } => false
       }
     SpiceSliceRefused { cause: _ } => false
+  }
   }
 }
 
@@ -100,12 +128,13 @@ test fn w_spice_refuses_when_one_binding_is_perturbed() -> Bool {
 // spelled by falling back to its logical name, which is the arm that would make a missing
 // binding unobservable.
 test fn w_verilog_refuses_unbound_signal() -> Bool {
-  match project_article_to_verilog(
-    article: power_interlock_article,
-    bindings: []
-  ) {
-    VerilogModuleEmitted { receipt: _ } => false
-    VerilogProjectionRefused { cause: _ } => true
+  match admitted_production_article() {
+    Absent => false
+    Present { value: admitted } =>
+      match project_article_to_verilog(admitted: admitted, bindings: []) {
+        VerilogModuleEmitted { receipt: _ } => false
+        VerilogProjectionRefused { cause: _ } => true
+      }
   }
 }
 
