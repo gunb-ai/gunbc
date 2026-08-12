@@ -104,16 +104,10 @@ pub enum EvalBuiltinArm {
     FreeCallRecordGeneratedArtifactDriftGateFailureDetail,
     FreeCallConsumeGeneratedArtifactDriftGateFailureDetail,
     FreeCallWitnessCompileCleanCliFloorVerdictsAgree,
-    FreeCallTestMigrationDebtModuleCount,
-    FreeCallTestMigrationDebtTotalLoc,
-    FreeCallTestMigrationDebtTotalTestFns,
     FreeCallTestMigrationDebtModuleNames,
-    FreeCallTestMigrationDebtKnownCoveredModuleIsNotDebt,
     FreeCallTestMigrationLegacyBehaviorIds,
     FreeCallTestMigrationWitnessBehaviorIds,
     FreeCallTestMigrationBehaviorDiscoveryHolds,
-    FreeCallTestMigrationDeleteGuardHolds,
-    FreeCallTestMigrationDeleteGuardUncoveredDeletes,
     FreeCallInertCarrierNamesLive,
     FreeCallInertCarrierDeclaredCount,
     FreeCallNonFoldResidueCount,
@@ -243,16 +237,10 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "record_generated_artifact_drift_gate_failure_detail" => Some(EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateFailureDetail),
         "consume_generated_artifact_drift_gate_failure_detail" => Some(EvalBuiltinArm::FreeCallConsumeGeneratedArtifactDriftGateFailureDetail),
         "witness_compile_clean_cli_floor_verdicts_agree" => Some(EvalBuiltinArm::FreeCallWitnessCompileCleanCliFloorVerdictsAgree),
-        "test_migration_debt_module_count" => Some(EvalBuiltinArm::FreeCallTestMigrationDebtModuleCount),
-        "test_migration_debt_total_loc" => Some(EvalBuiltinArm::FreeCallTestMigrationDebtTotalLoc),
-        "test_migration_debt_total_test_fns" => Some(EvalBuiltinArm::FreeCallTestMigrationDebtTotalTestFns),
         "test_migration_debt_module_names" => Some(EvalBuiltinArm::FreeCallTestMigrationDebtModuleNames),
-        "test_migration_debt_known_covered_module_is_not_debt" => Some(EvalBuiltinArm::FreeCallTestMigrationDebtKnownCoveredModuleIsNotDebt),
         "test_migration_legacy_behavior_ids" => Some(EvalBuiltinArm::FreeCallTestMigrationLegacyBehaviorIds),
         "test_migration_witness_behavior_ids" => Some(EvalBuiltinArm::FreeCallTestMigrationWitnessBehaviorIds),
         "test_migration_behavior_discovery_holds" => Some(EvalBuiltinArm::FreeCallTestMigrationBehaviorDiscoveryHolds),
-        "test_migration_delete_guard_holds" => Some(EvalBuiltinArm::FreeCallTestMigrationDeleteGuardHolds),
-        "test_migration_delete_guard_uncovered_deletes" => Some(EvalBuiltinArm::FreeCallTestMigrationDeleteGuardUncoveredDeletes),
         "inert_carrier_names_live" => Some(EvalBuiltinArm::FreeCallInertCarrierNamesLive),
         "inert_carrier_declared_count" => Some(EvalBuiltinArm::FreeCallInertCarrierDeclaredCount),
         "non_fold_residue_count" => Some(EvalBuiltinArm::FreeCallNonFoldResidueCount),
@@ -380,16 +368,10 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.record_generated_artifact_drift_gate_failure_detail") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallRecordGeneratedArtifactDriftGateFailureDetail };
     ("free_call.consume_generated_artifact_drift_gate_failure_detail") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallConsumeGeneratedArtifactDriftGateFailureDetail };
     ("free_call.witness_compile_clean_cli_floor_verdicts_agree") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallWitnessCompileCleanCliFloorVerdictsAgree };
-    ("free_call.test_migration_debt_module_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallTestMigrationDebtModuleCount };
-    ("free_call.test_migration_debt_total_loc") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallTestMigrationDebtTotalLoc };
-    ("free_call.test_migration_debt_total_test_fns") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallTestMigrationDebtTotalTestFns };
     ("free_call.test_migration_debt_module_names") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallTestMigrationDebtModuleNames };
-    ("free_call.test_migration_debt_known_covered_module_is_not_debt") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallTestMigrationDebtKnownCoveredModuleIsNotDebt };
     ("free_call.test_migration_legacy_behavior_ids") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallTestMigrationLegacyBehaviorIds };
     ("free_call.test_migration_witness_behavior_ids") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallTestMigrationWitnessBehaviorIds };
     ("free_call.test_migration_behavior_discovery_holds") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallTestMigrationBehaviorDiscoveryHolds };
-    ("free_call.test_migration_delete_guard_holds") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallTestMigrationDeleteGuardHolds };
-    ("free_call.test_migration_delete_guard_uncovered_deletes") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallTestMigrationDeleteGuardUncoveredDeletes };
     ("free_call.inert_carrier_names_live") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallInertCarrierNamesLive };
     ("free_call.inert_carrier_declared_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallInertCarrierDeclaredCount };
     ("free_call.non_fold_residue_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallNonFoldResidueCount };
