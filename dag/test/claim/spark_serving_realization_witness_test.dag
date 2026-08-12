@@ -17,7 +17,7 @@ import gunbc.spark_serving_realization {
   RestartsOnFailure,
   ManagedConvergenceOwned,
   NoLoginNoSudoIdentity,
-  AuthenticatedEndpoint,
+  UnauthenticatedEndpoint,
   IndependentlyObservable,
   SparkServingRealizationPolicy,
   LeastRequiredEffects,
@@ -29,13 +29,19 @@ import gunbc.spark_serving_realization {
 }
 
 // The terminal Spark intent, named in one place so every control varies ONE axis against it.
+//
+// endpoint is UnauthenticatedEndpoint by OPERATOR DECLARATION (2026-08-12: the LAN is the boundary).
+// An earlier revision of this fixture said AuthenticatedEndpoint, which I had authored myself and
+// which no operator had ever declared -- so this fixture was asserting a requirement about the
+// operator's intent that came from me. Corrected rather than left, because a fabricated requirement
+// sitting in a witness looks exactly like a real one to the next reader.
 fn spark_intent() -> SparkServingIntent {
   SparkServingIntent {
     lifecycle: SurvivesReboot,
     availability: RestartsOnFailure,
     authority: ManagedConvergenceOwned,
     service_identity: NoLoginNoSudoIdentity,
-    endpoint: AuthenticatedEndpoint,
+    endpoint: UnauthenticatedEndpoint,
     observability: IndependentlyObservable,
   }
 }
