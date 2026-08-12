@@ -64,6 +64,8 @@ import v2.std.compilers.target_model {
   TargetBindingRefShape,
   TargetCallApplyShape,
   TargetClosureShape,
+  ConditionalSelfDelimiting,
+  LoopSelfDelimiting,
   TargetConditionalShape,
   TargetEffectApplyShape,
   TargetFieldAccessShape,
@@ -961,17 +963,29 @@ fn c_value_expression_projection() -> TargetValueExpressionProjection {
       close: ^c_token_rparen,
       separator: ^c_token_comma
     },
+    // C's `if` is a STATEMENT, so it cannot appear in a value position at all.
+    // The previous spelling -- kw_if with an lbrace then-arm -- was a copy of the
+    // .dag shape describing a construct C does not have here, and it never emitted
+    // because neither token had a lex rule. The conditional operator is what C
+    // actually has, and it is self-delimiting: `c ? a : b` ends with its else arm.
     conditional_form: TargetConditionalShape {
-      if_token: ^c_token_unwired_if,
-      then_token: ^c_token_lbrace,
-      else_token: ^c_token_unwired_else
+      if_token: ^c_token_ternary_nop,
+      then_token: ^c_token_ternary_question,
+      else_token: ^c_token_ternary_colon,
+      delimiting: ConditionalSelfDelimiting
     },
     let_form: TargetBindLetShape {
       let_token: ^c_token_unwired_let,
       assign_token: ^c_token_unwired_assign,
       in_token: ^c_token_semicolon
     },
-    loop_form: TargetLoopShape { loop_token: ^c_token_unwired_loop },
+    // C has no value-producing loop. loop_token remains unspelled, so this refuses
+    // rather than emitting: self-delimiting is a claim about where the construct
+    // ENDS, not a claim that C supports one.
+    loop_form: TargetLoopShape {
+      loop_token: ^c_token_unwired_loop,
+      delimiting: LoopSelfDelimiting
+    },
     record_construct_form: TargetRecordConstructShape {
       open: ^c_token_lbrace,
       close: ^c_token_rbrace,
@@ -1072,7 +1086,10 @@ fn c_lex_rules() -> List<LexRule> {
     c_lex_rule(token_class: ^c_token_kw_return, text: "return "),
     c_lex_rule(token_class: ^c_token_plus, text: " + "),
     c_lex_rule(token_class: ^c_token_semicolon, text: ";"),
-    c_lex_rule(token_class: ^c_token_rbrace, text: " }")
+    c_lex_rule(token_class: ^c_token_rbrace, text: " }"),
+    c_lex_rule(token_class: ^c_token_ternary_nop, text: ""),
+    c_lex_rule(token_class: ^c_token_ternary_question, text: " ? "),
+    c_lex_rule(token_class: ^c_token_ternary_colon, text: " : ")
   ]
 }
 

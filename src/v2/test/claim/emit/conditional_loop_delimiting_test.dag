@@ -1,0 +1,200 @@
+module v2.test.emit.conditional_loop_delimiting
+
+import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source_string }
+import v2.extdeps.languages.rust {
+  rust_lex_rule,
+  rust_fn_add_lex_rules,
+  rust_operator_realizations_catalog_node,
+  rust_target_model,
+  rust_value_expression_projection
+}
+import v2.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules }
+import v2.std.compilers.target_model {
+  ConditionalClosedByToken,
+  ConditionalSelfDelimiting,
+  TargetConditionalShape,
+  TargetModel,
+  TargetValueExpression,
+  TargetValueExpressionProjection,
+  decode_conditional_shape_bundle,
+  render_target_text,
+  target_model_named_edge,
+  target_model_type_atom_node,
+  target_model_type_conj_node,
+  target_value_expression_binding_ref,
+  target_value_expression_conditional,
+  target_value_expression_to_concrete_tokens
+}
+import v2.std.algebra { list_append }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data conditional_delimiting_note: String = "A conditional now closes itself when its target says it closes. Before this, target_value_expression_conditional_to_concrete_tokens ended at the else arm for EVERY target, so a brace-closing language had no way to emit its own close and the brace was smuggled into a hand-authored declaration scaffold ending in two rbrace. The two arms below hold the same expression, the same tokens and the same lex, and differ ONLY in the declared discipline, so nothing but the discipline can distinguish them - which is what makes the pair discriminating rather than merely green."
+
+data conditional_golden_provenance_note: String = "The closed golden is real Rust, fixed by compiling AND executing it before the emitter was pointed at it: pick(true,7,9) yields 7 and pick(false,7,9) yields 9, so both arms are exercised rather than only parsed. The self-delimiting golden is deliberately NOT valid Rust - it is the same text one token short - because that is precisely what the old shape emitted for every target, and pinning it is how this witness proves the defect is gone rather than relocated."
+
+data conditional_closed_golden: String = "if x { y } else { x }"
+
+data conditional_self_delimiting_golden: String = "if x { y } else { x"
+
+fn cld_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: list_append(
+        left: rust_fn_add_lex_rules().rules,
+        right: [
+          rust_lex_rule(token_class: ^rust_token_kw_if, text: "if "),
+          rust_lex_rule(token_class: ^rust_token_unwired_else, text: " } else { ")
+        ]
+      )
+    }
+  }
+}
+
+fn cld_target() -> TargetModel {
+  TargetModel {
+    lex: cld_lex(),
+    produced_decl_support: rust_target_model().produced_decl_support,
+    bundle: rust_target_model().bundle,
+    binding_spellings: rust_target_model().binding_spellings,
+    token_class_emit_transforms: rust_target_model().token_class_emit_transforms,
+    authority_source_text: rust_target_model().authority_source_text,
+    runtime_row: rust_target_model().runtime_row
+  }
+}
+
+fn cld_conditional() -> TargetValueExpression {
+  target_value_expression_conditional(
+    condition: target_value_expression_binding_ref(binding: ^rust_binding_param_x),
+    then_arm: target_value_expression_binding_ref(binding: ^rust_binding_param_y),
+    else_arm: target_value_expression_binding_ref(binding: ^rust_binding_param_x)
+  )
+}
+
+fn cld_projection_with(conditional_form: TargetConditionalShape) -> TargetValueExpressionProjection {
+  TargetValueExpressionProjection {
+    conditional_form: conditional_form,
+    binding_ref_form: rust_value_expression_projection().binding_ref_form,
+    primitive_apply_form: rust_value_expression_projection().primitive_apply_form,
+    callable_apply_form: rust_value_expression_projection().callable_apply_form,
+    closure_form: rust_value_expression_projection().closure_form,
+    effect_apply_form: rust_value_expression_projection().effect_apply_form,
+    let_form: rust_value_expression_projection().let_form,
+    loop_form: rust_value_expression_projection().loop_form,
+    record_construct_form: rust_value_expression_projection().record_construct_form,
+    field_access_form: rust_value_expression_projection().field_access_form,
+    match_form: rust_value_expression_projection().match_form,
+    block_evaluation_mode: rust_value_expression_projection().block_evaluation_mode
+  }
+}
+
+fn cld_conditional_form_with(delimiting_closed: Bool) -> TargetConditionalShape {
+  TargetConditionalShape {
+    if_token: ^rust_token_kw_if,
+    then_token: ^rust_token_lbrace,
+    else_token: ^rust_token_unwired_else,
+    delimiting:
+      if delimiting_closed {
+        ConditionalClosedByToken { close_token: ^rust_token_rbrace }
+      } else {
+        ConditionalSelfDelimiting
+      }
+  }
+}
+
+fn cld_emit(projection: TargetValueExpressionProjection) -> Outcome<String> {
+  match target_value_expression_to_concrete_tokens(
+    expr: cld_conditional(),
+    projection: projection,
+    catalog: rust_operator_realizations_catalog_node()
+  ) {
+    Accepted { value: tokens, diagnostics: _ } =>
+      match serialize_concrete_syntax_tokens_to_source_string(
+        target: cld_target(),
+        tokens: tokens
+      ) {
+        Accepted { value: text, diagnostics: _ } =>
+          Accepted { value: render_target_text(t: text), diagnostics: None }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn cld_emits(delimiting_closed: Bool, golden: String) -> Bool {
+  match cld_emit(
+    projection: cld_projection_with(
+      conditional_form: cld_conditional_form_with(delimiting_closed: delimiting_closed)
+    )
+  ) {
+    Accepted { value: text, diagnostics: _ } => text == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// One expression, one lex, one set of tokens. Only the declared discipline
+// differs, and it is exactly one closing token of difference. The cross arms are
+// the RED: a closing target must not emit the self-delimiting text, and a
+// self-delimiting target must not acquire a close it never declared.
+test fn conditional_close_is_derived_from_declared_discipline() -> Bool {
+  cld_emits(delimiting_closed: true, golden: conditional_closed_golden)
+    && cld_emits(delimiting_closed: false, golden: conditional_self_delimiting_golden)
+    && !cld_emits(delimiting_closed: true, golden: conditional_self_delimiting_golden)
+    && !cld_emits(delimiting_closed: false, golden: conditional_closed_golden)
+}
+
+// Production Rust is wired to close, so it must agree with the closed arm rather
+// than merely being capable of it. Without this, the mechanism could be correct
+// while the Rust target still declared nothing.
+test fn production_rust_conditional_declares_a_close() -> Bool {
+  match cld_emit(projection: rust_value_expression_projection()) {
+    Accepted { value: text, diagnostics: _ } => text == conditional_closed_golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn cld_bundle_with(discriminant: Symbol) -> Node {
+  target_model_type_conj_node(
+    children: [
+      target_model_named_edge(
+        name: ^target_value_expr_field_if_token,
+        target: target_model_type_atom_node(identity: ^rust_token_kw_if)
+      ),
+      target_model_named_edge(
+        name: ^target_value_expr_field_then_token,
+        target: target_model_type_atom_node(identity: ^rust_token_lbrace)
+      ),
+      target_model_named_edge(
+        name: ^target_value_expr_field_else_token,
+        target: target_model_type_atom_node(identity: ^rust_token_unwired_else)
+      ),
+      target_model_named_edge(
+        name: ^target_value_expr_field_conditional_delimiting,
+        target: target_model_type_atom_node(identity: discriminant)
+      )
+    ]
+  )
+}
+
+fn cld_decodes(discriminant: Symbol) -> Bool {
+  match decode_conditional_shape_bundle(bundle: cld_bundle_with(discriminant: discriminant)) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// An unrecognised discriminant REFUSES rather than defaulting to self-delimiting.
+// That direction matters specifically: defaulting to self-delimiting would make a
+// closing target decode one token short, and the defect would surface as
+// unbalanced output far from the decoder that caused it. The self-delimiting
+// positive control keeps this from passing because decode is simply broken.
+test fn unknown_delimiting_discriminant_refuses() -> Bool {
+  cld_decodes(discriminant: ^conditional_self_delimiting)
+    && !cld_decodes(discriminant: ^conditional_delimiting_never_defined)
+    && !cld_decodes(discriminant: ^loop_self_delimiting)
+}

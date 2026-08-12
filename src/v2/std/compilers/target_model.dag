@@ -808,10 +808,31 @@ type TargetClosureShape {
   param_ident_token: Symbol
 }
 
+// Whether the construct needs a token AFTER its final arm. This is the axis the
+// shapes previously did not carry, and its absence is why Rust's closing brace
+// was smuggled into hand-authored declaration scaffolds ending in two rbrace:
+// the expression left a brace open and the declaration closed it.
+// The closing token is payload on the CLOSING arm only, so a self-delimiting
+// target has no field in which to write a fictional token. That is the property
+// an Optional<Symbol> would not have had -- there, Absent would mean both "this
+// target is self-delimiting" and "nobody modeled it yet", the state-space
+// conflation DESIGN forbids, and a missing close would read as fine again.
+type ConditionalDelimiting
+  = ConditionalClosedByToken { close_token: Symbol }
+  | ConditionalSelfDelimiting
+
+type LoopDelimiting
+  = LoopClosedByToken {
+      open_token: Symbol
+      close_token: Symbol
+    }
+  | LoopSelfDelimiting
+
 type TargetConditionalShape {
   if_token: Symbol
   then_token: Symbol
   else_token: Symbol
+  delimiting: ConditionalDelimiting
 }
 
 type TargetBindLetShape {
@@ -822,6 +843,7 @@ type TargetBindLetShape {
 
 type TargetLoopShape {
   loop_token: Symbol
+  delimiting: LoopDelimiting
 }
 
 type BlockEvaluationMode
@@ -1618,6 +1640,132 @@ fn decode_primitive_apply_shape_bundle(bundle: Node) -> Outcome<TargetPrimitiveA
   )
 }
 
+// The encode side of the two decoders below. A closing target writes its token(s)
+// beside the discriminant; a self-delimiting one writes only the discriminant, so
+// there is no field for a fictional token even in the wire form.
+fn conditional_delimiting_edges(delimiting: ConditionalDelimiting) -> List<Edge> {
+  match delimiting {
+    ConditionalSelfDelimiting =>
+      [
+        target_model_named_edge(
+          name: ^target_value_expr_field_conditional_delimiting,
+          target: target_model_type_atom_node(identity: ^conditional_self_delimiting)
+        )
+      ]
+    ConditionalClosedByToken { close_token: close_token } =>
+      [
+        target_model_named_edge(
+          name: ^target_value_expr_field_conditional_delimiting,
+          target: target_model_type_atom_node(identity: ^conditional_closed_by_token)
+        ),
+        target_model_named_edge(
+          name: ^target_value_expr_field_conditional_close_token,
+          target: target_model_type_atom_node(identity: close_token)
+        )
+      ]
+  }
+}
+
+fn loop_delimiting_edges(delimiting: LoopDelimiting) -> List<Edge> {
+  match delimiting {
+    LoopSelfDelimiting =>
+      [
+        target_model_named_edge(
+          name: ^target_value_expr_field_loop_delimiting,
+          target: target_model_type_atom_node(identity: ^loop_self_delimiting)
+        )
+      ]
+    LoopClosedByToken { open_token: open_token, close_token: close_token } =>
+      [
+        target_model_named_edge(
+          name: ^target_value_expr_field_loop_delimiting,
+          target: target_model_type_atom_node(identity: ^loop_closed_by_token)
+        ),
+        target_model_named_edge(
+          name: ^target_value_expr_field_loop_open_token,
+          target: target_model_type_atom_node(identity: open_token)
+        ),
+        target_model_named_edge(
+          name: ^target_value_expr_field_loop_close_token,
+          target: target_model_type_atom_node(identity: close_token)
+        )
+      ]
+  }
+}
+
+// An unrecognised discriminant REFUSES. It does not fall back to self-delimiting,
+// because the two states differ exactly where it matters: a target that closes and
+// was decoded as self-delimiting emits a construct one token short and the defect
+// surfaces as unbalanced output far from here.
+fn decode_conditional_delimiting(bundle: Node) -> Outcome<ConditionalDelimiting> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(
+      bundle: bundle,
+      field: ^target_value_expr_field_conditional_delimiting
+    ),
+    f: fn(discriminant) {
+      if discriminant == ^conditional_self_delimiting {
+        outcome_accepted(ConditionalSelfDelimiting)
+      } else if discriminant == ^conditional_closed_by_token {
+        bind_outcome(
+          o: projection_bundle_symbol_field(
+            bundle: bundle,
+            field: ^target_value_expr_field_conditional_close_token
+          ),
+          f: fn(close_token) {
+            outcome_accepted(ConditionalClosedByToken { close_token: close_token })
+          }
+        )
+      } else {
+        outcome_rejected(
+          target_value_projection_bundle_malformed_diagnostic(bundle: bundle)
+        )
+      }
+    }
+  )
+}
+
+fn decode_loop_delimiting(bundle: Node) -> Outcome<LoopDelimiting> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(
+      bundle: bundle,
+      field: ^target_value_expr_field_loop_delimiting
+    ),
+    f: fn(discriminant) {
+      if discriminant == ^loop_self_delimiting {
+        outcome_accepted(LoopSelfDelimiting)
+      } else if discriminant == ^loop_closed_by_token {
+        bind_outcome(
+          o: projection_bundle_symbol_field(
+            bundle: bundle,
+            field: ^target_value_expr_field_loop_open_token
+          ),
+          f: fn(open_token) {
+            bind_outcome(
+              o: projection_bundle_symbol_field(
+                bundle: bundle,
+                field: ^target_value_expr_field_loop_close_token
+              ),
+              f: fn(close_token) {
+                outcome_accepted(
+                  LoopClosedByToken {
+                    open_token: open_token,
+                    close_token: close_token
+                  }
+                )
+              }
+            )
+          }
+        )
+      } else {
+        outcome_rejected(
+          target_value_projection_bundle_malformed_diagnostic(bundle: bundle)
+        )
+      }
+    }
+  )
+}
+
 fn decode_conditional_shape_bundle(bundle: Node) -> Outcome<TargetConditionalShape> {
   bind_outcome(
     o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_if_token),
@@ -1634,11 +1782,17 @@ fn decode_conditional_shape_bundle(bundle: Node) -> Outcome<TargetConditionalSha
               field: ^target_value_expr_field_else_token
             ),
             f: fn(else_token) {
-              outcome_accepted(
-                TargetConditionalShape {
-                  if_token: if_token,
-                  then_token: then_token,
-                  else_token: else_token
+              bind_outcome(
+                o: decode_conditional_delimiting(bundle: bundle),
+                f: fn(delimiting) {
+                  outcome_accepted(
+                    TargetConditionalShape {
+                      if_token: if_token,
+                      then_token: then_token,
+                      else_token: else_token,
+                      delimiting: delimiting
+                    }
+                  )
                 }
               )
             }
@@ -1681,9 +1835,15 @@ fn decode_loop_shape_bundle(bundle: Node) -> Outcome<TargetLoopShape> {
   bind_outcome(
     o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_loop_token),
     f: fn(loop_token) {
-      outcome_accepted(
-        TargetLoopShape {
-          loop_token: loop_token
+      bind_outcome(
+        o: decode_loop_delimiting(bundle: bundle),
+        f: fn(delimiting) {
+          outcome_accepted(
+            TargetLoopShape {
+              loop_token: loop_token,
+              delimiting: delimiting
+            }
+          )
         }
       )
     }
@@ -5085,6 +5245,33 @@ fn target_value_expression_loop_to_concrete_tokens(
   )
 }
 
+// A loop that closes wraps its body; a self-delimiting one does not. The wrap is
+// derived from the target's declared discipline, so the enclosing declaration
+// scaffold no longer has to carry a brace the expression opened.
+fn loop_delimited_tokens(
+  loop_form: TargetLoopShape,
+  body_tokens: List<ConcreteSyntaxToken>
+) -> List<ConcreteSyntaxToken> {
+  match loop_form.delimiting {
+    LoopSelfDelimiting =>
+      list_append(
+        left: [FixedToken { token_class: loop_form.loop_token }],
+        right: body_tokens
+      )
+    LoopClosedByToken { open_token: open_token, close_token: close_token } =>
+      list_append(
+        left: list_append(
+          left: [
+            FixedToken { token_class: loop_form.loop_token },
+            FixedToken { token_class: open_token }
+          ],
+          right: body_tokens
+        ),
+        right: [FixedToken { token_class: close_token }]
+      )
+  }
+}
+
 fn target_value_expression_loop_to_concrete_tokens_inner(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
@@ -5104,14 +5291,9 @@ fn target_value_expression_loop_to_concrete_tokens_inner(
             ),
             f: fn(body_tokens) {
               outcome_accepted(
-                list_append(
-                  left: Cons {
-                    head: FixedToken {
-                      token_class: projection.loop_form.loop_token
-                    },
-                    tail: Empty
-                  },
-                  right: body_tokens
+                loop_delimited_tokens(
+                  loop_form: projection.loop_form,
+                  body_tokens: body_tokens
                 )
               )
             }
@@ -6426,6 +6608,41 @@ fn target_value_expression_symbol_identity_to_concrete_tokens(
   )
 }
 
+// if_token cond then_token then else_token else, and then a close only if the
+// target declares one. Previously this fold ended at the else arm for every
+// target, so a brace-closing language had no way to emit its own close.
+fn conditional_delimited_tokens(
+  conditional_form: TargetConditionalShape,
+  cond_tokens: List<ConcreteSyntaxToken>,
+  then_tokens: List<ConcreteSyntaxToken>,
+  else_tokens: List<ConcreteSyntaxToken>
+) -> List<ConcreteSyntaxToken> {
+  let opened = list_append(
+    left: list_append(
+      left: list_append(
+        left: list_append(
+          left: list_append(
+            left: [FixedToken { token_class: conditional_form.if_token }],
+            right: cond_tokens
+          ),
+          right: [FixedToken { token_class: conditional_form.then_token }]
+        ),
+        right: then_tokens
+      ),
+      right: [FixedToken { token_class: conditional_form.else_token }]
+    ),
+    right: else_tokens
+  )
+  match conditional_form.delimiting {
+    ConditionalSelfDelimiting => opened
+    ConditionalClosedByToken { close_token: close_token } =>
+      list_append(
+        left: opened,
+        right: [FixedToken { token_class: close_token }]
+      )
+  }
+}
+
 fn target_value_expression_conditional_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
@@ -6474,36 +6691,11 @@ fn target_value_expression_conditional_to_concrete_tokens(
                             ),
                             f: fn(else_tokens) {
                               outcome_accepted(
-                                list_append(
-                                  left: list_append(
-                                    left: list_append(
-                                      left: list_append(
-                                        left: list_append(
-                                          left: Cons {
-                                            head: FixedToken {
-                                              token_class: projection.conditional_form.if_token
-                                            },
-                                            tail: Empty
-                                          },
-                                          right: cond_tokens
-                                        ),
-                                        right: Cons {
-                                          head: FixedToken {
-                                            token_class: projection.conditional_form.then_token
-                                          },
-                                          tail: Empty
-                                        }
-                                      ),
-                                      right: then_tokens
-                                    ),
-                                    right: Cons {
-                                      head: FixedToken {
-                                        token_class: projection.conditional_form.else_token
-                                      },
-                                      tail: Empty
-                                    }
-                                  ),
-                                  right: else_tokens
+                                conditional_delimited_tokens(
+                                  conditional_form: projection.conditional_form,
+                                  cond_tokens: cond_tokens,
+                                  then_tokens: then_tokens,
+                                  else_tokens: else_tokens
                                 )
                               )
                             }
@@ -7237,26 +7429,31 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
       target_model_named_edge(
         name: ^target_value_expr_field_conditional,
         target: target_model_type_conj_node(
-          children: [
-            target_model_named_edge(
-              name: ^target_value_expr_field_if_token,
-              target: target_model_type_atom_node(
-                identity: projection.conditional_form.if_token
+          children: list_append(
+            left: [
+              target_model_named_edge(
+                name: ^target_value_expr_field_if_token,
+                target: target_model_type_atom_node(
+                  identity: projection.conditional_form.if_token
+                )
+              ),
+              target_model_named_edge(
+                name: ^target_value_expr_field_then_token,
+                target: target_model_type_atom_node(
+                  identity: projection.conditional_form.then_token
+                )
+              ),
+              target_model_named_edge(
+                name: ^target_value_expr_field_else_token,
+                target: target_model_type_atom_node(
+                  identity: projection.conditional_form.else_token
+                )
               )
-            ),
-            target_model_named_edge(
-              name: ^target_value_expr_field_then_token,
-              target: target_model_type_atom_node(
-                identity: projection.conditional_form.then_token
-              )
-            ),
-            target_model_named_edge(
-              name: ^target_value_expr_field_else_token,
-              target: target_model_type_atom_node(
-                identity: projection.conditional_form.else_token
-              )
+            ],
+            right: conditional_delimiting_edges(
+              delimiting: projection.conditional_form.delimiting
             )
-          ]
+          )
         )
       ),
       target_model_named_edge(
@@ -7287,14 +7484,17 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
       target_model_named_edge(
         name: ^target_value_expr_field_loop,
         target: target_model_type_conj_node(
-          children: [
-            target_model_named_edge(
-              name: ^target_value_expr_field_loop_token,
-              target: target_model_type_atom_node(
-                identity: projection.loop_form.loop_token
+          children: list_append(
+            left: [
+              target_model_named_edge(
+                name: ^target_value_expr_field_loop_token,
+                target: target_model_type_atom_node(
+                  identity: projection.loop_form.loop_token
+                )
               )
-            )
-          ]
+            ],
+            right: loop_delimiting_edges(delimiting: projection.loop_form.delimiting)
+          )
         )
       ),
       target_model_named_edge(

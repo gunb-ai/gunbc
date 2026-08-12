@@ -153,6 +153,8 @@ import v2.std.compilers.target_model {
   TargetCallApplyShape,
   TargetClosureShape,
   TargetEffectApplyShape,
+  ConditionalClosedByToken,
+  LoopClosedByToken,
   TargetConditionalShape,
   TargetPrimitiveApplyShape,
   TargetBindLetShape,
@@ -1211,14 +1213,21 @@ fn rust_value_expression_projection() -> TargetValueExpressionProjection {
     conditional_form: TargetConditionalShape {
       if_token: ^rust_token_kw_if,
       then_token: ^rust_token_lbrace,
-      else_token: ^rust_token_unwired_else
+      else_token: ^rust_token_unwired_else,
+      delimiting: ConditionalClosedByToken { close_token: ^rust_token_rbrace }
     },
     let_form: TargetBindLetShape {
       let_token: ^rust_token_kw_let,
       assign_token: ^rust_token_equal,
       in_token: ^rust_token_semicolon
     },
-    loop_form: TargetLoopShape { loop_token: ^rust_token_unwired_loop },
+    loop_form: TargetLoopShape {
+      loop_token: ^rust_token_unwired_loop,
+      delimiting: LoopClosedByToken {
+        open_token: ^rust_token_lbrace,
+        close_token: ^rust_token_rbrace
+      }
+    },
     record_construct_form: TargetRecordConstructShape {
       open: ^rust_token_lbrace,
       close: ^rust_token_rbrace,
