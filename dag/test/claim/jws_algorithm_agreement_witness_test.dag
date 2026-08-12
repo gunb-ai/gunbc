@@ -1,0 +1,74 @@
+module test.claim.jws_algorithm_agreement_witness
+
+import std.types { Bool, NonEmptyStr }
+import extdeps.auth.jwks {
+  JwkRsa, JwkEllipticCurve, JwkOctetSequence, JwkUnsupportedKeyType,
+  jws_algorithm_rs256,
+}
+import extdeps.auth.jws {
+  JwsAlgorithmAgreed, JwsAlgorithmUnsecuredRefused,
+  JwsAlgorithmKeyTypeMismatch, JwsAlgorithmUnsupported,
+  jws_algorithm_agreement, jws_algorithm_is_agreed, jws_algorithm_none,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data jws_agreement_witness_note: String = "Two of these are the actual historical attacks rather than hypotheticals, so they are written as attacks: a token asking to be verified with no signature at all, and a token asking an RSA verifier to treat its PUBLIC key as an HMAC secret. Both are refused because the key decides the algorithm and the header never does."
+
+// THE none ATTACK. A forger strips the signature and sets alg to none; a verifier that
+// dispatches on the header accepts an unsigned token as authenticated.
+test fn witness_none_algorithm_is_refused_against_every_key_type() -> Bool {
+  !jws_algorithm_is_agreed(
+    agreement: jws_algorithm_agreement(header_algorithm: jws_algorithm_none, key_type: JwkRsa))
+    && !jws_algorithm_is_agreed(
+      agreement: jws_algorithm_agreement(header_algorithm: jws_algorithm_none, key_type: JwkOctetSequence))
+    && (match jws_algorithm_agreement(header_algorithm: jws_algorithm_none, key_type: JwkRsa) {
+      JwsAlgorithmUnsecuredRefused => true
+      _ => false
+    })
+}
+
+// THE HMAC SUBSTITUTION. The attacker signs with the RSA public key as an HMAC secret and
+// sets alg to HS256. The defense is not a stronger primitive — it is refusing to let the
+// header pick one.
+test fn witness_hmac_algorithm_against_an_rsa_key_is_a_mismatch() -> Bool {
+  match jws_algorithm_agreement(
+    header_algorithm: "HS256" as NonEmptyStr, key_type: JwkRsa) {
+    JwsAlgorithmKeyTypeMismatch { header_algorithm: a } => a == "HS256"
+    _ => false
+  }
+}
+
+test fn witness_rs256_agrees_only_with_an_rsa_key() -> Bool {
+  (match jws_algorithm_agreement(header_algorithm: jws_algorithm_rs256, key_type: JwkRsa) {
+    JwsAlgorithmAgreed { algorithm: a } => a == jws_algorithm_rs256
+    _ => false
+  })
+    && !jws_algorithm_is_agreed(
+      agreement: jws_algorithm_agreement(
+        header_algorithm: jws_algorithm_rs256, key_type: JwkOctetSequence))
+}
+
+// An unmodeled key type is not silently skipped: it refuses as unsupported, because a
+// verifier that cannot check a signature must say so rather than pass the token through.
+test fn witness_unmodeled_key_type_refuses_rather_than_skipping() -> Bool {
+  (match jws_algorithm_agreement(
+    header_algorithm: "ES256" as NonEmptyStr, key_type: JwkEllipticCurve) {
+    JwsAlgorithmUnsupported { header_algorithm: _ } => true
+    _ => false
+  })
+    && (match jws_algorithm_agreement(
+      header_algorithm: "EdDSA" as NonEmptyStr,
+      key_type: JwkUnsupportedKeyType { name: "OKP" as NonEmptyStr }) {
+      JwsAlgorithmUnsupported { header_algorithm: _ } => true
+      _ => false
+    })
+}
+
+test fn jws_algorithm_agreement_keystone_holds() -> Bool {
+  witness_none_algorithm_is_refused_against_every_key_type()
+    && witness_hmac_algorithm_against_an_rsa_key_is_a_mismatch()
+    && witness_rs256_agrees_only_with_an_rsa_key()
+    && witness_unmodeled_key_type_refuses_rather_than_skipping()
+}
