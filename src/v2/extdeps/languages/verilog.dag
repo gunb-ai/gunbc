@@ -637,8 +637,14 @@ fn verilog_lex() -> LexRules {
         verilog_lex_token(token_class: ^verilog_token_rparen, pattern: LiteralPattern { text: ")" }),
         verilog_lex_token(token_class: ^verilog_token_comma, pattern: LiteralPattern { text: "," }),
         verilog_lex_token(token_class: ^verilog_token_equals, pattern: LiteralPattern { text: "=" }),
-        verilog_lex_token(token_class: ^verilog_token_ampersand, pattern: LiteralPattern { text: "&" }),
-        verilog_lex_token(token_class: ^verilog_token_tilde, pattern: LiteralPattern { text: "~" })
+        verilog_lex_token(token_class: ^verilog_token_unary_operator, pattern: LiteralPattern { text: "~" }),
+        verilog_lex_token(
+          token_class: ^verilog_token_binary_operator,
+          pattern: ChoicePattern {
+            left: LiteralPattern { text: "&" },
+            right: LiteralPattern { text: "|" }
+          }
+        )
       ]
     }
   }
@@ -728,30 +734,22 @@ fn verilog_emission_formal_productions() -> List<FormalProduction> {
       ]
     ),
     grammar_formal_production(
-      lhs: ^verilog_production_expr_primary,
+      lhs: ^verilog_production_expr,
       rhs: [grammar_formal_terminal_bound(identity: ^verilog_token_ident, binding: ^verilog_binding_expr_name)]
     ),
     grammar_formal_production(
-      lhs: ^verilog_production_expr_unary,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr_primary)]
-    ),
-    grammar_formal_production(
-      lhs: ^verilog_production_expr_unary,
+      lhs: ^verilog_production_expr,
       rhs: [
-        grammar_formal_terminal(identity: ^verilog_token_tilde),
-        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr_unary)
+        grammar_formal_terminal_bound(identity: ^verilog_token_unary_operator, binding: ^verilog_binding_unary_operator),
+        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr)
       ]
     ),
     grammar_formal_production(
-      lhs: ^verilog_production_expr_conjunction,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr_unary)]
-    ),
-    grammar_formal_production(
-      lhs: ^verilog_production_expr_conjunction,
+      lhs: ^verilog_production_expr,
       rhs: [
-        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr_unary),
-        grammar_formal_terminal(identity: ^verilog_token_ampersand),
-        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr_conjunction)
+        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr),
+        grammar_formal_terminal_bound(identity: ^verilog_token_binary_operator, binding: ^verilog_binding_binary_operator),
+        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr)
       ]
     ),
     grammar_formal_production(
@@ -760,7 +758,7 @@ fn verilog_emission_formal_productions() -> List<FormalProduction> {
         grammar_formal_terminal(identity: ^verilog_token_kw_assign),
         grammar_formal_terminal_bound(identity: ^verilog_token_ident, binding: ^verilog_binding_assign_lhs),
         grammar_formal_terminal(identity: ^verilog_token_equals),
-        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr_conjunction),
+        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr),
         grammar_formal_terminal(identity: ^verilog_token_semicolon)
       ]
     ),

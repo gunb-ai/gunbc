@@ -524,6 +524,36 @@ fn apply_emit_spelling_transform(
   transform(spelling)
 }
 
+// A FIXED TOKEN'S SPELLING IS ITS LEXEME, THEN THE TARGET'S EMIT TRANSFORM. The transform map was
+// consulted for bound tokens only, which left the serializer with NO source of layout for fixed
+// ones: target_text_seq concatenates exactly, so a grammar whose punctuation is fixed emits
+// "moduleboard_power_interlock(" and there was no target-owned way to say otherwise. Every
+// existing target sets the map empty and is therefore byte-identical under this change.
+//
+// The asymmetry was the defect. A transform is a fact about how a TOKEN CLASS renders, and
+// nothing about that is specific to whether the lexeme came from a binding or from the lexer —
+// so the fixed arm consults the same map rather than a second layout mechanism growing beside it.
+fn fixed_token_spelling_from_model(
+  target: TargetModel,
+  token_class: Symbol
+) -> Outcome<String> {
+  bind_outcome(
+    o: lex_rules_literal_for_class(rules: target.lex, token_class: token_class),
+    f: fn(spelling) {
+      match map_get(target.token_class_emit_transforms, token_class) {
+        Accepted { value: Present { value: transform }, diagnostics: d } =>
+          outcome_with_diagnostics(
+            value: apply_emit_spelling_transform(transform: transform, spelling: spelling),
+            diagnostics: d
+          )
+        Accepted { value: Absent, diagnostics: d } =>
+          outcome_with_diagnostics(value: spelling, diagnostics: d)
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    }
+  )
+}
+
 fn bound_token_spelling_from_model(
   target: TargetModel,
   token_class: Symbol,
@@ -552,7 +582,7 @@ fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String
     f: fn(decoded) {
       match decoded {
         FixedToken { token_class: token_class } =>
-          lex_rules_literal_for_class(rules: target.lex, token_class: token_class)
+          fixed_token_spelling_from_model(target: target, token_class: token_class)
         BoundToken { token_class: token_class, binding: binding } =>
           bound_token_spelling_from_model(
             target: target,
