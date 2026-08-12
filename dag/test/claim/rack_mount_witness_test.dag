@@ -15,7 +15,7 @@ import product.rack_mount {
   room_mounted_rack, mounted_rack_headroom,
 }
 import extdeps.rack.navepoint { navepoint_18u_open_frame_catalog }
-import extdeps.chassis.rosewill { rosewill_rsv_r4000u_catalog }
+import extdeps.chassis.rosewill { rosewill_rsv_r4000u_catalog, rosewill_rsv_z2600u_catalog }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -119,9 +119,27 @@ test fn mounting_one_asset_twice_refuses() -> Bool {
 
 // THE JOIN, IN MICROMETRES so the 0.1 mm survives: 18U is 800100 um, a 2400 mm room is 2400000 um,
 // and the headroom is the exact difference rather than a figure rounded on the way through.
-// A rack filled to capacity reports zero free, not a refusal: the boundary case of the invariant
-// that lets free capacity be a difference at all.
+// EXACTLY FULL: four 4U chassis and the cited 2U row fill all 18 units, so free capacity is zero
+// and not a refusal. This is the boundary the invariant behind rack_units_free rests on - a
+// difference that reaches exactly zero without going negative. An earlier revision of this claim
+// was NAMED for the zero-free boundary while its fixture occupied only 16 of 18 units and asserted
+// 2, so the case the name described was never executed and a regression in the zero path would
+// have stayed green.
 test fn a_rack_filled_to_capacity_reports_zero_free() -> Bool {
+  match rack_instance(identity: ("rack-a" as RackIdentity), catalog: navepoint_18u_open_frame_catalog, mounts: [
+    ChassisMount { asset: ("a" as PhysicalAssetIdentity), chassis: rosewill_rsv_r4000u_catalog, lowest_unit: 1 },
+    ChassisMount { asset: ("b" as PhysicalAssetIdentity), chassis: rosewill_rsv_r4000u_catalog, lowest_unit: 5 },
+    ChassisMount { asset: ("c" as PhysicalAssetIdentity), chassis: rosewill_rsv_r4000u_catalog, lowest_unit: 9 },
+    ChassisMount { asset: ("d" as PhysicalAssetIdentity), chassis: rosewill_rsv_r4000u_catalog, lowest_unit: 13 },
+    ChassisMount { asset: ("e" as PhysicalAssetIdentity), chassis: rosewill_rsv_z2600u_catalog, lowest_unit: 17 },
+  ]) {
+    MountRefused { cause: _ } => false
+    MountReady { value: r } => free_units(r: r) == 0
+  }
+}
+
+// The partially filled rack, kept as its own claim rather than left standing in for the boundary.
+test fn a_partially_filled_rack_reports_the_remainder() -> Bool {
   match rack_instance(identity: ("rack-a" as RackIdentity), catalog: navepoint_18u_open_frame_catalog, mounts: [
     ChassisMount { asset: ("a" as PhysicalAssetIdentity), chassis: rosewill_rsv_r4000u_catalog, lowest_unit: 1 },
     ChassisMount { asset: ("b" as PhysicalAssetIdentity), chassis: rosewill_rsv_r4000u_catalog, lowest_unit: 5 },

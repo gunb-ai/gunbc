@@ -47,6 +47,12 @@ type MountRefusal
   | MountsCollide { lower: PhysicalAssetIdentity, upper: PhysicalAssetIdentity }
   | AssetMountedTwice { asset: PhysicalAssetIdentity }
   | RackTallerThanRoom { rack_height: Micrometer, room_height: Micrometer }
+  // Its own arm, because reusing MountExceedsRackHeight would have put a total occupied
+  // CARDINALITY in a field that carries a mount's top POSITION everywhere else - one field meaning
+  // two things, so a fired diagnostic would mislabel the failure it exists to explain. This arm is
+  // unreachable while admission holds; it is the typed answer if the invariant behind
+  // rack_units_free is ever broken, not a case a caller is expected to hit.
+  | OccupancyExceedsCapacity { occupied: RackUnit, capacity: RackUnit }
 
 type MountConstruction<T>
   = MountReady { value: T }
@@ -155,7 +161,7 @@ fn rack_units_free(r: RackInstance) -> MountConstruction<RackUnit> {
   if measure_le(occupied, r.catalog.rack_units) {
     MountReady { value: rack_unit(count: rack_unit_count(u: r.catalog.rack_units) - rack_unit_count(u: occupied)) }
   } else {
-    MountRefused { cause: MountExceedsRackHeight { top_unit: rack_unit_count(u: occupied), rack_capacity: r.catalog.rack_units } }
+    MountRefused { cause: OccupancyExceedsCapacity { occupied: occupied, capacity: r.catalog.rack_units } }
   }
 }
 
