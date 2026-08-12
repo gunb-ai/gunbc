@@ -20,7 +20,7 @@ import std.measure {
   milliseconds_per_second,
   seconds_per_minute,
 }
-import std.symbols { SymbolId, Tier, Emoji, Unicode, Ascii, StatusPulse, StatusDwell, StatusBlocked, StatusRefused, StatusFinal, NodeCompleted, NodeFailed, NodeRunning, NodeSkipped }
+import std.symbols { SymbolId, Tier, Emoji, Unicode, Ascii, StatusPulse, StatusDwell, StatusBlocked, StatusRefused, StatusTimedOut, StatusFinal, NodeCompleted, NodeFailed, NodeRunning, NodeSkipped }
 import std.disposition { Disposition, Terminal }
 import extdeps.render.glyphs { resolve_symbol }
 import extdeps.github.log_annotations { annotation_group_prefix, annotation_endgroup, neutralize_workflow_commands }
@@ -58,6 +58,11 @@ import std.observation {
   observation_event_class,
   observation_presentation,
   observation_class_density,
+  ObservationGrain,
+  BatchGrain,
+  observation_subject_prefix_at_grain,
+  ObservationRollup,
+  ObservationCounts,
   ObservationDensity,
   RoutineCollapsible,
   SummaryAlwaysShown,
@@ -141,6 +146,16 @@ data ci_human_duration_note: String = "A second duration projection beside gunbc
 fn ci_measured_bytes_text(m: Measured<ByteSize>) -> String {
   match m {
     MeasuredValue { value: b } => ci_human_bytes(b: b)
+    MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
+  }
+}
+
+// The elapsed counterpart of ci_measured_bytes_text, and it keeps the same discipline: an
+// unavailable reading prints its CAUSE rather than a zero, because a batch that reports 0s is
+// indistinguishable from one that finished instantly.
+fn ci_measured_elapsed_text(m: Measured<Nanosecond>) -> String {
+  match m {
+    MeasuredValue { value: d } => ci_human_elapsed(d: d)
     MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
   }
 }
@@ -492,4 +507,89 @@ fn ci_measurement_rss_line(label: NonEmptyStr, rss: Measured<ByteSize>) -> Rende
 
 data observation_ci_render_disposition: Disposition = Terminal {
   reason: "The CI-log renderer is Terminal, not a scaffold: append-only line projection is what the GitHub Actions medium IS, not an interim stand-in for a richer one. The TTY renderer is a sibling projection of the same carriers rather than this module's successor, and the dashboard is a third. What dissolves later is the hand-rolled emit sites this renderer replaces, each counted by the P3 census."
+}
+
+// ---------------------------------------------------------------------------
+// Batch-grain projection — the decision that makes the fold visible.
+// ---------------------------------------------------------------------------
+
+// ci_collapsed_summary above hides finished work inside a GitHub group. That is placement, not
+// accumulation: 4110 lines still exist, still cost their emission, and still sit between the reader
+// and the eight lines that answer what is running. This projection is the other operation — a
+// routine event below the declared grain updates its batch's rollup and produces NO line, so the
+// console carries batch transitions, dwell heartbeats, and anomalies at their exact leaf subject.
+type RoutineProjection
+  = FoldedIntoRollup { at: ObservationSubject }
+  | EmittedAtLeaf { reason: LeafEmissionReason }
+
+// Why an event still reached the console, as a named state rather than a fall-through. Three of the
+// four are deliberate; NoAncestorAtGrain is the fail-closed arm, and it emits rather than drops:
+// an event whose batch ancestor cannot be located is exactly the event a reader must still see, and
+// silently discarding it would be the empty-observation narrow — rendering "I could not place this"
+// as "there was nothing to place".
+type LeafEmissionReason
+  = LeafGrainRequested
+  | AnomalyPierces
+  | RunSummaryShown
+  | NoAncestorAtGrain
+
+fn ci_routine_projection(
+  event: ObservationEvent,
+  grain: ObservationGrain?,
+) -> RoutineProjection {
+  match observation_class_density(c: observation_event_class(event: event)) {
+    AnomalyExpanded => EmittedAtLeaf { reason: AnomalyPierces }
+    SummaryAlwaysShown => EmittedAtLeaf { reason: RunSummaryShown }
+    RoutineCollapsible =>
+      match grain {
+        Absent => EmittedAtLeaf { reason: LeafGrainRequested }
+        Present { value: g } =>
+          match observation_subject_prefix_at_grain(subject: event.subject, grain: g) {
+            Absent => EmittedAtLeaf { reason: NoAncestorAtGrain }
+            Present { value: ancestor } => FoldedIntoRollup { at: ancestor }
+          }
+      }
+  }
+}
+
+fn ci_rollup_summary_glyph(rollup: ObservationRollup) -> SymbolId {
+  if rollup.counts.failed > 0 {
+    NodeFailed
+  } else if rollup.counts.refused > 0 {
+    StatusRefused
+  } else if rollup.counts.timed_out > 0 {
+    StatusTimedOut
+  } else {
+    NodeCompleted
+  }
+}
+
+// The measurement clause is emitted ONLY when something was actually unmeasured, so an ordinary
+// batch reads clean and a partially measured one says so rather than implying full coverage.
+fn ci_rollup_measurement_note(rollup: ObservationRollup) -> String {
+  if rollup.measurement_absent == 0 {
+    ""
+  } else {
+    concat(" (", concat(to_string(rollup.measurement_absent), " unmeasured)"))
+  }
+}
+
+fn ci_batch_summary_line(rollup: ObservationRollup) -> RenderedLine {
+  let problems = rollup.counts.refused + rollup.counts.failed + rollup.counts.timed_out
+  RenderedLine {
+    glyph: ci_rollup_summary_glyph(rollup: rollup),
+    text: join([
+      ci_subject_leaf_text(subject: rollup.subject),
+      " — ",
+      to_string(rollup.counts.done), " passed · ",
+      to_string(rollup.counts.skipped), " skipped · ",
+      to_string(rollup.counts.refused), " refused · ",
+      to_string(rollup.counts.failed), " failed · ",
+      ci_measured_elapsed_text(m: rollup.elapsed),
+      " · peak ",
+      ci_measured_bytes_text(m: rollup.peak_rss),
+      ci_rollup_measurement_note(rollup: rollup),
+    ], ""),
+    attention: if problems == 0 { Ambient } else { Anomaly }
+  }
 }

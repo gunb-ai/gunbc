@@ -6,6 +6,14 @@ import std.nat { Nat }
 import std.symbols { Tier, Emoji, Unicode, Ascii, StatusPulse, StatusDwell, StatusBlocked, StatusRefused, NodeFailed, NodeCompleted }
 import std.measure { nanosecond, millisecond, millisecond_to_nanosecond, byte_size, basis_point }
 import std.observation {
+  ObservationGrain,
+  BatchGrain,
+  ModuleGrain,
+  ObservationRollup,
+  observation_rollup_open,
+  observation_rollup_accept,
+  RollupAccepted,
+  RollupSubjectOutOfScope,
   ObservationSubject,
   RunSegment,
   BatchSegment,
@@ -279,4 +287,127 @@ test fn w_unmeasured_duration_names_its_cause_rather_than_vanishing() -> Bool {
   }
   let line = ci_event_line(event: event, basis: crawl_basis())
   string_contains(s: line.text, pattern: "duration unmeasured: clock unavailable in this leg")
+}
+
+
+// ---------------------------------------------------------------------------
+// Batch-grain projection
+// ---------------------------------------------------------------------------
+
+fn proj_batch_subject() -> ObservationSubject {
+  ObservationSubject {
+    segments: [
+      RunSegment { id: "run-proj" },
+      BatchSegment { index: 3, label: "witness discovery" },
+    ],
+  }
+}
+
+fn proj_leaf_subject(entry: NonEmptyStr) -> ObservationSubject {
+  ObservationSubject {
+    segments: [
+      RunSegment { id: "run-proj" },
+      BatchSegment { index: 3, label: "witness discovery" },
+      EntrySegment { source_path: entry },
+    ],
+  }
+}
+
+fn proj_event(subject: ObservationSubject, transition: ObservationTransition) -> ObservationEvent {
+  ObservationEvent {
+    subject: subject,
+    transition: transition,
+    durations: observation_durations_wall(elapsed: nanosecond(count: 1500000)),
+    rss: MeasuredValue { value: byte_size(count: 4096) },
+  }
+}
+
+test fn w_a_passing_witness_folds_into_its_batch_and_emits_nothing() -> Bool {
+  match ci_routine_projection(
+    event: proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: Concluded { outcome: Done }),
+    grain: Present { value: BatchGrain },
+  ) {
+    FoldedIntoRollup { at: a } => observation_subject_contains(ancestor: a, descendant: proj_leaf_subject(entry: "dag/a.dag"))
+    EmittedAtLeaf { reason: _ } => false
+  }
+}
+
+test fn w_RED_a_failure_pierces_the_fold_at_its_exact_leaf() -> Bool {
+  match ci_routine_projection(
+    event: proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: Concluded { outcome: Failed { error: "witness red", output: "" } }),
+    grain: Present { value: BatchGrain },
+  ) {
+    FoldedIntoRollup { at: _ } => false
+    EmittedAtLeaf { reason: r } => match r {
+      AnomalyPierces => true
+      _ => false
+    }
+  }
+}
+
+test fn w_RED_a_refusal_pierces_the_fold_too() -> Bool {
+  match ci_routine_projection(
+    event: proj_event(subject: proj_leaf_subject(entry: "dag/c.dag"), transition: Concluded { outcome: Refused { diagnostic: "admission refused" } }),
+    grain: Present { value: BatchGrain },
+  ) {
+    FoldedIntoRollup { at: _ } => false
+    EmittedAtLeaf { reason: r } => match r { AnomalyPierces => true, _ => false }
+  }
+}
+
+test fn w_verbose_leaf_grain_emits_every_routine_event() -> Bool {
+  match ci_routine_projection(
+    event: proj_event(subject: proj_leaf_subject(entry: "dag/d.dag"), transition: Concluded { outcome: Done }),
+    grain: none,
+  ) {
+    FoldedIntoRollup { at: _ } => false
+    EmittedAtLeaf { reason: r } => match r { LeafGrainRequested => true, _ => false }
+  }
+}
+
+test fn w_RED_an_event_with_no_ancestor_at_the_grain_is_emitted_not_dropped() -> Bool {
+  match ci_routine_projection(
+    event: proj_event(subject: proj_batch_subject(), transition: Concluded { outcome: Done }),
+    grain: Present { value: ModuleGrain },
+  ) {
+    FoldedIntoRollup { at: _ } => false
+    EmittedAtLeaf { reason: r } => match r { NoAncestorAtGrain => true, _ => false }
+  }
+}
+
+test fn w_batch_summary_reports_the_folded_counts() -> Bool {
+  let folded = fold(
+    [
+      proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: Concluded { outcome: Done }),
+      proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: Concluded { outcome: Done }),
+      proj_event(subject: proj_leaf_subject(entry: "dag/c.dag"), transition: Concluded { outcome: Skipped { reason: "unaffected" } }),
+    ],
+    init: observation_rollup_open(subject: proj_batch_subject()),
+    f: (acc, e) => match observation_rollup_accept(rollup: acc, event: e) {
+      RollupAccepted { rollup: r } => r
+      RollupSubjectOutOfScope { subject: _ } => acc
+    }
+  )
+  let line = ci_batch_summary_line(rollup: folded)
+  string_contains(s: line.text, pattern: "2 passed")
+    && string_contains(s: line.text, pattern: "1 skipped")
+    && string_contains(s: line.text, pattern: "0 failed")
+    && match line.attention { Ambient => true, _ => false }
+}
+
+test fn w_RED_a_batch_carrying_a_failure_summarises_as_an_anomaly() -> Bool {
+  let folded = fold(
+    [
+      proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: Concluded { outcome: Done }),
+      proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: Concluded { outcome: Failed { error: "red", output: "" } }),
+    ],
+    init: observation_rollup_open(subject: proj_batch_subject()),
+    f: (acc, e) => match observation_rollup_accept(rollup: acc, event: e) {
+      RollupAccepted { rollup: r } => r
+      RollupSubjectOutOfScope { subject: _ } => acc
+    }
+  )
+  let line = ci_batch_summary_line(rollup: folded)
+  string_contains(s: line.text, pattern: "1 failed")
+    && match line.attention { Anomaly => true, _ => false }
 }
