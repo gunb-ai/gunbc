@@ -9,7 +9,8 @@ import v2.extdeps.languages.dag { dag_language_model }
 import v2.lens.complexity_accumulator_copy.compile_gate { accumulator_copy_compile_gate }
 import v2.std.collection { empty_map }
 import v2.std.compilers.lexing { VoidLexRules }
-import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
+import v2.std.compilers.target_model {
+  ProducedDeclUnwired, TargetModel, target_model_emit_transforms_empty }
 import v2.std.diagnostic {
   Accepted,
   Diagnostics,
@@ -113,6 +114,7 @@ test fn gate_refusal_ledger_counted_not_gating() -> Bool {
 }
 
 data compile_gate_target_stub: TargetModel = TargetModel {
+  produced_decl_support: ProducedDeclUnwired,
   bundle: Node {
     kind: TypeNode { connective: Conj },
     children: [],

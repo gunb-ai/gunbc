@@ -33,6 +33,7 @@ import v2.std.node {
   well_formed
 }
 import v2.std.compilers.target_model {
+  ProducedDeclUnwired,
   BoundToken,
   ConcreteSyntaxToken,
   FixedToken,
@@ -169,6 +170,7 @@ fn fold_call_operator_catalog() -> Node {
 
 fn fold_call_target_model() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: node_synthetic(
       kind: TypeNode { connective: Conj },
       children: [

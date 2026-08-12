@@ -8,6 +8,7 @@ import v2.extdeps.languages.rust {
   rust_target_model_node
 }
 import v2.std.compilers.target_model {
+  ProducedDeclUnwired,
   TargetModel,
   target_model_emit_transforms_empty
 }
@@ -18,6 +19,7 @@ import v2.std.logic { Bool }
 data a4_opacity_authority_source_text: String = "a4_opacity_test"
 
 data a4_opacity_target_model: TargetModel = TargetModel {
+  produced_decl_support: ProducedDeclUnwired,
   bundle: rust_target_model_node(),
   lex: rust_fn_add_lex(),
   binding_spellings: rust_binding_spellings(),

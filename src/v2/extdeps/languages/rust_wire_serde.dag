@@ -270,6 +270,7 @@ fn rust_ws_authority_source_text(naming: VariantNaming) -> String {
 
 fn rust_wire_serde_target_model(naming: VariantNaming) -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: rust_ws_target_model_bundle(naming: naming),
     lex: rust_ws_lex(),
     binding_spellings: empty_map(),

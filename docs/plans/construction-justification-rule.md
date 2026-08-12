@@ -1,6 +1,6 @@
 # The construction-justification rule (authoring-time) — §0
 
-> ROADMAP §0 meta-item. The authoring-time judgment that layers **on top of** the executable #5433 inert-lens backstop. DESIGN refs: §5 (construction over validation; the decidability trichotomy; the "never" trap), §6 ("construction first"; lenses are the residue mechanism; coverage-by-illusion), §7 (the recursion — make the lens discipline itself fail-closed). Sibling frame: [expressibility-frontier.md](expressibility-frontier.md) (the same three regions, generalized).
+> **SUPERSEDED IN PART — READ §5 BEFORE §2-§4 (2026-08-11, gunbc#8141).** Both executable halves this plan describes are DELETED: the #5433 inert-lens backstop and the fail-closed construction-justification presence check. Sections 2, 3 and 4 below are retained as the record of what was built and why, NOT as a description of the live floor — nothing in `discover_floor_corpus_rows` blocks an unreached or unjustified lens today. ROADMAP §0 meta-item. The authoring-time judgment that layered **on top of** the (now deleted) executable #5433 inert-lens backstop. DESIGN refs: §5 (construction over validation; the decidability trichotomy; the "never" trap), §6 ("construction first"; lenses are the residue mechanism; coverage-by-illusion), §7 (the recursion — make the lens discipline itself fail-closed). Sibling frame: [expressibility-frontier.md](expressibility-frontier.md) (the same three regions, generalized).
 
 ## 1. The rule
 
@@ -14,9 +14,9 @@ DESIGN §6: a lens is **validation** — it concedes the bad state is *writable*
 
 This is **not a parallel taxonomy** (§3): the names are DESIGN §5's, which [expressibility-frontier.md](expressibility-frontier.md) §2 generalizes into regions ①/②/③. The single authority for the typed model is `v2.lens.common.construction_justification`.
 
-## 2. Why this layers on the #5433 backstop — and does not supersede it
+## 2. Why this layered on the #5433 backstop — and did not supersede it (HISTORICAL)
 
-The two checks cover the same set (`is_top_level_lens_module`) but answer different questions, and both run in `discover_floor_corpus_rows` (the seed floor-discovery walk, not new cemented Rust):
+The two checks covered the same set (`is_top_level_lens_module`) but answered different questions, and both ran in `discover_floor_corpus_rows` (the seed floor-discovery walk). Both are deleted as of gunbc#8141 — see §5:
 
 - **#5433 inert-lens backstop** — *is this lens wired?* Every `v2.lens.*` module must be reached by a discovered fail-closed witness, or be deleted. Runs over the **corpus**; it is the floor guarantee.
 - **construction-justification rule** (this) — *should this be a lens at all, and if so why?* Every `v2.lens.*` module must **record** its construction-justification.
@@ -28,7 +28,7 @@ A judgment applied at authoring time **executes nothing**, so it can never repla
 The **judgment** (which class) is human and unstructurable — its *correctness* cannot be machine-verified (deciding decidability is itself ③, see frontier §6). But the **requirement to have recorded a judgment is structurable**, so we make the *missing-justification* state unwritable:
 
 - **Carrier (the mark, §3/§6):** every lens module declares `data construction_justification: ConstructionJustification = …` — the judgment lives **on the lens**, not in a parallel ledger. This mirrors the `extdeps_external_authority_anchor` precedent (a fixed-name required decl per module).
-- **Fail-closed presence check:** `discover_floor_corpus_rows` captures which lenses carry the decl during its single walk (zero extra IO) and **fails the floor closed** on any top-level lens that does not. A lens stripped of its justification goes **RED** (green-by-execution; discriminating on revert — `construction_justification_hygiene_tests`).
+- **Fail-closed presence check (DELETED 2026-08-11, see §5):** `discover_floor_corpus_rows` captured which lenses carry the decl during its single walk and **failed the floor closed** on any top-level lens that did not. A lens stripped of its justification goes **RED** (green-by-execution; discriminating on revert — `construction_justification_hygiene_tests`).
 
 So the bad state ("a lens with no recorded reason to be a lens") is unwritable by construction, while the honest residue (is the recorded reason *true*?) stays review — exactly the partition the rule itself prescribes.
 
@@ -36,10 +36,20 @@ So the bad state ("a lens with no recorded reason to be a lens") is unwritable b
 
 - `v2.lens.common.construction_justification` — the typed model (`ConstructionClass` + `ConstructionJustification`).
 - All 35 top-level `v2.lens.*` modules carry a recorded justification (retroactive classification from each lens's existing header — the audit that surfaces any lens that is secretly a `WallNow`).
-- Presence check + discriminating tests wired into `discover_floor_corpus_rows`.
+- ~~Presence check + discriminating tests wired into `discover_floor_corpus_rows`~~ — **DELETED 2026-08-11 (gunbc#8141), see §5.**
 - **Vacuity residual — CLOSED.** Every `ConstructionClass` payload is now typed/grounded, no free string survives: the per-justification `rationale` and `RatchetForever`'s `undecidable_because` were removed (unverifiable §6 parallel-ledger prose no consumer reads); `WallAfterGrounding` carries the structured `dissolves_to: ConstructionMechanism`; and `WallNow`'s former free-text `construction` is now `{ mechanism: ConstructionMechanism, authority: DeclarationRef }` — the authority being the *one* `std.decl_ref.DeclarationRef` the disposition/determinism scaffold markers also bind through (no parallel ref type). So 'this lens chains to a real construction' is no longer prose but a **walkable graph property**: a host-side graph-property witness (`wall_now_authority_graph_is_total`) proves every `WallNow` authority resolves to a real top-level decl and goes RED on a planted dangling binding. That witness is a §6 scaffold (host-side resolution) dissolving onto a unified kind-agnostic decl-resolution primitive once exposed to `.dag`.
 - **Residue / follow-on (honest):** the *correctness* of each recorded class is review, not gated. Modules recorded as `WallNow` (cost, application_serializer) and the support module `affected_set_examples` flag a §3 home question — they are computations/support filed under `v2.lens.*`, not validation lenses; relocating them is out of scope here (it touches module resolution) and is left as a marked follow-up.
 
+## 5. Enforcement deleted (2026-08-11, gunbc#8141)
+
+Both executable checks described above ran inside floor witness discovery, and both answered a question about who authored a lens by acquiring a **whole-corpus module graph**. Every discovery run paid that acquisition. Split by era, since the population changed underneath this plan: before gunbc#8140 the roster walk was unconditional, so ordinary CI, regen, the falsifier cadence and every coordinated worker all paid; #8140 made it demand-directed and regen stopped paying; from there to gunbc#8141 the two censuses burdened every remaining discovery-bearing execution — all of which wanted a witness roster and nothing else. That is the DESIGN §6 cost-shape defect in its clearest form: the unit of computation was the world, the unit of fact was one module's authorship, and no consumer of either census justified the price. The inert-lens half additionally reported through two host builtins whose entire `.dag` surface was a pair of self-recursive stubs reachable only because the interpreter intercepted the spelling.
+
+**What that costs, stated as a regression rather than implied.** A newly authored lens with no discovered witness, and a lens recording no `construction_justification`, are both writable again and **nothing detects either**. The 35-module population §4 reports as fully classified is a historical measurement, not a maintained invariant — a lens added tomorrow with no justification lands green. The obligation survives only as review diligence, which is strictly weaker than the check it replaces, and this plan is not evidence that it holds.
+
+**Next-rung trigger.** An authorship fact belongs on the module's own declaration, checked at ingestion where that module is already parsed — one module's facts derived from one module's source — rather than reconstructed corpus-wide by a consumer that wanted something else. The `data construction_justification` carrier §3 describes is already the right shape for that; what was wrong was where the check ran, not where the fact lives. Until that lands the class sits at *mitigatable* under DESIGN §4b, declared here so it stays rankable.
+
+What survived the deletion: `v2.lens.common.construction_justification` (the typed model), every lens module's recorded `construction_justification` decl, and `wall_now_authority_graph_is_total` — the WallNow authority-resolution witness, which is a separate graph property and still executes.
+
 ## Dissolution trigger (DESIGN §6)
 
-Delete this doc when the construction-justification rule is fully built: v2.lens.common.construction_justification is the single-authority typed model, every top-level v2.lens.* module carries a recorded justification, and the fail-closed presence check plus discriminating tests run in discover_floor_corpus_rows — at which point the rule is a witnessed property of the floor (the vacuity residual and the per-class correctness review being the honest §3-buckets that remain) and this design doc is redundant.
+SUPERSEDED TRIGGER (2026-08-11, gunbc#8141): the original condition named the fail-closed presence check running in discover_floor_corpus_rows, and that check is deleted, so the trigger as written can never fire — an unreachable condition is a lifecycle claim that structurally cannot report itself satisfied. Replacement: delete this doc when the construction-justification requirement is re-established at ingestion — the authorship fact checked where the module is already parsed, one module's facts from one module's source, rather than reconstructed corpus-wide by a consumer that wanted a witness roster — at which point the rule is again a witnessed property and this design doc is redundant. Until then the doc is retained as the record of what was built, why it was deleted, and what the repository currently does NOT enforce.
