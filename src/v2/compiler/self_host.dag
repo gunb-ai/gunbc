@@ -39,7 +39,38 @@ type SourceModels {
   stage2_regen_emitted_source: Medium<String>
 }
 
-data self_host_equality_authority: Symbol = ^canonical_emitted_bytes
+// WHAT THIS SYMBOL ACTUALLY GATES, renamed to say so.
+//
+// It read `self_host_equality_authority`, declaring byte identity to be the authority
+// on self-host equality. DESIGN §7 says the opposite in as many words: a byte-identical
+// fixed point is explicitly NOT the goal, because matching bytes forces the emitter to
+// reproduce the seed's warts and thereby cements the seed's accidents. Under the old
+// name the milestone meant the wrong thing in both directions — byte-identical but
+// behaviorally wrong was the fixed point, and cleaner source that behaved identically
+// was not.
+//
+// The machinery underneath was never the problem, and is NOT retired here. Its one
+// production consumer is `v2.workflow.self_host_realized_comparison_claims`
+// `self_host_realized_comparison_staleness_gate_holds`, which compares committed regen
+// output against freshly emitted regen output — a staleness gate, the same shape as the
+// ci.yml drift gate, and a fact worth gating on bytes because bytes are exactly what
+// went stale. Two different facts were fused under one name: what regen drift means,
+// and what self-hosting means. Only the second was wrong.
+//
+// Self-host equality now lives in `v2.compiler.self_host.promotion_admission`, which
+// imports no filesystem surface and cannot read source bytes at all, so the two
+// authorities cannot be confused again by reaching for whichever is nearer.
+//
+// Function and test identities under this module still read `self_host_*` while gating
+// staleness. Renaming them is the remaining half and is blocked, not deferred by taste:
+// `gunbc.witness_deferral_freeze` enumerates
+// `self_host_fixed_point_validate_accepts_matching_regen_bytes` and
+// `self_host_fixed_point_validate_rejects_perturbed_regen_bytes` at identity grain, and
+// a frozen row the tree no longer carries refuses. A rename is a removal plus an
+// addition outside the roster, so it reds the freeze gate. Dissolve-on: those two
+// identities leave the frozen roster, at which point the `self_host_` prefix on the
+// staleness machinery goes with them.
+data regen_staleness_authority: Symbol = ^canonical_emitted_bytes
 
 type SelfHostStageEmission {
   node: CoreNode
@@ -120,7 +151,7 @@ fn self_host_fixpoint_equal(
   stage2: SelfHostStageEmission
 ) -> SelfHostFixpointEqual {
   SelfHostFixpointEqual {
-    over: self_host_equality_authority,
+    over: regen_staleness_authority,
     stage1: stage1,
     stage2: stage2
   }

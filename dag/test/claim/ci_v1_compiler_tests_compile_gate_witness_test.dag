@@ -17,7 +17,7 @@ import gunbc.ci_materialization { step_display_name }
 import extdeps.github.actions { Step, RunStep, UsesStep }
 import std.disposition { Scaffold }
 
-data compile_gate_step_name: String = "cargo test -p v1-compiler-tests --release --no-run (compile-contract gate; reuses release v1-compiler)"
+data compile_gate_step_name: String = "cargo test -p v1-compiler-tests --release (retained-kernel execution gate; reuses release v1-compiler)"
 data release_build_step_name: String = "Build release bins (claim_executor + gunbc)"
 
 fn step_index_of(steps: List<Step>, name: String) -> Int {
@@ -31,12 +31,12 @@ fn step_index_of(steps: List<Step>, name: String) -> Int {
   seen.hit
 }
 
-test fn w_gate_script_names_release_test_no_run_command() -> Bool {
+test fn w_gate_script_names_release_test_execution_command() -> Bool {
   let script = ci_v1_compiler_tests_compile_gate_script()
   string_contains(s: script, pattern: "'test'")
     && string_contains(s: script, pattern: "'v1-compiler-tests'")
     && string_contains(s: script, pattern: "'--release'")
-    && string_contains(s: script, pattern: "'--no-run'")
+    && !string_contains(s: script, pattern: "'--no-run'")
     && string_contains(s: script, pattern: "\"$CARGO_BIN\"")
     && !string_contains(s: script, pattern: "'check'")
     && !string_contains(s: script, pattern: "nextest")
@@ -49,12 +49,12 @@ test fn w_gate_script_eagain_cold_retry() -> Bool {
     && string_contains(s: script, pattern: "keep sccache")
 }
 
-test fn w_gate_run_script_is_cargo_test_no_run_only() -> Bool {
+test fn w_gate_run_script_is_cargo_test_execution_only() -> Bool {
   let script = ci_v1_compiler_tests_compile_gate_run_script()
   string_contains(s: script, pattern: "'test'")
     && string_contains(s: script, pattern: "'v1-compiler-tests'")
     && string_contains(s: script, pattern: "'--release'")
-    && string_contains(s: script, pattern: "'--no-run'")
+    && !string_contains(s: script, pattern: "'--no-run'")
     && !string_contains(s: script, pattern: "compile_contract_admission_witness")
     && !string_contains(s: script, pattern: "CompileContractAdmissionReceipt")
 }
