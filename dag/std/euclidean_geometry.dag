@@ -251,6 +251,25 @@ fn closer_than3(a_from: Point3, a_to: Point3, b_from: Point3, b_to: Point3) -> S
 // the exact integer-only slice the honest carrier is the axis enum: it names the six directions
 // integer arithmetic can represent exactly and carries no magnitude to be mistaken for one. A
 // general normalized direction needs division and arrives with the approximate realization.
+// THE UNSIGNED AXIS, HOMED WITH ITS SIGNED COMPANION. AxisDirection3 IS Axis3 crossed with a sign,
+// so the two are one authority and splitting them across modules put the decomposition helpers in a
+// module that could not import the type they decompose.
+type Axis3
+  = Axis3X
+  | Axis3Y
+  | Axis3Z
+
+fn axis3_index(a: Axis3) -> Int {
+  match a {
+    Axis3X => 0
+    Axis3Y => 1
+    Axis3Z => 2
+  }
+}
+
+fn axis3_eq(a: Axis3, b: Axis3) -> Bool {
+  axis3_index(a: a) == axis3_index(a: b)
+}
 type AxisDirection3
   = PositiveX
   | NegativeX
@@ -258,6 +277,41 @@ type AxisDirection3
   | NegativeY
   | PositiveZ
   | NegativeZ
+
+// PREDICATE AND PROJECTION OVER AxisDirection3, HOMED WITH THE TYPE. These lived in
+// std.orthogonal_geometry, which forked the single authority for this carrier (DESIGN section 3):
+// a consumer asking which axis a direction lies on had two places to look, and a second projection
+// could have been minted in a third module without contradicting either. The type owns its own
+// axis/sign decomposition and its own reconstruction from that pair.
+fn axis_direction_axis(d: AxisDirection3) -> Axis3 {
+  match d {
+    PositiveX => Axis3X
+    NegativeX => Axis3X
+    PositiveY => Axis3Y
+    NegativeY => Axis3Y
+    PositiveZ => Axis3Z
+    NegativeZ => Axis3Z
+  }
+}
+
+fn axis_direction_is_negative(d: AxisDirection3) -> Bool {
+  match d {
+    PositiveX => false
+    NegativeX => true
+    PositiveY => false
+    NegativeY => true
+    PositiveZ => false
+    NegativeZ => true
+  }
+}
+
+fn axis_direction_of(axis: Axis3, negative: Bool) -> AxisDirection3 {
+  match axis {
+    Axis3X => if negative { NegativeX } else { PositiveX }
+    Axis3Y => if negative { NegativeY } else { PositiveY }
+    Axis3Z => if negative { NegativeZ } else { PositiveZ }
+  }
+}
 
 type Direction3Result
   = DirectionExact { frame: CoordinateFrameIdentity, direction: AxisDirection3 }
