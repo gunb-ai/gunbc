@@ -162,6 +162,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/languages/rust/subject.dag",
   "dag/extdeps/languages/spice/subject.dag",
   "dag/extdeps/languages/swift/subject.dag",
+  "dag/extdeps/simulators/icarus_verilog/subject.dag",
   "dag/extdeps/simulators/ngspice/subject.dag",
   "dag/extdeps/languages/typescript/subject.dag",
   "dag/extdeps/languages/verilog/subject.dag",

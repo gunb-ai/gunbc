@@ -1,0 +1,103 @@
+module test.claim.compute_board_simulation_receipt_witness
+
+import std.types { String, List }
+import product.compute_board.admission {
+  BoardArticleAdmitted,
+  BoardArticleRefused,
+  AdmittedBoardPowerInterfaceArticle,
+  admit_board_article,
+}
+import product.compute_board.article { power_interlock_article }
+import product.compute_board.spice_projection {
+  SpiceSliceProjected,
+  SpiceSliceRefused,
+  project_article_to_spice,
+  project_article_to_ngspice_run,
+}
+import product.compute_board.verilog_projection {
+  VerilogModuleEmitted,
+  VerilogProjectionRefused,
+  project_article_to_verilog,
+  power_interlock_verilog_bindings,
+}
+import product.compute_board.simulation_receipt {
+  SimulationOutcome,
+  conditioning_network_artifact,
+  conditioning_network_run,
+  executed_runs,
+  interlock_verilog_artifact,
+  interlock_verilog_run,
+  outcome_is_accepted,
+  run_of,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE JOIN, and it is the only thing that keeps a recorded run from decaying into folklore. The
+// receipt says a tool accepted these exact bytes; this asserts the product still emits exactly
+// those bytes. Without it the receipt would keep vouching for an artifact the projection stopped
+// producing, which is worse than having no receipt at all — it reads as evidence.
+fn admitted() -> AdmittedBoardPowerInterfaceArticle? {
+  match admit_board_article(a: power_interlock_article) {
+    BoardArticleAdmitted { article: adm } => Present { value: adm }
+    BoardArticleRefused { causes: _ } => none
+  }
+}
+
+test fn w_the_executed_verilog_is_what_the_product_emits_today() -> Bool {
+  match admitted() {
+    Absent => false
+    Present { value: adm } =>
+      match project_article_to_verilog(admitted: adm, bindings: power_interlock_verilog_bindings) {
+        VerilogProjectionRefused { cause: _ } => false
+        VerilogModuleEmitted { receipt: r } => r.source == interlock_verilog_artifact
+      }
+  }
+}
+
+test fn w_the_executed_deck_is_what_the_product_emits_today() -> Bool {
+  match admitted() {
+    Absent => false
+    Present { value: adm } => project_article_to_ngspice_run(admitted: adm) == conditioning_network_artifact
+  }
+}
+
+// The runnable deck and the receipt deck describe ONE circuit. A run that exercised a different
+// netlist from the one the receipt carries would prove something about a circuit nobody emits;
+// the shared spice_netlist construction is what makes that unwritable, and this is the executing
+// check that it stayed shared.
+test fn w_the_run_deck_contains_the_receipt_circuit() -> Bool {
+  match admitted() {
+    Absent => false
+    Present { value: adm } =>
+      match project_article_to_spice(admitted: adm) {
+        SpiceSliceRefused { cause: _ } => false
+        SpiceSliceProjected { receipt: r } =>
+          project_article_to_ngspice_run(admitted: adm) == concat(r.source, "\n.op\n.end")
+      }
+  }
+}
+
+// Both recorded runs were accepted by their tool. A receipt whose outcome arm was never checked
+// would let a refusal sit in the corpus looking like evidence of success.
+test fn w_every_recorded_run_was_accepted() -> Bool {
+  fold(executed_runs, init: true, f: fn(acc, o) { acc && outcome_is_accepted(outcome: o) })
+}
+
+// The observations are not empty, and they are DIFFERENT from one another. An empty observation
+// would make every claim above vacuous, and one shared observation string would mean a copy
+// rather than two runs.
+test fn w_the_observations_are_distinct_and_present() -> Bool {
+  let v = run_of(outcome: interlock_verilog_run)
+  let s = run_of(outcome: conditioning_network_run)
+  v.observation != "" && s.observation != "" && v.observation != s.observation
+}
+
+// THE OPERATING POINT NAMES THE SCALE. Twelve volts across ten kilohms is 1.2 mA; a deck that had
+// emitted a bare "10" would have solved cleanly and reported 1.2 A. This asserts the observation
+// recorded the milliamp figure, which is the only part of the run that discriminates the suffix.
+test fn w_the_operating_point_discriminates_the_scale_suffix() -> Bool {
+  let s = run_of(outcome: conditioning_network_run)
+  list_length(items: split(s: s.observation, delimiter: "-1.20000e-03")) > 1
+}

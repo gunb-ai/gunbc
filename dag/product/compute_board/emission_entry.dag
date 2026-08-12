@@ -1,0 +1,53 @@
+module product.compute_board.emission_entry
+
+
+import std.types { String }
+import product.compute_board.admission {
+  BoardArticleAdmitted,
+  BoardArticleRefused,
+  admit_board_article,
+}
+import product.compute_board.article { power_interlock_article }
+import product.compute_board.spice_projection {
+  SpiceSliceProjected,
+  SpiceSliceRefused,
+  project_article_to_spice,
+  project_article_to_ngspice_run,
+}
+import product.compute_board.verilog_projection {
+  VerilogModuleEmitted,
+  VerilogProjectionRefused,
+  project_article_to_verilog,
+  power_interlock_verilog_bindings,
+}
+
+data emission_entry_note: String = "THE ENTRY POINTS THAT ACTUALLY PRODUCE THE ARTIFACTS. Everything else in this product returns a projection value that a witness inspects; these three return the bytes, which is what a host boundary needs and what the simulators were handed. They are deliberately thin — admit, project, unwrap — because any logic here would be a fourth place the article gets read and the whole point of the admitted wrapper is that there are no such places."
+
+fn emit_spice() -> String {
+  match admit_board_article(a: power_interlock_article) {
+    BoardArticleRefused { causes: _ } => "REFUSED: article not admitted"
+    BoardArticleAdmitted { article: adm } =>
+      match project_article_to_spice(admitted: adm) {
+        SpiceSliceProjected { receipt: r } => r.source
+        SpiceSliceRefused { cause: _ } => "REFUSED: spice projection"
+      }
+  }
+}
+
+fn emit_verilog() -> String {
+  match admit_board_article(a: power_interlock_article) {
+    BoardArticleRefused { causes: _ } => "REFUSED: article not admitted"
+    BoardArticleAdmitted { article: adm } =>
+      match project_article_to_verilog(admitted: adm, bindings: power_interlock_verilog_bindings) {
+        VerilogModuleEmitted { receipt: r } => r.source
+        VerilogProjectionRefused { cause: _ } => "REFUSED: verilog projection"
+      }
+  }
+}
+
+fn emit_ngspice_run() -> String {
+  match admit_board_article(a: power_interlock_article) {
+    BoardArticleRefused { causes: _ } => "REFUSED: article not admitted"
+    BoardArticleAdmitted { article: adm } => project_article_to_ngspice_run(admitted: adm)
+  }
+}

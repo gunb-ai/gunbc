@@ -8,6 +8,8 @@ import v2.std.algebra { list_snoc_item }
 import v2.extdeps.formats.spice {
   Capacitor,
   DeckComponent,
+  DeckDirective,
+  Op,
   DeckStatement,
   Ground,
   Component,
@@ -21,6 +23,7 @@ import v2.extdeps.formats.spice {
   SpiceUnitScale,
   VoltageSource,
   spice_emit,
+  spice_emit_ngspice,
   spice_identifier_is_admissible,
   spice_scaled_value,
 }
@@ -260,6 +263,24 @@ fn net_spelling_refusal(intent: AnalogCircuitIntent, reference: NetIdentity) -> 
         }
     }
   })
+}
+
+// THE RUNNABLE DECK IS A SECOND PROJECTION OF THE SAME NETLIST, not a second netlist. What an
+// analysis directive adds is a question to ask the simulator — an operating point, here — and
+// that is a fact about a RUN rather than about the board, which is why the receipt's deck does
+// not carry one. Both come from spice_netlist, so a run cannot exercise a circuit the receipt
+// does not describe.
+fn runnable_ngspice_deck(intent: AnalogCircuitIntent, reference: NetIdentity) -> String {
+  let base = spice_netlist(intent: intent, reference: reference)
+  spice_emit_ngspice(netlist: SpiceNetlist {
+    title: base.title,
+    body: list_snoc_item(xs: base.body, item: DeckDirective { directive: Op }),
+  })
+}
+
+fn project_article_to_ngspice_run(admitted: AdmittedBoardPowerInterfaceArticle) -> String {
+  let article = admitted_article(a: admitted)
+  runnable_ngspice_deck(intent: article.analog, reference: article.reference_net)
 }
 
 fn first_refusal_or_net_spelling(
