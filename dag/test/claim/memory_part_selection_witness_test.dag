@@ -3,7 +3,6 @@ module test.claim.memory_part_selection_witness_test
 import std.types { Bool, List, list_length }
 import std.currency { CurrencyCode, Eur, Usd }
 import std.measure { ByteSize, byte_size, money_amount_micro }
-import std.nat { Nat }
 import extdeps.vendor.samsung { samsung }
 import extdeps.memory.types {
   DramModuleCatalogRow,
@@ -21,6 +20,7 @@ import gunbc.memory_part_selection {
   PartCandidate,
   PartImplicatedByFailingStep,
   PartNotImplicated,
+  PlatformTrainingFailure,
   altrad8ud_mrep_failure_observation,
   candidate_admission,
   pareto_frontier,
@@ -60,7 +60,7 @@ data rdimm_32g: DramModuleCatalogRow = DramModuleCatalogRow {
   rank_count: 2,
 }
 
-data observed_failures = [altrad8ud_mrep_failure_observation]
+data observed_failures: List<PlatformTrainingFailure> = [altrad8ud_mrep_failure_observation]
 
 fn candidate_of(
   module: DramModuleCatalogRow,
