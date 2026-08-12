@@ -29959,29 +29959,6 @@ mod discovery_summary_merge_tests {
         assert_eq!(rows[0].outcome, "Done");
         assert_eq!(rows[0].detail, "");
     }
-
-    #[test]
-    fn coordinated_consumer_refuses_corpus_without_verified_snapshot() {
-        with_env_test_lock(|| {
-            floor_discovery_snapshot::reset_floor_discovery_snapshot_for_test();
-            let _consumer = EnvGuard::set(FLOOR_DISCOVERY_CONSUMER_ENV, "coordinated_consumer");
-            let roots: Vec<String> = Vec::new();
-            let refusal = run_discovery_corpus_with_options(
-                &roots,
-                &[],
-                &[],
-                ExecutionMode::Hermetic,
-                DiscoveryWidthPolicy::Serial,
-                DiscoveryCorpusOptions::default(),
-            )
-            .expect_err("coordinated corpus must refuse without an installed snapshot");
-            assert!(
-                refusal.contains("verified floor snapshot is not installed")
-                    && refusal.contains("cold reconstruction is disabled"),
-                "unexpected coordinated-consumer refusal: {refusal}"
-            );
-        });
-    }
 }
 
 pub struct LayerImportFactRaw {
@@ -38802,6 +38779,29 @@ mod witness_layer_roots_compile_clean_tests {
                 .unwrap_or_else(|| panic!("missing pooled entry for {module_path}"));
             assert_eq!(pooled_source.path, source.path);
         }
+    }
+
+    #[test]
+    fn coordinated_consumer_refuses_corpus_without_verified_snapshot() {
+        with_env_test_lock(|| {
+            floor_discovery_snapshot::reset_floor_discovery_snapshot_for_test();
+            let _consumer = EnvGuard::set(FLOOR_DISCOVERY_CONSUMER_ENV, "coordinated_consumer");
+            let roots: Vec<String> = Vec::new();
+            let refusal = run_discovery_corpus_with_options(
+                &roots,
+                &[],
+                &[],
+                crate::v1_interpreter::ExecutionMode::Hermetic,
+                DiscoveryWidthPolicy::Serial,
+                DiscoveryCorpusOptions::default(),
+            )
+            .expect_err("coordinated corpus must refuse without an installed snapshot");
+            assert!(
+                refusal.contains("verified floor snapshot is not installed")
+                    && refusal.contains("cold reconstruction is disabled"),
+                "unexpected coordinated-consumer refusal: {refusal}"
+            );
+        });
     }
 }
 
