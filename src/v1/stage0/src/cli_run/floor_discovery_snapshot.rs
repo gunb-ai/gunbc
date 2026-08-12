@@ -32,7 +32,7 @@ pub const FLOOR_DISCOVERY_TRACE_FILE: &str = "floor-discovery-trace.tsv";
 pub const FLOOR_DISCOVERY_CONSUMER_ENV: &str = "GUNBC_FLOOR_DISCOVERY_CONSUMER";
 
 static COORDINATED_DISCOVERY_COMPUTE_COUNT: AtomicUsize = AtomicUsize::new(0);
-static COORDINATED_SNAPSHOT_VERIFIED: std::sync::atomic::AtomicBool =
+static COORDINATED_SNAPSHOT_INSTALLED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 static IN_PROCESS_ROSTER_BY_REQUEST: OnceLock<Mutex<HashMap<String, Vec<super::DiscoveryRow>>>> =
     OnceLock::new();
@@ -109,14 +109,14 @@ pub fn coordinated_discovery_compute_count() -> usize {
 /// A coordinated consumer may enter witness execution only after the exact snapshot
 /// has been verified and installed. This is a construction wall for the transitional
 /// provider path: absence refuses rather than silently rebuilding a cold world.
-pub fn coordinated_snapshot_verified() -> bool {
-    COORDINATED_SNAPSHOT_VERIFIED.load(Ordering::SeqCst)
+pub fn coordinated_snapshot_installed() -> bool {
+    COORDINATED_SNAPSHOT_INSTALLED.load(Ordering::SeqCst)
 }
 
 #[cfg(test)]
 pub fn reset_floor_discovery_snapshot_for_test() {
     COORDINATED_DISCOVERY_COMPUTE_COUNT.store(0, Ordering::SeqCst);
-    COORDINATED_SNAPSHOT_VERIFIED.store(false, Ordering::SeqCst);
+    COORDINATED_SNAPSHOT_INSTALLED.store(false, Ordering::SeqCst);
     if let Some(lock) = IN_PROCESS_ROSTER_BY_REQUEST.get() {
         lock.lock().unwrap().clear();
     }
@@ -784,7 +784,7 @@ pub fn install_floor_discovery_snapshot(snapshot: &FloorDiscoverySnapshot) {
     install_module_graph_facts_cache(&snapshot.request.source_roots, &facts);
     let rows: Vec<super::DiscoveryRow> = snapshot.roster.iter().map(snapshot_to_row).collect();
     install_roster_cache(&snapshot.request_identity_digest, &rows);
-    COORDINATED_SNAPSHOT_VERIFIED.store(true, Ordering::SeqCst);
+    COORDINATED_SNAPSHOT_INSTALLED.store(true, Ordering::SeqCst);
 }
 
 pub fn discover_floor_witness_roster_with_snapshot(

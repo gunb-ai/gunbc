@@ -23522,7 +23522,7 @@ pub fn run_discovery_corpus_with_options(
     options: DiscoveryCorpusOptions,
 ) -> Result<DiscoverySummary, String> {
     if std::env::var(FLOOR_DISCOVERY_CONSUMER_ENV).as_deref() == Ok("coordinated_consumer")
-        && !floor_discovery_snapshot::coordinated_snapshot_verified()
+        && !floor_discovery_snapshot::coordinated_snapshot_installed()
     {
         return Err(
             "coordinated discovery refused: verified floor snapshot is not installed; cold reconstruction is disabled"
