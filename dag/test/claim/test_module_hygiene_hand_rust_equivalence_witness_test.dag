@@ -12,8 +12,19 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data test_module_hygiene_orphan_witness_deletion_note: String = "WHAT THIS FILE USED TO CARRY, and why it does not (gunbc#8155). Fourteen of the eighteen witnesses here pinned gunbc.test_module_hygiene.orphan_plain_names_or_refuse against synthetic ModuleSurface fixtures — zero-enrolled demotion, directory-prefix bypass, cross-module export partial/empty, test-data-only, plain-data enrollment, dead plain data, plain-data chains, a planted orphan, and an unparsable refusal. Every one of them tested the U2 orphan census, which is deleted along with its fixtures, its scaffold carrier, and its hand-authored cross-module export exception roster. Deleting the machinery deletes its evidence, which is normally forbidden — DESIGN section 4b's dissolution-on-climb rule keeps the discriminating RED enrolled when a class CLIMBS. This is not a climb: the class is abandoned, not made unwritable, so there is no higher rung for the evidence to guard and retaining fixtures for a fold nothing calls would be specification-without-execution. The scope loss is declared in the module authority note on gunbc.test_module_hygiene rather than implied here. WHAT SURVIVES BELOW is the file-grain expand half plus the failure-receipt companion convention, both of which have live consumers in claim_executor."
-
+// WHAT THIS FILE USED TO CARRY, and why it does not. Fourteen of the eighteen witnesses here
+// pinned gunbc.test_module_hygiene orphan_plain_names_or_refuse against synthetic ModuleSurface
+// fixtures — zero-enrolled demotion, directory-prefix bypass, cross-module export partial/empty,
+// test-data-only, plain-data enrollment, dead plain data, plain-data chains, a planted orphan, and
+// an unparsable refusal. Every one of them tested the orphan census, which is deleted along with
+// its fixtures, its scaffold carrier, and its hand-authored cross-module export exception roster.
+// Deleting the machinery deletes its evidence, which is normally forbidden — DESIGN §4b's
+// dissolution-on-climb rule keeps the discriminating RED enrolled when a class CLIMBS. This is not
+// a climb: the class is abandoned, not made unwritable, so there is no higher rung for the evidence
+// to guard, and retaining fixtures for a fold nothing calls would be specification-without-
+// execution. The scope loss is declared in the module authority note on gunbc.test_module_hygiene
+// rather than implied here. WHAT SURVIVES BELOW is the file-grain expand half plus the
+// failure-receipt companion convention, both of which have live consumers in claim_executor.
 test fn test_module_hygiene_file_grain_empty_function_holds() -> Bool {
   is_file_grain_function(function: "")
     && (is_file_grain_function(function: "alpha_holds") == false)
