@@ -10,6 +10,7 @@ import v2.std.compilers.lexing {
   CharClassPattern,
   IdentContinueChar,
   IdentStartChar,
+  ChoicePattern,
   KeywordPattern,
   LexPattern,
   LexRule,
@@ -622,8 +623,13 @@ fn verilog_lex() -> LexRules {
         verilog_lex_token(token_class: ^verilog_token_ident, pattern: verilog_identifier_pattern()),
         verilog_lex_token(token_class: ^verilog_token_kw_module, pattern: KeywordPattern { text: "module" }),
         verilog_lex_token(token_class: ^verilog_token_kw_endmodule, pattern: KeywordPattern { text: "endmodule" }),
-        verilog_lex_token(token_class: ^verilog_token_kw_input, pattern: KeywordPattern { text: "input" }),
-        verilog_lex_token(token_class: ^verilog_token_kw_output, pattern: KeywordPattern { text: "output" }),
+        verilog_lex_token(
+          token_class: ^verilog_token_port_direction,
+          pattern: ChoicePattern {
+            left: KeywordPattern { text: "input" },
+            right: KeywordPattern { text: "output" }
+          }
+        ),
         verilog_lex_token(token_class: ^verilog_token_kw_wire, pattern: KeywordPattern { text: "wire" }),
         verilog_lex_token(token_class: ^verilog_token_kw_assign, pattern: KeywordPattern { text: "assign" }),
         verilog_lex_token(token_class: ^verilog_token_semicolon, pattern: LiteralPattern { text: ";" }),
@@ -683,6 +689,17 @@ fn verilog_source_text_module_formal_production() -> FormalProduction {
 // operators are grammar facts here, so product.compute_board can construct structure and own no
 // Verilog syntax at all.
 //
+// DIRECTION IS A BOUND TERMINAL, NOT AN ALTERNATION, and the reason is a real constraint on how
+// alternation may be used at all. Productions sharing an lhs are selected by UNIQUE STRUCTURAL
+// MATCH against the emitted node (formal_production_unique_lhs_exact_match), and a concrete
+// terminal contributes NO child to that node. So `direction -> kw_input` and
+// `direction -> kw_output` are structurally identical, match indistinguishably, and refuse as
+// grammar_relation_row_backward_selection_ambiguous. TypeScript's params_opt alternation works
+// only because its alternatives differ in child count — empty versus one nonterminal occurrence.
+// Alternation therefore expresses OPTIONALITY and SHAPE, never a choice between two spellings;
+// a spelling choice is a binding, and the lexical class spans both keywords so the same
+// production also reparses either one.
+//
 // COMPOSITION IS THE POINT. The port list is right-recursive rather than three hard-coded slots,
 // so a module with two or four ports is the same grammar — a fixed arity would prove a fixture,
 // not a module grammar. Expressions nest through their own nonterminals for the same reason: a
@@ -691,17 +708,9 @@ fn verilog_source_text_module_formal_production() -> FormalProduction {
 fn verilog_emission_formal_productions() -> List<FormalProduction> {
   [
     grammar_formal_production(
-      lhs: ^verilog_production_direction,
-      rhs: [grammar_formal_terminal(identity: ^verilog_token_kw_input)]
-    ),
-    grammar_formal_production(
-      lhs: ^verilog_production_direction,
-      rhs: [grammar_formal_terminal(identity: ^verilog_token_kw_output)]
-    ),
-    grammar_formal_production(
       lhs: ^verilog_production_ansi_port,
       rhs: [
-        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_direction),
+        grammar_formal_terminal_bound(identity: ^verilog_token_port_direction, binding: ^verilog_binding_port_direction),
         grammar_formal_terminal(identity: ^verilog_token_kw_wire),
         grammar_formal_terminal_bound(identity: ^verilog_token_ident, binding: ^verilog_binding_port_name)
       ]
