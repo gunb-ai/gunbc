@@ -1,0 +1,174 @@
+module product.rack_mount
+
+import std.types { Bool, List, NonEmptyStr }
+import std.integer { Int }
+import std.measure { Millimeter, millimeter_count, Micrometer, micrometer, micrometer_count, millimeters_to_micrometers, RackUnit, rack_unit_count, micrometers_per_rack_unit }
+import std.orthogonal_topology { EnclosedSpace, space_height }
+import product.placement_supply { RackIdentity, PhysicalAssetIdentity }
+import extdeps.rack.types { RackCatalogRow }
+import extdeps.chassis.types { ChassisCatalogRow }
+import v2.std.optional { Present, Absent }
+
+// SPATIAL-4B: ONE MOUNTED FIXTURE. This is where the geometry bands meet real cited hardware: a
+// chassis from extdeps.chassis occupying rack units in a rack from extdeps.rack, standing in a room
+// whose shape came from std.orthogonal_topology. Every dimension below is either a cited vendor
+// fact or derived from EIA-310 through std.measure's micrometers_per_rack_unit; none is authored
+// here. That is the whole point of doing this band against a real board rather than a made-up one.
+//
+// A MOUNT IS AN INTERVAL, NOT A POSITION. A chassis does not sit "at U5", it occupies U5 through U8
+// inclusive, and modelling it as a single position is what makes two mounts collide silently: the
+// positions differ, so nothing looks wrong, while the metal overlaps. The interval is DERIVED from
+// the cited chassis height and the lowest unit, so it cannot disagree with the hardware it
+// describes.
+//
+// WHAT IS NOT DECIDABLE FROM THE CITED ROWS, stated rather than guessed. ChassisCatalogRow carries
+// motherboard_support, but BaseboardCatalogRow carries no form factor, so whether a given board
+// FITS a given chassis cannot be answered from the corpus today. Authoring the ALTRAD8UD's form
+// factor here to make the check work would be inventing a vendor fact - the one thing extdeps
+// exists to prevent - so the check is absent, not approximated, and a caller asking for it gets
+// nothing rather than a plausible answer. Dissolve-on: BaseboardCatalogRow gains a cited
+// form_factor from the ASRock product page already anchored in extdeps.boards.asrock_rack, at
+// which point board admission becomes a wall here.
+//
+// Depth and width are likewise absent from both cited rows, so this band models the VERTICAL axis
+// only: rack-unit occupancy and the height a populated rack needs. A rack's footprint in the room
+// arrives when a cited row carries its external dimensions.
+
+type MountRefusal
+  = MountBelowFirstUnit { lowest_unit: Int }
+  | MountExceedsRackHeight { top_unit: Int, rack_units: Int }
+  | MountsCollide { lower: PhysicalAssetIdentity, upper: PhysicalAssetIdentity }
+  | AssetMountedTwice { asset: PhysicalAssetIdentity }
+  | RackTallerThanRoom { rack_height_um: Int, room_height_um: Int }
+
+type MountConstruction<T>
+  = MountReady { value: T }
+  | MountRefused { cause: MountRefusal }
+
+// The occupied interval is derived, so it is a function rather than a stored pair: storing top
+// beside lowest would let an edit to the chassis leave the top describing a height the hardware
+// does not have.
+type ChassisMount {
+  asset: PhysicalAssetIdentity
+  chassis: ChassisCatalogRow
+  lowest_unit: Int
+}
+
+fn mount_unit_span(m: ChassisMount) -> Int { rack_unit_count(u: m.chassis.rack_units) }
+
+fn mount_top_unit(m: ChassisMount) -> Int { m.lowest_unit + mount_unit_span(m: m) - 1 }
+
+// Rack units are numbered from 1 at the bottom, so a mount occupies lowest .. lowest + span - 1
+// inclusive. Two mounts collide when those closed intervals intersect at all - unlike the spatial
+// bands, where touching is adjacency, a shared rack unit is two chassis in one hole.
+fn mounts_collide(a: ChassisMount, b: ChassisMount) -> Bool {
+  a.lowest_unit <= mount_top_unit(m: b) && b.lowest_unit <= mount_top_unit(m: a)
+}
+
+fn asset_eq(a: PhysicalAssetIdentity, b: PhysicalAssetIdentity) -> Bool {
+  (a as String) == (b as String)
+}
+
+type MountAdmission {
+  admitted: List<ChassisMount>
+  refusal: MountRefusal?
+}
+
+fn admit_mount(acc: MountAdmission, rack: RackCatalogRow, m: ChassisMount) -> MountAdmission {
+  match acc.refusal {
+    Present { value: r } => MountAdmission { admitted: acc.admitted, refusal: Present { value: r } }
+    Absent =>
+      if m.lowest_unit < 1 {
+        MountAdmission { admitted: acc.admitted, refusal: Present { value: MountBelowFirstUnit { lowest_unit: m.lowest_unit } } }
+      } else if mount_top_unit(m: m) > rack_unit_count(u: rack.rack_units) {
+        MountAdmission {
+          admitted: acc.admitted,
+          refusal: Present { value: MountExceedsRackHeight { top_unit: mount_top_unit(m: m), rack_units: rack_unit_count(u: rack.rack_units) } },
+        }
+      } else {
+        let conflict = fold(acc.admitted, init: none, f: (found, other) =>
+          match found {
+            Present { value: r } => Present { value: r }
+            Absent =>
+              if asset_eq(a: other.asset, b: m.asset) {
+                Present { value: AssetMountedTwice { asset: m.asset } }
+              } else if mounts_collide(a: other, b: m) {
+                Present { value: MountsCollide { lower: other.asset, upper: m.asset } }
+              } else {
+                none
+              }
+          })
+        match conflict {
+          Present { value: r } => MountAdmission { admitted: acc.admitted, refusal: Present { value: r } }
+          Absent => MountAdmission { admitted: concat(acc.admitted, [m]), refusal: none }
+        }
+      }
+  }
+}
+
+type RackInstance sole_constructor {
+  identity: RackIdentity
+  catalog: RackCatalogRow
+  mounts: List<ChassisMount>
+}
+
+fn rack_instance(identity: RackIdentity, catalog: RackCatalogRow, mounts: List<ChassisMount>) -> MountConstruction<RackInstance> {
+  let admitted = fold(mounts, init: MountAdmission { admitted: [], refusal: none }, f: (acc, m) =>
+    admit_mount(acc: acc, rack: catalog, m: m))
+  match admitted.refusal {
+    Present { value: r } => MountRefused { cause: r }
+    Absent => MountReady { value: RackInstance { identity: identity, catalog: catalog, mounts: mounts } }
+  }
+}
+
+fn rack_mounts(r: RackInstance) -> List<ChassisMount> { r.mounts }
+
+fn rack_identity(r: RackInstance) -> RackIdentity { r.identity }
+
+fn rack_units_occupied(r: RackInstance) -> Int {
+  fold(r.mounts, init: 0, f: (acc, m) => acc + mount_unit_span(m: m))
+}
+
+fn rack_units_free(r: RackInstance) -> Int {
+  rack_unit_count(u: r.catalog.rack_units) - rack_units_occupied(r: r)
+}
+
+// HEIGHT IS CARRIED IN MICROMETRES BECAUSE A RACK UNIT IS NOT A WHOLE NUMBER OF MILLIMETRES.
+// EIA-310 fixes 1U at 44.45 mm, so 18U is 800.1 mm - and an earlier revision of this function
+// returned Millimeter, computing units * 44450 / 1000, which truncated that to 800 while the
+// comment beside it claimed no rounding entered. A witness then asserted the truncated 800 and
+// passed, which is the fabricated value with its own test pinning it in place. The micrometre is
+// exact for every whole unit count, so the quantity is carried there and the caller converts only
+// where it is willing to say what it wants done with the remainder.
+fn rack_units_to_micrometres(units: Int) -> Micrometer {
+  micrometer(count: units * micrometers_per_rack_unit())
+}
+
+fn rack_full_height(r: RackInstance) -> Micrometer {
+  rack_units_to_micrometres(units: rack_unit_count(u: r.catalog.rack_units))
+}
+
+// THE JOIN TO THE WORLD: a rack standing in a room must fit under its ceiling. This is the only
+// place the hardware bands and the geometry bands meet in this module, and it is a refusal rather
+// than a derived truncation - a rack that does not fit is an error in the plan, not a shorter rack.
+type RoomMountedRack sole_constructor {
+  rack: RackInstance
+  room: EnclosedSpace
+}
+
+fn room_mounted_rack(rack: RackInstance, room: EnclosedSpace) -> MountConstruction<RoomMountedRack> {
+  let rack_um = micrometer_count(m: rack_full_height(r: rack))
+  let room_um = micrometer_count(m: millimeters_to_micrometers(m: space_height(s: room)))
+  if rack_um > room_um {
+    MountRefused { cause: RackTallerThanRoom { rack_height_um: rack_um, room_height_um: room_um } }
+  } else {
+    MountReady { value: RoomMountedRack { rack: rack, room: room } }
+  }
+}
+
+fn mounted_rack_instance(m: RoomMountedRack) -> RackInstance { m.rack }
+fn mounted_rack_room(m: RoomMountedRack) -> EnclosedSpace { m.room }
+
+fn mounted_rack_headroom(m: RoomMountedRack) -> Micrometer {
+  micrometer(count: micrometer_count(m: millimeters_to_micrometers(m: space_height(s: m.room))) - micrometer_count(m: rack_full_height(r: m.rack)))
+}

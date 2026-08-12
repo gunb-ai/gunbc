@@ -1,0 +1,141 @@
+module test.claim.rack_mount_witness
+
+import std.types { Bool, Int, List }
+import std.measure { millimeter_count, micrometer_count, rack_unit }
+import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
+import std.affine_space { point2 }
+import std.orthogonal_geometry { OrthogonalReady, OrthogonalRefused, orthogonal_loop2, orthogonal_prism3 }
+import std.orthogonal_topology { EnclosedSpace, enclosed_space, closed_shell_of_prism }
+import product.placement_supply { RackIdentity, PhysicalAssetIdentity }
+import product.rack_mount {
+  MountReady, MountRefused,
+  MountBelowFirstUnit, MountExceedsRackHeight, MountsCollide, AssetMountedTwice, RackTallerThanRoom,
+  ChassisMount, mount_top_unit,
+  RackInstance, rack_instance, rack_units_free, rack_full_height,
+  room_mounted_rack, mounted_rack_headroom,
+}
+import extdeps.rack.navepoint { navepoint_18u_open_frame_catalog }
+import extdeps.chassis.rosewill { rosewill_rsv_r4000u_catalog }
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn site() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 1) }
+
+// The mounted fixture: the ALTRAD8UD's chassis is the cited Rosewill 4U row, and the rack is the
+// cited Navepoint 18U row. Nothing here authors a dimension.
+fn altra_host() -> ChassisMount {
+  ChassisMount { asset: ("srv-altra-1" as PhysicalAssetIdentity), chassis: rosewill_rsv_r4000u_catalog, lowest_unit: 1 }
+}
+
+fn second_host(lowest: Int) -> ChassisMount {
+  ChassisMount { asset: ("srv-altra-2" as PhysicalAssetIdentity), chassis: rosewill_rsv_r4000u_catalog, lowest_unit: lowest }
+}
+
+fn rack_of(mounts: List<ChassisMount>) -> RackInstance? {
+  match rack_instance(identity: ("rack-a" as RackIdentity), catalog: navepoint_18u_open_frame_catalog, mounts: mounts) {
+    MountRefused { cause: _ } => none
+    MountReady { value: r } => Present { value: r }
+  }
+}
+
+fn room(height: Int) -> EnclosedSpace? {
+  match orthogonal_loop2(vertices: [
+    point2(frame: site(), x: 0, y: 0),
+    point2(frame: site(), x: 4000, y: 0),
+    point2(frame: site(), x: 4000, y: 3000),
+    point2(frame: site(), x: 0, y: 3000),
+  ]) {
+    OrthogonalRefused { cause: _ } => none
+    OrthogonalReady { value: l } =>
+      match orthogonal_prism3(footprint: l, low: 0, high: height) {
+        OrthogonalRefused { cause: _ } => none
+        OrthogonalReady { value: pr } => Present { value: enclosed_space(shell: closed_shell_of_prism(prism: pr)) }
+      }
+  }
+}
+
+// A 4U chassis at U1 occupies U1..U4 inclusive. Modelling it as a position rather than an interval
+// is what lets two mounts overlap while their positions differ.
+test fn a_mount_occupies_an_interval_derived_from_the_cited_chassis() -> Bool {
+  mount_top_unit(m: altra_host()) == 4
+}
+
+test fn one_mounted_fixture_leaves_the_rest_of_the_rack_free() -> Bool {
+  match rack_of(mounts: [altra_host()]) {
+    Absent => false
+    // 18U is 800.1 mm exactly. Asserting 800100 micrometres is what keeps the truncation that an
+    // earlier revision shipped - and that an earlier version of THIS claim pinned at 800 - dead.
+    Present { value: r } => rack_units_free(r: r) == 14 && micrometer_count(m: rack_full_height(r: r)) == 800100
+  }
+}
+
+test fn two_hosts_stack_without_colliding() -> Bool {
+  match rack_of(mounts: [altra_host(), second_host(lowest: 5)]) {
+    Absent => false
+    Present { value: r } => rack_units_free(r: r) == 10
+  }
+}
+
+// U4 is the top of the first chassis, so a second chassis starting there is metal in the same hole.
+test fn overlapping_mounts_refuse() -> Bool {
+  match rack_instance(identity: ("rack-a" as RackIdentity), catalog: navepoint_18u_open_frame_catalog, mounts: [altra_host(), second_host(lowest: 4)]) {
+    MountReady { value: _ } => false
+    MountRefused { cause: c } => match c { MountsCollide { lower: _, upper: _ } => true  _ => false }
+  }
+}
+
+test fn a_mount_past_the_top_refuses_and_names_the_overshoot() -> Bool {
+  match rack_instance(identity: ("rack-a" as RackIdentity), catalog: navepoint_18u_open_frame_catalog, mounts: [second_host(lowest: 16)]) {
+    MountReady { value: _ } => false
+    MountRefused { cause: c } => match c { MountExceedsRackHeight { top_unit: t, rack_units: u } => t == 19 && u == 18  _ => false }
+  }
+}
+
+// Rack units are numbered from 1; U0 is not the floor, it does not exist.
+test fn a_mount_below_the_first_unit_refuses() -> Bool {
+  match rack_instance(identity: ("rack-a" as RackIdentity), catalog: navepoint_18u_open_frame_catalog, mounts: [second_host(lowest: 0)]) {
+    MountReady { value: _ } => false
+    MountRefused { cause: c } => match c { MountBelowFirstUnit { lowest_unit: l } => l == 0  _ => false }
+  }
+}
+
+test fn mounting_one_asset_twice_refuses() -> Bool {
+  match rack_instance(identity: ("rack-a" as RackIdentity), catalog: navepoint_18u_open_frame_catalog, mounts: [altra_host(), altra_host()]) {
+    MountReady { value: _ } => false
+    MountRefused { cause: c } => match c { AssetMountedTwice { asset: _ } => true  _ => false }
+  }
+}
+
+// THE JOIN, IN MICROMETRES so the 0.1 mm survives: 18U is 800100 um, a 2400 mm room is 2400000 um,
+// and the headroom is the exact difference rather than a figure rounded on the way through.
+test fn a_rack_fits_a_room_with_derived_headroom() -> Bool {
+  match rack_of(mounts: [altra_host()]) {
+    Absent => false
+    Present { value: r } =>
+      match room(height: 2400) {
+        Absent => false
+        Present { value: rm } =>
+          match room_mounted_rack(rack: r, room: rm) {
+            MountRefused { cause: _ } => false
+            MountReady { value: m } => micrometer_count(m: mounted_rack_headroom(m: m)) == 2400000 - 800100
+          }
+      }
+  }
+}
+
+test fn a_rack_taller_than_its_room_refuses() -> Bool {
+  match rack_of(mounts: [altra_host()]) {
+    Absent => false
+    Present { value: r } =>
+      match room(height: 600) {
+        Absent => false
+        Present { value: rm } =>
+          match room_mounted_rack(rack: r, room: rm) {
+            MountReady { value: _ } => false
+            MountRefused { cause: c } => match c { RackTallerThanRoom { rack_height_um: h, room_height_um: rh } => h == 800100 && rh == 600000  _ => false }
+          }
+      }
+  }
+}
