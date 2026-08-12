@@ -2088,26 +2088,58 @@ fn belt_tick_node_row_count(live: List<DispatchLiveSession>, node_id: String) ->
   count(filter(live, s => s.node_id == node_id))
 }
 
-fn belt_tick_session_is(live: List<DispatchLiveSession>, s: DispatchLiveSession, arm: String) -> Bool {
-  if belt_tick_node_row_count(live: live, node_id: s.node_id) > 1 {
-    arm == "conflict"
-  } else {
-    match belt_session_liveness_from_process(session_name: s.session_name, process: s.worker.process) {
-      BeltSessionRunning { session_name: _, command: _ } => arm == "running"
-      BeltSessionStaleTerminal { session_name: _, detail: _ } => arm == "stale"
-      BeltSessionLivenessUnobserved { session_name: _, reason: _ } => arm == "refused"
-      BeltSessionMultiplicityConflict { session_names: _, session_count: _ } => arm == "conflict"
-      BeltSessionAbsent => false
+data belt_tick_session_class_note: String = "THE PARTITION READS THE COPRODUCT, NOT A PARALLEL STRING VOCABULARY (review artifact 51309). The first cut asked belt_tick_session_is(s, arm: \"running\") and compared string arms — a second naming scheme for BeltSessionLiveness, which already names exactly these states. Two vocabularies for one concept is the nicknaming class, and the string one is strictly worse: a typo in an arm name compiles and silently empties a bucket, where a missing coproduct arm is a non-exhaustive match the compiler catches.\n\nThe node-awareness stays here rather than moving into belt_session_liveness_from_process, because multiplicity is a fact about a NODE's rows and that function sees one row's process. belt_node_session_liveness makes the same distinction on the dispatch path."
+
+fn belt_tick_session_class(
+  live: List<DispatchLiveSession>,
+  s: DispatchLiveSession,
+) -> BeltSessionLiveness {
+  let n = belt_tick_node_row_count(live: live, node_id: s.node_id)
+  if n > 1 {
+    BeltSessionMultiplicityConflict {
+      session_names: join(
+        map(filter(live, r => r.node_id == s.node_id), r => r.session_name), ", "),
+      session_count: n,
     }
+  } else {
+    belt_session_liveness_from_process(session_name: s.session_name, process: s.worker.process)
+  }
+}
+
+fn belt_tick_is_running(live: List<DispatchLiveSession>, s: DispatchLiveSession) -> Bool {
+  match belt_tick_session_class(live: live, s: s) {
+    BeltSessionRunning { session_name: _, command: _ } => true
+    _ => false
+  }
+}
+
+fn belt_tick_is_stale(live: List<DispatchLiveSession>, s: DispatchLiveSession) -> Bool {
+  match belt_tick_session_class(live: live, s: s) {
+    BeltSessionStaleTerminal { session_name: _, detail: _ } => true
+    _ => false
+  }
+}
+
+fn belt_tick_is_refused(live: List<DispatchLiveSession>, s: DispatchLiveSession) -> Bool {
+  match belt_tick_session_class(live: live, s: s) {
+    BeltSessionLivenessUnobserved { session_name: _, reason: _ } => true
+    _ => false
+  }
+}
+
+fn belt_tick_is_conflicted(live: List<DispatchLiveSession>, s: DispatchLiveSession) -> Bool {
+  match belt_tick_session_class(live: live, s: s) {
+    BeltSessionMultiplicityConflict { session_names: _, session_count: _ } => true
+    _ => false
   }
 }
 
 fn belt_tick_classify_sessions(live: List<DispatchLiveSession>) -> BeltTickSessionPartition {
   BeltTickSessionPartition {
-    running: filter(live, s => belt_tick_session_is(live: live, s: s, arm: "running")),
-    stale: filter(live, s => belt_tick_session_is(live: live, s: s, arm: "stale")),
-    refused: filter(live, s => belt_tick_session_is(live: live, s: s, arm: "refused")),
-    conflicted: filter(live, s => belt_tick_session_is(live: live, s: s, arm: "conflict")),
+    running: filter(live, s => belt_tick_is_running(live: live, s: s)),
+    stale: filter(live, s => belt_tick_is_stale(live: live, s: s)),
+    refused: filter(live, s => belt_tick_is_refused(live: live, s: s)),
+    conflicted: filter(live, s => belt_tick_is_conflicted(live: live, s: s)),
   }
 }
 
