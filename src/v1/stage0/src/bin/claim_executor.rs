@@ -10169,7 +10169,33 @@ fn read_scoped_execution_requests() -> Result<Vec<ScopedExecutionRequest>, Strin
     let path = Path::new(SCOPED_EXECUTION_REQUESTS_PATH);
     let body = fs::read_to_string(path)
         .map_err(|e| format!("read scoped requests {}: {e}", path.display()))?;
-    serde_json::from_str(&body).map_err(|e| format!("parse scoped requests: {e}"))
+    let requests: Vec<ScopedExecutionRequest> =
+        serde_json::from_str(&body).map_err(|e| format!("parse scoped requests: {e}"))?;
+    refuse_duplicate_scoped_batch_ids(&requests, &path.display().to_string())?;
+    Ok(requests)
+}
+
+/// A batch id addresses exactly one frozen population, so a repeated id is an ambiguity, not an
+/// ordering question. It is refused at the READ rather than at either consumer, because the
+/// coordinator spawns one child per row and would otherwise turn one contradiction into N parallel
+/// workers racing on one batch's outputs. The manifest this carrier replaces carried the same
+/// refusal; dropping it on the way through would have been a silent widen (DESIGN §5).
+fn refuse_duplicate_scoped_batch_ids(
+    requests: &[ScopedExecutionRequest],
+    located: &str,
+) -> Result<(), String> {
+    for (index, request) in requests.iter().enumerate() {
+        if requests[..index]
+            .iter()
+            .any(|earlier| earlier.batch_id == request.batch_id)
+        {
+            return Err(format!(
+                "scoped requests {located} contain duplicate batch id `{}` — refused",
+                request.batch_id
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Select and VERIFY one published request. Every refusal is typed and located: a child that
@@ -17162,5 +17188,34 @@ mod scoped_execution_request_tests {
             || frozen.tested_tree != frozen.tested_tree
             || frozen.tool_identity != frozen.tool_identity;
         assert!(!same, "an identical subject must not read as mismatched");
+    }
+
+    /// cursor review 51430 found this: the manifest this carrier replaces refused a duplicate
+    /// batch id on read, and the replacement only JSON-parsed. The coordinator spawns one child
+    /// per published row, so a repeated id spawned parallel workers for one batch instead of
+    /// stopping the line. This drives the production refusal, not a restatement of it.
+    #[test]
+    fn a_repeated_batch_id_refuses_before_anything_spawns() {
+        let unique = vec![
+            request("v1_claim_scoped", vec![entry("alpha")]),
+            request("v1_claim_scoped_two", vec![entry("beta")]),
+        ];
+        assert!(
+            refuse_duplicate_scoped_batch_ids(&unique, "fixture").is_ok(),
+            "distinct batch ids must pass — otherwise the refusal below proves nothing"
+        );
+
+        // Same id, DIFFERENT populations: the contradiction a first-wins read would resolve by
+        // silently picking one.
+        let duplicated = vec![
+            request("v1_claim_scoped", vec![entry("alpha")]),
+            request("v1_claim_scoped", vec![entry("beta")]),
+        ];
+        let refusal = refuse_duplicate_scoped_batch_ids(&duplicated, "fixture")
+            .expect_err("a repeated batch id must refuse");
+        assert!(
+            refusal.contains("duplicate batch id") && refusal.contains("v1_claim_scoped"),
+            "the refusal must name what it refused and where: {refusal}"
+        );
     }
 }
