@@ -14,6 +14,7 @@ import v2.compiler.self_host.candidate_generation {
 import v2.compiler.self_host.direct_rust_door_fixture {
   direct_rust_door_admission,
   direct_rust_door_ingest,
+  direct_rust_door_ingest_artifact,
   direct_rust_door_module_path
 }
 import v2.extdeps.languages.rust { rust_target_model }
@@ -113,5 +114,37 @@ fn measure_synthetic_fn_module_stage() -> String {
     EmissionRejected { diagnostics: _ } => "SYNTHFN=EmissionRejected"
     ProducerReceiptRejected { diagnostics: _ } => "SYNTHFN=ProducerReceiptRejected"
     ArtifactProduced { artifact: _ } => "SYNTHFN=ArtifactProduced"
+  }
+}
+
+// THE ISOLATED SUBJECT, after the second control refuted the first reading.
+// My own synthetic wiring does not assemble at all -- its fn form refuses at the
+// same stage as its data form -- so the earlier data-versus-fn conclusion was a
+// fact about the instrument, not the pipeline. This holds the DOOR's wiring
+// fixed (its artifact, its compilation unit, its module name, its admission) and
+// changes exactly one thing: the declaration inside the module. Against
+// measure_control_fn_module_stage, which shares all of that and carries a fn,
+// any stage difference is attributable to the declaration form alone.
+data pmh_door_shaped_data_source: String = "module add_probe\n\ndata probe_value: Int = 7\n"
+
+data pmh_door_shaped_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: Medium { carried: pmh_door_shaped_data_source, fidelity: Lossless },
+  artifact: direct_rust_door_ingest_artifact,
+  compilation_unit: ^direct_rust_door_add_probe_cu,
+  source_root: V2Tree
+}
+
+fn measure_door_shaped_data_module_stage() -> String {
+  match observe_provenanced_rust_emission_from_ingest(
+    ingest: Cons { head: pmh_door_shaped_read, tail: Empty },
+    admission: direct_rust_door_admission(),
+    target: rust_target_model(),
+    module_path: direct_rust_door_module_path
+  ) {
+    AssemblyRejected { diagnostics: _ } => "DATASUBJ=AssemblyRejected"
+    InferenceRejected { diagnostics: _ } => "DATASUBJ=InferenceRejected"
+    EmissionRejected { diagnostics: _ } => "DATASUBJ=EmissionRejected"
+    ProducerReceiptRejected { diagnostics: _ } => "DATASUBJ=ProducerReceiptRejected"
+    ArtifactProduced { artifact: _ } => "DATASUBJ=ArtifactProduced"
   }
 }
