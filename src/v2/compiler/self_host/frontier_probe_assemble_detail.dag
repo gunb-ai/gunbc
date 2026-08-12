@@ -39,6 +39,7 @@ import v2.compiler.self_host.frontier_probe_types {
   MissingModuleIdentityUnavailable,
   NonEmptySymbolChain,
   OtherAssembleRefusal,
+  frontier_probe_cause_location_from_locus,
   ProbeStageAssemble
 }
 import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics }
@@ -109,7 +110,10 @@ fn assemble_rejection_cause_from_parse_stage(
   } else {
     match non_empty_grammar_choice_ambiguity_rows_from_parse_stage(d: d) {
       Present { value: rows } => GrammarChoiceOverlap { rows: rows }
-      Absent => OtherAssembleRefusal { reason: d.head.diagnostic.reason }
+      Absent => OtherAssembleRefusal {
+        reason: d.head.diagnostic.reason,
+        at: frontier_probe_cause_location_from_locus(at: d.head.diagnostic.at)
+      }
     }
   }
 }
@@ -278,7 +282,10 @@ fn assemble_rejection_cause_from_diagnostics(
       Absent => MissingModuleIdentityUnavailable
     }
   } else {
-    OtherAssembleRefusal { reason: d.head.reason }
+    OtherAssembleRefusal {
+      reason: d.head.reason,
+      at: frontier_probe_cause_location_from_locus(at: d.head.at)
+    }
   }
 }
 

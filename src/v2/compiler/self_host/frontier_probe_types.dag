@@ -39,6 +39,7 @@ import v2.std.grammar_choice_ambiguity {
 }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
+import v2.std.diagnostic { Extent, Locus, NodeLocus, PortLocus, Textual }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.qualified_name { QualifiedName }
@@ -104,7 +105,23 @@ type AssembleRejectionCause
     }
   | AssembleMissingModule { requested: QualifiedName }
   | MissingModuleIdentityUnavailable
-  | OtherAssembleRefusal { reason: Symbol }
+  | OtherAssembleRefusal { reason: Symbol, at: FrontierProbeCauseLocation }
+
+data frontier_probe_cause_location_note: String = "OtherAssembleRefusal is the catch-all arm, so its reason symbol alone does not say WHICH file refused — recovering that previously meant inferring across a whole closure. The location is carried here, but NOT as a bare Locus: Locus admits NodeLocus and PortLocus, which have no manifest serialization, and a host emitter that errored on them would abort an entire 27-module survey over one unrepresentable position. This probe-owned projection is serializable by construction and total, with the unavailable arm carrying a typed reason so the deficit is counted rather than fabricated or fatal. Location is kept structurally SEPARATE from the cause key: two modules refusing for the same reason at different positions are the same detailed cause, so a clustering key must read the cause and not this field."
+
+type FrontierProbeCauseLocation
+  = CauseLocationTextual { file: Symbol, extent: Extent }
+  | CauseLocationUnavailable { reason: Symbol }
+
+fn frontier_probe_cause_location_from_locus(at: Locus) -> FrontierProbeCauseLocation {
+  match at {
+    Textual { file: f, extent: e } => CauseLocationTextual { file: f, extent: e }
+    NodeLocus { anchor: _ } =>
+      CauseLocationUnavailable { reason: ^cause_location_node_locus_not_serializable }
+    PortLocus { anchor: _ } =>
+      CauseLocationUnavailable { reason: ^cause_location_port_locus_not_serializable }
+  }
+}
 
 type FrontierProbeAssembleDetail
   = NoFrontierProbeDetail

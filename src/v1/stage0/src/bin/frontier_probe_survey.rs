@@ -415,6 +415,77 @@ fn non_empty_symbol_chain_emit(value: &Value, ctx: &InterpContext) -> Result<Str
     ))
 }
 
+// The cause location is emitted, not dropped, because OtherAssembleRefusal is the catch-all
+// arm and its reason symbol alone does not say WHICH file refused. It is a probe-owned
+// coproduct rather than a bare Locus precisely so this emitter can be TOTAL: an
+// unrepresentable position becomes a counted CauseLocationUnavailable row instead of
+// aborting a 27-module survey, and no arm invents a position it did not observe.
+fn cause_location_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    match value {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
+            let name = ctx.resolve(*variant_name);
+            if name == "CauseLocationTextual" {
+                let file = ctx
+                    .field(fields, "file")
+                    .ok_or_else(|| format!("{name} missing file"))?;
+                let extent = ctx
+                    .field(fields, "extent")
+                    .ok_or_else(|| format!("{name} missing extent"))?;
+                Ok(format!(
+                    "CauseLocationTextual {{ file: {}, extent: {} }}",
+                    value_symbol_name(file)?,
+                    extent_emit(extent, ctx)?
+                ))
+            } else if name == "CauseLocationUnavailable" {
+                let reason = ctx
+                    .field(fields, "reason")
+                    .ok_or_else(|| format!("{name} missing reason"))?;
+                Ok(format!(
+                    "CauseLocationUnavailable {{ reason: {} }}",
+                    value_symbol_name(reason)?
+                ))
+            } else {
+                Err(format!("unknown FrontierProbeCauseLocation variant {name}"))
+            }
+        }
+        _ => Err("cause location not a variant".to_string()),
+    }
+}
+
+fn extent_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    match value {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
+            let name = ctx.resolve(*variant_name);
+            if name == "WholeFile" {
+                Ok("WholeFile".to_string())
+            } else if name == "ByteRange" {
+                let start = ctx
+                    .field(fields, "start")
+                    .ok_or_else(|| format!("{name} missing start"))?;
+                let end = ctx
+                    .field(fields, "end")
+                    .ok_or_else(|| format!("{name} missing end"))?;
+                Ok(format!(
+                    "ByteRange {{ start: {}, end: {} }}",
+                    int_from_value(start)?,
+                    int_from_value(end)?
+                ))
+            } else {
+                Err(format!("unknown Extent variant {name}"))
+            }
+        }
+        _ => Err("extent not a variant".to_string()),
+    }
+}
+
 fn assemble_rejection_cause_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
     match value {
         Value::Variant {
@@ -465,9 +536,13 @@ fn assemble_rejection_cause_emit(value: &Value, ctx: &InterpContext) -> Result<S
                 let reason = ctx
                     .field(fields, "reason")
                     .ok_or_else(|| format!("{name} missing reason"))?;
+                let at = ctx
+                    .field(fields, "at")
+                    .ok_or_else(|| format!("{name} missing at"))?;
                 Ok(format!(
-                    "OtherAssembleRefusal {{ reason: {} }}",
-                    value_symbol_name(reason)?
+                    "OtherAssembleRefusal {{ reason: {}, at: {} }}",
+                    value_symbol_name(reason)?,
+                    cause_location_emit(at, ctx)?
                 ))
             } else {
                 Err(format!("unknown AssembleRejectionCause variant {name}"))
