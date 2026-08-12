@@ -2148,7 +2148,7 @@ fn rust_runtime_row() -> TargetEmitHostRuntimeRow {
 
 fn rust_target_model_staging() -> TargetModel {
   TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
+    produced_decl_support: rust_produced_decl_support(),
     bundle: rust_target_model_bundle_core(),
     lex: rust_staging_lex(),
     binding_spellings: rust_binding_spellings(),
