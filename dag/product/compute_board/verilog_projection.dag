@@ -73,9 +73,7 @@ data verilog_projection_note: String = "THE VERILOG PROJECTION, NOW A MAPPING RA
 // still be illegal downstream. Dissolve-on: a substrate string-to-character projection, at which
 // point this becomes the positive grammar test and the forbidden roster is deleted.
 type VerilogProjectionRefusal
-  = DrivenSignalIsNotAnOutput { signal: NonEmptyStr }
-  | ReferencedSignalUndeclared { equation_driven: NonEmptyStr }
-  | SignalSpellingUnbound { signal: NonEmptyStr }
+  = SignalSpellingUnbound { signal: NonEmptyStr }
   | SignalSpellingNotAdmissible { signal: NonEmptyStr, spelling: String }
   | DuplicateSignalBinding { signal: NonEmptyStr }
   | TargetEmissionRefused { reason: Symbol }
@@ -130,35 +128,6 @@ fn signal_is_declared_output(intent: DigitalControlIntent, name: SignalName) -> 
   })
 }
 
-fn first_non_output_driven(intent: DigitalControlIntent) -> NonEmptyStr? {
-  fold(intent.equations, init: none, f: fn(acc, eq) {
-    match acc {
-      Present { value: v } => Present { value: v }
-      Absent =>
-        if signal_is_declared_output(intent: intent, name: eq.driven) {
-          none
-        } else {
-          Present { value: eq.driven as NonEmptyStr }
-        }
-    }
-  })
-}
-
-fn first_undeclared_reference(intent: DigitalControlIntent) -> NonEmptyStr? {
-  fold(intent.equations, init: none, f: fn(acc, eq) {
-    match acc {
-      Present { value: v } => Present { value: v }
-      Absent =>
-        if expr_references_undeclared(intent: intent, e: eq.expression) {
-          Present { value: eq.driven as NonEmptyStr }
-        } else {
-          none
-        }
-    }
-  })
-}
-
-
 // Every signal the module names, including the module name itself, must be bound and admissible.
 fn signal_admission_refusal(bindings: List<VerilogBinding>, name: SignalName) -> VerilogProjectionRefusal? {
   if spelling_count(bindings: bindings, name: name) > 1 {
@@ -192,9 +161,15 @@ fn first_admission_refusal(
   }
 }
 
-// The projection. Both refusals are conditions the INTENT can express and the target cannot
-// honour, checked before a byte is rendered — never after, and never by emitting something
-// approximate and noting the problem beside it.
+// WHAT THIS MODULE REFUSES, AND WHAT IT NO LONGER DUPLICATES. Two of its refusals were deleted:
+// it used to check that every driven signal is a declared output and that no equation references
+// an undeclared one, which are ARTICLE-level facts that product.compute_board.admission already
+// refuses as DrivenSignalIsAnInput and EquationReferencesUndeclaredSignal. Two names for one
+// concept in two modules is the fork DESIGN section 3 forbids, and once the production entry
+// point took the sealed admitted article the projection arms were also unreachable — validation
+// standing where construction already held. What is left here is genuinely target-specific: a
+// signal with no Verilog spelling, two spellings claiming one signal, and a spelling this
+// target's lexer will not admit. None of those is a fact about the board.
 // MAPPING INTENT ONTO TARGET STRUCTURE. This is what remains of the projection once the target
 // owns its own syntax: a fold from board vocabulary onto the Verilog AST, naming no keyword, no
 // punctuation and no layout. If a Verilog spelling ever reappears in this module, the language
@@ -314,31 +289,22 @@ fn project_intent_to_verilog(
   intent: DigitalControlIntent,
   bindings: List<VerilogBinding>
 ) -> VerilogProjection {
-  match first_non_output_driven(intent: intent) {
-    Present { value: s } => VerilogProjectionRefused { cause: DrivenSignalIsNotAnOutput { signal: s } }
+  match first_admission_refusal(bindings: bindings, intent: intent) {
+    Present { value: r } => VerilogProjectionRefused { cause: r }
     Absent =>
-      match first_undeclared_reference(intent: intent) {
-        Present { value: d } =>
-          VerilogProjectionRefused { cause: ReferencedSignalUndeclared { equation_driven: d } }
-        Absent =>
-          match first_admission_refusal(bindings: bindings, intent: intent) {
-            Present { value: r } => VerilogProjectionRefused { cause: r }
-            Absent =>
-              match verilog_emit_module(
-                module_node: intent_module_node(bindings: bindings, intent: intent),
-                spellings: binding_spellings_for(bindings: bindings)
-              ) {
-                VerilogEmitted { source: src } =>
-                  VerilogModuleEmitted {
-                    receipt: VerilogEmissionReceipt {
-                      source_article: article_identity,
-                      source: src,
-                    },
-                  }
-                VerilogEmissionRefused { reason: why } =>
-                  VerilogProjectionRefused { cause: TargetEmissionRefused { reason: why } }
-              }
+      match verilog_emit_module(
+        module_node: intent_module_node(bindings: bindings, intent: intent),
+        spellings: binding_spellings_for(bindings: bindings)
+      ) {
+        VerilogEmitted { source: src } =>
+          VerilogModuleEmitted {
+            receipt: VerilogEmissionReceipt {
+              source_article: article_identity,
+              source: src,
+            },
           }
+        VerilogEmissionRefused { reason: why } =>
+          VerilogProjectionRefused { cause: TargetEmissionRefused { reason: why } }
       }
   }
 }

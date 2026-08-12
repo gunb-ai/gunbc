@@ -18,8 +18,6 @@ import product.compute_board.digital_control {
   reset_release_signal,
 }
 import product.compute_board.verilog_projection {
-  DrivenSignalIsNotAnOutput,
-  ReferencedSignalUndeclared,
   SignalSpellingNotAdmissible,
   DuplicateSignalBinding,
   TargetEmissionRefused,
@@ -96,72 +94,12 @@ test fn w_fault_polarity_change_changes_emitted_bytes() -> Bool {
     && string_contains(s: emitted_source(intent: board_power_interlock_intent), pattern: "~fault")
 }
 
-// Driving a signal the intent declares as an INPUT is a condition the intent can express and
-// Verilog cannot honour. It refuses before rendering rather than emitting a module that would
-// fail at synthesis.
-data drives_an_input_intent: DigitalControlIntent = DigitalControlIntent {
-  block_name: "bad_interlock" as SignalName,
-  signals: [
-    DigitalSignal { name: conditioned_good_signal, direction: DigitalInput },
-    DigitalSignal { name: fault_signal, direction: DigitalInput },
-  ],
-  equations: [
-    DigitalEquation {
-      driven: fault_signal,
-      expression: SignalRef { signal: conditioned_good_signal },
-    },
-  ]
-}
-
-test fn w_driving_an_input_refuses() -> Bool {
-  match project(intent: drives_an_input_intent, bindings: bad_interlock_bindings) {
-    VerilogProjectionRefused { cause: c } =>
-      match c {
-        DrivenSignalIsNotAnOutput { signal: s } => (s as String) == "fault"
-        ReferencedSignalUndeclared { equation_driven: _ } => false
-        SignalSpellingUnbound { signal: _ } => false
-        SignalSpellingNotAdmissible { signal: _, spelling: _ } => false
-        DuplicateSignalBinding { signal: _ } => false
-        TargetEmissionRefused { reason: _ } => false
-      }
-    VerilogModuleEmitted { receipt: _ } => false
-  }
-}
-
-// Referencing a signal the intent never declared refuses too. Verilog would happily accept an
-// undeclared identifier as an implicit wire, which is exactly why this must be caught here: the
-// target's leniency is not the model's licence.
-data undeclared_reference_intent: DigitalControlIntent = DigitalControlIntent {
-  block_name: "bad_interlock" as SignalName,
-  signals: [
-    DigitalSignal { name: conditioned_good_signal, direction: DigitalInput },
-    DigitalSignal { name: power_permit_signal, direction: DigitalOutput },
-  ],
-  equations: [
-    DigitalEquation {
-      driven: power_permit_signal,
-      expression: Conjunction {
-        left: SignalRef { signal: conditioned_good_signal },
-        right: SignalRef { signal: "never_declared" as SignalName },
-      },
-    },
-  ]
-}
-
-test fn w_undeclared_signal_reference_refuses() -> Bool {
-  match project(intent: undeclared_reference_intent, bindings: bad_interlock_bindings) {
-    VerilogProjectionRefused { cause: c } =>
-      match c {
-        ReferencedSignalUndeclared { equation_driven: d } => (d as String) == "power_permit"
-        DrivenSignalIsNotAnOutput { signal: _ } => false
-        SignalSpellingUnbound { signal: _ } => false
-        SignalSpellingNotAdmissible { signal: _, spelling: _ } => false
-        DuplicateSignalBinding { signal: _ } => false
-        TargetEmissionRefused { reason: _ } => false
-      }
-    VerilogModuleEmitted { receipt: _ } => false
-  }
-}
+// THE TWO ARTICLE-LEVEL REFUSALS THAT USED TO LIVE HERE ARE GONE, with the checks they exercised.
+// Driving a declared input and referencing an undeclared signal are facts about the board, not
+// about Verilog, and product.compute_board.admission refuses both — so checking them again here
+// was one concept under two names in two modules. The insight worth keeping is why they must be
+// refused at all: Verilog would accept an undeclared identifier as an implicit wire, so the
+// target's leniency is exactly what makes the model's refusal load-bearing rather than redundant.
 
 // CROSS-PROJECTION INDEPENDENCE, the property the shared-article design exists to buy: changing
 // the digital control changes the Verilog and must not touch the analog side. Asserted here as
@@ -197,8 +135,6 @@ fn refused_with_spelling(intent: DigitalControlIntent, bindings: List<VerilogBin
     VerilogProjectionRefused { cause: c } =>
       match c {
         SignalSpellingNotAdmissible { signal: _, spelling: sp } => sp == expected
-        DrivenSignalIsNotAnOutput { signal: _ } => false
-        ReferencedSignalUndeclared { equation_driven: _ } => false
         SignalSpellingUnbound { signal: _ } => false
         DuplicateSignalBinding { signal: _ } => false
         TargetEmissionRefused { reason: _ } => false
@@ -251,8 +187,6 @@ fn refuses_as_duplicate(bindings: List<VerilogBinding>) -> Bool {
     VerilogProjectionRefused { cause: c } =>
       match c {
         DuplicateSignalBinding { signal: s } => (s as String) == "conditioned_good"
-        DrivenSignalIsNotAnOutput { signal: _ } => false
-        ReferencedSignalUndeclared { equation_driven: _ } => false
         SignalSpellingUnbound { signal: _ } => false
         SignalSpellingNotAdmissible { signal: _, spelling: _ } => false
         TargetEmissionRefused { reason: _ } => false
