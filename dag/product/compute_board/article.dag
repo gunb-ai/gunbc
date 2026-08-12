@@ -6,6 +6,8 @@ import product.compute_board.digital_control {
   DigitalControlIntent,
   SignalName,
   board_power_interlock_intent,
+  power_permit_signal,
+  reset_release_signal,
 }
 import product.compute_board.analog {
   AnalogCircuitIntent,
@@ -81,18 +83,55 @@ type ElectricalBond
       standing: ChassisBondStanding,
     }
 
-// Board-level preconditions for host firmware to START. These are facts the BOARD establishes,
-// and the distinction from what firmware then DOES is load-bearing: PowerPermitAsserted and
-// ResetReleased are observable at the board, while "UEFI executed", "DDR trained" and "devices
-// enumerated" are later observations belonging to entirely different subjects. A contract that
-// let the first imply the second would report a booting machine on the strength of a released
-// reset line.
-type HostFirmwareStartPrecondition
+// THE PLATFORM FIRMWARE STACK IS NOT ONE THING. An Ampere platform runs system control processor
+// firmware, an ARM Trusted Firmware-A secure boot chain, host UEFI, baseboard management firmware
+// and board CPLD logic — five independently governed pieces that boot in order, are updated
+// separately, and fail in ways with nothing in common. The earlier revision named none of them:
+// it carried four prose strings, one of which said "board interlock asserts reset_release; the
+// host owns everything after it", which is a sentence about a signal this article DECLARES and
+// could have referenced. Prose is where a fact goes when nothing joins to it.
+//
+// The roles are named here and the cited upstreams live in extdeps, one module each, because
+// TF-A and EDK II are separately versioned projects and a Chromium-and-Safari argument applies
+// unchanged: adding a sixth role must not require editing the fifth.
+type PlatformFirmwareRole
+  = SystemControlProcessorFirmware
+  | TrustedFirmwareSecureBootChain
+  | HostUefiFirmware
+  | BaseboardManagementFirmware
+  | BoardProgrammableLogic
+
+// Board-level preconditions for host firmware to START. The distinction from what firmware then
+// DOES is load-bearing: a permitted power rail and a released reset are observable at the board,
+// while "UEFI executed", "DDR trained" and "devices enumerated" are later observations belonging
+// to entirely different subjects. A contract that let the first imply the second would report a
+// booting machine on the strength of a released reset line.
+type HostFirmwareStartPreconditionKind
   = PowerPermitAsserted
   | ResetReleased
   | BootStorageReadable
   | RecoveryRequestObservable
   | ConsoleAvailable
+
+// WHAT ESTABLISHES A PRECONDITION IS PART OF THE PRECONDITION. Listing PowerPermitAsserted said
+// that power must be permitted and nothing about what permits it — so an article whose interlock
+// drove no such signal declared the same contract as one that did, and the two were
+// indistinguishable to every consumer. Naming the signal makes it a join: admission refuses a
+// precondition established by a signal the control logic does not declare as an output, which is
+// a defect that was previously unrepresentable rather than merely unchecked.
+//
+// The third arm is not a hole. A board article that does not establish a precondition is the
+// ordinary case — this one does not own its boot storage — and saying so explicitly is different
+// from omitting the row, which would read as "no such precondition exists".
+type PreconditionEstablishment
+  = EstablishedByBoardSignal { signal: SignalName }
+  | EstablishedByPlatformComponent { role: PlatformFirmwareRole }
+  | NotEstablishedByThisArticle { owner: NonEmptyStr }
+
+type HostFirmwareStartPrecondition {
+  kind: HostFirmwareStartPreconditionKind
+  establishment: PreconditionEstablishment
+}
 
 // Trust is TWO simultaneous standings, not one choice among three. An earlier revision made
 // "the development image is unsigned" and "production signing is unavailable" alternatives in
@@ -116,10 +155,6 @@ type FirmwareWriteProtection
 
 type PlatformFirmwareContract {
   start_preconditions: List<HostFirmwareStartPrecondition>
-  boot_storage: NonEmptyStr
-  reset_owner: NonEmptyStr
-  console: NonEmptyStr
-  recovery_path: NonEmptyStr
   write_protection: FirmwareWriteProtection
   development_image_trust: DevelopmentImageTrust
   production_signing: ProductionSigningStanding
@@ -167,11 +202,30 @@ type BoardPowerInterfaceArticle {
 }
 
 data board_power_interlock_firmware_contract: PlatformFirmwareContract = PlatformFirmwareContract {
-  start_preconditions: [PowerPermitAsserted, ResetReleased, RecoveryRequestObservable],
-  boot_storage: "host SPI-NOR, addressed by the platform firmware contract rather than by this board",
-  reset_owner: "board interlock asserts reset_release; the host owns everything after it",
-  console: "serial console header",
-  recovery_path: "recovery request input observable at the interlock",
+  start_preconditions: [
+    HostFirmwareStartPrecondition {
+      kind: PowerPermitAsserted,
+      establishment: EstablishedByBoardSignal { signal: power_permit_signal },
+    },
+    HostFirmwareStartPrecondition {
+      kind: ResetReleased,
+      establishment: EstablishedByBoardSignal { signal: reset_release_signal },
+    },
+    // The board does not own its boot storage, and says so rather than omitting the row: an
+    // absent precondition reads as "this does not apply", which is a different and false claim.
+    HostFirmwareStartPrecondition {
+      kind: BootStorageReadable,
+      establishment: NotEstablishedByThisArticle { owner: "host SPI-NOR, owned by the platform firmware stack" },
+    },
+    HostFirmwareStartPrecondition {
+      kind: ConsoleAvailable,
+      establishment: EstablishedByPlatformComponent { role: HostUefiFirmware },
+    },
+    HostFirmwareStartPrecondition {
+      kind: RecoveryRequestObservable,
+      establishment: EstablishedByPlatformComponent { role: BaseboardManagementFirmware },
+    },
+  ],
   write_protection: WriteProtectionUnmodelled {
     reason: "SPI-NOR write-protect control is a host-board fact this article does not carry; it is declared unmodelled rather than defaulted to protected",
   },

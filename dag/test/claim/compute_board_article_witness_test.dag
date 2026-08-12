@@ -11,6 +11,16 @@ import product.compute_board.spice_projection {
 }
 import product.compute_board.article {
   BoardPowerInterfaceArticle,
+  BaseboardManagementFirmware,
+  BootStorageReadable,
+  ConsoleAvailable,
+  EstablishedByBoardSignal,
+  EstablishedByPlatformComponent,
+  HostUefiFirmware,
+  NotEstablishedByThisArticle,
+  PowerPermitAsserted,
+  RecoveryRequestObservable,
+  ResetReleased,
   ChassisBond,
   ChassisBondProposed,
   ChassisBondObserved,
@@ -32,6 +42,7 @@ import product.compute_board.article {
   power_interlock_article,
   power_good_model_bindings,
 }
+import product.compute_board.article { HostFirmwareStartPrecondition }
 import product.compute_board.admission {
   AdmittedBoardPowerInterfaceArticle,
   BoardArticleAdmitted,
@@ -254,4 +265,67 @@ test fn w_physical_and_manufacturing_boundaries_refuse_with_named_causes() -> Bo
         string_contains(s: p as String, pattern: "no fabricator selected")
       ManufacturingProfileSelected { fabricator: _, authority: _ } => false
     }
+}
+
+// EVERY PRECONDITION SAYS WHAT ESTABLISHES IT, and the three establishment arms are all present
+// in the production contract rather than one being decorative. The board's own two are signals it
+// drives; the console and the recovery request belong to platform components; boot storage is
+// explicitly NOT this article's, which is a claim and not an omission.
+fn establishment_kind(p: HostFirmwareStartPrecondition) -> String {
+  match p.establishment {
+    EstablishedByBoardSignal { signal: _ } => "signal"
+    EstablishedByPlatformComponent { role: _ } => "component"
+    NotEstablishedByThisArticle { owner: _ } => "not-ours"
+  }
+}
+
+fn establishment_count(kind: String) -> Int {
+  fold(power_interlock_article.platform_firmware.start_preconditions, init: 0, f: fn(acc, p) {
+    if establishment_kind(p: p) == kind { acc + 1 } else { acc }
+  })
+}
+
+test fn w_every_precondition_names_what_establishes_it() -> Bool {
+  establishment_count(kind: "signal") == 2
+    && establishment_count(kind: "component") == 2
+    && establishment_count(kind: "not-ours") == 1
+}
+
+// The two board-established preconditions name the signals the interlock actually drives, and the
+// admission join is what makes that a checked fact rather than a coincidence between two lists.
+// This asserts the pairing itself, so a contract that named the other output would still be
+// admitted and would fail here.
+fn precondition_signal_for(kind_matches: fn(HostFirmwareStartPrecondition) -> Bool) -> String {
+  fold(power_interlock_article.platform_firmware.start_preconditions, init: "", f: fn(acc, p) {
+    if kind_matches(p) {
+      match p.establishment {
+        EstablishedByBoardSignal { signal: s } => s as String
+        EstablishedByPlatformComponent { role: _ } => acc
+        NotEstablishedByThisArticle { owner: _ } => acc
+      }
+    } else {
+      acc
+    }
+  })
+}
+
+test fn w_the_permit_and_reset_preconditions_name_their_own_signals() -> Bool {
+  precondition_signal_for(kind_matches: fn(p) {
+    match p.kind {
+      PowerPermitAsserted => true
+      ResetReleased => false
+      BootStorageReadable => false
+      RecoveryRequestObservable => false
+      ConsoleAvailable => false
+    }
+  }) == "power_permit"
+    && precondition_signal_for(kind_matches: fn(p) {
+      match p.kind {
+        ResetReleased => true
+        PowerPermitAsserted => false
+        BootStorageReadable => false
+        RecoveryRequestObservable => false
+        ConsoleAvailable => false
+      }
+    }) == "reset_release"
 }

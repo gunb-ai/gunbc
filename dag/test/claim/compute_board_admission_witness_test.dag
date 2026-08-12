@@ -26,6 +26,11 @@ import product.compute_board.digital_control {
 }
 import product.compute_board.article {
   BoardPowerInterfaceArticle,
+  EstablishedByBoardSignal,
+  FirmwareWriteProtection,
+  HostFirmwareStartPrecondition,
+  PlatformFirmwareContract,
+  PowerPermitAsserted,
   ElectricalBond,
   PowerReturnConnection,
   board_power_interlock_bonds,
@@ -52,6 +57,8 @@ import product.compute_board.admission {
   EquationReferencesUndeclaredSignal,
   OutputWithNoDriver,
   OutputWithMultipleDrivers,
+  PreconditionSignalUndeclared,
+  PreconditionSignalIsNotAnOutput,
   admit_board_article,
   article_refusals,
   refusal_set_count,
@@ -131,6 +138,17 @@ data coherent_control: DigitalControlIntent = DigitalControlIntent {
   ],
 }
 
+// The fixture's firmware contract deliberately establishes nothing at the board. The production
+// contract names power_permit and reset_release, which this fixture's two-signal control does not
+// declare — and the join refuses exactly that, so reusing the production contract here would have
+// planted two extra causes in every fixture below.
+data fixture_firmware_contract: PlatformFirmwareContract = PlatformFirmwareContract {
+  start_preconditions: [],
+  write_protection: board_power_interlock_firmware_contract.write_protection,
+  development_image_trust: board_power_interlock_firmware_contract.development_image_trust,
+  production_signing: board_power_interlock_firmware_contract.production_signing,
+}
+
 fn fixture_article(
   analog: AnalogCircuitIntent,
   reference: NetIdentity,
@@ -144,7 +162,7 @@ fn fixture_article(
     reference_net: reference,
     digital_control: control,
     bonds: bonds,
-    platform_firmware: board_power_interlock_firmware_contract,
+    platform_firmware: fixture_firmware_contract,
     physical: board_power_interlock_physical,
     manufacturing: board_power_interlock_manufacturing,
   }
@@ -179,6 +197,8 @@ fn refusal_is(r: BoardArticleRefusal, wanted: String) -> Bool {
     EquationReferencesUndeclaredSignal { driven: _ } => wanted == "EquationReferencesUndeclaredSignal"
     OutputWithNoDriver { signal: _ } => wanted == "OutputWithNoDriver"
     OutputWithMultipleDrivers { signal: _ } => wanted == "OutputWithMultipleDrivers"
+    PreconditionSignalUndeclared { signal: _ } => wanted == "PreconditionSignalUndeclared"
+    PreconditionSignalIsNotAnOutput { signal: _ } => wanted == "PreconditionSignalIsNotAnOutput"
   }
 }
 
@@ -438,4 +458,60 @@ test fn w_two_defects_are_both_reported() -> Bool {
 test fn w_the_production_article_carries_no_cause() -> Bool {
   fold(article_refusals(a: power_interlock_article), init: 0, f: fn(acc, _r) { acc + 1 }) == 0
     && is_admitted(a: power_interlock_article)
+}
+
+// THE FIRMWARE CONTRACT'S PRECONDITIONS JOIN THE CONTROL LOGIC. These two fixtures are the reason
+// the prose fields were replaced rather than reworded: neither defect had a representation at
+// all before the establishment was typed, so neither could be refused.
+fn firmware_contract_with(p: HostFirmwareStartPrecondition) -> PlatformFirmwareContract {
+  PlatformFirmwareContract {
+    start_preconditions: [p],
+    write_protection: board_power_interlock_firmware_contract.write_protection,
+    development_image_trust: board_power_interlock_firmware_contract.development_image_trust,
+    production_signing: board_power_interlock_firmware_contract.production_signing,
+  }
+}
+
+fn fixture_with_firmware(f: PlatformFirmwareContract) -> BoardPowerInterfaceArticle {
+  BoardPowerInterfaceArticle {
+    identity: coherent_fixture.identity,
+    analog: coherent_fixture.analog,
+    model_bindings: coherent_fixture.model_bindings,
+    reference_net: coherent_fixture.reference_net,
+    digital_control: coherent_fixture.digital_control,
+    bonds: coherent_fixture.bonds,
+    platform_firmware: f,
+    physical: coherent_fixture.physical,
+    manufacturing: coherent_fixture.manufacturing,
+  }
+}
+
+test fn w_a_precondition_naming_no_signal_refuses() -> Bool {
+  refuses_with_exactly(
+    a: fixture_with_firmware(f: firmware_contract_with(p: HostFirmwareStartPrecondition {
+      kind: PowerPermitAsserted,
+      establishment: EstablishedByBoardSignal { signal: "no_such_wire" as SignalName },
+    })),
+    wanted: "PreconditionSignalUndeclared"
+  )
+}
+
+// Establishing a precondition with an INPUT is the subtler defect: the signal exists, so a
+// declaration check passes, and the board would be claiming to establish a condition it only
+// observes. Direction is the whole content of the distinction.
+test fn w_a_precondition_established_by_an_input_refuses() -> Bool {
+  refuses_with_exactly(
+    a: fixture_with_firmware(f: firmware_contract_with(p: HostFirmwareStartPrecondition {
+      kind: PowerPermitAsserted,
+      establishment: EstablishedByBoardSignal { signal: in_signal },
+    })),
+    wanted: "PreconditionSignalIsNotAnOutput"
+  )
+}
+
+test fn w_a_precondition_on_a_declared_output_is_admitted() -> Bool {
+  is_admitted(a: fixture_with_firmware(f: firmware_contract_with(p: HostFirmwareStartPrecondition {
+    kind: PowerPermitAsserted,
+    establishment: EstablishedByBoardSignal { signal: out_signal },
+  })))
 }

@@ -25,6 +25,10 @@ import product.compute_board.digital_control {
 }
 import product.compute_board.article {
   BoardPowerInterfaceArticle,
+  EstablishedByBoardSignal,
+  EstablishedByPlatformComponent,
+  HostFirmwareStartPrecondition,
+  NotEstablishedByThisArticle,
   ChassisBond,
   ElectricalBond,
   PowerReturnConnection,
@@ -48,6 +52,8 @@ type BoardArticleRefusal
   | EquationReferencesUndeclaredSignal { driven: NonEmptyStr }
   | OutputWithNoDriver { signal: NonEmptyStr }
   | OutputWithMultipleDrivers { signal: NonEmptyStr }
+  | PreconditionSignalUndeclared { signal: NonEmptyStr }
+  | PreconditionSignalIsNotAnOutput { signal: NonEmptyStr }
 
 // Nonempty by construction — a refusal arm carrying an empty cause list is the shape that lets a
 // refusal report nothing, so head-and-tail rather than a List anyone can hand [] to.
@@ -230,6 +236,37 @@ fn output_driver_refusals(control: DigitalControlIntent) -> List<BoardArticleRef
   })
 }
 
+// THE PRECONDITION JOIN. A firmware contract naming a signal the control logic never declares is
+// a promise about a wire that does not exist, and naming one declared as an INPUT is worse: the
+// board would be claiming to establish a condition it only observes. Both were unrepresentable
+// before the establishment was typed and are refused now that it is — which is the whole reason
+// the prose fields were replaced rather than merely rewritten.
+fn precondition_refusal(
+  control: DigitalControlIntent,
+  p: HostFirmwareStartPrecondition
+) -> List<BoardArticleRefusal> {
+  match p.establishment {
+    EstablishedByPlatformComponent { role: _ } => []
+    NotEstablishedByThisArticle { owner: _ } => []
+    EstablishedByBoardSignal { signal: sig } =>
+      if !intent_declares_signal(intent: control, name: sig) {
+        [PreconditionSignalUndeclared { signal: sig as NonEmptyStr }]
+      } else {
+        if signal_is_output(control: control, name: sig) {
+          []
+        } else {
+          [PreconditionSignalIsNotAnOutput { signal: sig as NonEmptyStr }]
+        }
+      }
+  }
+}
+
+fn precondition_refusals(a: BoardPowerInterfaceArticle) -> List<BoardArticleRefusal> {
+  fold(a.platform_firmware.start_preconditions, init: [], f: fn(acc, p) {
+    concat(acc, precondition_refusal(control: a.digital_control, p: p))
+  })
+}
+
 fn article_refusals(a: BoardPowerInterfaceArticle) -> List<BoardArticleRefusal> {
   concat(
     concat(
@@ -238,7 +275,10 @@ fn article_refusals(a: BoardPowerInterfaceArticle) -> List<BoardArticleRefusal> 
     ),
     concat(
       concat(bond_refusals(intent: a.analog, bonds: a.bonds), duplicate_signal_refusals(control: a.digital_control)),
-      concat(equation_refusals(control: a.digital_control), output_driver_refusals(control: a.digital_control))
+      concat(
+        concat(equation_refusals(control: a.digital_control), output_driver_refusals(control: a.digital_control)),
+        precondition_refusals(a: a)
+      )
     )
   )
 }
