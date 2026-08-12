@@ -82,62 +82,7 @@ fn reference_derived_import_resolution_facts_live(
   )
 }
 
-fn import_resolution_fact_eq(a: ImportResolutionFact, b: ImportResolutionFact) -> Bool {
-  a.path == b.path && a.import_module == b.import_module && a.target_declared == b.target_declared
-}
-
-data dedup_import_resolution_facts_cost_note: String = "MEASURED cost-shape fix, TWO independent quadratics (gunbc#8044, 2026-08-08). Both were found by execution, not by reading. Inputs are all cheap on the live corpus - module_declaration_facts_live 3256 rows in 2s, import_resolution_facts_live 15376 rows in 2s, reference_derived_import_resolution_facts_live 3155 rows in 2s - yet dependency_resolution_facts_live, which only unions and maps them, was OOM-killed after 396s. (1) MEMBERSHIP: the dedup folded with a LINEAR contains over the whole accumulator, one scan per fact, on the order of 10^8 three-field comparisons. It is now a per-path bucket lookup plus a scan within that one path is small bucket. Fixing it alone removed the OOM but the producer still ran past 901s. (2) ACCUMULATION: both dedup_import_resolution_facts and dependency_edges_from_import_facts appended with list_snoc_item, which is list_append(xs, [item]) and therefore O(n) per call - about 1.7 x 10^8 cons allocations per fold over the ~18.5k unioned facts. Both now cons and reverse once. Semantics are UNCHANGED by construction in both fixes: the same import_resolution_fact_eq decides equality, and list_reverse of a cons-accumulated fold is exactly the snoc-accumulated order, so union_import_resolution_fact_lists keeps its reference-first ordering and its exact output. DESIGN 6 bare-minimum-cost: a proven quadratic fold is always fixed. The second one is the lesson - repairing the first defect made the symptom change from OOM to slow, which is precisely the shape that invites stopping early, and the remaining cost was in the accumulator idiom that reads as innocuous everywhere it appears."
-
-type ImportFactDedupAcc {
-  ordered: List<ImportResolutionFact>
-  by_path: Map<String, List<ImportResolutionFact>>
-}
-
-fn import_facts_bucket(
-  by_path: Map<String, List<ImportResolutionFact>>,
-  path: String
-) -> List<ImportResolutionFact> {
-  match map_lookup_where_rejected_unreachable(m: by_path, key: path) {
-    Present { value: facts } => facts
-    Absent => no_import_facts
-  }
-}
-
-fn add_unseen_import_fact_indexed(
-  acc: ImportFactDedupAcc,
-  item: ImportResolutionFact
-) -> ImportFactDedupAcc {
-  let bucket = import_facts_bucket(by_path: acc.by_path, path: item.path)
-  if contains(xs: bucket, item: item, eq: import_resolution_fact_eq) {
-    acc
-  } else {
-    ImportFactDedupAcc {
-      ordered: Cons { head: item, tail: acc.ordered },
-      by_path: map_insert(
-        m: acc.by_path,
-        key: item.path,
-        value: list_snoc_item(xs: bucket, item: item)
-      )
-    }
-  }
-}
-
-fn dedup_import_resolution_facts(edges: List<ImportResolutionFact>) -> List<ImportResolutionFact> {
-  list_reverse(xs: fold_list(
-    xs: edges,
-    empty: ImportFactDedupAcc { ordered: no_import_facts, by_path: empty_map() },
-    cons: fn(acc, edge) { add_unseen_import_fact_indexed(acc: acc, item: edge) }
-  ).ordered)
-}
-
-fn union_import_resolution_fact_lists(
-  import_edges: List<ImportResolutionFact>,
-  reference_edges: List<ImportResolutionFact>
-) -> List<ImportResolutionFact> {
-  dedup_import_resolution_facts(
-    edges: list_append(left: reference_edges, right: import_edges)
-  )
-}
+data dedup_import_resolution_facts_cost_note: String = "THE UNION IS NATIVE NOW, and the name is retained because gunbc.stage0_partition_closure and gunbc.repo_atlas_projection both cite this row by symbol. HISTORY, all measured: #8044 fixed two quadratics in the interpreted composition here - a linear membership scan, then a list_snoc_item accumulator - which took it from an OOM at 396s to running, but left it at 173.6-177.6s. WHAT THAT LEFT UNSAID, and what the later measurement found: the remaining cost was never the host fact production those notes blamed. Measured per term in one process on the live corpus - import_resolution_facts_live 146ms, reference_derived_import_resolution_facts_live 5ms, the union and dedup of the two 104,943ms, the whole of dependency_resolution_facts_live 112,261ms. The two host leaves are 151ms of 112,261ms, so caching them recovers nothing and the interpreted composition WAS the cost. Three further hypotheses were tested and refuted by execution before this conclusion: duplicate (importer, target) work in the consuming index (raw == unique exactly, measured post-join at module grain with path-to-module injectivity measured and zero dropped edges); the interpreter Map primitive (map_insert 38ms at n=2000 and 68ms at n=8000 against a take-only subtractive control - 1.8x for 4x the items, not quadratic, and NOT claimed as a defect); and the bucket's own list_snoc_item (replaced with a cons, measured 105,007ms against a 104,943ms baseline - no change, reverted). THE REPAIR moved the composition to the host builtin dependency_resolution_facts, whose single dedup authority is v1_compiler.cli_run union_dedup_import_facts_reference_first. THE LAW IT CARRIES is the one the deleted interpreted spelling carried: reference-first order, first occurrence kept, exact identity on \{path, import_module, target_declared\}, and every target_declared: false row preserved because the partition-closure census judges unresolved targets. The interpreted union, its dedup, its per-path bucket and its accumulator are deleted rather than kept dormant - a dead 105-second implementation beside the live one is future ambiguity, not authority - and the executing consumer that holds the native arm to the law is test.claim.module_graph_edge_source_witness_test, which points the production function at a four-module fixture and asserts the union at identity grain in both directions. DISSOLVE-ON: the namespace terminal step retires the import producer, at which point this row's subject is the reference-only producer and the union disappears with it."
 
 fn module_declaration_facts_live(pool_roots: List<String>) -> List<ModuleDeclarationFact> {
   module_declaration_facts(pool_roots: pool_roots)
@@ -161,24 +106,36 @@ fn dependency_edges_from_import_facts(edges: List<ImportResolutionFact>) -> List
   ))
 }
 
+// NATIVE-REALIZED, and the measurement is the whole argument. This body used to compose the two
+// producers below in the interpreter, with a union+dedup and an edge mapping that are now deleted.
+// Measured on the live corpus in ONE process, per term:
+//
+//   import_resolution_facts_live                      146ms
+//   reference_derived_import_resolution_facts_live      5ms
+//   union + dedup of the two                      104,943ms
+//   dependency_resolution_facts_live (all of it)  112,261ms
+//
+// So the corpus scans this composition was assumed to be dominated by are 151ms of 112,261ms, and
+// the interpreted composition is the entire cost — which is in turn effectively the whole of the
+// partition-closure census that consumes it. The repair is therefore to move the COMPOSITION, not
+// to cache the leaves: a snapshot join over the producers would have recovered 151ms and left the
+// census over its envelope.
+//
+// The two producers stay exactly where they were. This is the edge-source seam
+// dependency_edge_source_migration_note designates for the namespace terminal step, and it must
+// remain one swappable producer pair rather than becoming a native black box — the native arm
+// composes the same two leaves through the same reference-first exact dedup on
+// \{path, import_module, target_declared\}, keeping first-occurrence order and every
+// target_declared: false row, because the partition-closure census judges unresolved targets.
 fn dependency_resolution_facts_live(
   pool_roots: List<String>,
   importer_roots: List<String>,
   exclude_substrings: List<String>
 ) -> List<ModuleDependencyEdge> {
-  dependency_edges_from_import_facts(
-    edges: union_import_resolution_fact_lists(
-      import_edges: import_resolution_facts_live(
-        pool_roots: pool_roots,
-        importer_roots: importer_roots,
-        exclude_substrings: exclude_substrings
-      ),
-      reference_edges: reference_derived_import_resolution_facts_live(
-        pool_roots: pool_roots,
-        importer_roots: importer_roots,
-        exclude_substrings: exclude_substrings
-      )
-    )
+  dependency_resolution_facts(
+    pool_roots: pool_roots,
+    importer_roots: importer_roots,
+    exclude_substrings: exclude_substrings
   )
 }
 

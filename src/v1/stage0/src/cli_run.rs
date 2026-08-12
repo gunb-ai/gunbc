@@ -30469,6 +30469,64 @@ pub fn import_resolution_facts(
     import_resolution_facts_with_observation(pool_roots, importer_roots, exclude_substrings).facts
 }
 
+/// The native realization of `v2.lens.module_graph` `dependency_resolution_facts_live`: both
+/// leaves, unioned reference-first through the one dedup authority below, projected to the
+/// dependency-edge triple. `target_module` is the fact's `import_module` — the same renaming the
+/// `.dag` `import_fact_to_dependency_edge` performs, and the reason this returns the raw fact rows
+/// rather than a second edge struct is that the projection is a rename, not a transformation.
+pub fn dependency_resolution_facts(
+    pool_roots: &[String],
+    importer_roots: &[String],
+    exclude_substrings: &[String],
+) -> Vec<ImportResolutionFactRaw> {
+    let reference_edges = reference_edges_as_import_facts(
+        &reference_resolution_facts(pool_roots, importer_roots, exclude_substrings),
+        /* strict */ true,
+    );
+    let import_edges = import_resolution_facts(pool_roots, importer_roots, exclude_substrings);
+    union_dedup_import_facts_reference_first(reference_edges, import_edges)
+}
+
+/// THE UNION, ONCE. Reference-first exact dedup over `{path, import_module, target_declared}`,
+/// keeping first occurrence and therefore a stable order.
+///
+/// This is the single authority for a union that had two independent spellings: the `.dag`
+/// `union_import_resolution_fact_lists` (reference-first, exact dedup, interpreted) and the host
+/// selection-graph twin's `selection_edges` (import-first, dedup deferred to adjacency
+/// construction). Two spellings of one concept is the §3 fork; one helper consumed by both is the
+/// repair, and it is what lets the interpreted composition be retired without the native producer
+/// answering a different question.
+///
+/// WHY IT IS NATIVE. Measured on the live corpus in one process: the two host leaves cost 146ms
+/// and 5ms, while the interpreted union+dedup over the ~18.5k unioned facts cost 104,943ms — the
+/// whole of `dependency_resolution_facts_live`'s 112,261ms, and effectively the whole of the
+/// partition-closure census that consumes it. The cost is the interpreted composition, not the
+/// corpus scan, so caching the leaves recovers 151ms of 112,000ms and the fold has to go.
+///
+/// EXACTNESS IS THE CONTRACT, not a nicety: the partition-closure census judges unresolved targets,
+/// so `target_declared: false` rows must survive, and equality is the same three-field identity the
+/// `.dag` `import_resolution_fact_eq` decides. Nothing here may collapse to a coarser adjacency.
+pub(crate) fn union_dedup_import_facts_reference_first(
+    reference_edges: Vec<ImportResolutionFactRaw>,
+    import_edges: Vec<ImportResolutionFactRaw>,
+) -> Vec<ImportResolutionFactRaw> {
+    let mut seen: HashSet<(String, String, bool)> =
+        HashSet::with_capacity(reference_edges.len() + import_edges.len());
+    let mut out: Vec<ImportResolutionFactRaw> =
+        Vec::with_capacity(reference_edges.len() + import_edges.len());
+    for fact in reference_edges.into_iter().chain(import_edges.into_iter()) {
+        let key = (
+            fact.path.clone(),
+            fact.import_module.clone(),
+            fact.target_declared,
+        );
+        if seen.insert(key) {
+            out.push(fact);
+        }
+    }
+    out
+}
+
 pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationFactRaw> {
     #[cfg(test)]
     MODULE_DECLARATION_FACTS_CALL_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -42548,5 +42606,83 @@ mod annotation_erased_scan_projection {
             vec!["std.decl_ref".to_string()],
             "a real reference to the same module must still produce the edge"
         );
+    }
+}
+
+#[cfg(test)]
+mod union_dedup_import_facts_law {
+    //! The dedup that carries the edge population's identity and order law, tested on synthetic
+    //! rows so the law is decided by a controlled fixture rather than by whatever the live corpus
+    //! happens to contain. The live-corpus check is a separate receipt: the native producer was
+    //! held to the interpreted spelling row-for-row in order before that spelling was deleted.
+
+    use super::*;
+
+    fn fact(path: &str, module: &str, declared: bool) -> ImportResolutionFactRaw {
+        ImportResolutionFactRaw {
+            path: path.to_string(),
+            import_module: module.to_string(),
+            target_declared: declared,
+        }
+    }
+
+    /// Reference-first is not cosmetic: `module_impact_query` derives edge provenance by
+    /// membership in the import-only population, so which copy of a dual-backed fact survives
+    /// decides how that edge classifies.
+    #[test]
+    fn reference_copy_survives_when_both_sides_carry_the_same_fact() {
+        let out = union_dedup_import_facts_reference_first(
+            vec![fact("a.dag", "m.one", true)],
+            vec![fact("a.dag", "m.one", true)],
+        );
+        assert_eq!(out.len(), 1, "the duplicate must collapse: {out:?}");
+        assert_eq!(out[0].path, "a.dag");
+    }
+
+    /// Order is observable downstream — `module_target_index_from` conses targets in arrival
+    /// order — so the union must be reference rows first, then import rows, each in input order.
+    #[test]
+    fn order_is_reference_rows_then_import_rows_each_in_input_order() {
+        let out = union_dedup_import_facts_reference_first(
+            vec![fact("r1.dag", "m.r1", true), fact("r2.dag", "m.r2", true)],
+            vec![fact("i1.dag", "m.i1", true), fact("i2.dag", "m.i2", true)],
+        );
+        let seen: Vec<&str> = out.iter().map(|f| f.path.as_str()).collect();
+        assert_eq!(seen, vec!["r1.dag", "r2.dag", "i1.dag", "i2.dag"]);
+    }
+
+    /// THE FIELD THE CENSUS EXISTS TO JUDGE. An unresolved target is a `target_declared: false`
+    /// row; identity is the full triple, so the two declared-ness variants of one (path, module)
+    /// pair are DIFFERENT facts and both must survive. A dedup keyed on (path, module) alone
+    /// would pass every other assertion here and silently destroy the census's subject.
+    #[test]
+    fn declaredness_variants_of_one_pair_are_distinct_facts() {
+        let out = union_dedup_import_facts_reference_first(
+            vec![fact("a.dag", "m.one", true)],
+            vec![fact("a.dag", "m.one", false)],
+        );
+        assert_eq!(out.len(), 2, "declaredness is part of identity: {out:?}");
+        assert!(out[0].target_declared, "reference copy first");
+        assert!(!out[1].target_declared, "the unresolved row survives");
+    }
+
+    /// First occurrence wins, and later duplicates never reorder what already landed.
+    #[test]
+    fn first_occurrence_is_kept_and_later_duplicates_do_not_reorder() {
+        let out = union_dedup_import_facts_reference_first(
+            vec![
+                fact("a.dag", "m.one", true),
+                fact("b.dag", "m.two", true),
+                fact("a.dag", "m.one", true),
+            ],
+            vec![fact("b.dag", "m.two", true), fact("c.dag", "m.three", true)],
+        );
+        let seen: Vec<&str> = out.iter().map(|f| f.path.as_str()).collect();
+        assert_eq!(seen, vec!["a.dag", "b.dag", "c.dag"]);
+    }
+
+    #[test]
+    fn empty_inputs_produce_an_empty_population() {
+        assert!(union_dedup_import_facts_reference_first(vec![], vec![]).is_empty());
     }
 }

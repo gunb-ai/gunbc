@@ -65,6 +65,7 @@ pub enum EvalBuiltinArm {
     FreeCallLayerImportFacts,
     FreeCallImportResolutionFacts,
     FreeCallReferenceResolutionFacts,
+    FreeCallDependencyResolutionFacts,
     FreeCallConceptDeclFacts,
     FreeCallDataDeclTypeFacts,
     FreeCallExportSignatureFacts,
@@ -203,6 +204,7 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "layer_import_facts" => Some(EvalBuiltinArm::FreeCallLayerImportFacts),
         "import_resolution_facts" => Some(EvalBuiltinArm::FreeCallImportResolutionFacts),
         "reference_resolution_facts" => Some(EvalBuiltinArm::FreeCallReferenceResolutionFacts),
+        "dependency_resolution_facts" => Some(EvalBuiltinArm::FreeCallDependencyResolutionFacts),
         "concept_decl_facts" => Some(EvalBuiltinArm::FreeCallConceptDeclFacts),
         "data_decl_type_facts" => Some(EvalBuiltinArm::FreeCallDataDeclTypeFacts),
         "export_signature_facts" => Some(EvalBuiltinArm::FreeCallExportSignatureFacts),
@@ -339,6 +341,7 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.layer_import_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallLayerImportFacts };
     ("free_call.import_resolution_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallImportResolutionFacts };
     ("free_call.reference_resolution_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallReferenceResolutionFacts };
+    ("free_call.dependency_resolution_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDependencyResolutionFacts };
     ("free_call.concept_decl_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallConceptDeclFacts };
     ("free_call.data_decl_type_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDataDeclTypeFacts };
     ("free_call.export_signature_facts") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallExportSignatureFacts };
