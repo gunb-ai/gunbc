@@ -19,26 +19,29 @@ import gunbc.host_memory_qualification { SpecificPartQualification }
 
 // HOW WE KNOW A STEP FAILS. Not all evidence is equal, and a selection model
 // that flattens these would let the weakest link carry the strongest verdict.
+// The platform's own syndrome register named the failing step. This is the
+// strongest form and is NOT what gunbc currently holds for MREP.
+// On AssociatedByIdenticalSignature:
+// A vendor or third party reported the step by name alongside status words
+// byte-identical to ours. Strong, but an association rather than a decode:
+// it establishes that the same failure signature carries that step's name,
+// not that our platform's registers were read and interpreted.
+// On InferredFromSequencePosition:
+// The step is inferred from position in the boot sequence only.
 type TrainingEvidenceStanding
-  // The platform's own syndrome register named the failing step. This is the
-  // strongest form and is NOT what gunbc currently holds for MREP.
   = DecodedFromPlatformSyndrome { register: NonEmptyStr }
-  // A vendor or third party reported the step by name alongside status words
-  // byte-identical to ours. Strong, but an association rather than a decode:
-  // it establishes that the same failure signature carries that step's name,
-  // not that our platform's registers were read and interpreted.
   | AssociatedByIdenticalSignature { signature: NonEmptyStr, source: ExternalAuthority }
-  // The step is inferred from position in the boot sequence only.
   | InferredFromSequencePosition
   | EvidenceUnobserved
 
+// On observed_population:
+// The module population the failure was observed with. A step failure seen
+// only in a sparse population is weaker support for rejecting a part in a
+// full population, so the observation carries its own conditions.
 type PlatformTrainingFailure {
   board: BaseboardModel
   step: MemoryTrainingStep
   standing: TrainingEvidenceStanding
-  // The module population the failure was observed with. A step failure seen
-  // only in a sparse population is weaker support for rejecting a part in a
-  // full population, so the observation carries its own conditions.
   observed_population: List<NonEmptyStr>
   observed_at: EpochMs
 }

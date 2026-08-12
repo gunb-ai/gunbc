@@ -13,14 +13,15 @@ import product.placement_supply { HostIdentity }
 // Modeling them as one "watchdog" field would rebuild exactly the confusion
 // that cost that hour — they have different owners, different mechanisms,
 // different observability, and only one of them is configurable.
+// OpenBMC's standard boot watchdog, a systemd unit with D-Bus properties
+// (Enabled, Interval, ExpireAction). Observed INACTIVE on srv4.
+// On PowerMonForceReset:
+// The vendor's power monitor (power-monitor.service, /usr/bin/powermon).
+// Emits "force reset on state:1" and drives obmc-host-force-warm-reboot.
+// Observed ACTIVE on srv4. It is a compiled binary invoked with NO
+// arguments and NO configuration file, so its interval is not readable.
 type HostBootSupervisor
-  // OpenBMC's standard boot watchdog, a systemd unit with D-Bus properties
-  // (Enabled, Interval, ExpireAction). Observed INACTIVE on srv4.
   = PhosphorWatchdogPowerOn
-  // The vendor's power monitor (power-monitor.service, /usr/bin/powermon).
-  // Emits "force reset on state:1" and drives obmc-host-force-warm-reboot.
-  // Observed ACTIVE on srv4. It is a compiled binary invoked with NO
-  // arguments and NO configuration file, so its interval is not readable.
   | PowerMonForceReset
 
 type SupervisorRunState
@@ -58,30 +59,35 @@ type HostBootCode
   = HostBootCheckpoint { code: NonEmptyStr }
   | HostBootError { code: NonEmptyStr }
 
+// On last_checkpoint:
+// The last checkpoint reached before the failure.
+// On error_code:
+// The error code emitted at the failure, if the host emitted one. Absent
+// means the host went silent WITHOUT an error, which is a different fault
+// from an error-and-reset and must not be rendered as the same state.
+// On observed_cycles:
+// How many complete cycles of this signature were observed. One occurrence
+// is an event; a repeating identical signature is a deterministic fault,
+// and the two justify different responses.
 type HostBootStallSignature {
   host: HostIdentity
-  // The last checkpoint reached before the failure.
   last_checkpoint: NonEmptyStr
-  // The error code emitted at the failure, if the host emitted one. Absent
-  // means the host went silent WITHOUT an error, which is a different fault
-  // from an error-and-reset and must not be rendered as the same state.
   error_code: NonEmptyStr?
-  // How many complete cycles of this signature were observed. One occurrence
-  // is an event; a repeating identical signature is a deterministic fault,
-  // and the two justify different responses.
   observed_cycles: Nat
   observed_at: EpochMs
 }
 
+// The host emitted an error and restarted itself. No supervisor involved.
+// On SupervisorForcedReset:
+// A supervisor's timer expired and forced the reset.
+// On LoopCauseConfounded:
+// The host went silent and a supervisor eventually reset it: the two are
+// CONFOUNDED until one supervisor is stopped and the loop is re-observed.
+// This arm exists because it was the real state of knowledge for an hour,
+// and collapsing it into either neighbour would have been a guess.
 type HostBootLoopCause
-  // The host emitted an error and restarted itself. No supervisor involved.
   = HostSelfResetOnError { code: NonEmptyStr }
-  // A supervisor's timer expired and forced the reset.
   | SupervisorForcedReset { supervisor: HostBootSupervisor }
-  // The host went silent and a supervisor eventually reset it: the two are
-  // CONFOUNDED until one supervisor is stopped and the loop is re-observed.
-  // This arm exists because it was the real state of knowledge for an hour,
-  // and collapsing it into either neighbour would have been a guess.
   | LoopCauseConfounded { candidates: List<HostBootSupervisor> }
   | LoopCauseUnobserved
 

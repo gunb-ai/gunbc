@@ -83,12 +83,13 @@ data host_memory_qualification_note: String = "Written after the 2026-08-11 srv3
 // CAUSAL EXPERIMENTS ARE RECEIPTS, NOT PROSE. Each records what was actually
 // done, so a later reader can re-judge the verdict against the intervention
 // rather than inheriting the conclusion.
+// On HypothesisWeakenedByIntervention:
+// The intervention was WEAKER than the one that would settle the question.
+// Distinct from Refuted because the hypothesis remains live and the
+// experiment is repeatable in a stronger form.
 type ExperimentVerdict
   = HypothesisSupported
   | HypothesisRefuted
-  // The intervention was WEAKER than the one that would settle the question.
-  // Distinct from Refuted because the hypothesis remains live and the
-  // experiment is repeatable in a stronger form.
   | HypothesisWeakenedByIntervention { performed: NonEmptyStr, required: NonEmptyStr }
   | ExperimentInconclusive { reason: NonEmptyStr }
 
