@@ -3,6 +3,7 @@ module gunbc.host_boot_supervision
 import std.types { Bool, EpochMs, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { Second }
+import v2.std.optional { Present, Absent }
 import product.placement_supply { HostIdentity }
 
 // TWO INDEPENDENT SUPERVISORS CAN RESET A HOST, and the fleet modeled
