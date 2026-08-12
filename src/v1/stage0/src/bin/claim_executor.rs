@@ -10429,7 +10429,8 @@ fn run() -> Result<ExitCode, ExitCode> {
             Runnable::DiscoveryBatch { .. } | Runnable::ScopedWitnessBatch { .. }
         )
     });
-    // Witness naming hygiene (`test fn` outside `*_test.dag`, `__` basenames) is a
+    // Witness naming hygiene (`test fn` outside `*_test.dag`; the `__`-basename rule and
+    // the orphan-helper census were deleted in gunbc#8155) is a
     // property of the witness ROSTER, so it is paid by the plans that have one. It ran
     // unconditionally before plan evaluation until this change, on the stated ground
     // that a naming violation should be "the cheapest possible failure"; measured, the

@@ -4,7 +4,7 @@
 //!
 //! | Consumer site | What it reads from the discovery walk | Closed projection |
 //! |---|---|---|
-//! | Demand-directed `discover_floor_witness_roster([], [])` (runs only when the plan schedules a discovery or scoped-witness batch, gunbc#8140) | Naming hygiene, orphan/helpers, producer roster, module-graph facts, effect-reach derivation | Full snapshot payload + installed module-graph cache |
+//! | Demand-directed `discover_floor_witness_roster([], [])` (runs only when the plan schedules a discovery or scoped-witness batch, gunbc#8140) | `test fn` placement hygiene, producer roster, module-graph facts, effect-reach derivation (the orphan-helper census and the `__`-basename rule were deleted, gunbc#8155) | Full snapshot payload + installed module-graph cache |
 //! | Discovery corpus with `scan_dirs=[]` + explicit entries | Skips roster walk; still calls `build_module_graph_facts_live` on selection/skip paths | Module-graph facts bytes in snapshot (cache install) |
 //! | Discovery corpus with non-empty `scan_dirs` | Full roster walk for that scan shape | Not covered by pre-plan snapshot (distinct request identity) |
 //!
@@ -85,8 +85,6 @@ pub struct FloorDiscoverySnapshot {
     pub request_identity_digest: String,
     pub roster: Vec<DiscoveryRowSnapshot>,
     pub roster_digest: String,
-    pub naming_hygiene_refusal: Option<String>,
-    pub orphan_helper_refusal: Option<String>,
     pub module_graph_facts: ModuleGraphFactsSnapshot,
     pub module_graph_facts_digest: String,
     pub payload_digest: String,
@@ -500,8 +498,6 @@ struct FloorDiscoveryPayloadDigestView<'a> {
     request_identity_digest: &'a str,
     roster: &'a [DiscoveryRowSnapshot],
     roster_digest: &'a str,
-    naming_hygiene_refusal: &'a Option<String>,
-    orphan_helper_refusal: &'a Option<String>,
     module_graph_facts: &'a ModuleGraphFactsSnapshot,
     module_graph_facts_digest: &'a str,
 }
@@ -512,8 +508,6 @@ fn digest_payload(snapshot: &FloorDiscoverySnapshot) -> String {
         request_identity_digest: &snapshot.request_identity_digest,
         roster: &snapshot.roster,
         roster_digest: &snapshot.roster_digest,
-        naming_hygiene_refusal: &snapshot.naming_hygiene_refusal,
-        orphan_helper_refusal: &snapshot.orphan_helper_refusal,
         module_graph_facts: &snapshot.module_graph_facts,
         module_graph_facts_digest: &snapshot.module_graph_facts_digest,
     };
@@ -570,23 +564,6 @@ pub fn produce_floor_discovery_snapshot(
     request: &FloorDiscoveryRequest,
 ) -> Result<FloorDiscoverySnapshot, String> {
     COORDINATED_DISCOVERY_COMPUTE_COUNT.fetch_add(1, Ordering::SeqCst);
-    let naming_hygiene_refusal =
-        match super::floor_filename_hygiene_refusal_via_producer(&request.source_roots) {
-            Ok(()) => None,
-            Err(msg) => Some(msg),
-        };
-    if naming_hygiene_refusal.is_some() {
-        return Err(naming_hygiene_refusal.clone().unwrap());
-    }
-    let orphan_helper_refusal =
-        match super::test_module_hygiene_bridge::check_orphan_helpers_or_err(&request.source_roots)
-        {
-            Ok(()) => None,
-            Err(msg) => Some(msg),
-        };
-    if orphan_helper_refusal.is_some() {
-        return Err(orphan_helper_refusal.clone().unwrap());
-    }
     let mut rows = super::invoke_floor_discovery_producer(
         &request.source_roots,
         &request.scan_dirs,
@@ -606,8 +583,6 @@ pub fn produce_floor_discovery_snapshot(
         request_identity_digest,
         roster,
         roster_digest,
-        naming_hygiene_refusal,
-        orphan_helper_refusal,
         module_graph_facts: facts_snapshot,
         module_graph_facts_digest,
         payload_digest: String::new(),
@@ -882,8 +857,6 @@ mod tests {
             request,
             roster: vec![],
             roster_digest: digest_rows(&[]),
-            naming_hygiene_refusal: None,
-            orphan_helper_refusal: None,
             module_graph_facts_digest: digest_facts_snapshot(&facts),
             module_graph_facts: facts,
             payload_digest: String::new(),
@@ -1005,8 +978,6 @@ mod tests {
             request_identity_digest: request_identity_digest(&request).expect("request identity"),
             roster: vec![],
             roster_digest: digest_rows(&[]),
-            naming_hygiene_refusal: None,
-            orphan_helper_refusal: None,
             module_graph_facts: ModuleGraphFactsSnapshot {
                 edges: vec![],
                 nodes: vec![],
@@ -1060,8 +1031,6 @@ mod tests {
             request_identity_digest: request_identity_digest(&request).expect("request identity"),
             roster: vec![],
             roster_digest: digest_rows(&[]),
-            naming_hygiene_refusal: None,
-            orphan_helper_refusal: None,
             module_graph_facts: ModuleGraphFactsSnapshot {
                 edges: vec![],
                 nodes: vec![],
