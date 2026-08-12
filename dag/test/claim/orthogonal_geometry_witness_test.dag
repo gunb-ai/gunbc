@@ -22,7 +22,7 @@ import std.orthogonal_geometry {
   AxisAlignedBox3, axis_aligned_box3, box3_contains_point, box3_overlaps,
   BoundingBox3, bounding_box3, bounding_box3_min, bounding_box3_max,
   OrthogonalLoop2, orthogonal_loop2, loop2_vertices,
-  AxisAlignedSurface3, axis_aligned_surface3, surface3_plane, surface3_frame,
+  AxisAlignedSurface3, axis_aligned_surface3, surface3_plane, surface3_frame, surface3_extent,
   OrthogonalPrism3, orthogonal_prism3, prism3_height,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -271,21 +271,15 @@ test fn plane_surface_and_prism_hold() -> Bool {
   let surface = match axis_aligned_rectangle2(min: p2(x: 0, y: 0), max: p2(x: 4000, y: 3000)) {
     OrthogonalRefused { cause: _ } => false
     OrthogonalReady { value: rect } =>
-      match axis_aligned_surface3(offset: 0, extent: rect) {
-        OrthogonalReady { value: _ } => true
-        OrthogonalRefused { cause: _ } => false
-      }
+      millimeter_count(m: rectangle2_width(r: surface3_extent(s: axis_aligned_surface3(offset: 0, extent: rect)))) == 4000
   }
   let surface_plane_is_derived = match axis_aligned_rectangle2(min: point2(frame: building(), x: 0, y: 0), max: point2(frame: building(), x: 10, y: 10)) {
     OrthogonalRefused { cause: _ } => false
     OrthogonalReady { value: rect } =>
-      match axis_aligned_surface3(offset: 250, extent: rect) {
-        OrthogonalRefused { cause: _ } => false
-        OrthogonalReady { value: sf } =>
-          axis3_same(a: plane3_normal_axis(p: surface3_plane(s: sf)), b: Axis3Z)
-            && coordinate_frame_identity_eq(a: surface3_frame(s: sf), b: building())
-            && plane3_contains_point(plane: surface3_plane(s: sf), p: point3(frame: building(), x: 5, y: 5, z: 250))
-      }
+      let sf = axis_aligned_surface3(offset: 250, extent: rect)
+      axis3_same(a: plane3_normal_axis(p: surface3_plane(s: sf)), b: Axis3Z)
+        && coordinate_frame_identity_eq(a: surface3_frame(s: sf), b: building())
+        && plane3_contains_point(plane: surface3_plane(s: sf), p: point3(frame: building(), x: 5, y: 5, z: 250))
   }
   let prism = match orthogonal_loop2(vertices: [p2(x: 0, y: 0), p2(x: 4000, y: 0), p2(x: 4000, y: 3000), p2(x: 0, y: 3000)]) {
     OrthogonalRefused { cause: _ } => false

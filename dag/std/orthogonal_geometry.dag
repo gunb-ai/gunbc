@@ -598,11 +598,16 @@ type AxisAlignedSurface3 sole_constructor {
 // coordinates span, which the band does not have; the parameter did not deliver that generality,
 // it silently mis-delivered it. Dissolve-on: a plane-carrying 2D rectangle, at which point the
 // plane is read from the extent rather than constructed here.
-fn axis_aligned_surface3(offset: Int, extent: AxisAlignedRectangle2) -> OrthogonalConstruction<AxisAlignedSurface3> {
-  OrthogonalReady { value: AxisAlignedSurface3 {
+// The mint is TOTAL and says so in its return type. Once the plane is derived there is no invalid
+// input left for it to reject, and keeping the OrthogonalConstruction wrapper would advertise a
+// refusal that no arm can produce - the same rung inflation on the shape that the deleted
+// LoopNotClosed and SurfaceNotInPlane arms were on the sum. Every caller stops paying a match for
+// an arm that cannot arrive.
+fn axis_aligned_surface3(offset: Int, extent: AxisAlignedRectangle2) -> AxisAlignedSurface3 {
+  AxisAlignedSurface3 {
     plane: plane3(frame: rectangle2_frame(r: extent), normal_axis: Axis3Z, offset: offset),
     extent: extent,
-  } }
+  }
 }
 
 fn surface3_plane(s: AxisAlignedSurface3) -> Plane3 { s.plane }
