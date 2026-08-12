@@ -106,10 +106,6 @@ import gunbc.roadmap_belt_actuate {
   belt_tick_classify_sessions,
   BeltRevisionAdmitted, BeltRevisionRefusedDrifted, BeltRevisionRefusedUnobserved,
   belt_revision_admission,
-}
-import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
-import gunbc.fleet_desired_observe {
-  RevisionConverged, RevisionDrifted, RevisionUnobserved,
   DispatchRevisionDrifted, DispatchRevisionUnobserved,
   belt_dispatch_result_ok,
   belt_dispatch_status_label,
@@ -149,6 +145,10 @@ import gunbc.fleet_desired_observe {
   UnknownSpawnWorkdir,
   srv1_live_dashboard_instance,
   srv1_green_dashboard_instance,
+}
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
+import gunbc.fleet_desired_observe {
+  RevisionConverged, RevisionDrifted, RevisionUnobserved,
 }
 import extdeps.languages.json.emit { serialize_json }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
