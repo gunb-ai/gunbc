@@ -153,14 +153,6 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolution: unbound_dissolution(description: "the S2 behavioral-closure lane greens it locally, then this row deletes")
   ),
   known_red_probe(
-    entry: "src/v2/test/claim/manual/english_emit_add_test.dag",
-    f: "english_emit_add_prose_holds",
-    kind: CorpusWitnessKind,
-    budget: FastLaneEvalBudget,
-    reason: "the english emit prose projection, same S2 emit-family root as its round-trip sibling. Owner: the S2 behavioral-closure lane.",
-    dissolution: unbound_dissolution(description: "the S2 behavioral-closure lane greens it locally, then this row deletes")
-  ),
-  known_red_probe(
     entry: "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag",
     f: "compiler_closure_scoped_ingest_module_count_ok_holds",
     kind: CorpusWitnessKind,
@@ -191,6 +183,14 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     budget: SubstrateLongLaneEvalBudget,
     reason: "G2 under-selection through data declarations (adhoc-8026d859-7e4): scaffold_disposition_census_fixture_pool_is_nonempty reaches decl_facts only via a data initializer, and live_read_selection_manifest_live classifies it LocalRead on 341d3203bc2 (discriminating LocalRead-vs-Refused receipt, not Refused). LocalRead licenses a skip — under-selection. Owner: live-read / G2 computation-reachability lane ahead of #8130 data-root admission.",
     dissolution: unbound_dissolution(description: "G2 computation reachability follows data initializers as well as function bodies, this witness greens, and this row deletes — promoting the unchanged witness to ordinary DiscoverySelection as the permanent under-selection regression control")
+  ),
+  known_red_probe(
+    entry: "dag/test/claim/g2_data_reference_under_selection_witness_test.dag",
+    f: "specimen_does_not_classify_as_local_read",
+    kind: CorpusWitnessKind,
+    budget: SubstrateLongLaneEvalBudget,
+    reason: "The discriminating half of the under-selection pair (adhoc-8026d859-7e4). Its sibling specimen_classifies_as_runtime_read is false in two OPPOSITE states — Classified{LocalRead}, which licenses a skip and is the harm, and Refused, which is fail-closed and licenses nothing — so alone it cannot establish that the defect is under-selection rather than a refusal, and a note is not evidence a machine can read. This claim carries the other bit: the pair reads (false,false) on LocalRead today, (true,true) once traversal follows data initializers, and (false,TRUE) if the state drifts to Refused, which greens this row ALONE and surfaces as StaleKnownRed instead of hiding behind a sibling that stays red either way. Expected-red rather than an ordinary green witness because it costs the same ~14s evaluation and the long-eval budget is coupled to expected-red across today's population.",
+    dissolution: unbound_dissolution(description: "the traversal repair lands and BOTH rows for this entry delete in the same change — they are one obligation with one terminal construction and neither survives the other, so they are deliberately not split; the two witnesses stay as the permanent pair that keeps LocalRead, RuntimeRead and Refused distinguishable")
   ),
   known_red_probe(
     entry: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag",

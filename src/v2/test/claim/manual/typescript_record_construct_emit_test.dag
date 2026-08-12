@@ -25,6 +25,7 @@ fn record_construct_binding_spellings() -> Map<Symbol, String> {
 
 fn record_construct_target_model() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: ts_target_model_node(),
     lex: ts_fn_add_lex(),
     binding_spellings: record_construct_binding_spellings(),

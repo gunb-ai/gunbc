@@ -9,6 +9,7 @@ import v2.extdeps.languages.rust {
   rust_type_expression_projection
 }
 import v2.std.compilers.target_model {
+  ProducedDeclUnwired,
   TargetModel,
   TargetOwnershipUseSite,
   TargetReferenceLayer,
@@ -53,6 +54,7 @@ fn wrap_decision_sg_rc_target() -> TargetModel {
 
 fn wrap_decision_bundle_absent_target() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: Node {
       kind: TypeNode { connective: Conj },
       children: [],
@@ -68,6 +70,7 @@ fn wrap_decision_bundle_absent_target() -> TargetModel {
 
 fn wrap_decision_partial_bundle_target() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: Node {
       kind: TypeNode { connective: Conj },
       children: [

@@ -1,0 +1,822 @@
+module test.claim.self_host_promotion_admission_witness
+
+import v2.compiler.self_host.generation {
+  ArtifactIdentity,
+  ArtifactMaterialized,
+  ArtifactNotMaterialized,
+  observed_artifact_digest,
+  CandidateGeneration,
+  GenerationIdentity,
+  SeedGeneration,
+  SuccessorGeneration
+}
+import v2.compiler.self_host.promotion_admission {
+  BehaviorAgrees,
+  BehaviorDiverges,
+  BehavioralEquivalenceReceipt,
+  BuildFailed,
+  BuildGreen,
+  BuildOutcome,
+  BuildReceipt,
+  DiscriminatingFaultReceipt,
+  EquivalenceOutcome,
+  FaultCaught,
+  FaultNotCaught,
+  FaultOutcome,
+  GenerationProvenanceReceipt,
+  Observed,
+  ObservationUnavailable,
+  ObservedVerdict,
+  PromotionOutcome,
+  SelfHostCandidate,
+  admit_promotion,
+  Promoted,
+  PromotionRefused,
+  promotion_refusal_carries
+}
+import v2.std.logic { Bool }
+import v2.std.node { Hash, symbol_identity_digest }
+import v2.std.optional { Absent, Present }
+import std.content_hash { sha512_hex_digest }
+
+// Test-side projection. The authority carrier deliberately exposes no is_* Bool over
+// PromotionOutcome (review 51217, predicate-dissolution): a witness must return Bool,
+// so the collapse belongs here, at the assertion boundary, not on the admission API.
+fn pa_admitted(o: PromotionOutcome) -> Bool {
+  match o {
+    Promoted { successor: _, cases_compared: _ } => true
+    PromotionRefused { causes: _ } => false
+  }
+}
+
+fn pa_artifact(hex: String) -> ArtifactIdentity {
+  match sha512_hex_digest(hex: hex) {
+    Present { value: d } =>
+      ArtifactMaterialized { digest: observed_artifact_digest(observed: d) }
+    Absent => ArtifactNotMaterialized
+  }
+}
+
+data pa_seed_artifact_hex: String = "36356c8cc805d9d4a762991f9059d3687ef70fd1786b2d90f2806fcad0f9ce916d80cd3220ebf6f13d19df404740ca849cda38a6632cd0c2f92689e3bec80505"
+
+data pa_candidate_artifact_hex: String = "8913ea1d5983297e05f1c0ca75a7f85d551f308ee3cc4f6123ff74980198feb88c08a0167fd6a74b4994b8d9febcec5f8cb7c2132368349b5e9dc1bd86ce8458"
+
+data pa_successor_artifact_hex: String = "cf931ac453463355533c6e57f0bc87105ef261954875975dfcf463e4fcbf9af0f94c76a2bd7f538e84f3264cfaa5291f3b63f34ffd2f6f09214c329d5688c895"
+
+fn pa_digest(label: String) -> Hash {
+  symbol_identity_digest(sym: label)
+}
+
+fn pa_identity(closure_label: String, artifact_hex: String) -> GenerationIdentity {
+  GenerationIdentity {
+    producer_compiler: pa_digest(label: "producer-compiler"),
+    source_closure: pa_digest(label: closure_label),
+    target_model: pa_digest(label: "target-model-rust"),
+    toolchain: pa_digest(label: "toolchain-pinned"),
+    build_configuration: pa_digest(label: "build-config-release"),
+    materialized_artifact: pa_artifact(hex: artifact_hex)
+  }
+}
+
+fn pa_seed_identity() -> GenerationIdentity {
+  pa_identity(closure_label: "seed-closure", artifact_hex: pa_seed_artifact_hex)
+}
+
+// The candidate's source closure DELIBERATELY differs from the seed's. That is the
+// normal, expected case for a real self-host candidate: it emits its own source.
+fn pa_candidate_identity() -> GenerationIdentity {
+  pa_identity(
+    closure_label: "candidate-closure-DIFFERENT-FROM-SEED",
+    artifact_hex: pa_candidate_artifact_hex
+  )
+}
+
+fn pa_successor_identity() -> GenerationIdentity {
+  pa_identity(
+    closure_label: "successor-closure",
+    artifact_hex: pa_successor_artifact_hex
+  )
+}
+
+// A GENUINELY byte-identical generation: one identity value, so producer compiler,
+// source closure, target model, toolchain, build configuration AND artifact digest
+// are all equal across seed, candidate and successor. A byte comparison of emitted
+// source would report a perfect fixed point here.
+fn pa_identical_identity() -> GenerationIdentity {
+  pa_identity(closure_label: "seed-closure", artifact_hex: pa_seed_artifact_hex)
+}
+
+fn pa_identical_candidate() -> CandidateGeneration {
+  CandidateGeneration {
+    identity: pa_identical_identity(),
+    produced_by_seed: SeedGeneration { identity: pa_identical_identity() }
+  }
+}
+
+fn pa_seed() -> SeedGeneration {
+  SeedGeneration { identity: pa_seed_identity() }
+}
+
+fn pa_candidate() -> CandidateGeneration {
+  CandidateGeneration {
+    identity: pa_candidate_identity(),
+    produced_by_seed: pa_seed()
+  }
+}
+
+fn pa_successor() -> SuccessorGeneration {
+  SuccessorGeneration {
+    identity: pa_successor_identity(),
+    produced_by_candidate: pa_candidate()
+  }
+}
+
+fn pa_build(
+  subject: GenerationIdentity,
+  outcome: ObservedVerdict<BuildOutcome>
+) -> BuildReceipt {
+  BuildReceipt { subject: subject, outcome: outcome }
+}
+
+fn pa_equivalence(
+  subject: GenerationIdentity,
+  cases: Int,
+  outcome: ObservedVerdict<EquivalenceOutcome>
+) -> BehavioralEquivalenceReceipt {
+  BehavioralEquivalenceReceipt {
+    subject: subject,
+    oracle: pa_seed_identity(),
+    corpus: "std-logic-classical-truth-table",
+    cases_compared: cases,
+    outcome: outcome
+  }
+}
+
+fn pa_fault(
+  subject: GenerationIdentity,
+  outcome: ObservedVerdict<FaultOutcome>
+) -> DiscriminatingFaultReceipt {
+  DiscriminatingFaultReceipt {
+    subject: subject,
+    corpus: "std-logic-classical-truth-table",
+    planted_fault: "classical_not called on mismatched input",
+    outcome: outcome
+  }
+}
+
+fn pa_provenance(
+  subject: GenerationIdentity,
+  producer: GenerationIdentity
+) -> GenerationProvenanceReceipt {
+  GenerationProvenanceReceipt { subject: subject, producer: producer }
+}
+
+fn pa_bundle(
+  candidate_build: BuildReceipt,
+  successor_build: BuildReceipt,
+  candidate_equivalence: BehavioralEquivalenceReceipt,
+  successor_equivalence: BehavioralEquivalenceReceipt,
+  discriminating_fault: DiscriminatingFaultReceipt,
+  candidate_provenance: GenerationProvenanceReceipt,
+  successor_provenance: GenerationProvenanceReceipt
+) -> SelfHostCandidate {
+  SelfHostCandidate {
+    candidate: pa_candidate(),
+    successor: pa_successor(),
+    candidate_build: candidate_build,
+    successor_build: successor_build,
+    candidate_equivalence: candidate_equivalence,
+    successor_equivalence: successor_equivalence,
+    discriminating_fault: discriminating_fault,
+    candidate_provenance: candidate_provenance,
+    successor_provenance: successor_provenance
+  }
+}
+
+fn pa_good() -> SelfHostCandidate {
+  pa_bundle(
+    candidate_build: pa_build(
+      subject: pa_candidate_identity(),
+      outcome: Observed { value: BuildGreen }
+    ),
+    successor_build: pa_build(
+      subject: pa_successor_identity(),
+      outcome: Observed { value: BuildGreen }
+    ),
+    candidate_equivalence: pa_equivalence(
+      subject: pa_candidate_identity(),
+      cases: 12,
+      outcome: Observed { value: BehaviorAgrees }
+    ),
+    successor_equivalence: pa_equivalence(
+      subject: pa_successor_identity(),
+      cases: 12,
+      outcome: Observed { value: BehaviorAgrees }
+    ),
+    discriminating_fault: pa_fault(
+      subject: pa_candidate_identity(),
+      outcome: Observed { value: FaultCaught }
+    ),
+    candidate_provenance: pa_provenance(
+      subject: pa_candidate_identity(),
+      producer: pa_seed_identity()
+    ),
+    successor_provenance: pa_provenance(
+      subject: pa_successor_identity(),
+      producer: pa_candidate_identity()
+    )
+  )
+}
+
+// POSITIVE CONTROL, and simultaneously THE HEADLINE CLAIM. This candidate's source
+// closure differs from the seed's and it is admitted anyway, because behavior agreed
+// on a nonempty corpus with a caught planted fault. Under the superseded byte
+// fixed-point authority this exact candidate would have been REFUSED for the sole
+// reason that its emitted source bytes were not the seed's.
+test fn source_different_but_behaviorally_equivalent_is_promoted() -> Bool {
+  pa_admitted(o: admit_promotion(c: pa_good()))
+}
+
+// THE OTHER HALF, and the one that matters more. Every identity axis here is
+// UNCHANGED — same producer, same source closure, same target, same toolchain, same
+// build configuration, same artifact — so a byte comparison would report a perfect
+// fixed point. Behavior diverged, so admission refuses. Byte identity buys nothing.
+test fn byte_identical_but_behaviorally_wrong_is_refused() -> Bool {
+  let ident = pa_identical_identity()
+  let cand = pa_identical_candidate()
+  let o = admit_promotion(
+    c: SelfHostCandidate {
+      candidate: cand,
+      successor: SuccessorGeneration {
+        identity: ident,
+        produced_by_candidate: cand
+      },
+      candidate_build: pa_build(subject: ident, outcome: Observed { value: BuildGreen }),
+      successor_build: pa_build(subject: ident, outcome: Observed { value: BuildGreen }),
+      candidate_equivalence: BehavioralEquivalenceReceipt {
+        subject: ident,
+        oracle: ident,
+        corpus: "std-logic-classical-truth-table",
+        cases_compared: 12,
+        outcome: Observed {
+          value: BehaviorDiverges { at_case: "classical_and(True,False)" }
+        }
+      },
+      successor_equivalence: BehavioralEquivalenceReceipt {
+        subject: ident,
+        oracle: ident,
+        corpus: "std-logic-classical-truth-table",
+        cases_compared: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      },
+      discriminating_fault: pa_fault(
+        subject: ident,
+        outcome: Observed { value: FaultCaught }
+      ),
+      candidate_provenance: pa_provenance(subject: ident, producer: ident),
+      successor_provenance: pa_provenance(subject: ident, producer: ident)
+    }
+  )
+  !pa_admitted(o: o)
+    && promotion_refusal_carries(o: o, cause: ^refusal_behavior_diverged_from_oracle)
+}
+
+// A corpus that never proved it could fail admits nothing. Without this arm the
+// equivalence receipt is satisfiable by a corpus that agrees because it cannot
+// disagree.
+test fn uncaught_planted_fault_is_refused() -> Bool {
+  let o = admit_promotion(
+    c: pa_bundle(
+      candidate_build: pa_build(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      successor_build: pa_build(
+        subject: pa_successor_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      candidate_equivalence: pa_equivalence(
+        subject: pa_candidate_identity(),
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      successor_equivalence: pa_equivalence(
+        subject: pa_successor_identity(),
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      discriminating_fault: pa_fault(
+        subject: pa_candidate_identity(),
+        outcome: Observed {
+          value: FaultNotCaught { at_case: "classical_not(True)" }
+        }
+      ),
+      candidate_provenance: pa_provenance(
+        subject: pa_candidate_identity(),
+        producer: pa_seed_identity()
+      ),
+      successor_provenance: pa_provenance(
+        subject: pa_successor_identity(),
+        producer: pa_candidate_identity()
+      )
+    )
+  )
+  !pa_admitted(o: o)
+    && promotion_refusal_carries(o: o, cause: ^refusal_discriminating_fault_not_caught)
+}
+
+// THE UNAVAILABLE-IS-NOT-EQUIVALENT CONTROL. The fault run could not be observed at
+// all. That is neither "the fault was caught" nor "the fault escaped", and it must
+// not be silently treated as either. Refusal names the unavailability so the deficit
+// stays countable rather than being absorbed into a green.
+test fn unavailable_fault_observation_is_refused_not_assumed_equivalent() -> Bool {
+  let o = admit_promotion(
+    c: pa_bundle(
+      candidate_build: pa_build(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      successor_build: pa_build(
+        subject: pa_successor_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      candidate_equivalence: pa_equivalence(
+        subject: pa_candidate_identity(),
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      successor_equivalence: pa_equivalence(
+        subject: pa_successor_identity(),
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      discriminating_fault: pa_fault(
+        subject: pa_candidate_identity(),
+        outcome: ObservationUnavailable { cause: ^fault_harness_did_not_run }
+      ),
+      candidate_provenance: pa_provenance(
+        subject: pa_candidate_identity(),
+        producer: pa_seed_identity()
+      ),
+      successor_provenance: pa_provenance(
+        subject: pa_successor_identity(),
+        producer: pa_candidate_identity()
+      )
+    )
+  )
+  !pa_admitted(o: o)
+    && promotion_refusal_carries(
+      o: o,
+      cause: ^refusal_receipt_observation_unavailable
+    )
+}
+
+// Agreement over zero cases is agreement over nothing.
+test fn empty_behavioral_corpus_is_refused() -> Bool {
+  let o = admit_promotion(
+    c: pa_bundle(
+      candidate_build: pa_build(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      successor_build: pa_build(
+        subject: pa_successor_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      candidate_equivalence: pa_equivalence(
+        subject: pa_candidate_identity(),
+        cases: 0,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      successor_equivalence: pa_equivalence(
+        subject: pa_successor_identity(),
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      discriminating_fault: pa_fault(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: FaultCaught }
+      ),
+      candidate_provenance: pa_provenance(
+        subject: pa_candidate_identity(),
+        producer: pa_seed_identity()
+      ),
+      successor_provenance: pa_provenance(
+        subject: pa_successor_identity(),
+        producer: pa_candidate_identity()
+      )
+    )
+  )
+  !pa_admitted(o: o)
+    && promotion_refusal_carries(o: o, cause: ^refusal_empty_behavioral_corpus)
+}
+
+// A receipt gathered under a DIFFERENT toolchain refuses as stale. This is the axis
+// most likely to drift unnoticed in practice, because nothing about the source
+// changes when the toolchain moves underneath it.
+test fn receipt_from_a_different_toolchain_is_refused_as_stale() -> Bool {
+  let stale_subject = GenerationIdentity {
+    producer_compiler: pa_candidate_identity().producer_compiler,
+    source_closure: pa_candidate_identity().source_closure,
+    target_model: pa_candidate_identity().target_model,
+    toolchain: pa_digest(label: "toolchain-MOVED"),
+    build_configuration: pa_candidate_identity().build_configuration,
+    materialized_artifact: pa_candidate_identity().materialized_artifact
+  }
+  let o = admit_promotion(
+    c: pa_bundle(
+      candidate_build: pa_build(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      successor_build: pa_build(
+        subject: pa_successor_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      candidate_equivalence: pa_equivalence(
+        subject: stale_subject,
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      successor_equivalence: pa_equivalence(
+        subject: pa_successor_identity(),
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      discriminating_fault: pa_fault(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: FaultCaught }
+      ),
+      candidate_provenance: pa_provenance(
+        subject: pa_candidate_identity(),
+        producer: pa_seed_identity()
+      ),
+      successor_provenance: pa_provenance(
+        subject: pa_successor_identity(),
+        producer: pa_candidate_identity()
+      )
+    )
+  )
+  !pa_admitted(o: o)
+    && promotion_refusal_carries(o: o, cause: ^refusal_stale_receipt_subject)
+}
+
+// A build that failed is not a build. Stated separately from behavioral divergence
+// because a candidate that does not compile and one that compiles and misbehaves are
+// different states with different remedies.
+test fn failed_successor_build_is_refused() -> Bool {
+  let o = admit_promotion(
+    c: pa_bundle(
+      candidate_build: pa_build(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      successor_build: pa_build(
+        subject: pa_successor_identity(),
+        outcome: Observed { value: BuildFailed { cause: ^rustc_error } }
+      ),
+      candidate_equivalence: pa_equivalence(
+        subject: pa_candidate_identity(),
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      successor_equivalence: pa_equivalence(
+        subject: pa_successor_identity(),
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      discriminating_fault: pa_fault(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: FaultCaught }
+      ),
+      candidate_provenance: pa_provenance(
+        subject: pa_candidate_identity(),
+        producer: pa_seed_identity()
+      ),
+      successor_provenance: pa_provenance(
+        subject: pa_successor_identity(),
+        producer: pa_candidate_identity()
+      )
+    )
+  )
+  !pa_admitted(o: o)
+    && promotion_refusal_carries(o: o, cause: ^refusal_build_not_green)
+}
+
+// THE SELF-AUTHORIZATION CONTROL. A provenance receipt claiming the candidate
+// produced ITSELF is refused, because provenance is checked against the producer
+// fixed by construction when the generation was built, not against whatever the
+// receipt asserts.
+test fn candidate_cannot_authorize_its_own_provenance() -> Bool {
+  let o = admit_promotion(
+    c: pa_bundle(
+      candidate_build: pa_build(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      successor_build: pa_build(
+        subject: pa_successor_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      candidate_equivalence: pa_equivalence(
+        subject: pa_candidate_identity(),
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      successor_equivalence: pa_equivalence(
+        subject: pa_successor_identity(),
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      discriminating_fault: pa_fault(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: FaultCaught }
+      ),
+      candidate_provenance: pa_provenance(
+        subject: pa_candidate_identity(),
+        producer: pa_candidate_identity()
+      ),
+      successor_provenance: pa_provenance(
+        subject: pa_successor_identity(),
+        producer: pa_candidate_identity()
+      )
+    )
+  )
+  !pa_admitted(o: o)
+    && promotion_refusal_carries(
+      o: o,
+      cause: ^refusal_provenance_not_declared_producer
+    )
+}
+
+// DISCRIMINATING RED for the oracle join (review 51140). A receipt naming the
+// CANDIDATE as its own oracle is refused. Without the join this bundle is admitted:
+// subject matches, behavior "agrees", and the comparison was against itself.
+test fn candidate_as_its_own_oracle_is_refused() -> Bool {
+  let self_oracle = BehavioralEquivalenceReceipt {
+    subject: pa_candidate_identity(),
+    oracle: pa_candidate_identity(),
+    corpus: "std-logic-classical-truth-table",
+    cases_compared: 12,
+    outcome: Observed { value: BehaviorAgrees }
+  }
+  let o = admit_promotion(
+    c: pa_bundle(
+      candidate_build: pa_build(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      successor_build: pa_build(
+        subject: pa_successor_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      candidate_equivalence: self_oracle,
+      successor_equivalence: pa_equivalence(
+        subject: pa_successor_identity(),
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      discriminating_fault: pa_fault(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: FaultCaught }
+      ),
+      candidate_provenance: pa_provenance(
+        subject: pa_candidate_identity(),
+        producer: pa_seed_identity()
+      ),
+      successor_provenance: pa_provenance(
+        subject: pa_successor_identity(),
+        producer: pa_candidate_identity()
+      )
+    )
+  )
+  !pa_admitted(o: o)
+    && promotion_refusal_carries(o: o, cause: ^refusal_oracle_not_declared_seed)
+}
+
+// DISCRIMINATING RED for the unmaterialized-artifact arm at the PROMOTION seam
+// (review 51140). The generation-level witness proves two unbuilt artifacts do not
+// AGREE; this proves admission refuses an unbuilt candidate by name, which is the
+// arm that matters when SH-C's artifact axis is not yet fillable.
+test fn unmaterialized_candidate_artifact_is_refused_at_promotion() -> Bool {
+  let unbuilt_identity = GenerationIdentity {
+    producer_compiler: pa_candidate_identity().producer_compiler,
+    source_closure: pa_candidate_identity().source_closure,
+    target_model: pa_candidate_identity().target_model,
+    toolchain: pa_candidate_identity().toolchain,
+    build_configuration: pa_candidate_identity().build_configuration,
+    materialized_artifact: ArtifactNotMaterialized
+  }
+  let unbuilt_candidate = CandidateGeneration {
+    identity: unbuilt_identity,
+    produced_by_seed: pa_seed()
+  }
+  let o = admit_promotion(
+    c: SelfHostCandidate {
+      candidate: unbuilt_candidate,
+      successor: SuccessorGeneration {
+        identity: pa_successor_identity(),
+        produced_by_candidate: unbuilt_candidate
+      },
+      candidate_build: pa_build(
+        subject: unbuilt_identity,
+        outcome: Observed { value: BuildGreen }
+      ),
+      successor_build: pa_build(
+        subject: pa_successor_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      candidate_equivalence: pa_equivalence(
+        subject: unbuilt_identity,
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      successor_equivalence: pa_equivalence(
+        subject: pa_successor_identity(),
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      discriminating_fault: pa_fault(
+        subject: unbuilt_identity,
+        outcome: Observed { value: FaultCaught }
+      ),
+      candidate_provenance: pa_provenance(
+        subject: unbuilt_identity,
+        producer: pa_seed_identity()
+      ),
+      successor_provenance: pa_provenance(
+        subject: pa_successor_identity(),
+        producer: unbuilt_identity
+      )
+    }
+  )
+  !pa_admitted(o: o)
+    && promotion_refusal_carries(o: o, cause: ^refusal_artifact_not_materialized)
+}
+
+// DISCRIMINATING RED: chain splicing. Candidate A is bundled with a successor whose
+// own produced_by_candidate names a DIFFERENT candidate B. Every receipt joins
+// internally, so without an explicit chain check both halves look valid and the
+// successor inherits admission from a candidate that never produced it.
+test fn spliced_candidate_and_successor_chains_are_refused() -> Bool {
+  let other_candidate = CandidateGeneration {
+    identity: pa_identity(
+      closure_label: "OTHER-candidate-closure",
+      artifact_hex: pa_seed_artifact_hex
+    ),
+    produced_by_seed: pa_seed()
+  }
+  let spliced_successor = SuccessorGeneration {
+    identity: pa_successor_identity(),
+    produced_by_candidate: other_candidate
+  }
+  let o = admit_promotion(
+    c: SelfHostCandidate {
+      candidate: pa_candidate(),
+      successor: spliced_successor,
+      candidate_build: pa_build(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      successor_build: pa_build(
+        subject: pa_successor_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      candidate_equivalence: pa_equivalence(
+        subject: pa_candidate_identity(),
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      successor_equivalence: pa_equivalence(
+        subject: pa_successor_identity(),
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      discriminating_fault: pa_fault(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: FaultCaught }
+      ),
+      candidate_provenance: pa_provenance(
+        subject: pa_candidate_identity(),
+        producer: pa_seed_identity()
+      ),
+      successor_provenance: pa_provenance(
+        subject: pa_successor_identity(),
+        producer: other_candidate.identity
+      )
+    }
+  )
+  !pa_admitted(o: o)
+    && promotion_refusal_carries(
+      o: o,
+      cause: ^refusal_successor_not_produced_by_candidate
+    )
+}
+
+// DISCRIMINATING RED: the planted fault was proven discriminating over a DIFFERENT
+// corpus than the one equivalence was measured on, so the fault receipt vouches for
+// teeth the equivalence run never had.
+test fn fault_proven_on_a_different_corpus_is_refused() -> Bool {
+  let o = admit_promotion(
+    c: pa_bundle(
+      candidate_build: pa_build(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      successor_build: pa_build(
+        subject: pa_successor_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      candidate_equivalence: pa_equivalence(
+        subject: pa_candidate_identity(),
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      successor_equivalence: pa_equivalence(
+        subject: pa_successor_identity(),
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      discriminating_fault: DiscriminatingFaultReceipt {
+        subject: pa_candidate_identity(),
+        corpus: "SOME-OTHER-corpus",
+        planted_fault: "classical_not called on mismatched input",
+        outcome: Observed { value: FaultCaught }
+      },
+      candidate_provenance: pa_provenance(
+        subject: pa_candidate_identity(),
+        producer: pa_seed_identity()
+      ),
+      successor_provenance: pa_provenance(
+        subject: pa_successor_identity(),
+        producer: pa_candidate_identity()
+      )
+    )
+  )
+  !pa_admitted(o: o)
+    && promotion_refusal_carries(
+      o: o,
+      cause: ^refusal_corpus_mismatch_across_receipts
+    )
+}
+
+// DISCRIMINATING RED for the homonym splice (review 51231). The successor's declared
+// producer has the SAME identity as the bundled candidate but descends from a
+// DIFFERENT seed. An identity-only chain join admits this; joining the whole declared
+// producer refuses it. Without this control the bypass is unwitnessed.
+test fn same_identity_different_seed_splice_is_refused() -> Bool {
+  let other_seed = SeedGeneration {
+    identity: pa_identity(
+      closure_label: "OTHER-seed-closure",
+      artifact_hex: pa_successor_artifact_hex
+    )
+  }
+  let homonym_candidate = CandidateGeneration {
+    identity: pa_candidate_identity(),
+    produced_by_seed: other_seed
+  }
+  let o = admit_promotion(
+    c: SelfHostCandidate {
+      candidate: pa_candidate(),
+      successor: SuccessorGeneration {
+        identity: pa_successor_identity(),
+        produced_by_candidate: homonym_candidate
+      },
+      candidate_build: pa_build(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      successor_build: pa_build(
+        subject: pa_successor_identity(),
+        outcome: Observed { value: BuildGreen }
+      ),
+      candidate_equivalence: pa_equivalence(
+        subject: pa_candidate_identity(),
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      successor_equivalence: pa_equivalence(
+        subject: pa_successor_identity(),
+        cases: 12,
+        outcome: Observed { value: BehaviorAgrees }
+      ),
+      discriminating_fault: pa_fault(
+        subject: pa_candidate_identity(),
+        outcome: Observed { value: FaultCaught }
+      ),
+      candidate_provenance: pa_provenance(
+        subject: pa_candidate_identity(),
+        producer: pa_seed_identity()
+      ),
+      successor_provenance: pa_provenance(
+        subject: pa_successor_identity(),
+        producer: pa_candidate_identity()
+      )
+    }
+  )
+  !pa_admitted(o: o)
+    && promotion_refusal_carries(
+      o: o,
+      cause: ^refusal_successor_not_produced_by_candidate
+    )
+}

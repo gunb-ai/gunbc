@@ -1,6 +1,7 @@
 module product.compute_board.verilog_projection
 
 import std.types { String, NonEmptyStr, List, list_length }
+import std.nat { Nat }
 import product.compute_board.digital_control {
   board_power_interlock_intent,
   conditioned_good_signal,
@@ -51,6 +52,7 @@ type VerilogProjectionRefusal
   | ReferencedSignalUndeclared { equation_driven: NonEmptyStr }
   | SignalSpellingUnbound { signal: NonEmptyStr }
   | SignalSpellingNotAdmissible { signal: NonEmptyStr, spelling: String }
+  | DuplicateSignalBinding { signal: NonEmptyStr }
 
 // The receipt carries the article identity so an emission is traceable to the root that produced
 // it, rather than being an anonymous string two different articles could both have produced.
@@ -93,6 +95,15 @@ fn contains_forbidden(spelling: String) -> Bool {
 
 fn spelling_is_admissible(spelling: String) -> Bool {
   spelling != "" && !is_reserved(spelling) && !contains_forbidden(spelling: spelling)
+}
+
+// HOW MANY bindings spell this signal. spelling_for takes the FIRST match, so two rows for one
+// signal chose a spelling by authoring order — and the emitted module would silently use one
+// while a reader of the table saw two. A signal with two spellings has no spelling.
+fn spelling_count(bindings: List<VerilogBinding>, name: SignalName) -> Nat {
+  fold(bindings, init: 0, f: fn(acc, b) {
+    if (b.signal as String) == (name as String) { acc + 1 } else { acc }
+  })
 }
 
 fn spelling_for(bindings: List<VerilogBinding>, name: SignalName) -> String? {
@@ -214,6 +225,9 @@ fn render_module(bindings: List<VerilogBinding>, intent: DigitalControlIntent) -
 
 // Every signal the module names, including the module name itself, must be bound and admissible.
 fn signal_admission_refusal(bindings: List<VerilogBinding>, name: SignalName) -> VerilogProjectionRefusal? {
+  if spelling_count(bindings: bindings, name: name) > 1 {
+    Present { value: DuplicateSignalBinding { signal: name as NonEmptyStr } }
+  } else {
   match spelling_for(bindings: bindings, name: name) {
     Absent => Present { value: SignalSpellingUnbound { signal: name as NonEmptyStr } }
     Present { value: sp } =>
@@ -222,6 +236,7 @@ fn signal_admission_refusal(bindings: List<VerilogBinding>, name: SignalName) ->
       } else {
         Present { value: SignalSpellingNotAdmissible { signal: name as NonEmptyStr, spelling: sp } }
       }
+  }
   }
 }
 

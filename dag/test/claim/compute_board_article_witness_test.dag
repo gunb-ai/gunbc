@@ -18,7 +18,7 @@ import product.compute_board.article {
   PowerReturnConnection,
   ProtectiveEarthBond,
   PhysicalRealizationPending,
-  RequiresSpatialAffineSubstrateLanded,
+  RequiresExactSubMillimeterCoordinateQuantum,
   ManufacturingProfileUnselected,
   SignalReferenceConnection,
   ShieldTermination,
@@ -213,8 +213,7 @@ test fn w_physical_and_manufacturing_boundaries_refuse_with_named_causes() -> Bo
       PhysicalRealizationPending { causes: cs } =>
         fold(cs, init: false, f: fn(acc, c) {
           acc || match c {
-            RequiresSpatialAffineSubstrateLanded => true
-            RequiresExactSubMillimeterCoordinateQuantum => false
+            RequiresExactSubMillimeterCoordinateQuantum => true
             RequiresShapeAndTopology => false
             RequiresPackageFootprintAuthority => false
           }
