@@ -174,7 +174,7 @@ test fn unclassified_host_refuses_rather_than_borrowing() -> Bool {
   }
 }
 
-test fn substitution_arm_is_not_reported_as_measured() -> Bool {
+test fn middle_arm_is_a_bound_not_a_measurement() -> Bool {
   match gunbc_ci_host_usable_ram_for(host: operator_host_srv3) {
     HostUsableRamMeasured { bytes: _, provenance: _ } => false
     HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => byte_size_count(b: b) == 134217728000
