@@ -58,6 +58,7 @@ import gunbc.roadmap_belt_actuate {
   DispatchDisabled, DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchAuthorityRefused, DispatchSpawnFailed,
   DispatchStaleSession, DispatchSessionLivenessUnobserved,
   DispatchRevisionDrifted, DispatchRevisionUnobserved,
+  DispatchSessionMultiplicityConflict,
   belt_dispatch_node, belt_dispatch_node_for_instance,
   belt_dispatch_result_json_value,
   belt_dispatch_result_for_label,
@@ -279,6 +280,7 @@ fn belt_dispatch_status(r: BeltDispatchResult) -> HttpStatus {
     DispatchStaleSession { node_id: _, session_name: _, detail: _ } => 409
     DispatchRevisionDrifted { node_id: _, desired: _, local: _ } => 409
     DispatchRevisionUnobserved { node_id: _, cause: _ } => 503
+    DispatchSessionMultiplicityConflict { node_id: _, session_names: _, session_count: _ } => 409
     DispatchSessionLivenessUnobserved { node_id: _, session_name: _, reason: _ } => 503
   }
 }
