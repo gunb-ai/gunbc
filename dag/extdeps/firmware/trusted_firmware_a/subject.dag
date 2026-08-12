@@ -17,13 +17,13 @@ data trusted_firmware_a_subject_note: String = "TRUSTED FIRMWARE-A, THE SECURE-W
 type TrustedFirmwareA
   = | TrustedFirmwareASecureWorld
 
-data trusted_firmware_a: TrustedFirmwareA = TrustedFirmwareASecureWorld
+data trusted_firmware_a_secure_world: TrustedFirmwareA = TrustedFirmwareASecureWorld
 
 data trusted_firmware_a_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.firmware.trusted_firmware_a.subject",
-      decl_name: "trusted_firmware_a",
+      decl_name: "trusted_firmware_a_secure_world",
       field: WholeDeclaration
     }
   },

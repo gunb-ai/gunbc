@@ -12,18 +12,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data openbmc_subject_note: String = "OPENBMC, THE BASEBOARD MANAGEMENT FIRMWARE STACK. Fetched live 2026-08-12: the page states the project community 'is supporting an open source BMC firmware stack that will work across heterogeneous systems, including enterprise, HPC, telco, and cloud-scale data centers'. It is the management controller's own software, running on its own processor, updated on its own schedule and reachable while the host is off — which is why it is a separate role in the board's firmware contract rather than a stage of host boot. This repository already carries OpenBMC-shaped facts under extdeps.bmc; this module is the SUBJECT those facts are about."
+data openbmc_subject_note: String = "OPENBMC, THE BASEBOARD MANAGEMENT FIRMWARE STACK. Fetched live 2026-08-12: the page states the project community 'is supporting an open source BMC firmware stack that will work across heterogeneous systems, including enterprise, HPC, telco, and cloud-scale data centers'. It is the management controller's own software, running on its own processor, updated on its own schedule and reachable while the host is off — which is why it is a separate role in the board's firmware contract rather than a stage of host boot. This repository already carries OpenBMC-shaped facts under extdeps.bmc; this module is the SUBJECT those facts are about. NAMING, AND A FORK WORTH RECORDING: the type is OpenBmcProject rather than OpenBmc because std.bmc already carries OpenBmc as a variant of BmcFirmwareFamily — a closed enum arm naming the very project this module cites, which is the nickname pattern DESIGN section 3 describes, discovered here because the two names collided in one closure. Consolidating them is a separate change with its own consumers; what is fixed here is that this module does not add a third spelling."
 
-type OpenBmc
+type OpenBmcProject
   = | OpenBmcStack
 
-data openbmc: OpenBmc = OpenBmcStack
+data openbmc_stack: OpenBmcProject = OpenBmcStack
 
 data openbmc_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.firmware.openbmc.subject",
-      decl_name: "openbmc",
+      decl_name: "openbmc_stack",
       field: WholeDeclaration
     }
   },

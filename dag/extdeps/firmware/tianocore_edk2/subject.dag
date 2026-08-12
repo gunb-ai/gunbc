@@ -17,13 +17,13 @@ data tianocore_edk2_subject_note: String = "TIANOCORE EDK II, THE UEFI IMPLEMENT
 type TianoCoreEdk2
   = | TianoCoreEdk2Implementation
 
-data tianocore_edk2: TianoCoreEdk2 = TianoCoreEdk2Implementation
+data tianocore_edk2_implementation: TianoCoreEdk2 = TianoCoreEdk2Implementation
 
 data tianocore_edk2_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.firmware.tianocore_edk2.subject",
-      decl_name: "tianocore_edk2",
+      decl_name: "tianocore_edk2_implementation",
       field: WholeDeclaration
     }
   },
