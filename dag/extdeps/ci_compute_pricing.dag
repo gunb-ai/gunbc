@@ -1,0 +1,160 @@
+module extdeps.ci_compute_pricing
+
+import std.types { NonEmptyStr, List }
+import std.nat { Nat }
+import std.measure { MoneyAmountMicro, money_amount_micro, money_amount_micro_count }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cloud.google.com/compute/all-pricing"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ci_compute_pricing",
+      decl_name: "ci_compute_offers",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// What a competitor charges for CI compute, normalized so the rows can be compared at all.
+//
+// The unit is one COMPUTE UNIT-MINUTE: one isolated CPU entitlement plus 4 GiB of RAM for one
+// minute. That ratio is chosen because it is what a 128-core / 512 GiB machine actually offers,
+// and because billing CPU alone lets a memory-heavy job consume a node while paying for a
+// fraction of it.
+//
+// Prices are micro-dollars, so $0.000809 is 809 and nothing is a float.
+
+// THE DISTINCTION THAT MAKES THE TABLE MEAN ANYTHING. A GCP N2 vCPU is one hardware thread; an
+// Ampere Altra core is a whole physical core with no SMT. Counting them as the same unit because
+// both are called a CPU would understate a 128-core Altra by roughly a factor of two on CPU-bound
+// work - and CI is CPU-bound work. Any row whose entitlement is unstated says so rather than being
+// silently promoted to a physical core.
+type CpuEntitlement
+  = PhysicalCore
+  | SmtHardwareThread
+  | ProviderVcpuUnspecified
+  | SharedBurstableVcpu
+
+// How the price was obtained. Same discipline as every other external reading in this tree: a
+// number that cannot say where it came from must not be spendable. These figures were RELAYED by
+// the operator, not fetched - outbound network access is refused in the authoring environment - and
+// the operator has confirmed they are good. That is a real warrant and it is not a first-party
+// read, so it is recorded as what it is.
+type PriceEvidence
+  = PriceVendorPageRead { authority: ExternalAuthority, read_on: NonEmptyStr }
+  | PriceOperatorConfirmed { note: NonEmptyStr }
+  | PriceUnread { obligation: NonEmptyStr }
+
+data price_provenance_note: NonEmptyStr = "Every rate below was relayed by the operator and confirmed by them as current for August 2026. No page was fetched from this environment. Operator confirmation is a stronger warrant than a search summary and weaker than a first-party read with a timestamped capture; a pricing decision that turns on a competitor being within ten percent of a stated figure should re-read that figure before it lands."
+
+type ComputeOfferObservation {
+  provider: NonEmptyStr
+  product: NonEmptyStr
+  entitlement: CpuEntitlement
+  vcpu_count: Nat
+  memory_gib: Nat
+  price_per_job_minute_micro: MoneyAmountMicro
+  evidence: PriceEvidence
+}
+
+data operator_relay: PriceEvidence = PriceOperatorConfirmed {
+  note: "Relayed and confirmed by the operator, August 2026.",
+}
+
+// GCP N2 rows are derived from the published n2-standard-128 rate: $6.215552/hour on demand and
+// $2.94784/hour spot, divided to a 2-vCPU slice. Cloud Run is its published CPU and memory rates
+// for an equivalent container.
+data ci_compute_offers: List<ComputeOfferObservation> = [
+  ComputeOfferObservation {
+    provider: "Google Cloud", product: "N2 on-demand (n2-standard-128 derived)",
+    entitlement: SmtHardwareThread, vcpu_count: 2, memory_gib: 8,
+    price_per_job_minute_micro: money_amount_micro(count: 1619), evidence: operator_relay,
+  },
+  ComputeOfferObservation {
+    provider: "Google Cloud", product: "N2 Spot (n2-standard-128 derived)",
+    entitlement: SmtHardwareThread, vcpu_count: 2, memory_gib: 8,
+    price_per_job_minute_micro: money_amount_micro(count: 768), evidence: operator_relay,
+  },
+  ComputeOfferObservation {
+    provider: "Google Cloud", product: "Cloud Run container",
+    entitlement: ProviderVcpuUnspecified, vcpu_count: 2, memory_gib: 8,
+    price_per_job_minute_micro: money_amount_micro(count: 3120), evidence: operator_relay,
+  },
+  ComputeOfferObservation {
+    provider: "Ubicloud", product: "standard CI runner",
+    entitlement: SmtHardwareThread, vcpu_count: 2, memory_gib: 8,
+    price_per_job_minute_micro: money_amount_micro(count: 1000), evidence: operator_relay,
+  },
+  ComputeOfferObservation {
+    provider: "Blacksmith", product: "x64 runner",
+    entitlement: ProviderVcpuUnspecified, vcpu_count: 2, memory_gib: 8,
+    price_per_job_minute_micro: money_amount_micro(count: 4000), evidence: operator_relay,
+  },
+  ComputeOfferObservation {
+    provider: "Blacksmith", product: "ARM runner",
+    entitlement: ProviderVcpuUnspecified, vcpu_count: 2, memory_gib: 6,
+    price_per_job_minute_micro: money_amount_micro(count: 2500), evidence: operator_relay,
+  },
+  ComputeOfferObservation {
+    provider: "Depot", product: "x64 or ARM runner",
+    entitlement: ProviderVcpuUnspecified, vcpu_count: 2, memory_gib: 8,
+    price_per_job_minute_micro: money_amount_micro(count: 4000), evidence: operator_relay,
+  },
+  ComputeOfferObservation {
+    provider: "Buildkite", product: "hosted Linux agent",
+    entitlement: ProviderVcpuUnspecified, vcpu_count: 2, memory_gib: 4,
+    price_per_job_minute_micro: money_amount_micro(count: 8000), evidence: operator_relay,
+  },
+  ComputeOfferObservation {
+    provider: "CircleCI", product: "x64 2-CPU/4-GB class (credit model)",
+    entitlement: ProviderVcpuUnspecified, vcpu_count: 2, memory_gib: 4,
+    price_per_job_minute_micro: money_amount_micro(count: 6000), evidence: operator_relay,
+  },
+]
+
+data circleci_caveat_note: NonEmptyStr = "CircleCI is priced in credits and its bill also carries per-platform-user and per-feature charges. The 6000 figure is the compute class alone at 10 credits per minute against $15 per 25,000 credits, so it understates the total a customer actually pays and is not directly comparable to a flat per-minute runner."
+
+data namespace_unread: PriceEvidence = PriceUnread {
+  obligation: "Namespace publishes shapes and offers custom pricing without a clean public rate for the standard profile. Obtain a quote or a published rate; do not infer one from the shapes.",
+}
+
+data namespace_note: NonEmptyStr = "Namespace belongs in the competitor set and has no row here, because a competitor with no readable price is an unread price and not an absent one. Inventing a plausible figure for it would be the exact defect this tree exists to refuse."
+
+// A unit-minute is one CPU entitlement plus 4 GiB. A row offering less RAM per CPU is delivering
+// fewer unit-minutes than its vCPU count suggests, so the normalizer takes whichever of the two is
+// the real constraint.
+fn offer_unit_count(o: ComputeOfferObservation) -> Nat {
+  let by_memory = o.memory_gib / 4
+  if o.vcpu_count > by_memory { o.vcpu_count } else { by_memory }
+}
+
+fn offer_price_per_unit_minute_micro(o: ComputeOfferObservation) -> Int {
+  money_amount_micro_count(m: o.price_per_job_minute_micro) / offer_unit_count(o: o)
+}
+
+fn entitlement_label(e: CpuEntitlement) -> NonEmptyStr {
+  match e {
+    PhysicalCore => "physical core",
+    SmtHardwareThread => "SMT thread",
+    ProviderVcpuUnspecified => "vCPU, unstated",
+    SharedBurstableVcpu => "burstable",
+  }
+}
+
+fn cheapest_offer_per_unit_minute_micro() -> Int {
+  fold(ci_compute_offers, init: 999999, f: fn(acc, o) {
+    let p = offer_price_per_unit_minute_micro(o: o)
+    if p < acc { p } else { acc }
+  })
+}
