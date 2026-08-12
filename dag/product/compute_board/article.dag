@@ -2,6 +2,10 @@ module product.compute_board.article
 
 import std.types { String, NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority }
+import std.decl_ref { DeclarationRef }
+import extdeps.firmware.openbmc.subject { openbmc_model_scope }
+import extdeps.firmware.tianocore_edk2.subject { tianocore_edk2_model_scope }
+import extdeps.firmware.trusted_firmware_a.subject { trusted_firmware_a_model_scope }
 import product.compute_board.digital_control {
   DigitalControlIntent,
   SignalName,
@@ -100,6 +104,31 @@ type PlatformFirmwareRole
   | HostUefiFirmware
   | BaseboardManagementFirmware
   | BoardProgrammableLogic
+
+// WHICH UPSTREAM FILLS A ROLE, where one is modelled. The two arms are not an Optional because
+// "no cited upstream module exists in this repository" and "this role has no upstream" are
+// different states with different remedies — the first is an authoring gap someone can close by
+// citing a project, the second would be a claim about the world. The system control processor
+// firmware and the board CPLD logic are the first: Ampere publishes SCP firmware and the CPLD is
+// board-specific, and neither has a cited module here yet.
+type PlatformRoleUpstream
+  = UpstreamCited { subject: DeclarationRef }
+  | UpstreamNotModelledHere { reason: NonEmptyStr }
+
+fn platform_firmware_role_upstream(role: PlatformFirmwareRole) -> PlatformRoleUpstream {
+  match role {
+    TrustedFirmwareSecureBootChain =>
+      UpstreamCited { subject: trusted_firmware_a_model_scope.subject.declaration }
+    HostUefiFirmware =>
+      UpstreamCited { subject: tianocore_edk2_model_scope.subject.declaration }
+    BaseboardManagementFirmware =>
+      UpstreamCited { subject: openbmc_model_scope.subject.declaration }
+    SystemControlProcessorFirmware =>
+      UpstreamNotModelledHere { reason: "Ampere system control processor firmware has no cited subject module in this repository yet; extdeps.ampere carries only an SCP diagnostic surface" }
+    BoardProgrammableLogic =>
+      UpstreamNotModelledHere { reason: "the board CPLD's logic is authored here rather than upstream, so there is no external project to cite; its own model is the article" }
+  }
+}
 
 // Board-level preconditions for host firmware to START. The distinction from what firmware then
 // DOES is load-bearing: a permitted power rail and a released reset are observable at the board,

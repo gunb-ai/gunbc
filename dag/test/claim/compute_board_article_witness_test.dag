@@ -18,8 +18,15 @@ import product.compute_board.article {
   EstablishedByPlatformComponent,
   HostUefiFirmware,
   NotEstablishedByThisArticle,
+  PlatformFirmwareRole,
   PowerPermitAsserted,
   RecoveryRequestObservable,
+  BoardProgrammableLogic,
+  SystemControlProcessorFirmware,
+  TrustedFirmwareSecureBootChain,
+  UpstreamCited,
+  UpstreamNotModelledHere,
+  platform_firmware_role_upstream,
   ResetReleased,
   ChassisBond,
   ChassisBondProposed,
@@ -328,4 +335,53 @@ test fn w_the_permit_and_reset_preconditions_name_their_own_signals() -> Bool {
         ConsoleAvailable => false
       }
     }) == "reset_release"
+}
+
+// A ROLE FILLED BY A CITED PROJECT RESOLVES TO THAT PROJECT'S SUBJECT, and the two roles with no
+// upstream module say so rather than answering Absent. The distinction is the whole point: an
+// Optional would make "nobody has cited this yet" indistinguishable from "there is nothing to
+// cite", and only the first is an authoring gap someone can close.
+fn role_is_cited(role: PlatformFirmwareRole) -> Bool {
+  match platform_firmware_role_upstream(role: role) {
+    UpstreamCited { subject: _ } => true
+    UpstreamNotModelledHere { reason: _ } => false
+  }
+}
+
+test fn w_the_three_upstream_roles_resolve_to_cited_subjects() -> Bool {
+  role_is_cited(role: TrustedFirmwareSecureBootChain)
+    && role_is_cited(role: HostUefiFirmware)
+    && role_is_cited(role: BaseboardManagementFirmware)
+}
+
+test fn w_the_two_uncited_roles_name_why_rather_than_answering_absent() -> Bool {
+  match platform_firmware_role_upstream(role: SystemControlProcessorFirmware) {
+    UpstreamCited { subject: _ } => false
+    UpstreamNotModelledHere { reason: r } => (r as String) != ""
+  }
+    && match platform_firmware_role_upstream(role: BoardProgrammableLogic) {
+      UpstreamCited { subject: _ } => false
+      UpstreamNotModelledHere { reason: r } => (r as String) != ""
+    }
+}
+
+// The cited subjects are DISTINCT modules. Three roles resolving to one subject would mean the
+// decomposition bought nothing — which is the failure the split exists to avoid, and it is not
+// visible from the fact that each role answers UpstreamCited.
+test fn w_the_cited_roles_do_not_collapse_onto_one_subject() -> Bool {
+  match platform_firmware_role_upstream(role: TrustedFirmwareSecureBootChain) {
+    UpstreamNotModelledHere { reason: _ } => false
+    UpstreamCited { subject: a } =>
+      match platform_firmware_role_upstream(role: HostUefiFirmware) {
+        UpstreamNotModelledHere { reason: _ } => false
+        UpstreamCited { subject: b } =>
+          match platform_firmware_role_upstream(role: BaseboardManagementFirmware) {
+            UpstreamNotModelledHere { reason: _ } => false
+            UpstreamCited { subject: c } =>
+              a.module_path != b.module_path
+                && b.module_path != c.module_path
+                && a.module_path != c.module_path
+          }
+      }
+  }
 }

@@ -1,0 +1,34 @@
+module extdeps.firmware.openbmc.subject
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.openbmc.org/"
+  }
+}
+
+data openbmc_subject_note: String = "OPENBMC, THE BASEBOARD MANAGEMENT FIRMWARE STACK. Fetched live 2026-08-12: the page states the project community 'is supporting an open source BMC firmware stack that will work across heterogeneous systems, including enterprise, HPC, telco, and cloud-scale data centers'. It is the management controller's own software, running on its own processor, updated on its own schedule and reachable while the host is off — which is why it is a separate role in the board's firmware contract rather than a stage of host boot. This repository already carries OpenBMC-shaped facts under extdeps.bmc; this module is the SUBJECT those facts are about."
+
+type OpenBmc
+  = | OpenBmcStack
+
+data openbmc: OpenBmc = OpenBmcStack
+
+data openbmc_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.firmware.openbmc.subject",
+      decl_name: "openbmc",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data extdeps_model_scope: ExternalModelScope = openbmc_model_scope
