@@ -270,19 +270,6 @@ fn net_spelling_refusal(intent: AnalogCircuitIntent, reference: NetIdentity) -> 
 // that is a fact about a RUN rather than about the board, which is why the receipt's deck does
 // not carry one. Both come from spice_netlist, so a run cannot exercise a circuit the receipt
 // does not describe.
-fn runnable_ngspice_deck(intent: AnalogCircuitIntent, reference: NetIdentity) -> String {
-  let base = spice_netlist(intent: intent, reference: reference)
-  spice_emit_ngspice(netlist: SpiceNetlist {
-    title: base.title,
-    body: list_snoc_item(xs: base.body, item: DeckDirective { directive: Op }),
-  })
-}
-
-fn project_article_to_ngspice_run(admitted: AdmittedBoardPowerInterfaceArticle) -> String {
-  let article = admitted_article(a: admitted)
-  runnable_ngspice_deck(intent: article.analog, reference: article.reference_net)
-}
-
 fn first_refusal_or_net_spelling(
   intent: AnalogCircuitIntent,
   bindings: List<ComponentModelBinding>,
@@ -325,4 +312,33 @@ fn project_article_to_spice(admitted: AdmittedBoardPowerInterfaceArticle) -> Spi
     bindings: article.model_bindings,
     reference: article.reference_net
   )
+}
+
+// IT RETURNS THE SAME COPRODUCT, THROUGH THE SAME GATE, and an earlier revision did not — it
+// returned a bare String and built the netlist directly, so an article that admission accepts and
+// this module REFUSES could still hand a runnable deck to a simulator. That is the exact fail-open
+// the netting refusals exist to close, reopened on the second path: component_node maps a terminal
+// on no net to Ground, so the bypassing deck would have simulated cleanly and described a
+// different board. There is one refusal gate and both projections are behind it; a String return
+// is what made the bypass possible, because a String has nowhere to put a refusal.
+fn project_article_to_ngspice_run(admitted: AdmittedBoardPowerInterfaceArticle) -> SpiceProjection {
+  let article = admitted_article(a: admitted)
+  let intent = article.analog
+  let reference = article.reference_net
+  match first_refusal_or_net_spelling(intent: intent, bindings: article.model_bindings, reference: reference) {
+    Present { value: r } => SpiceSliceRefused { cause: r }
+    Absent =>
+      SpiceSliceProjected {
+        receipt: SpiceEmissionReceipt {
+          source_article: article.identity,
+          source: spice_emit_ngspice(netlist: SpiceNetlist {
+            title: spice_netlist(intent: intent, reference: reference).title,
+            body: list_snoc_item(
+              xs: spice_netlist(intent: intent, reference: reference).body,
+              item: DeckDirective { directive: Op }
+            ),
+          }),
+        },
+      }
+  }
 }

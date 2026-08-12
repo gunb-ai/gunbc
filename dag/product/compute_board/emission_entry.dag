@@ -48,6 +48,10 @@ fn emit_verilog() -> String {
 fn emit_ngspice_run() -> String {
   match admit_board_article(a: power_interlock_article) {
     BoardArticleRefused { causes: _ } => "REFUSED: article not admitted"
-    BoardArticleAdmitted { article: adm } => project_article_to_ngspice_run(admitted: adm)
+    BoardArticleAdmitted { article: adm } =>
+      match project_article_to_ngspice_run(admitted: adm) {
+        SpiceSliceProjected { receipt: r } => r.source
+        SpiceSliceRefused { cause: _ } => "REFUSED: spice run deck"
+      }
   }
 }

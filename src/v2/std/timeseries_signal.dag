@@ -103,9 +103,19 @@ fn duration_micro_count(t: DurationMicro) -> Int {
   t.count
 }
 
+// A CIRCUIT NODE'S NAME, BRANDED. It was a substrate Symbol, which sounds stronger than String
+// and was in fact weaker for this purpose: nothing in this module or downstream read a Symbol
+// structurally, and the only route from one to text anywhere in the pipeline was a five-entry
+// lookup table in the SPICE format module, so a node name that reached emission simply had no
+// spelling. What the name has to do is BE a spelling that survives to a netlist, so it carries
+// one. The brand is nominal — it does not validate, and per-target lexical admission is the
+// target's job (v2.extdeps.formats.spice admits or refuses one) — but it keeps a node name from
+// being compared to an arbitrary String by accident, which the Symbol did not do either.
+type CircuitNodeName = String where brand("CircuitNodeName")
+
 type PotentialReference
   = GroundReference
-  | NodeReference { name: String }
+  | NodeReference { name: CircuitNodeName }
 
 type AbsolutePotential {
   reference: PotentialReference
@@ -142,7 +152,7 @@ type PassiveElementValue {
 }
 
 type PassiveElementTopology {
-  name: String
+  name: CircuitNodeName
   n_plus: PotentialReference
   n_minus: PotentialReference
   value: PassiveElementValue
@@ -164,7 +174,7 @@ fn potential_reference_eq(
     }
     NodeReference { name: left_name } => match right {
       GroundReference => false
-      NodeReference { name: right_name } => left_name == right_name
+      NodeReference { name: right_name } => (left_name as String) == (right_name as String)
     }
   }
 }

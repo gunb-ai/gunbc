@@ -7,7 +7,15 @@ import product.compute_board.admission {
   AdmittedBoardPowerInterfaceArticle,
   admit_board_article,
 }
-import product.compute_board.article { power_interlock_article }
+import product.compute_board.article { BoardPowerInterfaceArticle, power_interlock_article }
+import product.compute_board.analog {
+  AnalogCircuitIntent,
+  ComponentInstanceIdentity,
+  ElectricalNet,
+  NetIdentity,
+  TerminalIdentity,
+  terminal_ref,
+}
 import product.compute_board.spice_projection {
   SpiceSliceProjected,
   SpiceSliceRefused,
@@ -59,7 +67,11 @@ test fn w_the_executed_verilog_is_what_the_product_emits_today() -> Bool {
 test fn w_the_executed_deck_is_what_the_product_emits_today() -> Bool {
   match admitted() {
     Absent => false
-    Present { value: adm } => project_article_to_ngspice_run(admitted: adm) == conditioning_network_artifact
+    Present { value: adm } =>
+      match project_article_to_ngspice_run(admitted: adm) {
+        SpiceSliceRefused { cause: _ } => false
+        SpiceSliceProjected { receipt: r } => r.source == conditioning_network_artifact
+      }
   }
 }
 
@@ -74,7 +86,10 @@ test fn w_the_run_deck_contains_the_receipt_circuit() -> Bool {
       match project_article_to_spice(admitted: adm) {
         SpiceSliceRefused { cause: _ } => false
         SpiceSliceProjected { receipt: r } =>
-          project_article_to_ngspice_run(admitted: adm) == concat(r.source, "\n.op\n.end")
+          match project_article_to_ngspice_run(admitted: adm) {
+            SpiceSliceRefused { cause: _ } => false
+            SpiceSliceProjected { receipt: run } => run.source == concat(r.source, "\n.op\n.end")
+          }
       }
   }
 }
@@ -100,4 +115,78 @@ test fn w_the_observations_are_distinct_and_present() -> Bool {
 test fn w_the_operating_point_discriminates_the_scale_suffix() -> Bool {
   let s = run_of(outcome: conditioning_network_run)
   list_length(items: split(s: s.observation, delimiter: "-1.20000e-03")) > 1
+}
+
+// BOTH SPICE PATHS SIT BEHIND ONE REFUSAL GATE. This is the review finding that produced the
+// change: the runnable deck used to be built directly and returned as a bare String, so an
+// article admission accepts and the projection REFUSES could still hand bytes to a simulator —
+// and component_node maps a terminal on no net to Ground, so those bytes would have simulated
+// cleanly while describing a different board. A String return is what made it possible, because
+// a String has nowhere to put a refusal. The fixture below is admitted (netting is deliberately
+// not an article-level fact) and has a floating terminal, so it discriminates exactly that.
+// The production circuit with ONE net member removed: pg_filt terminal 1 now sits on no net. The
+// article is otherwise untouched, so admission accepts it — a terminal's netting is a SPICE
+// requirement rather than a fact about the board, which is exactly why the projection has to be
+// the thing that refuses.
+data floating_analog: AnalogCircuitIntent = AnalogCircuitIntent {
+  title: power_interlock_article.analog.title,
+  components: power_interlock_article.analog.components,
+  nets: [
+    ElectricalNet {
+      identity: "pg_raw" as NetIdentity,
+      members: [
+        terminal_ref(component: "logic_in" as ComponentInstanceIdentity, terminal: "1" as TerminalIdentity),
+        terminal_ref(component: "pg_cond" as ComponentInstanceIdentity, terminal: "1" as TerminalIdentity),
+      ],
+    },
+    ElectricalNet {
+      identity: "power_return" as NetIdentity,
+      members: [
+        terminal_ref(component: "logic_in" as ComponentInstanceIdentity, terminal: "2" as TerminalIdentity),
+        terminal_ref(component: "pg_cond" as ComponentInstanceIdentity, terminal: "2" as TerminalIdentity),
+        terminal_ref(component: "pg_filt" as ComponentInstanceIdentity, terminal: "2" as TerminalIdentity),
+      ],
+    },
+  ],
+}
+
+data floating_terminal_article: BoardPowerInterfaceArticle = BoardPowerInterfaceArticle {
+  identity: power_interlock_article.identity,
+  analog: floating_analog,
+  model_bindings: power_interlock_article.model_bindings,
+  reference_net: power_interlock_article.reference_net,
+  digital_control: power_interlock_article.digital_control,
+  bonds: power_interlock_article.bonds,
+  platform_firmware: power_interlock_article.platform_firmware,
+  physical: power_interlock_article.physical,
+  manufacturing: power_interlock_article.manufacturing,
+}
+
+fn floating_article() -> AdmittedBoardPowerInterfaceArticle? {
+  match admit_board_article(a: floating_terminal_article) {
+    BoardArticleAdmitted { article: adm } => Present { value: adm }
+    BoardArticleRefused { causes: _ } => none
+  }
+}
+
+test fn w_the_floating_fixture_is_admitted_so_the_test_is_about_the_projection() -> Bool {
+  match floating_article() {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn w_both_spice_paths_refuse_the_same_article() -> Bool {
+  match floating_article() {
+    Absent => false
+    Present { value: adm } =>
+      match project_article_to_spice(admitted: adm) {
+        SpiceSliceProjected { receipt: _ } => false
+        SpiceSliceRefused { cause: _ } =>
+          match project_article_to_ngspice_run(admitted: adm) {
+            SpiceSliceProjected { receipt: _ } => false
+            SpiceSliceRefused { cause: _ } => true
+          }
+      }
+  }
 }

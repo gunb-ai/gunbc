@@ -12,6 +12,7 @@ import v2.std.timeseries_signal {
   NodeReference,
   PassiveComponentSpec,
   PassiveElementTopology,
+  CircuitNodeName,
   PassiveElementValue,
   PotentialReference,
   ResistorPassive,
@@ -32,7 +33,7 @@ import v2.extdeps.formats.spice {
 fn passive_terminal_from_node_ref(node: NodeRef) -> PotentialReference {
   match node {
     Ground => GroundReference
-    Named { node: NamedNode { name } } => NodeReference { name: name as String }
+    Named { node: NamedNode { name } } => NodeReference { name: name as String as CircuitNodeName }
   }
 }
 
@@ -44,7 +45,7 @@ fn passive_topology_from_component(component: Component) -> Optional<PassiveElem
   match component {
     Resistor { name, n_plus, n_minus, value } => Present {
       value: PassiveElementTopology {
-        name: name as String,
+        name: name as String as CircuitNodeName,
         n_plus: passive_terminal_from_node_ref(node: n_plus),
         n_minus: passive_terminal_from_node_ref(node: n_minus),
         value: passive_value_from_spice(value: value)
@@ -52,7 +53,7 @@ fn passive_topology_from_component(component: Component) -> Optional<PassiveElem
     }
     Capacitor { name, n_plus, n_minus, value } => Present {
       value: PassiveElementTopology {
-        name: name as String,
+        name: name as String as CircuitNodeName,
         n_plus: passive_terminal_from_node_ref(node: n_plus),
         n_minus: passive_terminal_from_node_ref(node: n_minus),
         value: passive_value_from_spice(value: value)
@@ -60,7 +61,7 @@ fn passive_topology_from_component(component: Component) -> Optional<PassiveElem
     }
     Inductor { name, n_plus, n_minus, value } => Present {
       value: PassiveElementTopology {
-        name: name as String,
+        name: name as String as CircuitNodeName,
         n_plus: passive_terminal_from_node_ref(node: n_plus),
         n_minus: passive_terminal_from_node_ref(node: n_minus),
         value: passive_value_from_spice(value: value)
