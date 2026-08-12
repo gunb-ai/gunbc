@@ -11782,6 +11782,36 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(list_value(items)))
             },
 
+            arm "free_call.dependency_resolution_facts" { "dependency_resolution_facts" } => {
+                let pool_roots =
+                    expect_str_list($positional.first().copied(), "dependency_resolution_facts")?;
+                let importer_roots =
+                    expect_str_list($positional.get(1).copied(), "dependency_resolution_facts")?;
+                let exclude_substrings =
+                    expect_str_list($positional.get(2).copied(), "dependency_resolution_facts")?;
+                // Reference-first exact union through the ONE dedup authority, then the
+                // import_module -> target_module rename. Both halves are the host twin of what
+                // `v2.lens.module_graph` used to compose in the interpreter; the composition moved
+                // because it measured 104,943ms against 151ms for the two leaves it combines.
+                let facts = crate::cli_run::dependency_resolution_facts(
+                    &pool_roots,
+                    &importer_roots,
+                    &exclude_substrings,
+                );
+                let mut items: Vec<Value> = Vec::new();
+                for f in facts {
+                    items.push(Value::Record {
+                        type_name: $ctx.sym("ModuleDependencyEdge"),
+                        fields: Rc::new(sorted_fields(vec![
+                            ($ctx.sym("path"), Value::Str(f.path)),
+                            ($ctx.sym("target_declared"), Value::Bool(f.target_declared)),
+                            ($ctx.sym("target_module"), Value::Str(f.import_module)),
+                        ])),
+                    });
+                }
+                Ok(Some(list_value(items)))
+            },
+
             arm "free_call.concept_decl_facts" { "concept_decl_facts" } => {
                 let pool_roots = expect_str_list($positional.first().copied(), "concept_decl_facts")?;
                 Ok(Some(crate::coproduct_reflection::eval_concept_decl_facts(

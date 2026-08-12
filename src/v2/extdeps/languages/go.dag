@@ -63,7 +63,8 @@ import v2.std.grounding {
   PerLanguageFactBundleRegistry
 }
 import v2.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node, target_model_emit_transforms_empty}
+import v2.std.compilers.target_model {
+  ProducedDeclUnwired, ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node, target_model_emit_transforms_empty}
 import v2.std.compilers.target_model {
   TargetAtomRealization,
   TargetAtomTypeShape,
@@ -1833,6 +1834,7 @@ fn go_target_model_bundle_core() -> Node {
 
 fn go_target_model_staging() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: go_target_model_bundle_core(),
     lex: go_lex(),
     binding_spellings: go_binding_spellings(),
@@ -1907,6 +1909,7 @@ fn go_target_model_node() -> Node {
 
 fn go_target_model() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: go_target_model_node(),
     lex: go_lex(),
     binding_spellings: go_binding_spellings(),
@@ -1938,6 +1941,7 @@ fn go_target_model_node_with_selection_policy(selection: Node) -> Node {
 
 fn go_target_model_int64_selection_policy() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: go_target_model_node_with_selection_policy(
       selection: go_int64_selection_policy_node()
     ),

@@ -3,6 +3,7 @@ module v2.test.claim.wrap_decision_gate_smoke
 import v2.compiler.wrap_decision { wrap_decision_gate }
 import v2.std.compilers.lexing { VoidLexRules }
 import v2.std.compilers.target_model {
+  ProducedDeclUnwired,
   TargetModel,
   OwnershipAtFunctionReturn,
   WrapGateInapplicable,
@@ -18,6 +19,7 @@ import v2.std.node { Conj, Node, SyntheticOccurrence, TypeNode }
 
 test fn wrap_decision_gate_smoke_bundle_absent_inapplicable() -> Bool {
   let target = TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: Node {
       kind: TypeNode { connective: Conj },
       children: [],
