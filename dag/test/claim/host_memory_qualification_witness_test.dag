@@ -151,3 +151,50 @@ test fn boot_progress_read_is_not_a_snapshot() -> Bool {
   ampere_smpro_boot_progress_interface.read_effect == ReadAcknowledgesBootProgress
     && ampere_smpro_boot_progress_interface.read_effect != ReadSnapshot
 }
+
+// A duplicated slot is refused. This passed under the previous
+// equal-length-plus-subset form too, but for an incidental reason — a
+// duplicate shrinks the candidate's distinct set, so the subset test failed.
+// It is kept because the property is the one callers rely on.
+test fn a_duplicated_candidate_slot_is_refused() -> Bool {
+  match admit_population(
+    candidate: ["A1", "A1", "B1", "E1"],
+    documented: asrock_altrad8ud_documented_dimm_populations,
+  ) {
+    PopulationUnsupported { slots: _ } => true
+    PopulationSupported => false
+  }
+}
+
+// THE CONTROL FOR THE CASE THAT WAS ACTUALLY BROKEN. Under equal-length-plus-
+// subset, a DOCUMENTED row carrying a duplicate would admit a candidate that
+// merely covers its distinct slots: ["A1","A1"] admitted ["A1","B1"], because
+// both documented entries are found and the lengths agree. Multiset equality
+// refuses it. Synthetic on purpose — no real board row has a duplicate, which
+// is exactly why the defect was latent and why the guard must not depend on
+// that staying true.
+data duplicated_documented_population: DimmPopulation = DimmPopulation {
+  board: AsrockRackAltrad8ud1l2t,
+  slots: ["A1", "A1"],
+  authority: ampere_altra_avl_authority,
+}
+
+test fn a_duplicated_documented_row_does_not_admit_a_distinct_pair() -> Bool {
+  match admit_population(
+    candidate: ["A1", "B1"],
+    documented: [duplicated_documented_population],
+  ) {
+    PopulationUnsupported { slots: _ } => true
+    PopulationSupported => false
+  }
+}
+
+// Positive control on the same synthetic row: the multiset it really names is
+// still admitted, so the refusal above is multiset discrimination rather than
+// a blanket rejection of duplicated rows.
+test fn a_duplicated_documented_row_still_admits_its_own_multiset() -> Bool {
+  admit_population(
+    candidate: ["A1", "A1"],
+    documented: [duplicated_documented_population],
+  ) == PopulationSupported
+}
