@@ -3,6 +3,7 @@ module v2.extdeps.languages.verilog
 import v2.std.nat { Nat }
 import std.integer { Signedness }
 import v2.std.node { Symbol }
+import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.grammar {
   StampClass,
   StampBinding, FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_nonterminal_occurrence, grammar_formal_production, grammar_formal_terminal, grammar_formal_terminal_bound }
@@ -633,8 +634,10 @@ fn verilog_lex() -> LexRules {
         verilog_lex_token(token_class: ^verilog_token_kw_wire, pattern: KeywordPattern { text: "wire" }),
         verilog_lex_token(token_class: ^verilog_token_kw_assign, pattern: KeywordPattern { text: "assign" }),
         verilog_lex_token(token_class: ^verilog_token_semicolon, pattern: LiteralPattern { text: ";" }),
-        verilog_lex_token(token_class: ^verilog_token_lparen, pattern: LiteralPattern { text: "(" }),
-        verilog_lex_token(token_class: ^verilog_token_rparen, pattern: LiteralPattern { text: ")" }),
+        verilog_lex_token(token_class: ^verilog_token_header_lparen, pattern: LiteralPattern { text: "(" }),
+        verilog_lex_token(token_class: ^verilog_token_header_rparen, pattern: LiteralPattern { text: ")" }),
+        verilog_lex_token(token_class: ^verilog_token_expr_lparen, pattern: LiteralPattern { text: "(" }),
+        verilog_lex_token(token_class: ^verilog_token_expr_rparen, pattern: LiteralPattern { text: ")" }),
         verilog_lex_token(token_class: ^verilog_token_comma, pattern: LiteralPattern { text: "," }),
         verilog_lex_token(token_class: ^verilog_token_equals, pattern: LiteralPattern { text: "=" }),
         verilog_lex_token(token_class: ^verilog_token_unary_operator, pattern: LiteralPattern { text: "~" }),
@@ -747,9 +750,11 @@ fn verilog_emission_formal_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^verilog_production_expr,
       rhs: [
+        grammar_formal_terminal(identity: ^verilog_token_expr_lparen),
         grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr),
         grammar_formal_terminal_bound(identity: ^verilog_token_binary_operator, binding: ^verilog_binding_binary_operator),
-        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr)
+        grammar_formal_nonterminal_occurrence(identity: ^verilog_production_expr),
+        grammar_formal_terminal(identity: ^verilog_token_expr_rparen)
       ]
     ),
     grammar_formal_production(
@@ -778,15 +783,60 @@ fn verilog_emission_formal_productions() -> List<FormalProduction> {
       rhs: [
         grammar_formal_terminal(identity: ^verilog_token_kw_module),
         grammar_formal_terminal_bound(identity: ^verilog_token_ident, binding: ^verilog_binding_module_name),
-        grammar_formal_terminal(identity: ^verilog_token_lparen),
+        grammar_formal_terminal(identity: ^verilog_token_header_lparen),
         grammar_formal_nonterminal_occurrence(identity: ^verilog_production_port_list),
-        grammar_formal_terminal(identity: ^verilog_token_rparen),
+        grammar_formal_terminal(identity: ^verilog_token_header_rparen),
         grammar_formal_terminal(identity: ^verilog_token_semicolon),
         grammar_formal_nonterminal_occurrence(identity: ^verilog_production_assign_list),
         grammar_formal_terminal(identity: ^verilog_token_kw_endmodule)
       ]
     )
   ]
+}
+
+// LAYOUT IS TARGET-OWNED, AND THIS IS WHERE IT LIVES. target_text_seq concatenates exactly, so
+// every space and newline in an emitted module is declared here or does not exist. None of it may
+// return to product.compute_board, which is the whole point of the exercise.
+//
+// WHY THE HEADER AND EXPRESSION PARENTHESES ARE DIFFERENT TOKEN CLASSES. A transform is keyed by
+// token class, so one paren class cannot render " (\n" around a port list and "(" inside an
+// expression. The oracle needs both. Splitting the class is what makes the layout expressible;
+// the two classes lex the same literal, which is a REPARSE question and is called out in the
+// module note rather than papered over here.
+fn verilog_emit_layout_transforms() -> Map<Symbol, fn(String) -> String> {
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(
+          map_insert(
+            map_insert(
+              map_insert(
+                map_insert(
+                  map_insert(empty_map(), ^verilog_token_kw_module, fn(s) { concat(s, " ") }),
+                  ^verilog_token_header_lparen,
+                  fn(s) { concat(" ", concat(s, "\n")) }
+                ),
+                ^verilog_token_comma,
+                fn(s) { concat(s, "\n") }
+              ),
+              ^verilog_token_header_rparen,
+              fn(s) { concat("\n", s) }
+            ),
+            ^verilog_token_semicolon,
+            fn(s) { concat(s, "\n") }
+          ),
+          ^verilog_token_kw_wire,
+          fn(s) { concat(s, " ") }
+        ),
+        ^verilog_token_kw_assign,
+        fn(s) { concat("  ", concat(s, " ")) }
+      ),
+      ^verilog_token_equals,
+      fn(s) { concat(" ", concat(s, " ")) }
+    ),
+    ^verilog_token_kw_endmodule,
+    fn(s) { concat(s, "\n") }
+  )
 }
 
 fn verilog_ingest_grammar_schema() -> GrammarSchema {
