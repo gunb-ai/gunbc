@@ -15,9 +15,10 @@ import std.cache_interface {
   InProcess,
   StructuredArtifact,
   MissIsDiagnostic,
+  ContentAddressedByValue,
 }
 import extdeps.cache { cache_interface_facts_from_catalog, cache_key_projection_transport }
-import extdeps.cache.types { catalog_key_derivation_classification, ContentAddressedByValue }
+import extdeps.cache.types { catalog_key_derivation_classification }
 import extdeps.realization.hermetic_fixture {
   hermetic_fixture_file_facts,
   hermetic_fixture_in_process_facts,

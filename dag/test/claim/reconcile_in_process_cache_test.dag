@@ -14,14 +14,12 @@ import std.cache_interface {
   InProcess,
   StructuredArtifact,
   MissThenCreate,
-}
-import extdeps.cache { cache_interface_facts_from_catalog, cache_key_projection_transport }
-import extdeps.cache.types {
-  catalog_key_derivation_classification,
   ContentAddressedByValue,
   HandAuthoredString,
   NativeInternalHash,
 }
+import extdeps.cache { cache_interface_facts_from_catalog, cache_key_projection_transport }
+import extdeps.cache.types { catalog_key_derivation_classification }
 import extdeps.realization.reconcile_in_process {
   parse_cache_facts,
   typed_module_cache_facts,
