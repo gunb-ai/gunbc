@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr }
 import std.integer { Int }
 import std.measure { Millimeter, millimeter_count, Micrometer, micrometer, micrometer_count, millimeters_to_micrometers, RackUnit, rack_unit_count, micrometers_per_rack_unit }
 import std.orthogonal_topology { EnclosedSpace, space_height }
-import product.placement_supply { RackIdentity, PhysicalAssetIdentity }
+import product.placement_supply { RackIdentity, PhysicalAssetIdentity, RackUnitPosition }
 import extdeps.rack.types { RackCatalogRow }
 import extdeps.chassis.types { ChassisCatalogRow }
 import v2.std.optional { Present, Absent }
@@ -34,12 +34,19 @@ import v2.std.optional { Present, Absent }
 // only: rack-unit occupancy and the height a populated rack needs. A rack's footprint in the room
 // arrives when a cited row carries its external dimensions.
 
+// Every quantity in a refusal carries its carrier rather than its unit in a field NAME. An earlier
+// revision spelled the two heights rack_height_um and room_height_um as bare Int, which is the
+// "unit in the name, scalar in the type" pattern std.measure exists to remove - and it appeared on
+// the refusal path of the very PR that added the Micrometer carrier to stop truncating. The
+// positions likewise take product.placement_supply's RackUnitPosition, and the rack's capacity
+// takes std.measure's RackUnit: a position is an ordinal slot index and a capacity is a cardinal
+// magnitude, a distinction placement_supply already draws and this module must not re-draw.
 type MountRefusal
-  = MountBelowFirstUnit { lowest_unit: Int }
-  | MountExceedsRackHeight { top_unit: Int, rack_units: Int }
+  = MountBelowFirstUnit { lowest_unit: RackUnitPosition }
+  | MountExceedsRackHeight { top_unit: RackUnitPosition, rack_capacity: RackUnit }
   | MountsCollide { lower: PhysicalAssetIdentity, upper: PhysicalAssetIdentity }
   | AssetMountedTwice { asset: PhysicalAssetIdentity }
-  | RackTallerThanRoom { rack_height_um: Int, room_height_um: Int }
+  | RackTallerThanRoom { rack_height: Micrometer, room_height: Micrometer }
 
 type MountConstruction<T>
   = MountReady { value: T }
@@ -51,12 +58,12 @@ type MountConstruction<T>
 type ChassisMount {
   asset: PhysicalAssetIdentity
   chassis: ChassisCatalogRow
-  lowest_unit: Int
+  lowest_unit: RackUnitPosition
 }
 
 fn mount_unit_span(m: ChassisMount) -> Int { rack_unit_count(u: m.chassis.rack_units) }
 
-fn mount_top_unit(m: ChassisMount) -> Int { m.lowest_unit + mount_unit_span(m: m) - 1 }
+fn mount_top_unit(m: ChassisMount) -> RackUnitPosition { m.lowest_unit + mount_unit_span(m: m) - 1 }
 
 // Rack units are numbered from 1 at the bottom, so a mount occupies lowest .. lowest + span - 1
 // inclusive. Two mounts collide when those closed intervals intersect at all - unlike the spatial
@@ -83,7 +90,7 @@ fn admit_mount(acc: MountAdmission, rack: RackCatalogRow, m: ChassisMount) -> Mo
       } else if mount_top_unit(m: m) > rack_unit_count(u: rack.rack_units) {
         MountAdmission {
           admitted: acc.admitted,
-          refusal: Present { value: MountExceedsRackHeight { top_unit: mount_top_unit(m: m), rack_units: rack_unit_count(u: rack.rack_units) } },
+          refusal: Present { value: MountExceedsRackHeight { top_unit: mount_top_unit(m: m), rack_capacity: rack.rack_units } },
         }
       } else {
         let conflict = fold(acc.admitted, init: none, f: (found, other) =>
@@ -157,10 +164,10 @@ type RoomMountedRack sole_constructor {
 }
 
 fn room_mounted_rack(rack: RackInstance, room: EnclosedSpace) -> MountConstruction<RoomMountedRack> {
-  let rack_um = micrometer_count(m: rack_full_height(r: rack))
-  let room_um = micrometer_count(m: millimeters_to_micrometers(m: space_height(s: room)))
-  if rack_um > room_um {
-    MountRefused { cause: RackTallerThanRoom { rack_height_um: rack_um, room_height_um: room_um } }
+  let rack_height = rack_full_height(r: rack)
+  let room_height = millimeters_to_micrometers(m: space_height(s: room))
+  if micrometer_count(m: rack_height) > micrometer_count(m: room_height) {
+    MountRefused { cause: RackTallerThanRoom { rack_height: rack_height, room_height: room_height } }
   } else {
     MountReady { value: RoomMountedRack { rack: rack, room: room } }
   }

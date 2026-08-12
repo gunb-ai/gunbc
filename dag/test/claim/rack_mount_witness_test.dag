@@ -1,12 +1,12 @@
 module test.claim.rack_mount_witness
 
 import std.types { Bool, Int, List }
-import std.measure { millimeter_count, micrometer_count, rack_unit }
+import std.measure { millimeter_count, micrometer_count, rack_unit, rack_unit_count }
 import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
 import std.affine_space { point2 }
 import std.orthogonal_geometry { OrthogonalReady, OrthogonalRefused, orthogonal_loop2, orthogonal_prism3 }
 import std.orthogonal_topology { EnclosedSpace, enclosed_space, closed_shell_of_prism }
-import product.placement_supply { RackIdentity, PhysicalAssetIdentity }
+import product.placement_supply { RackIdentity, PhysicalAssetIdentity, RackUnitPosition }
 import product.rack_mount {
   MountReady, MountRefused,
   MountBelowFirstUnit, MountExceedsRackHeight, MountsCollide, AssetMountedTwice, RackTallerThanRoom,
@@ -29,7 +29,7 @@ fn altra_host() -> ChassisMount {
   ChassisMount { asset: ("srv-altra-1" as PhysicalAssetIdentity), chassis: rosewill_rsv_r4000u_catalog, lowest_unit: 1 }
 }
 
-fn second_host(lowest: Int) -> ChassisMount {
+fn second_host(lowest: RackUnitPosition) -> ChassisMount {
   ChassisMount { asset: ("srv-altra-2" as PhysicalAssetIdentity), chassis: rosewill_rsv_r4000u_catalog, lowest_unit: lowest }
 }
 
@@ -89,7 +89,7 @@ test fn overlapping_mounts_refuse() -> Bool {
 test fn a_mount_past_the_top_refuses_and_names_the_overshoot() -> Bool {
   match rack_instance(identity: ("rack-a" as RackIdentity), catalog: navepoint_18u_open_frame_catalog, mounts: [second_host(lowest: 16)]) {
     MountReady { value: _ } => false
-    MountRefused { cause: c } => match c { MountExceedsRackHeight { top_unit: t, rack_units: u } => t == 19 && u == 18  _ => false }
+    MountRefused { cause: c } => match c { MountExceedsRackHeight { top_unit: t, rack_capacity: u } => t == 19 && rack_unit_count(u: u) == 18  _ => false }
   }
 }
 
@@ -134,7 +134,7 @@ test fn a_rack_taller_than_its_room_refuses() -> Bool {
         Present { value: rm } =>
           match room_mounted_rack(rack: r, room: rm) {
             MountReady { value: _ } => false
-            MountRefused { cause: c } => match c { RackTallerThanRoom { rack_height_um: h, room_height_um: rh } => h == 800100 && rh == 600000  _ => false }
+            MountRefused { cause: c } => match c { RackTallerThanRoom { rack_height: h, room_height: rh } => micrometer_count(m: h) == 800100 && micrometer_count(m: rh) == 600000  _ => false }
           }
       }
   }
