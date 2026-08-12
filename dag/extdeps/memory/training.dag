@@ -2,7 +2,8 @@ module extdeps.memory.training
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.measure { ByteSize, BitWidth, bit_width, byte_size, byte_size_count, bit_width_count }
-import extdeps.external_authority { ExternalAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef, ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.memory.types {
   DimmBuffering,
@@ -22,6 +23,20 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     locator: "www.jedec.org/standards-documents/docs/jesd79-4a"
   }
 }
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.memory.training",
+      decl_name: "MemoryTrainingStep",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data training_scope_subject_note: String = "THE SUBJECT IS THE JEDEC DDR4 INITIALIZATION CALIBRATION SEQUENCE — which calibration steps a module must execute, derived from its construction. Grounded on JESD79-4A. The load-reduced steps exist only where a data buffer is interposed, which is what makes the step set a difference in KIND between module classes rather than a reliability preference. NOT platform failure receipts (those are gunbc observations of a board), NOT purchasing policy, NOT the DRAM module catalog shape itself (extdeps.memory.types)."
 
 // WHY A TRAINING-STEP MODEL RATHER THAN A BLOCKLIST.
 //

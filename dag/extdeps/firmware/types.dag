@@ -2,10 +2,12 @@ module extdeps.firmware.types
 
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size }
-import std.types { EpochMs, NonEmptyStr, List, Present, Absent, list_length }
+import std.types { EpochMs, NonEmptyStr, List, list_length }
+import v2.std.optional { Present, Absent }
 import extdeps.crypto.hash { Digest }
 import extdeps.boards.types { BaseboardModel }
-import extdeps.external_authority { ExternalAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef, ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -14,6 +16,20 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     locator: "en.wikipedia.org/wiki/Firmware"
   }
 }
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.firmware.types",
+      decl_name: "FirmwareReleaseRow",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data types_scope_subject_note: String = "THE SUBJECT IS THE VENDOR FIRMWARE RELEASE AND ITS APPLICABILITY PRECONDITION. A release row names a board, an independently versioned firmware target, a packaging, and the bytes; the prerequisite names what must already be running before those bytes can be applied. NOT the flashing mechanism, NOT any BMC API surface, NOT product policy about which release a fleet should run — those are extdeps.bmc.* upstream facts and gunbc product decisions respectively. The prerequisite minimum here is bounded by executed pushes carried as FirmwarePrerequisiteObservation rows, never asserted from a vendor page, which documents no such dependency."
 
 // A version triple is one concept. It was previously spelled
 // BmcFirmwareSemanticVersion inside the BMC module, which made the SAME
