@@ -1,6 +1,6 @@
 module gunbc.provider_standing
 
-import std.types { String, NonEmptyStr, Bool, Int, List, list_length }
+import std.types { String, NonEmptyStr, Bool, Int, List, list_length, EpochSecs }
 import std.claim_evidence { RecordedFactId, RecordedFact }
 import std.measure { BasisPoint }
 import v2.std.optional { optional_absent, optional_present }
@@ -75,6 +75,18 @@ type ProviderEntitlementObservation
 
 data limit_subject_unobserved_note: String = "AN UNMEASURED SUBJECT IS NOT AN UNMEASURED WORLD (review 51237, gunbc#8166). LimitObservationUnobserved blocks EVERY draw, which is right when nothing is known about any limit — the observation carries no subject because there is no subject to carry. It is wrong the moment one bucket decodes and a sibling does not: the codex bucket failing to decode does not make a measured, available codex_bengalfox bucket unmeasured, and refusing a draw that names the sibling refuses work on evidence that concerns a different subject.\n\nThat is still a fail-closed error rather than a fail-open one, which is exactly why it is easy to miss and worth naming: over-refusal reads as caution while it silently prices out capacity the observation proved was there.\n\nSo this arm carries the subject the producer already had. It routes through limit_subject_covers_dispatch_draw like every other subject-bearing arm, which means it blocks a draw naming that bucket, and it still blocks Unspecified and Automatic draws — those cover every native bucket, so an unmeasured bucket refuses whenever the draw does not say which bucket it consults. Precision where the draw names a subject; fail-closed where it does not.\n\nThe distinction from LimitCapabilityGapUnobservable is that the gap arm means the capability cannot be observed AT ALL on this surface (it returns false — a permanently unobservable axis must not block forever), while this arm means a specific observable subject was not measured on this trip."
 
+data provider_native_limit_cause_note: String = "THE CAUSE IS NOT THE SUBJECT, AND ITS ABSENCE IS NOT A NAME. The Codex bridge built this field as `match reached_type \{ Present \{ value: t \} => t Absent => limit_id \}` — so a bucket that reported exhaustion WITHOUT naming a cause got the bucket's own id in the cause slot, and a reader could not tell an upstream-reported `rate_limit_reached` from our own substitution. That is state-space conflation on a field whose entire job is to say why.\n\nNativeCauseUnreported is the honest arm. It is reachable: rateLimitReachedType is optional on the wire, and an exhausted bucket that omits it is a real observation — exhausted, cause unstated — distinct from both a named cause and from not having observed the bucket at all.\n\nSCOPE, stated because the other arms were NOT converted: LimitWarning, LimitRejected, LimitExhausted and LimitRateLimited still carry a bare native_token. They have one producer between them (a fixture) and no observed case of a missing token, so converting them now would add a state nothing can reach. Trigger: the first producer that cannot supply a token converts that arm rather than substituting a stand-in."
+
+data provider_limit_reset_note: String = "AN UNOBSERVED RESET IS NOT AN IMMEDIATE ONE, AND IT WAS PREVIOUSLY NEITHER — it was nothing at all. CodexBucketUnavailableUntilReset decodes resetsAt from the wire and the projection dropped it on the floor, so an arm literally named UntilReset could not say until when. A consumer deciding whether to wait or to route elsewhere needs exactly that, and the previous answer was to guess.\n\nThe absent arm is not a defect to remove: resetsAt is optional upstream, so exhausted-with-no-stated-reset is a state the wire can produce. Carrying it as LimitResetInstantUnobserved keeps the retry decision explicit instead of letting a missing timestamp read as zero — zero being the BEST possible reset and therefore the worst available default."
+
+type ProviderNativeLimitCause
+  = NativeCauseReported { token: NonEmptyStr }
+  | NativeCauseUnreported
+
+type ProviderLimitReset
+  = LimitResetAt { at: EpochSecs }
+  | LimitResetInstantUnobserved
+
 type ProviderLimitObservation
   = LimitObservationUnobserved { reason: NonEmptyStr }
   | LimitCapabilityGapUnobservable { reason: NonEmptyStr }
@@ -96,7 +108,8 @@ type ProviderLimitObservation
     }
   | LimitUnavailableUntilReset {
       subject: ProviderLimitSubject,
-      native_token: NonEmptyStr,
+      cause: ProviderNativeLimitCause,
+      reset: ProviderLimitReset,
       reason: NonEmptyStr,
     }
   | LimitExhausted { subject: ProviderLimitSubject, native_token: NonEmptyStr }
@@ -329,7 +342,7 @@ fn limit_observation_blocks_dispatch(
     LimitObservationUnobserved { reason: _ } => true
     LimitSubjectUnobserved { subject: s, native_token: _, reason: _ } =>
       limit_subject_covers_dispatch_draw(subject: s, draw: draw)
-    LimitUnavailableUntilReset { subject: s, native_token: _, reason: _ } =>
+    LimitUnavailableUntilReset { subject: s, cause: _, reset: _, reason: _ } =>
       limit_subject_covers_dispatch_draw(subject: s, draw: draw)
     LimitExhausted { subject: s, native_token: _ } =>
       limit_subject_covers_dispatch_draw(subject: s, draw: draw)
@@ -418,7 +431,7 @@ fn first_blocking_native_limit_bucket_for_automatic_draw(
                     optional_present(value: key)
                   _ => optional_absent()
                 }
-              LimitUnavailableUntilReset { subject: s, native_token: _, reason: _ } =>
+              LimitUnavailableUntilReset { subject: s, cause: _, reset: _, reason: _ } =>
                 match s {
                   ProviderNativeLimitBucket { credential: _, native_key: key } =>
                     optional_present(value: key)
@@ -492,7 +505,8 @@ fn fixture_standing_bundle_authenticated_unavailable_until_reset() -> ProviderSt
     limits: [
       LimitUnavailableUntilReset {
         subject: ProviderAccountLimit { credential: LimitCredentialUnspecified },
-        native_token: "seven_day" as NonEmptyStr,
+        cause: NativeCauseReported { token: "seven_day" as NonEmptyStr },
+        reset: LimitResetInstantUnobserved,
         reason: "weekly cap exhausted until reset" as NonEmptyStr,
       },
     ],
