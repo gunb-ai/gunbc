@@ -73,9 +73,16 @@ type ProviderEntitlementObservation
   | EntitlementObservedAvailable
   | EntitlementRejected { reason: NonEmptyStr }
 
+data limit_subject_unobserved_note: String = "AN UNMEASURED SUBJECT IS NOT AN UNMEASURED WORLD (review 51237, gunbc#8166). LimitObservationUnobserved blocks EVERY draw, which is right when nothing is known about any limit — the observation carries no subject because there is no subject to carry. It is wrong the moment one bucket decodes and a sibling does not: the codex bucket failing to decode does not make a measured, available codex_bengalfox bucket unmeasured, and refusing a draw that names the sibling refuses work on evidence that concerns a different subject.\n\nThat is still a fail-closed error rather than a fail-open one, which is exactly why it is easy to miss and worth naming: over-refusal reads as caution while it silently prices out capacity the observation proved was there.\n\nSo this arm carries the subject the producer already had. It routes through limit_subject_covers_dispatch_draw like every other subject-bearing arm, which means it blocks a draw naming that bucket, and it still blocks Unspecified and Automatic draws — those cover every native bucket, so an unmeasured bucket refuses whenever the draw does not say which bucket it consults. Precision where the draw names a subject; fail-closed where it does not.\n\nThe distinction from LimitCapabilityGapUnobservable is that the gap arm means the capability cannot be observed AT ALL on this surface (it returns false — a permanently unobservable axis must not block forever), while this arm means a specific observable subject was not measured on this trip."
+
 type ProviderLimitObservation
   = LimitObservationUnobserved { reason: NonEmptyStr }
   | LimitCapabilityGapUnobservable { reason: NonEmptyStr }
+  | LimitSubjectUnobserved {
+      subject: ProviderLimitSubject,
+      native_token: NonEmptyStr,
+      reason: NonEmptyStr,
+    }
   | LimitObservedAvailable { subject: ProviderLimitSubject }
   | LimitWarning {
       subject: ProviderLimitSubject,
@@ -320,6 +327,8 @@ fn limit_observation_blocks_dispatch(
 ) -> Bool {
   match observation {
     LimitObservationUnobserved { reason: _ } => true
+    LimitSubjectUnobserved { subject: s, native_token: _, reason: _ } =>
+      limit_subject_covers_dispatch_draw(subject: s, draw: draw)
     LimitUnavailableUntilReset { subject: s, native_token: _, reason: _ } =>
       limit_subject_covers_dispatch_draw(subject: s, draw: draw)
     LimitExhausted { subject: s, native_token: _ } =>

@@ -18,6 +18,9 @@ import gunbc.codex_app_server_press {
   CodexBucketCapacityUnknown,
 }
 import gunbc.provider_standing {
+  ProviderLimitObservation,
+  LimitDispatchDrawUnspecified,
+  LimitDispatchDrawAutomatic,
   ProviderLimitDispatchDraw,
   LimitDispatchDrawNativeBucket,
   LimitCredentialLabel,
@@ -25,6 +28,7 @@ import gunbc.provider_standing {
   ProviderAccountLimit,
   LimitObservedAvailable,
   LimitUnavailableUntilReset,
+  LimitSubjectUnobserved,
   limit_observations_are_selection_eligible,
   ProviderStandingFromFact,
   ProviderStandingUnobserved,
@@ -231,6 +235,8 @@ test fn provider_standing_probe_bridge_keystone_holds() -> Bool {
     && witness_exhausted_codex_allows_a_sibling_bucket_draw()
     && witness_capacity_unknown_is_not_capacity()
     && witness_no_buckets_is_a_located_unobserved_not_an_empty_list()
+    && witness_undecoded_bucket_does_not_refuse_a_measured_sibling()
+    && witness_undecoded_bucket_still_refuses_its_own_draw_and_unnamed_draws()
 }
 
 // ---------------------------------------------------------------------------
@@ -319,4 +325,50 @@ test fn witness_no_buckets_is_a_located_unobserved_not_an_empty_list() -> Bool {
   observations.length() == 1
     && all(observations, o =>
       match o { LimitObservationUnobserved { reason: _ } => true _ => false })
+}
+
+// THE MIXED CASE (review 51237). One bucket decodes, a sibling does not.
+// The first version of this bridge mapped CapacityUnknown to the subject-less
+// LimitObservationUnobserved, which blocks EVERY draw — so codex failing to
+// decode refused a draw naming a measured, available codex_bengalfox. It is a
+// fail-CLOSED error, which is why it survived the sibling witness above: the
+// exhausted/available pair still discriminated, because neither was unknown.
+data mixed_decode_witness_note: String = "Over-refusal reads as caution while it prices out capacity the observation proved was there. The producer held the limit_id and threw it away; carrying it is the whole fix."
+
+fn undecoded_codex_bucket() -> CodexRateLimitBucketVerdict {
+  CodexBucketCapacityUnknown { limit_id: "codex" as NonEmptyStr }
+}
+
+fn mixed_decode_observations() -> List<ProviderLimitObservation> {
+  provider_limit_observations_from_codex_buckets(
+    credential: press_bucket_credential(),
+    buckets: [undecoded_codex_bucket(), available_bengalfox_bucket()],
+  )
+}
+
+test fn witness_undecoded_bucket_does_not_refuse_a_measured_sibling() -> Bool {
+  limit_observations_are_selection_eligible(
+    observations: mixed_decode_observations(),
+    draw: draw_on(native_key: "codex_bengalfox" as NonEmptyStr))
+}
+
+test fn witness_undecoded_bucket_still_refuses_its_own_draw_and_unnamed_draws() -> Bool {
+  let observations = mixed_decode_observations()
+  let unknown = provider_limit_observation_from_codex_bucket(
+    credential: press_bucket_credential(), verdict: undecoded_codex_bucket())
+  !limit_observations_are_selection_eligible(
+    observations: observations, draw: draw_on(native_key: "codex" as NonEmptyStr))
+    && !limit_observations_are_selection_eligible(
+      observations: observations, draw: LimitDispatchDrawUnspecified)
+    && !limit_observations_are_selection_eligible(
+      observations: observations, draw: LimitDispatchDrawAutomatic)
+    && (match unknown {
+      LimitSubjectUnobserved { subject: s, native_token: t, reason: _ } =>
+        t == "codex"
+          && (match s {
+            ProviderNativeLimitBucket { credential: _, native_key: k } => k == "codex"
+            _ => false
+          })
+      _ => false
+    })
 }
