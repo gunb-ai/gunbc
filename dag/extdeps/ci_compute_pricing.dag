@@ -583,11 +583,11 @@ fn resolve_offer(id: ComputeOfferIdentity) -> ComputeOfferResolution {
 // The catalog's own integrity: no two rows may share an identity, or every lookup against that
 // identity refuses and the table silently loses a route.
 fn offer_identities_are_unique() -> Bool {
-  all(map(ci_compute_offers, o => match resolve_offer(id: o.identity) {
+  all(ci_compute_offers, o => match resolve_offer(id: o.identity) {
     ComputeOfferResolved { offer } => true,
     ComputeOfferMissing { identity } => false,
     ComputeOfferAmbiguous { identity, match_count } => false,
-  }))
+  })
 }
 
 // The only spendable form of a route's price. Missing and ambiguous both refuse; neither becomes a
