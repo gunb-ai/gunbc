@@ -7,7 +7,25 @@ import extdeps.llm.cli_lifecycle {
   ProviderInstance,
   ProviderInstanceFieldUnobserved,
 }
+import gunbc.provider_standing_probe_bridge {
+  provider_limit_observation_from_codex_bucket,
+  provider_limit_observations_from_codex_buckets,
+}
+import gunbc.codex_app_server_press {
+  CodexRateLimitBucketVerdict,
+  CodexBucketCapacityAvailable,
+  CodexBucketUnavailableUntilReset,
+  CodexBucketCapacityUnknown,
+}
 import gunbc.provider_standing {
+  ProviderLimitDispatchDraw,
+  LimitDispatchDrawNativeBucket,
+  LimitCredentialLabel,
+  ProviderNativeLimitBucket,
+  ProviderAccountLimit,
+  LimitObservedAvailable,
+  LimitUnavailableUntilReset,
+  limit_observations_are_selection_eligible,
   ProviderStandingFromFact,
   ProviderStandingUnobserved,
   AuthenticationAuthenticated,
@@ -209,4 +227,96 @@ test fn provider_standing_probe_bridge_keystone_holds() -> Bool {
     && witness_bridge_profile_present_token_absent_refuses_through_mapper()
     && witness_bridge_profile_present_token_absent_not_authenticated_arm()
     && witness_bridge_standing_is_from_fact_not_inventory_unobserved()
+    && witness_codex_bucket_projects_to_native_bucket_never_account_scope()
+    && witness_exhausted_codex_allows_a_sibling_bucket_draw()
+    && witness_capacity_unknown_is_not_capacity()
+    && witness_no_buckets_is_a_located_unobserved_not_an_empty_list()
+}
+
+// ---------------------------------------------------------------------------
+// PRESS-0 step 2 — the consumer gunbc.codex_app_server_press asked for by name.
+//
+// The press receipt decoded per-bucket rate limits and then had nowhere to go:
+// the standing bridge left the limit axis Unobserved, so a measured bucket and
+// an unmeasured one produced the same verdict. These witness the projection the
+// press note specifies, and the discriminating case is the one it names.
+
+data codex_press_limit_bridge_witness_note: String = "The sibling-bucket case is the whole point: an exhausted `codex` bucket and an available `codex_bengalfox` bucket must produce DIFFERENT verdicts under draws that name them. A projection that routed either through ProviderAccountLimit would collapse both to one account verdict and refuse — or admit — work for the wrong reason."
+
+fn press_bucket_credential() -> LimitCredentialLabel {
+  LimitCredentialLabel { label: "srv1-codex" as NonEmptyStr }
+}
+
+fn draw_on(native_key: NonEmptyStr) -> ProviderLimitDispatchDraw {
+  LimitDispatchDrawNativeBucket {
+    credential: press_bucket_credential(),
+    native_key: native_key,
+  }
+}
+
+fn exhausted_codex_bucket() -> CodexRateLimitBucketVerdict {
+  CodexBucketUnavailableUntilReset {
+    limit_id: "codex" as NonEmptyStr,
+    reached_type: none,
+    resets_at: none,
+  }
+}
+
+fn available_bengalfox_bucket() -> CodexRateLimitBucketVerdict {
+  CodexBucketCapacityAvailable { limit_id: "codex_bengalfox" as NonEmptyStr }
+}
+
+test fn witness_codex_bucket_projects_to_native_bucket_never_account_scope() -> Bool {
+  let available = provider_limit_observation_from_codex_bucket(
+    credential: press_bucket_credential(), verdict: available_bengalfox_bucket())
+  let exhausted = provider_limit_observation_from_codex_bucket(
+    credential: press_bucket_credential(), verdict: exhausted_codex_bucket())
+  (match available {
+    LimitObservedAvailable { subject: s } =>
+      match s {
+        ProviderNativeLimitBucket { credential: _, native_key: k } => k == "codex_bengalfox"
+        _ => false
+      }
+    _ => false
+  })
+    && (match exhausted {
+      LimitUnavailableUntilReset { subject: s, native_token: t, reason: _ } =>
+        t == "codex"
+          && (match s {
+            ProviderNativeLimitBucket { credential: _, native_key: k } => k == "codex"
+            ProviderAccountLimit { credential: _ } => false
+            _ => false
+          })
+      _ => false
+    })
+}
+
+// THE DISCRIMINATING ONE. Same observation set, two draws, two verdicts — a
+// projection through account scope cannot produce this and would fail here.
+test fn witness_exhausted_codex_allows_a_sibling_bucket_draw() -> Bool {
+  let observations = provider_limit_observations_from_codex_buckets(
+    credential: press_bucket_credential(),
+    buckets: [exhausted_codex_bucket(), available_bengalfox_bucket()],
+  )
+  !limit_observations_are_selection_eligible(
+    observations: observations, draw: draw_on(native_key: "codex" as NonEmptyStr))
+    && limit_observations_are_selection_eligible(
+      observations: observations, draw: draw_on(native_key: "codex_bengalfox" as NonEmptyStr))
+}
+
+test fn witness_capacity_unknown_is_not_capacity() -> Bool {
+  let unknown = provider_limit_observation_from_codex_bucket(
+    credential: press_bucket_credential(),
+    verdict: CodexBucketCapacityUnknown { limit_id: "codex" as NonEmptyStr })
+  (match unknown { LimitObservationUnobserved { reason: _ } => true _ => false })
+    && !limit_observations_are_selection_eligible(
+      observations: [unknown], draw: draw_on(native_key: "codex" as NonEmptyStr))
+}
+
+test fn witness_no_buckets_is_a_located_unobserved_not_an_empty_list() -> Bool {
+  let observations = provider_limit_observations_from_codex_buckets(
+    credential: press_bucket_credential(), buckets: [])
+  observations.length() == 1
+    && all(observations, o =>
+      match o { LimitObservationUnobserved { reason: _ } => true _ => false })
 }

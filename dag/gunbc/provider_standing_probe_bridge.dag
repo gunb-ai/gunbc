@@ -24,6 +24,17 @@ import gunbc.provider_standing {
   ToolEnvironmentStandingUnobserved,
   ToolEnvironmentUnavailable,
   ToolEnvironmentReady,
+  ProviderLimitCredentialIdentity,
+  ProviderNativeLimitBucket,
+  LimitObservedAvailable,
+  LimitUnavailableUntilReset,
+}
+import gunbc.codex_app_server_press {
+  CodexAccountStandingEvidence,
+  CodexRateLimitBucketVerdict,
+  CodexBucketCapacityAvailable,
+  CodexBucketUnavailableUntilReset,
+  CodexBucketCapacityUnknown,
 }
 
 data provider_standing_probe_bridge_authority_note: String = "OBSERVATION BRIDGE (deep-raven-684 msg_a203fe4d): factors dashboard Codex probes into a six-axis ProviderStandingBundle without inferring limit capacity or entitlement availability from authentication. Login-status and version probes ground installation and authentication only. Entitlement and account-limit axes stay honestly unobserved at this boundary unless a dedicated observation path supplies them. DISSOLVES ON: the first RecordedFact<ProviderStandingObservationFact> standing-observation path supersedes probe-derived inventory standing (nimble-owl-833)."
@@ -239,4 +250,52 @@ fn provider_standing_bundle_from_claude_credential_control_probe(
       reason: provider_standing_probe_bridge_claude_tool_environment_unobserved_reason,
     ),
   }
+}
+
+data codex_press_limit_bridge_note: String = "THE CONSUMER THE PRESS RECEIPT NAMED. gunbc.codex_app_server_press account_standing_authenticated_rate_limits_readable_note specifies this bridge and carries its dissolution: read evidence.rate_limit_buckets per limit_id, project each CodexRateLimitBucketVerdict to ProviderNativeLimitBucket, and NEVER route through ProviderAccountLimit or through CodexPressAccountReady as the limit axis.\n\nWHY THE SUBJECT MUST BE THE BUCKET. The account-standing classification gates on codex_default_rate_limit_id alone, so it reports Ready while a sibling bucket is exhausted and reports the account blocked while a sibling has capacity. Promoting either reading to account scope erases bucket identity and refuses — or admits — work for the wrong reason. One bucket is one subject; the draw decides which subject a dispatch actually consults.\n\nCAPACITY-UNKNOWN IS NOT CAPACITY. CodexBucketCapacityUnknown carries a limit_id whose window did not decode, so it becomes LimitObservationUnobserved and never LimitObservedAvailable — the empty-observation narrow is the failure mode here, not the widen: reading could-not-decode as nothing-is-wrong would admit a dispatch against a bucket nobody measured.\n\nAN EMPTY BUCKET LIST IS ALSO NOT CAPACITY. limit_observations_are_selection_eligible already refuses an empty list, so this projection does not change that verdict; what it adds is a located reason, so the refusal says which observation was missing instead of arriving as a bare false."
+
+fn provider_limit_observation_from_codex_bucket(
+  credential: ProviderLimitCredentialIdentity,
+  verdict: CodexRateLimitBucketVerdict,
+) -> ProviderLimitObservation {
+  match verdict {
+    CodexBucketCapacityAvailable { limit_id: id } =>
+      LimitObservedAvailable {
+        subject: ProviderNativeLimitBucket { credential: credential, native_key: id },
+      }
+    CodexBucketUnavailableUntilReset { limit_id: id, reached_type: _, resets_at: _ } =>
+      LimitUnavailableUntilReset {
+        subject: ProviderNativeLimitBucket { credential: credential, native_key: id },
+        native_token: id,
+        reason: codex_press_bucket_unavailable_reason,
+      }
+    CodexBucketCapacityUnknown { limit_id: _ } =>
+      LimitObservationUnobserved { reason: codex_press_bucket_capacity_unknown_reason }
+  }
+}
+
+data codex_press_bucket_unavailable_reason: NonEmptyStr = "codex app-server rate-limit bucket reported exhausted until reset" as NonEmptyStr
+data codex_press_bucket_capacity_unknown_reason: NonEmptyStr = "codex app-server rate-limit bucket window did not decode; capacity unmeasured" as NonEmptyStr
+data codex_press_no_buckets_reason: NonEmptyStr = "codex app-server rate-limit response carried no decodable bucket; no limit was observed" as NonEmptyStr
+
+fn provider_limit_observations_from_codex_buckets(
+  credential: ProviderLimitCredentialIdentity,
+  buckets: List<CodexRateLimitBucketVerdict>,
+) -> List<ProviderLimitObservation> {
+  if list_length(items: buckets) == 0 {
+    [LimitObservationUnobserved { reason: codex_press_no_buckets_reason }]
+  } else {
+    map(buckets, b =>
+      provider_limit_observation_from_codex_bucket(credential: credential, verdict: b))
+  }
+}
+
+fn provider_limit_observations_from_codex_press_evidence(
+  credential: ProviderLimitCredentialIdentity,
+  evidence: CodexAccountStandingEvidence,
+) -> List<ProviderLimitObservation> {
+  provider_limit_observations_from_codex_buckets(
+    credential: credential,
+    buckets: evidence.rate_limit_buckets,
+  )
 }
