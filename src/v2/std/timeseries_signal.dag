@@ -105,7 +105,7 @@ fn duration_micro_count(t: DurationMicro) -> Int {
 
 type PotentialReference
   = GroundReference
-  | NodeReference { name: Symbol }
+  | NodeReference { name: String }
 
 type AbsolutePotential {
   reference: PotentialReference
@@ -142,7 +142,7 @@ type PassiveElementValue {
 }
 
 type PassiveElementTopology {
-  name: Symbol
+  name: String
   n_plus: PotentialReference
   n_minus: PotentialReference
   value: PassiveElementValue
