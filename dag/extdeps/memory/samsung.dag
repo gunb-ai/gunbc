@@ -28,14 +28,26 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 data stick_capacity_bytes: ByteSize = byte_size(34359738368)
 
-// Part-number decode, each axis landing on the field that already models it rather
-// than on a fresh enum: M386 is the Samsung LRDIMM module family (M393 registered,
-// M378 unbuffered), so buffering is LoadReduced; A4G40 is a 4 Gbit x4 die, so
-// chip_width is the existing BitWidth 4; DM0 carries the 4-rank organization, so
-// rank_count is the cardinal 4; CPB is the DDR4-2133 (PC4-2133P) speed bin, so
-// data_rate_mts is 2133. Capacity is then not an independent fact — 16 data chips
-// per rank at 4 Gbit each, four ranks, is exactly the 32 GiB the label states, and
-// dram_module_required_die_density recomputes that 4 Gbit die from the row.
+// PROVENANCE, SPLIT BY WHAT ACTUALLY SUPPORTS EACH FACT, because the module scope binds its
+// citation to this exact declaration and a generic DDR4 reference cannot carry a vendor SKU.
+// No first-party Samsung document for this part was reachable: it is an EOL SKU, and the
+// per-part paths under semiconductor.samsung.com now serve a generic DDR overview rather than
+// a datasheet (checked 2026-08-12). So the exact figures below are LABEL facts supplied with
+// the operator's procurement brief — 32GB, DDR4-2133, LRDIMM, 4Rx4 — and not a reading of a
+// vendor datasheet. The module anchor cites the DDR4 and Registered-memory definitions, which
+// is what a generic source can honestly support: what DDR4, ECC and load reduction MEAN.
+// Dissolve-on: a Samsung product-selection guide or module datasheet carrying this part row,
+// at which point these become cited facts and the label stops being the authority.
+//
+// WHAT THE MODEL ADDS IS A CHECK, NOT A RESTATEMENT. capacity, chip_width and rank_count are
+// independent label facts, and dram_module_required_die_density divides them back out to a
+// 4 Gbit die — which is the density the module is independently described as carrying. Three
+// label numbers that could each have been mistyped agree on a fourth that was not authored
+// here, so the row is corroborated rather than merely transcribed.
+//
+// ONE PRECISION, since the derived count reads as a package count and is not one: at x4 with
+// ECC the module carries 18 dies per rank and 72 across four ranks, which this part reaches
+// as 36 dual-die packages. dram_chips_per_rank counts DIES, the unit that determines density.
 data m386a4g40dm0_cpb_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
   part_number: "M386A4G40DM0-CPB",
   manufacturer: samsung,

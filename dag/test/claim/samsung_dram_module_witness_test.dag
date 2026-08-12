@@ -18,7 +18,7 @@ data control_32g_1rx8: DramModuleCatalogRow = DramModuleCatalogRow {
   rank_count: 1,
 }
 
-test fn part_number_axes_decode_onto_existing_concepts() -> Bool {
+test fn row_axes_match_the_labelled_module_organization() -> Bool {
   m386a4g40dm0_cpb_catalog.part_number == ("M386A4G40DM0-CPB" as NonEmptyStr)
     && m386a4g40dm0_cpb_catalog.buffering == LoadReduced
     && bit_width_count(b: m386a4g40dm0_cpb_catalog.chip_width) == 4
@@ -39,7 +39,7 @@ test fn manufacturer_grounds_on_the_single_vendor_authority() -> Bool {
   m386a4g40dm0_cpb_catalog.manufacturer == samsung
 }
 
-test fn organization_derives_seventy_two_chips() -> Bool {
+test fn organization_derives_eighteen_dies_per_rank() -> Bool {
   dram_chips_per_rank(module: m386a4g40dm0_cpb_catalog) == 18
     && dram_data_chips_per_rank(module: m386a4g40dm0_cpb_catalog) == 16
 }
