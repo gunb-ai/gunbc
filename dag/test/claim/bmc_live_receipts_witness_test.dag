@@ -28,7 +28,6 @@ import extdeps.filesystem.linux {
 }
 import gunbc.fleet_bmc_observation {
   srv3_bmc_firmware_observation,
-  srv3_bmc_redfish_surface,
   srv3_bmc_update_service_observation,
   srv4_bmc_config_persistence_observation,
   srv4_bmc_fan_active_config_digest,
@@ -37,7 +36,6 @@ import gunbc.fleet_bmc_observation {
   srv4_bmc_fan_observed_curve,
   srv4_bmc_fan_perturbation_generation,
   srv4_bmc_firmware_observation,
-  srv4_bmc_redfish_surface,
   srv4_bmc_update_service_observation,
 }
 import gunbc.fleet_bmc_state { srv4_bmc_fan_reboot_persistence_receipt }
