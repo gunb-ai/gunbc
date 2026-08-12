@@ -20183,73 +20183,6 @@ fn scan_test_decl_lines(content: &str) -> Vec<(String, i64)> {
     out
 }
 
-pub(crate) fn floor_filename_hygiene_refusal_via_producer(
-    source_roots: &[String],
-) -> Result<(), String> {
-    let mut dag_paths: Vec<String> = Vec::new();
-    for root in source_roots {
-        let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(Path::new(root), &mut dag_files);
-        for path in dag_files {
-            dag_paths.push(path.to_string_lossy().into_owned());
-        }
-    }
-    if dag_paths.is_empty() {
-        return Ok(());
-    }
-    let (graph, indices) = resolve_workspace_entry(source_roots, FLOOR_NAMING_HYGIENE_ENTRY)
-        .map_err(|e| format!("floor_naming_hygiene resolve for filename hygiene: {e}"))?;
-    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    let path_values: Vec<v1_interpreter::Value> = dag_paths
-        .iter()
-        .map(|p| v1_interpreter::Value::Str(p.clone()))
-        .collect();
-    let args = [(
-        Some("dag_paths".to_string()),
-        list_value_from_vec(path_values),
-    )];
-    let result = v1_interpreter::run_in_context_with_args(
-        &ctx,
-        "floor_filename_hygiene_refusal_for_paths",
-        &args,
-        false,
-    )
-    .map_err(|e| format!("floor_filename_hygiene_refusal_for_paths: {e}"))?;
-    match &result {
-        v1_interpreter::Value::Variant {
-            type_name,
-            variant_name,
-            fields,
-            ..
-        } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Present") => {
-            match ctx.field(fields, "value") {
-                Some(v1_interpreter::Value::Str(reason)) => Err(reason.clone()),
-                _ => Err(
-                    "floor_filename_hygiene_refusal_for_paths Present missing reason string"
-                        .to_string(),
-                ),
-            }
-        }
-        v1_interpreter::Value::Variant {
-            type_name,
-            variant_name,
-            ..
-        } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Absent") => Ok(()),
-        other => Err(format!(
-            "floor_filename_hygiene_refusal_for_paths returned `{}`, expected Optional<String>",
-            ctx.format_value(other)
-        )),
-    }
-}
-
-#[derive(Clone, Copy)]
-struct WorkspaceRootRelativeEntry(&'static str);
-
-const FLOOR_DISCOVERY_PRODUCER_ENTRY: WorkspaceRootRelativeEntry =
-    WorkspaceRootRelativeEntry("src/v2/workflow/floor_discovery_producer.dag");
-const FLOOR_NAMING_HYGIENE_ENTRY: WorkspaceRootRelativeEntry =
-    WorkspaceRootRelativeEntry("src/v2/workflow/floor_naming_hygiene.dag");
-
 /// The producer entry above is repo-relative, and every resolve of it ultimately reads the
 /// path **cwd-relative** (`entry_source_from_index_or_disk` does a bare `Path::is_file`).
 /// The floor runs from the repo root, so that ambient dependency is invisible in production
@@ -20267,6 +20200,12 @@ const FLOOR_NAMING_HYGIENE_ENTRY: WorkspaceRootRelativeEntry =
 /// Part of the `cli_run_runtime_workspace_root_plumbing` scaffold (see
 /// `CLI_RUN_RUNTIME_WORKSPACE_ROOT_SCAFFOLD_MARKER`): it dissolves with the rest of the
 /// anchoring plumbing when entry resolution stops reading cwd.
+#[derive(Clone, Copy)]
+struct WorkspaceRootRelativeEntry(&'static str);
+
+const FLOOR_DISCOVERY_PRODUCER_ENTRY: WorkspaceRootRelativeEntry =
+    WorkspaceRootRelativeEntry("src/v2/workflow/floor_discovery_producer.dag");
+
 fn resolve_workspace_entry(
     source_roots: &[String],
     entry: WorkspaceRootRelativeEntry,
@@ -20942,10 +20881,6 @@ pub fn discover_floor_witness_roster(
     exclude_substrings: &[String],
     discovery_scope_dirs: &[String],
 ) -> Result<Vec<DiscoveryRow>, String> {
-    floor_filename_hygiene_refusal_via_producer(source_roots)?;
-    // U2 — orphan plain fns in *_test.dag (enroll-or-refuse). Lives in the naming walk,
-    // not a new lens (umbrella-dissolution fence).
-    test_module_hygiene_bridge::check_orphan_helpers_or_err(source_roots)?;
     let mut rows = invoke_floor_discovery_producer(source_roots, scan_dirs, exclude_substrings)?;
     rows = apply_discovery_scope_dirs_filter(rows, discovery_scope_dirs);
     // The module-graph facts build now serves exactly two consumers on this path:

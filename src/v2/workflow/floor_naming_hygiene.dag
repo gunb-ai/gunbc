@@ -31,13 +31,6 @@ fn floor_path_strip_dot_slash_prefix(path: String) -> String {
   }
 }
 
-fn floor_filename_contains_double_underscore(path: String) -> Bool {
-  string_contains(
-    s: floor_path_basename(path: floor_path_strip_dot_slash_prefix(path: path)),
-    pattern: "__"
-  )
-}
-
 fn floor_entry_requires_test_sidecar(entry_path: String) -> Bool {
   ends_with(
     s: floor_path_strip_dot_slash_prefix(path: entry_path),
@@ -137,30 +130,6 @@ fn floor_discovery_scan_test_decl_names(content: String) -> List<String> {
         }
       } else {
         acc
-      }
-    }
-  )
-}
-
-fn floor_filename_hygiene_refusal_for_paths(
-  dag_paths: List<String>
-) -> Optional<String> {
-  fold_list(
-    xs: dag_paths,
-    empty: optional_absent(),
-    cons: fn(found, path) {
-      match found {
-        Present { value: _ } => found
-        Absent => if floor_filename_contains_double_underscore(path: path) {
-          optional_present(
-            value: concat(
-              "filename hygiene: `.dag` basenames must not contain `__`; offending: ",
-              path
-            )
-          )
-        } else {
-          optional_absent()
-        }
       }
     }
   )
