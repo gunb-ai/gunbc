@@ -87,3 +87,12 @@ fn m_diagnostic() -> String { classify_member(path: "src/v2/std/diagnostic.dag")
 fn m_occurrence() -> String { classify_member(path: "dag/std/occurrence_identity.dag") }
 fn m_live_tree() -> String { classify_member(path: "src/v2/std/live_tree.dag") }
 fn m_error_primitives() -> String { classify_member(path: "dag/std/error_primitives.dag") }
+
+data wall_attribution_probe_note: String = "MINIMAL-PAIR PROBES for the two frontend walls that are still hypotheses rather than findings. Neither may become a finding from a description: the roadmap row's own RED control refuses a repair asserted separable without execution, and the em-dash misattribution earlier in this lane is the standing receipt for why. Each fn below is one construct in an otherwise-minimal module, so a refusal names the construct rather than the file."
+
+fn p_hex_escape() -> String { classify_source(source: "module frontier_probe\n\ndata d: String = \"a\\x0db\"\n") }
+fn p_hex_escape_control() -> String { classify_source(source: "module frontier_probe\n\ndata d: String = \"ab\"\n") }
+fn p_qualified_record_ctor() -> String { classify_source(source: "module frontier_probe\n\nfn f() -> Int {\n  a.b.C { id: 1 }\n}\n") }
+fn p_bare_record_ctor_control() -> String { classify_source(source: "module frontier_probe\n\nfn f() -> Int {\n  C { id: 1 }\n}\n") }
+fn p_where_refinement() -> String { classify_source(source: "module frontier_probe\n\ntype H = String where lower_hex_16\n") }
+fn p_type_alias_control() -> String { classify_source(source: "module frontier_probe\n\ntype H = String\n") }
