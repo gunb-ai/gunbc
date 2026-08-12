@@ -22,6 +22,12 @@ import gunbc.tools.frontier_ingestion_probe {
   frontier_roster,
   census_is_complete,
   reconcile_census,
+  verify_roster,
+  verify_frontier_roster,
+  FrontierMember,
+  FrontierRosterValid,
+  FrontierRosterDuplicateLabel,
+  FrontierRosterDuplicatePath,
   CensusExact,
   CensusMissingMember,
   CensusDuplicateMember,
@@ -211,4 +217,64 @@ test fn whole_roster_census_reconciles_exactly() -> Bool {
     CensusExact => true
     _ => false
   }
+}
+
+
+// THE DENOMINATOR'S OWN VALIDITY. The observation-side join cannot see either failure below.
+// A duplicated LABEL is satisfied by one observation counted once for both rows, so a roster of
+// fifteen rows and fourteen labels reconciles exactly against fourteen observations. A duplicated
+// PATH under two labels is invisible at label grain entirely: the census reads one file twice and
+// reports it as two members.
+data duplicate_label_roster: List<FrontierMember> = [
+  FrontierMember { label: ^a, path: "dag/std/one.dag" },
+  FrontierMember { label: ^a, path: "dag/std/two.dag" },
+]
+
+data duplicate_path_roster: List<FrontierMember> = [
+  FrontierMember { label: ^a, path: "dag/std/one.dag" },
+  FrontierMember { label: ^b, path: "dag/std/one.dag" },
+]
+
+data two_row_roster: List<FrontierMember> = [
+  FrontierMember { label: ^a, path: "dag/std/one.dag" },
+  FrontierMember { label: ^b, path: "dag/std/two.dag" },
+]
+
+data two_row_roster_reordered: List<FrontierMember> = [
+  FrontierMember { label: ^b, path: "dag/std/two.dag" },
+  FrontierMember { label: ^a, path: "dag/std/one.dag" },
+]
+
+test fn live_frontier_roster_is_valid() -> Bool {
+  match verify_frontier_roster() {
+    FrontierRosterValid => true
+    _ => false
+  }
+}
+
+test fn roster_with_a_duplicate_label_refuses_and_names_it_RED() -> Bool {
+  match verify_roster(rows: duplicate_label_roster) {
+    FrontierRosterDuplicateLabel { label: l } => l == ^a
+    _ => false
+  }
+}
+
+test fn roster_with_one_path_under_two_labels_refuses_and_names_it_RED() -> Bool {
+  match verify_roster(rows: duplicate_path_roster) {
+    FrontierRosterDuplicatePath { path: p } => p == "dag/std/one.dag"
+    _ => false
+  }
+}
+
+// Row order is not a fact about the roster, so it must not be a fact about the verdict.
+test fn roster_verdict_is_stable_under_row_reordering() -> Bool {
+  let a = match verify_roster(rows: two_row_roster) {
+    FrontierRosterValid => true
+    _ => false
+  }
+  let b = match verify_roster(rows: two_row_roster_reordered) {
+    FrontierRosterValid => true
+    _ => false
+  }
+  a && b
 }
