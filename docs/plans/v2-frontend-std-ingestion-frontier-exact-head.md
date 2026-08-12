@@ -129,11 +129,40 @@ One earlier reading recorded during this work — a trailing ASCII hyphen in a c
 **did not reproduce** on recheck and is discarded as a scratch-file race. It is recorded here only
 so that nobody re-derives it from the intermediate notes and treats it as a finding.
 
-### `dag/std/types.dag` is unaffected by the annotation channel
+### `dag/std/types.dag` — both inherited explanations are REFUTED by execution
 
-Its `\x00` and `\x0d` sequences sit inside **string literals**, not comments, so the fixed-width
-`\xNN` escape hypothesis for this member stands independently of the annotation-channel work. That
-hypothesis is corroborated by source content and is **not yet executed** as a direct minimal pair.
+An earlier revision of this document said its `\x00`/`\x0d` sequences sit inside string literals,
+so the fixed-width `\xNN` escape hypothesis "stands", corroborated by source content. **Executed,
+that hypothesis is false.** `data d: String = "a\x0db"` classifies identically to its escape-free
+control: the escape lexes. And `types.dag` **still fails LEX after the annotation channel landed**,
+so that is not its cause either.
+
+Its lex wall is therefore a **third, unattributed cause**. What is excluded, each by execution
+rather than by argument: non-ASCII characters in string literals (`§` and `—` both pass), the
+missing `//` annotation channel (repaired here; the member still refuses), and fixed-width hex
+escapes. **No repair for this member may be scheduled from the remaining descriptions** — the next
+step is a prefix bisection to the first refusing construct, the same method that attributed
+`algebra.dag`.
+
+### `src/v2/std/node.dag` — the qualified-record-constructor explanation is REFUTED
+
+The inherited hypothesis was that the missing parse form is qualified record construction
+(`std.occurrence_identity.OccurrenceMinted { id: id }`). Executed, `a.b.C { id: 1 }` **parses and
+reaches ACCEPTED** against a bare-constructor control. The form already works, so it cannot be this
+member's parse wall, which remains unattributed.
+
+### `dag/std/content_hash.dag` — the `where`-refinement explanation is CONFIRMED
+
+`type H = String where lower_hex_16` refuses at PARSE while the plain alias `type H = String`
+passes. This one is now a finding rather than an inherited claim.
+
+### The standing lesson of this section
+
+Three inherited or self-authored attributions in this lane have now been overturned by execution —
+the em-dash (authored here), the `\xNN` escape, and the qualified record constructor — while one
+was confirmed. Every attribution that was *not* executed has so far been wrong. Two of the refuted
+ones had concrete repairs proposed against them; either would have been written, passed its own
+tests, and left the member exactly as broken.
 
 ## What the same change then repaired
 
