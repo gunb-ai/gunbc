@@ -8,7 +8,6 @@ import extdeps.bmc.openbmc_fan_control {
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.bmc.capability {
   BmcFirmwareVersion,
-  bmc_firmware_semantic_version,
 }
 import extdeps.boards.asrock_rack {
   asrock_altrad8ud_openbmc_3_22_00_capabilities,
@@ -45,6 +44,7 @@ import gunbc.bmc_fan_monitor {
 import gunbc.fleet_intent { srv3_host, srv4_host }
 import std.bmc { OpenBmc }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.firmware.types { firmware_semantic_version }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -188,7 +188,7 @@ test fn backup_manifest_identity_is_derived_from_every_manifest_field() -> Bool 
       stable_bmc_identity: cleanup_debt_test_manifest.stable_bmc_identity,
       firmware: BmcFirmwareVersion {
         family: OpenBmc,
-        version: bmc_firmware_semantic_version(
+        version: firmware_semantic_version(
           major: cleanup_debt_test_manifest.firmware.version.major + 1,
           minor: cleanup_debt_test_manifest.firmware.version.minor,
           patch: cleanup_debt_test_manifest.firmware.version.patch,

@@ -1,11 +1,158 @@
 module test.retirement.model
 
-type RetirementDisposition
-  = DeleteRedundant { covered_by: String }
-  | DeleteLowValue { reason: String }
-  | RetainedNonMigratable { reason: String }
+import std.types { String, NonEmptyStr, Bool, Int }
+import std.dissolution { DissolutionCondition }
 
-type TestModuleRetirement {
-  module: String
-  disposition: RetirementDisposition
+// THE RETENTION BOUNDARY FOR HAND-WRITTEN v1 RUST TESTS, inverted from the
+// deletion-classification scheme it replaces.
+//
+// The old model classified DEPARTURES: every deleted module needed a
+// TestModuleRetirement row or an exact-stem floor witness, and the absence of
+// one refused the delete. That direction does not scale and it prices the wrong
+// thing — deletion is already represented by the file being absent, so a
+// per-deletion row would replace ~26,000 lines of Rust with a cemetery of
+// authored classifications, which is the same debt in a cheaper font.
+//
+// The direction is now: a Rust test module may REMAIN only when it is
+// explicitly retained. The complement needs no rows at all. A new Rust test
+// file added without a retention row reds by construction rather than by
+// anyone remembering to classify it.
+//
+// Cadence is NOT carried per row. Membership in the kernel derives one common
+// contract: the retained population is executed by required CI, in full, and
+// its executed identities must equal its declared identities. A per-row cadence
+// would be a second place for that fact to disagree with itself, and it would
+// invite exactly the compile-only ambiguity this cutover removes.
+type RetainedLegacyRustTestModule {
+  source_file: String
+  purpose: NonEmptyStr
+  dissolution: DissolutionCondition
+}
+
+fn retained_module_source_file(m: RetainedLegacyRustTestModule) -> String {
+  m.source_file
+}
+
+// THE RETAINED KERNEL. Every row names a contract that is reachable ONLY from
+// host Rust today, and carries the exact construction that would dissolve it.
+// "Large", "historical", "useful locally" and "many tests" are not reasons and
+// appear nowhere below.
+fn retained_legacy_rust_test_modules() -> List<RetainedLegacyRustTestModule> {
+  [
+    retained_class_b_trim_specimen,
+    retained_namespace_unique_on_chain_policy,
+    retained_materialization_provider_resolved_graph_consumer,
+    retained_decl_facts_dimensionless_projection,
+    retained_none_undetermined_carrier_refuse,
+    retained_field_of_fractions_single_declaration,
+    retained_field_of_fractions_construction,
+    retained_whole_tree_wiring_enum,
+    retained_helpers,
+  ]
+}
+
+data retained_class_b_trim_specimen: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
+  source_file: "class_b_trim_specimen_test.rs",
+  purpose: "Class B trim discrimination needs primary-precedence pool overlays and observes v1 infer_env binding directly: explicit `import std.algebra { trim }` binds in a narrow pool while a bare `trim` refuses even when std.algebra is already in the compilation pool. Pool-overlay precedence is a property of the seed resolver's pool assembly, not of any program the substrate can author." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "The v2 witness route covers compiler-subject tests (CI2), at which point the pool-overlay specimen migrates and this row is deleted." as NonEmptyStr },
+}
+
+data retained_namespace_unique_on_chain_policy: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
+  source_file: "namespace_unique_on_chain_policy_test.rs",
+  purpose: "Toggles the host thread-local NameResolutionPolicy gate between ImportScoped and NamespaceOnlyY, then compiles homonym fixtures and asserts the strict policy refuses with AmbiguousReference where the default resolves. A substrate program has no handle to flip the seed interpreter's resolution policy, so the discriminating comparison cannot be authored in .dag at all." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "The namespace-only resolution lane makes NamespaceOnlyY the sole policy, at which point the two-policy comparison has no second arm and this row is deleted." as NonEmptyStr },
+}
+
+data retained_materialization_provider_resolved_graph_consumer: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
+  source_file: "materialization_provider_resolved_graph_consumer_test.rs",
+  purpose: "Calls the seed cli_run helper serve_resolved_graph_stored_disk_probe_for_test, inspects the provider context BUILD COUNTER, and asserts the faithful-probe refusal path never boots the provider context. The counter is seed runtime state with no substrate-observable surface — a .dag witness could observe the refusal but not that the context was never built, which is the whole claim." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "The materialization provider exposes a typed build-count receipt the substrate can read, at which point the counter assertion migrates to a floor witness." as NonEmptyStr },
+}
+
+data retained_decl_facts_dimensionless_projection: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
+  source_file: "decl_facts_dimensionless_projection_test.rs",
+  purpose: "Asserts initializer-projection marshalling is invariant under SOURCE-FILE ORDER by reversing the SourceFile vector before compile. The witness-layer decl_facts path uses one resolved graph, so reversing the input vector is a host-Rust seam; reaching it from .dag would require minting a second compile entry whose only purpose is to permute its own inputs." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "A compile entry accepts a declared source-order permutation as a parameter, at which point order invariance becomes an ordinary two-run floor witness." as NonEmptyStr },
+}
+
+// RE-OBSERVED 2026-08-11, and the reason is REWRITTEN rather than inherited.
+// The prior row claimed a .dag witness "cannot reach that surface without
+// importing the v1 compiler crate", citing e0308_mechanical_trio_retained as
+// the same class. That premise was refuted for e0308 by
+// compile_dag_rust_emit_check, which IS that path, and the module was migrated
+// and deleted. This row is therefore an ABSENT-WITNESS obligation, not a wall.
+//
+// The dissolution is stated precisely because the obvious construction is
+// wrong: compile_dag_rust_emit_check collapses the whole compile to a Bool, and
+// a bare `false` cannot distinguish the expected refusal from a malformed
+// fixture, an earlier unrelated refusal, or a missing source. The replacement
+// must NAME the expected diagnostic.
+data retained_none_undetermined_carrier_refuse: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
+  source_file: "none_undetermined_carrier_refuse_test.rs",
+  purpose: "Discriminating RED for the Phase C Value::Null-split emitter fail-open: calls emit_none_keyword_for_resolved_type on the seed emitter surface across three arms — an undetermined carrier refuses, CardOptional emits None, and a non-optional resolved carrier refuses. No floor witness pins the refusing arms today." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "A floor witness pins all three arms through compile_dag_diagnostic_census, identifying the EXPECTED diagnostic for each refusing arm plus the accepted CardOptional emission as positive control. A generic compile_dag_rust_emit_check false is explicitly insufficient: it cannot separate the expected refusal from a malformed fixture or an unrelated earlier failure." as NonEmptyStr },
+}
+
+// RE-OBSERVED 2026-08-11, reason REWRITTEN. The prior row claimed the corpus
+// walk "cannot migrate" because it reads host filesystem shape. That is false:
+// module_declaration_facts yields the complete module-to-path population and
+// filesystem_read yields content, so a corpus-wide census IS constructible.
+// No such witness exists yet, which is a different and weaker fact.
+data retained_field_of_fractions_single_declaration: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
+  source_file: "field_of_fractions_single_declaration_test.rs",
+  purpose: "Guards the §7.2 FieldOfFractions de-fork: a corpus-wide scan must find exactly one top-level `type FieldOfFractions`, at dag/std/algebra.dag. A second declaration anywhere is a §3 fork that desynchronizes from the single authority. No floor witness performs this census today." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "A floor witness derives the complete declaration population from an exact corpus subject and asserts exactly one FieldOfFractions declaration, refusing unreadable or missing members rather than counting them absent, with a planted duplicate specimen as its RED. Prefer a declaration-identity population over a text scan." as NonEmptyStr },
+}
+
+data retained_field_of_fractions_construction: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
+  source_file: "field_of_fractions_construction_test.rs",
+  purpose: "Guards the eval_record_lit construction-side NON-collapse for FieldOfFractions { num, denom }: a plain-record construction with native Int fields must stay a boxed Record carrying both fields untouched. The assertion pattern-matches the host interpreter's internal Value enum, and that representation-strategy distinction has no observable surface from within the substrate — both representations compute the same values." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "The interpreter exposes a typed representation receipt distinguishing boxed record from collapsed scalar, at which point the representation claim becomes substrate-observable." as NonEmptyStr },
+}
+
+data retained_whole_tree_wiring_enum: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
+  source_file: "whole_tree_wiring_enum_test.rs",
+  purpose: "Green-by-execution anchor for the gunbc#5364 whole-tree wiring-liveness enumeration widening: cli_run::whole_tree_resolved_ctx resolves every .dag module under the given source roots in one pass, so decl-facts enumeration sees fn-arrow decls across the WHOLE tree rather than one per-entry closure. The claim is about the seed's whole-tree resolve entry, which the substrate reaches only per-entry." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "The substrate gains a whole-tree resolve entry whose enumeration the floor can observe directly, at which point the anchor migrates." as NonEmptyStr },
+}
+
+// RESTORE ATTEMPTED AND WITHDRAWN 2026-08-11 (review 51132), BY MEASUREMENT.
+//
+// resolve_cross_process_cache_test.rs and resolved_graph_cache_size_bound_test.rs
+// were restored here as the executing evidence for three Delivered clauses in
+// gunbc.materialization_kernel_closing_frontier_audit and for
+// gunbc.ci_cost_arc_closeout_receipt warm_hit_settle, on the DESIGN §4b(4)
+// principle that a climb keeps its evidence enrolled.
+//
+// Then the kernel was executed, and the premise did not survive it:
+//
+//   53 passed; 3 FAILED; finished in 1321.63s
+//   resolve_cross_process_cache_test::provider_disposition_four_arm_matrix
+//   resolve_cross_process_cache_test::repeat_resolve_through_disk_seam_does_not_reenter_provider
+//   resolve_cross_process_cache_test::same_subject_resolves_share_one_graph_store_hits_v2_disk
+//   ("GUNBC_RESOLVED_GRAPH_CACHE_DIR env mutex poisoned" — a cascade from an
+//   earlier root panic, so the three are at most one real defect plus victims)
+//
+// Two facts disqualify retention independently. The evidence FAILS, so it is not
+// evidence — and the clauses citing it as green-by-execution were therefore
+// ALREADY inflated before this PR existed, invisibly, because the suite never
+// ran. And at 22 minutes it exceeds the gate's 15-minute budget, so it could not
+// be a per-PR required witness even if it were green.
+//
+// Retaining a failing module would red the gate; retaining it with an exemption
+// would rebuild the compile-only arm this cutover deletes. So the modules stay
+// deleted and the CLAIMS are demoted instead — the honest direction, since what
+// regressed is the proof, and the proof was never real.
+//
+// The shared harness for the retained kernel, and a retained module in its own
+// right: it carries three self-tests over module-index construction and
+// ephemeral source-root resolution that every other retained module depends on
+// for correct fixture assembly. It is declared rather than excluded because the
+// wall is an exact identity join — silently filtering one discovered module out
+// of the comparison would be the empty-observation narrow applied to the wall
+// that exists to prevent exactly that.
+data retained_helpers: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
+  source_file: "helpers.rs",
+  purpose: "Shared fixture/harness surface for the retained kernel (workspace root, module-index construction, ephemeral generated source roots), carrying three self-tests: co-root last-wins on duplicate module names, ephemeral generated source-root resolution, and duplicate-name scanning without panic. Every retained module assembles its fixtures through it." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "The retained kernel empties as its modules migrate, at which point the harness has no consumer and is deleted with the last row." as NonEmptyStr },
 }

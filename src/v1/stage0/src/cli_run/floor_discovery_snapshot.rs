@@ -4,11 +4,50 @@
 //!
 //! | Consumer site | What it reads from the discovery walk | Closed projection |
 //! |---|---|---|
-//! | Demand-directed `discover_floor_witness_roster([], [])` (runs only when the plan schedules a discovery or scoped-witness batch, gunbc#8140) | Naming hygiene, orphan/helpers, producer roster, module-graph facts, effect-reach derivation | Full snapshot payload + installed module-graph cache |
+//! | Demand-directed `discover_floor_witness_roster([], [])` (runs only when the plan schedules a discovery or scoped-witness batch, gunbc#8140) | `test fn` placement hygiene, producer roster, module-graph facts, effect-reach derivation (the orphan-helper census and the `__`-basename rule were deleted, gunbc#8155) | Full snapshot payload + installed module-graph cache |
 //! | Discovery corpus with `scan_dirs=[]` + explicit entries | Skips roster walk; still calls `build_module_graph_facts_live` on selection/skip paths | Module-graph facts bytes in snapshot (cache install) |
 //! | Discovery corpus with non-empty `scan_dirs` | Full roster walk for that scan shape | Not covered by pre-plan snapshot (distinct request identity) |
 //!
 //! Coordinator before scoped spawn: terminal receipt + request identity digest + payload digest.
+//!
+//! ## Module-graph field census (gunbc Cut 4)
+//!
+//! `ModuleGraphFactsSnapshot` transports the module-graph facts so the scoped child's
+//! `build_module_graph_facts_live` call is a cache hit rather than a second whole-corpus
+//! acquisition. A field earns its place in that payload only by having a live reader; the
+//! census below is by exact reader, not by plausibility.
+//!
+//! | Field | Live production reader |
+//! |---|---|
+//! | `nodes` | `runtime_data_dependency_touched_via_carrier_closure`, `declared_source_refs_axis_for_entry` |
+//! | `adjacency` | `import_closure_live_paths_with_facts`, `repo_paths_match_touched`, `collect_sorted_decl_lines_for_file`, `census_exclude_derive::derive_census_exclude_closure` |
+//! | `selection_adjacency` | `entry_file_touched_via_import_closure` |
+//! | `reference_unaccounted` | `entry_file_touched_via_import_closure` |
+//! | `declared_paths` | `declared_repo_paths`, `declares_repo_path` |
+//! | `path_to_module` | the discovery witness run loop (an entry with no module identity refuses rather than fabricating a `DeclarationRef`), `declared_source_refs_axis_for_entry` |
+//! | `read_refusals` | `refuse_on_module_graph_read_refusals` |
+//!
+//! Two fields were carried with NO production reader at all and are deleted:
+//!
+//! - `edges` — consumed only as a local inside `build_module_graph_facts_live_uncached` (it
+//!   builds `adjacency` and `selection_adjacency` and is then dead). Its one reader on the
+//!   struct was `import_closure_bfs_vs_fixpoint_perf_receipt`, an `#[ignore]`d manual receipt
+//!   timing a legacy fixpoint that exists only inside that test; receipt and legacy helper are
+//!   deleted with the field. At the corpus's ~17.4k import lines this was the payload's largest
+//!   term — one `{path, import_module, target_declared}` row per edge, serialized, digested into
+//!   `module_graph_facts_digest`, written by the producer, read and reconstructed by the child.
+//! - `observed_paths` — the source inventory (~3.5k paths). Its stated job, distinguishing a
+//!   vanished module from an absent one, is done by `read_refusals`, which is what
+//!   `refuse_on_module_graph_read_refusals` actually reads; the inventory itself is produced and
+//!   asserted on at `ImportResolutionObservation`, which is unchanged. Retaining a second copy on
+//!   the facts struct only widened the payload.
+//!
+//! DECLARED SCOPE LOSS: nothing downstream can ask the facts value for the raw edge list or the
+//! inventory any more. Both remain available at the observation, one call above.
+//!
+//! OPEN, and deliberately not claimed here: the seven surviving fields each have a production
+//! reader, which is NOT the same fact as "the coordinated scoped child reads it". That question
+//! is a runtime one and is answered by measurement, not by this table.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
@@ -32,6 +71,8 @@ pub const FLOOR_DISCOVERY_TRACE_FILE: &str = "floor-discovery-trace.tsv";
 pub const FLOOR_DISCOVERY_CONSUMER_ENV: &str = "GUNBC_FLOOR_DISCOVERY_CONSUMER";
 
 static COORDINATED_DISCOVERY_COMPUTE_COUNT: AtomicUsize = AtomicUsize::new(0);
+static COORDINATED_SNAPSHOT_INSTALLED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 static IN_PROCESS_ROSTER_BY_REQUEST: OnceLock<Mutex<HashMap<String, Vec<super::DiscoveryRow>>>> =
     OnceLock::new();
 
@@ -66,13 +107,11 @@ pub struct DiscoveryRowSnapshot {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModuleGraphFactsSnapshot {
-    pub edges: Vec<super::ImportResolutionFactRaw>,
     pub nodes: Vec<super::ModuleDeclarationFactRaw>,
     pub adjacency: BTreeMap<String, Vec<String>>,
     pub selection_adjacency: BTreeMap<String, Vec<String>>,
     pub reference_unaccounted: Vec<String>,
     pub path_to_module: BTreeMap<String, String>,
-    pub observed_paths: Vec<String>,
     pub read_refusals: Vec<(String, String)>,
     pub declared_paths: Vec<String>,
 }
@@ -83,8 +122,6 @@ pub struct FloorDiscoverySnapshot {
     pub request_identity_digest: String,
     pub roster: Vec<DiscoveryRowSnapshot>,
     pub roster_digest: String,
-    pub naming_hygiene_refusal: Option<String>,
-    pub orphan_helper_refusal: Option<String>,
     pub module_graph_facts: ModuleGraphFactsSnapshot,
     pub module_graph_facts_digest: String,
     pub payload_digest: String,
@@ -104,9 +141,17 @@ pub fn coordinated_discovery_compute_count() -> usize {
     COORDINATED_DISCOVERY_COMPUTE_COUNT.load(Ordering::SeqCst)
 }
 
+/// A coordinated consumer may enter witness execution only after the exact snapshot
+/// has been verified and installed. This is a construction wall for the transitional
+/// provider path: absence refuses rather than silently rebuilding a cold world.
+pub fn coordinated_snapshot_installed() -> bool {
+    COORDINATED_SNAPSHOT_INSTALLED.load(Ordering::SeqCst)
+}
+
 #[cfg(test)]
 pub fn reset_floor_discovery_snapshot_for_test() {
     COORDINATED_DISCOVERY_COMPUTE_COUNT.store(0, Ordering::SeqCst);
+    COORDINATED_SNAPSHOT_INSTALLED.store(false, Ordering::SeqCst);
     if let Some(lock) = IN_PROCESS_ROSTER_BY_REQUEST.get() {
         lock.lock().unwrap().clear();
     }
@@ -416,7 +461,6 @@ pub fn append_discovery_trace_row(
 
 fn facts_to_snapshot(facts: &super::ModuleGraphFactsLive) -> ModuleGraphFactsSnapshot {
     ModuleGraphFactsSnapshot {
-        edges: facts.edges.clone(),
         nodes: facts.nodes.clone(),
         adjacency: facts
             .adjacency
@@ -434,7 +478,6 @@ fn facts_to_snapshot(facts: &super::ModuleGraphFactsLive) -> ModuleGraphFactsSna
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect(),
-        observed_paths: facts.observed_paths.iter().cloned().collect(),
         read_refusals: facts.read_refusals.clone(),
         declared_paths: facts.declared_paths.iter().cloned().collect(),
     }
@@ -442,7 +485,6 @@ fn facts_to_snapshot(facts: &super::ModuleGraphFactsLive) -> ModuleGraphFactsSna
 
 fn snapshot_to_facts(snapshot: &ModuleGraphFactsSnapshot) -> super::ModuleGraphFactsLive {
     super::ModuleGraphFactsLive {
-        edges: snapshot.edges.clone(),
         nodes: snapshot.nodes.clone(),
         adjacency: snapshot
             .adjacency
@@ -460,7 +502,6 @@ fn snapshot_to_facts(snapshot: &ModuleGraphFactsSnapshot) -> super::ModuleGraphF
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect(),
-        observed_paths: snapshot.observed_paths.iter().cloned().collect(),
         read_refusals: snapshot.read_refusals.clone(),
         declared_paths: snapshot.declared_paths.iter().cloned().collect(),
     }
@@ -490,8 +531,6 @@ struct FloorDiscoveryPayloadDigestView<'a> {
     request_identity_digest: &'a str,
     roster: &'a [DiscoveryRowSnapshot],
     roster_digest: &'a str,
-    naming_hygiene_refusal: &'a Option<String>,
-    orphan_helper_refusal: &'a Option<String>,
     module_graph_facts: &'a ModuleGraphFactsSnapshot,
     module_graph_facts_digest: &'a str,
 }
@@ -502,8 +541,6 @@ fn digest_payload(snapshot: &FloorDiscoverySnapshot) -> String {
         request_identity_digest: &snapshot.request_identity_digest,
         roster: &snapshot.roster,
         roster_digest: &snapshot.roster_digest,
-        naming_hygiene_refusal: &snapshot.naming_hygiene_refusal,
-        orphan_helper_refusal: &snapshot.orphan_helper_refusal,
         module_graph_facts: &snapshot.module_graph_facts,
         module_graph_facts_digest: &snapshot.module_graph_facts_digest,
     };
@@ -560,23 +597,6 @@ pub fn produce_floor_discovery_snapshot(
     request: &FloorDiscoveryRequest,
 ) -> Result<FloorDiscoverySnapshot, String> {
     COORDINATED_DISCOVERY_COMPUTE_COUNT.fetch_add(1, Ordering::SeqCst);
-    let naming_hygiene_refusal =
-        match super::floor_filename_hygiene_refusal_via_producer(&request.source_roots) {
-            Ok(()) => None,
-            Err(msg) => Some(msg),
-        };
-    if naming_hygiene_refusal.is_some() {
-        return Err(naming_hygiene_refusal.clone().unwrap());
-    }
-    let orphan_helper_refusal =
-        match super::test_module_hygiene_bridge::check_orphan_helpers_or_err(&request.source_roots)
-        {
-            Ok(()) => None,
-            Err(msg) => Some(msg),
-        };
-    if orphan_helper_refusal.is_some() {
-        return Err(orphan_helper_refusal.clone().unwrap());
-    }
     let mut rows = super::invoke_floor_discovery_producer(
         &request.source_roots,
         &request.scan_dirs,
@@ -596,8 +616,6 @@ pub fn produce_floor_discovery_snapshot(
         request_identity_digest,
         roster,
         roster_digest,
-        naming_hygiene_refusal,
-        orphan_helper_refusal,
         module_graph_facts: facts_snapshot,
         module_graph_facts_digest,
         payload_digest: String::new(),
@@ -748,6 +766,7 @@ pub fn install_floor_discovery_snapshot(snapshot: &FloorDiscoverySnapshot) {
     install_module_graph_facts_cache(&snapshot.request.source_roots, &facts);
     let rows: Vec<super::DiscoveryRow> = snapshot.roster.iter().map(snapshot_to_row).collect();
     install_roster_cache(&snapshot.request_identity_digest, &rows);
+    COORDINATED_SNAPSHOT_INSTALLED.store(true, Ordering::SeqCst);
 }
 
 pub fn discover_floor_witness_roster_with_snapshot(
@@ -856,13 +875,11 @@ mod tests {
 
     fn minimal_snapshot(request: FloorDiscoveryRequest) -> FloorDiscoverySnapshot {
         let facts = ModuleGraphFactsSnapshot {
-            edges: vec![],
             nodes: vec![],
             adjacency: BTreeMap::new(),
             selection_adjacency: BTreeMap::new(),
             reference_unaccounted: vec![],
             path_to_module: BTreeMap::new(),
-            observed_paths: vec![],
             read_refusals: vec![],
             declared_paths: vec![],
         };
@@ -871,8 +888,6 @@ mod tests {
             request,
             roster: vec![],
             roster_digest: digest_rows(&[]),
-            naming_hygiene_refusal: None,
-            orphan_helper_refusal: None,
             module_graph_facts_digest: digest_facts_snapshot(&facts),
             module_graph_facts: facts,
             payload_digest: String::new(),
@@ -994,27 +1009,21 @@ mod tests {
             request_identity_digest: request_identity_digest(&request).expect("request identity"),
             roster: vec![],
             roster_digest: digest_rows(&[]),
-            naming_hygiene_refusal: None,
-            orphan_helper_refusal: None,
             module_graph_facts: ModuleGraphFactsSnapshot {
-                edges: vec![],
                 nodes: vec![],
                 adjacency: BTreeMap::new(),
                 selection_adjacency: BTreeMap::new(),
                 reference_unaccounted: vec![],
                 path_to_module: BTreeMap::new(),
-                observed_paths: vec![],
                 read_refusals: vec![],
                 declared_paths: vec![],
             },
             module_graph_facts_digest: digest_facts_snapshot(&ModuleGraphFactsSnapshot {
-                edges: vec![],
                 nodes: vec![],
                 adjacency: BTreeMap::new(),
                 selection_adjacency: BTreeMap::new(),
                 reference_unaccounted: vec![],
                 path_to_module: BTreeMap::new(),
-                observed_paths: vec![],
                 read_refusals: vec![],
                 declared_paths: vec![],
             }),
@@ -1049,27 +1058,21 @@ mod tests {
             request_identity_digest: request_identity_digest(&request).expect("request identity"),
             roster: vec![],
             roster_digest: digest_rows(&[]),
-            naming_hygiene_refusal: None,
-            orphan_helper_refusal: None,
             module_graph_facts: ModuleGraphFactsSnapshot {
-                edges: vec![],
                 nodes: vec![],
                 adjacency: BTreeMap::new(),
                 selection_adjacency: BTreeMap::new(),
                 reference_unaccounted: vec![],
                 path_to_module: BTreeMap::new(),
-                observed_paths: vec![],
                 read_refusals: vec![],
                 declared_paths: vec![],
             },
             module_graph_facts_digest: digest_facts_snapshot(&ModuleGraphFactsSnapshot {
-                edges: vec![],
                 nodes: vec![],
                 adjacency: BTreeMap::new(),
                 selection_adjacency: BTreeMap::new(),
                 reference_unaccounted: vec![],
                 path_to_module: BTreeMap::new(),
-                observed_paths: vec![],
                 read_refusals: vec![],
                 declared_paths: vec![],
             }),

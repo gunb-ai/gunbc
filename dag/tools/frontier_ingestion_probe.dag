@@ -1,0 +1,325 @@
+module gunbc.tools.frontier_ingestion_probe
+
+import v2.std.text { String }
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+import v2.std.algebra { fold_list }
+import v2.std.collection { List }
+import v2.std.node { Symbol }
+import v2.std.grammar { ParseTree }
+import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics }
+import v2.std.compilers.lexing { lex_artifact_semantic_tokens }
+import v2.compiler.tokenize { lex_walk_artifact }
+import v2.compiler.parse { parse_module, ParseArtifact }
+import v2.compiler.normalize { normalize }
+import v2.extdeps.languages.dag { dag_lex_rules, dag_grammar }
+import extdeps.filesystem.filesystem_io
+
+data frontier_read_refusal_disposition_note: String = "WHY THERE IS NO READ-REFUSAL ARM HERE, and what is owed instead. A read refusal collapsing into a frontend verdict would be the empty-observation conflation one layer earlier than the one this instrument guards, so it was worth checking. It is not reachable through this primitive: the seed's filesystem_read returns FilesystemReadResult, declared in v1_method filesystem_read_result_type and emitted by v1.runtime_rust rt_filesystem, and that record carries EXACTLY ONE field, content. There is no success or error field to consult — the service-level Filesystem.Read operation is a different carrier with a different shape, and reading its three-field contract onto this primitive would be a citation to the wrong authority.\n\nWhat the primitive does on failure is panic: rt_filesystem calls read_to_string with unwrap_or_else(|e| panic!). So a missing or unreadable member aborts the run loudly rather than presenting as LEX, PARSE or ACCEPTED, and a guard branching on a success flag this record does not carry would be machinery with no producer — a scaffold defending against a state the type cannot express.\n\nWHAT IS OWED: the primitive has no TYPED refusal, only an abort. A caller cannot distinguish absent from unreadable from empty, and cannot continue past either. That is a real modeling gap in the primitive rather than in this probe, and it dissolves when filesystem_read returns an outcome instead of panicking — at which point this fn gains a refusal arm and a discriminating control, both of which would be untestable today."
+
+data frontier_ingestion_probe_note: String = "THE REPRODUCTION INSTRUMENT for docs/plans/v2-frontend-std-ingestion-frontier-exact-head.md, deliberately homed OUTSIDE a *_test.dag module. observe_roster reads the live tree and reports, for each rostered member, which frontend stage it currently reaches. That reading is a revision-scoped OBSERVATION of the present frontier, not a claim that must hold: promoting it to a test declaration would enroll an assertion whose success depends on the current defects continuing to exist, so it would go RED on the repair and GREEN on a regression. The durable claims — that the stage classifier separates its states, that reasons are read by containment, and that census reconciliation is a two-directional join over the roster — live in gunbc.test.claim.normalize_retention_contract_probe_test and import classify_source from here, so there is one classifier authority and not two.\n\nReason reads are CONTAINMENT reads, never head reads: rejected_with_pending PREPENDS accepted-carrier diagnostics (the wrapper-retention carriers, which are not failures) to a later rejection, so the head of the list is systematically the retention carrier rather than the cause.\n\nStages are DISTINCT STATES. An earlier draft returned an empty reason list for both 'normalize accepted' and 'lex/parse rejected', which is the empty-observation narrow: an unlexable member read as an accepted one. classify_source matches each stage's Outcome in sequence so that collapse is unrepresentable."
+
+fn artifact_tree(artifact: ParseArtifact) -> ParseTree {
+  artifact.tree
+}
+
+fn diagnostic_reason(d: Diagnostic) -> Symbol {
+  d.reason
+}
+
+fn all_reasons(d: NonEmptyDiagnostics) -> List<Symbol> {
+  fold_list(xs: d.tail, empty: [diagnostic_reason(d: d.head)], cons: fn(acc, item) {
+    concat(acc, [diagnostic_reason(d: item)])
+  })
+}
+
+fn reasons_contain(reasons: List<Symbol>, sym: Symbol) -> Bool {
+  fold_list(xs: reasons, empty: false, cons: fn(acc, r) {
+    acc || (r == sym)
+  })
+}
+
+data frontend_stage_result_space_note: String = "THE RESULT SPACE IS CLOSED, and two things about its membership are deliberate.\n\nIt no longer carries an invalid-empty arm. The previous classifier took List<Symbol> and had to answer NORM_REASON_SET_INVALID_EMPTY for the empty list, because that input was constructible and mapping it to any real stage would have rendered a missing observation as an observed one. It now takes NonEmptyDiagnostics, whose head field is not optional, so the empty reason set has no representation and the arm that defended against it has no subject. That is a climb from mechanically-preventable to structurally-impossible for this one class, and per the dissolution rule the production arm is deleted while the discriminating controls stay — the controls that survive are the ones that still have a writable input, and the RED that fed an empty list retires with the state it named, not with the wall.\n\nIt does NOT carry a ReadRefused arm. filesystem_read panics rather than returning an outcome (frontier_read_refusal_disposition_note records the exact contract), so a read failure aborts the run and never reaches a verdict. Adding the arm would be a constructor no producer can reach — machinery defending a state the primitive cannot express — and it would make the space look more total than the observation actually is. It enters when the primitive gains a typed refusal, and not before."
+
+type FrontendStage
+  = LexRefused
+  | ParseRefused
+  | NormalizeGraftRefused
+  | NormalizeRetained
+  | NormalizeOther
+  | NormalizeAccepted
+
+fn frontend_stage_label(s: FrontendStage) -> String {
+  match s {
+    LexRefused => "LEX"
+    ParseRefused => "PARSE"
+    NormalizeGraftRefused => "NORM_GRAFT_REFUSED"
+    NormalizeRetained => "NORM_RETAINED"
+    NormalizeOther => "NORM_OTHER"
+    NormalizeAccepted => "ACCEPTED"
+  }
+}
+
+// Equality is STRUCTURAL, never a label comparison. Routing it through frontend_stage_label
+// would make the renderer the semantic authority: a presentation rename would silently change
+// which stages compare equal. The pairwise-distinctness claim over labels is then about
+// rendering only, which is what it should have been.
+//
+// Every inner arm is ENUMERATED rather than closed with a wildcard, and the verbosity is the
+// point. A `_ => false` inner arm is non-fold residue over a closed coproduct — the class
+// v2.lens.non_fold_residue counts and refuses unrostered — and it is that for a reason worth
+// paying six times six lines for: with wildcards, adding a seventh stage leaves this function
+// compiling and quietly answering false for every comparison involving it. Enumerated, the
+// addition fails to typecheck at all thirty-six positions, so the new stage cannot be introduced
+// without deciding its equality against each existing one.
+fn frontend_stage_eq(a: FrontendStage, b: FrontendStage) -> Bool {
+  match a {
+    LexRefused =>
+      match b {
+        LexRefused => true
+        ParseRefused => false
+        NormalizeGraftRefused => false
+        NormalizeRetained => false
+        NormalizeOther => false
+        NormalizeAccepted => false
+      }
+    ParseRefused =>
+      match b {
+        LexRefused => false
+        ParseRefused => true
+        NormalizeGraftRefused => false
+        NormalizeRetained => false
+        NormalizeOther => false
+        NormalizeAccepted => false
+      }
+    NormalizeGraftRefused =>
+      match b {
+        LexRefused => false
+        ParseRefused => false
+        NormalizeGraftRefused => true
+        NormalizeRetained => false
+        NormalizeOther => false
+        NormalizeAccepted => false
+      }
+    NormalizeRetained =>
+      match b {
+        LexRefused => false
+        ParseRefused => false
+        NormalizeGraftRefused => false
+        NormalizeRetained => true
+        NormalizeOther => false
+        NormalizeAccepted => false
+      }
+    NormalizeOther =>
+      match b {
+        LexRefused => false
+        ParseRefused => false
+        NormalizeGraftRefused => false
+        NormalizeRetained => false
+        NormalizeOther => true
+        NormalizeAccepted => false
+      }
+    NormalizeAccepted =>
+      match b {
+        LexRefused => false
+        ParseRefused => false
+        NormalizeGraftRefused => false
+        NormalizeRetained => false
+        NormalizeOther => false
+        NormalizeAccepted => true
+      }
+  }
+}
+
+fn classify_normalize_diagnostics(d: NonEmptyDiagnostics) -> FrontendStage {
+  let rs = all_reasons(d: d)
+  if reasons_contain(reasons: rs, sym: ^namespace_graft_body_dissolved_refused) {
+    NormalizeGraftRefused
+  } else if reasons_contain(reasons: rs, sym: ^body_lowering_reason_wrapper_retained_emitted)
+    && reasons_contain(reasons: rs, sym: ^normalize_reason_post_normalize_not_well_formed) {
+    NormalizeRetained
+  } else {
+    NormalizeOther
+  }
+}
+
+fn classify_source(source: String) -> FrontendStage {
+  match lex_walk_artifact(source: source, file: ^frontier_probe, rules: dag_lex_rules()) {
+    v2.std.diagnostic.Rejected { diagnostics: _ } => LexRefused
+    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
+      match parse_module(tokens: lex_artifact_semantic_tokens(artifact: a), grammar: dag_grammar()) {
+        v2.std.diagnostic.Rejected { diagnostics: _ } => ParseRefused
+        v2.std.diagnostic.Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact_tree(artifact: artifact)) {
+            v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => NormalizeAccepted
+            v2.std.diagnostic.Rejected { diagnostics: d } =>
+              classify_normalize_diagnostics(d: d)
+          }
+      }
+  }
+}
+
+data frontier_roster_note: String = "THE ROSTER IS THE DENOMINATOR, and it is authored here so that the census can be reconciled against a denominator rather than counted. The fifteen hand-written m_* fns this replaces were fifteen independent facts with no denominator at all: a member could be dropped from the file and every remaining fn would still answer, so 'all fifteen were observed' was only ever 'fifteen fns happened to be present'. reconcile_census now joins observations against the roster in both directions and at multiplicity, so a dropped member, a stray one and a doubled one are three distinct located verdicts rather than a smaller number that nothing compares against.\n\nWhat this does NOT do is make the live census executable per PR. Reaching parse_module builds dag_grammar(), which alone measured over the five-second fast-lane budget, and the roster reads fifteen live files on top of that. observe_roster therefore stays in this non-test module as a reproduction instrument, and the durable claims over it are the classifier and join laws exercised on synthetic observations. The batched or realized execution that would let the live fifteen gate a PR is still owed, and is where the two stage-separation claims deleted in the previous increment return."
+
+type FrontierMember {
+  label: Symbol,
+  path: String,
+}
+
+type MemberObservation {
+  label: Symbol,
+  stage: FrontendStage,
+}
+
+data frontier_roster: List<FrontierMember> = [
+  FrontierMember { label: ^entry, path: "src/v2/test/claim/manual/cross_tree_constructor_binding_test.dag" },
+  FrontierMember { label: ^primitives, path: "dag/std/primitives.dag" },
+  FrontierMember { label: ^collection, path: "src/v2/std/collection.dag" },
+  FrontierMember { label: ^witness, path: "src/v2/std/witness.dag" },
+  FrontierMember { label: ^types, path: "dag/std/types.dag" },
+  FrontierMember { label: ^node, path: "src/v2/std/node.dag" },
+  FrontierMember { label: ^content_hash, path: "dag/std/content_hash.dag" },
+  FrontierMember { label: ^dag_algebra, path: "dag/std/algebra.dag" },
+  FrontierMember { label: ^v2_algebra, path: "src/v2/std/algebra.dag" },
+  FrontierMember { label: ^logic, path: "src/v2/std/logic.dag" },
+  FrontierMember { label: ^optional, path: "src/v2/std/optional.dag" },
+  FrontierMember { label: ^diagnostic, path: "src/v2/std/diagnostic.dag" },
+  FrontierMember { label: ^occurrence, path: "dag/std/occurrence_identity.dag" },
+  FrontierMember { label: ^live_tree, path: "src/v2/std/live_tree.dag" },
+  FrontierMember { label: ^error_primitives, path: "dag/std/error_primitives.dag" },
+]
+
+fn classify_member(m: FrontierMember) -> MemberObservation {
+  let r = filesystem_read(path: m.path)
+  MemberObservation { label: m.label, stage: classify_source(source: r.content) }
+}
+
+fn observe_roster() -> List<MemberObservation> {
+  fold_list(xs: frontier_roster, empty: [] as List<MemberObservation>, cons: fn(acc, m) {
+    concat(acc, [classify_member(m: m)])
+  })
+}
+
+data census_reconciliation_note: String = "COVERAGE IS NOT RECONCILIATION, and the first version of this census only had the first half. It asked, per roster label, whether SOME observation carried it — which is the superset direction alone. A census carrying all fifteen members plus a sixteenth stray passed it, and so did one carrying a member twice, because neither condition can make a per-label existence check fail. Calling that an identity join was wrong: it is the join's covering half.\n\nReconciliation is both directions plus multiplicity, and the three failures are genuinely different states with different remedies. A MISSING member means the instrument did not observe something the denominator requires — coverage is short. An UNROSTERED observation means the instrument observed something the denominator does not contain, which usually means the roster and the instrument have drifted apart rather than that the run went wrong. A DUPLICATE means one member was observed twice, which silently doubles that member's contribution to every per-stage count derived from the census. Collapsing all three into one Bool would have made any figure derived from the census unfalsifiable in exactly the way a stray or doubled row corrupts it — which is why the per-stage count that used to sit beside this is gone (stage_count_absence_note).\n\nSo the verdict is a coproduct carrying the offending label rather than a Bool, and census_is_complete is derived from it rather than computed beside it — a second Bool fold would be a second authority that could disagree with the first."
+
+type CensusReconciliation
+  = CensusExact
+  | CensusRosterInvalid { verdict: FrontierRosterVerdict }
+  | CensusMissingMember { label: Symbol }
+  | CensusDuplicateMember { label: Symbol }
+  | CensusUnrosteredObservation { label: Symbol }
+
+data frontier_roster_validity_note: String = "THE DENOMINATOR IS ITSELF AN OBSERVATION, and reconciling against an unvalidated one proves less than it appears. reconcile_census checks the observations against the roster; it assumed the roster was internally sound, and two malformed rosters defeat it in ways that leave CensusExact reachable.\n\nA DUPLICATE LABEL is invisible to the observation-side check by construction: two roster rows carrying one label are each satisfied by the SAME single observation, because count_label finds exactly one for both. So a roster of fifteen rows and fourteen distinct labels reconciles exactly against fourteen observations, and the fifteenth member is silently not a member.\n\nA DUPLICATE PATH under two labels is worse, because nothing anywhere is wrong at the label grain: the census reads one file twice, reports it as two members, and every derived per-stage figure counts that member's stage twice. The roster is the only place this is decidable, since by observation time the path has already been read.\n\nSo roster validity is established BEFORE the observation join and CensusExact is unreachable without it. The two verdicts stay separate rather than fusing into one refusal list because they have different remedies and different owners: a bad roster is an authoring error in this file, while a bad census is a fact about the run."
+
+type FrontierRosterVerdict
+  = FrontierRosterValid
+  | FrontierRosterDuplicateLabel { label: Symbol }
+  | FrontierRosterDuplicatePath { path: String }
+
+// verify_roster takes the rows rather than reading frontier_roster, so a malformed roster is a
+// constructible input. A validator that could only ever see the one live roster would be
+// unfalsifiable: it would report valid, and nothing could establish that it reports anything else.
+fn count_roster_label(rows: List<FrontierMember>, label: Symbol) -> Int {
+  fold_list(xs: rows, empty: 0, cons: fn(acc, m) {
+    if m.label == label { acc + 1 } else { acc }
+  })
+}
+
+fn count_roster_path(rows: List<FrontierMember>, path: String) -> Int {
+  fold_list(xs: rows, empty: 0, cons: fn(acc, m) {
+    if m.path == path { acc + 1 } else { acc }
+  })
+}
+
+fn verify_roster(rows: List<FrontierMember>) -> FrontierRosterVerdict {
+  fold_list(xs: rows, empty: FrontierRosterValid, cons: fn(acc, m) {
+    match acc {
+      FrontierRosterValid =>
+        if count_roster_label(rows: rows, label: m.label) == 1 {
+          if count_roster_path(rows: rows, path: m.path) == 1 {
+            FrontierRosterValid
+          } else {
+            FrontierRosterDuplicatePath { path: m.path }
+          }
+        } else {
+          FrontierRosterDuplicateLabel { label: m.label }
+        }
+      _ => acc
+    }
+  })
+}
+
+fn verify_frontier_roster() -> FrontierRosterVerdict {
+  verify_roster(rows: frontier_roster)
+}
+
+fn count_label(obs: List<MemberObservation>, label: Symbol) -> Int {
+  fold_list(xs: obs, empty: 0, cons: fn(acc, o) {
+    if o.label == label { acc + 1 } else { acc }
+  })
+}
+
+fn roster_contains(label: Symbol) -> Bool {
+  fold_list(xs: frontier_roster, empty: false, cons: fn(acc, m) {
+    acc || (m.label == label)
+  })
+}
+
+fn reconcile_census(obs: List<MemberObservation>) -> CensusReconciliation {
+  let roster = verify_frontier_roster()
+  match roster {
+    FrontierRosterValid => reconcile_against_valid_roster(obs: obs)
+    _ => CensusRosterInvalid { verdict: roster }
+  }
+}
+
+fn reconcile_against_valid_roster(obs: List<MemberObservation>) -> CensusReconciliation {
+  let covered = fold_list(xs: frontier_roster, empty: CensusExact, cons: fn(acc, m) {
+    match acc {
+      CensusExact => {
+        let n = count_label(obs: obs, label: m.label)
+        if n == 0 {
+          CensusMissingMember { label: m.label }
+        } else if n == 1 {
+          CensusExact
+        } else {
+          CensusDuplicateMember { label: m.label }
+        }
+      }
+      _ => acc
+    }
+  })
+  match covered {
+    CensusExact =>
+      fold_list(xs: obs, empty: CensusExact, cons: fn(acc, o) {
+        match acc {
+          CensusExact =>
+            if roster_contains(label: o.label) {
+              CensusExact
+            } else {
+              CensusUnrosteredObservation { label: o.label }
+            }
+          _ => acc
+        }
+      })
+    _ => covered
+  }
+}
+
+fn census_is_complete(obs: List<MemberObservation>) -> Bool {
+  match reconcile_census(obs: obs) {
+    CensusExact => true
+    _ => false
+  }
+}
+
+data stage_count_absence_note: String = "THERE IS NO PER-STAGE COUNT HERE, deliberately. A count_stage over a raw List<MemberObservation> existed in the first version of this increment and was deleted rather than kept, because it took the unreconciled population: it would happily total a census missing a member, carrying a duplicate, holding an unrostered observation, or built on an invalid roster. That directly contradicts the finding recorded beside it — that a duplicate silently doubles one member's contribution to every derived figure — so shipping both would have been the mechanism and its own counterexample in one file.\n\nIt had no consumer either: nothing counts stages yet, because the live census does not execute as a gate. When counting is genuinely needed it belongs on a carrier that only a reconciled census can construct, so that no total is reachable from observations that were never joined against a validated roster. That carrier lands with the executing census, where it will have a producer."
+
+data wall_attribution_probe_note: String = "MINIMAL-PAIR PROBES for the two frontend walls that are still hypotheses rather than findings. Neither may become a finding from a description: the roadmap row's own RED control refuses a repair asserted separable without execution, and the em-dash misattribution earlier in this lane is the standing receipt for why. Each fn below is one construct in an otherwise-minimal module, so a refusal names the construct rather than the file. They render to label text rather than returning FrontendStage, because their only consumer is a person invoking one by hand and reading the answer; the typed vocabulary is for structured consumers."
+
+fn p_hex_escape() -> String { frontend_stage_label(s: classify_source(source: "module frontier_probe\n\ndata d: String = \"a\\x0db\"\n")) }
+fn p_hex_escape_control() -> String { frontend_stage_label(s: classify_source(source: "module frontier_probe\n\ndata d: String = \"ab\"\n")) }
+fn p_qualified_record_ctor() -> String { frontend_stage_label(s: classify_source(source: "module frontier_probe\n\nfn f() -> Int {\n  a.b.C { id: 1 }\n}\n")) }
+fn p_bare_record_ctor_control() -> String { frontend_stage_label(s: classify_source(source: "module frontier_probe\n\nfn f() -> Int {\n  C { id: 1 }\n}\n")) }
+fn p_where_refinement() -> String { frontend_stage_label(s: classify_source(source: "module frontier_probe\n\ntype H = String where lower_hex_16\n")) }
+fn p_type_alias_control() -> String { frontend_stage_label(s: classify_source(source: "module frontier_probe\n\ntype H = String\n")) }

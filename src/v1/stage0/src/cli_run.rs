@@ -5450,7 +5450,6 @@ pub fn import_closure_from_facts(
 /// corpus on every `resolve_transitively` call (Phase 1 perf receipt, DESIGN §2).
 #[derive(Clone)]
 pub struct ModuleGraphFactsLive {
-    pub(crate) edges: Vec<ImportResolutionFactRaw>,
     pub(crate) nodes: Vec<ModuleDeclarationFactRaw>,
     pub(crate) adjacency: HashMap<String, Vec<String>>,
     // Workspace-relative paths of `nodes`, precomputed once per facts build: the
@@ -5477,17 +5476,17 @@ pub struct ModuleGraphFactsLive {
     // a known-empty dependency set and a precise `{self}` closure.
     pub(crate) reference_unaccounted: HashSet<String>,
     // Reverse of `build_import_adjacency`'s internal `module_to_path`: declared module name by
-    // repo path. Built once here so `reference_only_direct_import_modules` (the typed-module
-    // content-key's reference-derived import term) does not re-derive it per module.
+    // repo path, built once per facts build. Read by the discovery witness run loop (a witness
+    // entry with no module identity refuses rather than fabricating a `DeclarationRef`) and by
+    // `declared_source_refs_axis_for_entry`, which used to rebuild this same map per entry.
     pub(crate) path_to_module: HashMap<String, String>,
-    // Every in-scope `.dag` path the importer walk SAW on disk (whether or not it produced
-    // facts), and every observed path whose content read refused. The producers skip an
-    // unreadable file at scan time, so without these rows a vanished module is
-    // indistinguishable from an absent one — the fail-open undercount every consumer of these
-    // facts must refuse on, never absorb (operator review 2026-07-28, PR #7384). The
-    // inert-lens census this arm was written for is deleted (gunbc#8141); effect-reach
-    // derivation and the cross-worker snapshot transport are the live consumers.
-    pub(crate) observed_paths: HashSet<String>,
+    // The producers skip an unreadable file at scan time, so a vanished module would be
+    // indistinguishable from an absent one; every recorded refusal therefore stops the build
+    // (`refuse_on_module_graph_read_refusals`) rather than being absorbed (operator review
+    // 2026-07-28, PR #7384). The companion `observed_paths` INVENTORY is deliberately not
+    // retained here: it is produced and asserted on at the observation
+    // (`ImportResolutionObservation`), and no consumer of the facts ever read it, so keeping it
+    // on this struct only widened the cross-worker snapshot payload (gunbc Cut 4).
     pub(crate) read_refusals: Vec<(String, String)>,
 }
 
@@ -6003,14 +6002,12 @@ pub(crate) fn build_module_graph_facts_live_uncached(
         .map(|n| (workspace_relative_repo_path(&n.path), n.module.clone()))
         .collect();
     ModuleGraphFactsLive {
-        edges,
         nodes,
         adjacency,
         selection_adjacency,
         declared_paths,
         reference_unaccounted,
         path_to_module,
-        observed_paths: observation.observed_paths,
         read_refusals: observation.read_refusals,
     }
 }
@@ -6077,16 +6074,6 @@ impl ModuleGraphFactsLive {
     /// imports are already covered by `resolved.resolved_imports`, so this returns empty for it
     /// (`adjacency` and `selection_adjacency` agree on such a file — see
     /// `reference_resolution_facts` pass 2).
-    pub(crate) fn reference_only_direct_import_modules(
-        &self,
-        importer_repo_path: &str,
-    ) -> Vec<String> {
-        self.reference_only_direct_import_paths(importer_repo_path)
-            .into_iter()
-            .filter_map(|p| self.path_to_module.get(&p).cloned())
-            .collect()
-    }
-
     /// Workspace-relative repo paths `importer_repo_path` depends on ONLY through a strict-tier
     /// reference edge (`selection_adjacency` minus `adjacency`). The path-grain authority
     /// `selection_adjacency` already carries; module names are derived only for diagnostics.
@@ -20222,73 +20209,6 @@ fn scan_test_decl_lines(content: &str) -> Vec<(String, i64)> {
     out
 }
 
-pub(crate) fn floor_filename_hygiene_refusal_via_producer(
-    source_roots: &[String],
-) -> Result<(), String> {
-    let mut dag_paths: Vec<String> = Vec::new();
-    for root in source_roots {
-        let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(Path::new(root), &mut dag_files);
-        for path in dag_files {
-            dag_paths.push(path.to_string_lossy().into_owned());
-        }
-    }
-    if dag_paths.is_empty() {
-        return Ok(());
-    }
-    let (graph, indices) = resolve_workspace_entry(source_roots, FLOOR_NAMING_HYGIENE_ENTRY)
-        .map_err(|e| format!("floor_naming_hygiene resolve for filename hygiene: {e}"))?;
-    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    let path_values: Vec<v1_interpreter::Value> = dag_paths
-        .iter()
-        .map(|p| v1_interpreter::Value::Str(p.clone()))
-        .collect();
-    let args = [(
-        Some("dag_paths".to_string()),
-        list_value_from_vec(path_values),
-    )];
-    let result = v1_interpreter::run_in_context_with_args(
-        &ctx,
-        "floor_filename_hygiene_refusal_for_paths",
-        &args,
-        false,
-    )
-    .map_err(|e| format!("floor_filename_hygiene_refusal_for_paths: {e}"))?;
-    match &result {
-        v1_interpreter::Value::Variant {
-            type_name,
-            variant_name,
-            fields,
-            ..
-        } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Present") => {
-            match ctx.field(fields, "value") {
-                Some(v1_interpreter::Value::Str(reason)) => Err(reason.clone()),
-                _ => Err(
-                    "floor_filename_hygiene_refusal_for_paths Present missing reason string"
-                        .to_string(),
-                ),
-            }
-        }
-        v1_interpreter::Value::Variant {
-            type_name,
-            variant_name,
-            ..
-        } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Absent") => Ok(()),
-        other => Err(format!(
-            "floor_filename_hygiene_refusal_for_paths returned `{}`, expected Optional<String>",
-            ctx.format_value(other)
-        )),
-    }
-}
-
-#[derive(Clone, Copy)]
-struct WorkspaceRootRelativeEntry(&'static str);
-
-const FLOOR_DISCOVERY_PRODUCER_ENTRY: WorkspaceRootRelativeEntry =
-    WorkspaceRootRelativeEntry("src/v2/workflow/floor_discovery_producer.dag");
-const FLOOR_NAMING_HYGIENE_ENTRY: WorkspaceRootRelativeEntry =
-    WorkspaceRootRelativeEntry("src/v2/workflow/floor_naming_hygiene.dag");
-
 /// The producer entry above is repo-relative, and every resolve of it ultimately reads the
 /// path **cwd-relative** (`entry_source_from_index_or_disk` does a bare `Path::is_file`).
 /// The floor runs from the repo root, so that ambient dependency is invisible in production
@@ -20306,6 +20226,12 @@ const FLOOR_NAMING_HYGIENE_ENTRY: WorkspaceRootRelativeEntry =
 /// Part of the `cli_run_runtime_workspace_root_plumbing` scaffold (see
 /// `CLI_RUN_RUNTIME_WORKSPACE_ROOT_SCAFFOLD_MARKER`): it dissolves with the rest of the
 /// anchoring plumbing when entry resolution stops reading cwd.
+#[derive(Clone, Copy)]
+struct WorkspaceRootRelativeEntry(&'static str);
+
+const FLOOR_DISCOVERY_PRODUCER_ENTRY: WorkspaceRootRelativeEntry =
+    WorkspaceRootRelativeEntry("src/v2/workflow/floor_discovery_producer.dag");
+
 fn resolve_workspace_entry(
     source_roots: &[String],
     entry: WorkspaceRootRelativeEntry,
@@ -20981,10 +20907,6 @@ pub fn discover_floor_witness_roster(
     exclude_substrings: &[String],
     discovery_scope_dirs: &[String],
 ) -> Result<Vec<DiscoveryRow>, String> {
-    floor_filename_hygiene_refusal_via_producer(source_roots)?;
-    // U2 — orphan plain fns in *_test.dag (enroll-or-refuse). Lives in the naming walk,
-    // not a new lens (umbrella-dissolution fence).
-    test_module_hygiene_bridge::check_orphan_helpers_or_err(source_roots)?;
     let mut rows = invoke_floor_discovery_producer(source_roots, scan_dirs, exclude_substrings)?;
     rows = apply_discovery_scope_dirs_filter(rows, discovery_scope_dirs);
     // The module-graph facts build now serves exactly two consumers on this path:
@@ -22526,15 +22448,6 @@ fn declared_source_refs_axis_for_paths(
     DeclaredSourceRefAxis::Untouched
 }
 
-fn path_to_module_from_declaration_facts(
-    nodes: &[ModuleDeclarationFactRaw],
-) -> HashMap<String, String> {
-    nodes
-        .iter()
-        .map(|n| (workspace_relative_repo_path(&n.path), n.module.clone()))
-        .collect()
-}
-
 pub(crate) fn declared_source_refs_axis_for_entry(
     entry_path: &str,
     facts: &ModuleGraphFactsLive,
@@ -22542,10 +22455,13 @@ pub(crate) fn declared_source_refs_axis_for_entry(
     touched_paths: &[String],
 ) -> DeclaredSourceRefAxis {
     let declared_paths = declared_source_ref_paths_for_entry(entry_path, facts);
-    let path_to_module = path_to_module_from_declaration_facts(&facts.nodes);
+    // The facts build already precomputes this exact map once (`ModuleGraphFactsLive.path_to_module`).
+    // This site used to rebuild it from `facts.nodes` per ENTRY, and it is called per entry on the
+    // selection path — an O(corpus) map allocation per question against a map already in hand
+    // (DESIGN §6 bare-minimum cost: a proven cost-shape defect is fixed regardless of realized n).
     declared_source_refs_axis_for_paths(
         &declared_paths,
-        &path_to_module,
+        &facts.path_to_module,
         source_roots,
         touched_paths,
     )
@@ -23382,6 +23298,14 @@ pub fn run_discovery_corpus_with_options(
     width_policy: DiscoveryWidthPolicy,
     options: DiscoveryCorpusOptions,
 ) -> Result<DiscoverySummary, String> {
+    if std::env::var(FLOOR_DISCOVERY_CONSUMER_ENV).as_deref() == Ok("coordinated_consumer")
+        && !floor_discovery_snapshot::coordinated_snapshot_installed()
+    {
+        return Err(
+            "coordinated discovery refused: verified floor snapshot is not installed; cold reconstruction is disabled"
+                .to_string(),
+        );
+    }
     let pump_started = std::time::Instant::now();
     let selection = options.node_frontier_selection;
     let out = run_discovery_corpus_with_options_inner(
@@ -29250,14 +29174,12 @@ mod module_graph_read_refusal_tests {
             })
             .collect();
         ModuleGraphFactsLive {
-            edges: edge_rows,
             nodes: node_rows,
             adjacency: adjacency.clone(),
             selection_adjacency: adjacency,
             declared_paths,
             reference_unaccounted: std::collections::HashSet::new(),
             path_to_module,
-            observed_paths: std::collections::HashSet::new(),
             read_refusals: Vec::new(),
         }
     }
@@ -29330,7 +29252,6 @@ mod module_graph_read_refusal_tests {
         // the file is present in the inventory, produced no module declaration, and
         // the refusal (not absence) is the surfaced state.
         let mut facts = synthetic_facts(&[("v2.lens.good_probe", "target/x/good.dag")], &[]);
-        facts.observed_paths = observation.observed_paths;
         facts.read_refusals = observation.read_refusals;
         let err = super::refuse_on_module_graph_read_refusals(&facts)
             .expect_err("the facts build must refuse while a path is unreadable");
@@ -29367,10 +29288,6 @@ mod module_graph_read_refusal_tests {
             super::refuse_on_module_graph_read_refusals(&live).is_ok(),
             "live corpus must scan without read refusals: {:?}",
             live.read_refusals
-        );
-        assert!(
-            !live.observed_paths.is_empty(),
-            "live corpus inventory must be non-empty (non-vacuity)"
         );
     }
 }
@@ -29552,9 +29469,10 @@ mod sidecar_placement_hygiene_tests {
         // asserted twice — `floor_discovery_hand_rust_equivalence_witness_test.dag`
         // (`floor_discovery_equivalence_misplaced_wire_contract_refuses_holds`) already owns
         // it content-side, so re-deriving it here would be a second representation (§2/§3).
-        // Hence the call is at the producer seam and not at
-        // `floor_filename_hygiene_refusal_for_paths`, which decides only the `__`-in-basename
-        // rule and can never report a wire-contract violation.
+        // Hence the call is at the producer seam, where a wire-contract violation is
+        // observable at all. (This clause used to contrast the seam against
+        // `floor_filename_hygiene_refusal_for_paths`; that decided only the `__`-in-basename
+        // rule, which is deleted, so the contrast named nothing.)
         //
         // Nothing here chdirs, and that is load-bearing: the producer entry is located by
         // `resolve_workspace_entry` (git-toplevel, not cwd), so this test
@@ -38837,6 +38755,29 @@ mod witness_layer_roots_compile_clean_tests {
             assert_eq!(pooled_source.path, source.path);
         }
     }
+
+    #[test]
+    fn coordinated_consumer_refuses_corpus_without_verified_snapshot() {
+        with_env_test_lock(|| {
+            floor_discovery_snapshot::reset_floor_discovery_snapshot_for_test();
+            let _consumer = EnvGuard::set(FLOOR_DISCOVERY_CONSUMER_ENV, "coordinated_consumer");
+            let roots: Vec<String> = Vec::new();
+            let refusal = run_discovery_corpus_with_options(
+                &roots,
+                &[],
+                &[],
+                crate::v1_interpreter::ExecutionMode::Hermetic,
+                DiscoveryWidthPolicy::Serial,
+                DiscoveryCorpusOptions::default(),
+            )
+            .expect_err("coordinated corpus must refuse without an installed snapshot");
+            assert!(
+                refusal.contains("verified floor snapshot is not installed")
+                    && refusal.contains("cold reconstruction is disabled"),
+                "unexpected coordinated-consumer refusal: {refusal}"
+            );
+        });
+    }
 }
 
 #[cfg(test)]
@@ -41369,90 +41310,6 @@ mod import_closure_equivalence_tests {
             }
         }
         entries
-    }
-
-    /// Pre-BFS fixpoint from `origin/main` — retained for perf receipt only.
-    fn import_closure_from_facts_fixpoint_legacy(
-        entry_path: &str,
-        edges: &[super::ImportResolutionFactRaw],
-        nodes: &[super::ModuleDeclarationFactRaw],
-    ) -> Vec<String> {
-        let entry_path = workspace_relative_repo_path(entry_path);
-        let mut reached: Vec<String> = vec![entry_path];
-        let fuel = nodes.len();
-        for _ in 0..fuel {
-            let before = reached.len();
-            let mut next = reached.clone();
-            for importer in &reached {
-                let importer_norm = workspace_relative_repo_path(importer);
-                for edge in edges {
-                    if workspace_relative_repo_path(&edge.path) != importer_norm {
-                        continue;
-                    }
-                    for node in nodes {
-                        if node.module == edge.import_module {
-                            let path = workspace_relative_repo_path(&node.path);
-                            if !next.iter().any(|p| p == &path) {
-                                next.push(path);
-                            }
-                        }
-                    }
-                }
-            }
-            if next.len() == before {
-                break;
-            }
-            reached = next;
-        }
-        reached
-    }
-
-    /// Manual perf receipt (P4): `cargo test -p v1-compiler --lib import_closure_bfs_vs_fixpoint_perf_receipt -- --ignored --nocapture`
-    #[test]
-    #[ignore = "manual perf receipt: import_closure BFS vs fixpoint on floor witness roster"]
-    fn import_closure_bfs_vs_fixpoint_perf_receipt() {
-        use std::time::Instant;
-
-        const CLOSURE_CALLS_PER_ENTRY: usize = 2;
-
-        let roots = default_source_roots();
-        let entries: Vec<String> = floor_witness_entry_paths_for_oracle().into_iter().collect();
-        let facts = super::build_module_graph_facts_live(&roots);
-        let call_count = entries.len() * CLOSURE_CALLS_PER_ENTRY;
-
-        let t0 = Instant::now();
-        for entry_rel in &entries {
-            for _ in 0..CLOSURE_CALLS_PER_ENTRY {
-                let _ = import_closure_from_facts_fixpoint_legacy(
-                    entry_rel,
-                    &facts.edges,
-                    &facts.nodes,
-                );
-            }
-        }
-        let fixpoint_ms = t0.elapsed().as_secs_f64() * 1000.0;
-
-        let t1 = Instant::now();
-        for entry_rel in &entries {
-            for _ in 0..CLOSURE_CALLS_PER_ENTRY {
-                let _ = super::import_closure_live_paths_with_facts(entry_rel, &facts);
-            }
-        }
-        let bfs_ms = t1.elapsed().as_secs_f64() * 1000.0;
-
-        let speedup = fixpoint_ms / bfs_ms.max(0.001);
-        eprintln!(
-            "import_closure perf receipt: entries={} calls={} fixpoint_ms={:.1} bfs_ms={:.1} speedup={:.1}x",
-            entries.len(),
-            call_count,
-            fixpoint_ms,
-            bfs_ms,
-            speedup
-        );
-        assert!(
-            bfs_ms < fixpoint_ms,
-            "BFS should beat fixpoint on floor roster (fixpoint={fixpoint_ms:.1}ms bfs={bfs_ms:.1}ms)"
-        );
     }
 
     #[test]
