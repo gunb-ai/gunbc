@@ -242,6 +242,40 @@ fn lowest_accepted_version(
   )
 }
 
+// Does ONE observation contradict a declared minimum? An acceptance strictly
+// below the minimum falsifies it, and a refusal at or above it falsifies it in
+// the other direction. Anything else is consistent, which is not the same as
+// supporting it — that is what the bounds above report.
+fn prerequisite_observation_contradicts(
+  minimum: FirmwareSemanticVersion,
+  observation: FirmwarePrerequisiteObservation,
+) -> PrerequisiteEvidenceVerdict {
+  match observation.outcome {
+    PushAcceptedByTarget =>
+      if firmware_semantic_version_at_least(
+        observed: observation.gating_version,
+        minimum: minimum,
+      ) {
+        PrerequisiteEvidenceAbsent
+      } else {
+        PrerequisiteContradictedByAcceptanceBelowMinimum {
+          accepted_at: observation.gating_version,
+        }
+      }
+    PushRefusedByTarget { diagnostic: _ } =>
+      if firmware_semantic_version_at_least(
+        observed: observation.gating_version,
+        minimum: minimum,
+      ) {
+        PrerequisiteContradictedByRefusalAtOrAboveMinimum {
+          refused_at: observation.gating_version,
+        }
+      } else {
+        PrerequisiteEvidenceAbsent
+      }
+  }
+}
+
 fn prerequisite_contradiction(
   minimum: FirmwareSemanticVersion,
   observations: List<FirmwarePrerequisiteObservation>,

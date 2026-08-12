@@ -51,7 +51,7 @@ import extdeps.boards.asrock_rack {
 import extdeps.crypto.hash { sha256_digest }
 import gunbc.fleet_bmc_observation {
   BmcFanRebootPersistenceReceipt,
-  srv3_bmc_firmware_observation,
+  srv3_bmc_firmware_2_07_00_observation,
   srv3_bmc_redfish_surface,
   srv3_bmc_update_service_observation,
   srv4_bmc_config_persistence_observation,
@@ -198,14 +198,19 @@ test fn every_metal_host_uses_the_single_global_bmc_valid_state() -> Bool {
     }
 }
 
+// These classification tests use srv3's IMMUTABLE 2.07.00 observation as the
+// drifted-host fixture rather than its current standing. srv3 is on 3.22.00
+// since the 2026-08-11 flash, so binding them to the current row would make
+// them assert a state the host no longer has — and, once it satisfied the
+// pinned intent, would silently invert what each test claims to check.
 test fn heterogeneous_firmware_satisfies_unpinned_intent_and_pinned_detects_mismatch() -> Bool {
-  srv3_bmc_firmware_observation.firmware.version.major == 2
-    && srv3_bmc_firmware_observation.firmware.version.minor == 7
+  srv3_bmc_firmware_2_07_00_observation.firmware.version.major == 2
+    && srv3_bmc_firmware_2_07_00_observation.firmware.version.minor == 7
     && srv4_bmc_firmware_observation.firmware.version.major == 3
     && srv4_bmc_firmware_observation.firmware.version.minor == 22
     && match bmc_firmware_observation_intent_verdict(
       intent: fleet_bmc_valid_state.firmware,
-      observation: srv3_bmc_firmware_observation,
+      observation: srv3_bmc_firmware_2_07_00_observation,
     ) {
       BmcFirmwareIntentSatisfied => true
       BmcFirmwareIntentMismatch { required: _, observed: _ } => false
@@ -219,7 +224,7 @@ test fn heterogeneous_firmware_satisfies_unpinned_intent_and_pinned_detects_mism
     }
     && match bmc_firmware_observation_intent_verdict(
       intent: fixture_pinned_track3_intent,
-      observation: srv3_bmc_firmware_observation,
+      observation: srv3_bmc_firmware_2_07_00_observation,
     ) {
       BmcFirmwareIntentMismatch {
         required: required,
@@ -247,7 +252,7 @@ test fn firmware_classification_reuses_upsert_states_and_refuses_unapproved_upda
     host: srv3_host.identity,
     board: srv3_baseboard.catalog.model,
     intent: fixture_pinned_track3_intent,
-    observation: Present { value: srv3_bmc_firmware_observation },
+    observation: Present { value: srv3_bmc_firmware_2_07_00_observation },
     artifact: none,
     update_service: none,
   )
@@ -292,7 +297,7 @@ test fn approved_exact_firmware_artifact_builds_a_typed_srv3_update_plan() -> Bo
     host: srv3_host.identity,
     board: srv3_baseboard.catalog.model,
     intent: fixture_pinned_track3_intent,
-    observation: Present { value: srv3_bmc_firmware_observation },
+    observation: Present { value: srv3_bmc_firmware_2_07_00_observation },
     artifact: Present { value: fixture_approved_openbmc_3_22_artifact },
     update_service: Present { value: srv3_bmc_update_service_observation },
   )
@@ -300,7 +305,7 @@ test fn approved_exact_firmware_artifact_builds_a_typed_srv3_update_plan() -> Bo
     host: srv3_host.identity,
     board: srv3_baseboard.catalog.model,
     intent: fixture_pinned_track3_intent,
-    observation: Present { value: srv3_bmc_firmware_observation },
+    observation: Present { value: srv3_bmc_firmware_2_07_00_observation },
     artifact: Present { value: fixture_approved_openbmc_3_22_artifact },
     update_service: none,
   )
@@ -308,7 +313,7 @@ test fn approved_exact_firmware_artifact_builds_a_typed_srv3_update_plan() -> Bo
     && match classified.decision {
       Apply { plan: plan } =>
         plan.host == srv3_host.identity
-          && plan.observed == srv3_bmc_firmware_observation
+          && plan.observed == srv3_bmc_firmware_2_07_00_observation
           && plan.artifact == fixture_approved_openbmc_3_22_artifact
           && plan.update_service == srv3_bmc_update_service_observation
       Noop => false
