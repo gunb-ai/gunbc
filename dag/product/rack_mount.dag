@@ -2,8 +2,7 @@ module product.rack_mount
 
 import std.types { Bool, List, NonEmptyStr }
 import std.integer { Int }
-import std.measure { Millimeter, millimeter_count, Micrometer, micrometer, micrometer_count, millimeters_to_micrometers, RackUnit, rack_unit, rack_unit_count, measure_add, measure_le, micrometers_per_rack_unit }
-import std.orthogonal_topology { EnclosedSpace, space_height }
+import std.measure { Micrometer, micrometer, micrometer_count, RackUnit, rack_unit, rack_unit_count, measure_add, measure_le, micrometers_per_rack_unit }
 import product.placement_supply { RackIdentity, PhysicalAssetIdentity, RackUnitPosition }
 import extdeps.rack.types { RackCatalogRow }
 import extdeps.chassis.types { ChassisCatalogRow }
@@ -44,9 +43,12 @@ import v2.std.optional { Present, Absent }
 type MountRefusal
   = MountBelowFirstUnit { lowest_unit: RackUnitPosition }
   | MountExceedsRackHeight { top_unit: RackUnitPosition, rack_capacity: RackUnit }
+  // The two identities are named for their PHYSICAL relationship and derived from lowest_unit. An
+  // earlier revision passed them as (already-admitted, incoming), which is an input-order fact
+  // wearing position names: a mount admitted at U10 colliding with an incoming one at U8 reported
+  // U10 as the lower.
   | MountsCollide { lower: PhysicalAssetIdentity, upper: PhysicalAssetIdentity }
   | AssetMountedTwice { asset: PhysicalAssetIdentity }
-  | RackTallerThanRoom { rack_height: Micrometer, room_height: Micrometer }
   // Its own arm, because reusing MountExceedsRackHeight would have put a total occupied
   // CARDINALITY in a field that carries a mount's top POSITION everywhere else - one field meaning
   // two things, so a fired diagnostic would mislabel the failure it exists to explain. This arm is
@@ -112,7 +114,13 @@ fn admit_mount(acc: MountAdmission, rack: RackCatalogRow, m: ChassisMount) -> Mo
               if asset_eq(a: other.asset, b: m.asset) {
                 Present { value: AssetMountedTwice { asset: m.asset } }
               } else if mounts_collide(a: other, b: m) {
-                Present { value: MountsCollide { lower: other.asset, upper: m.asset } }
+                Present {
+                  value: if other.lowest_unit <= m.lowest_unit {
+                    MountsCollide { lower: other.asset, upper: m.asset }
+                  } else {
+                    MountsCollide { lower: m.asset, upper: other.asset }
+                  }
+                }
               } else {
                 none
               }
@@ -172,35 +180,34 @@ fn rack_units_free(r: RackInstance) -> MountConstruction<RackUnit> {
 // passed, which is the fabricated value with its own test pinning it in place. The micrometre is
 // exact for every whole unit count, so the quantity is carried there and the caller converts only
 // where it is willing to say what it wants done with the remainder.
+// Named for what it measures. This is the aperture, not the rack, and no consumer here may treat
+// it as an external dimension.
 fn rack_units_to_micrometres(units: RackUnit) -> Micrometer {
   micrometer(count: rack_unit_count(u: units) * micrometers_per_rack_unit())
 }
 
-fn rack_full_height(r: RackInstance) -> Micrometer {
+fn rack_mounting_aperture_height(r: RackInstance) -> Micrometer {
   rack_units_to_micrometres(units: r.catalog.rack_units)
 }
 
-// THE JOIN TO THE WORLD: a rack standing in a room must fit under its ceiling. This is the only
-// place the hardware bands and the geometry bands meet in this module, and it is a refusal rather
-// than a derived truncation - a rack that does not fit is an error in the plan, not a shorter rack.
-type RoomMountedRack sole_constructor {
-  rack: RackInstance
-  room: EnclosedSpace
-}
-
-fn room_mounted_rack(rack: RackInstance, room: EnclosedSpace) -> MountConstruction<RoomMountedRack> {
-  let rack_height = rack_full_height(r: rack)
-  let room_height = millimeters_to_micrometers(m: space_height(s: room))
-  if micrometer_count(m: rack_height) > micrometer_count(m: room_height) {
-    MountRefused { cause: RackTallerThanRoom { rack_height: rack_height, room_height: room_height } }
-  } else {
-    MountReady { value: RoomMountedRack { rack: rack, room: room } }
-  }
-}
-
-fn mounted_rack_instance(m: RoomMountedRack) -> RackInstance { m.rack }
-fn mounted_rack_room(m: RoomMountedRack) -> EnclosedSpace { m.room }
-
-fn mounted_rack_headroom(m: RoomMountedRack) -> Micrometer {
-  micrometer(count: micrometer_count(m: millimeters_to_micrometers(m: space_height(s: m.room))) - micrometer_count(m: rack_full_height(r: m.rack)))
-}
+// NO ROOM-FIT RELATION IN THIS INCREMENT, and the reason is worth stating because an earlier
+// revision shipped one that looked right.
+//
+// rack_units x 44.45 mm is the MOUNTING APERTURE - the usable vertical space between the rails. It
+// is not the rack's external envelope: frames, bases, top members, feet, casters and construction
+// clearances all extend past the aperture, and RackCatalogRow carries no external height for any
+// of them. The earlier RoomMountedRack compared the aperture against a room's ceiling and called
+// the result a fit, which moved this band from an inexact answer to an EXACT answer to the wrong
+// physical question - a plausible-but-false admission, which is worse than the truncation it
+// replaced because nothing about it looks approximate.
+//
+// It also bypassed the join SPATIAL-4A had just established: it took a bare EnclosedSpace as "the
+// room", so it could not say WHICH room the rack stood in, could not distinguish two geometrically
+// identical rooms, and did not require the geometry to belong to any admitted world - while the
+// type name asserted a mounting relation that one scalar comparison does not establish.
+//
+// Both are removed rather than patched. Dissolve-on, and it is one condition rather than two: a
+// cited external height on the rack catalog authority. When it lands, the relation returns taking a
+// World and a RoomIdentity, resolving the room through the world and retaining that identity in the
+// result, and its discriminating control is the case the deleted version got wrong - a ceiling
+// above the aperture but below the external height must REFUSE.
