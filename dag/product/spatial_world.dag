@@ -172,6 +172,20 @@ fn without_identity(rooms: List<PlacedSpace>, identity: RoomIdentity) -> List<Pl
     if room_identity_eq(a: r.identity, b: identity) { acc } else { concat([r], acc) }))
 }
 
+// A MODIFICATION REPLACES IN PLACE. Removing the room and appending its replacement would perform a
+// REORDER the patch does not describe: world_rooms exposes the list, so [kitchen, hall] became
+// [hall, kitchen] when only kitchen changed, and any consumer that folds the world - a projection, a
+// serialization, a receipt - would see a change with no hunk behind it. The band's thesis is that
+// the change IS the representation, and an unrepresented reorder is precisely the violation of it.
+fn replace_identity(rooms: List<PlacedSpace>, identity: RoomIdentity, space: EnclosedSpace) -> List<PlacedSpace> {
+  reverse(fold(rooms, init: [], f: (acc, r) =>
+    if room_identity_eq(a: r.identity, b: identity) {
+      concat([PlacedSpace { identity: identity, space: space }], acc)
+    } else {
+      concat([r], acc)
+    }))
+}
+
 // EVERY ARM REFUSES RATHER THAN ABSORBING. Removing a room that is not there is not a no-op, adding
 // one that already exists is not a replace, and modifying one whose current shape is not the `from`
 // the patch was computed against is not an overwrite. Each of those absorptions would let a delta
@@ -203,10 +217,7 @@ fn apply_hunk(acc: ApplyAcc, hunk: KeyedDiffHunk<RoomIdentity, EnclosedSpace>) -
             Absent => ApplyAcc { rooms: acc.rooms, refusal: Present { value: VariantTargetMissing { identity: key } } }
             Present { value: current } =>
               if space_eq(a: current.space, b: from) {
-                ApplyAcc {
-                  rooms: concat(without_identity(rooms: acc.rooms, identity: key), [PlacedSpace { identity: key, space: to }]),
-                  refusal: none,
-                }
+                ApplyAcc { rooms: replace_identity(rooms: acc.rooms, identity: key, space: to), refusal: none }
               } else {
                 ApplyAcc { rooms: acc.rooms, refusal: Present { value: VariantBaseChanged { identity: key } } }
               }

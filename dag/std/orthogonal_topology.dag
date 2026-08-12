@@ -113,37 +113,67 @@ fn space_footprint(s: EnclosedSpace) -> OrthogonalLoop2 { prism3_footprint(p: s.
 fn space_height(s: EnclosedSpace) -> Millimeter { prism3_height(p: s.shell.prism) }
 fn space_walls(s: EnclosedSpace) -> List<ShellWall> { shell_walls(s: s.shell) }
 
-// STRUCTURAL EQUALITY OVER THE BOUNDARY, which is the only thing a space is. Two spaces are the
-// same when they occupy the same volume in the same frame; there is no identity field to compare
-// because identity is the product layer's fact, not geometry's (std.spatial_knowledge makes the
-// same separation deliberately). A consumer wanting "is this the same ROOM" is asking a different
-// question and must ask it of the layer that allocates room identities.
+// EQUALITY IS OVER THE REGION, NOT THE VERTEX LIST. Two spaces are the same when they occupy the
+// same volume in the same frame, and the loop that describes a region is not unique: the same
+// rectangle can be written starting at any of its corners, in either winding. An earlier revision
+// compared vertices pairwise at matching list positions, which made a claim about VOLUME while
+// implementing one about REPRESENTATION - so a room whose boundary merely started at a different
+// corner compared unequal, and (because product.spatial_world uses this as its compare-and-swap
+// judgment) a geometrically identical patch could be refused as stale.
+//
+// The comparison is therefore invariant under cyclic rotation and under reversal, which are exactly
+// the two freedoms orthogonal_loop2 leaves in the representation: it stores the caller's sequence
+// unchanged, choosing neither a canonical start vertex nor a canonical winding. It is implemented
+// over the edge set rather than by trying rotations, because one structural fact covers both.
+//
+// Dissolve-on: canonicalising the loop AT ITS MINT - canonical start plus canonical winding - which
+// is the stronger fix because it makes this comparison trivial and gives every future hashing,
+// diffing or interning consumer one normal form instead of each re-deriving these two invariances.
+// It is not done here because it changes what loop2_vertices returns for already-merged callers,
+// which is a substrate change that deserves its own increment rather than riding a product band.
+//
+// There is no identity field to compare because identity is the product layer's fact, not
+// geometry's (std.spatial_knowledge draws the same separation). A consumer asking "is this the same
+// ROOM" must ask the layer that allocates room identities.
 fn space_eq(a: EnclosedSpace, b: EnclosedSpace) -> Bool {
   coordinate_frame_identity_eq(a: space_frame(s: a), b: space_frame(s: b))
     && signed_millimeter_component_count(m: prism3_low(p: a.shell.prism)) == signed_millimeter_component_count(m: prism3_low(p: b.shell.prism))
     && signed_millimeter_component_count(m: prism3_high(p: a.shell.prism)) == signed_millimeter_component_count(m: prism3_high(p: b.shell.prism))
-    && vertices_eq(a: loop2_vertices(l: space_footprint(s: a)), b: loop2_vertices(l: space_footprint(s: b)))
+    && loops_describe_same_region(
+         a: loop2_vertices(l: space_footprint(s: a)),
+         b: loop2_vertices(l: space_footprint(s: b)),
+       )
 }
 
-type VertexWalk {
-  rest: List<Point2>
-  same: Bool
+fn point2_same(a: Point2, b: Point2) -> Bool {
+  point2_x(p: a) == point2_x(p: b) && point2_y(p: a) == point2_y(p: b)
 }
 
-fn vertices_eq(a: List<Point2>, b: List<Point2>) -> Bool {
+// THE COMPARISON IS OVER THE EDGE SET, which is what makes it invariant under both freedoms at once
+// rather than by enumerating rotations. A simple closed loop gives every vertex degree two, so its
+// set of edges determines the cycle and therefore the region; and an edge is an UNORDERED pair of
+// endpoints, so writing the loop backwards produces the same set. Rotating the start vertex does
+// not change which edges exist either. One structural fact covers both cases.
+fn same_undirected_edge(a: LoopEdge, b: LoopEdge) -> Bool {
+  (point2_same(a: a.start, b: b.start) && point2_same(a: a.end, b: b.end))
+    || (point2_same(a: a.start, b: b.end) && point2_same(a: a.end, b: b.start))
+}
+
+fn count_edge(edges: List<LoopEdge>, wanted: LoopEdge) -> Int {
+  fold(edges, init: 0, f: (acc, e) => if same_undirected_edge(a: e, b: wanted) { acc + 1 } else { acc })
+}
+
+// Multiplicity is compared, not mere membership: two loops can draw on the same set of distinct
+// edges while traversing one of them a different number of times, and a membership test would call
+// those equal.
+fn loops_describe_same_region(a: List<Point2>, b: List<Point2>) -> Bool {
   if length(a) != length(b) {
     false
   } else {
-    let walked = fold(a, init: VertexWalk { rest: b, same: true }, f: (acc, v) =>
-      match acc.rest |> first {
-        Absent => VertexWalk { rest: [], same: false }
-        Present { value: w } =>
-          VertexWalk {
-            rest: acc.rest |> skip(1),
-            same: acc.same && point2_x(p: v) == point2_x(p: w) && point2_y(p: v) == point2_y(p: w),
-          }
-      })
-    walked.same
+    let a_edges = loop_edges(vertices: a)
+    let b_edges = loop_edges(vertices: b)
+    fold(a_edges, init: true, f: (acc, e) =>
+      acc && count_edge(edges: a_edges, wanted: e) == count_edge(edges: b_edges, wanted: e))
   }
 }
 
