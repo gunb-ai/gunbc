@@ -2513,7 +2513,7 @@ fn rust_logic_family_runtime_row() -> TargetEmitHostRuntimeRow {
 fn rust_logic_family_target_model_staging() -> TargetModel {
   let base = rust_logic_meet_target_model_staging()
   TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
+    produced_decl_support: base.produced_decl_support,
     bundle: base.bundle,
     lex: base.lex,
     binding_spellings: base.binding_spellings,
@@ -2572,7 +2572,7 @@ fn rust_logic_selected_bundle_runtime_row() -> TargetEmitHostRuntimeRow {
 fn rust_logic_selected_bundle_target_model_staging() -> TargetModel {
   let base = rust_logic_meet_target_model_staging()
   TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
+    produced_decl_support: base.produced_decl_support,
     bundle: base.bundle,
     lex: base.lex,
     binding_spellings: base.binding_spellings,
@@ -2608,7 +2608,7 @@ fn rust_logic_family_meet_zero_runtime_row() -> TargetEmitHostRuntimeRow {
 fn rust_logic_family_target_model_meet_zero_staging() -> TargetModel {
   let base = rust_logic_meet_target_model_staging()
   TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
+    produced_decl_support: base.produced_decl_support,
     bundle: base.bundle,
     lex: base.lex,
     binding_spellings: base.binding_spellings,
@@ -2691,7 +2691,7 @@ fn rust_match_loop_fold_family_runtime_row() -> TargetEmitHostRuntimeRow {
 fn rust_match_loop_fold_family_target_model_staging() -> TargetModel {
   let base = rust_match_target_model_staging()
   TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
+    produced_decl_support: base.produced_decl_support,
     bundle: base.bundle,
     lex: base.lex,
     binding_spellings: base.binding_spellings,
@@ -4213,7 +4213,7 @@ fn rust_filesystem_read_family_runtime_row(fixture_content: String) -> TargetEmi
 fn rust_filesystem_read_family_target_model_staging(fixture_content: String) -> TargetModel {
   let base = rust_logic_meet_target_model_staging()
   TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
+    produced_decl_support: base.produced_decl_support,
     bundle: base.bundle,
     lex: base.lex,
     binding_spellings: base.binding_spellings,
@@ -4317,7 +4317,7 @@ fn rust_shell_exec_run_family_runtime_row() -> TargetEmitHostRuntimeRow {
 fn rust_shell_exec_run_family_target_model_staging() -> TargetModel {
   let base = rust_logic_meet_target_model_staging()
   TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
+    produced_decl_support: base.produced_decl_support,
     bundle: base.bundle,
     lex: base.lex,
     binding_spellings: base.binding_spellings,

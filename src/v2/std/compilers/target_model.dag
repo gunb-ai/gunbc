@@ -10987,7 +10987,7 @@ fn target_model_augment_use_site_ownership_catalog(
           Present { value: catalog } =>
             outcome_accepted(
               TargetModel {
-                produced_decl_support: ProducedDeclUnwired,
+                produced_decl_support: target.produced_decl_support,
                 bundle: target_model_bundle_replace_edge_target(
                   bundle: target.bundle,
                   edge_name: ^target_model_edge_use_site_ownership_realizations,
@@ -11037,7 +11037,7 @@ fn target_model_augment_value_semantics_carriers(
           Present { value: carriers_node } =>
             outcome_accepted(
               TargetModel {
-                produced_decl_support: ProducedDeclUnwired,
+                produced_decl_support: target.produced_decl_support,
                 bundle: target_model_bundle_replace_edge_target(
                   bundle: target.bundle,
                   edge_name: ^target_model_edge_value_semantics_carriers,
