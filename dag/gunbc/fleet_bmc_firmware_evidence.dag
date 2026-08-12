@@ -13,8 +13,8 @@ import extdeps.bmc.capability {
   bmc_firmware_capability_row_for,
 }
 import gunbc.fleet_intent { srv1_baseboard, srv2_baseboard }
-import gunbc.fleet_bmc_observation {
 import extdeps.firmware.types { firmware_semantic_version }
+import gunbc.fleet_bmc_observation {
   srv3_bmc_firmware_observation,
   srv4_bmc_firmware_observation,
 }

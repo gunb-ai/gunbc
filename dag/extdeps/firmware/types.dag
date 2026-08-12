@@ -1,6 +1,7 @@
 module extdeps.firmware.types
 
 import std.nat { Nat }
+import std.measure { ByteSize, byte_size }
 import std.types { EpochMs, NonEmptyStr }
 import extdeps.crypto.hash { Digest }
 import extdeps.boards.types { BaseboardModel }
@@ -67,7 +68,7 @@ type FirmwareReleaseRow {
   released_on: EpochMs
   image_kind: FirmwareImageKind
   image_uri: Uri
-  image_bytes: Nat
+  image_bytes: ByteSize
   image_digest: Digest?
   release_notes: NonEmptyStr
   // What must already be running before these bytes can be applied. Carried

@@ -1,0 +1,159 @@
+module test.claim.memory_part_selection_witness_test
+
+import std.types { Bool, List, list_length }
+import std.currency { CurrencyCode, Eur, Usd }
+import std.measure { ByteSize, byte_size, money_amount_micro }
+import std.nat { Nat }
+import extdeps.vendor.samsung { samsung }
+import extdeps.memory.types {
+  DramModuleCatalogRow,
+  LoadReduced,
+  Registered,
+  bit_width,
+  dram_generation_ddr4,
+}
+import extdeps.memory.training { LrdimmDataBufferMrep, module_executes_step }
+import gunbc.host_memory_qualification { PartQualificationUnobserved }
+import gunbc.memory_part_selection {
+  CandidateAdmissible,
+  CandidateCurrencyMismatch,
+  CandidateImplicated,
+  PartCandidate,
+  PartImplicatedByFailingStep,
+  PartNotImplicated,
+  altrad8ud_mrep_failure_observation,
+  candidate_admission,
+  pareto_frontier,
+  part_implication,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data stick_32g: ByteSize = byte_size(count: 34359738368)
+
+// The family observed failing MREP on this board: load-reduced, so it must
+// execute the data-buffer step.
+data lrdimm_32g: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: "M386A4G40DM0-CPB",
+  manufacturer: samsung,
+  generation: dram_generation_ddr4,
+  capacity_bytes: stick_32g,
+  data_rate_mts: 2133,
+  ecc: true,
+  buffering: LoadReduced,
+  chip_width: bit_width(count: 4),
+  rank_count: 4,
+}
+
+// Same capacity, same vendor, same generation — registered rather than load
+// reduced. The ONLY axis that differs is the one the rule reads.
+data rdimm_32g: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: "M393A4K40DB2-CTD",
+  manufacturer: samsung,
+  generation: dram_generation_ddr4,
+  capacity_bytes: stick_32g,
+  data_rate_mts: 2666,
+  ecc: true,
+  buffering: Registered,
+  chip_width: bit_width(count: 4),
+  rank_count: 2,
+}
+
+data observed_failures = [altrad8ud_mrep_failure_observation]
+
+fn candidate_of(
+  module: DramModuleCatalogRow,
+  currency: CurrencyCode,
+) -> PartCandidate {
+  PartCandidate {
+    module: module,
+    unit_price: money_amount_micro(count: 100000000),
+    currency: currency,
+    sticks_required: 8,
+    qualification: PartQualificationUnobserved,
+  }
+}
+
+// THE RULE. A load-reduced module must execute MREP, which this board has been
+// observed to fail, so it is implicated by the step rather than by its part
+// number.
+test fn load_reduced_module_is_implicated_by_the_failing_step() -> Bool {
+  match part_implication(candidate: lrdimm_32g, failures: observed_failures) {
+    PartImplicatedByFailingStep { step: _, standing: _ } => true
+    PartNotImplicated => false
+  }
+}
+
+// RED control on the discriminating axis: an otherwise identical registered
+// module has no data buffer, cannot execute MREP, and is NOT implicated. If
+// the rule were keyed on vendor, capacity, generation or rank it would answer
+// the same for both fixtures.
+test fn registered_module_of_same_family_is_not_implicated() -> Bool {
+  match part_implication(candidate: rdimm_32g, failures: observed_failures) {
+    PartNotImplicated => true
+    PartImplicatedByFailingStep { step: _, standing: _ } => false
+  }
+}
+
+test fn only_the_load_reduced_module_executes_mrep() -> Bool {
+  module_executes_step(module: lrdimm_32g, step: LrdimmDataBufferMrep)
+    && !module_executes_step(module: rdimm_32g, step: LrdimmDataBufferMrep)
+}
+
+// A candidate priced in a currency other than the declared one is REFUSED with
+// a typed cause, never silently ranked against it.
+test fn cross_currency_candidate_is_refused_not_ranked() -> Bool {
+  match candidate_admission(
+    candidate: candidate_of(module: rdimm_32g, currency: Eur),
+    failures: observed_failures,
+    declared_currency: Usd,
+  ) {
+    CandidateCurrencyMismatch { declared: _, candidate_currency: _ } => true
+    CandidateAdmissible => false
+    CandidateImplicated { step: _, standing: _ } => false
+  }
+}
+
+// Positive control: the SAME candidate in the declared currency is admissible,
+// so the refusal above is discriminating on currency and not on the candidate.
+test fn same_candidate_in_declared_currency_is_admissible() -> Bool {
+  match candidate_admission(
+    candidate: candidate_of(module: rdimm_32g, currency: Usd),
+    failures: observed_failures,
+    declared_currency: Usd,
+  ) {
+    CandidateAdmissible => true
+    CandidateCurrencyMismatch { declared: _, candidate_currency: _ } => false
+    CandidateImplicated { step: _, standing: _ } => false
+  }
+}
+
+// The implicated candidate is refused BEFORE the frontier is computed, so the
+// frontier never trades "it might not train" against price.
+test fn frontier_excludes_the_implicated_candidate() -> Bool {
+  let front = pareto_frontier(
+    candidates: [
+      candidate_of(module: lrdimm_32g, currency: Usd),
+      candidate_of(module: rdimm_32g, currency: Usd),
+    ],
+    failures: observed_failures,
+    declared_currency: Usd,
+  )
+  list_length(front) == 1
+}
+
+// RED control: with NO observed platform failure, the load-reduced module is
+// admitted — the refusal comes from the observation, not from a preference
+// baked into the model.
+test fn without_an_observed_failure_the_load_reduced_module_is_admitted() -> Bool {
+  let front = pareto_frontier(
+    candidates: [
+      candidate_of(module: lrdimm_32g, currency: Usd),
+      candidate_of(module: rdimm_32g, currency: Usd),
+    ],
+    failures: [],
+    declared_currency: Usd,
+  )
+  list_length(front) == 2
+}

@@ -1,7 +1,9 @@
 module gunbc.memory_part_selection
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
-import std.measure { ByteSize, byte_size_count }
+import std.types { Bool, EpochMs, List, NonEmptyStr }
+import std.nat { Nat }
+import std.currency { CurrencyCode }
+import std.measure { ByteSize, MoneyAmountMicro, byte_size_count, money_amount_micro_count }
 import extdeps.boards.types { AsrockRackAltrad8ud1l2t, BaseboardModel }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.memory.types { DramModuleCatalogRow, JedecDdrGenerationCatalogRow }
@@ -99,22 +101,26 @@ fn topology_pressure(
   }
 }
 
-// A candidate for an ordering decision. Price is carried as an integer minor
-// unit and is deliberately NOT compared across currencies here.
+// A candidate for an ordering decision. Price rides the std.measure money
+// carrier rather than a bare integer, and the currency is the std.currency
+// closed code rather than a free string: a cross-currency comparison is then
+// refused at admission below (DESIGN section 5 construction over validation),
+// where an earlier revision of this module only narrated the invariant in a
+// comment the compiler could not read.
 type PartCandidate {
   module: DramModuleCatalogRow
-  unit_price_minor: Int
-  currency: NonEmptyStr
-  sticks_required: Int
+  unit_price: MoneyAmountMicro
+  currency: CurrencyCode
+  sticks_required: Nat
   qualification: SpecificPartQualification
 }
 
-fn candidate_total_capacity_bytes(candidate: PartCandidate) -> Int {
+fn candidate_total_capacity_bytes(candidate: PartCandidate) -> Nat {
   byte_size_count(b: candidate.module.capacity_bytes) * candidate.sticks_required
 }
 
-fn candidate_total_price_minor(candidate: PartCandidate) -> Int {
-  candidate.unit_price_minor * candidate.sticks_required
+fn candidate_total_price_micros(candidate: PartCandidate) -> Nat {
+  money_amount_micro_count(m: candidate.unit_price) * candidate.sticks_required
 }
 
 // PARETO SELECTION. Three objectives, and the implication axis is NOT one of
@@ -122,13 +128,55 @@ fn candidate_total_price_minor(candidate: PartCandidate) -> Int {
 // trading "it might not train" against price is how the failing modules were
 // bought in the first place. Pareto ranks the parts that could work; it does
 // not price the risk of parts we have mechanical reason to reject.
+// Admission is a typed verdict rather than a Bool, so a dropped candidate
+// carries WHY it was dropped. The currency arm is the load-bearing one: the
+// frontier is computed against a DECLARED currency, and a candidate priced in
+// another one is refused rather than silently ranked, which is what makes
+// "prices are not compared across currencies" a property of the code instead
+// of a sentence beside it.
+type CandidateAdmission
+  = CandidateAdmissible
+  | CandidateImplicated {
+      step: MemoryTrainingStep
+      standing: TrainingEvidenceStanding
+    }
+  | CandidateCurrencyMismatch {
+      declared: CurrencyCode
+      candidate_currency: CurrencyCode
+    }
+
+fn candidate_admission(
+  candidate: PartCandidate,
+  failures: List<PlatformTrainingFailure>,
+  declared_currency: CurrencyCode,
+) -> CandidateAdmission {
+  if candidate.currency != declared_currency {
+    CandidateCurrencyMismatch {
+      declared: declared_currency,
+      candidate_currency: candidate.currency,
+    }
+  } else {
+    match part_implication(candidate: candidate.module, failures: failures) {
+      PartNotImplicated => CandidateAdmissible
+      PartImplicatedByFailingStep { step: s, standing: st } =>
+        CandidateImplicated { step: s, standing: st }
+    }
+  }
+}
+
 fn candidate_admissible(
   candidate: PartCandidate,
   failures: List<PlatformTrainingFailure>,
+  declared_currency: CurrencyCode,
 ) -> Bool {
-  match part_implication(candidate: candidate.module, failures: failures) {
-    PartNotImplicated => true
-    PartImplicatedByFailingStep { step: _, standing: _ } => false
+  match candidate_admission(
+    candidate: candidate,
+    failures: failures,
+    declared_currency: declared_currency,
+  ) {
+    CandidateAdmissible => true
+    CandidateImplicated { step: _, standing: _ } => false
+    CandidateCurrencyMismatch { declared: _, candidate_currency: _ } => false
   }
 }
 
@@ -139,8 +187,8 @@ fn candidate_admissible(
 fn candidate_dominates(a: PartCandidate, b: PartCandidate) -> Bool {
   let cap_a = candidate_total_capacity_bytes(candidate: a)
   let cap_b = candidate_total_capacity_bytes(candidate: b)
-  let price_a = candidate_total_price_minor(candidate: a)
-  let price_b = candidate_total_price_minor(candidate: b)
+  let price_a = candidate_total_price_micros(candidate: a)
+  let price_b = candidate_total_price_micros(candidate: b)
   let rate_a = a.module.data_rate_mts
   let rate_b = b.module.data_rate_mts
   (cap_a >= cap_b && price_a <= price_b && rate_a >= rate_b)
@@ -150,8 +198,14 @@ fn candidate_dominates(a: PartCandidate, b: PartCandidate) -> Bool {
 fn pareto_frontier(
   candidates: List<PartCandidate>,
   failures: List<PlatformTrainingFailure>,
+  declared_currency: CurrencyCode,
 ) -> List<PartCandidate> {
-  let admissible = candidates |> filter(c => candidate_admissible(candidate: c, failures: failures))
+  let admissible = candidates |> filter(c =>
+    candidate_admissible(
+      candidate: c,
+      failures: failures,
+      declared_currency: declared_currency,
+    ))
   admissible |> filter(c => !any(admissible, other => candidate_dominates(a: other, b: c)))
 }
 
