@@ -5,63 +5,211 @@ import std.disposition { SingleAuthority }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
-
-// Class-5 carve-out: baselines are point-in-time RATCHET CEILINGS over live host tree scans (test_migration_debt_* builtins), not counts beside a committed roster. Deriving baseline from the same live scan would tautologize live_count <= baseline.
-// 82 -> 83 (2026-08-09): #8062 landed class_b_trim_specimen_test.rs, the Class B trim
-// pool-coincidence discriminating suite — a deliberate hand-Rust admission because the specimen
-// must observe v1 infer_env binding directly. Dissolution: migrates to the v2 witness route when
-// CI2 (#8043) covers compiler-subject tests; the ceiling may then ratchet back down.
-data test_migration_debt_module_count_baseline: Int = 83
-data test_migration_debt_total_loc_baseline: Int = 28247
-data test_migration_debt_total_test_fns_baseline: Int = 891
-
-fn test_migration_debt_ratchet_holds(live_count: Int, baseline: Int) -> Bool {
-  live_count <= baseline
+import extdeps.filesystem.filesystem_io
+import test.retirement.model {
+  RetainedLegacyRustTestModule,
+  retained_legacy_rust_test_modules,
+  retained_module_source_file,
 }
 
-fn test_migration_debt_live_module_count() -> Int {
-  test_migration_debt_module_count()
+// THE RETENTION WALL, replacing the migration-debt ratchets and the delete guard.
+//
+// What was here before measured a SHRINKING DEBT: three point-in-time ceilings
+// (module count, LOC, test count) plus a guard refusing any deletion whose stem
+// was not covered by a witness. That shape assumed the population would be
+// drained one family at a time, and it priced every departure. It is retired
+// with the population it was measuring.
+//
+// The wall is now exact equality in BOTH directions between the discovered Rust
+// test modules and the declared retained rows. There is no ceiling to ratchet
+// and no per-deletion authorization, because deletion is represented by the file
+// being absent. Adding an undeclared Rust test module reds; deleting a declared
+// one reds as a stale row.
+//
+// Both populations are LIVE host observations, so neither side is a count copied
+// from the tree — the equality is an identity join, not a numeric comparison.
+fn retained_declared_source_files() -> List<String> {
+  retained_legacy_rust_test_modules() |> map(m => retained_module_source_file(m: m))
 }
 
-fn test_migration_debt_live_total_loc() -> Int {
-  test_migration_debt_total_loc()
-}
-
-fn test_migration_debt_live_total_test_fns() -> Int {
-  test_migration_debt_total_test_fns()
-}
-
-fn test_migration_debt_live_module_names() -> List<String> {
+fn discovered_rust_test_modules() -> List<String> {
   test_migration_debt_module_names()
 }
 
-fn test_migration_debt_known_covered_module_is_recognized_as_covered() -> Bool {
-  test_migration_debt_known_covered_module_is_not_debt()
+fn discovered_legacy_behavior_ids() -> List<String> {
+  test_migration_legacy_behavior_ids()
 }
 
-fn test_migration_debt_module_count_ratchet_holds() -> Bool {
-  test_migration_debt_ratchet_holds(
-    live_count: test_migration_debt_live_module_count(),
-    baseline: test_migration_debt_module_count_baseline
+fn list_contains_name(xs: List<String>, needle: String) -> Bool {
+  xs |> any(x => x == needle)
+}
+
+fn count_occurrences(xs: List<String>, needle: String) -> Int {
+  xs |> filter(x => x == needle) |> count
+}
+
+fn names_are_duplicate_free(xs: List<String>) -> Bool {
+  xs |> all(x => count_occurrences(xs: xs, needle: x) == 1)
+}
+
+// Every declared retained row names a module that is actually present.
+fn every_retained_row_resolves() -> Bool {
+  retained_declared_source_files()
+    |> all(f => list_contains_name(xs: discovered_rust_test_modules(), needle: f))
+}
+
+// Every discovered module is declared. This is the half that makes a NEW
+// undeclared Rust test file red by construction.
+fn every_discovered_module_is_retained() -> Bool {
+  discovered_rust_test_modules()
+    |> all(f => list_contains_name(xs: retained_declared_source_files(), needle: f))
+}
+
+// Every retained module contributes at least one discovered #[test] identity,
+// so a retained row cannot point at a module that has no executable content.
+//
+// Identities are the FULL path plus `::` plus the test fn, verified by
+// execution: "src/v1/tests/src/class_b_trim_specimen_test.rs::trim_free_call_..."
+//
+// The needle is anchored on the full directory prefix, not the bare file name
+// (review 51141). Matching on `concat(source_file, "::")` alone is a substring
+// test, so a future `foo_test.rs` would be satisfied by an existing
+// `sub_foo_test.rs`'s identities — the row would bind to the wrong module and
+// still read green. Including the leading `src/v1/tests/src/` puts a `/` before
+// the name, which no other file name can span, so the collision class is closed
+// rather than merely absent from today's roster.
+fn retained_module_identity_prefix(source_file: String) -> String {
+  concat(retained_module_path(source_file: source_file), "::")
+}
+
+fn retained_module_has_a_discovered_test(source_file: String) -> Bool {
+  discovered_legacy_behavior_ids()
+    |> any(id => string_contains(s: id, needle: retained_module_identity_prefix(source_file: source_file)))
+}
+
+fn every_retained_module_has_a_test() -> Bool {
+  retained_declared_source_files()
+    |> all(f => retained_module_has_a_discovered_test(source_file: f))
+}
+
+// An empty discovered population must not pass accidentally while rows remain,
+// and an empty roster must not pass while modules remain. Both sides nonzero is
+// the fail-closed floor under the equality above.
+fn retention_populations_are_nonempty() -> Bool {
+  count(retained_declared_source_files()) > 0
+    && count(discovered_rust_test_modules()) > 0
+    && count(discovered_legacy_behavior_ids()) > 0
+}
+
+// THE EXECUTION CHECK — MECHANICALLY PREVENTIVE, NOT A CONSTRUCTION WALL.
+//
+// RUNG, STATED HONESTLY (DESIGN §4b(1), review 51141): the two clauses below are
+// TEXT SCANS over file content, so they sit at "mechanically preventable" — the
+// invalid state stays writable and safety depends on this lens executing and
+// staying enrolled. An earlier revision of this comment called it a wall, which
+// overstated the rung; the name is corrected here rather than left to read
+// stronger than the mechanism.
+//
+// The false-NEGATIVE class is what matters and is named rather than implied: a
+// skip route the scan cannot see — a `#[cfg(...)]` that excludes a module, a
+// test whose body returns early, a harness configured outside this manifest —
+// passes. The false-POSITIVE class (an `#[ignore]` inside a comment or a string
+// literal) causes a REFUSAL, which is the conservative direction and is left
+// deliberately unfixed.
+//
+// Dissolve-on: an executed-identity receipt that reads libtest's own `--format
+// json` output and joins it to the declared roster, refusing on omission,
+// duplicate, or unexpected identity. That is the construction that makes the
+// class unwritable; this is the check that holds the line until it lands.
+//
+// The identity join above proves `declared == discovered` over the SOURCE TREE.
+// It says nothing about what the CI run actually ran, and that gap is exactly
+// the class this cutover exists to delete: a retained test could acquire
+// `#[ignore]` and remain discovered, compiled, not executed, and green —
+// recreating compile-only coverage one rung down.
+//
+// What is checkable from the substrate is that the ONE required command
+// executes the WHOLE discovered population unfiltered:
+//
+//   1. the emitted gate command carries no name filter and no --no-run,
+//   2. no retained module contains #[ignore] or #[should_panic] on any test,
+//   3. the crate uses the default libtest harness (no `harness = false`,
+//      no [[test]] target), so there is no custom filtering route.
+//
+// Under those three, "every discovered test is executed" follows from libtest's
+// default behavior rather than from a count anyone transcribed — at the rung
+// declared above, and no higher.
+data retained_kernel_manifest_path: String = "src/v1/tests/Cargo.toml"
+
+fn retained_module_path(source_file: String) -> String {
+  concat("src/v1/tests/src/", source_file)
+}
+
+// A retained module must contain no attribute that removes a test from the run.
+// `#[ignore]` skips it; `#[should_panic]` inverts its meaning, which is not a
+// skip but is an execution-semantics fact a reader of "30 passed" would get
+// wrong, so both refuse here rather than only the first.
+// Split from the live read so the planted controls can exercise the DECISION on
+// fixture content: the tree cannot be perturbed from inside a witness, and a
+// clause only reachable through a live read is a clause no control can refuse.
+fn module_body_has_no_skip_attribute(body: String) -> Bool {
+  !string_contains(s: body, pattern: "#[ignore")
+    && !string_contains(s: body, pattern: "#[should_panic")
+}
+
+// An unreadable module REFUSES rather than reading as skip-free: a failed read
+// is ignorance, not evidence of absence, and a scan over empty content finds no
+// `#[ignore]` for exactly the wrong reason.
+//
+// FilesystemReadResult carries only `content` — there is no success flag to
+// consult (the seed's runtime struct has one field), so emptiness is the only
+// available failure signal. A genuinely empty retained module also refuses,
+// which is the conservative direction: an empty module cannot host the test the
+// identity join says it has.
+fn retained_module_has_no_skip_attribute(source_file: String) -> Bool {
+  let body = filesystem_read(path: retained_module_path(source_file: source_file)).content
+  string_length(s: body) > 0 && module_body_has_no_skip_attribute(body: body)
+}
+
+fn no_retained_module_is_skipped() -> Bool {
+  retained_declared_source_files()
+    |> all(f => retained_module_has_no_skip_attribute(source_file: f))
+}
+
+// The default libtest harness is what makes "unfiltered command runs every
+// test" true. A custom harness or an explicit [[test]] target would introduce a
+// filtering route this wall cannot see, so their ABSENCE is asserted rather
+// than assumed.
+fn manifest_uses_default_harness(manifest: String) -> Bool {
+  string_length(s: manifest) > 0
+    && !string_contains(s: manifest, pattern: "harness = false")
+    && !string_contains(s: manifest, pattern: "harness=false")
+    && !string_contains(s: manifest, pattern: "[[test]]")
+}
+
+fn retained_kernel_uses_default_harness() -> Bool {
+  manifest_uses_default_harness(
+    manifest: filesystem_read(path: retained_kernel_manifest_path).content
   )
 }
 
-fn test_migration_debt_total_loc_ratchet_holds() -> Bool {
-  test_migration_debt_ratchet_holds(
-    live_count: test_migration_debt_live_total_loc(),
-    baseline: test_migration_debt_total_loc_baseline
-  )
+fn retained_kernel_execution_check_holds() -> Bool {
+  no_retained_module_is_skipped()
+    && retained_kernel_uses_default_harness()
 }
 
-fn test_migration_debt_total_test_fns_ratchet_holds() -> Bool {
-  test_migration_debt_ratchet_holds(
-    live_count: test_migration_debt_live_total_test_fns(),
-    baseline: test_migration_debt_total_test_fns_baseline
-  )
+fn retained_rust_kernel_wall_holds() -> Bool {
+  retention_populations_are_nonempty()
+    && names_are_duplicate_free(xs: retained_declared_source_files())
+    && names_are_duplicate_free(xs: discovered_rust_test_modules())
+    && every_retained_row_resolves()
+    && every_discovered_module_is_retained()
+    && every_retained_module_has_a_test()
+    && retained_kernel_execution_check_holds()
 }
 
-fn test_migration_delete_guard_holds_live() -> Bool {
-  test_migration_delete_guard_holds()
+fn retained_rust_kernel_wall_holds_live() -> Bool {
+  retained_rust_kernel_wall_holds()
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {

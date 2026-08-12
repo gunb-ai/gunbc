@@ -1,0 +1,124 @@
+module v2.test.emit.produced_decl_two_target
+
+import v2.test.complexity_gate.table_fixture_add_subject_producer { table_fixture_add_decl_node }
+import v2.compiler.emit_produced { emit_produced_decl, emit_produced_module }
+import v2.extdeps.languages.c { c_target_model }
+import v2.extdeps.languages.cpp { cpp_target_model }
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data produced_decl_two_target_note: String = "The criterion-5 receipt: another target adds produced-declaration support by registering a renderer, with NO compiler edit between the two targets. One declaration and one compiler API (emit_produced_decl) produce Rust order and C order because each target owns its own rendering. The goldens are the discriminator - they differ in every axis the compiler used to own: Rust leads with a keyword and C with the return type, Rust writes NAME colon TYPE and C writes TYPE NAME, Rust has a return arrow and C has none, and C is statement-sequenced so it carries a return token and a terminator that Rust does not. A shared-order seam could not produce both."
+
+data two_target_rust_golden: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
+
+data two_target_c_golden: String = "int add(int x, int y) { return x + y; }"
+
+fn tt_emit(target: TargetModel, fn_name: Symbol) -> Outcome<String> {
+  match table_fixture_add_decl_node(fn_name: fn_name) {
+    Accepted { value: decl, diagnostics: _ } =>
+      match emit_produced_decl(decl: decl, target: target) {
+        Accepted { value: medium, diagnostics: _ } =>
+          Accepted { value: medium.carried, diagnostics: None }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn tt_emits(target: TargetModel, fn_name: Symbol, golden: String) -> Bool {
+  match tt_emit(target: target, fn_name: fn_name) {
+    Accepted { value: text, diagnostics: _ } => text == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn tt_refuses(target: TargetModel, fn_name: Symbol) -> Bool {
+  match tt_emit(target: target, fn_name: fn_name) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+// Rust renders Rust order and C renders C order through ONE compiler API. The
+// cross-golden arms are the discriminating RED: neither target can produce the
+// other's text, so a seam that had kept order in the compiler would fail here.
+test fn produced_decl_two_targets_render_own_order() -> Bool {
+  tt_emits(target: rust_target_model(), fn_name: ^rust_binding_fn_add, golden: two_target_rust_golden)
+    && tt_emits(target: c_target_model(), fn_name: ^c_binding_fn_add, golden: two_target_c_golden)
+    && !tt_emits(target: c_target_model(), fn_name: ^c_binding_fn_add, golden: two_target_rust_golden)
+    && !tt_emits(target: rust_target_model(), fn_name: ^rust_binding_fn_add, golden: two_target_c_golden)
+}
+
+// A target that registered no renderer still refuses, typed and located, after the
+// seam moved onto the carrier. Keeps the fail-closed property from regressing.
+test fn produced_decl_unwired_target_still_refuses() -> Bool {
+  tt_refuses(target: cpp_target_model(), fn_name: ^rust_binding_fn_add)
+    && tt_emits(target: rust_target_model(), fn_name: ^rust_binding_fn_add, golden: two_target_rust_golden)
+}
+
+// emit_produced_module is the module-level fold, and this PR changed its signature
+// and the target threading through it. Its two existing consumers do not execute --
+// one is a legacy frozen row and the other was not scheduled -- so without this
+// witness the change would be compiled and unrun, while a PRODUCTION caller
+// (v2.workflow.realization_attempt, the canonical realization attempt) depends on it.
+// Scope is exactly what changed: accumulation, separator, final medium, threading.
+// The inherited coverage gap on those two consumers is NOT addressed here.
+//
+// The golden is written as a literal rather than composed from
+// emit_module_decl_separator, so the expected text does not share an ancestor with
+// the implementation that produces it.
+data two_target_rust_module_golden: String = "fn add(x: i32, y: i32) -> i32 { x + y }\n\nfn add2(x: i32, y: i32) -> i32 { x + y }\n\n"
+
+fn tt_module_text(target: TargetModel, first: Symbol, second: Symbol) -> Outcome<String> {
+  match table_fixture_add_decl_node(fn_name: first) {
+    Accepted { value: d1, diagnostics: _ } =>
+      match table_fixture_add_decl_node(fn_name: second) {
+        Accepted { value: d2, diagnostics: _ } =>
+          match emit_produced_module(decls: [d1, d2], target: target) {
+            Accepted { value: medium, diagnostics: _ } =>
+              Accepted { value: medium.carried, diagnostics: None }
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn tt_module_matches(
+  target: TargetModel,
+  first: Symbol,
+  second: Symbol,
+  golden: String
+) -> Bool {
+  match tt_module_text(target: target, first: first, second: second) {
+    Accepted { value: text, diagnostics: _ } => text == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// The swapped-order arm is the discriminating RED: it holds the same two
+// declarations and the same target, so only the fold's accumulation ORDER can
+// distinguish them. A fold that dropped, duplicated or reordered a declaration, or
+// that failed to thread the target through, cannot satisfy both arms.
+test fn produced_decl_module_folds_declarations_in_order() -> Bool {
+  tt_module_matches(
+    target: rust_target_model(),
+    first: ^rust_binding_fn_add,
+    second: ^rust_binding_fn_add2,
+    golden: two_target_rust_module_golden
+  )
+    && !tt_module_matches(
+      target: rust_target_model(),
+      first: ^rust_binding_fn_add2,
+      second: ^rust_binding_fn_add,
+      golden: two_target_rust_module_golden
+    )
+}

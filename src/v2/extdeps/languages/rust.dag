@@ -125,7 +125,9 @@ import v2.std.model_core {
 }
 import v2.std.compilers.coproduct_variant_shape { coproduct_all_variants_nullary }
 import v2.std.compilers.target_model {
+  ProducedDeclSupport,
   ProducedDeclUnwired,
+  ProducedDeclWired,
   ConcreteSyntaxToken,
   FixedToken,
   BoundToken,
@@ -1481,6 +1483,32 @@ fn rust_signature_with_open_from_decl(decl: Node) -> Outcome<List<ConcreteSyntax
   }
 }
 
+// Rust owns Rust's signature order here: keyword first, NAME colon TYPE parameters,
+// a return arrow, and a brace close. None of that is visible to the compiler, which
+// receives only the finished scaffold.
+fn rust_produced_decl_render(decl: Node) -> Outcome<TargetBodiedArrowStatementScaffold> {
+  bind_outcome(
+    o: rust_signature_with_open_from_decl(decl: decl),
+    f: fn(signature_with_open) {
+      outcome_accepted(
+        derive_bodied_arrow_scaffold(
+          signature_with_open: signature_with_open,
+          block_close: rust_add_block_close(),
+          mode: ValueProducing
+        )
+      )
+    }
+  )
+}
+
+fn rust_produced_decl_support() -> ProducedDeclSupport {
+  ProducedDeclWired {
+    render: rust_produced_decl_render,
+    scaffold_relation_rule_name: ^rust_relation_rule_fn_add,
+    scaffold_base_row: rust_fn_add_scaffold_relation_row_node()
+  }
+}
+
 fn rust_bodied_arrow_statement_scaffold() -> TargetBodiedArrowStatementScaffold {
   derive_bodied_arrow_scaffold(
     signature_with_open: rust_add_signature_with_open(),
@@ -1513,48 +1541,6 @@ fn rust_translation_rules_node() -> Node {
 }
 }
 
-fn rust_bodied_relation_rules_node_with_scaffold(
-  scaffold: TargetBodiedArrowStatementScaffold
-) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      rust_named_edge(
-        name: ^rust_relation_rule_fn_add,
-        target: grammar_relation_row_attach_bodied_scaffold(
-          row: rust_fn_add_scaffold_relation_row_node(),
-          scaffold: scaffold
-        )
-      )
-    ],
-    occurrence_id: SyntheticOccurrence
-}
-}
-
-fn rust_produced_decl_target(signature_with_open: List<ConcreteSyntaxToken>) -> TargetModel {
-  TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
-    bundle: Node {
-      kind: TypeNode { connective: Conj },
-      children: rust_target_model_core_edges_full(
-        operator_catalog: rust_operator_realizations_catalog_node(),
-        rules: rust_bodied_relation_rules_node_with_scaffold(
-          scaffold: derive_bodied_arrow_scaffold(
-            signature_with_open: signature_with_open,
-            block_close: rust_add_block_close(),
-            mode: ValueProducing
-          )
-        )
-      ),
-      occurrence_id: SyntheticOccurrence
-    },
-    lex: rust_fn_add_lex(),
-    binding_spellings: rust_binding_spellings(),
-    token_class_emit_transforms: target_model_emit_transforms_empty,
-    authority_source_text: rust_source_text_authority(),
-    runtime_row: rust_runtime_row()
-  }
-}
 fn rust_set_collection_apply_btree() -> TargetGenericApply {
   TargetGenericApply {
     surface: ^rust_collection_surface_btree_set,
@@ -2162,7 +2148,7 @@ fn rust_runtime_row() -> TargetEmitHostRuntimeRow {
 
 fn rust_target_model_staging() -> TargetModel {
   TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
+    produced_decl_support: rust_produced_decl_support(),
     bundle: rust_target_model_bundle_core(),
     lex: rust_staging_lex(),
     binding_spellings: rust_binding_spellings(),
@@ -2250,7 +2236,7 @@ fn rust_target_model_node() -> Node {
 
 fn rust_target_model() -> TargetModel {
   TargetModel {
-    produced_decl_support: ProducedDeclUnwired,
+    produced_decl_support: rust_produced_decl_support(),
     bundle: rust_target_model_node(),
     lex: rust_fn_add_lex(),
     binding_spellings: rust_binding_spellings(),

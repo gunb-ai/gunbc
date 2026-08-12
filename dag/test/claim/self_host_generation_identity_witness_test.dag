@@ -1,7 +1,7 @@
 module test.claim.self_host_generation_identity_witness
 
 import v2.compiler.self_host.generation {
-  ArtifactMaterialization,
+  GeneratedArtifactIdentity,
   ArtifactMaterialized,
   ArtifactNotMaterialized,
   observed_artifact_digest,
@@ -44,7 +44,7 @@ data gi_artifact_moved_hex: String = "f316fd8378b70362bcac957857fd6dd68292084d75
 // digest yields ArtifactNotMaterialized rather than a fabricated one, which admission
 // then refuses by name — the honest arm, and strictly better than a green axis
 // derived from bytes nobody observed.
-fn gi_artifact(hex: String) -> ArtifactMaterialization {
+fn gi_artifact(hex: String) -> GeneratedArtifactIdentity {
   match sha512_hex_digest(hex: hex) {
     Present { value: d } =>
       ArtifactMaterialized { digest: observed_artifact_digest(observed: d) }
