@@ -40,6 +40,15 @@ data conditional_golden_provenance_note: String = "The closed golden is real Rus
 
 data conditional_closed_golden: String = "if x { y } else { x }"
 
+// DO NOT "FIX" THIS STRING. It is intentionally NOT valid Rust: it is the closed
+// golden one token short, missing its final brace. That is precisely what the
+// conditional lowering emitted for EVERY target before delimiting discipline was
+// modeled, when the closing brace was smuggled into a hand-authored declaration
+// scaffold ending in two rbrace. Pinning the broken text is the only thing proving
+// the discipline is CONSUMED rather than ignored -- make it valid Rust and the two
+// arms of conditional_close_is_derived_from_declared_discipline become the same
+// expectation, the control dissolves, and a lowering that dropped the close again
+// would pass silently.
 data conditional_self_delimiting_golden: String = "if x { y } else { x"
 
 fn cld_lex() -> LexRules {
