@@ -2,6 +2,7 @@ module gunbc.tools.frontier_ingestion_probe
 
 import v2.std.text { String }
 import v2.std.logic { Bool }
+import v2.std.integer { Int }
 import v2.std.algebra { fold_list }
 import v2.std.collection { List }
 import v2.std.node { Symbol }
@@ -16,7 +17,7 @@ import extdeps.filesystem.filesystem_io
 
 data frontier_read_refusal_disposition_note: String = "WHY THERE IS NO READ-REFUSAL ARM HERE, and what is owed instead. A read refusal collapsing into a frontend verdict would be the empty-observation conflation one layer earlier than the one this instrument guards, so it was worth checking. It is not reachable through this primitive: the seed's filesystem_read returns FilesystemReadResult, declared in v1_method filesystem_read_result_type and emitted by v1.runtime_rust rt_filesystem, and that record carries EXACTLY ONE field, content. There is no success or error field to consult — the service-level Filesystem.Read operation is a different carrier with a different shape, and reading its three-field contract onto this primitive would be a citation to the wrong authority.\n\nWhat the primitive does on failure is panic: rt_filesystem calls read_to_string with unwrap_or_else(|e| panic!). So a missing or unreadable member aborts the run loudly rather than presenting as LEX, PARSE or ACCEPTED, and a guard branching on a success flag this record does not carry would be machinery with no producer — a scaffold defending against a state the type cannot express.\n\nWHAT IS OWED: the primitive has no TYPED refusal, only an abort. A caller cannot distinguish absent from unreadable from empty, and cannot continue past either. That is a real modeling gap in the primitive rather than in this probe, and it dissolves when filesystem_read returns an outcome instead of panicking — at which point this fn gains a refusal arm and a discriminating control, both of which would be untestable today."
 
-data frontier_ingestion_probe_note: String = "THE REPRODUCTION INSTRUMENT for docs/plans/v2-frontend-std-ingestion-frontier-exact-head.md, deliberately homed OUTSIDE a *_test.dag module. Its per-member fns read the live tree and report which frontend stage a std module currently reaches. That reading is a revision-scoped OBSERVATION of the present frontier, not a claim that must hold: promoting it to a test declaration would enroll an assertion whose success depends on the current defects continuing to exist, so it would go RED on the repair and GREEN on a regression. The durable claims — that the stage classifier separates its states and that reasons are read by containment — live in gunbc.test.claim.normalize_retention_contract_probe_test and import classify_source from here, so there is one classifier authority and not two.\n\nReason reads are CONTAINMENT reads, never head reads: rejected_with_pending PREPENDS accepted-carrier diagnostics (the wrapper-retention carriers, which are not failures) to a later rejection, so the head of the list is systematically the retention carrier rather than the cause.\n\nStages are DISTINCT STATES. An earlier draft returned an empty reason list for both 'normalize accepted' and 'lex/parse rejected', which is the empty-observation narrow: an unlexable member read as an accepted one. classify_source matches each stage's Outcome in sequence so that collapse is unrepresentable."
+data frontier_ingestion_probe_note: String = "THE REPRODUCTION INSTRUMENT for docs/plans/v2-frontend-std-ingestion-frontier-exact-head.md, deliberately homed OUTSIDE a *_test.dag module. observe_roster reads the live tree and reports, for each rostered member, which frontend stage it currently reaches. That reading is a revision-scoped OBSERVATION of the present frontier, not a claim that must hold: promoting it to a test declaration would enroll an assertion whose success depends on the current defects continuing to exist, so it would go RED on the repair and GREEN on a regression. The durable claims — that the stage classifier separates its states, that reasons are read by containment, and that census completeness is an identity join over the roster — live in gunbc.test.claim.normalize_retention_contract_probe_test and import classify_source from here, so there is one classifier authority and not two.\n\nReason reads are CONTAINMENT reads, never head reads: rejected_with_pending PREPENDS accepted-carrier diagnostics (the wrapper-retention carriers, which are not failures) to a later rejection, so the head of the list is systematically the retention carrier rather than the cause.\n\nStages are DISTINCT STATES. An earlier draft returned an empty reason list for both 'normalize accepted' and 'lex/parse rejected', which is the empty-observation narrow: an unlexable member read as an accepted one. classify_source matches each stage's Outcome in sequence so that collapse is unrepresentable."
 
 fn artifact_tree(artifact: ParseArtifact) -> ParseTree {
   artifact.tree
@@ -38,62 +39,120 @@ fn reasons_contain(reasons: List<Symbol>, sym: Symbol) -> Bool {
   })
 }
 
-// An EMPTY reason set is not an accepted stage; it is an impossible input. classify_source
-// handles a genuine Accepted outcome before ever calling here, and a rejection carries
-// NonEmptyDiagnostics, so production cannot supply an empty list. Mapping empty to ACCEPTED
-// would render a missing observation as a successful stage — the same collapse this instrument
-// exists to remove. It is its own invalid state, and deliberately NOT NORM_OTHER, which would
-// only move the collapse somewhere quieter. The structurally strongest form takes
-// NonEmptyDiagnostics directly; that is owed with the census instrument.
-fn classify_normalize_reasons(rs: List<Symbol>) -> String {
-  if (rs |> count) == 0 {
-    "NORM_REASON_SET_INVALID_EMPTY"
-  } else if reasons_contain(reasons: rs, sym: ^namespace_graft_body_dissolved_refused) {
-    "NORM_GRAFT_REFUSED"
-  } else if reasons_contain(reasons: rs, sym: ^body_lowering_reason_wrapper_retained_emitted)
-    && reasons_contain(reasons: rs, sym: ^normalize_reason_post_normalize_not_well_formed) {
-    "NORM_RETAINED"
-  } else {
-    "NORM_OTHER"
+data frontend_stage_result_space_note: String = "THE RESULT SPACE IS CLOSED, and two things about its membership are deliberate.\n\nIt no longer carries an invalid-empty arm. The previous classifier took List<Symbol> and had to answer NORM_REASON_SET_INVALID_EMPTY for the empty list, because that input was constructible and mapping it to any real stage would have rendered a missing observation as an observed one. It now takes NonEmptyDiagnostics, whose head field is not optional, so the empty reason set has no representation and the arm that defended against it has no subject. That is a climb from mechanically-preventable to structurally-impossible for this one class, and per the dissolution rule the production arm is deleted while the discriminating controls stay — the controls that survive are the ones that still have a writable input, and the RED that fed an empty list retires with the state it named, not with the wall.\n\nIt does NOT carry a ReadRefused arm. filesystem_read panics rather than returning an outcome (frontier_read_refusal_disposition_note records the exact contract), so a read failure aborts the run and never reaches a verdict. Adding the arm would be a constructor no producer can reach — machinery defending a state the primitive cannot express — and it would make the space look more total than the observation actually is. It enters when the primitive gains a typed refusal, and not before."
+
+type FrontendStage
+  = LexRefused
+  | ParseRefused
+  | NormalizeGraftRefused
+  | NormalizeRetained
+  | NormalizeOther
+  | NormalizeAccepted
+
+fn frontend_stage_label(s: FrontendStage) -> String {
+  match s {
+    LexRefused => "LEX"
+    ParseRefused => "PARSE"
+    NormalizeGraftRefused => "NORM_GRAFT_REFUSED"
+    NormalizeRetained => "NORM_RETAINED"
+    NormalizeOther => "NORM_OTHER"
+    NormalizeAccepted => "ACCEPTED"
   }
 }
 
-fn classify_source(source: String) -> String {
+fn frontend_stage_eq(a: FrontendStage, b: FrontendStage) -> Bool {
+  frontend_stage_label(s: a) == frontend_stage_label(s: b)
+}
+
+fn classify_normalize_diagnostics(d: NonEmptyDiagnostics) -> FrontendStage {
+  let rs = all_reasons(d: d)
+  if reasons_contain(reasons: rs, sym: ^namespace_graft_body_dissolved_refused) {
+    NormalizeGraftRefused
+  } else if reasons_contain(reasons: rs, sym: ^body_lowering_reason_wrapper_retained_emitted)
+    && reasons_contain(reasons: rs, sym: ^normalize_reason_post_normalize_not_well_formed) {
+    NormalizeRetained
+  } else {
+    NormalizeOther
+  }
+}
+
+fn classify_source(source: String) -> FrontendStage {
   match lex_walk_artifact(source: source, file: ^frontier_probe, rules: dag_lex_rules()) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => "LEX"
+    v2.std.diagnostic.Rejected { diagnostics: _ } => LexRefused
     v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
       match parse_module(tokens: lex_artifact_semantic_tokens(artifact: a), grammar: dag_grammar()) {
-        v2.std.diagnostic.Rejected { diagnostics: _ } => "PARSE"
+        v2.std.diagnostic.Rejected { diagnostics: _ } => ParseRefused
         v2.std.diagnostic.Accepted { value: artifact, diagnostics: _ } =>
           match normalize(parse_tree: artifact_tree(artifact: artifact)) {
-            v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => "ACCEPTED"
+            v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => NormalizeAccepted
             v2.std.diagnostic.Rejected { diagnostics: d } =>
-              classify_normalize_reasons(rs: all_reasons(d: d))
+              classify_normalize_diagnostics(d: d)
           }
       }
   }
 }
 
-fn classify_member(path: String) -> String {
-  let r = filesystem_read(path: path)
-  classify_source(source: r.content)
+data frontier_roster_note: String = "THE ROSTER IS THE DENOMINATOR, and it is authored here so that completeness can be an identity join rather than a count. The fifteen hand-written m_* fns this replaces were fifteen independent facts with no denominator at all: a member could be dropped from the file and every remaining fn would still answer, so 'all fifteen were observed' was only ever 'fifteen fns happened to be present'. census_is_complete now asks, for each roster label, whether an observation carrying that label exists — so a dropped member is a missing join rather than a smaller number that nothing compares against.\n\nWhat this does NOT do is make the live census executable per PR. Reaching parse_module builds dag_grammar(), which alone measured over the five-second fast-lane budget, and the roster reads fifteen live files on top of that. observe_roster therefore stays in this non-test module as a reproduction instrument, and the durable claims over it are the classifier and join laws exercised on synthetic observations. The batched or realized execution that would let the live fifteen gate a PR is still owed, and is where the two stage-separation claims deleted in the previous increment return."
+
+type FrontierMember {
+  label: Symbol,
+  path: String,
 }
 
-fn m_entry() -> String { classify_member(path: "src/v2/test/claim/manual/cross_tree_constructor_binding_test.dag") }
-fn m_primitives() -> String { classify_member(path: "dag/std/primitives.dag") }
-fn m_collection() -> String { classify_member(path: "src/v2/std/collection.dag") }
-fn m_witness() -> String { classify_member(path: "src/v2/std/witness.dag") }
-fn m_types() -> String { classify_member(path: "dag/std/types.dag") }
-fn m_node() -> String { classify_member(path: "src/v2/std/node.dag") }
-fn m_content_hash() -> String { classify_member(path: "dag/std/content_hash.dag") }
-fn m_dag_algebra() -> String { classify_member(path: "dag/std/algebra.dag") }
-fn m_v2_algebra() -> String { classify_member(path: "src/v2/std/algebra.dag") }
-fn m_logic() -> String { classify_member(path: "src/v2/std/logic.dag") }
-fn m_optional() -> String { classify_member(path: "src/v2/std/optional.dag") }
-fn m_diagnostic() -> String { classify_member(path: "src/v2/std/diagnostic.dag") }
-fn m_occurrence() -> String { classify_member(path: "dag/std/occurrence_identity.dag") }
-fn m_live_tree() -> String { classify_member(path: "src/v2/std/live_tree.dag") }
-fn m_error_primitives() -> String { classify_member(path: "dag/std/error_primitives.dag") }
+type MemberObservation {
+  label: Symbol,
+  stage: FrontendStage,
+}
+
+data frontier_roster: List<FrontierMember> = [
+  FrontierMember { label: ^entry, path: "src/v2/test/claim/manual/cross_tree_constructor_binding_test.dag" },
+  FrontierMember { label: ^primitives, path: "dag/std/primitives.dag" },
+  FrontierMember { label: ^collection, path: "src/v2/std/collection.dag" },
+  FrontierMember { label: ^witness, path: "src/v2/std/witness.dag" },
+  FrontierMember { label: ^types, path: "dag/std/types.dag" },
+  FrontierMember { label: ^node, path: "src/v2/std/node.dag" },
+  FrontierMember { label: ^content_hash, path: "dag/std/content_hash.dag" },
+  FrontierMember { label: ^dag_algebra, path: "dag/std/algebra.dag" },
+  FrontierMember { label: ^v2_algebra, path: "src/v2/std/algebra.dag" },
+  FrontierMember { label: ^logic, path: "src/v2/std/logic.dag" },
+  FrontierMember { label: ^optional, path: "src/v2/std/optional.dag" },
+  FrontierMember { label: ^diagnostic, path: "src/v2/std/diagnostic.dag" },
+  FrontierMember { label: ^occurrence, path: "dag/std/occurrence_identity.dag" },
+  FrontierMember { label: ^live_tree, path: "src/v2/std/live_tree.dag" },
+  FrontierMember { label: ^error_primitives, path: "dag/std/error_primitives.dag" },
+]
+
+fn classify_member(m: FrontierMember) -> MemberObservation {
+  let r = filesystem_read(path: m.path)
+  MemberObservation { label: m.label, stage: classify_source(source: r.content) }
+}
+
+fn observe_roster() -> List<MemberObservation> {
+  fold_list(xs: frontier_roster, empty: [], cons: fn(acc, m) {
+    concat(acc, [classify_member(m: m)])
+  })
+}
+
+fn observation_for(obs: List<MemberObservation>, label: Symbol) -> Bool {
+  fold_list(xs: obs, empty: false, cons: fn(acc, o) {
+    acc || (o.label == label)
+  })
+}
+
+// Completeness is the identity join, never a count. A count equality would be satisfied by
+// fifteen observations of the wrong fifteen members, and by any pair of edits that removed one
+// roster row and added another.
+fn census_is_complete(obs: List<MemberObservation>) -> Bool {
+  fold_list(xs: frontier_roster, empty: true, cons: fn(acc, m) {
+    acc && observation_for(obs: obs, label: m.label)
+  })
+}
+
+fn count_stage(obs: List<MemberObservation>, s: FrontendStage) -> Int {
+  fold_list(xs: obs, empty: 0, cons: fn(acc, o) {
+    if frontend_stage_eq(a: o.stage, b: s) { acc + 1 } else { acc }
+  })
+}
 
 data wall_attribution_probe_note: String = "MINIMAL-PAIR PROBES for the two frontend walls that are still hypotheses rather than findings. Neither may become a finding from a description: the roadmap row's own RED control refuses a repair asserted separable without execution, and the em-dash misattribution earlier in this lane is the standing receipt for why. Each fn below is one construct in an otherwise-minimal module, so a refusal names the construct rather than the file."
 

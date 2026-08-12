@@ -17,6 +17,16 @@ The same canonical route as the historical receipt — `v2.compiler.tokenize` `l
 `gunbc.tools.frontier_ingestion_probe` `classify_member`, which reads the member with
 `filesystem_read` and walks the pipeline **once** per member.
 
+The rows below were measured while the probe answered in strings and each member had its own
+hand-written `m_*` fn. Both have since been replaced — `classify_source` returns the closed
+`FrontendStage` coproduct, and the members are rows on `frontier_roster` driven by
+`observe_roster` — so the stage names in the table now correspond to `frontend_stage_label`
+values rather than to bare string literals. The *measurements* are unaffected: the classifier's
+branch conditions are unchanged, and no row was re-derived from the new shape. What did change
+is that a member can no longer be silently dropped from the population, because
+`census_is_complete` joins observations against the roster by label instead of nothing at all
+comparing against a denominator.
+
 Two measurement disciplines are load-bearing and both were violated by earlier drafts of this
 work before being corrected:
 
