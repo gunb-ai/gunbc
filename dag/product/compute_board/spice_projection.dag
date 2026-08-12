@@ -3,6 +3,27 @@ module product.compute_board.spice_projection
 import std.types { String, NonEmptyStr, List }
 import std.nat { Nat }
 import std.measure { measure_count }
+import std.algebra { Empty }
+import v2.std.algebra { list_snoc_item }
+import v2.extdeps.formats.spice {
+  Capacitor,
+  DeckComponent,
+  DeckStatement,
+  Ground,
+  Component,
+  Named,
+  NamedNode,
+  NodeRef,
+  Resistor,
+  SpiceKilo,
+  SpiceNano,
+  SpiceNetlist,
+  SpiceUnitScale,
+  VoltageSource,
+  spice_emit,
+  spice_identifier_is_admissible,
+  spice_scaled_value,
+}
 import product.compute_board.analog {
   AnalogCircuitIntent,
   CapacitorInstance,
@@ -45,6 +66,8 @@ type SpiceProjectionRefusal
   | TerminalOnNoNet { part: NonEmptyStr }
   | TerminalOnMultipleNets { part: NonEmptyStr }
   | DuplicateModelBinding { component: NonEmptyStr }
+  | IdentityNotSpellableInTarget { component: NonEmptyStr }
+  | NetNotSpellableInTarget { net: NonEmptyStr }
 
 // The receipt carries the article identity, so an emission is traceable to the root that
 // produced it. Without this, two unrelated articles with equal extracted fields produce
@@ -63,22 +86,58 @@ type SpiceProjection
 // value are one constructor upstream. The earlier pair of matches over two independent fields
 // could disagree — a PassiveResistor carrying nanofarads emitted "R... 100n", a deck that
 // simulates and describes a part nobody specified.
-fn element_letter(c: ElectricalComponentInstance) -> String {
-  match c {
-    ResistorInstance { identity: _, part: _, positive_terminal: _, negative_terminal: _, resistance: _ } => "R"
-    CapacitorInstance { identity: _, part: _, positive_terminal: _, negative_terminal: _, capacitance: _ } => "C"
-    IndependentVoltageSourceInstance { identity: _, part: _, positive_terminal: _, negative_terminal: _, potential_difference: _ } => "V"
+// THE DECK IS BUILT AS A NETLIST AND SERIALIZED BY THE FORMAT MODULE. Every byte of SPICE
+// spelling this module used to author — the element letter, the reference node "0", the space
+// between fields, the newline between lines and the "k"/"n" suffixes — was a second SPICE
+// authority sitting in the product layer, exactly the fork the Verilog side removed when its
+// printer was deleted. What remains here is the only thing that is genuinely a projection fact:
+// which target scale each modelled quantity is spelled at.
+fn component_node(
+  intent: AnalogCircuitIntent,
+  reference: NetIdentity,
+  c: ElectricalComponentInstance,
+  positive: Bool
+) -> NodeRef {
+  let t = if positive {
+    terminal_ref(component: component_identity(c: c), terminal: component_positive_terminal(c: c))
+  } else {
+    terminal_ref(component: component_identity(c: c), terminal: component_negative_terminal(c: c))
+  }
+  match net_of_terminal(intent: intent, t: t) {
+    Absent => Ground
+    Present { value: n } =>
+      if (n as String) == (reference as String) {
+        Ground
+      } else {
+        Named { node: NamedNode { name: n as String } }
+      }
   }
 }
 
-fn value_spelling(c: ElectricalComponentInstance) -> String {
+fn spice_component(
+  intent: AnalogCircuitIntent,
+  reference: NetIdentity,
+  c: ElectricalComponentInstance
+) -> Component {
+  let plus = component_node(intent: intent, reference: reference, c: c, positive: true)
+  let minus = component_node(intent: intent, reference: reference, c: c, positive: false)
+  let name = component_identity(c: c) as String
   match c {
     ResistorInstance { identity: _, part: _, positive_terminal: _, negative_terminal: _, resistance: m } =>
-      concat(to_string(measure_count(m)), "k")
+      Resistor { name: name, n_plus: plus, n_minus: minus, value: spice_scaled_value(magnitude: to_string(measure_count(m)), suffix: SpiceKilo) }
     CapacitorInstance { identity: _, part: _, positive_terminal: _, negative_terminal: _, capacitance: m } =>
-      concat(to_string(measure_count(m)), "n")
+      Capacitor { name: name, n_plus: plus, n_minus: minus, value: spice_scaled_value(magnitude: to_string(measure_count(m)), suffix: SpiceNano) }
     IndependentVoltageSourceInstance { identity: _, part: _, positive_terminal: _, negative_terminal: _, potential_difference: m } =>
-      to_string(measure_count(m))
+      VoltageSource { name: name, n_plus: plus, n_minus: minus, value: spice_scaled_value(magnitude: to_string(measure_count(m)), suffix: SpiceUnitScale) }
+  }
+}
+
+fn spice_netlist(intent: AnalogCircuitIntent, reference: NetIdentity) -> SpiceNetlist {
+  SpiceNetlist {
+    title: intent.title as String,
+    body: fold(intent.components, init: Empty, f: fn(acc, c) {
+      list_snoc_item(xs: acc, item: DeckComponent { component: spice_component(intent: intent, reference: reference, c: c) })
+    }),
   }
 }
 
@@ -177,44 +236,41 @@ fn first_refusal(
   })
 }
 
-// The reference net renders as SPICE node 0, and WHICH net is the reference is supplied by the
-// caller rather than inferred from a name. No net acquires reference status by being spelled
-// "gnd", which is the same discipline the bonding decomposition applies one layer up.
-fn node_spelling(
-  intent: AnalogCircuitIntent,
-  reference: NetIdentity,
-  c: ElectricalComponentInstance,
-  positive: Bool
-) -> String {
-  let t = if positive {
-    terminal_ref(component: component_identity(c: c), terminal: component_positive_terminal(c: c))
+// A NAME THIS FORMAT CANNOT SPELL IS REFUSED, not repaired. The format module admits an
+// identifier or answers Absent, and an Absent name renders as the empty string inside the deck —
+// so the refusal has to happen here, before a line is built, or a component silently loses its
+// name and the deck describes a different circuit.
+fn spelling_refusal(c: ElectricalComponentInstance) -> SpiceProjectionRefusal? {
+  if spice_identifier_is_admissible(spelling: component_identity(c: c) as String) {
+    none
   } else {
-    terminal_ref(component: component_identity(c: c), terminal: component_negative_terminal(c: c))
-  }
-  match net_of_terminal(intent: intent, t: t) {
-    Present { value: n } => if (n as String) == (reference as String) { "0" } else { n as String }
-    Absent => "0"
+    Present { value: IdentityNotSpellableInTarget { component: component_identity(c: c) as NonEmptyStr } }
   }
 }
 
-fn component_line(intent: AnalogCircuitIntent, reference: NetIdentity, c: ElectricalComponentInstance) -> String {
-  concat(
-    concat(concat(element_letter(c: c), component_identity(c: c) as String), " "),
-    concat(
-      concat(node_spelling(intent: intent, reference: reference, c: c, positive: true), " "),
-      concat(
-        concat(node_spelling(intent: intent, reference: reference, c: c, positive: false), " "),
-        value_spelling(c: c)
-      )
-    )
-  )
-}
-
-fn body_text(intent: AnalogCircuitIntent, reference: NetIdentity) -> String {
-  fold(intent.components, init: "", f: fn(acc, c) {
-    let line = component_line(intent: intent, reference: reference, c: c)
-    if acc == "" { line } else { concat(concat(acc, "\n"), line) }
+fn net_spelling_refusal(intent: AnalogCircuitIntent, reference: NetIdentity) -> SpiceProjectionRefusal? {
+  fold(intent.nets, init: none, f: fn(acc, net) {
+    match acc {
+      Present { value: r } => Present { value: r }
+      Absent =>
+        if (net.identity as String) == (reference as String) || spice_identifier_is_admissible(spelling: net.identity as String) {
+          none
+        } else {
+          Present { value: NetNotSpellableInTarget { net: net.identity as NonEmptyStr } }
+        }
+    }
   })
+}
+
+fn first_refusal_or_net_spelling(
+  intent: AnalogCircuitIntent,
+  bindings: List<ComponentModelBinding>,
+  reference: NetIdentity
+) -> SpiceProjectionRefusal? {
+  match net_spelling_refusal(intent: intent, reference: reference) {
+    Present { value: r } => Present { value: r }
+    Absent => first_refusal(intent: intent, bindings: bindings)
+  }
 }
 
 fn project_analog_to_spice(
@@ -223,13 +279,13 @@ fn project_analog_to_spice(
   bindings: List<ComponentModelBinding>,
   reference: NetIdentity
 ) -> SpiceProjection {
-  match first_refusal(intent: intent, bindings: bindings) {
+  match first_refusal_or_net_spelling(intent: intent, bindings: bindings, reference: reference) {
     Present { value: r } => SpiceSliceRefused { cause: r }
     Absent =>
       SpiceSliceProjected {
         receipt: SpiceEmissionReceipt {
           source_article: article_identity,
-          source: concat(concat(intent.title as String, "\n"), body_text(intent: intent, reference: reference)),
+          source: spice_emit(netlist: spice_netlist(intent: intent, reference: reference)),
         },
       }
   }

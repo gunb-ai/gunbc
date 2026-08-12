@@ -29,6 +29,8 @@ import product.compute_board.spice_projection {
   TerminalOnNoNet,
   TerminalOnMultipleNets,
   DuplicateModelBinding,
+  IdentityNotSpellableInTarget,
+  NetNotSpellableInTarget,
   project_analog_to_spice,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -180,6 +182,8 @@ test fn w_unmodelled_element_refuses_and_emits_nothing() -> Bool {
         TerminalOnNoNet { part: _ } => false
         TerminalOnMultipleNets { part: _ } => false
         DuplicateModelBinding { component: _ } => false
+        IdentityNotSpellableInTarget { component: _ } => false
+        NetNotSpellableInTarget { net: _ } => false
       }
     SpiceSliceProjected { receipt: _ } => false
   }
@@ -214,6 +218,8 @@ test fn w_vendor_subcircuit_refuses_rather_than_emitting_an_ideal_part() -> Bool
         TerminalOnNoNet { part: _ } => false
         TerminalOnMultipleNets { part: _ } => false
         DuplicateModelBinding { component: _ } => false
+        IdentityNotSpellableInTarget { component: _ } => false
+        NetNotSpellableInTarget { net: _ } => false
       }
     SpiceSliceProjected { receipt: _ } => false
   }
@@ -232,6 +238,8 @@ test fn w_missing_binding_is_not_an_absent_model() -> Bool {
         TerminalOnNoNet { part: _ } => false
         TerminalOnMultipleNets { part: _ } => false
         DuplicateModelBinding { component: _ } => false
+        IdentityNotSpellableInTarget { component: _ } => false
+        NetNotSpellableInTarget { net: _ } => false
       }
     SpiceSliceProjected { receipt: _ } => false
   }
@@ -267,6 +275,8 @@ test fn w_terminal_on_no_net_refuses_rather_than_defaulting_to_reference() -> Bo
         ComponentModelBindingMissing { part: _ } => false
         TerminalOnMultipleNets { part: _ } => false
         DuplicateModelBinding { component: _ } => false
+        IdentityNotSpellableInTarget { component: _ } => false
+        NetNotSpellableInTarget { net: _ } => false
       }
     SpiceSliceProjected { receipt: _ } => false
   }

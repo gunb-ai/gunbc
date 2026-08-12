@@ -95,6 +95,36 @@ type SpiceValue {
   lexeme: String
 }
 
+// THE ENGINEERING SUFFIX IS SPICE SPELLING. A magnitude of ten kilohms is a fact about the part;
+// spelling it "10k" is a fact about this format, and the two were fused when a product upstream
+// carried "10k" as its stored value. The suffix set is closed to what the deck grammar reads, so
+// a scale this format cannot spell has no constructor rather than emitting a bare number that
+// SPICE would read as unscaled — three orders of magnitude wrong, and silently simulable.
+type SpiceScaleSuffix
+  = SpiceUnitScale
+  | SpiceKilo
+  | SpiceMega
+  | SpiceMilli
+  | SpiceMicro
+  | SpiceNano
+  | SpicePico
+
+fn spice_scale_suffix_spelling(suffix: SpiceScaleSuffix) -> String {
+  match suffix {
+    SpiceUnitScale => ""
+    SpiceKilo => "k"
+    SpiceMega => "meg"
+    SpiceMilli => "m"
+    SpiceMicro => "u"
+    SpiceNano => "n"
+    SpicePico => "p"
+  }
+}
+
+fn spice_scaled_value(magnitude: String, suffix: SpiceScaleSuffix) -> SpiceValue {
+  SpiceValue { lexeme: spice_text_concat(left: magnitude, right: spice_scale_suffix_spelling(suffix: suffix)) }
+}
+
 type Parameter {
   name: Symbol
   value: SpiceValue
