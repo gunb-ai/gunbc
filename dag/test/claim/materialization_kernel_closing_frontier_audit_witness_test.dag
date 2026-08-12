@@ -24,7 +24,7 @@ test fn materialization_kernel_seven_clauses_enrolled() -> Bool {
     && length(xs: closing_frontier_clauses()) == 7
 }
 
-data materialization_kernel_progress_pin_note: String = "No count literal here (review 47541, DESIGN §5 — a measurement copied from the same hand-authored clause list is not an independent oracle; drop == 4 rather than let editing a verdict row require editing this pin too). The exact-count fact this test previously duplicated is already established at identity grain by the four per-id clause_delivered_by_id tests below (contract_exists / refusal / eviction / hand_rust_tracking, each Delivered) plus the three NotDelivered/PartiallyDelivered per-id tests — DESIGN §5's own rule: completeness is an identity join, not a count equality. This test keeps only the two derived properties an id-grain test cannot state: progress is nonzero, and progress has not yet reached the clause count."
+data materialization_kernel_progress_pin_note: String = "No count literal here (review 47541, DESIGN §5 — a measurement copied from the same hand-authored clause list is not an independent oracle; drop == 4 rather than let editing a verdict row require editing this pin too). The exact-count fact this test previously duplicated is already established at identity grain by the per-id clause_delivered_by_id tests below (as of 2026-08-11: contract_exists and hand_rust_tracking Delivered; warm_hit, refusal and eviction demoted to NotDelivered with their evidence withdrawn; lookup_reorder and production_invocation not delivered) — DESIGN §5's own rule: completeness is an identity join, not a count equality. This test keeps only the two derived properties an id-grain test cannot state: progress is nonzero, and progress has not yet reached the clause count."
 
 test fn materialization_kernel_progress_is_nonzero_and_incomplete() -> Bool {
   materialization_kernel_progress_count(clauses: closing_frontier_clauses()) > 0
@@ -54,21 +54,21 @@ test fn contract_exists_clause_delivered() -> Bool {
   clause_delivered_by_id(clauses: closing_frontier_clauses(), id: "contract-exists-and-can-fail")
 }
 
-data warm_hit_clause_delivered_note: String = "RENAMED from warm_hit_clause_partially_delivered_not_falsely_green (DESIGN §4b(4) — an expecting-red probe that greens when its wall lands flips to a permanent regression control, it does not retire). cross_process_hit_skips_semantic_recompute now lands and greens (v1_compiler_tests.resolve_cross_process_cache_test), so the clause reached Delivered; this test's assertion flips from false to true and the test itself becomes the regression control catching a future silent revert."
+data warm_hit_clause_delivered_note: String = "FLIPPED TO NOT-DELIVERED 2026-08-11 (gunbc#8146, review 51152). The three assertions below asserted Delivered while the carrier was demoted to NotDelivered in the same PR — they would have failed on execution, which is the review finding. They are FLIPPED rather than deleted: per DESIGN §4b(4) the control stays enrolled, so each now REQUIRES the demoted state and reds if a clause silently returns to Delivered without its evidence executing again. HISTORY — renamed from warm_hit_clause_partially_delivered_not_falsely_green (DESIGN §4b(4) — an expecting-red probe that greens when its wall lands flips to a permanent regression control, it does not retire). cross_process_hit_skips_semantic_recompute now lands and greens (v1_compiler_tests.resolve_cross_process_cache_test), so the clause reached Delivered; this test's assertion flips from false to true and the test itself becomes the regression control catching a future silent revert."
 
-test fn warm_hit_clause_delivered() -> Bool {
-  clause_delivered_by_id(clauses: closing_frontier_clauses(), id: "warm-hit-skips-semantic-recompute")
+test fn warm_hit_clause_not_delivered_evidence_withdrawn() -> Bool {
+  clause_delivered_by_id(clauses: closing_frontier_clauses(), id: "warm-hit-skips-semantic-recompute") == false
 }
 
-test fn refusal_clause_delivered() -> Bool {
+test fn refusal_clause_not_delivered_evidence_withdrawn() -> Bool {
   clause_delivered_by_id(
     clauses: closing_frontier_clauses(),
     id: "corruption-identity-completeness-overcap-refuse"
-  )
+  ) == false
 }
 
-test fn eviction_clause_delivered() -> Bool {
-  clause_delivered_by_id(clauses: closing_frontier_clauses(), id: "bounded-eviction-and-full-store")
+test fn eviction_clause_not_delivered_evidence_withdrawn() -> Bool {
+  clause_delivered_by_id(clauses: closing_frontier_clauses(), id: "bounded-eviction-and-full-store") == false
 }
 
 test fn lookup_reorder_clause_not_delivered() -> Bool {

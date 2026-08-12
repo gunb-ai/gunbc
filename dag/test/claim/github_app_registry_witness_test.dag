@@ -1,5 +1,13 @@
 module test.claim.github_app_registry
 
+import gunbc.auth.github_credential { unsatisfied_capabilities }
+import gunbc.ci_heal_credential {
+  live_heal_control_plane,
+  live_heal_dispatch_credential,
+  live_heal_push_binding_resolution,
+}
+import gunbc.repository { gunbc_repository }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data control_plane_probe_ref: DeclarationRef = DeclarationRef {
