@@ -1,6 +1,7 @@
 module test.claim.memory_part_selection_witness_test
 
 import std.types { Bool, List, list_length }
+import std.nat { Nat }
 import std.currency { CurrencyCode, Eur, Usd }
 import std.measure { ByteSize, byte_size, money_amount_micro }
 import extdeps.vendor.samsung { samsung }
@@ -86,17 +87,45 @@ data unobserved_failure: PlatformTrainingFailure = PlatformTrainingFailure {
   observed_at: 1786590000000,
 }
 
-fn candidate_of(
+// PRICE IS A PARAMETER because the Pareto axes are real. An earlier revision
+// gave both fixtures the same price and capacity, leaving data rate as the
+// only difference — so the registered module strictly DOMINATED the
+// load-reduced one and the frontier legitimately dropped it. The test then
+// read that dominance as an admission failure. Admitted and undominated are
+// different properties, and a fixture pair that differs on exactly one axis
+// cannot distinguish them.
+//
+// The prices below also match the market fact this module models: at
+// capacities near the density ceiling the load-reduced part is the CHEAP one.
+// So neither candidate dominates — cheaper-but-slower against
+// faster-but-dearer — and frontier membership is decided by admission alone.
+fn candidate_at_price(
   module: DramModuleCatalogRow,
   currency: CurrencyCode,
+  unit_price_micros: Nat,
 ) -> PartCandidate {
   PartCandidate {
     module: module,
-    unit_price: money_amount_micro(count: 100000000),
+    unit_price: money_amount_micro(count: unit_price_micros),
     currency: currency,
     sticks_required: 8,
     qualification: PartQualificationUnobserved,
   }
+}
+
+fn cheap_lrdimm_candidate(currency: CurrencyCode) -> PartCandidate {
+  candidate_at_price(module: lrdimm_32g, currency: currency, unit_price_micros: 60000000)
+}
+
+fn dearer_rdimm_candidate(currency: CurrencyCode) -> PartCandidate {
+  candidate_at_price(module: rdimm_32g, currency: currency, unit_price_micros: 100000000)
+}
+
+fn candidate_of(
+  module: DramModuleCatalogRow,
+  currency: CurrencyCode,
+) -> PartCandidate {
+  candidate_at_price(module: module, currency: currency, unit_price_micros: 100000000)
 }
 
 // WHAT AN ASSOCIATION LICENSES. gunbc holds MREP at
@@ -194,8 +223,8 @@ test fn same_candidate_in_declared_currency_is_admissible() -> Bool {
 test fn an_association_leaves_both_candidates_on_the_frontier() -> Bool {
   let front = pareto_frontier(
     candidates: [
-      candidate_of(module: lrdimm_32g, currency: Usd),
-      candidate_of(module: rdimm_32g, currency: Usd),
+      cheap_lrdimm_candidate(currency: Usd),
+      dearer_rdimm_candidate(currency: Usd),
     ],
     failures: observed_failures,
     declared_currency: Usd,
@@ -203,7 +232,7 @@ test fn an_association_leaves_both_candidates_on_the_frontier() -> Bool {
   )
   list_length(front) == 2
     && match candidate_admission(
-      candidate: candidate_of(module: lrdimm_32g, currency: Usd),
+      candidate: cheap_lrdimm_candidate(currency: Usd),
       failures: observed_failures,
       declared_currency: Usd,
       target_board: AsrockRackAltrad8ud1l2t,
@@ -218,8 +247,8 @@ test fn an_association_leaves_both_candidates_on_the_frontier() -> Bool {
 test fn a_decoded_refusal_does_drop_the_candidate_from_the_frontier() -> Bool {
   let front = pareto_frontier(
     candidates: [
-      candidate_of(module: lrdimm_32g, currency: Usd),
-      candidate_of(module: rdimm_32g, currency: Usd),
+      cheap_lrdimm_candidate(currency: Usd),
+      dearer_rdimm_candidate(currency: Usd),
     ],
     failures: [decoded_failure],
     declared_currency: Usd,
@@ -227,7 +256,7 @@ test fn a_decoded_refusal_does_drop_the_candidate_from_the_frontier() -> Bool {
   )
   list_length(front) == 1
     && match candidate_admission(
-      candidate: candidate_of(module: lrdimm_32g, currency: Usd),
+      candidate: cheap_lrdimm_candidate(currency: Usd),
       failures: [decoded_failure],
       declared_currency: Usd,
       target_board: AsrockRackAltrad8ud1l2t,
