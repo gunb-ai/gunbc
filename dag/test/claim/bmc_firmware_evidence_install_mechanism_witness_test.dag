@@ -7,7 +7,6 @@ import extdeps.bmc.capability {
   BmcFirmwareCapabilityUncatalogued,
   BmcFirmwareVersion,
   bmc_firmware_capability_row_for,
-  bmc_firmware_semantic_version,
   bmc_firmware_version_eq,
   firmware_has_capability,
   CapabilityBootSourceOverride,
@@ -81,6 +80,7 @@ import gunbc.os_install_mechanism {
 import std.bmc { BmcEndpoint, OpenBmc, Redfish }
 import std.types { Bool, List, list_length }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.firmware.types { firmware_semantic_version }
 
 // Control-only fixtures. Every axis gets its OWN synthetic observation: the earlier version of
 // this control constructed the established arm from gunbc.os_install srv3_pxe_network_boot_chain,
@@ -122,7 +122,7 @@ data unknown_endpoint: BmcEndpoint = BmcEndpoint { host: "192.168.1.254", protoc
 
 data uncatalogued_firmware: BmcFirmwareVersion = BmcFirmwareVersion {
   family: OpenBmc,
-  version: bmc_firmware_semantic_version(major: 2, minor: 7, patch: 1),
+  version: firmware_semantic_version(major: 2, minor: 7, patch: 1),
 }
 
 // THE FINDING, made executable, at its honest strength. srv4's observed firmware (OpenBMC

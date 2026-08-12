@@ -23343,6 +23343,14 @@ pub fn run_discovery_corpus_with_options(
     width_policy: DiscoveryWidthPolicy,
     options: DiscoveryCorpusOptions,
 ) -> Result<DiscoverySummary, String> {
+    if std::env::var(FLOOR_DISCOVERY_CONSUMER_ENV).as_deref() == Ok("coordinated_consumer")
+        && !floor_discovery_snapshot::coordinated_snapshot_installed()
+    {
+        return Err(
+            "coordinated discovery refused: verified floor snapshot is not installed; cold reconstruction is disabled"
+                .to_string(),
+        );
+    }
     let pump_started = std::time::Instant::now();
     let selection = options.node_frontier_selection;
     let out = run_discovery_corpus_with_options_inner(
@@ -29976,6 +29984,29 @@ mod discovery_summary_merge_tests {
         assert_eq!(rows[0].function, function);
         assert_eq!(rows[0].outcome, "Done");
         assert_eq!(rows[0].detail, "");
+    }
+
+    #[test]
+    fn coordinated_consumer_refuses_corpus_without_verified_snapshot() {
+        with_env_test_lock(|| {
+            floor_discovery_snapshot::reset_floor_discovery_snapshot_for_test();
+            let _consumer = EnvGuard::set(FLOOR_DISCOVERY_CONSUMER_ENV, "coordinated_consumer");
+            let roots: Vec<String> = Vec::new();
+            let refusal = run_discovery_corpus_with_options(
+                &roots,
+                &[],
+                &[],
+                ExecutionMode::Hermetic,
+                DiscoveryWidthPolicy::Serial,
+                DiscoveryCorpusOptions::default(),
+            )
+            .expect_err("coordinated corpus must refuse without an installed snapshot");
+            assert!(
+                refusal.contains("verified floor snapshot is not installed")
+                    && refusal.contains("cold reconstruction is disabled"),
+                "unexpected coordinated-consumer refusal: {refusal}"
+            );
+        });
     }
 }
 

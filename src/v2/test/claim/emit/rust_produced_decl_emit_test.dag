@@ -1,7 +1,8 @@
 module v2.test.emit.rust_produced_decl_emit
 
 import v2.test.complexity_gate.table_fixture_add_subject_producer { table_fixture_add_decl_node }
-import v2.compiler.emit_produced { emit_produced_decl_rust }
+import v2.compiler.emit_produced { emit_produced_decl }
+import v2.extdeps.languages.rust { rust_target_model }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
@@ -17,7 +18,7 @@ data rust_produced_add2_golden: String = "fn add2(x: i32, y: i32) -> i32 { x + y
 fn rust_produced_decl_text(fn_name: Symbol) -> Outcome<String> {
   match table_fixture_add_decl_node(fn_name: fn_name) {
     Accepted { value: decl, diagnostics: _ } =>
-      match emit_produced_decl_rust(decl: decl) {
+      match emit_produced_decl(decl: decl, target: rust_target_model()) {
         Accepted { value: medium, diagnostics: _ } =>
           Accepted { value: medium.carried, diagnostics: None }
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
