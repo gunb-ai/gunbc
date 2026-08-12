@@ -124,6 +124,9 @@ fn scope_placement_refused_paths(added: List<String>, carriers: List<String>, ma
 }
 
 data scope_carrier_paths: List<String> = [
+  "dag/extdeps/firmware/types.dag",
+  "dag/extdeps/memory/training.dag",
+  "dag/extdeps/ampere/scp_diagnostic.dag",
   "dag/extdeps/ipc/dpmx.dag",
   "dag/extdeps/ucamco/gerber.dag",
   "dag/extdeps/cpu/ampere_altra_package.dag",

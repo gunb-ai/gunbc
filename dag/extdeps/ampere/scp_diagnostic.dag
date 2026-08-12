@@ -2,7 +2,8 @@ module extdeps.ampere.scp_diagnostic
 
 import std.types { EpochMs, List, NonEmptyStr }
 import std.nat { Nat }
-import extdeps.external_authority { ExternalAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef, ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -11,6 +12,20 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     locator: "amperecomputing.com/customer-connect/products/altra-family-software"
   }
 }
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ampere.scp_diagnostic",
+      decl_name: "AmpereScpConsoleToken",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data scp_diagnostic_scope_subject_note: String = "THE SUBJECT IS THE AMPERE SCP/SMpro/PMpro DIAGNOSTIC TOKEN STREAM AND ITS STRUCTURED BOOT-PROGRESS INTERFACE, as an upstream surface only. Deliberately NO token-to-meaning function exists: no codebook has been obtained, so a token is an identity this repository may compare and count and may not interpret. The read-effect axis is part of the subject because the interface is an acknowledged queue rather than a sampled register, which decides whether a reader may poll it. NOT gunbc receipts about a host, NOT any verdict about fatality."
 
 // AMPERE owns the SCP / SMpro / PMpro diagnostic interfaces and the token
 // namespace. This module models that upstream shape; it does NOT record what
