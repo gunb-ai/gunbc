@@ -13,11 +13,10 @@ use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{
     build_floor_discovery_request, compute_histogram_data,
     discover_floor_witness_roster_with_snapshot, enable_floor_compile_clean_lazy_install,
-    floor_discovery_consumer_role_from_env, heartbeat_feed_enter_batch,
-    heartbeat_feed_entry_completed, heartbeat_feed_snapshot, install_floor_compile_clean_receipt,
-    make_eval_context, project_witness_cost_receipt, record_resolution_divergence_phase,
-    render_selection_degradation_receipt_body, reset_resolution_divergence_phase_receipt,
-    resolution_divergence_parent_plan_capture_begin,
+    heartbeat_feed_enter_batch, heartbeat_feed_entry_completed, heartbeat_feed_snapshot,
+    install_floor_compile_clean_receipt, make_eval_context, project_witness_cost_receipt,
+    record_resolution_divergence_phase, render_selection_degradation_receipt_body,
+    reset_resolution_divergence_phase_receipt, resolution_divergence_parent_plan_capture_begin,
     resolution_divergence_parent_plan_capture_finish, resolve_entry_graph,
     resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
     top_n_slowest_witnesses, verify_floor_discovery_terminal_for_coordinator, BudgetKind,
@@ -25,7 +24,7 @@ use v1_compiler::cli_run::{
     DiscoveryWitnessOutcome, FloorDiscoveryConsumerRole, FloorPhase, HistogramData,
     NodeFrontierSelectionMode, PhaseProfile, ResolutionDivergencePhase,
     ResolutionDivergencePhaseState, SelectionDegradationSnapshot, TimingPercentiles,
-    WitnessRowCost, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N, FLOOR_DISCOVERY_CONSUMER_ENV,
+    WitnessRowCost, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::memory_governor::{
     binding_cap_cgroup_dir, binding_high_cgroup_dir, floor_budget_below_minimum_footprint,
@@ -9853,7 +9852,6 @@ fn spawn_floor_worker(
     batch_id: Option<&str>,
     ordinal: usize,
     walk_attempt_id: &str,
-    discovery_consumer: &str,
 ) -> Result<ObservedFloorWorker, String> {
     let worker = match batch_id {
         Some(id) => format!("scoped:{id}"),
@@ -9872,7 +9870,6 @@ fn spawn_floor_worker(
     }
     command.env(FLOOR_WORKER_TERMINAL_ENV, &terminal_path);
     command.env("GUNBC_FLOOR_WALK_ATTEMPT_ID", walk_attempt_id);
-    command.env(FLOOR_DISCOVERY_CONSUMER_ENV, discovery_consumer);
     #[cfg(target_os = "linux")]
     {
         use std::os::unix::process::CommandExt;
@@ -10011,8 +10008,7 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
             )));
         }
     };
-    let ordinary = match spawn_floor_worker(args, "ordinary", None, 0, &walk_attempt_id, "producer")
-    {
+    let ordinary = match spawn_floor_worker(args, "ordinary", None, 0, &walk_attempt_id) {
         Ok(observed) => observed,
         Err(msg) => {
             replay_ordinary_floor_wet_witness_row_outcomes();
@@ -10073,7 +10069,6 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
             Some(batch_id),
             index.saturating_add(1),
             &walk_attempt_id,
-            "coordinated_consumer",
         ) {
             Ok(observed) => observed,
             Err(msg) => {
@@ -10102,6 +10097,26 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
         batch_ids.len()
     );
     Some(ExitCode::SUCCESS)
+}
+
+/// Whether a worker executes witness rows, and whether it must derive a witness roster.
+///
+/// These are two questions and were one flag until the scoped-child boundary deletion. A scoped
+/// child EXECUTES rows — so it needs the per-witness eval budget — but must NOT walk a roster,
+/// because its entries were frozen by the ordinary worker and re-deriving them is the duplicate
+/// selection the boundary removes. Collapsing them drops the child's eval deadline while looking
+/// like a pure scope narrowing, which is exactly the mistake `witness_walk_flags_split_the_two_questions`
+/// pins.
+struct WitnessWalkFlags {
+    executes_witness_rows: bool,
+    schedules_discovery: bool,
+}
+
+fn witness_walk_flags(carries_witness_rows: bool, is_scoped_child: bool) -> WitnessWalkFlags {
+    WitnessWalkFlags {
+        executes_witness_rows: carries_witness_rows,
+        schedules_discovery: carries_witness_rows && !is_scoped_child,
+    }
 }
 
 fn run() -> Result<ExitCode, ExitCode> {
@@ -10452,12 +10467,30 @@ fn run() -> Result<ExitCode, ExitCode> {
     // Fast-lane 5s rule (operator 2026-07-12): a plan that schedules a discovery batch
     // must declare the per-witness eval budget; a missing/mistyped row refuses the run
     // (fail-closed), while discovery-free plans (regen, plan-artifact) never read it.
-    let schedules_discovery = batches.iter().flatten().any(|r| {
+    // A SCOPED CHILD NEVER SCHEDULES DISCOVERY. Its batch arrives with `entries` already
+    // frozen by the ordinary worker — exact (entry, function) identities — so a roster walk
+    // here can only re-derive a selection its parent already made, and re-deriving it is the
+    // duplicate work this boundary exists to delete. Naming hygiene is a property of the
+    // corpus, not of one child's slice: the ordinary worker pays it once per run, and every
+    // PR runs a plan that does. Deleting the child's walk also removes the last caller of
+    // `FloorDiscoveryConsumerRole::CoordinatedConsumer`, and with it the whole-graph snapshot
+    // transport that existed solely to make that walk's facts acquisition a cache hit.
+    let is_scoped_child = matches!(floor_worker_role, Some(FloorWorkerRole::Scoped { .. }));
+    // TWO QUESTIONS, deliberately not one flag. *Does this worker execute witness rows?* decides
+    // the per-witness eval budget, and a scoped child does execute them. *Must this worker derive
+    // a witness roster?* decides the naming-hygiene walk, and a scoped child must not — its
+    // entries are already frozen. They were one predicate until this change, so narrowing the walk
+    // would have silently dropped the child's eval deadline with it.
+    let carries_witness_rows = batches.iter().flatten().any(|r| {
         matches!(
             r,
             Runnable::DiscoveryBatch { .. } | Runnable::ScopedWitnessBatch { .. }
         )
     });
+    let WitnessWalkFlags {
+        executes_witness_rows,
+        schedules_discovery,
+    } = witness_walk_flags(carries_witness_rows, is_scoped_child);
     // Witness naming hygiene (`test fn` outside `*_test.dag`; the `__`-basename rule and
     // the orphan-helper census were deleted in gunbc#8155) is a
     // property of the witness ROSTER, so it is paid by the plans that have one. It ran
@@ -10475,10 +10508,9 @@ fn run() -> Result<ExitCode, ExitCode> {
     // cannot: they have no roster to be unhygienic about.
     if schedules_discovery {
         let excludes = v1_compiler::cli_run::witness_exclusion_substrings();
-        let discovery_consumer = match floor_worker_role.as_ref() {
-            Some(FloorWorkerRole::Scoped { .. }) => floor_discovery_consumer_role_from_env(),
-            Some(FloorWorkerRole::Ordinary) | None => FloorDiscoveryConsumerRole::Producer,
-        };
+        // Only a non-scoped worker reaches here (see `schedules_discovery`), so the roster is
+        // always produced, never consumed from a transported snapshot.
+        let discovery_consumer = FloorDiscoveryConsumerRole::Producer;
         if let Err(msg) = discover_floor_witness_roster_with_snapshot(
             &source_roots,
             &[],
@@ -10494,7 +10526,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
     }
     phase_mark("naming-hygiene walk");
-    let fast_lane_eval_budget_ms: Option<u64> = if schedules_discovery {
+    let fast_lane_eval_budget_ms: Option<u64> = if executes_witness_rows {
         match run_value(&plan_ctx, "gunbc_ci_fast_lane_eval_budget_ms") {
             Ok(Value::Int(n)) if n > 0 => Some(n as u64),
             Ok(other) => {
@@ -16762,5 +16794,42 @@ mod tests {
         assert_eq!(outcome.label, "failed");
         assert!(outcome.detail.contains("signal 9"));
         assert!(!floor_worker_succeeded(&observed));
+    }
+}
+
+#[cfg(test)]
+mod witness_walk_flags_tests {
+    use super::witness_walk_flags;
+
+    /// The scoped-child boundary deletion narrowed the roster walk. This pins that it narrowed
+    /// ONLY the walk: a scoped child still executes rows, so it must still be handed the
+    /// per-witness eval budget. RED if the two questions are ever collapsed back into one flag —
+    /// the collapse is silent at the type level and would weaken a budget wall while reading as a
+    /// pure scope narrowing.
+    #[test]
+    fn witness_walk_flags_split_the_two_questions() {
+        let ordinary = witness_walk_flags(true, false);
+        assert!(ordinary.executes_witness_rows);
+        assert!(
+            ordinary.schedules_discovery,
+            "an ordinary worker carrying witness rows must still derive the roster"
+        );
+
+        let scoped = witness_walk_flags(true, true);
+        assert!(
+            scoped.executes_witness_rows,
+            "a scoped child executes its frozen rows, so it must keep the eval budget"
+        );
+        assert!(
+            !scoped.schedules_discovery,
+            "a scoped child must never re-derive a roster its parent already froze"
+        );
+
+        // No rows at all: neither question is yes, for either role.
+        for is_scoped in [false, true] {
+            let empty = witness_walk_flags(false, is_scoped);
+            assert!(!empty.executes_witness_rows);
+            assert!(!empty.schedules_discovery);
+        }
     }
 }
