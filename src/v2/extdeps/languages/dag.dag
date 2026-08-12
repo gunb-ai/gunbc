@@ -5225,7 +5225,7 @@ fn dag_bodied_fn_target_model(
   match runtime_row {
     Present { value: row } =>
       TargetModel {
-        produced_decl_support: spec.produced_decl_support,
+        produced_decl_support: ProducedDeclUnwired,
         bundle: dag_bodied_fn_target_model_bundle_node(spec: spec),
         lex: dag_lex(),
         binding_spellings: dag_binding_spellings(),
@@ -5235,7 +5235,7 @@ fn dag_bodied_fn_target_model(
       }
     Absent =>
       TargetModel {
-        produced_decl_support: spec.produced_decl_support,
+        produced_decl_support: ProducedDeclUnwired,
         bundle: dag_bodied_fn_target_model_bundle_node(spec: spec),
         lex: dag_lex(),
         binding_spellings: dag_binding_spellings(),
