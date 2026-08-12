@@ -5476,8 +5476,9 @@ pub struct ModuleGraphFactsLive {
     // a known-empty dependency set and a precise `{self}` closure.
     pub(crate) reference_unaccounted: HashSet<String>,
     // Reverse of `build_import_adjacency`'s internal `module_to_path`: declared module name by
-    // repo path. Built once here so `reference_only_direct_import_modules` (the typed-module
-    // content-key's reference-derived import term) does not re-derive it per module.
+    // repo path, built once per facts build. Read by the discovery witness run loop (a witness
+    // entry with no module identity refuses rather than fabricating a `DeclarationRef`) and by
+    // `declared_source_refs_axis_for_entry`, which used to rebuild this same map per entry.
     pub(crate) path_to_module: HashMap<String, String>,
     // The producers skip an unreadable file at scan time, so a vanished module would be
     // indistinguishable from an absent one; every recorded refusal therefore stops the build
@@ -6073,16 +6074,6 @@ impl ModuleGraphFactsLive {
     /// imports are already covered by `resolved.resolved_imports`, so this returns empty for it
     /// (`adjacency` and `selection_adjacency` agree on such a file — see
     /// `reference_resolution_facts` pass 2).
-    pub(crate) fn reference_only_direct_import_modules(
-        &self,
-        importer_repo_path: &str,
-    ) -> Vec<String> {
-        self.reference_only_direct_import_paths(importer_repo_path)
-            .into_iter()
-            .filter_map(|p| self.path_to_module.get(&p).cloned())
-            .collect()
-    }
-
     /// Workspace-relative repo paths `importer_repo_path` depends on ONLY through a strict-tier
     /// reference edge (`selection_adjacency` minus `adjacency`). The path-grain authority
     /// `selection_adjacency` already carries; module names are derived only for diagnostics.
@@ -22483,15 +22474,6 @@ fn declared_source_refs_axis_for_paths(
     DeclaredSourceRefAxis::Untouched
 }
 
-fn path_to_module_from_declaration_facts(
-    nodes: &[ModuleDeclarationFactRaw],
-) -> HashMap<String, String> {
-    nodes
-        .iter()
-        .map(|n| (workspace_relative_repo_path(&n.path), n.module.clone()))
-        .collect()
-}
-
 pub(crate) fn declared_source_refs_axis_for_entry(
     entry_path: &str,
     facts: &ModuleGraphFactsLive,
@@ -22499,10 +22481,13 @@ pub(crate) fn declared_source_refs_axis_for_entry(
     touched_paths: &[String],
 ) -> DeclaredSourceRefAxis {
     let declared_paths = declared_source_ref_paths_for_entry(entry_path, facts);
-    let path_to_module = path_to_module_from_declaration_facts(&facts.nodes);
+    // The facts build already precomputes this exact map once (`ModuleGraphFactsLive.path_to_module`).
+    // This site used to rebuild it from `facts.nodes` per ENTRY, and it is called per entry on the
+    // selection path — an O(corpus) map allocation per question against a map already in hand
+    // (DESIGN §6 bare-minimum cost: a proven cost-shape defect is fixed regardless of realized n).
     declared_source_refs_axis_for_paths(
         &declared_paths,
-        &path_to_module,
+        &facts.path_to_module,
         source_roots,
         touched_paths,
     )
