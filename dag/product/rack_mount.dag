@@ -2,7 +2,7 @@ module product.rack_mount
 
 import std.types { Bool, List, NonEmptyStr }
 import std.integer { Int }
-import std.measure { Millimeter, millimeter_count, Micrometer, micrometer, micrometer_count, millimeters_to_micrometers, RackUnit, rack_unit_count, micrometers_per_rack_unit }
+import std.measure { Millimeter, millimeter_count, Micrometer, micrometer, micrometer_count, millimeters_to_micrometers, RackUnit, rack_unit, rack_unit_count, measure_add, measure_le, micrometers_per_rack_unit }
 import std.orthogonal_topology { EnclosedSpace, space_height }
 import product.placement_supply { RackIdentity, PhysicalAssetIdentity, RackUnitPosition }
 import extdeps.rack.types { RackCatalogRow }
@@ -61,9 +61,15 @@ type ChassisMount {
   lowest_unit: RackUnitPosition
 }
 
-fn mount_unit_span(m: ChassisMount) -> Int { rack_unit_count(u: m.chassis.rack_units) }
+// The span IS the cited chassis row's height - a cardinal magnitude, so it stays a RackUnit and is
+// not re-derived. The top unit is the one place ordinal and cardinal meet: position + magnitude - 1
+// is affine arithmetic, and it is the only site that reads the magnitude's count, deliberately, so
+// the crossing happens once and is visible rather than spread across the occupancy surface.
+fn mount_unit_span(m: ChassisMount) -> RackUnit { m.chassis.rack_units }
 
-fn mount_top_unit(m: ChassisMount) -> RackUnitPosition { m.lowest_unit + mount_unit_span(m: m) - 1 }
+fn mount_top_unit(m: ChassisMount) -> RackUnitPosition {
+  m.lowest_unit + rack_unit_count(u: mount_unit_span(m: m)) - 1
+}
 
 // Rack units are numbered from 1 at the bottom, so a mount occupies lowest .. lowest + span - 1
 // inclusive. Two mounts collide when those closed intervals intersect at all - unlike the spatial
@@ -132,12 +138,25 @@ fn rack_mounts(r: RackInstance) -> List<ChassisMount> { r.mounts }
 
 fn rack_identity(r: RackInstance) -> RackIdentity { r.identity }
 
-fn rack_units_occupied(r: RackInstance) -> Int {
-  fold(r.mounts, init: 0, f: (acc, m) => acc + mount_unit_span(m: m))
+fn rack_units_occupied(r: RackInstance) -> RackUnit {
+  fold(r.mounts, init: rack_unit(0), f: (acc, m) => measure_add(acc, mount_unit_span(m: m)))
 }
 
-fn rack_units_free(r: RackInstance) -> Int {
-  rack_unit_count(u: r.catalog.rack_units) - rack_units_occupied(r: r)
+// FREE CAPACITY IS A DIFFERENCE, AND std.measure DELIBERATELY HAS NO SUBTRACT: the Nat-backed
+// carrier cannot represent a negative magnitude, so a general subtraction would need an underflow
+// answer nobody has decided. Here it cannot underflow, and the reason is a construction rather
+// than an assumption - admission refuses any mount whose top exceeds the rack, and refuses any two
+// mounts that share a unit, so the admitted spans are disjoint intervals inside the capacity and
+// their sum is bounded by it. The guard is kept anyway and REFUSES rather than clamping to zero,
+// because a fabricated zero would report a full rack as empty; if it ever fires, the invariant
+// above is broken and that is worth a typed answer rather than a plausible number.
+fn rack_units_free(r: RackInstance) -> MountConstruction<RackUnit> {
+  let occupied = rack_units_occupied(r: r)
+  if measure_le(occupied, r.catalog.rack_units) {
+    MountReady { value: rack_unit(count: rack_unit_count(u: r.catalog.rack_units) - rack_unit_count(u: occupied)) }
+  } else {
+    MountRefused { cause: MountExceedsRackHeight { top_unit: rack_unit_count(u: occupied), rack_capacity: r.catalog.rack_units } }
+  }
 }
 
 // HEIGHT IS CARRIED IN MICROMETRES BECAUSE A RACK UNIT IS NOT A WHOLE NUMBER OF MILLIMETRES.
@@ -147,12 +166,12 @@ fn rack_units_free(r: RackInstance) -> Int {
 // passed, which is the fabricated value with its own test pinning it in place. The micrometre is
 // exact for every whole unit count, so the quantity is carried there and the caller converts only
 // where it is willing to say what it wants done with the remainder.
-fn rack_units_to_micrometres(units: Int) -> Micrometer {
-  micrometer(count: units * micrometers_per_rack_unit())
+fn rack_units_to_micrometres(units: RackUnit) -> Micrometer {
+  micrometer(count: rack_unit_count(u: units) * micrometers_per_rack_unit())
 }
 
 fn rack_full_height(r: RackInstance) -> Micrometer {
-  rack_units_to_micrometres(units: rack_unit_count(u: r.catalog.rack_units))
+  rack_units_to_micrometres(units: r.catalog.rack_units)
 }
 
 // THE JOIN TO THE WORLD: a rack standing in a room must fit under its ceiling. This is the only

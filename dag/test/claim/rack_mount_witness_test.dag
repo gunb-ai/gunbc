@@ -33,6 +33,15 @@ fn second_host(lowest: RackUnitPosition) -> ChassisMount {
   ChassisMount { asset: ("srv-altra-2" as PhysicalAssetIdentity), chassis: rosewill_rsv_r4000u_catalog, lowest_unit: lowest }
 }
 
+// Free capacity is a RackUnit behind a construction, so the claim reads it through the carrier and
+// answers -1 on a refusal rather than a number that could be mistaken for a count.
+fn free_units(r: RackInstance) -> Int {
+  match rack_units_free(r: r) {
+    MountRefused { cause: _ } => 0 - 1
+    MountReady { value: u } => rack_unit_count(u: u)
+  }
+}
+
 fn rack_of(mounts: List<ChassisMount>) -> RackInstance? {
   match rack_instance(identity: ("rack-a" as RackIdentity), catalog: navepoint_18u_open_frame_catalog, mounts: mounts) {
     MountRefused { cause: _ } => none
@@ -67,14 +76,14 @@ test fn one_mounted_fixture_leaves_the_rest_of_the_rack_free() -> Bool {
     Absent => false
     // 18U is 800.1 mm exactly. Asserting 800100 micrometres is what keeps the truncation that an
     // earlier revision shipped - and that an earlier version of THIS claim pinned at 800 - dead.
-    Present { value: r } => rack_units_free(r: r) == 14 && micrometer_count(m: rack_full_height(r: r)) == 800100
+    Present { value: r } => free_units(r: r) == 14 && micrometer_count(m: rack_full_height(r: r)) == 800100
   }
 }
 
 test fn two_hosts_stack_without_colliding() -> Bool {
   match rack_of(mounts: [altra_host(), second_host(lowest: 5)]) {
     Absent => false
-    Present { value: r } => rack_units_free(r: r) == 10
+    Present { value: r } => free_units(r: r) == 10
   }
 }
 
@@ -110,6 +119,20 @@ test fn mounting_one_asset_twice_refuses() -> Bool {
 
 // THE JOIN, IN MICROMETRES so the 0.1 mm survives: 18U is 800100 um, a 2400 mm room is 2400000 um,
 // and the headroom is the exact difference rather than a figure rounded on the way through.
+// A rack filled to capacity reports zero free, not a refusal: the boundary case of the invariant
+// that lets free capacity be a difference at all.
+test fn a_rack_filled_to_capacity_reports_zero_free() -> Bool {
+  match rack_instance(identity: ("rack-a" as RackIdentity), catalog: navepoint_18u_open_frame_catalog, mounts: [
+    ChassisMount { asset: ("a" as PhysicalAssetIdentity), chassis: rosewill_rsv_r4000u_catalog, lowest_unit: 1 },
+    ChassisMount { asset: ("b" as PhysicalAssetIdentity), chassis: rosewill_rsv_r4000u_catalog, lowest_unit: 5 },
+    ChassisMount { asset: ("c" as PhysicalAssetIdentity), chassis: rosewill_rsv_r4000u_catalog, lowest_unit: 9 },
+    ChassisMount { asset: ("d" as PhysicalAssetIdentity), chassis: rosewill_rsv_r4000u_catalog, lowest_unit: 13 },
+  ]) {
+    MountRefused { cause: _ } => false
+    MountReady { value: r } => free_units(r: r) == 2
+  }
+}
+
 test fn a_rack_fits_a_room_with_derived_headroom() -> Bool {
   match rack_of(mounts: [altra_host()]) {
     Absent => false
