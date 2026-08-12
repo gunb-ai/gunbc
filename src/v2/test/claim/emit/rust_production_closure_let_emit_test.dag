@@ -1,0 +1,136 @@
+module v2.test.emit.rust_production_closure_let_emit
+
+import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source_string }
+import v2.extdeps.languages.rust {
+  rust_operator_realizations_catalog_node,
+  rust_target_model,
+  rust_value_expression_projection
+}
+import v2.std.compilers.target_model {
+  FixedToken,
+  TargetModel,
+  TargetValueExpression,
+  render_target_text,
+  target_value_expression_bind_let,
+  target_value_expression_binding_ref,
+  target_value_expression_closure,
+  target_value_expression_to_concrete_tokens
+}
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data rust_production_closure_let_note: String = "Closes the closure and bind-let value-expression families on the PRODUCTION Rust target. Both shapes are already self-closing - TargetClosureShape carries its own body_open and body_close, TargetBindLetShape needs no bracketing - so what was missing was spellings on the production lex, not structure. The two families that are NOT closed here, conditional and loop, are excluded deliberately: their shapes carry no closing token at all, and the fixtures only appear to emit them because a hand-authored declaration scaffold ends in two rbrace and supplies the brace the expression left open. Production block close is a single rbrace, so those two would emit unbalanced Rust and are held for the shape change."
+
+data rust_production_golden_provenance_note: String = "Both goldens were fixed by compiling them with rustc BEFORE the emitter was pointed at them, and the compile executed rather than only typechecked: a closure returning its first parameter applied to (3,4) yields 3, and a let rebinding x to y with (5,6) yields 6. That is what keeps the golden from sharing an ancestor with the code that produces it. A golden read back off the emitter would agree with the emitter by construction and would have proven nothing - the exact defect that let the conditional fixture pass while emitting a brace it could not close."
+
+data rust_production_closure_golden: String = "|x, y| { x }"
+
+data rust_production_let_golden: String = "let x = y; x"
+
+fn rpcl_serialize(expr: TargetValueExpression, target: TargetModel) -> Outcome<String> {
+  match target_value_expression_to_concrete_tokens(
+    expr: expr,
+    projection: rust_value_expression_projection(),
+    catalog: rust_operator_realizations_catalog_node()
+  ) {
+    Accepted { value: tokens, diagnostics: _ } =>
+      match serialize_concrete_syntax_tokens_to_source_string(target: target, tokens: tokens) {
+        Accepted { value: text, diagnostics: _ } =>
+          Accepted { value: render_target_text(t: text), diagnostics: None }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn rpcl_emits(expr: TargetValueExpression, golden: String) -> Bool {
+  match rpcl_serialize(expr: expr, target: rust_target_model()) {
+    Accepted { value: text, diagnostics: _ } => text == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn rpcl_closure_expr() -> TargetValueExpression {
+  target_value_expression_closure(
+    params: [^rust_binding_param_x, ^rust_binding_param_y],
+    body: target_value_expression_binding_ref(binding: ^rust_binding_param_x)
+  )
+}
+
+fn rpcl_let_expr() -> TargetValueExpression {
+  target_value_expression_bind_let(
+    bind_key: target_value_expression_binding_ref(binding: ^rust_binding_param_x),
+    bind_value: target_value_expression_binding_ref(binding: ^rust_binding_param_y),
+    bind_body: target_value_expression_binding_ref(binding: ^rust_binding_param_x)
+  )
+}
+
+// The cross-golden arms are the discriminating RED: the two families share one
+// serializer and one target, so only their own spellings can tell them apart.
+test fn rust_production_emits_closure_and_let() -> Bool {
+  rpcl_emits(expr: rpcl_closure_expr(), golden: rust_production_closure_golden)
+    && rpcl_emits(expr: rpcl_let_expr(), golden: rust_production_let_golden)
+    && !rpcl_emits(expr: rpcl_closure_expr(), golden: rust_production_let_golden)
+    && !rpcl_emits(expr: rpcl_let_expr(), golden: rust_production_closure_golden)
+}
+
+// Body position is load-bearing, not incidental: a closure whose body names the
+// OTHER parameter must not render as the golden. Without this, a lowering that
+// dropped the body and emitted a constant shell would satisfy the arms above.
+test fn rust_production_closure_body_is_not_ignored() -> Bool {
+  !rpcl_emits(
+    expr: target_value_expression_closure(
+      params: [^rust_binding_param_x, ^rust_binding_param_y],
+      body: target_value_expression_binding_ref(binding: ^rust_binding_param_y)
+    ),
+    golden: rust_production_closure_golden
+  )
+    && !rpcl_emits(
+      expr: target_value_expression_bind_let(
+        bind_key: target_value_expression_binding_ref(binding: ^rust_binding_param_x),
+        bind_value: target_value_expression_binding_ref(binding: ^rust_binding_param_y),
+        bind_body: target_value_expression_binding_ref(binding: ^rust_binding_param_y)
+      ),
+      golden: rust_production_let_golden
+    )
+}
+
+fn rpcl_serialize_fixed(token_class: Symbol) -> Outcome<String> {
+  match serialize_concrete_syntax_tokens_to_source_string(
+    target: rust_target_model(),
+    tokens: [FixedToken { token_class: token_class }]
+  ) {
+    Accepted { value: text, diagnostics: _ } =>
+      Accepted { value: render_target_text(t: text), diagnostics: None }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn rpcl_refuses_class(token_class: Symbol) -> Bool {
+  match rpcl_serialize_fixed(token_class: token_class) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+// The fail-closed property this slice must not spend. A token class with no lex
+// rule still refuses on the production target, typed and located, rather than
+// serializing to nothing - which is exactly what an empty spelling would look
+// like if absence and emptiness were conflated. closure_nop is the positive
+// control precisely because it IS spelled empty: it must ACCEPT and produce the
+// empty string, while an unspelled class REFUSES. If those two collapsed into
+// one answer, adding the closure spellings would have silently made every
+// unspelled class emit nothing at all.
+test fn rust_production_refuses_unspelled_token_class() -> Bool {
+  rpcl_refuses_class(token_class: ^rust_token_unwired_loop)
+    && rpcl_refuses_class(token_class: ^rust_token_never_spelled_anywhere)
+    && match rpcl_serialize_fixed(token_class: ^rust_token_closure_nop) {
+      Accepted { value: text, diagnostics: _ } => text == ""
+      Rejected { diagnostics: _ } => false
+    }
+}
