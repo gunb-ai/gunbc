@@ -1,7 +1,5 @@
 module test.claim.self_host_promotion_admission_witness
 
-import std.cache_interface { ArtifactIdentity }
-
 import v2.compiler.self_host.generation {
   ArtifactIdentity,
   ArtifactMaterialized,
