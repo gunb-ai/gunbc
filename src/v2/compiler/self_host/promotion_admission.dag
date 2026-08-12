@@ -403,19 +403,22 @@ fn concat_causes(
 // Both generations are measured against the SEED oracle: a successor that agreed only
 // with the candidate would prove the two agree with each other while both drifted from
 // the compiler they claim to reproduce.
+//
+// chain_causes joins on the whole declared producer, not on its identity alone. The
+// successor carries its OWN produced_by_candidate, so bundling candidate A with a
+// successor that says it was produced by candidate B is otherwise constructible: each
+// half's receipts join internally and nothing proves the two halves are one chain. And
+// two distinct candidates can share an identity while descending from DIFFERENT seeds,
+// so an identity-only join leaves that splice admissible and unwitnessed (review 51231).
+//
+// corpus_causes joins the three behavioral receipts' corpora. Unjoined, equivalence can
+// be measured over one corpus while the planted fault was proven discriminating over a
+// different one — so the fault receipt would vouch for teeth the equivalence run never
+// had.
 fn promotion_refusal_causes(c: SelfHostCandidate) -> List<PromotionRefusalCause> {
   let candidate_identity = c.candidate.identity
   let successor_identity = c.successor.identity
   let seed_identity = c.candidate.produced_by_seed.identity
-  // The successor carries its OWN produced_by_candidate, so bundling candidate A with
-  // a successor that says it was produced by candidate B is otherwise constructible:
-  // each half's receipts join internally and nothing proves the two halves are one
-  // chain. Splicing two valid chains would let a successor inherit admission from a
-  // candidate that never produced it.
-  // Joined on the whole declared producer, not on its identity alone. Two distinct
-  // candidates can share an identity while descending from DIFFERENT seeds, and the
-  // type promises a single chain, so an identity-only join leaves that splice
-  // admissible and unwitnessed (review 51231).
   let chain_causes = if length(
     xs: generation_identity_mismatched_axes(
       left: candidate_identity,
@@ -431,10 +434,6 @@ fn promotion_refusal_causes(c: SelfHostCandidate) -> List<PromotionRefusalCause>
   } else {
     [SuccessorNotProducedByCandidate]
   }
-  // The three behavioral receipts each name a corpus. Unjoined, equivalence can be
-  // measured over one corpus while the planted fault was proven discriminating over a
-  // different one — so the fault receipt would vouch for teeth the equivalence run
-  // never had.
   let corpus_causes = if behavioral_corpus_agrees(
     left: c.candidate_equivalence.corpus,
     right: c.discriminating_fault.corpus
