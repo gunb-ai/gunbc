@@ -251,6 +251,12 @@ fn codex_chatgpt_plan_reading(account: JsonValue) -> CodexPlanTypeReading {
   }
 }
 
+fn codex_account_not_an_object_realm() -> CodexAccountRealm {
+  CodexAccountRealmUnobserved {
+    reason: "account/read account member is neither an object nor null" as NonEmptyStr,
+  }
+}
+
 fn codex_account_realm_from_account_value(account: JsonValue) -> CodexAccountRealm {
   match account {
     JsonNull => CodexAccountRealmAbsent
@@ -287,10 +293,10 @@ fn codex_account_realm_from_account_value(account: JsonValue) -> CodexAccountRea
             reason: "account/read account member is not a JSON object" as NonEmptyStr,
           }
       }
-    _ =>
-      CodexAccountRealmUnobserved {
-        reason: "account/read account member is neither an object nor null" as NonEmptyStr,
-      }
+    JsonString { value: _ } => codex_account_not_an_object_realm()
+    JsonNumber { lexeme: _ } => codex_account_not_an_object_realm()
+    JsonBool { value: _ } => codex_account_not_an_object_realm()
+    JsonArray { elements: _ } => codex_account_not_an_object_realm()
   }
 }
 
@@ -1072,7 +1078,9 @@ fn realm_from_account_read_frame(
     AccountTripResponseAbsent =>
       match json_object_unique_member(v: obj, key: "result") {
         JsonMemberFound { value: result } => codex_account_realm_from_result(result: result)
-        _ => prior_realm
+        JsonMemberAbsent => prior_realm
+        JsonMemberDuplicated { count: _ } => prior_realm
+        JsonMemberNotAnObject => prior_realm
       }
     AccountTripResponseUnique { response: _ } => prior_realm
     AccountTripResponseDuplicate { id: _, count: _ } => prior_realm
