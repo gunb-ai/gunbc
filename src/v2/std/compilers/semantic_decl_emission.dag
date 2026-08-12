@@ -24,6 +24,7 @@ import v2.std.compilers.lexing {
   WhitespaceChar
 }
 import v2.std.compilers.target_model {
+  ProducedDeclUnwired,
   BoundToken,
   ConcreteSyntaxToken,
   FixedToken,
@@ -626,6 +627,7 @@ fn semantic_decl_serialize_target(
         f: fn(binding_spellings) {
           outcome_accepted(
             value: TargetModel {
+              produced_decl_support: ProducedDeclUnwired,
               bundle: target_model_type_conj_node(
                 children: [
                   target_model_named_edge(

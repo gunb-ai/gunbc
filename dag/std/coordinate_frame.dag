@@ -1,0 +1,68 @@
+module std.coordinate_frame
+
+import std.integer { Int }
+import std.types { Bool }
+
+// A COORDINATE FRAME'S IDENTITY, CARRIED BY THE VALUES THAT LIVE IN IT.
+//
+// This module exists because of a measurement, and the measurement is the whole justification for
+// its shape. SPATIAL-2 modelled the frame as a phantom type parameter - `Point3<RoomFrame>` - on the
+// stated ground that a cross-frame subtraction "does not typecheck", which was called the stronger
+// of the two available options. It was measured on the production compile-and-run path on
+// 2026-08-11 and it is false: a `Point3<RoomFrame>` and a `Point3<BuildingFrame>` flowed through
+// `displacement_between3` and the program compiled clean and returned 9. Not a refusal, not a
+// crash - a plausible number for a question that has no answer, which is precisely the fabricated
+// output DESIGN 5 forbids.
+//
+// The cause is a v1 seed limitation, not a modelling slip. `v1.compiler.infer`'s argument-position
+// judge compares nominal HEAD NAMES; applied type arguments live in the type node's children and
+// every name-level comparison discards them. `Point3` equals `Point3`, so the frames were never
+// compared. The repair to that judge (`applied_nominal_call_arg_mismatch`) lands alongside this
+// module and does close the call-boundary case - but it CANNOT close the producer side, because
+// return-position conformance is a separate relation that declines to judge record types at all,
+// blocked on `feature:conformance-produced-type-identity`. So this stays writable regardless:
+//
+//     fn falsely_reframe(p: Point3<RoomFrame>) -> Point3<BuildingFrame> { p }
+//
+// A consumer receiving that value sees only the declared type. It cannot reconstruct an identity the
+// producer already erased. THEREFORE THE CARRIED IDENTITY IS THE AUTHORITY, and the honest claim is
+// frame consistency BY CHECKED DERIVATION, not by construction. Every frame-sensitive operation
+// compares the identities its operands actually carry and returns a typed mismatch refusal - which
+// survives a lying return annotation, because the value still says where it came from.
+//
+// WHY NOT KEEP THE PHANTOM TOO. Two authorities for one fact is the DESIGN 3 violation whichever one
+// is right, and the weaker of the two here is the one the compiler cannot enforce end-to-end. A
+// phantom retained beside an authoritative carried identity invites exactly the reading that just
+// cost a merged PR its central claim: that the type parameter is doing work. It is removed rather
+// than demoted. Dissolve-on: when `feature:conformance-produced-type-identity` closes, a static
+// frame projection can be reintroduced ABOVE this carrier and promoted to the construction rung,
+// and the carried check remains as the serialization / external-input boundary where a static
+// guarantee cannot reach anyway.
+//
+// IDENTITY IS MINTED AND DECLARATION-OWNED, never derived from a name, a path, or the contents of
+// the frame. That follows the ruling already recorded for `gunbc.host_resource`
+// `HostResourceIdentity`: a content-derived key makes two coincidentally-identical frames one frame,
+// which is the heuristic DESIGN 4 rules unnecessary in a closed system. A frame's human-facing name
+// is a display fact and belongs on whatever registers frames; it is deliberately absent here so it
+// cannot be mistaken for the identity.
+type CoordinateFrameIdentity {
+  occurrence: Int
+}
+
+// THIRD INSTANCE OF ONE SHAPE, recorded rather than abstracted. `std.occurrence_identity` mints
+// SOURCE-occurrence identities, `gunbc.host_resource` mints host-resource identities, and this mints
+// coordinate-frame identities; all three are "a minted Int occurrence in a subject-specific space".
+// The subject-parameterized carrier that would unify them is already a registered trigger on the
+// fleet-reconcile lane, and it stays a trigger rather than being built here: sharing one Int space
+// across subjects is what would let `coordinate_frame_identity_eq` answer true on a numeric
+// coincidence with an unrelated subject, the cross-family comparison the ContentHash family
+// grounding closed. What this row adds is evidence the extraction is due - three subjects, not two.
+data coordinate_frame_identity_extraction_note: String = "std.coordinate_frame CoordinateFrameIdentity is the third minted-occurrence identity carrier in the corpus, after std.occurrence_identity (source occurrences) and gunbc.host_resource HostResourceIdentity (host resources). The subject-parameterized extraction is registered on the membership-diff reconcile spine lane as a trigger, not built here. Do not merge the Int spaces without the subject parameter: equality across two subjects sharing one space answers true on a numeric coincidence."
+
+fn coordinate_frame_identity(occurrence: Int) -> CoordinateFrameIdentity {
+  CoordinateFrameIdentity { occurrence: occurrence }
+}
+
+fn coordinate_frame_identity_eq(a: CoordinateFrameIdentity, b: CoordinateFrameIdentity) -> Bool {
+  a.occurrence == b.occurrence
+}
