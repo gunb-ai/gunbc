@@ -264,10 +264,10 @@ fn provider_limit_observation_from_codex_bucket(
       LimitObservedAvailable {
         subject: ProviderNativeLimitBucket { credential: credential, native_key: id },
       }
-    CodexBucketUnavailableUntilReset { limit_id: id, reached_type: _, resets_at: _ } =>
+    CodexBucketUnavailableUntilReset { limit_id: id, reached_type: rt, resets_at: _ } =>
       LimitUnavailableUntilReset {
         subject: ProviderNativeLimitBucket { credential: credential, native_key: id },
-        native_token: id,
+        native_token: match rt { Present { value: t } => t Absent => id },
         reason: codex_press_bucket_unavailable_reason,
       }
     CodexBucketCapacityUnknown { limit_id: id } =>
@@ -278,6 +278,8 @@ fn provider_limit_observation_from_codex_bucket(
       }
   }
 }
+
+data codex_press_native_cause_token_note: String = "native_token IS THE CAUSE, NOT THE SUBJECT (review artifact 51237 follow-up). It first carried limit_id, which the subject's native_key already carries — so the field restated the bucket and dropped the only thing it could have said. The upstream cause token is reached_type, so that is what it carries when the wire supplied one; limit_id remains the fallback because native_token is not optional and a bucket that reported exhaustion without naming a reached_type still has to name something a reader can act on.\n\nSTILL DROPPED, and named rather than quietly discarded: resets_at. ProviderLimitObservation has no field to carry it — LimitUnavailableUntilReset is { subject, native_token, reason } — so the answer to *when does waiting become valid again* has nowhere to land. That is a model gap, not a projection choice, and inventing a place for it by serializing a timestamp into `reason` would put a machine fact in a prose field where no consumer can read it. Dissolve-on: LimitUnavailableUntilReset gains a typed reset instant, at which point this clause and the discard go together."
 
 data codex_press_bucket_unavailable_reason: NonEmptyStr = "codex app-server rate-limit bucket reported exhausted until reset" as NonEmptyStr
 data codex_press_bucket_capacity_unknown_reason: NonEmptyStr = "codex app-server rate-limit bucket window did not decode; capacity unmeasured" as NonEmptyStr
