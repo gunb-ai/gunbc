@@ -2087,31 +2087,39 @@ fn belt_tick_empty_reconcile(state: BeltRunState) -> BeltReconcile {
 
 data belt_tick_note: String = "The re-runnable belt driver: observe the live session set -> decide via belt_reconcile (the sole belt decision; belt_step is its degenerate spawn-only precursor) -> actuate each planned spawn/teardown through the fail-closed exec seam. Idempotent by construction: a spawned session is observed present on the next tick, keying to its ready node as Unchanged -> noop, so re-ticking never double-spawns (the observed set closes the loop the pure decision cannot). ObserveRefused blocks spawn/reap only — verify and publish still run on their own evidence authorities (operator P1, 2026-08-02)."
 
-data belt_tick_lifecycle_note: String = "THE TIMER IS A DISPATCH ACTUATOR TOO (review artifact 51237, both P0s). The dead-pane fix and the revision gate reached the click path only. This tick passed the whole observed session list into belt_reconcile, which maps EVERY present row to an observed member and counts live.length() as occupied — so a retained dead pane stayed a member (desired + present = Unchanged, no respawn) and still consumed a capacity slot. It also never consulted the deployed revision, so a drifted host refused a click and spawned on a timer.\n\nBOTH PATHS NOW CONSUME ONE SEAM. belt_revision_admission gates the tick before any spawn or reap. A refusal blocks spawn and teardown ONLY: verification and publication continue, because they read independently bound receipts and already run when tmux observation refuses — stopping them would widen a spawn-admission refusal into a work stoppage.\n\nCLEANUP PRECEDES START, DEFERRED ONE TICK. A stale pane is excluded from observed membership, so the node becomes a spawn candidate — but spawning it THIS tick would collide with the tmux session name that still exists, because spawn runs before teardown here. So a stale node's spawn is withheld this tick and its teardown is planned; the next tick observes it Absent and spawns normally. That is why the fix is a partition plus a deferral rather than a filter.\n\nLivenessUnobserved and MultiplicityConflict are neither cleaned nor spawned: they are counted refusals. An unobserved pane might be running, so tearing it down could kill live work, and spawning beside it could double-run the node."
+data belt_tick_lifecycle_note: String = "THE TIMER IS A DISPATCH ACTUATOR TOO (review artifact 51237, both P0s). The dead-pane fix and the revision gate reached the click path only. This tick passed the whole observed session list into belt_reconcile, which maps EVERY present row to an observed member and counts live.length() as occupied — so a retained dead pane stayed a member (desired + present = Unchanged, no respawn) and still consumed a capacity slot. It also never consulted the deployed revision, so a drifted host refused a click and spawned on a timer.\n\nBOTH PATHS NOW CONSUME ONE SEAM. belt_revision_admission gates the tick before any spawn or reap. A refusal blocks spawn and teardown ONLY: verification and publication continue, because they read independently bound receipts and already run when tmux observation refuses — stopping them would widen a spawn-admission refusal into a work stoppage.\n\nCLEANUP PRECEDES START, DEFERRED ONE TICK. A stale pane is excluded from observed membership, so the node becomes a spawn candidate — but spawning it THIS tick would collide with the tmux session name that still exists, because spawn runs before teardown here. So a stale node's spawn is withheld this tick and its teardown is planned; the next tick observes it Absent and spawns normally. That is why the fix is a partition plus a deferral rather than a filter.\n\nLivenessUnobserved and MultiplicityConflict are neither cleaned nor spawned: they are counted refusals. An unobserved pane might be running, so tearing it down could kill live work, and spawning beside it could double-run the node.\n\nTHIS PARAGRAPH DESCRIBED BEHAVIOUR THE CODE DID NOT HAVE (review artifact 51285), which is worse than the gap it described. The first cut partitioned `refused` and never read it again, so only stale node ids were withheld from spawn — a ready node with an unobserved-but-present session read as ABSENT to belt_reconcile and could be spawned beside a pane that might be running. The deferral set is now every non-running class, so the note and the code say the same thing.\n\nMULTIPLICITY IS A NODE FACT, NOT A SESSION FACT, and the first cut missed it here for that reason: belt_tick_classify_sessions read each row's process state in isolation, so two rows for one node (one running, one stale) landed in two different buckets and the reconciler acted on an ambiguous observation that dispatch would have refused. The partition is now node-aware — a node with more than one row is conflicted whatever its rows say individually — so both actuation paths refuse the same ambiguity."
 
 type BeltTickSessionPartition {
   running: List<DispatchLiveSession>
   stale: List<DispatchLiveSession>
   refused: List<DispatchLiveSession>
+  conflicted: List<DispatchLiveSession>
+}
+
+fn belt_tick_node_row_count(live: List<DispatchLiveSession>, node_id: String) -> Int {
+  count(filter(live, s => s.node_id == node_id))
+}
+
+fn belt_tick_session_is(live: List<DispatchLiveSession>, s: DispatchLiveSession, arm: String) -> Bool {
+  if belt_tick_node_row_count(live: live, node_id: s.node_id) > 1 {
+    arm == "conflict"
+  } else {
+    match belt_session_liveness_from_process(session_name: s.session_name, process: s.worker.process) {
+      BeltSessionRunning { session_name: _, command: _ } => arm == "running"
+      BeltSessionStaleTerminal { session_name: _, detail: _ } => arm == "stale"
+      BeltSessionLivenessUnobserved { session_name: _, reason: _ } => arm == "refused"
+      BeltSessionMultiplicityConflict { session_names: _, session_count: _ } => arm == "conflict"
+      BeltSessionAbsent => false
+    }
+  }
 }
 
 fn belt_tick_classify_sessions(live: List<DispatchLiveSession>) -> BeltTickSessionPartition {
   BeltTickSessionPartition {
-    running: filter(live, s =>
-      match belt_session_liveness_from_process(session_name: s.session_name, process: s.worker.process) {
-        BeltSessionRunning { session_name: _, command: _ } => true
-        _ => false
-      }),
-    stale: filter(live, s =>
-      match belt_session_liveness_from_process(session_name: s.session_name, process: s.worker.process) {
-        BeltSessionStaleTerminal { session_name: _, detail: _ } => true
-        _ => false
-      }),
-    refused: filter(live, s =>
-      match belt_session_liveness_from_process(session_name: s.session_name, process: s.worker.process) {
-        BeltSessionLivenessUnobserved { session_name: _, reason: _ } => true
-        _ => false
-      }),
+    running: filter(live, s => belt_tick_session_is(live: live, s: s, arm: "running")),
+    stale: filter(live, s => belt_tick_session_is(live: live, s: s, arm: "stale")),
+    refused: filter(live, s => belt_tick_session_is(live: live, s: s, arm: "refused")),
+    conflicted: filter(live, s => belt_tick_session_is(live: live, s: s, arm: "conflict")),
   }
 }
 
@@ -2176,7 +2184,13 @@ fn belt_tick_for_instance(
         live: classified.running,
         cap: cap,
       )
-      let deferred_ids = map(classified.stale, s => s.node_id)
+      let deferred_ids = concat(
+        map(classified.stale, s => s.node_id),
+        concat(
+          map(classified.refused, s => s.node_id),
+          map(classified.conflicted, s => s.node_id),
+        ),
+      )
       let admitted_spawns = filter(r.spawns, m =>
         !any(deferred_ids, id => id == dispatch_member_key(m: m)))
       let spawn_outcomes = admitted_spawns |> map(m => belt_actuate_spawn_member(m: m, workdir: spawn_workdir))
