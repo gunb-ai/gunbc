@@ -1,9 +1,0 @@
-module test.retirement.materialization_provider_resolved_graph_consumer_retained
-
-
-data materialization_provider_resolved_graph_consumer_retention: TestModuleRetirement = TestModuleRetirement {
-  module: "materialization_provider_resolved_graph_consumer_test.rs",
-  disposition: RetainedNonMigratable {
-    reason: "The resolved-graph materialization-provider consumer witness is host-Rust-only: it calls the v1 seed cli_run helper `serve_resolved_graph_stored_disk_probe_for_test`, inspects the provider context build counter, and asserts the faithful-probe refusal path never boots the provider context. That behavior lives on the seed runtime surface, not in a dag fixture the substrate can execute directly, so it cannot migrate to an exact-stem floor witness without lying about the available surface. It is therefore RETAINED as rs, not migration debt and not a delete candidate. This retention dissolves when src/v1 deletes at v2 self-host."
-  }
-}
