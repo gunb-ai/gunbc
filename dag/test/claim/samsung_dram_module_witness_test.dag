@@ -1,0 +1,61 @@
+module test.claim.samsung_dram_module
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The negative control is the SAME capacity, generation and vendor with the
+// organization axes changed to the shape the label does not carry. It exists so
+// that "32 GiB DDR4 is realizable" cannot be read off capacity alone: on DDR4 that
+// capacity is reachable only because rank_count and chip_width put it there.
+data control_32g_1rx8: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: "CONTROL-32G-1RX8-DDR4",
+  manufacturer: samsung,
+  generation: dram_generation_ddr4,
+  capacity_bytes: byte_size(count: 34359738368),
+  data_rate_mts: 2133,
+  ecc: true,
+  buffering: LoadReduced,
+  chip_width: bit_width(count: 8),
+  rank_count: 1,
+}
+
+test fn row_axes_match_the_labelled_module_organization() -> Bool {
+  m386a4g40dm0_cpb_catalog.part_number == ("M386A4G40DM0-CPB" as NonEmptyStr)
+    && m386a4g40dm0_cpb_catalog.buffering == LoadReduced
+    && bit_width_count(b: m386a4g40dm0_cpb_catalog.chip_width) == 4
+    && m386a4g40dm0_cpb_catalog.rank_count == 4
+    && m386a4g40dm0_cpb_catalog.data_rate_mts == 2133
+    && m386a4g40dm0_cpb_catalog.ecc
+}
+
+test fn capacity_is_thirty_two_gibibytes() -> Bool {
+  byte_size_count(b: m386a4g40dm0_cpb_catalog.capacity_bytes) == 34359738368
+}
+
+test fn generation_is_ddr4() -> Bool {
+  dram_generation_eq(a: m386a4g40dm0_cpb_catalog.generation, b: dram_generation_ddr4)
+}
+
+test fn manufacturer_grounds_on_the_single_vendor_authority() -> Bool {
+  m386a4g40dm0_cpb_catalog.manufacturer == samsung
+}
+
+test fn organization_derives_eighteen_dies_per_rank() -> Bool {
+  dram_chips_per_rank(module: m386a4g40dm0_cpb_catalog) == 18
+    && dram_data_chips_per_rank(module: m386a4g40dm0_cpb_catalog) == 16
+}
+
+test fn required_die_density_derives_four_gigabit() -> Bool {
+  byte_size_count(b: dram_module_required_die_density(module: m386a4g40dm0_cpb_catalog)) == 536870912
+}
+
+test fn four_rank_by_four_is_realizable_on_ddr4() -> Bool {
+  dram_module_is_realizable(module: m386a4g40dm0_cpb_catalog, jedec: ddr4_generation_catalog)
+}
+
+test fn same_capacity_at_one_rank_by_eight_is_not_realizable() -> Bool {
+  !dram_module_is_realizable(module: control_32g_1rx8, jedec: ddr4_generation_catalog)
+}
+
+test fn generation_mismatch_fails_closed() -> Bool {
+  !dram_module_is_realizable(module: m386a4g40dm0_cpb_catalog, jedec: ddr5_generation_catalog)
+}

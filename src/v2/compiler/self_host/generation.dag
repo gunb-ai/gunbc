@@ -63,7 +63,7 @@ fn observed_artifact_digest(observed: Sha512Digest) -> ObservedArtifactDigest {
   ObservedArtifactDigest { observed: observed }
 }
 
-type ArtifactIdentity
+type GeneratedArtifactIdentity
   = ArtifactMaterialized { digest: ObservedArtifactDigest }
   | ArtifactNotMaterialized
 
@@ -73,7 +73,7 @@ type GenerationIdentity {
   target_model: Hash
   toolchain: Hash
   build_configuration: Hash
-  materialized_artifact: ArtifactIdentity
+  materialized_artifact: GeneratedArtifactIdentity
 }
 
 // Three generations, three distinct TYPES. A candidate cannot be constructed without
@@ -238,7 +238,7 @@ fn source_closure_axis_digest(roster: SourceClosureRoster) -> SourceClosureAxisO
 // observe either artifact" as "the artifacts agree" — the empty-observation narrow
 // DESIGN names beside the absorbing fallback. Admission refuses an unmaterialized
 // axis separately and by name.
-fn artifact_identity_agrees(left: ArtifactIdentity, right: ArtifactIdentity) -> Bool {
+fn artifact_identity_agrees(left: GeneratedArtifactIdentity, right: GeneratedArtifactIdentity) -> Bool {
   match left {
     ArtifactMaterialized { digest: l } =>
       match right {

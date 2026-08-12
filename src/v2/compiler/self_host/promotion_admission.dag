@@ -10,7 +10,7 @@ import v2.compiler.self_host.generation {
   generation_axis_symbol,
   generation_identity_mismatched_axes
 }
-import v2.std.algebra { fold_list, for_all, freemonoid_empty, length, list_snoc_item }
+import v2.std.algebra { fold_list, freemonoid_empty, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
@@ -55,6 +55,24 @@ type BuildOutcome
   = BuildGreen
   | BuildFailed { cause: Symbol }
 
+// A corpus is a NAME plus the population that name stands for. Carrying the name
+// alone made the label decorative in exactly the way an unjoined field always is: two
+// receipts could agree that they ran "the logic truth table" while one compared ten
+// cases and the other compared one, and admission read the matching labels as matching
+// runs. A truncated successor run is the shape that mattered — it is what a partially
+// emitted compiler produces — and it promoted.
+//
+// expected_cases is declared by the corpus rather than reported by a run, so a receipt
+// cannot lower the bar it is measured against. The population is then joined twice: the
+// three receipts must name the same corpus AND the same size (a same-named corpus that
+// disagrees about its own population is two corpora), and each run's cases_compared must
+// equal that size. Neither join alone is sufficient — agreeing sizes with differing runs
+// is the truncation, and agreeing runs against differing sizes is the moved goalpost.
+type BehavioralCorpus {
+  identity: String
+  expected_cases: Int
+}
+
 // Every receipt names the generation it is ABOUT. Admission joins on that subject,
 // so a receipt carried over from an earlier compiler, source closure, target model,
 // toolchain, build configuration or artifact refuses as stale and names the axis
@@ -63,7 +81,7 @@ type BuildOutcome
 type BehavioralEquivalenceReceipt {
   subject: GenerationIdentity
   oracle: GenerationIdentity
-  corpus: String
+  corpus: BehavioralCorpus
   cases_compared: Int
   outcome: ObservedVerdict<EquivalenceOutcome>
 }
@@ -74,7 +92,7 @@ type BehavioralEquivalenceReceipt {
 // behavior is wrong.
 type DiscriminatingFaultReceipt {
   subject: GenerationIdentity
-  corpus: String
+  corpus: BehavioralCorpus
   planted_fault: String
   outcome: ObservedVerdict<FaultOutcome>
 }
@@ -105,6 +123,62 @@ type SelfHostCandidate {
   successor_provenance: GenerationProvenanceReceipt
 }
 
+// WHAT A COMPARISON RUN LEARNS, separated from what it does not.
+//
+// A transport executes emit → compile → run → compare against the seed oracle and
+// learns exactly three things: whether the driver built, whether behavior agreed, and
+// whether a planted fault was caught. It does NOT learn the six generation axes — those
+// are derived from the build's own inputs and artifacts, elsewhere. Fusing them would
+// put the transport in the position of asserting the identity of the thing it measured,
+// which is the self-authorization hole one layer down: a run that names its own subject
+// can name a subject that agrees with whatever it found.
+//
+// So the observation carries outcomes and a corpus, and the identities arrive from the
+// caller at assembly time. That seam is the point: the same three projections below turn
+// one observation into receipts about ANY declared generation, so a transport is a
+// realization handler rather than a fact about which generation was under test.
+type BehavioralComparisonObservation {
+  corpus: BehavioralCorpus
+  cases_compared: Int
+  build: ObservedVerdict<BuildOutcome>
+  equivalence: ObservedVerdict<EquivalenceOutcome>
+  fault: ObservedVerdict<FaultOutcome>
+}
+
+fn build_receipt_from_observation(
+  o: BehavioralComparisonObservation,
+  subject: GenerationIdentity
+) -> BuildReceipt {
+  BuildReceipt { subject: subject, outcome: o.build }
+}
+
+fn equivalence_receipt_from_observation(
+  o: BehavioralComparisonObservation,
+  subject: GenerationIdentity,
+  oracle: GenerationIdentity
+) -> BehavioralEquivalenceReceipt {
+  BehavioralEquivalenceReceipt {
+    subject: subject,
+    oracle: oracle,
+    corpus: o.corpus,
+    cases_compared: o.cases_compared,
+    outcome: o.equivalence
+  }
+}
+
+fn fault_receipt_from_observation(
+  o: BehavioralComparisonObservation,
+  subject: GenerationIdentity,
+  planted_fault: String
+) -> DiscriminatingFaultReceipt {
+  DiscriminatingFaultReceipt {
+    subject: subject,
+    corpus: o.corpus,
+    planted_fault: planted_fault,
+    outcome: o.fault
+  }
+}
+
 type PromotionRefusalCause
   = StaleReceiptSubject { receipt: Symbol, axis: Symbol }
   | ReceiptObservationUnavailable { receipt: Symbol, cause: Symbol }
@@ -117,6 +191,7 @@ type PromotionRefusalCause
   | OracleNotDeclaredSeed { receipt: Symbol }
   | SuccessorNotProducedByCandidate
   | CorpusMismatchAcrossReceipts { receipt: Symbol }
+  | CorpusPopulationMismatch { receipt: Symbol, expected: Int, compared: Int }
 
 type PromotionOutcome
   = Promoted { successor: SuccessorGeneration, cases_compared: Int }
@@ -163,9 +238,16 @@ fn build_receipt_causes(
   }
 }
 
-// A corpus of zero cases is agreement over nothing, so cases_compared is checked
-// here: admitting it would be the vacuous-green failure, since every claim
-// quantified over an empty population is true.
+// A corpus of zero cases is agreement over nothing, so the DECLARED population is
+// checked here: admitting it would be the vacuous-green failure, since every claim
+// quantified over an empty population is true. The check reads the corpus rather than
+// the run, because a run reporting zero against a corpus declaring ten is a
+// truncation the population join names precisely, not an empty corpus.
+//
+// The population join is what makes cases_compared load-bearing rather than a number
+// beside a label. Comparing fewer cases than the corpus declares is the truncated run;
+// comparing more is a run that did not execute the corpus it names. Both refuse, and
+// both carry the two numbers so the refusal says which.
 //
 // The oracle is joined against the DECLARED seed, not taken on the receipt's word.
 // Without this the receipt's oracle field is decorative: a bundle could name the
@@ -191,10 +273,22 @@ fn equivalence_receipt_causes(
   } else {
     list_snoc_item(xs: subject_stale, item: OracleNotDeclaredSeed { receipt: receipt })
   }
-  let sized = if r.cases_compared <= 0 {
+  let declared = if r.corpus.expected_cases <= 0 {
     list_snoc_item(xs: stale, item: EmptyBehavioralCorpus { receipt: receipt })
   } else {
     stale
+  }
+  let sized = if r.cases_compared == r.corpus.expected_cases {
+    declared
+  } else {
+    list_snoc_item(
+      xs: declared,
+      item: CorpusPopulationMismatch {
+        receipt: receipt,
+        expected: r.corpus.expected_cases,
+        compared: r.cases_compared
+      }
+    )
   }
   match r.outcome {
     ObservationUnavailable { cause: c } =>
@@ -282,6 +376,14 @@ fn artifact_causes(
   }
 }
 
+// Both fields, deliberately. Joining the name alone would let three receipts agree they
+// ran "the logic truth table" while disagreeing about how many cases that is, and the
+// per-receipt population join would then hold against three different bars — each run
+// self-consistent, the bundle incoherent.
+fn behavioral_corpus_agrees(left: BehavioralCorpus, right: BehavioralCorpus) -> Bool {
+  left.identity == right.identity && left.expected_cases == right.expected_cases
+}
+
 fn concat_causes(
   parts: List<List<PromotionRefusalCause>>
 ) -> List<PromotionRefusalCause> {
@@ -333,8 +435,13 @@ fn promotion_refusal_causes(c: SelfHostCandidate) -> List<PromotionRefusalCause>
   // measured over one corpus while the planted fault was proven discriminating over a
   // different one — so the fault receipt would vouch for teeth the equivalence run
   // never had.
-  let corpus_causes = if c.candidate_equivalence.corpus == c.discriminating_fault.corpus
-    && c.successor_equivalence.corpus == c.discriminating_fault.corpus {
+  let corpus_causes = if behavioral_corpus_agrees(
+    left: c.candidate_equivalence.corpus,
+    right: c.discriminating_fault.corpus
+  ) && behavioral_corpus_agrees(
+    left: c.successor_equivalence.corpus,
+    right: c.discriminating_fault.corpus
+  ) {
     freemonoid_empty()
   } else {
     [CorpusMismatchAcrossReceipts { receipt: ^receipt_discriminating_fault }]
@@ -403,15 +510,10 @@ fn promotion_refusal_carries(o: PromotionOutcome, cause: Symbol) -> Bool {
   match o {
     Promoted { successor: _, cases_compared: _ } => false
     PromotionRefused { causes: cs } =>
-      for_all(
-        xs: [cause],
-        predicate: fn(wanted) {
-          fold_list(
-            xs: cs,
-            empty: false,
-            cons: fn(acc, c) { acc || promotion_refusal_cause_symbol(c: c) == wanted }
-          )
-        }
+      fold_list(
+        xs: cs,
+        empty: false,
+        cons: fn(acc, c) { acc || promotion_refusal_cause_symbol(c: c) == cause }
       )
   }
 }
@@ -433,5 +535,7 @@ fn promotion_refusal_cause_symbol(c: PromotionRefusalCause) -> Symbol {
     OracleNotDeclaredSeed { receipt: _ } => ^refusal_oracle_not_declared_seed
     SuccessorNotProducedByCandidate => ^refusal_successor_not_produced_by_candidate
     CorpusMismatchAcrossReceipts { receipt: _ } => ^refusal_corpus_mismatch_across_receipts
+    CorpusPopulationMismatch { receipt: _, expected: _, compared: _ } =>
+      ^refusal_corpus_population_mismatch
   }
 }
