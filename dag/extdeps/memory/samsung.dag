@@ -34,8 +34,11 @@ data stick_capacity_bytes: ByteSize = byte_size(34359738368)
 // per-part paths under semiconductor.samsung.com now serve a generic DDR overview rather than
 // a datasheet (checked 2026-08-12). So the exact figures below are LABEL facts supplied with
 // the operator's procurement brief — 32GB, DDR4-2133, LRDIMM, 4Rx4 — and not a reading of a
-// vendor datasheet. The module anchor cites the DDR4 and Registered-memory definitions, which
-// is what a generic source can honestly support: what DDR4, ECC and load reduction MEAN.
+// vendor datasheet. The module anchor cites DDR4 only. Load reduction is NOT cited here: it is
+// grounded where DimmBuffering is declared, in extdeps.memory.types, which is the single place
+// the Registered-memory citation belongs and the reason the duplicate anchor once carried in
+// this module was deleted. A generic source can honestly support what DDR4 and load reduction
+// MEAN; neither source says anything about this part.
 // Dissolve-on: a Samsung product-selection guide or module datasheet carrying this part row,
 // at which point these become cited facts and the label stops being the authority.
 //
