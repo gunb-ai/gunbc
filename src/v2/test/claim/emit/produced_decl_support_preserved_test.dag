@@ -1,0 +1,129 @@
+module v2.test.emit.produced_decl_support_preserved
+
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.std.compilers.target_model {
+  FixedToken,
+  OwnershipAtFunctionReturn,
+  ProducedDeclSupport,
+  ProducedDeclUnwired,
+  ProducedDeclWired,
+  ReferenceLayerOwned,
+  TargetBodiedArrowStatementScaffold,
+  TargetModel,
+  TargetUseSiteOwnershipRealization,
+  UseSiteOwnershipExactCarrier,
+  target_model_augment_use_site_ownership_catalog,
+  target_model_augment_value_semantics_carriers,
+  target_model_type_atom_node
+}
+import v2.std.collection { List, list_at_optional, Absent, Present }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data produced_decl_support_preserved_note: String = "Regression control for a defect the mechanical field addition introduced and the green corpus could not show: augmenters reconstruct a TargetModel field-by-field, and the inserted produced_decl_support was reset to ProducedDeclUnwired rather than copied from the source. With every target unwired the reset is a no-op, so nothing reds; the moment a target is WIRED an ordinary augmentation silently erases its rendering capability. Preservation is proven by EXECUTING the renderer after augmentation, because equality over function values is not available - a comparison could not have caught this. Both augmenters are driven with NONEMPTY input deliberately: each returns its argument unchanged on empty input, so an empty-input control would pass without ever reaching the reconstruction that carries the defect."
+
+fn pdp_marker_token_class() -> Symbol {
+  ^pdp_renderer_executed_marker
+}
+
+fn pdp_render(decl: Node) -> Outcome<TargetBodiedArrowStatementScaffold> {
+  outcome_accepted(
+    TargetBodiedArrowStatementScaffold {
+      prefix: [FixedToken { token_class: pdp_marker_token_class() }],
+      suffix: []
+    }
+  )
+}
+
+fn pdp_wired_support() -> ProducedDeclSupport {
+  ProducedDeclWired {
+    render: pdp_render,
+    scaffold_relation_rule_name: ^pdp_relation_rule,
+    scaffold_base_row: target_model_type_atom_node(identity: ^pdp_base_row)
+  }
+}
+
+fn pdp_target_with(support: ProducedDeclSupport) -> TargetModel {
+  TargetModel {
+    produced_decl_support: support,
+    bundle: rust_target_model().bundle,
+    lex: rust_target_model().lex,
+    binding_spellings: rust_target_model().binding_spellings,
+    token_class_emit_transforms: rust_target_model().token_class_emit_transforms,
+    authority_source_text: rust_target_model().authority_source_text,
+    runtime_row: rust_target_model().runtime_row
+  }
+}
+
+// Preservation is proven by EXECUTION: the surviving renderer is called and its
+// output inspected. A field comparison is unavailable over function values.
+fn pdp_renderer_executes(target: TargetModel) -> Bool {
+  match target.produced_decl_support {
+    ProducedDeclUnwired => false
+    ProducedDeclWired {
+      render: render,
+      scaffold_relation_rule_name: _,
+      scaffold_base_row: _
+    } =>
+      match render(target_model_type_atom_node(identity: ^pdp_decl)) {
+        Accepted { value: scaffold, diagnostics: _ } =>
+          match list_at_optional(xs: scaffold.prefix, index: 0) {
+            Present { value: token } =>
+              match token {
+                FixedToken { token_class: tc } => tc == pdp_marker_token_class()
+                _ => false
+              }
+            Absent => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn pdp_after_value_semantics(support: ProducedDeclSupport) -> Bool {
+  match target_model_augment_value_semantics_carriers(
+    target: pdp_target_with(support: support),
+    extra_atoms: [^pdp_extra_atom]
+  ) {
+    Accepted { value: augmented, diagnostics: _ } =>
+      pdp_renderer_executes(target: augmented)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn pdp_ownership_row() -> TargetUseSiteOwnershipRealization {
+  TargetUseSiteOwnershipRealization {
+    source_carrier: target_model_type_atom_node(identity: ^pdp_carrier),
+    source_projection: UseSiteOwnershipExactCarrier,
+    use_site: OwnershipAtFunctionReturn,
+    reference_layer: ReferenceLayerOwned,
+    display_name: ^pdp_display
+  }
+}
+
+fn pdp_after_use_site_ownership(support: ProducedDeclSupport) -> Bool {
+  match target_model_augment_use_site_ownership_catalog(
+    target: pdp_target_with(support: support),
+    derived_rows: [pdp_ownership_row()]
+  ) {
+    Accepted { value: augmented, diagnostics: _ } =>
+      pdp_renderer_executes(target: augmented)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// Positive control: the renderer survives BOTH augmenters and still executes.
+// Negative control: an unwired target stays unwired through the same call, so the
+// positive arm cannot be satisfied by a constant.
+test fn produced_decl_support_survives_augmentation() -> Bool {
+  pdp_renderer_executes(target: pdp_target_with(support: pdp_wired_support()))
+    && pdp_after_value_semantics(support: pdp_wired_support())
+    && pdp_after_use_site_ownership(support: pdp_wired_support())
+    && !pdp_after_value_semantics(support: ProducedDeclUnwired)
+    && !pdp_after_use_site_ownership(support: ProducedDeclUnwired)
+}

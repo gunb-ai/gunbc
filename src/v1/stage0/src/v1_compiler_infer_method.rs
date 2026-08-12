@@ -484,16 +484,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             "inert_carrier_declared_count".to_string(),
             int_type(),
         );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "inert_lens_unreached_module_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "inert_lens_top_level_module_count".to_string(),
-            int_type(),
-        );
         let m = v1_rt::rc_map_insert(m.clone(), "non_fold_residue_count".to_string(), int_type());
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -614,6 +604,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             m.clone(),
             "reference_resolution_facts".to_string(),
             list_of_type_variable("import_resolution_fact_elem".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "dependency_resolution_facts".to_string(),
+            list_of_type_variable("module_dependency_edge_elem".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),

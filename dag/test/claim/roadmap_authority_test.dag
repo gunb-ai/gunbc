@@ -789,7 +789,7 @@ test fn witness_every_binding_carries_a_validation() -> Bool {
   )
 }
 
-test fn witness_v1_test_migration_contract_names_behavior_frontier() -> Bool {
+test fn witness_v1_test_migration_contract_names_retention_wall() -> Bool {
   match bound_execution_contract_for(id: "v1-test-migration") {
     ExecutionContractUnspecified => false
     ExecutionContract { validations, extra_capabilities } =>
@@ -797,8 +797,8 @@ test fn witness_v1_test_migration_contract_names_behavior_frontier() -> Bool {
         && count(extra_capabilities) == 0
         && validations |> any(validation => match validation {
           GunbcClaimValidation { entry, function } =>
-            (entry as String) == "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag"
-              && function == "legacy_test_behavior_unclassified_frontier_is_zero"
+            (entry as String) == "src/v2/test/claim/manual/test_migration_debt_test.dag"
+              && function == "retained_rust_kernel_wall_holds_against_live_tree"
           CargoTestValidation { filter: _ } => false
           CargoFmtValidation => false
         })

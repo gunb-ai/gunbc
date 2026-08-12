@@ -5,6 +5,7 @@ import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.node { Symbol }
 import v2.std.compilers.target_model {
+  ProducedDeclUnwired,
   ConcreteSyntaxToken,
   TargetModel,
   TargetValueExpression,
@@ -36,6 +37,7 @@ fn field_access_binding_spellings() -> Map<Symbol, String> {
 
 fn field_access_target_model() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: ts_target_model_node(),
     lex: ts_fn_add_lex(),
     binding_spellings: field_access_binding_spellings(),
