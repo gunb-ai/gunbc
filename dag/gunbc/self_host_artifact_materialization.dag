@@ -1,0 +1,225 @@
+module gunbc.self_host_artifact_materialization
+
+import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
+import extdeps.cargo_build
+import std.content_hash { Sha512Digest }
+import extdeps.cargo_message {
+  CargoArtifactSelection,
+  CargoArtifactSelected,
+  CargoArtifactAbsent,
+  CargoArtifactAmbiguous,
+  CargoArtifactWithoutExecutable,
+  CargoArtifactExecutablePathEmpty,
+  CargoArtifactExecutableNotAString,
+  CargoMessageExecutableAbsent,
+  CargoMessageLineUnparseable,
+  CargoMessageLineNotAnObject,
+  CargoMessageReasonAbsent,
+  CargoMessageReasonNotAString,
+  CargoMessageMemberDuplicated,
+  CargoMessageTargetNotAnObject,
+  CargoMessageTargetNameAbsent,
+  CargoMessageTargetNameNotAString,
+  cargo_select_artifact_executable
+}
+import extdeps.tools.sha512sum {
+  Sha512FileObservation,
+  Sha512FileObserved,
+  Sha512FileObservationRefused,
+  sha512sum_observe_file
+}
+import v2.compiler.self_host.generation {
+  ArtifactIdentity,
+  ArtifactMaterialized,
+  ArtifactNotMaterialized,
+  observed_artifact_digest
+}
+
+data artifact_materialization_subject_note: String = "SH-C: turning a cargo build into the artifact axis of a compiler generation, with no step that predicts a path instead of observing one. The chain is build -> the path cargo NAMED -> a digest of THAT path -> ArtifactIdentity. The load-bearing property is that the digest and every later execution consume ONE path value, produced by extdeps.cargo_message from cargo's own --message-format=json output. A convention-derived path breaks that at both ends simultaneously: it digests one file while executing another, with each operation individually honest and the composition silently wrong, and it also makes the artifact axis a FUNCTION of the build-configuration axis, collapsing two of the six independent axes v2.compiler.self_host.generation keeps apart."
+
+data artifact_materialization_decomposition_note: String = "The decision logic is deliberately split into two PURE folds with a thin wet composition between them, rather than one wet function. select_artifact_path decides what the build reported; materialization_from_digest decides what the digest observation means. Both are total folds over typed inputs, so both are witnessed hermetically on every PR, and the only part that needs a wet cadence is the three service calls that produce their inputs. The alternative — one wet function carrying the decisions — would put every refusal arm behind a cadence that does not run per PR, which is how a decision nobody executes reads as a decision that holds."
+
+data artifact_materialization_unbuilt_note: String = "There is NO arm here that yields ArtifactMaterialized without a digest observation in hand. That is the whole point of the carrier: v2.compiler.self_host.generation makes ObservedArtifactDigest a sole_constructor over a validated Sha512Digest precisely so an artifact identity cannot be authored, and this module is the first producer that has to respect it. Every failure — build nonzero, no artifact message, ambiguous target, unreadable stream, digest refused — lands on its own arm and projects ArtifactNotMaterialized, which promotion admission already refuses BY NAME rather than treating as equivalent."
+
+type ArtifactPathOutcome
+  = ArtifactPathReported { executable: FilePath }
+  | ArtifactPathBuildFailed { target_name: String }
+  | ArtifactPathRefused { selection: CargoArtifactSelection }
+
+type ArtifactMaterializationOutcome
+  = ArtifactMaterializationObserved {
+      executable: FilePath
+      digest: Sha512Digest
+    }
+  | ArtifactMaterializationBuildFailed { target_name: String }
+  | ArtifactMaterializationPathRefused { selection: CargoArtifactSelection }
+  | ArtifactMaterializationDigestRefused {
+      executable: FilePath
+      cause: NonEmptyStr
+    }
+
+// A build that exited nonzero is its own arm and never reaches the stream decode.
+// The distinction matters downstream: "the candidate did not build" and "the candidate
+// built but we cannot say what it produced" have different remedies, and the brief this
+// lane answers requires build failure to stay separate from every other refusal so a
+// later behavioural comparison cannot read one as the other.
+fn select_artifact_path(
+  build_success: Bool,
+  build_stdout: String,
+  target_name: String
+) -> ArtifactPathOutcome {
+  if !build_success {
+    ArtifactPathBuildFailed { target_name: target_name }
+  } else {
+    match cargo_select_artifact_executable(
+      stdout: build_stdout,
+      target_name: target_name
+    ) {
+      CargoArtifactSelected { executable: exe } =>
+        ArtifactPathReported { executable: exe }
+      CargoArtifactAbsent { target_name: t } =>
+        ArtifactPathRefused { selection: CargoArtifactAbsent { target_name: t } }
+      CargoArtifactAmbiguous { target_name: t, count: c } =>
+        ArtifactPathRefused {
+          selection: CargoArtifactAmbiguous { target_name: t, count: c }
+        }
+      CargoArtifactWithoutExecutable { target_name: t } =>
+        ArtifactPathRefused {
+          selection: CargoArtifactWithoutExecutable { target_name: t }
+        }
+      CargoArtifactExecutablePathEmpty { target_name: t, line_number: n } =>
+        ArtifactPathRefused {
+          selection: CargoArtifactExecutablePathEmpty { target_name: t, line_number: n }
+        }
+      CargoArtifactExecutableNotAString { target_name: t, line_number: n } =>
+        ArtifactPathRefused {
+          selection: CargoArtifactExecutableNotAString { target_name: t, line_number: n }
+        }
+      CargoMessageExecutableAbsent { line_number: n } =>
+        ArtifactPathRefused {
+          selection: CargoMessageExecutableAbsent { line_number: n }
+        }
+      CargoMessageLineUnparseable { line_number: n } =>
+        ArtifactPathRefused { selection: CargoMessageLineUnparseable { line_number: n } }
+      CargoMessageLineNotAnObject { line_number: n } =>
+        ArtifactPathRefused { selection: CargoMessageLineNotAnObject { line_number: n } }
+      CargoMessageReasonAbsent { line_number: n } =>
+        ArtifactPathRefused { selection: CargoMessageReasonAbsent { line_number: n } }
+      CargoMessageReasonNotAString { line_number: n } =>
+        ArtifactPathRefused { selection: CargoMessageReasonNotAString { line_number: n } }
+      CargoMessageMemberDuplicated { line_number: n, key: k } =>
+        ArtifactPathRefused {
+          selection: CargoMessageMemberDuplicated { line_number: n, key: k }
+        }
+      CargoMessageTargetNotAnObject { line_number: n } =>
+        ArtifactPathRefused { selection: CargoMessageTargetNotAnObject { line_number: n } }
+      CargoMessageTargetNameAbsent { line_number: n } =>
+        ArtifactPathRefused { selection: CargoMessageTargetNameAbsent { line_number: n } }
+      CargoMessageTargetNameNotAString { line_number: n } =>
+        ArtifactPathRefused {
+          selection: CargoMessageTargetNameNotAString { line_number: n }
+        }
+    }
+  }
+}
+
+// Takes the path the previous fold reported ALONGSIDE the observation made of that same
+// path. The two parameters are not independent inputs a caller may mix: the wet
+// composition below obtains the observation by digesting exactly this executable, and
+// the executable is carried into the result so a consumer can prove the digest and any
+// later invocation refer to one file.
+fn materialization_from_digest(
+  executable: FilePath,
+  observation: Sha512FileObservation
+) -> ArtifactMaterializationOutcome {
+  match observation {
+    Sha512FileObserved { digest: d } =>
+      ArtifactMaterializationObserved { executable: executable, digest: d }
+    Sha512FileObservationRefused { cause: c } =>
+      ArtifactMaterializationDigestRefused { executable: executable, cause: c }
+  }
+}
+
+fn materialization_outcome_from_path(
+  path: ArtifactPathOutcome,
+  observation: Sha512FileObservation
+) -> ArtifactMaterializationOutcome {
+  match path {
+    ArtifactPathBuildFailed { target_name: t } =>
+      ArtifactMaterializationBuildFailed { target_name: t }
+    ArtifactPathRefused { selection: s } =>
+      ArtifactMaterializationPathRefused { selection: s }
+    ArtifactPathReported { executable: exe } =>
+      materialization_from_digest(executable: exe, observation: observation)
+  }
+}
+
+// The wet composition, and the ONLY function here that reaches the host. It is thin on
+// purpose: it makes three service calls and carries no decision the two pure folds above
+// do not already make, so the per-PR hermetic corpus keeps every arm under execution and
+// the wet cadence only has to prove that the real cargo and the real sha512sum reach them.
+//
+// THE DIGEST IS TAKEN ONLY FOR A PATH CARGO REPORTED, and the match below is what makes
+// that structural rather than a discipline: the non-reported arms have no executable to
+// hand sha512sum, so they produce a refusal that says exactly that. Those arms discard it
+// — materialization_outcome_from_path answers from the path alone — but the cause is true
+// as written, so if a later edit ever did consult it the result stays fail-closed instead
+// of naming a file nothing observed.
+fn materialize_artifact_wet(
+  workdir: FilePath,
+  manifest_path: FilePath,
+  target_dir: FilePath,
+  target_name: String,
+  extra_args: List<String>
+) -> ArtifactMaterializationOutcome {
+  let build = cargo.Build.BuildManifestMessages(
+    workdir: workdir,
+    manifest_path: manifest_path,
+    target_dir: target_dir,
+    extra_args: extra_args
+  )
+  let path = select_artifact_path(
+    build_success: build.success,
+    build_stdout: build.stdout,
+    target_name: target_name
+  )
+  let observation = match path {
+    ArtifactPathReported { executable: exe } => sha512sum_observe_file(path: exe)
+    ArtifactPathBuildFailed { target_name: _ } =>
+      Sha512FileObservationRefused {
+        cause: "no artifact path was reported, so no file was digested" as NonEmptyStr
+      }
+    ArtifactPathRefused { selection: _ } =>
+      Sha512FileObservationRefused {
+        cause: "no artifact path was reported, so no file was digested" as NonEmptyStr
+      }
+  }
+  materialization_outcome_from_path(path: path, observation: observation)
+}
+
+// The projection into the generation carrier. ArtifactMaterialized is reachable from
+// exactly one arm, and only through observed_artifact_digest, whose argument is a
+// Sha512Digest that existed only because sha512sum reported it for this path.
+fn artifact_identity_of(outcome: ArtifactMaterializationOutcome) -> ArtifactIdentity {
+  match outcome {
+    ArtifactMaterializationObserved { executable: _, digest: d } =>
+      ArtifactMaterialized { digest: observed_artifact_digest(observed: d) }
+    ArtifactMaterializationBuildFailed { target_name: _ } => ArtifactNotMaterialized
+    ArtifactMaterializationPathRefused { selection: _ } => ArtifactNotMaterialized
+    ArtifactMaterializationDigestRefused { executable: _, cause: _ } =>
+      ArtifactNotMaterialized
+  }
+}
+
+// The executable a consumer may invoke, available ONLY when the artifact was observed.
+// A consumer that wants to run the candidate takes the path from here, so the file it
+// executes is the file that was digested, by construction rather than by discipline.
+fn materialized_executable(outcome: ArtifactMaterializationOutcome) -> FilePath? {
+  match outcome {
+    ArtifactMaterializationObserved { executable: exe, digest: _ } =>
+      Present { value: exe }
+    ArtifactMaterializationBuildFailed { target_name: _ } => none
+    ArtifactMaterializationPathRefused { selection: _ } => none
+    ArtifactMaterializationDigestRefused { executable: _, cause: _ } => none
+  }
+}
