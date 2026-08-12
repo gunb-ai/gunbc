@@ -1,0 +1,77 @@
+module test.claim.firmware_prerequisite_evidence_witness_test
+
+import std.types { Bool }
+import extdeps.firmware.types {
+  FirmwarePrerequisiteObservation,
+  FirmwareSemanticVersion,
+  PrerequisiteConsistentUpperBound,
+  PrerequisiteContradictedByAcceptanceBelowMinimum,
+  PrerequisiteContradictedByRefusalAtOrAboveMinimum,
+  PrerequisiteEvidenceAbsent,
+  firmware_semantic_version,
+  prerequisite_evidence_verdict,
+}
+import extdeps.boards.asrock_rack {
+  asrock_altrad8ud_bios_openbmc_prerequisite_evidence,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The declared minimum on the BIOS 3.10 OpenBMC-tar release row. Named here so
+// the witness compares the SAME number the catalog declares.
+data declared_minimum: FirmwareSemanticVersion = firmware_semantic_version(major: 3, minor: 22, patch: 0)
+
+// The executed pair supports the declared minimum, and the positive arm says
+// what it actually establishes: an UPPER BOUND. 3.06.00 exists in the
+// capability catalog and was never pushed, so the true threshold may be lower.
+test fn executed_pair_supports_the_declared_minimum_as_an_upper_bound() -> Bool {
+  match prerequisite_evidence_verdict(
+    minimum: declared_minimum,
+    observations: asrock_altrad8ud_bios_openbmc_prerequisite_evidence,
+  ) {
+    PrerequisiteConsistentUpperBound { highest_refusal: r, accepted_at: a } =>
+      r.major == 2 && r.minor == 7 && a.major == 3 && a.minor == 22
+    PrerequisiteContradictedByAcceptanceBelowMinimum { accepted_at: _ } => false
+    PrerequisiteContradictedByRefusalAtOrAboveMinimum { refused_at: _ } => false
+    PrerequisiteEvidenceAbsent => false
+  }
+}
+
+// RED control. Declaring a minimum ABOVE the version that demonstrably
+// accepted the bytes is contradicted by the acceptance, not merely unsupported
+// — this is the arm that catches a minimum inflated past its evidence.
+test fn a_minimum_above_the_accepting_version_is_contradicted() -> Bool {
+  match prerequisite_evidence_verdict(
+    minimum: firmware_semantic_version(major: 4, minor: 0, patch: 0),
+    observations: asrock_altrad8ud_bios_openbmc_prerequisite_evidence,
+  ) {
+    PrerequisiteContradictedByAcceptanceBelowMinimum { accepted_at: a } =>
+      a.major == 3 && a.minor == 22
+    _ => false
+  }
+}
+
+// RED control, the other direction. Declaring a minimum at or below the
+// version that was REFUSED is contradicted by the refusal — this catches a
+// minimum relaxed below its evidence, which is the direction that would let an
+// unappliable push be admitted.
+test fn a_minimum_at_or_below_the_refusing_version_is_contradicted() -> Bool {
+  match prerequisite_evidence_verdict(
+    minimum: firmware_semantic_version(major: 2, minor: 0, patch: 0),
+    observations: asrock_altrad8ud_bios_openbmc_prerequisite_evidence,
+  ) {
+    PrerequisiteContradictedByRefusalAtOrAboveMinimum { refused_at: r } =>
+      r.major == 2 && r.minor == 7
+    _ => false
+  }
+}
+
+// With no observations the verdict is ABSENT, never consistent. An unevidenced
+// minimum must not read the same as an evidenced one.
+test fn no_observations_yields_absent_not_consistent() -> Bool {
+  match prerequisite_evidence_verdict(minimum: declared_minimum, observations: []) {
+    PrerequisiteEvidenceAbsent => true
+    _ => false
+  }
+}
