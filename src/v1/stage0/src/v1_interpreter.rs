@@ -12255,23 +12255,11 @@ macro_rules! v1_builtin_arms {
                 crate::cli_run::witness_compile_clean_cli_floor_verdicts_agree(),
             ))),
 
-            arm "free_call.test_migration_debt_module_count" { "test_migration_debt_module_count" } => Ok(Some(Value::Int(
-                crate::cli_run::test_migration_debt_module_count(),
-            ))),
-            arm "free_call.test_migration_debt_total_loc" { "test_migration_debt_total_loc" } => Ok(Some(Value::Int(
-                crate::cli_run::test_migration_debt_total_loc(),
-            ))),
-            arm "free_call.test_migration_debt_total_test_fns" { "test_migration_debt_total_test_fns" } => Ok(Some(Value::Int(
-                crate::cli_run::test_migration_debt_total_test_fns(),
-            ))),
             arm "free_call.test_migration_debt_module_names" { "test_migration_debt_module_names" } => {
                 let names = crate::cli_run::test_migration_debt_module_names();
                 let items: Vec<Value> = names.into_iter().map(Value::Str).collect();
                 Ok(Some(list_value(items)))
             },
-            arm "free_call.test_migration_debt_known_covered_module_is_not_debt" { "test_migration_debt_known_covered_module_is_not_debt" } => Ok(Some(Value::Bool(
-                crate::cli_run::test_migration_debt_known_covered_module_is_not_debt(),
-            ))),
             arm "free_call.test_migration_legacy_behavior_ids" { "test_migration_legacy_behavior_ids" } => {
                 let ids = crate::cli_run::test_migration_legacy_behavior_ids();
                 let items: Vec<Value> = ids.into_iter().map(Value::Str).collect();
@@ -12285,15 +12273,6 @@ macro_rules! v1_builtin_arms {
             arm "free_call.test_migration_behavior_discovery_holds" { "test_migration_behavior_discovery_holds" } => Ok(Some(Value::Bool(
                 crate::cli_run::test_migration_behavior_discovery_holds(),
             ))),
-            arm "free_call.test_migration_delete_guard_holds" { "test_migration_delete_guard_holds" } => Ok(Some(Value::Bool(
-                crate::cli_run::test_migration_delete_guard_holds(),
-            ))),
-            arm "free_call.test_migration_delete_guard_uncovered_deletes" { "test_migration_delete_guard_uncovered_deletes" } => {
-                let paths = crate::cli_run::test_migration_delete_guard_uncovered_deletes();
-                let items: Vec<Value> = paths.into_iter().map(Value::Str).collect();
-                Ok(Some(list_value(items)))
-            },
-
             arm "free_call.inert_carrier_names_live" { "inert_carrier_names_live" } => {
                 let names = crate::cli_run::inert_carrier_names_live();
                 let items: Vec<Value> = names.into_iter().map(Value::Str).collect();
