@@ -12,10 +12,10 @@ import v2.std.node {
   SyntheticOccurrence,
   TypeNode,
 }
-import v2.std.collection { Map, empty_map, map_insert }
+import v2.std.collection { List, Map, empty_map, map_insert }
 import v2.std.grammar {
   StampClass,
-  StampBinding, FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_nonterminal_occurrence, grammar_formal_production, grammar_formal_terminal, grammar_formal_terminal_bound }
+  StampBinding, FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_nonterminal_occurrence, grammar_formal_production, grammar_formal_terminal, grammar_formal_terminal_bound, formal_production_for_lhs_exact, derive_grammar_relation_row_node }
 import v2.std.compilers.lexing {
   CharClassPattern,
   IdentContinueChar,
@@ -928,6 +928,124 @@ fn verilog_emit_layout_transforms() -> Map<Symbol, fn(String) -> String> {
     ),
     ^verilog_token_kw_endmodule,
     fn(s) { concat(s, "\n") }
+  )
+}
+
+// THE INTERLOCK EXEMPLAR. The binding symbol in a derived row comes from the EMITTED atom
+// (FormalBindingConjSlotEmittedAtom reads node_atom_identity_optional on the slot), not from the
+// production's binding symbol — the production only says WHICH slot is bound. That is what lets
+// four ports share one production and still carry four different names, and it is why one signal
+// atom can serve as a port name, an assignment target and an expression reference at once: those
+// are the same identity spelled the same way, so forking them would be three names for one thing.
+fn verilog_interlock_ports() -> Node {
+  verilog_port_list_cons(
+    port: verilog_ansi_port(direction: ^verilog_interlock_dir_input, name: ^verilog_interlock_conditioned_good),
+    rest: verilog_port_list_cons(
+      port: verilog_ansi_port(direction: ^verilog_interlock_dir_input, name: ^verilog_interlock_fault),
+      rest: verilog_port_list_cons(
+        port: verilog_ansi_port(direction: ^verilog_interlock_dir_output, name: ^verilog_interlock_power_permit),
+        rest: verilog_port_list_one(
+          port: verilog_ansi_port(direction: ^verilog_interlock_dir_output, name: ^verilog_interlock_reset_release)
+        )
+      )
+    )
+  )
+}
+
+fn verilog_interlock_assignments() -> Node {
+  verilog_assign_list_cons(
+    assignment: verilog_continuous_assign(
+      lhs: ^verilog_interlock_power_permit,
+      value: verilog_binary_application(
+        left: verilog_signal_reference(name: ^verilog_interlock_conditioned_good),
+        operator: ^verilog_interlock_op_and,
+        right: verilog_unary_application(
+          operator: ^verilog_interlock_op_not,
+          operand: verilog_signal_reference(name: ^verilog_interlock_fault)
+        )
+      )
+    ),
+    rest: verilog_assign_list_one(
+      assignment: verilog_continuous_assign(
+        lhs: ^verilog_interlock_reset_release,
+        value: verilog_binary_application(
+          left: verilog_signal_reference(name: ^verilog_interlock_conditioned_good),
+          operator: ^verilog_interlock_op_and,
+          right: verilog_signal_reference(name: ^verilog_interlock_power_permit)
+        )
+      )
+    )
+  )
+}
+
+fn verilog_interlock_emitted() -> Node {
+  verilog_module_declaration(
+    name: ^verilog_interlock_module_name,
+    ports: verilog_interlock_ports(),
+    assignments: verilog_interlock_assignments()
+  )
+}
+
+// The spellings the bound slots resolve to. The two directions pad to equal width because the
+// oracle aligns them; that padding is layout and therefore lives here, on the target, exactly
+// like the transforms.
+fn verilog_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(
+          map_insert(
+            map_insert(
+              map_insert(
+                map_insert(
+                  map_insert(empty_map(), ^verilog_interlock_op_not, "~"),
+                  ^verilog_interlock_module_name,
+                  "board_power_interlock"
+                ),
+              ^verilog_interlock_dir_input,
+              "  input  "
+            ),
+              ^verilog_interlock_dir_output,
+              "  output "
+            ),
+            ^verilog_interlock_conditioned_good,
+            "conditioned_good"
+          ),
+          ^verilog_interlock_fault,
+          "fault"
+        ),
+        ^verilog_interlock_power_permit,
+        "power_permit"
+      ),
+      ^verilog_interlock_reset_release,
+      "reset_release"
+    ),
+    ^verilog_interlock_op_and,
+    " & "
+  )
+}
+
+// THE DERIVED RELATION POPULATION. Nothing here is a hand-authored token list: each row is
+// DERIVED from a formal production plus the exemplar slot it corresponds to, which is what makes
+// emission the backward reading of the same grammar the parser reads forward. A row whose tokens
+// were written out by hand would be the product-local printer wearing a different hat.
+fn verilog_relation_row_for(lhs: Symbol, emitted: Node) -> Witness<Node> {
+  let productions = verilog_emission_formal_productions()
+  match formal_production_for_lhs_exact(productions: productions, lhs: lhs, child: emitted) {
+    Holds { value: production } =>
+      derive_grammar_relation_row_node(
+        production: production,
+        productions: productions,
+        emitted: emitted
+      )
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn verilog_module_relation_row() -> Witness<Node> {
+  verilog_relation_row_for(
+    lhs: ^verilog_production_ansi_module_decl,
+    emitted: verilog_interlock_emitted()
   )
 }
 
