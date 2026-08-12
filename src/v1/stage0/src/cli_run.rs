@@ -29456,9 +29456,10 @@ mod sidecar_placement_hygiene_tests {
         // asserted twice — `floor_discovery_hand_rust_equivalence_witness_test.dag`
         // (`floor_discovery_equivalence_misplaced_wire_contract_refuses_holds`) already owns
         // it content-side, so re-deriving it here would be a second representation (§2/§3).
-        // Hence the call is at the producer seam and not at
-        // `floor_filename_hygiene_refusal_for_paths`, which decides only the `__`-in-basename
-        // rule and can never report a wire-contract violation.
+        // Hence the call is at the producer seam, where a wire-contract violation is
+        // observable at all. (This clause used to contrast the seam against
+        // `floor_filename_hygiene_refusal_for_paths`; that decided only the `__`-in-basename
+        // rule, which is deleted, so the contrast named nothing.)
         //
         // Nothing here chdirs, and that is load-bearing: the producer entry is located by
         // `resolve_workspace_entry` (git-toplevel, not cwd), so this test
