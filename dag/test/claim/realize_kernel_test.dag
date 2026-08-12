@@ -1,5 +1,7 @@
 module test.claim.realize_kernel
 
+import std.cache_interface { ArtifactIdentity }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_store_id: CacheInterfaceId = "realize-kernel-witness-store"
