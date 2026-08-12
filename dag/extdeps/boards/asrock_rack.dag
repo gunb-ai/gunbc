@@ -22,7 +22,7 @@ import extdeps.firmware.types {
   InstantFlashRom,
   firmware_semantic_version,
 }
-import std.measure { byte_size, celsius, percent, positive_celsius_delta, positive_measure_count }
+import std.measure { ByteSize, byte_size, celsius, percent, positive_celsius_delta, positive_measure_count }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -347,7 +347,7 @@ data asrock_altrad8ud_bios_3_10_openbmc_release: FirmwareReleaseRow = FirmwareRe
 // (or the raw .ROM) to the UpdateService is a different act from pushing this.
 data asrock_altrad8ud_bios_3_10_obmc_push_artifact_name: NonEmptyStr = "obmc-bios-altrad8ud-1l2t-3.10.all.tar"
 
-data asrock_altrad8ud_bios_3_10_obmc_push_artifact_bytes: Nat = 33566720
+data asrock_altrad8ud_bios_3_10_obmc_push_artifact_bytes: ByteSize = byte_size(count: 33566720)
 
 data asrock_altrad8ud_bios_3_10_obmc_push_artifact_digest: Digest = sha256_digest(
   hex: "e3bb2a26b863f24045e9e3bc950a89cbe3f8a86d7dc1c6c7a243f3afe35416ec",
