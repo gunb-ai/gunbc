@@ -66,7 +66,9 @@ import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
   deploy_access_decision_reason,
 }
-import gunbc.host_effect { fleet_ssh_leaf_unmigrated_refused,
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh }
+import gunbc.host_effect {
   HostEffectTransport,
   LocalShell,
   SshShell,
@@ -125,6 +127,32 @@ fn live_deploy_healthz_get_local(port: Int) -> HealthzEffectiveRead {
   )
 }
 
+fn healthz_effective_read_from_outcome(outcome: TypedArgvExecOutcome) -> HealthzEffectiveRead {
+  match outcome {
+    TypedArgvExecConverged { result: r } =>
+      healthz_effective_read_from_get(
+        success: r.success,
+        body: r.stdout,
+        error: "http client GET over ssh failed"
+      )
+    TypedArgvExecRefused { reason: why } => HealthzEffectiveRead { body: "", probe_error: why }
+  }
+}
+
+fn live_deploy_healthz_get_fleet_ssh(
+  port: Int,
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+) -> HealthzEffectiveRead {
+  healthz_effective_read_from_outcome(
+    outcome: typed_argv_exec_over_fleet_ssh(
+      target: target,
+      context: context,
+      argv: http_client_get_argv(url: live_deploy_health_url_for_port(port: port)),
+    ),
+  )
+}
+
 fn live_deploy_healthz_get_ssh(port: Int, host: NonEmptyStr) -> HealthzEffectiveRead {
   let url = live_deploy_health_url_for_port(port: port)
   let argv = http_client_get_argv(url: url)
@@ -148,7 +176,7 @@ fn live_deploy_healthz_get_for_port(port: Int, transport: HostEffectTransport) -
   match transport {
     LocalShell => live_deploy_healthz_get_local(port: port)
     SshShell { ssh_host: h } => live_deploy_healthz_get_ssh(port: port, host: h)
-    FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
+    FleetSsh { target: t, context: c } => live_deploy_healthz_get_fleet_ssh(port: port, target: t, context: c)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       HealthzEffectiveRead {
         body: "",
