@@ -11,6 +11,11 @@ import v2.compiler.self_host.candidate_generation {
   ProducerReceiptRejected,
   observe_provenanced_rust_emission_from_ingest
 }
+import v2.compiler.self_host.direct_rust_door_fixture {
+  direct_rust_door_admission,
+  direct_rust_door_ingest,
+  direct_rust_door_module_path
+}
 import v2.extdeps.languages.rust { rust_target_model }
 import std.algebra { Cons, Empty }
 import v2.std.artifact { Artifact, SourceFile }
@@ -56,5 +61,26 @@ fn measure_module_data_emission_stage() -> String {
     EmissionRejected { diagnostics: _ } => "STAGE=EmissionRejected"
     ProducerReceiptRejected { diagnostics: _ } => "STAGE=ProducerReceiptRejected"
     ArtifactProduced { artifact: _ } => "STAGE=ArtifactProduced"
+  }
+}
+
+// CONTROL. Runs the SAME instrument over an ingest that is known to assemble --
+// the direct-rust-door fixture, a plain fn module. If this ALSO reported
+// AssemblyRejected the instrument would be measuring its own synthetic ingest
+// rather than the pipeline, and the data-declaration reading would be worthless.
+// The two differ only in the ingested module, so the stage difference is
+// attributable to the module shape and nothing else.
+fn measure_control_fn_module_stage() -> String {
+  match observe_provenanced_rust_emission_from_ingest(
+    ingest: direct_rust_door_ingest(),
+    admission: direct_rust_door_admission(),
+    target: rust_target_model(),
+    module_path: direct_rust_door_module_path
+  ) {
+    AssemblyRejected { diagnostics: _ } => "CONTROL=AssemblyRejected"
+    InferenceRejected { diagnostics: _ } => "CONTROL=InferenceRejected"
+    EmissionRejected { diagnostics: _ } => "CONTROL=EmissionRejected"
+    ProducerReceiptRejected { diagnostics: _ } => "CONTROL=ProducerReceiptRejected"
+    ArtifactProduced { artifact: _ } => "CONTROL=ArtifactProduced"
   }
 }
