@@ -60,6 +60,7 @@ import v2.std.grammar {
 }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.compilers.lexing {
+  AnnotationRule,
   CharClassPattern,
   CharPattern,
   ChoicePattern,
@@ -72,6 +73,7 @@ import v2.std.compilers.lexing {
   LexRule,
   LexRuleSet,
   LexRules,
+  LineCommentTextChar,
   LiteralPattern,
   ModeledLexRules,
   OneOrMorePattern,
@@ -490,12 +492,23 @@ fn dag_whitespace_trivia_rule() -> LexRule {
   }
 }
 
+fn dag_line_comment_annotation_rule() -> LexRule {
+  AnnotationRule {
+    annotation_class: ^line_comment,
+    pattern: SequencePattern {
+      left: LiteralPattern { text: "//" },
+      right: RepeatPattern { element: CharClassPattern { class: LineCommentTextChar } }
+    }
+  }
+}
+
 fn dag_lex_rules() -> LexRuleSet {
 
   LexRuleSet {
     rules: [
       dag_whitespace_trivia_rule(),
       dag_string_literal_lex_rule(),
+      dag_line_comment_annotation_rule(),
       dag_int_literal_lex_rule(),
       dag_ident_lex_rule(),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_module, text: "module"),
