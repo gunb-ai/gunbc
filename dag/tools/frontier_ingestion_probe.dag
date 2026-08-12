@@ -199,11 +199,11 @@ fn count_stage(obs: List<MemberObservation>, s: FrontendStage) -> Int {
   })
 }
 
-data wall_attribution_probe_note: String = "MINIMAL-PAIR PROBES for the two frontend walls that are still hypotheses rather than findings. Neither may become a finding from a description: the roadmap row's own RED control refuses a repair asserted separable without execution, and the em-dash misattribution earlier in this lane is the standing receipt for why. Each fn below is one construct in an otherwise-minimal module, so a refusal names the construct rather than the file."
+data wall_attribution_probe_note: String = "MINIMAL-PAIR PROBES for the two frontend walls that are still hypotheses rather than findings. Neither may become a finding from a description: the roadmap row's own RED control refuses a repair asserted separable without execution, and the em-dash misattribution earlier in this lane is the standing receipt for why. Each fn below is one construct in an otherwise-minimal module, so a refusal names the construct rather than the file. They answer in FrontendStage like every other classifier consumer; render with frontend_stage_label when reading one by hand."
 
-fn p_hex_escape() -> String { classify_source(source: "module frontier_probe\n\ndata d: String = \"a\\x0db\"\n") }
-fn p_hex_escape_control() -> String { classify_source(source: "module frontier_probe\n\ndata d: String = \"ab\"\n") }
-fn p_qualified_record_ctor() -> String { classify_source(source: "module frontier_probe\n\nfn f() -> Int {\n  a.b.C { id: 1 }\n}\n") }
-fn p_bare_record_ctor_control() -> String { classify_source(source: "module frontier_probe\n\nfn f() -> Int {\n  C { id: 1 }\n}\n") }
-fn p_where_refinement() -> String { classify_source(source: "module frontier_probe\n\ntype H = String where lower_hex_16\n") }
-fn p_type_alias_control() -> String { classify_source(source: "module frontier_probe\n\ntype H = String\n") }
+fn p_hex_escape() -> FrontendStage { classify_source(source: "module frontier_probe\n\ndata d: String = \"a\\x0db\"\n") }
+fn p_hex_escape_control() -> FrontendStage { classify_source(source: "module frontier_probe\n\ndata d: String = \"ab\"\n") }
+fn p_qualified_record_ctor() -> FrontendStage { classify_source(source: "module frontier_probe\n\nfn f() -> Int {\n  a.b.C { id: 1 }\n}\n") }
+fn p_bare_record_ctor_control() -> FrontendStage { classify_source(source: "module frontier_probe\n\nfn f() -> Int {\n  C { id: 1 }\n}\n") }
+fn p_where_refinement() -> FrontendStage { classify_source(source: "module frontier_probe\n\ntype H = String where lower_hex_16\n") }
+fn p_type_alias_control() -> FrontendStage { classify_source(source: "module frontier_probe\n\ntype H = String\n") }
