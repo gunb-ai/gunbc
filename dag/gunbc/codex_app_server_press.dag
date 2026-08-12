@@ -36,6 +36,30 @@ import extdeps.llm.codex_app_server {
   codex_initialize_result_user_agent_key,
   codex_account_read_result_requires_openai_auth_key,
   codex_account_read_result_account_key,
+  codex_account_type_key,
+  codex_account_plan_type_key,
+  codex_account_type_wire_name,
+  codex_plan_type_wire_name,
+  CodexAccountType,
+  CodexAccountTypeApiKey,
+  CodexAccountTypeChatgpt,
+  CodexAccountTypeAmazonBedrock,
+  CodexPlanType,
+  CodexPlanFree,
+  CodexPlanGo,
+  CodexPlanPlus,
+  CodexPlanPro,
+  CodexPlanProlite,
+  CodexPlanTeam,
+  CodexPlanSelfServeBusinessProlite,
+  CodexPlanSelfServeBusinessUsageBased,
+  CodexPlanBusiness,
+  CodexPlanEnt26,
+  CodexPlanEnterpriseCbpAutomation,
+  CodexPlanEnterpriseCbpUsageBased,
+  CodexPlanEnterprise,
+  CodexPlanEdu,
+  CodexPlanUnknown,
   codex_rate_limits_result_rate_limits_key,
   codex_rate_limits_result_by_limit_id_key,
   codex_rate_limits_snapshot_limit_id_key,
@@ -150,10 +174,152 @@ type CodexRateLimitBucketVerdict
     }
   | CodexBucketCapacityUnknown { limit_id: NonEmptyStr }
 
+data codex_account_realm_note: String = "THE REALM IS THE FACT THE DISPOSITION THREW AWAY. disposition_from_account_read_result decodes `account` to AccountTripResultOk when the object is nonempty and stops there, so an apiKey account, a Bedrock account and a personal ChatGPT subscription all reach the same Ready. Those are three different credential realizations (extdeps.llm.codex_app_server codex_account_union_note), and a profile requiring personal ChatGPT OAuth is satisfied by exactly one of them.\n\nThis coproduct is the decode of that union, plus the states the wire can reach that the union does not name: a null or absent account, a `type` this pin does not recognize, and a plan string outside the cited enum. Every one of those is its own arm, because the remedies differ — log in, update the pin, refuse the profile.\n\nCodexChatgptRealm carries the decoded plan rather than a Bool because entitlement is NOT derivable here. Which plans entitle which work is gunbc policy and lives at the standing bridge; this module's job is to say truthfully what upstream reported."
+
+type CodexPlanTypeReading
+  = CodexPlanTypeObserved { plan: CodexPlanType }
+  | CodexPlanTypeUnrecognized { native: NonEmptyStr }
+  | CodexPlanTypeMalformed { cause: NonEmptyStr }
+
+type CodexAccountRealm
+  = CodexApiKeyRealm
+  | CodexAmazonBedrockRealm
+  | CodexChatgptRealm { plan: CodexPlanTypeReading }
+  | CodexAccountRealmAbsent
+  | CodexAccountRealmUnrecognizedType { native: NonEmptyStr }
+  | CodexAccountRealmUnobserved { reason: NonEmptyStr }
+
+fn codex_plan_type_from_wire(native: String) -> CodexPlanTypeReading {
+  if native == "" {
+    CodexPlanTypeMalformed {
+      cause: "account/read chatgpt planType is an empty string" as NonEmptyStr,
+    }
+  } else if native == (codex_plan_type_wire_name(p: CodexPlanFree) as String) {
+    CodexPlanTypeObserved { plan: CodexPlanFree }
+  } else if native == (codex_plan_type_wire_name(p: CodexPlanGo) as String) {
+    CodexPlanTypeObserved { plan: CodexPlanGo }
+  } else if native == (codex_plan_type_wire_name(p: CodexPlanPlus) as String) {
+    CodexPlanTypeObserved { plan: CodexPlanPlus }
+  } else if native == (codex_plan_type_wire_name(p: CodexPlanPro) as String) {
+    CodexPlanTypeObserved { plan: CodexPlanPro }
+  } else if native == (codex_plan_type_wire_name(p: CodexPlanProlite) as String) {
+    CodexPlanTypeObserved { plan: CodexPlanProlite }
+  } else if native == (codex_plan_type_wire_name(p: CodexPlanTeam) as String) {
+    CodexPlanTypeObserved { plan: CodexPlanTeam }
+  } else if native == (codex_plan_type_wire_name(p: CodexPlanSelfServeBusinessProlite) as String) {
+    CodexPlanTypeObserved { plan: CodexPlanSelfServeBusinessProlite }
+  } else if native == (codex_plan_type_wire_name(p: CodexPlanSelfServeBusinessUsageBased) as String) {
+    CodexPlanTypeObserved { plan: CodexPlanSelfServeBusinessUsageBased }
+  } else if native == (codex_plan_type_wire_name(p: CodexPlanBusiness) as String) {
+    CodexPlanTypeObserved { plan: CodexPlanBusiness }
+  } else if native == (codex_plan_type_wire_name(p: CodexPlanEnt26) as String) {
+    CodexPlanTypeObserved { plan: CodexPlanEnt26 }
+  } else if native == (codex_plan_type_wire_name(p: CodexPlanEnterpriseCbpAutomation) as String) {
+    CodexPlanTypeObserved { plan: CodexPlanEnterpriseCbpAutomation }
+  } else if native == (codex_plan_type_wire_name(p: CodexPlanEnterpriseCbpUsageBased) as String) {
+    CodexPlanTypeObserved { plan: CodexPlanEnterpriseCbpUsageBased }
+  } else if native == (codex_plan_type_wire_name(p: CodexPlanEnterprise) as String) {
+    CodexPlanTypeObserved { plan: CodexPlanEnterprise }
+  } else if native == (codex_plan_type_wire_name(p: CodexPlanEdu) as String) {
+    CodexPlanTypeObserved { plan: CodexPlanEdu }
+  } else if native == (codex_plan_type_wire_name(p: CodexPlanUnknown) as String) {
+    CodexPlanTypeObserved { plan: CodexPlanUnknown }
+  } else {
+    CodexPlanTypeUnrecognized { native: native as NonEmptyStr }
+  }
+}
+
+fn codex_chatgpt_plan_reading(account: JsonValue) -> CodexPlanTypeReading {
+  match json_object_unique_member(v: account, key: codex_account_plan_type_key as String) {
+    JsonMemberFound { value: JsonString { value: p } } => codex_plan_type_from_wire(native: p)
+    JsonMemberFound { value: _ } =>
+      CodexPlanTypeMalformed {
+        cause: "account/read chatgpt planType is not a JSON string" as NonEmptyStr,
+      }
+    JsonMemberAbsent =>
+      CodexPlanTypeMalformed {
+        cause: "account/read chatgpt account omits the required planType member" as NonEmptyStr,
+      }
+    JsonMemberDuplicated { count: _ } =>
+      CodexPlanTypeMalformed {
+        cause: "account/read chatgpt account carries duplicate planType members" as NonEmptyStr,
+      }
+    JsonMemberNotAnObject =>
+      CodexPlanTypeMalformed {
+        cause: "account/read account member is not a JSON object" as NonEmptyStr,
+      }
+  }
+}
+
+fn codex_account_realm_from_account_value(account: JsonValue) -> CodexAccountRealm {
+  match account {
+    JsonNull => CodexAccountRealmAbsent
+    JsonObject { members: _ } =>
+      match json_object_unique_member(v: account, key: codex_account_type_key as String) {
+        JsonMemberFound { value: JsonString { value: t } } =>
+          if t == (codex_account_type_wire_name(t: CodexAccountTypeChatgpt) as String) {
+            CodexChatgptRealm { plan: codex_chatgpt_plan_reading(account: account) }
+          } else if t == (codex_account_type_wire_name(t: CodexAccountTypeApiKey) as String) {
+            CodexApiKeyRealm
+          } else if t == (codex_account_type_wire_name(t: CodexAccountTypeAmazonBedrock) as String) {
+            CodexAmazonBedrockRealm
+          } else if t == "" {
+            CodexAccountRealmUnobserved {
+              reason: "account/read account type is an empty string" as NonEmptyStr,
+            }
+          } else {
+            CodexAccountRealmUnrecognizedType { native: t as NonEmptyStr }
+          }
+        JsonMemberFound { value: _ } =>
+          CodexAccountRealmUnobserved {
+            reason: "account/read account type is not a JSON string" as NonEmptyStr,
+          }
+        JsonMemberAbsent =>
+          CodexAccountRealmUnobserved {
+            reason: "account/read account omits the required type discriminant" as NonEmptyStr,
+          }
+        JsonMemberDuplicated { count: _ } =>
+          CodexAccountRealmUnobserved {
+            reason: "account/read account carries duplicate type members" as NonEmptyStr,
+          }
+        JsonMemberNotAnObject =>
+          CodexAccountRealmUnobserved {
+            reason: "account/read account member is not a JSON object" as NonEmptyStr,
+          }
+      }
+    _ =>
+      CodexAccountRealmUnobserved {
+        reason: "account/read account member is neither an object nor null" as NonEmptyStr,
+      }
+  }
+}
+
+fn codex_account_realm_from_result(result: JsonValue) -> CodexAccountRealm {
+  match json_object_unique_member(
+    v: result,
+    key: codex_account_read_result_account_key as String,
+  ) {
+    JsonMemberFound { value: account } =>
+      codex_account_realm_from_account_value(account: account)
+    JsonMemberAbsent => CodexAccountRealmAbsent
+    JsonMemberDuplicated { count: _ } =>
+      CodexAccountRealmUnobserved {
+        reason: "account/read result carries duplicate account members" as NonEmptyStr,
+      }
+    JsonMemberNotAnObject =>
+      CodexAccountRealmUnobserved {
+        reason: "account/read result is not a JSON object" as NonEmptyStr,
+      }
+  }
+}
+
+data codex_account_realm_unobserved_default: NonEmptyStr = "codex app-server account/read produced no decodable account frame on this trip" as NonEmptyStr
+
 type CodexAccountStandingEvidence {
   itinerary: CodexPressItinerary
   initialize: AccountTripResponseObservation
   account_read: AccountTripResponseObservation
+  account_realm: CodexAccountRealm
   rate_limits: AccountTripResponseObservation
   rate_limit_buckets: List<CodexRateLimitBucketVerdict>
   unknown_frame_digests: List<ContentHash>
@@ -796,6 +962,7 @@ fn observation_to_disposition(obs: AccountTripResponseObservation) -> AccountTri
 type AccountTripParseAcc {
   initialize: AccountTripResponseObservation
   account_read: AccountTripResponseObservation
+  account_realm: CodexAccountRealm
   rate_limits: AccountTripResponseObservation
   rate_limit_buckets: List<CodexRateLimitBucketVerdict>
   unknown_frame_digests: List<ContentHash>
@@ -806,6 +973,7 @@ fn empty_account_trip_parse_acc() -> AccountTripParseAcc {
   AccountTripParseAcc {
     initialize: AccountTripResponseAbsent,
     account_read: AccountTripResponseAbsent,
+    account_realm: CodexAccountRealmUnobserved { reason: codex_account_realm_unobserved_default },
     rate_limits: AccountTripResponseAbsent,
     rate_limit_buckets: [],
     unknown_frame_digests: [],
@@ -847,6 +1015,7 @@ fn push_unknown_digest(
           AccountTripParseAcc {
             initialize: acc.initialize,
             account_read: acc.account_read,
+                    account_realm: acc.account_realm,
             rate_limits: acc.rate_limits,
             rate_limit_buckets: acc.rate_limit_buckets,
             unknown_frame_digests: acc.unknown_frame_digests,
@@ -856,6 +1025,7 @@ fn push_unknown_digest(
           AccountTripParseAcc {
             initialize: acc.initialize,
             account_read: acc.account_read,
+                    account_realm: acc.account_realm,
             rate_limits: acc.rate_limits,
             rate_limit_buckets: acc.rate_limit_buckets,
             unknown_frame_digests: acc.unknown_frame_digests,
@@ -866,6 +1036,7 @@ fn push_unknown_digest(
       AccountTripParseAcc {
         initialize: acc.initialize,
         account_read: acc.account_read,
+                    account_realm: acc.account_realm,
         rate_limits: acc.rate_limits,
         rate_limit_buckets: acc.rate_limit_buckets,
         unknown_frame_digests: acc.unknown_frame_digests |> list_push(digest),
@@ -887,6 +1058,24 @@ fn buckets_from_rate_limits_frame(
       }
     AccountTripResponseUnique { response: _ } => prior_buckets
     AccountTripResponseDuplicate { id: _, count: _ } => prior_buckets
+  }
+}
+
+data codex_account_realm_duplicate_frame_note: String = "FIRST FRAME WINS, mirroring buckets_from_rate_limits_frame. A duplicate id=2 response already makes the disposition AccountTripResponseDuplicate, which the classifier treats as Incomplete, so the realm from a second frame could never be trusted anyway — and letting it overwrite would mean a later frame silently replacing the account the first one reported. Duplicates keep the prior value and the duplicate observation carries the refusal."
+
+fn realm_from_account_read_frame(
+  current: AccountTripResponseObservation,
+  prior_realm: CodexAccountRealm,
+  obj: JsonValue,
+) -> CodexAccountRealm {
+  match current {
+    AccountTripResponseAbsent =>
+      match json_object_unique_member(v: obj, key: "result") {
+        JsonMemberFound { value: result } => codex_account_realm_from_result(result: result)
+        _ => prior_realm
+      }
+    AccountTripResponseUnique { response: _ } => prior_realm
+    AccountTripResponseDuplicate { id: _, count: _ } => prior_realm
   }
 }
 
@@ -929,6 +1118,7 @@ fn absorb_account_trip_line(
                       disposition: disposition,
                     ),
                     account_read: acc.account_read,
+                    account_realm: acc.account_realm,
                     rate_limits: acc.rate_limits,
                     rate_limit_buckets: acc.rate_limit_buckets,
                     unknown_frame_digests: acc.unknown_frame_digests,
@@ -942,6 +1132,11 @@ fn absorb_account_trip_line(
                       id: n,
                       disposition: disposition,
                     ),
+                    account_realm: realm_from_account_read_frame(
+                      current: acc.account_read,
+                      prior_realm: acc.account_realm,
+                      obj: parsed,
+                    ),
                     rate_limits: acc.rate_limits,
                     rate_limit_buckets: acc.rate_limit_buckets,
                     unknown_frame_digests: acc.unknown_frame_digests,
@@ -951,6 +1146,7 @@ fn absorb_account_trip_line(
                   AccountTripParseAcc {
                     initialize: acc.initialize,
                     account_read: acc.account_read,
+                    account_realm: acc.account_realm,
                     rate_limits: absorb_id_response(
                       current: acc.rate_limits,
                       id: n,
@@ -1062,6 +1258,7 @@ fn parse_account_trip_session(
   let acc_final = AccountTripParseAcc {
     initialize: acc.initialize,
     account_read: acc.account_read,
+    account_realm: acc.account_realm,
     rate_limits: acc.rate_limits,
     rate_limit_buckets: acc.rate_limit_buckets,
     unknown_frame_digests: acc.unknown_frame_digests,
@@ -1071,6 +1268,7 @@ fn parse_account_trip_session(
     itinerary: codex_press_account_trip_methods(),
     initialize: acc_final.initialize,
     account_read: acc_final.account_read,
+    account_realm: acc_final.account_realm,
     rate_limits: acc_final.rate_limits,
     rate_limit_buckets: acc_final.rate_limit_buckets,
     unknown_frame_digests: acc_final.unknown_frame_digests,
