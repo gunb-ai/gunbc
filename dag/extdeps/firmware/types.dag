@@ -61,6 +61,10 @@ type FirmwareImageKind
 // be a fabricated plausible value at exactly the boundary where the wrong
 // bytes brick a controller (DESIGN section 5). It is filled by measuring the
 // acquired file, never transcribed.
+// On prerequisite:
+// What must already be running before these bytes can be applied. Carried
+// ON the release row so an unappliable push is refused from the catalog,
+// not discovered from a vendor shell script after the upload.
 type FirmwareReleaseRow {
   board: BaseboardModel
   target: FirmwareTarget
@@ -71,9 +75,6 @@ type FirmwareReleaseRow {
   image_bytes: ByteSize
   image_digest: Digest?
   release_notes: NonEmptyStr
-  // What must already be running before these bytes can be applied. Carried
-  // ON the release row so an unappliable push is refused from the catalog,
-  // not discovered from a vendor shell script after the upload.
   prerequisite: FirmwarePrerequisite
   authority: ExternalAuthority
 }
@@ -98,6 +99,10 @@ type FirmwarePrerequisite
       minimum: FirmwareSemanticVersion,
     }
 
+// On FirmwarePrerequisiteUnobserved:
+// Fail-closed third arm. An unobserved prerequisite is NOT met: srv3 reports
+// its BIOS version as null through Redfish, so "we could not read it" must
+// refuse rather than collapse into either pole (DESIGN section 5).
 type FirmwareApplicabilityVerdict
   = FirmwareApplicable
   | FirmwarePrerequisiteUnmet {
@@ -105,9 +110,6 @@ type FirmwareApplicabilityVerdict
       minimum: FirmwareSemanticVersion,
       observed: FirmwareSemanticVersion,
     }
-  // Fail-closed third arm. An unobserved prerequisite is NOT met: srv3 reports
-  // its BIOS version as null through Redfish, so "we could not read it" must
-  // refuse rather than collapse into either pole (DESIGN section 5).
   | FirmwarePrerequisiteUnobserved {
       target: FirmwareTarget,
       minimum: FirmwareSemanticVersion,

@@ -37,14 +37,15 @@ type AmpereScpConsoleToken {
 // Whether this repository can say what a token MEANS. Separated from the
 // token itself so a future vendor codebook upgrades the meaning without
 // rewriting a single historical receipt.
+// On MeaningUndecoded:
+// No codebook obtained. The token may be compared and counted; its
+// semantics may NOT be asserted. Construction of a description from an
+// undecoded token is therefore impossible rather than merely discouraged.
 type AmpereDiagnosticMeaning
   = MeaningDecoded {
       description: NonEmptyStr
       authority: ExternalAuthority
     }
-  // No codebook obtained. The token may be compared and counted; its
-  // semantics may NOT be asserted. Construction of a description from an
-  // undecoded token is therefore impossible rather than merely discouraged.
   | MeaningUndecoded {
       required_codebook: ExternalAuthority?
     }
@@ -112,6 +113,10 @@ data ampere_smpro_boot_progress_interface: AmpereDiagnosticInterface = AmpereDia
   read_effect: ReadAcknowledgesBootProgress,
 }
 
+// On AmpereDiagnosticInterface:
+// Overflow counters are the one genuinely non-destructive group: they
+// report whether records were LOST, which is what makes an empty queue
+// interpretable at all.
 data ampere_smpro_error_queue_interfaces: List<AmpereDiagnosticInterface> = [
   AmpereDiagnosticInterface { sysfs_attribute: "error_smpro", read_effect: ReadConsumesOldestRecord },
   AmpereDiagnosticInterface { sysfs_attribute: "error_pmpro", read_effect: ReadConsumesOldestRecord },
@@ -129,9 +134,6 @@ data ampere_smpro_error_queue_interfaces: List<AmpereDiagnosticInterface> = [
   AmpereDiagnosticInterface { sysfs_attribute: "event_dimm_2x_refresh", read_effect: ReadClearsReportedEvent },
   AmpereDiagnosticInterface { sysfs_attribute: "event_vrd_hot", read_effect: ReadClearsReportedEvent },
   AmpereDiagnosticInterface { sysfs_attribute: "event_vrd_warn_fault", read_effect: ReadClearsReportedEvent },
-  // Overflow counters are the one genuinely non-destructive group: they
-  // report whether records were LOST, which is what makes an empty queue
-  // interpretable at all.
   AmpereDiagnosticInterface { sysfs_attribute: "overflow_mem_ce", read_effect: ReadSnapshot },
   AmpereDiagnosticInterface { sysfs_attribute: "overflow_mem_ue", read_effect: ReadSnapshot },
 ]

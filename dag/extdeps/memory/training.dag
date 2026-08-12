@@ -33,17 +33,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // those modules that must execute it. Encoding the steps makes the avoidance
 // list a DERIVED consequence, and makes the reason legible at the point of
 // purchase.
+// Host-to-DRAM PHY calibration. Every module executes these regardless of
+// buffering, so a failure here implicates nothing about module class.
+// On LrdimmDataBufferMrep:
+// Data-buffer calibration. These exist ONLY on load-reduced modules, which
+// interpose a buffer between the DRAM and the host. A registered module has
+// no data buffer and never executes them — that is why the discriminator
+// below is structural rather than statistical.
 type MemoryTrainingStep
-  // Host-to-DRAM PHY calibration. Every module executes these regardless of
-  // buffering, so a failure here implicates nothing about module class.
   = PhyWriteLeveling
   | PhyReadGateLeveling
   | PhyReadLeveling
   | PhyVrefdqCalibration
-  // Data-buffer calibration. These exist ONLY on load-reduced modules, which
-  // interpose a buffer between the DRAM and the host. A registered module has
-  // no data buffer and never executes them — that is why the discriminator
-  // below is structural rather than statistical.
   | LrdimmDataBufferMrep
   | LrdimmDataBufferWriteLeveling
   | LrdimmDataBufferReadTraining

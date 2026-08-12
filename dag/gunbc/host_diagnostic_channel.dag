@@ -18,76 +18,87 @@ import product.placement_supply { HostIdentity }
 // and can change wording in any firmware release. Rendering all three as
 // "error: <string>" throws away exactly the facts that decide whether a
 // diagnostic can be matched on, ranged over, or only shown to a human.
+// DMTF-standardized Redfish message registries. Identifiers carry their
+// own registry name AND version, e.g. "Base.1.16.0.InternalError".
+// On OpenBmcPhosphorNamespace:
+// OpenBMC's D-Bus error namespace, e.g.
+// "xyz.openbmc_project.State.Shutdown.Power.Error.Blackout". Structured,
+// hierarchical, enumerable from the running BMC.
+// On AmpereScpConsoleTokenStream:
+// Ampere SCP/SMpro/PMpro console tokens (P012, E588, P029), modeled
+// upstream in extdeps.ampere.scp_diagnostic. Opaque to this repository:
+// no codebook has been obtained, so a token is an IDENTITY we compare and
+// count, never a meaning we claim.
+// On AmpereStructuredBootProgressInterface:
+// The STRUCTURED boot-progress interface: status, stage and payload from
+// smpro-misc. A different surface from the token stream above, and a
+// strictly richer one — it localized the 2026-08-11 stall to a stage while
+// the console emitted only an undecodable lexeme. Fusing the two would
+// have hidden that the structured source existed at all.
+// On AmpereDramReferenceCode:
+// Ampere DRAM reference-code training diagnostics, e.g.
+// "MC3:R0: WRLVL Err=0 Stat=0x0 NibbleMsk=0xfc0", "SK[0]: 001200ff".
+// Structured per memory controller and rank, but privately defined.
+// On VendorScriptFreeText:
+// Free text printed by vendor shell scripts, e.g. firmware_update.sh's
+// "Invalid ExtendedVersion: primary-all. Please check MANIFEST file!".
+// No registry, no identifier, no stability contract. Human-readable only.
 type DiagnosticAuthority
-  // DMTF-standardized Redfish message registries. Identifiers carry their
-  // own registry name AND version, e.g. "Base.1.16.0.InternalError".
   = RedfishMessageRegistry
-  // OpenBMC's D-Bus error namespace, e.g.
-  // "xyz.openbmc_project.State.Shutdown.Power.Error.Blackout". Structured,
-  // hierarchical, enumerable from the running BMC.
   | OpenBmcPhosphorNamespace
-  // Ampere SCP/SMpro/PMpro console tokens (P012, E588, P029), modeled
-  // upstream in extdeps.ampere.scp_diagnostic. Opaque to this repository:
-  // no codebook has been obtained, so a token is an IDENTITY we compare and
-  // count, never a meaning we claim.
   | AmpereScpConsoleTokenStream
-  // The STRUCTURED boot-progress interface: status, stage and payload from
-  // smpro-misc. A different surface from the token stream above, and a
-  // strictly richer one — it localized the 2026-08-11 stall to a stage while
-  // the console emitted only an undecodable lexeme. Fusing the two would
-  // have hidden that the structured source existed at all.
   | AmpereStructuredBootProgressInterface
-  // Ampere DRAM reference-code training diagnostics, e.g.
-  // "MC3:R0: WRLVL Err=0 Stat=0x0 NibbleMsk=0xfc0", "SK[0]: 001200ff".
-  // Structured per memory controller and rank, but privately defined.
   | AmpereDramReferenceCode
-  // Free text printed by vendor shell scripts, e.g. firmware_update.sh's
-  // "Invalid ExtendedVersion: primary-all. Please check MANIFEST file!".
-  // No registry, no identifier, no stability contract. Human-readable only.
   | VendorScriptFreeText
 
 // HOW WAS IT READ? This axis is why the incident took as long as it did.
 // The convergence surface is Redfish, and Redfish could see almost none of
 // the diagnostics that mattered.
+// Redfish over HTTPS: reachable by any authenticated convergence run.
+// On BmcConsoleLogViaSsh:
+// The BMC's captured host serial console (/var/log/obmc-console.log),
+// reached by authenticated BMC SSH.
+// On SmproSysfsViaSsh:
+// SMpro/PMpro sysfs on the BMC. Note this is a TRANSPORT, not an
+// authority: the same underlying data is reachable by other handlers
+// where an image implements them (a correct D-Bus/Redfish projection,
+// the dedicated SCP console, or Ampere's OEM IPMI register read).
+// On BmcJournalViaSsh:
+// The BMC's systemd journal. Requires authenticated BMC SSH.
 type DiagnosticTransport
-  // Redfish over HTTPS: reachable by any authenticated convergence run.
   = RedfishHttps
-  // The BMC's captured host serial console (/var/log/obmc-console.log),
-  // reached by authenticated BMC SSH.
   | BmcConsoleLogViaSsh
-  // SMpro/PMpro sysfs on the BMC. Note this is a TRANSPORT, not an
-  // authority: the same underlying data is reachable by other handlers
-  // where an image implements them (a correct D-Bus/Redfish projection,
-  // the dedicated SCP console, or Ampere's OEM IPMI register read).
   | SmproSysfsViaSsh
-  // The BMC's systemd journal. Requires authenticated BMC SSH.
   | BmcJournalViaSsh
 
 // Can a machine act on this diagnostic, or can it only be shown to a person?
 // The distinction is not cosmetic: it decides whether convergence may branch
 // on the diagnostic at all.
+// Identifier resolves in a registry this repository can obtain and cite.
+// On OpaqueStableIdentifier:
+// Stable identity, meaning unavailable. Comparable and countable, but its
+// SEMANTICS may not be asserted. E588 is here. Note what this does NOT
+// claim: the E prefix places the token in a namespace, it does not make it
+// an error and it does not make it fatal — E559 and E571 appear on a
+// same-family machine that boots normally. That E588 is followed by a reset
+// on srv3 and srv4 is an observed transition recorded in a fleet receipt,
+// never a property read off the lexeme.
+// On UnstructuredProse:
+// No identifier at all. Matching on the prose is matching on a wording the
+// vendor may change without notice.
 type DiagnosticDecodability
-  // Identifier resolves in a registry this repository can obtain and cite.
   = DecodableFromPublishedRegistry { registry: NonEmptyStr }
-  // Stable identity, meaning unavailable. Comparable and countable, but its
-  // SEMANTICS may not be asserted. E588 is here. Note what this does NOT
-  // claim: the E prefix places the token in a namespace, it does not make it
-  // an error and it does not make it fatal — E559 and E571 appear on a
-  // same-family machine that boots normally. That E588 is followed by a reset
-  // on srv3 and srv4 is an observed transition recorded in a fleet receipt,
-  // never a property read off the lexeme.
   | OpaqueStableIdentifier
-  // No identifier at all. Matching on the prose is matching on a wording the
-  // vendor may change without notice.
   | UnstructuredProse
 
+// On raw:
+// Verbatim, as emitted. Never normalized, because normalizing a code we
+// cannot decode can only lose information.
 type HostDiagnostic {
   host: HostIdentity
   authority: DiagnosticAuthority
   transport: DiagnosticTransport
   decodability: DiagnosticDecodability
-  // Verbatim, as emitted. Never normalized, because normalizing a code we
-  // cannot decode can only lose information.
   raw: NonEmptyStr
   observed_at: EpochMs
 }

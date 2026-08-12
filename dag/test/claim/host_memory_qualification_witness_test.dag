@@ -75,6 +75,10 @@ test fn two_dimm_population_in_wrong_slots_is_refused() -> Bool {
 // DDR training success does not construct host boot success. The srv3
 // standing carries trained memory AND a repeating reset simultaneously, and
 // the boot question still answers false.
+// On scp_token_is_error_class:
+// E588 (observed followed by reset on srv3/srv4) and E559 (observed on a
+// same-family machine that continues booting) are the SAME class. Fatality
+// therefore cannot be a function of the class.
 data srv3_post_bios_310_standing: HostMemoryStanding = HostMemoryStanding {
   host: "srv3",
   part_number: "M386A4G40DM0-CPB",
@@ -129,9 +133,6 @@ test fn p_token_is_not_an_error() -> Bool {
 }
 
 test fn e_token_class_is_namespace_not_fatality() -> Bool {
-  // E588 (observed followed by reset on srv3/srv4) and E559 (observed on a
-  // same-family machine that continues booting) are the SAME class. Fatality
-  // therefore cannot be a function of the class.
   scp_token_is_error_class(token: AmpereScpConsoleToken { class: ScpECode, number: 588 })
     && scp_token_is_error_class(token: AmpereScpConsoleToken { class: ScpECode, number: 559 })
 }
