@@ -18,8 +18,11 @@ import v2.extdeps.languages.verilog {
   verilog_unary_application,
   verilog_emission_formal_productions_reversed,
   verilog_relation_row_for_productions,
+  verilog_emission_rules_for_row,
+  verilog_conj,
 }
 import v2.compiler.translate { target_serialize_relation_row_from_model_bounded }
+import v2.compiler.ingest { row_token_spine_tokens, grammar_relation_row_forward_token_selection }
 import v2.std.compilers.target_model { render_target_text }
 
 data verilog_emission_note: String = "THE PROOF THAT TARGET EMISSION COMPOSES. These bytes are produced by the GENERIC serializer walking derived relation rows — no Verilog branch exists in the compiler and no Verilog spelling is authored here. The module frame, the recursive port list, the nested expressions and every space and newline come from the target's productions and layout profile. The oracle is the exact source product.compute_board.verilog_projection prints today by hand, which is what makes this a replacement rather than a second implementation."
@@ -187,4 +190,41 @@ fn emit_with(productions: List<FormalProduction>, emitted: Node) -> String {
 
 test fn w_production_order_does_not_change_the_bytes() -> Bool {
   emit_with(productions: verilog_emission_formal_productions_reversed(), emitted: verilog_interlock_emitted()) == expected_interlock_verilog
+}
+
+// THE GRAMMAR READ FORWARD. The same rows that render the module also recover it: taking the
+// derived row's token spine and running FORWARD selection rebuilds the emitted node, and it must
+// equal the node emission started from. That is the one-grammar-both-directions claim discharged
+// by execution rather than asserted — a second, separately authored parser could agree with the
+// emitter by coincidence, but a round trip through one row population cannot.
+//
+// WHAT THIS IS NOT, stated because the difference matters and is easy to overclaim: this is a
+// round trip over the TOKEN SPINE, not over emitted BYTES. Nothing in .dag lexes text today —
+// 03_ingest begins at a ParseTree and takes no source string — so the step from "module ... \n"
+// back to tokens is not executable here and is not claimed. What is proven is that the token
+// sequence the row renders is the token sequence the grammar reads back to the same structure.
+fn module_row() -> Node {
+  match verilog_relation_row_for(lhs: ^verilog_production_ansi_module_decl, emitted: verilog_interlock_emitted()) {
+    Holds { value: row } => row
+    Violates { diagnostic: _ } => verilog_conj(children: [])
+  }
+}
+
+fn rebuilt_from_spine() -> Node {
+  match row_token_spine_tokens(row: module_row()) {
+    Accepted { value: tokens, diagnostics: _ } =>
+      match grammar_relation_row_forward_token_selection(
+        tokens: tokens,
+        rules: verilog_emission_rules_for_row(row: module_row()),
+        start_lhs: ^verilog_production_ansi_module_decl
+      ) {
+        Accepted { value: node, diagnostics: _ } => node
+        Rejected { diagnostics: _ } => verilog_conj(children: [])
+      }
+    Rejected { diagnostics: _ } => verilog_conj(children: [])
+  }
+}
+
+test fn w_token_spine_reads_back_to_the_same_emitted_node() -> Bool {
+  rebuilt_from_spine() == verilog_interlock_emitted()
 }

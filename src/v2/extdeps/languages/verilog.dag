@@ -1308,6 +1308,16 @@ fn verilog_base_spellings() -> Map<Symbol, String> {
   )
 }
 
+fn verilog_emission_rules_for_row(row: Node) -> Node {
+  verilog_conj(children: [
+    verilog_named_edge(
+      name: ^grammar_relation_rules_formal_productions,
+      target: formal_productions_catalog_to_node(productions: verilog_emission_formal_productions())
+    ),
+    verilog_named_edge(name: ^verilog_relation_rule_program, target: row)
+  ])
+}
+
 fn verilog_target_model_for(row: Node, spellings: Map<Symbol, String>) -> TargetModel {
   TargetModel {
     bundle: verilog_conj(children: [
