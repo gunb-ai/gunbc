@@ -4,6 +4,7 @@ import std.types { Bool, NonEmptyStr, List }
 import std.integer { Int }
 import std.nat { Nat }
 import std.measure { Millimeter, millimeter, SignedMillimeterComponent, signed_millimeter_component, signed_millimeter_component_count }
+import std.checked_arithmetic { IntegerOverflow }
 import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity_eq }
 import std.affine_space { Point2, Point3, point2, point3 }
 import std.euclidean_geometry {
@@ -67,6 +68,8 @@ type OrthogonalRefusal
   | LoopSelfIntersects
   | RotationAxesParallel
   | BoundingBoxHasNoPoints
+  | ShellArithmeticRefused { cause: IntegerOverflow }
+  | SpacesInterpenetrate
 
 type OrthogonalConstruction<T>
   = OrthogonalReady { value: T }
@@ -648,6 +651,9 @@ fn orthogonal_prism3(footprint: OrthogonalLoop2, low: Int, high: Int) -> Orthogo
 
 fn prism3_footprint(p: OrthogonalPrism3) -> OrthogonalLoop2 { p.footprint }
 fn prism3_frame(p: OrthogonalPrism3) -> CoordinateFrameIdentity { p.footprint.frame }
+
+fn prism3_low(p: OrthogonalPrism3) -> SignedMillimeterComponent { p.low }
+fn prism3_high(p: OrthogonalPrism3) -> SignedMillimeterComponent { p.high }
 
 fn prism3_height(p: OrthogonalPrism3) -> Millimeter {
   millimeter(count: signed_millimeter_component_count(m: p.high) - signed_millimeter_component_count(m: p.low))
