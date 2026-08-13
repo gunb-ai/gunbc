@@ -9384,9 +9384,19 @@ type ExportIndexModuleAccum {
   seen_names: Set<String>
 }
 
-data export_index_canonical_is_the_fold_element_note: String = "§6 bare-minimum cost, same receipt as module_exported_type_names_cost_note. export_index_merge_module's canonical binding was `filter(bindings |> map_values, b => b.name == name) |> first` — a rescan of the WHOLE binding map (with a fresh Vec allocation) once per distinct name, i.e. O(|bindings|^2) per module per closure assembly. It is dead work by construction: the enclosing fold walks THAT SAME map_values sequence in order, and seen_names skips every repeat, so the first element whose name matches is always the fold's own current element. `canonical = binding` is therefore the identical value, not an approximation of it — the order both expressions read is one traversal of one map value, so the equality does not depend on map_values being stable ACROSS runs (§5941 determinism), only on the two reads of the same value agreeing, which the rewrite removes the need for entirely."
+// ONE POPULATION, ONE TRAVERSAL, TWO DERIVED PROJECTIONS. Both access patterns are legitimate;
+// scanning the whole module population twice to get them is not. This is a BUILD-LOCAL
+// accumulator for the rewiring pass and deliberately not a new compiler authority: when the
+// post-hoc rewiring is deleted — early tiers born correct, so nothing needs repairing — this type
+// is deleted with it rather than surviving as a second census beside SymbolIndex.
+type ExportedTypeRelationBuild {
+  by_name: Map<String, TypeNameExportFacts>
+  by_module: Map<String, Set<String>>
+}
 
-fn export_index_merge_module(acc: Map<String, TypeNameExportFacts>, m: TypedModule) -> Map<String, TypeNameExportFacts> {
+data export_index_canonical_is_the_fold_element_note: String = "§6 bare-minimum cost, same receipt as module_exported_type_names_cost_note. The export-index module walk's canonical binding was `filter(bindings |> map_values, b => b.name == name) |> first` — a rescan of the WHOLE binding map (with a fresh Vec allocation) once per distinct name, i.e. O(|bindings|^2) per module per closure assembly. It is dead work by construction: the enclosing fold walks THAT SAME map_values sequence in order, and seen_names skips every repeat, so the first element whose name matches is always the fold's own current element. `canonical = binding` is therefore the identical value, not an approximation of it — the order both expressions read is one traversal of one map value, so the equality does not depend on map_values being stable ACROSS runs (§5941 determinism), only on the two reads of the same value agreeing, which the rewrite removes the need for entirely."
+
+fn export_index_module_state(acc: Map<String, TypeNameExportFacts>, m: TypedModule) -> ExportIndexModuleAccum {
   fold(m.type_env.bindings |> map_values, init: ExportIndexModuleAccum { index: acc, seen_names: empty_set() }, f: (state, binding) =>
     let name = binding.name
     if set_contains(state.seen_names, name) {
@@ -9405,23 +9415,31 @@ fn export_index_merge_module(acc: Map<String, TypeNameExportFacts>, m: TypedModu
       }
       ExportIndexModuleAccum { index: index, seen_names: seen_names }
     }
-  ).index
+  )
 }
 
-fn build_type_name_export_index(modules: List<TypedModule>) -> Map<String, TypeNameExportFacts> {
-  fold(modules, init: empty_map(), f: (acc, m) => export_index_merge_module(acc: acc, m: m))
+// Both projections read ONE relation — the (module, exported-name) pairs — and each used to be
+// built by its own whole-corpus fold that walked every module's bindings again. The second was in
+// fact already computed and thrown away: the per-module `seen_names` accumulated inside the module
+// walk IS that module's distinct binding-name set, which is exactly what the separate by-module
+// builder recomputed. One traversal now yields both, and the discarded value is the returned one.
+fn export_index_merge_module_both(acc: ExportedTypeRelationBuild, m: TypedModule, source_indices: Map<String, NewlineIndex>) -> ExportedTypeRelationBuild {
+  let state = export_index_module_state(acc: acc.by_name, m: m)
+  ExportedTypeRelationBuild {
+    by_name: state.index,
+    by_module: map_insert(acc.by_module, authored_name_at(source_indices: source_indices, node: m.module), state.seen_names)
+  }
+}
+
+fn build_export_indexes(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> ExportedTypeRelationBuild {
+  fold(modules, init: ExportedTypeRelationBuild { by_name: empty_map(), by_module: empty_map() }, f: (acc, m) =>
+    export_index_merge_module_both(acc: acc, m: m, source_indices: source_indices))
 }
 
 data module_exported_type_names_cost_note: String = "Cost shape (§6 bare-minimum cost, floor batch-3 receipt 2026-07-25): the type names a module exports is ONE derived fact — a set — and both consumers in rewire_type_env_import_str_binding_identity read it. Before this row it existed twice: the caller's per-module `local_names` fold, and `module_exports_type_name`, a LINEAR SCAN (map_values allocates a Vec of every binding, then filters by name) re-run once per (consumer module x inherited key x direct import). Measured on 79 discovery entries: that pass alone was 191.1s of a 331.9s resolve wall (99% of all rewire time, 2.4s/entry) while the other two rewire passes together cost 1.8s. Hoisting the set per module and testing membership makes direct_import_exporter_count O(direct imports) instead of O(direct imports x |parent bindings|), with no change to the predicate it computes. The caller reads its own row out of the SAME index rather than re-folding it (review 42566) — the Absent arm computes the true value from this one authority, so it is a structurally-unreachable fallback that is still honest, never a fabricated default (DESIGN section 5)."
 
 fn module_exported_type_names(m: TypedModule) -> Set<String> {
   fold(m.type_env.bindings |> map_values, init: empty_set(), f: (acc, b) => set_insert(acc, b.name))
-}
-
-fn build_module_exported_type_name_index(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, Set<String>> {
-  fold(modules, init: empty_map(), f: (acc, m) =>
-    map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), module_exported_type_names(m: m))
-  )
 }
 
 fn direct_import_export_name_sets(m: TypedModule, export_name_index: Map<String, Set<String>>, source_indices: Map<String, NewlineIndex>) -> List<Set<String>> {
@@ -9438,41 +9456,61 @@ fn direct_import_exporter_count(import_export_names: List<Set<String>>, name: St
   import_export_names |> filter(names => set_contains(names, name)) |> count
 }
 
-fn rewire_inherited_str_binding(
+// THE DECISION, separated from the writing. Each name's verdict depends only on the two indexes,
+// the module's own export set and its direct imports — never on what earlier names decided — so the
+// per-name fold that used to thread both binding maps through every iteration was carrying state
+// nothing read. What that threading costs is a count, and the count is what changes here: the old
+// shape performed one insert into each FULL binding map per inherited name; the new shape performs
+// one insert per name into a rewrites map holding only the names actually rewritten, then one
+// merge per binding map. Whether each of those inserts also deep-copied its map is UNPROVEN here
+// — the emitted `Rc::make_mut` copies only when the handle is shared, and no control in this
+// change measures it — so the claim made is the structural one about how many writes reach the
+// large maps, not a claim about the copy mechanism.
+//
+// Two facts make the restructure exactly equivalent rather than approximately so, and both are
+// properties of the old code rather than assumptions about it: the verdict reads none of the
+// accumulated bindings, and the str_bindings arm only ever OVERWRITES a key it already found
+// present, so the key set of str_bindings is invariant across the fold and a later name's
+// `map_get(str_bindings, name)` cannot observe an earlier iteration's insert.
+fn rewire_canonical_rewrites(
   type_name_index: Map<String, TypeNameExportFacts>,
   import_export_names: List<Set<String>>,
   local_names: Set<String>,
-  str_bindings: Map<String, TypeBinding>,
-  ancestry_str_bindings: Map<String, TypeBinding>,
-  name: String
-) -> StrBindingsRewireAccum {
-  let exporter_count = match map_get(type_name_index, name) {
-    Present { value: facts } => facts.exporter_count
-    Absent => 0
-  }
-  if set_contains(local_names, name) || direct_import_exporter_count(import_export_names: import_export_names, name: name) > 1 || exporter_count > 1 {
-    StrBindingsRewireAccum { str_bindings: str_bindings, ancestry_str_bindings: ancestry_str_bindings }
-  } else {
+  inherited_keys: List<String>
+) -> Map<String, TypeBinding> {
+  fold(inherited_keys, init: empty_map(), f: (acc, name) =>
     match map_get(type_name_index, name) {
+      Absent => acc
       Present { value: facts } =>
-        match facts.canonical_binding {
-          Present { value: canonical } =>
-            let ancestry_str_bindings = map_insert(ancestry_str_bindings, name, canonical)
-            let str_bindings = match map_get(str_bindings, name) {
-              Present { value: _ } => map_insert(str_bindings, name, canonical)
-              Absent => str_bindings
-            }
-            StrBindingsRewireAccum { str_bindings: str_bindings, ancestry_str_bindings: ancestry_str_bindings }
-          Absent => StrBindingsRewireAccum { str_bindings: str_bindings, ancestry_str_bindings: ancestry_str_bindings }
+        if set_contains(local_names, name) || direct_import_exporter_count(import_export_names: import_export_names, name: name) > 1 || facts.exporter_count > 1 {
+          acc
+        } else {
+          match facts.canonical_binding {
+            Present { value: canonical } => map_insert(acc, name, canonical)
+            Absent => acc
+          }
         }
-      Absent => StrBindingsRewireAccum { str_bindings: str_bindings, ancestry_str_bindings: ancestry_str_bindings }
     }
-  }
+  )
+}
+
+fn rewire_str_binding_overlay(str_bindings: Map<String, TypeBinding>, rewrites: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
+  fold(rewrites |> map_keys, init: empty_map(), f: (acc, name) =>
+    match map_get(str_bindings, name) {
+      Present { value: _ } =>
+        match map_get(rewrites, name) {
+          Present { value: canonical } => map_insert(acc, name, canonical)
+          Absent => acc
+        }
+      Absent => acc
+    }
+  )
 }
 
 fn rewire_type_env_import_str_binding_identity(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
-  let type_name_index = build_type_name_export_index(modules: modules)
-  let export_name_index = build_module_exported_type_name_index(modules: modules, source_indices: source_indices)
+  let export_indexes = build_export_indexes(modules: modules, source_indices: source_indices)
+  let type_name_index = export_indexes.by_name
+  let export_name_index = export_indexes.by_module
   map(modules, m =>
     let local_names = match map_get(export_name_index, authored_name_at(source_indices: source_indices, node: m.module)) {
       Present { value: names } => names
@@ -9482,16 +9520,16 @@ fn rewire_type_env_import_str_binding_identity(modules: List<TypedModule>, sourc
     let ancestry_keys = m.type_env.ancestry_str_bindings |> map_keys
     let str_keys = m.type_env.str_bindings |> map_keys
     let inherited_keys = concat(ancestry_keys, str_keys)
-    let rewired = fold(inherited_keys, init: StrBindingsRewireAccum { str_bindings: m.type_env.str_bindings, ancestry_str_bindings: m.type_env.ancestry_str_bindings }, f: (acc, name) =>
-      rewire_inherited_str_binding(
-        type_name_index: type_name_index,
-        import_export_names: import_export_names,
-        local_names: local_names,
-        str_bindings: acc.str_bindings,
-        ancestry_str_bindings: acc.ancestry_str_bindings,
-        name: name
-      )
+    let rewrites = rewire_canonical_rewrites(
+      type_name_index: type_name_index,
+      import_export_names: import_export_names,
+      local_names: local_names,
+      inherited_keys: inherited_keys
     )
+    let rewired = StrBindingsRewireAccum {
+      str_bindings: map_merge(m.type_env.str_bindings, rewire_str_binding_overlay(str_bindings: m.type_env.str_bindings, rewrites: rewrites)),
+      ancestry_str_bindings: map_merge(m.type_env.ancestry_str_bindings, rewrites)
+    }
     TypedModule {
       module: m.module,
       items: m.items,

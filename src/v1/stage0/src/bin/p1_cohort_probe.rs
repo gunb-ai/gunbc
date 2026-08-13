@@ -190,8 +190,8 @@ extern "C" fn on_interrupt_signal(_: libc::c_int) {
 fn install_interrupt_flush() {
     static INSTALLED: std::sync::Once = std::sync::Once::new();
     INSTALLED.call_once(|| unsafe {
-        libc::signal(libc::SIGINT, on_interrupt_signal as usize);
-        libc::signal(libc::SIGTERM, on_interrupt_signal as usize);
+        libc::signal(libc::SIGINT, on_interrupt_signal as *const () as usize);
+        libc::signal(libc::SIGTERM, on_interrupt_signal as *const () as usize);
     });
 }
 
