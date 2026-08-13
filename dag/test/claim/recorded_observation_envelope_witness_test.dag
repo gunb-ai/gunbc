@@ -17,6 +17,7 @@ import std.observation {
   EntrySegment,
   ObservationEvent,
   ObservationTransition,
+  Begin,
   Concluded,
   Done,
   MeasuredUnavailable,
@@ -48,6 +49,8 @@ import std.observation {
   ParentOutsideReadScope,
   ParentMissingFromAttempt,
   resolve_parent,
+  ActiveOccurrences,
+  active_occurrences,
   SequenceVerdict,
   SequenceIntact,
   SequenceGap,
@@ -296,4 +299,88 @@ test fn w_a_root_occurrence_resolves_as_root_under_either_scope() -> Bool {
       OccurrenceIsRoot => true
       _ => false
     }
+}
+
+fn began(p: ObservationProducer, seq: Nat, id: NonEmptyStr, origin: OccurrenceOrigin) -> RecordedObservation {
+  let base = rec(p: p, seq: seq, occ: occ_in(attempt: "attempt-1" as NonEmptyStr, id: id), origin: origin)
+  RecordedObservation {
+    producer: base.producer,
+    producer_sequence: base.producer_sequence,
+    occurrence: base.occurrence,
+    origin: base.origin,
+    at: base.at,
+    event: ObservationEvent {
+      subject: a_subject(),
+      transition: Begin,
+      durations: base.event.durations,
+      rss: base.event.rss
+    }
+  }
+}
+
+fn concluded(p: ObservationProducer, seq: Nat, id: NonEmptyStr) -> RecordedObservation {
+  rec(p: p, seq: seq, occ: occ_in(attempt: "attempt-1" as NonEmptyStr, id: id), origin: RootOccurrence)
+}
+
+fn active_ids(a: ActiveOccurrences) -> List<String> {
+  map(a.occurrences, o => o.id as String)
+}
+
+// THE SIGKILL SHAPE. The coordinator, a worker, and a gate are all unfinished at once because
+// occurrences nest; a sibling witness finished in between and wrote the LAST record in the file.
+// Answering "what was it doing" with the last record names that finished sibling — something already
+// over — while the true answer is the set of three.
+test fn w_RED_a_killed_attempt_names_every_unfinished_occurrence_not_the_last_record() -> Bool {
+  let coord = OrdinaryWorkerProducer { worker_index: 0 }
+  let recs = [
+    began(p: CoordinatorProducer, seq: 0, id: "occ-coord" as NonEmptyStr, origin: RootOccurrence),
+    began(p: coord, seq: 0, id: "occ-worker" as NonEmptyStr, origin: ChildOf { parent_id: "occ-coord" as NonEmptyStr }),
+    began(p: coord, seq: 1, id: "occ-gate" as NonEmptyStr, origin: ChildOf { parent_id: "occ-worker" as NonEmptyStr }),
+    began(p: coord, seq: 2, id: "occ-sibling" as NonEmptyStr, origin: ChildOf { parent_id: "occ-worker" as NonEmptyStr }),
+    concluded(p: coord, seq: 3, id: "occ-sibling" as NonEmptyStr),
+  ]
+  let a = active_occurrences(records: recs, scope: AttemptUnionRead)
+  let ids = active_ids(a: a)
+  length(ids) == 3
+    && contains(ids, "occ-coord")
+    && contains(ids, "occ-worker")
+    && contains(ids, "occ-gate")
+    && !contains(ids, "occ-sibling")
+}
+
+// The active set crosses producer files, and the chain that explains it does too: occ-gate's parent
+// is in the worker's file, whose parent is in the COORDINATOR's. A specimen planting everything in
+// one file never executes the case every real floor run is made of.
+test fn w_RED_the_active_stack_crosses_a_producer_boundary() -> Bool {
+  let coord = OrdinaryWorkerProducer { worker_index: 0 }
+  let gate = began(p: coord, seq: 1, id: "occ-gate" as NonEmptyStr, origin: ChildOf { parent_id: "occ-worker" as NonEmptyStr })
+  let worker = began(p: coord, seq: 0, id: "occ-worker" as NonEmptyStr, origin: ChildOf { parent_id: "occ-coord" as NonEmptyStr })
+  let coordinator = began(p: CoordinatorProducer, seq: 0, id: "occ-coord" as NonEmptyStr, origin: RootOccurrence)
+  let union = [coordinator, worker, gate]
+  let worker_file = [worker, gate]
+  let up_one = match resolve_parent(child: worker, records: union, scope: AttemptUnionRead) {
+    ParentResolved { parent: p } => p.id == "occ-coord"
+    _ => false
+  }
+  let same_edge_in_one_file = match resolve_parent(
+    child: worker, records: worker_file, scope: SingleProducerRead { producer: coord }
+  ) {
+    ParentOutsideReadScope { scope: _, parent_id: _ } => true
+    _ => false
+  }
+  let root_terminates = match resolve_parent(child: coordinator, records: union, scope: AttemptUnionRead) {
+    OccurrenceIsRoot => true
+    _ => false
+  }
+  up_one && same_edge_in_one_file && root_terminates
+}
+
+// The active set is only as complete as the read, so the scope travels WITH it rather than being
+// remembered by the caller.
+test fn w_the_active_set_carries_the_scope_it_was_derived_under() -> Bool {
+  let a = active_occurrences(records: [], scope: SingleProducerRead { producer: CoordinatorProducer })
+  length(a.occurrences) == 0 && match a.scope {
+    SingleProducerRead { producer: p } => observation_producer_key(p: p) == "coordinator"
+    AttemptUnionRead => false
+  }
 }

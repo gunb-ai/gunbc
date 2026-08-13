@@ -1259,3 +1259,30 @@ fn resolve_parent(
       }
   }
 }
+
+// ---------------------------------------------------------------------------
+// The active set: which occurrences a killed attempt was inside.
+// ---------------------------------------------------------------------------
+
+data active_occurrence_note: String = "AN UNFINISHED OCCURRENCE IS A POPULATION, NOT A LATEST RECORD. When a producer is SIGKILLed the question 'what was it doing' has a set answer — every occurrence that recorded a Begin and no conclusion — because occurrences nest: a gate inside a batch inside a worker inside the attempt are all unfinished at once, and reporting only the deepest one, or only the last record written, discards the containment that makes the answer useful. THE LAST COMPLETE RECORD IS NOT THE LAST ACTIVE OCCURRENCE, and conflating them is how a torn tail produces a confident wrong answer: the final bytes may belong to a sibling that finished while its parent was still running, so 'the last thing in the file' names something already over. The set is derived from Begin-without-conclusion across the records actually read, and it is therefore only as complete as the read — which is why the read scope travels with it rather than being assumed."
+
+type ActiveOccurrences {
+  scope: LedgerReadScope
+  occurrences: List<OccurrenceId>
+}
+
+fn occurrence_concluded_in(records: List<RecordedObservation>, target: OccurrenceId) -> Bool {
+  fold_list(records, false, (acc, r) =>
+    acc || (r.occurrence.id == target.id
+      && r.occurrence.attempt == target.attempt
+      && match r.event.transition { Concluded { outcome: _ } => true, _ => false }))
+}
+
+fn active_occurrences(
+  records: List<RecordedObservation>,
+  scope: LedgerReadScope,
+) -> ActiveOccurrences {
+  let begun = filter(records, r => match r.event.transition { Begin => true, _ => false })
+  let unfinished = filter(begun, r => !occurrence_concluded_in(records: records, target: r.occurrence))
+  ActiveOccurrences { scope: scope, occurrences: map(unfinished, r => r.occurrence) }
+}
