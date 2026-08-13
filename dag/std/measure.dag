@@ -32,7 +32,6 @@ type Quantity =
 
   | Power
 
-  // Volt-amperes. See the VoltAmpere carrier for why this is not Power.
   | ApparentPower
 
   | Energy
