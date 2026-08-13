@@ -2,6 +2,8 @@ module gunbc.spark_serving_realization
 
 import std.types { String, Bool, List, Int, NonEmptyStr }
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import product.placement_supply { HostIdentity }
+import std.content_hash { ContentHash, compare_content_hash, ContentHashEqual }
 
 // SERVING REALIZATION IS DERIVED, NOT OBSERVED AND NOT ASKED.
 //
@@ -852,14 +854,31 @@ fn realization_sudoers_grant_lines(
 // host with no grants -- the first would authorize an install attempt that the second would refuse.
 // Reading an unobserved population as empty is the empty-observation narrow DESIGN names: an
 // observation that could not answer rendered as the verdict "nothing is granted". It refuses.
+// THE POPULATION IS BOUND TO THE SUBJECT IT WAS MEASURED FOR. The first cut carried a bare command
+// list, which meant a grant population observed on srv6, or under root, or through a different
+// credential, could be handed to a shortfall authorizing srv5 x gunbc-automation -- the copied-receipt
+// class this model already refuses one type over, where host_matches exists precisely because a
+// receipt produced for one host must not answer as another's. A grant list is evidence, and evidence
+// with no subject is evidence about nothing.
+//
+// The credential identity rides it for the same reason PrincipalReachObservation carries one: a
+// probe's answer is a fact about (host x principal x key), and dropping the key axis is what produced
+// a wrong Spark finding earlier in this lane -- probing with a fleet-unowned bootstrap key and
+// concluding the fleet key absent while it was present on both hosts.
 type ObservedGrantPopulation
-  = GrantPopulationObserved { commands: List<NonEmptyStr> }
-  | GrantPopulationUnobserved { cause: NonEmptyStr }
+  = GrantPopulationObserved {
+      host: HostIdentity
+      principal: NonEmptyStr
+      credential_identity: ContentHash
+      commands: List<NonEmptyStr>
+    }
+  | GrantPopulationUnobserved { host: HostIdentity, principal: NonEmptyStr, cause: NonEmptyStr }
 
 type EscalationShortfall
   = NoNewPrivilegeRequired
   | NewPrivilegeRequired { first: NonEmptyStr, more: List<NonEmptyStr> }
   | ShortfallUndecidable { cause: NonEmptyStr }
+  | ShortfallEvidenceMismatch { cause: NonEmptyStr }
 
 fn grant_population_contains(population: List<NonEmptyStr>, command: NonEmptyStr) -> Bool {
   fold(population, init: false, f: fn(acc, held) {
@@ -867,14 +886,29 @@ fn grant_population_contains(population: List<NonEmptyStr>, command: NonEmptyStr
   })
 }
 
+// THE SUBJECT IS CHECKED BEFORE THE SET DIFFERENCE, and a mismatch is its OWN arm rather than folding
+// into undecidable: "the evidence is about a different host or principal" and "we could not observe"
+// have different remedies -- one is a wiring defect, the other a reachability one -- and an operator
+// reading "undecidable" would go looking for an unreachable host that is fine.
 fn escalation_shortfall(
   realization: SparkServingRealization,
+  subject_host: HostIdentity,
   target: ServingDeploymentTarget,
   observed: ObservedGrantPopulation,
 ) -> EscalationShortfall {
   match observed {
-    GrantPopulationUnobserved { cause: c } => ShortfallUndecidable { cause: c }
-    GrantPopulationObserved { commands: held } => {
+    GrantPopulationUnobserved { host: _, principal: _, cause: c } => ShortfallUndecidable { cause: c }
+    GrantPopulationObserved { host: oh, principal: op, credential_identity: _, commands: held } =>
+      if (oh as String) != (subject_host as String) {
+        ShortfallEvidenceMismatch {
+          cause: join(["grant population was observed on host ", oh as String, " but authorizes ", subject_host as String], "") as NonEmptyStr,
+        }
+      } else {
+      if (op as String) != principal_label(p: target.actor) {
+        ShortfallEvidenceMismatch {
+          cause: join(["grant population was observed for principal ", op as String, " but authorizes ", principal_label(p: target.actor)], "") as NonEmptyStr,
+        }
+      } else {
       let missing = fold(
         realization_escalated_commands(realization: realization, target: target),
         init: [],
@@ -890,7 +924,8 @@ fn escalation_shortfall(
           TailFound { tail: t } => NewPrivilegeRequired { first: f, more: t }
         }
       }
-    }
+      }
+      }
   }
 }
 
@@ -902,5 +937,6 @@ fn applicable_without_administrator(shortfall: EscalationShortfall) -> Bool {
     NoNewPrivilegeRequired => true
     NewPrivilegeRequired { first: _, more: _ } => false
     ShortfallUndecidable { cause: _ } => false
+    ShortfallEvidenceMismatch { cause: _ } => false
   }
 }

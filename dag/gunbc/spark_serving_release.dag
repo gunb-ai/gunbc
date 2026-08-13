@@ -9,6 +9,7 @@ import std.measure { ByteSize, byte_size_count }
 import gunbc.spark_serving_realization {
   SystemPrincipal, ServingDeploymentTarget, UserUnitRealization,
   EscalationShortfall, NoNewPrivilegeRequired, NewPrivilegeRequired, ShortfallUndecidable,
+  ShortfallEvidenceMismatch,
   SparkServingIntent, SparkServingRealization, ServingRequirementRefusal, identity_contract_refusal,
   ObservedGrantPopulation, escalation_shortfall, applicable_without_administrator,
 }
@@ -342,6 +343,7 @@ fn spark_serving_plan_row(
     contract: identity_contract_refusal(intent: intent, realization: realization),
     shortfall: escalation_shortfall(
       realization: realization,
+      subject_host: desired.host,
       target: spark_serving_target(actor: actor),
       observed: observed_grants),
   }
@@ -368,6 +370,7 @@ type SparkServingPlanVerdict
   | ServingRealizationInadmissible { cause: NonEmptyStr }
   | ServingBlockedOnPrivilege { first_missing: NonEmptyStr }
   | ServingBlockedOnObservation { cause: NonEmptyStr }
+  | ServingEvidenceMismatch { cause: NonEmptyStr }
 
 // THE CONTRACT IS CHECKED BEFORE ANYTHING ELSE. An inadmissible realization makes every downstream
 // answer moot: there is no point reporting that its privilege cost is already covered.
@@ -392,6 +395,7 @@ fn privilege_verdict(shortfall: EscalationShortfall) -> SparkServingPlanVerdict 
     NoNewPrivilegeRequired => ServingReadyToApply
     NewPrivilegeRequired { first: f, more: _ } => ServingBlockedOnPrivilege { first_missing: f }
     ShortfallUndecidable { cause: c } => ServingBlockedOnObservation { cause: c }
+    ShortfallEvidenceMismatch { cause: c } => ServingEvidenceMismatch { cause: c }
   }
 }
 
@@ -402,6 +406,7 @@ fn plan_verdict_label(verdict: SparkServingPlanVerdict) -> String {
     ServingBlockedOnPrivilege { first_missing: m } => join(["blocked-on-privilege missing=", m as String], "")
     ServingBlockedOnObservation { cause: c } => join(["blocked-on-observation cause=", c as String], "")
     ServingRealizationInadmissible { cause: c } => join(["realization-inadmissible cause=", c as String], "")
+    ServingEvidenceMismatch { cause: c } => join(["evidence-mismatch cause=", c as String], "")
   }
 }
 

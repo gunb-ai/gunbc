@@ -2,6 +2,8 @@ module test.claim.spark_serving_release_witness_test
 
 import std.types { String, Bool, List, Int, NonEmptyStr }
 import std.measure { byte_size }
+import std.content_hash { content_hash_atom }
+import product.placement_supply { HostIdentity }
 import gunbc.spark_serving_realization {
   SystemPrincipal, NamedPrincipal, ObservedGrantPopulation, GrantPopulationObserved,
   SparkServingIntent, SurvivesReboot, RestartsOnFailure, ManagedConvergenceOwned,
@@ -265,11 +267,20 @@ fn plan_row_for(observation: SparkServingObservation, grants: ObservedGrantPopul
   plan_row_under(intent: executor_owned_intent(), realization: UserUnitRealization, observation: observation, grants: grants)
 }
 
-data linger_granted: ObservedGrantPopulation = GrantPopulationObserved {
-  commands: ["/usr/bin/loginctl enable-linger gunbc-automation" as NonEmptyStr],
+fn grants_on(host: HostIdentity, principal: String, commands: List<NonEmptyStr>) -> ObservedGrantPopulation {
+  GrantPopulationObserved {
+    host: host,
+    principal: principal as NonEmptyStr,
+    credential_identity: content_hash_atom(value: "fleet-automation-key" as NonEmptyStr),
+    commands: commands,
+  }
 }
 
-data nothing_granted: ObservedGrantPopulation = GrantPopulationObserved { commands: [] }
+data linger_command: NonEmptyStr = "/usr/bin/loginctl enable-linger gunbc-automation" as NonEmptyStr
+
+fn linger_granted() -> ObservedGrantPopulation { grants_on(host: "srv5", principal: "gunbc-automation", commands: [linger_command]) }
+
+fn nothing_granted() -> ObservedGrantPopulation { grants_on(host: "srv5", principal: "gunbc-automation", commands: []) }
 
 fn plan_verdict_for(observation: SparkServingObservation, grants: ObservedGrantPopulation) -> String {
   plan_verdict_label(verdict: plan_row_verdict(row: plan_row_for(observation: observation, grants: grants)))
@@ -278,35 +289,35 @@ fn plan_verdict_for(observation: SparkServingObservation, grants: ObservedGrantP
 // THE ANSWER THE OPERATOR IS ACTUALLY ASKING FOR: a Spark serving nothing, with the grant it already
 // holds, is ready to apply. That is the whole arc of this branch reduced to one claim.
 test fn w_an_absent_spark_with_the_existing_grant_is_ready_to_apply() -> Bool {
-  plan_verdict_for(observation: observation_absent(), grants: linger_granted) == "ready-to-apply"
+  plan_verdict_for(observation: observation_absent(), grants: linger_granted()) == "ready-to-apply"
 }
 
 // BOTH HALVES ARE CONSULTED, and this is the control that proves the join is real rather than the
 // verdict reading one side. Same host, same absent observation -- only the grant population differs,
 // and the verdict must change with it. If these agree, the shortfall is being ignored.
 test fn w_the_same_absent_host_is_blocked_when_the_grant_is_missing() -> Bool {
-  plan_verdict_for(observation: observation_absent(), grants: nothing_granted) != plan_verdict_for(observation: observation_absent(), grants: linger_granted)
+  plan_verdict_for(observation: observation_absent(), grants: nothing_granted()) != plan_verdict_for(observation: observation_absent(), grants: linger_granted())
 }
 
 // A converged host is NO-CHANGE regardless of privilege: there is nothing to apply, so a missing
 // grant is not a blocker. A verdict that reported blocked here would ask an operator to obtain a
 // credential for work that does not exist.
 test fn w_a_converged_host_is_no_change_even_with_no_grants() -> Bool {
-  plan_verdict_for(observation: observed_matching(), grants: nothing_granted) == "no-change"
+  plan_verdict_for(observation: observed_matching(), grants: nothing_granted()) == "no-change"
 }
 
 // An unreachable host blocks on OBSERVATION, never on privilege -- the two have different remedies
 // and the verdict must say which one it is.
 test fn w_an_unobservable_host_blocks_on_observation_not_privilege() -> Bool {
-  plan_verdict_for(observation: observation_refused(), grants: linger_granted) == "blocked-on-observation cause=loaded revision not observable from the unit MainPID"
+  plan_verdict_for(observation: observation_refused(), grants: linger_granted()) == "blocked-on-observation cause=loaded revision not observable from the unit MainPID"
 }
 
 // APPLICABILITY REQUIRES BOTH: a row ready to apply is applicable, and the same row without the
 // grant is not.
 test fn w_plan_row_applicable_requires_change_and_privilege() -> Bool {
-  plan_row_applicable(row: plan_row_for(observation: observation_absent(), grants: linger_granted))
-    && !plan_row_applicable(row: plan_row_for(observation: observation_absent(), grants: nothing_granted))
-    && !plan_row_applicable(row: plan_row_for(observation: observed_matching(), grants: linger_granted))
+  plan_row_applicable(row: plan_row_for(observation: observation_absent(), grants: linger_granted()))
+    && !plan_row_applicable(row: plan_row_for(observation: observation_absent(), grants: nothing_granted()))
+    && !plan_row_applicable(row: plan_row_for(observation: observed_matching(), grants: linger_granted()))
 }
 
 
@@ -318,7 +329,7 @@ test fn w_a_user_unit_is_inadmissible_under_a_no_login_identity_intent() -> Bool
   string_contains(
     s: plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
       intent: no_login_intent(), realization: UserUnitRealization,
-      observation: observation_absent(), grants: linger_granted))),
+      observation: observation_absent(), grants: linger_granted()))),
     pattern: "realization-inadmissible")
 }
 
@@ -327,16 +338,16 @@ test fn w_a_user_unit_is_inadmissible_under_a_no_login_identity_intent() -> Bool
 test fn w_the_intent_decides_admissibility_of_the_same_realization() -> Bool {
   plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
     intent: no_login_intent(), realization: UserUnitRealization,
-    observation: observation_absent(), grants: linger_granted))) != plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
+    observation: observation_absent(), grants: linger_granted()))) != plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
     intent: executor_owned_intent(), realization: UserUnitRealization,
-    observation: observation_absent(), grants: linger_granted)))
+    observation: observation_absent(), grants: linger_granted())))
 }
 
 // AN INADMISSIBLE ROW IS NEVER APPLICABLE, whatever its reconciliation and privilege say.
 test fn w_an_inadmissible_realization_is_not_applicable() -> Bool {
   !plan_row_applicable(row: plan_row_under(
     intent: no_login_intent(), realization: UserUnitRealization,
-    observation: observation_absent(), grants: linger_granted))
+    observation: observation_absent(), grants: linger_granted()))
 }
 
 // THE OTHER DIRECTION: a system unit IS admissible under the no-login intent, and it is blocked on
@@ -346,6 +357,40 @@ test fn w_a_system_unit_under_the_no_login_intent_blocks_on_privilege() -> Bool 
   string_contains(
     s: plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
       intent: no_login_intent(), realization: SystemUnitRealization,
-      observation: observation_absent(), grants: linger_granted))),
+      observation: observation_absent(), grants: linger_granted()))),
     pattern: "blocked-on-privilege")
+}
+
+
+// EVIDENCE MUST BE ABOUT THE SUBJECT IT AUTHORIZES. A grant population measured on srv6 cannot
+// authorize srv5, and one measured for root cannot authorize gunbc-automation. Before the population
+// carried its subject, both of these read as ready-to-apply.
+test fn w_a_grant_observed_on_another_host_does_not_authorize_this_one() -> Bool {
+  string_contains(
+    s: plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
+      intent: executor_owned_intent(), realization: UserUnitRealization,
+      observation: observation_absent(),
+      grants: grants_on(host: "srv6", principal: "gunbc-automation", commands: [linger_command])))),
+    pattern: "evidence-mismatch")
+}
+
+test fn w_a_grant_observed_for_another_principal_does_not_authorize_this_one() -> Bool {
+  string_contains(
+    s: plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
+      intent: executor_owned_intent(), realization: UserUnitRealization,
+      observation: observation_absent(),
+      grants: grants_on(host: "srv5", principal: "root", commands: [linger_command])))),
+    pattern: "evidence-mismatch")
+}
+
+// A MISMATCH IS NOT UNDECIDABILITY. The two have different remedies -- a wiring defect versus an
+// unreachable host -- so they must not report the same thing.
+test fn w_evidence_mismatch_and_unobservability_are_different_answers() -> Bool {
+  plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
+    intent: executor_owned_intent(), realization: UserUnitRealization,
+    observation: observation_absent(),
+    grants: grants_on(host: "srv6", principal: "gunbc-automation", commands: [linger_command])))) != plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
+    intent: executor_owned_intent(), realization: UserUnitRealization,
+    observation: observation_absent(),
+    grants: GrantPopulationUnobserved { host: "srv5", principal: "gunbc-automation" as NonEmptyStr, cause: "sudo -n -l could not be reached" as NonEmptyStr })))
 }

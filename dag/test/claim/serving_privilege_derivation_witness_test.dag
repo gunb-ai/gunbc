@@ -1,6 +1,8 @@
 module test.claim.serving_privilege_derivation_witness_test
 
 import std.types { String, Bool, List, NonEmptyStr, Int }
+import std.content_hash { content_hash_atom }
+import product.placement_supply { HostIdentity }
 import gunbc.spark_serving_realization {
   ServingInstallEffect,
   WriteSystemUnitFile,
@@ -17,6 +19,7 @@ import gunbc.spark_serving_realization {
   applicable_without_administrator,
   ObservedGrantPopulation,
   GrantPopulationObserved,
+  GrantPopulationUnobserved,
   GrantPopulationUnobserved,
   PullModelArtifact,
   GrantContainerRuntimeAccess,
@@ -144,11 +147,9 @@ test fn red_control_non_escalating_effects_contribute_no_grant_line() -> Bool {
 // nothing in the model says "serving needs no privilege".
 test fn w_user_unit_serving_needs_no_new_privilege_against_the_observed_grant() -> Bool {
   let target = target_as(NamedPrincipal { login: "gunbc-automation" as NonEmptyStr })
-  let observed = GrantPopulationObserved {
-    commands: ["/usr/bin/loginctl enable-linger gunbc-automation" as NonEmptyStr],
-  }
+  let observed = automation_grants(commands: ["/usr/bin/loginctl enable-linger gunbc-automation" as NonEmptyStr])
   applicable_without_administrator(shortfall: escalation_shortfall(
-    realization: UserUnitRealization, target: target, observed: observed))
+    realization: UserUnitRealization, subject_host: "srv5", target: target, observed: observed))
 }
 
 // THE DISCRIMINATING CONTROL. Same realization, same actor, an observed grant population that does
@@ -157,8 +158,8 @@ test fn w_user_unit_serving_needs_no_new_privilege_against_the_observed_grant() 
 test fn w_the_same_install_is_refused_when_linger_is_not_granted() -> Bool {
   let target = target_as(NamedPrincipal { login: "gunbc-automation" as NonEmptyStr })
   !applicable_without_administrator(shortfall: escalation_shortfall(
-    realization: UserUnitRealization, target: target,
-    observed: GrantPopulationObserved { commands: [] }))
+    realization: UserUnitRealization, subject_host: "srv5", target: target,
+    observed: automation_grants(commands: [])))
 }
 
 // AN UNOBSERVED GRANT POPULATION IS NOT AN EMPTY ONE. Reading "we could not see the grants" as
@@ -166,8 +167,8 @@ test fn w_the_same_install_is_refused_when_linger_is_not_granted() -> Bool {
 test fn w_an_unobserved_grant_population_does_not_authorize_the_install() -> Bool {
   let target = target_as(NamedPrincipal { login: "gunbc-automation" as NonEmptyStr })
   !applicable_without_administrator(shortfall: escalation_shortfall(
-    realization: UserUnitRealization, target: target,
-    observed: GrantPopulationUnobserved { cause: "sudo -n -l could not be reached" as NonEmptyStr }))
+    realization: UserUnitRealization, subject_host: "srv5", target: target,
+    observed: GrantPopulationUnobserved { host: "srv5", principal: "gunbc-automation" as NonEmptyStr, cause: "sudo -n -l could not be reached" as NonEmptyStr }))
 }
 
 // THE PACKAGED RUNTIME STILL COSTS ROOT, which is what proves the closure effect changed the
@@ -175,4 +176,14 @@ test fn w_an_unobserved_grant_population_does_not_authorize_the_install() -> Boo
 test fn w_the_packaged_runtime_still_requires_escalation() -> Bool {
   effect_requires_escalation(effect: InstallRuntimePackage, actor: NamedPrincipal { login: "gunbc-automation" as NonEmptyStr })
     && !effect_requires_escalation(effect: InstallOwnedRuntimeClosure, actor: NamedPrincipal { login: "gunbc-automation" as NonEmptyStr })
+}
+
+
+fn automation_grants(commands: List<NonEmptyStr>) -> ObservedGrantPopulation {
+  GrantPopulationObserved {
+    host: "srv5",
+    principal: "gunbc-automation" as NonEmptyStr,
+    credential_identity: content_hash_atom(value: "fleet-automation-key" as NonEmptyStr),
+    commands: commands,
+  }
 }
