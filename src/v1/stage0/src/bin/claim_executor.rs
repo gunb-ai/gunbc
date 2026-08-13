@@ -2388,13 +2388,27 @@ const HOST_DEPENDENCY_ABSENT_MODE: &str = "HostDependencyAbsent";
 
 fn host_dependency_refusal_from_detail(detail: &str) -> Option<HostDependencyRefusal> {
     const PREFIX: &str = "HostDependencyAbsent{tool=";
-    let start = detail.find(PREFIX)?;
+    // Anchor on the last wire token so an earlier accidental substring cannot win.
+    let start = detail.rfind(PREFIX)?;
     let rest = &detail[start + PREFIX.len()..];
     let comma = rest.find(",hint=")?;
     let tool = rest[..comma].to_string();
+    if tool.is_empty() || tool.contains('{') || tool.contains('}') {
+        return None;
+    }
     let hint_start = comma + ",hint=".len();
-    let hint_end = rest[hint_start..].find('}')?;
-    let hint = rest[hint_start..hint_start + hint_end].to_string();
+    let hint_rest = &rest[hint_start..];
+    if hint_rest.contains('{') {
+        return None;
+    }
+    let hint_end = hint_rest.rfind('}')?;
+    if hint_end != hint_rest.len() - 1 {
+        return None;
+    }
+    let hint = hint_rest[..hint_end].to_string();
+    if hint.is_empty() {
+        return None;
+    }
     Some(HostDependencyRefusal { tool, hint })
 }
 
@@ -13914,6 +13928,24 @@ mod tests {
         .expect("wire must parse");
         assert_eq!(parsed.tool, "npm");
         assert_eq!(parsed.hint, "apt install npm");
+    }
+
+    #[test]
+    fn host_dependency_refusal_from_detail_anchors_last_wire_token() {
+        let parsed = host_dependency_refusal_from_detail(
+            "HostDependencyAbsent{tool=decoy,hint=x} | returned Bool(false) | HostDependencyAbsent{tool=npm,hint=apt install npm}",
+        )
+        .expect("last wire token must win");
+        assert_eq!(parsed.tool, "npm");
+        assert_eq!(parsed.hint, "apt install npm");
+    }
+
+    #[test]
+    fn host_dependency_refusal_from_detail_refuses_brace_in_hint() {
+        assert!(host_dependency_refusal_from_detail(
+            "HostDependencyAbsent{tool=npm,hint=install {pkg} on runner}"
+        )
+        .is_none());
     }
 
     #[test]
