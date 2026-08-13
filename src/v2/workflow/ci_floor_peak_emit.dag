@@ -82,7 +82,7 @@ data ci_floor_phase_journal_present_command: String = "[ -f \"$GUNBC_FLOOR_PHASE
 
 data ci_floor_phase_journal_header_command: String = "echo \"[floor-phase-journal] columns: unix_millis pid phase state detail\""
 
-data ci_floor_phase_journal_read_command: String = "echo \"[floor-phase-journal] $(wc -l < \\\"$GUNBC_FLOOR_PHASE_JOURNAL\\\") rows retained; full journal in the floor-phase-journal artifact\""
+data ci_floor_phase_journal_read_command: String = "echo \"[floor-phase-journal] $(wc -l < $GUNBC_FLOOR_PHASE_JOURNAL) rows retained; full journal in the floor-phase-journal artifact\""
 
 data ci_floor_phase_journal_absent_command: String = "echo \"[floor-phase-journal] absent\""
 
@@ -105,7 +105,7 @@ data ci_floor_wet_witness_row_outcome_receipt_shell_emit_scaffold: Disposition =
   }
 }
 
-data ci_floor_wet_witness_row_outcome_receipt_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_floor_wet_witness_row_outcome_receipt_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four receipt leaves: FileExists, column-name log, row-count summary log, and absent log. DISSOLVES WHEN bash-emit (#5828 / ROADMAP shell-effectplan-to-bash / shell→intent Phase 2) binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_wet_witness_row_outcome_receipt_if contains no opaque shell command text.")
+data ci_floor_wet_witness_row_outcome_receipt_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_floor_wet_witness_row_outcome_receipt_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four receipt leaves: FileExists, header log, prefixed file read, and absent log. DISSOLVES WHEN bash-emit (#5828 / ROADMAP shell-effectplan-to-bash / shell→intent Phase 2) binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_wet_witness_row_outcome_receipt_if contains no opaque shell command text.")
 
 data ci_floor_wet_witness_row_outcome_receipt_runner_scaffold_comment: String = concat("# ", dissolution_description(condition: ci_floor_wet_witness_row_outcome_receipt_shell_emit_dissolution_trigger))
 
