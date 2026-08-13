@@ -12,6 +12,8 @@ import v2.compiler.source_authority {
   SourceRootIngest,
   SourceRootIngestBuildOk,
   SourceRootIngestBuildReadFailed,
+  SourceRootManifestElided,
+  SourceRootProvenanceCoverageReceipt,
   manifest_inline_list_max,
   source_root_closure_ref_transport_complete,
   source_root_coverage_is_complete,
@@ -180,6 +182,24 @@ test fn compiler_closure_scoped_ingest_module_count_ok_holds() -> Bool {
     } else {
       true
     }
+}
+
+test fn compiler_closure_ingest_overflow_refuses_never_empty_holds() -> Bool {
+  let receipt = host_source_root_ingest_coverage_receipt
+  let refs = host_source_root_closure_refs
+  let n = receipt.ingest_read_count
+  if n <= manifest_inline_list_max {
+    false
+  } else {
+    source_root_overflow_never_empty_population_holds(receipt: receipt, refs: refs)
+      && (receipt.produced_row_count == n)
+      && (length(xs: refs) == n)
+      && match receipt.coverage {
+        SourceRootManifestElided { read_count: elided_reads, cap: cap } =>
+          (elided_reads == n) && (cap == manifest_inline_list_max)
+        _ => false
+      }
+  }
 }
 
 test fn gap4_probe_all_ingest_reads_accept_holds() -> Bool {
