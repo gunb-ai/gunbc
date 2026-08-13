@@ -1187,19 +1187,19 @@ data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [
   },
   RehomedBinWetRow {
     entry: "dag/test/claim/codex_package_delivery_wet_witness_test.dag",
-    function: "materialize_codex_runtime_bundle_produces_native_executable",
+    function: "materialize_codex_runtime_bundle_produces_native_executable_holds",
     reason: "~150s measured claim_batch --wet wall (npm ci --offline + tree/schema receipt + atomic publish): exceeds bin_witness_wet_per_row_wall_budget_seconds; not per-PR floor. Falsifier batch 5 executes. HOST OBLIGATION: gunbc.host_cli_dependency codex_wet_materialization_host_cli_requirements (npm → apt install npm on cadence image); absent npm is HostDependencyAbsent, never auto-install inside the witness.",
     dissolution: unbound_dissolution(description: "dedicated integration workflow enrolls with durable receipt, or measured wall under bin_witness_wet_per_row_wall_budget_seconds re-enrolls per-PR")
   },
   RehomedBinWetRow {
     entry: "dag/test/claim/codex_package_delivery_wet_witness_test.dag",
-    function: "materialize_identical_input_twice_reuses_same_release_identity",
+    function: "materialize_identical_input_twice_reuses_same_release_identity_holds",
     reason: "Positive control for content-addressed release reuse after external scratch + atomic no-replace publish. Same materialize cost class (~2x first-trip wall); falsifier batch 5 executes.",
-    dissolution: unbound_dissolution(description: "fires with materialize_codex_runtime_bundle_produces_native_executable dissolve_on (same file, same mechanism)")
+    dissolution: unbound_dissolution(description: "fires with materialize_codex_runtime_bundle_produces_native_executable_holds dissolve_on (same file, same mechanism)")
   },
   RehomedBinWetRow {
     entry: "dag/test/claim/codex_app_server_press_wet_witness_test.dag",
-    function: "press_account_trip_yields_standing_or_typed_refusal_never_turn_started",
+    function: "press_account_trip_yields_standing_or_typed_refusal_never_turn_started_holds",
     reason: "Wet Codex account-standing trip (materialize + app-server initialize/account/rateLimits). Wall >> per-PR bin budget; must never claim turn_started. Falsifier batch 5 is the executing consumer until a dedicated integration workflow lands. HOST OBLIGATION: gunbc.host_cli_dependency codex_wet_materialization_host_cli_requirements (npm → apt install npm on cadence image); absent npm is HostDependencyAbsent, never auto-install inside the witness.",
     dissolution: unbound_dissolution(description: "dedicated integration workflow enrolls with durable receipt, or measured wall under bin_witness_wet_per_row_wall_budget_seconds re-enrolls per-PR")
   }

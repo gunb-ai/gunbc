@@ -46,7 +46,7 @@ fn committed_admitted_codex_runtime_source() -> AdmittedCodexRuntimeSource {
   }
 }
 
-test fn press_account_trip_yields_standing_or_typed_refusal_never_turn_started() -> Bool {
+test fn press_account_trip_yields_standing_or_typed_refusal_never_turn_started_holds() -> Bool {
   let release_tmp = shell.Mktemp.Dir()
   let evidence = shell.Mktemp.Dir()
   let home = shell.Mktemp.Dir()

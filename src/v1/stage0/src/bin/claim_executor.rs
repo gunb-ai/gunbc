@@ -13637,7 +13637,8 @@ mod tests {
     #[test]
     fn host_dependency_absent_classifies_structurally_not_as_witness_red() {
         let npm_absent = ClaimResult {
-            function: "materialize_codex_runtime_bundle_produces_native_executable".to_string(),
+            function: "materialize_codex_runtime_bundle_produces_native_executable_holds"
+                .to_string(),
             entry: "dag/test/claim/codex_package_delivery_wet_witness_test.dag".to_string(),
             ok: false,
             detail: "returned Bool(false) | HostDependencyAbsent{tool=npm,hint=apt install npm}"
