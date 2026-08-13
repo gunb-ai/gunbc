@@ -270,6 +270,12 @@ type Volt = Measure<ElectricPotentialDifference, One, Nat>
 
 type Ampere = Measure<ElectricCurrent, One, Nat>
 
+// The micrometre exists as a named carrier because EIA-310's rack unit is 44.45 mm - NOT a whole
+// number of millimetres - so any quantity derived from a rack unit count is inexact at millimetre
+// grain and exact at micrometre grain. Naming it lets a consumer stay exact instead of choosing
+// between a truncation and a rounding policy, which is the choice std.measure exists to remove.
+type Micrometer = Measure<Length, Micro, Nat>
+
 type Millimeter = Measure<Length, Milli, Nat>
 
 // THE SIGNED SPATIAL COMPONENT, and there is exactly ONE of it. Millimeter above stays Nat-backed
@@ -283,8 +289,8 @@ type Millimeter = Measure<Length, Milli, Nat>
 // spelled Measure<Length, Milli, Int>. They were the SAME structural type, so the names implied a
 // distinction the typechecker did not carry - in work whose entire subject is that distinction. The
 // scalar really is one thing: a signed millimetre component. What separates a location from a
-// displacement is the AGGREGATE that holds three of them and the operations over it - Point3<F> and
-// Vector3<F> in std.affine_space, where Point + Point has no operation at all. Branding the
+// displacement is the AGGREGATE that holds three of them and the operations over it - Point3 and
+// Vector3 in std.affine_space, where Point + Point has no operation at all. Branding the
 // individual x, y and z would add conversion surface at every field access and buy no wall that the
 // outer types do not already carry.
 type SignedMillimeterComponent = Measure<Length, Milli, Int>
@@ -500,6 +506,14 @@ fn ampere(count: Nat) -> Ampere {
 
 fn ampere_count(a: Ampere) -> Nat {
   measure_count(a)
+}
+
+fn micrometer(count: Nat) -> Micrometer {
+  Measure { count: count }
+}
+
+fn micrometer_count(m: Micrometer) -> Nat {
+  measure_count(m)
 }
 
 fn millimeter(count: Nat) -> Millimeter {

@@ -93,9 +93,12 @@ fn rust_pick_signature_with_open() -> List<ConcreteSyntaxToken> {
   ]
 }
 
+// ONE rbrace, not two. The second used to close the brace the CONDITIONAL left
+// open, smuggled into the declaration's block close; the conditional now emits
+// its own close from its declared discipline, so the scaffold carries only the
+// function's. This shrinking IS the dissolution the delimiting change buys.
 fn rust_pick_block_close() -> List<ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_rbrace },
     FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
@@ -306,6 +309,7 @@ fn rust_pick_target_model_bundle_core() -> Node {
 
 fn rust_pick_target_model_staging() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: rust_pick_target_model_bundle_core(),
     lex: rust_pick_lex(),
     binding_spellings: rust_pick_binding_spellings(),
@@ -577,6 +581,7 @@ fn rust_call_runtime_row() -> TargetEmitHostRuntimeRow {
 
 fn rust_call_target_model_staging() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: rust_target_model_bundle_core(),
     lex: rust_call_lex(),
     binding_spellings: rust_call_binding_spellings(),
@@ -693,6 +698,7 @@ fn rust_match_runtime_row() -> TargetEmitHostRuntimeRow {
 
 fn rust_match_target_model_staging() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: rust_match_target_model_bundle_core(),
     lex: rust_match_lex(),
     binding_spellings: rust_match_binding_spellings(),
@@ -990,6 +996,7 @@ fn rust_loop_runtime_row() -> TargetEmitHostRuntimeRow {
 
 fn rust_loop_target_model_staging() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: rust_loop_target_model_bundle_core(),
     lex: rust_loop_lex(),
     binding_spellings: rust_loop_binding_spellings(),
@@ -1130,6 +1137,7 @@ fn rust_classical_not_ingested_binding_spellings() -> Map<Symbol, String> {
 
 fn rust_classical_not_ingested_target_model_staging() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: rust_classical_not_target_model_bundle_core(),
     lex: rust_staging_lex(),
     binding_spellings: rust_classical_not_ingested_binding_spellings(),
@@ -1412,6 +1420,7 @@ fn rust_field_access_runtime_row() -> TargetEmitHostRuntimeRow {
 
 fn rust_field_access_target_model_staging() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: rust_field_access_target_model_bundle_core(),
     lex: rust_fn_add_lex(),
     binding_spellings: rust_field_access_binding_spellings(),
@@ -1729,6 +1738,7 @@ fn rust_variant_construct_runtime_row() -> TargetEmitHostRuntimeRow {
 
 fn rust_variant_construct_target_model_staging() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: rust_variant_construct_target_model_bundle_core(),
     lex: rust_variant_construct_lex(),
     binding_spellings: rust_variant_construct_binding_spellings(),
@@ -2034,6 +2044,7 @@ fn rust_logic_complement_runtime_row() -> TargetEmitHostRuntimeRow {
 
 fn rust_logic_complement_target_model_staging() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: rust_logic_complement_target_model_bundle_core(),
     lex: rust_logic_complement_lex(),
     binding_spellings: rust_logic_complement_binding_spellings(),
@@ -2312,6 +2323,7 @@ fn rust_bool_fn_target_model(
   let m1 = map_insert(m0, ^dag_binding_param_a, "a")
   let binding_spellings = map_insert(m1, ^dag_binding_param_b, "b")
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: Node {
       kind: TypeNode { connective: Conj },
       children: rust_bool_fn_target_model_core_edges(
@@ -2504,6 +2516,7 @@ fn rust_logic_family_runtime_row() -> TargetEmitHostRuntimeRow {
 fn rust_logic_family_target_model_staging() -> TargetModel {
   let base = rust_logic_meet_target_model_staging()
   TargetModel {
+    produced_decl_support: base.produced_decl_support,
     bundle: base.bundle,
     lex: base.lex,
     binding_spellings: base.binding_spellings,
@@ -2562,6 +2575,7 @@ fn rust_logic_selected_bundle_runtime_row() -> TargetEmitHostRuntimeRow {
 fn rust_logic_selected_bundle_target_model_staging() -> TargetModel {
   let base = rust_logic_meet_target_model_staging()
   TargetModel {
+    produced_decl_support: base.produced_decl_support,
     bundle: base.bundle,
     lex: base.lex,
     binding_spellings: base.binding_spellings,
@@ -2597,6 +2611,7 @@ fn rust_logic_family_meet_zero_runtime_row() -> TargetEmitHostRuntimeRow {
 fn rust_logic_family_target_model_meet_zero_staging() -> TargetModel {
   let base = rust_logic_meet_target_model_staging()
   TargetModel {
+    produced_decl_support: base.produced_decl_support,
     bundle: base.bundle,
     lex: base.lex,
     binding_spellings: base.binding_spellings,
@@ -2679,6 +2694,7 @@ fn rust_match_loop_fold_family_runtime_row() -> TargetEmitHostRuntimeRow {
 fn rust_match_loop_fold_family_target_model_staging() -> TargetModel {
   let base = rust_match_target_model_staging()
   TargetModel {
+    produced_decl_support: base.produced_decl_support,
     bundle: base.bundle,
     lex: base.lex,
     binding_spellings: base.binding_spellings,
@@ -2922,6 +2938,7 @@ fn rust_rec_target_model_bundle_core() -> Node {
 
 fn rust_rec_target_model_staging() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: rust_rec_target_model_bundle_core(),
     lex: rust_fn_add_lex(),
     binding_spellings: rust_rec_binding_spellings(),
@@ -2933,6 +2950,7 @@ fn rust_rec_target_model_staging() -> TargetModel {
 
 fn rust_rec_wrong_field_target_model_staging() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: rust_rec_target_model_bundle_core(),
     lex: rust_fn_add_lex(),
     binding_spellings: rust_rec_wrong_field_binding_spellings(),
@@ -3220,6 +3238,7 @@ fn rust_rec_nine_runtime_row() -> TargetEmitHostRuntimeRow {
 
 fn rust_rec_nine_target_model_staging() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: rust_rec_nine_target_model_bundle_core(),
     lex: rust_fn_add_lex(),
     binding_spellings: rust_rec_nine_binding_spellings(),
@@ -3231,6 +3250,7 @@ fn rust_rec_nine_target_model_staging() -> TargetModel {
 
 fn rust_rec_nine_wrong_field_target_model_staging() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: rust_rec_nine_target_model_bundle_core(),
     lex: rust_fn_add_lex(),
     binding_spellings: rust_rec_nine_wrong_field_binding_spellings(),
@@ -3539,6 +3559,7 @@ fn rust_fold_call_runtime_row() -> TargetEmitHostRuntimeRow {
 
 fn rust_fold_call_target_model_staging() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: rust_fold_call_target_model_bundle_core(),
     lex: rust_call_lex(),
     binding_spellings: rust_fold_call_binding_spellings(),
@@ -3558,6 +3579,7 @@ fn rust_target_model_bundle_core_with_operators(operator_catalog: Node) -> Node 
 
 fn rust_target_model_with_operators_and_lex(operator_catalog: Node, lex: LexRules) -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: rust_target_model_bundle_core_with_operators(operator_catalog: operator_catalog),
     lex: lex,
     binding_spellings: rust_binding_spellings(),
@@ -3821,6 +3843,7 @@ fn rust_bind_literal_target_model_bundle() -> Node {
 
 fn rust_bind_literal_target_model() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: rust_bind_literal_target_model_bundle(),
     lex: rust_literal_emit_lex(),
     binding_spellings: rust_literal_emit_binding_spellings(),
@@ -4106,6 +4129,7 @@ fn rust_type_alias_decl_structural_lex() -> LexRules {
 
 fn rust_type_alias_decl_structural_target_model() -> TargetModel {
   TargetModel {
+    produced_decl_support: ProducedDeclUnwired,
     bundle: Node {
       kind: TypeNode { connective: Conj },
       children: [
@@ -4192,6 +4216,7 @@ fn rust_filesystem_read_family_runtime_row(fixture_content: String) -> TargetEmi
 fn rust_filesystem_read_family_target_model_staging(fixture_content: String) -> TargetModel {
   let base = rust_logic_meet_target_model_staging()
   TargetModel {
+    produced_decl_support: base.produced_decl_support,
     bundle: base.bundle,
     lex: base.lex,
     binding_spellings: base.binding_spellings,
@@ -4295,6 +4320,7 @@ fn rust_shell_exec_run_family_runtime_row() -> TargetEmitHostRuntimeRow {
 fn rust_shell_exec_run_family_target_model_staging() -> TargetModel {
   let base = rust_logic_meet_target_model_staging()
   TargetModel {
+    produced_decl_support: base.produced_decl_support,
     bundle: base.bundle,
     lex: base.lex,
     binding_spellings: base.binding_spellings,

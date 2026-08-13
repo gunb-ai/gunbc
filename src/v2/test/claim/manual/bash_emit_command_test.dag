@@ -4,7 +4,8 @@ import v2.compiler.emit { emit }
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Lossless, Medium }
-import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
+import v2.std.compilers.target_model {
+  ProducedDeclUnwired, TargetModel, target_model_emit_transforms_empty }
 import v2.extdeps.languages.bash {
   bash_lhs_exact_relation_row_witness,
   bash_concrete_tokens,
@@ -163,6 +164,7 @@ data bash_empty_bundle: Node = Node {
 }
 
 data bash_missing_rules_target: TargetModel = TargetModel {
+  produced_decl_support: ProducedDeclUnwired,
   bundle: bash_empty_bundle,
   lex: bash_lex(),
   binding_spellings: empty_map(),

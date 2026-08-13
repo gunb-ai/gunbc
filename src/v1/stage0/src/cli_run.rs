@@ -51,10 +51,10 @@ pub(crate) mod materialization_provider_consumer;
 mod phase_profile;
 pub(crate) mod test_module_hygiene_bridge;
 pub use floor_discovery_snapshot::{
-    append_discovery_trace_row, build_floor_discovery_request, coordinated_discovery_compute_count,
-    discover_floor_witness_roster_with_snapshot, floor_discovery_consumer_role_from_env,
+    append_discovery_trace_row, build_floor_discovery_request,
+    discover_floor_witness_roster_with_snapshot, floor_tested_commit_and_tree, floor_tool_identity,
     request_identity_digest, verify_floor_discovery_terminal_for_coordinator,
-    FloorDiscoveryConsumerRole, FLOOR_DISCOVERY_CONSUMER_ENV,
+    FloorDiscoveryConsumerRole,
 };
 #[doc(hidden)]
 pub use materialization_provider_consumer::{
@@ -3098,6 +3098,70 @@ fn compile_clean_departed_paths_outside_docs(
     )
 }
 
+/// Module paths in the compile-clean closure (format-independent identity — see
+/// `gunbc compile` census_only_sources wiring in main.rs).
+fn compile_clean_closure_module_paths(
+    compiled: &[Rc<v1_compiler_compile::SourceFile>],
+) -> HashSet<String> {
+    compiled
+        .iter()
+        .filter_map(|s| extract_module_path(&s.content))
+        .collect()
+}
+
+/// Indexed pool modules outside the compile closure enter the name census only
+/// (fill = whole tree; policy gates lookup, never fill).
+fn compile_clean_census_only_sources_for_compiled(
+    index: &MultiEntryIndex,
+    compiled: &[Rc<v1_compiler_compile::SourceFile>],
+) -> Vec<Rc<v1_compiler_compile::SourceFile>> {
+    let closure_modules = compile_clean_closure_module_paths(compiled);
+    let mut pool_rest: Vec<(String, Rc<v1_compiler_compile::SourceFile>)> = index
+        .source_files
+        .iter()
+        .filter(|(module_path, _)| !closure_modules.contains(*module_path))
+        .map(|(module_path, source)| (module_path.clone(), source.clone()))
+        .collect();
+    pool_rest.sort_by(|a, b| a.0.cmp(&b.0));
+    pool_rest.into_iter().map(|(_, source)| source).collect()
+}
+
+/// Parse-grade census fill for out-of-closure modules (annotation binding +
+/// parse errors). Returns only compile-clean-hard diagnostics.
+fn compile_clean_census_fill_hard_diagnostics(
+    census_only: &[Rc<v1_compiler_compile::SourceFile>],
+) -> im::Vector<Rc<ErrorNode>> {
+    if census_only.is_empty() {
+        return im::Vector::new();
+    }
+    let fill = v1_compiler_compile::parse_census_fill_sources(Rc::new(census_only.to_vec().into()));
+    fill.diagnostics
+        .iter()
+        .filter(|d| compile_clean_diagnostic_is_hard(d))
+        .cloned()
+        .collect()
+}
+
+fn compile_clean_pipeline_options_for_sources(
+    index: Option<&MultiEntryIndex>,
+    compiled: &[Rc<v1_compiler_compile::SourceFile>],
+) -> Rc<v1_compiler_compile::CompilePipelineOptions> {
+    let census_only = index
+        .map(|idx| compile_clean_census_only_sources_for_compiled(idx, compiled))
+        .unwrap_or_default();
+    if census_only.is_empty() {
+        return v1_compiler_compile::default_compile_pipeline_options();
+    }
+    eprintln!(
+        "[census] {} indexed modules outside the compile-clean closure enter the name census only (not compiled)",
+        census_only.len()
+    );
+    Rc::new(v1_compiler_compile::CompilePipelineOptions {
+        analyze_complexity: false,
+        census_only_sources: Rc::new(census_only.into()),
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum CompileCleanScopePlan {
     /// Local dev only — neither `GITHUB_ACTIONS` nor `GUNBC_CI_DIFF_BASE` active.
@@ -4642,9 +4706,17 @@ fn disable_floor_compile_clean_lazy_install_for_test() {
 /// and precisely BECAUSE it shares no caches with the via-index path it is the
 /// standing second opinion for verdict equivalence
 /// (`compile_clean_via_index_verdict_equivalence` tests).
-fn floor_compile_clean_emit_ok(sources: Vec<Rc<v1_compiler_compile::SourceFile>>) -> bool {
+fn floor_compile_clean_emit_ok(
+    sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    index: Option<&MultiEntryIndex>,
+) -> bool {
     use crate::v1_compiler_artifact::RenderTarget;
-    let result = v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
+    let options = compile_clean_pipeline_options_for_sources(index, &sources);
+    let result = v1_compiler_compile::compile_sources_with_options(
+        Rc::new(sources.into()),
+        RenderTarget::Dag,
+        options,
+    );
     let has_hard_errors = compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref());
     if has_hard_errors {
         eprint_compile_clean_hard_diagnostics(result.diagnostics.as_ref());
@@ -4668,6 +4740,7 @@ fn floor_compile_clean_emit_ok_via_index(
     use crate::v1_compiler_artifact::RenderTarget;
     use crate::v1_compiler_complexity::empty_complexity_report;
     let index = process_shared_index(index_roots);
+    let census_only = compile_clean_census_only_sources_for_compiled(&index, &sources);
     let (graph, si, compile_clean_diags) = match resolved_graph_from_sources_with_index(
         &index,
         sources,
@@ -4683,11 +4756,22 @@ fn floor_compile_clean_emit_ok_via_index(
             return (false, format!("compile-clean: {msg}"));
         }
     };
-    if compile_clean_pipeline_has_hard_errors(compile_clean_diags.as_ref()) {
-        eprint_compile_clean_hard_diagnostics(compile_clean_diags.as_ref());
+    let census_fill_diags = compile_clean_census_fill_hard_diagnostics(&census_only);
+    let all_compile_clean_diags = if census_fill_diags.is_empty() {
+        compile_clean_diags.clone()
+    } else {
+        let mut merged = compile_clean_diags
+            .iter()
+            .cloned()
+            .collect::<im::Vector<_>>();
+        merged.extend(census_fill_diags.iter().cloned());
+        Rc::new(merged)
+    };
+    if compile_clean_pipeline_has_hard_errors(all_compile_clean_diags.as_ref()) {
+        eprint_compile_clean_hard_diagnostics(all_compile_clean_diags.as_ref());
         return (
             false,
-            format_first_compile_clean_hard_diagnostic(compile_clean_diags.as_ref()),
+            format_first_compile_clean_hard_diagnostic(all_compile_clean_diags.as_ref()),
         );
     }
     let newline_indices: Rc<im::Vector<Rc<NewlineIndex>>> =
@@ -5287,7 +5371,13 @@ pub fn witness_layer_roots_compile_clean_check() -> bool {
     match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
         Ok(None) => true,
         Ok(Some(sources)) => {
-            let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+            let roots = witness_layer_roots();
+            let index = build_multi_entry_index_primary_precedence(&roots);
+            let options = compile_clean_pipeline_options_for_sources(Some(&index), &sources);
+            let result = v1_compiler_compile::compile_to_resolved_with_options(
+                Rc::new(sources.into()),
+                options,
+            );
             if compile_clean_resolve_has_hard_errors(&result) {
                 eprint_compile_clean_hard_diagnostics(result.diagnostics.as_ref());
                 false
@@ -5308,7 +5398,11 @@ pub fn witness_layer_roots_compile_clean_check() -> bool {
 pub fn witness_layer_roots_compile_clean_emit_check() -> bool {
     match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
         Ok(None) => true,
-        Ok(Some(sources)) => floor_compile_clean_emit_ok(sources),
+        Ok(Some(sources)) => {
+            let roots = witness_layer_roots();
+            let index = build_multi_entry_index_primary_precedence(&roots);
+            floor_compile_clean_emit_ok(sources, Some(&index))
+        }
         Err(msg) => {
             eprintln!("compile-clean emit: source load failed ({msg})");
             false
@@ -5450,7 +5544,6 @@ pub fn import_closure_from_facts(
 /// corpus on every `resolve_transitively` call (Phase 1 perf receipt, DESIGN §2).
 #[derive(Clone)]
 pub struct ModuleGraphFactsLive {
-    pub(crate) edges: Vec<ImportResolutionFactRaw>,
     pub(crate) nodes: Vec<ModuleDeclarationFactRaw>,
     pub(crate) adjacency: HashMap<String, Vec<String>>,
     // Workspace-relative paths of `nodes`, precomputed once per facts build: the
@@ -5477,15 +5570,17 @@ pub struct ModuleGraphFactsLive {
     // a known-empty dependency set and a precise `{self}` closure.
     pub(crate) reference_unaccounted: HashSet<String>,
     // Reverse of `build_import_adjacency`'s internal `module_to_path`: declared module name by
-    // repo path. Built once here so `reference_only_direct_import_modules` (the typed-module
-    // content-key's reference-derived import term) does not re-derive it per module.
+    // repo path, built once per facts build. Read by the discovery witness run loop (a witness
+    // entry with no module identity refuses rather than fabricating a `DeclarationRef`) and by
+    // `declared_source_refs_axis_for_entry`, which used to rebuild this same map per entry.
     pub(crate) path_to_module: HashMap<String, String>,
-    // Every in-scope `.dag` path the importer walk SAW on disk (whether or not it produced
-    // facts), and every observed path whose content read refused. The producers skip an
-    // unreadable file at scan time, so without these rows a vanished module is
-    // indistinguishable from an absent one — the fail-open undercount consumers like the
-    // inert-lens census must refuse on, never absorb (operator review 2026-07-28, PR #7384).
-    pub(crate) observed_paths: HashSet<String>,
+    // The producers skip an unreadable file at scan time, so a vanished module would be
+    // indistinguishable from an absent one; every recorded refusal therefore stops the build
+    // (`refuse_on_module_graph_read_refusals`) rather than being absorbed (operator review
+    // 2026-07-28, PR #7384). The companion `observed_paths` INVENTORY is deliberately not
+    // retained here: it is produced and asserted on at the observation
+    // (`ImportResolutionObservation`), and no consumer of the facts ever read it, so keeping it
+    // on this struct only widened the cross-worker snapshot payload (gunbc Cut 4).
     pub(crate) read_refusals: Vec<(String, String)>,
 }
 
@@ -5805,7 +5900,7 @@ mod compile_clean_via_index_verdict_equivalence {
         }
 
         fn verdicts(&self) -> (bool, bool) {
-            let raw = floor_compile_clean_emit_ok(self.sources.clone());
+            let raw = floor_compile_clean_emit_ok(self.sources.clone(), None);
             let via_index =
                 floor_compile_clean_emit_ok_via_index(self.sources.clone(), &self.roots).0;
             (raw, via_index)
@@ -5853,6 +5948,38 @@ mod compile_clean_via_index_verdict_equivalence {
         assert!(
             !via_index,
             "via-index path must red on an unresolved import"
+        );
+    }
+
+    /// §5 discriminating RED: a `SourceAnnotationRefused` in a module outside the
+    /// scoped compile-clean closure must surface through whole-tree census fill —
+    /// compiling only the affected entry must not hide annotation debt elsewhere.
+    #[test]
+    fn out_of_closure_annotation_refusal_blocks_scoped_compile_clean() {
+        let corpus = Corpus::new(
+            "annotation-census",
+            &[
+                ("good.dag", "module eqv.good\ndata probe: Int = 42\n"),
+                (
+                    "bad.dag",
+                    "module eqv.bad\n\ndata alpha: String = \"a\" // trailing prose\n",
+                ),
+            ],
+        );
+        let compiled = vec![corpus.sources[0].clone()];
+        let index = super::build_multi_entry_index_primary_precedence(&corpus.roots);
+
+        assert!(
+            floor_compile_clean_emit_ok(compiled.clone(), None),
+            "the compile closure alone is green when census fill is omitted"
+        );
+        assert!(
+            !floor_compile_clean_emit_ok(compiled.clone(), Some(&index)),
+            "whole-tree census fill must surface out-of-closure annotation refusal on the raw path"
+        );
+        assert!(
+            !floor_compile_clean_emit_ok_via_index(compiled, &corpus.roots).0,
+            "whole-tree census fill must surface out-of-closure annotation refusal on the via-index path"
         );
     }
 
@@ -5945,8 +6072,9 @@ pub(crate) fn build_module_graph_facts_live_uncached(
     // (import-less-but-referencing std files, witnesses that need src/v1 in their pool, the
     // pre-existing fleet_converge Srv3 red, and homonyms the bright-cat lane must qualify), so the
     // loader repoint is staged as a separate part after those land. The REFERENCE producer below is
-    // already live via the inert-lens reach (the strips' documented CI blocker), which is hygiene-
-    // only and cannot regress a compile.
+    // was, until gunbc#8141, already live via the inert-lens reach (the strips' documented CI
+    // blocker); that consumer is deleted, so the reference producer's remaining live readers are
+    // affected-set selection and the loader closure.
     //
     // EDGE SOURCE — the swap `module_graph.dag`'s `dependency_edge_source_migration_note` designates:
     // "when [the namespace terminal step] lands, `dependency_resolution_facts_live` swaps to the
@@ -6000,14 +6128,12 @@ pub(crate) fn build_module_graph_facts_live_uncached(
         .map(|n| (workspace_relative_repo_path(&n.path), n.module.clone()))
         .collect();
     ModuleGraphFactsLive {
-        edges,
         nodes,
         adjacency,
         selection_adjacency,
         declared_paths,
         reference_unaccounted,
         path_to_module,
-        observed_paths: observation.observed_paths,
         read_refusals: observation.read_refusals,
     }
 }
@@ -6022,16 +6148,6 @@ pub fn build_module_graph_facts_live(pool_roots: &[String]) -> ModuleGraphFactsL
         cache.borrow_mut().insert(key, facts.clone());
         facts
     })
-}
-
-pub(crate) fn install_module_graph_facts_cache_entry(
-    pool_roots: &[String],
-    facts: ModuleGraphFactsLive,
-) {
-    let key = pool_roots_for_module_graph_closure(pool_roots).join("\u{1f}");
-    MODULE_GRAPH_FACTS_CACHE.with(|cache| {
-        cache.borrow_mut().insert(key, facts);
-    });
 }
 
 /// Host realization of `v2.lens.module_graph.import_closure_live`.
@@ -6074,16 +6190,6 @@ impl ModuleGraphFactsLive {
     /// imports are already covered by `resolved.resolved_imports`, so this returns empty for it
     /// (`adjacency` and `selection_adjacency` agree on such a file — see
     /// `reference_resolution_facts` pass 2).
-    pub(crate) fn reference_only_direct_import_modules(
-        &self,
-        importer_repo_path: &str,
-    ) -> Vec<String> {
-        self.reference_only_direct_import_paths(importer_repo_path)
-            .into_iter()
-            .filter_map(|p| self.path_to_module.get(&p).cloned())
-            .collect()
-    }
-
     /// Workspace-relative repo paths `importer_repo_path` depends on ONLY through a strict-tier
     /// reference edge (`selection_adjacency` minus `adjacency`). The path-grain authority
     /// `selection_adjacency` already carries; module names are derived only for diagnostics.
@@ -20180,73 +20286,6 @@ fn scan_test_decl_lines(content: &str) -> Vec<(String, i64)> {
     out
 }
 
-pub(crate) fn floor_filename_hygiene_refusal_via_producer(
-    source_roots: &[String],
-) -> Result<(), String> {
-    let mut dag_paths: Vec<String> = Vec::new();
-    for root in source_roots {
-        let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(Path::new(root), &mut dag_files);
-        for path in dag_files {
-            dag_paths.push(path.to_string_lossy().into_owned());
-        }
-    }
-    if dag_paths.is_empty() {
-        return Ok(());
-    }
-    let (graph, indices) = resolve_workspace_entry(source_roots, FLOOR_NAMING_HYGIENE_ENTRY)
-        .map_err(|e| format!("floor_naming_hygiene resolve for filename hygiene: {e}"))?;
-    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    let path_values: Vec<v1_interpreter::Value> = dag_paths
-        .iter()
-        .map(|p| v1_interpreter::Value::Str(p.clone()))
-        .collect();
-    let args = [(
-        Some("dag_paths".to_string()),
-        list_value_from_vec(path_values),
-    )];
-    let result = v1_interpreter::run_in_context_with_args(
-        &ctx,
-        "floor_filename_hygiene_refusal_for_paths",
-        &args,
-        false,
-    )
-    .map_err(|e| format!("floor_filename_hygiene_refusal_for_paths: {e}"))?;
-    match &result {
-        v1_interpreter::Value::Variant {
-            type_name,
-            variant_name,
-            fields,
-            ..
-        } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Present") => {
-            match ctx.field(fields, "value") {
-                Some(v1_interpreter::Value::Str(reason)) => Err(reason.clone()),
-                _ => Err(
-                    "floor_filename_hygiene_refusal_for_paths Present missing reason string"
-                        .to_string(),
-                ),
-            }
-        }
-        v1_interpreter::Value::Variant {
-            type_name,
-            variant_name,
-            ..
-        } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Absent") => Ok(()),
-        other => Err(format!(
-            "floor_filename_hygiene_refusal_for_paths returned `{}`, expected Optional<String>",
-            ctx.format_value(other)
-        )),
-    }
-}
-
-#[derive(Clone, Copy)]
-struct WorkspaceRootRelativeEntry(&'static str);
-
-const FLOOR_DISCOVERY_PRODUCER_ENTRY: WorkspaceRootRelativeEntry =
-    WorkspaceRootRelativeEntry("src/v2/workflow/floor_discovery_producer.dag");
-const FLOOR_NAMING_HYGIENE_ENTRY: WorkspaceRootRelativeEntry =
-    WorkspaceRootRelativeEntry("src/v2/workflow/floor_naming_hygiene.dag");
-
 /// The producer entry above is repo-relative, and every resolve of it ultimately reads the
 /// path **cwd-relative** (`entry_source_from_index_or_disk` does a bare `Path::is_file`).
 /// The floor runs from the repo root, so that ambient dependency is invisible in production
@@ -20264,6 +20303,12 @@ const FLOOR_NAMING_HYGIENE_ENTRY: WorkspaceRootRelativeEntry =
 /// Part of the `cli_run_runtime_workspace_root_plumbing` scaffold (see
 /// `CLI_RUN_RUNTIME_WORKSPACE_ROOT_SCAFFOLD_MARKER`): it dissolves with the rest of the
 /// anchoring plumbing when entry resolution stops reading cwd.
+#[derive(Clone, Copy)]
+struct WorkspaceRootRelativeEntry(&'static str);
+
+const FLOOR_DISCOVERY_PRODUCER_ENTRY: WorkspaceRootRelativeEntry =
+    WorkspaceRootRelativeEntry("src/v2/workflow/floor_discovery_producer.dag");
+
 fn resolve_workspace_entry(
     source_roots: &[String],
     entry: WorkspaceRootRelativeEntry,
@@ -20939,86 +20984,18 @@ pub fn discover_floor_witness_roster(
     exclude_substrings: &[String],
     discovery_scope_dirs: &[String],
 ) -> Result<Vec<DiscoveryRow>, String> {
-    floor_filename_hygiene_refusal_via_producer(source_roots)?;
-    // U2 — orphan plain fns in *_test.dag (enroll-or-refuse). Lives in the naming walk,
-    // not a new lens (umbrella-dissolution fence).
-    test_module_hygiene_bridge::check_orphan_helpers_or_err(source_roots)?;
     let mut rows = invoke_floor_discovery_producer(source_roots, scan_dirs, exclude_substrings)?;
     rows = apply_discovery_scope_dirs_filter(rows, discovery_scope_dirs);
-    // ONE module-graph facts build serves effect-reach, the inert-lens reach, and the
-    // justification census (6A repoint: `build_floor_lens_import_graph`'s second
-    // corpus scan is deleted; `v2.lens.module_graph` facts are the single
-    // edge/declaration authority on this path).
+    // The module-graph facts build now serves exactly two consumers on this path:
+    // effect-reach derivation below, and the cross-worker snapshot transport in
+    // `floor_discovery_snapshot::install_floor_discovery_snapshot`. The supply-side
+    // lens censuses that used to ride along (inert-lens reach, construction-justification)
+    // are deleted — they made every discovery run acquire a whole-corpus world to answer
+    // a question about lens authorship.
     let facts = build_module_graph_facts_live(source_roots);
     refuse_on_module_graph_read_refusals(&facts)?;
     apply_effect_reach_derived_reads_live_tree(&mut rows, &facts);
-    let inert = inert_lens_modules(&rows, &facts);
-    if !inert.is_empty() {
-        return Err(format!(
-            "inert-lens hygiene (DESIGN.md §6): {} lens module(s) under `v2.lens.*` are authored \
-             but unreached by any discovered floor witness — an inert lens is a lie. Wire each \
-             with a discovered fail-closed witness (a `*_test.dag` `test fn`/`test data`, or a \
-             scan-dir `unified_claim_*`) or delete it: {}",
-            inert.len(),
-            inert.join(", ")
-        ));
-    }
-    let (lens_module_to_path, lens_with_justification) = lens_justification_census(&facts)?;
-    let unjustified = unjustified_lens_modules(&lens_module_to_path, &lens_with_justification);
-    if !unjustified.is_empty() {
-        return Err(format!(
-            "construction-justification (DESIGN.md §5/§6): {} lens module(s) under `v2.lens.*` do \
-             not record a `construction_justification` — before adding a lens you must justify why \
-             the bad-state class cannot be made unwritable by construction. Add a `data \
-             construction_justification: ConstructionJustification = …` decl (see \
-             v2.lens.common.construction_justification) classifying it as WallNow / \
-             WallAfterGrounding / RatchetForever: {}",
-            unjustified.len(),
-            unjustified.join(", ")
-        ));
-    }
     Ok(rows)
-}
-
-fn default_floor_lens_hygiene_excludes() -> Vec<String> {
-    witness_exclusion_substrings()
-}
-
-/// Floor witness builtin (#5433 sibling to `doc_graph_orphan_count`): unreached top-level
-/// `v2.lens.*` module count. Returns `-1` when the corpus walk fails closed.
-pub fn inert_lens_unreached_module_count() -> i64 {
-    let roots = default_source_roots();
-    let scan_dirs = witness_discovery_scan_dirs();
-    let excludes = default_floor_lens_hygiene_excludes();
-    let facts = build_module_graph_facts_live(&roots);
-    if refuse_on_module_graph_read_refusals(&facts).is_err() {
-        return -1;
-    }
-    match invoke_floor_discovery_producer(&roots, &scan_dirs, &excludes) {
-        Ok(rows) => inert_lens_modules(&rows, &facts).len() as i64,
-        Err(_) => -1,
-    }
-}
-
-/// Floor witness builtin: declared top-level `v2.lens.*` module count (non-vacuity oracle).
-pub fn inert_lens_top_level_module_count() -> i64 {
-    let facts = build_module_graph_facts_live(&default_source_roots());
-    if refuse_on_module_graph_read_refusals(&facts).is_err() {
-        return -1;
-    }
-    facts
-        .nodes
-        .iter()
-        .filter(|n| is_top_level_lens_module(&n.module))
-        .count() as i64
-}
-
-fn declares_construction_justification(content: &str) -> bool {
-    content.lines().any(|line| {
-        let trimmed = line.trim_start();
-        trimmed.starts_with("data construction_justification")
-            && trimmed.contains("ConstructionJustification")
-    })
 }
 
 // ITEM 2 (reference grounding): the construction->authority graph witness.
@@ -21117,20 +21094,6 @@ pub fn construction_authority_graph_unresolved(
     ))
 }
 
-pub(crate) fn unjustified_lens_modules(
-    module_to_path: &std::collections::HashMap<String, String>,
-    justified: &std::collections::BTreeSet<String>,
-) -> Vec<String> {
-    let mut missing: Vec<String> = module_to_path
-        .keys()
-        .filter(|m| is_top_level_lens_module(m) && !justified.contains(*m))
-        .cloned()
-        .collect();
-    missing.sort();
-    missing.dedup();
-    missing
-}
-
 fn repo_relative_dag_path(path: &str) -> String {
     let normalized = path.replace('\\', "/");
     let ws = workspace_root();
@@ -21142,20 +21105,13 @@ fn repo_relative_dag_path(path: &str) -> String {
     stripped.trim_start_matches("./").to_string()
 }
 
-fn is_top_level_lens_module(module: &str) -> bool {
-    match module.strip_prefix("v2.lens.") {
-        Some(rest) => !rest.is_empty() && !rest.contains('.'),
-        None => false,
-    }
-}
-
-/// Fail-closed arm for every lens-census consumer of the module-graph facts
-/// (operator review 2026-07-28, PR #7384): the fact producers skip unreadable files at
-/// scan time, so an unreadable top-level lens would otherwise VANISH from both the
-/// lens universe (`inert_lens_top_level_module_count`) and the justification census —
-/// an absorbing fail-open undercount, not an over-flag. Any read refusal recorded by
-/// the single facts authority stops the census, typed and located (paths named),
-/// never narrowed.
+/// Fail-closed arm for every consumer of the module-graph facts (operator review
+/// 2026-07-28, PR #7384): the fact producers skip unreadable files at scan time, so an
+/// unreadable module would otherwise VANISH from the facts entirely — an absorbing
+/// fail-open undercount, not an over-flag. Any read refusal recorded by the single
+/// facts authority stops the build, typed and located (paths named), never narrowed.
+/// The lens censuses this arm was first written for are deleted; effect-reach
+/// derivation and the cross-worker snapshot transport are the live consumers.
 pub(crate) fn refuse_on_module_graph_read_refusals(
     facts: &ModuleGraphFactsLive,
 ) -> Result<(), String> {
@@ -21176,107 +21132,11 @@ pub(crate) fn refuse_on_module_graph_read_refusals(
     ))
 }
 
-/// Reachability walk for the inert-lens hygiene census over the module-graph facts
-/// SELECTION tier (import edges + strict-tier reference edges) — the same
-/// `v2.lens.module_graph` authority affected-set selection reads. 6A repoint: replaces
-/// the deleted `build_floor_lens_import_graph`, which re-scanned the whole corpus into
-/// a second module-name-grain adjacency beside the facts build the roster already
-/// performs. One edge authority, walked at path grain; module names derive from the
-/// same facts' declaration rows. The legacy walk also carried undeclared raw import
-/// names in its reached set; `build_import_adjacency` drops edges to undeclared
-/// targets, and an undeclared name can never be a declared lens module, so the inert
-/// set is unchanged (proven by the legacy-oracle equivalence test:
-/// `facts_walk_matches_legacy_floor_lens_graph_on_live_corpus`).
-pub(crate) fn inert_lens_modules(
-    rows: &[DiscoveryRow],
-    facts: &ModuleGraphFactsLive,
-) -> Vec<String> {
-    // Seed reachability from ALL *_test.dag files the facts scan saw (declared modules
-    // plus edge-bearing importers — a file with neither contributes no module and no
-    // edges, so omitting it cannot change reachability), not just enrolled rows, so
-    // witnesses in the execution corpus also count for lens coverage even though they
-    // are excluded from the main corpus rows.
-    let mut seeds: BTreeSet<String> = rows
-        .iter()
-        .map(|r| repo_relative_dag_path(&r.entry))
-        .collect();
-    for path in facts
-        .declared_paths
-        .iter()
-        .chain(facts.selection_adjacency.keys())
-    {
-        if path.ends_with("_test.dag") {
-            seeds.insert(path.clone());
-        }
-    }
-    let mut reached_paths: HashSet<String> = HashSet::new();
-    let mut queue: Vec<String> = Vec::new();
-    for path in seeds {
-        if reached_paths.insert(path.clone()) {
-            queue.push(path);
-        }
-    }
-    while let Some(path) = queue.pop() {
-        for target in facts.selection_adjacency.get(&path).into_iter().flatten() {
-            if reached_paths.insert(target.clone()) {
-                queue.push(target.clone());
-            }
-        }
-    }
-    let reached_modules: HashSet<&String> = reached_paths
-        .iter()
-        .filter_map(|p| facts.path_to_module.get(p))
-        .collect();
-    let mut inert: Vec<String> = facts
-        .nodes
-        .iter()
-        .map(|n| &n.module)
-        .filter(|m| is_top_level_lens_module(m) && !reached_modules.contains(m))
-        .cloned()
-        .collect();
-    inert.sort();
-    inert.dedup();
-    inert
-}
-
-/// Top-level `v2.lens.*` (module → path) rows from the module-graph facts, plus the
-/// subset recording a `construction_justification`. Fail-closed per file: a lens file
-/// that cannot be read refuses, never counts as justified (the arm the deleted
-/// `build_floor_lens_import_graph` carried for the whole corpus, kept here scoped to
-/// the lens declarations — the only file reads left on this census path).
-pub(crate) fn lens_justification_census(
-    facts: &ModuleGraphFactsLive,
-) -> Result<
-    (
-        std::collections::HashMap<String, String>,
-        std::collections::BTreeSet<String>,
-    ),
-    String,
-> {
-    let ws = workspace_root();
-    let mut lens_module_to_path: std::collections::HashMap<String, String> =
-        std::collections::HashMap::new();
-    let mut justified: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    for node in &facts.nodes {
-        if !is_top_level_lens_module(&node.module) {
-            continue;
-        }
-        let rel = workspace_relative_repo_path(&node.path);
-        let content =
-            std::fs::read_to_string(ws.join(&rel)).map_err(|e| format!("read {rel}: {e}"))?;
-        if declares_construction_justification(&content) {
-            justified.insert(node.module.clone());
-        }
-        lens_module_to_path.insert(node.module.clone(), rel);
-    }
-    Ok((lens_module_to_path, justified))
-}
-
 /// Host realization of std.realization_schedule.NodeFrontierSelection (signed design:
 /// docs/plans/affected-set-differential-falsifier.md). PredictOnly computes would-skip
 /// per row, RECORDS the prediction, and runs the row anyway — the falsifier cadence
 /// compares predictions against cold verdicts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum NodeFrontierSelectionMode {
     Off,
     Applied,
@@ -22665,15 +22525,6 @@ fn declared_source_refs_axis_for_paths(
     DeclaredSourceRefAxis::Untouched
 }
 
-fn path_to_module_from_declaration_facts(
-    nodes: &[ModuleDeclarationFactRaw],
-) -> HashMap<String, String> {
-    nodes
-        .iter()
-        .map(|n| (workspace_relative_repo_path(&n.path), n.module.clone()))
-        .collect()
-}
-
 pub(crate) fn declared_source_refs_axis_for_entry(
     entry_path: &str,
     facts: &ModuleGraphFactsLive,
@@ -22681,10 +22532,13 @@ pub(crate) fn declared_source_refs_axis_for_entry(
     touched_paths: &[String],
 ) -> DeclaredSourceRefAxis {
     let declared_paths = declared_source_ref_paths_for_entry(entry_path, facts);
-    let path_to_module = path_to_module_from_declaration_facts(&facts.nodes);
+    // The facts build already precomputes this exact map once (`ModuleGraphFactsLive.path_to_module`).
+    // This site used to rebuild it from `facts.nodes` per ENTRY, and it is called per entry on the
+    // selection path — an O(corpus) map allocation per question against a map already in hand
+    // (DESIGN §6 bare-minimum cost: a proven cost-shape defect is fixed regardless of realized n).
     declared_source_refs_axis_for_paths(
         &declared_paths,
-        &path_to_module,
+        &facts.path_to_module,
         source_roots,
         touched_paths,
     )
@@ -29338,11 +29192,9 @@ mod source_root_ingest_manifest_tests {
 }
 
 #[cfg(test)]
-mod inert_lens_hygiene_tests {
+mod module_graph_read_refusal_tests {
     use super::{
         build_import_adjacency, build_module_graph_facts_live, default_source_roots,
-        discover_floor_witness_roster, inert_lens_modules, is_top_level_lens_module,
-        witness_discovery_scan_dirs, witness_exclusion_substrings, DiscoveryRow,
         ImportResolutionFactRaw, ModuleDeclarationFactRaw, ModuleGraphFactsLive,
     };
     use std::path::PathBuf;
@@ -29353,15 +29205,6 @@ mod inert_lens_hygiene_tests {
             .nth(3)
             .expect("workspace root")
             .to_path_buf()
-    }
-
-    fn row(entry: &str, function: &str) -> DiscoveryRow {
-        DiscoveryRow {
-            label: function.to_string(),
-            entry: entry.to_string(),
-            function: function.to_string(),
-            reads_live_tree: false,
-        }
     }
 
     /// Synthetic `ModuleGraphFactsLive` through the SAME construction path the live
@@ -29400,257 +29243,23 @@ mod inert_lens_hygiene_tests {
             })
             .collect();
         ModuleGraphFactsLive {
-            edges: edge_rows,
             nodes: node_rows,
             adjacency: adjacency.clone(),
             selection_adjacency: adjacency,
             declared_paths,
             reference_unaccounted: std::collections::HashSet::new(),
             path_to_module,
-            observed_paths: std::collections::HashSet::new(),
             read_refusals: Vec::new(),
         }
     }
 
-    #[test]
-    fn top_level_lens_module_predicate() {
-        assert!(is_top_level_lens_module("v2.lens.effect"));
-        assert!(is_top_level_lens_module(
-            "v2.lens.extdeps_shape_transport_policy"
-        ));
-        assert!(!is_top_level_lens_module(
-            "v2.lens.extdeps_shape_transport_policy.module_refs"
-        ));
-        assert!(!is_top_level_lens_module(
-            "v2.test.lens_effect.effect_depends_on"
-        ));
-        assert!(!is_top_level_lens_module("v2.std.algebra"));
-        assert!(!is_top_level_lens_module("v2.lens."));
-    }
-
-    #[test]
-    fn detector_red_on_unreached_green_on_wired() {
-        // Discriminating RED for the facts-tier walk: an unwired lens flags inert…
-        let facts = synthetic_facts(&[("v2.lens.demo", "src/v2/lens/demo.dag")], &[]);
-        let inert = inert_lens_modules(&[], &facts);
-        assert_eq!(inert, vec!["v2.lens.demo".to_string()]);
-
-        // …wiring a discovered witness clears it…
-        let facts = synthetic_facts(
-            &[
-                ("v2.lens.demo", "src/v2/lens/demo.dag"),
-                (
-                    "v2.test.lens_demo.w",
-                    "src/v2/workflow/lens_demo_family_eval_test.dag",
-                ),
-            ],
-            &[(
-                "src/v2/workflow/lens_demo_family_eval_test.dag",
-                "v2.lens.demo",
-            )],
-        );
-        let rows = vec![row("src/v2/workflow/lens_demo_family_eval_test.dag", "w")];
-        assert!(
-            inert_lens_modules(&rows, &facts).is_empty(),
-            "wiring a discovered witness must clear the inert flag"
-        );
-
-        // …and reachability is transitive through the selection adjacency.
-        let facts = synthetic_facts(
-            &[
-                ("v2.lens.demo", "src/v2/lens/demo.dag"),
-                ("v2.lens.sib", "src/v2/lens/sib.dag"),
-                (
-                    "v2.test.lens_demo.w",
-                    "src/v2/workflow/lens_demo_family_eval_test.dag",
-                ),
-            ],
-            &[
-                (
-                    "src/v2/workflow/lens_demo_family_eval_test.dag",
-                    "v2.lens.demo",
-                ),
-                ("src/v2/lens/demo.dag", "v2.lens.sib"),
-            ],
-        );
-        assert!(
-            inert_lens_modules(&rows, &facts).is_empty(),
-            "a transitively-reached sibling lens must count as wired"
-        );
-    }
-
-    // ── 6A closure repoint receipts ─────────────────────────────────────────────
-    //
-    // Legacy oracle, retained TEST-SIDE only (the Phase-1 pattern:
-    // `resolve_transitively_bfs_legacy`): the deleted `build_floor_lens_import_graph`
-    // corpus scan + module-name-grain walk, kept to prove the facts-tier walk computes
-    // the identical inert set and edge relation over the live corpus.
-
-    fn floor_lens_graph_legacy(
-        source_roots: &[String],
-    ) -> (
-        std::collections::HashMap<String, Vec<String>>,
-        std::collections::HashMap<String, String>,
-    ) {
-        let mut path_imports: std::collections::HashMap<String, Vec<String>> =
-            std::collections::HashMap::new();
-        let mut module_to_path: std::collections::HashMap<String, String> =
-            std::collections::HashMap::new();
-        for root in source_roots {
-            let mut dag_files: Vec<std::path::PathBuf> = Vec::new();
-            super::collect_dag_files_tolerant(std::path::Path::new(root), &mut dag_files);
-            dag_files.sort();
-            for path in dag_files {
-                let entry = path.to_string_lossy().into_owned();
-                let content = std::fs::read_to_string(&path)
-                    .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-                let rel = super::repo_relative_dag_path(&entry);
-                if let Some(m) = super::extract_module_path(&content) {
-                    module_to_path.insert(m, rel.clone());
-                }
-                path_imports.insert(rel, super::extract_import_paths(&content));
-            }
-        }
-        for edge in super::reference_edges_as_import_facts(
-            &super::reference_resolution_facts(source_roots, source_roots, &[]),
-            true,
-        ) {
-            let importer = super::repo_relative_dag_path(&edge.path);
-            let entry = path_imports.entry(importer).or_default();
-            if !entry.contains(&edge.import_module) {
-                entry.push(edge.import_module);
-            }
-        }
-        (path_imports, module_to_path)
-    }
-
-    fn inert_lens_modules_legacy(
-        rows: &[DiscoveryRow],
-        path_imports: &std::collections::HashMap<String, Vec<String>>,
-        module_to_path: &std::collections::HashMap<String, String>,
-    ) -> Vec<String> {
-        let mut reached: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-        let mut queue: Vec<String> = Vec::new();
-        let path_to_module: std::collections::HashMap<&String, &String> =
-            module_to_path.iter().map(|(m, p)| (p, m)).collect();
-        let entry_paths: std::collections::BTreeSet<String> = {
-            let mut s: std::collections::BTreeSet<String> = rows
-                .iter()
-                .map(|r| super::repo_relative_dag_path(&r.entry))
-                .collect();
-            for path in path_imports.keys() {
-                if path.ends_with("_test.dag") {
-                    s.insert(path.clone());
-                }
-            }
-            s
-        };
-        for ep in &entry_paths {
-            if let Some(module) = path_to_module.get(ep) {
-                if reached.insert((*module).clone()) {
-                    queue.push((*module).clone());
-                }
-            }
-            if let Some(imports) = path_imports.get(ep) {
-                for imp in imports {
-                    if reached.insert(imp.clone()) {
-                        queue.push(imp.clone());
-                    }
-                }
-            }
-        }
-        while let Some(module) = queue.pop() {
-            if let Some(mpath) = module_to_path.get(&module) {
-                if let Some(imports) = path_imports.get(mpath) {
-                    for imp in imports {
-                        if reached.insert(imp.clone()) {
-                            queue.push(imp.clone());
-                        }
-                    }
-                }
-            }
-        }
-        let mut inert: Vec<String> = module_to_path
-            .keys()
-            .filter(|m| is_top_level_lens_module(m) && !reached.contains(*m))
-            .cloned()
-            .collect();
-        inert.sort();
-        inert.dedup();
-        inert
-    }
-
-    #[test]
-    fn facts_walk_matches_legacy_floor_lens_graph_on_live_corpus() {
-        let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir to workspace root");
-        let roots = default_source_roots();
-        let (path_imports, module_to_path) = floor_lens_graph_legacy(&roots);
-        let facts = build_module_graph_facts_live(&roots);
-
-        // Edge-set equivalence at the grain the walk consumes: (importer path →
-        // declared target module). The legacy map carries undeclared raw names and the
-        // facts adjacency carries paths; projected to the shared grain they must agree
-        // row-for-row.
-        let mut mismatches: Vec<String> = Vec::new();
-        for (path, imports) in &path_imports {
-            let legacy_targets: std::collections::BTreeSet<String> = imports
-                .iter()
-                .filter(|m| module_to_path.contains_key(*m))
-                .cloned()
-                .collect();
-            let facts_targets: std::collections::BTreeSet<String> = facts
-                .selection_adjacency
-                .get(path)
-                .into_iter()
-                .flatten()
-                .filter_map(|p| facts.path_to_module.get(p).cloned())
-                .collect();
-            if legacy_targets != facts_targets {
-                mismatches.push(format!(
-                    "{path}: legacy {legacy_targets:?} vs facts {facts_targets:?}"
-                ));
-            }
-        }
-        assert!(
-            mismatches.is_empty(),
-            "6A repoint: selection-tier edge sets diverged from the legacy corpus scan \
-             ({} importer(s)):\n{}",
-            mismatches.len(),
-            mismatches.join("\n")
-        );
-
-        // Inert-set equivalence (the census answer itself).
-        let legacy = inert_lens_modules_legacy(&[], &path_imports, &module_to_path);
-        let repointed = inert_lens_modules(&[], &facts);
-        assert_eq!(
-            repointed, legacy,
-            "6A repoint: facts-tier inert set diverged from the legacy walk"
-        );
-
-        // Discriminating RED control: sever the edge tier and the same comparison must
-        // diverge — proves the equality receipts above can go red on a real divergence.
-        let mut severed = facts.clone();
-        severed.selection_adjacency = super::HashMap::new();
-        let inert_severed = inert_lens_modules(&[], &severed);
-        assert!(
-            !inert_severed.is_empty(),
-            "severed-edge control: with no edges some lens must flag inert"
-        );
-        assert_ne!(
-            inert_severed, legacy,
-            "severed-edge control must diverge from the legacy answer \
-             (the equality receipt discriminates)"
-        );
-    }
-
-    // BLOCKER-1 RED (operator review 2026-07-28): a top-level lens PRESENT in the
+    // BLOCKER-1 RED (operator review 2026-07-28): a module PRESENT in the
     // source inventory whose content cannot be read must surface as a counted read
-    // refusal — never vanish from the lens universe. The bad file is invalid UTF-8, so
+    // refusal — never vanish from the facts. The bad file is invalid UTF-8, so
     // `read_to_string` refuses for every uid (a chmod-based probe would pass under
     // root).
     #[test]
-    fn unreadable_lens_is_a_read_refusal_not_an_absence() {
+    fn unreadable_source_is_a_read_refusal_not_an_absence() {
         // Scratch roots live INSIDE the workspace (gitignored target/): the walk's
         // path keys are workspace-anchored and an outside-tree root panics by design.
         // Pool root and importer root are SEPARATE dirs because the pool's
@@ -29708,14 +29317,13 @@ mod inert_lens_hygiene_tests {
                 .any(|f| f.path.ends_with("bad_lens.dag")),
             "no facts may be fabricated for an unreadable file"
         );
-        // End-to-end: a facts value carrying this observation must STOP the census —
-        // the lens is present in the inventory, produced no module declaration, and
+        // End-to-end: a facts value carrying this observation must STOP the build —
+        // the file is present in the inventory, produced no module declaration, and
         // the refusal (not absence) is the surfaced state.
         let mut facts = synthetic_facts(&[("v2.lens.good_probe", "target/x/good.dag")], &[]);
-        facts.observed_paths = observation.observed_paths;
         facts.read_refusals = observation.read_refusals;
         let err = super::refuse_on_module_graph_read_refusals(&facts)
-            .expect_err("census must refuse while a lens-bearing path is unreadable");
+            .expect_err("the facts build must refuse while a path is unreadable");
         assert!(
             err.contains("bad_lens.dag"),
             "refusal must locate the unreadable path: {err}"
@@ -29724,9 +29332,11 @@ mod inert_lens_hygiene_tests {
 
     // The refusal arm itself: red on a recorded refusal (typed, path named), green on
     // none — and green over the LIVE corpus (the no-refusal control that keeps the
-    // arm honest about today's tree).
+    // arm honest about today's tree). The lens censuses this arm was first written for
+    // are deleted; effect-reach derivation and the cross-worker snapshot transport are
+    // the consumers that keep it load-bearing.
     #[test]
-    fn census_refuses_on_read_refusals_red_and_green() {
+    fn facts_build_refuses_on_read_refusals_red_and_green() {
         let mut facts = synthetic_facts(&[("v2.lens.demo", "src/v2/lens/demo.dag")], &[]);
         assert!(super::refuse_on_module_graph_read_refusals(&facts).is_ok());
         facts.read_refusals.push((
@@ -29734,7 +29344,7 @@ mod inert_lens_hygiene_tests {
             "permission denied".to_string(),
         ));
         let err = super::refuse_on_module_graph_read_refusals(&facts)
-            .expect_err("a recorded read refusal must stop the census");
+            .expect_err("a recorded read refusal must stop the facts build");
         assert!(
             err.contains("src/v2/lens/vanished.dag") && err.contains("fail-closed"),
             "refusal must be typed and located: {err}"
@@ -29748,85 +29358,15 @@ mod inert_lens_hygiene_tests {
             "live corpus must scan without read refusals: {:?}",
             live.read_refusals
         );
-        assert!(
-            !live.observed_paths.is_empty(),
-            "live corpus inventory must be non-empty (non-vacuity)"
-        );
-    }
-
-    // 6A cost receipt: the whole lens census (reach + justification) runs on ONE
-    // module-graph facts build — the deleted second corpus scan cannot come back
-    // silently. Uses the same instruments as
-    // `resolve_transitively_threads_prebuilt_facts_without_rescan`.
-    #[test]
-    fn lens_census_single_facts_build_receipt() {
-        let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir to workspace root");
-        let roots = default_source_roots();
-        super::reset_module_graph_facts_cache_for_test();
-        super::reset_module_graph_facts_build_count_for_test();
-        super::reset_import_resolution_facts_call_counts_for_test();
-        let facts = build_module_graph_facts_live(&roots);
-        let _ = inert_lens_modules(&[], &facts);
-        let (lens_module_to_path, justified) =
-            super::lens_justification_census(&facts).expect("justification census");
-        let _ = super::unjustified_lens_modules(&lens_module_to_path, &justified);
-        assert_eq!(
-            super::module_graph_facts_build_count_for_test(),
-            1,
-            "one facts build must serve the whole lens census"
-        );
-        assert_eq!(
-            super::import_resolution_facts_call_count_for_test(),
-            1,
-            "the census must not trigger a second import-facts corpus scan"
-        );
-        assert_eq!(
-            super::module_declaration_facts_call_count_for_test(),
-            1,
-            "the census must not trigger a second module-declaration scan"
-        );
-    }
-
-    #[test]
-    fn builtin_inert_lens_counts_are_green_on_live_corpus() {
-        let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir to workspace root");
-        assert_eq!(
-            super::inert_lens_unreached_module_count(),
-            0,
-            "every v2.lens.* must be reached by a floor witness"
-        );
-        assert!(
-            super::inert_lens_top_level_module_count() > 0,
-            "lens universe must be non-empty (non-vacuity oracle)"
-        );
-    }
-
-    #[test]
-    fn floor_corpus_has_no_inert_lenses() {
-        let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir to workspace root");
-        let roots = default_source_roots();
-        let scan_dirs = witness_discovery_scan_dirs();
-        let excludes = witness_exclusion_substrings();
-        let result = discover_floor_witness_roster(&roots, &scan_dirs, &excludes, &[]);
-        assert!(
-            result.is_ok(),
-            "floor discovery must succeed — every v2.lens.* is wired or deleted: {}",
-            result.err().unwrap_or_default()
-        );
     }
 }
 
 #[cfg(test)]
-mod construction_justification_hygiene_tests {
+mod construction_authority_graph_tests {
     use super::{
         construction_authority_graph_unresolved, construction_authority_unresolved,
-        declares_construction_justification, discover_floor_witness_roster,
-        unjustified_lens_modules, wall_now_authority_refs, witness_exclusion_substrings,
+        wall_now_authority_refs,
     };
-    use std::collections::BTreeSet;
     use std::collections::HashMap;
     use std::path::PathBuf;
 
@@ -29836,72 +29376,6 @@ mod construction_justification_hygiene_tests {
             .nth(3)
             .expect("workspace root")
             .to_path_buf()
-    }
-
-    #[test]
-    fn justification_scan_predicate() {
-        let with = "module v2.lens.demo\n\
-            import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }\n\
-            data construction_justification: ConstructionJustification = ConstructionJustification {\n\
-              class: RatchetForever\n\
-            }\n";
-        assert!(declares_construction_justification(with));
-
-        assert!(!declares_construction_justification(
-            "data construction_justification_note: String = \"todo\"\n"
-        ));
-        assert!(!declares_construction_justification(
-            "module v2.lens.demo\ndata other: String = \"z\"\n"
-        ));
-    }
-
-    #[test]
-    fn detector_red_on_missing_green_on_recorded() {
-        let mut module_to_path: HashMap<String, String> = HashMap::new();
-        module_to_path.insert(
-            "v2.lens.demo".to_string(),
-            "src/v2/lens/demo.dag".to_string(),
-        );
-        module_to_path.insert(
-            "v2.lens.common.construction_justification".to_string(),
-            "src/v2/lens/common/construction_justification.dag".to_string(),
-        );
-        module_to_path.insert("v2.std.text".to_string(), "src/v2/std/text.dag".to_string());
-
-        let none: BTreeSet<String> = BTreeSet::new();
-        assert_eq!(
-            unjustified_lens_modules(&module_to_path, &none),
-            vec!["v2.lens.demo".to_string()],
-            "an unjustified top-level lens must go RED"
-        );
-
-        let mut justified: BTreeSet<String> = BTreeSet::new();
-        justified.insert("v2.lens.demo".to_string());
-        assert!(
-            unjustified_lens_modules(&module_to_path, &justified).is_empty(),
-            "recording a justification must clear the violation"
-        );
-    }
-
-    #[test]
-    fn floor_corpus_every_lens_is_justified() {
-        let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir to workspace root");
-        let roots = vec![
-            ws.join("dag").to_string_lossy().into_owned(),
-            ws.join("src/v2").to_string_lossy().into_owned(),
-        ];
-        let scan_dirs = vec![
-            "dag/test/claim".to_string(),
-            "src/v2/test/claim/manual".to_string(),
-        ];
-        let excludes = witness_exclusion_substrings();
-        let result = discover_floor_witness_roster(&roots, &scan_dirs, &excludes, &[]);
-        assert!(
-            result.is_ok(),
-            "floor discovery must succeed — every v2.lens.* records a construction-justification: {}",
-            result.err().unwrap_or_default()
-        );
     }
 
     // ITEM 2 graph-property witness: the construction->authority graph is TOTAL over the
@@ -30064,9 +29538,10 @@ mod sidecar_placement_hygiene_tests {
         // asserted twice — `floor_discovery_hand_rust_equivalence_witness_test.dag`
         // (`floor_discovery_equivalence_misplaced_wire_contract_refuses_holds`) already owns
         // it content-side, so re-deriving it here would be a second representation (§2/§3).
-        // Hence the call is at the producer seam and not at
-        // `floor_filename_hygiene_refusal_for_paths`, which decides only the `__`-in-basename
-        // rule and can never report a wire-contract violation.
+        // Hence the call is at the producer seam, where a wire-contract violation is
+        // observable at all. (This clause used to contrast the seam against
+        // `floor_filename_hygiene_refusal_for_paths`; that decided only the `__`-in-basename
+        // rule, which is deleted, so the contrast named nothing.)
         //
         // Nothing here chdirs, and that is load-bearing: the producer entry is located by
         // `resolve_workspace_entry` (git-toplevel, not cwd), so this test
@@ -30945,8 +30420,8 @@ pub(crate) fn module_declaration_facts_call_count_for_test() -> usize {
 /// The import-facts walk plus what it OBSERVED: every in-scope `.dag` path the walk
 /// saw on disk, and every path whose content read refused. The skip arm on an
 /// unreadable file used to be silent (`Err(_) => continue`), which made a vanished
-/// module indistinguishable from an absent one — the fail-open undercount the
-/// inert-lens census must refuse on (operator review 2026-07-28, PR #7384). One walk,
+/// module indistinguishable from an absent one — the fail-open undercount the facts
+/// consumers must refuse on (operator review 2026-07-28, PR #7384). One walk,
 /// projected two ways: `import_resolution_facts` stays the thin fact projection.
 pub(crate) struct ImportResolutionObservation {
     pub(crate) facts: Vec<ImportResolutionFactRaw>,
@@ -31020,6 +30495,64 @@ pub fn import_resolution_facts(
     import_resolution_facts_with_observation(pool_roots, importer_roots, exclude_substrings).facts
 }
 
+/// The native realization of `v2.lens.module_graph` `dependency_resolution_facts_live`: both
+/// leaves, unioned reference-first through the one dedup authority below, projected to the
+/// dependency-edge triple. `target_module` is the fact's `import_module` — the same renaming the
+/// `.dag` `import_fact_to_dependency_edge` performs, and the reason this returns the raw fact rows
+/// rather than a second edge struct is that the projection is a rename, not a transformation.
+pub fn dependency_resolution_facts(
+    pool_roots: &[String],
+    importer_roots: &[String],
+    exclude_substrings: &[String],
+) -> Vec<ImportResolutionFactRaw> {
+    let reference_edges = reference_edges_as_import_facts(
+        &reference_resolution_facts(pool_roots, importer_roots, exclude_substrings),
+        /* strict */ true,
+    );
+    let import_edges = import_resolution_facts(pool_roots, importer_roots, exclude_substrings);
+    union_dedup_import_facts_reference_first(reference_edges, import_edges)
+}
+
+/// THE UNION, ONCE. Reference-first exact dedup over `{path, import_module, target_declared}`,
+/// keeping first occurrence and therefore a stable order.
+///
+/// This is the single authority for a union that had two independent spellings: the `.dag`
+/// `union_import_resolution_fact_lists` (reference-first, exact dedup, interpreted) and the host
+/// selection-graph twin's `selection_edges` (import-first, dedup deferred to adjacency
+/// construction). Two spellings of one concept is the §3 fork; one helper consumed by both is the
+/// repair, and it is what lets the interpreted composition be retired without the native producer
+/// answering a different question.
+///
+/// WHY IT IS NATIVE. Measured on the live corpus in one process: the two host leaves cost 146ms
+/// and 5ms, while the interpreted union+dedup over the ~18.5k unioned facts cost 104,943ms — the
+/// whole of `dependency_resolution_facts_live`'s 112,261ms, and effectively the whole of the
+/// partition-closure census that consumes it. The cost is the interpreted composition, not the
+/// corpus scan, so caching the leaves recovers 151ms of 112,000ms and the fold has to go.
+///
+/// EXACTNESS IS THE CONTRACT, not a nicety: the partition-closure census judges unresolved targets,
+/// so `target_declared: false` rows must survive, and equality is the same three-field identity the
+/// `.dag` `import_resolution_fact_eq` decides. Nothing here may collapse to a coarser adjacency.
+pub(crate) fn union_dedup_import_facts_reference_first(
+    reference_edges: Vec<ImportResolutionFactRaw>,
+    import_edges: Vec<ImportResolutionFactRaw>,
+) -> Vec<ImportResolutionFactRaw> {
+    let mut seen: HashSet<(String, String, bool)> =
+        HashSet::with_capacity(reference_edges.len() + import_edges.len());
+    let mut out: Vec<ImportResolutionFactRaw> =
+        Vec::with_capacity(reference_edges.len() + import_edges.len());
+    for fact in reference_edges.into_iter().chain(import_edges.into_iter()) {
+        let key = (
+            fact.path.clone(),
+            fact.import_module.clone(),
+            fact.target_declared,
+        );
+        if seen.insert(key) {
+            out.push(fact);
+        }
+    }
+    out
+}
+
 pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationFactRaw> {
     #[cfg(test)]
     MODULE_DECLARATION_FACTS_CALL_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -31039,22 +30572,23 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
 // so the module graph survives corpus-wide `import` deletion (namespace-only resolution, operator-
 // signed 2026-07-06; the reference is the sole representation of usage, Rule 1). One O(corpus) parse
 // pass over the pool (reusing the real front-end `tokenize` + `parse` — no substring scan), cached.
-// Consumers (`build_module_graph_facts_live`, the inert-lens reach) union these edges onto the import
+// Consumers (`build_module_graph_facts_live`, affected-set selection) union these edges onto the import
 // edges during the transition; when the import grammar is deleted (parent's terminal step) the import
 // term is empty and the module graph is reference-only, the `src/v2/lens/module_graph.dag`
 // single-swap-point end state. Every closure/loader/lens consumer is edge-source-agnostic (reads edge
 // rows as data, never import syntax).
 //
 // Confidence tag (parent ruling, 2026-07-14; DESIGN §5): the LOADER closure and affected-set read
-// ALL edges (over-load is safe — a superset only compiles extra modules). The inert-lens reach reads
-// Qualified + UniqueBare only (dropping AmbiguousBare), so an over-connected graph can never silently
-// clear a truly-inert lens (no fail-open hygiene). AmbiguousBare is a bare identifier declared in >1
+// ALL edges (over-load is safe — a superset only compiles extra modules). SELECTION reads
+// Qualified + UniqueBare only (dropping AmbiguousBare), so an over-connected graph cannot silently
+// widen the selection tier. (The inert-lens reach was the other reader of that tier until gunbc#8141
+// deleted it.) AmbiguousBare is a bare identifier declared in >1
 // module; under namespace-only that is a Rule-2 ambiguity the source should qualify.
 //
 // Dissolve-on: `symbol_index_fill` (SymbolIndex lane) projects exact, scope-aware reference edges from
 // the filled containment tree; when that lands, this parse-and-index approximation (which is liberal
 // on bare-name reference collection — a local binder that shadows a globally-unique declared name
-// yields a spurious UniqueBare edge, safe for the loader, tolerated by the inert-lens grain) deletes.
+// yields a spurious UniqueBare edge, safe for the loader, tolerated at the selection grain) deletes.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RefEdgeResolution {
     Qualified,
@@ -31086,7 +30620,7 @@ pub struct ReferenceEdgeRaw {
 /// The tier is per-CONSUMER and the two are not interchangeable:
 ///   - `false` (keep AmbiguousBare) for the LOADER — over-connection is harmless there, since a
 ///     superset only compiles extra modules.
-///   - `true` for SELECTION and the inert-lens reach — over-connection is not a safety problem
+///   - `true` for SELECTION — over-connection is not a safety problem
 ///     here, it is what destroys the answer. Measured: at `false` an entry's median closure is
 ///     1136 of 2240 modules (homonyms fan every referrer across the pool); at `true` it is 96,
 ///     the same order as the import-only baseline's 54.
@@ -37420,81 +36954,15 @@ fn test_migration_debt_stem_covered(v1_stem: &str, floor_stems: &[String]) -> bo
     floor_stems.iter().any(|floor_stem| floor_stem == v1_stem)
 }
 
-// Second stem source (typed retirement path): a `<stem>_retired.dag` declaration under the
-// corpus records a reviewed, typed retirement (delete-redundant / delete-low-value) for a v1
-// test module whose behavior does NOT migrate to an exact-stem floor `*_test.dag` witness. A
-// retired stem covers the module identically to a floor-witness stem — it excludes the module
-// from the debt roster and authorizes its delete through the delete-guard. The typed disposition
-// and its justification live in the `.dag` decl (`test.retirement.model`, single authority,
-// type-checked by the compile-clean gate); this guard reads only the filename stem, exactly as
-// it reads floor witnesses. A file counts only if it actually *constructs* a `TestModuleRetirement`
-// (the `TestModuleRetirement {` constructor form) — an empty stub, or one that merely imports the
-// type without declaring a retirement (`{ TestModuleRetirement }`), cannot silence the guard. The
-// compile-clean gate independently type-checks the constructed value against `test.retirement.model`.
-fn test_migration_retired_stems() -> Vec<String> {
-    let mut stems: Vec<String> = corpus_dag_files()
-        .into_iter()
-        .filter(|(_, content)| content.contains("TestModuleRetirement {"))
-        .filter_map(|(path, _)| {
-            let file_name = std::path::Path::new(&path)
-                .file_name()
-                .and_then(|n| n.to_str())?;
-            file_name
-                .strip_suffix("_retired.dag")
-                .map(|s| s.to_string())
-        })
-        .collect();
-    stems.sort();
-    stems.dedup();
-    stems
-}
-
-// Third stem source (typed RETAIN path): a `<stem>_retained.dag` declaration constructs a
-// `TestModuleRetirement` whose disposition is `RetainedNonMigratable` — a v1 test module whose
-// behavior is NOT migratable to a `.dag` witness (it exercises a host-Rust-only surface, e.g. a
-// thread-local policy gate the substrate cannot reach) and is therefore RETAINED as `.rs` until
-// src/v1 is deleted. Distinct from `_retired.dag` (delete-only): a retained stem must EXCLUDE the
-// module from the debt roster (it is accounted for, not migration debt) but must NEVER authorize
-// its deletion. Fusing it into the delete-authorize set would be a §5 fail-open: the delete-guard
-// would silently green-light deleting a test that has no `.dag` replacement. So this stem source
-// feeds ONLY the debt-exclude set, never the delete-authorize set.
-fn test_migration_retained_nonmigratable_stems() -> Vec<String> {
-    let mut stems: Vec<String> = corpus_dag_files()
-        .into_iter()
-        .filter(|(_, content)| content.contains("RetainedNonMigratable {"))
-        .filter_map(|(path, _)| {
-            let file_name = std::path::Path::new(&path)
-                .file_name()
-                .and_then(|n| n.to_str())?;
-            file_name
-                .strip_suffix("_retained.dag")
-                .map(|s| s.to_string())
-        })
-        .collect();
-    stems.sort();
-    stems.dedup();
-    stems
-}
-
 // The DEBT-EXCLUDE set (consumed by `build_test_migration_debt_report`): floor-witness stems
 // (migrate path) ∪ retired stems (delete path) ∪ retained-non-migratable stems (retain path). A
 // module in any of the three is accounted for and drops out of the debt roster.
+// Retired/retained stem sources removed 2026-08-12 (V1-CONSUMER-DRAIN-1): the
+// `_retired.dag` / `_retained.dag` carriers they scanned for were deleted with the
+// test-suite cutover (gunbc#8146), so both returned empty in-corpus. Behaviour is
+// unchanged by construction — extending with two empty vectors was a no-op.
 fn test_migration_debt_exclude_stems() -> Vec<String> {
     let mut stems = test_migration_debt_floor_stems();
-    stems.extend(test_migration_retired_stems());
-    stems.extend(test_migration_retained_nonmigratable_stems());
-    stems.sort();
-    stems.dedup();
-    stems
-}
-
-// The DELETE-AUTHORIZE set (consumed by the delete-guard): floor-witness stems ∪ retired stems
-// ONLY. A retained-non-migratable stem is DELIBERATELY absent — retention accounts for a module
-// without authorizing its deletion, so the delete-guard still refuses a delete of a retained
-// module that has no exact-stem floor witness (§5 fail-closed: retention is not deletion consent).
-fn test_migration_delete_authorize_stems() -> Vec<String> {
-    let mut stems = test_migration_debt_floor_stems();
-    stems.extend(test_migration_retired_stems());
     stems.sort();
     stems.dedup();
     stems
@@ -37551,187 +37019,12 @@ fn test_migration_debt_report() -> &'static TestMigrationDebtReport {
     REPORT.get_or_init(build_test_migration_debt_report)
 }
 
-pub fn test_migration_debt_module_count() -> i64 {
-    test_migration_debt_report().entries.len() as i64
-}
-
-pub fn test_migration_debt_total_loc() -> i64 {
-    test_migration_debt_report()
-        .entries
-        .iter()
-        .map(|e| e.loc)
-        .sum()
-}
-
-pub fn test_migration_debt_total_test_fns() -> i64 {
-    test_migration_debt_report()
-        .entries
-        .iter()
-        .map(|e| e.test_fn_count)
-        .sum()
-}
-
 pub fn test_migration_debt_module_names() -> Vec<String> {
     test_migration_debt_report()
         .entries
         .iter()
         .map(|e| e.module.clone())
         .collect()
-}
-
-// Discriminating red witness for the stem matcher: `witness_option_bridge_test.rs` has a live
-// floor counterpart (`witness_option_bridge_test.dag`) and must NOT appear in the debt roster.
-// This goes red if the matcher regresses to comparing an un-stripped `.dag` suffix against a
-// stripped `.rs` stem (as it did before this function existed), since every module would then
-// spuriously report as debt.
-pub fn test_migration_debt_known_covered_module_is_not_debt() -> bool {
-    !test_migration_debt_module_names()
-        .iter()
-        .any(|m| m == "witness_option_bridge_test.rs")
-}
-
-// §5 hard gate per module at delete time: any `#[test]`-bearing v1 module deleted in the CI
-// diff must already have an exact-stem floor `*_test.dag` witness on HEAD (same stem rule as the
-// live debt roster). Uses the same `GUNBC_CI_DIFF_*` endpoints as `floor_diff_observe`.
-fn test_migration_delete_guard_diff_endpoints() -> (String, String) {
-    let base = std::env::var("GUNBC_CI_DIFF_BASE").unwrap_or_else(|_| "origin/main".to_string());
-    let head = std::env::var("GUNBC_CI_DIFF_HEAD").unwrap_or_else(|_| "HEAD".to_string());
-    (base, head)
-}
-
-fn test_migration_delete_guard_merge_base_mode() -> bool {
-    match std::env::var("GUNBC_CI_DIFF_MERGE_BASE") {
-        Ok(v) => v != "0" && v != "false",
-        Err(_) => true,
-    }
-}
-
-fn test_migration_delete_guard_run_git(args: &[&str]) -> Result<String, String> {
-    let output = std::process::Command::new("git")
-        .args(args)
-        .current_dir(workspace_root())
-        .output()
-        .map_err(|e| format!("git {args:?}: {e}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "git {args:?} failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
-fn test_migration_v1_test_module_had_line_anchored_tests(content: &str) -> bool {
-    content.lines().any(|line| line.trim() == "#[test]")
-}
-
-fn test_migration_delete_guard_deleted_v1_test_paths(
-    base: &str,
-    head: &str,
-) -> Result<Vec<String>, String> {
-    let out = if test_migration_delete_guard_merge_base_mode() {
-        let range = format!("{base}...{head}");
-        match test_migration_delete_guard_run_git(&[
-            "diff",
-            "--name-only",
-            "--diff-filter=D",
-            &range,
-        ]) {
-            Ok(out) => out,
-            Err(err) => {
-                // Shallow CI checkouts often fetch only `HEAD`, so the merge-base range cannot
-                // always be computed even though the base ref itself exists. Fall back to the
-                // two-point diff in that case so the delete guard still evaluates the real branch
-                // delta instead of red-ing on missing history.
-                test_migration_delete_guard_run_git(&[
-                    "diff",
-                    "--name-only",
-                    "--diff-filter=D",
-                    base,
-                    head,
-                ])
-                .map_err(|fallback_err| format!("{err}; fallback diff failed: {fallback_err}"))?
-            }
-        }
-    } else {
-        test_migration_delete_guard_run_git(&[
-            "diff",
-            "--name-only",
-            "--diff-filter=D",
-            base,
-            head,
-        ])?
-    };
-    Ok(out
-        .lines()
-        .map(normalize_repo_path)
-        .filter(|p| {
-            p.starts_with("src/v1/tests/src/") && p.ends_with(".rs") && !p.ends_with("/lib.rs")
-        })
-        .collect())
-}
-
-fn test_migration_delete_guard_resolve_rev(r#ref: &str) -> Result<String, String> {
-    match test_migration_delete_guard_run_git(&["rev-parse", r#ref]) {
-        Ok(v) => Ok(v),
-        Err(e) => {
-            if r#ref == "origin/main" {
-                test_migration_delete_guard_run_git(&["rev-parse", "main"]).or(Err(e))
-            } else {
-                Err(e)
-            }
-        }
-    }
-}
-
-fn test_migration_delete_guard_uncovered_deletes_inner() -> Result<Vec<String>, String> {
-    let (base, head) = test_migration_delete_guard_diff_endpoints();
-    let ci_diff_configured = std::env::var("GUNBC_CI_DIFF_BASE").is_ok();
-    let base_rev = match test_migration_delete_guard_resolve_rev(&base) {
-        Ok(v) => v,
-        Err(_) if !ci_diff_configured => return Ok(Vec::new()),
-        Err(e) => return Err(e),
-    };
-    let head_rev = match test_migration_delete_guard_resolve_rev(&head) {
-        Ok(v) => v,
-        Err(_) if !ci_diff_configured => return Ok(Vec::new()),
-        Err(e) => return Err(e),
-    };
-    if base_rev == head_rev {
-        return Ok(Vec::new());
-    }
-    let floor_stems = test_migration_delete_authorize_stems();
-    let deleted = test_migration_delete_guard_deleted_v1_test_paths(&base_rev, &head_rev)?;
-    let mut violations = Vec::new();
-    for path in deleted {
-        let content =
-            test_migration_delete_guard_run_git(&["show", &format!("{base_rev}:{path}")])?;
-        if !test_migration_v1_test_module_had_line_anchored_tests(&content) {
-            continue;
-        }
-        let file_name = std::path::Path::new(&path)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or_default();
-        let stem = test_migration_debt_stem(file_name);
-        if !test_migration_debt_stem_covered(&stem, &floor_stems) {
-            violations.push(path);
-        }
-    }
-    violations.sort();
-    violations.dedup();
-    Ok(violations)
-}
-
-pub fn test_migration_delete_guard_uncovered_deletes() -> Vec<String> {
-    test_migration_delete_guard_uncovered_deletes_inner().unwrap_or_default()
-}
-
-pub fn test_migration_delete_guard_holds() -> bool {
-    match test_migration_delete_guard_uncovered_deletes_inner() {
-        Ok(violations) => violations.is_empty(),
-        Err(_) => false,
-    }
 }
 
 #[cfg(test)]
@@ -39289,151 +38582,6 @@ mod witness_layer_roots_compile_clean_tests {
                 .unwrap_or_else(|| panic!("missing pooled entry for {module_path}"));
             assert_eq!(pooled_source.path, source.path);
         }
-    }
-}
-
-#[cfg(test)]
-mod test_migration_debt_tests {
-    use super::*;
-
-    #[test]
-    fn stem_strips_rs_and_dag_suffixes_before_test_suffix() {
-        assert_eq!(
-            test_migration_debt_stem("witness_option_bridge_test.rs"),
-            "witness_option_bridge"
-        );
-        assert_eq!(
-            test_migration_debt_stem("witness_option_bridge_test.dag"),
-            "witness_option_bridge"
-        );
-        assert_ne!(
-            test_migration_debt_stem("typescript_import_pipeline_test.dag"),
-            "pipeline"
-        );
-    }
-
-    #[test]
-    fn known_covered_module_is_not_debt() {
-        assert!(test_migration_debt_known_covered_module_is_not_debt());
-    }
-
-    #[test]
-    fn delete_guard_holds_with_no_v1_test_deletions_in_diff() {
-        assert!(test_migration_delete_guard_holds());
-    }
-
-    #[test]
-    fn delete_guard_rejects_uncovered_v1_test_delete() {
-        let floor_stems = test_migration_debt_floor_stems();
-        let stem = test_migration_debt_stem("cron_tag_test.rs");
-        assert!(!test_migration_debt_stem_covered(&stem, &floor_stems));
-    }
-
-    // Green-by-execution for the typed retirement path: the demonstrator
-    // `dag/test/retirement/map_lookup_dual_dispatch_retired.dag` declares a `TestModuleRetirement`
-    // whose stem is `map_lookup_dual_dispatch`. That stem is NOT a floor-witness stem (its covering
-    // witness is `map_lookup_dual_dispatch_witness_test.dag`, stem `map_lookup_dual_dispatch_witness`),
-    // so the retirement is the *only* thing that covers it — the union must pick it up.
-    #[test]
-    fn retired_stem_is_covered_but_not_a_floor_stem() {
-        let stem = "map_lookup_dual_dispatch";
-        assert!(
-            test_migration_retired_stems().iter().any(|s| s == stem),
-            "retirement declaration must contribute its stem"
-        );
-        // Discriminating control: the same stem is NOT a floor-witness stem — so the coverage
-        // comes strictly from the retirement path, not an accidental floor match.
-        assert!(
-            !test_migration_debt_floor_stems().iter().any(|s| s == stem),
-            "stem must be covered only via retirement, not a floor witness"
-        );
-        assert!(test_migration_debt_exclude_stems()
-            .iter()
-            .any(|s| s == stem));
-        // A `_retired.dag` (delete path) stem DOES authorize deletion — it is in both sets.
-        assert!(test_migration_delete_authorize_stems()
-            .iter()
-            .any(|s| s == stem));
-    }
-
-    // The retired module no longer appears in the debt roster (the retirement excluded it).
-    #[test]
-    fn retired_module_is_not_debt() {
-        assert!(
-            !test_migration_debt_module_names()
-                .iter()
-                .any(|m| m == "map_lookup_dual_dispatch_test.rs"),
-            "a retired module must drop out of the debt roster"
-        );
-    }
-
-    // Green-by-execution for the RETAIN path: the demonstrator
-    // `dag/test/retirement/namespace_unique_on_chain_policy_retained.dag` declares a
-    // `RetainedNonMigratable` retention whose stem is `namespace_unique_on_chain_policy`. That stem
-    // is neither a floor-witness stem nor a retired (delete-path) stem, so the retention is the
-    // ONLY thing that accounts for it — the debt-exclude union must pick it up.
-    #[test]
-    fn retained_nonmigratable_stem_excluded_but_not_floor_or_retired() {
-        let stem = "namespace_unique_on_chain_policy";
-        assert!(
-            test_migration_retained_nonmigratable_stems()
-                .iter()
-                .any(|s| s == stem),
-            "retention declaration must contribute its stem"
-        );
-        // Coverage comes strictly from the retain path — not a floor witness, not a retired marker.
-        assert!(
-            !test_migration_debt_floor_stems().iter().any(|s| s == stem),
-            "stem must be accounted for only via retention, not a floor witness"
-        );
-        assert!(
-            !test_migration_retired_stems().iter().any(|s| s == stem),
-            "a retained (non-delete) stem must NOT be a retired (delete) stem"
-        );
-        // It IS in the debt-exclude set (module drops out of the debt roster).
-        assert!(
-            test_migration_debt_exclude_stems()
-                .iter()
-                .any(|s| s == stem),
-            "a retained module must be excluded from the debt roster"
-        );
-    }
-
-    // The retained module no longer appears in the debt roster (retention excluded it).
-    #[test]
-    fn retained_nonmigratable_module_is_not_debt() {
-        assert!(
-            !test_migration_debt_module_names()
-                .iter()
-                .any(|m| m == "namespace_unique_on_chain_policy_test.rs"),
-            "a retained-non-migratable module must drop out of the debt roster"
-        );
-    }
-
-    // §5 RED CONTROL — retention is NOT deletion consent. A retained-non-migratable stem must be
-    // ABSENT from the delete-authorize set, so the delete-guard REFUSES deleting the module (it has
-    // no `.dag` replacement). This is the discriminating red: were the retain path fused into the
-    // delete-authorize set (the fail-open this split closes), `stem_covered` would return true here
-    // and the guard would silently green-light the delete. It flips exactly with the wiring:
-    //   - debt-exclude set    → contains the stem (asserted above) → module is not debt.
-    //   - delete-authorize set → does NOT contain the stem → guard flags any delete of it.
-    #[test]
-    fn delete_guard_refuses_deleting_retained_nonmigratable_module() {
-        let stem = "namespace_unique_on_chain_policy";
-        let authorize = test_migration_delete_authorize_stems();
-        // This is the exact predicate the delete-guard applies per deleted path
-        // (`!stem_covered(stem, delete_authorize_stems)` => violation): it must report the delete
-        // of a retained module as an UNCOVERED (refused) delete.
-        assert!(
-            !test_migration_debt_stem_covered(stem, &authorize),
-            "retained-non-migratable stem must NOT authorize deletion — the delete-guard must refuse"
-        );
-        // Control: a genuinely delete-covered (retired) stem IS authorized, proving the guard's
-        // refusal discriminates on retain-vs-delete disposition, not on being unknown.
-        assert!(
-            test_migration_debt_stem_covered("map_lookup_dual_dispatch", &authorize),
-            "a retired (delete-path) stem must authorize deletion"
-        );
     }
 }
 
@@ -41806,8 +40954,8 @@ mod import_closure_equivalence_tests {
 
     /// Floor witness entry paths enrolled by the source-root `*_test.dag` pass
     /// (`gunbc.ci_layer_roots.witness_layer_roots`), minus the model exclusion list.
-    /// Avoids `discover_floor_witness_roster` lens-hygiene work — closure set-identity
-    /// only needs the witness entry roster, not inert-lens classification.
+    /// Avoids `discover_floor_witness_roster`'s producer + facts work — closure set-identity
+    /// only needs the witness entry roster.
     fn floor_witness_entry_paths_for_oracle() -> BTreeSet<String> {
         let mut entries = BTreeSet::new();
         for root in default_source_roots() {
@@ -41822,90 +40970,6 @@ mod import_closure_equivalence_tests {
             }
         }
         entries
-    }
-
-    /// Pre-BFS fixpoint from `origin/main` — retained for perf receipt only.
-    fn import_closure_from_facts_fixpoint_legacy(
-        entry_path: &str,
-        edges: &[super::ImportResolutionFactRaw],
-        nodes: &[super::ModuleDeclarationFactRaw],
-    ) -> Vec<String> {
-        let entry_path = workspace_relative_repo_path(entry_path);
-        let mut reached: Vec<String> = vec![entry_path];
-        let fuel = nodes.len();
-        for _ in 0..fuel {
-            let before = reached.len();
-            let mut next = reached.clone();
-            for importer in &reached {
-                let importer_norm = workspace_relative_repo_path(importer);
-                for edge in edges {
-                    if workspace_relative_repo_path(&edge.path) != importer_norm {
-                        continue;
-                    }
-                    for node in nodes {
-                        if node.module == edge.import_module {
-                            let path = workspace_relative_repo_path(&node.path);
-                            if !next.iter().any(|p| p == &path) {
-                                next.push(path);
-                            }
-                        }
-                    }
-                }
-            }
-            if next.len() == before {
-                break;
-            }
-            reached = next;
-        }
-        reached
-    }
-
-    /// Manual perf receipt (P4): `cargo test -p v1-compiler --lib import_closure_bfs_vs_fixpoint_perf_receipt -- --ignored --nocapture`
-    #[test]
-    #[ignore = "manual perf receipt: import_closure BFS vs fixpoint on floor witness roster"]
-    fn import_closure_bfs_vs_fixpoint_perf_receipt() {
-        use std::time::Instant;
-
-        const CLOSURE_CALLS_PER_ENTRY: usize = 2;
-
-        let roots = default_source_roots();
-        let entries: Vec<String> = floor_witness_entry_paths_for_oracle().into_iter().collect();
-        let facts = super::build_module_graph_facts_live(&roots);
-        let call_count = entries.len() * CLOSURE_CALLS_PER_ENTRY;
-
-        let t0 = Instant::now();
-        for entry_rel in &entries {
-            for _ in 0..CLOSURE_CALLS_PER_ENTRY {
-                let _ = import_closure_from_facts_fixpoint_legacy(
-                    entry_rel,
-                    &facts.edges,
-                    &facts.nodes,
-                );
-            }
-        }
-        let fixpoint_ms = t0.elapsed().as_secs_f64() * 1000.0;
-
-        let t1 = Instant::now();
-        for entry_rel in &entries {
-            for _ in 0..CLOSURE_CALLS_PER_ENTRY {
-                let _ = super::import_closure_live_paths_with_facts(entry_rel, &facts);
-            }
-        }
-        let bfs_ms = t1.elapsed().as_secs_f64() * 1000.0;
-
-        let speedup = fixpoint_ms / bfs_ms.max(0.001);
-        eprintln!(
-            "import_closure perf receipt: entries={} calls={} fixpoint_ms={:.1} bfs_ms={:.1} speedup={:.1}x",
-            entries.len(),
-            call_count,
-            fixpoint_ms,
-            bfs_ms,
-            speedup
-        );
-        assert!(
-            bfs_ms < fixpoint_ms,
-            "BFS should beat fixpoint on floor roster (fixpoint={fixpoint_ms:.1}ms bfs={bfs_ms:.1}ms)"
-        );
     }
 
     #[test]
@@ -43098,5 +42162,83 @@ mod annotation_erased_scan_projection {
             vec!["std.decl_ref".to_string()],
             "a real reference to the same module must still produce the edge"
         );
+    }
+}
+
+#[cfg(test)]
+mod union_dedup_import_facts_law {
+    //! The dedup that carries the edge population's identity and order law, tested on synthetic
+    //! rows so the law is decided by a controlled fixture rather than by whatever the live corpus
+    //! happens to contain. The live-corpus check is a separate receipt: the native producer was
+    //! held to the interpreted spelling row-for-row in order before that spelling was deleted.
+
+    use super::*;
+
+    fn fact(path: &str, module: &str, declared: bool) -> ImportResolutionFactRaw {
+        ImportResolutionFactRaw {
+            path: path.to_string(),
+            import_module: module.to_string(),
+            target_declared: declared,
+        }
+    }
+
+    /// Reference-first is not cosmetic: `module_impact_query` derives edge provenance by
+    /// membership in the import-only population, so which copy of a dual-backed fact survives
+    /// decides how that edge classifies.
+    #[test]
+    fn reference_copy_survives_when_both_sides_carry_the_same_fact() {
+        let out = union_dedup_import_facts_reference_first(
+            vec![fact("a.dag", "m.one", true)],
+            vec![fact("a.dag", "m.one", true)],
+        );
+        assert_eq!(out.len(), 1, "the duplicate must collapse: {out:?}");
+        assert_eq!(out[0].path, "a.dag");
+    }
+
+    /// Order is observable downstream — `module_target_index_from` conses targets in arrival
+    /// order — so the union must be reference rows first, then import rows, each in input order.
+    #[test]
+    fn order_is_reference_rows_then_import_rows_each_in_input_order() {
+        let out = union_dedup_import_facts_reference_first(
+            vec![fact("r1.dag", "m.r1", true), fact("r2.dag", "m.r2", true)],
+            vec![fact("i1.dag", "m.i1", true), fact("i2.dag", "m.i2", true)],
+        );
+        let seen: Vec<&str> = out.iter().map(|f| f.path.as_str()).collect();
+        assert_eq!(seen, vec!["r1.dag", "r2.dag", "i1.dag", "i2.dag"]);
+    }
+
+    /// THE FIELD THE CENSUS EXISTS TO JUDGE. An unresolved target is a `target_declared: false`
+    /// row; identity is the full triple, so the two declared-ness variants of one (path, module)
+    /// pair are DIFFERENT facts and both must survive. A dedup keyed on (path, module) alone
+    /// would pass every other assertion here and silently destroy the census's subject.
+    #[test]
+    fn declaredness_variants_of_one_pair_are_distinct_facts() {
+        let out = union_dedup_import_facts_reference_first(
+            vec![fact("a.dag", "m.one", true)],
+            vec![fact("a.dag", "m.one", false)],
+        );
+        assert_eq!(out.len(), 2, "declaredness is part of identity: {out:?}");
+        assert!(out[0].target_declared, "reference copy first");
+        assert!(!out[1].target_declared, "the unresolved row survives");
+    }
+
+    /// First occurrence wins, and later duplicates never reorder what already landed.
+    #[test]
+    fn first_occurrence_is_kept_and_later_duplicates_do_not_reorder() {
+        let out = union_dedup_import_facts_reference_first(
+            vec![
+                fact("a.dag", "m.one", true),
+                fact("b.dag", "m.two", true),
+                fact("a.dag", "m.one", true),
+            ],
+            vec![fact("b.dag", "m.two", true), fact("c.dag", "m.three", true)],
+        );
+        let seen: Vec<&str> = out.iter().map(|f| f.path.as_str()).collect();
+        assert_eq!(seen, vec!["a.dag", "b.dag", "c.dag"]);
+    }
+
+    #[test]
+    fn empty_inputs_produce_an_empty_population() {
+        assert!(union_dedup_import_facts_reference_first(vec![], vec![]).is_empty());
     }
 }

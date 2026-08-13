@@ -124,6 +124,10 @@ fn scope_placement_refused_paths(added: List<String>, carriers: List<String>, ma
 }
 
 data scope_carrier_paths: List<String> = [
+  "dag/extdeps/firmware/types.dag",
+  "dag/extdeps/memory/training.dag",
+  "dag/extdeps/ampere/scp_diagnostic.dag",
+  "dag/extdeps/rust/cargo_message.dag",
   "dag/extdeps/ipc/dpmx.dag",
   "dag/extdeps/ucamco/gerber.dag",
   "dag/extdeps/cpu/ampere_altra_package.dag",
@@ -160,6 +164,10 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/languages/rust/subject.dag",
   "dag/extdeps/languages/spice/subject.dag",
   "dag/extdeps/languages/swift/subject.dag",
+  "dag/extdeps/firmware/openbmc/subject.dag",
+  "dag/extdeps/firmware/tianocore_edk2/subject.dag",
+  "dag/extdeps/firmware/trusted_firmware_a/subject.dag",
+  "dag/extdeps/simulators/icarus_verilog/subject.dag",
   "dag/extdeps/simulators/ngspice/subject.dag",
   "dag/extdeps/languages/typescript/subject.dag",
   "dag/extdeps/languages/verilog/subject.dag",
@@ -225,7 +233,8 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/llm/cursor_sdk_errors.dag",
   "dag/extdeps/llm/cursor_sdk_facts.dag",
   "dag/extdeps/llm/cursor_stream.dag",
-  "dag/extdeps/probes/provider_interface_acquisition.dag"
+  "dag/extdeps/probes/provider_interface_acquisition.dag",
+  "dag/extdeps/memory/samsung.dag"
 ]
 
 data scope_machinery_exempt_paths: List<String> = [

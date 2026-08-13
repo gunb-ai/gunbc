@@ -1,5 +1,6 @@
 module gunbc.ci_budget_tree
 
+import std.measure { Memory, One }
 
 data gunbc_ci_budget_tree_deconfliction_disposition: Disposition = std.disposition.Terminal { reason: "DESIGN §3 deliberate carrier split: this BudgetNode governs INTER-run co-residence (host_ram partitioned as overhead + sessions_slice + runner_slice, conserving by construction via byte_size_saturating_sub). srv1_floor_memory_budget returns gunbc_ci_runner_slot_ram_speed_ceiling (min of live MemoryHigh 15GiB and live MemoryMax 16GiB per the applied 2026-07-11 allocation ruling; see srv1_floor_memory_budget_live_note - within-run width packs to the throttle line, memory.max stays the kill authority). gunbc_ci_dashboard_session_container_cap (31.27 GiB) is inter-run session pool only. Do NOT conflate. See gunbc_ci_footprint_granularity_disposition." }
 
@@ -11,8 +12,10 @@ fn host_overhead_bytes(offer: ComputeOffer) -> ByteSize {
   }
 }
 
+data host_ram_ceiling_direction_note: String = "THIS READS OS-USABLE RAM PER HOST, NOT NOMINAL DIMM CAPACITY, and the change matters because this module and gunbc.ci_runner_placement were answering the same question with different ceilings. compute_host_ram_bytes_total sums the populated modules; the OS sees less after firmware and kernel reservations. While placement checked usable and these budget trees checked nominal, both could report conservation green while disagreeing about how much memory exists — and the sibling tests here call themselves live, so agreement was never being tested.\n\nWHY ZERO IS THE FAIL-CLOSED ARM HERE, which is the opposite of the direction it means one function above. host_overhead_bytes maps an unmeasured overhead to zero and that IS a fail-open — an unknown CHARGE read as no charge lets a host look emptier than it is. This value is a CEILING, so an unknown ceiling read as zero admits nothing: every pool overcommits and conservation refuses. Same literal, opposite polarity, because one is a debit and the other is the account."
+
 fn host_ram_of(offer: ComputeOffer) -> ByteSize {
-  compute_host_ram_bytes_total(host: offer.supply.physical)
+  host_usable_ram_ceiling_bytes(host: offer.supply.physical.identity)
 }
 
 fn host_allocatable_bytes(offer: ComputeOffer) -> ByteSize {

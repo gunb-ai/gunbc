@@ -1,7 +1,7 @@
 module gunbc.ci_runner_placement
 
-import gunbc.ci_fleet { ComputeOffer, gunbc_ci_host }
-import gunbc.fleet_intent { compute_host_ram_bytes_total, compute_host_primary_cpu }
+import gunbc.ci_fleet { ComputeOffer }
+import gunbc.fleet_intent { compute_host_primary_cpu }
 import product.placement_supply { HostIdentity }
 import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_le, HardwareThreadCount }
 import std.types { Int, List, String, Bool }
@@ -30,6 +30,11 @@ import gunbc.fleet_host_budget {
 import extdeps.jobserver { jobserver_config }
 import extdeps.cpu { cpu_facts_threads }
 import gunbc.ci_floor_measurement {
+  HostUsableRam,
+  HostUsableRamMeasured,
+  HostUsableRamConservativeLowerBound,
+  HostUsableRamUnmeasured,
+  gunbc_ci_host_usable_ram_for,
   HostFixedOverhead,
   HostFixedOverheadMeasured,
   HostFixedOverheadAllowance,
@@ -250,10 +255,31 @@ fn host_session_slice_bytes(host: HostIdentity) -> ByteSize {
   }
 }
 
-data host_usable_ram_note: String = "CONSERVATION IS CHECKED AGAINST OS-USABLE RAM, NOT THE DIMM TOTAL, and the difference decides admissions at exactly the width this change lands on. compute_host_ram_bytes_total sums the populated modules — 128GiB nominal — while the OS sees 134217728000 bytes (125GiB) after firmware and kernel reservations; gunbc.ci_fleet fleet_host_memory_nominal_vs_usable_note exists specifically to say these are two facts and must not be conflated, and this wall was quietly conflating them by checking against the nominal figure.\n\nThat is a 3GiB overstatement of what the host can hold, and it is not academic here. An eighth 14GiB slot on a managed host sums to 125.6GiB, which PASSES against 128GiB nominal and FAILS against 125GiB usable — so the pre-existing wall would have admitted a width the machine cannot carry, by charging memory that does not exist. The seventh slot fits under both readings; the eighth is precisely where the conflation would have bitten.\n\nHONEST RESIDUAL: per-host MemTotal is unobserved. gunbc_ci_host.memory is a fleet-level MemTotal-shaped authority and every host in this fleet is the same board at the same population, so it stands in for all four — a substitution that is safe in the conservative direction (it is the smaller number) and would stop being safe the moment a host with different RAM enrolls. Dissolve-on: a per-host MemTotal read, the same quiescent /proc/meminfo reach that grounds the fixed overhead and gates the oomd verification."
+data host_usable_ram_note: String = "CONSERVATION IS CHECKED AGAINST OS-USABLE RAM, NOT THE DIMM TOTAL. compute_host_ram_bytes_total sums the populated modules — nominal capacity — while the OS sees less after firmware and kernel reservations, and gunbc.ci_fleet fleet_host_memory_nominal_vs_usable_note exists specifically to say these are two facts that must not be conflated. The margin decides admissions rather than being academic: at this fleet's 128 GiB nominal / 125 GiB usable population, an eighth 14 GiB slot sums to 125.6 GiB, which PASSES against nominal and FAILS against usable — so checking the nominal figure would admit a width the machine cannot carry, by spending memory that does not exist. The seventh slot fits under both readings; the eighth is exactly where the conflation bites.\n\nTHIS NOTE WAS BRIEFLY REWRITTEN AS HISTORY AND IS RESTORED, which is worth recording because the rewrite was the error. Its closing premise — every host on the same board at the same population, so one figure stands in for all four, until a differently populated host enrols — was declared FALSIFIED on an in-flight report that a DIMM replacement had landed. The replacement was attempted and did not work (operator, 2026-08-12); srv3 and srv4 retain their original population and the premise never stopped holding. Marking a true statement historical is the same defect as leaving a false one live: both leave a reader unable to tell which of two adjacent notes to believe.\n\nWHAT THE PER-HOST GRAIN RESTS ON is therefore not this trigger. It is that this wall folded over per-host offers and then read RAM from a synthetic machine outside that fold, and that an unclassified host borrowed rather than refused — see gunbc.ci_floor_measurement gunbc_ci_host_usable_ram_kind_note. The trigger below remains OPEN and unfired."
 
-fn host_os_usable_ram_bytes() -> ByteSize {
-  compute_host_ram_bytes_total(host: gunbc_ci_host)
+// The grain here is per host, and the reason is not that the hosts differ. This wall folds over
+// per-host offers and charges each host its own overhead and session slice, then read RAM from a
+// synthetic ComputeHost that is not a member of that fold and does not exist — so the arithmetic
+// was right while one of its premises named the wrong subject. A fleet-wide shape was wrong
+// because it could not EXPRESS a per-host difference, not because one had appeared.
+//
+// The unresolved arm refuses rather than borrowing, for the reason the overhead axis beside it
+// gives: a fabricated premise under correct arithmetic is the worst place for an absorbing
+// fallback, because the wall returns true and the machine OOMs.
+type HostUsableRamResolution
+  = HostUsableRamResolved { bytes: ByteSize }
+  | HostUsableRamUnresolved { reason: String }
+
+
+fn host_usable_ram_or_refusal(host: HostIdentity, r: HostUsableRam) -> HostUsableRamResolution {
+  match r {
+    HostUsableRamMeasured { bytes: b, provenance: _ } => HostUsableRamResolved { bytes: b }
+    HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => HostUsableRamResolved { bytes: b }
+    HostUsableRamUnmeasured =>
+      HostUsableRamUnresolved {
+        reason: concat("host OS-usable RAM is unclassified, so the ceiling every other charge in this budget is checked against is unknown: refuse to derive a runner width rather than borrow another host's MemTotal (which is how a correct sum acquires a fabricated premise). Classify it in gunbc.ci_floor_measurement gunbc_ci_host_usable_ram_for. Host: ", host)
+      }
+  }
 }
 
 fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: ComputeOffer) -> DeploymentAccumulator {
@@ -265,9 +291,17 @@ fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: Compute
         any_unfit: acc.any_unfit,
         total: acc.total,
       }
-    Present { value: cpu } => {
+    Present { value: cpu } =>
+      match host_usable_ram_or_refusal(host: offer.supply.physical.identity, r: gunbc_ci_host_usable_ram_for(host: offer.supply.physical.identity)) {
+        HostUsableRamUnresolved { reason: rr } =>
+          DeploymentAccumulator {
+            deployments: acc.deployments,
+            unsound_reason: if acc.unsound_reason == "" { rr } else { acc.unsound_reason },
+            any_unfit: acc.any_unfit,
+            total: acc.total,
+          }
+        HostUsableRamResolved { bytes: host_ram } => {
       let host_id = offer.supply.physical.identity
-      let host_ram = host_os_usable_ram_bytes()
       let headroom = oomd_actuation_floor(host: host_ram)
       match host_session_slice_resolution(host: host_id) {
         SessionSliceUnsized { reason: sr } =>
@@ -280,7 +314,8 @@ fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: Compute
         SessionSliceNotApplicable => accumulate_with_session_slice(acc: acc, offer: offer, cpu: cpu, host_id: host_id, host_ram: host_ram, headroom: headroom, session_pool: byte_size(0))
         SessionSliceCharged { bytes: session_pool } => accumulate_with_session_slice(acc: acc, offer: offer, cpu: cpu, host_id: host_id, host_ram: host_ram, headroom: headroom, session_pool: session_pool)
       }
-    }
+        }
+      }
   }
 }
 

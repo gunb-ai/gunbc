@@ -17,31 +17,71 @@ type ElectricalTerminalRef {
   terminal: TerminalIdentity
 }
 
-// The value a passive or source carries, as a magnitude in a declared scale. Scale is part of
-// the type rather than a separate field because a bare count with the scale alongside can drift
-// — and the SPICE suffix is then derived from the variant, never stored.
+// A COMPONENT'S KIND AND ITS VALUE ARE ONE FACT, NOT TWO. An earlier revision carried an
+// AnalogComponentRole beside an AnalogComponentValue, which made a resistor rated in nanofarads
+// perfectly constructible — two independently writable fields whose agreement nothing enforced.
+// A projection then had to decide what a capacitive resistor means, and every such decision is
+// wrong. Here the kind IS the constructor and the value rides inside it, so the invalid state has
+// no representation rather than being refused after the fact (DESIGN §5: construction over
+// validation).
 //
-// These are NONNEGATIVE deliberately. Measure permits an Int carrier, but a resistance or
-// capacitance RATING has no negative value; signed quantities belong to potential relative to a
-// reference and current relative to a chosen direction, which are different concepts and not
-// modelled here.
-type AnalogComponentValue
-  = ResistanceKilohms { magnitude: Measure<Resistance, Kilo, Nat> }
-  | CapacitanceNanofarads { magnitude: Measure<Capacitance, Nano, Nat> }
-  | PotentialSourceVolts { magnitude: Volt }
+// The magnitudes are NONNEGATIVE deliberately. Measure permits an Int carrier, but a resistance
+// or capacitance RATING has no negative value; signed quantities belong to potential relative to
+// a reference and current relative to a chosen direction, which are different concepts and are
+// not modelled here.
+type ElectricalComponentInstance
+  = ResistorInstance {
+      identity: ComponentInstanceIdentity,
+      part: NonEmptyStr,
+      positive_terminal: TerminalIdentity,
+      negative_terminal: TerminalIdentity,
+      resistance: Measure<Resistance, Kilo, Nat>,
+    }
+  | CapacitorInstance {
+      identity: ComponentInstanceIdentity,
+      part: NonEmptyStr,
+      positive_terminal: TerminalIdentity,
+      negative_terminal: TerminalIdentity,
+      capacitance: Measure<Capacitance, Nano, Nat>,
+    }
+  | IndependentVoltageSourceInstance {
+      identity: ComponentInstanceIdentity,
+      part: NonEmptyStr,
+      positive_terminal: TerminalIdentity,
+      negative_terminal: TerminalIdentity,
+      potential_difference: Volt,
+    }
 
-type AnalogComponentRole
-  = PassiveResistor
-  | PassiveCapacitor
-  | IndependentVoltageSource
+fn component_identity(c: ElectricalComponentInstance) -> ComponentInstanceIdentity {
+  match c {
+    ResistorInstance { identity: i, part: _, positive_terminal: _, negative_terminal: _, resistance: _ } => i
+    CapacitorInstance { identity: i, part: _, positive_terminal: _, negative_terminal: _, capacitance: _ } => i
+    IndependentVoltageSourceInstance { identity: i, part: _, positive_terminal: _, negative_terminal: _, potential_difference: _ } => i
+  }
+}
 
-type ElectricalComponentInstance {
-  identity: ComponentInstanceIdentity
-  part: NonEmptyStr
-  role: AnalogComponentRole
-  positive_terminal: TerminalIdentity
-  negative_terminal: TerminalIdentity
-  value: AnalogComponentValue
+fn component_part(c: ElectricalComponentInstance) -> NonEmptyStr {
+  match c {
+    ResistorInstance { identity: _, part: p, positive_terminal: _, negative_terminal: _, resistance: _ } => p
+    CapacitorInstance { identity: _, part: p, positive_terminal: _, negative_terminal: _, capacitance: _ } => p
+    IndependentVoltageSourceInstance { identity: _, part: p, positive_terminal: _, negative_terminal: _, potential_difference: _ } => p
+  }
+}
+
+fn component_positive_terminal(c: ElectricalComponentInstance) -> TerminalIdentity {
+  match c {
+    ResistorInstance { identity: _, part: _, positive_terminal: t, negative_terminal: _, resistance: _ } => t
+    CapacitorInstance { identity: _, part: _, positive_terminal: t, negative_terminal: _, capacitance: _ } => t
+    IndependentVoltageSourceInstance { identity: _, part: _, positive_terminal: t, negative_terminal: _, potential_difference: _ } => t
+  }
+}
+
+fn component_negative_terminal(c: ElectricalComponentInstance) -> TerminalIdentity {
+  match c {
+    ResistorInstance { identity: _, part: _, positive_terminal: _, negative_terminal: t, resistance: _ } => t
+    CapacitorInstance { identity: _, part: _, positive_terminal: _, negative_terminal: t, capacitance: _ } => t
+    IndependentVoltageSourceInstance { identity: _, part: _, positive_terminal: _, negative_terminal: t, potential_difference: _ } => t
+  }
 }
 
 type ElectricalNet {
@@ -103,10 +143,21 @@ fn net_of_terminal(intent: AnalogCircuitIntent, t: ElectricalTerminalRef) -> Net
   })
 }
 
+// HOW MANY nets contain this terminal, not merely whether one does. Two nets containing one
+// terminal is a SHORT between them — a real and different circuit — and net_of_terminal answers
+// with the first match, so a caller asking only "is it netted" cannot tell a netted terminal
+// from a shorted one. The count is what makes that distinction available; the projection decides
+// what to do with it.
+fn net_membership_count(intent: AnalogCircuitIntent, t: ElectricalTerminalRef) -> Nat {
+  fold(intent.nets, init: 0, f: fn(acc, net) {
+    if net_contains_terminal(net: net, t: t) { acc + 1 } else { acc }
+  })
+}
+
 fn component_terminals(c: ElectricalComponentInstance) -> List<ElectricalTerminalRef> {
   [
-    terminal_ref(component: c.identity, terminal: c.positive_terminal),
-    terminal_ref(component: c.identity, terminal: c.negative_terminal),
+    terminal_ref(component: component_identity(c: c), terminal: component_positive_terminal(c: c)),
+    terminal_ref(component: component_identity(c: c), terminal: component_negative_terminal(c: c)),
   ]
 }
 

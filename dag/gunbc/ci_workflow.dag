@@ -73,6 +73,7 @@ import v2.workflow.ci_workflow_run_emit {
 }
 import v2.workflow.ci_release_build_emit { ci_release_build_script }
 import v2.workflow.ci_stage0_partition_compile_gate_emit { ci_stage0_partition_compile_gate_script }
+import v2.workflow.ci_v1_compiler_test_targets_compile_gate_emit { ci_v1_compiler_test_targets_compile_gate_script }
 import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Duration }
@@ -346,7 +347,7 @@ fn ci_v1_compiler_tests_compile_gate_run_script() -> String {
 
 fn ci_v1_compiler_tests_compile_gate_step() -> Step {
   RunStep {
-    name: Present { value: "cargo test -p v1-compiler-tests --release --no-run (compile-contract gate; reuses release v1-compiler)" },
+    name: Present { value: "cargo test -p v1-compiler-tests --release (retained-kernel execution gate; reuses release v1-compiler)" },
     id: none,
     run: ci_v1_compiler_tests_compile_gate_run_script(),
     shell: none,
@@ -369,6 +370,20 @@ fn ci_stage0_partition_compile_gate_step() -> Step {
     if_condition: none,
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_stage0_partition_compile_gate_timeout_minutes }
+  }
+}
+
+fn ci_v1_compiler_test_targets_compile_gate_step() -> Step {
+  RunStep {
+    name: Present { value: "cargo check -p v1-compiler --all-targets (compile gate; test targets nothing else compiles)" },
+    id: none,
+    run: ci_v1_compiler_test_targets_compile_gate_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_minutes }
   }
 }
 
@@ -571,11 +586,15 @@ data gunbc_ci_aux_step_timeout_minutes: Int = 5
 
 data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: Duration = 15
 
-data gunbc_ci_v1_compiler_tests_compile_gate_timeout_note: String = "v1-compiler-tests compile-contract gate step budget (operator ruling 2026-08-05, PR A / fierce-heron-177): reordered after the release build and switched to cargo test --release --no-run so v1-compiler compiles once per job. Warm runs should complete in seconds once the release artifact is warm; 15m retains the prior cold-host envelope without raising the cap."
+data gunbc_ci_v1_compiler_tests_compile_gate_timeout_note: String = "v1-compiler-tests retained-kernel execution gate step budget. Originally a compile-contract gate (operator ruling 2026-08-05, PR A / fierce-heron-177): reordered after the release build and switched to cargo test --release --no-run so v1-compiler compiles once per job. --no-run removed 2026-08-11 with the suite cutover; the crate shrank from 98 modules / 740 tests to the 9 declared retained modules / 30 tests, which execute rather than only compile. Warm runs should complete in seconds once the release artifact is warm; 15m retains the prior cold-host envelope without raising the cap."
 
 data gunbc_ci_stage0_partition_compile_gate_timeout_minutes: Int = 15
 
 data gunbc_ci_stage0_partition_compile_gate_timeout_note: String = "stage0 partition compile gate step budget (sharp-fox-403 C1): seven sequential cargo check -p v1-stage0-* partition crates enrolled as the build-job compile backstop over stage0_partition_crate_rows. Cold-host envelope matches v1-compiler-tests compile gate until a dedicated receipt exists; warm partition crates are smaller than the monolith test crate."
+
+data gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_minutes: Int = 10
+
+data gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_note: String = "v1-compiler test-targets compile gate step budget. 10 minutes against 67s MEASURED for this step's exact argv (cargo check -p v1-compiler --all-targets, cold, remote runner, on the repaired tree after gunbc#8167 / gunbc#8173 landed the lib-test compile fix). The earlier figure recorded here was 99s from cargo check --workspace --all-targets, which was an upper BOUND rather than this step's cost — it was all that could be measured while main's lib test target did not compile, and it is superseded rather than kept beside the real number. Deliberately BELOW the 15m carried by the v1-compiler-tests and partition gates rather than copied from them: those two inherited a cold-host envelope with no dedicated receipt, and repeating a number nobody measured is how an unmeasured envelope becomes precedent. The gate runs AFTER the release build for the same reason the retained-kernel gate does — v1-compiler is already compiled in release with the shared feature set, so the check reuses that artifact instead of forcing a second compile. Raising this needs a measurement, not a round number."
 
 data gunbc_ci_artifact_transfer_step_timeout_minutes: Int = 10
 
@@ -593,7 +612,7 @@ data srv1_dashboard_deploy_concurrency_group: String = "srv1-dashboard-deploy"
 data srv1_dashboard_deploy_serialization_note: String = "Blue/green selection is observe-then-mutate, so two deploy jobs may not overlap: both could observe blue active, then the first flips green while the second restarts what has become the active green slot, recreating the outage. Job-grain concurrency serializes the entire cutover with cancel-in-progress=false; QueueNotMax may replace an older pending deployment with the newest main revision, but it never interrupts the one holding the host mutation window."
 
 fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_aux_step_timeout_minutes + gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes + gunbc_ci_stage0_partition_compile_gate_timeout_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_aux_step_timeout_minutes + gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes + gunbc_ci_stage0_partition_compile_gate_timeout_minutes + gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 data gunbc_ci_receipt_gate_steps_moved_in_executor_note: String = "The resolve-receipt and materialization-receipt gate STEPS are deleted (ruling 2026-07-30): their laws — resolves_total equals the declared count, and the materialization receipt exists/parses/keyed nonzero — now run INSIDE claim_executor as ordinary-floor finalization (run_walk, FloorFinalization), so a receipt-law violation blocks every on-success stage instead of redding a step AFTER admission had already stamped. The two aux terms leave the backstop sum in the same motion, keeping it the exact step-sum + prelude the witness pins. The receipt FILES keep writing — they are observability the falsifier and operators read — only the shell re-validation of them is gone, because keeping it would be a second representation of the floor-completion rule."
@@ -1073,7 +1092,7 @@ fn ci_build_job() -> Job {
     id: "build",
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: concat(ci_heal_revalidation_prelude_steps(), [ci_fmt_gate_step(), ci_release_build_step(), ci_v1_compiler_tests_compile_gate_step(), ci_stage0_partition_compile_gate_step(), ci_release_bins_pack_step(), ci_release_bins_upload_step()]),
+    steps: concat(ci_heal_revalidation_prelude_steps(), [ci_fmt_gate_step(), ci_release_build_step(), ci_v1_compiler_tests_compile_gate_step(), ci_stage0_partition_compile_gate_step(), ci_v1_compiler_test_targets_compile_gate_step(), ci_release_bins_pack_step(), ci_release_bins_upload_step()]),
     needs: [],
     env: none,
     outputs: none,

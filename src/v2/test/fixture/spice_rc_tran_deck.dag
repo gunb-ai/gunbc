@@ -25,8 +25,8 @@ data spice_rc_tran_deck: SpiceNetlist = SpiceNetlist {
   body: Cons {
     head: DeckComponent {
       component: VoltageSource {
-        name: ^v1,
-        n_plus: Named { node: NamedNode { name: ^n1 } },
+        name: "1",
+        n_plus: Named { node: NamedNode { name: "n1" } },
         n_minus: Ground,
         value: SpiceValue { lexeme: "DC 5" }
       }
@@ -34,17 +34,17 @@ data spice_rc_tran_deck: SpiceNetlist = SpiceNetlist {
     tail: Cons {
       head: DeckComponent {
         component: Resistor {
-          name: ^r1,
-          n_plus: Named { node: NamedNode { name: ^n1 } },
-          n_minus: Named { node: NamedNode { name: ^n2 } },
+          name: "1",
+          n_plus: Named { node: NamedNode { name: "n1" } },
+          n_minus: Named { node: NamedNode { name: "n2" } },
           value: SpiceValue { lexeme: "1000" }
         }
       },
       tail: Cons {
         head: DeckComponent {
           component: Capacitor {
-            name: ^c1,
-            n_plus: Named { node: NamedNode { name: ^n2 } },
+            name: "1",
+            n_plus: Named { node: NamedNode { name: "n2" } },
             n_minus: Ground,
             value: SpiceValue { lexeme: "1e-6" }
           }
@@ -54,7 +54,7 @@ data spice_rc_tran_deck: SpiceNetlist = SpiceNetlist {
             directive: InitialCondition {
               assignments: NodeVoltageBindings {
                 first: NodeVoltageBinding {
-                  node: Named { node: NamedNode { name: ^n2 } },
+                  node: Named { node: NamedNode { name: "n2" } },
                   value: SpiceValue { lexeme: "0" }
                 },
                 rest: []
