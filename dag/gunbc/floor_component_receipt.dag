@@ -63,7 +63,7 @@ import gunbc.floor_component_receipt_document {
   receipt_member_schema, receipt_member_run_id, receipt_member_component_count,
   receipt_member_affected_set_cold_control, receipt_member_unsuccessful_components,
   receipt_member_components, receipt_member_selection_degradation,
-  receipt_member_run_terminal, receipt_member_active_workset,
+  receipt_member_run_terminal,
   receipt_member_workflow_name, receipt_member_head_sha
 ,
   FloorComponentFailureMode, ModeNoFailure, ModeBudgetExceeded, ModeInfra, ModeWitnessRed, ModeNotReached, ModeRunIncomplete, ModeUnrecorded,
@@ -83,7 +83,9 @@ data floor_component_receipt_unit_surface_note: String = "Every duration on this
 
 data floor_component_receipt_schema: String = "floor-component-receipt/v1"
 
-data floor_component_active_workset_note: String = "THE IN-RECEIPT active_workset IS A PROCESS-LOCAL SNAPSHOT AT CHECKPOINT WRITE TIME, NOT POST-MORTEM KILL EVIDENCE. Checkpoints are written after each batch record lands while the executor is still alive; on the sequential floor every witness admit is paired with complete before the next batch boundary, so the registry is empty by construction at those writes and active_workset is honestly []. A SIGKILL or foreign step-cap kill terminates the process before any receipt write can run — the durable in-flight identity for that class is the GUNBC_FLOOR_PHASE_JOURNAL active-workset rows (admitted without a matching completed), which CI already surfaces beside the artifact. The field stays typed and required so a future mid-batch checkpoint or journal hydration path can populate it without a schema fork; dissolve-on: hydrate unreconciled journal admits into active_workset on the RunIncomplete checkpoint path once that population is exercised by execution rather than by construction argument."
+data floor_component_resource_checkpoint_note: String = "OPERATOR RULING 2026-08-13 (#8239 → #8163): this receipt is a per-component RESOURCE CHECKPOINT for alert routing — batch/component outcomes, run_terminal incomplete envelope, selection degradation — NOT a second observation ledger and NOT a carrier for the exact active workset. Subject identity (entry/module/phase) and live measurements (RSS, swap, PSI, progress) belong on the one attempt ledger #8163 lands (std.observation RecordedObservation at target/floor-attempts/<attempt>/events/<producer>.jsonl, carrier a974f44 / sunny-pike-825), which the coordinator tails. A receipt field named active_workset would be empty by construction at every checkpoint the sequential floor writes today, while the subjects it would have named ride GUNBC_FLOOR_PHASE_JOURNAL instead — two channels reconciled by hand is the split the ruling refuses. The field is therefore absent from this schema; fold absorption into #8163 rather than mint a parallel authority here."
+
+data floor_component_phase_journal_scaffold_note: String = "TEMPORARY PROJECTION (operator ruling 2026-08-13, verdict bound to #8239 head): GUNBC_FLOOR_PHASE_JOURNAL active-workset admit/completed rows are the interim channel for in-flight witness identity until measurements and subjects emit as RecordedObservation events on the #8163 per-producer ledger (own producer identity — sequence-checked files refuse a second writer). Dissolve-on: #8163 carrier on main + floor walk emits subject/measurement events through that ledger; delete journal rows and cli_run active-workset append once FLOOR2 reducer consumes the ledger path green by execution."
 
 data floor_component_receipt_path: String = "target/floor-component-receipt.json"
 
@@ -457,18 +459,6 @@ fn floor_run_terminal_json(
   ])
 }
 
-fn floor_active_workset_entry_json(
-  attempt_id: String,
-  entry: String,
-  function: String
-) -> JsonValue {
-  json_object(members: [
-    json_kv(key: "attempt_id", value: json_string(s: attempt_id)),
-    json_kv(key: "entry", value: json_string(s: entry)),
-    json_kv(key: "function", value: json_string(s: function))
-  ])
-}
-
 fn floor_component_receipt_json_value(
   workflow_name: NonEmptyStr,
   run_id: NonEmptyStr,
@@ -484,8 +474,7 @@ fn floor_component_receipt_json_value(
   run_terminal_disposition: NonEmptyStr,
   run_terminal_cause: NonEmptyStr,
   concluded_count: Nat,
-  pending_from_index: Nat,
-  active_workset: List<JsonValue>
+  pending_from_index: Nat
 ) -> JsonValue {
   let base = [
     json_kv(key: receipt_member_schema, value: json_string(s: floor_component_receipt_schema)),
@@ -499,11 +488,7 @@ fn floor_component_receipt_json_value(
     )),
     json_kv(key: receipt_member_components, value: json_array(
       elements: rows |> map(r => floor_component_row_json(row: r))
-    )),
-    json_kv(
-      key: receipt_member_active_workset,
-      value: json_array(elements: active_workset)
-    )
+    ))
   ]
   let with_terminal = if run_terminal_present {
     concat(base, [
@@ -565,8 +550,7 @@ fn floor_component_receipt_document(
     run_terminal_disposition: "concluded" as NonEmptyStr,
     run_terminal_cause: "none" as NonEmptyStr,
     concluded_count: count(rows),
-    pending_from_index: 0,
-    active_workset: []
+    pending_from_index: 0
   ))
 }
 
@@ -577,8 +561,7 @@ fn floor_component_receipt_document_incomplete(
   rows: List<FloorComponentRow>,
   run_terminal_cause: NonEmptyStr,
   concluded_count: Nat,
-  pending_from_index: Nat,
-  active_workset: List<JsonValue>
+  pending_from_index: Nat
 ) -> String {
   serialize_json(v: floor_component_receipt_json_value(
     workflow_name: workflow_name,
@@ -595,8 +578,7 @@ fn floor_component_receipt_document_incomplete(
     run_terminal_disposition: "incomplete" as NonEmptyStr,
     run_terminal_cause: run_terminal_cause,
     concluded_count: concluded_count,
-    pending_from_index: pending_from_index,
-    active_workset: active_workset
+    pending_from_index: pending_from_index
   ))
 }
 
@@ -608,7 +590,6 @@ fn floor_component_receipt_document_incomplete_with_selection(
   run_terminal_cause: NonEmptyStr,
   concluded_count: Nat,
   pending_from_index: Nat,
-  active_workset: List<JsonValue>,
   selection_mode_tag: NonEmptyStr,
   selected: Nat,
   total: Nat,
@@ -630,8 +611,7 @@ fn floor_component_receipt_document_incomplete_with_selection(
     run_terminal_disposition: "incomplete" as NonEmptyStr,
     run_terminal_cause: run_terminal_cause,
     concluded_count: concluded_count,
-    pending_from_index: pending_from_index,
-    active_workset: active_workset
+    pending_from_index: pending_from_index
   ))
 }
 
@@ -661,7 +641,6 @@ fn floor_component_receipt_document_with_selection(
     run_terminal_disposition: "concluded" as NonEmptyStr,
     run_terminal_cause: "none" as NonEmptyStr,
     concluded_count: count(rows),
-    pending_from_index: 0,
-    active_workset: []
+    pending_from_index: 0
   ))
 }

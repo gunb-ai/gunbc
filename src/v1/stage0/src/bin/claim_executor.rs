@@ -11,13 +11,13 @@ use std::time::Instant;
 #[cfg(test)]
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{
-    active_workset_admit, active_workset_complete, active_workset_snapshot,
-    build_floor_discovery_request, compute_histogram_data,
-    discover_floor_witness_roster_with_snapshot, enable_floor_compile_clean_lazy_install,
-    heartbeat_feed_enter_batch, heartbeat_feed_entry_completed, heartbeat_feed_snapshot,
-    install_floor_compile_clean_receipt, make_eval_context, project_witness_cost_receipt,
-    record_resolution_divergence_phase, render_selection_degradation_receipt_body,
-    reset_resolution_divergence_phase_receipt, resolution_divergence_parent_plan_capture_begin,
+    active_workset_admit, active_workset_complete, build_floor_discovery_request,
+    compute_histogram_data, discover_floor_witness_roster_with_snapshot,
+    enable_floor_compile_clean_lazy_install, heartbeat_feed_enter_batch,
+    heartbeat_feed_entry_completed, heartbeat_feed_snapshot, install_floor_compile_clean_receipt,
+    make_eval_context, project_witness_cost_receipt, record_resolution_divergence_phase,
+    render_selection_degradation_receipt_body, reset_resolution_divergence_phase_receipt,
+    resolution_divergence_parent_plan_capture_begin,
     resolution_divergence_parent_plan_capture_finish, resolve_entry_graph,
     resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
     top_n_slowest_witnesses, verify_floor_discovery_terminal_for_coordinator, BudgetKind,
@@ -28,7 +28,6 @@ use v1_compiler::cli_run::{
     WitnessRowCost, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 #[cfg(test)]
-use v1_compiler::cli_run::{active_workset_reset_for_test, witness_attempt_id};
 use v1_compiler::memory_governor::{
     binding_cap_cgroup_dir, binding_high_cgroup_dir, floor_budget_below_minimum_footprint,
     leaf_cgroup_dir, mem_total_bytes, memory_pressure_some_avg10, read_cgroup_raw, read_cgroup_u64,
@@ -5758,33 +5757,6 @@ fn floor_component_row_not_concluded_value(
     }
 }
 
-fn active_workset_json_values(ctx: &InterpContext) -> Vec<Value> {
-    active_workset_snapshot()
-        .into_iter()
-        .filter_map(|entry| {
-            match run_in_context_with_args(
-                ctx,
-                "floor_active_workset_entry_json",
-                &[
-                    (Some("attempt_id".to_string()), Value::Str(entry.attempt_id)),
-                    (Some("entry".to_string()), Value::Str(entry.entry)),
-                    (Some("function".to_string()), Value::Str(entry.function)),
-                ],
-                false,
-            ) {
-                Ok(v) => Some(v),
-                Err(e) => {
-                    eprintln!(
-                        "claim_executor: floor component receipt REFUSED — \
-                         floor_active_workset_entry_json eval: {e}"
-                    );
-                    None
-                }
-            }
-        })
-        .collect()
-}
-
 fn write_floor_component_receipt_document(
     ctx: &InterpContext,
     workflow_name: &str,
@@ -5799,7 +5771,6 @@ fn write_floor_component_receipt_document(
     if unreached == UnreachedCause::RunIncomplete {
         let concluded_count = batch_records.len() as i64;
         let pending_from_index = (batch_records.len() + 1) as i64;
-        let active_workset = active_workset_json_values(ctx);
         let mut args: Vec<(Option<String>, Value)> = vec![
             (
                 Some("workflow_name".to_string()),
@@ -5822,10 +5793,6 @@ fn write_floor_component_receipt_document(
             (
                 Some("pending_from_index".to_string()),
                 Value::Int(pending_from_index),
-            ),
-            (
-                Some("active_workset".to_string()),
-                Value::List(Rc::new(active_workset.into())),
             ),
         ];
         let constructor = if let Some(snapshot) = snapshot {
@@ -14310,75 +14277,6 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(&base);
-    }
-
-    /// Proves registry→receipt plumbing: an admitted entry still in the in-process
-    /// registry is serialized into active_workset when the still-live executor writes
-    /// an incomplete document. This is NOT post-SIGKILL receipt evidence — a killed
-    /// process never reaches that write; see floor_component_active_workset_note and
-    /// GUNBC_FLOOR_PHASE_JOURNAL for durable in-flight identity across kill paths.
-    #[test]
-    fn incomplete_receipt_active_workset_survives_without_completion() {
-        static ACTIVE_WORKSET_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        let _guard = ACTIVE_WORKSET_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
-        active_workset_reset_for_test();
-        std::env::set_var("GUNBC_FLOOR_WALK_ATTEMPT_ID", "sigkill-sim-no-complete");
-        let entry = "dag/test/claim/floor_component_receipt_witness_test.dag";
-        let function = "floor_component_receipt_run_incomplete_tail_holds";
-        active_workset_admit(entry, function);
-        assert_eq!(active_workset_snapshot().len(), 1);
-        let expected_attempt = witness_attempt_id(entry, function);
-
-        let root = workspace_root();
-        let source_roots = vec![
-            root.join("src/v2").to_string_lossy().into_owned(),
-            root.join("dag").to_string_lossy().into_owned(),
-        ];
-        let base = std::env::temp_dir().join(format!(
-            "claim-executor-active-workset-kill-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&base);
-
-        let batches: Vec<Vec<Runnable>> = vec![vec![Runnable::SingleClaim {
-            entry: entry.to_string(),
-            function: function.to_string(),
-            profile: ParsedRunnableProfile::undeclared(),
-        }]];
-        let batch_records = vec![BatchRecord {
-            batch_index: 0,
-            wall_nanos: 1_000_000_000,
-            clamp_ms: None,
-            runtime_units: FloorRuntimeUnitCount::Observed { units: 1 },
-            unit_count: 1,
-            results: Vec::new(),
-            label: batch_heartbeat_label(&batches[0]),
-            selection_tag: batch_selection_tag(&batches[0]),
-            is_wet: false,
-        }];
-
-        assert!(write_floor_component_receipt_at(
-            &base,
-            &source_roots,
-            &batch_records,
-            &batches,
-            UnreachedCause::RunIncomplete,
-        ));
-        let receipt = fs::read_to_string(base.join("floor-component-receipt.json")).unwrap();
-        assert!(
-            receipt.contains("\"active_workset\"") && receipt.contains(&expected_attempt),
-            "incomplete receipt must snapshot admitted work without completion: {receipt}"
-        );
-        assert_eq!(
-            active_workset_snapshot().len(),
-            1,
-            "receipt write must not clear the registry — only completion does"
-        );
-
-        let _ = fs::remove_dir_all(&base);
-        active_workset_reset_for_test();
     }
 
     // D5 receipt rows, both directions: an over-budget batch records OverBudget and is

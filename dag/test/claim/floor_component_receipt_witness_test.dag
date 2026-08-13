@@ -25,7 +25,6 @@ import gunbc.floor_component_receipt {
   floor_component_receipt_document,
   floor_component_receipt_document_incomplete,
   floor_component_receipt_schema,
-  floor_active_workset_entry_json,
   floor_component_failure_mode_tag,
 }
 
@@ -506,7 +505,7 @@ test fn fcr_no_selection_receipt_decodes_through_the_strict_reader() -> Bool {
   }
 }
 
-data fcr_incomplete_checkpoint_round_trip_note: String = "The incomplete checkpoint envelope is what claim_executor writes on SIGKILL/step-cap death: run_terminal.disposition=incomplete, pending tail rows, and active_workset carrying in-flight witness identity. The concluded-path round trip was already witnessed; this arm exercises the path this PR exists to fix. HONEST BOUNDARY: on a real kill the executor may never reach the receipt write — durable in-flight identity then lives in GUNBC_FLOOR_PHASE_JOURNAL, not in the uploaded receipt; see floor_component_active_workset_note. The round trip witnesses encode/decode of the envelope shape; journal hydration onto the checkpoint path is dissolve-on."
+data fcr_incomplete_checkpoint_round_trip_note: String = "The incomplete checkpoint envelope is what claim_executor writes on SIGKILL/step-cap death: run_terminal.disposition=incomplete and pending tail rows (outcome=pending, failure_mode=run_incomplete). The concluded-path round trip was already witnessed; this arm exercises the path this PR exists to fix. SUBJECT IDENTITY IS NOT ON THIS RECEIPT (operator ruling 2026-08-13, #8239 → #8163): in-flight witness identity is a temporary GUNBC_FLOOR_PHASE_JOURNAL projection until measurements and subjects emit on the #8163 RecordedObservation ledger; see floor_component_resource_checkpoint_note and floor_component_phase_journal_scaffold_note."
 
 test fn fcr_incomplete_checkpoint_receipt_decodes_through_the_strict_reader() -> Bool {
   let rows = fcr_rows_of(opts: [
@@ -516,13 +515,6 @@ test fn fcr_incomplete_checkpoint_receipt_decodes_through_the_strict_reader() ->
       detail: "batch not concluded — checkpoint written while the run was still in progress; this component's fate is unknown at write time" as NonEmptyStr
     )
   ])
-  let workset = [
-    floor_active_workset_entry_json(
-      attempt_id: "31685755058|dag/test/claim/wedged_witness_test.dag|wedged_witness_holds",
-      entry: "dag/test/claim/wedged_witness_test.dag",
-      function: "wedged_witness_holds"
-    )
-  ]
   let doc = floor_component_receipt_document_incomplete(
     workflow_name: fcr_workflow_name,
     run_id: fcr_run_id,
@@ -530,15 +522,14 @@ test fn fcr_incomplete_checkpoint_receipt_decodes_through_the_strict_reader() ->
     rows: rows,
     run_terminal_cause: "run_incomplete" as NonEmptyStr,
     concluded_count: 1,
-    pending_from_index: 2,
-    active_workset: workset
+    pending_from_index: 2
   )
   match floor_component_receipt_decode_with(text: doc, expected_schema: floor_component_receipt_schema as NonEmptyStr) {
     ReceiptDecoded { document: d } =>
       (d.subject.run_id as String) == (fcr_run_id as String)
         && string_contains(s: doc, pattern: "\"disposition\": \"incomplete\"")
         && string_contains(s: doc, pattern: "\"outcome\": \"pending\"")
-        && string_contains(s: doc, pattern: "wedged_witness_holds")
+        && !string_contains(s: doc, pattern: "\"active_workset\"")
     _ => false
   }
 }
@@ -551,13 +542,6 @@ test fn fcr_incomplete_checkpoint_receipt_reencodes_through_document_encoder() -
       detail: "batch not concluded — checkpoint written while the run was still in progress; this component's fate is unknown at write time" as NonEmptyStr
     )
   ])
-  let workset = [
-    floor_active_workset_entry_json(
-      attempt_id: "31685755058|dag/test/claim/wedged_witness_test.dag|wedged_witness_holds",
-      entry: "dag/test/claim/wedged_witness_test.dag",
-      function: "wedged_witness_holds"
-    )
-  ]
   let doc = floor_component_receipt_document_incomplete(
     workflow_name: fcr_workflow_name,
     run_id: fcr_run_id,
@@ -565,8 +549,7 @@ test fn fcr_incomplete_checkpoint_receipt_reencodes_through_document_encoder() -
     rows: rows,
     run_terminal_cause: "run_incomplete" as NonEmptyStr,
     concluded_count: 1,
-    pending_from_index: 2,
-    active_workset: workset
+    pending_from_index: 2
   )
   match floor_component_receipt_decode_with(text: doc, expected_schema: floor_component_receipt_schema as NonEmptyStr) {
     ReceiptDecoded { document: d } =>

@@ -98,7 +98,7 @@ data other_failing_component: String = "{\"index\":6,\"label\":\"witness discove
 
 fn receipt_text_with(component: String) -> String {
   concat(concat(concat(
-    "{\"schema\":\"floor-component-receipt/v1\",\"workflow_name\":\"affected-set-falsifier\",\"run_id\":\"31000000001\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"component_count\":1,\"affected_set_cold_control\":null,\"selection_degradation\":null,\"run_terminal\":null,\"active_workset\":[],\"unsuccessful_components\":[",
+    "{\"schema\":\"floor-component-receipt/v1\",\"workflow_name\":\"affected-set-falsifier\",\"run_id\":\"31000000001\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"component_count\":1,\"affected_set_cold_control\":null,\"selection_degradation\":null,\"run_terminal\":null,\"unsuccessful_components\":[",
     component), "],\"components\":["), concat(component, "]}"))
 }
 

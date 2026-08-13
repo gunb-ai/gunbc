@@ -10703,6 +10703,13 @@ static ACTIVE_WORKSET: Mutex<ActiveWorksetState> = Mutex::new(ActiveWorksetState
 
 const FLOOR_PHASE_JOURNAL_ENV: &str = "GUNBC_FLOOR_PHASE_JOURNAL";
 
+// TEMPORARY PROJECTION (operator ruling 2026-08-13, #8239 → #8163): active-workset
+// admit/completed rows in GUNBC_FLOOR_PHASE_JOURNAL carry in-flight witness identity until
+// subject + measurement events land on the #8163 RecordedObservation per-producer ledger
+// (target/floor-attempts/<attempt>/events/<producer>.jsonl). Dissolve-on: #8163 on main +
+// floor walk emits through that ledger with a dedicated producer identity; delete this append
+// path once FLOOR2 consumes the ledger green by execution. NOT serialized into the floor
+// component receipt — see floor_component_resource_checkpoint_note.
 fn append_active_workset_phase_journal(state: &str, detail: &str) {
     let Some(path) = std::env::var_os(FLOOR_PHASE_JOURNAL_ENV) else {
         return;
@@ -10950,10 +10957,10 @@ mod active_workset_kill_path_controls {
         }
     }
 
-    /// SIGKILL / step-cap / panic paths never run `active_workset_complete`. The registry
-    /// must retain the admitted identity while the executor is still alive. Durable evidence
-    /// after process death is the phase journal, not the receipt — see
-    /// floor_component_active_workset_note.
+    /// SIGKILL / step-cap / panic paths never run `active_workset_complete`. Durable
+    /// in-flight identity for that class is the GUNBC_FLOOR_PHASE_JOURNAL active-workset
+    /// rows (admitted without a matching completed), not the floor component receipt —
+    /// see floor_component_resource_checkpoint_note and floor_component_phase_journal_scaffold_note.
     #[test]
     fn admitted_entry_survives_without_completion() {
         with_active_workset_test_lock(|| {

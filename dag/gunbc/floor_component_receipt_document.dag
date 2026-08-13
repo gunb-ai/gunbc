@@ -29,7 +29,6 @@ data receipt_member_unsuccessful_components: String = "unsuccessful_components"
 data receipt_member_components: String = "components"
 data receipt_member_selection_degradation: String = "selection_degradation"
 data receipt_member_run_terminal: String = "run_terminal"
-data receipt_member_active_workset: String = "active_workset"
 
 data receipt_member_workflow_name: String = "workflow_name"
 data receipt_member_head_sha: String = "head_sha"
@@ -53,7 +52,6 @@ type FloorComponentReceiptDocument {
   affected_set_control: JsonValue
   selection_degradation: JsonValue
   run_terminal: JsonValue
-  active_workset: JsonValue
 }
 
 data floor_component_receipt_component_grain_note: String = "COMPONENTS ARE CARRIED AT JSON GRAIN INSIDE THE DOCUMENT, AND THAT IS A DECLARED BOUNDARY RATHER THAN LAZINESS. The document's own identity — subject, counts, which components were unsuccessful — is fully typed and fully round-tripped, because that is what the consumer decides on. A component's INTERIOR is a projection of std.observation.ObservationEvent, whose decoding is a separate and larger obligation: ObservationEvent carries transitions, outcomes with per-variant payloads, measured walls with unavailability causes, and a clock basis, and a half-decoding of it here would be a second, weaker representation of a coproduct that already has an authority — the §3 fork this module's own member-name note argues against.\n\nWHAT THAT COSTS, STATED PLAINLY: a component whose interior is malformed is not caught by this decoder. It is caught by the consumer that reads a field it needs, and that consumer must answer an absent field rather than defaulting it. DISSOLVE-ON: gunbc.floor_component_receipt gains a total ObservationEvent decoder — the reverse of floor_component_row_json — at which point components become List<FloorComponentRow> here and this note deletes. Until then the honest claim is that the document is typed and the component interiors are transported, not that the whole receipt is validated."
@@ -164,8 +162,7 @@ fn floor_component_receipt_document_json(doc: FloorComponentReceiptDocument) -> 
       json_kv(key: receipt_member_unsuccessful_components, value: json_array(elements: doc.unsuccessful_components)),
       json_kv(key: receipt_member_components, value: json_array(elements: doc.components)),
       json_kv(key: receipt_member_selection_degradation, value: doc.selection_degradation),
-      json_kv(key: receipt_member_run_terminal, value: doc.run_terminal),
-      json_kv(key: receipt_member_active_workset, value: doc.active_workset)
+      json_kv(key: receipt_member_run_terminal, value: doc.run_terminal)
     ]
   ))
 }
@@ -645,9 +642,6 @@ fn floor_component_receipt_decode_with(text: String, expected_schema: NonEmptySt
                             match receipt_required_value_at(v: doc, key: receipt_member_run_terminal) {
                               ReceiptValueFailed { decoding: d } => d
                               ReceiptValueFound { value: run_terminal } =>
-                            match receipt_required_value_at(v: doc, key: receipt_member_active_workset) {
-                              ReceiptValueFailed { decoding: d } => d
-                              ReceiptValueFound { value: active_workset } =>
                             match component_alert_summaries_of(components: unsuccessful) {
                               ComponentSummaryListFailed { decoding: d } => d
                               ComponentSummaryListDecoded { summaries: summaries } =>
@@ -679,8 +673,7 @@ fn floor_component_receipt_decode_with(text: String, expected_schema: NonEmptySt
                                     component_summaries: complete_summaries,
                                     affected_set_control: control,
                                     selection_degradation: degradation,
-                                    run_terminal: run_terminal,
-                                    active_workset: active_workset
+                                    run_terminal: run_terminal
                                   }
                                 }
                                 }
