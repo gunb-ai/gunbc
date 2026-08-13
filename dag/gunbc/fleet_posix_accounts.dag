@@ -159,8 +159,9 @@ fn fleet_posix_operator_sudo_grants() -> List<PosixSudoGrant> {
 // (sudo install can mint setuid root shells). NOT enrolled without operator ruling.
 // Precedent: fleet_posix_ci_runner_sudo_grants already carries both binaries for ghrunner —
 // that is a finding, not automatic justification for the operator account.
-// Narrower paths preferred: (1) receipt dir owned at live_deploy apply time — see
-// gunbc.host_layout fleet_converge_receipt_dir_deploy_authority_note; (2) set-property
+// Narrower paths preferred: (1) receipt publication via staging write + rename in an
+// owned directory (srv1: dir already owned; stale root-owned file superseded without sudo) —
+// see gunbc.host_layout fleet_converge_receipt_dir_deploy_authority_note; (2) set-property
 // either moved to deploy-time unit authoring OR a verb-scoped sudoers line like the
 // proposal below — NOT a whole-binary grant.
 data fleet_converge_operator_privilege_hold_note: String = "b1 moved gunbc-roadmap-fleet-converge.service to User=briansrls; converge still calls bare systemctl set-property (polkit refusal) until a narrow elevation path is ruled. Whole-binary NOPASSWD install/systemctl on the operator roster is held — root-equivalent."

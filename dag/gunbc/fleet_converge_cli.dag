@@ -1,6 +1,7 @@
 module gunbc.fleet_converge_cli
 
 import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
 import std.algebra { trim }
 
 import extdeps.linux.procfs { ProcSysKernelHostname, procfs_path_literal }
@@ -388,7 +389,9 @@ fn converge_cli_verify_run(host: String) -> ConvergeCliReceipt {
 // Receipt publication (CONVERGE-0 loop leg): on the SELF route — the per-host timer's
 // route, where the deployment guarantees the host layout exists — the receipt line is
 // WRITTEN to the declared receipts path before being printed, so a fold-side observation
-// job can read the host's last converge standing without a new commit. Publication
+// job can read the host's last converge standing without a new commit. Publication uses
+// staging write + rename in the same directory (crash-safe; supersedes root-owned stale
+// files when the service principal owns the directory — no elevation). Publication
 // failure on that route FAILS CLOSED (converged=false with a typed reason): the loop's
 // product is the published receipt, so an unpublished converge must not report success.
 // Non-self routes (operator/CI supervised runs against a named host) are unchanged —
@@ -397,19 +400,42 @@ fn fleet_converge_receipt_path(host: String) -> String {
   join([fleet_converge_receipt_dir, "/", host, "-converge-receipt.txt"], "")
 }
 
+// Same directory as the published receipt — POSIX rename permission is on the directory,
+// not the file being replaced, so a root-owned stale receipt from the pre-b1 unit user
+// can be superseded without elevation when the service principal owns the directory.
+fn fleet_converge_receipt_staging_path(host: String) -> String {
+  join([fleet_converge_receipt_dir, "/", host, "-converge-receipt.staging"], "")
+}
+
+fn converge_cli_atomic_receipt_write(host: String, content: String) -> String? {
+  let staging = fleet_converge_receipt_staging_path(host: host)
+  let final_path = fleet_converge_receipt_path(host: host)
+  let w = Filesystem.Write(path: staging, content: content)
+  if !w.success {
+    Present { value: concat("gunbc converge: receipt staging write failed — ", w.error) }
+  } else {
+    let moved = shell.Move.File(source: staging as FilePath, destination: final_path as FilePath)
+    if moved.success {
+      none
+    } else {
+      Present { value: "gunbc converge: receipt rename failed after staging write (mv over root-owned stale file should succeed when the directory is owned by the service principal)" }
+    }
+  }
+}
+
 fn converge_cli_publish(out: ConvergeCliOutput, resolved: String, revision_line: String) -> ConvergeCliOutput {
-  let w = Filesystem.Write(
-    path: fleet_converge_receipt_path(host: resolved),
+  let publish_err = converge_cli_atomic_receipt_write(
+    host: resolved,
     content: join([out.line, "\n", revision_line, "\n"], ""),
   )
-  if w.success {
-    out
-  } else {
-    ConvergeCliOutput {
-      line: out.line,
-      converged: false,
-      reason: Present { value: concat("gunbc converge: receipt publication failed — ", w.error) },
-    }
+  match publish_err {
+    Absent => out
+    Present { value: why } =>
+      ConvergeCliOutput {
+        line: out.line,
+        converged: false,
+        reason: Present { value: why },
+      }
   }
 }
 

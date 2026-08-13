@@ -87,11 +87,11 @@ data belt_spawn_workdir_env_var: NonEmptyStr = "GUNBC_BELT_SPAWN_WORKDIR" as Non
 // live_deploy.emit -> fleet_converge_cli the moment the CLI imported its own apply seam.
 data fleet_converge_receipt_dir: String = "/opt/gunbc/receipts"
 
-// b1 privilege gap (operator hold 2026-08-13, parent eager-koi-458): the fleet-converge unit
-// runs as briansrls but receipt publication writes here. Ownership is DESIRED STATE converged
-// by live_deploy FleetConvergeTimerUnit apply (install_d_owned_command on this path) — NOT
-// re-ensured with sudo on each converge run. Until deploy applies, EACCES on publication.
-data fleet_converge_receipt_dir_deploy_authority_note: String = "Receipt directory ownership is live_deploy desired state: gunbc.live_deploy.emit FleetConvergeTimerUnit apply step runs install_d_owned_command(spec, fleet_converge_receipt_dir) before unit install. The converge timer must write as the service principal without elevation once deploy has run. Hand chmod or per-run sudo install is out-of-band actuation (DESIGN section 5)."
+// b1 privilege gap (operator hold 2026-08-13, parent eager-koi-458): srv1 observation showed
+// /opt/gunbc/receipts is already briansrls-owned and writable; EACCES was on a root-owned
+// STALE FILE left from the pre-b1 unit user. gunbc.fleet_converge_cli publishes by staging
+// write + rename in that directory (no elevation). live_deploy still owns directory creation.
+data fleet_converge_receipt_dir_deploy_authority_note: String = "Receipt directory ownership is live_deploy desired state: gunbc.live_deploy.emit FleetConvergeTimerUnit apply step runs install_d_owned_command(spec, fleet_converge_receipt_dir) before unit install. Publication uses atomic rename over a same-directory staging file so a root-owned stale receipt can be superseded without elevation when the directory is owned by the service principal — per-run sudo install is out-of-band actuation (DESIGN section 5)."
 
 data provider_runtime_placement_note: String = "ONE host-parameterized placement for provider package/exec release trees, mutable provider state, and private wire-evidence roots. Parallel to GunbcHostLayout: a second host must be describable without minting a second set of path concepts. Claude/Cursor/Codex lanes consume this record; they do not re-author /opt/... roots. The flat srv1_* path data below are the once-written field values of srv1's row — the same dissolution pattern as gunbc_host_layout_note."
 

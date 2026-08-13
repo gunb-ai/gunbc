@@ -23,4 +23,5 @@ test fn witness_receipt_dir_authority_points_at_live_deploy() -> Bool {
     pattern: "FleetConvergeTimerUnit",
   )
     && string_contains(s: fleet_converge_receipt_dir_deploy_authority_note, pattern: "install_d_owned_command")
+    && string_contains(s: fleet_converge_receipt_dir_deploy_authority_note, pattern: "atomic rename")
 }
