@@ -7,6 +7,7 @@ import gunbc.host_axis_caps {
   ControlShadowUnit,
   control_shadow_unit,
   control_shadow_revert_script,
+  control_shadow_revert_script_matches_extdeps_argv,
   desired_cap_member,
   cap_dropin_content,
   caps_effects,
@@ -28,6 +29,8 @@ import gunbc.host_converge {
   gunbc_runner_per_slot_dropin_path,
   gunbc_runner_per_slot_swap_dropin_path,
 }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import std.measure { byte_size_count }
 
 data path20: NonEmptyStr = gunbc_runner_per_slot_dropin_path as NonEmptyStr
 data path30: NonEmptyStr = gunbc_runner_per_slot_swap_dropin_path as NonEmptyStr
@@ -104,7 +107,7 @@ test fn control_shadow_residue_teardowns_owned_unit() -> Bool {
          EffectsReady { effects: e } => list_length(items: e) == 1
          ApplyRefused { refusals: _ } => false
        }
-    && control_shadow_revert_script(u: control_shadow_unit(unit: shadow_unit)) == "systemctl revert actions-runner@srv1-01.service MemoryMax MemoryHigh\n"
+    && control_shadow_revert_script_matches_extdeps_argv(u: control_shadow_unit(unit: shadow_unit))
 }
 
 test fn control_shadow_idempotence_zero_effects() -> Bool {
@@ -115,10 +118,15 @@ test fn control_shadow_idempotence_zero_effects() -> Bool {
 test fn witness_derived_memory_caps_match_allocation_authority() -> Bool {
   let max = derived_runner_memory_max_cap_member()
   let high = derived_runner_memory_high_cap_member()
-  string_contains(s: max.content, pattern: "15032385536")
+  let desired = gunbc_runner_slot_desired()
+  string_contains(s: max.content, pattern: to_string(byte_size_count(b: desired.memory_max)))
     && string_contains(s: max.dropin_path as String, pattern: "20-fleet-width")
-    && string_contains(s: high.content, pattern: "13958643712")
+    && string_contains(s: high.content, pattern: to_string(byte_size_count(b: desired.memory_high)))
     && string_contains(s: high.dropin_path as String, pattern: "40-fleet-high")
+}
+
+test fn witness_control_shadow_revert_script_matches_extdeps_argv() -> Bool {
+  control_shadow_revert_script_matches_extdeps_argv(u: control_shadow_unit(unit: shadow_unit))
 }
 
 test fn witness_shadow_revert_not_ready_without_derived_dropins() -> Bool {
@@ -127,8 +135,9 @@ test fn witness_shadow_revert_not_ready_without_derived_dropins() -> Bool {
 }
 
 test fn witness_runner_memory_cap_author_script_derived() -> Bool {
-  string_contains(s: runner_memory_cap_author_script(), pattern: "15032385536")
-    && string_contains(s: runner_memory_cap_author_script(), pattern: "13958643712")
+  let desired = gunbc_runner_slot_desired()
+  string_contains(s: runner_memory_cap_author_script(), pattern: to_string(byte_size_count(b: desired.memory_max)))
+    && string_contains(s: runner_memory_cap_author_script(), pattern: to_string(byte_size_count(b: desired.memory_high)))
     && !string_contains(s: runner_memory_cap_author_script(), pattern: "systemctl revert")
 }
 
