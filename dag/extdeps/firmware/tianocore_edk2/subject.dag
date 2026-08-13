@@ -1,0 +1,34 @@
+module extdeps.firmware.tianocore_edk2.subject
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.tianocore.org/"
+  }
+}
+
+data tianocore_edk2_subject_note: String = "TIANOCORE EDK II, THE UEFI IMPLEMENTATION. Fetched live 2026-08-12: the page describes TianoCore as 'the community supporting an open source implementation of the Unified Extensible Firmware Interface (UEFI)' and EDK II as 'a modern, feature-rich, cross-platform firmware development environment for the UEFI and UEFI Platform Initialization (PI) specifications'. THE DISTINCTION THAT EARNS THE SEPARATE MODULE: UEFI is a specification and EDK II is an implementation of it, which is the same split this repository already draws between the SPICE medium and ngspice, and between a standard and a browser engine. A board that says 'host UEFI firmware' is naming a role that an implementation fills, not the specification."
+
+type TianoCoreEdk2
+  = | TianoCoreEdk2Implementation
+
+data tianocore_edk2_implementation: TianoCoreEdk2 = TianoCoreEdk2Implementation
+
+data tianocore_edk2_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.firmware.tianocore_edk2.subject",
+      decl_name: "tianocore_edk2_implementation",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data extdeps_model_scope: ExternalModelScope = tianocore_edk2_model_scope

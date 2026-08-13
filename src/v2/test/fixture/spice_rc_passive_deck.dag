@@ -6,16 +6,16 @@ data spice_rc_passive_deck: SpiceNetlist = SpiceNetlist {
   body: [
     DeckComponent {
       component: Resistor {
-        name: ^r1,
-        n_plus: Named { node: NamedNode { name: ^vin } },
-        n_minus: Named { node: NamedNode { name: ^mid } },
+        name: "1",
+        n_plus: Named { node: NamedNode { name: "vin" } },
+        n_minus: Named { node: NamedNode { name: "mid" } },
         value: SpiceValue { lexeme: "1k" }
       }
     },
     DeckComponent {
       component: Capacitor {
-        name: ^c1,
-        n_plus: Named { node: NamedNode { name: ^mid } },
+        name: "1",
+        n_plus: Named { node: NamedNode { name: "mid" } },
         n_minus: Ground,
         value: SpiceValue { lexeme: "1u" }
       }
