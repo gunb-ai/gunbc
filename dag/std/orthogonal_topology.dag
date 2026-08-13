@@ -7,10 +7,9 @@ import std.measure {
   Millimeter, millimeter, millimeter_count,
   SquareMillimeter, square_millimeter, square_millimeter_count,
   CubicMillimeter, cubic_millimeter, cubic_millimeter_count,
-  signed_millimeter_component_count,
 }
 import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity_eq }
-import std.affine_space { Point2, Point3 }
+import std.affine_space { Point2, Point3, signed_frame_component_count }
 import std.checked_arithmetic {
   IntegerOverflow,
   CheckedInt, CheckedIntReady, CheckedIntOverflow,
@@ -83,8 +82,8 @@ fn shell_prism(s: ClosedShell) -> OrthogonalPrism3 { s.prism }
 fn shell_frame(s: ClosedShell) -> CoordinateFrameIdentity { prism3_frame(p: s.prism) }
 
 fn shell_walls(s: ClosedShell) -> List<ShellWall> {
-  let lo = signed_millimeter_component_count(m: prism3_low(p: s.prism))
-  let hi = signed_millimeter_component_count(m: prism3_high(p: s.prism))
+  let lo = signed_frame_component_count(c: prism3_low(p: s.prism))
+  let hi = signed_frame_component_count(c: prism3_high(p: s.prism))
   reverse(fold(loop_edges(vertices: loop2_vertices(l: prism3_footprint(p: s.prism))), init: [], f: (acc, e) =>
     concat([ShellWall { start: e.start, end: e.end, low: lo, high: hi }], acc)))
 }
@@ -137,8 +136,8 @@ fn space_walls(s: EnclosedSpace) -> List<ShellWall> { shell_walls(s: s.shell) }
 // ROOM" must ask the layer that allocates room identities.
 fn space_eq(a: EnclosedSpace, b: EnclosedSpace) -> Bool {
   coordinate_frame_identity_eq(a: space_frame(s: a), b: space_frame(s: b))
-    && signed_millimeter_component_count(m: prism3_low(p: a.shell.prism)) == signed_millimeter_component_count(m: prism3_low(p: b.shell.prism))
-    && signed_millimeter_component_count(m: prism3_high(p: a.shell.prism)) == signed_millimeter_component_count(m: prism3_high(p: b.shell.prism))
+    && signed_frame_component_count(c: prism3_low(p: a.shell.prism)) == signed_frame_component_count(c: prism3_low(p: b.shell.prism))
+    && signed_frame_component_count(c: prism3_high(p: a.shell.prism)) == signed_frame_component_count(c: prism3_high(p: b.shell.prism))
     && loops_describe_same_region(
          a: loop2_vertices(l: space_footprint(s: a)),
          b: loop2_vertices(l: space_footprint(s: b)),
@@ -326,13 +325,13 @@ fn space_locate_point(s: EnclosedSpace, p: Point3) -> OrthogonalConstruction<Poi
   if !coordinate_frame_identity_eq(a: space_frame(s: s), b: p.frame) {
     OrthogonalRefused { cause: OrthogonalFrameMismatch { expected: space_frame(s: s), observed: p.frame } }
   } else {
-    let z = signed_millimeter_component_count(m: p.z)
-    let lo = signed_millimeter_component_count(m: prism3_low(p: s.shell.prism))
-    let hi = signed_millimeter_component_count(m: prism3_high(p: s.shell.prism))
+    let z = signed_frame_component_count(c: p.z)
+    let lo = signed_frame_component_count(c: prism3_low(p: s.shell.prism))
+    let hi = signed_frame_component_count(c: prism3_high(p: s.shell.prism))
     let plan = point_location_in_loop(
       l: space_footprint(s: s),
-      px: signed_millimeter_component_count(m: p.x),
-      py: signed_millimeter_component_count(m: p.y),
+      px: signed_frame_component_count(c: p.x),
+      py: signed_frame_component_count(c: p.y),
     )
     if z < lo || z > hi {
       OrthogonalReady { value: PointOutsideSpace }
@@ -427,10 +426,10 @@ fn footprints_overlap(a: OrthogonalLoop2, b: OrthogonalLoop2) -> Bool {
 }
 
 fn vertical_ranges_overlap(a: EnclosedSpace, b: EnclosedSpace) -> Bool {
-  let a_lo = signed_millimeter_component_count(m: prism3_low(p: a.shell.prism))
-  let a_hi = signed_millimeter_component_count(m: prism3_high(p: a.shell.prism))
-  let b_lo = signed_millimeter_component_count(m: prism3_low(p: b.shell.prism))
-  let b_hi = signed_millimeter_component_count(m: prism3_high(p: b.shell.prism))
+  let a_lo = signed_frame_component_count(c: prism3_low(p: a.shell.prism))
+  let a_hi = signed_frame_component_count(c: prism3_high(p: a.shell.prism))
+  let b_lo = signed_frame_component_count(c: prism3_low(p: b.shell.prism))
+  let b_hi = signed_frame_component_count(c: prism3_high(p: b.shell.prism))
   a_lo < b_hi && b_lo < a_hi
 }
 

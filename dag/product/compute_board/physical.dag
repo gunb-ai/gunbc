@@ -5,8 +5,7 @@ import std.integer { Int }
 import std.nat { Nat }
 import std.measure { Micrometer, Micro, micrometer, micrometer_count }
 import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity, coordinate_frame_identity_eq }
-import std.affine_space { Point2, point2 }
-import std.measure { signed_millimeter_component_count }
+import std.affine_space { Point2, point2, signed_frame_component_count }
 import std.spatial_frame {
   FrameRegistered,
   FrameRegistrationRefused,
@@ -121,8 +120,8 @@ fn placement_extent(p: ComponentPlacement) -> OrthogonalConstruction<AxisAligned
     min: p.origin,
     max: point2(
       frame: p.origin.frame,
-      x: signed_millimeter_component_count(m: p.origin.x) + micrometer_count(m: p.body_envelope.body_width),
-      y: signed_millimeter_component_count(m: p.origin.y) + micrometer_count(m: p.body_envelope.body_height)
+      x: signed_frame_component_count(c: p.origin.x) + micrometer_count(m: p.body_envelope.body_width),
+      y: signed_frame_component_count(c: p.origin.y) + micrometer_count(m: p.body_envelope.body_height)
     )
   )
 }

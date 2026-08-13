@@ -3,7 +3,12 @@ module std.spatial_frame
 import std.types { String, Bool, List }
 import std.integer { Int }
 import std.nat { Nat }
-import std.measure { Scale, Micro, Milli, Measure, Millimeter, Micrometer, measure_count, scale_exponent }
+import std.measure {
+  Scale, Measure, Millimeter, Micrometer, measure_count, scale_exponent,
+  Atto, Femto, Pico, Nano, Micro, Milli, One, Kilo, Mega, Giga, Tera, Peta, Exa,
+  Kibi, Mebi, Gibi, Tebi,
+  ArcsecondAngle, DegreeAngle, TurnAngle, Sixty, RackUnitHeight,
+}
 import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity_eq }
 
 // THE REGISTRAR std.coordinate_frame DEFERS TO, and it lands because a board cannot be drawn
@@ -39,14 +44,47 @@ import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity
 
 data spatial_frame_note: String = "std.spatial_frame registers what a coordinate frame's numbers MEAN. The affine layer fixes its component to millimetres by convention; a printed circuit board is the first subject that convention is false for, because a half-millimetre contact pitch collapses two adjacent pins onto one coordinate. The scale is carried as a value rather than as a type argument because the measured seed limitation recorded in std.coordinate_frame erases applied type arguments, so a scale parameter would announce a wall that is not there."
 
-// A frame's length unit is a DECIMAL scale on the Length quantity. Scale also carries arcsecond,
-// degree, turn, sixty and rack-unit members, and none of those is a length step — scale_exponent
-// answers none for exactly those, which is why admissibility derives from that fold rather than
-// from a hand-written list here that would have to be edited whenever Scale grows a member.
+// A frame's length unit must be a DECIMAL SI length step, and this is an exhaustive match rather
+// than a fold over scale_exponent. An earlier revision used that fold and this comment claimed the
+// derivation was safer than a hand-written list because the list would rot as Scale grew. The fold
+// was answering a different question: scale_exponent reports Present for Kibi, Mebi, Gibi and Tebi
+// too, so a frame could register a BINARY MEMORY PREFIX as its length unit. A kibimetre is not a
+// unit. Worse, those four report 10, 20, 30 and 40 — binary exponents sharing a field with decimal
+// ones — so scales_agree would have been comparing across bases as though they were commensurate.
+//
+// The exhaustive match is what makes this fail closed as Scale grows: a new member does not
+// silently inherit a verdict from a numeric property it happens to have, it fails to compile here
+// until someone decides whether it is a length step. That is the opposite of the rot the earlier
+// comment feared, and it is why the list is a feature rather than a maintenance cost.
+//
+// Kilo and above are admitted because a kilometre is a real length, even though a board frame will
+// never want one; admissibility is about being a length quantum, not about being a sensible board
+// scale. The angle, sexagesimal and rack-unit members are refused because they measure something
+// else entirely.
 fn length_scale_is_decimal(s: Scale) -> Bool {
-  match scale_exponent(s: s) {
-    Present { value: _ } => true
-    Absent => false
+  match s {
+    Atto  => true
+    Femto => true
+    Pico  => true
+    Nano  => true
+    Micro => true
+    Milli => true
+    One   => true
+    Kilo  => true
+    Mega  => true
+    Giga  => true
+    Tera  => true
+    Peta  => true
+    Exa   => true
+    Kibi  => false
+    Mebi  => false
+    Gibi  => false
+    Tebi  => false
+    ArcsecondAngle => false
+    DegreeAngle    => false
+    TurnAngle      => false
+    Sixty          => false
+    RackUnitHeight => false
   }
 }
 

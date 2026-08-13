@@ -1,7 +1,7 @@
 module test.claim.orthogonal_geometry_witness
 
 import std.types { Bool, Int, List }
-import std.measure { millimeter_count, signed_millimeter_component_count, measure_count }
+import std.measure { millimeter_count, measure_count }
 import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity, coordinate_frame_identity_eq }
 import std.measure { Micro, Milli }
 import std.nat { Nat }
@@ -20,7 +20,7 @@ import std.spatial_frame {
   register_frame,
   registry_with,
 }
-import std.affine_space { Point2, Point3, point2, point3 }
+import std.affine_space { Point2, Point3, point2, point3, signed_frame_component_count }
 import std.euclidean_geometry {
   AxisDirection3, PositiveX, NegativeX, PositiveY, NegativeY, PositiveZ, NegativeZ,
   Axis3, Axis3X, Axis3Y, Axis3Z,
@@ -283,16 +283,16 @@ test fn bounding_box_is_derived_and_refuses_emptiness() -> Bool {
   let derived = match bounding_box3(points: [p3(x: 10, y: 0 - 5, z: 3), p3(x: 0 - 2, y: 40, z: 3), p3(x: 7, y: 1, z: 99)]) {
     OrthogonalRefused { cause: _ } => false
     OrthogonalReady { value: b } =>
-      signed_millimeter_component_count(m: bounding_box3_min(b: b).x) == 0 - 2
-        && signed_millimeter_component_count(m: bounding_box3_min(b: b).y) == 0 - 5
-        && signed_millimeter_component_count(m: bounding_box3_min(b: b).z) == 3
-        && signed_millimeter_component_count(m: bounding_box3_max(b: b).x) == 10
-        && signed_millimeter_component_count(m: bounding_box3_max(b: b).y) == 40
-        && signed_millimeter_component_count(m: bounding_box3_max(b: b).z) == 99
+      signed_frame_component_count(c: bounding_box3_min(b: b).x) == 0 - 2
+        && signed_frame_component_count(c: bounding_box3_min(b: b).y) == 0 - 5
+        && signed_frame_component_count(c: bounding_box3_min(b: b).z) == 3
+        && signed_frame_component_count(c: bounding_box3_max(b: b).x) == 10
+        && signed_frame_component_count(c: bounding_box3_max(b: b).y) == 40
+        && signed_frame_component_count(c: bounding_box3_max(b: b).z) == 99
   }
   let coplanar_still_bounds = match bounding_box3(points: [p3(x: 0, y: 0, z: 5), p3(x: 10, y: 10, z: 5)]) {
     OrthogonalRefused { cause: _ } => false
-    OrthogonalReady { value: b } => signed_millimeter_component_count(m: bounding_box3_max(b: b).z) == 5
+    OrthogonalReady { value: b } => signed_frame_component_count(c: bounding_box3_max(b: b).z) == 5
   }
   let empty = match bounding_box3(points: []) {
     OrthogonalReady { value: _ } => false

@@ -11,7 +11,6 @@ import std.measure {
   millimeter,
   square_millimeter,
   square_millimeter_count,
-  signed_millimeter_component_count,
 }
 import std.checked_arithmetic {
   CheckedInt,
@@ -36,8 +35,7 @@ import std.affine_space {
   SpatialFrameRefused,
   SpatialFrameRefusal,
   SpatialOperationIdentity, OpDot3, OpCross3,
-  SpatialFrameRelation, SameFrameOperandsRequired,
-}
+  SpatialFrameRelation, SameFrameOperandsRequired, signed_frame_component_count }
 import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity_eq }
 
 // SPATIAL-2, metric half. This is where integer millimetres stop being sufficient, so it is where
@@ -77,9 +75,9 @@ fn dot3(a: Vector3, b: Vector3) -> SpatialResult<SignedSquareMillimeter> {
   if !coordinate_frame_identity_eq(a: a.frame, b: b.frame) {
     SpatialFrameRefused { refusal: SpatialFrameRefusal { operation: OpDot3, left_frame: a.frame, right_frame: b.frame, relation: SameFrameOperandsRequired } }
   } else {
-  let px = checked_int_multiply(a: signed_millimeter_component_count(m: a.x), b: signed_millimeter_component_count(m: b.x))
-  let py = checked_int_multiply(a: signed_millimeter_component_count(m: a.y), b: signed_millimeter_component_count(m: b.y))
-  let pz = checked_int_multiply(a: signed_millimeter_component_count(m: a.z), b: signed_millimeter_component_count(m: b.z))
+  let px = checked_int_multiply(a: signed_frame_component_count(c: a.x), b: signed_frame_component_count(c: b.x))
+  let py = checked_int_multiply(a: signed_frame_component_count(c: a.y), b: signed_frame_component_count(c: b.y))
+  let pz = checked_int_multiply(a: signed_frame_component_count(c: a.z), b: signed_frame_component_count(c: b.z))
   match checked_add_results(a: checked_add_results(a: px, b: py), b: pz) {
     CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
     CheckedIntReady { value: total } =>
@@ -105,12 +103,12 @@ fn cross3(a: Vector3, b: Vector3) -> SpatialResult<AreaVector3> {
   if !coordinate_frame_identity_eq(a: a.frame, b: b.frame) {
     SpatialFrameRefused { refusal: SpatialFrameRefusal { operation: OpCross3, left_frame: a.frame, right_frame: b.frame, relation: SameFrameOperandsRequired } }
   } else {
-  let ax = signed_millimeter_component_count(m: a.x)
-  let ay = signed_millimeter_component_count(m: a.y)
-  let az = signed_millimeter_component_count(m: a.z)
-  let bx = signed_millimeter_component_count(m: b.x)
-  let by = signed_millimeter_component_count(m: b.y)
-  let bz = signed_millimeter_component_count(m: b.z)
+  let ax = signed_frame_component_count(c: a.x)
+  let ay = signed_frame_component_count(c: a.y)
+  let az = signed_frame_component_count(c: a.z)
+  let bx = signed_frame_component_count(c: b.x)
+  let by = signed_frame_component_count(c: b.y)
+  let bz = signed_frame_component_count(c: b.z)
   let cx = checked_subtract_results(a: checked_int_multiply(a: ay, b: bz), b: checked_int_multiply(a: az, b: by))
   let cy = checked_subtract_results(a: checked_int_multiply(a: az, b: bx), b: checked_int_multiply(a: ax, b: bz))
   let cz = checked_subtract_results(a: checked_int_multiply(a: ax, b: by), b: checked_int_multiply(a: ay, b: bx))
@@ -153,9 +151,9 @@ fn area_vector3_from_checked(frame: CoordinateFrameIdentity, x: CheckedInt, y: C
 // Nonnegativity is still by construction - a sum of squares - which is why the crossing into the
 // Nat-backed area carrier is a magnitude read rather than a clamp.
 fn norm_squared3(v: Vector3) -> SpatialResult<SquareMillimeter> {
-  let x = signed_millimeter_component_count(m: v.x)
-  let y = signed_millimeter_component_count(m: v.y)
-  let z = signed_millimeter_component_count(m: v.z)
+  let x = signed_frame_component_count(c: v.x)
+  let y = signed_frame_component_count(c: v.y)
+  let z = signed_frame_component_count(c: v.z)
   let sx = checked_int_multiply(a: x, b: x)
   let sy = checked_int_multiply(a: y, b: y)
   let sz = checked_int_multiply(a: z, b: z)
@@ -178,9 +176,9 @@ fn norm_squared3(v: Vector3) -> SpatialResult<SquareMillimeter> {
 // integers, a diagonal has no magnitude this axis kernel resolves. Collapsing them would tell a
 // caller holding a rational realization to go get a bigger integer, or the reverse.
 fn norm3(v: Vector3) -> SpatialResult<ExactLength> {
-  let x = signed_millimeter_component_count(m: v.x)
-  let y = signed_millimeter_component_count(m: v.y)
-  let z = signed_millimeter_component_count(m: v.z)
+  let x = signed_frame_component_count(c: v.x)
+  let y = signed_frame_component_count(c: v.y)
+  let z = signed_frame_component_count(c: v.z)
   let nonzero_axes = axis_count(value: x) + axis_count(value: y) + axis_count(value: z)
   if nonzero_axes <= 1 {
     match checked_int_magnitude(a: x + y + z) {
@@ -337,9 +335,9 @@ type Direction3Result
 // caller, safe today only because the single call site happened to be guarded. Inlined, the guard
 // is the enclosing branch and the case analysis cannot be reached without it.
 fn normalize3(v: Vector3) -> SpatialResult<Direction3Result> {
-  let x = signed_millimeter_component_count(m: v.x)
-  let y = signed_millimeter_component_count(m: v.y)
-  let z = signed_millimeter_component_count(m: v.z)
+  let x = signed_frame_component_count(c: v.x)
+  let y = signed_frame_component_count(c: v.y)
+  let z = signed_frame_component_count(c: v.z)
   let nonzero_axes = axis_count(value: x) + axis_count(value: y) + axis_count(value: z)
   if nonzero_axes == 0 {
     SpatialReady { value: DirectionZeroVectorHasNone }

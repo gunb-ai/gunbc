@@ -6,6 +6,8 @@ import std.measure {
   Micro,
   Milli,
   Nano,
+  Kibi,
+  Kilo,
   DegreeAngle,
   RackUnitHeight,
   measure_count,
@@ -124,6 +126,13 @@ test fn w_a_scale_that_is_not_a_length_step_cannot_register_a_frame() -> Bool {
   length_scale_is_decimal(s: Nano)
     && !length_scale_is_decimal(s: DegreeAngle)
     && !length_scale_is_decimal(s: RackUnitHeight)
+    // BINARY PREFIXES ARE NOT LENGTH UNITS, and they are the members that slipped through when
+    // admissibility was a fold over scale_exponent: Kibi reports Present there, so a frame could
+    // have registered a kibimetre. Kilo is admitted beside it because a kilometre is a real
+    // length — which is what makes this pair discriminating rather than a blanket refusal of
+    // everything above Milli.
+    && !length_scale_is_decimal(s: Kibi)
+    && length_scale_is_decimal(s: Kilo)
     && match register_frame(r: empty_frame_registry(), identity: board_frame_id(), length_scale: DegreeAngle) {
       FrameRegistered { frame: _ } => false
       FrameRegistrationRefused { cause: c } =>
@@ -143,6 +152,20 @@ test fn w_one_frame_cannot_be_registered_at_two_units() -> Bool {
       match c {
         FrameAlreadyRegistered { identity: _ } => true
         FrameScaleIsNotALengthStep { offered: _ } => false
+      }
+  }
+}
+
+// The registration path itself, not only the predicate. A frame whose declared length unit is a
+// binary memory prefix must be unregistrable, and the arm it lands on must say the scale is not a
+// length step rather than some generic refusal.
+test fn w_a_binary_memory_prefix_cannot_register_a_frame() -> Bool {
+  match register_frame(r: empty_frame_registry(), identity: board_frame_id(), length_scale: Kibi) {
+    FrameRegistered { frame: _ } => false
+    FrameRegistrationRefused { cause: c } =>
+      match c {
+        FrameScaleIsNotALengthStep { offered: _ } => true
+        FrameAlreadyRegistered { identity: _ } => false
       }
   }
 }

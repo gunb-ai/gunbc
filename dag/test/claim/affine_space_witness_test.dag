@@ -10,10 +10,11 @@ import std.checked_arithmetic {
   int_inclusive_max, int_inclusive_min,
 }
 import std.measure {
-  millimeter_count, signed_millimeter_component_count,
+  millimeter_count,
   square_millimeter_count, signed_square_millimeter_count,
 }
 import std.affine_space {
+  signed_frame_component_count,
   Vector3, Point3, vector3, point3, zero_vector3,
   translate_point3, displacement_between3, add_vector3, subtract_vector3,
   negate_vector3, scale_vector3, rotate_quarter_turns_about_z,
@@ -48,15 +49,15 @@ fn desk_a() -> Point3 { point3(frame: room(), x: 1200, y: 800, z: 0) }
 fn desk_b() -> Point3 { point3(frame: room(), x: 0 - 300, y: 2600, z: 0) }
 
 fn vector_equals(a: Vector3, b: Vector3) -> Bool {
-  signed_millimeter_component_count(m: a.x) == signed_millimeter_component_count(m: b.x)
-    && signed_millimeter_component_count(m: a.y) == signed_millimeter_component_count(m: b.y)
-    && signed_millimeter_component_count(m: a.z) == signed_millimeter_component_count(m: b.z)
+  signed_frame_component_count(c: a.x) == signed_frame_component_count(c: b.x)
+    && signed_frame_component_count(c: a.y) == signed_frame_component_count(c: b.y)
+    && signed_frame_component_count(c: a.z) == signed_frame_component_count(c: b.z)
 }
 
 fn point_equals(a: Point3, b: Point3) -> Bool {
-  signed_millimeter_component_count(m: a.x) == signed_millimeter_component_count(m: b.x)
-    && signed_millimeter_component_count(m: a.y) == signed_millimeter_component_count(m: b.y)
-    && signed_millimeter_component_count(m: a.z) == signed_millimeter_component_count(m: b.z)
+  signed_frame_component_count(c: a.x) == signed_frame_component_count(c: b.x)
+    && signed_frame_component_count(c: a.y) == signed_frame_component_count(c: b.y)
+    && signed_frame_component_count(c: a.z) == signed_frame_component_count(c: b.z)
 }
 
 // THE READY SIDE IS ASSERTED, NEVER ASSUMED. Every claim below that expects an ordinary
@@ -313,9 +314,9 @@ fn witness_transform_crosses_frames_exactly() -> Bool {
     SpatialFrameRefused { refusal: _ } => false
     SpatialArithmeticRefused { cause: _ } => false
     SpatialReady { value: moved } =>
-      signed_millimeter_component_count(m: moved.x) == 10000
-        && signed_millimeter_component_count(m: moved.y) == 21000
-        && signed_millimeter_component_count(m: moved.z) == 500
+      signed_frame_component_count(c: moved.x) == 10000
+        && signed_frame_component_count(c: moved.y) == 21000
+        && signed_frame_component_count(c: moved.z) == 500
         && coordinate_frame_identity_eq(a: moved.frame, b: building())
   }
 }
@@ -383,9 +384,9 @@ fn witness_same_frame_operations_still_answer() -> Bool {
   match displacement_between3(from: a, to: b) {
     SpatialFrameRefused { refusal: _ } => false
     SpatialReady { value: d } =>
-      signed_millimeter_component_count(m: d.x) == 10
-        && signed_millimeter_component_count(m: d.y) == 20
-        && signed_millimeter_component_count(m: d.z) == 30
+      signed_frame_component_count(c: d.x) == 10
+        && signed_frame_component_count(c: d.y) == 20
+        && signed_frame_component_count(c: d.z) == 30
         && coordinate_frame_identity_eq(a: d.frame, b: room())
     _ => false
   }
