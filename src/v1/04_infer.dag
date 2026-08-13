@@ -7945,11 +7945,6 @@ fn census_binding_is_borrowable_fn_sig(binding: TypeBinding, source_indices: Map
     && (node.params |> count) > 0
 }
 
-fn census_binding_is_generic_sig(binding: TypeBinding, source_indices: Map<String, NewlineIndex>) -> Bool {
-  census_binding_is_borrowable_fn_sig(binding: binding, source_indices: source_indices)
-    && (fn_type_param_names(item: binding.resolved, source_indices: source_indices) |> count) > 0
-}
-
 fn census_qualify_sig_return_binding(binding: TypeBinding, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
   let node = binding.resolved
   let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: [], source_indices: source_indices)
@@ -7960,12 +7955,11 @@ fn census_qualify_sig_return_binding(binding: TypeBinding, module_path: String, 
   }
 }
 
-fn census_upgrade_sig_binding(binding: TypeBinding, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
-  if census_binding_is_generic_sig(binding: binding, source_indices: source_indices) {
+fn census_upgrade_sig_binding(binding: TypeBinding, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>, tp_names: List<String>) -> TypeBinding {
+  if (tp_names |> count) > 0 {
     let node = binding.resolved
     match node.inferred {
       Present { value: Resolved { node: raw_ret } } =>
-        let tp_names = fn_type_param_names(item: node, source_indices: source_indices)
         let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: tp_names, source_indices: source_indices)
         let ret_result = resolve_node(n: raw_ret, env: env, module_name: module_path)
         if (ret_result.diagnostics |> count) == 0 {
@@ -8045,10 +8039,13 @@ fn census_qualify_leaf_binding(binding: TypeBinding, module_path: String, census
 }
 
 fn census_upgrade_binding(binding: TypeBinding, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
-  if census_binding_is_generic_sig(binding: binding, source_indices: source_indices) {
-    census_upgrade_sig_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices)
-  } else if census_binding_is_borrowable_fn_sig(binding: binding, source_indices: source_indices) {
-    census_qualify_sig_return_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices)
+  if census_binding_is_borrowable_fn_sig(binding: binding, source_indices: source_indices) {
+    let tp_names = fn_type_param_names(item: binding.resolved, source_indices: source_indices)
+    if (tp_names |> count) > 0 {
+      census_upgrade_sig_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices, tp_names: tp_names)
+    } else {
+      census_qualify_sig_return_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices)
+    }
   } else if (binding.resolved.connective != NoConnective) {
     census_upgrade_type_decl_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices)
   } else if binding.resolved.inferred != none {
