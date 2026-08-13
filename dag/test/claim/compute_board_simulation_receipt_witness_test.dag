@@ -289,16 +289,16 @@ test fn w_each_implementation_run_reports_its_own_tool() -> Bool {
 // previous tool says so: nextpnr consumes the synthesized netlist under those constraints, and
 // icepack consumes nextpnr's .asc. Neither .asc nor netlist is retained here, and claiming
 // otherwise is what the earlier revision effectively did.
+// Place-and-route consumes TWO things: the synthesized netlist it did not author, and the pin
+// constraints this product emits. Both are named, which is what a single artifact field could
+// not express — and is why the .pcf ended up standing in for the netlist.
+// icepack consumes only nextpnr'"'"'s .asc, which this receipt does not retain. It therefore
+// carries no retained blob at all — previously it carried the .pcf, which it never read.
 test fn w_downstream_runs_name_the_input_they_actually_consumed() -> Bool {
   let pnr = run_of(outcome: interlock_place_and_route_run)
   let pack = run_of(outcome: interlock_bitstream_run)
-  // Place-and-route consumes TWO things: the synthesized netlist it did not author, and the pin
-  // constraints this product emits. Both are named, which is what a single artifact field could
-  // not express — and is why the .pcf ended up standing in for the netlist.
   let pnr_names_both = fold(pnr.inputs, init: false, f: fn(acc, i) { acc || run_input_is_upstream(i: i) })
     && run_consumes_retained(r: pnr, blob: interlock_pin_constraint_artifact)
-  // icepack consumes only nextpnr'"'"'s .asc, which this receipt does not retain. It therefore
-  // carries no retained blob at all — previously it carried the .pcf, which it never read.
   let pack_retains_nothing = fold(retained_input_blobs(r: pack), init: true, f: fn(acc, _b) { false })
   pnr_names_both && pack_retains_nothing
 }

@@ -122,15 +122,15 @@ test fn w_a_lossless_widening_is_still_not_this_function() -> Bool {
 // Scale carries members that are not decimal length steps at all. Admitting one would register a
 // frame whose coordinates measure degrees or rack units while every length operation kept treating
 // them as an extent.
+// BINARY PREFIXES ARE NOT LENGTH UNITS, and they are the members that slipped through when
+// admissibility was a fold over scale_exponent: Kibi reports Present there, so a frame could
+// have registered a kibimetre. Kilo is admitted beside it because a kilometre is a real
+// length — which is what makes this pair discriminating rather than a blanket refusal of
+// everything above Milli.
 test fn w_a_scale_that_is_not_a_length_step_cannot_register_a_frame() -> Bool {
   length_scale_is_decimal(s: Nano)
     && !length_scale_is_decimal(s: DegreeAngle)
     && !length_scale_is_decimal(s: RackUnitHeight)
-    // BINARY PREFIXES ARE NOT LENGTH UNITS, and they are the members that slipped through when
-    // admissibility was a fold over scale_exponent: Kibi reports Present there, so a frame could
-    // have registered a kibimetre. Kilo is admitted beside it because a kilometre is a real
-    // length — which is what makes this pair discriminating rather than a blanket refusal of
-    // everything above Milli.
     && !length_scale_is_decimal(s: Kibi)
     && length_scale_is_decimal(s: Kilo)
     && match register_frame(r: empty_frame_registry(), identity: board_frame_id(), length_scale: DegreeAngle) {
