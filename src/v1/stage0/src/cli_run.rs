@@ -1797,8 +1797,41 @@ pub fn reference_derived_closure_over_source_roots(
         };
     }
 
+    // THE DISCRIMINATING NUMBER, and it exists because two different defects produce the same word.
+    // A refusal reporting a name as unbound is EITHER "no file in the universe declares it" (the
+    // universe is short, and the loader is right) OR "declarations exist and candidate enumeration
+    // discarded them" (the filter is wrong, and the loader hides it behind the same word). Counting the
+    // declarations of that authored name across the universe's own parses separates the two in one
+    // measurement, instead of asking a reader to trust a hypothesis about which filter ran.
+    //
+    // Counted from the PRE-ASSEMBLY rows deliberately: the assembled transport is what the filter read,
+    // so a count taken there would inherit whatever the filter did and could never contradict it.
+    let count_declarations_named = |name: &str| -> (usize, Vec<String>) {
+        let mut count = 0usize;
+        let mut files: Vec<String> = Vec::new();
+        for supply in &universe {
+            let mut here = 0usize;
+            for declaration in supply.row.transport.declarations.iter() {
+                for entry in supply.row.transport.index.entries.iter() {
+                    if entry.projection.occurrence.value == declaration.occurrence.value
+                        && entry.projection.authored_name == name
+                    {
+                        here += 1;
+                    }
+                }
+            }
+            if here > 0 {
+                count += here;
+                if files.len() < 4 {
+                    files.push(format!("{}x{}", supply.file, here));
+                }
+            }
+        }
+        (count, files)
+    };
+
     let outcome =
-        reference_derived_closure_fixed_point(entry_key.clone(), Rc::new(universe.into()));
+        reference_derived_closure_fixed_point(entry_key.clone(), Rc::new(universe.clone().into()));
     match &*outcome {
         ReferenceDerivedClosureFixedPoint::ClosureFixedPointSettled {
             admitted_files,
@@ -1833,6 +1866,26 @@ pub fn reference_derived_closure_over_source_roots(
                     failure_count
                 ),
                 other => format!("{other:?}"),
+            };
+            let detail = match &**refusal {
+                crate::std_reference_derived_closure::ReferenceDerivedClosureRefusal::ClosureBindingRefused {
+                    first_failure_locus,
+                    ..
+                } => {
+                    let (declared, sites) =
+                        count_declarations_named(&first_failure_locus.authored_name);
+                    format!(
+                        "{detail} [universe declares '{}' {} time(s){}]",
+                        first_failure_locus.authored_name,
+                        declared,
+                        if sites.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" in {}", sites.join(", "))
+                        }
+                    )
+                }
+                _ => detail,
             };
             ReferenceDerivedClosureRun::Refused {
                 entry: entry_key,
