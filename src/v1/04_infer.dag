@@ -9362,9 +9362,15 @@ fn import_module_path_at(imp: Node, source_indices: Map<String, NewlineIndex>) -
   authored_name_at(source_indices: source_indices, node: imp)
 }
 
+// `seen_names` is keyed rather than a `Set` because this population is read two ways: the module's
+// own export set is tested for MEMBERSHIP (`local_names`), and each direct import's export set is
+// ENUMERATED to accumulate the per-name exporter count. A `Set` in this substrate supports the
+// first and not the second, so the enumeration had to be simulated by re-testing membership once
+// per candidate name — the scan `direct_import_exporter_counts` replaces. One keyed carrier serves
+// both readings; it is not a second representation of the set, it is the only one.
 type ExportIndexModuleAccum {
   index: Map<String, TypeNameExportFacts>
-  seen_names: Set<String>
+  seen_names: Map<String, Bool>
 }
 
 // ONE POPULATION, ONE TRAVERSAL, TWO DERIVED PROJECTIONS. Both access patterns are legitimate;
@@ -9374,19 +9380,19 @@ type ExportIndexModuleAccum {
 // is deleted with it rather than surviving as a second census beside SymbolIndex.
 type ExportedTypeRelationBuild {
   by_name: Map<String, TypeNameExportFacts>
-  by_module: Map<String, Set<String>>
+  by_module: Map<String, Map<String, Bool>>
 }
 
 data export_index_canonical_is_the_fold_element_note: String = "§6 bare-minimum cost, same receipt as module_exported_type_names_cost_note. The export-index module walk's canonical binding was `filter(bindings |> map_values, b => b.name == name) |> first` — a rescan of the WHOLE binding map (with a fresh Vec allocation) once per distinct name, i.e. O(|bindings|^2) per module per closure assembly. It is dead work by construction: the enclosing fold walks THAT SAME map_values sequence in order, and seen_names skips every repeat, so the first element whose name matches is always the fold's own current element. `canonical = binding` is therefore the identical value, not an approximation of it — the order both expressions read is one traversal of one map value, so the equality does not depend on map_values being stable ACROSS runs (§5941 determinism), only on the two reads of the same value agreeing, which the rewrite removes the need for entirely."
 
 fn export_index_module_state(acc: Map<String, TypeNameExportFacts>, m: TypedModule) -> ExportIndexModuleAccum {
-  fold(m.type_env.bindings |> map_values, init: ExportIndexModuleAccum { index: acc, seen_names: empty_set() }, f: (state, binding) =>
+  fold(m.type_env.bindings |> map_values, init: ExportIndexModuleAccum { index: acc, seen_names: empty_map() }, f: (state, binding) =>
     let name = binding.name
-    if set_contains(state.seen_names, name) {
+    if map_contains_key(state.seen_names, name) {
       state
     } else {
       let canonical = binding
-      let seen_names = set_insert(state.seen_names, name)
+      let seen_names = map_insert(state.seen_names, name, true)
       let index = match map_get(state.index, name) {
         Absent =>
           map_insert(state.index, name, TypeNameExportFacts { exporter_count: 1, canonical_binding: Present { value: canonical } })
@@ -9419,13 +9425,13 @@ fn build_export_indexes(modules: List<TypedModule>, source_indices: Map<String, 
     export_index_merge_module_both(acc: acc, m: m, source_indices: source_indices))
 }
 
-data module_exported_type_names_cost_note: String = "Cost shape (§6 bare-minimum cost, floor batch-3 receipt 2026-07-25): the type names a module exports is ONE derived fact — a set — and both consumers in rewire_type_env_import_str_binding_identity read it. Before this row it existed twice: the caller's per-module `local_names` fold, and `module_exports_type_name`, a LINEAR SCAN (map_values allocates a Vec of every binding, then filters by name) re-run once per (consumer module x inherited key x direct import). Measured on 79 discovery entries: that pass alone was 191.1s of a 331.9s resolve wall (99% of all rewire time, 2.4s/entry) while the other two rewire passes together cost 1.8s. Hoisting the set per module and testing membership makes direct_import_exporter_count O(direct imports) instead of O(direct imports x |parent bindings|), with no change to the predicate it computes. The caller reads its own row out of the SAME index rather than re-folding it (review 42566) — the Absent arm computes the true value from this one authority, so it is a structurally-unreachable fallback that is still honest, never a fabricated default (DESIGN section 5)."
+data module_exported_type_names_cost_note: String = "Cost shape (§6 bare-minimum cost, floor batch-3 receipt 2026-07-25): the type names a module exports is ONE derived fact — a set — and both consumers in rewire_type_env_import_str_binding_identity read it. Before this row it existed twice: the caller's per-module `local_names` fold, and `module_exports_type_name`, a LINEAR SCAN (map_values allocates a Vec of every binding, then filters by name) re-run once per (consumer module x inherited key x direct import). Measured on 79 discovery entries: that pass alone was 191.1s of a 331.9s resolve wall (99% of all rewire time, 2.4s/entry) while the other two rewire passes together cost 1.8s. Hoisting the set per module and testing membership made the per-name exporter count O(direct imports) instead of O(direct imports x |parent bindings|), with no change to the predicate it computes. That per-name scan is itself now gone: direct_import_exporter_counts accumulates the whole relation in one traversal of the same sets and rewire_canonical_rewrites reads it by key, so the pass no longer pays a scan per candidate name at all. The caller reads its own row out of the SAME index rather than re-folding it (review 42566) — the Absent arm computes the true value from this one authority, so it is a structurally-unreachable fallback that is still honest, never a fabricated default (DESIGN section 5)."
 
-fn module_exported_type_names(m: TypedModule) -> Set<String> {
-  fold(m.type_env.bindings |> map_values, init: empty_set(), f: (acc, b) => set_insert(acc, b.name))
+fn module_exported_type_names(m: TypedModule) -> Map<String, Bool> {
+  fold(m.type_env.bindings |> map_values, init: empty_map(), f: (acc, b) => map_insert(acc, b.name, true))
 }
 
-fn direct_import_export_name_sets(m: TypedModule, export_name_index: Map<String, Set<String>>, source_indices: Map<String, NewlineIndex>) -> List<Set<String>> {
+fn direct_import_export_name_sets(m: TypedModule, export_name_index: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>) -> List<Map<String, Bool>> {
   flat_map(module_imports(n: m.module), imp =>
     let path = import_module_path_at(imp: imp, source_indices: source_indices)
     match map_get(export_name_index, path) {
@@ -9435,8 +9441,35 @@ fn direct_import_export_name_sets(m: TypedModule, export_name_index: Map<String,
   )
 }
 
-fn direct_import_exporter_count(import_export_names: List<Set<String>>, name: String) -> Int {
-  import_export_names |> filter(names => set_contains(names, name)) |> count
+// ONE PASS OVER THE IMPORT SETS, NOT ONE PASS PER CANDIDATE NAME. `direct_import_exporter_count`
+// answered "how many direct imports export this name" by scanning every direct import's export set
+// — and allocating a fresh list of the matching sets to take its length — once per inherited key.
+// The question is asked for every key in the module's inherited keyspace, so the pass cost
+// K x I set probes plus K list allocations, where K is that keyspace and I the direct-import count,
+// to compute a relation whose whole content is one traversal of the same sets: O(sum |S_i| + K).
+// The counts are accumulated here once per module and read by key.
+//
+// Equivalence is by counting, not by argument: each occurrence in `import_export_names` contributes
+// exactly 1 to each of its names, which is what the filter-and-count did per name. A path listed
+// twice among a module's imports therefore still counts twice, exactly as before — the reason this
+// keeps the count rather than deriving the ">1" verdict from `TypeNameExportFacts.exporter_count`,
+// which counts distinct closure modules and would silently disagree on that duplicate.
+fn direct_import_exporter_counts(import_export_names: List<Map<String, Bool>>) -> Map<String, Int> {
+  fold(import_export_names, init: empty_map(), f: (acc, names) =>
+    fold(names |> map_keys, init: acc, f: (inner, name) =>
+      match map_get(inner, name) {
+        Present { value: seen } => map_insert(inner, name, seen + 1)
+        Absent => map_insert(inner, name, 1)
+      }
+    )
+  )
+}
+
+fn direct_import_exporter_count_of(exporter_counts: Map<String, Int>, name: String) -> Int {
+  match map_get(exporter_counts, name) {
+    Present { value: n } => n
+    Absent => 0
+  }
 }
 
 // THE DECISION, separated from the writing. Each name's verdict depends only on the two indexes,
@@ -9457,15 +9490,15 @@ fn direct_import_exporter_count(import_export_names: List<Set<String>>, name: St
 // `map_get(str_bindings, name)` cannot observe an earlier iteration's insert.
 fn rewire_canonical_rewrites(
   type_name_index: Map<String, TypeNameExportFacts>,
-  import_export_names: List<Set<String>>,
-  local_names: Set<String>,
+  exporter_counts: Map<String, Int>,
+  local_names: Map<String, Bool>,
   inherited_keys: List<String>
 ) -> Map<String, TypeBinding> {
   fold(inherited_keys, init: empty_map(), f: (acc, name) =>
     match map_get(type_name_index, name) {
       Absent => acc
       Present { value: facts } =>
-        if set_contains(local_names, name) || direct_import_exporter_count(import_export_names: import_export_names, name: name) > 1 || facts.exporter_count > 1 {
+        if map_contains_key(local_names, name) || direct_import_exporter_count_of(exporter_counts: exporter_counts, name: name) > 1 || facts.exporter_count > 1 {
           acc
         } else {
           match facts.canonical_binding {
@@ -9500,12 +9533,13 @@ fn rewire_type_env_import_str_binding_identity(modules: List<TypedModule>, sourc
       Absent => module_exported_type_names(m: m)
     }
     let import_export_names = direct_import_export_name_sets(m: m, export_name_index: export_name_index, source_indices: source_indices)
+    let exporter_counts = direct_import_exporter_counts(import_export_names: import_export_names)
     let ancestry_keys = m.type_env.ancestry_str_bindings |> map_keys
     let str_keys = m.type_env.str_bindings |> map_keys
     let inherited_keys = concat(ancestry_keys, str_keys)
     let rewrites = rewire_canonical_rewrites(
       type_name_index: type_name_index,
-      import_export_names: import_export_names,
+      exporter_counts: exporter_counts,
       local_names: local_names,
       inherited_keys: inherited_keys
     )
