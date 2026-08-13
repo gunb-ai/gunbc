@@ -91,6 +91,7 @@ import v2.std.node_query { node_positional_child_targets }
 import v2.std.host_transport {
   EmitHostRuntimeRow,
   EmittedWithSuffix,
+  FixedText,
   FixedWidthBytes,
   HostRuntimeRowPresent,
   HostToolProgram,
@@ -734,6 +735,48 @@ fn c_validate_partition_r4(
 }
 
 data c_stage0_emit_note: String = "Stage 0 C source emitter seeded on fn add (ISO/IEC 9899:2018 / C17 — extdeps.languages.c.emit extdeps_external_authority_anchor). Grammar relation rows + lex + binding_spellings live here; the smoke main harness suffix is the sole legitimate string scaffold (dissolves when a modeled main producer lands)."
+
+data c_stdbool_include_directive: String = "#include <stdbool.h>\n"
+
+data c_bool_literal_stdbool_requirement_note: String = "Production bool_literal_form spells true/false, which C17 provides only via <stdbool.h>. Executable translation units that emit these tokens must carry c_stdbool_include_directive; bare cc without that include refuses undeclared true/false."
+
+fn c_bool_literal_host_source_text(literal: String) -> String {
+  concat(
+    left: concat(
+      left: c_stdbool_include_directive,
+      right: "\nint main(void) {\n  bool x = "
+    ),
+    right: concat(left: literal, right: ";\n  return x ? 0 : 1;\n}\n")
+  )
+}
+
+fn c_bool_literal_host_runtime_row(literal: String) -> TargetEmitHostRuntimeRow {
+  HostRuntimeRowPresent {
+    row: EmitHostRuntimeRow {
+      transport: HostTransportDescriptor {
+        identity: ^c_bool_literal_host_transport_identity,
+        workspace: [
+          WorkspaceFile {
+            path: "fixture.c",
+            content: FixedText { text: c_bool_literal_host_source_text(literal: literal) }
+          }
+        ],
+        build: [
+          ProcessInvocation {
+            program: HostToolProgram { executable: "cc" },
+            args: [LiteralArg { text: "fixture.c" }, LiteralArg { text: "-o" }, LiteralArg { text: "fixture" }]
+          }
+        ],
+        run: ProcessInvocation {
+          program: ProducedProgram { path: "fixture" },
+          args: []
+        },
+        runtime_value_codec: FixedWidthBytes { width: 0 }
+      },
+      runtime_primitive_type: c_emit_host_runtime_primitive_type_node()
+    }
+  }
+}
 
 data c_cpp_realization_relationship_note: String = "C and C++ share the ISO C subset: cpp_target_model retains the C++ scalar/primitive-facts model (38+ fns) while c_target_model owns the C Stage-0 fn-add grammar + cc runtime_row. Intended end-state: C is the base realization; C++ extends/reuses the C bundle for shared C-syntax rows rather than forking parallel spellings (cpp_source_text and c_source_text currently agree on add — a §3 nicknaming risk until C++ dispatches through c rows or a shared c_subset home). DISSOLVES WHEN cpp_target_model re-homes shared C-syntax translation rules onto c_target_model (or a lifted c_subset authority) and cpp keeps only C++-only extensions."
 

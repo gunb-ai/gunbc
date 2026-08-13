@@ -1,8 +1,12 @@
 module v2.test.emit.bool_literal_projection
 
+import v2.compiler.emit_host { run_host_process }
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source_string }
+import v2.compiler.eval { Inputs, inputs_root_only }
 import v2.extdeps.languages.c {
+  c_bool_literal_host_runtime_row,
   c_operator_realizations_catalog_node,
+  c_stdbool_include_directive,
   c_target_model,
   c_value_expression_projection
 }
@@ -18,32 +22,62 @@ import v2.extdeps.languages.typescript {
   ts_target_model,
   ts_value_expression_projection
 }
+import extdeps.communication.medium { Lossless, Medium }
 import v2.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules }
 import v2.std.compilers.target_model {
   TargetBoolLiteralShape,
   TargetModel,
   TargetValueExpression,
   TargetValueExpressionProjection,
+  TargetValueExprBoolLiteral,
   render_target_text,
   target_value_expression_bool_literal,
+  target_value_expr_bool_literal_value_from_source_symbol,
+  target_value_expr_is_bool_literal_expression,
+  target_value_expr_project_pick_literal_atom,
   target_value_expression_to_concrete_tokens
 }
 import v2.std.algebra { list_append }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.host_transport { HostRuntimeRowAbsent, HostRuntimeRowPresent }
+import v2.std.host_run { HostLogicalRun }
 import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Node, SyntheticOccurrence, TypeNode, Atom }
+import v2.std.optional { Optional, Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data bool_literal_projection_note: String = "Before this slice, target_model.dag hardcoded ^dag_token_kw_true/false at four emit/projection seams — the agnostic layer naming one target's spelling. The fix routes spelling through TargetBoolLiteralShape on each target's projection. This witness holds the same expression and lex and varies ONLY bool_literal_form, so nothing but the declared tokens can distinguish the arms. The cross arms are the RED: a lower-case projection must not emit upper-case text, and vice versa. Hardcoding dag tokens in target_model would ignore the alternate projection entirely."
-
-data bool_literal_golden_provenance_note: String = "HONESTY: the lower-case golden string was first authored to match the projection, then grounded by executing the real toolchains below (not read back off the emitter). Upper-case TRUE is deliberately invalid in all three — verified by the same runs rejecting it. Rust: rustc 1.93.0 (254b59607 2026-01-19), `rustc --crate-type=lib` on `pub fn f() -> bool { true }` exit 0; `TRUE` exit 1 (E0425). C: cc 12.2.0 (Debian 12.2.0-14+deb12u1), `cc -std=c11 -c` on a translation unit with `#include <stdbool.h>` and `bool f(void){ return true; }` exit 0; `return TRUE` exit 1 (undeclared). On this host `cc -std=c2x` WITHOUT stdbool.h refuses `true` (undeclared) — so the C row assumes stdbool.h context, not bare C23 keyword spelling. TypeScript: tsc 5.7.3, `const x: boolean = true` exit 0; `TRUE` exit 2 (TS2304)."
+// Routes bool spelling through TargetBoolLiteralShape on each target projection. Emission tests
+// below construct canonical TargetValueExprBoolLiteral values and prove spelling derives from the
+// output projection only. Source-recognition tests exercise substrate canonicalization separately:
+// dag substrate tokens normalize to canonical bool literals without consulting the output target's
+// bool_literal_form.
+//
+// C execution: production bool_literal_form spells true/false, which C17 provides only with
+// <stdbool.h>. The host transport below includes c_stdbool_include_directive and compiles a real
+// translation unit whose literal text is taken from the production emission path.
 
 data bool_literal_true_lower_golden: String = "true"
 
 data bool_literal_true_upper_golden: String = "TRUE"
+
+fn blp_probe_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^blp_emit_probe } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn blp_probe_inputs() -> Inputs {
+  inputs_root_only(root: blp_probe_node())
+}
+
+fn blp_probe_source() -> Medium<String> {
+  Medium { carried: "", fidelity: Lossless }
+}
 
 fn blp_bool_literal_expr() -> TargetValueExpression {
   target_value_expression_bool_literal(value: true)
@@ -170,18 +204,70 @@ test fn production_rust_bool_literal_declares_rust_spelling() -> Bool {
   )
 }
 
-test fn production_c_bool_literal_declares_c_spelling() -> Bool {
-  blp_production_emits(
-    target: c_target_model(),
-    projection: c_value_expression_projection(),
-    catalog: c_operator_realizations_catalog_node()
-  )
-}
-
 test fn production_typescript_bool_literal_declares_ts_spelling() -> Bool {
   blp_production_emits(
     target: ts_target_model(),
     projection: ts_value_expression_projection(),
     catalog: ts_operator_realizations_catalog_node()
   )
+}
+
+test fn substrate_dag_token_recognizes_as_bool_literal() -> Bool {
+  match target_value_expr_bool_literal_value_from_source_symbol(id: ^dag_token_kw_true) {
+    Present { value: b } => b
+    Absent => false
+  }
+}
+
+test fn rust_spelling_token_is_not_substrate_bool_literal() -> Bool {
+  match target_value_expr_bool_literal_value_from_source_symbol(id: ^rust_token_kw_true) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn dag_source_atom_projects_to_canonical_bool_literal() -> Bool {
+  match target_value_expr_project_pick_literal_atom(id: ^dag_token_kw_true) {
+    Accepted { value: expr, diagnostics: _ } =>
+      target_value_expr_is_bool_literal_expression(expr: expr)
+        && match expr.kind {
+          TargetValueExprBoolLiteral => true
+          _ => false
+        }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn blp_c_bool_literal_host_run(literal: String) -> Bool {
+  match c_bool_literal_host_runtime_row(literal: literal) {
+    HostRuntimeRowAbsent => false
+    HostRuntimeRowPresent { row: row } =>
+      match run_host_process(
+        row: row,
+        target: c_target_model(),
+        source: blp_probe_source(),
+        fixture_inputs: blp_probe_inputs()
+      ) {
+        Accepted { value: receipt, diagnostics: _ } =>
+          match receipt.logical_run {
+            Accepted { value: HostLogicalRun { stdout: _ }, diagnostics: None } => true
+            _ => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+test fn production_c_bool_literal_compiles_with_stdbool() -> Bool {
+  match blp_emit(
+    target: c_target_model(),
+    projection: c_value_expression_projection(),
+    catalog: c_operator_realizations_catalog_node()
+  ) {
+    Accepted { value: literal, diagnostics: _ } =>
+      (literal == bool_literal_true_lower_golden)
+        && blp_c_bool_literal_host_run(literal: literal)
+        && (c_stdbool_include_directive != "")
+    Rejected { diagnostics: _ } => false
+  }
 }

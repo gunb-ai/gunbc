@@ -6266,31 +6266,22 @@ fn target_value_expr_bool_literal_value_from_atom(node: Node) -> Optional<Bool> 
   }
 }
 
-fn target_value_expr_source_bool_true_symbol(
-  id: Symbol,
-  bool_form: TargetBoolLiteralShape
-) -> Bool {
-  id == bool_form.true_token || id == ^target_value_expression_bool_true || id == ^dag_token_kw_true
-}
-
-fn target_value_expr_source_bool_false_symbol(
-  id: Symbol,
-  bool_form: TargetBoolLiteralShape
-) -> Bool {
-  id == bool_form.false_token || id == ^target_value_expression_bool_false || id == ^dag_token_kw_false
-}
-
-fn target_value_expr_bool_literal_value_from_source_symbol(
-  id: Symbol,
-  bool_form: TargetBoolLiteralShape
+fn target_value_expr_substrate_bool_literal_value_from_source_symbol(
+  id: Symbol
 ) -> Optional<Bool> {
-  if target_value_expr_source_bool_true_symbol(id: id, bool_form: bool_form) {
+  if id == ^target_value_expression_bool_true || id == ^dag_token_kw_true {
     optional_present(true)
-  } else if target_value_expr_source_bool_false_symbol(id: id, bool_form: bool_form) {
+  } else if id == ^target_value_expression_bool_false || id == ^dag_token_kw_false {
     optional_present(false)
   } else {
     optional_absent()
   }
+}
+
+fn target_value_expr_bool_literal_value_from_source_symbol(
+  id: Symbol
+) -> Optional<Bool> {
+  target_value_expr_substrate_bool_literal_value_from_source_symbol(id: id)
 }
 
 fn target_value_expression_bool_literal_value_from_wire(wire: Node) -> Optional<Bool> {
@@ -6319,8 +6310,7 @@ fn target_value_expression_bool_literal_value_from_wire(wire: Node) -> Optional<
 }
 
 fn target_value_expr_bool_literal_value_from_expression(
-  expr: TargetValueExpression,
-  bool_form: TargetBoolLiteralShape
+  expr: TargetValueExpression
 ) -> Optional<Bool> {
   match expr.kind {
     TargetValueExprBoolLiteral =>
@@ -6328,7 +6318,7 @@ fn target_value_expr_bool_literal_value_from_expression(
     TargetValueExprSymbolIdentity =>
       match target_value_expression_symbol_identity_from_wire(wire: expr.node) {
         Accepted { value: id, diagnostics: _ } =>
-          target_value_expr_bool_literal_value_from_source_symbol(id: id, bool_form: bool_form)
+          target_value_expr_bool_literal_value_from_source_symbol(id: id)
         Rejected { diagnostics: _ } => optional_absent()
       }
     _ => optional_absent()
@@ -6336,22 +6326,20 @@ fn target_value_expr_bool_literal_value_from_expression(
 }
 
 fn target_value_expr_is_bool_literal_expression(
-  expr: TargetValueExpression,
-  bool_form: TargetBoolLiteralShape
+  expr: TargetValueExpression
 ) -> Bool {
-  match target_value_expr_bool_literal_value_from_expression(expr: expr, bool_form: bool_form) {
+  match target_value_expr_bool_literal_value_from_expression(expr: expr) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
 fn target_value_expr_is_source_bool_literal_atom(
-  node: Node,
-  bool_form: TargetBoolLiteralShape
+  node: Node
 ) -> Bool {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      match target_value_expr_bool_literal_value_from_source_symbol(id: id, bool_form: bool_form) {
+      match target_value_expr_bool_literal_value_from_source_symbol(id: id) {
         Present { value: _ } => true
         Absent => false
       }
@@ -6360,8 +6348,7 @@ fn target_value_expr_is_source_bool_literal_atom(
 }
 
 fn target_value_expr_match_arms_are_int_bool_octet_channel(
-  arms: List<TargetValueExprMatchArmSlot>,
-  bool_form: TargetBoolLiteralShape
+  arms: List<TargetValueExprMatchArmSlot>
 ) -> Bool {
   if is_empty(xs: arms) {
     false
@@ -6369,8 +6356,8 @@ fn target_value_expr_match_arms_are_int_bool_octet_channel(
     !any(
       xs: arms,
       predicate: fn(arm) {
-        !target_value_expr_is_bool_literal_expression(expr: arm.pattern, bool_form: bool_form)
-          || !target_value_expr_is_bool_literal_expression(expr: arm.body, bool_form: bool_form)
+        !target_value_expr_is_bool_literal_expression(expr: arm.pattern)
+          || !target_value_expr_is_bool_literal_expression(expr: arm.body)
       }
     )
   }
@@ -6378,15 +6365,11 @@ fn target_value_expr_match_arms_are_int_bool_octet_channel(
 
 fn target_value_expr_match_is_int_bool_octet_channel(
   scrutinee: TargetValueExpression,
-  arms: List<TargetValueExprMatchArmSlot>,
-  bool_form: TargetBoolLiteralShape
+  arms: List<TargetValueExprMatchArmSlot>
 ) -> Bool {
   match scrutinee.kind {
     TargetValueExprBindingRef =>
-      target_value_expr_match_arms_are_int_bool_octet_channel(
-        arms: arms,
-        bool_form: bool_form
-      )
+      target_value_expr_match_arms_are_int_bool_octet_channel(arms: arms)
     _ => false
   }
 }
@@ -6395,31 +6378,38 @@ fn target_value_expr_bool_literal_octet_body_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection
 ) -> Outcome<List<ConcreteSyntaxToken>> {
-  match target_value_expr_bool_literal_value_from_expression(
-    expr: expr,
-    bool_form: projection.bool_literal_form
-  ) {
-    Present { value: false } =>
-      outcome_accepted(
-        Cons {
-          head: target_value_expression_binding_ref_token(
-            binding: ^dag_binding_octet_zero,
-            projection: projection
-          ),
-          tail: Empty
-        }
-      )
-    Present { value: true } =>
-      outcome_accepted(
-        Cons {
-          head: target_value_expression_binding_ref_token(
-            binding: ^dag_binding_octet_one,
-            projection: projection
-          ),
-          tail: Empty
-        }
-      )
-    Absent =>
+  match expr.kind {
+    TargetValueExprBoolLiteral =>
+      match target_value_expression_bool_literal_value_from_wire(wire: expr.node) {
+        Present { value: false } =>
+          outcome_accepted(
+            Cons {
+              head: target_value_expression_binding_ref_token(
+                binding: ^dag_binding_octet_zero,
+                projection: projection
+              ),
+              tail: Empty
+            }
+          )
+        Present { value: true } =>
+          outcome_accepted(
+            Cons {
+              head: target_value_expression_binding_ref_token(
+                binding: ^dag_binding_octet_one,
+                projection: projection
+              ),
+              tail: Empty
+            }
+          )
+        Absent =>
+          outcome_rejected(
+            target_value_expr_diagnostic(
+              reason: ^target_value_expr_reason_transform_shape_invalid,
+              node: expr.node
+            )
+          )
+      }
+    _ =>
       outcome_rejected(
         target_value_expr_diagnostic(
           reason: ^target_value_expr_reason_transform_shape_invalid,
@@ -6569,8 +6559,7 @@ fn target_value_expression_match_to_concrete_tokens_inner(
                 f: fn(scrutinee_tokens) {
                   if target_value_expr_match_is_int_bool_octet_channel(
                     scrutinee: scrutinee,
-                    arms: arms,
-                    bool_form: projection.bool_literal_form
+                    arms: arms
                   ) {
                     bind_outcome(
                       o: target_value_expr_int_bool_octet_scrutinee_carrier_tokens(
@@ -6663,29 +6652,33 @@ fn target_value_expression_bool_literal_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection
 ) -> Outcome<List<ConcreteSyntaxToken>> {
-  match target_value_expr_bool_literal_value_from_expression(
-    expr: expr,
-    bool_form: projection.bool_literal_form
-  ) {
-    Present { value: true } =>
-      outcome_accepted(
-        Cons {
-          head: FixedToken {
-            token_class: projection.bool_literal_form.true_token
-          },
-          tail: Empty
-        }
-      )
-    Present { value: false } =>
-      outcome_accepted(
-        Cons {
-          head: FixedToken {
-            token_class: projection.bool_literal_form.false_token
-          },
-          tail: Empty
-        }
-      )
-    Absent =>
+  match expr.kind {
+    TargetValueExprBoolLiteral =>
+      match target_value_expression_bool_literal_value_from_wire(wire: expr.node) {
+        Present { value: true } =>
+          outcome_accepted(
+            Cons {
+              head: FixedToken {
+                token_class: projection.bool_literal_form.true_token
+              },
+              tail: Empty
+            }
+          )
+        Present { value: false } =>
+          outcome_accepted(
+            Cons {
+              head: FixedToken {
+                token_class: projection.bool_literal_form.false_token
+              },
+              tail: Empty
+            }
+          )
+        Absent =>
+          outcome_rejected(
+            target_value_expression_emit_unsupported_kind_diagnostic(expr: expr)
+          )
+      }
+    _ =>
       outcome_rejected(
         target_value_expression_emit_unsupported_kind_diagnostic(expr: expr)
       )
@@ -12445,15 +12438,14 @@ fn target_project_transform_callable_apply_in_arrow_scope(
 }
 
 fn target_value_expr_branch_bool_gate(
-  node: Node,
-  bool_form: TargetBoolLiteralShape
+  node: Node
 ) -> Bool {
   if length(xs: node_positional_child_targets(node: node)) != 3 {
     false
   } else {
     match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
       Present { value: cond } =>
-        target_value_expr_is_source_bool_literal_atom(node: cond, bool_form: bool_form)
+        target_value_expr_is_source_bool_literal_atom(node: cond)
       Absent => false
     }
   }
@@ -12559,10 +12551,9 @@ fn target_value_expr_binding_ref_for_literal_atom(id: Symbol) -> Optional<Symbol
 }
 
 fn target_value_expr_project_pick_literal_atom(
-  id: Symbol,
-  bool_form: TargetBoolLiteralShape
+  id: Symbol
 ) -> Outcome<TargetValueExpression> {
-  match target_value_expr_bool_literal_value_from_source_symbol(id: id, bool_form: bool_form) {
+  match target_value_expr_bool_literal_value_from_source_symbol(id: id) {
     Present { value: b } =>
       outcome_accepted(target_value_expression_bool_literal(value: b))
     Absent =>
@@ -12600,10 +12591,7 @@ fn target_value_expr_project_atom_in_arrow_scope(
                 target_value_expression_binding_ref(binding: scoped)
               )
             Rejected { diagnostics: _ } =>
-              target_value_expr_project_atom_literal(
-                node: node,
-                bool_form: projection.bool_literal_form
-              )
+              target_value_expr_project_atom_literal(node: node)
           }
         _ =>
           outcome_rejected(
@@ -12618,8 +12606,7 @@ fn target_value_expr_project_atom_in_arrow_scope(
 }
 
 fn target_value_expr_project_atom_literal(
-  node: Node,
-  bool_form: TargetBoolLiteralShape
+  node: Node
 ) -> Outcome<TargetValueExpression> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
@@ -12627,10 +12614,7 @@ fn target_value_expr_project_atom_literal(
         bind_outcome(
           o: target_value_expression_symbol_identity_from_wire(wire: node),
           f: fn(inner_id) {
-            target_value_expr_project_pick_literal_atom(
-              id: inner_id,
-              bool_form: bool_form
-            )
+            target_value_expr_project_pick_literal_atom(id: inner_id)
           }
         )
       } else if target_value_expr_is_int_literal_atom(node: node) {
@@ -12640,7 +12624,7 @@ fn target_value_expr_project_atom_literal(
           Present { value: b } =>
             outcome_accepted(target_value_expression_bool_literal(value: b))
           Absent =>
-            target_value_expr_project_pick_literal_atom(id: id, bool_form: bool_form)
+            target_value_expr_project_pick_literal_atom(id: id)
         }
       }
     _ =>
@@ -13012,10 +12996,7 @@ fn target_project_branch_bool_if_else(
   bind_outcome(
     o: target_value_expression_projection_from_target(target: target),
     f: fn(projection) {
-      if !target_value_expr_branch_bool_gate(
-        node: body,
-        bool_form: projection.bool_literal_form
-      ) {
+      if !target_value_expr_branch_bool_gate(node: body) {
         outcome_rejected(
           target_value_expr_diagnostic(
             reason: ^target_value_expr_reason_transform_shape_invalid,
@@ -13189,18 +13170,10 @@ fn target_project_loop(
         )
       Present { value: literal_node } =>
         bind_outcome(
-          o: target_value_expression_projection_from_target(target: target),
-          f: fn(projection) {
-            bind_outcome(
-              o: target_value_expr_project_atom_literal(
-                node: literal_node,
-                bool_form: projection.bool_literal_form
-              ),
-              f: fn(projected_body) {
-                outcome_accepted(
-                  target_value_expression_loop(body: projected_body)
-                )
-              }
+          o: target_value_expr_project_atom_literal(node: literal_node),
+          f: fn(projected_body) {
+            outcome_accepted(
+              target_value_expression_loop(body: projected_body)
             )
           }
         )
