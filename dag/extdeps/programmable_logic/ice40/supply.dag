@@ -1,6 +1,7 @@
 module extdeps.programmable_logic.ice40.supply
 
 import std.types { String, Bool, NonEmptyStr, List }
+import std.integer { Int }
 import std.nat { Nat }
 import std.measure { Millivolt, millivolt, millivolt_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -31,6 +32,36 @@ fn supply_rail_symbol(r: Ice40SupplyRail) -> NonEmptyStr {
   }
 }
 
+// IDENTITY IS NOT SPELLING, and this is the third time that distinction has been needed in this
+// lane. A discriminant exists so that comparing two rails or two modes reads a structural fact
+// rather than round-tripping both through their display names — where editing documentation
+// silently redefines the equality relation, and two members could be made equal by a copy-edit.
+// The exhaustive match means a new member cannot be added without receiving one, and the residual
+// risk becomes a shared tag, which a witness decides by execution.
+fn supply_rail_tag(r: Ice40SupplyRail) -> Int {
+  match r {
+    CoreSupply => 1
+    PllSupply => 2
+    BankIoSupply => 3
+    ConfigurationBankSupply => 4
+    NvcmProgrammingSupply => 5
+    FastProgrammingSupply => 6
+  }
+}
+
+fn supply_rails_equal(a: Ice40SupplyRail, b: Ice40SupplyRail) -> Bool {
+  supply_rail_tag(r: a) == supply_rail_tag(r: b)
+}
+
+data all_supply_rails: List<Ice40SupplyRail> = [
+  CoreSupply,
+  PllSupply,
+  BankIoSupply,
+  ConfigurationBankSupply,
+  NvcmProgrammingSupply,
+  FastProgrammingSupply,
+]
+
 // THE CONFIGURATION MODE IS AN INPUT TO A RAIL REQUIREMENT, not a footnote on it. The device can
 // be configured four ways and two of them impose a higher minimum on VPP_2V5 than the other,
 // which means "what must this rail supply" has no answer until the board says how it configures.
@@ -48,6 +79,26 @@ fn configuration_mode_name(m: Ice40ConfigurationMode) -> NonEmptyStr {
     NvcmProgramming => "NVCM programming"
   }
 }
+
+fn configuration_mode_tag(m: Ice40ConfigurationMode) -> Int {
+  match m {
+    SlaveSpiConfiguration => 1
+    MasterSpiConfiguration => 2
+    NvcmConfiguration => 3
+    NvcmProgramming => 4
+  }
+}
+
+fn configuration_modes_equal(a: Ice40ConfigurationMode, b: Ice40ConfigurationMode) -> Bool {
+  configuration_mode_tag(m: a) == configuration_mode_tag(m: b)
+}
+
+data all_configuration_modes: List<Ice40ConfigurationMode> = [
+  SlaveSpiConfiguration,
+  MasterSpiConfiguration,
+  NvcmConfiguration,
+  NvcmProgramming,
+]
 
 // A REQUIREMENT IS NOT ALWAYS A WINDOW. VPP_FAST's row reads N/A with the instruction to leave the
 // pin unconnected, so it has no minimum and no maximum — and a record with min and max fields

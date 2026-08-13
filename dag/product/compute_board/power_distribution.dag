@@ -30,6 +30,7 @@ import extdeps.programmable_logic.ice40.supply {
   rail_requirement,
   requirement_admits,
   supply_rail_symbol,
+  supply_rails_equal,
 }
 
 data power_distribution_note: String = "WHAT THE BOARD SUPPLIES, CHECKED AGAINST WHAT THE DEVICE REQUIRES. The device's requirements are cited facts and live in extdeps; what a particular board chooses to build is a product decision and lives here. The check between them is the whole content of this module, and it is deliberately a REFUSAL rather than a report: a rail outside its window is not a warning, it is a board that does not work. THE THREE REFUSALS THAT ARE NOT ABOUT A SINGLE NUMBER, and they are the reason this is not a loop over min/max pairs. A rail may sit inside its own window and still be wrong because a bank driving LVCMOS 3.3 needs a tighter window than the bank rail's own envelope; because two rails at one voltage must be one supply and the board built two; or because a pin the vendor says to leave unconnected was connected to something perfectly reasonable. A design satisfying every window and violating any of these is a design the vendor does not support, so the windows alone are not the test."
@@ -81,7 +82,7 @@ type PowerAdmission
   | PowerIntentRefused { causes: List<PowerRefusal> }
 
 fn rail_is(a: Ice40SupplyRail, b: Ice40SupplyRail) -> Bool {
-  (supply_rail_symbol(r: a) as String) == (supply_rail_symbol(r: b) as String)
+  supply_rails_equal(a: a, b: b)
 }
 
 fn built_rail(intent: BoardPowerIntent, r: Ice40SupplyRail) -> BoardSupplyRail? {

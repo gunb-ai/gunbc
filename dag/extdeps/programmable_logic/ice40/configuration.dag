@@ -14,6 +14,7 @@ import extdeps.programmable_logic.ice40.supply {
   NvcmProgramming,
   SlaveSpiConfiguration,
   configuration_mode_name,
+  configuration_modes_equal,
 }
 
 data ice40_configuration_note: String = "THE CONFIGURATION PORT, from Table 4.28 SPI Master or NVCM Configuration Time and Table 4.29 sysCONFIG Port Timing Specifications of iCE40 LP/HX Family Data Sheet FPGA-DS-02029, Version 4.3, February 2025. TWO THINGS IN THESE TABLES ARE NOT NUMBERS AND WOULD HAVE BECOME ONE. First, a timing row APPLIES TO SOME MODES AND NOT OTHERS: tCR_SCK is a slave-SPI row and asking for it on a master-SPI board is asking about a transaction that board never performs, which is a different state from the specification being unknown. Second, the high-frequency tCONFIG values were DELETED by a revision of this document — the change history records the deletion for every device — and note 3 says high frequency is supported only on SPI Master. A blank cell in a published table is not zero, not the low-frequency figure, and not an oversight to fill in from a previous revision; it is the vendor withdrawing a number, and a model that carried the old value would be asserting a specification the vendor has retracted. A READING NOTE ON THE TABLE ITSELF: Table 4.29 carries a condition column between Parameter and Min, so the 200 ns against tCRESET_B sits in the MINIMUM column and not the typical one. That was checked rather than assumed, because reading it one column left would have turned a minimum pulse width into a typical one — and a design built to a typical where a minimum is required fails intermittently, which is the worst way to fail."
@@ -51,7 +52,7 @@ fn scope_admits(s: TimingScope, m: Ice40ConfigurationMode) -> Bool {
   match s {
     AllConfigurationModes => true
     OnlyUnderMode { mode: only } =>
-      (configuration_mode_name(m: only) as String) == (configuration_mode_name(m: m) as String)
+      configuration_modes_equal(a: only, b: m)
   }
 }
 

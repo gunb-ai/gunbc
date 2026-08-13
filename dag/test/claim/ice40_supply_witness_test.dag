@@ -30,6 +30,12 @@ import extdeps.programmable_logic.ice40.supply {
   rail_requirement,
   requirement_admits,
   supply_rail_symbol,
+  supply_rails_equal,
+  supply_rail_tag,
+  configuration_modes_equal,
+  configuration_mode_tag,
+  all_supply_rails,
+  all_configuration_modes,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -159,4 +165,35 @@ test fn w_the_pll_rail_follows_the_core_not_the_banks() -> Bool {
           Present { value: spi } => admits(r: spi, mv: 3300)
         }
   }
+}
+
+// THE DISCRIMINANTS ARE DISTINCT, over the enumerated members rather than a count. Rail and mode
+// equality decide whether a board's rail matches a requirement and whether a timing row is in
+// scope, so two members sharing a tag would silently fuse two rails or two configuration modes.
+// The earlier form compared display names, where a copy-edit to documentation could do the fusing;
+// this is the failure that replaced it, and unlike the first it is decidable by execution.
+test fn w_rail_and_mode_discriminants_are_distinct() -> Bool {
+  let rails_distinct = fold(all_supply_rails, init: true, f: fn(acc, a) {
+    acc && fold(all_supply_rails, init: 0, f: fn(n, b) {
+      if supply_rails_equal(a: a, b: b) { n + 1 } else { n }
+    }) == 1
+  })
+  let modes_distinct = fold(all_configuration_modes, init: true, f: fn(acc, a) {
+    acc && fold(all_configuration_modes, init: 0, f: fn(n, b) {
+      if configuration_modes_equal(a: a, b: b) { n + 1 } else { n }
+    }) == 1
+  })
+  rails_distinct && modes_distinct
+}
+
+// AND EQUALITY DOES NOT FOLLOW THE PROSE. The two supplies whose display names both begin with the
+// core's symbol, and the two modes that both configure from NVCM, are the pairs a name-minded
+// comparison is most likely to fuse.
+test fn w_rail_and_mode_equality_ignore_the_display_prose() -> Bool {
+  !supply_rails_equal(a: CoreSupply, b: PllSupply)
+    && !supply_rails_equal(a: BankIoSupply, b: ConfigurationBankSupply)
+    && supply_rails_equal(a: CoreSupply, b: CoreSupply)
+    && !configuration_modes_equal(a: NvcmConfiguration, b: NvcmProgramming)
+    && supply_rail_tag(r: NvcmProgrammingSupply) != supply_rail_tag(r: FastProgrammingSupply)
+    && configuration_mode_tag(m: SlaveSpiConfiguration) != configuration_mode_tag(m: MasterSpiConfiguration)
 }
