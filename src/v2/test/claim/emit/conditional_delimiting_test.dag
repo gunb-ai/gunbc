@@ -1,4 +1,4 @@
-module v2.test.emit.conditional_loop_delimiting
+module v2.test.emit.conditional_delimiting
 
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source_string }
 import v2.extdeps.languages.rust {
@@ -34,6 +34,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data conditional_delimiting_scope_note: String = "SCOPE: conditional only. The loop half was withdrawn from this slice after execution showed it regressed rust_loop_emit_one_accepts, and the reason is a finding rather than an oversight: Rust's value-producing loop is `loop { break v; }`, so it needs a break token and a terminator, which an open/close pair cannot express. The staging spelling `loop { break ` smuggles exactly those, the same way the conditional smuggled its close. Modeling loop delimiting therefore needs a shape that carries break and terminator, and claiming an open/close discipline for it would have been the same under-modeling one level over. TargetLoopShape is left untouched."
 
 data conditional_delimiting_note: String = "A conditional now closes itself when its target says it closes. Before this, target_value_expression_conditional_to_concrete_tokens ended at the else arm for EVERY target, so a brace-closing language had no way to emit its own close and the brace was smuggled into a hand-authored declaration scaffold ending in two rbrace. The two arms below hold the same expression, the same tokens and the same lex, and differ ONLY in the declared discipline, so nothing but the discipline can distinguish them - which is what makes the pair discriminating rather than merely green."
 
@@ -202,6 +204,8 @@ fn cld_decodes(discriminant: Symbol) -> Bool {
 }
 
 // An unrecognised discriminant REFUSES rather than defaulting to self-delimiting.
+// The third arm passes a symbol that names no variant at all, which is what an
+// unknown discriminant on the wire actually looks like.
 // That direction matters specifically: defaulting to self-delimiting would make a
 // closing target decode one token short, and the defect would surface as
 // unbalanced output far from the decoder that caused it. The self-delimiting
@@ -209,5 +213,5 @@ fn cld_decodes(discriminant: Symbol) -> Bool {
 test fn unknown_delimiting_discriminant_refuses() -> Bool {
   cld_decodes(discriminant: ^conditional_self_delimiting)
     && !cld_decodes(discriminant: ^conditional_delimiting_never_defined)
-    && !cld_decodes(discriminant: ^loop_self_delimiting)
+    && !cld_decodes(discriminant: ^some_symbol_that_names_no_delimiting_variant)
 }
