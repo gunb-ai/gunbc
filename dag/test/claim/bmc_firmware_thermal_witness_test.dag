@@ -11,6 +11,11 @@ import extdeps.bmc.capability {
   bmc_firmware_observation_intent_verdict,
 }
 import extdeps.bmc.types {
+  BmcFirmwareVersion,
+  SurfaceShapeAmbiguous,
+  SurfaceShapeKnown,
+  SurfaceShapeUncatalogued,
+  bmc_redfish_surface_for,
   BmcConfigPersistenceUnsupported,
   BmcFanAggregatedControllerTopology,
   BmcFanCurve,
@@ -32,7 +37,12 @@ import extdeps.bmc.types {
   bmc_fan_curve_sensor_unavailable_duty,
   redfish_thermal_query_verdict,
 }
+import extdeps.firmware.types { firmware_semantic_version }
 import extdeps.boards.asrock_rack {
+  asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog,
+  asrock_altrad8ud_openbmc_3_22_00_capabilities,
+  asrock_altrad8ud_openbmc_3_22_00_redfish_surface,
+  asrock_altrad8ud_openbmc_2_07_00_capabilities,
   asrock_altrad8ud_openbmc_3_06_00_capabilities,
   asrock_altrad8ud_openbmc_2_07_00_fan_policy_observation,
   asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation,
@@ -41,8 +51,8 @@ import extdeps.boards.asrock_rack {
 import extdeps.crypto.hash { sha256_digest }
 import gunbc.fleet_bmc_observation {
   BmcFanRebootPersistenceReceipt,
-  srv3_bmc_firmware_observation,
-  srv3_bmc_redfish_surface_observation,
+  srv3_bmc_firmware_2_07_00_observation,
+  srv3_bmc_redfish_surface,
   srv3_bmc_update_service_observation,
   srv4_bmc_config_persistence_observation,
   srv4_bmc_fan_active_config_digest,
@@ -52,7 +62,7 @@ import gunbc.fleet_bmc_observation {
   srv4_bmc_fan_observed_config_path,
   srv4_bmc_fan_perturbation_generation,
   srv4_bmc_firmware_observation,
-  srv4_bmc_redfish_surface_observation,
+  srv4_bmc_redfish_surface,
   srv4_bmc_update_service_observation,
 }
 import gunbc.fleet_bmc_state {
@@ -188,14 +198,19 @@ test fn every_metal_host_uses_the_single_global_bmc_valid_state() -> Bool {
     }
 }
 
+// These classification tests use srv3's IMMUTABLE 2.07.00 observation as the
+// drifted-host fixture rather than its current standing. srv3 is on 3.22.00
+// since the 2026-08-11 flash, so binding them to the current row would make
+// them assert a state the host no longer has — and, once it satisfied the
+// pinned intent, would silently invert what each test claims to check.
 test fn heterogeneous_firmware_satisfies_unpinned_intent_and_pinned_detects_mismatch() -> Bool {
-  srv3_bmc_firmware_observation.firmware.version.major == 2
-    && srv3_bmc_firmware_observation.firmware.version.minor == 7
+  srv3_bmc_firmware_2_07_00_observation.firmware.version.major == 2
+    && srv3_bmc_firmware_2_07_00_observation.firmware.version.minor == 7
     && srv4_bmc_firmware_observation.firmware.version.major == 3
     && srv4_bmc_firmware_observation.firmware.version.minor == 22
     && match bmc_firmware_observation_intent_verdict(
       intent: fleet_bmc_valid_state.firmware,
-      observation: srv3_bmc_firmware_observation,
+      observation: srv3_bmc_firmware_2_07_00_observation,
     ) {
       BmcFirmwareIntentSatisfied => true
       BmcFirmwareIntentMismatch { required: _, observed: _ } => false
@@ -209,7 +224,7 @@ test fn heterogeneous_firmware_satisfies_unpinned_intent_and_pinned_detects_mism
     }
     && match bmc_firmware_observation_intent_verdict(
       intent: fixture_pinned_track3_intent,
-      observation: srv3_bmc_firmware_observation,
+      observation: srv3_bmc_firmware_2_07_00_observation,
     ) {
       BmcFirmwareIntentMismatch {
         required: required,
@@ -237,7 +252,7 @@ test fn firmware_classification_reuses_upsert_states_and_refuses_unapproved_upda
     host: srv3_host.identity,
     board: srv3_baseboard.catalog.model,
     intent: fixture_pinned_track3_intent,
-    observation: Present { value: srv3_bmc_firmware_observation },
+    observation: Present { value: srv3_bmc_firmware_2_07_00_observation },
     artifact: none,
     update_service: none,
   )
@@ -282,7 +297,7 @@ test fn approved_exact_firmware_artifact_builds_a_typed_srv3_update_plan() -> Bo
     host: srv3_host.identity,
     board: srv3_baseboard.catalog.model,
     intent: fixture_pinned_track3_intent,
-    observation: Present { value: srv3_bmc_firmware_observation },
+    observation: Present { value: srv3_bmc_firmware_2_07_00_observation },
     artifact: Present { value: fixture_approved_openbmc_3_22_artifact },
     update_service: Present { value: srv3_bmc_update_service_observation },
   )
@@ -290,7 +305,7 @@ test fn approved_exact_firmware_artifact_builds_a_typed_srv3_update_plan() -> Bo
     host: srv3_host.identity,
     board: srv3_baseboard.catalog.model,
     intent: fixture_pinned_track3_intent,
-    observation: Present { value: srv3_bmc_firmware_observation },
+    observation: Present { value: srv3_bmc_firmware_2_07_00_observation },
     artifact: Present { value: fixture_approved_openbmc_3_22_artifact },
     update_service: none,
   )
@@ -298,7 +313,7 @@ test fn approved_exact_firmware_artifact_builds_a_typed_srv3_update_plan() -> Bo
     && match classified.decision {
       Apply { plan: plan } =>
         plan.host == srv3_host.identity
-          && plan.observed == srv3_bmc_firmware_observation
+          && plan.observed == srv3_bmc_firmware_2_07_00_observation
           && plan.artifact == fixture_approved_openbmc_3_22_artifact
           && plan.update_service == srv3_bmc_update_service_observation
       Noop => false
@@ -312,13 +327,77 @@ test fn approved_exact_firmware_artifact_builds_a_typed_srv3_update_plan() -> Bo
     }
 }
 
-test fn redfish_surface_difference_is_observed_not_inferred() -> Bool {
-  srv3_bmc_redfish_surface_observation.thermal_surface == RedfishThermalSubsystemSensorCollection
-    && srv3_bmc_redfish_surface_observation.chassis_sensor_collection_member_count == 51
-    && srv3_bmc_redfish_surface_observation.fan_control_surface == RedfishFanControlResourceAbsent
-    && srv4_bmc_redfish_surface_observation.thermal_surface == RedfishLegacyChassisThermal
-    && srv4_bmc_redfish_surface_observation.chassis_sensor_collection_member_count == 9
-    && srv4_bmc_redfish_surface_observation.fan_control_surface == RedfishInitialDutyControlResource
+// The surface is a FUNCTION OF THE IMAGE. Both fleet hosts run OpenBMC
+// 3.22.00, so both derive the same shape — and this witness would have gone
+// red the moment srv3 was flashed under the old per-host model, which is
+// exactly what it failed to do. It replaces a check that asserted srv3's
+// 2.07.00 constants as literals and therefore stayed green while describing
+// a surface srv3 no longer had.
+test fn hosts_on_the_same_image_derive_the_same_surface() -> Bool {
+  match srv3_bmc_redfish_surface {
+    SurfaceShapeKnown { shape: s3 } =>
+      match srv4_bmc_redfish_surface {
+        SurfaceShapeKnown { shape: s4 } =>
+          s3 == s4
+            && s3.thermal_surface == RedfishLegacyChassisThermal
+            && s3.fan_control_surface == RedfishInitialDutyControlResource
+        SurfaceShapeUncatalogued { firmware: _ } => false
+        SurfaceShapeAmbiguous { firmware: _, matches: _ } => false
+      }
+    SurfaceShapeUncatalogued { firmware: _ } => false
+    SurfaceShapeAmbiguous { firmware: _, matches: _ } => false
+  }
+}
+
+// RED control: the derivation is discriminating on VERSION. The same board's
+// 2.07.00 image derives a materially different shape, so the agreement above
+// is a fact about the two hosts sharing an image rather than the catalog
+// answering the same way regardless of input.
+test fn a_different_image_derives_a_different_surface() -> Bool {
+  match bmc_redfish_surface_for(
+    catalog: asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog,
+    firmware: asrock_altrad8ud_openbmc_2_07_00_capabilities.firmware,
+  ) {
+    SurfaceShapeKnown { shape: s } =>
+      s.thermal_surface == RedfishThermalSubsystemSensorCollection
+        && s.fan_control_surface == RedfishFanControlResourceAbsent
+    SurfaceShapeUncatalogued { firmware: _ } => false
+    SurfaceShapeAmbiguous { firmware: _, matches: _ } => false
+  }
+}
+
+// Fail-closed arm: an uncatalogued image REFUSES rather than resolving to a
+// nearest neighbour or a default. This is the arm that makes the next flash
+// loud instead of silently wrong.
+test fn an_uncatalogued_image_refuses_to_derive_a_surface() -> Bool {
+  match bmc_redfish_surface_for(
+    catalog: asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog,
+    firmware: BmcFirmwareVersion {
+      family: OpenBmc,
+      version: firmware_semantic_version(major: 4, minor: 0, patch: 0),
+    },
+  ) {
+    SurfaceShapeUncatalogued { firmware: _ } => true
+    SurfaceShapeKnown { shape: _ } => false
+    SurfaceShapeAmbiguous { firmware: _, matches: _ } => false
+  }
+}
+
+// RED control on RESOLUTION ORDER. Two rows for one version is a
+// representable catalog state, and taking the first match would resolve it by
+// list position — a silent, order-dependent answer where the catalog actually
+// contradicts itself. It refuses instead, and reports how many rows collided.
+test fn a_duplicate_catalog_key_refuses_rather_than_taking_the_first() -> Bool {
+  match bmc_redfish_surface_for(
+    catalog: [
+      asrock_altrad8ud_openbmc_3_22_00_redfish_surface,
+      asrock_altrad8ud_openbmc_3_22_00_redfish_surface,
+    ],
+    firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
+  ) {
+    SurfaceShapeAmbiguous { firmware: _, matches: n } => n == 2
+    _ => false
+  }
 }
 
 test fn both_observed_thermal_query_shapes_are_complete() -> Bool {
