@@ -2,7 +2,7 @@ module test.claim.spark_serving_release_witness_test
 
 import std.types { String, Bool, List, Int, NonEmptyStr }
 import std.measure { byte_size }
-import std.content_hash { content_hash_atom }
+import std.content_hash { content_hash_atom, ContentHash }
 import product.placement_supply { HostIdentity }
 import gunbc.spark_serving_realization {
   SystemPrincipal, NamedPrincipal, ObservedGrantPopulation, GrantPopulationObserved,
@@ -251,6 +251,10 @@ fn no_login_intent() -> SparkServingIntent {
   }
 }
 
+data fleet_key_identity: ContentHash = content_hash_atom(value: "fleet-automation-key" as NonEmptyStr)
+
+data other_key_identity: ContentHash = content_hash_atom(value: "operator-macbook-key" as NonEmptyStr)
+
 fn plan_row_under(
   intent: SparkServingIntent,
   realization: SparkServingRealization,
@@ -260,7 +264,8 @@ fn plan_row_under(
   spark_serving_plan_row(
     desired: occ_srv5(), observation: observation, prerequisites: grounded_prereqs,
     intent: intent, realization: realization,
-    actor: NamedPrincipal { login: "gunbc-automation" as NonEmptyStr }, observed_grants: grants)
+    actor: NamedPrincipal { login: "gunbc-automation" as NonEmptyStr },
+    expected_credential: fleet_key_identity, observed_grants: grants)
 }
 
 fn plan_row_for(observation: SparkServingObservation, grants: ObservedGrantPopulation) -> SparkServingPlanRow {
@@ -268,10 +273,14 @@ fn plan_row_for(observation: SparkServingObservation, grants: ObservedGrantPopul
 }
 
 fn grants_on(host: HostIdentity, principal: String, commands: List<NonEmptyStr>) -> ObservedGrantPopulation {
+  grants_under(host: host, principal: principal, credential: fleet_key_identity, commands: commands)
+}
+
+fn grants_under(host: HostIdentity, principal: String, credential: ContentHash, commands: List<NonEmptyStr>) -> ObservedGrantPopulation {
   GrantPopulationObserved {
     host: host,
     principal: principal as NonEmptyStr,
-    credential_identity: content_hash_atom(value: "fleet-automation-key" as NonEmptyStr),
+    credential_identity: credential,
     commands: commands,
   }
 }
@@ -393,4 +402,26 @@ test fn w_evidence_mismatch_and_unobservability_are_different_answers() -> Bool 
     intent: executor_owned_intent(), realization: UserUnitRealization,
     observation: observation_absent(),
     grants: GrantPopulationUnobserved { host: "srv5", principal: "gunbc-automation" as NonEmptyStr, cause: "sudo -n -l could not be reached" as NonEmptyStr })))
+}
+
+
+// THE KEY AXIS REFUSES. Same host, same principal, same commands -- observed under a different
+// credential. Before the check this authorized the plan, while the comment beside the field claimed
+// the key axis was the reason the field existed.
+test fn w_a_grant_observed_under_another_credential_does_not_authorize_the_plan() -> Bool {
+  string_contains(
+    s: plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
+      intent: executor_owned_intent(), realization: UserUnitRealization,
+      observation: observation_absent(),
+      grants: grants_under(host: "srv5", principal: "gunbc-automation", credential: other_key_identity, commands: [linger_command])))),
+    pattern: "evidence-mismatch")
+}
+
+// AND THE POSITIVE CONTROL: the identical row under the EXPECTED credential is ready to apply, so the
+// refusal above is the credential axis rather than the row being unapprovable for some other reason.
+test fn w_the_same_grant_under_the_expected_credential_is_ready_to_apply() -> Bool {
+  plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
+    intent: executor_owned_intent(), realization: UserUnitRealization,
+    observation: observation_absent(),
+    grants: grants_under(host: "srv5", principal: "gunbc-automation", credential: fleet_key_identity, commands: [linger_command])))) == "ready-to-apply"
 }

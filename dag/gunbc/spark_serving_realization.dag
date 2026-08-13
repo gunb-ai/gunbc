@@ -3,7 +3,10 @@ module gunbc.spark_serving_realization
 import std.types { String, Bool, List, Int, NonEmptyStr }
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import product.placement_supply { HostIdentity }
-import std.content_hash { ContentHash, compare_content_hash, ContentHashEqual }
+import std.content_hash {
+  ContentHash, compare_content_hash, ContentHashEqual, ContentHashDifferent,
+  ContentHashCrossFamilyIncomparable,
+}
 
 // SERVING REALIZATION IS DERIVED, NOT OBSERVED AND NOT ASKED.
 //
@@ -886,6 +889,14 @@ fn grant_population_contains(population: List<NonEmptyStr>, command: NonEmptyStr
   })
 }
 
+// THE KEY AXIS IS CHECKED, not merely carried. An earlier revision matched host and principal and
+// bound credential_identity to `_` while the carrier comment claimed the key axis mattered -- so a
+// population observed under a DIFFERENT credential, with the same host, principal and commands,
+// authorized the shortfall (review 51843). A field that is stored and never read is worse than an
+// absent one: the prose beside it reports a guard that does not exist. Cross-family is refused rather
+// than collapsed to "different", because two hashes that cannot be compared is not the same fact as
+// two hashes that disagree.
+//
 // THE SUBJECT IS CHECKED BEFORE THE SET DIFFERENCE, and a mismatch is its OWN arm rather than folding
 // into undecidable: "the evidence is about a different host or principal" and "we could not observe"
 // have different remedies -- one is a wiring defect, the other a reachability one -- and an operator
@@ -893,12 +904,13 @@ fn grant_population_contains(population: List<NonEmptyStr>, command: NonEmptyStr
 fn escalation_shortfall(
   realization: SparkServingRealization,
   subject_host: HostIdentity,
+  expected_credential: ContentHash,
   target: ServingDeploymentTarget,
   observed: ObservedGrantPopulation,
 ) -> EscalationShortfall {
   match observed {
     GrantPopulationUnobserved { host: _, principal: _, cause: c } => ShortfallUndecidable { cause: c }
-    GrantPopulationObserved { host: oh, principal: op, credential_identity: _, commands: held } =>
+    GrantPopulationObserved { host: oh, principal: op, credential_identity: ok, commands: held } =>
       if (oh as String) != (subject_host as String) {
         ShortfallEvidenceMismatch {
           cause: join(["grant population was observed on host ", oh as String, " but authorizes ", subject_host as String], "") as NonEmptyStr,
@@ -909,6 +921,14 @@ fn escalation_shortfall(
           cause: join(["grant population was observed for principal ", op as String, " but authorizes ", principal_label(p: target.actor)], "") as NonEmptyStr,
         }
       } else {
+      match compare_content_hash(left: ok, right: expected_credential) {
+        ContentHashDifferent => ShortfallEvidenceMismatch {
+          cause: "grant population was observed under a different credential than the one this plan authorizes" as NonEmptyStr,
+        }
+        ContentHashCrossFamilyIncomparable => ShortfallEvidenceMismatch {
+          cause: "grant population credential identity is not comparable with the expected credential" as NonEmptyStr,
+        }
+        ContentHashEqual => {
       let missing = fold(
         realization_escalated_commands(realization: realization, target: target),
         init: [],
@@ -922,6 +942,8 @@ fn escalation_shortfall(
         HeadFound { value: f } => match list_tail(missing) {
           TailAbsent => NewPrivilegeRequired { first: f, more: [] }
           TailFound { tail: t } => NewPrivilegeRequired { first: f, more: t }
+        }
+      }
         }
       }
       }

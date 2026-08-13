@@ -20,7 +20,6 @@ import gunbc.spark_serving_realization {
   ObservedGrantPopulation,
   GrantPopulationObserved,
   GrantPopulationUnobserved,
-  GrantPopulationUnobserved,
   PullModelArtifact,
   GrantContainerRuntimeAccess,
   RunContainerAsOwnUser,
@@ -149,7 +148,7 @@ test fn w_user_unit_serving_needs_no_new_privilege_against_the_observed_grant() 
   let target = target_as(NamedPrincipal { login: "gunbc-automation" as NonEmptyStr })
   let observed = automation_grants(commands: ["/usr/bin/loginctl enable-linger gunbc-automation" as NonEmptyStr])
   applicable_without_administrator(shortfall: escalation_shortfall(
-    realization: UserUnitRealization, subject_host: "srv5", target: target, observed: observed))
+    realization: UserUnitRealization, subject_host: "srv5", expected_credential: content_hash_atom(value: "fleet-automation-key" as NonEmptyStr), target: target, observed: observed))
 }
 
 // THE DISCRIMINATING CONTROL. Same realization, same actor, an observed grant population that does
@@ -158,7 +157,8 @@ test fn w_user_unit_serving_needs_no_new_privilege_against_the_observed_grant() 
 test fn w_the_same_install_is_refused_when_linger_is_not_granted() -> Bool {
   let target = target_as(NamedPrincipal { login: "gunbc-automation" as NonEmptyStr })
   !applicable_without_administrator(shortfall: escalation_shortfall(
-    realization: UserUnitRealization, subject_host: "srv5", target: target,
+    realization: UserUnitRealization, subject_host: "srv5",
+    expected_credential: content_hash_atom(value: "fleet-automation-key" as NonEmptyStr), target: target,
     observed: automation_grants(commands: [])))
 }
 
@@ -167,7 +167,8 @@ test fn w_the_same_install_is_refused_when_linger_is_not_granted() -> Bool {
 test fn w_an_unobserved_grant_population_does_not_authorize_the_install() -> Bool {
   let target = target_as(NamedPrincipal { login: "gunbc-automation" as NonEmptyStr })
   !applicable_without_administrator(shortfall: escalation_shortfall(
-    realization: UserUnitRealization, subject_host: "srv5", target: target,
+    realization: UserUnitRealization, subject_host: "srv5",
+    expected_credential: content_hash_atom(value: "fleet-automation-key" as NonEmptyStr), target: target,
     observed: GrantPopulationUnobserved { host: "srv5", principal: "gunbc-automation" as NonEmptyStr, cause: "sudo -n -l could not be reached" as NonEmptyStr }))
 }
 
