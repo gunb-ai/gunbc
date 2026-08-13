@@ -21,11 +21,7 @@ data closure_entry: String = "src/v2/compiler/00_compile.dag"
 data closure_test_entry: String = "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag"
 data closure_witness_module_count: String = "compiler_closure_ingest_receipt_describes_carrier_holds"
 
-data closure_witness_quarantine_note: String = "The gate asserted compiler_closure_scoped_ingest_module_count_ok_holds, which demands COMPLETE coverage. That witness was passing over an Empty carrier because the receipt hardcoded produced_row_count = read_count and coverage_complete = true; with the receipt made honest it correctly goes red, because the compiler closure is 91 reads against a 64-row inline cap and its manifest genuinely carries no rows.
-
-The completeness claim is therefore QUARANTINED as a known-red probe row (gunbc.explicit_witness_admission explicit_witness_admissions / known_red_frontier_note) — it expects red on the probe cadence, and greening is a counted un-quarantine event, not a silent pass. The gate now asserts compiler_closure_ingest_receipt_describes_carrier_holds instead: the receipt must describe the carrier that landed. That is deliberately NOT a weaker restatement of the same claim — it is the falsifiable property the repair established, it holds today, and it reds if the receipt ever drifts from the carrier again. Swapping in a claim that merely restates what is already true would have been vacuity with extra steps; this one can fail.
-
-Dissolve-on: the carrier redesign (manifest rows referencing source by ref/hash instead of inlining full text) lifts the cap constraint, the closure manifest carries its 91 rows, the quarantined row greens and un-quarantines, and this note deletes."
+data closure_witness_quarantine_note: String = "Capless closure transport landed: manifest rows are SourceRef + content hash (no inlined Lossless text), consumers read through refs with hash verification, and produced_row_count tracks the full closure-ref list. compiler_closure_scoped_ingest_module_count_ok_holds un-quarantined from explicit_witness_admission when the completeness witness greened."
 data closure_witness_layer_roots: String = "self_host_closure_witness_layer_roots_reexports_authority_holds"
 data closure_gap4_entry: String = "src/v2/test/claim/long/gap4_parse_tokens_remain_test.dag"
 data closure_gap4_witness: String = "gap4_match_arm_let_stmt_parses_holds"

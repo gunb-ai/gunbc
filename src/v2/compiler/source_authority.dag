@@ -103,11 +103,9 @@ type DagSourceReadWitness {
 
 type SourceRootIngest = FreeMonoid<DagSourceReadWitness>
 
-data source_root_coverage_note: String = "The manifest emitter inlines the FULL Lossless source text of every read, so it carries a corpus-protection cap (MANIFEST_INLINE_LIST_MAX). Past that cap it elided the ENTIRE row list to Empty — and said nothing. That is an absorbing fallback (DESIGN section 5): the carrier silently became ⊤-as-ignorance while every consumer read it as ⊤-as-answer, 'this source root has no reads'. A receipt that then hardcoded coverage_complete: true over that Empty carrier made the lie unfalsifiable, and the compiler-closure ingest gate rode it green over ZERO rows.
+data source_root_coverage_note: String = "Capless closure transport (ingest-manifest-source-ref-carrier design stage 4): the manifest emitter no longer inlines Lossless source text. Every read is carried as a SourceRef row in host_source_root_closure_refs (path + source root + content hash), so closure size is uncapped. host_source_root_ingest stays Empty; consumers read through refs with hash verification at consumption time and flip to ReadsLiveTree.
 
-So the elision is now a TYPED, COUNTED refusal rather than a Bool. SourceRootManifestElided names both numbers that matter — how many reads there were and what cap rejected them — so the deficit's SIZE is visible at every consumer instead of being inferable only by subtracting two counts. A Bool could say 'incomplete'; it could not say 'ninety-one reads met a cap of sixty-four', which is the fact that tells you whether the remedy is a bigger cap or a different carrier.
-
-Measured instance at the time of writing: the src/v2/compiler/00_compile.dag closure is 91 reads against a cap of 64, so its manifest carries Empty. That is the real deficit this typing exposes; the carrier redesign that fixes it (rows referencing source by ref/hash instead of inlining text) is its own designed lane."
+SourceRootManifestElided remains in the coverage coproduct for hand-authored fixtures and historical receipts that model the pre-capless inline-text elision; the live host emitter reports SourceRootCoverageComplete whenever the closure-ref list matches ingest_read_count."
 
 type SourceRootCoverage
   = SourceRootCoverageComplete

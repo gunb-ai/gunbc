@@ -7,10 +7,17 @@ import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.self_host.closure_witness_layer_roots {
   self_host_closure_witness_layer_roots
 }
-import v2.compiler.source_authority { DagSourceReadWitness, source_root_coverage_is_complete }
+import v2.compiler.source_authority {
+  DagSourceReadWitness,
+  SourceRootIngest,
+  SourceRootIngestBuildOk,
+  SourceRootIngestBuildReadFailed,
+  source_root_coverage_is_complete,
+  source_root_ingest_build_from_source_refs
+}
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.algebra { fold_list, length }
+import v2.std.algebra { Empty, fold_list, length }
 import v2.std.optional {
   Absent,
   Optional
@@ -24,12 +31,19 @@ import v2.std.language_model { LanguageModel }
 import v2.std.node { Symbol }
 import v2.std.logic { Bool }
 import v2.test.workflow.host_source_root_ingest_manifest {
-  host_source_root_ingest,
+  host_source_root_closure_refs,
   host_source_root_ingest_coverage_receipt
 }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn compiler_closure_ingest_from_manifest() -> SourceRootIngest {
+  match source_root_ingest_build_from_source_refs(refs: host_source_root_closure_refs) {
+    SourceRootIngestBuildOk { ingest: ingest } => ingest
+    SourceRootIngestBuildReadFailed { result: _ } => Empty
+  }
+}
 
 type Gap4IngestProbeState
   = Gap4IngestProbePending
@@ -113,7 +127,7 @@ fn gap4_ingest_probe_step(
 
 fn gap4_probe_first_ingest_reject() -> Gap4IngestProbeState {
   fold_list(
-    xs: host_source_root_ingest,
+    xs: compiler_closure_ingest_from_manifest(),
     empty: Gap4IngestProbePending,
     cons: fn(state, read) {
       gap4_ingest_probe_step(state: state, read: read, lm: dag_language_model())
@@ -136,12 +150,10 @@ test fn self_host_closure_witness_layer_roots_reexports_authority_holds() -> Boo
     )
 }
 
-data closure_receipt_describes_carrier_note: String = "The gate's live assertion after the coverage repair. It does NOT demand complete coverage — the compiler closure is 91 reads against a 64-row cap, so its manifest legitimately carries Empty and the completeness claim is quarantined as known-red (see known_red_frontier_note). What it demands instead is the property the repair actually established: the receipt must DESCRIBE THE CARRIER THAT LANDED. produced_row_count must equal the rows actually present, whatever that number is.
-
-That is the falsifiable half. The old shape hardcoded produced_row_count = read_count and coverage_complete = true, which passed over an Empty carrier and could never go red — a receipt that cannot be false reports nothing. This assertion goes red the moment the receipt drifts from the carrier again, in either direction, at any corpus size, and it stays meaningful while the elision persists. So the gate keeps a real consumer rather than being emptied out by the quarantine."
+data closure_receipt_describes_carrier_note: String = "The gate's live assertion after capless closure transport landed. produced_row_count must equal the closure-ref row count the manifest actually carries, and consumers read through those refs with hash verification at consumption time. Inline Lossless source text is no longer emitted; host_source_root_ingest stays Empty while host_source_root_closure_refs carries the full closure."
 
 test fn compiler_closure_ingest_receipt_describes_carrier_holds() -> Bool {
-  (host_source_root_ingest_coverage_receipt.produced_row_count == length(xs: host_source_root_ingest))
+  (host_source_root_ingest_coverage_receipt.produced_row_count == length(xs: host_source_root_closure_refs))
     && (host_source_root_ingest_coverage_receipt.ingest_read_count > 0)
 }
 
@@ -162,7 +174,7 @@ test fn gap4_probe_all_ingest_reads_accept_holds() -> Bool {
 
 test fn compiler_closure_scoped_ingest_parses_holds() -> Bool {
   match module_roots_from_source_root_ingest(
-    ingest: host_source_root_ingest,
+    ingest: compiler_closure_ingest_from_manifest(),
     lm: dag_language_model()
   ) {
     Accepted { value: roots, diagnostics: _ } =>

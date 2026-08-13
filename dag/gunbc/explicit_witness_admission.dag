@@ -153,14 +153,6 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolution: unbound_dissolution(description: "the S2 behavioral-closure lane greens it locally, then this row deletes")
   ),
   known_red_probe(
-    entry: "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag",
-    f: "compiler_closure_scoped_ingest_module_count_ok_holds",
-    kind: CorpusWitnessKind,
-    budget: FastLaneEvalBudget,
-    reason: "asserts COMPLETE ingest coverage for the src/v2/compiler/00_compile.dag closure, which is 91 source reads against MANIFEST_INLINE_LIST_MAX (64), so the emitted carrier is legitimately Empty. It was GREEN until 2026-07-19 only because the receipt fabricated its own numbers; making the elision the typed, counted SourceRootManifestElided turned a fabricated green into a true red. Admitted rather than deleted because it is the discriminating input for the carrier deficit — its gate did not go vacuous, compiler_closure_ingest_receipt_describes_carrier_holds replaced it as the live claim. Owner: wise-bee-768 / the module-identity storage-binding lane.",
-    dissolution: unbound_dissolution(description: "manifest rows carry a source ref plus content hash instead of inlined text, the parse oracle reads through the ref with hash verification, the cap stops binding, this witness greens and this row deletes")
-  ),
-  known_red_probe(
     entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag",
     f: "legacy_test_behavior_unclassified_frontier_is_zero",
     kind: CorpusWitnessKind,
