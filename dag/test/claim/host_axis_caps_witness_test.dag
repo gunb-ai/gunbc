@@ -16,6 +16,12 @@ import gunbc.host_axis_caps {
   control_shadow_effects,
   control_shadow_teardown_count,
   control_shadow_refusal_count,
+  derived_runner_memory_max_cap_member,
+  derived_runner_memory_high_cap_member,
+  derived_runner_memory_cap_members,
+  runner_memory_cap_author_script,
+  runner_memory_cap_author_ready_for_shadow_revert,
+  host_axis_caps_author_before_revert_enforced,
 }
 import gunbc.membership_reconcile { EffectsReady, ApplyRefused }
 import gunbc.host_converge {
@@ -104,4 +110,28 @@ test fn control_shadow_residue_teardowns_owned_unit() -> Bool {
 test fn control_shadow_idempotence_zero_effects() -> Bool {
   control_shadow_teardown_count(desired: [], observed: []) == 0
     && control_shadow_refusal_count(desired: [], observed: []) == 0
+}
+
+test fn witness_derived_memory_caps_match_allocation_authority() -> Bool {
+  let max = derived_runner_memory_max_cap_member()
+  let high = derived_runner_memory_high_cap_member()
+  string_contains(s: max.content, pattern: "15032385536")
+    && string_contains(s: max.content, pattern: "20-fleet-width")
+    && string_contains(s: high.content, pattern: "13958643712")
+    && string_contains(s: high.content, pattern: "40-fleet-high")
+}
+
+test fn witness_shadow_revert_not_ready_without_derived_dropins() -> Bool {
+  !runner_memory_cap_author_ready_for_shadow_revert(observed: [])
+    && runner_memory_cap_author_ready_for_shadow_revert(observed: derived_runner_memory_cap_members())
+}
+
+test fn witness_runner_memory_cap_author_script_derived() -> Bool {
+  string_contains(s: runner_memory_cap_author_script(), pattern: "15032385536")
+    && string_contains(s: runner_memory_cap_author_script(), pattern: "13958643712")
+    && !string_contains(s: runner_memory_cap_author_script(), pattern: "systemctl revert")
+}
+
+test fn witness_cap_author_before_shadow_revert_enforced_in_axis_caps() -> Bool {
+  host_axis_caps_author_before_revert_enforced
 }

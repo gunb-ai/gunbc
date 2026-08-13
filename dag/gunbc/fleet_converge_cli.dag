@@ -3,6 +3,9 @@ module gunbc.fleet_converge_cli
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import std.algebra { trim }
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import gunbc.command_runner { run_shell_command_capture }
+import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
 
 import extdeps.linux.procfs { ProcSysKernelHostname, procfs_path_literal }
 import gunbc.fleet_converge_apply { converge_apply_for_host }
@@ -423,13 +426,53 @@ fn converge_cli_atomic_receipt_write(host: String, content: String) -> String? {
   }
 }
 
+// Applied means committed plus independent read-back (DESIGN section 5): rename alone is not the claim.
+data converge_cli_receipt_owner_readback_required: Bool = true
+
+fn converge_cli_expected_receipt_owner_name() -> String {
+  fleet_posix_operator_user.name
+}
+
+fn converge_cli_receipt_owner_readback(host: String) -> String? {
+  let path = fleet_converge_receipt_path(host: host)
+  let expected = converge_cli_expected_receipt_owner_name()
+  let r = run_shell_command_capture(
+    command: ArgvCommand { argv: ["stat", "-c", "%U", path] },
+    transport: LocalExec,
+  )
+  if !r.success {
+    Present { value: concat("gunbc converge: receipt owner read-back refused (stat): ", trim(s: r.stderr)) }
+  } else {
+    let owner = trim(s: r.stdout)
+    if owner == expected {
+      none
+    } else {
+      Present {
+        value: concat(
+          concat("gunbc converge: receipt owner read-back mismatch — expected ", expected),
+          concat(" observed ", owner),
+        ),
+      }
+    }
+  }
+}
+
 fn converge_cli_publish(out: ConvergeCliOutput, resolved: String, revision_line: String) -> ConvergeCliOutput {
   let publish_err = converge_cli_atomic_receipt_write(
     host: resolved,
     content: join([out.line, "\n", revision_line, "\n"], ""),
   )
   match publish_err {
-    Absent => out
+    Absent =>
+      match converge_cli_receipt_owner_readback(host: resolved) {
+        Absent => out
+        Present { value: why } =>
+          ConvergeCliOutput {
+            line: out.line,
+            converged: false,
+            reason: Present { value: why },
+          }
+      }
     Present { value: why } =>
       ConvergeCliOutput {
         line: out.line,

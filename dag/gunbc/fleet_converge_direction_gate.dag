@@ -1,0 +1,21 @@
+module gunbc.fleet_converge_direction_gate
+
+import std.types { Bool }
+
+// Wet receipt enrolls fleet_converge_memory_cap_direction_observed on each host once
+// local-versus-desired memory-cap direction is measured (disk drop-ins, control shadow,
+// effective caps). Until then the author+shadow-revert pipeline and timer enable stay
+// gated — "fix landed" and "timer may run" are separate gates (operator ruling 2026-08-13).
+data fleet_converge_memory_cap_direction_observed: Bool = false
+
+data fleet_converge_direction_observation_note: String = "local-versus-desired memory-cap direction must be observed BEFORE the fleet timer may enable and BEFORE gunbc converge may run the author+shadow-revert pipeline. srv1 timer is active today with applied=0 because revert has been failing; once author-before-revert lands, a timer tick will apply. Direction observation is the ordering hazard check: revert-before-author on stale 16/15GiB deploy drop-ins would raise caps silently."
+
+fn fleet_converge_memory_cap_pipeline_may_apply() -> Bool {
+  fleet_converge_memory_cap_direction_observed
+}
+
+data fleet_converge_timer_enable_requires_direction_observed: Bool = true
+
+fn fleet_converge_timer_may_enable() -> Bool {
+  !fleet_converge_timer_enable_requires_direction_observed || fleet_converge_memory_cap_direction_observed
+}

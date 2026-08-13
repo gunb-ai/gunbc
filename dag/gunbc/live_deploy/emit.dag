@@ -57,7 +57,7 @@ import gunbc.live_deploy.spec {
   TeardownDisposition, TeardownActs, TeardownRefuses,
   tree_sync_unit_path,
 }
-import gunbc.host_layout { belt_spawn_workdir_env_var }
+import gunbc.host_layout { belt_spawn_workdir_env_var, fleet_converge_receipt_dir }
 import gunbc.ownership { Ownership }
 import v2.std.algebra { list_tail, TailFound, TailAbsent }
 import gunbc.membership_reconcile {
@@ -334,8 +334,10 @@ fn apply_belt_service_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
 // verdict=absent (fleet_converge_cli converge_cli_revision_verdict RevisionUnobserved). Running
 // as the repo owner is exactly what the sibling serve/belt/tree-sync units already do
 // (emit_systemd_unit_doc / emit_belt_service_unit_doc: User=+Group=svc.service_user).
-// Receipt publication is atomic rename in gunbc.fleet_converge_cli (see
-// gunbc.host_layout fleet_converge_receipt_atomic_publish_note) — not install-d here.
+// Receipt *publication* (superseding a stale root-owned file) is atomic rename in
+// gunbc.fleet_converge_cli (gunbc.host_layout fleet_converge_receipt_atomic_publish_note).
+// Receipt *directory bootstrap* (existence + service-principal ownership) stays on deploy
+// via install_d_owned_command on fleet_converge_receipt_dir — orthogonal problems.
 fn emit_fleet_converge_service_unit_doc(spec: DeploymentSpec) -> Doc {
   let svc = spec.service
   doc_concat(parts: [
@@ -610,6 +612,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
       deploy_raw(command: systemctl_restart_command(unit: deployment_belt_timer_unit_name(names: spec.names), privileged: true)),
     ]
     FleetConvergeTimerUnit => [
+      deploy_raw(command: install_d_owned_command(spec: spec, path: fleet_converge_receipt_dir)),
       apply_fleet_converge_service_unit_write_step(spec: spec),
       apply_fleet_converge_timer_unit_write_step(spec: spec),
       deploy_raw(command: join([
