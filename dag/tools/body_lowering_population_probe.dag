@@ -1,0 +1,217 @@
+module gunbc.tools.body_lowering_population_probe
+
+import gunbc.tools.frontier_ingestion_probe {
+  CensusRefusedAtReconciliation,
+  CensusRefusedAtWorld,
+  CensusTaken,
+  FrontendCensusReceipt,
+  FrontierMember,
+  FrontendStage,
+  frontend_stage_label,
+  LexRefused,
+  MemberObservation,
+  NormalizeAccepted,
+  NormalizeGraftRefused,
+  NormalizeOther,
+  NormalizeRetained,
+  ParseRefused,
+  take_census_over
+}
+import v2.std.algebra { fold_list }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data body_lowering_population_probe_note: String = "BL-2 REPRODUCTION INSTRUMENT, homed outside a *_test.dag module for the same reason gunbc.tools.frontier_ingestion_probe is: what it reports is a revision-scoped OBSERVATION of the present frontier, and enrolling that as a test declaration would make an assertion that goes RED on the repair and GREEN on a regression. It reuses take_census_over and classify_source rather than reproducing them, so there is one stage classifier in the repository and not two.\n\nWHY IT EXISTS. The body-lowering wall cannot be scheduled against an unmeasured population. normalize today returns Accepted for a tree whose diagnostics carry wrapper-retention, and resolve consumes it, so retention is kept out of resolve by propagation rather than by construction. Making retention unconstructible is the right wall and it CHANGES WHICH MODULES NORMALIZE ACCEPTS — so the population that would newly refuse has to be known before the wall lands, not discovered from a red tree afterwards.\n\nWHAT THE SUBJECTS ARE is body_lowering_subject_roster's to say, and this note deliberately does not restate it — an earlier revision carried the population as a prose sentence beside a shorter roster, and the two disagreeing is the defect that produced this rewrite. What holds here is only the scope: the subjects are deliberately NOT the whole corpus — a per-file census over every module is a different and much larger instrument — so anything read off this module is a reading over THOSE subjects and carries no claim about the rest.\n\nWHAT A READER MAY NOT DO WITH IT. The per-member stage is the observation. There is no aggregate pass/fail, because the population is the finding and a Boolean over it would be a verdict on subjects that have not all been separately established."
+
+data body_lowering_population_first_reading_note: String = "FIRST EXECUTED READING (2026-08-13, three-member execution batch): use_site_verdict reached NormalizeAccepted, materialization_carriers NormalizeOther, optional NormalizeRetained. Stages are named by their VARIANT here rather than by a rendered label, because the label is frontier_ingestion_probe frontend_stage_label's to decide and a note that pins its spelling would go stale the moment that renderer is edited — which is the same reason counting may not read labels either.\n\nWHAT IT CHANGES, and it is the shard rows rather than the finding. Neither SH-D shard RETAINS as a file. use_site_verdict normalizes clean; materialization_carriers refuses at normalize for something that is neither retention nor a graft refusal. So the wrapper-retained residue measured in those shards' door chains does not come from the shard modules themselves — it comes from OTHER modules in their import closures, of which optional is one confirmed instance. Saying a shard is body-lowering blocked was too coarse: the shard is blocked because its CLOSURE contains retaining modules, and the subjects to repair are those, not it.\n\nWHAT THIS IS NOT. Three members are not a population, and NORM_OTHER is a cause this instrument does not identify — it names the stage, not the reason. materialization_carriers refusing at normalize for an unidentified reason is an open question, not a measured cause, and nothing here establishes which closure members of either shard retain beyond the one measured.\n\nA COST OBSERVATION, recorded because it bounds what can be asked next: a ten-member run of this census ran 2h51m without a verdict; over three it returns in about two minutes. That is nonlinear in the member count, so one or more subjects outside the batch is pathological rather than merely larger. WHICH member is NOT established — no per-member timing was taken — and attributing it to the largest file would be a guess dressed as a finding."
+
+data body_lowering_subject_roster_note: String = "THE SUBJECT ROSTER AND THE EXECUTION BATCH ARE TWO AUTHORITIES, and merging them is the planning error this instrument exists to detect. A previous revision declared three rows under the name body_lowering_population_roster while the module's own prose said the subjects were ten. That makes the error representable in the exact shape we are trying to catch: seven unmeasured subjects erased, one retained member observed, and a bare count licensing the sentence 'the retained population is one'. The denominator has to be the SUBJECTS; what a given run could afford to execute is a separate and smaller fact.\n\nSo body_lowering_subject_roster is the denominator and body_lowering_execution_batch is what one run selected from it. A subject not in the batch is SubjectUnmeasured with a cause, never absent and never silently folded into an observed population.\n\nWHERE THE SUBJECT IDENTITIES COME FROM, each cited rather than asserted. The two SH-D shards are the members with measured door receipts. The five std members come from docs/plans/v2-frontend-std-ingestion-frontier-exact-head.md's executed table: logic, optional, diagnostic and occurrence_identity are its four NORM_RETAINED rows, and node is its NOT RE-OBSERVED row — the member whose probe exceeded a 900s budget, which is an interruption plus a lower bound on cost and never a verdict about the subject.\n\nTHE SPECIMEN CLASS IS ONE SUBJECT, NOT THREE, and the reasoning matters more than the number. The prose population also names 'the bare-expression specimens v2.lens.vacuity found rejecting at this seam'. Those are not committed subjects: vacuity_bool_witness_body_lowering_ceiling_note describes them as inline probe configurations executed across 'many isolated configurations' — it never enumerates them, no fixture file carries them, and its byte-for-byte copy of optional_absent's body is the SAME subject as the optional member already rostered rather than a distinct one. The class grounds as a class; its members do not. Minting three identities would satisfy a sentence by fabricating two subjects, which is precisely what a roster exists to prevent, so the class enters as one subject carrying UnauthoredSpecimenClass and stands at SubjectUnmeasured\{no_committed_specimen_identity}. Dissolve-on: the specimens are committed as fixtures, at which point this placeholder expands into its real members and disappears.\n\nTHE PROSE 'TEN' IS RETIRED AS AN UNFOUNDED COUNT (operator ruling, 2026-08-13). It came from reading the population sentence as two shards plus five std members plus three specimens, where the three was our arithmetic over a note that enumerates nothing. Recorded here rather than silently corrected, because a competing number left standing in prose is what makes the next reader reconcile eight against ten and reopen a settled question — the same reason the aggregate helpers were deleted rather than fixed.\n\nAND EIGHT IS NOT AN AUTHORITY EITHER. The denominator is not a number that was chosen; it is the set of exact identities that could be named, and its cardinality is whatever falls out — completeness is an identity join, not a count equality (DESIGN §5). A ninth grounded identity joins without ceremony; the specimen class expands into its real members when committed. The roster is the join, and any count over it is a reading rather than a fact about the population."
+
+data body_lowering_program_receipt_execution_note: String = "EXECUTED, NOT ASSERTED (2026-08-13, 73s): body_lowering_program_receipt was run against the live tree and returned eight standings — use_site_verdict SubjectObserved\{NormalizeAccepted}, materialization_carriers SubjectObserved\{NormalizeOther}, optional SubjectObserved\{NormalizeRetained}, logic and diagnostic and occurrence_identity and node SubjectUnmeasured\{not_selected_into_execution_batch}, and vacuity_bare_expression_specimens SubjectUnmeasured\{no_committed_specimen_identity}.\n\nWHAT THAT ESTABLISHES beyond the module compiling. The denominator survives the join: eight subjects in, eight standings out, so no subject is silently dropped between roster and receipt. The three observed rows reproduce the earlier batch reading, so deriving the batch from the roster did not change what runs. And the specimen class routes to its own structural cause rather than to not_selected_into_execution_batch — the distinction the realization coproduct exists to make, which a run would collapse if the two causes were reachable from one arm.\n\nWHAT IT DOES NOT ESTABLISH. Nothing here observes the four unmeasured subjects; their standing is the honest report that this batch did not run them, and it may not be read as a stage. node in particular carries a prior interruption with a cost bound, recorded separately in body_lowering_prior_standing, and this run neither confirms nor refutes it."
+
+type BodyLoweringSubjectRealization
+  = LiveFileSubject { path: String }
+  | UnauthoredSpecimenClass
+
+type BodyLoweringSubject {
+  label: Symbol,
+  realization: BodyLoweringSubjectRealization,
+}
+
+data body_lowering_subject_roster: List<BodyLoweringSubject> = [
+  BodyLoweringSubject { label: ^use_site_verdict, realization: LiveFileSubject { path: "src/v2/compiler/use_site_verdict.dag" } },
+  BodyLoweringSubject { label: ^materialization_carriers, realization: LiveFileSubject { path: "src/v2/compiler/materialization_carriers.dag" } },
+  BodyLoweringSubject { label: ^logic, realization: LiveFileSubject { path: "src/v2/std/logic.dag" } },
+  BodyLoweringSubject { label: ^optional, realization: LiveFileSubject { path: "src/v2/std/optional.dag" } },
+  BodyLoweringSubject { label: ^diagnostic, realization: LiveFileSubject { path: "src/v2/std/diagnostic.dag" } },
+  BodyLoweringSubject { label: ^occurrence_identity, realization: LiveFileSubject { path: "dag/std/occurrence_identity.dag" } },
+  BodyLoweringSubject { label: ^node, realization: LiveFileSubject { path: "src/v2/std/node.dag" } },
+  BodyLoweringSubject { label: ^vacuity_bare_expression_specimens, realization: UnauthoredSpecimenClass },
+]
+
+data body_lowering_observation_standing_note: String = "STANDING IS THREE STATES BECAUSE THE TWO-STATE READING IS THE DEFECT. Observed and absent cannot carry this population: a subject dropped for cost, a subject whose run was interrupted by a budget, and a subject genuinely measured are three different epistemic positions with three different remedies, and collapsing the first two into absence is the empty-observation narrow — it renders 'we did not look' as 'there is nothing there'.\n\nSubjectInterrupted is separate from SubjectUnmeasured rather than a cause of it, and node is why: its probe exceeded 900s. That is an interruption plus a measured lower bound on cost, so it says something real about the subject's expense while saying nothing about its stage. An unmeasured subject carries no such bound. Merging them would discard the only quantitative fact the interrupted row has."
+
+type BodyLoweringObservationStanding
+  = SubjectObserved { stage: FrontendStage }
+  | SubjectUnmeasured { cause: Symbol }
+  | SubjectInterrupted { receipt: String }
+
+type BodyLoweringSubjectStanding {
+  label: Symbol,
+  standing: BodyLoweringObservationStanding,
+}
+
+data body_lowering_execution_batch_note: String = "THE BATCH IS THREE, AND THE REASON IS A MEASUREMENT RATHER THAN A PREFERENCE. A ten-member run was executed and ABANDONED at 2h51m wall and 8.3 GiB resident without producing a verdict — on a host whose shared slice is 20 GiB and whose kernel kills the LARGEST task in it, so that run was a hazard to every other session before it was a slow measurement. The instrument this extends already declared the cost: its own roster note records the accepted-classification path measuring over the five-second fast-lane budget for fifteen files, and states that the batched or realized execution which would make a live census affordable is still owed.\n\nSo the batch is sized to what the present instrument can deliver, and that gap is a deficit in the instrument rather than a property of the subjects. THE FOUR SUBJECTS NOT IN IT ARE NOT OBSERVED-AND-EXCLUDED — they are unmeasured, and the program receipt says so per subject rather than leaving them out.\n\nTHE BATCH IS DERIVED FROM THE ROSTER, NEVER RE-AUTHORED BESIDE IT. An intermediate revision of this repair declared the three batch rows as their own literal list carrying their own paths, which put the same path in two places and let them drift — the second representation this whole change exists to remove, reintroduced one declaration below the note forbidding it. body_lowering_batch_selection now carries LABELS only, and the batch is a fold over the roster selecting those labels and reading each path from the subject that owns it. Two things follow by construction rather than by check: a batch row cannot name a path the roster does not, and a subject with no committed realization cannot enter a batch at all, because the specimen arm has no path to contribute and is skipped where it would otherwise have to invent one.\n\nHOW THE NEXT RUN SHOULD BE SHAPED, because the 2h51m failure already bounds it: ONE INDEPENDENT JOB PER SUBJECT, each emitting its own subject identity, stage receipt, runtime and terminal standing. The cost was nonlinear in member count, so one or more subjects is pathological rather than merely larger — a per-subject run identifies WHICH, where another monolithic evaluation would only reproduce the interruption and tempt an attribution by file size, which would be a guess dressed as a finding."
+
+data body_lowering_batch_selection: List<Symbol> = [
+  ^use_site_verdict,
+  ^materialization_carriers,
+  ^optional,
+]
+
+fn is_selected(label: Symbol) -> Bool {
+  fold_list(xs: body_lowering_batch_selection, empty: false, cons: fn(acc, sel) { acc || (sel == label) })
+}
+
+fn body_lowering_execution_batch() -> List<FrontierMember> {
+  fold_list(
+    xs: body_lowering_subject_roster,
+    empty: [] as List<FrontierMember>,
+    cons: fn(acc, s) {
+      match s.realization {
+        UnauthoredSpecimenClass => acc
+        LiveFileSubject { path: p } =>
+          if is_selected(label: s.label) { concat(acc, [FrontierMember { label: s.label, path: p }]) } else { acc }
+      }
+    }
+  )
+}
+
+fn take_body_lowering_population_census() -> FrontendCensusReceipt {
+  take_census_over(rows: body_lowering_execution_batch())
+}
+
+fn standing_of(s: BodyLoweringSubject, obs: List<MemberObservation>) -> BodyLoweringObservationStanding {
+  match s.realization {
+    UnauthoredSpecimenClass => SubjectUnmeasured { cause: ^no_committed_specimen_identity }
+    LiveFileSubject { path: _ } =>
+      fold_list(
+        xs: obs,
+        empty: SubjectUnmeasured { cause: ^not_selected_into_execution_batch },
+        cons: fn(acc, o) { if o.label == s.label { SubjectObserved { stage: o.stage } } else { acc } }
+      )
+  }
+}
+
+fn standings_from(obs: List<MemberObservation>) -> List<BodyLoweringSubjectStanding> {
+  fold_list(
+    xs: body_lowering_subject_roster,
+    empty: [] as List<BodyLoweringSubjectStanding>,
+    cons: fn(acc, s) {
+      concat(acc, [BodyLoweringSubjectStanding { label: s.label, standing: standing_of(s: s, obs: obs) }])
+    }
+  )
+}
+
+data body_lowering_per_subject_reading_note: String = "PER-SUBJECT READING (2026-08-13), one census per subject rather than one over a roster, so a per-subject runtime and terminal standing exist instead of one aggregate that hides which member is expensive. Six of the seven runnable subjects returned: use_site_verdict NormalizeAccepted (165s), materialization_carriers NormalizeOther (199s), logic NormalizeOther (157s), optional NormalizeRetained (138s), diagnostic NormalizeRetained (239s), occurrence_identity NormalizeOther (292s).\n\nTHE ANSWERS ARE NOT UNIFORM, and that is load-bearing rather than incidental. The assembly fold stops at its first failed member, so a uniform refusal across independently chosen subjects would be evidence about the INSTRUMENT rather than the population. Three distinct stages across six subjects rules that reading out here.\n\nWHAT CHANGED: occurrence_identity is no longer retained. The exact-head receipt recorded it NormalizeRetained and is explicit that it was never re-run after the repair, so its post-repair state was unknown rather than confirmed; it measures NormalizeOther now, and logic independently reproduced what that receipt predicted for it. Among re-observed subjects only optional and diagnostic still retain. The stale cell is corrected at the receipt itself, not only here.\n\nWHAT IT DOES NOT LICENSE: 'the retained population is two'. It is two among MEASURED subjects, with node interrupted and the specimen class unmeasurable by construction — the roster-versus-batch distinction, applied to a reading rather than to a run. And three of these sit at NormalizeOther, whose reading is ObservedRefusedCauseUnclassified: they left retention without any instrument here identifying why they now refuse.\n\nNODE IS THE OUTLIER, AND ITS RUN IS AN INTERRUPTION RATHER THAN A MEASUREMENT. It was SIGKILLed at 346s (exit 137) while every other subject completed between 138s and 292s. The kill signal is observed; the CAUSE is not established — memory pressure on a shared slice is the suspicion given the ten-member run's 8.3 GiB, but nothing here measures that, and an exit code is not a diagnosis. So node stands interrupted with a fresh lower bound rather than carrying any stage.\n\nCOST, corrected: the six completions sit within a factor of 2.1 of one another, so there is no pathological member AMONG THEM, and the earlier 2h51m ten-member run is not explained by any of the six. Whether node alone accounts for it or the cost is superlinear in ROSTER SIZE is still open — per-subject runs cannot separate those two, and node dying rather than finishing means it did not settle the question either."
+
+data body_lowering_observed_reading_note: String = "AN OBSERVED STAGE IS NOT A VERDICT ON THE SUBJECT, and the reading a stage licenses is DERIVED from the stage rather than stored beside it — a stored reading would be a second representation of a fact the coproduct already carries, free to disagree with it.\n\nThe distinction that has to survive: leaving NormalizeRetained is NOT evidence of repair. NormalizeOther is by construction neither retention nor a graft refusal, so it names WHERE a module refuses and never WHY — the cause is unclassified, and the module still does not ingest. Three of the measured subjects sit there for causes no instrument in this lane identifies. Six weeks from now 'no longer retained' reads as 'fixed' unless the carrier says otherwise, which is why this is a projection consumers can match on rather than a sentence in prose.\n\nObservedClean is the one stage that means the door admitted the module. ObservedRefusedCauseNamed covers the refusals whose kind the classifier positively identified — retention, a graft refusal, and the lex and parse walls, each of which IS its own cause at this grain. ObservedRefusedCauseUnclassified is NormalizeOther alone, and it is the arm that must not be read as progress."
+
+type ObservedReading
+  = ObservedClean
+  | ObservedRefusedCauseNamed
+  | ObservedRefusedCauseUnclassified
+
+fn reading_of_stage(s: FrontendStage) -> ObservedReading {
+  match s {
+    NormalizeAccepted => ObservedClean
+    NormalizeOther => ObservedRefusedCauseUnclassified
+    NormalizeRetained => ObservedRefusedCauseNamed
+    NormalizeGraftRefused => ObservedRefusedCauseNamed
+    LexRefused => ObservedRefusedCauseNamed
+    ParseRefused => ObservedRefusedCauseNamed
+  }
+}
+
+data body_lowering_standing_reading_note: String = "A READING EXISTS ONLY WHERE SOMETHING WAS OBSERVED, which is why this returns its own coproduct rather than an ObservedReading. A first draft of this function mapped SubjectUnmeasured and SubjectInterrupted onto ObservedRefusedCauseUnclassified, on the reasoning that all three leave the cause unknown. That is the census-refusal conflation one level up, and in the same module that just repaired it: an unclassified refusal is a fact about a subject that WAS put through the door, while an unmeasured subject was never attempted and an interrupted one was abandoned mid-flight. Collapsing them makes a subject nobody looked at indistinguishable from one the compiler refused for a reason we could not name, and the remedies differ — run it, versus classify the refusal.\n\nThe shapes rhyme, which is exactly why the collapse is tempting: unknown-because-unclassified and unknown-because-unattempted are both unknowns. They are not the same unknown."
+
+type StandingReading
+  = StandingObserved { reading: ObservedReading }
+  | StandingNotObserved
+
+fn reading_of_standing(st: BodyLoweringObservationStanding) -> StandingReading {
+  match st {
+    SubjectObserved { stage: s } => StandingObserved { reading: reading_of_stage(s: s) }
+    SubjectUnmeasured { cause: _ } => StandingNotObserved
+    SubjectInterrupted { receipt: _ } => StandingNotObserved
+  }
+}
+
+data body_lowering_refusal_scope_note: String = "A CENSUS REFUSAL IS SCOPED TO THE BATCH, NEVER TO THE ROSTER, and an earlier revision of this repair got it wrong in the exact way the repair exists to prevent. It routed EVERY live-file subject through the refusal cause, so a census abort rewrote logic, diagnostic, occurrence_identity and node — subjects this run was never going to execute — from 'not selected' into 'the census refused'. Those are different epistemic positions with different remedies: a not-selected subject needs a bigger batch or a cheaper instrument, while a refused census needs the infrastructure fixed, and a reader deciding what to do next is misdirected by the conflation. It also destroyed the roster/batch split on precisely the path where the distinction is least visible and therefore least likely to be questioned.\n\nSo the refusal cause reaches ONLY the subjects that were actually selected. A subject outside the batch keeps not_selected_into_execution_batch whether the census succeeded or refused, because its standing does not depend on the census at all — nothing about it was attempted. The specimen class keeps its own structural cause under both, for the same reason one rung further out: it could not have been attempted under any batch.\n\nThe general form, worth stating because it is easy to reintroduce: a failure at one scope may not be attributed to subjects outside that scope. Widening a refusal to everything it did not touch is the absorbing fallback wearing an error's name — it looks conservative and it manufactures false information about subjects nobody looked at."
+
+fn refusal_standing_of(s: BodyLoweringSubject, cause: Symbol) -> BodyLoweringObservationStanding {
+  match s.realization {
+    UnauthoredSpecimenClass => SubjectUnmeasured { cause: ^no_committed_specimen_identity }
+    LiveFileSubject { path: _ } =>
+      if is_selected(label: s.label) {
+        SubjectUnmeasured { cause: cause }
+      } else {
+        SubjectUnmeasured { cause: ^not_selected_into_execution_batch }
+      }
+  }
+}
+
+fn all_subjects_unmeasured(cause: Symbol) -> List<BodyLoweringSubjectStanding> {
+  fold_list(
+    xs: body_lowering_subject_roster,
+    empty: [] as List<BodyLoweringSubjectStanding>,
+    cons: fn(acc, s) {
+      concat(acc, [BodyLoweringSubjectStanding { label: s.label, standing: refusal_standing_of(s: s, cause: cause) }])
+    }
+  )
+}
+
+fn body_lowering_program_receipt() -> List<BodyLoweringSubjectStanding> {
+  match take_body_lowering_population_census() {
+    CensusRefusedAtWorld => all_subjects_unmeasured(cause: ^census_refused_at_world)
+    CensusRefusedAtReconciliation { cause: _ } => all_subjects_unmeasured(cause: ^census_refused_at_reconciliation)
+    CensusTaken { roster_identity: _, observations: obs } => standings_from(obs: obs)
+  }
+}
+
+data body_lowering_prior_standing_note: String = "THE PRIOR STANDINGS ARE A CITED HISTORICAL RECEIPT, not this run's observation, and they are declared separately so the two can never be read as one measurement. Every row here comes from the executed table in docs/plans/v2-frontend-std-ingestion-frontier-exact-head.md at head c03be069687. This is also where SubjectInterrupted has its producer: node is the NOT RE-OBSERVED row, and recording it as interrupted-with-a-bound rather than unmeasured is what keeps its 900s lower bound attached to the subject it was measured on.\n\nA READER MAY NOT TRANSFER THESE TO THE PRESENT HEAD. They were taken on a different tree; the first executed reading of this instrument already contradicted one of them at the shard grain, which is exactly why a historical value may not be filled in for a subject this run did not execute."
+
+data body_lowering_prior_standing: List<BodyLoweringSubjectStanding> = [
+  BodyLoweringSubjectStanding { label: ^logic, standing: SubjectObserved { stage: NormalizeRetained } },
+  BodyLoweringSubjectStanding { label: ^optional, standing: SubjectObserved { stage: NormalizeRetained } },
+  BodyLoweringSubjectStanding { label: ^diagnostic, standing: SubjectObserved { stage: NormalizeRetained } },
+  BodyLoweringSubjectStanding { label: ^occurrence_identity, standing: SubjectObserved { stage: NormalizeRetained } },
+  BodyLoweringSubjectStanding { label: ^node, standing: SubjectInterrupted { receipt: "probe exceeded its 900s budget at head c03be069687; interruption plus a lower bound on cost, never a stage verdict" } },
+]
+
+fn observation_line(o: MemberObservation) -> String {
+  concat(symbol_lexeme(sym: o.label), concat(" ", frontend_stage_label(s: o.stage)))
+}
+
+fn census_report() -> String {
+  match take_body_lowering_population_census() {
+    CensusRefusedAtWorld => "REFUSED_AT_WORLD"
+    CensusRefusedAtReconciliation { cause: _ } => "REFUSED_AT_RECONCILIATION"
+    CensusTaken { roster_identity: _, observations: obs } =>
+      fold_list(
+        xs: obs,
+        empty: "",
+        cons: fn(acc, o) {
+          if acc == "" { observation_line(o: o) } else { concat(acc, concat(" | ", observation_line(o: o))) }
+        }
+      )
+  }
+}
+
+data body_lowering_no_aggregate_note: String = "THERE IS NO AGGREGATE COUNT HERE, and its absence is the module's own stated scope rather than an omission. An earlier revision carried count_stage_matching and retained_member_count, and both were deleted for defects worth recording so they are not reintroduced.\n\nA REFUSAL BECAME AN INTEGER. count_stage_matching answered 0 - 1 for CensusRefusedAtWorld and 0 - 2 for CensusRefusedAtReconciliation, so a typed refusal and a genuine population count inhabited one type. A caller could add, compare or display a failure as a measurement, and -1 is a plausible-looking number rather than a loud one. The census already carries typed refusal arms; collapsing them into the counting type discarded exactly the distinction those arms exist to preserve.\n\nPRESENTATION BECAME SEMANTIC AUTHORITY. It counted by comparing a rendered stage label against a target String. FrontendStage is a closed coproduct, so a label rename would have changed the count with no stage changing, and a label collision would have merged distinct stages — the renderer deciding a semantic question. Counting belongs to the structural variant or to frontend_stage_eq, never to rendered text.\n\nBoth were reachable because an aggregate was authored at all. This module's note already says the per-member observation IS the finding and that no aggregate verdict is warranted over a roster whose members have not each been separately established; the helpers contradicted that. A reader wanting a count over these members reads the per-member observations and counts the subjects it can name."

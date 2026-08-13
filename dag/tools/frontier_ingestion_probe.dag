@@ -286,7 +286,11 @@ fn frontier_roster_identity() -> ContentHash {
 }
 
 fn observe_roster_in(world: FrontendWorld) -> List<MemberObservation> {
-  fold_list(xs: frontier_roster, empty: [] as List<MemberObservation>, cons: fn(acc, m) {
+  observe_rows_in(world: world, rows: frontier_roster)
+}
+
+fn observe_rows_in(world: FrontendWorld, rows: List<FrontierMember>) -> List<MemberObservation> {
+  fold_list(xs: rows, empty: [] as List<MemberObservation>, cons: fn(acc, m) {
     concat(acc, [classify_member_in(world: world, m: m)])
   })
 }
@@ -294,14 +298,20 @@ fn observe_roster_in(world: FrontendWorld) -> List<MemberObservation> {
 // The whole census: prepare the world ONCE, classify every rostered member through it, then
 // reconcile the resulting population against the roster before anything may read it as a census.
 fn take_frontend_census() -> FrontendCensusReceipt {
+  take_census_over(rows: frontier_roster)
+}
+
+data census_over_rows_note: String = "take_census_over takes the roster as an argument for the same reason verify_roster does: a census that could only ever be taken over the one live roster cannot be reconciled against a different denominator, so a second population needs a second copy of the mechanism, and two copies of a classifier are two authorities that can disagree. The roster identity is derived from the rows PASSED, never from the module-level roster, so a receipt cannot claim a denominator it was not measured over — that is the exact misreading census_receipt_provenance_note exists to prevent, and it would be reintroduced by a parameterised census that kept stamping the default identity."
+
+fn take_census_over(rows: List<FrontierMember>) -> FrontendCensusReceipt {
   match prepare_frontend_world() {
     v2.std.diagnostic.Rejected { diagnostics: _ } => CensusRefusedAtWorld
     v2.std.diagnostic.Accepted { value: world, diagnostics: _ } => {
-      let obs = observe_roster_in(world: world)
-      let verdict = reconcile_census(obs: obs)
+      let obs = observe_rows_in(world: world, rows: rows)
+      let verdict = reconcile_census_over(obs: obs, rows: rows)
       match verdict {
         CensusExact =>
-          CensusTaken { roster_identity: frontier_roster_identity(), observations: obs }
+          CensusTaken { roster_identity: roster_identity(rows: rows), observations: obs }
         _ => CensusRefusedAtReconciliation { cause: verdict }
       }
     }
@@ -368,21 +378,35 @@ fn count_label(obs: List<MemberObservation>, label: Symbol) -> Int {
 }
 
 fn roster_contains(label: Symbol) -> Bool {
-  fold_list(xs: frontier_roster, empty: false, cons: fn(acc, m) {
+  rows_contain_label(rows: frontier_roster, label: label)
+}
+
+fn rows_contain_label(rows: List<FrontierMember>, label: Symbol) -> Bool {
+  fold_list(xs: rows, empty: false, cons: fn(acc, m) {
     acc || (m.label == label)
   })
 }
 
 fn reconcile_census(obs: List<MemberObservation>) -> CensusReconciliation {
-  let roster = verify_frontier_roster()
+  reconcile_census_over(obs: obs, rows: frontier_roster)
+}
+
+fn reconcile_census_over(
+  obs: List<MemberObservation>,
+  rows: List<FrontierMember>
+) -> CensusReconciliation {
+  let roster = verify_roster(rows: rows)
   match roster {
-    FrontierRosterValid => reconcile_against_valid_roster(obs: obs)
+    FrontierRosterValid => reconcile_against_valid_rows(obs: obs, rows: rows)
     _ => CensusRosterInvalid { verdict: roster }
   }
 }
 
-fn reconcile_against_valid_roster(obs: List<MemberObservation>) -> CensusReconciliation {
-  let covered = fold_list(xs: frontier_roster, empty: CensusExact, cons: fn(acc, m) {
+fn reconcile_against_valid_rows(
+  obs: List<MemberObservation>,
+  rows: List<FrontierMember>
+) -> CensusReconciliation {
+  let covered = fold_list(xs: rows, empty: CensusExact, cons: fn(acc, m) {
     match acc {
       CensusExact => {
         let n = count_label(obs: obs, label: m.label)
@@ -402,7 +426,7 @@ fn reconcile_against_valid_roster(obs: List<MemberObservation>) -> CensusReconci
       fold_list(xs: obs, empty: CensusExact, cons: fn(acc, o) {
         match acc {
           CensusExact =>
-            if roster_contains(label: o.label) {
+            if rows_contain_label(rows: rows, label: o.label) {
               CensusExact
             } else {
               CensusUnrosteredObservation { label: o.label }
