@@ -35,6 +35,7 @@ import gunbc.codex_app_server_press {
   CodexPlanTypeMalformed,
   CodexCredentialLive,
   CodexCredentialDead,
+  CodexCredentialLivenessUnobserved,
   codex_account_realm_from_result,
 }
 import extdeps.llm.codex_app_server {
@@ -69,6 +70,7 @@ import gunbc.provider_standing {
   AuthenticationCredentialsAbsent,
   AuthenticationProfilePresentTokenAbsent,
   AuthenticationRefreshFailed,
+  AuthenticationStandingUnobserved,
   EntitlementObservationUnobserved,
   EntitlementObservedAvailable,
   EntitlementRejected,
@@ -630,9 +632,14 @@ test fn witness_credential_liveness_splits_from_realm() -> Bool {
     liveness: CodexCredentialDead {
       reason: "account/rateLimits/read returned no decodable buckets" as NonEmptyStr,
     })
+  let unobserved_auth = provider_authentication_from_codex_credential_liveness(
+    liveness: CodexCredentialLivenessUnobserved {
+      reason: "account/rateLimits/read probe did not complete" as NonEmptyStr,
+    })
   let realm_still_pro = provider_entitlement_from_codex_realm(
     realm: CodexChatgptRealm { plan: CodexPlanTypeObserved { plan: CodexPlanPro } })
   (match live_auth { AuthenticationAuthenticated => true _ => false })
     && (match dead_auth { AuthenticationRefreshFailed { reason: _ } => true _ => false })
+    && (match unobserved_auth { AuthenticationStandingUnobserved { reason: _ } => true _ => false })
     && (match realm_still_pro { EntitlementObservedAvailable => true _ => false })
 }
