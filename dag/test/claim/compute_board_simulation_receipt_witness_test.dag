@@ -38,6 +38,7 @@ import product.compute_board.simulation_receipt {
   outcome_is_accepted,
   run_of,
   executed_implementation_runs,
+  interlock_bitstream_run,
   interlock_pin_constraint_artifact,
   interlock_place_and_route_run,
   interlock_synthesis_run,
@@ -238,8 +239,20 @@ test fn w_every_recorded_implementation_run_was_accepted() -> Bool {
 // THE OBSERVATION NAMES A BITSTREAM, not merely a successful exit. A chain that synthesised and
 // placed but produced no image would satisfy "the tools accepted it" while leaving nothing to
 // program a device with.
-test fn w_the_implementation_observation_names_a_programmable_image() -> Bool {
+// EACH TOOL'S RECEIPT QUOTES ITS OWN TOOL. An earlier revision of this test asserted that the
+// place-and-route observation contained both the synthesis cell count AND the bitstream size —
+// which was true only because one fused blob was attached to every run, and which enshrined that
+// fusion as the contract. A receipt that quotes a tool it did not run keeps vouching for that
+// tool's output after the output has drifted.
+test fn w_each_implementation_run_reports_its_own_tool() -> Bool {
+  let synth = run_of(outcome: interlock_synthesis_run)
   let pnr = run_of(outcome: interlock_place_and_route_run)
-  list_length(items: split(s: pnr.observation, delimiter: "32220 byte bitstream")) > 1
-    && list_length(items: split(s: pnr.observation, delimiter: "SB_LUT4")) > 1
+  let pack = run_of(outcome: interlock_bitstream_run)
+  let synth_is_its_own = list_length(items: split(s: synth.observation, delimiter: "SB_LUT4")) > 1
+    && list_length(items: split(s: synth.observation, delimiter: "32220 byte bitstream")) == 1
+  let pnr_is_its_own = list_length(items: split(s: pnr.observation, delimiter: "constrained power_permit")) > 1
+    && list_length(items: split(s: pnr.observation, delimiter: "SB_LUT4")) == 1
+  let pack_is_its_own = list_length(items: split(s: pack.observation, delimiter: "32220 byte bitstream")) > 1
+    && list_length(items: split(s: pack.observation, delimiter: "constrained power_permit")) == 1
+  synth_is_its_own && pnr_is_its_own && pack_is_its_own
 }

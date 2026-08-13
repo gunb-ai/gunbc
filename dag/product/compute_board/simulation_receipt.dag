@@ -126,7 +126,28 @@ data interlock_pin_constraint_artifact: String = "set_io conditioned_good 1\nset
 // Synthesis reported two four-input lookup tables for a two-equation combinational interlock,
 // which is the size the logic actually is; place-and-route reported each output constrained to
 // the bel behind its assigned package pin.
-data interlock_synthesis_observation: String = "yosys synth_ice40: 2 SB_LUT4 cells\nnextpnr-ice40 --hx1k --package tq144: constrained power_permit to bel X0/Y13/io1, reset_release to bel X0/Y13/io0\nicepack: 32220 byte bitstream, sha256 0f69b8fd5693c76f809861c1027bc4db83131489e002ad0ddf63437eea3ef357"
+// ONE OBSERVATION PER TOOL. An earlier revision attached a single blob carrying all three tools'
+// output to both the synthesis run and the place-and-route run, which fuses independent
+// observations: if either tool's real output later drifted, the other's receipt would go on
+// quoting it. A run records what ITS tool reported.
+data interlock_synthesis_observation: String = "yosys synth_ice40: 2 SB_LUT4 cells"
+
+data interlock_place_and_route_observation: String = "nextpnr-ice40 --hx1k --package tq144: constrained power_permit to bel X0/Y13/io1, reset_release to bel X0/Y13/io0"
+
+// icepack is a third tool and gets a third row rather than riding on place-and-route's. The
+// bitstream digest is the only observation in this module that a later reader can independently
+// re-derive from the artifact, which is exactly why it should not be buried in another tool's
+// report.
+data icepack_tool: SimulationTool = SimulationTool {
+  subject: DeclarationRef {
+    module_path: "extdeps.toolchain.icestorm.subject",
+    decl_name: "icestorm_project",
+    field: WholeDeclaration,
+  },
+  reported_version: "icepack (Project IceStorm)",
+}
+
+data interlock_bitstream_observation: String = "icepack: 32220 byte bitstream, sha256 0f69b8fd5693c76f809861c1027bc4db83131489e002ad0ddf63437eea3ef357"
 
 data interlock_synthesis_run: SimulationOutcome = SimulationAccepted {
   run: SimulationRun {
@@ -140,8 +161,16 @@ data interlock_place_and_route_run: SimulationOutcome = SimulationAccepted {
   run: SimulationRun {
     tool: nextpnr_tool,
     artifact: interlock_pin_constraint_artifact,
-    observation: interlock_synthesis_observation,
+    observation: interlock_place_and_route_observation,
   },
 }
 
-data executed_implementation_runs: List<SimulationOutcome> = [interlock_synthesis_run, interlock_place_and_route_run]
+data interlock_bitstream_run: SimulationOutcome = SimulationAccepted {
+  run: SimulationRun {
+    tool: icepack_tool,
+    artifact: interlock_pin_constraint_artifact,
+    observation: interlock_bitstream_observation,
+  },
+}
+
+data executed_implementation_runs: List<SimulationOutcome> = [interlock_synthesis_run, interlock_place_and_route_run, interlock_bitstream_run]

@@ -333,6 +333,8 @@ pub type Ampere = Rc<Measure<(), (), i64>>;
 
 pub type Millimeter = Rc<Measure<(), (), i64>>;
 
+pub type Micrometer = Rc<Measure<(), (), i64>>;
+
 pub type SignedMillimeterComponent = Rc<Measure<(), (), i64>>;
 
 pub type SquareMillimeter = Rc<Measure<(), (), i64>>;

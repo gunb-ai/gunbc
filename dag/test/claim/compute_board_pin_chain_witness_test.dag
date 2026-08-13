@@ -49,6 +49,7 @@ import extdeps.toolchain.icestorm.subject {
   icestorm_hx1k_tq144_roster,
   roster_admits_pin,
   roster_pin_count,
+  roster_pin_occurrences,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -299,4 +300,15 @@ test fn w_the_package_carries_the_facts_a_footprint_needs() -> Bool {
     && measure_count(m: ice40_tq144_package.contact_pitch) == 500
     && measure_count(m: ice40_tq144_package.body_width) == 20000
     && ice40_tq144_package.contact_count == 144
+}
+
+// THE COUNT IS ONLY EVIDENCE IF THE ROWS ARE DISTINCT. The vendor-and-toolchain agreement above
+// compares 96 against 96, and a duplicated designator would hold that count while the real
+// population shrank — the roster would agree with Lattice about a number and disagree about the
+// package. Every designator is asserted to appear exactly once, which is what makes the agreement
+// a join rather than an arithmetic coincidence.
+test fn w_no_package_position_is_listed_twice() -> Bool {
+  fold(icestorm_hx1k_tq144_roster.pins, init: true, f: fn(acc, p) {
+    acc && roster_pin_occurrences(r: icestorm_hx1k_tq144_roster, pin: p) == 1
+  })
 }
