@@ -17,6 +17,7 @@ import gunbc.floor_component_receipt {
   ControlAmbiguous,
   floor_component_row,
   floor_component_row_of_failure_mode,
+  floor_component_row_not_concluded,
   floor_component_row_is_done,
   floor_affected_set_control_state,
   floor_unsuccessful_component_rows,
@@ -262,6 +263,31 @@ fn fcr_mode_row(mode: NonEmptyStr) -> FloorComponentRow? {
   )
 }
 
+fn fcr_not_concluded_mode_row(mode: NonEmptyStr, detail: NonEmptyStr) -> FloorComponentRow? {
+  floor_component_row_not_concluded(
+    run_id: fcr_run_id,
+    index: 7,
+    label: "discovery-corpus wet self-host" as NonEmptyStr,
+    selection_tag: "applied" as NonEmptyStr,
+    failure_mode: mode,
+    detail: detail
+  )
+}
+
+fn fcr_not_concluded_outcome_is(mode: NonEmptyStr, expected_outcome: String) -> Bool {
+  let rows = fcr_rows_of(opts: [
+    fcr_not_concluded_mode_row(
+      mode: mode,
+      detail: "batch not concluded — checkpoint written while the run was still in progress; this component's fate is unknown at write time" as NonEmptyStr
+    )
+  ])
+  count(rows) == 1
+    && string_contains(
+         s: floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: rows),
+         pattern: concat(concat("\"outcome\": \"", expected_outcome), "\"")
+       )
+}
+
 fn fcr_mode_outcome_is(mode: NonEmptyStr, expected_outcome: String) -> Bool {
   let rows = fcr_rows_of(opts: [fcr_mode_row(mode: mode)])
   count(rows) == 1
@@ -282,10 +308,11 @@ test fn fcr_not_reached_mode_is_skipped_not_failed() -> Bool {
   fcr_mode_outcome_is(mode: "not_reached" as NonEmptyStr, expected_outcome: "skipped")
 }
 
-data fcr_run_incomplete_note: String = "run_incomplete and not_reached share the Skipped outcome and MUST NOT share a mode — the same both-halves discipline fcr_failure_mode_edge_note states for Infra/WitnessRed, applied to the pair the checkpoint introduced. The outcomes agreeing is the record staying correct (neither produced a verdict); the modes differing is what lets a reader tell a run that was KILLED mid-flight from a plan that CONCLUDED and deliberately skipped the tail. Those route to different owners — one is 'find out why the run never finished', the other is 'fix the earlier component' — and the receipt is the only evidence a SIGKILLed run leaves, so getting this pair wrong tells a wrong causal story about precisely the incident the checkpoint exists to explain. Either half alone is satisfiable by a broken projection, so both are asserted."
+data fcr_run_incomplete_note: String = "run_incomplete rows are pending (ComponentNotConcluded), not skipped. Skipped claims the walk produced a verdict of none; pending claims no verdict exists yet because the receipt was written mid-run. not_reached remains skipped: the plan concluded and deliberately skipped the tail. The modes must stay distinct so a SIGKILL checkpoint is not misread as a stop-policy skip."
 
-test fn fcr_run_incomplete_mode_is_skipped_like_not_reached() -> Bool {
-  fcr_mode_outcome_is(mode: "run_incomplete" as NonEmptyStr, expected_outcome: "skipped")
+test fn fcr_run_incomplete_mode_is_pending_not_skipped() -> Bool {
+  fcr_not_concluded_outcome_is(mode: "run_incomplete" as NonEmptyStr, expected_outcome: "pending")
+    && !fcr_not_concluded_outcome_is(mode: "run_incomplete" as NonEmptyStr, expected_outcome: "skipped")
 }
 
 test fn fcr_deadline_reached_is_refused_not_skipped() -> Bool {

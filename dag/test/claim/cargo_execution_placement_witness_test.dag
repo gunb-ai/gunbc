@@ -1,0 +1,161 @@
+module test.claim.cargo_execution_placement_witness_test
+
+import gunbc.cargo_execution_placement {
+  CargoPlacement,
+  LocalRunner,
+  RemoteBuilder,
+  CargoSubjectPlacementRequirement,
+  RequiresLocalWorkspace,
+  RelocatableSubject,
+  CargoPlacementDecision,
+  PlacementAdmitted,
+  PlacementRefused,
+  CargoPlacementRefusalCause,
+  RemoteBuilderCannotServeLocalWorkspace,
+  RemoteBuilderRealizationUnbound,
+  CargoExecutableUnobserved,
+  CargoInvocationOutcome,
+  CargoInvocationPassed,
+  CargoInvocationFailed,
+  CargoInvocationNotAttempted,
+  decide_cargo_placement,
+  cargo_outcome_holds,
+  cargo_outcome_diagnostic,
+  cargo_placement_refused_for_absent_executable,
+  cargo_placement_refusal_text
+}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { Bool, String }
+
+// Controls for the placement axis extracted in gunbc.cargo_execution_placement.
+//
+// These are hermetic on purpose and the boundary is worth stating: they prove the
+// DECISION is total and that a refusal and a failure stay distinct. They do NOT prove
+// that the real-roster wet witness turns green — that needs a runner with a local cargo
+// and roughly 11 GiB for the clone-and-build, which is a cadence job, not a session job.
+// Saying so here keeps a green hermetic file from reading as evidence about the wet one.
+
+data placement_probe_subject: DeclarationRef = DeclarationRef {
+  module_path: "tools.interpreter_dispatch_bijection_real_roster_transport",
+  decl_name: "run_interpreter_dispatch_bijection_real_roster_red",
+  field: WholeDeclaration,
+}
+
+fn w_local_runner_admits_its_observed_path() -> Bool {
+  match decide_cargo_placement(
+    requirement: RequiresLocalWorkspace { required_by: placement_probe_subject },
+    placement: LocalRunner { cargo_path: "/observed/cargo" }
+  ) {
+    PlacementAdmitted { cargo_path: p } => p == "/observed/cargo"
+    PlacementRefused { cause: _ } => false
+  }
+}
+
+// The load-bearing arm: a local-workspace subject handed a remote builder must refuse
+// BEFORE execution. Regressing decide_cargo_placement to admit the remote arm reds this.
+fn w_remote_builder_refuses_a_local_workspace_subject() -> Bool {
+  match decide_cargo_placement(
+    requirement: RequiresLocalWorkspace { required_by: placement_probe_subject },
+    placement: RemoteBuilder { service: "buildbuddy" }
+  ) {
+    PlacementAdmitted { cargo_path: _ } => false
+    PlacementRefused { cause: c } => match c {
+      RemoteBuilderCannotServeLocalWorkspace { service: s } => s == "buildbuddy"
+      RemoteBuilderRealizationUnbound { service: _ } => false
+      CargoExecutableUnobserved { observation: _ } => false
+    }
+  }
+}
+
+// The arm that was WRONG in the first revision (review 51730): a relocatable subject was
+// refused with the local-workspace cause, a label contradicting its own arm. The two remote
+// refusals must stay distinguishable, because their remedies differ — one is a missing
+// capability to model, the other is permanent.
+fn w_relocatable_subject_refuses_for_an_unbound_realization_not_locality() -> Bool {
+  match decide_cargo_placement(
+    requirement: RelocatableSubject,
+    placement: RemoteBuilder { service: "buildbuddy" }
+  ) {
+    PlacementAdmitted { cargo_path: _ } => false
+    PlacementRefused { cause: c } => match c {
+      RemoteBuilderRealizationUnbound { service: s } => s == "buildbuddy"
+      RemoteBuilderCannotServeLocalWorkspace { service: _ } => false
+      CargoExecutableUnobserved { observation: _ } => false
+    }
+  }
+}
+
+fn w_the_two_remote_refusals_read_differently() -> Bool {
+  let local_subject = decide_cargo_placement(
+    requirement: RequiresLocalWorkspace { required_by: placement_probe_subject },
+    placement: RemoteBuilder { service: "buildbuddy" }
+  )
+  let relocatable = decide_cargo_placement(
+    requirement: RelocatableSubject,
+    placement: RemoteBuilder { service: "buildbuddy" }
+  )
+  placement_decision_text(d: local_subject) != placement_decision_text(d: relocatable)
+}
+
+fn w_absent_executable_refuses_rather_than_guessing() -> Bool {
+  match cargo_placement_refused_for_absent_executable(observation: "which cargo: not found") {
+    PlacementAdmitted { cargo_path: _ } => false
+    PlacementRefused { cause: c } => match c {
+      CargoExecutableUnobserved { observation: o } => o == "which cargo: not found"
+      RemoteBuilderCannotServeLocalWorkspace { service: _ } => false
+      RemoteBuilderRealizationUnbound { service: _ } => false
+    }
+  }
+}
+
+// Refusal and failure both answer false, so a Bool cannot tell them apart — which is the
+// defect this carrier exists to remove. The diagnostic must keep them distinguishable.
+fn w_refusal_and_failure_are_distinguishable_though_both_false() -> Bool {
+  let failed = CargoInvocationFailed { exit_code: 101, cause: "compilation failed" }
+  let refused = CargoInvocationNotAttempted {
+    refusal: CargoExecutableUnobserved { observation: "which cargo: not found" }
+  }
+  !cargo_outcome_holds(o: failed)
+    && !cargo_outcome_holds(o: refused)
+    && cargo_outcome_diagnostic(o: failed) != cargo_outcome_diagnostic(o: refused)
+    && string_contains(s: cargo_outcome_diagnostic(o: failed), pattern: "101")
+}
+
+fn w_passed_is_the_only_holding_outcome() -> Bool {
+  cargo_outcome_holds(o: CargoInvocationPassed)
+}
+
+fn placement_decision_text(d: CargoPlacementDecision) -> String {
+  match d {
+    PlacementAdmitted { cargo_path: p } => concat("admitted:", p)
+    PlacementRefused { cause: c } => cargo_placement_refusal_text(cause: c)
+  }
+}
+
+test fn local_runner_admits_its_observed_path() -> Bool {
+  w_local_runner_admits_its_observed_path()
+}
+
+test fn remote_builder_refuses_a_local_workspace_subject() -> Bool {
+  w_remote_builder_refuses_a_local_workspace_subject()
+}
+
+test fn absent_executable_refuses_rather_than_guessing() -> Bool {
+  w_absent_executable_refuses_rather_than_guessing()
+}
+
+test fn refusal_and_failure_are_distinguishable_though_both_false() -> Bool {
+  w_refusal_and_failure_are_distinguishable_though_both_false()
+}
+
+test fn passed_is_the_only_holding_outcome() -> Bool {
+  w_passed_is_the_only_holding_outcome()
+}
+
+test fn relocatable_subject_refuses_for_an_unbound_realization_not_locality() -> Bool {
+  w_relocatable_subject_refuses_for_an_unbound_realization_not_locality()
+}
+
+test fn the_two_remote_refusals_read_differently() -> Bool {
+  w_the_two_remote_refusals_read_differently()
+}

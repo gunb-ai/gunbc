@@ -11,6 +11,7 @@ use std::time::Instant;
 #[cfg(test)]
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{
+    active_workset_admit, active_workset_complete, active_workset_snapshot,
     build_floor_discovery_request, compute_histogram_data,
     discover_floor_witness_roster_with_snapshot, enable_floor_compile_clean_lazy_install,
     heartbeat_feed_enter_batch, heartbeat_feed_entry_completed, heartbeat_feed_snapshot,
@@ -2583,6 +2584,11 @@ fn claim_result_for_outcome(
                     ctx,
                     &function,
                 );
+                v1_compiler::cli_run::append_witness_verdict_diagnostic_loudness(
+                    &mut detail,
+                    ctx,
+                    &function,
+                );
                 detail
             },
             function,
@@ -3447,7 +3453,9 @@ fn run_shared_entry_claims(
         .map(|function| {
             set_phase(FloorPhase::Gate, &format!("{entry}::{function}"));
             let claim_start = Instant::now();
+            active_workset_admit(entry, function);
             let outcome = run_claim(&ctx, function);
+            active_workset_complete(entry, function);
             // Witness frame exit: the memo must not retain values across
             // witnesses sharing this ctx (byte-unbounded, 20GiB-class kills).
             v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
@@ -3550,7 +3558,9 @@ fn run_memo_shared_claims(
         .map(|function| {
             set_phase(FloorPhase::Gate, &format!("{entry}::{function}"));
             let claim_start = Instant::now();
+            active_workset_admit(entry, function);
             let outcome = run_claim(ctx, function);
+            active_workset_complete(entry, function);
             // Witness frame exit — this memoized ctx outlives whole entry
             // groups, so per-witness release matters here most of all.
             v1_compiler::v1_interpreter::eval_call_memo_frame_exit(ctx);
@@ -5503,104 +5513,47 @@ fn write_floor_component_receipt_at(
     // run instead yields `ControlConcluded` with a `Skipped` outcome, and the alert reports
     // the control RED with its real cause.
     for bi in batch_records.len()..total_batches {
-        match floor_component_row_value(
-            &ctx,
-            &run_id,
-            bi as i64 + 1,
-            &batch_heartbeat_label(&batches[bi]),
-            batch_selection_tag(&batches[bi]),
-            0,
-            unreached.failure_mode(),
-            unreached.detail(),
-            0,
-        ) {
+        let label = batch_heartbeat_label(&batches[bi]);
+        let selection_tag = batch_selection_tag(&batches[bi]);
+        let row = if unreached == UnreachedCause::RunIncomplete {
+            floor_component_row_not_concluded_value(
+                &ctx,
+                &run_id,
+                bi as i64 + 1,
+                &label,
+                selection_tag,
+                unreached.failure_mode(),
+                unreached.detail(),
+            )
+        } else {
+            floor_component_row_value(
+                &ctx,
+                &run_id,
+                bi as i64 + 1,
+                &label,
+                selection_tag,
+                0,
+                unreached.failure_mode(),
+                unreached.detail(),
+                0,
+            )
+        };
+        match row {
             Some(v) => rows.push(v),
             None => return false,
         }
     }
 
-    let doc = if let Some(snapshot) = selection_degradation_from_batch_records(batch_records) {
-        match run_in_context_with_args(
-            &ctx,
-            "floor_component_receipt_document_with_selection",
-            &[
-                (
-                    Some("workflow_name".to_string()),
-                    Value::Str(workflow_name.clone()),
-                ),
-                (Some("run_id".to_string()), Value::Str(run_id.clone())),
-                (Some("head_sha".to_string()), Value::Str(head_sha.clone())),
-                (Some("rows".to_string()), Value::List(Rc::new(rows.into()))),
-                (
-                    Some("selection_mode_tag".to_string()),
-                    Value::Str(snapshot.selection_mode_tag.clone()),
-                ),
-                (
-                    Some("selected".to_string()),
-                    Value::Int(snapshot.selected_entry_groups as i64),
-                ),
-                (
-                    Some("total".to_string()),
-                    Value::Int(snapshot.total_entry_groups as i64),
-                ),
-                (
-                    Some("categorization_unavailable".to_string()),
-                    Value::Bool(snapshot.categorization_unavailable),
-                ),
-                (
-                    Some("categorization_reason".to_string()),
-                    Value::Str(snapshot.categorization_reason.clone()),
-                ),
-            ],
-            false,
-        ) {
-            Ok(Value::Str(s)) => s,
-            Ok(other) => {
-                eprintln!(
-                    "claim_executor: floor component receipt REFUSED — \
-                     floor_component_receipt_document_with_selection returned {other:?}, not Str"
-                );
-                return false;
-            }
-            Err(e) => {
-                eprintln!(
-                    "claim_executor: floor component receipt REFUSED — \
-                     floor_component_receipt_document_with_selection eval: {e}"
-                );
-                return false;
-            }
-        }
-    } else {
-        match run_in_context_with_args(
-            &ctx,
-            "floor_component_receipt_document",
-            &[
-                (
-                    Some("workflow_name".to_string()),
-                    Value::Str(workflow_name.clone()),
-                ),
-                (Some("run_id".to_string()), Value::Str(run_id.clone())),
-                (Some("head_sha".to_string()), Value::Str(head_sha.clone())),
-                (Some("rows".to_string()), Value::List(Rc::new(rows.into()))),
-            ],
-            false,
-        ) {
-            Ok(Value::Str(s)) => s,
-            Ok(other) => {
-                eprintln!(
-                    "claim_executor: floor component receipt REFUSED — \
-                     floor_component_receipt_document returned {other:?}, not Str"
-                );
-                return false;
-            }
-            Err(e) => {
-                eprintln!(
-                    "claim_executor: floor component receipt REFUSED — \
-                     floor_component_receipt_document eval: {e}"
-                );
-                return false;
-            }
-        }
+    let Some(doc) = write_floor_component_receipt_document(
+        &ctx,
+        &workflow_name,
+        &run_id,
+        &head_sha,
+        rows,
+        unreached,
+        batch_records,
+    ) else {
+        return false;
     };
 
     let path = base.join("floor-component-receipt.json");
@@ -5737,6 +5690,272 @@ fn floor_component_row_value(
                 "claim_executor: floor component receipt REFUSED — {constructor} eval for batch {index}: {e}"
             );
             None
+        }
+    }
+}
+
+fn floor_component_row_not_concluded_value(
+    ctx: &InterpContext,
+    run_id: &str,
+    index: i64,
+    label: &str,
+    selection_tag: &str,
+    failure_mode: &str,
+    detail: &str,
+) -> Option<Value> {
+    let constructor = "floor_component_row_not_concluded";
+    let args: Vec<(Option<String>, Value)> = vec![
+        (Some("run_id".to_string()), Value::Str(run_id.to_string())),
+        (Some("index".to_string()), Value::Int(index)),
+        (Some("label".to_string()), Value::Str(label.to_string())),
+        (
+            Some("selection_tag".to_string()),
+            Value::Str(selection_tag.to_string()),
+        ),
+        (
+            Some("failure_mode".to_string()),
+            Value::Str(failure_mode.to_string()),
+        ),
+        (Some("detail".to_string()), Value::Str(detail.to_string())),
+    ];
+    let out = run_in_context_with_args(ctx, constructor, &args, false);
+    match out {
+        Ok(Value::Variant {
+            ref variant_name,
+            ref fields,
+            ..
+        }) if ctx.sym_eq(*variant_name, "Present") => fields
+            .iter()
+            .find(|(n, _)| ctx.sym_eq(*n, "value"))
+            .map(|(_, v)| v.clone())
+            .or_else(|| {
+                eprintln!(
+                    "claim_executor: floor component receipt REFUSED — \
+                     Present row without a `value` field (batch {index})"
+                );
+                None
+            }),
+        Ok(Value::Null) => {
+            eprintln!(
+                "claim_executor: floor component receipt REFUSED — {constructor} returned \
+                 absent for batch {index}: selection_tag={selection_tag:?} \
+                 failure_mode={failure_mode:?} are outside the .dag vocabulary"
+            );
+            None
+        }
+        Ok(other) => {
+            eprintln!(
+                "claim_executor: floor component receipt REFUSED — {constructor} returned {other:?} for batch {index}"
+            );
+            None
+        }
+        Err(e) => {
+            eprintln!("claim_executor: floor component receipt REFUSED — {constructor} eval: {e}");
+            None
+        }
+    }
+}
+
+fn active_workset_json_values(ctx: &InterpContext) -> Vec<Value> {
+    active_workset_snapshot()
+        .into_iter()
+        .filter_map(|entry| {
+            match run_in_context_with_args(
+                ctx,
+                "floor_active_workset_entry_json",
+                &[
+                    (Some("attempt_id".to_string()), Value::Str(entry.attempt_id)),
+                    (Some("entry".to_string()), Value::Str(entry.entry)),
+                    (Some("function".to_string()), Value::Str(entry.function)),
+                ],
+                false,
+            ) {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    eprintln!(
+                        "claim_executor: floor component receipt REFUSED — \
+                         floor_active_workset_entry_json eval: {e}"
+                    );
+                    None
+                }
+            }
+        })
+        .collect()
+}
+
+fn write_floor_component_receipt_document(
+    ctx: &InterpContext,
+    workflow_name: &str,
+    run_id: &str,
+    head_sha: &str,
+    rows: Vec<Value>,
+    unreached: UnreachedCause,
+    batch_records: &[BatchRecord],
+) -> Option<String> {
+    let rows_list = Value::List(Rc::new(rows.into()));
+    let snapshot = selection_degradation_from_batch_records(batch_records);
+    if unreached == UnreachedCause::RunIncomplete {
+        let concluded_count = batch_records.len() as i64;
+        let pending_from_index = (batch_records.len() + 1) as i64;
+        let active_workset = active_workset_json_values(ctx);
+        let mut args: Vec<(Option<String>, Value)> = vec![
+            (
+                Some("workflow_name".to_string()),
+                Value::Str(workflow_name.to_string()),
+            ),
+            (Some("run_id".to_string()), Value::Str(run_id.to_string())),
+            (
+                Some("head_sha".to_string()),
+                Value::Str(head_sha.to_string()),
+            ),
+            (Some("rows".to_string()), rows_list),
+            (
+                Some("run_terminal_cause".to_string()),
+                Value::Str(unreached.failure_mode().to_string()),
+            ),
+            (
+                Some("concluded_count".to_string()),
+                Value::Int(concluded_count),
+            ),
+            (
+                Some("pending_from_index".to_string()),
+                Value::Int(pending_from_index),
+            ),
+            (
+                Some("active_workset".to_string()),
+                Value::List(Rc::new(active_workset.into())),
+            ),
+        ];
+        let constructor = if let Some(snapshot) = snapshot {
+            args.extend([
+                (
+                    Some("selection_mode_tag".to_string()),
+                    Value::Str(snapshot.selection_mode_tag.clone()),
+                ),
+                (
+                    Some("selected".to_string()),
+                    Value::Int(snapshot.selected_entry_groups as i64),
+                ),
+                (
+                    Some("total".to_string()),
+                    Value::Int(snapshot.total_entry_groups as i64),
+                ),
+                (
+                    Some("categorization_unavailable".to_string()),
+                    Value::Bool(snapshot.categorization_unavailable),
+                ),
+                (
+                    Some("categorization_reason".to_string()),
+                    Value::Str(snapshot.categorization_reason.clone()),
+                ),
+            ]);
+            "floor_component_receipt_document_incomplete_with_selection"
+        } else {
+            "floor_component_receipt_document_incomplete"
+        };
+        match run_in_context_with_args(ctx, constructor, &args, false) {
+            Ok(Value::Str(s)) => Some(s),
+            Ok(other) => {
+                eprintln!(
+                    "claim_executor: floor component receipt REFUSED — \
+                     {constructor} returned {other:?}, not Str"
+                );
+                None
+            }
+            Err(e) => {
+                eprintln!(
+                    "claim_executor: floor component receipt REFUSED — {constructor} eval: {e}"
+                );
+                None
+            }
+        }
+    } else if let Some(snapshot) = snapshot {
+        match run_in_context_with_args(
+            ctx,
+            "floor_component_receipt_document_with_selection",
+            &[
+                (
+                    Some("workflow_name".to_string()),
+                    Value::Str(workflow_name.to_string()),
+                ),
+                (Some("run_id".to_string()), Value::Str(run_id.to_string())),
+                (
+                    Some("head_sha".to_string()),
+                    Value::Str(head_sha.to_string()),
+                ),
+                (Some("rows".to_string()), rows_list),
+                (
+                    Some("selection_mode_tag".to_string()),
+                    Value::Str(snapshot.selection_mode_tag.clone()),
+                ),
+                (
+                    Some("selected".to_string()),
+                    Value::Int(snapshot.selected_entry_groups as i64),
+                ),
+                (
+                    Some("total".to_string()),
+                    Value::Int(snapshot.total_entry_groups as i64),
+                ),
+                (
+                    Some("categorization_unavailable".to_string()),
+                    Value::Bool(snapshot.categorization_unavailable),
+                ),
+                (
+                    Some("categorization_reason".to_string()),
+                    Value::Str(snapshot.categorization_reason.clone()),
+                ),
+            ],
+            false,
+        ) {
+            Ok(Value::Str(s)) => Some(s),
+            Ok(other) => {
+                eprintln!(
+                    "claim_executor: floor component receipt REFUSED — \
+                     floor_component_receipt_document_with_selection returned {other:?}, not Str"
+                );
+                None
+            }
+            Err(e) => {
+                eprintln!(
+                    "claim_executor: floor component receipt REFUSED — \
+                     floor_component_receipt_document_with_selection eval: {e}"
+                );
+                None
+            }
+        }
+    } else {
+        match run_in_context_with_args(
+            ctx,
+            "floor_component_receipt_document",
+            &[
+                (
+                    Some("workflow_name".to_string()),
+                    Value::Str(workflow_name.to_string()),
+                ),
+                (Some("run_id".to_string()), Value::Str(run_id.to_string())),
+                (
+                    Some("head_sha".to_string()),
+                    Value::Str(head_sha.to_string()),
+                ),
+                (Some("rows".to_string()), rows_list),
+            ],
+            false,
+        ) {
+            Ok(Value::Str(s)) => Some(s),
+            Ok(other) => {
+                eprintln!(
+                    "claim_executor: floor component receipt REFUSED — \
+                     floor_component_receipt_document returned {other:?}, not Str"
+                );
+                None
+            }
+            Err(e) => {
+                eprintln!(
+                    "claim_executor: floor component receipt REFUSED — \
+                     floor_component_receipt_document eval: {e}"
+                );
+                None
+            }
         }
     }
 }
@@ -8044,6 +8263,9 @@ fn arm_population_budget_watchdog(
                 let elapsed_ms = started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
                 let locus = progress.snapshot();
                 let label = population.to_ascii_uppercase().replace('_', "-");
+                let detail = population_budget_over_budget_detail(
+                    &label, &site, &locus, elapsed_ms, budget_ms,
+                );
 
                 // THE REFUSAL IS ANNOUNCED BEFORE ANY WORK THAT CAN BLOCK OR FAIL, because the
                 // incident this ordering fixes is a budget exhaustion that killed the floor and
@@ -8066,20 +8288,13 @@ fn arm_population_budget_watchdog(
                 // it is policing can hold.
                 //
                 // The annotation goes to stdout as `::error::` so the cause reaches the run summary
-                // rather than only line ~7000 of a step log; the detail line stays on stderr for
-                // the terminal receipt. eprintln!/println! take the lock per call rather than
-                // holding a guard across several operations, and the receipt write moves after
-                // both, where a failure to write it can no longer suppress the diagnosis.
-                println!(
-                    "::error::claim_executor: {label}-OVER-BUDGET — plan_site={site} population_index={} active_unit={} elapsed_ms={elapsed_ms} budget_ms={budget_ms}; executor refusing inside the population boundary",
-                    locus.population_index,
-                    locus.active_unit,
-                );
-                eprintln!(
-                    "claim_executor: {label}-OVER-BUDGET — plan_site={site} population_index={} active_unit={} elapsed_ms={elapsed_ms} budget_ms={budget_ms}; executor refusing inside the population boundary",
-                    locus.population_index,
-                    locus.active_unit,
-                );
+                // rather than only line ~7000 of a step log; the same located detail is replayed
+                // into the worker terminal receipt after these lines flush. eprintln!/println!
+                // take the lock per call rather than holding a guard across several operations,
+                // and the durable receipt writes move after both, where a failure to write can
+                // no longer suppress the diagnosis.
+                println!("::error::claim_executor: {detail}");
+                eprintln!("claim_executor: {detail}");
                 use std::io::Write as _;
                 let _ = std::io::stdout().flush();
                 let _ = std::io::stderr().flush();
@@ -8092,12 +8307,13 @@ fn arm_population_budget_watchdog(
                     elapsed_ms,
                     budget_ms,
                 };
-                let receipt_path = write_population_budget_refusal_at(Path::new("target"), &receipt)
-                    .map(|path| path.display().to_string())
-                    .unwrap_or_else(|error| format!("UNWRITABLE ({error})"));
+                let receipt_path =
+                    write_population_budget_refusal_at(Path::new("target"), &receipt)
+                        .map(|path| path.display().to_string())
+                        .unwrap_or_else(|error| format!("UNWRITABLE ({error})"));
                 eprintln!("claim_executor: {label}-OVER-BUDGET receipt={receipt_path}");
                 let _ = std::io::stderr().flush();
-                std::process::exit(1);
+                population_budget_watchdog_exit(&detail);
             }
         });
     armed
@@ -8146,6 +8362,19 @@ struct PopulationBudgetRefusal<'a> {
     active_unit: &'a str,
     elapsed_ms: u64,
     budget_ms: u64,
+}
+
+fn population_budget_over_budget_detail(
+    label: &str,
+    plan_site: &str,
+    locus: &PopulationBudgetLocus,
+    elapsed_ms: u64,
+    budget_ms: u64,
+) -> String {
+    format!(
+        "{label}-OVER-BUDGET plan_site={plan_site} population_index={} active_unit={} elapsed_ms={elapsed_ms} budget_ms={budget_ms}; executor refusing inside the population boundary",
+        locus.population_index, locus.active_unit,
+    )
 }
 
 fn population_budget_refusal_body(receipt: &PopulationBudgetRefusal<'_>) -> String {
@@ -11545,6 +11774,16 @@ fn walk_terminal_detail(
 /// terminal row — so a post-walk compile_clean refusal or a receipt-write failure looked
 /// like a silent exit-1 with every batch green. Emit the same detail on stderr and the
 /// durable journal before `process::exit`.
+fn population_budget_watchdog_exit(detail: &str) -> ! {
+    emit_floor_terminal_outcome("failed", detail);
+    if let Err(msg) = write_floor_worker_terminal("refused", detail) {
+        eprintln!("claim_executor: population budget watchdog terminal receipt refusal: {msg}");
+    }
+    use std::io::Write as _;
+    let _ = std::io::stderr().flush();
+    std::process::exit(1);
+}
+
 fn floor_terminal_fast_exit(code: i32, detail: &str) -> ! {
     use std::io::Write as _;
     let terminal_outcome = if code == 0 { "completed" } else { "failed" };
@@ -11633,6 +11872,9 @@ mod tests {
         if std::env::var(CHILD_MARKER).as_deref() == Ok("1") {
             let progress = PopulationBudgetProgress::before_first_unit();
             progress.enter(3, "dag/tools/fixture.dag::bounded_stage_claim".to_string());
+            let terminal = PathBuf::from("target/population-budget-watchdog-terminal.tsv");
+            let _ = fs::remove_file(&terminal);
+            std::env::set_var(FLOOR_WORKER_TERMINAL_ENV, &terminal);
             let _armed = arm_population_budget_watchdog(
                 "ordinary_floor",
                 "fixture::bounded_plan",
@@ -11649,6 +11891,7 @@ mod tests {
         ));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("create watchdog fixture directory");
+        let terminal = dir.join("target/population-budget-watchdog-terminal.tsv");
         let output = std::process::Command::new(std::env::current_exe().expect("current test exe"))
             .arg("--exact")
             .arg("tests::population_budget_watchdog_refuses_and_writes_located_receipt")
@@ -11679,6 +11922,16 @@ mod tests {
                 && receipt.contains("budget_ms=50")
                 && receipt.contains("outcome=refused"),
             "receipt must carry the refused population and its subject: {receipt}"
+        );
+        let worker_terminal = fs::read_to_string(&terminal).expect("worker terminal receipt");
+        assert!(
+            worker_terminal.starts_with("refused\t")
+                && worker_terminal.contains("ORDINARY-FLOOR-OVER-BUDGET")
+                && worker_terminal.contains("fixture::bounded_plan")
+                && worker_terminal.contains("population_index=3")
+                && worker_terminal.contains("dag/tools/fixture.dag::bounded_stage_claim")
+                && worker_terminal.contains("budget_ms=50"),
+            "progress announcement and worker terminal receipt must carry the same located refusal: {worker_terminal:?}"
         );
         fs::remove_dir_all(&dir).expect("remove watchdog fixture directory");
     }
@@ -14012,8 +14265,16 @@ mod tests {
             "a checkpoint's unreached tail carries run_incomplete: {checkpoint}"
         );
         assert!(
-            !checkpoint.contains("\"failure_mode\": \"not_reached\""),
-            "a checkpoint must NOT claim the plan decided to skip the tail: {checkpoint}"
+            checkpoint.contains("\"outcome\": \"pending\""),
+            "a checkpoint's unreached tail is pending, not a fabricated skip: {checkpoint}"
+        );
+        assert!(
+            !checkpoint.contains("\"outcome\": \"skipped\""),
+            "a checkpoint must not manufacture skipped verdicts for unreached batches: {checkpoint}"
+        );
+        assert!(
+            checkpoint.contains("\"disposition\": \"incomplete\""),
+            "a checkpoint names the run-level incomplete fact: {checkpoint}"
         );
 
         // CONCLUDED: the same records, but the plan is over — the tail was genuinely skipped.

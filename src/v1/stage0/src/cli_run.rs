@@ -10685,6 +10685,100 @@ pub fn heartbeat_feed_snapshot() -> Option<HeartbeatFeedSnapshot> {
     })
 }
 
+/// One in-flight witness attempt the floor has admitted but not yet finished.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ActiveWorksetEntry {
+    pub attempt_id: String,
+    pub entry: String,
+    pub function: String,
+}
+
+struct ActiveWorksetState {
+    entries: Vec<ActiveWorksetEntry>,
+}
+
+static ACTIVE_WORKSET: Mutex<ActiveWorksetState> = Mutex::new(ActiveWorksetState {
+    entries: Vec::new(),
+});
+
+const FLOOR_PHASE_JOURNAL_ENV: &str = "GUNBC_FLOOR_PHASE_JOURNAL";
+
+fn append_active_workset_phase_journal(state: &str, detail: &str) {
+    let Some(path) = std::env::var_os(FLOOR_PHASE_JOURNAL_ENV) else {
+        return;
+    };
+    let path = PathBuf::from(path);
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    else {
+        return;
+    };
+    let unix_millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let clean_detail = detail.replace(['\t', '\r', '\n'], " ");
+    let row = format!(
+        "{unix_millis}\t{}\tactive-workset\t{state}\t{clean_detail}\n",
+        std::process::id()
+    );
+    use std::io::Write as _;
+    let _ = file.write_all(row.as_bytes()).and_then(|()| file.flush());
+}
+
+pub fn floor_walk_attempt_id_from_env() -> String {
+    std::env::var("GUNBC_FLOOR_WALK_ATTEMPT_ID")
+        .or_else(|_| std::env::var("GUNBC_WALK_ATTEMPT_ID"))
+        .unwrap_or_else(|_| "local".to_string())
+}
+
+pub fn witness_attempt_id(entry: &str, function: &str) -> String {
+    format!(
+        "{}|{}|{}",
+        floor_walk_attempt_id_from_env(),
+        entry,
+        function
+    )
+}
+
+pub fn active_workset_admit(entry: &str, function: &str) {
+    let attempt_id = witness_attempt_id(entry, function);
+    append_active_workset_phase_journal(
+        "admitted",
+        &format!("attempt_id={attempt_id} entry={entry} function={function}"),
+    );
+    let mut g = ACTIVE_WORKSET.lock().unwrap_or_else(|p| p.into_inner());
+    g.entries.retain(|e| e.attempt_id != attempt_id);
+    g.entries.push(ActiveWorksetEntry {
+        attempt_id,
+        entry: entry.to_string(),
+        function: function.to_string(),
+    });
+}
+
+pub fn active_workset_complete(entry: &str, function: &str) {
+    let attempt_id = witness_attempt_id(entry, function);
+    append_active_workset_phase_journal(
+        "completed",
+        &format!("attempt_id={attempt_id} entry={entry} function={function}"),
+    );
+    let mut g = ACTIVE_WORKSET.lock().unwrap_or_else(|p| p.into_inner());
+    g.entries.retain(|e| e.attempt_id != attempt_id);
+}
+
+pub fn active_workset_snapshot() -> Vec<ActiveWorksetEntry> {
+    ACTIVE_WORKSET
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .entries
+        .clone()
+}
+
 /// Drive one entry-completion: decrement the entry's closure refcounts, drop the
 /// per-module state that reached zero from every per-module cache (typed, parse,
 /// normalize-diag, ownership-diag, source-hash), AND drop the entry's assembled
@@ -15742,6 +15836,10 @@ pub fn failure_receipt_companion(function: &str) -> FailureReceiptCompanionLooku
     test_module_hygiene_bridge::failure_receipt_companion_from_authority(function)
 }
 
+pub fn witness_verdict_diagnostic_companion(function: &str) -> FailureReceiptCompanionLookup {
+    test_module_hygiene_bridge::witness_verdict_diagnostic_companion_from_authority(function)
+}
+
 /// Append failure-receipt loudness to a Bool(false) witness detail string.
 pub fn append_failure_receipt_companion_loudness(
     detail: &mut String,
@@ -15764,6 +15862,43 @@ pub fn append_failure_receipt_companion_loudness(
     }
 }
 
+/// Append a typed witness verdict diagnostic when the witness declares a companion.
+pub fn append_witness_verdict_diagnostic_loudness(
+    detail: &mut String,
+    ctx: &v1_interpreter::InterpContext,
+    witness_function: &str,
+) {
+    match witness_verdict_diagnostic_companion(witness_function) {
+        FailureReceiptCompanionLookup::Declared(companion) => {
+            let diagnostic = run_witness_verdict_diagnostic(ctx, &companion);
+            if !diagnostic.is_empty() {
+                detail.push_str(" | ");
+                detail.push_str(&diagnostic);
+            }
+        }
+        FailureReceiptCompanionLookup::AuthorityRefused { cause } => {
+            detail.push_str(" | witness_verdict_diagnostic_refused: ");
+            detail.push_str(&cause);
+        }
+        FailureReceiptCompanionLookup::NotDeclared => {}
+    }
+}
+
+pub fn run_witness_verdict_diagnostic(
+    ctx: &v1_interpreter::InterpContext,
+    function: &str,
+) -> String {
+    match v1_interpreter::run_in_context(ctx, function, false) {
+        Ok(v1_interpreter::Value::Str(s)) => s,
+        Ok(other) => format!(
+            "witness_verdict_diagnostic_refused: {function} returned {}, expected String",
+            ctx.format_value(&other)
+        ),
+        Err(v1_interpreter::InterpError::NoSuchFunction { .. }) => String::new(),
+        Err(e) => format!("witness_verdict_diagnostic_refused: {function}: {e}"),
+    }
+}
+
 /// Production claim_executor / discovery-summary Bool(false) detail rendering.
 /// Exposed to `.dag` witnesses via `seed_runner_bool_false_failure_detail` so CI can
 /// exercise the same `append_failure_receipt_companion_loudness` path the floor runner uses.
@@ -15782,6 +15917,7 @@ pub fn seed_runner_bool_false_failure_detail(
 ) -> String {
     let mut detail = "returned Bool(false)".to_string();
     append_failure_receipt_companion_loudness(&mut detail, ctx, witness_function);
+    append_witness_verdict_diagnostic_loudness(&mut detail, ctx, witness_function);
     detail
 }
 
@@ -25358,7 +25494,9 @@ fn run_discovery_rows(
             FloorPhase::Eval,
             &format!("{}::{}", row.entry, row.function),
         );
+        active_workset_admit(&row.entry, &row.function);
         let (outcome, receipt) = run_claim_measured(ctx_ref, closure_subject, &row.function);
+        active_workset_complete(&row.entry, &row.function);
         let wall_nanos = receipt.wall_nanos;
         summary.total_measured_nanos += wall_nanos;
         summary.performance_receipts.push(receipt);
@@ -25408,6 +25546,7 @@ fn run_discovery_rows(
             ClaimOutcome::Fail => {
                 let mut failure = format!("{} ({}) returned Bool(false)", row.function, row.entry);
                 append_failure_receipt_companion_loudness(&mut failure, ctx_ref, &row.function);
+                append_witness_verdict_diagnostic_loudness(&mut failure, ctx_ref, &row.function);
                 summary.failures.push(failure);
             }
             ClaimOutcome::NotBool { got } => summary.failures.push(format!(
