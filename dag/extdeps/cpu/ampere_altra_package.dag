@@ -1,6 +1,7 @@
 module extdeps.cpu.ampere_altra_package
 
 import std.types { String, NonEmptyStr, List, Map }
+import std.measure { Micrometer, micrometer }
 import extdeps.cpu.types { CpuSocket }
 import extdeps.cpu.ampere { altra_max_m12830_catalog, ampere_altra_rev_a1_datasheet_authority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -56,6 +57,25 @@ data altra_fclga_socket: CpuSocket = altra_max_m12830_catalog.socket
 fn altra_declared_contact_count() -> Int {
   altra_fclga_socket.contact_count
 }
+
+// THE PACKAGE BODY EXTENT, section 3 Mechanical Data, carried as a typed row rather than as the
+// sentence in the comment above it. It was prose here for two revisions, which is the exact shape
+// DESIGN §4c forbids for a machine-consumed fact: no accepted program can read a comment, so a
+// placement asking how much board area the processor occupies had no answer to join against while
+// the number sat four lines away in English. THE UNIT IS EXACT, not rounded: 77.080 mm and 67.000
+// mm are whole micrometres, so the datasheet's three decimal places survive the carrier instead of
+// being truncated into millimetres and re-expanded later.
+//
+// THIS IS THE PACKAGE BODY AND NOTHING ELSE. It is not the socket, not the socket's board
+// termination, and not the land pattern the board etches — the four are separately governed and
+// this module's sibling attachment stack exists to keep them apart. What it legitimately bounds is
+// the volume the processor occupies once seated, which is a real constraint on keepout and on
+// neighbouring component clearance even while the socket part remains unselected.
+data altra_package_body_width: Micrometer = micrometer(count: 77080)
+
+data altra_package_body_height: Micrometer = micrometer(count: 67000)
+
+data altra_package_body_designator: NonEmptyStr = "FCLGA4926"
 
 data altra_ddr4_channel_count: Int = 8
 

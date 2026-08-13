@@ -2,6 +2,7 @@ module test.claim.altra_placement_witness
 
 import std.types { Bool, String, NonEmptyStr, List }
 import std.integer { Int }
+import std.measure { micrometer_count }
 import std.affine_space { point2 }
 import std.orthogonal_geometry { OrthogonalReady, OrthogonalRefused }
 import product.altra_motherboard.placement {
@@ -27,6 +28,7 @@ import product.altra_motherboard.placement {
   board_control_envelope,
   channel_indices,
   established_envelope_count,
+  processor_package_envelope,
   outstanding_obligation_count,
   placeable_components,
   placement_causes,
@@ -108,14 +110,14 @@ test fn w_the_population_is_complete_so_the_refusal_is_only_about_envelopes() ->
   }
 }
 
-// THE OBLIGATIONS ARE EXACT AND COUNTED. Thirteen of the fourteen required components have no
-// established envelope; the fourteenth is the board-control CPLD. A count that drifted from the
-// population would mean the roster and the plan had come apart.
+// THE OBLIGATIONS ARE EXACT AND COUNTED. Thirteen of the fifteen required components have no
+// established envelope; the two that do are the board-control CPLD and the processor package. A
+// count that drifted from the population would mean the roster and the plan had come apart.
 test fn w_the_outstanding_obligations_are_counted_exactly() -> Bool {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
-      established_envelope_count(plan: p) == 1
+      established_envelope_count(plan: p) == 2
         && outstanding_obligation_count(plan: p) == 13
   }
 }
@@ -179,18 +181,60 @@ test fn w_the_plan_socket_obligation_carries_the_socket_layers_own_blocker() -> 
   }
 }
 
-// ONLY THE ESTABLISHED COMPONENT CROSSES INTO GEOMETRY. An obligation has no extent, so handing it
-// to a collision check would require inventing one. This asserts the bridge carries exactly the
-// component whose size is known — the alternative, a zero-sized part that collides with nothing,
-// is how an unplaced component would come to read as a placed one.
+// ONLY ESTABLISHED COMPONENTS CROSS INTO GEOMETRY. An obligation has no extent, so handing it to a
+// collision check would require inventing one. This asserts the bridge carries exactly the
+// components whose size is known — the alternative, a zero-sized part that collides with nothing,
+// is how an unplaced component would come to read as a placed one. The processor package is the
+// second member and the one that matters: its envelope comes from a cited datasheet section rather
+// than from a part somebody picked, so this is the join proving an established fact reaches
+// geometry. The socket is deliberately NOT here — same silicon, different subject, still owed.
 test fn w_only_established_components_reach_the_geometry_bridge() -> Bool {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
-      fold(placeable_components(plan: p), init: 0, f: fn(acc, _c) { acc + 1 }) == 1
+      fold(placeable_components(plan: p), init: 0, f: fn(acc, _c) { acc + 1 }) == 2
         && fold(placeable_components(plan: p), init: false, f: fn(acc, c) {
           acc || (c.identity as String) == "board_control_cpld"
         })
+        && fold(placeable_components(plan: p), init: false, f: fn(acc, c) {
+          acc || (c.identity as String) == "processor_package"
+        })
+        && fold(placeable_components(plan: p), init: true, f: fn(acc, c) {
+          acc && (c.identity as String) != "cpu_socket"
+        })
+  }
+}
+
+// THE TRANSCRIPTION IS PINNED TO THE CITED SECTION. The oracle here is the external document —
+// Rev A1 datasheet Issue 1.15, section 3 Mechanical Data, 77.080 mm by 67.000 mm — and not a
+// measurement taken from this tree, so the literals are grounded rather than copied from whatever
+// the row currently says. Micrometres because the datasheet's third decimal place is significant:
+// 77.080 mm is 77080 um exactly, and a carrier in millimetres would have to round it.
+test fn w_the_package_envelope_carries_the_cited_body_extent() -> Bool {
+  match processor_package_envelope {
+    EnvelopeNotEstablished { gap: _ } => false
+    EnvelopeEstablished { envelope: e, source: _ } =>
+      micrometer_count(m: e.body_width) == 77080
+        && micrometer_count(m: e.body_height) == 67000
+        && (e.package_designator as String) == "FCLGA4926"
+  }
+}
+
+// THE UNIT-ERROR DISCRIMINATOR, which is the failure this transcription is actually exposed to. A
+// package written as 77 um instead of 77080 um is still a well-typed Micrometer, still passes every
+// structural check, and would place a server processor in less board area than a 144-pin CPLD. The
+// ordering against a package whose dimensions came from a different authority entirely is what
+// makes the scale claim independent of the row being tested.
+test fn w_the_package_is_larger_than_the_cpld_by_orders_of_magnitude() -> Bool {
+  match processor_package_envelope {
+    EnvelopeNotEstablished { gap: _ } => false
+    EnvelopeEstablished { envelope: pkg, source: _ } =>
+      match board_control_envelope {
+        EnvelopeNotEstablished { gap: _ } => false
+        EnvelopeEstablished { envelope: cpld, source: _ } =>
+          micrometer_count(m: pkg.body_width) > (micrometer_count(m: cpld.body_width) * 3)
+            && micrometer_count(m: pkg.body_height) > (micrometer_count(m: cpld.body_height) * 3)
+      }
   }
 }
 
@@ -216,7 +260,7 @@ test fn w_memory_slots_on_different_channels_are_different_roles() -> Bool {
     && roles_equal(a: DebugConnector, b: DebugConnector)
 }
 
-// THE DISCRIMINATING RED FOR THE POPULATION JOIN. A plan holding only the CPLD is missing thirteen
+// THE DISCRIMINATING RED FOR THE POPULATION JOIN. A plan holding only the CPLD is missing fourteen
 // roles, and the join reports them — so the completeness check is an identity join and not a
 // count that happens to agree.
 fn plan_with_only(cs: List<PlannedComponent>, template: BoardPlacementPlan) -> BoardPlacementPlan {
@@ -235,7 +279,7 @@ test fn w_a_plan_missing_roles_names_every_one_of_them() -> Bool {
           origin: point2(frame: altra_board_frame(), x: 240000, y: 200000),
         }], template: p)),
         wanted: "RoleUnfilled"
-      ) == 13
+      ) == 14
   }
 }
 
