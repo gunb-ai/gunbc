@@ -621,40 +621,54 @@ fn ci_batch_summary_line(rollup: ObservationRollup) -> RenderedLine {
 // that took a preformatted string instead would be the second representation this whole lane exists
 // to remove.
 //
+
+// A partition is trustworthy only if it is EXHAUSTIVE, so the line states whether it is. The counts
+// the seed can supply are passed / unaffected / deferred / failed / timed-out; if those do not add
+// up to the population the batch declared, the remainder is named rather than absorbed into one of
+// the arms. The previous version printed `0 refused` while 1,078 rows sat deferred — a category the
+// summary did not carry, supplied to the argument named `refused` — so a reader saw a clean
+// partition that had never been checked against anything.
+//
+// `refused` is deliberately ABSENT rather than printed as zero: the seed has no refusal count to
+// give, and a displayed zero is a claim that the fold looked and found none.
+fn ci_population_reconciliation_text(declared: Nat, classified: Nat) -> String {
+  if classified == declared {
+    ""
+  } else if classified < declared {
+    join([" (", to_string(declared - classified), " of ", to_string(declared), " unclassified)"], "")
+  } else {
+    join([" (over-counted: ", to_string(classified), " classified against a declared ", to_string(declared), ")"], "")
+  }
+}
+
 fn ci_batch_summary_text(
   batch_index: Nat,
   batch_label: NonEmptyStr,
-  done: Nat,
-  skipped: Nat,
-  refused: Nat,
+  declared_population: Nat,
+  passed: Nat,
+  unaffected: Nat,
+  deferred: Nat,
   failed: Nat,
   timed_out: Nat,
-  elapsed_nanos: Nat,
+  work_nanos: Nat,
 ) -> String {
+  let classified = passed + unaffected + deferred + failed + timed_out
   ci_render_line(
-    line: ci_batch_summary_line(
-      rollup: ObservationRollup {
-        subject: ObservationSubject {
-          segments: [BatchSegment { index: batch_index, label: batch_label }],
-        },
-        counts: ObservationCounts {
-          begun: done + skipped + refused + failed + timed_out,
-          done: done,
-          skipped: skipped,
-          refused: refused,
-          failed: failed,
-          timed_out: timed_out,
-        },
-        active_leaf: none,
-        elapsed: MeasuredValue { value: nanosecond(count: elapsed_nanos) },
-        // Not a missing reading — a reading that does not exist at this grain. The seed's
-        // getrusage high-water mark is process-lifetime and monotone, so there is no batch-scoped
-        // peak for it to pass, and inventing one from the process figure is the located-on-the-
-        // wrong-subject defect this seam previously shipped.
-        peak_rss: MeasuredUnavailable { cause: "no batch-scoped peak: the seed measures process lifetime high-water only" },
-        measurement_absent: 1,
-      }
-    ),
+    line: RenderedLine {
+      glyph: if failed + timed_out > 0 { NodeFailed } else { NodeCompleted },
+      text: join([
+        batch_label,
+        " — ",
+        to_string(passed), " passed · ",
+        to_string(unaffected), " unaffected · ",
+        to_string(deferred), " deferred · ",
+        to_string(failed), " failed · ",
+        ci_measured_elapsed_text(m: MeasuredValue { value: nanosecond(count: work_nanos) }),
+        " work",
+        ci_population_reconciliation_text(declared: declared_population, classified: classified),
+      ], ""),
+      attention: if failed + timed_out > 0 { Anomaly } else { Ambient }
+    },
     tier: Ascii,
   )
 }

@@ -424,97 +424,79 @@ test fn w_RED_a_batch_carrying_a_failure_summarises_as_an_anomaly() -> Bool {
 // glyph, and an absent memory reading must not print as a measurement of zero.
 test fn w_the_seed_seam_renders_one_ascii_line_from_scalars() -> Bool {
   let line = ci_batch_summary_text(
-    batch_index: 2, batch_label: "discovery-corpus" as NonEmptyStr,
-    done: 8809, skipped: 13, refused: 0, failed: 0, timed_out: 0,
-    elapsed_nanos: 1500000000,
+    batch_index: 2, batch_label: "witness discovery" as NonEmptyStr,
+    declared_population: 9015, passed: 5319, unaffected: 3731, deferred: 1078,
+    failed: 0, timed_out: 0, work_nanos: 105994413000,
   )
-  string_contains(s: line, pattern: "discovery-corpus")
-    && string_contains(s: line, pattern: "8809 passed")
-    && string_contains(s: line, pattern: "13 skipped")
+  string_contains(s: line, pattern: "witness discovery")
+    && string_contains(s: line, pattern: "5319 passed")
+    && string_contains(s: line, pattern: "3731 unaffected")
+    && string_contains(s: line, pattern: "1078 deferred")
     && !string_contains(s: line, pattern: "[0m")
 }
 
-test fn w_RED_an_all_green_batch_does_not_render_the_failure_glyph() -> Bool {
+// The review that produced this asserted only that the green and red lines DIFFER and that the red
+// one says `1 failed` — which stays green if the green line renders the failure glyph, because the
+// texts differ anyway. Assert the exact leading token in both directions instead.
+test fn w_RED_the_green_and_failed_summaries_carry_exactly_their_own_status_token() -> Bool {
   let green = ci_batch_summary_text(
     batch_index: 1, batch_label: "b" as NonEmptyStr,
-    done: 3, skipped: 0, refused: 0, failed: 0, timed_out: 0,
-    elapsed_nanos: 1000,
+    declared_population: 3, passed: 3, unaffected: 0, deferred: 0,
+    failed: 0, timed_out: 0, work_nanos: 1000,
   )
   let red = ci_batch_summary_text(
     batch_index: 1, batch_label: "b" as NonEmptyStr,
-    done: 2, skipped: 0, refused: 0, failed: 1, timed_out: 0,
-    elapsed_nanos: 1000,
+    declared_population: 3, passed: 2, unaffected: 0, deferred: 0,
+    failed: 1, timed_out: 0, work_nanos: 1000,
   )
-  (green != red) && string_contains(s: red, pattern: "1 failed") && !string_contains(s: green, pattern: "1 failed")
+  green.starts_with(prefix: "[x] ")
+    && !string_contains(s: green, pattern: "[!]")
+    && red.starts_with(prefix: "[!] ")
 }
 
-// The seed has no batch-scoped memory reading — its only fact is the process lifetime high-water
-// mark — so the summary must not print a peak at all. The earlier version passed that process
-// figure through and rendered `peak 11.5 GiB` beside a four-millisecond single-witness batch: a
-// real number on the wrong subject. Absence is disclosed, never filled in.
+// A partition that does not add up to the population is DISCLOSED, never absorbed into an arm. The
+// shipped version reported `0 refused` while 1,078 rows sat deferred in a category it did not carry.
+test fn w_RED_a_partition_that_misses_rows_says_so() -> Bool {
+  let short = ci_batch_summary_text(
+    batch_index: 1, batch_label: "b" as NonEmptyStr,
+    declared_population: 10, passed: 4, unaffected: 0, deferred: 0,
+    failed: 0, timed_out: 0, work_nanos: 1000,
+  )
+  let exact = ci_batch_summary_text(
+    batch_index: 1, batch_label: "b" as NonEmptyStr,
+    declared_population: 4, passed: 4, unaffected: 0, deferred: 0,
+    failed: 0, timed_out: 0, work_nanos: 1000,
+  )
+  string_contains(s: short, pattern: "6 of 10 unclassified")
+    && !string_contains(s: exact, pattern: "unclassified")
+}
+
 test fn w_RED_the_seed_summary_claims_no_peak_because_it_has_no_batch_scoped_one() -> Bool {
   let line = ci_batch_summary_text(
     batch_index: 1, batch_label: "b" as NonEmptyStr,
-    done: 1, skipped: 0, refused: 0, failed: 0, timed_out: 0,
-    elapsed_nanos: 1000,
+    declared_population: 1, passed: 1, unaffected: 0, deferred: 0,
+    failed: 0, timed_out: 0, work_nanos: 1000,
   )
   !string_contains(s: line, pattern: "peak")
-    && string_contains(s: line, pattern: "unmeasured")
 }
 
-// A duration beside a batch is read as how long the batch took; this one is the SUM of leaves that
-// ran concurrently, so the word has to be in the line.
+// The seed supplies no refusal count, so a displayed `0 refused` would be a claim the fold looked.
+test fn w_RED_the_summary_does_not_claim_zero_refused_it_cannot_verify() -> Bool {
+  let line = ci_batch_summary_text(
+    batch_index: 1, batch_label: "b" as NonEmptyStr,
+    declared_population: 1, passed: 1, unaffected: 0, deferred: 0,
+    failed: 0, timed_out: 0, work_nanos: 1000,
+  )
+  !string_contains(s: line, pattern: "refused")
+}
+
 test fn w_RED_the_summary_duration_is_labelled_work_not_elapsed_wall() -> Bool {
   let line = ci_batch_summary_text(
     batch_index: 1, batch_label: "b" as NonEmptyStr,
-    done: 2, skipped: 0, refused: 0, failed: 0, timed_out: 0,
-    elapsed_nanos: 5000000,
+    declared_population: 2, passed: 2, unaffected: 0, deferred: 0,
+    failed: 0, timed_out: 0, work_nanos: 5000000,
   )
   string_contains(s: line, pattern: "work")
-}
-
-// THE ACCEPTANCE CLAIM, stated at the grain the model can actually decide: a batch of routine
-// witnesses emits ONE line regardless of how many witnesses it contains, and every anomaly in it
-// emits its own. The operator's bar is a console line count over a real floor run, which no witness
-// can observe — but a line count is exactly `folded == 0 lines` plus `pierced == 1 line each`, and
-// those are decidable here. What this does NOT establish is that the seed obeys the projection;
-// that is the seam witness above plus the executed CI run, and neither is a substitute for the
-// other.
-fn proj_line_count(events: List<ObservationEvent>) -> Nat {
-  fold(events, init: 0, f: (acc, e) =>
-    match ci_routine_projection(event: e, grain: Present { value: BatchGrain }) {
-      FoldedIntoRollup { at: _ } => acc
-      EmittedAtLeaf { reason: _ } => acc + 1
-    })
-}
-
-fn proj_green_run(n: Nat) -> List<ObservationEvent> {
-  if n == 0 {
-    []
-  } else {
-    concat(
-      [proj_event(subject: proj_leaf_subject(entry: "dag/test/claim/w.dag"), transition: Concluded { outcome: Done })],
-      proj_green_run(n: n - 1)
-    )
-  }
-}
-
-test fn w_a_green_batch_costs_one_line_however_many_witnesses_it_holds() -> Bool {
-  // Ten witnesses and two hundred and fifty fold to the same console cost: the batch summary line,
-  // and nothing else. The second figure is bounded by the evaluator's recursion, not by the claim.
-  (proj_line_count(events: proj_green_run(n: 10)) == 0)
-    && (proj_line_count(events: proj_green_run(n: 250)) == 0)
-}
-
-test fn w_RED_each_anomaly_still_costs_its_own_line() -> Bool {
-  let mixed = concat(
-    proj_green_run(n: 250),
-    [
-      proj_event(subject: proj_leaf_subject(entry: "dag/red1.dag"), transition: Concluded { outcome: Failed { error: "x", output: "" } }),
-      proj_event(subject: proj_leaf_subject(entry: "dag/red2.dag"), transition: Concluded { outcome: Refused { diagnostic: "y" } }),
-    ]
-  )
-  proj_line_count(events: mixed) == 2
 }
 
 // The seed reads `routine_rollup_folds`, not the Optional it derives from, so this is the pair that

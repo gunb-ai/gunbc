@@ -14551,12 +14551,13 @@ fn routine_rollup_folds() -> bool {
 fn render_batch_summary_line(
     batch_index: u64,
     batch_label: &str,
-    done: u64,
-    skipped: u64,
-    refused: u64,
+    declared_population: u64,
+    passed: u64,
+    unaffected: u64,
+    deferred: u64,
     failed: u64,
     timed_out: u64,
-    elapsed_nanos: u64,
+    work_nanos: u64,
 ) -> Option<String> {
     use v1_interpreter::Value;
     let roots = OBSERVATION_SOURCE_ROOTS.get()?;
@@ -14573,12 +14574,13 @@ fn render_batch_summary_line(
                 Some("batch_label".to_string()),
                 Value::Str(batch_label.to_string()),
             ),
-            arg("done", done),
-            arg("skipped", skipped),
-            arg("refused", refused),
+            arg("declared_population", declared_population),
+            arg("passed", passed),
+            arg("unaffected", unaffected),
+            arg("deferred", deferred),
             arg("failed", failed),
             arg("timed_out", timed_out),
-            arg("elapsed_nanos", elapsed_nanos),
+            arg("work_nanos", work_nanos),
         ],
         false,
     )
@@ -24440,14 +24442,22 @@ fn emit_batch_summary(merged: &DiscoverySummary) {
     if let Some(line) = crate::v1_rt::flush_phase_marks() {
         eprintln!("{line}");
     }
-    let refused = merged.deferred_rows.len() as u64;
+    let deferred = merged.deferred_rows.len() as u64;
     let failed = merged.failures.len() as u64;
+    // DECLARED GAP: this is one line per DISCOVERY INVOCATION, not per floor-plan batch. A run with
+    // six plan batches emits four of these, all carrying the same label, because merge time is
+    // where a merged summary exists and the plan's RunSegment/BatchSegment identity is not in
+    // scope here. The population is passed so the lines are at least distinguishable by what they
+    // covered, and the identity stays honest by not being invented.
+    // Dissolve-on: the summary moves to the floor-plan batch lifecycle and carries the plan's real
+    // run and batch segments.
     match render_batch_summary_line(
         0,
-        "discovery corpus",
+        "witness discovery",
+        merged.total as u64,
         merged.passed as u64,
         merged.skipped as u64,
-        refused,
+        deferred,
         failed,
         0,
         merged.total_measured_nanos as u64,
@@ -24458,8 +24468,8 @@ fn emit_batch_summary(merged: &DiscoverySummary) {
         None => eprintln!(
             "::error::observation render unavailable: could not render the batch summary through \
              gunbc.observation_ci_render `ci_batch_summary_text`; the routine witness lines were \
-             folded and their summary is therefore MISSING, not empty (passed={} skipped={} \
-             refused={refused} failed={failed})",
+             folded and their summary is therefore MISSING, not empty (passed={} unaffected={} \
+             deferred={deferred} failed={failed})",
             merged.passed, merged.skipped
         ),
     }
