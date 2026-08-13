@@ -1,0 +1,181 @@
+module gunbc.install_transport_qualification
+
+import std.types { Bool, EpochMs, List, NonEmptyStr, list_length }
+import product.placement_supply { HostIdentity }
+
+// WHY THIS MODULE EXISTS, in one sentence: an omitted capability was being read
+// as an observed absence, and the two are different facts with different
+// remedies.
+//
+// The incident. srv3's BMC was upgraded 2.07.00 -> 3.22.00. The catalogued
+// 3.22.00 capability row lists neither CapabilityVirtualMedia nor
+// CapabilityNbdProxyVirtualMedia, and gunbc.os_install_mechanism
+// firmware_has_capability reads list non-membership as false, so the solver
+// concluded srv3 had no delivery mechanism and refused. Thirteen witnesses
+// reddened. The refusal was TRUE as a statement about the catalog and FALSE as a
+// statement about the hardware: srv4 runs that same firmware and was installed
+// over the configfs USB-gadget transport, and srv3 was then observed carrying
+// every element of that transport live.
+//
+// The defect is not the row's contents. It is that BmcFirmwareCapabilityRow has
+// no way to say "nobody probed this", so a hand-authored list that simply never
+// mentioned configfs is indistinguishable from a probe that looked and found it
+// missing. This module makes that distinction representable, at the grain where
+// it is decidable: not one flag per firmware, but one standing per requirement
+// the transport actually rests on.
+type TransportRequirementStanding
+  = RequirementObservedPresent { observation: TransportProbeObservation }
+  | RequirementObservedAbsent { observation: TransportProbeObservation }
+  | RequirementUnobserved
+
+// The axes the configfs USB-gadget path rests on. Deliberately NOT one
+// "configfs virtual media" flag: each is separately observable, separately
+// breakable, and a host can satisfy some and not others. Naming them
+// individually is what lets an unqualified path report WHICH probes it still
+// owes instead of a bare no.
+type ConfigfsTransportRequirement
+  = ConfigfsMounted
+  | UsbGadgetFrameworkPresent
+  | MassStorageFunctionAvailable
+  | UdcPresent
+  | NbdClientPresent
+  | NbdServerReachableFromBmc
+  | BootOverrideNamesGadgetDevice
+  | NoForeignGadgetOrNbdAttachment
+
+data configfs_transport_requirements_all: List<ConfigfsTransportRequirement> = [
+  ConfigfsMounted,
+  UsbGadgetFrameworkPresent,
+  MassStorageFunctionAvailable,
+  UdcPresent,
+  NbdClientPresent,
+  NbdServerReachableFromBmc,
+  BootOverrideNamesGadgetDevice,
+  NoForeignGadgetOrNbdAttachment,
+]
+
+// A probe either found the thing or found it missing. There is no third arm
+// here on purpose: "we did not look" is the ABSENCE of an observation, not an
+// outcome one can record, and giving it a variant would let an unrun probe be
+// authored as though it had run.
+type TransportProbeOutcome
+  = ProbeFoundPresent
+  | ProbeFoundAbsent
+
+// A receipt, in the observing layer. It carries what was run and what came back
+// so a standing can be re-derived by someone who doubts it, rather than being
+// asserted by a Bool whose provenance is a memory.
+type TransportProbeObservation {
+  host: HostIdentity
+  requirement: ConfigfsTransportRequirement
+  probe: NonEmptyStr
+  result: NonEmptyStr
+  outcome: TransportProbeOutcome
+  observed_at: EpochMs
+}
+
+// THE LAW THIS MODULE ENFORCES, and the whole reason it exists:
+//
+//   observed absent  -> Refused       (a probe looked and the thing is missing)
+//   unobserved       -> Unestablished (nobody looked; the answer is owed)
+//   all present      -> Established
+//
+// Unestablished names the probes still owed, so the remedy is legible: run
+// them. Refused names what was found missing, so the remedy is different: fix
+// or choose another transport. The collapse of the second into the third is the
+// defect; the collapse of the third into the second would be worse, because it
+// would let an unprobed path read as usable.
+type ReinstallPathStanding
+  = ReinstallPathEstablished {
+      qualified_by: List<TransportProbeObservation>,
+    }
+  | ReinstallPathUnestablished {
+      missing_probes: List<ConfigfsTransportRequirement>,
+    }
+  | ReinstallPathRefused {
+      observed_absent: List<ConfigfsTransportRequirement>,
+    }
+
+fn transport_requirement_standing(
+  observations: List<TransportProbeObservation>,
+  requirement: ConfigfsTransportRequirement,
+) -> TransportRequirementStanding {
+  fold(
+    observations,
+    init: RequirementUnobserved,
+    f: (acc, o) =>
+      if o.requirement == requirement {
+        match o.outcome {
+          ProbeFoundPresent => RequirementObservedPresent { observation: o }
+          ProbeFoundAbsent => RequirementObservedAbsent { observation: o }
+        }
+      } else {
+        acc
+      },
+  )
+}
+
+fn requirements_observed_absent(
+  observations: List<TransportProbeObservation>,
+) -> List<ConfigfsTransportRequirement> {
+  fold(
+    configfs_transport_requirements_all,
+    init: [],
+    f: (acc, r) =>
+      match transport_requirement_standing(observations: observations, requirement: r) {
+        RequirementObservedAbsent { observation: _ } => concat(acc, [r])
+        RequirementObservedPresent { observation: _ } => acc
+        RequirementUnobserved => acc
+      },
+  )
+}
+
+fn requirements_unobserved(
+  observations: List<TransportProbeObservation>,
+) -> List<ConfigfsTransportRequirement> {
+  fold(
+    configfs_transport_requirements_all,
+    init: [],
+    f: (acc, r) =>
+      match transport_requirement_standing(observations: observations, requirement: r) {
+        RequirementUnobserved => concat(acc, [r])
+        RequirementObservedPresent { observation: _ } => acc
+        RequirementObservedAbsent { observation: _ } => acc
+      },
+  )
+}
+
+// ABSENCE OUTRANKS IGNORANCE. A path with one requirement observed missing is
+// Refused even if others are unprobed, because running the remaining probes
+// cannot change the verdict — the missing one already decides it. Reporting
+// Unestablished there would send someone to run probes that answer nothing.
+fn configfs_reinstall_path_standing(
+  observations: List<TransportProbeObservation>,
+) -> ReinstallPathStanding {
+  let absent = requirements_observed_absent(observations: observations)
+  let unobserved = requirements_unobserved(observations: observations)
+  if list_length(items: absent) > 0 {
+    ReinstallPathRefused { observed_absent: absent }
+  } else if list_length(items: unobserved) > 0 {
+    ReinstallPathUnestablished { missing_probes: unobserved }
+  } else {
+    ReinstallPathEstablished { qualified_by: observations }
+  }
+}
+
+// A HOST BEING INSTALLED AND A HOST BEING REINSTALLABLE ARE INDEPENDENT, and
+// conflating them is how "srv4 has no modeled install path" came to sound like
+// "srv4 is not installed". srv3 and srv4 are both installed and running right
+// now while neither has a qualified reinstall path.
+type HostInstalledOsStanding
+  = InstalledOsRunning { observed_at: EpochMs }
+  | InstalledOsNotRunning { observed_at: EpochMs }
+  | InstalledOsUnobserved
+
+fn installed_os_is_running(standing: HostInstalledOsStanding) -> Bool {
+  match standing {
+    InstalledOsRunning { observed_at: _ } => true
+    InstalledOsNotRunning { observed_at: _ } => false
+    InstalledOsUnobserved => false
+  }
+}

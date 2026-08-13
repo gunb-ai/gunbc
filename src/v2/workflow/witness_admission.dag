@@ -26,7 +26,8 @@ import gunbc.explicit_witness_admission {
   explicit_witness_admissions,
   explicit_witness_admission_covers,
   explicit_witness_admissions_well_formed,
-  explicit_witness_admission_duplicate_count
+  explicit_witness_admission_duplicate_count,
+  explicit_witness_admission_executing_witness_roster
 }
 import v2.compiler.self_host.wet_receipt_enrollment {
   falsifier_self_host_wet_entries,
@@ -379,8 +380,11 @@ fn witness_admission_explicit_consumer_manifest() -> List<String> {
           concat(known_red_probe_roster(), falsifier_self_host_wet_known_red_entries)
         ),
         concat(
-          falsifier_rehomed_bin_wet_entries(),
-          falsifier_substrate_long_lane_entries()
+          concat(
+            falsifier_rehomed_bin_wet_entries(),
+            falsifier_substrate_long_lane_entries()
+          ),
+          explicit_witness_admission_executing_witness_roster()
         )
       ),
     empty: Empty,

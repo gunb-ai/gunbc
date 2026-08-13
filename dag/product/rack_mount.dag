@@ -214,7 +214,7 @@ fn rack_units_to_micrometres(units: RackUnit) -> Micrometer {
 // World and a RoomIdentity, resolving the room through the world and retaining that identity in the
 // result, and its discriminating control is the case the deleted version got wrong - a ceiling
 // above the aperture but below the external height must REFUSE.
-
 fn rack_mounting_aperture_height(r: RackInstance) -> Micrometer {
   rack_units_to_micrometres(units: r.catalog.rack_units)
 }
+

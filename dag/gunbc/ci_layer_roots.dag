@@ -223,6 +223,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: unbound_dissolution(description: "the crate-layout artifact moves to host-driven generation; rows delete together (crate_layout_transport_exclusion_note)")
   },
   WitnessExclusionRow {
+    pattern: "self_host/compiler_closure_ingest_boundary_witness_test.dag",
+    classification: OfflineLocalRecipe,
+    reason: "transport-run witness consumed by v2.workflow.compiler_closure_ingest_transport (07_target_carriers overlay; same posture as compiler_closure_emit_from_ingest_test.dag)",
+    dissolution: unbound_dissolution(description: "the crate-layout artifact moves to host-driven generation; rows delete together (crate_layout_transport_exclusion_note)")
+  },
+  WitnessExclusionRow {
     pattern: "self_host/crate_layout_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "transport-run witness: hermetic runs read host_module_bindings = Empty and REFUSE; do NOT give it bin_witness_wet_entries rows (see crate_layout_transport_exclusion_note)",
