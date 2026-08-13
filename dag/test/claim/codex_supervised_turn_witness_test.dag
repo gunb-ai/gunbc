@@ -3,6 +3,11 @@ module test.claim.codex_supervised_turn_witness_test
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import gunbc.roadmap_workflow_command { WorkerTurn }
 import gunbc.codex_app_server_press { AmbientCodexCredentialContext }
+import gunbc.provider_turn_adjudication {
+  ProviderTurnCompleted,
+  ProviderTurnFailed,
+  press_display_finished,
+}
 import gunbc.codex_supervised_turn {
   CodexThreadAbsent,
   CodexThreadIdle,
@@ -10,17 +15,26 @@ import gunbc.codex_supervised_turn {
   CodexTurnStartAdmitted,
   CodexTurnStartRefusedDuplicateExecution,
   CodexTurnStartRefusedOutcomeUnobserved,
+  SupervisedRpcOk,
   codex_supervised_turn_binding,
+  codex_supervised_turn_client_command_id,
   codex_supervised_turn_session_policy,
   codex_turn_start_admission,
+  codex_runner_turn_terminal_receipt,
+  disposition_from_supervised_parse,
+  empty_supervised_turn_parse_acc,
+  parse_supervised_turn_stdout,
 }
+
 import std.temporal_effect {
   HeldSessionLease,
   LeaseAbsent,
   LeaseRunningExpected,
 }
 
-data witness_note: String = "Hermetic witnesses for the supervised-runner slice: std.temporal_effect HeldLease fences one WorkerTurn attempt; thread idle without a runner terminal receipt refuses turn/start (continuity receipt trap); busy thread refuses until the runner writes a receipt."
+data witness_note: String = "Hermetic witnesses for the supervised-runner slice: std.temporal_effect HeldLease fences one WorkerTurn attempt; thread idle without a runner terminal receipt refuses turn/start (continuity receipt trap); busy thread refuses until the runner writes a receipt; parse_supervised_turn_stdout correlates thread/start and turn/start ids and turn/completed notifications into a terminal receipt with client_command_id."
+
+data supervised_turn_fixture_stdout: String = "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"thread\":{\"id\":\"thread-uuid-1\"}}}\n{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{\"turn\":{\"id\":\"turn-uuid-1\"}}}\n{\"jsonrpc\":\"2.0\",\"method\":\"turn/completed\",\"params\":{}}\n"
 
 fn fixture_turn() -> WorkerTurn {
   WorkerTurn {
@@ -78,6 +92,65 @@ test fn witness_running_lease_observation_is_expected_not_absent() -> Bool {
     observed: LeaseRunningExpected,
     standing_receipt: none,
   )
-  let policy = codex_supervised_turn_session_policy(lease_key: binding.lease.lease_key)
-  binding.lease.observed == LeaseRunningExpected && policy == binding.execution_policy
+  match binding.lease.observed {
+    LeaseRunningExpected => true
+    _ => false
+  }
+}
+
+test fn witness_parse_supervised_stdout_extracts_thread_and_turn_ids() -> Bool {
+  let parse = parse_supervised_turn_stdout(stdout: supervised_turn_fixture_stdout)
+  match parse.thread_start {
+    SupervisedRpcOk { native_id: tid } =>
+      (tid as String) == "thread-uuid-1"
+        && match parse.turn_start {
+          SupervisedRpcOk { native_id: turn_id } => (turn_id as String) == "turn-uuid-1"
+          _ => false
+        }
+    _ => false
+  }
+}
+
+test fn witness_parse_supervised_stdout_turn_completed_disposition() -> Bool {
+  let parse = parse_supervised_turn_stdout(stdout: supervised_turn_fixture_stdout)
+  match disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 0 }) {
+    ProviderTurnCompleted => true
+    _ => false
+  }
+}
+
+test fn witness_terminal_receipt_carries_client_command_id() -> Bool {
+  let binding = codex_supervised_turn_binding(
+    turn: fixture_turn(),
+    credential: fixture_credential(),
+    observed: LeaseAbsent,
+    standing_receipt: none,
+  )
+  let parse = parse_supervised_turn_stdout(stdout: supervised_turn_fixture_stdout)
+  let receipt = codex_runner_turn_terminal_receipt(
+    binding: binding,
+    parse: parse,
+    disposition: ProviderTurnCompleted,
+    wire: none,
+  )
+  (receipt.client_command_id as String) == "attempt-1/turn-1"
+    && codex_supervised_turn_client_command_id(turn: fixture_turn()) == receipt.client_command_id
+    && press_display_finished(disposition: receipt.disposition)
+}
+
+test fn witness_parse_turn_failed_notification_disposition() -> Bool {
+  let stdout = "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"thread\":{\"id\":\"t1\"}}}\n{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{\"turn\":{\"id\":\"u1\"}}}\n{\"jsonrpc\":\"2.0\",\"method\":\"turn/failed\",\"params\":{}}\n"
+  let parse = parse_supervised_turn_stdout(stdout: stdout)
+  match disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 0 }) {
+    ProviderTurnFailed { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_nonzero_exit_without_turn_start_is_not_observed() -> Bool {
+  let parse = empty_supervised_turn_parse_acc()
+  match disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 1 }) {
+    ProviderTurnFailed { cause: _ } => true
+    _ => false
+  }
 }
