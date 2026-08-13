@@ -331,6 +331,8 @@ pub type Volt = Rc<Measure<(), (), i64>>;
 
 pub type Ampere = Rc<Measure<(), (), i64>>;
 
+pub type Micrometer = Rc<Measure<(), (), i64>>;
+
 pub type Millimeter = Rc<Measure<(), (), i64>>;
 
 pub type SignedMillimeterComponent = Rc<Measure<(), (), i64>>;
@@ -566,6 +568,17 @@ pub fn ampere(count: Nat) -> Ampere {
 
 pub fn ampere_count(a: Ampere) -> Nat {
     measure_count(a.clone())
+}
+
+pub fn micrometer(count: Nat) -> Micrometer {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn micrometer_count(m: Micrometer) -> Nat {
+    measure_count(m.clone())
 }
 
 pub fn millimeter(count: Nat) -> Millimeter {
