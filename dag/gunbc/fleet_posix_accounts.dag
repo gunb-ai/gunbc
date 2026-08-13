@@ -165,17 +165,13 @@ fn fleet_posix_operator_sudo_grant_is_hostnamectl_only() -> Bool {
 
 // OPERATOR HOLD (2026-08-13, parent eager-koi-458): widening fleet_posix_operator_sudo_grants
 // with whole-binary NOPASSWD /usr/bin/install or /usr/bin/systemctl is root-equivalent
-// (sudo install can mint setuid root shells). NOT enrolled without operator ruling.
+// (sudo install can mint setuid root shells). NOT enrolled. MemoryMax collapsed to
+// deploy-time host_axis_caps (operator ruling 2026-08-13) — no set-property elevation
+// path remains for converge on the operator account.
 // Precedent: fleet_posix_ci_runner_sudo_grants already carries both binaries for ghrunner —
 // that is a finding, not automatic justification for the operator account.
-// Narrower paths preferred: (1) receipt publication via staging write + rename in
-// gunbc.fleet_converge_cli — see gunbc.host_layout fleet_converge_receipt_atomic_publish_note;
-// (2) set-property
-// either moved to deploy-time unit authoring OR a verb-scoped sudoers line like the
-// proposal below — NOT a whole-binary grant.
-data fleet_converge_operator_privilege_hold_note: String = "b1 moved gunbc-roadmap-fleet-converge.service to User=briansrls; converge still calls bare systemctl set-property (polkit refusal) until a narrow elevation path is ruled. Whole-binary NOPASSWD install/systemctl on the operator roster is held — root-equivalent."
-
-data fleet_converge_narrow_set_property_sudoers_proposal: String = "briansrls ALL=(ALL) NOPASSWD: /usr/bin/systemctl set-property actions-runner@*"
+// Receipt publication: gunbc.host_layout fleet_converge_receipt_atomic_publish_note.
+data fleet_converge_operator_privilege_hold_note: String = "b1 moved gunbc-roadmap-fleet-converge.service to User=briansrls. Whole-binary NOPASSWD install/systemctl on the operator roster is held — root-equivalent. MemoryMax is deploy-time only (gunbc.host_axis_caps); converge does not assert MemoryMax via set-property."
 
 data fleet_apt_get_binary_path: NonEmptyStr = "/usr/bin/apt-get"
 

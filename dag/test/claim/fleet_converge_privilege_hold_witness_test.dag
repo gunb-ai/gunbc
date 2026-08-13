@@ -10,11 +10,12 @@ test fn witness_operator_roster_not_widened_to_whole_binary_install_or_systemctl
     && length(xs: fleet_posix_ci_runner_sudo_grants()) >= 2
 }
 
-// The proposal row is the narrow sudoers line artifact (not enrolled). Shape check only —
-// not a prose note grep.
-test fn witness_narrow_set_property_sudoers_proposal_shape() -> Bool {
-  string_contains(
-    s: fleet_converge_narrow_set_property_sudoers_proposal,
-    pattern: "NOPASSWD: /usr/bin/systemctl set-property actions-runner@",
-  )
+test fn witness_receipt_publication_uses_staging_rename_grain() -> Bool {
+  fleet_converge_receipt_staging_path(host: "srv1") == "/opt/gunbc/receipts/srv1-converge-receipt.staging"
+    && fleet_converge_receipt_path(host: "srv1") == "/opt/gunbc/receipts/srv1-converge-receipt.txt"
+}
+
+// Operator ruling 2026-08-13: converge must not re-apply MemoryMax via set-property.
+test fn witness_convergence_suppresses_memory_max_set_property() -> Bool {
+  host_converge_slice1_memory_max_converge_apply_suppressed
 }
