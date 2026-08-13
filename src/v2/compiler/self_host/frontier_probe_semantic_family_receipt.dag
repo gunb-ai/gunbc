@@ -1,0 +1,187 @@
+module v2.compiler.self_host.frontier_probe_semantic_family_receipt
+
+import std.content_hash { Fnv1a64Structural }
+import v2.std.algebra { fold_list }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+data semantic_family_receipt_note: String = "SH-D D1: what the five semantic-pipeline shards MEASURE at the v2 direct Rust door, as executed observations rather than expectations. Each row is one shard, and the two dispositions are not two flavours of the same answer: a shard whose closure fits the manifest transport produces a detailed cause, and a shard whose closure exceeds the inline row cap produces nothing at all — the manifest emits zero rows and an empty ingest, so there is no observation to record. Recording the second as a measurement with absent fields would make the cap look like a property of the module. The rows carry no verdict about the frontier roster; frontier.dag is the program lead's authority and this module supplies it evidence, never a correction."
+
+data semantic_family_subject_note: String = "Provenance of these observations, so a reader can re-derive rather than trust them: source_commit 2bc11e0cd53, survey/probe binaries built from that tree, closures produced by discover_source_root_ingest against source roots src/v2 and dag, receipts read through frontier_probe_emit_from_ingest. The measured shards were read on UNPATCHED main for materialization_carriers, and for use_site_verdict with the annotation-channel hunk of gunbc#8149 (commit fa2576a9) applied locally, because on unpatched main that shard's closure refuses at the lexer before reaching the layer under study. Which side each row was read on is carried per row, not assumed."
+
+type ShardObservationSide
+  = ObservedOnMain
+  | ObservedWithAnnotationChannelHunk { upstream_commit: String }
+
+type ShardDoorDisposition
+  = DetailedCauseObserved {
+      located_reason: Symbol,
+      chain_length: Int,
+      symbols_differing_from_head: Int,
+      first_differing_symbol: String
+    }
+  | ClosureExceedsManifestCap { read_count: Int, cap: Int }
+
+type SemanticFamilyShardRow {
+  module_path: String
+  closure_reads: Int
+  side: ShardObservationSide
+  disposition: ShardDoorDisposition
+}
+
+data shard_use_site_verdict: SemanticFamilyShardRow = SemanticFamilyShardRow {
+  module_path: "src/v2/compiler/use_site_verdict.dag",
+  closure_reads: 15,
+  side: ObservedWithAnnotationChannelHunk { upstream_commit: "fa2576a9" },
+  disposition: DetailedCauseObserved {
+    located_reason: ^parse_grammar_choice_overlap_residue,
+    chain_length: 126,
+    symbols_differing_from_head: 120,
+    first_differing_symbol: "body_lowering_reason_wrapper_retained_emitted"
+  }
+}
+
+data shard_materialization_carriers: SemanticFamilyShardRow = SemanticFamilyShardRow {
+  module_path: "src/v2/compiler/materialization_carriers.dag",
+  closure_reads: 48,
+  side: ObservedOnMain,
+  disposition: DetailedCauseObserved {
+    located_reason: ^parse_grammar_choice_overlap_residue,
+    chain_length: 11,
+    symbols_differing_from_head: 5,
+    first_differing_symbol: "body_lowering_reason_wrapper_retained_emitted"
+  }
+}
+
+data shard_03_resolve: SemanticFamilyShardRow = SemanticFamilyShardRow {
+  module_path: "src/v2/compiler/03_resolve.dag",
+  closure_reads: 71,
+  side: ObservedOnMain,
+  disposition: ClosureExceedsManifestCap { read_count: 71, cap: 64 }
+}
+
+data shard_04_infer: SemanticFamilyShardRow = SemanticFamilyShardRow {
+  module_path: "src/v2/compiler/04_infer.dag",
+  closure_reads: 75,
+  side: ObservedOnMain,
+  disposition: ClosureExceedsManifestCap { read_count: 75, cap: 64 }
+}
+
+data shard_03_name_resolve: SemanticFamilyShardRow = SemanticFamilyShardRow {
+  module_path: "src/v2/compiler/03_name_resolve.dag",
+  closure_reads: 143,
+  side: ObservedOnMain,
+  disposition: ClosureExceedsManifestCap { read_count: 143, cap: 64 }
+}
+
+data semantic_family_shard_rows: List<SemanticFamilyShardRow> = [
+  shard_use_site_verdict,
+  shard_materialization_carriers,
+  shard_03_resolve,
+  shard_04_infer,
+  shard_03_name_resolve
+]
+
+data semantic_family_masking_finding_note: String = "THE FINDING, at the grain the evidence supports. Both measurable shards refuse with ^parse_grammar_choice_overlap_residue, which is the reason their frontier rows already record — but in both the cause is MaskedAssembleRefusal, and masked means that reason is standing in front of a further chain. Reading those chains: use_site_verdict carries 126 symbols of which 120 differ from the head, materialization_carriers carries 11 of which 5 differ, and in BOTH the first differing symbol is body_lowering_reason_wrapper_retained_emitted. So the recorded reason is confirmed at reason grain and NOT confirmed as terminal: the dominant refusal underneath is body-lowering wrapper-retained residue, whose named prerequisite is the general body producer. What this does NOT establish: that body lowering is the LAST layer. A chain read one symbol deep answers what the mask hides, not what that in turn hides, and nothing here has looked beneath the second layer."
+
+data semantic_family_cap_finding_note: String = "The three capped shards are not slow, hard, or unclassified — they are UNOBSERVED, and the reason is a property of the transport rather than of the modules. The inline manifest carries at most 64 rows; at 71, 75 and 143 reads these closures exceed it, so the manifest emits SourceRootManifestElided with produced_row_count 0 and an empty ingest. Handed that, the probe refuses (frontier_probe_empty_ingest), which is the corrected behaviour: before this lane it answered ^resolve_module_not_found, so a capped shard read as a module that does not exist. No per-file substitute measurement is recorded for them, because a measurement of part of a closure is not a measurement of the closure. Dissolve-on: a transport that carries a closure of arbitrary size — the cap is the trigger, and it is the only thing standing between these three rows and a detailed cause."
+
+data semantic_family_closure_drift_note: String = "OBSERVED DRIFT, reported and not acted on: the frontier roster records closure_reads 9 for use_site_verdict and 35 for materialization_carriers; discover_source_root_ingest measures 15 and 48 at this commit. The rows are the program lead's authority and are not edited from here. Stated precisely, because the two are different claims: what is established is that the closure sizes differ from the recorded ones at this commit, NOT that either row's blocker classification is wrong."
+
+fn shard_count() -> Int {
+  fold_list(xs: semantic_family_shard_rows, empty: 0, cons: fn(n, _r) { n + 1 })
+}
+
+fn measured_shard_count() -> Int {
+  fold_list(
+    xs: semantic_family_shard_rows,
+    empty: 0,
+    cons: fn(n, r) {
+      match r.disposition {
+        DetailedCauseObserved {
+          located_reason: _,
+          chain_length: _,
+          symbols_differing_from_head: _,
+          first_differing_symbol: _
+        } => n + 1
+        ClosureExceedsManifestCap { read_count: _, cap: _ } => n
+      }
+    }
+  )
+}
+
+fn capped_shard_count() -> Int {
+  fold_list(
+    xs: semantic_family_shard_rows,
+    empty: 0,
+    cons: fn(n, r) {
+      match r.disposition {
+        ClosureExceedsManifestCap { read_count: _, cap: _ } => n + 1
+        DetailedCauseObserved {
+          located_reason: _,
+          chain_length: _,
+          symbols_differing_from_head: _,
+          first_differing_symbol: _
+        } => n
+      }
+    }
+  )
+}
+
+fn shards_naming_body_lowering_beneath_the_mask() -> Int {
+  fold_list(
+    xs: semantic_family_shard_rows,
+    empty: 0,
+    cons: fn(n, r) {
+      match r.disposition {
+        DetailedCauseObserved {
+          located_reason: _,
+          chain_length: _,
+          symbols_differing_from_head: _,
+          first_differing_symbol: s
+        } =>
+          if s == "body_lowering_reason_wrapper_retained_emitted" { n + 1 } else { n }
+        ClosureExceedsManifestCap { read_count: _, cap: _ } => n
+      }
+    }
+  )
+}
+
+fn every_capped_shard_exceeds_its_own_cap() -> Bool {
+  fold_list(
+    xs: semantic_family_shard_rows,
+    empty: true,
+    cons: fn(ok, r) {
+      match r.disposition {
+        ClosureExceedsManifestCap { read_count: reads, cap: cap } => ok && (reads > cap)
+        DetailedCauseObserved {
+          located_reason: _,
+          chain_length: _,
+          symbols_differing_from_head: _,
+          first_differing_symbol: _
+        } => ok
+      }
+    }
+  )
+}
+
+fn every_measured_chain_is_non_uniform() -> Bool {
+  fold_list(
+    xs: semantic_family_shard_rows,
+    empty: true,
+    cons: fn(ok, r) {
+      match r.disposition {
+        DetailedCauseObserved {
+          located_reason: _,
+          chain_length: len,
+          symbols_differing_from_head: differing,
+          first_differing_symbol: _
+        } => ok && (differing > 0) && (differing < len)
+        ClosureExceedsManifestCap { read_count: _, cap: _ } => ok
+      }
+    }
+  )
+}

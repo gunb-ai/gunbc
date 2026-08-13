@@ -999,6 +999,8 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", f: "the_materialized_path_is_the_one_the_real_cargo_stream_named"),
   bin_wet(entry: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", f: "a_target_the_build_never_produced_refuses_and_does_not_materialize"),
   bin_wet(entry: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", f: "the_digest_is_of_the_file_cargo_named_not_of_some_other_real_file"),
+  bin_wet(entry: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", f: "changing_only_the_source_bytes_names_exactly_the_artifact_axis"),
+  bin_wet(entry: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", f: "rebuilding_identical_source_in_place_moves_no_axis"),
   bin_wet(entry: "dag/test/claim/dag_collect_fingerprint_witness_test.dag", f: "dag_collect_fingerprint_witness_keystone_holds"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag", f: "perturb_optional_skew_fixture_red_holds"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag", f: "perturb_unresolved_import_fixture_red_holds"),

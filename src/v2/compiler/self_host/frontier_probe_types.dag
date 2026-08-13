@@ -39,6 +39,8 @@ import v2.std.grammar_choice_ambiguity {
 }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.diagnostic { Extent, Locus, NodeLocus, PortLocus, Textual }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.qualified_name { QualifiedName }
@@ -106,11 +108,28 @@ type AssembleRejectionCause
   | MissingModuleIdentityUnavailable
   | OtherAssembleRefusal { reason: Symbol }
 
+data frontier_probe_cause_location_note: String = "OtherAssembleRefusal is the catch-all arm, so its reason symbol alone does not say WHICH file refused — recovering that previously meant inferring across a whole closure. The location is carried here, but NOT as a bare Locus: Locus admits NodeLocus and PortLocus, which have no manifest serialization, and a host emitter that errored on them would abort an entire 27-module survey over one unrepresentable position. The file is a String, not a Symbol: a path contains slashes and dots, and an emitted bare ^dag/std/algebra.dag does not re-parse — the front end reads it as division and projection, so the manifest would emit but never reload. Every other emitted manifest carries paths as Strings for the same reason. This probe-owned projection is serializable by construction and total, with the unavailable arm carrying a typed reason so the deficit is counted rather than fabricated or fatal. Location sits on AssembleRejectionDetail, NOT inside AssembleRejectionCause. Two modules refusing for the same reason at different positions are the SAME detailed cause, so a clustering key reads the cause — and the only way to guarantee a key cannot accidentally include position is for position not to be part of the cause value at all. A note asserting the separation while the field lived inside the cause would have been a claim the structure contradicted. The port arm is kept as real data rather than folded into an unavailable arm, because a port IS serializable; only a Node has no manifest rendering."
+
+type FrontierProbeCauseLocation
+  = CauseLocationTextual { file: String, extent: Extent }
+  | CauseLocationPort { port: Symbol }
+  | CauseLocationNodeNotSerializable
+
+fn frontier_probe_cause_location_from_locus(at: Locus) -> FrontierProbeCauseLocation {
+  match at {
+    Textual { file: f, extent: e } =>
+      CauseLocationTextual { file: symbol_lexeme(sym: f), extent: e }
+    NodeLocus { anchor: _ } => CauseLocationNodeNotSerializable
+    PortLocus { anchor: p } => CauseLocationPort { port: p.at }
+  }
+}
+
 type FrontierProbeAssembleDetail
   = NoFrontierProbeDetail
   | AssembleRejectionDetail {
       rejection_chain: NonEmptySymbolChain,
-      cause: AssembleRejectionCause
+      cause: AssembleRejectionCause,
+      at: FrontierProbeCauseLocation
     }
 
 data frontier_probe_overlap_detail_note: String = "AssembleRejectionDetail binds only parse-stage-carried evidence — never a global grammar roster. GrammarChoiceOverlap rows are extracted from ParseDiagnosticEvidence on the parse-stage diagnostic carrier. When overlap residue heads a chain with a nonempty tail and carries evidence, cause is MaskedAssembleRefusal; when the tail is nonempty but evidence is absent, MaskedAssembleRefusalWithoutEvidence preserves remaining_chain without absorbing into OtherAssembleRefusal. AssembleMissingModule in assemble_detail awaits parse-stage ModuleRootMissingEvidence; FrontierProbeDetail.MissingModule (#7762) is the structural resolve_module_not_found authority on detail. MissingModuleIdentityUnavailable remains when assemble cause cannot bind parse-stage evidence. Emit-stage receipts use NoFrontierProbeDetail."
