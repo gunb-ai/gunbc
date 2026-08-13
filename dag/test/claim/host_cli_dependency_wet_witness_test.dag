@@ -1,0 +1,35 @@
+module test.claim.host_cli_dependency_wet_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.types { Bool, NonEmptyStr }
+import extdeps.tools { CliTool, SourceCoreutils }
+import extdeps.tools.npm { npm_cli_tool }
+import gunbc.host_cli_dependency {
+  observe_host_cli_dependency,
+  HostCliDependencyPresent,
+  HostCliDependencyAbsent,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data echo_cli_tool: CliTool = CliTool {
+  name: "echo" as NonEmptyStr,
+  min_version: none,
+  installable_via: [SourceCoreutils],
+}
+
+data witness_note: String = "WET EXECUTION: observe_host_cli_dependency must not match shell.Which.Check.path (Optional straddle). echo and npm stand-ins on a host where both exist must reach HostCliDependencyPresent without runtime error."
+
+test fn observe_echo_wet_present_arm_does_not_crash() -> Bool {
+  match observe_host_cli_dependency(tool: echo_cli_tool) {
+    HostCliDependencyPresent => true
+    HostCliDependencyAbsent { tool: _, hint: _ } => false
+  }
+}
+
+test fn observe_npm_wet_present_arm_does_not_crash() -> Bool {
+  match observe_host_cli_dependency(tool: npm_cli_tool) {
+    HostCliDependencyPresent => true
+    HostCliDependencyAbsent { tool: _, hint: _ } => false
+  }
+}
