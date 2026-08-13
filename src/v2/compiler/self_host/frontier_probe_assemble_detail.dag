@@ -39,6 +39,7 @@ import v2.compiler.self_host.frontier_probe_types {
   MissingModuleIdentityUnavailable,
   NonEmptySymbolChain,
   OtherAssembleRefusal,
+  frontier_classify_rejection_reason,
   frontier_probe_cause_location_from_locus,
   ProbeStageAssemble
 }
@@ -131,6 +132,37 @@ fn non_empty_symbol_chain_from_parse_stage_head(
 
 fn diagnostic_reason_is_overlap_residue(d: Diagnostic) -> Bool {
   d.reason == ^parse_grammar_choice_overlap_residue
+}
+
+fn frontier_probe_first_non_overlap_residue_diagnostic_optional(
+  d: NonEmptyDiagnostics
+) -> Optional<Diagnostic> {
+  if !diagnostic_reason_is_overlap_residue(d: d.head) {
+    Present { value: d.head }
+  } else {
+    fold_list(
+      xs: d.tail,
+      empty: Absent,
+      cons: fn(acc, diag) {
+        match acc {
+          Present { value: _ } => acc
+          Absent =>
+            if diagnostic_reason_is_overlap_residue(d: diag) {
+              Absent
+            } else {
+              Present { value: diag }
+            }
+        }
+      }
+    )
+  }
+}
+
+fn frontier_probe_assemble_located_reason_from_diagnostics(d: NonEmptyDiagnostics) -> Symbol {
+  match frontier_probe_first_non_overlap_residue_diagnostic_optional(d: d) {
+    Present { value: diag } => diag.reason
+    Absent => d.head.reason
+  }
 }
 
 fn all_overlap_residue_diagnostic_list(xs: FreeMonoid<Diagnostic>) -> Bool {
@@ -355,11 +387,12 @@ fn frontier_probe_receipt_from_assemble_rejection(
   detail: FrontierProbeDetail,
   overlap_residue_stage: Optional<NonEmptyParseStageDiagnostics>
 ) -> FrontierProbeReceipt {
+  let located_reason = frontier_probe_assemble_located_reason_from_diagnostics(d: diagnostics)
   FrontierProbeReceipt {
     module_path: module_path,
-    blocker_class: blocker,
+    blocker_class: frontier_classify_rejection_reason(reason: located_reason),
     located_stage: ProbeStageAssemble,
-    located_reason: diagnostics.head.reason,
+    located_reason: located_reason,
     detail: detail,
     assemble_detail: frontier_probe_assemble_detail_from_rejection_with_overlap_stage(
       d: diagnostics,
