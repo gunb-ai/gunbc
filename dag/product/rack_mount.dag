@@ -45,20 +45,21 @@ import v2.std.optional { Present, Absent }
 // RackUnitPosition and capacities take std.measure's RackUnit: a position is an ordinal slot index
 // and a capacity is a cardinal magnitude, a distinction placement_supply already draws and this
 // module must not re-draw.
+// MountsCollide: The two identities are named for their PHYSICAL relationship and derived from lowest_unit. An
+// earlier revision passed them as (already-admitted, incoming), which is an input-order fact
+// wearing position names: a mount admitted at U10 colliding with an incoming one at U8 reported
+// U10 as the lower.
+//
+// OccupancyExceedsCapacity: Its own arm, because reusing MountExceedsRackHeight would have put a total occupied
+// CARDINALITY in a field that carries a mount's top POSITION everywhere else - one field meaning
+// two things, so a fired diagnostic would mislabel the failure it exists to explain. This arm is
+// unreachable while admission holds; it is the typed answer if the invariant behind
+// rack_units_free is ever broken, not a case a caller is expected to hit.
 type MountRefusal
   = MountBelowFirstUnit { lowest_unit: RackUnitPosition }
   | MountExceedsRackHeight { top_unit: RackUnitPosition, rack_capacity: RackUnit }
-  // The two identities are named for their PHYSICAL relationship and derived from lowest_unit. An
-  // earlier revision passed them as (already-admitted, incoming), which is an input-order fact
-  // wearing position names: a mount admitted at U10 colliding with an incoming one at U8 reported
-  // U10 as the lower.
   | MountsCollide { lower: PhysicalAssetIdentity, upper: PhysicalAssetIdentity }
   | AssetMountedTwice { asset: PhysicalAssetIdentity }
-  // Its own arm, because reusing MountExceedsRackHeight would have put a total occupied
-  // CARDINALITY in a field that carries a mount's top POSITION everywhere else - one field meaning
-  // two things, so a fired diagnostic would mislabel the failure it exists to explain. This arm is
-  // unreachable while admission holds; it is the typed answer if the invariant behind
-  // rack_units_free is ever broken, not a case a caller is expected to hit.
   | OccupancyExceedsCapacity { occupied: RackUnit, capacity: RackUnit }
 
 type MountConstruction<T>
@@ -191,10 +192,6 @@ fn rack_units_to_micrometres(units: RackUnit) -> Micrometer {
   micrometer(count: rack_unit_count(u: units) * micrometers_per_rack_unit())
 }
 
-fn rack_mounting_aperture_height(r: RackInstance) -> Micrometer {
-  rack_units_to_micrometres(units: r.catalog.rack_units)
-}
-
 // NO ROOM-FIT RELATION IN THIS INCREMENT, and the reason is worth stating because an earlier
 // revision shipped one that looked right.
 //
@@ -216,3 +213,7 @@ fn rack_mounting_aperture_height(r: RackInstance) -> Micrometer {
 // World and a RoomIdentity, resolving the room through the world and retaining that identity in the
 // result, and its discriminating control is the case the deleted version got wrong - a ceiling
 // above the aperture but below the external height must REFUSE.
+
+fn rack_mounting_aperture_height(r: RackInstance) -> Micrometer {
+  rack_units_to_micrometres(units: r.catalog.rack_units)
+}
