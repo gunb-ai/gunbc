@@ -158,21 +158,6 @@ test fn srv4_evidence_derived_refuses_while_board_default_selects_nbd_proxy() ->
   }
 }
 
-// srv3's BMC upgrade to 3.22.00 took its catalogued delivery mechanism with it,
-// and this witness says so by execution. The predecessor asserted the mechanism
-// IS nbd-proxy; it reddened the moment srv3's evidence row followed the upgrade,
-// which is exactly what the tripwire above it was written to do.
-//
-// READ THE CAUSE, NOT THE ARM. UNESTABLISHED is not impossible. The catalogued
-// 3.22.00 row lists neither Redfish virtual media nor the bmcweb nbd-proxy, and
-// no host has an established network-boot delivery — so this solver has nothing
-// left to select. It does NOT establish that the host cannot be installed: srv4
-// runs this same firmware and was installed over the configfs USB-gadget
-// transport, which extdeps.bmc.virtual_media already models as
-// ConfigfsGadgetTransport and which this solver cannot see because its
-// OsInstallMechanism enum predates that authority. Teaching it to consume
-// VirtualMediaTransport is the INSTALL-0 repair; an omitted capability read as an
-// observed absence is the defect, not the hardware.
 test fn srv3_reinstall_path_is_unestablished_on_3_22_00() -> Bool {
   match srv3_install_mechanism_solution {
     OsInstallMechanismRefused { cause: c } =>
@@ -185,13 +170,6 @@ test fn srv3_reinstall_path_is_unestablished_on_3_22_00() -> Bool {
   }
 }
 
-// The retained legacy row NO LONGER agrees with the evidence-derived solution,
-// and executing that divergence is the point. srv3_install_mechanism reads the
-// board's SHIPPED 2.07.00 capabilities, so it still answers
-// NbdProxyVirtualMediaInstall; the evidence-derived solution follows srv3's
-// ACTUAL firmware and refuses. Pinning both halves is what stops the stale
-// board-default row being read as a current plan — the failure its predecessor
-// existed to catch, now caught and held rather than re-greened.
 test fn legacy_board_default_row_no_longer_agrees_with_evidence() -> Bool {
   match srv3_install_mechanism_solution {
     OsInstallMechanismRefused { cause: _ } =>

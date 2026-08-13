@@ -3,11 +3,6 @@ module test.claim.srv3_os_install_actuate
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// Was "has three steps". The count only ever mattered as a proxy for the plan
-// being derived from the solved mechanism, and srv3's BMC upgrade now exercises
-// that derivation directly: the solve refuses, so the plan refuses with it. A
-// plan still offering three nbd-proxy steps for a host whose firmware does not
-// implement nbd-proxy is the failure this replaces.
 test fn srv3_actuator_plan_follows_the_solve_and_refuses() -> Bool {
   srv3_os_install_actuator_plan_refuses_on_unestablished_path()
     && match srv3_os_install_actuator_plan_standing {
