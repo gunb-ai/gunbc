@@ -1,0 +1,102 @@
+module test.claim.ice40_configuration_witness
+
+import std.types { Bool, String, List }
+import std.integer { Int }
+import extdeps.programmable_logic.ice40.configuration {
+  AllConfigurationModes,
+  ConfigurationDone,
+  ConfigurationReset,
+  ConfigurationTimeTypical,
+  ConfigurationTimeWithdrawnByVendor,
+  ConfigurationTiming,
+  HighFrequency,
+  LowFrequencyDefault,
+  MaximumColumn,
+  MediumFrequency,
+  MinimumColumn,
+  OnlyUnderMode,
+  SpiSlaveSelect,
+  TypicalColumn,
+  configuration_signal_name,
+  hx1k_configuration_time,
+  ice40_configuration_timings,
+  ice40_creset_b_low_pulse,
+  ice40_hx1k_creset_to_first_sck,
+  scope_admits,
+  timings_for_mode,
+}
+import extdeps.programmable_logic.ice40.supply {
+  MasterSpiConfiguration,
+  SlaveSpiConfiguration,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn count_of(xs: List<ConfigurationTiming>) -> Int {
+  fold(xs, init: 0, f: fn(acc, _t) { acc + 1 })
+}
+
+// A SLAVE-SPI ROW IS NOT IN SCOPE FOR A MASTER-SPI BOARD, and that is different from the value
+// being unknown. The reference design configures from master SPI and never performs the slave
+// write tCR_SCK bounds, so the row is absent from its timing set rather than sitting there as a
+// constraint nothing on the board can violate.
+test fn w_a_slave_spi_row_is_out_of_scope_for_a_master_spi_board() -> Bool {
+  !scope_admits(s: ice40_hx1k_creset_to_first_sck.scope, m: MasterSpiConfiguration)
+    && scope_admits(s: ice40_hx1k_creset_to_first_sck.scope, m: SlaveSpiConfiguration)
+    && scope_admits(s: ice40_creset_b_low_pulse.scope, m: MasterSpiConfiguration)
+}
+
+// AND THE SCOPE ACTUALLY SHRINKS THE SET. Without this the scope field is decorative: it could be
+// carried, checked by nothing, and every consumer would still see every row. Slave SPI sees more
+// rows than master SPI, and both see the all-modes rows.
+test fn w_the_mode_selects_which_timings_apply() -> Bool {
+  let under_master = count_of(xs: timings_for_mode(m: MasterSpiConfiguration))
+  let under_slave = count_of(xs: timings_for_mode(m: SlaveSpiConfiguration))
+  let total = count_of(xs: ice40_configuration_timings)
+  under_master == 2 && under_slave == total && under_slave > under_master
+}
+
+// A MINIMUM IS NOT A TYPICAL. The 200 ns CRESET_B pulse width sits in the minimum column, which
+// was read off the table's condition-column alignment rather than assumed — one column left and a
+// required minimum becomes a typical, which a design would meet on average and violate
+// intermittently. The column is carried so a consumer can tell the difference.
+test fn w_the_pulse_width_is_a_minimum_and_says_so() -> Bool {
+  ice40_creset_b_low_pulse.bound.value == 200
+    && (ice40_creset_b_low_pulse.bound.unit as String) == "ns"
+    && match ice40_creset_b_low_pulse.bound.column {
+      MinimumColumn => true
+      TypicalColumn => false
+      MaximumColumn => false
+    }
+}
+
+// A WITHDRAWN VALUE IS NOT AN ABSENT ONE. The vendor published high-frequency configuration times
+// and then deleted them; the low and medium figures survive. Carrying the retired number would
+// assert a specification that has been retracted, and reporting it as merely unknown would invite
+// someone to go and find it in an older revision - which is exactly the wrong remedy.
+test fn w_the_withdrawn_configuration_time_is_not_a_missing_one() -> Bool {
+  let low = match hx1k_configuration_time(c: LowFrequencyDefault) {
+    ConfigurationTimeTypical { milliseconds: ms } => ms
+    ConfigurationTimeWithdrawnByVendor { note: _ } => 0
+  }
+  let medium = match hx1k_configuration_time(c: MediumFrequency) {
+    ConfigurationTimeTypical { milliseconds: ms } => ms
+    ConfigurationTimeWithdrawnByVendor { note: _ } => 0
+  }
+  let high_is_withdrawn = match hx1k_configuration_time(c: HighFrequency) {
+    ConfigurationTimeWithdrawnByVendor { note: n } =>
+      list_length(items: split(s: n as String, delimiter: "deleting")) > 1
+    ConfigurationTimeTypical { milliseconds: _ } => false
+  }
+  low == 53 && medium == 25 && high_is_withdrawn
+}
+
+// THE SIGNAL CARRIES THIS REVISION'S NAME. SPI_SS_B was renamed SPI_SS in the revision this
+// module cites, so the old spelling names a signal in a document that has been superseded - the
+// same staleness class as citing the retired document number.
+test fn w_the_slave_select_uses_the_current_signal_name() -> Bool {
+  (configuration_signal_name(s: SpiSlaveSelect) as String) == "SPI_SS"
+    && (configuration_signal_name(s: ConfigurationReset) as String) == "CRESET_B"
+    && (configuration_signal_name(s: ConfigurationDone) as String) == "CDONE"
+}
