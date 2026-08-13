@@ -46,6 +46,9 @@ import gunbc.package_delivery {
   CodexRegistryLocatorAdmitted,
   CodexRegistryLocatorRefused,
   admitted_and_executed_lock_bytes_agree,
+  codex_required_package_version,
+  codex_runtime_version_identity_marker,
+  codex_runtime_version_identity_satisfied,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -353,4 +356,14 @@ test fn link_node_is_unsupported_not_half_modeled() -> Bool {
       count(nodes) == 1 && count(unsupported) == 1
     NpmPackageLockParseRefused { cause: _ } => false
   }
+}
+
+test fn codex_runtime_version_identity_refuses_ambient_srv1_version() -> Bool {
+  (codex_required_package_version as String) == "0.146.0"
+    && codex_runtime_version_identity_marker() == "codex-cli 0.146.0"
+    && !codex_runtime_version_identity_satisfied(combined_output: "codex-cli 0.133.0\n")
+    && codex_runtime_version_identity_satisfied(combined_output: "codex-cli 0.146.0\n")
+    && !codex_runtime_version_identity_satisfied(
+      combined_output: "codex-cli 0.147.0\n",
+    )
 }

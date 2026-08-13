@@ -419,6 +419,56 @@ fn codex_expected_wrapper_version() -> NonEmptyStr {
   (codex_required_package_version as String) as NonEmptyStr
 }
 
+data codex_runtime_version_identity_note: String = "ONE runtime version marker for every Codex CLI identity probe. codex_required_package_version is the sole authority; the marker is codex-cli <version> as printed by codex --version. Weak codex-cli-only checks let srv1's ambient npm install (0.133.0) pass while extdeps.llm.codex_app_server cites 0.146.0 protocol facts — two runtimes producing incompatible protocol surfaces."
+
+fn codex_runtime_version_identity_marker() -> String {
+  concat("codex-cli ", codex_required_package_version as String)
+}
+
+fn codex_runtime_version_identity_satisfied(combined_output: String) -> Bool {
+  string_contains(
+    s: combined_output,
+    pattern: codex_runtime_version_identity_marker(),
+  )
+}
+
+data codex_runtime_current_link_name: NonEmptyStr = "current" as NonEmptyStr
+
+fn codex_runtime_current_link_path(release_parent: FilePath) -> FilePath {
+  concat(
+    release_parent as String,
+    concat("/", codex_runtime_current_link_name as String),
+  ) as FilePath
+}
+
+fn codex_bundled_executable_at_current_link(
+  release_parent: FilePath,
+  native_executable_rel: NonEmptyStr,
+) -> FilePath {
+  concat(
+    codex_runtime_current_link_path(release_parent: release_parent) as String,
+    concat("/", native_executable_rel as String),
+  ) as FilePath
+}
+
+fn publish_codex_runtime_current_link(
+  release_parent: FilePath,
+  release_root: FilePath,
+) -> Bool {
+  let link = codex_runtime_current_link_path(release_parent: release_parent)
+  let script = retained_foreign(
+    body: concat(
+      "ln -sfnT '",
+      concat(
+        release_root as String,
+        concat("' '", concat(link as String, "'")),
+      ),
+    ),
+    reason: "Publish codex runtime current symlink to validated content-addressed release" as NonEmptyStr,
+  )
+  shell.Exec.Run(script: script).success
+}
+
 fn codex_expected_platform_version(target: CodexNpmRuntimeTarget) -> NonEmptyStr {
   concat(
     codex_required_package_version as String,
@@ -537,6 +587,29 @@ fn codex_native_executable_rel(target: CodexNpmRuntimeTarget) -> NonEmptyStr? {
     }
   } else {
     none
+  }
+}
+
+fn codex_linux_arm64_native_executable_rel() -> NonEmptyStr? {
+  codex_native_executable_rel(
+    target: CodexNpmRuntimeTarget {
+      os: "linux" as NonEmptyStr,
+      cpu: "arm64" as NonEmptyStr,
+    },
+  )
+}
+
+fn codex_bundled_executable_for_srv1() -> FilePath {
+  match codex_linux_arm64_native_executable_rel() {
+    Absent =>
+      codex_runtime_current_link_path(
+        release_parent: srv1_provider_runtime_placement().runtime_release_root,
+      )
+    Present { value: rel } =>
+      codex_bundled_executable_at_current_link(
+        release_parent: srv1_provider_runtime_placement().runtime_release_root,
+        native_executable_rel: rel,
+      )
   }
 }
 
@@ -1676,6 +1749,22 @@ fn rename_publishing_noreplace(
   shell.Exec.Run(script: script).success
 }
 
+fn codex_runtime_release_ready_with_current_link(
+  release_parent: FilePath,
+  root: FilePath,
+) -> CodexRuntimeReleaseOutcome {
+  if publish_codex_runtime_current_link(
+    release_parent: release_parent,
+    release_root: root,
+  ) {
+    CodexRuntimeReleaseReady { root: root }
+  } else {
+    CodexRuntimeReleaseFailed {
+      cause: "codex runtime current symlink publish refused" as NonEmptyStr,
+    }
+  }
+}
+
 fn release_codex_runtime_bundle_immutable(
   build_root: FilePath,
   receipt: CodexRuntimeBundleReceipt,
@@ -1709,7 +1798,10 @@ fn release_codex_runtime_bundle_immutable(
           match validated {
             CodexRuntimeReleaseReady { root } => {
               let _ = shell.Remove.RecursiveForce(path: build_root)
-              CodexRuntimeReleaseReady { root: root }
+              codex_runtime_release_ready_with_current_link(
+                release_parent: parent,
+                root: root,
+              )
             }
             CodexRuntimeReleaseFailed { cause } =>
               CodexRuntimeReleaseFailed { cause: cause }
@@ -1751,18 +1843,28 @@ fn release_codex_runtime_bundle_immutable(
                       publishing: publishing,
                       dest: dest,
                     ) {
-                      CodexRuntimeReleaseReady { root: dest }
+                      codex_runtime_release_ready_with_current_link(
+                        release_parent: parent,
+                        root: dest,
+                      )
                     } else {
                       let winner = shell.Test.IsDirectory(path: dest)
                       let _ = shell.Remove.RecursiveForce(path: publishing)
                       if winner.is_directory {
-                        validate_existing_codex_runtime_release(
+                        match validate_existing_codex_runtime_release(
                           existing_root: dest,
                           receipt: receipt,
                           native_executable_rel: native_executable_rel,
                           expected_hex: hex,
                           scratch_dir: scratch_dir,
-                        )
+                        ) {
+                          CodexRuntimeReleaseReady { root: winner_root } =>
+                            codex_runtime_release_ready_with_current_link(
+                              release_parent: parent,
+                              root: winner_root,
+                            )
+                          other => other
+                        }
                       } else {
                         CodexRuntimeReleaseFailed {
                           cause: "atomic no-replace rename to content-addressed release refused" as NonEmptyStr,

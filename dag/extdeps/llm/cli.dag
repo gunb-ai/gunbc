@@ -38,6 +38,8 @@ data codex_cli_program_note: String = "The one program-token authority for the C
 data codex_cli_program: String = "codex"
 data codex_cli_identity_contains: String = "codex-cli"
 
+data codex_cli_identity_contains_note: String = "WEAK SUBSTRING MARKER ONLY — extdeps cannot import gunbc.package_delivery. Exact version probes MUST use gunbc.package_delivery codex_runtime_version_identity_marker / codex_runtime_version_identity_satisfied so ambient npm shims (srv1 0.133.0) cannot pass while extdeps.llm.codex_app_server cites 0.146.0 protocol facts."
+
 // The one program-token authority for claude code's CLI (DESIGN §3): shape_claude_invoke_argv's argv head and any caller preflighting claude-on-PATH consume THIS row, never a re-minted literal. (The `service claude.Invoke` transport argv below carries its own literal because the service DSL argv rows are self-contained transport realizations — that literal is the shell-transport handler's spelling of the same upstream binary, not a second authority.)
 data claude_cli_program: String = "claude"
 

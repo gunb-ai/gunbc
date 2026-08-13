@@ -39,9 +39,27 @@ type GunbcHostLayout {
   gunbc_serve_binary: FilePath
   roadmap_codex_home: FilePath
   controller_repo: FilePath
+  codex_bundled_executable: FilePath
 }
 
 data srv1_dashboard_controller_repo: FilePath = "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as FilePath
+
+data codex_runtime_current_link_name: NonEmptyStr = "current" as NonEmptyStr
+
+data srv1_codex_linux_arm64_native_executable_rel_note: String = "linux/arm64 native rel for the srv1 fleet — byte-identical to gunbc.package_delivery codex_native_executable_rel for CodexNpmRuntimeTarget { os: linux, cpu: arm64 }. Host layout cannot import package_delivery (import cycle); this row is the host-side projection and must move with that fn."
+
+data srv1_codex_linux_arm64_native_executable_rel: NonEmptyStr = "node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex" as NonEmptyStr
+
+fn srv1_codex_bundled_executable() -> FilePath {
+  concat(
+    concat(srv1_codex_runtime_release_root as String, concat("/", codex_runtime_current_link_name as String)),
+    concat("/", srv1_codex_linux_arm64_native_executable_rel as String),
+  ) as FilePath
+}
+
+fn srv2_codex_bundled_executable() -> FilePath {
+  srv1_codex_bundled_executable()
+}
 
 fn srv1_host_layout() -> GunbcHostLayout {
   GunbcHostLayout {
@@ -49,6 +67,7 @@ fn srv1_host_layout() -> GunbcHostLayout {
     gunbc_serve_binary: srv1_gunbc_serve_binary,
     roadmap_codex_home: srv1_roadmap_codex_home,
     controller_repo: srv1_dashboard_controller_repo,
+    codex_bundled_executable: srv1_codex_bundled_executable(),
   }
 }
 
@@ -69,6 +88,7 @@ fn srv2_host_layout() -> GunbcHostLayout {
     gunbc_serve_binary: srv2_gunbc_serve_binary,
     roadmap_codex_home: srv2_roadmap_codex_home,
     controller_repo: srv2_dashboard_controller_repo,
+    codex_bundled_executable: srv2_codex_bundled_executable(),
   }
 }
 data managed_compile_pool_slice_note: String = "The ONE authority for the managed compile-pool slice unit name, homed here for the same reason as the paths above: it is a fact about how a HOST is laid out, not about any one consumer of it. Its live consumers are gunbc.build_cache_instance `ci_cache_instance` and `session_cache_instance`, which carry it as each deployed instance's `intended_compile_pool`, plus the `managed_compile_pool_slice_fixture` row in gunbc.host_build_cache_provision. STATE, stated so this row is not read as a description of the fleet: NOTHING PROVISIONS THIS SLICE YET. No observed host has it — the 2026-08-01 placement receipt found every CI cache endpoint owned by a runner-slot process, never by a managed unit inside a compile pool — so the name is declared intent that an observation is checked against, and gunbc.fleet_host_budget's `CompilePoolInRunnerSlots` correspondingly derives a ZERO pool today. CORRECTED 2026-08-01 (review 46182, and the review understated it — all three of this note's claims had gone stale in one edit, which is the §3 citation class this repo keeps paying for): it previously cited `ServerUnitOwned.slice_unit` in gunbc.host_build_cache_provision, said the emitted shell in gunbc.host_build_cache_provision_script greps the observed cgroup for this value, and justified its homing by an import cycle between those two consumers. `ServerUnitOwned` no longer exists (it is `ServerManagedUnitOwned { unit }` in gunbc.build_cache_instance, and placement is decided against the instance's `intended_unit` — a service, not this slice); the script carries no compile-pool reference at all, because the branch's emitted placement probe was deliberately not landed (that module is an A5 census row whose emitted shell may shrink but not grow); and with that consumer absent the two-consumer drift hazard and the cycle rationale describe a mechanism that is not in the tree."

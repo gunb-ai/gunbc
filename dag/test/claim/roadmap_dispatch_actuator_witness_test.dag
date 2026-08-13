@@ -129,8 +129,10 @@ import gunbc.dispatch_pipe_pane_emit {
   dispatch_event_pipe_emission,
 }
 import gunbc.roadmap_dashboard_instance {
+  HostDashboardInstance,
   srv1_lab_dashboard_instance,
   srv1_live_dashboard_instance,
+  dashboard_instance_provider_executable,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -313,7 +315,7 @@ test fn witness_actuator_projection_refuses_missing_provider() -> Bool {
   }
 }
 
-test fn witness_codex_npm_launcher_fingerprint_is_live_receipt() -> Bool {
+test fn witness_codex_bundled_native_fingerprint_is_expected_receipt() -> Bool {
   match resolve_dispatch_selection(
     inventory: fixture_inventory_codex_only_available(
       instance: srv1_live_dashboard_instance(),
@@ -322,7 +324,7 @@ test fn witness_codex_npm_launcher_fingerprint_is_live_receipt() -> Bool {
     node_sizing: Unsized,
   ) {
     DispatchSelectionResolved { receipt } =>
-      resolved_process_fingerprint(resolved: receipt.resolved_selection) == ("node" as NonEmptyStr)
+      resolved_process_fingerprint(resolved: receipt.resolved_selection) == ("codex" as NonEmptyStr)
     DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
   }
 }
@@ -345,7 +347,10 @@ test fn witness_codex_argv_is_unattended_but_sandboxed() -> Bool {
     && !string_contains(s: wire, pattern: "--ephemeral")
 }
 
-fn codex_tmux_command_shape_holds(cmds: DispatchSpawnCommands) -> Bool {
+fn codex_tmux_command_shape_holds(
+  cmds: DispatchSpawnCommands,
+  codex_executable: String,
+) -> Bool {
   let create_wire = join(cmds.tmux_spawn.args, separator: "\0")
   let provider_wire = join(cmds.provider_start.args, separator: "\0")
   cmds.tmux_spawn.program == "/usr/bin/tmux"
@@ -353,7 +358,7 @@ fn codex_tmux_command_shape_holds(cmds: DispatchSpawnCommands) -> Bool {
     && !string_contains(s: create_wire, pattern: "\0codex\0")
     && string_contains(
       s: provider_wire,
-      pattern: "\0/usr/bin/codex\0--ask-for-approval\0never\0exec",
+      pattern: concat("\0", concat(codex_executable, "\0--ask-for-approval\0never\0exec")),
     )
     && !string_contains(s: provider_wire, pattern: "\0claude\0")
 }
@@ -378,11 +383,17 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
   ) {
     DispatchSpawnRefused { step: _, detail: _ } => false
     DispatchSpawnReady { commands: cmds } =>
-      codex_tmux_command_shape_holds(cmds: cmds)
+      codex_tmux_command_shape_holds(
+        cmds: cmds,
+        codex_executable: dashboard_instance_provider_executable(
+          instance: srv1_live_dashboard_instance(),
+        ) as String,
+      )
   }
 }
 
-fn lab_instance_command_shape_holds(commands: DispatchSpawnCommands) -> Bool {
+fn lab_instance_command_shape_holds(commands: DispatchSpawnCommands, lab: HostDashboardInstance) -> Bool {
+  let codex_executable = dashboard_instance_provider_executable(instance: lab) as String
   let git_wire = join(commands.worktree_add.args, separator: "\0")
   let state_wire = join(commands.attempt_state_prepare.args, separator: "\0")
   let pointer_wire = join(commands.attempt_current_pointer.args, separator: "\0")
@@ -414,7 +425,7 @@ fn lab_instance_command_shape_holds(commands: DispatchSpawnCommands) -> Bool {
     )
     && string_contains(
       s: provider_wire,
-      pattern: "\0CODEX_HOME=/home/briansrls/.codex@gunbc-roadmap\0/usr/bin/codex\0",
+      pattern: concat("\0CODEX_HOME=/home/briansrls/.codex@gunbc-roadmap\0", codex_executable),
     )
 }
 
@@ -440,7 +451,7 @@ test fn witness_lab_instance_moves_repo_tmux_and_codex_state_together() -> Bool 
   ) {
     DispatchSpawnRefused { step: _, detail: _ } => false
     DispatchSpawnReady { commands } =>
-      lab_instance_command_shape_holds(commands: commands)
+      lab_instance_command_shape_holds(commands: commands, lab: lab)
   }
 }
 
@@ -507,7 +518,7 @@ test fn codex_provider_v0_argv_keystone_holds() -> Bool {
   witness_probe_bridge_ineligible_standing_refuses_actuator_selection()
     && witness_actuator_automatic_selection_refuses_with_standing_reason()
     && witness_projection_standing_refusal_specimen_holds()
-    && witness_codex_npm_launcher_fingerprint_is_live_receipt()
+    && witness_codex_bundled_native_fingerprint_is_expected_receipt()
     && witness_codex_argv_is_unattended_but_sandboxed()
     && witness_selected_provider_shapes_codex_tmux_command()
     && witness_lab_instance_moves_repo_tmux_and_codex_state_together()
