@@ -1786,12 +1786,13 @@ pub fn reference_derived_closure_over_source_roots(
                     continue;
                 }
             };
-            let grounding = if rel == entry_key {
+            if rel == entry_key {
                 entry_seen = true;
-                DeclarationExposureGrounding::ModuleLocalMemberExposure
-            } else {
-                DeclarationExposureGrounding::CrossFileProviderExportedExposure
-            };
+            }
+            // Exposure derives from the declaration's own containment, never from the role its file
+            // plays in this closure: a role-stamped grounding made the accepted declaration for a
+            // file a function of which file the walk started from.
+            let grounding = DeclarationExposureGrounding::ModuleLocalMemberExposure;
             match &*parse_authored_occurrence_binding_source(rel.clone(), source) {
                 ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused => {
                     failures.push(CandidateSourceFailure::ParseRefused { file: rel });

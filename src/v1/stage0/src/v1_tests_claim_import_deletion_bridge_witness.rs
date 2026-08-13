@@ -14,9 +14,7 @@ use crate::std_occurrence_binding_candidates::CrossFileBindingProvenancePopulati
     AllCrossFileBindingsBound, CrossFileBindingPopulationBindingRefused,
     CrossFileBindingPopulationRefused,
 };
-use crate::std_occurrence_binding_candidates::DeclarationExposureGrounding::{
-    CrossFileProviderExportedExposure, ModuleLocalMemberExposure,
-};
+use crate::std_occurrence_binding_candidates::DeclarationExposureGrounding::ModuleLocalMemberExposure;
 use crate::std_occurrence_binding_candidates::ModulePathFileIndex::{
     ModulePathFileIndexReady, ModulePathFileIndexRefused,
 };
@@ -138,6 +136,15 @@ pub fn idb_provider_module_name() -> String {
 pub fn idb_subject_name() -> String {
     thread_local! {
         static CACHED: String = {
+            "live_tree.LiveTreeDisposition".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn idb_subject_leaf_name() -> String {
+    thread_local! {
+        static CACHED: String = {
             "LiveTreeDisposition".to_string()
         };
     }
@@ -147,14 +154,14 @@ pub fn idb_subject_name() -> String {
 pub fn idb_missing_provider_name() -> String {
     thread_local! {
         static CACHED: String = {
-            "MissingProviderType".to_string()
+            "missing.MissingProviderType".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
 }
 
 pub fn idb_consumer_source() -> String {
-    "module test.fixture.import_deletion_bridge.live_tree_consumer_bare\n\nfn bridge_consumer_reads_disposition(d: LiveTreeDisposition) -> LiveTreeDisposition {\n  d\n}\n".to_string()
+    "module test.fixture.import_deletion_bridge.live_tree_consumer_bare\n\nfn bridge_consumer_reads_disposition(d: live_tree.LiveTreeDisposition) -> live_tree.LiveTreeDisposition {\n  d\n}\n".to_string()
 }
 
 pub fn idb_provider_source() -> String {
@@ -249,7 +256,7 @@ pub fn idb_second_provider_source_path() -> String {
 }
 
 pub fn idb_second_provider_source() -> String {
-    "module test.fixture.import_deletion_bridge.second_live_tree\n\ntype LiveTreeDisposition\n  = ReadsLiveTree\n  | SubstrateInputsOnly\n".to_string()
+    "module test.fixture.import_deletion_bridge.live_tree\n\ntype LiveTreeDisposition\n  = ReadsLiveTree\n  | SubstrateInputsOnly\n".to_string()
 }
 
 pub fn idb_conflicting_source_path() -> String {
@@ -288,7 +295,7 @@ pub fn idb_partial_consumer_source_path() -> String {
 }
 
 pub fn idb_partial_consumer_source() -> String {
-    "module test.fixture.import_deletion_bridge.partial_consumer\n\nfn bridge_partial(a: LiveTreeDisposition, b: MissingProviderType) -> LiveTreeDisposition {\n  a\n}\n".to_string()
+    "module test.fixture.import_deletion_bridge.partial_consumer\n\nfn bridge_partial(a: live_tree.LiveTreeDisposition, b: missing.MissingProviderType) -> live_tree.LiveTreeDisposition {\n  a\n}\n".to_string()
 }
 
 pub fn idb_same_file_source_path() -> String {
@@ -574,7 +581,18 @@ pub fn idb_bridge_for(
                         file: consumer_path.clone(),
                     }),
                     Some(consumer_row) => {
-                        let provider_rows = provider_paths.clone().iter().cloned().fold(idb_no_closure_rows(), |acc: Rc<Vec<Rc<CrossFileBindingClosureRow>>>, p: String| v1_rt::concat(acc, idb_closure_row_for(p.clone(), DeclarationExposureGrounding::CrossFileProviderExportedExposure)));
+                        let provider_rows = provider_paths.clone().iter().cloned().fold(
+                            idb_no_closure_rows(),
+                            |acc: Rc<Vec<Rc<CrossFileBindingClosureRow>>>, p: String| {
+                                v1_rt::concat(
+                                    acc,
+                                    idb_closure_row_for(
+                                        p.clone(),
+                                        DeclarationExposureGrounding::ModuleLocalMemberExposure,
+                                    ),
+                                )
+                            },
+                        );
                         match ((provider_rows.clone().len() as i64)
                             == (provider_paths.clone().len() as i64))
                         {
@@ -858,7 +876,7 @@ pub fn witness_same_file_binding_retains_provenance_without_self_edge() -> bool 
         let bridge = idb_bridge_for(
             idb_same_file_source_path(),
             Rc::new(vec![]),
-            Rc::new(vec![idb_subject_name()]),
+            Rc::new(vec![idb_subject_leaf_name()]),
             2,
         );
         ((idb_is_ready(bridge.clone()) && ((idb_provenances(bridge.clone()).len() as i64) == 2))
@@ -881,7 +899,7 @@ pub fn witness_unknown_candidate_path_refuses() -> bool {
         Rc::new(vec![
             "dag/test/fixture/import_deletion_bridge/never_declared.dag".to_string(),
         ]),
-        Rc::new(vec![idb_subject_name()]),
+        Rc::new(vec![idb_subject_leaf_name()]),
         2,
     ))
     .clone()
@@ -1031,11 +1049,11 @@ pub fn idb_two_provider_transport_declarations() -> Rc<Vec<OccurrenceId>> {
             v1_rt::concat(
                 idb_closure_row_for(
                     idb_live_tree_source_path(),
-                    DeclarationExposureGrounding::CrossFileProviderExportedExposure,
+                    DeclarationExposureGrounding::ModuleLocalMemberExposure,
                 ),
                 idb_closure_row_for(
                     idb_second_provider_source_path(),
-                    DeclarationExposureGrounding::CrossFileProviderExportedExposure,
+                    DeclarationExposureGrounding::ModuleLocalMemberExposure,
                 ),
             ),
         ))
@@ -1048,7 +1066,7 @@ pub fn idb_two_provider_transport_declarations() -> Rc<Vec<OccurrenceId>> {
             AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureReady {
                 transport: t,
                 ..
-            } => idb_declaration_occurrences_named(t.clone(), idb_subject_name()),
+            } => idb_declaration_occurrences_named(t.clone(), idb_subject_leaf_name()),
         },
     }
 }
@@ -1143,7 +1161,7 @@ pub fn idb_index_without_provider_module() -> Option<Rc<HashMap<String, String>>
             consumer_row.clone(),
             idb_closure_row_for(
                 idb_live_tree_source_path(),
-                DeclarationExposureGrounding::CrossFileProviderExportedExposure,
+                DeclarationExposureGrounding::ModuleLocalMemberExposure,
             ),
         ))
         .clone()
@@ -1185,7 +1203,7 @@ pub fn idb_population_for_supplied_provider() -> Option<Rc<BoundReferencePopulat
             consumer_row.clone(),
             idb_closure_row_for(
                 idb_live_tree_source_path(),
-                DeclarationExposureGrounding::CrossFileProviderExportedExposure,
+                DeclarationExposureGrounding::ModuleLocalMemberExposure,
             ),
         ))
         .clone()
@@ -1242,11 +1260,7 @@ pub fn idb_type_consumer_source_path() -> String {
 }
 
 pub fn idb_type_consumer_source() -> String {
-    (((("module test.fixture.import_deletion_bridge.type_join_consumer\n".to_string()
-        + &"\n".to_string())
-        + &"fn reads_disposition(d: LiveTreeDisposition) -> LiveTreeDisposition {\n".to_string())
-        + &"  d\n".to_string())
-        + &"}\n".to_string())
+    (((("module test.fixture.import_deletion_bridge.type_join_consumer\n".to_string() + &"\n".to_string()) + &"fn reads_disposition(d: live_tree.LiveTreeDisposition) -> live_tree.LiveTreeDisposition {\n".to_string()) + &"  d\n".to_string()) + &"}\n".to_string())
 }
 
 pub fn idb_joined_walk_for(
@@ -1270,7 +1284,7 @@ pub fn idb_joined_walk_for(
                         acc,
                         idb_closure_row_for(
                             path.clone(),
-                            DeclarationExposureGrounding::CrossFileProviderExportedExposure,
+                            DeclarationExposureGrounding::ModuleLocalMemberExposure,
                         ),
                     )
                 },
@@ -1362,7 +1376,7 @@ pub fn idb_clause_e_edges_for(
 ) -> Option<Rc<Vec<Rc<DirectFileDependency>>>> {
     match idb_closure_row_for(consumer_path.clone(), DeclarationExposureGrounding::ModuleLocalMemberExposure).first().cloned() {
     None => None,
-    Some(consumer_row) => match (*assemble_cross_file_binding_closure(consumer_row.clone(), idb_closure_row_for(provider_path.clone(), DeclarationExposureGrounding::CrossFileProviderExportedExposure))).clone() {
+    Some(consumer_row) => match (*assemble_cross_file_binding_closure(consumer_row.clone(), idb_closure_row_for(provider_path.clone(), DeclarationExposureGrounding::ModuleLocalMemberExposure))).clone() {
     AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureRefused { refusal: _, .. } => None,
     AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureReady { transport: t, inputs: i, module_files: rows, .. } => match (*module_path_file_index_from_rows(rows.clone())).clone() {
     ModulePathFileIndex::ModulePathFileIndexRefused { refusal: _, .. } => None,
@@ -1384,7 +1398,7 @@ pub fn idb_joined_edges_for(
 ) -> Option<Rc<Vec<Rc<DirectFileDependency>>>> {
     match idb_closure_row_for(consumer_path.clone(), DeclarationExposureGrounding::ModuleLocalMemberExposure).first().cloned() {
     None => None,
-    Some(consumer_row) => match (*assemble_cross_file_binding_closure(consumer_row.clone(), idb_closure_row_for(provider_path.clone(), DeclarationExposureGrounding::CrossFileProviderExportedExposure))).clone() {
+    Some(consumer_row) => match (*assemble_cross_file_binding_closure(consumer_row.clone(), idb_closure_row_for(provider_path.clone(), DeclarationExposureGrounding::ModuleLocalMemberExposure))).clone() {
     AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureRefused { refusal: _, .. } => None,
     AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureReady { transport: t, inputs: i, module_files: rows, .. } => match (*module_path_file_index_from_rows(rows.clone())).clone() {
     ModulePathFileIndex::ModulePathFileIndexRefused { refusal: _, .. } => None,

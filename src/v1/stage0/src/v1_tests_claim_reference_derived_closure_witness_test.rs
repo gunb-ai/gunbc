@@ -3,9 +3,7 @@
 
 pub use crate::std_occurrence_binding_candidates::cross_file_binding_closure_row;
 use crate::std_occurrence_binding_candidates::BoundReferencePopulation::ReferencePopulationRefused;
-use crate::std_occurrence_binding_candidates::DeclarationExposureGrounding::{
-    CrossFileProviderExportedExposure, ModuleLocalMemberExposure,
-};
+use crate::std_occurrence_binding_candidates::DeclarationExposureGrounding::ModuleLocalMemberExposure;
 use crate::std_occurrence_binding_candidates::ReferenceBindingProjection::{
     ReferenceBindingProjectionAmbiguous, ReferenceBindingProjectionUnbound,
 };
@@ -13,7 +11,7 @@ pub use crate::std_occurrence_binding_candidates::{
     BoundReferencePopulation, CrossFileBindingClosureRow, CrossFileBindingProvenance,
     DeclarationExposureGrounding, DirectFileDependency, ReferenceBindingProjection,
 };
-pub use crate::std_occurrence_identity::{OccurrenceId, OccurrenceTransport};
+pub use crate::std_occurrence_identity::{OccurrenceId, OccurrenceProjection, OccurrenceTransport};
 use crate::std_reference_derived_closure::ReferenceDerivedClosureFixedPoint::{
     ClosureFixedPointExhausted, ClosureFixedPointRefused, ClosureFixedPointSettled,
 };
@@ -101,10 +99,91 @@ pub fn rdc_consumer_module() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn rdc_later_path() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "dag/test/fixture/reference_derived_closure/later.dag".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rdc_later_consumer_path() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "dag/test/fixture/reference_derived_closure/later_consumer.dag".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rdc_early_path() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "dag/test/fixture/reference_derived_closure/early.dag".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rdc_early_consumer_path() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "dag/test/fixture/reference_derived_closure/early_consumer.dag".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn rdc_later_source() -> String {
+    (((((((((((("module test.fixture.reference_derived_closure.later\n".to_string()
+        + &"\n".to_string())
+        + &"type EarlyInLater\n".to_string())
+        + &"  = EarlyOne\n".to_string())
+        + &"  | EarlyTwo\n".to_string())
+        + &"\n".to_string())
+        + &"fn uses(y: LaterInLater) -> LaterInLater {\n".to_string())
+        + &"  y\n".to_string())
+        + &"}\n".to_string())
+        + &"\n".to_string())
+        + &"type LaterInLater\n".to_string())
+        + &"  = LaterOne\n".to_string())
+        + &"  | LaterTwo\n".to_string())
+}
+
+pub fn rdc_early_source() -> String {
+    (((((((("module test.fixture.reference_derived_closure.early\n".to_string()
+        + &"\n".to_string())
+        + &"type EarlyOnly\n".to_string())
+        + &"  = OnlyOne\n".to_string())
+        + &"  | OnlyTwo\n".to_string())
+        + &"\n".to_string())
+        + &"fn uses(z: EarlyOnly) -> EarlyOnly {\n".to_string())
+        + &"  z\n".to_string())
+        + &"}\n".to_string())
+}
+
+pub fn rdc_early_consumer_source() -> String {
+    (((("module test.fixture.reference_derived_closure.early_consumer\n".to_string()
+        + &"\n".to_string())
+        + &"fn reads(e: early.EarlyOnly) -> early.EarlyOnly {\n".to_string())
+        + &"  e\n".to_string())
+        + &"}\n".to_string())
+}
+
+pub fn rdc_later_consumer_source() -> String {
+    (((("module test.fixture.reference_derived_closure.later_consumer\n".to_string()
+        + &"\n".to_string())
+        + &"fn reads(e: later.EarlyInLater) -> later.EarlyInLater {\n".to_string())
+        + &"  e\n".to_string())
+        + &"}\n".to_string())
+}
+
 pub fn rdc_consumer_source() -> String {
     (((("module test.fixture.reference_derived_closure.consumer\n".to_string()
         + &"\n".to_string())
-        + &"fn reads(d: LiveTreeDisposition) -> LiveTreeDisposition {\n".to_string())
+        + &"fn reads(d: live_tree.LiveTreeDisposition) -> live_tree.LiveTreeDisposition {\n"
+            .to_string())
         + &"  d\n".to_string())
         + &"}\n".to_string())
 }
@@ -117,7 +196,7 @@ pub fn rdc_provider_source() -> String {
 }
 
 pub fn rdc_second_provider_source() -> String {
-    (((("module test.fixture.reference_derived_closure.second_provider\n".to_string()
+    (((("module test.fixture.reference_derived_closure.live_tree\n".to_string()
         + &"\n".to_string())
         + &"type LiveTreeDisposition\n".to_string())
         + &"  = SecondOne\n".to_string())
@@ -140,7 +219,19 @@ pub fn rdc_source_for(path: String) -> Option<String> {
                 true => Some(rdc_second_provider_source()),
                 false => match (path.clone() == rdc_unrelated_path()) {
                     true => Some(rdc_unrelated_source()),
-                    false => None,
+                    false => match (path.clone() == rdc_later_path()) {
+                        true => Some(rdc_later_source()),
+                        false => match (path.clone() == rdc_later_consumer_path()) {
+                            true => Some(rdc_later_consumer_source()),
+                            false => match (path.clone() == rdc_early_path()) {
+                                true => Some(rdc_early_source()),
+                                false => match (path.clone() == rdc_early_consumer_path()) {
+                                    true => Some(rdc_early_consumer_source()),
+                                    false => None,
+                                },
+                            },
+                        },
+                    },
                 },
             },
         },
@@ -148,10 +239,7 @@ pub fn rdc_source_for(path: String) -> Option<String> {
 }
 
 pub fn rdc_grounding_for(path: String) -> DeclarationExposureGrounding {
-    match (path.clone() == rdc_consumer_path()) {
-        true => DeclarationExposureGrounding::ModuleLocalMemberExposure,
-        false => DeclarationExposureGrounding::CrossFileProviderExportedExposure,
-    }
+    DeclarationExposureGrounding::ModuleLocalMemberExposure
 }
 
 pub fn rdc_supply_for(path: String) -> Option<Rc<ParsedFileSupply>> {
@@ -328,7 +416,8 @@ pub fn witness_provider_outside_the_universe_refuses_as_unbound() -> bool {
                     first_failure: failure,
                     ..
                 } => {
-                    ((((locus.authored_name.clone() == "LiveTreeDisposition".to_string())
+                    ((((locus.authored_name.clone()
+                        == "live_tree.LiveTreeDisposition".to_string())
                         && (locus.diagnostic_span.clone().start.clone() > 0))
                         && (failure_count.clone() >= 1))
                         && match (*failure.clone()).clone() {
@@ -387,7 +476,8 @@ pub fn witness_two_declaring_files_refuse_as_ambiguous_naming_both() -> bool {
                         candidates,
                         ..
                     } => {
-                        (((locus.authored_name.clone() == "LiveTreeDisposition".to_string())
+                        (((locus.authored_name.clone()
+                            == "live_tree.LiveTreeDisposition".to_string())
                             && (failure_count.clone() >= 1))
                             && !(candidates
                                 .first
@@ -439,5 +529,69 @@ pub fn witness_unreferenced_universe_file_is_not_admitted() -> bool {
                 && ((edges.clone().len() as i64) == 1))
         }
         _ => false,
+    }
+}
+
+pub fn rdc_binding_refusal_locus(
+    outcome: Rc<ReferenceDerivedClosureFixedPoint>,
+) -> Option<Rc<OccurrenceProjection>> {
+    match (*outcome.clone()).clone() {
+        ReferenceDerivedClosureFixedPoint::ClosureFixedPointRefused { refusal, .. } => {
+            match (*refusal.clone()).clone() {
+                ReferenceDerivedClosureRefusal::ClosureBindingRefused {
+                    first_failure_locus: locus,
+                    ..
+                } => Some(locus.clone()),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+pub fn witness_later_declaration_refuses_identically_under_both_entries() -> bool {
+    {
+        let universe = Rc::new(vec![rdc_later_consumer_path(), rdc_later_path()]);
+        match rdc_binding_refusal_locus(rdc_fixed_point(rdc_later_path(), universe.clone())) {
+            None => false,
+            Some(as_entry) => match rdc_binding_refusal_locus(rdc_fixed_point(
+                rdc_later_consumer_path(),
+                universe.clone(),
+            )) {
+                None => false,
+                Some(as_provider) => {
+                    ((((as_entry.authored_name.clone() == "LaterInLater".to_string())
+                        && (as_provider.authored_name.clone() == as_entry.authored_name.clone()))
+                        && (as_provider.diagnostic_span.clone().start.clone()
+                            == as_entry.diagnostic_span.clone().start.clone()))
+                        && (as_provider.diagnostic_span.clone().end.clone()
+                            == as_entry.diagnostic_span.clone().end.clone()))
+                }
+            },
+        }
+    }
+}
+
+pub fn witness_earlier_declaration_binds_under_both_entries() -> bool {
+    {
+        let universe = Rc::new(vec![rdc_early_consumer_path(), rdc_early_path()]);
+        match (*rdc_fixed_point(rdc_early_path(), universe.clone())).clone() {
+            ReferenceDerivedClosureFixedPoint::ClosureFixedPointSettled {
+                admitted_files: alone,
+                ..
+            } => match (*rdc_fixed_point(rdc_early_consumer_path(), universe.clone())).clone() {
+                ReferenceDerivedClosureFixedPoint::ClosureFixedPointSettled {
+                    admitted_files: reached,
+                    ..
+                } => {
+                    (((rdc_files_contain(alone.clone(), rdc_early_path())
+                        && !rdc_files_contain(alone.clone(), rdc_early_consumer_path()))
+                        && rdc_files_contain(reached.clone(), rdc_early_path()))
+                        && rdc_files_contain(reached.clone(), rdc_early_consumer_path()))
+                }
+                _ => false,
+            },
+            _ => false,
+        }
     }
 }

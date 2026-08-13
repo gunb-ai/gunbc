@@ -1,7 +1,7 @@
 module v1.tests.claim.reference_derived_closure_witness_test
 
 import std.types { Bool, String, List, Int, NonEmptyStr, FilePath }
-import std.occurrence_identity { OccurrenceTransport, OccurrenceId }
+import std.occurrence_identity { OccurrenceTransport, OccurrenceId, OccurrenceProjection }
 import std.occurrence_binding_candidates {
   CrossFileBindingClosureRow,
   cross_file_binding_closure_row,
@@ -13,7 +13,6 @@ import std.occurrence_binding_candidates {
   CrossFileBindingProvenance,
   DeclarationExposureGrounding,
   ModuleLocalMemberExposure,
-  CrossFileProviderExportedExposure,
 }
 import std.reference_derived_closure {
   ReferenceDerivedClosureState,
@@ -50,11 +49,66 @@ data rdc_provider_path: String = "src/v2/std/live_tree.dag"
 data rdc_second_provider_path: String = "dag/test/fixture/reference_derived_closure/second_provider.dag"
 data rdc_unrelated_path: String = "dag/test/fixture/reference_derived_closure/unrelated.dag"
 data rdc_consumer_module: String = "test.fixture.reference_derived_closure.consumer"
+data rdc_later_path: String = "dag/test/fixture/reference_derived_closure/later.dag"
+data rdc_later_consumer_path: String = "dag/test/fixture/reference_derived_closure/later_consumer.dag"
+data rdc_early_path: String = "dag/test/fixture/reference_derived_closure/early.dag"
+data rdc_early_consumer_path: String = "dag/test/fixture/reference_derived_closure/early_consumer.dag"
+
+// Entry-invariance fixture. later.dag references LaterInLater ABOVE its declaration -- a module-sibling
+// reference the source-order gate must refuse -- and also declares EarlyInLater above it, which the
+// separate consumer projects into. The pair exists to be run twice with different entries: exposure is a
+// property of the declaration, so which file the walk started from cannot change later.dag's verdict.
+fn rdc_later_source() -> String {
+  "module test.fixture.reference_derived_closure.later\n" +
+    "\n" +
+    "type EarlyInLater\n" +
+    "  = EarlyOne\n" +
+    "  | EarlyTwo\n" +
+    "\n" +
+    "fn uses(y: LaterInLater) -> LaterInLater {\n" +
+    "  y\n" +
+    "}\n" +
+    "\n" +
+    "type LaterInLater\n" +
+    "  = LaterOne\n" +
+    "  | LaterTwo\n"
+}
+
+// The positive half of the same pair: early.dag's own reference sits BELOW its declaration, so it binds,
+// and early_consumer projects into it. Both entries must settle -- otherwise the invariance row above is
+// satisfiable by refusing everything.
+fn rdc_early_source() -> String {
+  "module test.fixture.reference_derived_closure.early\n" +
+    "\n" +
+    "type EarlyOnly\n" +
+    "  = OnlyOne\n" +
+    "  | OnlyTwo\n" +
+    "\n" +
+    "fn uses(z: EarlyOnly) -> EarlyOnly {\n" +
+    "  z\n" +
+    "}\n"
+}
+
+fn rdc_early_consumer_source() -> String {
+  "module test.fixture.reference_derived_closure.early_consumer\n" +
+    "\n" +
+    "fn reads(e: early.EarlyOnly) -> early.EarlyOnly {\n" +
+    "  e\n" +
+    "}\n"
+}
+
+fn rdc_later_consumer_source() -> String {
+  "module test.fixture.reference_derived_closure.later_consumer\n" +
+    "\n" +
+    "fn reads(e: later.EarlyInLater) -> later.EarlyInLater {\n" +
+    "  e\n" +
+    "}\n"
+}
 
 fn rdc_consumer_source() -> String {
   "module test.fixture.reference_derived_closure.consumer\n" +
     "\n" +
-    "fn reads(d: LiveTreeDisposition) -> LiveTreeDisposition {\n" +
+    "fn reads(d: live_tree.LiveTreeDisposition) -> live_tree.LiveTreeDisposition {\n" +
     "  d\n" +
     "}\n"
 }
@@ -68,7 +122,7 @@ fn rdc_provider_source() -> String {
 }
 
 fn rdc_second_provider_source() -> String {
-  "module test.fixture.reference_derived_closure.second_provider\n" +
+  "module test.fixture.reference_derived_closure.live_tree\n" +
     "\n" +
     "type LiveTreeDisposition\n" +
     "  = SecondOne\n" +
@@ -94,21 +148,34 @@ fn rdc_source_for(path: String) -> String? {
             false =>
               match path == rdc_unrelated_path {
                 true => Present { value: rdc_unrelated_source() }
-                false => none
+                false =>
+                  match path == rdc_later_path {
+                    true => Present { value: rdc_later_source() }
+                    false =>
+                      match path == rdc_later_consumer_path {
+                        true => Present { value: rdc_later_consumer_source() }
+                        false =>
+                          match path == rdc_early_path {
+                            true => Present { value: rdc_early_source() }
+                            false =>
+                              match path == rdc_early_consumer_path {
+                                true => Present { value: rdc_early_consumer_source() }
+                                false => none
+                              }
+                          }
+                      }
+                  }
               }
           }
       }
   }
 }
 
-// THE ENTRY IS LOCAL, EVERY OTHER FILE IS AN EXPORTING PROVIDER. The entry's own declarations are
-// module-local; a file reached across a file boundary exposes only what it exports. Derived from the path
-// rather than taken as an argument so the two roles cannot be assigned inconsistently across iterations.
+// Exposure is a fact about the declaration's own containment, not about the role its file plays in
+// this closure: entry and provider files ground identically, so a file's accepted declarations cannot
+// change with which file the walk started from.
 fn rdc_grounding_for(path: String) -> DeclarationExposureGrounding {
-  match path == rdc_consumer_path {
-    true => ModuleLocalMemberExposure
-    false => CrossFileProviderExportedExposure
-  }
+  ModuleLocalMemberExposure
 }
 
 fn rdc_supply_for(path: String) -> ParsedFileSupply? {
@@ -278,7 +345,7 @@ test fn witness_provider_outside_the_universe_refuses_as_unbound() -> Bool {
         } =>
           match population {
             ReferencePopulationRefused { first_failure: failure, more_failures: _ } =>
-              (locus.authored_name == "LiveTreeDisposition")
+              (locus.authored_name == "live_tree.LiveTreeDisposition")
                 && locus.diagnostic_span.start > 0
                 && failure_count >= 1
                 && match failure {
@@ -326,7 +393,7 @@ test fn witness_two_declaring_files_refuse_as_ambiguous_naming_both() -> Bool {
             ReferencePopulationRefused { first_failure: failure, more_failures: _ } =>
               match failure {
                 ReferenceBindingProjectionAmbiguous { occurrence: _, candidates: candidates } =>
-                  (locus.authored_name == "LiveTreeDisposition")
+                  (locus.authored_name == "live_tree.LiveTreeDisposition")
                     && failure_count >= 1
                     && !(candidates.first.containment.terminal.value ==
                       candidates.second.containment.terminal.value)
@@ -357,6 +424,79 @@ test fn witness_unreferenced_universe_file_is_not_admitted() -> Bool {
       length(admitted) == 2
         && !rdc_files_contain(files: admitted, path: rdc_unrelated_path)
         && length(edges) == 1
+    _ => false
+  }
+}
+
+// The exposure model's load-bearing property, and the control that caught its absence. Before
+// 2026-08-13 a provider file's module members were ground to RootExposure, so later.dag's premature
+// LaterInLater reference bound when later.dag was reached as a provider and refused when it was the
+// entry: the accepted declarations for one file were a function of which file the walk started from,
+// which is not a property a language may have. Both runs must now refuse at the SAME authored name and
+// the SAME span. OccurrenceId is deliberately not compared across the two runs -- each assembly rekeys
+// into its own allocator scope, so equal ids would prove nothing and unequal ids would refuse a correct
+// closure.
+fn rdc_binding_refusal_locus(
+  outcome: ReferenceDerivedClosureFixedPoint
+) -> OccurrenceProjection? {
+  match outcome {
+    ClosureFixedPointRefused { refusal: refusal, iterations: _ } =>
+      match refusal {
+        ClosureBindingRefused {
+          population: _,
+          first_failure_locus: locus,
+          failure_count: _,
+        } => Present { value: locus }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+test fn witness_later_declaration_refuses_identically_under_both_entries() -> Bool {
+  let universe = [rdc_later_consumer_path, rdc_later_path]
+  match rdc_binding_refusal_locus(
+    outcome: rdc_fixed_point(entry: rdc_later_path, universe: universe),
+  ) {
+    Absent => false
+    Present { value: as_entry } =>
+      match rdc_binding_refusal_locus(
+        outcome: rdc_fixed_point(entry: rdc_later_consumer_path, universe: universe),
+      ) {
+        Absent => false
+        Present { value: as_provider } =>
+          (as_entry.authored_name == "LaterInLater")
+            && (as_provider.authored_name == as_entry.authored_name)
+            && (as_provider.diagnostic_span.start == as_entry.diagnostic_span.start)
+            && (as_provider.diagnostic_span.end == as_entry.diagnostic_span.end)
+      }
+  }
+}
+
+// The other half of invariance: a declaration that IS in scope binds under both entries. Without this
+// the row above is satisfiable by refusing everything.
+test fn witness_earlier_declaration_binds_under_both_entries() -> Bool {
+  let universe = [rdc_early_consumer_path, rdc_early_path]
+  match rdc_fixed_point(entry: rdc_early_path, universe: universe) {
+    ClosureFixedPointSettled {
+      admitted_files: alone,
+      edges: _,
+      provenance: _,
+      iterations: _,
+    } =>
+      match rdc_fixed_point(entry: rdc_early_consumer_path, universe: universe) {
+        ClosureFixedPointSettled {
+          admitted_files: reached,
+          edges: _,
+          provenance: _,
+          iterations: _,
+        } =>
+          rdc_files_contain(files: alone, path: rdc_early_path)
+            && !rdc_files_contain(files: alone, path: rdc_early_consumer_path)
+            && rdc_files_contain(files: reached, path: rdc_early_path)
+            && rdc_files_contain(files: reached, path: rdc_early_consumer_path)
+        _ => false
+      }
     _ => false
   }
 }

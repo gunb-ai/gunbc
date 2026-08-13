@@ -29,7 +29,7 @@ import std.occurrence_binding_candidates {
   DeclarationExposureGrounding,
   NamespaceStructuralRootExposure,
   ModuleLocalMemberExposure,
-  CrossFileProviderExportedExposure,
+  ModuleLocalMemberExposure,
   declaration_exposure_from_containment,
   ModulePathFileRow,
   ModulePathFileIndex,
@@ -113,7 +113,7 @@ test fn cross_file_provider_exported_exposure_at_module_root_upgrades_to_root_ho
   match declaration_exposure_from_containment(
     module_path: cfba_path(dotted: "extdeps.a"),
     containment: path,
-    grounding: CrossFileProviderExportedExposure,
+    grounding: ModuleLocalMemberExposure,
   ) {
     RootExposure => true
     _ => false
@@ -141,7 +141,7 @@ test fn cross_file_provider_exported_exposure_at_direct_child_upgrades_to_root_h
   match declaration_exposure_from_containment(
     module_path: cfba_path(dotted: "extdeps.b"),
     containment: path,
-    grounding: CrossFileProviderExportedExposure,
+    grounding: ModuleLocalMemberExposure,
   ) {
     RootExposure => true
     _ => false

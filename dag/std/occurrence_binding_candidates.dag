@@ -191,12 +191,11 @@ fn declaration_exposure_eq(
   }
 }
 
-data declaration_exposure_from_containment_note: String = "Single authority for declaration exposure from containment prefix shape and module path. OccurrenceCategory is never consulted. DeclarationExposureGrounding selects how module-root and direct-module-child shapes map to DeclarationExposure: NamespaceStructuralRootExposure (N2 resolve path — empty ancestors => RootExposure); ModuleLocalMemberExposure (in-module binding walk — module-root and direct-module-child => ModuleExposure); CrossFileProviderExportedExposure (cross-file provider declarations exported to consumers — module-root and direct-module-child => RootExposure at derivation, never via a post-hoc upgrade). Nested declarations always derive LexicalExposure via occurrence_containment_parent_scope."
+data declaration_exposure_from_containment_note: String = "Single authority for declaration exposure from containment prefix shape and module path. OccurrenceCategory is never consulted. DeclarationExposureGrounding selects how module-root and direct-module-child shapes map to DeclarationExposure: NamespaceStructuralRootExposure (N2 resolve path — empty ancestors => RootExposure); ModuleLocalMemberExposure (every ordinary module member, in-file or cross-file — module-root and direct-module-child => ModuleExposure). Nested declarations always derive LexicalExposure via occurrence_containment_parent_scope. CrossFileProviderExportedExposure (module member => RootExposure for consumers in other files) was DELETED 2026-08-13: it made the whole source-root universe the visibility set, so any globally unique leaf bound bare from anywhere and the accepted declaration for one file changed with which file was the entry. A module member is exposed as a member and reached by projection (projected_reference_candidates_note); the universe is the declaration denominator, never the visibility set."
 
 type DeclarationExposureGrounding
   = NamespaceStructuralRootExposure
   | ModuleLocalMemberExposure
-  | CrossFileProviderExportedExposure
 
 fn occurrence_containment_parent_scope(
   ancestors: FreeMonoid<OccurrenceId>
@@ -267,16 +266,6 @@ fn declaration_exposure_from_containment(
         module_path: module_path,
         containment: containment,
       )
-    CrossFileProviderExportedExposure =>
-      match declaration_exposure_module_local_member(
-        module_path: module_path,
-        containment: containment,
-      ) {
-        ModuleExposure { module: _ } => RootExposure
-        LexicalExposure { exposing_scope: exposing_scope } =>
-          LexicalExposure { exposing_scope: exposing_scope }
-        RootExposure => RootExposure
-      }
   }
 }
 
@@ -645,6 +634,54 @@ fn declaration_exposed_on_reference_chain(
   }
 }
 
+data projected_reference_candidates_note: String = "A reference whose authored text carries a qualifier (live_tree.LiveTreeDisposition) is ONE occurrence whose authored_name is the whole dotted path — the parser already mints it that way, so nothing new is minted here; what this adds is the resolution rule the flat declarations_by_name lookup never had. The leaf segment selects the same-spelled bucket; the qualifier selects which declaring module may answer, by segment-suffix over the declaration's own OccurrenceModulePathRow (tmp.q.b is named by b or by q.b or in full). Exposure for a projected reference is ModuleExposure for exactly that module and NOTHING else: RootExposure does not answer a qualified name (a root declaration is not a member of the named module) and the module-sibling ordinal gate is deliberately NOT applied, because source order is a within-file relation and two files have no authored order between them. Cardinality stays downstream: if two modules end in the same segment both declarations are supplied and the population folds to Ambiguous, which is the correct refusal rather than a nearest-match heuristic (DESIGN section 4 — a heuristic is never necessary in a closed system)."
+
+fn reference_qualifier_of_authored_name(name: String) -> String? {
+  match string_contains(name, ".") {
+    false => none
+    true =>
+      match last(name |> split(delimiter: ".")) {
+        Absent => none
+        Present { value: leaf } =>
+          Present {
+            value: substring(
+              s: name,
+              start: 0,
+              end: string_length(name) - string_length(leaf) - 1,
+            ),
+          }
+      }
+  }
+}
+
+fn module_named_by_qualifier(module: NonEmptyStr, qualifier: String) -> Bool {
+  (module as String) == qualifier
+    || ends_with(s: module as String, suffix: concat(".", qualifier))
+}
+
+fn declaration_projected_from_named_module(
+  declaration: DeclarationOccurrence,
+  qualifier: String,
+  exposure_by_occurrence: Map<Int, DeclarationExposure>
+) -> Bool {
+  match exposure_of_occurrence(
+    exposure_by_occurrence: exposure_by_occurrence,
+    occurrence: declaration.occurrence,
+  ) {
+    Absent => false
+    Present { value: exposure } =>
+      match exposure {
+        ModuleExposure { module: exposure_module } =>
+          module_named_by_qualifier(
+            module: exposure_module,
+            qualifier: qualifier,
+          )
+        LexicalExposure { exposing_scope: _ } => false
+        RootExposure => false
+      }
+  }
+}
+
 data occurrence_candidate_index_note: String = "OccurrenceCandidateIndex is built exactly once per transport (occurrence_candidate_index_build). declarations_by_name buckets every declaration by its authored spelling so a single reference's candidate lookup is a map_get plus a scan of only the same-spelled declarations, never a rescan of the whole declaration population -- the O(declarations x references) shape the pre-strip candidate scan had. entries_by_id is the same validated lookup authority std.occurrence_binding_resolve builds internally; it is retained here only to read authored_name, never to re-decide cardinality."
 
 type OccurrenceCandidateIndex {
@@ -812,18 +849,40 @@ fn candidate_occurrence_ids_for_reference(
   match map_get(index.entries_by_id, reference.occurrence.value) {
     Absent => []
     Present { value: entry } =>
-      match map_get(index.declarations_by_name, entry.projection.authored_name) {
-        Absent => []
-        Present { value: same_spelling } =>
-          reverse(same_spelling)
-            |> filter(declaration => declaration_exposed_on_reference_chain(
-              declaration: declaration,
-              reference: reference,
-              module_by_occurrence: index.module_by_occurrence,
-              exposure_by_occurrence: index.exposure_by_occurrence,
-              order_by_occurrence: index.order_by_occurrence,
-            ))
-            |> map(declaration => declaration.occurrence)
+      match reference_qualifier_of_authored_name(
+        name: entry.projection.authored_name,
+      ) {
+        Absent =>
+          match map_get(index.declarations_by_name, entry.projection.authored_name) {
+            Absent => []
+            Present { value: same_spelling } =>
+              reverse(same_spelling)
+                |> filter(declaration => declaration_exposed_on_reference_chain(
+                  declaration: declaration,
+                  reference: reference,
+                  module_by_occurrence: index.module_by_occurrence,
+                  exposure_by_occurrence: index.exposure_by_occurrence,
+                  order_by_occurrence: index.order_by_occurrence,
+                ))
+                |> map(declaration => declaration.occurrence)
+          }
+        Present { value: qualifier } =>
+          let leaf = substring(
+            s: entry.projection.authored_name,
+            start: string_length(qualifier) + 1,
+            end: string_length(entry.projection.authored_name),
+          )
+          match map_get(index.declarations_by_name, leaf) {
+            Absent => []
+            Present { value: same_spelling } =>
+              reverse(same_spelling)
+                |> filter(declaration => declaration_projected_from_named_module(
+                  declaration: declaration,
+                  qualifier: qualifier,
+                  exposure_by_occurrence: index.exposure_by_occurrence,
+                ))
+                |> map(declaration => declaration.occurrence)
+          }
       }
   }
 }

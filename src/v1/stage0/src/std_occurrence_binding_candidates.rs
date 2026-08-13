@@ -333,7 +333,7 @@ pub fn declaration_exposure_eq(
 pub fn declaration_exposure_from_containment_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Single authority for declaration exposure from containment prefix shape and module path. OccurrenceCategory is never consulted. DeclarationExposureGrounding selects how module-root and direct-module-child shapes map to DeclarationExposure: NamespaceStructuralRootExposure (N2 resolve path — empty ancestors => RootExposure); ModuleLocalMemberExposure (in-module binding walk — module-root and direct-module-child => ModuleExposure); CrossFileProviderExportedExposure (cross-file provider declarations exported to consumers — module-root and direct-module-child => RootExposure at derivation, never via a post-hoc upgrade). Nested declarations always derive LexicalExposure via occurrence_containment_parent_scope.".to_string()
+            "Single authority for declaration exposure from containment prefix shape and module path. OccurrenceCategory is never consulted. DeclarationExposureGrounding selects how module-root and direct-module-child shapes map to DeclarationExposure: NamespaceStructuralRootExposure (N2 resolve path — empty ancestors => RootExposure); ModuleLocalMemberExposure (every ordinary module member, in-file or cross-file — module-root and direct-module-child => ModuleExposure). Nested declarations always derive LexicalExposure via occurrence_containment_parent_scope. CrossFileProviderExportedExposure (module member => RootExposure for consumers in other files) was DELETED 2026-08-13: it made the whole source-root universe the visibility set, so any globally unique leaf bound bare from anywhere and the accepted declaration for one file changed with which file was the entry. A module member is exposed as a member and reached by projection (projected_reference_candidates_note); the universe is the declaration denominator, never the visibility set.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -346,7 +346,6 @@ pub fn declaration_exposure_from_containment_note() -> String {
 pub enum DeclarationExposureGrounding {
     NamespaceStructuralRootExposure,
     ModuleLocalMemberExposure,
-    CrossFileProviderExportedExposure,
 }
 
 pub fn occurrence_containment_parent_scope(
@@ -423,25 +422,6 @@ pub fn declaration_exposure_from_containment(
         }
         DeclarationExposureGrounding::ModuleLocalMemberExposure => {
             declaration_exposure_module_local_member(module_path.clone(), containment.clone())
-        }
-        DeclarationExposureGrounding::CrossFileProviderExportedExposure => {
-            match (*declaration_exposure_module_local_member(
-                module_path.clone(),
-                containment.clone(),
-            ))
-            .clone()
-            {
-                DeclarationExposure::ModuleExposure { module: _, .. } => {
-                    Rc::new(DeclarationExposure::RootExposure)
-                }
-                DeclarationExposure::LexicalExposure {
-                    exposing_scope: exposing_scope,
-                    ..
-                } => Rc::new(DeclarationExposure::LexicalExposure {
-                    exposing_scope: exposing_scope.clone(),
-                }),
-                DeclarationExposure::RootExposure => Rc::new(DeclarationExposure::RootExposure),
-            }
         }
     }
 }
@@ -829,6 +809,68 @@ pub fn declaration_exposed_on_reference_chain(
     }
 }
 
+pub fn projected_reference_candidates_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "A reference whose authored text carries a qualifier (live_tree.LiveTreeDisposition) is ONE occurrence whose authored_name is the whole dotted path — the parser already mints it that way, so nothing new is minted here; what this adds is the resolution rule the flat declarations_by_name lookup never had. The leaf segment selects the same-spelled bucket; the qualifier selects which declaring module may answer, by segment-suffix over the declaration's own OccurrenceModulePathRow (tmp.q.b is named by b or by q.b or in full). Exposure for a projected reference is ModuleExposure for exactly that module and NOTHING else: RootExposure does not answer a qualified name (a root declaration is not a member of the named module) and the module-sibling ordinal gate is deliberately NOT applied, because source order is a within-file relation and two files have no authored order between them. Cardinality stays downstream: if two modules end in the same segment both declarations are supplied and the population folds to Ambiguous, which is the correct refusal rather than a nearest-match heuristic (DESIGN section 4 — a heuristic is never necessary in a closed system).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn reference_qualifier_of_authored_name(name: String) -> Option<String> {
+    match v1_rt::string_contains(&name, ".".to_string()) {
+        false => None,
+        true => match Rc::new(
+            name.clone()
+                .split(&".".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        )
+        .last()
+        .cloned()
+        {
+            None => None,
+            Some(leaf) => Some(v1_rt::substring(
+                &name,
+                0,
+                ((v1_rt::string_length(&name) - v1_rt::string_length(&leaf)) - 1),
+            )),
+        },
+    }
+}
+
+pub fn module_named_by_qualifier(module: String, qualifier: String) -> bool {
+    ((module.clone() == qualifier.clone())
+        || v1_rt::ends_with(
+            module.clone(),
+            v1_rt::concat(".".to_string(), qualifier.clone()),
+        ))
+}
+
+pub fn declaration_projected_from_named_module(
+    declaration: Rc<DeclarationOccurrence>,
+    qualifier: String,
+    exposure_by_occurrence: Rc<HashMap<i64, Rc<DeclarationExposure>>>,
+) -> bool {
+    match exposure_of_occurrence(
+        exposure_by_occurrence.clone(),
+        declaration.occurrence.clone(),
+    ) {
+        None => false,
+        Some(exposure) => match (*exposure.clone()).clone() {
+            DeclarationExposure::ModuleExposure {
+                module: exposure_module,
+                ..
+            } => module_named_by_qualifier(exposure_module.clone(), qualifier.clone()),
+            DeclarationExposure::LexicalExposure {
+                exposing_scope: _, ..
+            } => false,
+            DeclarationExposure::RootExposure => false,
+        },
+    }
+}
+
 pub fn occurrence_candidate_index_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -1059,35 +1101,72 @@ pub fn candidate_occurrence_ids_for_reference(
         reference.occurrence.clone().value.clone(),
     ) {
         None => Rc::new(vec![]),
-        Some(entry) => match v1_rt::map_get(
-            &index.declarations_by_name.clone(),
+        Some(entry) => match reference_qualifier_of_authored_name(
             entry.projection.clone().authored_name.clone(),
         ) {
-            None => Rc::new(vec![]),
-            Some(same_spelling) => Rc::new({
-                let mut __result = Vec::new();
-                for declaration in Rc::new({
+            None => match v1_rt::map_get(
+                &index.declarations_by_name.clone(),
+                entry.projection.clone().authored_name.clone(),
+            ) {
+                None => Rc::new(vec![]),
+                Some(same_spelling) => Rc::new({
                     let mut __result = Vec::new();
-                    for declaration in v1_rt::reverse(same_spelling.clone()).iter().cloned() {
-                        if declaration_exposed_on_reference_chain(
-                            declaration.clone(),
-                            reference.clone(),
-                            index.module_by_occurrence.clone(),
-                            index.exposure_by_occurrence.clone(),
-                            index.order_by_occurrence.clone(),
-                        ) {
-                            __result.push(declaration);
+                    for declaration in Rc::new({
+                        let mut __result = Vec::new();
+                        for declaration in v1_rt::reverse(same_spelling.clone()).iter().cloned() {
+                            if declaration_exposed_on_reference_chain(
+                                declaration.clone(),
+                                reference.clone(),
+                                index.module_by_occurrence.clone(),
+                                index.exposure_by_occurrence.clone(),
+                                index.order_by_occurrence.clone(),
+                            ) {
+                                __result.push(declaration);
+                            }
                         }
+                        __result
+                    })
+                    .iter()
+                    .cloned()
+                    {
+                        __result.push(declaration.occurrence.clone());
                     }
                     __result
-                })
-                .iter()
-                .cloned()
-                {
-                    __result.push(declaration.occurrence.clone());
+                }),
+            },
+            Some(qualifier) => {
+                let leaf = v1_rt::substring(
+                    &entry.projection.clone().authored_name.clone(),
+                    (v1_rt::string_length(&qualifier) + 1),
+                    v1_rt::string_length(&entry.projection.clone().authored_name.clone()),
+                );
+                match v1_rt::map_get(&index.declarations_by_name.clone(), leaf.clone()) {
+                    None => Rc::new(vec![]),
+                    Some(same_spelling) => Rc::new({
+                        let mut __result = Vec::new();
+                        for declaration in Rc::new({
+                            let mut __result = Vec::new();
+                            for declaration in v1_rt::reverse(same_spelling.clone()).iter().cloned()
+                            {
+                                if declaration_projected_from_named_module(
+                                    declaration.clone(),
+                                    qualifier.clone(),
+                                    index.exposure_by_occurrence.clone(),
+                                ) {
+                                    __result.push(declaration);
+                                }
+                            }
+                            __result
+                        })
+                        .iter()
+                        .cloned()
+                        {
+                            __result.push(declaration.occurrence.clone());
+                        }
+                        __result
+                    }),
                 }
-                __result
-            }),
+            }
         },
     }
 }
@@ -3842,8 +3921,6 @@ pub fn section13_module_path_is_symbolic_dissolve_on() -> Rc<DissolutionConditio
 pub struct NamespaceStructuralRootExposure;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleLocalMemberExposure;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct CrossFileProviderExportedExposure;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Section13StructuralVisibility;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
