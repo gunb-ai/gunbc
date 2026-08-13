@@ -228,7 +228,7 @@ fn receipt_json(schema: String, workflow: String, run_id: String, head_sha: Stri
       concat(concat("{\"schema\":\"", schema), concat("\",\"workflow_name\":\"", workflow)),
       concat(concat("\",\"run_id\":\"", run_id), concat("\",\"head_sha\":\"", head_sha))
     ),
-    "\",\"component_count\":0,\"affected_set_cold_control\":null,\"selection_degradation\":null,\"unsuccessful_components\":[],\"components\":[]}"
+    "\",\"component_count\":0,\"affected_set_cold_control\":null,\"selection_degradation\":null,\"run_terminal\":null,\"active_workset\":[],\"unsuccessful_components\":[],\"components\":[]}"
   )
 }
 
@@ -506,7 +506,7 @@ data receipt_strictness_claim_note: String = "Item C's claims. The count check i
 fn receipt_with(component_count: String, components: String, unsuccessful: String) -> String {
   concat(concat(concat(concat(
     "{\"schema\":\"floor-component-receipt/v1\",\"workflow_name\":\"affected-set-falsifier\",\"run_id\":\"31000000001\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"component_count\":",
-    component_count), ",\"affected_set_cold_control\":null,\"selection_degradation\":null,\"unsuccessful_components\":"),
+    component_count), ",\"affected_set_cold_control\":null,\"selection_degradation\":null,\"run_terminal\":null,\"active_workset\":[],\"unsuccessful_components\":"),
     unsuccessful), concat(",\"components\":", concat(components, "}")))
 }
 
@@ -586,7 +586,7 @@ test fn a_required_auxiliary_member_absent_refuses_rather_than_becoming_null() -
 
 test fn a_numeric_workflow_name_in_the_receipt_refuses() -> Bool {
   match floor_component_receipt_decode_with(
-    text: "{\"schema\":\"floor-component-receipt/v1\",\"workflow_name\":42,\"run_id\":\"1\",\"head_sha\":\"abc\",\"component_count\":0,\"affected_set_cold_control\":null,\"selection_degradation\":null,\"unsuccessful_components\":[],\"components\":[]}",
+    text: "{\"schema\":\"floor-component-receipt/v1\",\"workflow_name\":42,\"run_id\":\"1\",\"head_sha\":\"abc\",\"component_count\":0,\"affected_set_cold_control\":null,\"selection_degradation\":null,\"run_terminal\":null,\"active_workset\":[],\"unsuccessful_components\":[],\"components\":[]}",
     expected_schema: alert_expected_schema
   ) {
     ReceiptMemberMalformed { member: m, detail: _ } => m == "workflow_name"
