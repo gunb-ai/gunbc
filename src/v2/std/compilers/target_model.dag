@@ -6266,22 +6266,18 @@ fn target_value_expr_bool_literal_value_from_atom(node: Node) -> Optional<Bool> 
   }
 }
 
-data target_value_expr_source_bool_symbol_roster_dissolution_note: String = "See target_value_expr_source_bool_symbol_roster_dissolve_on for the lifecycle condition this row's rationale accompanies."
-
-data target_value_expr_source_bool_symbol_roster_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: target_value_expr_source_bool_true_symbol / target_value_expr_source_bool_false_symbol hardcode each production target's lexer true/false symbols in std/compilers because cross-target projection still carries source-language atoms on wires (dag-source fixtures emitted to rust/c/typescript). Emit routes through projection.bool_literal_form; this roster is ingest-side recognition debt only. DISSOLVES WHEN source bool literals normalize to ^target_value_expression_bool_true/false before the projection gate, so recognition consults bool_form plus canonical atoms only.")
-
 fn target_value_expr_source_bool_true_symbol(
   id: Symbol,
   bool_form: TargetBoolLiteralShape
 ) -> Bool {
-  id == bool_form.true_token || id == ^target_value_expression_bool_true || id == ^dag_token_kw_true || id == ^rust_token_kw_true || id == ^ts_token_kw_true || id == ^c_token_kw_true
+  id == bool_form.true_token || id == ^target_value_expression_bool_true || id == ^dag_token_kw_true
 }
 
 fn target_value_expr_source_bool_false_symbol(
   id: Symbol,
   bool_form: TargetBoolLiteralShape
 ) -> Bool {
-  id == bool_form.false_token || id == ^target_value_expression_bool_false || id == ^dag_token_kw_false || id == ^rust_token_kw_false || id == ^ts_token_kw_false || id == ^c_token_kw_false
+  id == bool_form.false_token || id == ^target_value_expression_bool_false || id == ^dag_token_kw_false
 }
 
 fn target_value_expr_bool_literal_value_from_source_symbol(
