@@ -163,6 +163,8 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/languages/spice/subject.dag",
   "dag/extdeps/languages/swift/subject.dag",
   "dag/extdeps/programmable_logic/ice40/subject.dag",
+  "dag/extdeps/programmable_logic/ice40/supply.dag",
+  "dag/extdeps/programmable_logic/ice40/configuration.dag",
   "dag/extdeps/toolchain/icestorm/subject.dag",
   "dag/extdeps/firmware/openbmc/subject.dag",
   "dag/extdeps/firmware/tianocore_edk2/subject.dag",
