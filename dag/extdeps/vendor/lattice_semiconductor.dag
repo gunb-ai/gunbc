@@ -4,7 +4,8 @@ import std.types { String }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 
 // THE AUTHORITY FOR A LEGAL NAME IS A FILING, NOT AN ENCYCLOPAEDIA. An earlier revision cited
@@ -32,3 +33,20 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data lattice_registrant_note: String = "extdeps.vendor.lattice_semiconductor cites EDGAR submissions for CIK 0000855658 to establish the registrant. The endpoint's own name field reads LATTICE SEMICONDUCTOR CORP, an index normalisation to upper case with a truncated suffix; legal_name carries the cover-page spelling instead, because the normalised form is a property of that index rather than of the company."
 
 data lattice_semiconductor_vendor: Vendor<Hardware> = Vendor { legal_name: "Lattice Semiconductor Corporation" }
+
+// THE SCOPE ROW EVERY extdeps CARRIER OWES. It names WHICH declaration in this module the cited
+// authority is about, so the citation is a typed edge to a subject rather than a URL sitting
+// beside some rows. Its absence is what the floor's placement gate refused: a new extdeps module
+// that cites without declaring its scope has an authority pointing at the module rather than at
+// a fact, which is the floating-island shape this repository already names.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.lattice_semiconductor",
+      decl_name: "lattice_semiconductor_vendor",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
