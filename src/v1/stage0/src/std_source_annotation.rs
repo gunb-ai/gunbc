@@ -546,15 +546,6 @@ pub fn annotation_attach_step(
     }
 }
 
-pub fn empty_leading_annotation_line_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "A standalone leading capture with empty normalized text and no following subject is a lexical separator (bare // between module-scope declarations), not prose debt — skipping it is intentional, not UnattachedAtScopeEnd. That refusal applies only when capture.text is non-empty yet names no subject. Witness: source_annotation_attachment_witness_test w_empty_unattached_capture_skips_without_refusal vs w_nonempty_unattached_capture_still_refuses; v1_annotation_round_trip_test w_an_empty_annotation_line_survives for empty text ON a subject (admitted row).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn annotation_attach_resolve(
     acc: Rc<AnnotationAttachAcc>,
     capture: Rc<NormalizedAnnotationCapture>,
