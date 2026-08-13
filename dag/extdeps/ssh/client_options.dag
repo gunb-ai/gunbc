@@ -1,6 +1,7 @@
 module extdeps.ssh.client_options
 
-import std.types { NonEmptyStr, String, Bool, List, Int }
+import std.types { NonEmptyStr, String, Bool, List }
+import std.measure { Second, second, second_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -116,7 +117,7 @@ type SshClientOption
   | VerifyHostKeyDNS { value: VerifyHostKeyDnsValue }
   | UpdateHostKeys { value: UpdateHostKeysValue }
   | BatchMode { enabled: Bool }
-  | ConnectTimeout { seconds: Int }
+  | ConnectTimeout { seconds: Second }
   | ConfigFile { path: NonEmptyStr }
   | IdentityFile { path: NonEmptyStr }
   | IdentitiesOnly { enabled: Bool }
@@ -184,7 +185,7 @@ fn ssh_client_option_value(option: SshClientOption) -> String {
     VerifyHostKeyDNS { value: v } => verify_host_key_dns_wire(value: v)
     UpdateHostKeys { value: v } => update_host_keys_wire(value: v)
     BatchMode { enabled: e } => if e { "yes" } else { "no" }
-    ConnectTimeout { seconds: s } => to_string(s)
+    ConnectTimeout { seconds: s } => to_string(second_count(s: s))
     ConfigFile { path: p } => p as String
     IdentityFile { path: p } => p as String
     IdentitiesOnly { enabled: e } => if e { "yes" } else { "no" }

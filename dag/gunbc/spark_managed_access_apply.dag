@@ -7,6 +7,7 @@ import std.resources { Network }
 import std.content_hash { ContentHash, serialize_content_hash }
 import product.placement_supply { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { shell_quote }
 import extdeps.ssh.session { ssh_session_exec_portable_words_with_stdin, SshSessionExecResult }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
@@ -231,14 +232,21 @@ fn create_inference_identity_script(login: String) -> String {
   ], "")
 }
 
+// 🟡 dissolve-on: typed posix-account HostEffect rows realized through host_effect_apply (extend
+// fleet_posix_accounts + membership_reconcile for authorized_keys); deletes create_*_script
+// builders. Wet-bootstrap only — not enrolled in fleet_converge_apply timer spine. DESIGN §5
+// gunbc#8073: no Scaffold arm for out-of-band actuation beside the modeled spine.
+data spark_managed_access_apply_shell_intent_frontier_note: String = "Privileged Spark bootstrap scripts are interim string bodies until typed HostEffects land; credential stdin uses portable-word ExecPortableWordsWithStdin, which host_effect_apply refuses for ShellCommand+FleetSsh by design (run_shell_transport)."
+
 // The authorized-key install, by exact-line presence so a repeat appends nothing.
 fn install_authorized_key_script(login: String, key_line: String) -> String {
+  let quoted_key_line = shell_quote(arg: key_line)
   join([
     "set -e\n",
     "H=$(getent passwd ", login, " | cut -d: -f6)\n",
     "install -d -m 700 -o ", login, " -g ", login, " \"$H/.ssh\"\n",
     "touch \"$H/.ssh/authorized_keys\"\n",
-    "grep -qxF '", key_line, "' \"$H/.ssh/authorized_keys\" || printf '%s\\n' '", key_line, "' >> \"$H/.ssh/authorized_keys\"\n",
+    "grep -qxF ", quoted_key_line, " \"$H/.ssh/authorized_keys\" || printf '%s\\n' ", quoted_key_line, " >> \"$H/.ssh/authorized_keys\"\n",
     "chown ", login, ":", login, " \"$H/.ssh/authorized_keys\"\n",
     "chmod 600 \"$H/.ssh/authorized_keys\"\n",
     "grep -c . \"$H/.ssh/authorized_keys\"\n",

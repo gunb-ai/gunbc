@@ -17,6 +17,7 @@ import std.decl_ref { decl_ref }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import std.types { Int }
+import std.measure { second }
 import extdeps.ssh.client_options {
   SshClientOption,
   openssh_exclusive_known_hosts_trust_options,
@@ -543,7 +544,7 @@ fn shape_fleet_ssh_exec(
       [
         User { name: target.principal },
         BatchMode { enabled: true },
-        ConnectTimeout { seconds: 10 },
+        ConnectTimeout { seconds: second(count: 10) },
       ],
     ),
   )
