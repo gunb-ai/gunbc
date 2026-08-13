@@ -19188,9 +19188,13 @@ fn witness_admission_entry_function_keys_from_source(
     // `known_red_probe(` replaced `probe_red(` and the seed-emitter wet row constructor when the
     // quarantine moved to one function-grain authority (2026-08-03): both cadences now author the
     // same row shape in `gunbc.explicit_witness_admission`, so one head reads both.
-    let heads: [(&str, &str); 6] = [
+    let heads: [(&str, &str); 7] = [
         ("bin_wet(", "entry: String"),
         ("known_red_probe(", "entry: NonEmptyStr"),
+        (
+            "source_root_ingest_gate_admitted_witness(",
+            "entry: NonEmptyStr",
+        ),
         ("self_host_wet_entry(", "entry: String"),
         ("SelfHostWetReceiptBinding {", ""),
         ("RehomedBinWetRow {", ""),
@@ -39115,6 +39119,29 @@ mod module_path_index_tests {
         assert!(
             keys.contains(&"dag/test/claim/x_test.dag::x_holds".to_string()),
             "a RehomedBinWetRow must register as an executing consumer key (Phase 0(b)); got {keys:?}"
+        );
+    }
+
+    #[test]
+    fn source_root_ingest_gate_admitted_witness_rows_parse_as_executing_consumer_keys() {
+        let synthetic = "module gunbc.explicit_witness_admission\n\n\
+             data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [\n\
+               source_root_ingest_gate_admitted_witness(\n\
+                 entry: \"src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag\",\n\
+                 f: \"compiler_closure_scoped_ingest_module_count_ok_holds\",\n\
+                 kind: CorpusWitnessKind,\n\
+                 reason: \"r\",\n\
+                 dissolution: unbound_dissolution(description: \"d\")\n\
+               ),\n\
+             ]\n";
+        let keys =
+            super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
+        assert!(
+            keys.contains(
+                &"src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag::compiler_closure_scoped_ingest_module_count_ok_holds"
+                    .to_string()
+            ),
+            "transport gate admission rows must register as executing consumer keys; got {keys:?}"
         );
     }
 
