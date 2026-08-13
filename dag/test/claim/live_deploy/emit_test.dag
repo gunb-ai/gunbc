@@ -76,6 +76,13 @@ import gunbc.ci_deploy_access {
   deploy_access_job_principal_refused_emit_poison,
 }
 import gunbc.fleet_posix_accounts { DeployRunnerPrincipal }
+import gunbc.host_axis_caps {
+  deploy_memory_cap_apply_script_for_host,
+  deploy_memory_cap_apply_script_author_before_shadow_revert,
+  runner_slot_service_units_for_host,
+}
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import std.measure { byte_size_count }
 import v2.std.orchestration { Do, Run }
 import std.disposition { Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -277,6 +284,18 @@ test fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
     && string_contains(s: sh, pattern: "if ! dpkg -s tailscale >/dev/null 2>&1; then sudo -n apt-get install --yes tailscale; fi")
     && string_contains(s: sh, pattern: "if ! dpkg -s tmux >/dev/null 2>&1; then sudo -n apt-get install --yes tmux; fi")
     && string_contains(s: sh, pattern: "fold=apply verdict=converged")
+}
+
+test fn witness_apply_script_wires_memory_cap_deploy_consumer() -> Bool {
+  let target = deployment_srv1_target()
+  let units = runner_slot_service_units_for_host(host: target.host.identity)
+  let cap_block = deploy_memory_cap_apply_script_for_host(host: target.host.identity)
+  let sh = witness_apply_script()
+  deploy_memory_cap_apply_script_author_before_shadow_revert(units: units)
+    && string_contains(s: sh, pattern: cap_block)
+    && string_contains(s: sh, pattern: "20-fleet-width.conf")
+    && string_contains(s: sh, pattern: "sudo -n systemctl revert ")
+    && string_contains(s: sh, pattern: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_max)))
 }
 
 data unprivileged_principal_witness_note: String = "Discriminating RED for the run-29822498755 regression class: the ci-runner principal (fleet_posix_accounts FleetAccountCiRunner) holds NO rsync/chown/rmdir grant and no write on the service-user-owned tree, so a bare rsync/chown/rmdir in either script is a deploy that fails on the host again. The tree sync must instead ride the service-user oneshot unit (both rsync directions live INSIDE gunbc-tree-sync.service, principal User=briansrls), and every mutation outside it must be one of the six roster-granted sudo -n commands. Post-hoc admission of each sudo -n command against the ci_deploy_access grant envelope is the named residue (emit_deploy_principal_note)."

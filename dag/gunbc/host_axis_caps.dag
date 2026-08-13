@@ -21,7 +21,11 @@ import gunbc.host_converge {
   gunbc_runner_per_slot_tasks_dropin_path,
   gunbc_runner_control_dropin_dir_prefix,
 }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired, gunbc_runner_slots_per_host }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner_lifecycle { runner_slot_unit_name }
+import gunbc.live_deploy.operations { systemctl_daemon_reload_command, privileged_command }
+import product.placement_supply { HostIdentity }
 import extdeps.systemd {
   MemoryMax,
   MemoryHigh,
@@ -213,21 +217,64 @@ data memory_cap_author_before_shadow_revert_ordering_note: String = "Deploy drop
 
 data host_axis_caps_author_before_revert_enforced: Bool = true
 
-fn deploy_memory_cap_shadow_revert_scripts(units: List<NonEmptyStr>) -> String {
-  fold(units, init: "", f: (acc, unit) =>
-    concat(acc, control_shadow_revert_script(u: control_shadow_unit(unit: unit)))
+fn runner_slot_service_units_range(host: HostIdentity, slot: Int, limit: Int) -> List<NonEmptyStr> {
+  if slot > limit {
+    []
+  } else {
+    concat(
+      [runner_slot_unit_name(slot: RunnerSlotIdentity { host: host, slot_index: slot })],
+      runner_slot_service_units_range(host: host, slot: slot + 1, limit: limit)
+    )
+  }
+}
+
+fn runner_slot_service_units_for_host(host: HostIdentity) -> List<NonEmptyStr> {
+  runner_slot_service_units_range(
+    host: host,
+    slot: 1,
+    limit: gunbc_runner_slots_per_host(host: host),
   )
 }
 
+fn deploy_cap_upsert_staged_lines(m: CapMember, stage_name: String) -> String {
+  join([
+    "printf '%s' '", m.content, "' > \"$_gunbc_stage/", stage_name, "\"\n",
+    "sudo -n install -m 0644 \"$_gunbc_stage/", stage_name, "\" ", m.dropin_path as String, "\n",
+  ], "")
+}
+
+fn deploy_runner_memory_cap_author_script() -> String {
+  join([
+    deploy_cap_upsert_staged_lines(m: derived_runner_memory_max_cap_member(), stage_name: "20-fleet-width.conf"),
+    deploy_cap_upsert_staged_lines(m: derived_runner_memory_high_cap_member(), stage_name: "40-fleet-high.conf"),
+    systemctl_daemon_reload_command(privileged: true),
+    "\n",
+  ], "")
+}
+
+fn deploy_control_shadow_revert_line(u: ControlShadowUnit) -> String {
+  concat(privileged_command(argv: systemctl_revert_memory_caps_argv(unit: u.unit)), "\n")
+}
+
+fn deploy_memory_cap_shadow_revert_script(units: List<NonEmptyStr>) -> String {
+  fold(units, init: "", f: (acc, unit) =>
+    concat(acc, deploy_control_shadow_revert_line(u: control_shadow_unit(unit: unit)))
+  )
+}
+
+// Production deploy script: author derived template drop-ins, daemon-reload, then per-unit shadow revert.
+fn deploy_memory_cap_apply_script_for_host(host: HostIdentity) -> String {
+  deploy_memory_cap_apply_script_ordered(units: runner_slot_service_units_for_host(host: host))
+}
+
 // Deploy apply composite: author derived drop-ins first, then shadow revert per unit.
-// live_deploy enrollment is dissolve-on; ordering is structural in this concatenation.
 fn deploy_memory_cap_apply_script_ordered(units: List<NonEmptyStr>) -> String {
-  concat(runner_memory_cap_author_script(), deploy_memory_cap_shadow_revert_scripts(units: units))
+  concat(deploy_runner_memory_cap_author_script(), deploy_memory_cap_shadow_revert_script(units: units))
 }
 
 // Pin caller script to deploy_memory_cap_apply_script_ordered's concat(author, reverts).
 fn deploy_memory_cap_script_matches_ordered_composition(script: String, units: List<NonEmptyStr>) -> Bool {
-  script == concat(runner_memory_cap_author_script(), deploy_memory_cap_shadow_revert_scripts(units: units))
+  script == deploy_memory_cap_apply_script_ordered(units: units)
 }
 
 fn deploy_memory_cap_apply_script_author_before_shadow_revert(units: List<NonEmptyStr>) -> Bool {
@@ -238,13 +285,8 @@ fn deploy_memory_cap_apply_script_author_before_shadow_revert(units: List<NonEmp
     )
 }
 
-// witness-only until live_deploy apply emits deploy_memory_cap_apply_script_ordered on the
-// privileged deploy path (ghrunner sudo) via host_effect_apply. Operator ruling 2026-08-13
-// collapsed MemoryMax to deploy-time authority here; live_deploy enrollment is follow-up.
-// No std.disposition.Scaffold row on this head — net-new dissolution obligations require an
-// observed operator verdict (DESIGN section 5, 2026-08-10). Residual: gunbc.ci_budget_tree,
-// gunbc.ci_floor_measurement.
-data deploy_memory_cap_live_deploy_enrollment_note: String = "deploy_memory_cap_apply_script_ordered composes deploy shell text (witness-only on this head — no live_deploy consumer actuates it). live_deploy enrollment on a future head requires observed operator ApproveTemporaryIntroduction (DESIGN section 5, 2026-08-10); this note is lifecycle documentation, not admission."
+// Enrolled: live_deploy apply emits deploy_memory_cap_apply_script_for_host after sudoers preamble.
+data deploy_memory_cap_live_deploy_enrollment_note: String = "deploy_memory_cap_apply_script_for_host is emitted into live_deploy apply (gunbc.live_deploy.emit apply_intent_from_effects) after deploy_apply_preamble_steps — author derived drop-ins then systemctl revert per runner_slot_service_units_for_host."
 
 fn control_shadow_reconcile(
   desired: List<ControlShadowUnit>,
