@@ -18,9 +18,10 @@ import gunbc.host_converge {
   gunbc_runner_per_slot_swap_dropin_path,
   gunbc_runner_per_slot_high_dropin_path,
   gunbc_runner_per_slot_tasks_dropin_path,
+  gunbc_runner_control_dropin_dir_prefix,
 }
 
-data host_axis_caps_note: String = "PerSlotMemoryCap axis, closed vertically on the membership_reconcile spine — the first non-degenerate reconcile in the repo (desired vs a real OBSERVED set, not observed=[]). MemoryMax SINGLE AUTHORITY: drop-in content authored here and applied at live_deploy — gunbc converge does not re-apply MemoryMax via systemctl set-property (operator ruling 2026-08-13). A CapMember is a per-slot systemd drop-in keyed by its file path (stable IDENTITY, so a content drift is Modified->MemberChanged, never Remove+Add). The interference domain is the drop-in directory itself: ownership is DERIVED from the path (managed set -> Owned; anything else -> a foreign occupant, Ensured), never stored, so a Removed foreign file yields MemberRemovalRefused (R5, no effect arm, never deleted). Idempotence = zero hunks (Unchanged); perturb = Modified->MemberChanged of exactly the drifted row; foreign occupant = ApplyRefused wholesale. Live apply/observe are host_effect_apply typed transports (operator one-liners for the go-live receipts); this module is the pure, hermetically-witnessed fold."
+data host_axis_caps_note: String = "PerSlotMemoryCap axis, closed vertically on the membership_reconcile spine — the first non-degenerate reconcile in the repo (desired vs a real OBSERVED set, not observed=[]). MemoryMax SINGLE AUTHORITY: drop-in content authored here and applied at live_deploy — gunbc converge does not re-apply MemoryMax via systemctl set-property (operator ruling 2026-08-13). system.control set-property RESIDUE is a separate reconcile axis: stale 50-MemoryMax.conf / 50-MemoryHigh.conf files shadow deploy drop-ins and are Owned teardown (systemctl revert), not Ensured foreign occupants. A CapMember is a per-slot systemd drop-in keyed by its file path (stable IDENTITY, so a content drift is Modified->MemberChanged, never Remove+Add). The interference domain is the drop-in directory itself: ownership is DERIVED from the path (managed set -> Owned; anything else -> a foreign occupant, Ensured), never stored, so a Removed foreign file yields MemberRemovalRefused (R5, no effect arm, never deleted). Idempotence = zero hunks (Unchanged); perturb = Modified->MemberChanged of exactly the drifted row; foreign occupant = ApplyRefused wholesale. Live apply/observe are host_effect_apply typed transports (operator one-liners for the go-live receipts); this module is the pure, hermetically-witnessed fold."
 
 type CapMember {
   dropin_path: NonEmptyStr
@@ -101,4 +102,85 @@ fn caps_teardown_count(desired: List<CapMember>, observed: List<CapMember>) -> I
 
 fn caps_refusal_count(desired: List<CapMember>, observed: List<CapMember>) -> Int {
   membership_refusal_count(plan: caps_reconcile(desired: desired, observed: observed))
+}
+
+// system.control set-property residue — shadows deploy-authored drop-ins (sorts later, wins).
+type ControlShadowUnit {
+  unit: NonEmptyStr
+}
+
+data control_shadow_memory_max_filename: NonEmptyStr = "50-MemoryMax.conf"
+data control_shadow_memory_high_filename: NonEmptyStr = "50-MemoryHigh.conf"
+
+data control_shadow_managed_filenames: List<NonEmptyStr> = [
+  control_shadow_memory_max_filename,
+  control_shadow_memory_high_filename,
+]
+
+fn control_shadow_dropin_path(unit: NonEmptyStr, filename: NonEmptyStr) -> NonEmptyStr {
+  join([
+    gunbc_runner_control_dropin_dir_prefix,
+    unit as String,
+    ".d/",
+    filename as String,
+  ], "") as NonEmptyStr
+}
+
+fn control_shadow_unit(unit: NonEmptyStr) -> ControlShadowUnit {
+  ControlShadowUnit { unit: unit }
+}
+
+fn control_shadow_unit_key(u: ControlShadowUnit) -> NonEmptyStr {
+  u.unit
+}
+
+fn control_shadow_unit_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+  a as String == b as String
+}
+
+fn control_shadow_unit_value_eq(a: ControlShadowUnit, b: ControlShadowUnit) -> Bool {
+  a.unit as String == b.unit as String
+}
+
+fn control_shadow_unit_ownership(u: ControlShadowUnit) -> Ownership? {
+  Present { value: Owned }
+}
+
+fn control_shadow_revert_script(u: ControlShadowUnit) -> String {
+  concat(concat("systemctl revert ", u.unit as String), " MemoryMax MemoryHigh\n")
+}
+
+fn control_shadow_reconcile(
+  desired: List<ControlShadowUnit>,
+  observed: List<ControlShadowUnit>,
+) -> MembershipPlan<ControlShadowUnit> {
+  membership_reconcile(
+    desired: desired,
+    observed: observed,
+    key_of: control_shadow_unit_key,
+    key_eq: control_shadow_unit_key_eq,
+    value_eq: control_shadow_unit_value_eq,
+    ownership_of: control_shadow_unit_ownership,
+  )
+}
+
+fn control_shadow_effects(
+  desired: List<ControlShadowUnit>,
+  observed: List<ControlShadowUnit>,
+) -> EffectsOrRefusal<ControlShadowUnit> {
+  membership_effects(plan: control_shadow_reconcile(desired: desired, observed: observed))
+}
+
+fn control_shadow_teardown_count(
+  desired: List<ControlShadowUnit>,
+  observed: List<ControlShadowUnit>,
+) -> Int {
+  membership_removal_count(plan: control_shadow_reconcile(desired: desired, observed: observed))
+}
+
+fn control_shadow_refusal_count(
+  desired: List<ControlShadowUnit>,
+  observed: List<ControlShadowUnit>,
+) -> Int {
+  membership_refusal_count(plan: control_shadow_reconcile(desired: desired, observed: observed))
 }

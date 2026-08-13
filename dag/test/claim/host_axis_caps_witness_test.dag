@@ -4,12 +4,18 @@ import std.logic { Bool }
 import std.types { NonEmptyStr, String, List, list_length }
 import gunbc.host_axis_caps {
   CapMember,
+  ControlShadowUnit,
+  control_shadow_unit,
+  control_shadow_revert_script,
   desired_cap_member,
   cap_dropin_content,
   caps_effects,
   caps_upsert_count,
   caps_teardown_count,
   caps_refusal_count,
+  control_shadow_effects,
+  control_shadow_teardown_count,
+  control_shadow_refusal_count,
 }
 import gunbc.membership_reconcile { EffectsReady, ApplyRefused }
 import gunbc.host_converge {
@@ -80,4 +86,23 @@ test fn caps_content_is_derived_not_handspelled() -> Bool {
   cap_dropin_content(property: mem_max, bytes_value: bytes16g) == "[Service]\nMemoryMax=17179869184\n"
     && cap_dropin_content(property: swap_max, bytes_value: bytes32g) == "[Service]\nMemorySwapMax=34359738368\n"
     && cap_dropin_content(property: mem_max, bytes_value: bytes8g) != cap_dropin_content(property: mem_max, bytes_value: bytes16g)
+}
+
+data shadow_unit: NonEmptyStr = "actions-runner@srv1-01.service"
+
+test fn control_shadow_residue_teardowns_owned_unit() -> Bool {
+  let observed = [control_shadow_unit(unit: shadow_unit)]
+  control_shadow_teardown_count(desired: [], observed: observed) == 1
+    && control_shadow_refusal_count(desired: [], observed: observed) == 0
+    && match control_shadow_effects(desired: [], observed: observed) {
+         EffectsReady { effects: e } => list_length(items: e) == 1
+         ApplyRefused { refusals: _ } => false
+       }
+    && control_shadow_revert_script(u: control_shadow_unit(unit: shadow_unit))
+      == "systemctl revert actions-runner@srv1-01.service MemoryMax MemoryHigh\n"
+}
+
+test fn control_shadow_idempotence_zero_effects() -> Bool {
+  control_shadow_teardown_count(desired: [], observed: []) == 0
+    && control_shadow_refusal_count(desired: [], observed: []) == 0
 }

@@ -1,0 +1,19 @@
+module gunbc.systemctl_revert
+
+import std.types { String, NonEmptyStr, List, Bool }
+import extdeps.systemd.systemctl
+
+fn systemctl_revert_memory_caps_operation_argv(unit: NonEmptyStr) -> List<String> {
+  systemctl_revert_memory_caps_argv(unit: unit)
+}
+
+fn systemctl_revert_memory_caps_operation_argv_matches_transport(unit: NonEmptyStr) -> Bool {
+  let materialized = systemctl_revert_memory_caps_operation_argv(unit: unit)
+  let authority = systemctl_revert_memory_caps_argv(unit: unit)
+  join(materialized, " ") == join(authority, " ")
+}
+
+fn systemctl_revert_memory_caps_local(unit: NonEmptyStr) -> Bool {
+  let result = systemd.Systemctl.RevertMemoryCaps(unit: unit)
+  result.success
+}

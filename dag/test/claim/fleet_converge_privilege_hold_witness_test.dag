@@ -1,5 +1,22 @@
 module test.claim.fleet_converge_privilege_hold_witness
 
+import std.types { Bool, Int, length }
+import gunbc.fleet_posix_accounts {
+  fleet_posix_operator_sudo_grants,
+  fleet_posix_ci_runner_sudo_grants,
+  fleet_posix_operator_sudo_grant_is_hostnamectl_only,
+}
+import gunbc.fleet_converge_cli {
+  fleet_converge_receipt_staging_path,
+  fleet_converge_receipt_path,
+}
+import gunbc.host_converge_slice1 {
+  host_converge_slice1_memory_max_converge_apply_suppressed,
+  host_converge_slice1_shadow_revert_script_matches_authority,
+  host_converge_slice1_probe_unit,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // RED control: whole-binary install/systemctl on the operator roster is root-equivalent
@@ -18,4 +35,9 @@ test fn witness_receipt_publication_uses_staging_rename_grain() -> Bool {
 // Operator ruling 2026-08-13: converge must not re-apply MemoryMax via set-property.
 test fn witness_convergence_suppresses_memory_max_set_property() -> Bool {
   host_converge_slice1_memory_max_converge_apply_suppressed
+}
+
+// Residue removal uses systemctl revert (inverse of set-property), not a new set-property apply.
+test fn witness_control_shadow_revert_script_is_revert_not_set_property() -> Bool {
+  host_converge_slice1_shadow_revert_script_matches_authority(unit: host_converge_slice1_probe_unit)
 }
