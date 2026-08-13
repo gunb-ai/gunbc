@@ -129,6 +129,15 @@ fn codex_press_account_trip_methods() -> CodexPressItinerary {
 
 data codex_press_turn_itinerary_target_note: String = "TARGET plan only — not executed by observe_codex_account_preflight. A TurnStarted constructor must not exist until both thread/start and turn/start responses supply exact provider IDs joined to a WorkerTurn."
 
+data codex_credential_liveness_note: String = "account/read IS NOT credential liveness (continuity receipt 2026-08-13). The same dead CODEX_HOME answered chatgpt/pro on one probe and account:null a minute later — realm is non-deterministic until a background token refresh fails. Liveness derives ONLY from account/rateLimits/read exercising the token upstream: decodable buckets mean the credential was live for that trip; an empty bucket list after a typed rate-limits result means dead, not unobserved. Realm and liveness are independent axes — a CodexChatgptRealm { plan: pro } beside CodexCredentialDead is the trap the standing bridge must not collapse."
+
+type CodexCredentialLiveness
+  = CodexCredentialLive { bucket_count: Int }
+  | CodexCredentialDead { reason: NonEmptyStr }
+  | CodexCredentialLivenessUnobserved { reason: NonEmptyStr }
+
+data codex_supervised_turn_delegation_note: String = "Supervised-runner execution lease, runner-written terminal receipt, and turn/start admission live in gunbc.codex_supervised_turn on std.temporal_effect HeldLease — not a forked session carrier in this module."
+
 fn codex_press_turn_itinerary_target() -> CodexPressItinerary {
   concat(
     codex_press_account_trip_methods(),
@@ -320,6 +329,7 @@ type CodexAccountStandingEvidence {
   initialize: AccountTripResponseObservation
   account_read: AccountTripResponseObservation
   account_realm: CodexAccountRealm
+  credential_liveness: CodexCredentialLiveness
   rate_limits: AccountTripResponseObservation
   rate_limit_buckets: List<CodexRateLimitBucketVerdict>
   unknown_frame_digests: List<ContentHash>
@@ -1183,6 +1193,44 @@ fn absorb_account_trip_line(
   }
 }
 
+fn codex_credential_liveness_from_rate_trip(
+  rate_limits: AccountTripResponseObservation,
+  buckets: List<CodexRateLimitBucketVerdict>,
+) -> CodexCredentialLiveness {
+  match observation_to_disposition(obs: rate_limits) {
+    AccountTripLoginRequiredSignal =>
+      CodexCredentialDead {
+        reason: "account/rateLimits/read refused login; token not exercised upstream" as NonEmptyStr,
+      }
+    AccountTripQuotaSignal =>
+      CodexCredentialLivenessUnobserved {
+        reason: "account/rateLimits/read reported quota on the liveness probe" as NonEmptyStr,
+      }
+    AccountTripResultOk =>
+      if count(buckets) > 0 {
+        CodexCredentialLive { bucket_count: count(buckets) }
+      } else {
+        CodexCredentialDead {
+          reason: "account/rateLimits/read returned no decodable buckets; token not exercised upstream" as NonEmptyStr,
+        }
+      }
+    AccountTripMissing =>
+      CodexCredentialLivenessUnobserved {
+        reason: "account/rateLimits/read response missing on this trip" as NonEmptyStr,
+      }
+    AccountTripNativeCauseUnknown { message: m } =>
+      CodexCredentialLivenessUnobserved { reason: m }
+    AccountTripNativeCauseNumericCode { code: c } =>
+      CodexCredentialLivenessUnobserved {
+        reason: concat("account/rateLimits/read json-rpc error code ", to_string(n: c), "") as NonEmptyStr,
+      }
+    AccountTripNativeCauseMessageUnreadable =>
+      CodexCredentialLivenessUnobserved {
+        reason: "account/rateLimits/read error message unreadable" as NonEmptyStr,
+      }
+  }
+}
+
 fn classify_account_trip(acc: AccountTripParseAcc) -> AccountStandingClassification {
   if acc.retention_failed {
     AccountStandingIncomplete
@@ -1271,6 +1319,10 @@ fn parse_account_trip_session(
     initialize: acc_final.initialize,
     account_read: acc_final.account_read,
     account_realm: acc_final.account_realm,
+    credential_liveness: codex_credential_liveness_from_rate_trip(
+      rate_limits: acc_final.rate_limits,
+      buckets: acc_final.rate_limit_buckets,
+    ),
     rate_limits: acc_final.rate_limits,
     rate_limit_buckets: acc_final.rate_limit_buckets,
     unknown_frame_digests: acc_final.unknown_frame_digests,

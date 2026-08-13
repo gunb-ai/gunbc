@@ -1,0 +1,151 @@
+module gunbc.codex_supervised_turn
+
+import std.types { String, NonEmptyStr, Int, Bool }
+import std.content_hash { ContentHash, content_hash_of_value }
+import std.temporal_effect {
+  HeldLease,
+  HeldLeaseObservedState,
+  LeaseAbsent,
+  LeaseRunningExpected,
+  LeaseRunningStale,
+  LeasePortForeign,
+  LeaseInaccessible,
+  TemporalEffectPolicy,
+  HeldSessionLease,
+}
+import gunbc.roadmap_workflow_command { WorkerTurn, AttemptKey }
+import gunbc.provider_turn_adjudication {
+  ProviderTurnDisposition,
+  ProviderTurnCompleted,
+  ProviderTurnFailed,
+  ProviderTurnNotObserved,
+  press_display_finished,
+}
+import gunbc.codex_app_server_press {
+  CodexAccountStandingReceipt,
+  AmbientCodexCredentialContext,
+}
+import gunbc.provider_wire_evidence { ProviderWireEvidenceReceipt }
+import gunbc.provider_standing_probe_bridge {
+  provider_standing_bundle_from_codex_press_receipt,
+}
+import gunbc.provider_standing { ProviderStandingBundle }
+
+data codex_supervised_turn_authority_note: String = "SUPERVISED-RUNNER REALIZATION (continuity receipt 2026-08-13). In-flight turns do NOT survive client death — tool calls execute in the local app-server process, so one supervised process must fence each WorkerTurn attempt. std.temporal_effect HeldLease is the execution lease (lease_key, resource_fingerprint, owner_fingerprint, generation, observed); do not mint a parallel session carrier.\n\nTHREE LAYERS STAY SEPARATE (reviewer ruling):\n  durable goal — WorkerTurn reaching a terminal disposition with an observed head\n  execution lease — HeldLease over the supervised app-server process, fenced by generation\n  controller — belt tick reconciling desired vs observed thread state\n\nTHE TRAP: an abandoned turn leaves thread status idle with partial work on disk. Thread idle alone NEVER authorizes turn/start; turn identity plus a runner-written terminal receipt is required. CodexRunnerTurnTerminalReceipt is written ONLY by the supervised runner when the process ends — nothing else writes one on crash.\n\nExactly-once: client_command_id is carried on the terminal receipt so a lost turn/start reply does not collapse into absent."
+
+type CodexThreadActivity
+  = CodexThreadAbsent
+  | CodexThreadIdle
+  | CodexThreadBusy
+  | CodexThreadActivityUnobserved { reason: NonEmptyStr }
+
+type CodexSupervisedTurnBinding {
+  turn: WorkerTurn
+  lease: HeldLease
+  execution_policy: TemporalEffectPolicy
+  standing_receipt: CodexAccountStandingReceipt?
+}
+
+type CodexRunnerTurnTerminalReceipt {
+  binding: CodexSupervisedTurnBinding
+  native_thread_id: NonEmptyStr?
+  native_turn_id: NonEmptyStr?
+  client_command_id: NonEmptyStr
+  disposition: ProviderTurnDisposition
+  wire_evidence: ProviderWireEvidenceReceipt?
+}
+
+type CodexTurnStartAdmission
+  = CodexTurnStartAdmitted
+  | CodexTurnStartRefusedDuplicateExecution { reason: NonEmptyStr }
+  | CodexTurnStartRefusedOutcomeUnobserved { reason: NonEmptyStr }
+
+fn codex_supervised_turn_lease_key(attempt_key: AttemptKey, turn_key: String) -> NonEmptyStr {
+  concat(attempt_key, concat("/", turn_key)) as NonEmptyStr
+}
+
+fn codex_supervised_turn_resource_fingerprint(
+  credential: AmbientCodexCredentialContext,
+  attempt_key: AttemptKey,
+) -> ContentHash {
+  content_hash_of_value(
+    value: join([credential.codex_home as String, attempt_key], "|"),
+  )
+}
+
+fn codex_supervised_turn_owner_fingerprint(turn_key: String) -> ContentHash {
+  content_hash_of_value(value: turn_key)
+}
+
+fn codex_supervised_turn_session_policy(lease_key: NonEmptyStr) -> TemporalEffectPolicy {
+  HeldSessionLease { lease_key: lease_key }
+}
+
+fn codex_supervised_turn_binding(
+  turn: WorkerTurn,
+  credential: AmbientCodexCredentialContext,
+  observed: HeldLeaseObservedState,
+  standing_receipt: CodexAccountStandingReceipt?,
+) -> CodexSupervisedTurnBinding {
+  let lease_key = codex_supervised_turn_lease_key(
+    attempt_key: turn.attempt_key,
+    turn_key: turn.turn_key,
+  )
+  CodexSupervisedTurnBinding {
+    turn: turn,
+    lease: HeldLease {
+      lease_key: lease_key,
+      resource_fingerprint: codex_supervised_turn_resource_fingerprint(
+        credential: credential,
+        attempt_key: turn.attempt_key,
+      ),
+      owner_fingerprint: codex_supervised_turn_owner_fingerprint(turn_key: turn.turn_key),
+      generation: 0,
+      observed: observed,
+    },
+    execution_policy: codex_supervised_turn_session_policy(lease_key: lease_key),
+    standing_receipt: standing_receipt,
+  }
+}
+
+fn codex_turn_start_admission(
+  terminal_receipt: CodexRunnerTurnTerminalReceipt?,
+  thread: CodexThreadActivity,
+) -> CodexTurnStartAdmission {
+  match thread {
+    CodexThreadBusy =>
+      CodexTurnStartRefusedOutcomeUnobserved {
+        reason: "thread reports a turn in flight; await runner terminal receipt" as NonEmptyStr,
+      }
+    CodexThreadActivityUnobserved { reason: r } =>
+      CodexTurnStartRefusedOutcomeUnobserved { reason: r }
+    CodexThreadAbsent => CodexTurnStartAdmitted
+    CodexThreadIdle =>
+      match terminal_receipt {
+        Absent =>
+          CodexTurnStartRefusedDuplicateExecution {
+            reason: "thread idle without runner terminal receipt; partial work may exist on disk" as NonEmptyStr,
+          }
+        Present { value: receipt } =>
+          if press_display_finished(disposition: receipt.disposition) {
+            CodexTurnStartAdmitted
+          } else {
+            CodexTurnStartRefusedOutcomeUnobserved {
+              reason: "prior turn lacks a finished terminal disposition from the runner" as NonEmptyStr,
+            }
+          }
+      }
+  }
+}
+
+fn provider_standing_bundle_from_codex_supervised_binding(
+  binding: CodexSupervisedTurnBinding,
+) -> ProviderStandingBundle? {
+  match binding.standing_receipt {
+    Absent => none
+    Present { value: receipt } =>
+      Present {
+        value: provider_standing_bundle_from_codex_press_receipt(receipt: receipt),
+      }
+  }
+}

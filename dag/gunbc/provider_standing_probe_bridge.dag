@@ -22,6 +22,8 @@ import gunbc.provider_standing {
   EntitlementObservedAvailable,
   EntitlementRejected,
   LimitObservationUnobserved,
+  AuthenticationRefreshFailed,
+  AuthenticationExpired,
   TurnNotStarted,
   ToolEnvironmentStandingUnobserved,
   ToolEnvironmentUnavailable,
@@ -57,6 +59,10 @@ import gunbc.codex_app_server_press {
   CodexPlanTypeObserved,
   CodexPlanTypeUnrecognized,
   CodexPlanTypeMalformed,
+  CodexCredentialLiveness,
+  CodexCredentialLive,
+  CodexCredentialDead,
+  CodexCredentialLivenessUnobserved,
 }
 import extdeps.llm.codex_app_server {
   CodexPlanType,
@@ -282,6 +288,49 @@ fn provider_entitlement_from_codex_press_receipt(
   provider_entitlement_from_codex_realm(
     realm: receipt.standing.evidence.account_realm,
   )
+}
+
+data codex_credential_liveness_bridge_note: String = "LIVENESS IS NOT REALM (continuity receipt 2026-08-13). account/read can report chatgpt/pro while account/rateLimits/read returns no buckets — the dead-credential trap. AuthenticationAuthenticated derives from CodexCredentialLive (buckets returned, token exercised upstream), never from account_realm or account_read disposition alone. Realm stays on the entitlement bridge; this bridge owns the authentication axis only."
+
+fn provider_authentication_from_codex_credential_liveness(
+  liveness: CodexCredentialLiveness,
+) -> ProviderAuthenticationStanding {
+  match liveness {
+    CodexCredentialLive { bucket_count: _ } => AuthenticationAuthenticated
+    CodexCredentialDead { reason: r } =>
+      AuthenticationRefreshFailed { reason: r }
+    CodexCredentialLivenessUnobserved { reason: r } =>
+      AuthenticationStandingUnobserved { reason: r }
+  }
+}
+
+fn provider_authentication_from_codex_press_receipt(
+  receipt: CodexAccountStandingReceipt,
+) -> ProviderAuthenticationStanding {
+  provider_authentication_from_codex_credential_liveness(
+    liveness: receipt.standing.evidence.credential_liveness,
+  )
+}
+
+data codex_press_standing_bundle_installation_unobserved_reason: NonEmptyStr = "installation not derived at codex press receipt bridge; runtime materialization is separate" as NonEmptyStr
+
+data codex_press_standing_bundle_tool_environment_unobserved_reason: NonEmptyStr = "tool environment not derived at codex press receipt bridge" as NonEmptyStr
+
+fn provider_standing_bundle_from_codex_press_receipt(
+  receipt: CodexAccountStandingReceipt,
+) -> ProviderStandingBundle {
+  ProviderStandingBundle {
+    installation: provider_standing_bundle_unobserved_installation(
+      reason: codex_press_standing_bundle_installation_unobserved_reason,
+    ),
+    authentication: provider_authentication_from_codex_press_receipt(receipt: receipt),
+    entitlement: provider_entitlement_from_codex_press_receipt(receipt: receipt),
+    limits: provider_limit_observations_from_codex_press_receipt(receipt: receipt),
+    turn: TurnNotStarted,
+    tool_environment: provider_standing_bundle_unobserved_tool_environment(
+      reason: codex_press_standing_bundle_tool_environment_unobserved_reason,
+    ),
+  }
 }
 
 fn provider_standing_bundle_from_codex_dashboard_probes(
