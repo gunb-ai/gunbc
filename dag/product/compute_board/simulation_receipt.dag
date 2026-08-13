@@ -90,3 +90,58 @@ fn outcome_is_accepted(outcome: SimulationOutcome) -> Bool {
 }
 
 data executed_runs: List<SimulationOutcome> = [interlock_verilog_run, conditioning_network_run]
+
+// THE IMPLEMENTATION CHAIN, EXECUTED. Simulation says the logic behaves; this says the logic
+// FITS — that a real synthesis, a real placer and a real bitstream packer accepted the emitted
+// Verilog together with the emitted pin constraints and produced a programmable image. The two
+// are different claims and only the second is evidence that a device exists which can run this
+// board's control logic.
+//
+// The same honesty applies as to the simulator rows: this is one recorded execution, not a
+// re-run, and the witness beside it joins the recorded inputs to what the product emits today.
+// What it additionally proves is that the constraint file and the module declaration were
+// consistent, because place-and-route refuses a constraint naming a port the module does not
+// declare — so a passing run is a check on the pin chain that no amount of internal agreement
+// could substitute for.
+data yosys_tool: SimulationTool = SimulationTool {
+  subject: DeclarationRef {
+    module_path: "extdeps.toolchain.icestorm.subject",
+    decl_name: "icestorm_project",
+    field: WholeDeclaration,
+  },
+  reported_version: "Yosys 0.23 (git sha1 7ce5011c24b)",
+}
+
+data nextpnr_tool: SimulationTool = SimulationTool {
+  subject: DeclarationRef {
+    module_path: "extdeps.toolchain.icestorm.subject",
+    decl_name: "icestorm_project",
+    field: WholeDeclaration,
+  },
+  reported_version: "nextpnr-ice40 Version 0.4-1+b1",
+}
+
+data interlock_pin_constraint_artifact: String = "set_io conditioned_good 1\nset_io fault 2\nset_io power_permit 3\nset_io reset_release 4\n"
+
+// Synthesis reported two four-input lookup tables for a two-equation combinational interlock,
+// which is the size the logic actually is; place-and-route reported each output constrained to
+// the bel behind its assigned package pin.
+data interlock_synthesis_observation: String = "yosys synth_ice40: 2 SB_LUT4 cells\nnextpnr-ice40 --hx1k --package tq144: constrained power_permit to bel X0/Y13/io1, reset_release to bel X0/Y13/io0\nicepack: 32220 byte bitstream, sha256 0f69b8fd5693c76f809861c1027bc4db83131489e002ad0ddf63437eea3ef357"
+
+data interlock_synthesis_run: SimulationOutcome = SimulationAccepted {
+  run: SimulationRun {
+    tool: yosys_tool,
+    artifact: interlock_verilog_artifact,
+    observation: interlock_synthesis_observation,
+  },
+}
+
+data interlock_place_and_route_run: SimulationOutcome = SimulationAccepted {
+  run: SimulationRun {
+    tool: nextpnr_tool,
+    artifact: interlock_pin_constraint_artifact,
+    observation: interlock_synthesis_observation,
+  },
+}
+
+data executed_implementation_runs: List<SimulationOutcome> = [interlock_synthesis_run, interlock_place_and_route_run]

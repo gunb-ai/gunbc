@@ -37,7 +37,19 @@ import product.compute_board.simulation_receipt {
   interlock_verilog_run,
   outcome_is_accepted,
   run_of,
+  executed_implementation_runs,
+  interlock_pin_constraint_artifact,
+  interlock_place_and_route_run,
+  interlock_synthesis_run,
 }
+import product.compute_board.device_binding {
+  PinConstraintsEmitted,
+  PinConstraintsRefused,
+  interlock_device_realization,
+  interlock_pin_assignments,
+  project_article_to_pin_constraints,
+}
+import product.compute_board.verilog_projection { power_interlock_verilog_bindings }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -189,4 +201,45 @@ test fn w_both_spice_paths_refuse_the_same_article() -> Bool {
           }
       }
   }
+}
+
+// THE IMPLEMENTATION RECEIPTS JOIN THE SAME WAY THE SIMULATION ONES DO. Place-and-route was given
+// a constraint file; this asserts the product still emits exactly those bytes, so the recorded run
+// cannot drift into describing a pin assignment nobody generates.
+test fn w_the_placed_constraints_are_what_the_product_emits_today() -> Bool {
+  match admitted() {
+    Absent => false
+    Present { value: adm } =>
+      match project_article_to_pin_constraints(
+        admitted: adm,
+        realization: interlock_device_realization,
+        bindings: power_interlock_verilog_bindings,
+        assignments: interlock_pin_assignments
+      ) {
+        PinConstraintsRefused { causes: _ } => false
+        PinConstraintsEmitted { receipt: r } => r.source == interlock_pin_constraint_artifact
+      }
+  }
+}
+
+// Synthesis consumed the SAME Verilog the simulator did, not a separate copy prepared for it.
+// Two artifacts would let the simulated design and the implemented design diverge silently, which
+// is the failure mode that makes a green testbench meaningless.
+test fn w_synthesis_and_simulation_consumed_one_verilog_artifact() -> Bool {
+  let synth = run_of(outcome: interlock_synthesis_run)
+  let sim = run_of(outcome: interlock_verilog_run)
+  synth.artifact == sim.artifact && synth.artifact == interlock_verilog_artifact
+}
+
+test fn w_every_recorded_implementation_run_was_accepted() -> Bool {
+  fold(executed_implementation_runs, init: true, f: fn(acc, o) { acc && outcome_is_accepted(outcome: o) })
+}
+
+// THE OBSERVATION NAMES A BITSTREAM, not merely a successful exit. A chain that synthesised and
+// placed but produced no image would satisfy "the tools accepted it" while leaving nothing to
+// program a device with.
+test fn w_the_implementation_observation_names_a_programmable_image() -> Bool {
+  let pnr = run_of(outcome: interlock_place_and_route_run)
+  list_length(items: split(s: pnr.observation, delimiter: "32220 byte bitstream")) > 1
+    && list_length(items: split(s: pnr.observation, delimiter: "SB_LUT4")) > 1
 }

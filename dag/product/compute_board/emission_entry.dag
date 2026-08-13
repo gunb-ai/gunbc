@@ -1,6 +1,6 @@
 module product.compute_board.emission_entry
 
-import std.types { String }
+import std.types { String, List }
 import product.compute_board.admission {
   BoardArticleAdmitted,
   BoardArticleRefused,
@@ -8,6 +8,16 @@ import product.compute_board.admission {
   admit_board_article,
 }
 import product.compute_board.article { BoardPowerInterfaceArticle, power_interlock_article }
+import product.compute_board.device_binding {
+  DevicePinAssignment,
+  PinChainRefusal,
+  PinConstraintsEmitted,
+  PinConstraintsRefused,
+  ProgrammableDeviceRealization,
+  interlock_device_realization,
+  interlock_pin_assignments,
+  project_article_to_pin_constraints,
+}
 import product.compute_board.spice_projection {
   SpiceProjectionRefusal,
   SpiceSliceProjected,
@@ -72,6 +82,26 @@ fn emit_ngspice_run_for(article: BoardPowerInterfaceArticle) -> BoardEmission<Sp
   }
 }
 
+fn emit_pin_constraints_for(
+  article: BoardPowerInterfaceArticle,
+  realization: ProgrammableDeviceRealization,
+  assignments: List<DevicePinAssignment>
+) -> BoardEmission<PinChainRefusal> {
+  match admit_board_article(a: article) {
+    BoardArticleRefused { causes: cs } => BoardArticleNotAdmitted { causes: cs }
+    BoardArticleAdmitted { article: adm } =>
+      match project_article_to_pin_constraints(
+        admitted: adm,
+        realization: realization,
+        bindings: power_interlock_verilog_bindings,
+        assignments: assignments
+      ) {
+        PinConstraintsEmitted { receipt: r } => BoardEmitted { source: r.source }
+        PinConstraintsRefused { causes: cs } => BoardTargetRefused { cause: cs.first }
+      }
+  }
+}
+
 // The production article, through the same entries. A host wanting this board's bytes calls
 // these; nothing else in the product hardcodes it.
 fn emit_spice() -> BoardEmission<SpiceProjectionRefusal> {
@@ -84,4 +114,12 @@ fn emit_verilog() -> BoardEmission<VerilogProjectionRefusal> {
 
 fn emit_ngspice_run() -> BoardEmission<SpiceProjectionRefusal> {
   emit_ngspice_run_for(article: power_interlock_article)
+}
+
+fn emit_pin_constraints() -> BoardEmission<PinChainRefusal> {
+  emit_pin_constraints_for(
+    article: power_interlock_article,
+    realization: interlock_device_realization,
+    assignments: interlock_pin_assignments
+  )
 }

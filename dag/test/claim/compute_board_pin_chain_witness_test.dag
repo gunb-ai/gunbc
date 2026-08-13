@@ -1,0 +1,250 @@
+module test.claim.compute_board_pin_chain_witness
+
+import std.types { String, NonEmptyStr, List }
+import product.compute_board.admission {
+  AdmittedBoardPowerInterfaceArticle,
+  BoardArticleAdmitted,
+  BoardArticleRefused,
+  admit_board_article,
+}
+import product.compute_board.article { power_interlock_article }
+import product.compute_board.digital_control {
+  SignalName,
+  conditioned_good_signal,
+  fault_signal,
+  power_permit_signal,
+  reset_release_signal,
+}
+import product.compute_board.verilog_projection {
+  VerilogBinding,
+  power_interlock_verilog_bindings,
+}
+import product.compute_board.device_binding {
+  AssignedSignalNotDeclared,
+  ConstraintNotEmittable,
+  DeclaredSignalHasNoPin,
+  DevicePinAssignment,
+  PinAssignedToSeveralSignals,
+  PinChainRefusal,
+  PinConstraintsEmitted,
+  PinConstraintsRefused,
+  PinNotOnPackage,
+  SignalAssignedToSeveralPins,
+  SignalHasNoTargetSpelling,
+  interlock_device_realization,
+  interlock_pin_assignments,
+  pin_refusal_set_count,
+  project_article_to_pin_constraints,
+  realization_populations_agree,
+}
+import extdeps.programmable_logic.ice40.subject {
+  bank_population_general_purpose,
+  bank_population_total,
+  ice40_hx1k,
+  ice40_hx1k_tq144_banks,
+  ice40_tq144_package,
+}
+import extdeps.toolchain.icestorm.subject {
+  icestorm_hx1k_tq144_roster,
+  roster_admits_pin,
+  roster_pin_count,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn admitted() -> AdmittedBoardPowerInterfaceArticle? {
+  match admit_board_article(a: power_interlock_article) {
+    BoardArticleAdmitted { article: adm } => Present { value: adm }
+    BoardArticleRefused { causes: _ } => none
+  }
+}
+
+fn project(
+  bindings: List<VerilogBinding>,
+  assignments: List<DevicePinAssignment>
+) -> String {
+  match admitted() {
+    Absent => "NOT-ADMITTED"
+    Present { value: adm } =>
+      match project_article_to_pin_constraints(
+        admitted: adm,
+        realization: interlock_device_realization,
+        bindings: bindings,
+        assignments: assignments
+      ) {
+        PinConstraintsEmitted { receipt: r } => r.source
+        PinConstraintsRefused { causes: _ } => "REFUSED"
+      }
+  }
+}
+
+// THE EXACT BYTES nextpnr WAS GIVEN. Full equality rather than a substring probe: a constraint
+// file with an extra line places a port nobody asked for, and one with a missing line leaves a
+// port for the tool to place wherever it likes — both pass a substring check.
+data expected_pin_constraints: String = "set_io conditioned_good 1\nset_io fault 2\nset_io power_permit 3\nset_io reset_release 4\n"
+
+test fn w_the_production_pin_constraints_emit_exact_bytes() -> Bool {
+  let emitted = project(bindings: power_interlock_verilog_bindings, assignments: interlock_pin_assignments)
+  emitted == expected_pin_constraints
+}
+
+// THE PORT NAME COMES FROM THE VERILOG TABLE, and this is what proves it rather than the comment
+// saying so. Perturbing one spelling in the binding table must move the constraint file with it;
+// if the two were independently authored, this would pass while the real design placed a port
+// the module does not declare.
+data respelled_bindings: List<VerilogBinding> = [
+  VerilogBinding { signal: "board_power_interlock" as SignalName, symbol: ^interlock_module_name, spelling: "board_power_interlock" },
+  VerilogBinding { signal: conditioned_good_signal, symbol: ^interlock_conditioned_good, spelling: "cond_good_renamed" },
+  VerilogBinding { signal: fault_signal, symbol: ^interlock_fault, spelling: "fault" },
+  VerilogBinding { signal: power_permit_signal, symbol: ^interlock_power_permit, spelling: "power_permit" },
+  VerilogBinding { signal: reset_release_signal, symbol: ^interlock_reset_release, spelling: "reset_release" },
+]
+
+test fn w_a_respelled_port_moves_the_constraint_file() -> Bool {
+  let respelled = project(bindings: respelled_bindings, assignments: interlock_pin_assignments)
+  respelled != expected_pin_constraints
+    && respelled == "set_io cond_good_renamed 1\nset_io fault 2\nset_io power_permit 3\nset_io reset_release 4\n"
+}
+
+fn refusal_is(r: PinChainRefusal, wanted: String) -> Bool {
+  match r {
+    PinNotOnPackage { signal: _, pin: _ } => wanted == "PinNotOnPackage"
+    PinAssignedToSeveralSignals { pin: _ } => wanted == "PinAssignedToSeveralSignals"
+    SignalAssignedToSeveralPins { signal: _ } => wanted == "SignalAssignedToSeveralPins"
+    AssignedSignalNotDeclared { signal: _ } => wanted == "AssignedSignalNotDeclared"
+    DeclaredSignalHasNoPin { signal: _ } => wanted == "DeclaredSignalHasNoPin"
+    SignalHasNoTargetSpelling { signal: _ } => wanted == "SignalHasNoTargetSpelling"
+    ConstraintNotEmittable { reason: _ } => wanted == "ConstraintNotEmittable"
+  }
+}
+
+fn refuses_naming(assignments: List<DevicePinAssignment>, wanted: String) -> Bool {
+  match admitted() {
+    Absent => false
+    Present { value: adm } =>
+      match project_article_to_pin_constraints(
+        admitted: adm,
+        realization: interlock_device_realization,
+        bindings: power_interlock_verilog_bindings,
+        assignments: assignments
+      ) {
+        PinConstraintsEmitted { receipt: _ } => false
+        PinConstraintsRefused { causes: cs } =>
+          fold(concat([cs.first], cs.rest), init: false, f: fn(acc, r) { acc || refusal_is(r: r, wanted: wanted) })
+      }
+  }
+}
+
+// Pin 5 is absent from the TQ144 roster — the package numbers 144 positions and only 96 of them
+// are placeable I/O, so a plausible-looking number is exactly the kind that gets authored.
+test fn w_a_pin_the_package_does_not_have_refuses() -> Bool {
+  roster_admits_pin(r: icestorm_hx1k_tq144_roster, pin: "1")
+    && !roster_admits_pin(r: icestorm_hx1k_tq144_roster, pin: "5")
+    && refuses_naming(
+      assignments: [
+        DevicePinAssignment { signal: conditioned_good_signal, pin: "5" },
+        DevicePinAssignment { signal: fault_signal, pin: "2" },
+        DevicePinAssignment { signal: power_permit_signal, pin: "3" },
+        DevicePinAssignment { signal: reset_release_signal, pin: "4" },
+      ],
+      wanted: "PinNotOnPackage"
+    )
+}
+
+// Two signals on one pin is a short at the package boundary; place-and-route would refuse it, but
+// only after an artifact has been generated and handed over.
+test fn w_two_signals_on_one_pin_refuse() -> Bool {
+  refuses_naming(
+    assignments: [
+      DevicePinAssignment { signal: conditioned_good_signal, pin: "1" },
+      DevicePinAssignment { signal: fault_signal, pin: "1" },
+      DevicePinAssignment { signal: power_permit_signal, pin: "3" },
+      DevicePinAssignment { signal: reset_release_signal, pin: "4" },
+    ],
+    wanted: "PinAssignedToSeveralSignals"
+  )
+}
+
+// One signal on two pins is not a short — it is an AMBIGUITY, and the emitter would resolve it by
+// list order. A verdict decided by which row was authored first is the accident this repository
+// has now closed in four places.
+test fn w_one_signal_on_two_pins_refuses() -> Bool {
+  refuses_naming(
+    assignments: [
+      DevicePinAssignment { signal: conditioned_good_signal, pin: "1" },
+      DevicePinAssignment { signal: conditioned_good_signal, pin: "7" },
+      DevicePinAssignment { signal: fault_signal, pin: "2" },
+      DevicePinAssignment { signal: power_permit_signal, pin: "3" },
+      DevicePinAssignment { signal: reset_release_signal, pin: "4" },
+    ],
+    wanted: "SignalAssignedToSeveralPins"
+  )
+}
+
+test fn w_a_pin_for_a_signal_the_article_never_declared_refuses() -> Bool {
+  refuses_naming(
+    assignments: [
+      DevicePinAssignment { signal: conditioned_good_signal, pin: "1" },
+      DevicePinAssignment { signal: fault_signal, pin: "2" },
+      DevicePinAssignment { signal: power_permit_signal, pin: "3" },
+      DevicePinAssignment { signal: reset_release_signal, pin: "4" },
+      DevicePinAssignment { signal: "phantom_signal" as SignalName, pin: "7" },
+    ],
+    wanted: "AssignedSignalNotDeclared"
+  )
+}
+
+// THE MISSING DIRECTION. Every check above walks the assignments, and no walk over assignments
+// can see a signal nobody assigned — the emitted file would simply not mention it and the tool
+// would place it somewhere. This is the arm that needs the opposite walk.
+test fn w_a_declared_signal_with_no_pin_refuses() -> Bool {
+  refuses_naming(
+    assignments: [
+      DevicePinAssignment { signal: conditioned_good_signal, pin: "1" },
+      DevicePinAssignment { signal: fault_signal, pin: "2" },
+      DevicePinAssignment { signal: power_permit_signal, pin: "3" },
+    ],
+    wanted: "DeclaredSignalHasNoPin"
+  )
+}
+
+// An empty assignment list refuses once per declared signal rather than once overall: four
+// missing pins are four defects, and collapsing them into one cause would hide three of them.
+test fn w_every_unassigned_signal_is_its_own_cause() -> Bool {
+  match admitted() {
+    Absent => false
+    Present { value: adm } =>
+      match project_article_to_pin_constraints(
+        admitted: adm,
+        realization: interlock_device_realization,
+        bindings: power_interlock_verilog_bindings,
+        assignments: []
+      ) {
+        PinConstraintsEmitted { receipt: _ } => false
+        PinConstraintsRefused { causes: cs } => pin_refusal_set_count(s: cs) == 4
+      }
+  }
+}
+
+// TWO AUTHORITIES, PRODUCED INDEPENDENTLY, AGREEING ON A POPULATION. Lattice's per-bank table for
+// the HX1K in TQ144 gives 23 + 25 + 20 + 24 general-purpose pins and four configuration pins;
+// Project IceStorm's roster, reverse-engineered from the bitstream format, carries 96 designators.
+// Neither was derived from the other, so this is evidence rather than bookkeeping — and it is
+// derived from both rather than pinned to a literal, so it cannot be kept true by editing one.
+test fn w_the_vendor_and_the_toolchain_agree_on_the_pin_population() -> Bool {
+  bank_population_general_purpose(p: ice40_hx1k_tq144_banks) == 92
+    && bank_population_total(p: ice40_hx1k_tq144_banks) == 96
+    && roster_pin_count(r: icestorm_hx1k_tq144_roster) == 96
+    && realization_populations_agree(realization: interlock_device_realization)
+}
+
+// The device and package facts are the ones a board reproduces: a 0.5 mm pitch on a 20 mm body is
+// what the footprint has to match, and a wrong pitch is a board that cannot be assembled.
+test fn w_the_package_carries_the_facts_a_footprint_needs() -> Bool {
+  (ice40_hx1k.ordering_part_number as String) == "ICE40HX1K-TQ144"
+    && (ice40_tq144_package.designator as String) == "TQ144"
+    && ice40_tq144_package.contact_pitch_um == 500
+    && ice40_tq144_package.body_width_um == 20000
+    && ice40_tq144_package.contact_count == 144
+}

@@ -1,0 +1,158 @@
+module extdeps.toolchain.icestorm.subject
+
+import std.types { String, NonEmptyStr, List }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "github.com/YosysHQ/icestorm"
+  }
+}
+
+data icestorm_subject_note: String = "PROJECT ICESTORM, AND WHY IT IS A SEPARATE AUTHORITY FROM LATTICE. IceStorm is an independently governed open-source project (ISC licensed, per its own copyright file, read from the installed package 2026-08-13) that documented the iCE40 bitstream format and pin placement by reverse engineering rather than by vendor specification. It is what nextpnr actually consults to decide whether a pin constraint is legal, so it is the authority a generated constraint file must satisfy — and it is NOT the vendor's pin assignment table. Modelling one as the other would fuse a specification with a reverse-engineering of it, which is the browser-engine-versus-standard split this repository already draws elsewhere. THE PIN POPULATION BELOW is the package position roster IceStorm carries for the HX1K in TQ144: which numbered package pins are usable I/O. It carries the DESIGNATORS only. The tile coordinates beside them in IceStorm's database are the toolchain's placement internals, not facts a board consults, so they are deliberately not copied — a board needs to know that pin 47 exists and is an I/O, not which tile it lands on. THE CROSS-CHECK THAT MAKES THIS MORE THAN A COPIED LIST: Lattice's own per-bank table for this device and package sums to ninety-two general-purpose plus four configuration pins, and this roster has ninety-six entries. Two authorities produced independently, agreeing at a count. A witness executes that agreement rather than a reader noticing it."
+
+type IcestormPackagePinRoster {
+  device: NonEmptyStr
+  package_designator: NonEmptyStr
+  pins: List<NonEmptyStr>
+}
+
+fn roster_pin_count(r: IcestormPackagePinRoster) -> Nat {
+  fold(r.pins, init: 0, f: fn(acc, _p) { acc + 1 })
+}
+
+fn roster_admits_pin(r: IcestormPackagePinRoster, pin: NonEmptyStr) -> Bool {
+  fold(r.pins, init: false, f: fn(acc, p) { acc || (p as String) == (pin as String) })
+}
+
+fn roster_pin_occurrences(r: IcestormPackagePinRoster, pin: NonEmptyStr) -> Nat {
+  fold(r.pins, init: 0, f: fn(acc, p) { if (p as String) == (pin as String) { acc + 1 } else { acc } })
+}
+
+data icestorm_hx1k_tq144_pins: List<NonEmptyStr> = [
+  "1",
+  "2",
+  "3",
+  "4",
+  "7",
+  "8",
+  "9",
+  "10",
+  "11",
+  "12",
+  "19",
+  "20",
+  "21",
+  "22",
+  "23",
+  "24",
+  "25",
+  "26",
+  "28",
+  "29",
+  "31",
+  "32",
+  "33",
+  "34",
+  "37",
+  "38",
+  "39",
+  "41",
+  "42",
+  "43",
+  "44",
+  "45",
+  "47",
+  "48",
+  "49",
+  "50",
+  "52",
+  "56",
+  "58",
+  "60",
+  "61",
+  "62",
+  "63",
+  "64",
+  "67",
+  "68",
+  "70",
+  "71",
+  "73",
+  "74",
+  "75",
+  "76",
+  "78",
+  "79",
+  "80",
+  "81",
+  "87",
+  "88",
+  "90",
+  "91",
+  "93",
+  "94",
+  "95",
+  "96",
+  "97",
+  "98",
+  "99",
+  "101",
+  "102",
+  "104",
+  "105",
+  "106",
+  "107",
+  "112",
+  "113",
+  "114",
+  "115",
+  "116",
+  "117",
+  "118",
+  "119",
+  "120",
+  "121",
+  "122",
+  "128",
+  "129",
+  "134",
+  "135",
+  "136",
+  "137",
+  "138",
+  "139",
+  "141",
+  "142",
+  "143",
+  "144",
+]
+
+data icestorm_hx1k_tq144_roster: IcestormPackagePinRoster = IcestormPackagePinRoster {
+  device: "hx1k",
+  package_designator: "tq144",
+  pins: icestorm_hx1k_tq144_pins,
+}
+
+type Icestorm
+  = | IcestormProject
+
+data icestorm_project: Icestorm = IcestormProject
+
+data icestorm_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.toolchain.icestorm.subject",
+      decl_name: "icestorm_project",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data extdeps_model_scope: ExternalModelScope = icestorm_model_scope

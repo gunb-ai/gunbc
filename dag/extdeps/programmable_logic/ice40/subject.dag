@@ -1,0 +1,126 @@
+module extdeps.programmable_logic.ice40.subject
+
+import std.types { String, NonEmptyStr, List }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.lattice_semiconductor { lattice_semiconductor_vendor }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.latticesemi.com/-/media/LatticeSemi/Documents/DataSheets/iCE40/iCE40LPHXFamilyDataSheet.ashx"
+  }
+}
+
+data ice40_subject_note: String = "THE iCE40 LP/HX FAMILY, FROM THE VENDOR'S OWN DATA SHEET. Pulled and read 2026-08-13: iCE40 LP/HX Family Data Sheet, document DS1040, Version 3.4, October 2017. WHAT IS AND IS NOT TRANSCRIBED HERE, and the distinction is deliberate rather than cautious. Short factual statements a design has to consult — the ordering part number, the package type and its physical dimensions, the per-bank I/O population, the I/O standards the buffer supports — are carried. The full pin assignment table is NOT: it is thirty-odd sheets of a copyrighted vendor document, and the pin-to-tile map this repository actually needs for place and route comes from Project IceStorm, which is an independently governed open-source project with its own license and its own module. Those are different authorities and modelling one as the other would fuse a specification with a reverse-engineering of it. The same reasoning is already recorded for the Altra package, where the split between public package facts and licensed board collateral was got wrong once and corrected. WHY THIS PART: the article needs a programmable device in a package a prototype assembler can place, driven by a toolchain this repository can pin and execute. TQ144 is a 20 by 20 mm quad flat pack on a half-millimetre pitch — not a ball grid array — and the HX1K in it is carried end to end by an open synthesis, place-and-route and bitstream chain. No NDA fact is required to design with it."
+
+type Ice40Family
+  = Ice40LowPower
+  | Ice40HighPerformance
+
+// The device, as its ordering part number names it. The family and the logic-cell count are
+// separate fields rather than encoded in the part number's spelling: a part number is the
+// vendor's identifier for a thing, not a structure to parse, and reading capacity out of it is
+// the decomposition failure the DRAM and NVMe rows in this repository already avoid.
+type Ice40Device {
+  ordering_part_number: NonEmptyStr
+  family: Ice40Family
+  logic_cells: Nat
+  ram4k_blocks: Nat
+  phase_locked_loops: Nat
+}
+
+// A package is a physical carrier with a footprint a board must reproduce. Body dimensions and
+// contact pitch are carried in micrometres because a half-millimetre pitch is not expressible in
+// whole millimetres, and the board that places this part is drawn at that grain.
+type Ice40Package {
+  designator: NonEmptyStr
+  body_width_um: Nat
+  body_height_um: Nat
+  contact_pitch_um: Nat
+  contact_count: Nat
+}
+
+// I/O POPULATION IS PER BANK, and per (device, package) rather than per device. The four banks
+// have independent VCCIO rails, so which bank a signal lands in decides what voltage it can be
+// driven at — a fact a board design consults and a flat total would erase. The configuration
+// pins are counted separately because they are not general-purpose: they carry the device's
+// configuration interface and a design that spends them as ordinary I/O has to say so.
+type Ice40BankPopulation {
+  device: NonEmptyStr
+  package_designator: NonEmptyStr
+  bank_0: Nat
+  bank_1: Nat
+  bank_2: Nat
+  bank_3: Nat
+  configuration: Nat
+}
+
+fn bank_population_general_purpose(p: Ice40BankPopulation) -> Nat {
+  p.bank_0 + p.bank_1 + p.bank_2 + p.bank_3
+}
+
+fn bank_population_total(p: Ice40BankPopulation) -> Nat {
+  bank_population_general_purpose(p: p) + p.configuration
+}
+
+// The I/O buffer's supported single-ended standards, from the family's feature list. This is the
+// fact that decides whether a board node can be wired to a device pin at all: a twelve-volt rail
+// is not an LVCMOS level and no bank voltage makes it one.
+type Ice40SingleEndedIoStandard
+  = Lvcmos33
+  | Lvcmos25
+  | Lvcmos18
+
+data ice40_supported_single_ended_standards: List<Ice40SingleEndedIoStandard> = [Lvcmos33, Lvcmos25, Lvcmos18]
+
+data ice40_hx1k: Ice40Device = Ice40Device {
+  ordering_part_number: "ICE40HX1K-TQ144",
+  family: Ice40HighPerformance,
+  logic_cells: 1280,
+  ram4k_blocks: 16,
+  phase_locked_loops: 1,
+}
+
+data ice40_tq144_package: Ice40Package = Ice40Package {
+  designator: "TQ144",
+  body_width_um: 20000,
+  body_height_um: 20000,
+  contact_pitch_um: 500,
+  contact_count: 144,
+}
+
+// Read from the family selection guide's per-package I/O table: for the HX1K in TQ144, banks 0
+// through 3 carry 23, 25, 20 and 24 general-purpose pins and four configuration pins sit beside
+// them. Ninety-two plus four is ninety-six, which is exactly the pin population Project IceStorm
+// carries for this package — two independently produced authorities agreeing at a count, which
+// is worth executing rather than noticing.
+data ice40_hx1k_tq144_banks: Ice40BankPopulation = Ice40BankPopulation {
+  device: "ICE40HX1K-TQ144",
+  package_designator: "TQ144",
+  bank_0: 23,
+  bank_1: 25,
+  bank_2: 20,
+  bank_3: 24,
+  configuration: 4,
+}
+
+data ice40_family_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.programmable_logic.ice40.subject",
+      decl_name: "ice40_hx1k",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data ice40_vendor: Vendor<Hardware> = lattice_semiconductor_vendor
+
+data extdeps_model_scope: ExternalModelScope = ice40_family_model_scope
