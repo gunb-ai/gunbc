@@ -53,6 +53,16 @@ fn supply_rails_equal(a: Ice40SupplyRail, b: Ice40SupplyRail) -> Bool {
   supply_rail_tag(r: a) == supply_rail_tag(r: b)
 }
 
+// WHAT THE DISTINCTNESS WITNESS DOES AND DOES NOT COVER. The tag match is exhaustive, so the
+// compiler refuses a new member that has not been given a discriminant. The ROSTER below is not
+// enforced that way: it is hand-maintained, and a seventh member added without joining it would
+// leave the witness walking six and passing while saying nothing about the seventh. So the
+// guarantee is "every member the roster names has a distinct tag", not "every member has one" -
+// and the second is what a reader would assume if this were not written down. Adding a contiguity
+// check would not close it either, since an unlisted member takes the next tag and leaves the
+// listed range intact. The class sits at mechanically preventable for tag ASSIGNMENT and at
+// nothing at all for roster membership; closing it needs the language to enumerate a coproduct's
+// members, which is not reachable from here today.
 data all_supply_rails: List<Ice40SupplyRail> = [
   CoreSupply,
   PllSupply,
