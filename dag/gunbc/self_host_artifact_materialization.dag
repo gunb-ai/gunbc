@@ -29,13 +29,13 @@ import extdeps.tools.sha512sum {
   sha512sum_observe_file
 }
 import v2.compiler.self_host.generation {
-  ArtifactIdentity,
+  GeneratedArtifactIdentity,
   ArtifactMaterialized,
   ArtifactNotMaterialized,
   observed_artifact_digest
 }
 
-data artifact_materialization_subject_note: String = "SH-C: turning a cargo build into the artifact axis of a compiler generation, with no step that predicts a path instead of observing one. The chain is build -> the path cargo NAMED -> a digest of THAT path -> ArtifactIdentity. The load-bearing property is that the digest and every later execution consume ONE path value, produced by extdeps.cargo_message from cargo's own --message-format=json output. A convention-derived path breaks that at both ends simultaneously: it digests one file while executing another, with each operation individually honest and the composition silently wrong, and it also makes the artifact axis a FUNCTION of the build-configuration axis, collapsing two of the six independent axes v2.compiler.self_host.generation keeps apart."
+data artifact_materialization_subject_note: String = "SH-C: turning a cargo build into the artifact axis of a compiler generation, with no step that predicts a path instead of observing one. The chain is build -> the path cargo NAMED -> a digest of THAT path -> GeneratedArtifactIdentity. The load-bearing property is that the digest and every later execution consume ONE path value, produced by extdeps.cargo_message from cargo's own --message-format=json output. A convention-derived path breaks that at both ends simultaneously: it digests one file while executing another, with each operation individually honest and the composition silently wrong, and it also makes the artifact axis a FUNCTION of the build-configuration axis, collapsing two of the six independent axes v2.compiler.self_host.generation keeps apart."
 
 data artifact_materialization_decomposition_note: String = "The decision logic is deliberately split into two PURE folds with a thin wet composition between them, rather than one wet function. select_artifact_path decides what the build reported; materialization_from_digest decides what the digest observation means. Both are total folds over typed inputs, so both are witnessed hermetically on every PR, and the only part that needs a wet cadence is the three service calls that produce their inputs. The alternative — one wet function carrying the decisions — would put every refusal arm behind a cadence that does not run per PR, which is how a decision nobody executes reads as a decision that holds."
 
@@ -200,7 +200,7 @@ fn materialize_artifact_wet(
 // The projection into the generation carrier. ArtifactMaterialized is reachable from
 // exactly one arm, and only through observed_artifact_digest, whose argument is a
 // Sha512Digest that existed only because sha512sum reported it for this path.
-fn artifact_identity_of(outcome: ArtifactMaterializationOutcome) -> ArtifactIdentity {
+fn artifact_identity_of(outcome: ArtifactMaterializationOutcome) -> GeneratedArtifactIdentity {
   match outcome {
     ArtifactMaterializationObserved { executable: _, digest: d } =>
       ArtifactMaterialized { digest: observed_artifact_digest(observed: d) }

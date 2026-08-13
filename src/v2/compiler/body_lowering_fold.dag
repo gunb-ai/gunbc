@@ -96,6 +96,8 @@ data body_lowering_fold_note: String = "Forward body producer fold (general-body
 
 data body_lowering_fold_dissolution_contract: DissolutionCondition = unbound_dissolution(description: "FLAG E dissolution DELETES this module — coverage lives in v2.compiler.body_producer_forward forward rows + GrammarRelationRow slot-map apply (general-body-producer-design §3). The hand-authored families (body_lower_deep_unwrap*, body_lower_operand_ref*, body_lower_operator_tail/infix*, body_lower_postfix_projection*) are receipt scaffolding only. Acceptance: this file is gone and coverage lives in forward rows + existing witnesses. match/if/body_try hand-walker scaffolds LANDED: body_lower_try_body_lowered delegates behavior productions to body_lower_fold; body_producer_forward owns the forward row table.")
 
+data body_lowering_rejection_propagation_note: String = "GENUINE REJECTION PROPAGATES; RETENTION IS PRODUCED, NEVER INFERRED FROM FAILURE (2026-08-11). body_lower_finish_for_normalize previously matched EVERY Rejected from body_lower_after_children and returned a wrapper-retained Accepted instead, binding the rejection diagnostics to _ and discarding them. That conflated four different states behind one arm: this lowering strategy does not apply, this valid form has no producer yet, this form is malformed, and an invariant was violated. It is the inverse of the not-applicable-versus-malformed conflation #6558 already ruled on, moved out to the outer seam.\n\nThe repair is a deletion rather than a new mechanism, because the legitimate case was already explicit: body_lower_production_emitted's final arm returns body_lower_wrapper_retained_shell for an emitted identity with no registered producer. That IS the declared lowered | wrapper-retained frontier, produced deliberately at the point where not-applicable is known. The outer catch was therefore a second, inferential source of retention standing beside the real one, and it could only fire on outcomes the strategy functions had already judged. So retention now has exactly one producer, and the outer Outcome owns genuine rejection with its diagnostics preserved through rejected_with_pending.\n\nWHAT THIS DOES NOT DO: it does not scope, weaken or relocate normalize's recursive well_formed gate, which #6520 established as the sole structural wall and which stays unchanged. Modules whose retained bodies still fail that gate continue to fail it; this change only stops a real refusal from being relabelled as a counted frontier state on its way there."
+
 data body_lowering_interim_scaffold_dissolved_note: String = "Wave 1 Gate 1 Track B: match/if/body_try interim hand-walker scaffolds dissolved into body_producer_forward (forward row table + production-identity dispatch via body_lower_fold). body_lowering_interim_scaffold_seed_retained_count is pinned at 0 — RED if any SeedRetained scaffold reappears."
 
 data body_lowering_domain_construction_disposition_note: String = "Wave 1 Gate 1 A1/B1: param-name domain harvesting is terminal param-list-walk (declaration reading, not SymbolIndex resolution). BodyLoweringDomainSymbolIndexResolved deleted in B1 — uninhabited variant with no migration trigger (operator ruling 2026-07-14)."
@@ -3957,8 +3959,8 @@ fn body_lower_finish_for_normalize(
   fn_body_pass_through: Bool
 ) -> Outcome<Node> {
   match body_lower_after_children(folded: folded, fn_body_pass_through: fn_body_pass_through) {
-    Rejected { diagnostics: _ } =>
-      body_lower_finish_wrapper_retained(folded: folded, cd: cd)
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: rejected_with_pending(pending: cd, rejected: r) }
     Accepted { value: lowered, diagnostics: d } =>
       Accepted {
         value: lowered,
@@ -3967,11 +3969,3 @@ fn body_lower_finish_for_normalize(
   }
 }
 
-fn body_lower_finish_wrapper_retained(folded: Node, cd: Diagnostics) -> Outcome<Node> {
-  match body_lower_wrapper_retained_shell(shell: folded) {
-    Accepted { value: kept, diagnostics: wd } =>
-      Accepted { value: kept, diagnostics: diagnostics_merge(outer: cd, inner: wd) }
-    Rejected { diagnostics: r } =>
-      Rejected { diagnostics: rejected_with_pending(pending: cd, rejected: r) }
-  }
-}
