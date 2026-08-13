@@ -4,7 +4,7 @@ import std.types { Bool, List }
 import std.integer { Int }
 import std.measure {
   Watt, watt, watt_count, VoltAmpere, volt_ampere, volt_ampere_count,
-  apparent_power_from_supply,
+  measure_add, apparent_power_from_supply,
 }
 import product.placement_supply { PhysicalAssetIdentity }
 import product.rack_mount { RackInstance, ChassisMount, rack_mounts }
@@ -160,23 +160,30 @@ fn scan_loads_against_rack(r: RackInstance, loads: List<AssetLoad>) -> PowerRefu
   }
 }
 
+// THE ACCUMULATOR CARRIES MEASURES, NOT SCALARS NAMED AFTER UNITS. An earlier revision held
+// `real_watts: Int` and `apparent_va: Int` - the unit in the field NAME and a bare magnitude in the
+// type, which is precisely the pattern std.measure exists to close, reintroduced in the one place a
+// fold makes it tempting. The public surface was already right, which is what made it easy to miss:
+// a private accumulator is where two quantities on different dimensions can be added to each other
+// with nothing objecting. Carrying Watt and VoltAmpere means the dimensions stay apart here for the
+// same reason they do at the boundary.
 type LoadTotals {
-  real_watts: Int
-  apparent_va: Int
+  real_load: Watt
+  apparent_load: VoltAmpere
   refusal: PowerRefusal?
 }
 
 fn add_load(acc: LoadTotals, l: AssetLoad) -> LoadTotals {
   match acc.refusal {
-    Present { value: c } => LoadTotals { real_watts: acc.real_watts, apparent_va: acc.apparent_va, refusal: Present { value: c } }
+    Present { value: c } => LoadTotals { real_load: acc.real_load, apparent_load: acc.apparent_load, refusal: Present { value: c } }
     Absent =>
       match l {
         LoadUnobserved { asset: a } =>
-          LoadTotals { real_watts: acc.real_watts, apparent_va: acc.apparent_va, refusal: Present { value: LoadNotObserved { asset: a } } }
+          LoadTotals { real_load: acc.real_load, apparent_load: acc.apparent_load, refusal: Present { value: LoadNotObserved { asset: a } } }
         ObservedRealPower { asset: _, draw: w } =>
-          LoadTotals { real_watts: acc.real_watts + watt_count(w: w), apparent_va: acc.apparent_va, refusal: none }
+          LoadTotals { real_load: measure_add(acc.real_load, w), apparent_load: acc.apparent_load, refusal: none }
         DeclaredApparentPower { asset: _, draw: va } =>
-          LoadTotals { real_watts: acc.real_watts, apparent_va: acc.apparent_va + volt_ampere_count(v: va), refusal: none }
+          LoadTotals { real_load: acc.real_load, apparent_load: measure_add(acc.apparent_load, va), refusal: none }
       }
   }
 }
@@ -211,7 +218,7 @@ fn rack_power_budget(
   match scan_loads_against_rack(r: rack, loads: loads) {
     Present { value: c } => PowerRefused { cause: c }
     Absent =>
-      let totals = fold(loads, init: LoadTotals { real_watts: 0, apparent_va: 0, refusal: none }, f: (acc, l) =>
+      let totals = fold(loads, init: LoadTotals { real_load: watt(0), apparent_load: volt_ampere(0), refusal: none }, f: (acc, l) =>
         add_load(acc: acc, l: l))
       match totals.refusal {
         Present { value: c } => PowerRefused { cause: c }
@@ -223,12 +230,21 @@ fn rack_power_budget(
           if required > feed_outlet_count(f: feed) {
             PowerRefused { cause: OutletsExhausted { required: required, available: feed_outlet_count(f: feed) } }
           } else {
+            // The counts are read at the comparison and nowhere else. This is the one place the
+            // magnitudes must meet, and they meet under the declared power factor that makes the
+            // meeting meaningful - which is why the crossing is a single expression rather than a
+            // pair of running scalars that could have been added together anywhere upstream.
             let capacity = volt_ampere_count(v: feed_capacity(f: feed))
-            if !feed_carries_load(capacity: capacity, apparent: totals.apparent_va, real: totals.real_watts, percent: power_factor.percent) {
+            if !feed_carries_load(
+              capacity: capacity,
+              apparent: volt_ampere_count(v: totals.apparent_load),
+              real: watt_count(w: totals.real_load),
+              percent: power_factor.percent,
+            ) {
               PowerRefused {
                 cause: FeedCapacityExceeded {
-                  real_load: watt(totals.real_watts),
-                  apparent_load: volt_ampere(totals.apparent_va),
+                  real_load: totals.real_load,
+                  apparent_load: totals.apparent_load,
                   capacity: feed_capacity(f: feed),
                 },
               }
@@ -237,8 +253,8 @@ fn rack_power_budget(
                 value: PowerBudget {
                   feed: feed,
                   power_factor: power_factor,
-                  real_load: watt(totals.real_watts),
-                  apparent_load: volt_ampere(totals.apparent_va),
+                  real_load: totals.real_load,
+                  apparent_load: totals.apparent_load,
                   outlets_used: required,
                 },
               }
