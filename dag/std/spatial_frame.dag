@@ -1,0 +1,225 @@
+module std.spatial_frame
+
+import std.types { String, Bool, List }
+import std.integer { Int }
+import std.nat { Nat }
+import std.measure {
+  Scale, Measure, Millimeter, Micrometer, measure_count, scale_exponent,
+  Atto, Femto, Pico, Nano, Micro, Milli, One, Kilo, Mega, Giga, Tera, Peta, Exa,
+  Kibi, Mebi, Gibi, Tebi,
+  ArcsecondAngle, DegreeAngle, TurnAngle, Sixty, RackUnitHeight,
+}
+import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity_eq }
+
+// THE REGISTRAR std.coordinate_frame DEFERS TO, and it lands because a board cannot be drawn
+// without it. That module mints a frame identity and deliberately carries nothing else — "a
+// frame's human-facing name is a display fact and belongs on whatever registers frames". This is
+// that registrar, and the fact it carries first is not a display fact at all: it is the frame's
+// LENGTH UNIT, which every number living in the frame silently depends on.
+//
+// WHY IT WAS MISSING AND WHY IT NOW BITES. std.affine_space USED TO fix its component to a
+// SignedMillimeterComponent, so every coordinate in the corpus meant millimetres by convention -
+// that carrier is deleted and the component is unit-neutral now, but the reasoning below is why.
+// The convention was true of everything the layer had been asked to hold — racks, chassis and
+// rooms. A printed circuit board is the first subject it is false for: a TQ144 package sits on a 0.5 mm contact
+// pitch, so in whole millimetres its adjacent pins are at the same coordinate. The geometry does
+// not merely lose accuracy, it loses the DISTINCTION between two pins, and every downstream
+// question about clearance or collision is then asked of a shape that has already collapsed.
+//
+// WHY THE SCALE IS A VALUE HERE AND NOT A TYPE ARGUMENT. Measure carries its scale as a type
+// argument, so Measure<Length, Milli, Int> and Measure<Length, Micro, Int> are the honest static
+// spelling — and making the affine types generic over that argument is exactly the repair this
+// layer already tried and measured as false. std.coordinate_frame records it: the v1 seed's
+// argument-position judge compares nominal HEAD NAMES and discards applied type arguments, which
+// is how a Point3<RoomFrame> and a Point3<BuildingFrame> flowed through one subtraction and
+// returned a plausible 9. A scale parameter would be erased the same way and by the same
+// mechanism, so it would announce a wall that is not there. The corrected pattern in that module
+// is to carry the discriminator as a VALUE the operations compare, and this follows it rather
+// than re-litigating it. Dissolve-on is shared: when feature:conformance-produced-type-identity
+// closes, a static scale projection can sit above this carrier and the carried check remains at
+// the boundary where a static guarantee never reached anyway.
+//
+// THE RUNG, STATED PLAINLY. This is checked derivation, not construction. An unregistered frame's
+// unit is UNKNOWN, and unknown refuses — it does not default to millimetres, because defaulting
+// is how the convention became invisible in the first place.
+
+data spatial_frame_note: String = "std.spatial_frame registers what a coordinate frame's numbers MEAN. The affine layer USED TO fix its component to millimetres by convention; a printed circuit board was the first subject that convention was false for, because a half-millimetre contact pitch collapses two adjacent pins onto one coordinate. That component is now unit-neutral and this registrar owns the quantum, so the convention is gone rather than merely inadequate — but the metric operations in std.euclidean_geometry still spell their results in millimetres, so they consult this registrar and REFUSE a frame whose quantum they cannot label rather than answering in the wrong unit. The scale is carried as a value rather than as a type argument because the measured seed limitation recorded in std.coordinate_frame erases applied type arguments, so a scale parameter would announce a wall that is not there."
+
+// A frame's length unit must be a DECIMAL SI length step, and this is an exhaustive match rather
+// than a fold over scale_exponent. An earlier revision used that fold and this comment claimed the
+// derivation was safer than a hand-written list because the list would rot as Scale grew. The fold
+// was answering a different question: scale_exponent reports Present for Kibi, Mebi, Gibi and Tebi
+// too, so a frame could register a BINARY MEMORY PREFIX as its length unit. A kibimetre is not a
+// unit. Worse, those four report 10, 20, 30 and 40 — binary exponents sharing a field with decimal
+// ones — so scales_agree would have been comparing across bases as though they were commensurate.
+//
+// The exhaustive match is what makes this fail closed as Scale grows: a new member does not
+// silently inherit a verdict from a numeric property it happens to have, it fails to compile here
+// until someone decides whether it is a length step. That is the opposite of the rot the earlier
+// comment feared, and it is why the list is a feature rather than a maintenance cost.
+//
+// Kilo and above are admitted because a kilometre is a real length, even though a board frame will
+// never want one; admissibility is about being a length quantum, not about being a sensible board
+// scale. The angle, sexagesimal and rack-unit members are refused because they measure something
+// else entirely.
+fn length_scale_is_decimal(s: Scale) -> Bool {
+  match s {
+    Atto  => true
+    Femto => true
+    Pico  => true
+    Nano  => true
+    Micro => true
+    Milli => true
+    One   => true
+    Kilo  => true
+    Mega  => true
+    Giga  => true
+    Tera  => true
+    Peta  => true
+    Exa   => true
+    Kibi  => false
+    Mebi  => false
+    Gibi  => false
+    Tebi  => false
+    ArcsecondAngle => false
+    DegreeAngle    => false
+    TurnAngle      => false
+    Sixty          => false
+    RackUnitHeight => false
+  }
+}
+
+type SpatialFrame {
+  identity: CoordinateFrameIdentity
+  length_scale: Scale
+}
+
+type FrameRegistrationRefusal
+  = FrameScaleIsNotALengthStep { offered: Scale }
+  | FrameAlreadyRegistered { identity: CoordinateFrameIdentity }
+
+type FrameRegistration
+  = FrameRegistered { frame: SpatialFrame }
+  | FrameRegistrationRefused { cause: FrameRegistrationRefusal }
+
+type SpatialFrameRegistry {
+  frames: List<SpatialFrame>
+}
+
+fn empty_frame_registry() -> SpatialFrameRegistry {
+  SpatialFrameRegistry { frames: [] }
+}
+
+fn registry_holds(r: SpatialFrameRegistry, identity: CoordinateFrameIdentity) -> Bool {
+  fold(r.frames, init: false, f: fn(acc, f) {
+    acc || coordinate_frame_identity_eq(a: f.identity, b: identity)
+  })
+}
+
+// A SECOND REGISTRATION OF ONE IDENTITY IS REFUSED RATHER THAN OVERWRITTEN. Two rows for one frame
+// is two answers to "what does this frame mean", and whichever one a lookup returned would be an
+// artefact of list order — the ambiguity this repository has now closed in several places by
+// refusing rather than by picking first.
+fn register_frame(r: SpatialFrameRegistry, identity: CoordinateFrameIdentity, length_scale: Scale) -> FrameRegistration {
+  if !length_scale_is_decimal(s: length_scale) {
+    FrameRegistrationRefused { cause: FrameScaleIsNotALengthStep { offered: length_scale } }
+  } else {
+    if registry_holds(r: r, identity: identity) {
+      FrameRegistrationRefused { cause: FrameAlreadyRegistered { identity: identity } }
+    } else {
+      FrameRegistered { frame: SpatialFrame { identity: identity, length_scale: length_scale } }
+    }
+  }
+}
+
+fn registry_with(r: SpatialFrameRegistry, f: SpatialFrame) -> SpatialFrameRegistry {
+  SpatialFrameRegistry { frames: concat(r.frames, [f]) }
+}
+
+// UNREGISTERED IS ITS OWN ANSWER. Returning a millimetre default here would reinstate the exact
+// convention this module exists to make visible, and it would do it invisibly, at the one place a
+// caller was explicitly asking what the unit was.
+fn frame_length_scale(r: SpatialFrameRegistry, identity: CoordinateFrameIdentity) -> Scale? {
+  fold(r.frames, init: none, f: fn(acc, f) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => if coordinate_frame_identity_eq(a: f.identity, b: identity) { Present { value: f.length_scale } } else { none }
+    }
+  })
+}
+
+fn scales_agree(a: Scale, b: Scale) -> Bool {
+  match scale_exponent(s: a) {
+    Absent => false
+    Present { value: ea } =>
+      match scale_exponent(s: b) {
+        Absent => false
+        Present { value: eb } => ea == eb
+      }
+  }
+}
+
+// AN EXTENT READ OUT OF A FRAME, CARRYING THE UNIT IT WAS READ IN. This is not a second Measure
+// and must not become one: Measure is the static carrier and stays the destination, while this is
+// what a length looks like between being read from a frame whose scale is a runtime fact and being
+// projected into the static type that names its unit. The projections below are where it lands.
+type FrameLength {
+  scale: Scale
+  count: Nat
+}
+
+fn frame_length(scale: Scale, count: Nat) -> FrameLength {
+  FrameLength { scale: scale, count: count }
+}
+
+type LengthProjectionRefusal
+  = LengthScaleMismatch { held: Scale, requested: Scale }
+
+type LengthProjection<T>
+  = LengthProjected { value: T }
+  | LengthProjectionRefused { cause: LengthProjectionRefusal }
+
+// REFUSAL, NOT CONVERSION, AND THIS IS THE POINT OF THE WHOLE MODULE. A 500 micrometre pitch asked
+// for in whole millimetres has no answer: rounding gives 0 or 1, and both are wrong in a way that
+// is invisible downstream — 0 puts two pins in the same place, 1 doubles the package. A converting
+// projection would be the absorbing fallback in miniature, answering plausibly where it should
+// stop. Widening the other way is equally refused and deliberately so: 3 mm is exactly 3000 um and
+// the conversion is lossless, but admitting it here would make this function a unit CONVERTER, and
+// the caller who wants one should say so at a place that names the factor rather than receiving it
+// as a side effect of asking what something measures.
+fn frame_length_as_millimeter(l: FrameLength) -> LengthProjection<Millimeter> {
+  if scales_agree(a: l.scale, b: Milli) {
+    LengthProjected { value: Measure { count: l.count } }
+  } else {
+    LengthProjectionRefused { cause: LengthScaleMismatch { held: l.scale, requested: Milli } }
+  }
+}
+
+fn frame_length_as_micrometer(l: FrameLength) -> LengthProjection<Micrometer> {
+  if scales_agree(a: l.scale, b: Micro) {
+    LengthProjected { value: Measure { count: l.count } }
+  } else {
+    LengthProjectionRefused { cause: LengthScaleMismatch { held: l.scale, requested: Micro } }
+  }
+}
+
+// READING AN EXTENT OUT OF A SHAPE, IN THE UNIT THE SHAPE'S OWN FRAME WAS REGISTERED WITH. This
+// is the join the geometry layer was missing. Its shape carriers are scale-AGNOSTIC — a rectangle
+// holds signed components and never commits to what they measure — so the commitment lived
+// entirely in the readers, which named millimetres and were right only because every frame in the
+// corpus happened to be a millimetre frame. A board is the counterexample, and the repair is to
+// derive the unit from the frame rather than to assert it.
+//
+// UNREGISTERED REFUSES, and it matters more here than at the lookup: a reader that fell back to
+// millimetres would answer 20 for a package body that is 20000 micrometres across, which is a
+// plausible number for a real question and would be believed.
+type FrameExtent
+  = ExtentInFrame { length: FrameLength }
+  | ExtentFrameUnregistered { identity: CoordinateFrameIdentity }
+
+fn extent_in_frame(registry: SpatialFrameRegistry, identity: CoordinateFrameIdentity, count: Nat) -> FrameExtent {
+  match frame_length_scale(r: registry, identity: identity) {
+    Absent => ExtentFrameUnregistered { identity: identity }
+    Present { value: s } => ExtentInFrame { length: frame_length(scale: s, count: count) }
+  }
+}

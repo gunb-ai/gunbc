@@ -14,6 +14,7 @@ import std.orthogonal_topology {
 }
 import product.placement_supply { RoomIdentity }
 import v2.std.optional { Present, Absent }
+import std.spatial_frame { SpatialFrameRegistry }
 
 // SPATIAL-4A: WORLD STATE, AND VARIANTS AS DELTAS.
 //
@@ -134,11 +135,11 @@ fn world_complex(w: World) -> WorldConstruction<SpaceComplex> {
   }
 }
 
-fn world_total_volume(w: World) -> WorldConstruction<CubicMillimeter> {
+fn world_total_volume(registry: SpatialFrameRegistry, w: World) -> WorldConstruction<CubicMillimeter> {
   match world_complex(w: w) {
     WorldRefused { cause: c } => WorldRefused { cause: c }
     WorldReady { value: complex } =>
-      match complex_total_volume(c: complex) {
+      match complex_total_volume(registry: registry, c: complex) {
         OrthogonalRefused { cause: c } => WorldRefused { cause: WorldGeometryRefused { cause: c } }
         OrthogonalReady { value: v } => WorldReady { value: v }
       }

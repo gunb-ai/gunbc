@@ -2,11 +2,11 @@ module product.spatial_edit
 
 import std.types { Bool, List }
 import std.integer { Int }
-import std.measure { signed_millimeter_component_count }
 import std.affine_space {
   Point2, point2, Vector2, vector2,
   SpatialReady, SpatialArithmeticRefused, SpatialFrameRefused, SpatialFrameRefusal,
   translate_point2,
+  signed_frame_component_count
 }
 import std.checked_arithmetic { IntegerOverflow, CheckedIntReady, CheckedIntOverflow, checked_int_add }
 import std.change { KeyedPatch, KeyedDiffHunk, KeyedDiffAddedHunk, KeyedDiffRemovedHunk, KeyedDiffModifiedHunk }
@@ -133,11 +133,11 @@ fn space_from(vertices: List<Point2>, low: Int, high: Int) -> EditConstruction<E
 }
 
 fn space_low(s: EnclosedSpace) -> Int {
-  signed_millimeter_component_count(m: prism3_low(p: shell_prism(s: space_shell(s: s))))
+  signed_frame_component_count(c: prism3_low(p: shell_prism(s: space_shell(s: s))))
 }
 
 fn space_high(s: EnclosedSpace) -> Int {
-  signed_millimeter_component_count(m: prism3_high(p: shell_prism(s: space_shell(s: s))))
+  signed_frame_component_count(c: prism3_high(p: shell_prism(s: space_shell(s: s))))
 }
 
 fn moved_space(current: EnclosedSpace, east: Int, north: Int, up: Int) -> EditConstruction<EnclosedSpace> {

@@ -11,12 +11,31 @@ import std.checked_arithmetic {
   checked_int_negate,
   checked_int_multiply,
 }
-import std.measure {
-  SignedMillimeterComponent,
-  signed_millimeter_component,
-  signed_millimeter_component_count,
-}
 import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity_eq }
+
+// THE COMPONENT CARRIES NO UNIT, BECAUSE THE FRAME OWNS THE QUANTUM. An earlier revision typed
+// these fields SignedMillimeterComponent — Measure<Length, Milli, Int> — while std.spatial_frame
+// let a frame declare that the same counts mean micrometres. That is one coordinate with two unit
+// authorities: the type said Milli, the frame said Micro, and the readers extracted the integer
+// and believed the frame. The code was numerically right and the type was lying, which is the
+// worst arrangement of the two — a reader who trusts the declaration is misled, and a reader who
+// trusts the frame has to know not to.
+//
+// The authority is now one chain: frame identity, then coordinate quantum, then the
+// interpretation of every component in that frame. A component is an Int with a role, and the
+// role is "signed displacement or coordinate along an axis" — which is exactly as much as is true
+// of it without knowing its frame.
+type SignedFrameComponent {
+  count: Int
+}
+
+fn signed_frame_component(count: Int) -> SignedFrameComponent {
+  SignedFrameComponent { count: count }
+}
+
+fn signed_frame_component_count(c: SignedFrameComponent) -> Int {
+  c.count
+}
 
 // SPATIAL-2: the affine layer. It exists because "can a measurement be negative" was the wrong
 // question. A length is never negative; a COORDINATE and a DISPLACEMENT are, and they are negative
@@ -25,7 +44,7 @@ import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity
 // the layer that says what a signed spatial number means.
 //
 // A POINT IS NOT A VECTOR. Both hold three of the SAME signed component - std.measure declares one
-// SignedMillimeterComponent, not one per role - and that shared scalar is exactly why the
+// SignedFrameComponent, not one per role - and that shared scalar is exactly why the
 // distinction has to live in these outer types rather than in the field types or in discipline: the
 // operations are what separate them.
 //
@@ -63,54 +82,54 @@ import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity
 
 type Vector3 {
   frame: CoordinateFrameIdentity
-  x: SignedMillimeterComponent
-  y: SignedMillimeterComponent
-  z: SignedMillimeterComponent
+  x: SignedFrameComponent
+  y: SignedFrameComponent
+  z: SignedFrameComponent
 }
 
 type Point3 {
   frame: CoordinateFrameIdentity
-  x: SignedMillimeterComponent
-  y: SignedMillimeterComponent
-  z: SignedMillimeterComponent
+  x: SignedFrameComponent
+  y: SignedFrameComponent
+  z: SignedFrameComponent
 }
 
 type Vector2 {
   frame: CoordinateFrameIdentity
-  x: SignedMillimeterComponent
-  y: SignedMillimeterComponent
+  x: SignedFrameComponent
+  y: SignedFrameComponent
 }
 
 type Point2 {
   frame: CoordinateFrameIdentity
-  x: SignedMillimeterComponent
-  y: SignedMillimeterComponent
+  x: SignedFrameComponent
+  y: SignedFrameComponent
 }
 
 fn vector3(frame: CoordinateFrameIdentity, x: Int, y: Int, z: Int) -> Vector3 {
   Vector3 {
     frame: frame,
-    x: signed_millimeter_component(count: x),
-    y: signed_millimeter_component(count: y),
-    z: signed_millimeter_component(count: z),
+    x: signed_frame_component(count: x),
+    y: signed_frame_component(count: y),
+    z: signed_frame_component(count: z),
   }
 }
 
 fn point3(frame: CoordinateFrameIdentity, x: Int, y: Int, z: Int) -> Point3 {
   Point3 {
     frame: frame,
-    x: signed_millimeter_component(count: x),
-    y: signed_millimeter_component(count: y),
-    z: signed_millimeter_component(count: z),
+    x: signed_frame_component(count: x),
+    y: signed_frame_component(count: y),
+    z: signed_frame_component(count: z),
   }
 }
 
 fn vector2(frame: CoordinateFrameIdentity, x: Int, y: Int) -> Vector2 {
-  Vector2 { frame: frame, x: signed_millimeter_component(count: x), y: signed_millimeter_component(count: y) }
+  Vector2 { frame: frame, x: signed_frame_component(count: x), y: signed_frame_component(count: y) }
 }
 
 fn point2(frame: CoordinateFrameIdentity, x: Int, y: Int) -> Point2 {
-  Point2 { frame: frame, x: signed_millimeter_component(count: x), y: signed_millimeter_component(count: y) }
+  Point2 { frame: frame, x: signed_frame_component(count: x), y: signed_frame_component(count: y) }
 }
 
 fn zero_vector3(frame: CoordinateFrameIdentity) -> Vector3 {
@@ -150,16 +169,24 @@ type SpatialOperationIdentity
   | OpDot3
   | OpCross3
   | OpApplyZQuarterTurnTransform3
+  | OpNormSquared3
+  | OpNorm3
   | OpProjectPoint3
 
 // ProjectionSourceFrameRequired IS ITS OWN ARM because a projection is not symmetric and its two
 // frames are not interchangeable: the map declares the frame it reads, and a point from any other
 // frame is not a point it can project. Reusing SameFrameOperandsRequired would report a directional
 // requirement as a symmetric one.
+// THE METRIC OPERATIONS ASSERT A UNIT ON THEIR RESULT AND THE COMPONENT NO LONGER CARRIES ONE.
+// A dot product of two displacements is an area and a norm is a length, and both must be
+// labelled - but the component is a bare count whose meaning the FRAME owns, so the label is
+// only correct when the frame's quantum is the one the label names. This relation is how they
+// refuse a frame whose quantum they cannot label rather than answering in the wrong unit.
 type SpatialFrameRelation
   = SameFrameOperandsRequired
   | TransformSourceFrameRequired
   | TransformTranslationInDestinationRequired
+  | MillimetreFrameRequired
   | ProjectionSourceFrameRequired
 
 type SpatialFrameRefusal {
@@ -246,9 +273,9 @@ fn translate_point3(point: Point3, by: Vector3) -> SpatialResult<Point3> {
   } else {
     point3_from_checked(
       frame: point.frame,
-      x: checked_int_add(a: signed_millimeter_component_count(m: point.x), b: signed_millimeter_component_count(m: by.x)),
-      y: checked_int_add(a: signed_millimeter_component_count(m: point.y), b: signed_millimeter_component_count(m: by.y)),
-      z: checked_int_add(a: signed_millimeter_component_count(m: point.z), b: signed_millimeter_component_count(m: by.z)),
+      x: checked_int_add(a: signed_frame_component_count(c: point.x), b: signed_frame_component_count(c: by.x)),
+      y: checked_int_add(a: signed_frame_component_count(c: point.y), b: signed_frame_component_count(c: by.y)),
+      z: checked_int_add(a: signed_frame_component_count(c: point.z), b: signed_frame_component_count(c: by.z)),
     )
   }
 }
@@ -266,9 +293,9 @@ fn displacement_between3(from: Point3, to: Point3) -> SpatialResult<Vector3> {
   } else {
     vector3_from_checked(
       frame: from.frame,
-      x: checked_int_subtract(a: signed_millimeter_component_count(m: to.x), b: signed_millimeter_component_count(m: from.x)),
-      y: checked_int_subtract(a: signed_millimeter_component_count(m: to.y), b: signed_millimeter_component_count(m: from.y)),
-      z: checked_int_subtract(a: signed_millimeter_component_count(m: to.z), b: signed_millimeter_component_count(m: from.z)),
+      x: checked_int_subtract(a: signed_frame_component_count(c: to.x), b: signed_frame_component_count(c: from.x)),
+      y: checked_int_subtract(a: signed_frame_component_count(c: to.y), b: signed_frame_component_count(c: from.y)),
+      z: checked_int_subtract(a: signed_frame_component_count(c: to.z), b: signed_frame_component_count(c: from.z)),
     )
   }
 }
@@ -279,9 +306,9 @@ fn add_vector3(a: Vector3, b: Vector3) -> SpatialResult<Vector3> {
   } else {
     vector3_from_checked(
       frame: a.frame,
-      x: checked_int_add(a: signed_millimeter_component_count(m: a.x), b: signed_millimeter_component_count(m: b.x)),
-      y: checked_int_add(a: signed_millimeter_component_count(m: a.y), b: signed_millimeter_component_count(m: b.y)),
-      z: checked_int_add(a: signed_millimeter_component_count(m: a.z), b: signed_millimeter_component_count(m: b.z)),
+      x: checked_int_add(a: signed_frame_component_count(c: a.x), b: signed_frame_component_count(c: b.x)),
+      y: checked_int_add(a: signed_frame_component_count(c: a.y), b: signed_frame_component_count(c: b.y)),
+      z: checked_int_add(a: signed_frame_component_count(c: a.z), b: signed_frame_component_count(c: b.z)),
     )
   }
 }
@@ -292,9 +319,9 @@ fn subtract_vector3(a: Vector3, b: Vector3) -> SpatialResult<Vector3> {
   } else {
     vector3_from_checked(
       frame: a.frame,
-      x: checked_int_subtract(a: signed_millimeter_component_count(m: a.x), b: signed_millimeter_component_count(m: b.x)),
-      y: checked_int_subtract(a: signed_millimeter_component_count(m: a.y), b: signed_millimeter_component_count(m: b.y)),
-      z: checked_int_subtract(a: signed_millimeter_component_count(m: a.z), b: signed_millimeter_component_count(m: b.z)),
+      x: checked_int_subtract(a: signed_frame_component_count(c: a.x), b: signed_frame_component_count(c: b.x)),
+      y: checked_int_subtract(a: signed_frame_component_count(c: a.y), b: signed_frame_component_count(c: b.y)),
+      z: checked_int_subtract(a: signed_frame_component_count(c: a.z), b: signed_frame_component_count(c: b.z)),
     )
   }
 }
@@ -304,9 +331,9 @@ fn subtract_vector3(a: Vector3, b: Vector3) -> SpatialResult<Vector3> {
 fn negate_vector3(v: Vector3) -> SpatialResult<Vector3> {
   vector3_from_checked(
     frame: v.frame,
-    x: checked_int_negate(a: signed_millimeter_component_count(m: v.x)),
-    y: checked_int_negate(a: signed_millimeter_component_count(m: v.y)),
-    z: checked_int_negate(a: signed_millimeter_component_count(m: v.z)),
+    x: checked_int_negate(a: signed_frame_component_count(c: v.x)),
+    y: checked_int_negate(a: signed_frame_component_count(c: v.y)),
+    z: checked_int_negate(a: signed_frame_component_count(c: v.z)),
   )
 }
 
@@ -316,9 +343,9 @@ fn negate_vector3(v: Vector3) -> SpatialResult<Vector3> {
 fn scale_vector3(v: Vector3, factor: Int) -> SpatialResult<Vector3> {
   vector3_from_checked(
     frame: v.frame,
-    x: checked_int_multiply(a: signed_millimeter_component_count(m: v.x), b: factor),
-    y: checked_int_multiply(a: signed_millimeter_component_count(m: v.y), b: factor),
-    z: checked_int_multiply(a: signed_millimeter_component_count(m: v.z), b: factor),
+    x: checked_int_multiply(a: signed_frame_component_count(c: v.x), b: factor),
+    y: checked_int_multiply(a: signed_frame_component_count(c: v.y), b: factor),
+    z: checked_int_multiply(a: signed_frame_component_count(c: v.z), b: factor),
   )
 }
 
@@ -328,8 +355,8 @@ fn translate_point2(point: Point2, by: Vector2) -> SpatialResult<Point2> {
   } else {
     point2_from_checked(
       frame: point.frame,
-      x: checked_int_add(a: signed_millimeter_component_count(m: point.x), b: signed_millimeter_component_count(m: by.x)),
-      y: checked_int_add(a: signed_millimeter_component_count(m: point.y), b: signed_millimeter_component_count(m: by.y)),
+      x: checked_int_add(a: signed_frame_component_count(c: point.x), b: signed_frame_component_count(c: by.x)),
+      y: checked_int_add(a: signed_frame_component_count(c: point.y), b: signed_frame_component_count(c: by.y)),
     )
   }
 }
@@ -340,8 +367,8 @@ fn displacement_between2(from: Point2, to: Point2) -> SpatialResult<Vector2> {
   } else {
     vector2_from_checked(
       frame: from.frame,
-      x: checked_int_subtract(a: signed_millimeter_component_count(m: to.x), b: signed_millimeter_component_count(m: from.x)),
-      y: checked_int_subtract(a: signed_millimeter_component_count(m: to.y), b: signed_millimeter_component_count(m: from.y)),
+      x: checked_int_subtract(a: signed_frame_component_count(c: to.x), b: signed_frame_component_count(c: from.x)),
+      y: checked_int_subtract(a: signed_frame_component_count(c: to.y), b: signed_frame_component_count(c: from.y)),
     )
   }
 }
@@ -352,8 +379,8 @@ fn add_vector2(a: Vector2, b: Vector2) -> SpatialResult<Vector2> {
   } else {
     vector2_from_checked(
       frame: a.frame,
-      x: checked_int_add(a: signed_millimeter_component_count(m: a.x), b: signed_millimeter_component_count(m: b.x)),
-      y: checked_int_add(a: signed_millimeter_component_count(m: a.y), b: signed_millimeter_component_count(m: b.y)),
+      x: checked_int_add(a: signed_frame_component_count(c: a.x), b: signed_frame_component_count(c: b.x)),
+      y: checked_int_add(a: signed_frame_component_count(c: a.y), b: signed_frame_component_count(c: b.y)),
     )
   }
 }
@@ -379,9 +406,9 @@ type QuarterTurns
 // that cannot refuse, because it negates nothing - and it is written through the same checked path
 // rather than short-circuited, so no arm produces a vector by a route the others do not take.
 fn rotate_quarter_turns_about_z(v: Vector3, turns: QuarterTurns) -> SpatialResult<Vector3> {
-  let x = signed_millimeter_component_count(m: v.x)
-  let y = signed_millimeter_component_count(m: v.y)
-  let z = signed_millimeter_component_count(m: v.z)
+  let x = signed_frame_component_count(c: v.x)
+  let y = signed_frame_component_count(c: v.y)
+  let z = signed_frame_component_count(c: v.z)
   match turns {
     NoTurn => vector3_from_checked(frame: v.frame, x: CheckedIntReady { value: x }, y: CheckedIntReady { value: y }, z: CheckedIntReady { value: z })
     OneQuarter => vector3_from_checked(frame: v.frame, x: checked_int_negate(a: y), y: CheckedIntReady { value: x }, z: CheckedIntReady { value: z })
@@ -431,9 +458,9 @@ fn apply_z_quarter_turn_transform3(
   } else {
     let as_displacement = vector3(
       frame: point.frame,
-      x: signed_millimeter_component_count(m: point.x),
-      y: signed_millimeter_component_count(m: point.y),
-      z: signed_millimeter_component_count(m: point.z),
+      x: signed_frame_component_count(c: point.x),
+      y: signed_frame_component_count(c: point.y),
+      z: signed_frame_component_count(c: point.z),
     )
     match rotate_quarter_turns_about_z(v: as_displacement, turns: transform.rotation_about_z) {
       SpatialArithmeticRefused { cause: c } => SpatialArithmeticRefused { cause: c }
@@ -441,9 +468,9 @@ fn apply_z_quarter_turn_transform3(
       SpatialReady { value: rotated } =>
         point3_from_checked(
           frame: transform.to_frame,
-          x: checked_int_add(a: signed_millimeter_component_count(m: rotated.x), b: signed_millimeter_component_count(m: transform.translation.x)),
-          y: checked_int_add(a: signed_millimeter_component_count(m: rotated.y), b: signed_millimeter_component_count(m: transform.translation.y)),
-          z: checked_int_add(a: signed_millimeter_component_count(m: rotated.z), b: signed_millimeter_component_count(m: transform.translation.z)),
+          x: checked_int_add(a: signed_frame_component_count(c: rotated.x), b: signed_frame_component_count(c: transform.translation.x)),
+          y: checked_int_add(a: signed_frame_component_count(c: rotated.y), b: signed_frame_component_count(c: transform.translation.y)),
+          z: checked_int_add(a: signed_frame_component_count(c: rotated.z), b: signed_frame_component_count(c: transform.translation.z)),
         )
     }
   }
