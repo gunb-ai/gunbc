@@ -23,6 +23,8 @@ import gunbc.spark_serving_realization {
   LeastRequiredEffects,
   select_spark_serving_realization,
   identity_contract_refusal,
+  realization_privileged_effect_count,
+  realization_effect_weight,
   ExecutorOwnedIdentity,
   SparkServingRealizationSelection,
   RealizationSelected,
@@ -92,6 +94,28 @@ fn least_privilege_policy() -> SparkServingRealizationPolicy {
   SparkServingRealizationPolicy { privilege: LeastRequiredEffects }
 }
 
+// The selection rendered as a comparable label, so the invariance claim can assert that the ANSWER
+// is unchanged rather than that it is one particular realization. The earlier form asserted "a user
+// unit is selected in both cases", which fused two claims -- privilege does not change the answer,
+// AND the answer is a user unit -- and the identity contract has since refuted the second. Fusing
+// them meant a correct model change reported as a regression.
+fn selection_label(capabilities: SparkHostCapabilityObservation) -> String {
+  match select_spark_serving_realization(
+    intent: spark_intent(),
+    capabilities: capabilities,
+    policy: least_privilege_policy(),
+  ) {
+    RealizationSelected { realization: r } =>
+      match r {
+        UserUnitRealization => "selected:user-unit"
+        SystemUnitRealization => "selected:system-unit"
+        RootlessContainerRealization => "selected:rootless-container"
+      }
+    NoRealizationAdmitted { first: _, more: _ } => "no-realization-admitted"
+    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => "choice-required"
+  }
+}
+
 fn selects_user_unit(capabilities: SparkHostCapabilityObservation) -> Bool {
   match select_spark_serving_realization(
     intent: spark_intent(),
@@ -114,8 +138,89 @@ fn selects_user_unit(capabilities: SparkHostCapabilityObservation) -> Bool {
 // because the serving intent did not change. derive_install_scope returns SystemUnitScope the
 // instant passwordless_sudo is true, so this pair is exactly where the old model silently
 // "upgraded" the architecture in response to a privilege grant.
-test fn w_granting_sudo_does_not_change_the_selected_realization() -> Bool {
-  selects_user_unit(capabilities: host_user_unit_capable()) && selects_user_unit(capabilities: host_user_unit_capable_plus_sudo())
+// A host where something IS admissible without privilege: it has a container runtime, so the
+// rootless container satisfies the intent (its identity contract admits a related container identity)
+// with one privileged effect. This fixture is what the invariance claim NEEDS, and building it is
+// what exposed that the claim was previously testing something else.
+fn host_container_capable() -> SparkHostCapabilityObservation {
+  SparkHostCapabilityObservation {
+    host: "srv5" as NonEmptyStr,
+    managed_executor_account: present("fleet automation account observed"),
+    no_login_service_identity: present("inference service identity observed"),
+    system_unit_manager: refused("no passwordless sudo"),
+    user_unit_manager: present("systemd --user observed"),
+    user_lingering: present("lingering enabled"),
+    container_runtime: present("rootless container runtime observed"),
+    accelerator_access: present("accelerator device readable"),
+    writable_artifact_root: present("artifact root writable"),
+    endpoint_bindable: present("endpoint bindable"),
+  }
+}
+
+fn host_container_capable_plus_sudo() -> SparkHostCapabilityObservation {
+  SparkHostCapabilityObservation {
+    host: "srv5" as NonEmptyStr,
+    managed_executor_account: present("fleet automation account observed"),
+    no_login_service_identity: present("inference service identity observed"),
+    system_unit_manager: present("passwordless sudo granted"),
+    user_unit_manager: present("systemd --user observed"),
+    user_lingering: present("lingering enabled"),
+    container_runtime: present("rootless container runtime observed"),
+    accelerator_access: present("accelerator device readable"),
+    writable_artifact_root: present("artifact root writable"),
+    endpoint_bindable: present("endpoint bindable"),
+  }
+}
+
+// THE ANTI-UPGRADE INVARIANT, correctly stated at last. The earlier form asserted that granting sudo
+// never changes the selection, full stop -- and that proposition is FALSE, which only became visible
+// once the identity contract landed. On a host where nothing else can satisfy the intent, granting
+// sudo moves the answer from no-realization-admitted to system-unit, and that is not privilege
+// choosing an architecture: it is privilege making the ONLY viable mechanism reachable. Refusing to
+// serve at all would not have been the safer answer, it would have been a different wrong one.
+//
+// What must never happen is the upgrade: a host where a less-privileged realization ALREADY
+// satisfies the intent must keep it when privilege appears. That needs a fixture where something is
+// admissible without sudo, which the old fixtures did not have -- they passed only because the
+// missing identity contract wrongly admitted a user unit in both arms. The claim was green while
+// testing a proposition that was not the invariant.
+test fn w_granting_sudo_does_not_upgrade_an_already_satisfied_intent() -> Bool {
+  selection_label(capabilities: host_container_capable()) == selection_label(capabilities: host_container_capable_plus_sudo())
+}
+
+// The pair above is satisfiable by a model that answers identically to everything, so this pins that
+// the fixture genuinely selects the LESS privileged mechanism rather than coincidentally matching.
+test fn w_the_already_satisfied_host_selects_the_less_privileged_mechanism() -> Bool {
+  selection_label(capabilities: host_container_capable_plus_sudo()) == "selected:rootless-container"
+}
+
+// And the enablement case, asserted rather than left implicit: with nothing else admissible, privilege
+// changes the answer from refusal to the system unit. Stating it keeps the invariant above honest
+// about its own scope.
+test fn w_privilege_enables_when_nothing_else_can_satisfy_the_intent() -> Bool {
+  selection_label(capabilities: host_user_unit_capable()) == "no-realization-admitted" && selection_label(capabilities: host_user_unit_capable_plus_sudo()) == "selected:system-unit"
+}
+
+// The invariance claim above is satisfiable by a model that answers the same thing to everything, so
+// this pins that the two fixtures are not simply producing a constant: a host where the mechanism
+// genuinely differs must select differently.
+test fn w_selection_is_not_constant_across_genuinely_different_hosts() -> Bool {
+  selection_label(capabilities: host_container_capable()) != selection_label(capabilities: host_user_unit_capable_plus_sudo())
+}
+
+fn no_managed_executor_host() -> SparkHostCapabilityObservation {
+  SparkHostCapabilityObservation {
+    host: "srv5" as NonEmptyStr,
+    managed_executor_account: refused("only the human bootstrap account exists"),
+    no_login_service_identity: present("inference service identity observed"),
+    system_unit_manager: present("passwordless sudo granted"),
+    user_unit_manager: present("systemd --user observed"),
+    user_lingering: present("lingering enabled"),
+    container_runtime: refused("no container runtime"),
+    accelerator_access: present("accelerator device readable"),
+    writable_artifact_root: present("artifact root writable"),
+    endpoint_bindable: present("endpoint bindable"),
+  }
 }
 
 // A user unit is NOT selected merely because it is what remains. Under SurvivesReboot it needs
@@ -234,7 +339,7 @@ test fn w_no_managed_executor_refuses_under_managed_authority() -> Bool {
 test fn red_control_privilege_does_not_select_the_architecture() -> Bool {
   match select_spark_serving_realization(
     intent: spark_intent(),
-    capabilities: host_user_unit_capable_plus_sudo(),
+    capabilities: host_container_capable_plus_sudo(),
     policy: least_privilege_policy(),
   ) {
     RealizationSelected { realization: r } =>
@@ -320,4 +425,32 @@ test fn red_control_system_unit_satisfies_the_identity_contract() -> Bool {
     Absent => true
     Present { value: _ } => false
   }
+}
+
+// PRIVILEGE IS COUNTED, NOT ASSIGNED. The old form returned 1/2/3 -- integers the author chose --
+// and called the winner least-required-effects. This asserts the ordering follows from the effect
+// populations: the rootless container needs ONE privileged effect (granting runtime access), the
+// user unit needs one (enable-linger), the system unit needs THREE (write unit, reload manager,
+// enable unit) plus the package install shared with the user unit. Getting this wrong now requires
+// misstating what an effect does, which a reader can check against the host.
+test fn w_privilege_is_counted_from_effects_not_assigned() -> Bool {
+  realization_privileged_effect_count(realization: SystemUnitRealization) > realization_privileged_effect_count(realization: RootlessContainerRealization) && realization_privileged_effect_count(realization: RootlessContainerRealization) <= realization_privileged_effect_count(realization: UserUnitRealization)
+}
+
+// THE INVARIANT THAT SURVIVES THE MECHANISM CHANGE. The sudo-invariance claim above passes under
+// both the old integers and the new count, so on its own it proves nothing about this change. This
+// one is specific: the ORDERING must come from the effects, so a realization requiring strictly more
+// privileged effects must never outrank one requiring fewer.
+test fn w_ordering_follows_the_privileged_effect_count() -> Bool {
+  let sys = realization_effect_weight(realization: SystemUnitRealization)
+  let user = realization_effect_weight(realization: UserUnitRealization)
+  let cont = realization_effect_weight(realization: RootlessContainerRealization)
+  sys > user && sys > cont
+}
+
+// A user unit needing enable-linger is NOT privilege-free, and saying so is the point: an earlier
+// reading treated user units as inherently unprivileged, which is what made the narrow sudoers grant
+// on the Sparks look like an anomaly rather than a derived requirement.
+test fn red_control_user_unit_is_not_privilege_free() -> Bool {
+  realization_privileged_effect_count(realization: UserUnitRealization) > 0
 }

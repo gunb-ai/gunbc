@@ -350,17 +350,72 @@ type SparkServingRealizationPolicy {
   privilege: PrivilegePolicy
 }
 
-// Effect weight orders realizations by the privilege their effects require, NOT by preference. A
-// system unit mutates system-wide state; a rootless container and a user unit stay inside the
-// executor's own context. Under LeastRequiredEffects the lowest weight admitted wins, which is
-// precisely why gaining passwordless sudo cannot change the selection: it makes system-unit
-// ADMISSIBLE without making it CHEAPER.
-fn realization_effect_weight(realization: SparkServingRealization) -> Int {
-  match realization {
-    UserUnitRealization => 1
-    RootlessContainerRealization => 2
-    SystemUnitRealization => 3
+// THE EFFECT POPULATION EACH REALIZATION REQUIRES, from which privilege is COUNTED rather than
+// assigned. The previous form returned 1, 2, 3 -- integers I chose -- and called the winner the
+// least-required-effects realization. It was not: it was the realization with the smallest number
+// its author picked, and it agreed with the effects only because I happened to order them correctly.
+// A hand-assigned score cannot be wrong in a way anything detects, which is exactly what makes it
+// the wrong mechanism.
+//
+// Now each realization names its exact effects, each effect names the privilege it needs from what
+// it DOES, and the ordering is a count over that. Adding an effect to a realization changes its
+// ranking automatically; getting the ranking wrong now requires misstating what an effect does,
+// which is a claim a reader can check against the host.
+type ServingInstallEffect
+  = WriteSystemUnitFile
+  | ReloadSystemManager
+  | EnableSystemUnit
+  | WriteUserUnitFile
+  | ReloadUserManager
+  | EnableUserUnit
+  | EnableLingerForOwnAccount
+  | InstallRuntimePackage
+  | PullModelArtifact
+  | GrantContainerRuntimeAccess
+  | RunContainerAsOwnUser
+
+fn serving_install_effect_requires_privilege(effect: ServingInstallEffect) -> Bool {
+  match effect {
+    WriteSystemUnitFile => true
+    ReloadSystemManager => true
+    EnableSystemUnit => true
+    InstallRuntimePackage => true
+    GrantContainerRuntimeAccess => true
+    WriteUserUnitFile => false
+    ReloadUserManager => false
+    EnableUserUnit => false
+    EnableLingerForOwnAccount => true
+    PullModelArtifact => false
+    RunContainerAsOwnUser => false
   }
+}
+
+fn realization_install_effects(realization: SparkServingRealization) -> List<ServingInstallEffect> {
+  match realization {
+    UserUnitRealization =>
+      [InstallRuntimePackage, WriteUserUnitFile, ReloadUserManager, EnableUserUnit, EnableLingerForOwnAccount, PullModelArtifact]
+    SystemUnitRealization =>
+      [InstallRuntimePackage, WriteSystemUnitFile, ReloadSystemManager, EnableSystemUnit, PullModelArtifact]
+    RootlessContainerRealization =>
+      [GrantContainerRuntimeAccess, RunContainerAsOwnUser, PullModelArtifact]
+  }
+}
+
+// PRIVILEGE IS THE COUNT OF PRIVILEGED EFFECTS, derived. This is what "least required effects" was
+// always supposed to mean, and it now means it.
+fn realization_privileged_effect_count(realization: SparkServingRealization) -> Int {
+  fold(realization_install_effects(realization: realization), init: 0, f: fn(acc, e) {
+    if serving_install_effect_requires_privilege(effect: e) { acc + 1 } else { acc }
+  })
+}
+
+// The ordering key. Total effect count breaks a privilege tie, because between two realizations
+// needing the same privilege the one doing LESS is the smaller change -- and a tie left unbroken
+// would surface as an arbitrary pick rather than a derivation.
+fn realization_effect_weight(realization: SparkServingRealization) -> Int {
+  let privileged = realization_privileged_effect_count(realization: realization)
+  let total = length(realization_install_effects(realization: realization))
+  (privileged * 100) + total
 }
 
 type SparkServingRealizationSelection
