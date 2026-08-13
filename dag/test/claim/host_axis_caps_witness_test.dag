@@ -116,9 +116,9 @@ test fn witness_derived_memory_caps_match_allocation_authority() -> Bool {
   let max = derived_runner_memory_max_cap_member()
   let high = derived_runner_memory_high_cap_member()
   string_contains(s: max.content, pattern: "15032385536")
-    && string_contains(s: max.content, pattern: "20-fleet-width")
+    && string_contains(s: max.dropin_path as String, pattern: "20-fleet-width")
     && string_contains(s: high.content, pattern: "13958643712")
-    && string_contains(s: high.content, pattern: "40-fleet-high")
+    && string_contains(s: high.dropin_path as String, pattern: "40-fleet-high")
 }
 
 test fn witness_shadow_revert_not_ready_without_derived_dropins() -> Bool {
