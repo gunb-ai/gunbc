@@ -553,8 +553,7 @@ fn codex_platform_lock_path_key(target: CodexNpmRuntimeTarget) -> NonEmptyStr? {
   }
 }
 
-data codex_linux_arm64_native_executable_rel_value: NonEmptyStr =
-  "node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex" as NonEmptyStr
+data codex_linux_arm64_native_executable_rel_value: NonEmptyStr = "node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex" as NonEmptyStr
 
 data codex_bundled_executable_path_note: String = "Bundled dispatch executable paths MUST name the materialized native binary under current/<native-rel>, never the current symlink directory alone. srv1/srv2 fleet hosts are linux/arm64 and consume codex_linux_arm64_native_executable_rel_value here. Unsupported npm target tuples stay Absent in codex_native_executable_rel and refuse at materialization (CodexRuntimeExecutableAbsent) — they do not widen to a directory-shaped FilePath."
 
