@@ -1,0 +1,64 @@
+module test.claim.emitted_lib_rs_module_declaration_witness_test
+
+// Permanent regression control for the emitted `lib.rs` module list.
+//
+// THE DEFECT, now repaired: v1.compiler.emit_rust emit_lib_rs_from_files derived
+// its module declarations from the files this emit actually produced, and then
+// appended `pub mod v1_interpreter_dispatch_generated;` UNCONDITIONALLY from a
+// hand-authored string. For the stage0 crate that module is real — a different
+// emitter co-produces it — so the seed compiled and the fork stayed invisible.
+// Every OTHER emitted crate got a declaration for a module nobody materialized,
+// which rustc answers with E0583 and cargo with a failed build.
+//
+// WHERE IT SURFACED: the falsifier's wet lane. namespace_import_closure_receipt
+// and self_host_logic_behavioral_receipt each emit a crate whose lib.rs is about
+// a dozen lines; both died on `error[E0583]: file not found for module
+// v1_interpreter_dispatch_generated` before reaching the behaviour they exist to
+// measure, so two witnesses reported false for a reason unrelated to their subject.
+//
+// WHY A CONTROL RATHER THAN A LIST ENTRY: the declared set and the materialized
+// set were two representations of one fact, and the hand-authored half could not
+// be falsified by editing the derived half. Adding the missing file to a list
+// would have greened this crate and preserved the class. The declaration now
+// derives from the emitted file set, so a crate that did not produce the module
+// cannot declare it.
+//
+// The second claim is the non-vacuity half: it proves the oracle is reading a
+// real lib.rs that declares this probe's own module, so the exclusion above is
+// evidence of absence rather than evidence of an unread file.
+//
+// WHAT THIS FILE DOES NOT COVER, stated rather than left to be assumed: the
+// ORDER dimension. The dispatch module defines macro_rules! arms that
+// v1_interpreter invokes unqualified, so its declaration must precede that
+// consumer, and a partial crate that genuinely emits it renders it first. This
+// oracle checks substring presence and absence, which cannot express position,
+// so the ordering constraint is held by the stage0 regen drift gate (the full
+// lib.rs must stay byte-identical) and not by anything here.
+
+data lrd_probe_source: String = "module lrd_probe\n\nimport std.types { Bool }\n\nfn lrd_true() -> Bool {\n  true\n}\n"
+
+fn w_small_crate_lib_rs_omits_unemitted_dispatch_module() -> Bool {
+  compile_dag_rust_emit_check(
+    lrd_probe_source,
+    "src/lib.rs",
+    [],
+    ["v1_interpreter_dispatch_generated"]
+  )
+}
+
+fn w_small_crate_lib_rs_declares_its_own_emitted_module() -> Bool {
+  compile_dag_rust_emit_check(
+    lrd_probe_source,
+    "src/lib.rs",
+    ["pub mod lrd_probe;"],
+    []
+  )
+}
+
+test fn small_crate_lib_rs_omits_unemitted_dispatch_module() -> Bool {
+  w_small_crate_lib_rs_omits_unemitted_dispatch_module()
+}
+
+test fn small_crate_lib_rs_declares_its_own_emitted_module() -> Bool {
+  w_small_crate_lib_rs_declares_its_own_emitted_module()
+}
