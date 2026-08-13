@@ -78,7 +78,6 @@ test fn witness_running_lease_observation_is_expected_not_absent() -> Bool {
     observed: LeaseRunningExpected,
     standing_receipt: none,
   )
-  binding.lease.observed == LeaseRunningExpected
-    && codex_supervised_turn_session_policy(lease_key: binding.lease.lease_key)
-      == binding.execution_policy
+  let policy = codex_supervised_turn_session_policy(lease_key: binding.lease.lease_key)
+  binding.lease.observed == LeaseRunningExpected && policy == binding.execution_policy
 }
