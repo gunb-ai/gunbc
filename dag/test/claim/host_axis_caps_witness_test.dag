@@ -98,8 +98,7 @@ test fn control_shadow_residue_teardowns_owned_unit() -> Bool {
          EffectsReady { effects: e } => list_length(items: e) == 1
          ApplyRefused { refusals: _ } => false
        }
-    && control_shadow_revert_script(u: control_shadow_unit(unit: shadow_unit))
-      == "systemctl revert actions-runner@srv1-01.service MemoryMax MemoryHigh\n"
+    && control_shadow_revert_script(u: control_shadow_unit(unit: shadow_unit)) == "systemctl revert actions-runner@srv1-01.service MemoryMax MemoryHigh\n"
 }
 
 test fn control_shadow_idempotence_zero_effects() -> Bool {
