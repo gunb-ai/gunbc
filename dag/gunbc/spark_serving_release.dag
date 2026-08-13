@@ -6,6 +6,11 @@ import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import v2.std.algebra { fold_list }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size_count }
+import gunbc.spark_serving_realization {
+  SystemPrincipal, ServingDeploymentTarget, UserUnitRealization,
+  EscalationShortfall, NoNewPrivilegeRequired, NewPrivilegeRequired, ShortfallUndecidable,
+  ObservedGrantPopulation, escalation_shortfall, applicable_without_administrator,
+}
 
 // THE SPARK SERVING RELEASE — one content-addressed identity over everything that must be
 // identical on both replicas.
@@ -266,4 +271,112 @@ fn spark_serving_may_actuate(reconciliation: SparkServingReconciliation) -> Bool
 // conjunction that can be weakened one arm at a time.
 fn spark_occurrences_share_release(a: SparkServingOccurrence, b: SparkServingOccurrence) -> Bool {
   (a.release_identity.digest.digest as String) == (b.release_identity.digest.digest as String)
+}
+
+// ── The fleet plan: one row per host, joining what must change to what it costs in privilege ────
+
+// WHY THE PLAN IS A CARRIER RATHER THAN A PRINTED STRING. The operator reviews a plan and then
+// approves it, so the thing approved and the thing applied must be the SAME VALUE. Rendering first
+// and deciding from the rendered text is the prose-decision defect this repo has now removed twice
+// from probe exits; it would be worse here, because the decision is an operator's rather than a
+// process exit code. So the rows are typed, the render is a projection of them, and an apply
+// consumes the rows.
+//
+// The join is the point. A reconciliation alone says a host needs an install; a shortfall alone says
+// what privilege a realization costs. Neither answers the question an operator actually has, which
+// is "can this be applied with the credentials that exist". Only the pair answers it.
+type SparkServingPlanRow {
+  host: HostIdentity
+  reconciliation: SparkServingReconciliation
+  shortfall: EscalationShortfall
+}
+
+// Head-plus-tail: a plan over zero hosts has no constructor. "Nothing to do" and "no host was
+// considered" are different answers and an empty list would render identically for both -- which is
+// precisely the conflation that made first install unreachable one type up.
+type SparkServingPlan
+  = ServingPlanned { first: SparkServingPlanRow, more: List<SparkServingPlanRow> }
+  | ServingPlanNotAttempted { cause: NonEmptyStr }
+
+// The deployment target for a Spark serving unit under the named automation account. The actor is a
+// PARAMETER rather than a constant because the same plan computed for root is the control that
+// proves privilege is emergent -- run it as RootPrincipal and every shortfall empties.
+fn spark_serving_target(actor: SystemPrincipal) -> ServingDeploymentTarget {
+  ServingDeploymentTarget {
+    actor: actor,
+    unit_name: "gunbc-spark-serving.service" as NonEmptyStr,
+    unit_path: "/etc/systemd/system/gunbc-spark-serving.service" as NonEmptyStr,
+    staged_unit_path: "/var/lib/gunbc/staged/gunbc-spark-serving.service" as NonEmptyStr,
+    runtime_package: "ollama" as NonEmptyStr,
+  }
+}
+
+fn spark_serving_plan_row(
+  desired: SparkServingOccurrence,
+  observation: SparkServingObservation,
+  prerequisites: List<SparkServingPrerequisite>,
+  actor: SystemPrincipal,
+  observed_grants: ObservedGrantPopulation,
+) -> SparkServingPlanRow {
+  SparkServingPlanRow {
+    host: desired.host,
+    reconciliation: reconcile_spark_serving(
+      desired: desired, observation: observation, prerequisites: prerequisites),
+    shortfall: escalation_shortfall(
+      realization: UserUnitRealization,
+      target: spark_serving_target(actor: actor),
+      observed: observed_grants),
+  }
+}
+
+// A row may be applied only when BOTH halves admit it: the reconciliation says there is a change to
+// make, and the privilege it costs is already held. Total over both coproducts, so neither a new
+// reconciliation arm nor a new shortfall arm can become applicable by omission.
+fn plan_row_applicable(row: SparkServingPlanRow) -> Bool {
+  spark_serving_may_actuate(reconciliation: row.reconciliation)
+    && applicable_without_administrator(shortfall: row.shortfall)
+}
+
+// WHAT AN OPERATOR IS BEING ASKED TO APPROVE, per row. Deliberately NOT a Bool: "nothing to do",
+// "ready to apply" and "blocked on a credential" are three different answers, and an approval
+// interface that collapses the last two invites approving a plan that cannot run.
+type SparkServingPlanVerdict
+  = ServingNoChangeRequired
+  | ServingReadyToApply
+  | ServingBlockedOnPrivilege { first_missing: NonEmptyStr }
+  | ServingBlockedOnObservation { cause: NonEmptyStr }
+
+fn plan_row_verdict(row: SparkServingPlanRow) -> SparkServingPlanVerdict {
+  match row.reconciliation {
+    SparkServingAlreadyConverged { converged_release: _ } => ServingNoChangeRequired
+    SparkServingRefused { first: f, more: _ } => ServingBlockedOnObservation { cause: f.cause }
+    SparkServingInstallRequired { subject: _, desired_release: _ } => privilege_verdict(shortfall: row.shortfall)
+    SparkServingDeltaRequired { plan_subject: _ } => privilege_verdict(shortfall: row.shortfall)
+  }
+}
+
+fn privilege_verdict(shortfall: EscalationShortfall) -> SparkServingPlanVerdict {
+  match shortfall {
+    NoNewPrivilegeRequired => ServingReadyToApply
+    NewPrivilegeRequired { first: f, more: _ } => ServingBlockedOnPrivilege { first_missing: f }
+    ShortfallUndecidable { cause: c } => ServingBlockedOnObservation { cause: c }
+  }
+}
+
+fn plan_verdict_label(verdict: SparkServingPlanVerdict) -> String {
+  match verdict {
+    ServingNoChangeRequired => "no-change"
+    ServingReadyToApply => "ready-to-apply"
+    ServingBlockedOnPrivilege { first_missing: m } => join(["blocked-on-privilege missing=", m as String], "")
+    ServingBlockedOnObservation { cause: c } => join(["blocked-on-observation cause=", c as String], "")
+  }
+}
+
+fn spark_serving_plan_text(plan: SparkServingPlan) -> String {
+  match plan {
+    ServingPlanNotAttempted { cause: c } => join(["spark serving plan not attempted: ", c as String, "\n"], "")
+    ServingPlanned { first: f, more: m } =>
+      join(map(concat([f], m), row =>
+        join(["plan host=", row.host as String, " ", plan_verdict_label(verdict: plan_row_verdict(row: row)), "\n"], "")), "")
+  }
 }

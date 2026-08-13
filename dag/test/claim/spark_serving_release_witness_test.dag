@@ -2,6 +2,9 @@ module test.claim.spark_serving_release_witness_test
 
 import std.types { String, Bool, List, Int, NonEmptyStr }
 import std.measure { byte_size }
+import gunbc.spark_serving_realization {
+  SystemPrincipal, NamedPrincipal, ObservedGrantPopulation, GrantPopulationObserved,
+}
 import gunbc.spark_serving_release {
   SparkServingReleaseIdentity, SparkServingOccurrence, SecretVersionRef,
   SparkServingRelease, RuntimeArtifactIdentity, ModelArtifactIdentity,
@@ -13,6 +16,8 @@ import gunbc.spark_serving_release {
   SparkServingAbsent,
   SparkServingPrerequisite, PrerequisiteAbsent, ManagedHostAccessGrounded,
   reconcile_spark_serving,
+  SparkServingPlanRow, spark_serving_plan_row, plan_row_verdict, plan_verdict_label,
+  plan_row_applicable, spark_serving_target,
   spark_serving_may_actuate, spark_occurrences_share_release,
 }
 
@@ -210,4 +215,54 @@ test fn w_install_required_may_actuate() -> Bool {
     subject: "srv5",
     desired_release: spark_serving_release_identity(spec: release_base()),
   })
+}
+
+fn plan_row_for(observation: SparkServingObservation, grants: ObservedGrantPopulation) -> SparkServingPlanRow {
+  spark_serving_plan_row(
+    desired: occ_srv5(), observation: observation, prerequisites: grounded_prereqs,
+    actor: NamedPrincipal { login: "gunbc-automation" as NonEmptyStr }, observed_grants: grants)
+}
+
+data linger_granted: ObservedGrantPopulation = GrantPopulationObserved {
+  commands: ["/usr/bin/loginctl enable-linger gunbc-automation" as NonEmptyStr],
+}
+
+data nothing_granted: ObservedGrantPopulation = GrantPopulationObserved { commands: [] }
+
+fn plan_verdict_for(observation: SparkServingObservation, grants: ObservedGrantPopulation) -> String {
+  plan_verdict_label(verdict: plan_row_verdict(row: plan_row_for(observation: observation, grants: grants)))
+}
+
+// THE ANSWER THE OPERATOR IS ACTUALLY ASKING FOR: a Spark serving nothing, with the grant it already
+// holds, is ready to apply. That is the whole arc of this branch reduced to one claim.
+test fn w_an_absent_spark_with_the_existing_grant_is_ready_to_apply() -> Bool {
+  plan_verdict_for(observation: observation_absent(), grants: linger_granted) == "ready-to-apply"
+}
+
+// BOTH HALVES ARE CONSULTED, and this is the control that proves the join is real rather than the
+// verdict reading one side. Same host, same absent observation -- only the grant population differs,
+// and the verdict must change with it. If these agree, the shortfall is being ignored.
+test fn w_the_same_absent_host_is_blocked_when_the_grant_is_missing() -> Bool {
+  plan_verdict_for(observation: observation_absent(), grants: nothing_granted) != plan_verdict_for(observation: observation_absent(), grants: linger_granted)
+}
+
+// A converged host is NO-CHANGE regardless of privilege: there is nothing to apply, so a missing
+// grant is not a blocker. A verdict that reported blocked here would ask an operator to obtain a
+// credential for work that does not exist.
+test fn w_a_converged_host_is_no_change_even_with_no_grants() -> Bool {
+  plan_verdict_for(observation: observed_matching(), grants: nothing_granted) == "no-change"
+}
+
+// An unreachable host blocks on OBSERVATION, never on privilege -- the two have different remedies
+// and the verdict must say which one it is.
+test fn w_an_unobservable_host_blocks_on_observation_not_privilege() -> Bool {
+  plan_verdict_for(observation: observation_refused(), grants: linger_granted) == "blocked-on-observation cause=loaded revision not observable from the unit MainPID"
+}
+
+// APPLICABILITY REQUIRES BOTH: a row ready to apply is applicable, and the same row without the
+// grant is not.
+test fn w_plan_row_applicable_requires_change_and_privilege() -> Bool {
+  plan_row_applicable(row: plan_row_for(observation: observation_absent(), grants: linger_granted))
+    && !plan_row_applicable(row: plan_row_for(observation: observation_absent(), grants: nothing_granted))
+    && !plan_row_applicable(row: plan_row_for(observation: observed_matching(), grants: linger_granted))
 }
