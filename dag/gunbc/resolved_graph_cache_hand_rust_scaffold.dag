@@ -51,6 +51,13 @@ data resolved_graph_cache_hand_rust_deferred_consumer_witness_entry: String = "d
 // were spelled a certain way and nothing about any test existing or running: a
 // false executing receipt (DESIGN §5).
 //
+// The witness-side row that read those four constants,
+// resolved_graph_cache_hand_rust_discriminating_tests_named, was deleted in the same
+// change and for the same reason. Its record lived as trailing prose in
+// dag/test/claim/resolved_graph_cache_hand_rust_witness_test.dag, attached to no module
+// item — the one shape DESIGN §4c cannot admit — so it is consolidated here, where the
+// deletion it describes is already recorded.
+//
 // They are DELETED rather than re-pointed because there is nothing to point at
 // — a corpus search finds those names only in these strings. Naming a test that
 // does not exist is worse than naming none. The discriminating evidence for this
