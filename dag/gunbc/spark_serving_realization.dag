@@ -814,3 +814,75 @@ fn realization_sudoers_grant_lines(
     c => join([principal_label(p: target.actor), " ALL=(root) NOPASSWD: ", c as String], ""),
   )
 }
+
+// ── Required escalation joined against observed grants ──────────────────────────────────────────
+
+// WHY THIS EXISTS. The derivation above answers "what needs escalation". It has no notion of what
+// the actor ALREADY holds, so "this realization needs no new privilege" was a sentence a human said
+// after reading two outputs side by side -- exactly the kind of claim that is true on the day it is
+// written and silently false later. The exact-grant probe answers the other half: it enumerates the
+// observed passwordless grant population verbatim rather than reducing it to a boolean, which is the
+// repair that made this join possible at all. A boolean "has sudo" cannot be subtracted from
+// anything.
+//
+// So the honest statement about a serving install is DERIVED here: required escalations minus
+// observed grants. If the result is empty, the plan is applicable with no administrator credential,
+// and the model says so. If it is not, the plan names precisely which commands are missing rather
+// than reporting that privilege is "required".
+//
+// THE UNKNOWN ARM IS NOT AN EMPTY SET. A host whose grant population could not be observed is not a
+// host with no grants -- the first would authorize an install attempt that the second would refuse.
+// Reading an unobserved population as empty is the empty-observation narrow DESIGN names: an
+// observation that could not answer rendered as the verdict "nothing is granted". It refuses.
+type ObservedGrantPopulation
+  = GrantPopulationObserved { commands: List<NonEmptyStr> }
+  | GrantPopulationUnobserved { cause: NonEmptyStr }
+
+type EscalationShortfall
+  = NoNewPrivilegeRequired
+  | NewPrivilegeRequired { first: NonEmptyStr, more: List<NonEmptyStr> }
+  | ShortfallUndecidable { cause: NonEmptyStr }
+
+fn grant_population_contains(population: List<NonEmptyStr>, command: NonEmptyStr) -> Bool {
+  fold(population, init: false, f: fn(acc, held) {
+    if acc { true } else { (held as String) == (command as String) }
+  })
+}
+
+fn escalation_shortfall(
+  realization: SparkServingRealization,
+  target: ServingDeploymentTarget,
+  observed: ObservedGrantPopulation,
+) -> EscalationShortfall {
+  match observed {
+    GrantPopulationUnobserved { cause: c } => ShortfallUndecidable { cause: c }
+    GrantPopulationObserved { commands: held } => {
+      let missing = fold(
+        realization_escalated_commands(realization: realization, target: target),
+        init: [],
+        f: fn(acc, required) {
+          if grant_population_contains(population: held, command: required) { acc }
+          else { concat(acc, [required]) }
+        },
+      )
+      match list_head(missing) {
+        HeadAbsent => NoNewPrivilegeRequired
+        HeadFound { value: f } => match list_tail(missing) {
+          TailAbsent => NewPrivilegeRequired { first: f, more: [] }
+          TailFound { tail: t } => NewPrivilegeRequired { first: f, more: t }
+        }
+      }
+    }
+  }
+}
+
+// Only a shortfall of NONE may proceed without an administrator credential. Total over the
+// coproduct, so a later arm cannot silently become applicable -- and ShortfallUndecidable answers
+// false, because "we do not know what is granted" is not permission.
+fn applicable_without_administrator(shortfall: EscalationShortfall) -> Bool {
+  match shortfall {
+    NoNewPrivilegeRequired => true
+    NewPrivilegeRequired { first: _, more: _ } => false
+    ShortfallUndecidable { cause: _ } => false
+  }
+}

@@ -118,12 +118,23 @@ type SparkServingRefusal { subject: NonEmptyStr  cause: NonEmptyStr }
 // wrong" have different remedies, and collapsing them lets an unobservable host read as drifted.
 // The loaded identity is the SAME derived carrier as the desired one, so a comparison cannot be
 // satisfied by a caller-authored label.
+//
+// THE THIRD ARM EXISTS BECAUSE FIRST INSTALL WAS UNREACHABLE WITHOUT IT. With only Observed and
+// ObservationRefused, a host running nothing at all could be reported only as a refusal -- and this
+// module's own comment above says refusal means "we could not see", not "we saw nothing". So a
+// never-installed Spark and an unreachable Spark produced the same reconciliation, and the arm that
+// proposes an install had no observation that could reach it: you cannot propose adding what you
+// have no way to say is absent. That is the same state-space conflation the paragraph above refuses
+// between refusal and drift, one position over -- and it was load-bearing rather than cosmetic,
+// because it is precisely the state both Sparks are in today.
 type SparkServingObservation
   = SparkServingObserved { host: HostIdentity, loaded_release: SparkServingReleaseIdentity }
+  | SparkServingAbsent { host: HostIdentity }
   | SparkServingObservationRefused { host: HostIdentity, cause: NonEmptyStr }
 
 type SparkServingReconciliation
   = SparkServingAlreadyConverged { converged_release: SparkServingReleaseIdentity }
+  | SparkServingInstallRequired { subject: HostIdentity, desired_release: SparkServingReleaseIdentity }
   | SparkServingDeltaRequired { plan_subject: NonEmptyStr }
   | SparkServingRefused { first: SparkServingRefusal, more: List<SparkServingRefusal> }
 
@@ -217,6 +228,12 @@ fn reconcile_spark_serving(
           match observation {
             SparkServingObservationRefused { host: _, cause: why } =>
               SparkServingRefused { first: SparkServingRefusal { subject: "observation", cause: why }, more: no_further_refusals }
+            SparkServingAbsent { host: seen } =>
+              if host_matches(a: seen, b: desired.host) == false {
+                SparkServingRefused { first: observation_subject_mismatch_refusal, more: no_further_refusals }
+              } else {
+                SparkServingInstallRequired { subject: desired.host, desired_release: desired.release_identity }
+              }
             SparkServingObserved { host: seen, loaded_release: loaded } =>
               if host_matches(a: seen, b: desired.host) == false {
                 SparkServingRefused { first: observation_subject_mismatch_refusal, more: no_further_refusals }
@@ -238,6 +255,7 @@ fn reconcile_spark_serving(
 fn spark_serving_may_actuate(reconciliation: SparkServingReconciliation) -> Bool {
   match reconciliation {
     SparkServingDeltaRequired { plan_subject: _ } => true
+    SparkServingInstallRequired { subject: _, desired_release: _ } => true
     SparkServingAlreadyConverged { converged_release: _ } => false
     SparkServingRefused { first: _, more: _ } => false
   }
