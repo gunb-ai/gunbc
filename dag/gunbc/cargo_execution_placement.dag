@@ -38,6 +38,7 @@ type CargoSubjectPlacementRequirement
 
 type CargoPlacementRefusalCause
   = RemoteBuilderCannotServeLocalWorkspace { service: NonEmptyStr }
+  | RemoteBuilderRealizationUnbound { service: NonEmptyStr }
   | CargoExecutableUnobserved { observation: String }
 
 type CargoPlacementDecision
@@ -48,6 +49,18 @@ type CargoPlacementDecision
 // a decision, so the pairing that cannot work has no admitted arm. A remote builder
 // serving a local-workspace subject is refused BEFORE execution — not attempted and
 // diagnosed afterwards from a nonzero exit, which is what a shell string does.
+//
+// THE TWO REMOTE REFUSALS ARE DIFFERENT STATES AND CARRY DIFFERENT CAUSES. The first
+// revision of this function answered both with RemoteBuilderCannotServeLocalWorkspace,
+// including the arm where the subject is explicitly RELOCATABLE — a label that flatly
+// contradicts its own arm, and the §3 state-space conflation this file's header warns
+// about, reproduced inside the function meant to remove it (caught in review 51730).
+//
+// A relocatable subject is refused for an entirely different reason: nothing in this
+// repository BINDS a remote builder realization, so there is no executable to name. That
+// is a missing capability, whose remedy is to model one; the local-workspace refusal is
+// permanent, and its remedy is to stop asking. Collapsing them would have made the
+// capability gap unreportable, and RemoteBuilder dead on arrival with no way to say why.
 fn decide_cargo_placement(
   requirement: CargoSubjectPlacementRequirement,
   placement: CargoPlacement
@@ -57,9 +70,8 @@ fn decide_cargo_placement(
     RemoteBuilder { service: s } => match requirement {
       RequiresLocalWorkspace { required_by: _ } =>
         PlacementRefused { cause: RemoteBuilderCannotServeLocalWorkspace { service: s } }
-      RelocatableSubject => PlacementRefused {
-        cause: RemoteBuilderCannotServeLocalWorkspace { service: s }
-      }
+      RelocatableSubject =>
+        PlacementRefused { cause: RemoteBuilderRealizationUnbound { service: s } }
     }
   }
 }
@@ -115,6 +127,8 @@ fn cargo_placement_refusal_text(cause: CargoPlacementRefusalCause) -> String {
   match cause {
     RemoteBuilderCannotServeLocalWorkspace { service: s } =>
       concat("remote builder cannot serve a local-workspace subject: ", s)
+    RemoteBuilderRealizationUnbound { service: s } =>
+      concat("no remote builder realization is bound for this subject: ", s)
     CargoExecutableUnobserved { observation: o } =>
       concat("no cargo executable was observed: ", o)
   }
