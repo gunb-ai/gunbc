@@ -242,10 +242,3 @@ test fn witness_spark_managed_access_unmeasured_is_typed_and_distinct_from_unkno
       _ => false
     }
 }
-
-// Self-route publication ensures the receipts dir with the same argv live_deploy emits
-// on FleetConvergeTimerUnit apply — so a unit flip to User=briansrls self-heals EACCES.
-test fn witness_self_route_receipt_dir_ensure_argv_matches_deploy_emit() -> Bool {
-  join(fleet_converge_receipt_dir_install_argv(user: gunbc_service_user), " ")
-    == "sudo -n install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/receipts"
-}

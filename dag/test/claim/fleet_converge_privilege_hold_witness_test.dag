@@ -1,0 +1,26 @@
+module test.claim.fleet_converge_privilege_hold_witness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// RED control: whole-binary install/systemctl on the operator roster is root-equivalent
+// and held for operator ruling — not an accidental merge artifact.
+test fn witness_operator_roster_not_widened_to_whole_binary_install_or_systemctl() -> Bool {
+  length(xs: fleet_posix_operator_sudo_grants()) == 1
+    && length(xs: fleet_posix_ci_runner_sudo_grants()) >= 2
+}
+
+test fn witness_narrow_set_property_sudoers_proposal_is_documented() -> Bool {
+  string_contains(
+    s: fleet_converge_narrow_set_property_sudoers_proposal,
+    pattern: "NOPASSWD: /usr/bin/systemctl set-property actions-runner@",
+  )
+    && string_contains(s: fleet_converge_operator_privilege_hold_note, pattern: "root-equivalent")
+}
+
+test fn witness_receipt_dir_authority_points_at_live_deploy() -> Bool {
+  string_contains(
+    s: fleet_converge_receipt_dir_deploy_authority_note,
+    pattern: "FleetConvergeTimerUnit",
+  )
+    && string_contains(s: fleet_converge_receipt_dir_deploy_authority_note, pattern: "install_d_owned_command")
+}
