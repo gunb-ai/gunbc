@@ -1215,3 +1215,47 @@ fn classify_producer_file(records: List<RecordedObservation>) -> SequenceVerdict
     (acc, r) => sequence_scan_step(acc: acc, r: r)
   ).verdict
 }
+
+// ---------------------------------------------------------------------------
+// Resolving a spawn edge, which crosses producer files.
+// ---------------------------------------------------------------------------
+
+data parent_resolution_note: String = "A PARENT THAT RESOLVES TO NOTHING IS TWO FACTS WITH OPPOSITE MEANINGS (review by vivid-bear-458, 2026-08-13). The active stack walks ChildOf across producer files — a worker occurrence is ChildOf an occurrence the COORDINATOR recorded, because the coordinator is what spawned the worker — so a parent absent from the file in hand is the NORMAL case for every worker-rooted occurrence, not damage; it means the reader was handed one file where it needed the attempt's union. A parent absent from every file of the attempt is a real integrity failure: a Begin was never written, or a record was lost somewhere other than the torn tail. Collapsed into one DanglingParent arm the failure runs both ways — a single-file read reports damage on a healthy attempt, or a genuinely lost parent reads as 'probably in another file' and the stack SILENTLY RE-ROOTS. The second is the dangerous one, because a re-rooted occurrence does not look like an error; it looks like a shallower stack, which is a plausible answer to 'where was it' that happens to be wrong. The discriminator is whether the read was scoped to one producer or to the union, which the READER knows and the record does not — so, exactly like producer liveness, it is a required input rather than a fact derivable from the bytes."
+
+type LedgerReadScope
+  = SingleProducerRead { producer: ObservationProducer }
+  | AttemptUnionRead
+
+type ParentResolution
+  = OccurrenceIsRoot
+  | ParentResolved { parent: OccurrenceId }
+  | ParentOutsideReadScope { scope: ObservationProducer, parent_id: NonEmptyStr }
+  | ParentMissingFromAttempt { parent_id: NonEmptyStr }
+
+fn occurrence_present_in(records: List<RecordedObservation>, target: OccurrenceId) -> Bool {
+  fold_list(records, false, (acc, r) =>
+    acc || (r.occurrence.id == target.id && r.occurrence.attempt == target.attempt))
+}
+
+// The scope is a PARAMETER, so a caller holding one producer's file cannot reach the
+// missing-from-attempt verdict at all — that arm is unreachable under SingleProducerRead, and the
+// only way to claim a parent is lost is to have read the union.
+fn resolve_parent(
+  child: RecordedObservation,
+  records: List<RecordedObservation>,
+  scope: LedgerReadScope,
+) -> ParentResolution {
+  match parent_occurrence(r: child) {
+    Absent => OccurrenceIsRoot
+    Present { value: p } =>
+      if occurrence_present_in(records: records, target: p) {
+        ParentResolved { parent: p }
+      } else {
+        match scope {
+          SingleProducerRead { producer: prod } =>
+            ParentOutsideReadScope { scope: prod, parent_id: p.id }
+          AttemptUnionRead => ParentMissingFromAttempt { parent_id: p.id }
+        }
+      }
+  }
+}

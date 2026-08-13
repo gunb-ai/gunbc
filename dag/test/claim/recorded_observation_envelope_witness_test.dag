@@ -39,6 +39,15 @@ import std.observation {
   compare_occurrences,
   recorded_attempt,
   parent_occurrence,
+  LedgerReadScope,
+  SingleProducerRead,
+  AttemptUnionRead,
+  ParentResolution,
+  OccurrenceIsRoot,
+  ParentResolved,
+  ParentOutsideReadScope,
+  ParentMissingFromAttempt,
+  resolve_parent,
   SequenceVerdict,
   SequenceIntact,
   SequenceGap,
@@ -231,4 +240,60 @@ test fn w_a_reconstructed_parent_inherits_the_childs_attempt() -> Bool {
 
 test fn w_RED_a_root_occurrence_has_no_parent_rather_than_a_placeholder_one() -> Bool {
   match parent_occurrence(r: w(seq: 0)) { Absent => true, Present { value: _ } => false }
+}
+
+// A worker occurrence is ChildOf an occurrence the COORDINATOR recorded, so the edge crosses files.
+// Read the union and it resolves; read the worker's file alone and the SAME edge is out of scope,
+// not damaged. If those two ever agree, a single-file read reports a healthy attempt as broken or a
+// lost parent silently re-roots the stack to a shallower, plausible, wrong answer.
+test fn w_RED_the_same_spawn_edge_resolves_over_the_union_and_is_out_of_scope_in_one_file() -> Bool {
+  let coordinator_record = rec(
+    p: CoordinatorProducer, seq: 0,
+    occ: occ_in(attempt: "attempt-1" as NonEmptyStr, id: "occ-coord" as NonEmptyStr),
+    origin: RootOccurrence
+  )
+  let worker_record = rec(
+    p: OrdinaryWorkerProducer { worker_index: 3 }, seq: 0,
+    occ: occ_in(attempt: "attempt-1" as NonEmptyStr, id: "occ-worker" as NonEmptyStr),
+    origin: ChildOf { parent_id: "occ-coord" as NonEmptyStr }
+  )
+  let over_union = resolve_parent(
+    child: worker_record,
+    records: [coordinator_record, worker_record],
+    scope: AttemptUnionRead
+  )
+  let one_file = resolve_parent(
+    child: worker_record,
+    records: [worker_record],
+    scope: SingleProducerRead { producer: OrdinaryWorkerProducer { worker_index: 3 } }
+  )
+  match over_union {
+    ParentResolved { parent: p } => p.id == "occ-coord" && p.attempt == "attempt-1"
+    _ => false
+  } && match one_file {
+    ParentOutsideReadScope { scope: _, parent_id: id } => id == "occ-coord"
+    _ => false
+  }
+}
+
+// A parent in NO file of the attempt is a real integrity failure, and only a union read may say so.
+test fn w_RED_a_parent_absent_from_the_whole_union_is_an_integrity_failure() -> Bool {
+  let orphan = rec(
+    p: OrdinaryWorkerProducer { worker_index: 3 }, seq: 0,
+    occ: occ_in(attempt: "attempt-1" as NonEmptyStr, id: "occ-worker" as NonEmptyStr),
+    origin: ChildOf { parent_id: "occ-never-written" as NonEmptyStr }
+  )
+  match resolve_parent(child: orphan, records: [orphan], scope: AttemptUnionRead) {
+    ParentMissingFromAttempt { parent_id: id } => id == "occ-never-written"
+    _ => false
+  }
+}
+
+test fn w_a_root_occurrence_resolves_as_root_under_either_scope() -> Bool {
+  let r = w(seq: 0)
+  match resolve_parent(child: r, records: [], scope: AttemptUnionRead) { OccurrenceIsRoot => true, _ => false }
+    && match resolve_parent(child: r, records: [], scope: SingleProducerRead { producer: CoordinatorProducer }) {
+      OccurrenceIsRoot => true
+      _ => false
+    }
 }
