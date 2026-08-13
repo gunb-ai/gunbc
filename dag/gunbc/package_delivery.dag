@@ -1937,14 +1937,27 @@ fn require_npm_host_dependency_for_materialization() -> CodexRuntimeMaterializat
 fn codex_runtime_materialization_failure_receipt(
   outcome: CodexRuntimeMaterialization,
 ) -> String {
+  let generic = match codex_runtime_materialization_refusal_reason(outcome: outcome) {
+    Present { value: reason } => reason as String
+    Absent => ""
+  }
   match outcome {
     CodexRuntimeHostDependencyRefused { tool, hint } =>
       host_dependency_absent_wire(tool: tool, hint: hint)
-    _ =>
-      match codex_runtime_materialization_refusal_reason(outcome: outcome) {
-        Present { value: reason } => reason as String
-        Absent => ""
-      }
+    CodexRuntimeMaterialized { bundle: _ } => generic
+    CodexRuntimeLockRefused { admission: _ } => generic
+    CodexRuntimeExactClosureRefused { closure: _ } => generic
+    CodexRuntimeTargetObservationRefused { observation: _ } => generic
+    CodexRuntimeAcquisitionRefused { acquisition: _ } => generic
+    CodexRuntimeWorkspaceRefused { cause: _ } => generic
+    CodexRuntimeCacheSeedRefused { path: _, stderr: _ } => generic
+    CodexRuntimeNpmCiOfflineRefused { stderr: _ } => generic
+    CodexRuntimeExecutableAbsent { path: _ } => generic
+    CodexRuntimePlatformPackageAbsent { path: _ } => generic
+    CodexRuntimeIdentityObservationRefused => generic
+    CodexRuntimeReceiptObservationRefused { cause: _ } => generic
+    CodexRuntimeReleaseRefused { cause: _ } => generic
+    CodexRuntimeMaterializationReuseMismatch { existing_root: _, cause: _ } => generic
   }
 }
 

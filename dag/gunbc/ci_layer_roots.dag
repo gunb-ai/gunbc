@@ -639,6 +639,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_install_media_reason,
     dissolution: excl_install_media_dissolve},
   WitnessExclusionRow {
+    pattern: "host_cli_dependency_wet_witness_test.dag",
+    classification: BinWitnessWet,
+    reason: "WET shell.Which.Check probes for observe_host_cli_dependency: hermetic discovery refuses host effects (no mock_response for operation Check). Enrolled on bin-witness wet roster; falsifier Codex materialization reuses the same Which.Check.exists path.",
+    dissolution: excl_bin_wet_dissolve},
+  WitnessExclusionRow {
     pattern: "codex_package_delivery_wet_witness_test.dag",
     classification: FalsifierRehomedBinWet,
     reason: "wet real-execution class re-homed off the per-PR floor (witness-time ruling + wet_integration posture): DownloadToFile + sha512sum + npm cache add of admitted bytes + npm ci --offline + content-addressed release publish. Measured claim_batch --wet materialize wall ~150s (> bin_witness_wet_per_row_wall_budget_seconds). Exact fns enroll in falsifier_rehomed_bin_wet_rows (falsifier batch 5). OfflineLocalRecipe alone is UnclassifiedPathDeferral since 2026-08-04.",
@@ -1092,6 +1097,8 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/transport_script_stdin_byte_fidelity_witness_test.dag", f: "transport_script_stdin_fidelity_is_independent_of_terminal_newline"),
   bin_wet(entry: "dag/test/claim/push_event_witness_wet_test.dag", f: "witness_push_before_from_fixture_file"),
   bin_wet(entry: "dag/test/claim/push_event_witness_wet_test.dag", f: "witness_push_before_payload_read_refused_on_missing_path"),
+  bin_wet(entry: "dag/test/claim/host_cli_dependency_wet_witness_test.dag", f: "observe_echo_wet_which_check_does_not_crash"),
+  bin_wet(entry: "dag/test/claim/host_cli_dependency_wet_witness_test.dag", f: "observe_npm_wet_which_check_does_not_crash"),
   bin_wet(entry: "dag/test/claim/stage0_rust_maintenance_census_report_live_witness_test.dag", f: "maintenance_census_report_positive_control_derives_from_current_head")
 ]
 
