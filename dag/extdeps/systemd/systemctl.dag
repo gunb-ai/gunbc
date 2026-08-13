@@ -40,6 +40,13 @@ fn systemctl_set_property_argv(unit: NonEmptyStr, property: NonEmptyStr, value: 
   ]
 }
 
+// Privileged prefix for the service-user fleet-converge principal: bare systemctl
+// set-property on system units is refused by polkit when not root; sudo -n routes
+// through the operator's NOPASSWD roster (fleet_posix_operator_sudo_grants).
+fn systemctl_set_property_privileged_argv(unit: NonEmptyStr, property: NonEmptyStr, value: NonEmptyStr) -> List<String> {
+  append(["sudo", "-n"], items: systemctl_set_property_argv(unit: unit, property: property, value: value))
+}
+
 fn systemctl_show_property_argv(unit: NonEmptyStr, property: SystemdUnitProperty) -> List<String> {
   [
     "systemctl",

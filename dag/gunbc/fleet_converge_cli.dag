@@ -2,10 +2,16 @@ module gunbc.fleet_converge_cli
 
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.algebra { trim }
+import extdeps.exec.command { ArgvCommand, LocalExec }
 
 import extdeps.linux.procfs { ProcSysKernelHostname, procfs_path_literal }
 import gunbc.fleet_converge_apply { converge_apply_for_host }
-import gunbc.host_layout { fleet_converge_receipt_dir, srv1_gunbc_repo_root }
+import gunbc.command_runner { run_shell_command_capture }
+import gunbc.host_layout {
+  fleet_converge_receipt_dir,
+  fleet_converge_receipt_dir_install_argv,
+  srv1_gunbc_repo_root,
+}
 import gunbc.fleet_desired_observe {
   FleetRevisionStanding,
   RevisionConverged,
@@ -34,6 +40,7 @@ import gunbc.fleet_intent_network {
   operator_host_srv5,
   operator_host_srv6,
 }
+import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
 
 
 data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {
@@ -399,17 +406,36 @@ fn fleet_converge_receipt_path(host: String) -> String {
 }
 
 fn converge_cli_publish(out: ConvergeCliOutput, resolved: String, revision_line: String) -> ConvergeCliOutput {
-  let w = Filesystem.Write(
-    path: fleet_converge_receipt_path(host: resolved),
-    content: join([out.line, "\n", revision_line, "\n"], ""),
+  let ensure = run_shell_command_capture(
+    command: ArgvCommand {
+      argv: fleet_converge_receipt_dir_install_argv(user: fleet_posix_operator_user.name),
+    },
+    transport: LocalExec,
   )
-  if w.success {
-    out
-  } else {
+  if !ensure.success {
     ConvergeCliOutput {
       line: out.line,
       converged: false,
-      reason: Present { value: concat("gunbc converge: receipt publication failed — ", w.error) },
+      reason: Present {
+        value: concat(
+          "gunbc converge: receipt directory ensure failed — ",
+          ensure.stderr,
+        ),
+      },
+    }
+  } else {
+    let w = Filesystem.Write(
+      path: fleet_converge_receipt_path(host: resolved),
+      content: join([out.line, "\n", revision_line, "\n"], ""),
+    )
+    if w.success {
+      out
+    } else {
+      ConvergeCliOutput {
+        line: out.line,
+        converged: false,
+        reason: Present { value: concat("gunbc converge: receipt publication failed — ", w.error) },
+      }
     }
   }
 }

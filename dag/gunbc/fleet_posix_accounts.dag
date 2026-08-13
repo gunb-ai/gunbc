@@ -151,6 +151,14 @@ fn fleet_posix_operator_sudo_grants() -> List<PosixSudoGrant> {
       command_path: fleet_hostnamectl_command_path,
       probe: NopasswdExecuteCheck { check_argv: "--version" },
     },
+    PosixSudoGrant {
+      command_path: "/usr/bin/systemctl",
+      probe: NopasswdExecuteCheck { check_argv: "--version" },
+    },
+    PosixSudoGrant {
+      command_path: "/usr/bin/install",
+      probe: NopasswdExecuteCheck { check_argv: "--version" },
+    },
   ]
 }
 

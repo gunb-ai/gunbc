@@ -1,6 +1,6 @@
 module gunbc.host_layout
 
-import std.types { String, NonEmptyStr, FilePath }
+import std.types { String, NonEmptyStr, List, FilePath }
 import gunbc.provider_account {
   codex_account_state_root,
   codex_roadmap_account_selection,
@@ -86,6 +86,24 @@ data belt_spawn_workdir_env_var: NonEmptyStr = "GUNBC_BELT_SPAWN_WORKDIR" as Non
 // CLI, which closed the import cycle fleet_converge_apply -> host_effect_realize ->
 // live_deploy.emit -> fleet_converge_cli the moment the CLI imported its own apply seam.
 data fleet_converge_receipt_dir: String = "/opt/gunbc/receipts"
+
+// Self-route receipt publication runs as the credentialed service user (b1); the
+// directory must exist and be owned by that principal before Filesystem.Write.
+fn fleet_converge_receipt_dir_install_argv(user: NonEmptyStr) -> List<String> {
+  [
+    "sudo",
+    "-n",
+    "install",
+    "-d",
+    "-m",
+    "0755",
+    "-o",
+    user as String,
+    "-g",
+    user as String,
+    fleet_converge_receipt_dir,
+  ]
+}
 
 data provider_runtime_placement_note: String = "ONE host-parameterized placement for provider package/exec release trees, mutable provider state, and private wire-evidence roots. Parallel to GunbcHostLayout: a second host must be describable without minting a second set of path concepts. Claude/Cursor/Codex lanes consume this record; they do not re-author /opt/... roots. The flat srv1_* path data below are the once-written field values of srv1's row — the same dissolution pattern as gunbc_host_layout_note."
 
