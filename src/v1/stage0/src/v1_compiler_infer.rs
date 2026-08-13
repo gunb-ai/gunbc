@@ -19439,121 +19439,86 @@ pub fn variant_has_positional_payload_shape(
         })
 }
 
-pub fn build_fielded_variants(
-    modules: Rc<Vec<Rc<TypedModule>>>,
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct EnumVariantShapeSets {
+    pub fielded: Rc<BTreeSet<String>>,
+    pub positional_payload: Rc<BTreeSet<String>>,
+}
+
+pub fn enum_variant_shape_sets_for_item(
+    acc: Rc<EnumVariantShapeSets>,
+    item: Rc<Node>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-) -> Rc<BTreeSet<String>> {
+) -> Rc<EnumVariantShapeSets> {
     {
-        let result = modules.clone().iter().cloned().fold(
-            v1_rt::rc_empty_set::<_>(),
-            |acc: _, m: Rc<TypedModule>| {
-                let items = m.items.clone();
-                let si = m.type_env.clone().source_indices.clone();
-                items
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .fold(acc, |inner: _, item: Rc<Node>| {
-                        let is_enum = match v1_rt::map_get(
-                            &type_summaries,
-                            authored_name_at(si.clone(), item.clone()),
-                        ) {
-                            Some(summary) => match (*summary.repr.clone()).clone() {
-                                TypeRepr::EnumRepr { unit_only: _, .. } => true,
-                                _ => false,
-                            },
-                            None => false,
-                        };
-                        if is_enum.clone() {
-                            {
-                                let enum_name = authored_name_at(si.clone(), item.clone());
-                                let variants = item.children.clone();
-                                variants.clone().iter().cloned().fold(
-                                    inner.clone(),
-                                    |vacc: _, variant: Rc<Node>| {
-                                        let has_fields =
-                                            ((variant.children.clone().len() as i64) > 0);
-                                        let is_positional_payload =
-                                            variant_has_positional_payload_shape(
-                                                variant.clone(),
-                                                si.clone(),
-                                            );
-                                        if (has_fields.clone() && !is_positional_payload.clone()) {
-                                            v1_rt::rc_set_insert(
-                                                vacc.clone(),
-                                                v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        enum_name.clone(),
-                                                        "::".to_string(),
-                                                    ),
-                                                    authored_name_at(si.clone(), variant.clone()),
-                                                ),
-                                            )
-                                        } else {
-                                            vacc.clone()
-                                        }
-                                    },
-                                )
-                            }
-                        } else {
-                            inner.clone()
-                        }
-                    })
+        let item_name = authored_name_at(si.clone(), item.clone());
+        let is_enum = match v1_rt::map_get(&type_summaries, item_name.clone()) {
+            Some(summary) => match (*summary.repr.clone()).clone() {
+                TypeRepr::EnumRepr { unit_only: _, .. } => true,
+                _ => false,
             },
-        );
-        result
+            None => false,
+        };
+        if is_enum.clone() {
+            item.children.clone().iter().cloned().fold(
+                acc,
+                |vacc: Rc<EnumVariantShapeSets>, variant: Rc<Node>| {
+                    let qualified = v1_rt::concat(
+                        v1_rt::concat(item_name.clone(), "::".to_string()),
+                        authored_name_at(si.clone(), variant.clone()),
+                    );
+                    let is_positional_payload =
+                        variant_has_positional_payload_shape(variant.clone(), si.clone());
+                    let has_fields = ((variant.children.clone().len() as i64) > 0);
+                    if is_positional_payload.clone() {
+                        Rc::new(EnumVariantShapeSets {
+                            fielded: vacc.fielded.clone(),
+                            positional_payload: v1_rt::rc_set_insert(
+                                vacc.positional_payload.clone(),
+                                qualified.clone(),
+                            ),
+                        })
+                    } else {
+                        if has_fields.clone() {
+                            Rc::new(EnumVariantShapeSets {
+                                fielded: v1_rt::rc_set_insert(
+                                    vacc.fielded.clone(),
+                                    qualified.clone(),
+                                ),
+                                positional_payload: vacc.positional_payload.clone(),
+                            })
+                        } else {
+                            vacc.clone()
+                        }
+                    }
+                },
+            )
+        } else {
+            acc
+        }
     }
 }
 
-pub fn build_positional_payload_variants(
+pub fn build_enum_variant_shape_sets(
     modules: Rc<Vec<Rc<TypedModule>>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-) -> Rc<BTreeSet<String>> {
+) -> Rc<EnumVariantShapeSets> {
     modules.clone().iter().cloned().fold(
-        v1_rt::rc_empty_set::<String>(),
-        |acc: Rc<BTreeSet<String>>, m: Rc<TypedModule>| {
-            let items = m.items.clone();
-            let si = m.type_env.clone().source_indices.clone();
-            items.clone().iter().cloned().fold(
+        Rc::new(EnumVariantShapeSets {
+            fielded: v1_rt::rc_empty_set::<String>(),
+            positional_payload: v1_rt::rc_empty_set::<String>(),
+        }),
+        |acc: Rc<EnumVariantShapeSets>, m: Rc<TypedModule>| {
+            m.items.clone().iter().cloned().fold(
                 acc,
-                |inner: Rc<BTreeSet<String>>, item: Rc<Node>| {
-                    let is_enum = match v1_rt::map_get(
-                        &type_summaries,
-                        authored_name_at(si.clone(), item.clone()),
-                    ) {
-                        Some(summary) => match (*summary.repr.clone()).clone() {
-                            TypeRepr::EnumRepr { unit_only: _, .. } => true,
-                            _ => false,
-                        },
-                        None => false,
-                    };
-                    if is_enum.clone() {
-                        {
-                            let enum_name = authored_name_at(si.clone(), item.clone());
-                            let variants = item.children.clone();
-                            variants.clone().iter().cloned().fold(
-                                inner.clone(),
-                                |vacc: Rc<BTreeSet<String>>, variant: Rc<Node>| {
-                                    if variant_has_positional_payload_shape(
-                                        variant.clone(),
-                                        si.clone(),
-                                    ) {
-                                        v1_rt::rc_set_insert(
-                                            vacc.clone(),
-                                            v1_rt::concat(
-                                                v1_rt::concat(enum_name.clone(), "::".to_string()),
-                                                authored_name_at(si.clone(), variant.clone()),
-                                            ),
-                                        )
-                                    } else {
-                                        vacc.clone()
-                                    }
-                                },
-                            )
-                        }
-                    } else {
-                        inner.clone()
-                    }
+                |inner: Rc<EnumVariantShapeSets>, item: Rc<Node>| {
+                    enum_variant_shape_sets_for_item(
+                        inner,
+                        item.clone(),
+                        m.type_env.clone().source_indices.clone(),
+                        type_summaries.clone(),
+                    )
                 },
             )
         },
@@ -19639,16 +19604,15 @@ pub fn build_emit_graph_info(
                 })
             },
         );
-        let fielded = build_fielded_variants(modules.clone(), built.type_summaries.clone());
-        let positional =
-            build_positional_payload_variants(modules.clone(), built.type_summaries.clone());
+        let variant_shapes =
+            build_enum_variant_shape_sets(modules.clone(), built.type_summaries.clone());
         let vtoe = derive_variant_to_enum(built.type_summaries.clone());
         Rc::new(EmitGraphInfo {
             type_summaries: built.type_summaries.clone(),
             type_decl_items: built.type_decl_items.clone(),
             recursive_type_set: all_recursive.clone(),
-            fielded_variants: fielded.clone(),
-            positional_payload_variants: positional.clone(),
+            fielded_variants: variant_shapes.fielded.clone(),
+            positional_payload_variants: variant_shapes.positional_payload.clone(),
             shared_types: v1_rt::rc_empty_set::<String>(),
             ownership_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
             movable: v1_rt::rc_empty_set::<String>(),
