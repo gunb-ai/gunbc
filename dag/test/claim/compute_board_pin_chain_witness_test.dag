@@ -47,7 +47,10 @@ import product.compute_board.contact_population {
   PopulationsNotComparable,
   VendorGeneralPurposeIo,
   compare_populations,
+  population_kind_name,
   ice40_hx1k_tq144_io_count_gap,
+  citation_is_current,
+  gap_is_open,
 }
 import extdeps.programmable_logic.ice40.subject {
   bank_population_general_purpose,
@@ -355,5 +358,9 @@ test fn w_unlike_populations_refuse_rather_than_disagreeing() -> Bool {
 // cannot read as though nothing else were known about this device's I/O population.
 test fn w_the_conflicting_vendor_count_is_recorded_as_open() -> Bool {
   (ice40_hx1k_tq144_io_count_gap.subject as String) == "iCE40HX1K in TQ144"
-    && list_length(items: split(s: ice40_hx1k_tq144_io_count_gap.unresolved as String, delimiter: "98 total I/O")) > 1
+    && gap_is_open(g: ice40_hx1k_tq144_io_count_gap)
+    && !citation_is_current(c: ice40_hx1k_tq144_io_count_gap.citation_currency)
+    && fold(ice40_hx1k_tq144_io_count_gap.unreconciled, init: false, f: fn(acc, p) {
+      acc || (p.count == 98 && (population_kind_name(k: p.kind) as String) == "vendor total I/O")
+    })
 }

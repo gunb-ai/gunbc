@@ -14,6 +14,7 @@ type ContactPopulationKind
   = AllPackageLeads
   | VendorGeneralPurposeIo
   | VendorDedicatedIo
+  | VendorTotalIo
   | ConfigurationContacts
   | PlaceableLogicPins
 
@@ -22,6 +23,7 @@ fn population_kind_name(k: ContactPopulationKind) -> NonEmptyStr {
     AllPackageLeads => "all package leads"
     VendorGeneralPurposeIo => "vendor general-purpose I/O"
     VendorDedicatedIo => "vendor dedicated I/O"
+    VendorTotalIo => "vendor total I/O"
     ConfigurationContacts => "configuration contacts"
     PlaceableLogicPins => "placeable logic pins"
   }
@@ -97,19 +99,68 @@ data placeable_from_vendor_categories: PopulationProjection = PopulationProjecti
   rationale: "Project IceStorm's placeable roster is believed to comprise the vendor's general-purpose bank contacts plus the configuration contacts, which are physically I/O a design may spend",
 }
 
-// AND THE DISCREPANCY THAT REMAINS, carried rather than resolved. Lattice's current product table
-// describes the HX1K in TQ144 as 98 total I/O plus 2 dedicated I/O. That is 100 against the 96 the
-// bank table and the roster both reach, so the two documents are using different inclusion rules
-// and this model does not yet know which. Recording it as an open gap is the honest state; leaving
-// it out would let the 96-to-96 agreement read as though nothing else were known.
+// AND THE DISCREPANCY THAT REMAINS, decomposed rather than narrated. An earlier revision carried
+// this as two prose String fields, which is the anemic leaf this repository refuses: the
+// conflicting count, the authority that states it, and the fact that our citation is superseded
+// are three separate facts, and a sentence holding all three can be read by a human and by
+// nothing else. A consumer cannot ask "which population disagrees" of a paragraph.
+type CitationCurrency
+  = CitedRevisionCurrent { revision: NonEmptyStr }
+  | CitedRevisionSuperseded { cited: NonEmptyStr, current: NonEmptyStr }
+
+// The populations that reconcile and the one that does not are the same carrier, so the gap is a
+// statement in the same vocabulary as the agreement it qualifies — not a footnote beside it.
 type PopulationGap {
   subject: NonEmptyStr
-  observed: NonEmptyStr
-  unresolved: NonEmptyStr
+  reconciled: List<ContactPopulation>
+  unreconciled: List<ContactPopulation>
+  citation_currency: CitationCurrency
+}
+
+fn gap_is_open(g: PopulationGap) -> Bool {
+  fold(g.unreconciled, init: false, f: fn(acc, _p) { true })
+}
+
+fn citation_is_current(c: CitationCurrency) -> Bool {
+  match c {
+    CitedRevisionCurrent { revision: _ } => true
+    CitedRevisionSuperseded { cited: _, current: _ } => false
+  }
 }
 
 data ice40_hx1k_tq144_io_count_gap: PopulationGap = PopulationGap {
   subject: "iCE40HX1K in TQ144",
-  observed: "the family data sheet's per-bank table sums to 92 general-purpose plus 4 configuration contacts, and Project IceStorm enumerates 96 placeable positions",
-  unresolved: "Lattice's current product table states 98 total I/O plus 2 dedicated I/O for the same device and package, which is 100 by a third inclusion rule; the projection between that count and the other two is not established, and the 2017 family data sheet cited here is superseded by LP/HX v4.3",
+  reconciled: [
+    ContactPopulation {
+      kind: VendorGeneralPurposeIo,
+      count: 92,
+      authority: "iCE40 LP/HX family data sheet per-bank I/O table",
+    },
+    ContactPopulation {
+      kind: ConfigurationContacts,
+      count: 4,
+      authority: "iCE40 LP/HX family data sheet per-bank I/O table",
+    },
+    ContactPopulation {
+      kind: PlaceableLogicPins,
+      count: 96,
+      authority: "Project IceStorm package pin roster",
+    },
+  ],
+  unreconciled: [
+    ContactPopulation {
+      kind: VendorTotalIo,
+      count: 98,
+      authority: "Lattice iCE40 LP/HX product table",
+    },
+    ContactPopulation {
+      kind: VendorDedicatedIo,
+      count: 2,
+      authority: "Lattice iCE40 LP/HX product table",
+    },
+  ],
+  citation_currency: CitedRevisionSuperseded {
+    cited: "iCE40 LP/HX Family Data Sheet DS1040 version 3.4, October 2017",
+    current: "iCE40 LP/HX Family Data Sheet version 4.3",
+  },
 }
