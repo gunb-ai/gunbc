@@ -1,0 +1,84 @@
+module test.claim.codex_supervised_turn_witness_test
+
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import gunbc.roadmap_workflow_command { WorkerTurn }
+import gunbc.codex_app_server_press { AmbientCodexCredentialContext }
+import gunbc.codex_supervised_turn {
+  CodexThreadAbsent,
+  CodexThreadIdle,
+  CodexThreadBusy,
+  CodexTurnStartAdmitted,
+  CodexTurnStartRefusedDuplicateExecution,
+  CodexTurnStartRefusedOutcomeUnobserved,
+  codex_supervised_turn_binding,
+  codex_supervised_turn_session_policy,
+  codex_turn_start_admission,
+}
+import std.temporal_effect {
+  HeldSessionLease,
+  LeaseAbsent,
+  LeaseRunningExpected,
+}
+
+data witness_note: String = "Hermetic witnesses for the supervised-runner slice: std.temporal_effect HeldLease fences one WorkerTurn attempt; thread idle without a runner terminal receipt refuses turn/start (continuity receipt trap); busy thread refuses until the runner writes a receipt."
+
+fn fixture_turn() -> WorkerTurn {
+  WorkerTurn {
+    turn_key: "turn-1",
+    attempt_key: "attempt-1",
+    consumed_feedback: "",
+    resulting_head: none,
+  }
+}
+
+fn fixture_credential() -> AmbientCodexCredentialContext {
+  AmbientCodexCredentialContext {
+    codex_home: "/home/briansrls/.codex@gunbc-roadmap" as FilePath,
+  }
+}
+
+test fn witness_supervised_binding_uses_held_session_lease_policy() -> Bool {
+  let binding = codex_supervised_turn_binding(
+    turn: fixture_turn(),
+    credential: fixture_credential(),
+    observed: LeaseAbsent,
+    standing_receipt: none,
+  )
+  match binding.execution_policy {
+    HeldSessionLease { lease_key: k } => k == ("attempt-1/turn-1" as NonEmptyStr)
+    _ => false
+  }
+}
+
+test fn witness_idle_thread_without_terminal_receipt_refuses_duplicate_execution() -> Bool {
+  match codex_turn_start_admission(terminal_receipt: none, thread: CodexThreadIdle) {
+    CodexTurnStartRefusedDuplicateExecution { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_absent_thread_admits_turn_start() -> Bool {
+  match codex_turn_start_admission(terminal_receipt: none, thread: CodexThreadAbsent) {
+    CodexTurnStartAdmitted => true
+    _ => false
+  }
+}
+
+test fn witness_busy_thread_refuses_outcome_unobserved() -> Bool {
+  match codex_turn_start_admission(terminal_receipt: none, thread: CodexThreadBusy) {
+    CodexTurnStartRefusedOutcomeUnobserved { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_running_lease_observation_is_expected_not_absent() -> Bool {
+  let binding = codex_supervised_turn_binding(
+    turn: fixture_turn(),
+    credential: fixture_credential(),
+    observed: LeaseRunningExpected,
+    standing_receipt: none,
+  )
+  binding.lease.observed == LeaseRunningExpected
+    && codex_supervised_turn_session_policy(lease_key: binding.lease.lease_key)
+      == binding.execution_policy
+}
