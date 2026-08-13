@@ -141,6 +141,12 @@ import v2.std.compilers.target_model {
   TargetOperatorRealization,
   TargetPrimitiveApplyShape,
   TargetValueExpressionProjection,
+  TargetBindLetShape,
+  TargetLoopShape,
+  TargetRecordConstructShape,
+  TargetFieldAccessShape,
+  TargetMatchShape,
+  TargetBoolLiteralShape,
   grammar_relation_row_attach_bodied_scaffold,
   target_operator_realization_node,
   target_operator_realizations_catalog_node,
@@ -655,6 +661,10 @@ fn ts_value_expression_projection_full(
       close: ^ts_token_rbrace,
       fat_arrow: ^ts_token_fat_arrow,
       arm_separator: ^ts_token_comma
+    },
+    bool_literal_form: TargetBoolLiteralShape {
+      true_token: ^dag_token_kw_true,
+      false_token: ^dag_token_kw_false
     },
     block_evaluation_mode: block_evaluation_mode
   }

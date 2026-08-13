@@ -70,6 +70,7 @@ import v2.std.compilers.target_model {
   TargetFieldAccessShape,
   TargetLoopShape,
   TargetMatchShape,
+  TargetBoolLiteralShape,
   TargetPrimitiveApplyShape,
   TargetRecordConstructShape,
   TargetValueExpressionProjection,
@@ -999,6 +1000,10 @@ fn c_value_expression_projection() -> TargetValueExpressionProjection {
       close: ^c_token_rbrace,
       fat_arrow: ^c_token_unwired_fat_arrow,
       arm_separator: ^c_token_comma
+    },
+    bool_literal_form: TargetBoolLiteralShape {
+      true_token: ^dag_token_kw_true,
+      false_token: ^dag_token_kw_false
     },
     block_evaluation_mode: StatementSequenced {
       return_token: ^c_token_kw_return,

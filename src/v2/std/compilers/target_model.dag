@@ -901,6 +901,11 @@ type TargetMatchShape {
   arm_separator: Symbol
 }
 
+type TargetBoolLiteralShape {
+  true_token: Symbol
+  false_token: Symbol
+}
+
 type TargetValueExpressionProjection {
   binding_ref_form: TargetBindingRefShape
   primitive_apply_form: TargetPrimitiveApplyShape
@@ -913,6 +918,7 @@ type TargetValueExpressionProjection {
   record_construct_form: TargetRecordConstructShape
   field_access_form: TargetFieldAccessShape
   match_form: TargetMatchShape
+  bool_literal_form: TargetBoolLiteralShape
   block_evaluation_mode: BlockEvaluationMode
 }
 
@@ -2293,6 +2299,38 @@ fn decode_vep_parent_match(bundle: Node) -> Outcome<TargetMatchShape> {
   )
 }
 
+fn decode_bool_literal_shape_bundle(bundle: Node) -> Outcome<TargetBoolLiteralShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(
+      bundle: bundle,
+      field: ^target_value_expr_field_bool_true_token
+    ),
+    f: fn(true_token) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(
+          bundle: bundle,
+          field: ^target_value_expr_field_bool_false_token
+        ),
+        f: fn(false_token) {
+          outcome_accepted(
+            TargetBoolLiteralShape {
+              true_token: true_token,
+              false_token: false_token
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn decode_vep_parent_bool_literal(bundle: Node) -> Outcome<TargetBoolLiteralShape> {
+  bind_outcome(
+    o: projection_bundle_child(bundle: bundle, name: ^target_value_expr_field_bool_literal),
+    f: decode_bool_literal_shape_bundle
+  )
+}
+
 fn decode_vep_chain_match(
   bundle: Node,
   binding_ref_form: TargetBindingRefShape,
@@ -2309,19 +2347,25 @@ fn decode_vep_chain_match(
   bind_outcome(
     o: decode_vep_parent_match(bundle: bundle),
     f: fn(match_form) {
-      decode_vep_chain_block_eval(
-        bundle: bundle,
-        binding_ref_form: binding_ref_form,
-        primitive_apply_form: primitive_apply_form,
-        callable_apply_form: callable_apply_form,
-        closure_form: closure_form,
-        effect_apply_form: effect_apply_form,
-        conditional_form: conditional_form,
-        let_form: let_form,
-        loop_form: loop_form,
-        record_construct_form: record_construct_form,
-        field_access_form: field_access_form,
-        match_form: match_form
+      bind_outcome(
+        o: decode_vep_parent_bool_literal(bundle: bundle),
+        f: fn(bool_literal_form) {
+          decode_vep_chain_block_eval(
+            bundle: bundle,
+            binding_ref_form: binding_ref_form,
+            primitive_apply_form: primitive_apply_form,
+            callable_apply_form: callable_apply_form,
+            closure_form: closure_form,
+            effect_apply_form: effect_apply_form,
+            conditional_form: conditional_form,
+            let_form: let_form,
+            loop_form: loop_form,
+            record_construct_form: record_construct_form,
+            field_access_form: field_access_form,
+            match_form: match_form,
+            bool_literal_form: bool_literal_form
+          )
+        }
       )
     }
   )
@@ -2346,7 +2390,8 @@ fn decode_vep_chain_block_eval(
   loop_form: TargetLoopShape,
   record_construct_form: TargetRecordConstructShape,
   field_access_form: TargetFieldAccessShape,
-  match_form: TargetMatchShape
+  match_form: TargetMatchShape,
+  bool_literal_form: TargetBoolLiteralShape
 ) -> Outcome<TargetValueExpressionProjection> {
   bind_outcome(
     o: decode_vep_parent_block_eval(bundle: bundle),
@@ -2364,6 +2409,7 @@ fn decode_vep_chain_block_eval(
           record_construct_form: record_construct_form,
           field_access_form: field_access_form,
           match_form: match_form,
+          bool_literal_form: bool_literal_form,
           block_evaluation_mode: block_evaluation_mode
         }
       )
@@ -6199,20 +6245,85 @@ fn target_value_expr_match_arm_tokens(
 
 data target_value_expr_int_bool_octet_channel_dissolution_note: String = "Staging bridge only: inline scrutinee `x != 0` decodes Int wire to bool at the match seam. Ground on the modeled octet↔bool codec authority once inhabited ({0,1} domain, not general nonzero) — do not let this bridge harden into a second decode nickname. interim bindings: ^dag_binding_octet_zero/^dag_binding_octet_one spell 0/1 until codec rows land. scaffold-widen: infer half emits infer_match_int_scrutinee_bool_literal_scaffold diagnostic on Int-scrutinee bool-literal match (countable). paired-scaffold: infer half = infer_match_int_scrutinee_bool_literal_body_note (04_infer.dag) — dissolve both halves together on octet↔bool codec inhabitation."
 
-fn target_value_expr_is_bool_kw_symbol_identity(expr: TargetValueExpression) -> Bool {
+fn target_value_expr_bool_literal_value_from_atom(node: Node) -> Optional<Bool> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == ^target_value_expression_bool_true {
+        optional_present(true)
+      } else if id == ^target_value_expression_bool_false {
+        optional_present(false)
+      } else {
+        optional_absent()
+      }
+    _ => optional_absent()
+  }
+}
+
+fn target_value_expr_bool_literal_value_from_source_symbol(
+  id: Symbol,
+  bool_form: TargetBoolLiteralShape
+) -> Optional<Bool> {
+  if id == bool_form.true_token || id == ^target_value_expression_bool_true {
+    optional_present(true)
+  } else if id == bool_form.false_token || id == ^target_value_expression_bool_false {
+    optional_present(false)
+  } else {
+    optional_absent()
+  }
+}
+
+fn target_value_expression_bool_literal_value_from_wire(wire: Node) -> Optional<Bool> {
+  match find_named_child(root: wire, name: ^target_value_expression_field_value) {
+    Accepted { value: value_node, diagnostics: _ } =>
+      target_value_expr_bool_literal_value_from_atom(node: value_node)
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+fn target_value_expr_bool_literal_value_from_expression(
+  expr: TargetValueExpression,
+  bool_form: TargetBoolLiteralShape
+) -> Optional<Bool> {
   match expr.kind {
+    TargetValueExprBoolLiteral =>
+      target_value_expression_bool_literal_value_from_wire(wire: expr.node)
     TargetValueExprSymbolIdentity =>
       match target_value_expression_symbol_identity_from_wire(wire: expr.node) {
         Accepted { value: id, diagnostics: _ } =>
-          id == ^dag_token_kw_true || id == ^dag_token_kw_false
-        Rejected { diagnostics: _ } => false
+          target_value_expr_bool_literal_value_from_source_symbol(id: id, bool_form: bool_form)
+        Rejected { diagnostics: _ } => optional_absent()
+      }
+    _ => optional_absent()
+  }
+}
+
+fn target_value_expr_is_bool_literal_expression(
+  expr: TargetValueExpression,
+  bool_form: TargetBoolLiteralShape
+) -> Bool {
+  match target_value_expr_bool_literal_value_from_expression(expr: expr, bool_form: bool_form) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn target_value_expr_is_source_bool_literal_atom(
+  node: Node,
+  bool_form: TargetBoolLiteralShape
+) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      match target_value_expr_bool_literal_value_from_source_symbol(id: id, bool_form: bool_form) {
+        Present { value: _ } => true
+        Absent => false
       }
     _ => false
   }
 }
 
 fn target_value_expr_match_arms_are_int_bool_octet_channel(
-  arms: List<TargetValueExprMatchArmSlot>
+  arms: List<TargetValueExprMatchArmSlot>,
+  bool_form: TargetBoolLiteralShape
 ) -> Bool {
   if is_empty(xs: arms) {
     false
@@ -6220,8 +6331,8 @@ fn target_value_expr_match_arms_are_int_bool_octet_channel(
     !any(
       xs: arms,
       predicate: fn(arm) {
-        !target_value_expr_is_bool_kw_symbol_identity(expr: arm.pattern)
-          || !target_value_expr_is_bool_kw_symbol_identity(expr: arm.body)
+        !target_value_expr_is_bool_literal_expression(expr: arm.pattern, bool_form: bool_form)
+          || !target_value_expr_is_bool_literal_expression(expr: arm.body, bool_form: bool_form)
       }
     )
   }
@@ -6229,52 +6340,55 @@ fn target_value_expr_match_arms_are_int_bool_octet_channel(
 
 fn target_value_expr_match_is_int_bool_octet_channel(
   scrutinee: TargetValueExpression,
-  arms: List<TargetValueExprMatchArmSlot>
+  arms: List<TargetValueExprMatchArmSlot>,
+  bool_form: TargetBoolLiteralShape
 ) -> Bool {
   match scrutinee.kind {
     TargetValueExprBindingRef =>
-      target_value_expr_match_arms_are_int_bool_octet_channel(arms: arms)
+      target_value_expr_match_arms_are_int_bool_octet_channel(
+        arms: arms,
+        bool_form: bool_form
+      )
     _ => false
   }
 }
 
-fn target_value_expr_bool_kw_octet_body_tokens(
+fn target_value_expr_bool_literal_octet_body_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection
 ) -> Outcome<List<ConcreteSyntaxToken>> {
-  bind_outcome(
-    o: target_value_expression_symbol_identity_from_wire(wire: expr.node),
-    f: fn(token_class) {
-      if token_class == ^dag_token_kw_false {
-        outcome_accepted(
-          Cons {
-            head: target_value_expression_binding_ref_token(
-              binding: ^dag_binding_octet_zero,
-              projection: projection
-            ),
-            tail: Empty
-          }
+  match target_value_expr_bool_literal_value_from_expression(
+    expr: expr,
+    bool_form: projection.bool_literal_form
+  ) {
+    Present { value: false } =>
+      outcome_accepted(
+        Cons {
+          head: target_value_expression_binding_ref_token(
+            binding: ^dag_binding_octet_zero,
+            projection: projection
+          ),
+          tail: Empty
+        }
+      )
+    Present { value: true } =>
+      outcome_accepted(
+        Cons {
+          head: target_value_expression_binding_ref_token(
+            binding: ^dag_binding_octet_one,
+            projection: projection
+          ),
+          tail: Empty
+        }
+      )
+    Absent =>
+      outcome_rejected(
+        target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_transform_shape_invalid,
+          node: expr.node
         )
-      } else if token_class == ^dag_token_kw_true {
-        outcome_accepted(
-          Cons {
-            head: target_value_expression_binding_ref_token(
-              binding: ^dag_binding_octet_one,
-              projection: projection
-            ),
-            tail: Empty
-          }
-        )
-      } else {
-        outcome_rejected(
-          target_value_expr_diagnostic(
-            reason: ^target_value_expr_reason_transform_shape_invalid,
-            node: expr.node
-          )
-        )
-      }
-    }
-  )
+      )
+  }
 }
 
 fn target_value_expr_int_bool_octet_scrutinee_carrier_tokens(
@@ -6337,7 +6451,7 @@ fn target_value_expr_match_arm_tokens_int_bool_octet_channel(
             ),
             f: fn(pattern_tokens) {
               bind_outcome(
-                o: target_value_expr_bool_kw_octet_body_tokens(
+                o: target_value_expr_bool_literal_octet_body_tokens(
                   expr: arm.body,
                   projection: projection
                 ),
@@ -6417,7 +6531,8 @@ fn target_value_expression_match_to_concrete_tokens_inner(
                 f: fn(scrutinee_tokens) {
                   if target_value_expr_match_is_int_bool_octet_channel(
                     scrutinee: scrutinee,
-                    arms: arms
+                    arms: arms,
+                    bool_form: projection.bool_literal_form
                   ) {
                     bind_outcome(
                       o: target_value_expr_int_bool_octet_scrutinee_carrier_tokens(
@@ -6504,6 +6619,39 @@ fn target_value_expression_match_concrete_token_shell(
     acc: with_arms,
     token_class: projection.match_form.close
   )
+}
+
+fn target_value_expression_bool_literal_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match target_value_expr_bool_literal_value_from_expression(
+    expr: expr,
+    bool_form: projection.bool_literal_form
+  ) {
+    Present { value: true } =>
+      outcome_accepted(
+        Cons {
+          head: FixedToken {
+            token_class: projection.bool_literal_form.true_token
+          },
+          tail: Empty
+        }
+      )
+    Present { value: false } =>
+      outcome_accepted(
+        Cons {
+          head: FixedToken {
+            token_class: projection.bool_literal_form.false_token
+          },
+          tail: Empty
+        }
+      )
+    Absent =>
+      outcome_rejected(
+        target_value_expression_emit_unsupported_kind_diagnostic(expr: expr)
+      )
+  }
 }
 
 fn target_value_expression_symbol_identity_to_concrete_tokens(
@@ -6999,6 +7147,11 @@ fn target_value_expression_to_concrete_tokens(
       )
     TargetValueExprSymbolIdentity =>
       target_value_expression_symbol_identity_to_concrete_tokens(
+        expr: expr,
+        projection: projection
+      )
+    TargetValueExprBoolLiteral =>
+      target_value_expression_bool_literal_to_concrete_tokens(
         expr: expr,
         projection: projection
       )
@@ -7518,6 +7671,25 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
               name: ^target_value_expr_field_match_arm_separator,
               target: target_model_type_atom_node(
                 identity: projection.match_form.arm_separator
+              )
+            )
+          ]
+        )
+      ),
+      target_model_named_edge(
+        name: ^target_value_expr_field_bool_literal,
+        target: target_model_type_conj_node(
+          children: [
+            target_model_named_edge(
+              name: ^target_value_expr_field_bool_true_token,
+              target: target_model_type_atom_node(
+                identity: projection.bool_literal_form.true_token
+              )
+            ),
+            target_model_named_edge(
+              name: ^target_value_expr_field_bool_false_token,
+              target: target_model_type_atom_node(
+                identity: projection.bool_literal_form.false_token
               )
             )
           ]
@@ -12234,21 +12406,23 @@ fn target_project_transform_callable_apply_in_arrow_scope(
   )
 }
 
-fn target_value_expr_cond_is_bool_atom(node: Node) -> Bool {
-  match node.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      id == ^dag_token_kw_true || id == ^dag_token_kw_false
-    _ => false
-  }
+fn target_value_expr_cond_is_bool_atom(
+  node: Node,
+  bool_form: TargetBoolLiteralShape
+) -> Bool {
+  target_value_expr_is_source_bool_literal_atom(node: node, bool_form: bool_form)
 }
 
-fn target_value_expr_branch_bool_gate(node: Node) -> Bool {
+fn target_value_expr_branch_bool_gate(
+  node: Node,
+  bool_form: TargetBoolLiteralShape
+) -> Bool {
   if length(xs: node_positional_child_targets(node: node)) != 3 {
     false
   } else {
     match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
       Present { value: cond } =>
-        target_value_expr_cond_is_bool_atom(node: cond)
+        target_value_expr_cond_is_bool_atom(node: cond, bool_form: bool_form)
       Absent => false
     }
   }
@@ -12353,16 +12527,24 @@ fn target_value_expr_binding_ref_for_literal_atom(id: Symbol) -> Optional<Symbol
   }
 }
 
-fn target_value_expr_project_pick_literal_atom(id: Symbol) -> Outcome<TargetValueExpression> {
-  match target_value_expr_binding_ref_for_literal_atom(id: id) {
-    Present { value: binding } =>
-      outcome_accepted(
-        target_value_expression_binding_ref(binding: binding)
-      )
+fn target_value_expr_project_pick_literal_atom(
+  id: Symbol,
+  bool_form: TargetBoolLiteralShape
+) -> Outcome<TargetValueExpression> {
+  match target_value_expr_bool_literal_value_from_source_symbol(id: id, bool_form: bool_form) {
+    Present { value: b } =>
+      outcome_accepted(target_value_expression_bool_literal(value: b))
     Absent =>
-      outcome_accepted(
-        target_value_expression_symbol_identity(identity: id)
-      )
+      match target_value_expr_binding_ref_for_literal_atom(id: id) {
+        Present { value: binding } =>
+          outcome_accepted(
+            target_value_expression_binding_ref(binding: binding)
+          )
+        Absent =>
+          outcome_accepted(
+            target_value_expression_symbol_identity(identity: id)
+          )
+      }
   }
 }
 
@@ -12371,45 +12553,64 @@ fn target_value_expr_project_atom_in_arrow_scope(
   node: Node,
   target: TargetModel
 ) -> Outcome<TargetValueExpression> {
-  match node.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      match target_value_expr_arrow_body_scope_binding(
-        arrow: arrow,
-        body: node,
-        binding: id,
-        target: target
-      ) {
-        Accepted { value: scoped, diagnostics: d } =>
-          outcome_accepted(
-            target_value_expression_binding_ref(binding: scoped)
+  bind_outcome(
+    o: target_value_expression_projection_from_target(target: target),
+    f: fn(projection) {
+      match node.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          match target_value_expr_arrow_body_scope_binding(
+            arrow: arrow,
+            body: node,
+            binding: id,
+            target: target
+          ) {
+            Accepted { value: scoped, diagnostics: d } =>
+              outcome_accepted(
+                target_value_expression_binding_ref(binding: scoped)
+              )
+            Rejected { diagnostics: _ } =>
+              target_value_expr_project_atom_literal(
+                node: node,
+                bool_form: projection.bool_literal_form
+              )
+          }
+        _ =>
+          outcome_rejected(
+            target_value_expr_diagnostic(
+              reason: ^target_value_expr_reason_transform_shape_invalid,
+              node: node
+            )
           )
-        Rejected { diagnostics: _ } =>
-          target_value_expr_project_atom_literal(node: node)
       }
-    _ =>
-      outcome_rejected(
-        target_value_expr_diagnostic(
-          reason: ^target_value_expr_reason_transform_shape_invalid,
-          node: node
-        )
-      )
-  }
+    }
+  )
 }
 
-fn target_value_expr_project_atom_literal(node: Node) -> Outcome<TargetValueExpression> {
+fn target_value_expr_project_atom_literal(
+  node: Node,
+  bool_form: TargetBoolLiteralShape
+) -> Outcome<TargetValueExpression> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
       if id == ^target_value_expression_symbol_identity_atom {
         bind_outcome(
           o: target_value_expression_symbol_identity_from_wire(wire: node),
           f: fn(inner_id) {
-            target_value_expr_project_pick_literal_atom(id: inner_id)
+            target_value_expr_project_pick_literal_atom(
+              id: inner_id,
+              bool_form: bool_form
+            )
           }
         )
       } else if target_value_expr_is_int_literal_atom(node: node) {
         target_value_expr_project_int_literal_atom(node: node)
       } else {
-        target_value_expr_project_pick_literal_atom(id: id)
+        match target_value_expr_bool_literal_value_from_atom(node: node) {
+          Present { value: b } =>
+            outcome_accepted(target_value_expression_bool_literal(value: b))
+          Absent =>
+            target_value_expr_project_pick_literal_atom(id: id, bool_form: bool_form)
+        }
       }
     _ =>
       outcome_rejected(
@@ -12777,15 +12978,21 @@ fn target_project_branch_bool_if_else(
   target: TargetModel,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
-  if !target_value_expr_branch_bool_gate(node: body) {
-    outcome_rejected(
-      target_value_expr_diagnostic(
-        reason: ^target_value_expr_reason_transform_shape_invalid,
-        node: body
-      )
-    )
-  } else {
-    match list_at_optional(xs: node_positional_child_targets(node: body), index: 0) {
+  bind_outcome(
+    o: target_value_expression_projection_from_target(target: target),
+    f: fn(projection) {
+      if !target_value_expr_branch_bool_gate(
+        node: body,
+        bool_form: projection.bool_literal_form
+      ) {
+        outcome_rejected(
+          target_value_expr_diagnostic(
+            reason: ^target_value_expr_reason_transform_shape_invalid,
+            node: body
+          )
+        )
+      } else {
+        match list_at_optional(xs: node_positional_child_targets(node: body), index: 0) {
       Absent =>
         outcome_rejected(
           target_value_expr_diagnostic(
@@ -12851,8 +13058,9 @@ fn target_project_branch_bool_if_else(
                 )
             }
         }
+      }
     }
-  }
+  )
 }
 
 fn target_value_expr_bind_let_gate(node: Node) -> Bool {
@@ -12949,10 +13157,18 @@ fn target_project_loop(
         )
       Present { value: literal_node } =>
         bind_outcome(
-          o: target_value_expr_project_atom_literal(node: literal_node),
-          f: fn(projected_body) {
-            outcome_accepted(
-              target_value_expression_loop(body: projected_body)
+          o: target_value_expression_projection_from_target(target: target),
+          f: fn(projection) {
+            bind_outcome(
+              o: target_value_expr_project_atom_literal(
+                node: literal_node,
+                bool_form: projection.bool_literal_form
+              ),
+              f: fn(projected_body) {
+                outcome_accepted(
+                  target_value_expression_loop(body: projected_body)
+                )
+              }
             )
           }
         )
