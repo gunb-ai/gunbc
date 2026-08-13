@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, List }
 import std.measure { Measure }
 import product.compute_board.analog {
   AnalogCircuitIntent,
-  CapacitanceNanofarads,
+  CapacitorInstance,
   ComponentInstanceIdentity,
   ComponentModelBinding,
   ElectricalComponentInstance,
@@ -12,12 +12,9 @@ import product.compute_board.analog {
   ElectricalModelCited,
   ElectricalNet,
   IdealLumped,
-  IndependentVoltageSource,
+  IndependentVoltageSourceInstance,
   NetIdentity,
-  PassiveCapacitor,
-  PassiveResistor,
-  PotentialSourceVolts,
-  ResistanceKilohms,
+  ResistorInstance,
   TerminalIdentity,
   VendorSubcircuit,
   terminal_ref,
@@ -32,6 +29,8 @@ import product.compute_board.spice_projection {
   TerminalOnNoNet,
   TerminalOnMultipleNets,
   DuplicateModelBinding,
+  IdentityNotSpellableInTarget,
+  NetNotSpellableInTarget,
   project_analog_to_spice,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -47,31 +46,28 @@ data rail_net: NetIdentity = "rail" as NetIdentity
 
 data return_net: NetIdentity = "rtn" as NetIdentity
 
-data sense_resistor: ElectricalComponentInstance = ElectricalComponentInstance {
+data sense_resistor: ElectricalComponentInstance = ResistorInstance {
   identity: "sense" as ComponentInstanceIdentity,
   part: "series sense resistor",
-  role: PassiveResistor,
   positive_terminal: "1" as TerminalIdentity,
   negative_terminal: "2" as TerminalIdentity,
-  value: ResistanceKilohms { magnitude: Measure { count: 10 } },
+  resistance: Measure { count: 10 },
 }
 
-data decoupling_capacitor: ElectricalComponentInstance = ElectricalComponentInstance {
+data decoupling_capacitor: ElectricalComponentInstance = CapacitorInstance {
   identity: "decap" as ComponentInstanceIdentity,
   part: "bulk decoupling capacitor",
-  role: PassiveCapacitor,
   positive_terminal: "1" as TerminalIdentity,
   negative_terminal: "2" as TerminalIdentity,
-  value: CapacitanceNanofarads { magnitude: Measure { count: 100 } },
+  capacitance: Measure { count: 100 },
 }
 
-data rail_supply: ElectricalComponentInstance = ElectricalComponentInstance {
+data rail_supply: ElectricalComponentInstance = IndependentVoltageSourceInstance {
   identity: "rail_src" as ComponentInstanceIdentity,
   part: "standby rail source",
-  role: IndependentVoltageSource,
   positive_terminal: "1" as TerminalIdentity,
   negative_terminal: "2" as TerminalIdentity,
-  value: PotentialSourceVolts { magnitude: Measure { count: 12 } },
+  potential_difference: Measure { count: 12 },
 }
 
 fn nets_for(components: List<ElectricalComponentInstance>) -> List<ElectricalNet> {
@@ -153,13 +149,12 @@ test fn w_modelled_circuit_emits_expected_deck_bytes() -> Bool {
 
 // PERTURB EXACTLY ONE TYPED VALUE and the deck must change. This is what makes the byte equality
 // above an oracle rather than a pinned constant: the emission is a function of the model.
-data perturbed_resistor: ElectricalComponentInstance = ElectricalComponentInstance {
+data perturbed_resistor: ElectricalComponentInstance = ResistorInstance {
   identity: "sense" as ComponentInstanceIdentity,
   part: "series sense resistor",
-  role: PassiveResistor,
   positive_terminal: "1" as TerminalIdentity,
   negative_terminal: "2" as TerminalIdentity,
-  value: ResistanceKilohms { magnitude: Measure { count: 47 } },
+  resistance: Measure { count: 47 },
 }
 
 test fn w_one_perturbed_value_changes_the_deck() -> Bool {
@@ -187,6 +182,8 @@ test fn w_unmodelled_element_refuses_and_emits_nothing() -> Bool {
         TerminalOnNoNet { part: _ } => false
         TerminalOnMultipleNets { part: _ } => false
         DuplicateModelBinding { component: _ } => false
+        IdentityNotSpellableInTarget { component: _ } => false
+        NetNotSpellableInTarget { net: _ } => false
       }
     SpiceSliceProjected { receipt: _ } => false
   }
@@ -221,6 +218,8 @@ test fn w_vendor_subcircuit_refuses_rather_than_emitting_an_ideal_part() -> Bool
         TerminalOnNoNet { part: _ } => false
         TerminalOnMultipleNets { part: _ } => false
         DuplicateModelBinding { component: _ } => false
+        IdentityNotSpellableInTarget { component: _ } => false
+        NetNotSpellableInTarget { net: _ } => false
       }
     SpiceSliceProjected { receipt: _ } => false
   }
@@ -239,6 +238,8 @@ test fn w_missing_binding_is_not_an_absent_model() -> Bool {
         TerminalOnNoNet { part: _ } => false
         TerminalOnMultipleNets { part: _ } => false
         DuplicateModelBinding { component: _ } => false
+        IdentityNotSpellableInTarget { component: _ } => false
+        NetNotSpellableInTarget { net: _ } => false
       }
     SpiceSliceProjected { receipt: _ } => false
   }
@@ -274,6 +275,8 @@ test fn w_terminal_on_no_net_refuses_rather_than_defaulting_to_reference() -> Bo
         ComponentModelBindingMissing { part: _ } => false
         TerminalOnMultipleNets { part: _ } => false
         DuplicateModelBinding { component: _ } => false
+        IdentityNotSpellableInTarget { component: _ } => false
+        NetNotSpellableInTarget { net: _ } => false
       }
     SpiceSliceProjected { receipt: _ } => false
   }
