@@ -5338,10 +5338,8 @@ pub fn lib_rs_mod_name_from_file(f: Rc<TextFile>) -> String {
 }
 
 pub fn emit_lib_rs_mod_decl(mod_name: String) -> String {
-    if (mod_name.clone() == "v1_interpreter_dispatch_generated".to_string()) {
-        "#[macro_use]\npub mod v1_interpreter_dispatch_generated;".to_string()
-    } else {
-        v1_rt::concat(
+    {
+        let declaration = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
@@ -5353,7 +5351,12 @@ pub fn emit_lib_rs_mod_decl(mod_name: String) -> String {
                 mod_name.clone(),
             ),
             ";".to_string(),
-        )
+        );
+        if is_lib_rs_macro_provider(mod_name.clone()) {
+            v1_rt::concat("#[macro_use]\n".to_string(), declaration.clone())
+        } else {
+            declaration.clone()
+        }
     }
 }
 

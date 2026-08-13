@@ -2349,11 +2349,18 @@ fn lib_rs_mod_name_from_file(f: TextFile) -> String {
   substring(s: f.path, start: src_prefix_len, end: path_len - ext_len)
 }
 
+// ONE role, TWO projections. Being a macro provider decides both how the module is
+// RENDERED (`#[macro_use]`) and where it is ORDERED (ahead of its consumers), and the
+// two were independently written comparisons against the same literal until this
+// consolidation — so a second provider could have been added to one and missed by the
+// other, or a module ordered first while rendered as an ordinary `pub mod`. That is a
+// smaller copy of the very disagreement this emitter's membership repair removed.
 fn emit_lib_rs_mod_decl(mod_name: String) -> String {
-  if mod_name == "v1_interpreter_dispatch_generated" {
-    "#[macro_use]\npub mod v1_interpreter_dispatch_generated;"
+  let declaration = concat(rust_visibility_prefix(), rust_items().module_keyword, " ", mod_name, ";")
+  if is_lib_rs_macro_provider(mod_name: mod_name) {
+    concat("#[macro_use]\n", declaration)
   } else {
-    concat(rust_visibility_prefix(), rust_items().module_keyword, " ", mod_name, ";")
+    declaration
   }
 }
 

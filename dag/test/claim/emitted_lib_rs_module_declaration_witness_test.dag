@@ -27,13 +27,30 @@ module test.claim.emitted_lib_rs_module_declaration_witness_test
 // real lib.rs that declares this probe's own module, so the exclusion above is
 // evidence of absence rather than evidence of an unread file.
 //
-// WHAT THIS FILE DOES NOT COVER, stated rather than left to be assumed: the
-// ORDER dimension. The dispatch module defines macro_rules! arms that
-// v1_interpreter invokes unqualified, so its declaration must precede that
-// consumer, and a partial crate that genuinely emits it renders it first. This
-// oracle checks substring presence and absence, which cannot express position,
-// so the ordering constraint is held by the stage0 regen drift gate (the full
-// lib.rs must stay byte-identical) and not by anything here.
+// THE SECOND DIMENSION, ORDER, is covered below, and the first revision of this
+// file was wrong about who covered it: it deferred the ordering constraint to the
+// stage0 regen drift gate. Stage0 takes the OTHER branch — it has compiler tests,
+// so it calls order_lib_rs_mod_names and gets the dispatch declaration from the
+// admitted hand block — so that gate never reaches the partial-crate ordering at
+// all, and order_partial_lib_rs_mod_names could have been replaced by the identity
+// function with every check in this repository still green. The claim was caught by
+// review (gunbc#8222), not by execution, which is the point: a deferral naming the
+// wrong consumer reads exactly like coverage.
+//
+// The ordering probe below therefore emits a crate that GENUINELY materializes the
+// macro provider, so the provider partition is non-empty. Position is expressible in
+// a substring oracle by anchoring: the emitted preamble is fixed, so pinning the
+// provider declaration to the text immediately following it asserts the provider is
+// the FIRST declaration, which membership alone cannot say.
+//
+// The anchor is the preamble rather than a neighbouring module because an adjacency
+// oracle over the provider and the imported std module was written first, run, and
+// REFUTED — other modules of the closure sit between them.
+//
+// DISCRIMINATION, measured rather than argued (this worktree, release claim_batch):
+// with order_partial_lib_rs_mod_names as written the claim PASSES; with that function
+// replaced by the identity, rebuilt, it FAILS. Raw emitted-file order does not put the
+// provider first, so this claim is the control the ordering construction lacked.
 
 data lrd_probe_source: String = "module lrd_probe\n\nimport std.types { Bool }\n\nfn lrd_true() -> Bool {\n  true\n}\n"
 
@@ -55,10 +72,25 @@ fn w_small_crate_lib_rs_declares_its_own_emitted_module() -> Bool {
   )
 }
 
+data lrd_provider_source: String = "module v1_interpreter_dispatch_generated\n\nimport std.types { Bool }\n\nfn lrd_provider_true() -> Bool {\n  true\n}\n"
+
+fn w_partial_crate_declares_macro_provider_before_ordinary_modules() -> Bool {
+  compile_dag_rust_emit_check(
+    lrd_provider_source,
+    "src/lib.rs",
+    ["use im::\{OrdSet as BTreeSet, Vector as Vec};\n\n#[macro_use]\npub mod v1_interpreter_dispatch_generated;\n"],
+    []
+  )
+}
+
 test fn small_crate_lib_rs_omits_unemitted_dispatch_module() -> Bool {
   w_small_crate_lib_rs_omits_unemitted_dispatch_module()
 }
 
 test fn small_crate_lib_rs_declares_its_own_emitted_module() -> Bool {
   w_small_crate_lib_rs_declares_its_own_emitted_module()
+}
+
+test fn partial_crate_declares_macro_provider_before_ordinary_modules() -> Bool {
+  w_partial_crate_declares_macro_provider_before_ordinary_modules()
 }
