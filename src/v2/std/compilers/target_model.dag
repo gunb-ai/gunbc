@@ -4801,6 +4801,13 @@ fn target_value_expression_reify_from_wire(wire: Node) -> Outcome<TargetValueExp
             node: wire
           }
         )
+      } else if atom_id == ^target_value_expression_bool_literal_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprBoolLiteral,
+            node: wire
+          }
+        )
       } else if atom_id == ^target_value_expression_conditional_atom {
         outcome_accepted(
           TargetValueExpression {
@@ -6259,13 +6266,27 @@ fn target_value_expr_bool_literal_value_from_atom(node: Node) -> Optional<Bool> 
   }
 }
 
+fn target_value_expr_source_bool_true_symbol(
+  id: Symbol,
+  bool_form: TargetBoolLiteralShape
+) -> Bool {
+  id == bool_form.true_token || id == ^target_value_expression_bool_true || id == ^dag_token_kw_true || id == ^rust_token_kw_true || id == ^ts_token_kw_true || id == ^c_token_kw_true
+}
+
+fn target_value_expr_source_bool_false_symbol(
+  id: Symbol,
+  bool_form: TargetBoolLiteralShape
+) -> Bool {
+  id == bool_form.false_token || id == ^target_value_expression_bool_false || id == ^dag_token_kw_false || id == ^rust_token_kw_false || id == ^ts_token_kw_false || id == ^c_token_kw_false
+}
+
 fn target_value_expr_bool_literal_value_from_source_symbol(
   id: Symbol,
   bool_form: TargetBoolLiteralShape
 ) -> Optional<Bool> {
-  if id == bool_form.true_token || id == ^target_value_expression_bool_true {
+  if target_value_expr_source_bool_true_symbol(id: id, bool_form: bool_form) {
     optional_present(true)
-  } else if id == bool_form.false_token || id == ^target_value_expression_bool_false {
+  } else if target_value_expr_source_bool_false_symbol(id: id, bool_form: bool_form) {
     optional_present(false)
   } else {
     optional_absent()
@@ -6273,10 +6294,27 @@ fn target_value_expr_bool_literal_value_from_source_symbol(
 }
 
 fn target_value_expression_bool_literal_value_from_wire(wire: Node) -> Optional<Bool> {
-  match find_named_child(root: wire, name: ^target_value_expression_field_value) {
-    Accepted { value: value_node, diagnostics: _ } =>
-      target_value_expr_bool_literal_value_from_atom(node: value_node)
-    Rejected { diagnostics: _ } => optional_absent()
+  match fold(
+    wire.children,
+    init: optional_absent(),
+    f: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match edge.label {
+            Named { name: n } =>
+              if n == ^target_value_expression_field_value {
+                target_value_expr_bool_literal_value_from_atom(node: edge.target)
+              } else {
+                acc
+              }
+            Positional => acc
+          }
+      }
+    }
+  ) {
+    Present { value: b } => optional_present(value: b)
+    Absent => optional_absent()
   }
 }
 

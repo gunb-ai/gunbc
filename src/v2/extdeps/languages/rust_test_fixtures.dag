@@ -39,6 +39,7 @@ import v2.extdeps.languages.rust {
   rust_target_model_core_edges_with_operators,
   rust_type_expression_projection_bundle_node,
   rust_value_expression_projection,
+  rust_value_expression_family_lex_rules,
   rust_value_semantics_carrier_atoms,
   rust_whitespace_trivia_rule
 }
@@ -226,16 +227,18 @@ fn rust_pick_binding_spellings() -> Map<Symbol, String> {
 fn rust_pick_additional_lex_rules() -> List<LexRule> {
   [
     rust_lex_rule(token_class: ^rust_token_kw_if, text: "if "),
-    rust_lex_rule(token_class: ^rust_token_unwired_else, text: " } else { "),
-    rust_lex_rule(token_class: ^dag_token_kw_true, text: "true")
+    rust_lex_rule(token_class: ^rust_token_unwired_else, text: " } else { ")
   ]
 }
 
 fn rust_pick_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: list_append(
-      left: rust_fn_add_lex_rules().rules,
-      right: rust_pick_additional_lex_rules()
+      left: list_append(
+        left: rust_fn_add_lex_rules().rules,
+        right: rust_pick_additional_lex_rules()
+      ),
+      right: rust_value_expression_family_lex_rules()
     )
   }
 }
