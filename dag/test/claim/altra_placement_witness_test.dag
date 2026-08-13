@@ -20,9 +20,7 @@ import product.altra_motherboard.placement {
   PlannedComponent,
   PlannedIdentityRepeated,
   ProcessorSocket,
-  RedistributionUnresolved,
   RequiredRoleUnfilled,
-  VendorSelectionNotMade,
   admit_placement,
   altra_board_frame,
   altra_reference_plan,
@@ -36,6 +34,12 @@ import product.altra_motherboard.placement {
   required_roles,
   role_tag,
   roles_equal,
+}
+import product.altra_motherboard.attachment_stack {
+  NdaGated,
+  PublicButRedistributionUndecided,
+  Unresolved,
+  processor_package_standing,
 }
 import product.altra_motherboard.minimal_design {
   FourChannels,
@@ -115,9 +119,11 @@ test fn w_the_outstanding_obligations_are_counted_exactly() -> Bool {
   }
 }
 
-// THE TWO GAPS ARE NOT ONE GAP. The processor socket is blocked by a redistribution question and
-// the clock generator by an unmade part choice; those go to different people. A model that
-// collapsed them into one absent would send both to whoever read it first.
+// THE TWO GAPS ARE NOT ONE GAP, AND THEY ARE THE ATTACHMENT STACK'S ARMS RATHER THAN THIS
+// MODULE'S. The processor socket is blocked by a redistribution question carrying its cited
+// authority and proprietary footer; the clock generator by a part nobody has chosen. Those go to
+// different people. This also pins the consumption: the socket's gap must be the SAME standing the
+// attachment stack declares, not a copy that happens to match today.
 test fn w_the_redistribution_gap_is_distinct_from_an_unmade_part_choice() -> Bool {
   match plan_or_empty() {
     Absent => false
@@ -127,10 +133,10 @@ test fn w_the_redistribution_gap_is_distinct_from_an_unmade_part_choice() -> Boo
           EnvelopeEstablished { envelope: _, source: _ } => acc
           EnvelopeNotEstablished { gap: g } =>
             match g {
-              RedistributionUnresolved { subject: s } =>
-                acc || (list_length(items: split(s: s as String, delimiter: "Ampere")) > 1
-                  && roles_equal(a: c.role, b: ProcessorSocket))
-              VendorSelectionNotMade { role_named: _ } => acc
+              PublicButRedistributionUndecided { authority: _, footer: ft } =>
+                acc || (roles_equal(a: c.role, b: ProcessorSocket)
+                  && (ft as String) == "Ampere Computing Proprietary")
+              _ => acc
             }
         }
       })
@@ -139,9 +145,38 @@ test fn w_the_redistribution_gap_is_distinct_from_an_unmade_part_choice() -> Boo
           EnvelopeEstablished { envelope: _, source: _ } => acc
           EnvelopeNotEstablished { gap: g } =>
             match g {
-              VendorSelectionNotMade { role_named: _ } => acc || roles_equal(a: c.role, b: ClockGenerator)
-              RedistributionUnresolved { subject: _ } => acc
+              Unresolved { what_is_missing: _ } => acc || roles_equal(a: c.role, b: ClockGenerator)
+              _ => acc
             }
+        }
+      })
+  }
+}
+
+// THE EDGE IS MODELLED, NOT DESCRIBED. The socket's gap is the attachment stack's own standing, so
+// a redistribution decision recorded there moves this plan. An earlier revision asserted this
+// alignment in prose while the two modules minted the fact independently.
+test fn w_the_socket_gap_is_the_attachment_stack_standing_itself() -> Bool {
+  match plan_or_empty() {
+    Absent => false
+    Present { value: p } =>
+      fold(p.components, init: false, f: fn(acc, c) {
+        if !roles_equal(a: c.role, b: ProcessorSocket) {
+          acc
+        } else {
+          match c.envelope {
+            EnvelopeEstablished { envelope: _, source: _ } => acc
+            EnvelopeNotEstablished { gap: g } =>
+              match g {
+                PublicButRedistributionUndecided { authority: _, footer: ft } =>
+                  match processor_package_standing.standing {
+                    PublicButRedistributionUndecided { authority: _, footer: want } =>
+                      acc || (ft as String) == (want as String)
+                    _ => acc
+                  }
+                _ => acc
+              }
+          }
         }
       })
   }
