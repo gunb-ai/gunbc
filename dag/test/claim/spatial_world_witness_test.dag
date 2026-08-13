@@ -20,10 +20,24 @@ import product.spatial_world {
 }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.spatial_frame {
+  SpatialFrameRegistry, empty_frame_registry, register_frame, registry_with,
+  FrameRegistered, FrameRegistrationRefused
+}
+import std.measure { Milli }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn site() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 1) }
+
+// The world's spaces are millimetre-framed, which is what makes a cubic-millimetre volume a true
+// label rather than an assumed one.
+fn mm_registry() -> SpatialFrameRegistry {
+  match register_frame(r: empty_frame_registry(), identity: site(), length_scale: Milli) {
+    FrameRegistered { frame: f } => registry_with(r: empty_frame_registry(), f: f)
+    FrameRegistrationRefused { cause: _ } => empty_frame_registry()
+  }
+}
 
 fn rect(x0: Int, y0: Int, x1: Int, y1: Int) -> EnclosedSpace? {
   match orthogonal_loop2(vertices: [
@@ -77,7 +91,7 @@ fn two_room_world() -> World? {
 }
 
 fn volume_of(w: World) -> Int {
-  match world_total_volume(w: w) {
+  match world_total_volume(registry: mm_registry(), w: w) {
     WorldRefused { cause: _ } => 0 - 1
     WorldReady { value: v } => cubic_millimeter_count(m: v)
   }
