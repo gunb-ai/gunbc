@@ -2463,6 +2463,32 @@ type ReferenceBindingProjection
       observed: OccurrenceCategory,
     }
 
+// THE SUBJECT OF A PROJECTION, so a refusal can be located instead of naming an allocator ordinal.
+// Total over the closed coproduct, and Optional rather than fabricating an id: the four index-build
+// refusal arms are failures of the whole transport, not of one occurrence, and answering them with any
+// particular occurrence would point a reader at an innocent site.
+fn reference_binding_projection_occurrence(
+  projection: ReferenceBindingProjection
+) -> OccurrenceId? {
+  match projection {
+    ReferenceBindingProjectionBound { provider: provider } =>
+      Present { value: provider.reference_occurrence }
+    ReferenceBindingProjectionUnbound { occurrence: occurrence } => Present { value: occurrence }
+    ReferenceBindingProjectionAmbiguous { occurrence: occurrence, candidates: _ } =>
+      Present { value: occurrence }
+    ReferenceBindingProjectionDeclarationBucketRefused { occurrence: occurrence } =>
+      Present { value: occurrence }
+    ReferenceBindingProjectionModulePathMissing { occurrence: occurrence } =>
+      Present { value: occurrence }
+    ReferenceBindingProjectionWrongCategory { occurrence: occurrence, observed: _ } =>
+      Present { value: occurrence }
+    ReferenceBindingProjectionTransportRefused { refusal: _ } => none
+    ReferenceBindingProjectionModulePathRefused { refusal: _ } => none
+    ReferenceBindingProjectionExposureRefused { refusal: _ } => none
+    ReferenceBindingProjectionAuthoredOrderRefused { refusal: _ } => none
+  }
+}
+
 data resolve_type_reference_containment_binding_note: String = "N2 typed entry (gunbc.type_reference_containment_binding slice 1): refuses non-TypeOccurrence references at the API boundary before candidate enumeration — category is part of the binding contract, not an after-the-fact filter. TypeOccurrence references delegate to resolve_reference_binding_via_structural_candidates unchanged."
 
 fn resolve_type_reference_containment_binding(

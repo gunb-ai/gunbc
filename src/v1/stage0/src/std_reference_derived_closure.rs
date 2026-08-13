@@ -8,7 +8,9 @@ use crate::std_occurrence_binding_candidates::AssembledCrossFileBindingClosure::
     AssembledCrossFileBindingClosureReady, AssembledCrossFileBindingClosureRefused,
 };
 use crate::std_occurrence_binding_candidates::AssembledCrossFileBindingClosureRefusal::*;
-use crate::std_occurrence_binding_candidates::BoundReferencePopulation::*;
+use crate::std_occurrence_binding_candidates::BoundReferencePopulation::{
+    AllReferencesBound, ReferencePopulationRefused,
+};
 use crate::std_occurrence_binding_candidates::CrossFileBindingProvenanceProjection::*;
 use crate::std_occurrence_binding_candidates::ModulePathFileIndex::{
     ModulePathFileIndexReady, ModulePathFileIndexRefused,
@@ -26,7 +28,8 @@ use crate::std_occurrence_binding_candidates::StructuralBindingWalk::{
 pub use crate::std_occurrence_binding_candidates::{
     assemble_cross_file_binding_closure, file_for_module_path,
     joined_dependency_binding_walk_selected, module_by_occurrence_build, module_of_occurrence,
-    module_path_file_index_from_rows, reference_derived_dependency_projection,
+    module_path_file_index_from_rows, reference_binding_projection_occurrence,
+    reference_derived_dependency_projection,
 };
 pub use crate::std_occurrence_binding_candidates::{
     AssembledCrossFileBindingClosure, AssembledCrossFileBindingClosureRefusal,
@@ -35,7 +38,10 @@ pub use crate::std_occurrence_binding_candidates::{
     ModulePathFileIndexRefusal, OccurrenceBindingCandidateInputs, OccurrenceModulePathIndexRefusal,
     ReferenceDerivedDependencyProjection, StructuralBindingIndexRefusal, StructuralBindingWalk,
 };
-pub use crate::std_occurrence_identity::{OccurrenceId, OccurrenceTransport, ReferenceOccurrence};
+pub use crate::std_occurrence_identity::{
+    OccurrenceId, OccurrenceIndexEntry, OccurrenceProjection, OccurrenceTransport,
+    ReferenceOccurrence,
+};
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, FilePath, List, NonEmptyStr};
 use crate::v1_rt;
@@ -72,6 +78,11 @@ pub enum ReferenceDerivedClosureRefusal {
     },
     ClosureBindingRefused {
         population: Rc<BoundReferencePopulation>,
+        first_failure_locus: Rc<OccurrenceProjection>,
+        unbound_count: i64,
+    },
+    ClosureRefusalNotLocatable {
+        occurrence: OccurrenceId,
     },
     ClosureFileProjectionRefused {
         first_failure: Rc<CrossFileBindingProvenanceProjection>,
@@ -227,6 +238,74 @@ pub fn selected_references_for_admitted_files(
     )
 }
 
+pub fn locate_occurrence(
+    transport: Rc<OccurrenceTransport>,
+    occurrence: OccurrenceId,
+) -> Option<Rc<OccurrenceProjection>> {
+    transport
+        .index
+        .clone()
+        .entries
+        .clone()
+        .iter()
+        .cloned()
+        .fold(
+            None,
+            |found: _, entry: Rc<OccurrenceIndexEntry>| match found.clone() {
+                Some(_) => found.clone(),
+                None => match (entry.projection.clone().occurrence.clone().value.clone()
+                    == occurrence.value.clone())
+                {
+                    true => Some(entry.projection.clone()),
+                    false => None,
+                },
+            },
+        )
+}
+
+pub fn population_first_failure_occurrence(
+    population: Rc<BoundReferencePopulation>,
+) -> Option<OccurrenceId> {
+    match (*population.clone()).clone() {
+        BoundReferencePopulation::AllReferencesBound { providers: _, .. } => None,
+        BoundReferencePopulation::ReferencePopulationRefused {
+            first_failure: failure,
+            ..
+        } => reference_binding_projection_occurrence(failure.clone()),
+    }
+}
+
+pub fn population_failure_count(population: Rc<BoundReferencePopulation>) -> i64 {
+    match (*population.clone()).clone() {
+        BoundReferencePopulation::AllReferencesBound { providers: _, .. } => 0,
+        BoundReferencePopulation::ReferencePopulationRefused {
+            more_failures: more,
+            ..
+        } => (1 + (more.clone().len() as i64)),
+    }
+}
+
+pub fn closure_binding_refusal(
+    transport: Rc<OccurrenceTransport>,
+    population: Rc<BoundReferencePopulation>,
+) -> Rc<ReferenceDerivedClosureRefusal> {
+    match population_first_failure_occurrence(population.clone()) {
+        None => Rc::new(ReferenceDerivedClosureRefusal::ClosureRefusalNotLocatable {
+            occurrence: OccurrenceId { value: 0 },
+        }),
+        Some(occurrence) => match locate_occurrence(transport.clone(), occurrence.clone()) {
+            None => Rc::new(ReferenceDerivedClosureRefusal::ClosureRefusalNotLocatable {
+                occurrence: occurrence.clone(),
+            }),
+            Some(locus) => Rc::new(ReferenceDerivedClosureRefusal::ClosureBindingRefused {
+                population: population.clone(),
+                first_failure_locus: locus.clone(),
+                unbound_count: population_failure_count(population.clone()),
+            }),
+        },
+    }
+}
+
 pub fn provider_files_of(edges: Rc<Vec<Rc<DirectFileDependency>>>) -> Rc<Vec<String>> {
     edges.clone().iter().cloned().fold(
         no_file_paths(),
@@ -349,9 +428,7 @@ match selected.unresolved.clone() {
 }),
     StructuralBindingWalk::StructuralBindingWalkReady { population: population, .. } => match (*reference_derived_dependency_projection(population.clone(), module_files.clone())).clone() {
     ReferenceDerivedDependencyProjection::ReferenceDerivedDependencyProjectionBindingRefused { population: refused, .. } => Rc::new(ReferenceDerivedClosureStep::ClosureStepRefused {
-    refusal: Rc::new(ReferenceDerivedClosureRefusal::ClosureBindingRefused {
-    population: refused.clone(),
-}),
+    refusal: closure_binding_refusal(transport.clone(), refused.clone()),
 }),
     ReferenceDerivedDependencyProjection::ReferenceDerivedDependencyProjectionFileRefused { first_failure, more_failures, .. } => Rc::new(ReferenceDerivedClosureStep::ClosureStepRefused {
     refusal: Rc::new(ReferenceDerivedClosureRefusal::ClosureFileProjectionRefused {

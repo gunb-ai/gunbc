@@ -3200,6 +3200,50 @@ pub enum ReferenceBindingProjection {
     },
 }
 
+pub fn reference_binding_projection_occurrence(
+    projection: Rc<ReferenceBindingProjection>,
+) -> Option<OccurrenceId> {
+    match (*projection.clone()).clone() {
+        ReferenceBindingProjection::ReferenceBindingProjectionBound {
+            provider: provider, ..
+        } => Some(provider.reference_occurrence.clone()),
+        ReferenceBindingProjection::ReferenceBindingProjectionUnbound {
+            occurrence: occurrence,
+            ..
+        } => Some(occurrence.clone()),
+        ReferenceBindingProjection::ReferenceBindingProjectionAmbiguous { occurrence, .. } => {
+            Some(occurrence.clone())
+        }
+        ReferenceBindingProjection::ReferenceBindingProjectionDeclarationBucketRefused {
+            occurrence: occurrence,
+            ..
+        } => Some(occurrence.clone()),
+        ReferenceBindingProjection::ReferenceBindingProjectionModulePathMissing {
+            occurrence: occurrence,
+            ..
+        } => Some(occurrence.clone()),
+        ReferenceBindingProjection::ReferenceBindingProjectionWrongCategory {
+            occurrence, ..
+        } => Some(occurrence.clone()),
+        ReferenceBindingProjection::ReferenceBindingProjectionTransportRefused {
+            refusal: _,
+            ..
+        } => None,
+        ReferenceBindingProjection::ReferenceBindingProjectionModulePathRefused {
+            refusal: _,
+            ..
+        } => None,
+        ReferenceBindingProjection::ReferenceBindingProjectionExposureRefused {
+            refusal: _,
+            ..
+        } => None,
+        ReferenceBindingProjection::ReferenceBindingProjectionAuthoredOrderRefused {
+            refusal: _,
+            ..
+        } => None,
+    }
+}
+
 pub fn resolve_type_reference_containment_binding_note() -> String {
     thread_local! {
         static CACHED: String = {

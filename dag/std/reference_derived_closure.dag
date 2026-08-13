@@ -5,6 +5,8 @@ import std.occurrence_identity {
   OccurrenceTransport,
   ReferenceOccurrence,
   OccurrenceId,
+  OccurrenceIndexEntry,
+  OccurrenceProjection,
 }
 import std.occurrence_binding_candidates {
   OccurrenceBindingCandidateInputs,
@@ -17,6 +19,9 @@ import std.occurrence_binding_candidates {
   AssembledCrossFileBindingClosureRefusal,
   assemble_cross_file_binding_closure,
   BoundReferencePopulation,
+  AllReferencesBound,
+  ReferencePopulationRefused,
+  reference_binding_projection_occurrence,
   CrossFileBindingProvenanceProjection,
   StructuralBindingWalkReady,
   StructuralBindingWalkRefused,
@@ -62,7 +67,12 @@ type ReferenceDerivedClosureRefusal
   | ClosureNoEntryAdmitted
   | ClosureAssemblyRefused { refusal: AssembledCrossFileBindingClosureRefusal }
   | ClosureWalkRefused { refusal: StructuralBindingIndexRefusal }
-  | ClosureBindingRefused { population: BoundReferencePopulation }
+  | ClosureBindingRefused {
+      population: BoundReferencePopulation,
+      first_failure_locus: OccurrenceProjection,
+      unbound_count: Int,
+    }
+  | ClosureRefusalNotLocatable { occurrence: OccurrenceId }
   | ClosureFileProjectionRefused {
       first_failure: CrossFileBindingProvenanceProjection,
       more_failures: List<CrossFileBindingProvenanceProjection>,
@@ -193,6 +203,67 @@ fn selected_references_for_admitted_files(
   )
 }
 
+
+// A REFUSAL NAMING AN OccurrenceId IS NOT A LOCATED REFUSAL. The id is an allocator ordinal — it means
+// nothing to a reader and nothing to a tool, and rekeying makes it unstable across universes, so a
+// consumer cannot even join it back to the file it came from. The authored name and byte span are in the
+// assembled transport's own index, one lookup away, so carrying them is not new observation: it is
+// declining to discard what the step already holds.
+//
+// An occurrence the index cannot resolve is its OWN refusal rather than an absent locus, because a
+// population refusal whose subject cannot be located is a different failure from an ordinary unbound
+// reference and has a different cause (the transport and its index disagree).
+fn locate_occurrence(
+  transport: OccurrenceTransport,
+  occurrence: OccurrenceId
+) -> OccurrenceProjection? {
+  fold(transport.index.entries, init: none, f: (found, entry) =>
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        match entry.projection.occurrence.value == occurrence.value {
+          true => Present { value: entry.projection }
+          false => Absent
+        }
+    })
+}
+
+fn population_first_failure_occurrence(
+  population: BoundReferencePopulation
+) -> OccurrenceId? {
+  match population {
+    AllReferencesBound { providers: _ } => none
+    ReferencePopulationRefused { first_failure: failure, more_failures: _ } =>
+      reference_binding_projection_occurrence(projection: failure)
+  }
+}
+
+fn population_failure_count(population: BoundReferencePopulation) -> Int {
+  match population {
+    AllReferencesBound { providers: _ } => 0
+    ReferencePopulationRefused { first_failure: _, more_failures: more } => 1 + length(more)
+  }
+}
+
+fn closure_binding_refusal(
+  transport: OccurrenceTransport,
+  population: BoundReferencePopulation
+) -> ReferenceDerivedClosureRefusal {
+  match population_first_failure_occurrence(population: population) {
+    Absent => ClosureRefusalNotLocatable { occurrence: OccurrenceId { value: 0 } }
+    Present { value: occurrence } =>
+      match locate_occurrence(transport: transport, occurrence: occurrence) {
+        Absent => ClosureRefusalNotLocatable { occurrence: occurrence }
+        Present { value: locus } =>
+          ClosureBindingRefused {
+            population: population,
+            first_failure_locus: locus,
+            unbound_count: population_failure_count(population: population),
+          }
+      }
+  }
+}
+
 fn provider_files_of(edges: List<DirectFileDependency>) -> List<FilePath> {
   fold(edges, init: no_file_paths(), f: (acc, edge) =>
     match file_path_in(files: acc, file: edge.provider_file) {
@@ -295,7 +366,10 @@ fn reference_derived_closure_step(
                                   population: refused,
                                 } =>
                                   ClosureStepRefused {
-                                    refusal: ClosureBindingRefused { population: refused },
+                                    refusal: closure_binding_refusal(
+                                      transport: transport,
+                                      population: refused,
+                                    ),
                                   }
                                 ReferenceDerivedDependencyProjectionFileRefused {
                                   first_failure: first_failure,

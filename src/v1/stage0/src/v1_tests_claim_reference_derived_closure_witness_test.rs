@@ -319,19 +319,26 @@ pub fn witness_provider_outside_the_universe_refuses_as_unbound() -> bool {
             refusal: refusal, ..
         } => match (*refusal.clone()).clone() {
             ReferenceDerivedClosureRefusal::ClosureBindingRefused {
-                population: population,
+                population,
+                first_failure_locus: locus,
+                unbound_count,
                 ..
             } => match (*population.clone()).clone() {
                 BoundReferencePopulation::ReferencePopulationRefused {
                     first_failure: failure,
                     ..
-                } => match (*failure.clone()).clone() {
-                    ReferenceBindingProjection::ReferenceBindingProjectionUnbound {
-                        occurrence: _,
-                        ..
-                    } => true,
-                    _ => false,
-                },
+                } => {
+                    ((((locus.authored_name.clone() == "LiveTreeDisposition".to_string())
+                        && (locus.diagnostic_span.clone().start.clone() > 0))
+                        && (unbound_count.clone() >= 1))
+                        && match (*failure.clone()).clone() {
+                            ReferenceBindingProjection::ReferenceBindingProjectionUnbound {
+                                occurrence: _,
+                                ..
+                            } => true,
+                            _ => false,
+                        })
+                }
                 _ => false,
             },
             _ => false,
@@ -367,7 +374,9 @@ pub fn witness_two_declaring_files_refuse_as_ambiguous_naming_both() -> bool {
             refusal: refusal, ..
         } => match (*refusal.clone()).clone() {
             ReferenceDerivedClosureRefusal::ClosureBindingRefused {
-                population: population,
+                population,
+                first_failure_locus: locus,
+                unbound_count,
                 ..
             } => match (*population.clone()).clone() {
                 BoundReferencePopulation::ReferencePopulationRefused {
@@ -378,24 +387,26 @@ pub fn witness_two_declaring_files_refuse_as_ambiguous_naming_both() -> bool {
                         candidates,
                         ..
                     } => {
-                        !(candidates
-                            .first
-                            .clone()
-                            .containment
-                            .clone()
-                            .terminal
-                            .clone()
-                            .value
-                            .clone()
-                            == candidates
-                                .second
+                        (((locus.authored_name.clone() == "LiveTreeDisposition".to_string())
+                            && (unbound_count.clone() >= 1))
+                            && !(candidates
+                                .first
                                 .clone()
                                 .containment
                                 .clone()
                                 .terminal
                                 .clone()
                                 .value
-                                .clone())
+                                .clone()
+                                == candidates
+                                    .second
+                                    .clone()
+                                    .containment
+                                    .clone()
+                                    .terminal
+                                    .clone()
+                                    .value
+                                    .clone()))
                     }
                     _ => false,
                 },

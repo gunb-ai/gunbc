@@ -271,13 +271,20 @@ test fn witness_provider_outside_the_universe_refuses_as_unbound() -> Bool {
   match rdc_step(entry: rdc_consumer_path, universe: [rdc_consumer_path]) {
     ClosureStepRefused { refusal: refusal } =>
       match refusal {
-        ClosureBindingRefused { population: population } =>
+        ClosureBindingRefused {
+          population: population,
+          first_failure_locus: locus,
+          unbound_count: unbound_count,
+        } =>
           match population {
             ReferencePopulationRefused { first_failure: failure, more_failures: _ } =>
-              match failure {
-                ReferenceBindingProjectionUnbound { occurrence: _ } => true
-                _ => false
-              }
+              (locus.authored_name == "LiveTreeDisposition")
+                && locus.diagnostic_span.start > 0
+                && unbound_count >= 1
+                && match failure {
+                  ReferenceBindingProjectionUnbound { occurrence: _ } => true
+                  _ => false
+                }
             _ => false
           }
         _ => false
@@ -310,13 +317,19 @@ test fn witness_two_declaring_files_refuse_as_ambiguous_naming_both() -> Bool {
   ) {
     ClosureStepRefused { refusal: refusal } =>
       match refusal {
-        ClosureBindingRefused { population: population } =>
+        ClosureBindingRefused {
+          population: population,
+          first_failure_locus: locus,
+          unbound_count: unbound_count,
+        } =>
           match population {
             ReferencePopulationRefused { first_failure: failure, more_failures: _ } =>
               match failure {
                 ReferenceBindingProjectionAmbiguous { occurrence: _, candidates: candidates } =>
-                  !(candidates.first.containment.terminal.value ==
-                    candidates.second.containment.terminal.value)
+                  (locus.authored_name == "LiveTreeDisposition")
+                    && unbound_count >= 1
+                    && !(candidates.first.containment.terminal.value ==
+                      candidates.second.containment.terminal.value)
                 _ => false
               }
             _ => false

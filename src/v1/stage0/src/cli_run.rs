@@ -1588,6 +1588,141 @@ fn for_each_parsed_module_binding(
     }
 }
 
+/// Run the modeled reference-derived closure fixed point over an ordinary source-file universe.
+///
+/// THIS IS THE ORDINARY COMPILE PATH ASKING, not a fixture. The universe is every `.dag` file under
+/// the given source roots, parsed through the same seam any witness uses
+/// (`parse_authored_occurrence_binding_source`), and the closure is
+/// `std.reference_derived_closure` `reference_derived_closure_fixed_point` — the modeled authority,
+/// reached here as emitted Rust rather than reimplemented beside it.
+///
+/// The entry is grounded `ModuleLocalMemberExposure` (its own declarations are module-local) and every
+/// other file `CrossFileProviderExportedExposure` (reached across a file boundary, exporting what it
+/// exports), so the grounding is a function of the file's ROLE for this entry, not of the parse.
+///
+/// No import list is read anywhere on this path.
+pub fn reference_derived_closure_over_source_roots(
+    entry: &str,
+    source_roots: &[String],
+) -> Result<String, String> {
+    use crate::std_occurrence_binding_candidates::{
+        cross_file_binding_closure_row, DeclarationExposureGrounding,
+    };
+    use crate::std_reference_derived_closure::{
+        reference_derived_closure_fixed_point, ParsedFileSupply, ReferenceDerivedClosureFixedPoint,
+    };
+    use crate::v1_gunbc_occurrence_binding_parser_walk::{
+        occurrence_binding_inputs_from_transport, parse_authored_occurrence_binding_source,
+        ParsedOccurrenceBindingSource,
+    };
+
+    let entry_key = module_index_path_key(Path::new(entry));
+    let mut universe: Vec<Rc<ParsedFileSupply>> = Vec::new();
+    let mut parse_refusals: Vec<String> = Vec::new();
+    let mut entry_seen = false;
+
+    for root in source_roots {
+        let anchored_root = anchor_source_root(root);
+        let mut dag_files = Vec::new();
+        collect_dag_files(Path::new(&anchored_root), &mut dag_files);
+        for path in dag_files {
+            let rel = module_index_path_key(&path);
+            let source = std::fs::read_to_string(&path)
+                .map_err(|e| format!("reference_derived_closure: failed to read {rel}: {e}"))?;
+            let grounding = if rel == entry_key {
+                entry_seen = true;
+                DeclarationExposureGrounding::ModuleLocalMemberExposure
+            } else {
+                DeclarationExposureGrounding::CrossFileProviderExportedExposure
+            };
+            match &*parse_authored_occurrence_binding_source(rel.clone(), source) {
+                ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused => {
+                    parse_refusals.push(rel);
+                }
+                ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady {
+                    transport,
+                    module_path,
+                } => {
+                    let inputs = occurrence_binding_inputs_from_transport(
+                        module_path.clone(),
+                        transport.clone(),
+                        grounding,
+                    );
+                    universe.push(Rc::new(ParsedFileSupply {
+                        file: rel.clone(),
+                        row: cross_file_binding_closure_row(
+                            transport.clone(),
+                            inputs,
+                            module_path.clone(),
+                            rel,
+                        ),
+                    }));
+                }
+            }
+        }
+    }
+
+    if !entry_seen {
+        return Err(format!(
+            "reference_derived_closure: entry {entry_key} is not under any given source root"
+        ));
+    }
+
+    let universe_size = universe.len();
+    let outcome =
+        reference_derived_closure_fixed_point(entry_key.clone(), Rc::new(universe.into()));
+    let verdict = match &*outcome {
+        ReferenceDerivedClosureFixedPoint::ClosureFixedPointSettled {
+            admitted_files,
+            edges,
+            provenance,
+            iterations,
+        } => format!(
+            "Settled: {} file(s) admitted, {} edge(s), {} provenance row(s), {} iteration(s)",
+            admitted_files.len(),
+            edges.len(),
+            provenance.len(),
+            iterations
+        ),
+        ReferenceDerivedClosureFixedPoint::ClosureFixedPointRefused {
+            refusal,
+            iterations,
+        } => {
+            // The located arms render their LOCUS, not the population they came from. Printing the
+            // whole `BoundReferencePopulation` was the same defect the locus repair fixed one level
+            // up: it emits every unbound occurrence's allocator ordinal, which is unreadable and
+            // says nothing about which authored name failed to bind.
+            let detail = match &**refusal {
+                crate::std_reference_derived_closure::ReferenceDerivedClosureRefusal::ClosureBindingRefused {
+                    first_failure_locus,
+                    unbound_count,
+                    ..
+                } => format!(
+                    "ClosureBindingRefused: '{}' at bytes {}-{} unbound ({} unbound reference(s) in the selected population)",
+                    first_failure_locus.authored_name,
+                    first_failure_locus.diagnostic_span.start,
+                    first_failure_locus.diagnostic_span.end,
+                    unbound_count
+                ),
+                other => format!("{other:?}"),
+            };
+            format!("Refused after {iterations} iteration(s): {detail}")
+        }
+        ReferenceDerivedClosureFixedPoint::ClosureFixedPointExhausted {
+            admitted_files,
+            iterations,
+        } => format!(
+            "Exhausted: {} file(s) admitted after {} iteration(s) (the closure was still growing)",
+            admitted_files.len(),
+            iterations
+        ),
+    };
+    Ok(format!(
+        "entry={entry_key} universe={universe_size} parse_refusals={} :: {verdict}",
+        parse_refusals.len()
+    ))
+}
+
 fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBindingManifestRow> {
     let root_variants: Vec<String> = source_roots
         .iter()
