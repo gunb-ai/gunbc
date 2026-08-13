@@ -274,13 +274,13 @@ test fn witness_provider_outside_the_universe_refuses_as_unbound() -> Bool {
         ClosureBindingRefused {
           population: population,
           first_failure_locus: locus,
-          unbound_count: unbound_count,
+          failure_count: failure_count,
         } =>
           match population {
             ReferencePopulationRefused { first_failure: failure, more_failures: _ } =>
               (locus.authored_name == "LiveTreeDisposition")
                 && locus.diagnostic_span.start > 0
-                && unbound_count >= 1
+                && failure_count >= 1
                 && match failure {
                   ReferenceBindingProjectionUnbound { occurrence: _ } => true
                   _ => false
@@ -320,14 +320,14 @@ test fn witness_two_declaring_files_refuse_as_ambiguous_naming_both() -> Bool {
         ClosureBindingRefused {
           population: population,
           first_failure_locus: locus,
-          unbound_count: unbound_count,
+          failure_count: failure_count,
         } =>
           match population {
             ReferencePopulationRefused { first_failure: failure, more_failures: _ } =>
               match failure {
                 ReferenceBindingProjectionAmbiguous { occurrence: _, candidates: candidates } =>
                   (locus.authored_name == "LiveTreeDisposition")
-                    && unbound_count >= 1
+                    && failure_count >= 1
                     && !(candidates.first.containment.terminal.value ==
                       candidates.second.containment.terminal.value)
                 _ => false

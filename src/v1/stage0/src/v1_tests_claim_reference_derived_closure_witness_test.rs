@@ -321,7 +321,7 @@ pub fn witness_provider_outside_the_universe_refuses_as_unbound() -> bool {
             ReferenceDerivedClosureRefusal::ClosureBindingRefused {
                 population,
                 first_failure_locus: locus,
-                unbound_count,
+                failure_count,
                 ..
             } => match (*population.clone()).clone() {
                 BoundReferencePopulation::ReferencePopulationRefused {
@@ -330,7 +330,7 @@ pub fn witness_provider_outside_the_universe_refuses_as_unbound() -> bool {
                 } => {
                     ((((locus.authored_name.clone() == "LiveTreeDisposition".to_string())
                         && (locus.diagnostic_span.clone().start.clone() > 0))
-                        && (unbound_count.clone() >= 1))
+                        && (failure_count.clone() >= 1))
                         && match (*failure.clone()).clone() {
                             ReferenceBindingProjection::ReferenceBindingProjectionUnbound {
                                 occurrence: _,
@@ -376,7 +376,7 @@ pub fn witness_two_declaring_files_refuse_as_ambiguous_naming_both() -> bool {
             ReferenceDerivedClosureRefusal::ClosureBindingRefused {
                 population,
                 first_failure_locus: locus,
-                unbound_count,
+                failure_count,
                 ..
             } => match (*population.clone()).clone() {
                 BoundReferencePopulation::ReferencePopulationRefused {
@@ -388,7 +388,7 @@ pub fn witness_two_declaring_files_refuse_as_ambiguous_naming_both() -> bool {
                         ..
                     } => {
                         (((locus.authored_name.clone() == "LiveTreeDisposition".to_string())
-                            && (unbound_count.clone() >= 1))
+                            && (failure_count.clone() >= 1))
                             && !(candidates
                                 .first
                                 .clone()

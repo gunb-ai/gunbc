@@ -70,9 +70,10 @@ type ReferenceDerivedClosureRefusal
   | ClosureBindingRefused {
       population: BoundReferencePopulation,
       first_failure_locus: OccurrenceProjection,
-      unbound_count: Int,
+      failure_count: Int,
     }
   | ClosureRefusalNotLocatable { occurrence: OccurrenceId }
+  | ClosurePopulationFailureHasNoOccurrence { population: BoundReferencePopulation }
   | ClosureFileProjectionRefused {
       first_failure: CrossFileBindingProvenanceProjection,
       more_failures: List<CrossFileBindingProvenanceProjection>,
@@ -250,7 +251,7 @@ fn closure_binding_refusal(
   population: BoundReferencePopulation
 ) -> ReferenceDerivedClosureRefusal {
   match population_first_failure_occurrence(population: population) {
-    Absent => ClosureRefusalNotLocatable { occurrence: OccurrenceId { value: 0 } }
+    Absent => ClosurePopulationFailureHasNoOccurrence { population: population }
     Present { value: occurrence } =>
       match locate_occurrence(transport: transport, occurrence: occurrence) {
         Absent => ClosureRefusalNotLocatable { occurrence: occurrence }
@@ -258,7 +259,7 @@ fn closure_binding_refusal(
           ClosureBindingRefused {
             population: population,
             first_failure_locus: locus,
-            unbound_count: population_failure_count(population: population),
+            failure_count: population_failure_count(population: population),
           }
       }
   }
@@ -446,28 +447,15 @@ fn reference_derived_closure_initial(
   }
 }
 
+// NO PROJECTION ANSWERS A REFUSED STEP. `closure_step_edges` used to answer a refusal with `[]` and
+// `closure_step_state` with `Absent` -- the absorbing fallback this lane keeps removing, exported and
+// waiting for a consumer: a caller reading `[]` cannot tell "no dependencies" from "the step refused".
+// Both are deleted; a consumer matches the three arms, which is the only reading that cannot lie.
 fn closure_step_is_settled(step: ReferenceDerivedClosureStep) -> Bool {
   match step {
     ClosureStepSettled { state: _, edges: _, provenance: _ } => true
     ClosureStepAdvanced { state: _, newly_pending: _, edges: _, provenance: _ } => false
     ClosureStepRefused { refusal: _ } => false
-  }
-}
-
-fn closure_step_state(step: ReferenceDerivedClosureStep) -> ReferenceDerivedClosureState? {
-  match step {
-    ClosureStepSettled { state: state, edges: _, provenance: _ } => Present { value: state }
-    ClosureStepAdvanced { state: state, newly_pending: _, edges: _, provenance: _ } =>
-      Present { value: state }
-    ClosureStepRefused { refusal: _ } => none
-  }
-}
-
-fn closure_step_edges(step: ReferenceDerivedClosureStep) -> List<DirectFileDependency> {
-  match step {
-    ClosureStepSettled { state: _, edges: edges, provenance: _ } => edges
-    ClosureStepAdvanced { state: _, newly_pending: _, edges: edges, provenance: _ } => edges
-    ClosureStepRefused { refusal: _ } => []
   }
 }
 

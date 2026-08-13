@@ -4,6 +4,9 @@ use std::process::ExitCode;
 
 use v1_compiler::cli_run::reference_derived_closure_over_source_roots;
 
+// ONLY A SETTLED CLOSURE IS A SUCCESSFUL RUN. An earlier version of this bin printed the refusal and
+// exited zero, which makes it unusable as a gate and reads as the ordinary path having ACCEPTED the
+// closure. Refusal and exhaustion are failures of the run; a bad invocation is distinct from both.
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
@@ -54,14 +57,12 @@ fn main() -> ExitCode {
         eprintln!("reference_derived_closure_probe: provide at least one --source-root");
         return ExitCode::from(2);
     }
-    match reference_derived_closure_over_source_roots(&entry, &source_roots) {
-        Ok(report) => {
-            println!("{report}");
-            ExitCode::SUCCESS
-        }
-        Err(msg) => {
-            eprintln!("reference_derived_closure_probe: {msg}");
-            ExitCode::from(1)
-        }
+    let run = reference_derived_closure_over_source_roots(&entry, &source_roots);
+    if run.is_settled() {
+        println!("{}", run.report());
+        ExitCode::SUCCESS
+    } else {
+        eprintln!("{}", run.report());
+        ExitCode::from(1)
     }
 }

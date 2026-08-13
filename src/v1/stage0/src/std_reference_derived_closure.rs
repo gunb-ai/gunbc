@@ -79,10 +79,13 @@ pub enum ReferenceDerivedClosureRefusal {
     ClosureBindingRefused {
         population: Rc<BoundReferencePopulation>,
         first_failure_locus: Rc<OccurrenceProjection>,
-        unbound_count: i64,
+        failure_count: i64,
     },
     ClosureRefusalNotLocatable {
         occurrence: OccurrenceId,
+    },
+    ClosurePopulationFailureHasNoOccurrence {
+        population: Rc<BoundReferencePopulation>,
     },
     ClosureFileProjectionRefused {
         first_failure: Rc<CrossFileBindingProvenanceProjection>,
@@ -290,9 +293,11 @@ pub fn closure_binding_refusal(
     population: Rc<BoundReferencePopulation>,
 ) -> Rc<ReferenceDerivedClosureRefusal> {
     match population_first_failure_occurrence(population.clone()) {
-        None => Rc::new(ReferenceDerivedClosureRefusal::ClosureRefusalNotLocatable {
-            occurrence: OccurrenceId { value: 0 },
-        }),
+        None => Rc::new(
+            ReferenceDerivedClosureRefusal::ClosurePopulationFailureHasNoOccurrence {
+                population: population.clone(),
+            },
+        ),
         Some(occurrence) => match locate_occurrence(transport.clone(), occurrence.clone()) {
             None => Rc::new(ReferenceDerivedClosureRefusal::ClosureRefusalNotLocatable {
                 occurrence: occurrence.clone(),
@@ -300,7 +305,7 @@ pub fn closure_binding_refusal(
             Some(locus) => Rc::new(ReferenceDerivedClosureRefusal::ClosureBindingRefused {
                 population: population.clone(),
                 first_failure_locus: locus.clone(),
-                unbound_count: population_failure_count(population.clone()),
+                failure_count: population_failure_count(population.clone()),
             }),
         },
     }
@@ -494,26 +499,6 @@ pub fn closure_step_is_settled(step: Rc<ReferenceDerivedClosureStep>) -> bool {
         ReferenceDerivedClosureStep::ClosureStepSettled { .. } => true,
         ReferenceDerivedClosureStep::ClosureStepAdvanced { .. } => false,
         ReferenceDerivedClosureStep::ClosureStepRefused { refusal: _, .. } => false,
-    }
-}
-
-pub fn closure_step_state(
-    step: Rc<ReferenceDerivedClosureStep>,
-) -> Option<Rc<ReferenceDerivedClosureState>> {
-    match (*step.clone()).clone() {
-        ReferenceDerivedClosureStep::ClosureStepSettled { state, .. } => Some(state.clone()),
-        ReferenceDerivedClosureStep::ClosureStepAdvanced { state, .. } => Some(state.clone()),
-        ReferenceDerivedClosureStep::ClosureStepRefused { refusal: _, .. } => None,
-    }
-}
-
-pub fn closure_step_edges(
-    step: Rc<ReferenceDerivedClosureStep>,
-) -> Rc<Vec<Rc<DirectFileDependency>>> {
-    match (*step.clone()).clone() {
-        ReferenceDerivedClosureStep::ClosureStepSettled { edges, .. } => edges.clone(),
-        ReferenceDerivedClosureStep::ClosureStepAdvanced { edges, .. } => edges.clone(),
-        ReferenceDerivedClosureStep::ClosureStepRefused { refusal: _, .. } => Rc::new(vec![]),
     }
 }
 

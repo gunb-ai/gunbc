@@ -1588,23 +1588,113 @@ fn for_each_parsed_module_binding(
     }
 }
 
+/// A candidate source file this universe could not admit. Every arm is a reason the DENOMINATOR is
+/// incomplete, which is why none of them may be counted and skipped.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CandidateSourceFailure {
+    SourceReadFailed {
+        file: String,
+        cause: String,
+    },
+    ParseRefused {
+        file: String,
+    },
+    DuplicateCandidateFile {
+        file: String,
+        first_module: String,
+        conflicting_module: String,
+    },
+    DuplicateModuleIdentity {
+        module_path: String,
+        first_file: String,
+        conflicting_file: String,
+    },
+}
+
+/// The outcome of running the modeled closure. Three states, and the caller decides — this type exists
+/// so that a refusal cannot be rendered as a successful run by whoever formats the string.
+#[derive(Debug, Clone)]
+pub enum ReferenceDerivedClosureRun {
+    Settled {
+        entry: String,
+        universe: usize,
+        files: usize,
+        edges: usize,
+        provenance: usize,
+        iterations: i64,
+    },
+    Refused {
+        entry: String,
+        universe: usize,
+        detail: String,
+        iterations: i64,
+    },
+    Exhausted {
+        entry: String,
+        universe: usize,
+        files: usize,
+        iterations: i64,
+    },
+    UniverseRefused {
+        first_failure: CandidateSourceFailure,
+        more_failures: Vec<CandidateSourceFailure>,
+    },
+    EntryOutsideUniverse {
+        entry: String,
+        universe: usize,
+    },
+}
+
+impl ReferenceDerivedClosureRun {
+    /// True ONLY for a settled closure. Every other state is a failed run, including a universe that
+    /// could not be completed and an entry that is not in it.
+    pub fn is_settled(&self) -> bool {
+        matches!(self, ReferenceDerivedClosureRun::Settled { .. })
+    }
+
+    pub fn report(&self) -> String {
+        match self {
+            ReferenceDerivedClosureRun::Settled { entry, universe, files, edges, provenance, iterations } => format!(
+                "entry={entry} universe={universe} :: Settled: {files} file(s) admitted, {edges} edge(s), {provenance} provenance row(s), {iterations} iteration(s)"
+            ),
+            ReferenceDerivedClosureRun::Refused { entry, universe, detail, iterations } => format!(
+                "entry={entry} universe={universe} :: Refused after {iterations} iteration(s): {detail}"
+            ),
+            ReferenceDerivedClosureRun::Exhausted { entry, universe, files, iterations } => format!(
+                "entry={entry} universe={universe} :: Exhausted: {files} file(s) admitted after {iterations} iteration(s) (the closure was still growing)"
+            ),
+            ReferenceDerivedClosureRun::UniverseRefused { first_failure, more_failures } => format!(
+                "CandidateUniverseRefused: {first_failure:?} (+{} further failure(s))",
+                more_failures.len()
+            ),
+            ReferenceDerivedClosureRun::EntryOutsideUniverse { entry, universe } => format!(
+                "EntryOutsideUniverse: {entry} is not among the {universe} candidate file(s)"
+            ),
+        }
+    }
+}
+
 /// Run the modeled reference-derived closure fixed point over an ordinary source-file universe.
 ///
-/// THIS IS THE ORDINARY COMPILE PATH ASKING, not a fixture. The universe is every `.dag` file under
-/// the given source roots, parsed through the same seam any witness uses
-/// (`parse_authored_occurrence_binding_source`), and the closure is
-/// `std.reference_derived_closure` `reference_derived_closure_fixed_point` — the modeled authority,
-/// reached here as emitted Rust rather than reimplemented beside it.
+/// THE UNIVERSE IS THE DENOMINATOR FOR EVERY BINDING DECISION, so its construction is total and refuses.
+/// An earlier version of this function pushed unreadable and parse-refused files onto a counter, omitted
+/// them, and ran the closure anyway — which is unsound in the exact way this lane keeps closing: a
+/// dropped file may hold the ONLY declaration answering a reference, so its omission renders as `Unbound`
+/// (or, worse, leaves a surviving homonym uniquely selected and silently binds the wrong declaration),
+/// and no caller can distinguish *the complete universe has no provider* from *the provider was in a file
+/// we discarded*. Nothing starts until every candidate row is admitted under the declared scope.
 ///
-/// The entry is grounded `ModuleLocalMemberExposure` (its own declarations are module-local) and every
-/// other file `CrossFileProviderExportedExposure` (reached across a file boundary, exporting what it
-/// exports), so the grounding is a function of the file's ROLE for this entry, not of the parse.
+/// Duplicate file identity and duplicate module identity refuse for the same reason: two rows claiming
+/// one file made the answer depend on which helper read the population first, and two files claiming one
+/// module path make the module→file join ambiguous.
 ///
-/// No import list is read anywhere on this path.
+/// The exposure grounding here is still the static entry/provider split, which is WRONG once a provider
+/// becomes an admitted consumer with references of its own — that repair is relational exposure and lands
+/// with the A→B→C transitive controls, not in this function.
 pub fn reference_derived_closure_over_source_roots(
     entry: &str,
     source_roots: &[String],
-) -> Result<String, String> {
+) -> ReferenceDerivedClosureRun {
     use crate::std_occurrence_binding_candidates::{
         cross_file_binding_closure_row, DeclarationExposureGrounding,
     };
@@ -1618,7 +1708,10 @@ pub fn reference_derived_closure_over_source_roots(
 
     let entry_key = module_index_path_key(Path::new(entry));
     let mut universe: Vec<Rc<ParsedFileSupply>> = Vec::new();
-    let mut parse_refusals: Vec<String> = Vec::new();
+    let mut failures: Vec<CandidateSourceFailure> = Vec::new();
+    let mut file_seen: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut module_seen: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
     let mut entry_seen = false;
 
     for root in source_roots {
@@ -1627,8 +1720,16 @@ pub fn reference_derived_closure_over_source_roots(
         collect_dag_files(Path::new(&anchored_root), &mut dag_files);
         for path in dag_files {
             let rel = module_index_path_key(&path);
-            let source = std::fs::read_to_string(&path)
-                .map_err(|e| format!("reference_derived_closure: failed to read {rel}: {e}"))?;
+            let source = match std::fs::read_to_string(&path) {
+                Ok(text) => text,
+                Err(e) => {
+                    failures.push(CandidateSourceFailure::SourceReadFailed {
+                        file: rel,
+                        cause: e.to_string(),
+                    });
+                    continue;
+                }
+            };
             let grounding = if rel == entry_key {
                 entry_seen = true;
                 DeclarationExposureGrounding::ModuleLocalMemberExposure
@@ -1637,12 +1738,30 @@ pub fn reference_derived_closure_over_source_roots(
             };
             match &*parse_authored_occurrence_binding_source(rel.clone(), source) {
                 ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused => {
-                    parse_refusals.push(rel);
+                    failures.push(CandidateSourceFailure::ParseRefused { file: rel });
                 }
                 ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady {
                     transport,
                     module_path,
                 } => {
+                    if let Some(first_module) = file_seen.get(&rel) {
+                        failures.push(CandidateSourceFailure::DuplicateCandidateFile {
+                            file: rel.clone(),
+                            first_module: first_module.clone(),
+                            conflicting_module: module_path.clone(),
+                        });
+                        continue;
+                    }
+                    if let Some(first_file) = module_seen.get(module_path) {
+                        failures.push(CandidateSourceFailure::DuplicateModuleIdentity {
+                            module_path: module_path.clone(),
+                            first_file: first_file.clone(),
+                            conflicting_file: rel.clone(),
+                        });
+                        continue;
+                    }
+                    file_seen.insert(rel.clone(), module_path.clone());
+                    module_seen.insert(module_path.clone(), rel.clone());
                     let inputs = occurrence_binding_inputs_from_transport(
                         module_path.clone(),
                         transport.clone(),
@@ -1662,65 +1781,76 @@ pub fn reference_derived_closure_over_source_roots(
         }
     }
 
-    if !entry_seen {
-        return Err(format!(
-            "reference_derived_closure: entry {entry_key} is not under any given source root"
-        ));
+    if !failures.is_empty() {
+        let first_failure = failures.remove(0);
+        return ReferenceDerivedClosureRun::UniverseRefused {
+            first_failure,
+            more_failures: failures,
+        };
     }
 
     let universe_size = universe.len();
+    if !entry_seen {
+        return ReferenceDerivedClosureRun::EntryOutsideUniverse {
+            entry: entry_key,
+            universe: universe_size,
+        };
+    }
+
     let outcome =
         reference_derived_closure_fixed_point(entry_key.clone(), Rc::new(universe.into()));
-    let verdict = match &*outcome {
+    match &*outcome {
         ReferenceDerivedClosureFixedPoint::ClosureFixedPointSettled {
             admitted_files,
             edges,
             provenance,
             iterations,
-        } => format!(
-            "Settled: {} file(s) admitted, {} edge(s), {} provenance row(s), {} iteration(s)",
-            admitted_files.len(),
-            edges.len(),
-            provenance.len(),
-            iterations
-        ),
+        } => ReferenceDerivedClosureRun::Settled {
+            entry: entry_key,
+            universe: universe_size,
+            files: admitted_files.len(),
+            edges: edges.len(),
+            provenance: provenance.len(),
+            iterations: *iterations,
+        },
         ReferenceDerivedClosureFixedPoint::ClosureFixedPointRefused {
             refusal,
             iterations,
         } => {
             // The located arms render their LOCUS, not the population they came from. Printing the
-            // whole `BoundReferencePopulation` was the same defect the locus repair fixed one level
-            // up: it emits every unbound occurrence's allocator ordinal, which is unreadable and
-            // says nothing about which authored name failed to bind.
+            // whole `BoundReferencePopulation` emits every failing occurrence's allocator ordinal,
+            // which is unreadable and says nothing about which authored name failed to bind.
             let detail = match &**refusal {
                 crate::std_reference_derived_closure::ReferenceDerivedClosureRefusal::ClosureBindingRefused {
                     first_failure_locus,
-                    unbound_count,
+                    failure_count,
                     ..
                 } => format!(
-                    "ClosureBindingRefused: '{}' at bytes {}-{} unbound ({} unbound reference(s) in the selected population)",
+                    "ClosureBindingRefused: '{}' at bytes {}-{} did not bind ({} failing reference(s) in the selected population, all classes)",
                     first_failure_locus.authored_name,
                     first_failure_locus.diagnostic_span.start,
                     first_failure_locus.diagnostic_span.end,
-                    unbound_count
+                    failure_count
                 ),
                 other => format!("{other:?}"),
             };
-            format!("Refused after {iterations} iteration(s): {detail}")
+            ReferenceDerivedClosureRun::Refused {
+                entry: entry_key,
+                universe: universe_size,
+                detail,
+                iterations: *iterations,
+            }
         }
         ReferenceDerivedClosureFixedPoint::ClosureFixedPointExhausted {
             admitted_files,
             iterations,
-        } => format!(
-            "Exhausted: {} file(s) admitted after {} iteration(s) (the closure was still growing)",
-            admitted_files.len(),
-            iterations
-        ),
-    };
-    Ok(format!(
-        "entry={entry_key} universe={universe_size} parse_refusals={} :: {verdict}",
-        parse_refusals.len()
-    ))
+        } => ReferenceDerivedClosureRun::Exhausted {
+            entry: entry_key,
+            universe: universe_size,
+            files: admitted_files.len(),
+            iterations: *iterations,
+        },
+    }
 }
 
 fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBindingManifestRow> {
