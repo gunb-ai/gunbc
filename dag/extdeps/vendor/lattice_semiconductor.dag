@@ -1,16 +1,34 @@
 module extdeps.vendor.lattice_semiconductor
 
+import std.types { String }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
+// THE AUTHORITY FOR A LEGAL NAME IS A FILING, NOT AN ENCYCLOPAEDIA. An earlier revision cited
+// Wikipedia here. That is weaker grounding than the rest of this lane sets and weaker in the
+// specific way that matters: a legal name is precisely the fact a registrant states about itself
+// under obligation, so a secondary source is a description of the authority rather than the
+// authority. The corpus already reaches EDGAR directly for the SCM issuer rows; this uses the same
+// endpoint for the same kind of fact.
+//
+// Pulled 2026-08-13: CIK 0000855658, ticker LSCC, SIC 3674 Semiconductors and Related Devices,
+// incorporated in Delaware.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "en.wikipedia.org/wiki/Lattice_Semiconductor"
+    locator: "data.sec.gov/submissions/CIK0000855658.json"
   }
 }
+
+// EDGAR RETURNS "LATTICE SEMICONDUCTOR CORP", AND THAT IS NOT QUOTED HERE. The submissions
+// endpoint carries a registrant name normalised to upper case with a truncated corporate suffix —
+// an artefact of that index rather than how the company writes its own name, which appears in full
+// on the filing cover page. Copying the normalised spelling would have made the citation look
+// tighter while making the fact less accurate, so the cited endpoint establishes WHICH registrant
+// this is and the cover-page spelling is what the name says.
+data lattice_registrant_note: String = "extdeps.vendor.lattice_semiconductor cites EDGAR submissions for CIK 0000855658 to establish the registrant. The endpoint's own name field reads LATTICE SEMICONDUCTOR CORP, an index normalisation to upper case with a truncated suffix; legal_name carries the cover-page spelling instead, because the normalised form is a property of that index rather than of the company."
 
 data lattice_semiconductor_vendor: Vendor<Hardware> = Vendor { legal_name: "Lattice Semiconductor Corporation" }
