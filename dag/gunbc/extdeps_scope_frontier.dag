@@ -199,6 +199,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/power/eaton_tripp_lite.dag",
   "dag/extdeps/power/types.dag",
   "dag/extdeps/vendor/dynatron.dag",
+  "dag/extdeps/vendor/lattice_semiconductor.dag",
   "dag/extdeps/vendor/eaton.dag",
   "dag/extdeps/vendor/navepoint.dag",
   "dag/extdeps/vendor/rosewill.dag",
