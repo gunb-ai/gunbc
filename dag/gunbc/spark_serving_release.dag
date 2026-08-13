@@ -9,6 +9,7 @@ import std.measure { ByteSize, byte_size_count }
 import gunbc.spark_serving_realization {
   SystemPrincipal, ServingDeploymentTarget, UserUnitRealization,
   EscalationShortfall, NoNewPrivilegeRequired, NewPrivilegeRequired, ShortfallUndecidable,
+  SparkServingIntent, SparkServingRealization, ServingRequirementRefusal, identity_contract_refusal,
   ObservedGrantPopulation, escalation_shortfall, applicable_without_administrator,
 }
 
@@ -288,6 +289,7 @@ fn spark_occurrences_share_release(a: SparkServingOccurrence, b: SparkServingOcc
 type SparkServingPlanRow {
   host: HostIdentity
   reconciliation: SparkServingReconciliation
+  contract: ServingRequirementRefusal?
   shortfall: EscalationShortfall
 }
 
@@ -311,10 +313,25 @@ fn spark_serving_target(actor: SystemPrincipal) -> ServingDeploymentTarget {
   }
 }
 
+// THE REALIZATION IS A PARAMETER AND ITS ADMISSIBILITY IS CHECKED, because the first cut hardcoded
+// UserUnitRealization here and that was fail-open planning (review 51835). The realization model
+// REFUSES a user unit under an intent requiring a no-login service identity -- structurally, on any
+// host, with no observation -- so a plan that assumed it could answer "ready to apply" for a path the
+// model says cannot satisfy the intent, while the admitted path needed administrator-backed effects.
+// Computing a privilege cost for the wrong realization is not a smaller answer; it is a confident
+// answer to a different question.
+//
+// The contract check is identity_contract_refusal, which takes only the intent and the realization.
+// That is deliberate: it is the OBSERVATION-FREE half of admission, so the plan gains intent fidelity
+// without depending on SparkHostCapabilityObservation -- the host-grained carrier whose fork is still
+// open and which must not acquire a new consumer before it is closed. Full selection, including the
+// capability half, lands with that closure and not before.
 fn spark_serving_plan_row(
   desired: SparkServingOccurrence,
   observation: SparkServingObservation,
   prerequisites: List<SparkServingPrerequisite>,
+  intent: SparkServingIntent,
+  realization: SparkServingRealization,
   actor: SystemPrincipal,
   observed_grants: ObservedGrantPopulation,
 ) -> SparkServingPlanRow {
@@ -322,8 +339,9 @@ fn spark_serving_plan_row(
     host: desired.host,
     reconciliation: reconcile_spark_serving(
       desired: desired, observation: observation, prerequisites: prerequisites),
+    contract: identity_contract_refusal(intent: intent, realization: realization),
     shortfall: escalation_shortfall(
-      realization: UserUnitRealization,
+      realization: realization,
       target: spark_serving_target(actor: actor),
       observed: observed_grants),
   }
@@ -333,8 +351,12 @@ fn spark_serving_plan_row(
 // make, and the privilege it costs is already held. Total over both coproducts, so neither a new
 // reconciliation arm nor a new shortfall arm can become applicable by omission.
 fn plan_row_applicable(row: SparkServingPlanRow) -> Bool {
-  spark_serving_may_actuate(reconciliation: row.reconciliation)
-    && applicable_without_administrator(shortfall: row.shortfall)
+  match row.contract {
+    Present { value: _ } => false
+    Absent =>
+      spark_serving_may_actuate(reconciliation: row.reconciliation)
+        && applicable_without_administrator(shortfall: row.shortfall)
+  }
 }
 
 // WHAT AN OPERATOR IS BEING ASKED TO APPROVE, per row. Deliberately NOT a Bool: "nothing to do",
@@ -343,10 +365,20 @@ fn plan_row_applicable(row: SparkServingPlanRow) -> Bool {
 type SparkServingPlanVerdict
   = ServingNoChangeRequired
   | ServingReadyToApply
+  | ServingRealizationInadmissible { cause: NonEmptyStr }
   | ServingBlockedOnPrivilege { first_missing: NonEmptyStr }
   | ServingBlockedOnObservation { cause: NonEmptyStr }
 
+// THE CONTRACT IS CHECKED BEFORE ANYTHING ELSE. An inadmissible realization makes every downstream
+// answer moot: there is no point reporting that its privilege cost is already covered.
 fn plan_row_verdict(row: SparkServingPlanRow) -> SparkServingPlanVerdict {
+  match row.contract {
+    Present { value: refusal } => ServingRealizationInadmissible { cause: refusal.cause }
+    Absent => plan_row_verdict_admitted(row: row)
+  }
+}
+
+fn plan_row_verdict_admitted(row: SparkServingPlanRow) -> SparkServingPlanVerdict {
   match row.reconciliation {
     SparkServingAlreadyConverged { converged_release: _ } => ServingNoChangeRequired
     SparkServingRefused { first: f, more: _ } => ServingBlockedOnObservation { cause: f.cause }
@@ -369,6 +401,7 @@ fn plan_verdict_label(verdict: SparkServingPlanVerdict) -> String {
     ServingReadyToApply => "ready-to-apply"
     ServingBlockedOnPrivilege { first_missing: m } => join(["blocked-on-privilege missing=", m as String], "")
     ServingBlockedOnObservation { cause: c } => join(["blocked-on-observation cause=", c as String], "")
+    ServingRealizationInadmissible { cause: c } => join(["realization-inadmissible cause=", c as String], "")
   }
 }
 

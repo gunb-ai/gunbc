@@ -4,6 +4,9 @@ import std.types { String, Bool, List, Int, NonEmptyStr }
 import std.measure { byte_size }
 import gunbc.spark_serving_realization {
   SystemPrincipal, NamedPrincipal, ObservedGrantPopulation, GrantPopulationObserved,
+  SparkServingIntent, SurvivesReboot, RestartsOnFailure, ManagedConvergenceOwned,
+  NoLoginNoSudoIdentity, ExecutorOwnedIdentity, UnauthenticatedEndpoint, IndependentlyObservable,
+  UserUnitRealization, SystemUnitRealization,
 }
 import gunbc.spark_serving_release {
   SparkServingReleaseIdentity, SparkServingOccurrence, SecretVersionRef,
@@ -217,10 +220,49 @@ test fn w_install_required_may_actuate() -> Bool {
   })
 }
 
-fn plan_row_for(observation: SparkServingObservation, grants: ObservedGrantPopulation) -> SparkServingPlanRow {
+// THE INTENT UNDER WHICH THE HEADLINE CLAIM HOLDS, stated rather than assumed (review 51835). The
+// first cut hardcoded UserUnitRealization with no intent in sight, so the claim "ready to apply" was
+// true of a realization the model refuses under a no-login-identity intent -- the regression suite
+// endorsing the wrong operator answer. ExecutorOwnedIdentity is the operator ruling for the first
+// production release: the serving process shares the automation account's Unix identity rather than
+// running under a separate gunbc-inference UID. That is a real trade, and separate-UID isolation
+// stays a named hardening target rather than a requirement the mechanism silently violates.
+fn executor_owned_intent() -> SparkServingIntent {
+  SparkServingIntent {
+    lifecycle: SurvivesReboot,
+    availability: RestartsOnFailure,
+    authority: ManagedConvergenceOwned,
+    service_identity: ExecutorOwnedIdentity,
+    endpoint: UnauthenticatedEndpoint,
+    observability: IndependentlyObservable,
+  }
+}
+
+fn no_login_intent() -> SparkServingIntent {
+  SparkServingIntent {
+    lifecycle: SurvivesReboot,
+    availability: RestartsOnFailure,
+    authority: ManagedConvergenceOwned,
+    service_identity: NoLoginNoSudoIdentity,
+    endpoint: UnauthenticatedEndpoint,
+    observability: IndependentlyObservable,
+  }
+}
+
+fn plan_row_under(
+  intent: SparkServingIntent,
+  realization: SparkServingRealization,
+  observation: SparkServingObservation,
+  grants: ObservedGrantPopulation,
+) -> SparkServingPlanRow {
   spark_serving_plan_row(
     desired: occ_srv5(), observation: observation, prerequisites: grounded_prereqs,
+    intent: intent, realization: realization,
     actor: NamedPrincipal { login: "gunbc-automation" as NonEmptyStr }, observed_grants: grants)
+}
+
+fn plan_row_for(observation: SparkServingObservation, grants: ObservedGrantPopulation) -> SparkServingPlanRow {
+  plan_row_under(intent: executor_owned_intent(), realization: UserUnitRealization, observation: observation, grants: grants)
 }
 
 data linger_granted: ObservedGrantPopulation = GrantPopulationObserved {
@@ -265,4 +307,45 @@ test fn w_plan_row_applicable_requires_change_and_privilege() -> Bool {
   plan_row_applicable(row: plan_row_for(observation: observation_absent(), grants: linger_granted))
     && !plan_row_applicable(row: plan_row_for(observation: observation_absent(), grants: nothing_granted))
     && !plan_row_applicable(row: plan_row_for(observation: observed_matching(), grants: linger_granted))
+}
+
+
+// THE REGRESSION CONTROL FOR review 51835. Under an intent that requires a no-login service identity,
+// a user unit is structurally inadmissible -- a systemd user unit runs as the user whose manager owns
+// it -- so the plan must say so rather than reporting a privilege cost for a path that cannot satisfy
+// the intent. Before the contract check this exact row answered "ready-to-apply".
+test fn w_a_user_unit_is_inadmissible_under_a_no_login_identity_intent() -> Bool {
+  string_contains(
+    s: plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
+      intent: no_login_intent(), realization: UserUnitRealization,
+      observation: observation_absent(), grants: linger_granted))),
+    pattern: "realization-inadmissible")
+}
+
+// THE DISCRIMINATING PAIR: the SAME row differs only by intent. If these agree, the contract is not
+// being consulted and the headline claim is once again true of nothing in particular.
+test fn w_the_intent_decides_admissibility_of_the_same_realization() -> Bool {
+  plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
+    intent: no_login_intent(), realization: UserUnitRealization,
+    observation: observation_absent(), grants: linger_granted))) != plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
+    intent: executor_owned_intent(), realization: UserUnitRealization,
+    observation: observation_absent(), grants: linger_granted)))
+}
+
+// AN INADMISSIBLE ROW IS NEVER APPLICABLE, whatever its reconciliation and privilege say.
+test fn w_an_inadmissible_realization_is_not_applicable() -> Bool {
+  !plan_row_applicable(row: plan_row_under(
+    intent: no_login_intent(), realization: UserUnitRealization,
+    observation: observation_absent(), grants: linger_granted))
+}
+
+// THE OTHER DIRECTION: a system unit IS admissible under the no-login intent, and it is blocked on
+// PRIVILEGE rather than on the contract -- which is the answer the reviewer said the operator should
+// have been getting on that profile all along.
+test fn w_a_system_unit_under_the_no_login_intent_blocks_on_privilege() -> Bool {
+  string_contains(
+    s: plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
+      intent: no_login_intent(), realization: SystemUnitRealization,
+      observation: observation_absent(), grants: linger_granted))),
+    pattern: "blocked-on-privilege")
 }
