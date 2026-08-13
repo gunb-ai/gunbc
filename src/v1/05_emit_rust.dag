@@ -2349,26 +2349,67 @@ fn lib_rs_mod_name_from_file(f: TextFile) -> String {
   substring(s: f.path, start: src_prefix_len, end: path_len - ext_len)
 }
 
+// ONE role, TWO projections. Being a macro provider decides both how the module is
+// RENDERED (`#[macro_use]`) and where it is ORDERED (ahead of its consumers), and the
+// two were independently written comparisons against the same literal until this
+// consolidation — so a second provider could have been added to one and missed by the
+// other, or a module ordered first while rendered as an ordinary `pub mod`. That is a
+// smaller copy of the very disagreement this emitter's membership repair removed.
 fn emit_lib_rs_mod_decl(mod_name: String) -> String {
-  if mod_name == "v1_interpreter_dispatch_generated" {
-    "#[macro_use]\npub mod v1_interpreter_dispatch_generated;"
+  let declaration = concat(rust_visibility_prefix(), rust_items().module_keyword, " ", mod_name, ";")
+  if is_lib_rs_macro_provider(mod_name: mod_name) {
+    concat("#[macro_use]\n", declaration)
   } else {
-    concat(rust_visibility_prefix(), rust_items().module_keyword, " ", mod_name, ";")
+    declaration
   }
 }
 
-fn order_lib_rs_mod_names(mod_names: List<String>) -> List<String> {
-  mod_names |> filter(n => n != "v1_interpreter_dispatch_generated")
+// A macro provider must be DECLARED before the modules invoking its macros: the
+// generated dispatch module defines `macro_rules!` arms that v1_interpreter calls
+// unqualified, and textual macro scope begins at the definition point and runs
+// forward. So declaration order is a rendering constraint with real semantics, and
+// it is derived here rather than left to fall out of emitted-file order.
+fn is_lib_rs_macro_provider(mod_name: String) -> Bool {
+  mod_name == "v1_interpreter_dispatch_generated"
 }
 
+// Stage0 only: the dispatch module is co-produced by a different emitter, so the
+// admitted hand-maintained block owns its declaration (and already places it ahead
+// of v1_interpreter). Dropping it from the derived names keeps it from appearing twice.
+fn order_lib_rs_mod_names(mod_names: List<String>) -> List<String> {
+  mod_names |> filter(n => !is_lib_rs_macro_provider(mod_name: n))
+}
+
+fn order_partial_lib_rs_mod_names(mod_names: List<String>) -> List<String> {
+  concat(
+    mod_names |> filter(n => is_lib_rs_macro_provider(mod_name: n)),
+    mod_names |> filter(n => !is_lib_rs_macro_provider(mod_name: n))
+  )
+}
+
+// TWO DIMENSIONS, kept apart. MEMBERSHIP is the emitted file population; ORDER is
+// the macro-provider-before-consumer constraint above.
+//
+// They used to be fused, and wrongly: the derived names filtered the dispatch module
+// out, then a hand-authored string appended it back UNCONDITIONALLY. For the stage0
+// crate that module is real, so the seed compiled and the fork stayed invisible —
+// but every other emitted crate got a declaration for a module nobody materialized,
+// which is E0583. It surfaced on the falsifier's wet witnesses, whose lib.rs is a
+// dozen lines: two of them died on the missing module before reaching the behaviour
+// they exist to measure. A partial crate now declares exactly what this emit produced.
 fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: Bool) -> TextFile {
-  let mod_names = order_lib_rs_mod_names(mod_names: all_module_files |> map(lib_rs_mod_name_from_file))
+  let file_derived_names = all_module_files |> map(lib_rs_mod_name_from_file)
+  let mod_names = if has_compiler_tests {
+    order_lib_rs_mod_names(mod_names: file_derived_names)
+  } else {
+    order_partial_lib_rs_mod_names(mod_names: file_derived_names)
+  }
   let mod_decls = mod_names |> map(emit_lib_rs_mod_decl)
 
   let hand_maintained_mods = if has_compiler_tests {
     generated_pub_mod_block
   } else {
-    "\n#[macro_use]\npub mod v1_interpreter_dispatch_generated;"
+    ""
   }
   let test_mod = if has_compiler_tests {
     "\n\n#[cfg(test)]\nmod compiler_tests;"
