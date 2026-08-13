@@ -21,6 +21,11 @@ import product.compute_board.article {
   power_interlock_article,
 }
 import product.compute_board.admission { refusal_set_count }
+import product.compute_board.device_binding {
+  DevicePinAssignment,
+  interlock_device_realization,
+  pin_refusal_set_count,
+}
 import product.compute_board.spice_projection { SpiceProjectionRefusal }
 import product.compute_board.emission_entry {
   BoardArticleNotAdmitted,
@@ -33,6 +38,12 @@ import product.compute_board.emission_entry {
   emit_spice_for,
   emit_verilog,
   emit_verilog_for,
+  emit_pin_constraints_for,
+}
+import product.compute_board.digital_control {
+  conditioned_good_signal,
+  fault_signal,
+  power_permit_signal,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -169,5 +180,27 @@ test fn w_the_same_board_still_emits_for_a_target_that_can_render_it() -> Bool {
     BoardEmitted { source: s } => s != ""
     BoardArticleNotAdmitted { causes: _ } => false
     BoardTargetRefused { cause: _ } => false
+  }
+}
+
+// THE MIRROR OF THE ADMISSION-CAUSES TEST, and it is here because the entry used to fail it. The
+// pin chain reports a SET of causes and the entry passed cs.first, so a board with two independent
+// defects crossed the host boundary carrying one — the second was not refused, not deferred, just
+// absent, and a caller had no way to learn it existed. These assignments plant exactly two: pin 5
+// is not on the TQ144 package, and reset_release is left with no pin at all. Counting is what
+// makes the fix visible; matching the arm passed before and after.
+test fn w_every_target_cause_crosses_the_boundary() -> Bool {
+  match emit_pin_constraints_for(
+    article: power_interlock_article,
+    realization: interlock_device_realization,
+    assignments: [
+      DevicePinAssignment { signal: conditioned_good_signal, pin: "5" },
+      DevicePinAssignment { signal: fault_signal, pin: "2" },
+      DevicePinAssignment { signal: power_permit_signal, pin: "3" },
+    ]
+  ) {
+    BoardEmitted { source: _ } => false
+    BoardArticleNotAdmitted { causes: _ } => false
+    BoardTargetRefused { cause: cs } => pin_refusal_set_count(s: cs) == 2
   }
 }
