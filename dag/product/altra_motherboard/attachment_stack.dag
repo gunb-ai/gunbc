@@ -1,0 +1,197 @@
+module product.altra_motherboard.attachment_stack
+
+import std.types { String, Bool, NonEmptyStr, List }
+import std.integer { Int }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.cpu.types { CpuSocket }
+import extdeps.cpu.ampere_altra_package { altra_fclga_socket, altra_declared_contact_count }
+
+data attachment_stack_note: String = "SIX THINGS BETWEEN A PROCESSOR DIE AND A BOARD, AND THEY ARE NOT ONE THING. The processor package, the socket, the socket's own board termination, the motherboard land pattern that termination solders to, the loading mechanism that clamps the processor into the socket, and the mounting that carries the load are six independently governed identities with six different authorities — one vendor publishes the package, another manufactures the socket, and the motherboard designer owns neither. THE ERROR THIS MODULE EXISTS TO MAKE UNWRITABLE is deriving the board land pattern from the processor package's bottom-land geometry. Both are grids of lands with 4926 members and the same pitch, so they LOOK like the same fact, and the datasheet's mechanical section is right there. They are not the same fact: one is the package's underside, the other is the pad array the SOCKET solders to, and the socket sits between them adding its own tolerance, termination style and keepout. A board built on the first is a board where nothing solders. The identical category error was already made one layer down in this repository, where a package body envelope was called a footprint and approved by review before it was caught."
+
+// EACH LAYER IS ITS OWN SUBJECT WITH ITS OWN AUTHORITY. They are separate types rather than one
+// parameterised row because their FACTS differ in kind, not only in value: a package has contacts
+// and a mechanical outline, a socket has a vendor part number and an insertion force, a loading
+// mechanism has a clamping load and a screw torque. Fusing them would produce a record where most
+// fields are absent for most layers, which is how an absent fact becomes indistinguishable from
+// an inapplicable one.
+type AttachmentLayer
+  = ProcessorPackageLayer
+  | SocketLayer
+  | SocketBoardTerminationLayer
+  | BoardLandPatternLayer
+  | LoadingMechanismLayer
+  | MountingLayer
+
+fn attachment_layer_name(l: AttachmentLayer) -> NonEmptyStr {
+  match l {
+    ProcessorPackageLayer => "processor package"
+    SocketLayer => "socket"
+    SocketBoardTerminationLayer => "socket board termination"
+    BoardLandPatternLayer => "board land pattern"
+    LoadingMechanismLayer => "loading mechanism"
+    MountingLayer => "mounting"
+  }
+}
+
+// THREE CATEGORIES, NOT TWO, and the third is the one that keeps getting collapsed into the
+// second. A fact whose authority nobody has looked for is UNRESOLVED; it is not NDA-gated, and
+// recording it as NDA-gated invents a blocker and stops anyone looking. The reverse error is
+// equally live: this repository once declared the Altra pin map NDA-only by reasoning from the
+// fact that the reference BOARD collateral is under NDA, and defended it with a passing witness.
+// It was public in the datasheet the repository was already citing.
+//
+// REDISTRIBUTION IS A FOURTH THING AND IT IS NOT AVAILABILITY. A document can be freely
+// downloadable and still carry a proprietary footer that makes copying its tables into a public
+// repository a licensing question. That is a question about WHERE the bytes may live, not about
+// whether we may know them, and conflating the two would either block modelling that is allowed
+// or leak bytes that are not.
+type AuthorityStanding
+  = PubliclyCited { authority: ExternalAuthority }
+  | PublicButRedistributionUndecided { authority: ExternalAuthority, footer: NonEmptyStr }
+  | NdaGated { holder: NonEmptyStr, route: NonEmptyStr }
+  | Unresolved { what_is_missing: NonEmptyStr }
+
+type AttachmentLayerStanding {
+  layer: AttachmentLayer
+  standing: AuthorityStanding
+}
+
+data altra_datasheet_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "amperecomputing.com/briefs/ampere-altra-family-product-brief"
+  }
+}
+
+data ampere_customer_connect_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "amperecomputing.com/home/customer-reference-boards"
+  }
+}
+
+// The processor package is PUBLIC and its redistribution is the open question — every page of the
+// datasheet carrying it is footed proprietary, so the contact table may be modelled and joined
+// but not hand-copied into this public repository until placement is decided.
+data processor_package_standing: AttachmentLayerStanding = AttachmentLayerStanding {
+  layer: ProcessorPackageLayer,
+  standing: PublicButRedistributionUndecided {
+    authority: altra_datasheet_authority,
+    footer: "Ampere Computing Proprietary",
+  },
+}
+
+// The socket is a purchased part from a socket manufacturer, and nobody here has yet identified
+// which one. That is an unresolved authority, NOT an NDA blocker — recording it as NDA-gated
+// would invent a wall and stop anyone from looking for the datasheet that probably exists.
+data socket_standing: AttachmentLayerStanding = AttachmentLayerStanding {
+  layer: SocketLayer,
+  standing: Unresolved {
+    what_is_missing: "socket vendor identity and part number; the processor datasheet names the package, not the socket that receives it",
+  },
+}
+
+data socket_board_termination_standing: AttachmentLayerStanding = AttachmentLayerStanding {
+  layer: SocketBoardTerminationLayer,
+  standing: Unresolved {
+    what_is_missing: "how the selected socket terminates to the board — solder ball, compliant pin or land — which is a property of the socket part and cannot be read off the processor package",
+  },
+}
+
+// THE ONE THAT MATTERS MOST, and the one that looks most available. The board land pattern is the
+// SOCKET vendor's recommended pad array, not the processor's underside.
+data board_land_pattern_standing: AttachmentLayerStanding = AttachmentLayerStanding {
+  layer: BoardLandPatternLayer,
+  standing: Unresolved {
+    what_is_missing: "the socket vendor's recommended motherboard land pattern; the processor datasheet's mechanical section gives the PACKAGE's bottom-land geometry, which is a different surface on the other side of the socket",
+  },
+}
+
+data loading_mechanism_standing: AttachmentLayerStanding = AttachmentLayerStanding {
+  layer: LoadingMechanismLayer,
+  standing: Unresolved {
+    what_is_missing: "independent loading mechanism and backplate geometry, clamping load and torque; whether these ship with the socket or with reference-board collateral is itself unestablished",
+  },
+}
+
+data mounting_standing: AttachmentLayerStanding = AttachmentLayerStanding {
+  layer: MountingLayer,
+  standing: Unresolved {
+    what_is_missing: "mounting hole positions and keepouts carrying the loading mechanism's reaction force",
+  },
+}
+
+// The Ampere reference MOTHERBOARD packages are the genuine NDA boundary, and they are recorded
+// here as a standing rather than as prose so that the boundary is a value a consumer can read.
+// They are board designs. They are not package facts, and conflating the two is what produced the
+// error this module's note describes.
+data reference_board_collateral_standing: AuthorityStanding = NdaGated {
+  holder: "Ampere Computing",
+  route: "Customer Connect, for customers, partners and distributors under NDA: Mt. Jade, Mt. Collins, Mt. Bonnell and Mt. Snow motherboard design packages",
+}
+
+data attachment_stack: List<AttachmentLayerStanding> = [
+  processor_package_standing,
+  socket_standing,
+  socket_board_termination_standing,
+  board_land_pattern_standing,
+  loading_mechanism_standing,
+  mounting_standing,
+]
+
+fn standing_is_established(s: AuthorityStanding) -> Bool {
+  match s {
+    PubliclyCited { authority: _ } => true
+    PublicButRedistributionUndecided { authority: _, footer: _ } => false
+    NdaGated { holder: _, route: _ } => false
+    Unresolved { what_is_missing: _ } => false
+  }
+}
+
+// A LAYER IS BLOCKED FOR A REASON, AND THE REASON DECIDES WHO ACTS. An unresolved authority is
+// someone reading a datasheet; a redistribution question is a legal decision about where bytes
+// may live; an NDA gate is a commercial relationship. Collapsing them into "not ready" would send
+// all three to the same person and make the tractable ones look like the intractable one.
+type LayerBlocker
+  = NeedsSomeoneToFindTheDocument { layer: AttachmentLayer, what_is_missing: NonEmptyStr }
+  | NeedsARedistributionDecision { layer: AttachmentLayer, footer: NonEmptyStr }
+  | NeedsCommercialAccess { layer: AttachmentLayer, route: NonEmptyStr }
+
+fn layer_blocker(row: AttachmentLayerStanding) -> LayerBlocker? {
+  match row.standing {
+    PubliclyCited { authority: _ } => none
+    Unresolved { what_is_missing: w } =>
+      Present { value: NeedsSomeoneToFindTheDocument { layer: row.layer, what_is_missing: w } }
+    PublicButRedistributionUndecided { authority: _, footer: f } =>
+      Present { value: NeedsARedistributionDecision { layer: row.layer, footer: f } }
+    NdaGated { holder: _, route: r } =>
+      Present { value: NeedsCommercialAccess { layer: row.layer, route: r } }
+  }
+}
+
+fn open_blockers() -> List<LayerBlocker> {
+  fold(attachment_stack, init: [], f: fn(acc, row) {
+    match layer_blocker(row: row) {
+      Absent => acc
+      Present { value: b } => concat(acc, [b])
+    }
+  })
+}
+
+// THE CONSTRUCTION WALL. A board land pattern is reachable only from the socket layer's own
+// authority, and this module supplies no function taking a processor package and returning one.
+// The absence is the wall: with no such function, a caller that wants board pads must obtain the
+// socket vendor's geometry, and cannot instead reach for the package drawing that is sitting
+// right there in the datasheet.
+//
+// The contact COUNT is shared and is deliberately the only thing that crosses: however the socket
+// terminates, a 4926-contact processor needs 4926 board-side terminations, so the population is a
+// join key between the two layers even though the geometry is not.
+fn board_side_termination_population() -> Int {
+  altra_declared_contact_count()
+}
+
+fn processor_socket() -> CpuSocket {
+  altra_fclga_socket
+}
