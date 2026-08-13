@@ -24428,7 +24428,46 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
             .roster_closure_nodes
             .max(summary.roster_closure_nodes);
     }
+    emit_batch_summary(&merged);
     merged
+}
+
+/// The ONE line that stands in for every routine witness the fold swallowed. It belongs here, at
+/// the merge, because this is where a BATCH exists: `run_discovery_rows` runs per entry-group, so
+/// emitting there produced 1,112 summaries of one witness each on a real floor — a per-witness line
+/// wearing a batch's name, and 1,112 resolves of the render module, which is what put batch 1 over
+/// its wall clamp. A summary whose subject is one witness is not a summary.
+///
+/// Emitted only when the fold ran: with folding off every witness already printed, and a summary
+/// would be a second telling of the same thing.
+fn emit_batch_summary(merged: &DiscoverySummary) {
+    if !floor_stream_enabled() || !routine_rollup_folds() {
+        return;
+    }
+    let refused = merged.deferred_rows.len() as u64;
+    let failed = merged.failures.len() as u64;
+    match render_batch_summary_line(
+        0,
+        "discovery corpus",
+        merged.passed as u64,
+        merged.skipped as u64,
+        refused,
+        failed,
+        0,
+        merged.total_measured_nanos as u64,
+        floor_shard_peak_rss_bytes(),
+    ) {
+        Some(line) => eprintln!("{line}"),
+        // Fail-closed: the routine lines are already gone, so a silent return would render a batch
+        // that ran thousands of witnesses as one that printed nothing at all.
+        None => eprintln!(
+            "::error::observation render unavailable: could not render the batch summary through \
+             gunbc.observation_ci_render `ci_batch_summary_text`; the routine witness lines were \
+             folded and their summary is therefore MISSING, not empty (passed={} skipped={} \
+             refused={refused} failed={failed})",
+            merged.passed, merged.skipped
+        ),
+    }
 }
 
 // SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): the floor-observability cluster
@@ -25108,42 +25147,6 @@ fn run_discovery_rows(
         index_schedule_entry_completed(index, &prev, current_closure_subject.as_deref())?;
     }
     summary.roster_closure_nodes = closure_modules.len();
-    // Shard close: the one line that stands in for every routine witness the fold swallowed.
-    // Emitted only when the fold actually ran — with the fold off, every witness already printed
-    // and a summary would be a second telling of the same thing.
-    if style.stream && routine_rollup_folds() {
-        let label = if style.shard_count <= 1 {
-            "discovery corpus".to_string()
-        } else {
-            format!("discovery corpus shard {}", style.shard_id)
-        };
-        let refused = summary.deferred_rows.len() as u64;
-        let failed = summary.failures.len() as u64;
-        match render_batch_summary_line(
-            style.shard_id as u64,
-            &label,
-            summary.passed as u64,
-            summary.skipped as u64,
-            refused,
-            failed,
-            0,
-            summary.total_measured_nanos as u64,
-            floor_shard_peak_rss_bytes(),
-        ) {
-            Some(line) => eprintln!("{line}"),
-            // Fail-closed, per DESIGN section 5: the routine lines are already gone, so a silent
-            // return here would render a shard that ran thousands of witnesses as a shard that
-            // printed nothing at all. Refuse loudly with the counts the render would have carried.
-            None => eprintln!(
-                "::error::observation render unavailable: could not render the batch summary for \
-                 {label} through gunbc.observation_ci_render `ci_batch_summary_text`; the routine \
-                 witness lines were folded and their summary is therefore MISSING, not empty \
-                 (passed={} skipped={} refused={refused} failed={failed})",
-                summary.passed, summary.skipped
-            ),
-        }
-    }
-
     Ok(summary)
 }
 
