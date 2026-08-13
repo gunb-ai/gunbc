@@ -1,0 +1,44 @@
+module test.claim.host_cli_dependency_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import extdeps.tools.npm { npm_cli_tool }
+import gunbc.host_cli_dependency {
+  observe_host_cli_dependency,
+  HostCliDependencyPresent,
+  HostCliDependencyAbsent,
+  host_dependency_absent_wire,
+  host_cli_dependency_failure_receipt,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_note: String = "Hermetic controls for gunbc.host_cli_dependency: the absent wire is stable, and observing npm either names a path or a typed absent arm with install hint — never a bare Bool(false)."
+
+test fn host_dependency_absent_wire_is_stable() -> Bool {
+  host_dependency_absent_wire(
+    tool: "npm" as NonEmptyStr,
+    hint: "apt install npm",
+  ) == "HostDependencyAbsent{tool=npm,hint=apt install npm}"
+}
+
+test fn observe_npm_reports_present_or_absent() -> Bool {
+  match observe_host_cli_dependency(tool: npm_cli_tool) {
+    HostCliDependencyPresent { path: p } => (p as String) != ""
+    HostCliDependencyAbsent { tool, hint } =>
+      (tool as String) == "npm" && (hint as String) != ""
+  }
+}
+
+test fn host_cli_dependency_failure_receipt_matches_observation() -> Bool {
+  match observe_host_cli_dependency(tool: npm_cli_tool) {
+    HostCliDependencyPresent { path: _ } =>
+      host_cli_dependency_failure_receipt(
+        observation: HostCliDependencyPresent { path: "ignored" as FilePath },
+      ) == ""
+    HostCliDependencyAbsent { tool, hint } =>
+      host_cli_dependency_failure_receipt(
+        observation: HostCliDependencyAbsent { tool: tool, hint: hint },
+      ) == host_dependency_absent_wire(tool: tool, hint: hint)
+  }
+}

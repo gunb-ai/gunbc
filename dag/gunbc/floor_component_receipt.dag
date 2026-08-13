@@ -65,7 +65,7 @@ import gunbc.floor_component_receipt_document {
   receipt_member_components, receipt_member_selection_degradation,
   receipt_member_workflow_name, receipt_member_head_sha
 ,
-  FloorComponentFailureMode, ModeNoFailure, ModeBudgetExceeded, ModeInfra, ModeWitnessRed, ModeNotReached, ModeUnrecorded,
+  FloorComponentFailureMode, ModeNoFailure, ModeBudgetExceeded, ModeInfra, ModeWitnessRed, ModeHostDependencyAbsent, ModeNotReached, ModeUnrecorded,
   floor_component_failure_mode_of, floor_component_failure_mode_tag, floor_component_outcome_of_mode,
   ComponentOutcomeRead, ComponentConcluded, ComponentNotConcluded,
   floor_component_outcome_tag, floor_component_outcome_wire_tag}

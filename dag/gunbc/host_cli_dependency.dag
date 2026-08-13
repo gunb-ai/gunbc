@@ -1,0 +1,35 @@
+module gunbc.host_cli_dependency
+
+import extdeps.tools { CliTool, resolve, Resolved, NotFound }
+import std.types { String, NonEmptyStr, FilePath }
+
+data host_cli_dependency_authority_note: String = "Host CLI placement for wet witnesses: observe whether an executable is on PATH before attempting shell transport. A missing npm on the falsifier runner surfaced as runtime error: failed to execute npm (os error 2) and classified as WitnessRed — indistinguishable from a subject failure. This module refuses BEFORE execution with a typed wire HostDependencyAbsent{tool=...,hint=...} that claim_executor reads structurally (falsifier recovery PR D, run 31685755058 component 6). ENROLLMENT ANSWER: falsifier_rehomed_bin_wet_rows Codex materialize rows REQUIRE npm on the cadence runner image (provision via apt install npm); absent npm stops as HostDependencyAbsent, never auto-install inside the witness."
+
+data falsifier_run_31685755058_wall_receipt_note: String = "Part-two wall arithmetic CONFIRMED from floor-component-receipt run 31685755058 (not inherited): component 1 cold control wall_ms=3480830 (~58.0 min, 9016 witnesses); component 6 wall_ms=2946579 (~49.1 min, 16 witnesses, npm absent WitnessRed before this PR); components 7-9 outcome=skipped failure_mode=run_incomplete wall_ms=0 witnesses=0 — never executed before the 170-minute step cap. Batch-1 cold-control cost is a separate lane; this PR does not raise deadline/swap/max-parallel."
+
+type HostCliDependencyObservation
+  = HostCliDependencyPresent { path: FilePath }
+  | HostCliDependencyAbsent { tool: NonEmptyStr, hint: String }
+
+fn observe_host_cli_dependency(tool: CliTool) -> HostCliDependencyObservation {
+  match resolve(tool: tool) {
+    Resolved { resolved: r } => HostCliDependencyPresent { path: r.path }
+    NotFound { tool: t, hint: h } =>
+      HostCliDependencyAbsent { tool: t.name, hint: h }
+  }
+}
+
+fn host_dependency_absent_wire(tool: NonEmptyStr, hint: String) -> String {
+  concat(
+    "HostDependencyAbsent{tool=",
+    concat(tool as String, concat(",hint=", concat(hint, "}"))),
+  )
+}
+
+fn host_cli_dependency_failure_receipt(observation: HostCliDependencyObservation) -> String {
+  match observation {
+    HostCliDependencyPresent { path: _ } => ""
+    HostCliDependencyAbsent { tool, hint } =>
+      host_dependency_absent_wire(tool: tool, hint: hint)
+  }
+}

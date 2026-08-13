@@ -17,6 +17,7 @@ import gunbc.package_delivery {
   materialize_codex_runtime_bundle,
   AdmittedCodexRuntimeSource,
   CodexRuntimeMaterialized,
+  codex_runtime_materialization_failure_receipt,
   observe_codex_npm_runtime_target,
   CodexNpmRuntimeTargetObserved,
   select_codex_exact_target_closure,
@@ -153,6 +154,34 @@ test fn materialize_codex_runtime_bundle_produces_native_executable() -> Bool {
             ).is_file
         _ => false
       }
+  }
+}
+
+fn materialize_codex_runtime_bundle_produces_native_executable_failure_receipt() -> String {
+  match isolated_release_parent() {
+    Absent => "staging mktemp failed"
+    Present { value: release_parent } =>
+      codex_runtime_materialization_failure_receipt(
+        outcome: materialize_codex_runtime_bundle(
+          source: committed_admitted_codex_runtime_source(),
+          release_parent: release_parent,
+        ),
+      )
+  }
+}
+
+fn materialize_identical_input_twice_reuses_same_release_identity_failure_receipt() -> String {
+  match isolated_release_parent() {
+    Absent => "staging mktemp failed"
+    Present { value: release_parent } => {
+      let source = committed_admitted_codex_runtime_source()
+      codex_runtime_materialization_failure_receipt(
+        outcome: materialize_codex_runtime_bundle(
+          source: source,
+          release_parent: release_parent,
+        ),
+      )
+    }
   }
 }
 
