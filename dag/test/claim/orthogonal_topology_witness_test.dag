@@ -356,6 +356,13 @@ test fn complex_refuses_members_in_different_frames() -> Bool {
 // multiply micrometre counts and call the product square millimetres - wrong by a factor of a
 // million, from arithmetic that is right. The millimetre frame is the positive control on the
 // same space, so the frame decides the outcome rather than the fold refusing everything.
+// THE VOLUME PATH REFUSES TOO - and it reaches that refusal through the AREA guard, not
+// through the height projection. The first version of this comment claimed the second, and
+// mutating both height arms to fabricate a zero left this witness green, which is how the
+// claim was caught: space_volume consults the area fold first and it refuses on exactly the
+// frames that would break the height projection. So what this establishes is that a volume
+// over an unlabelable frame refuses rather than returning zero. It does NOT establish that
+// the height projection refuses, and the module records that those arms are defensive.
 fn micro_registry() -> SpatialFrameRegistry {
   match register_frame(r: empty_frame_registry(), identity: room(), length_scale: Micro) {
     FrameRegistered { frame: f } => registry_with(r: empty_frame_registry(), f: f)
@@ -394,13 +401,6 @@ test fn w_metric_folds_refuse_a_frame_they_cannot_label() -> Bool {
         ExtentFrameUnregistered { identity: _ } => true
         ExtentInFrame { length: _ } => false
       }
-      // THE VOLUME PATH REFUSES TOO - and it reaches that refusal through the AREA guard, not
-      // through the height projection. The first version of this comment claimed the second, and
-      // mutating both height arms to fabricate a zero left this witness green, which is how the
-      // claim was caught: space_volume consults the area fold first and it refuses on exactly the
-      // frames that would break the height projection. So what this establishes is that a volume
-      // over an unlabelable frame refuses rather than returning zero. It does NOT establish that
-      // the height projection refuses, and the module records that those arms are defensive.
       let volume_refused = match space_volume(registry: micro_registry(), s: s) {
         OrthogonalRefused { cause: _ } => true
         OrthogonalReady { value: _ } => false

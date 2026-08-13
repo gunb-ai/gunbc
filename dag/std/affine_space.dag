@@ -158,6 +158,10 @@ fn zero_vector3(frame: CoordinateFrameIdentity) -> Vector3 {
 // operation-identity enum beside this one would be the nicknaming DESIGN section 3 forbids, and a
 // consumer matching on frame refusals would then have to know which of two vocabularies produced
 // the one it holds.
+// std.planar_projection's point projection. It is registered HERE rather than in a refusal sum of
+// its own because the frame-mismatch fact is one concept: a second operation-identity enum beside
+// this one would be the nicknaming DESIGN section 3 forbids, and a consumer matching on frame
+// refusals would then have to know which of two vocabularies produced the one it holds.
 type SpatialOperationIdentity
   = OpTranslatePoint3
   | OpDisplacementBetween3
@@ -171,29 +175,25 @@ type SpatialOperationIdentity
   | OpApplyZQuarterTurnTransform3
   | OpNormSquared3
   | OpNorm3
-  // std.planar_projection's point projection. It is registered HERE rather than in a refusal sum of
-  // its own because the frame-mismatch fact is one concept: a second operation-identity enum beside
-  // this one would be the nicknaming DESIGN section 3 forbids, and a consumer matching on frame
-  // refusals would then have to know which of two vocabularies produced the one it holds.
   | OpProjectPoint3
 
 // ProjectionSourceFrameRequired IS ITS OWN ARM because a projection is not symmetric and its two
 // frames are not interchangeable: the map declares the frame it reads, and a point from any other
 // frame is not a point it can project. Reusing SameFrameOperandsRequired would report a directional
 // requirement as a symmetric one.
+// THE METRIC OPERATIONS ASSERT A UNIT ON THEIR RESULT AND THE COMPONENT NO LONGER CARRIES ONE.
+// A dot product of two displacements is an area and a norm is a length, and both must be
+// labelled - but the component is a bare count whose meaning the FRAME owns, so the label is
+// only correct when the frame's quantum is the one the label names. This relation is how they
+// refuse a frame whose quantum they cannot label rather than answering in the wrong unit.
+// A projection is not symmetric and its two frames are not interchangeable: the map declares the
+// frame it reads, and a point from any other frame is not a point it can project. Reusing
+// SameFrameOperandsRequired would report a directional requirement as a symmetric one.
 type SpatialFrameRelation
   = SameFrameOperandsRequired
   | TransformSourceFrameRequired
   | TransformTranslationInDestinationRequired
-  // THE METRIC OPERATIONS ASSERT A UNIT ON THEIR RESULT AND THE COMPONENT NO LONGER CARRIES ONE.
-  // A dot product of two displacements is an area and a norm is a length, and both must be
-  // labelled - but the component is a bare count whose meaning the FRAME owns, so the label is
-  // only correct when the frame's quantum is the one the label names. This relation is how they
-  // refuse a frame whose quantum they cannot label rather than answering in the wrong unit.
   | MillimetreFrameRequired
-  // A projection is not symmetric and its two frames are not interchangeable: the map declares the
-  // frame it reads, and a point from any other frame is not a point it can project. Reusing
-  // SameFrameOperandsRequired would report a directional requirement as a symmetric one.
   | ProjectionSourceFrameRequired
 
 type SpatialFrameRefusal {

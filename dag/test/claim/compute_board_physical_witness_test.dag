@@ -117,6 +117,8 @@ fn refusal_is(r: PhysicalRefusal, wanted: String) -> Bool {
   }
 }
 
+// One repeated identity plus one overlap between the two coincident bodies: two distinct
+// defects, each counted once, rather than four rows for two facts.
 fn refuses_naming(placements: List<ComponentPlacement>, wanted: String) -> Bool {
   match article_with(placements: placements) {
     Absent => false
@@ -196,8 +198,6 @@ test fn w_one_defect_is_reported_once() -> Bool {
     Present { value: a } =>
       match admit_body_envelopes(registry: registry_with_scales(), article: a) {
         BodyEnvelopesAdmitted { article: _ } => false
-        // One repeated identity plus one overlap between the two coincident bodies: two distinct
-        // defects, each counted once, rather than four rows for two facts.
         PhysicallyRefused { causes: cs } => physical_refusal_count(s: cs) == 2
       }
   }

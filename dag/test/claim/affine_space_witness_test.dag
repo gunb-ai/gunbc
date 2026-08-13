@@ -606,6 +606,10 @@ test fn affine_space_witnesses() -> Bool {
 // thousand, and nothing about the result that looks suspicious. The millimetre frame is the
 // positive control on the same vector, so this asserts the frame decides the outcome rather than
 // the operation refusing everything.
+// AND AN UNREGISTERED FRAME REFUSES TOO, because a frame with no declared quantum has no unit to
+// check the label against - assuming the default is the convention this layer exists to remove.
+// CROSS PRODUCT IS THE SAME WALL, censused rather than waited for: it labels THREE components
+// in square millimetres, so an unguarded micrometre frame mislabels a whole vector at once.
 fn micro_registry() -> SpatialFrameRegistry {
   match register_frame(r: empty_frame_registry(), identity: room(), length_scale: Micro) {
     FrameRegistered { frame: f } => registry_with(r: empty_frame_registry(), f: f)
@@ -636,15 +640,11 @@ test fn w_metric_operations_refuse_a_frame_they_cannot_label() -> Bool {
     SpatialFrameRefused { refusal: _ } => false
     SpatialArithmeticRefused { cause: _ } => false
   }
-  // AND AN UNREGISTERED FRAME REFUSES TOO, because a frame with no declared quantum has no unit to
-  // check the label against - assuming the default is the convention this layer exists to remove.
   let refused_when_unregistered = match norm3(registry: empty_frame_registry(), v: v) {
     SpatialFrameRefused { refusal: _ } => true
     SpatialReady { value: _ } => false
     SpatialArithmeticRefused { cause: _ } => false
   }
-  // CROSS PRODUCT IS THE SAME WALL, censused rather than waited for: it labels THREE components
-  // in square millimetres, so an unguarded micrometre frame mislabels a whole vector at once.
   let cross_refused_in_micrometres = match cross3(registry: micro_registry(), a: v, b: vector3(frame: room(), x: 0, y: 1000, z: 0)) {
     SpatialFrameRefused { refusal: r } =>
       match r.relation {
