@@ -1,0 +1,278 @@
+module product.rack_power
+
+import std.types { Bool, List }
+import std.integer { Int }
+import std.measure {
+  Watt, watt, watt_count, VoltAmpere, volt_ampere, volt_ampere_count,
+  measure_add, apparent_power_from_supply,
+}
+import product.placement_supply { PhysicalAssetIdentity }
+import product.rack_mount { RackInstance, ChassisMount, rack_mounts }
+import extdeps.power.types { PduCatalogRow }
+import v2.std.optional { Present, Absent }
+
+// SPATIAL-6A: WHAT THE RACK DRAWS, AND WHETHER THE FEED CAN CARRY IT.
+//
+// THE THERMAL HALF IS NOT HERE. Whether a cooler covers a processor's design power is
+// product.cooling_qualification's question and it is already answered there against the same cited
+// rows; duplicating it under a spatial band's name would be one concept with two authorities. This
+// module is about the electrical feed and nothing else.
+//
+// APPARENT POWER IS THE UNIT THE SUPPLY IS RATED IN, and the whole shape of this module follows from
+// that. A PDU datasheet states volts and amps; their product is volt-amperes. What a load draws in
+// WATTS is real power, and the two differ by the load's power factor - a property of the load that
+// no supply datasheet carries and that none of the cited hardware rows in this corpus state. So the
+// two quantities live on different dimensions in std.measure and cannot be compared, and a caller
+// mixing them must DECLARE the power factor it is assuming. That declaration is an assumption, not a
+// fact, and it is carried as one: it comes in as an argument, it is named in the budget it produced,
+// and nothing here invents a default of unity.
+//
+// THE ARITHMETIC NEVER DIVIDES, so the comparison stays exact at integer grain. Converting watts to
+// volt-amperes means dividing by a fraction, which does not land on an integer; instead the whole
+// inequality is multiplied through by the power factor's denominator, and what is compared is a
+// product of integers. A rounding policy would otherwise decide admissions at the margin.
+//
+// COMPLETENESS IS AN IDENTITY JOIN. Every mounted asset must have exactly one load row and every
+// load row must name a mounted asset - checked at identity grain, in both directions. Counting rows
+// would let one asset declared twice stand in for a second asset declared not at all, which is the
+// one arrangement where the totals look right and the rack browns out.
+
+// A DECLARED ASSUMPTION, NOT A CITED FACT, and it is a distinct carrier so it cannot be passed where
+// a measured quantity is expected. Percent because power factor is a ratio and this keeps the
+// comparison in integers; the range is open at neither end - zero would mean a load drawing current
+// and no power, and above one hundred is not a power factor at all.
+type DeclaredPowerFactor sole_constructor {
+  percent: Int
+}
+
+// An asset's electrical load, and the three arms are three different epistemic states rather than
+// one number with a missing case. A measured wattage is an OBSERVATION of a particular machine; a
+// declared volt-ampere figure is a nameplate or a budget allocation; and no figure at all is a state
+// this module can be in and must report rather than treat as zero. A zero default is the arrangement
+// where an unmeasured rack reports comfortable headroom.
+type AssetLoad
+  = ObservedRealPower { asset: PhysicalAssetIdentity, draw: Watt }
+  | DeclaredApparentPower { asset: PhysicalAssetIdentity, draw: VoltAmpere }
+  | LoadUnobserved { asset: PhysicalAssetIdentity }
+
+fn asset_load_subject(l: AssetLoad) -> PhysicalAssetIdentity {
+  match l {
+    ObservedRealPower { asset: a, draw: _ } => a
+    DeclaredApparentPower { asset: a, draw: _ } => a
+    LoadUnobserved { asset: a } => a
+  }
+}
+
+// OutletsExhausted IS UNREACHABLE with the two cited rows this band exercises - a twelve-outlet PDU
+// against an eighteen-unit rack whose smallest cited chassis is four units, so nine mounts is the
+// most the frame admits. It is the typed answer for a feed with fewer outlets than its rack can
+// hold, which is an ordinary arrangement with a different cited PDU, and it is checked rather than
+// assumed away: the alternative is a module that silently over-subscribes the first such feed it
+// meets.
+type PowerRefusal
+  = PowerFactorOutOfRange { supplied: Int }
+  | LoadNotObserved { asset: PhysicalAssetIdentity }
+  | LoadDeclaredTwice { asset: PhysicalAssetIdentity }
+  | LoadDeclaredForUnmountedAsset { asset: PhysicalAssetIdentity }
+  | MountedAssetHasNoLoad { asset: PhysicalAssetIdentity }
+  | OutletsExhausted { required: Int, available: Int }
+  | FeedCapacityExceeded { real_load: Watt, apparent_load: VoltAmpere, capacity: VoltAmpere }
+
+type PowerConstruction<T>
+  = PowerReady { value: T }
+  | PowerRefused { cause: PowerRefusal }
+
+fn declared_power_factor(percent: Int) -> PowerConstruction<DeclaredPowerFactor> {
+  if percent < 1 || percent > 100 {
+    PowerRefused { cause: PowerFactorOutOfRange { supplied: percent } }
+  } else {
+    PowerReady { value: DeclaredPowerFactor { percent: percent } }
+  }
+}
+
+fn power_factor_percent(f: DeclaredPowerFactor) -> Int { f.percent }
+
+// A PDU as an installed thing rather than a catalogue row: the row says what the model can do, the
+// identity says which unit this is. The distinction is the same one RackInstance draws, and it is
+// what lets two identical PDUs in one room stay two PDUs.
+type PowerFeed sole_constructor {
+  identity: PhysicalAssetIdentity
+  catalog: PduCatalogRow
+}
+
+fn power_feed(identity: PhysicalAssetIdentity, catalog: PduCatalogRow) -> PowerFeed {
+  PowerFeed { identity: identity, catalog: catalog }
+}
+
+// DERIVED FROM THE CITED ROW, never stored beside it: the capacity is the product of the two figures
+// the datasheet states, so an edit to either cannot leave a stale total behind.
+fn feed_capacity(f: PowerFeed) -> VoltAmpere {
+  apparent_power_from_supply(supply_voltage: f.catalog.nominal_supply_voltage, rated_current: f.catalog.rated_current)
+}
+
+fn feed_outlet_count(f: PowerFeed) -> Int { f.catalog.outlet_count }
+
+fn asset_eq(a: PhysicalAssetIdentity, b: PhysicalAssetIdentity) -> Bool {
+  (a as String) == (b as String)
+}
+
+fn mounted_assets(r: RackInstance) -> List<PhysicalAssetIdentity> {
+  fold(rack_mounts(r: r), init: [], f: (acc, m) => concat(acc, [m.asset]))
+}
+
+fn contains_asset(assets: List<PhysicalAssetIdentity>, wanted: PhysicalAssetIdentity) -> Bool {
+  fold(assets, init: false, f: (hit, a) => hit || asset_eq(a: a, b: wanted))
+}
+
+fn count_loads_for(loads: List<AssetLoad>, wanted: PhysicalAssetIdentity) -> Int {
+  fold(loads, init: 0, f: (n, l) => if asset_eq(a: asset_load_subject(l: l), b: wanted) { n + 1 } else { n })
+}
+
+// BOTH DIRECTIONS OF THE JOIN, and they are separate scans because they are separate failures with
+// separate remedies: a load row for an asset that is not in the rack is a stale inventory, and a
+// mounted asset with no row is an unmeasured machine. Reporting either as "the counts disagree"
+// would tell an operator nothing about which one to go and fix.
+fn scan_loads_against_rack(r: RackInstance, loads: List<AssetLoad>) -> PowerRefusal? {
+  let assets = mounted_assets(r: r)
+  let orphaned = fold(loads, init: none, f: (found, l) =>
+    match found {
+      Present { value: c } => Present { value: c }
+      Absent =>
+        if !contains_asset(assets: assets, wanted: asset_load_subject(l: l)) {
+          Present { value: LoadDeclaredForUnmountedAsset { asset: asset_load_subject(l: l) } }
+        } else {
+          none
+        }
+    })
+  match orphaned {
+    Present { value: c } => Present { value: c }
+    Absent =>
+      fold(assets, init: none, f: (found, a) =>
+        match found {
+          Present { value: c } => Present { value: c }
+          Absent =>
+            let n = count_loads_for(loads: loads, wanted: a)
+            if n == 0 {
+              Present { value: MountedAssetHasNoLoad { asset: a } }
+            } else {
+              if n > 1 { Present { value: LoadDeclaredTwice { asset: a } } } else { none }
+            }
+        })
+  }
+}
+
+// THE ACCUMULATOR CARRIES MEASURES, NOT SCALARS NAMED AFTER UNITS. An earlier revision held
+// `real_watts: Int` and `apparent_va: Int` - the unit in the field NAME and a bare magnitude in the
+// type, which is precisely the pattern std.measure exists to close, reintroduced in the one place a
+// fold makes it tempting. The public surface was already right, which is what made it easy to miss:
+// a private accumulator is where two quantities on different dimensions can be added to each other
+// with nothing objecting. Carrying Watt and VoltAmpere means the dimensions stay apart here for the
+// same reason they do at the boundary.
+type LoadTotals {
+  real_load: Watt
+  apparent_load: VoltAmpere
+  refusal: PowerRefusal?
+}
+
+fn add_load(acc: LoadTotals, l: AssetLoad) -> LoadTotals {
+  match acc.refusal {
+    Present { value: c } => LoadTotals { real_load: acc.real_load, apparent_load: acc.apparent_load, refusal: Present { value: c } }
+    Absent =>
+      match l {
+        LoadUnobserved { asset: a } =>
+          LoadTotals { real_load: acc.real_load, apparent_load: acc.apparent_load, refusal: Present { value: LoadNotObserved { asset: a } } }
+        ObservedRealPower { asset: _, draw: w } =>
+          LoadTotals { real_load: measure_add(acc.real_load, w), apparent_load: acc.apparent_load, refusal: none }
+        DeclaredApparentPower { asset: _, draw: va } =>
+          LoadTotals { real_load: acc.real_load, apparent_load: measure_add(acc.apparent_load, va), refusal: none }
+      }
+  }
+}
+
+type PowerBudget sole_constructor {
+  feed: PowerFeed
+  power_factor: DeclaredPowerFactor
+  real_load: Watt
+  apparent_load: VoltAmpere
+  outlets_used: Int
+}
+
+// THE INEQUALITY, MULTIPLIED THROUGH RATHER THAN DIVIDED. What the feed must carry is the declared
+// apparent load plus the real load converted at the declared power factor:
+//
+//     apparent + real / (percent / 100)  <=  capacity
+//
+// Multiplying both sides by percent gives an all-integer comparison with no remainder to round, and
+// it is the form implemented. Written the obvious way instead, a 500 W load at a factor of 95 would
+// have to choose between 526 and 527 volt-amperes, and that choice would decide admissions at the
+// margin without anyone declaring a rounding policy.
+fn feed_carries_load(capacity: Int, apparent: Int, real: Int, percent: Int) -> Bool {
+  apparent * percent + real * 100 <= capacity * percent
+}
+
+// ONE OUTLET PER MOUNTED ASSET, and the outlet count is checked BEFORE the capacity because it is
+// the cheaper fact and the one with no assumption in it: outlet_count is cited, where the capacity
+// comparison rests on a power factor the caller declared.
+//
+// THE LOAD COUNTS ARE READ AT THE CAPACITY COMPARISON AND NOWHERE ELSE. That is the one place the
+// magnitudes must meet, and they meet under the declared power factor that makes the meeting
+// meaningful - which is why the crossing is a single expression rather than a pair of running
+// scalars that could have been added together anywhere upstream.
+fn rack_power_budget(
+  rack: RackInstance,
+  feed: PowerFeed,
+  loads: List<AssetLoad>,
+  power_factor: DeclaredPowerFactor,
+) -> PowerConstruction<PowerBudget> {
+  match scan_loads_against_rack(r: rack, loads: loads) {
+    Present { value: c } => PowerRefused { cause: c }
+    Absent =>
+      let totals = fold(loads, init: LoadTotals { real_load: watt(0), apparent_load: volt_ampere(0), refusal: none }, f: (acc, l) =>
+        add_load(acc: acc, l: l))
+      match totals.refusal {
+        Present { value: c } => PowerRefused { cause: c }
+        Absent =>
+          let required = length(mounted_assets(r: rack))
+          if required > feed_outlet_count(f: feed) {
+            PowerRefused { cause: OutletsExhausted { required: required, available: feed_outlet_count(f: feed) } }
+          } else {
+            let capacity = volt_ampere_count(v: feed_capacity(f: feed))
+            if !feed_carries_load(
+              capacity: capacity,
+              apparent: volt_ampere_count(v: totals.apparent_load),
+              real: watt_count(w: totals.real_load),
+              percent: power_factor.percent,
+            ) {
+              PowerRefused {
+                cause: FeedCapacityExceeded {
+                  real_load: totals.real_load,
+                  apparent_load: totals.apparent_load,
+                  capacity: feed_capacity(f: feed),
+                },
+              }
+            } else {
+              PowerReady {
+                value: PowerBudget {
+                  feed: feed,
+                  power_factor: power_factor,
+                  real_load: totals.real_load,
+                  apparent_load: totals.apparent_load,
+                  outlets_used: required,
+                },
+              }
+            }
+          }
+      }
+  }
+}
+
+fn budget_real_load(b: PowerBudget) -> Watt { b.real_load }
+fn budget_apparent_load(b: PowerBudget) -> VoltAmpere { b.apparent_load }
+fn budget_outlets_used(b: PowerBudget) -> Int { b.outlets_used }
+// NO DERATING IS APPLIED, and its absence is deliberate rather than an oversight. Electrical codes
+// limit a continuous load to a fraction of a circuit's rating, and applying such a limit here would
+// mean authoring a threshold from memory under the name of a standard - the one thing extdeps
+// exists to prevent. The capacity compared against is the manufacturer's rating exactly as cited.
+// Dissolve-on: a cited continuous-load rule in an extdeps authority of its own, at which point the
+// admission takes the derated capacity and this note is replaced by the citation.
+fn budget_capacity(b: PowerBudget) -> VoltAmpere { feed_capacity(f: b.feed) }

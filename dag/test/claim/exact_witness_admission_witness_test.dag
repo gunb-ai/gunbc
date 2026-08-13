@@ -4,6 +4,7 @@ import gunbc.explicit_witness_admission {
   ExplicitWitnessAdmission,
   explicit_witness_admission_is_known_red,
   explicit_witness_admission_requires_long_eval_budget,
+  explicit_witness_admission_executing_witness_roster,
   witness_long_eval_budget_roster,
   explicit_witness_admissions,
   explicit_witness_admission_covers,
@@ -130,8 +131,9 @@ test fn every_admission_is_projected_into_exactly_one_cadence_roster() -> Bool {
   let corpus_rows = length(xs: known_red_probe_corpus_roster())
   let v1_envelope_rows = length(xs: known_red_probe_v1_envelope_roster())
   let execution_rows = length(xs: known_red_probe_execution_roster())
-  let projected = corpus_rows + v1_envelope_rows + execution_rows
-  projected == length(xs: explicit_witness_admissions)
+  let known_red_projected = corpus_rows + v1_envelope_rows + execution_rows
+  let executing_projected = length(xs: explicit_witness_admission_executing_witness_roster())
+  (known_red_projected + executing_projected) == length(xs: explicit_witness_admissions)
 }
 
 test fn ci_layer_roots_probe_roster_is_the_union_of_corpus_and_v1_envelope() -> Bool {

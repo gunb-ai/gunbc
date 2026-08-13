@@ -32,6 +32,8 @@ type Quantity =
 
   | Power
 
+  | ApparentPower
+
   | Energy
 
   | Temperature
@@ -266,9 +268,25 @@ type Watt = Measure<Power, One, Nat>
 
 type Milliwatt = Measure<Power, Milli, Nat>
 
+// APPARENT POWER IS NOT POWER, and it is a separate dimension rather than a second Watt alias for
+// exactly the reason std.measure exists. A supply rated 120 V at 15 A can deliver 1800 volt-amperes;
+// how many WATTS that is depends on the load's power factor, which is a property of the load and is
+// not on any supply's datasheet. Carrying both on the Power dimension would make Watt and VoltAmpere
+// interchangeable at the type level, and the first comparison between a device's real draw and a
+// supply's rating would silently assert a power factor of one - a fabricated fact about hardware
+// nobody measured. They are different dimensions, so that comparison does not typecheck and a
+// consumer must declare the factor it is assuming.
+type VoltAmpere = Measure<ApparentPower, One, Nat>
+
 type Volt = Measure<ElectricPotentialDifference, One, Nat>
 
 type Ampere = Measure<ElectricCurrent, One, Nat>
+
+// The micrometre exists as a named carrier because EIA-310's rack unit is 44.45 mm - NOT a whole
+// number of millimetres - so any quantity derived from a rack unit count is inexact at millimetre
+// grain and exact at micrometre grain. Naming it lets a consumer stay exact instead of choosing
+// between a truncation and a rounding policy, which is the choice std.measure exists to remove.
+type Micrometer = Measure<Length, Micro, Nat>
 
 type Millimeter = Measure<Length, Milli, Nat>
 
@@ -500,6 +518,14 @@ fn ampere(count: Nat) -> Ampere {
 
 fn ampere_count(a: Ampere) -> Nat {
   measure_count(a)
+}
+
+fn micrometer(count: Nat) -> Micrometer {
+  Measure { count: count }
+}
+
+fn micrometer_count(m: Micrometer) -> Nat {
+  measure_count(m)
 }
 
 fn millimeter(count: Nat) -> Millimeter {
@@ -788,6 +814,21 @@ fn second_count(s: Second) -> Nat {
 
 fn energy_from_power_and_time(power: Watt, time: Second) -> Joule {
   joule(watt_count(w: power) * second_count(s: time))
+}
+
+fn volt_ampere(count: Nat) -> VoltAmpere {
+  Measure { count: count }
+}
+
+fn volt_ampere_count(v: VoltAmpere) -> Nat {
+  measure_count(v)
+}
+
+// The product of a supply's nominal voltage and its rated current, which is what a supply is rated
+// in. It deliberately produces apparent power rather than Watt: the datasheet figures multiply to
+// volt-amperes and to nothing else.
+fn apparent_power_from_supply(supply_voltage: Volt, rated_current: Ampere) -> VoltAmpere {
+  volt_ampere(volt_count(v: supply_voltage) * ampere_count(a: rated_current))
 }
 
 type Minute = Measure<Time, Sixty, Nat>

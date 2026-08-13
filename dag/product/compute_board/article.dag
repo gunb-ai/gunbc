@@ -2,14 +2,20 @@ module product.compute_board.article
 
 import std.types { String, NonEmptyStr, List }
 import extdeps.external_authority { ExternalAuthority }
+import std.decl_ref { DeclarationRef }
+import extdeps.firmware.openbmc.subject { openbmc_model_scope }
+import extdeps.firmware.tianocore_edk2.subject { tianocore_edk2_model_scope }
+import extdeps.firmware.trusted_firmware_a.subject { trusted_firmware_a_model_scope }
 import product.compute_board.digital_control {
   DigitalControlIntent,
   SignalName,
   board_power_interlock_intent,
+  power_permit_signal,
+  reset_release_signal,
 }
 import product.compute_board.analog {
   AnalogCircuitIntent,
-  CapacitanceNanofarads,
+  CapacitorInstance,
   ComponentInstanceIdentity,
   ComponentModelBinding,
   ElectricalComponentInstance,
@@ -17,12 +23,9 @@ import product.compute_board.analog {
   ElectricalNet,
   ElectricalTerminalRef,
   IdealLumped,
-  IndependentVoltageSource,
+  IndependentVoltageSourceInstance,
   NetIdentity,
-  PassiveCapacitor,
-  PassiveResistor,
-  PotentialSourceVolts,
-  ResistanceKilohms,
+  ResistorInstance,
   TerminalIdentity,
   terminal_ref,
 }
@@ -84,18 +87,80 @@ type ElectricalBond
       standing: ChassisBondStanding,
     }
 
-// Board-level preconditions for host firmware to START. These are facts the BOARD establishes,
-// and the distinction from what firmware then DOES is load-bearing: PowerPermitAsserted and
-// ResetReleased are observable at the board, while "UEFI executed", "DDR trained" and "devices
-// enumerated" are later observations belonging to entirely different subjects. A contract that
-// let the first imply the second would report a booting machine on the strength of a released
-// reset line.
-type HostFirmwareStartPrecondition
+// THE PLATFORM FIRMWARE STACK IS NOT ONE THING. An Ampere platform runs system control processor
+// firmware, an ARM Trusted Firmware-A secure boot chain, host UEFI, baseboard management firmware
+// and board CPLD logic — five independently governed pieces that boot in order, are updated
+// separately, and fail in ways with nothing in common. The earlier revision named none of them:
+// it carried four prose strings, one of which said "board interlock asserts reset_release; the
+// host owns everything after it", which is a sentence about a signal this article DECLARES and
+// could have referenced. Prose is where a fact goes when nothing joins to it.
+//
+// The roles are named here and the cited upstreams live in extdeps, one module each, because
+// TF-A and EDK II are separately versioned projects and a Chromium-and-Safari argument applies
+// unchanged: adding a sixth role must not require editing the fifth.
+type PlatformFirmwareRole
+  = SystemControlProcessorFirmware
+  | TrustedFirmwareSecureBootChain
+  | HostUefiFirmware
+  | BaseboardManagementFirmware
+  | BoardProgrammableLogic
+
+// WHICH UPSTREAM FILLS A ROLE, where one is modelled. The two arms are not an Optional because
+// "no cited upstream module exists in this repository" and "this role has no upstream" are
+// different states with different remedies — the first is an authoring gap someone can close by
+// citing a project, the second would be a claim about the world. The system control processor
+// firmware and the board CPLD logic are the first: Ampere publishes SCP firmware and the CPLD is
+// board-specific, and neither has a cited module here yet.
+type PlatformRoleUpstream
+  = UpstreamCited { subject: DeclarationRef }
+  | UpstreamNotModelledHere { reason: NonEmptyStr }
+
+fn platform_firmware_role_upstream(role: PlatformFirmwareRole) -> PlatformRoleUpstream {
+  match role {
+    TrustedFirmwareSecureBootChain =>
+      UpstreamCited { subject: trusted_firmware_a_model_scope.subject.declaration }
+    HostUefiFirmware =>
+      UpstreamCited { subject: tianocore_edk2_model_scope.subject.declaration }
+    BaseboardManagementFirmware =>
+      UpstreamCited { subject: openbmc_model_scope.subject.declaration }
+    SystemControlProcessorFirmware =>
+      UpstreamNotModelledHere { reason: "Ampere system control processor firmware has no cited subject module in this repository yet; extdeps.ampere carries only an SCP diagnostic surface" }
+    BoardProgrammableLogic =>
+      UpstreamNotModelledHere { reason: "the board CPLD's logic is authored here rather than upstream, so there is no external project to cite; its own model is the article" }
+  }
+}
+
+// Board-level preconditions for host firmware to START. The distinction from what firmware then
+// DOES is load-bearing: a permitted power rail and a released reset are observable at the board,
+// while "UEFI executed", "DDR trained" and "devices enumerated" are later observations belonging
+// to entirely different subjects. A contract that let the first imply the second would report a
+// booting machine on the strength of a released reset line.
+type HostFirmwareStartPreconditionKind
   = PowerPermitAsserted
   | ResetReleased
   | BootStorageReadable
   | RecoveryRequestObservable
   | ConsoleAvailable
+
+// WHAT ESTABLISHES A PRECONDITION IS PART OF THE PRECONDITION. Listing PowerPermitAsserted said
+// that power must be permitted and nothing about what permits it — so an article whose interlock
+// drove no such signal declared the same contract as one that did, and the two were
+// indistinguishable to every consumer. Naming the signal makes it a join: admission refuses a
+// precondition established by a signal the control logic does not declare as an output, which is
+// a defect that was previously unrepresentable rather than merely unchecked.
+//
+// The third arm is not a hole. A board article that does not establish a precondition is the
+// ordinary case — this one does not own its boot storage — and saying so explicitly is different
+// from omitting the row, which would read as "no such precondition exists".
+type PreconditionEstablishment
+  = EstablishedByBoardSignal { signal: SignalName }
+  | EstablishedByPlatformComponent { role: PlatformFirmwareRole }
+  | NotEstablishedByThisArticle { owner: NonEmptyStr }
+
+type HostFirmwareStartPrecondition {
+  kind: HostFirmwareStartPreconditionKind
+  establishment: PreconditionEstablishment
+}
 
 // Trust is TWO simultaneous standings, not one choice among three. An earlier revision made
 // "the development image is unsigned" and "production signing is unavailable" alternatives in
@@ -119,10 +184,6 @@ type FirmwareWriteProtection
 
 type PlatformFirmwareContract {
   start_preconditions: List<HostFirmwareStartPrecondition>
-  boot_storage: NonEmptyStr
-  reset_owner: NonEmptyStr
-  console: NonEmptyStr
-  recovery_path: NonEmptyStr
   write_protection: FirmwareWriteProtection
   development_image_trust: DevelopmentImageTrust
   production_signing: ProductionSigningStanding
@@ -169,12 +230,32 @@ type BoardPowerInterfaceArticle {
   manufacturing: ManufacturingRealizationStanding
 }
 
+// The BootStorageReadable row below says this board does not own its boot storage, rather than
+// omitting the row: an absent precondition reads as "this does not apply", which is a different
+// and false claim.
 data board_power_interlock_firmware_contract: PlatformFirmwareContract = PlatformFirmwareContract {
-  start_preconditions: [PowerPermitAsserted, ResetReleased, RecoveryRequestObservable],
-  boot_storage: "host SPI-NOR, addressed by the platform firmware contract rather than by this board",
-  reset_owner: "board interlock asserts reset_release; the host owns everything after it",
-  console: "serial console header",
-  recovery_path: "recovery request input observable at the interlock",
+  start_preconditions: [
+    HostFirmwareStartPrecondition {
+      kind: PowerPermitAsserted,
+      establishment: EstablishedByBoardSignal { signal: power_permit_signal },
+    },
+    HostFirmwareStartPrecondition {
+      kind: ResetReleased,
+      establishment: EstablishedByBoardSignal { signal: reset_release_signal },
+    },
+    HostFirmwareStartPrecondition {
+      kind: BootStorageReadable,
+      establishment: NotEstablishedByThisArticle { owner: "host SPI-NOR, owned by the platform firmware stack" },
+    },
+    HostFirmwareStartPrecondition {
+      kind: ConsoleAvailable,
+      establishment: EstablishedByPlatformComponent { role: HostUefiFirmware },
+    },
+    HostFirmwareStartPrecondition {
+      kind: RecoveryRequestObservable,
+      establishment: EstablishedByPlatformComponent { role: BaseboardManagementFirmware },
+    },
+  ],
   write_protection: WriteProtectionUnmodelled {
     reason: "SPI-NOR write-protect control is a host-board fact this article does not carry; it is declared unmodelled rather than defaulted to protected",
   },
@@ -257,34 +338,31 @@ fn article_manufacturing_profile_selected(a: BoardPowerInterfaceArticle) -> Bool
 // inside a witness module, so the production authority had no production instance and every
 // claim about "one article feeding both projections" was a statement about a test fixture. A
 // root that exists only in its own test is not a root.
-data pg_conditioning_resistor: ElectricalComponentInstance = ElectricalComponentInstance {
-  // The instance identity carries NO element letter. SPICE derives 'R' from the role, so an
-  // identity spelled "R1" would emit "RR1" — and the fix is not to strip a prefix at emission
-  // but to keep the target's naming convention out of the identity in the first place.
+// The instance identity carries NO element letter. SPICE derives 'R' from the constructor, so an
+// identity spelled "R1" would emit "RR1" — and the fix is not to strip a prefix at emission but to
+// keep the target's naming convention out of the identity in the first place.
+data pg_conditioning_resistor: ElectricalComponentInstance = ResistorInstance {
   identity: "pg_cond" as ComponentInstanceIdentity,
   part: "power-good conditioning resistor",
-  role: PassiveResistor,
   positive_terminal: "1" as TerminalIdentity,
   negative_terminal: "2" as TerminalIdentity,
-  value: ResistanceKilohms { magnitude: Measure { count: 10 } },
+  resistance: Measure { count: 10 },
 }
 
-data pg_conditioning_capacitor: ElectricalComponentInstance = ElectricalComponentInstance {
+data pg_conditioning_capacitor: ElectricalComponentInstance = CapacitorInstance {
   identity: "pg_filt" as ComponentInstanceIdentity,
   part: "power-good conditioning capacitor",
-  role: PassiveCapacitor,
   positive_terminal: "1" as TerminalIdentity,
   negative_terminal: "2" as TerminalIdentity,
-  value: CapacitanceNanofarads { magnitude: Measure { count: 100 } },
+  capacitance: Measure { count: 100 },
 }
 
-data logic_supply_source: ElectricalComponentInstance = ElectricalComponentInstance {
+data logic_supply_source: ElectricalComponentInstance = IndependentVoltageSourceInstance {
   identity: "logic_in" as ComponentInstanceIdentity,
   part: "logic supply input",
-  role: IndependentVoltageSource,
   positive_terminal: "1" as TerminalIdentity,
   negative_terminal: "2" as TerminalIdentity,
-  value: PotentialSourceVolts { magnitude: Measure { count: 12 } },
+  potential_difference: Measure { count: 12 },
 }
 
 data pg_raw_net: NetIdentity = "pg_raw" as NetIdentity

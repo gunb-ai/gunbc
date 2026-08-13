@@ -120,16 +120,55 @@ fn collect_called_func_names(texpr: Node, source_indices: Map<String, NewlineInd
   result.result
 }
 
-fn expand_transitive_services_once(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> Map<String, ItemInfo> {
-  modules |> fold(init: registry, f: (reg, m) =>
-    m.items |> fold(init: reg, f: (reg2, item) =>
-    let item_name = authored_name_at(source_indices: m.type_env.source_indices, node: item)
+// THE CALLEE NAMES ARE LOOP-INVARIANT, and used to be recomputed on every pass. The fixpoint
+// updates only `registry.service_names`; `modules` is threaded through the recursion unchanged, so
+// an item's body and its module's source_indices are identical on pass 5 and pass 1 — yet
+// collect_called_func_names walked the WHOLE body tree of every item on each pass, up to 5 full
+// corpus AST traversals per resolve to recompute the same lists.
+//
+// They are precomputed ONCE, in the same nesting and the same order as the fold that consumes
+// them, deliberately as a positional list rather than a map keyed by item name: the registry
+// treats item names as global keys, so two modules declaring the same authored name share a key,
+// and a name-keyed precompute would silently hand one item the other's callees. Position preserves
+// the original iteration exactly, including that collision.
+type ItemCallees {
+  item_name: String
+  has_body: Bool
+  called: List<String>
+}
+
+type ModuleCallees {
+  items: List<ItemCallees>
+}
+
+fn item_callees_for(m: TypedModule, item: Node) -> ItemCallees {
+  let item_name = authored_name_at(source_indices: m.type_env.source_indices, node: item)
+  let has_no_body = item.body == none
+  if has_no_body {
+    ItemCallees { item_name: item_name, has_body: false, called: [] }
+  } else {
+    ItemCallees {
+      item_name: item_name,
+      has_body: true,
+      called: collect_called_func_names(texpr: item.body.value, source_indices: m.type_env.source_indices)
+    }
+  }
+}
+
+fn build_module_callees(modules: List<TypedModule>) -> List<ModuleCallees> {
+  modules |> map(m => ModuleCallees { items: m.items |> map(item => item_callees_for(m: m, item: item)) })
+}
+
+fn expand_transitive_services_once(module_callees: List<ModuleCallees>, registry: Map<String, ItemInfo>) -> Map<String, ItemInfo> {
+  module_callees |> fold(init: registry, f: (reg, m) =>
+    m.items |> fold(init: reg, f: (reg2, entry) =>
+    let item_name = entry.item_name
     match map_get(reg2, item_name) {
       Present { value: info } =>
-        let has_no_body = item.body == none
+        let has_no_body = !entry.has_body
         if has_no_body { reg2 }
         else {
-          let called = collect_called_func_names(texpr: item.body.value, source_indices: m.type_env.source_indices)
+          let called = entry.called
           let extra = called |> flat_map(callee_name =>
             match map_get(reg2, callee_name) {
               Present { value: callee_info } => callee_info.service_names
@@ -164,15 +203,19 @@ fn total_service_count(registry: Map<String, ItemInfo>) -> Int {
   map_values(registry) |> fold(init: 0, f: (acc, info) => acc + info.service_names |> count)
 }
 
-fn expand_transitive_services(modules: List<TypedModule>, registry: Map<String, ItemInfo>, remaining_passes: Int) -> Map<String, ItemInfo> {
+fn expand_transitive_services_loop(module_callees: List<ModuleCallees>, registry: Map<String, ItemInfo>, remaining_passes: Int) -> Map<String, ItemInfo> {
   if remaining_passes <= 0 { registry }
   else {
     let before = total_service_count(registry: registry)
-    let next = expand_transitive_services_once(modules: modules, registry: registry)
+    let next = expand_transitive_services_once(module_callees: module_callees, registry: registry)
     let after = total_service_count(registry: next)
     if before == after { registry }
-    else { expand_transitive_services(modules: modules, registry: next, remaining_passes: remaining_passes - 1) }
+    else { expand_transitive_services_loop(module_callees: module_callees, registry: next, remaining_passes: remaining_passes - 1) }
   }
+}
+
+fn expand_transitive_services(modules: List<TypedModule>, registry: Map<String, ItemInfo>, remaining_passes: Int) -> Map<String, ItemInfo> {
+  expand_transitive_services_loop(module_callees: build_module_callees(modules: modules), registry: registry, remaining_passes: remaining_passes)
 }
 
 fn check_service_field_access_node(base_type: Node, field: String, service_registry: Map<String, List<OpEntry>>, source_indices: Map<String, NewlineIndex>) -> Node? {

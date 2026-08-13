@@ -1,0 +1,388 @@
+module std.planar_projection
+
+import std.types { Bool }
+import std.integer { Int }
+import std.checked_arithmetic {
+  IntegerOverflow, CheckedInt, CheckedIntReady, CheckedIntOverflow,
+  checked_int_multiply, checked_add_results, checked_subtract_results,
+}
+import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity_eq }
+import std.affine_space {
+  Point2, point2, Point3,
+  SpatialFrameRefusal, OpProjectPoint3, ProjectionSourceFrameRequired,
+}
+import std.measure { signed_millimeter_component_count }
+
+// SPATIAL-5A: EXACT PARALLEL PROJECTION ONTO A VIEW PLANE, READ-ONLY.
+//
+// A projection here is a linear map from a source frame's integer millimetres to a view frame's
+// integer VIEW UNITS, plus a depth scalar along the viewing direction. Everything is exact integer
+// arithmetic for the same reason SPATIAL-3A was: a rectilinear model projected in parallel is
+// exactly representable, so rounding has no place in the layer that produces it, and the layer that
+// wants pixels is the one that should pay for the rounding policy it needs.
+//
+// THE MAP IS DERIVED FROM A CAMERA, NOT AUTHORED AS A TABLE OF NUMBERS. A projection is fixed by two
+// facts a reader can check against a picture - which way the camera looks, and which way is up on
+// the page - and every coefficient below is a cross product of those two. Authoring the nine
+// coefficients directly would be a second representation of the camera: an edit to one row could
+// leave the map describing a view no camera occupies, mirrored or sheared, and nothing in the type
+// would object. The convention is stated once and applied uniformly:
+//
+//     page-right = direction x up_reference
+//     page-up    = page-right x direction
+//     depth      = the component along direction, so LARGER IS FARTHER from the camera
+//
+// Both cross products are integral whenever the two inputs are, which is why no scale factor and no
+// division appear anywhere in this module.
+//
+// WHY THE UP REFERENCE IS AN INPUT RATHER THAN THE WORLD'S Z. A plan view looks straight down, so
+// its direction is parallel to world up and the first cross product is the zero vector - the
+// degenerate case that would silently produce a map sending every point to the origin. It is
+// refused at the mint rather than special-cased, and the plan row supplies north as its up reference
+// instead, which is the ordinary drafting convention for a plan and not a workaround for the
+// degeneracy.
+//
+// VIEW UNITS ARE NOT MILLIMETRES, AND THE TYPE SAYS SO by being a different carrier. A parallel
+// projection preserves length only along directions perpendicular to the view; an axonometric view
+// foreshortens the three source axes by three different factors, and the 2:1 dimetric row below
+// foreshortens two of them by sqrt(5) - an irrational number that no exact carrier can hold. So
+// ViewPoint2 carries plain integers rather than SignedMillimeterComponent, and a caller wanting
+// millimetres must ask, on a view where the question has an exact answer. Reusing Point2 for view
+// coordinates would have asserted millimetres on a value whose unit depends on the direction it was
+// measured in - the scalar-and-scale-unit conflation std.measure exists to prevent.
+//
+// WHAT THIS BAND DOES NOT CLAIM. There is no perspective projection: a perspective divide is not
+// exact in integers and it is a different mathematical object, not a parameter of this one. There
+// is no hidden-line or hidden-surface removal here; depth is a scalar this module derives, and what
+// an ordering over it can and cannot prove is decided by the consumer that needs it - see
+// product.spatial_projection, which refuses an ambiguous order rather than picking one.
+
+// A DIMENSIONLESS DIRECTION IN THE SOURCE FRAME. It is deliberately NOT a Vector3: a Vector3 is a
+// displacement measured in millimetres, and a viewing direction is a ratio of components with no
+// length at all - only its direction is meaningful, and (1,1,1) and (2,2,2) name the same camera.
+// Giving it millimetre components would make "how long is the view direction" a question with an
+// answer, which is the unit conflation this module is careful about one paragraph up.
+//
+// It is also not an AxisDirection3, which can only name a signed axis: the axonometric row looks
+// along (1,1,1), which no signed unit axis can express.
+type ViewAxisTriple {
+  x: Int
+  y: Int
+  z: Int
+}
+
+fn view_axis_triple(x: Int, y: Int, z: Int) -> ViewAxisTriple {
+  ViewAxisTriple { x: x, y: y, z: z }
+}
+
+fn triple_is_zero(t: ViewAxisTriple) -> Bool {
+  t.x == 0 && t.y == 0 && t.z == 0
+}
+
+// THE TWO BORROWED CAUSES ARE EMBEDDED RATHER THAN RESTATED. ProjectionArithmeticRefused carries
+// std.checked_arithmetic's overflow record and ProjectionFrameRefused carries std.affine_space's
+// frame mismatch, so a consumer reading either learns the same fact in the same shape it would have
+// learned from the layer that owns it.
+//
+// ViewUnitsAreNotMillimetres IS "asked for millimetres on a view whose units are not millimetres".
+// The offending axis image is carried because that is the fact the caller needs: it says which
+// source axis is foreshortened, not merely that some axis is.
+type ProjectionRefusal
+  = ProjectionArithmeticRefused { cause: IntegerOverflow }
+  | ProjectionFrameRefused { refusal: SpatialFrameRefusal }
+  | ViewDirectionParallelToUpReference { direction: ViewAxisTriple, up_reference: ViewAxisTriple }
+  | ViewDirectionIsZero
+  | ViewUnitsAreNotMillimetres { axis_image_u: Int, axis_image_v: Int }
+
+type ProjectionConstruction<T>
+  = ProjectionReady { value: T }
+  | ProjectionRefused { cause: ProjectionRefusal }
+
+// The nine coefficients, in three rows: page-right, page-up, and depth. They are stored rather than
+// recomputed on every point because they are derived ONCE at the mint from the camera, and the mint
+// is the only constructor - sole_constructor, so no record literal outside this module can assemble
+// a map that no camera produces.
+type ProjectionMap sole_constructor {
+  ux: Int
+  uy: Int
+  uz: Int
+  vx: Int
+  vy: Int
+  vz: Int
+  wx: Int
+  wy: Int
+  wz: Int
+}
+
+// A view is the join of the map with the two frame identities it relates. Carrying both is what lets
+// a projected point be checked against the world it came from AND be recognised later as belonging
+// to this view rather than to another view of the same world.
+type ProjectionView sole_constructor {
+  direction: ViewAxisTriple
+  up_reference: ViewAxisTriple
+  source_frame: CoordinateFrameIdentity
+  view_frame: CoordinateFrameIdentity
+  map: ProjectionMap
+}
+
+type ViewPoint2 {
+  view: CoordinateFrameIdentity
+  u: Int
+  v: Int
+}
+
+fn checked_pair_cross_term(a: Int, b: Int, c: Int, d: Int) -> CheckedInt {
+  checked_subtract_results(
+    a: checked_int_multiply(a: a, b: b),
+    b: checked_int_multiply(a: c, b: d),
+  )
+}
+
+type CheckedTriple {
+  x: CheckedInt
+  y: CheckedInt
+  z: CheckedInt
+}
+
+fn checked_cross(a: ViewAxisTriple, b: ViewAxisTriple) -> CheckedTriple {
+  CheckedTriple {
+    x: checked_pair_cross_term(a: a.y, b: b.z, c: a.z, d: b.y),
+    y: checked_pair_cross_term(a: a.z, b: b.x, c: a.x, d: b.z),
+    z: checked_pair_cross_term(a: a.x, b: b.y, c: a.y, d: b.x),
+  }
+}
+
+fn settle_triple(t: CheckedTriple) -> ProjectionConstruction<ViewAxisTriple> {
+  match t.x {
+    CheckedIntOverflow { cause: c } => ProjectionRefused { cause: ProjectionArithmeticRefused { cause: c } }
+    CheckedIntReady { value: xv } =>
+      match t.y {
+        CheckedIntOverflow { cause: c } => ProjectionRefused { cause: ProjectionArithmeticRefused { cause: c } }
+        CheckedIntReady { value: yv } =>
+          match t.z {
+            CheckedIntOverflow { cause: c } => ProjectionRefused { cause: ProjectionArithmeticRefused { cause: c } }
+            CheckedIntReady { value: zv } =>
+              ProjectionReady { value: view_axis_triple(x: xv, y: yv, z: zv) }
+          }
+      }
+  }
+}
+
+// THE MINT. Every refusal here is a fact about the camera, decided before any point exists, which is
+// the point of deriving the map once: a caller holding a ProjectionView holds a camera that was
+// admissible, and projecting a point can then fail only on the point's own frame or magnitude.
+//
+// A ZERO PAGE-RIGHT means the direction and the up reference are parallel - including the case where
+// the up reference is itself zero. The two are one refusal, ViewDirectionParallelToUpReference,
+// because they are one failure: there is no plane in which to lay out the page.
+fn projection_view(
+  direction: ViewAxisTriple,
+  up_reference: ViewAxisTriple,
+  source_frame: CoordinateFrameIdentity,
+  view_frame: CoordinateFrameIdentity,
+) -> ProjectionConstruction<ProjectionView> {
+  if triple_is_zero(t: direction) {
+    ProjectionRefused { cause: ViewDirectionIsZero }
+  } else {
+    match settle_triple(t: checked_cross(a: direction, b: up_reference)) {
+      ProjectionRefused { cause: c } => ProjectionRefused { cause: c }
+      ProjectionReady { value: right } =>
+        if triple_is_zero(t: right) {
+          ProjectionRefused { cause: ViewDirectionParallelToUpReference { direction: direction, up_reference: up_reference } }
+        } else {
+          match settle_triple(t: checked_cross(a: right, b: direction)) {
+            ProjectionRefused { cause: c } => ProjectionRefused { cause: c }
+            ProjectionReady { value: page_up } =>
+              ProjectionReady {
+                value: ProjectionView {
+                  direction: direction,
+                  up_reference: up_reference,
+                  source_frame: source_frame,
+                  view_frame: view_frame,
+                  map: ProjectionMap {
+                    ux: right.x, uy: right.y, uz: right.z,
+                    vx: page_up.x, vy: page_up.y, vz: page_up.z,
+                    wx: direction.x, wy: direction.y, wz: direction.z,
+                  },
+                },
+              }
+          }
+        }
+    }
+  }
+}
+
+fn view_map(v: ProjectionView) -> ProjectionMap { v.map }
+fn view_source_frame(v: ProjectionView) -> CoordinateFrameIdentity { v.source_frame }
+fn view_frame_of(v: ProjectionView) -> CoordinateFrameIdentity { v.view_frame }
+fn view_direction(v: ProjectionView) -> ViewAxisTriple { v.direction }
+
+// THE FOUR NAMED CAMERAS, and they are cameras rather than maps: each row supplies a direction and
+// an up reference, and the coefficients follow. The frame convention is the one std.affine_space
+// declares - right-handed, +X east, +Y north, +Z up.
+//
+// Named for WHERE THE CAMERA IS, not for what it shows, because "front elevation" is a fact about a
+// building's own orientation and this module knows nothing about buildings.
+type ProjectionKind
+  = PlanFromAbove
+  | ElevationFromSouth
+  | ElevationFromWest
+  | Dimetric2To1FromAboveEastNorth
+
+// Dimetric2To1FromAboveEastNorth LOOKS DOWN toward the origin from the east-north-above octant.
+// That is the direction which makes the derived map the classic 2:1 dimetric - source axes imaging
+// to (-1,-1), (1,-1) and (0,2) - and it is derived rather than asserted: the witness recomputes the
+// columns.
+fn projection_kind_direction(k: ProjectionKind) -> ViewAxisTriple {
+  match k {
+    PlanFromAbove => view_axis_triple(x: 0, y: 0, z: 0 - 1)
+    ElevationFromSouth => view_axis_triple(x: 0, y: 1, z: 0)
+    ElevationFromWest => view_axis_triple(x: 1, y: 0, z: 0)
+    Dimetric2To1FromAboveEastNorth => view_axis_triple(x: 0 - 1, y: 0 - 1, z: 0 - 1)
+  }
+}
+
+// North is the up reference for a plan because a plan looks along world up and cannot use it. Every
+// other row uses world up, which is what makes an elevation an elevation.
+fn projection_kind_up_reference(k: ProjectionKind) -> ViewAxisTriple {
+  match k {
+    PlanFromAbove => view_axis_triple(x: 0, y: 1, z: 0)
+    ElevationFromSouth => view_axis_triple(x: 0, y: 0, z: 1)
+    ElevationFromWest => view_axis_triple(x: 0, y: 0, z: 1)
+    Dimetric2To1FromAboveEastNorth => view_axis_triple(x: 0, y: 0, z: 1)
+  }
+}
+
+fn named_projection_view(
+  kind: ProjectionKind,
+  source_frame: CoordinateFrameIdentity,
+  view_frame: CoordinateFrameIdentity,
+) -> ProjectionConstruction<ProjectionView> {
+  projection_view(
+    direction: projection_kind_direction(k: kind),
+    up_reference: projection_kind_up_reference(k: kind),
+    source_frame: source_frame,
+    view_frame: view_frame,
+  )
+}
+
+fn point3_components(p: Point3) -> ViewAxisTriple {
+  view_axis_triple(
+    x: signed_millimeter_component_count(m: p.x),
+    y: signed_millimeter_component_count(m: p.y),
+    z: signed_millimeter_component_count(m: p.z),
+  )
+}
+
+fn checked_row_dot(ax: Int, ay: Int, az: Int, p: ViewAxisTriple) -> CheckedInt {
+  checked_add_results(
+    a: checked_add_results(
+      a: checked_int_multiply(a: ax, b: p.x),
+      b: checked_int_multiply(a: ay, b: p.y),
+    ),
+    b: checked_int_multiply(a: az, b: p.z),
+  )
+}
+
+fn projection_frame_refusal(v: ProjectionView, p: Point3) -> ProjectionRefusal {
+  ProjectionFrameRefused {
+    refusal: SpatialFrameRefusal {
+      operation: OpProjectPoint3,
+      left_frame: v.source_frame,
+      right_frame: p.frame,
+      relation: ProjectionSourceFrameRequired,
+    },
+  }
+}
+
+// THE FRAME CHECK PRECEDES THE ARITHMETIC, for the reason std.affine_space states: a point from
+// another frame has no projection under this map, so an overflow reported for it would name the
+// wrong cause.
+fn project_point(v: ProjectionView, p: Point3) -> ProjectionConstruction<ViewPoint2> {
+  if !coordinate_frame_identity_eq(a: v.source_frame, b: p.frame) {
+    ProjectionRefused { cause: projection_frame_refusal(v: v, p: p) }
+  } else {
+    let c = point3_components(p: p)
+    match checked_row_dot(ax: v.map.ux, ay: v.map.uy, az: v.map.uz, p: c) {
+      CheckedIntOverflow { cause: cause } => ProjectionRefused { cause: ProjectionArithmeticRefused { cause: cause } }
+      CheckedIntReady { value: u } =>
+        match checked_row_dot(ax: v.map.vx, ay: v.map.vy, az: v.map.vz, p: c) {
+          CheckedIntOverflow { cause: cause } => ProjectionRefused { cause: ProjectionArithmeticRefused { cause: cause } }
+          CheckedIntReady { value: vv } =>
+            ProjectionReady { value: ViewPoint2 { view: v.view_frame, u: u, v: vv } }
+        }
+    }
+  }
+}
+
+// DEPTH IS ALONG THE VIEWING DIRECTION AND LARGER IS FARTHER. It is a separate function rather than a
+// third field on ViewPoint2 because it is not a position on the page: a consumer that draws does not
+// want it, and a consumer that orders does not want the page coordinates. Fusing them would make
+// every drawing carry a number it must remember to ignore.
+fn projection_depth(v: ProjectionView, p: Point3) -> ProjectionConstruction<Int> {
+  if !coordinate_frame_identity_eq(a: v.source_frame, b: p.frame) {
+    ProjectionRefused { cause: projection_frame_refusal(v: v, p: p) }
+  } else {
+    match checked_row_dot(ax: v.map.wx, ay: v.map.wy, az: v.map.wz, p: point3_components(p: p)) {
+      CheckedIntOverflow { cause: cause } => ProjectionRefused { cause: ProjectionArithmeticRefused { cause: cause } }
+      CheckedIntReady { value: w } => ProjectionReady { value: w }
+    }
+  }
+}
+
+// A SOURCE AXIS'S IMAGE ON THE PAGE - the map's column, which is the pair a reader would measure off
+// a drawing with a ruler. It is the quantity the millimetre question is decided by.
+fn axis_image_u(m: ProjectionMap, axis_index: Int) -> Int {
+  if axis_index == 0 { m.ux } else { if axis_index == 1 { m.uy } else { m.uz } }
+}
+
+fn axis_image_v(m: ProjectionMap, axis_index: Int) -> Int {
+  if axis_index == 0 { m.vx } else { if axis_index == 1 { m.vy } else { m.vz } }
+}
+
+// Exactly representable without a square root, by cases: a column of integers has length one exactly
+// when one entry is +/-1 and the other is zero, and length zero exactly when both are zero. Every
+// other column has an irrational or non-unit length, and it does not matter which - the answer to
+// "are view units millimetres" is already no.
+fn axis_image_preserves_length(m: ProjectionMap, axis_index: Int) -> Bool {
+  let iu = axis_image_u(m: m, axis_index: axis_index)
+  let iv = axis_image_v(m: m, axis_index: axis_index)
+  let unit = (iu == 0 && (iv == 1 || iv == (0 - 1))) || (iv == 0 && (iu == 1 || iu == (0 - 1)))
+  let collapsed = iu == 0 && iv == 0
+  unit || collapsed
+}
+
+// An axis that collapses to a point contributes no length to the page and cannot distort one, which
+// is why it counts as preserving: a plan view's Z column is (0,0) and a plan view is drawn to scale.
+fn view_units_are_millimetres(m: ProjectionMap) -> Bool {
+  axis_image_preserves_length(m: m, axis_index: 0)
+    && axis_image_preserves_length(m: m, axis_index: 1)
+    && axis_image_preserves_length(m: m, axis_index: 2)
+}
+
+fn first_distorted_axis(m: ProjectionMap) -> Int {
+  if !axis_image_preserves_length(m: m, axis_index: 0) {
+    0
+  } else {
+    if !axis_image_preserves_length(m: m, axis_index: 1) { 1 } else { 2 }
+  }
+}
+
+// THE ONLY BRIDGE BACK TO MILLIMETRES, AND IT REFUSES RATHER THAN CONVERTING. On a plan or an
+// elevation the page coordinates ARE millimetres in the view plane, so the bridge is an injection
+// with no arithmetic at all. On an axonometric view there is no exact millimetre reading of a page
+// coordinate, and there is no rounding arm here: a caller that wants an approximate scale bar must
+// declare the approximation it is willing to make, in the layer that renders.
+fn view_point_millimetres(v: ProjectionView, p: ViewPoint2) -> ProjectionConstruction<Point2> {
+  if !view_units_are_millimetres(m: v.map) {
+    let axis = first_distorted_axis(m: v.map)
+    ProjectionRefused {
+      cause: ViewUnitsAreNotMillimetres {
+        axis_image_u: axis_image_u(m: v.map, axis_index: axis),
+        axis_image_v: axis_image_v(m: v.map, axis_index: axis),
+      },
+    }
+  } else {
+    ProjectionReady { value: point2(frame: p.view, x: p.u, y: p.v) }
+  }
+}

@@ -30,7 +30,7 @@ import std.realization_schedule { scoped_witness_exact_head_text_holds }
 import std.content_hash { ContentHash, compare_content_hash, ContentHashEqual }
 import v2.compiler.name_resolve { Admission }
 import v2.compiler.source_authority { SourceRootIngest }
-import v2.std.algebra { fold_list, length }
+import v2.std.algebra { Cons, Empty, fold_list, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
@@ -333,44 +333,69 @@ fn frontier_probe_survey_receipt_paths_match(
   )
 }
 
+data frontier_gap_clustering_derivation_note: String = "The dominant reason is READ OFF the receipts, never supplied by the branch that fired. Before this, clustering counted blocker CLASSES and then wrote a hardcoded located_reason literal per branch (^parse_grammar_choice_overlap_residue for the realization branch, and so on), so a verdict reported a reason no receipt had to carry: two modules whose measured refusals differ were indistinguishable, and the one measured survey to date carries ^tokenize_lex_e1_unrecognized_char, which no branch could ever name. count_receipts_with_located_reason existed with zero callers throughout. CommonRoot now requires UNANIMITY rather than a plurality: any plurality bar is a threshold, and a threshold is the smuggled heuristic a closed system never needs — a survey where one reason covers every receipt has a common root, and one where it does not is heterogeneous with its true distinct count. An empty survey has no measured reason, so it cannot be a CommonRoot; it reports a distinct count of zero, which says exactly that. Cost: distinct reasons are collected in one pass and counted once each, so the fold is d*n over the distinct set rather than n*n over the receipts. The tally runs only on the unanimous arm, where its result is consumed; the heterogeneous arm needs the distinct count alone and computing a tally it discards would be a cost-shape defect regardless of how small the survey is (review 51421)."
+
+type FrontierReasonTally = ReasonTally { reason: Symbol, count: Int }
+
+fn symbol_list_contains(xs: List<Symbol>, target: Symbol) -> Bool {
+  fold_list(
+    xs: xs,
+    empty: false,
+    cons: fn(found, s) { found || (s == target) }
+  )
+}
+
+fn distinct_located_reasons(xs: List<FrontierProbeReceipt>) -> List<Symbol> {
+  fold_list(
+    xs: xs,
+    empty: Empty,
+    cons: fn(seen, receipt) {
+      let reason = frontier_probe_receipt_located_reason(receipt: receipt)
+      if symbol_list_contains(xs: seen, target: reason) {
+        seen
+      } else {
+        Cons { head: reason, tail: seen }
+      }
+    }
+  )
+}
+
+fn dominant_located_reason_tally(xs: List<FrontierProbeReceipt>) -> FrontierReasonTally {
+  fold_list(
+    xs: distinct_located_reasons(xs: xs),
+    empty: ReasonTally { reason: ^frontier_survey_no_measured_reason, count: 0 },
+    cons: fn(best, reason) {
+      let c = count_receipts_with_located_reason(xs: xs, target: reason)
+      if c > best.count {
+        ReasonTally { reason: reason, count: c }
+      } else {
+        best
+      }
+    }
+  )
+}
+
+fn common_root_from_tally(top: FrontierReasonTally, module_count: Int) -> FrontierGapClusterVerdict {
+  CommonRoot {
+    dominant_located_reason: top.reason,
+    dominant_module_count: top.count,
+    module_count: module_count
+  }
+}
+
 fn frontier_gap_clustering_from_receipts(
   xs: List<FrontierProbeReceipt>,
   module_count: Int
 ) -> FrontierGapClusterVerdict {
-  let emit_surface_count = count_receipts_with_blocker(xs: xs, target: EmitSurfaceGap)
-  let name_resolution_count = count_receipts_with_blocker(xs: xs, target: NameResolutionGap)
-  let realization_count = count_receipts_with_blocker(xs: xs, target: RealizationGap)
-  let self_emit_ready_count = count_receipts_with_blocker(xs: xs, target: SelfEmitReady)
-  if self_emit_ready_count == module_count {
-    CommonRoot {
-      dominant_located_reason: ^probe_stage_emit_ok,
-      dominant_module_count: module_count,
+  let distinct_count = length(xs: distinct_located_reasons(xs: xs))
+  if distinct_count == 1 {
+    common_root_from_tally(
+      top: dominant_located_reason_tally(xs: xs),
       module_count: module_count
-    }
-  } else if realization_count >= emit_surface_count
-    && realization_count >= name_resolution_count
-    && realization_count > 0
-  {
-    CommonRoot {
-      dominant_located_reason: ^parse_grammar_choice_overlap_residue,
-      dominant_module_count: realization_count,
-      module_count: module_count
-    }
-  } else if emit_surface_count >= name_resolution_count && emit_surface_count > 0 {
-    CommonRoot {
-      dominant_located_reason: ^measured_probe_emit_surface_gap,
-      dominant_module_count: emit_surface_count,
-      module_count: module_count
-    }
-  } else if name_resolution_count > emit_surface_count {
-    CommonRoot {
-      dominant_located_reason: ^measured_probe_name_resolution_gap,
-      dominant_module_count: name_resolution_count,
-      module_count: module_count
-    }
+    )
   } else {
     HeterogeneousGaps {
-      distinct_located_reason_count: module_count,
+      distinct_located_reason_count: distinct_count,
       module_count: module_count
     }
   }

@@ -133,6 +133,12 @@ fn zero_vector3(frame: CoordinateFrameIdentity) -> Vector3 {
 // frame, so calling it "expected" reports an artefact of argument order as though it were a
 // requirement. The operation identity and the relation that was required make the refusal readable
 // without knowing which operand the implementation looked at first.
+//
+// OpProjectPoint3 IS std.planar_projection's point projection, registered HERE rather than in a
+// refusal sum of its own because the frame-mismatch fact is one concept: a second
+// operation-identity enum beside this one would be the nicknaming DESIGN section 3 forbids, and a
+// consumer matching on frame refusals would then have to know which of two vocabularies produced
+// the one it holds.
 type SpatialOperationIdentity
   = OpTranslatePoint3
   | OpDisplacementBetween3
@@ -144,11 +150,17 @@ type SpatialOperationIdentity
   | OpDot3
   | OpCross3
   | OpApplyZQuarterTurnTransform3
+  | OpProjectPoint3
 
+// ProjectionSourceFrameRequired IS ITS OWN ARM because a projection is not symmetric and its two
+// frames are not interchangeable: the map declares the frame it reads, and a point from any other
+// frame is not a point it can project. Reusing SameFrameOperandsRequired would report a directional
+// requirement as a symmetric one.
 type SpatialFrameRelation
   = SameFrameOperandsRequired
   | TransformSourceFrameRequired
   | TransformTranslationInDestinationRequired
+  | ProjectionSourceFrameRequired
 
 type SpatialFrameRefusal {
   operation: SpatialOperationIdentity

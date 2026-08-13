@@ -63,17 +63,36 @@ fn observed_artifact_digest(observed: Sha512Digest) -> ObservedArtifactDigest {
   ObservedArtifactDigest { observed: observed }
 }
 
-type ArtifactIdentity
+type GeneratedArtifactIdentity
   = ArtifactMaterialized { digest: ObservedArtifactDigest }
   | ArtifactNotMaterialized
 
+// THESE SIX AXES DO NOT DETERMINE THE ARTIFACT, and the gap is named here rather than
+// left to be rediscovered. A Rust debug binary embeds its build directory, so the same
+// source compiled in two different directories yields different bytes while every axis
+// below agrees; the same directory rebuilt yields byte-identical output. Measured by
+// hand twice (gunbc#8181). So this identity identifies a generation UP TO BUILD
+// LOCATION, and build path is an input that no axis names.
+//
+// It is an incompleteness in the promotion premise, not a caveat on comparison. Two
+// honest remedies exist — remap the path out of the emitted artifact so the declared
+// axes become an actual determinant, or name build path in build_configuration so the
+// axis tells the truth about what it covers. Papering over it inside a comparison is
+// the third option and is not available.
+//
+// The direction is fail-closed: relocating an identical build reports as a MOVED
+// artifact rather than a spurious match, so nothing is silently admitted. That is why
+// the first frontier flip may proceed by pinning the build directory. It is also why
+// artifact-digest equality across hosts or workspaces must never be used as a
+// reproducibility oracle. Registered as an obligation with its trigger in
+// gunbc.self_host_promotion_obligations.
 type GenerationIdentity {
   producer_compiler: Hash
   source_closure: Hash
   target_model: Hash
   toolchain: Hash
   build_configuration: Hash
-  materialized_artifact: ArtifactIdentity
+  materialized_artifact: GeneratedArtifactIdentity
 }
 
 // Three generations, three distinct TYPES. A candidate cannot be constructed without
@@ -238,7 +257,7 @@ fn source_closure_axis_digest(roster: SourceClosureRoster) -> SourceClosureAxisO
 // observe either artifact" as "the artifacts agree" — the empty-observation narrow
 // DESIGN names beside the absorbing fallback. Admission refuses an unmaterialized
 // axis separately and by name.
-fn artifact_identity_agrees(left: ArtifactIdentity, right: ArtifactIdentity) -> Bool {
+fn artifact_identity_agrees(left: GeneratedArtifactIdentity, right: GeneratedArtifactIdentity) -> Bool {
   match left {
     ArtifactMaterialized { digest: l } =>
       match right {

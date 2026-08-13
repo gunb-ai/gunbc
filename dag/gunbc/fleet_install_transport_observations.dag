@@ -1,0 +1,85 @@
+module gunbc.fleet_install_transport_observations
+
+import std.types { List }
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.install_transport_qualification {
+  ConfigfsMounted,
+  NbdClientPresent,
+  ProbeFoundPresent,
+  ReinstallPathStanding,
+  TransportProbeObservation,
+  UdcPresent,
+  UsbGadgetFrameworkPresent,
+  configfs_reinstall_path_standing,
+}
+
+// LIVE PROBES, srv3 on OpenBMC 3.22.00, 2026-08-13, authenticated BMC SSH.
+// Four of the eight configfs requirements were observed present. The other four
+// were NOT probed, and there is deliberately no row for them: an unobserved
+// requirement is the ABSENCE of an observation, so the standing derives
+// Unestablished and names them rather than anyone authoring a placeholder.
+//
+// These four are the evidence that refuted the "srv3 has no install path"
+// reading. They do NOT establish the path — that needs the remaining four plus
+// the non-destructive boot qualification in INSTALL-0 C3.
+
+data srv3_configfs_mounted_probe: TransportProbeObservation = TransportProbeObservation {
+  host: operator_host_srv3,
+  requirement: ConfigfsMounted,
+  probe: "mount | grep configfs",
+  result: "configfs on /sys/kernel/config type configfs (rw,nosuid,nodev,noexec,relatime)",
+  outcome: ProbeFoundPresent,
+  observed_at: 1786629600000,
+}
+
+// Two gadgets already exist (g1, obmc_hid). Their presence proves the framework
+// works on this image; it says NOTHING about whether a UDC is free for another,
+// which is why NoForeignGadgetOrNbdAttachment stays unprobed rather than being
+// inferred from this row.
+data srv3_usb_gadget_framework_probe: TransportProbeObservation = TransportProbeObservation {
+  host: operator_host_srv3,
+  requirement: UsbGadgetFrameworkPresent,
+  probe: "ls -d /sys/kernel/config/usb_gadget; ls /sys/kernel/config/usb_gadget/",
+  result: "/sys/kernel/config/usb_gadget exists; gadgets present: g1, obmc_hid",
+  outcome: ProbeFoundPresent,
+  observed_at: 1786629600000,
+}
+
+data srv3_udc_present_probe: TransportProbeObservation = TransportProbeObservation {
+  host: operator_host_srv3,
+  requirement: UdcPresent,
+  probe: "ls /sys/class/udc/",
+  result: "1e6a0000.usb-vhub:p1 p2 p3 p4 p5 (five UDC ports)",
+  outcome: ProbeFoundPresent,
+  observed_at: 1786629600000,
+}
+
+data srv3_nbd_client_probe: TransportProbeObservation = TransportProbeObservation {
+  host: operator_host_srv3,
+  requirement: NbdClientPresent,
+  probe: "ls -l /sbin/nbd-client; ls /sys/module/nbd; ls /dev/nbd0",
+  result: "/sbin/nbd-client present (42836 bytes); nbd module loaded; /dev/nbd0 present",
+  outcome: ProbeFoundPresent,
+  observed_at: 1786629600000,
+}
+
+data srv3_configfs_transport_observations: List<TransportProbeObservation> = [
+  srv3_configfs_mounted_probe,
+  srv3_usb_gadget_framework_probe,
+  srv3_udc_present_probe,
+  srv3_nbd_client_probe,
+]
+
+// UNESTABLISHED, naming the four probes still owed:
+// MassStorageFunctionAvailable, NbdServerReachableFromBmc,
+// BootOverrideNamesGadgetDevice, NoForeignGadgetOrNbdAttachment.
+//
+// This is the standing gunbc.os_install_mechanism should eventually consume in
+// place of reading capability-list non-membership as absence. It is NOT wired
+// into that solver here: doing so means teaching OsInstallMechanism to consume
+// extdeps.bmc.virtual_media VirtualMediaTransport rather than its own enum,
+// which is the next INSTALL-0 commit and would drag the actuator step lists with
+// it. This row is the authority that work will read.
+data srv3_configfs_reinstall_path_standing: ReinstallPathStanding = configfs_reinstall_path_standing(
+  observations: srv3_configfs_transport_observations,
+)

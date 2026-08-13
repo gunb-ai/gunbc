@@ -17,7 +17,6 @@ import v2.workflow.floor_discovery {
   FloorDiscoverySidecarViolation
 }
 import v2.workflow.floor_naming_hygiene {
-  floor_filename_contains_double_underscore,
   floor_test_marked_decl_allowed_in_entry,
   floor_wire_contract_decl_allowed_in_entry,
   floor_test_sidecar_suffix,
@@ -470,8 +469,6 @@ fn floor_discovery_process_dag_file(
   exclude_substrings: List<String>
 ) -> FloorDiscoveryWalkState {
   if floor_discovery_path_excluded(path: repo_path, exclude_substrings: exclude_substrings) {
-    state
-  } else if floor_filename_contains_double_underscore(path: repo_path) {
     state
   } else {
     let read_out = Filesystem.Read(path: repo_path)

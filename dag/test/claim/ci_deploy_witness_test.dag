@@ -173,17 +173,17 @@ fn ci_fleet_if_for_step_named(needle: String) -> String {
     })
 }
 
+// The READ step and the WRITE steps are deliberately gated differently: collect admits BOTH
+// push and workflow_dispatch, while deploy and advance are push-only and never dispatch. A
+// dispatchable write is the fused shape this claim exists to refuse.
 test fn witness_collector_read_unfused_from_writes() -> Bool {
   let collect_if = ci_fleet_if_for_step_named(needle: "Collect fleet converge")
   let deploy_if = ci_fleet_if_for_step_named(needle: "Deploy dashboard to srv1")
   let advance_if = ci_fleet_if_for_step_named(needle: "Advance refs/fleet/desired")
-  // collect (READ): admits BOTH push and workflow_dispatch
   string_contains(s: collect_if, pattern: "github.event_name == 'push'")
     && string_contains(s: collect_if, pattern: "workflow_dispatch")
-    // deploy (WRITE): push-only, never dispatch
     && string_contains(s: deploy_if, pattern: "github.event_name == 'push'")
     && !string_contains(s: deploy_if, pattern: "workflow_dispatch")
-    // advance (WRITE): push-only, never dispatch
     && string_contains(s: advance_if, pattern: "github.event_name == 'push'")
     && !string_contains(s: advance_if, pattern: "workflow_dispatch")
 }

@@ -415,6 +415,80 @@ fn non_empty_symbol_chain_emit(value: &Value, ctx: &InterpContext) -> Result<Str
     ))
 }
 
+// The cause location is emitted, not dropped, because a reason symbol alone does not say
+// WHICH file refused. It sits on AssembleRejectionDetail beside the cause rather than
+// inside it, because a position is not part of what the refusal IS. It is a probe-owned
+// coproduct rather than a bare Locus precisely so this emitter can be TOTAL: a position
+// with no serializable form becomes the closed CauseLocationNodeNotSerializable arm
+// instead of aborting a 27-module survey, and no arm invents a position it did not observe.
+fn cause_location_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    match value {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
+            let name = ctx.resolve(*variant_name);
+            if name == "CauseLocationTextual" {
+                let file = ctx
+                    .field(fields, "file")
+                    .ok_or_else(|| format!("{name} missing file"))?;
+                let extent = ctx
+                    .field(fields, "extent")
+                    .ok_or_else(|| format!("{name} missing extent"))?;
+                Ok(format!(
+                    "CauseLocationTextual {{ file: \"{}\", extent: {} }}",
+                    dag_manifest_scalar_escape(&str_from_value(file)?)?,
+                    extent_emit(extent, ctx)?
+                ))
+            } else if name == "CauseLocationPort" {
+                let port = ctx
+                    .field(fields, "port")
+                    .ok_or_else(|| format!("{name} missing port"))?;
+                Ok(format!(
+                    "CauseLocationPort {{ port: {} }}",
+                    value_symbol_name(port)?
+                ))
+            } else if name == "CauseLocationNodeNotSerializable" {
+                Ok("CauseLocationNodeNotSerializable".to_string())
+            } else {
+                Err(format!("unknown FrontierProbeCauseLocation variant {name}"))
+            }
+        }
+        _ => Err("cause location not a variant".to_string()),
+    }
+}
+
+fn extent_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
+    match value {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } => {
+            let name = ctx.resolve(*variant_name);
+            if name == "WholeFile" {
+                Ok("WholeFile".to_string())
+            } else if name == "ByteRange" {
+                let start = ctx
+                    .field(fields, "start")
+                    .ok_or_else(|| format!("{name} missing start"))?;
+                let end = ctx
+                    .field(fields, "end")
+                    .ok_or_else(|| format!("{name} missing end"))?;
+                Ok(format!(
+                    "ByteRange {{ start: {}, end: {} }}",
+                    int_from_value(start)?,
+                    int_from_value(end)?
+                ))
+            } else {
+                Err(format!("unknown Extent variant {name}"))
+            }
+        }
+        _ => Err("extent not a variant".to_string()),
+    }
+}
+
 fn assemble_rejection_cause_emit(value: &Value, ctx: &InterpContext) -> Result<String, String> {
     match value {
         Value::Variant {
@@ -494,10 +568,14 @@ fn assemble_detail_emit(value: &Value, ctx: &InterpContext) -> Result<String, St
                 let cause = ctx
                     .field(fields, "cause")
                     .ok_or_else(|| format!("{name} missing cause"))?;
+                let at = ctx
+                    .field(fields, "at")
+                    .ok_or_else(|| format!("{name} missing at"))?;
                 Ok(format!(
-                    "AssembleRejectionDetail {{\n  rejection_chain: {},\n  cause: {}\n}}",
+                    "AssembleRejectionDetail {{\n  rejection_chain: {},\n  cause: {},\n  at: {}\n}}",
                     non_empty_symbol_chain_emit(chain, ctx)?,
-                    assemble_rejection_cause_emit(cause, ctx)?
+                    assemble_rejection_cause_emit(cause, ctx)?,
+                    cause_location_emit(at, ctx)?
                 ))
             } else {
                 Err(format!("unknown assemble_detail variant {name}"))
