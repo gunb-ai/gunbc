@@ -2,8 +2,8 @@ module test.claim.altra_placement_witness
 
 import std.types { Bool, String, NonEmptyStr, List }
 import std.integer { Int }
-import std.affine_space { Point2, point2 }
-import std.orthogonal_geometry { OrthogonalConstruction, OrthogonalReady, OrthogonalRefused }
+import std.affine_space { point2 }
+import std.orthogonal_geometry { OrthogonalReady, OrthogonalRefused }
 import product.altra_motherboard.placement {
   BoardControlCpld,
   BoardPlacementPlan,
@@ -30,13 +30,11 @@ import product.altra_motherboard.placement {
   outstanding_obligation_count,
   placeable_components,
   placement_causes,
-  placement_refusal_count,
   required_roles,
   role_tag,
   roles_equal,
 }
 import product.altra_motherboard.attachment_stack {
-  NdaGated,
   PublicButRedistributionUndecided,
   Unresolved,
   processor_package_standing,

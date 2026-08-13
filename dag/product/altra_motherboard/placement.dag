@@ -2,7 +2,6 @@ module product.altra_motherboard.placement
 
 import std.types { String, Bool, NonEmptyStr, List }
 import std.integer { Int }
-import std.measure { Micrometer, micrometer, micrometer_count }
 import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
 import std.affine_space { Point2, point2 }
 import std.orthogonal_geometry {
@@ -20,20 +19,15 @@ import product.compute_board.physical {
 import product.altra_motherboard.minimal_design {
   ActiveDdrChannelCount,
   AltraMinimalMotherboard,
-  DesignIntent,
   EightChannels,
-  EngineeringBringUp,
   FourChannels,
   OneChannel,
-  Production,
   SixChannels,
   TwoChannels,
   altra_1p_minimum,
 }
 import product.altra_motherboard.attachment_stack {
   AuthorityStanding,
-  NdaGated,
-  PublicButRedistributionUndecided,
   Unresolved,
   processor_package_standing,
 }
