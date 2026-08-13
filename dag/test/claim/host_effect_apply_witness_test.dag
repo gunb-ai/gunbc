@@ -221,3 +221,14 @@ test fn witness_converge_plan_redrives_on_frontier() -> Bool {
   )))
 }
 
+test fn witness_fleet_ssh_leaf_unmigrated_frontier_disposition_is_scaffold() -> Bool {
+  match fleet_ssh_leaf_unmigrated_frontier_disposition {
+    Scaffold {
+      dissolves_to: RealizationDispatch,
+      bind: DeclarationRef { module_path: m, decl_name: n, field: _ },
+    } =>
+      m == "gunbc.typed_argv_exec" && n == "typed_argv_exec_over_fleet_ssh"
+    Terminal { reason: _ } => false
+  }
+}
+
