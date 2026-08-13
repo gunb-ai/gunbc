@@ -187,6 +187,8 @@ test fn w_a_repeated_placement_identity_refuses() -> Bool {
 
 // ONE COLLISION IS ONE CAUSE, and one repeated identity is one cause, not one per participating
 // row. Counting is what makes that visible; naming the cause passes either way.
+// One repeated identity plus one overlap between the two coincident bodies: two distinct
+// defects, each counted once, rather than four rows for two facts.
 test fn w_one_defect_is_reported_once() -> Bool {
   match article_with(placements: [
     placement(id: "u1", x: 5000, y: 5000),
@@ -196,8 +198,6 @@ test fn w_one_defect_is_reported_once() -> Bool {
     Present { value: a } =>
       match admit_body_envelopes(registry: registry_with_scales(), article: a) {
         BodyEnvelopesAdmitted { article: _ } => false
-        // One repeated identity plus one overlap between the two coincident bodies: two distinct
-        // defects, each counted once, rather than four rows for two facts.
         PhysicallyRefused { causes: cs } => physical_refusal_count(s: cs) == 2
       }
   }
