@@ -146,16 +146,9 @@ type HostEffectTransport =
 //
 // 🟡 dissolve-on: each leaf takes a FleetSshExecutionContext and calls the context-aware exec, at
 // which point its FleetSsh arm does real work and stops routing here. DELETED when the last one
-// migrates -- it must never acquire a permanent population.
-data fleet_ssh_leaf_unmigrated_frontier_disposition: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.typed_argv_exec",
-    decl_name: "typed_argv_exec_over_fleet_ssh",
-    field: WholeDeclaration,
-  }
-}
-
+// migrates -- it must never acquire a permanent population. No std.disposition.Scaffold row here:
+// DESIGN §5 requires an operator verdict bound to head for net-new dissolution obligations; the
+// migration target is gunbc.typed_argv_exec typed_argv_exec_over_fleet_ssh (see inline note above).
 fn fleet_ssh_leaf_unmigrated_refused() -> Bool {
   false
 }
