@@ -138,19 +138,19 @@ fn frontier_probe_first_non_overlap_residue_diagnostic_optional(
   d: NonEmptyDiagnostics
 ) -> Optional<Diagnostic> {
   if !diagnostic_reason_is_overlap_residue(d: d.head) {
-    Present { value: d.head }
+    optional_present(value: d.head)
   } else {
     fold_list(
       xs: d.tail,
-      empty: Absent,
+      empty: optional_absent(),
       cons: fn(acc, diag) {
         match acc {
           Present { value: _ } => acc
           Absent =>
             if diagnostic_reason_is_overlap_residue(d: diag) {
-              Absent
+              optional_absent()
             } else {
-              Present { value: diag }
+              optional_present(value: diag)
             }
         }
       }
