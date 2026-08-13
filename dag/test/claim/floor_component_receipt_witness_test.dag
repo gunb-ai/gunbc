@@ -499,7 +499,7 @@ test fn fcr_no_selection_receipt_decodes_through_the_strict_reader() -> Bool {
   }
 }
 
-data fcr_incomplete_checkpoint_round_trip_note: String = "The incomplete checkpoint envelope is what claim_executor writes on SIGKILL/step-cap death: run_terminal.disposition=incomplete, pending tail rows, and active_workset carrying in-flight witness identity. The concluded-path round trip was already witnessed; this arm exercises the path this PR exists to fix."
+data fcr_incomplete_checkpoint_round_trip_note: String = "The incomplete checkpoint envelope is what claim_executor writes on SIGKILL/step-cap death: run_terminal.disposition=incomplete, pending tail rows, and active_workset carrying in-flight witness identity. The concluded-path round trip was already witnessed; this arm exercises the path this PR exists to fix. HONEST BOUNDARY: on a real kill the executor may never reach the receipt write — durable in-flight identity then lives in GUNBC_FLOOR_PHASE_JOURNAL, not in the uploaded receipt; see floor_component_active_workset_note. The round trip witnesses encode/decode of the envelope shape; journal hydration onto the checkpoint path is dissolve-on."
 
 test fn fcr_incomplete_checkpoint_receipt_decodes_through_the_strict_reader() -> Bool {
   let rows = fcr_rows_of(opts: [

@@ -10951,7 +10951,9 @@ mod active_workset_kill_path_controls {
     }
 
     /// SIGKILL / step-cap / panic paths never run `active_workset_complete`. The registry
-    /// must retain the admitted identity anyway — that is the only evidence a killed run has.
+    /// must retain the admitted identity while the executor is still alive. Durable evidence
+    /// after process death is the phase journal, not the receipt — see
+    /// floor_component_active_workset_note.
     #[test]
     fn admitted_entry_survives_without_completion() {
         with_active_workset_test_lock(|| {

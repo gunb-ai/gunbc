@@ -236,6 +236,7 @@ type ComponentOutcomeRead
 
 data floor_component_outcome_wire_not_concluded_tag: String = "not_concluded"
 data floor_component_outcome_wire_pending_tag: String = "pending"
+data component_outcome_wire_legacy_pending_tag_note: String = "component_outcome_read_of_tag still accepts the legacy not_concluded wire tag beside pending so in-flight receipts written before the rename decode without refusal. No writer emits not_concluded anymore; the dual acceptance is a deliberate transitional window, not a second vocabulary. Dissolve-on: delete the legacy branch once no receipt-on-disk (including uploaded CI artifacts under retention) carries not_concluded — verified by a counted census, not by grep alone."
 
 fn floor_component_outcome_wire_tag(r: ComponentOutcomeRead) -> String {
   match r {

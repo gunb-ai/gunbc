@@ -14312,8 +14312,11 @@ mod tests {
         let _ = fs::remove_dir_all(&base);
     }
 
-    /// A killed run never reaches `active_workset_complete`. The incomplete receipt must
-    /// still carry the in-flight witness identity from the registry snapshot at write time.
+    /// Proves registry→receipt plumbing: an admitted entry still in the in-process
+    /// registry is serialized into active_workset when the still-live executor writes
+    /// an incomplete document. This is NOT post-SIGKILL receipt evidence — a killed
+    /// process never reaches that write; see floor_component_active_workset_note and
+    /// GUNBC_FLOOR_PHASE_JOURNAL for durable in-flight identity across kill paths.
     #[test]
     fn incomplete_receipt_active_workset_survives_without_completion() {
         static ACTIVE_WORKSET_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());

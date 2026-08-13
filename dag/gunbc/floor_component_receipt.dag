@@ -83,6 +83,8 @@ data floor_component_receipt_unit_surface_note: String = "Every duration on this
 
 data floor_component_receipt_schema: String = "floor-component-receipt/v1"
 
+data floor_component_active_workset_note: String = "THE IN-RECEIPT active_workset IS A PROCESS-LOCAL SNAPSHOT AT CHECKPOINT WRITE TIME, NOT POST-MORTEM KILL EVIDENCE. Checkpoints are written after each batch record lands while the executor is still alive; on the sequential floor every witness admit is paired with complete before the next batch boundary, so the registry is empty by construction at those writes and active_workset is honestly []. A SIGKILL or foreign step-cap kill terminates the process before any receipt write can run — the durable in-flight identity for that class is the GUNBC_FLOOR_PHASE_JOURNAL active-workset rows (admitted without a matching completed), which CI already surfaces beside the artifact. The field stays typed and required so a future mid-batch checkpoint or journal hydration path can populate it without a schema fork; dissolve-on: hydrate unreconciled journal admits into active_workset on the RunIncomplete checkpoint path once that population is exercised by execution rather than by construction argument."
+
 data floor_component_receipt_path: String = "target/floor-component-receipt.json"
 
 data floor_component_receipt_artifact_name: String = "floor-component-receipt"
