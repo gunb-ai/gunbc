@@ -8,8 +8,13 @@ import gunbc.tools.frontier_ingestion_probe {
   FrontierMember,
   FrontendStage,
   frontend_stage_label,
+  LexRefused,
   MemberObservation,
+  NormalizeAccepted,
+  NormalizeGraftRefused,
+  NormalizeOther,
   NormalizeRetained,
+  ParseRefused,
   take_census_over
 }
 import v2.std.algebra { fold_list }
@@ -112,6 +117,40 @@ fn standings_from(obs: List<MemberObservation>) -> List<BodyLoweringSubjectStand
       concat(acc, [BodyLoweringSubjectStanding { label: s.label, standing: standing_of(s: s, obs: obs) }])
     }
   )
+}
+
+data body_lowering_per_subject_reading_note: String = "PER-SUBJECT READING (2026-08-13), one census per subject rather than one over a roster, so a per-subject runtime and terminal standing exist instead of one aggregate that hides which member is expensive. Six of the seven runnable subjects returned: use_site_verdict NormalizeAccepted (165s), materialization_carriers NormalizeOther (199s), logic NormalizeOther (157s), optional NormalizeRetained (138s), diagnostic NormalizeRetained (239s), occurrence_identity NormalizeOther (292s).\n\nTHE ANSWERS ARE NOT UNIFORM, and that is load-bearing rather than incidental. The assembly fold stops at its first failed member, so a uniform refusal across independently chosen subjects would be evidence about the INSTRUMENT rather than the population. Three distinct stages across six subjects rules that reading out here.\n\nWHAT CHANGED: occurrence_identity is no longer retained. The exact-head receipt recorded it NormalizeRetained and is explicit that it was never re-run after the repair, so its post-repair state was unknown rather than confirmed; it measures NormalizeOther now, and logic independently reproduced what that receipt predicted for it. Among re-observed subjects only optional and diagnostic still retain. The stale cell is corrected at the receipt itself, not only here.\n\nWHAT IT DOES NOT LICENSE: 'the retained population is two'. It is two among MEASURED subjects, with node interrupted and the specimen class unmeasurable by construction — the roster-versus-batch distinction, applied to a reading rather than to a run. And three of these sit at NormalizeOther, whose reading is ObservedRefusedCauseUnclassified: they left retention without any instrument here identifying why they now refuse.\n\nNODE IS THE OUTLIER, AND ITS RUN IS AN INTERRUPTION RATHER THAN A MEASUREMENT. It was SIGKILLed at 346s (exit 137) while every other subject completed between 138s and 292s. The kill signal is observed; the CAUSE is not established — memory pressure on a shared slice is the suspicion given the ten-member run's 8.3 GiB, but nothing here measures that, and an exit code is not a diagnosis. So node stands interrupted with a fresh lower bound rather than carrying any stage.\n\nCOST, corrected: the six completions sit within a factor of 2.1 of one another, so there is no pathological member AMONG THEM, and the earlier 2h51m ten-member run is not explained by any of the six. Whether node alone accounts for it or the cost is superlinear in ROSTER SIZE is still open — per-subject runs cannot separate those two, and node dying rather than finishing means it did not settle the question either."
+
+data body_lowering_observed_reading_note: String = "AN OBSERVED STAGE IS NOT A VERDICT ON THE SUBJECT, and the reading a stage licenses is DERIVED from the stage rather than stored beside it — a stored reading would be a second representation of a fact the coproduct already carries, free to disagree with it.\n\nThe distinction that has to survive: leaving NormalizeRetained is NOT evidence of repair. NormalizeOther is by construction neither retention nor a graft refusal, so it names WHERE a module refuses and never WHY — the cause is unclassified, and the module still does not ingest. Three of the measured subjects sit there for causes no instrument in this lane identifies. Six weeks from now 'no longer retained' reads as 'fixed' unless the carrier says otherwise, which is why this is a projection consumers can match on rather than a sentence in prose.\n\nObservedClean is the one stage that means the door admitted the module. ObservedRefusedCauseNamed covers the refusals whose kind the classifier positively identified — retention, a graft refusal, and the lex and parse walls, each of which IS its own cause at this grain. ObservedRefusedCauseUnclassified is NormalizeOther alone, and it is the arm that must not be read as progress."
+
+type ObservedReading
+  = ObservedClean
+  | ObservedRefusedCauseNamed
+  | ObservedRefusedCauseUnclassified
+
+fn reading_of_stage(s: FrontendStage) -> ObservedReading {
+  match s {
+    NormalizeAccepted => ObservedClean
+    NormalizeOther => ObservedRefusedCauseUnclassified
+    NormalizeRetained => ObservedRefusedCauseNamed
+    NormalizeGraftRefused => ObservedRefusedCauseNamed
+    LexRefused => ObservedRefusedCauseNamed
+    ParseRefused => ObservedRefusedCauseNamed
+  }
+}
+
+data body_lowering_standing_reading_note: String = "A READING EXISTS ONLY WHERE SOMETHING WAS OBSERVED, which is why this returns its own coproduct rather than an ObservedReading. A first draft of this function mapped SubjectUnmeasured and SubjectInterrupted onto ObservedRefusedCauseUnclassified, on the reasoning that all three leave the cause unknown. That is the census-refusal conflation one level up, and in the same module that just repaired it: an unclassified refusal is a fact about a subject that WAS put through the door, while an unmeasured subject was never attempted and an interrupted one was abandoned mid-flight. Collapsing them makes a subject nobody looked at indistinguishable from one the compiler refused for a reason we could not name, and the remedies differ — run it, versus classify the refusal.\n\nThe shapes rhyme, which is exactly why the collapse is tempting: unknown-because-unclassified and unknown-because-unattempted are both unknowns. They are not the same unknown."
+
+type StandingReading
+  = StandingObserved { reading: ObservedReading }
+  | StandingNotObserved
+
+fn reading_of_standing(st: BodyLoweringObservationStanding) -> StandingReading {
+  match st {
+    SubjectObserved { stage: s } => StandingObserved { reading: reading_of_stage(s: s) }
+    SubjectUnmeasured { cause: _ } => StandingNotObserved
+    SubjectInterrupted { receipt: _ } => StandingNotObserved
+  }
 }
 
 data body_lowering_refusal_scope_note: String = "A CENSUS REFUSAL IS SCOPED TO THE BATCH, NEVER TO THE ROSTER, and an earlier revision of this repair got it wrong in the exact way the repair exists to prevent. It routed EVERY live-file subject through the refusal cause, so a census abort rewrote logic, diagnostic, occurrence_identity and node — subjects this run was never going to execute — from 'not selected' into 'the census refused'. Those are different epistemic positions with different remedies: a not-selected subject needs a bigger batch or a cheaper instrument, while a refused census needs the infrastructure fixed, and a reader deciding what to do next is misdirected by the conflation. It also destroyed the roster/batch split on precisely the path where the distinction is least visible and therefore least likely to be questioned.\n\nSo the refusal cause reaches ONLY the subjects that were actually selected. A subject outside the batch keeps not_selected_into_execution_batch whether the census succeeded or refused, because its standing does not depend on the census at all — nothing about it was attempted. The specimen class keeps its own structural cause under both, for the same reason one rung further out: it could not have been attempted under any batch.\n\nThe general form, worth stating because it is easy to reintroduce: a failure at one scope may not be attributed to subjects outside that scope. Widening a refusal to everything it did not touch is the absorbing fallback wearing an error's name — it looks conservative and it manufactures false information about subjects nobody looked at."

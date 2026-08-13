@@ -10,8 +10,18 @@ import gunbc.tools.body_lowering_population_probe {
   SubjectUnmeasured,
   SubjectObserved,
   SubjectInterrupted,
+  ObservedReading,
+  ObservedClean,
+  ObservedRefusedCauseNamed,
+  ObservedRefusedCauseUnclassified,
+  StandingReading,
+  StandingObserved,
+  StandingNotObserved,
+  reading_of_stage,
+  reading_of_standing,
   refusal_standing_of
 }
+import gunbc.tools.frontier_ingestion_probe { NormalizeAccepted, NormalizeOther, NormalizeRetained }
 
 // A census refusal is scoped to the batch. These assert the scoping directly rather than through
 // a live census, because forcing CensusRefusedAtWorld would mean breaking the tree to observe the
@@ -49,4 +59,24 @@ test fn census_refusal_cause_is_carried_not_fixed() -> Bool {
 
 test fn specimen_class_keeps_its_own_cause_under_refusal() -> Bool {
   cause_of(s: refusal_standing_of(s: specimen_subject, cause: ^census_refused_at_world)) == ^no_committed_specimen_identity
+}
+
+// An observed stage is not a verdict. These pin the reading a stage licenses, and the RED is the
+// one that matters: NormalizeOther must not read as clean merely because it is no longer retention.
+
+test fn accepted_reads_clean() -> Bool { reading_of_stage(s: NormalizeAccepted) == ObservedClean }
+
+test fn normalize_other_does_not_read_clean_RED() -> Bool { reading_of_stage(s: NormalizeOther) == ObservedRefusedCauseUnclassified }
+
+test fn retained_reads_as_a_named_cause() -> Bool { reading_of_stage(s: NormalizeRetained) == ObservedRefusedCauseNamed }
+
+// An unmeasured subject has no reading at all. This is the distinction a first draft of
+// reading_of_standing collapsed by mapping unmeasured onto the unclassified-refusal arm.
+
+test fn an_unmeasured_subject_has_no_reading_RED() -> Bool {
+  reading_of_standing(st: SubjectUnmeasured { cause: ^not_selected_into_execution_batch }) == StandingNotObserved
+}
+
+test fn an_observed_subject_carries_its_reading() -> Bool {
+  reading_of_standing(st: SubjectObserved { stage: NormalizeAccepted }) == StandingObserved { reading: ObservedClean }
 }
