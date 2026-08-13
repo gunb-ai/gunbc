@@ -11,7 +11,8 @@ import product.spatial_connectivity {
   OpeningIdentity, Opening, OpeningPlan, opening_plan, plan_openings,
   ConnectivityReady, ConnectivityRefused, ConnectivityRefusal,
   OpeningRoomMissing, OpeningJoinsRoomToItself, OpeningRoomsShareNoWall,
-  OpeningOutsideSharedWall, OpeningHasNoArea, OpeningDeclaredTwice, ReachabilityStartMissing,
+  OpeningOutsideSharedWall, OpeningHasNoArea, OpeningDeclaredTwice,
+  ReachabilityEndpointMissing, ReachabilityEndpoint, TraversalStart, TraversalTarget,
   reachable_from, rooms_are_connected, world_is_connected, unreachable_room,
 }
 import v2.std.optional { Present, Absent }
@@ -281,6 +282,18 @@ test fn two_openings_with_one_identity_refuse() -> Bool {
   }
 }
 
+fn endpoint_role_is(c: ConnectivityRefusal, name: String, start_expected: Bool) -> Bool {
+  match c {
+    ReachabilityEndpointMissing { identity: i, role: r } =>
+      (i as String) == name
+        && match r {
+             TraversalStart => start_expected
+             TraversalTarget => !start_expected
+           }
+    _ => false
+  }
+}
+
 test fn reachability_from_a_room_the_world_does_not_have_refuses() -> Bool {
   match terrace() {
     Absent => false
@@ -290,11 +303,41 @@ test fn reachability_from_a_room_the_world_does_not_have_refuses() -> Bool {
         Present { value: p } =>
           match reachable_from(w: w, p: p, start: ("cellar" as RoomIdentity)) {
             ConnectivityReady { value: _ } => false
-            ConnectivityRefused { cause: c } =>
-              match c {
-                ReachabilityStartMissing { identity: i } => (i as String) == "cellar"
-                _ => false
-              }
+            ConnectivityRefused { cause: c } => endpoint_role_is(c: c, name: "cellar", start_expected: true)
+          }
+      }
+  }
+}
+
+// THE ROLE IS WHAT TELLS A CALLER WHICH ARGUMENT TO FIX. An earlier revision answered a missing
+// DESTINATION with the variant named for a missing start: fail-closed, and pointing at the wrong
+// argument. This pair is what discriminates them - the same absent room, asked from two positions,
+// must come back with two different roles.
+test fn a_missing_destination_is_named_as_a_destination_not_a_start() -> Bool {
+  match terrace() {
+    Absent => false
+    Present { value: w } =>
+      match plan_of(openings: []) {
+        Absent => false
+        Present { value: p } =>
+          match rooms_are_connected(w: w, p: p, from: ("kitchen" as RoomIdentity), to: ("cellar" as RoomIdentity)) {
+            ConnectivityReady { value: _ } => false
+            ConnectivityRefused { cause: c } => endpoint_role_is(c: c, name: "cellar", start_expected: false)
+          }
+      }
+  }
+}
+
+test fn a_missing_source_is_named_as_a_start_not_a_destination() -> Bool {
+  match terrace() {
+    Absent => false
+    Present { value: w } =>
+      match plan_of(openings: []) {
+        Absent => false
+        Present { value: p } =>
+          match rooms_are_connected(w: w, p: p, from: ("cellar" as RoomIdentity), to: ("kitchen" as RoomIdentity)) {
+            ConnectivityReady { value: _ } => false
+            ConnectivityRefused { cause: c } => endpoint_role_is(c: c, name: "cellar", start_expected: true)
           }
       }
   }

@@ -39,13 +39,24 @@ import v2.std.optional { Present, Absent }
 
 type OpeningIdentity = NonEmptyStr where brand("OpeningIdentity")
 
+type ReachabilityEndpoint
+  = TraversalStart
+  | TraversalTarget
+
+// OpeningOutsideSharedWall is the opening's rectangle not lying inside the region the two rooms
+// actually share. Both rectangles are reported because either one may be the surprise: the caller
+// usually knows what it asked for and not what the rooms have in common.
+//
+// ReachabilityEndpointMissing is a room the traversal was asked about that the world does not have.
+// The ROLE is carried rather than forked into two near-identical arms, following std.affine_space's
+// frame refusal: it is one fact - a named room is not in this world - asked from two positions, and
+// the position is what a caller needs to know which of its two arguments to go and fix. An earlier
+// revision answered a missing DESTINATION with a variant named for a missing start, which reads as a
+// fail-closed refusal while pointing the reader at the wrong argument.
 type ConnectivityRefusal
   = OpeningRoomMissing { identity: RoomIdentity }
   | OpeningJoinsRoomToItself { identity: RoomIdentity }
   | OpeningRoomsShareNoWall { first: RoomIdentity, second: RoomIdentity }
-  // The opening's rectangle is not inside the region the two rooms actually share. Both rectangles
-  // are reported because either one may be the surprise: the caller usually knows what it asked
-  // for and not what the rooms have in common.
   | OpeningOutsideSharedWall {
       opening: OpeningIdentity,
       along_low: Int,
@@ -59,7 +70,7 @@ type ConnectivityRefusal
     }
   | OpeningHasNoArea { opening: OpeningIdentity }
   | OpeningDeclaredTwice { opening: OpeningIdentity }
-  | ReachabilityStartMissing { identity: RoomIdentity }
+  | ReachabilityEndpointMissing { identity: RoomIdentity, role: ReachabilityEndpoint }
 
 type ConnectivityConstruction<T>
   = ConnectivityReady { value: T }
@@ -185,11 +196,11 @@ fn first_shared_region(a: EnclosedSpace, b: EnclosedSpace) -> WallOverlap? {
     })
 }
 
+// Its no-region arm is unreachable: the caller checked that a shared wall exists before asking. It
+// is a refusal rather than a fabricated rectangle of zeroes, because a zero region would read as a
+// real measurement of a wall that is not there.
 fn widest_mismatch(a: EnclosedSpace, b: EnclosedSpace, o: Opening) -> ConnectivityRefusal {
   match first_shared_region(a: a, b: b) {
-    // Unreachable: the caller checked that a shared wall exists before asking. It is a refusal
-    // rather than a fabricated rectangle of zeroes, because a zero region would read as a real
-    // measurement of a wall that is not there.
     Absent => OpeningRoomsShareNoWall { first: o.first, second: o.second }
     Present { value: region } =>
       OpeningOutsideSharedWall {
@@ -262,7 +273,7 @@ fn relax_once(reached: List<RoomIdentity>, openings: List<Opening>) -> List<Room
 // room list is what the fold iterates, which is why the bound cannot drift from the thing it bounds.
 fn reachable_from(w: World, p: OpeningPlan, start: RoomIdentity) -> ConnectivityConstruction<List<RoomIdentity>> {
   match find_room(w: w, identity: start) {
-    Absent => ConnectivityRefused { cause: ReachabilityStartMissing { identity: start } }
+    Absent => ConnectivityRefused { cause: ReachabilityEndpointMissing { identity: start, role: TraversalStart } }
     Present { value: _ } =>
       ConnectivityReady {
         value: fold(world_rooms(w: w), init: [start], f: (reached, _) =>
@@ -276,7 +287,7 @@ fn rooms_are_connected(w: World, p: OpeningPlan, from: RoomIdentity, to: RoomIde
     ConnectivityRefused { cause: c } => ConnectivityRefused { cause: c }
     ConnectivityReady { value: reached } =>
       match find_room(w: w, identity: to) {
-        Absent => ConnectivityRefused { cause: ReachabilityStartMissing { identity: to } }
+        Absent => ConnectivityRefused { cause: ReachabilityEndpointMissing { identity: to, role: TraversalTarget } }
         Present { value: _ } => ConnectivityReady { value: contains_room(rooms: reached, wanted: to) }
       }
   }
