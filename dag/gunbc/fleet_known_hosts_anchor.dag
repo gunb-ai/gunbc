@@ -1,6 +1,7 @@
 module gunbc.fleet_known_hosts_anchor
 
 import std.types { String, Bool, List, NonEmptyStr, PathSegment, path_segment_is_safe }
+import std.measure { second }
 import std.algebra { trim }
 import std.resources { Network }
 import std.content_hash {
@@ -543,7 +544,7 @@ fn shape_fleet_ssh_exec(
       [
         User { name: target.principal },
         BatchMode { enabled: true },
-        ConnectTimeout { seconds: 10 },
+        ConnectTimeout { seconds: second(count: 10) },
       ],
     ),
   )

@@ -11,6 +11,7 @@ import extdeps.ssh.session { ssh_session_exec_portable_words_with_stdin, SshSess
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet_ssh_access { fleet_automation_ssh_key }
+import extdeps.ssh { ssh_public_key_line }
 import gunbc.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
   FleetSshAttemptIdentity,
@@ -20,6 +21,8 @@ import gunbc.fleet_known_hosts_anchor {
   materialize_fleet_known_hosts_anchor,
   known_hosts_materialization_receipt,
   SshTarget,
+  portable_remote_word,
+  PortableRemoteWord,
   portable_remote_words,
   shape_fleet_ssh_exec,
 }
@@ -203,7 +206,8 @@ data spark_inference_login: String = "gunbc-inference"
 // directory by default and the authorized_keys population needs one. The shell is a real shell
 // because this account executes convergence commands; the INFERENCE identity below is the one that
 // gets nologin, and keeping them distinct is the whole point of modeling two principals.
-fn create_managed_account_script(login: String) -> String {
+fn create_managed_account_script(admitted: PortableRemoteWord) -> String {
+  let login = admitted.value as String
   join([
     "set -e\n",
     "id -u ", login, " >/dev/null 2>&1 || useradd --create-home --shell /bin/bash ", login, "\n",
@@ -213,7 +217,8 @@ fn create_managed_account_script(login: String) -> String {
 
 // The no-login inference identity. nologin plus a locked password is what makes it a service
 // identity rather than an account someone can become.
-fn create_inference_identity_script(login: String) -> String {
+fn create_inference_identity_script(admitted: PortableRemoteWord) -> String {
+  let login = admitted.value as String
   join([
     "set -e\n",
     "id -u ", login, " >/dev/null 2>&1 || useradd --system --create-home --shell /usr/sbin/nologin ", login, "\n",
@@ -223,7 +228,8 @@ fn create_inference_identity_script(login: String) -> String {
 }
 
 // The authorized-key install, by exact-line presence so a repeat appends nothing.
-fn install_authorized_key_script(login: String, key_line: String) -> String {
+fn install_authorized_key_script(admitted: PortableRemoteWord, key_line: String) -> String {
+  let login = admitted.value as String
   join([
     "set -e\n",
     "H=$(getent passwd ", login, " | cut -d: -f6)\n",
@@ -239,7 +245,8 @@ fn install_authorized_key_script(login: String, key_line: String) -> String {
 // THE NARROW GRANT, and it is narrow by construction rather than by intention: one command, one
 // argument form, one account. `loginctl enable-linger <login>` is what a user unit needs to survive
 // logout and reboot; nothing else is granted, so this account cannot use sudo for anything else.
-fn install_narrow_grant_script(login: String) -> String {
+fn install_narrow_grant_script(admitted: PortableRemoteWord) -> String {
+  let login = admitted.value as String
   join([
     "set -e\n",
     "printf '%s\\n' '", login, " ALL=(root) NOPASSWD: /usr/bin/loginctl enable-linger ", login, "' > /etc/sudoers.d/gunbc-", login, "\n",
@@ -248,8 +255,39 @@ fn install_narrow_grant_script(login: String) -> String {
   ], "")
 }
 
+// WAS a local join re-spelling `ssh-ed25519 <material> <comment>` -- a nickname for the line
+// construction extdeps.ssh.keys already owns, and one that additionally hardcoded the algorithm
+// token the same module already serializes. Both forks are deleted in favor of the authority
+// (review 51659, F1's consolidation half); gunbc.fleet_host_key_enrollment carried the identical
+// fork and is re-grounded in the same motion.
 fn fleet_authorized_key_line() -> String {
-  join(["ssh-ed25519 ", fleet_automation_ssh_key.material, " ", fleet_automation_ssh_key.comment], "")
+  ssh_public_key_line(k: fleet_automation_ssh_key)
+}
+
+// THE SINGLE-QUOTE ADMISSION, and it refuses rather than escapes for the same reason
+// portable_remote_word does: an escape has to survive the REMOTE shell, which this module does not
+// observe. A value carrying `'` or a newline can close the quote the script opens and append its own
+// commands, so it has no route into a script body at all.
+//
+// RUNG, honestly (DESIGN 4b): this is mechanically preventable at these call sites, NOT structurally
+// impossible -- the script is still a String, so a future builder can interpolate without asking.
+// The ceiling is the shell -> intent Phase 2 route (typed effects on host_effect_apply), where a
+// script body is not a medium-as-string and there is nothing to admit. That is this PR's declared
+// residue, not work it performs.
+fn single_quotable_char(cp: Int) -> Bool { cp != 39 && cp != 10 && cp != 13 }
+
+fn single_quotable_text_ok(text: String, i: Int, len: Int) -> Bool {
+  if i >= len { true } else {
+    if single_quotable_char(cp: code_point(ch: char_at(text, i))) {
+      single_quotable_text_ok(text: text, i: i + 1, len: len)
+    } else { false }
+  }
+}
+
+fn single_quotable(raw: String) -> String? {
+  if raw != "" && single_quotable_text_ok(text: raw, i: 0, len: length(raw)) {
+    Present { value: raw }
+  } else { none }
 }
 
 data spark_apply_receipt_path: String = "target/spark-managed-access-apply-receipt.txt"
@@ -292,38 +330,47 @@ func spark_managed_access_apply_wet(
         Absent => ApplyNotAttempted {
           cause: join(["trust could not be established, so no ssh leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""),
         }
-        Present { value: context } => {
+        Present { value: context } => match portable_remote_word(raw: spark_managed_login) {
+          Absent => ApplyNotAttempted { cause: "the managed login is not a portable word, so no script may name it" }
+          Present { value: managed_word } => match portable_remote_word(raw: spark_inference_login) {
+            Absent => ApplyNotAttempted { cause: "the inference login is not a portable word, so no script may name it" }
+            Present { value: inference_word } => match single_quotable(raw: fleet_authorized_key_line()) {
+              Absent => ApplyNotAttempted { cause: "the fleet authorized-key line carries a quote or newline and has no safe route into a script body" }
+              Present { value: admitted_key_line } => {
           let create = privileged_leg(
             context: context, host: host, admin_principal: admin_principal,
             admin_credential: admin_credential,
-            script: create_managed_account_script(login: spark_managed_login),
+            script: create_managed_account_script(admitted: managed_word),
           )
           let key = privileged_leg(
             context: context, host: host, admin_principal: admin_principal,
             admin_credential: admin_credential,
-            script: install_authorized_key_script(login: spark_managed_login, key_line: fleet_authorized_key_line()),
+            script: install_authorized_key_script(admitted: managed_word, key_line: admitted_key_line),
           )
           let grant = privileged_leg(
             context: context, host: host, admin_principal: admin_principal,
             admin_credential: admin_credential,
-            script: install_narrow_grant_script(login: spark_managed_login),
+            script: install_narrow_grant_script(admitted: managed_word),
           )
           let inference = privileged_leg(
             context: context, host: host, admin_principal: admin_principal,
             admin_credential: admin_credential,
-            script: create_inference_identity_script(login: spark_inference_login),
+            script: create_inference_identity_script(admitted: inference_word),
           )
           let proof = managed_principal_leg(
             context: context, host: host, managed_principal: spark_managed_login, raw_words: ["id", "-un"],
           )
           ApplyAttempted {
-            first: SparkApplyStep { effect_label: "create-managed-account          ", outcome: create },
+            first: SparkApplyStep { effect_label: "create-managed-account", outcome: create },
             more: [
-              SparkApplyStep { effect_label: "install-fleet-authorized-key   ", outcome: key },
-              SparkApplyStep { effect_label: "install-narrow-privilege-grant ", outcome: grant },
+              SparkApplyStep { effect_label: "install-fleet-authorized-key", outcome: key },
+              SparkApplyStep { effect_label: "install-narrow-privilege-grant", outcome: grant },
               SparkApplyStep { effect_label: "create-no-login-service-identity", outcome: inference },
-              SparkApplyStep { effect_label: "prove-key-only-authentication  ", outcome: proof },
+              SparkApplyStep { effect_label: "prove-key-only-authentication", outcome: proof },
             ],
+          }
+              }
+            }
           }
         }
       }
