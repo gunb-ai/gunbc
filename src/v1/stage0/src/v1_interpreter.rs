@@ -8245,6 +8245,32 @@ fn extract_from_key(field_node: &Rc<Node>, ctx: &InterpContext) -> Option<String
     None
 }
 
+fn write_file_owner_only(path: &str, content: &[u8]) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::fs::OpenOptions;
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        // create_new (O_EXCL): mode applies at creation; an existing path refuses rather than
+        // truncating with stale permissions (create+truncate would leave prior mode on reuse).
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(path)?;
+        file.write_all(content)?;
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        use std::io::{Error, ErrorKind};
+        Err(Error::new(
+            ErrorKind::Unsupported,
+            "write_owner_only refused: owner-only mode-at-creation is unavailable on this platform",
+        ))
+    }
+}
+
 struct FileResult {
     success: bool,
     byte_count: i64,
@@ -8344,10 +8370,44 @@ fn dispatch_file(
                     }),
                 };
             }
+            "write_owner_only" => {
+                let content = match param_env.lookup(ctx.sym("content")) {
+                    Some(v) => format!("{}", v),
+                    None => {
+                        return Err(InterpError::TypeError {
+                            msg: format!(
+                                "file write_owner_only operation missing `content` argument for {}",
+                                path
+                            ),
+                        })
+                    }
+                };
+                let byte_count = content.len() as i64;
+                trace_emit(
+                    OutputChannel::ShellTrace,
+                    &format!("[file] write_owner_only {} ({} bytes)", path, byte_count),
+                );
+                return match write_file_owner_only(&path, content.as_bytes()) {
+                    Ok(()) => Ok(FileResult {
+                        success: true,
+                        byte_count,
+                        path,
+                        error: String::new(),
+                        content: String::new(),
+                    }),
+                    Err(e) => Ok(FileResult {
+                        success: false,
+                        byte_count: 0,
+                        path,
+                        error: format!("{}", e),
+                        content: String::new(),
+                    }),
+                };
+            }
             other => {
                 return Err(InterpError::TypeError {
                     msg: format!(
-                        "file transport verb '{other}' is not a known action (delete, list)"
+                        "file transport verb '{other}' is not a known action (delete, list, write_owner_only)"
                     ),
                 })
             }
