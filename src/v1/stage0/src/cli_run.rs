@@ -38,10 +38,10 @@ use crate::v1_std_core::{
     field_access_base, field_access_field_at, field_init_node_name_at, field_init_node_value,
     has_child_named, inferred_to_node, intern, is_discovery_corpus_blocking_diagnostic,
     is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
-    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
-    param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
-    ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex,
-    Node,
+    make_error_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
+    module_items, no_span, param_node_name_at, param_node_type_expr, Cardinality,
+    CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable,
+    MatchPattern, NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -3126,8 +3126,9 @@ fn compile_clean_census_only_sources_for_compiled(
     pool_rest.into_iter().map(|(_, source)| source).collect()
 }
 
-/// Parse-grade census fill for out-of-closure modules (annotation binding +
-/// parse errors). Returns only compile-clean-hard diagnostics.
+/// Parse-grade census fill (annotation binding + parse errors). Used for
+/// out-of-closure modules (#8204) and must run independently of semantic
+/// resolve — a resolve refusal must not hide the annotation population.
 fn compile_clean_census_fill_hard_diagnostics(
     census_only: &[Rc<v1_compiler_compile::SourceFile>],
 ) -> im::Vector<Rc<ErrorNode>> {
@@ -4741,6 +4742,11 @@ fn floor_compile_clean_emit_ok_via_index(
     use crate::v1_compiler_complexity::empty_complexity_report;
     let index = process_shared_index(index_roots);
     let census_only = compile_clean_census_only_sources_for_compiled(&index, &sources);
+    // #8204 out-of-closure fill runs independently of resolve: an earlier
+    // resolution refusal must not mask SourceAnnotationRefused in the rest of
+    // the indexed pool. Compiled-file admission is the via-index parse itself
+    // (`tokenize_artifact` + `admit_source_annotations`).
+    let census_fill_diags = compile_clean_census_fill_hard_diagnostics(&census_only);
     let (graph, si, compile_clean_diags) = match resolved_graph_from_sources_with_index(
         &index,
         sources,
@@ -4752,11 +4758,16 @@ fn floor_compile_clean_emit_ok_via_index(
     ) {
         Ok(resolved) => resolved,
         Err(msg) => {
+            if !census_fill_diags.is_empty() {
+                eprint_compile_clean_hard_diagnostics(&census_fill_diags);
+                let census_msg = format_first_compile_clean_hard_diagnostic(&census_fill_diags);
+                eprintln!("compile-clean: hard diagnostics:\n{msg}");
+                return (false, format!("{census_msg}\ncompile-clean: {msg}"));
+            }
             eprintln!("compile-clean: hard diagnostics:\n{msg}");
             return (false, format!("compile-clean: {msg}"));
         }
     };
-    let census_fill_diags = compile_clean_census_fill_hard_diagnostics(&census_only);
     let all_compile_clean_diags = if census_fill_diags.is_empty() {
         compile_clean_diags.clone()
     } else {
@@ -5980,6 +5991,150 @@ mod compile_clean_via_index_verdict_equivalence {
         assert!(
             !floor_compile_clean_emit_ok_via_index(compiled, &corpus.roots).0,
             "whole-tree census fill must surface out-of-closure annotation refusal on the via-index path"
+        );
+    }
+
+    /// Discriminating A: a BodyGrain annotation on a file IN the compile closure
+    /// must red via-index. #8204's out-of-closure fill cannot explain this — the
+    /// annotated file is the compiled set, so census_only is empty.
+    #[test]
+    fn in_closure_body_grain_blocks_via_index_compile_clean() {
+        let corpus = Corpus::new(
+            "in-closure-body",
+            &[(
+                "body.dag",
+                "module eqv.body_grain\nfn probe(x: Int) -> Int {\n  // in-body prose\n  x\n}\n",
+            )],
+        );
+        let raw = floor_compile_clean_emit_ok(corpus.sources.clone(), None);
+        let (via_ok, detail) =
+            floor_compile_clean_emit_ok_via_index(corpus.sources.clone(), &corpus.roots);
+        assert!(!raw, "raw pipeline must red on in-closure BodyGrain");
+        assert!(
+            !via_ok,
+            "via-index must red on in-closure BodyGrain; #8204 census_only is empty here"
+        );
+        assert!(
+            detail.contains("inside a declaration body"),
+            "via-index must report BodyGrainNotModeled, got {detail}"
+        );
+    }
+
+    /// Discriminating A: UnattachedAtScopeEnd on a compiled file must red via-index.
+    #[test]
+    fn in_closure_unattached_blocks_via_index_compile_clean() {
+        let corpus = Corpus::new(
+            "in-closure-unattached",
+            &[(
+                "unattached.dag",
+                "module eqv.unattached\ndata probe: Int = 42\n\n// leftover with no following subject\n",
+            )],
+        );
+        let raw = floor_compile_clean_emit_ok(corpus.sources.clone(), None);
+        let (via_ok, detail) =
+            floor_compile_clean_emit_ok_via_index(corpus.sources.clone(), &corpus.roots);
+        assert!(
+            !raw,
+            "raw pipeline must red on in-closure UnattachedAtScopeEnd"
+        );
+        assert!(
+            !via_ok,
+            "via-index must red on in-closure UnattachedAtScopeEnd"
+        );
+        assert!(
+            detail.contains("names no subject"),
+            "via-index must report UnattachedAtScopeEnd, got {detail}"
+        );
+    }
+
+    /// Positive control: a leading module-item annotation is admitted. A must not
+    /// refuse the class the frontend already accepts.
+    #[test]
+    fn in_closure_leading_annotation_stays_green_via_index() {
+        let corpus = Corpus::new(
+            "in-closure-leading",
+            &[(
+                "leading.dag",
+                "module eqv.leading\n\n// about probe\ndata probe: Int = 42\n",
+            )],
+        );
+        let (raw, via_index) = corpus.verdicts();
+        assert!(raw, "raw pipeline must stay green on leading item prose");
+        assert!(via_index, "via-index must stay green on leading item prose");
+    }
+
+    /// Ordering: in-closure BodyGrain must surface even when resolve also fails.
+    /// Admission runs in the via-index parse, before resolve, so the class cannot
+    /// hide behind an unresolved import.
+    #[test]
+    fn in_closure_body_grain_does_not_hide_behind_resolve_refusal() {
+        let corpus = Corpus::new(
+            "in-closure-body-masked",
+            &[(
+                "masked.dag",
+                "module eqv.masked\nimport totally.nonexistent.module { Foo }\nfn probe(x: Int) -> Int {\n  // in-body prose\n  x\n}\n",
+            )],
+        );
+        let (via_ok, detail) =
+            floor_compile_clean_emit_ok_via_index(corpus.sources.clone(), &corpus.roots);
+        assert!(!via_ok, "combined resolve+annotation refusal must stay red");
+        assert!(
+            detail.contains("inside a declaration body"),
+            "BodyGrain must remain visible when resolve also refuses, got {detail}"
+        );
+    }
+
+    /// #8204 ordering: out-of-closure trailing refusal must surface even when the
+    /// compiled closure fails resolve. Census fill runs independently of resolve.
+    #[test]
+    fn out_of_closure_annotation_does_not_hide_behind_resolve_refusal() {
+        let corpus = Corpus::new(
+            "census-masked",
+            &[
+                (
+                    "unresolved.dag",
+                    "module eqv.unresolved\nimport totally.nonexistent.module { Foo }\nfn probe() -> Int { 42 }\n",
+                ),
+                (
+                    "bad.dag",
+                    "module eqv.bad\n\ndata alpha: String = \"a\" // trailing prose\n",
+                ),
+            ],
+        );
+        let compiled = vec![corpus.sources[0].clone()];
+        let (via_ok, detail) = floor_compile_clean_emit_ok_via_index(compiled, &corpus.roots);
+        assert!(!via_ok, "resolve refusal must stay red");
+        assert!(
+            detail.contains("follows code on its own line")
+                || detail.contains("(annotation-trailing)")
+                || detail.contains("Trailing placement"),
+            "out-of-closure trailing refusal must remain visible when resolve also refuses, got {detail}"
+        );
+    }
+
+    /// Warm parse_cache must not erase compiled-file admission: a second via-index
+    /// compile-clean of the same in-closure BodyGrain corpus still reds.
+    #[test]
+    fn in_closure_body_grain_reds_on_warm_parse_cache() {
+        let corpus = Corpus::new(
+            "in-closure-body-warm",
+            &[(
+                "body.dag",
+                "module eqv.body_grain_warm\nfn probe(x: Int) -> Int {\n  // in-body prose\n  x\n}\n",
+            )],
+        );
+        let first = floor_compile_clean_emit_ok_via_index(corpus.sources.clone(), &corpus.roots);
+        let second = floor_compile_clean_emit_ok_via_index(corpus.sources.clone(), &corpus.roots);
+        assert!(!first.0, "first via-index must red, got {}", first.1);
+        assert!(
+            !second.0,
+            "warm parse_cache must not drop BodyGrain admission, got {}",
+            second.1
+        );
+        assert!(
+            second.1.contains("inside a declaration body"),
+            "warm via-index must still report BodyGrainNotModeled, got {}",
+            second.1
         );
     }
 
@@ -12972,6 +13127,54 @@ fn cross_process_cache_integrity_refusal(reason: CacheRejectReason) -> String {
     }
 }
 
+fn via_index_source_annotation_diagnostics(
+    source: &v1_compiler_compile::SourceFile,
+    occurrence_transport: Rc<crate::std_occurrence_identity::OccurrenceTransport>,
+    captures: Rc<im::Vector<Rc<crate::std_source_annotation::UnboundAnnotationCapture>>>,
+) -> im::Vector<Rc<ErrorNode>> {
+    let bound = v1_compiler_compile::admit_source_annotations(
+        occurrence_transport,
+        captures,
+        v1_rt::string_length(&source.content),
+    );
+    bound
+        .diagnostics
+        .iter()
+        .cloned()
+        .map(|d| make_error_node(d, source.path.clone()))
+        .collect()
+}
+
+fn join_via_index_stage_refusal(
+    annotation_diags: &im::Vector<Rc<ErrorNode>>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    stage_err: String,
+) -> String {
+    if annotation_diags.is_empty() {
+        return stage_err;
+    }
+    let annotation_err = format_error_nodes(&Rc::new(annotation_diags.clone()), source_indices);
+    if annotation_err.is_empty() {
+        return stage_err;
+    }
+    if stage_err.is_empty() {
+        return annotation_err;
+    }
+    format!("{annotation_err}\n{stage_err}")
+}
+
+fn prepend_via_index_annotation_diags(
+    annotation_diags: im::Vector<Rc<ErrorNode>>,
+    compile_clean_diags: Rc<im::Vector<Rc<ErrorNode>>>,
+) -> Rc<im::Vector<Rc<ErrorNode>>> {
+    if annotation_diags.is_empty() {
+        return compile_clean_diags;
+    }
+    let mut merged = annotation_diags;
+    merged.extend(compile_clean_diags.iter().cloned());
+    Rc::new(merged)
+}
+
 /// The sources-taking core of `resolve_entry_with_parse_cache`: parse → resolve →
 /// normalize → `reconcile_with_typed_cache` → ownership, every stage through the
 /// index's per-module memo tiers (parse/normalize/typed/ownership caches + the
@@ -13093,6 +13296,7 @@ fn resolved_graph_from_sources_with_index(
     let mut modules: Vec<Rc<Node>> = Vec::new();
     let mut si_map: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
     let mut parse_error_msgs: Vec<String> = Vec::new();
+    let mut annotation_diags: im::Vector<Rc<ErrorNode>> = im::Vector::new();
 
     let parse_started = std::time::Instant::now();
     for source in &sources {
@@ -13100,10 +13304,38 @@ fn resolved_graph_from_sources_with_index(
         let cached = index.parse_cache.borrow().get(&source.path).cloned();
 
         let (parse_result, nl_index) = match cached {
-            Some(entry) => entry,
+            Some(entry) => {
+                // Compile-clean (Ephemeral) must still admit on a warm parse_cache:
+                // a prior full-body parse can be annotation-erasing. Witness resolves
+                // (Memoize) skip — they ignore compile_clean_diags and must not pay
+                // a second parse per cached file.
+                if memo_share == ResolvedGraphMemoShare::Ephemeral {
+                    let fill = v1_compiler_compile::parse_census_fill_sources(Rc::new(
+                        vec![source.clone()].into(),
+                    ));
+                    annotation_diags.extend(
+                        fill.diagnostics
+                            .iter()
+                            .filter(|d| {
+                                matches!(
+                                    d.diagnostic.as_ref(),
+                                    CompilerDiagnostic::SourceAnnotationRefused { .. }
+                                )
+                            })
+                            .cloned(),
+                    );
+                }
+                entry
+            }
             None => {
-                let tokens =
-                    v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
+                // Ordinary frontend (`front_end_sources`) keeps tokenize_artifact
+                // captures and admits them against this file's occurrence transport.
+                // Annotation-erasing `tokenize` here let a touched in-closure file
+                // compile on the floor while missing the class #8204 claims to close.
+                let artifact = v1_compiler_tokenize::tokenize_artifact(
+                    source.content.clone(),
+                    source.path.clone(),
+                );
                 let nl_index = build_newline_index(source.path.clone(), source.content.clone());
                 let current_table = index.intern_table.borrow().clone();
                 let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
@@ -13111,8 +13343,17 @@ fn resolved_graph_from_sources_with_index(
                     m.insert(source.path.clone(), nl_index.clone());
                     m
                 });
-                let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
+                let parsed = v1_compiler_parse::parse_with_table(
+                    artifact.tokens.clone(),
+                    single_si,
+                    current_table,
+                );
                 *index.intern_table.borrow_mut() = parsed.intern_table.clone();
+                annotation_diags.extend(via_index_source_annotation_diagnostics(
+                    source,
+                    parsed.occurrence_transport.clone(),
+                    artifact.annotations.clone(),
+                ));
                 let entry = (parsed.result.clone(), nl_index.clone());
                 index
                     .parse_cache
@@ -13140,7 +13381,12 @@ fn resolved_graph_from_sources_with_index(
         }
     }
     if !parse_error_msgs.is_empty() {
-        return Err(parse_error_msgs.join("\n"));
+        let source_indices = Rc::new(si_map);
+        return Err(join_via_index_stage_refusal(
+            &annotation_diags,
+            &source_indices,
+            parse_error_msgs.join("\n"),
+        ));
     }
 
     let source_indices = Rc::new(si_map);
@@ -13156,7 +13402,11 @@ fn resolved_graph_from_sources_with_index(
         .iter()
         .any(|d| is_error_diagnostic(d.diagnostic.clone()))
     {
-        return Err(format_error_nodes(&graph.diagnostics, &source_indices));
+        return Err(join_via_index_stage_refusal(
+            &annotation_diags,
+            &source_indices,
+            format_error_nodes(&graph.diagnostics, &source_indices),
+        ));
     }
     resolve_stage_slot_add(|s| s.resolve += resolve_started.elapsed().as_nanos());
 
@@ -13194,7 +13444,11 @@ fn resolved_graph_from_sources_with_index(
         .iter()
         .any(|d| is_error_diagnostic(d.diagnostic.clone()))
     {
-        return Err(format_error_nodes(&norm_diags, &source_indices));
+        return Err(join_via_index_stage_refusal(
+            &annotation_diags,
+            &source_indices,
+            format_error_nodes(&norm_diags, &source_indices),
+        ));
     }
     resolve_stage_slot_add(|s| s.normalize += normalize_started.elapsed().as_nanos());
 
@@ -13202,7 +13456,8 @@ fn resolved_graph_from_sources_with_index(
     let reconcile_attributed_before = resolve_stage_slot_snapshot().reconcile_attributed_total();
     let reconcile_started = std::time::Instant::now();
     let typed =
-        reconcile_with_typed_cache(graph.clone(), source_indices.clone(), global_table, index)?;
+        reconcile_with_typed_cache(graph.clone(), source_indices.clone(), global_table, index)
+            .map_err(|e| join_via_index_stage_refusal(&annotation_diags, &source_indices, e))?;
     // Assembly `other` is derived only when the exclusive reconcile rows fit inside the
     // containing reconcile span. A timing overlap is an attribution refusal, never a
     // saturating clamp to a plausible zero.
@@ -13216,7 +13471,8 @@ fn resolved_graph_from_sources_with_index(
                 "assembly attribution refused: NestedSpanAttribution {{ before_nanos: \
              {reconcile_attributed_before}, after_nanos: {reconcile_attributed_after} }}"
             )
-        })?;
+        })
+        .map_err(|e| join_via_index_stage_refusal(&annotation_diags, &source_indices, e))?;
     let assembly_other = reconcile_total
         .checked_sub(reconcile_attributed)
         .ok_or_else(|| {
@@ -13224,7 +13480,8 @@ fn resolved_graph_from_sources_with_index(
                 "assembly attribution refused: OverAttributed {{ sum_exclusive_nanos: \
              {reconcile_attributed}, parent_span_nanos: {reconcile_total} }}"
             )
-        })?;
+        })
+        .map_err(|e| join_via_index_stage_refusal(&annotation_diags, &source_indices, e))?;
     resolve_stage_slot_add(|s| s.reconcile_assembly += assembly_other);
 
     let has_type_errors = typed
@@ -13238,7 +13495,11 @@ fn resolved_graph_from_sources_with_index(
             .filter(|d| is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate))
             .map(|d| format_error_node(d, &source_indices))
             .collect();
-        return Err(msgs.join("\n"));
+        return Err(join_via_index_stage_refusal(
+            &annotation_diags,
+            &source_indices,
+            msgs.join("\n"),
+        ));
     }
 
     let ownership_started = std::time::Instant::now();
@@ -13273,15 +13534,22 @@ fn resolved_graph_from_sources_with_index(
         .iter()
         .any(|d| is_error_diagnostic(d.diagnostic.clone()))
     {
-        return Err(format_error_nodes(&ownership_diags, &source_indices));
+        return Err(join_via_index_stage_refusal(
+            &annotation_diags,
+            &source_indices,
+            format_error_nodes(&ownership_diags, &source_indices),
+        ));
     }
     resolve_stage_slot_add(|s| s.ownership += ownership_started.elapsed().as_nanos());
 
-    let compile_clean_diags = compile_clean_diags_from_resolved_stages(
-        &graph.diagnostics,
-        &norm_diags,
-        &typed,
-        &ownership_diags,
+    let compile_clean_diags = prepend_via_index_annotation_diags(
+        annotation_diags,
+        compile_clean_diags_from_resolved_stages(
+            &graph.diagnostics,
+            &norm_diags,
+            &typed,
+            &ownership_diags,
+        ),
     );
 
     // Install into the in-process share so same-subject re-resolves skip assembly —
