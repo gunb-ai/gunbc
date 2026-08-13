@@ -738,8 +738,6 @@ data c_stage0_emit_note: String = "Stage 0 C source emitter seeded on fn add (IS
 
 data c_stdbool_include_directive: String = "#include <stdbool.h>\n"
 
-data c_bool_literal_stdbool_requirement_note: String = "Production bool_literal_form spells true/false, which C17 provides only via <stdbool.h>. Executable translation units that emit these tokens must carry c_stdbool_include_directive; bare cc without that include refuses undeclared true/false."
-
 fn c_bool_literal_host_source_text(literal: String) -> String {
   concat(
     left: concat(
