@@ -75,29 +75,54 @@ test fn msrs_a_known_module_resolves_to_its_real_file() -> Bool {
   )
 }
 
-// THE dag/ ROOT IS NOT COVERED, and the cause is an ALREADY-DOCUMENTED producer defect.
+// THE dag/ ROOT IS COVERED, and these are the three rows whose absence the removed comment recorded.
 //
-// A second known pair in the dag/ root was authored here and REMOVED after measurement: the manifest
-// cannot carry that root at all. Emitting with --source-root src/v2 --source-root dag writes 3517 rows
-// and then fails to parse -- `for_each_parsed_module_binding: parse error ... expected identifier or (
-// after ^, found keyword`.
+// The producer minted the artifact identity as a `^stem` symbol literal from the file BASENAME, so the
+// three dag/ files whose stems are reserved .dag keywords emitted `^capability`, `^module` and `^import`
+// and the manifest did not parse -- half the corpus undescribable, and a reference-derived closure over
+// the real tree cannot be completed while providers in dag/ cannot be named. The repair took the basename
+// out of the identity decision rather than escaping it: v1_compiler.cli_run
+// source_root_ingest_artifact_id_for_path interns the repo-relative PATH the row already carries, through
+// the string-taking Symbol authority, so keywords are inert -- and two same-named files in different
+// directories stop colliding on one identity, which the stem form did silently.
 //
-// The cause is NOT a new finding, and saying so matters more than the credit: it is recorded in
-// gunbc.commit_workflow heal_writer_claims_no_fixture_exemptions_note, which states that
-// discover_source_root_ingest mints edge identifiers from source-file BASENAMES with no keyword
-// escaping, and names all three colliding files -- dag/extdeps/bmc/capability.dag,
-// dag/extdeps/languages/go/module.dag and dag/std/import.dag, minting ^capability, ^module and
-// ^import. Reproducing it independently found two of the three; that authority is the single home for
-// the fact and this comment cites it rather than standing a second description beside it, which is
-// the nicknaming DESIGN section 3 forbids applied to prose.
-//
-// What is NEW here is the consequence for THIS lane, which that note does not carry: providers live in
-// dag/ as well as src/v2, so reference-derived dependency closure over the real corpus cannot be
-// completed while the producer cannot describe half of it. That is why this witness observes the
-// src/v2 root only, stated rather than left to be inferred from which pairs happen to be asserted.
-//
-// DISSOLVE-ON: the trigger is that note's own -- the identifier-minting defect is fixed and
-// re-verified end to end. Then the dag-root pair is asserted here and this comment deletes.
+// One row per keyword, not one row for the class: each is a distinct file whose stem is a distinct
+// keyword, and a repair that fixed only the one a class-level assertion happened to visit would pass it.
+test fn msrs_keyword_stem_import_module_resolves_to_its_real_file() -> Bool {
+  msrs_pair_present(module_path: "std.import", file_path: "dag/std/import.dag")
+}
+
+test fn msrs_keyword_stem_go_module_resolves_to_its_real_file() -> Bool {
+  msrs_pair_present(
+    module_path: "extdeps.languages.go.module",
+    file_path: "dag/extdeps/languages/go/module.dag",
+  )
+}
+
+test fn msrs_keyword_stem_capability_resolves_to_its_real_file() -> Bool {
+  msrs_pair_present(
+    module_path: "extdeps.bmc.capability",
+    file_path: "dag/extdeps/bmc/capability.dag",
+  )
+}
+
+// TWO ROOTS IN ONE INDEX. The rows above and the src/v2 row are separately asserted pairs; this asks the
+// population question they cannot: that the index spans BOTH ordinary source roots at once. A producer
+// invoked with one root would satisfy every pair it happened to cover and fail this.
+test fn msrs_index_spans_both_ordinary_source_roots() -> Bool {
+  match msrs_projected_rows() {
+    Absent => false
+    Present { value: rows } =>
+      msrs_root_covered(rows: rows, prefix: "dag/")
+        && msrs_root_covered(rows: rows, prefix: "src/v2/")
+  }
+}
+
+fn msrs_root_covered(rows: List<ModulePathFileRow>, prefix: String) -> Bool {
+  fold(rows, init: false, f: (found, row) =>
+    found || ((row.file_path as String).starts_with(prefix: prefix)))
+}
+
 // THE NEGATIVE CONTROL. A module that does not exist must not appear, and the pair check must be
 // capable of answering no -- otherwise the positive rows prove only that the fold visited something.
 test fn msrs_an_absent_module_is_not_projected() -> Bool {

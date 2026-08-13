@@ -28401,37 +28401,34 @@ fn source_root_ref_token_for_path(
     }
 }
 
-fn source_root_ingest_symbol_from_stem(stem: &str) -> String {
-    let mut body = String::new();
-    for ch in stem.chars() {
-        if ch.is_ascii_alphanumeric() || ch == '_' {
-            body.push(ch);
-        } else {
-            body.push('_');
-        }
-    }
-    if body.is_empty() {
-        body.push_str("host_sr_empty");
-    } else if body.as_bytes()[0].is_ascii_digit() {
-        body = format!("sr_{body}");
-    }
-    format!("^{body}")
+/// Render an artifact identity as a `Symbol` from the repo-relative PATH, through the
+/// string-taking intern authority.
+///
+/// THE BASENAME IS NOT IN THE IDENTITY DECISION, and that is the repair rather than an
+/// improvement to it. This used to mint a `^stem` symbol literal from the file's basename,
+/// which is wrong twice. It is unrepresentable for any file whose stem is a `.dag` keyword —
+/// `dag/std/import.dag`, `dag/extdeps/languages/go/module.dag` and
+/// `dag/extdeps/bmc/capability.dag` minted `^import`, `^module` and `^capability`, so any
+/// manifest scope touching `dag/` emitted a file that does not parse. And it is not an
+/// identity at all: two files with the same basename in different directories minted the same
+/// symbol, so the manifest's own rows collided silently.
+///
+/// The path is already carried on the row as a string, so nothing new is observed here — only
+/// the identity stops being derived from a lossy projection of it. `symbol_intern_lexeme` takes
+/// a STRING (the same move `emit_module_binding_qualified_name` makes with
+/// `qualified_name_from_string_segments`), so keywords are inert and no escape-hatch spelling of
+/// `^` is needed.
+fn source_root_ingest_symbol_for_path(path: &str) -> Result<String, String> {
+    let escaped = dag_manifest_scalar_escape(path)?;
+    Ok(format!("symbol_intern_lexeme(lexeme: \"{escaped}\")"))
 }
 
-pub fn source_root_ingest_artifact_id_for_path(path: &str) -> String {
-    let stem = Path::new(path)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("host_sr");
-    source_root_ingest_symbol_from_stem(stem)
+pub fn source_root_ingest_artifact_id_for_path(path: &str) -> Result<String, String> {
+    source_root_ingest_symbol_for_path(path)
 }
 
-fn source_root_ingest_compilation_unit_for_path(path: &str) -> String {
-    let stem = Path::new(path)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("host_sr");
-    source_root_ingest_symbol_from_stem(stem)
+fn source_root_ingest_compilation_unit_for_path(path: &str) -> Result<String, String> {
+    source_root_ingest_symbol_for_path(path)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28728,8 +28725,8 @@ pub fn discover_source_root_reads_for_entry(
 }
 
 fn emit_source_root_read_witness(rec: &SourceRootReadRecord) -> Result<String, String> {
-    let artifact_id = source_root_ingest_artifact_id_for_path(&rec.file_path);
-    let compilation_unit = source_root_ingest_compilation_unit_for_path(&rec.file_path);
+    let artifact_id = source_root_ingest_artifact_id_for_path(&rec.file_path)?;
+    let compilation_unit = source_root_ingest_compilation_unit_for_path(&rec.file_path)?;
     Ok(format!(
         "DagSourceReadWitness {{\n  source: Medium {{ carried: \"{}\", fidelity: Lossless }},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  compilation_unit: {compilation_unit},\n  source_root: {}\n}}",
         dag_embedded_dag_source_escape(&rec.source),
@@ -28859,6 +28856,7 @@ pub fn emit_module_storage_binding_manifest(
     out.push_str("import v2.std.diagnostic { ByteRange, Textual }\n");
     out.push_str("import v2.std.integer { Int }\n");
     out.push_str("import v2.std.node { MintedOccurrence }\n");
+    out.push_str("import v2.std.compilers.lexing { symbol_intern_lexeme }\n");
     out.push_str("import v2.std.provenance { FromSource, span_index_empty, span_index_record }\n");
     out.push_str("import v2.std.qualified_name { qualified_name_from_string_segments }\n");
     out.push_str(&emit_module_binding_source_root_import(&rows));
@@ -28945,7 +28943,7 @@ fn emit_module_binding_span_index(span: &SourceSpan, file_symbol: &str) -> Strin
 
 fn emit_module_binding_row(row: &ModuleBindingManifestRow) -> Result<String, String> {
     let qn = emit_module_binding_qualified_name(&row.module_path)?;
-    let artifact_id = source_root_ingest_artifact_id_for_path(&row.rel_path);
+    let artifact_id = source_root_ingest_artifact_id_for_path(&row.rel_path)?;
     let span_index = emit_module_binding_span_index(&row.ident_span, &artifact_id);
     Ok(format!(
         "module_storage_parsed_binding(\n  module: {qn},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  span_index: {span_index},\n  source_root: {}\n)",
@@ -29001,6 +28999,7 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
     out.push_str("import v2.std.collection { List }\n");
     out.push_str("import v2.std.text { String }\n");
+    out.push_str("import v2.std.compilers.lexing { symbol_intern_lexeme }\n");
     // Each DagSourceReadWitness carries a grounded `source_root: SourceRootRef` (V2Tree/DagTree,
     // #5473/#5486), so the manifest must import the constructors it references or every witness
     // fails with `undefined variable 'V2Tree'` (the source_root ingest gate's persistent RED).

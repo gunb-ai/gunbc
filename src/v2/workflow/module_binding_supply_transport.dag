@@ -24,6 +24,8 @@ data mbs_overlay_ephemeral_note: String = "The overlay directory MUST be ephemer
 Per-run mktemp plus unconditional cleanup makes the collision UNWRITABLE rather than order-dependent (DESIGN section 5 — construction over validation): there is no fixed path left for a second run to find, so gate ORDER stops being load-bearing for correctness. This mirrors compiler_closure_ingest_transport, which had the same overlay-under-a-scanned-root hazard and already solved it this way; the fix is adopting the sibling's shape, not inventing one."
 
 data mbs_source_root: String = "src/v2"
+
+data mbs_dag_source_root: String = "dag"
 data mbs_oracle_scan_dir: String = "src/v2/test/fixture/program_assembly"
 data mbs_overlay_template: String = "/target/module-binding-supply-XXXXXX"
 data mbs_entry: String = "src/v2/test/claim/long/module_binding_host_consistency_test.dag"
@@ -34,7 +36,7 @@ data mbs_row_supply_entry: String = "src/v2/test/claim/module_storage_row_supply
 
 data mbs_row_supply_note: String = "The ModulePathFileRow projection runs HERE for the same reason the crate-layout witnesses do: it consumes the derived binding index, and the real index exists only inside this overlay. Unlike the oracle claims it does NOT re-parse anything -- the manifest is already data and the projection is a fold over it -- so it is an ordinary claim rather than a long-lane one. It is the import-deletion lane's provider-row supply: the rows it projects are what replaces that lane's hand-selected provider path.
 
-SCOPE, measured: these rows observe the src/v2 root ONLY, because mbs_source_root is src/v2 and the producer cannot emit the dag/ root at all -- dag/std/import.dag and dag/extdeps/languages/go/module.dag make it write `id: ^import` and `file: ^module`, and the manifest then fails to parse. Adding dag/ here would red every claim in this gate, so the limit is recorded on the consuming witness rather than worked around."
+SCOPE: these rows observe BOTH ordinary source roots, dag/ and src/v2. The dag/ half was previously unreachable and the reason was in the producer, not in the scope: the artifact identity was minted as a `^stem` symbol literal from the file BASENAME, so dag/std/import.dag, dag/extdeps/languages/go/module.dag and dag/extdeps/bmc/capability.dag emitted `^import`, `^module` and `^capability` -- reserved keywords -- and the manifest did not parse. The basename is no longer in the identity decision at all: v1_compiler.cli_run source_root_ingest_artifact_id_for_path interns the repo-relative PATH the row already carries, through the string-taking Symbol authority, so keywords are inert and two same-named files in different directories no longer collide on one identity. Measured after the repair: 3533 bindings over dag + src/v2, manifest parsed and resolved, all five projections green."
 
 data mbs_layout_claims_note: String = "The crate-layout witnesses run HERE, in the same overlay, because task 3 made them projections off the derived binding index instead of readers of a 27-row hand table. They need the real index, and the real index exists only inside this overlay — so this transport is their executing consumer.
 
@@ -49,6 +51,7 @@ fn mbs_claim_source_roots(overlay_dir: String) -> List<String> {
 fn mbs_emit_args(overlay_dir: String) -> List<String> {
   [
     "--source-root", mbs_source_root,
+    "--source-root", mbs_dag_source_root,
     "--scan-dir", mbs_oracle_scan_dir,
     "--emit-dag-manifest", concat(overlay_dir, "/host_source_root_ingest_manifest.dag"),
     "--emit-module-binding-manifest", concat(overlay_dir, "/host_module_binding_manifest.dag")
@@ -65,6 +68,10 @@ data module_binding_supply_claims: List<ClaimRun> = [
   ClaimRun { entry: mbs_row_supply_entry, function: "msrs_real_tree_rows_project" },
   ClaimRun { entry: mbs_row_supply_entry, function: "msrs_every_manifest_binding_projects_to_a_row" },
   ClaimRun { entry: mbs_row_supply_entry, function: "msrs_a_known_module_resolves_to_its_real_file" },
+  ClaimRun { entry: mbs_row_supply_entry, function: "msrs_keyword_stem_import_module_resolves_to_its_real_file" },
+  ClaimRun { entry: mbs_row_supply_entry, function: "msrs_keyword_stem_go_module_resolves_to_its_real_file" },
+  ClaimRun { entry: mbs_row_supply_entry, function: "msrs_keyword_stem_capability_resolves_to_its_real_file" },
+  ClaimRun { entry: mbs_row_supply_entry, function: "msrs_index_spans_both_ordinary_source_roots" },
   ClaimRun { entry: mbs_row_supply_entry, function: "msrs_an_absent_module_is_not_projected" },
   ClaimRun { entry: mbs_row_supply_entry, function: "msrs_a_real_module_is_not_bound_to_the_wrong_file" }
 ]
