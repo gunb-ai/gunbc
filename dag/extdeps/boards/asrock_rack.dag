@@ -4,6 +4,12 @@ import extdeps.boards.types { BaseboardCatalogRow, DimmPopulation }
 import extdeps.vendor.asrock_rack { asrock_rack }
 import extdeps.bmc.webui.nbd_proxy { BmcwebNbdProxyEndpointVariant, VmSlotIndexEndpoint, NbdSlotEndpoint }
 import extdeps.bmc.types {
+  BmcRedfishSurfaceRow,
+  BmcRedfishSurfaceShape,
+  RedfishFanControlResourceAbsent,
+  RedfishInitialDutyControlResource,
+  RedfishLegacyChassisThermal,
+  RedfishThermalSubsystemSensorCollection,
   BmcFanControllerShape,
   BmcFanCurve,
   BmcFanCurveStep,
@@ -13,6 +19,9 @@ import extdeps.bmc.types {
 }
 import extdeps.bmc.capability { HistoricalEvidenceSnapshot }
 import extdeps.firmware.types {
+  FirmwarePrerequisiteObservation,
+  PushAcceptedByTarget,
+  PushRefusedByTarget,
   BmcController,
   NoFirmwarePrerequisite,
   RequiresMinimumTargetFirmware,
@@ -114,6 +123,32 @@ data asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog: List<BmcFirmwareCapa
 ]
 
 data asrock_altrad8ud_shipped_bmc_firmware_capabilities: BmcFirmwareCapabilityRow = asrock_altrad8ud_openbmc_2_07_00_capabilities
+
+// REDFISH SURFACE BY IMAGE. One row per catalogued OpenBMC build for this
+// board; the surface a host presents is derived from its observed version
+// rather than authored beside it (see BmcRedfishSurfaceShape).
+data asrock_altrad8ud_openbmc_2_07_00_redfish_surface: BmcRedfishSurfaceRow = BmcRedfishSurfaceRow {
+  firmware: asrock_altrad8ud_openbmc_2_07_00_capabilities.firmware,
+  shape: BmcRedfishSurfaceShape {
+    thermal_surface: RedfishThermalSubsystemSensorCollection,
+    fan_control_surface: RedfishFanControlResourceAbsent,
+  },
+}
+
+data asrock_altrad8ud_openbmc_3_22_00_redfish_surface: BmcRedfishSurfaceRow = BmcRedfishSurfaceRow {
+  firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
+  shape: BmcRedfishSurfaceShape {
+    thermal_surface: RedfishLegacyChassisThermal,
+    fan_control_surface: RedfishInitialDutyControlResource,
+  },
+}
+
+data asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog: List<BmcRedfishSurfaceRow> = [
+  asrock_altrad8ud_openbmc_2_07_00_redfish_surface,
+  asrock_altrad8ud_openbmc_3_22_00_redfish_surface,
+]
+
+data asrock_altrad8ud_redfish_surface_catalog_note: String = "Each row is the surface an OpenBMC build for this board serves, keyed by version alone, because that is what decides it: bmcweb's compiled resource set is a property of the image. The 3.22.00 row was MEASURED on both fleet hosts simultaneously on 2026-08-12 by authenticated BMC SSH and loopback Redfish, which is what makes it a catalog row rather than a per-host note — srv3 (192.168.1.192) and srv4 (192.168.1.195), independently flashed on different days, returned legacy Chassis Thermal 200, ThermalSubsystem 404, ThermalSubsystem/Fans 404, a 9-member Sensors collection, and a byte-identical Thermal key shape (12974 and 12975 bytes, differing only in a reading value). Two independently-arrived-at hosts agreeing on every axis is the evidence that the shape is a function of the image; one host would only have established what that host does. The 2.07.00 row is the historical pre-upgrade snapshot for srv3 and is retained because the catalog must still answer for an un-upgraded host, not because any fleet member currently runs it."
 
 data asrock_altrad8ud_factory_temp_soc_fan_curve_steps: List<BmcFanCurveStep> = [
   BmcFanCurveStep { at_or_above: celsius(40), duty: percent(30) },
@@ -382,7 +417,38 @@ data asrock_altrad8ud_firmware_release_catalog: List<FirmwareReleaseRow> = [
 
 data asrock_altrad8ud_firmware_release_note: String = "Cited from the ALTRAD8UD-1L2T product download table; all rows dated 2026-04-14. The BIOS rows are the load-bearing ones for the 2026-08-11 fleet incident: 'Updated RC to 0ACRB_021' is the MEMORY REFERENCE CODE, and srv3 fails DDR training on Samsung M386A4G40DM0-CPB 32GB 4Rx4 LRDIMMs while running DRAM FW 220414 (2022) under BL1 built 2023-05-17, emitting per-controller WRLVL errors and 'DDR initialization failure. Can't fall back!' on all eight controllers. ONE RELEASE, TWO PACKAGINGS, and they are not interchangeable: the ROM zip carries a bare 33554432-byte ALTRAD8UD-1L2T_3.10.ROM applied from BIOS setup by Instant Flash, which is unreachable on a host that cannot POST; the TAR zip carries obmc-bios-altrad8ud-1l2t-3.10.all.tar, whose MANIFEST declares purpose=...VersionPurpose.Host, version=3.10, MachineName=altrad8ud-1l2t, Type=bios, and which is what the BMC UpdateService consumes out-of-band. Every byte count and digest here was MEASURED on 2026-08-11 by acquiring the artifact and hashing it, never transcribed: the ROM zip at 5359089 bytes, the TAR zip at 5359341, the inner push tar at 33566720. The TAR locator was not published on the product page — it was found by probing the vendor download host and confirmed by HTTP 200 plus successful extraction, so it is weaker provenance than a page-published link and should be re-derived if the vendor reorganizes. The BMC 03.22.00 row remains digest-Absent with an unobserved locator: its image_bytes is the page's stated 27.71MB converted, NOT a Content-Length, so it must not be treated as a fetchable artifact until its own locator is observed."
 
-data asrock_altrad8ud_bios_openbmc_prerequisite_receipt: String = "The BIOS 3.10 OpenBMC-tar prerequisite (BMC >= 3.22.00) is an EXECUTED observation, not an inference from the vendor page, which states no such dependency. On 2026-08-11 the identical 33566720-byte obmc-bios-altrad8ud-1l2t-3.10.all.tar was pushed to two hosts of this board model. srv3 (BMC 2.07.00) accepted the upload, untarred it, and refused at the vendor flash script: 'Invalid ExtendedVersion: primary-all. Please check MANIFEST file!', with phosphor-image-updater logging 'Bios upgrade failed.' and Redfish reporting TaskState=Exception carrying NO machine-readable cause — the cause was only readable in the BMC journal over authenticated SSH. srv4 (BMC 3.22.00) accepted the same bytes. The minimum is therefore witnessed at 3.22.00 as an upper bound on the true threshold: versions between 2.07.00 and 3.22.00 (3.06.00 exists in the capability catalog) are UNTESTED, so the row may be stricter than the vendor requirement, which is the safe direction. The Instant Flash ROM packaging carries NoFirmwarePrerequisite because it never passes through the BMC at all; that asymmetry is why the prerequisite is a property of the PACKAGING and not of the release."
+// THE EXECUTED PAIR that establishes the BIOS-tar prerequisite. Same 33566720
+// bytes, two hosts of this board model, opposite outcomes — which is what makes
+// the minimum evidence rather than an inference from the vendor page (which
+// states no such dependency at all).
+data asrock_altrad8ud_bios_310_push_refused_at_bmc_207: FirmwarePrerequisiteObservation = FirmwarePrerequisiteObservation {
+  board: AsrockRackAltrad8ud1l2t,
+  subject: HostBios,
+  image_kind: OpenBmcWebUiTar,
+  gating_target: BmcController,
+  gating_version: firmware_semantic_version(major: 2, minor: 7, patch: 0),
+  outcome: PushRefusedByTarget {
+    diagnostic: "Invalid ExtendedVersion: primary-all. Please check MANIFEST file!",
+  },
+  observed_at: 1786579200000,
+}
+
+data asrock_altrad8ud_bios_310_push_accepted_at_bmc_322: FirmwarePrerequisiteObservation = FirmwarePrerequisiteObservation {
+  board: AsrockRackAltrad8ud1l2t,
+  subject: HostBios,
+  image_kind: OpenBmcWebUiTar,
+  gating_target: BmcController,
+  gating_version: firmware_semantic_version(major: 3, minor: 22, patch: 0),
+  outcome: PushAcceptedByTarget,
+  observed_at: 1786582800000,
+}
+
+data asrock_altrad8ud_bios_openbmc_prerequisite_evidence: List<FirmwarePrerequisiteObservation> = [
+  asrock_altrad8ud_bios_310_push_refused_at_bmc_207,
+  asrock_altrad8ud_bios_310_push_accepted_at_bmc_322,
+]
+
+data asrock_altrad8ud_bios_openbmc_prerequisite_receipt: String = "Irreducible rationale only; the executed pair itself is carried as FirmwarePrerequisiteObservation rows above, and prerequisite_evidence_verdict checks the declared minimum against them. What those rows cannot express: the vendor product page states NO such dependency, so the minimum is an executed finding rather than a documented one; the refusal on srv3 arrived only AFTER a 33 MB upload and a host power-off, and Redfish reported TaskState=Exception with no machine-readable cause, so the vendor diagnostic in the refusal row was readable only from the BMC journal over authenticated SSH; and the Instant Flash ROM packaging carries NoFirmwarePrerequisite because it never passes through the BMC at all, which is why the prerequisite belongs to the PACKAGING rather than to the release."
 
 // The DOCUMENTED DIMM populations. A population absent from this list is an
 // unsupported configuration whose boot failure proves nothing about the

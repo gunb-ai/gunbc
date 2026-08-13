@@ -64,7 +64,7 @@ test fn p1b_build_cache_provision_spine_row_landed() -> Bool {
 
 test fn srv3_target_and_install_mechanism_are_grounded() -> Bool {
   srv3_host_standup_target == operator_host_srv3
-    && srv3_install_mechanism_is_nbd_proxy_no_fallback()
+    && srv3_install_mechanism_refuses_rather_than_falling_back()
 }
 
 test fn srv3_live_fleet_offer_carries_ci() -> Bool {

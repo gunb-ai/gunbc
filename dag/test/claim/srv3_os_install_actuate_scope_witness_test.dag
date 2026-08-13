@@ -3,16 +3,17 @@ module test.claim.srv3_os_install_actuate_scope
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn srv3_autoinstall_seed_gap_is_explicitly_fail_closed() -> Bool {
-  match srv3_autoinstall_seed_delivery_refusal() {
-    Present { value: refusal } =>
-      fleet_install_server_specs.length() == 0
-        && refusal.install_server_count == 0
-        && string_contains(s: refusal.refusal as String, pattern: "fail-closed")
-        && string_contains(s: refusal.refusal as String, pattern: "NoCloudNet")
-        && srv3_autoinstall_seed_gap_is_fail_closed()
-    Absent => false
-  }
+// The seed gap is not askable while no mechanism is selected, and the
+// discriminating half is the conjunction: Absent ALONE would also be produced by
+// a selected path whose seed was fine, so the mechanism refusal is asserted
+// beside it. A mechanism becoming selectable again makes the refusal Present and
+// reds this.
+test fn srv3_autoinstall_seed_gap_is_unasked_while_the_mechanism_refuses() -> Bool {
+  srv3_autoinstall_seed_gap_is_unasked_while_mechanism_refuses()
+    && match srv3_install_mechanism_solution {
+      OsInstallMechanismRefused { cause: _ } => true
+      OsInstallMechanismSelected { mechanism: _ } => false
+    }
 }
 
 test fn srv3_os_install_actuate_credential_resolution_is_wired_in_scope() -> Bool {
@@ -20,8 +21,11 @@ test fn srv3_os_install_actuate_credential_resolution_is_wired_in_scope() -> Boo
     && srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref()
 }
 
-test fn srv3_actuator_prep_binds_seeded_delivery_and_iso_path() -> Bool {
-  srv3_actuator_prep_uses_seeded_autoinstall_delivery()
+// The ISO-path binding is a prep fact and is unchanged; the delivery half now
+// refuses with the solve rather than reporting NoCloudLocal off a plan that does
+// not exist. Both are asserted so prep and solving stay visibly separate.
+test fn srv3_actuator_prep_binds_iso_path_while_plan_refuses() -> Bool {
+  srv3_seeded_plan_refuses_with_the_solve()
     && srv3_actuator_prep_binds_seeded_iso_path()
 }
 
