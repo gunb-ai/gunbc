@@ -105,6 +105,14 @@ fn power_feed(identity: PhysicalAssetIdentity, catalog: PduCatalogRow) -> PowerF
 
 // DERIVED FROM THE CITED ROW, never stored beside it: the capacity is the product of the two figures
 // the datasheet states, so an edit to either cannot leave a stale total behind.
+//
+// NO DERATING IS APPLIED TO IT, and its absence is deliberate rather than an oversight. Electrical
+// codes limit a continuous load to a fraction of a circuit's rating, and applying such a limit here
+// would mean authoring a threshold from memory under the name of a standard - the one thing extdeps
+// exists to prevent. What this returns is the manufacturer's rating exactly as cited, and every
+// admission below compares against that. Dissolve-on: a cited continuous-load rule in an extdeps
+// authority of its own, at which point this returns the derated capacity and the citation replaces
+// this paragraph.
 fn feed_capacity(f: PowerFeed) -> VoltAmpere {
   apparent_power_from_supply(supply_voltage: f.catalog.nominal_supply_voltage, rated_current: f.catalog.rated_current)
 }
@@ -268,10 +276,3 @@ fn budget_real_load(b: PowerBudget) -> Watt { b.real_load }
 fn budget_apparent_load(b: PowerBudget) -> VoltAmpere { b.apparent_load }
 fn budget_outlets_used(b: PowerBudget) -> Int { b.outlets_used }
 fn budget_capacity(b: PowerBudget) -> VoltAmpere { feed_capacity(f: b.feed) }
-
-// NO DERATING IS APPLIED, and its absence is deliberate rather than an oversight. Electrical codes
-// limit a continuous load to a fraction of a circuit's rating, and applying such a limit here would
-// mean authoring a threshold from memory under the name of a standard - the one thing extdeps
-// exists to prevent. The capacity compared against is the manufacturer's rating exactly as cited.
-// Dissolve-on: a cited continuous-load rule in an extdeps authority of its own, at which point the
-// admission takes the derated capacity and this note is replaced by the citation.
