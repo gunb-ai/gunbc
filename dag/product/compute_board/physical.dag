@@ -198,6 +198,15 @@ type OverlapScan {
   out: List<PhysicalRefusal>
 }
 
+// THE REFUSED-EXTENT ARMS BELOW ARE EMPTY BECAUSE THE CAUSE IS ALREADY RAISED, not because an
+// unbuildable placement is acceptable. A placement whose extent refuses is reported by the scan
+// above as PlacementExtentNotPositive, and one sitting in another frame as
+// PlacementFrameDiffersFromBoard, so no article reaches admission with such a placement — asking
+// whether it OVERLAPS something is then a question about a placement that has already been
+// refused. Restating the cause here would be a second authority for one defect, and it would also
+// double-count: one bad placement pairs with every other. The distinction worth preserving is
+// against the opposite case — an arm that is empty while nothing else refuses, which is the fold
+// reading as enforcement while enforcing nothing.
 fn overlap_refusals(article: BoardPhysicalArticle) -> List<PhysicalRefusal> {
   let outer = fold(article.placements, init: OverlapScan { index: 0, out: [] }, f: fn(acc, a) {
     let inner = fold(article.placements, init: OverlapScan { index: 0, out: [] }, f: fn(bacc, b) {

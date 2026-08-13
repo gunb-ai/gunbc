@@ -5,8 +5,10 @@ import std.integer { Int }
 import std.measure { millivolt, millivolt_count }
 import product.compute_board.power_distribution {
   BankAssignment,
+  BankDrivesStandard,
   BankStandardOutsideRailWindow,
   BankSuppliedByNoDeclaredRail,
+  BankUnused,
   BoardPowerIntent,
   BoardSupplyRail,
   LikeVoltageRailsOnSeparateSupplies,
@@ -17,6 +19,8 @@ import product.compute_board.power_distribution {
   RailBuiltForAnUnconnectedPin,
   RailOutsideDeviceWindow,
   RequiredRailNotBuilt,
+  UnusedBankCoreRailNotBuilt,
+  UnusedBankNotTiedToCore,
   admit_power_intent,
   power_causes,
   power_refusal_count,
@@ -53,6 +57,8 @@ fn refusal_kind(r: PowerRefusal) -> String {
     BankStandardOutsideRailWindow { bank: _, standard_name: _, supplied: _, minimum: _, maximum: _ } => "BankStandard"
     BankSuppliedByNoDeclaredRail { bank: _, net: _ } => "BankUnsupplied"
     LikeVoltageRailsOnSeparateSupplies { left: _, right: _, voltage: _ } => "SeparateSupplies"
+    UnusedBankNotTiedToCore { bank: _, net: _, core_net: _ } => "UnusedNotCore"
+    UnusedBankCoreRailNotBuilt { bank: _, core_rail: _ } => "UnusedCoreMissing"
   }
 }
 
@@ -101,7 +107,7 @@ test fn w_the_same_voltage_is_admissible_on_a_different_rail() -> Bool {
   let banks_18 = BoardPowerIntent {
     configuration_mode: reference_power_intent.configuration_mode,
     rails: [core_rail_ok, pll_rail_ok, bank_18, spi_rail_ok, nvcm_rail_ok],
-    banks: [BankAssignment { bank: 0, standard: ice40_lvcmos18_supply, supplied_by: "vccio_1v8" }],
+    banks: [BankAssignment { bank: 0, use: BankDrivesStandard { standard: ice40_lvcmos18_supply }, supplied_by: "vccio_1v8" }],
     deliberately_unconnected: reference_power_intent.deliberately_unconnected,
   }
   admits(i: banks_18)
@@ -115,7 +121,7 @@ test fn w_a_bank_standard_its_rail_cannot_reach_refuses() -> Bool {
   let mismatched = BoardPowerIntent {
     configuration_mode: reference_power_intent.configuration_mode,
     rails: [core_rail_ok, pll_rail_ok, bank_18, spi_rail_ok, nvcm_rail_ok],
-    banks: [BankAssignment { bank: 0, standard: ice40_lvcmos33_supply, supplied_by: "vccio_1v8" }],
+    banks: [BankAssignment { bank: 0, use: BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: "vccio_1v8" }],
     deliberately_unconnected: reference_power_intent.deliberately_unconnected,
   }
   refuses_naming(i: mismatched, wanted: "BankStandard")
@@ -179,7 +185,7 @@ test fn w_unlike_voltage_rails_may_sit_on_separate_supplies() -> Bool {
   let mixed = BoardPowerIntent {
     configuration_mode: reference_power_intent.configuration_mode,
     rails: [core_rail_ok, pll_rail_ok, bank_18, spi_rail_ok, nvcm_rail_ok],
-    banks: [BankAssignment { bank: 0, standard: ice40_lvcmos18_supply, supplied_by: "vccio_1v8" }],
+    banks: [BankAssignment { bank: 0, use: BankDrivesStandard { standard: ice40_lvcmos18_supply }, supplied_by: "vccio_1v8" }],
     deliberately_unconnected: reference_power_intent.deliberately_unconnected,
   }
   admits(i: mixed)
@@ -192,7 +198,7 @@ test fn w_a_bank_on_an_undeclared_net_refuses() -> Bool {
   let orphan = BoardPowerIntent {
     configuration_mode: reference_power_intent.configuration_mode,
     rails: [core_rail_ok, pll_rail_ok, bank_rail_ok, spi_rail_ok, nvcm_rail_ok],
-    banks: [BankAssignment { bank: 0, standard: ice40_lvcmos33_supply, supplied_by: "vccio_nowhere" }],
+    banks: [BankAssignment { bank: 0, use: BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: "vccio_nowhere" }],
     deliberately_unconnected: reference_power_intent.deliberately_unconnected,
   }
   refuses_naming(i: orphan, wanted: "BankUnsupplied")
@@ -206,11 +212,59 @@ test fn w_independent_power_defects_are_all_reported() -> Bool {
   let broken = BoardPowerIntent {
     configuration_mode: reference_power_intent.configuration_mode,
     rails: [bad_core, bank_rail_ok, spi_rail_ok, nvcm_rail_ok],
-    banks: [BankAssignment { bank: 0, standard: ice40_lvcmos33_supply, supplied_by: "vccio_nowhere" }],
+    banks: [BankAssignment { bank: 0, use: BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: "vccio_nowhere" }],
     deliberately_unconnected: reference_power_intent.deliberately_unconnected,
   }
   power_refusal_count(cs: power_causes(intent: broken)) == 3
     && refuses_naming(i: broken, wanted: "OutsideWindow")
     && refuses_naming(i: broken, wanted: "NotBuilt")
     && refuses_naming(i: broken, wanted: "BankUnsupplied")
+}
+
+// THE VENDOR'S UNUSED-BANK CONSTRAINT, AND THE REASON THESE THREE TESTS EXIST. The constraint row
+// UnusedBankSupplyGoesToCore was folded into the admission check while its arm returned the empty
+// list unconditionally, so it was enrolled and inert: a board violating it was ADMITTED, and the
+// fold read as three enforced vendor constraints where only two could ever refuse. The root cause
+// was in the model rather than the check — BankAssignment could not express an unused bank at all,
+// so no input could reach the constraint. These execute the arm in all three directions.
+fn with_ok_rails_and_banks(bs: List<BankAssignment>) -> BoardPowerIntent {
+  BoardPowerIntent {
+    configuration_mode: reference_power_intent.configuration_mode,
+    rails: [core_rail_ok, pll_rail_ok, bank_rail_ok, spi_rail_ok, nvcm_rail_ok],
+    banks: bs,
+    deliberately_unconnected: reference_power_intent.deliberately_unconnected,
+  }
+}
+
+// THE POSITIVE CONTROL. An unused bank tied to core satisfies the constraint, so the check is not
+// simply refusing every unused bank — which a refusal-only test could not distinguish.
+test fn w_an_unused_bank_tied_to_core_is_admitted() -> Bool {
+  admits(i: with_ok_rails_and_banks(bs: [
+    BankAssignment { bank: 0, use: BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: "vccio_3v3" },
+    BankAssignment { bank: 1, use: BankUnused, supplied_by: "vcc_core" },
+  ]))
+}
+
+// THE DISCRIMINATING RED. The same board with the unused bank on the 3.3 V rail instead of core is
+// electrically reasonable, satisfies every window, and violates the vendor constraint. Before this
+// change it was admitted.
+test fn w_an_unused_bank_not_tied_to_core_refuses() -> Bool {
+  refuses_naming(i: with_ok_rails_and_banks(bs: [
+    BankAssignment { bank: 0, use: BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: "vccio_3v3" },
+    BankAssignment { bank: 1, use: BankUnused, supplied_by: "vccio_3v3" },
+  ]), wanted: "UnusedNotCore")
+}
+
+// AN UNANSWERABLE CONSTRAINT REFUSES RATHER THAN PASSING. Declaring core deliberately unconnected
+// silences the rail side's RequiredRailNotBuilt, so relying on that cause to cover this case would
+// leave the unused-bank constraint quietly unevaluated — the empty-observation narrow. The board
+// is absurd; the point is that the arm does not depend on another arm firing.
+test fn w_an_unused_bank_refuses_when_the_core_rail_is_not_built() -> Bool {
+  let no_core = BoardPowerIntent {
+    configuration_mode: reference_power_intent.configuration_mode,
+    rails: [pll_rail_ok, bank_rail_ok, spi_rail_ok, nvcm_rail_ok],
+    banks: [BankAssignment { bank: 0, use: BankUnused, supplied_by: "vccio_3v3" }],
+    deliberately_unconnected: [CoreSupply, FastProgrammingSupply],
+  }
+  refuses_naming(i: no_core, wanted: "UnusedCoreMissing")
 }
