@@ -5,14 +5,14 @@ import std.types { NonEmptyStr, String, Bool }
 import std.nat { Nat }
 import std.observation {
   ProducerLiveness,
+  ProducerState,
+  probe_liveness_for,
   ProducerLive,
   ProducerDead,
   ProducerLivenessUnknown,
   LedgerTail,
   TailComplete,
   TailIncomplete,
-  LivenessAfterRead,
-  observe_liveness_after_read,
   LedgerTailVerdict,
   TailRecordsComplete,
   TailTorn,
@@ -23,8 +23,8 @@ import std.observation {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn verdict_of(tail: LedgerTail, liveness: ProducerLiveness) -> LedgerTailVerdict {
-  classify_ledger_tail(observed: observe_liveness_after_read(tail: tail, liveness: liveness))
+fn verdict_of(tail: LedgerTail, liveness: ProducerState) -> LedgerTailVerdict {
+  classify_ledger_tail(observed: probe_liveness_for(tail: tail, observed: liveness))
 }
 
 fn is_torn(v: LedgerTailVerdict) -> Bool {
@@ -75,4 +75,13 @@ test fn w_RED_the_torn_byte_count_survives_classification() -> Bool {
     TailTorn { bytes: n } => n == 41
     _ => false
   }
+}
+
+// THE SEAL, asserted rather than assumed. probe_liveness_for is the sole mint and it takes the tail,
+// so a ProducerLiveness cannot exist before a LedgerTail does — the check-first sequence has no
+// value to construct. This witness pins the mint's shape; a refactor that let liveness be built
+// without a tail would have to change this signature to keep it compiling.
+test fn w_the_only_route_to_a_liveness_value_carries_the_tail_it_was_probed_against() -> Bool {
+  let l = probe_liveness_for(tail: TailIncomplete { bytes: 41 }, observed: ProducerDead)
+  match l.tail_witnessed { TailIncomplete { bytes: n } => n == 41, _ => false }
 }

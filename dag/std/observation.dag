@@ -3,6 +3,7 @@ module std.observation
 import std.types { String, NonEmptyStr, Bool, List }
 import std.nat { Nat }
 import std.measure { ClockBasis, CpuClock, WallClock, clock_basis_eq, clock_basis_label }
+import std.measure { ObservationInstant, ClockDomain, clock_domain_eq }
 import std.measure {
   Nanosecond,
   Millisecond,
@@ -999,33 +1000,43 @@ data observation_rollup_contract: Disposition = Terminal {
 //
 // A completed attempt is NOT unknown: all its producers are dead by construction, so explain over a
 // terminated attempt gets ProducerDead and a torn tail is genuinely torn.
-type ProducerLiveness
-  = ProducerLive
-  | ProducerDead
-  | ProducerLivenessUnknown { cause: NonEmptyStr }
-
 // The bytes at the end of a producer's file, before any liveness is consulted.
 type LedgerTail
   = TailComplete
   | TailIncomplete { bytes: Nat }
 
-// LIVENESS OBSERVED AFTER THE READ, and the ordering is enforced by construction rather than by a
-// comment or a test. `observe_liveness_after_read` is the only way to build one and it requires the
-// tail you already read, so a caller that checks liveness FIRST has nothing to pass and cannot form
-// the value the classifier demands.
+type ProducerState
+  = ProducerLive
+  | ProducerDead
+  | ProducerLivenessUnknown { cause: NonEmptyStr }
+
+// THE ORDERING IS THE CARRIER'S SHAPE, not its name. An earlier revision paired a tail with a
+// liveness in a record called LivenessAfterRead and claimed the ordering was structural; it was not,
+// because both arrived as parameters, so a caller could probe first, read second, and satisfy the
+// constructor with the ordering already violated (review by vivid-bear-458, 2026-08-13 — DESIGN
+// section 4b: a brand is cosmetic until construction enforces the distinction). Sealing it makes the
+// claim true: `probe_liveness_for` is the sole mint and it REQUIRES a LedgerTail, so no
+// ProducerLiveness value can come into existence before a tail value does. Check-first has no
+// expressible form rather than merely no sanctioned one.
 //
-// The ordering is load-bearing because liveness is one-way. Check-then-read misclassifies a
-// producer that dies in between as live, so its torn tail reads as "poll again" and the reader
-// waits forever on a file that will never grow. Read-then-check is sound in both directions:
-// observed dead after the read means the tail can never grow, so it is torn; observed live means it
-// may still grow, so poll. Deadness does not reverse.
-type LivenessAfterRead {
-  tail: LedgerTail
-  liveness: ProducerLiveness
+// The ordering is load-bearing because liveness is one-way. Check-then-read misclassifies a producer
+// that dies in between as live, so its torn tail reads as "poll again" and the reader waits forever
+// on a file that will never grow. Read-then-check is sound in both directions: dead after the read
+// means the tail can never grow, so it is torn; live means it may still grow, so poll. Deadness does
+// not reverse.
+//
+// WHAT THIS STILL DOES NOT CLOSE, stated so the wall is not read as covering it: the caller goes to
+// the filesystem, and no carrier can witness that the tail it passes is the CURRENT tail rather than
+// one read earlier and held. Sealing closes "liveness before tail"; it does not close "stale tail,
+// fresh liveness". The control at the read seam is therefore still owed, and per DESIGN section 4b
+// it stays enrolled as this wall's regression evidence rather than being retired by it.
+type ProducerLiveness sole_constructor {
+  tail_witnessed: LedgerTail
+  state: ProducerState
 }
 
-fn observe_liveness_after_read(tail: LedgerTail, liveness: ProducerLiveness) -> LivenessAfterRead {
-  LivenessAfterRead { tail: tail, liveness: liveness }
+fn probe_liveness_for(tail: LedgerTail, observed: ProducerState) -> ProducerLiveness {
+  ProducerLiveness { tail_witnessed: tail, state: observed }
 }
 
 type LedgerTailVerdict
@@ -1034,14 +1045,121 @@ type LedgerTailVerdict
   | TailPending { bytes: Nat }
   | TailIndeterminate { bytes: Nat, cause: NonEmptyStr }
 
-fn classify_ledger_tail(observed: LivenessAfterRead) -> LedgerTailVerdict {
-  match observed.tail {
+fn classify_ledger_tail(observed: ProducerLiveness) -> LedgerTailVerdict {
+  match observed.tail_witnessed {
     TailComplete => TailRecordsComplete
     TailIncomplete { bytes: n } =>
-      match observed.liveness {
+      match observed.state {
         ProducerDead => TailTorn { bytes: n }
         ProducerLive => TailPending { bytes: n }
         ProducerLivenessUnknown { cause: c } => TailIndeterminate { bytes: n, cause: c }
       }
   }
+}
+
+// ---------------------------------------------------------------------------
+// The recorded envelope: what a producer appends, as distinct from what it observed.
+// ---------------------------------------------------------------------------
+
+data recorded_observation_envelope_note: String = "WHY AN ENVELOPE AND NOT SIX MORE FIELDS ON ObservationEvent. The event answers what happened to which subject; the envelope answers who recorded it, when on whose clock, and where it sits in the causal tree. Those are facts about the RECORDING, and a producer that could omit them is a producer whose output cannot be reduced. Putting them on the event would also make every existing constructor of an event carry recording facts it has no business knowing — a render-time projection would have to invent an attempt id to build one. The subject path is a CONTAINMENT address and the occurrence pair is a CAUSAL edge; they are not the same relation and collapsing them loses the distinction between a witness that ran under a batch and one that was spawned by another witness."
+
+// A producer is one appending process. There is exactly one file per producer per attempt, and
+// sequence numbers are per producer, because a global counter across processes would require the
+// coordination the per-producer split exists to avoid.
+type ObservationProducer
+  = CoordinatorProducer
+  | OrdinaryWorkerProducer { worker_index: Nat }
+  | ScopedWorkerProducer { scope_id: NonEmptyStr }
+
+fn observation_producer_key(p: ObservationProducer) -> String {
+  match p {
+    CoordinatorProducer => "coordinator"
+    OrdinaryWorkerProducer { worker_index: i } => concat("ordinary-worker-", to_string(i))
+    ScopedWorkerProducer { scope_id: s } => concat("scoped-", s)
+  }
+}
+
+fn observation_producer_eq(a: ObservationProducer, b: ObservationProducer) -> Bool {
+  observation_producer_key(p: a) == observation_producer_key(p: b)
+}
+
+type OccurrenceOrigin
+  = RootOccurrence
+  | ChildOf { parent: NonEmptyStr }
+
+type RecordedObservation {
+  attempt: NonEmptyStr
+  producer: ObservationProducer
+  producer_sequence: Nat
+  occurrence: NonEmptyStr
+  origin: OccurrenceOrigin
+  at: ObservationInstant
+  event: ObservationEvent
+}
+
+// ---------------------------------------------------------------------------
+// Per-file sequence integrity.
+// ---------------------------------------------------------------------------
+
+data producer_sequence_note: String = "A GAP AND A REORDER ARE DIFFERENT FACTS WITH DIFFERENT REMEDIES, so they are different verdicts. A gap means records exist that this read did not see — a lost write, a truncated middle, a reader that skipped — and the reduction is INCOMPLETE, so any attribution derived from it understates. A reorder means the file is not what the append protocol promises and the producer itself is wrong. Reporting either as the other sends the investigation to the wrong layer. And a records-from-two-producers verdict is not a sequence defect at all: sequences are per producer, so two producers in one file means the layout invariant broke upstream of any ordering question."
+
+type SequenceVerdict
+  = SequenceIntact
+  | SequenceGap { after: Nat, before: Nat }
+  | SequenceReordered { at_index: Nat, previous: Nat, observed: Nat }
+  | SequenceForeignProducer { expected: String, observed: String }
+  | SequenceEmpty
+
+fn sequence_verdict_meet(a: SequenceVerdict, b: SequenceVerdict) -> SequenceVerdict {
+  match a {
+    SequenceIntact => b
+    SequenceEmpty => b
+    _ => a
+  }
+}
+
+type SequenceScan {
+  started: Bool
+  prev_key: String
+  prev_sequence: Nat
+  verdict: SequenceVerdict
+}
+
+fn sequence_scan_step(acc: SequenceScan, r: RecordedObservation) -> SequenceScan {
+  let key = observation_producer_key(p: r.producer)
+  let seq = r.producer_sequence
+  if !acc.started {
+    SequenceScan { started: true, prev_key: key, prev_sequence: seq, verdict: SequenceIntact }
+  } else {
+    let step =
+      if key != acc.prev_key {
+        SequenceForeignProducer { expected: acc.prev_key, observed: key }
+      } else {
+        if seq <= acc.prev_sequence {
+          SequenceReordered { at_index: seq, previous: acc.prev_sequence, observed: seq }
+        } else {
+          if seq > acc.prev_sequence + 1 {
+            SequenceGap { after: acc.prev_sequence, before: seq }
+          } else {
+            SequenceIntact
+          }
+        }
+      }
+    SequenceScan {
+      started: true,
+      prev_key: key,
+      prev_sequence: seq,
+      verdict: sequence_verdict_meet(a: acc.verdict, b: step),
+    }
+  }
+}
+
+// The first defect wins and later records cannot green it: once a gap is seen the reduction is
+// incomplete no matter how clean the tail reads.
+fn classify_producer_file(records: List<RecordedObservation>) -> SequenceVerdict {
+  fold_list(
+    records,
+    SequenceScan { started: false, prev_key: "", prev_sequence: 0, verdict: SequenceEmpty },
+    (acc, r) => sequence_scan_step(acc: acc, r: r)
+  ).verdict
 }

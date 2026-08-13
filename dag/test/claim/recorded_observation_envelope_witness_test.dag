@@ -1,0 +1,168 @@
+module test.claim.recorded_observation_envelope_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { NonEmptyStr, String, Bool, List }
+import std.nat { Nat }
+import std.measure {
+  nanosecond,
+  CpuClock,
+  ClockDomain,
+  ProcessMonotonic,
+  ObservationInstant,
+}
+import std.observation {
+  ObservationSubject,
+  RunSegment,
+  BatchSegment,
+  EntrySegment,
+  ObservationEvent,
+  ObservationTransition,
+  Concluded,
+  Done,
+  MeasuredUnavailable,
+  observation_durations_wall,
+  ObservationProducer,
+  CoordinatorProducer,
+  OrdinaryWorkerProducer,
+  ScopedWorkerProducer,
+  observation_producer_key,
+  observation_producer_eq,
+  OccurrenceOrigin,
+  RootOccurrence,
+  ChildOf,
+  RecordedObservation,
+  SequenceVerdict,
+  SequenceIntact,
+  SequenceGap,
+  SequenceReordered,
+  SequenceForeignProducer,
+  SequenceEmpty,
+  classify_producer_file,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn a_subject() -> ObservationSubject {
+  ObservationSubject { segments: [
+    RunSegment { id: "attempt-1" as NonEmptyStr },
+    BatchSegment { index: 2, label: "corpus" as NonEmptyStr },
+    EntrySegment { source_path: "dag/test/claim/x_test.dag" as NonEmptyStr },
+  ] }
+}
+
+fn an_event() -> ObservationEvent {
+  ObservationEvent {
+    subject: a_subject(),
+    transition: Concluded { outcome: Done },
+    durations: observation_durations_wall(elapsed: nanosecond(count: 1000)),
+    rss: MeasuredUnavailable { cause: "not sampled" as NonEmptyStr }
+  }
+}
+
+fn rec(p: ObservationProducer, seq: Nat, occ: NonEmptyStr, origin: OccurrenceOrigin) -> RecordedObservation {
+  RecordedObservation {
+    attempt: "attempt-1" as NonEmptyStr,
+    producer: p,
+    producer_sequence: seq,
+    occurrence: occ,
+    origin: origin,
+    at: ObservationInstant {
+      domain: ProcessMonotonic { process: observation_producer_key(p: p) as NonEmptyStr },
+      basis: CpuClock,
+      since_origin: nanosecond(count: seq * 1000)
+    },
+    event: an_event()
+  }
+}
+
+fn w(seq: Nat) -> RecordedObservation {
+  rec(p: OrdinaryWorkerProducer { worker_index: 3 }, seq: seq, occ: "occ" as NonEmptyStr, origin: RootOccurrence)
+}
+
+// One file per producer, sequences dense and increasing — the append protocol's promise.
+test fn w_a_dense_increasing_file_is_intact() -> Bool {
+  match classify_producer_file(records: [w(seq: 0), w(seq: 1), w(seq: 2), w(seq: 3)]) {
+    SequenceIntact => true
+    _ => false
+  }
+}
+
+// A GAP AND A REORDER ARE DIFFERENT REMEDIES. A gap means records this read never saw, so every
+// attribution derived from the file understates; a reorder means the producer violated its own
+// append protocol. Reporting either as the other sends the investigation to the wrong layer.
+test fn w_RED_a_gap_and_a_reorder_are_distinct_verdicts_carrying_their_operands() -> Bool {
+  let gap = classify_producer_file(records: [w(seq: 0), w(seq: 1), w(seq: 7)])
+  // NOTE the fixture: [0, 5, 2] would report a GAP, because 0 to 5 is the first defect and the
+  // first defect wins. A discriminating reorder fixture must therefore be clean up to the step it
+  // means to exercise, which is itself the property under test.
+  let reorder = classify_producer_file(records: [w(seq: 3), w(seq: 4), w(seq: 2)])
+  match gap {
+    SequenceGap { after: a, before: b } => a == 1 && b == 7
+    _ => false
+  } && match reorder {
+    SequenceReordered { at_index: _, previous: p, observed: o } => p == 4 && o == 2
+    _ => false
+  }
+}
+
+// A defect cannot be greened by the records that follow it: the reduction is incomplete no matter
+// how clean the tail reads. The absorbing shape would be a last-wins fold answering Intact here.
+test fn w_RED_a_clean_tail_does_not_green_an_earlier_gap() -> Bool {
+  match classify_producer_file(records: [w(seq: 0), w(seq: 9), w(seq: 10), w(seq: 11), w(seq: 12)]) {
+    SequenceGap { after: _, before: _ } => true
+    _ => false
+  }
+}
+
+// Sequences are PER PRODUCER, so two producers in one file is a layout break upstream of any
+// ordering question — not a gap, not a reorder.
+test fn w_RED_records_from_two_producers_in_one_file_is_its_own_verdict() -> Bool {
+  let mixed = [
+    rec(p: CoordinatorProducer, seq: 0, occ: "a" as NonEmptyStr, origin: RootOccurrence),
+    rec(p: ScopedWorkerProducer { scope_id: "7" as NonEmptyStr }, seq: 1, occ: "b" as NonEmptyStr, origin: RootOccurrence),
+  ]
+  match classify_producer_file(records: mixed) {
+    SequenceForeignProducer { expected: e, observed: o } => e == "coordinator" && o == "scoped-7"
+    _ => false
+  }
+}
+
+// An empty file is not an intact one. Nothing was appended, so the producer may never have started;
+// answering Intact would let a reduction over zero records report a clean run.
+test fn w_RED_an_empty_file_is_not_an_intact_file() -> Bool {
+  match classify_producer_file(records: []) {
+    SequenceEmpty => true
+    _ => false
+  }
+}
+
+// A single record has no step to check, and that is not the same fact as a verified file.
+test fn w_a_single_record_reads_intact_because_there_is_no_step_to_violate() -> Bool {
+  match classify_producer_file(records: [w(seq: 0)]) {
+    SequenceIntact => true
+    _ => false
+  }
+}
+
+// CONTAINMENT AND CAUSATION ARE DIFFERENT RELATIONS. The subject path says a witness ran under a
+// batch; ChildOf says another occurrence spawned it. Collapsing them loses the spawner, which is
+// exactly the edge a torn tail's active stack is walked along.
+test fn w_the_causal_parent_is_carried_beside_the_containment_path_not_derived_from_it() -> Bool {
+  let child = rec(
+    p: CoordinatorProducer, seq: 4,
+    occ: "occ-child" as NonEmptyStr,
+    origin: ChildOf { parent: "occ-parent" as NonEmptyStr }
+  )
+  let same_path = length(child.event.subject.segments) == 3
+  same_path && match child.origin {
+    ChildOf { parent: p } => p == "occ-parent"
+    RootOccurrence => false
+  }
+}
+
+test fn w_producer_identity_distinguishes_workers_by_index() -> Bool {
+  !observation_producer_eq(
+    a: OrdinaryWorkerProducer { worker_index: 3 },
+    b: OrdinaryWorkerProducer { worker_index: 4 }
+  ) && observation_producer_key(p: ScopedWorkerProducer { scope_id: "7" as NonEmptyStr }) == "scoped-7"
+}
