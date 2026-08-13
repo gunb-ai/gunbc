@@ -9929,6 +9929,14 @@ fn spawn_floor_worker(
                         wait_started.elapsed().as_secs()
                     ),
                 );
+                // CADENCE DIVERGENCE, marked here because this diff creates it: the journal append
+                // above runs EVERY iteration, this print runs every tenth. They were one cadence
+                // before, so anything that reads these two sites as interchangeable is now wrong.
+                // Attach no state write to this site — a snapshot written here is up to five
+                // minutes stale, and a consumer polling it for liveness (a stuck-worker detector is
+                // the live proposal) would inherit that staleness as its detection floor. The
+                // per-iteration journal site is where a progress fact belongs.
+                //
                 // The wait tick is journaled above on every iteration; the console keeps one line
                 // per worker per five minutes rather than one per thirty seconds. Not journal-only, and the
                 // difference is deliberate: the journal is an artifact a reader reaches AFTER the
