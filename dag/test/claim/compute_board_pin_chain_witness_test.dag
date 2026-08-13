@@ -49,12 +49,19 @@ import product.compute_board.contact_population {
   compare_populations,
   population_kind_name,
   ice40_hx1k_tq144_io_count_gap,
+  vendor_total_io_from_datasheet_rows,
+  project_population,
+  PopulationProjection,
+  VendorGeneralPurposeSingleEndedIo,
   citation_is_current,
   gap_is_open,
 }
 import extdeps.programmable_logic.ice40.subject {
   bank_population_general_purpose,
   bank_population_total,
+  ice40_hx1k_tq144_contacts,
+  ice40_hx1k_vq100_contacts,
+  itemized_contact_total,
   ice40_hx1k,
   ice40_hx1k_tq144_banks,
   ice40_tq144_package,
@@ -354,13 +361,58 @@ test fn w_unlike_populations_refuse_rather_than_disagreeing() -> Bool {
   }
 }
 
-// The unresolved third count is carried rather than quietly omitted, so the 96-to-96 agreement
-// cannot read as though nothing else were known about this device's I/O population.
-test fn w_the_conflicting_vendor_count_is_recorded_as_open() -> Bool {
-  (ice40_hx1k_tq144_io_count_gap.subject as String) == "iCE40HX1K in TQ144"
+// THE THIRD COUNT RECONCILED, BY READING THE CURRENT DOCUMENT. The product table's 98 was carried
+// as an open contradiction against the data sheet's 96 while this repository cited a 2017 revision
+// that lacked the row relating them. The February 2025 revision states both terms, and 96 + 2 is
+// 98 exactly. This asserts the arithmetic through the declared projection rather than restating
+// the sum, so a projection that stopped naming those two kinds would stop passing.
+test fn w_the_vendor_total_reconciles_through_a_declared_projection() -> Bool {
+  let se = ContactPopulation { kind: VendorGeneralPurposeSingleEndedIo, count: 96, authority: "FPGA-DS-02029-4.3" }
+  let ded = ContactPopulation { kind: VendorDedicatedIo, count: 2, authority: "FPGA-DS-02029-4.3" }
+  match project_population(p: vendor_total_io_from_datasheet_rows, parts: [se, ded]) {
+    Absent => false
+    Present { value: total } =>
+      total.count == 98
+        && (population_kind_name(k: total.kind) as String) == "vendor total I/O"
+  }
+}
+
+// AND A PROJECTION ONLY ADMITS THE KINDS IT NAMES. Without this the test above is satisfied by a
+// projection that sums whatever it is handed, which would make the declared from_kinds decorative
+// and let two unrelated populations add to a plausible total.
+test fn w_the_projection_refuses_a_population_it_does_not_admit() -> Bool {
+  let se = ContactPopulation { kind: VendorGeneralPurposeSingleEndedIo, count: 96, authority: "FPGA-DS-02029-4.3" }
+  let leads = ContactPopulation { kind: AllPackageLeads, count: 144, authority: "FPGA-DS-02029-4.3" }
+  match project_population(p: vendor_total_io_from_datasheet_rows, parts: [se, leads]) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE GAP THAT REPLACED IT, executed against the document's own partition rather than asserted.
+// The classes the Pin Information Summary names sum to 143 for this column while the same table's
+// Total Count of Bonded Pins reads 144, so one contact is in no class the document names. The
+// VQ100 column is the control: read from the same rows by the same method, it cross-foots exactly,
+// which is what distinguishes a property of the document from a mistake in the reading.
+test fn w_the_bonded_pin_itemization_falls_one_short_and_says_so() -> Bool {
+  let itemized = itemized_contact_total(i: ice40_hx1k_tq144_contacts)
+  let control = itemized_contact_total(i: ice40_hx1k_vq100_contacts)
+  itemized == 143
+    && ice40_hx1k_tq144_contacts.declared_bonded_pins == 144
+    && control == ice40_hx1k_vq100_contacts.declared_bonded_pins
     && gap_is_open(g: ice40_hx1k_tq144_io_count_gap)
-    && !citation_is_current(c: ice40_hx1k_tq144_io_count_gap.citation_currency)
+    && citation_is_current(c: ice40_hx1k_tq144_io_count_gap.citation_currency)
     && fold(ice40_hx1k_tq144_io_count_gap.unreconciled, init: false, f: fn(acc, p) {
-      acc || (p.count == 98 && (population_kind_name(k: p.kind) as String) == "vendor total I/O")
+      acc || (p.count == 144 && (population_kind_name(k: p.kind) as String) == "all package leads")
     })
+}
+
+// THE DIFFERENTIAL INPUTS ARE NOT ADDED, and this is what says so. They are the same contacts as
+// twelve of the general-purpose single-ended ones, counted a second time by capability, so a
+// partition including them would exceed the package. The itemisation excludes them; adding them
+// would overshoot the declared total rather than reaching it.
+test fn w_the_differential_recount_is_excluded_from_the_partition() -> Bool {
+  ice40_hx1k_tq144_contacts.differential_inputs_subset == 12
+    && (itemized_contact_total(i: ice40_hx1k_tq144_contacts) +
+        ice40_hx1k_tq144_contacts.differential_inputs_subset) > ice40_hx1k_tq144_contacts.declared_bonded_pins
 }

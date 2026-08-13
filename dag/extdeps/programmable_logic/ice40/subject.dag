@@ -13,11 +13,11 @@ import extdeps.vendor.lattice_semiconductor { lattice_semiconductor_vendor }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
-    locator: "www.latticesemi.com/-/media/LatticeSemi/Documents/DataSheets/iCE40/iCE40LPHXFamilyDataSheet.ashx"
+    locator: "www.latticesemi.com/-/media/LatticeSemi/Documents/DataSheets/iCE/FPGA-DS-02029-4-3-iCE40-LP-HX-Family-Data-Sheet.ashx?document_id=49312"
   }
 }
 
-data ice40_subject_note: String = "THE iCE40 LP/HX FAMILY, FROM THE VENDOR'S OWN DATA SHEET. Pulled and read 2026-08-13: iCE40 LP/HX Family Data Sheet, document DS1040, Version 3.4, October 2017. WHAT IS AND IS NOT TRANSCRIBED HERE, and the distinction is deliberate rather than cautious. Short factual statements a design has to consult — the ordering part number, the package type and its physical dimensions, the per-bank I/O population, the I/O standards the buffer supports — are carried. The full pin assignment table is NOT: it is thirty-odd sheets of a copyrighted vendor document, and the pin-to-tile map this repository actually needs for place and route comes from Project IceStorm, which is an independently governed open-source project with its own license and its own module. Those are different authorities and modelling one as the other would fuse a specification with a reverse-engineering of it. The same reasoning is already recorded for the Altra package, where the split between public package facts and licensed board collateral was got wrong once and corrected. WHY THIS PART: the article needs a programmable device in a package a prototype assembler can place, driven by a toolchain this repository can pin and execute. TQ144 is a 20 by 20 mm quad flat pack on a half-millimetre pitch — not a ball grid array — and the HX1K in it is carried end to end by an open synthesis, place-and-route and bitstream chain. No NDA fact is required to design with it."
+data ice40_subject_note: String = "THE iCE40 LP/HX FAMILY, FROM THE VENDOR'S OWN DATA SHEET. Pulled and read 2026-08-13: iCE40 LP/HX Family Data Sheet, document FPGA-DS-02029, Version 4.3, February 2025. THE DOCUMENT NUMBER ITSELF CHANGED and that is a modelled fact rather than a detail: this repository previously cited DS1040 Version 3.4, October 2017, and the current revision's own change history records 'Changed document number from DS1040 to FPGA-DS-02029'. So the same subject is reachable under two identifiers, and a citation naming only the old one does not fail loudly — it resolves to a real, stale document. Two substantive changes land with the refresh. The revision history records that the dedicated inputs for Bank 1 of the HX1K in CB132 and TQ144 were modified, which is exactly the population this repository joins against Project IceStorm's roster, and the configuration signal SPI_SS_B was renamed SPI_SS. WHAT IS AND IS NOT TRANSCRIBED HERE, and the distinction is deliberate rather than cautious. Short factual statements a design has to consult — the ordering part number, the package type and its physical dimensions, the per-bank I/O population, the I/O standards the buffer supports — are carried. The full pin assignment table is NOT: it is thirty-odd sheets of a copyrighted vendor document, and the pin-to-tile map this repository actually needs for place and route comes from Project IceStorm, which is an independently governed open-source project with its own license and its own module. Those are different authorities and modelling one as the other would fuse a specification with a reverse-engineering of it. The same reasoning is already recorded for the Altra package, where the split between public package facts and licensed board collateral was got wrong once and corrected. WHY THIS PART: the article needs a programmable device in a package a prototype assembler can place, driven by a toolchain this repository can pin and execute. TQ144 is a 20 by 20 mm quad flat pack on a half-millimetre pitch — not a ball grid array — and the HX1K in it is carried end to end by an open synthesis, place-and-route and bitstream chain. No NDA fact is required to design with it."
 
 type Ice40Family
   = Ice40LowPower
@@ -99,11 +99,12 @@ data ice40_tq144_package: Ice40Package = Ice40Package {
   contact_count: 144,
 }
 
-// Read from the family selection guide's per-package I/O table: for the HX1K in TQ144, banks 0
-// through 3 carry 23, 25, 20 and 24 general-purpose pins and four configuration pins sit beside
-// them. Ninety-two plus four is ninety-six, which is exactly the pin population Project IceStorm
-// carries for this package — two independently produced authorities agreeing at a count, which
-// is worth executing rather than noticing.
+// Read from the Pin Information Summary table for the HX1K in TQ144: banks 0 through 3 carry 23,
+// 25, 20 and 24 general-purpose pins and four configuration pins sit beside them. Ninety-two plus
+// four is ninety-six, and the vendor's own Total General Purpose Single Ended I/O row for this
+// column reads 96 — so the addition is the document's, not ours. That total is also exactly the
+// pin population Project IceStorm carries for this package, which is now a THIRD authority
+// agreeing rather than the two the earlier revision claimed.
 data ice40_hx1k_tq144_banks: Ice40BankPopulation = Ice40BankPopulation {
   device: "ICE40HX1K-TQ144",
   package_designator: "TQ144",
@@ -112,6 +113,89 @@ data ice40_hx1k_tq144_banks: Ice40BankPopulation = Ice40BankPopulation {
   bank_2: 20,
   bank_3: 24,
   configuration: 4,
+}
+
+// THE VENDOR'S OWN DECOMPOSITION OF EVERY BONDED CONTACT, at the vendor's own class grain and
+// under the vendor's own row names. It is carried in full rather than summarised because the
+// summary is what went wrong before: this repository held three numbers for "the I/O count" and
+// none of them said which contacts they counted, and the sum that was supposed to reconcile them
+// was performed by a reader rather than by the document. Every field below is one row of the Pin
+// Information Summary table for one (device, package) column.
+//
+// TWO OF THESE ARE NOT SUMMABLE WITH THE REST, and saying so is the point of separating them.
+// The differential inputs are a SUBSET of the general-purpose single-ended population — the same
+// physical contacts counted a second way, by capability — so adding them double-counts. And the
+// general-purpose total already INCLUDES the four configuration contacts, which is why it reads
+// 96 against a per-bank sum of 92. A consumer that wants a total states which rows it means.
+type Ice40PackageContactItemization {
+  device: NonEmptyStr
+  package_designator: NonEmptyStr
+  general_purpose_single_ended: Nat
+  differential_inputs_subset: Nat
+  dedicated_inputs: Nat
+  vccio: Nat
+  vcc: Nat
+  vcc_spi: Nat
+  vpp_2v5: Nat
+  vpp_fast: Nat
+  vccpll: Nat
+  ground: Nat
+  no_connect: Nat
+  declared_bonded_pins: Nat
+}
+
+// The rows that partition the package: every contact is counted exactly once. The differential
+// inputs are excluded because they are a recount of contacts already in the first term.
+fn itemized_contact_total(i: Ice40PackageContactItemization) -> Nat {
+  i.general_purpose_single_ended +
+    i.dedicated_inputs +
+    i.vccio +
+    i.vcc +
+    i.vcc_spi +
+    i.vpp_2v5 +
+    i.vpp_fast +
+    i.vccpll +
+    i.ground +
+    i.no_connect
+}
+
+data ice40_hx1k_tq144_contacts: Ice40PackageContactItemization = Ice40PackageContactItemization {
+  device: "ICE40HX1K-TQ144",
+  package_designator: "TQ144",
+  general_purpose_single_ended: 96,
+  differential_inputs_subset: 12,
+  dedicated_inputs: 2,
+  vccio: 8,
+  vcc: 4,
+  vcc_spi: 1,
+  vpp_2v5: 1,
+  vpp_fast: 1,
+  vccpll: 1,
+  ground: 10,
+  no_connect: 19,
+  declared_bonded_pins: 144,
+}
+
+// THE CONTROL COLUMN, and it is carried for exactly one reason: the TQ144 itemization does not
+// cross-foot, and a single non-cross-footing column is indistinguishable from a transcription
+// error by the person who transcribed it. VQ100 is read from the same table, the same rows and
+// the same page, and it cross-foots exactly at 100 — so the TQ144 shortfall is a property of the
+// document's TQ144 column rather than of the reading method.
+data ice40_hx1k_vq100_contacts: Ice40PackageContactItemization = Ice40PackageContactItemization {
+  device: "ICE40HX1K-VQ100",
+  package_designator: "VQ100",
+  general_purpose_single_ended: 72,
+  differential_inputs_subset: 9,
+  dedicated_inputs: 2,
+  vccio: 9,
+  vcc: 4,
+  vcc_spi: 1,
+  vpp_2v5: 1,
+  vpp_fast: 1,
+  vccpll: 0,
+  ground: 10,
+  no_connect: 0,
+  declared_bonded_pins: 100,
 }
 
 data ice40_family_model_scope: ExternalModelScope = ExternalModelScope {
