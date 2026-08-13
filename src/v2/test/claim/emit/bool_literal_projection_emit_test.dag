@@ -1,0 +1,187 @@
+module v2.test.emit.bool_literal_projection
+
+import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source_string }
+import v2.extdeps.languages.c {
+  c_operator_realizations_catalog_node,
+  c_target_model,
+  c_value_expression_projection
+}
+import v2.extdeps.languages.rust {
+  rust_lex_rule,
+  rust_fn_add_lex_rules,
+  rust_operator_realizations_catalog_node,
+  rust_target_model,
+  rust_value_expression_projection
+}
+import v2.extdeps.languages.typescript {
+  ts_operator_realizations_catalog_node,
+  ts_target_model,
+  ts_value_expression_projection
+}
+import v2.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules }
+import v2.std.compilers.target_model {
+  TargetBoolLiteralShape,
+  TargetModel,
+  TargetValueExpression,
+  TargetValueExpressionProjection,
+  render_target_text,
+  target_value_expression_bool_literal,
+  target_value_expression_to_concrete_tokens
+}
+import v2.std.algebra { list_append }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data bool_literal_projection_note: String = "Before this slice, target_model.dag hardcoded ^dag_token_kw_true/false at four emit/projection seams — the agnostic layer naming one target's spelling. The fix routes spelling through TargetBoolLiteralShape on each target's projection. This witness holds the same expression and lex and varies ONLY bool_literal_form, so nothing but the declared tokens can distinguish the arms. The cross arms are the RED: a lower-case projection must not emit upper-case text, and vice versa. Hardcoding dag tokens in target_model would ignore the alternate projection entirely."
+
+data bool_literal_golden_provenance_note: String = "Lower-case goldens were fixed by compiling with the real toolchain before the emitter was pointed at them: rustc for Rust (`true` is a bool literal), cc with stdbool.h for C, and node --check for TypeScript. Upper-case goldens are deliberately NOT valid in those languages — pinning them is how the alternate arm proves the projection is consumed rather than ignored."
+
+data bool_literal_true_lower_golden: String = "true"
+
+data bool_literal_true_upper_golden: String = "TRUE"
+
+fn blp_bool_literal_expr() -> TargetValueExpression {
+  target_value_expression_bool_literal(value: true)
+}
+
+fn blp_lower_bool_form() -> TargetBoolLiteralShape {
+  TargetBoolLiteralShape {
+    true_token: ^blp_token_true_lower,
+    false_token: ^blp_token_false_lower
+  }
+}
+
+fn blp_upper_bool_form() -> TargetBoolLiteralShape {
+  TargetBoolLiteralShape {
+    true_token: ^blp_token_true_upper,
+    false_token: ^blp_token_false_upper
+  }
+}
+
+fn blp_projection_with(bool_form: TargetBoolLiteralShape) -> TargetValueExpressionProjection {
+  TargetValueExpressionProjection {
+    bool_literal_form: bool_form,
+    binding_ref_form: rust_value_expression_projection().binding_ref_form,
+    primitive_apply_form: rust_value_expression_projection().primitive_apply_form,
+    callable_apply_form: rust_value_expression_projection().callable_apply_form,
+    closure_form: rust_value_expression_projection().closure_form,
+    effect_apply_form: rust_value_expression_projection().effect_apply_form,
+    conditional_form: rust_value_expression_projection().conditional_form,
+    let_form: rust_value_expression_projection().let_form,
+    loop_form: rust_value_expression_projection().loop_form,
+    record_construct_form: rust_value_expression_projection().record_construct_form,
+    field_access_form: rust_value_expression_projection().field_access_form,
+    match_form: rust_value_expression_projection().match_form,
+    block_evaluation_mode: rust_value_expression_projection().block_evaluation_mode
+  }
+}
+
+fn blp_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: list_append(
+        left: rust_fn_add_lex_rules().rules,
+        right: [
+          rust_lex_rule(token_class: ^blp_token_true_lower, text: "true"),
+          rust_lex_rule(token_class: ^blp_token_false_lower, text: "false"),
+          rust_lex_rule(token_class: ^blp_token_true_upper, text: "TRUE"),
+          rust_lex_rule(token_class: ^blp_token_false_upper, text: "FALSE")
+        ]
+      )
+    }
+  }
+}
+
+fn blp_target() -> TargetModel {
+  TargetModel {
+    lex: blp_lex(),
+    produced_decl_support: rust_target_model().produced_decl_support,
+    bundle: rust_target_model().bundle,
+    binding_spellings: rust_target_model().binding_spellings,
+    token_class_emit_transforms: rust_target_model().token_class_emit_transforms,
+    authority_source_text: rust_target_model().authority_source_text,
+    runtime_row: rust_target_model().runtime_row
+  }
+}
+
+fn blp_emit(
+  target: TargetModel,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<String> {
+  match target_value_expression_to_concrete_tokens(
+    expr: blp_bool_literal_expr(),
+    projection: projection,
+    catalog: catalog
+  ) {
+    Accepted { value: tokens, diagnostics: _ } =>
+      match serialize_concrete_syntax_tokens_to_source_string(
+        target: target,
+        tokens: tokens
+      ) {
+        Accepted { value: text, diagnostics: _ } =>
+          Accepted { value: render_target_text(t: text), diagnostics: None }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn blp_emits(bool_form: TargetBoolLiteralShape, golden: String) -> Bool {
+  match blp_emit(
+    target: blp_target(),
+    projection: blp_projection_with(bool_form: bool_form),
+    catalog: rust_operator_realizations_catalog_node()
+  ) {
+    Accepted { value: text, diagnostics: _ } => text == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn bool_spelling_is_derived_from_projection() -> Bool {
+  blp_emits(bool_form: blp_lower_bool_form(), golden: bool_literal_true_lower_golden)
+    && blp_emits(bool_form: blp_upper_bool_form(), golden: bool_literal_true_upper_golden)
+    && !blp_emits(bool_form: blp_lower_bool_form(), golden: bool_literal_true_upper_golden)
+    && !blp_emits(bool_form: blp_upper_bool_form(), golden: bool_literal_true_lower_golden)
+}
+
+fn blp_production_emits(
+  target: TargetModel,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Bool {
+  match blp_emit(target: target, projection: projection, catalog: catalog) {
+    Accepted { value: text, diagnostics: d } =>
+      (text == bool_literal_true_lower_golden) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn production_rust_bool_literal_declares_rust_spelling() -> Bool {
+  blp_production_emits(
+    target: rust_target_model(),
+    projection: rust_value_expression_projection(),
+    catalog: rust_operator_realizations_catalog_node()
+  )
+}
+
+test fn production_c_bool_literal_declares_c_spelling() -> Bool {
+  blp_production_emits(
+    target: c_target_model(),
+    projection: c_value_expression_projection(),
+    catalog: c_operator_realizations_catalog_node()
+  )
+}
+
+test fn production_typescript_bool_literal_declares_ts_spelling() -> Bool {
+  blp_production_emits(
+    target: ts_target_model(),
+    projection: ts_value_expression_projection(),
+    catalog: ts_operator_realizations_catalog_node()
+  )
+}

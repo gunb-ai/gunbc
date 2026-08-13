@@ -2309,7 +2309,9 @@ fn rust_value_expression_family_lex_rules() -> List<LexRule> {
     rust_lex_rule(token_class: ^rust_token_closure_nop, text: ""),
     rust_lex_rule(token_class: ^rust_token_kw_let, text: "let "),
     rust_lex_rule(token_class: ^rust_token_equal, text: " = "),
-    rust_lex_rule(token_class: ^rust_token_semicolon, text: "; ")
+    rust_lex_rule(token_class: ^rust_token_semicolon, text: "; "),
+    rust_lex_rule(token_class: ^rust_token_kw_true, text: "true"),
+    rust_lex_rule(token_class: ^rust_token_kw_false, text: "false")
   ]
 }
 

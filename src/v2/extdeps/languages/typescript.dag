@@ -2083,6 +2083,8 @@ fn ts_fn_add_lex_rules() -> LexRuleSet {
       ts_lex_rule(token_class: ^ts_token_semicolon, text: ";"),
       ts_lex_rule(token_class: ^ts_token_effect_read_callee, text: "__gunbc_effect_read"),
       ts_lex_rule(token_class: ^ts_token_effect_write_callee, text: "__gunbc_effect_write"),
+      ts_lex_rule(token_class: ^ts_token_kw_true, text: "true"),
+      ts_lex_rule(token_class: ^ts_token_kw_false, text: "false"),
       ts_lex_rule(token_class: ^ts_token_ternary_nop, text: ""),
       ts_lex_rule(token_class: ^ts_token_ternary_question, text: " ? "),
       ts_lex_rule(token_class: ^ts_token_ternary_colon, text: " : ")
