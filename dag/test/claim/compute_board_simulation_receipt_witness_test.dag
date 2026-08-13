@@ -130,7 +130,9 @@ test fn w_the_observations_are_distinct_and_present() -> Bool {
 // recorded the milliamp figure, which is the only part of the run that discriminates the suffix.
 test fn w_the_operating_point_discriminates_the_scale_suffix() -> Bool {
   let s = run_of(outcome: conditioning_network_run)
-  list_length(items: split(s: s.observation, delimiter: "-1.20000e-03")) > 1
+  let divider_ratio_is_reported = list_length(items: split(s: s.observation, delimiter: "pg_cond 3.000000e+00")) > 1
+  let series_current_pins_the_k_suffix = list_length(items: split(s: s.observation, delimiter: "-3.00000e-04")) > 1
+  divider_ratio_is_reported && series_current_pins_the_k_suffix
 }
 
 // BOTH SPICE PATHS SIT BEHIND ONE REFUSAL GATE. This is the review finding that produced the
@@ -152,14 +154,21 @@ data floating_analog: AnalogCircuitIntent = AnalogCircuitIntent {
       identity: "pg_raw" as NetIdentity,
       members: [
         terminal_ref(component: "logic_in" as ComponentInstanceIdentity, terminal: "1" as TerminalIdentity),
-        terminal_ref(component: "pg_cond" as ComponentInstanceIdentity, terminal: "1" as TerminalIdentity),
+        terminal_ref(component: "pg_top" as ComponentInstanceIdentity, terminal: "1" as TerminalIdentity),
+      ],
+    },
+    ElectricalNet {
+      identity: "pg_cond" as NetIdentity,
+      members: [
+        terminal_ref(component: "pg_top" as ComponentInstanceIdentity, terminal: "2" as TerminalIdentity),
+        terminal_ref(component: "pg_bot" as ComponentInstanceIdentity, terminal: "1" as TerminalIdentity),
       ],
     },
     ElectricalNet {
       identity: "power_return" as NetIdentity,
       members: [
         terminal_ref(component: "logic_in" as ComponentInstanceIdentity, terminal: "2" as TerminalIdentity),
-        terminal_ref(component: "pg_cond" as ComponentInstanceIdentity, terminal: "2" as TerminalIdentity),
+        terminal_ref(component: "pg_bot" as ComponentInstanceIdentity, terminal: "2" as TerminalIdentity),
         terminal_ref(component: "pg_filt" as ComponentInstanceIdentity, terminal: "2" as TerminalIdentity),
       ],
     },

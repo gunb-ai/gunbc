@@ -85,13 +85,20 @@ data interlock_verilog_run: SimulationOutcome = SimulationAccepted {
   },
 }
 
-// The operating point is the DISCRIMINATING observation, not a smoke test. Twelve volts across
-// ten kilohms is 1.2 milliamps, and that is the current ngspice reported through the source — so
-// the run confirms the scale suffix was read as kilo. Had the projection emitted a bare "10", the
-// deck would still have solved, and it would have reported 1.2 amps.
-data conditioning_network_operating_point: String = "pg_raw 1.200000e+01\nvlogic_in#branch -1.20000e-03"
+// THE OPERATING POINT NOW DISCRIMINATES THE TOPOLOGY AS WELL AS THE SCALE. The previous circuit
+// was a resistor and a capacitor in PARALLEL across the rail with no node between them, and its
+// recorded operating point was a true fact about that resistor rather than about a conditioning
+// network — which is how a non-circuit passed as one for several rounds.
+//
+// Three independent facts are pinned here. pg_cond at exactly 3.0 V is the divider ratio: twelve
+// volts across thirty and ten kilohms puts a quarter of the rail at the conditioned node, so a
+// swapped pair of resistor values would read 9 V. The source current at 300 microamps is the
+// series total of 40 kilohms, so it confirms the k suffix survived projection — a bare "30" and
+// "10" would still solve and would report 300 milliamps. And pg_cond EXISTING at all is the
+// structural claim: in the old netlist there was no such node to report.
+data conditioning_network_operating_point: String = "pg_cond 3.000000e+00\npg_raw 1.200000e+01\nvlogic_in#branch -3.00000e-04"
 
-data conditioning_network_artifact: String = "power-good conditioning network\nVlogic_in pg_raw 0 12\nRpg_cond pg_raw 0 10k\nCpg_filt pg_raw 0 100n\n.op\n.end"
+data conditioning_network_artifact: String = "power-good conditioning network\nVlogic_in pg_raw 0 12\nRpg_top pg_raw pg_cond 30k\nRpg_bot pg_cond 0 10k\nCpg_filt pg_cond 0 100n\n.op\n.end"
 
 data conditioning_network_run: SimulationOutcome = SimulationAccepted {
   run: SimulationRun {
