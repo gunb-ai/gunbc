@@ -2,6 +2,7 @@ module gunbc.host_axis_caps
 
 import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.algebra { trim }
+import std.disposition { Disposition, Terminal }
 import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.membership_reconcile {
   MembershipPlan,
@@ -212,6 +213,30 @@ fn runner_memory_cap_author_ready_for_shadow_revert(observed: List<CapMember>) -
 data memory_cap_author_before_shadow_revert_ordering_note: String = "Deploy drop-ins (20-fleet-width MemoryMax, 40-fleet-high MemoryHigh) must be authored from gunbc.runner_slot_allocation BEFORE systemctl revert MemoryMax MemoryHigh on any unit. On-disk deploy files may still carry superseded 16/15GiB while effective caps match declared 14/13 via system.control shadows; revert alone drops shadows and falls back to stale disk."
 
 data host_axis_caps_author_before_revert_enforced: Bool = true
+
+fn deploy_memory_cap_shadow_revert_scripts(units: List<NonEmptyStr>) -> String {
+  fold(units, init: "", f: (acc, unit) =>
+    concat(acc, control_shadow_revert_script(u: control_shadow_unit(unit: unit)))
+  )
+}
+
+// Deploy apply composite: author derived drop-ins first, then shadow revert per unit.
+// live_deploy enrollment is dissolve-on; ordering is structural in this concatenation.
+fn deploy_memory_cap_apply_script_ordered(units: List<NonEmptyStr>) -> String {
+  concat(runner_memory_cap_author_script(), deploy_memory_cap_shadow_revert_scripts(units: units))
+}
+
+fn deploy_memory_cap_apply_script_author_before_shadow_revert(units: List<NonEmptyStr>) -> Bool {
+  let author = runner_memory_cap_author_script()
+  let reverts = deploy_memory_cap_shadow_revert_scripts(units: units)
+  deploy_memory_cap_apply_script_ordered(units: units) == concat(author, reverts)
+    && length(author) > 0
+    && runner_memory_cap_author_ready_for_shadow_revert(observed: derived_runner_memory_cap_members())
+}
+
+data control_shadow_reconcile_consumer_disposition: Disposition = Terminal {
+  reason: "control_shadow_reconcile folds and runner_memory_cap_author_ready_for_shadow_revert gate deploy_memory_cap_apply_script_ordered — the composite shell fragment live_deploy must execute (author derived drop-ins then systemctl revert per enumerated unit). host_axis_caps_author_before_revert_enforced is witnessed via deploy_memory_cap_apply_script_author_before_shadow_revert, not a standalone Bool. Dissolve-on: live_deploy apply emits deploy_memory_cap_apply_script_ordered on the privileged deploy path (ghrunner sudo) and executes it via host_effect_apply."
+}
 
 fn control_shadow_reconcile(
   desired: List<ControlShadowUnit>,
