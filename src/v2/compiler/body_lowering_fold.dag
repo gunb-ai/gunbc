@@ -84,7 +84,6 @@ import v2.std.node {
   Symbol,
   Transform,
   TypeNode,
-  Value,
   is_empty_conj_root,
   match_arm_body,
   match_arm_pattern,
@@ -2643,20 +2642,10 @@ fn body_lower_reify_branch_body(body: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_reify_atom_as_value_body(atom: Node) -> Node {
-  node_with_occurrence_id(
-    kind: ComputationNode { behavior: Value },
-    children: [],
-    occurrence_id: atom.occurrence_id
-  )
-}
-
 fn body_lower_reify_arrow_body(body: Node) -> Outcome<Node> {
   match body.kind {
     ComputationNode { behavior: Transform } => body_lower_reify_transform_body(body: body)
     ComputationNode { behavior: Branch } => body_lower_reify_branch_body(body: body)
-    TypeNode { connective: Atom { identity: _ } } =>
-      outcome_accepted(value: body_lower_reify_atom_as_value_body(atom: body))
     _ => outcome_accepted(value: body)
   }
 }
