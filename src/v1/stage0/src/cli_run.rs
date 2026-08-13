@@ -6144,6 +6144,88 @@ mod compile_clean_via_index_verdict_equivalence {
         );
     }
 
+    /// `handle_serve` resolves `Memoize`, consumes `compile_clean_diags`, and shares
+    /// `process_shared_index`. An Ephemeral compile-clean warms parse_cache without
+    /// joining `resolved_graph_memo`, so the subsequent Memoize is a parse_cache hit
+    /// and a memo miss — admission must not depend on that cache state.
+    #[test]
+    fn in_closure_body_grain_reds_on_warm_parse_cache_under_memoize() {
+        let corpus = Corpus::new(
+            "in-closure-body-warm-memoize",
+            &[(
+                "body.dag",
+                "module eqv.body_grain_warm_memoize\nfn probe(x: Int) -> Int {\n  // in-body prose\n  x\n}\n",
+            )],
+        );
+        let index = super::process_shared_index(&corpus.roots);
+        let first = super::resolved_graph_from_sources_with_index(
+            &index,
+            corpus.sources.clone(),
+            super::ResolveTypecheckGate::Strict,
+            "ephemeral-warm",
+            super::ResolvedGraphMemoShare::Ephemeral,
+        )
+        .expect("BodyGrain is an annotation refusal, not a parse/resolve refusal");
+        assert!(
+            first.2.iter().any(super::compile_clean_diagnostic_is_hard),
+            "cold Ephemeral must contribute BodyGrain, got {}",
+            super::format_first_compile_clean_hard_diagnostic(first.2.as_ref())
+        );
+        let second = super::resolved_graph_from_sources_with_index(
+            &index,
+            corpus.sources.clone(),
+            super::ResolveTypecheckGate::Strict,
+            "memoize-serve",
+            super::ResolvedGraphMemoShare::Memoize,
+        )
+        .expect("Memoize via-index must assemble");
+        let detail = super::format_first_compile_clean_hard_diagnostic(second.2.as_ref());
+        assert!(
+            second.2.iter().any(super::compile_clean_diagnostic_is_hard),
+            "handle_serve Memoize on a warm parse_cache must still see BodyGrain, got {detail}"
+        );
+        assert!(
+            detail.contains("inside a declaration body"),
+            "warm Memoize must still report BodyGrainNotModeled, got {detail}"
+        );
+    }
+
+    /// Attribution installs an annotation-erasing parse (`annotation_diags: None`).
+    /// A later Memoize via-index of that file must still admit.
+    #[test]
+    fn in_closure_body_grain_reds_after_erasing_parse_cache_install() {
+        let corpus = Corpus::new(
+            "in-closure-body-erasing-install",
+            &[(
+                "body.dag",
+                "module eqv.body_grain_erasing\nfn probe(x: Int) -> Int {\n  // in-body prose\n  x\n}\n",
+            )],
+        );
+        let index = super::process_shared_index(&corpus.roots);
+        super::parse_module_node_from_index_source(&index, corpus.sources[0].clone())
+            .expect("erasing attribution parse must succeed");
+        let resolved = super::resolved_graph_from_sources_with_index(
+            &index,
+            corpus.sources.clone(),
+            super::ResolveTypecheckGate::Strict,
+            "memoize-after-erasing",
+            super::ResolvedGraphMemoShare::Memoize,
+        )
+        .expect("Memoize via-index must assemble");
+        let detail = super::format_first_compile_clean_hard_diagnostic(resolved.2.as_ref());
+        assert!(
+            resolved
+                .2
+                .iter()
+                .any(super::compile_clean_diagnostic_is_hard),
+            "Memoize after an erasing parse_cache install must still see BodyGrain, got {detail}"
+        );
+        assert!(
+            detail.contains("inside a declaration body"),
+            "erasing-install Memoize must still report BodyGrainNotModeled, got {detail}"
+        );
+    }
+
     /// Roots-key canonicalization (review 39118): the executor's absolute CLI roots
     /// and the plan's relative `witness_layer_roots` are the SAME pool and must
     /// address ONE thread-local shared index — otherwise the compile-clean receipt
@@ -9165,6 +9247,22 @@ mod live_read_selection_manifest_producer_tests {
     }
 }
 
+/// Per-file parse memo for `resolved_graph_from_sources_with_index`.
+///
+/// `annotation_diags` is `Some` when this entry was installed by a parse that ran
+/// `admit_source_annotations`. `None` means an annotation-erasing `tokenize`
+/// installed it (attribution). Via-index must still admit on `None`, and must
+/// consume `Some` on every `ResolvedGraphMemoShare` — `handle_serve` resolves
+/// `Memoize`, reads `compile_clean_diags`, and shares `process_shared_index`'s
+/// cache. Gating re-admission on `Ephemeral` made admission depend on cache
+/// state rather than source content.
+#[derive(Clone)]
+struct ParseCacheEntry {
+    parse_result: Rc<v1_compiler_parse::ParseResult>,
+    newline_index: Rc<NewlineIndex>,
+    annotation_diags: Option<Rc<im::Vector<Rc<ErrorNode>>>>,
+}
+
 pub struct MultiEntryIndex {
     /// Opaque identity of THIS index, minted at construction (see `next_index_generation`).
     generation: u64,
@@ -9206,9 +9304,7 @@ pub struct MultiEntryIndex {
     cross_worker_store: Option<Arc<RwLock<SharedTypecheckCaches>>>,
     /// Per-index intern table — paired with `parse_cache` on this worker (never shared).
     intern_table: RefCell<Rc<InternTable>>,
-    parse_cache: RefCell<
-        std::collections::HashMap<String, (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>)>,
-    >,
+    parse_cache: RefCell<std::collections::HashMap<String, ParseCacheEntry>>,
     normalize_diag_cache: RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<ErrorNode>>>>>,
     ownership_diag_cache: RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<ErrorNode>>>>>,
     /// The source roots this index was built from — the tree identities behind the
@@ -13151,6 +13247,83 @@ fn via_index_source_annotation_diagnostics(
         .collect()
 }
 
+/// Census-fill admission for a parse_cache hit that never ran `admit_source_annotations`.
+/// Filters to `SourceAnnotationRefused` because that is all `admit_source_annotations`
+/// emits today (both sites in `v1_compiler_annotation_bind`). The miss path keeps
+/// every diagnostic that function returns; the two agree until a third diagnostic
+/// appears — latent coupling, not a live divergence.
+fn via_index_census_fill_annotation_diags(
+    source: &Rc<v1_compiler_compile::SourceFile>,
+) -> im::Vector<Rc<ErrorNode>> {
+    let fill = v1_compiler_compile::parse_census_fill_sources(Rc::new(vec![source.clone()].into()));
+    fill.diagnostics
+        .iter()
+        .filter(|d| {
+            matches!(
+                d.diagnostic.as_ref(),
+                CompilerDiagnostic::SourceAnnotationRefused { .. }
+            )
+        })
+        .cloned()
+        .collect()
+}
+
+/// Parse one via-index source, admitting annotations into the cache entry so a later
+/// `Memoize` consumer (`handle_serve`) cannot observe a different population than a
+/// cold parse of the same bytes.
+fn via_index_parse_one_source(
+    index: &MultiEntryIndex,
+    source: &Rc<v1_compiler_compile::SourceFile>,
+) -> ParseCacheEntry {
+    let cached = index.parse_cache.borrow().get(&source.path).cloned();
+    if let Some(entry) = cached {
+        if entry.annotation_diags.is_some() {
+            return entry;
+        }
+        let refused = via_index_census_fill_annotation_diags(source);
+        let upgraded = ParseCacheEntry {
+            annotation_diags: Some(Rc::new(refused)),
+            ..entry
+        };
+        index
+            .parse_cache
+            .borrow_mut()
+            .insert(source.path.clone(), upgraded.clone());
+        return upgraded;
+    }
+    // Ordinary frontend (`front_end_sources`) keeps tokenize_artifact
+    // captures and admits them against this file's occurrence transport.
+    // Annotation-erasing `tokenize` here let a touched in-closure file
+    // compile on the floor while missing the class #8204 claims to close.
+    let artifact =
+        v1_compiler_tokenize::tokenize_artifact(source.content.clone(), source.path.clone());
+    let nl_index = build_newline_index(source.path.clone(), source.content.clone());
+    let current_table = index.intern_table.borrow().clone();
+    let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
+        let mut m = HashMap::new();
+        m.insert(source.path.clone(), nl_index.clone());
+        m
+    });
+    let parsed =
+        v1_compiler_parse::parse_with_table(artifact.tokens.clone(), single_si, current_table);
+    *index.intern_table.borrow_mut() = parsed.intern_table.clone();
+    let annotation_diags = via_index_source_annotation_diagnostics(
+        source,
+        parsed.occurrence_transport.clone(),
+        artifact.annotations.clone(),
+    );
+    let entry = ParseCacheEntry {
+        parse_result: parsed.result.clone(),
+        newline_index: nl_index,
+        annotation_diags: Some(Rc::new(annotation_diags)),
+    };
+    index
+        .parse_cache
+        .borrow_mut()
+        .insert(source.path.clone(), entry.clone());
+    entry
+}
+
 fn join_via_index_stage_refusal(
     annotation_diags: &im::Vector<Rc<ErrorNode>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -13307,67 +13480,12 @@ fn resolved_graph_from_sources_with_index(
     let parse_started = std::time::Instant::now();
     for source in &sources {
         note_source_hash(index, source);
-        let cached = index.parse_cache.borrow().get(&source.path).cloned();
-
-        let (parse_result, nl_index) = match cached {
-            Some(entry) => {
-                // Compile-clean (Ephemeral) must still admit on a warm parse_cache:
-                // a prior full-body parse can be annotation-erasing. Witness resolves
-                // (Memoize) skip — they ignore compile_clean_diags and must not pay
-                // a second parse per cached file.
-                if memo_share == ResolvedGraphMemoShare::Ephemeral {
-                    let fill = v1_compiler_compile::parse_census_fill_sources(Rc::new(
-                        vec![source.clone()].into(),
-                    ));
-                    annotation_diags.extend(
-                        fill.diagnostics
-                            .iter()
-                            .filter(|d| {
-                                matches!(
-                                    d.diagnostic.as_ref(),
-                                    CompilerDiagnostic::SourceAnnotationRefused { .. }
-                                )
-                            })
-                            .cloned(),
-                    );
-                }
-                entry
-            }
-            None => {
-                // Ordinary frontend (`front_end_sources`) keeps tokenize_artifact
-                // captures and admits them against this file's occurrence transport.
-                // Annotation-erasing `tokenize` here let a touched in-closure file
-                // compile on the floor while missing the class #8204 claims to close.
-                let artifact = v1_compiler_tokenize::tokenize_artifact(
-                    source.content.clone(),
-                    source.path.clone(),
-                );
-                let nl_index = build_newline_index(source.path.clone(), source.content.clone());
-                let current_table = index.intern_table.borrow().clone();
-                let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
-                    let mut m = HashMap::new();
-                    m.insert(source.path.clone(), nl_index.clone());
-                    m
-                });
-                let parsed = v1_compiler_parse::parse_with_table(
-                    artifact.tokens.clone(),
-                    single_si,
-                    current_table,
-                );
-                *index.intern_table.borrow_mut() = parsed.intern_table.clone();
-                annotation_diags.extend(via_index_source_annotation_diagnostics(
-                    source,
-                    parsed.occurrence_transport.clone(),
-                    artifact.annotations.clone(),
-                ));
-                let entry = (parsed.result.clone(), nl_index.clone());
-                index
-                    .parse_cache
-                    .borrow_mut()
-                    .insert(source.path.clone(), entry.clone());
-                entry
-            }
-        };
+        let entry = via_index_parse_one_source(index, source);
+        if let Some(stored) = &entry.annotation_diags {
+            annotation_diags.extend(stored.iter().cloned());
+        }
+        let parse_result = entry.parse_result.clone();
+        let nl_index = entry.newline_index.clone();
 
         si_map.insert(nl_index.file.clone(), nl_index.clone());
         if let Some(err) = &parse_result.error {
@@ -14141,7 +14259,7 @@ fn parse_module_node_from_index_source(
     note_source_hash(index, &source);
     let cached = index.parse_cache.borrow().get(&source.path).cloned();
     let (parse_result, nl_index) = match cached {
-        Some(entry) => entry,
+        Some(entry) => (entry.parse_result, entry.newline_index),
         None => {
             let tokens =
                 v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
@@ -14154,12 +14272,16 @@ fn parse_module_node_from_index_source(
             });
             let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
             *index.intern_table.borrow_mut() = parsed.intern_table.clone();
-            let entry = (parsed.result.clone(), nl_index.clone());
+            let entry = ParseCacheEntry {
+                parse_result: parsed.result.clone(),
+                newline_index: nl_index.clone(),
+                annotation_diags: None,
+            };
             index
                 .parse_cache
                 .borrow_mut()
                 .insert(source.path.clone(), entry.clone());
-            entry
+            (entry.parse_result, entry.newline_index)
         }
     };
     if let Some(err) = &parse_result.error {
