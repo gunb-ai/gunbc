@@ -1,0 +1,152 @@
+module test.claim.altra_attachment_stack_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.integer { Int }
+import product.altra_motherboard.attachment_stack {
+  AttachmentLayer,
+  AttachmentLayerStanding,
+  BoardLandPatternLayer,
+  LayerBlocker,
+  NdaGated,
+  NeedsARedistributionDecision,
+  NeedsCommercialAccess,
+  NeedsSomeoneToFindTheDocument,
+  ProcessorPackageLayer,
+  PubliclyCited,
+  PublicButRedistributionUndecided,
+  SocketLayer,
+  Unresolved,
+  attachment_layer_name,
+  attachment_stack,
+  board_land_pattern_standing,
+  board_side_termination_population,
+  layer_blocker,
+  open_blockers,
+  processor_package_standing,
+  reference_board_collateral_standing,
+  standing_is_established,
+}
+import extdeps.cpu.ampere_altra_package {
+  altra_pin_summary_total,
+  altra_declared_contact_count,
+  altra_signal_pin_count,
+  altra_power_and_ground_pin_count,
+  altra_reserved_pin_count,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn blocker_kind(b: LayerBlocker) -> String {
+  match b {
+    NeedsSomeoneToFindTheDocument { layer: _, what_is_missing: _ } => "find-document"
+    NeedsARedistributionDecision { layer: _, footer: _ } => "redistribution"
+    NeedsCommercialAccess { layer: _, subject: _, access_route: _ } => "commercial"
+  }
+}
+
+fn blocker_layer(b: LayerBlocker) -> AttachmentLayer {
+  match b {
+    NeedsSomeoneToFindTheDocument { layer: l, what_is_missing: _ } => l
+    NeedsARedistributionDecision { layer: l, footer: _ } => l
+    NeedsCommercialAccess { layer: l, subject: _, access_route: _ } => l
+  }
+}
+
+fn count_of(xs: List<LayerBlocker>) -> Int {
+  fold(xs, init: 0, f: fn(acc, _b) { acc + 1 })
+}
+
+// THE COMPLETENESS AUTHORITY CROSS-FOOTS. 1960 signal plus 2927 power and ground plus 39 reserved
+// is 4926, and that total must equal the socket's declared contact count reached through a
+// different path — the CPU catalog row. Two independent routes to one population is what makes
+// this a join rather than a number someone typed twice.
+test fn w_the_contact_population_cross_foots_at_4926() -> Bool {
+  altra_pin_summary_total() == 4926
+    && altra_declared_contact_count() == 4926
+    && altra_signal_pin_count + altra_power_and_ground_pin_count + altra_reserved_pin_count == altra_declared_contact_count()
+}
+
+// The population is the ONE fact that crosses the socket boundary: however the socket terminates,
+// a 4926-contact processor needs 4926 board-side terminations. The geometry does not cross, which
+// is the next test.
+test fn w_the_board_side_termination_population_follows_the_package() -> Bool {
+  board_side_termination_population() == 4926
+}
+
+// THE CENTRAL CLAIM. The board land pattern is NOT established, and specifically it is not
+// established by the processor package being public. Those are different layers with different
+// authorities, and the package drawing sitting in an already-cited datasheet is exactly what
+// makes the conflation tempting.
+test fn w_a_public_package_does_not_establish_the_board_land_pattern() -> Bool {
+  !standing_is_established(s: processor_package_standing.standing)
+    && !standing_is_established(s: board_land_pattern_standing.standing)
+    && match board_land_pattern_standing.standing {
+      Unresolved { what_is_missing: _ } => true
+      PubliclyCited { authority: _ } => false
+      PublicButRedistributionUndecided { authority: _, footer: _ } => false
+      NdaGated { subject: _, access_route: _ } => false
+    }
+}
+
+// THREE CATEGORIES, DISTINGUISHED BY WHO ACTS. An unresolved authority is someone reading a
+// datasheet, a redistribution question is a legal decision, an NDA gate is a commercial
+// relationship. If these collapsed to one "not ready" state the tractable blockers would be
+// indistinguishable from the intractable one — which is precisely the error that once had this
+// repository declaring a public pin map NDA-only.
+// THE SUBJECT AND THE ROUTE ARE DIFFERENT FACTS, and this asserts they have not been
+// swapped. An earlier revision put the subject label into the route field, so a consumer
+// asking WHERE to obtain the collateral was told WHAT it is. Both are checked, and the
+// route is checked as an authority rather than as text — which is what makes the swap
+// unwritable now rather than merely absent.
+test fn w_the_three_blocker_kinds_are_distinct() -> Bool {
+  let package_blocker = match layer_blocker(row: processor_package_standing) {
+    Absent => "none"
+    Present { value: b } => blocker_kind(b: b)
+  }
+  let land_blocker = match layer_blocker(row: board_land_pattern_standing) {
+    Absent => "none"
+    Present { value: b } => blocker_kind(b: b)
+  }
+  package_blocker == "redistribution"
+    && land_blocker == "find-document"
+    && match reference_board_collateral_standing() {
+      NdaGated { subject: sub, access_route: route } =>
+        list_length(items: split(s: sub as String, delimiter: "Mt. Jade")) > 1
+          && (route.uri.locator as String) == "amperecomputing.com/home/customer-reference-boards"
+      PubliclyCited { authority: _ } => false
+      PublicButRedistributionUndecided { authority: _, footer: _ } => false
+      Unresolved { what_is_missing: _ } => false
+    }
+}
+
+// THE NDA BOUNDARY IS THE REFERENCE BOARDS, NOT THE PACKAGE. Stated as an executed comparison
+// rather than as prose, because the prose version of this claim was already believed once while
+// being false.
+test fn w_the_nda_boundary_covers_board_collateral_only() -> Bool {
+  let nda_layers = fold(attachment_stack, init: 0, f: fn(acc, row) {
+    match row.standing {
+      NdaGated { subject: _, access_route: _ } => acc + 1
+      PubliclyCited { authority: _ } => acc
+      PublicButRedistributionUndecided { authority: _, footer: _ } => acc
+      Unresolved { what_is_missing: _ } => acc
+    }
+  })
+  nda_layers == 0
+}
+
+// SIX LAYERS, SIX BLOCKERS, NONE ESTABLISHED — and this is the honest state of the attachment
+// stack today rather than a target. It is asserted by count so that establishing one layer moves
+// the number instead of silently satisfying a name.
+test fn w_every_attachment_layer_is_open_and_says_why() -> Bool {
+  let layers = fold(attachment_stack, init: 0, f: fn(acc, _r) { acc + 1 })
+  layers == 6 && count_of(xs: open_blockers()) == 6
+}
+
+// The layers are distinguishable rather than six spellings of one thing.
+test fn w_the_layers_are_named_distinctly() -> Bool {
+  (attachment_layer_name(l: ProcessorPackageLayer) as String) == "processor package"
+    && (attachment_layer_name(l: SocketLayer) as String) == "socket"
+    && (attachment_layer_name(l: BoardLandPatternLayer) as String) == "board land pattern"
+    && (attachment_layer_name(l: ProcessorPackageLayer) as String) != (attachment_layer_name(l: BoardLandPatternLayer) as String)
+}

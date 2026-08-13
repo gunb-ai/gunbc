@@ -10,10 +10,11 @@ import std.checked_arithmetic {
   int_inclusive_max, int_inclusive_min,
 }
 import std.measure {
-  millimeter_count, signed_millimeter_component_count,
+  millimeter_count,
   square_millimeter_count, signed_square_millimeter_count,
 }
 import std.affine_space {
+  signed_frame_component_count,
   Vector3, Point3, vector3, point3, zero_vector3,
   translate_point3, displacement_between3, add_vector3, subtract_vector3,
   negate_vector3, scale_vector3, rotate_quarter_turns_about_z,
@@ -25,6 +26,8 @@ import std.affine_space {
   TransformSourceFrameRequired, TransformTranslationInDestinationRequired,
   ProjectionSourceFrameRequired,
 }
+import std.spatial_frame { SpatialFrameRegistry, empty_frame_registry, register_frame, registry_with, FrameRegistered, FrameRegistrationRefused }
+import std.measure { Milli, Micro }
 import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity, coordinate_frame_identity_eq }
 import std.euclidean_geometry {
   ExactLength, LengthExact, LengthRootUnresolvedInExactKernel,
@@ -40,6 +43,16 @@ import std.euclidean_geometry {
 // records the full account. The room's origin is its southwest floor corner, the building's is
 // elsewhere, and a coordinate means nothing without saying which.
 fn room() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 1) }
+
+// THE METRIC OPERATIONS NOW ASK THE REGISTRY WHAT THE FRAME'S QUANTUM IS, because they are the
+// operations that put a millimetre label back on a unit-neutral component. This registry declares
+// the room in millimetres, which is what makes that label true here.
+fn mm_registry() -> SpatialFrameRegistry {
+  match register_frame(r: empty_frame_registry(), identity: room(), length_scale: Milli) {
+    FrameRegistered { frame: f } => registry_with(r: empty_frame_registry(), f: f)
+    FrameRegistrationRefused { cause: _ } => empty_frame_registry()
+  }
+}
 fn building() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 2) }
 
 fn desk_a() -> Point3 { point3(frame: room(), x: 1200, y: 800, z: 0) }
@@ -49,15 +62,15 @@ fn desk_a() -> Point3 { point3(frame: room(), x: 1200, y: 800, z: 0) }
 fn desk_b() -> Point3 { point3(frame: room(), x: 0 - 300, y: 2600, z: 0) }
 
 fn vector_equals(a: Vector3, b: Vector3) -> Bool {
-  signed_millimeter_component_count(m: a.x) == signed_millimeter_component_count(m: b.x)
-    && signed_millimeter_component_count(m: a.y) == signed_millimeter_component_count(m: b.y)
-    && signed_millimeter_component_count(m: a.z) == signed_millimeter_component_count(m: b.z)
+  signed_frame_component_count(c: a.x) == signed_frame_component_count(c: b.x)
+    && signed_frame_component_count(c: a.y) == signed_frame_component_count(c: b.y)
+    && signed_frame_component_count(c: a.z) == signed_frame_component_count(c: b.z)
 }
 
 fn point_equals(a: Point3, b: Point3) -> Bool {
-  signed_millimeter_component_count(m: a.x) == signed_millimeter_component_count(m: b.x)
-    && signed_millimeter_component_count(m: a.y) == signed_millimeter_component_count(m: b.y)
-    && signed_millimeter_component_count(m: a.z) == signed_millimeter_component_count(m: b.z)
+  signed_frame_component_count(c: a.x) == signed_frame_component_count(c: b.x)
+    && signed_frame_component_count(c: a.y) == signed_frame_component_count(c: b.y)
+    && signed_frame_component_count(c: a.z) == signed_frame_component_count(c: b.z)
 }
 
 // THE READY SIDE IS ASSERTED, NEVER ASSUMED. Every claim below that expects an ordinary
@@ -80,7 +93,7 @@ fn ready_point_equals(r: SpatialResult<Point3>, b: Point3) -> Bool {
 }
 
 fn norm_squared_is(v: Vector3, expected: Nat) -> Bool {
-  match norm_squared3(v: v) {
+  match norm_squared3(registry: mm_registry(), v: v) {
     SpatialArithmeticRefused { cause: _ } => false
     SpatialFrameRefused { refusal: _ } => false
     SpatialReady { value: s } => square_millimeter_count(m: s) == expected
@@ -159,7 +172,7 @@ fn witness_norm_squared_is_exact() -> Bool {
   norm_squared_is(v: vector3(frame: room(), x: 3, y: 4, z: 0), expected: 25)
     && norm_squared_is(v: vector3(frame: room(), x: 0 - 3, y: 0 - 4, z: 0), expected: 25)
     && norm_squared_is(v: zero_vector3(frame: room()), expected: 0)
-    && match distance_squared3(from: desk_a(), to: desk_b()) {
+    && match distance_squared3(registry: mm_registry(), from: desk_a(), to: desk_b()) {
          SpatialArithmeticRefused { cause: _ } => false
          SpatialFrameRefused { refusal: _ } => false
          SpatialReady { value: s } =>
@@ -170,7 +183,7 @@ fn witness_norm_squared_is_exact() -> Bool {
 // THE NUMERIC POLICY, made executable. Axis-aligned magnitudes are exact; a diagonal is UNRESOLVED
 // and carries the exact squared magnitude so a richer kernel can finish.
 fn witness_norm_exact_on_axis_unresolved_on_diagonal() -> Bool {
-  match norm3(v: vector3(frame: room(), x: 0, y: 0 - 2500, z: 0)) {
+  match norm3(registry: mm_registry(), v: vector3(frame: room(), x: 0, y: 0 - 2500, z: 0)) {
     SpatialArithmeticRefused { cause: _ } => false
     SpatialFrameRefused { refusal: _ } => false
     SpatialReady { value: l } =>
@@ -179,7 +192,7 @@ fn witness_norm_exact_on_axis_unresolved_on_diagonal() -> Bool {
         LengthRootUnresolvedInExactKernel { squared: _, reason: _ } => false
       }
   }
-    && match norm3(v: vector3(frame: room(), x: 3, y: 4, z: 0)) {
+    && match norm3(registry: mm_registry(), v: vector3(frame: room(), x: 3, y: 4, z: 0)) {
          SpatialArithmeticRefused { cause: _ } => false
          SpatialFrameRefused { refusal: _ } => false
          SpatialReady { value: l } =>
@@ -189,7 +202,7 @@ fn witness_norm_exact_on_axis_unresolved_on_diagonal() -> Bool {
                square_millimeter_count(m: s) == 25
            }
        }
-    && match distance3(from: desk_a(), to: desk_b()) {
+    && match distance3(registry: mm_registry(), from: desk_a(), to: desk_b()) {
          SpatialArithmeticRefused { cause: _ } => false
          SpatialFrameRefused { refusal: _ } => false
          SpatialReady { value: l } =>
@@ -204,12 +217,12 @@ fn witness_norm_exact_on_axis_unresolved_on_diagonal() -> Bool {
 // Comparison needs no square root, and is exact where norm leaves the magnitude unresolved.
 fn witness_comparison_resolves_where_norm_does_not() -> Bool {
   ready_bool_is(
-    r: closer_than3(a_from: point3(frame: room(), x: 0, y: 0, z: 0), a_to: point3(frame: room(), x: 3, y: 4, z: 0),
+    r: closer_than3(registry: mm_registry(), a_from: point3(frame: room(), x: 0, y: 0, z: 0), a_to: point3(frame: room(), x: 3, y: 4, z: 0),
                     b_from: point3(frame: room(), x: 0, y: 0, z: 0), b_to: point3(frame: room(), x: 30, y: 40, z: 0)),
     expected: true,
   )
     && ready_bool_is(
-         r: closer_than3(a_from: point3(frame: room(), x: 0, y: 0, z: 0), a_to: point3(frame: room(), x: 30, y: 40, z: 0),
+         r: closer_than3(registry: mm_registry(), a_from: point3(frame: room(), x: 0, y: 0, z: 0), a_to: point3(frame: room(), x: 30, y: 40, z: 0),
                          b_from: point3(frame: room(), x: 0, y: 0, z: 0), b_to: point3(frame: room(), x: 3, y: 4, z: 0)),
          expected: false,
        )
@@ -218,7 +231,7 @@ fn witness_comparison_resolves_where_norm_does_not() -> Bool {
 // Zero has magnitude but no direction: a DIFFERENT arm from "this kernel did not resolve it", and
 // both are different again from "the machine could not compute it".
 fn witness_normalize_separates_no_direction_from_unresolved() -> Bool {
-  match normalize3(v: zero_vector3(frame: room())) {
+  match normalize3(registry: mm_registry(), v: zero_vector3(frame: room())) {
     SpatialArithmeticRefused { cause: _ } => false
     SpatialFrameRefused { refusal: _ } => false
     SpatialReady { value: d } =>
@@ -228,7 +241,7 @@ fn witness_normalize_separates_no_direction_from_unresolved() -> Bool {
         DirectionUnresolvedInAxisKernel { squared_magnitude: _, reason: _ } => false
       }
   }
-    && match normalize3(v: vector3(frame: room(), x: 0, y: 0 - 900, z: 0)) {
+    && match normalize3(registry: mm_registry(), v: vector3(frame: room(), x: 0, y: 0 - 900, z: 0)) {
          SpatialArithmeticRefused { cause: _ } => false
          SpatialFrameRefused { refusal: _ } => false
          SpatialReady { value: d } =>
@@ -238,7 +251,7 @@ fn witness_normalize_separates_no_direction_from_unresolved() -> Bool {
              DirectionUnresolvedInAxisKernel { squared_magnitude: _, reason: _ } => false
            }
        }
-    && match normalize3(v: vector3(frame: room(), x: 3, y: 4, z: 0)) {
+    && match normalize3(registry: mm_registry(), v: vector3(frame: room(), x: 3, y: 4, z: 0)) {
          SpatialArithmeticRefused { cause: _ } => false
          SpatialFrameRefused { refusal: _ } => false
          SpatialReady { value: d } =>
@@ -260,7 +273,7 @@ fn witness_dot_and_cross_are_exact_and_dimensioned() -> Bool {
   let v = vector3(frame: room(), x: 0, y: 1000, z: 0)
   dot_is(a: u, b: v, expected: 0)
     && dot_is(a: u, b: u, expected: 1000000)
-    && match cross3(a: u, b: v) {
+    && match cross3(registry: mm_registry(), a: u, b: v) {
          SpatialArithmeticRefused { cause: _ } => false
          SpatialFrameRefused { refusal: _ } => false
          SpatialReady { value: c } => area_vector_equals(a: c, x: 0, y: 0, z: 1000000)
@@ -273,7 +286,7 @@ fn witness_dot_and_cross_are_exact_and_dimensioned() -> Bool {
 }
 
 fn dot_is(a: Vector3, b: Vector3, expected: Int) -> Bool {
-  match dot3(a: a, b: b) {
+  match dot3(registry: mm_registry(), a: a, b: b) {
     SpatialFrameRefused { refusal: _ } => false
     SpatialArithmeticRefused { cause: _ } => false
     SpatialReady { value: d } => signed_square_millimeter_count(m: d) == expected
@@ -314,9 +327,9 @@ fn witness_transform_crosses_frames_exactly() -> Bool {
     SpatialFrameRefused { refusal: _ } => false
     SpatialArithmeticRefused { cause: _ } => false
     SpatialReady { value: moved } =>
-      signed_millimeter_component_count(m: moved.x) == 10000
-        && signed_millimeter_component_count(m: moved.y) == 21000
-        && signed_millimeter_component_count(m: moved.z) == 500
+      signed_frame_component_count(c: moved.x) == 10000
+        && signed_frame_component_count(c: moved.y) == 21000
+        && signed_frame_component_count(c: moved.z) == 500
         && coordinate_frame_identity_eq(a: moved.frame, b: building())
   }
 }
@@ -341,6 +354,7 @@ fn relation_is_same_frame(r: SpatialFrameRelation) -> Bool {
   match r {
     SameFrameOperandsRequired => true
     TransformSourceFrameRequired => false
+    MillimetreFrameRequired => false
     TransformTranslationInDestinationRequired => false
     ProjectionSourceFrameRequired => false
   }
@@ -350,6 +364,7 @@ fn relation_is_transform_source(r: SpatialFrameRelation) -> Bool {
   match r {
     SameFrameOperandsRequired => false
     TransformSourceFrameRequired => true
+    MillimetreFrameRequired => false
     TransformTranslationInDestinationRequired => false
     ProjectionSourceFrameRequired => false
   }
@@ -386,9 +401,9 @@ fn witness_same_frame_operations_still_answer() -> Bool {
   match displacement_between3(from: a, to: b) {
     SpatialFrameRefused { refusal: _ } => false
     SpatialReady { value: d } =>
-      signed_millimeter_component_count(m: d.x) == 10
-        && signed_millimeter_component_count(m: d.y) == 20
-        && signed_millimeter_component_count(m: d.z) == 30
+      signed_frame_component_count(c: d.x) == 10
+        && signed_frame_component_count(c: d.y) == 20
+        && signed_frame_component_count(c: d.z) == 30
         && coordinate_frame_identity_eq(a: d.frame, b: room())
     _ => false
   }
@@ -451,12 +466,12 @@ fn witness_each_operation_refuses_at_its_own_bound() -> Bool {
          SpatialArithmeticRefused { cause: c } => operation_equals(a: c.operation, b: IntegerSubtract)
          SpatialFrameRefused { refusal: _ } => false
        }
-    && match norm_squared3(v: vector3(frame: room(), x: 4000000000, y: 0, z: 0)) {
+    && match norm_squared3(registry: mm_registry(), v: vector3(frame: room(), x: 4000000000, y: 0, z: 0)) {
          SpatialReady { value: _ } => false
          SpatialArithmeticRefused { cause: c } => operation_equals(a: c.operation, b: IntegerMultiply)
          SpatialFrameRefused { refusal: _ } => false
        }
-    && match dot3(a: vector3(frame: room(), x: 3000000000, y: 3000000000, z: 0), b: vector3(frame: room(), x: 3000000000, y: 3000000000, z: 0)) {
+    && match dot3(registry: mm_registry(), a: vector3(frame: room(), x: 3000000000, y: 3000000000, z: 0), b: vector3(frame: room(), x: 3000000000, y: 3000000000, z: 0)) {
          SpatialReady { value: _ } => false
          SpatialArithmeticRefused { cause: c } => operation_equals(a: c.operation, b: IntegerAdd)
          SpatialFrameRefused { refusal: _ } => false
@@ -551,7 +566,8 @@ fn witness_transform_translation_must_be_in_destination_frame() -> Bool {
       coordinate_frame_identity_eq(a: fr.left_frame, b: building())
         && coordinate_frame_identity_eq(a: fr.right_frame, b: room())
         && match fr.relation {
-          TransformTranslationInDestinationRequired => true
+          MillimetreFrameRequired => false
+    TransformTranslationInDestinationRequired => true
           SameFrameOperandsRequired => false
           TransformSourceFrameRequired => false
           ProjectionSourceFrameRequired => false
@@ -581,4 +597,71 @@ test fn affine_space_witnesses() -> Bool {
     && witness_each_operation_refuses_at_its_own_bound()
     && witness_refusal_carries_its_operands()
     && witness_bound_is_reached_not_merely_approached()
+}
+
+// A MICROMETRE FRAME REFUSES RATHER THAN ANSWERING IN MILLIMETRES. This is the wall, and the
+// number is chosen so the lie would be maximally plausible: a vector of a thousand micrometre
+// counts along one axis is a real board-scale displacement, and the unguarded arithmetic returned
+// millimeter(1000) for it - arithmetic that is right, a label that is wrong by a factor of a
+// thousand, and nothing about the result that looks suspicious. The millimetre frame is the
+// positive control on the same vector, so this asserts the frame decides the outcome rather than
+// the operation refusing everything.
+fn micro_registry() -> SpatialFrameRegistry {
+  match register_frame(r: empty_frame_registry(), identity: room(), length_scale: Micro) {
+    FrameRegistered { frame: f } => registry_with(r: empty_frame_registry(), f: f)
+    FrameRegistrationRefused { cause: _ } => empty_frame_registry()
+  }
+}
+
+// AND AN UNREGISTERED FRAME REFUSES TOO, because a frame with no declared quantum has no unit to
+// check the label against - assuming the default is the convention this layer exists to remove.
+// CROSS PRODUCT IS THE SAME WALL, censused rather than waited for: it labels THREE components
+// in square millimetres, so an unguarded micrometre frame mislabels a whole vector at once.
+test fn w_metric_operations_refuse_a_frame_they_cannot_label() -> Bool {
+  let v = vector3(frame: room(), x: 1000, y: 0, z: 0)
+  let refused_in_micrometres = match norm3(registry: micro_registry(), v: v) {
+    SpatialFrameRefused { refusal: r } =>
+      match r.relation {
+        MillimetreFrameRequired => true
+        SameFrameOperandsRequired => false
+        TransformSourceFrameRequired => false
+        TransformTranslationInDestinationRequired => false
+        ProjectionSourceFrameRequired => false
+      }
+    SpatialReady { value: _ } => false
+    SpatialArithmeticRefused { cause: _ } => false
+  }
+  let answered_in_millimetres = match norm3(registry: mm_registry(), v: v) {
+    SpatialReady { value: l } =>
+      match l {
+        LengthExact { value: mm } => millimeter_count(m: mm) == 1000
+        LengthRootUnresolvedInExactKernel { squared: _, reason: _ } => false
+      }
+    SpatialFrameRefused { refusal: _ } => false
+    SpatialArithmeticRefused { cause: _ } => false
+  }
+  let refused_when_unregistered = match norm3(registry: empty_frame_registry(), v: v) {
+    SpatialFrameRefused { refusal: _ } => true
+    SpatialReady { value: _ } => false
+    SpatialArithmeticRefused { cause: _ } => false
+  }
+  let cross_refused_in_micrometres = match cross3(registry: micro_registry(), a: v, b: vector3(frame: room(), x: 0, y: 1000, z: 0)) {
+    SpatialFrameRefused { refusal: r } =>
+      match r.relation {
+        MillimetreFrameRequired => true
+        SameFrameOperandsRequired => false
+        TransformSourceFrameRequired => false
+        TransformTranslationInDestinationRequired => false
+        ProjectionSourceFrameRequired => false
+      }
+    SpatialReady { value: _ } => false
+    SpatialArithmeticRefused { cause: _ } => false
+  }
+  let cross_answers_in_millimetres = match cross3(registry: mm_registry(), a: v, b: vector3(frame: room(), x: 0, y: 1000, z: 0)) {
+    SpatialReady { value: av } => signed_square_millimeter_count(m: av.z) == 1000000
+    SpatialFrameRefused { refusal: _ } => false
+    SpatialArithmeticRefused { cause: _ } => false
+  }
+  refused_in_micrometres && answered_in_millimetres && refused_when_unregistered
+    && cross_refused_in_micrometres && cross_answers_in_millimetres
 }

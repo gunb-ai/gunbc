@@ -6,6 +6,7 @@ import extdeps.boards.types { AsrockRackAltrad8ud1l2t }
 import extdeps.firmware.types {
   BmcController,
   FirmwarePrerequisiteObservation,
+  FirmwareSemanticVersion,
   HostBios,
   NoFirmwarePrerequisite,
   OpenBmcWebUiTar,
@@ -64,9 +65,13 @@ data reversed_evidence: List<FirmwarePrerequisiteObservation> = [
 // asserting otherwise is what made it look already checked. The minimum now
 // comes from the release row itself, so editing the catalog moves the tests.
 //
-// The RED controls below deliberately do NOT join: a falsifying probe is an
-// authored input chosen to contradict the evidence, not an oracle, and joining
-// it to the catalog would make it unauthorable.
+// The two halves of a RED control are governed differently, and conflating them
+// is what an earlier revision of this note did. Its falsifying INPUT -- the
+// minimum deliberately set above or below the evidence -- stays authored, because
+// a probe chosen to contradict the catalog would be unauthorable if joined to it.
+// Its EXPECTED value is an oracle like any other and joins to the row that
+// supplies it, so a control asserting which version was refused reads that from
+// the refusal row rather than transcribing it.
 fn verdict_against_declared_minimum(
   observations: List<FirmwarePrerequisiteObservation>,
 ) -> PrerequisiteEvidenceVerdict {
@@ -77,10 +82,26 @@ fn verdict_against_declared_minimum(
   }
 }
 
-// The bounds the EXECUTED pair establishes: refused at 2.07.00, accepted at
-// 3.22.00. Held once and applied to several orderings below, so an ordering
-// that answered differently could not be papered over by a second copy of the
-// expected numbers.
+fn same_firmware_version(a: FirmwareSemanticVersion, b: FirmwareSemanticVersion) -> Bool {
+  a.major == b.major && a.minor == b.minor && a.patch == b.patch
+}
+
+// The bounds the EXECUTED pair establishes, JOINED to the observation rows that
+// establish them rather than transcribed. Held once and applied to several
+// orderings below, so an ordering that answered differently could not be papered
+// over by a second copy of the expected numbers.
+//
+// The join is the point, not a stylistic preference (DESIGN §5 test-oracle rule,
+// and the same pattern this file already uses for the declared minimum): written
+// as literals, `2/7` and `3/22` were a second copy of two numbers whose single
+// authority is the gating_version on each row. Re-flashing at a different version
+// would move the rows and leave this witness green until someone remembered to
+// edit it -- exactly the failure this PR removes from the minimum path. Caught in
+// review 51524.
+//
+// Joining does NOT weaken the discrimination, which is what makes it safe here:
+// both orderings below carry a THIRD, lower refusal at 1.00.00, so a first-wins
+// fold reports that instead of the refused row's own 2.07.00 and still fails.
 fn bounds_are_the_executed_pair(
   observations: List<FirmwarePrerequisiteObservation>,
 ) -> Bool {
@@ -90,7 +111,8 @@ fn bounds_are_the_executed_pair(
         Present { value: rv } =>
           match a {
             Present { value: av } =>
-              rv.major == 2 && rv.minor == 7 && av.major == 3 && av.minor == 22
+              same_firmware_version(a: rv, b: asrock_altrad8ud_bios_310_push_refused_at_bmc_207.gating_version)
+                && same_firmware_version(a: av, b: asrock_altrad8ud_bios_310_push_accepted_at_bmc_322.gating_version)
             Absent => false
           }
         Absent => false
@@ -119,7 +141,10 @@ test fn the_bounds_do_not_depend_on_authoring_order() -> Bool {
 
 // A bound with no observation behind it is ABSENT, never filled in from the
 // declared minimum. Acceptance-only evidence has no refusal to report, and
-// reporting one would fabricate a push that never happened.
+// reporting one would fabricate a push that never happened. The acceptance bound
+// is joined to the single row supplied as evidence, so the claim is that the fold
+// REPORTS that row's own gating_version -- not that it happens to match a number
+// transcribed here (review 51524).
 test fn an_acceptance_only_history_reports_no_refusal_bound() -> Bool {
   match verdict_against_declared_minimum(
     observations: [asrock_altrad8ud_bios_310_push_accepted_at_bmc_322],
@@ -128,7 +153,8 @@ test fn an_acceptance_only_history_reports_no_refusal_bound() -> Bool {
       match r {
         Absent =>
           match a {
-            Present { value: av } => av.major == 3 && av.minor == 22
+            Present { value: av } =>
+              same_firmware_version(a: av, b: asrock_altrad8ud_bios_310_push_accepted_at_bmc_322.gating_version)
             Absent => false
           }
         Present { value: _ } => false
@@ -146,7 +172,7 @@ test fn a_minimum_above_the_accepting_version_is_contradicted() -> Bool {
     observations: asrock_altrad8ud_bios_openbmc_prerequisite_evidence,
   ) {
     PrerequisiteContradictedByAcceptanceBelowMinimum { accepted_at: a } =>
-      a.major == 3 && a.minor == 22
+      same_firmware_version(a: a, b: asrock_altrad8ud_bios_310_push_accepted_at_bmc_322.gating_version)
     _ => false
   }
 }
@@ -161,7 +187,7 @@ test fn a_minimum_at_or_below_the_refusing_version_is_contradicted() -> Bool {
     observations: asrock_altrad8ud_bios_openbmc_prerequisite_evidence,
   ) {
     PrerequisiteContradictedByRefusalAtOrAboveMinimum { refused_at: r } =>
-      r.major == 2 && r.minor == 7
+      same_firmware_version(a: r, b: asrock_altrad8ud_bios_310_push_refused_at_bmc_207.gating_version)
     _ => false
   }
 }

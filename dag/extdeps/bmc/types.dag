@@ -177,11 +177,7 @@ fn bmc_redfish_surface_for(
   if count == 0 {
     SurfaceShapeUncatalogued { firmware: firmware }
   } else if count == 1 {
-    fold(
-      matches,
-      init: SurfaceShapeUncatalogued { firmware: firmware },
-      f: (acc, row) => SurfaceShapeKnown { shape: row.shape },
-    )
+    SurfaceShapeKnown { shape: matches.first().shape }
   } else {
     SurfaceShapeAmbiguous { firmware: firmware, matches: count }
   }

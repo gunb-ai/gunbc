@@ -1,0 +1,381 @@
+module product.compute_board.device_binding
+
+import std.types { String, NonEmptyStr, List }
+import std.nat { Nat }
+import product.compute_board.admission {
+  AdmittedBoardPowerInterfaceArticle,
+  admitted_article,
+}
+import product.compute_board.article { BoardArticleIdentity }
+import product.compute_board.digital_control {
+  conditioned_good_signal,
+  fault_signal,
+  power_permit_signal,
+  reset_release_signal,
+  DigitalControlIntent,
+  DigitalSignal,
+  SignalName,
+  signal_names_equal,
+  intent_declares_signal,
+}
+import product.compute_board.verilog_projection { VerilogBinding }
+import product.compute_board.contact_population {
+  ConfigurationContacts,
+  ContactPopulation,
+  PlaceableLogicPins,
+  PopulationComparison,
+  PopulationsAgree,
+  PopulationsDisagree,
+  PopulationsNotComparable,
+  VendorGeneralPurposeIo,
+  compare_populations,
+  placeable_from_vendor_categories,
+  project_population,
+}
+import extdeps.programmable_logic.ice40.subject {
+  Ice40BankPopulation,
+  Ice40Device,
+  Ice40Package,
+  bank_population_general_purpose,
+  bank_population_total,
+  ice40_hx1k,
+  ice40_hx1k_tq144_banks,
+  ice40_tq144_package,
+}
+import extdeps.toolchain.icestorm.subject {
+  IcestormPackagePinRoster,
+  icestorm_hx1k_tq144_roster,
+  roster_admits_pin,
+  roster_pin_count,
+}
+import v2.extdeps.formats.icestorm_pcf {
+  PcfConstraints,
+  PcfEmission,
+  PcfEmitted,
+  PcfEmissionRefused,
+  PcfPin,
+  PcfPortName,
+  PcfStatement,
+  SetIo,
+  pcf_emit,
+}
+
+data device_binding_note: String = "THE PIN CHAIN, AND THE COPIED STRING IT EXISTS TO MAKE IMPOSSIBLE. A signal reaches a package pin through four separate facts, each owned somewhere else: the article declares a logical signal, the Verilog binding table says how this target spells it, this module says which package pin it lands on, and the package roster says whether that pin exists. The tempting shape is a constraint file authored beside the Verilog with the port name typed in again — and it works, right up until one of the two spellings changes and the design is placed on the wrong pin with every artifact still looking correct. So the constraint's port name is READ FROM the Verilog binding rather than authored here: there is no field in this module that could disagree with it. WHAT IS REFUSED, and each is a defect that produces a working-looking artifact rather than an error: a pin no package roster admits, because nextpnr would reject it late or place it somewhere else; two signals on one pin, which is a short at the package boundary; one signal on two pins, which is ambiguous and would be resolved by list order; a bound signal the article never declared; and — the one an author is most likely to miss — an article signal with NO pin, because the emitted constraint file would simply not mention it and the tool would place it wherever it liked."
+
+// A logical signal to a package position. The pin is the package's own designator, carried as
+// authored: whether it exists is the roster's answer, not this type's.
+type DevicePinAssignment {
+  signal: SignalName
+  pin: NonEmptyStr
+}
+
+// The device a board article is implemented on. Device, package and roster travel together
+// because a pin roster is a fact about a (device, package) pair rather than about either alone,
+// and a binding checked against the wrong package's roster is checked against nothing.
+type ProgrammableDeviceRealization {
+  device: Ice40Device
+  package_carrier: Ice40Package
+  banks: Ice40BankPopulation
+  roster: IcestormPackagePinRoster
+}
+
+type PinChainRefusal
+  = PinNotOnPackage { signal: NonEmptyStr, pin: NonEmptyStr }
+  | PinAssignedToSeveralSignals { pin: NonEmptyStr }
+  | SignalAssignedToSeveralPins { signal: NonEmptyStr }
+  | AssignedSignalNotDeclared { signal: NonEmptyStr }
+  | DeclaredSignalHasNoPin { signal: NonEmptyStr }
+  | SignalHasNoTargetSpelling { signal: NonEmptyStr }
+  | ConstraintNotEmittable { reason: NonEmptyStr }
+
+type PinChainRefusalSet {
+  first: PinChainRefusal
+  rest: List<PinChainRefusal>
+}
+
+type PinConstraintReceipt {
+  source_article: BoardArticleIdentity
+  device: NonEmptyStr
+  package_designator: NonEmptyStr
+  source: String
+}
+
+type PinConstraintProjection
+  = PinConstraintsEmitted { receipt: PinConstraintReceipt }
+  | PinConstraintsRefused { causes: PinChainRefusalSet }
+
+fn assignment_count_for_signal(assignments: List<DevicePinAssignment>, name: SignalName) -> Nat {
+  fold(assignments, init: 0, f: fn(acc, a) {
+    if signal_names_equal(a: a.signal, b: name) { acc + 1 } else { acc }
+  })
+}
+
+fn assignment_count_for_pin(assignments: List<DevicePinAssignment>, pin: NonEmptyStr) -> Nat {
+  fold(assignments, init: 0, f: fn(acc, a) {
+    if (a.pin as String) == (pin as String) { acc + 1 } else { acc }
+  })
+}
+
+fn pin_for_signal(assignments: List<DevicePinAssignment>, name: SignalName) -> NonEmptyStr? {
+  fold(assignments, init: none, f: fn(acc, a) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => if signal_names_equal(a: a.signal, b: name) { Present { value: a.pin } } else { none }
+    }
+  })
+}
+
+// The port name is the VERILOG binding's spelling. Nothing in this module can supply one, which
+// is what makes the constraint file and the module declaration incapable of disagreeing.
+fn target_spelling_for(bindings: List<VerilogBinding>, name: SignalName) -> String? {
+  fold(bindings, init: none, f: fn(acc, b) {
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => if signal_names_equal(a: b.signal, b: name) { Present { value: b.spelling } } else { none }
+    }
+  })
+}
+
+fn assignment_refusals(
+  realization: ProgrammableDeviceRealization,
+  control: DigitalControlIntent,
+  bindings: List<VerilogBinding>,
+  assignments: List<DevicePinAssignment>
+) -> List<PinChainRefusal> {
+  fold(assignments, init: [], f: fn(acc, a) {
+    let on_package = if roster_admits_pin(r: realization.roster, pin: a.pin) {
+      []
+    } else {
+      [PinNotOnPackage { signal: a.signal as NonEmptyStr, pin: a.pin }]
+    }
+    let declared = if intent_declares_signal(intent: control, name: a.signal) {
+      []
+    } else {
+      [AssignedSignalNotDeclared { signal: a.signal as NonEmptyStr }]
+    }
+    let spelled = match target_spelling_for(bindings: bindings, name: a.signal) {
+      Present { value: _ } => []
+      Absent => [SignalHasNoTargetSpelling { signal: a.signal as NonEmptyStr }]
+    }
+    concat(acc, concat(on_package, concat(declared, spelled)))
+  })
+}
+
+// A COLLISION IS ONE DEFECT, NOT ONE PER PARTICIPANT. An earlier revision tested uniqueness
+// inside the per-assignment walk, so two assignments sharing a pin each observed the collision
+// and each filed a cause — the same pin reported twice with an identical payload. Nothing was
+// missed and nothing was wrong, but the cause COUNT then measures how many rows touched a defect
+// rather than how many defects there are, and pin_refusal_set_count is exactly the kind of number
+// a later consumer reads as a population. The collision is reported once, at its first mention in
+// source order, which is also the only ordering available that does not depend on where a repeat
+// happens to be noticed.
+type CollisionScan {
+  seen_pins: List<NonEmptyStr>
+  seen_signals: List<NonEmptyStr>
+  out: List<PinChainRefusal>
+}
+
+fn scan_has_seen(xs: List<NonEmptyStr>, key: NonEmptyStr) -> Bool {
+  fold(xs, init: false, f: fn(acc, k) { acc || (k as String) == (key as String) })
+}
+
+fn collision_refusals(assignments: List<DevicePinAssignment>) -> List<PinChainRefusal> {
+  let scanned = fold(
+    assignments,
+    init: CollisionScan { seen_pins: [], seen_signals: [], out: [] },
+    f: fn(acc, a) {
+      let signal_key = a.signal as NonEmptyStr
+      let pin_first = assignment_count_for_pin(assignments: assignments, pin: a.pin) > 1 && !scan_has_seen(xs: acc.seen_pins, key: a.pin)
+      let signal_first = assignment_count_for_signal(assignments: assignments, name: a.signal) > 1 && !scan_has_seen(xs: acc.seen_signals, key: signal_key)
+      let pin_cause = if pin_first { [PinAssignedToSeveralSignals { pin: a.pin }] } else { [] }
+      let signal_cause = if signal_first { [SignalAssignedToSeveralPins { signal: signal_key }] } else { [] }
+      CollisionScan {
+        seen_pins: concat(acc.seen_pins, [a.pin]),
+        seen_signals: concat(acc.seen_signals, [signal_key]),
+        out: concat(acc.out, concat(pin_cause, signal_cause)),
+      }
+    }
+  )
+  scanned.out
+}
+
+// THE DIRECTION THAT IS EASY TO FORGET. Walking the assignments finds every bad binding and no
+// missing one: a signal the article declares and nobody assigned produces no row to inspect, so
+// the walk has to run the other way as well. This is the arm that would otherwise emit a
+// constraint file the tool accepts while placing an unmentioned port wherever it pleased.
+fn unassigned_signal_refusals(
+  control: DigitalControlIntent,
+  assignments: List<DevicePinAssignment>
+) -> List<PinChainRefusal> {
+  fold(control.signals, init: [], f: fn(acc, s) {
+    if assignment_count_for_signal(assignments: assignments, name: s.name) == 0 {
+      concat(acc, [DeclaredSignalHasNoPin { signal: s.name as NonEmptyStr }])
+    } else {
+      acc
+    }
+  })
+}
+
+fn pin_chain_refusals(
+  realization: ProgrammableDeviceRealization,
+  control: DigitalControlIntent,
+  bindings: List<VerilogBinding>,
+  assignments: List<DevicePinAssignment>
+) -> List<PinChainRefusal> {
+  concat(
+    concat(
+      assignment_refusals(realization: realization, control: control, bindings: bindings, assignments: assignments),
+      collision_refusals(assignments: assignments)
+    ),
+    unassigned_signal_refusals(control: control, assignments: assignments)
+  )
+}
+
+fn push_pin_refusal(acc: PinChainRefusalSet?, r: PinChainRefusal) -> PinChainRefusalSet? {
+  match acc {
+    Absent => Present { value: PinChainRefusalSet { first: r, rest: [] } }
+    Present { value: s } => Present { value: PinChainRefusalSet { first: s.first, rest: concat(s.rest, [r]) } }
+  }
+}
+
+fn pin_refusal_set_count(s: PinChainRefusalSet) -> Nat {
+  1 + fold(s.rest, init: 0, f: fn(acc, _r) { acc + 1 })
+}
+
+fn constraint_statements(
+  control: DigitalControlIntent,
+  bindings: List<VerilogBinding>,
+  assignments: List<DevicePinAssignment>
+) -> List<PcfStatement> {
+  fold(control.signals, init: [], f: fn(acc, s) {
+    match target_spelling_for(bindings: bindings, name: s.name) {
+      Absent => acc
+      Present { value: sp } =>
+        match pin_for_signal(assignments: assignments, name: s.name) {
+          Absent => acc
+          Present { value: p } =>
+            concat(acc, [SetIo { port: sp as PcfPortName, pin: (p as String) as PcfPin }])
+        }
+    }
+  })
+}
+
+// The statements are built from the article's OWN signal list, in its order, so the constraint
+// file's population is the module's port population by construction rather than by agreement
+// between two hand-maintained lists.
+fn project_article_to_pin_constraints(
+  admitted: AdmittedBoardPowerInterfaceArticle,
+  realization: ProgrammableDeviceRealization,
+  bindings: List<VerilogBinding>,
+  assignments: List<DevicePinAssignment>
+) -> PinConstraintProjection {
+  let article = admitted_article(a: admitted)
+  let control = article.digital_control
+  match fold(
+    pin_chain_refusals(realization: realization, control: control, bindings: bindings, assignments: assignments),
+    init: none,
+    f: fn(acc, r) { push_pin_refusal(acc: acc, r: r) }
+  ) {
+    Present { value: s } => PinConstraintsRefused { causes: s }
+    Absent =>
+      match pcf_emit(c: PcfConstraints {
+        statements: constraint_statements(control: control, bindings: bindings, assignments: assignments),
+      }) {
+        PcfEmitted { source: src } =>
+          PinConstraintsEmitted {
+            receipt: PinConstraintReceipt {
+              source_article: article.identity,
+              device: realization.device.ordering_part_number,
+              package_designator: realization.package_carrier.designator,
+              source: src,
+            },
+          }
+        PcfEmissionRefused { reason: why } =>
+          PinConstraintsRefused {
+            causes: PinChainRefusalSet { first: ConstraintNotEmittable { reason: why as NonEmptyStr }, rest: [] },
+          }
+      }
+  }
+}
+
+// TWO AUTHORITIES, ONE POPULATION. Lattice's per-bank table for this device and package sums to
+// ninety-six pins counting configuration; IceStorm's roster carries ninety-six designators. They
+// were produced independently — one is a vendor specification, the other a reverse-engineering —
+// so their agreement is evidence rather than bookkeeping, and it is derived here rather than
+// asserted so it cannot be kept true by editing one side.
+// THE JOIN NOW SAYS WHAT IT IS COMPARING. An earlier revision was
+// bank_population_total == roster_pin_count: two Ints, both 96, from two documents that never
+// stated they count the same things. It executed, it passed, and it was evidence of nothing
+// stronger than a coincidence — Lattice's current product table reaches 100 for the same device
+// by a third inclusion rule. The comparison is now kind-tagged, so a cross-population comparison
+// is not false, it is NotComparable, and the projection from vendor categories to placeable pins
+// is a declared claim a later document can refute.
+fn vendor_general_purpose_population(realization: ProgrammableDeviceRealization) -> ContactPopulation {
+  ContactPopulation {
+    kind: VendorGeneralPurposeIo,
+    count: bank_population_general_purpose(p: realization.banks),
+    authority: "iCE40 LP/HX family data sheet per-bank I/O table",
+  }
+}
+
+fn configuration_population(realization: ProgrammableDeviceRealization) -> ContactPopulation {
+  ContactPopulation {
+    kind: ConfigurationContacts,
+    count: realization.banks.configuration,
+    authority: "iCE40 LP/HX family data sheet per-bank I/O table",
+  }
+}
+
+fn toolchain_placeable_population(realization: ProgrammableDeviceRealization) -> ContactPopulation {
+  ContactPopulation {
+    kind: PlaceableLogicPins,
+    count: roster_pin_count(r: realization.roster),
+    authority: "Project IceStorm package pin roster",
+  }
+}
+
+fn realization_population_comparison(realization: ProgrammableDeviceRealization) -> PopulationComparison {
+  match project_population(
+    p: placeable_from_vendor_categories,
+    parts: [vendor_general_purpose_population(realization: realization), configuration_population(realization: realization)]
+  ) {
+    Absent =>
+      PopulationsNotComparable { left: VendorGeneralPurposeIo, right: PlaceableLogicPins }
+    Present { value: projected } =>
+      compare_populations(a: projected, b: toolchain_placeable_population(realization: realization))
+  }
+}
+
+fn realization_populations_agree(realization: ProgrammableDeviceRealization) -> Bool {
+  match realization_population_comparison(realization: realization) {
+    PopulationsAgree { kind: _, count: _ } => true
+    PopulationsDisagree { kind: _, left: _, right: _ } => false
+    PopulationsNotComparable { left: _, right: _ } => false
+  }
+}
+
+// THE PRODUCTION REALIZATION. The device, its package, the vendor's bank population and the
+// toolchain's pin roster arrive as one value, so a binding cannot be checked against a roster
+// belonging to a different package.
+data interlock_device_realization: ProgrammableDeviceRealization = ProgrammableDeviceRealization {
+  device: ice40_hx1k,
+  package_carrier: ice40_tq144_package,
+  banks: ice40_hx1k_tq144_banks,
+  roster: icestorm_hx1k_tq144_roster,
+}
+
+// WHAT THE ROSTER DOES AND DOES NOT DECIDE, stated because the gap is invisible otherwise. It
+// answers whether a package position is placeable. It does NOT say whether that position is one
+// of the four configuration pins the vendor's bank table counts separately — per-pin function
+// lives in the pin assignment table this repository deliberately does not transcribe. So a
+// binding onto a configuration pin would pass this check. The pins below were not chosen from a
+// table read by eye: place-and-route was executed against them and accepted them, which is the
+// only evidence this repository currently has that they are ordinary I/O. That is a real bound
+// on the wall, not a defect in it, and closing it needs per-pin function facts rather than a
+// stricter predicate over the facts already here.
+data interlock_pin_assignments: List<DevicePinAssignment> = [
+  DevicePinAssignment { signal: conditioned_good_signal, pin: "1" },
+  DevicePinAssignment { signal: fault_signal, pin: "2" },
+  DevicePinAssignment { signal: power_permit_signal, pin: "3" },
+  DevicePinAssignment { signal: reset_release_signal, pin: "4" },
+]
