@@ -31,6 +31,14 @@ import std.observation {
   RootOccurrence,
   ChildOf,
   RecordedObservation,
+  OccurrenceId,
+  OccurrenceComparison,
+  SameOccurrence,
+  DifferentOccurrence,
+  OccurrenceCrossAttempt,
+  compare_occurrences,
+  recorded_attempt,
+  parent_occurrence,
   SequenceVerdict,
   SequenceIntact,
   SequenceGap,
@@ -59,9 +67,12 @@ fn an_event() -> ObservationEvent {
   }
 }
 
-fn rec(p: ObservationProducer, seq: Nat, occ: NonEmptyStr, origin: OccurrenceOrigin) -> RecordedObservation {
+fn occ_in(attempt: NonEmptyStr, id: NonEmptyStr) -> OccurrenceId {
+  OccurrenceId { attempt: attempt, id: id }
+}
+
+fn rec(p: ObservationProducer, seq: Nat, occ: OccurrenceId, origin: OccurrenceOrigin) -> RecordedObservation {
   RecordedObservation {
-    attempt: "attempt-1" as NonEmptyStr,
     producer: p,
     producer_sequence: seq,
     occurrence: occ,
@@ -76,7 +87,7 @@ fn rec(p: ObservationProducer, seq: Nat, occ: NonEmptyStr, origin: OccurrenceOri
 }
 
 fn w(seq: Nat) -> RecordedObservation {
-  rec(p: OrdinaryWorkerProducer { worker_index: 3 }, seq: seq, occ: "occ" as NonEmptyStr, origin: RootOccurrence)
+  rec(p: OrdinaryWorkerProducer { worker_index: 3 }, seq: seq, occ: occ_in(attempt: "attempt-1" as NonEmptyStr, id: "occ" as NonEmptyStr), origin: RootOccurrence)
 }
 
 // One file per producer, sequences dense and increasing — the append protocol's promise.
@@ -118,8 +129,8 @@ test fn w_RED_a_clean_tail_does_not_green_an_earlier_gap() -> Bool {
 // ordering question — not a gap, not a reorder.
 test fn w_RED_records_from_two_producers_in_one_file_is_its_own_verdict() -> Bool {
   let mixed = [
-    rec(p: CoordinatorProducer, seq: 0, occ: "a" as NonEmptyStr, origin: RootOccurrence),
-    rec(p: ScopedWorkerProducer { scope_id: "7" as NonEmptyStr }, seq: 1, occ: "b" as NonEmptyStr, origin: RootOccurrence),
+    rec(p: CoordinatorProducer, seq: 0, occ: occ_in(attempt: "attempt-1" as NonEmptyStr, id: "a" as NonEmptyStr), origin: RootOccurrence),
+    rec(p: ScopedWorkerProducer { scope_id: "7" as NonEmptyStr }, seq: 1, occ: occ_in(attempt: "attempt-1" as NonEmptyStr, id: "b" as NonEmptyStr), origin: RootOccurrence),
   ]
   match classify_producer_file(records: mixed) {
     SequenceForeignProducer { expected: e, observed: o } => e == "coordinator" && o == "scoped-7"
@@ -150,12 +161,12 @@ test fn w_a_single_record_reads_intact_because_there_is_no_step_to_violate() -> 
 test fn w_the_causal_parent_is_carried_beside_the_containment_path_not_derived_from_it() -> Bool {
   let child = rec(
     p: CoordinatorProducer, seq: 4,
-    occ: "occ-child" as NonEmptyStr,
-    origin: ChildOf { parent: "occ-parent" as NonEmptyStr }
+    occ: occ_in(attempt: "attempt-1" as NonEmptyStr, id: "occ-child" as NonEmptyStr),
+    origin: ChildOf { parent_id: "occ-parent" as NonEmptyStr }
   )
   let same_path = length(child.event.subject.segments) == 3
   same_path && match child.origin {
-    ChildOf { parent: p } => p == "occ-parent"
+    ChildOf { parent_id: p } => p == "occ-parent"
     RootOccurrence => false
   }
 }
@@ -165,4 +176,59 @@ test fn w_producer_identity_distinguishes_workers_by_index() -> Bool {
     a: OrdinaryWorkerProducer { worker_index: 3 },
     b: OrdinaryWorkerProducer { worker_index: 4 }
   ) && observation_producer_key(p: ScopedWorkerProducer { scope_id: "7" as NonEmptyStr }) == "scoped-7"
+}
+
+// THE JOIN THE FALSIFIER ACTUALLY MAKES. It compares a prediction receipt against a full-execution
+// receipt, which are different attempts by construction, so occurrence ids on the two sides are
+// independently minted attempt-local coordinates. Equality between them is a coincidence — and under
+// the bare-string form it TYPECHECKED and answered. Now it refuses, naming both attempts.
+test fn w_RED_comparing_occurrences_across_two_attempts_refuses_instead_of_answering() -> Bool {
+  match compare_occurrences(
+    a: occ_in(attempt: "attempt-predict" as NonEmptyStr, id: "occ-9" as NonEmptyStr),
+    b: occ_in(attempt: "attempt-execute" as NonEmptyStr, id: "occ-9" as NonEmptyStr)
+  ) {
+    OccurrenceCrossAttempt { left: l, right: r } => l == "attempt-predict" && r == "attempt-execute"
+    _ => false
+  }
+}
+
+// Cross-attempt is not "different" — a caller reading it as inequality has been told the answer is
+// no when the truth is that the question was wrong.
+test fn w_RED_cross_attempt_is_its_own_verdict_not_a_difference() -> Bool {
+  let cross = compare_occurrences(
+    a: occ_in(attempt: "attempt-predict" as NonEmptyStr, id: "occ-9" as NonEmptyStr),
+    b: occ_in(attempt: "attempt-execute" as NonEmptyStr, id: "occ-4" as NonEmptyStr)
+  )
+  match cross { DifferentOccurrence => false, SameOccurrence => false, OccurrenceCrossAttempt { left: _, right: _ } => true }
+}
+
+test fn w_within_one_attempt_occurrences_compare_normally() -> Bool {
+  let a = occ_in(attempt: "attempt-1" as NonEmptyStr, id: "occ-9" as NonEmptyStr)
+  let b = occ_in(attempt: "attempt-1" as NonEmptyStr, id: "occ-4" as NonEmptyStr)
+  match compare_occurrences(a: a, b: a) { SameOccurrence => true, _ => false }
+    && match compare_occurrences(a: a, b: b) { DifferentOccurrence => true, _ => false }
+}
+
+// The attempt has ONE home. A record's attempt is read through its occurrence rather than from a
+// second field that could disagree with it.
+test fn w_a_records_attempt_is_read_through_its_occurrence() -> Bool {
+  recorded_attempt(r: w(seq: 0)) == "attempt-1"
+}
+
+// A spawn edge cannot cross attempts, so the parent carries only its id and the attempt comes from
+// the child. There is no way to author a parent in another attempt.
+test fn w_a_reconstructed_parent_inherits_the_childs_attempt() -> Bool {
+  let child = rec(
+    p: CoordinatorProducer, seq: 4,
+    occ: occ_in(attempt: "attempt-7" as NonEmptyStr, id: "occ-child" as NonEmptyStr),
+    origin: ChildOf { parent_id: "occ-parent" as NonEmptyStr }
+  )
+  match parent_occurrence(r: child) {
+    Present { value: p } => p.attempt == "attempt-7" && p.id == "occ-parent"
+    Absent => false
+  }
+}
+
+test fn w_RED_a_root_occurrence_has_no_parent_rather_than_a_placeholder_one() -> Bool {
+  match parent_occurrence(r: w(seq: 0)) { Absent => true, Present { value: _ } => false }
 }

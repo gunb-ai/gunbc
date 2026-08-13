@@ -1083,18 +1083,70 @@ fn observation_producer_eq(a: ObservationProducer, b: ObservationProducer) -> Bo
   observation_producer_key(p: a) == observation_producer_key(p: b)
 }
 
+// AN OCCURRENCE ID IS AN ATTEMPT-LOCAL COORDINATE, so it carries the attempt it is local to. The
+// bare-string form typechecked a comparison across two attempts and answered it — and comparing
+// receipts from two attempts is the whole point of the falsifier, so the meaningless join was on the
+// path of the first consumer (review by vivid-bear-458, 2026-08-13). It is the cross-family
+// comparison the ContentHash family grounding closed, with attempts standing where hash families
+// stood: same representation, different universes, comparable by construction and meaningless when
+// compared.
+//
+// THE RULE THIS MAKES STRUCTURAL: a cross-attempt join keys on the SUBJECT — the containment path,
+// which is the semantic thing two attempts genuinely share — never on occurrence. Occurrences are
+// minted independently per attempt, so an id appearing in both is either the same string by accident
+// or the same subject by luck, and nothing in a bare string distinguishes those.
+type OccurrenceId {
+  attempt: NonEmptyStr
+  id: NonEmptyStr
+}
+
+// Three-valued for the same reason `compare_instants` is: a cross-attempt pair is not "different",
+// it is UNANSWERABLE, and the two carry different remedies. Different means these are two occurrences
+// in one run; cross-attempt means the caller asked a question occurrence identity cannot answer and
+// should have keyed on the subject.
+type OccurrenceComparison
+  = SameOccurrence
+  | DifferentOccurrence
+  | OccurrenceCrossAttempt { left: NonEmptyStr, right: NonEmptyStr }
+
+fn compare_occurrences(a: OccurrenceId, b: OccurrenceId) -> OccurrenceComparison {
+  if a.attempt != b.attempt {
+    OccurrenceCrossAttempt { left: a.attempt, right: b.attempt }
+  } else {
+    if a.id == b.id { SameOccurrence } else { DifferentOccurrence }
+  }
+}
+
+// THE PARENT CARRIES ONLY ITS ID, AND THE ATTEMPT IS DERIVED FROM THE CHILD. A spawn edge cannot
+// cross attempts — a process in one attempt did not spawn an occurrence in another — so a full
+// OccurrenceId here would have made that impossible edge writable, the same hole one level down.
+// Reconstruct the parent through `parent_occurrence`, which takes the attempt from the record that
+// declares the edge.
 type OccurrenceOrigin
   = RootOccurrence
-  | ChildOf { parent: NonEmptyStr }
+  | ChildOf { parent_id: NonEmptyStr }
 
+// NO SEPARATE `attempt` FIELD: the occurrence carries it, and a second copy beside it is a fact with
+// two homes that can disagree (DESIGN section 3). The attempt of a record is read through its
+// occurrence.
 type RecordedObservation {
-  attempt: NonEmptyStr
   producer: ObservationProducer
   producer_sequence: Nat
-  occurrence: NonEmptyStr
+  occurrence: OccurrenceId
   origin: OccurrenceOrigin
   at: ObservationInstant
   event: ObservationEvent
+}
+
+fn recorded_attempt(r: RecordedObservation) -> NonEmptyStr {
+  r.occurrence.attempt
+}
+
+fn parent_occurrence(r: RecordedObservation) -> OccurrenceId? {
+  match r.origin {
+    RootOccurrence => Absent
+    ChildOf { parent_id: p } => Present { value: OccurrenceId { attempt: r.occurrence.attempt, id: p } }
+  }
 }
 
 // ---------------------------------------------------------------------------
