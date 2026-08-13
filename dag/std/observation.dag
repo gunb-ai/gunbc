@@ -990,3 +990,58 @@ fn observation_rollup_accept(
 data observation_rollup_contract: Disposition = Terminal {
   reason: "The rollup fold is a pure reader over the vocabulary this module already owns — subject containment (observation_subject_contains, itself std.effect_grant.path_is_prefix), grain depth, and the single density table. It mints no grain taxonomy, no second collapse rule and no threshold: which grain to roll up to is the consumer's parameter, and when to emit is the renderer's projection over these counts. Terminal because the fold is total over the closed event-class roster; a new class must extend observation_counts_accept, which the exhaustive match forces."
 }
+
+// Whether a ledger producer can still append. Three arms, not two, because the reader is not always
+// the coordinator: `explain <attempt-dir>` runs with no child handles at all, so every liveness
+// input try_wait provided is gone and the reader has files and nothing else. Defaulting that to
+// Dead reports a torn record on a healthy run; defaulting it to Live hangs explain on a finished
+// one. Unknown is a verdict, not a missing value.
+//
+// A completed attempt is NOT unknown: all its producers are dead by construction, so explain over a
+// terminated attempt gets ProducerDead and a torn tail is genuinely torn.
+type ProducerLiveness
+  = ProducerLive
+  | ProducerDead
+  | ProducerLivenessUnknown { cause: NonEmptyStr }
+
+// The bytes at the end of a producer's file, before any liveness is consulted.
+type LedgerTail
+  = TailComplete
+  | TailIncomplete { bytes: Nat }
+
+// LIVENESS OBSERVED AFTER THE READ, and the ordering is enforced by construction rather than by a
+// comment or a test. `observe_liveness_after_read` is the only way to build one and it requires the
+// tail you already read, so a caller that checks liveness FIRST has nothing to pass and cannot form
+// the value the classifier demands.
+//
+// The ordering is load-bearing because liveness is one-way. Check-then-read misclassifies a
+// producer that dies in between as live, so its torn tail reads as "poll again" and the reader
+// waits forever on a file that will never grow. Read-then-check is sound in both directions:
+// observed dead after the read means the tail can never grow, so it is torn; observed live means it
+// may still grow, so poll. Deadness does not reverse.
+type LivenessAfterRead {
+  tail: LedgerTail
+  liveness: ProducerLiveness
+}
+
+fn observe_liveness_after_read(tail: LedgerTail, liveness: ProducerLiveness) -> LivenessAfterRead {
+  LivenessAfterRead { tail: tail, liveness: liveness }
+}
+
+type LedgerTailVerdict
+  = TailRecordsComplete
+  | TailTorn { bytes: Nat }
+  | TailPending { bytes: Nat }
+  | TailIndeterminate { bytes: Nat, cause: NonEmptyStr }
+
+fn classify_ledger_tail(observed: LivenessAfterRead) -> LedgerTailVerdict {
+  match observed.tail {
+    TailComplete => TailRecordsComplete
+    TailIncomplete { bytes: n } =>
+      match observed.liveness {
+        ProducerDead => TailTorn { bytes: n }
+        ProducerLive => TailPending { bytes: n }
+        ProducerLivenessUnknown { cause: c } => TailIndeterminate { bytes: n, cause: c }
+      }
+  }
+}
