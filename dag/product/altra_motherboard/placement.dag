@@ -27,13 +27,16 @@ import product.altra_motherboard.minimal_design {
   altra_1p_minimum,
 }
 import product.altra_motherboard.attachment_stack {
-  AuthorityStanding,
-  Unresolved,
-  processor_package_standing,
+  FactAuthorityBlocker,
+  NeedsARedistributionDecision,
+  NeedsCommercialAccess,
+  NeedsSomeoneToFindTheDocument,
+  socket_standing,
+  subject_blocker,
 }
 import extdeps.programmable_logic.ice40.subject { ice40_tq144_package }
 
-data placement_note: String = "WHERE THE PARTS GO, AND — MORE IMPORTANTLY HERE — WHICH PARTS THIS REPOSITORY IS ENTITLED TO SAY THAT ABOUT. Placing a component requires its body envelope, and a body envelope is a VENDOR fact: the part is whatever size the vendor made it, and a number chosen because it looks about right is the fabricated plausible output the design forbids, in the form that is hardest to catch. A board layout built from invented dimensions passes every geometric check, draws convincingly, and cannot be assembled. THE BOARD OUTLINE IS A DIFFERENT KIND OF FACT and is authored here without citation, deliberately: how big we make our own board is our decision, not a claim about anyone's document. That asymmetry is the whole reason this module can exist before the mechanical sources are settled — the frame and the outline are ours, the envelopes are not. WHAT IS ACTUALLY ESTABLISHED TODAY is one envelope: the iCE40 TQ144 that serves as board control, whose body dimensions come from a public vendor datasheet already cited in this tree. EVERY OTHER COMPONENT IS AN OBLIGATION RATHER THAN A PLACEMENT, AND WHY EACH ONE IS BLOCKED IS THE ATTACHMENT STACK'S OWN AuthorityStanding RATHER THAN A TAXONOMY MINTED HERE. That module already separates a public document whose redistribution is undecided from an NDA-gated one and from a part nobody has chosen, and it carries the cited authority and the proprietary footer with it. An earlier revision of this module forked two of those three arms and then asserted the alignment in this very sentence — a claim about the model carried by prose the model cannot read, which is precisely the failure the citation rules exist to prevent. The processor socket now consumes processor_package_standing directly: its gap IS the attachment stack's standing, so a decision recorded there moves this module instead of leaving a hand-typed copy of it agreeing with a fact that has changed."
+data placement_note: String = "WHERE THE PARTS GO, AND WHICH PARTS THIS REPOSITORY IS ENTITLED TO SAY THAT ABOUT. Placing a component requires its body envelope, and a body envelope is a VENDOR fact: the part is whatever size the vendor made it, so a number chosen because it looks about right is fabricated plausible output in its most dangerous form — a layout built from invented dimensions passes every geometric check, draws convincingly, and cannot be assembled. THE BOARD OUTLINE IS A DIFFERENT KIND OF FACT and is authored here without citation: how big we make our own board is our decision, not a claim about anyone document. WHY EACH COMPONENT IS BLOCKED COMES FROM THE ATTACHMENT STACK, and specifically from EACH LAYER ITS OWN. An earlier revision of this module bound the processor SOCKET to the processor PACKAGE standing, which reopened the category error that module exists to prevent: the package is the part placed inside the socket, its bottom-land geometry is not the socket board geometry, and the two are separately governed by different vendors. A witness then locked that wrong edge in. Because of it this module also asserted a false dependency — that a redistribution decision about the package would unblock socket geometry and DDR routing. It does not; it establishes the package body and nothing else. The socket now derives its blocker from the socket layer, so a decision recorded against the package cannot silently unblock it."
 
 // WHAT A COMPONENT IS ON THIS BOARD, which is what the population is checked against. A roster of
 // identities would say the board has twelve parts; a roster of ROLES says it has a processor
@@ -74,46 +77,61 @@ fn role_tag(r: BoardComponentRole) -> NonEmptyStr {
   }
 }
 
-// EQUALITY IS A DIRECT MATCH ON BOTH SIDES, with no sentinel and no rendered name. An earlier
-// revision derived a channel with -1 standing for "this role has no channel", which is a
-// degenerate value absorbing ignorance: a processor socket does not have channel minus one, it has
-// no channel at all, and the only reason the comparison worked was that the tag happened to gate
-// the number. Matching both sides makes the absent channel unrepresentable rather than encoded.
-fn roles_equal(a: BoardComponentRole, b: BoardComponentRole) -> Bool {
-  match a {
-    MemoryModuleSlot { channel: ca } =>
-      match b {
-        MemoryModuleSlot { channel: cb } => ca == cb
-        _ => false
-      }
-    ProcessorSocket => match b { ProcessorSocket => true  _ => false }
-    BoardControlCpld => match b { BoardControlCpld => true  _ => false }
-    BootFirmwareEeprom => match b { BootFirmwareEeprom => true  _ => false }
-    FirmwareFlash => match b { FirmwareFlash => true  _ => false }
-    ClockGenerator => match b { ClockGenerator => true  _ => false }
-    ResetController => match b { ResetController => true  _ => false }
-    PowerController => match b { PowerController => true  _ => false }
-    NetworkEndpoint => match b { NetworkEndpoint => true  _ => false }
-    StorageEndpoint => match b { StorageEndpoint => true  _ => false }
-    DebugConnector => match b { DebugConnector => true  _ => false }
+// EQUALITY IS ONE TOTAL PROJECTION COMPARED FIELDWISE, and it went through two wrong shapes before
+// this one. The first derived a channel with -1 standing for "this role has no channel" — a
+// degenerate value absorbing ignorance, since a processor socket does not have channel minus one,
+// it has no channel at all. The second matched both sides directly, which removed the sentinel but
+// carried eleven nested wildcard arms: a match over a closed coproduct whose off-variant arms are
+// swept by `_`, which is the corpus's rostered non-fold-residue class. A wildcard here would also
+// be a silent hazard rather than only a stylistic one — adding a twelfth role would compare equal
+// to nothing and simply report every plan as missing it, with no arm to update and no failure
+// pointing at this function. The key is total: every variant is enumerated, the absent channel is
+// Absent rather than a number, and a new role cannot be added without deciding its key.
+type RoleKey { kind: Int  channel: Int? }
+
+fn role_key(r: BoardComponentRole) -> RoleKey {
+  match r {
+    MemoryModuleSlot { channel: c } => RoleKey { kind: 1, channel: Present { value: c } }
+    ProcessorSocket => RoleKey { kind: 2, channel: none }
+    BoardControlCpld => RoleKey { kind: 3, channel: none }
+    BootFirmwareEeprom => RoleKey { kind: 4, channel: none }
+    FirmwareFlash => RoleKey { kind: 5, channel: none }
+    ClockGenerator => RoleKey { kind: 6, channel: none }
+    ResetController => RoleKey { kind: 7, channel: none }
+    PowerController => RoleKey { kind: 8, channel: none }
+    NetworkEndpoint => RoleKey { kind: 9, channel: none }
+    StorageEndpoint => RoleKey { kind: 10, channel: none }
+    DebugConnector => RoleKey { kind: 11, channel: none }
   }
 }
 
-// WHY A DIMENSION IS NOT AVAILABLE IS AN AUTHORITY STANDING, AND ONE ALREADY EXISTS. An earlier
-// revision of this module minted its own two-armed EnvelopeGap — a redistribution case and an
-// unmade-part-choice case — which forked two of the three arms attachment_stack already carries,
-// in a repository whose central rule is that one fact has one authority. Worse, this module's own
-// note DESCRIBED the alignment with that module in prose while no edge existed, so the claim was
-// carried by a sentence a machine cannot read. The standing is consumed now: PublicButRedistribution
-// Undecided keeps the cited authority and the proprietary footer rather than a hand-typed subject
-// string, NdaGated is reachable without this module knowing what an NDA is, and Unresolved covers
-// a part nobody has selected.
+fn channels_equal(ca: Int?, cb: Int?) -> Bool {
+  match ca {
+    Present { value: x } =>
+      match cb {
+        Present { value: y } => x == y
+        Absent => false
+      }
+    Absent =>
+      match cb {
+        Absent => true
+        Present { value: _ } => false
+      }
+  }
+}
+
+fn roles_equal(a: BoardComponentRole, b: BoardComponentRole) -> Bool {
+  let ka = role_key(r: a)
+  let kb = role_key(r: b)
+  ka.kind == kb.kind && channels_equal(ca: ka.channel, cb: kb.channel)
+}
+
 // AN ENVELOPE IS EITHER ESTABLISHED FROM A SOURCE OR IT IS AN OBLIGATION. There is no third arm
 // carrying a provisional number, and that absence is the construction: a placement cannot be built
 // from a guess because a guess has no representation here.
 type ComponentEnvelopeStanding
   = EnvelopeEstablished { envelope: PackageBodyEnvelope, source: NonEmptyStr }
-  | EnvelopeNotEstablished { gap: AuthorityStanding }
+  | EnvelopeNotEstablished { gap: FactAuthorityBlocker }
 
 type PlannedComponent {
   identity: NonEmptyStr
@@ -132,7 +150,7 @@ type PlannedComponent {
 // The reference plan carried exactly that - four memory slots sharing one identity, harmless only
 // while their envelopes stayed outstanding, and a collision the moment they landed.
 type PlacementRefusal
-  = ComponentEnvelopeNotEstablished { component: NonEmptyStr, gap: AuthorityStanding }
+  = ComponentEnvelopeNotEstablished { component: NonEmptyStr, gap: FactAuthorityBlocker }
   | RequiredRoleUnfilled { role: BoardComponentRole }
   | ComponentFillsNoRequiredRole { component: NonEmptyStr, role_named: NonEmptyStr }
   | PlannedIdentityRepeated { component: NonEmptyStr }
@@ -316,7 +334,25 @@ data board_control_envelope: ComponentEnvelopeStanding = EnvelopeEstablished {
   source: "extdeps.programmable_logic.ice40.subject ice40_tq144_package",
 }
 
-fn obligation(g: AuthorityStanding, id: NonEmptyStr, r: BoardComponentRole, x: Int, y: Int) -> PlannedComponent {
+// THE SOCKET IS NOT THE PACKAGE. Binding the socket role to processor_package_standing was this
+// PR's root defect: it reopened the category error the attachment stack exists to prevent, and a
+// witness had locked the wrong edge in. The socket's blocker is derived from the SOCKET layer's
+// own axes. Deriving it rather than asserting one also means the legal decision recorded against
+// the package cannot silently unblock the socket, which is precisely the false dependency this
+// module previously encoded.
+fn socket_envelope_blocker() -> FactAuthorityBlocker {
+  match subject_blocker(fact: socket_standing.fact, carriage: socket_standing.carriage) {
+    Present { value: b } => b
+    // Unreachable while the socket is unresolved, and it refuses rather than inventing a blocker:
+    // an established socket needs a real envelope binding, not a fabricated obstacle.
+    Absent =>
+      NeedsSomeoneToFindTheDocument {
+        what_is_missing: "the socket layer reports no blocker, so a socket envelope binding is owed here rather than an obligation",
+      }
+  }
+}
+
+fn obligation(g: FactAuthorityBlocker, id: NonEmptyStr, r: BoardComponentRole, x: Int, y: Int) -> PlannedComponent {
   PlannedComponent {
     identity: id,
     role: r,
@@ -328,7 +364,7 @@ fn obligation(g: AuthorityStanding, id: NonEmptyStr, r: BoardComponentRole, x: I
 fn memory_slot_obligations(d: AltraMinimalMotherboard) -> List<PlannedComponent> {
   fold(channel_indices(c: d.memory.channels), init: [], f: fn(acc, i) {
     concat(acc, [obligation(
-      g: Unresolved { what_is_missing: "a selected part for the MemoryModuleSlot role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" },
+      g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the MemoryModuleSlot role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" },
       id: "dimm_slot_{i}",
       r: MemoryModuleSlot { channel: i },
       x: 150000,
@@ -356,17 +392,17 @@ fn altra_reference_plan() -> OrthogonalConstruction<BoardPlacementPlan> {
       origin: point2(frame: altra_board_frame(), x: 240000, y: 200000),
     },
     obligation(
-      g: processor_package_standing.standing,
+      g: socket_envelope_blocker(),
       id: "cpu_socket", r: ProcessorSocket, x: 60000, y: 90000
     ),
-    obligation(g: Unresolved { what_is_missing: "a selected part for the BootFirmwareEeprom role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "boot_eeprom", r: BootFirmwareEeprom, x: 250000, y: 40000),
-    obligation(g: Unresolved { what_is_missing: "a selected part for the FirmwareFlash role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "spi_nor", r: FirmwareFlash, x: 260000, y: 60000),
-    obligation(g: Unresolved { what_is_missing: "a selected part for the ClockGenerator role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "clock_gen", r: ClockGenerator, x: 220000, y: 150000),
-    obligation(g: Unresolved { what_is_missing: "a selected part for the ResetController role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "reset_ctl", r: ResetController, x: 220000, y: 170000),
-    obligation(g: Unresolved { what_is_missing: "a selected part for the PowerController role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "power_ctl", r: PowerController, x: 30000, y: 220000),
-    obligation(g: Unresolved { what_is_missing: "a selected part for the NetworkEndpoint role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "net_phy", r: NetworkEndpoint, x: 280000, y: 120000),
-    obligation(g: Unresolved { what_is_missing: "a selected part for the StorageEndpoint role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "nvme_conn", r: StorageEndpoint, x: 280000, y: 90000),
-    obligation(g: Unresolved { what_is_missing: "a selected part for the DebugConnector role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "debug_hdr", r: DebugConnector, x: 200000, y: 250000),
+    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the BootFirmwareEeprom role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "boot_eeprom", r: BootFirmwareEeprom, x: 250000, y: 40000),
+    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the FirmwareFlash role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "spi_nor", r: FirmwareFlash, x: 260000, y: 60000),
+    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the ClockGenerator role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "clock_gen", r: ClockGenerator, x: 220000, y: 150000),
+    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the ResetController role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "reset_ctl", r: ResetController, x: 220000, y: 170000),
+    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the PowerController role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "power_ctl", r: PowerController, x: 30000, y: 220000),
+    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the NetworkEndpoint role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "net_phy", r: NetworkEndpoint, x: 280000, y: 120000),
+    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the StorageEndpoint role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "nvme_conn", r: StorageEndpoint, x: 280000, y: 90000),
+    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the DebugConnector role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "debug_hdr", r: DebugConnector, x: 200000, y: 250000),
   ]
   match altra_board_outline() {
     OrthogonalRefused { cause: c } => OrthogonalRefused { cause: c }
