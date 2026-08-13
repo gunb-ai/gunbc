@@ -1,6 +1,7 @@
 module gunbc.host_cli_dependency
 
 import extdeps.tools { CliTool, install_hint }
+import extdeps.tools.npm { npm_cli_tool }
 import extdeps.shell
 import std.types { String, NonEmptyStr }
 import v2.std.optional { Optional, Present, Absent, optional_absent, optional_present }
@@ -37,6 +38,42 @@ fn observe_host_cli_dependency(tool: CliTool) -> HostCliDependencyObservation {
       hint: install_hint(sources: tool.installable_via),
     }
   }
+}
+
+fn cli_tool_for_enrollment_requirement(requirement: HostCliEnrollmentRequirement) -> CliTool? {
+  if requirement.tool == npm_cli_tool.name {
+    Present { value: npm_cli_tool }
+  } else {
+    none
+  }
+}
+
+fn first_absent_codex_wet_materialization_host_cli_dependency() -> HostCliDependencyAbsent? {
+  fold_list(
+    xs: codex_wet_materialization_host_cli_requirements,
+    empty: none,
+    cons: fn(acc, requirement) {
+      match acc {
+        Present { value: found } => Present { value: found }
+        Absent =>
+          match cli_tool_for_enrollment_requirement(requirement: requirement) {
+            Present { value: tool } =>
+              match observe_host_cli_dependency(tool: tool) {
+                HostCliDependencyAbsent { tool: t, hint: h } =>
+                  Present { value: HostCliDependencyAbsent { tool: t, hint: h } }
+                HostCliDependencyPresent => none
+              }
+            Absent =>
+              Present {
+                value: HostCliDependencyAbsent {
+                  tool: requirement.tool,
+                  hint: requirement.provision as String,
+                },
+              }
+          }
+      }
+    },
+  )
 }
 
 fn host_dependency_absent_wire(tool: NonEmptyStr, hint: String) -> String {

@@ -48,11 +48,12 @@ import extdeps.http.client
 import extdeps.shell
 import extdeps.shell.exec
 import extdeps.filesystem.filesystem_io
-import extdeps.tools.npm { npm_cli_tool }
+import extdeps.tools.npm
 import gunbc.host_cli_dependency {
   observe_host_cli_dependency,
   HostCliDependencyAbsent,
   host_dependency_absent_wire,
+  first_absent_codex_wet_materialization_host_cli_dependency,
 }
 import extdeps.tools.sha512sum {
   sha512sum_observe_file,
@@ -1924,12 +1925,12 @@ type CodexRuntimeMaterialization
     }
 
 fn require_npm_host_dependency_for_materialization() -> CodexRuntimeMaterialization? {
-  match observe_host_cli_dependency(tool: npm_cli_tool) {
-    HostCliDependencyAbsent { tool, hint } =>
+  match first_absent_codex_wet_materialization_host_cli_dependency() {
+    Present { value: HostCliDependencyAbsent { tool, hint } } =>
       Present {
         value: CodexRuntimeHostDependencyRefused { tool: tool, hint: hint },
       }
-    _ => none
+    Absent => none
   }
 }
 

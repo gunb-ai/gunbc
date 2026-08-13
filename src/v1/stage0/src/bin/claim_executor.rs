@@ -1909,7 +1909,8 @@ struct ClaimResult {
     budget_refusal: Option<BudgetRefusal>,
     /// Set when a wet witness refused because a host CLI dependency was absent on PATH
     /// before execution. Parsed from the failure-receipt wire
-    /// `HostDependencyAbsent{tool=...,hint=...}` (falsifier recovery PR D).
+    /// `HostDependencyAbsent{tool=...,hint=...}`. Dissolve-on:
+    /// `gunbc.witness_row_cost` `host_dependency_refusal_seed_deferral_note`.
     host_dependency_refusal: Option<HostDependencyRefusal>,
     /// Set only when this batch contained a witness declared expected-RED that ran GREEN,
     /// carrying the identities that must be un-quarantined.
@@ -4109,7 +4110,8 @@ fn discovery_budget_refusal(summary: &DiscoverySummary) -> Option<BudgetRefusal>
 /// The failure-receipt wire is appended in `cli_run` on discovery reds, but
 /// `batch_failure_mode_and_detail` reads `host_dependency_refusal` off the value — not
 /// substring-matching `detail` — so this lift is required for `HostDependencyAbsent` on
-/// the primary falsifier path (review 51796 / run 31685755058 component 6).
+/// the primary falsifier path (run 31685755058 component 6). Dissolve-on:
+/// `gunbc.witness_row_cost` `host_dependency_refusal_seed_deferral_note`.
 fn discovery_host_dependency_refusal(summary: &DiscoverySummary) -> Option<HostDependencyRefusal> {
     summary
         .failures
