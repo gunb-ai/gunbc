@@ -22,18 +22,18 @@ import product.compute_board.physical {
   BoardFrameIsNotSubMillimetre,
   BoardFrameUnregistered,
   BoardPhysicalArticle,
-  ComponentFootprint,
+  PackageBodyEnvelope,
   ComponentPlacement,
   PhysicalRefusal,
-  PhysicallyAdmitted,
+  BodyEnvelopesAdmitted,
   PhysicallyRefused,
   PlacementExtentNotPositive,
   PlacementFrameDiffersFromBoard,
   PlacementIdentityRepeated,
   PlacementNotWithinOutline,
   PlacementsOverlap,
-  admit_physical_article,
-  footprint_of_ice40_package,
+  admit_body_envelopes,
+  body_envelope_of_ice40_package,
   physical_refusal_count,
 }
 import extdeps.programmable_logic.ice40.subject { ice40_tq144_package }
@@ -78,12 +78,12 @@ fn outline_in(frame: CoordinateFrameIdentity) -> AxisAlignedRectangle2? {
 
 // THE FOOTPRINT IS THE CITED PACKAGE'S, NOT A NUMBER RETYPED HERE. If the datasheet row moved,
 // this placement would move with it.
-fn tq144_footprint() -> ComponentFootprint {
-  footprint_of_ice40_package(p: ice40_tq144_package)
+fn tq144_body_envelope() -> PackageBodyEnvelope {
+  body_envelope_of_ice40_package(p: ice40_tq144_package)
 }
 
 fn placement(id: NonEmptyStr, x: Int, y: Int) -> ComponentPlacement {
-  ComponentPlacement { identity: id, footprint: tq144_footprint(), origin: bp(x: x, y: y) }
+  ComponentPlacement { identity: id, body_envelope: tq144_body_envelope(), origin: bp(x: x, y: y) }
 }
 
 fn article_with(placements: List<ComponentPlacement>) -> BoardPhysicalArticle? {
@@ -98,8 +98,8 @@ fn admits(placements: List<ComponentPlacement>) -> Bool {
   match article_with(placements: placements) {
     Absent => false
     Present { value: a } =>
-      match admit_physical_article(registry: registry_with_scales(), article: a) {
-        PhysicallyAdmitted { article: _ } => true
+      match admit_body_envelopes(registry: registry_with_scales(), article: a) {
+        BodyEnvelopesAdmitted { article: _ } => true
         PhysicallyRefused { causes: _ } => false
       }
   }
@@ -121,8 +121,8 @@ fn refuses_naming(placements: List<ComponentPlacement>, wanted: String) -> Bool 
   match article_with(placements: placements) {
     Absent => false
     Present { value: a } =>
-      match admit_physical_article(registry: registry_with_scales(), article: a) {
-        PhysicallyAdmitted { article: _ } => false
+      match admit_body_envelopes(registry: registry_with_scales(), article: a) {
+        BodyEnvelopesAdmitted { article: _ } => false
         PhysicallyRefused { causes: cs } =>
           fold(concat([cs.first], cs.rest), init: false, f: fn(acc, r) { acc || refusal_is(r: r, wanted: wanted) })
       }
@@ -161,10 +161,14 @@ test fn w_two_parts_sharing_area_refuse() -> Bool {
   )
 }
 
-// AND TOUCHING IS NOT OVERLAPPING, which is the boundary convention the geometry layer states and
-// this test pins. Two parts butted exactly edge to edge are a legal, dense layout; calling them a
-// collision would refuse every tight board.
-test fn w_parts_butted_edge_to_edge_are_admitted() -> Bool {
+// TOUCHING IS NOT OVERLAPPING — a fact about the GEOMETRY, and an earlier revision of this test
+// said it was a fact about BOARDS. Its comment read "two parts butted exactly edge to edge are a
+// legal, dense layout", which is physically false for this very part: a TQ144's leads and lands
+// span 22 mm against a 20 mm body, so two bodies touching have already collided at their leads.
+// The assertion is kept because the boundary convention is real and worth pinning; the claim
+// attached to it is deleted. What this admits is a body-envelope verdict, and the name of the arm
+// it checks now says so.
+test fn w_touching_bodies_do_not_register_as_overlapping() -> Bool {
   admits(placements: [
     placement(id: "u1", x: 5000, y: 5000),
     placement(id: "u2", x: 25000, y: 5000),
@@ -190,8 +194,8 @@ test fn w_one_defect_is_reported_once() -> Bool {
   ]) {
     Absent => false
     Present { value: a } =>
-      match admit_physical_article(registry: registry_with_scales(), article: a) {
-        PhysicallyAdmitted { article: _ } => false
+      match admit_body_envelopes(registry: registry_with_scales(), article: a) {
+        BodyEnvelopesAdmitted { article: _ } => false
         // One repeated identity plus one overlap between the two coincident bodies: two distinct
         // defects, each counted once, rather than four rows for two facts.
         PhysicallyRefused { causes: cs } => physical_refusal_count(s: cs) == 2
@@ -204,7 +208,7 @@ test fn w_a_placement_in_another_frame_refuses() -> Bool {
     placements: [
       ComponentPlacement {
         identity: "u1",
-        footprint: tq144_footprint(),
+        body_envelope: tq144_body_envelope(),
         origin: point2(frame: other_frame(), x: 5000, y: 5000),
       },
     ],
@@ -220,11 +224,11 @@ test fn w_a_millimetre_board_frame_refuses() -> Bool {
   match outline_in(frame: mm_frame()) {
     Absent => false
     Present { value: o } =>
-      match admit_physical_article(
+      match admit_body_envelopes(
         registry: registry_with_scales(),
         article: BoardPhysicalArticle { frame: mm_frame(), outline: o, placements: [] }
       ) {
-        PhysicallyAdmitted { article: _ } => false
+        BodyEnvelopesAdmitted { article: _ } => false
         PhysicallyRefused { causes: cs } =>
           fold(concat([cs.first], cs.rest), init: false, f: fn(acc, r) {
             acc || refusal_is(r: r, wanted: "BoardFrameIsNotSubMillimetre")
@@ -240,11 +244,11 @@ test fn w_an_unregistered_board_frame_refuses_distinctly() -> Bool {
   match outline_in(frame: board()) {
     Absent => false
     Present { value: o } =>
-      match admit_physical_article(
+      match admit_body_envelopes(
         registry: empty_frame_registry(),
         article: BoardPhysicalArticle { frame: board(), outline: o, placements: [] }
       ) {
-        PhysicallyAdmitted { article: _ } => false
+        BodyEnvelopesAdmitted { article: _ } => false
         PhysicallyRefused { causes: cs } =>
           fold(concat([cs.first], cs.rest), init: false, f: fn(acc, r) {
             acc || refusal_is(r: r, wanted: "BoardFrameUnregistered")
@@ -253,10 +257,13 @@ test fn w_an_unregistered_board_frame_refuses_distinctly() -> Bool {
   }
 }
 
-// The footprint tracks the cited package rather than a number retyped in the product: TQ144 is a
-// 20 mm body, which is 20000 um, and that is what the placement reserves.
-test fn w_the_footprint_is_the_cited_package_body() -> Bool {
-  micrometer_count(m: tq144_footprint().width) == 20000
-    && micrometer_count(m: tq144_footprint().height) == 20000
-    && (tq144_footprint().package_designator as String) == "TQ144"
+// THE ENVELOPE TRACKS THE CITED PACKAGE BODY, and the test is named for the body because that is
+// all it establishes. It was previously called w_the_footprint_is_the_cited_package_body, which
+// stated the category error as though it were the finding: a footprint is a land pattern, and a
+// body is not one. TQ144 is a 20 mm body, which is 20000 um, and that is what the placement
+// reserves — 2 mm short of the 22 mm its leads actually occupy.
+test fn w_the_envelope_is_the_cited_package_body() -> Bool {
+  micrometer_count(m: tq144_body_envelope().body_width) == 20000
+    && micrometer_count(m: tq144_body_envelope().body_height) == 20000
+    && (tq144_body_envelope().package_designator as String) == "TQ144"
 }

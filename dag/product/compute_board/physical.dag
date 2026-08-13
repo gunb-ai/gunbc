@@ -28,23 +28,35 @@ import std.orthogonal_geometry {
 }
 import extdeps.programmable_logic.ice40.subject { Ice40Package }
 
-data physical_note: String = "THE BOARD AS A SHAPE, WHICH IS WHAT THE ARTICLE'S PHYSICAL STANDING WAS STANDING IN FOR. That standing admitted an outline as a NonEmptyStr — a shape no consumer can intersect, measure or test for containment, so nothing could ask the two questions a board layout actually has to answer: is every part on the board, and does any part sit on top of another. This module answers both from geometry. It reuses std.orthogonal_geometry's rectangle rather than minting a board-local one, and it draws in a micrometre-registered frame, which is why the two slices before it had to land first: at millimetre grain a 0.5 mm package pitch is not expressible and two adjacent pins collapse onto one coordinate."
+data physical_note: String = "THE BOARD AS A BODY-LEVEL SHAPE, WHICH IS WHAT THE ARTICLE'S PHYSICAL STANDING WAS STANDING IN FOR. That standing admitted an outline as a NonEmptyStr — a shape no consumer can intersect, measure or test for containment, so nothing could ask the two questions a board layout actually has to answer: is every part on the board, and does any part's BODY sit on top of another. This module answers both from geometry, and answers NOTHING about pads: a package body envelope is not a land pattern, the TQ144's leads span 22 mm against a 20 mm body, and a body-only collision check therefore under-approximates real clearance. The admission arm is named BodyEnvelopesAdmitted so that under-approximation cannot be read as a clearance claim. It reuses std.orthogonal_geometry's rectangle rather than minting a board-local one, and it draws in a micrometre-registered frame, which is why the two slices before it had to land first: at millimetre grain a 0.5 mm package pitch is not expressible and two adjacent pins collapse onto one coordinate."
 
-// A FOOTPRINT IS A PROJECTION OF A PACKAGE, NOT A SECOND COPY OF ONE. The extent a board must
-// reserve is the package's body, which extdeps already carries as cited vendor facts. Re-authoring
-// width and height here would fork the package authority and let the two drift, so the footprint
-// is DERIVED and carries a reference back to the designator it came from.
-type ComponentFootprint {
+// THIS IS A PACKAGE BODY ENVELOPE. IT IS NOT A FOOTPRINT, and an earlier revision of this module
+// called it one — a category error worth recording rather than quietly renaming, because it was
+// approved by review and would have become load-bearing the moment copper appeared.
+//
+// A PCB footprint is a LAND PATTERN: numbered pads with positions, shapes and sizes, a mapping
+// from each package contact to exactly one pad, solder-mask and paste apertures, a pin-one
+// orientation, and a courtyard. None of that is here. What is here is the outline of the plastic
+// body, which answers exactly one question — does this part's body fit in this space — and cannot
+// answer where anything solders.
+//
+// THE UNDER-APPROXIMATION IS THE DANGEROUS PART, so it is stated at the carrier rather than left
+// to a reader: a TQ144's leads extend beyond its body. The body is 20 mm; the lead and land span
+// is 22 mm. So two bodies that clear each other by a millimetre have already collided at their
+// leads, and a collision check over bodies alone ADMITS boards that cannot be assembled. That is
+// why the admission arm below is named for what it checked and not for a clearance it did not
+// establish.
+type PackageBodyEnvelope {
   package_designator: NonEmptyStr
-  width: Micrometer
-  height: Micrometer
+  body_width: Micrometer
+  body_height: Micrometer
 }
 
-fn footprint_of_ice40_package(p: Ice40Package) -> ComponentFootprint {
-  ComponentFootprint {
+fn body_envelope_of_ice40_package(p: Ice40Package) -> PackageBodyEnvelope {
+  PackageBodyEnvelope {
     package_designator: p.designator,
-    width: p.body_width,
-    height: p.body_height,
+    body_width: p.body_width,
+    body_height: p.body_height,
   }
 }
 
@@ -53,7 +65,7 @@ fn footprint_of_ice40_package(p: Ice40Package) -> ComponentFootprint {
 // part is, and the one that disagrees with the package is the one nobody notices.
 type ComponentPlacement {
   identity: NonEmptyStr
-  footprint: ComponentFootprint
+  body_envelope: PackageBodyEnvelope
   origin: Point2
 }
 
@@ -77,8 +89,17 @@ type PhysicalRefusalSet {
   rest: List<PhysicalRefusal>
 }
 
+// THE ARM IS NAMED FOR WHAT WAS CHECKED. Calling this PhysicallyAdmitted would claim a board is
+// physically realizable when nothing here has looked at a pad, a clearance, a trace or a layer —
+// the rung inflation DESIGN 4b names, and the more dangerous for being one word.
+//
+// What this establishes: every part's BODY is inside the outline, no two BODIES share interior
+// area, identities are distinct, and the frame's quantum is fine enough to express the geometry.
+// What it does not establish, each its own separate standing and none of them started: land
+// pattern, courtyard clearance, mask and paste apertures, contact-to-pad mapping, routing,
+// stackup, or a fabricator's design rules.
 type PhysicalAdmission
-  = PhysicallyAdmitted { article: BoardPhysicalArticle }
+  = BodyEnvelopesAdmitted { article: BoardPhysicalArticle }
   | PhysicallyRefused { causes: PhysicalRefusalSet }
 
 fn push_physical_refusal(acc: PhysicalRefusalSet?, r: PhysicalRefusal) -> PhysicalRefusalSet? {
@@ -100,8 +121,8 @@ fn placement_extent(p: ComponentPlacement) -> OrthogonalConstruction<AxisAligned
     min: p.origin,
     max: point2(
       frame: p.origin.frame,
-      x: signed_millimeter_component_count(m: p.origin.x) + micrometer_count(m: p.footprint.width),
-      y: signed_millimeter_component_count(m: p.origin.y) + micrometer_count(m: p.footprint.height)
+      x: signed_millimeter_component_count(m: p.origin.x) + micrometer_count(m: p.body_envelope.body_width),
+      y: signed_millimeter_component_count(m: p.origin.y) + micrometer_count(m: p.body_envelope.body_height)
     )
   )
 }
@@ -221,11 +242,11 @@ fn physical_causes(registry: SpatialFrameRegistry, article: BoardPhysicalArticle
   )
 }
 
-fn admit_physical_article(registry: SpatialFrameRegistry, article: BoardPhysicalArticle) -> PhysicalAdmission {
+fn admit_body_envelopes(registry: SpatialFrameRegistry, article: BoardPhysicalArticle) -> PhysicalAdmission {
   match fold(physical_causes(registry: registry, article: article), init: none, f: fn(acc, c) {
     push_physical_refusal(acc: acc, r: c)
   }) {
-    Absent => PhysicallyAdmitted { article: article }
+    Absent => BodyEnvelopesAdmitted { article: article }
     Present { value: s } => PhysicallyRefused { causes: s }
   }
 }
