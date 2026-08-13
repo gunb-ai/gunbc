@@ -23,7 +23,8 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.text { String }
 import v2.std.node { Symbol }
 import v2.std.algebra { fold_list }
-import v2.std.collection { Int }
+import v2.std.collection { Int, List }
+import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics }
 
 
 data measurement_note: String = "MEASUREMENT INSTRUMENT, not a witness. Deliberately plain fns so nothing enrolls. Answers one question by execution: which stage of observe_provenanced_rust_emission_from_ingest first refuses for a module-level data declaration, which is the shape parse_engine_hooks is made of. The historical blocker description says emission is absent for module-level data; this measures whether that is still where it stops, because building a renderer from a description rather than a measurement is how a lane spends days on a stage the pipeline never reaches."
@@ -237,9 +238,12 @@ fn measure_door_shaped_data_third_reason() -> Symbol {
 // ALL SEVEN roster rows are prepended, so positions 1..7 are the constant and the
 // cause begins at 8. This folds the whole list and keeps the FIRST reason that is
 // not the residue, which is the only reading that survives the prepend.
-fn pmh_first_non_residue(d) -> Symbol {
+fn pmh_first_non_residue(d: NonEmptyDiagnostics) -> Symbol {
+  if d.head.reason != ^parse_grammar_choice_overlap_residue {
+    d.head.reason
+  } else {
   fold_list(
-    xs: d,
+    xs: d.tail,
     empty: ^no_non_residue_diagnostic_present,
     cons: (acc, diag) =>
       if acc == ^no_non_residue_diagnostic_present && diag.reason != ^parse_grammar_choice_overlap_residue {
@@ -248,10 +252,11 @@ fn pmh_first_non_residue(d) -> Symbol {
         acc
       }
   )
+  }
 }
 
-fn pmh_diagnostic_count(d) -> Int {
-  fold_list(xs: d, empty: 0, cons: (acc, _) => acc + 1)
+fn pmh_diagnostic_count(d: NonEmptyDiagnostics) -> Int {
+  fold_list(xs: d.tail, empty: 1, cons: (acc, _) => acc + 1)
 }
 
 fn measure_door_shaped_data_true_cause() -> Symbol {
