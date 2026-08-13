@@ -41,7 +41,7 @@ fn blocker_kind(b: LayerBlocker) -> String {
   match b {
     NeedsSomeoneToFindTheDocument { layer: _, what_is_missing: _ } => "find-document"
     NeedsARedistributionDecision { layer: _, footer: _ } => "redistribution"
-    NeedsCommercialAccess { layer: _, route: _ } => "commercial"
+    NeedsCommercialAccess { layer: _, subject: _, access_route: _ } => "commercial"
   }
 }
 
@@ -49,7 +49,7 @@ fn blocker_layer(b: LayerBlocker) -> AttachmentLayer {
   match b {
     NeedsSomeoneToFindTheDocument { layer: l, what_is_missing: _ } => l
     NeedsARedistributionDecision { layer: l, footer: _ } => l
-    NeedsCommercialAccess { layer: l, route: _ } => l
+    NeedsCommercialAccess { layer: l, subject: _, access_route: _ } => l
   }
 }
 
@@ -85,7 +85,7 @@ test fn w_a_public_package_does_not_establish_the_board_land_pattern() -> Bool {
       Unresolved { what_is_missing: _ } => true
       PubliclyCited { authority: _ } => false
       PublicButRedistributionUndecided { authority: _, footer: _ } => false
-      NdaGated { holder: _, route: _ } => false
+      NdaGated { subject: _, access_route: _ } => false
     }
 }
 
@@ -106,7 +106,14 @@ test fn w_the_three_blocker_kinds_are_distinct() -> Bool {
   package_blocker == "redistribution"
     && land_blocker == "find-document"
     && match reference_board_collateral_standing() {
-      NdaGated { holder: h, route: _ } => (h as String) == "Ampere Computing"
+      // THE SUBJECT AND THE ROUTE ARE DIFFERENT FACTS, and this asserts they have not been
+      // swapped. An earlier revision put the subject label into the route field, so a consumer
+      // asking WHERE to obtain the collateral was told WHAT it is. Both are checked, and the
+      // route is checked as an authority rather than as text — which is what makes the swap
+      // unwritable now rather than merely absent.
+      NdaGated { subject: sub, access_route: route } =>
+        list_length(items: split(s: sub as String, delimiter: "Mt. Jade")) > 1
+          && (route.uri.locator as String) == "amperecomputing.com/home/customer-reference-boards"
       PubliclyCited { authority: _ } => false
       PublicButRedistributionUndecided { authority: _, footer: _ } => false
       Unresolved { what_is_missing: _ } => false
@@ -119,7 +126,7 @@ test fn w_the_three_blocker_kinds_are_distinct() -> Bool {
 test fn w_the_nda_boundary_covers_board_collateral_only() -> Bool {
   let nda_layers = fold(attachment_stack, init: 0, f: fn(acc, row) {
     match row.standing {
-      NdaGated { holder: _, route: _ } => acc + 1
+      NdaGated { subject: _, access_route: _ } => acc + 1
       PubliclyCited { authority: _ } => acc
       PublicButRedistributionUndecided { authority: _, footer: _ } => acc
       Unresolved { what_is_missing: _ } => acc

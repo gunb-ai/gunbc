@@ -58,7 +58,14 @@ fn attachment_layer_name(l: AttachmentLayer) -> NonEmptyStr {
 type AuthorityStanding
   = PubliclyCited { authority: ExternalAuthority }
   | PublicButRedistributionUndecided { authority: ExternalAuthority, footer: NonEmptyStr }
-  | NdaGated { holder: NonEmptyStr, route: NonEmptyStr }
+  // THE ACCESS ROUTE IS AN AUTHORITY, NOT A SENTENCE. An earlier revision typed this NonEmptyStr
+  // beside a subject of the same type, and the projection below duly bound the real
+  // ExternalAuthority, discarded it, and put the subject label in the route field — a swap that
+  // typechecked precisely because both were strings. A consumer asking where to obtain the
+  // collateral received a description of what the collateral IS. The holder is gone rather than
+  // corrected: it was hard-coded here while the upstream standing carries no such field, so it
+  // was an invented fact, and the authority already identifies who holds it.
+  | NdaGated { subject: NonEmptyStr, access_route: ExternalAuthority }
   | Unresolved { what_is_missing: NonEmptyStr }
 
 type AttachmentLayerStanding {
@@ -134,7 +141,7 @@ fn reference_board_collateral_standing() -> AuthorityStanding {
     ReferenceBoardCollateralAvailable =>
       PubliclyCited { authority: ampere_customer_reference_boards_authority }
     ReferenceBoardCollateralUnderNda { subject: s, access_route: route } =>
-      NdaGated { holder: "Ampere Computing", route: s }
+      NdaGated { subject: s, access_route: route }
   }
 }
 
@@ -151,7 +158,7 @@ fn standing_is_established(s: AuthorityStanding) -> Bool {
   match s {
     PubliclyCited { authority: _ } => true
     PublicButRedistributionUndecided { authority: _, footer: _ } => false
-    NdaGated { holder: _, route: _ } => false
+    NdaGated { subject: _, access_route: _ } => false
     Unresolved { what_is_missing: _ } => false
   }
 }
@@ -163,7 +170,7 @@ fn standing_is_established(s: AuthorityStanding) -> Bool {
 type LayerBlocker
   = NeedsSomeoneToFindTheDocument { layer: AttachmentLayer, what_is_missing: NonEmptyStr }
   | NeedsARedistributionDecision { layer: AttachmentLayer, footer: NonEmptyStr }
-  | NeedsCommercialAccess { layer: AttachmentLayer, route: NonEmptyStr }
+  | NeedsCommercialAccess { layer: AttachmentLayer, subject: NonEmptyStr, access_route: ExternalAuthority }
 
 fn layer_blocker(row: AttachmentLayerStanding) -> LayerBlocker? {
   match row.standing {
@@ -172,8 +179,8 @@ fn layer_blocker(row: AttachmentLayerStanding) -> LayerBlocker? {
       Present { value: NeedsSomeoneToFindTheDocument { layer: row.layer, what_is_missing: w } }
     PublicButRedistributionUndecided { authority: _, footer: f } =>
       Present { value: NeedsARedistributionDecision { layer: row.layer, footer: f } }
-    NdaGated { holder: _, route: r } =>
-      Present { value: NeedsCommercialAccess { layer: row.layer, route: r } }
+    NdaGated { subject: sub, access_route: route } =>
+      Present { value: NeedsCommercialAccess { layer: row.layer, subject: sub, access_route: route } }
   }
 }
 
