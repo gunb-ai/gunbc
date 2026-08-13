@@ -53,11 +53,6 @@ fn blocker_layer(b: LayerBlocker) -> AttachmentLayer {
   }
 }
 
-// THE SUBJECT AND THE ROUTE ARE DIFFERENT FACTS, and this asserts they have not been
-// swapped. An earlier revision put the subject label into the route field, so a consumer
-// asking WHERE to obtain the collateral was told WHAT it is. Both are checked, and the
-// route is checked as an authority rather than as text — which is what makes the swap
-// unwritable now rather than merely absent.
 fn count_of(xs: List<LayerBlocker>) -> Int {
   fold(xs, init: 0, f: fn(acc, _b) { acc + 1 })
 }
@@ -99,6 +94,11 @@ test fn w_a_public_package_does_not_establish_the_board_land_pattern() -> Bool {
 // relationship. If these collapsed to one "not ready" state the tractable blockers would be
 // indistinguishable from the intractable one — which is precisely the error that once had this
 // repository declaring a public pin map NDA-only.
+// THE SUBJECT AND THE ROUTE ARE DIFFERENT FACTS, and this asserts they have not been
+// swapped. An earlier revision put the subject label into the route field, so a consumer
+// asking WHERE to obtain the collateral was told WHAT it is. Both are checked, and the
+// route is checked as an authority rather than as text — which is what makes the swap
+// unwritable now rather than merely absent.
 test fn w_the_three_blocker_kinds_are_distinct() -> Bool {
   let package_blocker = match layer_blocker(row: processor_package_standing) {
     Absent => "none"

@@ -200,11 +200,6 @@ data floating_terminal_article: BoardPowerInterfaceArticle = BoardPowerInterface
   manufacturing: power_interlock_article.manufacturing,
 }
 
-// Place-and-route consumes TWO things: the synthesized netlist it did not author, and the pin
-// constraints this product emits. Both are named, which is what a single artifact field could
-// not express — and is why the .pcf ended up standing in for the netlist.
-// icepack consumes only nextpnr'"'"'s .asc, which this receipt does not retain. It therefore
-// carries no retained blob at all — previously it carried the .pcf, which it never read.
 fn floating_article() -> AdmittedBoardPowerInterfaceArticle? {
   match admit_board_article(a: floating_terminal_article) {
     BoardArticleAdmitted { article: adm } => Present { value: adm }
@@ -294,6 +289,11 @@ test fn w_each_implementation_run_reports_its_own_tool() -> Bool {
 // previous tool says so: nextpnr consumes the synthesized netlist under those constraints, and
 // icepack consumes nextpnr's .asc. Neither .asc nor netlist is retained here, and claiming
 // otherwise is what the earlier revision effectively did.
+// Place-and-route consumes TWO things: the synthesized netlist it did not author, and the pin
+// constraints this product emits. Both are named, which is what a single artifact field could
+// not express — and is why the .pcf ended up standing in for the netlist.
+// icepack consumes only nextpnr'"'"'s .asc, which this receipt does not retain. It therefore
+// carries no retained blob at all — previously it carried the .pcf, which it never read.
 test fn w_downstream_runs_name_the_input_they_actually_consumed() -> Bool {
   let pnr = run_of(outcome: interlock_place_and_route_run)
   let pack = run_of(outcome: interlock_bitstream_run)

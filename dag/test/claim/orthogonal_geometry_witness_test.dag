@@ -357,11 +357,6 @@ test fn plane_surface_and_prism_hold() -> Bool {
 // unit, and a 500 um pitch has no whole-millimetre answer at all.
 fn board() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 77) }
 
-// BOTH HALVES, AND THE FIRST IS THE DELIVERABLE. An earlier revision of this test
-// asserted only that the millimetre projection refuses, which every wrong answer also
-// satisfies: a reader returning 200 instead of 20000 would have passed it, and the
-// reader's actual job — returning the extent in the frame's registered unit — went
-// unwitnessed. The count is asserted first, then the refusal.
 fn micro_registry() -> SpatialFrameRegistry {
   let r0 = empty_frame_registry()
   match register_frame(r: r0, identity: board(), length_scale: Micro) {
@@ -370,6 +365,11 @@ fn micro_registry() -> SpatialFrameRegistry {
   }
 }
 
+// BOTH HALVES, AND THE FIRST IS THE DELIVERABLE. An earlier revision of this test
+// asserted only that the millimetre projection refuses, which every wrong answer also
+// satisfies: a reader returning 200 instead of 20000 would have passed it, and the
+// reader's actual job — returning the extent in the frame's registered unit — went
+// unwitnessed. The count is asserted first, then the refusal.
 test fn a_reader_takes_the_unit_from_the_frame_not_from_itself() -> Bool {
   match axis_aligned_rectangle2(
     min: point2(frame: board(), x: 0, y: 0),

@@ -117,8 +117,6 @@ fn refusal_is(r: PhysicalRefusal, wanted: String) -> Bool {
   }
 }
 
-// One repeated identity plus one overlap between the two coincident bodies: two distinct
-// defects, each counted once, rather than four rows for two facts.
 fn refuses_naming(placements: List<ComponentPlacement>, wanted: String) -> Bool {
   match article_with(placements: placements) {
     Absent => false
@@ -189,6 +187,8 @@ test fn w_a_repeated_placement_identity_refuses() -> Bool {
 
 // ONE COLLISION IS ONE CAUSE, and one repeated identity is one cause, not one per participating
 // row. Counting is what makes that visible; naming the cause passes either way.
+// One repeated identity plus one overlap between the two coincident bodies: two distinct
+// defects, each counted once, rather than four rows for two facts.
 test fn w_one_defect_is_reported_once() -> Bool {
   match article_with(placements: [
     placement(id: "u1", x: 5000, y: 5000),
