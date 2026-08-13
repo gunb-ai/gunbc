@@ -15,7 +15,7 @@ import gunbc.hostname_read {
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.ci_fleet { srv1_offer, ComputeOffer }
-import gunbc.host_effect { fleet_ssh_leaf_unmigrated_refused, HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
+import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
 import extdeps.github.actions { RunnerSpec, SelfHosted }
 
@@ -128,7 +128,8 @@ fn deploy_target_proof(host: HostIdentity, transport: HostEffectTransport) -> De
       RunnerIdentityOnHost { host: host }
     SshShell { ssh_host: h } =>
       SshExplicitHost { host: host, ssh_host: h }
-    FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
+    FleetSsh { target: t, context: _ } =>
+      SshExplicitHost { host: host, ssh_host: t.endpoint }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       RunnerIdentityOnHost { host: host }
   }
