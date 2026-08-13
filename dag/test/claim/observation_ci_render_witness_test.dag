@@ -6,6 +6,8 @@ import std.nat { Nat }
 import std.symbols { Tier, Emoji, Unicode, Ascii, StatusPulse, StatusDwell, StatusBlocked, StatusRefused, NodeFailed, NodeCompleted }
 import std.measure { nanosecond, millisecond, millisecond_to_nanosecond, byte_size, basis_point }
 import std.observation {
+  observation_subject_contains,
+  Skipped,
   ObservationGrain,
   BatchGrain,
   ModuleGrain,
@@ -47,6 +49,16 @@ import gunbc.output_policy {
 }
 import gunbc.observation_ci_render {
   ci_batch_summary_text,
+  ci_batch_summary_line,
+  ci_routine_projection,
+  RoutineProjection,
+  FoldedIntoRollup,
+  EmittedAtLeaf,
+  LeafEmissionReason,
+  AnomalyPierces,
+  LeafGrainRequested,
+  NoAncestorAtGrain,
+  RunSummaryShown,
   RenderedLine,
   LinePlacement,
   InsideCollapsedGroup,
