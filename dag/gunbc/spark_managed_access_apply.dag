@@ -28,10 +28,8 @@ import gunbc.auth.access_token_source { GcloudPrintToken }
 import gunbc.spark_credential_workflow {
   SparkAdministratorCredentialRefused,
   SparkAdministratorCredentialResolved,
-  FleetSshCredentialMaterializationRefused,
-  FleetSshCredentialMaterialized,
   resolve_spark_administrator_credential,
-  materialize_fleet_ssh_credential_binding,
+  run_with_materialized_fleet_ssh_binding,
 }
 
 // APPLYING THE PRIVILEGED BOOTSTRAP EFFECTS, over the same bound-credential context the standing
@@ -352,13 +350,10 @@ func spark_managed_access_apply_wet(attempt_raw: String, host: String) -> Proces
     SparkAdministratorCredentialRefused { reason: reason } =>
       exit_failure(reason: reason as String)
     SparkAdministratorCredentialResolved { credential: administrator } =>
-      match materialize_fleet_ssh_credential_binding(
+      run_with_materialized_fleet_ssh_binding(
         attempt_raw: attempt_raw,
         token_source: token_source,
-      ) {
-        FleetSshCredentialMaterializationRefused { reason: reason } =>
-          exit_failure(reason: reason as String)
-        FleetSshCredentialMaterialized { binding: binding } => {
+        body: fn(binding) {
           let report = spark_managed_access_apply_with_resolved_credentials(
             attempt_raw: attempt_raw,
             host: host,
@@ -385,7 +380,7 @@ func spark_managed_access_apply_wet(attempt_raw: String, host: String) -> Proces
               }
             }
           }
-        }
-      }
+        },
+      )
   }
 }

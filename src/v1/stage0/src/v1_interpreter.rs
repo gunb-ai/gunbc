@@ -8245,6 +8245,27 @@ fn extract_from_key(field_node: &Rc<Node>, ctx: &InterpContext) -> Option<String
     None
 }
 
+fn write_file_owner_only(path: &str, content: &[u8]) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::fs::OpenOptions;
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)?;
+        file.write_all(content)?;
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(path, content)
+    }
+}
+
 struct FileResult {
     success: bool,
     byte_count: i64,
@@ -8335,6 +8356,40 @@ fn dispatch_file(
                             content,
                         })
                     }
+                    Err(e) => Ok(FileResult {
+                        success: false,
+                        byte_count: 0,
+                        path,
+                        error: format!("{}", e),
+                        content: String::new(),
+                    }),
+                };
+            }
+            "write_owner_only" => {
+                let content = match param_env.lookup(ctx.sym("content")) {
+                    Some(v) => format!("{}", v),
+                    None => {
+                        return Err(InterpError::TypeError {
+                            msg: format!(
+                                "file write_owner_only operation missing `content` argument for {}",
+                                path
+                            ),
+                        })
+                    }
+                };
+                let byte_count = content.len() as i64;
+                trace_emit(
+                    OutputChannel::ShellTrace,
+                    &format!("[file] write_owner_only {} ({} bytes)", path, byte_count),
+                );
+                return match write_file_owner_only(&path, content.as_bytes()) {
+                    Ok(()) => Ok(FileResult {
+                        success: true,
+                        byte_count,
+                        path,
+                        error: String::new(),
+                        content: String::new(),
+                    }),
                     Err(e) => Ok(FileResult {
                         success: false,
                         byte_count: 0,

@@ -10,7 +10,11 @@ import gunbc.auth.secret_ref_credential {
   SecretCredentialWireDecodeRefused,
   fetch_secret_ref_credential,
 }
-import gunbc.auth.access_token_source { AccessTokenSource }
+import gunbc.spark_credential_workflow { secret_credential_wire_decode_refusal_reason }
+import gunbc.auth.access_token_source {
+  AccessTokenSource,
+  access_token_upsert_required_reason,
+}
 import gunbc.cursor_sdk_secret_admission {
   CursorSdkSecretRefVersionAdmitted,
   CursorSdkSecretRefVersionRefused,
@@ -44,13 +48,16 @@ fn cursor_sdk_secure_api_key_from_secret_ref(
       match fetch_secret_ref_credential(secret_ref: admitted_ref, token_source: token_source) {
         SecretCredentialFetchRefused { reason } =>
           CursorSdkSecureApiKeyInputRefused { reason: reason }
-        SecretCredentialAccessUpsertRequired { plan: _ } =>
+        SecretCredentialAccessUpsertRequired { plan: plan } =>
           CursorSdkSecureApiKeyInputRefused {
-            reason: "secret access token upsert required before Cursor API key fetch" as NonEmptyStr,
+            reason: access_token_upsert_required_reason(plan: plan) as NonEmptyStr,
           }
-        SecretCredentialWireDecodeRefused { identity_cause: _, payload_cause: _ } =>
+        SecretCredentialWireDecodeRefused { identity_cause: identity_cause, payload_cause: payload_cause } =>
           CursorSdkSecureApiKeyInputRefused {
-            reason: "secret manager access version wire decode refused" as NonEmptyStr,
+            reason: secret_credential_wire_decode_refusal_reason(
+              identity_cause: identity_cause,
+              payload_cause: payload_cause,
+            ),
           }
         SecretCredentialReady { credential: credential, resolved_version: _ } => {
           let local = CursorSdkApiKeySecretRef { secret_ref: admitted_ref }

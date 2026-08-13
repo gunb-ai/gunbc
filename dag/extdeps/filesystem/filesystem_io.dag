@@ -21,6 +21,17 @@ service Filesystem {
     transport file { path: "{path}" }
   }
 
+  operation WriteOwnerOnly {
+    input { path: String, content: String }
+    output {
+      success: Bool from "write_success"
+      bytes_written: Int from "bytes_written"
+      path: String from "path"
+      error: String from "error"
+    }
+    transport file { path: "{path}", verb: "write_owner_only" }
+  }
+
   operation Read {
     input { path: String }
     output {
