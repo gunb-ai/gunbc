@@ -143,6 +143,11 @@ fn requirement_admits(r: RailRequirement, v: Millivolt) -> Bool {
 // MODE-INDEPENDENT RAILS AND THE MODE-DEPENDENT ONE ARE DIFFERENT SHAPES. Fusing them would give
 // every rail a mode field that is meaningless for five of the six, which is how an inapplicable
 // fact becomes indistinguishable from an absent one.
+//
+// ON THE NvcmProgrammingSupply ARM, ABSENT MEANS "ASK WITH A MODE", NOT "UNKNOWN". That rail's
+// requirement is a function of the configuration mode, so the mode-free question has no answer —
+// and answering it with the widest window would admit 1.71 V under master SPI, which the document
+// refuses. Ask nvcm_supply_requirement instead.
 fn rail_requirement(r: Ice40SupplyRail) -> RailRequirement? {
   match r {
     CoreSupply => Present { value: OperatingWindow { minimum: millivolt(count: 1140), maximum: millivolt(count: 1260) } }
@@ -150,9 +155,6 @@ fn rail_requirement(r: Ice40SupplyRail) -> RailRequirement? {
     BankIoSupply => Present { value: OperatingWindow { minimum: millivolt(count: 1710), maximum: millivolt(count: 3460) } }
     ConfigurationBankSupply => Present { value: OperatingWindow { minimum: millivolt(count: 1710), maximum: millivolt(count: 3460) } }
     FastProgrammingSupply => Present { value: MustBeLeftUnconnected }
-    // ABSENT MEANS "ASK WITH A MODE", NOT "UNKNOWN". This rail's requirement is a function of the
-    // configuration mode, so the mode-free question has no answer — and answering it with the
-    // widest window would admit 1.71 V under master SPI, which the document refuses.
     NvcmProgrammingSupply => none
   }
 }

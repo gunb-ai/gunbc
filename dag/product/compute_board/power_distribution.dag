@@ -67,19 +67,26 @@ type BankAssignment {
   supplied_by: NetIdentity
 }
 
+// Rails the board deliberately does not build. Named rather than absent, because a rail missing
+// from the list because nobody thought about it and a rail missing because the vendor says to
+// leave it unconnected are different states with different remedies.
 type BoardPowerIntent {
   configuration_mode: Ice40ConfigurationMode
   rails: List<BoardSupplyRail>
   banks: List<BankAssignment>
-  // Rails the board deliberately does not build. Named rather than absent, because a rail missing
-  // from the list because nobody thought about it and a rail missing because the vendor says to
-  // leave it unconnected are different states with different remedies.
   deliberately_unconnected: List<Ice40SupplyRail>
 }
 
 // EVERY REFUSAL NAMES THE RAIL AND BOTH SIDES OF THE COMPARISON. A refusal saying only "out of
 // range" sends a reader back to the datasheet to find out what range; carrying the bound means the
 // diagnostic is the answer rather than a pointer to it.
+// The vendor's unused-bank constraint, refusing. Both nets are carried because the reader's
+// next question is what it IS tied to versus what it should be, and a refusal naming only the
+// bank sends them to two other files to find out.
+// An unused bank whose constraint cannot be evaluated because the core rail it must tie to was
+// never built. This refuses rather than passing: the rail side reports the missing core rail
+// under its own cause, but a board could declare core deliberately unconnected and thereby
+// silence that one, and an unanswerable constraint must not read as a satisfied constraint.
 type PowerRefusal
   = RailOutsideDeviceWindow { rail: Ice40SupplyRail, supplied: Millivolt, minimum: Millivolt, maximum: Millivolt }
   | RailBuiltForAnUnconnectedPin { rail: Ice40SupplyRail, supplied: Millivolt }
@@ -87,14 +94,7 @@ type PowerRefusal
   | BankStandardOutsideRailWindow { bank: Int, standard_name: NonEmptyStr, supplied: Millivolt, minimum: Millivolt, maximum: Millivolt }
   | BankSuppliedByNoDeclaredRail { bank: Int, net: NetIdentity }
   | LikeVoltageRailsOnSeparateSupplies { left: Ice40SupplyRail, right: Ice40SupplyRail, voltage: Millivolt }
-  // The vendor's unused-bank constraint, refusing. Both nets are carried because the reader's
-  // next question is what it IS tied to versus what it should be, and a refusal naming only the
-  // bank sends them to two other files to find out.
   | UnusedBankNotTiedToCore { bank: Int, net: NetIdentity, core_net: NetIdentity }
-  // An unused bank whose constraint cannot be evaluated because the core rail it must tie to was
-  // never built. This refuses rather than passing: the rail side reports the missing core rail
-  // under its own cause, but a board could declare core deliberately unconnected and thereby
-  // silence that one, and an unanswerable constraint must not read as a satisfied constraint.
   | UnusedBankCoreRailNotBuilt { bank: Int, core_rail: Ice40SupplyRail }
 
 type PowerAdmission
@@ -130,6 +130,10 @@ fn requirement_for(intent: BoardPowerIntent, r: Ice40SupplyRail) -> RailRequirem
   }
 }
 
+// A RAIL BUILT FOR A PIN THAT MUST BE LEFT UNCONNECTED IS ITS OWN REFUSAL, not an
+// out-of-window one. There is no window to be outside of, and reporting it as a range
+// violation would send someone looking for the right voltage when the answer is that
+// there is no right voltage.
 fn rail_causes(intent: BoardPowerIntent, r: Ice40SupplyRail) -> List<PowerRefusal> {
   match requirement_for(intent: intent, r: r) {
     Absent => []
@@ -139,10 +143,6 @@ fn rail_causes(intent: BoardPowerIntent, r: Ice40SupplyRail) -> List<PowerRefusa
           if is_deliberately_unconnected(intent: intent, r: r) { [] } else { [RequiredRailNotBuilt { rail: r }] }
         Present { value: br } =>
           match req {
-            // A RAIL BUILT FOR A PIN THAT MUST BE LEFT UNCONNECTED IS ITS OWN REFUSAL, not an
-            // out-of-window one. There is no window to be outside of, and reporting it as a range
-            // violation would send someone looking for the right voltage when the answer is that
-            // there is no right voltage.
             MustBeLeftUnconnected => [RailBuiltForAnUnconnectedPin { rail: r, supplied: br.nominal }]
             OperatingWindow { minimum: lo, maximum: hi } =>
               if requirement_admits(r: req, v: br.nominal) {
@@ -168,14 +168,14 @@ fn supplying_rail(intent: BoardPowerIntent, net: NetIdentity) -> BoardSupplyRail
 // bank sitting at 1.8 V satisfies it; if that bank drives LVCMOS 3.3 it is nevertheless out of
 // spec, because the standard's window is 3.14 to 3.46. This is the check a board that only
 // verified rails would pass while its outputs did not meet their levels.
+// An unused bank has no standard, so there is no window to be outside of. Its own
+// obligation — tying to core — is the vendor inter-rail constraint, checked there against
+// the constraint row rather than restated here.
 fn bank_causes(intent: BoardPowerIntent, b: BankAssignment) -> List<PowerRefusal> {
   match supplying_rail(intent: intent, net: b.supplied_by) {
     Absent => [BankSuppliedByNoDeclaredRail { bank: b.bank, net: b.supplied_by }]
     Present { value: br } =>
       match b.use {
-        // An unused bank has no standard, so there is no window to be outside of. Its own
-        // obligation — tying to core — is the vendor inter-rail constraint, checked there against
-        // the constraint row rather than restated here.
         BankUnused => []
         BankDrivesStandard { standard: st } =>
           if millivolt_count(v: br.nominal) >= millivolt_count(v: st.minimum)
@@ -197,13 +197,17 @@ fn bank_causes(intent: BoardPowerIntent, b: BankAssignment) -> List<PowerRefusal
 // THE CONSTRAINT BETWEEN RAILS, checked at the grain it is stated: two rails at the same voltage
 // must be the same SUPPLY, which is a claim about net identity and not about voltage. Two rails
 // both reading 3300 mV on two different nets satisfy every window and violate this.
+// THE CONSTRAINT THIS ARM STATES IS NOW THE CONSTRAINT IT ENFORCES. It read `=> []`, which is
+// indistinguishable at the call site from a satisfied check, so folding it over the roster
+// presented three enforced vendor constraints where only two were. The core rail comes from
+// the constraint ROW rather than being written here, so the roster stays the authority for
+// which rail is core.
+// Legitimately empty, and it is worth saying why so it is not read as the arm above was. This
+// constraint IS enforced, on the rail path: a rail whose requirement is MustBeLeftUnconnected
+// and which the board nevertheless builds refuses as RailBuiltForAnUnconnectedPin. Restating
+// it here would be a second authority for one constraint, not a second check.
 fn inter_rail_causes(intent: BoardPowerIntent, c: Ice40InterRailConstraint) -> List<PowerRefusal> {
   match c {
-    // THE CONSTRAINT THIS ARM STATES IS NOW THE CONSTRAINT IT ENFORCES. It read `=> []`, which is
-    // indistinguishable at the call site from a satisfied check, so folding it over the roster
-    // presented three enforced vendor constraints where only two were. The core rail comes from
-    // the constraint ROW rather than being written here, so the roster stays the authority for
-    // which rail is core.
     UnusedBankSupplyGoesToCore { bank_rail: _, core_rail: cr } =>
       fold(intent.banks, init: [], f: fn(acc, b) {
         match b.use {
@@ -224,10 +228,6 @@ fn inter_rail_causes(intent: BoardPowerIntent, c: Ice40InterRailConstraint) -> L
             }
         }
       })
-    // Legitimately empty, and it is worth saying why so it is not read as the arm above was. This
-    // constraint IS enforced, on the rail path: a rail whose requirement is MustBeLeftUnconnected
-    // and which the board nevertheless builds refuses as RailBuiltForAnUnconnectedPin. Restating
-    // it here would be a second authority for one constraint, not a second check.
     PinLeftUnconnected { rail: _ } => []
     LikeVoltageRailsShareOneSupply { left: l, right: r } =>
       match built_rail(intent: intent, r: l) {
