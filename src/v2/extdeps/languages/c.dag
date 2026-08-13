@@ -64,6 +64,7 @@ import v2.std.compilers.target_model {
   TargetBindingRefShape,
   TargetCallApplyShape,
   TargetClosureShape,
+  ConditionalSelfDelimiting,
   TargetConditionalShape,
   TargetEffectApplyShape,
   TargetFieldAccessShape,
@@ -932,6 +933,15 @@ fn c_add_declared_inhabitants_root() -> Node {
 // (a binding-ref plus op_add). Forms C has not yet modeled carry token classes with
 // no lex rule, so reaching one REFUSES at serialization rather than emitting
 // fabricated text -- the fail-closed property the lex-miss arm already provides.
+// Delimiting discipline for this target. C's `if` is a STATEMENT and cannot
+// appear in a value position at all, so the previous spelling -- kw_if with an
+// lbrace then-arm -- was a copy of the .dag shape describing a construct C does
+// not have here; it never emitted, because neither token had a lex rule. The
+// conditional operator is what C actually has, and it is self-delimiting:
+// `c ? a : b` ends with its else arm. C has no value-producing loop, so
+// loop_token stays unspelled and the loop form refuses rather than emitting --
+// self-delimiting is a claim about where a construct ENDS, never a claim that
+// the language has one.
 fn c_value_expression_projection() -> TargetValueExpressionProjection {
   TargetValueExpressionProjection {
     binding_ref_form: TargetBindingRefShape { ident_token: ^c_token_ident },
@@ -962,9 +972,10 @@ fn c_value_expression_projection() -> TargetValueExpressionProjection {
       separator: ^c_token_comma
     },
     conditional_form: TargetConditionalShape {
-      if_token: ^c_token_unwired_if,
-      then_token: ^c_token_lbrace,
-      else_token: ^c_token_unwired_else
+      if_token: ^c_token_ternary_nop,
+      then_token: ^c_token_ternary_question,
+      else_token: ^c_token_ternary_colon,
+      delimiting: ConditionalSelfDelimiting
     },
     let_form: TargetBindLetShape {
       let_token: ^c_token_unwired_let,
@@ -1072,7 +1083,10 @@ fn c_lex_rules() -> List<LexRule> {
     c_lex_rule(token_class: ^c_token_kw_return, text: "return "),
     c_lex_rule(token_class: ^c_token_plus, text: " + "),
     c_lex_rule(token_class: ^c_token_semicolon, text: ";"),
-    c_lex_rule(token_class: ^c_token_rbrace, text: " }")
+    c_lex_rule(token_class: ^c_token_rbrace, text: " }"),
+    c_lex_rule(token_class: ^c_token_ternary_nop, text: ""),
+    c_lex_rule(token_class: ^c_token_ternary_question, text: " ? "),
+    c_lex_rule(token_class: ^c_token_ternary_colon, text: " : ")
   ]
 }
 
