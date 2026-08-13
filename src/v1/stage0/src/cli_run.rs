@@ -19314,9 +19314,13 @@ fn witness_admission_entry_function_keys_from_source(
     // `known_red_probe(` replaced `probe_red(` and the seed-emitter wet row constructor when the
     // quarantine moved to one function-grain authority (2026-08-03): both cadences now author the
     // same row shape in `gunbc.explicit_witness_admission`, so one head reads both.
-    let heads: [(&str, &str); 6] = [
+    let heads: [(&str, &str); 7] = [
         ("bin_wet(", "entry: String"),
         ("known_red_probe(", "entry: NonEmptyStr"),
+        (
+            "source_root_ingest_gate_admitted_witness(",
+            "entry: NonEmptyStr",
+        ),
         ("self_host_wet_entry(", "entry: String"),
         ("SelfHostWetReceiptBinding {", ""),
         ("RehomedBinWetRow {", ""),
@@ -29002,11 +29006,6 @@ pub fn emit_source_root_ingest_manifest(
 
     let content_hash = source_root_ingest_content_hash_fnv1a64(records);
     let read_count = records.len();
-    let inline_records = if read_count <= MANIFEST_INLINE_LIST_MAX {
-        records
-    } else {
-        &[]
-    };
 
     let mut out = String::new();
     out.push_str("module v2.test.workflow.host_source_root_ingest_manifest\n\n\n");
@@ -29016,6 +29015,7 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("  SourceRef,\n");
     out.push_str("  SourceRootIngest,\n");
     out.push_str("  SourceRootCoverageComplete,\n");
+    out.push_str("  SourceRootManifestAbsent,\n");
     out.push_str("  SourceRootManifestElided,\n");
     out.push_str("  SourceRootProvenanceCoverageReceipt\n");
     out.push_str("}\n");
@@ -29030,9 +29030,7 @@ pub fn emit_source_root_ingest_manifest(
     // fails with `undefined variable 'V2Tree'` (the source_root ingest gate's persistent RED).
     // #6269's emit_source_root_ref_import derives exactly the referenced constructors from the
     // records (supersedes the earlier hardcoded-both-constructors form).
-    if !inline_records.is_empty() {
-        out.push_str(&emit_source_root_ref_import(inline_records));
-    } else if !records.is_empty() {
+    if !records.is_empty() {
         out.push_str(&emit_source_root_ref_import(records));
     }
     if entry_admission.is_some() {
@@ -29051,40 +29049,28 @@ pub fn emit_source_root_ingest_manifest(
         dag_manifest_scalar_escape(&content_hash)?
     ));
     out.push_str("data host_source_root_ingest_coverage_receipt: SourceRootProvenanceCoverageReceipt = SourceRootProvenanceCoverageReceipt {\n");
-    // The receipt must describe the carrier that actually landed, not the discovery that
-    // preceded it. Past MANIFEST_INLINE_LIST_MAX the row list is elided to `Empty`, so
-    // hardcoding `coverage_complete: true` with the full read_count asserted complete
-    // coverage over an EMPTY carrier — and made it unfalsifiable by construction
-    // (DESIGN.md §5: fabricated plausible output; a receipt that can never be false
-    // reports nothing).
-    //
-    // The elision is now a TYPED, COUNTED refusal rather than a bool: `SourceRootManifestElided`
-    // names the read count AND the cap that rejected it, so a consumer sees the size of the
-    // deficit ("91 reads met a cap of 64") instead of an undifferentiated `false`. A silent
-    // `Empty` carrier under a `true` receipt was an absorbing fallback — ⊤-as-ignorance
-    // presented as ⊤-as-answer.
-    let produced_row_count = inline_records.len();
+    // Capless closure transport: closure-ref rows are always uncapped. Past
+    // MANIFEST_INLINE_LIST_MAX the inline Lossless carrier is refused via
+    // SourceRootManifestElided (typed expected/observed/capacity) — never zero
+    // produced rows with a positive read count (empty-observation narrow).
+    let produced_row_count = read_count;
     out.push_str(&format!("  ingest_read_count: {read_count},\n"));
     out.push_str(&format!("  produced_row_count: {produced_row_count},\n"));
     out.push_str(&format!(
         "  discovered_source_refs_digest: DiscoveredSourceRefsDigestFromList {{ digest: Fnv1a64Structural {{ digest: \"{}\" }} }},\n",
         source_ref_list_structural_digest_hex(records)
     ));
-    if produced_row_count == read_count {
-        out.push_str("  coverage: SourceRootCoverageComplete\n");
-    } else {
+    if read_count > MANIFEST_INLINE_LIST_MAX {
         out.push_str(&format!(
             "  coverage: SourceRootManifestElided {{ read_count: {read_count}, cap: {MANIFEST_INLINE_LIST_MAX} }}\n"
         ));
+    } else if read_count > 0 {
+        out.push_str("  coverage: SourceRootCoverageComplete\n");
+    } else {
+        out.push_str("  coverage: SourceRootManifestAbsent\n");
     }
     out.push_str("}\n\n\n");
-    out.push_str("data host_source_root_ingest: SourceRootIngest = ");
-    if inline_records.is_empty() {
-        out.push_str("Empty\n");
-    } else {
-        out.push_str(&emit_source_root_ingest_monoid(inline_records)?);
-        out.push('\n');
-    }
+    out.push_str("data host_source_root_ingest: SourceRootIngest = Empty\n");
     if !records.is_empty() {
         out.push('\n');
         out.push_str("data host_source_root_closure_refs: List<SourceRef> = ");
@@ -29112,11 +29098,50 @@ mod source_root_ingest_manifest_tests {
         }
     }
 
-    /// Past the inline cap the row list is elided, so the receipt must say so.
-    /// Before this fix `coverage_complete: true` was hardcoded and the full read_count
-    /// emitted as produced_row_count, asserting complete coverage over an empty carrier.
+    /// Capless ref transport: over the inline cap, coverage reports typed elision
+    /// while produced_row_count and closure_refs carry the full population.
     #[test]
-    fn receipt_reports_incomplete_coverage_when_rows_are_elided() {
+    fn receipt_reports_typed_elision_with_full_refs_past_inline_cap() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc_cov_receipt_{}_{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("host_source_root_ingest_manifest.dag");
+
+        let over: Vec<SourceRootReadRecord> = (0..65).map(sr_record).collect();
+        emit_source_root_ingest_manifest(&path, &over, None).unwrap();
+        let emitted = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            emitted.contains("coverage: SourceRootManifestElided"),
+            "past inline cap must report typed elision, got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains(&format!(
+                "coverage: SourceRootManifestElided {{ read_count: 65, cap: {MANIFEST_INLINE_LIST_MAX} }}"
+            )),
+            "elision must carry read_count and cap, got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains("produced_row_count: 65"),
+            "ref population must not be zero, got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains("host_source_root_closure_refs"),
+            "must carry full closure refs, got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains("data host_source_root_ingest: SourceRootIngest = Empty"),
+            "inline ingest stays empty past cap, got:\n{emitted}"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// At or below the inline cap, coverage is complete with full ref population.
+    #[test]
+    fn receipt_reports_complete_coverage_via_closure_refs_at_inline_cap() {
         let dir = std::env::temp_dir().join(format!(
             "gunbc_cov_receipt_{}_{}",
             std::process::id(),
@@ -29126,33 +29151,54 @@ mod source_root_ingest_manifest_tests {
         let path = dir.join("host_source_root_ingest_manifest.dag");
 
         let over: Vec<SourceRootReadRecord> =
-            (0..MANIFEST_INLINE_LIST_MAX + 1).map(sr_record).collect();
+            (0..MANIFEST_INLINE_LIST_MAX).map(sr_record).collect();
         emit_source_root_ingest_manifest(&path, &over, None).unwrap();
         let emitted = std::fs::read_to_string(&path).unwrap();
         assert!(
-            emitted.contains("coverage: SourceRootManifestElided"),
-            "elided manifest must report incomplete coverage, got:\n{emitted}"
+            emitted.contains("coverage: SourceRootCoverageComplete"),
+            "at inline cap must report complete ref coverage, got:\n{emitted}"
         );
         assert!(
-            emitted.contains("produced_row_count: 0"),
-            "elided manifest must report the rows it actually carries (0), got:\n{emitted}"
+            emitted.contains(&format!("produced_row_count: {}", MANIFEST_INLINE_LIST_MAX)),
+            "at inline cap produced_row_count must equal read count, got:\n{emitted}"
         );
         assert!(
-            emitted.contains(&format!(
-                "ingest_read_count: {}",
-                MANIFEST_INLINE_LIST_MAX + 1
-            )),
-            "discovered read count must still be reported, got:\n{emitted}"
+            emitted.contains("host_source_root_closure_refs"),
+            "at inline cap must carry closure refs, got:\n{emitted}"
         );
 
-        // Control: within the cap, coverage really is complete.
         let under: Vec<SourceRootReadRecord> = (0..3).map(sr_record).collect();
         emit_source_root_ingest_manifest(&path, &under, None).unwrap();
         let emitted = std::fs::read_to_string(&path).unwrap();
         assert!(
             emitted.contains("coverage: SourceRootCoverageComplete")
                 && emitted.contains("produced_row_count: 3"),
-            "inline manifest must report complete coverage over 3 rows, got:\n{emitted}"
+            "small closure manifest must also report complete ref coverage, got:\n{emitted}"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn receipt_reports_manifest_absent_import_and_coverage_for_zero_reads() {
+        let dir =
+            std::env::temp_dir().join(format!("gunbc_cov_zero_{}_{}", std::process::id(), line!()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("host_source_root_ingest_manifest.dag");
+
+        emit_source_root_ingest_manifest(&path, &[], None).unwrap();
+        let emitted = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            emitted.contains("SourceRootManifestAbsent"),
+            "zero-read manifest must import SourceRootManifestAbsent, got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains("coverage: SourceRootManifestAbsent"),
+            "zero-read manifest must report absent coverage, got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains("ingest_read_count: 0"),
+            "zero-read manifest must report zero ingest count, got:\n{emitted}"
         );
 
         std::fs::remove_dir_all(&dir).ok();
@@ -39199,6 +39245,29 @@ mod module_path_index_tests {
         assert!(
             keys.contains(&"dag/test/claim/x_test.dag::x_holds".to_string()),
             "a RehomedBinWetRow must register as an executing consumer key (Phase 0(b)); got {keys:?}"
+        );
+    }
+
+    #[test]
+    fn source_root_ingest_gate_admitted_witness_rows_parse_as_executing_consumer_keys() {
+        let synthetic = "module gunbc.explicit_witness_admission\n\n\
+             data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [\n\
+               source_root_ingest_gate_admitted_witness(\n\
+                 entry: \"src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag\",\n\
+                 f: \"compiler_closure_scoped_ingest_module_count_ok_holds\",\n\
+                 kind: CorpusWitnessKind,\n\
+                 reason: \"r\",\n\
+                 dissolution: unbound_dissolution(description: \"d\")\n\
+               ),\n\
+             ]\n";
+        let keys =
+            super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
+        assert!(
+            keys.contains(
+                &"src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag::compiler_closure_scoped_ingest_module_count_ok_holds"
+                    .to_string()
+            ),
+            "transport gate admission rows must register as executing consumer keys; got {keys:?}"
         );
     }
 
