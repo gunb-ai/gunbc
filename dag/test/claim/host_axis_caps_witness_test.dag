@@ -25,6 +25,8 @@ import gunbc.host_axis_caps {
   host_axis_caps_author_before_revert_enforced,
   deploy_memory_cap_apply_script_ordered,
   deploy_memory_cap_apply_script_author_before_shadow_revert,
+  deploy_memory_cap_script_author_precedes_revert,
+  deploy_memory_cap_shadow_revert_scripts,
 }
 import gunbc.membership_reconcile { EffectsReady, ApplyRefused }
 import gunbc.host_converge {
@@ -146,4 +148,11 @@ test fn witness_runner_memory_cap_author_script_derived() -> Bool {
 test fn witness_cap_author_before_shadow_revert_enforced_in_axis_caps() -> Bool {
   host_axis_caps_author_before_revert_enforced
     && deploy_memory_cap_apply_script_author_before_shadow_revert(units: [shadow_unit])
+}
+
+test fn witness_reversed_deploy_script_fails_author_before_revert_gate() -> Bool {
+  let units = [shadow_unit]
+  let author = runner_memory_cap_author_script()
+  let reverts = deploy_memory_cap_shadow_revert_scripts(units: units)
+  !deploy_memory_cap_script_author_precedes_revert(script: concat(reverts, author), units: units)
 }

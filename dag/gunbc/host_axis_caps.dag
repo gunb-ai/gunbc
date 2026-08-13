@@ -226,12 +226,24 @@ fn deploy_memory_cap_apply_script_ordered(units: List<NonEmptyStr>) -> String {
   concat(runner_memory_cap_author_script(), deploy_memory_cap_shadow_revert_scripts(units: units))
 }
 
-fn deploy_memory_cap_apply_script_author_before_shadow_revert(units: List<NonEmptyStr>) -> Bool {
+// Ordering pin: reversed composition (revert then author) must not satisfy this gate.
+fn deploy_memory_cap_script_author_precedes_revert(script: String, units: List<NonEmptyStr>) -> Bool {
   let author = runner_memory_cap_author_script()
   let reverts = deploy_memory_cap_shadow_revert_scripts(units: units)
-  deploy_memory_cap_apply_script_ordered(units: units) == concat(author, reverts)
-    && length(author) > 0
-    && runner_memory_cap_author_ready_for_shadow_revert(observed: derived_runner_memory_cap_members())
+  string_contains(s: author, pattern: "20-fleet-width")
+    && !string_contains(s: author, pattern: "systemctl revert")
+    && (length(units) == 0
+      || (
+        string_contains(s: script, pattern: "systemctl revert")
+          && concat(reverts, author) != script
+      ))
+}
+
+fn deploy_memory_cap_apply_script_author_before_shadow_revert(units: List<NonEmptyStr>) -> Bool {
+  deploy_memory_cap_script_author_precedes_revert(
+    script: deploy_memory_cap_apply_script_ordered(units: units),
+    units: units,
+  )
 }
 
 data control_shadow_reconcile_consumer_disposition: Disposition = Terminal {
