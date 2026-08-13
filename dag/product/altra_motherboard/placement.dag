@@ -131,6 +131,13 @@ type PlacementRefusal
   | RequiredRoleUnfilled { role: BoardComponentRole }
   // A component present on the board filling no role the design requires.
   | ComponentFillsNoRequiredRole { component: NonEmptyStr, role_named: NonEmptyStr }
+  // Two planned components sharing one identity. This is refused HERE rather than left to the
+  // geometry layer, and the distinction is the whole reason the arm exists: physical.dag does
+  // refuse a repeated identity, but it only ever sees components whose envelopes are established,
+  // so a duplicate among OBLIGATIONS is invisible to it. The reference plan carried exactly that —
+  // four memory slots sharing one identity, harmless only for as long as their envelopes stayed
+  // outstanding, and a collision the moment they landed.
+  | PlannedIdentityRepeated { component: NonEmptyStr }
 
 type BoardPlacementPlan {
   frame: CoordinateFrameIdentity
@@ -203,8 +210,39 @@ fn envelope_refusals(plan: BoardPlacementPlan) -> List<PlacementRefusal> {
   })
 }
 
+fn identity_occurrences(cs: List<PlannedComponent>, id: NonEmptyStr) -> Int {
+  fold(cs, init: 0, f: fn(acc, c) { if (c.identity as String) == (id as String) { acc + 1 } else { acc } })
+}
+
+fn identity_seen(seen: List<NonEmptyStr>, id: NonEmptyStr) -> Bool {
+  fold(seen, init: false, f: fn(acc, s) { acc || (s as String) == (id as String) })
+}
+
+type IdentityScan {
+  seen: List<NonEmptyStr>
+  out: List<PlacementRefusal>
+}
+
+// A REPEATED IDENTITY IS REPORTED ONCE, not once per occurrence, so four slots sharing a name
+// produce one refusal naming it rather than four saying the same thing.
+fn identity_refusals(plan: BoardPlacementPlan) -> List<PlacementRefusal> {
+  let scan = fold(plan.components, init: IdentityScan { seen: [], out: [] }, f: fn(acc, c) {
+    let dup = if identity_occurrences(cs: plan.components, id: c.identity) > 1
+      && !identity_seen(seen: acc.seen, id: c.identity) {
+      [PlannedIdentityRepeated { component: c.identity }]
+    } else {
+      []
+    }
+    IdentityScan { seen: concat(acc.seen, [c.identity]), out: concat(acc.out, dup) }
+  })
+  scan.out
+}
+
 fn placement_causes(d: AltraMinimalMotherboard, plan: BoardPlacementPlan) -> List<PlacementRefusal> {
-  concat(population_refusals(d: d, plan: plan), envelope_refusals(plan: plan))
+  concat(
+    concat(population_refusals(d: d, plan: plan), envelope_refusals(plan: plan)),
+    identity_refusals(plan: plan)
+  )
 }
 
 fn placement_refusal_count(cs: List<PlacementRefusal>) -> Int {
@@ -293,7 +331,7 @@ fn memory_slot_obligations(d: AltraMinimalMotherboard) -> List<PlannedComponent>
   fold(channel_indices(c: d.memory.channels), init: [], f: fn(acc, i) {
     concat(acc, [obligation(
       g: VendorSelectionNotMade { role_named: "MemoryModuleSlot" },
-      id: "dimm_slot",
+      id: "dimm_slot_{i}",
       r: MemoryModuleSlot { channel: i },
       x: 150000,
       y: 20000 + (i * 12000)

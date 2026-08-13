@@ -18,6 +18,7 @@ import product.altra_motherboard.placement {
   PlacementRefusal,
   PlacementRefused,
   PlannedComponent,
+  PlannedIdentityRepeated,
   ProcessorSocket,
   RedistributionUnresolved,
   RequiredRoleUnfilled,
@@ -57,6 +58,7 @@ fn cause_tag(r: PlacementRefusal) -> NonEmptyStr {
     ComponentEnvelopeNotEstablished { component: _, gap: _ } => "EnvelopeMissing"
     RequiredRoleUnfilled { role: _ } => "RoleUnfilled"
     ComponentFillsNoRequiredRole { component: _, role_named: _ } => "RoleUnjustified"
+    PlannedIdentityRepeated { component: _ } => "IdentityRepeated"
   }
 }
 
@@ -219,6 +221,42 @@ test fn w_a_component_filling_no_required_role_refuses() -> Bool {
           origin: point2(frame: altra_board_frame(), x: 10000, y: 10000),
         }], template: p)),
         wanted: "RoleUnjustified"
+      ) == 1
+  }
+}
+
+// EVERY PLANNED COMPONENT HAS ITS OWN IDENTITY, and this witness exists because the reference plan
+// did not. All four memory-slot obligations shared the identity "dimm_slot". Nothing failed, because
+// an obligation never reaches the geometry bridge and physical.dag therefore never saw the
+// duplicate — the collision was authored and dormant, due to fire the moment DIMM envelopes were
+// established. A defect that is invisible until a later increment is worse than one that fails now.
+test fn w_every_planned_component_has_a_distinct_identity() -> Bool {
+  match plan_or_empty() {
+    Absent => false
+    Present { value: p } =>
+      count_tagged(cs: placement_causes(d: altra_1p_minimum, plan: p), wanted: "IdentityRepeated") == 0
+  }
+}
+
+// THE DISCRIMINATING RED. Two components sharing one identity refuse, and refuse ONCE rather than
+// once per occurrence. Without this the check above is satisfied by a plan-level rule that never
+// fires — which is exactly the state the reference plan was in.
+test fn w_two_components_sharing_an_identity_refuse_once() -> Bool {
+  match plan_or_empty() {
+    Absent => false
+    Present { value: p } =>
+      count_tagged(
+        cs: placement_causes(d: altra_1p_minimum, plan: plan_with_only(cs: [
+          PlannedComponent {
+            identity: "collides", role: BoardControlCpld, envelope: board_control_envelope,
+            origin: point2(frame: altra_board_frame(), x: 10000, y: 10000),
+          },
+          PlannedComponent {
+            identity: "collides", role: ClockGenerator, envelope: board_control_envelope,
+            origin: point2(frame: altra_board_frame(), x: 20000, y: 20000),
+          },
+        ], template: p)),
+        wanted: "IdentityRepeated"
       ) == 1
   }
 }
