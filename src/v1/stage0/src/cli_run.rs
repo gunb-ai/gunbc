@@ -51,10 +51,10 @@ pub(crate) mod materialization_provider_consumer;
 mod phase_profile;
 pub(crate) mod test_module_hygiene_bridge;
 pub use floor_discovery_snapshot::{
-    append_discovery_trace_row, build_floor_discovery_request, coordinated_discovery_compute_count,
-    discover_floor_witness_roster_with_snapshot, floor_discovery_consumer_role_from_env,
+    append_discovery_trace_row, build_floor_discovery_request,
+    discover_floor_witness_roster_with_snapshot, floor_tested_commit_and_tree, floor_tool_identity,
     request_identity_digest, verify_floor_discovery_terminal_for_coordinator,
-    FloorDiscoveryConsumerRole, FLOOR_DISCOVERY_CONSUMER_ENV,
+    FloorDiscoveryConsumerRole,
 };
 #[doc(hidden)]
 pub use materialization_provider_consumer::{
@@ -6022,16 +6022,6 @@ pub fn build_module_graph_facts_live(pool_roots: &[String]) -> ModuleGraphFactsL
         cache.borrow_mut().insert(key, facts.clone());
         facts
     })
-}
-
-pub(crate) fn install_module_graph_facts_cache_entry(
-    pool_roots: &[String],
-    facts: ModuleGraphFactsLive,
-) {
-    let key = pool_roots_for_module_graph_closure(pool_roots).join("\u{1f}");
-    MODULE_GRAPH_FACTS_CACHE.with(|cache| {
-        cache.borrow_mut().insert(key, facts);
-    });
 }
 
 /// Host realization of `v2.lens.module_graph.import_closure_live`.
@@ -21020,7 +21010,7 @@ pub(crate) fn refuse_on_module_graph_read_refusals(
 /// docs/plans/affected-set-differential-falsifier.md). PredictOnly computes would-skip
 /// per row, RECORDS the prediction, and runs the row anyway — the falsifier cadence
 /// compares predictions against cold verdicts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum NodeFrontierSelectionMode {
     Off,
     Applied,
@@ -23259,14 +23249,6 @@ pub fn run_discovery_corpus_with_options(
     width_policy: DiscoveryWidthPolicy,
     options: DiscoveryCorpusOptions,
 ) -> Result<DiscoverySummary, String> {
-    if std::env::var(FLOOR_DISCOVERY_CONSUMER_ENV).as_deref() == Ok("coordinated_consumer")
-        && !floor_discovery_snapshot::coordinated_snapshot_installed()
-    {
-        return Err(
-            "coordinated discovery refused: verified floor snapshot is not installed; cold reconstruction is disabled"
-                .to_string(),
-        );
-    }
     let pump_started = std::time::Instant::now();
     let selection = options.node_frontier_selection;
     let out = run_discovery_corpus_with_options_inner(
@@ -38474,29 +38456,6 @@ mod witness_layer_roots_compile_clean_tests {
                 .unwrap_or_else(|| panic!("missing pooled entry for {module_path}"));
             assert_eq!(pooled_source.path, source.path);
         }
-    }
-
-    #[test]
-    fn coordinated_consumer_refuses_corpus_without_verified_snapshot() {
-        with_env_test_lock(|| {
-            floor_discovery_snapshot::reset_floor_discovery_snapshot_for_test();
-            let _consumer = EnvGuard::set(FLOOR_DISCOVERY_CONSUMER_ENV, "coordinated_consumer");
-            let roots: Vec<String> = Vec::new();
-            let refusal = run_discovery_corpus_with_options(
-                &roots,
-                &[],
-                &[],
-                crate::v1_interpreter::ExecutionMode::Hermetic,
-                DiscoveryWidthPolicy::Serial,
-                DiscoveryCorpusOptions::default(),
-            )
-            .expect_err("coordinated corpus must refuse without an installed snapshot");
-            assert!(
-                refusal.contains("verified floor snapshot is not installed")
-                    && refusal.contains("cold reconstruction is disabled"),
-                "unexpected coordinated-consumer refusal: {refusal}"
-            );
-        });
     }
 }
 
