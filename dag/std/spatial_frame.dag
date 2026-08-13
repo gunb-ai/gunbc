@@ -17,10 +17,11 @@ import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity
 // that registrar, and the fact it carries first is not a display fact at all: it is the frame's
 // LENGTH UNIT, which every number living in the frame silently depends on.
 //
-// WHY IT WAS MISSING AND WHY IT NOW BITES. std.affine_space fixes its component to
-// SignedMillimeterComponent, so every coordinate in the corpus means millimetres by convention.
-// That was true of everything the layer had been asked to hold — racks, chassis, rooms. A printed
-// circuit board is the first subject it is false for: a TQ144 package sits on a 0.5 mm contact
+// WHY IT WAS MISSING AND WHY IT NOW BITES. std.affine_space USED TO fix its component to a
+// SignedMillimeterComponent, so every coordinate in the corpus meant millimetres by convention -
+// that carrier is deleted and the component is unit-neutral now, but the reasoning below is why.
+// The convention was true of everything the layer had been asked to hold — racks, chassis and
+// rooms. A printed circuit board is the first subject it is false for: a TQ144 package sits on a 0.5 mm contact
 // pitch, so in whole millimetres its adjacent pins are at the same coordinate. The geometry does
 // not merely lose accuracy, it loses the DISTINCTION between two pins, and every downstream
 // question about clearance or collision is then asked of a shape that has already collapsed.
