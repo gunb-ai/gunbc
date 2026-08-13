@@ -3098,6 +3098,70 @@ fn compile_clean_departed_paths_outside_docs(
     )
 }
 
+/// Module paths in the compile-clean closure (format-independent identity — see
+/// `gunbc compile` census_only_sources wiring in main.rs).
+fn compile_clean_closure_module_paths(
+    compiled: &[Rc<v1_compiler_compile::SourceFile>],
+) -> HashSet<String> {
+    compiled
+        .iter()
+        .filter_map(|s| extract_module_path(&s.content))
+        .collect()
+}
+
+/// Indexed pool modules outside the compile closure enter the name census only
+/// (fill = whole tree; policy gates lookup, never fill).
+fn compile_clean_census_only_sources_for_compiled(
+    index: &MultiEntryIndex,
+    compiled: &[Rc<v1_compiler_compile::SourceFile>],
+) -> Vec<Rc<v1_compiler_compile::SourceFile>> {
+    let closure_modules = compile_clean_closure_module_paths(compiled);
+    let mut pool_rest: Vec<(String, Rc<v1_compiler_compile::SourceFile>)> = index
+        .source_files
+        .iter()
+        .filter(|(module_path, _)| !closure_modules.contains(*module_path))
+        .map(|(module_path, source)| (module_path.clone(), source.clone()))
+        .collect();
+    pool_rest.sort_by(|a, b| a.0.cmp(&b.0));
+    pool_rest.into_iter().map(|(_, source)| source).collect()
+}
+
+/// Parse-grade census fill for out-of-closure modules (annotation binding +
+/// parse errors). Returns only compile-clean-hard diagnostics.
+fn compile_clean_census_fill_hard_diagnostics(
+    census_only: &[Rc<v1_compiler_compile::SourceFile>],
+) -> im::Vector<Rc<ErrorNode>> {
+    if census_only.is_empty() {
+        return im::Vector::new();
+    }
+    let fill = v1_compiler_compile::parse_census_fill_sources(Rc::new(census_only.to_vec().into()));
+    fill.diagnostics
+        .iter()
+        .filter(|d| compile_clean_diagnostic_is_hard(d))
+        .cloned()
+        .collect()
+}
+
+fn compile_clean_pipeline_options_for_sources(
+    index: Option<&MultiEntryIndex>,
+    compiled: &[Rc<v1_compiler_compile::SourceFile>],
+) -> Rc<v1_compiler_compile::CompilePipelineOptions> {
+    let census_only = index
+        .map(|idx| compile_clean_census_only_sources_for_compiled(idx, compiled))
+        .unwrap_or_default();
+    if census_only.is_empty() {
+        return v1_compiler_compile::default_compile_pipeline_options();
+    }
+    eprintln!(
+        "[census] {} indexed modules outside the compile-clean closure enter the name census only (not compiled)",
+        census_only.len()
+    );
+    Rc::new(v1_compiler_compile::CompilePipelineOptions {
+        analyze_complexity: false,
+        census_only_sources: Rc::new(census_only.into()),
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum CompileCleanScopePlan {
     /// Local dev only — neither `GITHUB_ACTIONS` nor `GUNBC_CI_DIFF_BASE` active.
@@ -4642,9 +4706,17 @@ fn disable_floor_compile_clean_lazy_install_for_test() {
 /// and precisely BECAUSE it shares no caches with the via-index path it is the
 /// standing second opinion for verdict equivalence
 /// (`compile_clean_via_index_verdict_equivalence` tests).
-fn floor_compile_clean_emit_ok(sources: Vec<Rc<v1_compiler_compile::SourceFile>>) -> bool {
+fn floor_compile_clean_emit_ok(
+    sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    index: Option<&MultiEntryIndex>,
+) -> bool {
     use crate::v1_compiler_artifact::RenderTarget;
-    let result = v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
+    let options = compile_clean_pipeline_options_for_sources(index, &sources);
+    let result = v1_compiler_compile::compile_sources_with_options(
+        Rc::new(sources.into()),
+        RenderTarget::Dag,
+        options,
+    );
     let has_hard_errors = compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref());
     if has_hard_errors {
         eprint_compile_clean_hard_diagnostics(result.diagnostics.as_ref());
@@ -4668,6 +4740,9 @@ fn floor_compile_clean_emit_ok_via_index(
     use crate::v1_compiler_artifact::RenderTarget;
     use crate::v1_compiler_complexity::empty_complexity_report;
     let index = process_shared_index(index_roots);
+    let census_fill_diags = compile_clean_census_fill_hard_diagnostics(
+        &compile_clean_census_only_sources_for_compiled(&index, &sources),
+    );
     let (graph, si, compile_clean_diags) = match resolved_graph_from_sources_with_index(
         &index,
         sources,
@@ -4683,11 +4758,21 @@ fn floor_compile_clean_emit_ok_via_index(
             return (false, format!("compile-clean: {msg}"));
         }
     };
-    if compile_clean_pipeline_has_hard_errors(compile_clean_diags.as_ref()) {
-        eprint_compile_clean_hard_diagnostics(compile_clean_diags.as_ref());
+    let all_compile_clean_diags = if census_fill_diags.is_empty() {
+        compile_clean_diags.clone()
+    } else {
+        let mut merged = compile_clean_diags
+            .iter()
+            .cloned()
+            .collect::<im::Vector<_>>();
+        merged.extend(census_fill_diags.iter().cloned());
+        Rc::new(merged)
+    };
+    if compile_clean_pipeline_has_hard_errors(all_compile_clean_diags.as_ref()) {
+        eprint_compile_clean_hard_diagnostics(all_compile_clean_diags.as_ref());
         return (
             false,
-            format_first_compile_clean_hard_diagnostic(compile_clean_diags.as_ref()),
+            format_first_compile_clean_hard_diagnostic(all_compile_clean_diags.as_ref()),
         );
     }
     let newline_indices: Rc<im::Vector<Rc<NewlineIndex>>> =
@@ -5287,7 +5372,13 @@ pub fn witness_layer_roots_compile_clean_check() -> bool {
     match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
         Ok(None) => true,
         Ok(Some(sources)) => {
-            let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+            let roots = witness_layer_roots();
+            let index = build_multi_entry_index_primary_precedence(&roots);
+            let options = compile_clean_pipeline_options_for_sources(Some(&index), &sources);
+            let result = v1_compiler_compile::compile_to_resolved_with_options(
+                Rc::new(sources.into()),
+                options,
+            );
             if compile_clean_resolve_has_hard_errors(&result) {
                 eprint_compile_clean_hard_diagnostics(result.diagnostics.as_ref());
                 false
@@ -5308,7 +5399,11 @@ pub fn witness_layer_roots_compile_clean_check() -> bool {
 pub fn witness_layer_roots_compile_clean_emit_check() -> bool {
     match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
         Ok(None) => true,
-        Ok(Some(sources)) => floor_compile_clean_emit_ok(sources),
+        Ok(Some(sources)) => {
+            let roots = witness_layer_roots();
+            let index = build_multi_entry_index_primary_precedence(&roots);
+            floor_compile_clean_emit_ok(sources, Some(&index))
+        }
         Err(msg) => {
             eprintln!("compile-clean emit: source load failed ({msg})");
             false
@@ -5806,7 +5901,7 @@ mod compile_clean_via_index_verdict_equivalence {
         }
 
         fn verdicts(&self) -> (bool, bool) {
-            let raw = floor_compile_clean_emit_ok(self.sources.clone());
+            let raw = floor_compile_clean_emit_ok(self.sources.clone(), None);
             let via_index =
                 floor_compile_clean_emit_ok_via_index(self.sources.clone(), &self.roots).0;
             (raw, via_index)
@@ -5854,6 +5949,38 @@ mod compile_clean_via_index_verdict_equivalence {
         assert!(
             !via_index,
             "via-index path must red on an unresolved import"
+        );
+    }
+
+    /// §5 discriminating RED: a `SourceAnnotationRefused` in a module outside the
+    /// scoped compile-clean closure must surface through whole-tree census fill —
+    /// compiling only the affected entry must not hide annotation debt elsewhere.
+    #[test]
+    fn out_of_closure_annotation_refusal_blocks_scoped_compile_clean() {
+        let corpus = Corpus::new(
+            "annotation-census",
+            &[
+                ("good.dag", "module eqv.good\ndata probe: Int = 42\n"),
+                (
+                    "bad.dag",
+                    "module eqv.bad\n\ndata alpha: String = \"a\" // trailing prose\n",
+                ),
+            ],
+        );
+        let compiled = vec![corpus.sources[0].clone()];
+        let index = super::build_multi_entry_index_primary_precedence(&corpus.roots);
+
+        assert!(
+            floor_compile_clean_emit_ok(compiled.clone(), None),
+            "the compile closure alone is green when census fill is omitted"
+        );
+        assert!(
+            !floor_compile_clean_emit_ok(compiled.clone(), Some(&index)),
+            "whole-tree census fill must surface out-of-closure annotation refusal on the raw path"
+        );
+        assert!(
+            !floor_compile_clean_emit_ok_via_index(compiled, &corpus.roots).0,
+            "whole-tree census fill must surface out-of-closure annotation refusal on the via-index path"
         );
     }
 
