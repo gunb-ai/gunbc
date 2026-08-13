@@ -247,3 +247,21 @@ test fn w_adjacent_captures_still_merge_into_one_block() -> Bool {
   let graph = annotation_attachment_result_graph(result: result)
   row_count(graph: graph) == 1 && render_rows(graph: graph) == "|7:alpha\nbeta"
 }
+
+test fn w_empty_unattached_capture_skips_without_refusal() -> Bool {
+  let result = attach_annotations(
+    captures: [leading(text: "", start: 500, end: 510)],
+    subjects: subjects(),
+  )
+  row_count(graph: annotation_attachment_result_graph(result: result)) == 0
+    && count_unattached(refusals: annotation_attachment_result_refusals(result: result)) == 0
+}
+
+test fn w_nonempty_unattached_capture_still_refuses() -> Bool {
+  let result = attach_annotations(
+    captures: [leading(text: "orphan", start: 500, end: 510)],
+    subjects: subjects(),
+  )
+  row_count(graph: annotation_attachment_result_graph(result: result)) == 0
+    && count_unattached(refusals: annotation_attachment_result_refusals(result: result)) == 1
+}
