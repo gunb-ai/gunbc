@@ -1588,6 +1588,62 @@ fn for_each_parsed_module_binding(
     }
 }
 
+/// Render EVERY failing projection in a refused population by class, not just its head.
+fn summarize_population_failures(
+    population: &crate::std_occurrence_binding_candidates::BoundReferencePopulation,
+) -> String {
+    use crate::std_occurrence_binding_candidates::{
+        BoundReferencePopulation, ReferenceBindingProjection,
+    };
+    let class_of = |p: &ReferenceBindingProjection| -> &'static str {
+        match p {
+            ReferenceBindingProjection::ReferenceBindingProjectionBound { .. } => "Bound",
+            ReferenceBindingProjection::ReferenceBindingProjectionUnbound { .. } => "Unbound",
+            ReferenceBindingProjection::ReferenceBindingProjectionAmbiguous { .. } => "Ambiguous",
+            ReferenceBindingProjection::ReferenceBindingProjectionTransportRefused { .. } => {
+                "TransportRefused"
+            }
+            ReferenceBindingProjection::ReferenceBindingProjectionModulePathRefused { .. } => {
+                "ModulePathRefused"
+            }
+            ReferenceBindingProjection::ReferenceBindingProjectionExposureRefused { .. } => {
+                "ExposureRefused"
+            }
+            ReferenceBindingProjection::ReferenceBindingProjectionAuthoredOrderRefused {
+                ..
+            } => "AuthoredOrderRefused",
+            ReferenceBindingProjection::ReferenceBindingProjectionDeclarationBucketRefused {
+                ..
+            } => "DeclarationBucketRefused",
+            ReferenceBindingProjection::ReferenceBindingProjectionModulePathMissing { .. } => {
+                "ModulePathMissing"
+            }
+            ReferenceBindingProjection::ReferenceBindingProjectionWrongCategory { .. } => {
+                "WrongCategory"
+            }
+        }
+    };
+    match population {
+        BoundReferencePopulation::AllReferencesBound { .. } => "AllReferencesBound".to_string(),
+        BoundReferencePopulation::ReferencePopulationRefused {
+            first_failure,
+            more_failures,
+        } => {
+            let mut counts: std::collections::BTreeMap<&'static str, usize> =
+                std::collections::BTreeMap::new();
+            *counts.entry(class_of(first_failure)).or_insert(0) += 1;
+            for failure in more_failures.iter() {
+                *counts.entry(class_of(failure)).or_insert(0) += 1;
+            }
+            counts
+                .into_iter()
+                .map(|(class, n)| format!("{class}x{n}"))
+                .collect::<Vec<_>>()
+                .join(",")
+        }
+    }
+}
+
 /// A candidate source file this universe could not admit. Every arm is a reason the DENOMINATOR is
 /// incomplete, which is why none of them may be counted and skipped.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1867,6 +1923,20 @@ pub fn reference_derived_closure_over_source_roots(
                 ),
                 other => format!("{other:?}"),
             };
+            // READ THE WHOLE LIST, NOT THE HEAD. vivid-bat-377 measured a sibling program drawing
+            // conclusions from a diagnostic head that was a constant prefix on every failure, so the
+            // head discriminated nothing and the real cause sat in the tail. This report had the same
+            // shape: every verdict below was taken from `first_failure` with `more_failures` unread.
+            // The head here is not a known constant, but "I only ever looked at the first one" is not a
+            // property worth betting a lane on, so the classes and names of the whole population are
+            // rendered.
+            let population_detail = match &**refusal {
+                crate::std_reference_derived_closure::ReferenceDerivedClosureRefusal::ClosureBindingRefused {
+                    population,
+                    ..
+                } => Some(summarize_population_failures(population)),
+                _ => None,
+            };
             let detail = match &**refusal {
                 crate::std_reference_derived_closure::ReferenceDerivedClosureRefusal::ClosureBindingRefused {
                     first_failure_locus,
@@ -1886,6 +1956,10 @@ pub fn reference_derived_closure_over_source_roots(
                     )
                 }
                 _ => detail,
+            };
+            let detail = match population_detail {
+                Some(summary) => format!("{detail} population={summary}"),
+                None => detail,
             };
             ReferenceDerivedClosureRun::Refused {
                 entry: entry_key,
