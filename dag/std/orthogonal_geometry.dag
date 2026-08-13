@@ -222,6 +222,45 @@ fn axis_aligned_rectangle2(min: Point2, max: Point2) -> OrthogonalConstruction<A
   }
 }
 
+// THE 2D SIBLINGS OF box3_contains_point AND box3_overlaps, on the same boundary convention: a
+// point on the edge is contained, and two rectangles sharing only an edge are ADJACENT rather than
+// overlapping. That convention is what makes these usable for placement — two parts butted against
+// one another are legal, two parts sharing interior area are a collision — and it is stated here
+// because getting it backwards reports every neighbour as a fault.
+//
+// These are the plane siblings of the 3D pair rather than a second implementation of it: a board
+// is drawn in a plane, and lifting every footprint into a degenerate box to reuse the 3D test
+// would invent a Z extent no authority supplies, then compare on it.
+fn rectangle2_contains_point(r: AxisAlignedRectangle2, p: Point2) -> Bool {
+  coordinate_frame_identity_eq(a: r.frame, b: p.frame)
+    && signed_millimeter_component_count(m: p.x) >= signed_millimeter_component_count(m: r.min.x)
+    && signed_millimeter_component_count(m: p.x) <= signed_millimeter_component_count(m: r.max.x)
+    && signed_millimeter_component_count(m: p.y) >= signed_millimeter_component_count(m: r.min.y)
+    && signed_millimeter_component_count(m: p.y) <= signed_millimeter_component_count(m: r.max.y)
+}
+
+fn rectangle2_contains_rectangle(outer: AxisAlignedRectangle2, inner: AxisAlignedRectangle2) -> OrthogonalConstruction<Bool> {
+  if !coordinate_frame_identity_eq(a: outer.frame, b: inner.frame) {
+    OrthogonalRefused { cause: OrthogonalFrameMismatch { expected: outer.frame, observed: inner.frame } }
+  } else {
+    OrthogonalReady {
+      value: rectangle2_contains_point(r: outer, p: inner.min) && rectangle2_contains_point(r: outer, p: inner.max)
+    }
+  }
+}
+
+fn rectangle2_overlaps(a: AxisAlignedRectangle2, b: AxisAlignedRectangle2) -> OrthogonalConstruction<Bool> {
+  if !coordinate_frame_identity_eq(a: a.frame, b: b.frame) {
+    OrthogonalRefused { cause: OrthogonalFrameMismatch { expected: a.frame, observed: b.frame } }
+  } else {
+    let overlaps_x = signed_millimeter_component_count(m: a.min.x) < signed_millimeter_component_count(m: b.max.x)
+      && signed_millimeter_component_count(m: b.min.x) < signed_millimeter_component_count(m: a.max.x)
+    let overlaps_y = signed_millimeter_component_count(m: a.min.y) < signed_millimeter_component_count(m: b.max.y)
+      && signed_millimeter_component_count(m: b.min.y) < signed_millimeter_component_count(m: a.max.y)
+    OrthogonalReady { value: overlaps_x && overlaps_y }
+  }
+}
+
 fn rectangle2_min(r: AxisAlignedRectangle2) -> Point2 { r.min }
 fn rectangle2_max(r: AxisAlignedRectangle2) -> Point2 { r.max }
 fn rectangle2_frame(r: AxisAlignedRectangle2) -> CoordinateFrameIdentity { r.frame }
