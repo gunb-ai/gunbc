@@ -237,9 +237,9 @@ type DispatchSelectionResult
       reason: NonEmptyStr
     }
 
-data dispatch_codex_process_fingerprint_note: String = "LIVE RECEIPT EXPECTATION (bundled 0.146.0 native, 2026-08-13): srv1 dispatch now launches the platform-native Codex binary from /opt/gunbc/provider-runtime/codex/current/.../bin/codex (gunbc.package_delivery materialized release), not the /usr/bin/codex npm shim that spawned Node as a child. tmux pane_current_command should report codex for an active exec turn. Prior receipt (2026-07-27, codex-cli 0.133.0 npm launcher): pane reported node. This row is deliberately fail-closed across packaging changes — if observation disagrees, ownership/Stop refuses until a new receipt updates this constant."
+data dispatch_codex_process_fingerprint_note: String = "LIVE RECEIPT (srv1, 2026-07-27): the authenticated npm-installed Codex CLI (`/usr/bin/codex` launcher, codex-cli 0.133.0) reports pane_current_command `node` while a real read-only `codex exec --json` turn is active. The pane emitted thread.started, turn.started, and item.completed before exit. Therefore the current host realization's expected fingerprint is node, not the argv token codex. Bundled-native 0.146.0 dispatch (gunbc.package_delivery codex_bundled_executable_for_srv1) is expected to report codex once materialized and observed on srv1 — that flip requires a new live tmux receipt, not an expectation label (dissolve-on: wet observation on bundled binary updates this row). This constant is deliberately fail-closed across packaging changes: if observation disagrees, ownership/Stop refuses until a new receipt changes this row."
 
-data dispatch_codex_process_fingerprint: NonEmptyStr = "codex" as NonEmptyStr
+data dispatch_codex_process_fingerprint: NonEmptyStr = "node" as NonEmptyStr
 data dispatch_claude_process_fingerprint: NonEmptyStr = "claude" as NonEmptyStr
 data dispatch_cursor_process_fingerprint: NonEmptyStr = "cursor-agent" as NonEmptyStr
 

@@ -49,7 +49,9 @@ import gunbc.package_delivery {
   codex_required_package_version,
   codex_runtime_version_identity_marker,
   codex_runtime_version_identity_satisfied,
+  codex_bundled_executable_for_srv1,
 }
+import gunbc.host_layout { srv1_codex_bundled_executable }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -366,4 +368,8 @@ test fn codex_runtime_version_identity_refuses_ambient_srv1_version() -> Bool {
     && !codex_runtime_version_identity_satisfied(
       combined_output: "codex-cli 0.147.0\n",
     )
+}
+
+test fn srv1_codex_bundled_executable_is_package_delivery_authority() -> Bool {
+  (srv1_codex_bundled_executable() as String) == (codex_bundled_executable_for_srv1() as String)
 }

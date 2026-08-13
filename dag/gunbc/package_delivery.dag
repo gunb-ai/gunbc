@@ -54,8 +54,10 @@ import extdeps.tools.sha512sum {
 }
 import extdeps.tools.npm
 import extdeps.tools.node
-import gunbc.host_layout {
-  srv1_provider_runtime_placement,
+import gunbc.codex_runtime_paths {
+  codex_runtime_current_link_path,
+  codex_bundled_executable_at_current_link,
+  srv1_codex_runtime_release_root,
 }
 import extdeps.languages.json.emit {
   JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject,
@@ -432,25 +434,6 @@ fn codex_runtime_version_identity_satisfied(combined_output: String) -> Bool {
   )
 }
 
-data codex_runtime_current_link_name: NonEmptyStr = "current" as NonEmptyStr
-
-fn codex_runtime_current_link_path(release_parent: FilePath) -> FilePath {
-  concat(
-    release_parent as String,
-    concat("/", codex_runtime_current_link_name as String),
-  ) as FilePath
-}
-
-fn codex_bundled_executable_at_current_link(
-  release_parent: FilePath,
-  native_executable_rel: NonEmptyStr,
-) -> FilePath {
-  concat(
-    codex_runtime_current_link_path(release_parent: release_parent) as String,
-    concat("/", native_executable_rel as String),
-  ) as FilePath
-}
-
 fn publish_codex_runtime_current_link(
   release_parent: FilePath,
   release_root: FilePath,
@@ -603,11 +586,11 @@ fn codex_bundled_executable_for_srv1() -> FilePath {
   match codex_linux_arm64_native_executable_rel() {
     Absent =>
       codex_runtime_current_link_path(
-        release_parent: srv1_provider_runtime_placement().runtime_release_root,
+        release_parent: srv1_codex_runtime_release_root,
       )
     Present { value: rel } =>
       codex_bundled_executable_at_current_link(
-        release_parent: srv1_provider_runtime_placement().runtime_release_root,
+        release_parent: srv1_codex_runtime_release_root,
         native_executable_rel: rel,
       )
   }
@@ -878,7 +861,7 @@ fn lock_path_key_rel(key: NpmLockPathKey) -> NonEmptyStr? {
   }
 }
 
-data codex_runtime_release_parent: FilePath = srv1_provider_runtime_placement().runtime_release_root
+data codex_runtime_release_parent: FilePath = srv1_codex_runtime_release_root
 
 data codex_runtime_receipt_sidecar_name: NonEmptyStr = ".gunbc-codex-runtime-receipt" as NonEmptyStr
 

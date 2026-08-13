@@ -315,7 +315,7 @@ test fn witness_actuator_projection_refuses_missing_provider() -> Bool {
   }
 }
 
-test fn witness_codex_bundled_native_fingerprint_is_expected_receipt() -> Bool {
+test fn witness_codex_npm_launcher_fingerprint_is_live_receipt() -> Bool {
   match resolve_dispatch_selection(
     inventory: fixture_inventory_codex_only_available(
       instance: srv1_live_dashboard_instance(),
@@ -324,7 +324,7 @@ test fn witness_codex_bundled_native_fingerprint_is_expected_receipt() -> Bool {
     node_sizing: Unsized,
   ) {
     DispatchSelectionResolved { receipt } =>
-      resolved_process_fingerprint(resolved: receipt.resolved_selection) == ("codex" as NonEmptyStr)
+      resolved_process_fingerprint(resolved: receipt.resolved_selection) == ("node" as NonEmptyStr)
     DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
   }
 }
@@ -518,7 +518,7 @@ test fn codex_provider_v0_argv_keystone_holds() -> Bool {
   witness_probe_bridge_ineligible_standing_refuses_actuator_selection()
     && witness_actuator_automatic_selection_refuses_with_standing_reason()
     && witness_projection_standing_refusal_specimen_holds()
-    && witness_codex_bundled_native_fingerprint_is_expected_receipt()
+    && witness_codex_npm_launcher_fingerprint_is_live_receipt()
     && witness_codex_argv_is_unattended_but_sandboxed()
     && witness_selected_provider_shapes_codex_tmux_command()
     && witness_lab_instance_moves_repo_tmux_and_codex_state_together()
