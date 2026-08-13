@@ -16166,15 +16166,6 @@ pub fn census_binding_is_borrowable_fn_sig(
     }
 }
 
-pub fn census_binding_is_generic_sig(
-    binding: Rc<TypeBinding>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    (census_binding_is_borrowable_fn_sig(binding.clone(), source_indices.clone())
-        && ((fn_type_param_names(binding.resolved.clone(), source_indices.clone()).len() as i64)
-            > 0))
-}
-
 pub fn census_qualify_sig_return_binding(
     binding: Rc<TypeBinding>,
     module_path: String,
@@ -16210,13 +16201,13 @@ pub fn census_upgrade_sig_binding(
     module_path: String,
     census: Rc<SymbolIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    tp_names: Rc<Vec<String>>,
 ) -> Rc<TypeBinding> {
-    if census_binding_is_generic_sig(binding.clone(), source_indices.clone()) {
+    if ((tp_names.clone().len() as i64) > 0) {
         {
             let node = binding.resolved.clone();
             match node.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: raw_ret, .. }) => {
-                    let tp_names = fn_type_param_names(node.clone(), source_indices.clone());
                     let env = census_fn_sig_env(
                         census.clone(),
                         module_path.clone(),
@@ -16442,40 +16433,44 @@ pub fn census_upgrade_binding(
     census: Rc<SymbolIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<TypeBinding> {
-    if census_binding_is_generic_sig(binding.clone(), source_indices.clone()) {
-        census_upgrade_sig_binding(
-            binding.clone(),
-            module_path.clone(),
-            census.clone(),
-            source_indices.clone(),
-        )
+    if census_binding_is_borrowable_fn_sig(binding.clone(), source_indices.clone()) {
+        {
+            let tp_names = fn_type_param_names(binding.resolved.clone(), source_indices.clone());
+            if ((tp_names.clone().len() as i64) > 0) {
+                census_upgrade_sig_binding(
+                    binding.clone(),
+                    module_path.clone(),
+                    census.clone(),
+                    source_indices.clone(),
+                    tp_names.clone(),
+                )
+            } else {
+                census_qualify_sig_return_binding(
+                    binding.clone(),
+                    module_path.clone(),
+                    census.clone(),
+                    source_indices.clone(),
+                )
+            }
+        }
     } else {
-        if census_binding_is_borrowable_fn_sig(binding.clone(), source_indices.clone()) {
-            census_qualify_sig_return_binding(
+        if (binding.resolved.clone().connective.clone() != Connective::NoConnective) {
+            census_upgrade_type_decl_binding(
                 binding.clone(),
                 module_path.clone(),
                 census.clone(),
                 source_indices.clone(),
             )
         } else {
-            if (binding.resolved.clone().connective.clone() != Connective::NoConnective) {
-                census_upgrade_type_decl_binding(
+            if (binding.resolved.clone().inferred.clone() != None) {
+                census_qualify_leaf_binding(
                     binding.clone(),
                     module_path.clone(),
                     census.clone(),
                     source_indices.clone(),
                 )
             } else {
-                if (binding.resolved.clone().inferred.clone() != None) {
-                    census_qualify_leaf_binding(
-                        binding.clone(),
-                        module_path.clone(),
-                        census.clone(),
-                        source_indices.clone(),
-                    )
-                } else {
-                    binding.clone()
-                }
+                binding.clone()
             }
         }
     }
@@ -19439,121 +19434,86 @@ pub fn variant_has_positional_payload_shape(
         })
 }
 
-pub fn build_fielded_variants(
-    modules: Rc<Vec<Rc<TypedModule>>>,
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct EnumVariantShapeSets {
+    pub fielded: Rc<BTreeSet<String>>,
+    pub positional_payload: Rc<BTreeSet<String>>,
+}
+
+pub fn enum_variant_shape_sets_for_item(
+    acc: Rc<EnumVariantShapeSets>,
+    item: Rc<Node>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-) -> Rc<BTreeSet<String>> {
+) -> Rc<EnumVariantShapeSets> {
     {
-        let result = modules.clone().iter().cloned().fold(
-            v1_rt::rc_empty_set::<_>(),
-            |acc: _, m: Rc<TypedModule>| {
-                let items = m.items.clone();
-                let si = m.type_env.clone().source_indices.clone();
-                items
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .fold(acc, |inner: _, item: Rc<Node>| {
-                        let is_enum = match v1_rt::map_get(
-                            &type_summaries,
-                            authored_name_at(si.clone(), item.clone()),
-                        ) {
-                            Some(summary) => match (*summary.repr.clone()).clone() {
-                                TypeRepr::EnumRepr { unit_only: _, .. } => true,
-                                _ => false,
-                            },
-                            None => false,
-                        };
-                        if is_enum.clone() {
-                            {
-                                let enum_name = authored_name_at(si.clone(), item.clone());
-                                let variants = item.children.clone();
-                                variants.clone().iter().cloned().fold(
-                                    inner.clone(),
-                                    |vacc: _, variant: Rc<Node>| {
-                                        let has_fields =
-                                            ((variant.children.clone().len() as i64) > 0);
-                                        let is_positional_payload =
-                                            variant_has_positional_payload_shape(
-                                                variant.clone(),
-                                                si.clone(),
-                                            );
-                                        if (has_fields.clone() && !is_positional_payload.clone()) {
-                                            v1_rt::rc_set_insert(
-                                                vacc.clone(),
-                                                v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        enum_name.clone(),
-                                                        "::".to_string(),
-                                                    ),
-                                                    authored_name_at(si.clone(), variant.clone()),
-                                                ),
-                                            )
-                                        } else {
-                                            vacc.clone()
-                                        }
-                                    },
-                                )
-                            }
-                        } else {
-                            inner.clone()
-                        }
-                    })
+        let item_name = authored_name_at(si.clone(), item.clone());
+        let is_enum = match v1_rt::map_get(&type_summaries, item_name.clone()) {
+            Some(summary) => match (*summary.repr.clone()).clone() {
+                TypeRepr::EnumRepr { unit_only: _, .. } => true,
+                _ => false,
             },
-        );
-        result
+            None => false,
+        };
+        if is_enum.clone() {
+            item.children.clone().iter().cloned().fold(
+                acc,
+                |vacc: Rc<EnumVariantShapeSets>, variant: Rc<Node>| {
+                    let qualified = v1_rt::concat(
+                        v1_rt::concat(item_name.clone(), "::".to_string()),
+                        authored_name_at(si.clone(), variant.clone()),
+                    );
+                    let is_positional_payload =
+                        variant_has_positional_payload_shape(variant.clone(), si.clone());
+                    let has_fields = ((variant.children.clone().len() as i64) > 0);
+                    if is_positional_payload.clone() {
+                        Rc::new(EnumVariantShapeSets {
+                            fielded: vacc.fielded.clone(),
+                            positional_payload: v1_rt::rc_set_insert(
+                                vacc.positional_payload.clone(),
+                                qualified.clone(),
+                            ),
+                        })
+                    } else {
+                        if has_fields.clone() {
+                            Rc::new(EnumVariantShapeSets {
+                                fielded: v1_rt::rc_set_insert(
+                                    vacc.fielded.clone(),
+                                    qualified.clone(),
+                                ),
+                                positional_payload: vacc.positional_payload.clone(),
+                            })
+                        } else {
+                            vacc.clone()
+                        }
+                    }
+                },
+            )
+        } else {
+            acc
+        }
     }
 }
 
-pub fn build_positional_payload_variants(
+pub fn build_enum_variant_shape_sets(
     modules: Rc<Vec<Rc<TypedModule>>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-) -> Rc<BTreeSet<String>> {
+) -> Rc<EnumVariantShapeSets> {
     modules.clone().iter().cloned().fold(
-        v1_rt::rc_empty_set::<String>(),
-        |acc: Rc<BTreeSet<String>>, m: Rc<TypedModule>| {
-            let items = m.items.clone();
-            let si = m.type_env.clone().source_indices.clone();
-            items.clone().iter().cloned().fold(
+        Rc::new(EnumVariantShapeSets {
+            fielded: v1_rt::rc_empty_set::<String>(),
+            positional_payload: v1_rt::rc_empty_set::<String>(),
+        }),
+        |acc: Rc<EnumVariantShapeSets>, m: Rc<TypedModule>| {
+            m.items.clone().iter().cloned().fold(
                 acc,
-                |inner: Rc<BTreeSet<String>>, item: Rc<Node>| {
-                    let is_enum = match v1_rt::map_get(
-                        &type_summaries,
-                        authored_name_at(si.clone(), item.clone()),
-                    ) {
-                        Some(summary) => match (*summary.repr.clone()).clone() {
-                            TypeRepr::EnumRepr { unit_only: _, .. } => true,
-                            _ => false,
-                        },
-                        None => false,
-                    };
-                    if is_enum.clone() {
-                        {
-                            let enum_name = authored_name_at(si.clone(), item.clone());
-                            let variants = item.children.clone();
-                            variants.clone().iter().cloned().fold(
-                                inner.clone(),
-                                |vacc: Rc<BTreeSet<String>>, variant: Rc<Node>| {
-                                    if variant_has_positional_payload_shape(
-                                        variant.clone(),
-                                        si.clone(),
-                                    ) {
-                                        v1_rt::rc_set_insert(
-                                            vacc.clone(),
-                                            v1_rt::concat(
-                                                v1_rt::concat(enum_name.clone(), "::".to_string()),
-                                                authored_name_at(si.clone(), variant.clone()),
-                                            ),
-                                        )
-                                    } else {
-                                        vacc.clone()
-                                    }
-                                },
-                            )
-                        }
-                    } else {
-                        inner.clone()
-                    }
+                |inner: Rc<EnumVariantShapeSets>, item: Rc<Node>| {
+                    enum_variant_shape_sets_for_item(
+                        inner,
+                        item.clone(),
+                        m.type_env.clone().source_indices.clone(),
+                        type_summaries.clone(),
+                    )
                 },
             )
         },
@@ -19639,16 +19599,15 @@ pub fn build_emit_graph_info(
                 })
             },
         );
-        let fielded = build_fielded_variants(modules.clone(), built.type_summaries.clone());
-        let positional =
-            build_positional_payload_variants(modules.clone(), built.type_summaries.clone());
+        let variant_shapes =
+            build_enum_variant_shape_sets(modules.clone(), built.type_summaries.clone());
         let vtoe = derive_variant_to_enum(built.type_summaries.clone());
         Rc::new(EmitGraphInfo {
             type_summaries: built.type_summaries.clone(),
             type_decl_items: built.type_decl_items.clone(),
             recursive_type_set: all_recursive.clone(),
-            fielded_variants: fielded.clone(),
-            positional_payload_variants: positional.clone(),
+            fielded_variants: variant_shapes.fielded.clone(),
+            positional_payload_variants: variant_shapes.positional_payload.clone(),
             shared_types: v1_rt::rc_empty_set::<String>(),
             ownership_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
             movable: v1_rt::rc_empty_set::<String>(),
@@ -19908,19 +19867,25 @@ pub struct ExportIndexModuleAccum {
     pub seen_names: Rc<BTreeSet<String>>,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ExportedTypeRelationBuild {
+    pub by_name: Rc<HashMap<String, Rc<TypeNameExportFacts>>>,
+    pub by_module: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+}
+
 pub fn export_index_canonical_is_the_fold_element_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "§6 bare-minimum cost, same receipt as module_exported_type_names_cost_note. export_index_merge_module's canonical binding was `filter(bindings |> map_values, b => b.name == name) |> first` — a rescan of the WHOLE binding map (with a fresh Vec allocation) once per distinct name, i.e. O(|bindings|^2) per module per closure assembly. It is dead work by construction: the enclosing fold walks THAT SAME map_values sequence in order, and seen_names skips every repeat, so the first element whose name matches is always the fold's own current element. `canonical = binding` is therefore the identical value, not an approximation of it — the order both expressions read is one traversal of one map value, so the equality does not depend on map_values being stable ACROSS runs (§5941 determinism), only on the two reads of the same value agreeing, which the rewrite removes the need for entirely.".to_string()
+            "§6 bare-minimum cost, same receipt as module_exported_type_names_cost_note. The export-index module walk's canonical binding was `filter(bindings |> map_values, b => b.name == name) |> first` — a rescan of the WHOLE binding map (with a fresh Vec allocation) once per distinct name, i.e. O(|bindings|^2) per module per closure assembly. It is dead work by construction: the enclosing fold walks THAT SAME map_values sequence in order, and seen_names skips every repeat, so the first element whose name matches is always the fold's own current element. `canonical = binding` is therefore the identical value, not an approximation of it — the order both expressions read is one traversal of one map value, so the equality does not depend on map_values being stable ACROSS runs (§5941 determinism), only on the two reads of the same value agreeing, which the rewrite removes the need for entirely.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn export_index_merge_module(
+pub fn export_index_module_state(
     acc: Rc<HashMap<String, Rc<TypeNameExportFacts>>>,
     m: Rc<TypedModule>,
-) -> Rc<HashMap<String, Rc<TypeNameExportFacts>>> {
+) -> Rc<ExportIndexModuleAccum> {
     Rc::new(v1_rt::map_values(&m.type_env.clone().bindings.clone()))
         .iter()
         .cloned()
@@ -19964,17 +19929,37 @@ pub fn export_index_merge_module(
                 }
             },
         )
-        .index
-        .clone()
 }
 
-pub fn build_type_name_export_index(
+pub fn export_index_merge_module_both(
+    acc: Rc<ExportedTypeRelationBuild>,
+    m: Rc<TypedModule>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<ExportedTypeRelationBuild> {
+    {
+        let state = export_index_module_state(acc.by_name.clone(), m.clone());
+        Rc::new(ExportedTypeRelationBuild {
+            by_name: state.index.clone(),
+            by_module: v1_rt::rc_map_insert(
+                acc.by_module.clone(),
+                authored_name_at(source_indices.clone(), m.module.clone()),
+                state.seen_names.clone(),
+            ),
+        })
+    }
+}
+
+pub fn build_export_indexes(
     modules: Rc<Vec<Rc<TypedModule>>>,
-) -> Rc<HashMap<String, Rc<TypeNameExportFacts>>> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<ExportedTypeRelationBuild> {
     modules.clone().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<TypeNameExportFacts>>(),
-        |acc: Rc<HashMap<String, Rc<TypeNameExportFacts>>>, m: Rc<TypedModule>| {
-            export_index_merge_module(acc, m.clone())
+        Rc::new(ExportedTypeRelationBuild {
+            by_name: v1_rt::rc_empty_map::<String, Rc<TypeNameExportFacts>>(),
+            by_module: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
+        }),
+        |acc: Rc<ExportedTypeRelationBuild>, m: Rc<TypedModule>| {
+            export_index_merge_module_both(acc, m.clone(), source_indices.clone())
         },
     )
 }
@@ -19998,22 +19983,6 @@ pub fn module_exported_type_names(m: Rc<TypedModule>) -> Rc<BTreeSet<String>> {
                 v1_rt::rc_set_insert(acc, b.name.clone())
             },
         )
-}
-
-pub fn build_module_exported_type_name_index(
-    modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<BTreeSet<String>>>> {
-    modules.clone().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
-        |acc: Rc<HashMap<String, Rc<BTreeSet<String>>>>, m: Rc<TypedModule>| {
-            v1_rt::rc_map_insert(
-                acc,
-                authored_name_at(source_indices.clone(), m.module.clone()),
-                module_exported_type_names(m.clone()),
-            )
-        },
-    )
 }
 
 pub fn direct_import_export_name_sets(
@@ -20056,61 +20025,58 @@ pub fn direct_import_exporter_count(
     .len() as i64)
 }
 
-pub fn rewire_inherited_str_binding(
+pub fn rewire_canonical_rewrites(
     type_name_index: Rc<HashMap<String, Rc<TypeNameExportFacts>>>,
     import_export_names: Rc<Vec<Rc<BTreeSet<String>>>>,
     local_names: Rc<BTreeSet<String>>,
-    str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
-    ancestry_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
-    name: String,
-) -> Rc<StrBindingsRewireAccum> {
-    {
-        let exporter_count = match v1_rt::map_get(&type_name_index, name.clone()) {
-            Some(facts) => facts.exporter_count.clone(),
-            None => 0,
-        };
-        if ((v1_rt::set_contains(&local_names, name.clone())
-            || (direct_import_exporter_count(import_export_names.clone(), name.clone()) > 1))
-            || (exporter_count.clone() > 1))
-        {
-            Rc::new(StrBindingsRewireAccum {
-                str_bindings: str_bindings.clone(),
-                ancestry_str_bindings: ancestry_str_bindings.clone(),
-            })
-        } else {
-            match v1_rt::map_get(&type_name_index, name.clone()) {
-                Some(facts) => match facts.canonical_binding.clone() {
-                    Some(canonical) => {
-                        let ancestry_str_bindings = v1_rt::rc_map_insert(
-                            ancestry_str_bindings.clone(),
-                            name.clone(),
-                            canonical.clone(),
-                        );
-                        let str_bindings = match v1_rt::map_get(&str_bindings, name.clone()) {
-                            Some(_) => v1_rt::rc_map_insert(
-                                str_bindings.clone(),
-                                name.clone(),
-                                canonical.clone(),
-                            ),
-                            None => str_bindings.clone(),
-                        };
-                        Rc::new(StrBindingsRewireAccum {
-                            str_bindings: str_bindings.clone(),
-                            ancestry_str_bindings: ancestry_str_bindings.clone(),
-                        })
+    inherited_keys: Rc<Vec<String>>,
+) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    inherited_keys.clone().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| match v1_rt::map_get(
+            &type_name_index,
+            name.clone(),
+        ) {
+            None => acc.clone(),
+            Some(facts) => {
+                if ((v1_rt::set_contains(&local_names, name.clone())
+                    || (direct_import_exporter_count(import_export_names.clone(), name.clone())
+                        > 1))
+                    || (facts.exporter_count.clone() > 1))
+                {
+                    acc.clone()
+                } else {
+                    match facts.canonical_binding.clone() {
+                        Some(canonical) => {
+                            v1_rt::rc_map_insert(acc.clone(), name.clone(), canonical.clone())
+                        }
+                        None => acc.clone(),
                     }
-                    None => Rc::new(StrBindingsRewireAccum {
-                        str_bindings: str_bindings.clone(),
-                        ancestry_str_bindings: ancestry_str_bindings.clone(),
-                    }),
-                },
-                None => Rc::new(StrBindingsRewireAccum {
-                    str_bindings: str_bindings.clone(),
-                    ancestry_str_bindings: ancestry_str_bindings.clone(),
-                }),
+                }
             }
-        }
-    }
+        },
+    )
+}
+
+pub fn rewire_str_binding_overlay(
+    str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
+    rewrites: Rc<HashMap<String, Rc<TypeBinding>>>,
+) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    Rc::new(v1_rt::map_keys(&rewrites)).iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| match v1_rt::map_get(
+            &str_bindings,
+            name.clone(),
+        ) {
+            Some(_) => match v1_rt::map_get(&rewrites, name.clone()) {
+                Some(canonical) => {
+                    v1_rt::rc_map_insert(acc.clone(), name.clone(), canonical.clone())
+                }
+                None => acc.clone(),
+            },
+            None => acc.clone(),
+        },
+    )
 }
 
 pub fn rewire_type_env_import_str_binding_identity(
@@ -20118,9 +20084,9 @@ pub fn rewire_type_env_import_str_binding_identity(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedModule>>> {
     {
-        let type_name_index = build_type_name_export_index(modules.clone());
-        let export_name_index =
-            build_module_exported_type_name_index(modules.clone(), source_indices.clone());
+        let export_indexes = build_export_indexes(modules.clone(), source_indices.clone());
+        let type_name_index = export_indexes.by_name.clone();
+        let export_name_index = export_indexes.by_module.clone();
         Rc::new({
             let mut __result = Vec::new();
             for m in modules.clone().iter().cloned() {
@@ -20143,22 +20109,25 @@ pub fn rewire_type_env_import_str_binding_identity(
                     let str_keys =
                         Rc::new(v1_rt::map_keys(&m.type_env.clone().str_bindings.clone()));
                     let inherited_keys = v1_rt::concat(ancestry_keys.clone(), str_keys.clone());
-                    let rewired = inherited_keys.clone().iter().cloned().fold(
-                        Rc::new(StrBindingsRewireAccum {
-                            str_bindings: m.type_env.clone().str_bindings.clone(),
-                            ancestry_str_bindings: m.type_env.clone().ancestry_str_bindings.clone(),
-                        }),
-                        |acc: Rc<StrBindingsRewireAccum>, name: String| {
-                            rewire_inherited_str_binding(
-                                type_name_index.clone(),
-                                import_export_names.clone(),
-                                local_names.clone(),
-                                acc.str_bindings.clone(),
-                                acc.ancestry_str_bindings.clone(),
-                                name.clone(),
-                            )
-                        },
+                    let rewrites = rewire_canonical_rewrites(
+                        type_name_index.clone(),
+                        import_export_names.clone(),
+                        local_names.clone(),
+                        inherited_keys.clone(),
                     );
+                    let rewired = Rc::new(StrBindingsRewireAccum {
+                        str_bindings: v1_rt::rc_map_merge(
+                            m.type_env.clone().str_bindings.clone(),
+                            rewire_str_binding_overlay(
+                                m.type_env.clone().str_bindings.clone(),
+                                rewrites.clone(),
+                            ),
+                        ),
+                        ancestry_str_bindings: v1_rt::rc_map_merge(
+                            m.type_env.clone().ancestry_str_bindings.clone(),
+                            rewrites.clone(),
+                        ),
+                    });
                     Rc::new(TypedModule {
                         module: m.module.clone(),
                         items: m.items.clone(),

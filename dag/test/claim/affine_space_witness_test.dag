@@ -23,6 +23,7 @@ import std.affine_space {
   SpatialFrameRefusal, SpatialOperationIdentity,
   SpatialFrameRelation, SameFrameOperandsRequired,
   TransformSourceFrameRequired, TransformTranslationInDestinationRequired,
+  ProjectionSourceFrameRequired,
 }
 import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity, coordinate_frame_identity_eq }
 import std.euclidean_geometry {
@@ -341,6 +342,7 @@ fn relation_is_same_frame(r: SpatialFrameRelation) -> Bool {
     SameFrameOperandsRequired => true
     TransformSourceFrameRequired => false
     TransformTranslationInDestinationRequired => false
+    ProjectionSourceFrameRequired => false
   }
 }
 
@@ -349,6 +351,7 @@ fn relation_is_transform_source(r: SpatialFrameRelation) -> Bool {
     SameFrameOperandsRequired => false
     TransformSourceFrameRequired => true
     TransformTranslationInDestinationRequired => false
+    ProjectionSourceFrameRequired => false
   }
 }
 
@@ -551,6 +554,7 @@ fn witness_transform_translation_must_be_in_destination_frame() -> Bool {
           TransformTranslationInDestinationRequired => true
           SameFrameOperandsRequired => false
           TransformSourceFrameRequired => false
+          ProjectionSourceFrameRequired => false
         }
     SpatialFrameRefused { refusal: _ } => false
     SpatialReady { value: _ } => false
