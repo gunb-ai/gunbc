@@ -1,0 +1,78 @@
+module test.claim.materialized_ssh_key_file_real_execution_witness
+
+import std.algebra { trim }
+import std.types { String, NonEmptyStr, Secret, FilePath, Bool }
+import gunbc.output_policy { OutcomeIsData }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import gunbc.retained_shell_script { retained_runtime }
+import gunbc.auth.materialized_secret {
+  with_materialized_ssh_key_file,
+  gunbc_private_materialization_dir,
+  ensure_gunbc_private_materialization_dir,
+  MaterializedSshKeyFileBracketCompleted,
+  MaterializedSshKeyFileBracketRefused,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data real_execution_home_doc: String = "Wet execution witnesses for SECRETREF-WIRE-0 ssh key materialization: with_materialized_ssh_key_file (private scoped root, Filesystem.WriteOwnerOnly mode 0600 at creation via create_new/O_EXCL, post-bracket shred) and WriteOwnerOnly refusal when the path already exists. shell.Mktemp.Dir, shell.Mkdir, shell.Chmod, shell.Remove, Filesystem.Write/WriteOwnerOnly, and shell.Exec.Run(stat) have no mock_response on the file-effect path (WriteOwnerOnly uses the v1 file transport, not shell.Exec mock), so hermetic discovery refuses this file; it is excluded from discovery (gunbc.ci_layer_roots witness_exclusion_frontier) and enrolled in bin_witness_wet_entries. Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/claim/materialized_ssh_key_file_real_execution_witness_test.dag --functions witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target"
+
+fn stat_octal_mode(path: String) -> String {
+  let result = shell.Exec.Run(
+    script: retained_runtime(
+      body: concat("stat -c %a ", path),
+      reason: "materialized ssh key bracket witness octal mode stat" as NonEmptyStr,
+    ),
+    expect: OutcomeIsData,
+  )
+  trim(result.stdout)
+}
+
+test fn witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target() -> Bool {
+  let identity = "witness-bracket-key" as NonEmptyStr
+  let secret = "synthetic-ssh-private-key-material" as Secret
+  let outcome = with_materialized_ssh_key_file(
+    identity_file_name: identity,
+    secret_bytes: secret,
+    use: fn(key_path) {
+      let path = key_path as String
+      if stat_octal_mode(path: path) == "600"
+        && string_contains(s: path, pattern: "/gunbc-private/")
+        && !string_contains(s: path, pattern: "target/") {
+        path
+      } else {
+        ""
+      }
+    },
+  )
+  match outcome {
+    MaterializedSshKeyFileBracketCompleted { value: key_path } =>
+      key_path != ""
+        && !shell.Test.IsFile(path: key_path as FilePath).is_file
+    MaterializedSshKeyFileBracketRefused { cause: _ } => false
+  }
+}
+
+test fn witness_write_owner_only_refuses_when_path_already_exists() -> Bool {
+  let dir = shell.Mktemp.Dir()
+  if !dir.success {
+    false
+  } else {
+    let root = dir.path as FilePath
+    if !ensure_gunbc_private_materialization_dir(root: root) {
+      false
+    } else {
+      let private_dir = gunbc_private_materialization_dir(root: root)
+      let key_path = concat(
+        concat(private_dir as String, "/"),
+        "witness-preexist-key",
+      )
+      let stale = Filesystem.Write(path: key_path, content: "stale-key-bytes")
+      let owner_only = Filesystem.WriteOwnerOnly(path: key_path, content: "fresh-key-bytes")
+      let cleaned = shell.Remove.RecursiveForce(path: root)
+      stale.success && !owner_only.success && cleaned.success
+    }
+  }
+}

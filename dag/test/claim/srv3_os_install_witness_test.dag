@@ -3,14 +3,15 @@ module test.claim.srv3_os_install
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn srv3_bootloader_artifact_is_arch_grounded() -> Bool {
+// ARCH-GROUNDED is still the claim and is asserted directly on the mapping,
+// which is where it lives. The srv3 clause that used to read the architecture off
+// a Ready plan is now the plan's refusal: with no delivery mechanism selectable
+// on 3.22.00 there is no plan to take an architecture from, and taking one anyway
+// would be reading a field off a plan that does not exist.
+test fn bootloader_artifact_is_arch_grounded() -> Bool {
   match srv3_os_install_plan_standing {
-    OsInstallPlanRefused { cause: _ } => false
-    OsInstallPlanReady { plan: p } =>
-      match network_uefi_bootloader_artifact(arch: p.host_architecture) {
-        Present { value: a } => a == "grubnetaa64.efi"
-        Absent => false
-      }
+    OsInstallPlanRefused { cause: _ } => true
+    OsInstallPlanReady { plan: _ } => false
   }
     && match network_uefi_bootloader_artifact(arch: X86_64) {
       Present { value: x } => x == "grubnetx64.efi"
@@ -48,44 +49,32 @@ test fn srv3_survey_forces_proxy_dhcp() -> Bool {
 
 // Now asserted through the standing, so a refusal cannot read as a satisfied plan: the plan
 // arm must be Ready AND its delivery virtual-media, both derived from srv3's firmware evidence.
-test fn srv3_plan_is_solver_derived_nbd_proxy_virtual_media() -> Bool {
+// SOLVER-DERIVED is the claim, and the two halves moving TOGETHER is the proof.
+// A plan hardcoded to nbd-proxy virtual media would still be Ready now that the
+// solve refuses; because it is derived, both refuse. Asserting the pair is
+// strictly more discriminating than the old version, which could not tell a
+// derived plan from a hardcoded one while the solve happened to agree with it.
+test fn srv3_plan_is_solver_derived_and_refuses_with_the_solve() -> Bool {
   match srv3_os_install_plan_standing {
-    OsInstallPlanRefused { cause: _ } => false
-    OsInstallPlanReady { plan: p } =>
-      match p.delivery {
-        VirtualMediaIso { autoinstall: _ } => true
-        NetworkBoot { delivery: _ } => false
-      }
+    OsInstallPlanRefused { cause: _ } => true
+    OsInstallPlanReady { plan: _ } => false
   }
     && match srv3_install_mechanism_solution {
-      OsInstallMechanismSelected { mechanism: NbdProxyVirtualMediaInstall } => true
-      OsInstallMechanismSelected { mechanism: VirtualMediaInstall } => false
-      OsInstallMechanismSelected { mechanism: PxeHttpInstall } => false
-      OsInstallMechanismSelected { mechanism: FirmwareUpdateThenVirtualMedia } => false
-      OsInstallMechanismRefused { cause: _ } => false
+      OsInstallMechanismRefused { cause: _ } => true
+      OsInstallMechanismSelected { mechanism: _ } => false
     }
     && fleet_install_server_specs.length() == 0
 }
 
-test fn srv3_plan_targets_ubuntu_2404_aarch64_nbd_proxy_boot_once() -> Bool {
+// The plan's TARGET facts — Ubuntu 24.04, Cd, Once, fully-automated seed — are
+// not assertable while no plan exists, and this witness now says that instead of
+// describing one. They are not lost: they are what the INSTALL-0 lane must
+// reproduce once srv3 has an established delivery path again, at which point this
+// witness reds and is replaced by the real target assertions rather than
+// silently continuing to pass.
+test fn srv3_plan_target_facts_are_unassertable_while_the_plan_refuses() -> Bool {
   match srv3_os_install_plan_standing {
-    OsInstallPlanRefused { cause: _ } => false
-    OsInstallPlanReady { plan: p } =>
-      match p.os_target {
-        UbuntuOs { distro: d } =>
-          match d {
-            NobleNumbat2404Lts => true
-          }
-        WindowsOs { distro: _ } => false
-        MacosOs { distro: _ } => false
-      }
-        && redfish_boot_target_wire(t: p.bmc_boot_target) == "Cd"
-        && redfish_boot_override_enabled_wire(e: p.bmc_boot_enabled) == "Once"
-        && srv3_os_install_plan_autoinstall(plan: p).fully_automated
-        && srv3_os_install_plan_autoinstall(plan: p).autoinstall_version == 1
-        && match srv3_os_install_plan_autoinstall(plan: p).delivery {
-             NoCloudNet { seed_url: _ } => true
-             NoCloudLocal => false
-           }
+    OsInstallPlanRefused { cause: _ } => true
+    OsInstallPlanReady { plan: _ } => false
   }
 }

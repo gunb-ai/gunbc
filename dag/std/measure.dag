@@ -32,6 +32,8 @@ type Quantity =
 
   | Power
 
+  | ApparentPower
+
   | Energy
 
   | Temperature
@@ -266,7 +268,25 @@ type Watt = Measure<Power, One, Nat>
 
 type Milliwatt = Measure<Power, Milli, Nat>
 
+// APPARENT POWER IS NOT POWER, and it is a separate dimension rather than a second Watt alias for
+// exactly the reason std.measure exists. A supply rated 120 V at 15 A can deliver 1800 volt-amperes;
+// how many WATTS that is depends on the load's power factor, which is a property of the load and is
+// not on any supply's datasheet. Carrying both on the Power dimension would make Watt and VoltAmpere
+// interchangeable at the type level, and the first comparison between a device's real draw and a
+// supply's rating would silently assert a power factor of one - a fabricated fact about hardware
+// nobody measured. They are different dimensions, so that comparison does not typecheck and a
+// consumer must declare the factor it is assuming.
+type VoltAmpere = Measure<ApparentPower, One, Nat>
+
 type Volt = Measure<ElectricPotentialDifference, One, Nat>
+
+// The millivolt exists for the same reason the micrometre does, one axis over: a device's
+// recommended operating window is not a whole number of volts. The iCE40 core supply runs 1.14 V
+// to 1.26 V and its I/O banks 1.71 V to 3.46 V, so at volt grain the entire core window collapses
+// to a single value and the check that a rail sits inside it stops discriminating. Naming the
+// finer step keeps every bound exact instead of forcing a rounding policy at the point where the
+// bound is what matters.
+type Millivolt = Measure<ElectricPotentialDifference, Milli, Nat>
 
 type Ampere = Measure<ElectricCurrent, One, Nat>
 
@@ -274,26 +294,30 @@ type Ampere = Measure<ElectricCurrent, One, Nat>
 // number of millimetres - so any quantity derived from a rack unit count is inexact at millimetre
 // grain and exact at micrometre grain. Naming it lets a consumer stay exact instead of choosing
 // between a truncation and a rounding policy, which is the choice std.measure exists to remove.
+//
+// A SECOND, INDEPENDENT CONSUMER ARRIVED AT THE SAME CARRIER, recorded because two unrelated
+// subjects needing one step finer is what makes this a scale argument on the Length axis rather
+// than a rack-specific convenience: a printed circuit board sits on a half-millimetre package
+// pitch with hundred-micrometre traces, which whole millimetres cannot express at all. Two
+// declarations of it were briefly authored in parallel and one was deleted — the concept is one,
+// and its reasons accumulate here rather than forking the type.
 type Micrometer = Measure<Length, Micro, Nat>
 
 type Millimeter = Measure<Length, Milli, Nat>
 
-// THE SIGNED SPATIAL COMPONENT, and there is exactly ONE of it. Millimeter above stays Nat-backed
-// and is NOT widened: a wall of length -3 m must remain unwritable. What was missing is not a
-// negative length but the affine layer that explains what a signed spatial number MEANS. The
-// quantity stays Length because this measures extent along an axis; only the carrier differs, and
-// Nat-backed and Int-backed measures do not unify, so a magnitude cannot be passed where a
-// component is required or the reverse.
+// THE SIGNED SPATIAL COMPONENT LIVES IN std.affine_space, NOT HERE. This module carried a
+// SignedMillimeterComponent - Measure<Length, Milli, Int> - as the scalar behind Point3 and
+// Vector3, and it was deleted once those aggregates became frame-relative. The reason is the whole
+// argument of the frame work: a coordinate's unit is a property of the FRAME it is expressed in,
+// which a registrar answers, so a component type that hard-codes millimetres asserts one frame's
+// scale for every frame in the corpus. A board drawn on a half-millimetre package pitch and a room
+// drawn in millimetres cannot share it, and nothing in the type would have said so.
 //
-// AN EARLIER REVISION DECLARED TWO: MillimeterCoordinate and MillimeterDisplacementComponent, both
-// spelled Measure<Length, Milli, Int>. They were the SAME structural type, so the names implied a
-// distinction the typechecker did not carry - in work whose entire subject is that distinction. The
-// scalar really is one thing: a signed millimetre component. What separates a location from a
-// displacement is the AGGREGATE that holds three of them and the operations over it - Point3 and
-// Vector3 in std.affine_space, where Point + Point has no operation at all. Branding the
-// individual x, y and z would add conversion surface at every field access and buy no wall that the
-// outer types do not already carry.
-type SignedMillimeterComponent = Measure<Length, Milli, Int>
+// It is recorded rather than silently removed because the deletion is the point: leaving both
+// standing would have been a second signed-spatial authority beside the frame-owned one, which is
+// exactly the fork the migration existed to close. Nat-backed Millimeter above is untouched and is
+// NOT widened - a wall of length -3 m must remain unwritable, and that is a magnitude rather than
+// a component.
 
 // AREA AND VOLUME carry the scale their ratio to the base unit actually has. An earlier revision
 // wrote Measure<Area, Milli, Nat> and warned in a comment not to read Milli linearly - but Scale is
@@ -352,14 +376,6 @@ type Turn = Measure<PlaneAngle, TurnAngle, Nat>
 // an untyped integer. Without this carrier a dot product returns a bare Int and its dimension is
 // erased at the first operation.
 type SignedSquareMillimeter = Measure<Area, Micro, Int>
-
-fn signed_millimeter_component(count: Int) -> SignedMillimeterComponent {
-  Measure { count: count }
-}
-
-fn signed_millimeter_component_count(m: SignedMillimeterComponent) -> Int {
-  measure_count(m)
-}
 
 fn square_meter(count: Nat) -> SquareMeter {
   Measure { count: count }
@@ -497,6 +513,14 @@ fn volt(count: Nat) -> Volt {
 }
 
 fn volt_count(v: Volt) -> Nat {
+  measure_count(v)
+}
+
+fn millivolt(count: Nat) -> Millivolt {
+  Measure { count: count }
+}
+
+fn millivolt_count(v: Millivolt) -> Nat {
   measure_count(v)
 }
 
@@ -802,6 +826,21 @@ fn second_count(s: Second) -> Nat {
 
 fn energy_from_power_and_time(power: Watt, time: Second) -> Joule {
   joule(watt_count(w: power) * second_count(s: time))
+}
+
+fn volt_ampere(count: Nat) -> VoltAmpere {
+  Measure { count: count }
+}
+
+fn volt_ampere_count(v: VoltAmpere) -> Nat {
+  measure_count(v)
+}
+
+// The product of a supply's nominal voltage and its rated current, which is what a supply is rated
+// in. It deliberately produces apparent power rather than Watt: the datasheet figures multiply to
+// volt-amperes and to nothing else.
+fn apparent_power_from_supply(supply_voltage: Volt, rated_current: Ampere) -> VoltAmpere {
+  volt_ampere(volt_count(v: supply_voltage) * ampere_count(a: rated_current))
 }
 
 type Minute = Measure<Time, Sixty, Nat>

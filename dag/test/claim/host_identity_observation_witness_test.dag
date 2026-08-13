@@ -154,10 +154,16 @@ test fn witness_design_intent_conflation_red() -> Bool {
     && deployed_intent_observed_short_hostname(d: conflated) == operator_host_srv1
 }
 
+// The FleetSsh arm is `false` DELIBERATELY, and this is the one place in the migration where that is
+// the correct answer rather than a placeholder. The claim is that this declaration produces an
+// SshShell aimed at the operator host; a FleetSsh would be a DIFFERENT transport, so answering true
+// for it would make the witness pass on a value it does not describe. When this declaration migrates,
+// this arm becomes the true one and the SshShell arm becomes false -- the arms swap, they do not merge.
 test fn witness_srv1_ssh_transport_targets_operator_host() -> Bool {
   match srv1_host_identity_ssh_transport() {
     SshShell { ssh_host: h } => h == operator_host_srv1
     LocalShell => false
+    FleetSsh { target: _, context: _ } => false
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => false
   }
 }

@@ -111,6 +111,7 @@ fn host_effect_nbd_proxy_serve_witness_bin_run_argv(
     LocalShell =>
       gunbc.WitnessBin.Run(workdir: "/", bin_path: bin_path, args: args).success
     SshShell { ssh_host: _ } => false
+    FleetSsh { target: _, context: _ } => false
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => false
   }
 }
@@ -149,6 +150,7 @@ fn host_effect_nbd_proxy_serve_observe_port(
   match transport {
     LocalShell => PortInaccessible
     SshShell { ssh_host: _ } => PortInaccessible
+    FleetSsh { target: _, context: _ } => PortInaccessible
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => PortInaccessible
   }
 }

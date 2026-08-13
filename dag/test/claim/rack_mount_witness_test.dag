@@ -53,12 +53,12 @@ test fn a_mount_occupies_an_interval_derived_from_the_cited_chassis() -> Bool {
   mount_top_unit(m: rosewill_4u_asset()) == 4
 }
 
+// 18U of MOUNTING APERTURE is 800.1 mm exactly. Asserting 800100 micrometres keeps dead the
+// truncation an earlier revision shipped and an earlier version of this claim pinned at 800.
+// It is the aperture, not the rack's external height, which no cited row carries.
 test fn one_mounted_fixture_leaves_the_rest_of_the_rack_free() -> Bool {
   match rack_of(mounts: [rosewill_4u_asset()]) {
     Absent => false
-    // 18U of MOUNTING APERTURE is 800.1 mm exactly. Asserting 800100 micrometres keeps dead the
-    // truncation an earlier revision shipped and an earlier version of this claim pinned at 800.
-    // It is the aperture, not the rack's external height, which no cited row carries.
     Present { value: r } => free_units(r: r) == 14 && micrometer_count(m: rack_mounting_aperture_height(r: r)) == 800100
   }
 }

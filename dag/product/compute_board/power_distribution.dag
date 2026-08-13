@@ -1,0 +1,310 @@
+module product.compute_board.power_distribution
+
+import std.types { String, Bool, NonEmptyStr, List }
+import std.integer { Int }
+import std.measure { Millivolt, millivolt, millivolt_count }
+import product.compute_board.analog { NetIdentity }
+import extdeps.programmable_logic.ice40.supply {
+  BankIoSupply,
+  ConfigurationBankSupply,
+  CoreSupply,
+  FastProgrammingSupply,
+  Ice40ConfigurationMode,
+  Ice40InterRailConstraint,
+  Ice40IoStandardSupply,
+  Ice40SupplyRail,
+  LikeVoltageRailsShareOneSupply,
+  MasterSpiConfiguration,
+  MustBeLeftUnconnected,
+  NvcmProgrammingSupply,
+  OperatingWindow,
+  PinLeftUnconnected,
+  PllSupply,
+  RailRequirement,
+  UnusedBankSupplyGoesToCore,
+  ice40_inter_rail_constraints,
+  ice40_lvcmos18_supply,
+  ice40_lvcmos25_supply,
+  ice40_lvcmos33_supply,
+  nvcm_supply_requirement,
+  rail_requirement,
+  requirement_admits,
+  supply_rail_symbol,
+  supply_rails_equal,
+}
+
+data power_distribution_note: String = "WHAT THE BOARD SUPPLIES, CHECKED AGAINST WHAT THE DEVICE REQUIRES. The device's requirements are cited facts and live in extdeps; what a particular board chooses to build is a product decision and lives here. The check between them is the whole content of this module, and it is deliberately a REFUSAL rather than a report: a rail outside its window is not a warning, it is a board that does not work. THE THREE REFUSALS THAT ARE NOT ABOUT A SINGLE NUMBER, and they are the reason this is not a loop over min/max pairs. A rail may sit inside its own window and still be wrong because a bank driving LVCMOS 3.3 needs a tighter window than the bank rail's own envelope; because two rails at one voltage must be one supply and the board built two; or because a pin the vendor says to leave unconnected was connected to something perfectly reasonable. A design satisfying every window and violating any of these is a design the vendor does not support, so the windows alone are not the test."
+
+// WHAT THE BOARD ACTUALLY BUILDS. A supply is a net at a voltage, and both halves matter: the
+// voltage decides whether the device is in spec, and the NET IDENTITY decides whether two rails
+// the vendor requires to share a supply actually do. An earlier shape carrying only voltages
+// could not express that distinction at all — two rails both reading 3300 would look identical
+// whether they were one supply or two, which is precisely the constraint the vendor states.
+type BoardSupplyRail {
+  rail: Ice40SupplyRail
+  net: NetIdentity
+  nominal: Millivolt
+}
+
+// A BANK EITHER DRIVES A STANDARD OR IS UNUSED, and those are different electrical obligations
+// rather than one obligation with a missing field. A driving bank's VCCIO must reach the
+// standard's window; an unused bank has no standard to reach and instead must tie to core, which
+// is the vendor's own constraint. An earlier revision had only the driving case, so an unused
+// bank was not expressible — and a constraint about a state the model cannot represent is a
+// constraint that cannot fire, which is exactly how it came to be enrolled and inert.
+type BankUse
+  = BankDrivesStandard { standard: Ice40IoStandardSupply }
+  | BankUnused
+
+// A BANK IS ASSIGNED A USE, and that is a design decision with an electrical consequence. The use
+// is carried separately from the rail because one VCCIO rail feeds a bank and what the bank does
+// narrows what that rail may be — two facts about the same bank that a single field would fuse.
+// The supplying net is common to both uses: an unused bank's VCCIO pin is still a pin that must
+// be connected to something, and saying which is the whole content of the vendor constraint.
+type BankAssignment {
+  bank: Int
+  use: BankUse
+  supplied_by: NetIdentity
+}
+
+// Rails the board deliberately does not build. Named rather than absent, because a rail missing
+// from the list because nobody thought about it and a rail missing because the vendor says to
+// leave it unconnected are different states with different remedies.
+type BoardPowerIntent {
+  configuration_mode: Ice40ConfigurationMode
+  rails: List<BoardSupplyRail>
+  banks: List<BankAssignment>
+  deliberately_unconnected: List<Ice40SupplyRail>
+}
+
+// EVERY REFUSAL NAMES THE RAIL AND BOTH SIDES OF THE COMPARISON. A refusal saying only "out of
+// range" sends a reader back to the datasheet to find out what range; carrying the bound means the
+// diagnostic is the answer rather than a pointer to it.
+// The vendor's unused-bank constraint, refusing. Both nets are carried because the reader's
+// next question is what it IS tied to versus what it should be, and a refusal naming only the
+// bank sends them to two other files to find out.
+// An unused bank whose constraint cannot be evaluated because the core rail it must tie to was
+// never built. This refuses rather than passing: the rail side reports the missing core rail
+// under its own cause, but a board could declare core deliberately unconnected and thereby
+// silence that one, and an unanswerable constraint must not read as a satisfied constraint.
+type PowerRefusal
+  = RailOutsideDeviceWindow { rail: Ice40SupplyRail, supplied: Millivolt, minimum: Millivolt, maximum: Millivolt }
+  | RailBuiltForAnUnconnectedPin { rail: Ice40SupplyRail, supplied: Millivolt }
+  | RequiredRailNotBuilt { rail: Ice40SupplyRail }
+  | BankStandardOutsideRailWindow { bank: Int, standard_name: NonEmptyStr, supplied: Millivolt, minimum: Millivolt, maximum: Millivolt }
+  | BankSuppliedByNoDeclaredRail { bank: Int, net: NetIdentity }
+  | LikeVoltageRailsOnSeparateSupplies { left: Ice40SupplyRail, right: Ice40SupplyRail, voltage: Millivolt }
+  | UnusedBankNotTiedToCore { bank: Int, net: NetIdentity, core_net: NetIdentity }
+  | UnusedBankCoreRailNotBuilt { bank: Int, core_rail: Ice40SupplyRail }
+
+type PowerAdmission
+  = PowerIntentAdmitted { intent: BoardPowerIntent }
+  | PowerIntentRefused { causes: List<PowerRefusal> }
+
+fn rail_is(a: Ice40SupplyRail, b: Ice40SupplyRail) -> Bool {
+  supply_rails_equal(a: a, b: b)
+}
+
+fn built_rail(intent: BoardPowerIntent, r: Ice40SupplyRail) -> BoardSupplyRail? {
+  fold(intent.rails, init: none, f: fn(acc, br) {
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent => if rail_is(a: br.rail, b: r) { Present { value: br } } else { none }
+    }
+  })
+}
+
+fn is_deliberately_unconnected(intent: BoardPowerIntent, r: Ice40SupplyRail) -> Bool {
+  fold(intent.deliberately_unconnected, init: false, f: fn(acc, u) { acc || rail_is(a: u, b: r) })
+}
+
+// THE REQUIREMENT IS ASKED WITH THE MODE WHEN THE MODE IS WHAT DECIDES IT. The mode-free lookup
+// returns nothing for VPP_2V5 by construction, so a consumer that forgot the mode would get an
+// absent requirement and could check nothing — this routes the one mode-dependent rail through
+// the function that takes a mode, rather than treating its absence as "no requirement".
+fn requirement_for(intent: BoardPowerIntent, r: Ice40SupplyRail) -> RailRequirement? {
+  if rail_is(a: r, b: NvcmProgrammingSupply) {
+    Present { value: nvcm_supply_requirement(m: intent.configuration_mode) }
+  } else {
+    rail_requirement(r: r)
+  }
+}
+
+// A RAIL BUILT FOR A PIN THAT MUST BE LEFT UNCONNECTED IS ITS OWN REFUSAL, not an
+// out-of-window one. There is no window to be outside of, and reporting it as a range
+// violation would send someone looking for the right voltage when the answer is that
+// there is no right voltage.
+fn rail_causes(intent: BoardPowerIntent, r: Ice40SupplyRail) -> List<PowerRefusal> {
+  match requirement_for(intent: intent, r: r) {
+    Absent => []
+    Present { value: req } =>
+      match built_rail(intent: intent, r: r) {
+        Absent =>
+          if is_deliberately_unconnected(intent: intent, r: r) { [] } else { [RequiredRailNotBuilt { rail: r }] }
+        Present { value: br } =>
+          match req {
+            MustBeLeftUnconnected => [RailBuiltForAnUnconnectedPin { rail: r, supplied: br.nominal }]
+            OperatingWindow { minimum: lo, maximum: hi } =>
+              if requirement_admits(r: req, v: br.nominal) {
+                []
+              } else {
+                [RailOutsideDeviceWindow { rail: r, supplied: br.nominal, minimum: lo, maximum: hi }]
+              }
+          }
+      }
+  }
+}
+
+fn supplying_rail(intent: BoardPowerIntent, net: NetIdentity) -> BoardSupplyRail? {
+  fold(intent.rails, init: none, f: fn(acc, br) {
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent => if (br.net as String) == (net as String) { Present { value: br } } else { none }
+    }
+  })
+}
+
+// THE BANK CHECK IS NOT THE RAIL CHECK. The bank rail's own envelope is 1.71 V to 3.46 V and a
+// bank sitting at 1.8 V satisfies it; if that bank drives LVCMOS 3.3 it is nevertheless out of
+// spec, because the standard's window is 3.14 to 3.46. This is the check a board that only
+// verified rails would pass while its outputs did not meet their levels.
+// An unused bank has no standard, so there is no window to be outside of. Its own
+// obligation — tying to core — is the vendor inter-rail constraint, checked there against
+// the constraint row rather than restated here.
+fn bank_causes(intent: BoardPowerIntent, b: BankAssignment) -> List<PowerRefusal> {
+  match supplying_rail(intent: intent, net: b.supplied_by) {
+    Absent => [BankSuppliedByNoDeclaredRail { bank: b.bank, net: b.supplied_by }]
+    Present { value: br } =>
+      match b.use {
+        BankUnused => []
+        BankDrivesStandard { standard: st } =>
+          if millivolt_count(v: br.nominal) >= millivolt_count(v: st.minimum)
+            && millivolt_count(v: br.nominal) <= millivolt_count(v: st.maximum) {
+            []
+          } else {
+            [BankStandardOutsideRailWindow {
+              bank: b.bank,
+              standard_name: st.standard_name,
+              supplied: br.nominal,
+              minimum: st.minimum,
+              maximum: st.maximum,
+            }]
+          }
+      }
+  }
+}
+
+// THE CONSTRAINT BETWEEN RAILS, checked at the grain it is stated: two rails at the same voltage
+// must be the same SUPPLY, which is a claim about net identity and not about voltage. Two rails
+// both reading 3300 mV on two different nets satisfy every window and violate this.
+// THE CONSTRAINT THIS ARM STATES IS NOW THE CONSTRAINT IT ENFORCES. It read `=> []`, which is
+// indistinguishable at the call site from a satisfied check, so folding it over the roster
+// presented three enforced vendor constraints where only two were. The core rail comes from
+// the constraint ROW rather than being written here, so the roster stays the authority for
+// which rail is core.
+// Legitimately empty, and it is worth saying why so it is not read as the arm above was. This
+// constraint IS enforced, on the rail path: a rail whose requirement is MustBeLeftUnconnected
+// and which the board nevertheless builds refuses as RailBuiltForAnUnconnectedPin. Restating
+// it here would be a second authority for one constraint, not a second check.
+fn inter_rail_causes(intent: BoardPowerIntent, c: Ice40InterRailConstraint) -> List<PowerRefusal> {
+  match c {
+    UnusedBankSupplyGoesToCore { bank_rail: _, core_rail: cr } =>
+      fold(intent.banks, init: [], f: fn(acc, b) {
+        match b.use {
+          BankDrivesStandard { standard: _ } => acc
+          BankUnused =>
+            match built_rail(intent: intent, r: cr) {
+              Absent => concat(acc, [UnusedBankCoreRailNotBuilt { bank: b.bank, core_rail: cr }])
+              Present { value: core } =>
+                if (b.supplied_by as String) == (core.net as String) {
+                  acc
+                } else {
+                  concat(acc, [UnusedBankNotTiedToCore {
+                    bank: b.bank,
+                    net: b.supplied_by,
+                    core_net: core.net,
+                  }])
+                }
+            }
+        }
+      })
+    PinLeftUnconnected { rail: _ } => []
+    LikeVoltageRailsShareOneSupply { left: l, right: r } =>
+      match built_rail(intent: intent, r: l) {
+        Absent => []
+        Present { value: lb } =>
+          match built_rail(intent: intent, r: r) {
+            Absent => []
+            Present { value: rb } =>
+              if millivolt_count(v: lb.nominal) == millivolt_count(v: rb.nominal)
+                && (lb.net as String) != (rb.net as String) {
+                [LikeVoltageRailsOnSeparateSupplies { left: l, right: r, voltage: lb.nominal }]
+              } else {
+                []
+              }
+          }
+      }
+  }
+}
+
+data required_rails: List<Ice40SupplyRail> = [
+  CoreSupply,
+  PllSupply,
+  BankIoSupply,
+  ConfigurationBankSupply,
+  NvcmProgrammingSupply,
+  FastProgrammingSupply,
+]
+
+// CAUSES ACCUMULATE. A board with an out-of-window core rail and a bank driving a standard its
+// supply cannot reach has two problems, and stopping at the first would send someone round the
+// loop twice.
+fn power_causes(intent: BoardPowerIntent) -> List<PowerRefusal> {
+  let rail_side = fold(required_rails, init: [], f: fn(acc, r) {
+    concat(acc, rail_causes(intent: intent, r: r))
+  })
+  let bank_side = fold(intent.banks, init: [], f: fn(acc, b) {
+    concat(acc, bank_causes(intent: intent, b: b))
+  })
+  let cross_side = fold(ice40_inter_rail_constraints, init: [], f: fn(acc, c) {
+    concat(acc, inter_rail_causes(intent: intent, c: c))
+  })
+  concat(concat(rail_side, bank_side), cross_side)
+}
+
+fn power_refusal_count(cs: List<PowerRefusal>) -> Int {
+  fold(cs, init: 0, f: fn(acc, _c) { acc + 1 })
+}
+
+fn admit_power_intent(intent: BoardPowerIntent) -> PowerAdmission {
+  let causes = power_causes(intent: intent)
+  if power_refusal_count(cs: causes) == 0 {
+    PowerIntentAdmitted { intent: intent }
+  } else {
+    PowerIntentRefused { causes: causes }
+  }
+}
+
+// THE BOARD THIS REPOSITORY IS BUILDING. Master SPI configuration, so VPP_2V5 sits on the 3.3 V
+// rail and satisfies the 2.30 V minimum that mode imposes; VCC_SPI shares that same net rather
+// than being a second 3.3 V supply, which is the vendor's like-voltage constraint honoured by
+// construction rather than checked after the fact. VPP_FAST is declared unconnected rather than
+// omitted, so its absence is a decision on the record instead of an oversight that happens to
+// look the same.
+data reference_power_intent: BoardPowerIntent = BoardPowerIntent {
+  configuration_mode: MasterSpiConfiguration,
+  rails: [
+    BoardSupplyRail { rail: CoreSupply, net: "vcc_core", nominal: millivolt(count: 1200) },
+    BoardSupplyRail { rail: PllSupply, net: "vcc_pll", nominal: millivolt(count: 1200) },
+    BoardSupplyRail { rail: BankIoSupply, net: "vccio_3v3", nominal: millivolt(count: 3300) },
+    BoardSupplyRail { rail: ConfigurationBankSupply, net: "vccio_3v3", nominal: millivolt(count: 3300) },
+    BoardSupplyRail { rail: NvcmProgrammingSupply, net: "vccio_3v3", nominal: millivolt(count: 3300) },
+  ],
+  banks: [
+    BankAssignment { bank: 0, use: BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: "vccio_3v3" },
+    BankAssignment { bank: 1, use: BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: "vccio_3v3" },
+    BankAssignment { bank: 2, use: BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: "vccio_3v3" },
+    BankAssignment { bank: 3, use: BankDrivesStandard { standard: ice40_lvcmos33_supply }, supplied_by: "vccio_3v3" },
+  ],
+  deliberately_unconnected: [FastProgrammingSupply],
+}
