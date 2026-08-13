@@ -114,10 +114,17 @@ fn standings_from(obs: List<MemberObservation>) -> List<BodyLoweringSubjectStand
   )
 }
 
+data body_lowering_refusal_scope_note: String = "A CENSUS REFUSAL IS SCOPED TO THE BATCH, NEVER TO THE ROSTER, and an earlier revision of this repair got it wrong in the exact way the repair exists to prevent. It routed EVERY live-file subject through the refusal cause, so a census abort rewrote logic, diagnostic, occurrence_identity and node — subjects this run was never going to execute — from 'not selected' into 'the census refused'. Those are different epistemic positions with different remedies: a not-selected subject needs a bigger batch or a cheaper instrument, while a refused census needs the infrastructure fixed, and a reader deciding what to do next is misdirected by the conflation. It also destroyed the roster/batch split on precisely the path where the distinction is least visible and therefore least likely to be questioned.\n\nSo the refusal cause reaches ONLY the subjects that were actually selected. A subject outside the batch keeps not_selected_into_execution_batch whether the census succeeded or refused, because its standing does not depend on the census at all — nothing about it was attempted. The specimen class keeps its own structural cause under both, for the same reason one rung further out: it could not have been attempted under any batch.\n\nThe general form, worth stating because it is easy to reintroduce: a failure at one scope may not be attributed to subjects outside that scope. Widening a refusal to everything it did not touch is the absorbing fallback wearing an error's name — it looks conservative and it manufactures false information about subjects nobody looked at."
+
 fn refusal_standing_of(s: BodyLoweringSubject, cause: Symbol) -> BodyLoweringObservationStanding {
   match s.realization {
     UnauthoredSpecimenClass => SubjectUnmeasured { cause: ^no_committed_specimen_identity }
-    LiveFileSubject { path: _ } => SubjectUnmeasured { cause: cause }
+    LiveFileSubject { path: _ } =>
+      if is_selected(label: s.label) {
+        SubjectUnmeasured { cause: cause }
+      } else {
+        SubjectUnmeasured { cause: ^not_selected_into_execution_batch }
+      }
   }
 }
 

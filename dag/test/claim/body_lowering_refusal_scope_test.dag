@@ -1,0 +1,52 @@
+module gunbc.test.claim.body_lowering_refusal_scope_test
+
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import gunbc.tools.body_lowering_population_probe {
+  BodyLoweringSubject,
+  BodyLoweringObservationStanding,
+  LiveFileSubject,
+  UnauthoredSpecimenClass,
+  SubjectUnmeasured,
+  SubjectObserved,
+  SubjectInterrupted,
+  refusal_standing_of
+}
+
+// A census refusal is scoped to the batch. These assert the scoping directly rather than through
+// a live census, because forcing CensusRefusedAtWorld would mean breaking the tree to observe the
+// arm — the arm's INPUT is a cause symbol, so it is reachable by ordinary call and needs no fixture.
+//
+// The first is the discriminating control: it goes RED against the revision that routed every
+// live-file subject through the refusal cause. The subject it uses (logic) is a real roster member
+// outside the execution batch, so the assertion is about the shipped roster and not a synthetic one.
+
+fn cause_of(s: BodyLoweringObservationStanding) -> Symbol {
+  match s {
+    SubjectUnmeasured { cause: c } => c
+    SubjectObserved { stage: _ } => ^unexpected_observed
+    SubjectInterrupted { receipt: _ } => ^unexpected_interrupted
+  }
+}
+
+data non_batch_subject: BodyLoweringSubject = BodyLoweringSubject { label: ^logic, realization: LiveFileSubject { path: "src/v2/std/logic.dag" } }
+
+data batch_subject: BodyLoweringSubject = BodyLoweringSubject { label: ^optional, realization: LiveFileSubject { path: "src/v2/std/optional.dag" } }
+
+data specimen_subject: BodyLoweringSubject = BodyLoweringSubject { label: ^vacuity_bare_expression_specimens, realization: UnauthoredSpecimenClass }
+
+test fn census_refusal_does_not_reach_a_non_batch_subject_RED() -> Bool {
+  cause_of(s: refusal_standing_of(s: non_batch_subject, cause: ^census_refused_at_world)) == ^not_selected_into_execution_batch
+}
+
+test fn census_refusal_reaches_a_batch_subject() -> Bool {
+  cause_of(s: refusal_standing_of(s: batch_subject, cause: ^census_refused_at_world)) == ^census_refused_at_world
+}
+
+test fn census_refusal_cause_is_carried_not_fixed() -> Bool {
+  cause_of(s: refusal_standing_of(s: batch_subject, cause: ^census_refused_at_reconciliation)) == ^census_refused_at_reconciliation
+}
+
+test fn specimen_class_keeps_its_own_cause_under_refusal() -> Bool {
+  cause_of(s: refusal_standing_of(s: specimen_subject, cause: ^census_refused_at_world)) == ^no_committed_specimen_identity
+}
