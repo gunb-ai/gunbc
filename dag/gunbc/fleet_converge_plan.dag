@@ -1,0 +1,309 @@
+module gunbc.fleet_converge_plan
+
+import std.types { String, List, Bool, Int, NonEmptyStr }
+import std.measure { byte_size_count }
+import std.content_hash {
+  content_hash_of_value,
+  Fnv1a64StructuralDigestHex,
+  Fnv1a64,
+}
+import gunbc.membership_reconcile {
+  MembershipPlan,
+  MemberAction,
+  MemberAdded,
+  MemberChanged,
+  MemberRemoved,
+  MemberRemovalRefused,
+  TeardownRefusalCause,
+  MemberNotOwned,
+  OwnershipUnknown,
+  membership_reconcile,
+  membership_refusal_count,
+}
+import gunbc.ownership { Ownership, Owned }
+import gunbc.fleet_converge_timer {
+  fleet_converge_service_unit_name,
+  fleet_converge_timer_unit_name,
+}
+import gunbc.live_deploy.spec {
+  deployment_spec_srv1,
+  deployment_fleet_converge_service_unit_name,
+  deployment_fleet_converge_timer_unit_name,
+}
+import gunbc.host_axis_caps {
+  CapMember,
+  caps_reconcile,
+  desired_cap_member,
+  cap_upsert_script,
+}
+import gunbc.host_converge {
+  gunbc_runner_per_slot_dropin_path,
+  gunbc_runner_per_slot_swap_dropin_path,
+  gunbc_runner_per_slot_high_dropin_path,
+  gunbc_runner_per_slot_tasks_dropin_path,
+  systemd_memory_max_property,
+  systemd_memory_high_property,
+  systemd_memory_swap_max_property,
+  systemd_tasks_max_property,
+}
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+
+data fleet_converge_plan_authority_note: String = "On-demand fleet converge PLAN authority (operator directive 2026-08-13, sleek-heron-218): membership_reconcile computes the typed hunks — MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused — that a human reviews BEFORE apply. Plan and apply are the same spine at different poles; this module owns serialization, the content-addressed artifact, and the observed baseline fingerprint apply must CAS against. Timer retirement: desired has NO fleet-converge timers; observed lists legacy units still on the host. MemberRemovalRefused arms are rendered in plan output and never filtered — they are precisely what a reviewer needs to see before approving."
+
+type TimerRetirementMember {
+  unit_name: NonEmptyStr
+}
+
+fn timer_member_key(m: TimerRetirementMember) -> NonEmptyStr {
+  m.unit_name
+}
+
+fn timer_member_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+  a as String == b as String
+}
+
+fn timer_member_value_eq(a: TimerRetirementMember, b: TimerRetirementMember) -> Bool {
+  a.unit_name as String == b.unit_name as String
+}
+
+fn timer_member_ownership(m: TimerRetirementMember) -> Ownership? {
+  Present { value: Owned }
+}
+
+fn timer_member_unit_path(unit_name: NonEmptyStr) -> NonEmptyStr {
+  concat("/etc/systemd/system/", unit_name as String) as NonEmptyStr
+}
+
+fn timer_retirement_desired() -> List<TimerRetirementMember> {
+  []
+}
+
+fn timer_retirement_observed_legacy_srv1() -> List<TimerRetirementMember> {
+  let names = deployment_spec_srv1().names
+  [
+    TimerRetirementMember { unit_name: fleet_converge_timer_unit_name as NonEmptyStr },
+    TimerRetirementMember { unit_name: fleet_converge_service_unit_name as NonEmptyStr },
+    TimerRetirementMember { unit_name: deployment_fleet_converge_timer_unit_name(names: names) },
+    TimerRetirementMember { unit_name: deployment_fleet_converge_service_unit_name(names: names) },
+  ]
+}
+
+fn timer_retirement_plan(observed: List<TimerRetirementMember>) -> MembershipPlan<TimerRetirementMember> {
+  membership_reconcile(
+    desired: timer_retirement_desired(),
+    observed: observed,
+    key_of: timer_member_key,
+    key_eq: timer_member_key_eq,
+    value_eq: timer_member_value_eq,
+    ownership_of: timer_member_ownership,
+  )
+}
+
+fn teardown_refusal_cause_label(cause: TeardownRefusalCause) -> String {
+  match cause {
+    MemberNotOwned => "MemberNotOwned"
+    OwnershipUnknown => "OwnershipUnknown"
+  }
+}
+
+fn timer_action_line(action: MemberAction<TimerRetirementMember>) -> String {
+  match action {
+    MemberAdded { to: m } => concat("ADD timer-unit ", m.unit_name as String)
+    MemberChanged { from: f, to: t } =>
+      concat(concat("CHANGE timer-unit ", f.unit_name as String), concat(" -> ", t.unit_name as String))
+    MemberRemoved { from: m } => concat("REMOVE timer-unit ", m.unit_name as String)
+    MemberRemovalRefused { from: m, cause: c } =>
+      concat(
+        concat("REFUSED-REMOVAL timer-unit ", m.unit_name as String),
+        concat(" cause=", teardown_refusal_cause_label(cause: c)),
+      )
+  }
+}
+
+fn cap_action_line(action: MemberAction<CapMember>) -> String {
+  match action {
+    MemberAdded { to: m } => concat("ADD cap ", m.dropin_path as String)
+    MemberChanged { from: f, to: t } =>
+      concat(concat("CHANGE cap ", f.dropin_path as String), concat(" -> content drift"))
+    MemberRemoved { from: m } => concat("REMOVE cap ", m.dropin_path as String)
+    MemberRemovalRefused { from: m, cause: c } =>
+      concat(
+        concat("REFUSED-REMOVAL cap ", m.dropin_path as String),
+        concat(" cause=", teardown_refusal_cause_label(cause: c)),
+      )
+  }
+}
+
+fn membership_plan_lines_timer(plan: MembershipPlan<TimerRetirementMember>) -> List<String> {
+  map(plan.actions, a => timer_action_line(action: a))
+}
+
+fn membership_plan_lines_cap(plan: MembershipPlan<CapMember>) -> List<String> {
+  map(plan.actions, a => cap_action_line(action: a))
+}
+
+fn fleet_converge_desired_caps() -> List<CapMember> {
+  let slot = gunbc_runner_slot_desired()
+  [
+    desired_cap_member(
+      dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
+      property: systemd_memory_max_property,
+      bytes_value: to_string(byte_size_count(b: slot.memory_max)) as NonEmptyStr,
+    ),
+    desired_cap_member(
+      dropin_path: gunbc_runner_per_slot_high_dropin_path as NonEmptyStr,
+      property: systemd_memory_high_property,
+      bytes_value: to_string(byte_size_count(b: slot.memory_high)) as NonEmptyStr,
+    ),
+    desired_cap_member(
+      dropin_path: gunbc_runner_per_slot_swap_dropin_path as NonEmptyStr,
+      property: systemd_memory_swap_max_property,
+      bytes_value: to_string(byte_size_count(b: slot.memory_swap_max)) as NonEmptyStr,
+    ),
+    desired_cap_member(
+      dropin_path: gunbc_runner_per_slot_tasks_dropin_path as NonEmptyStr,
+      property: systemd_tasks_max_property,
+      bytes_value: to_string(slot.tasks_max) as NonEmptyStr,
+    ),
+  ]
+}
+
+fn observed_baseline_text(observed_timers: List<TimerRetirementMember>, observed_caps: List<CapMember>) -> String {
+  join(
+    concat(
+      map(observed_timers, m => concat("timer:", m.unit_name as String)),
+      map(observed_caps, c => concat("cap:", c.dropin_path as String, "=", c.content)),
+    ),
+    "\n",
+  )
+}
+
+type FleetConvergePlanArtifact {
+  observed_baseline_hex: Fnv1a64StructuralDigestHex
+  plan_body: String
+  apply_shell: String
+}
+
+fn fleet_converge_plan_content_hash(plan_body: String) -> Fnv1a64StructuralDigestHex {
+  match content_hash_of_value(value: plan_body as NonEmptyStr) {
+    Fnv1a64(s: structural) => structural.digest
+    _ => "0000000000000000"
+  }
+}
+
+fn fleet_converge_plan_artifact_hash(artifact: FleetConvergePlanArtifact) -> Fnv1a64StructuralDigestHex {
+  fleet_converge_plan_content_hash(plan_body: artifact.plan_body)
+}
+
+fn timer_retirement_disable_line(unit_name: NonEmptyStr) -> String {
+  concat("sudo -n systemctl disable --now ", unit_name as String)
+}
+
+fn timer_retirement_remove_line(unit_name: NonEmptyStr) -> String {
+  concat("sudo -n rm -f /etc/systemd/system/", unit_name as String)
+}
+
+fn cap_apply_line(action: MemberAction<CapMember>) -> String {
+  match action {
+    MemberAdded { to: m } => cap_upsert_script(m: m)
+    MemberChanged { from: _, to: t } => cap_upsert_script(m: t)
+    MemberRemoved { from: m } => concat("rm -f ", m.dropin_path as String)
+    MemberRemovalRefused { from: _, cause: _ } => ""
+  }
+}
+
+fn timer_apply_lines(plan: MembershipPlan<TimerRetirementMember>) -> List<String> {
+  flat_map(plan.actions, a =>
+    match a {
+      MemberRemoved { from: m } =>
+        [timer_retirement_disable_line(unit_name: m.unit_name), timer_retirement_remove_line(unit_name: m.unit_name)]
+      MemberRemovalRefused { from: _, cause: _ } => []
+      MemberAdded { to: _ } => []
+      MemberChanged { from: _, to: _ } => []
+    }
+  )
+}
+
+fn cap_apply_lines(plan: MembershipPlan<CapMember>) -> List<String> {
+  filter(
+    flat_map(plan.actions, a => [cap_apply_line(action: a)]),
+    line => line != "",
+  )
+}
+
+fn fleet_converge_apply_shell(timer_plan: MembershipPlan<TimerRetirementMember>, cap_plan: MembershipPlan<CapMember>) -> String {
+  join(
+    concat(
+      ["set -euo pipefail", "# generated at plan time — apply MUST NOT recompute membership_reconcile"],
+      timer_apply_lines(plan: timer_plan),
+      cap_apply_lines(plan: cap_plan),
+      ["sudo -n systemctl daemon-reload"],
+    ),
+    "\n",
+  )
+}
+
+fn fleet_converge_plan_artifact(
+  observed_timers: List<TimerRetirementMember>,
+  observed_caps: List<CapMember>,
+) -> FleetConvergePlanArtifact {
+  let timer_plan = timer_retirement_plan(observed: observed_timers)
+  let cap_plan = caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps)
+  let timer_lines = membership_plan_lines_timer(plan: timer_plan)
+  let cap_lines = membership_plan_lines_cap(plan: cap_plan)
+  let baseline = observed_baseline_text(observed_timers: observed_timers, observed_caps: observed_caps)
+  let body = join(
+    concat(
+      [
+        "# fleet-converge plan",
+        "observed_baseline:",
+        baseline,
+        "# timer-retirement",
+      ],
+      timer_lines,
+      ["# cap-axis"],
+      cap_lines,
+      [
+        concat("# cap-refusals=", to_string(membership_refusal_count(plan: cap_plan))),
+        concat("# timer-refusals=", to_string(membership_refusal_count(plan: timer_plan))),
+      ],
+    ),
+    "\n",
+  )
+  match content_hash_of_value(value: baseline as NonEmptyStr) {
+    Fnv1a64(s: structural) =>
+      FleetConvergePlanArtifact {
+        observed_baseline_hex: structural.digest,
+        plan_body: body,
+        apply_shell: fleet_converge_apply_shell(timer_plan: timer_plan, cap_plan: cap_plan),
+      }
+    _ =>
+      FleetConvergePlanArtifact {
+        observed_baseline_hex: "0000000000000000",
+        plan_body: body,
+        apply_shell: fleet_converge_apply_shell(timer_plan: timer_plan, cap_plan: cap_plan),
+      }
+  }
+}
+
+data fleet_converge_plan_artifact_dir: String = "/tmp/fleet-converge-plan"
+
+fn fleet_converge_plan_body_path: String = "/tmp/fleet-converge-plan/plan.txt"
+
+fn fleet_converge_plan_baseline_hex_path: String = "/tmp/fleet-converge-plan/observed_baseline.hex"
+
+fn fleet_converge_plan_apply_shell_path: String = "/tmp/fleet-converge-plan/apply.sh"
+
+fn fleet_converge_plan_content_hash_path: String = "/tmp/fleet-converge-plan/plan_content.hex"
+
+fn fleet_converge_observed_baseline_matches(
+  observed_baseline_hex: Fnv1a64StructuralDigestHex,
+  observed_timers: List<TimerRetirementMember>,
+  observed_caps: List<CapMember>,
+) -> Bool {
+  let baseline = observed_baseline_text(observed_timers: observed_timers, observed_caps: observed_caps)
+  match content_hash_of_value(value: baseline as NonEmptyStr) {
+    Fnv1a64(s: structural) => structural.digest == observed_baseline_hex
+    _ => false
+  }
+}

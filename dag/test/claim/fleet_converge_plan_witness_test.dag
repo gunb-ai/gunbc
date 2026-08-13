@@ -1,0 +1,64 @@
+module test.claim.fleet_converge_plan_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import gunbc.membership_reconcile { MemberRemoved }
+import gunbc.host_axis_caps { CapMember }
+import gunbc.host_converge { gunbc_runner_per_slot_dropin_path }
+import gunbc.fleet_converge_plan {
+  TimerRetirementMember,
+  fleet_converge_plan_artifact,
+  fleet_converge_plan_artifact_hash,
+  fleet_converge_observed_baseline_matches,
+  timer_retirement_plan,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn timer_retirement_plan_shows_refused_removal_for_foreign_cap() -> Bool {
+  let foreign = CapMember {
+    dropin_path: "/etc/systemd/system/foo.service.d/99-foreign.conf" as NonEmptyStr,
+    content: "[Service]\nMemoryMax=1\n",
+  }
+  let artifact = fleet_converge_plan_artifact(
+    observed_timers: [],
+    observed_caps: [foreign],
+  )
+  string_contains(s: artifact.plan_body, pattern: "REFUSED-REMOVAL cap ")
+    && string_contains(s: artifact.plan_body, pattern: "MemberNotOwned")
+}
+
+test fn timer_retirement_plan_lists_removed_legacy_timer() -> Bool {
+  let observed = [
+    TimerRetirementMember { unit_name: "ctrl-fleet-converge.timer" as NonEmptyStr },
+  ]
+  let plan = timer_retirement_plan(observed: observed)
+  any(plan.actions, a => match a { MemberRemoved { from: m } => m.unit_name as String == "ctrl-fleet-converge.timer"  _ => false })
+}
+
+test fn plan_artifact_hash_is_stable_for_fixed_observation() -> Bool {
+  let observed_cap = CapMember {
+    dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
+    content: "[Service]\nMemoryMax=15032385536\n",
+  }
+  let a1 = fleet_converge_plan_artifact(observed_timers: [], observed_caps: [observed_cap])
+  let a2 = fleet_converge_plan_artifact(observed_timers: [], observed_caps: [observed_cap])
+  fleet_converge_plan_artifact_hash(artifact: a1) == fleet_converge_plan_artifact_hash(artifact: a2)
+}
+
+test fn observed_baseline_cas_refuses_after_drift() -> Bool {
+  let observed_cap = CapMember {
+    dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
+    content: "[Service]\nMemoryMax=15032385536\n",
+  }
+  let artifact = fleet_converge_plan_artifact(observed_timers: [], observed_caps: [observed_cap])
+  let drifted = CapMember {
+    dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
+    content: "[Service]\nMemoryMax=17179869184\n",
+  }
+  !fleet_converge_observed_baseline_matches(
+    observed_baseline_hex: artifact.observed_baseline_hex,
+    observed_timers: [],
+    observed_caps: [drifted],
+  )
+}

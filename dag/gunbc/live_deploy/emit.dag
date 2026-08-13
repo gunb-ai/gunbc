@@ -637,20 +637,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
       deploy_raw(command: systemctl_restart_command(unit: deployment_belt_timer_unit_name(names: spec.names), privileged: true)),
     ]
     FleetConvergeTimerUnit => [
-      deploy_raw(command: install_d_owned_command(spec: spec, path: fleet_converge_receipt_dir)),
-      apply_fleet_converge_service_unit_write_step(spec: spec),
-      apply_fleet_converge_timer_unit_write_step(spec: spec),
-      deploy_raw(command: join([
-        "sudo -n install -m 0644 \"$_gunbc_stage/", deployment_fleet_converge_service_unit_name(names: spec.names) as String, "\" ",
-        deployment_fleet_converge_service_unit_path(names: spec.names) as String,
-      ], "")),
-      deploy_raw(command: join([
-        "sudo -n install -m 0644 \"$_gunbc_stage/", deployment_fleet_converge_timer_unit_name(names: spec.names) as String, "\" ",
-        art.path as String,
-      ], "")),
-      deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
-      deploy_raw(command: systemctl_enable_command(unit: deployment_fleet_converge_timer_unit_name(names: spec.names), privileged: true)),
-      deploy_raw(command: systemctl_restart_command(unit: deployment_fleet_converge_timer_unit_name(names: spec.names), privileged: true)),
+      deploy_raw(command: "__GUNBC_FLEET_CONVERGE_REFUSED__ FleetConvergeTimerUnit retired from deployment membership — timer cadence is on-demand via fleet-converge.yml plan/apply, not live_deploy apply (sleek-heron-218)"),
     ]
     TailscaleServeMapping => [
       tailscale_serve_apply_step(spec: spec),

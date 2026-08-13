@@ -325,7 +325,7 @@ fn srv1_os_package_manager() -> OsPackageManager {
   ubuntu_distribution_catalog_row(distro: NobleNumbat2404Lts).package_manager
 }
 
-data deployment_apply_order_note: String = "Apply order is dependency-honest: the tree lands before the binary (the binary serves that tree), both before the two belt-spawn roots (the worktree root and the attempt-state root, which a dispatch writes in that order — worktree first, then the published attempt evidence), all before the unit (ExecStart references binary + tree), then the belt timer (its ExecStart references that same binary and tree, and every tick it fires writes the two roots above — so it is ordered after them for the same dependency reason the unit is), and the tailscale mapping last (routes to a live service). Retract is the reverse, with DispatchWorktreeRoot AND AttemptStateRoot torn down by empty-directory removal — LOUD failure when worktrees or published attempts exist, so a retract cannot silently destroy live agent sessions or the evidence of what they did (a construction-level refusal, not a check)."
+data deployment_apply_order_note: String = "Apply order is dependency-honest: the tree lands before the binary (the binary serves that tree), both before the two belt-spawn roots (the worktree root and the attempt-state root, which a dispatch writes in that order — worktree first, then the published attempt evidence), all before the unit (ExecStart references binary + tree), then the belt timer (its ExecStart references that same binary and tree, and every tick it fires writes the two roots above — so it is ordered after them for the same dependency reason the unit is), and the tailscale mapping last (routes to a live service). FleetConvergeTimerUnit is RETIRED from deployment membership (operator directive 2026-08-13, sleek-heron-218): unattended cadence is replaced by the emitted fleet-converge.yml on-demand plan/apply workflow; timer teardown for hosts that still carry legacy units is owned by gunbc.fleet_converge_plan timer-retirement reconcile, not this spec's apply pole. Retract is the reverse, with DispatchWorktreeRoot AND AttemptStateRoot torn down by empty-directory removal — LOUD failure when worktrees or published attempts exist, so a retract cannot silently destroy live agent sessions or the evidence of what they did (a construction-level refusal, not a check)."
 
 type DeploymentSpec {
   target: DeploymentHostTarget
@@ -347,7 +347,6 @@ fn deployment_owned_steps(
     DeploymentArtifactStep { kind: AttemptStateRoot, path: dashboard_instance_dispatch_attempt_state_root(instance: instance) as String as NonEmptyStr },
     DeploymentArtifactStep { kind: SystemdUnit, path: deployment_systemd_unit_path(names: names) },
     DeploymentArtifactStep { kind: BeltTimerUnit, path: deployment_belt_timer_unit_path(names: names) },
-    DeploymentArtifactStep { kind: FleetConvergeTimerUnit, path: deployment_fleet_converge_timer_unit_path(names: names) },
     DeploymentArtifactStep { kind: TailscaleServeMapping, path: tailscale_serve_endpoint_key(endpoint: names.tailscale_serve_endpoint) },
   ]
 }

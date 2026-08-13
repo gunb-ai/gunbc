@@ -3,7 +3,7 @@ module gunbc.generated_artifact_emit
 
 import gunbc.generated_artifact {
   GeneratedArtifact,
-  CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact,
+  CiYamlArtifact, FalsifierYamlArtifact, FleetConvergeYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact,
   RunnerDeployArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact,
   AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
   Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
@@ -14,6 +14,7 @@ import gunbc.generated_artifact {
 }
 import gunbc.ci_yaml_emit { expected_ci_yml }
 import gunbc.falsifier_workflow { expected_falsifier_yml }
+import gunbc.fleet_converge_workflow { expected_fleet_converge_yml }
 import gunbc.ci_yaml_validate { ci_yml_parses }
 import gunbc.gitignore_emit { expected_gitignore }
 import gunbc.gitattributes_emit { GitattributesGenerated, GitattributesGenerationRefused, expected_gitattributes }
@@ -57,6 +58,7 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
   match a {
     CiYamlArtifact => artifact_generated(content: expected_ci_yml())
     FalsifierYamlArtifact => artifact_generated(content: expected_falsifier_yml())
+    FleetConvergeYamlArtifact => artifact_generated(content: expected_fleet_converge_yml())
     GitignoreArtifact => artifact_generated(content: expected_gitignore())
     GitattributesArtifact => match expected_gitattributes() {
       GitattributesGenerated { content } => artifact_generated(content: content)
@@ -92,6 +94,7 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
   match a {
     CiYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     FalsifierYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
+    FleetConvergeYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     GitignoreArtifact => true
     GitattributesArtifact => true
     RoadmapArtifact => true
