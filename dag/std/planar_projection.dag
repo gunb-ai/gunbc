@@ -79,14 +79,14 @@ fn triple_is_zero(t: ViewAxisTriple) -> Bool {
   t.x == 0 && t.y == 0 && t.z == 0
 }
 
-// THE FIRST TWO ARMS EMBED RATHER THAN RESTATE. ProjectionArithmeticRefused carries
+// THE TWO BORROWED CAUSES ARE EMBEDDED RATHER THAN RESTATED. ProjectionArithmeticRefused carries
 // std.checked_arithmetic's overflow record and ProjectionFrameRefused carries std.affine_space's
-// frame refusal, so a consumer reading either learns the same fact in the same shape it would have
+// frame mismatch, so a consumer reading either learns the same fact in the same shape it would have
 // learned from the layer that owns it.
 //
-// ViewUnitsAreNotMillimetres is asked for millimetres on a view whose units are not millimetres. It
-// carries the offending axis image because that is the fact the caller needs: it says which source
-// axis is foreshortened, not merely that some axis is.
+// ViewUnitsAreNotMillimetres IS "asked for millimetres on a view whose units are not millimetres".
+// The offending axis image is carried because that is the fact the caller needs: it says which
+// source axis is foreshortened, not merely that some axis is.
 type ProjectionRefusal
   = ProjectionArithmeticRefused { cause: IntegerOverflow }
   | ProjectionFrameRefused { refusal: SpatialFrameRefusal }
@@ -172,9 +172,9 @@ fn settle_triple(t: CheckedTriple) -> ProjectionConstruction<ViewAxisTriple> {
 // the point of deriving the map once: a caller holding a ProjectionView holds a camera that was
 // admissible, and projecting a point can then fail only on the point's own frame or magnitude.
 //
-// A zero page-right means the direction and the up reference are parallel - including the case where
-// the up reference is itself zero. The two are one refusal because they are one failure: there is no
-// plane in which to lay out the page.
+// A ZERO PAGE-RIGHT means the direction and the up reference are parallel - including the case where
+// the up reference is itself zero. The two are one refusal, ViewDirectionParallelToUpReference,
+// because they are one failure: there is no plane in which to lay out the page.
 fn projection_view(
   direction: ViewAxisTriple,
   up_reference: ViewAxisTriple,
@@ -229,9 +229,10 @@ type ProjectionKind
   | ElevationFromWest
   | Dimetric2To1FromAboveEastNorth
 
-// The dimetric row looks down toward the origin from the east-north-above octant. That is the
-// direction that makes the derived map the classic 2:1 dimetric - source axes imaging to (-1,-1),
-// (1,-1) and (0,2) - and it is derived rather than asserted: the witness recomputes the columns.
+// Dimetric2To1FromAboveEastNorth LOOKS DOWN toward the origin from the east-north-above octant.
+// That is the direction which makes the derived map the classic 2:1 dimetric - source axes imaging
+// to (-1,-1), (1,-1) and (0,2) - and it is derived rather than asserted: the witness recomputes the
+// columns.
 fn projection_kind_direction(k: ProjectionKind) -> ViewAxisTriple {
   match k {
     PlanFromAbove => view_axis_triple(x: 0, y: 0, z: 0 - 1)

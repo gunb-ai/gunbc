@@ -33,7 +33,7 @@ import v2.std.optional { Present, Absent }
 // about polygon Booleans. Calling this list an outline would have been the cheaper mistake and the
 // worse one: a consumer would have drawn the points in corner order and produced a bow-tie.
 
-// DepthOrderAmbiguous is two rooms whose page regions overlap and whose depth ranges also overlap.
+// DepthOrderAmbiguous IS two rooms whose page regions overlap and whose depth ranges also overlap.
 // Neither is wholly in front of the other, so no single back-to-front ordering of whole rooms is
 // correct, and there is no arm here that picks one anyway.
 type SceneRefusal
@@ -209,9 +209,9 @@ type ContentionScan {
   refusal: SceneRefusal?
 }
 
-// The refusal it produces names the nearer candidate as the one whose farthest corner is closer to
-// the camera, which is the ordering a caller would have taken had this not refused. Naming both
-// roles rather than reporting an unordered pair is what makes the refusal actionable.
+// THE NEARER CANDIDATE is the one whose farthest corner is closer to the camera, which is the
+// ordering a caller would have taken had this not refused. Naming both roles rather than reporting
+// an unordered pair is what makes the DepthOrderAmbiguous refusal actionable.
 fn scan_against_seen(acc: ContentionScan, r: ProjectedRoom) -> ContentionScan {
   match acc.refusal {
     Present { value: c } => ContentionScan { seen: acc.seen, refusal: Present { value: c } }

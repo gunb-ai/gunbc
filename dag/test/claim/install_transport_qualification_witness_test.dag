@@ -1,0 +1,211 @@
+module test.claim.install_transport_qualification_witness_test
+
+import std.types { Bool, List, list_length }
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.install_transport_qualification {
+  BootOverrideNamesGadgetDevice,
+  ConfigfsMounted,
+  ConfigfsTransportRequirement,
+  InstalledOsRunning,
+  MassStorageFunctionAvailable,
+  NbdClientPresent,
+  NbdServerReachableFromBmc,
+  NoForeignGadgetOrNbdAttachment,
+  ProbeFoundAbsent,
+  ProbeFoundPresent,
+  TransportProbeOutcome,
+  ReinstallPathEstablished,
+  ReinstallPathRefused,
+  ReinstallPathUnestablished,
+  RequirementObservedPresent,
+  RequirementUnobserved,
+  TransportProbeObservation,
+  UdcPresent,
+  UsbGadgetFrameworkPresent,
+  configfs_reinstall_path_standing,
+  installed_os_is_running,
+  transport_requirement_standing,
+}
+import gunbc.fleet_install_transport_observations {
+  srv3_configfs_reinstall_path_standing,
+  srv3_configfs_transport_observations,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn probe(
+  requirement: ConfigfsTransportRequirement,
+  outcome: TransportProbeOutcome,
+) -> TransportProbeObservation {
+  TransportProbeObservation {
+    host: operator_host_srv3,
+    requirement: requirement,
+    probe: "synthetic fixture probe",
+    result: "synthetic fixture result",
+    outcome: outcome,
+    observed_at: 1786629600000,
+  }
+}
+
+data every_requirement_present: List<TransportProbeObservation> = [
+  probe(requirement: ConfigfsMounted, outcome: ProbeFoundPresent),
+  probe(requirement: UsbGadgetFrameworkPresent, outcome: ProbeFoundPresent),
+  probe(requirement: MassStorageFunctionAvailable, outcome: ProbeFoundPresent),
+  probe(requirement: UdcPresent, outcome: ProbeFoundPresent),
+  probe(requirement: NbdClientPresent, outcome: ProbeFoundPresent),
+  probe(requirement: NbdServerReachableFromBmc, outcome: ProbeFoundPresent),
+  probe(requirement: BootOverrideNamesGadgetDevice, outcome: ProbeFoundPresent),
+  probe(requirement: NoForeignGadgetOrNbdAttachment, outcome: ProbeFoundPresent),
+]
+
+// The same eight with ONE flipped to absent. Authored explicitly rather than
+// folded so the single difference from the row above is readable.
+data one_requirement_absent: List<TransportProbeObservation> = [
+  probe(requirement: ConfigfsMounted, outcome: ProbeFoundAbsent),
+  probe(requirement: UsbGadgetFrameworkPresent, outcome: ProbeFoundPresent),
+  probe(requirement: MassStorageFunctionAvailable, outcome: ProbeFoundPresent),
+  probe(requirement: UdcPresent, outcome: ProbeFoundPresent),
+  probe(requirement: NbdClientPresent, outcome: ProbeFoundPresent),
+  probe(requirement: NbdServerReachableFromBmc, outcome: ProbeFoundPresent),
+  probe(requirement: BootOverrideNamesGadgetDevice, outcome: ProbeFoundPresent),
+  probe(requirement: NoForeignGadgetOrNbdAttachment, outcome: ProbeFoundPresent),
+]
+
+data absence_beside_unprobed: List<TransportProbeObservation> = [
+  probe(requirement: ConfigfsMounted, outcome: ProbeFoundPresent),
+  probe(requirement: NbdClientPresent, outcome: ProbeFoundAbsent),
+]
+
+// THE CLAIM THIS WHOLE LANE RESTS ON. srv3 has four of eight requirements
+// observed present and four never probed, and the standing is UNESTABLISHED —
+// the answer is owed, not no. Reading the four silences as absences is the
+// defect that made the solver refuse a host whose sibling installs over exactly
+// this transport.
+test fn unprobed_requirements_are_unestablished_not_refused() -> Bool {
+  match srv3_configfs_reinstall_path_standing {
+    ReinstallPathUnestablished { missing_probes: m } => list_length(items: m) == 4
+    ReinstallPathRefused { observed_absent: _ } => false
+    ReinstallPathEstablished { qualified_by: _ } => false
+  }
+}
+
+// The missing set is the exact four nobody ran, not a count that happens to be
+// four. A standing that named the wrong requirements would send someone to run
+// probes that were already done.
+test fn the_missing_probes_are_the_four_that_were_never_run() -> Bool {
+  match transport_requirement_standing(
+    observations: srv3_configfs_transport_observations,
+    requirement: MassStorageFunctionAvailable,
+  ) {
+    RequirementUnobserved => true
+    _ => false
+  }
+    && match transport_requirement_standing(
+      observations: srv3_configfs_transport_observations,
+      requirement: NbdServerReachableFromBmc,
+    ) {
+      RequirementUnobserved => true
+      _ => false
+    }
+    && match transport_requirement_standing(
+      observations: srv3_configfs_transport_observations,
+      requirement: BootOverrideNamesGadgetDevice,
+    ) {
+      RequirementUnobserved => true
+      _ => false
+    }
+    && match transport_requirement_standing(
+      observations: srv3_configfs_transport_observations,
+      requirement: NoForeignGadgetOrNbdAttachment,
+    ) {
+      RequirementUnobserved => true
+      _ => false
+    }
+}
+
+// The four that WERE run report present, so Unestablished above is not the
+// function ignoring its input.
+test fn the_four_observed_requirements_report_present() -> Bool {
+  match transport_requirement_standing(
+    observations: srv3_configfs_transport_observations,
+    requirement: ConfigfsMounted,
+  ) {
+    RequirementObservedPresent { observation: _ } => true
+    _ => false
+  }
+    && match transport_requirement_standing(
+      observations: srv3_configfs_transport_observations,
+      requirement: UsbGadgetFrameworkPresent,
+    ) {
+      RequirementObservedPresent { observation: _ } => true
+      _ => false
+    }
+    && match transport_requirement_standing(
+      observations: srv3_configfs_transport_observations,
+      requirement: UdcPresent,
+    ) {
+      RequirementObservedPresent { observation: _ } => true
+      _ => false
+    }
+    && match transport_requirement_standing(
+      observations: srv3_configfs_transport_observations,
+      requirement: NbdClientPresent,
+    ) {
+      RequirementObservedPresent { observation: _ } => true
+      _ => false
+    }
+}
+
+// POSITIVE CONTROL: Unestablished is reachable-out-of. With every requirement
+// observed present the standing is Established, so the srv3 verdict is a
+// function of its evidence rather than a constant.
+test fn a_fully_probed_transport_is_established() -> Bool {
+  match configfs_reinstall_path_standing(observations: every_requirement_present) {
+    ReinstallPathEstablished { qualified_by: q } => list_length(items: q) == 8
+    _ => false
+  }
+}
+
+// ABSENCE OUTRANKS IGNORANCE, and this is the arm that distinguishes the two
+// negative states. One requirement observed ABSENT with the other seven present
+// is REFUSED, not Unestablished: no remaining probe can change it.
+test fn one_observed_absence_refuses_rather_than_asking_for_more_probes() -> Bool {
+  match configfs_reinstall_path_standing(observations: one_requirement_absent) {
+    ReinstallPathRefused { observed_absent: a } => list_length(items: a) == 1
+    ReinstallPathUnestablished { missing_probes: _ } => false
+    ReinstallPathEstablished { qualified_by: _ } => false
+  }
+}
+
+// The same rule under partial evidence: an absence alongside unprobed axes still
+// refuses. Answering Unestablished here would hide a decided no behind a request
+// for probes that cannot overturn it.
+test fn an_absence_beside_unprobed_axes_still_refuses() -> Bool {
+  match configfs_reinstall_path_standing(observations: absence_beside_unprobed) {
+    ReinstallPathRefused { observed_absent: a } => list_length(items: a) == 1
+    _ => false
+  }
+}
+
+// EMPTY EVIDENCE IS NOT A VERDICT. With nothing probed at all the standing owes
+// all eight, and specifically is not Refused — the shape of the original defect,
+// where knowing nothing produced a no.
+test fn no_observations_owes_every_probe_and_refuses_nothing() -> Bool {
+  match configfs_reinstall_path_standing(observations: []) {
+    ReinstallPathUnestablished { missing_probes: m } => list_length(items: m) == 8
+    _ => false
+  }
+}
+
+// INSTALLED AND REINSTALLABLE ARE INDEPENDENT. srv3 is Running right now (host
+// power observed 2026-08-13) while its reinstall path is unestablished. A model
+// that could not hold both at once is how "no modeled install path" came to read
+// as "not installed".
+test fn a_running_host_can_have_an_unestablished_reinstall_path() -> Bool {
+  installed_os_is_running(standing: InstalledOsRunning { observed_at: 1786629600000 })
+    && match srv3_configfs_reinstall_path_standing {
+      ReinstallPathUnestablished { missing_probes: _ } => true
+      _ => false
+    }
+}

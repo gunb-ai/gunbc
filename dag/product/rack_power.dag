@@ -63,7 +63,7 @@ fn asset_load_subject(l: AssetLoad) -> PhysicalAssetIdentity {
   }
 }
 
-// OutletsExhausted is unreachable with the two cited rows this band exercises - a twelve-outlet PDU
+// OutletsExhausted IS UNREACHABLE with the two cited rows this band exercises - a twelve-outlet PDU
 // against an eighteen-unit rack whose smallest cited chassis is four units, so nine mounts is the
 // most the frame admits. It is the typed answer for a feed with fewer outlets than its rack can
 // hold, which is an ordinary arrangement with a different cited PDU, and it is checked rather than
@@ -106,14 +106,6 @@ fn power_feed(identity: PhysicalAssetIdentity, catalog: PduCatalogRow) -> PowerF
 
 // DERIVED FROM THE CITED ROW, never stored beside it: the capacity is the product of the two figures
 // the datasheet states, so an edit to either cannot leave a stale total behind.
-//
-// NO DERATING IS APPLIED TO IT, and its absence is deliberate rather than an oversight. Electrical
-// codes limit a continuous load to a fraction of a circuit's rating, and applying such a limit here
-// would mean authoring a threshold from memory under the name of a standard - the one thing extdeps
-// exists to prevent. What this returns is the manufacturer's rating exactly as cited, and every
-// admission below compares against that. Dissolve-on: a cited continuous-load rule in an extdeps
-// authority of its own, at which point this returns the derated capacity and the citation replaces
-// this paragraph.
 fn feed_capacity(f: PowerFeed) -> VoltAmpere {
   apparent_power_from_supply(supply_voltage: f.catalog.nominal_supply_voltage, rated_current: f.catalog.rated_current)
 }
@@ -218,12 +210,12 @@ fn feed_carries_load(capacity: Int, apparent: Int, real: Int, percent: Int) -> B
   apparent * percent + real * 100 <= capacity * percent
 }
 
-// ONE OUTLET PER MOUNTED ASSET, checked before the capacity because it is the cheaper fact and the
-// one with no assumption in it: outlet_count is cited, where the capacity comparison rests on a
-// power factor the caller declared.
+// ONE OUTLET PER MOUNTED ASSET, and the outlet count is checked BEFORE the capacity because it is
+// the cheaper fact and the one with no assumption in it: outlet_count is cited, where the capacity
+// comparison rests on a power factor the caller declared.
 //
-// The magnitude counts are then read at that comparison and nowhere else. It is the one place the
-// two dimensions must meet, and they meet under the declared power factor that makes the meeting
+// THE LOAD COUNTS ARE READ AT THE CAPACITY COMPARISON AND NOWHERE ELSE. That is the one place the
+// magnitudes must meet, and they meet under the declared power factor that makes the meeting
 // meaningful - which is why the crossing is a single expression rather than a pair of running
 // scalars that could have been added together anywhere upstream.
 fn rack_power_budget(
@@ -277,4 +269,10 @@ fn rack_power_budget(
 fn budget_real_load(b: PowerBudget) -> Watt { b.real_load }
 fn budget_apparent_load(b: PowerBudget) -> VoltAmpere { b.apparent_load }
 fn budget_outlets_used(b: PowerBudget) -> Int { b.outlets_used }
+// NO DERATING IS APPLIED, and its absence is deliberate rather than an oversight. Electrical codes
+// limit a continuous load to a fraction of a circuit's rating, and applying such a limit here would
+// mean authoring a threshold from memory under the name of a standard - the one thing extdeps
+// exists to prevent. The capacity compared against is the manufacturer's rating exactly as cited.
+// Dissolve-on: a cited continuous-load rule in an extdeps authority of its own, at which point the
+// admission takes the derated capacity and this note is replaced by the citation.
 fn budget_capacity(b: PowerBudget) -> VoltAmpere { feed_capacity(f: b.feed) }
