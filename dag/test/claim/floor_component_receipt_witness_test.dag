@@ -325,14 +325,21 @@ test fn fcr_deadline_reached_is_refused_not_skipped() -> Bool {
 }
 
 test fn fcr_deadline_reached_is_distinct_from_both_skipped_causes() -> Bool {
+  let incomplete_detail = "batch not concluded — checkpoint written while the run was still in progress; this component's fate is unknown at write time" as NonEmptyStr
   fcr_mode_of(mode: "deadline_reached" as NonEmptyStr) == "deadline_reached"
     && !(fcr_mode_of(mode: "deadline_reached" as NonEmptyStr) == fcr_mode_of(mode: "not_reached" as NonEmptyStr))
-    && !(fcr_mode_of(mode: "deadline_reached" as NonEmptyStr) == fcr_mode_of(mode: "run_incomplete" as NonEmptyStr))
+    && !(fcr_mode_of(mode: "deadline_reached" as NonEmptyStr) == fcr_not_concluded_mode_of(mode: "run_incomplete" as NonEmptyStr, detail: incomplete_detail))
+}
+
+fn fcr_not_concluded_mode_of(mode: NonEmptyStr, detail: NonEmptyStr) -> String {
+  let rows = fcr_rows_of(opts: [fcr_not_concluded_mode_row(mode: mode, detail: detail)])
+  fold(rows, init: "no-row", f: (acc, r) => floor_component_failure_mode_tag(m: r.failure_mode))
 }
 
 test fn fcr_run_incomplete_is_a_distinct_mode_from_not_reached() -> Bool {
-  fcr_mode_of(mode: "run_incomplete" as NonEmptyStr) == "run_incomplete"
-    && !(fcr_mode_of(mode: "run_incomplete" as NonEmptyStr) == fcr_mode_of(mode: "not_reached" as NonEmptyStr))
+  let detail = "batch not concluded — checkpoint written while the run was still in progress; this component's fate is unknown at write time" as NonEmptyStr
+  fcr_not_concluded_mode_of(mode: "run_incomplete" as NonEmptyStr, detail: detail) == "run_incomplete"
+    && !(fcr_not_concluded_mode_of(mode: "run_incomplete" as NonEmptyStr, detail: detail) == fcr_mode_of(mode: "not_reached" as NonEmptyStr))
 }
 
 test fn fcr_red_control_unmodelled_failure_mode_refuses_never_widens() -> Bool {
