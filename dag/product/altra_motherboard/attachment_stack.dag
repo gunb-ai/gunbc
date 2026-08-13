@@ -55,16 +55,16 @@ fn attachment_layer_name(l: AttachmentLayer) -> NonEmptyStr {
 // repository a licensing question. That is a question about WHERE the bytes may live, not about
 // whether we may know them, and conflating the two would either block modelling that is allowed
 // or leak bytes that are not.
+// THE ACCESS ROUTE IS AN AUTHORITY, NOT A SENTENCE. An earlier revision typed this NonEmptyStr
+// beside a subject of the same type, and the projection below duly bound the real
+// ExternalAuthority, discarded it, and put the subject label in the route field — a swap that
+// typechecked precisely because both were strings. A consumer asking where to obtain the
+// collateral received a description of what the collateral IS. The holder is gone rather than
+// corrected: it was hard-coded here while the upstream standing carries no such field, so it
+// was an invented fact, and the authority already identifies who holds it.
 type AuthorityStanding
   = PubliclyCited { authority: ExternalAuthority }
   | PublicButRedistributionUndecided { authority: ExternalAuthority, footer: NonEmptyStr }
-  // THE ACCESS ROUTE IS AN AUTHORITY, NOT A SENTENCE. An earlier revision typed this NonEmptyStr
-  // beside a subject of the same type, and the projection below duly bound the real
-  // ExternalAuthority, discarded it, and put the subject label in the route field — a swap that
-  // typechecked precisely because both were strings. A consumer asking where to obtain the
-  // collateral received a description of what the collateral IS. The holder is gone rather than
-  // corrected: it was hard-coded here while the upstream standing carries no such field, so it
-  // was an invented fact, and the authority already identifies who holds it.
   | NdaGated { subject: NonEmptyStr, access_route: ExternalAuthority }
   | Unresolved { what_is_missing: NonEmptyStr }
 
