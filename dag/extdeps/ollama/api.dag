@@ -1,0 +1,125 @@
+module extdeps.ollama.api
+
+import std.types { String, Bool, List, NonEmptyStr, Port }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.content_hash { ContentHash, Sha256Digest, sha256_hex_digest, as_content_hash_cryptographic }
+
+// OLLAMA AS ITS OWN UPSTREAM AUTHORITY, per the external-upstream-decomposition rule: an
+// independently versioned product gets its own extdeps module rather than a variant in a generic
+// serving-runtime enum. Adding vLLM or a NIM container later must not require editing this file, and
+// must not widen a central product enum -- each is its own module citing its own API.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ollama/ollama/blob/main/docs/api.md"
+  }
+}
+
+// THE SUBJECT IS THE HTTP API SURFACE -- the endpoints, their request shapes, and the response
+// fields this repository consumes. NOT the serving policy (which model, which host, which endpoint
+// binding: those are gunbc facts), and NOT the model artifacts themselves, which are separate
+// upstream subjects with their own publishers.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ollama.api",
+      decl_name: "OllamaEndpoint",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// The endpoints this repository actually reaches. Deliberately NOT the full API surface: modeling
+// endpoints with no consumer would be inventory rather than grounding, and each row here is one a
+// gunbc consumer calls.
+type OllamaEndpoint
+  = ApiVersion
+  | ApiTags
+  | ApiShow
+  | ApiPull
+  | ApiGenerate
+
+fn ollama_endpoint_path(endpoint: OllamaEndpoint) -> String {
+  match endpoint {
+    ApiVersion => "/api/version"
+    ApiTags => "/api/tags"
+    ApiShow => "/api/show"
+    ApiPull => "/api/pull"
+    ApiGenerate => "/api/generate"
+  }
+}
+
+// GET vs POST is an upstream fact, not a caller's choice, so it lives on the endpoint rather than at
+// each call site.
+type OllamaHttpMethod = OllamaGet | OllamaPost
+
+fn ollama_endpoint_method(endpoint: OllamaEndpoint) -> OllamaHttpMethod {
+  match endpoint {
+    ApiVersion => OllamaGet
+    ApiTags => OllamaGet
+    ApiShow => OllamaPost
+    ApiPull => OllamaPost
+    ApiGenerate => OllamaPost
+  }
+}
+
+// THE DEFAULT PORT IS AN UPSTREAM FACT and is cited as one. The BIND ADDRESS is not: ollama listens
+// on 127.0.0.1 by default and OLLAMA_HOST changes it, but which address a given deployment binds is
+// a gunbc policy decision about reachability -- exactly the interface/policy split the extdeps rule
+// draws, and putting a bind address here would be the layer inversion it names.
+data ollama_default_port: Port = 11434
+
+// A MODEL REFERENCE AS OLLAMA SPELLS IT: name plus tag, colon-separated on the wire. The two parts
+// are modeled separately because they are separate facts -- `gpt-oss` is the model, `20b` is the
+// variant -- and a single string would hide the join the way every other anemic leaf in this corpus
+// did before decomposition.
+type OllamaModelRef {
+  name: NonEmptyStr
+  tag: NonEmptyStr
+}
+
+fn ollama_model_ref_wire(ref: OllamaModelRef) -> String {
+  join([ref.name as String, ":", ref.tag as String], "")
+}
+
+// THE DIGEST IS WHAT IDENTIFIES A MODEL, NOT THE TAG, and this distinction is the reason the whole
+// artifact-identity carrier exists. A tag is a MOVING POINTER: upstream can repoint `gpt-oss:20b` at
+// different bytes, exactly as a container `latest` tag moves, so a deployment pinned to a tag is
+// pinned to nothing. /api/tags and /api/show both return a sha256 digest, and that is the identity
+// this repository stores and compares.
+//
+// This is the same rule the corpus already reached for secret versions -- evidence must name a
+// version, never the moving `latest` alias -- applied to a different upstream.
+type OllamaModelDigest {
+  ref: OllamaModelRef
+  digest: Sha256Digest
+}
+
+// The bridge from wire hex to a typed digest. Partial and refusing, never fabricating: an
+// unparseable digest yields Absent rather than a zero or a placeholder, because a model identity
+// that is wrong is worse than one that is missing.
+fn ollama_model_digest_from_wire(ref: OllamaModelRef, hex: String) -> OllamaModelDigest? {
+  match sha256_hex_digest(hex: strip_sha256_prefix(text: hex)) {
+    Present { value: d } => Present { value: OllamaModelDigest { ref: ref, digest: d } }
+    Absent => none
+  }
+}
+
+// Ollama returns digests both bare and `sha256:`-prefixed depending on endpoint. The prefix is wire
+// serialization, not part of the identity -- the same conclusion std.content_hash reached for OCI
+// descriptors -- so it is stripped here rather than stored.
+fn strip_sha256_prefix(text: String) -> String {
+  if starts_with(s: text, prefix: "sha256:") {
+    substring(s: text, start: 7, end: length(text))
+  } else {
+    text
+  }
+}
+
+fn ollama_model_content_hash(digest: OllamaModelDigest) -> ContentHash {
+  as_content_hash_cryptographic(digest: digest.digest)
+}

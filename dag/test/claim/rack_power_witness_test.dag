@@ -1,0 +1,231 @@
+module test.claim.rack_power_witness
+
+import std.types { Bool, Int, List }
+import std.measure { watt, volt_ampere, watt_count, volt_ampere_count }
+import product.placement_supply { RackIdentity, PhysicalAssetIdentity }
+import product.rack_mount { ChassisMount, RackInstance, rack_instance, MountReady, MountRefused }
+import product.rack_power {
+  DeclaredPowerFactor, declared_power_factor,
+  AssetLoad, ObservedRealPower, DeclaredApparentPower, LoadUnobserved,
+  PowerFeed, power_feed, feed_capacity,
+  PowerBudget, rack_power_budget, budget_real_load, budget_apparent_load, budget_outlets_used, budget_capacity,
+  PowerReady, PowerRefused, PowerRefusal,
+  PowerFactorOutOfRange, LoadNotObserved, LoadDeclaredTwice,
+  LoadDeclaredForUnmountedAsset, MountedAssetHasNoLoad, OutletsExhausted, FeedCapacityExceeded,
+}
+import extdeps.rack.navepoint { navepoint_18u_open_frame_catalog }
+import extdeps.chassis.rosewill { rosewill_rsv_r4000u_catalog }
+import extdeps.power.eaton_tripp_lite { eaton_tripp_lite_rs_1215_family_catalog }
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn host_a() -> PhysicalAssetIdentity { ("srv-chassis-1" as PhysicalAssetIdentity) }
+fn host_b() -> PhysicalAssetIdentity { ("srv-chassis-2" as PhysicalAssetIdentity) }
+fn absent_host() -> PhysicalAssetIdentity { ("srv-chassis-99" as PhysicalAssetIdentity) }
+
+fn mount(asset: PhysicalAssetIdentity, lowest: Int) -> ChassisMount {
+  ChassisMount { asset: asset, chassis: rosewill_rsv_r4000u_catalog, lowest_unit: lowest }
+}
+
+fn rack_of(mounts: List<ChassisMount>) -> RackInstance? {
+  match rack_instance(identity: ("rack-a" as RackIdentity), catalog: navepoint_18u_open_frame_catalog, mounts: mounts) {
+    MountRefused { cause: _ } => none
+    MountReady { value: r } => Present { value: r }
+  }
+}
+
+fn two_host_rack() -> RackInstance? { rack_of(mounts: [mount(asset: host_a(), lowest: 1), mount(asset: host_b(), lowest: 5)]) }
+
+fn feed() -> PowerFeed {
+  power_feed(identity: ("pdu-01" as PhysicalAssetIdentity), catalog: eaton_tripp_lite_rs_1215_family_catalog)
+}
+
+fn pf(percent: Int) -> DeclaredPowerFactor? {
+  match declared_power_factor(percent: percent) {
+    PowerRefused { cause: _ } => none
+    PowerReady { value: f } => Present { value: f }
+  }
+}
+
+fn budget(rack: RackInstance?, loads: List<AssetLoad>, percent: Int) -> PowerBudget? {
+  match rack {
+    Absent => none
+    Present { value: r } =>
+      match pf(percent: percent) {
+        Absent => none
+        Present { value: factor } =>
+          match rack_power_budget(rack: r, feed: feed(), loads: loads, power_factor: factor) {
+            PowerRefused { cause: _ } => none
+            PowerReady { value: b } => Present { value: b }
+          }
+      }
+  }
+}
+
+fn refusal_of(rack: RackInstance?, loads: List<AssetLoad>, percent: Int) -> PowerRefusal? {
+  match rack {
+    Absent => none
+    Present { value: r } =>
+      match pf(percent: percent) {
+        Absent => none
+        Present { value: factor } =>
+          match rack_power_budget(rack: r, feed: feed(), loads: loads, power_factor: factor) {
+            PowerReady { value: _ } => none
+            PowerRefused { cause: c } => Present { value: c }
+          }
+      }
+  }
+}
+
+// The cited RS-1215 states 120 V and 15 A, and their product is what the unit can deliver: 1800
+// volt-amperes. It is derived from the two datasheet figures rather than authored, so no third
+// number can disagree with them.
+test fn the_feed_capacity_is_the_product_of_the_two_cited_figures() -> Bool {
+  volt_ampere_count(v: feed_capacity(f: feed())) == 1800
+}
+
+test fn two_measured_hosts_inside_the_rating_produce_a_budget() -> Bool {
+  match budget(
+    rack: two_host_rack(),
+    loads: [ObservedRealPower { asset: host_a(), draw: watt(400) }, ObservedRealPower { asset: host_b(), draw: watt(400) }],
+    percent: 95,
+  ) {
+    Absent => false
+    Present { value: b } =>
+      watt_count(w: budget_real_load(b: b)) == 800
+        && volt_ampere_count(v: budget_apparent_load(b: b)) == 0
+        && budget_outlets_used(b: b) == 2
+        && volt_ampere_count(v: budget_capacity(b: b)) == 1800
+  }
+}
+
+// THE POWER FACTOR IS LOAD-BEARING, and this pair is what proves it rather than the type name. 1700
+// watts at a factor of 100 is 1700 volt-amperes and fits; the SAME load at 90 needs about 1889 and
+// does not. A module that quietly assumed unity would admit both.
+test fn the_declared_power_factor_decides_a_marginal_load() -> Bool {
+  match budget(rack: two_host_rack(), loads: [ObservedRealPower { asset: host_a(), draw: watt(1700) }, ObservedRealPower { asset: host_b(), draw: watt(0) }], percent: 100) {
+    Absent => false
+    Present { value: _ } =>
+      match refusal_of(rack: two_host_rack(), loads: [ObservedRealPower { asset: host_a(), draw: watt(1700) }, ObservedRealPower { asset: host_b(), draw: watt(0) }], percent: 90) {
+        Absent => false
+        Present { value: c } =>
+          match c {
+            FeedCapacityExceeded { real_load: r, apparent_load: _, capacity: cap } =>
+              watt_count(w: r) == 1700 && volt_ampere_count(v: cap) == 1800
+            PowerFactorOutOfRange { supplied: _ } => false
+            LoadNotObserved { asset: _ } => false
+            LoadDeclaredTwice { asset: _ } => false
+            LoadDeclaredForUnmountedAsset { asset: _ } => false
+            MountedAssetHasNoLoad { asset: _ } => false
+            OutletsExhausted { required: _, available: _ } => false
+          }
+      }
+  }
+}
+
+// A nameplate figure is already apparent power and is NOT converted: the power factor applies to the
+// real-power arm only. Mixing the two in one rack is ordinary, and the totals stay separate so a
+// reader can see which half rests on the declared assumption.
+test fn a_nameplate_load_is_counted_as_apparent_power_unconverted() -> Bool {
+  match budget(
+    rack: two_host_rack(),
+    loads: [DeclaredApparentPower { asset: host_a(), draw: volt_ampere(1000) }, ObservedRealPower { asset: host_b(), draw: watt(400) }],
+    percent: 50,
+  ) {
+    Absent => false
+    Present { value: b } =>
+      volt_ampere_count(v: budget_apparent_load(b: b)) == 1000 && watt_count(w: budget_real_load(b: b)) == 400
+  }
+}
+
+// An unmeasured machine is not a machine drawing nothing. This is the arm that keeps an unmeasured
+// rack from reporting comfortable headroom.
+test fn an_unobserved_load_refuses_rather_than_counting_as_zero() -> Bool {
+  match refusal_of(rack: two_host_rack(), loads: [ObservedRealPower { asset: host_a(), draw: watt(400) }, LoadUnobserved { asset: host_b() }], percent: 95) {
+    Absent => false
+    Present { value: c } =>
+      match c {
+        LoadNotObserved { asset: a } => (a as String) == "srv-chassis-2"
+        PowerFactorOutOfRange { supplied: _ } => false
+        LoadDeclaredTwice { asset: _ } => false
+        LoadDeclaredForUnmountedAsset { asset: _ } => false
+        MountedAssetHasNoLoad { asset: _ } => false
+        OutletsExhausted { required: _, available: _ } => false
+        FeedCapacityExceeded { real_load: _, apparent_load: _, capacity: _ } => false
+      }
+  }
+}
+
+// COMPLETENESS IS AN IDENTITY JOIN, and this is the arrangement that proves it: two rows for two
+// mounted assets, so any count-based check passes, while one asset is measured twice and the other
+// not at all.
+test fn two_rows_for_one_asset_do_not_stand_in_for_the_other() -> Bool {
+  match refusal_of(
+    rack: two_host_rack(),
+    loads: [ObservedRealPower { asset: host_a(), draw: watt(400) }, ObservedRealPower { asset: host_a(), draw: watt(400) }],
+    percent: 95,
+  ) {
+    Absent => false
+    Present { value: c } =>
+      match c {
+        MountedAssetHasNoLoad { asset: a } => (a as String) == "srv-chassis-2"
+        LoadDeclaredTwice { asset: a } => (a as String) == "srv-chassis-1"
+        PowerFactorOutOfRange { supplied: _ } => false
+        LoadNotObserved { asset: _ } => false
+        LoadDeclaredForUnmountedAsset { asset: _ } => false
+        OutletsExhausted { required: _, available: _ } => false
+        FeedCapacityExceeded { real_load: _, apparent_load: _, capacity: _ } => false
+      }
+  }
+}
+
+// The other direction of the join: a row naming a machine this rack does not carry is a stale
+// inventory, and it is its own refusal because its remedy is a different one.
+test fn a_load_for_an_unmounted_asset_refuses() -> Bool {
+  match refusal_of(
+    rack: two_host_rack(),
+    loads: [
+      ObservedRealPower { asset: host_a(), draw: watt(400) },
+      ObservedRealPower { asset: host_b(), draw: watt(400) },
+      ObservedRealPower { asset: absent_host(), draw: watt(400) },
+    ],
+    percent: 95,
+  ) {
+    Absent => false
+    Present { value: c } =>
+      match c {
+        LoadDeclaredForUnmountedAsset { asset: a } => (a as String) == "srv-chassis-99"
+        PowerFactorOutOfRange { supplied: _ } => false
+        LoadNotObserved { asset: _ } => false
+        LoadDeclaredTwice { asset: _ } => false
+        MountedAssetHasNoLoad { asset: _ } => false
+        OutletsExhausted { required: _, available: _ } => false
+        FeedCapacityExceeded { real_load: _, apparent_load: _, capacity: _ } => false
+      }
+  }
+}
+
+test fn a_power_factor_outside_its_range_is_not_a_power_factor() -> Bool {
+  match declared_power_factor(percent: 0) {
+    PowerReady { value: _ } => false
+    PowerRefused { cause: c } =>
+      match c {
+        PowerFactorOutOfRange { supplied: s } => s == 0
+        LoadNotObserved { asset: _ } => false
+        LoadDeclaredTwice { asset: _ } => false
+        LoadDeclaredForUnmountedAsset { asset: _ } => false
+        MountedAssetHasNoLoad { asset: _ } => false
+        OutletsExhausted { required: _, available: _ } => false
+        FeedCapacityExceeded { real_load: _, apparent_load: _, capacity: _ } => false
+      }
+  }
+}
+
+test fn a_power_factor_above_unity_is_refused_too() -> Bool {
+  match declared_power_factor(percent: 101) {
+    PowerReady { value: _ } => false
+    PowerRefused { cause: _ } => true
+  }
+}

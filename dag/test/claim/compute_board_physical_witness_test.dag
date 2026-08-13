@@ -1,0 +1,269 @@
+module test.claim.compute_board_physical_witness
+
+import std.types { Bool, String, Int, NonEmptyStr, List }
+import std.measure { Micro, Milli, micrometer_count }
+import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
+import std.affine_space { Point2, point2 }
+import std.spatial_frame {
+  FrameRegistered,
+  FrameRegistrationRefused,
+  SpatialFrameRegistry,
+  empty_frame_registry,
+  register_frame,
+  registry_with,
+}
+import std.orthogonal_geometry {
+  AxisAlignedRectangle2,
+  OrthogonalReady,
+  OrthogonalRefused,
+  axis_aligned_rectangle2,
+}
+import product.compute_board.physical {
+  BoardFrameIsNotSubMillimetre,
+  BoardFrameUnregistered,
+  BoardPhysicalArticle,
+  PackageBodyEnvelope,
+  ComponentPlacement,
+  PhysicalRefusal,
+  BodyEnvelopesAdmitted,
+  PhysicallyRefused,
+  PlacementExtentNotPositive,
+  PlacementFrameDiffersFromBoard,
+  PlacementIdentityRepeated,
+  PlacementNotWithinOutline,
+  PlacementsOverlap,
+  admit_body_envelopes,
+  body_envelope_of_ice40_package,
+  physical_refusal_count,
+}
+import extdeps.programmable_logic.ice40.subject { ice40_tq144_package }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn board() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 11) }
+fn other_frame() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 12) }
+fn mm_frame() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 13) }
+
+fn registry_with_scales() -> SpatialFrameRegistry {
+  let r0 = empty_frame_registry()
+  let r1 = match register_frame(r: r0, identity: board(), length_scale: Micro) {
+    FrameRegistered { frame: f } => registry_with(r: r0, f: f)
+    FrameRegistrationRefused { cause: _ } => r0
+  }
+  let r2 = match register_frame(r: r1, identity: other_frame(), length_scale: Micro) {
+    FrameRegistered { frame: f } => registry_with(r: r1, f: f)
+    FrameRegistrationRefused { cause: _ } => r1
+  }
+  match register_frame(r: r2, identity: mm_frame(), length_scale: Milli) {
+    FrameRegistered { frame: f } => registry_with(r: r2, f: f)
+    FrameRegistrationRefused { cause: _ } => r2
+  }
+}
+
+fn bp(x: Int, y: Int) -> Point2 { point2(frame: board(), x: x, y: y) }
+
+// A 100 by 80 millimetre board, drawn in micrometres. The numbers are large precisely because the
+// unit is fine, which is the point: this is the coordinate grain at which a 500 um pitch is a
+// distance rather than a rounding error.
+fn outline_in(frame: CoordinateFrameIdentity) -> AxisAlignedRectangle2? {
+  match axis_aligned_rectangle2(
+    min: point2(frame: frame, x: 0, y: 0),
+    max: point2(frame: frame, x: 100000, y: 80000)
+  ) {
+    OrthogonalReady { value: r } => Present { value: r }
+    OrthogonalRefused { cause: _ } => none
+  }
+}
+
+// THE FOOTPRINT IS THE CITED PACKAGE'S, NOT A NUMBER RETYPED HERE. If the datasheet row moved,
+// this placement would move with it.
+fn tq144_body_envelope() -> PackageBodyEnvelope {
+  body_envelope_of_ice40_package(p: ice40_tq144_package)
+}
+
+fn placement(id: NonEmptyStr, x: Int, y: Int) -> ComponentPlacement {
+  ComponentPlacement { identity: id, body_envelope: tq144_body_envelope(), origin: bp(x: x, y: y) }
+}
+
+fn article_with(placements: List<ComponentPlacement>) -> BoardPhysicalArticle? {
+  match outline_in(frame: board()) {
+    Absent => none
+    Present { value: o } =>
+      Present { value: BoardPhysicalArticle { frame: board(), outline: o, placements: placements } }
+  }
+}
+
+fn admits(placements: List<ComponentPlacement>) -> Bool {
+  match article_with(placements: placements) {
+    Absent => false
+    Present { value: a } =>
+      match admit_body_envelopes(registry: registry_with_scales(), article: a) {
+        BodyEnvelopesAdmitted { article: _ } => true
+        PhysicallyRefused { causes: _ } => false
+      }
+  }
+}
+
+fn refusal_is(r: PhysicalRefusal, wanted: String) -> Bool {
+  match r {
+    BoardFrameUnregistered { frame: _ } => wanted == "BoardFrameUnregistered"
+    BoardFrameIsNotSubMillimetre { frame: _ } => wanted == "BoardFrameIsNotSubMillimetre"
+    PlacementFrameDiffersFromBoard { placement: _ } => wanted == "PlacementFrameDiffersFromBoard"
+    PlacementExtentNotPositive { placement: _ } => wanted == "PlacementExtentNotPositive"
+    PlacementNotWithinOutline { placement: _ } => wanted == "PlacementNotWithinOutline"
+    PlacementsOverlap { first: _, second: _ } => wanted == "PlacementsOverlap"
+    PlacementIdentityRepeated { placement: _ } => wanted == "PlacementIdentityRepeated"
+  }
+}
+
+fn refuses_naming(placements: List<ComponentPlacement>, wanted: String) -> Bool {
+  match article_with(placements: placements) {
+    Absent => false
+    Present { value: a } =>
+      match admit_body_envelopes(registry: registry_with_scales(), article: a) {
+        BodyEnvelopesAdmitted { article: _ } => false
+        PhysicallyRefused { causes: cs } =>
+          fold(concat([cs.first], cs.rest), init: false, f: fn(acc, r) { acc || refusal_is(r: r, wanted: wanted) })
+      }
+  }
+}
+
+// THE POSITIVE CONTROL, and it comes first because every refusal below is satisfied by an
+// admission that refuses everything. Two TQ144 parts, 20 mm square each, placed well apart on a
+// 100 by 80 mm board: both inside, not touching, distinct identities.
+test fn w_a_coherent_placement_is_admitted() -> Bool {
+  admits(placements: [
+    placement(id: "u1", x: 5000, y: 5000),
+    placement(id: "u2", x: 50000, y: 5000),
+  ])
+}
+
+// A PART HANGING OFF THE EDGE. The origin is inside the outline, which is what makes this the
+// interesting case: a check that tested only the origin would pass it, and the part would be
+// half in air. The extent is what has to be contained.
+test fn w_a_part_that_does_not_fit_inside_the_outline_refuses() -> Bool {
+  refuses_naming(
+    placements: [placement(id: "u1", x: 90000, y: 5000)],
+    wanted: "PlacementNotWithinOutline"
+  )
+}
+
+// TWO PARTS IN THE SAME PLACE. Twenty-millimetre bodies five millimetres apart share interior
+// area, which is a collision no fabricator can build.
+test fn w_two_parts_sharing_area_refuse() -> Bool {
+  refuses_naming(
+    placements: [
+      placement(id: "u1", x: 5000, y: 5000),
+      placement(id: "u2", x: 10000, y: 5000),
+    ],
+    wanted: "PlacementsOverlap"
+  )
+}
+
+// TOUCHING IS NOT OVERLAPPING — a fact about the GEOMETRY, and an earlier revision of this test
+// said it was a fact about BOARDS. Its comment read "two parts butted exactly edge to edge are a
+// legal, dense layout", which is physically false for this very part: a TQ144's leads and lands
+// span 22 mm against a 20 mm body, so two bodies touching have already collided at their leads.
+// The assertion is kept because the boundary convention is real and worth pinning; the claim
+// attached to it is deleted. What this admits is a body-envelope verdict, and the name of the arm
+// it checks now says so.
+test fn w_touching_bodies_do_not_register_as_overlapping() -> Bool {
+  admits(placements: [
+    placement(id: "u1", x: 5000, y: 5000),
+    placement(id: "u2", x: 25000, y: 5000),
+  ])
+}
+
+test fn w_a_repeated_placement_identity_refuses() -> Bool {
+  refuses_naming(
+    placements: [
+      placement(id: "u1", x: 5000, y: 5000),
+      placement(id: "u1", x: 50000, y: 5000),
+    ],
+    wanted: "PlacementIdentityRepeated"
+  )
+}
+
+// ONE COLLISION IS ONE CAUSE, and one repeated identity is one cause, not one per participating
+// row. Counting is what makes that visible; naming the cause passes either way.
+test fn w_one_defect_is_reported_once() -> Bool {
+  match article_with(placements: [
+    placement(id: "u1", x: 5000, y: 5000),
+    placement(id: "u1", x: 5000, y: 5000),
+  ]) {
+    Absent => false
+    Present { value: a } =>
+      match admit_body_envelopes(registry: registry_with_scales(), article: a) {
+        BodyEnvelopesAdmitted { article: _ } => false
+        // One repeated identity plus one overlap between the two coincident bodies: two distinct
+        // defects, each counted once, rather than four rows for two facts.
+        PhysicallyRefused { causes: cs } => physical_refusal_count(s: cs) == 2
+      }
+  }
+}
+
+test fn w_a_placement_in_another_frame_refuses() -> Bool {
+  refuses_naming(
+    placements: [
+      ComponentPlacement {
+        identity: "u1",
+        body_envelope: tq144_body_envelope(),
+        origin: point2(frame: other_frame(), x: 5000, y: 5000),
+      },
+    ],
+    wanted: "PlacementFrameDiffersFromBoard"
+  )
+}
+
+// THE SLICE'S OWN PRECONDITION, ASSERTED RATHER THAN ASSUMED. A board carrying a half-millimetre
+// package pitch cannot be drawn in whole millimetres, so a millimetre-registered board frame is
+// refused here instead of being accepted and silently rounded. This is the article's
+// RequiresExactSubMillimeterCoordinateQuantum cause discharged by a check.
+test fn w_a_millimetre_board_frame_refuses() -> Bool {
+  match outline_in(frame: mm_frame()) {
+    Absent => false
+    Present { value: o } =>
+      match admit_body_envelopes(
+        registry: registry_with_scales(),
+        article: BoardPhysicalArticle { frame: mm_frame(), outline: o, placements: [] }
+      ) {
+        BodyEnvelopesAdmitted { article: _ } => false
+        PhysicallyRefused { causes: cs } =>
+          fold(concat([cs.first], cs.rest), init: false, f: fn(acc, r) {
+            acc || refusal_is(r: r, wanted: "BoardFrameIsNotSubMillimetre")
+          })
+      }
+  }
+}
+
+// An unregistered frame has no unit at all, which is a different state from having the wrong one
+// and has a different remedy: one is a board drawn at the wrong grain, the other is a board whose
+// grain nobody declared.
+test fn w_an_unregistered_board_frame_refuses_distinctly() -> Bool {
+  match outline_in(frame: board()) {
+    Absent => false
+    Present { value: o } =>
+      match admit_body_envelopes(
+        registry: empty_frame_registry(),
+        article: BoardPhysicalArticle { frame: board(), outline: o, placements: [] }
+      ) {
+        BodyEnvelopesAdmitted { article: _ } => false
+        PhysicallyRefused { causes: cs } =>
+          fold(concat([cs.first], cs.rest), init: false, f: fn(acc, r) {
+            acc || refusal_is(r: r, wanted: "BoardFrameUnregistered")
+          })
+      }
+  }
+}
+
+// THE ENVELOPE TRACKS THE CITED PACKAGE BODY, and the test is named for the body because that is
+// all it establishes. It was previously called w_the_footprint_is_the_cited_package_body, which
+// stated the category error as though it were the finding: a footprint is a land pattern, and a
+// body is not one. TQ144 is a 20 mm body, which is 20000 um, and that is what the placement
+// reserves — 2 mm short of the 22 mm its leads actually occupy.
+test fn w_the_envelope_is_the_cited_package_body() -> Bool {
+  micrometer_count(m: tq144_body_envelope().body_width) == 20000
+    && micrometer_count(m: tq144_body_envelope().body_height) == 20000
+    && (tq144_body_envelope().package_designator as String) == "TQ144"
+}

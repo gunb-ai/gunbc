@@ -1,0 +1,171 @@
+module test.claim.spatial_frame_scale_witness
+
+import std.types { Bool }
+import std.measure {
+  Scale,
+  Micro,
+  Milli,
+  Nano,
+  Kibi,
+  Kilo,
+  DegreeAngle,
+  RackUnitHeight,
+  measure_count,
+}
+import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
+import std.spatial_frame {
+  FrameAlreadyRegistered,
+  FrameLength,
+  FrameRegistered,
+  FrameRegistrationRefused,
+  FrameScaleIsNotALengthStep,
+  LengthProjected,
+  LengthProjectionRefused,
+  LengthScaleMismatch,
+  SpatialFrameRegistry,
+  empty_frame_registry,
+  frame_length,
+  frame_length_as_micrometer,
+  frame_length_as_millimeter,
+  frame_length_scale,
+  length_scale_is_decimal,
+  register_frame,
+  registry_with,
+  scales_agree,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn board_frame_id() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 1) }
+fn chassis_frame_id() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 2) }
+fn unregistered_frame_id() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 3) }
+
+// The board is drawn in micrometres and the chassis it mounts into is drawn in millimetres. That
+// is the whole subject: two frames, two units, in one program.
+fn populated_registry() -> SpatialFrameRegistry {
+  let r0 = empty_frame_registry()
+  let r1 = match register_frame(r: r0, identity: board_frame_id(), length_scale: Micro) {
+    FrameRegistered { frame: f } => registry_with(r: r0, f: f)
+    FrameRegistrationRefused { cause: _ } => r0
+  }
+  match register_frame(r: r1, identity: chassis_frame_id(), length_scale: Milli) {
+    FrameRegistered { frame: f } => registry_with(r: r1, f: f)
+    FrameRegistrationRefused { cause: _ } => r1
+  }
+}
+
+fn scale_of(id_occurrence_is_board: Bool) -> Scale? {
+  frame_length_scale(
+    r: populated_registry(),
+    identity: if id_occurrence_is_board { board_frame_id() } else { chassis_frame_id() }
+  )
+}
+
+test fn w_a_frame_reports_the_unit_it_was_registered_with() -> Bool {
+  match scale_of(id_occurrence_is_board: true) {
+    Absent => false
+    Present { value: s } =>
+      scales_agree(a: s, b: Micro)
+        && !scales_agree(a: s, b: Milli)
+        && match scale_of(id_occurrence_is_board: false) {
+          Absent => false
+          Present { value: c } => scales_agree(a: c, b: Milli)
+        }
+  }
+}
+
+// UNREGISTERED IS NOT MILLIMETRES. If this answered Present the module would have reinstated the
+// invisible convention it exists to remove, at the exact call that asks what the unit is.
+test fn w_an_unregistered_frame_has_no_unit_rather_than_a_default() -> Bool {
+  match frame_length_scale(r: populated_registry(), identity: unregistered_frame_id()) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE DEFECT THIS SLICE EXISTS TO CLOSE, asserted as a refusal rather than as a number. A TQ144
+// contact pitch is 500 um. Rounded into whole millimetres it is 0 or 1: zero puts two adjacent
+// pins at the same coordinate, one doubles the package. Both are wrong and neither is visible
+// downstream, so the projection has no answer and says so.
+test fn w_a_half_millimetre_pitch_refuses_to_be_read_as_millimetres() -> Bool {
+  let pitch = frame_length(scale: Micro, count: 500)
+  match frame_length_as_millimeter(l: pitch) {
+    LengthProjected { value: _ } => false
+    LengthProjectionRefused { cause: c } =>
+      match c {
+        LengthScaleMismatch { held: h, requested: r } => scales_agree(a: h, b: Micro) && scales_agree(a: r, b: Milli)
+      }
+  }
+}
+
+// The positive control, without which the refusal above is satisfied by a projection that refuses
+// everything. Read in the unit it was measured in, the same value projects and keeps its count.
+test fn w_the_same_pitch_projects_in_its_own_unit() -> Bool {
+  match frame_length_as_micrometer(l: frame_length(scale: Micro, count: 500)) {
+    LengthProjectionRefused { cause: _ } => false
+    LengthProjected { value: v } => measure_count(m: v) == 500
+  }
+}
+
+// AND THE LOSSLESS DIRECTION IS REFUSED TOO, deliberately. 3 mm is exactly 3000 um, so a converter
+// could answer this one without losing anything — which is precisely why it is worth pinning: the
+// moment this function converts in the easy direction it is a unit converter, and the caller who
+// wanted one received it as a side effect of asking what something measures.
+test fn w_a_lossless_widening_is_still_not_this_function() -> Bool {
+  match frame_length_as_micrometer(l: frame_length(scale: Milli, count: 3)) {
+    LengthProjected { value: _ } => false
+    LengthProjectionRefused { cause: _ } => true
+  }
+}
+
+// Scale carries members that are not decimal length steps at all. Admitting one would register a
+// frame whose coordinates measure degrees or rack units while every length operation kept treating
+// them as an extent.
+test fn w_a_scale_that_is_not_a_length_step_cannot_register_a_frame() -> Bool {
+  length_scale_is_decimal(s: Nano)
+    && !length_scale_is_decimal(s: DegreeAngle)
+    && !length_scale_is_decimal(s: RackUnitHeight)
+    // BINARY PREFIXES ARE NOT LENGTH UNITS, and they are the members that slipped through when
+    // admissibility was a fold over scale_exponent: Kibi reports Present there, so a frame could
+    // have registered a kibimetre. Kilo is admitted beside it because a kilometre is a real
+    // length — which is what makes this pair discriminating rather than a blanket refusal of
+    // everything above Milli.
+    && !length_scale_is_decimal(s: Kibi)
+    && length_scale_is_decimal(s: Kilo)
+    && match register_frame(r: empty_frame_registry(), identity: board_frame_id(), length_scale: DegreeAngle) {
+      FrameRegistered { frame: _ } => false
+      FrameRegistrationRefused { cause: c } =>
+        match c {
+          FrameScaleIsNotALengthStep { offered: _ } => true
+          FrameAlreadyRegistered { identity: _ } => false
+        }
+    }
+}
+
+// Two rows for one frame is two answers to what that frame means, and a lookup would return
+// whichever was authored first.
+test fn w_one_frame_cannot_be_registered_at_two_units() -> Bool {
+  match register_frame(r: populated_registry(), identity: board_frame_id(), length_scale: Milli) {
+    FrameRegistered { frame: _ } => false
+    FrameRegistrationRefused { cause: c } =>
+      match c {
+        FrameAlreadyRegistered { identity: _ } => true
+        FrameScaleIsNotALengthStep { offered: _ } => false
+      }
+  }
+}
+
+// The registration path itself, not only the predicate. A frame whose declared length unit is a
+// binary memory prefix must be unregistrable, and the arm it lands on must say the scale is not a
+// length step rather than some generic refusal.
+test fn w_a_binary_memory_prefix_cannot_register_a_frame() -> Bool {
+  match register_frame(r: empty_frame_registry(), identity: board_frame_id(), length_scale: Kibi) {
+    FrameRegistered { frame: _ } => false
+    FrameRegistrationRefused { cause: c } =>
+      match c {
+        FrameScaleIsNotALengthStep { offered: _ } => true
+        FrameAlreadyRegistered { identity: _ } => false
+      }
+  }
+}

@@ -1,6 +1,6 @@
 module product.compute_board.emission_entry
 
-import std.types { String }
+import std.types { String, List }
 import product.compute_board.admission {
   BoardArticleAdmitted,
   BoardArticleRefused,
@@ -8,6 +8,16 @@ import product.compute_board.admission {
   admit_board_article,
 }
 import product.compute_board.article { BoardPowerInterfaceArticle, power_interlock_article }
+import product.compute_board.device_binding {
+  DevicePinAssignment,
+  PinChainRefusalSet,
+  PinConstraintsEmitted,
+  PinConstraintsRefused,
+  ProgrammableDeviceRealization,
+  interlock_device_realization,
+  interlock_pin_assignments,
+  project_article_to_pin_constraints,
+}
 import product.compute_board.spice_projection {
   SpiceProjectionRefusal,
   SpiceSliceProjected,
@@ -31,6 +41,14 @@ data emission_entry_note: String = "THE ENTRY POINTS THAT ACTUALLY PRODUCE THE A
 // article means the same entry a host calls is the one a witness drives an incoherent board
 // through — and the admission call stays inside, so a caller still cannot skip it.
 
+// THE PARAMETER TAKES WHATEVER THE TARGET'S REFUSAL ACTUALLY IS, and getting that wrong is how a
+// fact goes missing without the carrier being at fault. An earlier revision instantiated the pin
+// chain at PinChainRefusal — one cause — while the pin chain reports a SET, so the entry passed
+// cs.first and dropped every cause after the first: a board with a pin off the package AND an
+// unassigned signal emitted one of the two, and the caller had no way to know a second existed.
+// SPICE and Verilog really do produce one cause each, so their instantiation was right and the
+// shape was never the problem; the pin chain is instantiated at its set.
+//
 // The refusal type is a PARAMETER because a SPICE cause and a Verilog cause are facts about
 // different targets. Fusing them here would put every target's vocabulary in one enum that every
 // caller has to match exhaustively, which is the widening a per-target authority exists to avoid.
@@ -72,6 +90,26 @@ fn emit_ngspice_run_for(article: BoardPowerInterfaceArticle) -> BoardEmission<Sp
   }
 }
 
+fn emit_pin_constraints_for(
+  article: BoardPowerInterfaceArticle,
+  realization: ProgrammableDeviceRealization,
+  assignments: List<DevicePinAssignment>
+) -> BoardEmission<PinChainRefusalSet> {
+  match admit_board_article(a: article) {
+    BoardArticleRefused { causes: cs } => BoardArticleNotAdmitted { causes: cs }
+    BoardArticleAdmitted { article: adm } =>
+      match project_article_to_pin_constraints(
+        admitted: adm,
+        realization: realization,
+        bindings: power_interlock_verilog_bindings,
+        assignments: assignments
+      ) {
+        PinConstraintsEmitted { receipt: r } => BoardEmitted { source: r.source }
+        PinConstraintsRefused { causes: cs } => BoardTargetRefused { cause: cs }
+      }
+  }
+}
+
 // The production article, through the same entries. A host wanting this board's bytes calls
 // these; nothing else in the product hardcodes it.
 fn emit_spice() -> BoardEmission<SpiceProjectionRefusal> {
@@ -84,4 +122,12 @@ fn emit_verilog() -> BoardEmission<VerilogProjectionRefusal> {
 
 fn emit_ngspice_run() -> BoardEmission<SpiceProjectionRefusal> {
   emit_ngspice_run_for(article: power_interlock_article)
+}
+
+fn emit_pin_constraints() -> BoardEmission<PinChainRefusalSet> {
+  emit_pin_constraints_for(
+    article: power_interlock_article,
+    realization: interlock_device_realization,
+    assignments: interlock_pin_assignments
+  )
 }

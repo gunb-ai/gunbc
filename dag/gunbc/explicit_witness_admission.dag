@@ -88,6 +88,26 @@ fn known_red_probe(
   )
 }
 
+data source_root_ingest_gate_admitted_witness_note: String = "Green exact admission for witnesses excluded from per-PR discovery by OfflineLocalRecipe transport posture but executed on the per-PR floor by v2.workflow.source_root_ingest_gate (run_compiler_closure_ingest_gate and siblings). Cadence is BinWitnessWet as the Wet host-overlay execution class only — these rows are NOT enrolled on gunbc.ci_layer_roots bin_witness_wet_entries; hermetic discovery there would bypass the file exclusion and refuse on an empty manifest. The executing consumer is the gate overlay ClaimRun list in v2.workflow.compiler_closure_ingest_transport."
+
+fn source_root_ingest_gate_admitted_witness(
+  entry: NonEmptyStr,
+  f: String,
+  kind: WitnessKind,
+  budget: WitnessExecutionBudget,
+  reason: NonEmptyStr,
+  dissolution: DissolutionCondition
+) -> ExplicitWitnessAdmission {
+  ExplicitWitnessAdmission {
+    witness: ScheduleWitnessEntry { entry: entry, function: f, kind: kind },
+    cadence: BinWitnessWet,
+    budget: budget,
+    expected: ExpectWitnessHolds,
+    reason: reason,
+    dissolution: dissolution,
+  }
+}
+
 data known_red_pre_verdict_probe_note: String = "The narrow arm: a witness whose assertion never RUNS, because the run stops in an earlier phase. Its agreement is a typed refusal at the declared phase and cause, not a false verdict, and separating it is what stops an arbitrary corpus resolve failure from reading as every quarantine holding — see std.witness_admission witness_expected_verdict_split_note for the defect and for the bound on how exactly the observed cause is matched today. A row belongs here only when the phase and the cause are BOTH known and named; a witness that merely happens to be failing to resolve for an undiagnosed reason is ordinary known_red_probe, and its resolve failure is an infrastructure fact rather than agreement."
 
 fn known_red_pre_verdict_probe(
@@ -151,14 +171,6 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     budget: FastLaneEvalBudget,
     reason: "the english-language emit-ingest round trip returns false undiagnosed. Owner: the S2 emit family / behavioral-closure lane.",
     dissolution: unbound_dissolution(description: "the S2 behavioral-closure lane greens it locally, then this row deletes")
-  ),
-  known_red_probe(
-    entry: "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag",
-    f: "compiler_closure_scoped_ingest_module_count_ok_holds",
-    kind: CorpusWitnessKind,
-    budget: FastLaneEvalBudget,
-    reason: "asserts COMPLETE ingest coverage for the src/v2/compiler/00_compile.dag closure, which is 91 source reads against MANIFEST_INLINE_LIST_MAX (64), so the emitted carrier is legitimately Empty. It was GREEN until 2026-07-19 only because the receipt fabricated its own numbers; making the elision the typed, counted SourceRootManifestElided turned a fabricated green into a true red. Admitted rather than deleted because it is the discriminating input for the carrier deficit — its gate did not go vacuous, compiler_closure_ingest_receipt_describes_carrier_holds replaced it as the live claim. Owner: wise-bee-768 / the module-identity storage-binding lane.",
-    dissolution: unbound_dissolution(description: "manifest rows carry a source ref plus content hash instead of inlined text, the parse oracle reads through the ref with hash verification, the cap stops binding, this witness greens and this row deletes")
   ),
   known_red_probe(
     entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag",
@@ -295,6 +307,30 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     budget: SubstrateLongLaneEvalBudget,
     reason: "Admitted RED: direct-door smoke is outside witness entry import closure without roster imports — repository-wide discovery requires call-occurrence substrate. Owner: witness-evidence-lifecycle lane.",
     dissolution: unbound_dissolution(description: "whole-tree or call-occurrence substrate includes direct-door smoke without witness-import roster, this witness greens, and this row deletes")
+  ),
+  source_root_ingest_gate_admitted_witness(
+    entry: "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag",
+    f: "compiler_closure_scoped_ingest_module_count_ok_holds",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "Un-quarantined capless closure completeness witness (#8210): asserts SourceRootCoverageComplete for the 00_compile closure via transport overlay. Per-PR consumer is run_compiler_closure_ingest_gate on source_root_ingest_gate — not bin_witness_wet_entries.",
+    dissolution: unbound_dissolution(description: "this witness re-enrolls on ordinary per-PR discovery when transport overlay is no longer required, or this row migrates to witness_deferral_freeze with a measured dissolve_on")
+  ),
+  source_root_ingest_gate_admitted_witness(
+    entry: "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag",
+    f: "compiler_closure_ingest_overflow_refuses_never_empty_holds",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "Overflow-refusal witness for capless closure transport (#8210): requires SourceRootManifestElided with full ref population past manifest_inline_list_max. Per-PR consumer is run_compiler_closure_ingest_gate overlay on source_root_ingest_gate.",
+    dissolution: unbound_dissolution(description: "overflow transport is exercised on ordinary per-PR discovery without overlay, or this row migrates to witness_deferral_freeze with a measured dissolve_on")
+  ),
+  source_root_ingest_gate_admitted_witness(
+    entry: "src/v2/test/claim/self_host/compiler_closure_ingest_boundary_witness_test.dag",
+    f: "compiler_closure_ingest_boundary_exact_cap_transport_holds",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "Exact-cap boundary witness for 07_target_carriers closure (#8210): discriminates complete vs elided transport at manifest_inline_list_max. Per-PR consumer is run_closure_boundary_overlay_claims on source_root_ingest_gate.",
+    dissolution: unbound_dissolution(description: "boundary witness re-enrolls on per-PR discovery without transport overlay, or this row migrates to witness_deferral_freeze with a measured dissolve_on")
   )
 ]
 
@@ -387,6 +423,28 @@ fn explicit_witness_admission_is_known_red(row: ExplicitWitnessAdmission) -> Boo
     ExpectTypedPreVerdictRefusal { phase: _, cause: _ } => true
     ExpectWitnessHolds => false
   }
+}
+
+fn explicit_witness_admission_is_executing_witness(row: ExplicitWitnessAdmission) -> Bool {
+  match row.expected {
+    ExpectWitnessHolds => true
+    ExpectAssertionFalse => false
+    ExpectTypedPreVerdictRefusal { phase: _, cause: _ } => false
+  }
+}
+
+fn explicit_witness_admission_executing_witness_roster() -> List<ScheduleWitnessEntry> {
+  reverse(fold(
+    explicit_witness_admissions,
+    init: Empty,
+    f: fn(acc, row) {
+      if explicit_witness_admission_is_executing_witness(row: row) {
+        Cons { head: row.witness, tail: acc }
+      } else {
+        acc
+      }
+    }
+  ))
 }
 
 fn explicit_witness_admission_requires_long_eval_budget(row: ExplicitWitnessAdmission) -> Bool {

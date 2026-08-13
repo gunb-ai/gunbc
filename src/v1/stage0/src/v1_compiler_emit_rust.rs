@@ -5338,10 +5338,8 @@ pub fn lib_rs_mod_name_from_file(f: Rc<TextFile>) -> String {
 }
 
 pub fn emit_lib_rs_mod_decl(mod_name: String) -> String {
-    if (mod_name.clone() == "v1_interpreter_dispatch_generated".to_string()) {
-        "#[macro_use]\npub mod v1_interpreter_dispatch_generated;".to_string()
-    } else {
-        v1_rt::concat(
+    {
+        let declaration = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
@@ -5353,15 +5351,24 @@ pub fn emit_lib_rs_mod_decl(mod_name: String) -> String {
                 mod_name.clone(),
             ),
             ";".to_string(),
-        )
+        );
+        if is_lib_rs_macro_provider(mod_name.clone()) {
+            v1_rt::concat("#[macro_use]\n".to_string(), declaration.clone())
+        } else {
+            declaration.clone()
+        }
     }
+}
+
+pub fn is_lib_rs_macro_provider(mod_name: String) -> bool {
+    (mod_name.clone() == "v1_interpreter_dispatch_generated".to_string())
 }
 
 pub fn order_lib_rs_mod_names(mod_names: Rc<Vec<String>>) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for n in mod_names.clone().iter().cloned() {
-            if (n.clone() != "v1_interpreter_dispatch_generated".to_string()) {
+            if !is_lib_rs_macro_provider(n.clone()) {
                 __result.push(n);
             }
         }
@@ -5369,19 +5376,47 @@ pub fn order_lib_rs_mod_names(mod_names: Rc<Vec<String>>) -> Rc<Vec<String>> {
     })
 }
 
+pub fn order_partial_lib_rs_mod_names(mod_names: Rc<Vec<String>>) -> Rc<Vec<String>> {
+    v1_rt::concat(
+        Rc::new({
+            let mut __result = Vec::new();
+            for n in mod_names.clone().iter().cloned() {
+                if is_lib_rs_macro_provider(n.clone()) {
+                    __result.push(n);
+                }
+            }
+            __result
+        }),
+        Rc::new({
+            let mut __result = Vec::new();
+            for n in mod_names.clone().iter().cloned() {
+                if !is_lib_rs_macro_provider(n.clone()) {
+                    __result.push(n);
+                }
+            }
+            __result
+        }),
+    )
+}
+
 pub fn emit_lib_rs_from_files(
     all_module_files: Rc<Vec<Rc<TextFile>>>,
     has_compiler_tests: bool,
 ) -> Rc<TextFile> {
     {
-        let mod_names = order_lib_rs_mod_names(Rc::new(
+        let file_derived_names = Rc::new(
             all_module_files
                 .clone()
                 .iter()
                 .cloned()
                 .map(lib_rs_mod_name_from_file)
                 .collect::<Vec<_>>(),
-        ));
+        );
+        let mod_names = if has_compiler_tests.clone() {
+            order_lib_rs_mod_names(file_derived_names.clone())
+        } else {
+            order_partial_lib_rs_mod_names(file_derived_names.clone())
+        };
         let mod_decls = Rc::new(
             mod_names
                 .clone()
@@ -5393,7 +5428,7 @@ pub fn emit_lib_rs_from_files(
         let hand_maintained_mods = if has_compiler_tests.clone() {
             generated_pub_mod_block()
         } else {
-            "\n#[macro_use]\npub mod v1_interpreter_dispatch_generated;".to_string()
+            "".to_string()
         };
         let test_mod = if has_compiler_tests.clone() {
             "\n\n#[cfg(test)]\nmod compiler_tests;".to_string()

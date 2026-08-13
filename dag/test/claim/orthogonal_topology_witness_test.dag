@@ -1,7 +1,9 @@
 module test.claim.orthogonal_topology_witness
 
 import std.types { Bool, Int, List }
-import std.measure { millimeter_count, square_millimeter_count, cubic_millimeter_count }
+import std.measure {
+  Micro,
+  Milli, millimeter_count, square_millimeter_count, cubic_millimeter_count }
 import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
 import std.affine_space { Point2, Point3, point2, point3 }
 import std.orthogonal_geometry {
@@ -18,6 +20,21 @@ import std.orthogonal_topology {
   SpaceComplex, space_complex, complex_space_count, complex_total_volume,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.spatial_frame {
+  SpatialFrameRegistry, FrameExtent, ExtentInFrame, ExtentFrameUnregistered,
+  LengthProjected, LengthProjectionRefused, frame_length_as_millimeter,
+  empty_frame_registry, register_frame, registry_with, FrameRegistered, FrameRegistrationRefused
+}
+
+
+// The rooms this witness builds are millimetre-framed, which is what makes reading their heights
+// as millimetres true rather than assumed.
+fn mm_registry() -> SpatialFrameRegistry {
+  match register_frame(r: empty_frame_registry(), identity: room(), length_scale: Milli) {
+    FrameRegistered { frame: f } => registry_with(r: empty_frame_registry(), f: f)
+    FrameRegistrationRefused { cause: _ } => empty_frame_registry()
+  }
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -78,7 +95,7 @@ fn area_of(c: OrthogonalConstruction<EnclosedSpace>) -> Int {
   match c {
     OrthogonalRefused { cause: _ } => 0 - 1
     OrthogonalReady { value: s } =>
-      match space_floor_area(s: s) {
+      match space_floor_area(registry: mm_registry(), s: s) {
         OrthogonalReady { value: a } => square_millimeter_count(m: a)
         OrthogonalRefused { cause: _ } => 0 - 1
       }
@@ -89,17 +106,28 @@ fn volume_of(c: OrthogonalConstruction<EnclosedSpace>) -> Int {
   match c {
     OrthogonalRefused { cause: _ } => 0 - 1
     OrthogonalReady { value: s } =>
-      match space_volume(s: s) {
+      match space_volume(registry: mm_registry(), s: s) {
         OrthogonalReady { value: v } => cubic_millimeter_count(m: v)
         OrthogonalRefused { cause: _ } => 0 - 1
       }
   }
 }
 
+// THE HEIGHT NOW ARRIVES IN A FRAME, so reading it as a millimetre count is a projection that can
+// refuse: an unregistered frame has no quantum and yields no length at all. The sentinel keeps its
+// meaning - a height nobody can state is as much a failure as a space that would not construct.
 fn height_of(c: OrthogonalConstruction<EnclosedSpace>) -> Int {
   match c {
     OrthogonalRefused { cause: _ } => 0 - 1
-    OrthogonalReady { value: s } => millimeter_count(m: space_height(s: s))
+    OrthogonalReady { value: s } =>
+      match space_height(registry: mm_registry(), s: s) {
+        ExtentInFrame { length: l } =>
+          match frame_length_as_millimeter(l: l) {
+            LengthProjected { value: mm } => millimeter_count(m: mm)
+            LengthProjectionRefused { cause: _ } => 0 - 1
+          }
+        ExtentFrameUnregistered { identity: _ } => 0 - 1
+      }
   }
 }
 
@@ -281,7 +309,7 @@ test fn complex_admits_disjoint_spaces_and_sums_their_volumes() -> Bool {
         OrthogonalRefused { cause: _ } => false
         OrthogonalReady { value: c } =>
           complex_space_count(c: c) == 2
-            && match complex_total_volume(c: c) {
+            && match complex_total_volume(registry: mm_registry(), c: c) {
                  OrthogonalReady { value: v } => cubic_millimeter_count(m: v) == 2 * 9000000 * 2400
                  OrthogonalRefused { cause: _ } => false
                }
@@ -319,5 +347,69 @@ test fn complex_refuses_members_in_different_frames() -> Bool {
         OrthogonalRefused { cause: c } =>
           match c { OrthogonalFrameMismatch { expected: _, observed: _ } => true  _ => false }
       }
+  }
+}
+
+// THE METRIC FOLDS REFUSE A FRAME THEY CANNOT LABEL, which is the wall the extents did not need.
+// A rectangle's width answers IN the frame and is true at any quantum; an area and a volume are
+// still spelled in square and cubic millimetres, so on a micrometre-registered frame they would
+// multiply micrometre counts and call the product square millimetres - wrong by a factor of a
+// million, from arithmetic that is right. The millimetre frame is the positive control on the
+// same space, so the frame decides the outcome rather than the fold refusing everything.
+fn micro_registry() -> SpatialFrameRegistry {
+  match register_frame(r: empty_frame_registry(), identity: room(), length_scale: Micro) {
+    FrameRegistered { frame: f } => registry_with(r: empty_frame_registry(), f: f)
+    FrameRegistrationRefused { cause: _ } => empty_frame_registry()
+  }
+}
+
+test fn w_metric_folds_refuse_a_frame_they_cannot_label() -> Bool {
+  match l_space() {
+    OrthogonalRefused { cause: _ } => false
+    OrthogonalReady { value: s } => {
+      let area_refused = match space_floor_area(registry: micro_registry(), s: s) {
+        OrthogonalRefused { cause: c } =>
+          match c {
+            MillimetreFrameRequiredForMetric { frame: _ } => true
+            SegmentEndpointsCoincide => false
+            SegmentNotAxisAligned => false
+            ExtentNotPositive { axis: _ } => false
+            OrthogonalFrameMismatch { expected: _, observed: _ } => false
+            LoopTooFewVertices { supplied: _ } => false
+            LoopEdgeNotAxisAligned => false
+            LoopEdgesNotPerpendicular => false
+            LoopSelfIntersects => false
+            ShellArithmeticRefused { cause: _ } => false
+            SpacesInterpenetrate => false
+            RotationAxesParallel => false
+            BoundingBoxHasNoPoints => false
+          }
+        OrthogonalReady { value: _ } => false
+      }
+      let area_answered = match space_floor_area(registry: mm_registry(), s: s) {
+        OrthogonalReady { value: _ } => true
+        OrthogonalRefused { cause: _ } => false
+      }
+      let height_unregistered = match space_height(registry: empty_frame_registry(), s: s) {
+        ExtentFrameUnregistered { identity: _ } => true
+        ExtentInFrame { length: _ } => false
+      }
+      // THE VOLUME PATH REFUSES TOO - and it reaches that refusal through the AREA guard, not
+      // through the height projection. The first version of this comment claimed the second, and
+      // mutating both height arms to fabricate a zero left this witness green, which is how the
+      // claim was caught: space_volume consults the area fold first and it refuses on exactly the
+      // frames that would break the height projection. So what this establishes is that a volume
+      // over an unlabelable frame refuses rather than returning zero. It does NOT establish that
+      // the height projection refuses, and the module records that those arms are defensive.
+      let volume_refused = match space_volume(registry: micro_registry(), s: s) {
+        OrthogonalRefused { cause: _ } => true
+        OrthogonalReady { value: _ } => false
+      }
+      let volume_answered = match space_volume(registry: mm_registry(), s: s) {
+        OrthogonalReady { value: v } => cubic_millimeter_count(m: v) > 0
+        OrthogonalRefused { cause: _ } => false
+      }
+      area_refused && area_answered && height_unregistered && volume_refused && volume_answered
+    }
   }
 }

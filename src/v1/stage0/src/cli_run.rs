@@ -38,10 +38,10 @@ use crate::v1_std_core::{
     field_access_base, field_access_field_at, field_init_node_name_at, field_init_node_value,
     has_child_named, inferred_to_node, intern, is_discovery_corpus_blocking_diagnostic,
     is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
-    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
-    param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
-    ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex,
-    Node,
+    make_error_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
+    module_items, no_span, param_node_name_at, param_node_type_expr, Cardinality,
+    CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable,
+    MatchPattern, NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -3018,6 +3018,16 @@ pub fn compile_clean_vec_advisory_count(diagnostics: &Rc<Vec<Rc<ErrorNode>>>) ->
         .count()
 }
 
+fn format_compile_clean_hard_diagnostic_line(d: &Rc<ErrorNode>) -> String {
+    let span = diagnostic_to_span(d.diagnostic.clone());
+    let msg = diagnostic_to_message(d.diagnostic.clone());
+    if span.file.is_empty() {
+        format!("compile-clean: {msg}")
+    } else {
+        format!("compile-clean: {}: {}", span.file, msg)
+    }
+}
+
 fn eprint_compile_clean_hard_diagnostics(diagnostics: &im::Vector<Rc<ErrorNode>>) {
     const SHOWN_LIMIT: usize = 20;
     let mut shown = 0usize;
@@ -3029,10 +3039,7 @@ fn eprint_compile_clean_hard_diagnostics(diagnostics: &im::Vector<Rc<ErrorNode>>
     {
         total += 1;
         if shown < SHOWN_LIMIT {
-            eprintln!(
-                "compile-clean: {}",
-                diagnostic_to_message(d.diagnostic.clone())
-            );
+            eprintln!("{}", format_compile_clean_hard_diagnostic_line(d));
             shown += 1;
         }
     }
@@ -3126,8 +3133,9 @@ fn compile_clean_census_only_sources_for_compiled(
     pool_rest.into_iter().map(|(_, source)| source).collect()
 }
 
-/// Parse-grade census fill for out-of-closure modules (annotation binding +
-/// parse errors). Returns only compile-clean-hard diagnostics.
+/// Parse-grade census fill (annotation binding + parse errors). Used for
+/// out-of-closure modules (#8204) and must run independently of semantic
+/// resolve — a resolve refusal must not hide the annotation population.
 fn compile_clean_census_fill_hard_diagnostics(
     census_only: &[Rc<v1_compiler_compile::SourceFile>],
 ) -> im::Vector<Rc<ErrorNode>> {
@@ -4602,12 +4610,7 @@ fn format_first_compile_clean_hard_diagnostic(diagnostics: &im::Vector<Rc<ErrorN
     diagnostics
         .iter()
         .find(|d| compile_clean_diagnostic_is_hard(d))
-        .map(|d| {
-            format!(
-                "compile-clean: {}",
-                diagnostic_to_message(d.diagnostic.clone())
-            )
-        })
+        .map(format_compile_clean_hard_diagnostic_line)
         .unwrap_or_else(|| {
             "dag compile-clean gate failed: no hard diagnostic located in compile receipt"
                 .to_string()
@@ -4741,6 +4744,11 @@ fn floor_compile_clean_emit_ok_via_index(
     use crate::v1_compiler_complexity::empty_complexity_report;
     let index = process_shared_index(index_roots);
     let census_only = compile_clean_census_only_sources_for_compiled(&index, &sources);
+    // #8204 out-of-closure fill runs independently of resolve: an earlier
+    // resolution refusal must not mask SourceAnnotationRefused in the rest of
+    // the indexed pool. Compiled-file admission is the via-index parse itself
+    // (`tokenize_artifact` + `admit_source_annotations`).
+    let census_fill_diags = compile_clean_census_fill_hard_diagnostics(&census_only);
     let (graph, si, compile_clean_diags) = match resolved_graph_from_sources_with_index(
         &index,
         sources,
@@ -4752,11 +4760,16 @@ fn floor_compile_clean_emit_ok_via_index(
     ) {
         Ok(resolved) => resolved,
         Err(msg) => {
+            if !census_fill_diags.is_empty() {
+                eprint_compile_clean_hard_diagnostics(&census_fill_diags);
+                let census_msg = format_first_compile_clean_hard_diagnostic(&census_fill_diags);
+                eprintln!("compile-clean: hard diagnostics:\n{msg}");
+                return (false, format!("{census_msg}\ncompile-clean: {msg}"));
+            }
             eprintln!("compile-clean: hard diagnostics:\n{msg}");
             return (false, format!("compile-clean: {msg}"));
         }
     };
-    let census_fill_diags = compile_clean_census_fill_hard_diagnostics(&census_only);
     let all_compile_clean_diags = if census_fill_diags.is_empty() {
         compile_clean_diags.clone()
     } else {
@@ -5980,6 +5993,236 @@ mod compile_clean_via_index_verdict_equivalence {
         assert!(
             !floor_compile_clean_emit_ok_via_index(compiled, &corpus.roots).0,
             "whole-tree census fill must surface out-of-closure annotation refusal on the via-index path"
+        );
+    }
+
+    /// Discriminating A: a BodyGrain annotation on a file IN the compile closure
+    /// must red via-index. #8204's out-of-closure fill cannot explain this — the
+    /// annotated file is the compiled set, so census_only is empty.
+    #[test]
+    fn in_closure_body_grain_blocks_via_index_compile_clean() {
+        let corpus = Corpus::new(
+            "in-closure-body",
+            &[(
+                "body.dag",
+                "module eqv.body_grain\nfn probe(x: Int) -> Int {\n  // in-body prose\n  x\n}\n",
+            )],
+        );
+        let raw = floor_compile_clean_emit_ok(corpus.sources.clone(), None);
+        let (via_ok, detail) =
+            floor_compile_clean_emit_ok_via_index(corpus.sources.clone(), &corpus.roots);
+        assert!(!raw, "raw pipeline must red on in-closure BodyGrain");
+        assert!(
+            !via_ok,
+            "via-index must red on in-closure BodyGrain; #8204 census_only is empty here"
+        );
+        assert!(
+            detail.contains("inside a declaration body"),
+            "via-index must report BodyGrainNotModeled, got {detail}"
+        );
+        assert!(
+            detail.contains("body.dag"),
+            "compile-clean must name the refusing file, got {detail}"
+        );
+    }
+
+    /// Discriminating A: UnattachedAtScopeEnd on a compiled file must red via-index.
+    #[test]
+    fn in_closure_unattached_blocks_via_index_compile_clean() {
+        let corpus = Corpus::new(
+            "in-closure-unattached",
+            &[(
+                "unattached.dag",
+                "module eqv.unattached\ndata probe: Int = 42\n\n// leftover with no following subject\n",
+            )],
+        );
+        let raw = floor_compile_clean_emit_ok(corpus.sources.clone(), None);
+        let (via_ok, detail) =
+            floor_compile_clean_emit_ok_via_index(corpus.sources.clone(), &corpus.roots);
+        assert!(
+            !raw,
+            "raw pipeline must red on in-closure UnattachedAtScopeEnd"
+        );
+        assert!(
+            !via_ok,
+            "via-index must red on in-closure UnattachedAtScopeEnd"
+        );
+        assert!(
+            detail.contains("names no subject"),
+            "via-index must report UnattachedAtScopeEnd, got {detail}"
+        );
+    }
+
+    /// Positive control: a leading module-item annotation is admitted. A must not
+    /// refuse the class the frontend already accepts.
+    #[test]
+    fn in_closure_leading_annotation_stays_green_via_index() {
+        let corpus = Corpus::new(
+            "in-closure-leading",
+            &[(
+                "leading.dag",
+                "module eqv.leading\n\n// about probe\ndata probe: Int = 42\n",
+            )],
+        );
+        let (raw, via_index) = corpus.verdicts();
+        assert!(raw, "raw pipeline must stay green on leading item prose");
+        assert!(via_index, "via-index must stay green on leading item prose");
+    }
+
+    /// Ordering: in-closure BodyGrain must surface even when resolve also fails.
+    /// Admission runs in the via-index parse, before resolve, so the class cannot
+    /// hide behind an unresolved import.
+    #[test]
+    fn in_closure_body_grain_does_not_hide_behind_resolve_refusal() {
+        let corpus = Corpus::new(
+            "in-closure-body-masked",
+            &[(
+                "masked.dag",
+                "module eqv.masked\nimport totally.nonexistent.module { Foo }\nfn probe(x: Int) -> Int {\n  // in-body prose\n  x\n}\n",
+            )],
+        );
+        let (via_ok, detail) =
+            floor_compile_clean_emit_ok_via_index(corpus.sources.clone(), &corpus.roots);
+        assert!(!via_ok, "combined resolve+annotation refusal must stay red");
+        assert!(
+            detail.contains("inside a declaration body"),
+            "BodyGrain must remain visible when resolve also refuses, got {detail}"
+        );
+    }
+
+    /// #8204 ordering: out-of-closure trailing refusal must surface even when the
+    /// compiled closure fails resolve. Census fill runs independently of resolve.
+    #[test]
+    fn out_of_closure_annotation_does_not_hide_behind_resolve_refusal() {
+        let corpus = Corpus::new(
+            "census-masked",
+            &[
+                (
+                    "unresolved.dag",
+                    "module eqv.unresolved\nimport totally.nonexistent.module { Foo }\nfn probe() -> Int { 42 }\n",
+                ),
+                (
+                    "bad.dag",
+                    "module eqv.bad\n\ndata alpha: String = \"a\" // trailing prose\n",
+                ),
+            ],
+        );
+        let compiled = vec![corpus.sources[0].clone()];
+        let (via_ok, detail) = floor_compile_clean_emit_ok_via_index(compiled, &corpus.roots);
+        assert!(!via_ok, "resolve refusal must stay red");
+        assert!(
+            detail.contains("follows code on its own line")
+                || detail.contains("(annotation-trailing)")
+                || detail.contains("Trailing placement"),
+            "out-of-closure trailing refusal must remain visible when resolve also refuses, got {detail}"
+        );
+    }
+
+    /// Warm parse_cache must not erase compiled-file admission: a second via-index
+    /// compile-clean of the same in-closure BodyGrain corpus still reds.
+    #[test]
+    fn in_closure_body_grain_reds_on_warm_parse_cache() {
+        let corpus = Corpus::new(
+            "in-closure-body-warm",
+            &[(
+                "body.dag",
+                "module eqv.body_grain_warm\nfn probe(x: Int) -> Int {\n  // in-body prose\n  x\n}\n",
+            )],
+        );
+        let first = floor_compile_clean_emit_ok_via_index(corpus.sources.clone(), &corpus.roots);
+        let second = floor_compile_clean_emit_ok_via_index(corpus.sources.clone(), &corpus.roots);
+        assert!(!first.0, "first via-index must red, got {}", first.1);
+        assert!(
+            !second.0,
+            "warm parse_cache must not drop BodyGrain admission, got {}",
+            second.1
+        );
+        assert!(
+            second.1.contains("inside a declaration body"),
+            "warm via-index must still report BodyGrainNotModeled, got {}",
+            second.1
+        );
+    }
+
+    /// `handle_serve` resolves `Memoize`, consumes `compile_clean_diags`, and shares
+    /// `process_shared_index`. An Ephemeral compile-clean warms parse_cache without
+    /// joining `resolved_graph_memo`, so the subsequent Memoize is a parse_cache hit
+    /// and a memo miss — admission must not depend on that cache state.
+    #[test]
+    fn in_closure_body_grain_reds_on_warm_parse_cache_under_memoize() {
+        let corpus = Corpus::new(
+            "in-closure-body-warm-memoize",
+            &[(
+                "body.dag",
+                "module eqv.body_grain_warm_memoize\nfn probe(x: Int) -> Int {\n  // in-body prose\n  x\n}\n",
+            )],
+        );
+        let index = super::process_shared_index(&corpus.roots);
+        let first = super::resolved_graph_from_sources_with_index(
+            &index,
+            corpus.sources.clone(),
+            super::ResolveTypecheckGate::Strict,
+            "ephemeral-warm",
+            super::ResolvedGraphMemoShare::Ephemeral,
+        )
+        .expect("BodyGrain is an annotation refusal, not a parse/resolve refusal");
+        assert!(
+            first.2.iter().any(super::compile_clean_diagnostic_is_hard),
+            "cold Ephemeral must contribute BodyGrain, got {}",
+            super::format_first_compile_clean_hard_diagnostic(first.2.as_ref())
+        );
+        let second = super::resolved_graph_from_sources_with_index(
+            &index,
+            corpus.sources.clone(),
+            super::ResolveTypecheckGate::Strict,
+            "memoize-serve",
+            super::ResolvedGraphMemoShare::Memoize,
+        )
+        .expect("Memoize via-index must assemble");
+        let detail = super::format_first_compile_clean_hard_diagnostic(second.2.as_ref());
+        assert!(
+            second.2.iter().any(super::compile_clean_diagnostic_is_hard),
+            "handle_serve Memoize on a warm parse_cache must still see BodyGrain, got {detail}"
+        );
+        assert!(
+            detail.contains("inside a declaration body"),
+            "warm Memoize must still report BodyGrainNotModeled, got {detail}"
+        );
+    }
+
+    /// Attribution installs an annotation-erasing parse (`annotation_diags: None`).
+    /// A later Memoize via-index of that file must still admit.
+    #[test]
+    fn in_closure_body_grain_reds_after_erasing_parse_cache_install() {
+        let corpus = Corpus::new(
+            "in-closure-body-erasing-install",
+            &[(
+                "body.dag",
+                "module eqv.body_grain_erasing\nfn probe(x: Int) -> Int {\n  // in-body prose\n  x\n}\n",
+            )],
+        );
+        let index = super::process_shared_index(&corpus.roots);
+        super::parse_module_node_from_index_source(&index, corpus.sources[0].clone())
+            .expect("erasing attribution parse must succeed");
+        let resolved = super::resolved_graph_from_sources_with_index(
+            &index,
+            corpus.sources.clone(),
+            super::ResolveTypecheckGate::Strict,
+            "memoize-after-erasing",
+            super::ResolvedGraphMemoShare::Memoize,
+        )
+        .expect("Memoize via-index must assemble");
+        let detail = super::format_first_compile_clean_hard_diagnostic(resolved.2.as_ref());
+        assert!(
+            resolved
+                .2
+                .iter()
+                .any(super::compile_clean_diagnostic_is_hard),
+            "Memoize after an erasing parse_cache install must still see BodyGrain, got {detail}"
+        );
+        assert!(
+            detail.contains("inside a declaration body"),
+            "erasing-install Memoize must still report BodyGrainNotModeled, got {detail}"
         );
     }
 
@@ -9004,6 +9247,22 @@ mod live_read_selection_manifest_producer_tests {
     }
 }
 
+/// Per-file parse memo for `resolved_graph_from_sources_with_index`.
+///
+/// `annotation_diags` is `Some` when this entry was installed by a parse that ran
+/// `admit_source_annotations`. `None` means an annotation-erasing `tokenize`
+/// installed it (attribution). Via-index must still admit on `None`, and must
+/// consume `Some` on every `ResolvedGraphMemoShare` — `handle_serve` resolves
+/// `Memoize`, reads `compile_clean_diags`, and shares `process_shared_index`'s
+/// cache. Gating re-admission on `Ephemeral` made admission depend on cache
+/// state rather than source content.
+#[derive(Clone)]
+struct ParseCacheEntry {
+    parse_result: Rc<v1_compiler_parse::ParseResult>,
+    newline_index: Rc<NewlineIndex>,
+    annotation_diags: Option<Rc<im::Vector<Rc<ErrorNode>>>>,
+}
+
 pub struct MultiEntryIndex {
     /// Opaque identity of THIS index, minted at construction (see `next_index_generation`).
     generation: u64,
@@ -9045,9 +9304,7 @@ pub struct MultiEntryIndex {
     cross_worker_store: Option<Arc<RwLock<SharedTypecheckCaches>>>,
     /// Per-index intern table — paired with `parse_cache` on this worker (never shared).
     intern_table: RefCell<Rc<InternTable>>,
-    parse_cache: RefCell<
-        std::collections::HashMap<String, (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>)>,
-    >,
+    parse_cache: RefCell<std::collections::HashMap<String, ParseCacheEntry>>,
     normalize_diag_cache: RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<ErrorNode>>>>>,
     ownership_diag_cache: RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<ErrorNode>>>>>,
     /// The source roots this index was built from — the tree identities behind the
@@ -12972,6 +13229,131 @@ fn cross_process_cache_integrity_refusal(reason: CacheRejectReason) -> String {
     }
 }
 
+fn via_index_source_annotation_diagnostics(
+    source: &v1_compiler_compile::SourceFile,
+    occurrence_transport: Rc<crate::std_occurrence_identity::OccurrenceTransport>,
+    captures: Rc<im::Vector<Rc<crate::std_source_annotation::UnboundAnnotationCapture>>>,
+) -> im::Vector<Rc<ErrorNode>> {
+    let bound = v1_compiler_compile::admit_source_annotations(
+        occurrence_transport,
+        captures,
+        v1_rt::string_length(&source.content),
+    );
+    bound
+        .diagnostics
+        .iter()
+        .cloned()
+        .map(|d| make_error_node(d, source.path.clone()))
+        .collect()
+}
+
+/// Census-fill admission for a parse_cache hit that never ran `admit_source_annotations`.
+/// Filters to `SourceAnnotationRefused` because that is all `admit_source_annotations`
+/// emits today (both sites in `v1_compiler_annotation_bind`). The miss path keeps
+/// every diagnostic that function returns; the two agree until a third diagnostic
+/// appears — latent coupling, not a live divergence.
+fn via_index_census_fill_annotation_diags(
+    source: &Rc<v1_compiler_compile::SourceFile>,
+) -> im::Vector<Rc<ErrorNode>> {
+    let fill = v1_compiler_compile::parse_census_fill_sources(Rc::new(vec![source.clone()].into()));
+    fill.diagnostics
+        .iter()
+        .filter(|d| {
+            matches!(
+                d.diagnostic.as_ref(),
+                CompilerDiagnostic::SourceAnnotationRefused { .. }
+            )
+        })
+        .cloned()
+        .collect()
+}
+
+/// Parse one via-index source, admitting annotations into the cache entry so a later
+/// `Memoize` consumer (`handle_serve`) cannot observe a different population than a
+/// cold parse of the same bytes.
+fn via_index_parse_one_source(
+    index: &MultiEntryIndex,
+    source: &Rc<v1_compiler_compile::SourceFile>,
+) -> ParseCacheEntry {
+    let cached = index.parse_cache.borrow().get(&source.path).cloned();
+    if let Some(entry) = cached {
+        if entry.annotation_diags.is_some() {
+            return entry;
+        }
+        let refused = via_index_census_fill_annotation_diags(source);
+        let upgraded = ParseCacheEntry {
+            annotation_diags: Some(Rc::new(refused)),
+            ..entry
+        };
+        index
+            .parse_cache
+            .borrow_mut()
+            .insert(source.path.clone(), upgraded.clone());
+        return upgraded;
+    }
+    // Ordinary frontend (`front_end_sources`) keeps tokenize_artifact
+    // captures and admits them against this file's occurrence transport.
+    // Annotation-erasing `tokenize` here let a touched in-closure file
+    // compile on the floor while missing the class #8204 claims to close.
+    let artifact =
+        v1_compiler_tokenize::tokenize_artifact(source.content.clone(), source.path.clone());
+    let nl_index = build_newline_index(source.path.clone(), source.content.clone());
+    let current_table = index.intern_table.borrow().clone();
+    let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
+        let mut m = HashMap::new();
+        m.insert(source.path.clone(), nl_index.clone());
+        m
+    });
+    let parsed =
+        v1_compiler_parse::parse_with_table(artifact.tokens.clone(), single_si, current_table);
+    *index.intern_table.borrow_mut() = parsed.intern_table.clone();
+    let annotation_diags = via_index_source_annotation_diagnostics(
+        source,
+        parsed.occurrence_transport.clone(),
+        artifact.annotations.clone(),
+    );
+    let entry = ParseCacheEntry {
+        parse_result: parsed.result.clone(),
+        newline_index: nl_index,
+        annotation_diags: Some(Rc::new(annotation_diags)),
+    };
+    index
+        .parse_cache
+        .borrow_mut()
+        .insert(source.path.clone(), entry.clone());
+    entry
+}
+
+fn join_via_index_stage_refusal(
+    annotation_diags: &im::Vector<Rc<ErrorNode>>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    stage_err: String,
+) -> String {
+    if annotation_diags.is_empty() {
+        return stage_err;
+    }
+    let annotation_err = format_error_nodes(&Rc::new(annotation_diags.clone()), source_indices);
+    if annotation_err.is_empty() {
+        return stage_err;
+    }
+    if stage_err.is_empty() {
+        return annotation_err;
+    }
+    format!("{annotation_err}\n{stage_err}")
+}
+
+fn prepend_via_index_annotation_diags(
+    annotation_diags: im::Vector<Rc<ErrorNode>>,
+    compile_clean_diags: Rc<im::Vector<Rc<ErrorNode>>>,
+) -> Rc<im::Vector<Rc<ErrorNode>>> {
+    if annotation_diags.is_empty() {
+        return compile_clean_diags;
+    }
+    let mut merged = annotation_diags;
+    merged.extend(compile_clean_diags.iter().cloned());
+    Rc::new(merged)
+}
+
 /// The sources-taking core of `resolve_entry_with_parse_cache`: parse → resolve →
 /// normalize → `reconcile_with_typed_cache` → ownership, every stage through the
 /// index's per-module memo tiers (parse/normalize/typed/ownership caches + the
@@ -13093,34 +13475,17 @@ fn resolved_graph_from_sources_with_index(
     let mut modules: Vec<Rc<Node>> = Vec::new();
     let mut si_map: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
     let mut parse_error_msgs: Vec<String> = Vec::new();
+    let mut annotation_diags: im::Vector<Rc<ErrorNode>> = im::Vector::new();
 
     let parse_started = std::time::Instant::now();
     for source in &sources {
         note_source_hash(index, source);
-        let cached = index.parse_cache.borrow().get(&source.path).cloned();
-
-        let (parse_result, nl_index) = match cached {
-            Some(entry) => entry,
-            None => {
-                let tokens =
-                    v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
-                let nl_index = build_newline_index(source.path.clone(), source.content.clone());
-                let current_table = index.intern_table.borrow().clone();
-                let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
-                    let mut m = HashMap::new();
-                    m.insert(source.path.clone(), nl_index.clone());
-                    m
-                });
-                let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
-                *index.intern_table.borrow_mut() = parsed.intern_table.clone();
-                let entry = (parsed.result.clone(), nl_index.clone());
-                index
-                    .parse_cache
-                    .borrow_mut()
-                    .insert(source.path.clone(), entry.clone());
-                entry
-            }
-        };
+        let entry = via_index_parse_one_source(index, source);
+        if let Some(stored) = &entry.annotation_diags {
+            annotation_diags.extend(stored.iter().cloned());
+        }
+        let parse_result = entry.parse_result.clone();
+        let nl_index = entry.newline_index.clone();
 
         si_map.insert(nl_index.file.clone(), nl_index.clone());
         if let Some(err) = &parse_result.error {
@@ -13140,7 +13505,12 @@ fn resolved_graph_from_sources_with_index(
         }
     }
     if !parse_error_msgs.is_empty() {
-        return Err(parse_error_msgs.join("\n"));
+        let source_indices = Rc::new(si_map);
+        return Err(join_via_index_stage_refusal(
+            &annotation_diags,
+            &source_indices,
+            parse_error_msgs.join("\n"),
+        ));
     }
 
     let source_indices = Rc::new(si_map);
@@ -13156,7 +13526,11 @@ fn resolved_graph_from_sources_with_index(
         .iter()
         .any(|d| is_error_diagnostic(d.diagnostic.clone()))
     {
-        return Err(format_error_nodes(&graph.diagnostics, &source_indices));
+        return Err(join_via_index_stage_refusal(
+            &annotation_diags,
+            &source_indices,
+            format_error_nodes(&graph.diagnostics, &source_indices),
+        ));
     }
     resolve_stage_slot_add(|s| s.resolve += resolve_started.elapsed().as_nanos());
 
@@ -13194,7 +13568,11 @@ fn resolved_graph_from_sources_with_index(
         .iter()
         .any(|d| is_error_diagnostic(d.diagnostic.clone()))
     {
-        return Err(format_error_nodes(&norm_diags, &source_indices));
+        return Err(join_via_index_stage_refusal(
+            &annotation_diags,
+            &source_indices,
+            format_error_nodes(&norm_diags, &source_indices),
+        ));
     }
     resolve_stage_slot_add(|s| s.normalize += normalize_started.elapsed().as_nanos());
 
@@ -13202,7 +13580,8 @@ fn resolved_graph_from_sources_with_index(
     let reconcile_attributed_before = resolve_stage_slot_snapshot().reconcile_attributed_total();
     let reconcile_started = std::time::Instant::now();
     let typed =
-        reconcile_with_typed_cache(graph.clone(), source_indices.clone(), global_table, index)?;
+        reconcile_with_typed_cache(graph.clone(), source_indices.clone(), global_table, index)
+            .map_err(|e| join_via_index_stage_refusal(&annotation_diags, &source_indices, e))?;
     // Assembly `other` is derived only when the exclusive reconcile rows fit inside the
     // containing reconcile span. A timing overlap is an attribution refusal, never a
     // saturating clamp to a plausible zero.
@@ -13216,7 +13595,8 @@ fn resolved_graph_from_sources_with_index(
                 "assembly attribution refused: NestedSpanAttribution {{ before_nanos: \
              {reconcile_attributed_before}, after_nanos: {reconcile_attributed_after} }}"
             )
-        })?;
+        })
+        .map_err(|e| join_via_index_stage_refusal(&annotation_diags, &source_indices, e))?;
     let assembly_other = reconcile_total
         .checked_sub(reconcile_attributed)
         .ok_or_else(|| {
@@ -13224,7 +13604,8 @@ fn resolved_graph_from_sources_with_index(
                 "assembly attribution refused: OverAttributed {{ sum_exclusive_nanos: \
              {reconcile_attributed}, parent_span_nanos: {reconcile_total} }}"
             )
-        })?;
+        })
+        .map_err(|e| join_via_index_stage_refusal(&annotation_diags, &source_indices, e))?;
     resolve_stage_slot_add(|s| s.reconcile_assembly += assembly_other);
 
     let has_type_errors = typed
@@ -13238,7 +13619,11 @@ fn resolved_graph_from_sources_with_index(
             .filter(|d| is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate))
             .map(|d| format_error_node(d, &source_indices))
             .collect();
-        return Err(msgs.join("\n"));
+        return Err(join_via_index_stage_refusal(
+            &annotation_diags,
+            &source_indices,
+            msgs.join("\n"),
+        ));
     }
 
     let ownership_started = std::time::Instant::now();
@@ -13273,15 +13658,22 @@ fn resolved_graph_from_sources_with_index(
         .iter()
         .any(|d| is_error_diagnostic(d.diagnostic.clone()))
     {
-        return Err(format_error_nodes(&ownership_diags, &source_indices));
+        return Err(join_via_index_stage_refusal(
+            &annotation_diags,
+            &source_indices,
+            format_error_nodes(&ownership_diags, &source_indices),
+        ));
     }
     resolve_stage_slot_add(|s| s.ownership += ownership_started.elapsed().as_nanos());
 
-    let compile_clean_diags = compile_clean_diags_from_resolved_stages(
-        &graph.diagnostics,
-        &norm_diags,
-        &typed,
-        &ownership_diags,
+    let compile_clean_diags = prepend_via_index_annotation_diags(
+        annotation_diags,
+        compile_clean_diags_from_resolved_stages(
+            &graph.diagnostics,
+            &norm_diags,
+            &typed,
+            &ownership_diags,
+        ),
     );
 
     // Install into the in-process share so same-subject re-resolves skip assembly —
@@ -13867,7 +14259,7 @@ fn parse_module_node_from_index_source(
     note_source_hash(index, &source);
     let cached = index.parse_cache.borrow().get(&source.path).cloned();
     let (parse_result, nl_index) = match cached {
-        Some(entry) => entry,
+        Some(entry) => (entry.parse_result, entry.newline_index),
         None => {
             let tokens =
                 v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
@@ -13880,12 +14272,16 @@ fn parse_module_node_from_index_source(
             });
             let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
             *index.intern_table.borrow_mut() = parsed.intern_table.clone();
-            let entry = (parsed.result.clone(), nl_index.clone());
+            let entry = ParseCacheEntry {
+                parse_result: parsed.result.clone(),
+                newline_index: nl_index.clone(),
+                annotation_diags: None,
+            };
             index
                 .parse_cache
                 .borrow_mut()
                 .insert(source.path.clone(), entry.clone());
-            entry
+            (entry.parse_result, entry.newline_index)
         }
     };
     if let Some(err) = &parse_result.error {
@@ -19314,9 +19710,13 @@ fn witness_admission_entry_function_keys_from_source(
     // `known_red_probe(` replaced `probe_red(` and the seed-emitter wet row constructor when the
     // quarantine moved to one function-grain authority (2026-08-03): both cadences now author the
     // same row shape in `gunbc.explicit_witness_admission`, so one head reads both.
-    let heads: [(&str, &str); 6] = [
+    let heads: [(&str, &str); 7] = [
         ("bin_wet(", "entry: String"),
         ("known_red_probe(", "entry: NonEmptyStr"),
+        (
+            "source_root_ingest_gate_admitted_witness(",
+            "entry: NonEmptyStr",
+        ),
         ("self_host_wet_entry(", "entry: String"),
         ("SelfHostWetReceiptBinding {", ""),
         ("RehomedBinWetRow {", ""),
@@ -29002,11 +29402,6 @@ pub fn emit_source_root_ingest_manifest(
 
     let content_hash = source_root_ingest_content_hash_fnv1a64(records);
     let read_count = records.len();
-    let inline_records = if read_count <= MANIFEST_INLINE_LIST_MAX {
-        records
-    } else {
-        &[]
-    };
 
     let mut out = String::new();
     out.push_str("module v2.test.workflow.host_source_root_ingest_manifest\n\n\n");
@@ -29016,6 +29411,7 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("  SourceRef,\n");
     out.push_str("  SourceRootIngest,\n");
     out.push_str("  SourceRootCoverageComplete,\n");
+    out.push_str("  SourceRootManifestAbsent,\n");
     out.push_str("  SourceRootManifestElided,\n");
     out.push_str("  SourceRootProvenanceCoverageReceipt\n");
     out.push_str("}\n");
@@ -29030,9 +29426,7 @@ pub fn emit_source_root_ingest_manifest(
     // fails with `undefined variable 'V2Tree'` (the source_root ingest gate's persistent RED).
     // #6269's emit_source_root_ref_import derives exactly the referenced constructors from the
     // records (supersedes the earlier hardcoded-both-constructors form).
-    if !inline_records.is_empty() {
-        out.push_str(&emit_source_root_ref_import(inline_records));
-    } else if !records.is_empty() {
+    if !records.is_empty() {
         out.push_str(&emit_source_root_ref_import(records));
     }
     if entry_admission.is_some() {
@@ -29051,40 +29445,28 @@ pub fn emit_source_root_ingest_manifest(
         dag_manifest_scalar_escape(&content_hash)?
     ));
     out.push_str("data host_source_root_ingest_coverage_receipt: SourceRootProvenanceCoverageReceipt = SourceRootProvenanceCoverageReceipt {\n");
-    // The receipt must describe the carrier that actually landed, not the discovery that
-    // preceded it. Past MANIFEST_INLINE_LIST_MAX the row list is elided to `Empty`, so
-    // hardcoding `coverage_complete: true` with the full read_count asserted complete
-    // coverage over an EMPTY carrier — and made it unfalsifiable by construction
-    // (DESIGN.md §5: fabricated plausible output; a receipt that can never be false
-    // reports nothing).
-    //
-    // The elision is now a TYPED, COUNTED refusal rather than a bool: `SourceRootManifestElided`
-    // names the read count AND the cap that rejected it, so a consumer sees the size of the
-    // deficit ("91 reads met a cap of 64") instead of an undifferentiated `false`. A silent
-    // `Empty` carrier under a `true` receipt was an absorbing fallback — ⊤-as-ignorance
-    // presented as ⊤-as-answer.
-    let produced_row_count = inline_records.len();
+    // Capless closure transport: closure-ref rows are always uncapped. Past
+    // MANIFEST_INLINE_LIST_MAX the inline Lossless carrier is refused via
+    // SourceRootManifestElided (typed expected/observed/capacity) — never zero
+    // produced rows with a positive read count (empty-observation narrow).
+    let produced_row_count = read_count;
     out.push_str(&format!("  ingest_read_count: {read_count},\n"));
     out.push_str(&format!("  produced_row_count: {produced_row_count},\n"));
     out.push_str(&format!(
         "  discovered_source_refs_digest: DiscoveredSourceRefsDigestFromList {{ digest: Fnv1a64Structural {{ digest: \"{}\" }} }},\n",
         source_ref_list_structural_digest_hex(records)
     ));
-    if produced_row_count == read_count {
-        out.push_str("  coverage: SourceRootCoverageComplete\n");
-    } else {
+    if read_count > MANIFEST_INLINE_LIST_MAX {
         out.push_str(&format!(
             "  coverage: SourceRootManifestElided {{ read_count: {read_count}, cap: {MANIFEST_INLINE_LIST_MAX} }}\n"
         ));
+    } else if read_count > 0 {
+        out.push_str("  coverage: SourceRootCoverageComplete\n");
+    } else {
+        out.push_str("  coverage: SourceRootManifestAbsent\n");
     }
     out.push_str("}\n\n\n");
-    out.push_str("data host_source_root_ingest: SourceRootIngest = ");
-    if inline_records.is_empty() {
-        out.push_str("Empty\n");
-    } else {
-        out.push_str(&emit_source_root_ingest_monoid(inline_records)?);
-        out.push('\n');
-    }
+    out.push_str("data host_source_root_ingest: SourceRootIngest = Empty\n");
     if !records.is_empty() {
         out.push('\n');
         out.push_str("data host_source_root_closure_refs: List<SourceRef> = ");
@@ -29112,11 +29494,50 @@ mod source_root_ingest_manifest_tests {
         }
     }
 
-    /// Past the inline cap the row list is elided, so the receipt must say so.
-    /// Before this fix `coverage_complete: true` was hardcoded and the full read_count
-    /// emitted as produced_row_count, asserting complete coverage over an empty carrier.
+    /// Capless ref transport: over the inline cap, coverage reports typed elision
+    /// while produced_row_count and closure_refs carry the full population.
     #[test]
-    fn receipt_reports_incomplete_coverage_when_rows_are_elided() {
+    fn receipt_reports_typed_elision_with_full_refs_past_inline_cap() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc_cov_receipt_{}_{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("host_source_root_ingest_manifest.dag");
+
+        let over: Vec<SourceRootReadRecord> = (0..65).map(sr_record).collect();
+        emit_source_root_ingest_manifest(&path, &over, None).unwrap();
+        let emitted = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            emitted.contains("coverage: SourceRootManifestElided"),
+            "past inline cap must report typed elision, got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains(&format!(
+                "coverage: SourceRootManifestElided {{ read_count: 65, cap: {MANIFEST_INLINE_LIST_MAX} }}"
+            )),
+            "elision must carry read_count and cap, got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains("produced_row_count: 65"),
+            "ref population must not be zero, got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains("host_source_root_closure_refs"),
+            "must carry full closure refs, got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains("data host_source_root_ingest: SourceRootIngest = Empty"),
+            "inline ingest stays empty past cap, got:\n{emitted}"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// At or below the inline cap, coverage is complete with full ref population.
+    #[test]
+    fn receipt_reports_complete_coverage_via_closure_refs_at_inline_cap() {
         let dir = std::env::temp_dir().join(format!(
             "gunbc_cov_receipt_{}_{}",
             std::process::id(),
@@ -29126,33 +29547,54 @@ mod source_root_ingest_manifest_tests {
         let path = dir.join("host_source_root_ingest_manifest.dag");
 
         let over: Vec<SourceRootReadRecord> =
-            (0..MANIFEST_INLINE_LIST_MAX + 1).map(sr_record).collect();
+            (0..MANIFEST_INLINE_LIST_MAX).map(sr_record).collect();
         emit_source_root_ingest_manifest(&path, &over, None).unwrap();
         let emitted = std::fs::read_to_string(&path).unwrap();
         assert!(
-            emitted.contains("coverage: SourceRootManifestElided"),
-            "elided manifest must report incomplete coverage, got:\n{emitted}"
+            emitted.contains("coverage: SourceRootCoverageComplete"),
+            "at inline cap must report complete ref coverage, got:\n{emitted}"
         );
         assert!(
-            emitted.contains("produced_row_count: 0"),
-            "elided manifest must report the rows it actually carries (0), got:\n{emitted}"
+            emitted.contains(&format!("produced_row_count: {}", MANIFEST_INLINE_LIST_MAX)),
+            "at inline cap produced_row_count must equal read count, got:\n{emitted}"
         );
         assert!(
-            emitted.contains(&format!(
-                "ingest_read_count: {}",
-                MANIFEST_INLINE_LIST_MAX + 1
-            )),
-            "discovered read count must still be reported, got:\n{emitted}"
+            emitted.contains("host_source_root_closure_refs"),
+            "at inline cap must carry closure refs, got:\n{emitted}"
         );
 
-        // Control: within the cap, coverage really is complete.
         let under: Vec<SourceRootReadRecord> = (0..3).map(sr_record).collect();
         emit_source_root_ingest_manifest(&path, &under, None).unwrap();
         let emitted = std::fs::read_to_string(&path).unwrap();
         assert!(
             emitted.contains("coverage: SourceRootCoverageComplete")
                 && emitted.contains("produced_row_count: 3"),
-            "inline manifest must report complete coverage over 3 rows, got:\n{emitted}"
+            "small closure manifest must also report complete ref coverage, got:\n{emitted}"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn receipt_reports_manifest_absent_import_and_coverage_for_zero_reads() {
+        let dir =
+            std::env::temp_dir().join(format!("gunbc_cov_zero_{}_{}", std::process::id(), line!()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("host_source_root_ingest_manifest.dag");
+
+        emit_source_root_ingest_manifest(&path, &[], None).unwrap();
+        let emitted = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            emitted.contains("SourceRootManifestAbsent"),
+            "zero-read manifest must import SourceRootManifestAbsent, got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains("coverage: SourceRootManifestAbsent"),
+            "zero-read manifest must report absent coverage, got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains("ingest_read_count: 0"),
+            "zero-read manifest must report zero ingest count, got:\n{emitted}"
         );
 
         std::fs::remove_dir_all(&dir).ok();
@@ -39199,6 +39641,29 @@ mod module_path_index_tests {
         assert!(
             keys.contains(&"dag/test/claim/x_test.dag::x_holds".to_string()),
             "a RehomedBinWetRow must register as an executing consumer key (Phase 0(b)); got {keys:?}"
+        );
+    }
+
+    #[test]
+    fn source_root_ingest_gate_admitted_witness_rows_parse_as_executing_consumer_keys() {
+        let synthetic = "module gunbc.explicit_witness_admission\n\n\
+             data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [\n\
+               source_root_ingest_gate_admitted_witness(\n\
+                 entry: \"src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag\",\n\
+                 f: \"compiler_closure_scoped_ingest_module_count_ok_holds\",\n\
+                 kind: CorpusWitnessKind,\n\
+                 reason: \"r\",\n\
+                 dissolution: unbound_dissolution(description: \"d\")\n\
+               ),\n\
+             ]\n";
+        let keys =
+            super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
+        assert!(
+            keys.contains(
+                &"src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag::compiler_closure_scoped_ingest_module_count_ok_holds"
+                    .to_string()
+            ),
+            "transport gate admission rows must register as executing consumer keys; got {keys:?}"
         );
     }
 
