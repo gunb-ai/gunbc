@@ -18,9 +18,7 @@ import gunbc.tools.frontier_ingestion_probe {
 }
 import v2.std.algebra { fold_list }
 import v2.std.collection { List }
-import v2.std.integer { Int }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.logic { Bool }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.node { Symbol }
 import v2.std.text { String }
@@ -73,19 +71,4 @@ fn census_report() -> String {
   }
 }
 
-fn count_stage_matching(target: String) -> Int {
-  match take_body_lowering_population_census() {
-    CensusRefusedAtWorld => 0 - 1
-    CensusRefusedAtReconciliation { cause: _ } => 0 - 2
-    CensusTaken { roster_identity: _, observations: obs } =>
-      fold_list(
-        xs: obs,
-        empty: 0,
-        cons: fn(n, o) { if stage_label_of(s: o.stage) == target { n + 1 } else { n } }
-      )
-  }
-}
-
-fn retained_member_count() -> Int {
-  count_stage_matching(target: "NORM_RETAINED")
-}
+data body_lowering_no_aggregate_note: String = "THERE IS NO AGGREGATE COUNT HERE, and its absence is the module's own stated scope rather than an omission. An earlier revision carried count_stage_matching and retained_member_count, and both were deleted for defects worth recording so they are not reintroduced.\n\nA REFUSAL BECAME AN INTEGER. count_stage_matching answered 0 - 1 for CensusRefusedAtWorld and 0 - 2 for CensusRefusedAtReconciliation, so a typed refusal and a genuine population count inhabited one type. A caller could add, compare or display a failure as a measurement, and -1 is a plausible-looking number rather than a loud one. The census already carries typed refusal arms; collapsing them into the counting type discarded exactly the distinction those arms exist to preserve.\n\nPRESENTATION BECAME SEMANTIC AUTHORITY. It counted by comparing stage_label_of(s) against a target String. FrontendStage is a closed coproduct, so a label rename would have changed the count with no stage changing, and a label collision would have merged distinct stages — the renderer deciding a semantic question. Counting belongs to the structural variant or to frontend_stage_eq, never to rendered text.\n\nBoth were reachable because an aggregate was authored at all. This module's note already says the per-member observation IS the finding and that no aggregate verdict is warranted over a roster whose members have not each been separately established; the helpers contradicted that. A reader wanting a count over these members reads the per-member observations and counts the subjects it can name."
