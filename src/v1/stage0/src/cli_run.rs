@@ -4740,9 +4740,7 @@ fn floor_compile_clean_emit_ok_via_index(
     use crate::v1_compiler_artifact::RenderTarget;
     use crate::v1_compiler_complexity::empty_complexity_report;
     let index = process_shared_index(index_roots);
-    let census_fill_diags = compile_clean_census_fill_hard_diagnostics(
-        &compile_clean_census_only_sources_for_compiled(&index, &sources),
-    );
+    let census_only = compile_clean_census_only_sources_for_compiled(&index, &sources);
     let (graph, si, compile_clean_diags) = match resolved_graph_from_sources_with_index(
         &index,
         sources,
@@ -4758,6 +4756,7 @@ fn floor_compile_clean_emit_ok_via_index(
             return (false, format!("compile-clean: {msg}"));
         }
     };
+    let census_fill_diags = compile_clean_census_fill_hard_diagnostics(&census_only);
     let all_compile_clean_diags = if census_fill_diags.is_empty() {
         compile_clean_diags.clone()
     } else {
