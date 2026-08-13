@@ -185,3 +185,49 @@ fn measure_control_fn_reason() -> Symbol {
     ArtifactProduced { artifact: _ } => ^no_refusal_artifact_was_produced
   }
 }
+
+// THE TAIL, NOT THE HEAD. rejected_with_pending PREPENDS the grammar-global overlap
+// residue onto a later rejection, so d.head.reason is a constant for ANY parse failure
+// of ANY module and discriminates nothing. These read position two and the diagnostic
+// count, which is where the actual cause lives.
+fn measure_door_shaped_data_second_reason() -> Symbol {
+  match observe_provenanced_rust_emission_from_ingest(
+    ingest: Cons { head: pmh_door_shaped_read, tail: Empty },
+    admission: direct_rust_door_admission(),
+    target: rust_target_model(),
+    module_path: direct_rust_door_module_path
+  ) {
+    AssemblyRejected { diagnostics: d } =>
+      match d.tail {
+        Cons { head: h2, tail: _ } => h2.reason
+        Empty => ^tail_is_empty_head_was_the_only_diagnostic
+      }
+    InferenceRejected { diagnostics: _ } => ^unexpected_stage_inference
+    EmissionRejected { diagnostics: _ } => ^unexpected_stage_emission
+    ProducerReceiptRejected { diagnostics: _ } => ^unexpected_stage_receipt
+    ArtifactProduced { artifact: _ } => ^no_refusal_artifact_was_produced
+  }
+}
+
+fn measure_door_shaped_data_third_reason() -> Symbol {
+  match observe_provenanced_rust_emission_from_ingest(
+    ingest: Cons { head: pmh_door_shaped_read, tail: Empty },
+    admission: direct_rust_door_admission(),
+    target: rust_target_model(),
+    module_path: direct_rust_door_module_path
+  ) {
+    AssemblyRejected { diagnostics: d } =>
+      match d.tail {
+        Cons { head: _, tail: t2 } =>
+          match t2 {
+            Cons { head: h3, tail: _ } => h3.reason
+            Empty => ^only_two_diagnostics
+          }
+        Empty => ^tail_is_empty_head_was_the_only_diagnostic
+      }
+    InferenceRejected { diagnostics: _ } => ^unexpected_stage_inference
+    EmissionRejected { diagnostics: _ } => ^unexpected_stage_emission
+    ProducerReceiptRejected { diagnostics: _ } => ^unexpected_stage_receipt
+    ArtifactProduced { artifact: _ } => ^no_refusal_artifact_was_produced
+  }
+}
