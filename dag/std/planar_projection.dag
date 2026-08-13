@@ -79,17 +79,19 @@ fn triple_is_zero(t: ViewAxisTriple) -> Bool {
   t.x == 0 && t.y == 0 && t.z == 0
 }
 
+// THE TWO BORROWED CAUSES ARE EMBEDDED RATHER THAN RESTATED. ProjectionArithmeticRefused carries
+// std.checked_arithmetic's overflow record and ProjectionFrameRefused carries std.affine_space's
+// frame mismatch, so a consumer reading either learns the same fact in the same shape it would have
+// learned from the layer that owns it.
+//
+// ViewUnitsAreNotMillimetres IS "asked for millimetres on a view whose units are not millimetres".
+// The offending axis image is carried because that is the fact the caller needs: it says which
+// source axis is foreshortened, not merely that some axis is.
 type ProjectionRefusal
-  // Embedded rather than restated, both of them. The overflow cause is std.checked_arithmetic's
-  // record and the frame mismatch is std.affine_space's, so a consumer reading either learns the
-  // same fact in the same shape it would have learned from the layer that owns it.
   = ProjectionArithmeticRefused { cause: IntegerOverflow }
   | ProjectionFrameRefused { refusal: SpatialFrameRefusal }
   | ViewDirectionParallelToUpReference { direction: ViewAxisTriple, up_reference: ViewAxisTriple }
   | ViewDirectionIsZero
-  // Asked for millimetres on a view whose units are not millimetres. The offending axis image is
-  // carried because that is the fact the caller needs: it says which source axis is foreshortened,
-  // not merely that some axis is.
   | ViewUnitsAreNotMillimetres { axis_image_u: Int, axis_image_v: Int }
 
 type ProjectionConstruction<T>
@@ -169,6 +171,10 @@ fn settle_triple(t: CheckedTriple) -> ProjectionConstruction<ViewAxisTriple> {
 // THE MINT. Every refusal here is a fact about the camera, decided before any point exists, which is
 // the point of deriving the map once: a caller holding a ProjectionView holds a camera that was
 // admissible, and projecting a point can then fail only on the point's own frame or magnitude.
+//
+// A ZERO PAGE-RIGHT means the direction and the up reference are parallel - including the case where
+// the up reference is itself zero. The two are one refusal, ViewDirectionParallelToUpReference,
+// because they are one failure: there is no plane in which to lay out the page.
 fn projection_view(
   direction: ViewAxisTriple,
   up_reference: ViewAxisTriple,
@@ -181,9 +187,6 @@ fn projection_view(
     match settle_triple(t: checked_cross(a: direction, b: up_reference)) {
       ProjectionRefused { cause: c } => ProjectionRefused { cause: c }
       ProjectionReady { value: right } =>
-        // A zero page-right means the direction and the up reference are parallel - including the
-        // case where the up reference is itself zero. The two are one refusal because they are one
-        // failure: there is no plane in which to lay out the page.
         if triple_is_zero(t: right) {
           ProjectionRefused { cause: ViewDirectionParallelToUpReference { direction: direction, up_reference: up_reference } }
         } else {
@@ -226,14 +229,15 @@ type ProjectionKind
   | ElevationFromWest
   | Dimetric2To1FromAboveEastNorth
 
+// Dimetric2To1FromAboveEastNorth LOOKS DOWN toward the origin from the east-north-above octant.
+// That is the direction which makes the derived map the classic 2:1 dimetric - source axes imaging
+// to (-1,-1), (1,-1) and (0,2) - and it is derived rather than asserted: the witness recomputes the
+// columns.
 fn projection_kind_direction(k: ProjectionKind) -> ViewAxisTriple {
   match k {
     PlanFromAbove => view_axis_triple(x: 0, y: 0, z: 0 - 1)
     ElevationFromSouth => view_axis_triple(x: 0, y: 1, z: 0)
     ElevationFromWest => view_axis_triple(x: 1, y: 0, z: 0)
-    // Looking down toward the origin from the east-north-above octant. This is the direction that
-    // makes the derived map the classic 2:1 dimetric - source axes imaging to (-1,-1), (1,-1) and
-    // (0,2) - and it is derived rather than asserted: the witness recomputes the columns.
     Dimetric2To1FromAboveEastNorth => view_axis_triple(x: 0 - 1, y: 0 - 1, z: 0 - 1)
   }
 }
