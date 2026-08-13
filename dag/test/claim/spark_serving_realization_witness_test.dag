@@ -22,6 +22,8 @@ import gunbc.spark_serving_realization {
   SparkServingRealizationPolicy,
   LeastRequiredEffects,
   select_spark_serving_realization,
+  identity_contract_refusal,
+  ExecutorOwnedIdentity,
   SparkServingRealizationSelection,
   RealizationSelected,
   NoRealizationAdmitted,
@@ -243,5 +245,79 @@ test fn red_control_privilege_does_not_select_the_architecture() -> Bool {
       }
     NoRealizationAdmitted { first: _, more: _ } => false
     RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
+  }
+}
+
+// THE REFUTATION NOW DERIVES, which is the whole point of this addition. Before the identity
+// contract, this exact input SELECTED UserUnitRealization: the model checked "a user manager exists"
+// and "a no-login identity exists" independently and admitted the user unit when both held. Measured
+// on srv5, `systemd-run --user --scope` reports gunbc-automation -- a user unit runs as the user
+// whose manager owns it, so the separate existence of gunbc-inference never made it run as that
+// account. Two true facts, no realization joining them.
+//
+// The host below is MAXIMALLY capable for a user unit: manager present, lingering enabled,
+// accelerator, artifact root, endpoint. Nothing observational refuses it. Only the structural
+// contract does, which is why this claim is the one that would have caught the real defect.
+test fn w_user_unit_is_structurally_inadmissible_under_a_separated_service_identity() -> Bool {
+  match select_spark_serving_realization(
+    intent: spark_intent(),
+    capabilities: host_user_unit_capable(),
+    policy: least_privilege_policy(),
+  ) {
+    RealizationSelected { realization: r } =>
+      match r {
+        UserUnitRealization => false
+        SystemUnitRealization => true
+        RootlessContainerRealization => true
+      }
+    NoRealizationAdmitted { first: _, more: _ } => true
+    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => true
+  }
+}
+
+// POSITIVE CONTROL, and it is what keeps the contract from being a blanket refusal: under
+// ExecutorOwnedIdentity -- an intent that does NOT require separation -- the same host and the same
+// realization ARE admissible. Without this, the claim above passes on a model that refuses user
+// units unconditionally, which would be wrong in the other direction.
+test fn w_user_unit_is_admissible_when_the_intent_does_not_require_separation() -> Bool {
+  let executor_owned = SparkServingIntent {
+    lifecycle: SurvivesReboot,
+    availability: RestartsOnFailure,
+    authority: ManagedConvergenceOwned,
+    service_identity: ExecutorOwnedIdentity,
+    endpoint: UnauthenticatedEndpoint,
+    observability: IndependentlyObservable,
+  }
+  match select_spark_serving_realization(
+    intent: executor_owned,
+    capabilities: host_user_unit_capable(),
+    policy: least_privilege_policy(),
+  ) {
+    RealizationSelected { realization: r } =>
+      match r {
+        UserUnitRealization => true
+        SystemUnitRealization => false
+        RootlessContainerRealization => false
+      }
+    NoRealizationAdmitted { first: _, more: _ } => false
+    RealizationChoiceRequired { first: _, second: _, more: _, cause: _ } => false
+  }
+}
+
+// THE REFUSAL IS STRUCTURAL, meaning it holds with NO capability observation at all. This is the
+// property that distinguishes it from every other requirement in the model: those ask the host a
+// question, this one asks only what the mechanism can deliver, so it is decidable on a host nobody
+// has looked at.
+test fn w_the_identity_refusal_needs_no_host_observation() -> Bool {
+  match identity_contract_refusal(intent: spark_intent(), realization: UserUnitRealization) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn red_control_system_unit_satisfies_the_identity_contract() -> Bool {
+  match identity_contract_refusal(intent: spark_intent(), realization: SystemUnitRealization) {
+    Absent => true
+    Present { value: _ } => false
   }
 }

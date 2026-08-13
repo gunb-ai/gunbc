@@ -222,12 +222,86 @@ fn requirement_refusal(
   }
 }
 
+// THE IDENTITY CONTRACT: what process identity each realization can ACTUALLY deliver. This is a
+// structural fact about the mechanism, not an observation of the host, and its absence is the defect
+// the live measurement exposed.
+//
+// The model checked two things independently -- "a user manager exists" and "a no-login identity
+// exists" -- and admitted the user unit when both held. But a systemd user unit runs as the user
+// whose manager owns it; measured on srv5, `systemd-run --user --scope` reports gunbc-automation.
+// The separate existence of gunbc-inference does not make a user unit run AS it. Two facts were both
+// true while the realization joining them did not exist, which no amount of capability observation
+// could have caught, because neither observation was wrong.
+type RealizationProcessIdentity
+  = RunsAsOwningExecutor
+  | RunsAsNamedServiceAccount
+  | RunsAsSupervisorDynamicIdentity
+  | RunsAsRelatedContainerIdentity
+
+fn realization_deliverable_identities(realization: SparkServingRealization) -> List<RealizationProcessIdentity> {
+  match realization {
+    UserUnitRealization => [RunsAsOwningExecutor]
+    SystemUnitRealization => [RunsAsNamedServiceAccount, RunsAsSupervisorDynamicIdentity]
+    RootlessContainerRealization => [RunsAsRelatedContainerIdentity, RunsAsOwningExecutor]
+  }
+}
+
+// What the INTENT requires the serving process to be. Under ManagedConvergenceOwned the executor
+// holds automation authority, so NoLoginNoSudoIdentity means the serving process must NOT be that
+// account -- which is precisely what RunsAsOwningExecutor delivers and therefore cannot satisfy.
+fn intent_admissible_process_identities(intent: SparkServingIntent) -> List<RealizationProcessIdentity> {
+  match intent.service_identity {
+    NoLoginNoSudoIdentity => [RunsAsNamedServiceAccount, RunsAsSupervisorDynamicIdentity, RunsAsRelatedContainerIdentity]
+    SupervisorManagedDynamicIdentity => [RunsAsSupervisorDynamicIdentity]
+    ExecutorOwnedIdentity => [RunsAsOwningExecutor, RunsAsNamedServiceAccount, RunsAsSupervisorDynamicIdentity, RunsAsRelatedContainerIdentity]
+  }
+}
+
+fn process_identity_eq(left: RealizationProcessIdentity, right: RealizationProcessIdentity) -> Bool {
+  match left {
+    RunsAsOwningExecutor => match right { RunsAsOwningExecutor => true RunsAsNamedServiceAccount => false RunsAsSupervisorDynamicIdentity => false RunsAsRelatedContainerIdentity => false }
+    RunsAsNamedServiceAccount => match right { RunsAsNamedServiceAccount => true RunsAsOwningExecutor => false RunsAsSupervisorDynamicIdentity => false RunsAsRelatedContainerIdentity => false }
+    RunsAsSupervisorDynamicIdentity => match right { RunsAsSupervisorDynamicIdentity => true RunsAsOwningExecutor => false RunsAsNamedServiceAccount => false RunsAsRelatedContainerIdentity => false }
+    RunsAsRelatedContainerIdentity => match right { RunsAsRelatedContainerIdentity => true RunsAsOwningExecutor => false RunsAsNamedServiceAccount => false RunsAsSupervisorDynamicIdentity => false }
+  }
+}
+
+// THE STRUCTURAL REFUSAL, and it is deliberately not a capability requirement: it depends on no
+// observation at all, so it holds on a host nobody has looked at. A realization whose deliverable
+// identities do not intersect the intent's admissible ones cannot satisfy that intent ON ANY HOST,
+// and saying so requires only the two lists.
+fn identity_contract_refusal(
+  intent: SparkServingIntent,
+  realization: SparkServingRealization,
+) -> ServingRequirementRefusal? {
+  let deliverable = realization_deliverable_identities(realization: realization)
+  let admissible = intent_admissible_process_identities(intent: intent)
+  let intersects = fold(deliverable, init: false, f: fn(acc, d) {
+    if acc { true } else {
+      fold(admissible, init: false, f: fn(inner, a) { if inner { true } else { process_identity_eq(left: d, right: a) } })
+    }
+  })
+  if intersects { none } else {
+    Present {
+      value: ServingRequirementRefusal {
+        realization_label: realization_label(realization: realization),
+        requirement: RequiresNoLoginServiceIdentity,
+        cause: "this realization cannot run the serving process as an identity the intent admits; a systemd user unit runs as the user whose manager owns it, so the separate existence of a no-login account does not make it run as that account" as NonEmptyStr,
+      }
+    }
+  }
+}
+
 fn admit_realization(
   intent: SparkServingIntent,
   capabilities: SparkHostCapabilityObservation,
   realization: SparkServingRealization,
 ) -> SparkServingRealizationAdmission {
-  let refusals = fold(
+  let structural = match identity_contract_refusal(intent: intent, realization: realization) {
+    Present { value: r } => [r]
+    Absent => []
+  }
+  let observed = fold(
     realization_requirements(intent: intent, realization: realization),
     init: [],
     f: fn(acc, r) {
@@ -237,6 +311,7 @@ fn admit_realization(
       }
     },
   )
+  let refusals = prepend_structural_refusals(observed: observed, structural: structural)
   match list_head_of(xs: refusals) {
     Present { value: first } => RealizationNotAdmitted {
       realization: realization,
@@ -317,6 +392,16 @@ fn admitted_realizations(
       RealizationNotAdmitted { realization: _, first: _, more: _ } => acc
     }
   })
+}
+
+// Structural refusals come FIRST so the reported cause is the one that holds regardless of what was
+// observed: a caller reading only the first refusal should see "this mechanism cannot satisfy this
+// intent" rather than an incidental missing capability on one host.
+fn prepend_structural_refusals(
+  observed: List<ServingRequirementRefusal>,
+  structural: List<ServingRequirementRefusal>,
+) -> List<ServingRequirementRefusal> {
+  append(structural, items: observed)
 }
 
 fn all_refusals(
@@ -420,9 +505,11 @@ fn select_spark_serving_realization(
 // a realization that cannot satisfy the intent. Weights order candidates that are ADMITTED; they
 // must never be what decides admission.
 //
-// 🟡 dissolve-on: this note is replaced by an executing identity-contract requirement per candidate,
-// so the refutation above is derived rather than recorded. Until then the selector's admission of
-// UserUnitRealization under NoLoginNoSudoIdentity is a KNOWN over-admission, not a passing case.
+// DISSOLVED 2026-08-13: the refutation is now DERIVED, not recorded. identity_contract_refusal
+// compares what each realization can deliver against what the intent admits, so UserUnitRealization
+// under NoLoginNoSudoIdentity is refused structurally -- with no capability observation, on any host.
+// The over-admission this note declared is closed; the note survives only as the measurement receipt
+// that produced the rule.
 data spark_user_unit_identity_contract_refutation_note: String = "A systemd user unit executes as its owning user; measured on srv5 as gunbc-automation. Under NoLoginNoSudoIdentity the serving process must be gunbc-inference, so UserUnitRealization cannot satisfy the intent on these hosts and SystemUnitRealization is the admitted candidate despite its higher effect weight."
 
 // MEASURED SERVING PRECONDITIONS, srv5 as gunbc-automation, 2026-08-11:
