@@ -69,6 +69,22 @@ data artifact_axis_omits_build_path: PromotionObligation = PromotionObligation {
 // the sole authoring point from which the roster, the registry and the count all
 // derive. That single authoring point is what the condition binds to: it cannot appear
 // without the carrier it projects.
+//
+// THE BOUND REF NAMES A DECLARATION THAT DOES NOT EXIST YET, AND THAT IS THE POINT.
+// DeclarationAppears fires when the ref is FOUND among present declarations, so a
+// trigger bound to something already in the tree reports DissolutionFired on the day it
+// is written — a false discharge of an obligation nobody has done any work on. Binding
+// to the live roster it means to replace (emitter_produced_frontier_promotions, which
+// exists today) would do exactly that. Every bound trigger in this corpus is a forward
+// reference for the same reason: extdeps.dhcp.v4 binds to extdeps.network.mac
+// parse_mac_address, which has neither a definition nor a module, and its ipv4 sibling
+// is recorded as having FIRED when its named trigger finally landed.
+//
+// The residual risk is real and worth naming: if the carrier is built under a different
+// name, this trigger never fires and the obligation stays pending under a key nobody
+// uses. That is a property of every bound trigger, mitigated the same way — the name
+// here is the specified authoring point, not a guess, and it is stated in the paragraph
+// above so a future author renaming it knows to move this row with it.
 data frontier_numerator_admits_seed_evidence: PromotionObligation = PromotionObligation {
   subject: decl_ref(
     module_path: "v2.compiler.self_host.frontier",
