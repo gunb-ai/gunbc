@@ -4078,6 +4078,21 @@ fn discovery_budget_refusal(summary: &DiscoverySummary) -> Option<BudgetRefusal>
         })
 }
 
+/// Lift the first host-dependency refusal among this discovery batch's failure lines.
+///
+/// Parallel to `discovery_budget_refusal`: falsifier batch 5 runs Codex materialization
+/// witnesses as a `RunnableDiscoveryBatch`, flattening N reds into one `ClaimResult`.
+/// The failure-receipt wire is appended in `cli_run` on discovery reds, but
+/// `batch_failure_mode_and_detail` reads `host_dependency_refusal` off the value — not
+/// substring-matching `detail` — so this lift is required for `HostDependencyAbsent` on
+/// the primary falsifier path (review 51796 / run 31685755058 component 6).
+fn discovery_host_dependency_refusal(summary: &DiscoverySummary) -> Option<HostDependencyRefusal> {
+    summary
+        .failures
+        .iter()
+        .find_map(|failure| host_dependency_refusal_from_detail(failure))
+}
+
 const SCOPED_WITNESS_RECEIPT_PATH: &str = "target/scoped-witness-execution-receipt.tsv";
 const SCOPED_WITNESS_RECEIPT_HEADER: &str =
     "head_sha\tbatch_id\tsource_roots_digest\tentry\tfunction\twitness_kind\toutcome\tdetail";
@@ -4245,7 +4260,7 @@ fn discovery_claim_result(
                 witness_row_costs,
                 expectation_refusal,
                 budget_refusal: discovery_budget_refusal(summary),
-                host_dependency_refusal: None,
+                host_dependency_refusal: discovery_host_dependency_refusal(summary),
                 selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
                     selection, summary,
                 )),
@@ -4281,7 +4296,7 @@ fn discovery_claim_result(
                 // here would hand it back to the substring classifier.
                 expectation_refusal,
                 budget_refusal: discovery_budget_refusal(summary),
-                host_dependency_refusal: None,
+                host_dependency_refusal: discovery_host_dependency_refusal(summary),
                 selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
                     selection, summary,
                 )),
@@ -4394,7 +4409,7 @@ fn run_discovery_batch_node(
                         witness_row_costs: Vec::new(),
                         expectation_refusal: None,
                         budget_refusal: discovery_budget_refusal(&summary),
-                        host_dependency_refusal: None,
+                        host_dependency_refusal: discovery_host_dependency_refusal(&summary),
                         selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
                             node_frontier_selection,
                             &summary,
@@ -4570,7 +4585,7 @@ fn run_discovery_batch_node(
                         witness_row_costs: Vec::new(),
                         expectation_refusal: None,
                         budget_refusal: discovery_budget_refusal(&summary),
-                        host_dependency_refusal: None,
+                        host_dependency_refusal: discovery_host_dependency_refusal(&summary),
                         selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
                             node_frontier_selection,
                             &summary,
@@ -16726,6 +16741,88 @@ mod tests {
             None,
         );
         assert!(result.budget_refusal.is_none());
+    }
+
+    /// RED control for review 51796: discovery batch must lift host-dependency refusals out of
+    /// `summary.failures`, parallel to `discovery_budget_kill_classifies_structurally_on_the_falsifier_path`.
+    #[test]
+    fn discovery_host_dependency_absent_classifies_structurally_on_the_falsifier_path() {
+        use v1_compiler::cli_run::{
+            ClaimOutcome, DiscoverySummary, DiscoveryWitnessOutcome, EntryResolveReceipt,
+            ResolveStageNanos,
+        };
+        let wire = "HostDependencyAbsent{tool=npm,hint=apt install npm}";
+        let failure = format!(
+            "materialize_codex_runtime_bundle_produces_native_executable_holds \
+             (dag/test/claim/codex_package_delivery_wet_witness_test.dag) returned Bool(false) | \
+             {wire}"
+        );
+        let aggregate_detail = format!("1 of 1 discovery witness(es) failed: {failure}");
+        assert_eq!(
+            falsifier_failure_mode(&[aggregate_detail.clone()]),
+            "WitnessRed",
+            "control: string classifier alone would misclassify"
+        );
+
+        let summary_with = |outcome: ClaimOutcome, failures: Vec<String>| DiscoverySummary {
+            total: 1,
+            passed: 0,
+            skipped: 0,
+            selection_skipped_rows: Vec::new(),
+            deferred_rows: Vec::new(),
+            predicted_unaffected: Vec::new(),
+            divergences: Vec::new(),
+            failures,
+            witness_outcomes: vec![DiscoveryWitnessOutcome {
+                entry: "dag/test/claim/codex_package_delivery_wet_witness_test.dag".into(),
+                module_path: "test.claim.codex_package_delivery_wet_witness_test".into(),
+                function: "materialize_codex_runtime_bundle_produces_native_executable_holds"
+                    .into(),
+                outcome,
+                execution_leg: "InterpretedLeg".into(),
+            }],
+            entry_resolve_receipts: Vec::<EntryResolveReceipt>::new(),
+            total_resolve_nanos: 0,
+            total_stage_nanos: ResolveStageNanos::default(),
+            performance_receipts: Vec::new(),
+            total_measured_nanos: 0,
+            roster_closure_nodes: 0,
+            total_entry_groups: 0,
+            selected_entry_groups: 0,
+            selection_categorization_reason: None,
+        };
+
+        for projected in [
+            Ok(Vec::new()),
+            Err("[witness-row-cost] REFUSED: missing measured resolve parent".to_string()),
+        ] {
+            let result = discovery_claim_result(
+                "discovery-corpus".into(),
+                false,
+                aggregate_detail.clone(),
+                NodeFrontierSelectionMode::Applied,
+                &summary_with(ClaimOutcome::Fail, vec![failure.clone()]),
+                projected,
+                None,
+            );
+            assert!(
+                result.host_dependency_refusal.is_some(),
+                "discovery batch must lift the host dependency refusal out of summary.failures"
+            );
+            let (mode, _) = batch_failure_mode_and_detail(&batch_record_for_test(vec![result]));
+            assert_eq!(mode, HOST_DEPENDENCY_ABSENT_MODE);
+        }
+
+        let result = discovery_claim_result(
+            "discovery-corpus".into(),
+            false,
+            "red".into(),
+            NodeFrontierSelectionMode::Applied,
+            &summary_with(ClaimOutcome::Fail, vec!["returned Bool(false)".into()]),
+            Ok(Vec::new()),
+            None,
+        );
+        assert!(result.host_dependency_refusal.is_none());
     }
 
     #[test]
