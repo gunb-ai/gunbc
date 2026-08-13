@@ -146,18 +146,46 @@ fn assignment_refusals(
       Present { value: _ } => []
       Absent => [SignalHasNoTargetSpelling { signal: a.signal as NonEmptyStr }]
     }
-    let pin_unique = if assignment_count_for_pin(assignments: assignments, pin: a.pin) > 1 {
-      [PinAssignedToSeveralSignals { pin: a.pin }]
-    } else {
-      []
-    }
-    let signal_unique = if assignment_count_for_signal(assignments: assignments, name: a.signal) > 1 {
-      [SignalAssignedToSeveralPins { signal: a.signal as NonEmptyStr }]
-    } else {
-      []
-    }
-    concat(acc, concat(concat(on_package, declared), concat(spelled, concat(pin_unique, signal_unique))))
+    concat(acc, concat(on_package, concat(declared, spelled)))
   })
+}
+
+// A COLLISION IS ONE DEFECT, NOT ONE PER PARTICIPANT. An earlier revision tested uniqueness
+// inside the per-assignment walk, so two assignments sharing a pin each observed the collision
+// and each filed a cause — the same pin reported twice with an identical payload. Nothing was
+// missed and nothing was wrong, but the cause COUNT then measures how many rows touched a defect
+// rather than how many defects there are, and pin_refusal_set_count is exactly the kind of number
+// a later consumer reads as a population. The collision is reported once, at its first mention in
+// source order, which is also the only ordering available that does not depend on where a repeat
+// happens to be noticed.
+type CollisionScan {
+  seen_pins: List<NonEmptyStr>
+  seen_signals: List<NonEmptyStr>
+  out: List<PinChainRefusal>
+}
+
+fn scan_has_seen(xs: List<NonEmptyStr>, key: NonEmptyStr) -> Bool {
+  fold(xs, init: false, f: fn(acc, k) { acc || (k as String) == (key as String) })
+}
+
+fn collision_refusals(assignments: List<DevicePinAssignment>) -> List<PinChainRefusal> {
+  let scanned = fold(
+    assignments,
+    init: CollisionScan { seen_pins: [], seen_signals: [], out: [] },
+    f: fn(acc, a) {
+      let signal_key = a.signal as NonEmptyStr
+      let pin_first = assignment_count_for_pin(assignments: assignments, pin: a.pin) > 1 && !scan_has_seen(xs: acc.seen_pins, key: a.pin)
+      let signal_first = assignment_count_for_signal(assignments: assignments, name: a.signal) > 1 && !scan_has_seen(xs: acc.seen_signals, key: signal_key)
+      let pin_cause = if pin_first { [PinAssignedToSeveralSignals { pin: a.pin }] } else { [] }
+      let signal_cause = if signal_first { [SignalAssignedToSeveralPins { signal: signal_key }] } else { [] }
+      CollisionScan {
+        seen_pins: concat(acc.seen_pins, [a.pin]),
+        seen_signals: concat(acc.seen_signals, [signal_key]),
+        out: concat(acc.out, concat(pin_cause, signal_cause)),
+      }
+    }
+  )
+  scanned.out
 }
 
 // THE DIRECTION THAT IS EASY TO FORGET. Walking the assignments finds every bad binding and no
@@ -184,7 +212,10 @@ fn pin_chain_refusals(
   assignments: List<DevicePinAssignment>
 ) -> List<PinChainRefusal> {
   concat(
-    assignment_refusals(realization: realization, control: control, bindings: bindings, assignments: assignments),
+    concat(
+      assignment_refusals(realization: realization, control: control, bindings: bindings, assignments: assignments),
+      collision_refusals(assignments: assignments)
+    ),
     unassigned_signal_refusals(control: control, assignments: assignments)
   )
 }

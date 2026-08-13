@@ -44,6 +44,7 @@ import extdeps.programmable_logic.ice40.subject {
   ice40_hx1k_tq144_banks,
   ice40_tq144_package,
 }
+import std.measure { measure_count }
 import extdeps.toolchain.icestorm.subject {
   icestorm_hx1k_tq144_roster,
   roster_admits_pin,
@@ -227,6 +228,57 @@ test fn w_every_unassigned_signal_is_its_own_cause() -> Bool {
   }
 }
 
+// ONE COLLISION IS ONE CAUSE. Two assignments sharing a pin is a single defect at a single pin,
+// and an earlier revision filed it once per participating row — so the cause count reported how
+// many assignments touched the collision rather than how many collisions there were. Counting is
+// what makes that visible: naming the cause passes either way.
+test fn w_a_doubled_pin_is_reported_once() -> Bool {
+  match admitted() {
+    Absent => false
+    Present { value: adm } =>
+      match project_article_to_pin_constraints(
+        admitted: adm,
+        realization: interlock_device_realization,
+        bindings: power_interlock_verilog_bindings,
+        assignments: [
+          DevicePinAssignment { signal: conditioned_good_signal, pin: "1" },
+          DevicePinAssignment { signal: fault_signal, pin: "1" },
+          DevicePinAssignment { signal: power_permit_signal, pin: "3" },
+          DevicePinAssignment { signal: reset_release_signal, pin: "4" },
+        ]
+      ) {
+        PinConstraintsEmitted { receipt: _ } => false
+        PinConstraintsRefused { causes: cs } => pin_refusal_set_count(s: cs) == 1
+      }
+  }
+}
+
+// The mirror, and it is NOT symmetric with the one above: one signal on two pins leaves that
+// signal assigned, so nothing else fires, but the doubled ROW is still one ambiguity rather than
+// two. Both directions are counted because a deduplication that only ran on one axis would pass
+// the test above and still double-report here.
+test fn w_a_doubled_signal_is_reported_once() -> Bool {
+  match admitted() {
+    Absent => false
+    Present { value: adm } =>
+      match project_article_to_pin_constraints(
+        admitted: adm,
+        realization: interlock_device_realization,
+        bindings: power_interlock_verilog_bindings,
+        assignments: [
+          DevicePinAssignment { signal: conditioned_good_signal, pin: "1" },
+          DevicePinAssignment { signal: conditioned_good_signal, pin: "7" },
+          DevicePinAssignment { signal: fault_signal, pin: "2" },
+          DevicePinAssignment { signal: power_permit_signal, pin: "3" },
+          DevicePinAssignment { signal: reset_release_signal, pin: "4" },
+        ]
+      ) {
+        PinConstraintsEmitted { receipt: _ } => false
+        PinConstraintsRefused { causes: cs } => pin_refusal_set_count(s: cs) == 1
+      }
+  }
+}
+
 // TWO AUTHORITIES, PRODUCED INDEPENDENTLY, AGREEING ON A POPULATION. Lattice's per-bank table for
 // the HX1K in TQ144 gives 23 + 25 + 20 + 24 general-purpose pins and four configuration pins;
 // Project IceStorm's roster, reverse-engineered from the bitstream format, carries 96 designators.
@@ -244,7 +296,7 @@ test fn w_the_vendor_and_the_toolchain_agree_on_the_pin_population() -> Bool {
 test fn w_the_package_carries_the_facts_a_footprint_needs() -> Bool {
   (ice40_hx1k.ordering_part_number as String) == "ICE40HX1K-TQ144"
     && (ice40_tq144_package.designator as String) == "TQ144"
-    && ice40_tq144_package.contact_pitch_um == 500
-    && ice40_tq144_package.body_width_um == 20000
+    && measure_count(m: ice40_tq144_package.contact_pitch) == 500
+    && measure_count(m: ice40_tq144_package.body_width) == 20000
     && ice40_tq144_package.contact_count == 144
 }

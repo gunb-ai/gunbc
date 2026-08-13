@@ -2,6 +2,7 @@ module extdeps.programmable_logic.ice40.subject
 
 import std.types { String, NonEmptyStr, List }
 import std.nat { Nat }
+import std.measure { Measure, Micrometer, measure_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -34,14 +35,18 @@ type Ice40Device {
   phase_locked_loops: Nat
 }
 
-// A package is a physical carrier with a footprint a board must reproduce. Body dimensions and
-// contact pitch are carried in micrometres because a half-millimetre pitch is not expressible in
-// whole millimetres, and the board that places this part is drawn at that grain.
+// A package is a physical carrier with a footprint a board must reproduce. Dimensions are
+// Micrometer — the shared Length quantity at one finer decimal step — because a half-millimetre
+// pitch is not expressible in whole millimetres and the board that places this part is drawn at
+// that grain. An earlier revision spelled these as plain Nat with the unit in the field NAME,
+// which is the fork this repository refuses: a unit written in a name is a unit no consumer can
+// read, so a micrometre and a millimetre become the same type and adding them typechecks. The
+// contact COUNT stays Nat, and correctly: it is a cardinality, not a length.
 type Ice40Package {
   designator: NonEmptyStr
-  body_width_um: Nat
-  body_height_um: Nat
-  contact_pitch_um: Nat
+  body_width: Micrometer
+  body_height: Micrometer
+  contact_pitch: Micrometer
   contact_count: Nat
 }
 
@@ -88,9 +93,9 @@ data ice40_hx1k: Ice40Device = Ice40Device {
 
 data ice40_tq144_package: Ice40Package = Ice40Package {
   designator: "TQ144",
-  body_width_um: 20000,
-  body_height_um: 20000,
-  contact_pitch_um: 500,
+  body_width: Measure { count: 20000 },
+  body_height: Measure { count: 20000 },
+  contact_pitch: Measure { count: 500 },
   contact_count: 144,
 }
 

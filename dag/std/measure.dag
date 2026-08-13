@@ -272,6 +272,14 @@ type Ampere = Measure<ElectricCurrent, One, Nat>
 
 type Millimeter = Measure<Length, Milli, Nat>
 
+// THE SAME QUANTITY, ONE DECIMAL STEP FINER, and it is a scale argument rather than a new type
+// because that is the whole point of the axis: a half-millimetre package pitch and a hundred-
+// micrometre trace are ordinary lengths that whole millimetres cannot express, not a different
+// kind of measurement. Nat-backed for the same reason Millimeter is — a pitch or a body width is
+// an extent, and a negative one has no referent; signed spatial numbers are the affine layer's
+// business, and SignedMillimeterComponent below is where that lives.
+type Micrometer = Measure<Length, Micro, Nat>
+
 // THE SIGNED SPATIAL COMPONENT, and there is exactly ONE of it. Millimeter above stays Nat-backed
 // and is NOT widened: a wall of length -3 m must remain unwritable. What was missing is not a
 // negative length but the affine layer that explains what a signed spatial number MEANS. The
