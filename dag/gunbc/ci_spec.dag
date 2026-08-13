@@ -555,7 +555,9 @@ fn gunbc_ci_fleet_reach_probe_invoke() -> String {
 // Read-only multi-principal fleet-key probe (parent msg_e767a783): measures whether the
 // in-run fleet key authenticates as any PRE-EXISTING account on srv3/srv4 (ubuntu,
 // briansrls, ghrunner, root) — hostname + sudo -n -l, no writes. Rides the same probe
-// job so it reuses the one WIF/agent materialization; its receipt is a separate file.
+// job so it reuses the one WIF/agent materialization (gunbc_ci_fleet_key_agent_script);
+// fleet_multi_principal_probe_wet uses typed_argv_probe_over_ssh over SSH_AUTH_SOCK, not
+// a second Secret Manager fetch from gunbc run. Its receipt is a separate file.
 data gunbc_ci_multi_principal_probe_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_multi_principal_probe_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_multi_principal_probe fleet_multi_principal_probe_wet plus a cat of the typed receipt; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route")
 
 fn gunbc_ci_multi_principal_probe_invoke() -> String {
