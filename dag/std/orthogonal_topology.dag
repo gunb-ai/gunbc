@@ -240,17 +240,35 @@ fn space_floor_area(registry: SpatialFrameRegistry, s: EnclosedSpace) -> Orthogo
 
 // Volume is area times height and nothing else. There is no stored volume to disagree with the
 // footprint, and no arm that answers when the multiplication leaves the range.
-// The volume fold needs a millimetre NUMBER, and the height now arrives as a frame extent. This
-// is the projection, and it refuses exactly where the extent cannot be stated in millimetres -
-// which is the same condition the area fold above checks, reached by a different route.
-fn space_height_millimetres(registry: SpatialFrameRegistry, s: EnclosedSpace) -> Millimeter {
+// THE HEIGHT PROJECTION REFUSES, AND AN EARLIER REVISION OF THIS FUNCTION DID NOT. It returned
+// millimeter(count: 0) when the extent could not be projected or the frame was unregistered - and
+// space_volume multiplied an area by that zero, so a space whose height nobody could state
+// reported a volume of nothing rather than refusing. That is the absorbing fallback DESIGN section
+// 5 forbids, in its most deniable form: the answer is a number, it is in the right unit, and it is
+// the one value a reader is least likely to question for an empty-looking result. The comment
+// above it claimed the projection refused exactly, which is how it survived being written.
+//
+// The refusal is typed and reaches the caller, so a volume over an unlabelable frame is now
+// OrthogonalRefused rather than zero.
+//
+// REACHABILITY, STATED BECAUSE IT IS LESS THAN IT LOOKS. Both refusal arms below are unreachable
+// through space_volume, the only caller: it consults space_floor_area first, whose guard refuses
+// on exactly the frames that would make this projection fail, so control never arrives here on a
+// bad frame. They are a defence for a future direct caller, not an executing check, and the
+// witness that covers the volume path is exercising the AREA guard rather than these arms - which
+// was worth finding, because the control was first written claiming otherwise and a mutation of
+// both arms left it green. What the fix delivers is that this function no longer fabricates a
+// zero; what it does not deliver is an executed proof of these arms.
+fn space_height_millimetres(registry: SpatialFrameRegistry, s: EnclosedSpace) -> OrthogonalConstruction<Millimeter> {
   match space_height(registry: registry, s: s) {
+    ExtentFrameUnregistered { identity: f } =>
+      OrthogonalRefused { cause: MillimetreFrameRequiredForMetric { frame: f } }
     ExtentInFrame { length: l } =>
       match frame_length_as_millimeter(l: l) {
-        LengthProjected { value: mm } => mm
-        LengthProjectionRefused { cause: _ } => millimeter(count: 0)
+        LengthProjected { value: mm } => OrthogonalReady { value: mm }
+        LengthProjectionRefused { cause: _ } =>
+          OrthogonalRefused { cause: MillimetreFrameRequiredForMetric { frame: space_frame(s: s) } }
       }
-    ExtentFrameUnregistered { identity: _ } => millimeter(count: 0)
   }
 }
 
@@ -258,13 +276,17 @@ fn space_volume(registry: SpatialFrameRegistry, s: EnclosedSpace) -> OrthogonalC
   match space_floor_area(registry: registry, s: s) {
     OrthogonalRefused { cause: c } => OrthogonalRefused { cause: c }
     OrthogonalReady { value: area } =>
-      match checked_int_multiply(a: square_millimeter_count_as_int(m: area), b: millimeter_count_as_int(m: space_height_millimetres(registry: registry, s: s))) {
+      match space_height_millimetres(registry: registry, s: s) {
+        OrthogonalRefused { cause: hc } => OrthogonalRefused { cause: hc }
+        OrthogonalReady { value: h } =>
+      match checked_int_multiply(a: square_millimeter_count_as_int(m: area), b: millimeter_count_as_int(m: h)) {
         CheckedIntOverflow { cause: c } => OrthogonalRefused { cause: ShellArithmeticRefused { cause: c } }
         CheckedIntReady { value: v } =>
           match checked_int_magnitude(a: v) {
             CheckedNatOverflow { cause: c } => OrthogonalRefused { cause: ShellArithmeticRefused { cause: c } }
             CheckedNatReady { value: n } => OrthogonalReady { value: cubic_millimeter(count: n) }
           }
+      }
       }
   }
 }

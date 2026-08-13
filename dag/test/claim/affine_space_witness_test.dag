@@ -24,6 +24,7 @@ import std.affine_space {
   SpatialFrameRefusal, SpatialOperationIdentity,
   SpatialFrameRelation, SameFrameOperandsRequired,
   TransformSourceFrameRequired, TransformTranslationInDestinationRequired,
+  ProjectionSourceFrameRequired,
 }
 import std.spatial_frame { SpatialFrameRegistry, empty_frame_registry, register_frame, registry_with, FrameRegistered, FrameRegistrationRefused }
 import std.measure { Milli, Micro }
@@ -355,6 +356,7 @@ fn relation_is_same_frame(r: SpatialFrameRelation) -> Bool {
     TransformSourceFrameRequired => false
     MillimetreFrameRequired => false
     TransformTranslationInDestinationRequired => false
+    ProjectionSourceFrameRequired => false
   }
 }
 
@@ -364,6 +366,7 @@ fn relation_is_transform_source(r: SpatialFrameRelation) -> Bool {
     TransformSourceFrameRequired => true
     MillimetreFrameRequired => false
     TransformTranslationInDestinationRequired => false
+    ProjectionSourceFrameRequired => false
   }
 }
 
@@ -567,6 +570,7 @@ fn witness_transform_translation_must_be_in_destination_frame() -> Bool {
     TransformTranslationInDestinationRequired => true
           SameFrameOperandsRequired => false
           TransformSourceFrameRequired => false
+          ProjectionSourceFrameRequired => false
         }
     SpatialFrameRefused { refusal: _ } => false
     SpatialReady { value: _ } => false
@@ -618,6 +622,7 @@ test fn w_metric_operations_refuse_a_frame_they_cannot_label() -> Bool {
         SameFrameOperandsRequired => false
         TransformSourceFrameRequired => false
         TransformTranslationInDestinationRequired => false
+        ProjectionSourceFrameRequired => false
       }
     SpatialReady { value: _ } => false
     SpatialArithmeticRefused { cause: _ } => false
@@ -647,6 +652,7 @@ test fn w_metric_operations_refuse_a_frame_they_cannot_label() -> Bool {
         SameFrameOperandsRequired => false
         TransformSourceFrameRequired => false
         TransformTranslationInDestinationRequired => false
+        ProjectionSourceFrameRequired => false
       }
     SpatialReady { value: _ } => false
     SpatialArithmeticRefused { cause: _ } => false
