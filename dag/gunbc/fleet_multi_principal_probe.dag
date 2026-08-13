@@ -22,6 +22,7 @@ import gunbc.fleet_known_hosts_anchor {
   shape_fleet_ssh_exec,
 }
 import extdeps.ssh.session { ssh_session_exec_portable_words }
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import gunbc.auth.access_token_source { GcloudPrintToken }
 import gunbc.spark_credential_workflow { run_with_materialized_fleet_ssh_binding }
 import gunbc.fleet_ssh_access { fleet_automation_ssh_key }
@@ -304,15 +305,89 @@ func fleet_multi_principal_probe_with_attempt(attempt_raw: String) -> ProcessExi
 // and reduces nothing.
 data spark_grant_probe_receipt_path: String = "target/spark-exact-grant-probe-receipt.txt"
 
-fn spark_exact_grant_block(context: FleetSshExecutionContext, host: String, principal: String) -> String {
-  match probe_leg(context: context, host: host, principal: principal, raw_words: ["sudo", "-n", "-l"]) {
-    Absent => join(["grant host=", host, " principal=", principal, " probe-refused cause=non-portable-remote-word\n"], "")
-    Present { value: r } =>
-      if r.success {
-        join(["grant host=", host, " principal=", principal, " enumerated:\n", r.stdout, "\n"], "")
-      } else {
-        join(["grant host=", host, " principal=", principal, " NO-PASSWORDLESS-GRANT exit=", to_string(r.exit_code), " stderr=", r.stderr, "\n"], "")
-      }
+// ONE TYPED OUTCOME PER HOST. An earlier revision of this probe decided its exit status with
+// string_contains(body, "REFUSED") -- the prose-decision defect this same PR removes from the apply
+// path, reintroduced here (review 51704). It was worse than the one it copied: the refused-leg arm
+// spells "probe-refused" in lower case, which does not contain "REFUSED", so a leg that never ran
+// exited 0. The receipt is now a PROJECTION of these variants rather than the thing decided upon.
+type SparkGrantOutcome
+  = GrantEnumerated { listing: String }
+  | GrantAbsent { detail: String }
+  | GrantProbeRefused { cause: String }
+
+type SparkGrantRow {
+  host: String
+  principal: String
+  outcome: SparkGrantOutcome
+}
+
+// Head-plus-tail: a grant probe that observed no host has no constructor, because "every host is
+// clean" and "nothing was asked" must not share a representation.
+type SparkGrantReport
+  = GrantsObserved { first: SparkGrantRow, more: List<SparkGrantRow> }
+  | GrantProbeNotAttempted { cause: String }
+
+fn spark_exact_grant_row(context: FleetSshExecutionContext, host: String, principal: String) -> SparkGrantRow {
+  SparkGrantRow {
+    host: host,
+    principal: principal,
+    outcome: match probe_leg(context: context, host: host, principal: principal, raw_words: ["sudo", "-n", "-l"]) {
+      Absent => GrantProbeRefused { cause: "non-portable-remote-word" }
+      Present { value: r } =>
+        if r.success {
+          GrantEnumerated { listing: r.stdout }
+        } else {
+          GrantAbsent { detail: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+        }
+    },
+  }
+}
+
+// GrantAbsent is NOT a failure: "this account holds no passwordless grant" is a real, useful
+// observation and the one the Sparks are expected to report before a serving grant is widened. Only
+// GrantProbeRefused -- we could not ask -- fails the process, which is the distinction the substring
+// gate could not draw at all.
+fn spark_grant_report_refusal(report: SparkGrantReport) -> String? {
+  match report {
+    GrantProbeNotAttempted { cause: c } => Present { value: c }
+    GrantsObserved { first: f, more: m } =>
+      fold(concat([f], m), init: none, f: fn(acc, row) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => match row.outcome {
+            GrantProbeRefused { cause: c } => Present { value: join(["host=", row.host, " principal=", row.principal, " probe-refused cause=", c], "") }
+            GrantEnumerated { listing: _ } => none
+            GrantAbsent { detail: _ } => none
+          }
+        }
+      })
+  }
+}
+
+fn spark_grant_row_text(row: SparkGrantRow) -> String {
+  match row.outcome {
+    GrantEnumerated { listing: l } => join(["grant host=", row.host, " principal=", row.principal, " enumerated:\n", l, "\n"], "")
+    GrantAbsent { detail: d } => join(["grant host=", row.host, " principal=", row.principal, " NO-PASSWORDLESS-GRANT ", d, "\n"], "")
+    GrantProbeRefused { cause: c } => join(["grant host=", row.host, " principal=", row.principal, " probe-refused cause=", c, "\n"], "")
+  }
+}
+
+fn spark_grant_report_text(report: SparkGrantReport) -> String {
+  match report {
+    GrantProbeNotAttempted { cause: c } => join(["spark exact-grant probe not attempted: ", c, "\n"], "")
+    GrantsObserved { first: f, more: m } => join(map(concat([f], m), r => spark_grant_row_text(row: r)), "")
+  }
+}
+
+fn spark_exact_grant_report(context: FleetSshExecutionContext) -> SparkGrantReport {
+  let rows = map(spark_standing_hosts, h =>
+    spark_exact_grant_row(context: context, host: h, principal: "gunbc-automation"))
+  match list_head(rows) {
+    HeadAbsent => GrantProbeNotAttempted { cause: "no standing hosts are declared" }
+    HeadFound { value: f } => match list_tail(rows) {
+      TailAbsent => GrantsObserved { first: f, more: [] }
+      TailFound { tail: t } => GrantsObserved { first: f, more: t }
+    }
   }
 }
 
@@ -323,29 +398,25 @@ func spark_exact_grant_probe_wet(attempt_raw: String) -> ProcessExit
     attempt_raw: attempt_raw,
     token_source: GcloudPrintToken,
     body: fn(credential) {
-      let body = match probe_attempt_identity(raw: attempt_raw) {
-        Absent => "spark exact-grant probe REFUSED: attempt identity is not a safe path segment\n"
+      let report = match probe_attempt_identity(raw: attempt_raw) {
+        Absent => GrantProbeNotAttempted { cause: "attempt identity is not a safe path segment" }
         Present { value: attempt } => {
           let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
           match fleet_ssh_execution_context_of(outcome: materialization, credential: credential) {
-            Absent => join([
-              "spark exact-grant probe REFUSED before any ssh leg: ",
-              known_hosts_materialization_receipt(outcome: materialization), "\n",
-            ], "")
-            Present { value: context } =>
-              join(map(spark_standing_hosts, h =>
-                spark_exact_grant_block(context: context, host: h, principal: "gunbc-automation")), "")
+            Absent => GrantProbeNotAttempted {
+              cause: join(["trust could not be established, so no ssh leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""),
+            }
+            Present { value: context } => spark_exact_grant_report(context: context)
           }
         }
       }
-      let w = Filesystem.Write(path: spark_grant_probe_receipt_path, content: body)
+      let w = Filesystem.Write(path: spark_grant_probe_receipt_path, content: spark_grant_report_text(report: report))
       if !w.success {
         exit_failure(reason: join(["exact-grant probe receipt write failed: ", w.error], ""))
       } else {
-        if string_contains(s: body, pattern: "REFUSED") {
-          exit_failure(reason: join(["spark exact-grant probe could not run:\n", body], ""))
-        } else {
-          ExitSuccess
+        match spark_grant_report_refusal(report: report) {
+          Present { value: c } => exit_failure(reason: join(["spark exact-grant probe could not run: ", c], ""))
+          Absent => ExitSuccess
         }
       }
     },
@@ -426,6 +497,25 @@ func spark_managed_access_standing_wet() -> ProcessExit
   }
 }
 
+// THE STANDING EXIT, folded over the derived standings rather than over the rendered receipt. The
+// substring gate this replaces asked whether the body contained "REFUSED" -- and no arm of
+// spark_standing_line or spark_authorization_lines ever emits that word, so the gate could not fire
+// at all and the func exited 0 whatever it observed (found while fixing the sibling defect in
+// review 51704). ManagedAccessBootstrapRequired is a real observation and stays a success; only
+// ManagedAccessUnobserved -- no reachable principal, so nothing was measured -- fails.
+fn spark_standing_unobserved_host(standings: List<SparkManagedAccessStanding>) -> String? {
+  fold(standings, init: none, f: fn(acc, standing) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => match standing {
+        ManagedAccessUnobserved { host: h } => Present { value: h as String }
+        ManagedAccessGrounded { occurrence: _ } => none
+        ManagedAccessBootstrapRequired { host: _, missing: _, bootstrap_transport: _ } => none
+      }
+    }
+  })
+}
+
 func spark_managed_access_standing_with_attempt(attempt_raw: String) -> ProcessExit {
   let now = clock_now_probed_at()
   let credential_identity = modeled_fleet_automation_credential_identity()
@@ -460,10 +550,11 @@ func spark_managed_access_standing_with_attempt(attempt_raw: String) -> ProcessE
   if !w.success {
     exit_failure(reason: join(["spark standing receipt write failed: ", w.error], ""))
   } else {
-    if string_contains(s: body, pattern: "REFUSED") {
-      exit_failure(reason: join(["spark managed-access standing could not be observed:\n", body], ""))
-    } else {
-      ExitSuccess
+    match spark_standing_unobserved_host(standings: map(spark_standing_hosts, h =>
+      derive_spark_managed_access_standing(host: h as HostIdentity, observations: observations))) {
+      Present { value: h } =>
+        exit_failure(reason: join(["spark managed-access standing could not be observed on host=", h, ": no reachable principal, so no transport to bootstrap through"], ""))
+      Absent => ExitSuccess
     }
   }
 }
