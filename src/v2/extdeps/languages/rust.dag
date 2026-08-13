@@ -1240,8 +1240,8 @@ fn rust_value_expression_projection() -> TargetValueExpressionProjection {
       arm_separator: ^rust_token_comma
     },
     bool_literal_form: TargetBoolLiteralShape {
-      true_token: ^dag_token_kw_true,
-      false_token: ^dag_token_kw_false
+      true_token: ^rust_token_kw_true,
+      false_token: ^rust_token_kw_false
     },
     block_evaluation_mode: ValueProducing
   }
@@ -2278,8 +2278,8 @@ fn rust_staging_match_additional_lex_rules() -> List<LexRule> {
   [
     rust_lex_rule(token_class: ^rust_token_unwired_match, text: "match "),
     rust_lex_rule(token_class: ^rust_token_unwired_fat_arrow, text: " => "),
-    rust_lex_rule(token_class: ^dag_token_kw_true, text: "true"),
-    rust_lex_rule(token_class: ^dag_token_kw_false, text: "false")
+    rust_lex_rule(token_class: ^rust_token_kw_true, text: "true"),
+    rust_lex_rule(token_class: ^rust_token_kw_false, text: "false")
   ]
 }
 

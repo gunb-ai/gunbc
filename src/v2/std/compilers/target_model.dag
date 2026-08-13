@@ -12406,13 +12406,6 @@ fn target_project_transform_callable_apply_in_arrow_scope(
   )
 }
 
-fn target_value_expr_cond_is_bool_atom(
-  node: Node,
-  bool_form: TargetBoolLiteralShape
-) -> Bool {
-  target_value_expr_is_source_bool_literal_atom(node: node, bool_form: bool_form)
-}
-
 fn target_value_expr_branch_bool_gate(
   node: Node,
   bool_form: TargetBoolLiteralShape
@@ -12422,7 +12415,7 @@ fn target_value_expr_branch_bool_gate(
   } else {
     match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
       Present { value: cond } =>
-        target_value_expr_cond_is_bool_atom(node: cond, bool_form: bool_form)
+        target_value_expr_is_source_bool_literal_atom(node: cond, bool_form: bool_form)
       Absent => false
     }
   }

@@ -663,8 +663,8 @@ fn ts_value_expression_projection_full(
       arm_separator: ^ts_token_comma
     },
     bool_literal_form: TargetBoolLiteralShape {
-      true_token: ^dag_token_kw_true,
-      false_token: ^dag_token_kw_false
+      true_token: ^ts_token_kw_true,
+      false_token: ^ts_token_kw_false
     },
     block_evaluation_mode: block_evaluation_mode
   }
@@ -2415,6 +2415,8 @@ fn ts_lex_rules() -> LexRuleSet {
       ts_lex_rule(token_class: ^ts_token_kw_let, text: "let "),
       ts_lex_rule(token_class: ^ts_token_kw_const, text: "const "),
       ts_lex_rule(token_class: ^ts_token_kw_type, text: "type "),
+      ts_lex_rule(token_class: ^ts_token_kw_true, text: "true"),
+      ts_lex_rule(token_class: ^ts_token_kw_false, text: "false"),
       ts_ident_lex_rule(),
       ts_lex_rule(token_class: ^ts_token_ty_number, text: "number"),
       ts_lex_rule(token_class: ^ts_token_ty_string, text: "string"),

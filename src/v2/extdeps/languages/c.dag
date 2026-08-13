@@ -1002,8 +1002,8 @@ fn c_value_expression_projection() -> TargetValueExpressionProjection {
       arm_separator: ^c_token_comma
     },
     bool_literal_form: TargetBoolLiteralShape {
-      true_token: ^dag_token_kw_true,
-      false_token: ^dag_token_kw_false
+      true_token: ^c_token_kw_true,
+      false_token: ^c_token_kw_false
     },
     block_evaluation_mode: StatementSequenced {
       return_token: ^c_token_kw_return,
@@ -1089,6 +1089,8 @@ fn c_lex_rules() -> List<LexRule> {
     c_lex_rule(token_class: ^c_token_plus, text: " + "),
     c_lex_rule(token_class: ^c_token_semicolon, text: ";"),
     c_lex_rule(token_class: ^c_token_rbrace, text: " }"),
+    c_lex_rule(token_class: ^c_token_kw_true, text: "true"),
+    c_lex_rule(token_class: ^c_token_kw_false, text: "false"),
     c_lex_rule(token_class: ^c_token_ternary_nop, text: ""),
     c_lex_rule(token_class: ^c_token_ternary_question, text: " ? "),
     c_lex_rule(token_class: ^c_token_ternary_colon, text: " : ")
