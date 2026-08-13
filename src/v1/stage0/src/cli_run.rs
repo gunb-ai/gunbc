@@ -14658,20 +14658,35 @@ pub fn install_output_policy(source_roots: &[String]) {
     ]);
 
     let _ = OBSERVATION_SOURCE_ROOTS.set(source_roots.to_vec());
+    // Ask the policy in a form with exactly two readings. An earlier revision called
+    // `routine_rollup_grain_for` — whose parameter is a `Verbosity`, not the two Bools passed —
+    // so every call errored and the catch-all arm read the error as "do not fold". CI duly ran
+    // with 5,310 per-witness lines and every witness green, because a policy read that fails
+    // closed to the OLD behaviour is indistinguishable from a policy that chose it.
     let folds = match v1_interpreter::run_in_context_with_args(
         &ctx,
-        "routine_rollup_grain_for",
+        "routine_rollup_folds",
         &[
             (Some("verbose".to_string()), Value::Bool(verbose)),
             (Some("quiet".to_string()), Value::Bool(quiet)),
         ],
         false,
     ) {
-        // Present{..} = fold at that grain, Absent = leaf. The seed carries the presence, not the
-        // grain: BatchGrain is the only grain the floor walk has a rollup for today, so decoding
-        // the payload would be inventing a distinction the consumer cannot honour.
-        Ok(Value::Variant { variant_name, .. }) => ctx.sym_eq(variant_name, "Present"),
-        _ => false,
+        Ok(Value::Bool(b)) => b,
+        // Counted, not absorbed: the run still prints every line (the safe direction), but it says
+        // so, so a policy that stopped being readable cannot present as a policy that said leaf.
+        other => {
+            eprintln!(
+                "::warning::output policy drift: gunbc.output_policy `routine_rollup_folds` did \
+                 not answer a Bool ({}); routine observation folding is DISABLED for this run and \
+                 every per-witness line will print",
+                match other {
+                    Ok(_) => "returned a non-Bool value".to_string(),
+                    Err(e) => format!("evaluation failed: {e}"),
+                }
+            );
+            false
+        }
     };
     let _ = ROUTINE_ROLLUP_FOLD.set(folds);
 

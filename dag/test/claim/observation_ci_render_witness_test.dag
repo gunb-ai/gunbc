@@ -39,6 +39,12 @@ import std.observation {
   observation_durations_wall,
   observation_durations_wall_unavailable,
 }
+import gunbc.output_policy {
+  routine_rollup_folds,
+  routine_rollup_grain_for,
+  resolve_verbosity,
+  VerbosityEnv,
+}
 import gunbc.observation_ci_render {
   ci_batch_summary_text,
   RenderedLine,
@@ -494,4 +500,29 @@ test fn w_RED_each_anomaly_still_costs_its_own_line() -> Bool {
     ]
   )
   proj_line_count(events: mixed) == 2
+}
+
+// The seed reads `routine_rollup_folds`, not the Optional it derives from, so this is the pair that
+// keeps the two from drifting apart: the Bool must agree with the grain at every verbosity. A
+// witness on the Optional alone would have stayed green through the defect that shipped — the seed
+// was calling a function with the wrong parameter and reading the resulting error as `false`.
+fn proj_grain_says_fold(verbose: Bool, quiet: Bool) -> Bool {
+  match routine_rollup_grain_for(
+    verbosity: resolve_verbosity(env: VerbosityEnv { verbose: verbose, quiet: quiet })
+  ) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn w_the_bool_seam_agrees_with_the_grain_at_every_verbosity() -> Bool {
+  (routine_rollup_folds(verbose: false, quiet: false) == proj_grain_says_fold(verbose: false, quiet: false))
+    && (routine_rollup_folds(verbose: true, quiet: false) == proj_grain_says_fold(verbose: true, quiet: false))
+    && (routine_rollup_folds(verbose: false, quiet: true) == proj_grain_says_fold(verbose: false, quiet: true))
+}
+
+test fn w_RED_verbose_does_not_fold_but_normal_and_quiet_do() -> Bool {
+  routine_rollup_folds(verbose: false, quiet: false)
+    && routine_rollup_folds(verbose: false, quiet: true)
+    && !routine_rollup_folds(verbose: true, quiet: false)
 }

@@ -94,6 +94,23 @@ fn routine_rollup_grain_for(verbosity: Verbosity) -> ObservationGrain? {
   }
 }
 
+// The seed's decodable form of the question above. It exists because a `T?` has no representation
+// the seed can read without guessing — Absent, a null sentinel and a bare payload are all plausible
+// encodings — and a decoder that guesses wrong answers "do not fold", which is silence wearing a
+// safe default. A Bool has exactly two readings and no third.
+//
+// DERIVED from routine_rollup_grain_for rather than restating its table: two functions answering
+// the same question from two hand-written matches is the dual representation this repository keeps
+// removing, and the failure mode is that the seed folds while the policy says leaf.
+fn routine_rollup_folds(verbose: Bool, quiet: Bool) -> Bool {
+  match routine_rollup_grain_for(
+    verbosity: resolve_verbosity(env: VerbosityEnv { verbose: verbose, quiet: quiet })
+  ) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 fn channel_policy(verbosity: Verbosity) -> ChannelPolicy {
   ChannelPolicy {
     diagnostic: channel_decision(channel: Diagnostic, verbosity: verbosity)
