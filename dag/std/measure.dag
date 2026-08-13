@@ -270,15 +270,20 @@ type Volt = Measure<ElectricPotentialDifference, One, Nat>
 
 type Ampere = Measure<ElectricCurrent, One, Nat>
 
-type Millimeter = Measure<Length, Milli, Nat>
-
-// THE SAME QUANTITY, ONE DECIMAL STEP FINER, and it is a scale argument rather than a new type
-// because that is the whole point of the axis: a half-millimetre package pitch and a hundred-
-// micrometre trace are ordinary lengths that whole millimetres cannot express, not a different
-// kind of measurement. Nat-backed for the same reason Millimeter is — a pitch or a body width is
-// an extent, and a negative one has no referent; signed spatial numbers are the affine layer's
-// business, and SignedMillimeterComponent below is where that lives.
+// The micrometre exists as a named carrier because EIA-310's rack unit is 44.45 mm - NOT a whole
+// number of millimetres - so any quantity derived from a rack unit count is inexact at millimetre
+// grain and exact at micrometre grain. Naming it lets a consumer stay exact instead of choosing
+// between a truncation and a rounding policy, which is the choice std.measure exists to remove.
+//
+// A SECOND, INDEPENDENT CONSUMER ARRIVED AT THE SAME CARRIER, recorded because two unrelated
+// subjects needing one step finer is what makes this a scale argument on the Length axis rather
+// than a rack-specific convenience: a printed circuit board sits on a half-millimetre package
+// pitch with hundred-micrometre traces, which whole millimetres cannot express at all. Two
+// declarations of it were briefly authored in parallel and one was deleted — the concept is one,
+// and its reasons accumulate here rather than forking the type.
 type Micrometer = Measure<Length, Micro, Nat>
+
+type Millimeter = Measure<Length, Milli, Nat>
 
 // THE SIGNED SPATIAL COMPONENT, and there is exactly ONE of it. Millimeter above stays Nat-backed
 // and is NOT widened: a wall of length -3 m must remain unwritable. What was missing is not a
@@ -508,6 +513,14 @@ fn ampere(count: Nat) -> Ampere {
 
 fn ampere_count(a: Ampere) -> Nat {
   measure_count(a)
+}
+
+fn micrometer(count: Nat) -> Micrometer {
+  Measure { count: count }
+}
+
+fn micrometer_count(m: Micrometer) -> Nat {
+  measure_count(m)
 }
 
 fn millimeter(count: Nat) -> Millimeter {
