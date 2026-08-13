@@ -195,8 +195,8 @@ test fn masked_overlap_located_reason_unmasks_terminal_refusal() -> Bool {
       }
     ]
   }
-  (frontier_probe_assemble_located_reason_from_diagnostics(d: masked)
-    == ^body_lowering_reason_wrapper_retained_emitted)
+  let located = frontier_probe_assemble_located_reason_from_diagnostics(d: masked)
+  located == ^body_lowering_reason_wrapper_retained_emitted
 }
 
 test fn overlap_only_chain_keeps_overlap_located_reason() -> Bool {
@@ -208,6 +208,6 @@ test fn overlap_only_chain_keeps_overlap_located_reason() -> Bool {
     },
     tail: Empty
   }
-  (frontier_probe_assemble_located_reason_from_diagnostics(d: overlap_only)
-    == ^parse_grammar_choice_overlap_residue)
+  let located = frontier_probe_assemble_located_reason_from_diagnostics(d: overlap_only)
+  located == ^parse_grammar_choice_overlap_residue
 }
