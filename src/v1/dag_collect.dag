@@ -5,7 +5,7 @@ import v1.std.core {
   InferredNode, Resolved,
   ExprData,
   Connective, NoConnective,
-  MatchPattern,
+  MatchPattern, Bind, LitPattern, VariantPattern, Wildcard,
   ErrorNode,
   import_is_all
 }
@@ -90,6 +90,21 @@ fn dag_collect_inferred(value: InferredNode?, slots: Map<String, DagCollectSlot>
   }
 }
 
+// match_pattern is a SubValueField (v1.std.core node_field_roles), same as body
+// and expr_data; its embedded Node subtrees (Bind.declaration,
+// VariantPattern.field_bindings) are real DAG artifacts and must be registered
+// or they never enter the collection accumulator at all.
+fn dag_collect_match_pattern(pattern: MatchPattern?, slots: Map<String, DagCollectSlot>, collision_errors: List<ErrorNode>) -> Map<String, DagCollectSlot> {
+  match pattern {
+    Present { value: Bind { declaration: d } } => dag_collect_insert_slots(node: d, slots: slots, collision_errors: collision_errors)
+    Present { value: VariantPattern { name: _, parent_enum: _, field_bindings: fbs } } =>
+      dag_collect_nodes_list(nodes: fbs, slots: slots, collision_errors: collision_errors)
+    Present { value: LitPattern { value: _ } } => slots
+    Present { value: Wildcard } => slots
+    Absent => slots
+  }
+}
+
 fn dag_collect_node_tree(node: Node, slots: Map<String, DagCollectSlot>, collision_errors: List<ErrorNode>) -> Map<String, DagCollectSlot> {
   let slots = dag_collect_nodes_list(nodes: node.children, slots: slots, collision_errors: collision_errors)
   let slots = if is_module_shell_node(n: node) {
@@ -102,6 +117,7 @@ fn dag_collect_node_tree(node: Node, slots: Map<String, DagCollectSlot>, collisi
   let slots = dag_collect_optional_node(value: node.transport, slots: slots, collision_errors: collision_errors)
   let slots = dag_collect_nodes_list(nodes: node.properties, slots: slots, collision_errors: collision_errors)
   let slots = dag_collect_optional_node(value: node.type_annotation, slots: slots, collision_errors: collision_errors)
+  let slots = dag_collect_match_pattern(pattern: node.match_pattern, slots: slots, collision_errors: collision_errors)
   dag_collect_inferred(value: node.inferred, slots: slots, collision_errors: collision_errors)
 }
 
