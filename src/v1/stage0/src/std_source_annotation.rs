@@ -553,7 +553,7 @@ pub fn annotation_attach_resolve(
 ) -> Rc<AnnotationAttachAcc> {
     match pick.following.clone() {
         None => {
-            if capture.text.clone().is_empty() {
+            if (capture.text.clone() == "".to_string()) {
                 acc.clone()
             } else {
                 Rc::new(AnnotationAttachAcc {

@@ -460,11 +460,15 @@ fn annotation_attach_resolve(
 ) -> AnnotationAttachAcc {
   match pick.following {
     Absent =>
-      AnnotationAttachAcc {
-        rows: acc.rows,
-        refusals: list_push(acc.refusals, UnattachedAtScopeEnd { origin: capture.origin }),
-        pending: acc.pending,
-        pending_adjacent: false,
+      if capture.text == "" {
+        acc
+      } else {
+        AnnotationAttachAcc {
+          rows: acc.rows,
+          refusals: list_push(acc.refusals, UnattachedAtScopeEnd { origin: capture.origin }),
+          pending: acc.pending,
+          pending_adjacent: false,
+        }
       }
     Present { value: subject } =>
       match acc.pending {
