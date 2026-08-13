@@ -1,0 +1,241 @@
+module product.spatial_world
+
+import std.types { Bool, List }
+import std.integer { Int }
+import std.measure { CubicMillimeter }
+import std.change {
+  KeyedDiffHunk, KeyedDiffAddedHunk, KeyedDiffRemovedHunk, KeyedDiffModifiedHunk,
+  KeyedPatch,
+}
+import std.orthogonal_geometry { OrthogonalRefusal, OrthogonalReady, OrthogonalRefused }
+import std.orthogonal_topology {
+  EnclosedSpace, space_eq, space_volume,
+  SpaceComplex, space_complex, complex_total_volume,
+}
+import product.placement_supply { RoomIdentity }
+import v2.std.optional { Present, Absent }
+import std.spatial_frame { SpatialFrameRegistry }
+
+// SPATIAL-4A: WORLD STATE, AND VARIANTS AS DELTAS.
+//
+// A world is the join of two facts that live in different layers and must not be fused: WHICH room
+// this is (an allocated RoomIdentity, product.placement_supply's authority since SPATIAL-0) and
+// WHAT SHAPE it has (an EnclosedSpace, std's, which carries no identity at all by deliberate
+// design). This module is the join and owns neither side. That is why geometry is imported rather
+// than re-declared here and why a room's identity is never derived from its shape - two rooms can
+// be geometrically identical and remain different rooms, and one room keeps its identity across
+// every change to its walls.
+//
+// A VARIANT IS A DELTA, NEVER A COPY, and the type is what enforces it: WorldVariant holds a base
+// and a KeyedPatch, and there is no constructor anywhere that takes a full room list and calls the
+// result a variant. The alternative - copy the world, edit the copy - makes every question about
+// what CHANGED a diff someone has to remember to compute, and makes two variants of one base
+// silently independent artifacts that drift. Here the change IS the representation.
+//
+// THE DELTA ALGEBRA IS IMPORTED, NOT INVENTED. std.change already owns keyed patches with exactly
+// the three arms this needs, and its added/removed/modified split is the one DESIGN's
+// fleet-reconcile spine argues for: modified carries `from` as well as `to`, which is precisely the
+// fact a safe application needs and which an `upsert` collapse discards. This module supplies the
+// key and value types and the meaning of applying a hunk; it adds no diff vocabulary.
+//
+// WHAT THIS BAND DOES NOT CLAIM. There are no openings and no connectivity here - whether you can
+// walk from one space to another is a topology question that belongs beside the geometry, not in
+// the identity join, and it arrives with its own witnesses. There is no ordering on variants, no
+// merge of two deltas over one base, and no history: a variant names one base and one patch. Delta
+// composition needs a conflict verdict over the same key, which std.change models
+// (KeyedLeafVerdict) and which no consumer here has asked for yet.
+
+// The world's refusals EMBED the geometry band's rather than restating them, so a caller learns
+// which layer refused without this module having to re-spell an OrthogonalRefusal it did not
+// produce. The two arms of its own are identity facts, which the geometry layer cannot have an
+// opinion about because it has no identities.
+type WorldRefusal
+  = WorldGeometryRefused { cause: OrthogonalRefusal }
+  | DuplicateRoomIdentity { identity: RoomIdentity }
+  | VariantTargetMissing { identity: RoomIdentity }
+  | VariantTargetAlreadyPresent { identity: RoomIdentity }
+  | VariantBaseChanged { identity: RoomIdentity }
+
+type WorldConstruction<T>
+  = WorldReady { value: T }
+  | WorldRefused { cause: WorldRefusal }
+
+type PlacedSpace {
+  identity: RoomIdentity
+  space: EnclosedSpace
+}
+
+// The complex is NOT stored beside the rooms. Admission is proven at the mint, and keeping the
+// admitted SpaceComplex as a field would be a second representation of the same room list - an
+// edit to one could leave the other describing a world that no longer exists, which is the exact
+// disagreement this band exists to make unrepresentable. It is re-derived when a caller asks for
+// it; that is a recomputation, and it is the cheaper mistake than a stale field.
+type World sole_constructor {
+  rooms: List<PlacedSpace>
+}
+
+fn room_identity_eq(a: RoomIdentity, b: RoomIdentity) -> Bool {
+  (a as String) == (b as String)
+}
+
+fn world_rooms(w: World) -> List<PlacedSpace> { w.rooms }
+
+fn world_room_count(w: World) -> Int { length(w.rooms) }
+
+fn find_room(rooms: List<PlacedSpace>, identity: RoomIdentity) -> PlacedSpace? {
+  fold(rooms, init: none, f: (acc, r) =>
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent => if room_identity_eq(a: r.identity, b: identity) { Present { value: r } } else { none }
+    })
+}
+
+type DuplicateScan {
+  seen: List<RoomIdentity>
+  duplicate: RoomIdentity?
+}
+
+fn first_duplicate_identity(rooms: List<PlacedSpace>) -> RoomIdentity? {
+  let scanned = fold(rooms, init: DuplicateScan { seen: [], duplicate: none }, f: (acc, r) =>
+    match acc.duplicate {
+      Present { value: d } => DuplicateScan { seen: acc.seen, duplicate: Present { value: d } }
+      Absent =>
+        let already = fold(acc.seen, init: false, f: (hit, s) => hit || room_identity_eq(a: s, b: r.identity))
+        if already {
+          DuplicateScan { seen: acc.seen, duplicate: Present { value: r.identity } }
+        } else {
+          DuplicateScan { seen: concat([r.identity], acc.seen), duplicate: none }
+        }
+    })
+  scanned.duplicate
+}
+
+fn room_spaces(rooms: List<PlacedSpace>) -> List<EnclosedSpace> {
+  reverse(fold(rooms, init: [], f: (acc, r) => concat([r.space], acc)))
+}
+
+// The mint runs BOTH walls: identities are unique, and the geometry is admissible as a complex -
+// which is where interpenetration and frame agreement are decided, by the authority that owns them.
+// A world therefore cannot exist in which two rooms share an identity or occupy the same volume.
+fn world(rooms: List<PlacedSpace>) -> WorldConstruction<World> {
+  match first_duplicate_identity(rooms: rooms) {
+    Present { value: d } => WorldRefused { cause: DuplicateRoomIdentity { identity: d } }
+    Absent =>
+      match space_complex(spaces: room_spaces(rooms: rooms)) {
+        OrthogonalRefused { cause: c } => WorldRefused { cause: WorldGeometryRefused { cause: c } }
+        OrthogonalReady { value: _ } => WorldReady { value: World { rooms: rooms } }
+      }
+  }
+}
+
+fn world_complex(w: World) -> WorldConstruction<SpaceComplex> {
+  match space_complex(spaces: room_spaces(rooms: w.rooms)) {
+    OrthogonalRefused { cause: c } => WorldRefused { cause: WorldGeometryRefused { cause: c } }
+    OrthogonalReady { value: c } => WorldReady { value: c }
+  }
+}
+
+fn world_total_volume(registry: SpatialFrameRegistry, w: World) -> WorldConstruction<CubicMillimeter> {
+  match world_complex(w: w) {
+    WorldRefused { cause: c } => WorldRefused { cause: c }
+    WorldReady { value: complex } =>
+      match complex_total_volume(registry: registry, c: complex) {
+        OrthogonalRefused { cause: c } => WorldRefused { cause: WorldGeometryRefused { cause: c } }
+        OrthogonalReady { value: v } => WorldReady { value: v }
+      }
+  }
+}
+
+// A VARIANT NAMES A BASE AND A CHANGE. Construction is total because a patch is always a
+// well-formed description of an intent; whether that intent is APPLICABLE to this base, and
+// whether the result is a legal world, are two separate questions answered at realization. Keeping
+// them separate is what lets a caller hold and compare unrealizable variants rather than being
+// unable to express one.
+type WorldVariant sole_constructor {
+  base: World
+  delta: KeyedPatch<RoomIdentity, EnclosedSpace>
+}
+
+fn world_variant(base: World, delta: KeyedPatch<RoomIdentity, EnclosedSpace>) -> WorldVariant {
+  WorldVariant { base: base, delta: delta }
+}
+
+fn variant_base(v: WorldVariant) -> World { v.base }
+fn variant_delta(v: WorldVariant) -> KeyedPatch<RoomIdentity, EnclosedSpace> { v.delta }
+
+type ApplyAcc {
+  rooms: List<PlacedSpace>
+  refusal: WorldRefusal?
+}
+
+fn without_identity(rooms: List<PlacedSpace>, identity: RoomIdentity) -> List<PlacedSpace> {
+  reverse(fold(rooms, init: [], f: (acc, r) =>
+    if room_identity_eq(a: r.identity, b: identity) { acc } else { concat([r], acc) }))
+}
+
+// A MODIFICATION REPLACES IN PLACE. Removing the room and appending its replacement would perform a
+// REORDER the patch does not describe: world_rooms exposes the list, so [kitchen, hall] became
+// [hall, kitchen] when only kitchen changed, and any consumer that folds the world - a projection, a
+// serialization, a receipt - would see a change with no hunk behind it. The band's thesis is that
+// the change IS the representation, and an unrepresented reorder is precisely the violation of it.
+fn replace_identity(rooms: List<PlacedSpace>, identity: RoomIdentity, space: EnclosedSpace) -> List<PlacedSpace> {
+  reverse(fold(rooms, init: [], f: (acc, r) =>
+    if room_identity_eq(a: r.identity, b: identity) {
+      concat([PlacedSpace { identity: identity, space: space }], acc)
+    } else {
+      concat([r], acc)
+    }))
+}
+
+// EVERY ARM REFUSES RATHER THAN ABSORBING. Removing a room that is not there is not a no-op, adding
+// one that already exists is not a replace, and modifying one whose current shape is not the `from`
+// the patch was computed against is not an overwrite. Each of those absorptions would let a delta
+// built against a different base apply cleanly and produce a world nobody described - the
+// fabricated plausible output DESIGN section 5 forbids, and the stale-parent case its
+// compare-and-swap discipline exists for.
+fn apply_hunk(acc: ApplyAcc, hunk: KeyedDiffHunk<RoomIdentity, EnclosedSpace>) -> ApplyAcc {
+  match acc.refusal {
+    Present { value: r } => ApplyAcc { rooms: acc.rooms, refusal: Present { value: r } }
+    Absent =>
+      match hunk {
+        KeyedDiffAddedHunk { hunk_key: key, to: to } =>
+          match find_room(rooms: acc.rooms, identity: key) {
+            Present { value: _ } => ApplyAcc { rooms: acc.rooms, refusal: Present { value: VariantTargetAlreadyPresent { identity: key } } }
+            Absent => ApplyAcc { rooms: concat(acc.rooms, [PlacedSpace { identity: key, space: to }]), refusal: none }
+          }
+        KeyedDiffRemovedHunk { hunk_key: key, from: from } =>
+          match find_room(rooms: acc.rooms, identity: key) {
+            Absent => ApplyAcc { rooms: acc.rooms, refusal: Present { value: VariantTargetMissing { identity: key } } }
+            Present { value: current } =>
+              if space_eq(a: current.space, b: from) {
+                ApplyAcc { rooms: without_identity(rooms: acc.rooms, identity: key), refusal: none }
+              } else {
+                ApplyAcc { rooms: acc.rooms, refusal: Present { value: VariantBaseChanged { identity: key } } }
+              }
+          }
+        KeyedDiffModifiedHunk { hunk_key: key, from: from, to: to } =>
+          match find_room(rooms: acc.rooms, identity: key) {
+            Absent => ApplyAcc { rooms: acc.rooms, refusal: Present { value: VariantTargetMissing { identity: key } } }
+            Present { value: current } =>
+              if space_eq(a: current.space, b: from) {
+                ApplyAcc { rooms: replace_identity(rooms: acc.rooms, identity: key, space: to), refusal: none }
+              } else {
+                ApplyAcc { rooms: acc.rooms, refusal: Present { value: VariantBaseChanged { identity: key } } }
+              }
+          }
+      }
+  }
+}
+
+// Realization runs the world mint again on the result, so the geometry wall holds for a variant
+// exactly as it does for a hand-built world: a delta that slides one room into another produces a
+// refusal, not a world with overlapping rooms. That is the whole reason the wall lives at the mint
+// rather than in a checking pass someone must remember to run after editing.
+fn realize_variant(v: WorldVariant) -> WorldConstruction<World> {
+  let applied = fold(v.delta.hunks, init: ApplyAcc { rooms: v.base.rooms, refusal: none }, f: (acc, h) =>
+    apply_hunk(acc: acc, hunk: h))
+  match applied.refusal {
+    Present { value: r } => WorldRefused { cause: r }
+    Absent => world(rooms: applied.rooms)
+  }
+}

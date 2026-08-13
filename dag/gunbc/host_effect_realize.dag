@@ -2,7 +2,7 @@ module gunbc.host_effect_realize
 
 import std.algebra { trim }
 
-import gunbc.host_effect {
+import gunbc.host_effect { fleet_ssh_leaf_unmigrated_refused,
   HostEffect, ShellCommand, RedfishAction, ConvergePlan,
   OsInstallActuatorToolchainEnsure, ProvisionBuildCache,
   SetHostnameCas,
@@ -57,6 +57,7 @@ import gunbc.retained_shell_script {
 import extdeps.ssh.session { ssh_session_exec, ssh_session_exec_script }
 import gunbc.typed_argv_exec {
   typed_argv_exec_over_ssh,
+  typed_argv_exec_over_fleet_ssh,
   TypedArgvExecOutcome,
   TypedArgvExecConverged,
   TypedArgvExecRefused,
@@ -545,6 +546,8 @@ fn realize_boot_once_read_back_sleep_on_host(
       realize_boot_once_read_back_sleep_body(transport: transport, intent: intent)
     SshShell { ssh_host: _ } =>
       realize_boot_once_read_back_sleep_body(transport: transport, intent: intent)
+    FleetSsh { target: _, context: _ } =>
+      realize_boot_once_read_back_sleep_body(transport: transport, intent: intent)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
         reason: "host_effect_apply: Srv3BootOnceReadBackSleep cannot use EmitArtifactThenThinRun transport; typed mismatch.",
@@ -605,6 +608,8 @@ fn realize_seeded_install_media_toolchain_ensure_on_host(
       realize_seeded_install_media_toolchain_ensure_body(transport: transport, intent: intent)
     SshShell { ssh_host: _ } =>
       realize_seeded_install_media_toolchain_ensure_body(transport: transport, intent: intent)
+    FleetSsh { target: _, context: _ } =>
+      realize_seeded_install_media_toolchain_ensure_body(transport: transport, intent: intent)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
         reason: "host_effect_apply: Srv3SeededInstallMediaToolchainEnsure cannot use EmitArtifactThenThinRun transport; typed mismatch.",
@@ -655,6 +660,8 @@ fn realize_bmcweb_session_login_on_host(
     LocalShell =>
       realize_bmcweb_session_login_body(transport: transport, intent: intent)
     SshShell { ssh_host: _ } =>
+      realize_bmcweb_session_login_body(transport: transport, intent: intent)
+    FleetSsh { target: _, context: _ } =>
       realize_bmcweb_session_login_body(transport: transport, intent: intent)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
@@ -722,6 +729,11 @@ fn realize_bmcweb_token_extract_on_host(
     LocalShell =>
       realize_bmcweb_token_extract_body(intent: intent)
     SshShell { ssh_host: _ } =>
+      NotConverged {
+        reason: "host_effect_apply: Srv3BmcwebTokenExtract runs typed jq argv + Filesystem.Write on the executor host; SshShell transport is a fail-closed Unimplemented stub until remote extract+write is realized with structured bin invocation.",
+        applied: intent,
+      }
+    FleetSsh { target: _, context: _ } =>
       NotConverged {
         reason: "host_effect_apply: Srv3BmcwebTokenExtract runs typed jq argv + Filesystem.Write on the executor host; SshShell transport is a fail-closed Unimplemented stub until remote extract+write is realized with structured bin invocation.",
         applied: intent,
@@ -797,7 +809,7 @@ fn srv3_join_shell_words(words: List<String>) -> String {
   )
 }
 
-data srv3_actuator_toolchain_emit_artifact_transport_helper_note: String = "realize_os_install_actuator_toolchain_ensure refuses EmitArtifactThenThinRun at entry; srv3_actuator_toolchain_emit_artifact_transport_helper_refused false arms are fail-closed backstop only — not a silent widen (DESIGN §5)"
+data srv3_actuator_toolchain_emit_artifact_transport_helper_note: String = "realize_os_install_actuator_toolchain_ensure refuses EmitArtifactThenThinRun at entry; srv3_actuator_toolchain_emit_artifact_transport_helper_refused false arms are fail-closed backstop only — not a silent widen (DESIGN §5).\\n\\nFleetSsh joined that class rather than being migrated leaf-by-leaf, and the reason is worth stating because the two dispositions look alike and are not. These five probe leaves (test -x, command -v, tool bin path, apt version check, chown) each build a CONCATENATED SHELL COMMAND STRING; the fleet path admits only portable remote words, so there is no argv to hand it without first decomposing each probe into its own typed operation. Left in place, every leaf would answer its Bool with `false` — and a Bool-typed probe has no room to say `I could not measure`, so `could not run the probe` renders as `the tool is absent`, which then AUTHORIZES AN INSTALL on a host nobody observed. That is a fabricated negative observation, the mirror of the fabricated positive DESIGN §5 forbids, and it is why the gate is at the entry: one located refusal replaces five false measurements. The leaf arms stay only as unreachable backstops, exactly as the EmitArtifactThenThinRun arms beside them. DISSOLVES WHEN each probe carries a typed operation_argv row, at which point the entry admits FleetSsh and the leaves route through typed_argv_exec_over_fleet_ssh like the principal, sudo-probe and grant-list leaves already do.\\n\\nRUNG, STATED HONESTLY BECAUSE THE OBVIOUS READING OVERSTATES IT. This refusal is compile-verified only: the match is exhaustive and the arm demonstrably does not reach the body, but NO EXECUTING WITNESS DISCRIMINATES IT, and the reason is structural rather than an omission. A FleetSshExecutionContext is reachable only through materialize_fleet_known_hosts_anchor, which is a `func` using Network, and the KnownHostsAnchor seal admits that one declaration alone -- so a pure `test fn` cannot construct the transport this arm matches on. THE SEAL THAT MAKES A FLEET CONTEXT UNFORGEABLE ALSO MAKES IT UNFIXTURABLE. That is a real cost of the wall and it is recorded here rather than paid down by widening the wall, because admitting a test declaration to the seal to make one's own change testable is the trade a reviewer should refuse. NEXT-RUNG TRIGGER: a fixture route to a context that does not weaken the production seal -- an effect-level test harness for the materializer, not a second minter."
 
 fn srv3_actuator_toolchain_emit_artifact_transport_helper_refused() -> Bool {
   false
@@ -828,6 +840,7 @@ fn srv3_transport_witness_bin_success(
       }
       ssh_session_exec(host: h, command: cmd as NonEmptyStr).success
     }
+    FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       srv3_actuator_toolchain_emit_artifact_transport_helper_refused()
   }
@@ -838,6 +851,7 @@ fn srv3_transport_test_executable(path: String, transport: HostEffectTransport) 
     LocalShell => shell.Test.IsExecutable(path: path).executable
     SshShell { ssh_host: h } =>
       ssh_session_exec(host: h, command: concat("test -x ", path) as NonEmptyStr).success
+    FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       srv3_actuator_toolchain_emit_artifact_transport_helper_refused()
   }
@@ -851,6 +865,7 @@ fn srv3_apt_tool_present(tool_name: NonEmptyStr, transport: HostEffectTransport)
         host: h,
         command: concat("command -v ", tool_name as String) as NonEmptyStr,
       ).success
+    FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       srv3_actuator_toolchain_emit_artifact_transport_helper_refused()
   }
@@ -881,6 +896,7 @@ fn srv3_tool_bin_path(tool_name: NonEmptyStr, transport: HostEffectTransport) ->
         none
       }
     }
+    FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       srv3_actuator_toolchain_emit_artifact_transport_helper_refused_opt()
   }
@@ -930,6 +946,7 @@ fn srv3_chown_directory_to_current_user(path: String, transport: HostEffectTrans
         false
       }
     }
+    FleetSsh { target: _, context: _ } => fleet_ssh_leaf_unmigrated_refused()
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       srv3_actuator_toolchain_emit_artifact_transport_helper_refused()
   }
@@ -1091,6 +1108,19 @@ fn realize_os_install_actuator_toolchain_ensure(
         transport: effect_intent.transport,
         effect_intent: effect_intent,
       )
+    FleetSsh { target: t, context: _ } =>
+      NotConverged {
+        reason: join([
+          "host_effect_apply: OsInstallActuatorToolchainEnsure refuses the FleetSsh transport at entry for endpoint=",
+          t.endpoint as String,
+          ". Its probe leaves (test -x, command -v, tool bin path, apt version, chown) build concatenated shell",
+          " command strings rather than typed argv, so they have no portable-word form to hand the fleet shaper.",
+          " Refusing here rather than in each leaf is the difference between one located refusal and five",
+          " FABRICATED NEGATIVE OBSERVATIONS: a Bool-typed leaf that cannot run its probe reports `tool absent`,",
+          " which is not ignorance rendered honestly but a false measurement that then authorizes an install.",
+        ], ""),
+        applied: effect_intent,
+      }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
         reason: "host_effect_apply: OsInstallActuatorToolchainEnsure cannot use EmitArtifactThenThinRun transport; typed mismatch.",
@@ -1187,6 +1217,11 @@ fn realize_provision_build_cache(
                 transport: effect_intent.transport,
                 effect_intent: effect_intent,
               )
+            FleetSsh { target: _, context: _ } =>
+              realize_provision_build_cache_body(
+                transport: effect_intent.transport,
+                effect_intent: effect_intent,
+              )
             EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
               NotConverged {
                 reason: "host_effect_apply: ProvisionBuildCache cannot use EmitArtifactThenThinRun transport; typed mismatch.",
@@ -1273,6 +1308,20 @@ fn run_shell_transport(script: RetainedShellScript, transport: HostEffectTranspo
         }
       }
     }
+    FleetSsh { target: t, context: _ } =>
+      ShellExecObserved {
+        exit_code: 1,
+        success: false,
+        stdout: join([
+          "host_effect_apply: run_shell_transport refuses the FleetSsh transport for endpoint=",
+          t.endpoint as String,
+          ". This carrier is a shell script BODY -- a command string, not argv -- and the fleet path admits",
+          " only portable remote words, so there is no shaping that preserves the script's meaning. The refusal",
+          " is the carrier's shape surfacing, not a missing case: the residue dissolves when the effect reaches",
+          " this seam as a typed Do effect rather than as text (DESIGN, shell -> intent).",
+        ], ""),
+        stderr: "",
+      }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       ShellExecObserved {
         exit_code: 1,
@@ -1323,6 +1372,11 @@ fn realize_converge_on_host(host_converge: HostConverge, transport: HostEffectTr
     LocalShell =>
       realize_converge_in_process(host_converge: host_converge, intent: intent)
     SshShell { ssh_host: _ } =>
+      NotConverged {
+        reason: "host_effect_apply: ConvergePlan over SshShell is a fail-closed Unimplemented stub; use EmitArtifactThenThinRun or LocalShell for the converge lane.",
+        applied: intent,
+      }
+    FleetSsh { target: _, context: _ } =>
       NotConverged {
         reason: "host_effect_apply: ConvergePlan over SshShell is a fail-closed Unimplemented stub; use EmitArtifactThenThinRun or LocalShell for the converge lane.",
         applied: intent,
@@ -1400,6 +1454,11 @@ fn realize_srv3_typed_reconcile(kind: TypedReconcileKind, transport: HostEffectT
         reason: "host_effect_apply: TypedReconcileOnHost runs in-process on the executor's own host; SshShell transport is a fail-closed Unimplemented stub until the typed reconcile is realized over a remote-observe/apply transport.",
         applied: intent,
       }
+    FleetSsh { target: _, context: _ } =>
+      NotConverged {
+        reason: "host_effect_apply: TypedReconcileOnHost runs in-process on the executor's own host; SshShell transport is a fail-closed Unimplemented stub until the typed reconcile is realized over a remote-observe/apply transport.",
+        applied: intent,
+      }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
         reason: "host_effect_apply: TypedReconcileOnHost runs in-process on the executor's own host; EmitArtifactThenThinRun is a fail-closed Unimplemented stub for this cell until the typed reconcile is realized over that transport.",
@@ -1468,6 +1527,11 @@ fn realize_effective_principal_read_on_host(
         outcome: typed_argv_exec_over_ssh(host: h, argv: argv),
         intent: intent,
       )
+    FleetSsh { target: t, context: c } =>
+      reconcile_ssh_argv_exec_outcome(
+        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
+        intent: intent,
+      )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
         reason: "host_effect_apply: ReadEffectivePosixPrincipal cannot use EmitArtifactThenThinRun transport; typed mismatch.",
@@ -1498,6 +1562,11 @@ fn realize_sudo_nopasswd_execute_probe_on_host(
     SshShell { ssh_host: h } =>
       reconcile_ssh_argv_exec_outcome(
         outcome: typed_argv_exec_over_ssh(host: h, argv: argv),
+        intent: intent,
+      )
+    FleetSsh { target: t, context: c } =>
+      reconcile_ssh_argv_exec_outcome(
+        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
         intent: intent,
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
@@ -1578,6 +1647,12 @@ fn realize_sudo_nopasswd_grant_list_probe_on_host(
       reconcile_sudo_nopasswd_grant_list_outcome(
         probe: probe,
         outcome: typed_argv_exec_over_ssh(host: h, argv: argv),
+        intent: intent,
+      )
+    FleetSsh { target: t, context: c } =>
+      reconcile_sudo_nopasswd_grant_list_outcome(
+        probe: probe,
+        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
         intent: intent,
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
@@ -1696,6 +1771,12 @@ fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> 
     SshShell { ssh_host: h } =>
       join([
         "live_deploy apply refused over ssh host=", h,
+        ": the candidate release was observed in the LOCAL deploying checkout, and no modeled source transfer proves the remote tree is that candidate. ",
+        "Emitting the local revision into the remote unit would publish a release identity the process may not be running.",
+      ], "")
+    FleetSsh { target: t, context: _ } =>
+      join([
+        "live_deploy apply refused over fleet ssh endpoint=", t.endpoint as String,
         ": the candidate release was observed in the LOCAL deploying checkout, and no modeled source transfer proves the remote tree is that candidate. ",
         "Emitting the local revision into the remote unit would publish a release identity the process may not be running.",
       ], "")

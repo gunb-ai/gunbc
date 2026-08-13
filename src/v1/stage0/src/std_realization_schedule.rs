@@ -485,22 +485,22 @@ pub fn floor_worker_observation_receipt_path() -> FloorWorkerObservationReceiptP
     CACHED.with(|c: &FloorWorkerObservationReceiptPath| c.clone())
 }
 
-pub type ScopedWitnessBatchManifestPath = String;
+pub type ScopedExecutionRequestPath = String;
 
-pub fn scoped_witness_batch_manifest_path() -> ScopedWitnessBatchManifestPath {
+pub fn scoped_execution_request_path() -> ScopedExecutionRequestPath {
     thread_local! {
-        static CACHED: ScopedWitnessBatchManifestPath = {
-            serde_json::from_value(serde_json::json!("target/scoped-witness-batch-manifest.tsv"))
+        static CACHED: ScopedExecutionRequestPath = {
+            serde_json::from_value(serde_json::json!("target/floor-attempts/scoped-execution-requests.json"))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &ScopedWitnessBatchManifestPath| c.clone())
+    CACHED.with(|c: &ScopedExecutionRequestPath| c.clone())
 }
 
 pub fn floor_worker_observation_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "The floor coordinator is structurally closure-free: only worker processes resolve or execute a plan. The ordinary worker projects the plan's ScopedWitnessBatch identities into scoped_witness_batch_manifest_path, then the coordinator waits for that worker to EXIT before spawning any SequentialChildProcess scoped worker, so their substantial live sets never overlap. Every worker writes a terminal receipt only after its result artifacts are complete; the coordinator crosses that report with the OS exit status and persists a located counted FloorWorkerObservation at floor_worker_observation_receipt_path. Missing terminal receipt is an observed state, never absence-as-success. Outcome is deliberately NOT a field: floor_worker_observation_outcome derives it totally from termination crossed with terminal_receipt, so Completed beside signal death or DiedWithoutTerminalReceipt beside an observed report is unrepresentable rather than lens-caught. The TSV outcome column is a boundary rendering of that derivation. FreshJobProcess is intentionally uninhabited and refuses until a workflow realization supplies its distinct cgroup, timeout, and scheduling semantics. 🟡 feature:floor-worker-observation-typed-tabular-codec dissolve-on: a std tabular-codec carrier derives the manifest and observation storage projections from List<ScopedWitnessBatchId> and FloorWorkerObservation, deleting the seed wire labels while preserving both branded paths.".to_string()
+            "The floor coordinator is structurally closure-free: only worker processes resolve or execute a plan. The ordinary worker projects each SequentialChildProcess/FreshJobProcess ScopedWitnessBatch -- its frozen entries, source-root envelope, execution authority, clamp and the plan-derived budgets a child reads -- into scoped_execution_request_path together with the tested commit/tree/tool it was frozen against, then the coordinator waits for that worker to EXIT before spawning any SequentialChildProcess scoped worker, so their substantial live sets never overlap. Every worker writes a terminal receipt only after its result artifacts are complete; the coordinator crosses that report with the OS exit status and persists a located counted FloorWorkerObservation at floor_worker_observation_receipt_path. Missing terminal receipt is an observed state, never absence-as-success. Outcome is deliberately NOT a field: floor_worker_observation_outcome derives it totally from termination crossed with terminal_receipt, so Completed beside signal death or DiedWithoutTerminalReceipt beside an observed report is unrepresentable rather than lens-caught. The TSV outcome column is a boundary rendering of that derivation. FreshJobProcess is intentionally uninhabited and refuses until a workflow realization supplies its distinct cgroup, timeout, and scheduling semantics. 🟡 feature:floor-worker-observation-typed-tabular-codec dissolve-on: a std tabular-codec carrier derives the request and observation storage projections from List<ScopedExecutionRequest> and FloorWorkerObservation, deleting the seed wire labels while preserving both branded paths.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

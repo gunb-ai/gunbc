@@ -6,6 +6,7 @@ import gunbc.ci_workflow {
   ci_workflow,
   gunbc_ci_job_backstop_timeout_minutes,
   gunbc_ci_build_job_backstop_timeout_minutes,
+  gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_minutes,
   gunbc_ci_artifact_transfer_step_timeout_minutes,
   gunbc_ci_aux_step_timeout_minutes,
   gunbc_ci_workflow_wrapper_timeout_minutes,
@@ -30,7 +31,7 @@ fn ci_job_backstop_is_step_sum_plus_prelude() -> Bool {
 }
 
 fn ci_build_job_backstop_is_step_sum_plus_prelude() -> Bool {
-  gunbc_ci_build_job_backstop_timeout_minutes() == (gunbc_ci_aux_step_timeout_minutes + gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes + gunbc_ci_stage0_partition_compile_gate_timeout_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes)
+  gunbc_ci_build_job_backstop_timeout_minutes() == (gunbc_ci_aux_step_timeout_minutes + gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes + gunbc_ci_stage0_partition_compile_gate_timeout_minutes + gunbc_ci_v1_compiler_test_targets_compile_gate_timeout_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes)
 }
 
 data backstop_magnitude_pin_deleted_note: String = "ci_job_backstop_equals_one_hundred_minutes DELETED (the live-state count-transcription class, operator ruling 2026-07-30 — same class as the roadmap 63-declared pin): it mirrored the derived step-sum as a literal, so any legitimate step roster change redded it and the reviewer's move was editing the number until it matched. It redded here when the two receipt-gate steps moved in-executor (100 -> 90) — a correct change reported as a failure. The invariant that MATTERS is magnitude-independent and stays asserted: the backstop equals the exact step-sum + prelude.\n\nSECOND DELETION, same class, caught by execution rather than by reading (2026-08-11): ci_job_backstop_dropped_the_selection_control_term asserted !(backstop == 115), encoding as a SENTINEL the value that would obtain if the 15-minute selection-control term were still summed. That is a magnitude pin wearing a structural name — it does not read the roster, it reads a number — and it survived the first deletion only because 115 happened to be unreachable by any other route. It stopped being unreachable when the floor-receipts upload step added one 5-minute aux term to a 110-minute base, landing on exactly 115 by a path that has nothing to do with selection control. The witness would have redded on a correct change and the reviewer's move would again have been editing the number, which is the whole failure mode the first deletion was ruled on.\n\nWHY DELETING IT LOSES NOTHING: ci_job_backstop_is_step_sum_plus_prelude asserts EXACT equality against an enumeration that contains no selection-control term, so any sum that included one is unequal to it and reds there. Absence of the term is therefore proven structurally, at a grain a magnitude comparison cannot express — a sentinel can only ever say 'not this one number', while the equality says 'exactly these terms and no others'. The sentinel was strictly weaker than a check already present beside it, which is why the correct repair is deletion rather than picking a fresh number."

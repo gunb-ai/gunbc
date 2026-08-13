@@ -11,7 +11,7 @@ type MaterializedFilesystemMock {
 data filesystem_red_omit_keys: List<String> = ["Filesystem.Read"]
 
 fn materialize_filesystem_mock(case: PublishedMockCase) -> Outcome<MaterializedFilesystemMock> {
-  if case.operation_key == "Filesystem.Write" {
+  if case.operation_key == "Filesystem.Write" || case.operation_key == "Filesystem.WriteOwnerOnly" {
     outcome_accepted(value: MaterializedFilesystemMock { tag: ^materialized_write })
   } else if case.operation_key == "Filesystem.Read" {
     outcome_accepted(value: MaterializedFilesystemMock { tag: ^materialized_read })

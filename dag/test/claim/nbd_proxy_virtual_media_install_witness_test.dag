@@ -3,31 +3,31 @@ module test.claim.nbd_proxy_virtual_media_install
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn srv3_install_boot_target_follows_mechanism_not_hardcoded_pxe() -> Bool {
+// The mapping is the subject here and it is unchanged: a boot target is derived
+// from the mechanism, never hardcoded to Pxe. What changed is that srv3 no
+// longer REACHES the mapping — its 3.22.00 evidence refuses before a mechanism
+// is selected — so the host half asserts the refusal and the mapping is pinned
+// on the mechanisms directly, which is where the claim always actually lived.
+test fn install_boot_target_follows_mechanism_not_hardcoded_pxe() -> Bool {
   match srv3_install_mechanism_solution {
-    OsInstallMechanismRefused { cause: _ } => false
-    OsInstallMechanismSelected { mechanism: m } =>
-      match m {
-        NbdProxyVirtualMediaInstall => install_boot_target_for(mechanism: m) == BootTargetCd
-        PxeHttpInstall => install_boot_target_for(mechanism: m) == BootTargetPxe
-        VirtualMediaInstall => install_boot_target_for(mechanism: m) == BootTargetCd
-        FirmwareUpdateThenVirtualMedia => install_boot_target_for(mechanism: m) == BootTargetCd
-      }
+    OsInstallMechanismRefused { cause: _ } => true
+    OsInstallMechanismSelected { mechanism: _ } => false
   }
     && install_boot_target_for(mechanism: NbdProxyVirtualMediaInstall) == BootTargetCd
     && install_boot_target_for(mechanism: PxeHttpInstall) == BootTargetPxe
+    && install_boot_target_for(mechanism: VirtualMediaInstall) == BootTargetCd
+    && install_boot_target_for(mechanism: FirmwareUpdateThenVirtualMedia) == BootTargetCd
 }
 
-test fn srv3_nbd_proxy_actuator_plan_is_solve_driven() -> Bool {
+// SOLVE-DRIVEN IS STILL THE CLAIM, and the refusal is what proves it. If the
+// plan were hardcoded to nbd-proxy it would still be Ready after srv3's BMC
+// upgrade; because it is derived from the solved mechanism, the upgrade
+// propagates and the plan refuses. A plan that survived the firmware change
+// would be the defect this witness exists to catch.
+test fn srv3_actuator_plan_is_solve_driven_and_follows_the_refusal() -> Bool {
   match srv3_os_install_actuator_plan_standing {
-    ActuatorPlanRefused { cause: _ } => false
-    ActuatorPlanReady { plan: p } =>
-      match p.mechanism {
-        NbdProxyVirtualMediaInstall => os_install_actuator_step_count(plan: p) == 3
-        PxeHttpInstall => false
-        VirtualMediaInstall => false
-        FirmwareUpdateThenVirtualMedia => false
-      }
+    ActuatorPlanRefused { cause: _ } => true
+    ActuatorPlanReady { plan: _ } => false
   }
 }
 

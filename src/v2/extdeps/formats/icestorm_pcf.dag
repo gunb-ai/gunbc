@@ -1,0 +1,93 @@
+module v2.extdeps.formats.icestorm_pcf
+
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.nat { Nat }
+import v2.std.optional { Optional, Absent, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import std.algebra { Cons, Empty }
+import v2.std.algebra { fold_list }
+
+data icestorm_pcf_note: String = "THE PHYSICAL CONSTRAINT FILE, OWNED BY THE FORMAT RATHER THAN BY A PRODUCT. A .pcf is what nextpnr reads to decide which package pin a top-level port lands on, and its whole grammar for this purpose is one statement: set_io, a port name, a pin. That is small enough that a product would be tempted to build the two lines with string concatenation, which is exactly how the SPICE deck and the Verilog module came to have product-local printers this repository has since deleted. THE ONE RULE WORTH STATING: a pin here is a package position designator, carried as authored rather than as a number, because the roster that decides whether it exists is the package's — a pin is admissible when the package roster names it, and this module deliberately does not know which package it is emitting for. Checking a pin against a roster is the caller's join; refusing an unspellable name is this module's."
+
+// A pin is a package position designator. It is NOT an Int: package designators are alphanumeric
+// in most packages this format is used with (ball grid arrays spell them A1, B7), and the fact
+// that a quad flat pack happens to number its pins is a property of that package rather than of
+// this format.
+type PcfPin = String where brand("PcfPin")
+
+type PcfPortName = String where brand("PcfPortName")
+
+type PcfStatement
+  = SetIo { port: PcfPortName, pin: PcfPin }
+
+type PcfConstraints {
+  statements: List<PcfStatement>
+}
+
+type PcfEmission
+  = PcfEmitted { source: String }
+  | PcfEmissionRefused { reason: String }
+
+data pcf_forbidden_name_characters: List<String> = [
+  " ", "\t", "\n", "#", "\"", "'", "[", "]", "(", ")", "{", "}", ",", ";",
+]
+
+fn pcf_name_contains_forbidden(spelling: String) -> Bool {
+  fold(pcf_forbidden_name_characters, init: false, f: fn(acc, ch) {
+    acc || list_length(items: split(s: spelling, delimiter: ch)) > 1
+  })
+}
+
+fn pcf_name_is_admissible(spelling: String) -> Bool {
+  spelling != "" && !pcf_name_contains_forbidden(spelling: spelling)
+}
+
+fn pcf_text_concat(left: String, right: String) -> String {
+  concat(left, right)
+}
+
+fn pcf_statement_line(s: PcfStatement) -> Optional<String> {
+  match s {
+    SetIo { port: p, pin: n } =>
+      if pcf_name_is_admissible(spelling: p as String) && pcf_name_is_admissible(spelling: n as String) {
+        optional_present(
+          value: pcf_text_concat(
+            left: pcf_text_concat(left: "set_io ", right: p as String),
+            right: pcf_text_concat(left: " ", right: n as String)
+          )
+        )
+      } else {
+        optional_absent()
+      }
+  }
+}
+
+// A REFUSAL, NOT A SKIPPED LINE. An unspellable name that silently dropped its statement would
+// emit a constraint file that place-and-route accepts and that leaves a port unplaced — the tool
+// would then assign it somewhere, and the board would be wired to a pin nobody chose. The whole
+// emission refuses instead.
+fn pcf_emit(c: PcfConstraints) -> PcfEmission {
+  match fold_list(
+    xs: c.statements,
+    empty: optional_present(value: ""),
+    cons: fn(acc, s) {
+      match acc {
+        Absent => optional_absent()
+        Present { value: text } =>
+          match pcf_statement_line(s: s) {
+            Absent => optional_absent()
+            Present { value: line } =>
+              if text == "" {
+                optional_present(value: line)
+              } else {
+                optional_present(value: pcf_text_concat(left: pcf_text_concat(left: text, right: "\n"), right: line))
+              }
+          }
+      }
+    }
+  ) {
+    Present { value: text } => PcfEmitted { source: pcf_text_concat(left: text, right: "\n") }
+    Absent => PcfEmissionRefused { reason: "a port or pin name is not spellable in a physical constraint file" }
+  }
+}

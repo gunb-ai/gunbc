@@ -67,13 +67,27 @@ fn srv3_autoinstall_seed_delivery_refusal() -> AutoinstallSeedDeliveryRefusal? {
   }
 }
 
-fn srv3_autoinstall_seed_gap_is_fail_closed() -> Bool {
+// THE SEED GAP IS ONLY ASKABLE ONCE A MECHANISM IS SELECTED. This asserted the
+// refusal was Present and fail-closed, which held while srv3 solved to
+// nbd-proxy. srv3_autoinstall_seed_delivery_refusal answers none when the
+// mechanism itself refuses — correctly, because there is no selected path whose
+// seed could be unreachable — so on 3.22.00 the honest answer is Absent. Keeping
+// the old assertion would have required a seed refusal describing the seed of a
+// path that was never selected.
+fn srv3_autoinstall_seed_gap_is_unasked_while_mechanism_refuses() -> Bool {
   match srv3_autoinstall_seed_delivery_refusal() {
-    Present { value: refusal } =>
-      refusal.install_server_count == 0
-        && string_contains(s: refusal.refusal as String, pattern: "fail-closed")
-        && string_contains(s: refusal.seed_url as String, pattern: "install.srv3.lan")
-    Absent => false
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// The seeded plan derives from the same solve, so it refuses with it. The
+// NoCloudLocal delivery this used to assert is not readable off a plan that does
+// not exist, and reading it anyway is the substitution this lane keeps finding.
+fn srv3_seeded_plan_refuses_with_the_solve() -> Bool {
+  match srv3_seeded_os_install_plan_standing {
+    OsInstallPlanRefused { cause: _ } => true
+    OsInstallPlanReady { plan: _ } => false
   }
 }
 
@@ -106,16 +120,6 @@ fn srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref() -> Bool {
   bmc_srv3_admin_secret_ref.secret == (bmc_srv3_secret_name as NonEmptyStr)
 }
 
-fn srv3_actuator_prep_uses_seeded_autoinstall_delivery() -> Bool {
-  match srv3_seeded_os_install_plan_standing {
-    OsInstallPlanRefused { cause: _ } => false
-    OsInstallPlanReady { plan: p } =>
-      match srv3_os_install_plan_autoinstall(plan: p).delivery {
-        NoCloudLocal => true
-        NoCloudNet { seed_url: _ } => false
-      }
-  }
-}
 
 fn srv3_actuator_prep_binds_seeded_iso_path() -> Bool {
   srv3_actuator_virtual_media_iso_install_path == srv3_seeded_ubuntu_install_media_install_path
@@ -125,10 +129,15 @@ fn srv3_actuator_prep_binds_seeded_iso_path() -> Bool {
     )
 }
 
+// PREP IS NOT INSTALL — still the claim, and now demonstrated more sharply. The
+// credential wiring and the seeded ISO path are prep facts and hold regardless of
+// whether a delivery mechanism is selectable; the plan and seed halves refuse
+// with the solve. That split is exactly the point: prep survives, solving does
+// not, so nothing here can be mistaken for a solved install.
 fn srv3_os_install_actuate_is_actuator_prep_not_install_solved() -> Bool {
-  srv3_autoinstall_seed_gap_is_fail_closed()
+  srv3_autoinstall_seed_gap_is_unasked_while_mechanism_refuses()
     && srv3_os_install_actuate_credential_resolution_is_wired()
     && srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref()
-    && srv3_actuator_prep_uses_seeded_autoinstall_delivery()
+    && srv3_seeded_plan_refuses_with_the_solve()
     && srv3_actuator_prep_binds_seeded_iso_path()
 }

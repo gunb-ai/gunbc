@@ -1,0 +1,29 @@
+module test.claim.self_host_promotion_obligations_witness
+
+import gunbc.self_host_promotion_obligations {
+  artifact_axis_omits_build_path,
+  frontier_numerator_admits_seed_evidence,
+  obligation_is_registered,
+  obligation_reports_itself_fired
+}
+import std.types { Bool }
+
+// Each registered obligation carries a condition, a claim it puts at risk, and a
+// subject declaration. Asserted per row by name rather than as a count over the roster:
+// a count against a hand-authored list is a change detector, and it would also pass
+// vacuously if the roster were emptied.
+test fn every_registered_obligation_carries_its_three_parts() -> Bool {
+  obligation_is_registered(o: artifact_axis_omits_build_path)
+    && obligation_is_registered(o: frontier_numerator_admits_seed_evidence)
+}
+
+// THE TWO ARMS MUST STAY DISTINGUISHABLE, and this is the discriminating claim of the
+// file. A bound condition names a declaration whose appearance retires the obligation;
+// an unbound one carries prose that cannot report itself fired. If a future edit
+// converted the bound one to prose — the cheap way to make an inconvenient trigger stop
+// being checkable — this claim reds. If it converted the unbound one to a binding on
+// some declaration nobody designed, it reds too.
+test fn the_frontier_obligation_is_checkable_and_the_artifact_one_is_honest_prose() -> Bool {
+  obligation_reports_itself_fired(o: frontier_numerator_admits_seed_evidence)
+    && !obligation_reports_itself_fired(o: artifact_axis_omits_build_path)
+}

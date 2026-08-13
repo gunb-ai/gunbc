@@ -13,11 +13,10 @@ use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{
     build_floor_discovery_request, compute_histogram_data,
     discover_floor_witness_roster_with_snapshot, enable_floor_compile_clean_lazy_install,
-    floor_discovery_consumer_role_from_env, heartbeat_feed_enter_batch,
-    heartbeat_feed_entry_completed, heartbeat_feed_snapshot, install_floor_compile_clean_receipt,
-    make_eval_context, project_witness_cost_receipt, record_resolution_divergence_phase,
-    render_selection_degradation_receipt_body, reset_resolution_divergence_phase_receipt,
-    resolution_divergence_parent_plan_capture_begin,
+    heartbeat_feed_enter_batch, heartbeat_feed_entry_completed, heartbeat_feed_snapshot,
+    install_floor_compile_clean_receipt, make_eval_context, project_witness_cost_receipt,
+    record_resolution_divergence_phase, render_selection_degradation_receipt_body,
+    reset_resolution_divergence_phase_receipt, resolution_divergence_parent_plan_capture_begin,
     resolution_divergence_parent_plan_capture_finish, resolve_entry_graph,
     resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
     top_n_slowest_witnesses, verify_floor_discovery_terminal_for_coordinator, BudgetKind,
@@ -25,7 +24,7 @@ use v1_compiler::cli_run::{
     DiscoveryWitnessOutcome, FloorDiscoveryConsumerRole, FloorPhase, HistogramData,
     NodeFrontierSelectionMode, PhaseProfile, ResolutionDivergencePhase,
     ResolutionDivergencePhaseState, SelectionDegradationSnapshot, TimingPercentiles,
-    WitnessRowCost, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N, FLOOR_DISCOVERY_CONSUMER_ENV,
+    WitnessRowCost, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::memory_governor::{
     binding_cap_cgroup_dir, binding_high_cgroup_dir, floor_budget_below_minimum_footprint,
@@ -105,7 +104,7 @@ fn read_positive_budget_ms(
 /// while citing `gunbc_ci_floor_batch_clamp_params[0]` — a row whose overhead is 240 seconds. The
 /// authority now travels WITH the value; the index is carried beside it because an offset into a
 /// list is the one part of the citation no symbol can name.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum FloorBatchClampAuthority {
     PositionalCiSpecClamp {
         module_path: String,
@@ -147,7 +146,7 @@ impl FloorBatchClampAuthority {
 
 /// A clamp plus the declaration that produced it. Constructing one without an authority is not
 /// expressible, which is what keeps the refusal's citation and its number from drifting apart.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct ResolvedFloorBatchClamp {
     overhead_ms: u128,
     per_unit_ms: u128,
@@ -589,7 +588,7 @@ fn aggregate_batch_runtime_units(results: &[ClaimResult]) -> FloorRuntimeUnitCou
 /// policy mapping and plan roster enrollment are delegated to `.dag` eval
 /// (`gunbc_ci_floor_batch_stop_policy_for_github_event`,
 /// `gunbc_ci_floor_plan_uses_batch_stop_policy`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum FloorBatchStopPolicy {
     StopBeforeDependents,
     FullLedger,
@@ -670,7 +669,7 @@ fn resolve_floor_batch_stop_policy(
 /// `RunnableMemoryClass`). A structural marker, not a quantity — the operator ruling
 /// that retired predicted-peak byte constants stands, and this carries only the
 /// Negligible/Substantial fact co-residence structure keys on.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 enum ParsedMemoryClass {
     Negligible,
     Substantial,
@@ -696,13 +695,13 @@ enum ParsedMemoryClass {
 /// does, the stage validator cannot tell "declared Negligible" from "nothing declared"
 /// (review 2026-07-31). A pure but whole-tree-heavy ClaimRef would enter a stage looking
 /// negligible. Absence is therefore its own state, and stages refuse it.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 enum ParsedProfileProvenance {
     Declared,
     Undeclared,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 struct ParsedRunnableProfile {
     provenance: ParsedProfileProvenance,
     heavy_whole_tree_resolve: bool,
@@ -767,7 +766,7 @@ enum Runnable {
     },
 }
 
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct ScopedScheduleEntry {
     entry: String,
     function: String,
@@ -781,14 +780,14 @@ struct ScopedReceiptBatch {
     entries: Vec<ScopedScheduleEntry>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum ScopedProcessIsolation {
     SharedWalkProcess,
     SequentialChildProcess,
     FreshJobProcess,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum ScopedWitnessExecutionAuthority {
     InheritedWalkSourceRoots,
 }
@@ -9305,7 +9304,6 @@ fn run_perturb_check(
 
 const FLOOR_WORKER_TERMINAL_ENV: &str = "GUNBC_FLOOR_WORKER_TERMINAL_RECEIPT";
 const FLOOR_PHASE_JOURNAL_ENV: &str = "GUNBC_FLOOR_PHASE_JOURNAL";
-const SCOPED_WITNESS_BATCH_MANIFEST_PATH: &str = "target/scoped-witness-batch-manifest.tsv";
 const FLOOR_WORKER_OBSERVATION_RECEIPT_PATH: &str = "target/floor-worker-observation-receipt.tsv";
 const FLOOR_WET_WITNESS_ROW_OUTCOME_RECEIPT_PATH: &str =
     "target/floor-wet-witness-row-outcome-receipt.tsv";
@@ -9581,79 +9579,6 @@ struct DerivedFloorWorkerOutcome {
     label: &'static str,
     detail: String,
 }
-
-fn write_floor_worker_terminal(outcome: &str, detail: &str) -> Result<(), String> {
-    let Some(path) = std::env::var_os(FLOOR_WORKER_TERMINAL_ENV) else {
-        return Ok(());
-    };
-    let path = PathBuf::from(path);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("create worker terminal directory {}: {e}", parent.display()))?;
-    }
-    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
-    fs::write(&tmp, format!("{outcome}\t{detail}\n"))
-        .map_err(|e| format!("write worker terminal {}: {e}", tmp.display()))?;
-    fs::rename(&tmp, &path).map_err(|e| format!("publish worker terminal {}: {e}", path.display()))
-}
-
-fn write_scoped_witness_batch_manifest(batch_ids: &[String]) -> Result<(), String> {
-    let path = Path::new(SCOPED_WITNESS_BATCH_MANIFEST_PATH);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("create scoped manifest directory {}: {e}", parent.display()))?;
-    }
-    let mut body = String::from("batch_id\n");
-    for batch_id in batch_ids {
-        if batch_id.is_empty()
-            || !batch_id
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
-        {
-            return Err(format!(
-                "ScopedWitnessBatchId `{batch_id}` is not transport-safe for the worker manifest"
-            ));
-        }
-        body.push_str(batch_id);
-        body.push('\n');
-    }
-    fs::write(path, body).map_err(|e| format!("write scoped manifest {}: {e}", path.display()))
-}
-
-fn read_scoped_witness_batch_manifest() -> Result<Vec<String>, String> {
-    let path = Path::new(SCOPED_WITNESS_BATCH_MANIFEST_PATH);
-    let body = fs::read_to_string(path)
-        .map_err(|e| format!("read scoped manifest {}: {e}", path.display()))?;
-    let mut lines = body.lines();
-    if lines.next() != Some("batch_id") {
-        return Err(format!(
-            "scoped manifest {} has an invalid header",
-            path.display()
-        ));
-    }
-    let mut ids = Vec::new();
-    for id in lines {
-        if id.is_empty()
-            || !id
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
-        {
-            return Err(format!(
-                "scoped manifest {} contains invalid batch id `{id}`",
-                path.display()
-            ));
-        }
-        if ids.iter().any(|existing| existing == id) {
-            return Err(format!(
-                "scoped manifest {} contains duplicate batch id `{id}`",
-                path.display()
-            ));
-        }
-        ids.push(id.to_string());
-    }
-    Ok(ids)
-}
-
 fn exit_status_termination(status: &ExitStatus) -> ProcessTermination {
     if let Some(code) = status.code() {
         return ProcessTermination::Exited(code);
@@ -9853,7 +9778,6 @@ fn spawn_floor_worker(
     batch_id: Option<&str>,
     ordinal: usize,
     walk_attempt_id: &str,
-    discovery_consumer: &str,
 ) -> Result<ObservedFloorWorker, String> {
     let worker = match batch_id {
         Some(id) => format!("scoped:{id}"),
@@ -9872,7 +9796,6 @@ fn spawn_floor_worker(
     }
     command.env(FLOOR_WORKER_TERMINAL_ENV, &terminal_path);
     command.env("GUNBC_FLOOR_WALK_ATTEMPT_ID", walk_attempt_id);
-    command.env(FLOOR_DISCOVERY_CONSUMER_ENV, discovery_consumer);
     #[cfg(target_os = "linux")]
     {
         use std::os::unix::process::CommandExt;
@@ -10020,7 +9943,7 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
         }
     }
     let _ = fs::remove_file(FLOOR_WORKER_OBSERVATION_RECEIPT_PATH);
-    let _ = fs::remove_file(SCOPED_WITNESS_BATCH_MANIFEST_PATH);
+    let _ = fs::remove_file(SCOPED_EXECUTION_REQUESTS_PATH);
     if let Some(path) = std::env::var_os(FLOOR_PHASE_JOURNAL_ENV) {
         let _ = fs::remove_file(path);
     }
@@ -10037,8 +9960,7 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
             )));
         }
     };
-    let ordinary = match spawn_floor_worker(args, "ordinary", None, 0, &walk_attempt_id, "producer")
-    {
+    let ordinary = match spawn_floor_worker(args, "ordinary", None, 0, &walk_attempt_id) {
         Ok(observed) => observed,
         Err(msg) => {
             replay_ordinary_floor_wet_witness_row_outcomes();
@@ -10084,11 +10006,14 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
             "floor coordinator snapshot terminal refusal: {msg}"
         )));
     }
-    let batch_ids = match read_scoped_witness_batch_manifest() {
-        Ok(ids) => ids,
+    let batch_ids = match read_scoped_execution_requests() {
+        Ok(requests) => requests
+            .into_iter()
+            .map(|request| request.batch_id)
+            .collect::<Vec<String>>(),
         Err(msg) => {
             return Some(coordinator_terminal_refusal(&format!(
-                "floor coordinator manifest refusal: {msg}"
+                "floor coordinator scoped request refusal: {msg}"
             )));
         }
     };
@@ -10099,7 +10024,6 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
             Some(batch_id),
             index.saturating_add(1),
             &walk_attempt_id,
-            "coordinated_consumer",
         ) {
             Ok(observed) => observed,
             Err(msg) => {
@@ -10128,6 +10052,248 @@ fn maybe_run_floor_coordinator(args: &[String]) -> Option<ExitCode> {
         batch_ids.len()
     );
     Some(ExitCode::SUCCESS)
+}
+
+fn write_floor_worker_terminal(outcome: &str, detail: &str) -> Result<(), String> {
+    let Some(path) = std::env::var_os(FLOOR_WORKER_TERMINAL_ENV) else {
+        return Ok(());
+    };
+    let path = PathBuf::from(path);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("create worker terminal directory {}: {e}", parent.display()))?;
+    }
+    let tmp = path.with_extension(format!("tmp-{}", std::process::id()));
+    fs::write(&tmp, format!("{outcome}\t{detail}\n"))
+        .map_err(|e| format!("write worker terminal {}: {e}", tmp.display()))?;
+    fs::rename(&tmp, &path).map_err(|e| format!("publish worker terminal {}: {e}", path.display()))
+}
+
+const SCOPED_EXECUTION_REQUESTS_PATH: &str = "target/floor-attempts/scoped-execution-requests.json";
+
+/// The exact work a scoped child is asked to do, published by the ordinary worker before the
+/// child is spawned.
+///
+/// A scoped child used to receive the ordinary worker's whole CLI and rebuild its way back to one
+/// answer: it re-resolved the plan entry, re-evaluated the plan, and scanned the resulting batches
+/// for the single `ScopedWitnessBatch` whose id matched its `--scoped-batch-id`. Every other value
+/// that evaluation produced was discarded behind a `!Scoped` guard. This carrier hands the child
+/// that one answer directly, with the plan-derived budgets it genuinely reads, so the second
+/// resolve and evaluation have nothing left to compute.
+///
+/// The subject fields are not decoration: a child must refuse a request frozen against a different
+/// commit, tree, or tool rather than executing it against whatever it finds on disk.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct ScopedExecutionRequest {
+    tested_commit: String,
+    tested_tree: String,
+    tool_identity: String,
+    batch_id: String,
+    source_roots: Vec<String>,
+    source_roots_digest: String,
+    entries: Vec<ScopedScheduleEntry>,
+    scan_dirs: Vec<String>,
+    node_frontier_selection: NodeFrontierSelectionMode,
+    execution_authority: ScopedWitnessExecutionAuthority,
+    profile: ParsedRunnableProfile,
+    clamp: ResolvedFloorBatchClamp,
+    process_isolation: ScopedProcessIsolation,
+    /// Plan-derived and read by the child while executing rows. Carried here because the child no
+    /// longer evaluates the plan that produced them.
+    fast_lane_eval_budget_ms: Option<u64>,
+    ordinary_budget_ms: Option<u64>,
+    /// Also plan-derived, and the reason the first two CI runs of this change died: the stop
+    /// policy is resolved UNCONDITIONALLY for every worker, so a child with no plan context
+    /// refused there after the ordinary walk had already succeeded. It is the parent's decision
+    /// in exactly the sense the rest of this carrier is — freeze it, hand it over.
+    batch_stop_policy: FloorBatchStopPolicy,
+}
+
+impl ScopedExecutionRequest {
+    fn to_runnable(&self) -> Runnable {
+        Runnable::ScopedWitnessBatch {
+            batch_id: self.batch_id.clone(),
+            source_roots: self.source_roots.clone(),
+            source_roots_digest: self.source_roots_digest.clone(),
+            entries: self.entries.clone(),
+            scan_dirs: self.scan_dirs.clone(),
+            node_frontier_selection: self.node_frontier_selection,
+            execution_authority: self.execution_authority,
+            profile: self.profile,
+            clamp: self.clamp.clone(),
+            process_isolation: self.process_isolation,
+        }
+    }
+}
+
+fn scoped_execution_requests_from_rows(
+    rows: &[Runnable],
+    fast_lane_eval_budget_ms: Option<u64>,
+    ordinary_budget_ms: Option<u64>,
+    batch_stop_policy: FloorBatchStopPolicy,
+) -> Result<Vec<ScopedExecutionRequest>, String> {
+    let (tested_commit, tested_tree) = v1_compiler::cli_run::floor_tested_commit_and_tree()?;
+    let tool_identity = v1_compiler::cli_run::floor_tool_identity()?;
+    let mut out = Vec::new();
+    for runnable in rows {
+        if let Runnable::ScopedWitnessBatch {
+            batch_id,
+            source_roots,
+            source_roots_digest,
+            entries,
+            scan_dirs,
+            node_frontier_selection,
+            execution_authority,
+            profile,
+            clamp,
+            process_isolation:
+                isolation @ (ScopedProcessIsolation::SequentialChildProcess
+                | ScopedProcessIsolation::FreshJobProcess),
+        } = runnable
+        {
+            out.push(ScopedExecutionRequest {
+                tested_commit: tested_commit.clone(),
+                tested_tree: tested_tree.clone(),
+                tool_identity: tool_identity.clone(),
+                batch_id: batch_id.clone(),
+                source_roots: source_roots.clone(),
+                source_roots_digest: source_roots_digest.clone(),
+                entries: entries.clone(),
+                scan_dirs: scan_dirs.clone(),
+                node_frontier_selection: *node_frontier_selection,
+                execution_authority: *execution_authority,
+                profile: *profile,
+                clamp: clamp.clone(),
+                process_isolation: *isolation,
+                fast_lane_eval_budget_ms,
+                ordinary_budget_ms,
+                batch_stop_policy,
+            });
+        }
+    }
+    Ok(out)
+}
+
+fn write_scoped_execution_requests(requests: &[ScopedExecutionRequest]) -> Result<(), String> {
+    let path = Path::new(SCOPED_EXECUTION_REQUESTS_PATH);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("create scoped request directory {}: {e}", parent.display()))?;
+    }
+    for request in requests {
+        if request.batch_id.is_empty()
+            || !request
+                .batch_id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+        {
+            return Err(format!(
+                "ScopedWitnessBatchId `{}` is not transport-safe for the worker request",
+                request.batch_id
+            ));
+        }
+    }
+    let body = serde_json::to_string_pretty(requests)
+        .map_err(|e| format!("serialize scoped execution requests: {e}"))?;
+    fs::write(path, body).map_err(|e| format!("write scoped requests {}: {e}", path.display()))
+}
+
+fn read_scoped_execution_requests() -> Result<Vec<ScopedExecutionRequest>, String> {
+    let path = Path::new(SCOPED_EXECUTION_REQUESTS_PATH);
+    let body = fs::read_to_string(path)
+        .map_err(|e| format!("read scoped requests {}: {e}", path.display()))?;
+    let requests: Vec<ScopedExecutionRequest> =
+        serde_json::from_str(&body).map_err(|e| format!("parse scoped requests: {e}"))?;
+    refuse_duplicate_scoped_batch_ids(&requests, &path.display().to_string())?;
+    Ok(requests)
+}
+
+/// A batch id addresses exactly one frozen population, so a repeated id is an ambiguity, not an
+/// ordering question. It is refused at the READ rather than at either consumer, because the
+/// coordinator spawns one child per row and would otherwise turn one contradiction into N parallel
+/// workers racing on one batch's outputs. The manifest this carrier replaces carried the same
+/// refusal; dropping it on the way through would have been a silent widen (DESIGN §5).
+fn refuse_duplicate_scoped_batch_ids(
+    requests: &[ScopedExecutionRequest],
+    located: &str,
+) -> Result<(), String> {
+    for (index, request) in requests.iter().enumerate() {
+        if requests[..index]
+            .iter()
+            .any(|earlier| earlier.batch_id == request.batch_id)
+        {
+            return Err(format!(
+                "scoped requests {located} contain duplicate batch id `{}` — refused",
+                request.batch_id
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Select and VERIFY one published request. Every refusal is typed and located: a child that
+/// cannot prove it was handed the work it is about to do must stop, never fall back to
+/// reconstructing the plan for itself — that fallback is the boundary this carrier deletes, and it
+/// would sit exactly where it is least observable.
+fn scoped_execution_request_for(batch_id: &str) -> Result<ScopedExecutionRequest, String> {
+    let requests = read_scoped_execution_requests()?;
+    let matching: Vec<&ScopedExecutionRequest> =
+        requests.iter().filter(|r| r.batch_id == batch_id).collect();
+    if matching.len() != 1 {
+        return Err(format!(
+            "scoped execution request for batch `{batch_id}` resolved to {} rows; expected exactly one",
+            matching.len()
+        ));
+    }
+    let request = matching[0].clone();
+    let (tested_commit, tested_tree) = v1_compiler::cli_run::floor_tested_commit_and_tree()?;
+    let tool_identity = v1_compiler::cli_run::floor_tool_identity()?;
+    refuse_subject_mismatch(&request, &tested_commit, &tested_tree, &tool_identity)?;
+    Ok(request)
+}
+
+/// The subject comparison, separated from the observation that supplies it so a control can drive
+/// the production decision rather than restate its field comparisons (review 51445). Observing the
+/// live commit, tree and tool is git and filesystem work; deciding whether they match a frozen
+/// request is not, and only the second is what refuses.
+fn refuse_subject_mismatch(
+    request: &ScopedExecutionRequest,
+    tested_commit: &str,
+    tested_tree: &str,
+    tool_identity: &str,
+) -> Result<(), String> {
+    if request.tested_commit != tested_commit
+        || request.tested_tree != tested_tree
+        || request.tool_identity != tool_identity
+    {
+        return Err(format!(
+            "scoped execution request for batch `{}` was frozen against a different subject \
+             (request {}/{}/{}, observed {tested_commit}/{tested_tree}/{tool_identity}) — \
+             execution refused",
+            request.batch_id, request.tested_commit, request.tested_tree, request.tool_identity,
+        ));
+    }
+    Ok(())
+}
+
+/// Whether a worker executes witness rows, and whether it must derive a witness roster.
+///
+/// These are two questions and were one flag until the scoped-child boundary deletion. A scoped
+/// child EXECUTES rows — so it needs the per-witness eval budget — but must NOT walk a roster,
+/// because its entries were frozen by the ordinary worker and re-deriving them is the duplicate
+/// selection the boundary removes. Collapsing them drops the child's eval deadline while looking
+/// like a pure scope narrowing, which is exactly the mistake `witness_walk_flags_split_the_two_questions`
+/// pins.
+struct WitnessWalkFlags {
+    executes_witness_rows: bool,
+    schedules_discovery: bool,
+}
+
+fn witness_walk_flags(carries_witness_rows: bool, is_scoped_child: bool) -> WitnessWalkFlags {
+    WitnessWalkFlags {
+        executes_witness_rows: carries_witness_rows,
+        schedules_discovery: carries_witness_rows && !is_scoped_child,
+    }
 }
 
 fn run() -> Result<ExitCode, ExitCode> {
@@ -10323,57 +10489,123 @@ fn run() -> Result<ExitCode, ExitCode> {
         return run_perturb_check(&source_roots, &plan_entry, &plan_function);
     }
 
-    // Resolve the plan entry ONCE and evaluate both the batches (hermetic) and the
-    // spawn width (wet) from the same resolved graph — this resolve was previously
-    // paid twice back-to-back (the §2 double-paid-compute trap, at minutes each).
-    let resolution_divergence_receipt_armed = plan_function == "gunbc_falsifier_plan";
-    if resolution_divergence_receipt_armed {
-        if let Err(e) = reset_resolution_divergence_phase_receipt()
-            .and_then(|()| {
+    // A SCOPED CHILD DOES NOT RESOLVE OR EVALUATE THE ORDINARY PLAN. Its work arrives as a
+    // published, subject-verified `ScopedExecutionRequest` — the batch the ordinary worker already
+    // froze, plus the plan-derived budgets the child reads. Re-resolving the plan entry and
+    // re-evaluating it per child, only to scan the result for one batch id and discard every other
+    // value behind a `!Scoped` guard, is the duplicate prelude this boundary deletes.
+    //
+    // There is no fallback arm. A child that cannot load or verify its request refuses; falling
+    // back to reconstructing the plan would restore the boundary in the failure case, where it is
+    // least observable.
+    let scoped_request: Option<ScopedExecutionRequest> = match &floor_worker_role {
+        Some(FloorWorkerRole::Scoped { batch_id }) => {
+            match scoped_execution_request_for(batch_id) {
+                Ok(request) => Some(request),
+                Err(msg) => {
+                    eprintln!("claim_executor: scoped floor worker request refusal: {msg}");
+                    let _ = write_floor_worker_terminal("refused", &msg);
+                    return Err(ExitCode::from(1));
+                }
+            }
+        }
+        _ => None,
+    };
+
+    let (plan_ctx, walk_plan) = if let Some(request) = &scoped_request {
+        phase_mark("scoped request verified");
+        (
+            None,
+            ParsedWalkPlan {
+                pre_walk_execution: PreWalkExecution::None,
+                batches: vec![vec![request.to_runnable()]],
+                finalization: None,
+                on_success_stages: Vec::new(),
+                ordinary_budget_ms: request.ordinary_budget_ms,
+                on_success_budget_ms: None,
+            },
+        )
+    } else {
+        // Resolve the plan entry ONCE and evaluate both the batches (hermetic) and the
+        // spawn width (wet) from the same resolved graph — this resolve was previously
+        // paid twice back-to-back (the §2 double-paid-compute trap, at minutes each).
+        let resolution_divergence_receipt_armed = plan_function == "gunbc_falsifier_plan";
+        if resolution_divergence_receipt_armed {
+            if let Err(e) = reset_resolution_divergence_phase_receipt()
+                .and_then(|()| {
+                    record_resolution_divergence_phase(
+                        ResolutionDivergencePhase::ParentPlanResolve,
+                        ResolutionDivergencePhaseState::Started,
+                        &format!("{plan_entry}::{plan_function}"),
+                    )
+                })
+                .and_then(|()| resolution_divergence_parent_plan_capture_begin())
+            {
+                eprintln!("claim_executor: {e}");
+                return Err(ExitCode::from(1));
+            }
+        }
+        let (plan_graph, plan_indices) =
+            match resolve_entry_graph_shared(&source_roots, &plan_entry) {
+                Ok(resolved) => resolved,
+                Err(msg) => {
+                    if resolution_divergence_receipt_armed {
+                        let _ = resolution_divergence_parent_plan_capture_finish();
+                    }
+                    eprintln!("claim_executor: resolve failed for plan {plan_entry}:\n{msg}");
+                    return Err(ExitCode::from(1));
+                }
+            };
+        if resolution_divergence_receipt_armed {
+            if let Err(e) = resolution_divergence_parent_plan_capture_finish().and_then(|()| {
                 record_resolution_divergence_phase(
                     ResolutionDivergencePhase::ParentPlanResolve,
-                    ResolutionDivergencePhaseState::Started,
+                    ResolutionDivergencePhaseState::Completed,
                     &format!("{plan_entry}::{plan_function}"),
                 )
-            })
-            .and_then(|()| resolution_divergence_parent_plan_capture_begin())
-        {
-            eprintln!("claim_executor: {e}");
-            return Err(ExitCode::from(1));
-        }
-    }
-    let (plan_graph, plan_indices) = match resolve_entry_graph_shared(&source_roots, &plan_entry) {
-        Ok(resolved) => resolved,
-        Err(msg) => {
-            if resolution_divergence_receipt_armed {
-                let _ = resolution_divergence_parent_plan_capture_finish();
+            }) {
+                eprintln!("claim_executor: {e}");
+                return Err(ExitCode::from(1));
             }
-            eprintln!("claim_executor: resolve failed for plan {plan_entry}:\n{msg}");
-            return Err(ExitCode::from(1));
         }
-    };
-    if resolution_divergence_receipt_armed {
-        if let Err(e) = resolution_divergence_parent_plan_capture_finish().and_then(|()| {
-            record_resolution_divergence_phase(
-                ResolutionDivergencePhase::ParentPlanResolve,
-                ResolutionDivergencePhaseState::Completed,
-                &format!("{plan_entry}::{plan_function}"),
-            )
-        }) {
-            eprintln!("claim_executor: {e}");
-            return Err(ExitCode::from(1));
-        }
-    }
-    phase_mark("plan resolve");
+        phase_mark("plan resolve");
 
-    let plan_ctx = make_eval_context(&plan_graph, plan_indices.clone(), ExecutionMode::Hermetic);
-    let walk_plan = match eval_plan_in_ctx(&plan_ctx, &plan_entry, &plan_function) {
-        Ok(b) => b,
-        Err(msg) => {
-            eprintln!("claim_executor: {msg}");
-            return Err(ExitCode::from(1));
-        }
+        let plan_ctx =
+            make_eval_context(&plan_graph, plan_indices.clone(), ExecutionMode::Hermetic);
+        let walk_plan = match eval_plan_in_ctx(&plan_ctx, &plan_entry, &plan_function) {
+            Ok(b) => b,
+            Err(msg) => {
+                eprintln!("claim_executor: {msg}");
+                return Err(ExitCode::from(1));
+            }
+        };
+        (Some(plan_ctx), walk_plan)
     };
+
+    // Every remaining plan read belongs to a path a scoped child never takes. Rather than unwrap
+    // an Option ten times, ask once and refuse in the child's voice if that ever stops being true:
+    // a missing plan context is a routing error, not a value to substitute a default for.
+    macro_rules! plan_ctx_or_refuse {
+        ($what:expr) => {
+            match plan_ctx.as_ref() {
+                Some(ctx) => ctx,
+                None => {
+                    // WRITE THE TERMINAL. Without it the coordinator observes only `exited:1` and
+                    // reports "worker returned before producing a walk terminal receipt" — a
+                    // located refusal rendered as an unlocated absence, which is what hid this
+                    // exact defect through two full CI floors.
+                    let msg = format!(
+                        "{} requires the ordinary plan context, which a scoped child does not have (fail-closed)",
+                        $what
+                    );
+                    eprintln!("claim_executor: {msg}");
+                    let _ = write_floor_worker_terminal("refused", &msg);
+                    return Err(ExitCode::from(1));
+                }
+            }
+        };
+    }
+
     let pre_walk_execution = walk_plan.pre_walk_execution;
     let ordinary_budget_ms = walk_plan.ordinary_budget_ms;
     let on_success_budget_ms = walk_plan.on_success_budget_ms;
@@ -10385,26 +10617,32 @@ fn run() -> Result<ExitCode, ExitCode> {
     // role's, and the two must not be read back through one collapsed `Option` later
     // (review 49917, cursor/composer-2.5).
     let plan_declared_no_finalization = floor_finalization.is_none();
+    let mut published_scoped_rows: Vec<Runnable> = Vec::new();
     match floor_worker_role.as_ref() {
         Some(FloorWorkerRole::Ordinary) => {
-            let child_batch_ids: Vec<String> = batches
+            // The child rows leave `batches` on the retain below, so capture their exact payload
+            // first. Publication waits until the plan-derived budgets are known — a request
+            // missing them would force the child to evaluate the plan for the very values this
+            // carrier exists to hand it.
+            // Clone the SCOPED rows only. The publishable population is a small handful of
+            // batches; cloning every runnable in the plan and filtering afterwards copies the
+            // whole corpus roster to keep a few rows, which is the cost shape §6 forbids
+            // independently of how large the plan happens to be today.
+            published_scoped_rows = batches
                 .iter()
                 .flatten()
-                .filter_map(|runnable| match runnable {
-                    Runnable::ScopedWitnessBatch {
-                        batch_id,
-                        process_isolation:
-                            ScopedProcessIsolation::SequentialChildProcess
-                            | ScopedProcessIsolation::FreshJobProcess,
-                        ..
-                    } => Some(batch_id.clone()),
-                    _ => None,
+                .filter(|runnable| {
+                    matches!(
+                        runnable,
+                        Runnable::ScopedWitnessBatch {
+                            process_isolation: ScopedProcessIsolation::SequentialChildProcess
+                                | ScopedProcessIsolation::FreshJobProcess,
+                            ..
+                        }
+                    )
                 })
+                .cloned()
                 .collect();
-            if let Err(msg) = write_scoped_witness_batch_manifest(&child_batch_ids) {
-                eprintln!("claim_executor: ordinary floor worker manifest refusal: {msg}");
-                return Err(ExitCode::from(1));
-            }
             batches.retain(|batch| {
                 !batch.iter().any(|runnable| {
                     matches!(
@@ -10419,28 +10657,36 @@ fn run() -> Result<ExitCode, ExitCode> {
             });
         }
         Some(FloorWorkerRole::Scoped { batch_id }) => {
-            let mut selected = Vec::new();
-            for batch in &batches {
-                for runnable in batch {
-                    if let Runnable::ScopedWitnessBatch {
-                        batch_id: candidate,
-                        ..
-                    } = runnable
-                    {
-                        if candidate == batch_id {
-                            selected.push(runnable.clone());
-                        }
-                    }
+            // The batch comes from the VERIFIED request, not from a re-evaluated plan. There is no
+            // fallback arm: a child that cannot prove it was handed this work refuses.
+            //
+            // The request is READ here, never re-loaded. A second `scoped_execution_request_for`
+            // would repeat the disk read, the duplicate refusal and the subject verification that
+            // already ran above — double-paid compute inside the very boundary this change exists
+            // to delete (review 51433). The refusal below is not the verification: it is the
+            // structural fact that this arm is reachable only when the earlier one produced a
+            // request, refused rather than unwrapped so a future edit that breaks the pairing
+            // stops the line instead of panicking.
+            // The pairing check stays even though this arm now consumes nothing off the request:
+            // reaching execution as a scoped worker with no verified request in hand is the state
+            // this whole change exists to make impossible, and it must stop the line where it is
+            // observed rather than surface later as a missing value.
+            match &scoped_request {
+                Some(_) => {}
+                None => {
+                    let msg = format!(
+                        "scoped floor worker for batch `{batch_id}` reached execution with no \
+                         verified request in hand — refused"
+                    );
+                    eprintln!("claim_executor: {msg}");
+                    let _ = write_floor_worker_terminal("refused", &msg);
+                    return Err(ExitCode::from(1));
                 }
             }
-            if selected.len() != 1 {
-                eprintln!(
-                    "claim_executor: scoped floor worker batch id `{batch_id}` resolved to {} rows; expected exactly one",
-                    selected.len()
-                );
-                return Err(ExitCode::from(1));
-            }
-            batches = vec![selected];
+            // `batches` already IS this request's single row — it came from the walk plan built
+            // above out of the same verified request, so rebuilding it here would be a second
+            // construction of one decision (review 51445). What this arm still owes is the
+            // surrounding shape: a scoped child runs its batch and nothing else.
             on_success_stages.clear();
             floor_finalization = None;
         }
@@ -10478,12 +10724,30 @@ fn run() -> Result<ExitCode, ExitCode> {
     // Fast-lane 5s rule (operator 2026-07-12): a plan that schedules a discovery batch
     // must declare the per-witness eval budget; a missing/mistyped row refuses the run
     // (fail-closed), while discovery-free plans (regen, plan-artifact) never read it.
-    let schedules_discovery = batches.iter().flatten().any(|r| {
+    // A SCOPED CHILD NEVER SCHEDULES DISCOVERY. Its batch arrives with `entries` already
+    // frozen by the ordinary worker — exact (entry, function) identities — so a roster walk
+    // here can only re-derive a selection its parent already made, and re-deriving it is the
+    // duplicate work this boundary exists to delete. Naming hygiene is a property of the
+    // corpus, not of one child's slice: the ordinary worker pays it once per run, and every
+    // PR runs a plan that does. Deleting the child's walk also removes the last caller of
+    // `FloorDiscoveryConsumerRole::CoordinatedConsumer`, and with it the whole-graph snapshot
+    // transport that existed solely to make that walk's facts acquisition a cache hit.
+    let is_scoped_child = matches!(floor_worker_role, Some(FloorWorkerRole::Scoped { .. }));
+    // TWO QUESTIONS, deliberately not one flag. *Does this worker execute witness rows?* decides
+    // the per-witness eval budget, and a scoped child does execute them. *Must this worker derive
+    // a witness roster?* decides the naming-hygiene walk, and a scoped child must not — its
+    // entries are already frozen. They were one predicate until this change, so narrowing the walk
+    // would have silently dropped the child's eval deadline with it.
+    let carries_witness_rows = batches.iter().flatten().any(|r| {
         matches!(
             r,
             Runnable::DiscoveryBatch { .. } | Runnable::ScopedWitnessBatch { .. }
         )
     });
+    let WitnessWalkFlags {
+        executes_witness_rows,
+        schedules_discovery,
+    } = witness_walk_flags(carries_witness_rows, is_scoped_child);
     // Witness naming hygiene (`test fn` outside `*_test.dag`; the `__`-basename rule and
     // the orphan-helper census were deleted in gunbc#8155) is a
     // property of the witness ROSTER, so it is paid by the plans that have one. It ran
@@ -10501,10 +10765,9 @@ fn run() -> Result<ExitCode, ExitCode> {
     // cannot: they have no roster to be unhygienic about.
     if schedules_discovery {
         let excludes = v1_compiler::cli_run::witness_exclusion_substrings();
-        let discovery_consumer = match floor_worker_role.as_ref() {
-            Some(FloorWorkerRole::Scoped { .. }) => floor_discovery_consumer_role_from_env(),
-            Some(FloorWorkerRole::Ordinary) | None => FloorDiscoveryConsumerRole::Producer,
-        };
+        // Only a non-scoped worker reaches here (see `schedules_discovery`), so the roster is
+        // always produced, never consumed from a transported snapshot.
+        let discovery_consumer = FloorDiscoveryConsumerRole::Producer;
         if let Err(msg) = discover_floor_witness_roster_with_snapshot(
             &source_roots,
             &[],
@@ -10520,8 +10783,16 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
     }
     phase_mark("naming-hygiene walk");
-    let fast_lane_eval_budget_ms: Option<u64> = if schedules_discovery {
-        match run_value(&plan_ctx, "gunbc_ci_fast_lane_eval_budget_ms") {
+    let fast_lane_eval_budget_ms: Option<u64> = if let Some(request) = &scoped_request {
+        // Carried by the verified request: the child reads this budget but no longer evaluates
+        // the plan that declares it. Read off the request itself rather than a second tuple
+        // copied out of it — one value, one home.
+        request.fast_lane_eval_budget_ms
+    } else if executes_witness_rows {
+        match run_value(
+            plan_ctx_or_refuse!("fast-lane eval budget"),
+            "gunbc_ci_fast_lane_eval_budget_ms",
+        ) {
             Ok(Value::Int(n)) if n > 0 => Some(n as u64),
             Ok(other) => {
                 eprintln!(
@@ -10542,7 +10813,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let falsifier_self_host_wet_budgets = if plan_function == "gunbc_falsifier_plan" {
         FalsifierSelfHostWetBudgets {
             wall_budget_ms: match read_positive_budget_ms(
-                &plan_ctx,
+                plan_ctx_or_refuse!("falsifier budget"),
                 "gunbc_falsifier_self_host_wet_receipt_wall_budget_ms",
             ) {
                 Ok(v) => v,
@@ -10552,7 +10823,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             },
             interp_eval_budget_ms: match read_positive_budget_ms(
-                &plan_ctx,
+                plan_ctx_or_refuse!("falsifier budget"),
                 "gunbc_falsifier_self_host_wet_interp_eval_budget_ms",
             ) {
                 Ok(v) => v,
@@ -10562,7 +10833,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             },
             roster_entry_paths: match read_schedule_witness_entry_paths(
-                &plan_ctx,
+                plan_ctx_or_refuse!("plan read"),
                 "falsifier_self_host_wet_entries",
             ) {
                 Ok(v) => v,
@@ -10572,7 +10843,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             },
             known_red_entry_paths: match read_schedule_witness_entry_paths(
-                &plan_ctx,
+                plan_ctx_or_refuse!("plan read"),
                 "falsifier_self_host_wet_known_red_roster",
             ) {
                 Ok(v) => v,
@@ -10582,7 +10853,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             },
             silent_pick_wall_budget_ms: match read_positive_budget_ms(
-                &plan_ctx,
+                plan_ctx_or_refuse!("falsifier budget"),
                 "gunbc_falsifier_silent_pick_gate_receipt_wall_budget_ms",
             ) {
                 Ok(v) => v,
@@ -10592,7 +10863,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             },
             silent_pick_entry_paths: match read_schedule_witness_entry_paths(
-                &plan_ctx,
+                plan_ctx_or_refuse!("plan read"),
                 "falsifier_silent_pick_gate_roster",
             ) {
                 Ok(v) => v,
@@ -10602,7 +10873,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             },
             substrate_long_lane_entry_paths: match read_schedule_witness_entry_paths(
-                &plan_ctx,
+                plan_ctx_or_refuse!("plan read"),
                 "witness_long_eval_budget_entries",
             ) {
                 Ok(v) => v,
@@ -10612,16 +10883,18 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             },
             expected_red_witnesses: {
-                let mut pairs =
-                    match read_schedule_witness_entry_pairs(&plan_ctx, "known_red_probe_roster") {
-                        Ok(v) => v,
-                        Err(msg) => {
-                            eprintln!("{msg}");
-                            return Err(ExitCode::from(1));
-                        }
-                    };
+                let mut pairs = match read_schedule_witness_entry_pairs(
+                    plan_ctx_or_refuse!("known-red probe roster"),
+                    "known_red_probe_roster",
+                ) {
+                    Ok(v) => v,
+                    Err(msg) => {
+                        eprintln!("{msg}");
+                        return Err(ExitCode::from(1));
+                    }
+                };
                 match read_schedule_witness_entry_pairs(
-                    &plan_ctx,
+                    plan_ctx_or_refuse!("plan read"),
                     "falsifier_self_host_wet_known_red_roster",
                 ) {
                     Ok(v) => pairs.extend(v),
@@ -10633,7 +10906,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 pairs
             },
             pre_verdict_refusal_witnesses: match read_schedule_witness_entry_pairs(
-                &plan_ctx,
+                plan_ctx_or_refuse!("plan read"),
                 "known_red_pre_verdict_refusal_roster",
             ) {
                 Ok(v) => v,
@@ -10643,7 +10916,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 }
             },
             substrate_long_lane_eval_budget_ms: match read_positive_budget_ms(
-                &plan_ctx,
+                plan_ctx_or_refuse!("falsifier budget"),
                 "gunbc_falsifier_substrate_long_lane_eval_budget_ms",
             ) {
                 Ok(v) => v,
@@ -10664,7 +10937,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     // rather than silently leaving admission unbounded, because a deadline that quietly
     // failed to arm is indistinguishable from the state it was added to fix.
     let falsifier_soft_deadline_ms = if plan_function == "gunbc_falsifier_plan" {
-        match read_positive_budget_ms(&plan_ctx, "gunbc_falsifier_soft_deadline_ms") {
+        match read_positive_budget_ms(
+            plan_ctx_or_refuse!("falsifier budget"),
+            "gunbc_falsifier_soft_deadline_ms",
+        ) {
             Ok(v) => v,
             Err(msg) => {
                 eprintln!("{msg}");
@@ -10674,7 +10950,33 @@ fn run() -> Result<ExitCode, ExitCode> {
     } else {
         None
     };
-    let batch_stop_policy = resolve_floor_batch_stop_policy(&plan_ctx, &plan_function);
+    // A scoped child does not re-derive this: the parent resolved it against the plan and froze
+    // it into the request. Reading it from the plan here is what made the child refuse after the
+    // ordinary walk had already passed — this site is unconditional for every worker.
+    let batch_stop_policy = match &scoped_request {
+        Some(request) => request.batch_stop_policy,
+        None => resolve_floor_batch_stop_policy(
+            plan_ctx_or_refuse!("batch stop policy"),
+            &plan_function,
+        ),
+    };
+    // PUBLISH THE EXACT SCOPED WORK, and publish it HERE: everything a child needs must already
+    // be known, which includes the stop policy resolved just above. Publishing earlier is what
+    // shipped a request missing a plan-derived value the child then had no way to obtain, so it
+    // refused mid-floor with the ordinary walk already paid for.
+    if matches!(floor_worker_role, Some(FloorWorkerRole::Ordinary)) {
+        if let Err(msg) = scoped_execution_requests_from_rows(
+            &published_scoped_rows,
+            fast_lane_eval_budget_ms,
+            ordinary_budget_ms,
+            batch_stop_policy,
+        )
+        .and_then(|requests| write_scoped_execution_requests(&requests))
+        {
+            eprintln!("claim_executor: ordinary floor worker scoped request refusal: {msg}");
+            return Err(ExitCode::from(1));
+        }
+    }
     // THE COST WALL (Piece 3 derived clamp): the floor plan's per-batch clamp params, read
     // fail-closed at arm time (the fast-lane-budget pattern). Scoped to the full floor plan only:
     // the plan-artifact shortcut runs a single batch of the same schedule and the falsifier
@@ -10692,7 +10994,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     };
     let positional_count = scoped_clamps.iter().filter(|clamp| clamp.is_none()).count();
     let positional_clamps = if plan_function == "gunbc_ci_floor_plan" && positional_count > 0 {
-        match read_floor_batch_clamp_params(&plan_ctx, positional_count) {
+        match read_floor_batch_clamp_params(
+            plan_ctx_or_refuse!("positional batch clamps"),
+            positional_count,
+        ) {
             Ok(v) => Some(v),
             Err(msg) => {
                 eprintln!("{msg}");
@@ -10735,7 +11040,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             && (plan_function == "gunbc_ci_floor_plan"
                 || plan_function == "gunbc_ci_plan_artifact_plan")
         {
-            match read_compile_clean_clamp(&plan_ctx) {
+            match read_compile_clean_clamp(plan_ctx_or_refuse!("compile-clean clamp")) {
                 Ok(v) => Some(v),
                 Err(msg) => {
                     eprintln!("{msg}");
@@ -10821,7 +11126,6 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
     }
     drop(plan_ctx);
-    drop(plan_graph);
     phase_mark("plan eval");
 
     eprintln!(
@@ -12904,7 +13208,9 @@ mod tests {
             .function
             .contains(EXPECTED_RED_PRE_VERDICT_UNVERIFIED_MODE));
         // It is a refusal, not a verdict about any witness: no per-witness populations.
-        assert_eq!(r.expectation_refusal, None);
+        // (The typed refusal itself IS carried — asserted above; an earlier
+        // `expectation_refusal == None` here contradicted that assertion and made the whole
+        // test unexecutable, so it never observed anything it claimed to.)
         assert!(r.witness_row_costs.is_empty());
 
         // Distinct from BOTH siblings on the same axis — different remedies, different modes.
@@ -16788,5 +17094,262 @@ mod tests {
         assert_eq!(outcome.label, "failed");
         assert!(outcome.detail.contains("signal 9"));
         assert!(!floor_worker_succeeded(&observed));
+    }
+}
+
+#[cfg(test)]
+mod witness_walk_flags_tests {
+    use super::witness_walk_flags;
+
+    /// The scoped-child boundary deletion narrowed the roster walk. This pins that it narrowed
+    /// ONLY the walk: a scoped child still executes rows, so it must still be handed the
+    /// per-witness eval budget. RED if the two questions are ever collapsed back into one flag —
+    /// the collapse is silent at the type level and would weaken a budget wall while reading as a
+    /// pure scope narrowing.
+    #[test]
+    fn witness_walk_flags_split_the_two_questions() {
+        let ordinary = witness_walk_flags(true, false);
+        assert!(ordinary.executes_witness_rows);
+        assert!(
+            ordinary.schedules_discovery,
+            "an ordinary worker carrying witness rows must still derive the roster"
+        );
+
+        let scoped = witness_walk_flags(true, true);
+        assert!(
+            scoped.executes_witness_rows,
+            "a scoped child executes its frozen rows, so it must keep the eval budget"
+        );
+        assert!(
+            !scoped.schedules_discovery,
+            "a scoped child must never re-derive a roster its parent already froze"
+        );
+
+        // No rows at all: neither question is yes, for either role.
+        for is_scoped in [false, true] {
+            let empty = witness_walk_flags(false, is_scoped);
+            assert!(!empty.executes_witness_rows);
+            assert!(!empty.schedules_discovery);
+        }
+    }
+}
+
+#[cfg(test)]
+mod scoped_execution_request_tests {
+    use super::*;
+
+    fn entry(name: &str) -> ScopedScheduleEntry {
+        ScopedScheduleEntry {
+            entry: format!("dag/test/claim/{name}_test.dag"),
+            function: format!("{name}_holds"),
+            witness_kind: "CorpusWitnessKind".to_string(),
+        }
+    }
+
+    fn request(batch_id: &str, entries: Vec<ScopedScheduleEntry>) -> ScopedExecutionRequest {
+        ScopedExecutionRequest {
+            tested_commit: "a".repeat(40),
+            tested_tree: "b".repeat(40),
+            tool_identity: "tool-identity".to_string(),
+            batch_id: batch_id.to_string(),
+            source_roots: vec!["dag".to_string(), "src/v1".to_string()],
+            source_roots_digest: "digest".to_string(),
+            entries,
+            scan_dirs: Vec::new(),
+            node_frontier_selection: NodeFrontierSelectionMode::Applied,
+            execution_authority: ScopedWitnessExecutionAuthority::InheritedWalkSourceRoots,
+            profile: ParsedRunnableProfile {
+                provenance: ParsedProfileProvenance::Declared,
+                heavy_whole_tree_resolve: false,
+                spawns_host_compiler: false,
+                memory: ParsedMemoryClass::Negligible,
+                execution_mode: ExecutionMode::Hermetic,
+            },
+            clamp: ResolvedFloorBatchClamp {
+                overhead_ms: 1,
+                per_unit_ms: 2,
+                authority: FloorBatchClampAuthority::ScopedBatchOwnedClamp {
+                    batch_id: batch_id.to_string(),
+                    module_path: "gunbc.ci_layer_roots".to_string(),
+                    decl_name: "scoped_witness_batches".to_string(),
+                },
+            },
+            process_isolation: ScopedProcessIsolation::SequentialChildProcess,
+            fast_lane_eval_budget_ms: Some(5_000),
+            ordinary_budget_ms: Some(60_000),
+            batch_stop_policy: FloorBatchStopPolicy::StopBeforeDependents,
+        }
+    }
+
+    /// EXACT IDENTITY TRANSPORT. The child executes what the parent froze — not a re-derivation of
+    /// it — so the round trip must preserve the identity set exactly. RED if a field is dropped
+    /// from the carrier or reordered into a different batch.
+    #[test]
+    fn round_trip_preserves_the_frozen_identity_set() {
+        let original = request("v1_claim_scoped", vec![entry("alpha"), entry("beta")]);
+        let wire = serde_json::to_string(&[original.clone()]).expect("serialize");
+        let decoded: Vec<ScopedExecutionRequest> = serde_json::from_str(&wire).expect("decode");
+        assert_eq!(decoded.len(), 1);
+
+        let before: Vec<(String, String)> = original
+            .entries
+            .iter()
+            .map(|e| (e.entry.clone(), e.function.clone()))
+            .collect();
+        let after: Vec<(String, String)> = decoded[0]
+            .entries
+            .iter()
+            .map(|e| (e.entry.clone(), e.function.clone()))
+            .collect();
+        assert_eq!(
+            before, after,
+            "the frozen identity set must survive transport exactly"
+        );
+        assert_eq!(decoded[0].fast_lane_eval_budget_ms, Some(5_000));
+        assert_eq!(decoded[0].ordinary_budget_ms, Some(60_000));
+
+        // The runnable the child executes carries the same identities, in order.
+        match decoded[0].to_runnable() {
+            Runnable::ScopedWitnessBatch {
+                entries, batch_id, ..
+            } => {
+                assert_eq!(batch_id, "v1_claim_scoped");
+                let rebuilt: Vec<(String, String)> = entries
+                    .iter()
+                    .map(|e| (e.entry.clone(), e.function.clone()))
+                    .collect();
+                assert_eq!(rebuilt, before);
+            }
+            _ => panic!("expected a scoped witness batch"),
+        }
+    }
+
+    /// PLANTED OMITTED IDENTITY. A request that lost one of its frozen rows must not silently
+    /// execute the smaller set: the identity sets differ, and this control is what notices.
+    #[test]
+    fn planted_omitted_identity_is_visible_in_the_request() {
+        let full = request("v1_claim_scoped", vec![entry("alpha"), entry("beta")]);
+        let truncated = request("v1_claim_scoped", vec![entry("alpha")]);
+        let full_ids: Vec<String> = full.entries.iter().map(|e| e.function.clone()).collect();
+        let truncated_ids: Vec<String> = truncated
+            .entries
+            .iter()
+            .map(|e| e.function.clone())
+            .collect();
+        assert_ne!(
+            full_ids, truncated_ids,
+            "an omitted frozen identity must be a visible difference, never an equal set"
+        );
+        assert_eq!(truncated_ids.len(), full_ids.len() - 1);
+    }
+
+    /// PLANTED WRONG SUBJECT. Selection alone is not verification: a request frozen against another
+    /// commit, tree, or tool must refuse rather than execute against whatever is on disk. This
+    /// drives the PRODUCTION refusal on each axis — an earlier revision asserted field inequality
+    /// on hand-authored data, which restates the comparison instead of exercising it and would
+    /// have stayed green if the loader stopped consulting one axis (review 51445). Observing the
+    /// live subject is git work and stays with the floor; deciding on it is what refuses here.
+    #[test]
+    fn planted_wrong_subject_differs_on_every_axis() {
+        let frozen = request("v1_claim_scoped", vec![entry("alpha")]);
+        for (commit, tree, tool) in [
+            (
+                "c".repeat(40),
+                frozen.tested_tree.clone(),
+                frozen.tool_identity.clone(),
+            ),
+            (
+                frozen.tested_commit.clone(),
+                "d".repeat(40),
+                frozen.tool_identity.clone(),
+            ),
+            (
+                frozen.tested_commit.clone(),
+                frozen.tested_tree.clone(),
+                "other-tool".to_string(),
+            ),
+        ] {
+            let refusal = refuse_subject_mismatch(&frozen, &commit, &tree, &tool)
+                .expect_err("a subject perturbed on any axis must refuse");
+            assert!(
+                refusal.contains("frozen against a different subject")
+                    && refusal.contains(&frozen.batch_id),
+                "the refusal must say what it refused and for which batch: {refusal}"
+            );
+        }
+
+        // The unperturbed subject must be ACCEPTED — otherwise the refusals above would pass for a
+        // reason unrelated to what they claim (a check that refuses everything is not a check).
+        refuse_subject_mismatch(
+            &frozen,
+            &frozen.tested_commit,
+            &frozen.tested_tree,
+            &frozen.tool_identity,
+        )
+        .expect("the subject it was frozen against must be accepted");
+    }
+
+    /// THE DEFECT TWO FULL CI FLOORS PAID FOR. `resolve_floor_batch_stop_policy` is read
+    /// unconditionally by every worker, so a scoped child — which has no plan context by
+    /// construction after this change — refused there AFTER the ordinary walk had already
+    /// succeeded, and the coordinator reported it as "worker returned before producing a walk
+    /// terminal receipt" because the refusal path exited without writing one.
+    ///
+    /// The wall is that every plan-derived value a child reads must travel ON the request. This
+    /// pins the population: adding a plan read to the child's path without adding its field here
+    /// fails, rather than being discovered by a 70-minute floor.
+    #[test]
+    fn every_plan_derived_value_the_child_reads_travels_on_the_request() {
+        let frozen = request("v1_claim_scoped", vec![entry("alpha")]);
+
+        // Each of these is read by a scoped child at execution time and is derived from the plan
+        // the child no longer evaluates. Absence is not "default it" — it is unrepresentable.
+        assert_eq!(frozen.fast_lane_eval_budget_ms, Some(5_000));
+        assert_eq!(frozen.ordinary_budget_ms, Some(60_000));
+        assert_eq!(
+            frozen.batch_stop_policy,
+            FloorBatchStopPolicy::StopBeforeDependents
+        );
+
+        // And they must survive the transport — a field the parent freezes but the JSON drops
+        // puts the child right back where it was, reading a plan it does not have.
+        let encoded = serde_json::to_string(&vec![frozen.clone()]).expect("serializes");
+        let decoded: Vec<ScopedExecutionRequest> =
+            serde_json::from_str(&encoded).expect("round-trips");
+        assert_eq!(
+            decoded[0].fast_lane_eval_budget_ms,
+            frozen.fast_lane_eval_budget_ms
+        );
+        assert_eq!(decoded[0].ordinary_budget_ms, frozen.ordinary_budget_ms);
+        assert_eq!(decoded[0].batch_stop_policy, frozen.batch_stop_policy);
+    }
+
+    /// cursor review 51430 found this: the manifest this carrier replaces refused a duplicate
+    /// batch id on read, and the replacement only JSON-parsed. The coordinator spawns one child
+    /// per published row, so a repeated id spawned parallel workers for one batch instead of
+    /// stopping the line. This drives the production refusal, not a restatement of it.
+    #[test]
+    fn a_repeated_batch_id_refuses_before_anything_spawns() {
+        let unique = vec![
+            request("v1_claim_scoped", vec![entry("alpha")]),
+            request("v1_claim_scoped_two", vec![entry("beta")]),
+        ];
+        assert!(
+            refuse_duplicate_scoped_batch_ids(&unique, "fixture").is_ok(),
+            "distinct batch ids must pass — otherwise the refusal below proves nothing"
+        );
+
+        // Same id, DIFFERENT populations: the contradiction a first-wins read would resolve by
+        // silently picking one.
+        let duplicated = vec![
+            request("v1_claim_scoped", vec![entry("alpha")]),
+            request("v1_claim_scoped", vec![entry("beta")]),
+        ];
+        let refusal = refuse_duplicate_scoped_batch_ids(&duplicated, "fixture")
+            .expect_err("a repeated batch id must refuse");
+        assert!(
+            refusal.contains("duplicate batch id") && refusal.contains("v1_claim_scoped"),
+            "the refusal must name what it refused and where: {refusal}"
+        );
     }
 }

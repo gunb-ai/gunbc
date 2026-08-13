@@ -1,0 +1,304 @@
+module test.claim.compute_board_simulation_receipt_witness
+
+import std.types { String, List }
+import std.integer { Int }
+import product.compute_board.admission {
+  BoardArticleAdmitted,
+  BoardArticleRefused,
+  AdmittedBoardPowerInterfaceArticle,
+  admit_board_article,
+}
+import product.compute_board.article { BoardPowerInterfaceArticle, power_interlock_article }
+import product.compute_board.analog {
+  AnalogCircuitIntent,
+  ElectricalNet,
+}
+import product.compute_board.spice_projection {
+  SpiceSliceProjected,
+  SpiceSliceRefused,
+  project_article_to_spice,
+  project_article_to_ngspice_run,
+}
+import product.compute_board.verilog_projection {
+  VerilogModuleEmitted,
+  VerilogProjectionRefused,
+  project_article_to_verilog,
+  power_interlock_verilog_bindings,
+}
+import product.compute_board.simulation_receipt {
+  SimulationOutcome,
+  conditioning_network_artifact,
+  conditioning_network_run,
+  executed_runs,
+  interlock_verilog_artifact,
+  interlock_verilog_run,
+  outcome_is_accepted,
+  run_of,
+  executed_implementation_runs,
+  interlock_bitstream_run,
+  run_consumes_retained,
+  retained_input_blobs,
+  run_input_is_upstream,
+  interlock_pin_constraint_artifact,
+  interlock_place_and_route_run,
+  interlock_synthesis_run,
+}
+import product.compute_board.device_binding {
+  PinConstraintsEmitted,
+  PinConstraintsRefused,
+  interlock_device_realization,
+  interlock_pin_assignments,
+  project_article_to_pin_constraints,
+}
+import product.compute_board.verilog_projection { power_interlock_verilog_bindings }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE JOIN, and it is the only thing that keeps a recorded run from decaying into folklore. The
+// receipt says a tool accepted these exact bytes; this asserts the product still emits exactly
+// those bytes. Without it the receipt would keep vouching for an artifact the projection stopped
+// producing, which is worse than having no receipt at all — it reads as evidence.
+fn admitted() -> AdmittedBoardPowerInterfaceArticle? {
+  match admit_board_article(a: power_interlock_article) {
+    BoardArticleAdmitted { article: adm } => Present { value: adm }
+    BoardArticleRefused { causes: _ } => none
+  }
+}
+
+test fn w_the_executed_verilog_is_what_the_product_emits_today() -> Bool {
+  match admitted() {
+    Absent => false
+    Present { value: adm } =>
+      match project_article_to_verilog(admitted: adm, bindings: power_interlock_verilog_bindings) {
+        VerilogProjectionRefused { cause: _ } => false
+        VerilogModuleEmitted { receipt: r } => r.source == interlock_verilog_artifact
+      }
+  }
+}
+
+test fn w_the_executed_deck_is_what_the_product_emits_today() -> Bool {
+  match admitted() {
+    Absent => false
+    Present { value: adm } =>
+      match project_article_to_ngspice_run(admitted: adm) {
+        SpiceSliceRefused { cause: _ } => false
+        SpiceSliceProjected { receipt: r } => r.source == conditioning_network_artifact
+      }
+  }
+}
+
+// The runnable deck and the receipt deck describe ONE circuit. A run that exercised a different
+// netlist from the one the receipt carries would prove something about a circuit nobody emits;
+// the shared spice_netlist construction is what makes that unwritable, and this is the executing
+// check that it stayed shared.
+test fn w_the_run_deck_contains_the_receipt_circuit() -> Bool {
+  match admitted() {
+    Absent => false
+    Present { value: adm } =>
+      match project_article_to_spice(admitted: adm) {
+        SpiceSliceRefused { cause: _ } => false
+        SpiceSliceProjected { receipt: r } =>
+          match project_article_to_ngspice_run(admitted: adm) {
+            SpiceSliceRefused { cause: _ } => false
+            SpiceSliceProjected { receipt: run } => run.source == concat(r.source, "\n.op\n.end")
+          }
+      }
+  }
+}
+
+// Both recorded runs were accepted by their tool. A receipt whose outcome arm was never checked
+// would let a refusal sit in the corpus looking like evidence of success.
+test fn w_every_recorded_run_was_accepted() -> Bool {
+  fold(executed_runs, init: true, f: fn(acc, o) { acc && outcome_is_accepted(outcome: o) })
+}
+
+// The observations are not empty, and they are DIFFERENT from one another. An empty observation
+// would make every claim above vacuous, and one shared observation string would mean a copy
+// rather than two runs.
+test fn w_the_observations_are_distinct_and_present() -> Bool {
+  let v = run_of(outcome: interlock_verilog_run)
+  let s = run_of(outcome: conditioning_network_run)
+  v.observation != "" && s.observation != "" && v.observation != s.observation
+}
+
+// THE OPERATING POINT NAMES THE SCALE. Twelve volts across ten kilohms is 1.2 mA; a deck that had
+// emitted a bare "10" would have solved cleanly and reported 1.2 A. This asserts the observation
+// recorded the milliamp figure, which is the only part of the run that discriminates the suffix.
+test fn w_the_operating_point_discriminates_the_scale_suffix() -> Bool {
+  let s = run_of(outcome: conditioning_network_run)
+  let divider_ratio_is_reported = list_length(items: split(s: s.observation, delimiter: "pg_cond 3.000000e+00")) > 1
+  let series_current_pins_the_k_suffix = list_length(items: split(s: s.observation, delimiter: "-3.00000e-04")) > 1
+  divider_ratio_is_reported && series_current_pins_the_k_suffix
+}
+
+// BOTH SPICE PATHS SIT BEHIND ONE REFUSAL GATE. This is the review finding that produced the
+// change: the runnable deck used to be built directly and returned as a bare String, so an
+// article admission accepts and the projection REFUSES could still hand bytes to a simulator —
+// and component_node maps a terminal on no net to Ground, so those bytes would have simulated
+// cleanly while describing a different board. A String return is what made it possible, because
+// a String has nowhere to put a refusal. The fixture below is admitted (netting is deliberately
+// not an article-level fact) and has a floating terminal, so it discriminates exactly that.
+// The production circuit with ONE net member removed: pg_filt terminal 1 now sits on no net. The
+// article is otherwise untouched, so admission accepts it — a terminal's netting is a SPICE
+// requirement rather than a fact about the board, which is exactly why the projection has to be
+// the thing that refuses.
+//
+// DERIVED FROM THE PRODUCTION NETS, NOT RE-AUTHORED, and the sibling witness is why. This fixture
+// used to restate the whole topology literally, which makes it a second copy of a fact the article
+// already owns: correct only for as long as nobody edits the circuit. The emission-entry witness
+// carried the same copy, the divider rebuild moved the name "pg_cond" from the COMPONENT
+// population to the NET population, and its copy went on naming something real while naming the
+// wrong kind of thing — the article stopped being admitted and two tests silently stopped
+// measuring the projection at all. Derived, a topology change flows through, and deleting the
+// dropped terminal fails loudly instead: nothing floats and the projection renders.
+fn without_filter_high_terminal(nets: List<ElectricalNet>) -> List<ElectricalNet> {
+  fold(nets, init: [], f: fn(acc, net) {
+    concat(acc, [ElectricalNet {
+      identity: net.identity,
+      members: fold(net.members, init: [], f: fn(macc, m) {
+        if ((m.component as String) == "pg_filt") && ((m.terminal as String) == "1") {
+          macc
+        } else {
+          concat(macc, [m])
+        }
+      }),
+    }])
+  })
+}
+
+fn terminal_member_count(nets: List<ElectricalNet>) -> Int {
+  fold(nets, init: 0, f: fn(acc, net) {
+    fold(net.members, init: acc, f: fn(macc, _m) { macc + 1 })
+  })
+}
+
+data floating_analog: AnalogCircuitIntent = AnalogCircuitIntent {
+  title: power_interlock_article.analog.title,
+  components: power_interlock_article.analog.components,
+  nets: without_filter_high_terminal(nets: power_interlock_article.analog.nets),
+}
+
+// The fixture's premise, executed: exactly one terminal member fewer than production. Without
+// this the tests below are only about the projection if someone remembers to check that something
+// actually floats.
+test fn w_the_floating_fixture_actually_floats_exactly_one_terminal() -> Bool {
+  let produced = terminal_member_count(nets: power_interlock_article.analog.nets)
+  let floated = terminal_member_count(nets: floating_analog.nets)
+  produced > 0 && floated == (produced - 1)
+}
+
+data floating_terminal_article: BoardPowerInterfaceArticle = BoardPowerInterfaceArticle {
+  identity: power_interlock_article.identity,
+  analog: floating_analog,
+  model_bindings: power_interlock_article.model_bindings,
+  reference_net: power_interlock_article.reference_net,
+  digital_control: power_interlock_article.digital_control,
+  bonds: power_interlock_article.bonds,
+  platform_firmware: power_interlock_article.platform_firmware,
+  physical: power_interlock_article.physical,
+  manufacturing: power_interlock_article.manufacturing,
+}
+
+fn floating_article() -> AdmittedBoardPowerInterfaceArticle? {
+  match admit_board_article(a: floating_terminal_article) {
+    BoardArticleAdmitted { article: adm } => Present { value: adm }
+    BoardArticleRefused { causes: _ } => none
+  }
+}
+
+test fn w_the_floating_fixture_is_admitted_so_the_test_is_about_the_projection() -> Bool {
+  match floating_article() {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn w_both_spice_paths_refuse_the_same_article() -> Bool {
+  match floating_article() {
+    Absent => false
+    Present { value: adm } =>
+      match project_article_to_spice(admitted: adm) {
+        SpiceSliceProjected { receipt: _ } => false
+        SpiceSliceRefused { cause: _ } =>
+          match project_article_to_ngspice_run(admitted: adm) {
+            SpiceSliceProjected { receipt: _ } => false
+            SpiceSliceRefused { cause: _ } => true
+          }
+      }
+  }
+}
+
+// THE IMPLEMENTATION RECEIPTS JOIN THE SAME WAY THE SIMULATION ONES DO. Place-and-route was given
+// a constraint file; this asserts the product still emits exactly those bytes, so the recorded run
+// cannot drift into describing a pin assignment nobody generates.
+test fn w_the_placed_constraints_are_what_the_product_emits_today() -> Bool {
+  match admitted() {
+    Absent => false
+    Present { value: adm } =>
+      match project_article_to_pin_constraints(
+        admitted: adm,
+        realization: interlock_device_realization,
+        bindings: power_interlock_verilog_bindings,
+        assignments: interlock_pin_assignments
+      ) {
+        PinConstraintsRefused { causes: _ } => false
+        PinConstraintsEmitted { receipt: r } => r.source == interlock_pin_constraint_artifact
+      }
+  }
+}
+
+// Synthesis consumed the SAME Verilog the simulator did, not a separate copy prepared for it.
+// Two artifacts would let the simulated design and the implemented design diverge silently, which
+// is the failure mode that makes a green testbench meaningless.
+test fn w_synthesis_and_simulation_consumed_one_verilog_artifact() -> Bool {
+  let synth = run_of(outcome: interlock_synthesis_run)
+  let sim = run_of(outcome: interlock_verilog_run)
+  run_consumes_retained(r: synth, blob: interlock_verilog_artifact)
+    && run_consumes_retained(r: sim, blob: interlock_verilog_artifact)
+}
+
+test fn w_every_recorded_implementation_run_was_accepted() -> Bool {
+  fold(executed_implementation_runs, init: true, f: fn(acc, o) { acc && outcome_is_accepted(outcome: o) })
+}
+
+// THE OBSERVATION NAMES A BITSTREAM, not merely a successful exit. A chain that synthesised and
+// placed but produced no image would satisfy "the tools accepted it" while leaving nothing to
+// program a device with.
+// EACH TOOL'S RECEIPT QUOTES ITS OWN TOOL. An earlier revision of this test asserted that the
+// place-and-route observation contained both the synthesis cell count AND the bitstream size —
+// which was true only because one fused blob was attached to every run, and which enshrined that
+// fusion as the contract. A receipt that quotes a tool it did not run keeps vouching for that
+// tool's output after the output has drifted.
+test fn w_each_implementation_run_reports_its_own_tool() -> Bool {
+  let synth = run_of(outcome: interlock_synthesis_run)
+  let pnr = run_of(outcome: interlock_place_and_route_run)
+  let pack = run_of(outcome: interlock_bitstream_run)
+  let synth_is_its_own = list_length(items: split(s: synth.observation, delimiter: "SB_LUT4")) > 1
+    && list_length(items: split(s: synth.observation, delimiter: "32220 byte bitstream")) == 1
+  let pnr_is_its_own = list_length(items: split(s: pnr.observation, delimiter: "constrained power_permit")) > 1
+    && list_length(items: split(s: pnr.observation, delimiter: "SB_LUT4")) == 1
+  let pack_is_its_own = list_length(items: split(s: pack.observation, delimiter: "32220 byte bitstream")) > 1
+    && list_length(items: split(s: pack.observation, delimiter: "constrained power_permit")) == 1
+  synth_is_its_own && pnr_is_its_own && pack_is_its_own
+}
+
+// THE DIGEST MUST NAME SOMETHING A READER CAN REACH. The bitstream observation carries a sha256,
+// and the artifact field on that run holds the .pcf — which is not what was hashed. Rather than
+// leave the digest pointing at the wrong bytes, each run whose real input was produced by the
+// previous tool says so: nextpnr consumes the synthesized netlist under those constraints, and
+// icepack consumes nextpnr's .asc. Neither .asc nor netlist is retained here, and claiming
+// otherwise is what the earlier revision effectively did.
+// Place-and-route consumes TWO things: the synthesized netlist it did not author, and the pin
+// constraints this product emits. Both are named, which is what a single artifact field could
+// not express — and is why the .pcf ended up standing in for the netlist.
+// icepack consumes only nextpnr'"'"'s .asc, which this receipt does not retain. It therefore
+// carries no retained blob at all — previously it carried the .pcf, which it never read.
+test fn w_downstream_runs_name_the_input_they_actually_consumed() -> Bool {
+  let pnr = run_of(outcome: interlock_place_and_route_run)
+  let pack = run_of(outcome: interlock_bitstream_run)
+  let pnr_names_both = fold(pnr.inputs, init: false, f: fn(acc, i) { acc || run_input_is_upstream(i: i) })
+    && run_consumes_retained(r: pnr, blob: interlock_pin_constraint_artifact)
+  let pack_retains_nothing = fold(retained_input_blobs(r: pack), init: true, f: fn(acc, _b) { false })
+  pnr_names_both && pack_retains_nothing
+}
