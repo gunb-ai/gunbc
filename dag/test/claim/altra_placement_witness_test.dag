@@ -1,0 +1,224 @@
+module test.claim.altra_placement_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.integer { Int }
+import std.affine_space { Point2, point2 }
+import std.orthogonal_geometry { OrthogonalConstruction, OrthogonalReady, OrthogonalRefused }
+import product.altra_motherboard.placement {
+  BoardControlCpld,
+  BoardPlacementPlan,
+  ClockGenerator,
+  ComponentEnvelopeNotEstablished,
+  ComponentFillsNoRequiredRole,
+  DebugConnector,
+  EnvelopeEstablished,
+  EnvelopeNotEstablished,
+  MemoryModuleSlot,
+  PlacementAdmitted,
+  PlacementRefusal,
+  PlacementRefused,
+  PlannedComponent,
+  ProcessorSocket,
+  RedistributionUnresolved,
+  RequiredRoleUnfilled,
+  VendorSelectionNotMade,
+  admit_placement,
+  altra_board_frame,
+  altra_reference_plan,
+  board_control_envelope,
+  channel_indices,
+  established_envelope_count,
+  outstanding_obligation_count,
+  placeable_components,
+  placement_causes,
+  placement_refusal_count,
+  required_roles,
+  role_tag,
+  roles_equal,
+}
+import product.altra_motherboard.minimal_design {
+  FourChannels,
+  EightChannels,
+  altra_1p_minimum,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn plan_or_empty() -> BoardPlacementPlan? {
+  match altra_reference_plan() {
+    OrthogonalReady { value: p } => Present { value: p }
+    OrthogonalRefused { cause: _ } => none
+  }
+}
+
+fn cause_tag(r: PlacementRefusal) -> NonEmptyStr {
+  match r {
+    ComponentEnvelopeNotEstablished { component: _, gap: _ } => "EnvelopeMissing"
+    RequiredRoleUnfilled { role_named: _, channel: _ } => "RoleUnfilled"
+    ComponentFillsNoRequiredRole { component: _, role_named: _ } => "RoleUnjustified"
+  }
+}
+
+fn count_tagged(cs: List<PlacementRefusal>, wanted: String) -> Int {
+  fold(cs, init: 0, f: fn(acc, r) { if (cause_tag(r: r) as String) == wanted { acc + 1 } else { acc } })
+}
+
+// THE OUTLINE CONSTRUCTS, which is what makes every test below a statement about placement rather
+// than about a plan that does not exist. It is asserted rather than assumed because the plan's
+// refused arm is real: if the outline ever stopped constructing, the tests would otherwise pass
+// vacuously against an absent plan.
+test fn w_the_reference_plan_constructs() -> Bool {
+  match plan_or_empty() {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// THE PLAN REFUSES, AND THAT IS THE INCREMENT'S HONEST STATE. One envelope is established and the
+// rest are obligations, so a board cannot be laid out yet. Reporting this as admitted would be the
+// fabricated plausible output: a layout built from dimensions nobody established.
+test fn w_the_reference_plan_refuses_because_envelopes_are_outstanding() -> Bool {
+  match plan_or_empty() {
+    Absent => false
+    Present { value: p } =>
+      match admit_placement(d: altra_1p_minimum, plan: p) {
+        PlacementAdmitted { plan: _ } => false
+        PlacementRefused { causes: cs } => count_tagged(cs: cs, wanted: "EnvelopeMissing") > 0
+      }
+  }
+}
+
+// EVERY REQUIRED ROLE IS FILLED. The plan is not short of parts — it names every component the
+// design requires — so the refusal above is exactly about dimensions and not about an incomplete
+// population. Without this, a plan missing half the board would produce the same verdict.
+test fn w_the_population_is_complete_so_the_refusal_is_only_about_envelopes() -> Bool {
+  match plan_or_empty() {
+    Absent => false
+    Present { value: p } =>
+      count_tagged(cs: placement_causes(d: altra_1p_minimum, plan: p), wanted: "RoleUnfilled") == 0
+        && count_tagged(cs: placement_causes(d: altra_1p_minimum, plan: p), wanted: "RoleUnjustified") == 0
+  }
+}
+
+// THE OBLIGATIONS ARE EXACT AND COUNTED. Thirteen of the fourteen required components have no
+// established envelope; the fourteenth is the board-control CPLD. A count that drifted from the
+// population would mean the roster and the plan had come apart.
+test fn w_the_outstanding_obligations_are_counted_exactly() -> Bool {
+  match plan_or_empty() {
+    Absent => false
+    Present { value: p } =>
+      established_envelope_count(plan: p) == 1
+        && outstanding_obligation_count(plan: p) == 13
+  }
+}
+
+// THE TWO GAPS ARE NOT ONE GAP. The processor socket is blocked by a redistribution question and
+// the clock generator by an unmade part choice; those go to different people. A model that
+// collapsed them into one absent would send both to whoever read it first.
+test fn w_the_redistribution_gap_is_distinct_from_an_unmade_part_choice() -> Bool {
+  match plan_or_empty() {
+    Absent => false
+    Present { value: p } =>
+      fold(p.components, init: false, f: fn(acc, c) {
+        match c.envelope {
+          EnvelopeEstablished { envelope: _, source: _ } => acc
+          EnvelopeNotEstablished { gap: g } =>
+            match g {
+              RedistributionUnresolved { subject: s } =>
+                acc || (list_length(items: split(s: s as String, delimiter: "Ampere")) > 1
+                  && roles_equal(a: c.role, b: ProcessorSocket))
+              VendorSelectionNotMade { role_named: _ } => acc
+            }
+        }
+      })
+      && fold(p.components, init: false, f: fn(acc, c) {
+        match c.envelope {
+          EnvelopeEstablished { envelope: _, source: _ } => acc
+          EnvelopeNotEstablished { gap: g } =>
+            match g {
+              VendorSelectionNotMade { role_named: _ } => acc || roles_equal(a: c.role, b: ClockGenerator)
+              RedistributionUnresolved { subject: _ } => acc
+            }
+        }
+      })
+  }
+}
+
+// ONLY THE ESTABLISHED COMPONENT CROSSES INTO GEOMETRY. An obligation has no extent, so handing it
+// to a collision check would require inventing one. This asserts the bridge carries exactly the
+// component whose size is known — the alternative, a zero-sized part that collides with nothing,
+// is how an unplaced component would come to read as a placed one.
+test fn w_only_established_components_reach_the_geometry_bridge() -> Bool {
+  match plan_or_empty() {
+    Absent => false
+    Present { value: p } =>
+      fold(placeable_components(plan: p), init: 0, f: fn(acc, _c) { acc + 1 }) == 1
+        && fold(placeable_components(plan: p), init: false, f: fn(acc, c) {
+          acc || (c.identity as String) == "board_control_cpld"
+        })
+  }
+}
+
+// THE REQUIRED POPULATION FOLLOWS THE DESIGN RATHER THAN A LIST BESIDE IT. Eight channels demand
+// eight memory slots without anyone editing this module, which is what makes the roster derived
+// rather than a second copy of the channel count.
+test fn w_the_required_roles_track_the_selected_channel_count() -> Bool {
+  let four = fold(required_roles(d: altra_1p_minimum), init: 0, f: fn(acc, r) {
+    if (role_tag(r: r) as String) == "MemoryModuleSlot" { acc + 1 } else { acc }
+  })
+  let indices_four = fold(channel_indices(c: FourChannels), init: 0, f: fn(acc, _i) { acc + 1 })
+  let indices_eight = fold(channel_indices(c: EightChannels), init: 0, f: fn(acc, _i) { acc + 1 })
+  four == 4 && indices_four == 4 && indices_eight == 8
+}
+
+// A ROLE IS COMPARED STRUCTURALLY, INCLUDING ITS CHANNEL. Two memory slots on different channels
+// are different roles; an equality that only compared the variant would report the board as having
+// its memory population filled by a single slot repeated.
+test fn w_memory_slots_on_different_channels_are_different_roles() -> Bool {
+  !roles_equal(a: MemoryModuleSlot { channel: 0 }, b: MemoryModuleSlot { channel: 1 })
+    && roles_equal(a: MemoryModuleSlot { channel: 2 }, b: MemoryModuleSlot { channel: 2 })
+    && !roles_equal(a: MemoryModuleSlot { channel: 0 }, b: ProcessorSocket)
+    && roles_equal(a: DebugConnector, b: DebugConnector)
+}
+
+// THE DISCRIMINATING RED FOR THE POPULATION JOIN. A plan holding only the CPLD is missing thirteen
+// roles, and the join reports them — so the completeness check is an identity join and not a
+// count that happens to agree.
+fn plan_with_only(cs: List<PlannedComponent>, template: BoardPlacementPlan) -> BoardPlacementPlan {
+  BoardPlacementPlan { frame: template.frame, outline: template.outline, components: cs }
+}
+
+test fn w_a_plan_missing_roles_names_every_one_of_them() -> Bool {
+  match plan_or_empty() {
+    Absent => false
+    Present { value: p } =>
+      count_tagged(
+        cs: placement_causes(d: altra_1p_minimum, plan: plan_with_only(cs: [PlannedComponent {
+          identity: "board_control_cpld",
+          role: BoardControlCpld,
+          envelope: board_control_envelope,
+          origin: point2(frame: altra_board_frame(), x: 240000, y: 200000),
+        }], template: p)),
+        wanted: "RoleUnfilled"
+      ) == 13
+  }
+}
+
+// AND A COMPONENT THE DESIGN DOES NOT REQUIRE IS ITS OWN REFUSAL, not silence. A ninth memory slot
+// on a four-channel design is a part somebody added; reporting only missing roles would admit it.
+test fn w_a_component_filling_no_required_role_refuses() -> Bool {
+  match plan_or_empty() {
+    Absent => false
+    Present { value: p } =>
+      count_tagged(
+        cs: placement_causes(d: altra_1p_minimum, plan: plan_with_only(cs: [PlannedComponent {
+          identity: "dimm_slot_spurious",
+          role: MemoryModuleSlot { channel: 7 },
+          envelope: board_control_envelope,
+          origin: point2(frame: altra_board_frame(), x: 10000, y: 10000),
+        }], template: p)),
+        wanted: "RoleUnjustified"
+      ) == 1
+  }
+}
