@@ -195,7 +195,7 @@ fn principal_observation(
     principal_login_name: principal as NonEmptyStr,
     credential_identity: credential_identity,
     authenticated: match reach { Present { value: r } => r.success Absent => false },
-    passwordless_privilege: match sudo { Present { value: r } => r.success Absent => false },
+    holds_any_passwordless_grant: match sudo { Present { value: r } => r.success Absent => false },
   }
 }
 
@@ -269,7 +269,7 @@ func spark_managed_access_standing_wet(attempt_raw: String, identity_file: Strin
             join(map(observations, o => join([
               "observed host=", o.host as String, " principal=", o.principal_login_name as String,
               " authenticated=", if o.authenticated { "true" } else { "false" },
-              " passwordless_privilege=", if o.passwordless_privilege { "true" } else { "false" }, "\n",
+              " holds_any_passwordless_grant=", if o.holds_any_passwordless_grant { "true" } else { "false" }, "\n",
             ], "")), ""),
             join(map(spark_standing_hosts, h => {
               let standing = derive_spark_managed_access_standing(host: h as HostIdentity, observations: observations)
@@ -298,7 +298,7 @@ func spark_managed_access_standing_wet(attempt_raw: String, identity_file: Strin
 // ── The exact-grant probe ───────────────────────────────────────────────────────────────────────
 
 // WHY THIS EXISTS, and it is a correction rather than an addition. PrincipalReachObservation's
-// `passwordless_privilege` is measured by `sudo -n -l`, which succeeds whenever the account holds
+// `holds_any_passwordless_grant` (renamed from `passwordless_privilege` by this correction) is measured by `sudo -n -l`, which succeeds whenever the account holds
 // ANY nopasswd entry -- and the grant this lane installs is exactly one command, `loginctl
 // enable-linger`. So the field reports true for an account that cannot write a unit file, and the
 // NAME says otherwise. I read the name, concluded the serving install needed no password, and
