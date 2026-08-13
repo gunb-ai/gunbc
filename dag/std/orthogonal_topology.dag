@@ -1,0 +1,563 @@
+module std.orthogonal_topology
+
+import std.types { Bool, List }
+import std.integer { Int }
+import std.nat { Nat }
+import std.measure {
+  Millimeter, millimeter, millimeter_count,
+  SquareMillimeter, square_millimeter, square_millimeter_count,
+  CubicMillimeter, cubic_millimeter, cubic_millimeter_count,
+  signed_millimeter_component_count,
+}
+import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity_eq }
+import std.affine_space { Point2, Point3 }
+import std.checked_arithmetic {
+  IntegerOverflow,
+  CheckedInt, CheckedIntReady, CheckedIntOverflow,
+  CheckedNat, CheckedNatReady, CheckedNatOverflow,
+  checked_int_add, checked_int_subtract, checked_int_multiply, checked_int_magnitude,
+}
+import v2.std.optional { Present, Absent }
+import std.orthogonal_geometry {
+  OrthogonalRefusal, OrthogonalFrameMismatch, ShellArithmeticRefused, SpacesInterpenetrate,
+  OrthogonalConstruction, OrthogonalReady, OrthogonalRefused,
+  OrthogonalLoop2, loop2_vertices, loop2_frame,
+  OrthogonalPrism3, prism3_footprint, prism3_frame, prism3_height, prism3_low, prism3_high,
+  LoopEdge, loop_edges, point2_x, point2_y, point2_same_position,
+}
+
+// SPATIAL-3B: ORTHOGONAL TOPOLOGY. An EnclosedSpace is DERIVED FROM A CLOSED SHELL and can never be
+// authored as width x depth x height. That is the whole point of the band, so it is worth saying
+// exactly what it buys: a space authored as three numbers has a volume that agrees with nothing -
+// it does not know its own footprint, so it cannot say whether a point is inside it, whether two
+// spaces overlap, or whether they share a wall, and every one of those questions would then be
+// answered by a SECOND authored fact that can silently disagree with the first. Here they are all
+// projections of one boundary, so disagreement has no representation.
+//
+// THE SHELL IS CLOSED BY CONSTRUCTION, NOT BY A CHECK. A ClosedShell is minted only from an
+// OrthogonalPrism3, and a footprint loop extruded between two parallel planes is closed for the
+// same reason 3A's loop is closed: the mint takes vertices and derives the edges including the
+// closing one. So there is no unclosed shell for a refusal arm to reject, and no such arm exists -
+// declaring one would be rung inflation on the sum, the same class 3A deleted LoopNotClosed for.
+//
+// WHAT THIS BAND DOES NOT CLAIM. The shell is a prism: a rectilinear footprint with one floor and
+// one ceiling. A shell with a stepped roof, an internal void, or a non-manifold junction is not
+// representable, not approximated. Those need a general face-set shell with an orientation and a
+// closure proof over it, which is a different construction from this one and arrives with its own
+// witnesses when a consumer needs it. Outward face normals are likewise absent: nothing this band
+// answers needs to know which side of a wall is inside, and a field no consumer reads is a fact
+// that gets to be wrong for free.
+//
+// EXACTNESS IS THE SAME PROMISE 3A MAKES. Areas come from the shoelace sum over integer millimetre
+// coordinates, volumes from area times height, containment from a crossing count. No square roots,
+// no rounding, no tolerance parameter - and every arithmetic step is checked, so a magnitude that
+// leaves the representable range is a typed refusal carrying its operands rather than a wrapped
+// number that looks plausible.
+//
+// ONE REFUSAL VOCABULARY FOR THE BAND, which is why this module extends std.orthogonal_geometry's
+// OrthogonalRefusal rather than declaring a TopologyRefusal beside it. A frame mismatch here is the
+// same fact with the same remedy as a frame mismatch there; a second spelling of it would be the
+// nicknaming DESIGN section 3 forbids, and a consumer handling both bands would have to match two
+// vocabularies to learn one thing.
+
+// A WALL IS DERIVED FROM THE FOOTPRINT EDGE, never stored. Storing the walls beside the prism would
+// be a second representation of the footprint: an edit to the loop would leave them stale, and
+// nothing in the type could notice. The span is the edge; the vertical extent is the prism's.
+type ShellWall {
+  start: Point2
+  end: Point2
+  low: Int
+  high: Int
+}
+
+type ClosedShell sole_constructor {
+  prism: OrthogonalPrism3
+}
+
+// Total: a prism IS a closed shell, so there is nothing here to refuse and the return type says so.
+fn closed_shell_of_prism(prism: OrthogonalPrism3) -> ClosedShell {
+  ClosedShell { prism: prism }
+}
+
+fn shell_prism(s: ClosedShell) -> OrthogonalPrism3 { s.prism }
+fn shell_frame(s: ClosedShell) -> CoordinateFrameIdentity { prism3_frame(p: s.prism) }
+
+fn shell_walls(s: ClosedShell) -> List<ShellWall> {
+  let lo = signed_millimeter_component_count(m: prism3_low(p: s.prism))
+  let hi = signed_millimeter_component_count(m: prism3_high(p: s.prism))
+  reverse(fold(loop_edges(vertices: loop2_vertices(l: prism3_footprint(p: s.prism))), init: [], f: (acc, e) =>
+    concat([ShellWall { start: e.start, end: e.end, low: lo, high: hi }], acc)))
+}
+
+// The face count is DERIVED and is the one place the closure claim is legible as a number: a prism
+// over an n-vertex footprint has n walls plus a floor and a ceiling. It is not stored, so it cannot
+// disagree with the footprint it counts.
+fn shell_face_count(s: ClosedShell) -> Int {
+  length(shell_walls(s: s)) + 2
+}
+
+type EnclosedSpace sole_constructor {
+  shell: ClosedShell
+}
+
+// Total for the same reason: every closed shell encloses a space. The refusals in this band are on
+// the QUESTIONS asked of a space (its area may overflow, two spaces may be in different frames),
+// never on its existence.
+fn enclosed_space(shell: ClosedShell) -> EnclosedSpace {
+  EnclosedSpace { shell: shell }
+}
+
+fn space_shell(s: EnclosedSpace) -> ClosedShell { s.shell }
+fn space_frame(s: EnclosedSpace) -> CoordinateFrameIdentity { shell_frame(s: s.shell) }
+fn space_footprint(s: EnclosedSpace) -> OrthogonalLoop2 { prism3_footprint(p: s.shell.prism) }
+fn space_height(s: EnclosedSpace) -> Millimeter { prism3_height(p: s.shell.prism) }
+fn space_walls(s: EnclosedSpace) -> List<ShellWall> { shell_walls(s: s.shell) }
+
+// EQUALITY IS OVER THE REGION, NOT THE VERTEX LIST. Two spaces are the same when they occupy the
+// same volume in the same frame, and the loop that describes a region is not unique: the same
+// rectangle can be written starting at any of its corners, in either winding. An earlier revision
+// compared vertices pairwise at matching list positions, which made a claim about VOLUME while
+// implementing one about REPRESENTATION - so a room whose boundary merely started at a different
+// corner compared unequal, and (because product.spatial_world uses this as its compare-and-swap
+// judgment) a geometrically identical patch could be refused as stale.
+//
+// The comparison is therefore invariant under cyclic rotation and under reversal, which are exactly
+// the two freedoms orthogonal_loop2 leaves in the representation: it stores the caller's sequence
+// unchanged, choosing neither a canonical start vertex nor a canonical winding. It is implemented
+// over the edge set rather than by trying rotations, because one structural fact covers both.
+//
+// Dissolve-on: canonicalising the loop AT ITS MINT - canonical start plus canonical winding - which
+// is the stronger fix because it makes this comparison trivial and gives every future hashing,
+// diffing or interning consumer one normal form instead of each re-deriving these two invariances.
+// It is not done here because it changes what loop2_vertices returns for already-merged callers,
+// which is a substrate change that deserves its own increment rather than riding a product band.
+//
+// There is no identity field to compare because identity is the product layer's fact, not
+// geometry's (std.spatial_knowledge draws the same separation). A consumer asking "is this the same
+// ROOM" must ask the layer that allocates room identities.
+fn space_eq(a: EnclosedSpace, b: EnclosedSpace) -> Bool {
+  coordinate_frame_identity_eq(a: space_frame(s: a), b: space_frame(s: b))
+    && signed_millimeter_component_count(m: prism3_low(p: a.shell.prism)) == signed_millimeter_component_count(m: prism3_low(p: b.shell.prism))
+    && signed_millimeter_component_count(m: prism3_high(p: a.shell.prism)) == signed_millimeter_component_count(m: prism3_high(p: b.shell.prism))
+    && loops_describe_same_region(
+         a: loop2_vertices(l: space_footprint(s: a)),
+         b: loop2_vertices(l: space_footprint(s: b)),
+       )
+}
+
+// THE COMPARISON IS OVER THE EDGE SET, which is what makes it invariant under both freedoms at once
+// rather than by enumerating rotations. A simple closed loop gives every vertex degree two, so its
+// set of edges determines the cycle and therefore the region; and an edge is an UNORDERED pair of
+// endpoints, so writing the loop backwards produces the same set. Rotating the start vertex does
+// not change which edges exist either. One structural fact covers both cases.
+fn same_undirected_edge(a: LoopEdge, b: LoopEdge) -> Bool {
+  (point2_same_position(a: a.start, b: b.start) && point2_same_position(a: a.end, b: b.end))
+    || (point2_same_position(a: a.start, b: b.end) && point2_same_position(a: a.end, b: b.start))
+}
+
+fn count_edge(edges: List<LoopEdge>, wanted: LoopEdge) -> Int {
+  fold(edges, init: 0, f: (acc, e) => if same_undirected_edge(a: e, b: wanted) { acc + 1 } else { acc })
+}
+
+// Multiplicity is compared, not mere membership: two loops can draw on the same set of distinct
+// edges while traversing one of them a different number of times, and a membership test would call
+// those equal.
+fn loops_describe_same_region(a: List<Point2>, b: List<Point2>) -> Bool {
+  if length(a) != length(b) {
+    false
+  } else {
+    let a_edges = loop_edges(vertices: a)
+    let b_edges = loop_edges(vertices: b)
+    fold(a_edges, init: true, f: (acc, e) =>
+      acc && count_edge(edges: a_edges, wanted: e) == count_edge(edges: b_edges, wanted: e))
+  }
+}
+
+// THE SHOELACE SUM, CHECKED AT EVERY STEP. The sum is twice the signed area, and for a closed
+// integer loop it is always even, so halving it is exact rather than a rounding policy. Each term
+// is a product of two coordinates and can leave the range on its own, so the fold carries a
+// CheckedInt and the FIRST crossing wins - a partial sum plus a default would be the fabricated
+// plausible output DESIGN section 5 forbids, and it would be a plausible AREA, which is worse than
+// an implausible one because nothing downstream would question it.
+fn shoelace_term(e: LoopEdge) -> CheckedInt {
+  let a = checked_int_multiply(a: point2_x(p: e.start), b: point2_y(p: e.end))
+  let b = checked_int_multiply(a: point2_x(p: e.end), b: point2_y(p: e.start))
+  match a {
+    CheckedIntOverflow { cause: c } => CheckedIntOverflow { cause: c }
+    CheckedIntReady { value: av } =>
+      match b {
+        CheckedIntOverflow { cause: c } => CheckedIntOverflow { cause: c }
+        CheckedIntReady { value: bv } => checked_int_subtract(a: av, b: bv)
+      }
+  }
+}
+
+fn shoelace_double_area(l: OrthogonalLoop2) -> CheckedInt {
+  fold(loop_edges(vertices: loop2_vertices(l: l)), init: CheckedIntReady { value: 0 }, f: (acc, e) =>
+    match acc {
+      CheckedIntOverflow { cause: c } => CheckedIntOverflow { cause: c }
+      CheckedIntReady { value: sum } =>
+        match shoelace_term(e: e) {
+          CheckedIntOverflow { cause: c } => CheckedIntOverflow { cause: c }
+          CheckedIntReady { value: t } => checked_int_add(a: sum, b: t)
+        }
+    })
+}
+
+fn loop2_area(l: OrthogonalLoop2) -> OrthogonalConstruction<SquareMillimeter> {
+  match shoelace_double_area(l: l) {
+    CheckedIntOverflow { cause: c } => OrthogonalRefused { cause: ShellArithmeticRefused { cause: c } }
+    CheckedIntReady { value: doubled } =>
+      match checked_int_magnitude(a: doubled) {
+        CheckedNatOverflow { cause: c } => OrthogonalRefused { cause: ShellArithmeticRefused { cause: c } }
+        CheckedNatReady { value: magnitude } => OrthogonalReady { value: square_millimeter(count: magnitude / 2) }
+      }
+  }
+}
+
+fn space_floor_area(s: EnclosedSpace) -> OrthogonalConstruction<SquareMillimeter> {
+  loop2_area(l: space_footprint(s: s))
+}
+
+// Volume is area times height and nothing else. There is no stored volume to disagree with the
+// footprint, and no arm that answers when the multiplication leaves the range.
+fn space_volume(s: EnclosedSpace) -> OrthogonalConstruction<CubicMillimeter> {
+  match space_floor_area(s: s) {
+    OrthogonalRefused { cause: c } => OrthogonalRefused { cause: c }
+    OrthogonalReady { value: area } =>
+      match checked_int_multiply(a: square_millimeter_count_as_int(m: area), b: millimeter_count_as_int(m: space_height(s: s))) {
+        CheckedIntOverflow { cause: c } => OrthogonalRefused { cause: ShellArithmeticRefused { cause: c } }
+        CheckedIntReady { value: v } =>
+          match checked_int_magnitude(a: v) {
+            CheckedNatOverflow { cause: c } => OrthogonalRefused { cause: ShellArithmeticRefused { cause: c } }
+            CheckedNatReady { value: n } => OrthogonalReady { value: cubic_millimeter(count: n) }
+          }
+      }
+  }
+}
+
+fn square_millimeter_count_as_int(m: SquareMillimeter) -> Int { square_millimeter_count(m: m) }
+fn millimeter_count_as_int(m: Millimeter) -> Int { millimeter_count(m: m) }
+
+fn cubic_millimeter_count_as_int(m: CubicMillimeter) -> Int { cubic_millimeter_count(m: m) }
+
+// CONTAINMENT IS THREE-VALUED, and collapsing it to a Bool would destroy the distinction a consumer
+// most needs. A point ON the boundary is on a wall: it is not in the interior and it is not
+// outside, and a fixture placed there is touching the wall rather than intersecting it or standing
+// clear of it. Those are three different situations with three different remedies, so they are
+// three arms - the same ruling std.spatial_knowledge records against Bool projections.
+type PointLocation2
+  = PointInsideLoop
+  | PointOnLoopBoundary
+  | PointOutsideLoop
+
+fn min_of(a: Int, b: Int) -> Int { if a < b { a } else { b } }
+fn max_of(a: Int, b: Int) -> Int { if a > b { a } else { b } }
+
+fn spans_overlap(a_lo: Int, a_hi: Int, b_lo: Int, b_hi: Int) -> Bool {
+  max_of(a: a_lo, b: b_lo) < min_of(a: a_hi, b: b_hi)
+}
+
+fn between_inclusive(v: Int, a: Int, b: Int) -> Bool {
+  (a <= v && v <= b) || (b <= v && v <= a)
+}
+
+// The edge is carried as four integers at a caller-chosen SCALE so the containment test has exactly
+// one implementation. The overlap test below needs to evaluate points at cell centres, which are
+// half-integers in millimetre coordinates; running it at scale 2 makes them integers without a
+// second copy of the crossing rule that could drift from this one.
+type EdgeInts {
+  sx: Int
+  sy: Int
+  ex: Int
+  ey: Int
+}
+
+fn scaled_edges(l: OrthogonalLoop2, scale: Int) -> List<EdgeInts> {
+  reverse(fold(loop_edges(vertices: loop2_vertices(l: l)), init: [], f: (acc, e) =>
+    concat([EdgeInts {
+      sx: point2_x(p: e.start) * scale,
+      sy: point2_y(p: e.start) * scale,
+      ex: point2_x(p: e.end) * scale,
+      ey: point2_y(p: e.end) * scale,
+    }], acc)))
+}
+
+fn on_edge(px: Int, py: Int, e: EdgeInts) -> Bool {
+  (e.sx == e.ex && px == e.sx && between_inclusive(v: py, a: e.sy, b: e.ey))
+    || (e.sy == e.ey && py == e.sy && between_inclusive(v: px, a: e.sx, b: e.ex))
+}
+
+// The crossing count uses the HALF-OPEN rule on the vertical span: an edge counts when the ray's y
+// is at or above its lower endpoint and strictly below its upper one. That is what makes a ray
+// passing exactly through a vertex count once rather than twice, which is the entire correctness
+// question in a crossing test and the reason a tolerance is never needed here. The witness sends a
+// ray through a vertex specifically to hold this rule down.
+fn crosses_ray(px: Int, py: Int, e: EdgeInts) -> Bool {
+  if e.sx != e.ex {
+    false
+  } else {
+    let lo = min_of(a: e.sy, b: e.ey)
+    let hi = max_of(a: e.sy, b: e.ey)
+    lo <= py && py < hi && px < e.sx
+  }
+}
+
+fn location_from_edges(edges: List<EdgeInts>, px: Int, py: Int) -> PointLocation2 {
+  let boundary = fold(edges, init: false, f: (acc, e) => acc || on_edge(px: px, py: py, e: e))
+  if boundary {
+    PointOnLoopBoundary
+  } else {
+    let crossings = fold(edges, init: 0, f: (acc, e) => if crosses_ray(px: px, py: py, e: e) { acc + 1 } else { acc })
+    if crossings % 2 == 1 { PointInsideLoop } else { PointOutsideLoop }
+  }
+}
+
+fn point_location_in_loop(l: OrthogonalLoop2, px: Int, py: Int) -> PointLocation2 {
+  location_from_edges(edges: scaled_edges(l: l, scale: 1), px: px, py: py)
+}
+
+type PointLocation3
+  = PointInsideSpace
+  | PointOnSpaceBoundary
+  | PointOutsideSpace
+
+fn space_locate_point(s: EnclosedSpace, p: Point3) -> OrthogonalConstruction<PointLocation3> {
+  if !coordinate_frame_identity_eq(a: space_frame(s: s), b: p.frame) {
+    OrthogonalRefused { cause: OrthogonalFrameMismatch { expected: space_frame(s: s), observed: p.frame } }
+  } else {
+    let z = signed_millimeter_component_count(m: p.z)
+    let lo = signed_millimeter_component_count(m: prism3_low(p: s.shell.prism))
+    let hi = signed_millimeter_component_count(m: prism3_high(p: s.shell.prism))
+    let plan = point_location_in_loop(
+      l: space_footprint(s: s),
+      px: signed_millimeter_component_count(m: p.x),
+      py: signed_millimeter_component_count(m: p.y),
+    )
+    if z < lo || z > hi {
+      OrthogonalReady { value: PointOutsideSpace }
+    } else {
+      match plan {
+        PointOutsideLoop => OrthogonalReady { value: PointOutsideSpace }
+        PointOnLoopBoundary => OrthogonalReady { value: PointOnSpaceBoundary }
+        PointInsideLoop =>
+          if z == lo || z == hi {
+            OrthogonalReady { value: PointOnSpaceBoundary }
+          } else {
+            OrthogonalReady { value: PointInsideSpace }
+          }
+      }
+    }
+  }
+}
+
+// INTERPENETRATION IS EXACT, AND IT IS DECIDED BY SAMPLING CELLS, not by comparing bounding boxes
+// and not by the vertex-and-edge-crossing test this function used first.
+//
+// THE REFUTED VERSION, kept here because the argument for it is persuasive and wrong: two
+// footprints overlap iff a vertex of one is strictly inside the other or two of their edges
+// properly cross - since otherwise they are disjoint or one contains the other, and containment
+// puts a vertex of the inner strictly inside the outer. That last step fails exactly when the
+// boundaries COINCIDE. Two identical footprints have every vertex on the other's boundary rather
+// than strictly inside it, and no pair of edges crosses transversally, so the test answered "no
+// overlap" for two spaces occupying the same volume - a fail-open in the predicate a complex's
+// admission wall depends on. It was found by mutating the vertical-range rule and noticing that a
+// claim which should have flipped did not, i.e. by a control, not by reading the code.
+//
+// WHAT IS EXACT INSTEAD. The x-coordinates of both footprints cut the plane into vertical strips
+// and the y-coordinates into horizontal ones; inside one such cell neither region's membership can
+// change, so if the intersection has any area at all, some whole cell lies inside both. Testing
+// the centre of every cell is therefore complete, and since a centre strictly inside both regions
+// IS an overlap, it is also sound. Centres are half-integers, so the whole test runs at scale 2
+// where they are integers - no rounding enters, which is the same promise the rest of the band
+// makes.
+//
+// COST, stated rather than discovered later: finding the adjacent coordinate pairs is quadratic in
+// the vertex count per axis and the cell scan is the product of the two axes' pair counts times the
+// per-point edge walk. For architectural footprints (four to a few dozen vertices) that is small,
+// and it is bounded by construction rather than by a limit anyone has to remember. Dissolve-on: a
+// sorted coordinate sweep makes the adjacency search linear if a consumer ever brings footprints
+// where this shows up in a measurement.
+fn loop_axis_coords(l: OrthogonalLoop2, want_x: Bool) -> List<Int> {
+  reverse(fold(loop2_vertices(l: l), init: [], f: (acc, v) =>
+    concat([if want_x { point2_x(p: v) } else { point2_y(p: v) }], acc)))
+}
+
+fn value_lies_strictly_between(v: Int, lo: Int, hi: Int) -> Bool {
+  lo < v && v < hi
+}
+
+// A pair is adjacent when no other coordinate falls strictly between them, which is the sorted-order
+// neighbour relation computed without sorting. The midpoint is returned at scale 2, where it is an
+// integer: the centre of the strip between lo and hi is (lo + hi) / 2, so at scale 2 it is lo + hi.
+fn adjacent_pair_centres(coords: List<Int>) -> List<Int> {
+  reverse(fold(coords, init: [], f: (outer_acc, lo) =>
+    fold(coords, init: outer_acc, f: (acc, hi) =>
+      if lo < hi && !fold(coords, init: false, f: (found, other) => found || value_lies_strictly_between(v: other, lo: lo, hi: hi)) {
+        concat([lo + hi], acc)
+      } else {
+        acc
+      })))
+}
+
+// The boundary arm is UNREACHABLE FROM THIS CALLER and that is a property of the cell construction,
+// not an untested branch: every boundary line of either footprint sits at one of the coordinates the
+// cells are cut on, and a centre is the midpoint of two ADJACENT coordinates, so it is strictly
+// between them. Mutating the arm to true changes no claim, which is the expected result rather than
+// a weak control - the arm is here because location_from_edges is three-valued and this caller is
+// answering a two-valued question about the interior.
+fn strictly_inside_scaled(edges: List<EdgeInts>, px: Int, py: Int) -> Bool {
+  match location_from_edges(edges: edges, px: px, py: py) {
+    PointInsideLoop => true
+    PointOnLoopBoundary => false
+    PointOutsideLoop => false
+  }
+}
+
+fn footprints_overlap(a: OrthogonalLoop2, b: OrthogonalLoop2) -> Bool {
+  let a_edges = scaled_edges(l: a, scale: 2)
+  let b_edges = scaled_edges(l: b, scale: 2)
+  let xs = concat(loop_axis_coords(l: a, want_x: true), loop_axis_coords(l: b, want_x: true))
+  let ys = concat(loop_axis_coords(l: a, want_x: false), loop_axis_coords(l: b, want_x: false))
+  let centre_ys = adjacent_pair_centres(coords: ys)
+  fold(adjacent_pair_centres(coords: xs), init: false, f: (acc, cx) =>
+    acc || fold(centre_ys, init: false, f: (inner, cy) =>
+      inner || (strictly_inside_scaled(edges: a_edges, px: cx, py: cy)
+        && strictly_inside_scaled(edges: b_edges, px: cx, py: cy))))
+}
+
+fn vertical_ranges_overlap(a: EnclosedSpace, b: EnclosedSpace) -> Bool {
+  let a_lo = signed_millimeter_component_count(m: prism3_low(p: a.shell.prism))
+  let a_hi = signed_millimeter_component_count(m: prism3_high(p: a.shell.prism))
+  let b_lo = signed_millimeter_component_count(m: prism3_low(p: b.shell.prism))
+  let b_hi = signed_millimeter_component_count(m: prism3_high(p: b.shell.prism))
+  a_lo < b_hi && b_lo < a_hi
+}
+
+fn spaces_interpenetrate(a: EnclosedSpace, b: EnclosedSpace) -> OrthogonalConstruction<Bool> {
+  if !coordinate_frame_identity_eq(a: space_frame(s: a), b: space_frame(s: b)) {
+    OrthogonalRefused { cause: OrthogonalFrameMismatch { expected: space_frame(s: a), observed: space_frame(s: b) } }
+  } else {
+    OrthogonalReady {
+      value: vertical_ranges_overlap(a: a, b: b)
+        && footprints_overlap(a: space_footprint(s: a), b: space_footprint(s: b))
+    }
+  }
+}
+
+// ADJACENCY IS SHARING A WALL, which is a coincidence of geometry and never an authored edge. Two
+// spaces are adjacent when a wall of one is collinear with a wall of the other and their spans
+// overlap in both the horizontal and the vertical direction. Touching at a single point or along a
+// zero-length span is not adjacency: you cannot put a door there, which is what the relation is
+// for, so the comparison is strict on both axes.
+fn walls_are_shared(a: ShellWall, b: ShellWall) -> Bool {
+  let a_vertical = point2_x(p: a.start) == point2_x(p: a.end)
+  let b_vertical = point2_x(p: b.start) == point2_x(p: b.end)
+  if a_vertical != b_vertical {
+    false
+  } else {
+    let vertical_overlap = max_of(a: a.low, b: b.low) < min_of(a: a.high, b: b.high)
+    if a_vertical {
+      point2_x(p: a.start) == point2_x(p: b.start)
+        && spans_overlap(
+             a_lo: min_of(a: point2_y(p: a.start), b: point2_y(p: a.end)),
+             a_hi: max_of(a: point2_y(p: a.start), b: point2_y(p: a.end)),
+             b_lo: min_of(a: point2_y(p: b.start), b: point2_y(p: b.end)),
+             b_hi: max_of(a: point2_y(p: b.start), b: point2_y(p: b.end)),
+           )
+        && vertical_overlap
+    } else {
+      point2_y(p: a.start) == point2_y(p: b.start)
+        && spans_overlap(
+             a_lo: min_of(a: point2_x(p: a.start), b: point2_x(p: a.end)),
+             a_hi: max_of(a: point2_x(p: a.start), b: point2_x(p: a.end)),
+             b_lo: min_of(a: point2_x(p: b.start), b: point2_x(p: b.end)),
+             b_hi: max_of(a: point2_x(p: b.start), b: point2_x(p: b.end)),
+           )
+        && vertical_overlap
+    }
+  }
+}
+
+fn spaces_are_adjacent(a: EnclosedSpace, b: EnclosedSpace) -> OrthogonalConstruction<Bool> {
+  if !coordinate_frame_identity_eq(a: space_frame(s: a), b: space_frame(s: b)) {
+    OrthogonalRefused { cause: OrthogonalFrameMismatch { expected: space_frame(s: a), observed: space_frame(s: b) } }
+  } else {
+    let b_walls = space_walls(s: b)
+    OrthogonalReady {
+      value: fold(space_walls(s: a), init: false, f: (acc, wa) =>
+        acc || fold(b_walls, init: false, f: (inner_acc, wb) => inner_acc || walls_are_shared(a: wa, b: wb)))
+    }
+  }
+}
+
+// A COMPLEX IS THE CONSTRUCTION WALL, and it is what makes every question above total for its
+// members. Once a set of spaces is admitted, no two of them interpenetrate and all of them share a
+// frame - so a consumer folding over a complex never re-asks, and a downstream operation cannot be
+// handed the overlapping pair that a per-call check would have let through whenever someone forgot
+// to call it. The pair test is quadratic and inherently so; what would NOT have been inherent is
+// re-deriving each member's walls inside the inner loop, so the walls are derived once per member.
+type SpaceComplex sole_constructor {
+  spaces: List<EnclosedSpace>
+}
+
+type ComplexAccum {
+  admitted: List<EnclosedSpace>
+  refusal: OrthogonalRefusal?
+}
+
+fn admit_space(acc: ComplexAccum, s: EnclosedSpace) -> ComplexAccum {
+  match acc.refusal {
+    Present { value: r } => ComplexAccum { admitted: acc.admitted, refusal: Present { value: r } }
+    Absent =>
+      let conflict = fold(acc.admitted, init: none, f: (found, other) =>
+        match found {
+          Present { value: r } => Present { value: r }
+          Absent =>
+            match spaces_interpenetrate(a: other, b: s) {
+              OrthogonalRefused { cause: c } => Present { value: c }
+              OrthogonalReady { value: overlaps } =>
+                if overlaps { Present { value: SpacesInterpenetrate } } else { none }
+            }
+        })
+      match conflict {
+        Present { value: r } => ComplexAccum { admitted: acc.admitted, refusal: Present { value: r } }
+        Absent => ComplexAccum { admitted: concat([s], acc.admitted), refusal: none }
+      }
+  }
+}
+
+fn space_complex(spaces: List<EnclosedSpace>) -> OrthogonalConstruction<SpaceComplex> {
+  let acc = fold(spaces, init: ComplexAccum { admitted: [], refusal: none }, f: (a, s) => admit_space(acc: a, s: s))
+  match acc.refusal {
+    Present { value: r } => OrthogonalRefused { cause: r }
+    Absent => OrthogonalReady { value: SpaceComplex { spaces: spaces } }
+  }
+}
+
+fn complex_spaces(c: SpaceComplex) -> List<EnclosedSpace> { c.spaces }
+
+fn complex_space_count(c: SpaceComplex) -> Int { length(c.spaces) }
+
+// The total volume of a complex is a sum the members cannot double-count, because admission already
+// proved they do not overlap. That is the payoff of the wall being at the mint rather than here:
+// this fold is a sum, not a sum plus an inclusion-exclusion correction nobody would get right.
+fn complex_total_volume(c: SpaceComplex) -> OrthogonalConstruction<CubicMillimeter> {
+  fold(c.spaces, init: OrthogonalReady { value: cubic_millimeter(count: 0) }, f: (acc, s) =>
+    match acc {
+      OrthogonalRefused { cause: r } => OrthogonalRefused { cause: r }
+      OrthogonalReady { value: total } =>
+        match space_volume(s: s) {
+          OrthogonalRefused { cause: r } => OrthogonalRefused { cause: r }
+          OrthogonalReady { value: v } =>
+            match checked_int_add(a: cubic_millimeter_count_as_int(m: total), b: cubic_millimeter_count_as_int(m: v)) {
+              CheckedIntOverflow { cause: c } => OrthogonalRefused { cause: ShellArithmeticRefused { cause: c } }
+              CheckedIntReady { value: sum } =>
+                match checked_int_magnitude(a: sum) {
+                  CheckedNatOverflow { cause: c } => OrthogonalRefused { cause: ShellArithmeticRefused { cause: c } }
+                  CheckedNatReady { value: n } => OrthogonalReady { value: cubic_millimeter(count: n) }
+                }
+            }
+        }
+    })
+}

@@ -49,7 +49,17 @@ test fn compiler_frontier_per_module_probe_survey_holds() -> Bool {
     && compiler_frontier_roster_located_reason_not_class_projection_holds()
 }
 
+data compiler_frontier_gap_clustering_empty_stub_note: String = "This claim requires a NONEMPTY survey before it reads the verdict, and the requirement is the point rather than a guard. Against the checked-in stub (receipts Empty) it previously passed: clustering asked self_emit_ready_count == module_count, both were 0, and it answered CommonRoot with dominant_located_reason ^probe_stage_emit_ok — a survey with no receipts reporting that every module reached emit. That is the vacuous green this lane exists to prevent, and it sat inside the one claim whose subject is the clustering verdict. Receipt-derived clustering now answers HeterogeneousGaps for an empty survey (empty_survey_is_never_a_common_root_holds pins it per-PR), so this claim reds on the stub — the same state its siblings were already in, since compiler_frontier_per_module_probe_survey_holds compares the receipt count against the 27-row roster and 0 is not 27. Red-on-stub is the file's declared offline condition, not a CI failure shape; the length check makes THIS claim's red say so explicitly rather than leaving it to be read as a clustering disagreement."
+
 test fn compiler_frontier_gap_clustering_common_root_at_blocker_class_holds() -> Bool {
+  clustering_survey_is_nonempty() && clustering_verdict_is_common_root()
+}
+
+fn clustering_survey_is_nonempty() -> Bool {
+  length(xs: host_frontier_probe_survey_manifest.receipts) > 0
+}
+
+fn clustering_verdict_is_common_root() -> Bool {
   match frontier_gap_clustering_from_receipts(
     xs: host_frontier_probe_survey_manifest.receipts,
     module_count: length(xs: host_frontier_probe_survey_manifest.receipts)

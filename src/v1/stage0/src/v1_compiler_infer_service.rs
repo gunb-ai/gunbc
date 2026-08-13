@@ -206,20 +206,73 @@ pub fn collect_called_func_names(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ItemCallees {
+    pub item_name: String,
+    pub has_body: bool,
+    pub called: Rc<Vec<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleCallees {
+    pub items: Rc<Vec<Rc<ItemCallees>>>,
+}
+
+pub fn item_callees_for(m: Rc<TypedModule>, item: Rc<Node>) -> Rc<ItemCallees> {
+    {
+        let item_name = authored_name_at(m.type_env.clone().source_indices.clone(), item.clone());
+        let has_no_body = (item.body.clone() == None);
+        if has_no_body.clone() {
+            Rc::new(ItemCallees {
+                item_name: item_name.clone(),
+                has_body: false,
+                called: Rc::new(vec![]),
+            })
+        } else {
+            Rc::new(ItemCallees {
+                item_name: item_name.clone(),
+                has_body: true,
+                called: collect_called_func_names(
+                    item.body.clone().clone().unwrap(),
+                    m.type_env.clone().source_indices.clone(),
+                ),
+            })
+        }
+    }
+}
+
+pub fn build_module_callees(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Vec<Rc<ModuleCallees>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for m in modules.clone().iter().cloned() {
+            __result.push(Rc::new(ModuleCallees {
+                items: Rc::new({
+                    let mut __result = Vec::new();
+                    for item in m.items.clone().iter().cloned() {
+                        __result.push(item_callees_for(m.clone(), item.clone()));
+                    }
+                    __result
+                }),
+            }));
+        }
+        __result
+    })
+}
+
 pub fn expand_transitive_services_once(
-    modules: Rc<Vec<Rc<TypedModule>>>,
+    module_callees: Rc<Vec<Rc<ModuleCallees>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<HashMap<String, Rc<ItemInfo>>> {
-    modules.clone().iter().cloned().fold(registry.clone(), |reg: Rc<HashMap<String, Rc<ItemInfo>>>, m: Rc<TypedModule>| m.items.clone().iter().cloned().fold(reg, |reg2: Rc<HashMap<String, Rc<ItemInfo>>>, item: Rc<Node>| {
-        let item_name = authored_name_at(m.type_env.clone().source_indices.clone(), item.clone());
+    module_callees.clone().iter().cloned().fold(registry.clone(), |reg: Rc<HashMap<String, Rc<ItemInfo>>>, m: Rc<ModuleCallees>| m.items.clone().iter().cloned().fold(reg, |reg2: Rc<HashMap<String, Rc<ItemInfo>>>, entry: Rc<ItemCallees>| {
+        let item_name = entry.item_name.clone();
 match v1_rt::map_get(&reg2, item_name.clone()) {
     Some(info) => {
-            let has_no_body = (item.body.clone() == None);
+            let has_no_body = !entry.has_body.clone();
 if has_no_body.clone() {
                 reg2.clone()
             } else {
                 {
-                    let called = collect_called_func_names(item.body.clone().clone().unwrap(), m.type_env.clone().source_indices.clone());
+                    let called = entry.called.clone();
 let extra = Rc::new({ let mut __result = Vec::new(); for callee_name in called.clone().iter().cloned() { __result.extend((*match v1_rt::map_get(&reg2, callee_name.clone()) {
     Some(callee_info) => callee_info.service_names.clone(),
     None => Rc::new(vec![]),
@@ -261,8 +314,8 @@ pub fn total_service_count(registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> i64 {
         })
 }
 
-pub fn expand_transitive_services(
-    mut modules: Rc<Vec<Rc<TypedModule>>>,
+pub fn expand_transitive_services_loop(
+    mut module_callees: Rc<Vec<Rc<ModuleCallees>>>,
     mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     mut remaining_passes: i64,
 ) -> Rc<HashMap<String, Rc<ItemInfo>>> {
@@ -271,7 +324,7 @@ pub fn expand_transitive_services(
             break registry.clone();
         } else {
             let before = total_service_count(registry.clone());
-            let next = expand_transitive_services_once(modules.clone(), registry.clone());
+            let next = expand_transitive_services_once(module_callees.clone(), registry.clone());
             let after = total_service_count(next.clone());
             if (before.clone() == after.clone()) {
                 break registry.clone();
@@ -286,6 +339,18 @@ pub fn expand_transitive_services(
             }
         }
     }
+}
+
+pub fn expand_transitive_services(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    remaining_passes: i64,
+) -> Rc<HashMap<String, Rc<ItemInfo>>> {
+    expand_transitive_services_loop(
+        build_module_callees(modules.clone()),
+        registry.clone(),
+        remaining_passes.clone(),
+    )
 }
 
 pub fn check_service_field_access_node(

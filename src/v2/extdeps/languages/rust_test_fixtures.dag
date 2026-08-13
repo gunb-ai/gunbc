@@ -93,9 +93,12 @@ fn rust_pick_signature_with_open() -> List<ConcreteSyntaxToken> {
   ]
 }
 
+// ONE rbrace, not two. The second used to close the brace the CONDITIONAL left
+// open, smuggled into the declaration's block close; the conditional now emits
+// its own close from its declared discipline, so the scaffold carries only the
+// function's. This shrinking IS the dissolution the delimiting change buys.
 fn rust_pick_block_close() -> List<ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^rust_token_rbrace },
     FixedToken { token_class: ^rust_token_rbrace }
   ]
 }
