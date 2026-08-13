@@ -157,6 +157,28 @@ data interlock_synthesis_run: SimulationOutcome = SimulationAccepted {
   },
 }
 
+// EACH RUN NAMES THE INPUT ITS TOOL ACTUALLY CONSUMED. An earlier revision attached the .pcf to
+// the place-and-route run AND to the bitstream run, which was wrong twice: nextpnr consumes the
+// synthesized netlist together with the constraints, and icepack consumes nextpnr's .asc, not the
+// .pcf at all. The consequence was not cosmetic — the bitstream digest claimed to identify an
+// artifact that the row it sat on did not point at, so a later reader could not re-derive it from
+// the field beside it. The .asc is not carried: it is a large intermediate and nothing here reads
+// it, so the run names it rather than embedding it, which is the honest form of an artifact this
+// receipt did not retain.
+type RunInput
+  = InputBytesRetained { blob: String }
+  | InputProducedUpstream { producer: NonEmptyStr, artifact_name: NonEmptyStr }
+
+data interlock_place_and_route_input: RunInput = InputProducedUpstream {
+  producer: "yosys synth_ice40",
+  artifact_name: "synthesized netlist, constrained by interlock_pin_constraint_artifact",
+}
+
+data interlock_bitstream_input: RunInput = InputProducedUpstream {
+  producer: "nextpnr-ice40",
+  artifact_name: "placed and routed .asc",
+}
+
 data interlock_place_and_route_run: SimulationOutcome = SimulationAccepted {
   run: SimulationRun {
     tool: nextpnr_tool,
@@ -171,6 +193,13 @@ data interlock_bitstream_run: SimulationOutcome = SimulationAccepted {
     artifact: interlock_pin_constraint_artifact,
     observation: interlock_bitstream_observation,
   },
+}
+
+fn run_input_is_upstream(i: RunInput) -> Bool {
+  match i {
+    InputBytesRetained { blob: _ } => false
+    InputProducedUpstream { producer: _, artifact_name: _ } => true
+  }
 }
 
 data executed_implementation_runs: List<SimulationOutcome> = [interlock_synthesis_run, interlock_place_and_route_run, interlock_bitstream_run]

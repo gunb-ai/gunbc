@@ -39,6 +39,9 @@ import product.compute_board.simulation_receipt {
   run_of,
   executed_implementation_runs,
   interlock_bitstream_run,
+  interlock_bitstream_input,
+  interlock_place_and_route_input,
+  run_input_is_upstream,
   interlock_pin_constraint_artifact,
   interlock_place_and_route_run,
   interlock_synthesis_run,
@@ -255,4 +258,15 @@ test fn w_each_implementation_run_reports_its_own_tool() -> Bool {
   let pack_is_its_own = list_length(items: split(s: pack.observation, delimiter: "32220 byte bitstream")) > 1
     && list_length(items: split(s: pack.observation, delimiter: "constrained power_permit")) == 1
   synth_is_its_own && pnr_is_its_own && pack_is_its_own
+}
+
+// THE DIGEST MUST NAME SOMETHING A READER CAN REACH. The bitstream observation carries a sha256,
+// and the artifact field on that run holds the .pcf — which is not what was hashed. Rather than
+// leave the digest pointing at the wrong bytes, each run whose real input was produced by the
+// previous tool says so: nextpnr consumes the synthesized netlist under those constraints, and
+// icepack consumes nextpnr's .asc. Neither .asc nor netlist is retained here, and claiming
+// otherwise is what the earlier revision effectively did.
+test fn w_downstream_runs_name_the_input_they_actually_consumed() -> Bool {
+  run_input_is_upstream(i: interlock_place_and_route_input)
+    && run_input_is_upstream(i: interlock_bitstream_input)
 }

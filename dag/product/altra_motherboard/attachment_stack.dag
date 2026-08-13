@@ -5,7 +5,16 @@ import std.integer { Int }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.cpu.types { CpuSocket }
-import extdeps.cpu.ampere_altra_package { altra_fclga_socket, altra_declared_contact_count }
+import extdeps.cpu.ampere_altra_package {
+  ReferenceBoardCollateralStanding,
+  ReferenceBoardCollateralAvailable,
+  ReferenceBoardCollateralUnderNda,
+  altra_declared_contact_count,
+  altra_fclga_socket,
+  altra_reference_board_collateral_standing,
+  ampere_customer_reference_boards_authority,
+  extdeps_external_authority_anchor,
+}
 
 data attachment_stack_note: String = "SIX THINGS BETWEEN A PROCESSOR DIE AND A BOARD, AND THEY ARE NOT ONE THING. The processor package, the socket, the socket's own board termination, the motherboard land pattern that termination solders to, the loading mechanism that clamps the processor into the socket, and the mounting that carries the load are six independently governed identities with six different authorities — one vendor publishes the package, another manufactures the socket, and the motherboard designer owns neither. THE ERROR THIS MODULE EXISTS TO MAKE UNWRITABLE is deriving the board land pattern from the processor package's bottom-land geometry. Both are grids of lands with 4926 members and the same pitch, so they LOOK like the same fact, and the datasheet's mechanical section is right there. They are not the same fact: one is the package's underside, the other is the pad array the SOCKET solders to, and the socket sits between them adding its own tolerance, termination style and keepout. A board built on the first is a board where nothing solders. The identical category error was already made one layer down in this repository, where a package body envelope was called a footprint and approved by review before it was caught."
 
@@ -57,19 +66,12 @@ type AttachmentLayerStanding {
   standing: AuthorityStanding
 }
 
-data altra_datasheet_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https,
-    locator: "amperecomputing.com/briefs/ampere-altra-family-product-brief"
-  }
-}
-
-data ampere_customer_connect_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https,
-    locator: "amperecomputing.com/home/customer-reference-boards"
-  }
-}
+// THE AUTHORITIES ARE THE EXTDEPS MODULE'S AND ARE CONSUMED, NOT RE-MINTED. An earlier revision
+// of this module declared its own ExternalAuthority rows for the Ampere product brief and the
+// Customer Connect page, both of which already exist in extdeps.cpu.ampere_altra_package — a
+// second name for one authority, in a module whose entire subject is that six layers must not be
+// collapsed into fewer. One of the duplicates was not even referenced, so it forked a fact
+// without buying anything.
 
 // The processor package is PUBLIC and its redistribution is the open question — every page of the
 // datasheet carrying it is footed proprietary, so the contact table may be modelled and joined
@@ -77,7 +79,7 @@ data ampere_customer_connect_authority: ExternalAuthority = ExternalAuthority {
 data processor_package_standing: AttachmentLayerStanding = AttachmentLayerStanding {
   layer: ProcessorPackageLayer,
   standing: PublicButRedistributionUndecided {
-    authority: altra_datasheet_authority,
+    authority: extdeps_external_authority_anchor,
     footer: "Ampere Computing Proprietary",
   },
 }
@@ -122,13 +124,18 @@ data mounting_standing: AttachmentLayerStanding = AttachmentLayerStanding {
   },
 }
 
-// The Ampere reference MOTHERBOARD packages are the genuine NDA boundary, and they are recorded
-// here as a standing rather than as prose so that the boundary is a value a consumer can read.
-// They are board designs. They are not package facts, and conflating the two is what produced the
-// error this module's note describes.
-data reference_board_collateral_standing: AuthorityStanding = NdaGated {
-  holder: "Ampere Computing",
-  route: "Customer Connect, for customers, partners and distributors under NDA: Mt. Jade, Mt. Collins, Mt. Bonnell and Mt. Snow motherboard design packages",
+// THE NDA BOUNDARY IS PROJECTED FROM THE EXTDEPS STANDING, NOT RESTATED. That module already owns
+// the fact, names the four reference boards and cites the access route; re-authoring it here as
+// product-layer prose would be a second representation that drifts the moment either is edited.
+// The projection exists because this module's AuthorityStanding is the vocabulary its six layers
+// share — so the boundary arrives as a value in that vocabulary rather than as a parallel claim.
+fn reference_board_collateral_standing() -> AuthorityStanding {
+  match altra_reference_board_collateral_standing() {
+    ReferenceBoardCollateralAvailable =>
+      PubliclyCited { authority: ampere_customer_reference_boards_authority }
+    ReferenceBoardCollateralUnderNda { subject: s, access_route: route } =>
+      NdaGated { holder: "Ampere Computing", route: s }
+  }
 }
 
 data attachment_stack: List<AttachmentLayerStanding> = [

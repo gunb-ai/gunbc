@@ -105,7 +105,7 @@ test fn w_the_three_blocker_kinds_are_distinct() -> Bool {
   }
   package_blocker == "redistribution"
     && land_blocker == "find-document"
-    && match reference_board_collateral_standing {
+    && match reference_board_collateral_standing() {
       NdaGated { holder: h, route: _ } => (h as String) == "Ampere Computing"
       PubliclyCited { authority: _ } => false
       PublicButRedistributionUndecided { authority: _, footer: _ } => false
