@@ -153,30 +153,24 @@ test fn witness_converge_cli_output_projects_receipt_and_exit_signal() -> Bool {
 test fn witness_self_receipt_verdict_is_joint_never_false_converged() -> Bool {
   let a = revision_fixture_oid(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
   let b = revision_fixture_oid(hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
-  // knob run converged (nothing to apply) — the srv1 shape
   let knob = ConvergeCliReceipt { host: "srv1", applied: 0, drifted: 0, verdict: VerdictConverged, reason: none }
   let joint_ok = converge_cli_receipt_join_revision(r: knob, standing: RevisionConverged { revision: a })
   let joint_drift = converge_cli_receipt_join_revision(r: knob, standing: RevisionDrifted { desired: a, local: b })
   let joint_unobs = converge_cli_receipt_join_revision(r: knob, standing: RevisionUnobserved { cause: "ls-remote refused: no route" })
-  // revision converged: knob verdict passes through -> converged, line says verdict=converged
   converge_verdict_label(v: joint_ok.verdict) == "converged"
     && converge_cli_receipt_converged(r: joint_ok)
     && string_contains(s: converge_cli_receipt_line(r: joint_ok), pattern: "verdict=converged")
-    // revision drift: joint demotes to drifted, line does NOT say converged
     && converge_verdict_label(v: joint_drift.verdict) == "drifted"
     && !converge_cli_receipt_converged(r: joint_drift)
     && !string_contains(s: converge_cli_receipt_line(r: joint_drift), pattern: "verdict=converged")
-    // revision unobserved: joint demotes to absent, line says absent NOT converged (srv1 narrow, closed)
     && converge_verdict_label(v: joint_unobs.verdict) == "absent"
     && !converge_cli_receipt_converged(r: joint_unobs)
     && string_contains(s: converge_cli_receipt_line(r: joint_unobs), pattern: "verdict=absent")
     && !string_contains(s: converge_cli_receipt_line(r: joint_unobs), pattern: "verdict=converged")
-    // end-to-end: the collector's OWN parser, fed the joint unobserved line, reads not-converged
     && match parse_converge_receipt_line(line: converge_cli_receipt_line(r: joint_unobs)) {
       Present { value: parsed } => !converge_cli_receipt_converged(r: parsed)
       Absent => false
     }
-    // the revision line carries the observation as evidence, never a second verdict= token
     && string_contains(s: converge_cli_revision_line(standing: RevisionConverged { revision: a }), pattern: "observed=")
     && string_contains(s: converge_cli_revision_line(standing: RevisionDrifted { desired: a, local: b }), pattern: "drift desired=")
     && string_contains(s: converge_cli_revision_line(standing: RevisionUnobserved { cause: "x" }), pattern: "unobserved cause=")
