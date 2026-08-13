@@ -12,8 +12,11 @@ import v2.compiler.source_authority {
   SourceRootIngest,
   SourceRootIngestBuildOk,
   SourceRootIngestBuildReadFailed,
+  manifest_inline_list_max,
+  source_root_closure_ref_transport_complete,
   source_root_coverage_is_complete,
-  source_root_ingest_build_from_source_refs
+  source_root_ingest_build_from_source_refs,
+  source_root_overflow_never_empty_population_holds
 }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
@@ -150,17 +153,33 @@ test fn self_host_closure_witness_layer_roots_reexports_authority_holds() -> Boo
     )
 }
 
-data closure_receipt_describes_carrier_note: String = "The gate's live assertion after capless closure transport landed. produced_row_count must equal the closure-ref row count the manifest actually carries, and consumers read through those refs with hash verification at consumption time. Inline Lossless source text is no longer emitted; host_source_root_ingest stays Empty while host_source_root_closure_refs carries the full closure."
+data closure_receipt_describes_carrier_note: String = "The gate's live assertion after capless closure-ref transport landed. produced_row_count must equal the closure-ref row count the manifest actually carries, and consumers read through those refs with hash verification at consumption time. Inline Lossless source text is no longer emitted; host_source_root_ingest stays Empty while host_source_root_closure_refs carries the full closure. Past manifest_inline_list_max the inline carrier reports SourceRootManifestElided (typed read_count/cap) while the ref population stays complete — overflow must never render as zero rows and an empty ingest."
 
 test fn compiler_closure_ingest_receipt_describes_carrier_holds() -> Bool {
-  (host_source_root_ingest_coverage_receipt.produced_row_count == length(xs: host_source_root_closure_refs))
+  source_root_overflow_never_empty_population_holds(
+    receipt: host_source_root_ingest_coverage_receipt,
+    refs: host_source_root_closure_refs
+  )
+    && source_root_closure_ref_transport_complete(
+      receipt: host_source_root_ingest_coverage_receipt,
+      refs: host_source_root_closure_refs
+    )
     && (host_source_root_ingest_coverage_receipt.ingest_read_count > 0)
 }
 
 test fn compiler_closure_scoped_ingest_module_count_ok_holds() -> Bool {
-  source_root_coverage_is_complete(coverage: host_source_root_ingest_coverage_receipt.coverage)
-    && (host_source_root_ingest_coverage_receipt.ingest_read_count == host_source_root_ingest_coverage_receipt.produced_row_count)
-    && (host_source_root_ingest_coverage_receipt.ingest_read_count > 0)
+  let receipt = host_source_root_ingest_coverage_receipt
+  let refs = host_source_root_closure_refs
+  let n = receipt.ingest_read_count
+  source_root_overflow_never_empty_population_holds(receipt: receipt, refs: refs)
+    && (receipt.produced_row_count == n)
+    && (length(xs: refs) == n)
+    && (n > 0)
+    && if n <= manifest_inline_list_max {
+      source_root_coverage_is_complete(coverage: receipt.coverage)
+    } else {
+      true
+    }
 }
 
 test fn gap4_probe_all_ingest_reads_accept_holds() -> Bool {

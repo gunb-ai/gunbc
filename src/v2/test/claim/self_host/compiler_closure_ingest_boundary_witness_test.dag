@@ -1,0 +1,67 @@
+module v2.test.self_host.compiler_closure_ingest_boundary_witness
+
+import v2.compiler.source_authority {
+  SourceRootCoverageComplete,
+  SourceRootManifestElided,
+  SourceRootProvenanceCoverageReceipt,
+  manifest_inline_list_max,
+  source_root_closure_ref_transport_complete,
+  source_root_overflow_never_empty_population_holds
+}
+import v2.std.algebra { length }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.test.workflow.host_source_root_ingest_manifest {
+  host_source_root_closure_refs,
+  host_source_root_ingest_coverage_receipt
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data compiler_closure_ingest_boundary_witness_note: String = "Discriminating wet witness for the inline-manifest capacity boundary. 07_target_carriers is the only frontier row whose derived closure read count is exactly manifest_inline_list_max (64): it distinguishes true 64-entry capacity from off-by-one metadata/header behavior that bulk removal above the cap would silently paper over. Measured closure size is authoritative; the roster closure_reads column understates (declared 36 vs derived 64 at pinned head)."
+
+test fn compiler_closure_ingest_boundary_exact_cap_transport_holds() -> Bool {
+  let receipt = host_source_root_ingest_coverage_receipt
+  let refs = host_source_root_closure_refs
+  let n = receipt.ingest_read_count
+  (n == manifest_inline_list_max)
+    && (receipt.produced_row_count == n)
+    && (length(xs: refs) == n)
+    && source_root_closure_ref_transport_complete(receipt: receipt, refs: refs)
+    && source_root_overflow_never_empty_population_holds(receipt: receipt, refs: refs)
+    && match receipt.coverage {
+      SourceRootCoverageComplete => true
+      _ => false
+    }
+}
+
+test fn compiler_closure_ingest_overflow_refuses_never_empty_holds() -> Bool {
+  let receipt = host_source_root_ingest_coverage_receipt
+  let refs = host_source_root_closure_refs
+  let n = receipt.ingest_read_count
+  if n <= manifest_inline_list_max {
+    false
+  } else {
+    source_root_overflow_never_empty_population_holds(receipt: receipt, refs: refs)
+      && (receipt.produced_row_count == n)
+      && (length(xs: refs) == n)
+      && match receipt.coverage {
+        SourceRootManifestElided { read_count: elided_reads, cap: cap } =>
+          (elided_reads == n) && (cap == manifest_inline_list_max)
+        _ => false
+      }
+  }
+}
+
+test fn source_root_overflow_empty_population_old_defect_refused_holds() -> Bool {
+  let bad_receipt = SourceRootProvenanceCoverageReceipt {
+    ingest_read_count: 165,
+    produced_row_count: 0,
+    discovered_source_refs_digest: host_source_root_ingest_coverage_receipt.discovered_source_refs_digest,
+    coverage: SourceRootManifestElided { read_count: 165, cap: manifest_inline_list_max }
+  }
+  !source_root_overflow_never_empty_population_holds(
+    receipt: bad_receipt,
+    refs: host_source_root_closure_refs
+  )
+}

@@ -103,9 +103,11 @@ type DagSourceReadWitness {
 
 type SourceRootIngest = FreeMonoid<DagSourceReadWitness>
 
-data source_root_coverage_note: String = "Capless closure transport (ingest-manifest-source-ref-carrier design stage 4): the manifest emitter no longer inlines Lossless source text. Every read is carried as a SourceRef row in host_source_root_closure_refs (path + source root + content hash), so closure size is uncapped. host_source_root_ingest stays Empty; consumers read through refs with hash verification at consumption time and flip to ReadsLiveTree.
+data source_root_coverage_note: String = "Capless closure transport (ingest-manifest-source-ref-carrier design stage 4): the manifest emitter no longer inlines Lossless source text. Every read is carried as a SourceRef row in host_source_root_closure_refs (path + source root + content hash). host_source_root_ingest stays Empty; consumers read through refs with hash verification at consumption time.
 
-SourceRootManifestElided remains in the coverage coproduct for hand-authored fixtures and historical receipts that model the pre-capless inline-text elision; the live host emitter reports SourceRootCoverageComplete whenever the closure-ref list matches ingest_read_count."
+manifest_inline_list_max (64) is the historical inline-text capacity boundary. Past it the INLINE carrier is refused via SourceRootManifestElided { read_count, cap } — typed, located, counted — while the closure-ref carrier still carries the full population (produced_row_count == ingest_read_count). Overflow must never render as zero rows and an empty ingest (DESIGN empty-observation narrow). At or below the cap, coverage is SourceRootCoverageComplete."
+
+data manifest_inline_list_max: Int = 64
 
 type SourceRootCoverage
   = SourceRootCoverageComplete
@@ -191,6 +193,28 @@ fn source_root_coverage_is_complete(coverage: SourceRootCoverage) -> Bool {
     SourceRootManifestElided { read_count: _, cap: _ } => false
     SourceRootRowsMissing { read_count: _, produced_row_count: _ } => false
     SourceRootManifestAbsent => false
+  }
+}
+
+fn source_root_closure_ref_transport_complete(
+  receipt: SourceRootProvenanceCoverageReceipt,
+  refs: List<SourceRef>
+) -> Bool {
+  (receipt.ingest_read_count > 0)
+    && (receipt.produced_row_count == receipt.ingest_read_count)
+    && (length(xs: refs) == receipt.ingest_read_count)
+}
+
+data source_root_overflow_never_empty_note: String = "When ingest_read_count is positive, produced_row_count and closure-ref population must both equal it — never zero rows with a positive read count (the pre-capless empty-observation narrow). SourceRootManifestElided documents inline-carrier refusal past manifest_inline_list_max; it is not permission to drop the ref population."
+
+fn source_root_overflow_never_empty_population_holds(
+  receipt: SourceRootProvenanceCoverageReceipt,
+  refs: List<SourceRef>
+) -> Bool {
+  if receipt.ingest_read_count > 0 {
+    source_root_closure_ref_transport_complete(receipt: receipt, refs: refs)
+  } else {
+    true
   }
 }
 

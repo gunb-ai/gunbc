@@ -28885,6 +28885,7 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("  SourceRef,\n");
     out.push_str("  SourceRootIngest,\n");
     out.push_str("  SourceRootCoverageComplete,\n");
+    out.push_str("  SourceRootManifestAbsent,\n");
     out.push_str("  SourceRootManifestElided,\n");
     out.push_str("  SourceRootProvenanceCoverageReceipt\n");
     out.push_str("}\n");
@@ -28918,9 +28919,10 @@ pub fn emit_source_root_ingest_manifest(
         dag_manifest_scalar_escape(&content_hash)?
     ));
     out.push_str("data host_source_root_ingest_coverage_receipt: SourceRootProvenanceCoverageReceipt = SourceRootProvenanceCoverageReceipt {\n");
-    // Capless closure transport: the authoritative row carrier is `host_source_root_closure_refs`
-    // (O(1) per row — path + source root + content hash). Inline Lossless source text is not
-    // emitted; consumers read through refs with hash verification at consumption time.
+    // Capless closure transport: closure-ref rows are always uncapped. Past
+    // MANIFEST_INLINE_LIST_MAX the inline Lossless carrier is refused via
+    // SourceRootManifestElided (typed expected/observed/capacity) — never zero
+    // produced rows with a positive read count (empty-observation narrow).
     let produced_row_count = read_count;
     out.push_str(&format!("  ingest_read_count: {read_count},\n"));
     out.push_str(&format!("  produced_row_count: {produced_row_count},\n"));
@@ -28928,7 +28930,11 @@ pub fn emit_source_root_ingest_manifest(
         "  discovered_source_refs_digest: DiscoveredSourceRefsDigestFromList {{ digest: Fnv1a64Structural {{ digest: \"{}\" }} }},\n",
         source_ref_list_structural_digest_hex(records)
     ));
-    if read_count > 0 {
+    if read_count > MANIFEST_INLINE_LIST_MAX {
+        out.push_str(&format!(
+            "  coverage: SourceRootManifestElided {{ read_count: {read_count}, cap: {MANIFEST_INLINE_LIST_MAX} }}\n"
+        ));
+    } else if read_count > 0 {
         out.push_str("  coverage: SourceRootCoverageComplete\n");
     } else {
         out.push_str("  coverage: SourceRootManifestAbsent\n");
@@ -28951,7 +28957,7 @@ pub fn emit_source_root_ingest_manifest(
 
 #[cfg(test)]
 mod source_root_ingest_manifest_tests {
-    use super::{emit_source_root_ingest_manifest, SourceRootReadRecord};
+    use super::{emit_source_root_ingest_manifest, SourceRootReadRecord, MANIFEST_INLINE_LIST_MAX};
 
     fn sr_record(i: usize) -> SourceRootReadRecord {
         SourceRootReadRecord {
@@ -28962,10 +28968,10 @@ mod source_root_ingest_manifest_tests {
         }
     }
 
-    /// Capless closure transport: large closures carry full SourceRef rows and report
-    /// complete coverage even though inline source text is not emitted.
+    /// Capless ref transport: over the inline cap, coverage reports typed elision
+    /// while produced_row_count and closure_refs carry the full population.
     #[test]
-    fn receipt_reports_complete_coverage_via_closure_refs_past_inline_cap() {
+    fn receipt_reports_typed_elision_with_full_refs_past_inline_cap() {
         let dir = std::env::temp_dir().join(format!(
             "gunbc_cov_receipt_{}_{}",
             std::process::id(),
@@ -28978,20 +28984,57 @@ mod source_root_ingest_manifest_tests {
         emit_source_root_ingest_manifest(&path, &over, None).unwrap();
         let emitted = std::fs::read_to_string(&path).unwrap();
         assert!(
-            emitted.contains("coverage: SourceRootCoverageComplete"),
-            "capless manifest must report complete ref coverage, got:\n{emitted}"
+            emitted.contains("coverage: SourceRootManifestElided"),
+            "past inline cap must report typed elision, got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains(&format!(
+                "coverage: SourceRootManifestElided {{ read_count: 65, cap: {MANIFEST_INLINE_LIST_MAX} }}"
+            )),
+            "elision must carry read_count and cap, got:\n{emitted}"
         );
         assert!(
             emitted.contains("produced_row_count: 65"),
-            "capless manifest must report produced rows via refs, got:\n{emitted}"
+            "ref population must not be zero, got:\n{emitted}"
         );
         assert!(
             emitted.contains("host_source_root_closure_refs"),
-            "capless manifest must carry closure refs, got:\n{emitted}"
+            "must carry full closure refs, got:\n{emitted}"
         );
         assert!(
             emitted.contains("data host_source_root_ingest: SourceRootIngest = Empty"),
-            "capless manifest must not inline source text, got:\n{emitted}"
+            "inline ingest stays empty past cap, got:\n{emitted}"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// At or below the inline cap, coverage is complete with full ref population.
+    #[test]
+    fn receipt_reports_complete_coverage_via_closure_refs_at_inline_cap() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc_cov_receipt_{}_{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("host_source_root_ingest_manifest.dag");
+
+        let over: Vec<SourceRootReadRecord> =
+            (0..MANIFEST_INLINE_LIST_MAX).map(sr_record).collect();
+        emit_source_root_ingest_manifest(&path, &over, None).unwrap();
+        let emitted = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            emitted.contains("coverage: SourceRootCoverageComplete"),
+            "at inline cap must report complete ref coverage, got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains(&format!("produced_row_count: {}", MANIFEST_INLINE_LIST_MAX)),
+            "at inline cap produced_row_count must equal read count, got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains("host_source_root_closure_refs"),
+            "at inline cap must carry closure refs, got:\n{emitted}"
         );
 
         let under: Vec<SourceRootReadRecord> = (0..3).map(sr_record).collect();
@@ -29001,6 +29044,31 @@ mod source_root_ingest_manifest_tests {
             emitted.contains("coverage: SourceRootCoverageComplete")
                 && emitted.contains("produced_row_count: 3"),
             "small closure manifest must also report complete ref coverage, got:\n{emitted}"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn receipt_reports_manifest_absent_import_and_coverage_for_zero_reads() {
+        let dir =
+            std::env::temp_dir().join(format!("gunbc_cov_zero_{}_{}", std::process::id(), line!()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("host_source_root_ingest_manifest.dag");
+
+        emit_source_root_ingest_manifest(&path, &[], None).unwrap();
+        let emitted = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            emitted.contains("SourceRootManifestAbsent"),
+            "zero-read manifest must import SourceRootManifestAbsent, got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains("coverage: SourceRootManifestAbsent"),
+            "zero-read manifest must report absent coverage, got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains("ingest_read_count: 0"),
+            "zero-read manifest must report zero ingest count, got:\n{emitted}"
         );
 
         std::fs::remove_dir_all(&dir).ok();
