@@ -30,6 +30,7 @@ import gunbc.fleet_intent_network {
   fleet_intent_network,
   operator_host_srv1,
 }
+import gunbc.codex_runtime_paths { srv1_codex_runtime_release_root }
 import gunbc.host_layout {
   srv1_gunbc_repo_root,
   srv1_gunbc_serve_binary,
@@ -68,6 +69,7 @@ type EnsuredDependencyKind =
     TailscalePackage
   | TmuxPackage
   | DevbootArtifactStoreDirectory
+  | CodexRuntimeReleaseDirectory
 
 data ensured_subject_note: String = "ONE CONCEPT -- AN ENSURED HOST RESOURCE -- WITH N KINDS, not a second ensured mechanism beside the first. What Ensured means was already exactly right for the build service's artifact store: converged on every apply, never torn down, TeardownRefuses{TeardownOutsideOwnership}. What was wrong was that a dependency could only BE a package, so a directory had nowhere to live and got put in the owned roster instead -- where Owned means torn down by retract, and produced artifacts are the one thing a deploy must never delete.\\n\\nTHE HAZARD THAT RULED THIS, recorded because it was caught rather than reasoned: appending a host-level root to every per-instance spec made a lab twin's retract remove the production artifact store. Two existing claims went red on it. The claims were right and the placement was wrong, so the category moved and the claims were not touched.\\n\\nThe package arm keeps its exact prior behaviour -- same ensure step, same emitted bytes -- because this widening is about admitting a second KIND of ensured resource, not about changing what ensuring a package means. The directory arm carries its own owner rather than reading a deployment spec, so an ensured host resource stays a fact about the HOST and needs no instance to be stated."
 
@@ -370,6 +372,13 @@ fn deployment_ensured_steps() -> List<DeploymentDependencyStep> {
       kind: DevbootArtifactStoreDirectory,
       subject: EnsuredHostDirectory {
         path: srv1_devboot_artifact_store_root as String as NonEmptyStr,
+        owner: gunbc_service_user,
+      },
+    },
+    DeploymentDependencyStep {
+      kind: CodexRuntimeReleaseDirectory,
+      subject: EnsuredHostDirectory {
+        path: srv1_codex_runtime_release_root as String as NonEmptyStr,
         owner: gunbc_service_user,
       },
     },

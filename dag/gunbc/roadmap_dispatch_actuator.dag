@@ -101,7 +101,6 @@ import gunbc.dispatch_selection {
   resolve_dispatch_selection,
   provider_inventory_for_instance,
   resolved_process_fingerprint,
-  dispatch_codex_process_fingerprint,
   dispatch_claude_process_fingerprint,
   dispatch_cursor_process_fingerprint,
   srv1_live_dashboard_instance,
@@ -138,6 +137,7 @@ import gunbc.roadmap_dashboard_instance {
   srv1_live_dashboard_instance,
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
+  dashboard_instance_provider_executable_refusal_detail,
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
 }
@@ -184,7 +184,7 @@ type DispatchCliProvider
   | CodexDispatchProvider
   | CursorDispatchProvider
 
-data dispatch_cli_provider_note: String = "Provider choice is resolved by gunbc.dispatch_selection from a per-instance inventory, not a host-wide constant. dispatch_cli_provider() projects the srv1-live Automatic selection for legacy call sites; instance-aware dispatch uses dispatch_selection_for_instance. Production Codex inventory standing is probe-derived via provider_standing_from_live_codex_probes; selection refuses when standing axes block eligibility (dispatch_production_standing_unobserved_refusal_note). Each DispatchCliProvider variant owns argv, preflight, and expected pane fingerprint together at this call site."
+data dispatch_cli_provider_note: String = "Provider choice is resolved by gunbc.dispatch_selection from a per-instance inventory, not a host-wide constant. dispatch_cli_provider() projects the srv1-live Automatic selection for legacy call sites; instance-aware dispatch uses dispatch_selection_for_instance. Production Codex inventory standing is declared-unobserved at selection time; wet probe-derived standing is reserved for dashboard readiness (dispatch_production_standing_unobserved_refusal_note). Each DispatchCliProvider variant owns argv, preflight, and expected pane fingerprint together at this call site."
 
 fn provider_kind_to_dispatch_cli(kind: ProviderKind) -> DispatchCliProvider {
   match kind {
@@ -913,7 +913,7 @@ fn dispatch_branch_name(node_id: RoadmapNodeId, attempt_key: String) -> String {
 
 data dispatch_actuator_lease_witness_fixture_note: String = "Lease and tmux classification witnesses pin an explicit process fingerprint via dispatch_tmux_session_scope_for_process_fingerprint and classify_dispatch_request_for_process_fingerprint — they prove ownership classification and ready-frontier gating, not production selection standing. Production paths use dispatch_actuator_selection and refuse while standing axes block eligibility."
 
-data dispatch_live_session_admission_note: String = "Production admission onto the live-session list routes through dispatch_tmux_session_scope, which projects dispatch_actuator_selection. Standing refusal yields Absent and the tmux row is omitted — ordinary non-running presentation, never a Codex substitute or partial row. Wire projection for already-admitted sessions uses dispatch_tmux_session_scope_for_live_session from the session worker's configured provider facts only."
+data dispatch_live_session_admission_note: String = "Production admission onto the live-session list routes through dispatch_tmux_session_scope, which projects dispatch_actuator_selection. Standing refusal yields Absent and the tmux row is omitted — ordinary non-running presentation, never a Codex substitute or partial row. Wire projection for already-admitted sessions uses dispatch_tmux_session_scope_for_live_session: Codex routes through dispatch_actuator_selection and refuses when process fingerprint is unobserved; Claude/Cursor still pin their observed fixture fingerprints."
 
 data dispatch_projection_standing_refusal_specimen_note: String = "One planted refusal specimen for production standing-blocked projection: tmux row gunbc-dispatch-panel-a while production dispatch_actuator_selection refuses. Actuator admission (dispatch_live_sessions_from_entries), classify_dispatch_request, and sessions wire (belt_sessions_json_value over Observed live) must all derive no eligible provider — omit the row, never Null-deref or Codex substitute."
 
@@ -1163,6 +1163,7 @@ fn codex_spawn_argv_for_instance(
 
 type DispatchProviderInnerArgv
   = DispatchProviderInnerArgvReady { argv: List<String> }
+  | CodexProviderExecutableAbsent { reason: NonEmptyStr }
   | CursorProviderSpawnUnwired { reason: NonEmptyStr }
 
 data cursor_provider_spawn_unwired_reason: NonEmptyStr = "cursor dispatch inner argv is not wired on this actuator path" as NonEmptyStr
@@ -1230,13 +1231,26 @@ fn dispatch_provider_inner_argv_for_instance(
         ),
       }
     CodexDispatchProvider =>
-      DispatchProviderInnerArgvReady {
-        argv: codex_spawn_argv_for_instance(
-          instance: instance,
-          effort: effort,
-          worktree_path: worktree_path,
-          brief: brief,
-        ),
+      match dashboard_instance_provider_executable(instance: instance) {
+        Absent =>
+          CodexProviderExecutableAbsent {
+            reason: dashboard_instance_provider_executable_refusal_detail(instance: instance) as NonEmptyStr,
+          }
+        Present { value: codex_program } =>
+          DispatchProviderInnerArgvReady {
+            argv: shape_codex_exec_argv_for_programs(
+              env_program: dispatch_capability_program(
+                environment: instance.execution_environment,
+                cap: EnvironmentBindingCapability,
+              ),
+              program: codex_program as String,
+              codex_home: dashboard_instance_provider_state_root(instance: instance) as String,
+              cwd: worktree_path,
+              prompt: join([brief, "\n\n", dispatch_codex_start_prompt], ""),
+              reasoning_effort: effort,
+              spec: dispatch_codex_exec_spec,
+            ),
+          }
       }
     CursorDispatchProvider =>
       CursorProviderSpawnUnwired { reason: cursor_provider_spawn_unwired_reason }
@@ -1601,6 +1615,11 @@ fn dispatch_spawn_commands_for_resolved_instance(
         step: "cursor-provider-spawn" as NonEmptyStr,
         detail: reason as String,
       }
+    CodexProviderExecutableAbsent { reason } =>
+      DispatchSpawnRefused {
+        step: "codex-executable-placement" as NonEmptyStr,
+        detail: reason as String,
+      }
     DispatchProviderInnerArgvReady { argv: provider_inner } => {
   let worktree = git_worktree_add_argv_for_instance(
     instance: instance,
@@ -1912,16 +1931,48 @@ fn live_session_row(entry: TmuxLsEntry, scope: TmuxSessionScope) -> DispatchLive
   }
 }
 
-fn dispatch_tmux_session_scope_for_live_session(sess: DispatchLiveSession) -> TmuxSessionScope {
-  let process_fingerprint = match sess.worker.configured_provider.kind {
-    CodexCliProvider => dispatch_codex_process_fingerprint
-    ClaudeCliProvider => dispatch_claude_process_fingerprint
-    CursorCliProvider => dispatch_cursor_process_fingerprint
+fn dispatch_tmux_session_scope_for_live_session(sess: DispatchLiveSession) -> TmuxSessionScope? {
+  match sess.worker.configured_provider.kind {
+    CodexCliProvider =>
+      match dispatch_actuator_selection(node_sizing: Unsized) {
+        DispatchActuatorSelectionOk {
+          provider: CodexDispatchProvider,
+          effort: _,
+          process_fingerprint: fp,
+        } =>
+          Present {
+            value: dispatch_tmux_session_scope_for_process_fingerprint(
+              node_id: sess.node_id as RoadmapNodeId,
+              process_fingerprint: fp,
+            ),
+          }
+        _ => none
+      }
+    ClaudeCliProvider =>
+      Present {
+        value: dispatch_tmux_session_scope_for_process_fingerprint(
+          node_id: sess.node_id as RoadmapNodeId,
+          process_fingerprint: dispatch_claude_process_fingerprint,
+        ),
+      }
+    CursorCliProvider =>
+      Present {
+        value: dispatch_tmux_session_scope_for_process_fingerprint(
+          node_id: sess.node_id as RoadmapNodeId,
+          process_fingerprint: dispatch_cursor_process_fingerprint,
+        ),
+      }
   }
-  dispatch_tmux_session_scope_for_process_fingerprint(
-    node_id: sess.node_id as RoadmapNodeId,
-    process_fingerprint: process_fingerprint,
-  )
+}
+
+fn dispatch_session_cleanup_for_live_session(sess: DispatchLiveSession) -> DispatchSessionCleanup {
+  match dispatch_tmux_session_scope_for_live_session(sess: sess) {
+    Present { value: scope } => dispatch_session_cleanup(scope: scope, session: sess)
+    Absent =>
+      DispatchCleanupRefused {
+        reason: "bundled-native Codex process fingerprint unobserved — cleanup scope unavailable until wet tmux observation lands",
+      }
+  }
 }
 
 fn dispatch_live_session_for_entry(entry: TmuxLsEntry) -> DispatchLiveSession? {

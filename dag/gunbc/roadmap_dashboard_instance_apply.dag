@@ -87,6 +87,7 @@ import gunbc.roadmap_dashboard_instance {
   srv2_lab_dashboard_instance,
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
+  dashboard_instance_provider_executable_refusal_detail,
   dashboard_instance_dispatch_platform_executables,
   dashboard_environment_binding_executable,
   dashboard_instance_ownership_marker_path,
@@ -1088,22 +1089,36 @@ fn dashboard_instance_observe(
   desired_source_revision: CommitSha,
 ) -> DashboardInstanceObserved {
   let health = dashboard_read_instance_health(instance: instance)
-  let provider_runtime = dashboard_target_probe(
-    instance: instance,
-    program: dashboard_environment_binding_executable,
-    args: shape_codex_version_env_args_for_program(
-      program: dashboard_instance_provider_executable(instance: instance) as String,
-      codex_home: dashboard_instance_provider_state_root(instance: instance) as String,
-    ),
-  )
-  let provider = dashboard_target_probe(
-    instance: instance,
-    program: dashboard_environment_binding_executable,
-    args: shape_codex_login_status_env_args_for_program(
-      program: dashboard_instance_provider_executable(instance: instance) as String,
-      codex_home: dashboard_instance_provider_state_root(instance: instance) as String,
-    ),
-  )
+  let provider_runtime = match dashboard_instance_provider_executable(instance: instance) {
+    Absent =>
+      dashboard_exec_refused(
+        detail: dashboard_instance_provider_executable_refusal_detail(instance: instance),
+      )
+    Present { value: codex_program } =>
+      dashboard_target_probe(
+        instance: instance,
+        program: dashboard_environment_binding_executable,
+        args: shape_codex_version_env_args_for_program(
+          program: codex_program as String,
+          codex_home: dashboard_instance_provider_state_root(instance: instance) as String,
+        ),
+      )
+  }
+  let provider = match dashboard_instance_provider_executable(instance: instance) {
+    Absent =>
+      dashboard_exec_refused(
+        detail: dashboard_instance_provider_executable_refusal_detail(instance: instance),
+      )
+    Present { value: codex_program } =>
+      dashboard_target_probe(
+        instance: instance,
+        program: dashboard_environment_binding_executable,
+        args: shape_codex_login_status_env_args_for_program(
+          program: codex_program as String,
+          codex_home: dashboard_instance_provider_state_root(instance: instance) as String,
+        ),
+      )
+  }
   let service = dashboard_target_probe(
     instance: instance,
     program: "/usr/bin/tmux" as FilePath,
@@ -1300,20 +1315,26 @@ fn dashboard_source_preflight_decision(
 fn dashboard_required_target_executables(
   instance: HostDashboardInstance,
 ) -> List<FilePath> {
+  let provider_paths = match dashboard_instance_provider_executable(instance: instance) {
+    Present { value: executable } => [executable]
+    Absent => []
+  }
   fold(
     concat(
-      [
-        "/usr/bin/git" as FilePath,
-        "/usr/bin/tmux" as FilePath,
-        "/usr/bin/curl" as FilePath,
-        "/usr/bin/mkdir" as FilePath,
-        "/usr/bin/touch" as FilePath,
-        "/usr/bin/mv" as FilePath,
-        "/usr/bin/nc" as FilePath,
-        "/usr/bin/dirname" as FilePath,
-        "/usr/bin/chmod" as FilePath,
-        dashboard_instance_provider_executable(instance: instance),
-      ],
+      concat(
+        [
+          "/usr/bin/git" as FilePath,
+          "/usr/bin/tmux" as FilePath,
+          "/usr/bin/curl" as FilePath,
+          "/usr/bin/mkdir" as FilePath,
+          "/usr/bin/touch" as FilePath,
+          "/usr/bin/mv" as FilePath,
+          "/usr/bin/nc" as FilePath,
+          "/usr/bin/dirname" as FilePath,
+          "/usr/bin/chmod" as FilePath,
+        ],
+        provider_paths,
+      ),
       dashboard_instance_dispatch_platform_executables(instance: instance),
     ),
     init: [],
@@ -1336,22 +1357,30 @@ type DashboardExecutableSurvey
 fn dashboard_survey_target_executables(
   instance: HostDashboardInstance,
 ) -> DashboardExecutableSurvey {
-  fold(
-    dashboard_required_target_executables(instance: instance),
-    ExecutablesSurveyed { missing: [] },
-    f: fn(acc, path) {
-      match acc {
-        ExecutableSurveyRefused { path: _, reason: _ } => acc
-        ExecutablesSurveyed { missing } =>
-          match dashboard_target_path_observe(instance: instance, flag: "-x", path: path) {
-            PathObservedPresent => acc
-            PathObservedAbsent => ExecutablesSurveyed { missing: append(missing, [path]) }
-            PathObservationRefused { reason } =>
-              ExecutableSurveyRefused { path: path, reason: reason }
-          }
+  match dashboard_instance_provider_executable(instance: instance) {
+    Absent =>
+      ExecutableSurveyRefused {
+        path: dashboard_environment_binding_executable,
+        reason: dashboard_instance_provider_executable_refusal_detail(instance: instance),
       }
-    },
-  )
+    Present { value: _ } =>
+      fold(
+        dashboard_required_target_executables(instance: instance),
+        ExecutablesSurveyed { missing: [] },
+        f: fn(acc, path) {
+          match acc {
+            ExecutableSurveyRefused { path: _, reason: _ } => acc
+            ExecutablesSurveyed { missing } =>
+              match dashboard_target_path_observe(instance: instance, flag: "-x", path: path) {
+                PathObservedPresent => acc
+                PathObservedAbsent => ExecutablesSurveyed { missing: append(missing, [path]) }
+                PathObservationRefused { reason } =>
+                  ExecutableSurveyRefused { path: path, reason: reason }
+              }
+          }
+        },
+      )
+  }
 }
 
 data bootstrap_unobserved_is_its_own_verdict_note: String = "THE THIRD VERDICT, because absent, unwritable and unobservable call for three different actions (review 45213). This decision took three Bools, and the writability one came from the collapsing predicate, so a refused transport arrived here as bootstrap_writable: false and the operator was told the nearest modeled bootstrap parent is not writable — a claim about permissions on a directory nobody managed to stat.\\n\\nBoth pre-existing arms are ACTIONABLE and that is what made the collapse harmful rather than merely imprecise: absent says create it, not-writable says fix its mode, and each sends someone to do something specific on evidence that was never gathered. The new arm deliberately carries no instruction at all, only the path whose observation failed and the reason it failed, because nothing about the bootstrap parent is known when the probe did not run.\\n\\nIt is a separate variant rather than a reason string on the existing refusal so that consumers must decide what to do with it — a match that forgot the case does not compile, which is the wall the Bool never was."
@@ -1616,11 +1645,25 @@ fn dashboard_instance_apply_preflight(
                         ], ""),
                       )
                     } else if !observed.provider_authenticated {
-                      DashboardApplyPreflightBootstrapPending {
-                        instance_id: instance.instance_id,
-                        source_revision: source_revision,
-                        state_root: dashboard_instance_provider_state_root(instance: instance),
-                        remediation: dashboard_provider_device_login_command(instance: instance),
+                      match dashboard_instance_provider_executable(instance: instance) {
+                        Absent =>
+                          dashboard_apply_preflight_refused(
+                            instance: instance,
+                            step: "provider-executable-placement",
+                            detail: dashboard_instance_provider_executable_refusal_detail(
+                              instance: instance,
+                            ),
+                          )
+                        Present { value: codex_program } =>
+                          DashboardApplyPreflightBootstrapPending {
+                            instance_id: instance.instance_id,
+                            source_revision: source_revision,
+                            state_root: dashboard_instance_provider_state_root(instance: instance),
+                            remediation: dashboard_provider_device_login_command(
+                              instance: instance,
+                              codex_program: codex_program,
+                            ),
+                          }
                       }
                     } else {
                       DashboardApplyPreflightReady {
@@ -2096,10 +2139,13 @@ type DashboardProviderReadiness
 
 data provider_login_command_projects_the_shaper_note: String = "THIS PROJECTS extdeps.llm.cli's DEVICE-AUTH SHAPER AND USED TO CONTRADICT IT. The readiness surface hand-concatenated `CODEX_HOME=… codex login` — the plain browser flow — in the same change that modeled shape_codex_device_login_env_args_for_program and recorded that a headless host MUST use --device-auth because the plain flow's callback resolves to localhost on the server rather than the operator's machine (review, 2026-07-30).\\n\\nSo the emitted instruction was the one proven not to work, spelled a second time beside the shaper built to prevent exactly that. Two representations of one invocation, and the prose one drifts silently because nothing executes it.\\n\\nJoining the shaper's own argv keeps the printed line and the modeled invocation the same object. If the env var, the program path or the flag changes, both move together — and the operator is never handed a command this repository has already established cannot complete."
 
-fn dashboard_provider_device_login_command(instance: HostDashboardInstance) -> String {
+fn dashboard_provider_device_login_command(
+  instance: HostDashboardInstance,
+  codex_program: FilePath,
+) -> String {
   join(
     shape_codex_device_login_env_args_for_program(
-      program: dashboard_instance_provider_executable(instance: instance) as String,
+      program: codex_program as String,
       codex_home: dashboard_instance_provider_state_root(instance: instance) as String,
     ),
     " ",
@@ -2108,10 +2154,6 @@ fn dashboard_provider_device_login_command(instance: HostDashboardInstance) -> S
 
 data state_root_remediation_is_now_the_apply_note: String = "The remediation no longer tells the operator to mkdir. Creating the state root is DashboardEnsureProviderStateRoot's job and the apply reaches it now that provider absence yields BootstrapPending instead of a refusal — so instructing a human to run mkdir would be asking them to perform a step the deployment already owns, and the hand-run directory would then differ in ownership from the one the plan creates.\\n\\nWhat remains is the part only a human can do: the device-code login. Both arms therefore project the same shaper, and the difference between them is which state the reader is in rather than which command they should type."
 
-fn dashboard_provider_state_root_remediation(instance: HostDashboardInstance) -> String {
-  dashboard_provider_device_login_command(instance: instance)
-}
-
 fn dashboard_probe_refused(r: DashboardExecResult) -> Bool {
   !r.success && trim(r.stdout) == "" && !(trim(r.stderr) == "")
 }
@@ -2119,6 +2161,13 @@ fn dashboard_probe_refused(r: DashboardExecResult) -> Bool {
 fn dashboard_provider_readiness(
   instance: HostDashboardInstance,
 ) -> DashboardProviderReadiness {
+  match dashboard_instance_provider_executable(instance: instance) {
+    Absent =>
+      ProviderReadinessRefused {
+        stage: "provider-executable-placement" as NonEmptyStr,
+        reason: dashboard_instance_provider_executable_refusal_detail(instance: instance),
+      }
+    Present { value: codex_program } => {
   let state_root = dashboard_instance_provider_state_root(instance: instance)
   match dashboard_target_path_observe(
     instance: instance,
@@ -2133,14 +2182,17 @@ fn dashboard_provider_readiness(
     PathObservedAbsent =>
       ProviderStateRootAbsent {
         state_root: state_root,
-        remediation: dashboard_provider_state_root_remediation(instance: instance),
+        remediation: dashboard_provider_device_login_command(
+          instance: instance,
+          codex_program: codex_program,
+        ),
       }
     PathObservedPresent => {
       let runtime = dashboard_target_probe(
         instance: instance,
         program: dashboard_environment_binding_executable,
         args: shape_codex_version_env_args_for_program(
-          program: dashboard_instance_provider_executable(instance: instance) as String,
+          program: codex_program as String,
           codex_home: state_root as String,
         ),
       )
@@ -2151,7 +2203,7 @@ fn dashboard_provider_readiness(
         }
       } else if !runtime.success {
         ProviderRuntimeUnavailable {
-          executable: dashboard_instance_provider_executable(instance: instance),
+          executable: codex_program,
           detail: trim(runtime.stderr),
         }
       } else {
@@ -2159,7 +2211,7 @@ fn dashboard_provider_readiness(
           instance: instance,
           program: dashboard_environment_binding_executable,
           args: shape_codex_login_status_env_args_for_program(
-            program: dashboard_instance_provider_executable(instance: instance) as String,
+            program: codex_program as String,
             codex_home: state_root as String,
           ),
         )
@@ -2172,7 +2224,10 @@ fn dashboard_provider_readiness(
           ProviderUnauthenticated {
             state_root: state_root,
             detail: trim(auth.stderr),
-            remediation: dashboard_provider_device_login_command(instance: instance),
+            remediation: dashboard_provider_device_login_command(
+              instance: instance,
+              codex_program: codex_program,
+            ),
           }
         } else {
           ProviderReady {
@@ -2182,6 +2237,8 @@ fn dashboard_provider_readiness(
         }
       }
     }
+  }
+  }
   }
 }
 

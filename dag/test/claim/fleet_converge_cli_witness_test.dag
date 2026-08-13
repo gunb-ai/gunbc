@@ -16,12 +16,25 @@ test fn witness_converge_cli_srv3_routes_to_slice1_not_realize_frontier() -> Boo
 }
 
 test fn witness_converge_cli_run_srv2_fails_closed_on_knob_frontier() -> Bool {
+  let host_knobs = converge_cli_run_host_knobs(host: "srv2")
   let r = converge_cli_run(host: "srv2")
-  r.host == "srv2"
-    && r.applied == 0
-    && r.drifted == 0
-    && converge_verdict_label(v: r.verdict) == "absent"
-    && !converge_cli_receipt_converged(r: r)
+  host_knobs.host == "srv2"
+    && host_knobs.applied == 0
+    && host_knobs.drifted == 0
+    && converge_verdict_label(v: host_knobs.verdict) == "absent"
+    && !converge_cli_receipt_converged(r: host_knobs)
+    && match host_knobs.reason {
+      Present { value: cause } =>
+        match cause {
+          KnobFrontier { reason: why } => string_contains(s: why, pattern: "host_converge_realize")
+          PolicyUnsound { reason: _ } => false
+          UnknownHost { host: _ } => false
+          SparkPreEnrollment { host: _ } => false
+          SparkManagedAccessUnmeasured { host: _, dissolves_on: _ } => false
+          ComputeInventoryAbsent { host: _ } => false
+        }
+      _ => false
+    }
     && match r.reason {
       Present { value: cause } =>
         match cause {
@@ -241,4 +254,15 @@ test fn witness_spark_managed_access_unmeasured_is_typed_and_distinct_from_unkno
         }
       _ => false
     }
+}
+
+test fn witness_codex_runtime_bundle_knob_registered_in_fleet_converge_policy() -> Bool {
+  converge_cli_codex_runtime_knob_registered_for_host(host: operator_host_srv1)
+    && converge_cli_codex_runtime_knob_registered_for_host(host: operator_host_srv4)
+}
+
+test fn witness_converge_cli_fleet_compute_hosts_include_srv1_through_srv4() -> Bool {
+  converge_cli_is_fleet_compute_host(host: "srv1")
+    && converge_cli_is_fleet_compute_host(host: "srv4")
+    && !converge_cli_is_fleet_compute_host(host: "srv5")
 }
