@@ -648,6 +648,12 @@ fn assimilation_complete_all_satisfied(
   }
 }
 
+// NO SILENT FALLBACK — the same claim as before, now carried by the refusal.
+// This read "is nbd-proxy, no fallback" while srv3 ran 2.07.00; the load-bearing
+// half was always the second one, that a solver finding no virtual media must not
+// quietly answer PXE. srv3 on 3.22.00 has no catalogued delivery mechanism, so
+// the fallback arm is exactly where a defective solver would land — and refusing
+// is the proof it does not. A Selected of any kind here means the fallback fired.
 fn srv3_install_mechanism_refuses_rather_than_falling_back() -> Bool {
   match srv3_install_mechanism_solution {
     OsInstallMechanismRefused { cause: _ } => true

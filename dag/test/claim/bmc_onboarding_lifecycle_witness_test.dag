@@ -195,6 +195,13 @@ test fn credential_probe_maps_to_correct_phase() -> Bool {
 // srv3_bmc_credential_resolve and the bmc_onboard tools use bmc / factory_login / secret_name),
 // so forcing credential-only operations to unwrap an installation plan would have been a second
 // fusion, not a repair. The boot target now lives with the evidence that derives it.
+// srv3 HAS JOINED srv4. This previously read "per-host, and srv4 has none",
+// pinning srv3 to a Cd target while srv4 refused — a real difference at the time,
+// because srv3 still ran 2.07.00. Both hosts now run 3.22.00 and both refuse with
+// the same cause, so asserting a difference would be asserting a fact that
+// stopped being true when srv3's BMC was upgraded. The per-host machinery is
+// unchanged and still reads each host's own evidence; the two hosts simply agree
+// now, and the witness says which state that is rather than which it used to be.
 test fn install_boot_target_refuses_alike_for_both_3_22_00_hosts() -> Bool {
   match srv3_install_boot_target_standing {
     InstallBootTargetRefused { cause: c3 } =>

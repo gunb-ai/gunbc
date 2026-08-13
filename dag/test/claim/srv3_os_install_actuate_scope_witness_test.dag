@@ -3,6 +3,11 @@ module test.claim.srv3_os_install_actuate_scope
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+// The seed gap is not askable while no mechanism is selected, and the
+// discriminating half is the conjunction: Absent ALONE would also be produced by
+// a selected path whose seed was fine, so the mechanism refusal is asserted
+// beside it. A mechanism becoming selectable again makes the refusal Present and
+// reds this.
 test fn srv3_autoinstall_seed_gap_is_unasked_while_the_mechanism_refuses() -> Bool {
   srv3_autoinstall_seed_gap_is_unasked_while_mechanism_refuses()
     && match srv3_install_mechanism_solution {
@@ -16,6 +21,9 @@ test fn srv3_os_install_actuate_credential_resolution_is_wired_in_scope() -> Boo
     && srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref()
 }
 
+// The ISO-path binding is a prep fact and is unchanged; the delivery half now
+// refuses with the solve rather than reporting NoCloudLocal off a plan that does
+// not exist. Both are asserted so prep and solving stay visibly separate.
 test fn srv3_actuator_prep_binds_iso_path_while_plan_refuses() -> Bool {
   srv3_seeded_plan_refuses_with_the_solve()
     && srv3_actuator_prep_binds_seeded_iso_path()

@@ -67,6 +67,13 @@ fn srv3_autoinstall_seed_delivery_refusal() -> AutoinstallSeedDeliveryRefusal? {
   }
 }
 
+// THE SEED GAP IS ONLY ASKABLE ONCE A MECHANISM IS SELECTED. This asserted the
+// refusal was Present and fail-closed, which held while srv3 solved to
+// nbd-proxy. srv3_autoinstall_seed_delivery_refusal answers none when the
+// mechanism itself refuses — correctly, because there is no selected path whose
+// seed could be unreachable — so on 3.22.00 the honest answer is Absent. Keeping
+// the old assertion would have required a seed refusal describing the seed of a
+// path that was never selected.
 fn srv3_autoinstall_seed_gap_is_unasked_while_mechanism_refuses() -> Bool {
   match srv3_autoinstall_seed_delivery_refusal() {
     Absent => true
@@ -74,6 +81,9 @@ fn srv3_autoinstall_seed_gap_is_unasked_while_mechanism_refuses() -> Bool {
   }
 }
 
+// The seeded plan derives from the same solve, so it refuses with it. The
+// NoCloudLocal delivery this used to assert is not readable off a plan that does
+// not exist, and reading it anyway is the substitution this lane keeps finding.
 fn srv3_seeded_plan_refuses_with_the_solve() -> Bool {
   match srv3_seeded_os_install_plan_standing {
     OsInstallPlanRefused { cause: _ } => true
@@ -119,6 +129,11 @@ fn srv3_actuator_prep_binds_seeded_iso_path() -> Bool {
     )
 }
 
+// PREP IS NOT INSTALL — still the claim, and now demonstrated more sharply. The
+// credential wiring and the seeded ISO path are prep facts and hold regardless of
+// whether a delivery mechanism is selectable; the plan and seed halves refuse
+// with the solve. That split is exactly the point: prep survives, solving does
+// not, so nothing here can be mistaken for a solved install.
 fn srv3_os_install_actuate_is_actuator_prep_not_install_solved() -> Bool {
   srv3_autoinstall_seed_gap_is_unasked_while_mechanism_refuses()
     && srv3_os_install_actuate_credential_resolution_is_wired()
