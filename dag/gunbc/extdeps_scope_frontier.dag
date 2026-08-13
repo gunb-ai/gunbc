@@ -127,6 +127,8 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/ci_compute_pricing.dag",
   "dag/extdeps/boards/gigabyte.dag",
   "dag/extdeps/vendor/gigabyte.dag",
+  "dag/extdeps/boards/supermicro.dag",
+  "dag/extdeps/vendor/supermicro.dag",
   "dag/extdeps/climbing_holds/types.dag",
   "dag/extdeps/climbing_holds/atomik.dag",
   "dag/extdeps/vendor/atomik.dag",
