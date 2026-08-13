@@ -24389,6 +24389,7 @@ fn finalize_discovery_summary(
         .collect::<std::collections::HashSet<_>>()
         .len();
     summary.selection_categorization_reason = selection_categorization_reason;
+    emit_batch_summary(&summary);
     summary
 }
 
@@ -24466,15 +24467,20 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
             .roster_closure_nodes
             .max(summary.roster_closure_nodes);
     }
-    emit_batch_summary(&merged);
     merged
 }
 
-/// The ONE line that stands in for every routine witness the fold swallowed. It belongs here, at
-/// the merge, because this is where a BATCH exists: `run_discovery_rows` runs per entry-group, so
-/// emitting there produced 1,112 summaries of one witness each on a real floor — a per-witness line
-/// wearing a batch's name, and 1,112 resolves of the render module, which is what put batch 1 over
-/// its wall clamp. A summary whose subject is one witness is not a summary.
+/// The ONE line that stands in for every routine witness the fold swallowed.
+///
+/// It emits from `finalize_discovery_summary`, and both halves of that placement were learned the
+/// hard way. Not from `run_discovery_rows`, which runs per entry-group: emitting there produced
+/// 1,112 summaries of one witness each on a real floor — a per-witness line wearing a batch's name
+/// — plus 1,112 resolves of the render module, which put batch 1 over its wall clamp. And not from
+/// `merge_discovery_summaries` either, because the merge is an ARGUMENT to finalize, so
+/// `deferred_rows` is still empty there and the line printed `0 deferred` on a run with 1,078 of
+/// them — a displayed zero standing where the fold had not looked, which is the exact claim this
+/// summary was rewritten to stop making. Finalize is where the summary is complete, and it is also
+/// the one point every path passes through, including the serial path that never merges.
 ///
 /// Emitted only when the fold ran: with folding off every witness already printed, and a summary
 /// would be a second telling of the same thing.
