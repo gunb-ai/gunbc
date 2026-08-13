@@ -14682,7 +14682,6 @@ pub fn install_output_policy(source_roots: &[String]) {
         }
     };
     let _ = ROUTINE_ROLLUP_FOLD.set(folds);
-    crate::v1_rt::set_phase_marks_fold(folds);
 
     install_effect_stream_policy(&ctx, verbose, quiet);
 }
@@ -24437,10 +24436,6 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
 fn emit_batch_summary(merged: &DiscoverySummary) {
     if !floor_stream_enabled() || !routine_rollup_folds() {
         return;
-    }
-    // The folded stage boundaries, drained ahead of the summary so the two read as one block.
-    if let Some(line) = crate::v1_rt::flush_phase_marks() {
-        eprintln!("{line}");
     }
     let deferred = merged.deferred_rows.len() as u64;
     let failed = merged.failures.len() as u64;

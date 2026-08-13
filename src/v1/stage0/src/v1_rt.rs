@@ -832,43 +832,6 @@ pub fn render_phase_concluded_line_mirror(phase: &str, elapsed_ms: u64, emoji: b
 /// as `phase_profile.rs` / `GUNBC_FLOOR_GANTT`, per `docs/plans/ci-floor-fractal-gantt.md`
 /// § dissolution). Receipt = that witness green with these marks deleted and stage walls
 /// still attributable from the model path.
-/// Whether stage-boundary marks fold into counters instead of printing two lines per phase per
-/// compile. Set from the resolved output policy at install; false until then, so a process that
-/// never installed a policy keeps printing every mark.
-static PHASE_MARKS_FOLD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-pub fn set_phase_marks_fold(fold: bool) {
-    PHASE_MARKS_FOLD.store(fold, std::sync::atomic::Ordering::Relaxed);
-}
-
-type PhaseCounters = std::collections::BTreeMap<String, (u64, u64)>;
-
-fn phase_counters() -> &'static std::sync::Mutex<PhaseCounters> {
-    static C: std::sync::OnceLock<std::sync::Mutex<PhaseCounters>> = std::sync::OnceLock::new();
-    C.get_or_init(|| std::sync::Mutex::new(PhaseCounters::new()))
-}
-
-/// Drain the folded marks into one line: `compile.frontend x73 1.2s · compile.emit x44 …`.
-///
-/// `None` means nothing was folded — no marks ran, or folding was off — which is distinct from
-/// "marks ran and cost nothing" and is why this is an Option rather than an empty string. The
-/// caller decides whether silence is correct; here it is not a verdict.
-pub fn flush_phase_marks() -> Option<String> {
-    let mut map = phase_counters().lock().ok()?;
-    if map.is_empty() {
-        return None;
-    }
-    let body = map
-        .iter()
-        .map(|(phase, (count, total_ms))| {
-            format!("{phase} x{count} {}", obs_human_duration(*total_ms))
-        })
-        .collect::<Vec<_>>()
-        .join(" · ");
-    map.clear();
-    Some(format!("[phase-marks] {body}"))
-}
-
 pub fn trace_mark(label: String) {
     use std::sync::{Mutex, OnceLock};
     use std::time::Instant;
@@ -888,9 +851,7 @@ pub fn trace_mark(label: String) {
         if let Ok(mut l) = last.lock() {
             *l = now;
         }
-        if !PHASE_MARKS_FOLD.load(std::sync::atomic::Ordering::Relaxed) {
-            eprintln!("{}", render_phase_begin_line_mirror(phase, emoji));
-        }
+        eprintln!("{}", render_phase_begin_line_mirror(phase, emoji));
     } else if let Some(phase) = label.strip_suffix(".done") {
         let elapsed_ms = {
             let started = opens.lock().ok().and_then(|mut m| m.remove(phase));
@@ -905,22 +866,10 @@ pub fn trace_mark(label: String) {
         if let Ok(mut l) = last.lock() {
             *l = now;
         }
-        if PHASE_MARKS_FOLD.load(std::sync::atomic::Ordering::Relaxed) {
-            // Routine stage boundaries are the most repeated event the compiler produces — two
-            // lines per phase per compile, 332 of them on one floor run. They fold to a count and
-            // a summed duration, which is the fact a reader actually uses; the individual marks
-            // carry no located information the receipt does not already hold.
-            if let Ok(mut map) = phase_counters().lock() {
-                let e = map.entry(phase.to_string()).or_insert((0, 0));
-                e.0 += 1;
-                e.1 += elapsed_ms;
-            }
-        } else {
-            eprintln!(
-                "{}",
-                render_phase_concluded_line_mirror(phase, elapsed_ms, emoji)
-            );
-        }
+        eprintln!(
+            "{}",
+            render_phase_concluded_line_mirror(phase, elapsed_ms, emoji)
+        );
     } else {
         let prev = last.lock().map(|l| *l).unwrap_or(*t0);
         let elapsed_ms = now.saturating_duration_since(prev).as_millis() as u64;
