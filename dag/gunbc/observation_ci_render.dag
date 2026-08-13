@@ -7,6 +7,7 @@ import std.measure {
   Millisecond,
   ByteSize,
   BasisPoint,
+  nanosecond,
   nanosecond_count,
   nanoseconds_per_millisecond,
   nanosecond_to_millisecond_floor,
@@ -592,4 +593,54 @@ fn ci_batch_summary_line(rollup: ObservationRollup) -> RenderedLine {
     ], ""),
     attention: if problems == 0 { Ambient } else { Anomaly }
   }
+}
+
+// The seed's ONE seam into this authority. The floor walk lives in Rust and cannot construct a
+// .dag record, so it hands over the scalars it already has and receives one finished line back.
+// Everything that decides how a batch READS — the glyph, the field order, the anomaly split, the
+// unmeasured-reading wording — stays here; the seed transports counts and prints a string. A seam
+// that took a preformatted string instead would be the second representation this whole lane exists
+// to remove.
+//
+// peak_rss_bytes == 0 means the reading was not obtainable, not that the batch used no memory: zero
+// is the BEST possible value and therefore the worst available stand-in for its absence, so it
+// becomes MeasuredUnavailable and increments measurement_absent, which the summary discloses.
+fn ci_batch_summary_text(
+  batch_index: Nat,
+  batch_label: NonEmptyStr,
+  done: Nat,
+  skipped: Nat,
+  refused: Nat,
+  failed: Nat,
+  timed_out: Nat,
+  elapsed_nanos: Nat,
+  peak_rss_bytes: Nat,
+) -> String {
+  let unmeasured_rss = peak_rss_bytes == 0
+  ci_render_line(
+    line: ci_batch_summary_line(
+      rollup: ObservationRollup {
+        subject: ObservationSubject {
+          segments: [BatchSegment { index: batch_index, label: batch_label }],
+        },
+        counts: ObservationCounts {
+          begun: done + skipped + refused + failed + timed_out,
+          done: done,
+          skipped: skipped,
+          refused: refused,
+          failed: failed,
+          timed_out: timed_out,
+        },
+        active_leaf: none,
+        elapsed: MeasuredValue { value: nanosecond(count: elapsed_nanos) },
+        peak_rss: if unmeasured_rss {
+          MeasuredUnavailable { cause: "no readable memory.peak for this shard" }
+        } else {
+          MeasuredValue { value: byte_size(count: peak_rss_bytes) }
+        },
+        measurement_absent: if unmeasured_rss { 1 } else { 0 },
+      }
+    ),
+    tier: Ascii,
+  )
 }

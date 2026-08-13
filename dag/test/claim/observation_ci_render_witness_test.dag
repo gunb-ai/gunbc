@@ -40,6 +40,7 @@ import std.observation {
   observation_durations_wall_unavailable,
 }
 import gunbc.observation_ci_render {
+  ci_batch_summary_text,
   RenderedLine,
   LinePlacement,
   InsideCollapsedGroup,
@@ -410,4 +411,87 @@ test fn w_RED_a_batch_carrying_a_failure_summarises_as_an_anomaly() -> Bool {
   let line = ci_batch_summary_line(rollup: folded)
   string_contains(s: line.text, pattern: "1 failed")
     && match line.attention { Anomaly => true, _ => false }
+}
+
+// The seed seam, exercised the way the seed uses it: scalars in, one finished ASCII line out. The
+// two REDs below are the pair that keeps it honest — an all-green batch must not carry an anomaly
+// glyph, and an absent memory reading must not print as a measurement of zero.
+test fn w_the_seed_seam_renders_one_ascii_line_from_scalars() -> Bool {
+  let line = ci_batch_summary_text(
+    batch_index: 2, batch_label: "discovery-corpus" as NonEmptyStr,
+    done: 8809, skipped: 13, refused: 0, failed: 0, timed_out: 0,
+    elapsed_nanos: 1500000000, peak_rss_bytes: 2469606195,
+  )
+  string_contains(s: line, pattern: "discovery-corpus")
+    && string_contains(s: line, pattern: "8809 passed")
+    && string_contains(s: line, pattern: "13 skipped")
+    && !string_contains(s: line, pattern: "[0m")
+}
+
+test fn w_RED_an_all_green_batch_does_not_render_the_failure_glyph() -> Bool {
+  let green = ci_batch_summary_text(
+    batch_index: 1, batch_label: "b" as NonEmptyStr,
+    done: 3, skipped: 0, refused: 0, failed: 0, timed_out: 0,
+    elapsed_nanos: 1000, peak_rss_bytes: 1024,
+  )
+  let red = ci_batch_summary_text(
+    batch_index: 1, batch_label: "b" as NonEmptyStr,
+    done: 2, skipped: 0, refused: 0, failed: 1, timed_out: 0,
+    elapsed_nanos: 1000, peak_rss_bytes: 1024,
+  )
+  (green != red) && string_contains(s: red, pattern: "1 failed") && !string_contains(s: green, pattern: "1 failed")
+}
+
+test fn w_RED_an_unobtainable_peak_reading_is_disclosed_not_printed_as_zero() -> Bool {
+  let line = ci_batch_summary_text(
+    batch_index: 1, batch_label: "b" as NonEmptyStr,
+    done: 1, skipped: 0, refused: 0, failed: 0, timed_out: 0,
+    elapsed_nanos: 1000, peak_rss_bytes: 0,
+  )
+  string_contains(s: line, pattern: "unreadable")
+    && !string_contains(s: line, pattern: "peak 0")
+}
+
+// THE ACCEPTANCE CLAIM, stated at the grain the model can actually decide: a batch of routine
+// witnesses emits ONE line regardless of how many witnesses it contains, and every anomaly in it
+// emits its own. The operator's bar is a console line count over a real floor run, which no witness
+// can observe — but a line count is exactly `folded == 0 lines` plus `pierced == 1 line each`, and
+// those are decidable here. What this does NOT establish is that the seed obeys the projection;
+// that is the seam witness above plus the executed CI run, and neither is a substitute for the
+// other.
+fn proj_line_count(events: List<ObservationEvent>) -> Nat {
+  fold(events, init: 0, f: (acc, e) =>
+    match ci_routine_projection(event: e, grain: Present { value: BatchGrain }) {
+      FoldedIntoRollup { at: _ } => acc
+      EmittedAtLeaf { reason: _ } => acc + 1
+    })
+}
+
+fn proj_green_run(n: Nat) -> List<ObservationEvent> {
+  if n == 0 {
+    []
+  } else {
+    concat(
+      [proj_event(subject: proj_leaf_subject(entry: "dag/test/claim/w.dag"), transition: Concluded { outcome: Done })],
+      proj_green_run(n: n - 1)
+    )
+  }
+}
+
+test fn w_a_green_batch_costs_one_line_however_many_witnesses_it_holds() -> Bool {
+  // Ten witnesses and two hundred and fifty fold to the same console cost: the batch summary line,
+  // and nothing else. The second figure is bounded by the evaluator's recursion, not by the claim.
+  (proj_line_count(events: proj_green_run(n: 10)) == 0)
+    && (proj_line_count(events: proj_green_run(n: 250)) == 0)
+}
+
+test fn w_RED_each_anomaly_still_costs_its_own_line() -> Bool {
+  let mixed = concat(
+    proj_green_run(n: 250),
+    [
+      proj_event(subject: proj_leaf_subject(entry: "dag/red1.dag"), transition: Concluded { outcome: Failed { error: "x", output: "" } }),
+      proj_event(subject: proj_leaf_subject(entry: "dag/red2.dag"), transition: Concluded { outcome: Refused { diagnostic: "y" } }),
+    ]
+  )
+  proj_line_count(events: mixed) == 2
 }

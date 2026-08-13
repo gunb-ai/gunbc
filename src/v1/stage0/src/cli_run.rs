@@ -10398,6 +10398,23 @@ fn index_schedule_entry_completed(
     // line appears for entries the affected set skipped without ever resolving them. The
     // former `entry='…'` spelling was read as "this entry was scheduled and ran" by two
     // independent readers hours apart, which is a property of the label, not the readers.
+    // Routine drain steps FOLD (law 4): the schedule passing an entry is the most ordinary event
+    // the floor produces — one line per discovered entry, thousands per run, none of them carrying
+    // a fact a reader acts on. What a reader acts on is `retention_unknown` GROWING, which is the
+    // drain admitting it could not classify a module's retention, so that is the arm that pierces.
+    //
+    // The trigger is the INCREASE, not the total: the total is monotone, so gating on `> 0` would
+    // print every remaining entry once the first unknown appeared — the fold would collapse exactly
+    // when the run got interesting. The aggregate `[floor-drain] receipt:` line still reports the
+    // totals at close, so folding here loses no count, only the per-entry retelling of it.
+    let unknown_grew = {
+        static LAST_UNKNOWN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let prev = LAST_UNKNOWN.swap(retention_unknown, std::sync::atomic::Ordering::Relaxed);
+        retention_unknown > prev
+    };
+    if !unknown_grew && routine_rollup_folds() {
+        return Ok(());
+    }
     eprintln!(
         "[floor-drain] schedule-retention: schedule_passed_entry='{entry}' \
          released_modules={} evicted_modules={} evicted_graph={} \
@@ -14506,6 +14523,81 @@ fn decode_output_decision(
     }
 }
 
+/// Whether routine per-witness lines fold into a batch-grain rollup instead of printing one
+/// line each. The DECISION is `gunbc.output_policy routine_rollup_grain_for`, resolved once at
+/// install; the seed only transports the verdict. Unset means the policy was never installed
+/// (a bare `gunbc run`, a test harness), and the honest default there is the old behaviour:
+/// print every line. Folding without having been told to fold is how output disappears.
+static ROUTINE_ROLLUP_FOLD: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+/// Source roots the policy install resolved against, kept so the batch-summary render can reach
+/// `gunbc.observation_ci_render` at shard close. Stored rather than threaded because the floor
+/// walk between install and close is thirty frames of call stack that have no business carrying
+/// a rendering concern.
+static OBSERVATION_SOURCE_ROOTS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+
+/// The shard's peak resident set, or 0 when no reading is obtainable. Zero is NOT a measurement
+/// here and the `.dag` render treats it as absence rather than as a peak of nothing — the seam
+/// documents that inversion, because a u64 has no room to say "unreadable".
+fn floor_shard_peak_rss_bytes() -> u64 {
+    peak_rss_vhwm_bytes().unwrap_or(0)
+}
+
+fn routine_rollup_folds() -> bool {
+    *ROUTINE_ROLLUP_FOLD.get().unwrap_or(&false)
+}
+
+/// Render one batch-grain summary through the `.dag` authority. Every choice about how the line
+/// READS lives there; this is scalars out, string back.
+///
+/// `None` means the render did not happen, and the caller must say so rather than print nothing:
+/// having already suppressed the per-witness lines, silent absence here would turn a rendering
+/// failure into a batch that appears not to have run — the empty-observation narrow DESIGN names,
+/// with the seed as its author.
+#[allow(clippy::too_many_arguments)]
+fn render_batch_summary_line(
+    batch_index: u64,
+    batch_label: &str,
+    done: u64,
+    skipped: u64,
+    refused: u64,
+    failed: u64,
+    timed_out: u64,
+    elapsed_nanos: u64,
+    peak_rss_bytes: u64,
+) -> Option<String> {
+    use v1_interpreter::Value;
+    let roots = OBSERVATION_SOURCE_ROOTS.get()?;
+    let entry = "dag/gunbc/observation_ci_render.dag";
+    let (graph, indices) = resolve_entry_graph_shared(roots, entry).ok()?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let arg = |name: &str, v: u64| (Some(name.to_string()), Value::Int(v as i64));
+    let out = v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "ci_batch_summary_text",
+        &[
+            arg("batch_index", batch_index),
+            (
+                Some("batch_label".to_string()),
+                Value::Str(batch_label.to_string()),
+            ),
+            arg("done", done),
+            arg("skipped", skipped),
+            arg("refused", refused),
+            arg("failed", failed),
+            arg("timed_out", timed_out),
+            arg("elapsed_nanos", elapsed_nanos),
+            arg("peak_rss_bytes", peak_rss_bytes),
+        ],
+        false,
+    )
+    .ok()?;
+    match out {
+        Value::Str(s) => Some(s),
+        _ => None,
+    }
+}
+
 pub fn install_output_policy(source_roots: &[String]) {
     use v1_interpreter::{OutputDecision, Value};
     let (verbose, quiet) = match v1_interpreter::cli_verbosity() {
@@ -14564,6 +14656,24 @@ pub fn install_output_policy(source_roots: &[String]) {
         decision("shell_trace"),
         decision("instrumentation"),
     ]);
+
+    let _ = OBSERVATION_SOURCE_ROOTS.set(source_roots.to_vec());
+    let folds = match v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "routine_rollup_grain_for",
+        &[
+            (Some("verbose".to_string()), Value::Bool(verbose)),
+            (Some("quiet".to_string()), Value::Bool(quiet)),
+        ],
+        false,
+    ) {
+        // Present{..} = fold at that grain, Absent = leaf. The seed carries the presence, not the
+        // grain: BatchGrain is the only grain the floor walk has a rollup for today, so decoding
+        // the payload would be inventing a distinction the consumer cannot honour.
+        Ok(Value::Variant { variant_name, .. }) => ctx.sym_eq(variant_name, "Present"),
+        _ => false,
+    };
+    let _ = ROUTINE_ROLLUP_FOLD.set(folds);
 
     install_effect_stream_policy(&ctx, verbose, quiet);
 }
@@ -24553,6 +24663,14 @@ impl ShardStyle {
         if !self.stream {
             return;
         }
+        // Law 4's fold, at the one site that produces two thirds of the console. A PASSING witness
+        // is routine work: it folds into the batch rollup and prints nothing, and the batch summary
+        // line at shard close is where its count appears. A failing one pierces the fold and prints
+        // at its exact leaf, because the whole point of collapsing the routine is that an anomaly
+        // has somewhere to stand out against.
+        if passed && routine_rollup_folds() {
+            return;
+        }
         let ms = wall_nanos as f64 / 1.0e6;
         let ts = floor_ts();
         let tag = self.shard_tag();
@@ -24975,6 +25093,42 @@ fn run_discovery_rows(
         index_schedule_entry_completed(index, &prev, current_closure_subject.as_deref())?;
     }
     summary.roster_closure_nodes = closure_modules.len();
+    // Shard close: the one line that stands in for every routine witness the fold swallowed.
+    // Emitted only when the fold actually ran — with the fold off, every witness already printed
+    // and a summary would be a second telling of the same thing.
+    if style.stream && routine_rollup_folds() {
+        let label = if style.shard_count <= 1 {
+            "discovery corpus".to_string()
+        } else {
+            format!("discovery corpus shard {}", style.shard_id)
+        };
+        let refused = summary.deferred_rows.len() as u64;
+        let failed = summary.failures.len() as u64;
+        match render_batch_summary_line(
+            style.shard_id as u64,
+            &label,
+            summary.passed as u64,
+            summary.skipped as u64,
+            refused,
+            failed,
+            0,
+            summary.total_measured_nanos as u64,
+            floor_shard_peak_rss_bytes(),
+        ) {
+            Some(line) => eprintln!("{line}"),
+            // Fail-closed, per DESIGN section 5: the routine lines are already gone, so a silent
+            // return here would render a shard that ran thousands of witnesses as a shard that
+            // printed nothing at all. Refuse loudly with the counts the render would have carried.
+            None => eprintln!(
+                "::error::observation render unavailable: could not render the batch summary for \
+                 {label} through gunbc.observation_ci_render `ci_batch_summary_text`; the routine \
+                 witness lines were folded and their summary is therefore MISSING, not empty \
+                 (passed={} skipped={} refused={refused} failed={failed})",
+                summary.passed, summary.skipped
+            ),
+        }
+    }
+
     Ok(summary)
 }
 
