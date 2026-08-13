@@ -156,3 +156,10 @@ test fn witness_reversed_deploy_script_fails_author_before_revert_gate() -> Bool
   let reverts = deploy_memory_cap_shadow_revert_scripts(units: units)
   !deploy_memory_cap_script_author_precedes_revert(script: concat(reverts, author), units: units)
 }
+
+test fn witness_padded_wrong_order_script_fails_author_before_revert_gate() -> Bool {
+  let units = [shadow_unit]
+  let author = runner_memory_cap_author_script()
+  let reverts = deploy_memory_cap_shadow_revert_scripts(units: units)
+  !deploy_memory_cap_script_author_precedes_revert(script: concat(concat(reverts, author), "padding"), units: units)
+}
