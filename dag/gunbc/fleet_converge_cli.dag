@@ -429,6 +429,10 @@ fn converge_cli_atomic_receipt_write(host: String, content: String) -> String? {
 // Applied means committed plus independent read-back (DESIGN section 5): rename alone is not the claim.
 data converge_cli_receipt_owner_readback_required: Bool = true
 
+// Interim shell argv readback — dissolve-on typed extdeps.filesystem.filesystem_io owner
+// observation (no Scaffold row: net-new dissolution obligation needs operator verdict on head).
+data converge_cli_receipt_owner_readback_interim_note: String = "Owner readback uses stat -c %U via run_shell_command_capture until extdeps.filesystem.filesystem_io carries a typed owner observation operation; then converge_cli_receipt_owner_readback routes through that extdep and this shell argv retires."
+
 fn converge_cli_expected_receipt_owner_name() -> String {
   fleet_posix_operator_user.name
 }

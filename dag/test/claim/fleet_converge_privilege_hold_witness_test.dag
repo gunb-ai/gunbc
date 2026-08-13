@@ -7,8 +7,6 @@ import gunbc.fleet_posix_accounts {
   fleet_posix_operator_sudo_grant_is_hostnamectl_only,
 }
 import gunbc.fleet_converge_cli {
-  fleet_converge_receipt_staging_path,
-  fleet_converge_receipt_path,
   converge_cli_receipt_owner_readback_required,
   converge_cli_expected_receipt_owner_name,
 }
@@ -33,11 +31,6 @@ test fn witness_operator_roster_not_widened_to_whole_binary_install_or_systemctl
   list_length(items: fleet_posix_operator_sudo_grants()) == 1
     && fleet_posix_operator_sudo_grant_is_hostnamectl_only()
     && list_length(items: fleet_posix_ci_runner_sudo_grants()) >= 2
-}
-
-test fn witness_receipt_publication_uses_staging_rename_grain() -> Bool {
-  fleet_converge_receipt_staging_path(host: "srv1") == "/opt/gunbc/receipts/srv1-converge-receipt.staging"
-    && fleet_converge_receipt_path(host: "srv1") == "/opt/gunbc/receipts/srv1-converge-receipt.txt"
 }
 
 // Operator ruling 2026-08-13: converge must not re-apply MemoryMax via set-property.

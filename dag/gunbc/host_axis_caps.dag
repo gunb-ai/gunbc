@@ -2,8 +2,6 @@ module gunbc.host_axis_caps
 
 import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.algebra { trim }
-import std.disposition { Disposition, Scaffold }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.membership_reconcile {
   MembershipPlan,
@@ -244,18 +242,13 @@ fn deploy_memory_cap_apply_script_author_before_shadow_revert(units: List<NonEmp
   )
 }
 
-// control_shadow_reconcile folds runner_memory_cap_author_ready_for_shadow_revert over
-// deploy_memory_cap_apply_script_ordered — witness-only until live_deploy apply emits and
-// executes the composite on the privileged deploy path (ghrunner sudo) via host_effect_apply.
-// Honest residual: gunbc.ci_budget_tree / gunbc.ci_floor_measurement.
-data control_shadow_reconcile_consumer_disposition: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.host_axis_caps",
-    decl_name: "deploy_memory_cap_apply_script_ordered",
-    field: WholeDeclaration,
-  }
-}
+// witness-only until live_deploy apply emits deploy_memory_cap_apply_script_ordered on the
+// privileged deploy path (ghrunner sudo) via host_effect_apply. Operator ruling 2026-08-13
+// collapsed MemoryMax to deploy-time authority here; live_deploy enrollment is follow-up.
+// No std.disposition.Scaffold row on this head — net-new dissolution obligations require an
+// observed operator verdict (DESIGN section 5, 2026-08-10). Residual: gunbc.ci_budget_tree,
+// gunbc.ci_floor_measurement.
+data deploy_memory_cap_live_deploy_enrollment_note: String = "deploy_memory_cap_apply_script_ordered is modeled and witnessed but not enrolled in live_deploy apply on this PR head."
 
 fn control_shadow_reconcile(
   desired: List<ControlShadowUnit>,
