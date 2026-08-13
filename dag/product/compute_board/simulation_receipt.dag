@@ -1,0 +1,92 @@
+module product.compute_board.simulation_receipt
+
+import std.types { String, NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data simulation_receipt_note: String = "EXECUTED RECEIPTS, AND EXACTLY WHAT THEY DO AND DO NOT CLAIM. Every prior claim about these two emissions was that the bytes matched a golden authored in the same repository — which establishes that the projection is stable, and nothing whatever about whether a real tool accepts them. These rows record that the emitted artifacts were run: Icarus Verilog compiled the module and simulated its four-row truth table, and ngspice solved the operating point of the deck. WHAT THIS IS NOT: it is not a re-execution. Nothing in an Accepted program here runs a simulator; the observation happened once, at a named tool version, and is recorded. THE JOIN THAT KEEPS IT HONEST is the enrolled witness beside it: it asserts that the artifact recorded in each receipt is byte-identical to what the projection emits TODAY. So the receipt cannot quietly describe an emission the product no longer produces — the moment the projection's bytes move, the receipt is stale and says so by failing, rather than by continuing to vouch for an artifact nobody emits any more. Re-executing on a cadence is the next rung and is not claimed here."
+
+// Which tool, at which observed version. The version is what the tool REPORTED when it ran, not
+// a version this repository requires — a required version is a policy fact and would belong with
+// the toolchain pin, while this is a property of the run that happened.
+type SimulationTool {
+  subject: DeclarationRef
+  reported_version: NonEmptyStr
+}
+
+// An observation of a run. The artifact is the exact bytes handed to the tool, so the join to
+// today's emission is a byte comparison rather than a description anybody has to trust.
+type SimulationRun {
+  tool: SimulationTool
+  artifact: String
+  observation: String
+}
+
+type SimulationOutcome
+  = SimulationAccepted { run: SimulationRun }
+  | SimulationRefusedByTool { run: SimulationRun, diagnostic: NonEmptyStr }
+
+data icarus_verilog_tool: SimulationTool = SimulationTool {
+  subject: DeclarationRef {
+    module_path: "extdeps.simulators.icarus_verilog.subject",
+    decl_name: "icarus_verilog_simulator",
+    field: WholeDeclaration,
+  },
+  reported_version: "Icarus Verilog version 11.0 (stable)",
+}
+
+data ngspice_tool: SimulationTool = SimulationTool {
+  subject: DeclarationRef {
+    module_path: "extdeps.simulators.ngspice.subject",
+    decl_name: "ngspice_simulator",
+    field: WholeDeclaration,
+  },
+  reported_version: "ngspice-39",
+}
+
+// THE FOUR ROWS ARE THE WHOLE FUNCTION, not a sample of it: two inputs have four combinations
+// and every one was driven. Permit is asserted only when the conditioned power-good holds and no
+// fault is present, and reset releases only behind permit — which is the interlock the article
+// declares, now observed as behaviour rather than as an equation somebody read.
+data interlock_truth_table_observation: String = "cg=0 f=0 pp=0 rr=0\ncg=0 f=1 pp=0 rr=0\ncg=1 f=0 pp=1 rr=1\ncg=1 f=1 pp=0 rr=0"
+
+data interlock_verilog_artifact: String = "module board_power_interlock (\n  input  wire conditioned_good,\n  input  wire fault,\n  output wire power_permit,\n  output wire reset_release\n);\n  assign power_permit = (conditioned_good & ~fault);\n  assign reset_release = (conditioned_good & power_permit);\nendmodule\n"
+
+data interlock_verilog_run: SimulationOutcome = SimulationAccepted {
+  run: SimulationRun {
+    tool: icarus_verilog_tool,
+    artifact: interlock_verilog_artifact,
+    observation: interlock_truth_table_observation,
+  },
+}
+
+// The operating point is the DISCRIMINATING observation, not a smoke test. Twelve volts across
+// ten kilohms is 1.2 milliamps, and that is the current ngspice reported through the source — so
+// the run confirms the scale suffix was read as kilo. Had the projection emitted a bare "10", the
+// deck would still have solved, and it would have reported 1.2 amps.
+data conditioning_network_operating_point: String = "pg_raw 1.200000e+01\nvlogic_in#branch -1.20000e-03"
+
+data conditioning_network_artifact: String = "power-good conditioning network\nVlogic_in pg_raw 0 12\nRpg_cond pg_raw 0 10k\nCpg_filt pg_raw 0 100n\n.op\n.end"
+
+data conditioning_network_run: SimulationOutcome = SimulationAccepted {
+  run: SimulationRun {
+    tool: ngspice_tool,
+    artifact: conditioning_network_artifact,
+    observation: conditioning_network_operating_point,
+  },
+}
+
+fn run_of(outcome: SimulationOutcome) -> SimulationRun {
+  match outcome {
+    SimulationAccepted { run: r } => r
+    SimulationRefusedByTool { run: r, diagnostic: _ } => r
+  }
+}
+
+fn outcome_is_accepted(outcome: SimulationOutcome) -> Bool {
+  match outcome {
+    SimulationAccepted { run: _ } => true
+    SimulationRefusedByTool { run: _, diagnostic: _ } => false
+  }
+}
+
+data executed_runs: List<SimulationOutcome> = [interlock_verilog_run, conditioning_network_run]

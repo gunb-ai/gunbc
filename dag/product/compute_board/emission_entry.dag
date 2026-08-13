@@ -1,0 +1,87 @@
+module product.compute_board.emission_entry
+
+import std.types { String }
+import product.compute_board.admission {
+  BoardArticleAdmitted,
+  BoardArticleRefused,
+  BoardArticleRefusalSet,
+  admit_board_article,
+}
+import product.compute_board.article { BoardPowerInterfaceArticle, power_interlock_article }
+import product.compute_board.spice_projection {
+  SpiceProjectionRefusal,
+  SpiceSliceProjected,
+  SpiceSliceRefused,
+  project_article_to_spice,
+  project_article_to_ngspice_run,
+}
+import product.compute_board.verilog_projection {
+  VerilogModuleEmitted,
+  VerilogProjectionRefused,
+  VerilogProjectionRefusal,
+  project_article_to_verilog,
+  power_interlock_verilog_bindings,
+}
+
+data emission_entry_note: String = "THE ENTRY POINTS THAT ACTUALLY PRODUCE THE ARTIFACTS, AND THE REFUSAL THEY USED TO SWALLOW. Everything else in this product returns a typed projection that a witness inspects; these are the host boundary, where bytes leave. An earlier revision returned a bare String and answered a refusal with the literal 'REFUSED: article not admitted' — which is the fabricated plausible output DESIGN section 5 forbids, at the one seam where a caller is furthest from the model and least able to tell. It is also the identical defect this same lane had just fixed one layer down, where a String-returning ngspice entry bypassed the projection gate for exactly the same reason: a String has nowhere to put a refusal, so a refusal becomes prose that reads like a result. THE SHAPE: BoardEmission is parameterized by the target's own refusal type rather than fusing SPICE and Verilog causes into one coproduct, so adding a third target is an instantiation and not a widened enum. Admission refusal and projection refusal stay separate arms because they have different remedies — one means the board is incoherent, the other means this target cannot render a coherent board."
+
+// EACH ENTRY TAKES THE ARTICLE, and the production one is a wrapper over it. That is not
+// ceremony: entries hardwired to the production article have refusal arms no call can reach, so
+// nothing can execute them and "it refuses" would be a claim about unexercised code. Taking the
+// article means the same entry a host calls is the one a witness drives an incoherent board
+// through — and the admission call stays inside, so a caller still cannot skip it.
+
+// The refusal type is a PARAMETER because a SPICE cause and a Verilog cause are facts about
+// different targets. Fusing them here would put every target's vocabulary in one enum that every
+// caller has to match exhaustively, which is the widening a per-target authority exists to avoid.
+type BoardEmission<R>
+  = BoardEmitted { source: String }
+  | BoardArticleNotAdmitted { causes: BoardArticleRefusalSet }
+  | BoardTargetRefused { cause: R }
+
+fn emit_spice_for(article: BoardPowerInterfaceArticle) -> BoardEmission<SpiceProjectionRefusal> {
+  match admit_board_article(a: article) {
+    BoardArticleRefused { causes: cs } => BoardArticleNotAdmitted { causes: cs }
+    BoardArticleAdmitted { article: adm } =>
+      match project_article_to_spice(admitted: adm) {
+        SpiceSliceProjected { receipt: r } => BoardEmitted { source: r.source }
+        SpiceSliceRefused { cause: c } => BoardTargetRefused { cause: c }
+      }
+  }
+}
+
+fn emit_verilog_for(article: BoardPowerInterfaceArticle) -> BoardEmission<VerilogProjectionRefusal> {
+  match admit_board_article(a: article) {
+    BoardArticleRefused { causes: cs } => BoardArticleNotAdmitted { causes: cs }
+    BoardArticleAdmitted { article: adm } =>
+      match project_article_to_verilog(admitted: adm, bindings: power_interlock_verilog_bindings) {
+        VerilogModuleEmitted { receipt: r } => BoardEmitted { source: r.source }
+        VerilogProjectionRefused { cause: c } => BoardTargetRefused { cause: c }
+      }
+  }
+}
+
+fn emit_ngspice_run_for(article: BoardPowerInterfaceArticle) -> BoardEmission<SpiceProjectionRefusal> {
+  match admit_board_article(a: article) {
+    BoardArticleRefused { causes: cs } => BoardArticleNotAdmitted { causes: cs }
+    BoardArticleAdmitted { article: adm } =>
+      match project_article_to_ngspice_run(admitted: adm) {
+        SpiceSliceProjected { receipt: r } => BoardEmitted { source: r.source }
+        SpiceSliceRefused { cause: c } => BoardTargetRefused { cause: c }
+      }
+  }
+}
+
+// The production article, through the same entries. A host wanting this board's bytes calls
+// these; nothing else in the product hardcodes it.
+fn emit_spice() -> BoardEmission<SpiceProjectionRefusal> {
+  emit_spice_for(article: power_interlock_article)
+}
+
+fn emit_verilog() -> BoardEmission<VerilogProjectionRefusal> {
+  emit_verilog_for(article: power_interlock_article)
+}
+
+fn emit_ngspice_run() -> BoardEmission<SpiceProjectionRefusal> {
+  emit_ngspice_run_for(article: power_interlock_article)
+}
