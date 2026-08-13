@@ -51,11 +51,9 @@ import extdeps.llm.codex_app_server {
   CodexPlanPro,
   CodexPlanProlite,
   CodexPlanTeam,
-  CodexPlanSelfServeBusinessProlite,
   CodexPlanSelfServeBusinessUsageBased,
   CodexPlanBusiness,
   CodexPlanEnt26,
-  CodexPlanEnterpriseCbpAutomation,
   CodexPlanEnterpriseCbpUsageBased,
   CodexPlanEnterprise,
   CodexPlanEdu,
@@ -206,16 +204,12 @@ fn codex_plan_type_from_wire(native: String) -> CodexPlanTypeReading {
     CodexPlanTypeObserved { plan: CodexPlanProlite }
   } else if native == (codex_plan_type_wire_name(p: CodexPlanTeam) as String) {
     CodexPlanTypeObserved { plan: CodexPlanTeam }
-  } else if native == (codex_plan_type_wire_name(p: CodexPlanSelfServeBusinessProlite) as String) {
-    CodexPlanTypeObserved { plan: CodexPlanSelfServeBusinessProlite }
   } else if native == (codex_plan_type_wire_name(p: CodexPlanSelfServeBusinessUsageBased) as String) {
     CodexPlanTypeObserved { plan: CodexPlanSelfServeBusinessUsageBased }
   } else if native == (codex_plan_type_wire_name(p: CodexPlanBusiness) as String) {
     CodexPlanTypeObserved { plan: CodexPlanBusiness }
   } else if native == (codex_plan_type_wire_name(p: CodexPlanEnt26) as String) {
     CodexPlanTypeObserved { plan: CodexPlanEnt26 }
-  } else if native == (codex_plan_type_wire_name(p: CodexPlanEnterpriseCbpAutomation) as String) {
-    CodexPlanTypeObserved { plan: CodexPlanEnterpriseCbpAutomation }
   } else if native == (codex_plan_type_wire_name(p: CodexPlanEnterpriseCbpUsageBased) as String) {
     CodexPlanTypeObserved { plan: CodexPlanEnterpriseCbpUsageBased }
   } else if native == (codex_plan_type_wire_name(p: CodexPlanEnterprise) as String) {

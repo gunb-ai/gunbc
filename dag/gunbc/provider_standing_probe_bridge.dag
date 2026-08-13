@@ -66,11 +66,9 @@ import extdeps.llm.codex_app_server {
   CodexPlanPro,
   CodexPlanProlite,
   CodexPlanTeam,
-  CodexPlanSelfServeBusinessProlite,
   CodexPlanSelfServeBusinessUsageBased,
   CodexPlanBusiness,
   CodexPlanEnt26,
-  CodexPlanEnterpriseCbpAutomation,
   CodexPlanEnterpriseCbpUsageBased,
   CodexPlanEnterprise,
   CodexPlanEdu,
@@ -193,26 +191,29 @@ fn provider_standing_bundle_honest_entitlement_unobserved() -> ProviderEntitleme
 
 data codex_entitlement_realm_policy_note: String = "ENTITLEMENT IS POLICY OVER AN OBSERVATION, AND THE TWO LIVE IN DIFFERENT MODULES. gunbc.codex_app_server_press decodes what upstream reported — which account union arm, which plan — and asserts nothing about whether it may serve work. This function is the gunbc half: given that observation, may a dispatch requiring personal ChatGPT OAuth draw on this credential?\n\nTHE THREE ANSWERS ARE NOT TWO. An apiKey or amazonBedrock account is REJECTED, not unobserved: the account was read successfully and it is a different credential realization, so the profile is answered in the negative rather than left open. A plan this pin does not recognize is UNOBSERVED, not rejected: upstream added a plan and our roster is stale, which is a fact about us. Collapsing either direction would be wrong in a way the other cannot fix — a stale roster that rejects would refuse a legitimately entitled account forever, and an unrecognized realm that reads as unobserved would let a Bedrock contract look like a temporarily unread subscription.\n\nCodexPlanUnknown IS DELIBERATELY OFF THE ROSTER. It is a real member of the cited enum, so it decodes cleanly, and it means upstream itself does not assert the plan. Admitting it would convert their uncertainty into our positive claim."
 
-data codex_entitling_plan_roster_note: String = "THE ROSTER IS A gunbc POLICY BUDGET, NOT AN UPSTREAM GUARANTEE. OpenAI publishes no machine-readable map from PlanType to Codex entitlement, so there is nothing to cite here and inventing a citation would be worse than declaring the choice. What is declared: the paid subscription plans gunbc will draw on. `free` is excluded because a free ChatGPT plan is not a Codex subscription, and `unknown` because it is upstream's own non-answer.\n\nThis roster is the one place to edit when that policy changes, and a plan absent from it produces a located rejection naming the plan — never a silent skip. If OpenAI later publishes the mapping, this becomes a cited extdeps fact and the roster dissolves into it."
+data codex_entitling_plan_roster_note: String = "NARROWED TO THE OBSERVED DEPLOYMENT (analyst P0, 2026-08-12). This roster first admitted every plan except free and unknown — go, plus, pro, team, edu and all business/enterprise variants — from a note that simultaneously admitted no upstream plan-to-entitlement mapping exists. That is a broad ALLOW decision derived from a locally authored assumption, which is the exact class that escapes review: a refusal gets scrutinized, an admission that merely widens looks like nothing happening.\n\nThe admitted set is now the one plan actually observed on the deployed credential. Everything else decodes correctly and is simply not admitted yet.\n\nA non-admitted plan reads UNOBSERVED rather than REJECTED, and the line is the same one the rest of this module draws: the remedy decides the arm. A plan outside the deployment policy is repaired by ratifying it here — our side, like a stale pin — so the honest state is that we have not decided. An apiKey or amazonBedrock account stays REJECTED because no edit to this roster makes it a personal ChatGPT subscription; that one is repaired only by changing the credential."
+
+type CodexPersonalSubscriptionPolicy {
+  admitted_plans: List<CodexPlanType>
+}
+
+data codex_first_deployment_subscription_policy: CodexPersonalSubscriptionPolicy = CodexPersonalSubscriptionPolicy {
+  admitted_plans: [CodexPlanPro],
+}
+
+fn codex_plan_eq(a: CodexPlanType, b: CodexPlanType) -> Bool {
+  codex_plan_type_wire_name(p: a) == codex_plan_type_wire_name(p: b)
+}
+
+fn codex_policy_admits_plan(policy: CodexPersonalSubscriptionPolicy, plan: CodexPlanType) -> Bool {
+  any(policy.admitted_plans, p => codex_plan_eq(a: p, b: plan))
+}
 
 fn codex_plan_is_entitling(plan: CodexPlanType) -> Bool {
-  match plan {
-    CodexPlanFree => false
-    CodexPlanUnknown => false
-    CodexPlanGo => true
-    CodexPlanPlus => true
-    CodexPlanPro => true
-    CodexPlanProlite => true
-    CodexPlanTeam => true
-    CodexPlanSelfServeBusinessProlite => true
-    CodexPlanSelfServeBusinessUsageBased => true
-    CodexPlanBusiness => true
-    CodexPlanEnt26 => true
-    CodexPlanEnterpriseCbpAutomation => true
-    CodexPlanEnterpriseCbpUsageBased => true
-    CodexPlanEnterprise => true
-    CodexPlanEdu => true
-  }
+  codex_policy_admits_plan(
+    policy: codex_first_deployment_subscription_policy,
+    plan: plan,
+  )
 }
 
 fn provider_entitlement_from_codex_plan_reading(
@@ -223,11 +224,11 @@ fn provider_entitlement_from_codex_plan_reading(
       if codex_plan_is_entitling(plan: p) {
         EntitlementObservedAvailable
       } else {
-        EntitlementRejected {
+        EntitlementObservationUnobserved {
           reason: join([
             "codex chatgpt plan ",
             codex_plan_type_wire_name(p: p) as String,
-            " is not on the gunbc entitling-plan roster",
+            " is not yet admitted by the deployed profile",
           ], "") as NonEmptyStr,
         }
       }
@@ -236,7 +237,7 @@ fn provider_entitlement_from_codex_plan_reading(
         reason: join([
           "codex chatgpt planType ",
           n as String,
-          " is outside the cited 0.147.0 PlanType enum; this pin is stale",
+          " is outside the cited 0.146.0 PlanType enum; this pin is stale",
         ], "") as NonEmptyStr,
       }
     CodexPlanTypeMalformed { cause: c } =>
@@ -267,7 +268,7 @@ fn provider_entitlement_from_codex_realm(
         reason: join([
           "codex account type ",
           n as String,
-          " is outside the cited 0.147.0 Account union; this pin is stale",
+          " is outside the cited 0.146.0 Account union; this pin is stale",
         ], "") as NonEmptyStr,
       }
     CodexAccountRealmUnobserved { reason: r } =>
