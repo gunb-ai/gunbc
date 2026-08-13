@@ -44,7 +44,7 @@ import extdeps.programmable_logic.ice40.subject {
   ice40_hx1k_tq144_banks,
   ice40_tq144_package,
 }
-import std.measure { measure_count }
+import std.measure { micrometer_count }
 import extdeps.toolchain.icestorm.subject {
   icestorm_hx1k_tq144_roster,
   roster_admits_pin,
@@ -297,8 +297,8 @@ test fn w_the_vendor_and_the_toolchain_agree_on_the_pin_population() -> Bool {
 test fn w_the_package_carries_the_facts_a_footprint_needs() -> Bool {
   (ice40_hx1k.ordering_part_number as String) == "ICE40HX1K-TQ144"
     && (ice40_tq144_package.designator as String) == "TQ144"
-    && measure_count(m: ice40_tq144_package.contact_pitch) == 500
-    && measure_count(m: ice40_tq144_package.body_width) == 20000
+    && micrometer_count(m: ice40_tq144_package.contact_pitch) == 500
+    && micrometer_count(m: ice40_tq144_package.body_width) == 20000
     && ice40_tq144_package.contact_count == 144
 }
 
