@@ -135,7 +135,6 @@ import v2.std.compilers.target_model {
   TargetCallApplyShape,
   TargetClosureShape,
   ConditionalSelfDelimiting,
-  LoopSelfDelimiting,
   TargetConditionalShape,
   TargetEffectApplyShape,
   TargetPrimitiveApplyShape,
@@ -5071,8 +5070,7 @@ fn dag_value_expression_projection() -> TargetValueExpressionProjection {
       in_token: ^dag_token_kw_in
     },
     loop_form: TargetLoopShape {
-      loop_token: ^dag_token_kw_loop,
-      delimiting: LoopSelfDelimiting
+      loop_token: ^dag_token_kw_loop
     },
     record_construct_form: TargetRecordConstructShape {
       open: ^dag_token_lbrace,

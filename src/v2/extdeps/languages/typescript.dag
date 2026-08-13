@@ -137,7 +137,6 @@ import v2.std.compilers.target_model {
   TargetClosureShape,
   TargetEffectCalleeRow,
   ConditionalSelfDelimiting,
-  LoopSelfDelimiting,
   TargetConditionalShape,
   TargetOperatorRealization,
   TargetPrimitiveApplyShape,
@@ -635,8 +634,7 @@ fn ts_value_expression_projection_full(
       in_token: ^ts_token_unwired_bind_in
     },
     loop_form: TargetLoopShape {
-      loop_token: ^ts_token_unwired_loop,
-      delimiting: LoopSelfDelimiting
+      loop_token: ^ts_token_unwired_loop
     },
 
     record_construct_form: TargetRecordConstructShape {

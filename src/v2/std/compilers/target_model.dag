@@ -821,13 +821,6 @@ type ConditionalDelimiting
   = ConditionalClosedByToken { close_token: Symbol }
   | ConditionalSelfDelimiting
 
-type LoopDelimiting
-  = LoopClosedByToken {
-      open_token: Symbol
-      close_token: Symbol
-    }
-  | LoopSelfDelimiting
-
 type TargetConditionalShape {
   if_token: Symbol
   then_token: Symbol
@@ -843,7 +836,6 @@ type TargetBindLetShape {
 
 type TargetLoopShape {
   loop_token: Symbol
-  delimiting: LoopDelimiting
 }
 
 type BlockEvaluationMode
@@ -1666,32 +1658,6 @@ fn conditional_delimiting_edges(delimiting: ConditionalDelimiting) -> List<Edge>
   }
 }
 
-fn loop_delimiting_edges(delimiting: LoopDelimiting) -> List<Edge> {
-  match delimiting {
-    LoopSelfDelimiting =>
-      [
-        target_model_named_edge(
-          name: ^target_value_expr_field_loop_delimiting,
-          target: target_model_type_atom_node(identity: ^loop_self_delimiting)
-        )
-      ]
-    LoopClosedByToken { open_token: open_token, close_token: close_token } =>
-      [
-        target_model_named_edge(
-          name: ^target_value_expr_field_loop_delimiting,
-          target: target_model_type_atom_node(identity: ^loop_closed_by_token)
-        ),
-        target_model_named_edge(
-          name: ^target_value_expr_field_loop_open_token,
-          target: target_model_type_atom_node(identity: open_token)
-        ),
-        target_model_named_edge(
-          name: ^target_value_expr_field_loop_close_token,
-          target: target_model_type_atom_node(identity: close_token)
-        )
-      ]
-  }
-}
 
 // An unrecognised discriminant REFUSES. It does not fall back to self-delimiting,
 // because the two states differ exactly where it matters: a target that closes and
@@ -1725,46 +1691,6 @@ fn decode_conditional_delimiting(bundle: Node) -> Outcome<ConditionalDelimiting>
   )
 }
 
-fn decode_loop_delimiting(bundle: Node) -> Outcome<LoopDelimiting> {
-  bind_outcome(
-    o: projection_bundle_symbol_field(
-      bundle: bundle,
-      field: ^target_value_expr_field_loop_delimiting
-    ),
-    f: fn(discriminant) {
-      if discriminant == ^loop_self_delimiting {
-        outcome_accepted(LoopSelfDelimiting)
-      } else if discriminant == ^loop_closed_by_token {
-        bind_outcome(
-          o: projection_bundle_symbol_field(
-            bundle: bundle,
-            field: ^target_value_expr_field_loop_open_token
-          ),
-          f: fn(open_token) {
-            bind_outcome(
-              o: projection_bundle_symbol_field(
-                bundle: bundle,
-                field: ^target_value_expr_field_loop_close_token
-              ),
-              f: fn(close_token) {
-                outcome_accepted(
-                  LoopClosedByToken {
-                    open_token: open_token,
-                    close_token: close_token
-                  }
-                )
-              }
-            )
-          }
-        )
-      } else {
-        outcome_rejected(
-          target_value_projection_bundle_malformed_diagnostic(bundle: bundle)
-        )
-      }
-    }
-  )
-}
 
 fn decode_conditional_shape_bundle(bundle: Node) -> Outcome<TargetConditionalShape> {
   bind_outcome(
@@ -1835,15 +1761,9 @@ fn decode_loop_shape_bundle(bundle: Node) -> Outcome<TargetLoopShape> {
   bind_outcome(
     o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_loop_token),
     f: fn(loop_token) {
-      bind_outcome(
-        o: decode_loop_delimiting(bundle: bundle),
-        f: fn(delimiting) {
-          outcome_accepted(
-            TargetLoopShape {
-              loop_token: loop_token,
-              delimiting: delimiting
-            }
-          )
+      outcome_accepted(
+        TargetLoopShape {
+          loop_token: loop_token
         }
       )
     }
@@ -5245,33 +5165,6 @@ fn target_value_expression_loop_to_concrete_tokens(
   )
 }
 
-// A loop that closes wraps its body; a self-delimiting one does not. The wrap is
-// derived from the target's declared discipline, so the enclosing declaration
-// scaffold no longer has to carry a brace the expression opened.
-fn loop_delimited_tokens(
-  loop_form: TargetLoopShape,
-  body_tokens: List<ConcreteSyntaxToken>
-) -> List<ConcreteSyntaxToken> {
-  match loop_form.delimiting {
-    LoopSelfDelimiting =>
-      list_append(
-        left: [FixedToken { token_class: loop_form.loop_token }],
-        right: body_tokens
-      )
-    LoopClosedByToken { open_token: open_token, close_token: close_token } =>
-      list_append(
-        left: list_append(
-          left: [
-            FixedToken { token_class: loop_form.loop_token },
-            FixedToken { token_class: open_token }
-          ],
-          right: body_tokens
-        ),
-        right: [FixedToken { token_class: close_token }]
-      )
-  }
-}
-
 fn target_value_expression_loop_to_concrete_tokens_inner(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
@@ -5291,9 +5184,14 @@ fn target_value_expression_loop_to_concrete_tokens_inner(
             ),
             f: fn(body_tokens) {
               outcome_accepted(
-                loop_delimited_tokens(
-                  loop_form: projection.loop_form,
-                  body_tokens: body_tokens
+                list_append(
+                  left: Cons {
+                    head: FixedToken {
+                      token_class: projection.loop_form.loop_token
+                    },
+                    tail: Empty
+                  },
+                  right: body_tokens
                 )
               )
             }
@@ -7484,17 +7382,14 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
       target_model_named_edge(
         name: ^target_value_expr_field_loop,
         target: target_model_type_conj_node(
-          children: list_append(
-            left: [
-              target_model_named_edge(
-                name: ^target_value_expr_field_loop_token,
-                target: target_model_type_atom_node(
-                  identity: projection.loop_form.loop_token
-                )
+          children: [
+            target_model_named_edge(
+              name: ^target_value_expr_field_loop_token,
+              target: target_model_type_atom_node(
+                identity: projection.loop_form.loop_token
               )
-            ],
-            right: loop_delimiting_edges(delimiting: projection.loop_form.delimiting)
-          )
+            )
+          ]
         )
       ),
       target_model_named_edge(
