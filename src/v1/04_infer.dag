@@ -7945,11 +7945,6 @@ fn census_binding_is_borrowable_fn_sig(binding: TypeBinding, source_indices: Map
     && (node.params |> count) > 0
 }
 
-fn census_binding_is_generic_sig(binding: TypeBinding, source_indices: Map<String, NewlineIndex>) -> Bool {
-  census_binding_is_borrowable_fn_sig(binding: binding, source_indices: source_indices)
-    && (fn_type_param_names(item: binding.resolved, source_indices: source_indices) |> count) > 0
-}
-
 fn census_qualify_sig_return_binding(binding: TypeBinding, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
   let node = binding.resolved
   let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: [], source_indices: source_indices)
@@ -7960,12 +7955,11 @@ fn census_qualify_sig_return_binding(binding: TypeBinding, module_path: String, 
   }
 }
 
-fn census_upgrade_sig_binding(binding: TypeBinding, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
-  if census_binding_is_generic_sig(binding: binding, source_indices: source_indices) {
+fn census_upgrade_sig_binding(binding: TypeBinding, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>, tp_names: List<String>) -> TypeBinding {
+  if (tp_names |> count) > 0 {
     let node = binding.resolved
     match node.inferred {
       Present { value: Resolved { node: raw_ret } } =>
-        let tp_names = fn_type_param_names(item: node, source_indices: source_indices)
         let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: tp_names, source_indices: source_indices)
         let ret_result = resolve_node(n: raw_ret, env: env, module_name: module_path)
         if (ret_result.diagnostics |> count) == 0 {
@@ -8045,10 +8039,13 @@ fn census_qualify_leaf_binding(binding: TypeBinding, module_path: String, census
 }
 
 fn census_upgrade_binding(binding: TypeBinding, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
-  if census_binding_is_generic_sig(binding: binding, source_indices: source_indices) {
-    census_upgrade_sig_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices)
-  } else if census_binding_is_borrowable_fn_sig(binding: binding, source_indices: source_indices) {
-    census_qualify_sig_return_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices)
+  if census_binding_is_borrowable_fn_sig(binding: binding, source_indices: source_indices) {
+    let tp_names = fn_type_param_names(item: binding.resolved, source_indices: source_indices)
+    if (tp_names |> count) > 0 {
+      census_upgrade_sig_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices, tp_names: tp_names)
+    } else {
+      census_qualify_sig_return_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices)
+    }
   } else if (binding.resolved.connective != NoConnective) {
     census_upgrade_type_decl_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices)
   } else if binding.resolved.inferred != none {
@@ -9167,53 +9164,40 @@ fn variant_has_positional_payload_shape(variant: Node, source_indices: Map<Strin
   }
 }
 
-fn build_fielded_variants(modules: List<TypedModule>, type_summaries: Map<String, TypeSummary>) -> Set<String> {
-  let result = modules |> fold(init: empty_set(), f: (acc, m) =>
-    let items = m.items
-    let si = m.type_env.source_indices
-    items |> fold(init: acc, f: (inner, item) =>
-      let is_enum = match map_get(type_summaries, authored_name_at(source_indices: si, node: item)) {
-        Present { value: summary } => match summary.repr {
-          EnumRepr { unit_only: _ } => true
-          _ => false
-        }
-        Absent => false
-      }
-      if is_enum {
-        let enum_name = authored_name_at(source_indices: si, node: item)
-        let variants = item.children
-        variants |> fold(init: inner, f: (vacc, variant) =>
-          let has_fields = variant.children |> count > 0
-          let is_positional_payload = variant_has_positional_payload_shape(variant: variant, source_indices: si)
-          if has_fields && !is_positional_payload { set_insert(vacc, concat(enum_name, "::", authored_name_at(source_indices: si, node: variant))) } else { vacc }
-        )
-      } else { inner }
-    )
-  )
-  result
+type EnumVariantShapeSets {
+  fielded: Set<String>
+  positional_payload: Set<String>
 }
 
-fn build_positional_payload_variants(modules: List<TypedModule>, type_summaries: Map<String, TypeSummary>) -> Set<String> {
-  modules |> fold(init: empty_set(), f: (acc, m) =>
-    let items = m.items
-    let si = m.type_env.source_indices
-    items |> fold(init: acc, f: (inner, item) =>
-      let is_enum = match map_get(type_summaries, authored_name_at(source_indices: si, node: item)) {
-        Present { value: summary } => match summary.repr {
-          EnumRepr { unit_only: _ } => true
-          _ => false
-        }
-        Absent => false
+fn enum_variant_shape_sets_for_item(acc: EnumVariantShapeSets, item: Node, si: Map<String, NewlineIndex>, type_summaries: Map<String, TypeSummary>) -> EnumVariantShapeSets {
+  let item_name = authored_name_at(source_indices: si, node: item)
+  let is_enum = match map_get(type_summaries, item_name) {
+    Present { value: summary } => match summary.repr {
+      EnumRepr { unit_only: _ } => true
+      _ => false
+    }
+    Absent => false
+  }
+  if is_enum {
+    item.children |> fold(init: acc, f: (vacc, variant) =>
+      let qualified = concat(item_name, "::", authored_name_at(source_indices: si, node: variant))
+      let is_positional_payload = variant_has_positional_payload_shape(variant: variant, source_indices: si)
+      let has_fields = variant.children |> count > 0
+      if is_positional_payload {
+        EnumVariantShapeSets { fielded: vacc.fielded, positional_payload: set_insert(vacc.positional_payload, qualified) }
+      } else {
+        if has_fields {
+          EnumVariantShapeSets { fielded: set_insert(vacc.fielded, qualified), positional_payload: vacc.positional_payload }
+        } else { vacc }
       }
-      if is_enum {
-        let enum_name = authored_name_at(source_indices: si, node: item)
-        let variants = item.children
-        variants |> fold(init: inner, f: (vacc, variant) =>
-          if variant_has_positional_payload_shape(variant: variant, source_indices: si) {
-            set_insert(vacc, concat(enum_name, "::", authored_name_at(source_indices: si, node: variant)))
-          } else { vacc }
-        )
-      } else { inner }
+    )
+  } else { acc }
+}
+
+fn build_enum_variant_shape_sets(modules: List<TypedModule>, type_summaries: Map<String, TypeSummary>) -> EnumVariantShapeSets {
+  modules |> fold(init: EnumVariantShapeSets { fielded: empty_set(), positional_payload: empty_set() }, f: (acc, m) =>
+    m.items |> fold(init: acc, f: (inner, item) =>
+      enum_variant_shape_sets_for_item(acc: inner, item: item, si: m.type_env.source_indices, type_summaries: type_summaries)
     )
   )
 }
@@ -9243,15 +9227,14 @@ fn build_emit_graph_info(modules: List<TypedModule>, has_v1_seed: Bool) -> EmitG
       set_insert(inner, intern_str(table: m.type_env.intern_table, id: ident))
     )
   )
-  let fielded = build_fielded_variants(modules: modules, type_summaries: built.type_summaries)
-  let positional = build_positional_payload_variants(modules: modules, type_summaries: built.type_summaries)
+  let variant_shapes = build_enum_variant_shape_sets(modules: modules, type_summaries: built.type_summaries)
   let vtoe = derive_variant_to_enum(type_summaries: built.type_summaries)
   EmitGraphInfo {
     type_summaries: built.type_summaries,
     type_decl_items: built.type_decl_items,
     recursive_type_set: all_recursive,
-    fielded_variants: fielded,
-    positional_payload_variants: positional,
+    fielded_variants: variant_shapes.fielded,
+    positional_payload_variants: variant_shapes.positional_payload,
     shared_types: empty_set(),
     ownership_index: empty_map(),
     movable: empty_set(),
