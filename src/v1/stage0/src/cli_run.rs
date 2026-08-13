@@ -15229,26 +15229,37 @@ pub fn install_output_policy(source_roots: &[String]) {
     let _ = ROUTINE_ROLLUP_FOLD.set(folds);
     // Two evaluations per process, not one per witness: the density of a concluded outcome depends
     // only on its class, so the projection's verdict is resolved here and carried.
-    let ask_fold = |passed: bool| -> Option<bool> {
+    // The cause travels with the failure, symmetrically with `routine_rollup_folds` above. An
+    // earlier revision matched `_ => None` here, so the two distinguishable failures — the policy
+    // answered something that is not a Bool, and the policy could not be evaluated in this entry's
+    // closure at all — arrived as one indistinguishable warning. That is the same conflation this
+    // whole lane is about, in the diagnostic that reports it: "the policy is wrong" and "the policy
+    // is not loaded here" have different remedies, and only the first is drift.
+    let ask_fold = |passed: bool| -> Result<bool, String> {
         match v1_interpreter::run_in_context_with_args(
             &ctx,
             "concluded_outcome_folds",
             &[(Some("passed".to_string()), Value::Bool(passed))],
             false,
         ) {
-            Ok(Value::Bool(b)) => Some(b),
-            _ => None,
+            Ok(Value::Bool(b)) => Ok(b),
+            Ok(_) => Err(format!("passed={passed}: returned a non-Bool value")),
+            Err(e) => Err(format!("passed={passed}: evaluation failed: {e}")),
         }
     };
     match (ask_fold(true), ask_fold(false)) {
-        (Some(p), Some(f)) => {
+        (Ok(p), Ok(f)) => {
             let _ = CONCLUDED_OUTCOME_FOLD.set((p, f));
         }
-        _ => eprintln!(
-            "::warning::output policy drift: gunbc.observation_ci_render \
-             `concluded_outcome_folds` did not answer a Bool; per-witness folding is DISABLED for \
-             this run and every witness line will print"
-        ),
+        (p, f) => {
+            let causes: Vec<String> = [p.err(), f.err()].into_iter().flatten().collect();
+            eprintln!(
+                "::warning::output policy drift: gunbc.observation_ci_render \
+                 `concluded_outcome_folds` did not answer a Bool ({}); per-witness folding is \
+                 DISABLED for this run and every witness line will print",
+                causes.join("; ")
+            );
+        }
     }
 
     install_effect_stream_policy(&ctx, verbose, quiet);

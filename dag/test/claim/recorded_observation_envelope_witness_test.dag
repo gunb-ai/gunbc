@@ -113,11 +113,12 @@ test fn w_a_dense_increasing_file_is_intact() -> Bool {
 // A GAP AND A REORDER ARE DIFFERENT REMEDIES. A gap means records this read never saw, so every
 // attribution derived from the file understates; a reorder means the producer violated its own
 // append protocol. Reporting either as the other sends the investigation to the wrong layer.
+//
+// ON THE REORDER FIXTURE: [0, 5, 2] would report a GAP, because 0 to 5 is the first defect and the
+// first defect wins. A discriminating reorder fixture must therefore be clean up to the step it
+// means to exercise — which is itself the property under test, and is why this one starts at 3.
 test fn w_RED_a_gap_and_a_reorder_are_distinct_verdicts_carrying_their_operands() -> Bool {
   let gap = classify_producer_file(records: [w(seq: 0), w(seq: 1), w(seq: 7)])
-  // NOTE the fixture: [0, 5, 2] would report a GAP, because 0 to 5 is the first defect and the
-  // first defect wins. A discriminating reorder fixture must therefore be clean up to the step it
-  // means to exercise, which is itself the property under test.
   let reorder = classify_producer_file(records: [w(seq: 3), w(seq: 4), w(seq: 2)])
   match gap {
     SequenceGap { after: a, before: b } => a == 1 && b == 7
