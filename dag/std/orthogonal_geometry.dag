@@ -67,6 +67,12 @@ type OrthogonalRefusal
   | LoopEdgeNotAxisAligned
   | LoopEdgesNotPerpendicular
   | LoopSelfIntersects
+  // AN AREA OR VOLUME SPELLED IN MILLIMETRES, ASKED OF A FRAME WHOSE QUANTUM IS NOT THE
+  // MILLIMETRE. The extents in this module answer in the frame and need no such arm; the area and
+  // volume folds in std.orthogonal_topology still label their results, and no frame-relative area
+  // or volume carrier exists for them to answer in. So they refuse here rather than multiplying
+  // frame counts and calling the product square millimetres.
+  | MillimetreFrameRequiredForMetric { frame: CoordinateFrameIdentity }
   | RotationAxesParallel
   | BoundingBoxHasNoPoints
   | ShellArithmeticRefused { cause: IntegerOverflow }
@@ -713,6 +719,16 @@ fn prism3_frame(p: OrthogonalPrism3) -> CoordinateFrameIdentity { p.footprint.fr
 fn prism3_low(p: OrthogonalPrism3) -> SignedFrameComponent { p.low }
 fn prism3_high(p: OrthogonalPrism3) -> SignedFrameComponent { p.high }
 
-fn prism3_height(p: OrthogonalPrism3) -> Millimeter {
-  millimeter(count: signed_frame_component_count(c: p.high) - signed_frame_component_count(c: p.low))
+// THE LAST MILLIMETRE ASSERTION IN THIS FILE, and it survived two rounds of this migration by
+// being three lines away from the extents that were fixed. It read the frame-owned counts and
+// labelled the difference millimetres, so a micrometre-registered frame reported a 2400-count
+// height as millimeter(2400) - the same silent mislabel the 2D extents above stopped making.
+// It now answers in the frame, exactly as rectangle2_width and rectangle2_height do, so an
+// unregistered frame yields ExtentFrameUnregistered rather than a number nobody can read.
+fn prism3_height(registry: SpatialFrameRegistry, p: OrthogonalPrism3) -> FrameExtent {
+  extent_in_frame(
+    registry: registry,
+    identity: p.footprint.frame,
+    count: signed_frame_component_count(c: p.high) - signed_frame_component_count(c: p.low)
+  )
 }

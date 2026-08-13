@@ -10,6 +10,13 @@ import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.lattice_semiconductor { lattice_semiconductor_vendor }
 
+// THE CITATION IS PER MODULE AND IT IS A LITERAL, which is a fact about the mechanism rather than
+// a preference. The corpus wall reads each extdeps module's extdeps_external_authority_anchor
+// STRUCTURALLY - it projects the anchor's scheme out of the declaration's own Node tree - so an
+// anchor bound to a shared value in a sibling module projects as absent and the module reads as
+// uncited. Binding was tried first and refused by that wall. So the three modules of this package
+// each carry the record: the citation duty is per module, and a shared binding cannot discharge it
+// while the reader is structural.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,

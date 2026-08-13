@@ -17,8 +17,14 @@ import std.checked_arithmetic {
   checked_int_add, checked_int_subtract, checked_int_multiply, checked_int_magnitude,
 }
 import v2.std.optional { Present, Absent }
+import std.spatial_frame {
+  SpatialFrameRegistry, FrameExtent, ExtentInFrame, ExtentFrameUnregistered,
+  LengthProjected, LengthProjectionRefused, frame_length_as_millimeter,
+  extent_in_frame, frame_length_scale, scales_agree
+}
+import std.measure { Scale, Milli }
 import std.orthogonal_geometry {
-  OrthogonalRefusal, OrthogonalFrameMismatch, ShellArithmeticRefused, SpacesInterpenetrate,
+  OrthogonalRefusal, OrthogonalFrameMismatch, MillimetreFrameRequiredForMetric, ShellArithmeticRefused, SpacesInterpenetrate,
   OrthogonalConstruction, OrthogonalReady, OrthogonalRefused,
   OrthogonalLoop2, loop2_vertices, loop2_frame,
   OrthogonalPrism3, prism3_footprint, prism3_frame, prism3_height, prism3_low, prism3_high,
@@ -109,7 +115,7 @@ fn enclosed_space(shell: ClosedShell) -> EnclosedSpace {
 fn space_shell(s: EnclosedSpace) -> ClosedShell { s.shell }
 fn space_frame(s: EnclosedSpace) -> CoordinateFrameIdentity { shell_frame(s: s.shell) }
 fn space_footprint(s: EnclosedSpace) -> OrthogonalLoop2 { prism3_footprint(p: s.shell.prism) }
-fn space_height(s: EnclosedSpace) -> Millimeter { prism3_height(p: s.shell.prism) }
+fn space_height(registry: SpatialFrameRegistry, s: EnclosedSpace) -> FrameExtent { prism3_height(registry: registry, p: s.shell.prism) }
 fn space_walls(s: EnclosedSpace) -> List<ShellWall> { shell_walls(s: s.shell) }
 
 // EQUALITY IS OVER THE REGION, NOT THE VERTEX LIST. Two spaces are the same when they occupy the
@@ -203,7 +209,20 @@ fn shoelace_double_area(l: OrthogonalLoop2) -> CheckedInt {
     })
 }
 
-fn loop2_area(l: OrthogonalLoop2) -> OrthogonalConstruction<SquareMillimeter> {
+// THE MILLIMETRE GUARD FOR THE METRIC FOLDS. The extents answer in the frame; these do not, so
+// they must not run on a frame they cannot label. An unregistered frame refuses for the same
+// reason it does in std.euclidean_geometry: no declared quantum means no unit to check against.
+fn metric_frame_is_millimetre(registry: SpatialFrameRegistry, identity: CoordinateFrameIdentity) -> Bool {
+  match frame_length_scale(r: registry, identity: identity) {
+    Absent => false
+    Present { value: sc } => scales_agree(a: sc, b: Milli)
+  }
+}
+
+fn loop2_area(registry: SpatialFrameRegistry, l: OrthogonalLoop2) -> OrthogonalConstruction<SquareMillimeter> {
+  if !metric_frame_is_millimetre(registry: registry, identity: l.frame) {
+    OrthogonalRefused { cause: MillimetreFrameRequiredForMetric { frame: l.frame } }
+  } else {
   match shoelace_double_area(l: l) {
     CheckedIntOverflow { cause: c } => OrthogonalRefused { cause: ShellArithmeticRefused { cause: c } }
     CheckedIntReady { value: doubled } =>
@@ -212,19 +231,34 @@ fn loop2_area(l: OrthogonalLoop2) -> OrthogonalConstruction<SquareMillimeter> {
         CheckedNatReady { value: magnitude } => OrthogonalReady { value: square_millimeter(count: magnitude / 2) }
       }
   }
+  }
 }
 
-fn space_floor_area(s: EnclosedSpace) -> OrthogonalConstruction<SquareMillimeter> {
-  loop2_area(l: space_footprint(s: s))
+fn space_floor_area(registry: SpatialFrameRegistry, s: EnclosedSpace) -> OrthogonalConstruction<SquareMillimeter> {
+  loop2_area(registry: registry, l: space_footprint(s: s))
 }
 
 // Volume is area times height and nothing else. There is no stored volume to disagree with the
 // footprint, and no arm that answers when the multiplication leaves the range.
-fn space_volume(s: EnclosedSpace) -> OrthogonalConstruction<CubicMillimeter> {
-  match space_floor_area(s: s) {
+// The volume fold needs a millimetre NUMBER, and the height now arrives as a frame extent. This
+// is the projection, and it refuses exactly where the extent cannot be stated in millimetres -
+// which is the same condition the area fold above checks, reached by a different route.
+fn space_height_millimetres(registry: SpatialFrameRegistry, s: EnclosedSpace) -> Millimeter {
+  match space_height(registry: registry, s: s) {
+    ExtentInFrame { length: l } =>
+      match frame_length_as_millimeter(l: l) {
+        LengthProjected { value: mm } => mm
+        LengthProjectionRefused { cause: _ } => millimeter(count: 0)
+      }
+    ExtentFrameUnregistered { identity: _ } => millimeter(count: 0)
+  }
+}
+
+fn space_volume(registry: SpatialFrameRegistry, s: EnclosedSpace) -> OrthogonalConstruction<CubicMillimeter> {
+  match space_floor_area(registry: registry, s: s) {
     OrthogonalRefused { cause: c } => OrthogonalRefused { cause: c }
     OrthogonalReady { value: area } =>
-      match checked_int_multiply(a: square_millimeter_count_as_int(m: area), b: millimeter_count_as_int(m: space_height(s: s))) {
+      match checked_int_multiply(a: square_millimeter_count_as_int(m: area), b: millimeter_count_as_int(m: space_height_millimetres(registry: registry, s: s))) {
         CheckedIntOverflow { cause: c } => OrthogonalRefused { cause: ShellArithmeticRefused { cause: c } }
         CheckedIntReady { value: v } =>
           match checked_int_magnitude(a: v) {
@@ -541,12 +575,12 @@ fn complex_space_count(c: SpaceComplex) -> Int { length(c.spaces) }
 // The total volume of a complex is a sum the members cannot double-count, because admission already
 // proved they do not overlap. That is the payoff of the wall being at the mint rather than here:
 // this fold is a sum, not a sum plus an inclusion-exclusion correction nobody would get right.
-fn complex_total_volume(c: SpaceComplex) -> OrthogonalConstruction<CubicMillimeter> {
+fn complex_total_volume(registry: SpatialFrameRegistry, c: SpaceComplex) -> OrthogonalConstruction<CubicMillimeter> {
   fold(c.spaces, init: OrthogonalReady { value: cubic_millimeter(count: 0) }, f: (acc, s) =>
     match acc {
       OrthogonalRefused { cause: r } => OrthogonalRefused { cause: r }
       OrthogonalReady { value: total } =>
-        match space_volume(s: s) {
+        match space_volume(registry: registry, s: s) {
           OrthogonalRefused { cause: r } => OrthogonalRefused { cause: r }
           OrthogonalReady { value: v } =>
             match checked_int_add(a: cubic_millimeter_count_as_int(m: total), b: cubic_millimeter_count_as_int(m: v)) {

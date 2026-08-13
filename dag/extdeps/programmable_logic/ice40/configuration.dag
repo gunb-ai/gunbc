@@ -5,8 +5,9 @@ import std.integer { Int }
 import std.nat { Nat }
 import std.measure { Hertz, Millisecond, millisecond, millisecond_count, Microsecond, Nanosecond, hertz, hertz_count, microsecond, microsecond_count, nanosecond, nanosecond_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
-import extdeps.programmable_logic.ice40.subject { extdeps_external_authority_anchor }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+
 import extdeps.programmable_logic.ice40.supply {
   Ice40ConfigurationMode,
   MasterSpiConfiguration,
@@ -22,6 +23,17 @@ data ice40_configuration_note: String = "THE CONFIGURATION PORT, from Table 4.28
 // THE SIGNALS THE CONFIGURATION PORT PRESENTS. SPI_SS carries the name this revision gives it:
 // the change history records that SPI_SS_B was renamed to SPI_SS in the Signal Descriptions table,
 // so a model spelling it the old way is citing a document that no longer exists under that name.
+
+// This module's own citation of the same data sheet. It is a literal because the corpus wall reads
+// the anchor structurally and cannot see a binding to a sibling's value - see the note in
+// extdeps.programmable_logic.ice40.subject.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.latticesemi.com/-/media/LatticeSemi/Documents/DataSheets/iCE/FPGA-DS-02029-4-3-iCE40-LP-HX-Family-Data-Sheet.ashx?document_id=49312"
+  }
+}
+
 type Ice40ConfigurationSignal
   = ConfigurationReset
   | ConfigurationDone

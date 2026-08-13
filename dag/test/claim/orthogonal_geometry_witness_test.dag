@@ -331,7 +331,7 @@ test fn plane_surface_and_prism_hold() -> Bool {
     OrthogonalRefused { cause: _ } => false
     OrthogonalReady { value: l } =>
       match orthogonal_prism3(footprint: l, low: 0, high: 2400) {
-        OrthogonalReady { value: pr } => millimeter_count(m: prism3_height(p: pr)) == 2400
+        OrthogonalReady { value: pr } => extent_is_mm(e: prism3_height(registry: mm_registry(), p: pr), want: 2400)
         OrthogonalRefused { cause: _ } => false
       }
   }
