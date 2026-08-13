@@ -629,8 +629,10 @@ fn ci_batch_summary_line(rollup: ObservationRollup) -> RenderedLine {
 // summary did not carry, supplied to the argument named `refused` — so a reader saw a clean
 // partition that had never been checked against anything.
 //
-// `refused` is deliberately ABSENT rather than printed as zero: the seed has no refusal count to
-// give, and a displayed zero is a claim that the fold looked and found none.
+// `refused` and `timed_out` are deliberately ABSENT rather than printed as zero: the seed has
+// neither count to give, and a displayed zero is a claim that the fold looked and found none. A
+// timed-out row reaches the seed inside the failure list, so it is already counted under `failed`;
+// carrying a separate zero beside it would have been a silent claim AND a double-count hazard.
 fn ci_population_reconciliation_text(declared: Nat, classified: Nat) -> String {
   if classified == declared {
     ""
@@ -649,13 +651,12 @@ fn ci_batch_summary_text(
   unaffected: Nat,
   deferred: Nat,
   failed: Nat,
-  timed_out: Nat,
   work_nanos: Nat,
 ) -> String {
-  let classified = passed + unaffected + deferred + failed + timed_out
+  let classified = passed + unaffected + deferred + failed
   ci_render_line(
     line: RenderedLine {
-      glyph: if failed + timed_out > 0 { NodeFailed } else { NodeCompleted },
+      glyph: if failed > 0 { NodeFailed } else { NodeCompleted },
       text: join([
         batch_label,
         " — ",
@@ -667,7 +668,7 @@ fn ci_batch_summary_text(
         " work",
         ci_population_reconciliation_text(declared: declared_population, classified: classified),
       ], ""),
-      attention: if failed + timed_out > 0 { Anomaly } else { Ambient }
+      attention: if failed > 0 { Anomaly } else { Ambient }
     },
     tier: Ascii,
   )

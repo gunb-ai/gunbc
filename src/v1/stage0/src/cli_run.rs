@@ -14556,7 +14556,6 @@ fn render_batch_summary_line(
     unaffected: u64,
     deferred: u64,
     failed: u64,
-    timed_out: u64,
     work_nanos: u64,
 ) -> Option<String> {
     use v1_interpreter::Value;
@@ -14579,7 +14578,6 @@ fn render_batch_summary_line(
             arg("unaffected", unaffected),
             arg("deferred", deferred),
             arg("failed", failed),
-            arg("timed_out", timed_out),
             arg("work_nanos", work_nanos),
         ],
         false,
@@ -24454,7 +24452,6 @@ fn emit_batch_summary(merged: &DiscoverySummary) {
         merged.skipped as u64,
         deferred,
         failed,
-        0,
         merged.total_measured_nanos as u64,
     ) {
         Some(line) => eprintln!("{line}"),
