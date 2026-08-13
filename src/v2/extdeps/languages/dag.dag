@@ -132,6 +132,8 @@ import v2.std.compilers.target_model {
   TargetBodiedArrowStatementScaffold,
   TargetCallApplyShape,
   TargetClosureShape,
+  ConditionalSelfDelimiting,
+  LoopSelfDelimiting,
   TargetConditionalShape,
   TargetEffectApplyShape,
   TargetPrimitiveApplyShape,
@@ -5039,10 +5041,14 @@ fn dag_value_expression_projection() -> TargetValueExpressionProjection {
       close: ^dag_token_rparen,
       separator: ^dag_token_comma
     },
+    // .dag is ML-style: if c then a else b. All three keywords are really lexed,
+    // and the else arm ENDS the expression, so there is no closing token -- and
+    // ConditionalSelfDelimiting carries no field in which to invent one.
     conditional_form: TargetConditionalShape {
       if_token: ^dag_token_kw_if,
       then_token: ^dag_token_kw_then,
-      else_token: ^dag_token_kw_else
+      else_token: ^dag_token_kw_else,
+      delimiting: ConditionalSelfDelimiting
     },
     let_form: TargetBindLetShape {
       let_token: ^dag_token_kw_let,
@@ -5050,7 +5056,8 @@ fn dag_value_expression_projection() -> TargetValueExpressionProjection {
       in_token: ^dag_token_kw_in
     },
     loop_form: TargetLoopShape {
-      loop_token: ^dag_token_kw_loop
+      loop_token: ^dag_token_kw_loop,
+      delimiting: LoopSelfDelimiting
     },
     record_construct_form: TargetRecordConstructShape {
       open: ^dag_token_lbrace,
