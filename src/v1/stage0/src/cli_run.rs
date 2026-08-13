@@ -14582,12 +14582,23 @@ fn render_batch_summary_line(
     failed: u64,
     work_nanos: u64,
 ) -> Option<String> {
+    // The duration crosses the seam as the std.measure carrier, not a bare integer: the seam's
+    // parameter is `work: Nanosecond`, and a caller passing milliseconds into a `work_nanos: Nat`
+    // would have typechecked. The seed builds no record of its own — it calls the `nanosecond`
+    // constructor across the interpreter boundary, so that constructor stays the single authority.
     use v1_interpreter::Value;
     let roots = OBSERVATION_SOURCE_ROOTS.get()?;
     let entry = "dag/gunbc/observation_ci_render.dag";
     let (graph, indices) = resolve_entry_graph_shared(roots, entry).ok()?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let arg = |name: &str, v: u64| (Some(name.to_string()), Value::Int(v as i64));
+    let work = v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "nanosecond",
+        &[(Some("count".to_string()), Value::Int(work_nanos as i64))],
+        false,
+    )
+    .ok()?;
     let out = v1_interpreter::run_in_context_with_args(
         &ctx,
         "ci_batch_summary_text",
@@ -14597,12 +14608,12 @@ fn render_batch_summary_line(
                 Some("batch_label".to_string()),
                 Value::Str(batch_label.to_string()),
             ),
+            (Some("work".to_string()), work),
             arg("declared_population", declared_population),
             arg("passed", passed),
             arg("unaffected", unaffected),
             arg("deferred", deferred),
             arg("failed", failed),
-            arg("work_nanos", work_nanos),
         ],
         false,
     )

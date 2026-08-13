@@ -631,6 +631,13 @@ fn ci_batch_summary_line(rollup: ObservationRollup) -> RenderedLine {
   }
 }
 
+// The duration crosses as the std.measure carrier, never a bare Nat named `*_nanos`. Wrapping it
+// immediately inside the body would NOT discharge that — the PARAMETER surface is what a caller can
+// get wrong, and a caller passing milliseconds into a `work_nanos: Nat` would have typechecked. The
+// seed constructs no carrier of its own: it calls `nanosecond(count:)` across the interpreter
+// boundary and passes the result back in, so the constructor stays the single authority (a record
+// built in Rust would have forked it). Same shape as gunbc.floor_component_receipt's surface.
+//
 // The seed's ONE seam into this authority. The floor walk lives in Rust and cannot construct a
 // .dag record, so it hands over the scalars it already has and receives one finished line back.
 // Everything that decides how a batch READS — the glyph, the field order, the anomaly split, the
@@ -668,7 +675,7 @@ fn ci_batch_summary_text(
   unaffected: Nat,
   deferred: Nat,
   failed: Nat,
-  work_nanos: Nat,
+  work: Nanosecond,
 ) -> String {
   let classified = passed + unaffected + deferred + failed
   ci_render_line(
@@ -681,7 +688,7 @@ fn ci_batch_summary_text(
         to_string(unaffected), " unaffected · ",
         to_string(deferred), " deferred · ",
         to_string(failed), " failed · ",
-        ci_measured_elapsed_text(m: MeasuredValue { value: nanosecond(count: work_nanos) }),
+        ci_measured_elapsed_text(m: MeasuredValue { value: work }),
         " work",
         ci_population_reconciliation_text(declared: declared_population, classified: classified),
       ], ""),
