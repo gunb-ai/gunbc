@@ -361,6 +361,19 @@ type SparkServingRealizationPolicy {
 // it DOES, and the ordering is a count over that. Adding an effect to a realization changes its
 // ranking automatically; getting the ranking wrong now requires misstating what an effect does,
 // which is a claim a reader can check against the host.
+// InstallOwnedRuntimeClosure IS NOT A CHEAPER SPELLING OF InstallRuntimePackage. They mutate
+// different subjects, which is the whole reason one needs root and the other does not: apt-get
+// writes the host package database, owned by root and shared by every account on the machine, while
+// an owner-installed closure writes a directory the actor owns. The privilege difference is
+// therefore DERIVED from the subject rather than asserted about the method -- exactly what the
+// ownership model exists to do -- and it is why this is a modeling change rather than a workaround
+// that dodges sudo.
+//
+// The trade is real and named rather than hidden: the upstream's documented Linux layout extracts
+// into /usr, so a relocated owner-owned prefix is an adaptation of that layout, not the vendor's
+// supported one. What is bought is that first install on a clean Spark requires no administrator
+// credential at all. Both effects stay in the coproduct because a host that genuinely wants the
+// packaged runtime is still expressible; the realization chooses, and the grant follows.
 type ServingInstallEffect
   = WriteSystemUnitFile
   | ReloadSystemManager
@@ -370,6 +383,7 @@ type ServingInstallEffect
   | EnableUserUnit
   | EnableLingerForOwnAccount
   | InstallRuntimePackage
+  | InstallOwnedRuntimeClosure
   | PullModelArtifact
   | GrantContainerRuntimeAccess
   | RunContainerAsOwnUser
@@ -385,7 +399,7 @@ fn serving_install_effect_requires_privilege(effect: ServingInstallEffect) -> Bo
 fn realization_install_effects(realization: SparkServingRealization) -> List<ServingInstallEffect> {
   match realization {
     UserUnitRealization =>
-      [InstallRuntimePackage, WriteUserUnitFile, ReloadUserManager, EnableUserUnit, EnableLingerForOwnAccount, PullModelArtifact]
+      [InstallOwnedRuntimeClosure, WriteUserUnitFile, ReloadUserManager, EnableUserUnit, EnableLingerForOwnAccount, PullModelArtifact]
     SystemUnitRealization =>
       [InstallRuntimePackage, WriteSystemUnitFile, ReloadSystemManager, EnableSystemUnit, PullModelArtifact]
     RootlessContainerRealization =>
@@ -671,6 +685,7 @@ type MutationSubject
   | GroupMembership
   | LingerState
   | ModelArtifactStore { owner: SystemPrincipal }
+  | RuntimeArtifactStore { owner: SystemPrincipal }
   | ContainerRuntimeAsOwnUser { owner: SystemPrincipal }
 
 // THE OWNERSHIP FACTS, which are the only place root appears. These are properties of the HOST, and
@@ -684,6 +699,7 @@ fn subject_owner(subject: MutationSubject) -> SystemPrincipal {
     LingerState => RootPrincipal
     UserUnitRegistry { owner: o } => o
     ModelArtifactStore { owner: o } => o
+    RuntimeArtifactStore { owner: o } => o
     ContainerRuntimeAsOwnUser { owner: o } => o
   }
 }
@@ -700,6 +716,7 @@ fn effect_mutation_subject(
     ReloadSystemManager => SystemUnitRegistry
     EnableSystemUnit => SystemUnitRegistry
     InstallRuntimePackage => PackageDatabase
+    InstallOwnedRuntimeClosure => RuntimeArtifactStore { owner: actor }
     GrantContainerRuntimeAccess => GroupMembership
     EnableLingerForOwnAccount => LingerState
     WriteUserUnitFile => UserUnitRegistry { owner: actor }
@@ -778,6 +795,7 @@ fn effect_actuation(
     EnableLingerForOwnAccount => ActuatedByEscalation { commands: [
       join(["/usr/bin/loginctl enable-linger ", principal_label(p: target.actor)], "") as NonEmptyStr,
     ] }
+    InstallOwnedRuntimeClosure => ActuatedByOwnerDirectly
     WriteUserUnitFile => ActuatedByOwnerDirectly
     ReloadUserManager => ActuatedByOwnerDirectly
     EnableUserUnit => ActuatedByOwnerDirectly
