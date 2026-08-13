@@ -52,9 +52,11 @@ type BoardComponentRole
   | StorageEndpoint
   | DebugConnector
 
-// The discriminant is derived by matching the coproduct, never by rendering a name. A role
-// compared through prose is a role whose equality a comment edit can redefine, which this
-// repository has now had to repair more than once.
+// A DISPLAY NAME FOR DIAGNOSTICS, AND DELIBERATELY NOT AN EQUALITY. An earlier revision of this
+// module compared roles by this string, which the module's own note warns against: a role compared
+// through a rendered name is a role whose equality an edit to that name can redefine. Equality is
+// structural below; this exists so a refusal can say WHICH role, and nothing reads it to decide
+// whether two roles are the same.
 fn role_tag(r: BoardComponentRole) -> NonEmptyStr {
   match r {
     ProcessorSocket => "ProcessorSocket"
@@ -71,25 +73,29 @@ fn role_tag(r: BoardComponentRole) -> NonEmptyStr {
   }
 }
 
-fn role_channel(r: BoardComponentRole) -> Int {
-  match r {
-    MemoryModuleSlot { channel: c } => c
-    ProcessorSocket => 0 - 1
-    BoardControlCpld => 0 - 1
-    BootFirmwareEeprom => 0 - 1
-    FirmwareFlash => 0 - 1
-    ClockGenerator => 0 - 1
-    ResetController => 0 - 1
-    PowerController => 0 - 1
-    NetworkEndpoint => 0 - 1
-    StorageEndpoint => 0 - 1
-    DebugConnector => 0 - 1
-  }
-}
-
+// EQUALITY IS A DIRECT MATCH ON BOTH SIDES, with no sentinel and no rendered name. An earlier
+// revision derived a channel with -1 standing for "this role has no channel", which is a
+// degenerate value absorbing ignorance: a processor socket does not have channel minus one, it has
+// no channel at all, and the only reason the comparison worked was that the tag happened to gate
+// the number. Matching both sides makes the absent channel unrepresentable rather than encoded.
 fn roles_equal(a: BoardComponentRole, b: BoardComponentRole) -> Bool {
-  ((role_tag(r: a) as String) == (role_tag(r: b) as String))
-    && role_channel(r: a) == role_channel(r: b)
+  match a {
+    MemoryModuleSlot { channel: ca } =>
+      match b {
+        MemoryModuleSlot { channel: cb } => ca == cb
+        _ => false
+      }
+    ProcessorSocket => match b { ProcessorSocket => true  _ => false }
+    BoardControlCpld => match b { BoardControlCpld => true  _ => false }
+    BootFirmwareEeprom => match b { BootFirmwareEeprom => true  _ => false }
+    FirmwareFlash => match b { FirmwareFlash => true  _ => false }
+    ClockGenerator => match b { ClockGenerator => true  _ => false }
+    ResetController => match b { ResetController => true  _ => false }
+    PowerController => match b { PowerController => true  _ => false }
+    NetworkEndpoint => match b { NetworkEndpoint => true  _ => false }
+    StorageEndpoint => match b { StorageEndpoint => true  _ => false }
+    DebugConnector => match b { DebugConnector => true  _ => false }
+  }
 }
 
 // WHY A DIMENSION IS NOT AVAILABLE, at the grain that decides who fixes it. These are not degrees
@@ -122,7 +128,7 @@ type PlacementRefusal
   // with the refusal so the reader learns which question to ask, not merely that one exists.
   = ComponentEnvelopeNotEstablished { component: NonEmptyStr, gap: EnvelopeGap }
   // A role the design requires that no planned component fills.
-  | RequiredRoleUnfilled { role_named: NonEmptyStr, channel: Int }
+  | RequiredRoleUnfilled { role: BoardComponentRole }
   // A component present on the board filling no role the design requires.
   | ComponentFillsNoRequiredRole { component: NonEmptyStr, role_named: NonEmptyStr }
 
@@ -174,7 +180,7 @@ fn population_refusals(d: AltraMinimalMotherboard, plan: BoardPlacementPlan) -> 
     if plan_fills_role(plan: plan, r: r) {
       acc
     } else {
-      concat(acc, [RequiredRoleUnfilled { role_named: role_tag(r: r), channel: role_channel(r: r) }])
+      concat(acc, [RequiredRoleUnfilled { role: r }])
     }
   })
   let extra = fold(plan.components, init: [], f: fn(acc, c) {

@@ -55,7 +55,7 @@ fn plan_or_empty() -> BoardPlacementPlan? {
 fn cause_tag(r: PlacementRefusal) -> NonEmptyStr {
   match r {
     ComponentEnvelopeNotEstablished { component: _, gap: _ } => "EnvelopeMissing"
-    RequiredRoleUnfilled { role_named: _, channel: _ } => "RoleUnfilled"
+    RequiredRoleUnfilled { role: _ } => "RoleUnfilled"
     ComponentFillsNoRequiredRole { component: _, role_named: _ } => "RoleUnjustified"
   }
 }
