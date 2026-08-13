@@ -491,17 +491,18 @@ fn rust_match_binding_spellings() -> Map<Symbol, String> {
 fn rust_match_additional_lex_rules() -> List<LexRule> {
   [
     rust_lex_rule(token_class: ^rust_token_unwired_match, text: "match "),
-    rust_lex_rule(token_class: ^rust_token_unwired_fat_arrow, text: " => "),
-    rust_lex_rule(token_class: ^dag_token_kw_true, text: "true"),
-    rust_lex_rule(token_class: ^dag_token_kw_false, text: "false")
+    rust_lex_rule(token_class: ^rust_token_unwired_fat_arrow, text: " => ")
   ]
 }
 
 fn rust_match_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: list_append(
-      left: rust_fn_add_lex_rules().rules,
-      right: rust_match_additional_lex_rules()
+      left: list_append(
+        left: rust_fn_add_lex_rules().rules,
+        right: rust_match_additional_lex_rules()
+      ),
+      right: rust_value_expression_family_lex_rules()
     )
   }
 }
