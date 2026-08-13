@@ -18,12 +18,6 @@ import gunbc.host_converge_slice1 {
   host_converge_slice1_probe_unit,
   host_converge_slice1_cap_author_before_shadow_revert_enforced,
 }
-import gunbc.fleet_converge_direction_gate {
-  fleet_converge_timer_enable_requires_direction_observed,
-  fleet_converge_timer_may_enable,
-  fleet_converge_memory_cap_pipeline_may_apply,
-}
-import gunbc.fleet_converge_timer_install { fleet_timer_install_commands }
 import gunbc.host_axis_caps {
   runner_memory_cap_author_ready_for_shadow_revert,
   derived_runner_memory_cap_members,
@@ -67,14 +61,4 @@ test fn witness_shadow_revert_blocked_without_derived_dropins_on_disk() -> Bool 
 test fn witness_receipt_owner_readback_required() -> Bool {
   converge_cli_receipt_owner_readback_required
     && converge_cli_expected_receipt_owner_name() == "briansrls"
-}
-
-test fn witness_timer_and_memory_pipeline_gated_until_direction_observed() -> Bool {
-  fleet_converge_timer_enable_requires_direction_observed
-    && !fleet_converge_timer_may_enable()
-    && !fleet_converge_memory_cap_pipeline_may_apply()
-}
-
-test fn witness_timer_install_stages_without_enable_when_direction_unobserved() -> Bool {
-  length(xs: fleet_timer_install_commands()) == 3
 }

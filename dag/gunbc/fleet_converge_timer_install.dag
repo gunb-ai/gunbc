@@ -15,7 +15,6 @@ import gunbc.fleet_converge_timer {
   fleet_converge_service_content_self,
   fleet_converge_timer_content,
 }
-import gunbc.fleet_converge_direction_gate { fleet_converge_timer_may_enable }
 import gunbc.fleet_converge_cli {
   FleetConvergeApplicability,
   ConvergeSparkRoute,
@@ -73,28 +72,17 @@ fn fleet_timer_installed_path(unit_name: String) -> String {
 }
 
 // The install argv plan, derived — unit names come from the single timer authority, so
-// a renamed unit cannot leave a stale plan behind. `install -m 0644` then daemon-reload;
-// enable --now is gated until local-versus-desired memory-cap direction is observed (operator
-// ruling 2026-08-13). When gated, units are staged and reloaded but the timer is NOT enabled.
+// a renamed unit cannot leave a stale plan behind. `install -m 0644` then daemon-reload
+// then enable --now; the final step is the INDEPENDENT POST-EFFECT READBACK (`systemctl
+// is-enabled`), because an apply's success criterion is never its exit code.
 fn fleet_timer_install_commands() -> List<ArgvCommand> {
-  let install_service = ArgvCommand {
-    argv: ["sudo", "-n", "install", "-m", "0644", fleet_timer_staged_path(unit_name: fleet_converge_service_unit_name), fleet_timer_installed_path(unit_name: fleet_converge_service_unit_name)],
-  }
-  let install_timer = ArgvCommand {
-    argv: ["sudo", "-n", "install", "-m", "0644", fleet_timer_staged_path(unit_name: fleet_converge_timer_unit_name), fleet_timer_installed_path(unit_name: fleet_converge_timer_unit_name)],
-  }
-  let reload = ArgvCommand { argv: ["sudo", "-n", "systemctl", "daemon-reload"] }
-  if fleet_converge_timer_may_enable() {
-    [
-      install_service,
-      install_timer,
-      reload,
-      ArgvCommand { argv: ["sudo", "-n", "systemctl", "enable", "--now", fleet_converge_timer_unit_name] },
-      ArgvCommand { argv: ["systemctl", "is-enabled", fleet_converge_timer_unit_name] },
-    ]
-  } else {
-    [install_service, install_timer, reload]
-  }
+  [
+    ArgvCommand { argv: ["sudo", "-n", "install", "-m", "0644", fleet_timer_staged_path(unit_name: fleet_converge_service_unit_name), fleet_timer_installed_path(unit_name: fleet_converge_service_unit_name)] },
+    ArgvCommand { argv: ["sudo", "-n", "install", "-m", "0644", fleet_timer_staged_path(unit_name: fleet_converge_timer_unit_name), fleet_timer_installed_path(unit_name: fleet_converge_timer_unit_name)] },
+    ArgvCommand { argv: ["sudo", "-n", "systemctl", "daemon-reload"] },
+    ArgvCommand { argv: ["sudo", "-n", "systemctl", "enable", "--now", fleet_converge_timer_unit_name] },
+    ArgvCommand { argv: ["systemctl", "is-enabled", fleet_converge_timer_unit_name] },
+  ]
 }
 
 // Measured B2 root cause (parent msg_acfd9e31, 2026-08-09): the sudoers dropin
