@@ -17,11 +17,12 @@ test fn witness_narrow_set_property_sudoers_proposal_is_documented() -> Bool {
     && string_contains(s: fleet_converge_operator_privilege_hold_note, pattern: "root-equivalent")
 }
 
-test fn witness_receipt_dir_authority_points_at_live_deploy() -> Bool {
+test fn witness_receipt_publication_authority_is_atomic_rename_not_deploy_install_d() -> Bool {
   string_contains(
-    s: fleet_converge_receipt_dir_deploy_authority_note,
-    pattern: "FleetConvergeTimerUnit",
+    s: fleet_converge_receipt_atomic_publish_note,
+    pattern: "converge_cli_atomic_receipt_write",
   )
-    && string_contains(s: fleet_converge_receipt_dir_deploy_authority_note, pattern: "install_d_owned_command")
-    && string_contains(s: fleet_converge_receipt_dir_deploy_authority_note, pattern: "atomic rename")
+    && string_contains(s: fleet_converge_receipt_atomic_publish_note, pattern: "root-owned stale")
+    && string_contains(s: fleet_converge_receipt_atomic_publish_note, pattern: "shell.Move.File")
+    && !string_contains(s: fleet_converge_receipt_atomic_publish_note, pattern: "install_d_owned_command")
 }

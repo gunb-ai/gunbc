@@ -703,30 +703,28 @@ test fn retract_is_not_emitted_without_an_observed_scoped_removal() -> Bool {
 
 // CONVERGE-0 loop member: the deployment installs a per-instance fleet-converge timer
 // whose service converges SELF via the deployed binary, with calendar catch-up
-// (Persistent=true — the offline-host property) and the receipts dir the publication
-// leg writes into. Cadence facts derive from the gunbc.fleet_converge_timer authority,
-// so a drifted cadence here reds against that one row, not a second copy.
+// (Persistent=true — the offline-host property). Receipt publication is atomic rename in
+// gunbc.fleet_converge_cli, not an install-d step on the apply script. Cadence facts
+// derive from the gunbc.fleet_converge_timer authority.
 test fn fleet_converge_member_installs_self_converging_timer_with_catchup() -> Bool {
   let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
   string_contains(s: live, pattern: " converge --host self")
     && string_contains(s: live, pattern: "OnCalendar=*:0/15")
     && string_contains(s: live, pattern: "Persistent=true")
     && string_contains(s: live, pattern: "-fleet-converge.timer")
-    && string_contains(s: live, pattern: "install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/receipts")
+    && !string_contains(s: live, pattern: "install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/receipts")
 }
 
 // b1 CONVERGE-close witness: the fleet-converge unit MUST run as the repo-owning,
 // credentialed service principal — never root — or its `git ls-remote origin
 // refs/fleet/desired` hits dubious-ownership + no-credential and the desired ref is never
-// observed. RED if the converge unit reverts to User=root (the pre-b1 defect) OR if the
-// receipts dir loses its service-user owner (the coupled write-side half): a root-only
-// receipts dir means the briansrls converge run fails EACCES after the observation.
+// observed. Receipt publication uses atomic rename in fleet_converge_cli (not install-d
+// on the deploy script); RED if the converge unit reverts to User=root.
 test fn fleet_converge_unit_runs_as_credentialed_owner_never_root() -> Bool {
   let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
   string_contains(s: live, pattern: "Description=gunbc fleet converge (self)")
     && string_contains(s: live, pattern: concat("User=", gunbc_service_user as String))
     && string_contains(s: live, pattern: concat("Group=", gunbc_service_user as String))
-    && string_contains(s: live, pattern: "install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/receipts")
     && !string_contains(s: live, pattern: "User=root")
 }
 

@@ -79,19 +79,17 @@ data belt_spawn_workdir_env_var_note: String = "The ONE authority for the enviro
 
 data belt_spawn_workdir_env_var: NonEmptyStr = "GUNBC_BELT_SPAWN_WORKDIR" as NonEmptyStr
 
-// The ONE authority for the fleet converge-receipt directory, homed here for the same
-// two-consumers-across-a-boundary reason as the belt env var above: gunbc.fleet_converge_cli
-// WRITES per-host receipts under it, gunbc.live_deploy.emit CREATES it at deploy time
-// (install -d). Homing it in the CLI put the deploy emitter's closure behind the converge
-// CLI, which closed the import cycle fleet_converge_apply -> host_effect_realize ->
-// live_deploy.emit -> fleet_converge_cli the moment the CLI imported its own apply seam.
+// The ONE authority for the fleet converge-receipt directory path, homed here for the
+// two-consumers-across-a-boundary reason: gunbc.fleet_converge_cli publishes under it;
+// gunbc.fleet_receipt_collector reads back. Homing the path in either consumer would drag
+// the other's closure behind an import cycle.
 data fleet_converge_receipt_dir: String = "/opt/gunbc/receipts"
 
-// b1 privilege gap (operator hold 2026-08-13, parent eager-koi-458): srv1 observation showed
-// /opt/gunbc/receipts is already briansrls-owned and writable; EACCES was on a root-owned
-// STALE FILE left from the pre-b1 unit user. gunbc.fleet_converge_cli publishes by staging
-// write + rename in that directory (no elevation). live_deploy still owns directory creation.
-data fleet_converge_receipt_dir_deploy_authority_note: String = "Receipt directory ownership is live_deploy desired state: gunbc.live_deploy.emit FleetConvergeTimerUnit apply step runs install_d_owned_command(spec, fleet_converge_receipt_dir) before unit install. Publication uses atomic rename over a same-directory staging file so a root-owned stale receipt can be superseded without elevation when the directory is owned by the service principal — per-run sudo install is out-of-band actuation (DESIGN section 5)."
+// srv1 observation (2026-08-13, parent eager-koi-458): directory already briansrls-owned;
+// EACCES was a root-owned STALE FILE from the pre-b1 unit user, not the directory.
+// Publication authority is atomic rename in gunbc.fleet_converge_cli — NOT live_deploy
+// install-d on this path and NOT per-run elevation.
+data fleet_converge_receipt_atomic_publish_note: String = "Receipt publication is gunbc.fleet_converge_cli converge_cli_atomic_receipt_write: Filesystem.Write to a same-directory *.staging file, then shell.Move.File over the final path. rename(2) takes permission from the containing directory, not the file being replaced, so a root-owned stale receipt is superseded without elevation when the service principal owns the directory. In-place Filesystem.Write on the target path fails EACCES on stale root-owned files and is crash-unsafe (truncated receipts). Per-run sudo install and deploy install-d on this directory are not the publication fix when the directory is already service-user-owned."
 
 data provider_runtime_placement_note: String = "ONE host-parameterized placement for provider package/exec release trees, mutable provider state, and private wire-evidence roots. Parallel to GunbcHostLayout: a second host must be describable without minting a second set of path concepts. Claude/Cursor/Codex lanes consume this record; they do not re-author /opt/... roots. The flat srv1_* path data below are the once-written field values of srv1's row — the same dissolution pattern as gunbc_host_layout_note."
 
