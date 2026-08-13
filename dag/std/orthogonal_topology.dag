@@ -23,7 +23,7 @@ import std.orthogonal_geometry {
   OrthogonalConstruction, OrthogonalReady, OrthogonalRefused,
   OrthogonalLoop2, loop2_vertices, loop2_frame,
   OrthogonalPrism3, prism3_footprint, prism3_frame, prism3_height, prism3_low, prism3_high,
-  LoopEdge, loop_edges, point2_x, point2_y,
+  LoopEdge, loop_edges, point2_x, point2_y, point2_same_position,
 }
 
 // SPATIAL-3B: ORTHOGONAL TOPOLOGY. An EnclosedSpace is DERIVED FROM A CLOSED SHELL and can never be
@@ -145,18 +145,14 @@ fn space_eq(a: EnclosedSpace, b: EnclosedSpace) -> Bool {
        )
 }
 
-fn point2_same(a: Point2, b: Point2) -> Bool {
-  point2_x(p: a) == point2_x(p: b) && point2_y(p: a) == point2_y(p: b)
-}
-
 // THE COMPARISON IS OVER THE EDGE SET, which is what makes it invariant under both freedoms at once
 // rather than by enumerating rotations. A simple closed loop gives every vertex degree two, so its
 // set of edges determines the cycle and therefore the region; and an edge is an UNORDERED pair of
 // endpoints, so writing the loop backwards produces the same set. Rotating the start vertex does
 // not change which edges exist either. One structural fact covers both cases.
 fn same_undirected_edge(a: LoopEdge, b: LoopEdge) -> Bool {
-  (point2_same(a: a.start, b: b.start) && point2_same(a: a.end, b: b.end))
-    || (point2_same(a: a.start, b: b.end) && point2_same(a: a.end, b: b.start))
+  (point2_same_position(a: a.start, b: b.start) && point2_same_position(a: a.end, b: b.end))
+    || (point2_same_position(a: a.start, b: b.end) && point2_same_position(a: a.end, b: b.start))
 }
 
 fn count_edge(edges: List<LoopEdge>, wanted: LoopEdge) -> Int {
