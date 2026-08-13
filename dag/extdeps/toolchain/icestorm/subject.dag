@@ -29,6 +29,11 @@ fn roster_admits_pin(r: IcestormPackagePinRoster, pin: NonEmptyStr) -> Bool {
   fold(r.pins, init: false, f: fn(acc, p) { acc || (p as String) == (pin as String) })
 }
 
+// A DESIGNATOR APPEARING TWICE WOULD MAKE THE ROSTER'S COUNT A LIE, and the count is one half of
+// the two-authority agreement this package rests on: Lattice's per-bank table says 96 and the
+// roster says 96, which is evidence only if the roster's 96 are 96 DISTINCT positions. A duplicate
+// would hold the count while shrinking the real population, so the agreement would still read
+// green against a roster that had quietly lost a pin.
 fn roster_pin_occurrences(r: IcestormPackagePinRoster, pin: NonEmptyStr) -> Nat {
   fold(r.pins, init: 0, f: fn(acc, p) { if (p as String) == (pin as String) { acc + 1 } else { acc } })
 }
