@@ -3,7 +3,6 @@ module gunbc.host_converge_slice1
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.disposition { Disposition, Terminal }
 import product.placement_supply { HostIdentity }
-import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.systemd {
   systemd_memory_max_property,
   MemoryMax,
@@ -16,7 +15,6 @@ import extdeps.systemd {
   TaskLimitUnbounded,
   TaskLimitAbsent,
 }
-import extdeps.systemd.systemctl
 import gunbc.systemctl_show_read {
   systemctl_show_property_read_local,
   SystemdPropertyCaptured,
@@ -50,17 +48,10 @@ import gunbc.fleet_show_effective_read {
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.systemctl_set_property { systemctl_set_property_local }
 import gunbc.systemctl_list_units { systemctl_list_units_active_services }
-import gunbc.systemctl_revert { systemctl_revert_memory_caps_local }
-import gunbc.host_axis_caps {
-  CapMember,
-  control_shadow_unit,
-  control_shadow_revert_script,
-  derived_runner_memory_max_cap_member,
-  derived_runner_memory_high_cap_member,
-}
+import gunbc.host_axis_caps { control_shadow_unit, control_shadow_revert_script }
 
 data gunbc_host_converge_slice1_scope_disposition: Disposition = Terminal {
-  reason: "Host-converge realized knob: per_slot_tasks_max from fleet_converge_policy through typed systemctl show/set-property/list-units/revert and clock_now_probed_at (LocalShell on-host). MemoryMax is deploy-time only (gunbc.host_axis_caps drop-in at live_deploy apply) — convergence does NOT call systemctl set-property for MemoryMax (operator ruling 2026-08-13). system.control set-property RESIDUE is cleared first via systemctl revert MemoryMax MemoryHigh on every enumerated runner unit (host_axis_caps control_shadow axis). srv1 (enumerate all slots for shadow revert + TasksMax on probe unit) and srv3 (multi-unit enumerated via runner_instance_glob). Per-unit outcomes are independent (DESIGN section 5 per-cause refusal / siblings continue). srv2 and other knobs stay on host_converge_realize frontier."
+  reason: "Host-converge realized knob: per_slot_tasks_max from fleet_converge_policy through typed systemctl show/set-property/list-units and clock_now_probed_at (LocalShell on-host, operator principal briansrls on srv1). MemoryMax/MemoryHigh drop-in authoring and system.control shadow teardown are deploy-time only (gunbc.host_axis_caps at live_deploy apply under ghrunner sudo) — convergence does NOT write /etc/systemd drop-ins, daemon-reload, set-property MemoryMax, or systemctl revert on the operator principal (operator privilege hold 2026-08-13). Ordering invariant (author derived drop-ins before shadow revert) is modeled in host_axis_caps for the deploy path. srv1 TasksMax on probe unit; srv3 multi-unit enumerated via runner_instance_glob. Per-unit outcomes are independent (DESIGN section 5 per-cause refusal / siblings continue). srv2 and other knobs stay on host_converge_realize frontier."
 }
 
 // Operator ruling 2026-08-13: MemoryMax single authority is deploy-time drop-in authoring
@@ -70,75 +61,13 @@ data host_converge_slice1_memory_max_deploy_authority_note: String = "MemoryMax 
 
 data host_converge_slice1_memory_max_converge_apply_suppressed: Bool = true
 
-data host_converge_slice1_control_shadow_converge_note: String = "Aug-11 root-era set-property wrote /etc/systemd/system.control/<unit>.d/50-MemoryMax.conf and 50-MemoryHigh.conf; those drop-ins sort AFTER deploy-authored files and shadow them until removed. gunbc converge authors deploy drop-ins from gunbc.runner_slot_allocation FIRST, then reverts MemoryMax+MemoryHigh on every enumerated runner unit. Revert-before-author on stale 16/15GiB on-disk deploy drop-ins raises effective caps to the superseded regime — the ordering hazard the direction gate observes before the timer may apply."
+// Live author/revert on the operator converge principal requires root (drop-in writes,
+// daemon-reload, systemctl revert) — withheld by fleet_posix_operator_privilege_hold.
+data host_converge_slice1_memory_cap_live_pipeline_on_converge_suppressed: Bool = true
+
+data host_converge_slice1_control_shadow_converge_note: String = "Aug-11 root-era set-property wrote /etc/systemd/system.control/<unit>.d/50-MemoryMax.conf and 50-MemoryHigh.conf; those drop-ins shadow deploy-authored files until removed. Teardown ordering is author derived drop-ins from gunbc.runner_slot_allocation THEN systemctl revert MemoryMax MemoryHigh — modeled in gunbc.host_axis_caps for the deploy apply path (ghrunner sudo), not gunbc converge on briansrls. Revert-before-author on stale 16/15GiB on-disk deploy drop-ins raises effective caps to the superseded regime."
 
 data host_converge_slice1_cap_author_before_shadow_revert_enforced: Bool = true
-
-fn host_converge_slice1_write_cap_member(m: CapMember) -> Bool {
-  let w = Filesystem.Write(path: m.dropin_path as String, content: m.content)
-  w.success
-}
-
-fn host_converge_slice1_daemon_reload_local() -> Bool {
-  systemd.Systemctl.DaemonReload().success
-}
-
-fn host_converge_slice1_author_derived_memory_dropins() -> String? {
-  let max = derived_runner_memory_max_cap_member()
-  let high = derived_runner_memory_high_cap_member()
-  if !host_converge_slice1_write_cap_member(m: max) {
-    Present {
-      value: concat("host_converge_slice1: MemoryMax drop-in author refused for ", max.dropin_path as String),
-    }
-  } else if !host_converge_slice1_write_cap_member(m: high) {
-    Present {
-      value: concat("host_converge_slice1: MemoryHigh drop-in author refused for ", high.dropin_path as String),
-    }
-  } else if !host_converge_slice1_daemon_reload_local() {
-    Present { value: "host_converge_slice1: daemon-reload after memory drop-in author refused; fail-closed" }
-  } else {
-    none
-  }
-}
-
-fn host_converge_slice1_run_memory_cap_pipeline(units: List<NonEmptyStr>) -> String? {
-  match host_converge_slice1_author_derived_memory_dropins() {
-    Present { value: why } => Present { value: why }
-    Absent =>
-      match host_converge_slice1_revert_control_shadows(units: units) {
-        HostConvergeSlice1ShadowRevertRefused { unit: u } =>
-          Present {
-            value: concat(
-              "host_converge_slice1: systemctl revert MemoryMax MemoryHigh failed for ",
-              u as String,
-            ),
-          }
-        HostConvergeSlice1ShadowReverted { applied: _ } => none
-      }
-  }
-}
-
-type HostConvergeSlice1ShadowRevertResult
-  = HostConvergeSlice1ShadowReverted { applied: Int }
-  | HostConvergeSlice1ShadowRevertRefused { unit: NonEmptyStr }
-
-fn host_converge_slice1_revert_control_shadow_unit(unit: NonEmptyStr) -> Bool {
-  systemctl_revert_memory_caps_local(unit: unit)
-}
-
-fn host_converge_slice1_revert_control_shadows(units: List<NonEmptyStr>) -> HostConvergeSlice1ShadowRevertResult {
-  fold(units, init: HostConvergeSlice1ShadowReverted { applied: 0 }, f: fn(acc, unit) {
-    match acc {
-      HostConvergeSlice1ShadowRevertRefused { unit: _ } => acc
-      HostConvergeSlice1ShadowReverted { applied: n } =>
-        if host_converge_slice1_revert_control_shadow_unit(unit: unit) {
-          HostConvergeSlice1ShadowReverted { applied: n + 1 }
-        } else {
-          HostConvergeSlice1ShadowRevertRefused { unit: unit }
-        }
-    }
-  })
-}
 
 fn host_converge_slice1_shadow_revert_script_matches_authority(unit: NonEmptyStr) -> Bool {
   control_shadow_revert_script(u: control_shadow_unit(unit: unit)) == concat(concat("systemctl revert ", unit as String), " MemoryMax MemoryHigh\n")
@@ -622,16 +551,12 @@ fn host_converge_slice1_converge_host(host: HostIdentity, instance_glob: String)
     Present { value: tasks_knob } =>
       match host_converge_slice1_enumerate_units(instance_glob: instance_glob) {
         Present { value: units } =>
-          match host_converge_slice1_run_memory_cap_pipeline(units: units) {
-            Present { value: why } => HostConvergeSlice1HostRefused { reason: why }
-            Absent =>
-              match host_converge_slice1_cross_check_enumeration(host: host, units: units) {
-                Present { value: mismatch } => HostConvergeSlice1HostEnumerationMismatch { mismatch: mismatch }
-                _ =>
-                  HostConvergeSlice1HostEnumerated {
-                    host: host,
-                    outcomes: map(units, u => host_converge_slice1_converge_unit_tasks(host: host, unit: u, knob: tasks_knob)),
-                  }
+          match host_converge_slice1_cross_check_enumeration(host: host, units: units) {
+            Present { value: mismatch } => HostConvergeSlice1HostEnumerationMismatch { mismatch: mismatch }
+            _ =>
+              HostConvergeSlice1HostEnumerated {
+                host: host,
+                outcomes: map(units, u => host_converge_slice1_converge_unit_tasks(host: host, unit: u, knob: tasks_knob)),
               }
           }
         _ => HostConvergeSlice1HostRefused { reason: concat("host_converge_slice1: live unit enumeration absent for glob ", instance_glob) }
@@ -713,41 +638,26 @@ fn host_converge_slice1_host_result_refusal_reason(result: HostConvergeSlice1Hos
   }
 }
 
-// srv1: author derived memory drop-ins, revert system.control shadows on every enumerated slot,
-// then TasksMax on probe unit.
+// srv1: TasksMax on probe unit only — memory-cap live apply is deploy-time (operator principal).
 fn host_converge_slice1_converge_loop() -> HostConvergeSlice1ConvergeResult {
-  match host_converge_slice1_enumerate_units(instance_glob: runner_instance_glob(host: operator_host_srv1)) {
-    Present { value: units } =>
-      match host_converge_slice1_run_memory_cap_pipeline(units: units) {
-        Present { value: why } => HostConvergeSlice1Refused { reason: why }
-        Absent =>
-          match host_converge_slice1_tasks_knob(host: operator_host_srv1) {
-            Present { value: tasks_knob } =>
-              match host_converge_slice1_unit_outcome_to_legacy_result(
-                host_converge_slice1_converge_unit_tasks(host: operator_host_srv1, unit: host_converge_slice1_probe_unit, knob: tasks_knob)
-              ) {
-                HostConvergeSlice1TasksConverged { applied_knobs: n, receipt: r } =>
-                  if host_converge_slice1_tasks_receipt_is_valid(receipt: r) {
-                    HostConvergeSlice1TasksConverged { applied_knobs: n, receipt: r }
-                  } else {
-                    HostConvergeSlice1Refused { reason: "host_converge_slice1: tasks receipt validity gate failed on srv1 probe unit; fail-closed" }
-                  }
-                HostConvergeSlice1Converged { applied_knobs: _, receipt: _ } =>
-                  HostConvergeSlice1Refused { reason: "host_converge_slice1: converge loop returned a memory-cap outcome; fail-closed" }
-                HostConvergeSlice1Refused { reason: why } => HostConvergeSlice1Refused { reason: why }
-              }
-            _ =>
-              HostConvergeSlice1Refused {
-                reason: "host_converge_slice1: per_slot_tasks_max knob absent from fleet_converge_policy for srv1; fail-closed",
-              }
+  match host_converge_slice1_tasks_knob(host: operator_host_srv1) {
+    Present { value: tasks_knob } =>
+      match host_converge_slice1_unit_outcome_to_legacy_result(
+        host_converge_slice1_converge_unit_tasks(host: operator_host_srv1, unit: host_converge_slice1_probe_unit, knob: tasks_knob)
+      ) {
+        HostConvergeSlice1TasksConverged { applied_knobs: n, receipt: r } =>
+          if host_converge_slice1_tasks_receipt_is_valid(receipt: r) {
+            HostConvergeSlice1TasksConverged { applied_knobs: n, receipt: r }
+          } else {
+            HostConvergeSlice1Refused { reason: "host_converge_slice1: tasks receipt validity gate failed on srv1 probe unit; fail-closed" }
           }
+        HostConvergeSlice1Converged { applied_knobs: _, receipt: _ } =>
+          HostConvergeSlice1Refused { reason: "host_converge_slice1: converge loop returned a memory-cap outcome; fail-closed" }
+        HostConvergeSlice1Refused { reason: why } => HostConvergeSlice1Refused { reason: why }
       }
     _ =>
       HostConvergeSlice1Refused {
-        reason: concat(
-          "host_converge_slice1: live unit enumeration absent for glob ",
-          runner_instance_glob(host: operator_host_srv1),
-        ),
+        reason: "host_converge_slice1: per_slot_tasks_max knob absent from fleet_converge_policy for srv1; fail-closed",
       }
   }
 }
