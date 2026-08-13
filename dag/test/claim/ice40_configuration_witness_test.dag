@@ -2,6 +2,8 @@ module test.claim.ice40_configuration_witness
 
 import std.types { Bool, String, List }
 import std.integer { Int }
+import std.nat { Nat }
+import std.measure { hertz_count, microsecond_count, millisecond_count, nanosecond_count }
 import extdeps.programmable_logic.ice40.configuration {
   AllConfigurationModes,
   ConfigurationDone,
@@ -11,6 +13,10 @@ import extdeps.programmable_logic.ice40.configuration {
   ConfigurationTiming,
   HighFrequency,
   LowFrequencyDefault,
+  BoundInClockCycles,
+  BoundInHertz,
+  BoundInMicroseconds,
+  BoundInNanoseconds,
   MaximumColumn,
   MediumFrequency,
   MinimumColumn,
@@ -21,7 +27,9 @@ import extdeps.programmable_logic.ice40.configuration {
   hx1k_configuration_time,
   ice40_configuration_timings,
   ice40_creset_b_low_pulse,
+  ice40_done_to_io_active,
   ice40_hx1k_creset_to_first_sck,
+  ice40_cclk_write_maximum,
   scope_admits,
   timings_for_mode,
 }
@@ -62,13 +70,45 @@ test fn w_the_mode_selects_which_timings_apply() -> Bool {
 // required minimum becomes a typical, which a design would meet on average and violate
 // intermittently. The column is carried so a consumer can tell the difference.
 test fn w_the_pulse_width_is_a_minimum_and_says_so() -> Bool {
-  ice40_creset_b_low_pulse.bound.value == 200
-    && (ice40_creset_b_low_pulse.bound.unit as String) == "ns"
+  let is_two_hundred_nanoseconds = match ice40_creset_b_low_pulse.bound.quantity {
+    BoundInNanoseconds { value: ns } => nanosecond_count(n: ns) == 200
+    BoundInMicroseconds { value: _ } => false
+    BoundInHertz { value: _ } => false
+    BoundInClockCycles { count: _ } => false
+  }
+  is_two_hundred_nanoseconds
     && match ice40_creset_b_low_pulse.bound.column {
       MinimumColumn => true
       TypicalColumn => false
       MaximumColumn => false
     }
+}
+
+// THE QUANTITY IS TYPED, so a duration and a frequency are not the same thing wearing different
+// prose. An earlier revision carried an Int beside a unit string, which made 200 nanoseconds and
+// 200 megahertz one type; this asserts each row lands on the arm its kind requires, and that a
+// cycle count is a cardinality rather than a duration - the table names no clock, so how long
+// forty-nine cycles take is not a fact this document states.
+test fn w_each_bound_carries_the_quantity_its_kind_requires() -> Bool {
+  let sck_is_microseconds = match ice40_hx1k_creset_to_first_sck.bound.quantity {
+    BoundInMicroseconds { value: us } => microsecond_count(m: us) == 800
+    BoundInNanoseconds { value: _ } => false
+    BoundInHertz { value: _ } => false
+    BoundInClockCycles { count: _ } => false
+  }
+  let cclk_is_frequency = match ice40_cclk_write_maximum.bound.quantity {
+    BoundInHertz { value: hz } => hertz_count(h: hz) == 25000000
+    BoundInNanoseconds { value: _ } => false
+    BoundInMicroseconds { value: _ } => false
+    BoundInClockCycles { count: _ } => false
+  }
+  let done_is_a_count = match ice40_done_to_io_active.bound.quantity {
+    BoundInClockCycles { count: c } => c == 49
+    BoundInNanoseconds { value: _ } => false
+    BoundInMicroseconds { value: _ } => false
+    BoundInHertz { value: _ } => false
+  }
+  sck_is_microseconds && cclk_is_frequency && done_is_a_count
 }
 
 // A WITHDRAWN VALUE IS NOT AN ABSENT ONE. The vendor published high-frequency configuration times
@@ -77,17 +117,17 @@ test fn w_the_pulse_width_is_a_minimum_and_says_so() -> Bool {
 // someone to go and find it in an older revision - which is exactly the wrong remedy.
 test fn w_the_withdrawn_configuration_time_is_not_a_missing_one() -> Bool {
   let low = match hx1k_configuration_time(c: LowFrequencyDefault) {
-    ConfigurationTimeTypical { milliseconds: ms } => ms
+    ConfigurationTimeTypical { elapsed: ms } => millisecond_count(m: ms)
     ConfigurationTimeWithdrawnByVendor { note: _ } => 0
   }
   let medium = match hx1k_configuration_time(c: MediumFrequency) {
-    ConfigurationTimeTypical { milliseconds: ms } => ms
+    ConfigurationTimeTypical { elapsed: ms } => millisecond_count(m: ms)
     ConfigurationTimeWithdrawnByVendor { note: _ } => 0
   }
   let high_is_withdrawn = match hx1k_configuration_time(c: HighFrequency) {
     ConfigurationTimeWithdrawnByVendor { note: n } =>
       list_length(items: split(s: n as String, delimiter: "deleting")) > 1
-    ConfigurationTimeTypical { milliseconds: _ } => false
+    ConfigurationTimeTypical { elapsed: _ } => false
   }
   low == 53 && medium == 25 && high_is_withdrawn
 }
