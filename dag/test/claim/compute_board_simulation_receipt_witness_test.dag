@@ -1,6 +1,7 @@
 module test.claim.compute_board_simulation_receipt_witness
 
 import std.types { String, List }
+import std.integer { Int }
 import product.compute_board.admission {
   BoardArticleAdmitted,
   BoardArticleRefused,
@@ -10,11 +11,7 @@ import product.compute_board.admission {
 import product.compute_board.article { BoardPowerInterfaceArticle, power_interlock_article }
 import product.compute_board.analog {
   AnalogCircuitIntent,
-  ComponentInstanceIdentity,
   ElectricalNet,
-  NetIdentity,
-  TerminalIdentity,
-  terminal_ref,
 }
 import product.compute_board.spice_projection {
   SpiceSliceProjected,
@@ -146,33 +143,49 @@ test fn w_the_operating_point_discriminates_the_scale_suffix() -> Bool {
 // article is otherwise untouched, so admission accepts it — a terminal's netting is a SPICE
 // requirement rather than a fact about the board, which is exactly why the projection has to be
 // the thing that refuses.
+//
+// DERIVED FROM THE PRODUCTION NETS, NOT RE-AUTHORED, and the sibling witness is why. This fixture
+// used to restate the whole topology literally, which makes it a second copy of a fact the article
+// already owns: correct only for as long as nobody edits the circuit. The emission-entry witness
+// carried the same copy, the divider rebuild moved the name "pg_cond" from the COMPONENT
+// population to the NET population, and its copy went on naming something real while naming the
+// wrong kind of thing — the article stopped being admitted and two tests silently stopped
+// measuring the projection at all. Derived, a topology change flows through, and deleting the
+// dropped terminal fails loudly instead: nothing floats and the projection renders.
+fn without_filter_high_terminal(nets: List<ElectricalNet>) -> List<ElectricalNet> {
+  fold(nets, init: [], f: fn(acc, net) {
+    concat(acc, [ElectricalNet {
+      identity: net.identity,
+      members: fold(net.members, init: [], f: fn(macc, m) {
+        if ((m.component as String) == "pg_filt") && ((m.terminal as String) == "1") {
+          macc
+        } else {
+          concat(macc, [m])
+        }
+      }),
+    }])
+  })
+}
+
+fn terminal_member_count(nets: List<ElectricalNet>) -> Int {
+  fold(nets, init: 0, f: fn(acc, net) {
+    fold(net.members, init: acc, f: fn(macc, _m) { macc + 1 })
+  })
+}
+
 data floating_analog: AnalogCircuitIntent = AnalogCircuitIntent {
   title: power_interlock_article.analog.title,
   components: power_interlock_article.analog.components,
-  nets: [
-    ElectricalNet {
-      identity: "pg_raw" as NetIdentity,
-      members: [
-        terminal_ref(component: "logic_in" as ComponentInstanceIdentity, terminal: "1" as TerminalIdentity),
-        terminal_ref(component: "pg_top" as ComponentInstanceIdentity, terminal: "1" as TerminalIdentity),
-      ],
-    },
-    ElectricalNet {
-      identity: "pg_cond" as NetIdentity,
-      members: [
-        terminal_ref(component: "pg_top" as ComponentInstanceIdentity, terminal: "2" as TerminalIdentity),
-        terminal_ref(component: "pg_bot" as ComponentInstanceIdentity, terminal: "1" as TerminalIdentity),
-      ],
-    },
-    ElectricalNet {
-      identity: "power_return" as NetIdentity,
-      members: [
-        terminal_ref(component: "logic_in" as ComponentInstanceIdentity, terminal: "2" as TerminalIdentity),
-        terminal_ref(component: "pg_bot" as ComponentInstanceIdentity, terminal: "2" as TerminalIdentity),
-        terminal_ref(component: "pg_filt" as ComponentInstanceIdentity, terminal: "2" as TerminalIdentity),
-      ],
-    },
-  ],
+  nets: without_filter_high_terminal(nets: power_interlock_article.analog.nets),
+}
+
+// The fixture's premise, executed: exactly one terminal member fewer than production. Without
+// this the tests below are only about the projection if someone remembers to check that something
+// actually floats.
+test fn w_the_floating_fixture_actually_floats_exactly_one_terminal() -> Bool {
+  let produced = terminal_member_count(nets: power_interlock_article.analog.nets)
+  let floated = terminal_member_count(nets: floating_analog.nets)
+  produced > 0 && floated == (produced - 1)
 }
 
 data floating_terminal_article: BoardPowerInterfaceArticle = BoardPowerInterfaceArticle {

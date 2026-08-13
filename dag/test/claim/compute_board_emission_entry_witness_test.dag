@@ -1,13 +1,10 @@
 module test.claim.compute_board_emission_entry_witness
 
 import std.types { String, NonEmptyStr, List }
+import std.integer { Int }
 import product.compute_board.analog {
   AnalogCircuitIntent,
-  ComponentInstanceIdentity,
   ElectricalNet,
-  NetIdentity,
-  TerminalIdentity,
-  terminal_ref,
 }
 import product.compute_board.digital_control {
   DigitalControlIntent,
@@ -126,26 +123,41 @@ test fn w_the_admission_causes_cross_the_boundary_intact() -> Bool {
 // A COHERENT BOARD THIS TARGET CANNOT RENDER reaches the target arm. The floating terminal is
 // admitted — netting is a SPICE requirement rather than a fact about the board — so this is the
 // fixture that separates the two refusal arms by execution rather than by argument.
+//
+// THE NETS ARE DERIVED FROM THE PRODUCTION INTENT RATHER THAN RE-AUTHORED, and that is the whole
+// construction. An earlier revision hand-wrote them, naming a component "pg_cond"; the divider
+// rebuild then moved that name from the COMPONENT population to the NET population, so the
+// fixture went on naming something real while naming the wrong kind of thing. Its nets referenced
+// a component that did not exist, the article stopped being admitted, and the two tests below
+// stopped measuring the target arm at all — they failed against the admission arm instead, which
+// is the fixture measuring nothing dressed as the fixture disagreeing. Derived, the only way to
+// break it is to delete the terminal it drops, and that fails loudly: nothing floats, SPICE
+// renders, and the test reports BoardEmitted where it demanded a refusal.
+fn without_filter_high_terminal(nets: List<ElectricalNet>) -> List<ElectricalNet> {
+  fold(nets, init: [], f: fn(acc, net) {
+    concat(acc, [ElectricalNet {
+      identity: net.identity,
+      members: fold(net.members, init: [], f: fn(macc, m) {
+        if ((m.component as String) == "pg_filt") && ((m.terminal as String) == "1") {
+          macc
+        } else {
+          concat(macc, [m])
+        }
+      }),
+    }])
+  })
+}
+
+fn terminal_member_count(nets: List<ElectricalNet>) -> Int {
+  fold(nets, init: 0, f: fn(acc, net) {
+    fold(net.members, init: acc, f: fn(macc, _m) { macc + 1 })
+  })
+}
+
 data floating_analog: AnalogCircuitIntent = AnalogCircuitIntent {
   title: power_interlock_article.analog.title,
   components: power_interlock_article.analog.components,
-  nets: [
-    ElectricalNet {
-      identity: "pg_raw" as NetIdentity,
-      members: [
-        terminal_ref(component: "logic_in" as ComponentInstanceIdentity, terminal: "1" as TerminalIdentity),
-        terminal_ref(component: "pg_cond" as ComponentInstanceIdentity, terminal: "1" as TerminalIdentity),
-      ],
-    },
-    ElectricalNet {
-      identity: "power_return" as NetIdentity,
-      members: [
-        terminal_ref(component: "logic_in" as ComponentInstanceIdentity, terminal: "2" as TerminalIdentity),
-        terminal_ref(component: "pg_cond" as ComponentInstanceIdentity, terminal: "2" as TerminalIdentity),
-        terminal_ref(component: "pg_filt" as ComponentInstanceIdentity, terminal: "2" as TerminalIdentity),
-      ],
-    },
-  ],
+  nets: without_filter_high_terminal(nets: power_interlock_article.analog.nets),
 }
 
 data floating_article: BoardPowerInterfaceArticle = BoardPowerInterfaceArticle {
@@ -158,6 +170,17 @@ data floating_article: BoardPowerInterfaceArticle = BoardPowerInterfaceArticle {
   platform_firmware: power_interlock_article.platform_firmware,
   physical: power_interlock_article.physical,
   manufacturing: power_interlock_article.manufacturing,
+}
+
+// THE FIXTURE'S OWN PREMISE, EXECUTED. The two tests below are only about the target arm if the
+// fixture actually floats a terminal; if it drops nothing they still pass or fail for reasons
+// that have nothing to do with what they claim to measure. This asserts the drop happened, at
+// identity grain rather than by trusting the name: exactly one terminal member fewer than the
+// production intent, every component retained.
+test fn w_the_floating_fixture_actually_floats_exactly_one_terminal() -> Bool {
+  let produced = terminal_member_count(nets: power_interlock_article.analog.nets)
+  let floated = terminal_member_count(nets: floating_analog.nets)
+  produced > 0 && floated == (produced - 1)
 }
 
 test fn w_a_target_that_cannot_render_reaches_the_target_arm() -> Bool {
