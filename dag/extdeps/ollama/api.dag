@@ -1,6 +1,10 @@
 module extdeps.ollama.api
 
+<<<<<<< HEAD
 import std.types { String, Bool, List, NonEmptyStr, Int }
+=======
+import std.types { String, Bool, List, NonEmptyStr, Port }
+>>>>>>> origin/main
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -71,7 +75,11 @@ fn ollama_endpoint_method(endpoint: OllamaEndpoint) -> OllamaHttpMethod {
 // on 127.0.0.1 by default and OLLAMA_HOST changes it, but which address a given deployment binds is
 // a gunbc policy decision about reachability -- exactly the interface/policy split the extdeps rule
 // draws, and putting a bind address here would be the layer inversion it names.
+<<<<<<< HEAD
 data ollama_default_port: Int = 11434
+=======
+data ollama_default_port: Port = 11434
+>>>>>>> origin/main
 
 // A MODEL REFERENCE AS OLLAMA SPELLS IT: name plus tag, colon-separated on the wire. The two parts
 // are modeled separately because they are separate facts -- `gpt-oss` is the model, `20b` is the

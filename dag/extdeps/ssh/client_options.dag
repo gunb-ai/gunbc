@@ -1,6 +1,10 @@
 module extdeps.ssh.client_options
 
+<<<<<<< HEAD
 import std.types { NonEmptyStr, String, Bool, List, Int }
+=======
+import std.types { NonEmptyStr, String, Bool, List }
+>>>>>>> origin/main
 import std.measure { Second, second, second_count }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -105,12 +109,17 @@ type UpdateHostKeysValue
   | UpdateHostKeysAsk
 
 // One variant per keyword, each carrying the value domain THAT keyword actually admits, so a
+<<<<<<< HEAD
 // nonsensical pairing has no constructor. ConnectTimeout takes std.measure's Second because
 // ssh_config(5) specifies the value in seconds and a DURATION is a magnitude, not a bare count --
 // a prose comment saying "seconds" leaves the unit in the field NAME with a scalar in the type,
 // which is the exact pattern std.measure exists to remove (review 51659). extdeps.tools.curl
 // already carries its connect timeout this way, so this is reuse rather than a new concept.
 // BatchMode takes a Bool because its domain is yes|no and a Bool is that domain
+=======
+// nonsensical pairing has no constructor. ConnectTimeout takes an Int because ssh_config(5)
+// specifies seconds; BatchMode takes a Bool because its domain is yes|no and a Bool is that domain
+>>>>>>> origin/main
 // already grounded -- reusing it rather than minting a second two-valued enum (section 2: no net
 // new concepts by re-invention).
 type SshClientOption
@@ -189,7 +198,11 @@ fn ssh_client_option_value(option: SshClientOption) -> String {
     VerifyHostKeyDNS { value: v } => verify_host_key_dns_wire(value: v)
     UpdateHostKeys { value: v } => update_host_keys_wire(value: v)
     BatchMode { enabled: e } => if e { "yes" } else { "no" }
+<<<<<<< HEAD
     ConnectTimeout { seconds: s } => to_string(second_count(s: s) as Int)
+=======
+    ConnectTimeout { seconds: s } => to_string(second_count(s: s))
+>>>>>>> origin/main
     ConfigFile { path: p } => p as String
     IdentityFile { path: p } => p as String
     IdentitiesOnly { enabled: e } => if e { "yes" } else { "no" }

@@ -374,12 +374,29 @@ type ServingInstallEffect
   | GrantContainerRuntimeAccess
   | RunContainerAsOwnUser
 
+<<<<<<< HEAD
 // PRESERVED FOR THE ORDERING FOLD, and now a projection rather than an authority. It answers for
 // the DEFAULT actor -- the named serving account -- because effect_requires_escalation needs an
 // actor and the ranking question presumes one. Root would rank every realization at zero, which is
 // true and useless for choosing between them.
 fn serving_install_effect_requires_privilege(effect: ServingInstallEffect) -> Bool {
   effect_requires_escalation(effect: effect, actor: NamedPrincipal { login: "gunbc-automation" as NonEmptyStr })
+=======
+fn serving_install_effect_requires_privilege(effect: ServingInstallEffect) -> Bool {
+  match effect {
+    WriteSystemUnitFile => true
+    ReloadSystemManager => true
+    EnableSystemUnit => true
+    InstallRuntimePackage => true
+    GrantContainerRuntimeAccess => true
+    WriteUserUnitFile => false
+    ReloadUserManager => false
+    EnableUserUnit => false
+    EnableLingerForOwnAccount => true
+    PullModelArtifact => false
+    RunContainerAsOwnUser => false
+  }
+>>>>>>> origin/main
 }
 
 fn realization_install_effects(realization: SparkServingRealization) -> List<ServingInstallEffect> {
@@ -623,6 +640,7 @@ data spark_user_unit_identity_contract_refutation_note: String = "A systemd user
 data spark_serving_endpoint_intent_is_operator_declared_note: String = "Operator declaration 2026-08-12: the LAN is the boundary, so endpoint intent is UnauthenticatedEndpoint. AuthenticatedEndpoint was authored by me, never by the operator, and had no consumer outside my own model and fixture; it surfaced when the operator asked why it was there. Tailscale is planned; a tailnet authenticates DEVICES and extends the trusted network rather than removing the boundary, so reaching these hosts over it does not by itself reinstate the requirement. Dissolves back to AuthenticatedEndpoint when a principal the network layer does not authenticate can reach the port (Funnel exposure, shared tailnet, an uncontrolled node), or when per-consumer attribution is wanted -- which no network boundary provides, since a tailnet proves which device connected and never which consumer asked."
 
 data spark_serving_runtime_selection_is_declared_intent_note: String = "Measured on srv5: aarch64, GB10, docker present but not usable by gunbc-automation, egress works, no serving runtime installed. The serving install is a SECOND privileged effect population, not covered by the enable-linger grant. Runtime choice is declared intent, not derivation: ollama has no authentication and cannot satisfy endpoint: AuthenticatedEndpoint without a second authenticating component; vLLM accepts an API key; a NIM container carries NVIDIA's own auth and licensing. Awaiting an operator declaration before any serving effect is derived."
+<<<<<<< HEAD
 
 
 // ── WHY an effect needs privilege, from which the grant EMERGES ─────────────────────────────────
@@ -801,3 +819,5 @@ fn realization_sudoers_grant_lines(
     c => join([principal_label(p: target.actor), " ALL=(root) NOPASSWD: ", c as String], ""),
   )
 }
+=======
+>>>>>>> origin/main

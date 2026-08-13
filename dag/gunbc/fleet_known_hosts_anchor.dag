@@ -1,7 +1,10 @@
 module gunbc.fleet_known_hosts_anchor
 
 import std.types { String, Bool, List, NonEmptyStr, PathSegment, path_segment_is_safe }
+<<<<<<< HEAD
 import std.measure { second }
+=======
+>>>>>>> origin/main
 import std.algebra { trim }
 import std.resources { Network }
 import std.content_hash {
@@ -18,6 +21,10 @@ import std.decl_ref { decl_ref }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
 import std.types { Int }
+<<<<<<< HEAD
+=======
+import std.measure { second }
+>>>>>>> origin/main
 import extdeps.ssh.client_options {
   SshClientOption,
   openssh_exclusive_known_hosts_trust_options,

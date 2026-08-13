@@ -1,6 +1,10 @@
 module test.claim.ssh_client_options_witness_test
 
 import std.types { String, Bool, List, NonEmptyStr }
+<<<<<<< HEAD
+=======
+import std.measure { second }
+>>>>>>> origin/main
 import extdeps.ssh.client_options {
   SshClientOption,
   StrictHostKeyChecking,
@@ -44,7 +48,11 @@ test fn w_accept_new_keeps_its_upstream_hyphenated_spelling() -> Bool {
 }
 
 test fn w_bool_and_int_domains_serialize_without_a_second_enum() -> Bool {
+<<<<<<< HEAD
   serialize_ssh_client_option(option: BatchMode { enabled: true }) == ["-o", "BatchMode=yes"] && serialize_ssh_client_option(option: ConnectTimeout { seconds: 5 }) == ["-o", "ConnectTimeout=5"]
+=======
+  serialize_ssh_client_option(option: BatchMode { enabled: true }) == ["-o", "BatchMode=yes"] && serialize_ssh_client_option(option: ConnectTimeout { seconds: second(count: 5) }) == ["-o", "ConnectTimeout=5"]
+>>>>>>> origin/main
 }
 
 // The list serializer must FLATTEN, not nest: a transport splices a flat argv, so a List<List>
