@@ -897,6 +897,12 @@ fn grant_population_contains(population: List<NonEmptyStr>, command: NonEmptyStr
 // than collapsed to "different", because two hashes that cannot be compared is not the same fact as
 // two hashes that disagree.
 //
+// THE SUBJECT IS CHECKED ON BOTH ARMS. An earlier revision guarded only the observed one and let the
+// unobserved arm discard the host and principal it carries, so "we could not observe srv6" answered an
+// srv5 plan as blocked-on-observation (review 51851). That sends an operator to check a reachable host
+// while the actual defect is wiring -- the exact remedy split this carrier exists to preserve. A
+// failure to observe is still evidence, and evidence about the wrong subject is a mismatch first.
+//
 // THE SUBJECT IS CHECKED BEFORE THE SET DIFFERENCE, and a mismatch is its OWN arm rather than folding
 // into undecidable: "the evidence is about a different host or principal" and "we could not observe"
 // have different remedies -- one is a wiring defect, the other a reachability one -- and an operator
@@ -909,7 +915,20 @@ fn escalation_shortfall(
   observed: ObservedGrantPopulation,
 ) -> EscalationShortfall {
   match observed {
-    GrantPopulationUnobserved { host: _, principal: _, cause: c } => ShortfallUndecidable { cause: c }
+    GrantPopulationUnobserved { host: uh, principal: up, cause: c } =>
+      if (uh as String) != (subject_host as String) {
+        ShortfallEvidenceMismatch {
+          cause: join(["an unobserved-grant record for host ", uh as String, " cannot answer for ", subject_host as String], "") as NonEmptyStr,
+        }
+      } else {
+        if (up as String) != principal_label(p: target.actor) {
+          ShortfallEvidenceMismatch {
+            cause: join(["an unobserved-grant record for principal ", up as String, " cannot answer for ", principal_label(p: target.actor)], "") as NonEmptyStr,
+          }
+        } else {
+          ShortfallUndecidable { cause: c }
+        }
+      }
     GrantPopulationObserved { host: oh, principal: op, credential_identity: ok, commands: held } =>
       if (oh as String) != (subject_host as String) {
         ShortfallEvidenceMismatch {

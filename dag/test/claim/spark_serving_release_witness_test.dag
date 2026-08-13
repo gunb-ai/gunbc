@@ -425,3 +425,27 @@ test fn w_the_same_grant_under_the_expected_credential_is_ready_to_apply() -> Bo
     observation: observation_absent(),
     grants: grants_under(host: "srv5", principal: "gunbc-automation", credential: fleet_key_identity, commands: [linger_command])))) == "ready-to-apply"
 }
+
+
+// THE UNOBSERVED ARM CARRIES A SUBJECT TOO. A failure to observe srv6 cannot answer for srv5: that is
+// a wiring defect, not a reachability one, and reporting it as blocked-on-observation sends an
+// operator to check a host that is fine.
+test fn w_an_unobserved_record_for_another_host_is_a_mismatch_not_an_observation_block() -> Bool {
+  string_contains(
+    s: plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
+      intent: executor_owned_intent(), realization: UserUnitRealization,
+      observation: observation_absent(),
+      grants: GrantPopulationUnobserved { host: "srv6", principal: "gunbc-automation" as NonEmptyStr, cause: "sudo -n -l could not be reached" as NonEmptyStr }))),
+    pattern: "evidence-mismatch")
+}
+
+// AND THE POSITIVE CONTROL: the same unobserved record for the RIGHT subject still blocks on
+// observation, so the mismatch above is the subject check rather than the arm being unusable.
+test fn w_an_unobserved_record_for_this_host_blocks_on_observation() -> Bool {
+  string_contains(
+    s: plan_verdict_label(verdict: plan_row_verdict(row: plan_row_under(
+      intent: executor_owned_intent(), realization: UserUnitRealization,
+      observation: observation_absent(),
+      grants: GrantPopulationUnobserved { host: "srv5", principal: "gunbc-automation" as NonEmptyStr, cause: "sudo -n -l could not be reached" as NonEmptyStr }))),
+    pattern: "blocked-on-observation")
+}
