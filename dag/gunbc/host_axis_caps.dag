@@ -244,7 +244,7 @@ fn deploy_memory_cap_apply_script_author_before_shadow_revert(units: List<NonEmp
 // No std.disposition.Scaffold row on this head — net-new dissolution obligations require an
 // observed operator verdict (DESIGN section 5, 2026-08-10). Residual: gunbc.ci_budget_tree,
 // gunbc.ci_floor_measurement.
-data deploy_memory_cap_live_deploy_enrollment_note: String = "deploy_memory_cap_apply_script_ordered is modeled and witnessed but not enrolled in live_deploy apply on this PR head."
+data deploy_memory_cap_live_deploy_enrollment_note: String = "deploy_memory_cap_apply_script_ordered composes deploy shell text (witness-only on this head — no live_deploy consumer actuates it). live_deploy enrollment on a future head requires observed operator ApproveTemporaryIntroduction (DESIGN section 5, 2026-08-10); this note is lifecycle documentation, not admission."
 
 fn control_shadow_reconcile(
   desired: List<ControlShadowUnit>,
