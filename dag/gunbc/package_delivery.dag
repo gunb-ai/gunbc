@@ -436,6 +436,8 @@ fn codex_runtime_version_identity_satisfied(combined_output: String) -> Bool {
   )
 }
 
+data publish_codex_runtime_current_link_note: String = "🟡 dissolve-on: shell.Symlink.AtomicReplace — publish_codex_runtime_current_link currently builds ln -sfnT via retained_foreign string concat (medium-as-string, DESIGN §7), the same scaffold class package_materialized_tree_observation_note dissolved for find enumeration. Operands are compile-time constants under /opt/gunbc/provider-runtime/codex today (nil exploitability), but quoting/concat is not the long-term authority. DISSOLVES WHEN extdeps.shell exposes a typed atomic symlink replace (target + link path as distinct parameters, no shell leaf), matching shell.Link's hardlink modeling extended to symlink -T semantics; rename_publishing_noreplace shares this trigger."
+
 fn publish_codex_runtime_current_link(
   release_parent: FilePath,
   release_root: FilePath,
