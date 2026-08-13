@@ -27,7 +27,6 @@ use v1_compiler::cli_run::{
     ResolutionDivergencePhaseState, SelectionDegradationSnapshot, TimingPercentiles,
     WitnessRowCost, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
-#[cfg(test)]
 use v1_compiler::memory_governor::{
     binding_cap_cgroup_dir, binding_high_cgroup_dir, floor_budget_below_minimum_footprint,
     leaf_cgroup_dir, mem_total_bytes, memory_pressure_some_avg10, read_cgroup_raw, read_cgroup_u64,
