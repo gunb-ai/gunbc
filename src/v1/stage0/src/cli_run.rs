@@ -3018,6 +3018,16 @@ pub fn compile_clean_vec_advisory_count(diagnostics: &Rc<Vec<Rc<ErrorNode>>>) ->
         .count()
 }
 
+fn format_compile_clean_hard_diagnostic_line(d: &Rc<ErrorNode>) -> String {
+    let span = diagnostic_to_span(d.diagnostic.clone());
+    let msg = diagnostic_to_message(d.diagnostic.clone());
+    if span.file.is_empty() {
+        format!("compile-clean: {msg}")
+    } else {
+        format!("compile-clean: {}: {}", span.file, msg)
+    }
+}
+
 fn eprint_compile_clean_hard_diagnostics(diagnostics: &im::Vector<Rc<ErrorNode>>) {
     const SHOWN_LIMIT: usize = 20;
     let mut shown = 0usize;
@@ -3029,10 +3039,7 @@ fn eprint_compile_clean_hard_diagnostics(diagnostics: &im::Vector<Rc<ErrorNode>>
     {
         total += 1;
         if shown < SHOWN_LIMIT {
-            eprintln!(
-                "compile-clean: {}",
-                diagnostic_to_message(d.diagnostic.clone())
-            );
+            eprintln!("{}", format_compile_clean_hard_diagnostic_line(d));
             shown += 1;
         }
     }
@@ -4603,12 +4610,7 @@ fn format_first_compile_clean_hard_diagnostic(diagnostics: &im::Vector<Rc<ErrorN
     diagnostics
         .iter()
         .find(|d| compile_clean_diagnostic_is_hard(d))
-        .map(|d| {
-            format!(
-                "compile-clean: {}",
-                diagnostic_to_message(d.diagnostic.clone())
-            )
-        })
+        .map(format_compile_clean_hard_diagnostic_line)
         .unwrap_or_else(|| {
             "dag compile-clean gate failed: no hard diagnostic located in compile receipt"
                 .to_string()
@@ -6017,6 +6019,10 @@ mod compile_clean_via_index_verdict_equivalence {
         assert!(
             detail.contains("inside a declaration body"),
             "via-index must report BodyGrainNotModeled, got {detail}"
+        );
+        assert!(
+            detail.contains("body.dag"),
+            "compile-clean must name the refusing file, got {detail}"
         );
     }
 
