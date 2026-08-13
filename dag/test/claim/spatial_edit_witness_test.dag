@@ -22,10 +22,24 @@ import product.spatial_edit {
 }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.spatial_frame {
+  SpatialFrameRegistry, empty_frame_registry, register_frame, registry_with,
+  FrameRegistered, FrameRegistrationRefused
+}
+import std.measure { Milli }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn site() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 1) }
+
+// The edited world is millimetre-framed, which is what makes a cubic-millimetre volume a true
+// label rather than one asserted from counts whose quantum nobody declared.
+fn mm_registry() -> SpatialFrameRegistry {
+  match register_frame(r: empty_frame_registry(), identity: site(), length_scale: Milli) {
+    FrameRegistered { frame: f } => registry_with(r: empty_frame_registry(), f: f)
+    FrameRegistrationRefused { cause: _ } => empty_frame_registry()
+  }
+}
 
 fn rect(x0: Int, y0: Int, x1: Int, y1: Int, high: Int) -> EnclosedSpace? {
   match orthogonal_loop2(vertices: [
@@ -94,7 +108,7 @@ fn compile_refusal(edits: List<RoomEdit>) -> EditRefusal? {
 fn volume_of(w: World, name: String) -> Int {
   fold(world_rooms(w: w), init: 0 - 1, f: (acc, r) =>
     if (r.identity as String) == name {
-      match space_volume(s: r.space) {
+      match space_volume(registry: mm_registry(), s: r.space) {
         OrthogonalRefused { cause: _ } => 0 - 1
         OrthogonalReady { value: v } => cubic_millimeter_count(m: v)
       }

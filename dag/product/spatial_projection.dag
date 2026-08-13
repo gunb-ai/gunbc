@@ -2,8 +2,9 @@ module product.spatial_projection
 
 import std.types { Bool, List }
 import std.integer { Int }
-import std.affine_space { Point3, point3 }
-import std.measure { signed_millimeter_component_count }
+import std.affine_space { Point3, point3,
+  signed_frame_component_count
+}
 import std.orthogonal_geometry { loop2_vertices, prism3_low, prism3_high }
 import std.orthogonal_topology { EnclosedSpace, space_shell, shell_prism, space_footprint, space_frame }
 import std.planar_projection {
@@ -66,13 +67,13 @@ type ProjectedScene sole_constructor {
 // and the two elevations that already define the prism, and invents no geometry of its own.
 fn space_corners(s: EnclosedSpace) -> List<Point3> {
   let prism = shell_prism(s: space_shell(s: s))
-  let low = signed_millimeter_component_count(m: prism3_low(p: prism))
-  let high = signed_millimeter_component_count(m: prism3_high(p: prism))
+  let low = signed_frame_component_count(c: prism3_low(p: prism))
+  let high = signed_frame_component_count(c: prism3_high(p: prism))
   let frame = space_frame(s: s)
   fold(loop2_vertices(l: space_footprint(s: s)), init: [], f: (acc, v) =>
     concat(acc, [
-      point3(frame: frame, x: signed_millimeter_component_count(m: v.x), y: signed_millimeter_component_count(m: v.y), z: low),
-      point3(frame: frame, x: signed_millimeter_component_count(m: v.x), y: signed_millimeter_component_count(m: v.y), z: high),
+      point3(frame: frame, x: signed_frame_component_count(c: v.x), y: signed_frame_component_count(c: v.y), z: low),
+      point3(frame: frame, x: signed_frame_component_count(c: v.x), y: signed_frame_component_count(c: v.y), z: high),
     ]))
 }
 
