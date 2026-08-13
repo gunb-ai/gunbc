@@ -428,7 +428,11 @@ fn supervised_rpc_from_id_response(
 fn serialize_supervised_rpc_error(err: JsonValue) -> String {
   match err {
     JsonObject { members: _ } => "structured error" as String
-    _ => "unstructured error" as String
+    JsonNull => "unstructured error" as String
+    JsonBool { value: _ } => "unstructured error" as String
+    JsonNumber { lexeme: _ } => "unstructured error" as String
+    JsonString { value: _ } => "unstructured error" as String
+    JsonArray { elements: _ } => "unstructured error" as String
   }
 }
 
