@@ -36,6 +36,18 @@ import product.compute_board.device_binding {
   pin_refusal_set_count,
   project_article_to_pin_constraints,
   realization_populations_agree,
+  realization_population_comparison,
+}
+import product.compute_board.contact_population {
+  AllPackageLeads,
+  ContactPopulation,
+  PlaceableLogicPins,
+  PopulationsAgree,
+  PopulationsDisagree,
+  PopulationsNotComparable,
+  VendorGeneralPurposeIo,
+  compare_populations,
+  ice40_hx1k_tq144_io_count_gap,
 }
 import extdeps.programmable_logic.ice40.subject {
   bank_population_general_purpose,
@@ -311,4 +323,37 @@ test fn w_no_package_position_is_listed_twice() -> Bool {
   fold(icestorm_hx1k_tq144_roster.pins, init: true, f: fn(acc, p) {
     acc && roster_pin_occurrences(r: icestorm_hx1k_tq144_roster, pin: p) == 1
   })
+}
+
+// THE JOIN NAMES WHAT IT COMPARES. The previous form was two bare Ints that both happened to be
+// 96, from two documents that never said they counted the same things — evidence of a coincidence
+// rather than of agreement. This asserts the comparison lands on the AGREE arm specifically, so a
+// change that made the two populations incomparable could no longer read as a passing test.
+test fn w_the_population_agreement_names_its_kind() -> Bool {
+  match realization_population_comparison(realization: interlock_device_realization) {
+    PopulationsAgree { kind: k, count: c } => c == 96
+    PopulationsDisagree { kind: _, left: _, right: _ } => false
+    PopulationsNotComparable { left: _, right: _ } => false
+  }
+}
+
+// AND COMPARING UNLIKE POPULATIONS IS NOT FALSE, IT IS UNANSWERABLE. A false would claim the
+// device disagrees with itself; the truth is that 144 package leads and 96 placeable pins are
+// different questions, and nothing has stated the projection between them. Different states,
+// different remedies, different arms.
+test fn w_unlike_populations_refuse_rather_than_disagreeing() -> Bool {
+  let leads = ContactPopulation { kind: AllPackageLeads, count: 144, authority: "package drawing" }
+  let placeable = ContactPopulation { kind: PlaceableLogicPins, count: 96, authority: "IceStorm roster" }
+  match compare_populations(a: leads, b: placeable) {
+    PopulationsNotComparable { left: _, right: _ } => true
+    PopulationsAgree { kind: _, count: _ } => false
+    PopulationsDisagree { kind: _, left: _, right: _ } => false
+  }
+}
+
+// The unresolved third count is carried rather than quietly omitted, so the 96-to-96 agreement
+// cannot read as though nothing else were known about this device's I/O population.
+test fn w_the_conflicting_vendor_count_is_recorded_as_open() -> Bool {
+  (ice40_hx1k_tq144_io_count_gap.subject as String) == "iCE40HX1K in TQ144"
+    && list_length(items: split(s: ice40_hx1k_tq144_io_count_gap.unresolved as String, delimiter: "98 total I/O")) > 1
 }

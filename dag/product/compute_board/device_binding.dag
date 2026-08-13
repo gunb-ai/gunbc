@@ -19,10 +19,24 @@ import product.compute_board.digital_control {
   intent_declares_signal,
 }
 import product.compute_board.verilog_projection { VerilogBinding }
+import product.compute_board.contact_population {
+  ConfigurationContacts,
+  ContactPopulation,
+  PlaceableLogicPins,
+  PopulationComparison,
+  PopulationsAgree,
+  PopulationsDisagree,
+  PopulationsNotComparable,
+  VendorGeneralPurposeIo,
+  compare_populations,
+  placeable_from_vendor_categories,
+  project_population,
+}
 import extdeps.programmable_logic.ice40.subject {
   Ice40BankPopulation,
   Ice40Device,
   Ice40Package,
+  bank_population_general_purpose,
   bank_population_total,
   ice40_hx1k,
   ice40_hx1k_tq144_banks,
@@ -289,8 +303,55 @@ fn project_article_to_pin_constraints(
 // were produced independently — one is a vendor specification, the other a reverse-engineering —
 // so their agreement is evidence rather than bookkeeping, and it is derived here rather than
 // asserted so it cannot be kept true by editing one side.
+// THE JOIN NOW SAYS WHAT IT IS COMPARING. An earlier revision was
+// bank_population_total == roster_pin_count: two Ints, both 96, from two documents that never
+// stated they count the same things. It executed, it passed, and it was evidence of nothing
+// stronger than a coincidence — Lattice's current product table reaches 100 for the same device
+// by a third inclusion rule. The comparison is now kind-tagged, so a cross-population comparison
+// is not false, it is NotComparable, and the projection from vendor categories to placeable pins
+// is a declared claim a later document can refute.
+fn vendor_general_purpose_population(realization: ProgrammableDeviceRealization) -> ContactPopulation {
+  ContactPopulation {
+    kind: VendorGeneralPurposeIo,
+    count: bank_population_general_purpose(p: realization.banks),
+    authority: "iCE40 LP/HX family data sheet per-bank I/O table",
+  }
+}
+
+fn configuration_population(realization: ProgrammableDeviceRealization) -> ContactPopulation {
+  ContactPopulation {
+    kind: ConfigurationContacts,
+    count: realization.banks.configuration,
+    authority: "iCE40 LP/HX family data sheet per-bank I/O table",
+  }
+}
+
+fn toolchain_placeable_population(realization: ProgrammableDeviceRealization) -> ContactPopulation {
+  ContactPopulation {
+    kind: PlaceableLogicPins,
+    count: roster_pin_count(r: realization.roster),
+    authority: "Project IceStorm package pin roster",
+  }
+}
+
+fn realization_population_comparison(realization: ProgrammableDeviceRealization) -> PopulationComparison {
+  match project_population(
+    p: placeable_from_vendor_categories,
+    parts: [vendor_general_purpose_population(realization: realization), configuration_population(realization: realization)]
+  ) {
+    Absent =>
+      PopulationsNotComparable { left: VendorGeneralPurposeIo, right: PlaceableLogicPins }
+    Present { value: projected } =>
+      compare_populations(a: projected, b: toolchain_placeable_population(realization: realization))
+  }
+}
+
 fn realization_populations_agree(realization: ProgrammableDeviceRealization) -> Bool {
-  bank_population_total(p: realization.banks) == roster_pin_count(r: realization.roster)
+  match realization_population_comparison(realization: realization) {
+    PopulationsAgree { kind: _, count: _ } => true
+    PopulationsDisagree { kind: _, left: _, right: _ } => false
+    PopulationsNotComparable { left: _, right: _ } => false
+  }
 }
 
 // THE PRODUCTION REALIZATION. The device, its package, the vendor's bank population and the
