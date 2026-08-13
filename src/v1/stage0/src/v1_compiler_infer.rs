@@ -16166,15 +16166,6 @@ pub fn census_binding_is_borrowable_fn_sig(
     }
 }
 
-pub fn census_binding_is_generic_sig(
-    binding: Rc<TypeBinding>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    (census_binding_is_borrowable_fn_sig(binding.clone(), source_indices.clone())
-        && ((fn_type_param_names(binding.resolved.clone(), source_indices.clone()).len() as i64)
-            > 0))
-}
-
 pub fn census_qualify_sig_return_binding(
     binding: Rc<TypeBinding>,
     module_path: String,
@@ -16210,13 +16201,13 @@ pub fn census_upgrade_sig_binding(
     module_path: String,
     census: Rc<SymbolIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    tp_names: Rc<Vec<String>>,
 ) -> Rc<TypeBinding> {
-    if census_binding_is_generic_sig(binding.clone(), source_indices.clone()) {
+    if ((tp_names.clone().len() as i64) > 0) {
         {
             let node = binding.resolved.clone();
             match node.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: raw_ret, .. }) => {
-                    let tp_names = fn_type_param_names(node.clone(), source_indices.clone());
                     let env = census_fn_sig_env(
                         census.clone(),
                         module_path.clone(),
@@ -16442,40 +16433,44 @@ pub fn census_upgrade_binding(
     census: Rc<SymbolIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<TypeBinding> {
-    if census_binding_is_generic_sig(binding.clone(), source_indices.clone()) {
-        census_upgrade_sig_binding(
-            binding.clone(),
-            module_path.clone(),
-            census.clone(),
-            source_indices.clone(),
-        )
+    if census_binding_is_borrowable_fn_sig(binding.clone(), source_indices.clone()) {
+        {
+            let tp_names = fn_type_param_names(binding.resolved.clone(), source_indices.clone());
+            if ((tp_names.clone().len() as i64) > 0) {
+                census_upgrade_sig_binding(
+                    binding.clone(),
+                    module_path.clone(),
+                    census.clone(),
+                    source_indices.clone(),
+                    tp_names.clone(),
+                )
+            } else {
+                census_qualify_sig_return_binding(
+                    binding.clone(),
+                    module_path.clone(),
+                    census.clone(),
+                    source_indices.clone(),
+                )
+            }
+        }
     } else {
-        if census_binding_is_borrowable_fn_sig(binding.clone(), source_indices.clone()) {
-            census_qualify_sig_return_binding(
+        if (binding.resolved.clone().connective.clone() != Connective::NoConnective) {
+            census_upgrade_type_decl_binding(
                 binding.clone(),
                 module_path.clone(),
                 census.clone(),
                 source_indices.clone(),
             )
         } else {
-            if (binding.resolved.clone().connective.clone() != Connective::NoConnective) {
-                census_upgrade_type_decl_binding(
+            if (binding.resolved.clone().inferred.clone() != None) {
+                census_qualify_leaf_binding(
                     binding.clone(),
                     module_path.clone(),
                     census.clone(),
                     source_indices.clone(),
                 )
             } else {
-                if (binding.resolved.clone().inferred.clone() != None) {
-                    census_qualify_leaf_binding(
-                        binding.clone(),
-                        module_path.clone(),
-                        census.clone(),
-                        source_indices.clone(),
-                    )
-                } else {
-                    binding.clone()
-                }
+                binding.clone()
             }
         }
     }
