@@ -445,37 +445,88 @@ fn spaces_interpenetrate(a: EnclosedSpace, b: EnclosedSpace) -> OrthogonalConstr
   }
 }
 
+// THE SHARED REGION OF TWO WALLS, and adjacency is derived from it rather than decided beside it.
+// An earlier revision answered only the Bool, so a consumer that needed to know WHERE two rooms meet
+// - to put a door there, which is the whole reason the relation exists - had to recompute the
+// overlap with its own copy of the rule. Two copies of one geometric fact is the fork DESIGN section
+// 3 forbids, and the copy would have been in a downstream module where a drift in either direction
+// admits an opening in a wall that is not shared.
+//
+// The region is empty rather than degenerate when the walls touch without overlapping: a coincident
+// corner and a zero-height band are both absences of a place to cut a hole, so the comparison is
+// strict on both axes and returns nothing rather than a rectangle with no area.
+type WallOverlap {
+  runs_north_south: Bool
+  position: Int
+  along_low: Int
+  along_high: Int
+  low: Int
+  high: Int
+}
+
+fn wall_runs_north_south(w: ShellWall) -> Bool {
+  point2_x(p: w.start) == point2_x(p: w.end)
+}
+
+fn wall_along_low(w: ShellWall) -> Int {
+  if wall_runs_north_south(w: w) {
+    min_of(a: point2_y(p: w.start), b: point2_y(p: w.end))
+  } else {
+    min_of(a: point2_x(p: w.start), b: point2_x(p: w.end))
+  }
+}
+
+fn wall_along_high(w: ShellWall) -> Int {
+  if wall_runs_north_south(w: w) {
+    max_of(a: point2_y(p: w.start), b: point2_y(p: w.end))
+  } else {
+    max_of(a: point2_x(p: w.start), b: point2_x(p: w.end))
+  }
+}
+
+fn wall_position(w: ShellWall) -> Int {
+  if wall_runs_north_south(w: w) { point2_x(p: w.start) } else { point2_y(p: w.start) }
+}
+
+fn shared_wall_region(a: ShellWall, b: ShellWall) -> WallOverlap? {
+  if wall_runs_north_south(w: a) != wall_runs_north_south(w: b) {
+    none
+  } else {
+    if wall_position(w: a) != wall_position(w: b) {
+      none
+    } else {
+      let low = max_of(a: a.low, b: b.low)
+      let high = min_of(a: a.high, b: b.high)
+      let along_low = max_of(a: wall_along_low(w: a), b: wall_along_low(w: b))
+      let along_high = min_of(a: wall_along_high(w: a), b: wall_along_high(w: b))
+      if low >= high || along_low >= along_high {
+        none
+      } else {
+        Present {
+          value: WallOverlap {
+            runs_north_south: wall_runs_north_south(w: a),
+            position: wall_position(w: a),
+            along_low: along_low,
+            along_high: along_high,
+            low: low,
+            high: high,
+          }
+        }
+      }
+    }
+  }
+}
+
 // ADJACENCY IS SHARING A WALL, which is a coincidence of geometry and never an authored edge. Two
 // spaces are adjacent when a wall of one is collinear with a wall of the other and their spans
 // overlap in both the horizontal and the vertical direction. Touching at a single point or along a
 // zero-length span is not adjacency: you cannot put a door there, which is what the relation is
-// for, so the comparison is strict on both axes.
+// for, so the comparison is strict on both axes - and it is strict because the region above is,
+// which is now the single place that rule is written.
 fn walls_are_shared(a: ShellWall, b: ShellWall) -> Bool {
-  let a_vertical = point2_x(p: a.start) == point2_x(p: a.end)
-  let b_vertical = point2_x(p: b.start) == point2_x(p: b.end)
-  if a_vertical != b_vertical {
-    false
-  } else {
-    let vertical_overlap = max_of(a: a.low, b: b.low) < min_of(a: a.high, b: b.high)
-    if a_vertical {
-      point2_x(p: a.start) == point2_x(p: b.start)
-        && spans_overlap(
-             a_lo: min_of(a: point2_y(p: a.start), b: point2_y(p: a.end)),
-             a_hi: max_of(a: point2_y(p: a.start), b: point2_y(p: a.end)),
-             b_lo: min_of(a: point2_y(p: b.start), b: point2_y(p: b.end)),
-             b_hi: max_of(a: point2_y(p: b.start), b: point2_y(p: b.end)),
-           )
-        && vertical_overlap
-    } else {
-      point2_y(p: a.start) == point2_y(p: b.start)
-        && spans_overlap(
-             a_lo: min_of(a: point2_x(p: a.start), b: point2_x(p: a.end)),
-             a_hi: max_of(a: point2_x(p: a.start), b: point2_x(p: a.end)),
-             b_lo: min_of(a: point2_x(p: b.start), b: point2_x(p: b.end)),
-             b_hi: max_of(a: point2_x(p: b.start), b: point2_x(p: b.end)),
-           )
-        && vertical_overlap
-    }
+  match shared_wall_region(a: a, b: b) {
+    Absent => false
+    Present { value: _ } => true
   }
 }
 

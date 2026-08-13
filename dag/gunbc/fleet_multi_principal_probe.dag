@@ -3,10 +3,45 @@ module gunbc.fleet_multi_principal_probe
 import std.types { String, Bool, List, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { trim }
+import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.typed_argv_exec { typed_argv_probe_over_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.clock_read { clock_now_probed_at }
+import gunbc.fleet_known_hosts_anchor {
+  FleetSshAttemptIdentity,
+  fleet_ssh_attempt_identity,
+  FleetSshExecutionContext,
+  FleetSshCredentialBinding,
+  fleet_ssh_execution_context_of,
+  materialize_fleet_known_hosts_anchor,
+  known_hosts_materialization_receipt,
+  SshTarget,
+  PortableRemoteWords,
+  portable_remote_words,
+  shape_fleet_ssh_exec,
+}
+import extdeps.ssh.session { ssh_session_exec_portable_words }
+import gunbc.auth.access_token_source { GcloudPrintToken }
+import gunbc.spark_credential_workflow { run_with_materialized_fleet_ssh_binding }
+import gunbc.fleet_ssh_access { fleet_automation_ssh_key }
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
+import gunbc.spark_managed_access_bootstrap {
+  PrincipalReachObservation,
+  SparkManagedAccessStanding,
+  ManagedAccessGrounded,
+  ManagedAccessBootstrapRequired,
+  ManagedAccessUnobserved,
+  derive_spark_managed_access_standing,
+  derive_spark_bootstrap_plan,
+  authorize_spark_bootstrap,
+  SparkBootstrapAuthorization,
+  BootstrapProceedsUnprivileged,
+  OperatorBootstrapCredentialRequired,
+  spark_bootstrap_effect_label,
+  spark_bootstrap_plan_effects,
+}
+import product.placement_supply { HostIdentity }
 
 // READ-ONLY measurement (parent msg_e767a783): before anyone grants new access, measure
 // whether the fleet key is already enrolled for SOME pre-existing account on srv3/srv4.
@@ -35,13 +70,67 @@ import gunbc.clock_read { clock_now_probed_at }
 // workflow is hand-applying (operator ruling, 2026-08-10).
 data multi_principal_probe_hosts: List<String> = ["srv3", "srv4", "srv5", "srv6"]
 
-data multi_principal_probe_principals: List<String> = ["ubuntu", "briansrls", "ghrunner", "root"]
+data multi_principal_probe_principals: List<String> = ["ubuntu", "briansrls", "ghrunner", "root", "gunbc-automation"]
 
 data fleet_multi_principal_probe_receipt_path: String = "target/fleet-multi-principal-probe-receipt.txt"
 
 // One leg's line: authentication accepted/refused, and if accepted whether a command
 // executed (shell present) — with the observed values carried, never a bare verdict.
-fn multi_principal_reach_line(host: String, principal: String) -> String {
+// ONE LEG, and every option it carries derived from the sealed context rather than assembled here.
+// The words go through portable_remote_words, so a command this probe cannot transport safely
+// refuses before the leg rather than being quoted into something the remote shell may re-split.
+fn probe_leg(context: FleetSshExecutionContext, host: String, principal: String, raw_words: List<String>) -> SshSessionExecResult? {
+  match portable_remote_words(raws: raw_words) {
+    Absent => none
+    Present { value: words } => Present {
+      value: ssh_session_exec_portable_words(
+        client_args: shape_fleet_ssh_exec(
+          context: context,
+          target: SshTarget {
+            endpoint: fleet_probe_endpoint_for(host: host) as NonEmptyStr,
+            principal: principal as NonEmptyStr,
+          },
+          words: words,
+        ),
+      ),
+    }
+  }
+}
+
+fn multi_principal_reach_line(context: FleetSshExecutionContext, host: String, principal: String) -> String {
+  match probe_leg(context: context, host: host, principal: principal, raw_words: ["hostname"]) {
+    Absent => join(["reach host=", host, " principal=", principal, " probe-refused cause=non-portable-remote-word\n"], "")
+    Present { value: r } =>
+      if r.success {
+        join(["reach host=", host, " principal=", principal, " auth=accepted command=executed hostname=", trim(s: r.stdout), "\n"], "")
+      } else {
+        join(["reach host=", host, " principal=", principal, " auth-or-command=refused stderr=", trim(s: r.stderr), " stdout=", trim(s: r.stdout), "\n"], "")
+      }
+  }
+}
+
+fn multi_principal_sudo_line(context: FleetSshExecutionContext, host: String, principal: String) -> String {
+  match probe_leg(context: context, host: host, principal: principal, raw_words: ["sudo", "-n", "-l"]) {
+    Absent => join(["sudo  host=", host, " principal=", principal, " probe-refused cause=non-portable-remote-word\n"], "")
+    Present { value: r } =>
+      if r.success {
+        join(["sudo  host=", host, " principal=", principal, " sudo-n-l=listed grants=", trim(s: r.stdout), "\n"], "")
+      } else {
+        join(["sudo  host=", host, " principal=", principal, " sudo-n-l=refused stderr=", trim(s: r.stderr), "\n"], "")
+      }
+  }
+}
+
+fn multi_principal_host_block(context: FleetSshExecutionContext, host: String) -> String {
+  join(
+    map(multi_principal_probe_principals, p =>
+      join([multi_principal_reach_line(context: context, host: host, principal: p), multi_principal_sudo_line(context: context, host: host, principal: p)], "")),
+    "")
+}
+
+// CI / in-run agent path: reuses SSH_AUTH_SOCK from gunbc_ci_fleet_key_agent_script — no Secret
+// Manager fetch and no GcloudPrintToken (those hosts do not carry gcloud).
+fn multi_principal_reach_line_agent_backed(host: String, principal: String) -> String {
   let target = join([principal, "@", fleet_probe_endpoint_for(host: host)], "")
   match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: ["hostname"]) {
     TypedArgvExecConverged { result: r } =>
@@ -55,7 +144,7 @@ fn multi_principal_reach_line(host: String, principal: String) -> String {
   }
 }
 
-fn multi_principal_sudo_line(host: String, principal: String) -> String {
+fn multi_principal_sudo_line_agent_backed(host: String, principal: String) -> String {
   let target = join([principal, "@", fleet_probe_endpoint_for(host: host)], "")
   match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: ["sudo", "-n", "-l"]) {
     TypedArgvExecConverged { result: r } =>
@@ -69,23 +158,257 @@ fn multi_principal_sudo_line(host: String, principal: String) -> String {
   }
 }
 
-fn multi_principal_host_block(host: String) -> String {
+fn multi_principal_host_block_agent_backed(host: String) -> String {
   join(
     map(multi_principal_probe_principals, p =>
-      join([multi_principal_reach_line(host: host, principal: p), multi_principal_sudo_line(host: host, principal: p)], "")),
+      join([
+        multi_principal_reach_line_agent_backed(host: host, principal: p),
+        multi_principal_sudo_line_agent_backed(host: host, principal: p),
+      ], "")),
     "")
 }
 
+fn modeled_fleet_automation_credential_identity() -> ContentHash {
+  content_hash_of_value(value: fleet_automation_ssh_key.material as NonEmptyStr)
+}
+
+fn agent_backed_probe_success(host: String, principal: String, argv: List<String>) -> Bool {
+  let target = join([principal, "@", fleet_probe_endpoint_for(host: host)], "")
+  match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: argv) {
+    TypedArgvExecConverged { result: r } => r.success
+    TypedArgvExecRefused { reason: _ } => false
+  }
+}
+
+fn agent_backed_principal_observation(
+  credential_identity: ContentHash,
+  host: String,
+  principal: String,
+) -> PrincipalReachObservation {
+  PrincipalReachObservation {
+    host: host as HostIdentity,
+    principal_login_name: principal as NonEmptyStr,
+    credential_identity: credential_identity,
+    authenticated: agent_backed_probe_success(host: host, principal: principal, argv: ["hostname"]),
+    passwordless_privilege: agent_backed_probe_success(host: host, principal: principal, argv: ["sudo", "-n", "-l"]),
+  }
+}
+
+fn probe_attempt_identity(raw: String) -> FleetSshAttemptIdentity? {
+  fleet_ssh_attempt_identity(raw: raw)
+}
+
+fn env_var_nonempty(name: NonEmptyStr) -> String? {
+  match shell.Env.Get(name: name).value {
+    Present { value: raw } => {
+      let line = trim(s: raw)
+      if line == "" { none } else { Present { value: line } }
+    }
+    Absent => none
+  }
+}
+
+fn compose_fleet_ssh_attempt_raw(run_id: String, run_attempt: String) -> String? {
+  if run_id == "" || run_attempt == "" {
+    none
+  } else {
+    Present { value: join(["run-", run_id, "-attempt-", run_attempt], "") }
+  }
+}
+
+// ENV OBSERVATION lives here because gunbc run --function cannot pass argv (belt_dispatch note).
+// GUNBC_FLEET_SSH_ATTEMPT_RAW overrides; otherwise GITHUB_RUN_ID + GITHUB_RUN_ATTEMPT compose
+// run-<id>-attempt-<n>, the same shape fleet_known_hosts_anchor witnesses pin.
+fn fleet_ssh_attempt_raw_from_env() -> String? {
+  match env_var_nonempty(name: "GUNBC_FLEET_SSH_ATTEMPT_RAW" as NonEmptyStr) {
+    Present { value: explicit } => Present { value: explicit }
+    Absent =>
+      match env_var_nonempty(name: "GITHUB_RUN_ID" as NonEmptyStr) {
+        Absent => none
+        Present { value: run_id } =>
+          match env_var_nonempty(name: "GITHUB_RUN_ATTEMPT" as NonEmptyStr) {
+            Absent => none
+            Present { value: run_attempt } =>
+              compose_fleet_ssh_attempt_raw(run_id: run_id, run_attempt: run_attempt)
+          }
+      }
+  }
+}
+
+// Enrolled CI entry (gunbc_ci_multi_principal_probe_invoke): reuses the in-run WIF ssh-agent from
+// gunbc_ci_fleet_key_agent_script — NOT a Secret Manager fetch and NOT GcloudPrintToken.
 func fleet_multi_principal_probe_wet() -> ProcessExit {
   let now = clock_now_probed_at()
   let body = join([
-    join(["multi-principal fleet-key probe probed_at=", now as String, " (read-only: hostname + sudo -n -l)\n"], ""),
-    join(map(multi_principal_probe_hosts, h => multi_principal_host_block(host: h)), ""),
+    join([
+      "multi-principal fleet-key probe probed_at=", now as String,
+      " (read-only: hostname + sudo -n -l; in-run ssh-agent from WIF key materialization)\n",
+    ], ""),
+    join(map(multi_principal_probe_hosts, h => multi_principal_host_block_agent_backed(host: h)), ""),
   ], "")
   let w = Filesystem.Write(path: fleet_multi_principal_probe_receipt_path, content: body)
   if w.success {
     ExitSuccess
   } else {
     exit_failure(reason: join(["multi-principal probe receipt write failed: ", w.error], ""))
+  }
+}
+
+// Operator-workstation wet path: materializes fleet privkey from Secret Manager inside the workflow
+// boundary (trusted anchor + exact IdentityFile). NOT valid on GHA runner slots — use
+// fleet_multi_principal_probe_wet for CI.
+func fleet_multi_principal_probe_with_attempt(attempt_raw: String) -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  let token_source = GcloudPrintToken
+  run_with_materialized_fleet_ssh_binding(
+    attempt_raw: attempt_raw,
+    token_source: token_source,
+    body: fn(credential) {
+      let identity_file = credential.identity_file as String
+      let body = match probe_attempt_identity(raw: attempt_raw) {
+        Absent =>
+          join(["multi-principal fleet-key probe probed_at=", now as String, " REFUSED before any ssh leg: attempt identity is not a safe path segment\n"], "")
+        Present { value: attempt } => {
+          let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+          match fleet_ssh_execution_context_of(outcome: materialization, credential: credential) {
+            Absent => join([
+              "multi-principal fleet-key probe probed_at=", now as String,
+              " REFUSED before any ssh leg: ", known_hosts_materialization_receipt(outcome: materialization), "\n",
+            ], "")
+            Present { value: context } => join([
+              join(["multi-principal fleet-key probe probed_at=", now as String, " (read-only: hostname + sudo -n -l)\n"], ""),
+              known_hosts_materialization_receipt(outcome: materialization),
+              join(["credential identity_file=", identity_file, " public_material_identity=", serialize_content_hash(hash: credential.credential_identity) as String, " agent=suppressed ambient_config=suppressed\n"], ""),
+              join(map(multi_principal_probe_hosts, h => multi_principal_host_block(context: context, host: h)), ""),
+            ], "")
+          }
+        }
+      }
+      let w = Filesystem.Write(path: fleet_multi_principal_probe_receipt_path, content: body)
+      if w.success {
+        ExitSuccess
+      } else {
+        exit_failure(reason: join(["multi-principal probe receipt write failed: ", w.error], ""))
+      }
+    },
+  )
+}
+
+
+// ── The derived standing, from the same legs the receipt above reports ──────────────────────────
+
+// One typed observation per (host, principal), which is the grain the account model already uses.
+// The credential identity rides every row, so a reader can tell WHICH key produced the result rather
+// than inferring it from the run that happened to be executing.
+fn principal_observation(
+  context: FleetSshExecutionContext,
+  credential_identity: ContentHash,
+  host: String,
+  principal: String,
+) -> PrincipalReachObservation {
+  let reach = probe_leg(context: context, host: host, principal: principal, raw_words: ["hostname"])
+  let sudo = probe_leg(context: context, host: host, principal: principal, raw_words: ["sudo", "-n", "-l"])
+  PrincipalReachObservation {
+    host: host as HostIdentity,
+    principal_login_name: principal as NonEmptyStr,
+    credential_identity: credential_identity,
+    authenticated: match reach { Present { value: r } => r.success Absent => false },
+    passwordless_privilege: match sudo { Present { value: r } => r.success Absent => false },
+  }
+}
+
+fn spark_standing_line(standing: SparkManagedAccessStanding) -> String {
+  match standing {
+    ManagedAccessGrounded { occurrence: o } =>
+      join(["standing host=", o.host as String, " managed-access=GROUNDED\n"], "")
+    ManagedAccessBootstrapRequired { host: h, missing: _, bootstrap_transport: _ } =>
+      join(["standing host=", h as String, " managed-access=BOOTSTRAP-REQUIRED (human bootstrap observed, managed executor absent)\n"], "")
+    ManagedAccessUnobserved { host: h } =>
+      join(["standing host=", h as String, " managed-access=UNOBSERVED (no reachable principal, so no transport to bootstrap through)\n"], "")
+  }
+}
+
+// The authorization is DERIVED and printed, never asked. What reaches the operator is the exact
+// effect population requiring privilege -- not the question "does this need root", which nobody can
+// evaluate without the list.
+fn spark_authorization_lines(standing: SparkManagedAccessStanding, credential_identity: ContentHash) -> String {
+  match derive_spark_bootstrap_plan(standing: standing, fleet_public_material_identity: credential_identity) {
+    Absent => ""
+    Present { value: plan } => {
+      let effects = join(map(spark_bootstrap_plan_effects(plan: plan), e =>
+        join(["  effect ", spark_bootstrap_effect_label(effect: e), "\n"], "")), "")
+      match authorize_spark_bootstrap(plan: plan) {
+        BootstrapProceedsUnprivileged { plan: _ } =>
+          join(["authorization host=", plan.host as String, " UNPRIVILEGED\n", effects], "")
+        OperatorBootstrapCredentialRequired { host: h, first_privileged: f, more_privileged: m, secret_purpose: p } =>
+          join([
+            "authorization host=", h as String, " OPERATOR-CREDENTIAL-REQUIRED privileged_effects=",
+            to_string(1 + length(m)), "\n  purpose ", p as String, "\n", effects,
+            "  first-privileged ", spark_bootstrap_effect_label(effect: f), "\n",
+          ], "")
+      }
+    }
+  }
+}
+
+data spark_standing_receipt_path: String = "target/spark-managed-access-standing-receipt.txt"
+
+// The Spark hosts only: this derivation is about the serving fleet, and running it over srv1..srv4
+// would produce bootstrap plans for hosts whose managed access is a different lane's question.
+data spark_standing_hosts: List<String> = ["srv5", "srv6"]
+
+func spark_managed_access_standing_wet() -> ProcessExit
+  uses net: Network
+{
+  match fleet_ssh_attempt_raw_from_env() {
+    Absent =>
+      exit_failure(
+        reason: "spark_managed_access_standing_wet requires GUNBC_FLEET_SSH_ATTEMPT_RAW or GitHub GITHUB_RUN_ID+GITHUB_RUN_ATTEMPT env"
+      )
+    Present { value: attempt_raw } => spark_managed_access_standing_with_attempt(attempt_raw: attempt_raw)
+  }
+}
+
+func spark_managed_access_standing_with_attempt(attempt_raw: String) -> ProcessExit {
+  let now = clock_now_probed_at()
+  let credential_identity = modeled_fleet_automation_credential_identity()
+  let observations = flat_map(spark_standing_hosts, h =>
+    map(multi_principal_probe_principals, p =>
+      agent_backed_principal_observation(
+        credential_identity: credential_identity,
+        host: h,
+        principal: p,
+      )))
+  let body = join([
+    join([
+      "spark managed-access standing probed_at=", now as String,
+      " attempt_raw=", attempt_raw,
+      " credential_identity=", serialize_content_hash(hash: credential_identity) as String,
+      " transport=in-run-ssh-agent\n",
+    ], ""),
+    join(map(observations, o => join([
+      "observed host=", o.host as String, " principal=", o.principal_login_name as String,
+      " authenticated=", if o.authenticated { "true" } else { "false" },
+      " passwordless_privilege=", if o.passwordless_privilege { "true" } else { "false" }, "\n",
+    ], "")), ""),
+    join(map(spark_standing_hosts, h => {
+      let standing = derive_spark_managed_access_standing(host: h as HostIdentity, observations: observations)
+      join([
+        spark_standing_line(standing: standing),
+        spark_authorization_lines(standing: standing, credential_identity: credential_identity),
+      ], "")
+    }), ""),
+  ], "")
+  let w = Filesystem.Write(path: spark_standing_receipt_path, content: body)
+  if !w.success {
+    exit_failure(reason: join(["spark standing receipt write failed: ", w.error], ""))
+  } else {
+    if string_contains(s: body, pattern: "REFUSED") {
+      exit_failure(reason: join(["spark managed-access standing could not be observed:\n", body], ""))
+    } else {
+      ExitSuccess
+    }
   }
 }
