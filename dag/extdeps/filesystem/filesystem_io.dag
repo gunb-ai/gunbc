@@ -30,6 +30,7 @@ service Filesystem {
       error: String from "error"
     }
     transport file { path: "{path}", verb: "write_owner_only" }
+    // v1 realization: Unix OpenOptions create_new + mode 0600 at creation (O_EXCL); non-Unix refuses.
   }
 
   operation Read {

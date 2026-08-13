@@ -8251,10 +8251,11 @@ fn write_file_owner_only(path: &str, content: &[u8]) -> std::io::Result<()> {
         use std::fs::OpenOptions;
         use std::io::Write;
         use std::os::unix::fs::OpenOptionsExt;
+        // create_new (O_EXCL): mode applies at creation; an existing path refuses rather than
+        // truncating with stale permissions (create+truncate would leave prior mode on reuse).
         let mut file = OpenOptions::new()
             .write(true)
-            .create(true)
-            .truncate(true)
+            .create_new(true)
             .mode(0o600)
             .open(path)?;
         file.write_all(content)?;
@@ -8262,7 +8263,11 @@ fn write_file_owner_only(path: &str, content: &[u8]) -> std::io::Result<()> {
     }
     #[cfg(not(unix))]
     {
-        std::fs::write(path, content)
+        use std::io::{Error, ErrorKind};
+        Err(Error::new(
+            ErrorKind::Unsupported,
+            "write_owner_only refused: owner-only mode-at-creation is unavailable on this platform",
+        ))
     }
 }
 
