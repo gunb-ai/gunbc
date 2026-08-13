@@ -8407,7 +8407,7 @@ fn dispatch_file(
             other => {
                 return Err(InterpError::TypeError {
                     msg: format!(
-                        "file transport verb '{other}' is not a known action (delete, list)"
+                        "file transport verb '{other}' is not a known action (delete, list, write_owner_only)"
                     ),
                 })
             }
