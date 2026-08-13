@@ -8,6 +8,7 @@ import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.ssh { ssh_public_key_line }
 import gunbc.command_runner { run_shell_commands, run_shell_command_capture, ShellCaptureResult }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for, fleet_reach_probe_targets }
@@ -314,8 +315,10 @@ func fleet_host_key_enroll_wet() -> ProcessExit
 // recorded EXISTENCE proof for the runner account on each host the job lands on.
 data fleet_authorized_key_enroll_receipt_path: String = "target/fleet-authorized-key-enroll-receipt.txt"
 
+// Re-grounded on the extdeps.ssh.keys authority (review 51659): this join re-spelled the line
+// construction that module already owns, and hardcoded an algorithm token it already serializes.
 fn fleet_automation_authorized_keys_line() -> String {
-  join(["ssh-ed25519 ", fleet_automation_ssh_key.material, " ", fleet_automation_ssh_key.comment], "")
+  ssh_public_key_line(k: fleet_automation_ssh_key)
 }
 
 func fleet_authorized_key_self_enroll_wet() -> ProcessExit

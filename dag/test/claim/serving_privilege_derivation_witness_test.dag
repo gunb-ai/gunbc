@@ -1,0 +1,132 @@
+module test.claim.serving_privilege_derivation_witness_test
+
+import std.types { String, Bool, List, NonEmptyStr, Int }
+import gunbc.spark_serving_realization {
+  ServingInstallEffect,
+  WriteSystemUnitFile,
+  ReloadSystemManager,
+  EnableSystemUnit,
+  WriteUserUnitFile,
+  ReloadUserManager,
+  EnableUserUnit,
+  EnableLingerForOwnAccount,
+  InstallRuntimePackage,
+  PullModelArtifact,
+  GrantContainerRuntimeAccess,
+  RunContainerAsOwnUser,
+  SystemPrincipal,
+  RootPrincipal,
+  NamedPrincipal,
+  MutationSubject,
+  subject_owner,
+  effect_mutation_subject,
+  effect_requires_escalation,
+  ServingDeploymentTarget,
+  effect_actuation,
+  ActuatedByEscalation,
+  ActuatedByOwnerDirectly,
+  realization_escalated_commands,
+  realization_sudoers_grant_lines,
+  SparkServingRealization,
+  SystemUnitRealization,
+  UserUnitRealization,
+  RootlessContainerRealization,
+}
+
+fn automation() -> SystemPrincipal {
+  NamedPrincipal { login: "gunbc-automation" as NonEmptyStr }
+}
+
+fn target_as(actor: SystemPrincipal) -> ServingDeploymentTarget {
+  ServingDeploymentTarget {
+    actor: actor,
+    unit_name: "gunbc-inference.service" as NonEmptyStr,
+    unit_path: "/etc/systemd/system/gunbc-inference.service" as NonEmptyStr,
+    staged_unit_path: "/home/gunbc-automation/gunbc-inference.service" as NonEmptyStr,
+    runtime_package: "ollama" as NonEmptyStr,
+  }
+}
+
+// THE CLAIM THE WHOLE MODEL EXISTS FOR, and the one a hand-drawn table cannot make. Privilege is a
+// RELATIONSHIP between actor and subject, not a property of the effect -- so running the SAME
+// realization as root must require no grant at all. A table asserting "WriteSystemUnitFile is
+// privileged" answers this wrongly, because it never mentions who is acting.
+test fn w_the_same_realization_needs_no_grant_when_the_actor_owns_what_it_mutates() -> Bool {
+  let as_root = length(realization_escalated_commands(realization: SystemUnitRealization, target: target_as(RootPrincipal)))
+  let as_automation = length(realization_escalated_commands(realization: SystemUnitRealization, target: target_as(automation())))
+  as_root == 0 && as_automation > 0
+}
+
+// THE OWNERSHIP FACT IS WHAT DECIDES IT, asserted directly so the derivation cannot be satisfied by
+// a function that merely varies with the actor for some other reason.
+test fn w_escalation_follows_ownership_of_the_mutated_subject() -> Bool {
+  let e = WriteSystemUnitFile
+  let owner = subject_owner(subject: effect_mutation_subject(effect: e, actor: automation()))
+  match owner {
+    RootPrincipal =>
+      effect_requires_escalation(effect: e, actor: automation())
+        && !effect_requires_escalation(effect: e, actor: RootPrincipal)
+    NamedPrincipal { login: _ } => false
+  }
+}
+
+// AN ACTOR-OWNED SUBJECT NEEDS NOTHING, and this is where the model beats the table on a case the
+// table gets wrong by omission rather than by error: PullModelArtifact writes a store the serving
+// account already owns, and a user unit lives in that account's own registry. Neither belongs in a
+// sudoers file for ANY actor that owns them.
+test fn w_effects_on_actor_owned_subjects_never_escalate() -> Bool {
+  !effect_requires_escalation(effect: PullModelArtifact, actor: automation())
+    && !effect_requires_escalation(effect: WriteUserUnitFile, actor: automation())
+    && !effect_requires_escalation(effect: EnableUserUnit, actor: automation())
+    && !effect_requires_escalation(effect: RunContainerAsOwnUser, actor: automation())
+}
+
+// ROOT-OWNED SUBJECTS ESCALATE FOR A NAMED ACTOR, the positive control without which the claim above
+// is satisfied by a function that never escalates.
+test fn w_root_owned_subjects_escalate_for_a_named_actor() -> Bool {
+  effect_requires_escalation(effect: InstallRuntimePackage, actor: automation())
+    && effect_requires_escalation(effect: GrantContainerRuntimeAccess, actor: automation())
+    && effect_requires_escalation(effect: EnableLingerForOwnAccount, actor: automation())
+}
+
+// THE GRANT TRACKS THE EFFECT POPULATION. A realization declaring fewer escalating effects gets a
+// strictly smaller grant -- the relationship a hardcoded list cannot have, because its size is a
+// property of the author's typing rather than of the model.
+test fn w_a_realization_with_fewer_escalating_effects_gets_a_smaller_grant() -> Bool {
+  let system_grant = length(realization_escalated_commands(realization: SystemUnitRealization, target: target_as(automation())))
+  let container_grant = length(realization_escalated_commands(realization: RootlessContainerRealization, target: target_as(automation())))
+  container_grant < system_grant && container_grant > 0
+}
+
+// THE GRANT RENDERS ITS TARGET, not a constant. A grant naming the wrong unit is one sudo would
+// silently never match -- a failure that looks like a permissions problem forever.
+test fn w_grant_renders_the_supplied_target() -> Bool {
+  let lines = realization_sudoers_grant_lines(realization: SystemUnitRealization, target: target_as(automation()))
+  fold(lines, init: false, f: fn(acc, l) {
+    acc || string_contains(s: l, pattern: "gunbc-inference.service")
+  })
+}
+
+// RED CONTROL: no grant line may carry a shell metacharacter or wildcard. A sudoers entry is a
+// capability grant, and one loose token converts "may restart this unit" into "may become root".
+test fn red_control_no_grant_line_carries_shell_or_wildcard() -> Bool {
+  let lines = realization_sudoers_grant_lines(realization: SystemUnitRealization, target: target_as(automation()))
+  fold(lines, init: true, f: fn(acc, l) {
+    acc
+      && !string_contains(s: l, pattern: "*")
+      && !string_contains(s: l, pattern: ";")
+      && !string_contains(s: l, pattern: "&")
+      && !string_contains(s: l, pattern: "|")
+      && !string_contains(s: l, pattern: "$")
+      && !string_contains(s: l, pattern: "`")
+  })
+}
+
+// RED CONTROL: an effect that does not escalate contributes no command even though it HAS an
+// actuation. This is the arm that keeps the grant from quietly including everything a realization
+// does -- the fold must consult escalation, not merely concatenate actuations.
+test fn red_control_non_escalating_effects_contribute_no_grant_line() -> Bool {
+  let actuation = length(match effect_actuation(effect: EnableLingerForOwnAccount, target: target_as(RootPrincipal)) { ActuatedByEscalation { commands: c } => c ActuatedByOwnerDirectly => [] })
+  let granted = length(realization_escalated_commands(realization: UserUnitRealization, target: target_as(RootPrincipal)))
+  actuation > 0 && granted == 0
+}
