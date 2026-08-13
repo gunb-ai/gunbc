@@ -39,8 +39,8 @@ import product.compute_board.simulation_receipt {
   run_of,
   executed_implementation_runs,
   interlock_bitstream_run,
-  interlock_bitstream_input,
-  interlock_place_and_route_input,
+  run_consumes_retained,
+  retained_input_blobs,
   run_input_is_upstream,
   interlock_pin_constraint_artifact,
   interlock_place_and_route_run,
@@ -232,7 +232,8 @@ test fn w_the_placed_constraints_are_what_the_product_emits_today() -> Bool {
 test fn w_synthesis_and_simulation_consumed_one_verilog_artifact() -> Bool {
   let synth = run_of(outcome: interlock_synthesis_run)
   let sim = run_of(outcome: interlock_verilog_run)
-  synth.artifact == sim.artifact && synth.artifact == interlock_verilog_artifact
+  run_consumes_retained(r: synth, blob: interlock_verilog_artifact)
+    && run_consumes_retained(r: sim, blob: interlock_verilog_artifact)
 }
 
 test fn w_every_recorded_implementation_run_was_accepted() -> Bool {
@@ -267,6 +268,15 @@ test fn w_each_implementation_run_reports_its_own_tool() -> Bool {
 // icepack consumes nextpnr's .asc. Neither .asc nor netlist is retained here, and claiming
 // otherwise is what the earlier revision effectively did.
 test fn w_downstream_runs_name_the_input_they_actually_consumed() -> Bool {
-  run_input_is_upstream(i: interlock_place_and_route_input)
-    && run_input_is_upstream(i: interlock_bitstream_input)
+  let pnr = run_of(outcome: interlock_place_and_route_run)
+  let pack = run_of(outcome: interlock_bitstream_run)
+  // Place-and-route consumes TWO things: the synthesized netlist it did not author, and the pin
+  // constraints this product emits. Both are named, which is what a single artifact field could
+  // not express — and is why the .pcf ended up standing in for the netlist.
+  let pnr_names_both = fold(pnr.inputs, init: false, f: fn(acc, i) { acc || run_input_is_upstream(i: i) })
+    && run_consumes_retained(r: pnr, blob: interlock_pin_constraint_artifact)
+  // icepack consumes only nextpnr'"'"'s .asc, which this receipt does not retain. It therefore
+  // carries no retained blob at all — previously it carried the .pcf, which it never read.
+  let pack_retains_nothing = fold(retained_input_blobs(r: pack), init: true, f: fn(acc, _b) { false })
+  pnr_names_both && pack_retains_nothing
 }

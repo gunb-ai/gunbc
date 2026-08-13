@@ -8,6 +8,10 @@ data simulation_receipt_note: String = "EXECUTED RECEIPTS, AND EXACTLY WHAT THEY
 // Which tool, at which observed version. The version is what the tool REPORTED when it ran, not
 // a version this repository requires — a required version is a policy fact and would belong with
 // the toolchain pin, while this is a property of the run that happened.
+type RunInput
+  = InputBytesRetained { blob: String }
+  | InputProducedUpstream { producer: NonEmptyStr, artifact_name: NonEmptyStr }
+
 type SimulationTool {
   subject: DeclarationRef
   reported_version: NonEmptyStr
@@ -15,10 +19,32 @@ type SimulationTool {
 
 // An observation of a run. The artifact is the exact bytes handed to the tool, so the join to
 // today's emission is a byte comparison rather than a description anybody has to trust.
+// A RUN'S INPUTS ARE A LIST, AND THAT IS WHAT THE EARLIER CONFUSION WAS ABOUT. A single artifact
+// field forced every run to name one blob, so place-and-route — which consumes a synthesized
+// netlist AND the pin constraints — had to pick one, picked the .pcf, and the bitstream run
+// copied it. Modelling the inputs as a list makes nextpnr's two inputs sayable and leaves icepack
+// with the one it actually has.
+//
+// Retained bytes and upstream-produced artifacts are different arms because only the first can be
+// compared to what the product emits today. An .asc is a large intermediate nothing here reads;
+// naming its producer is honest, and pointing the digest at a blob the row does not carry was not.
 type SimulationRun {
   tool: SimulationTool
-  artifact: String
+  inputs: List<RunInput>
   observation: String
+}
+
+fn retained_input_blobs(r: SimulationRun) -> List<String> {
+  fold(r.inputs, init: [], f: fn(acc, i) {
+    match i {
+      InputBytesRetained { blob: b } => concat(acc, [b])
+      InputProducedUpstream { producer: _, artifact_name: _ } => acc
+    }
+  })
+}
+
+fn run_consumes_retained(r: SimulationRun, blob: String) -> Bool {
+  fold(retained_input_blobs(r: r), init: false, f: fn(acc, b) { acc || b == blob })
 }
 
 type SimulationOutcome
@@ -54,7 +80,7 @@ data interlock_verilog_artifact: String = "module board_power_interlock (\n  inp
 data interlock_verilog_run: SimulationOutcome = SimulationAccepted {
   run: SimulationRun {
     tool: icarus_verilog_tool,
-    artifact: interlock_verilog_artifact,
+    inputs: [InputBytesRetained { blob: interlock_verilog_artifact }],
     observation: interlock_truth_table_observation,
   },
 }
@@ -70,7 +96,7 @@ data conditioning_network_artifact: String = "power-good conditioning network\nV
 data conditioning_network_run: SimulationOutcome = SimulationAccepted {
   run: SimulationRun {
     tool: ngspice_tool,
-    artifact: conditioning_network_artifact,
+    inputs: [InputBytesRetained { blob: conditioning_network_artifact }],
     observation: conditioning_network_operating_point,
   },
 }
@@ -152,7 +178,7 @@ data interlock_bitstream_observation: String = "icepack: 32220 byte bitstream, s
 data interlock_synthesis_run: SimulationOutcome = SimulationAccepted {
   run: SimulationRun {
     tool: yosys_tool,
-    artifact: interlock_verilog_artifact,
+    inputs: [InputBytesRetained { blob: interlock_verilog_artifact }],
     observation: interlock_synthesis_observation,
   },
 }
@@ -165,24 +191,13 @@ data interlock_synthesis_run: SimulationOutcome = SimulationAccepted {
 // the field beside it. The .asc is not carried: it is a large intermediate and nothing here reads
 // it, so the run names it rather than embedding it, which is the honest form of an artifact this
 // receipt did not retain.
-type RunInput
-  = InputBytesRetained { blob: String }
-  | InputProducedUpstream { producer: NonEmptyStr, artifact_name: NonEmptyStr }
-
-data interlock_place_and_route_input: RunInput = InputProducedUpstream {
-  producer: "yosys synth_ice40",
-  artifact_name: "synthesized netlist, constrained by interlock_pin_constraint_artifact",
-}
-
-data interlock_bitstream_input: RunInput = InputProducedUpstream {
-  producer: "nextpnr-ice40",
-  artifact_name: "placed and routed .asc",
-}
-
 data interlock_place_and_route_run: SimulationOutcome = SimulationAccepted {
   run: SimulationRun {
     tool: nextpnr_tool,
-    artifact: interlock_pin_constraint_artifact,
+    inputs: [
+      InputProducedUpstream { producer: "yosys synth_ice40", artifact_name: "synthesized netlist" },
+      InputBytesRetained { blob: interlock_pin_constraint_artifact },
+    ],
     observation: interlock_place_and_route_observation,
   },
 }
@@ -190,7 +205,7 @@ data interlock_place_and_route_run: SimulationOutcome = SimulationAccepted {
 data interlock_bitstream_run: SimulationOutcome = SimulationAccepted {
   run: SimulationRun {
     tool: icepack_tool,
-    artifact: interlock_pin_constraint_artifact,
+    inputs: [InputProducedUpstream { producer: "nextpnr-ice40", artifact_name: "placed and routed .asc" }],
     observation: interlock_bitstream_observation,
   },
 }
