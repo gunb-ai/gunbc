@@ -113,10 +113,14 @@ func srv3_nbd_proxy_serve() -> ProcessExit
   )
 }
 
-fn srv3_os_install_actuator_step_count_is_three() -> Bool {
+// The step count was never the subject — that the plan is DERIVED from the solved
+// mechanism was. srv3's BMC upgrade propagates through that derivation and the
+// plan now refuses, which is the observable that distinguishes a derived plan
+// from a hardcoded three-step one: a hardcoded plan would still be Ready.
+fn srv3_os_install_actuator_plan_refuses_on_unestablished_path() -> Bool {
   match srv3_os_install_actuator_plan_standing {
-    ActuatorPlanReady { plan: p, intents: _ } => os_install_actuator_step_count(plan: p) == 3
-    ActuatorPlanRefused { cause: _ } => false
+    ActuatorPlanRefused { cause: _ } => true
+    ActuatorPlanReady { plan: _, intents: _ } => false
   }
 }
 

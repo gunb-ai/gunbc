@@ -6,6 +6,10 @@ Nothing here depends on CI2 context: the subject is *which std substrate modules
 frontend can ingest, and at which stage the ones it cannot fail*. It bears on the self-host
 frontier and on anything that assumes `dag/std/**` + `src/v2/std/**` are ingestible.
 
+**Superseded for scheduling, preserved as history.** This receipt is revision-scoped to
+`e588031201` and stays unchanged. A later exact-head re-observation found two of its rows moved:
+[the partial exact-head re-observation](v2-frontend-std-ingestion-frontier-exact-head.md).
+
 ## How it was measured
 
 Each module's source text was driven through the canonical v2 frontend fns in sequence —

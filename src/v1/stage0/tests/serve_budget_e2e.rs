@@ -78,7 +78,6 @@ fn workspace_root() -> PathBuf {
 
 struct ServeProcess {
     child: Child,
-    port: u16,
 }
 
 impl Drop for ServeProcess {
@@ -127,7 +126,7 @@ fn spawn_serve(port: u16, cpu_ms: Option<u64>, wall_ms: Option<u64>) -> ServePro
         .spawn()
         .expect("spawn gunbc serve");
 
-    let proc = ServeProcess { child, port };
+    let proc = ServeProcess { child };
 
     // Poll the socket rather than the log: binding is the fact we need, and reading it from the
     // listener itself cannot disagree with reality the way a log line can.

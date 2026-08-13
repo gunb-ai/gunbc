@@ -38,10 +38,10 @@ use crate::v1_std_core::{
     field_access_base, field_access_field_at, field_init_node_name_at, field_init_node_value,
     has_child_named, inferred_to_node, intern, is_discovery_corpus_blocking_diagnostic,
     is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
-    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
-    param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
-    ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex,
-    Node,
+    make_error_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
+    module_items, no_span, param_node_name_at, param_node_type_expr, Cardinality,
+    CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable,
+    MatchPattern, NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -51,10 +51,10 @@ pub(crate) mod materialization_provider_consumer;
 mod phase_profile;
 pub(crate) mod test_module_hygiene_bridge;
 pub use floor_discovery_snapshot::{
-    append_discovery_trace_row, build_floor_discovery_request, coordinated_discovery_compute_count,
-    discover_floor_witness_roster_with_snapshot, floor_discovery_consumer_role_from_env,
+    append_discovery_trace_row, build_floor_discovery_request,
+    discover_floor_witness_roster_with_snapshot, floor_tested_commit_and_tree, floor_tool_identity,
     request_identity_digest, verify_floor_discovery_terminal_for_coordinator,
-    FloorDiscoveryConsumerRole, FLOOR_DISCOVERY_CONSUMER_ENV,
+    FloorDiscoveryConsumerRole,
 };
 #[doc(hidden)]
 pub use materialization_provider_consumer::{
@@ -3411,6 +3411,16 @@ pub fn compile_clean_vec_advisory_count(diagnostics: &Rc<Vec<Rc<ErrorNode>>>) ->
         .count()
 }
 
+fn format_compile_clean_hard_diagnostic_line(d: &Rc<ErrorNode>) -> String {
+    let span = diagnostic_to_span(d.diagnostic.clone());
+    let msg = diagnostic_to_message(d.diagnostic.clone());
+    if span.file.is_empty() {
+        format!("compile-clean: {msg}")
+    } else {
+        format!("compile-clean: {}: {}", span.file, msg)
+    }
+}
+
 fn eprint_compile_clean_hard_diagnostics(diagnostics: &im::Vector<Rc<ErrorNode>>) {
     const SHOWN_LIMIT: usize = 20;
     let mut shown = 0usize;
@@ -3422,10 +3432,7 @@ fn eprint_compile_clean_hard_diagnostics(diagnostics: &im::Vector<Rc<ErrorNode>>
     {
         total += 1;
         if shown < SHOWN_LIMIT {
-            eprintln!(
-                "compile-clean: {}",
-                diagnostic_to_message(d.diagnostic.clone())
-            );
+            eprintln!("{}", format_compile_clean_hard_diagnostic_line(d));
             shown += 1;
         }
     }
@@ -3489,6 +3496,71 @@ fn compile_clean_departed_paths_outside_docs(
         "departed_paths",
         &paths,
     )
+}
+
+/// Module paths in the compile-clean closure (format-independent identity — see
+/// `gunbc compile` census_only_sources wiring in main.rs).
+fn compile_clean_closure_module_paths(
+    compiled: &[Rc<v1_compiler_compile::SourceFile>],
+) -> HashSet<String> {
+    compiled
+        .iter()
+        .filter_map(|s| extract_module_path(&s.content))
+        .collect()
+}
+
+/// Indexed pool modules outside the compile closure enter the name census only
+/// (fill = whole tree; policy gates lookup, never fill).
+fn compile_clean_census_only_sources_for_compiled(
+    index: &MultiEntryIndex,
+    compiled: &[Rc<v1_compiler_compile::SourceFile>],
+) -> Vec<Rc<v1_compiler_compile::SourceFile>> {
+    let closure_modules = compile_clean_closure_module_paths(compiled);
+    let mut pool_rest: Vec<(String, Rc<v1_compiler_compile::SourceFile>)> = index
+        .source_files
+        .iter()
+        .filter(|(module_path, _)| !closure_modules.contains(*module_path))
+        .map(|(module_path, source)| (module_path.clone(), source.clone()))
+        .collect();
+    pool_rest.sort_by(|a, b| a.0.cmp(&b.0));
+    pool_rest.into_iter().map(|(_, source)| source).collect()
+}
+
+/// Parse-grade census fill (annotation binding + parse errors). Used for
+/// out-of-closure modules (#8204) and must run independently of semantic
+/// resolve — a resolve refusal must not hide the annotation population.
+fn compile_clean_census_fill_hard_diagnostics(
+    census_only: &[Rc<v1_compiler_compile::SourceFile>],
+) -> im::Vector<Rc<ErrorNode>> {
+    if census_only.is_empty() {
+        return im::Vector::new();
+    }
+    let fill = v1_compiler_compile::parse_census_fill_sources(Rc::new(census_only.to_vec().into()));
+    fill.diagnostics
+        .iter()
+        .filter(|d| compile_clean_diagnostic_is_hard(d))
+        .cloned()
+        .collect()
+}
+
+fn compile_clean_pipeline_options_for_sources(
+    index: Option<&MultiEntryIndex>,
+    compiled: &[Rc<v1_compiler_compile::SourceFile>],
+) -> Rc<v1_compiler_compile::CompilePipelineOptions> {
+    let census_only = index
+        .map(|idx| compile_clean_census_only_sources_for_compiled(idx, compiled))
+        .unwrap_or_default();
+    if census_only.is_empty() {
+        return v1_compiler_compile::default_compile_pipeline_options();
+    }
+    eprintln!(
+        "[census] {} indexed modules outside the compile-clean closure enter the name census only (not compiled)",
+        census_only.len()
+    );
+    Rc::new(v1_compiler_compile::CompilePipelineOptions {
+        analyze_complexity: false,
+        census_only_sources: Rc::new(census_only.into()),
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -4931,12 +5003,7 @@ fn format_first_compile_clean_hard_diagnostic(diagnostics: &im::Vector<Rc<ErrorN
     diagnostics
         .iter()
         .find(|d| compile_clean_diagnostic_is_hard(d))
-        .map(|d| {
-            format!(
-                "compile-clean: {}",
-                diagnostic_to_message(d.diagnostic.clone())
-            )
-        })
+        .map(format_compile_clean_hard_diagnostic_line)
         .unwrap_or_else(|| {
             "dag compile-clean gate failed: no hard diagnostic located in compile receipt"
                 .to_string()
@@ -5035,9 +5102,17 @@ fn disable_floor_compile_clean_lazy_install_for_test() {
 /// and precisely BECAUSE it shares no caches with the via-index path it is the
 /// standing second opinion for verdict equivalence
 /// (`compile_clean_via_index_verdict_equivalence` tests).
-fn floor_compile_clean_emit_ok(sources: Vec<Rc<v1_compiler_compile::SourceFile>>) -> bool {
+fn floor_compile_clean_emit_ok(
+    sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    index: Option<&MultiEntryIndex>,
+) -> bool {
     use crate::v1_compiler_artifact::RenderTarget;
-    let result = v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
+    let options = compile_clean_pipeline_options_for_sources(index, &sources);
+    let result = v1_compiler_compile::compile_sources_with_options(
+        Rc::new(sources.into()),
+        RenderTarget::Dag,
+        options,
+    );
     let has_hard_errors = compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref());
     if has_hard_errors {
         eprint_compile_clean_hard_diagnostics(result.diagnostics.as_ref());
@@ -5061,6 +5136,12 @@ fn floor_compile_clean_emit_ok_via_index(
     use crate::v1_compiler_artifact::RenderTarget;
     use crate::v1_compiler_complexity::empty_complexity_report;
     let index = process_shared_index(index_roots);
+    let census_only = compile_clean_census_only_sources_for_compiled(&index, &sources);
+    // #8204 out-of-closure fill runs independently of resolve: an earlier
+    // resolution refusal must not mask SourceAnnotationRefused in the rest of
+    // the indexed pool. Compiled-file admission is the via-index parse itself
+    // (`tokenize_artifact` + `admit_source_annotations`).
+    let census_fill_diags = compile_clean_census_fill_hard_diagnostics(&census_only);
     let (graph, si, compile_clean_diags) = match resolved_graph_from_sources_with_index(
         &index,
         sources,
@@ -5072,15 +5153,31 @@ fn floor_compile_clean_emit_ok_via_index(
     ) {
         Ok(resolved) => resolved,
         Err(msg) => {
+            if !census_fill_diags.is_empty() {
+                eprint_compile_clean_hard_diagnostics(&census_fill_diags);
+                let census_msg = format_first_compile_clean_hard_diagnostic(&census_fill_diags);
+                eprintln!("compile-clean: hard diagnostics:\n{msg}");
+                return (false, format!("{census_msg}\ncompile-clean: {msg}"));
+            }
             eprintln!("compile-clean: hard diagnostics:\n{msg}");
             return (false, format!("compile-clean: {msg}"));
         }
     };
-    if compile_clean_pipeline_has_hard_errors(compile_clean_diags.as_ref()) {
-        eprint_compile_clean_hard_diagnostics(compile_clean_diags.as_ref());
+    let all_compile_clean_diags = if census_fill_diags.is_empty() {
+        compile_clean_diags.clone()
+    } else {
+        let mut merged = compile_clean_diags
+            .iter()
+            .cloned()
+            .collect::<im::Vector<_>>();
+        merged.extend(census_fill_diags.iter().cloned());
+        Rc::new(merged)
+    };
+    if compile_clean_pipeline_has_hard_errors(all_compile_clean_diags.as_ref()) {
+        eprint_compile_clean_hard_diagnostics(all_compile_clean_diags.as_ref());
         return (
             false,
-            format_first_compile_clean_hard_diagnostic(compile_clean_diags.as_ref()),
+            format_first_compile_clean_hard_diagnostic(all_compile_clean_diags.as_ref()),
         );
     }
     let newline_indices: Rc<im::Vector<Rc<NewlineIndex>>> =
@@ -5680,7 +5777,13 @@ pub fn witness_layer_roots_compile_clean_check() -> bool {
     match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
         Ok(None) => true,
         Ok(Some(sources)) => {
-            let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+            let roots = witness_layer_roots();
+            let index = build_multi_entry_index_primary_precedence(&roots);
+            let options = compile_clean_pipeline_options_for_sources(Some(&index), &sources);
+            let result = v1_compiler_compile::compile_to_resolved_with_options(
+                Rc::new(sources.into()),
+                options,
+            );
             if compile_clean_resolve_has_hard_errors(&result) {
                 eprint_compile_clean_hard_diagnostics(result.diagnostics.as_ref());
                 false
@@ -5701,7 +5804,11 @@ pub fn witness_layer_roots_compile_clean_check() -> bool {
 pub fn witness_layer_roots_compile_clean_emit_check() -> bool {
     match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
         Ok(None) => true,
-        Ok(Some(sources)) => floor_compile_clean_emit_ok(sources),
+        Ok(Some(sources)) => {
+            let roots = witness_layer_roots();
+            let index = build_multi_entry_index_primary_precedence(&roots);
+            floor_compile_clean_emit_ok(sources, Some(&index))
+        }
         Err(msg) => {
             eprintln!("compile-clean emit: source load failed ({msg})");
             false
@@ -5843,7 +5950,6 @@ pub fn import_closure_from_facts(
 /// corpus on every `resolve_transitively` call (Phase 1 perf receipt, DESIGN §2).
 #[derive(Clone)]
 pub struct ModuleGraphFactsLive {
-    pub(crate) edges: Vec<ImportResolutionFactRaw>,
     pub(crate) nodes: Vec<ModuleDeclarationFactRaw>,
     pub(crate) adjacency: HashMap<String, Vec<String>>,
     // Workspace-relative paths of `nodes`, precomputed once per facts build: the
@@ -5870,17 +5976,17 @@ pub struct ModuleGraphFactsLive {
     // a known-empty dependency set and a precise `{self}` closure.
     pub(crate) reference_unaccounted: HashSet<String>,
     // Reverse of `build_import_adjacency`'s internal `module_to_path`: declared module name by
-    // repo path. Built once here so `reference_only_direct_import_modules` (the typed-module
-    // content-key's reference-derived import term) does not re-derive it per module.
+    // repo path, built once per facts build. Read by the discovery witness run loop (a witness
+    // entry with no module identity refuses rather than fabricating a `DeclarationRef`) and by
+    // `declared_source_refs_axis_for_entry`, which used to rebuild this same map per entry.
     pub(crate) path_to_module: HashMap<String, String>,
-    // Every in-scope `.dag` path the importer walk SAW on disk (whether or not it produced
-    // facts), and every observed path whose content read refused. The producers skip an
-    // unreadable file at scan time, so without these rows a vanished module is
-    // indistinguishable from an absent one — the fail-open undercount every consumer of these
-    // facts must refuse on, never absorb (operator review 2026-07-28, PR #7384). The
-    // inert-lens census this arm was written for is deleted (gunbc#8141); effect-reach
-    // derivation and the cross-worker snapshot transport are the live consumers.
-    pub(crate) observed_paths: HashSet<String>,
+    // The producers skip an unreadable file at scan time, so a vanished module would be
+    // indistinguishable from an absent one; every recorded refusal therefore stops the build
+    // (`refuse_on_module_graph_read_refusals`) rather than being absorbed (operator review
+    // 2026-07-28, PR #7384). The companion `observed_paths` INVENTORY is deliberately not
+    // retained here: it is produced and asserted on at the observation
+    // (`ImportResolutionObservation`), and no consumer of the facts ever read it, so keeping it
+    // on this struct only widened the cross-worker snapshot payload (gunbc Cut 4).
     pub(crate) read_refusals: Vec<(String, String)>,
 }
 
@@ -6200,7 +6306,7 @@ mod compile_clean_via_index_verdict_equivalence {
         }
 
         fn verdicts(&self) -> (bool, bool) {
-            let raw = floor_compile_clean_emit_ok(self.sources.clone());
+            let raw = floor_compile_clean_emit_ok(self.sources.clone(), None);
             let via_index =
                 floor_compile_clean_emit_ok_via_index(self.sources.clone(), &self.roots).0;
             (raw, via_index)
@@ -6248,6 +6354,268 @@ mod compile_clean_via_index_verdict_equivalence {
         assert!(
             !via_index,
             "via-index path must red on an unresolved import"
+        );
+    }
+
+    /// §5 discriminating RED: a `SourceAnnotationRefused` in a module outside the
+    /// scoped compile-clean closure must surface through whole-tree census fill —
+    /// compiling only the affected entry must not hide annotation debt elsewhere.
+    #[test]
+    fn out_of_closure_annotation_refusal_blocks_scoped_compile_clean() {
+        let corpus = Corpus::new(
+            "annotation-census",
+            &[
+                ("good.dag", "module eqv.good\ndata probe: Int = 42\n"),
+                (
+                    "bad.dag",
+                    "module eqv.bad\n\ndata alpha: String = \"a\" // trailing prose\n",
+                ),
+            ],
+        );
+        let compiled = vec![corpus.sources[0].clone()];
+        let index = super::build_multi_entry_index_primary_precedence(&corpus.roots);
+
+        assert!(
+            floor_compile_clean_emit_ok(compiled.clone(), None),
+            "the compile closure alone is green when census fill is omitted"
+        );
+        assert!(
+            !floor_compile_clean_emit_ok(compiled.clone(), Some(&index)),
+            "whole-tree census fill must surface out-of-closure annotation refusal on the raw path"
+        );
+        assert!(
+            !floor_compile_clean_emit_ok_via_index(compiled, &corpus.roots).0,
+            "whole-tree census fill must surface out-of-closure annotation refusal on the via-index path"
+        );
+    }
+
+    /// Discriminating A: a BodyGrain annotation on a file IN the compile closure
+    /// must red via-index. #8204's out-of-closure fill cannot explain this — the
+    /// annotated file is the compiled set, so census_only is empty.
+    #[test]
+    fn in_closure_body_grain_blocks_via_index_compile_clean() {
+        let corpus = Corpus::new(
+            "in-closure-body",
+            &[(
+                "body.dag",
+                "module eqv.body_grain\nfn probe(x: Int) -> Int {\n  // in-body prose\n  x\n}\n",
+            )],
+        );
+        let raw = floor_compile_clean_emit_ok(corpus.sources.clone(), None);
+        let (via_ok, detail) =
+            floor_compile_clean_emit_ok_via_index(corpus.sources.clone(), &corpus.roots);
+        assert!(!raw, "raw pipeline must red on in-closure BodyGrain");
+        assert!(
+            !via_ok,
+            "via-index must red on in-closure BodyGrain; #8204 census_only is empty here"
+        );
+        assert!(
+            detail.contains("inside a declaration body"),
+            "via-index must report BodyGrainNotModeled, got {detail}"
+        );
+        assert!(
+            detail.contains("body.dag"),
+            "compile-clean must name the refusing file, got {detail}"
+        );
+    }
+
+    /// Discriminating A: UnattachedAtScopeEnd on a compiled file must red via-index.
+    #[test]
+    fn in_closure_unattached_blocks_via_index_compile_clean() {
+        let corpus = Corpus::new(
+            "in-closure-unattached",
+            &[(
+                "unattached.dag",
+                "module eqv.unattached\ndata probe: Int = 42\n\n// leftover with no following subject\n",
+            )],
+        );
+        let raw = floor_compile_clean_emit_ok(corpus.sources.clone(), None);
+        let (via_ok, detail) =
+            floor_compile_clean_emit_ok_via_index(corpus.sources.clone(), &corpus.roots);
+        assert!(
+            !raw,
+            "raw pipeline must red on in-closure UnattachedAtScopeEnd"
+        );
+        assert!(
+            !via_ok,
+            "via-index must red on in-closure UnattachedAtScopeEnd"
+        );
+        assert!(
+            detail.contains("names no subject"),
+            "via-index must report UnattachedAtScopeEnd, got {detail}"
+        );
+    }
+
+    /// Positive control: a leading module-item annotation is admitted. A must not
+    /// refuse the class the frontend already accepts.
+    #[test]
+    fn in_closure_leading_annotation_stays_green_via_index() {
+        let corpus = Corpus::new(
+            "in-closure-leading",
+            &[(
+                "leading.dag",
+                "module eqv.leading\n\n// about probe\ndata probe: Int = 42\n",
+            )],
+        );
+        let (raw, via_index) = corpus.verdicts();
+        assert!(raw, "raw pipeline must stay green on leading item prose");
+        assert!(via_index, "via-index must stay green on leading item prose");
+    }
+
+    /// Ordering: in-closure BodyGrain must surface even when resolve also fails.
+    /// Admission runs in the via-index parse, before resolve, so the class cannot
+    /// hide behind an unresolved import.
+    #[test]
+    fn in_closure_body_grain_does_not_hide_behind_resolve_refusal() {
+        let corpus = Corpus::new(
+            "in-closure-body-masked",
+            &[(
+                "masked.dag",
+                "module eqv.masked\nimport totally.nonexistent.module { Foo }\nfn probe(x: Int) -> Int {\n  // in-body prose\n  x\n}\n",
+            )],
+        );
+        let (via_ok, detail) =
+            floor_compile_clean_emit_ok_via_index(corpus.sources.clone(), &corpus.roots);
+        assert!(!via_ok, "combined resolve+annotation refusal must stay red");
+        assert!(
+            detail.contains("inside a declaration body"),
+            "BodyGrain must remain visible when resolve also refuses, got {detail}"
+        );
+    }
+
+    /// #8204 ordering: out-of-closure trailing refusal must surface even when the
+    /// compiled closure fails resolve. Census fill runs independently of resolve.
+    #[test]
+    fn out_of_closure_annotation_does_not_hide_behind_resolve_refusal() {
+        let corpus = Corpus::new(
+            "census-masked",
+            &[
+                (
+                    "unresolved.dag",
+                    "module eqv.unresolved\nimport totally.nonexistent.module { Foo }\nfn probe() -> Int { 42 }\n",
+                ),
+                (
+                    "bad.dag",
+                    "module eqv.bad\n\ndata alpha: String = \"a\" // trailing prose\n",
+                ),
+            ],
+        );
+        let compiled = vec![corpus.sources[0].clone()];
+        let (via_ok, detail) = floor_compile_clean_emit_ok_via_index(compiled, &corpus.roots);
+        assert!(!via_ok, "resolve refusal must stay red");
+        assert!(
+            detail.contains("follows code on its own line")
+                || detail.contains("(annotation-trailing)")
+                || detail.contains("Trailing placement"),
+            "out-of-closure trailing refusal must remain visible when resolve also refuses, got {detail}"
+        );
+    }
+
+    /// Warm parse_cache must not erase compiled-file admission: a second via-index
+    /// compile-clean of the same in-closure BodyGrain corpus still reds.
+    #[test]
+    fn in_closure_body_grain_reds_on_warm_parse_cache() {
+        let corpus = Corpus::new(
+            "in-closure-body-warm",
+            &[(
+                "body.dag",
+                "module eqv.body_grain_warm\nfn probe(x: Int) -> Int {\n  // in-body prose\n  x\n}\n",
+            )],
+        );
+        let first = floor_compile_clean_emit_ok_via_index(corpus.sources.clone(), &corpus.roots);
+        let second = floor_compile_clean_emit_ok_via_index(corpus.sources.clone(), &corpus.roots);
+        assert!(!first.0, "first via-index must red, got {}", first.1);
+        assert!(
+            !second.0,
+            "warm parse_cache must not drop BodyGrain admission, got {}",
+            second.1
+        );
+        assert!(
+            second.1.contains("inside a declaration body"),
+            "warm via-index must still report BodyGrainNotModeled, got {}",
+            second.1
+        );
+    }
+
+    /// `handle_serve` resolves `Memoize`, consumes `compile_clean_diags`, and shares
+    /// `process_shared_index`. An Ephemeral compile-clean warms parse_cache without
+    /// joining `resolved_graph_memo`, so the subsequent Memoize is a parse_cache hit
+    /// and a memo miss — admission must not depend on that cache state.
+    #[test]
+    fn in_closure_body_grain_reds_on_warm_parse_cache_under_memoize() {
+        let corpus = Corpus::new(
+            "in-closure-body-warm-memoize",
+            &[(
+                "body.dag",
+                "module eqv.body_grain_warm_memoize\nfn probe(x: Int) -> Int {\n  // in-body prose\n  x\n}\n",
+            )],
+        );
+        let index = super::process_shared_index(&corpus.roots);
+        let first = super::resolved_graph_from_sources_with_index(
+            &index,
+            corpus.sources.clone(),
+            super::ResolveTypecheckGate::Strict,
+            "ephemeral-warm",
+            super::ResolvedGraphMemoShare::Ephemeral,
+        )
+        .expect("BodyGrain is an annotation refusal, not a parse/resolve refusal");
+        assert!(
+            first.2.iter().any(super::compile_clean_diagnostic_is_hard),
+            "cold Ephemeral must contribute BodyGrain, got {}",
+            super::format_first_compile_clean_hard_diagnostic(first.2.as_ref())
+        );
+        let second = super::resolved_graph_from_sources_with_index(
+            &index,
+            corpus.sources.clone(),
+            super::ResolveTypecheckGate::Strict,
+            "memoize-serve",
+            super::ResolvedGraphMemoShare::Memoize,
+        )
+        .expect("Memoize via-index must assemble");
+        let detail = super::format_first_compile_clean_hard_diagnostic(second.2.as_ref());
+        assert!(
+            second.2.iter().any(super::compile_clean_diagnostic_is_hard),
+            "handle_serve Memoize on a warm parse_cache must still see BodyGrain, got {detail}"
+        );
+        assert!(
+            detail.contains("inside a declaration body"),
+            "warm Memoize must still report BodyGrainNotModeled, got {detail}"
+        );
+    }
+
+    /// Attribution installs an annotation-erasing parse (`annotation_diags: None`).
+    /// A later Memoize via-index of that file must still admit.
+    #[test]
+    fn in_closure_body_grain_reds_after_erasing_parse_cache_install() {
+        let corpus = Corpus::new(
+            "in-closure-body-erasing-install",
+            &[(
+                "body.dag",
+                "module eqv.body_grain_erasing\nfn probe(x: Int) -> Int {\n  // in-body prose\n  x\n}\n",
+            )],
+        );
+        let index = super::process_shared_index(&corpus.roots);
+        super::parse_module_node_from_index_source(&index, corpus.sources[0].clone())
+            .expect("erasing attribution parse must succeed");
+        let resolved = super::resolved_graph_from_sources_with_index(
+            &index,
+            corpus.sources.clone(),
+            super::ResolveTypecheckGate::Strict,
+            "memoize-after-erasing",
+            super::ResolvedGraphMemoShare::Memoize,
+        )
+        .expect("Memoize via-index must assemble");
+        let detail = super::format_first_compile_clean_hard_diagnostic(resolved.2.as_ref());
+        assert!(
+            resolved
+                .2
+                .iter()
+                .any(super::compile_clean_diagnostic_is_hard),
+            "Memoize after an erasing parse_cache install must still see BodyGrain, got {detail}"
+        );
+        assert!(
+            detail.contains("inside a declaration body"),
+            "erasing-install Memoize must still report BodyGrainNotModeled, got {detail}"
         );
     }
 
@@ -6396,14 +6764,12 @@ pub(crate) fn build_module_graph_facts_live_uncached(
         .map(|n| (workspace_relative_repo_path(&n.path), n.module.clone()))
         .collect();
     ModuleGraphFactsLive {
-        edges,
         nodes,
         adjacency,
         selection_adjacency,
         declared_paths,
         reference_unaccounted,
         path_to_module,
-        observed_paths: observation.observed_paths,
         read_refusals: observation.read_refusals,
     }
 }
@@ -6418,16 +6784,6 @@ pub fn build_module_graph_facts_live(pool_roots: &[String]) -> ModuleGraphFactsL
         cache.borrow_mut().insert(key, facts.clone());
         facts
     })
-}
-
-pub(crate) fn install_module_graph_facts_cache_entry(
-    pool_roots: &[String],
-    facts: ModuleGraphFactsLive,
-) {
-    let key = pool_roots_for_module_graph_closure(pool_roots).join("\u{1f}");
-    MODULE_GRAPH_FACTS_CACHE.with(|cache| {
-        cache.borrow_mut().insert(key, facts);
-    });
 }
 
 /// Host realization of `v2.lens.module_graph.import_closure_live`.
@@ -6470,16 +6826,6 @@ impl ModuleGraphFactsLive {
     /// imports are already covered by `resolved.resolved_imports`, so this returns empty for it
     /// (`adjacency` and `selection_adjacency` agree on such a file — see
     /// `reference_resolution_facts` pass 2).
-    pub(crate) fn reference_only_direct_import_modules(
-        &self,
-        importer_repo_path: &str,
-    ) -> Vec<String> {
-        self.reference_only_direct_import_paths(importer_repo_path)
-            .into_iter()
-            .filter_map(|p| self.path_to_module.get(&p).cloned())
-            .collect()
-    }
-
     /// Workspace-relative repo paths `importer_repo_path` depends on ONLY through a strict-tier
     /// reference edge (`selection_adjacency` minus `adjacency`). The path-grain authority
     /// `selection_adjacency` already carries; module names are derived only for diagnostics.
@@ -9294,6 +9640,22 @@ mod live_read_selection_manifest_producer_tests {
     }
 }
 
+/// Per-file parse memo for `resolved_graph_from_sources_with_index`.
+///
+/// `annotation_diags` is `Some` when this entry was installed by a parse that ran
+/// `admit_source_annotations`. `None` means an annotation-erasing `tokenize`
+/// installed it (attribution). Via-index must still admit on `None`, and must
+/// consume `Some` on every `ResolvedGraphMemoShare` — `handle_serve` resolves
+/// `Memoize`, reads `compile_clean_diags`, and shares `process_shared_index`'s
+/// cache. Gating re-admission on `Ephemeral` made admission depend on cache
+/// state rather than source content.
+#[derive(Clone)]
+struct ParseCacheEntry {
+    parse_result: Rc<v1_compiler_parse::ParseResult>,
+    newline_index: Rc<NewlineIndex>,
+    annotation_diags: Option<Rc<im::Vector<Rc<ErrorNode>>>>,
+}
+
 pub struct MultiEntryIndex {
     /// Opaque identity of THIS index, minted at construction (see `next_index_generation`).
     generation: u64,
@@ -9335,9 +9697,7 @@ pub struct MultiEntryIndex {
     cross_worker_store: Option<Arc<RwLock<SharedTypecheckCaches>>>,
     /// Per-index intern table — paired with `parse_cache` on this worker (never shared).
     intern_table: RefCell<Rc<InternTable>>,
-    parse_cache: RefCell<
-        std::collections::HashMap<String, (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>)>,
-    >,
+    parse_cache: RefCell<std::collections::HashMap<String, ParseCacheEntry>>,
     normalize_diag_cache: RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<ErrorNode>>>>>,
     ownership_diag_cache: RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<ErrorNode>>>>>,
     /// The source roots this index was built from — the tree identities behind the
@@ -13262,6 +13622,131 @@ fn cross_process_cache_integrity_refusal(reason: CacheRejectReason) -> String {
     }
 }
 
+fn via_index_source_annotation_diagnostics(
+    source: &v1_compiler_compile::SourceFile,
+    occurrence_transport: Rc<crate::std_occurrence_identity::OccurrenceTransport>,
+    captures: Rc<im::Vector<Rc<crate::std_source_annotation::UnboundAnnotationCapture>>>,
+) -> im::Vector<Rc<ErrorNode>> {
+    let bound = v1_compiler_compile::admit_source_annotations(
+        occurrence_transport,
+        captures,
+        v1_rt::string_length(&source.content),
+    );
+    bound
+        .diagnostics
+        .iter()
+        .cloned()
+        .map(|d| make_error_node(d, source.path.clone()))
+        .collect()
+}
+
+/// Census-fill admission for a parse_cache hit that never ran `admit_source_annotations`.
+/// Filters to `SourceAnnotationRefused` because that is all `admit_source_annotations`
+/// emits today (both sites in `v1_compiler_annotation_bind`). The miss path keeps
+/// every diagnostic that function returns; the two agree until a third diagnostic
+/// appears — latent coupling, not a live divergence.
+fn via_index_census_fill_annotation_diags(
+    source: &Rc<v1_compiler_compile::SourceFile>,
+) -> im::Vector<Rc<ErrorNode>> {
+    let fill = v1_compiler_compile::parse_census_fill_sources(Rc::new(vec![source.clone()].into()));
+    fill.diagnostics
+        .iter()
+        .filter(|d| {
+            matches!(
+                d.diagnostic.as_ref(),
+                CompilerDiagnostic::SourceAnnotationRefused { .. }
+            )
+        })
+        .cloned()
+        .collect()
+}
+
+/// Parse one via-index source, admitting annotations into the cache entry so a later
+/// `Memoize` consumer (`handle_serve`) cannot observe a different population than a
+/// cold parse of the same bytes.
+fn via_index_parse_one_source(
+    index: &MultiEntryIndex,
+    source: &Rc<v1_compiler_compile::SourceFile>,
+) -> ParseCacheEntry {
+    let cached = index.parse_cache.borrow().get(&source.path).cloned();
+    if let Some(entry) = cached {
+        if entry.annotation_diags.is_some() {
+            return entry;
+        }
+        let refused = via_index_census_fill_annotation_diags(source);
+        let upgraded = ParseCacheEntry {
+            annotation_diags: Some(Rc::new(refused)),
+            ..entry
+        };
+        index
+            .parse_cache
+            .borrow_mut()
+            .insert(source.path.clone(), upgraded.clone());
+        return upgraded;
+    }
+    // Ordinary frontend (`front_end_sources`) keeps tokenize_artifact
+    // captures and admits them against this file's occurrence transport.
+    // Annotation-erasing `tokenize` here let a touched in-closure file
+    // compile on the floor while missing the class #8204 claims to close.
+    let artifact =
+        v1_compiler_tokenize::tokenize_artifact(source.content.clone(), source.path.clone());
+    let nl_index = build_newline_index(source.path.clone(), source.content.clone());
+    let current_table = index.intern_table.borrow().clone();
+    let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
+        let mut m = HashMap::new();
+        m.insert(source.path.clone(), nl_index.clone());
+        m
+    });
+    let parsed =
+        v1_compiler_parse::parse_with_table(artifact.tokens.clone(), single_si, current_table);
+    *index.intern_table.borrow_mut() = parsed.intern_table.clone();
+    let annotation_diags = via_index_source_annotation_diagnostics(
+        source,
+        parsed.occurrence_transport.clone(),
+        artifact.annotations.clone(),
+    );
+    let entry = ParseCacheEntry {
+        parse_result: parsed.result.clone(),
+        newline_index: nl_index,
+        annotation_diags: Some(Rc::new(annotation_diags)),
+    };
+    index
+        .parse_cache
+        .borrow_mut()
+        .insert(source.path.clone(), entry.clone());
+    entry
+}
+
+fn join_via_index_stage_refusal(
+    annotation_diags: &im::Vector<Rc<ErrorNode>>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    stage_err: String,
+) -> String {
+    if annotation_diags.is_empty() {
+        return stage_err;
+    }
+    let annotation_err = format_error_nodes(&Rc::new(annotation_diags.clone()), source_indices);
+    if annotation_err.is_empty() {
+        return stage_err;
+    }
+    if stage_err.is_empty() {
+        return annotation_err;
+    }
+    format!("{annotation_err}\n{stage_err}")
+}
+
+fn prepend_via_index_annotation_diags(
+    annotation_diags: im::Vector<Rc<ErrorNode>>,
+    compile_clean_diags: Rc<im::Vector<Rc<ErrorNode>>>,
+) -> Rc<im::Vector<Rc<ErrorNode>>> {
+    if annotation_diags.is_empty() {
+        return compile_clean_diags;
+    }
+    let mut merged = annotation_diags;
+    merged.extend(compile_clean_diags.iter().cloned());
+    Rc::new(merged)
+}
+
 /// The sources-taking core of `resolve_entry_with_parse_cache`: parse → resolve →
 /// normalize → `reconcile_with_typed_cache` → ownership, every stage through the
 /// index's per-module memo tiers (parse/normalize/typed/ownership caches + the
@@ -13383,34 +13868,17 @@ fn resolved_graph_from_sources_with_index(
     let mut modules: Vec<Rc<Node>> = Vec::new();
     let mut si_map: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
     let mut parse_error_msgs: Vec<String> = Vec::new();
+    let mut annotation_diags: im::Vector<Rc<ErrorNode>> = im::Vector::new();
 
     let parse_started = std::time::Instant::now();
     for source in &sources {
         note_source_hash(index, source);
-        let cached = index.parse_cache.borrow().get(&source.path).cloned();
-
-        let (parse_result, nl_index) = match cached {
-            Some(entry) => entry,
-            None => {
-                let tokens =
-                    v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
-                let nl_index = build_newline_index(source.path.clone(), source.content.clone());
-                let current_table = index.intern_table.borrow().clone();
-                let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
-                    let mut m = HashMap::new();
-                    m.insert(source.path.clone(), nl_index.clone());
-                    m
-                });
-                let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
-                *index.intern_table.borrow_mut() = parsed.intern_table.clone();
-                let entry = (parsed.result.clone(), nl_index.clone());
-                index
-                    .parse_cache
-                    .borrow_mut()
-                    .insert(source.path.clone(), entry.clone());
-                entry
-            }
-        };
+        let entry = via_index_parse_one_source(index, source);
+        if let Some(stored) = &entry.annotation_diags {
+            annotation_diags.extend(stored.iter().cloned());
+        }
+        let parse_result = entry.parse_result.clone();
+        let nl_index = entry.newline_index.clone();
 
         si_map.insert(nl_index.file.clone(), nl_index.clone());
         if let Some(err) = &parse_result.error {
@@ -13430,7 +13898,12 @@ fn resolved_graph_from_sources_with_index(
         }
     }
     if !parse_error_msgs.is_empty() {
-        return Err(parse_error_msgs.join("\n"));
+        let source_indices = Rc::new(si_map);
+        return Err(join_via_index_stage_refusal(
+            &annotation_diags,
+            &source_indices,
+            parse_error_msgs.join("\n"),
+        ));
     }
 
     let source_indices = Rc::new(si_map);
@@ -13446,7 +13919,11 @@ fn resolved_graph_from_sources_with_index(
         .iter()
         .any(|d| is_error_diagnostic(d.diagnostic.clone()))
     {
-        return Err(format_error_nodes(&graph.diagnostics, &source_indices));
+        return Err(join_via_index_stage_refusal(
+            &annotation_diags,
+            &source_indices,
+            format_error_nodes(&graph.diagnostics, &source_indices),
+        ));
     }
     resolve_stage_slot_add(|s| s.resolve += resolve_started.elapsed().as_nanos());
 
@@ -13484,7 +13961,11 @@ fn resolved_graph_from_sources_with_index(
         .iter()
         .any(|d| is_error_diagnostic(d.diagnostic.clone()))
     {
-        return Err(format_error_nodes(&norm_diags, &source_indices));
+        return Err(join_via_index_stage_refusal(
+            &annotation_diags,
+            &source_indices,
+            format_error_nodes(&norm_diags, &source_indices),
+        ));
     }
     resolve_stage_slot_add(|s| s.normalize += normalize_started.elapsed().as_nanos());
 
@@ -13492,7 +13973,8 @@ fn resolved_graph_from_sources_with_index(
     let reconcile_attributed_before = resolve_stage_slot_snapshot().reconcile_attributed_total();
     let reconcile_started = std::time::Instant::now();
     let typed =
-        reconcile_with_typed_cache(graph.clone(), source_indices.clone(), global_table, index)?;
+        reconcile_with_typed_cache(graph.clone(), source_indices.clone(), global_table, index)
+            .map_err(|e| join_via_index_stage_refusal(&annotation_diags, &source_indices, e))?;
     // Assembly `other` is derived only when the exclusive reconcile rows fit inside the
     // containing reconcile span. A timing overlap is an attribution refusal, never a
     // saturating clamp to a plausible zero.
@@ -13506,7 +13988,8 @@ fn resolved_graph_from_sources_with_index(
                 "assembly attribution refused: NestedSpanAttribution {{ before_nanos: \
              {reconcile_attributed_before}, after_nanos: {reconcile_attributed_after} }}"
             )
-        })?;
+        })
+        .map_err(|e| join_via_index_stage_refusal(&annotation_diags, &source_indices, e))?;
     let assembly_other = reconcile_total
         .checked_sub(reconcile_attributed)
         .ok_or_else(|| {
@@ -13514,7 +13997,8 @@ fn resolved_graph_from_sources_with_index(
                 "assembly attribution refused: OverAttributed {{ sum_exclusive_nanos: \
              {reconcile_attributed}, parent_span_nanos: {reconcile_total} }}"
             )
-        })?;
+        })
+        .map_err(|e| join_via_index_stage_refusal(&annotation_diags, &source_indices, e))?;
     resolve_stage_slot_add(|s| s.reconcile_assembly += assembly_other);
 
     let has_type_errors = typed
@@ -13528,7 +14012,11 @@ fn resolved_graph_from_sources_with_index(
             .filter(|d| is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate))
             .map(|d| format_error_node(d, &source_indices))
             .collect();
-        return Err(msgs.join("\n"));
+        return Err(join_via_index_stage_refusal(
+            &annotation_diags,
+            &source_indices,
+            msgs.join("\n"),
+        ));
     }
 
     let ownership_started = std::time::Instant::now();
@@ -13563,15 +14051,22 @@ fn resolved_graph_from_sources_with_index(
         .iter()
         .any(|d| is_error_diagnostic(d.diagnostic.clone()))
     {
-        return Err(format_error_nodes(&ownership_diags, &source_indices));
+        return Err(join_via_index_stage_refusal(
+            &annotation_diags,
+            &source_indices,
+            format_error_nodes(&ownership_diags, &source_indices),
+        ));
     }
     resolve_stage_slot_add(|s| s.ownership += ownership_started.elapsed().as_nanos());
 
-    let compile_clean_diags = compile_clean_diags_from_resolved_stages(
-        &graph.diagnostics,
-        &norm_diags,
-        &typed,
-        &ownership_diags,
+    let compile_clean_diags = prepend_via_index_annotation_diags(
+        annotation_diags,
+        compile_clean_diags_from_resolved_stages(
+            &graph.diagnostics,
+            &norm_diags,
+            &typed,
+            &ownership_diags,
+        ),
     );
 
     // Install into the in-process share so same-subject re-resolves skip assembly —
@@ -14157,7 +14652,7 @@ fn parse_module_node_from_index_source(
     note_source_hash(index, &source);
     let cached = index.parse_cache.borrow().get(&source.path).cloned();
     let (parse_result, nl_index) = match cached {
-        Some(entry) => entry,
+        Some(entry) => (entry.parse_result, entry.newline_index),
         None => {
             let tokens =
                 v1_compiler_tokenize::tokenize(source.content.clone(), source.path.clone());
@@ -14170,12 +14665,16 @@ fn parse_module_node_from_index_source(
             });
             let parsed = v1_compiler_parse::parse_with_table(tokens, single_si, current_table);
             *index.intern_table.borrow_mut() = parsed.intern_table.clone();
-            let entry = (parsed.result.clone(), nl_index.clone());
+            let entry = ParseCacheEntry {
+                parse_result: parsed.result.clone(),
+                newline_index: nl_index.clone(),
+                annotation_diags: None,
+            };
             index
                 .parse_cache
                 .borrow_mut()
                 .insert(source.path.clone(), entry.clone());
-            entry
+            (entry.parse_result, entry.newline_index)
         }
     };
     if let Some(err) = &parse_result.error {
@@ -19604,9 +20103,13 @@ fn witness_admission_entry_function_keys_from_source(
     // `known_red_probe(` replaced `probe_red(` and the seed-emitter wet row constructor when the
     // quarantine moved to one function-grain authority (2026-08-03): both cadences now author the
     // same row shape in `gunbc.explicit_witness_admission`, so one head reads both.
-    let heads: [(&str, &str); 6] = [
+    let heads: [(&str, &str); 7] = [
         ("bin_wet(", "entry: String"),
         ("known_red_probe(", "entry: NonEmptyStr"),
+        (
+            "source_root_ingest_gate_admitted_witness(",
+            "entry: NonEmptyStr",
+        ),
         ("self_host_wet_entry(", "entry: String"),
         ("SelfHostWetReceiptBinding {", ""),
         ("RehomedBinWetRow {", ""),
@@ -20576,73 +21079,6 @@ fn scan_test_decl_lines(content: &str) -> Vec<(String, i64)> {
     out
 }
 
-pub(crate) fn floor_filename_hygiene_refusal_via_producer(
-    source_roots: &[String],
-) -> Result<(), String> {
-    let mut dag_paths: Vec<String> = Vec::new();
-    for root in source_roots {
-        let mut dag_files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(Path::new(root), &mut dag_files);
-        for path in dag_files {
-            dag_paths.push(path.to_string_lossy().into_owned());
-        }
-    }
-    if dag_paths.is_empty() {
-        return Ok(());
-    }
-    let (graph, indices) = resolve_workspace_entry(source_roots, FLOOR_NAMING_HYGIENE_ENTRY)
-        .map_err(|e| format!("floor_naming_hygiene resolve for filename hygiene: {e}"))?;
-    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    let path_values: Vec<v1_interpreter::Value> = dag_paths
-        .iter()
-        .map(|p| v1_interpreter::Value::Str(p.clone()))
-        .collect();
-    let args = [(
-        Some("dag_paths".to_string()),
-        list_value_from_vec(path_values),
-    )];
-    let result = v1_interpreter::run_in_context_with_args(
-        &ctx,
-        "floor_filename_hygiene_refusal_for_paths",
-        &args,
-        false,
-    )
-    .map_err(|e| format!("floor_filename_hygiene_refusal_for_paths: {e}"))?;
-    match &result {
-        v1_interpreter::Value::Variant {
-            type_name,
-            variant_name,
-            fields,
-            ..
-        } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Present") => {
-            match ctx.field(fields, "value") {
-                Some(v1_interpreter::Value::Str(reason)) => Err(reason.clone()),
-                _ => Err(
-                    "floor_filename_hygiene_refusal_for_paths Present missing reason string"
-                        .to_string(),
-                ),
-            }
-        }
-        v1_interpreter::Value::Variant {
-            type_name,
-            variant_name,
-            ..
-        } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Absent") => Ok(()),
-        other => Err(format!(
-            "floor_filename_hygiene_refusal_for_paths returned `{}`, expected Optional<String>",
-            ctx.format_value(other)
-        )),
-    }
-}
-
-#[derive(Clone, Copy)]
-struct WorkspaceRootRelativeEntry(&'static str);
-
-const FLOOR_DISCOVERY_PRODUCER_ENTRY: WorkspaceRootRelativeEntry =
-    WorkspaceRootRelativeEntry("src/v2/workflow/floor_discovery_producer.dag");
-const FLOOR_NAMING_HYGIENE_ENTRY: WorkspaceRootRelativeEntry =
-    WorkspaceRootRelativeEntry("src/v2/workflow/floor_naming_hygiene.dag");
-
 /// The producer entry above is repo-relative, and every resolve of it ultimately reads the
 /// path **cwd-relative** (`entry_source_from_index_or_disk` does a bare `Path::is_file`).
 /// The floor runs from the repo root, so that ambient dependency is invisible in production
@@ -20660,6 +21096,12 @@ const FLOOR_NAMING_HYGIENE_ENTRY: WorkspaceRootRelativeEntry =
 /// Part of the `cli_run_runtime_workspace_root_plumbing` scaffold (see
 /// `CLI_RUN_RUNTIME_WORKSPACE_ROOT_SCAFFOLD_MARKER`): it dissolves with the rest of the
 /// anchoring plumbing when entry resolution stops reading cwd.
+#[derive(Clone, Copy)]
+struct WorkspaceRootRelativeEntry(&'static str);
+
+const FLOOR_DISCOVERY_PRODUCER_ENTRY: WorkspaceRootRelativeEntry =
+    WorkspaceRootRelativeEntry("src/v2/workflow/floor_discovery_producer.dag");
+
 fn resolve_workspace_entry(
     source_roots: &[String],
     entry: WorkspaceRootRelativeEntry,
@@ -21335,10 +21777,6 @@ pub fn discover_floor_witness_roster(
     exclude_substrings: &[String],
     discovery_scope_dirs: &[String],
 ) -> Result<Vec<DiscoveryRow>, String> {
-    floor_filename_hygiene_refusal_via_producer(source_roots)?;
-    // U2 — orphan plain fns in *_test.dag (enroll-or-refuse). Lives in the naming walk,
-    // not a new lens (umbrella-dissolution fence).
-    test_module_hygiene_bridge::check_orphan_helpers_or_err(source_roots)?;
     let mut rows = invoke_floor_discovery_producer(source_roots, scan_dirs, exclude_substrings)?;
     rows = apply_discovery_scope_dirs_filter(rows, discovery_scope_dirs);
     // The module-graph facts build now serves exactly two consumers on this path:
@@ -21491,7 +21929,7 @@ pub(crate) fn refuse_on_module_graph_read_refusals(
 /// docs/plans/affected-set-differential-falsifier.md). PredictOnly computes would-skip
 /// per row, RECORDS the prediction, and runs the row anyway — the falsifier cadence
 /// compares predictions against cold verdicts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum NodeFrontierSelectionMode {
     Off,
     Applied,
@@ -22880,15 +23318,6 @@ fn declared_source_refs_axis_for_paths(
     DeclaredSourceRefAxis::Untouched
 }
 
-fn path_to_module_from_declaration_facts(
-    nodes: &[ModuleDeclarationFactRaw],
-) -> HashMap<String, String> {
-    nodes
-        .iter()
-        .map(|n| (workspace_relative_repo_path(&n.path), n.module.clone()))
-        .collect()
-}
-
 pub(crate) fn declared_source_refs_axis_for_entry(
     entry_path: &str,
     facts: &ModuleGraphFactsLive,
@@ -22896,10 +23325,13 @@ pub(crate) fn declared_source_refs_axis_for_entry(
     touched_paths: &[String],
 ) -> DeclaredSourceRefAxis {
     let declared_paths = declared_source_ref_paths_for_entry(entry_path, facts);
-    let path_to_module = path_to_module_from_declaration_facts(&facts.nodes);
+    // The facts build already precomputes this exact map once (`ModuleGraphFactsLive.path_to_module`).
+    // This site used to rebuild it from `facts.nodes` per ENTRY, and it is called per entry on the
+    // selection path — an O(corpus) map allocation per question against a map already in hand
+    // (DESIGN §6 bare-minimum cost: a proven cost-shape defect is fixed regardless of realized n).
     declared_source_refs_axis_for_paths(
         &declared_paths,
-        &path_to_module,
+        &facts.path_to_module,
         source_roots,
         touched_paths,
     )
@@ -23736,14 +24168,6 @@ pub fn run_discovery_corpus_with_options(
     width_policy: DiscoveryWidthPolicy,
     options: DiscoveryCorpusOptions,
 ) -> Result<DiscoverySummary, String> {
-    if std::env::var(FLOOR_DISCOVERY_CONSUMER_ENV).as_deref() == Ok("coordinated_consumer")
-        && !floor_discovery_snapshot::coordinated_snapshot_installed()
-    {
-        return Err(
-            "coordinated discovery refused: verified floor snapshot is not installed; cold reconstruction is disabled"
-                .to_string(),
-        );
-    }
     let pump_started = std::time::Instant::now();
     let selection = options.node_frontier_selection;
     let out = run_discovery_corpus_with_options_inner(
@@ -29369,11 +29793,6 @@ pub fn emit_source_root_ingest_manifest(
 
     let content_hash = source_root_ingest_content_hash_fnv1a64(records);
     let read_count = records.len();
-    let inline_records = if read_count <= MANIFEST_INLINE_LIST_MAX {
-        records
-    } else {
-        &[]
-    };
 
     let mut out = String::new();
     out.push_str("module v2.test.workflow.host_source_root_ingest_manifest\n\n\n");
@@ -29383,6 +29802,7 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("  SourceRef,\n");
     out.push_str("  SourceRootIngest,\n");
     out.push_str("  SourceRootCoverageComplete,\n");
+    out.push_str("  SourceRootManifestAbsent,\n");
     out.push_str("  SourceRootManifestElided,\n");
     out.push_str("  SourceRootProvenanceCoverageReceipt\n");
     out.push_str("}\n");
@@ -29398,9 +29818,7 @@ pub fn emit_source_root_ingest_manifest(
     // fails with `undefined variable 'V2Tree'` (the source_root ingest gate's persistent RED).
     // #6269's emit_source_root_ref_import derives exactly the referenced constructors from the
     // records (supersedes the earlier hardcoded-both-constructors form).
-    if !inline_records.is_empty() {
-        out.push_str(&emit_source_root_ref_import(inline_records));
-    } else if !records.is_empty() {
+    if !records.is_empty() {
         out.push_str(&emit_source_root_ref_import(records));
     }
     if entry_admission.is_some() {
@@ -29419,40 +29837,28 @@ pub fn emit_source_root_ingest_manifest(
         dag_manifest_scalar_escape(&content_hash)?
     ));
     out.push_str("data host_source_root_ingest_coverage_receipt: SourceRootProvenanceCoverageReceipt = SourceRootProvenanceCoverageReceipt {\n");
-    // The receipt must describe the carrier that actually landed, not the discovery that
-    // preceded it. Past MANIFEST_INLINE_LIST_MAX the row list is elided to `Empty`, so
-    // hardcoding `coverage_complete: true` with the full read_count asserted complete
-    // coverage over an EMPTY carrier — and made it unfalsifiable by construction
-    // (DESIGN.md §5: fabricated plausible output; a receipt that can never be false
-    // reports nothing).
-    //
-    // The elision is now a TYPED, COUNTED refusal rather than a bool: `SourceRootManifestElided`
-    // names the read count AND the cap that rejected it, so a consumer sees the size of the
-    // deficit ("91 reads met a cap of 64") instead of an undifferentiated `false`. A silent
-    // `Empty` carrier under a `true` receipt was an absorbing fallback — ⊤-as-ignorance
-    // presented as ⊤-as-answer.
-    let produced_row_count = inline_records.len();
+    // Capless closure transport: closure-ref rows are always uncapped. Past
+    // MANIFEST_INLINE_LIST_MAX the inline Lossless carrier is refused via
+    // SourceRootManifestElided (typed expected/observed/capacity) — never zero
+    // produced rows with a positive read count (empty-observation narrow).
+    let produced_row_count = read_count;
     out.push_str(&format!("  ingest_read_count: {read_count},\n"));
     out.push_str(&format!("  produced_row_count: {produced_row_count},\n"));
     out.push_str(&format!(
         "  discovered_source_refs_digest: DiscoveredSourceRefsDigestFromList {{ digest: Fnv1a64Structural {{ digest: \"{}\" }} }},\n",
         source_ref_list_structural_digest_hex(records)
     ));
-    if produced_row_count == read_count {
-        out.push_str("  coverage: SourceRootCoverageComplete\n");
-    } else {
+    if read_count > MANIFEST_INLINE_LIST_MAX {
         out.push_str(&format!(
             "  coverage: SourceRootManifestElided {{ read_count: {read_count}, cap: {MANIFEST_INLINE_LIST_MAX} }}\n"
         ));
+    } else if read_count > 0 {
+        out.push_str("  coverage: SourceRootCoverageComplete\n");
+    } else {
+        out.push_str("  coverage: SourceRootManifestAbsent\n");
     }
     out.push_str("}\n\n\n");
-    out.push_str("data host_source_root_ingest: SourceRootIngest = ");
-    if inline_records.is_empty() {
-        out.push_str("Empty\n");
-    } else {
-        out.push_str(&emit_source_root_ingest_monoid(inline_records)?);
-        out.push('\n');
-    }
+    out.push_str("data host_source_root_ingest: SourceRootIngest = Empty\n");
     if !records.is_empty() {
         out.push('\n');
         out.push_str("data host_source_root_closure_refs: List<SourceRef> = ");
@@ -29480,11 +29886,50 @@ mod source_root_ingest_manifest_tests {
         }
     }
 
-    /// Past the inline cap the row list is elided, so the receipt must say so.
-    /// Before this fix `coverage_complete: true` was hardcoded and the full read_count
-    /// emitted as produced_row_count, asserting complete coverage over an empty carrier.
+    /// Capless ref transport: over the inline cap, coverage reports typed elision
+    /// while produced_row_count and closure_refs carry the full population.
     #[test]
-    fn receipt_reports_incomplete_coverage_when_rows_are_elided() {
+    fn receipt_reports_typed_elision_with_full_refs_past_inline_cap() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc_cov_receipt_{}_{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("host_source_root_ingest_manifest.dag");
+
+        let over: Vec<SourceRootReadRecord> = (0..65).map(sr_record).collect();
+        emit_source_root_ingest_manifest(&path, &over, None).unwrap();
+        let emitted = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            emitted.contains("coverage: SourceRootManifestElided"),
+            "past inline cap must report typed elision, got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains(&format!(
+                "coverage: SourceRootManifestElided {{ read_count: 65, cap: {MANIFEST_INLINE_LIST_MAX} }}"
+            )),
+            "elision must carry read_count and cap, got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains("produced_row_count: 65"),
+            "ref population must not be zero, got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains("host_source_root_closure_refs"),
+            "must carry full closure refs, got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains("data host_source_root_ingest: SourceRootIngest = Empty"),
+            "inline ingest stays empty past cap, got:\n{emitted}"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// At or below the inline cap, coverage is complete with full ref population.
+    #[test]
+    fn receipt_reports_complete_coverage_via_closure_refs_at_inline_cap() {
         let dir = std::env::temp_dir().join(format!(
             "gunbc_cov_receipt_{}_{}",
             std::process::id(),
@@ -29494,33 +29939,54 @@ mod source_root_ingest_manifest_tests {
         let path = dir.join("host_source_root_ingest_manifest.dag");
 
         let over: Vec<SourceRootReadRecord> =
-            (0..MANIFEST_INLINE_LIST_MAX + 1).map(sr_record).collect();
+            (0..MANIFEST_INLINE_LIST_MAX).map(sr_record).collect();
         emit_source_root_ingest_manifest(&path, &over, None).unwrap();
         let emitted = std::fs::read_to_string(&path).unwrap();
         assert!(
-            emitted.contains("coverage: SourceRootManifestElided"),
-            "elided manifest must report incomplete coverage, got:\n{emitted}"
+            emitted.contains("coverage: SourceRootCoverageComplete"),
+            "at inline cap must report complete ref coverage, got:\n{emitted}"
         );
         assert!(
-            emitted.contains("produced_row_count: 0"),
-            "elided manifest must report the rows it actually carries (0), got:\n{emitted}"
+            emitted.contains(&format!("produced_row_count: {}", MANIFEST_INLINE_LIST_MAX)),
+            "at inline cap produced_row_count must equal read count, got:\n{emitted}"
         );
         assert!(
-            emitted.contains(&format!(
-                "ingest_read_count: {}",
-                MANIFEST_INLINE_LIST_MAX + 1
-            )),
-            "discovered read count must still be reported, got:\n{emitted}"
+            emitted.contains("host_source_root_closure_refs"),
+            "at inline cap must carry closure refs, got:\n{emitted}"
         );
 
-        // Control: within the cap, coverage really is complete.
         let under: Vec<SourceRootReadRecord> = (0..3).map(sr_record).collect();
         emit_source_root_ingest_manifest(&path, &under, None).unwrap();
         let emitted = std::fs::read_to_string(&path).unwrap();
         assert!(
             emitted.contains("coverage: SourceRootCoverageComplete")
                 && emitted.contains("produced_row_count: 3"),
-            "inline manifest must report complete coverage over 3 rows, got:\n{emitted}"
+            "small closure manifest must also report complete ref coverage, got:\n{emitted}"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn receipt_reports_manifest_absent_import_and_coverage_for_zero_reads() {
+        let dir =
+            std::env::temp_dir().join(format!("gunbc_cov_zero_{}_{}", std::process::id(), line!()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("host_source_root_ingest_manifest.dag");
+
+        emit_source_root_ingest_manifest(&path, &[], None).unwrap();
+        let emitted = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            emitted.contains("SourceRootManifestAbsent"),
+            "zero-read manifest must import SourceRootManifestAbsent, got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains("coverage: SourceRootManifestAbsent"),
+            "zero-read manifest must report absent coverage, got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains("ingest_read_count: 0"),
+            "zero-read manifest must report zero ingest count, got:\n{emitted}"
         );
 
         std::fs::remove_dir_all(&dir).ok();
@@ -29611,14 +30077,12 @@ mod module_graph_read_refusal_tests {
             })
             .collect();
         ModuleGraphFactsLive {
-            edges: edge_rows,
             nodes: node_rows,
             adjacency: adjacency.clone(),
             selection_adjacency: adjacency,
             declared_paths,
             reference_unaccounted: std::collections::HashSet::new(),
             path_to_module,
-            observed_paths: std::collections::HashSet::new(),
             read_refusals: Vec::new(),
         }
     }
@@ -29691,7 +30155,6 @@ mod module_graph_read_refusal_tests {
         // the file is present in the inventory, produced no module declaration, and
         // the refusal (not absence) is the surfaced state.
         let mut facts = synthetic_facts(&[("v2.lens.good_probe", "target/x/good.dag")], &[]);
-        facts.observed_paths = observation.observed_paths;
         facts.read_refusals = observation.read_refusals;
         let err = super::refuse_on_module_graph_read_refusals(&facts)
             .expect_err("the facts build must refuse while a path is unreadable");
@@ -29728,10 +30191,6 @@ mod module_graph_read_refusal_tests {
             super::refuse_on_module_graph_read_refusals(&live).is_ok(),
             "live corpus must scan without read refusals: {:?}",
             live.read_refusals
-        );
-        assert!(
-            !live.observed_paths.is_empty(),
-            "live corpus inventory must be non-empty (non-vacuity)"
         );
     }
 }
@@ -29913,9 +30372,10 @@ mod sidecar_placement_hygiene_tests {
         // asserted twice — `floor_discovery_hand_rust_equivalence_witness_test.dag`
         // (`floor_discovery_equivalence_misplaced_wire_contract_refuses_holds`) already owns
         // it content-side, so re-deriving it here would be a second representation (§2/§3).
-        // Hence the call is at the producer seam and not at
-        // `floor_filename_hygiene_refusal_for_paths`, which decides only the `__`-in-basename
-        // rule and can never report a wire-contract violation.
+        // Hence the call is at the producer seam, where a wire-contract violation is
+        // observable at all. (This clause used to contrast the seam against
+        // `floor_filename_hygiene_refusal_for_paths`; that decided only the `__`-in-basename
+        // rule, which is deleted, so the contrast named nothing.)
         //
         // Nothing here chdirs, and that is load-bearing: the producer entry is located by
         // `resolve_workspace_entry` (git-toplevel, not cwd), so this test
@@ -30376,29 +30836,6 @@ mod discovery_summary_merge_tests {
         assert_eq!(rows[0].function, function);
         assert_eq!(rows[0].outcome, "Done");
         assert_eq!(rows[0].detail, "");
-    }
-
-    #[test]
-    fn coordinated_consumer_refuses_corpus_without_verified_snapshot() {
-        with_env_test_lock(|| {
-            floor_discovery_snapshot::reset_floor_discovery_snapshot_for_test();
-            let _consumer = EnvGuard::set(FLOOR_DISCOVERY_CONSUMER_ENV, "coordinated_consumer");
-            let roots: Vec<String> = Vec::new();
-            let refusal = run_discovery_corpus_with_options(
-                &roots,
-                &[],
-                &[],
-                ExecutionMode::Hermetic,
-                DiscoveryWidthPolicy::Serial,
-                DiscoveryCorpusOptions::default(),
-            )
-            .expect_err("coordinated corpus must refuse without an installed snapshot");
-            assert!(
-                refusal.contains("verified floor snapshot is not installed")
-                    && refusal.contains("cold reconstruction is disabled"),
-                "unexpected coordinated-consumer refusal: {refusal}"
-            );
-        });
     }
 }
 
@@ -37351,81 +37788,15 @@ fn test_migration_debt_stem_covered(v1_stem: &str, floor_stems: &[String]) -> bo
     floor_stems.iter().any(|floor_stem| floor_stem == v1_stem)
 }
 
-// Second stem source (typed retirement path): a `<stem>_retired.dag` declaration under the
-// corpus records a reviewed, typed retirement (delete-redundant / delete-low-value) for a v1
-// test module whose behavior does NOT migrate to an exact-stem floor `*_test.dag` witness. A
-// retired stem covers the module identically to a floor-witness stem — it excludes the module
-// from the debt roster and authorizes its delete through the delete-guard. The typed disposition
-// and its justification live in the `.dag` decl (`test.retirement.model`, single authority,
-// type-checked by the compile-clean gate); this guard reads only the filename stem, exactly as
-// it reads floor witnesses. A file counts only if it actually *constructs* a `TestModuleRetirement`
-// (the `TestModuleRetirement {` constructor form) — an empty stub, or one that merely imports the
-// type without declaring a retirement (`{ TestModuleRetirement }`), cannot silence the guard. The
-// compile-clean gate independently type-checks the constructed value against `test.retirement.model`.
-fn test_migration_retired_stems() -> Vec<String> {
-    let mut stems: Vec<String> = corpus_dag_files()
-        .into_iter()
-        .filter(|(_, content)| content.contains("TestModuleRetirement {"))
-        .filter_map(|(path, _)| {
-            let file_name = std::path::Path::new(&path)
-                .file_name()
-                .and_then(|n| n.to_str())?;
-            file_name
-                .strip_suffix("_retired.dag")
-                .map(|s| s.to_string())
-        })
-        .collect();
-    stems.sort();
-    stems.dedup();
-    stems
-}
-
-// Third stem source (typed RETAIN path): a `<stem>_retained.dag` declaration constructs a
-// `TestModuleRetirement` whose disposition is `RetainedNonMigratable` — a v1 test module whose
-// behavior is NOT migratable to a `.dag` witness (it exercises a host-Rust-only surface, e.g. a
-// thread-local policy gate the substrate cannot reach) and is therefore RETAINED as `.rs` until
-// src/v1 is deleted. Distinct from `_retired.dag` (delete-only): a retained stem must EXCLUDE the
-// module from the debt roster (it is accounted for, not migration debt) but must NEVER authorize
-// its deletion. Fusing it into the delete-authorize set would be a §5 fail-open: the delete-guard
-// would silently green-light deleting a test that has no `.dag` replacement. So this stem source
-// feeds ONLY the debt-exclude set, never the delete-authorize set.
-fn test_migration_retained_nonmigratable_stems() -> Vec<String> {
-    let mut stems: Vec<String> = corpus_dag_files()
-        .into_iter()
-        .filter(|(_, content)| content.contains("RetainedNonMigratable {"))
-        .filter_map(|(path, _)| {
-            let file_name = std::path::Path::new(&path)
-                .file_name()
-                .and_then(|n| n.to_str())?;
-            file_name
-                .strip_suffix("_retained.dag")
-                .map(|s| s.to_string())
-        })
-        .collect();
-    stems.sort();
-    stems.dedup();
-    stems
-}
-
 // The DEBT-EXCLUDE set (consumed by `build_test_migration_debt_report`): floor-witness stems
 // (migrate path) ∪ retired stems (delete path) ∪ retained-non-migratable stems (retain path). A
 // module in any of the three is accounted for and drops out of the debt roster.
+// Retired/retained stem sources removed 2026-08-12 (V1-CONSUMER-DRAIN-1): the
+// `_retired.dag` / `_retained.dag` carriers they scanned for were deleted with the
+// test-suite cutover (gunbc#8146), so both returned empty in-corpus. Behaviour is
+// unchanged by construction — extending with two empty vectors was a no-op.
 fn test_migration_debt_exclude_stems() -> Vec<String> {
     let mut stems = test_migration_debt_floor_stems();
-    stems.extend(test_migration_retired_stems());
-    stems.extend(test_migration_retained_nonmigratable_stems());
-    stems.sort();
-    stems.dedup();
-    stems
-}
-
-// The DELETE-AUTHORIZE set (consumed by the delete-guard): floor-witness stems ∪ retired stems
-// ONLY. A retained-non-migratable stem is DELIBERATELY absent — retention accounts for a module
-// without authorizing its deletion, so the delete-guard still refuses a delete of a retained
-// module that has no exact-stem floor witness (§5 fail-closed: retention is not deletion consent).
-fn test_migration_delete_authorize_stems() -> Vec<String> {
-    let mut stems = test_migration_debt_floor_stems();
-    stems.extend(test_migration_retired_stems());
     stems.sort();
     stems.dedup();
     stems
@@ -37482,187 +37853,12 @@ fn test_migration_debt_report() -> &'static TestMigrationDebtReport {
     REPORT.get_or_init(build_test_migration_debt_report)
 }
 
-pub fn test_migration_debt_module_count() -> i64 {
-    test_migration_debt_report().entries.len() as i64
-}
-
-pub fn test_migration_debt_total_loc() -> i64 {
-    test_migration_debt_report()
-        .entries
-        .iter()
-        .map(|e| e.loc)
-        .sum()
-}
-
-pub fn test_migration_debt_total_test_fns() -> i64 {
-    test_migration_debt_report()
-        .entries
-        .iter()
-        .map(|e| e.test_fn_count)
-        .sum()
-}
-
 pub fn test_migration_debt_module_names() -> Vec<String> {
     test_migration_debt_report()
         .entries
         .iter()
         .map(|e| e.module.clone())
         .collect()
-}
-
-// Discriminating red witness for the stem matcher: `witness_option_bridge_test.rs` has a live
-// floor counterpart (`witness_option_bridge_test.dag`) and must NOT appear in the debt roster.
-// This goes red if the matcher regresses to comparing an un-stripped `.dag` suffix against a
-// stripped `.rs` stem (as it did before this function existed), since every module would then
-// spuriously report as debt.
-pub fn test_migration_debt_known_covered_module_is_not_debt() -> bool {
-    !test_migration_debt_module_names()
-        .iter()
-        .any(|m| m == "witness_option_bridge_test.rs")
-}
-
-// §5 hard gate per module at delete time: any `#[test]`-bearing v1 module deleted in the CI
-// diff must already have an exact-stem floor `*_test.dag` witness on HEAD (same stem rule as the
-// live debt roster). Uses the same `GUNBC_CI_DIFF_*` endpoints as `floor_diff_observe`.
-fn test_migration_delete_guard_diff_endpoints() -> (String, String) {
-    let base = std::env::var("GUNBC_CI_DIFF_BASE").unwrap_or_else(|_| "origin/main".to_string());
-    let head = std::env::var("GUNBC_CI_DIFF_HEAD").unwrap_or_else(|_| "HEAD".to_string());
-    (base, head)
-}
-
-fn test_migration_delete_guard_merge_base_mode() -> bool {
-    match std::env::var("GUNBC_CI_DIFF_MERGE_BASE") {
-        Ok(v) => v != "0" && v != "false",
-        Err(_) => true,
-    }
-}
-
-fn test_migration_delete_guard_run_git(args: &[&str]) -> Result<String, String> {
-    let output = std::process::Command::new("git")
-        .args(args)
-        .current_dir(workspace_root())
-        .output()
-        .map_err(|e| format!("git {args:?}: {e}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "git {args:?} failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
-fn test_migration_v1_test_module_had_line_anchored_tests(content: &str) -> bool {
-    content.lines().any(|line| line.trim() == "#[test]")
-}
-
-fn test_migration_delete_guard_deleted_v1_test_paths(
-    base: &str,
-    head: &str,
-) -> Result<Vec<String>, String> {
-    let out = if test_migration_delete_guard_merge_base_mode() {
-        let range = format!("{base}...{head}");
-        match test_migration_delete_guard_run_git(&[
-            "diff",
-            "--name-only",
-            "--diff-filter=D",
-            &range,
-        ]) {
-            Ok(out) => out,
-            Err(err) => {
-                // Shallow CI checkouts often fetch only `HEAD`, so the merge-base range cannot
-                // always be computed even though the base ref itself exists. Fall back to the
-                // two-point diff in that case so the delete guard still evaluates the real branch
-                // delta instead of red-ing on missing history.
-                test_migration_delete_guard_run_git(&[
-                    "diff",
-                    "--name-only",
-                    "--diff-filter=D",
-                    base,
-                    head,
-                ])
-                .map_err(|fallback_err| format!("{err}; fallback diff failed: {fallback_err}"))?
-            }
-        }
-    } else {
-        test_migration_delete_guard_run_git(&[
-            "diff",
-            "--name-only",
-            "--diff-filter=D",
-            base,
-            head,
-        ])?
-    };
-    Ok(out
-        .lines()
-        .map(normalize_repo_path)
-        .filter(|p| {
-            p.starts_with("src/v1/tests/src/") && p.ends_with(".rs") && !p.ends_with("/lib.rs")
-        })
-        .collect())
-}
-
-fn test_migration_delete_guard_resolve_rev(r#ref: &str) -> Result<String, String> {
-    match test_migration_delete_guard_run_git(&["rev-parse", r#ref]) {
-        Ok(v) => Ok(v),
-        Err(e) => {
-            if r#ref == "origin/main" {
-                test_migration_delete_guard_run_git(&["rev-parse", "main"]).or(Err(e))
-            } else {
-                Err(e)
-            }
-        }
-    }
-}
-
-fn test_migration_delete_guard_uncovered_deletes_inner() -> Result<Vec<String>, String> {
-    let (base, head) = test_migration_delete_guard_diff_endpoints();
-    let ci_diff_configured = std::env::var("GUNBC_CI_DIFF_BASE").is_ok();
-    let base_rev = match test_migration_delete_guard_resolve_rev(&base) {
-        Ok(v) => v,
-        Err(_) if !ci_diff_configured => return Ok(Vec::new()),
-        Err(e) => return Err(e),
-    };
-    let head_rev = match test_migration_delete_guard_resolve_rev(&head) {
-        Ok(v) => v,
-        Err(_) if !ci_diff_configured => return Ok(Vec::new()),
-        Err(e) => return Err(e),
-    };
-    if base_rev == head_rev {
-        return Ok(Vec::new());
-    }
-    let floor_stems = test_migration_delete_authorize_stems();
-    let deleted = test_migration_delete_guard_deleted_v1_test_paths(&base_rev, &head_rev)?;
-    let mut violations = Vec::new();
-    for path in deleted {
-        let content =
-            test_migration_delete_guard_run_git(&["show", &format!("{base_rev}:{path}")])?;
-        if !test_migration_v1_test_module_had_line_anchored_tests(&content) {
-            continue;
-        }
-        let file_name = std::path::Path::new(&path)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or_default();
-        let stem = test_migration_debt_stem(file_name);
-        if !test_migration_debt_stem_covered(&stem, &floor_stems) {
-            violations.push(path);
-        }
-    }
-    violations.sort();
-    violations.dedup();
-    Ok(violations)
-}
-
-pub fn test_migration_delete_guard_uncovered_deletes() -> Vec<String> {
-    test_migration_delete_guard_uncovered_deletes_inner().unwrap_or_default()
-}
-
-pub fn test_migration_delete_guard_holds() -> bool {
-    match test_migration_delete_guard_uncovered_deletes_inner() {
-        Ok(violations) => violations.is_empty(),
-        Err(_) => false,
-    }
 }
 
 #[cfg(test)]
@@ -39223,151 +39419,6 @@ mod witness_layer_roots_compile_clean_tests {
     }
 }
 
-#[cfg(test)]
-mod test_migration_debt_tests {
-    use super::*;
-
-    #[test]
-    fn stem_strips_rs_and_dag_suffixes_before_test_suffix() {
-        assert_eq!(
-            test_migration_debt_stem("witness_option_bridge_test.rs"),
-            "witness_option_bridge"
-        );
-        assert_eq!(
-            test_migration_debt_stem("witness_option_bridge_test.dag"),
-            "witness_option_bridge"
-        );
-        assert_ne!(
-            test_migration_debt_stem("typescript_import_pipeline_test.dag"),
-            "pipeline"
-        );
-    }
-
-    #[test]
-    fn known_covered_module_is_not_debt() {
-        assert!(test_migration_debt_known_covered_module_is_not_debt());
-    }
-
-    #[test]
-    fn delete_guard_holds_with_no_v1_test_deletions_in_diff() {
-        assert!(test_migration_delete_guard_holds());
-    }
-
-    #[test]
-    fn delete_guard_rejects_uncovered_v1_test_delete() {
-        let floor_stems = test_migration_debt_floor_stems();
-        let stem = test_migration_debt_stem("cron_tag_test.rs");
-        assert!(!test_migration_debt_stem_covered(&stem, &floor_stems));
-    }
-
-    // Green-by-execution for the typed retirement path: the demonstrator
-    // `dag/test/retirement/map_lookup_dual_dispatch_retired.dag` declares a `TestModuleRetirement`
-    // whose stem is `map_lookup_dual_dispatch`. That stem is NOT a floor-witness stem (its covering
-    // witness is `map_lookup_dual_dispatch_witness_test.dag`, stem `map_lookup_dual_dispatch_witness`),
-    // so the retirement is the *only* thing that covers it — the union must pick it up.
-    #[test]
-    fn retired_stem_is_covered_but_not_a_floor_stem() {
-        let stem = "map_lookup_dual_dispatch";
-        assert!(
-            test_migration_retired_stems().iter().any(|s| s == stem),
-            "retirement declaration must contribute its stem"
-        );
-        // Discriminating control: the same stem is NOT a floor-witness stem — so the coverage
-        // comes strictly from the retirement path, not an accidental floor match.
-        assert!(
-            !test_migration_debt_floor_stems().iter().any(|s| s == stem),
-            "stem must be covered only via retirement, not a floor witness"
-        );
-        assert!(test_migration_debt_exclude_stems()
-            .iter()
-            .any(|s| s == stem));
-        // A `_retired.dag` (delete path) stem DOES authorize deletion — it is in both sets.
-        assert!(test_migration_delete_authorize_stems()
-            .iter()
-            .any(|s| s == stem));
-    }
-
-    // The retired module no longer appears in the debt roster (the retirement excluded it).
-    #[test]
-    fn retired_module_is_not_debt() {
-        assert!(
-            !test_migration_debt_module_names()
-                .iter()
-                .any(|m| m == "map_lookup_dual_dispatch_test.rs"),
-            "a retired module must drop out of the debt roster"
-        );
-    }
-
-    // Green-by-execution for the RETAIN path: the demonstrator
-    // `dag/test/retirement/namespace_unique_on_chain_policy_retained.dag` declares a
-    // `RetainedNonMigratable` retention whose stem is `namespace_unique_on_chain_policy`. That stem
-    // is neither a floor-witness stem nor a retired (delete-path) stem, so the retention is the
-    // ONLY thing that accounts for it — the debt-exclude union must pick it up.
-    #[test]
-    fn retained_nonmigratable_stem_excluded_but_not_floor_or_retired() {
-        let stem = "namespace_unique_on_chain_policy";
-        assert!(
-            test_migration_retained_nonmigratable_stems()
-                .iter()
-                .any(|s| s == stem),
-            "retention declaration must contribute its stem"
-        );
-        // Coverage comes strictly from the retain path — not a floor witness, not a retired marker.
-        assert!(
-            !test_migration_debt_floor_stems().iter().any(|s| s == stem),
-            "stem must be accounted for only via retention, not a floor witness"
-        );
-        assert!(
-            !test_migration_retired_stems().iter().any(|s| s == stem),
-            "a retained (non-delete) stem must NOT be a retired (delete) stem"
-        );
-        // It IS in the debt-exclude set (module drops out of the debt roster).
-        assert!(
-            test_migration_debt_exclude_stems()
-                .iter()
-                .any(|s| s == stem),
-            "a retained module must be excluded from the debt roster"
-        );
-    }
-
-    // The retained module no longer appears in the debt roster (retention excluded it).
-    #[test]
-    fn retained_nonmigratable_module_is_not_debt() {
-        assert!(
-            !test_migration_debt_module_names()
-                .iter()
-                .any(|m| m == "namespace_unique_on_chain_policy_test.rs"),
-            "a retained-non-migratable module must drop out of the debt roster"
-        );
-    }
-
-    // §5 RED CONTROL — retention is NOT deletion consent. A retained-non-migratable stem must be
-    // ABSENT from the delete-authorize set, so the delete-guard REFUSES deleting the module (it has
-    // no `.dag` replacement). This is the discriminating red: were the retain path fused into the
-    // delete-authorize set (the fail-open this split closes), `stem_covered` would return true here
-    // and the guard would silently green-light the delete. It flips exactly with the wiring:
-    //   - debt-exclude set    → contains the stem (asserted above) → module is not debt.
-    //   - delete-authorize set → does NOT contain the stem → guard flags any delete of it.
-    #[test]
-    fn delete_guard_refuses_deleting_retained_nonmigratable_module() {
-        let stem = "namespace_unique_on_chain_policy";
-        let authorize = test_migration_delete_authorize_stems();
-        // This is the exact predicate the delete-guard applies per deleted path
-        // (`!stem_covered(stem, delete_authorize_stems)` => violation): it must report the delete
-        // of a retained module as an UNCOVERED (refused) delete.
-        assert!(
-            !test_migration_debt_stem_covered(stem, &authorize),
-            "retained-non-migratable stem must NOT authorize deletion — the delete-guard must refuse"
-        );
-        // Control: a genuinely delete-covered (retired) stem IS authorized, proving the guard's
-        // refusal discriminates on retain-vs-delete disposition, not on being unknown.
-        assert!(
-            test_migration_debt_stem_covered("map_lookup_dual_dispatch", &authorize),
-            "a retired (delete-path) stem must authorize deletion"
-        );
-    }
-}
-
 // Host-fed fact extraction for `v2.lens.host_language_transport_script` — the lens `.dag` table
 // owns verdict logic; this bridge only projects `shell.Exec.Run` script-arg shapes from parsed
 // modules. DISSOLUTION: node-tree reader at gunbc#5364; until then one shared host seam (Chunk D).
@@ -39982,6 +40033,29 @@ mod module_path_index_tests {
         assert!(
             keys.contains(&"dag/test/claim/x_test.dag::x_holds".to_string()),
             "a RehomedBinWetRow must register as an executing consumer key (Phase 0(b)); got {keys:?}"
+        );
+    }
+
+    #[test]
+    fn source_root_ingest_gate_admitted_witness_rows_parse_as_executing_consumer_keys() {
+        let synthetic = "module gunbc.explicit_witness_admission\n\n\
+             data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [\n\
+               source_root_ingest_gate_admitted_witness(\n\
+                 entry: \"src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag\",\n\
+                 f: \"compiler_closure_scoped_ingest_module_count_ok_holds\",\n\
+                 kind: CorpusWitnessKind,\n\
+                 reason: \"r\",\n\
+                 dissolution: unbound_dissolution(description: \"d\")\n\
+               ),\n\
+             ]\n";
+        let keys =
+            super::witness_admission_entry_function_keys_from_source("synthetic.dag", synthetic);
+        assert!(
+            keys.contains(
+                &"src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag::compiler_closure_scoped_ingest_module_count_ok_holds"
+                    .to_string()
+            ),
+            "transport gate admission rows must register as executing consumer keys; got {keys:?}"
         );
     }
 
@@ -41753,90 +41827,6 @@ mod import_closure_equivalence_tests {
             }
         }
         entries
-    }
-
-    /// Pre-BFS fixpoint from `origin/main` — retained for perf receipt only.
-    fn import_closure_from_facts_fixpoint_legacy(
-        entry_path: &str,
-        edges: &[super::ImportResolutionFactRaw],
-        nodes: &[super::ModuleDeclarationFactRaw],
-    ) -> Vec<String> {
-        let entry_path = workspace_relative_repo_path(entry_path);
-        let mut reached: Vec<String> = vec![entry_path];
-        let fuel = nodes.len();
-        for _ in 0..fuel {
-            let before = reached.len();
-            let mut next = reached.clone();
-            for importer in &reached {
-                let importer_norm = workspace_relative_repo_path(importer);
-                for edge in edges {
-                    if workspace_relative_repo_path(&edge.path) != importer_norm {
-                        continue;
-                    }
-                    for node in nodes {
-                        if node.module == edge.import_module {
-                            let path = workspace_relative_repo_path(&node.path);
-                            if !next.iter().any(|p| p == &path) {
-                                next.push(path);
-                            }
-                        }
-                    }
-                }
-            }
-            if next.len() == before {
-                break;
-            }
-            reached = next;
-        }
-        reached
-    }
-
-    /// Manual perf receipt (P4): `cargo test -p v1-compiler --lib import_closure_bfs_vs_fixpoint_perf_receipt -- --ignored --nocapture`
-    #[test]
-    #[ignore = "manual perf receipt: import_closure BFS vs fixpoint on floor witness roster"]
-    fn import_closure_bfs_vs_fixpoint_perf_receipt() {
-        use std::time::Instant;
-
-        const CLOSURE_CALLS_PER_ENTRY: usize = 2;
-
-        let roots = default_source_roots();
-        let entries: Vec<String> = floor_witness_entry_paths_for_oracle().into_iter().collect();
-        let facts = super::build_module_graph_facts_live(&roots);
-        let call_count = entries.len() * CLOSURE_CALLS_PER_ENTRY;
-
-        let t0 = Instant::now();
-        for entry_rel in &entries {
-            for _ in 0..CLOSURE_CALLS_PER_ENTRY {
-                let _ = import_closure_from_facts_fixpoint_legacy(
-                    entry_rel,
-                    &facts.edges,
-                    &facts.nodes,
-                );
-            }
-        }
-        let fixpoint_ms = t0.elapsed().as_secs_f64() * 1000.0;
-
-        let t1 = Instant::now();
-        for entry_rel in &entries {
-            for _ in 0..CLOSURE_CALLS_PER_ENTRY {
-                let _ = super::import_closure_live_paths_with_facts(entry_rel, &facts);
-            }
-        }
-        let bfs_ms = t1.elapsed().as_secs_f64() * 1000.0;
-
-        let speedup = fixpoint_ms / bfs_ms.max(0.001);
-        eprintln!(
-            "import_closure perf receipt: entries={} calls={} fixpoint_ms={:.1} bfs_ms={:.1} speedup={:.1}x",
-            entries.len(),
-            call_count,
-            fixpoint_ms,
-            bfs_ms,
-            speedup
-        );
-        assert!(
-            bfs_ms < fixpoint_ms,
-            "BFS should beat fixpoint on floor roster (fixpoint={fixpoint_ms:.1}ms bfs={bfs_ms:.1}ms)"
-        );
     }
 
     #[test]

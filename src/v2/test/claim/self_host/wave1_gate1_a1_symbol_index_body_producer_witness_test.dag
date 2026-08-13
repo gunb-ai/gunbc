@@ -9,6 +9,7 @@ import v2.compiler.body_lowering_fold {
   body_lowering_match_spine_identity_absent_dispatch_holds,
   body_lowering_match_spine_identity_absent_sniff_holds,
   BodyLoweringLowered,
+  BodyLoweringRejected,
   BodyLoweringWrapperRetained
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -44,6 +45,7 @@ fn wave1_gate1_a1_wrapper_retained_red_control_holds() -> Bool {
   match body_lower_outcome_frontier_disposition(o: body_lower_fn_decl_to_arrow(shell: shell)) {
     BodyLoweringWrapperRetained { reason: r } => r == ^body_lowering_reason_wrapper_retained_emitted
     BodyLoweringLowered => false
+    BodyLoweringRejected { diagnostics: _ } => false
   }
 }
 

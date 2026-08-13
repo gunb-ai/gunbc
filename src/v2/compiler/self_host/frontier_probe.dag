@@ -123,6 +123,10 @@ data frontier_probe_entry_binding_refused_reason: Symbol = ^frontier_probe_entry
 
 data frontier_probe_coverage_refused_reason: Symbol = ^frontier_probe_coverage_refused
 
+data frontier_probe_empty_ingest_reason: Symbol = ^frontier_probe_empty_ingest
+
+data frontier_probe_empty_ingest_refusal_note: String = "An empty ingest is the absence of a closure, never a closure containing nothing, and the two have different remedies. MEASURED, not hypothesised: an over-cap manifest emits SourceRootManifestElided with produced_row_count 0 and host_source_root_ingest = Empty, and this entry answered ^resolve_module_not_found with cause MissingModuleIdentityUnavailable — a survey row asserting the module is missing when what actually happened is that its sources were never supplied. Executed against src/v2/compiler/03_resolve.dag at 71 reads against the 64 cap. The gate that already classifies this correctly, frontier_probe_coverage_gate, guards only the discovery path; this entry receives the ingest directly and never consults coverage, so the conflation was reachable from every from_ingest caller. RESIDUE, stated rather than closed: emptiness is decidable here and coverage is not, because this entry is not given the SourceRootCoverage — so a PARTIAL closure still answers, and a wrong-but-populated ingest is outside this wall. Dissolve-on: the entry takes the coverage receipt beside the ingest and routes it through frontier_probe_coverage_gate, at which point this refusal becomes one arm of that gate rather than a separate check."
+
 type FrontierProbeCoverageGate
   = FrontierProbeCoveragePermitted
   | FrontierProbeCoverageBlocked { coverage: SourceRootCoverage }
@@ -641,6 +645,25 @@ fn frontier_probe_receipt_for_host_manifest_entry(
 }
 
 fn frontier_probe_emit_from_ingest(
+  module_path: String,
+  ingest: SourceRootIngest,
+  admission: Admission
+) -> FrontierProbeReceipt {
+  if length(xs: ingest) == 0 {
+    frontier_probe_receipt_from_population_refused(
+      module_path: module_path,
+      cause: frontier_probe_empty_ingest_reason
+    )
+  } else {
+    frontier_probe_emit_from_populated_ingest(
+      module_path: module_path,
+      ingest: ingest,
+      admission: admission
+    )
+  }
+}
+
+fn frontier_probe_emit_from_populated_ingest(
   module_path: String,
   ingest: SourceRootIngest,
   admission: Admission

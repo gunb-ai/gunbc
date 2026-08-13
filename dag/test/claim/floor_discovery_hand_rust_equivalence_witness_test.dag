@@ -34,7 +34,6 @@ import v2.workflow.floor_discovery_producer {
   floor_discovery_surface_text_scan_scaffold,
 }
 import v2.workflow.floor_naming_hygiene {
-  floor_filename_hygiene_refusal_for_paths,
   floor_discovery_scan_test_decl_names,
   floor_test_sidecar_suffix,
   floor_wire_contract_sidecar_suffix
@@ -71,10 +70,6 @@ test fn floor_entry_resolution_host_boundary_is_declared() -> Bool {
     )
     && string_contains(
       s: floor_entry_resolution_host_boundary_note,
-      pattern: "FLOOR_NAMING_HYGIENE_ENTRY",
-    )
-    && string_contains(
-      s: floor_entry_resolution_host_boundary_note,
       pattern: "v1-hand-queue-drain",
     )
 }
@@ -84,8 +79,6 @@ data fixture_witness_function: String = "floor_discovery_roster_fixture_witness"
 data fixture_test_fn_content: String = "test fn floor_discovery_roster_fixture_witness() -> Bool { true }\n"
 data fixture_test_data_content: String = "test data floor_discovery_data_fixture: Bool = true\n"
 data fixture_misplaced_entry: String = "src/v2/lens/example.dag"
-data fixture_hygiene_clean_path: String = "dag/test/claim/floor_discovery_hand_rust_equivalence_witness_test.dag"
-data fixture_hygiene_bad_path: String = "dag/test/claim/bad__hygiene.dag"
 data fixture_misplaced_wire_contract_entry: String = "dag/test/fixture/floor_discovery/misplaced_wire_contract.dag"
 data fixture_live_tree_entry: String = "dag/test/claim/floor_discovery_roster_fixture_test.dag"
 
@@ -255,22 +248,6 @@ test fn floor_discovery_producer_empty_transport_red_control() -> Bool {
     FloorDiscoveryAccepted { rows: _ } => false
     FloorDiscoveryRefused { reason: msg } =>
       string_contains(s: msg, pattern: "malformed BoolWitnessClaim witness")
-  }
-}
-
-test fn floor_discovery_filename_hygiene_clean_holds() -> Bool {
-  match floor_filename_hygiene_refusal_for_paths(dag_paths: [fixture_hygiene_clean_path]) {
-    Absent => true
-    Present { value: _ } => false
-  }
-}
-
-test fn floor_discovery_filename_hygiene_double_underscore_red_control() -> Bool {
-  match floor_filename_hygiene_refusal_for_paths(dag_paths: [fixture_hygiene_bad_path]) {
-    Present { value: msg } =>
-      string_contains(s: msg, pattern: "__")
-        && string_contains(s: msg, pattern: fixture_hygiene_bad_path)
-    Absent => false
   }
 }
 

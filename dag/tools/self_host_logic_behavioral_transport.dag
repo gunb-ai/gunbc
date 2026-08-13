@@ -77,6 +77,32 @@ fn slb_cargo_toml(root: String) -> String {
   )
 }
 
+// HOW THIS OBSERVATION CLASSIFIES, hoisted to module-item grain: DESIGN §4c admits
+// annotations only as standalone leading blocks on module-scope declarations, and the
+// in-body forms these once used refuse. The v2 self-compile is what refuses them; the
+// v1 seed accepted them, which is why they survived review and per-PR CI both.
+//
+// A step that never ran yields no verdict about the step after it. Reporting an
+// un-run comparison as divergence would be ⊥-as-ignorance, and reporting it as
+// agreement ⊤-as-ignorance; both are the shape DESIGN §5 forbids, so a staging or
+// build failure makes the downstream observations unavailable UNDER THEIR OWN CAUSE
+// rather than collapsing into either verdict.
+// Agreement is the PASS marker plus the count marker, never exit status alone. The
+// count marker is what makes PASS mean "agreed over the declared corpus" instead of
+// "agreed over whatever it reached": the driver prints the number of cases it walked
+// and this joins it to slb_corpus_cases, so a driver that compared a subset and
+// passed on that subset no longer reports agreement.
+// THE FAIL-OPEN THIS CLOSES. The superseded conjunction accepted the planted fault as
+// caught on `fault_run.success == false` — a nonzero exit and nothing more. Any
+// unrelated failure of that process reads as a caught fault under that test: a panic
+// on startup, an argument the driver stopped understanding, a missing shared library.
+// The one run whose entire job is to prove the corpus has teeth was the one run whose
+// outcome was inferred from an exit code, so the RED control could rot into a process
+// that dies for its own reasons and still vouches for the receipt.
+//
+// Catching the fault now requires the driver to REPORT the divergence it was made to
+// find, over the declared corpus. A nonzero exit with no such report is unavailable,
+// not caught.
 fn slb_comparison_observation() -> BehavioralComparisonObservation {
   let root = git.Inspect.Toplevel()
   let logic_read = Filesystem.Read(path: slb_repo_path(root: root.path, rel: slb_logic_source_rel))
@@ -123,11 +149,6 @@ fn slb_comparison_observation() -> BehavioralComparisonObservation {
     && manifest.success && main_rs.success
     && cleanup_src.success && cleanup_out.success
 
-  // A step that never ran yields no verdict about the step after it. Reporting an
-  // un-run comparison as divergence would be ⊥-as-ignorance, and reporting it as
-  // agreement ⊤-as-ignorance; both are the shape DESIGN §5 forbids, so a staging or
-  // build failure makes the downstream observations unavailable UNDER THEIR OWN CAUSE
-  // rather than collapsing into either verdict.
   let ran = staged && build.success
 
   let build_verdict = if !staged {
@@ -138,11 +159,6 @@ fn slb_comparison_observation() -> BehavioralComparisonObservation {
     Observed { value: BuildFailed { cause: ^slb_driver_build_failed } }
   }
 
-  // Agreement is the PASS marker plus the count marker, never exit status alone. The
-  // count marker is what makes PASS mean "agreed over the declared corpus" instead of
-  // "agreed over whatever it reached": the driver prints the number of cases it walked
-  // and this joins it to slb_corpus_cases, so a driver that compared a subset and
-  // passed on that subset no longer reports agreement.
   let compared_declared_corpus = string_contains(
     s: pass_run.stdout,
     pattern: slb_cases_marker()
@@ -160,17 +176,6 @@ fn slb_comparison_observation() -> BehavioralComparisonObservation {
     ObservationUnavailable { cause: ^slb_comparison_unreported }
   }
 
-  // THE FAIL-OPEN THIS CLOSES. The superseded conjunction accepted the planted fault as
-  // caught on `fault_run.success == false` — a nonzero exit and nothing more. Any
-  // unrelated failure of that process reads as a caught fault under that test: a panic
-  // on startup, an argument the driver stopped understanding, a missing shared library.
-  // The one run whose entire job is to prove the corpus has teeth was the one run whose
-  // outcome was inferred from an exit code, so the RED control could rot into a process
-  // that dies for its own reasons and still vouches for the receipt.
-  //
-  // Catching the fault now requires the driver to REPORT the divergence it was made to
-  // find, over the declared corpus. A nonzero exit with no such report is unavailable,
-  // not caught.
   let fault_verdict = if !ran {
     ObservationUnavailable { cause: ^slb_fault_run_did_not_run }
   } else if fault_run.success {

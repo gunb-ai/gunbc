@@ -229,6 +229,12 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: unbound_dissolution(description: "the crate-layout artifact moves to host-driven generation; rows delete together (crate_layout_transport_exclusion_note)")
   },
   WitnessExclusionRow {
+    pattern: "self_host/compiler_closure_ingest_boundary_witness_test.dag",
+    classification: OfflineLocalRecipe,
+    reason: "transport-run witness consumed by v2.workflow.compiler_closure_ingest_transport (07_target_carriers overlay; same posture as compiler_closure_emit_from_ingest_test.dag)",
+    dissolution: unbound_dissolution(description: "the crate-layout artifact moves to host-driven generation; rows delete together (crate_layout_transport_exclusion_note)")
+  },
+  WitnessExclusionRow {
     pattern: "self_host/crate_layout_witness_test.dag",
     classification: OfflineLocalRecipe,
     reason: "transport-run witness: hermetic runs read host_module_bindings = Empty and REFUSE; do NOT give it bin_witness_wet_entries rows (see crate_layout_transport_exclusion_note)",
@@ -590,6 +596,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
     pattern: "host_build_cache_provision_real_execution_witness_test.dag",
+    classification: BinWitnessWet,
+    reason: excl_install_media_reason,
+    dissolution: excl_install_media_dissolve},
+  WitnessExclusionRow {
+    pattern: "materialized_ssh_key_file_real_execution_witness_test.dag",
     classification: BinWitnessWet,
     reason: excl_install_media_reason,
     dissolution: excl_install_media_dissolve},
@@ -1020,6 +1031,8 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", f: "the_materialized_path_is_the_one_the_real_cargo_stream_named"),
   bin_wet(entry: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", f: "a_target_the_build_never_produced_refuses_and_does_not_materialize"),
   bin_wet(entry: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", f: "the_digest_is_of_the_file_cargo_named_not_of_some_other_real_file"),
+  bin_wet(entry: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", f: "changing_only_the_source_bytes_names_exactly_the_artifact_axis"),
+  bin_wet(entry: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", f: "rebuilding_identical_source_in_place_moves_no_axis"),
   bin_wet(entry: "dag/test/claim/dag_collect_fingerprint_witness_test.dag", f: "dag_collect_fingerprint_witness_keystone_holds"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag", f: "perturb_optional_skew_fixture_red_holds"),
   bin_wet(entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag", f: "perturb_unresolved_import_fixture_red_holds"),
@@ -1074,6 +1087,8 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/http_client_get_real_execution_witness_test.dag", f: "http_client_get_roundtrip_by_real_execution"),
   bin_wet(entry: "dag/test/claim/http_client_get_real_execution_witness_test.dag", f: "http_client_get_missing_target_red_control_by_real_execution"),
   bin_wet(entry: "dag/test/claim/host_build_cache_provision_real_execution_witness_test.dag", f: "provision_read_back_failure_not_converged_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/materialized_ssh_key_file_real_execution_witness_test.dag", f: "witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target"),
+  bin_wet(entry: "dag/test/claim/materialized_ssh_key_file_real_execution_witness_test.dag", f: "witness_write_owner_only_refuses_when_path_already_exists"),
   bin_wet(entry: "dag/test/claim/repo_local_git_config_real_execution_witness_test.dag", f: "repo_local_git_config_actuator_sets_local_bindings_by_real_execution"),
   bin_wet(entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", f: "divergent_generated_artifact_merge_refuses_by_real_execution"),
   bin_wet(entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", f: "divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control_by_real_execution"),

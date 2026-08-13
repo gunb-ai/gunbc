@@ -153,6 +153,7 @@ import v2.std.compilers.target_model {
   TargetCallApplyShape,
   TargetClosureShape,
   TargetEffectApplyShape,
+  ConditionalClosedByToken,
   TargetConditionalShape,
   TargetPrimitiveApplyShape,
   TargetBindLetShape,
@@ -1211,7 +1212,8 @@ fn rust_value_expression_projection() -> TargetValueExpressionProjection {
     conditional_form: TargetConditionalShape {
       if_token: ^rust_token_kw_if,
       then_token: ^rust_token_lbrace,
-      else_token: ^rust_token_unwired_else
+      else_token: ^rust_token_unwired_else,
+      delimiting: ConditionalClosedByToken { close_token: ^rust_token_rbrace }
     },
     let_form: TargetBindLetShape {
       let_token: ^rust_token_kw_let,
@@ -2238,7 +2240,7 @@ fn rust_target_model() -> TargetModel {
   TargetModel {
     produced_decl_support: rust_produced_decl_support(),
     bundle: rust_target_model_node(),
-    lex: rust_fn_add_lex(),
+    lex: rust_production_lex(),
     binding_spellings: rust_binding_spellings(),
     token_class_emit_transforms: target_model_emit_transforms_empty,
     authority_source_text: rust_source_text_authority(),
@@ -2289,6 +2291,23 @@ fn rust_staging_lex() -> LexRules {
   ModeledLexRules { root: rust_staging_lex_rules() }
 }
 
+// Spellings for the value-expression families whose shapes are already
+// self-closing, so the production target can serialize them without a
+// hand-authored declaration scaffold supplying their punctuation.
+// closure_nop is deliberately empty: TargetClosureShape requires an `open`
+// between the leading pipe and the parameters, and Rust writes nothing there.
+// Every spelling below was fixed by compiling the composed text with rustc
+// before it was written here, not by reading it back off the emitter.
+fn rust_value_expression_family_lex_rules() -> List<LexRule> {
+  [
+    rust_lex_rule(token_class: ^rust_token_closure_pipe, text: "|"),
+    rust_lex_rule(token_class: ^rust_token_closure_nop, text: ""),
+    rust_lex_rule(token_class: ^rust_token_kw_let, text: "let "),
+    rust_lex_rule(token_class: ^rust_token_equal, text: " = "),
+    rust_lex_rule(token_class: ^rust_token_semicolon, text: "; ")
+  ]
+}
+
 fn rust_fn_add_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: list_append(
@@ -2310,6 +2329,30 @@ fn rust_fn_add_lex_rules() -> LexRuleSet {
       right: rust_binop_operator_lex_rules()
     )
   }
+}
+
+// Production lex = the fn_add base plus the value-expression family spellings.
+// These are deliberately NOT appended to rust_fn_add_lex_rules, which is the
+// shared PREFIX of every other Rust rule set. Because lookup is first-match-wins
+// over the appended list, a spelling added to that prefix silently overrides any
+// set that re-spells the same class further down -- and three of these classes are
+// re-spelled downstream for a different PURPOSE, not by accident:
+// rust_extended_lex_rules is an ingestion set carrying whitespace trivia, so it
+// spells kw_let "let", equal "=" and semicolon ";" as bare lexemes and lets trivia
+// carry the spacing, while emission has no trivia pass and must bake the spacing in.
+// Adding the emission spellings to the shared prefix would have re-spelled the
+// INGEST lexer's tokens, and the loop and type-alias fixtures' semicolon with it.
+fn rust_production_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: list_append(
+      left: rust_fn_add_lex_rules().rules,
+      right: rust_value_expression_family_lex_rules()
+    )
+  }
+}
+
+fn rust_production_lex() -> LexRules {
+  ModeledLexRules { root: rust_production_lex_rules() }
 }
 
 fn rust_fn_add_lex() -> LexRules {

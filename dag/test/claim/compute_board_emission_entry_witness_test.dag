@@ -1,0 +1,229 @@
+module test.claim.compute_board_emission_entry_witness
+
+import std.types { String, NonEmptyStr, List }
+import std.integer { Int }
+import product.compute_board.analog {
+  AnalogCircuitIntent,
+  ElectricalNet,
+}
+import product.compute_board.digital_control {
+  DigitalControlIntent,
+  DigitalEquation,
+  DigitalSignal,
+  SignalName,
+  SignalRef,
+}
+import product.compute_board.article {
+  BoardPowerInterfaceArticle,
+  power_interlock_article,
+}
+import product.compute_board.admission { refusal_set_count }
+import product.compute_board.device_binding {
+  DevicePinAssignment,
+  interlock_device_realization,
+  pin_refusal_set_count,
+}
+import product.compute_board.spice_projection { SpiceProjectionRefusal }
+import product.compute_board.emission_entry {
+  BoardArticleNotAdmitted,
+  BoardEmission,
+  BoardEmitted,
+  BoardTargetRefused,
+  emit_ngspice_run,
+  emit_ngspice_run_for,
+  emit_spice,
+  emit_spice_for,
+  emit_verilog,
+  emit_verilog_for,
+  emit_pin_constraints_for,
+}
+import product.compute_board.digital_control {
+  conditioned_good_signal,
+  fault_signal,
+  power_permit_signal,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE HOST BOUNDARY IS WHERE A REFUSAL IS EASIEST TO LOSE AND WORST TO LOSE. These entries used
+// to answer a refused article with the literal string "REFUSED: article not admitted", which a
+// caller receives as an ordinary result — the fabricated plausible output DESIGN section 5
+// forbids, at the seam furthest from the model. The arms are typed now, and this witness executes
+// all three of them, because an arm nothing calls is a claim rather than a behaviour.
+
+fn is_emitted(e: BoardEmission<SpiceProjectionRefusal>) -> Bool {
+  match e {
+    BoardEmitted { source: s } => s != ""
+    BoardArticleNotAdmitted { causes: _ } => false
+    BoardTargetRefused { cause: _ } => false
+  }
+}
+
+test fn w_the_production_article_emits_through_every_entry() -> Bool {
+  is_emitted(e: emit_spice())
+    && is_emitted(e: emit_ngspice_run())
+    && match emit_verilog() {
+      BoardEmitted { source: s } => s != ""
+      BoardArticleNotAdmitted { causes: _ } => false
+      BoardTargetRefused { cause: _ } => false
+    }
+}
+
+// AN INCOHERENT BOARD REACHES THE ADMISSION ARM, not the target arm. The two are separated
+// because their remedies are opposite — fix the board, or fix the target binding — and an entry
+// that reported both as one refusal would tell a caller nothing about which.
+data undriven_control: DigitalControlIntent = DigitalControlIntent {
+  block_name: power_interlock_article.digital_control.block_name,
+  signals: power_interlock_article.digital_control.signals,
+  equations: [],
+}
+
+data incoherent_article: BoardPowerInterfaceArticle = BoardPowerInterfaceArticle {
+  identity: power_interlock_article.identity,
+  analog: power_interlock_article.analog,
+  model_bindings: power_interlock_article.model_bindings,
+  reference_net: power_interlock_article.reference_net,
+  digital_control: undriven_control,
+  bonds: power_interlock_article.bonds,
+  platform_firmware: power_interlock_article.platform_firmware,
+  physical: power_interlock_article.physical,
+  manufacturing: power_interlock_article.manufacturing,
+}
+
+test fn w_an_incoherent_board_reaches_the_admission_arm_on_every_entry() -> Bool {
+  match emit_spice_for(article: incoherent_article) {
+    BoardArticleNotAdmitted { causes: _ } =>
+      match emit_ngspice_run_for(article: incoherent_article) {
+        BoardArticleNotAdmitted { causes: _ } =>
+          match emit_verilog_for(article: incoherent_article) {
+            BoardArticleNotAdmitted { causes: _ } => true
+            BoardEmitted { source: _ } => false
+            BoardTargetRefused { cause: _ } => false
+          }
+        BoardEmitted { source: _ } => false
+        BoardTargetRefused { cause: _ } => false
+      }
+    BoardEmitted { source: _ } => false
+    BoardTargetRefused { cause: _ } => false
+  }
+}
+
+// The causes survive the boundary rather than being counted and dropped. A refusal arm carrying
+// an empty cause set would be the string it replaced, wearing a type — and the count is read
+// through the admission module's own accessor, so this asserts the set, not a re-derivation.
+test fn w_the_admission_causes_cross_the_boundary_intact() -> Bool {
+  match emit_spice_for(article: incoherent_article) {
+    BoardArticleNotAdmitted { causes: cs } => refusal_set_count(s: cs) == 2
+    BoardEmitted { source: _ } => false
+    BoardTargetRefused { cause: _ } => false
+  }
+}
+
+// A COHERENT BOARD THIS TARGET CANNOT RENDER reaches the target arm. The floating terminal is
+// admitted — netting is a SPICE requirement rather than a fact about the board — so this is the
+// fixture that separates the two refusal arms by execution rather than by argument.
+//
+// THE NETS ARE DERIVED FROM THE PRODUCTION INTENT RATHER THAN RE-AUTHORED, and that is the whole
+// construction. An earlier revision hand-wrote them, naming a component "pg_cond"; the divider
+// rebuild then moved that name from the COMPONENT population to the NET population, so the
+// fixture went on naming something real while naming the wrong kind of thing. Its nets referenced
+// a component that did not exist, the article stopped being admitted, and the two tests below
+// stopped measuring the target arm at all — they failed against the admission arm instead, which
+// is the fixture measuring nothing dressed as the fixture disagreeing. Derived, the only way to
+// break it is to delete the terminal it drops, and that fails loudly: nothing floats, SPICE
+// renders, and the test reports BoardEmitted where it demanded a refusal.
+fn without_filter_high_terminal(nets: List<ElectricalNet>) -> List<ElectricalNet> {
+  fold(nets, init: [], f: fn(acc, net) {
+    concat(acc, [ElectricalNet {
+      identity: net.identity,
+      members: fold(net.members, init: [], f: fn(macc, m) {
+        if ((m.component as String) == "pg_filt") && ((m.terminal as String) == "1") {
+          macc
+        } else {
+          concat(macc, [m])
+        }
+      }),
+    }])
+  })
+}
+
+fn terminal_member_count(nets: List<ElectricalNet>) -> Int {
+  fold(nets, init: 0, f: fn(acc, net) {
+    fold(net.members, init: acc, f: fn(macc, _m) { macc + 1 })
+  })
+}
+
+data floating_analog: AnalogCircuitIntent = AnalogCircuitIntent {
+  title: power_interlock_article.analog.title,
+  components: power_interlock_article.analog.components,
+  nets: without_filter_high_terminal(nets: power_interlock_article.analog.nets),
+}
+
+data floating_article: BoardPowerInterfaceArticle = BoardPowerInterfaceArticle {
+  identity: power_interlock_article.identity,
+  analog: floating_analog,
+  model_bindings: power_interlock_article.model_bindings,
+  reference_net: power_interlock_article.reference_net,
+  digital_control: power_interlock_article.digital_control,
+  bonds: power_interlock_article.bonds,
+  platform_firmware: power_interlock_article.platform_firmware,
+  physical: power_interlock_article.physical,
+  manufacturing: power_interlock_article.manufacturing,
+}
+
+// THE FIXTURE'S OWN PREMISE, EXECUTED. The two tests below are only about the target arm if the
+// fixture actually floats a terminal; if it drops nothing they still pass or fail for reasons
+// that have nothing to do with what they claim to measure. This asserts the drop happened, at
+// identity grain rather than by trusting the name: exactly one terminal member fewer than the
+// production intent, every component retained.
+test fn w_the_floating_fixture_actually_floats_exactly_one_terminal() -> Bool {
+  let produced = terminal_member_count(nets: power_interlock_article.analog.nets)
+  let floated = terminal_member_count(nets: floating_analog.nets)
+  produced > 0 && floated == (produced - 1)
+}
+
+test fn w_a_target_that_cannot_render_reaches_the_target_arm() -> Bool {
+  match emit_spice_for(article: floating_article) {
+    BoardTargetRefused { cause: _ } =>
+      match emit_ngspice_run_for(article: floating_article) {
+        BoardTargetRefused { cause: _ } => true
+        BoardEmitted { source: _ } => false
+        BoardArticleNotAdmitted { causes: _ } => false
+      }
+    BoardEmitted { source: _ } => false
+    BoardArticleNotAdmitted { causes: _ } => false
+  }
+}
+
+// The same board that SPICE refuses emits fine as Verilog, which is what makes the target arm a
+// statement about the target rather than about the board.
+test fn w_the_same_board_still_emits_for_a_target_that_can_render_it() -> Bool {
+  match emit_verilog_for(article: floating_article) {
+    BoardEmitted { source: s } => s != ""
+    BoardArticleNotAdmitted { causes: _ } => false
+    BoardTargetRefused { cause: _ } => false
+  }
+}
+
+// THE MIRROR OF THE ADMISSION-CAUSES TEST, and it is here because the entry used to fail it. The
+// pin chain reports a SET of causes and the entry passed cs.first, so a board with two independent
+// defects crossed the host boundary carrying one — the second was not refused, not deferred, just
+// absent, and a caller had no way to learn it existed. These assignments plant exactly two: pin 5
+// is not on the TQ144 package, and reset_release is left with no pin at all. Counting is what
+// makes the fix visible; matching the arm passed before and after.
+test fn w_every_target_cause_crosses_the_boundary() -> Bool {
+  match emit_pin_constraints_for(
+    article: power_interlock_article,
+    realization: interlock_device_realization,
+    assignments: [
+      DevicePinAssignment { signal: conditioned_good_signal, pin: "5" },
+      DevicePinAssignment { signal: fault_signal, pin: "2" },
+      DevicePinAssignment { signal: power_permit_signal, pin: "3" },
+    ]
+  ) {
+    BoardEmitted { source: _ } => false
+    BoardArticleNotAdmitted { causes: _ } => false
+    BoardTargetRefused { cause: cs } => pin_refusal_set_count(s: cs) == 2
+  }
+}

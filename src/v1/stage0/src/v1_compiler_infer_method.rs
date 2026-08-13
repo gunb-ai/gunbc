@@ -426,28 +426,8 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "test_migration_debt_module_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "test_migration_debt_total_loc".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "test_migration_debt_total_test_fns".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
             "test_migration_debt_module_names".to_string(),
             list_of_type_variable("test_migration_debt_module_name_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "test_migration_debt_known_covered_module_is_not_debt".to_string(),
-            bool_type(),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -463,16 +443,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             m.clone(),
             "test_migration_behavior_discovery_holds".to_string(),
             bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "test_migration_delete_guard_holds".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "test_migration_delete_guard_uncovered_deletes".to_string(),
-            list_of_type_variable("test_migration_delete_guard_uncovered_delete_elem".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
