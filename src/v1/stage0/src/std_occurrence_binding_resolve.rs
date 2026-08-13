@@ -12,7 +12,7 @@ pub use crate::std_occurrence_binding::{
 pub use crate::std_occurrence_identity::occurrence_transport_validate;
 use crate::std_occurrence_identity::OccurrenceCategory::{
     CallableOccurrence, ConstructorOccurrence, FieldOccurrence, LexicalValueOccurrence,
-    MethodOccurrence, NamespaceSegmentOccurrence, TypeOccurrence,
+    MethodOccurrence, ModuleValueOccurrence, NamespaceSegmentOccurrence, TypeOccurrence,
 };
 use crate::std_occurrence_identity::OccurrenceRole::{DeclarationRole, ReferenceRole};
 use crate::std_occurrence_identity::OccurrenceTransportRefusal::{
@@ -131,6 +131,9 @@ pub fn occurrence_category_binding_verdict(
             OccurrenceCategory::ConstructorOccurrence => {
                 Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
             }
+            OccurrenceCategory::ModuleValueOccurrence => {
+                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
+            }
             _ => Rc::new(
                 OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
                     reference: reference.clone(),
@@ -173,6 +176,17 @@ pub fn occurrence_category_binding_verdict(
         },
         OccurrenceCategory::MethodOccurrence => match declaration.clone() {
             OccurrenceCategory::MethodOccurrence => {
+                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
+            }
+            _ => Rc::new(
+                OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
+                    reference: reference.clone(),
+                    declaration: declaration.clone(),
+                },
+            ),
+        },
+        OccurrenceCategory::ModuleValueOccurrence => match declaration.clone() {
+            OccurrenceCategory::ModuleValueOccurrence => {
                 Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
             }
             _ => Rc::new(

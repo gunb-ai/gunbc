@@ -107,6 +107,7 @@ pub enum OccurrenceCategory {
     NamespaceSegmentOccurrence,
     FieldOccurrence,
     MethodOccurrence,
+    ModuleValueOccurrence,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -127,7 +128,7 @@ impl OccurrenceCategoryModuleScopeExposureVerdict {
 pub fn occurrence_category_module_scope_exposure_verdict_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Canonical module-scope exposure surface for declaration categories (review 45716 predicate-dissolution): consumers match OccurrenceCategoryModuleScopeExposureVerdict directly — not a parallel Bool predicate over the OccurrenceCategory coproduct. CallableOccurrence, TypeOccurrence, ConstructorOccurrence, and NamespaceSegmentOccurrence are module-scope members; LexicalValueOccurrence, FieldOccurrence, and MethodOccurrence are not.".to_string()
+            "Canonical module-scope exposure surface for declaration categories (review 45716 predicate-dissolution): consumers match OccurrenceCategoryModuleScopeExposureVerdict directly — not a parallel Bool predicate over the OccurrenceCategory coproduct. CallableOccurrence, TypeOccurrence, ConstructorOccurrence, NamespaceSegmentOccurrence and ModuleValueOccurrence are module-scope members; LexicalValueOccurrence, FieldOccurrence, and MethodOccurrence are not. ModuleValueOccurrence exists because a module-scope `data name: T = v` is a module MEMBER and LexicalValueOccurrence is explicitly not one: reusing the lexical arm would have declared every module datum unexported, and reusing CallableOccurrence would have nicknamed a value as callable. Before it existed the item was classified Unclassified and bound no name at all, so a cross-file reference to any module datum could not bind and every module-value edge was missing from the derived closure.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -164,6 +165,9 @@ pub fn occurrence_category_module_scope_exposure_verdict(
                 category: category.clone(),
             },
         ),
+        OccurrenceCategory::ModuleValueOccurrence => Rc::new(
+            OccurrenceCategoryModuleScopeExposureVerdict::OccurrenceCategoryModuleScopeExposed,
+        ),
     }
 }
 
@@ -185,7 +189,7 @@ impl OccurrenceCategoryClauseEDependencyInducingVerdict {
 pub fn occurrence_category_clause_e_dependency_inducing_verdict_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Canonical clause-(e) reference-category filter surface (review 50193 predicate-dissolution): consumers match OccurrenceCategoryClauseEDependencyInducingVerdict directly — not a parallel inline match over the OccurrenceCategory coproduct. LexicalValueOccurrence, CallableOccurrence, ConstructorOccurrence, and NamespaceSegmentOccurrence references may induce cross-file file dependencies; TypeOccurrence is N2's resolve_type_reference_containment_binding lane; FieldOccurrence and MethodOccurrence do not participate in clause-(e) structural walks.".to_string()
+            "Canonical clause-(e) reference-category filter surface (review 50193 predicate-dissolution): consumers match OccurrenceCategoryClauseEDependencyInducingVerdict directly — not a parallel inline match over the OccurrenceCategory coproduct. LexicalValueOccurrence, CallableOccurrence, ConstructorOccurrence, NamespaceSegmentOccurrence and ModuleValueOccurrence references may induce cross-file file dependencies; TypeOccurrence is N2's resolve_type_reference_containment_binding lane; FieldOccurrence and MethodOccurrence do not participate in clause-(e) structural walks.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -208,6 +212,7 @@ pub fn occurrence_category_clause_e_dependency_inducing_verdict(
     OccurrenceCategory::MethodOccurrence => Rc::new(OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyNotInducing {
     category: category.clone(),
 }),
+    OccurrenceCategory::ModuleValueOccurrence => Rc::new(OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyInducing),
 }
 }
 
@@ -964,6 +969,8 @@ pub struct NamespaceSegmentOccurrence;
 pub struct FieldOccurrence;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MethodOccurrence;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleValueOccurrence;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DeclarationRole;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

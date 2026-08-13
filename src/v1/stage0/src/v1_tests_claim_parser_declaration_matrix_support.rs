@@ -4,7 +4,7 @@
 use self::PdcTransport::*;
 use crate::std_occurrence_identity::OccurrenceCategory::{
     CallableOccurrence, ConstructorOccurrence, FieldOccurrence, LexicalValueOccurrence,
-    MethodOccurrence, NamespaceSegmentOccurrence, TypeOccurrence,
+    MethodOccurrence, ModuleValueOccurrence, NamespaceSegmentOccurrence, TypeOccurrence,
 };
 pub use crate::std_occurrence_identity::{
     DeclarationOccurrence, OccurrenceCategory, OccurrenceId, OccurrenceIndexEntry,
@@ -108,6 +108,7 @@ pub fn pdc_category_tag(category: OccurrenceCategory) -> String {
         OccurrenceCategory::NamespaceSegmentOccurrence => "NamespaceSegmentOccurrence".to_string(),
         OccurrenceCategory::FieldOccurrence => "FieldOccurrence".to_string(),
         OccurrenceCategory::MethodOccurrence => "MethodOccurrence".to_string(),
+        OccurrenceCategory::ModuleValueOccurrence => "ModuleValueOccurrence".to_string(),
     }
 }
 

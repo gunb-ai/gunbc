@@ -29,6 +29,7 @@ import std.occurrence_identity {
   NamespaceSegmentOccurrence,
   FieldOccurrence,
   MethodOccurrence,
+  ModuleValueOccurrence,
   DeclarationRole,
   ReferenceRole,
   DuplicateSuppliedCandidateIdentity,
@@ -69,6 +70,7 @@ fn occurrence_category_binding_verdict(
         LexicalValueOccurrence => OccurrenceCategoryBindingAdmissible
         CallableOccurrence => OccurrenceCategoryBindingAdmissible
         ConstructorOccurrence => OccurrenceCategoryBindingAdmissible
+        ModuleValueOccurrence => OccurrenceCategoryBindingAdmissible
         _ => OccurrenceCategoryBindingInadmissible {
           reference: reference,
           declaration: declaration,
@@ -101,6 +103,14 @@ fn occurrence_category_binding_verdict(
     MethodOccurrence =>
       match declaration {
         MethodOccurrence => OccurrenceCategoryBindingAdmissible
+        _ => OccurrenceCategoryBindingInadmissible {
+          reference: reference,
+          declaration: declaration,
+        }
+      }
+    ModuleValueOccurrence =>
+      match declaration {
+        ModuleValueOccurrence => OccurrenceCategoryBindingAdmissible
         _ => OccurrenceCategoryBindingInadmissible {
           reference: reference,
           declaration: declaration,

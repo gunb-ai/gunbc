@@ -58,6 +58,7 @@ type OccurrenceCategory
   | NamespaceSegmentOccurrence
   | FieldOccurrence
   | MethodOccurrence
+  | ModuleValueOccurrence
 
 type OccurrenceCategoryModuleScopeExposureVerdict
   = OccurrenceCategoryModuleScopeExposed
@@ -65,7 +66,7 @@ type OccurrenceCategoryModuleScopeExposureVerdict
       category: OccurrenceCategory,
     }
 
-data occurrence_category_module_scope_exposure_verdict_note: String = "Canonical module-scope exposure surface for declaration categories (review 45716 predicate-dissolution): consumers match OccurrenceCategoryModuleScopeExposureVerdict directly — not a parallel Bool predicate over the OccurrenceCategory coproduct. CallableOccurrence, TypeOccurrence, ConstructorOccurrence, and NamespaceSegmentOccurrence are module-scope members; LexicalValueOccurrence, FieldOccurrence, and MethodOccurrence are not."
+data occurrence_category_module_scope_exposure_verdict_note: String = "Canonical module-scope exposure surface for declaration categories (review 45716 predicate-dissolution): consumers match OccurrenceCategoryModuleScopeExposureVerdict directly — not a parallel Bool predicate over the OccurrenceCategory coproduct. CallableOccurrence, TypeOccurrence, ConstructorOccurrence, NamespaceSegmentOccurrence and ModuleValueOccurrence are module-scope members; LexicalValueOccurrence, FieldOccurrence, and MethodOccurrence are not. ModuleValueOccurrence exists because a module-scope `data name: T = v` is a module MEMBER and LexicalValueOccurrence is explicitly not one: reusing the lexical arm would have declared every module datum unexported, and reusing CallableOccurrence would have nicknamed a value as callable. Before it existed the item was classified Unclassified and bound no name at all, so a cross-file reference to any module datum could not bind and every module-value edge was missing from the derived closure."
 
 fn occurrence_category_module_scope_exposure_verdict(
   category: OccurrenceCategory
@@ -81,6 +82,7 @@ fn occurrence_category_module_scope_exposure_verdict(
       OccurrenceCategoryModuleScopeNotExposed { category: category }
     MethodOccurrence =>
       OccurrenceCategoryModuleScopeNotExposed { category: category }
+    ModuleValueOccurrence => OccurrenceCategoryModuleScopeExposed
   }
 }
 
@@ -90,7 +92,7 @@ type OccurrenceCategoryClauseEDependencyInducingVerdict
       category: OccurrenceCategory,
     }
 
-data occurrence_category_clause_e_dependency_inducing_verdict_note: String = "Canonical clause-(e) reference-category filter surface (review 50193 predicate-dissolution): consumers match OccurrenceCategoryClauseEDependencyInducingVerdict directly — not a parallel inline match over the OccurrenceCategory coproduct. LexicalValueOccurrence, CallableOccurrence, ConstructorOccurrence, and NamespaceSegmentOccurrence references may induce cross-file file dependencies; TypeOccurrence is N2's resolve_type_reference_containment_binding lane; FieldOccurrence and MethodOccurrence do not participate in clause-(e) structural walks."
+data occurrence_category_clause_e_dependency_inducing_verdict_note: String = "Canonical clause-(e) reference-category filter surface (review 50193 predicate-dissolution): consumers match OccurrenceCategoryClauseEDependencyInducingVerdict directly — not a parallel inline match over the OccurrenceCategory coproduct. LexicalValueOccurrence, CallableOccurrence, ConstructorOccurrence, NamespaceSegmentOccurrence and ModuleValueOccurrence references may induce cross-file file dependencies; TypeOccurrence is N2's resolve_type_reference_containment_binding lane; FieldOccurrence and MethodOccurrence do not participate in clause-(e) structural walks."
 
 fn occurrence_category_clause_e_dependency_inducing_verdict(
   category: OccurrenceCategory
@@ -106,6 +108,7 @@ fn occurrence_category_clause_e_dependency_inducing_verdict(
       OccurrenceCategoryClauseEDependencyNotInducing { category: category }
     MethodOccurrence =>
       OccurrenceCategoryClauseEDependencyNotInducing { category: category }
+    ModuleValueOccurrence => OccurrenceCategoryClauseEDependencyInducing
   }
 }
 

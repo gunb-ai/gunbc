@@ -1632,6 +1632,7 @@ fn reference_dependency_admission_for_category(
         CallableOccurrence => ReferenceDependencyExcluded { category: excluded }
         ConstructorOccurrence => ReferenceDependencyExcluded { category: excluded }
         NamespaceSegmentOccurrence => ReferenceDependencyExcluded { category: excluded }
+        ModuleValueOccurrence => ReferenceDependencyExcluded { category: excluded }
       }
   }
 }

@@ -70,6 +70,7 @@ import std.occurrence_identity {
   FieldOccurrence,
   ConstructorOccurrence,
   MethodOccurrence,
+  ModuleValueOccurrence,
   authored_token_ordinal_space_from_allocator,
   occurrence_id_allocator_initial,
   occurrence_id_allocator_advance_to,
@@ -1166,9 +1167,25 @@ fn parsed_module_item_declares_type_name(item: Node) -> Bool {
     && (item.connective != NoConnective || item.inferred != none)
 }
 
+// A module-scope `data name: T = v`. parsed_occurrence_role_for_node classifies it Unclassified
+// because it carries BOTH a body and a type annotation, and that shape is not safe to widen there:
+// the same shape is reachable from nodes that are not module items. Asked role-directed, of a node
+// already known to be a module item, it is decidable -- which is why the arm lives here and not in
+// the shape classifier. Before this arm existed the item bound no name, so a cross-file reference to
+// any module datum could not bind and the derived closure was short by every module-value edge.
+fn parsed_module_item_declares_value_name(item: Node) -> Bool {
+  item.transport == none
+    && item.body != none
+    && item.type_annotation != none
+    && item.ident_span != none
+    && item.name != ""
+}
+
 fn parsed_module_item_role(item: Node) -> ParsedOccurrenceRole {
   if parsed_module_item_declares_type_name(item: item) {
     ParsedOccurrenceDeclaration { category: TypeOccurrence }
+  } else if parsed_module_item_declares_value_name(item: item) {
+    ParsedOccurrenceDeclaration { category: ModuleValueOccurrence }
   } else {
     ParsedOccurrenceUnclassified
   }

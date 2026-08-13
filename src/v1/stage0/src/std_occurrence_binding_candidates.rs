@@ -2215,6 +2215,9 @@ pub fn reference_dependency_admission_for_category(
     OccurrenceCategory::NamespaceSegmentOccurrence => Rc::new(ReferenceDependencyAdmission::ReferenceDependencyExcluded {
     category: excluded.clone(),
 }),
+    OccurrenceCategory::ModuleValueOccurrence => Rc::new(ReferenceDependencyAdmission::ReferenceDependencyExcluded {
+    category: excluded.clone(),
+}),
 },
 }
 }

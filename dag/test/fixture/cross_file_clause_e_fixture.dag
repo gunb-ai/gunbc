@@ -79,8 +79,8 @@ fn cross_file_clause_e_fixture_consumer_transport() -> OccurrenceTransport {
   OccurrenceTransport {
     index: OccurrenceIndex {
       entries: [
-        cross_file_clause_e_fixture_index_entry(occurrence: ref_one, authored_name: "helper"),
-        cross_file_clause_e_fixture_index_entry(occurrence: ref_two, authored_name: "helper"),
+        cross_file_clause_e_fixture_index_entry(occurrence: ref_one, authored_name: "provider.helper"),
+        cross_file_clause_e_fixture_index_entry(occurrence: ref_two, authored_name: "provider.helper"),
       ],
     },
     declarations: [],

@@ -16,6 +16,7 @@ import std.occurrence_identity {
   NamespaceSegmentOccurrence,
   FieldOccurrence,
   MethodOccurrence,
+  ModuleValueOccurrence,
 }
 import v1.gunbc.occurrence_binding_parser_walk {
   ParsedOccurrenceBindingSourceRefused,
@@ -93,6 +94,7 @@ fn pdc_category_tag(category: OccurrenceCategory) -> String {
     NamespaceSegmentOccurrence => "NamespaceSegmentOccurrence"
     FieldOccurrence => "FieldOccurrence"
     MethodOccurrence => "MethodOccurrence"
+    ModuleValueOccurrence => "ModuleValueOccurrence"
   }
 }
 

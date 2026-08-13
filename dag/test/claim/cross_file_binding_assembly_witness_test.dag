@@ -94,6 +94,13 @@ fn cfba_reference(occurrence: OccurrenceId, containment: OccurrenceContainmentPa
 
 // --- DeclarationExposureGrounding: all three variants pairwise-discriminated ---
 
+// The two rows that stood here -- cross_file_provider_exported_exposure_at_module_root_upgrades_to_root
+// and ..._at_direct_child_upgrades_to_root -- asserted that a provider file's module member became
+// RootExposure. That arm is deleted (see declaration_exposure_from_containment_note), so the rows had
+// no subject: they called the surviving grounding and demanded the deleted answer. They are not kept
+// as regression evidence, because what would be regressing is a behaviour the model no longer has;
+// the two module_local_member_exposure rows beside this one assert the surviving answer at both
+// containment shapes, which is the same coverage read forward.
 test fn module_local_member_exposure_at_module_root_holds() -> Bool {
   let decl = OccurrenceId { value: 10 }
   let path = cfba_containment(ancestors: [], terminal: decl)
@@ -103,19 +110,6 @@ test fn module_local_member_exposure_at_module_root_holds() -> Bool {
     grounding: ModuleLocalMemberExposure,
   ) {
     ModuleExposure { module: module } => module == cfba_path(dotted: "extdeps.a")
-    _ => false
-  }
-}
-
-test fn cross_file_provider_exported_exposure_at_module_root_upgrades_to_root_holds() -> Bool {
-  let decl = OccurrenceId { value: 11 }
-  let path = cfba_containment(ancestors: [], terminal: decl)
-  match declaration_exposure_from_containment(
-    module_path: cfba_path(dotted: "extdeps.a"),
-    containment: path,
-    grounding: ModuleLocalMemberExposure,
-  ) {
-    RootExposure => true
     _ => false
   }
 }
@@ -130,20 +124,6 @@ test fn module_local_member_exposure_at_direct_child_stays_module_exposure_holds
     grounding: ModuleLocalMemberExposure,
   ) {
     ModuleExposure { module: module } => module == cfba_path(dotted: "extdeps.b")
-    _ => false
-  }
-}
-
-test fn cross_file_provider_exported_exposure_at_direct_child_upgrades_to_root_holds() -> Bool {
-  let outer = OccurrenceId { value: 1 }
-  let decl = OccurrenceId { value: 21 }
-  let path = cfba_containment(ancestors: [outer], terminal: decl)
-  match declaration_exposure_from_containment(
-    module_path: cfba_path(dotted: "extdeps.b"),
-    containment: path,
-    grounding: ModuleLocalMemberExposure,
-  ) {
-    RootExposure => true
     _ => false
   }
 }

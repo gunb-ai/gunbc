@@ -12,7 +12,7 @@ pub use crate::extdeps_languages_dag_syntax::{dag_non_name_keywords, dag_syntax_
 pub use crate::std_algebra::FreeMonoid;
 use crate::std_occurrence_identity::OccurrenceCategory::{
     CallableOccurrence, ConstructorOccurrence, FieldOccurrence, LexicalValueOccurrence,
-    MethodOccurrence, NamespaceSegmentOccurrence, TypeOccurrence,
+    MethodOccurrence, ModuleValueOccurrence, NamespaceSegmentOccurrence, TypeOccurrence,
 };
 pub use crate::std_occurrence_identity::{
     alloc_occurrence_id, authored_token_ordinal_space_from_allocator,
@@ -2440,13 +2440,26 @@ pub fn parsed_module_item_declares_type_name(item: Rc<Node>) -> bool {
             || (item.inferred.clone() != None)))
 }
 
+pub fn parsed_module_item_declares_value_name(item: Rc<Node>) -> bool {
+    (((((item.transport.clone() == None) && (item.body.clone() != None))
+        && (item.type_annotation.clone() != None))
+        && (item.ident_span.clone() != None))
+        && (item.name.clone() != "".to_string()))
+}
+
 pub fn parsed_module_item_role(item: Rc<Node>) -> Rc<ParsedOccurrenceRole> {
     if parsed_module_item_declares_type_name(item.clone()) {
         Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
             category: OccurrenceCategory::TypeOccurrence,
         })
     } else {
-        Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
+        if parsed_module_item_declares_value_name(item.clone()) {
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+                category: OccurrenceCategory::ModuleValueOccurrence,
+            })
+        } else {
+            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified)
+        }
     }
 }
 

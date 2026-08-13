@@ -195,8 +195,8 @@ fn npi_reference_occurrence_in_transport(
 fn npi_colliding_decoy_row() -> CrossFileBindingClosureRow {
   cross_file_clause_e_fixture_unrelated_loaded_provider_row(
     declaration_authored_name: "helper",
-    module_dotted: "app.decoy",
-    file_path: "app/decoy.dag",
+    module_dotted: "other.provider",
+    file_path: "other/provider.dag",
   )
 }
 
