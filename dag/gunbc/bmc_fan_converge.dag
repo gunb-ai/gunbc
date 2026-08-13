@@ -1670,7 +1670,7 @@ func bmc_fan_run(
       exit_failure(reason: "secret manager access version wire decode refused")
     SecretCredentialFetchRefused { reason: reason } =>
       exit_failure(reason: reason as String)
-    SecretCredentialReady { credential: credential } =>
+    SecretCredentialReady { credential: credential, resolved_version: _ } =>
       match action {
         BmcFanObserveOnly =>
           bmc_fan_observe_only_with_credential(

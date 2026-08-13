@@ -3,6 +3,7 @@ module gunbc.fleet_multi_principal_probe
 import std.types { String, Bool, List, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { trim }
+import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.typed_argv_exec { typed_argv_probe_over_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
@@ -134,9 +135,58 @@ fn probe_attempt_identity(raw: String) -> FleetSshAttemptIdentity? {
   fleet_ssh_attempt_identity(raw: raw)
 }
 
+fn env_var_nonempty(name: NonEmptyStr) -> String? {
+  match shell.Env.Get(name: name).value {
+    Present { value: raw } => {
+      let line = trim(s: raw)
+      if line == "" { none } else { Present { value: line } }
+    }
+    Absent => none
+  }
+}
+
+fn compose_fleet_ssh_attempt_raw(run_id: String, run_attempt: String) -> String? {
+  if run_id == "" || run_attempt == "" {
+    none
+  } else {
+    Present { value: join(["run-", run_id, "-attempt-", run_attempt], "") }
+  }
+}
+
+// ENV OBSERVATION lives here because gunbc run --function cannot pass argv (belt_dispatch note).
+// GUNBC_FLEET_SSH_ATTEMPT_RAW overrides; otherwise GITHUB_RUN_ID + GITHUB_RUN_ATTEMPT compose
+// run-<id>-attempt-<n>, the same shape fleet_known_hosts_anchor witnesses pin.
+fn fleet_ssh_attempt_raw_from_env() -> String? {
+  match env_var_nonempty(name: "GUNBC_FLEET_SSH_ATTEMPT_RAW" as NonEmptyStr) {
+    Present { value: explicit } => Present { value: explicit }
+    Absent =>
+      match env_var_nonempty(name: "GITHUB_RUN_ID" as NonEmptyStr) {
+        Absent => none
+        Present { value: run_id } =>
+          match env_var_nonempty(name: "GITHUB_RUN_ATTEMPT" as NonEmptyStr) {
+            Absent => none
+            Present { value: run_attempt } =>
+              compose_fleet_ssh_attempt_raw(run_id: run_id, run_attempt: run_attempt)
+          }
+      }
+  }
+}
+
 // Fleet SSH private key material resolves inside this boundary from Secret Manager — never as an
 // argv-passed identity_file path.
-func fleet_multi_principal_probe_wet(attempt_raw: String) -> ProcessExit
+func fleet_multi_principal_probe_wet() -> ProcessExit
+  uses net: Network
+{
+  match fleet_ssh_attempt_raw_from_env() {
+    Absent =>
+      exit_failure(
+        reason: "fleet_multi_principal_probe_wet requires GUNBC_FLEET_SSH_ATTEMPT_RAW or GitHub GITHUB_RUN_ID+GITHUB_RUN_ATTEMPT env"
+      )
+    Present { value: attempt_raw } => fleet_multi_principal_probe_with_attempt(attempt_raw: attempt_raw)
+  }
+}
+
+func fleet_multi_principal_probe_with_attempt(attempt_raw: String) -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()
@@ -241,7 +291,19 @@ data spark_standing_receipt_path: String = "target/spark-managed-access-standing
 // would produce bootstrap plans for hosts whose managed access is a different lane's question.
 data spark_standing_hosts: List<String> = ["srv5", "srv6"]
 
-func spark_managed_access_standing_wet(attempt_raw: String) -> ProcessExit
+func spark_managed_access_standing_wet() -> ProcessExit
+  uses net: Network
+{
+  match fleet_ssh_attempt_raw_from_env() {
+    Absent =>
+      exit_failure(
+        reason: "spark_managed_access_standing_wet requires GUNBC_FLEET_SSH_ATTEMPT_RAW or GitHub GITHUB_RUN_ID+GITHUB_RUN_ATTEMPT env"
+      )
+    Present { value: attempt_raw } => spark_managed_access_standing_with_attempt(attempt_raw: attempt_raw)
+  }
+}
+
+func spark_managed_access_standing_with_attempt(attempt_raw: String) -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()

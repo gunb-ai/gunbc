@@ -52,7 +52,7 @@ fn cursor_sdk_secure_api_key_from_secret_ref(
           CursorSdkSecureApiKeyInputRefused {
             reason: "secret manager access version wire decode refused" as NonEmptyStr,
           }
-        SecretCredentialReady { credential: credential } => {
+        SecretCredentialReady { credential: credential, resolved_version: _ } => {
           let local = CursorSdkApiKeySecretRef { secret_ref: admitted_ref }
           CursorSdkSecureApiKeyReady {
             secret_ref: admitted_ref,
