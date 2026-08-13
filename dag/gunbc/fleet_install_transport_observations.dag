@@ -80,5 +80,6 @@ data srv3_configfs_transport_observations: List<TransportProbeObservation> = [
 // extdeps.bmc.virtual_media VirtualMediaTransport rather than its own enum,
 // which is the next INSTALL-0 commit and would drag the actuator step lists with
 // it. This row is the authority that work will read.
-data srv3_configfs_reinstall_path_standing: ReinstallPathStanding =
-  configfs_reinstall_path_standing(observations: srv3_configfs_transport_observations)
+data srv3_configfs_reinstall_path_standing: ReinstallPathStanding = configfs_reinstall_path_standing(
+  observations: srv3_configfs_transport_observations,
+)
