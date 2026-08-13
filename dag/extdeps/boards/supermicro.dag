@@ -11,7 +11,7 @@ import extdeps.uri { Uri, Https }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "www.supermicro.com/en/products/motherboard/r12spd-a"
+    locator: "www.supermicro.com/manuals/motherboard/R12/MNL-2483.pdf"
   }
 }
 
@@ -27,51 +27,51 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-// THE SUPERMICRO R12SPD FAMILY, and how it was read.
+// THE SUPERMICRO R12SPD-A, read from the manual.
 //
-// PROVENANCE FIRST, because it decides what these figures are worth. The vendor product pages and
-// the user manual PDF are on supermicro.com, and every direct fetch to that host is refused by this
-// environment's egress policy. What follows came from SEARCH RESULT SUMMARIES, which is a weaker
-// source than a first-party read: a summary can drop a qualifier, and the qualifier is usually the
-// part that matters. The figures below agree with the operator's relayed line, which is corroboration
-// and not verification - two readings of the same marketing copy are still one source.
+// PROVENANCE, and it improved. An earlier version of this carrier held every field at
+// search-summary grade because supermicro.com is refused by this environment's egress policy. The
+// operator then relayed the User's Manual, Revision 1.0, release date 17 October 2022, in full.
+// That is a FIRST-PARTY VENDOR DOCUMENT relayed by the operator: strictly better than a search
+// summary, and still not a fetch performed here. Fields below are graded individually.
 //
-// THE ARCHITECTURAL DIFFERENCE FROM THE MP72, and it is the whole reason this board is interesting:
-// this is a SINGLE-socket board with sixteen DIMM slots. The MP72 is a dual-socket board with
-// sixteen. Same slot count, completely different memory topology, and the difference decides both
-// the processor bill and the memory speed.
+// A HYPOTHESIS THIS CARRIER GOT WRONG, recorded because being wrong in the safe direction is still
+// being wrong. The previous version reasoned that sixteen slots on one socket must be two DIMMs per
+// channel, that an advertised peak rate is conventionally the one-per-channel figure, and therefore
+// that DDR4-3200 probably derates at full population. The arithmetic was right and the conclusion
+// was wrong: the manual's system block diagram labels every one of the eight channels
+// "DDR4 3200 2DPC", and the BIOS memory-speed selector offers 3200 outright. Full population runs
+// at the advertised rate. The reasoning was sound and the fact beat it, which is the whole argument
+// for reading the document rather than deriving what it probably says.
 
 type ReadingGrade
-  = FirstPartyRead { authority: ExternalAuthority, read_on: NonEmptyStr }
+  = VendorManualRelayed { manual: NonEmptyStr, revision: NonEmptyStr }
   | SearchSummaryRead { note: NonEmptyStr }
-  | OperatorRelayed { note: NonEmptyStr }
+  | Derived { from: NonEmptyStr }
   | Unread { obligation: NonEmptyStr }
 
-fn reading_is_first_party(g: ReadingGrade) -> Bool {
+fn reading_is_documented(g: ReadingGrade) -> Bool {
   match g {
-    FirstPartyRead { authority, read_on } => true,
+    VendorManualRelayed { manual, revision } => true,
+    Derived { from } => true,
     SearchSummaryRead { note } => false,
-    OperatorRelayed { note } => false,
     Unread { obligation } => false,
   }
 }
 
 fn reading_label(g: ReadingGrade) -> NonEmptyStr {
   match g {
-    FirstPartyRead { authority, read_on } => "vendor page read",
+    VendorManualRelayed { manual, revision } => "vendor manual",
     SearchSummaryRead { note } => "search summary",
-    OperatorRelayed { note } => "operator relayed",
+    Derived { from } => "derived",
     Unread { obligation } => "unread",
   }
 }
 
-data search_summary_grade: ReadingGrade = SearchSummaryRead {
-  note: "Read from search-result summaries on 2026-08-12. supermicro.com is refused by this environment's egress policy, so neither the product page nor the manual PDF has been opened here.",
+data manual_grade: ReadingGrade = VendorManualRelayed {
+  manual: "Super R12SPD-A User's Manual, MNL-2483",
+  revision: "Revision 1.0, 2022-10-17, relayed by the operator 2026-08-12",
 }
-
-// ---------------------------------------------------------------------------------------------
-// THE READING. One record, every field carrying how it was obtained.
-// ---------------------------------------------------------------------------------------------
 
 type BoardReading {
   field: NonEmptyStr
@@ -80,46 +80,26 @@ type BoardReading {
 }
 
 data r12spd_a_reading: List<BoardReading> = [
-  BoardReading { field: "socket count", value: "1 (LGA 4926)", grade: search_summary_grade },
-  BoardReading { field: "processors", value: "Ampere Altra 80-core and Altra Max 128-core, up to 250 W", grade: search_summary_grade },
-  BoardReading { field: "DIMM slots", value: "16, DDR4-3200 RDIMM/LRDIMM, up to 4 TB", grade: search_summary_grade },
-  BoardReading { field: "PCIe", value: "3 x PCIe 4.0 x16 low profile (Altra Max) or 2 x16 plus 1 x8 (Altra)", grade: search_summary_grade },
-  BoardReading { field: "AIOM", value: "1 slot, OCP 3.0 mezzanine compatible", grade: search_summary_grade },
-  BoardReading { field: "onboard network", value: "2 x 10GbE SFP28, or 1 x 25GbE, plus dedicated IPMI RJ45", grade: search_summary_grade },
-  BoardReading { field: "BMC", value: "ASPEED AST2600 with root of trust", grade: search_summary_grade },
-  BoardReading { field: "form factor", value: "proprietary", grade: search_summary_grade },
+  BoardReading { field: "socket", value: "one LGA 4926", grade: manual_grade },
+  BoardReading { field: "processors", value: "Ampere Altra to 80 cores, Altra Max to 128 cores, TDP to 250 W", grade: manual_grade },
+  BoardReading { field: "memory slots", value: "16, eight channels, two DIMMs per channel", grade: manual_grade },
+  BoardReading { field: "memory rate", value: "DDR4-3200 AT TWO DIMMS PER CHANNEL, block diagram labels every channel 3200 2DPC", grade: manual_grade },
+  BoardReading { field: "memory types", value: "ECC and non-ECC UDIMM/LRDIMM/RDIMM/3DS RDIMM, 256 GB max module, 4 TB max", grade: manual_grade },
+  BoardReading { field: "dimensions", value: "330.2 mm x 304.8 mm (13 in x 12 in)", grade: manual_grade },
+  BoardReading { field: "mounting holes", value: "12, pan head #6 screws, maximum 8 lbf-in each", grade: manual_grade },
+  BoardReading { field: "expansion", value: "3 x PCIe 4.0 x16, 6 x SlimSAS PCIe 4.0 x8 NVMe, 1 x M.2 M-key 2280/22110, 1 x OCP 3.0 AIOM at 25 W max", grade: manual_grade },
+  BoardReading { field: "network", value: "2 x SFP28 via Mellanox ConnectX-4 LX EN, 1 x 25G or 2 x 10G, plus dedicated IPMI RJ45", grade: manual_grade },
+  BoardReading { field: "management", value: "ASPEED AST2600 running OpenBMC with Redfish", grade: manual_grade },
+  BoardReading { field: "fan headers", value: "six 4-pin, FAN1 is CPU", grade: manual_grade },
+  BoardReading { field: "processor install", value: "Torx T20, torque 16.1 kgf-cm (14.0 lbf-in), force frame sequence 5-4-3-2-1 to open and 1-2-3-4-5 to close", grade: manual_grade },
+  BoardReading { field: "storage", value: "NVMe only - no SATA connector is documented", grade: Derived { from: "connector table lists SlimSAS NVMe and M.2 and no SATA" } },
 ]
 
 // ---------------------------------------------------------------------------------------------
-// WHAT THE SUFFIX MEANS. It does not resolve, and guessing it is exactly the defect that produced
-// a fabricated power-header inventory on the ASRock row earlier in this tree.
-// ---------------------------------------------------------------------------------------------
-
-type SkuVariantStanding
-  = VariantDistinguished { difference: NonEmptyStr, receipt: NonEmptyStr }
-  | VariantUnresolved { obligation: NonEmptyStr }
-
-data r12spd_suffix_standing: SkuVariantStanding = VariantUnresolved {
-  obligation: "What separates R12SPD-A from R12SPD-R is NOT established. Both product pages exist and both are refused by egress here, and no search summary distinguished them. Supermicro suffixes commonly encode onboard networking, management or power variants, but 'commonly' is not this SKU. Open both product pages side by side, or read the quick-reference guide, before any build names one of them.",
-}
-
-data suffix_guess_refusal_note: NonEmptyStr = "No guess is recorded for the suffix. A plausible expansion written down here would be indistinguishable from a read one a month from now, and this tree already carries one correction where exactly that happened: an invented power-header inventory that a witness was then built on top of."
-
-// ---------------------------------------------------------------------------------------------
-// THE DERIVED FACT THAT MATTERS, and it is arithmetic rather than a reading.
-//
-// Ampere Altra and Altra Max provide EIGHT memory channels per socket. Sixteen DIMM slots on ONE
-// socket is therefore two DIMMs per channel, where the dual-socket MP72's sixteen slots are one per
-// channel. Advertised DDR4-3200 is conventionally the one-per-channel figure, and DDR4 registered
-// memory commonly derates at two per channel.
-//
-// This is the single most consequential unknown about the board for this fleet: memory bandwidth per
-// core is what a compile is limited by after core count, and a 2DPC derate would apply to the whole
-// 512 GiB population.
+// MEMORY. The question that would have decided this board, now answered.
 // ---------------------------------------------------------------------------------------------
 
 data altra_memory_channels_per_socket: Nat = 8
-
 data r12spd_dimm_slots: Nat = 16
 data r12spd_socket_count: Nat = 1
 
@@ -131,10 +111,10 @@ type MemorySpeedAtPopulation
   = SpeedConfirmedAtPopulation { mt_s: Nat, dimms_per_channel: Nat, receipt: NonEmptyStr }
   | SpeedUnconfirmedAtPopulation { advertised_mt_s: Nat, dimms_per_channel: Nat, obligation: NonEmptyStr }
 
-data r12spd_full_population_speed: MemorySpeedAtPopulation = SpeedUnconfirmedAtPopulation {
-  advertised_mt_s: 3200,
+data r12spd_full_population_speed: MemorySpeedAtPopulation = SpeedConfirmedAtPopulation {
+  mt_s: 3200,
   dimms_per_channel: 2,
-  obligation: "Confirm the supported data rate with ALL SIXTEEN slots populated. Eight channels on one socket makes a full population two DIMMs per channel, and an advertised peak rate is normally quoted at one per channel. The board manual's memory population table answers this, and it is refused by egress here. If the answer is 2933 or 2666, the dual-socket alternative keeps 3200 at one per channel and that is a real advantage rather than a specification detail.",
+  receipt: "Manual figure 1-3, the system block diagram, labels all eight memory channels DDR4 3200 2DPC. The BIOS Memory Operating Speed Selection feature offers 3200 among its options, and the sixteen-DIMM row of the population table carries no speed qualifier.",
 }
 
 fn full_population_speed_is_confirmed() -> Bool {
@@ -144,31 +124,74 @@ fn full_population_speed_is_confirmed() -> Bool {
   }
 }
 
-// ---------------------------------------------------------------------------------------------
-// WHAT A SINGLE SOCKET CHANGES FOR THE BUILD. Stated as consequences, not as a recommendation.
-// ---------------------------------------------------------------------------------------------
+data memory_population_order: NonEmptyStr = "DIMMA1, B1, C1, D1, E1, F1, G1, H1 fill one per channel; A2, B2, C2, D2, E2, F2, G2, H2 complete the second. The manual permits odd populations and mixed speeds, with everything running at the slowest module - so a sixteen-module build assembled from several used lots runs at the slowest lot's rate, which is a real reason to buy one matched set."
 
-data single_socket_consequence_note: NonEmptyStr = "Reaching 128 cores on one socket requires the 128-core part. On a dual-socket board the same 128 cores come from two 64-core parts, and at the operator's observed rates the pair is materially cheaper than the single large part. So this board buys a simpler machine - one cooler, one socket's idle draw, fewer parts to fail - and pays for it in silicon. Which way that trade lands depends on the board price, the cooler saving and the idle-power difference, and none of the three is read."
-
-data proprietary_form_factor_note: NonEmptyStr = "The form factor is proprietary, not ATX or E-ATX. For a board that hangs on a panel rather than sitting in a chassis, that is not a detail: the standoff pattern, the I/O edge and the power-input arrangement all have to be measured off a real board instead of taken from a published mechanical standard. A proprietary board is also usually designed for one vendor's chassis, which is where non-standard power input tends to hide."
-
-data sfp28_cabling_note: NonEmptyStr = "Onboard networking is SFP28 cages rather than RJ45. That means optics or direct-attach copper, and DAC cabling is stiffer and has a real minimum bend radius - which matters for a tile whose whole removal ritual is about how cables leave the boundary."
-
-data acquisition_note: NonEmptyStr = "Supermicro is a large US server manufacturer, which for this fleet matters mostly for supply rather than prestige: their boards appear in the second-hand market in quantity when datacenters refresh, documentation stays published for years, and spares are findable. That is the same liquidation channel the processor and memory strategy already depends on."
+data memory_retraction_note: NonEmptyStr = "RETRACTED: this carrier previously held that DDR4-3200 was probably a one-DIMM-per-channel figure and that full population would derate to 2933 or 2666. The manual refutes it. The derating convention is real and it does not apply here, and the difference between a sound inference and a fact is exactly the gap this tree exists to keep visible."
 
 // ---------------------------------------------------------------------------------------------
-// THE GATE. Nothing here may enter a build candidate yet.
+// POWER. Two mutually exclusive supply paths, and reading only the connector table would get it
+// wrong - both proprietary connectors are annotated "Required Connection" while section 1.5 says
+// the board accommodates a proprietary supply OR a 24-pin ATX supply.
 // ---------------------------------------------------------------------------------------------
 
-data r12spd_purchase_gate: List<NonEmptyStr> = [
-  "what distinguishes -A from -R, read from the two product pages rather than inferred from a suffix convention",
-  "supported memory data rate with all sixteen slots populated, from the manual's population table",
-  "board price for the specific variant, new or used, with the seller and date recorded",
-  "power input: connector type and how many must be populated for a 128-core part at full load",
-  "mechanical drawing: standoff pattern, board outline and I/O edge, since the form factor is proprietary",
-  "whether the AIOM slot is required for networking or whether the onboard SFP28 ports stand alone",
-  "cooler compatibility for LGA 4926 in the intended orientation, given no chassis airflow",
+type PowerPath
+  = ProprietarySupplyPath { connectors: NonEmptyStr, note: NonEmptyStr }
+  | AtxSupplyPath { connectors: NonEmptyStr, note: NonEmptyStr }
+
+data r12spd_power_paths: List<PowerPath> = [
+  ProprietarySupplyPath {
+    connectors: "JPWR1 proprietary 14-pin plus JPWR2 proprietary 8-pin",
+    note: "Both are annotated Required Connection in the connector section. This is the path a Supermicro chassis uses, and neither connector is an ATX standard part.",
+  },
+  AtxSupplyPath {
+    connectors: "JPWR5 ATX 24-pin plus at least one of JPWR6 or JPWR7 ATX 8-pin",
+    note: "Section 1.5: the board accommodates a proprietary supply and a 24-pin ATX supply, and one 12 V 8-pin connection is also required. JPWR6 and JPWR7 are further described as an alternative single power source for a special enclosure when the 24-pin is not in use.",
+  },
+]
+
+type RequiredPopulationStanding
+  = PopulationSpecified { required: NonEmptyStr, receipt: NonEmptyStr }
+  | PopulationUnresolved { obligation: NonEmptyStr }
+
+data r12spd_atx_population: RequiredPopulationStanding = PopulationUnresolved {
+  obligation: "For a commodity ATX supply the manual establishes 24-pin plus ONE 8-pin as required. It does NOT state whether a 128-core Altra Max at 250 W under all-core load needs the second 8-pin as well. Two 8-pin EPS connectors at 12 V are conventionally provisioned for exactly that case, and conventionally is not a receipt. Measure it on a built board, or find the statement in the ARS-series system documentation.",
+}
+
+data power_reading_hazard_note: NonEmptyStr = "The connector table alone would produce a false inventory here: JPWR1 and JPWR2 both say Required Connection, so a reader collecting required connectors gets a 14-pin and an 8-pin that no ATX supply has. The requirement is conditional on which supply path is used, and the condition lives in a different section. This is the same defect shape as the ASRock power-header correction in this tree, avoided this time only because the whole document was read rather than the table."
+
+// ---------------------------------------------------------------------------------------------
+// WHAT STILL DOES NOT RESOLVE.
+// ---------------------------------------------------------------------------------------------
+
+type SkuVariantStanding
+  = VariantDistinguished { difference: NonEmptyStr, receipt: NonEmptyStr }
+  | VariantUnresolved { obligation: NonEmptyStr }
+
+data r12spd_suffix_standing: SkuVariantStanding = VariantUnresolved {
+  obligation: "The manual is titled R12SPD-A and never mentions R12SPD-R. Reading it therefore says nothing about the suffix. Open the two product pages, or the quick-reference guide MNL-2483-QRG, before a build names either variant.",
+}
+
+data r12spd_open_questions: List<NonEmptyStr> = [
+  "what distinguishes -A from -R: the manual covers only -A and does not mention -R",
+  "whether a 128-core part at 250 W requires one 8-pin ATX connection or two",
+  "board price for either variant, new or used, with seller and date",
+  "cooler compatibility for LGA 4926 mounted vertically with no chassis airflow, since the manual's TDP figure is explicitly subject to chassis and heatsink cooling restrictions",
+  "mounting hole COORDINATES: the count and the screw spec are documented, the pattern is not, and the form factor is proprietary so no published standard supplies it",
   "idle and load power for a single-socket 128-core configuration, to compare against two 64-core sockets",
 ]
 
-data r12spd_standing_note: NonEmptyStr = "This board is a CANDIDATE READING, not a build option. Every figure came from search summaries of pages this environment cannot open, the suffix question is unresolved, and the memory speed at full population - the one number that would decide it against the dual-socket alternative - is exactly the number that is missing."
+// ---------------------------------------------------------------------------------------------
+// WHAT THIS BOARD CHANGES, now that the memory question is closed.
+// ---------------------------------------------------------------------------------------------
+
+data single_socket_consequence_note: NonEmptyStr = "128 cores and 512 GiB at full DDR4-3200 on ONE socket, which is the balanced point the build model already selected, reached with one processor instead of two. The trade is silicon against parts: at the operator's observed rates a single 128-core part costs materially more than a pair of 64-core parts, while the single-socket board needs one cooler instead of two and carries one socket's idle draw instead of two. Neither board's price is known, so the comparison is not yet decidable - but the memory objection to this board is gone."
+
+data openbmc_note: NonEmptyStr = "Management is OpenBMC with Redfish, documented in the manual's own appendices rather than asserted from family convention. That matters for this fleet specifically: the operational plan is network boot, reconstructible nodes and typed drain, and OpenBMC with Redfish is the interface that work assumes. The Gigabyte carrier's OpenBmc field is convention-asserted with no receipt; this one has the vendor's own update procedure printed against it."
+
+data numa_partition_note: NonEmptyStr = "The BIOS exposes Ampere NUMA Control with Monolithic, Hemisphere and Quadrant modes - one, two or four NUMA partitions per socket. A node sold as slices wants its partitions to line up with what it sells, so this is a scheduling lever the fleet may care about, and nothing in the fleet model reads it yet."
+
+data form_factor_note: NonEmptyStr = "Proprietary form factor, but the DIMENSIONS are published: 330.2 by 304.8 millimetres with twelve mounting holes at maximum 8 lbf-in. That is almost exactly the Gigabyte MP72-HB0's E-ATX footprint transposed, so a panel sized for one is close to a panel sized for the other. What is NOT published is the hole pattern, and a proprietary board has no standard to fall back on - the coordinates have to come off a real board or a mechanical drawing."
+
+data cabling_note: NonEmptyStr = "Networking is two SFP28 cages, so optics or direct-attach copper rather than RJ45, and DAC has a real minimum bend radius that matters for a tile whose removal ritual is about how cables cross the boundary. Storage is NVMe only: six SlimSAS x8 and one M.2, with no SATA connector documented."
+
+data r12spd_standing_note: NonEmptyStr = "This is now a DOCUMENTED CANDIDATE rather than a search summary. The decisive memory question is closed in the board's favour, the mechanical envelope and the ATX supply path are known, and management is confirmed OpenBMC. What blocks a build is smaller and specific: the suffix, the second 8-pin, a price, a cooler, and the hole pattern."
