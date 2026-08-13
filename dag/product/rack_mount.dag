@@ -51,7 +51,7 @@ import v2.std.optional { Present, Absent }
 // input-order fact wearing position names: a mount admitted at U10 colliding with an incoming one
 // at U8 reported U10 as the lower.
 //
-// ON OccupancyExceedsCapacity: its own arm, because reusing MountExceedsRackHeight would have put a total occupied
+// ON AssetMountedTwice: its own arm, because reusing MountExceedsRackHeight would have put a total occupied
 // CARDINALITY in a field that carries a mount's top POSITION everywhere else - one field meaning
 // two things, so a fired diagnostic would mislabel the failure it exists to explain. This arm is
 // unreachable while admission holds; it is the typed answer if the invariant behind
@@ -214,7 +214,7 @@ fn rack_units_to_micrometres(units: RackUnit) -> Micrometer {
 // World and a RoomIdentity, resolving the room through the world and retaining that identity in the
 // result, and its discriminating control is the case the deleted version got wrong - a ceiling
 // above the aperture but below the external height must REFUSE.
-
 fn rack_mounting_aperture_height(r: RackInstance) -> Micrometer {
   rack_units_to_micrometres(units: r.catalog.rack_units)
 }
+

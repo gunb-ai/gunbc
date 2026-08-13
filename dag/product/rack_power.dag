@@ -63,11 +63,12 @@ fn asset_load_subject(l: AssetLoad) -> PhysicalAssetIdentity {
   }
 }
 
-// ON OutletsExhausted: Unreachable with the two cited rows this band exercises - a twelve-outlet PDU against an
-// eighteen-unit rack whose smallest cited chassis is four units, so nine mounts is the most the
-// frame admits. It is the typed answer for a feed with fewer outlets than its rack can hold, which
-// is an ordinary arrangement with a different cited PDU, and it is checked rather than assumed
-// away: the alternative is a module that silently over-subscribes the first such feed it meets.
+// OutletsExhausted IS UNREACHABLE with the two cited rows this band exercises - a twelve-outlet PDU
+// against an eighteen-unit rack whose smallest cited chassis is four units, so nine mounts is the
+// most the frame admits. It is the typed answer for a feed with fewer outlets than its rack can
+// hold, which is an ordinary arrangement with a different cited PDU, and it is checked rather than
+// assumed away: the alternative is a module that silently over-subscribes the first such feed it
+// meets.
 type PowerRefusal
   = PowerFactorOutOfRange { supplied: Int }
   | LoadNotObserved { asset: PhysicalAssetIdentity }
@@ -209,14 +210,14 @@ fn feed_carries_load(capacity: Int, apparent: Int, real: Int, percent: Int) -> B
   apparent * percent + real * 100 <= capacity * percent
 }
 
-// ONE OUTLET PER MOUNTED ASSET. It is checked before the capacity because it is the
-// cheaper fact and the one with no assumption in it: outlet_count is cited, where the
-// capacity comparison rests on a power factor the caller declared.
+// ONE OUTLET PER MOUNTED ASSET, and the outlet count is checked BEFORE the capacity because it is
+// the cheaper fact and the one with no assumption in it: outlet_count is cited, where the capacity
+// comparison rests on a power factor the caller declared.
 //
-// The counts are read at the comparison and nowhere else. This is the one place the
-// magnitudes must meet, and they meet under the declared power factor that makes the
-// meeting meaningful - which is why the crossing is a single expression rather than a
-// pair of running scalars that could have been added together anywhere upstream.
+// THE LOAD COUNTS ARE READ AT THE CAPACITY COMPARISON AND NOWHERE ELSE. That is the one place the
+// magnitudes must meet, and they meet under the declared power factor that makes the meeting
+// meaningful - which is why the crossing is a single expression rather than a pair of running
+// scalars that could have been added together anywhere upstream.
 fn rack_power_budget(
   rack: RackInstance,
   feed: PowerFeed,

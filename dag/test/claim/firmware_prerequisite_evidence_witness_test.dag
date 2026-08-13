@@ -1,0 +1,176 @@
+module test.claim.firmware_prerequisite_evidence_witness_test
+
+import std.types { Bool, List }
+import v2.std.optional { Present, Absent }
+import extdeps.boards.types { AsrockRackAltrad8ud1l2t }
+import extdeps.firmware.types {
+  BmcController,
+  FirmwarePrerequisiteObservation,
+  HostBios,
+  NoFirmwarePrerequisite,
+  OpenBmcWebUiTar,
+  PushRefusedByTarget,
+  RequiresMinimumTargetFirmware,
+  PrerequisiteConsistentUpperBound,
+  PrerequisiteEvidenceVerdict,
+  PrerequisiteContradictedByAcceptanceBelowMinimum,
+  PrerequisiteContradictedByRefusalAtOrAboveMinimum,
+  PrerequisiteEvidenceAbsent,
+  firmware_semantic_version,
+  prerequisite_evidence_verdict,
+}
+import extdeps.boards.asrock_rack {
+  asrock_altrad8ud_bios_3_10_openbmc_release,
+  asrock_altrad8ud_bios_310_push_accepted_at_bmc_322,
+  asrock_altrad8ud_bios_310_push_refused_at_bmc_207,
+  asrock_altrad8ud_bios_openbmc_prerequisite_evidence,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A SECOND, LOWER REFUSAL, authored rather than observed — the fixture that
+// makes order-independence testable at all. With one refusal and one
+// acceptance a first-wins accumulator and a real max/min return the SAME
+// answer, so a two-element list cannot distinguish them however it is
+// ordered. Only a second refusal forces the fold to choose.
+data synthetic_lower_refusal: FirmwarePrerequisiteObservation = FirmwarePrerequisiteObservation {
+  board: AsrockRackAltrad8ud1l2t,
+  subject: HostBios,
+  image_kind: OpenBmcWebUiTar,
+  gating_target: BmcController,
+  gating_version: firmware_semantic_version(major: 1, minor: 0, patch: 0),
+  outcome: PushRefusedByTarget { diagnostic: "authored probe; no such push was executed" },
+  observed_at: 1786579200000,
+}
+
+data forward_evidence: List<FirmwarePrerequisiteObservation> = [
+  asrock_altrad8ud_bios_310_push_refused_at_bmc_207,
+  synthetic_lower_refusal,
+  asrock_altrad8ud_bios_310_push_accepted_at_bmc_322,
+]
+
+data reversed_evidence: List<FirmwarePrerequisiteObservation> = [
+  asrock_altrad8ud_bios_310_push_accepted_at_bmc_322,
+  synthetic_lower_refusal,
+  asrock_altrad8ud_bios_310_push_refused_at_bmc_207,
+]
+
+// THE ORACLE IS AN IDENTITY JOIN, not a copy. An earlier revision hand-wrote
+// 3.22.00 here and claimed in a comment to be comparing the same number the
+// catalog declares — which it was not: changing the release row would have
+// left these tests green until someone remembered to edit the witness too.
+// That is the tree-copied oracle DESIGN section 5 forbids, and the comment
+// asserting otherwise is what made it look already checked. The minimum now
+// comes from the release row itself, so editing the catalog moves the tests.
+//
+// The RED controls below deliberately do NOT join: a falsifying probe is an
+// authored input chosen to contradict the evidence, not an oracle, and joining
+// it to the catalog would make it unauthorable.
+fn verdict_against_declared_minimum(
+  observations: List<FirmwarePrerequisiteObservation>,
+) -> PrerequisiteEvidenceVerdict {
+  match asrock_altrad8ud_bios_3_10_openbmc_release.prerequisite {
+    RequiresMinimumTargetFirmware { target: _, minimum: m } =>
+      prerequisite_evidence_verdict(minimum: m, observations: observations)
+    NoFirmwarePrerequisite => PrerequisiteEvidenceAbsent
+  }
+}
+
+// The bounds the EXECUTED pair establishes: refused at 2.07.00, accepted at
+// 3.22.00. Held once and applied to several orderings below, so an ordering
+// that answered differently could not be papered over by a second copy of the
+// expected numbers.
+fn bounds_are_the_executed_pair(
+  observations: List<FirmwarePrerequisiteObservation>,
+) -> Bool {
+  match verdict_against_declared_minimum(observations: observations) {
+    PrerequisiteConsistentUpperBound { highest_refusal: r, lowest_acceptance: a } =>
+      match r {
+        Present { value: rv } =>
+          match a {
+            Present { value: av } =>
+              rv.major == 2 && rv.minor == 7 && av.major == 3 && av.minor == 22
+            Absent => false
+          }
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+// The executed pair supports the declared minimum, and the positive arm says
+// what it actually establishes: an UPPER BOUND. 3.06.00 exists in the
+// capability catalog and was never pushed, so the true threshold may be lower.
+test fn executed_pair_supports_the_declared_minimum_as_an_upper_bound() -> Bool {
+  bounds_are_the_executed_pair(observations: asrock_altrad8ud_bios_openbmc_prerequisite_evidence)
+}
+
+// ORDER INDEPENDENCE, and it took a third observation to make it real. The
+// claim is that the accumulator takes the HIGHEST refusal rather than
+// whichever it met first. An earlier revision compared two orderings of the
+// two-element executed pair, which cannot decide that: with exactly one
+// refusal in the list, first-wins and max return the same version whatever
+// the order. Both lists below carry a second, LOWER refusal at 1.00.00, so a
+// first-wins fold reports 1.00.00 on the reversed ordering and fails here.
+test fn the_bounds_do_not_depend_on_authoring_order() -> Bool {
+  bounds_are_the_executed_pair(observations: forward_evidence) && bounds_are_the_executed_pair(observations: reversed_evidence)
+}
+
+// A bound with no observation behind it is ABSENT, never filled in from the
+// declared minimum. Acceptance-only evidence has no refusal to report, and
+// reporting one would fabricate a push that never happened.
+test fn an_acceptance_only_history_reports_no_refusal_bound() -> Bool {
+  match verdict_against_declared_minimum(
+    observations: [asrock_altrad8ud_bios_310_push_accepted_at_bmc_322],
+  ) {
+    PrerequisiteConsistentUpperBound { highest_refusal: r, lowest_acceptance: a } =>
+      match r {
+        Absent =>
+          match a {
+            Present { value: av } => av.major == 3 && av.minor == 22
+            Absent => false
+          }
+        Present { value: _ } => false
+      }
+    _ => false
+  }
+}
+
+// RED control. Declaring a minimum ABOVE the version that demonstrably
+// accepted the bytes is contradicted by the acceptance, not merely unsupported
+// — this is the arm that catches a minimum inflated past its evidence.
+test fn a_minimum_above_the_accepting_version_is_contradicted() -> Bool {
+  match prerequisite_evidence_verdict(
+    minimum: firmware_semantic_version(major: 4, minor: 0, patch: 0),
+    observations: asrock_altrad8ud_bios_openbmc_prerequisite_evidence,
+  ) {
+    PrerequisiteContradictedByAcceptanceBelowMinimum { accepted_at: a } =>
+      a.major == 3 && a.minor == 22
+    _ => false
+  }
+}
+
+// RED control, the other direction. Declaring a minimum at or below the
+// version that was REFUSED is contradicted by the refusal — this catches a
+// minimum relaxed below its evidence, which is the direction that would let an
+// unappliable push be admitted.
+test fn a_minimum_at_or_below_the_refusing_version_is_contradicted() -> Bool {
+  match prerequisite_evidence_verdict(
+    minimum: firmware_semantic_version(major: 2, minor: 0, patch: 0),
+    observations: asrock_altrad8ud_bios_openbmc_prerequisite_evidence,
+  ) {
+    PrerequisiteContradictedByRefusalAtOrAboveMinimum { refused_at: r } =>
+      r.major == 2 && r.minor == 7
+    _ => false
+  }
+}
+
+// With no observations the verdict is ABSENT, never consistent. An unevidenced
+// minimum must not read the same as an evidenced one.
+test fn no_observations_yields_absent_not_consistent() -> Bool {
+  match verdict_against_declared_minimum(observations: []) {
+    PrerequisiteEvidenceAbsent => true
+    _ => false
+  }
+}
