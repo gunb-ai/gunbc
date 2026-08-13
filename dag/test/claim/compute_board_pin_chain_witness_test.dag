@@ -50,6 +50,9 @@ import product.compute_board.contact_population {
   population_kind_name,
   ice40_hx1k_tq144_io_count_gap,
   vendor_total_io_from_datasheet_rows,
+  all_contact_population_kinds,
+  population_kind_tag,
+  population_kinds_equal,
   project_population,
   PopulationProjection,
   VendorGeneralPurposeSingleEndedIo,
@@ -415,4 +418,28 @@ test fn w_the_differential_recount_is_excluded_from_the_partition() -> Bool {
   ice40_hx1k_tq144_contacts.differential_inputs_subset == 12
     && (itemized_contact_total(i: ice40_hx1k_tq144_contacts) +
         ice40_hx1k_tq144_contacts.differential_inputs_subset) > ice40_hx1k_tq144_contacts.declared_bonded_pins
+}
+
+// THE DISCRIMINANT IS DISTINCT PER KIND, asserted over the enumerated kind list rather than over
+// a count. Kind equality decides whether two populations may be compared at all, so two kinds
+// sharing a tag would silently fuse two populations that count different things - which is the
+// exact failure this module exists to prevent, reappearing one level down in the mechanism meant
+// to prevent it. The pairwise walk is over identity, not cardinality: a roster that grew a
+// duplicate entry would still have to produce two equal tags to pass.
+test fn w_every_population_kind_has_a_distinct_discriminant() -> Bool {
+  fold(all_contact_population_kinds, init: true, f: fn(acc, a) {
+    acc && fold(all_contact_population_kinds, init: 0, f: fn(n, b) {
+      if population_kinds_equal(a: a, b: b) { n + 1 } else { n }
+    }) == 1
+  })
+}
+
+// AND EQUALITY IS NOT SPELLING. Two kinds whose display strings both mention I/O are still
+// different kinds; a reader comparing prose would fuse them. This pins the property the tag
+// bought by naming a pair that a substring-minded comparison would get wrong.
+test fn w_kind_equality_does_not_follow_the_display_prose() -> Bool {
+  !population_kinds_equal(a: VendorGeneralPurposeIo, b: VendorGeneralPurposeSingleEndedIo)
+    && !population_kinds_equal(a: VendorTotalIo, b: VendorDedicatedIo)
+    && population_kinds_equal(a: PlaceableLogicPins, b: PlaceableLogicPins)
+    && population_kind_tag(k: SupplyContacts) != population_kind_tag(k: ReturnContacts)
 }

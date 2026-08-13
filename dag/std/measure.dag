@@ -268,6 +268,14 @@ type Milliwatt = Measure<Power, Milli, Nat>
 
 type Volt = Measure<ElectricPotentialDifference, One, Nat>
 
+// The millivolt exists for the same reason the micrometre does, one axis over: a device's
+// recommended operating window is not a whole number of volts. The iCE40 core supply runs 1.14 V
+// to 1.26 V and its I/O banks 1.71 V to 3.46 V, so at volt grain the entire core window collapses
+// to a single value and the check that a rail sits inside it stops discriminating. Naming the
+// finer step keeps every bound exact instead of forcing a rounding policy at the point where the
+// bound is what matters.
+type Millivolt = Measure<ElectricPotentialDifference, Milli, Nat>
+
 type Ampere = Measure<ElectricCurrent, One, Nat>
 
 // The micrometre exists as a named carrier because EIA-310's rack unit is 44.45 mm - NOT a whole
@@ -504,6 +512,14 @@ fn volt(count: Nat) -> Volt {
 }
 
 fn volt_count(v: Volt) -> Nat {
+  measure_count(v)
+}
+
+fn millivolt(count: Nat) -> Millivolt {
+  Measure { count: count }
+}
+
+fn millivolt_count(v: Millivolt) -> Nat {
   measure_count(v)
 }
 

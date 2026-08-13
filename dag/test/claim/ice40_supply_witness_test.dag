@@ -1,0 +1,162 @@
+module test.claim.ice40_supply_witness
+
+import std.types { Bool, String, List }
+import std.integer { Int }
+import std.measure { Millivolt, millivolt, millivolt_count }
+import extdeps.programmable_logic.ice40.supply {
+  BankIoSupply,
+  ConfigurationBankSupply,
+  CoreSupply,
+  FastProgrammingSupply,
+  Ice40ConfigurationMode,
+  Ice40InterRailConstraint,
+  Ice40SupplyRail,
+  LikeVoltageRailsShareOneSupply,
+  MasterSpiConfiguration,
+  MustBeLeftUnconnected,
+  NvcmConfiguration,
+  NvcmProgramming,
+  NvcmProgrammingSupply,
+  OperatingWindow,
+  PinLeftUnconnected,
+  PllSupply,
+  RailRequirement,
+  SlaveSpiConfiguration,
+  UnusedBankSupplyGoesToCore,
+  ice40_inter_rail_constraints,
+  ice40_lvcmos18_supply,
+  ice40_lvcmos33_supply,
+  nvcm_supply_requirement,
+  rail_requirement,
+  requirement_admits,
+  supply_rail_symbol,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn admits(r: RailRequirement, mv: Int) -> Bool {
+  requirement_admits(r: r, v: millivolt(count: mv))
+}
+
+fn mode_admits(m: Ice40ConfigurationMode, mv: Int) -> Bool {
+  admits(r: nvcm_supply_requirement(m: m), mv: mv)
+}
+
+fn window_of(r: Ice40SupplyRail) -> RailRequirement? {
+  rail_requirement(r: r)
+}
+
+// THE CORE WINDOW IS WHY THE MILLIVOLT EXISTS. 1.14 V to 1.26 V is a 120 mV band; at volt grain
+// both bounds are 1 and the check admits everything from 1.0 V to 1.99 V. This asserts the band
+// discriminates in both directions, which is the property the finer carrier bought — a nominal
+// 1.2 V rail is admitted and a 1.0 V one is refused.
+test fn w_the_core_window_discriminates_below_volt_grain() -> Bool {
+  match window_of(r: CoreSupply) {
+    Absent => false
+    Present { value: w } =>
+      admits(r: w, mv: 1200)
+        && admits(r: w, mv: 1140)
+        && admits(r: w, mv: 1260)
+        && !admits(r: w, mv: 1000)
+        && !admits(r: w, mv: 1300)
+  }
+}
+
+// THE MODE-DEPENDENT RAIL HAS NO MODE-FREE ANSWER, and this is the central claim. Asking what
+// VPP_2V5 must supply without saying how the board configures returns nothing rather than the
+// widest window — because the widest window would admit 1.71 V, which master SPI refuses.
+test fn w_the_nvcm_rail_refuses_a_mode_free_question() -> Bool {
+  match window_of(r: NvcmProgrammingSupply) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// AND THE MODES REALLY DIFFER, which is what makes the refusal above load-bearing rather than
+// fussy. 1.71 V is a legal VPP_2V5 under slave SPI and illegal under master SPI and NVCM; 3.46 V
+// is legal for configuration and illegal while NVCM is being programmed. Both directions are
+// asserted, so a table collapsed to one window could not pass this.
+test fn w_the_configuration_mode_changes_the_admitted_window() -> Bool {
+  mode_admits(m: SlaveSpiConfiguration, mv: 1710)
+    && !mode_admits(m: MasterSpiConfiguration, mv: 1710)
+    && !mode_admits(m: NvcmConfiguration, mv: 1710)
+    && mode_admits(m: MasterSpiConfiguration, mv: 3460)
+    && !mode_admits(m: NvcmProgramming, mv: 3460)
+    && mode_admits(m: NvcmProgramming, mv: 3000)
+}
+
+// A PIN THAT MUST BE LEFT UNCONNECTED ADMITS NO VOLTAGE AT ALL. The failure this prevents is a
+// min/max record carrying two invented numbers for a row whose entire content is "do not connect
+// this" — so the arm is asserted to refuse a voltage that would sit comfortably inside every
+// other rail's window on this device.
+test fn w_the_unconnected_pin_admits_no_voltage() -> Bool {
+  match window_of(r: FastProgrammingSupply) {
+    Absent => false
+    Present { value: w } =>
+      match w {
+        MustBeLeftUnconnected => !admits(r: w, mv: 2500) && !admits(r: w, mv: 0)
+        OperatingWindow { minimum: _, maximum: _ } => false
+      }
+  }
+}
+
+// THE I/O STANDARD IS STRICTLY TIGHTER THAN THE RAIL THAT CARRIES IT. A bank rail admits anything
+// from 1.71 V to 3.46 V, but a bank driving LVCMOS 3.3 must sit in 3.14 to 3.46 — so 1.8 V is a
+// legal bank voltage and an illegal one for that standard. A design checked only against the rail
+// would pass while its outputs were out of spec.
+test fn w_the_io_standard_is_tighter_than_the_bank_rail() -> Bool {
+  match window_of(r: BankIoSupply) {
+    Absent => false
+    Present { value: rail } =>
+      admits(r: rail, mv: 1800)
+        && millivolt_count(v: ice40_lvcmos33_supply.minimum) > 1800
+        && millivolt_count(v: ice40_lvcmos33_supply.minimum) == 3140
+        && millivolt_count(v: ice40_lvcmos18_supply.typical) == 1800
+        && millivolt_count(v: ice40_lvcmos18_supply.maximum) < millivolt_count(v: ice40_lvcmos33_supply.minimum)
+  }
+}
+
+// CONSTRAINTS BETWEEN RAILS ARE CARRIED AS THEIR OWN KIND, because none of them is a property of
+// any single rail and a per-rail record would have to drop them. Each of the three is asserted to
+// be present and distinguishable, so collapsing them into one "see the notes" row would red.
+test fn w_the_inter_rail_constraints_are_distinguishable() -> Bool {
+  let shared = fold(ice40_inter_rail_constraints, init: false, f: fn(acc, c) {
+    acc || match c {
+      LikeVoltageRailsShareOneSupply { left: l, right: r } =>
+        (supply_rail_symbol(r: l) as String) == "VCCIO" && (supply_rail_symbol(r: r) as String) == "VCC_SPI"
+      UnusedBankSupplyGoesToCore { bank_rail: _, core_rail: _ } => false
+      PinLeftUnconnected { rail: _ } => false
+    }
+  })
+  let unused = fold(ice40_inter_rail_constraints, init: false, f: fn(acc, c) {
+    acc || match c {
+      UnusedBankSupplyGoesToCore { bank_rail: _, core_rail: cr } => (supply_rail_symbol(r: cr) as String) == "VCC"
+      LikeVoltageRailsShareOneSupply { left: _, right: _ } => false
+      PinLeftUnconnected { rail: _ } => false
+    }
+  })
+  let floating = fold(ice40_inter_rail_constraints, init: false, f: fn(acc, c) {
+    acc || match c {
+      PinLeftUnconnected { rail: pr } => (supply_rail_symbol(r: pr) as String) == "VPP_FAST"
+      LikeVoltageRailsShareOneSupply { left: _, right: _ } => false
+      UnusedBankSupplyGoesToCore { bank_rail: _, core_rail: _ } => false
+    }
+  })
+  shared && unused && floating
+}
+
+// The PLL rail is the core window, not the bank window, and the two are far apart. A design that
+// fed VCCPLL from a 3.3 V bank supply would be feeding a 1.2 V pin nearly three times its maximum.
+test fn w_the_pll_rail_follows_the_core_not_the_banks() -> Bool {
+  match window_of(r: PllSupply) {
+    Absent => false
+    Present { value: pll } =>
+      admits(r: pll, mv: 1200)
+        && !admits(r: pll, mv: 3300)
+        && match window_of(r: ConfigurationBankSupply) {
+          Absent => false
+          Present { value: spi } => admits(r: spi, mv: 3300)
+        }
+  }
+}

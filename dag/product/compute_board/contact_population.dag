@@ -39,9 +39,51 @@ fn population_kind_name(k: ContactPopulationKind) -> NonEmptyStr {
   }
 }
 
-fn population_kinds_equal(a: ContactPopulationKind, b: ContactPopulationKind) -> Bool {
-  (population_kind_name(k: a) as String) == (population_kind_name(k: b) as String)
+// IDENTITY IS NOT SPELLING. An earlier revision decided whether two kinds were the same by
+// round-tripping both through population_kind_name and comparing the prose — so editing a display
+// string, which is documentation, silently redefined the equality relation that compare_populations
+// uses to decide whether two counts may be compared at all. Two kinds could be made equal by a
+// copy-edit. The tag below is a structural discriminant with no other job: it is not displayed,
+// not parsed and not ordered, so nothing else can be tempted to read meaning into it, and the
+// exhaustive match means a new kind cannot be added without giving it one.
+//
+// The residual risk moves from "a rename changes equality" to "two kinds share a tag", which is
+// the better failure because it is decidable by execution: the witness asserts the tags are
+// pairwise distinct across every kind, so a duplicate reds instead of quietly fusing two
+// populations.
+fn population_kind_tag(k: ContactPopulationKind) -> Int {
+  match k {
+    AllPackageLeads => 1
+    VendorGeneralPurposeIo => 2
+    VendorGeneralPurposeSingleEndedIo => 3
+    VendorDifferentialInputsSubset => 4
+    VendorDedicatedIo => 5
+    VendorTotalIo => 6
+    ConfigurationContacts => 7
+    PlaceableLogicPins => 8
+    SupplyContacts => 9
+    ReturnContacts => 10
+    NoConnectContacts => 11
+  }
 }
+
+fn population_kinds_equal(a: ContactPopulationKind, b: ContactPopulationKind) -> Bool {
+  population_kind_tag(k: a) == population_kind_tag(k: b)
+}
+
+data all_contact_population_kinds: List<ContactPopulationKind> = [
+  AllPackageLeads,
+  VendorGeneralPurposeIo,
+  VendorGeneralPurposeSingleEndedIo,
+  VendorDifferentialInputsSubset,
+  VendorDedicatedIo,
+  VendorTotalIo,
+  ConfigurationContacts,
+  PlaceableLogicPins,
+  SupplyContacts,
+  ReturnContacts,
+  NoConnectContacts,
+]
 
 type ContactPopulation {
   kind: ContactPopulationKind
