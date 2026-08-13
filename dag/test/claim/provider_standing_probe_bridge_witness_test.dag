@@ -287,15 +287,9 @@ test fn provider_standing_probe_bridge_keystone_holds() -> Bool {
     && witness_deployed_profile_admits_exactly_the_observed_plan()
     && witness_unadmitted_plan_is_unobserved_but_wrong_realm_is_rejected()
     && witness_plans_added_after_the_pinned_runtime_read_as_stale_pin()
+    && witness_credential_liveness_splits_from_realm()
 }
 
-// ---------------------------------------------------------------------------
-// PRESS-0 step 2 — the consumer gunbc.codex_app_server_press asked for by name.
-//
-// The press receipt decoded per-bucket rate limits and then had nowhere to go:
-// the standing bridge left the limit axis Unobserved, so a measured bucket and
-// an unmeasured one produced the same verdict. These witness the projection the
-// press note specifies, and the discriminating case is the one it names.
 
 data codex_press_limit_bridge_witness_note: String = "The sibling-bucket case is the whole point: an exhausted `codex` bucket and an available `codex_bengalfox` bucket must produce DIFFERENT verdicts under draws that name them. A projection that routed either through ProviderAccountLimit would collapse both to one account verdict and refuse — or admit — work for the wrong reason."
 
@@ -347,8 +341,6 @@ test fn witness_codex_bucket_projects_to_native_bucket_never_account_scope() -> 
     })
 }
 
-// THE DISCRIMINATING ONE. Same observation set, two draws, two verdicts — a
-// projection through account scope cannot produce this and would fail here.
 test fn witness_exhausted_codex_allows_a_sibling_bucket_draw() -> Bool {
   let observations = provider_limit_observations_from_codex_buckets(
     credential: press_bucket_credential(),
@@ -385,12 +377,6 @@ test fn witness_no_buckets_is_a_located_unobserved_not_an_empty_list() -> Bool {
       match o { LimitObservationUnobserved { reason: _ } => true _ => false })
 }
 
-// THE MIXED CASE (review 51237). One bucket decodes, a sibling does not.
-// The first version of this bridge mapped CapacityUnknown to the subject-less
-// LimitObservationUnobserved, which blocks EVERY draw — so codex failing to
-// decode refused a draw naming a measured, available codex_bengalfox. It is a
-// fail-CLOSED error, which is why it survived the sibling witness above: the
-// exhausted/available pair still discriminated, because neither was unknown.
 data mixed_decode_witness_note: String = "Over-refusal reads as caution while it prices out capacity the observation proved was there. The producer held the limit_id and threw it away; carrying it is the whole fix."
 
 fn undecoded_codex_bucket() -> CodexRateLimitBucketVerdict {
@@ -431,11 +417,6 @@ test fn witness_undecoded_bucket_still_refuses_its_own_draw_and_unnamed_draws() 
     })
 }
 
-// Handback item 1 (review artifact 51237): evidence observed under one
-// CODEX_HOME must not be publishable as another credential's standing. The
-// receipt path gives the caller no argument to supply, so the only way to
-// change the credential is to change the home the trip actually ran under —
-// which is the fact, not a label. Two homes therefore never collide.
 test fn witness_credential_identity_tracks_the_observed_codex_home() -> Bool {
   let a = codex_press_credential_identity(
     credential: AmbientCodexCredentialContext { codex_home: "/srv/codex-a" as FilePath })
@@ -451,14 +432,6 @@ test fn witness_credential_identity_tracks_the_observed_codex_home() -> Bool {
   })
 }
 
-// ---------------------------------------------------------------------------
-// PRESS-0 step 2 — entitlement decoded from account/read.
-//
-// The press decoded `account` to "the object was nonempty" and stopped, so an
-// apiKey platform credential, an amazonBedrock contract and a personal ChatGPT
-// subscription all reached the same Ready. These witness the union decode and
-// the gunbc policy over it, and the discriminating pairs are the ones where a
-// rejection and an unobserved must NOT collapse into each other.
 
 data entitlement_realm_witness_note: String = "THE TWO NEGATIVES ARE DIFFERENT NEGATIVES. A Bedrock account is REJECTED — read successfully, wrong realization, the answer is no. An unrecognized plan string is UNOBSERVED — upstream moved and our pin is stale, the answer is not yet. Both refuse dispatch today, which is exactly why a witness that only checked `not available` would pass while the model conflated them: the first is permanent until the credential changes, the second is repaired by updating a roster."
 
@@ -488,10 +461,6 @@ test fn witness_upstream_unknown_plan_is_not_a_yes() -> Bool {
     && !codex_plan_is_entitling(plan: CodexPlanFree)
 }
 
-// THE ALLOW PATH IS THE ONE THAT NEEDS PINNING. The first roster admitted every
-// plan but free and unknown, and no witness noticed because every assertion was
-// about a REFUSAL. This one asserts the admitted set is exactly one member, so
-// widening it silently is not possible — a new admission reds here first.
 test fn witness_deployed_profile_admits_exactly_the_observed_plan() -> Bool {
   codex_first_deployment_subscription_policy.admitted_plans.length() == 1
     && codex_plan_is_entitling(plan: CodexPlanPro)
@@ -502,8 +471,6 @@ test fn witness_deployed_profile_admits_exactly_the_observed_plan() -> Bool {
     && !codex_plan_is_entitling(plan: CodexPlanUnknown)
 }
 
-// A non-admitted plan and a wrong realm are BOTH refusals with different
-// remedies: ratify the plan here, versus change the credential.
 test fn witness_unadmitted_plan_is_unobserved_but_wrong_realm_is_rejected() -> Bool {
   let unadmitted = provider_entitlement_from_codex_realm(
     realm: CodexChatgptRealm { plan: CodexPlanTypeObserved { plan: CodexPlanEnterprise } })
@@ -598,9 +565,6 @@ test fn witness_unreported_cause_is_not_the_bucket_id() -> Bool {
     })
 }
 
-// The version-coherence repair made a claim about behavior: under the pinned
-// 0.146.0 runtime the two plan strings that only 0.147.0 emits must decode as a
-// STALE PIN, not as members. Asserting that in a note is not evidence.
 test fn witness_plans_added_after_the_pinned_runtime_read_as_stale_pin() -> Bool {
   let later = chatgpt_realm_on(
     plan_wire: "{\"account\":{\"type\":\"chatgpt\",\"planType\":\"self_serve_business_prolite\"}}")
@@ -623,8 +587,6 @@ test fn witness_plans_added_after_the_pinned_runtime_read_as_stale_pin() -> Bool
     })
 }
 
-// Continuity receipt trap: account/read can still name chatgpt/pro while rate
-// limits return no buckets — realm and liveness must not collapse.
 test fn witness_credential_liveness_splits_from_realm() -> Bool {
   let live_auth = provider_authentication_from_codex_credential_liveness(
     liveness: CodexCredentialLive { bucket_count: 2 })
