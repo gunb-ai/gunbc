@@ -742,37 +742,47 @@ type ServingDeploymentTarget {
 // can write, so the actor controls that file's CONTENT though not its location, mode or owner.
 // Closing it needs a delivery mechanism that stages where the actor cannot write. Not built, and not
 // waved past.
-fn effect_actuation_commands(
+// WHAT AN EMPTY LIST WOULD HAVE MEANT, and why this returns a variant instead (review 51710). The
+// five user-owned effects have no PRIVILEGED command -- the actor actuates them itself, as itself.
+// Returning [] for those said "no commands" in the same breath as "nothing to do", which is fine for
+// the sudoers consumer (it filters on escalation first) and a trap for any future caller that wants
+// to actuate a user-owned effect: it would read the empty list as work already done. The two states
+// are now different constructors, so that misreading has no representation to occur in.
+type EffectActuation
+  = ActuatedByEscalation { commands: List<NonEmptyStr> }
+  | ActuatedByOwnerDirectly
+
+fn effect_actuation(
   effect: ServingInstallEffect,
   target: ServingDeploymentTarget,
-) -> List<NonEmptyStr> {
+) -> EffectActuation {
   match effect {
-    WriteSystemUnitFile => [
+    WriteSystemUnitFile => ActuatedByEscalation { commands: [
       join([
         "/usr/bin/install -m 644 -o root -g root ",
         target.staged_unit_path as String, " ", target.unit_path as String,
       ], "") as NonEmptyStr,
-    ]
-    ReloadSystemManager => ["/usr/bin/systemctl daemon-reload" as NonEmptyStr]
-    EnableSystemUnit => [
+    ] }
+    ReloadSystemManager => ActuatedByEscalation { commands: ["/usr/bin/systemctl daemon-reload" as NonEmptyStr] }
+    EnableSystemUnit => ActuatedByEscalation { commands: [
       join(["/usr/bin/systemctl enable ", target.unit_name as String], "") as NonEmptyStr,
       join(["/usr/bin/systemctl start ", target.unit_name as String], "") as NonEmptyStr,
       join(["/usr/bin/systemctl restart ", target.unit_name as String], "") as NonEmptyStr,
-    ]
-    InstallRuntimePackage => [
+    ] }
+    InstallRuntimePackage => ActuatedByEscalation { commands: [
       join(["/usr/bin/apt-get install -y ", target.runtime_package as String], "") as NonEmptyStr,
-    ]
-    GrantContainerRuntimeAccess => [
+    ] }
+    GrantContainerRuntimeAccess => ActuatedByEscalation { commands: [
       join(["/usr/sbin/usermod -aG docker ", principal_label(p: target.actor)], "") as NonEmptyStr,
-    ]
-    EnableLingerForOwnAccount => [
+    ] }
+    EnableLingerForOwnAccount => ActuatedByEscalation { commands: [
       join(["/usr/bin/loginctl enable-linger ", principal_label(p: target.actor)], "") as NonEmptyStr,
-    ]
-    WriteUserUnitFile => []
-    ReloadUserManager => []
-    EnableUserUnit => []
-    PullModelArtifact => []
-    RunContainerAsOwnUser => []
+    ] }
+    WriteUserUnitFile => ActuatedByOwnerDirectly
+    ReloadUserManager => ActuatedByOwnerDirectly
+    EnableUserUnit => ActuatedByOwnerDirectly
+    PullModelArtifact => ActuatedByOwnerDirectly
+    RunContainerAsOwnUser => ActuatedByOwnerDirectly
   }
 }
 
@@ -787,7 +797,10 @@ fn realization_escalated_commands(
     realization_install_effects(realization: realization),
     e =>
       if effect_requires_escalation(effect: e, actor: target.actor) {
-        effect_actuation_commands(effect: e, target: target)
+        match effect_actuation(effect: e, target: target) {
+          ActuatedByEscalation { commands: c } => c
+          ActuatedByOwnerDirectly => []
+        }
       } else { [] },
   )
 }

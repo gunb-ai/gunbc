@@ -22,7 +22,9 @@ import gunbc.spark_serving_realization {
   effect_mutation_subject,
   effect_requires_escalation,
   ServingDeploymentTarget,
-  effect_actuation_commands,
+  effect_actuation,
+  ActuatedByEscalation,
+  ActuatedByOwnerDirectly,
   realization_escalated_commands,
   realization_sudoers_grant_lines,
   SparkServingRealization,
@@ -124,7 +126,7 @@ test fn red_control_no_grant_line_carries_shell_or_wildcard() -> Bool {
 // actuation. This is the arm that keeps the grant from quietly including everything a realization
 // does -- the fold must consult escalation, not merely concatenate actuations.
 test fn red_control_non_escalating_effects_contribute_no_grant_line() -> Bool {
-  let actuation = length(effect_actuation_commands(effect: EnableLingerForOwnAccount, target: target_as(RootPrincipal)))
+  let actuation = length(match effect_actuation(effect: EnableLingerForOwnAccount, target: target_as(RootPrincipal)) { ActuatedByEscalation { commands: c } => c ActuatedByOwnerDirectly => [] })
   let granted = length(realization_escalated_commands(realization: UserUnitRealization, target: target_as(RootPrincipal)))
   actuation > 0 && granted == 0
 }

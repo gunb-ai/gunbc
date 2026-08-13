@@ -516,6 +516,8 @@ fn spark_standing_unobserved_host(standings: List<SparkManagedAccessStanding>) -
   })
 }
 
+// ONE derivation, read twice: the receipt renders the standings and the exit folds the same values.
+// Deriving them a second time for the exit would let the two disagree (review 51710).
 func spark_managed_access_standing_with_attempt(attempt_raw: String) -> ProcessExit {
   let now = clock_now_probed_at()
   let credential_identity = modeled_fleet_automation_credential_identity()
@@ -526,6 +528,8 @@ func spark_managed_access_standing_with_attempt(attempt_raw: String) -> ProcessE
         host: h,
         principal: p,
       )))
+  let standings = map(spark_standing_hosts, h =>
+    derive_spark_managed_access_standing(host: h as HostIdentity, observations: observations))
   let body = join([
     join([
       "spark managed-access standing probed_at=", now as String,
@@ -538,20 +542,17 @@ func spark_managed_access_standing_with_attempt(attempt_raw: String) -> ProcessE
       " authenticated=", if o.authenticated { "true" } else { "false" },
       " holds_any_passwordless_grant=", if o.holds_any_passwordless_grant { "true" } else { "false" }, "\n",
     ], "")), ""),
-    join(map(spark_standing_hosts, h => {
-      let standing = derive_spark_managed_access_standing(host: h as HostIdentity, observations: observations)
+    join(map(standings, standing =>
       join([
         spark_standing_line(standing: standing),
         spark_authorization_lines(standing: standing, credential_identity: credential_identity),
-      ], "")
-    }), ""),
+      ], "")), ""),
   ], "")
   let w = Filesystem.Write(path: spark_standing_receipt_path, content: body)
   if !w.success {
     exit_failure(reason: join(["spark standing receipt write failed: ", w.error], ""))
   } else {
-    match spark_standing_unobserved_host(standings: map(spark_standing_hosts, h =>
-      derive_spark_managed_access_standing(host: h as HostIdentity, observations: observations))) {
+    match spark_standing_unobserved_host(standings: standings) {
       Present { value: h } =>
         exit_failure(reason: join(["spark managed-access standing could not be observed on host=", h, ": no reachable principal, so no transport to bootstrap through"], ""))
       Absent => ExitSuccess
