@@ -426,7 +426,7 @@ test fn w_the_seed_seam_renders_one_ascii_line_from_scalars() -> Bool {
   let line = ci_batch_summary_text(
     batch_index: 2, batch_label: "discovery-corpus" as NonEmptyStr,
     done: 8809, skipped: 13, refused: 0, failed: 0, timed_out: 0,
-    elapsed_nanos: 1500000000, peak_rss_bytes: 2469606195,
+    elapsed_nanos: 1500000000,
   )
   string_contains(s: line, pattern: "discovery-corpus")
     && string_contains(s: line, pattern: "8809 passed")
@@ -438,24 +438,39 @@ test fn w_RED_an_all_green_batch_does_not_render_the_failure_glyph() -> Bool {
   let green = ci_batch_summary_text(
     batch_index: 1, batch_label: "b" as NonEmptyStr,
     done: 3, skipped: 0, refused: 0, failed: 0, timed_out: 0,
-    elapsed_nanos: 1000, peak_rss_bytes: 1024,
+    elapsed_nanos: 1000,
   )
   let red = ci_batch_summary_text(
     batch_index: 1, batch_label: "b" as NonEmptyStr,
     done: 2, skipped: 0, refused: 0, failed: 1, timed_out: 0,
-    elapsed_nanos: 1000, peak_rss_bytes: 1024,
+    elapsed_nanos: 1000,
   )
   (green != red) && string_contains(s: red, pattern: "1 failed") && !string_contains(s: green, pattern: "1 failed")
 }
 
-test fn w_RED_an_unobtainable_peak_reading_is_disclosed_not_printed_as_zero() -> Bool {
+// The seed has no batch-scoped memory reading — its only fact is the process lifetime high-water
+// mark — so the summary must not print a peak at all. The earlier version passed that process
+// figure through and rendered `peak 11.5 GiB` beside a four-millisecond single-witness batch: a
+// real number on the wrong subject. Absence is disclosed, never filled in.
+test fn w_RED_the_seed_summary_claims_no_peak_because_it_has_no_batch_scoped_one() -> Bool {
   let line = ci_batch_summary_text(
     batch_index: 1, batch_label: "b" as NonEmptyStr,
     done: 1, skipped: 0, refused: 0, failed: 0, timed_out: 0,
-    elapsed_nanos: 1000, peak_rss_bytes: 0,
+    elapsed_nanos: 1000,
   )
-  string_contains(s: line, pattern: "unreadable")
-    && !string_contains(s: line, pattern: "peak 0")
+  !string_contains(s: line, pattern: "peak")
+    && string_contains(s: line, pattern: "unmeasured")
+}
+
+// A duration beside a batch is read as how long the batch took; this one is the SUM of leaves that
+// ran concurrently, so the word has to be in the line.
+test fn w_RED_the_summary_duration_is_labelled_work_not_elapsed_wall() -> Bool {
+  let line = ci_batch_summary_text(
+    batch_index: 1, batch_label: "b" as NonEmptyStr,
+    done: 2, skipped: 0, refused: 0, failed: 0, timed_out: 0,
+    elapsed_nanos: 5000000,
+  )
+  string_contains(s: line, pattern: "work")
 }
 
 // THE ACCEPTANCE CLAIM, stated at the grain the model can actually decide: a batch of routine

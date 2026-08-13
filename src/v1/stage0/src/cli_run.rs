@@ -14536,13 +14536,6 @@ static ROUTINE_ROLLUP_FOLD: std::sync::OnceLock<bool> = std::sync::OnceLock::new
 /// a rendering concern.
 static OBSERVATION_SOURCE_ROOTS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
 
-/// The shard's peak resident set, or 0 when no reading is obtainable. Zero is NOT a measurement
-/// here and the `.dag` render treats it as absence rather than as a peak of nothing — the seam
-/// documents that inversion, because a u64 has no room to say "unreadable".
-fn floor_shard_peak_rss_bytes() -> u64 {
-    peak_rss_vhwm_bytes().unwrap_or(0)
-}
-
 fn routine_rollup_folds() -> bool {
     *ROUTINE_ROLLUP_FOLD.get().unwrap_or(&false)
 }
@@ -14564,7 +14557,6 @@ fn render_batch_summary_line(
     failed: u64,
     timed_out: u64,
     elapsed_nanos: u64,
-    peak_rss_bytes: u64,
 ) -> Option<String> {
     use v1_interpreter::Value;
     let roots = OBSERVATION_SOURCE_ROOTS.get()?;
@@ -14587,7 +14579,6 @@ fn render_batch_summary_line(
             arg("failed", failed),
             arg("timed_out", timed_out),
             arg("elapsed_nanos", elapsed_nanos),
-            arg("peak_rss_bytes", peak_rss_bytes),
         ],
         false,
     )
@@ -24460,7 +24451,6 @@ fn emit_batch_summary(merged: &DiscoverySummary) {
         failed,
         0,
         merged.total_measured_nanos as u64,
-        floor_shard_peak_rss_bytes(),
     ) {
         Some(line) => eprintln!("{line}"),
         // Fail-closed: the routine lines are already gone, so a silent return would render a batch
@@ -24722,6 +24712,16 @@ impl ShardStyle {
         if !self.stream {
             return;
         }
+        // DIVERGENCE, declared rather than hidden: this is a hand-coded restatement of the
+        // routing `gunbc.observation_ci_render ci_routine_projection` decides — pass folds,
+        // anomaly pierces — and NOT a call into it. Consulting the authority would mean one .dag
+        // evaluation per witness on a 9,000-witness corpus, which is why the seam is per BATCH.
+        // So the density rule now has two representations and only the .dag one is witnessed;
+        // if `observation_class_density` changes, this arm does not follow and nothing reds.
+        // Dissolve-on: witness outcomes reach the render authority as a batch of events rather
+        // than one at a time, at which point the projection runs once per batch over the whole
+        // roster and this arm is deleted rather than kept in sync.
+        //
         // Law 4's fold, at the one site that produces two thirds of the console. A PASSING witness
         // is routine work: it folds into the batch rollup and prints nothing, and the batch summary
         // line at shard close is where its count appears. A failing one pierces the fold and prints

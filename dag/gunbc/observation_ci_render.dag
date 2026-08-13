@@ -575,6 +575,25 @@ fn ci_rollup_measurement_note(rollup: ObservationRollup) -> String {
   }
 }
 
+
+// Elapsed is the SUM of the folded leaves' measured walls, and the leaves run concurrently across
+// shards, so it is WORK-TIME and never elapsed wall — DESIGN's cost-partition law says exactly this
+// ("elapsed wall is NOT additive over concurrent spans"). The word `work` is in the rendered line
+// because a bare duration beside a batch is read as how long the batch took, and on a wide run the
+// two differ by the shard count.
+//
+// Peak renders only when a batch-scoped reading exists. The seed cannot supply one: its only
+// memory fact is the PROCESS high-water mark, which is monotone over the whole run, so attributing
+// it to a batch reported `peak 11.5 GiB` beside a four-millisecond single-witness batch — a real
+// number located on the wrong subject, which DESIGN section 5 treats as the same defect class as a
+// wrong number. Absence is disclosed by ci_rollup_measurement_note rather than filled in.
+fn ci_rollup_peak_text(rollup: ObservationRollup) -> String {
+  match rollup.peak_rss {
+    MeasuredValue { value: v } => concat(" · peak ", ci_measured_bytes_text(m: rollup.peak_rss))
+    MeasuredUnavailable { cause: _ } => ""
+  }
+}
+
 fn ci_batch_summary_line(rollup: ObservationRollup) -> RenderedLine {
   let problems = rollup.counts.refused + rollup.counts.failed + rollup.counts.timed_out
   RenderedLine {
@@ -587,8 +606,8 @@ fn ci_batch_summary_line(rollup: ObservationRollup) -> RenderedLine {
       to_string(rollup.counts.refused), " refused · ",
       to_string(rollup.counts.failed), " failed · ",
       ci_measured_elapsed_text(m: rollup.elapsed),
-      " · peak ",
-      ci_measured_bytes_text(m: rollup.peak_rss),
+      " work",
+      ci_rollup_peak_text(rollup: rollup),
       ci_rollup_measurement_note(rollup: rollup),
     ], ""),
     attention: if problems == 0 { Ambient } else { Anomaly }
@@ -602,9 +621,6 @@ fn ci_batch_summary_line(rollup: ObservationRollup) -> RenderedLine {
 // that took a preformatted string instead would be the second representation this whole lane exists
 // to remove.
 //
-// peak_rss_bytes == 0 means the reading was not obtainable, not that the batch used no memory: zero
-// is the BEST possible value and therefore the worst available stand-in for its absence, so it
-// becomes MeasuredUnavailable and increments measurement_absent, which the summary discloses.
 fn ci_batch_summary_text(
   batch_index: Nat,
   batch_label: NonEmptyStr,
@@ -614,9 +630,7 @@ fn ci_batch_summary_text(
   failed: Nat,
   timed_out: Nat,
   elapsed_nanos: Nat,
-  peak_rss_bytes: Nat,
 ) -> String {
-  let unmeasured_rss = peak_rss_bytes == 0
   ci_render_line(
     line: ci_batch_summary_line(
       rollup: ObservationRollup {
@@ -633,12 +647,12 @@ fn ci_batch_summary_text(
         },
         active_leaf: none,
         elapsed: MeasuredValue { value: nanosecond(count: elapsed_nanos) },
-        peak_rss: if unmeasured_rss {
-          MeasuredUnavailable { cause: "no readable memory.peak for this shard" }
-        } else {
-          MeasuredValue { value: byte_size(count: peak_rss_bytes) }
-        },
-        measurement_absent: if unmeasured_rss { 1 } else { 0 },
+        // Not a missing reading — a reading that does not exist at this grain. The seed's
+        // getrusage high-water mark is process-lifetime and monotone, so there is no batch-scoped
+        // peak for it to pass, and inventing one from the process figure is the located-on-the-
+        // wrong-subject defect this seam previously shipped.
+        peak_rss: MeasuredUnavailable { cause: "no batch-scoped peak: the seed measures process lifetime high-water only" },
+        measurement_absent: 1,
       }
     ),
     tier: Ascii,
