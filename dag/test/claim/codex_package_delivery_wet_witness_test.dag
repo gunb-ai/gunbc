@@ -113,7 +113,7 @@ test fn acquire_exact_target_pair_admits_wrapper_and_platform() -> Bool {
   }
 }
 
-test fn materialize_codex_runtime_bundle_produces_native_executable() -> Bool {
+test fn materialize_codex_runtime_bundle_produces_native_executable_holds() -> Bool {
   match isolated_release_parent() {
     Absent => false
     Present { value: release_parent } =>
@@ -185,7 +185,7 @@ fn materialize_identical_input_twice_reuses_same_release_identity_failure_receip
   }
 }
 
-test fn materialize_identical_input_twice_reuses_same_release_identity() -> Bool {
+test fn materialize_identical_input_twice_reuses_same_release_identity_holds() -> Bool {
   match isolated_release_parent() {
     Absent => false
     Present { value: release_parent } => {
