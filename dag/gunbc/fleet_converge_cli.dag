@@ -3,8 +3,7 @@ module gunbc.fleet_converge_cli
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import std.algebra { trim }
-import extdeps.exec.command { ArgvCommand, LocalExec }
-import gunbc.command_runner { run_shell_command_capture }
+import gunbc.command_runner { stat_owner_name_capture }
 import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
 
 import extdeps.linux.procfs { ProcSysKernelHostname, procfs_path_literal }
@@ -429,9 +428,10 @@ fn converge_cli_atomic_receipt_write(host: String, content: String) -> String? {
 // Applied means committed plus independent read-back (DESIGN section 5): rename alone is not the claim.
 data converge_cli_receipt_owner_readback_required: Bool = true
 
-// Interim shell argv readback — dissolve-on typed extdeps.filesystem.filesystem_io owner
-// observation (no Scaffold row: net-new dissolution obligation needs operator verdict on head).
-data converge_cli_receipt_owner_readback_interim_note: String = "Owner readback uses stat -c %U via run_shell_command_capture until extdeps.filesystem.filesystem_io carries a typed owner observation operation; then converge_cli_receipt_owner_readback routes through that extdep and this shell argv retires."
+// Interim owner readback routes through gunbc.command_runner.stat_owner_name_capture
+// (command_runner_scaffold population). Dissolve-on: extdeps.filesystem.filesystem_io
+// typed owner observation retires the stat argv arm.
+data converge_cli_receipt_owner_readback_interim_note: String = "Owner readback uses command_runner stat_owner_name_capture (command_runner_scaffold) until extdeps.filesystem.filesystem_io carries a typed owner observation; then converge_cli_receipt_owner_readback routes through that extdep."
 
 fn converge_cli_expected_receipt_owner_name() -> String {
   fleet_posix_operator_user.name
@@ -440,10 +440,7 @@ fn converge_cli_expected_receipt_owner_name() -> String {
 fn converge_cli_receipt_owner_readback(host: String) -> String? {
   let path = fleet_converge_receipt_path(host: host)
   let expected = converge_cli_expected_receipt_owner_name()
-  let r = run_shell_command_capture(
-    command: ArgvCommand { argv: ["stat", "-c", "%U", path] },
-    transport: LocalExec,
-  )
+  let r = stat_owner_name_capture(path: path)
   if !r.success {
     Present { value: concat("gunbc converge: receipt owner read-back refused (stat): ", trim(s: r.stderr)) }
   } else {

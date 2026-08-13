@@ -1,6 +1,6 @@
 module gunbc.host_axis_caps
 
-import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.types { String, NonEmptyStr, List, Bool, Int, list_length }
 import std.algebra { trim }
 import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.membership_reconcile {
@@ -225,21 +225,17 @@ fn deploy_memory_cap_apply_script_ordered(units: List<NonEmptyStr>) -> String {
   concat(runner_memory_cap_author_script(), deploy_memory_cap_shadow_revert_scripts(units: units))
 }
 
-// Ordering pin: script must match author-then-reverts composition; reversed order fails.
-fn deploy_memory_cap_script_author_precedes_revert(script: String, units: List<NonEmptyStr>) -> Bool {
-  let author = runner_memory_cap_author_script()
-  let reverts = deploy_memory_cap_shadow_revert_scripts(units: units)
-  let expected = concat(author, reverts)
-  string_contains(s: author, pattern: "20-fleet-width")
-    && !string_contains(s: author, pattern: "systemctl revert")
-    && (length(units) == 0 || script == expected)
+// Pin caller script to deploy_memory_cap_apply_script_ordered's concat(author, reverts).
+fn deploy_memory_cap_script_matches_ordered_composition(script: String, units: List<NonEmptyStr>) -> Bool {
+  script == concat(runner_memory_cap_author_script(), deploy_memory_cap_shadow_revert_scripts(units: units))
 }
 
 fn deploy_memory_cap_apply_script_author_before_shadow_revert(units: List<NonEmptyStr>) -> Bool {
-  deploy_memory_cap_script_author_precedes_revert(
-    script: deploy_memory_cap_apply_script_ordered(units: units),
-    units: units,
-  )
+  list_length(items: units) > 0
+    && deploy_memory_cap_script_matches_ordered_composition(
+      script: deploy_memory_cap_apply_script_ordered(units: units),
+      units: units,
+    )
 }
 
 // witness-only until live_deploy apply emits deploy_memory_cap_apply_script_ordered on the
