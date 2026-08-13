@@ -3,45 +3,13 @@ module tools.interpreter_dispatch_bijection_real_roster_transport
 import extdeps.git.inspect
 import extdeps.shell
 import gunbc.retained_shell_script { retained_foreign }
-import gunbc.cargo_execution_placement {
-  CargoPlacement,
-  LocalRunner,
-  CargoSubjectPlacementRequirement,
-  RequiresLocalWorkspace,
-  CargoPlacementDecision,
-  PlacementAdmitted,
-  PlacementRefused,
-  CargoInvocationOutcome,
-  CargoInvocationPassed,
-  CargoInvocationFailed,
-  CargoInvocationNotAttempted,
-  CargoExecutableUnobserved,
-  decide_cargo_placement,
-  cargo_outcome_holds,
-  cargo_outcome_diagnostic
-}
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.logic { Bool }
 
 data interpreter_dispatch_bijection_real_roster_transport_note: String = "R1 closeout item TWO real-crate bijection receipt (gunbc#7825): executes the two #[ignore] integration tests in src/v1/stage0/tests/interpreter_dispatch_bijection_real_roster_red.rs via shell.Exec.Run with RUSTC_WRAPPER cleared — real git clone, real gunbc run main_wet regen, real cargo build -p v1-compiler on the clone. cargo.Build.Test routes through ctrl-build remote in this environment and is intentionally not used here. Claim-A compile-red siblings stay in the default local cargo test run; this transport is the falsifier_self_host_wet enrollment path for claim-B."
 
 data interpreter_dispatch_bijection_real_roster_memory_envelope_note: String = "MEMORY PREDICTION (Lane D, 2026-08-06; construction pin still-bat-561 msg_e79bf117). WITNESS NEEDS: per direction — git clone --local (no target/), gunbc run main_wet on the clone (pre-built release gunbc), cold release cargo build -p v1-compiler --lib in the clone; two directions sequential so peak is max(per-direction). DOMINANT PEAK: in-clone cold rustc lib build. CONSTRUCTION: transport shell exports CARGO_BUILD_JOBS=4 before both cargo test invocations so the fleet-measured premise (jobs=4) is the executed premise — not a note beside an unenforced conditional. ANCHORS: gunbc_ci_native_bundle_batch_clamp_basis_note cgroup peak 11940978688 B (~11.1 GiB, cold cargo, jobs=4); v1 width-1 floor 10.7 GiB cgroup under 15 GiB throttle; claim_batch resolve ~2.4 GiB before shell. PREDICTED PEAK on falsifier runner slot: ~10–12 GiB cgroup, ~4–5 GiB headroom under gunbc_runner_slot_desired().memory_max (16 GiB kill / 15 GiB high; live read falsifier 31047744902 srv3-03). VERDICT: fits the declared slot under pinned jobs=4. STACKING RISK (fleet memory-tight tonight): batch-1 discovery co-residency ~5–6 GiB before batch-2 wet rows. LOCAL SIGKILL CONTROL: claim_batch --wet killed host-tree cargo test compile at 97s before clone+build (children-max-rss 2.7 GiB); same host completed direction-1 through clone+build in 346s wall — kill is not clone peak evidence. WALL ROUTED TO OPERATOR (not solved here): ~692s whole transport vs gunbc_falsifier_self_host_wet_receipt_wall_budget 600s — basis and regime below in dashboard routing; witness not shrunk."
 
-// The subject is bound to the machine holding the workspace: it clones the live tree,
-// regenerates artifacts in the clone and requires a real compile refusal there. So its
-// placement requirement is a fact about it, declared rather than left to whatever PATH
-// resolves — see gunbc.cargo_execution_placement for why the two hardcoded
-// /opt/cargo/bin/cargo literals this replaces were a placement decision written as a
-// literal, and why the modeled cargo.Build.Test could not be used as it stands.
-data real_roster_placement_requirement: CargoSubjectPlacementRequirement = RequiresLocalWorkspace {
-    required_by: DeclarationRef {
-      module_path: "tools.interpreter_dispatch_bijection_real_roster_transport",
-      decl_name: "run_interpreter_dispatch_bijection_real_roster_red",
-      field: WholeDeclaration,
-    },
-  }
-
-fn interpreter_dispatch_bijection_real_roster_red_shell(root: String, cargo_bin: String) -> String {
+fn interpreter_dispatch_bijection_real_roster_red_shell(root: String) -> String {
   concat(
     "set -euo pipefail\nexport CARGO_BUILD_JOBS=4\n",
     concat(
@@ -51,8 +19,8 @@ fn interpreter_dispatch_bijection_real_roster_red_shell(root: String, cargo_bin:
         concat(
           "\n",
           concat(
-            concat("env RUSTC_WRAPPER= CTRL_BUILD_MODE=local CARGO_BUILD_JOBS=4 ", concat(cargo_bin, " test -p v1-compiler --test interpreter_dispatch_bijection_real_roster_red --release -- --ignored --exact w_red_real_roster_row_with_no_real_handler_arm_refuses_compile\n")),
-            concat("env RUSTC_WRAPPER= CTRL_BUILD_MODE=local CARGO_BUILD_JOBS=4 ", concat(cargo_bin, " test -p v1-compiler --test interpreter_dispatch_bijection_real_roster_red --release -- --ignored --exact w_red_real_handler_arm_with_no_real_roster_row_refuses_compile\n"))
+            "env RUSTC_WRAPPER= CTRL_BUILD_MODE=local CARGO_BUILD_JOBS=4 /opt/cargo/bin/cargo test -p v1-compiler --test interpreter_dispatch_bijection_real_roster_red --release -- --ignored --exact w_red_real_roster_row_with_no_real_handler_arm_refuses_compile\n",
+            "env RUSTC_WRAPPER= CTRL_BUILD_MODE=local CARGO_BUILD_JOBS=4 /opt/cargo/bin/cargo test -p v1-compiler --test interpreter_dispatch_bijection_real_roster_red --release -- --ignored --exact w_red_real_handler_arm_with_no_real_roster_row_refuses_compile\n"
           )
         )
       )
@@ -60,74 +28,13 @@ fn interpreter_dispatch_bijection_real_roster_red_shell(root: String, cargo_bin:
   )
 }
 
-// ONE observation, and no probe order. The former shell named /opt/cargo/bin/cargo
-// outright; the alternative reflex — CARGO_HOME, then /opt/cargo/bin, then ~/.cargo/bin,
-// then `rustup which` — is worse rather than better, because a chain answers with whatever
-// it reaches first and cannot report that the one it was looking for is missing. Absence
-// here is a typed refusal carrying what was observed.
-// WHAT IS OBSERVED, AND WHAT IS NOT — stated because the gap is load-bearing.
-//
-// Only EXISTENCE is observed. `shell.Which.Check` also declares `path: FilePath?`, and
-// that field is NOT consumed here on purpose: under wet execution it comes back as a bare
-// stdout String rather than an Optional, so matching Present/Absent raises a non-exhaustive
-// pattern match on the path itself. That is the Value::Null / Optional realization straddle
-// DESIGN carries as an open thread, sitting at the service-output boundary.
-//
-// The consequence is exact and must not be overstated: this resolves the ADMITTED arm to
-// the bare name `cargo`, which the transport's `env` execvp's through PATH. So the hardcoded
-// /opt/cargo/bin/cargo literal is gone — the invocation now works on any host whose cargo is
-// elsewhere — but LOCALITY IS NOT ESTABLISHED. A PATH whose cargo is a remote-dispatching
-// shim still satisfies this. The placement decision is modeled and its refusal arm is real
-// and witnessed; what is missing is the observation that would let the decision be made
-// about a NAMED executable instead of a name.
-//
-// 🟡 dissolve-on: when the Value::Null split lands and `T? from "stdout"` decodes as a real
-// Optional, this reads the observed absolute path, hands it to decide_cargo_placement, and
-// the locality claim becomes established rather than assumed.
-fn real_roster_cargo_decision() -> CargoPlacementDecision {
-  let observed = shell.Which.Check(command: "cargo")
-  if observed.exists {
-    decide_cargo_placement(
-      requirement: real_roster_placement_requirement,
-      placement: LocalRunner { cargo_path: "cargo" }
-    )
-  } else {
-    PlacementRefused { cause: CargoExecutableUnobserved { observation: "which cargo" } }
-  }
-}
-
-// The outcome is TYPED. The predecessor returned `run.success`, and the falsifier's
-// component receipt for run 31685755058 shows exactly what that bought: this witness is
-// reported as `returned Bool(false)` with no cause, for ten days. Whether cargo was absent,
-// the clone failed, or the compile wrongly SUCCEEDED when the test requires it to refuse
-// were indistinguishable, so the failure could not be triaged and therefore could not be
-// ranked or owned.
-fn real_roster_cargo_run(cargo_bin: String) -> CargoInvocationOutcome {
+fn run_interpreter_dispatch_bijection_real_roster_red() -> Bool {
   let root = git.Inspect.Toplevel()
   let run = shell.Exec.Run(
     script: retained_foreign(
-      body: interpreter_dispatch_bijection_real_roster_red_shell(root: root.path, cargo_bin: cargo_bin),
+      body: interpreter_dispatch_bijection_real_roster_red_shell(root: root.path),
       reason: "interpreter dispatch bijection real roster cargo integration tests"
     )
   )
-  if run.success {
-    CargoInvocationPassed
-  } else {
-    CargoInvocationFailed { exit_code: run.exit_code, cause: run.stderr }
-  }
-}
-
-fn run_interpreter_dispatch_bijection_real_roster_outcome() -> CargoInvocationOutcome {
-  match real_roster_cargo_decision() {
-    PlacementRefused { cause: c } => CargoInvocationNotAttempted { refusal: c }
-    PlacementAdmitted { cargo_path: cargo_bin } => real_roster_cargo_run(cargo_bin: cargo_bin)
-  }
-}
-
-fn run_interpreter_dispatch_bijection_real_roster_red() -> Bool {
-  cargo_outcome_holds(o: run_interpreter_dispatch_bijection_real_roster_outcome())
-}
-
-fn interpreter_dispatch_bijection_real_roster_red_verdict_diagnostic() -> String {
-  cargo_outcome_diagnostic(o: run_interpreter_dispatch_bijection_real_roster_outcome())
+  run.success
 }

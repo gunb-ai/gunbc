@@ -10779,6 +10779,16 @@ pub fn active_workset_snapshot() -> Vec<ActiveWorksetEntry> {
         .clone()
 }
 
+/// Test helper: clears the process-wide active-workset registry between discriminating tests.
+#[doc(hidden)]
+pub fn active_workset_reset_for_test() {
+    ACTIVE_WORKSET
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .entries
+        .clear();
+}
+
 /// Drive one entry-completion: decrement the entry's closure refcounts, drop the
 /// per-module state that reached zero from every per-module cache (typed, parse,
 /// normalize-diag, ownership-diag, source-hash), AND drop the entry's assembled
@@ -10915,6 +10925,97 @@ mod heartbeat_feed_red_controls {
         heartbeat_feed_entry_completed();
         let snap = heartbeat_feed_snapshot().expect("still armed");
         assert_eq!(snap.entry_done, 1);
+    }
+}
+
+#[cfg(test)]
+mod active_workset_kill_path_controls {
+    use super::{
+        active_workset_admit, active_workset_complete, active_workset_reset_for_test,
+        active_workset_snapshot, witness_attempt_id,
+    };
+
+    static ACTIVE_WORKSET_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn with_active_workset_test_lock<F: FnOnce()>(f: F) {
+        let _guard = ACTIVE_WORKSET_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        active_workset_reset_for_test();
+        let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        active_workset_reset_for_test();
+        match run {
+            Ok(()) => {}
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
+    }
+
+    /// SIGKILL / step-cap / panic paths never run `active_workset_complete`. The registry
+    /// must retain the admitted identity anyway — that is the only evidence a killed run has.
+    #[test]
+    fn admitted_entry_survives_without_completion() {
+        with_active_workset_test_lock(|| {
+            std::env::set_var("GUNBC_FLOOR_WALK_ATTEMPT_ID", "kill-control-admit-only");
+            let entry = "dag/test/claim/floor_component_receipt_witness_test.dag";
+            let function = "floor_component_receipt_run_incomplete_tail_holds";
+            active_workset_admit(entry, function);
+            let snap = active_workset_snapshot();
+            assert_eq!(
+                snap.len(),
+                1,
+                "kill path must leave admitted entry in registry without completion"
+            );
+            assert_eq!(snap[0].entry, entry);
+            assert_eq!(snap[0].function, function);
+            assert_eq!(snap[0].attempt_id, witness_attempt_id(entry, function));
+        });
+    }
+
+    #[test]
+    fn phase_journal_records_admit_without_completed_on_kill_path() {
+        with_active_workset_test_lock(|| {
+            let dir =
+                std::env::temp_dir().join(format!("active-workset-journal-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).expect("journal dir");
+            let journal = dir.join("phase.tsv");
+            std::env::set_var("GUNBC_FLOOR_PHASE_JOURNAL", &journal);
+            std::env::set_var("GUNBC_FLOOR_WALK_ATTEMPT_ID", "kill-control-journal");
+            let entry = "dag/test/claim/kill_path_fixture_test.dag";
+            let function = "kill_path_fixture_holds";
+            active_workset_admit(entry, function);
+            let text = std::fs::read_to_string(&journal).expect("journal written on admit");
+            assert!(
+                text.contains("active-workset") && text.contains("admitted"),
+                "admit must land in phase journal before any completion handler runs: {text}"
+            );
+            assert!(
+                text.contains("attempt_id="),
+                "journal row must carry attempt identity: {text}"
+            );
+            assert!(
+                !text.contains("completed"),
+                "kill path must not fabricate a completion journal row: {text}"
+            );
+            std::env::remove_var("GUNBC_FLOOR_PHASE_JOURNAL");
+            let _ = std::fs::remove_dir_all(&dir);
+        });
+    }
+
+    #[test]
+    fn completion_removes_entry_after_graceful_exit() {
+        with_active_workset_test_lock(|| {
+            std::env::set_var("GUNBC_FLOOR_WALK_ATTEMPT_ID", "graceful-complete-control");
+            let entry = "dag/test/claim/graceful_fixture_test.dag";
+            let function = "graceful_fixture_holds";
+            active_workset_admit(entry, function);
+            assert_eq!(active_workset_snapshot().len(), 1);
+            active_workset_complete(entry, function);
+            assert!(
+                active_workset_snapshot().is_empty(),
+                "graceful completion must drop the entry"
+            );
+        });
     }
 }
 

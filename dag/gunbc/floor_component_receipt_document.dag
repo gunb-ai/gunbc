@@ -163,7 +163,9 @@ fn floor_component_receipt_document_json(doc: FloorComponentReceiptDocument) -> 
       json_kv(key: receipt_member_affected_set_cold_control, value: doc.affected_set_control),
       json_kv(key: receipt_member_unsuccessful_components, value: json_array(elements: doc.unsuccessful_components)),
       json_kv(key: receipt_member_components, value: json_array(elements: doc.components)),
-      json_kv(key: receipt_member_selection_degradation, value: doc.selection_degradation)
+      json_kv(key: receipt_member_selection_degradation, value: doc.selection_degradation),
+      json_kv(key: receipt_member_run_terminal, value: doc.run_terminal),
+      json_kv(key: receipt_member_active_workset, value: doc.active_workset)
     ]
   ))
 }

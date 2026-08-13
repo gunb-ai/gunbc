@@ -4,7 +4,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, String, Bool, List, Int, CommitSha }
 import gunbc.floor_component_receipt_document {
   FloorComponentReceiptDecoding, ReceiptDecoded,
-  floor_component_receipt_decode_with
+  floor_component_receipt_decode_with,
+  floor_component_receipt_document_text
 }
 import std.nat { Nat }
 import std.measure { Millisecond, millisecond }
@@ -22,6 +23,9 @@ import gunbc.floor_component_receipt {
   floor_affected_set_control_state,
   floor_unsuccessful_component_rows,
   floor_component_receipt_document,
+  floor_component_receipt_document_incomplete,
+  floor_component_receipt_schema,
+  floor_active_workset_entry_json,
   floor_component_failure_mode_tag,
 }
 
@@ -491,6 +495,86 @@ test fn fcr_no_selection_receipt_decodes_through_the_strict_reader() -> Bool {
   )
   match floor_component_receipt_decode_with(text: doc, expected_schema: floor_component_receipt_schema as NonEmptyStr) {
     ReceiptDecoded { document: d } => (d.subject.run_id as String) == (fcr_run_id as String)
+    _ => false
+  }
+}
+
+data fcr_incomplete_checkpoint_round_trip_note: String = "The incomplete checkpoint envelope is what claim_executor writes on SIGKILL/step-cap death: run_terminal.disposition=incomplete, pending tail rows, and active_workset carrying in-flight witness identity. The concluded-path round trip was already witnessed; this arm exercises the path this PR exists to fix."
+
+test fn fcr_incomplete_checkpoint_receipt_decodes_through_the_strict_reader() -> Bool {
+  let rows = fcr_rows_of(opts: [
+    fcr_control_row_with(outcome_tag: "done" as NonEmptyStr, detail: "batch 1 concluded" as NonEmptyStr),
+    fcr_not_concluded_mode_row(
+      mode: "run_incomplete" as NonEmptyStr,
+      detail: "batch not concluded — checkpoint written while the run was still in progress; this component's fate is unknown at write time" as NonEmptyStr
+    )
+  ])
+  let workset = [
+    floor_active_workset_entry_json(
+      attempt_id: "31685755058|dag/test/claim/wedged_witness_test.dag|wedged_witness_holds",
+      entry: "dag/test/claim/wedged_witness_test.dag",
+      function: "wedged_witness_holds"
+    )
+  ]
+  let doc = floor_component_receipt_document_incomplete(
+    workflow_name: fcr_workflow_name,
+    run_id: fcr_run_id,
+    head_sha: fcr_head_sha,
+    rows: rows,
+    run_terminal_cause: "run_incomplete" as NonEmptyStr,
+    concluded_count: 1,
+    pending_from_index: 2,
+    active_workset: workset
+  )
+  match floor_component_receipt_decode_with(text: doc, expected_schema: floor_component_receipt_schema as NonEmptyStr) {
+    ReceiptDecoded { document: d } =>
+      (d.subject.run_id as String) == (fcr_run_id as String)
+        && string_contains(s: doc, pattern: "\"disposition\": \"incomplete\"")
+        && string_contains(s: doc, pattern: "\"outcome\": \"pending\"")
+        && string_contains(s: doc, pattern: "wedged_witness_holds")
+    _ => false
+  }
+}
+
+test fn fcr_incomplete_checkpoint_receipt_reencodes_through_document_encoder() -> Bool {
+  let rows = fcr_rows_of(opts: [
+    fcr_control_row_with(outcome_tag: "done" as NonEmptyStr, detail: "batch 1 concluded" as NonEmptyStr),
+    fcr_not_concluded_mode_row(
+      mode: "run_incomplete" as NonEmptyStr,
+      detail: "batch not concluded — checkpoint written while the run was still in progress; this component's fate is unknown at write time" as NonEmptyStr
+    )
+  ])
+  let workset = [
+    floor_active_workset_entry_json(
+      attempt_id: "31685755058|dag/test/claim/wedged_witness_test.dag|wedged_witness_holds",
+      entry: "dag/test/claim/wedged_witness_test.dag",
+      function: "wedged_witness_holds"
+    )
+  ]
+  let doc = floor_component_receipt_document_incomplete(
+    workflow_name: fcr_workflow_name,
+    run_id: fcr_run_id,
+    head_sha: fcr_head_sha,
+    rows: rows,
+    run_terminal_cause: "run_incomplete" as NonEmptyStr,
+    concluded_count: 1,
+    pending_from_index: 2,
+    active_workset: workset
+  )
+  match floor_component_receipt_decode_with(text: doc, expected_schema: floor_component_receipt_schema as NonEmptyStr) {
+    ReceiptDecoded { document: d } =>
+      match floor_component_receipt_decode_with(
+        text: floor_component_receipt_document_text(doc: d),
+        expected_schema: floor_component_receipt_schema as NonEmptyStr
+      ) {
+        ReceiptDecoded { document: roundtrip } =>
+          (roundtrip.subject.run_id as String) == (fcr_run_id as String)
+            && string_contains(
+                 s: floor_component_receipt_document_text(doc: roundtrip),
+                 pattern: "\"disposition\": \"incomplete\""
+               )
+        _ => false
+      }
     _ => false
   }
 }

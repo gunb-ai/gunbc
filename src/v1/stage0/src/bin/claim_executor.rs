@@ -11,8 +11,8 @@ use std::time::Instant;
 #[cfg(test)]
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{
-    active_workset_admit, active_workset_complete, active_workset_snapshot,
-    build_floor_discovery_request, compute_histogram_data,
+    active_workset_admit, active_workset_complete, active_workset_reset_for_test,
+    active_workset_snapshot, build_floor_discovery_request, compute_histogram_data,
     discover_floor_witness_roster_with_snapshot, enable_floor_compile_clean_lazy_install,
     heartbeat_feed_enter_batch, heartbeat_feed_entry_completed, heartbeat_feed_snapshot,
     install_floor_compile_clean_receipt, make_eval_context, project_witness_cost_receipt,
@@ -20,8 +20,8 @@ use v1_compiler::cli_run::{
     reset_resolution_divergence_phase_receipt, resolution_divergence_parent_plan_capture_begin,
     resolution_divergence_parent_plan_capture_finish, resolve_entry_graph,
     resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
-    top_n_slowest_witnesses, verify_floor_discovery_terminal_for_coordinator, BudgetKind,
-    ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary, DiscoveryWidthPolicy,
+    top_n_slowest_witnesses, verify_floor_discovery_terminal_for_coordinator, witness_attempt_id,
+    BudgetKind, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary, DiscoveryWidthPolicy,
     DiscoveryWitnessOutcome, FloorDiscoveryConsumerRole, FloorPhase, HistogramData,
     NodeFrontierSelectionMode, PhaseProfile, ResolutionDivergencePhase,
     ResolutionDivergencePhaseState, SelectionDegradationSnapshot, TimingPercentiles,
@@ -14308,6 +14308,72 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(&base);
+    }
+
+    /// A killed run never reaches `active_workset_complete`. The incomplete receipt must
+    /// still carry the in-flight witness identity from the registry snapshot at write time.
+    #[test]
+    fn incomplete_receipt_active_workset_survives_without_completion() {
+        static ACTIVE_WORKSET_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _guard = ACTIVE_WORKSET_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        active_workset_reset_for_test();
+        std::env::set_var("GUNBC_FLOOR_WALK_ATTEMPT_ID", "sigkill-sim-no-complete");
+        let entry = "dag/test/claim/floor_component_receipt_witness_test.dag";
+        let function = "floor_component_receipt_run_incomplete_tail_holds";
+        active_workset_admit(entry, function);
+        assert_eq!(active_workset_snapshot().len(), 1);
+        let expected_attempt = witness_attempt_id(entry, function);
+
+        let root = workspace_root();
+        let source_roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let base = std::env::temp_dir().join(format!(
+            "claim-executor-active-workset-kill-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&base);
+
+        let batches: Vec<Vec<Runnable>> = vec![vec![Runnable::SingleClaim {
+            entry: entry.to_string(),
+            function: function.to_string(),
+            profile: ParsedRunnableProfile::undeclared(),
+        }]];
+        let batch_records = vec![BatchRecord {
+            batch_index: 0,
+            wall_nanos: 1_000_000_000,
+            clamp_ms: None,
+            runtime_units: FloorRuntimeUnitCount::Observed { units: 1 },
+            unit_count: 1,
+            results: Vec::new(),
+            label: batch_heartbeat_label(&batches[0]),
+            selection_tag: batch_selection_tag(&batches[0]),
+            is_wet: false,
+        }];
+
+        assert!(write_floor_component_receipt_at(
+            &base,
+            &source_roots,
+            &batch_records,
+            &batches,
+            UnreachedCause::RunIncomplete,
+        ));
+        let receipt = fs::read_to_string(base.join("floor-component-receipt.json")).unwrap();
+        assert!(
+            receipt.contains("\"active_workset\"") && receipt.contains(&expected_attempt),
+            "incomplete receipt must snapshot admitted work without completion: {receipt}"
+        );
+        assert_eq!(
+            active_workset_snapshot().len(),
+            1,
+            "receipt write must not clear the registry — only completion does"
+        );
+
+        let _ = fs::remove_dir_all(&base);
+        active_workset_reset_for_test();
     }
 
     // D5 receipt rows, both directions: an over-budget batch records OverBudget and is
