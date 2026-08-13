@@ -6,6 +6,7 @@ import std.nat { Nat }
 import std.measure { Millimeter, millimeter, SignedMillimeterComponent, signed_millimeter_component, signed_millimeter_component_count }
 import std.checked_arithmetic { IntegerOverflow }
 import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity_eq }
+import std.spatial_frame { FrameExtent, SpatialFrameRegistry, extent_in_frame }
 import std.affine_space { Point2, Point3, point2, point3 }
 import std.euclidean_geometry {
   AxisDirection3, PositiveX, NegativeX, PositiveY, NegativeY, PositiveZ, NegativeZ,
@@ -177,11 +178,21 @@ fn segment2_frame(s: AxisAlignedSegment2) -> CoordinateFrameIdentity { s.frame }
 
 // Length is exact and nonnegative: one coordinate difference, magnitude taken. No root is involved
 // precisely because the segment is axis-aligned, which is the property the carrier guarantees.
-fn segment2_length(s: AxisAlignedSegment2) -> Millimeter {
+//
+// THE UNIT IS THE FRAME'S, NOT THIS FUNCTION'S. An earlier revision returned Millimeter, which was
+// true only because every frame the layer had been asked to hold was a millimetre frame. It is the
+// reader that committed, never the carrier: a segment holds signed components and does not know
+// what they measure. Handed a board frame the old reader answered a whole-millimetre count of a
+// micrometre extent — 0 for a 500 um pitch — so the shape did not lose accuracy, it lost the
+// distinction between two adjacent pins. The extent is now read in the frame's registered unit and
+// an unregistered frame refuses rather than defaulting. The millimetre answer is still available
+// and is now DERIVED: frame_length_as_millimeter over this, which refuses when the frame is not a
+// millimetre frame instead of truncating into one.
+fn segment2_extent(registry: SpatialFrameRegistry, s: AxisAlignedSegment2) -> FrameExtent {
   let dx = signed_millimeter_component_count(m: s.end.x) - signed_millimeter_component_count(m: s.start.x)
   let dy = signed_millimeter_component_count(m: s.end.y) - signed_millimeter_component_count(m: s.start.y)
   let d = dx + dy
-  millimeter(count: if d < 0 { 0 - d } else { d })
+  extent_in_frame(registry: registry, identity: s.frame, count: if d < 0 { 0 - d } else { d })
 }
 
 // AN AXIS-ALIGNED RECTANGLE, held as its two extreme corners rather than as an origin plus a width
@@ -215,12 +226,20 @@ fn rectangle2_min(r: AxisAlignedRectangle2) -> Point2 { r.min }
 fn rectangle2_max(r: AxisAlignedRectangle2) -> Point2 { r.max }
 fn rectangle2_frame(r: AxisAlignedRectangle2) -> CoordinateFrameIdentity { r.frame }
 
-fn rectangle2_width(r: AxisAlignedRectangle2) -> Millimeter {
-  millimeter(count: signed_millimeter_component_count(m: r.max.x) - signed_millimeter_component_count(m: r.min.x))
+fn rectangle2_width(registry: SpatialFrameRegistry, r: AxisAlignedRectangle2) -> FrameExtent {
+  extent_in_frame(
+    registry: registry,
+    identity: r.frame,
+    count: signed_millimeter_component_count(m: r.max.x) - signed_millimeter_component_count(m: r.min.x)
+  )
 }
 
-fn rectangle2_height(r: AxisAlignedRectangle2) -> Millimeter {
-  millimeter(count: signed_millimeter_component_count(m: r.max.y) - signed_millimeter_component_count(m: r.min.y))
+fn rectangle2_height(registry: SpatialFrameRegistry, r: AxisAlignedRectangle2) -> FrameExtent {
+  extent_in_frame(
+    registry: registry,
+    identity: r.frame,
+    count: signed_millimeter_component_count(m: r.max.y) - signed_millimeter_component_count(m: r.min.y)
+  )
 }
 
 // AN AXIS-PERPENDICULAR PLANE, named by the axis it is perpendicular TO and the coordinate at which

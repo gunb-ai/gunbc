@@ -163,3 +163,24 @@ fn frame_length_as_micrometer(l: FrameLength) -> LengthProjection<Micrometer> {
     LengthProjectionRefused { cause: LengthScaleMismatch { held: l.scale, requested: Micro } }
   }
 }
+
+// READING AN EXTENT OUT OF A SHAPE, IN THE UNIT THE SHAPE'S OWN FRAME WAS REGISTERED WITH. This
+// is the join the geometry layer was missing. Its shape carriers are scale-AGNOSTIC — a rectangle
+// holds signed components and never commits to what they measure — so the commitment lived
+// entirely in the readers, which named millimetres and were right only because every frame in the
+// corpus happened to be a millimetre frame. A board is the counterexample, and the repair is to
+// derive the unit from the frame rather than to assert it.
+//
+// UNREGISTERED REFUSES, and it matters more here than at the lookup: a reader that fell back to
+// millimetres would answer 20 for a package body that is 20000 micrometres across, which is a
+// plausible number for a real question and would be believed.
+type FrameExtent
+  = ExtentInFrame { length: FrameLength }
+  | ExtentFrameUnregistered { identity: CoordinateFrameIdentity }
+
+fn extent_in_frame(registry: SpatialFrameRegistry, identity: CoordinateFrameIdentity, count: Nat) -> FrameExtent {
+  match frame_length_scale(r: registry, identity: identity) {
+    Absent => ExtentFrameUnregistered { identity: identity }
+    Present { value: s } => ExtentInFrame { length: frame_length(scale: s, count: count) }
+  }
+}
