@@ -921,9 +921,9 @@ fn bin_witness_wet_batch_holds(r: Runnable) -> Bool {
   match r {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: entries, node_frontier_selection: mode, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } =>
       match mode {
-        SelectionApplied => true
+        SelectionApplied => false
         SelectionPredictOnly => false
-        SelectionOff => false
+        SelectionOff => true
       }
         && (length(xs: dirs) == 0)
         && (length(xs: entries) == length(xs: bin_witness_wet_entries))
