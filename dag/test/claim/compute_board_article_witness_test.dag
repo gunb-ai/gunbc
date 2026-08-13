@@ -71,7 +71,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // a deck with an extra element, a missing element, a wrong reference node or a reordered
 // netlist, which are all different circuits. An earlier revision of this witness checked three
 // substrings and called the result byte-exact.
-data expected_spice_deck: String = "power-good conditioning network\nVlogic_in pg_raw 0 12\nRpg_cond pg_raw 0 10k\nCpg_filt pg_raw 0 100n"
+data expected_spice_deck: String = "power-good conditioning network\nVlogic_in pg_raw 0 12\nRpg_top pg_raw pg_cond 30k\nRpg_bot pg_cond 0 10k\nCpg_filt pg_cond 0 100n"
 
 data expected_verilog_source: String = "module board_power_interlock (\n  input  wire conditioned_good,\n  input  wire fault,\n  output wire power_permit,\n  output wire reset_release\n);\n  assign power_permit = (conditioned_good & ~fault);\n  assign reset_release = (conditioned_good & power_permit);\nendmodule\n"
 
@@ -123,18 +123,27 @@ test fn w_one_article_feeds_both_emissions() -> Bool {
 // THE DISCRIMINATING RED for the SPICE oracle. Perturbing exactly one typed value in the model —
 // nothing else — must change the deck. If it did not, the emission would not be a function of
 // the model and the byte equality above would be pinning a constant.
-data perturbed_bindings: List<ComponentModelBinding> = [
-  ComponentModelBinding {
-    component: "pg_cond" as ComponentInstanceIdentity,
-    standing: ElectricalModelAbsent,
-  },
-]
+// The perturbation is derived from the article's OWN binding list with exactly one standing
+// flipped, rather than authored as a standalone list. An authored list names components by
+// literal, so when the conditioning network was rebuilt as a divider the literal named a
+// component that no longer exists — and the projection still refused, for the unrelated reason
+// that every real component had become unbound. The control would have stayed green while
+// measuring nothing.
+fn perturbed_bindings() -> List<ComponentModelBinding> {
+  fold(power_interlock_article.model_bindings, init: [], f: fn(acc, b) {
+    if (b.component as String) == "pg_top" {
+      concat(acc, [ComponentModelBinding { component: b.component, standing: ElectricalModelAbsent }])
+    } else {
+      concat(acc, [b])
+    }
+  })
+}
 
 test fn w_spice_refuses_when_one_binding_is_perturbed() -> Bool {
   match project_analog_to_spice(
     article_identity: power_interlock_article.identity,
     intent: article_analog(a: power_interlock_article),
-    bindings: perturbed_bindings,
+    bindings: perturbed_bindings(),
     reference: power_interlock_article.reference_net
   ) {
     SpiceSliceProjected { receipt: _ } => false
