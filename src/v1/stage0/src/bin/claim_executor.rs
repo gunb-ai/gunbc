@@ -11,8 +11,8 @@ use std::time::Instant;
 #[cfg(test)]
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{
-    active_workset_admit, active_workset_complete, active_workset_reset_for_test,
-    active_workset_snapshot, build_floor_discovery_request, compute_histogram_data,
+    active_workset_admit, active_workset_complete, active_workset_snapshot,
+    build_floor_discovery_request, compute_histogram_data,
     discover_floor_witness_roster_with_snapshot, enable_floor_compile_clean_lazy_install,
     heartbeat_feed_enter_batch, heartbeat_feed_entry_completed, heartbeat_feed_snapshot,
     install_floor_compile_clean_receipt, make_eval_context, project_witness_cost_receipt,
@@ -20,13 +20,15 @@ use v1_compiler::cli_run::{
     reset_resolution_divergence_phase_receipt, resolution_divergence_parent_plan_capture_begin,
     resolution_divergence_parent_plan_capture_finish, resolve_entry_graph,
     resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
-    top_n_slowest_witnesses, verify_floor_discovery_terminal_for_coordinator, witness_attempt_id,
-    BudgetKind, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary, DiscoveryWidthPolicy,
+    top_n_slowest_witnesses, verify_floor_discovery_terminal_for_coordinator, BudgetKind,
+    ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary, DiscoveryWidthPolicy,
     DiscoveryWitnessOutcome, FloorDiscoveryConsumerRole, FloorPhase, HistogramData,
     NodeFrontierSelectionMode, PhaseProfile, ResolutionDivergencePhase,
     ResolutionDivergencePhaseState, SelectionDegradationSnapshot, TimingPercentiles,
     WitnessRowCost, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
+#[cfg(test)]
+use v1_compiler::cli_run::{active_workset_reset_for_test, witness_attempt_id};
 use v1_compiler::memory_governor::{
     binding_cap_cgroup_dir, binding_high_cgroup_dir, floor_budget_below_minimum_footprint,
     leaf_cgroup_dir, mem_total_bytes, memory_pressure_some_avg10, read_cgroup_raw, read_cgroup_u64,
