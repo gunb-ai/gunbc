@@ -81,13 +81,13 @@ fn every_censused_path_exists() -> Bool {
 // The positive control below is what remains expressible: a path that IS in the
 // tree reads nonempty, so every_censused_path_exists is not passing because the
 // read primitive always answers true.
-test fn resolved_graph_cache_hand_rust_census_reads_a_real_path() -> Bool {
-  censused_path_exists(path: "src/v1/stage0/src/resolved_graph_cache.rs")
-}
-
+//
 // resolved_graph_cache_hand_rust_discriminating_tests_named DELETED 2026-08-11
 // (review 51152) together with the four constants it read. It asserted that four
 // strings contained four substrings — a tautology over data in the same module,
 // proving nothing about any test existing or executing, while the tests it named
 // were removed by this PR. See the deletion note in
 // gunbc.resolved_graph_cache_hand_rust_scaffold.
+test fn resolved_graph_cache_hand_rust_census_reads_a_real_path() -> Bool {
+  censused_path_exists(path: "src/v1/stage0/src/resolved_graph_cache.rs")
+}
