@@ -1,6 +1,7 @@
 module gunbc.package_delivery
 
 import std.types { String, NonEmptyStr, List, FilePath, Bool, Int }
+import std.algebra { trim }
 import std.content_hash {
   Sha512Digest,
   Sha1Digest,
@@ -439,24 +440,14 @@ fn codex_runtime_version_identity_satisfied(combined_output: String) -> Bool {
   )
 }
 
-data publish_codex_runtime_current_link_shell_note: String = "MATERIALIZATION-TIME SHELL DEBT (review 51702): publish_codex_runtime_current_link still concat-builds ln -sfnT because extdeps carries no typed symlink-create op yet (package_materialized_tree_observation_note documents the same class for find). Runs inside materialize_codex_runtime_bundle during gunbc run materialize, not on the host_effect_apply observe/ensure/read-back transport; census row in shell-to-dag-residual-census §4.A. Dissolves when a Filesystem.Symlink (or equivalent) authority lands."
+data publish_codex_runtime_current_link_note: String = "Typed symlink publish via extdeps.shell.Symlink.AtomicReplace (ln -sfnT argv binding). Runs inside materialize_codex_runtime_bundle during gunbc run materialize, not on the host_effect_apply observe/ensure/read-back transport."
 
 fn publish_codex_runtime_current_link(
   release_parent: FilePath,
   release_root: FilePath,
 ) -> Bool {
   let link = codex_runtime_current_link_path(release_parent: release_parent)
-  let script = retained_foreign(
-    body: concat(
-      "ln -sfnT '",
-      concat(
-        release_root as String,
-        concat("' '", concat(link as String, "'")),
-      ),
-    ),
-    reason: "Publish codex runtime current symlink to validated content-addressed release" as NonEmptyStr,
-  )
-  shell.Exec.Run(script: script).success
+  shell.Symlink.AtomicReplace(target: release_root, link: link).success
 }
 
 fn codex_expected_platform_version(target: CodexNpmRuntimeTarget) -> NonEmptyStr {

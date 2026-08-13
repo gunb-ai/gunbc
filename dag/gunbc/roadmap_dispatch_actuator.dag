@@ -1932,18 +1932,26 @@ fn live_session_row(entry: TmuxLsEntry, scope: TmuxSessionScope) -> DispatchLive
 }
 
 fn dispatch_tmux_session_scope_for_live_session(sess: DispatchLiveSession) -> TmuxSessionScope? {
+  let node_id = sess.node_id as RoadmapNodeId
   match sess.worker.configured_provider.kind {
     CodexCliProvider =>
-      match dispatch_actuator_selection(node_sizing: Unsized) {
-        DispatchActuatorSelectionOk {
-          provider: CodexDispatchProvider,
-          effort: _,
-          process_fingerprint: fp,
-        } =>
+      match sess.worker.process {
+        WorkerProcessRunning { command } =>
           Present {
             value: dispatch_tmux_session_scope_for_process_fingerprint(
-              node_id: sess.node_id as RoadmapNodeId,
-              process_fingerprint: fp,
+              node_id: node_id,
+              process_fingerprint: command as NonEmptyStr,
+            ),
+          }
+        WorkerProcessExited { exit_code: _, last_command } =>
+          Present {
+            value: dispatch_tmux_session_scope_for_process_fingerprint(
+              node_id: node_id,
+              process_fingerprint: if last_command == "" {
+                "retained-exit" as NonEmptyStr
+              } else {
+                last_command as NonEmptyStr
+              },
             ),
           }
         _ => none
@@ -1970,7 +1978,7 @@ fn dispatch_session_cleanup_for_live_session(sess: DispatchLiveSession) -> Dispa
     Present { value: scope } => dispatch_session_cleanup(scope: scope, session: sess)
     Absent =>
       DispatchCleanupRefused {
-        reason: "bundled-native Codex process fingerprint unobserved — cleanup scope unavailable until wet tmux observation lands",
+        reason: "cleanup scope unavailable from session worker process evidence",
       }
   }
 }
