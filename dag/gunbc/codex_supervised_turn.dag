@@ -1,6 +1,6 @@
 module gunbc.codex_supervised_turn
 
-import std.types { String, NonEmptyStr, Int, Bool }
+import std.types { String, NonEmptyStr, Int, Bool, FilePath, List }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.temporal_effect {
   HeldLease,
@@ -19,19 +19,68 @@ import gunbc.provider_turn_adjudication {
   ProviderTurnCompleted,
   ProviderTurnFailed,
   ProviderTurnNotObserved,
+  ProviderNativeCauseUnknown,
   press_display_finished,
 }
 import gunbc.codex_app_server_press {
   CodexAccountStandingReceipt,
   AmbientCodexCredentialContext,
+  split_gunbc_stdio_capture,
+  ProviderProcessReceipt,
+  ProviderProcessObservationFailed,
 }
-import gunbc.provider_wire_evidence { ProviderWireEvidenceReceipt }
+import gunbc.provider_interface_binding {
+  project_codex_app_server_stdio_binding,
+  ProviderInterfaceResolved,
+  RequiredProviderInterfaceUnavailable,
+}
 import gunbc.provider_standing_probe_bridge {
   provider_standing_bundle_from_codex_press_receipt,
 }
 import gunbc.provider_standing { ProviderStandingBundle }
+import gunbc.package_delivery { CodexRuntimeBundle }
+import gunbc.provider_wire_evidence {
+  ProviderWireEvidenceReceipt,
+  ProviderWireCaptureOk,
+  ProviderWireCaptureRefused,
+  retain_provider_wire_capture,
+}
+import gunbc.retained_shell_script { retained_foreign }
+import extdeps.shell
+import extdeps.shell.exec
+import extdeps.llm.codex_app_server {
+  codex_app_server_initialize_request_line,
+  codex_app_server_initialized_notification_line,
+  codex_app_server_thread_start_request_line,
+  codex_supervised_thread_start_id,
+  codex_supervised_turn_start_wire_id,
+  codex_thread_start_result_thread_key,
+  codex_turn_start_result_turn_key,
+  codex_entity_id_key,
+}
+import extdeps.languages.json.emit {
+  JsonValue,
+  JsonObject,
+  JsonString,
+  JsonNumber,
+  JsonBool,
+  JsonArray,
+  JsonNull,
+}
+import extdeps.languages.json.parse {
+  parse_json,
+  json_object_unique_member,
+  JsonMemberFound,
+  JsonMemberAbsent,
+  JsonMemberDuplicated,
+  JsonMemberNotAnObject,
+}
 
 data codex_supervised_turn_authority_note: String = "SUPERVISED-RUNNER REALIZATION (continuity receipt 2026-08-13). In-flight turns do NOT survive client death — tool calls execute in the local app-server process, so one supervised process must fence each WorkerTurn attempt. std.temporal_effect HeldLease is the execution lease (lease_key, resource_fingerprint, owner_fingerprint, generation, observed); do not mint a parallel session carrier.\n\nTHREE LAYERS STAY SEPARATE (reviewer ruling):\n  durable goal — WorkerTurn reaching a terminal disposition with an observed head\n  execution lease — HeldLease over the supervised app-server process, fenced by generation\n  controller — belt tick reconciling desired vs observed thread state\n\nTHE TRAP: an abandoned turn leaves thread status idle with partial work on disk. Thread idle alone NEVER authorizes turn/start; turn identity plus a runner-written terminal receipt is required. CodexRunnerTurnTerminalReceipt is written ONLY by the supervised runner when the process ends — nothing else writes one on crash.\n\nExactly-once: client_command_id is carried on the terminal receipt so a lost turn/start reply does not collapse into absent."
+
+data codex_supervised_process_supervision_note: String = "PROCESS SUPERVISION (srv1 receipt 2026-08-13). The lease fences the bundled native executable from CodexRuntimeBundle projection — NEVER /usr/bin/codex, which is a Node shim that spawns the platform binary. Killing the shim orphans the agent and produces a false 'work continued' reading. thread/start and turn/start share one held-open app-server stdin session; turn/start is emitted only after thread/start returns a threadId (fifo coprocess script). In-flight turns do NOT survive process death; thread/resume is the recovery path on a surviving thread."
+
+data codex_supervised_lease_selection_receipt_note: String = "OPERATOR RULING #8166 (2026-08-13). Disconnect branch settled by srv1 execution, not argument: killing the real app-server binary mid-turn stopped work at 2 of 8 files; the thread survived and thread/resume is the recovery path. Detached reconciliation is refuted; supervised HeldLease over the app-server process is the selected realization. Stay draft until a bounded wet turn returns CodexRunnerTurnTerminalReceipt — the admission fold alone is not mergeable. Wet access is a bounded srv1 execution grant, not a standing child credential."
 
 type CodexThreadActivity
   = CodexThreadAbsent
@@ -60,6 +109,28 @@ type CodexTurnStartAdmission
   | CodexTurnStartRefusedDuplicateExecution { reason: NonEmptyStr }
   | CodexTurnStartRefusedOutcomeUnobserved { reason: NonEmptyStr }
 
+type CodexSupervisedTurnOutcome
+  = CodexSupervisedTurnOk { receipt: CodexRunnerTurnTerminalReceipt }
+  | CodexSupervisedTurnRefused { reason: NonEmptyStr }
+  | CodexSupervisedTurnUnavailable { reason: NonEmptyStr, process: ProviderProcessReceipt }
+
+type SupervisedRpcObservation
+  = SupervisedRpcAbsent
+  | SupervisedRpcOk { native_id: NonEmptyStr }
+  | SupervisedRpcError { reason: NonEmptyStr }
+  | SupervisedRpcDuplicate { count: Int }
+
+type SupervisedTurnTerminalSignal
+  = SupervisedTurnTerminalAbsent
+  | SupervisedTurnTerminalCompleted
+  | SupervisedTurnTerminalFailed { reason: NonEmptyStr }
+
+type SupervisedTurnParseAcc {
+  thread_start: SupervisedRpcObservation
+  turn_start: SupervisedRpcObservation
+  turn_terminal: SupervisedTurnTerminalSignal
+}
+
 fn codex_supervised_turn_lease_key(attempt_key: AttemptKey, turn_key: String) -> NonEmptyStr {
   concat(attempt_key, concat("/", turn_key)) as NonEmptyStr
 }
@@ -79,6 +150,10 @@ fn codex_supervised_turn_owner_fingerprint(turn_key: String) -> ContentHash {
 
 fn codex_supervised_turn_session_policy(lease_key: NonEmptyStr) -> TemporalEffectPolicy {
   HeldSessionLease { lease_key: lease_key }
+}
+
+fn codex_supervised_turn_client_command_id(turn: WorkerTurn) -> NonEmptyStr {
+  concat(turn.attempt_key, concat("/", turn.turn_key)) as NonEmptyStr
 }
 
 fn codex_supervised_turn_binding(
@@ -105,6 +180,24 @@ fn codex_supervised_turn_binding(
     },
     execution_policy: codex_supervised_turn_session_policy(lease_key: lease_key),
     standing_receipt: standing_receipt,
+  }
+}
+
+fn codex_supervised_turn_binding_with_observed(
+  binding: CodexSupervisedTurnBinding,
+  observed: HeldLeaseObservedState,
+) -> CodexSupervisedTurnBinding {
+  CodexSupervisedTurnBinding {
+    turn: binding.turn,
+    lease: HeldLease {
+      lease_key: binding.lease.lease_key,
+      resource_fingerprint: binding.lease.resource_fingerprint,
+      owner_fingerprint: binding.lease.owner_fingerprint,
+      generation: binding.lease.generation,
+      observed: observed,
+    },
+    execution_policy: binding.execution_policy,
+    standing_receipt: binding.standing_receipt,
   }
 }
 
@@ -147,5 +240,454 @@ fn provider_standing_bundle_from_codex_supervised_binding(
       Present {
         value: provider_standing_bundle_from_codex_press_receipt(receipt: receipt),
       }
+  }
+}
+
+fn bash_single_quote_escape(s: String) -> String {
+  replace(s: s, old: "'", new: "'\\''")
+}
+
+fn codex_supervised_turn_codex_home(
+  credential: AmbientCodexCredentialContext,
+  standing_receipt: CodexAccountStandingReceipt?,
+) -> FilePath {
+  match standing_receipt {
+    Present { value: receipt } => receipt.subject.credential.codex_home
+    Absent => credential.codex_home
+  }
+}
+
+fn codex_supervised_turn_user_input(turn: WorkerTurn) -> String {
+  if turn.consumed_feedback == "" {
+    "continue" as String
+  } else {
+    turn.consumed_feedback
+  }
+}
+
+fn codex_supervised_turn_script(
+  executable: FilePath,
+  codex_home: FilePath,
+  cwd: FilePath,
+  user_input: String,
+) -> String {
+  let escaped_input = bash_single_quote_escape(s: user_input)
+  concat(
+    "export CODEX_HOME='",
+    concat(
+      codex_home as String,
+      concat(
+        "'; FIFO=$(mktemp -u); OUT=$(mktemp); ERR=$(mktemp); mkfifo \"$FIFO\"; ",
+        concat(
+          "'",
+          concat(
+            executable as String,
+            concat(
+              "' app-server --stdio <\"$FIFO\" >\"$OUT\" 2>\"$ERR\" & APID=$!; exec 3>\"$FIFO\"; ",
+              concat(
+                "printf '%s\\n' '",
+                concat(
+                  codex_app_server_initialize_request_line() as String,
+                  concat(
+                    "' >&3; printf '%s\\n' '",
+                    concat(
+                      codex_app_server_initialized_notification_line() as String,
+                      concat(
+                        "' >&3; printf '%s\\n' '",
+                        concat(
+                          codex_app_server_thread_start_request_line(cwd: cwd) as String,
+                          concat(
+                            "' >&3; THREAD_ID=''; for _ in $(seq 1 600); do ",
+                            concat(
+                              "if [ -f \"$OUT\" ]; then LINE=$(grep '\"id\":",
+                              concat(
+                                to_string(n: codex_supervised_thread_start_id),
+                                concat(
+                                  "' \"$OUT\" | tail -1); if [ -n \"$LINE\" ]; then ",
+                                  "THREAD_ID=$(printf '%s' \"$LINE\" | sed -n 's/.*\"thread\"[^}]*\"id\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p'); fi; fi; ",
+                                  concat(
+                                    "[ -n \"$THREAD_ID\" ] && break; sleep 0.05; done; ",
+                                    concat(
+                                      "if [ -z \"$THREAD_ID\" ]; then EC=97; else ",
+                                      concat(
+                                        "TURN_LINE=$(printf '{\"jsonrpc\":\"2.0\",\"id\":",
+                                        concat(
+                                          to_string(n: codex_supervised_turn_start_wire_id),
+                                          concat(
+                                            ",\"method\":\"turn/start\",\"params\":{\"threadId\":\"%s\",\"input\":[{\"type\":\"text\",\"text\":\"",
+                                            concat(
+                                              escaped_input,
+                                              concat(
+                                                "\"}]}}' \"$THREAD_ID\"); printf '%s\\n' \"$TURN_LINE\" >&3; ",
+                                                "exec 3>&-; wait \"$APID\"; EC=$?; fi; ",
+                                                concat(
+                                                  "echo \"---GUNBC_EXIT---$EC---\"; echo '---GUNBC_STDOUT---'; cat \"$OUT\"; ",
+                                                  "echo '---GUNBC_STDERR---'; cat \"$ERR\"; rm -f \"$FIFO\" \"$OUT\" \"$ERR\"; exit \"$EC\"",
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+fn native_id_from_entity_result(result: JsonValue, entity_key: String) -> NonEmptyStr? {
+  match json_object_unique_member(v: result, key: entity_key) {
+    JsonMemberFound { value: entity } =>
+      match entity {
+        JsonObject { members: _ } =>
+          match json_object_unique_member(
+            v: entity,
+            key: codex_entity_id_key as String,
+          ) {
+            JsonMemberFound { value: JsonString { value: id } } =>
+              if id == "" {
+                none
+              } else {
+                Present { value: id as NonEmptyStr }
+              }
+            _ => none
+          }
+        _ => none
+      }
+    _ => none
+  }
+}
+
+fn supervised_rpc_from_id_response(
+  id: Int,
+  obj: JsonValue,
+  entity_key: String,
+) -> SupervisedRpcObservation {
+  match json_object_unique_member(v: obj, key: "error") {
+    JsonMemberFound { value: err } =>
+      SupervisedRpcError {
+        reason: concat(
+          "json-rpc error on id ",
+          concat(to_string(n: id), concat(": ", serialize_supervised_rpc_error(err: err))),
+        ) as NonEmptyStr,
+      }
+    JsonMemberAbsent =>
+      match json_object_unique_member(v: obj, key: "result") {
+        JsonMemberFound { value: result } =>
+          match native_id_from_entity_result(result: result, entity_key: entity_key) {
+            Present { value: native_id } => SupervisedRpcOk { native_id: native_id }
+            Absent =>
+              SupervisedRpcError {
+                reason: concat(
+                  "id ",
+                  concat(
+                    to_string(n: id),
+                    concat(": result missing ", concat(entity_key, " id")),
+                  ),
+                ) as NonEmptyStr,
+              }
+          }
+        JsonMemberAbsent =>
+          SupervisedRpcError {
+            reason: concat("id ", concat(to_string(n: id), ": missing result")) as NonEmptyStr,
+          }
+        JsonMemberDuplicated { count: _ } =>
+          SupervisedRpcError {
+            reason: concat("id ", concat(to_string(n: id), ": duplicate result")) as NonEmptyStr,
+          }
+        JsonMemberNotAnObject =>
+          SupervisedRpcError {
+            reason: concat("id ", concat(to_string(n: id), ": result not object")) as NonEmptyStr,
+          }
+      }
+    JsonMemberDuplicated { count: _ } =>
+      SupervisedRpcError {
+        reason: concat("id ", concat(to_string(n: id), ": duplicate error")) as NonEmptyStr,
+      }
+    JsonMemberNotAnObject =>
+      SupervisedRpcError {
+        reason: concat("id ", concat(to_string(n: id), ": error not object")) as NonEmptyStr,
+      }
+  }
+}
+
+fn serialize_supervised_rpc_error(err: JsonValue) -> String {
+  match err {
+    JsonObject { members: _ } => "structured error" as String
+    _ => "unstructured error" as String
+  }
+}
+
+fn supervised_turn_terminal_from_notification(parsed: JsonValue) -> SupervisedTurnTerminalSignal {
+  match json_object_unique_member(v: parsed, key: "method") {
+    JsonMemberFound { value: JsonString { value: method } } =>
+      if method == "turn/completed" {
+        SupervisedTurnTerminalCompleted
+      } else if method == "turn/failed" {
+        SupervisedTurnTerminalFailed {
+          reason: "turn/failed notification" as NonEmptyStr,
+        }
+      } else {
+        SupervisedTurnTerminalAbsent
+      }
+    _ => SupervisedTurnTerminalAbsent
+  }
+}
+
+fn absorb_supervised_rpc(
+  current: SupervisedRpcObservation,
+  next: SupervisedRpcObservation,
+) -> SupervisedRpcObservation {
+  match current {
+    SupervisedRpcAbsent => next
+    SupervisedRpcOk { native_id: _ } =>
+      SupervisedRpcDuplicate { count: 2 }
+    SupervisedRpcError { reason: _ } =>
+      SupervisedRpcDuplicate { count: 2 }
+    SupervisedRpcDuplicate { count: c } => SupervisedRpcDuplicate { count: c + 1 }
+  }
+}
+
+fn absorb_supervised_turn_line(
+  acc: SupervisedTurnParseAcc,
+  line: String,
+) -> SupervisedTurnParseAcc {
+  let trimmed = line.trim()
+  if trimmed == "" {
+    acc
+  } else {
+    match parse_json(s: trimmed) {
+      Absent => acc
+      Present { value: parsed } =>
+        match json_object_unique_member(v: parsed, key: "id") {
+          JsonMemberFound { value: idv } =>
+            match json_rpc_id_as_int(v: idv) {
+              Present { value: n } =>
+                if n == codex_supervised_thread_start_id {
+                  SupervisedTurnParseAcc {
+                    thread_start: absorb_supervised_rpc(
+                      current: acc.thread_start,
+                      next: supervised_rpc_from_id_response(
+                        id: n,
+                        obj: parsed,
+                        entity_key: codex_thread_start_result_thread_key as String,
+                      ),
+                    ),
+                    turn_start: acc.turn_start,
+                    turn_terminal: acc.turn_terminal,
+                  }
+                } else if n == codex_supervised_turn_start_wire_id {
+                  SupervisedTurnParseAcc {
+                    thread_start: acc.thread_start,
+                    turn_start: absorb_supervised_rpc(
+                      current: acc.turn_start,
+                      next: supervised_rpc_from_id_response(
+                        id: n,
+                        obj: parsed,
+                        entity_key: codex_turn_start_result_turn_key as String,
+                      ),
+                    ),
+                    turn_terminal: acc.turn_terminal,
+                  }
+                } else {
+                  acc
+                }
+              Absent =>
+                match supervised_turn_terminal_from_notification(parsed: parsed) {
+                  SupervisedTurnTerminalAbsent => acc
+                  signal =>
+                    SupervisedTurnParseAcc {
+                      thread_start: acc.thread_start,
+                      turn_start: acc.turn_start,
+                      turn_terminal: signal,
+                    }
+                }
+            }
+          _ =>
+            match supervised_turn_terminal_from_notification(parsed: parsed) {
+              SupervisedTurnTerminalAbsent => acc
+              signal =>
+                SupervisedTurnParseAcc {
+                  thread_start: acc.thread_start,
+                  turn_start: acc.turn_start,
+                  turn_terminal: signal,
+                }
+            }
+        }
+    }
+  }
+}
+
+fn json_rpc_id_as_int(v: JsonValue) -> Int? {
+  match v {
+    JsonNumber { lexeme: l } => parse_int(s: l as String)
+    JsonNull => none
+    JsonBool { value: _ } => none
+    JsonString { value: _ } => none
+    JsonArray { elements: _ } => none
+    JsonObject { members: _ } => none
+  }
+}
+
+fn empty_supervised_turn_parse_acc() -> SupervisedTurnParseAcc {
+  SupervisedTurnParseAcc {
+    thread_start: SupervisedRpcAbsent,
+    turn_start: SupervisedRpcAbsent,
+    turn_terminal: SupervisedTurnTerminalAbsent,
+  }
+}
+
+fn parse_supervised_turn_stdout(stdout: String) -> SupervisedTurnParseAcc {
+  fold(
+    split(s: stdout, delimiter: "\n"),
+    init: empty_supervised_turn_parse_acc(),
+    f: (acc, line) => absorb_supervised_turn_line(acc: acc, line: line),
+  )
+}
+
+fn disposition_from_supervised_parse(
+  parse: SupervisedTurnParseAcc,
+  exit_code: Int?,
+) -> ProviderTurnDisposition {
+  match parse.turn_terminal {
+    SupervisedTurnTerminalCompleted => ProviderTurnCompleted
+    SupervisedTurnTerminalFailed { reason: r } =>
+      ProviderTurnFailed {
+        cause: ProviderNativeCauseUnknown { evidence: r },
+      }
+    SupervisedTurnTerminalAbsent =>
+      match exit_code {
+        Present { value: code } =>
+          if code == 0 {
+            match parse.turn_start {
+              SupervisedRpcOk { native_id: _ } => ProviderTurnCompleted
+              _ => ProviderTurnNotObserved
+            }
+          } else {
+            ProviderTurnFailed {
+              cause: ProviderNativeCauseUnknown {
+                evidence: concat(
+                  "app-server exited ",
+                  to_string(n: code),
+                  "",
+                ) as NonEmptyStr,
+              },
+            }
+          }
+        Absent => ProviderTurnNotObserved
+      }
+  }
+}
+
+fn codex_runner_turn_terminal_receipt(
+  binding: CodexSupervisedTurnBinding,
+  parse: SupervisedTurnParseAcc,
+  disposition: ProviderTurnDisposition,
+  wire: ProviderWireEvidenceReceipt?,
+) -> CodexRunnerTurnTerminalReceipt {
+  CodexRunnerTurnTerminalReceipt {
+    binding: binding,
+    native_thread_id: match parse.thread_start {
+      SupervisedRpcOk { native_id: id } => Present { value: id }
+      _ => none
+    },
+    native_turn_id: match parse.turn_start {
+      SupervisedRpcOk { native_id: id } => Present { value: id }
+      _ => none
+    },
+    client_command_id: codex_supervised_turn_client_command_id(turn: binding.turn),
+    disposition: disposition,
+    wire_evidence: wire,
+  }
+}
+
+fn run_codex_supervised_turn(
+  bundle: CodexRuntimeBundle,
+  credential: AmbientCodexCredentialContext,
+  binding: CodexSupervisedTurnBinding,
+  cwd: FilePath,
+  evidence_root: FilePath,
+) -> CodexSupervisedTurnOutcome {
+  match project_codex_app_server_stdio_binding(bundle: bundle) {
+    RequiredProviderInterfaceUnavailable { interface: _, reason } =>
+      CodexSupervisedTurnUnavailable {
+        reason: reason,
+        process: ProviderProcessReceipt {
+          exit: ProviderProcessObservationFailed,
+          wire: none,
+        },
+      }
+    ProviderInterfaceResolved { binding: projected } => {
+      let present = shell.Test.IsFile(path: projected.executable.path)
+      if present.is_file == false {
+        CodexSupervisedTurnUnavailable {
+          reason: "bundled Codex native executable absent at binding path" as NonEmptyStr,
+          process: ProviderProcessReceipt {
+            exit: ProviderProcessObservationFailed,
+            wire: none,
+          },
+        }
+      } else {
+        let running_binding = codex_supervised_turn_binding_with_observed(
+          binding: binding,
+          observed: LeaseRunningExpected,
+        )
+        let script = retained_foreign(
+          body: codex_supervised_turn_script(
+            executable: projected.executable.path,
+            codex_home: codex_supervised_turn_codex_home(
+              credential: credential,
+              standing_receipt: running_binding.standing_receipt,
+            ),
+            cwd: cwd,
+            user_input: codex_supervised_turn_user_input(turn: running_binding.turn),
+          ),
+          reason: "Codex supervised turn: bundled native app-server held open through thread/start then turn/start; stdout/stderr captured until process exit" as NonEmptyStr,
+        )
+        let run = shell.Exec.Run(script: script)
+        let capture = split_gunbc_stdio_capture(combined: run.stdout)
+        let wire_capture = retain_provider_wire_capture(
+          evidence_root: evidence_root,
+          stdout: capture.stdout,
+          stderr: capture.stderr,
+          success: run.success,
+          exit_code: capture.exit_code,
+        )
+        let wire = match wire_capture {
+          ProviderWireCaptureOk { receipt: w } => Present { value: w }
+          ProviderWireCaptureRefused { cause: _ } => none
+        }
+        let parse = parse_supervised_turn_stdout(stdout: capture.stdout)
+        let disposition = disposition_from_supervised_parse(
+          parse: parse,
+          exit_code: capture.exit_code,
+        )
+        let terminal_binding = codex_supervised_turn_binding_with_observed(
+          binding: running_binding,
+          observed: LeaseAbsent,
+        )
+        let receipt = codex_runner_turn_terminal_receipt(
+          binding: terminal_binding,
+          parse: parse,
+          disposition: disposition,
+          wire: wire,
+        )
+        CodexSupervisedTurnOk { receipt: receipt }
+      }
+    }
   }
 }

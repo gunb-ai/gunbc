@@ -10,6 +10,7 @@ import extdeps.languages.json.emit {
   json_int,
   json_string,
   json_object,
+  json_array,
   serialize_json,
 }
 
@@ -124,6 +125,68 @@ fn codex_app_server_rate_limits_read_request_line() -> NonEmptyStr {
     id: 3,
     method: "account/rateLimits/read",
     params: json_object(members: []),
+  )
+}
+
+data codex_supervised_session_rpc_id_note: String = "Supervised turn session ids: initialize=1, thread/start=4, turn/start=5. account/read and account/rateLimits/read are omitted when standing is carried on CodexSupervisedTurnBinding.standing_receipt. turn/start json-rpc id is fixed at 5; client_command_id on CodexRunnerTurnTerminalReceipt is the attempt/turn identity string for exactly-once correlation, not necessarily equal to the wire id."
+
+data codex_supervised_thread_start_id: Int = 4
+data codex_supervised_turn_start_wire_id: Int = 5
+
+data codex_thread_start_result_thread_key: NonEmptyStr = "thread" as NonEmptyStr
+data codex_turn_start_result_turn_key: NonEmptyStr = "turn" as NonEmptyStr
+data codex_entity_id_key: NonEmptyStr = "id" as NonEmptyStr
+data codex_turn_start_params_thread_id_key: NonEmptyStr = "threadId" as NonEmptyStr
+data codex_turn_start_params_input_key: NonEmptyStr = "input" as NonEmptyStr
+data codex_turn_input_text_type_key: NonEmptyStr = "type" as NonEmptyStr
+data codex_turn_input_text_value_key: NonEmptyStr = "text" as NonEmptyStr
+
+fn codex_app_server_thread_start_request_line(cwd: FilePath) -> NonEmptyStr {
+  codex_app_server_jsonrpc_request(
+    id: codex_supervised_thread_start_id,
+    method: "thread/start",
+    params: json_object(
+      members: [
+        json_kv(key: "cwd", value: json_string(s: cwd as String)),
+      ],
+    ),
+  )
+}
+
+fn codex_app_server_turn_start_request_line(
+  thread_id: NonEmptyStr,
+  user_input: String,
+) -> NonEmptyStr {
+  codex_app_server_jsonrpc_request(
+    id: codex_supervised_turn_start_wire_id,
+    method: "turn/start",
+    params: json_object(
+      members: [
+        json_kv(
+          key: codex_turn_start_params_thread_id_key as String,
+          value: json_string(s: thread_id as String),
+        ),
+        json_kv(
+          key: codex_turn_start_params_input_key as String,
+          value: json_array(
+            elements: [
+              json_object(
+                members: [
+                  json_kv(
+                    key: codex_turn_input_text_type_key as String,
+                    value: json_string(s: "text"),
+                  ),
+                  json_kv(
+                    key: codex_turn_input_text_value_key as String,
+                    value: json_string(s: user_input),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
   )
 }
 
