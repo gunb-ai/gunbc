@@ -163,11 +163,19 @@ type SpatialOperationIdentity
   | OpDot3
   | OpCross3
   | OpApplyZQuarterTurnTransform3
+  | OpNormSquared3
+  | OpNorm3
 
 type SpatialFrameRelation
   = SameFrameOperandsRequired
   | TransformSourceFrameRequired
   | TransformTranslationInDestinationRequired
+  // THE METRIC OPERATIONS ASSERT A UNIT ON THEIR RESULT AND THE COMPONENT NO LONGER CARRIES ONE.
+  // A dot product of two displacements is an area and a norm is a length, and both must be
+  // labelled - but the component is a bare count whose meaning the FRAME owns, so the label is
+  // only correct when the frame's quantum is the one the label names. This relation is how they
+  // refuse a frame whose quantum they cannot label rather than answering in the wrong unit.
+  | MillimetreFrameRequired
 
 type SpatialFrameRefusal {
   operation: SpatialOperationIdentity
