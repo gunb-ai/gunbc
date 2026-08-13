@@ -1,6 +1,6 @@
 module test.claim.fleet_converge_privilege_hold_witness
 
-import std.types { Bool, Int, length }
+import std.types { Bool, Int, list_length }
 import gunbc.fleet_posix_accounts {
   fleet_posix_operator_sudo_grants,
   fleet_posix_ci_runner_sudo_grants,
@@ -30,9 +30,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // RED control: whole-binary install/systemctl on the operator roster is root-equivalent
 // and held for operator ruling — not an accidental merge artifact.
 test fn witness_operator_roster_not_widened_to_whole_binary_install_or_systemctl() -> Bool {
-  length(xs: fleet_posix_operator_sudo_grants()) == 1
+  list_length(items: fleet_posix_operator_sudo_grants()) == 1
     && fleet_posix_operator_sudo_grant_is_hostnamectl_only()
-    && length(xs: fleet_posix_ci_runner_sudo_grants()) >= 2
+    && list_length(items: fleet_posix_ci_runner_sudo_grants()) >= 2
 }
 
 test fn witness_receipt_publication_uses_staging_rename_grain() -> Bool {
