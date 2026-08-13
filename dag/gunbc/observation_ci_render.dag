@@ -26,6 +26,8 @@ import std.disposition { Disposition, Terminal }
 import extdeps.render.glyphs { resolve_symbol }
 import extdeps.github.log_annotations { annotation_group_prefix, annotation_endgroup, neutralize_workflow_commands }
 import std.observation {
+  ClassDone,
+  ClassFailed,
   ObservationSubject,
   ObservationSegment,
   RunSegment,
@@ -533,6 +535,21 @@ type LeafEmissionReason
   | AnomalyPierces
   | RunSummaryShown
   | NoAncestorAtGrain
+
+
+// The seed's per-witness suppression asked the SAME question the projection answers — does routine
+// work fold? — and answered it in hand-Rust, so the density rule had two representations and only
+// this one was witnessed. It cannot call ci_routine_projection per witness (one .dag evaluation per
+// witness across ~9,000), but it does not need to: the density of a concluded outcome depends only
+// on its CLASS, so the verdict is resolved ONCE at policy install and transported, exactly like
+// routine_rollup_folds. The rule stays here; the seed carries an answer, not a copy of the rule.
+fn concluded_outcome_folds(passed: Bool) -> Bool {
+  match observation_class_density(c: if passed { ClassDone } else { ClassFailed }) {
+    RoutineCollapsible => true
+    SummaryAlwaysShown => false
+    AnomalyExpanded => false
+  }
+}
 
 fn ci_routine_projection(
   event: ObservationEvent,

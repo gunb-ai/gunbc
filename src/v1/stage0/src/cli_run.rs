@@ -10408,8 +10408,12 @@ fn index_schedule_entry_completed(
     // when the run got interesting. The aggregate `[floor-drain] receipt:` line still reports the
     // totals at close, so folding here loses no count, only the per-entry retelling of it.
     let unknown_grew = {
+        // `fetch_max`, not `swap`: retention_unknown is a cumulative monotone counter, and a swap
+        // lets two threads observing real growth each read the other's newer value as `prev` and
+        // conclude nothing grew — the signal is lost on both. fetch_max returns the previous
+        // maximum, so exactly the thread that raised it reports, and a raise is never dropped.
         static LAST_UNKNOWN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let prev = LAST_UNKNOWN.swap(retention_unknown, std::sync::atomic::Ordering::Relaxed);
+        let prev = LAST_UNKNOWN.fetch_max(retention_unknown, std::sync::atomic::Ordering::Relaxed);
         retention_unknown > prev
     };
     if !unknown_grew && routine_rollup_folds() {
@@ -14530,6 +14534,26 @@ fn decode_output_decision(
 /// print every line. Folding without having been told to fold is how output disappears.
 static ROUTINE_ROLLUP_FOLD: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 
+/// Whether a CONCLUDED witness outcome folds, resolved from
+/// `gunbc.observation_ci_render concluded_outcome_folds` — which derives it from
+/// `observation_class_density` — once at policy install and transported as a pair of verdicts.
+/// `(passing, failing)`. The seed holds an ANSWER; the rule stays in the authority.
+static CONCLUDED_OUTCOME_FOLD: std::sync::OnceLock<(bool, bool)> = std::sync::OnceLock::new();
+
+fn concluded_outcome_folds(passed: bool) -> bool {
+    match CONCLUDED_OUTCOME_FOLD.get() {
+        Some((p, f)) => {
+            if passed {
+                *p
+            } else {
+                *f
+            }
+        }
+        // Unresolved policy prints everything, the same honest default as the fold flag itself.
+        None => false,
+    }
+}
+
 /// Source roots the policy install resolved against, kept so the batch-summary render can reach
 /// `gunbc.observation_ci_render` at shard close. Stored rather than threaded because the floor
 /// walk between install and close is thirty frames of call stack that have no business carrying
@@ -14680,6 +14704,29 @@ pub fn install_output_policy(source_roots: &[String]) {
         }
     };
     let _ = ROUTINE_ROLLUP_FOLD.set(folds);
+    // Two evaluations per process, not one per witness: the density of a concluded outcome depends
+    // only on its class, so the projection's verdict is resolved here and carried.
+    let ask_fold = |passed: bool| -> Option<bool> {
+        match v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "concluded_outcome_folds",
+            &[(Some("passed".to_string()), Value::Bool(passed))],
+            false,
+        ) {
+            Ok(Value::Bool(b)) => Some(b),
+            _ => None,
+        }
+    };
+    match (ask_fold(true), ask_fold(false)) {
+        (Some(p), Some(f)) => {
+            let _ = CONCLUDED_OUTCOME_FOLD.set((p, f));
+        }
+        _ => eprintln!(
+            "::warning::output policy drift: gunbc.observation_ci_render \
+             `concluded_outcome_folds` did not answer a Bool; per-witness folding is DISABLED for \
+             this run and every witness line will print"
+        ),
+    }
 
     install_effect_stream_policy(&ctx, verbose, quiet);
 }
@@ -24714,22 +24761,12 @@ impl ShardStyle {
         if !self.stream {
             return;
         }
-        // DIVERGENCE, declared rather than hidden: this is a hand-coded restatement of the
-        // routing `gunbc.observation_ci_render ci_routine_projection` decides — pass folds,
-        // anomaly pierces — and NOT a call into it. Consulting the authority would mean one .dag
-        // evaluation per witness on a 9,000-witness corpus, which is why the seam is per BATCH.
-        // So the density rule now has two representations and only the .dag one is witnessed;
-        // if `observation_class_density` changes, this arm does not follow and nothing reds.
-        // Dissolve-on: witness outcomes reach the render authority as a batch of events rather
-        // than one at a time, at which point the projection runs once per batch over the whole
-        // roster and this arm is deleted rather than kept in sync.
-        //
-        // Law 4's fold, at the one site that produces two thirds of the console. A PASSING witness
-        // is routine work: it folds into the batch rollup and prints nothing, and the batch summary
-        // line at shard close is where its count appears. A failing one pierces the fold and prints
-        // at its exact leaf, because the whole point of collapsing the routine is that an anomaly
-        // has somewhere to stand out against.
-        if passed && routine_rollup_folds() {
+        // Law 4's fold at the site that produces two thirds of the console. The routing decision
+        // is NOT restated here: `concluded_outcome_folds` is the verdict `ci_routine_projection`
+        // and `observation_class_density` produced, resolved once at policy install. A pass folds
+        // into the batch rollup and prints nothing; an anomaly pierces at its exact leaf, which is
+        // the whole point of collapsing the routine.
+        if routine_rollup_folds() && concluded_outcome_folds(passed) {
             return;
         }
         let ms = wall_nanos as f64 / 1.0e6;
