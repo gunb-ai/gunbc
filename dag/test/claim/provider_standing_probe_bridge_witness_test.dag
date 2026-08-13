@@ -14,6 +14,7 @@ import gunbc.provider_standing_probe_bridge {
   provider_entitlement_from_codex_realm,
   provider_entitlement_from_codex_plan_reading,
   codex_plan_is_entitling,
+  codex_first_deployment_subscription_policy,
 }
 import gunbc.codex_app_server_press {
   AmbientCodexCredentialContext,
@@ -36,6 +37,8 @@ import gunbc.codex_app_server_press {
 import extdeps.llm.codex_app_server {
   CodexPlanFree,
   CodexPlanPro,
+  CodexPlanPlus,
+  CodexPlanTeam,
   CodexPlanUnknown,
   CodexPlanEnterprise,
 }
@@ -275,6 +278,9 @@ test fn provider_standing_probe_bridge_keystone_holds() -> Bool {
     && witness_chatgpt_account_without_plan_type_is_malformed_not_unnamed()
     && witness_reported_cause_and_reset_survive_the_projection()
     && witness_unreported_cause_is_not_the_bucket_id()
+    && witness_deployed_profile_admits_exactly_the_observed_plan()
+    && witness_unadmitted_plan_is_unobserved_but_wrong_realm_is_rejected()
+    && witness_plans_added_after_the_pinned_runtime_read_as_stale_pin()
 }
 
 // ---------------------------------------------------------------------------
@@ -471,10 +477,33 @@ test fn witness_upstream_unknown_plan_is_not_a_yes() -> Bool {
   let unknown = provider_entitlement_from_codex_realm(
     realm: CodexChatgptRealm { plan: CodexPlanTypeObserved { plan: CodexPlanUnknown } })
   !codex_plan_is_entitling(plan: CodexPlanUnknown)
-    && (match unknown { EntitlementRejected { reason: _ } => true _ => false })
+    && (match unknown { EntitlementObservationUnobserved { reason: _ } => true _ => false })
     && codex_plan_is_entitling(plan: CodexPlanPro)
-    && codex_plan_is_entitling(plan: CodexPlanEnterprise)
     && !codex_plan_is_entitling(plan: CodexPlanFree)
+}
+
+// THE ALLOW PATH IS THE ONE THAT NEEDS PINNING. The first roster admitted every
+// plan but free and unknown, and no witness noticed because every assertion was
+// about a REFUSAL. This one asserts the admitted set is exactly one member, so
+// widening it silently is not possible — a new admission reds here first.
+test fn witness_deployed_profile_admits_exactly_the_observed_plan() -> Bool {
+  codex_first_deployment_subscription_policy.admitted_plans.length() == 1
+    && codex_plan_is_entitling(plan: CodexPlanPro)
+    && !codex_plan_is_entitling(plan: CodexPlanEnterprise)
+    && !codex_plan_is_entitling(plan: CodexPlanTeam)
+    && !codex_plan_is_entitling(plan: CodexPlanPlus)
+    && !codex_plan_is_entitling(plan: CodexPlanFree)
+    && !codex_plan_is_entitling(plan: CodexPlanUnknown)
+}
+
+// A non-admitted plan and a wrong realm are BOTH refusals with different
+// remedies: ratify the plan here, versus change the credential.
+test fn witness_unadmitted_plan_is_unobserved_but_wrong_realm_is_rejected() -> Bool {
+  let unadmitted = provider_entitlement_from_codex_realm(
+    realm: CodexChatgptRealm { plan: CodexPlanTypeObserved { plan: CodexPlanEnterprise } })
+  let wrong_realm = provider_entitlement_from_codex_realm(realm: CodexApiKeyRealm)
+  (match unadmitted { EntitlementObservationUnobserved { reason: _ } => true _ => false })
+    && (match wrong_realm { EntitlementRejected { reason: _ } => true _ => false })
 }
 
 test fn witness_stale_pin_is_unobserved_while_wrong_realm_is_rejected() -> Bool {
@@ -559,6 +588,31 @@ test fn witness_unreported_cause_is_not_the_bucket_id() -> Bool {
     && (match reported {
       LimitUnavailableUntilReset { subject: _, cause: NativeCauseUnreported, reset: _, reason: _ } => false
       LimitUnavailableUntilReset { subject: _, cause: _, reset: _, reason: _ } => true
+      _ => false
+    })
+}
+
+// The version-coherence repair made a claim about behavior: under the pinned
+// 0.146.0 runtime the two plan strings that only 0.147.0 emits must decode as a
+// STALE PIN, not as members. Asserting that in a note is not evidence.
+test fn witness_plans_added_after_the_pinned_runtime_read_as_stale_pin() -> Bool {
+  let later = chatgpt_realm_on(
+    plan_wire: "{\"account\":{\"type\":\"chatgpt\",\"planType\":\"self_serve_business_prolite\"}}")
+  let also_later = chatgpt_realm_on(
+    plan_wire: "{\"account\":{\"type\":\"chatgpt\",\"planType\":\"enterprise_cbp_automation\"}}")
+  let pinned = chatgpt_realm_on(
+    plan_wire: "{\"account\":{\"type\":\"chatgpt\",\"planType\":\"enterprise_cbp_usage_based\"}}")
+  (match later {
+    CodexChatgptRealm { plan: CodexPlanTypeUnrecognized { native: n } } =>
+      n == ("self_serve_business_prolite" as NonEmptyStr)
+    _ => false
+  })
+    && (match also_later {
+      CodexChatgptRealm { plan: CodexPlanTypeUnrecognized { native: _ } } => true
+      _ => false
+    })
+    && (match pinned {
+      CodexChatgptRealm { plan: CodexPlanTypeObserved { plan: _ } } => true
       _ => false
     })
 }
