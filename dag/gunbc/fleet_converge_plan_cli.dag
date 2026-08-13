@@ -1,10 +1,10 @@
 module gunbc.fleet_converge_plan_cli
 
-import std.types { String, List, Bool, NonEmptyStr }
+import std.types { String, List, Bool, NonEmptyStr, Int }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.resources { Network }
 import std.algebra { trim }
-import std.content_hash { Fnv1a64StructuralDigestHex }
+import std.content_hash { serialize_content_hash }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import gunbc.command_runner { run_shell_command_capture, run_shell_commands }
@@ -16,13 +16,58 @@ import gunbc.fleet_converge_plan {
   fleet_converge_plan_baseline_hex_path,
   fleet_converge_plan_apply_shell_path,
   fleet_converge_plan_content_hash_path,
+  fleet_converge_plan_subject_host_path,
+  fleet_converge_plan_generation_path,
+  fleet_converge_plan_prior_generation_path,
+  fleet_converge_plan_member_set_fp_path,
   fleet_converge_plan_artifact_dir,
   fleet_converge_plan_content_hash,
   fleet_converge_observed_baseline_matches,
+  fleet_converge_apply_generation_admits,
+  fleet_converge_member_set_fingerprint_matches,
   timer_retirement_observed_legacy_srv1,
 }
 
-data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converge plan/apply (sleek-heron-218). Plan observes the host, runs membership_reconcile once, writes the human-readable plan, the observed-baseline CAS fingerprint, and a generated apply.sh that apply executes WITHOUT recomputing the reconcile. Apply re-observes only for the CAS gate; if observed baseline drifted since plan, it refuses."
+data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converge plan/apply (sleek-heron-218). Plan observes the host, runs membership_reconcile once, names the subject (host + member-set fingerprint), mints a std.temporal_effect HeldLease generation in the artifact, and writes the human-readable plan plus apply.sh. Apply re-observes for subject identity, baseline CAS, and lease generation (store must still equal prior_generation); only the first concurrent apply against the same observed state can pass the generation gate and commit planned_generation."
+
+fn fleet_converge_generation_from_store_text(content: String) -> Int {
+  let trimmed = trim(s: content)
+  if trimmed == "" {
+    0
+  } else {
+    match parse_int(s: trimmed) {
+      Present { value: n } =>
+        if n >= 0 {
+          n
+        } else {
+          0
+        }
+      Absent => 0
+    }
+  }
+}
+
+func observe_host_short_wet() -> String
+  uses net: Network
+{
+  trim(
+    s: run_shell_command_capture(
+      command: ArgvCommand { argv: ["hostname", "-s"] },
+      transport: LocalExec,
+    ).stdout,
+  )
+}
+
+func observe_generation_store_wet() -> Int
+  uses net: Network
+{
+  let read = Filesystem.Read(path: fleet_converge_generation_store_path)
+  if read.success {
+    fleet_converge_generation_from_store_text(content: read.content)
+  } else {
+    0
+  }
+}
 
 func observe_timer_members_wet() -> List<TimerRetirementMember>
   uses net: Network
@@ -52,12 +97,18 @@ func observe_cap_members_wet() -> List<CapMember>
 func fleet_converge_plan_wet() -> ProcessExit
   uses net: Network
 {
+  let host_short = observe_host_short_wet()
+  let host = host_short as NonEmptyStr
+  let prior_generation = observe_generation_store_wet()
   let observed_timers = observe_timer_members_wet()
   let observed_caps = observe_cap_members_wet()
   let artifact = fleet_converge_plan_artifact(
+    host: host,
+    prior_generation: prior_generation,
     observed_timers: observed_timers,
     observed_caps: observed_caps,
   )
+  let planned_generation = prior_generation + 1
   let content_hash = fleet_converge_plan_content_hash(plan_body: artifact.plan_body)
   let mkdir = run_shell_commands(
     commands: [ArgvCommand { argv: ["mkdir", "-p", fleet_converge_plan_artifact_dir] }],
@@ -70,7 +121,24 @@ func fleet_converge_plan_wet() -> ProcessExit
       let w_base = Filesystem.Write(path: fleet_converge_plan_baseline_hex_path, content: artifact.observed_baseline_hex)
       let w_hash = Filesystem.Write(path: fleet_converge_plan_content_hash_path, content: content_hash)
       let w_apply = Filesystem.Write(path: fleet_converge_plan_apply_shell_path, content: artifact.apply_shell)
-      if w_plan.success && w_base.success && w_hash.success && w_apply.success {
+      let w_host = Filesystem.Write(path: fleet_converge_plan_subject_host_path, content: host_short)
+      let w_gen = Filesystem.Write(path: fleet_converge_plan_generation_path, content: to_string(planned_generation))
+      let w_prior = Filesystem.Write(
+        path: fleet_converge_plan_prior_generation_path,
+        content: to_string(prior_generation),
+      )
+      let w_member_fp = Filesystem.Write(
+        path: fleet_converge_plan_member_set_fp_path,
+        content: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
+      )
+      if w_plan.success
+        && w_base.success
+        && w_hash.success
+        && w_apply.success
+        && w_host.success
+        && w_gen.success
+        && w_prior.success
+        && w_member_fp.success {
         run_shell_commands(
           commands: [
             ArgvCommand { argv: ["chmod", "0755", fleet_converge_plan_apply_shell_path] },
@@ -90,22 +158,65 @@ func fleet_converge_apply_wet() -> ProcessExit
 {
   let read_plan = Filesystem.Read(path: fleet_converge_plan_body_path)
   let read_base = Filesystem.Read(path: fleet_converge_plan_baseline_hex_path)
-  if !read_plan.success || !read_base.success {
+  let read_host = Filesystem.Read(path: fleet_converge_plan_subject_host_path)
+  let read_prior = Filesystem.Read(path: fleet_converge_plan_prior_generation_path)
+  let read_gen = Filesystem.Read(path: fleet_converge_plan_generation_path)
+  let read_member_fp = Filesystem.Read(path: fleet_converge_plan_member_set_fp_path)
+  if !read_plan.success
+    || !read_base.success
+    || !read_host.success
+    || !read_prior.success
+    || !read_gen.success
+    || !read_member_fp.success {
     exit_failure(reason: "fleet_converge_apply: plan artifact missing — run plan first")
   } else {
-    let observed_timers = observe_timer_members_wet()
-    let observed_caps = observe_cap_members_wet()
-    if !fleet_converge_observed_baseline_matches(
-      observed_baseline_hex: trim(s: read_base.content),
-      observed_timers: observed_timers,
-      observed_caps: observed_caps,
-    ) {
-      exit_failure(reason: "fleet_converge_apply: ObservedBaselineMismatch — host drifted since plan; rerun plan and review (CAS refusal)")
-    } else {
-      run_shell_commands(
-        commands: [ArgvCommand { argv: ["bash", fleet_converge_plan_apply_shell_path] }],
-        transport: LocalExec,
+    let host_short = observe_host_short_wet()
+    let observed_host = trim(s: read_host.content) as NonEmptyStr
+    let prior_generation = fleet_converge_generation_from_store_text(content: read_prior.content)
+    let planned_generation = fleet_converge_generation_from_store_text(content: read_gen.content)
+    let store_generation = observe_generation_store_wet()
+    if trim(s: host_short) != trim(s: read_host.content) {
+      exit_failure(
+        reason: concat(
+          "fleet_converge_apply: SubjectHostMismatch planned=",
+          trim(s: read_host.content),
+          concat(" observed=", host_short),
+        ),
       )
+    } else if !fleet_converge_apply_generation_admits(
+      prior_generation: prior_generation,
+      store_generation: store_generation,
+    ) {
+      exit_failure(
+        reason: concat(
+          "fleet_converge_apply: LeaseGenerationStale planned=",
+          to_string(planned_generation),
+          concat(" observed_store=", to_string(store_generation)),
+        ),
+      )
+    } else {
+      let observed_timers = observe_timer_members_wet()
+      let observed_caps = observe_cap_members_wet()
+      if !fleet_converge_member_set_fingerprint_matches(
+        planned_fingerprint_text: read_member_fp.content,
+        host: observed_host,
+        observed_timers: observed_timers,
+        observed_caps: observed_caps,
+      ) {
+        exit_failure(reason: "fleet_converge_apply: SubjectIdentityMismatch — member set drifted since plan")
+      } else if !fleet_converge_observed_baseline_matches(
+        host: observed_host,
+        observed_baseline_hex: trim(s: read_base.content),
+        observed_timers: observed_timers,
+        observed_caps: observed_caps,
+      ) {
+        exit_failure(reason: "fleet_converge_apply: ObservedBaselineMismatch — host drifted since plan; rerun plan and review (CAS refusal)")
+      } else {
+        run_shell_commands(
+          commands: [ArgvCommand { argv: ["bash", fleet_converge_plan_apply_shell_path] }],
+          transport: LocalExec,
+        )
+      }
     }
   }
 }

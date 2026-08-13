@@ -722,7 +722,8 @@ test fn retract_is_not_emitted_without_an_observed_scoped_removal() -> Bool {
 }
 
 // Fleet converge timer is RETIRED from live_deploy apply membership (sleek-heron-218).
-// On-demand plan/apply is emitted via fleet-converge.yml instead of a deploy-installed timer.
+// FleetConvergeTimerUnit is absent from deployment_owned_steps; on-demand plan/apply
+// is emitted via fleet-converge.yml instead of a deploy-installed timer.
 test fn fleet_converge_timer_not_installed_by_deploy_apply() -> Bool {
   let spec = deployment_spec_srv1()
   let live = live_deploy_apply_script_for(spec: spec, revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })

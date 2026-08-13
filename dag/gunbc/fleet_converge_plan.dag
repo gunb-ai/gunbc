@@ -2,11 +2,17 @@ module gunbc.fleet_converge_plan
 
 import std.types { String, List, Bool, Int, NonEmptyStr }
 import std.measure { byte_size_count }
+import std.algebra { trim }
 import std.content_hash {
   content_hash_of_value,
+  serialize_content_hash,
+  compare_content_hash,
+  ContentHashEqual,
   Fnv1a64StructuralDigestHex,
   Fnv1a64,
+  ContentHash,
 }
+import std.temporal_effect { HeldLease, HeldLeaseObservedState, LeaseAbsent }
 import gunbc.membership_reconcile {
   MembershipPlan,
   MemberAction,
@@ -48,7 +54,112 @@ import gunbc.host_converge {
 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 
-data fleet_converge_plan_authority_note: String = "On-demand fleet converge PLAN authority (operator directive 2026-08-13, sleek-heron-218): membership_reconcile computes the typed hunks — MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused — that a human reviews BEFORE apply. Plan and apply are the same spine at different poles; this module owns serialization, the content-addressed artifact, and the observed baseline fingerprint apply must CAS against. Timer retirement: desired has NO fleet-converge timers; observed lists legacy units still on the host. MemberRemovalRefused arms are rendered in plan output and never filtered — they are precisely what a reviewer needs to see before approving."
+data fleet_converge_plan_authority_note: String = "On-demand fleet converge PLAN authority (operator directive 2026-08-13, sleek-heron-218): membership_reconcile computes the typed hunks — MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused — that a human reviews BEFORE apply. Plan and apply are the same spine at different poles; this module owns serialization, the content-addressed artifact, subject identity, std.temporal_effect HeldLease generation protection, and the observed baseline fingerprint apply must CAS against. A plan names its subject (host + member-set fingerprint) and mints a generation-scoped lease so two applies against the same observed baseline cannot both act. Timer retirement: desired has NO fleet-converge timers; observed lists legacy units still on the host. MemberRemovalRefused arms are rendered in plan output and never filtered — they are precisely what a reviewer needs to see before approving."
+
+type FleetConvergePlanSubject {
+  host: NonEmptyStr
+  member_set_fingerprint: ContentHash
+}
+
+fn fleet_converge_plan_lease_key(host: NonEmptyStr) -> NonEmptyStr {
+  concat("fleet-converge-plan:", host as String) as NonEmptyStr
+}
+
+fn fleet_converge_plan_subject_identity_text(subject: FleetConvergePlanSubject) -> String {
+  concat(
+    concat("host:", subject.host as String),
+    concat("\nmember_set:", serialize_content_hash(hash: subject.member_set_fingerprint) as String),
+  )
+}
+
+fn fleet_converge_plan_resource_fingerprint(subject: FleetConvergePlanSubject) -> ContentHash {
+  content_hash_of_value(value: fleet_converge_plan_subject_identity_text(subject: subject) as NonEmptyStr)
+}
+
+fn fleet_converge_plan_subject(
+  host: NonEmptyStr,
+  observed_timers: List<TimerRetirementMember>,
+  observed_caps: List<CapMember>,
+) -> FleetConvergePlanSubject {
+  FleetConvergePlanSubject {
+    host: host,
+    member_set_fingerprint: fleet_converge_member_set_fingerprint(
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: observed_caps,
+    ),
+  }
+}
+
+fn fleet_converge_member_set_fingerprint(
+  host: NonEmptyStr,
+  observed_timers: List<TimerRetirementMember>,
+  observed_caps: List<CapMember>,
+) -> ContentHash {
+  content_hash_of_value(
+    value: observed_baseline_text(
+      host: host,
+      observed_timers: observed_timers,
+      observed_caps: observed_caps,
+    ) as NonEmptyStr,
+  )
+}
+
+fn fleet_converge_apply_subject_admits(
+  planned_subject: FleetConvergePlanSubject,
+  observed_host: NonEmptyStr,
+  observed_timers: List<TimerRetirementMember>,
+  observed_caps: List<CapMember>,
+) -> Bool {
+  planned_subject.host == observed_host
+    && compare_content_hash(
+      left: planned_subject.member_set_fingerprint,
+      right: fleet_converge_member_set_fingerprint(
+        host: observed_host,
+        observed_timers: observed_timers,
+        observed_caps: observed_caps,
+      ),
+    ) == ContentHashEqual
+}
+
+fn fleet_converge_plan_held_lease(
+  subject: FleetConvergePlanSubject,
+  prior_generation: Int,
+  owner_fingerprint: ContentHash,
+) -> HeldLease {
+  HeldLease {
+    lease_key: fleet_converge_plan_lease_key(host: subject.host),
+    resource_fingerprint: fleet_converge_plan_resource_fingerprint(subject: subject),
+    owner_fingerprint: owner_fingerprint,
+    generation: prior_generation + 1,
+    observed: LeaseAbsent,
+  }
+}
+
+fn fleet_converge_apply_generation_admits(prior_generation: Int, store_generation: Int) -> Bool {
+  store_generation == prior_generation
+}
+
+fn fleet_converge_apply_generation_stale(planned_generation: Int, store_generation: Int) -> Bool {
+  store_generation >= planned_generation
+}
+
+fn fleet_converge_member_set_fingerprint_matches(
+  planned_fingerprint_text: String,
+  host: NonEmptyStr,
+  observed_timers: List<TimerRetirementMember>,
+  observed_caps: List<CapMember>,
+) -> Bool {
+  trim(s: planned_fingerprint_text) == (
+    serialize_content_hash(
+      hash: fleet_converge_member_set_fingerprint(
+        host: host,
+        observed_timers: observed_timers,
+        observed_caps: observed_caps,
+      ),
+    ) as String
+  )
+}
 
 type TimerRetirementMember {
   unit_name: NonEmptyStr
@@ -168,9 +279,14 @@ fn fleet_converge_desired_caps() -> List<CapMember> {
   ]
 }
 
-fn observed_baseline_text(observed_timers: List<TimerRetirementMember>, observed_caps: List<CapMember>) -> String {
+fn observed_baseline_text(
+  host: NonEmptyStr,
+  observed_timers: List<TimerRetirementMember>,
+  observed_caps: List<CapMember>,
+) -> String {
   join(
     concat(
+      [concat("host:", host as String)],
       map(observed_timers, m => concat("timer:", m.unit_name as String)),
       map(observed_caps, c => concat("cap:", c.dropin_path as String, "=", c.content)),
     ),
@@ -179,6 +295,9 @@ fn observed_baseline_text(observed_timers: List<TimerRetirementMember>, observed
 }
 
 type FleetConvergePlanArtifact {
+  subject: FleetConvergePlanSubject
+  prior_generation: Int
+  plan_lease: HeldLease
   observed_baseline_hex: Fnv1a64StructuralDigestHex
   plan_body: String
   apply_shell: String
@@ -231,31 +350,106 @@ fn cap_apply_lines(plan: MembershipPlan<CapMember>) -> List<String> {
   )
 }
 
-fn fleet_converge_apply_shell(timer_plan: MembershipPlan<TimerRetirementMember>, cap_plan: MembershipPlan<CapMember>) -> String {
+data fleet_converge_generation_store_path: String = "/var/lib/gunbc/fleet-converge/plan_generation"
+
+fn fleet_converge_subject_host_gate_shell(subject: FleetConvergePlanSubject) -> List<String> {
+  [
+    "HOST_SHORT=$(hostname -s)",
+    concat("if [ \"$HOST_SHORT\" != \"", subject.host as String, "\" ]; then"),
+    concat("  echo \"SubjectHostMismatch planned=", subject.host as String, " observed=$HOST_SHORT\" >&2"),
+    "  exit 1",
+    "fi",
+  ]
+}
+
+fn fleet_converge_generation_gate_shell(prior_generation: Int, planned_generation: Int) -> List<String> {
+  [
+    concat("GEN_STORE=\"", fleet_converge_generation_store_path, "\""),
+    "mkdir -p /var/lib/gunbc/fleet-converge",
+    concat(
+      "CURRENT=$(cat \"$GEN_STORE\" 2>/dev/null || echo ",
+      to_string(prior_generation),
+      ")",
+    ),
+    concat("if [ \"$CURRENT\" != \"", to_string(prior_generation), "\" ]; then"),
+    concat(
+      "  echo \"LeaseGenerationStale planned=",
+      to_string(planned_generation),
+      " observed=$CURRENT\" >&2",
+    ),
+    "  exit 1",
+    "fi",
+  ]
+}
+
+fn fleet_converge_generation_commit_shell(planned_generation: Int) -> List<String> {
+  [concat("echo ", to_string(planned_generation), " > \"$GEN_STORE\"")]
+}
+
+fn fleet_converge_plan_generation_claim_shell(prior_generation: Int, planned_generation: Int) -> List<String> {
+  fleet_converge_generation_gate_shell(
+    prior_generation: prior_generation,
+    planned_generation: planned_generation,
+  )
+}
+
+fn fleet_converge_apply_shell(
+  subject: FleetConvergePlanSubject,
+  prior_generation: Int,
+  planned_generation: Int,
+  timer_plan: MembershipPlan<TimerRetirementMember>,
+  cap_plan: MembershipPlan<CapMember>,
+) -> String {
   join(
     concat(
-      ["set -euo pipefail", "# generated at plan time — apply MUST NOT recompute membership_reconcile"],
+      ["set -euo pipefail"],
+      fleet_converge_subject_host_gate_shell(subject: subject),
+      fleet_converge_generation_gate_shell(
+        prior_generation: prior_generation,
+        planned_generation: planned_generation,
+      ),
+      ["# generated at plan time — apply MUST NOT recompute membership_reconcile"],
       timer_apply_lines(plan: timer_plan),
       cap_apply_lines(plan: cap_plan),
       ["sudo -n systemctl daemon-reload"],
+      fleet_converge_generation_commit_shell(planned_generation: planned_generation),
     ),
     "\n",
   )
 }
 
 fn fleet_converge_plan_artifact(
+  host: NonEmptyStr,
+  prior_generation: Int,
   observed_timers: List<TimerRetirementMember>,
   observed_caps: List<CapMember>,
 ) -> FleetConvergePlanArtifact {
+  let subject = fleet_converge_plan_subject(
+    host: host,
+    observed_timers: observed_timers,
+    observed_caps: observed_caps,
+  )
   let timer_plan = timer_retirement_plan(observed: observed_timers)
   let cap_plan = caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps)
   let timer_lines = membership_plan_lines_timer(plan: timer_plan)
   let cap_lines = membership_plan_lines_cap(plan: cap_plan)
-  let baseline = observed_baseline_text(observed_timers: observed_timers, observed_caps: observed_caps)
+  let baseline = observed_baseline_text(
+    host: host,
+    observed_timers: observed_timers,
+    observed_caps: observed_caps,
+  )
+  let planned_generation = prior_generation + 1
   let body = join(
     concat(
       [
         "# fleet-converge plan",
+        concat("subject_host:", subject.host as String),
+        concat(
+          "subject_member_set:",
+          serialize_content_hash(hash: subject.member_set_fingerprint) as String,
+        ),
+        concat("plan_generation:", to_string(planned_generation)),
+        concat("lease_key:", fleet_converge_plan_lease_key(host: subject.host) as String),
         "observed_baseline:",
         baseline,
         "# timer-retirement",
@@ -270,18 +464,37 @@ fn fleet_converge_plan_artifact(
     ),
     "\n",
   )
+  let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
+  let lease = fleet_converge_plan_held_lease(
+    subject: subject,
+    prior_generation: prior_generation,
+    owner_fingerprint: owner_fp,
+  )
+  let apply_shell = fleet_converge_apply_shell(
+    subject: subject,
+    prior_generation: prior_generation,
+    planned_generation: planned_generation,
+    timer_plan: timer_plan,
+    cap_plan: cap_plan,
+  )
   match content_hash_of_value(value: baseline as NonEmptyStr) {
     Fnv1a64(structural) =>
       FleetConvergePlanArtifact {
+        subject: subject,
+        prior_generation: prior_generation,
+        plan_lease: lease,
         observed_baseline_hex: structural.digest,
         plan_body: body,
-        apply_shell: fleet_converge_apply_shell(timer_plan: timer_plan, cap_plan: cap_plan),
+        apply_shell: apply_shell,
       }
     _ =>
       FleetConvergePlanArtifact {
+        subject: subject,
+        prior_generation: prior_generation,
+        plan_lease: lease,
         observed_baseline_hex: "0000000000000000",
         plan_body: body,
-        apply_shell: fleet_converge_apply_shell(timer_plan: timer_plan, cap_plan: cap_plan),
+        apply_shell: apply_shell,
       }
   }
 }
@@ -296,12 +509,25 @@ data fleet_converge_plan_apply_shell_path: String = "/tmp/fleet-converge-plan/ap
 
 data fleet_converge_plan_content_hash_path: String = "/tmp/fleet-converge-plan/plan_content.hex"
 
+data fleet_converge_plan_subject_host_path: String = "/tmp/fleet-converge-plan/subject_host.txt"
+
+data fleet_converge_plan_generation_path: String = "/tmp/fleet-converge-plan/plan_generation.txt"
+
+data fleet_converge_plan_prior_generation_path: String = "/tmp/fleet-converge-plan/prior_generation.txt"
+
+data fleet_converge_plan_member_set_fp_path: String = "/tmp/fleet-converge-plan/subject_member_set.txt"
+
 fn fleet_converge_observed_baseline_matches(
+  host: NonEmptyStr,
   observed_baseline_hex: Fnv1a64StructuralDigestHex,
   observed_timers: List<TimerRetirementMember>,
   observed_caps: List<CapMember>,
 ) -> Bool {
-  let baseline = observed_baseline_text(observed_timers: observed_timers, observed_caps: observed_caps)
+  let baseline = observed_baseline_text(
+    host: host,
+    observed_timers: observed_timers,
+    observed_caps: observed_caps,
+  )
   match content_hash_of_value(value: baseline as NonEmptyStr) {
     Fnv1a64(structural) => structural.digest == observed_baseline_hex
     _ => false

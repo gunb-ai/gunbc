@@ -1,19 +1,29 @@
 module test.claim.fleet_converge_plan_witness
 
-import std.types { Bool, String, NonEmptyStr }
+import std.types { Bool, String, NonEmptyStr, Int }
+import std.content_hash { serialize_content_hash }
 import gunbc.membership_reconcile { MemberRemoved }
 import gunbc.host_axis_caps { CapMember }
 import gunbc.host_converge { gunbc_runner_per_slot_dropin_path }
 import gunbc.fleet_converge_plan {
   TimerRetirementMember,
+  FleetConvergePlanSubject,
   fleet_converge_plan_artifact,
   fleet_converge_plan_artifact_hash,
   fleet_converge_observed_baseline_matches,
+  fleet_converge_apply_subject_admits,
+  fleet_converge_apply_generation_admits,
+  fleet_converge_apply_generation_stale,
+  fleet_converge_member_set_fingerprint_matches,
   timer_retirement_plan,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_host_srv1: NonEmptyStr = "srv1" as NonEmptyStr
+
+data witness_host_srv2: NonEmptyStr = "srv2" as NonEmptyStr
 
 test fn timer_retirement_plan_shows_refused_removal_for_foreign_cap() -> Bool {
   let foreign = CapMember {
@@ -21,6 +31,8 @@ test fn timer_retirement_plan_shows_refused_removal_for_foreign_cap() -> Bool {
     content: "[Service]\nMemoryMax=1\n",
   }
   let artifact = fleet_converge_plan_artifact(
+    host: witness_host_srv1,
+    prior_generation: 0,
     observed_timers: [],
     observed_caps: [foreign],
   )
@@ -41,8 +53,18 @@ test fn plan_artifact_hash_is_stable_for_fixed_observation() -> Bool {
     dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
     content: "[Service]\nMemoryMax=15032385536\n",
   }
-  let a1 = fleet_converge_plan_artifact(observed_timers: [], observed_caps: [observed_cap])
-  let a2 = fleet_converge_plan_artifact(observed_timers: [], observed_caps: [observed_cap])
+  let a1 = fleet_converge_plan_artifact(
+    host: witness_host_srv1,
+    prior_generation: 3,
+    observed_timers: [],
+    observed_caps: [observed_cap],
+  )
+  let a2 = fleet_converge_plan_artifact(
+    host: witness_host_srv1,
+    prior_generation: 3,
+    observed_timers: [],
+    observed_caps: [observed_cap],
+  )
   fleet_converge_plan_artifact_hash(artifact: a1) == fleet_converge_plan_artifact_hash(artifact: a2)
 }
 
@@ -51,13 +73,102 @@ test fn observed_baseline_cas_refuses_after_drift() -> Bool {
     dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
     content: "[Service]\nMemoryMax=15032385536\n",
   }
-  let artifact = fleet_converge_plan_artifact(observed_timers: [], observed_caps: [observed_cap])
+  let artifact = fleet_converge_plan_artifact(
+    host: witness_host_srv1,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [observed_cap],
+  )
   let drifted = CapMember {
     dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
     content: "[Service]\nMemoryMax=17179869184\n",
   }
   !fleet_converge_observed_baseline_matches(
+    host: witness_host_srv1,
     observed_baseline_hex: artifact.observed_baseline_hex,
+    observed_timers: [],
+    observed_caps: [drifted],
+  )
+}
+
+test fn plan_body_names_subject_host_and_generation() -> Bool {
+  let artifact = fleet_converge_plan_artifact(
+    host: witness_host_srv1,
+    prior_generation: 4,
+    observed_timers: [],
+    observed_caps: [],
+  )
+  string_contains(s: artifact.plan_body, pattern: "subject_host:srv1")
+    && string_contains(s: artifact.plan_body, pattern: "plan_generation:5")
+    && string_contains(s: artifact.plan_body, pattern: "lease_key:fleet-converge-plan:srv1")
+    && artifact.plan_lease.generation == 5
+}
+
+test fn cross_host_apply_refuses_subject_identity() -> Bool {
+  let observed_cap = CapMember {
+    dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
+    content: "[Service]\nMemoryMax=15032385536\n",
+  }
+  let artifact = fleet_converge_plan_artifact(
+    host: witness_host_srv1,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [observed_cap],
+  )
+  !fleet_converge_apply_subject_admits(
+    planned_subject: artifact.subject,
+    observed_host: witness_host_srv2,
+    observed_timers: [],
+    observed_caps: [observed_cap],
+  )
+}
+
+test fn same_host_different_generation_changes_plan_hash() -> Bool {
+  let observed_cap = CapMember {
+    dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
+    content: "[Service]\nMemoryMax=15032385536\n",
+  }
+  let gen0 = fleet_converge_plan_artifact(
+    host: witness_host_srv1,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [observed_cap],
+  )
+  let gen1 = fleet_converge_plan_artifact(
+    host: witness_host_srv1,
+    prior_generation: 1,
+    observed_timers: [],
+    observed_caps: [observed_cap],
+  )
+  fleet_converge_plan_artifact_hash(artifact: gen0) != fleet_converge_plan_artifact_hash(artifact: gen1)
+}
+
+test fn second_concurrent_apply_refuses_generation_gate() -> Bool {
+  let prior = 5
+  let planned = 6
+  fleet_converge_apply_generation_admits(prior_generation: prior, store_generation: prior)
+    && !fleet_converge_apply_generation_admits(prior_generation: prior, store_generation: planned)
+    && fleet_converge_apply_generation_stale(planned_generation: planned, store_generation: planned)
+}
+
+test fn member_set_fingerprint_mismatch_refuses_identity() -> Bool {
+  let observed_cap = CapMember {
+    dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
+    content: "[Service]\nMemoryMax=15032385536\n",
+  }
+  let artifact = fleet_converge_plan_artifact(
+    host: witness_host_srv1,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [observed_cap],
+  )
+  let drifted = CapMember {
+    dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
+    content: "[Service]\nMemoryMax=17179869184\n",
+  }
+  !fleet_converge_member_set_fingerprint_matches(
+    planned_fingerprint_text: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
+    host: witness_host_srv1,
     observed_timers: [],
     observed_caps: [drifted],
   )
