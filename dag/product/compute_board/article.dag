@@ -257,10 +257,10 @@ fn article_manufacturing_profile_selected(a: BoardPowerInterfaceArticle) -> Bool
 // inside a witness module, so the production authority had no production instance and every
 // claim about "one article feeding both projections" was a statement about a test fixture. A
 // root that exists only in its own test is not a root.
+// The instance identity carries NO element letter. SPICE derives 'R' from the role, so an
+// identity spelled "R1" would emit "RR1" — and the fix is not to strip a prefix at emission
+// but to keep the target's naming convention out of the identity in the first place.
 data pg_conditioning_resistor: ElectricalComponentInstance = ElectricalComponentInstance {
-  // The instance identity carries NO element letter. SPICE derives 'R' from the role, so an
-  // identity spelled "R1" would emit "RR1" — and the fix is not to strip a prefix at emission
-  // but to keep the target's naming convention out of the identity in the first place.
   identity: "pg_cond" as ComponentInstanceIdentity,
   part: "power-good conditioning resistor",
   role: PassiveResistor,
