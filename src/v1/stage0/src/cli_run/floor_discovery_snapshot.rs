@@ -223,7 +223,7 @@ fn validate_git_object_hex(value: &str, format: &str, coordinate: &str) -> Resul
     Ok(())
 }
 
-fn floor_tested_commit_and_tree() -> Result<(String, String), String> {
+pub fn floor_tested_commit_and_tree() -> Result<(String, String), String> {
     let object_format = floor_git_object_format()?;
     let selected_commit = match std::env::var("GITHUB_SHA") {
         Ok(sha) => {
@@ -317,7 +317,7 @@ fn naming_authority_digest_hex() -> Result<String, String> {
     Ok(digest.digest.clone())
 }
 
-fn floor_tool_identity() -> Result<String, String> {
+pub fn floor_tool_identity() -> Result<String, String> {
     let exe =
         std::env::current_exe().map_err(|e| format!("floor tool_identity current_exe: {e}"))?;
     let bytes =

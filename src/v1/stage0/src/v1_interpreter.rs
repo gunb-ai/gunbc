@@ -1467,7 +1467,7 @@ fn account_value(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ExecutionMode {
     Hermetic,
     Wet,
