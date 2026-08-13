@@ -1,0 +1,477 @@
+module std.reference_derived_closure
+
+import std.types { Bool, String, List, Int, NonEmptyStr, FilePath }
+import std.occurrence_identity {
+  OccurrenceTransport,
+  ReferenceOccurrence,
+  OccurrenceId,
+}
+import std.occurrence_binding_candidates {
+  OccurrenceBindingCandidateInputs,
+  OccurrenceModulePathIndexRefusal,
+  module_by_occurrence_build,
+  module_of_occurrence,
+  CrossFileBindingClosureRow,
+  AssembledCrossFileBindingClosureReady,
+  AssembledCrossFileBindingClosureRefused,
+  AssembledCrossFileBindingClosureRefusal,
+  assemble_cross_file_binding_closure,
+  BoundReferencePopulation,
+  CrossFileBindingProvenanceProjection,
+  StructuralBindingWalkReady,
+  StructuralBindingWalkRefused,
+  StructuralBindingIndexRefusal,
+  joined_dependency_binding_walk_selected,
+  ReferenceDerivedDependencyProjectionReady,
+  ReferenceDerivedDependencyProjectionBindingRefused,
+  ReferenceDerivedDependencyProjectionFileRefused,
+  reference_derived_dependency_projection,
+  ModulePathFileIndexReady,
+  ModulePathFileIndexRefused,
+  ModulePathFileIndexRefusal,
+  module_path_file_index_from_rows,
+  file_for_module_path,
+  DirectFileDependency,
+  CrossFileBindingProvenance,
+}
+
+// TWO POPULATIONS, DELIBERATELY NOT ONE. `universe` is every ordinary source file the compile is over;
+// `admitted` is the per-entry closure discovered so far. The candidate index is built over the universe
+// and the references bound are selected from the admitted files only.
+//
+// Collapsing them deadlocks, and the deadlock is not hypothetical: with the index built over admitted
+// files alone, a bare reference to a provider that has not been admitted has no declaration to bind to,
+// so it is Unbound, so no provider file is derived, so nothing is ever admitted. Discovery has to see the
+// declaration before the file carrying it is part of the closure -- a module-to-file index cannot supply
+// that, because storage realization says where a module lives and never which module declares a name.
+type ReferenceDerivedClosureState {
+  admitted_files: List<FilePath>
+  universe: List<ParsedFileSupply>
+}
+
+// One ordinary source file's parse, supplied by whoever owns parsing (the authored-source parser is in
+// the v1 seed). A provider file derived from a binding but absent from the universe REFUSES: an omitted
+// file is a wrong closure, not a smaller one.
+type ParsedFileSupply {
+  file: FilePath
+  row: CrossFileBindingClosureRow
+}
+
+type ReferenceDerivedClosureRefusal
+  = ClosureProviderFileOutsideUniverse { file: FilePath }
+  | ClosureNoEntryAdmitted
+  | ClosureAssemblyRefused { refusal: AssembledCrossFileBindingClosureRefusal }
+  | ClosureWalkRefused { refusal: StructuralBindingIndexRefusal }
+  | ClosureBindingRefused { population: BoundReferencePopulation }
+  | ClosureFileProjectionRefused {
+      first_failure: CrossFileBindingProvenanceProjection,
+      more_failures: List<CrossFileBindingProvenanceProjection>,
+    }
+  | ClosureModuleStorageRefused { refusal: ModulePathFileIndexRefusal }
+  | ClosureOccurrenceModulePathRefused { refusal: OccurrenceModulePathIndexRefusal }
+  | ClosureReferenceFileUnresolved { occurrence: OccurrenceId }
+
+// THREE OUTCOMES, and the absence of a fourth is the point. No arm returns the edges for whichever
+// references happened to bind: an unbound or ambiguous reference in the selected population refuses the
+// whole step, because a closure short by one provider reads downstream as complete.
+type ReferenceDerivedClosureStep
+  = ClosureStepAdvanced {
+      state: ReferenceDerivedClosureState,
+      newly_pending: List<FilePath>,
+      edges: List<DirectFileDependency>,
+      provenance: List<CrossFileBindingProvenance>,
+    }
+  | ClosureStepSettled {
+      state: ReferenceDerivedClosureState,
+      edges: List<DirectFileDependency>,
+      provenance: List<CrossFileBindingProvenance>,
+    }
+  | ClosureStepRefused { refusal: ReferenceDerivedClosureRefusal }
+
+fn no_file_paths() -> List<FilePath> { [] }
+
+fn no_selected_references() -> List<ReferenceOccurrence> { [] }
+
+fn file_path_in(files: List<FilePath>, file: FilePath) -> Bool {
+  fold(files, init: false, f: (found, candidate) =>
+    found || ((candidate as String) == (file as String)))
+}
+
+fn universe_row_for_file(
+  universe: List<ParsedFileSupply>,
+  file: FilePath
+) -> ParsedFileSupply? {
+  fold(universe, init: none, f: (found, row) =>
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        match (row.file as String) == (file as String) {
+          true => Present { value: row }
+          false => Absent
+        }
+    })
+}
+
+type UniversePartition {
+  consumer: CrossFileBindingClosureRow?
+  rest: List<CrossFileBindingClosureRow>
+}
+
+// The entry is the assembly's consumer and every other universe file is a provider ROW -- which is only
+// a statement about rekeying and exposure, not about the closure: an assembled provider row contributes
+// candidates, and whether its file is in the closure is decided by the edges, below.
+fn partition_universe(
+  universe: List<ParsedFileSupply>,
+  entry: FilePath
+) -> UniversePartition {
+  fold(
+    universe,
+    init: UniversePartition { consumer: none, rest: [] },
+    f: (acc, supply) =>
+      match (supply.file as String) == (entry as String) {
+        true => UniversePartition { consumer: Present { value: supply.row }, rest: acc.rest }
+        false =>
+          UniversePartition {
+            consumer: acc.consumer,
+            rest: concat(acc.rest, [supply.row]),
+          }
+      },
+  )
+}
+
+type SelectedReferenceBuild {
+  references: List<ReferenceOccurrence>
+  unresolved: OccurrenceId?
+}
+
+// Selection is by the reference's OWN file, derived from its module path and the module-to-file index --
+// not by which row it arrived in, because assembly rekeys every occurrence into one transport and the row
+// boundary is gone by then. A reference whose file cannot be derived REFUSES rather than being dropped:
+// dropped, it would silently narrow the selected population and the step would report fewer edges as if
+// the consumer had fewer dependencies.
+fn selected_references_for_admitted_files(
+  transport: OccurrenceTransport,
+  module_by_occurrence: Map<Int, NonEmptyStr>,
+  module_files: Map<String, FilePath>,
+  admitted: List<FilePath>
+) -> SelectedReferenceBuild {
+  fold(
+    transport.references,
+    init: SelectedReferenceBuild { references: no_selected_references(), unresolved: none },
+    f: (acc, reference) =>
+      match acc.unresolved {
+        Present { value: _ } => acc
+        Absent =>
+          match module_of_occurrence(
+            module_by_occurrence: module_by_occurrence,
+            occurrence: reference.occurrence,
+          ) {
+            Absent =>
+              SelectedReferenceBuild {
+                references: acc.references,
+                unresolved: Present { value: reference.occurrence },
+              }
+            Present { value: module_path } =>
+              match file_for_module_path(module_files: module_files, module_path: module_path) {
+                Absent =>
+                  SelectedReferenceBuild {
+                    references: acc.references,
+                    unresolved: Present { value: reference.occurrence },
+                  }
+                Present { value: file } =>
+                  match file_path_in(files: admitted, file: file) {
+                    false => acc
+                    true =>
+                      SelectedReferenceBuild {
+                        references: concat(acc.references, [reference]),
+                        unresolved: none,
+                      }
+                  }
+              }
+          }
+      },
+  )
+}
+
+fn provider_files_of(edges: List<DirectFileDependency>) -> List<FilePath> {
+  fold(edges, init: no_file_paths(), f: (acc, edge) =>
+    match file_path_in(files: acc, file: edge.provider_file) {
+      true => acc
+      false => concat(acc, [edge.provider_file])
+    })
+}
+
+fn unseen_provider_files(
+  providers: List<FilePath>,
+  admitted: List<FilePath>
+) -> List<FilePath> {
+  fold(providers, init: no_file_paths(), f: (acc, provider) =>
+    match file_path_in(files: admitted, file: provider) || file_path_in(files: acc, file: provider) {
+      true => acc
+      false => concat(acc, [provider])
+    })
+}
+
+fn first_file_outside_universe(
+  files: List<FilePath>,
+  universe: List<ParsedFileSupply>
+) -> FilePath? {
+  fold(files, init: none, f: (found, file) =>
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        match universe_row_for_file(universe: universe, file: file) {
+          Present { value: _ } => none
+          Absent => Present { value: file }
+        }
+    })
+}
+
+// ONE ITERATION of the fixed point. Assemble the WHOLE universe into one collision-free transport, bind
+// every dependency-inducing reference that belongs to an ADMITTED file through the joined walk, project
+// each accepted binding to its provider file, and make the unseen providers pending. Termination: the
+// universe is finite and `admitted_files` grows strictly on every Advanced step, so `Settled` is reached
+// in at most |universe| steps.
+fn reference_derived_closure_step(
+  state: ReferenceDerivedClosureState
+) -> ReferenceDerivedClosureStep {
+  match first(state.admitted_files) {
+    Absent => ClosureStepRefused { refusal: ClosureNoEntryAdmitted }
+    Present { value: entry } =>
+      let partition = partition_universe(universe: state.universe, entry: entry)
+      match partition.consumer {
+        Absent => ClosureStepRefused { refusal: ClosureNoEntryAdmitted }
+        Present { value: consumer_row } =>
+          match assemble_cross_file_binding_closure(
+            consumer: consumer_row,
+            providers: partition.rest,
+          ) {
+            AssembledCrossFileBindingClosureRefused { refusal: refusal } =>
+              ClosureStepRefused { refusal: ClosureAssemblyRefused { refusal: refusal } }
+            AssembledCrossFileBindingClosureReady {
+              transport: transport,
+              inputs: inputs,
+              module_files: module_file_rows,
+              consumer_file: _,
+            } =>
+              match module_path_file_index_from_rows(rows: module_file_rows) {
+                ModulePathFileIndexRefused { refusal: refusal } =>
+                  ClosureStepRefused {
+                    refusal: ClosureModuleStorageRefused { refusal: refusal },
+                  }
+                ModulePathFileIndexReady { entries: module_files } =>
+                  let module_index = module_by_occurrence_build(rows: inputs.module_paths)
+                  match module_index.refusal {
+                    Present { value: refusal } =>
+                      ClosureStepRefused {
+                        refusal: ClosureOccurrenceModulePathRefused { refusal: refusal },
+                      }
+                    Absent =>
+                      let selected = selected_references_for_admitted_files(
+                        transport: transport,
+                        module_by_occurrence: module_index.module_by_occurrence,
+                        module_files: module_files,
+                        admitted: state.admitted_files,
+                      )
+                      match selected.unresolved {
+                        Present { value: occurrence } =>
+                          ClosureStepRefused {
+                            refusal: ClosureReferenceFileUnresolved { occurrence: occurrence },
+                          }
+                        Absent =>
+                          match joined_dependency_binding_walk_selected(
+                            transport: transport,
+                            inputs: inputs,
+                            references: selected.references,
+                          ) {
+                            StructuralBindingWalkRefused { refusal: refusal } =>
+                              ClosureStepRefused { refusal: ClosureWalkRefused { refusal: refusal } }
+                            StructuralBindingWalkReady { population: population } =>
+                              match reference_derived_dependency_projection(
+                                population: population,
+                                module_files: module_files,
+                              ) {
+                                ReferenceDerivedDependencyProjectionBindingRefused {
+                                  population: refused,
+                                } =>
+                                  ClosureStepRefused {
+                                    refusal: ClosureBindingRefused { population: refused },
+                                  }
+                                ReferenceDerivedDependencyProjectionFileRefused {
+                                  first_failure: first_failure,
+                                  more_failures: more_failures,
+                                } =>
+                                  ClosureStepRefused {
+                                    refusal: ClosureFileProjectionRefused {
+                                      first_failure: first_failure,
+                                      more_failures: more_failures,
+                                    },
+                                  }
+                                ReferenceDerivedDependencyProjectionReady {
+                                  binding_provenance: provenance,
+                                  file_dependencies: edges,
+                                  bound_population: _,
+                                } =>
+                                  let newly_pending = unseen_provider_files(
+                                    providers: provider_files_of(edges: edges),
+                                    admitted: state.admitted_files,
+                                  )
+                                  match first_file_outside_universe(
+                                    files: newly_pending,
+                                    universe: state.universe,
+                                  ) {
+                                    Present { value: missing } =>
+                                      ClosureStepRefused {
+                                        refusal: ClosureProviderFileOutsideUniverse {
+                                          file: missing,
+                                        },
+                                      }
+                                    Absent =>
+                                      let next = ReferenceDerivedClosureState {
+                                        admitted_files: concat(
+                                          state.admitted_files,
+                                          newly_pending,
+                                        ),
+                                        universe: state.universe,
+                                      }
+                                      match length(newly_pending) == 0 {
+                                        true =>
+                                          ClosureStepSettled {
+                                            state: next,
+                                            edges: edges,
+                                            provenance: provenance,
+                                          }
+                                        false =>
+                                          ClosureStepAdvanced {
+                                            state: next,
+                                            newly_pending: newly_pending,
+                                            edges: edges,
+                                            provenance: provenance,
+                                          }
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// The entry is admitted at once, because the entry IS the compile's subject; the universe is the ordinary
+// source-file population and carries the entry's own parse like every other file's.
+fn reference_derived_closure_initial(
+  entry: FilePath,
+  universe: List<ParsedFileSupply>
+) -> ReferenceDerivedClosureState {
+  ReferenceDerivedClosureState {
+    admitted_files: [entry],
+    universe: universe,
+  }
+}
+
+fn closure_step_is_settled(step: ReferenceDerivedClosureStep) -> Bool {
+  match step {
+    ClosureStepSettled { state: _, edges: _, provenance: _ } => true
+    ClosureStepAdvanced { state: _, newly_pending: _, edges: _, provenance: _ } => false
+    ClosureStepRefused { refusal: _ } => false
+  }
+}
+
+fn closure_step_state(step: ReferenceDerivedClosureStep) -> ReferenceDerivedClosureState? {
+  match step {
+    ClosureStepSettled { state: state, edges: _, provenance: _ } => Present { value: state }
+    ClosureStepAdvanced { state: state, newly_pending: _, edges: _, provenance: _ } =>
+      Present { value: state }
+    ClosureStepRefused { refusal: _ } => none
+  }
+}
+
+fn closure_step_edges(step: ReferenceDerivedClosureStep) -> List<DirectFileDependency> {
+  match step {
+    ClosureStepSettled { state: _, edges: edges, provenance: _ } => edges
+    ClosureStepAdvanced { state: _, newly_pending: _, edges: edges, provenance: _ } => edges
+    ClosureStepRefused { refusal: _ } => []
+  }
+}
+
+// The fixed point itself: iterate until settled or refused. Bounded by the universe size, so the bound is
+// a fact about the input rather than a tuning constant.
+type ReferenceDerivedClosureFixedPoint
+  = ClosureFixedPointSettled {
+      admitted_files: List<FilePath>,
+      edges: List<DirectFileDependency>,
+      provenance: List<CrossFileBindingProvenance>,
+      iterations: Int,
+    }
+  | ClosureFixedPointRefused { refusal: ReferenceDerivedClosureRefusal, iterations: Int }
+  | ClosureFixedPointExhausted { admitted_files: List<FilePath>, iterations: Int }
+
+type ClosureFixedPointFold {
+  state: ReferenceDerivedClosureState
+  step: ReferenceDerivedClosureStep?
+  iterations: Int
+}
+
+fn reference_derived_closure_fixed_point(
+  entry: FilePath,
+  universe: List<ParsedFileSupply>
+) -> ReferenceDerivedClosureFixedPoint {
+  let initial = reference_derived_closure_initial(entry: entry, universe: universe)
+  let run = fold(
+    universe,
+    init: ClosureFixedPointFold {
+      state: initial,
+      step: Present { value: reference_derived_closure_step(state: initial) },
+      iterations: 1,
+    },
+    f: (acc, _ignored) =>
+      match acc.step {
+        Present { value: settled_or_refused } =>
+          match closure_step_is_settled(step: settled_or_refused) {
+            true => acc
+            false =>
+              match settled_or_refused {
+                ClosureStepRefused { refusal: _ } => acc
+                ClosureStepSettled { state: _, edges: _, provenance: _ } => acc
+                ClosureStepAdvanced { state: advanced, newly_pending: _, edges: _, provenance: _ } =>
+                  let next = reference_derived_closure_step(state: advanced)
+                  ClosureFixedPointFold {
+                    state: advanced,
+                    step: Present { value: next },
+                    iterations: acc.iterations + 1,
+                  }
+              }
+          }
+        Absent =>
+          let next = reference_derived_closure_step(state: acc.state)
+          ClosureFixedPointFold {
+            state: acc.state,
+            step: Present { value: next },
+            iterations: acc.iterations + 1,
+          }
+      },
+  )
+  match run.step {
+    Absent => ClosureFixedPointExhausted { admitted_files: [], iterations: run.iterations }
+    Present { value: final_step } =>
+      match final_step {
+        ClosureStepSettled { state: state, edges: edges, provenance: provenance } =>
+          ClosureFixedPointSettled {
+            admitted_files: state.admitted_files,
+            edges: edges,
+            provenance: provenance,
+            iterations: run.iterations,
+          }
+        ClosureStepRefused { refusal: refusal } =>
+          ClosureFixedPointRefused { refusal: refusal, iterations: run.iterations }
+        ClosureStepAdvanced { state: state, newly_pending: _, edges: _, provenance: _ } =>
+          ClosureFixedPointExhausted {
+            admitted_files: state.admitted_files,
+            iterations: run.iterations,
+          }
+      }
+  }
+}

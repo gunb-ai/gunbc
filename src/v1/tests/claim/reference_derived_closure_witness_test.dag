@@ -1,0 +1,349 @@
+module v1.tests.claim.reference_derived_closure_witness_test
+
+import std.types { Bool, String, List, Int, NonEmptyStr, FilePath }
+import std.occurrence_identity { OccurrenceTransport, OccurrenceId }
+import std.occurrence_binding_candidates {
+  CrossFileBindingClosureRow,
+  cross_file_binding_closure_row,
+  BoundReferencePopulation,
+  ReferencePopulationRefused,
+  ReferenceBindingProjectionUnbound,
+  ReferenceBindingProjectionAmbiguous,
+  DirectFileDependency,
+  CrossFileBindingProvenance,
+  DeclarationExposureGrounding,
+  ModuleLocalMemberExposure,
+  CrossFileProviderExportedExposure,
+}
+import std.reference_derived_closure {
+  ReferenceDerivedClosureState,
+  ParsedFileSupply,
+  ReferenceDerivedClosureStep,
+  ClosureStepAdvanced,
+  ClosureStepSettled,
+  ClosureStepRefused,
+  ClosureNoEntryAdmitted,
+  ClosureBindingRefused,
+  ReferenceDerivedClosureFixedPoint,
+  ClosureFixedPointSettled,
+  ClosureFixedPointRefused,
+  ClosureFixedPointExhausted,
+  reference_derived_closure_step,
+  reference_derived_closure_initial,
+  reference_derived_closure_fixed_point,
+}
+import v1.gunbc.occurrence_binding_parser_walk {
+  ParsedOccurrenceBindingSourceReady,
+  ParsedOccurrenceBindingSourceRefused,
+  parse_authored_occurrence_binding_source,
+  occurrence_binding_inputs_from_transport,
+}
+
+data rdc_note: String = "THE LOADER FIXED POINT over the ordinary source-file universe.
+
+TWO POPULATIONS, NOT ONE. The candidate index is built over the WHOLE universe of parsed source files; the references BOUND are selected by the file they belong to, from the admitted closure only. That separation is what makes discovery possible: the declaration that a bare reference binds to is visible before the file carrying it is in the closure, and the edge derived from that binding is what admits the file. Collapsing the two deadlocks -- an unadmitted provider has no declaration in the index, so the reference is Unbound, so no provider file is derived, so nothing is ever admitted.
+
+A module-to-file index cannot substitute: storage realization says where a module lives and never which module declares a name."
+
+data rdc_consumer_path: String = "dag/test/fixture/reference_derived_closure/consumer.dag"
+data rdc_provider_path: String = "src/v2/std/live_tree.dag"
+data rdc_second_provider_path: String = "dag/test/fixture/reference_derived_closure/second_provider.dag"
+data rdc_unrelated_path: String = "dag/test/fixture/reference_derived_closure/unrelated.dag"
+data rdc_consumer_module: String = "test.fixture.reference_derived_closure.consumer"
+
+fn rdc_consumer_source() -> String {
+  "module test.fixture.reference_derived_closure.consumer\n" +
+    "\n" +
+    "fn reads(d: LiveTreeDisposition) -> LiveTreeDisposition {\n" +
+    "  d\n" +
+    "}\n"
+}
+
+fn rdc_provider_source() -> String {
+  "module v2.std.live_tree\n" +
+    "\n" +
+    "type LiveTreeDisposition\n" +
+    "  = ReadsLiveTree\n" +
+    "  | HermeticOnly\n"
+}
+
+fn rdc_second_provider_source() -> String {
+  "module test.fixture.reference_derived_closure.second_provider\n" +
+    "\n" +
+    "type LiveTreeDisposition\n" +
+    "  = SecondOne\n" +
+    "  | SecondTwo\n"
+}
+
+fn rdc_unrelated_source() -> String {
+  "module test.fixture.reference_derived_closure.unrelated\n" +
+    "\n" +
+    "type UnrelatedSubject\n" +
+    "  = OnlyOne\n"
+}
+
+fn rdc_source_for(path: String) -> String? {
+  match path == rdc_consumer_path {
+    true => Present { value: rdc_consumer_source() }
+    false =>
+      match path == rdc_provider_path {
+        true => Present { value: rdc_provider_source() }
+        false =>
+          match path == rdc_second_provider_path {
+            true => Present { value: rdc_second_provider_source() }
+            false =>
+              match path == rdc_unrelated_path {
+                true => Present { value: rdc_unrelated_source() }
+                false => none
+              }
+          }
+      }
+  }
+}
+
+// THE ENTRY IS LOCAL, EVERY OTHER FILE IS AN EXPORTING PROVIDER. The entry's own declarations are
+// module-local; a file reached across a file boundary exposes only what it exports. Derived from the path
+// rather than taken as an argument so the two roles cannot be assigned inconsistently across iterations.
+fn rdc_grounding_for(path: String) -> DeclarationExposureGrounding {
+  match path == rdc_consumer_path {
+    true => ModuleLocalMemberExposure
+    false => CrossFileProviderExportedExposure
+  }
+}
+
+fn rdc_supply_for(path: String) -> ParsedFileSupply? {
+  match rdc_source_for(path: path) {
+    Absent => none
+    Present { value: source } =>
+      match parse_authored_occurrence_binding_source(file: path, source: source) {
+        ParsedOccurrenceBindingSourceRefused => none
+        ParsedOccurrenceBindingSourceReady { transport: t, module_path: module_path } =>
+          Present {
+            value: ParsedFileSupply {
+              file: path as FilePath,
+              row: cross_file_binding_closure_row(
+                transport: t,
+                inputs: occurrence_binding_inputs_from_transport(
+                  transport: t,
+                  module_path: module_path,
+                  grounding: rdc_grounding_for(path: path),
+                ),
+                module_path: module_path,
+                file_path: path as FilePath,
+              ),
+            },
+          }
+      }
+  }
+}
+
+fn rdc_no_supply() -> List<ParsedFileSupply> { [] }
+
+fn rdc_universe(paths: List<String>) -> List<ParsedFileSupply> {
+  fold(paths, init: rdc_no_supply(), f: (acc, path) =>
+    match rdc_supply_for(path: path) {
+      Absent => acc
+      Present { value: row } => concat(acc, [row])
+    })
+}
+
+fn rdc_step(entry: String, universe: List<String>) -> ReferenceDerivedClosureStep {
+  reference_derived_closure_step(
+    state: reference_derived_closure_initial(
+      entry: entry as FilePath,
+      universe: rdc_universe(paths: universe),
+    ),
+  )
+}
+
+fn rdc_fixed_point(entry: String, universe: List<String>) -> ReferenceDerivedClosureFixedPoint {
+  reference_derived_closure_fixed_point(
+    entry: entry as FilePath,
+    universe: rdc_universe(paths: universe),
+  )
+}
+
+fn rdc_ordinary_universe() -> List<String> {
+  [rdc_consumer_path, rdc_provider_path]
+}
+
+fn rdc_edges_name_provider(edges: List<DirectFileDependency>) -> Bool {
+  fold(edges, init: false, f: (found, e) =>
+    found || ((e.provider_file as String) == rdc_provider_path))
+}
+
+fn rdc_files_contain(files: List<FilePath>, path: String) -> Bool {
+  fold(files, init: false, f: (found, f) => found || ((f as String) == path))
+}
+
+// THE KEYSTONE TRACE, and it is one step of a growing closure rather than a population handed to the step
+// already complete. The consumer alone is admitted; the provider file is supplied only as an ordinary
+// member of the source-file universe, with no provider-path input anywhere. Its declaration is therefore
+// in the candidate index while its FILE is not in the closure, the bare reference binds to that exact
+// declaration, and the edge that binding projects is what makes the provider pending.
+test fn witness_consumer_alone_discovers_the_provider_file_as_pending() -> Bool {
+  match rdc_step(entry: rdc_consumer_path, universe: rdc_ordinary_universe()) {
+    ClosureStepAdvanced {
+      state: state,
+      newly_pending: newly_pending,
+      edges: edges,
+      provenance: provenance,
+    } =>
+      length(newly_pending) == 1
+        && rdc_files_contain(files: newly_pending, path: rdc_provider_path)
+        && rdc_files_contain(files: state.admitted_files, path: rdc_consumer_path)
+        && length(state.admitted_files) == 2
+        && length(edges) == 1
+        && rdc_edges_name_provider(edges: edges)
+        && length(provenance) >= 1
+    _ => false
+  }
+}
+
+// THE SECOND ITERATION SETTLES. Same universe, the provider now admitted by the first step's own returned
+// state: pending is empty, the edge population is unchanged, and the closure is exactly the two files.
+// Asserted from the step rather than only from the fixed point so the iteration and the driver are two
+// separate claims.
+test fn witness_second_step_over_the_advanced_state_settles() -> Bool {
+  match rdc_step(entry: rdc_consumer_path, universe: rdc_ordinary_universe()) {
+    ClosureStepAdvanced { state: advanced, newly_pending: _, edges: _, provenance: _ } =>
+      match reference_derived_closure_step(state: advanced) {
+        ClosureStepSettled { state: state, edges: edges, provenance: _ } =>
+          length(state.admitted_files) == 2
+            && length(edges) == 1
+            && rdc_edges_name_provider(edges: edges)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// THE WHOLE FIXED POINT, driven to termination: two iterations, two files admitted, one edge. The
+// iteration count is asserted because a driver that re-ran the same step forever would still report a
+// settled closure, and a driver that stopped after one would report an Exhausted one.
+test fn witness_fixed_point_settles_in_two_iterations_over_two_files() -> Bool {
+  match rdc_fixed_point(entry: rdc_consumer_path, universe: rdc_ordinary_universe()) {
+    ClosureFixedPointSettled {
+      admitted_files: admitted,
+      edges: edges,
+      provenance: _,
+      iterations: iterations,
+    } =>
+      iterations == 2
+        && length(admitted) == 2
+        && rdc_files_contain(files: admitted, path: rdc_consumer_path)
+        && rdc_files_contain(files: admitted, path: rdc_provider_path)
+        && length(edges) == 1
+        && rdc_edges_name_provider(edges: edges)
+    _ => false
+  }
+}
+
+// MANY MENTIONS, ONE EDGE, NO SELF-EDGE. Every admitted mention keeps its binding RECEIPT -- including the
+// same-file mention of the parameter `d`, which is clause-(e)-inducing and binds to its own declaration --
+// while the edge population deduplicates to one and no edge points a file at itself. The assertion is the
+// carrier law rather than a count of the rows I expected to participate: I first asserted two provenance
+// rows here and measurement said three.
+test fn witness_mentions_keep_receipts_while_edges_dedupe_without_a_self_edge() -> Bool {
+  match rdc_fixed_point(entry: rdc_consumer_path, universe: rdc_ordinary_universe()) {
+    ClosureFixedPointSettled {
+      admitted_files: _,
+      edges: edges,
+      provenance: provenance,
+      iterations: _,
+    } =>
+      length(provenance) == 3
+        && length(edges) == 1
+        && fold(edges, init: true, f: (ok, e) =>
+          ok && !((e.consumer_file as String) == (e.provider_file as String)))
+        && fold(provenance, init: false, f: (found, row) =>
+          found || ((row.consumer_file as String) == (row.provider_file as String)))
+    _ => false
+  }
+}
+
+// THE UNIVERSE IS THE DENOMINATOR, so a provider absent from it refuses as UNBOUND naming the occurrence.
+// This is the negative half of the keystone: it is the same consumer, the same entry and the same step,
+// differing only in whether the declaring file is part of the compile at all. Neither wrong answer is
+// available -- no one-file closure reported as settled, and no edge invented from a module manifest that
+// cannot be asked which file declares a bare name.
+test fn witness_provider_outside_the_universe_refuses_as_unbound() -> Bool {
+  match rdc_step(entry: rdc_consumer_path, universe: [rdc_consumer_path]) {
+    ClosureStepRefused { refusal: refusal } =>
+      match refusal {
+        ClosureBindingRefused { population: population } =>
+          match population {
+            ReferencePopulationRefused { first_failure: failure, more_failures: _ } =>
+              match failure {
+                ReferenceBindingProjectionUnbound { occurrence: _ } => true
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// AN ENTRY THAT IS NOT IN THE UNIVERSE refuses rather than being parsed through a second admission path.
+// Without this row the step could quietly treat a missing entry as an empty closure, which every consumer
+// downstream would read as "this file depends on nothing".
+test fn witness_entry_absent_from_the_universe_refuses() -> Bool {
+  match rdc_step(entry: rdc_consumer_path, universe: [rdc_provider_path]) {
+    ClosureStepRefused { refusal: refusal } =>
+      match refusal {
+        ClosureNoEntryAdmitted => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// TWO ADMISSIBLE DECLARATIONS of one name is ambiguous, and the refusal carries BOTH competing identities,
+// distinct from each other -- the answer is which two, not how many. Note it fires on the FIRST step: the
+// ambiguity is in the universe-wide index, so it is caught before any file is admitted on its account.
+test fn witness_two_declaring_files_refuse_as_ambiguous_naming_both() -> Bool {
+  match rdc_step(
+    entry: rdc_consumer_path,
+    universe: [rdc_consumer_path, rdc_provider_path, rdc_second_provider_path],
+  ) {
+    ClosureStepRefused { refusal: refusal } =>
+      match refusal {
+        ClosureBindingRefused { population: population } =>
+          match population {
+            ReferencePopulationRefused { first_failure: failure, more_failures: _ } =>
+              match failure {
+                ReferenceBindingProjectionAmbiguous { occurrence: _, candidates: candidates } =>
+                  !(candidates.first.containment.terminal.value ==
+                    candidates.second.containment.terminal.value)
+                _ => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// A UNIVERSE FILE NOTHING REFERENCES IS NOT ADMITTED. The closure is per-entry, so breadth of the universe
+// must not become breadth of the closure -- the failure this excludes is a loader that admits the compile's
+// whole source population and reports it as the entry's dependencies.
+test fn witness_unreferenced_universe_file_is_not_admitted() -> Bool {
+  match rdc_fixed_point(
+    entry: rdc_consumer_path,
+    universe: [rdc_consumer_path, rdc_provider_path, rdc_unrelated_path],
+  ) {
+    ClosureFixedPointSettled {
+      admitted_files: admitted,
+      edges: edges,
+      provenance: _,
+      iterations: _,
+    } =>
+      length(admitted) == 2
+        && !rdc_files_contain(files: admitted, path: rdc_unrelated_path)
+        && length(edges) == 1
+    _ => false
+  }
+}

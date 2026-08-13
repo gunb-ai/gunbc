@@ -2183,9 +2183,10 @@ pub fn joined_dependency_binding_walk_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn joined_dependency_binding_walk(
+pub fn joined_dependency_binding_walk_selected(
     transport: Rc<OccurrenceTransport>,
     inputs: Rc<OccurrenceBindingCandidateInputs>,
+    references: Rc<Vec<Rc<ReferenceOccurrence>>>,
 ) -> Rc<StructuralBindingWalk> {
     match (*occurrence_candidate_index_build(transport.clone(), inputs.clone())).clone() {
     OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexTransportRefused { refusal: refusal, .. } => Rc::new(StructuralBindingWalk::StructuralBindingWalkRefused {
@@ -2214,7 +2215,7 @@ pub fn joined_dependency_binding_walk(
 }),
 }),
     OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexReady { index: index, .. } => Rc::new(StructuralBindingWalk::StructuralBindingWalkReady {
-    population: bound_reference_population_from_projections(v1_rt::reverse(transport.references.clone().iter().cloned().fold(Rc::new(JoinedDependencyBindingBuild {
+    population: bound_reference_population_from_projections(v1_rt::reverse(references.clone().iter().cloned().fold(Rc::new(JoinedDependencyBindingBuild {
     projections_reversed: Rc::new(vec![]),
 }), |acc: Rc<JoinedDependencyBindingBuild>, reference: Rc<ReferenceOccurrence>| match (*reference_dependency_admission_for_category(reference.category.clone())).clone() {
     ReferenceDependencyAdmission::ReferenceDependencyAdmittedClauseE => Rc::new(JoinedDependencyBindingBuild {
@@ -2227,6 +2228,17 @@ pub fn joined_dependency_binding_walk(
 }).projections_reversed.clone())),
 }),
 }
+}
+
+pub fn joined_dependency_binding_walk(
+    transport: Rc<OccurrenceTransport>,
+    inputs: Rc<OccurrenceBindingCandidateInputs>,
+) -> Rc<StructuralBindingWalk> {
+    joined_dependency_binding_walk_selected(
+        transport.clone(),
+        inputs.clone(),
+        transport.references.clone(),
+    )
 }
 
 pub fn reference_derived_dependency_binding_reference_filter_note() -> String {
