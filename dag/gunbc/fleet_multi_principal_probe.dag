@@ -12,7 +12,6 @@ import gunbc.fleet_known_hosts_anchor {
   fleet_ssh_attempt_identity,
   FleetSshExecutionContext,
   FleetSshCredentialBinding,
-  fleet_ssh_credential_binding_of_public_material,
   fleet_ssh_execution_context_of,
   materialize_fleet_known_hosts_anchor,
   known_hosts_materialization_receipt,
@@ -22,7 +21,12 @@ import gunbc.fleet_known_hosts_anchor {
   shape_fleet_ssh_exec,
 }
 import extdeps.ssh.session { ssh_session_exec_portable_words }
-import gunbc.fleet_ssh_access { fleet_automation_ssh_key }
+import gunbc.auth.access_token_source { GcloudPrintToken }
+import gunbc.spark_credential_workflow {
+  FleetSshCredentialMaterializationRefused,
+  FleetSshCredentialMaterialized,
+  materialize_fleet_ssh_credential_binding,
+}
 import std.content_hash { serialize_content_hash }
 import gunbc.spark_managed_access_bootstrap {
   PrincipalReachObservation,
@@ -126,53 +130,51 @@ fn multi_principal_host_block(context: FleetSshExecutionContext, host: String) -
     "")
 }
 
-// THE IDENTITY FILE IS A PARAMETER, not a discovered path, and that is the whole point of binding
-// the credential: a probe that authenticates with whatever key happens to be reachable answers a
-// different question than the one it reports answering. The caller names where the fleet key was
-// materialized -- RUNNER_TEMP under CI, an operator path locally -- and the receipt carries the
-// identity of the PUBLIC material the model holds, so a run where the file at that path is some
-// other key produces a receipt whose credential identity does not match what actually authenticated
-// and is therefore checkable rather than merely plausible.
-
 fn probe_attempt_identity(raw: String) -> FleetSshAttemptIdentity? {
   fleet_ssh_attempt_identity(raw: raw)
 }
 
-// TRUST AND CREDENTIAL ARE ESTABLISHED BEFORE ANY LEG, and their failure arm contains no legs at
-// all. This probe's whole product is a claim about which principal reaches which host; a leg that
-// ran without a verified host key answers that about a machine we did not choose, and one that
-// authenticated through an ambient agent key answers it about a credential we did not name. Sixteen
-// such legs are worse than zero -- they are sixteen plausible observations. There is no route to a
-// context except through the materialization, so the refusal arm is the only arm the types leave.
-func fleet_multi_principal_probe_wet(attempt_raw: String, identity_file: String) -> ProcessExit {
+// Fleet SSH private key material resolves inside this boundary from Secret Manager — never as an
+// argv-passed identity_file path.
+func fleet_multi_principal_probe_wet(attempt_raw: String) -> ProcessExit
+  uses net: Network
+{
   let now = clock_now_probed_at()
-  let credential = fleet_ssh_credential_binding_of_public_material(
-    identity_file: identity_file as NonEmptyStr,
-    public_material: fleet_automation_ssh_key.material as NonEmptyStr,
-  )
-  let body = match probe_attempt_identity(raw: attempt_raw) {
-    Absent => join(["multi-principal fleet-key probe probed_at=", now as String, " REFUSED before any ssh leg: attempt identity is not a safe path segment\n"], "")
-    Present { value: attempt } => {
-      let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
-      match fleet_ssh_execution_context_of(outcome: materialization, credential: credential) {
-        Absent => join([
-          "multi-principal fleet-key probe probed_at=", now as String,
-          " REFUSED before any ssh leg: ", known_hosts_materialization_receipt(outcome: materialization), "\n",
-        ], "")
-        Present { value: context } => join([
-          join(["multi-principal fleet-key probe probed_at=", now as String, " (read-only: hostname + sudo -n -l)\n"], ""),
-          known_hosts_materialization_receipt(outcome: materialization),
-          join(["credential identity_file=", identity_file, " public_material_identity=", serialize_content_hash(hash: credential.credential_identity) as String, " agent=suppressed ambient_config=suppressed\n"], ""),
-          join(map(multi_principal_probe_hosts, h => multi_principal_host_block(context: context, host: h)), ""),
-        ], "")
+  let token_source = GcloudPrintToken
+  match materialize_fleet_ssh_credential_binding(
+    attempt_raw: attempt_raw,
+    token_source: token_source,
+  ) {
+    FleetSshCredentialMaterializationRefused { reason: reason } =>
+      exit_failure(reason: reason as String)
+    FleetSshCredentialMaterialized { binding: credential } => {
+      let identity_file = credential.identity_file as String
+      let body = match probe_attempt_identity(raw: attempt_raw) {
+        Absent =>
+          join(["multi-principal fleet-key probe probed_at=", now as String, " REFUSED before any ssh leg: attempt identity is not a safe path segment\n"], "")
+        Present { value: attempt } => {
+          let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+          match fleet_ssh_execution_context_of(outcome: materialization, credential: credential) {
+            Absent => join([
+              "multi-principal fleet-key probe probed_at=", now as String,
+              " REFUSED before any ssh leg: ", known_hosts_materialization_receipt(outcome: materialization), "\n",
+            ], "")
+            Present { value: context } => join([
+              join(["multi-principal fleet-key probe probed_at=", now as String, " (read-only: hostname + sudo -n -l)\n"], ""),
+              known_hosts_materialization_receipt(outcome: materialization),
+              join(["credential identity_file=", identity_file, " public_material_identity=", serialize_content_hash(hash: credential.credential_identity) as String, " agent=suppressed ambient_config=suppressed\n"], ""),
+              join(map(multi_principal_probe_hosts, h => multi_principal_host_block(context: context, host: h)), ""),
+            ], "")
+          }
+        }
+      }
+      let w = Filesystem.Write(path: fleet_multi_principal_probe_receipt_path, content: body)
+      if w.success {
+        ExitSuccess
+      } else {
+        exit_failure(reason: join(["multi-principal probe receipt write failed: ", w.error], ""))
       }
     }
-  }
-  let w = Filesystem.Write(path: fleet_multi_principal_probe_receipt_path, content: body)
-  if w.success {
-    ExitSuccess
-  } else {
-    exit_failure(reason: join(["multi-principal probe receipt write failed: ", w.error], ""))
   }
 }
 
@@ -239,58 +241,66 @@ data spark_standing_receipt_path: String = "target/spark-managed-access-standing
 // would produce bootstrap plans for hosts whose managed access is a different lane's question.
 data spark_standing_hosts: List<String> = ["srv5", "srv6"]
 
-func spark_managed_access_standing_wet(attempt_raw: String, identity_file: String) -> ProcessExit {
+func spark_managed_access_standing_wet(attempt_raw: String) -> ProcessExit
+  uses net: Network
+{
   let now = clock_now_probed_at()
-  let credential = fleet_ssh_credential_binding_of_public_material(
-    identity_file: identity_file as NonEmptyStr,
-    public_material: fleet_automation_ssh_key.material as NonEmptyStr,
-  )
-  let body = match probe_attempt_identity(raw: attempt_raw) {
-    Absent => "spark managed-access standing REFUSED: attempt identity is not a safe path segment\n"
-    Present { value: attempt } => {
-      let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
-      match fleet_ssh_execution_context_of(outcome: materialization, credential: credential) {
-        Absent => join([
-          "spark managed-access standing REFUSED before any ssh leg: ",
-          known_hosts_materialization_receipt(outcome: materialization), "\n",
-        ], "")
-        Present { value: context } => {
-          let observations = flat_map(spark_standing_hosts, h =>
-            map(multi_principal_probe_principals, p =>
-              principal_observation(
-                context: context,
-                credential_identity: credential.credential_identity,
-                host: h,
-                principal: p,
-              )))
-          join([
-            join(["spark managed-access standing probed_at=", now as String,
-                  " credential_identity=", serialize_content_hash(hash: credential.credential_identity) as String, "\n"], ""),
-            join(map(observations, o => join([
-              "observed host=", o.host as String, " principal=", o.principal_login_name as String,
-              " authenticated=", if o.authenticated { "true" } else { "false" },
-              " passwordless_privilege=", if o.passwordless_privilege { "true" } else { "false" }, "\n",
-            ], "")), ""),
-            join(map(spark_standing_hosts, h => {
-              let standing = derive_spark_managed_access_standing(host: h as HostIdentity, observations: observations)
+  let token_source = GcloudPrintToken
+  match materialize_fleet_ssh_credential_binding(
+    attempt_raw: attempt_raw,
+    token_source: token_source,
+  ) {
+    FleetSshCredentialMaterializationRefused { reason: reason } =>
+      exit_failure(reason: reason as String)
+    FleetSshCredentialMaterialized { binding: credential } => {
+      let body = match probe_attempt_identity(raw: attempt_raw) {
+        Absent => "spark managed-access standing REFUSED: attempt identity is not a safe path segment\n"
+        Present { value: attempt } => {
+          let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+          match fleet_ssh_execution_context_of(outcome: materialization, credential: credential) {
+            Absent => join([
+              "spark managed-access standing REFUSED before any ssh leg: ",
+              known_hosts_materialization_receipt(outcome: materialization), "\n",
+            ], "")
+            Present { value: context } => {
+              let observations = flat_map(spark_standing_hosts, h =>
+                map(multi_principal_probe_principals, p =>
+                  principal_observation(
+                    context: context,
+                    credential_identity: credential.credential_identity,
+                    host: h,
+                    principal: p,
+                  )))
               join([
-                spark_standing_line(standing: standing),
-                spark_authorization_lines(standing: standing, credential_identity: credential.credential_identity),
+                join(["spark managed-access standing probed_at=", now as String,
+                      " credential_identity=", serialize_content_hash(hash: credential.credential_identity) as String, "\n"], ""),
+                join(map(observations, o => join([
+                  "observed host=", o.host as String, " principal=", o.principal_login_name as String,
+                  " authenticated=", if o.authenticated { "true" } else { "false" },
+                  " passwordless_privilege=", if o.passwordless_privilege { "true" } else { "false" }, "\n",
+                ], "")), ""),
+                join(map(spark_standing_hosts, h => {
+                  let standing = derive_spark_managed_access_standing(host: h as HostIdentity, observations: observations)
+                  join([
+                    spark_standing_line(standing: standing),
+                    spark_authorization_lines(standing: standing, credential_identity: credential.credential_identity),
+                  ], "")
+                }), ""),
               ], "")
-            }), ""),
-          ], "")
+            }
+          }
         }
       }
-    }
-  }
-  let w = Filesystem.Write(path: spark_standing_receipt_path, content: body)
-  if !w.success {
-    exit_failure(reason: join(["spark standing receipt write failed: ", w.error], ""))
-  } else {
-    if string_contains(s: body, pattern: "REFUSED") {
-      exit_failure(reason: join(["spark managed-access standing could not be observed:\n", body], ""))
-    } else {
-      ExitSuccess
+      let w = Filesystem.Write(path: spark_standing_receipt_path, content: body)
+      if !w.success {
+        exit_failure(reason: join(["spark standing receipt write failed: ", w.error], ""))
+      } else {
+        if string_contains(s: body, pattern: "REFUSED") {
+          exit_failure(reason: join(["spark managed-access standing could not be observed:\n", body], ""))
+        } else {
+          ExitSuccess
+        }
+      }
     }
   }
 }

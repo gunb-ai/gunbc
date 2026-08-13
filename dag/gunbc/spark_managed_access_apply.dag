@@ -10,18 +10,27 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.ssh.session { ssh_session_exec_portable_words_with_stdin, SshSessionExecResult }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
-import gunbc.fleet_ssh_access { fleet_automation_ssh_key }
 import gunbc.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
   FleetSshAttemptIdentity,
   fleet_ssh_attempt_identity,
-  fleet_ssh_credential_binding_of_public_material,
+  FleetSshCredentialBinding,
   fleet_ssh_execution_context_of,
   materialize_fleet_known_hosts_anchor,
   known_hosts_materialization_receipt,
   SshTarget,
   portable_remote_words,
   shape_fleet_ssh_exec,
+}
+import gunbc.spark_managed_access_bootstrap { spark_operator_bootstrap_login }
+import gunbc.auth.access_token_source { GcloudPrintToken }
+import gunbc.spark_credential_workflow {
+  SparkAdministratorCredentialRefused,
+  SparkAdministratorCredentialResolved,
+  FleetSshCredentialMaterializationRefused,
+  FleetSshCredentialMaterialized,
+  resolve_spark_administrator_credential,
+  materialize_fleet_ssh_credential_binding,
 }
 
 // APPLYING THE PRIVILEGED BOOTSTRAP EFFECTS, over the same bound-credential context the standing
@@ -270,29 +279,22 @@ data spark_apply_receipt_path: String = "target/spark-managed-access-apply-recei
 // authentication proof runs LAST and as the managed principal, so a receipt reporting it converged
 // is a receipt that a fresh connection under the new account succeeded -- not that a privileged
 // session believed the account existed.
-func spark_managed_access_apply_wet(
+fn spark_managed_access_apply_with_resolved_credentials(
   attempt_raw: String,
-  identity_file: String,
-  admin_principal: String,
-  admin_credential: String,
   host: String,
-) -> ProcessExit
-  uses net: Network
-{
-  let now = clock_now_probed_at()
-  let credential = fleet_ssh_credential_binding_of_public_material(
-    identity_file: identity_file as NonEmptyStr,
-    public_material: fleet_automation_ssh_key.material as NonEmptyStr,
-  )
-  let report = match fleet_ssh_attempt_identity(raw: attempt_raw) {
+  admin_credential: String,
+  credential_binding: FleetSshCredentialBinding,
+) -> SparkApplyReport {
+  match fleet_ssh_attempt_identity(raw: attempt_raw) {
     Absent => ApplyNotAttempted { cause: "attempt identity is not a safe path segment" }
     Present { value: attempt } => {
       let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
-      match fleet_ssh_execution_context_of(outcome: materialization, credential: credential) {
+      match fleet_ssh_execution_context_of(outcome: materialization, credential: credential_binding) {
         Absent => ApplyNotAttempted {
           cause: join(["trust could not be established, so no ssh leg ran: ", known_hosts_materialization_receipt(outcome: materialization)], ""),
         }
         Present { value: context } => {
+          let admin_principal = spark_operator_bootstrap_login
           let create = privileged_leg(
             context: context, host: host, admin_principal: admin_principal,
             admin_credential: admin_credential,
@@ -329,22 +331,53 @@ func spark_managed_access_apply_wet(
       }
     }
   }
-  let body = join([
-    "spark managed-access apply host=", host, " at=", now as String,
-    " credential_identity=", serialize_content_hash(hash: credential.credential_identity) as String, "\n",
-    spark_apply_report_text(report: report),
-  ], "")
-  let w = Filesystem.Write(path: spark_apply_receipt_path, content: body)
-  if !w.success {
-    exit_failure(reason: join(["spark apply receipt write failed: ", w.error], ""))
-  } else {
-    if spark_apply_converged(report: report) {
-      ExitSuccess
-    } else {
-      match spark_apply_first_refusal(report: report) {
-        Present { value: why } => exit_failure(reason: join(["spark managed-access apply did not converge -- ", why], ""))
-        Absent => exit_failure(reason: "spark managed-access apply did not converge and produced no refusal, which is a contradiction in the report")
+}
+
+// Administrator password and fleet SSH private key material resolve inside this boundary via
+// Secret Manager — never as argv parameters on gunbc run.
+func spark_managed_access_apply_wet(attempt_raw: String, host: String) -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  let token_source = GcloudPrintToken
+  match resolve_spark_administrator_credential(token_source: token_source) {
+    SparkAdministratorCredentialRefused { reason: reason } =>
+      exit_failure(reason: reason as String)
+    SparkAdministratorCredentialResolved { credential: administrator } =>
+      match materialize_fleet_ssh_credential_binding(
+        attempt_raw: attempt_raw,
+        token_source: token_source,
+      ) {
+        FleetSshCredentialMaterializationRefused { reason: reason } =>
+          exit_failure(reason: reason as String)
+        FleetSshCredentialMaterialized { binding: binding } => {
+          let report = spark_managed_access_apply_with_resolved_credentials(
+            attempt_raw: attempt_raw,
+            host: host,
+            admin_credential: administrator as String,
+            credential_binding: binding,
+          )
+          let body = join([
+            "spark managed-access apply host=", host, " at=", now as String,
+            " credential_identity=", serialize_content_hash(hash: binding.credential_identity) as String, "\n",
+            spark_apply_report_text(report: report),
+          ], "")
+          let w = Filesystem.Write(path: spark_apply_receipt_path, content: body)
+          if !w.success {
+            exit_failure(reason: join(["spark apply receipt write failed: ", w.error], ""))
+          } else {
+            if spark_apply_converged(report: report) {
+              ExitSuccess
+            } else {
+              match spark_apply_first_refusal(report: report) {
+                Present { value: why } =>
+                  exit_failure(reason: join(["spark managed-access apply did not converge -- ", why], ""))
+                Absent =>
+                  exit_failure(reason: "spark managed-access apply did not converge and produced no refusal, which is a contradiction in the report")
+              }
+            }
+          }
+        }
       }
-    }
   }
 }
