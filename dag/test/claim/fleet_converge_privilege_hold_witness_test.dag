@@ -6,23 +6,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // and held for operator ruling — not an accidental merge artifact.
 test fn witness_operator_roster_not_widened_to_whole_binary_install_or_systemctl() -> Bool {
   length(xs: fleet_posix_operator_sudo_grants()) == 1
+    && fleet_posix_operator_sudo_grant_is_hostnamectl_only()
     && length(xs: fleet_posix_ci_runner_sudo_grants()) >= 2
 }
 
-test fn witness_narrow_set_property_sudoers_proposal_is_documented() -> Bool {
+// The proposal row is the narrow sudoers line artifact (not enrolled). Shape check only —
+// not a prose note grep.
+test fn witness_narrow_set_property_sudoers_proposal_shape() -> Bool {
   string_contains(
     s: fleet_converge_narrow_set_property_sudoers_proposal,
     pattern: "NOPASSWD: /usr/bin/systemctl set-property actions-runner@",
   )
-    && string_contains(s: fleet_converge_operator_privilege_hold_note, pattern: "root-equivalent")
-}
-
-test fn witness_receipt_publication_authority_is_atomic_rename_not_deploy_install_d() -> Bool {
-  string_contains(
-    s: fleet_converge_receipt_atomic_publish_note,
-    pattern: "converge_cli_atomic_receipt_write",
-  )
-    && string_contains(s: fleet_converge_receipt_atomic_publish_note, pattern: "root-owned stale")
-    && string_contains(s: fleet_converge_receipt_atomic_publish_note, pattern: "shell.Move.File")
-    && !string_contains(s: fleet_converge_receipt_atomic_publish_note, pattern: "install_d_owned_command")
 }

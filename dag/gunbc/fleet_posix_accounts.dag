@@ -154,6 +154,15 @@ fn fleet_posix_operator_sudo_grants() -> List<PosixSudoGrant> {
   ]
 }
 
+// Structural guard: operator roster must stay hostnamectl-only until operator rules on
+// set-property elevation — not whole-binary install/systemctl (root-equivalent).
+fn fleet_posix_operator_sudo_grant_is_hostnamectl_only() -> Bool {
+  match fleet_posix_operator_sudo_grants().first() {
+    Present { value: g } => g.command_path == fleet_hostnamectl_command_path
+    Absent => false
+  }
+}
+
 // OPERATOR HOLD (2026-08-13, parent eager-koi-458): widening fleet_posix_operator_sudo_grants
 // with whole-binary NOPASSWD /usr/bin/install or /usr/bin/systemctl is root-equivalent
 // (sudo install can mint setuid root shells). NOT enrolled without operator ruling.
