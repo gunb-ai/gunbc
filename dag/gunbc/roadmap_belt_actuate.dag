@@ -1011,7 +1011,7 @@ fn belt_codex_preflight_decision_observed_for_home(
   if !codex_on_path {
     CodexPreflightRefused {
       step: "codex-cli",
-      detail: "codex not found on PATH; refusing before worktree creation",
+      detail: "codex executable not available at the declared converged path; refusing before worktree creation (no ambient PATH fallback)",
     }
   } else if !env_on_path {
     CodexPreflightRefused {
