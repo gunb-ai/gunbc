@@ -36,6 +36,13 @@ import v2.std.optional { Present, Absent }
 // load row must name a mounted asset - checked at identity grain, in both directions. Counting rows
 // would let one asset declared twice stand in for a second asset declared not at all, which is the
 // one arrangement where the totals look right and the rack browns out.
+//
+// NO DERATING IS APPLIED, and its absence is deliberate rather than an oversight. Electrical codes
+// limit a continuous load to a fraction of a circuit's rating, and applying such a limit here would
+// mean authoring a threshold from memory under the name of a standard - the one thing extdeps
+// exists to prevent. The capacity compared against is the manufacturer's rating exactly as cited.
+// Dissolve-on: a cited continuous-load rule in an extdeps authority of its own, at which point the
+// admission takes the derated capacity and this note is replaced by the citation.
 
 // A DECLARED ASSUMPTION, NOT A CITED FACT, and it is a distinct carrier so it cannot be passed where
 // a measured quantity is expected. Percent because power factor is a ratio and this keeps the

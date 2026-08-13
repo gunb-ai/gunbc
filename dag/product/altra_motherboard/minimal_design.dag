@@ -1,0 +1,144 @@
+module product.altra_motherboard.minimal_design
+
+import std.types { String, Bool, NonEmptyStr, List }
+import std.integer { Int }
+import extdeps.cpu.ampere_altra_package {
+  altra_ddr4_channel_count,
+  altra_declared_contact_count,
+  altra_pcie_gen4_lane_count,
+}
+
+data minimal_design_note: String = "THE SMALLEST ALTRA MOTHERBOARD THAT IS A SERVER RATHER THAN A BRING-UP FIXTURE, and the distinction is the vendor's own rather than ours. The datasheet admits 1, 2, 4, 6 or 8 active DDR4 channels and describes the one- and two-channel configurations as engineering debug and bring-up. So a memory configuration is not merely a number to minimise: below four channels the part is documented as being outside its production envelope, and a design that quietly selected two to save routing effort would be shipping a debug fixture wearing a product's name. That is why the channel count is selected against a declared INTENT here rather than chosen as a scalar — the same count is admissible for one purpose and refused for another, which a bare Int cannot express."
+
+// THE ADMITTED SET IS THE VENDOR'S, NOT AN ARITHMETIC RANGE. Three, five and seven active
+// channels are not slow configurations, they are unsupported ones — the controller populations
+// the part admits are enumerated, so this is a closed coproduct rather than an Int with a bound.
+// A range check would admit 3 and a comment would have to explain why nobody may use it.
+type ActiveDdrChannelCount
+  = OneChannel
+  | TwoChannels
+  | FourChannels
+  | SixChannels
+  | EightChannels
+
+fn active_channel_count(c: ActiveDdrChannelCount) -> Int {
+  match c {
+    OneChannel => 1
+    TwoChannels => 2
+    FourChannels => 4
+    SixChannels => 6
+    EightChannels => 8
+  }
+}
+
+// WHAT THE BOARD IS FOR, and it is a modelled fact because the vendor's admissibility depends on
+// it. An engineering bring-up board is a legitimate thing to build and the one- and two-channel
+// configurations exist precisely to serve it; what is not legitimate is building one and calling
+// it production.
+type DesignIntent
+  = EngineeringBringUp
+  | Production
+
+// The vendor documents one- and two-channel operation as debug and bring-up. That is a property
+// of the CONFIGURATION, carried here so the refusal below reads off a fact rather than repeating
+// a threshold.
+fn channel_count_is_production_qualified(c: ActiveDdrChannelCount) -> Bool {
+  match c {
+    OneChannel => false
+    TwoChannels => false
+    FourChannels => true
+    SixChannels => true
+    EightChannels => true
+  }
+}
+
+type DesignRefusal
+  = DebugOnlyChannelCountUnderProductionIntent { selected: Int }
+  | ChannelCountExceedsControllerPopulation { selected: Int, available: Int }
+  | DimmPopulationDisagreesWithChannels { dimms: Int, channels: Int }
+  | PcieLanesExceedPackage { requested: Int, available: Int }
+
+type MemoryConfiguration {
+  channels: ActiveDdrChannelCount
+  dimms_per_channel: Int
+}
+
+type AltraMinimalMotherboard {
+  intent: DesignIntent
+  memory: MemoryConfiguration
+  pcie_lanes_broken_out: Int
+}
+
+type DesignAdmission
+  = DesignAdmitted { design: AltraMinimalMotherboard }
+  | DesignRefused { causes: DesignRefusalSet }
+
+type DesignRefusalSet {
+  first: DesignRefusal
+  rest: List<DesignRefusal>
+}
+
+fn push_design_refusal(acc: DesignRefusalSet?, r: DesignRefusal) -> DesignRefusalSet? {
+  match acc {
+    Absent => Present { value: DesignRefusalSet { first: r, rest: [] } }
+    Present { value: s } => Present { value: DesignRefusalSet { first: s.first, rest: concat(s.rest, [r]) } }
+  }
+}
+
+fn design_refusal_count(s: DesignRefusalSet) -> Int {
+  1 + fold(s.rest, init: 0, f: fn(acc, _r) { acc + 1 })
+}
+
+fn total_dimms(m: MemoryConfiguration) -> Int {
+  active_channel_count(c: m.channels) * m.dimms_per_channel
+}
+
+// EVERY BOUND IS READ FROM THE PACKAGE AUTHORITY, never retyped. The controller population and
+// the lane count come from the cited datasheet rows, so a correction there moves this admission
+// rather than leaving it agreeing with a number that has changed.
+fn design_causes(d: AltraMinimalMotherboard) -> List<DesignRefusal> {
+  let selected = active_channel_count(c: d.memory.channels)
+  let intent_cause = match d.intent {
+    EngineeringBringUp => []
+    Production =>
+      if channel_count_is_production_qualified(c: d.memory.channels) {
+        []
+      } else {
+        [DebugOnlyChannelCountUnderProductionIntent { selected: selected }]
+      }
+  }
+  let population_cause = if selected > altra_ddr4_channel_count {
+    [ChannelCountExceedsControllerPopulation { selected: selected, available: altra_ddr4_channel_count }]
+  } else {
+    []
+  }
+  let dimm_cause = if d.memory.dimms_per_channel < 1 {
+    [DimmPopulationDisagreesWithChannels { dimms: total_dimms(m: d.memory), channels: selected }]
+  } else {
+    []
+  }
+  let pcie_cause = if d.pcie_lanes_broken_out > altra_pcie_gen4_lane_count {
+    [PcieLanesExceedPackage { requested: d.pcie_lanes_broken_out, available: altra_pcie_gen4_lane_count }]
+  } else {
+    []
+  }
+  concat(concat(intent_cause, population_cause), concat(dimm_cause, pcie_cause))
+}
+
+fn admit_design(d: AltraMinimalMotherboard) -> DesignAdmission {
+  match fold(design_causes(d: d), init: none, f: fn(acc, c) { push_design_refusal(acc: acc, r: c) }) {
+    Absent => DesignAdmitted { design: d }
+    Present { value: s } => DesignRefused { causes: s }
+  }
+}
+
+// THE SELECTED MINIMUM. Four channels because that is the smallest production-qualified
+// population, one DIMM per channel because a second is a capacity decision rather than a
+// bring-up requirement, and four PCIe lanes because the increment routes one x4 path. Every one
+// of those is a floor rather than a preference, and each is checked above against the package's
+// own numbers rather than asserted here.
+data altra_1p_minimum: AltraMinimalMotherboard = AltraMinimalMotherboard {
+  intent: Production,
+  memory: MemoryConfiguration { channels: FourChannels, dimms_per_channel: 1 },
+  pcie_lanes_broken_out: 4,
+}

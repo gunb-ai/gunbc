@@ -10,8 +10,9 @@ import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity
 import std.affine_space {
   Point2, point2, Point3,
   SpatialFrameRefusal, OpProjectPoint3, ProjectionSourceFrameRequired,
+  signed_frame_component_count
 }
-import std.measure { signed_millimeter_component_count }
+
 
 // SPATIAL-5A: EXACT PARALLEL PROJECTION ONTO A VIEW PLANE, READ-ONLY.
 //
@@ -268,9 +269,9 @@ fn named_projection_view(
 
 fn point3_components(p: Point3) -> ViewAxisTriple {
   view_axis_triple(
-    x: signed_millimeter_component_count(m: p.x),
-    y: signed_millimeter_component_count(m: p.y),
-    z: signed_millimeter_component_count(m: p.z),
+    x: signed_frame_component_count(c: p.x),
+    y: signed_frame_component_count(c: p.y),
+    z: signed_frame_component_count(c: p.z),
   )
 }
 

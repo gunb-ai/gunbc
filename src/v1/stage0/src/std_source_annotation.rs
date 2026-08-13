@@ -552,17 +552,23 @@ pub fn annotation_attach_resolve(
     pick: Rc<AnnotationSubjectPick>,
 ) -> Rc<AnnotationAttachAcc> {
     match pick.following.clone() {
-        None => Rc::new(AnnotationAttachAcc {
-            rows: acc.rows.clone(),
-            refusals: v1_rt::rc_list_push(
-                acc.refusals.clone(),
-                Rc::new(AnnotationAttachmentRefusal::UnattachedAtScopeEnd {
-                    origin: capture.origin.clone(),
-                }),
-            ),
-            pending: acc.pending.clone(),
-            pending_adjacent: false,
-        }),
+        None => {
+            if (capture.text.clone() == "".to_string()) {
+                acc.clone()
+            } else {
+                Rc::new(AnnotationAttachAcc {
+                    rows: acc.rows.clone(),
+                    refusals: v1_rt::rc_list_push(
+                        acc.refusals.clone(),
+                        Rc::new(AnnotationAttachmentRefusal::UnattachedAtScopeEnd {
+                            origin: capture.origin.clone(),
+                        }),
+                    ),
+                    pending: acc.pending.clone(),
+                    pending_adjacent: false,
+                })
+            }
+        }
         Some(subject) => match acc.pending.clone() {
             Some(open) => {
                 if ((open.subject.clone().value.clone()

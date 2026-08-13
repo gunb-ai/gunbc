@@ -1,6 +1,7 @@
 module gunbc.package_delivery
 
 import std.types { String, NonEmptyStr, List, FilePath, Bool, Int }
+import std.algebra { trim }
 import std.content_hash {
   Sha512Digest,
   Sha1Digest,
@@ -54,8 +55,11 @@ import extdeps.tools.sha512sum {
 }
 import extdeps.tools.npm
 import extdeps.tools.node
-import gunbc.host_layout {
-  srv1_provider_runtime_placement,
+import gunbc.codex_runtime_paths {
+  codex_runtime_current_link_path,
+  codex_bundled_executable_at_current_link,
+  srv1_codex_runtime_release_root,
+  srv2_codex_runtime_release_root,
 }
 import extdeps.languages.json.emit {
   JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject,
@@ -419,6 +423,27 @@ fn codex_expected_wrapper_version() -> NonEmptyStr {
   (codex_required_package_version as String) as NonEmptyStr
 }
 
+data codex_runtime_version_identity_note: String = "ONE runtime version marker for every Codex CLI identity probe. codex_required_package_version is the sole authority; the marker is codex-cli <version> as printed by codex --version on its own line. codex_runtime_version_identity_satisfied requires an exact trimmed line match — not a substring — so 0.146.0-rc1 and 0.146.0abc cannot pass. Weak codex-cli-only checks let srv1's ambient npm install (0.133.0) pass while extdeps.llm.codex_app_server cites 0.146.0 protocol facts — two runtimes producing incompatible protocol surfaces."
+
+fn codex_runtime_version_identity_marker() -> String {
+  concat("codex-cli ", codex_required_package_version as String)
+}
+
+fn codex_runtime_version_identity_satisfied(combined_output: String) -> Bool {
+  any(
+    split(s: combined_output, delimiter: "\n"),
+    line => trim(s: line) == codex_runtime_version_identity_marker(),
+  )
+}
+
+fn publish_codex_runtime_current_link(
+  release_parent: FilePath,
+  release_root: FilePath,
+) -> Bool {
+  let link = codex_runtime_current_link_path(release_parent: release_parent)
+  shell.Symlink.AtomicReplace(target: release_root, link: link).success
+}
+
 fn codex_expected_platform_version(target: CodexNpmRuntimeTarget) -> NonEmptyStr {
   concat(
     codex_required_package_version as String,
@@ -518,11 +543,15 @@ fn codex_platform_lock_path_key(target: CodexNpmRuntimeTarget) -> NonEmptyStr? {
   }
 }
 
+data codex_linux_arm64_native_executable_rel_value: NonEmptyStr = "node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex" as NonEmptyStr
+
+data codex_bundled_executable_path_note: String = "Bundled dispatch executable paths MUST name the materialized native binary under current/<native-rel>, never the current symlink directory alone. srv1/srv2 fleet hosts are linux/arm64 and consume codex_linux_arm64_native_executable_rel_value here. Unsupported npm target tuples stay Absent in codex_native_executable_rel and refuse at materialization (CodexRuntimeExecutableAbsent) — they do not widen to a directory-shaped FilePath. OPERATOR HOLD (2026-08-13): interim legacy — path is composed from lock-metadata rel, not read from #8225's installed-runtime receipt at runtime; dissolves when this lane rebases on #8225 and derives executable/native_rel from CodexRuntimeBundleReceipt (sidecar at release root). Absence must refuse; never codex_cli_program or ambient PATH."
+
+data codex_bundled_dispatch_interim_hold_note: String = "INTERIM LEGACY CLI ROUTE (operator HOLD 2026-08-13, eager-koi-458): dispatch spawn and preflight use dashboard_instance_provider_executable (converged bundled path), not extdeps.llm.cli codex_cli_program. Until #8225 merges and this PR rebases, the path is hand-authored from codex_linux_arm64_native_executable_rel_value — not receipt-derived. Deletion trigger: executable, native rel, and process fingerprint derive from the installed-runtime receipt (#8225 materialize + sidecar read-back) plus wet tmux observation for fingerprint — never branch-agreement on a literal. Operator verdict required before any net-new Scaffold; propose trigger via dashboard if an explicit dissolution row is warranted."
+
 fn codex_native_executable_rel(target: CodexNpmRuntimeTarget) -> NonEmptyStr? {
   if (target.os as String) == "linux" && (target.cpu as String) == "arm64" {
-    Present {
-      value: "node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex" as NonEmptyStr,
-    }
+    Present { value: codex_linux_arm64_native_executable_rel_value }
   } else if (target.os as String) == "linux" && (target.cpu as String) == "x64" {
     Present {
       value: "node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex" as NonEmptyStr,
@@ -538,6 +567,34 @@ fn codex_native_executable_rel(target: CodexNpmRuntimeTarget) -> NonEmptyStr? {
   } else {
     none
   }
+}
+
+fn codex_linux_arm64_native_executable_rel() -> NonEmptyStr? {
+  codex_native_executable_rel(
+    target: CodexNpmRuntimeTarget {
+      os: "linux" as NonEmptyStr,
+      cpu: "arm64" as NonEmptyStr,
+    },
+  )
+}
+
+fn codex_bundled_executable_for_release_parent(release_parent: FilePath) -> FilePath {
+  codex_bundled_executable_at_current_link(
+    release_parent: release_parent,
+    native_executable_rel: codex_linux_arm64_native_executable_rel_value,
+  )
+}
+
+fn codex_bundled_executable_for_srv1() -> FilePath {
+  codex_bundled_executable_for_release_parent(
+    release_parent: srv1_codex_runtime_release_root,
+  )
+}
+
+fn codex_bundled_executable_for_srv2() -> FilePath {
+  codex_bundled_executable_for_release_parent(
+    release_parent: srv2_codex_runtime_release_root,
+  )
 }
 
 type CodexTargetPackageLookup
@@ -805,7 +862,7 @@ fn lock_path_key_rel(key: NpmLockPathKey) -> NonEmptyStr? {
   }
 }
 
-data codex_runtime_release_parent: FilePath = srv1_provider_runtime_placement().runtime_release_root
+data codex_runtime_release_parent: FilePath = srv1_codex_runtime_release_root
 
 data codex_runtime_receipt_sidecar_name: NonEmptyStr = ".gunbc-codex-runtime-receipt" as NonEmptyStr
 
@@ -1676,6 +1733,22 @@ fn rename_publishing_noreplace(
   shell.Exec.Run(script: script).success
 }
 
+fn codex_runtime_release_ready_with_current_link(
+  release_parent: FilePath,
+  root: FilePath,
+) -> CodexRuntimeReleaseOutcome {
+  if publish_codex_runtime_current_link(
+    release_parent: release_parent,
+    release_root: root,
+  ) {
+    CodexRuntimeReleaseReady { root: root }
+  } else {
+    CodexRuntimeReleaseFailed {
+      cause: "codex runtime current symlink publish refused" as NonEmptyStr,
+    }
+  }
+}
+
 fn release_codex_runtime_bundle_immutable(
   build_root: FilePath,
   receipt: CodexRuntimeBundleReceipt,
@@ -1709,7 +1782,10 @@ fn release_codex_runtime_bundle_immutable(
           match validated {
             CodexRuntimeReleaseReady { root } => {
               let _ = shell.Remove.RecursiveForce(path: build_root)
-              CodexRuntimeReleaseReady { root: root }
+              codex_runtime_release_ready_with_current_link(
+                release_parent: parent,
+                root: root,
+              )
             }
             CodexRuntimeReleaseFailed { cause } =>
               CodexRuntimeReleaseFailed { cause: cause }
@@ -1751,18 +1827,28 @@ fn release_codex_runtime_bundle_immutable(
                       publishing: publishing,
                       dest: dest,
                     ) {
-                      CodexRuntimeReleaseReady { root: dest }
+                      codex_runtime_release_ready_with_current_link(
+                        release_parent: parent,
+                        root: dest,
+                      )
                     } else {
                       let winner = shell.Test.IsDirectory(path: dest)
                       let _ = shell.Remove.RecursiveForce(path: publishing)
                       if winner.is_directory {
-                        validate_existing_codex_runtime_release(
+                        match validate_existing_codex_runtime_release(
                           existing_root: dest,
                           receipt: receipt,
                           native_executable_rel: native_executable_rel,
                           expected_hex: hex,
                           scratch_dir: scratch_dir,
-                        )
+                        ) {
+                          CodexRuntimeReleaseReady { root: winner_root } =>
+                            codex_runtime_release_ready_with_current_link(
+                              release_parent: parent,
+                              root: winner_root,
+                            )
+                          other => other
+                        }
                       } else {
                         CodexRuntimeReleaseFailed {
                           cause: "atomic no-replace rename to content-addressed release refused" as NonEmptyStr,

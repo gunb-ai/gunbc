@@ -216,6 +216,33 @@ overclaiming on the third. Everything else in the table — the entry, `types`, 
 `logic.dag` leaving retention is the repair working, NOT the member closing: it still does not
 ingest, and its refusal is now simply reported as the refusal it always was.
 
+### `occurrence_identity` re-observed 2026-08-13: `NORM_OTHER`, resolving the unknown above
+
+The row left open in the previous paragraph is now measured. A per-subject census over
+`dag/std/occurrence_identity.dag` (one subject per run, `gunbc.tools.body_lowering_population_probe`
+against the live tree) returns **`NORM_OTHER`**, not `NORM_RETAINED`. So the pre-repair four
+(`logic`, `optional`, `diagnostic`, `occurrence_identity`) has become **two** among re-observed
+members: `optional` and `diagnostic`.
+
+Two things make this a correction to the table rather than a new claim beside it. The
+`NORM_RETAINED` cell for `occurrence_identity` is a **pre-repair** reading that this document
+already declined to carry forward, and it is now known stale rather than merely unconfirmed —
+a stale cell in a cited authority is the failure that survives because each reader assumes another
+checked it. And `logic.dag` independently reproduced `NORM_OTHER` in the same batch of per-subject
+runs, which is evidence that this receipt was **right about the mechanism and wrong only about the
+post-repair state of the row it could not re-run**: the same repair moved both members the same way,
+and the one it measured predicted the one it did not.
+
+**What this does not establish, and the distinction is the whole point of the `NORM_OTHER` stage.**
+Leaving `NORM_RETAINED` is not evidence of repair. `NORM_OTHER` names *where* a module refuses and
+never *why* — it is by definition neither retention nor a graft refusal, so the cause is
+unclassified. `materialization_carriers`, `logic` and `occurrence_identity` all sit there for causes
+no instrument in this lane identifies. A reader taking "no longer retained" as "fixed" is reading an
+unclassified refusal as a clean bill; `occurrence_identity` still does not ingest.
+
+`node` remains unmeasured for cost reasons and stays post-repair unknown, as do the other rows the
+paragraph above lists.
+
 **Not repaired here:** the resolve-ready normalized-tree construction boundary. ("Promotion" deliberately avoided: that word belongs to the bootstrap-admission authority, and reusing it for the normalize-side carrier would collide two different authorities.) `NormalizedTree` is still `= Node` and `resolve`
 still consumes that alias, so *retained cannot reach resolve* remains true only by propagation,
 not by construction.
