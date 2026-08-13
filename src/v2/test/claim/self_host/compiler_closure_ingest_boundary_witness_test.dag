@@ -16,8 +16,7 @@ import v2.test.workflow.host_source_root_ingest_manifest {
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data compiler_closure_ingest_boundary_witness_note: String = "Discriminating wet witness for the inline-manifest capacity boundary. 07_target_carriers is the only frontier row whose derived closure read count is exactly manifest_inline_list_max (64): it distinguishes true 64-entry capacity from off-by-one metadata/header behavior that bulk removal above the cap would silently paper over. Measured closure size is authoritative; the roster closure_reads column understates (declared 36 vs derived 64 at pinned head). Transport-run only: consumed by v2.workflow.compiler_closure_ingest_transport with a 07_target_carriers overlay (same posture as compiler_closure_emit_from_ingest_test.dag)."
-
+// Wet boundary witness: 07_target_carriers closure at manifest_inline_list_max (transport-run).
 test fn compiler_closure_ingest_boundary_exact_cap_transport_holds() -> Bool {
   let receipt = host_source_root_ingest_coverage_receipt
   let refs = host_source_root_closure_refs

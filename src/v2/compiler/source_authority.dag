@@ -205,8 +205,8 @@ fn source_root_closure_ref_transport_complete(
     && (length(xs: refs) == receipt.ingest_read_count)
 }
 
-data source_root_overflow_never_empty_note: String = "When ingest_read_count is positive, produced_row_count and closure-ref population must both equal it — never zero rows with a positive read count (the pre-capless empty-observation narrow). SourceRootManifestElided documents inline-carrier refusal past manifest_inline_list_max; it is not permission to drop the ref population."
-
+// Positive ingest_read_count requires produced_row_count and closure-ref population to match —
+// never zero rows with a positive read count (pre-capless empty-observation narrow).
 fn source_root_overflow_never_empty_population_holds(
   receipt: SourceRootProvenanceCoverageReceipt,
   refs: List<SourceRef>
