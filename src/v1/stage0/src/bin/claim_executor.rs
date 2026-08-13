@@ -9899,6 +9899,11 @@ fn spawn_floor_worker(
         .spawn()
         .map_err(|e| format!("spawn floor worker `{worker}`: {e}"))?;
     let wait_started = Instant::now();
+    // Per-worker, beside `wait_started`, NOT a `static`: a process-global counter is shared by
+    // every worker's wait loop, so with N workers each one prints roughly every Nth tick and a
+    // given worker can skip all of its own heartbeats. Liveness per worker is the entire fact this
+    // line carries, so the counter has to have the same scope as the thing it reports on.
+    let mut wait_ticks: u64 = 0;
     let status = loop {
         match child
             .try_wait()
@@ -9925,16 +9930,15 @@ fn spawn_floor_worker(
                     ),
                 );
                 // The wait tick is journaled above on every iteration; the console keeps one line
-                // per five minutes rather than one per thirty seconds. Not journal-only, and the
+                // per worker per five minutes rather than one per thirty seconds. Not journal-only, and the
                 // difference is deliberate: the journal is an artifact a reader reaches AFTER the
                 // run, so a floor that hangs would print nothing for ninety minutes and then a
                 // timeout, which reads as a dead process rather than a waiting one. Liveness is
                 // the one fact a heartbeat exists to carry, so it stays on the console at the
                 // coarsest cadence that still carries it.
                 {
-                    static TICKS: std::sync::atomic::AtomicU64 =
-                        std::sync::atomic::AtomicU64::new(0);
-                    let n = TICKS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let n = wait_ticks;
+                    wait_ticks += 1;
                     if n % 10 == 0 {
                         eprintln!(
                             "[floor-worker-wait] worker={worker} elapsed_seconds={} state=running",
