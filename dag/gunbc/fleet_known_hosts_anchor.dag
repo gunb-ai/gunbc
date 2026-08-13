@@ -1,0 +1,557 @@
+module gunbc.fleet_known_hosts_anchor
+
+import std.types { String, Bool, List, NonEmptyStr, PathSegment, path_segment_is_safe }
+import std.algebra { trim }
+import std.resources { Network }
+import std.content_hash {
+  ContentHash,
+  content_hash_of_value,
+  serialize_content_hash,
+  compare_content_hash,
+  ContentHashComparison,
+  ContentHashEqual,
+  ContentHashDifferent,
+  ContentHashCrossFamilyIncomparable,
+}
+import std.decl_ref { decl_ref }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import std.types { Int }
+import extdeps.ssh.client_options {
+  SshClientOption,
+  openssh_exclusive_known_hosts_trust_options,
+  openssh_suppress_ambient_configuration_options,
+  openssh_exact_credential_options,
+  serialize_ssh_client_options,
+  serialize_ssh_config_file_flag,
+  User,
+  BatchMode,
+  ConnectTimeout,
+}
+import gunbc.fleet_host_key_enrollment { KnownHostKeyRow, fleet_host_key_enrollments, known_hosts_line, host_key_provenance_label }
+
+// THE TRUST ANCHOR AN SSH INVOCATION IS VERIFIED AGAINST, carried as a value rather than left as
+// ambient host state.
+//
+// WHAT THIS REPLACES, and why the replacement is a different construction rather than a repair of
+// the old one. fleet_host_key_enroll_apply materialized a staged fragment, then appended a `Host`
+// block to $HOME/.ssh/config naming it, and read back with `ssh-keygen -F` against THE STAGED
+// FRAGMENT. Three independent defects, all of them the same shape -- a check standing at a
+// different place from the binding it claims to establish:
+//
+//   ONE, the readback interrogated the fragment the writer had just written, not the file ssh would
+//   actually consult. The two are related only by a path string appearing in two places, and on the
+//   live fleet they DID diverge: the config named a run-specific absolute path baked from $(pwd) of
+//   whichever runner slot wrote it first, while nine other slots sharing that same $HOME resolved it
+//   to a file that did not exist for them. Every readback reported found; every probe ran unverified.
+//
+//   TWO, $HOME/.ssh is SHARED MUTABLE STATE on a self-hosted runner -- ten slots, one ghrunner
+//   account -- so the artifact one attempt writes is read by an unrelated attempt. A marker guard
+//   (`grep -q gunbc-fleet-pin`) made it worse rather than safer: it froze the FIRST writer's content
+//   permanently while every later run reported success without changing anything.
+//
+//   THREE, the outcome was PROSE. fleet_host_key_enroll_apply returned a String and its caller
+//   decided by string_contains(receipt, "outcome=refused"), so a refusal was a substring -- a
+//   spelling change silently turns a refusal into a success, and nothing structurally prevents an
+//   SSH leg from running after one.
+//
+// THE ANCHOR IS CONTENT-BOUND. Both identities are computed, one from the registry rows and one
+// from bytes READ BACK off the filesystem, and the record cannot be constructed unless they agree.
+// So "the file ssh will consult contains exactly the enrolled registry" is not a property some
+// witness asserts about this module -- it is the precondition of the value existing at all. There
+// is no path from an empty write, a partial write, a stale file, or another attempt's file to a
+// KnownHostsAnchor.
+//
+// THE PATH IS ATTEMPT-OWNED AND CONTENT-ADDRESSED, in that order, and the earlier revision of this
+// paragraph got it wrong in a way worth recording. It argued that a purely content-addressed path
+// needed no attempt scoping, because two runs holding the same registry write identical bytes and so
+// have nothing to race over. That argument is false: identical content does not establish
+// IMMUTABILITY. A later writer can modify the path after another attempt has already sealed its
+// anchor, a read can observe a partial write unless the realization proves atomic replacement, and
+// the sealed value therefore proves what was read AT CONSTRUCTION -- not what ssh will read when the
+// leg actually runs. Nothing in a shared mutable path carries an ownership boundary.
+//
+// So the attempt owns the FILENAME and the digest names the content within it. A flat
+// attempt-prefixed name rather than an attempt-owned directory, for a reason worth stating rather
+// than leaving as an unexplained shape: extdeps.filesystem.filesystem_io models Write, Read, Delete
+// and List, and no directory-creation operation, so a nested path would refuse on every first use.
+// The isolation property is identical either way -- it is "no other attempt writes this path", which
+// a unique prefix satisfies exactly as a directory does. What the directory would additionally have
+// bought is cleanup as one removal, which this module does not yet perform in either shape; adding a
+// filesystem capability to obtain a nicer shape for cleanup that does not exist would be building
+// the second thing to justify the first. The digest keeps the filename a claim about the content
+// that the readback checks. Both parts live under the repository writable working root, never under
+// $HOME, so the shared-runner defect has no surface left either.
+//
+// The lifetime is still not bracketed to the SSH operation: nothing deletes the directory when the
+// legs finish, so a stale attempt directory can outlive its attempt. That is a real remaining gap,
+// not a closed one -- it is bounded by the attempt segment (a stale directory can never be READ by a
+// different attempt, only left behind) but it is cleanup this module does not yet perform.
+type KnownHostsAnchor sole_constructor {
+  path: NonEmptyStr
+  registry_identity: ContentHash
+  materialized_content_identity: ContentHash
+  attempt: FleetSshAttemptIdentity
+}
+
+// THE ATTEMPT THAT OWNS THE MATERIALIZATION. A required parameter rather than something this module
+// invents, because an identity a function mints for itself cannot distinguish two concurrent callers
+// -- and the caller is the only party that knows what an attempt IS here (a CI job, a dispatched
+// convergence, one operator invocation). Making it explicit also keeps it out of ambient state,
+// which is the failure the whole anchor exists to close.
+//
+// IT IS A PATH SEGMENT, and the earlier revision wrapping a bare NonEmptyStr in a record was the
+// nicknaming defect: a record field named `value` carrying a String says nothing the String did not
+// already say, so it minted a second name for a concept without grounding it. What the value
+// actually IS is decided by its use -- it is concatenated into target/fleet-ssh-attempt-<id>/ -- so
+// as a bare string it was neither path-safe nor wire-safe, and an attempt id containing a slash or a
+// `..` would have escaped the directory that is supposed to be its ownership boundary. This is the
+// same grounding gunbc.merge_admission_subject WalkAttemptId already reached for the same reason,
+// and reaching for it a second way rather than reusing the shape would itself be the fork.
+//
+// fleet_ssh_attempt_identity is the only constructor and REFUSES rather than sanitizing: a caller
+// whose attempt id is unsafe has a naming problem this module cannot resolve on their behalf, and
+// quietly rewriting it would hand back an identity that is not the one they hold.
+type FleetSshAttemptIdentity = PathSegment where brand("FleetSshAttemptIdentity")
+
+fn fleet_ssh_attempt_identity(raw: String) -> FleetSshAttemptIdentity? {
+  if path_segment_is_safe(raw: raw) {
+    Present { value: raw as FleetSshAttemptIdentity }
+  } else {
+    none
+  }
+}
+
+// The sole mint, admitted to exactly one production declaration. Sealing matters here for the same
+// reason it matters on TransportScript: without it, any caller could author a KnownHostsAnchor
+// naming any path with any two identities it chose, and the content binding above would be a
+// convention rather than a wall. A record literal in another module is exactly the forgery the
+// content check exists to prevent, one layer up.
+fn known_hosts_anchor_seal(
+  path: NonEmptyStr,
+  registry_identity: ContentHash,
+  materialized_content_identity: ContentHash,
+  attempt: FleetSshAttemptIdentity,
+) -> KnownHostsAnchor
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "materialize_fleet_known_hosts_anchor"),
+  ]
+  = KnownHostsAnchor {
+    path: path,
+    registry_identity: registry_identity,
+    materialized_content_identity: materialized_content_identity,
+    attempt: attempt,
+  }
+
+// The typed outcome that replaces the prose receipt. AlreadyConverged is a genuinely distinct state
+// from Ready and is kept separate rather than collapsed: it is what a repeated run on a warm working
+// root reports, and fusing it into Ready would make "we wrote the file" and "the file was already
+// exactly right" indistinguishable -- which is precisely the distinction the marker-guard defect
+// destroyed. Both carry an anchor, because in both cases the content binding was established by a
+// readback; only the write differs.
+//
+// KnownHostsRefused is head-plus-tail, so an empty refusal has no constructor: a refusal that names
+// no cause cannot be built, which is the shape the corpus uses wherever a diagnostic must be
+// non-empty by construction.
+type KnownHostsMaterializationOutcome
+  = KnownHostsReady { anchor: KnownHostsAnchor, receipt: String }
+  | KnownHostsAlreadyConverged { anchor: KnownHostsAnchor, receipt: String }
+  | KnownHostsRefused { first: String, more: List<String> }
+
+// CANONICAL, not registry-order. An earlier revision hashed the rows in whatever order the list
+// happened to carry, which made the identity -- and therefore the anchor's filename -- a function of
+// the LIST rather than of the registry it denotes. Two authors reordering the same six enrollments
+// would have produced two different anchors for the same set of trusted keys, and the digest would
+// have reported them as different registries. That is the list-identity defect the corpus has hit
+// before: a mathematical set given an identity that depends on its traversal.
+//
+// Sorting the rendered lines is the canonicalization rather than sorting the rows, because the LINE
+// is what ssh consumes -- so canonical bytes and canonical identity are the same operation, and the
+// emitted file is order-independent too rather than only its hash.
+fn canonical_known_hosts_lines(rows: List<KnownHostKeyRow>) -> List<String> {
+  map(rows, k => known_hosts_line(k: k)) |> sort_by(line => line)
+}
+
+fn canonical_known_hosts_fragment(rows: List<KnownHostKeyRow>) -> String {
+  join(map(canonical_known_hosts_lines(rows: rows), l => concat(l, "\n")), "")
+}
+
+fn canonical_known_hosts_identity(rows: List<KnownHostKeyRow>) -> ContentHash {
+  content_hash_of_value(value: canonical_known_hosts_fragment(rows: rows) as NonEmptyStr)
+}
+
+// A DUPLICATE ENDPOINT IS A CONFLICT, not a redundancy. known_hosts accepts a host key matching ANY
+// line for that endpoint, so two rows naming one endpoint with different keys widen what is trusted
+// while the registry reads as if it pinned one key -- and the digest would happily identify that
+// widened set. Counted at endpoint grain because the endpoint is what ssh matches on.
+fn known_hosts_endpoint_conflict(rows: List<KnownHostKeyRow>) -> String? {
+  let endpoints = map(rows, k => k.endpoint) |> sort_by(e => e)
+  fold(endpoints, init: none, f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if length(filter(endpoints, x => x == e)) > 1 {
+        Present { value: join(["endpoint ", e, " is enrolled more than once, so known_hosts would accept any of its keys while the registry reads as pinning one"], "") }
+      } else { none }
+    }
+  })
+}
+
+fn fleet_known_hosts_fragment() -> String {
+  canonical_known_hosts_fragment(rows: fleet_host_key_enrollments)
+}
+
+fn fleet_known_hosts_registry_identity() -> ContentHash {
+  canonical_known_hosts_identity(rows: fleet_host_key_enrollments)
+}
+
+// The filename carries the registry digest, so the path is a claim the readback then verifies.
+fn fleet_known_hosts_anchor_path(attempt: FleetSshAttemptIdentity) -> NonEmptyStr {
+  join([
+    "target/fleet-ssh-attempt-", attempt as String,
+    "-known-hosts-", serialize_content_hash(hash: fleet_known_hosts_registry_identity()) as String,
+  ], "") as NonEmptyStr
+}
+
+// THREE THINGS THE BODY DOES THAT ARE NOT OBVIOUS FROM ITS SHAPE, stated here because DESIGN 4c
+// admits annotations only at module-item grain. The existing file is READ BEFORE the write, so a
+// file already carrying exactly these bytes is reported as already-converged rather than rewritten
+// -- a repeated run stays legible instead of silently idempotent, which is the distinction the
+// marker guard destroyed. The readback is then a SECOND read even on that already-converged path,
+// so the identity landing in the anchor is always computed from bytes observed after the decision to
+// keep them, never from the value the writer held in hand. And the cross-family arm is unreachable
+// while both sides are minted by content_hash_of_value, yet is stated as a refusal rather than
+// folded into the equal arm regardless: a cross-family answer means the comparison did not happen,
+// and "we could not compare" must never render as "they matched".
+
+// THE MATERIALIZATION. Refuses before any write when the registry is empty (enrolling nothing must
+// never read as enrolled), writes the fragment, then READS THE FILE BACK and mints only on digest
+// agreement. The readback is the success criterion; the write's exit code is not, because a
+// successful write to the wrong place is exactly the failure mode this replaces.
+func materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> KnownHostsMaterializationOutcome
+  uses net: Network
+{
+  if length(fleet_host_key_enrollments) == 0 {
+    KnownHostsRefused {
+      first: "known-hosts materialization refused: the enrollment registry is empty, so there is no host key to anchor to and every fleet SSH leg would be unverified",
+      more: [],
+    }
+  } else { match known_hosts_endpoint_conflict(rows: fleet_host_key_enrollments) {
+    Present { value: conflict } => KnownHostsRefused {
+      first: join(["known-hosts materialization refused: ", conflict], ""),
+      more: [],
+    }
+    Absent => {
+    let fragment = fleet_known_hosts_fragment()
+    let path = fleet_known_hosts_anchor_path(attempt: attempt)
+    let registry_identity = fleet_known_hosts_registry_identity()
+    let existing = Filesystem.Read(path: path as String)
+    let already = existing.success && existing.content == fragment
+    let written = if already { true } else {
+      let w = Filesystem.Write(path: path as String, content: fragment)
+      w.success
+    }
+    if written {
+      let back = Filesystem.Read(path: path as String)
+      if back.success {
+        let materialized_identity = content_hash_of_value(value: back.content as NonEmptyStr)
+        match compare_content_hash(left: registry_identity, right: materialized_identity) {
+          ContentHashEqual => {
+            let anchor = known_hosts_anchor_seal(
+              path: path,
+              registry_identity: registry_identity,
+              materialized_content_identity: materialized_identity,
+              attempt: attempt,
+            )
+            let receipt = join(
+              concat(
+                [join([
+                  "known-hosts-anchor path=", path as String,
+                  " attempt=", attempt as String, " identity=", serialize_content_hash(hash: registry_identity) as String,
+                  " rows=", to_string(length(fleet_host_key_enrollments)), "\n",
+                ], "")],
+                map(fleet_host_key_enrollments, k => join([
+                  "  enrolled host=", k.host as String, " endpoint=", k.endpoint,
+                  " provenance=", host_key_provenance_label(p: k.provenance), "\n",
+                ], "")),
+              ),
+              "",
+            )
+            if already {
+              KnownHostsAlreadyConverged { anchor: anchor, receipt: receipt }
+            } else {
+              KnownHostsReady { anchor: anchor, receipt: receipt }
+            }
+          }
+          ContentHashDifferent => KnownHostsRefused {
+            first: join([
+              "known-hosts materialization refused: the bytes read back from ", path as String,
+              " do not hash-equal the enrollment registry (registry ",
+              serialize_content_hash(hash: registry_identity) as String,
+              ", materialized ", serialize_content_hash(hash: materialized_identity) as String,
+              ") -- the file ssh would consult is not the registry, which is the exact divergence the",
+              " staged-fragment readback could not see",
+            ], ""),
+            more: [],
+          }
+          ContentHashCrossFamilyIncomparable => KnownHostsRefused {
+            first: "known-hosts materialization refused: registry and materialized identities are in different hash families and are therefore incomparable, so agreement was not established",
+            more: [],
+          }
+        }
+      } else {
+        KnownHostsRefused {
+          first: join(["known-hosts materialization refused: readback of ", path as String, " failed -- ", trim(s: back.error)], ""),
+          more: [],
+        }
+      }
+    } else {
+      KnownHostsRefused {
+        first: join(["known-hosts materialization refused: could not write the anchor at ", path as String], ""),
+        more: [],
+      }
+    }
+  } } }
+}
+
+// The one projection consumers need: the anchor path, reachable ONLY from an outcome that carries an
+// anchor. There is no accessor that produces a path from a refusal, so a caller cannot obtain
+// something to hand ssh without having passed the content binding.
+fn known_hosts_anchor_of(outcome: KnownHostsMaterializationOutcome) -> KnownHostsAnchor? {
+  match outcome {
+    KnownHostsReady { anchor: a, receipt: _ } => Present { value: a }
+    KnownHostsAlreadyConverged { anchor: a, receipt: _ } => Present { value: a }
+    KnownHostsRefused { first: _, more: _ } => none
+  }
+}
+
+fn known_hosts_materialization_receipt(outcome: KnownHostsMaterializationOutcome) -> String {
+  match outcome {
+    KnownHostsReady { anchor: _, receipt: r } => r
+    KnownHostsAlreadyConverged { anchor: _, receipt: r } => concat("already-converged ", r)
+    KnownHostsRefused { first: f, more: m } =>
+      join(concat([concat("refused ", f)], map(m, x => concat("\nrefused ", x))), "")
+  }
+}
+
+// THE WALL. openssh_exclusive_known_hosts_trust_options is a builder returning a List, and a List is
+// not a wall: a caller may prepend its own option, and OpenSSH takes the FIRST obtained value for
+// each keyword, so an earlier StrictHostKeyChecking=no silently outranks everything the builder
+// produced. The failure would be invisible at the call site -- the correct options are all still
+// there, just outranked.
+//
+// FleetOpenSshTrustPolicy closes that by being the thing consumers accept. It is sealed, so no
+// module can author one; its sole mint takes a KnownHostsAnchor, which is itself sealed and
+// obtainable only from a materialization whose readback hash-equalled the registry; and the options
+// are DERIVED from it rather than carried, so there is no field for a caller to widen and no
+// position for a caller to prepend into. The chain is unbroken: options exist only because a policy
+// exists, a policy exists only because an anchor exists, and an anchor exists only because bytes on
+// disk were observed to be the enrolled registry.
+type FleetOpenSshTrustPolicy sole_constructor {
+  anchor: KnownHostsAnchor
+}
+
+fn fleet_openssh_trust_policy_seal(anchor: KnownHostsAnchor) -> FleetOpenSshTrustPolicy
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "fleet_openssh_trust_policy_of"),
+  ]
+  = FleetOpenSshTrustPolicy { anchor: anchor }
+
+// The only route from an outcome to a policy. A refusal yields Absent, so a caller holding a refused
+// materialization has nothing to hand an SSH leg -- which is what makes "on refusal, zero SSH legs
+// execute" a property of the type rather than a discipline the caller is trusted to observe.
+fn fleet_openssh_trust_policy_of(outcome: KnownHostsMaterializationOutcome) -> FleetOpenSshTrustPolicy? {
+  match known_hosts_anchor_of(outcome: outcome) {
+    Present { value: a } => Present { value: fleet_openssh_trust_policy_seal(anchor: a) }
+    Absent => none
+  }
+}
+
+// Derived, never stored. The anchor path is read off the sealed policy, so the options a leg carries
+// and the file whose content was verified are the same fact rather than two facts a path string
+// relates.
+fn fleet_openssh_trust_options(policy: FleetOpenSshTrustPolicy) -> List<SshClientOption> {
+  openssh_exclusive_known_hosts_trust_options(known_hosts: policy.anchor.path)
+}
+
+// ── The execution context ──────────────────────────────────────────────────────────────────────
+
+// THE CREDENTIAL THE CLIENT AUTHENTICATES WITH, bound rather than ambient. The host-key half of this
+// module establishes which machine we reached; this establishes which key reached it. For the Spark
+// question -- which POSIX account accepts the fleet key -- an unbound credential makes every positive
+// result ambiguous: an agent holding several identities can produce a success no modeled fact caused.
+type FleetSshCredentialBinding sole_constructor {
+  identity_file: NonEmptyStr
+  credential_identity: ContentHash
+}
+
+// The mint is sealed for the same reason the anchor's is. The credential_identity is the identity of
+// the PUBLIC key material, never of the private key: a receipt naming which credential authenticated
+// must be publishable, and a digest of secret bytes in a receipt is credential material wearing a
+// hash.
+fn fleet_ssh_credential_binding_seal(
+  identity_file: NonEmptyStr,
+  credential_identity: ContentHash,
+) -> FleetSshCredentialBinding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "fleet_ssh_credential_binding_of_public_material"),
+  ]
+  = FleetSshCredentialBinding { identity_file: identity_file, credential_identity: credential_identity }
+
+fn fleet_ssh_credential_binding_of_public_material(
+  identity_file: NonEmptyStr,
+  public_material: NonEmptyStr,
+) -> FleetSshCredentialBinding {
+  fleet_ssh_credential_binding_seal(
+    identity_file: identity_file,
+    credential_identity: content_hash_of_value(value: public_material),
+  )
+}
+
+// ONE VALUE CARRYING EVERYTHING AN SSH LEG NEEDS TO BE ACCOUNTABLE. Sealed, so it cannot be
+// assembled beside the walls rather than through them, and constructible only from an anchor that
+// passed its content readback plus a bound credential.
+type FleetSshExecutionContext sole_constructor {
+  attempt: FleetSshAttemptIdentity
+  trust: FleetOpenSshTrustPolicy
+  credential: FleetSshCredentialBinding
+}
+
+fn fleet_ssh_execution_context_seal(
+  attempt: FleetSshAttemptIdentity,
+  trust: FleetOpenSshTrustPolicy,
+  credential: FleetSshCredentialBinding,
+) -> FleetSshExecutionContext
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fleet_known_hosts_anchor", decl_name: "fleet_ssh_execution_context_of"),
+  ]
+  = FleetSshExecutionContext { attempt: attempt, trust: trust, credential: credential }
+
+// The only route from a materialization to a context. Absent on refusal, and there is no other
+// constructor, so a caller whose trust preparation failed holds nothing it could hand an SSH leg.
+fn fleet_ssh_execution_context_of(
+  outcome: KnownHostsMaterializationOutcome,
+  credential: FleetSshCredentialBinding,
+) -> FleetSshExecutionContext? {
+  match known_hosts_anchor_of(outcome: outcome) {
+    Present { value: a } => Present {
+      value: fleet_ssh_execution_context_seal(
+        attempt: a.attempt,
+        trust: fleet_openssh_trust_policy_seal(anchor: a),
+        credential: credential,
+      ),
+    }
+    Absent => none
+  }
+}
+
+// WHO WE ARE TALKING TO, as a principal at an endpoint rather than a pre-joined string. The probe's
+// whole product is a claim about a (host, principal) pair, so fusing them into one "user@host" text
+// at the call site would put the thing being measured inside an unparseable leaf.
+type SshTarget {
+  endpoint: NonEmptyStr
+  principal: NonEmptyStr
+}
+
+// A REMOTE WORD THAT SURVIVES THE REMOTE SHELL. The transported command is one string which the
+// remote login shell re-parses, so a word carrying a space, quote, redirect, expansion or separator
+// is not the word that executes. Sealed and admitted through one predicate, so "portable" is a
+// property of the value rather than a promise in a function name -- which is what the previous
+// List<String> parameter was.
+type PortableRemoteWord sole_constructor {
+  value: NonEmptyStr
+}
+
+fn portable_remote_word_char_allowed(cp: Int) -> Bool {
+  (cp >= 97 && cp <= 122) || (cp >= 65 && cp <= 90) || (cp >= 48 && cp <= 57)
+    || cp == 46 || cp == 95 || cp == 45 || cp == 47 || cp == 64 || cp == 58 || cp == 61
+}
+
+fn portable_remote_word_text_ok(text: String, i: Int, len: Int) -> Bool {
+  if i >= len { true } else {
+    if portable_remote_word_char_allowed(cp: code_point(ch: char_at(text, i))) {
+      portable_remote_word_text_ok(text: text, i: i + 1, len: len)
+    } else { false }
+  }
+}
+
+// Refuses rather than quoting: quoting would make the word survive THIS shell, and the remote shell
+// is not known to be the same one. The allowlist is the same conservative alphabet the existing
+// typed-argv edge already enforces, reused rather than re-spelled.
+fn portable_remote_word(raw: String) -> PortableRemoteWord? {
+  if raw != "" && portable_remote_word_text_ok(text: raw, i: 0, len: length(raw)) {
+    Present { value: PortableRemoteWord { value: raw as NonEmptyStr } }
+  } else {
+    none
+  }
+}
+
+// Head-plus-tail, so an empty remote command has no constructor: an SSH leg with no words is an
+// interactive login, which is a different operation from running a command and must not be reachable
+// by passing an empty list to this one.
+type PortableRemoteWords {
+  first: PortableRemoteWord
+  more: List<PortableRemoteWord>
+}
+
+fn portable_remote_words(raws: List<String>) -> PortableRemoteWords? {
+  let admitted = fold(raws, init: Present { value: [] }, f: fn(acc, r) {
+    match acc {
+      Absent => none
+      Present { value: ws } => match portable_remote_word(raw: r) {
+        Present { value: w } => Present { value: concat(ws, [w]) }
+        Absent => none
+      }
+    }
+  })
+  match admitted {
+    Absent => none
+    Present { value: ws } => match list_head(ws) {
+      HeadAbsent => none
+      HeadFound { value: h } => match list_tail(ws) {
+        TailFound { tail: t } => Present { value: PortableRemoteWords { first: h, more: t } }
+        TailAbsent => Present { value: PortableRemoteWords { first: h, more: [] } }
+      }
+    }
+  }
+}
+
+fn portable_remote_words_strings(words: PortableRemoteWords) -> List<String> {
+  concat([words.first.value as String], map(words.more, w => w.value as String))
+}
+
+// THE TERMINAL SHAPER, returning CLIENT ARGS -- everything after argv[0]. It does NOT prepend `ssh`,
+// because the executable position belongs to the operation declaration: a shaper that returned the
+// whole argv would put argv[0] under caller control, which std.operation_argv refuses on the ground
+// that a caller deciding WHICH PROGRAM RUNS is strictly worse than a hardcoded list. An earlier
+// revision did exactly that and the corpus wall caught it within one CI run.
+//
+// It takes the sealed context and nothing a caller could widen: there is no
+// options parameter to prepend into, so the first-obtained-value hazard has no surface. Every option
+// is derived here from the context -- trust from the anchor, credential from the binding, ambient
+// suppression unconditionally -- and the principal is projected to an explicit User option rather
+// than joined into the destination, so the account being tested is a modeled field rather than text.
+fn shape_fleet_ssh_exec(
+  context: FleetSshExecutionContext,
+  target: SshTarget,
+  words: PortableRemoteWords,
+) -> List<String> {
+  let config_suppression = openssh_suppress_ambient_configuration_options()
+  let derived = concat(
+    fleet_openssh_trust_options(policy: context.trust),
+    concat(
+      openssh_exact_credential_options(identity_file: context.credential.identity_file),
+      [
+        User { name: target.principal },
+        BatchMode { enabled: true },
+        ConnectTimeout { seconds: 10 },
+      ],
+    ),
+  )
+  concat(
+    concat(
+      flat_map(config_suppression, o => serialize_ssh_config_file_flag(option: o)),
+      serialize_ssh_client_options(options: derived),
+    ),
+    concat([target.endpoint as String, "--"], portable_remote_words_strings(words: words)),
+  )
+}

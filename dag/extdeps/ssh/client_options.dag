@@ -1,0 +1,329 @@
+module extdeps.ssh.client_options
+
+import std.types { NonEmptyStr, String, Bool, List, Int }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// The OpenSSH CLIENT option vocabulary, modeled once.
+//
+// This is a SEPARATE authority from extdeps.ssh.session deliberately. That module anchors to
+// RFC 4254, the SSH Connection Protocol, which defines the channel requests it declares (Exec,
+// ExecArgv, ExecScript). It does NOT define -o, ssh_config keywords, or any of their value
+// domains -- those are OpenSSH implementation surface, documented in ssh_config(5). session.dag
+// already separates PROTOCOL from IMPLEMENTATION in its own notes; putting these keywords under
+// its RFC anchor would ground them in a document that does not contain them, which is the
+// citation defect DESIGN section 3 names.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man.openbsd.org/ssh_config.5"
+  }
+}
+
+// THE SUBJECT IS THE CLIENT OPTION VOCABULARY ITSELF -- SshClientOption: the keyword/value pairs
+// ssh(1) accepts via -o, whose domains ssh_config(5) enumerates. It is NOT the connection protocol
+// (extdeps.ssh.session, RFC 4254) and NOT any particular verification policy: which options a given
+// invocation carries is a caller's fact, while WHICH OPTIONS EXIST and how each serializes is this
+// upstream's.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ssh.client_options",
+      decl_name: "SshClientOption",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// WHY THIS MODULE EXISTS, measured rather than asserted. Before it, the ssh client option grammar
+// was re-coined as free text at every site that needed one. In extdeps/ssh alone:
+//
+// counted by INVOCATION IDENTITY (files that actually run ssh/scp), not by token -- an earlier
+// revision of this note said "56 raw -o strings corpus-wide", which counted curl -o, xorriso -o and
+// http/tmux options and was therefore not an OpenSSH population at all:
+//
+//   openbmc_password_ssh_transport.dag   40 pairs   <- the bulk of the migration, unmentioned before
+//   password_session.dag                  6 pairs
+//   exec/command.dag                      2 pairs   (StrictHostKeyChecking=no + UserKnownHostsFile=/dev/null)
+//   session.dag                           1 pair    (Reachability: BatchMode + ConnectTimeout)
+//
+// Three separate costs, none of them cosmetic:
+//
+// ONE, the closed value domain was a string. ssh_config(5) gives StrictHostKeyChecking exactly
+// five values (yes | no | ask | accept-new | off). Spelled as text, `yes` and `no` are the same
+// KIND of thing to every tool in this repository -- so a site that disables host-key verification
+// and a site that requires it are indistinguishable without reading prose. Both exist in the
+// corpus today. As a closed coproduct the difference is a variant a lens can match on.
+//
+// TWO, `-o` and `=` were structure built by concatenation. Key=Value is a serialization of a pair,
+// and building it with string joins puts the pair's shape in every caller instead of in one
+// serializer. That is the section 2 deep-decomposition failure exactly: a String leaf hiding
+// named parts that the source already knows.
+//
+// THREE, and the load-bearing one: options inside a `transport` literal are UNWITNESSABLE. The
+// established corpus idiom for invocation structure is a `shape_*_argv` function -- see
+// shape_scp_copy_to_argv, which has no service operation at all and is asserted directly by
+// roadmap_dashboard_instance_apply_witness_test, and git's shape_git_*_argv family. A function can
+// be called by a witness and pinned; a literal buried in a service block cannot be reached by one.
+// That is why the yes/no divergence above went unnoticed rather than being caught: no test could
+// name the thing that disagreed.
+type StrictHostKeyCheckingValue
+  = StrictYes
+  | StrictNo
+  | StrictAsk
+  | StrictAcceptNew
+  | StrictOff
+
+// THE OTHER FOUR SOURCES OF HOST-KEY TRUST, modeled because a policy that names only
+// UserKnownHostsFile does not exclude them. ssh_config(5) gives an OpenSSH client five independent
+// ways to decide a host key is acceptable, and setting one says nothing about the other four:
+// GlobalKnownHostsFile is a system-wide file (/etc/ssh/ssh_known_hosts by default) consulted
+// ALONGSIDE the user file; KnownHostsCommand names a program whose stdout is treated as known_hosts
+// lines; VerifyHostKeyDNS accepts a key on the strength of an SSHFP DNS record; and UpdateHostKeys
+// lets the SERVER add keys to the client's known_hosts mid-session. On a host we did not build --
+// which is every host in this fleet, all six enrolled ScannedFirstContact -- any of the four can be
+// preconfigured, and a trust policy that leaves them at their defaults is anchored to the registry
+// plus whatever else the machine already believed. They are modeled here so a policy can set them
+// to their disabling values EXPLICITLY, which is the difference between "we pinned the user file"
+// and "the registry is the only thing ssh will accept".
+//
+// VerifyHostKeyDNS is three-valued upstream rather than a Bool: `ask` is a real third state, not a
+// spelling of yes or no, and collapsing it would be the state-space conflation the corpus names.
+type VerifyHostKeyDnsValue
+  = VerifyHostKeyDnsYes
+  | VerifyHostKeyDnsNo
+  | VerifyHostKeyDnsAsk
+
+// UpdateHostKeys likewise: `ask` prompts, and under BatchMode a prompt is a hang, not a default.
+type UpdateHostKeysValue
+  = UpdateHostKeysYes
+  | UpdateHostKeysNo
+  | UpdateHostKeysAsk
+
+// One variant per keyword, each carrying the value domain THAT keyword actually admits, so a
+// nonsensical pairing has no constructor. ConnectTimeout takes an Int because ssh_config(5)
+// specifies seconds; BatchMode takes a Bool because its domain is yes|no and a Bool is that domain
+// already grounded -- reusing it rather than minting a second two-valued enum (section 2: no net
+// new concepts by re-invention).
+type SshClientOption
+  = StrictHostKeyChecking { value: StrictHostKeyCheckingValue }
+  | UserKnownHostsFile { path: NonEmptyStr }
+  | GlobalKnownHostsFile { path: NonEmptyStr }
+  | KnownHostsCommand { command: NonEmptyStr }
+  | VerifyHostKeyDNS { value: VerifyHostKeyDnsValue }
+  | UpdateHostKeys { value: UpdateHostKeysValue }
+  | BatchMode { enabled: Bool }
+  | ConnectTimeout { seconds: Int }
+  | ConfigFile { path: NonEmptyStr }
+  | IdentityFile { path: NonEmptyStr }
+  | IdentitiesOnly { enabled: Bool }
+  | IdentityAgent { path: NonEmptyStr }
+  | PreferredAuthentications { methods: NonEmptyStr }
+  | PasswordAuthentication { enabled: Bool }
+  | KbdInteractiveAuthentication { enabled: Bool }
+  | User { name: NonEmptyStr }
+
+// The ONE place each keyword's wire spelling lives. A rename upstream is a one-line edit here
+// rather than a corpus-wide grep.
+fn ssh_client_option_keyword(option: SshClientOption) -> String {
+  match option {
+    StrictHostKeyChecking { value: _ } => "StrictHostKeyChecking"
+    UserKnownHostsFile { path: _ } => "UserKnownHostsFile"
+    GlobalKnownHostsFile { path: _ } => "GlobalKnownHostsFile"
+    KnownHostsCommand { command: _ } => "KnownHostsCommand"
+    VerifyHostKeyDNS { value: _ } => "VerifyHostKeyDNS"
+    UpdateHostKeys { value: _ } => "UpdateHostKeys"
+    BatchMode { enabled: _ } => "BatchMode"
+    ConnectTimeout { seconds: _ } => "ConnectTimeout"
+    ConfigFile { path: _ } => "ConfigFile"
+    IdentityFile { path: _ } => "IdentityFile"
+    IdentitiesOnly { enabled: _ } => "IdentitiesOnly"
+    IdentityAgent { path: _ } => "IdentityAgent"
+    PreferredAuthentications { methods: _ } => "PreferredAuthentications"
+    PasswordAuthentication { enabled: _ } => "PasswordAuthentication"
+    KbdInteractiveAuthentication { enabled: _ } => "KbdInteractiveAuthentication"
+    User { name: _ } => "User"
+  }
+}
+
+fn strict_host_key_checking_wire(value: StrictHostKeyCheckingValue) -> String {
+  match value {
+    StrictYes => "yes"
+    StrictNo => "no"
+    StrictAsk => "ask"
+    StrictAcceptNew => "accept-new"
+    StrictOff => "off"
+  }
+}
+
+fn verify_host_key_dns_wire(value: VerifyHostKeyDnsValue) -> String {
+  match value {
+    VerifyHostKeyDnsYes => "yes"
+    VerifyHostKeyDnsNo => "no"
+    VerifyHostKeyDnsAsk => "ask"
+  }
+}
+
+fn update_host_keys_wire(value: UpdateHostKeysValue) -> String {
+  match value {
+    UpdateHostKeysYes => "yes"
+    UpdateHostKeysNo => "no"
+    UpdateHostKeysAsk => "ask"
+  }
+}
+
+fn ssh_client_option_value(option: SshClientOption) -> String {
+  match option {
+    StrictHostKeyChecking { value: v } => strict_host_key_checking_wire(value: v)
+    UserKnownHostsFile { path: p } => p as String
+    GlobalKnownHostsFile { path: p } => p as String
+    KnownHostsCommand { command: c } => c as String
+    VerifyHostKeyDNS { value: v } => verify_host_key_dns_wire(value: v)
+    UpdateHostKeys { value: v } => update_host_keys_wire(value: v)
+    BatchMode { enabled: e } => if e { "yes" } else { "no" }
+    ConnectTimeout { seconds: s } => to_string(s)
+    ConfigFile { path: p } => p as String
+    IdentityFile { path: p } => p as String
+    IdentitiesOnly { enabled: e } => if e { "yes" } else { "no" }
+    IdentityAgent { path: p } => p as String
+    PreferredAuthentications { methods: m } => m as String
+    PasswordAuthentication { enabled: e } => if e { "yes" } else { "no" }
+    KbdInteractiveAuthentication { enabled: e } => if e { "yes" } else { "no" }
+    User { name: n } => n as String
+  }
+}
+
+// The ONE place "-o" and the "=" pairing exist. Everything upstream of this function speaks in
+// variants; everything downstream receives an argv already shaped.
+fn serialize_ssh_client_option(option: SshClientOption) -> List<String> {
+  ["-o", join([ssh_client_option_keyword(option: option), "=", ssh_client_option_value(option: option)], "")]
+}
+
+// flat_map, not a fold that appends onto a growing accumulator: the fold form copies the
+// accumulator at every step, which is the copied-accumulator cost shape DESIGN section 6 says is
+// fixed on sight regardless of the realized n ("n is small here" is not a time-stable fact).
+fn serialize_ssh_client_options(options: List<SshClientOption>) -> List<String> {
+  flat_map(options, o => serialize_ssh_client_option(option: o))
+}
+
+// THE COMPLETE EXCLUSIVE POSTURE: every one of OpenSSH's five host-key trust sources set, four of
+// them to their disabling values, so the named anchor is the ONLY thing that can make a host key
+// acceptable. An earlier revision of this function returned just the StrictHostKeyChecking and
+// UserKnownHostsFile pair, which pins the file ssh reads without excluding the four other routes
+// beside it -- so a host carrying a preconfigured /etc/ssh/ssh_known_hosts, a KnownHostsCommand, or
+// an SSHFP record would still have verified against something outside the registry, and
+// UpdateHostKeys would have let the far end ADD keys to what we trust mid-session.
+//
+// This function is still only a builder, not the wall: a caller may prepend its own option and
+// OpenSSH takes the FIRST obtained value for each keyword, so an earlier StrictHostKeyChecking=no
+// silently outranks everything here. The wall is gunbc.fleet_known_hosts_anchor
+// FleetOpenSshTrustPolicy, which is sealed, is constructible only from a successful materialization,
+// and is what consumers accept. This builder exists separately because it is PURE and therefore
+// directly assertable by a witness, while the sealed policy requires an executed materialization.
+fn openssh_exclusive_known_hosts_trust_options(known_hosts: NonEmptyStr) -> List<SshClientOption> {
+  [
+    StrictHostKeyChecking { value: StrictYes },
+    UserKnownHostsFile { path: known_hosts },
+    GlobalKnownHostsFile { path: "/dev/null" as NonEmptyStr },
+    KnownHostsCommand { command: "none" as NonEmptyStr },
+    VerifyHostKeyDNS { value: VerifyHostKeyDnsNo },
+    UpdateHostKeys { value: UpdateHostKeysNo },
+  ]
+}
+
+// ── The invocation shaper ─────────────────────────────────────────────────────────────────────
+
+// THE ONE PLACE "ssh" AND "--" EXIST. This is a function rather than a transport literal for the
+// reason the whole module exists: a literal inside a `service` block cannot be called by a witness,
+// so its argv order, its option placement and its separator are unassertable. shape_scp_copy_to_argv
+// has no service operation at all for exactly this reason, and git's shape_git_*_argv family is the
+// same idiom.
+//
+// Option words precede the target because OpenSSH takes the FIRST specified value for most
+// directives -- so an option appended after the target, or after a caller-supplied word, would be
+// silently outranked by anything earlier. Order here is load-bearing, which is why it is asserted by
+// execution rather than described.
+fn shape_openssh_exec_portable_words_argv(
+  target: NonEmptyStr,
+  options: List<SshClientOption>,
+  words: List<String>,
+) -> List<String> {
+  concat(
+    concat(
+      concat(["ssh"], serialize_ssh_client_options(options: options)),
+      [target as String, "--"],
+    ),
+    words,
+  )
+}
+
+// AMBIENT CONFIGURATION IS THE OTHER HALF OF THE PROBLEM, and the host-key options do not touch it.
+// Even with all five trust sources pinned, ordinary ssh_config can still decide the username, resolve
+// the hostname to a different address through a Host alias, insert a ProxyJump, choose which identity
+// file or agent authenticates, and reuse an existing multiplexed connection whose authentication
+// happened under conditions we never observed. Every one of those changes WHO and WHAT was actually
+// contacted, which is precisely what a principal-identity probe is trying to establish.
+//
+// `-o ConfigFile=none` is not the spelling OpenSSH accepts for this; the documented control is the
+// -F flag, which takes a path and suppresses both user and system config when given `none`. It is
+// modeled as ConfigFile here so it serializes through the same one serializer as everything else and
+// is projected to -F by the shaper -- the alternative was a second ad-hoc word-building path beside
+// the option serializer, which is the fork this module exists to prevent.
+fn openssh_suppress_ambient_configuration_options() -> List<SshClientOption> {
+  [ConfigFile { path: "none" as NonEmptyStr }]
+}
+
+// THE CREDENTIAL HALF. A host-key posture can be exact while authentication succeeds through the
+// WRONG LOCAL KEY: an agent holding several identities, an ambient IdentityFile, or a password
+// fallback can all make a command succeed without the modeled credential having caused it. For a
+// probe whose entire product is "which account accepts which exact key", that is not a detail -- it
+// is the difference between an observation and a coincidence.
+//
+// IdentitiesOnly is the load-bearing one: without it OpenSSH offers agent keys BEFORE the file named
+// by IdentityFile, so naming the file does not mean the file authenticated. IdentityAgent=none
+// removes the agent entirely, and the three authentication-method options remove the fallbacks that
+// would otherwise let a success mean something other than publickey.
+fn openssh_exact_credential_options(identity_file: NonEmptyStr) -> List<SshClientOption> {
+  [
+    IdentityFile { path: identity_file },
+    IdentitiesOnly { enabled: true },
+    IdentityAgent { path: "none" as NonEmptyStr },
+    PreferredAuthentications { methods: "publickey" as NonEmptyStr },
+    PasswordAuthentication { enabled: false },
+    KbdInteractiveAuthentication { enabled: false },
+  ]
+}
+
+// -F takes its value as a following word rather than an -o pair, so this projects the ConfigFile
+// option to the flag OpenSSH actually documents while keeping one serializer as the authority for
+// what the value is.
+//
+// EVERY OTHER VARIANT SERIALIZES NORMALLY rather than falling into a wildcard returning []. The
+// wildcard form was caught by v2.lens.non_fold_residue and it was two defects, not a style point: a
+// FABRICATED ABSENCE (an empty list is not the rendering of an option, it is the absence of an
+// answer wearing a List) and silent extensibility -- a sixteenth SshClientOption would have rendered
+// as nothing at all and been read as a legitimate projection that simply produced no words. With no
+// wildcard, adding a variant makes this match non-exhaustive and the compiler says so.
+fn serialize_ssh_config_file_flag(option: SshClientOption) -> List<String> {
+  match option {
+    ConfigFile { path: p } => ["-F", p as String]
+    StrictHostKeyChecking { value: _ } => serialize_ssh_client_option(option: option)
+    UserKnownHostsFile { path: _ } => serialize_ssh_client_option(option: option)
+    GlobalKnownHostsFile { path: _ } => serialize_ssh_client_option(option: option)
+    KnownHostsCommand { command: _ } => serialize_ssh_client_option(option: option)
+    VerifyHostKeyDNS { value: _ } => serialize_ssh_client_option(option: option)
+    UpdateHostKeys { value: _ } => serialize_ssh_client_option(option: option)
+    BatchMode { enabled: _ } => serialize_ssh_client_option(option: option)
+    ConnectTimeout { seconds: _ } => serialize_ssh_client_option(option: option)
+    IdentityFile { path: _ } => serialize_ssh_client_option(option: option)
+    IdentitiesOnly { enabled: _ } => serialize_ssh_client_option(option: option)
+    IdentityAgent { path: _ } => serialize_ssh_client_option(option: option)
+    PreferredAuthentications { methods: _ } => serialize_ssh_client_option(option: option)
+    PasswordAuthentication { enabled: _ } => serialize_ssh_client_option(option: option)
+    KbdInteractiveAuthentication { enabled: _ } => serialize_ssh_client_option(option: option)
+    User { name: _ } => serialize_ssh_client_option(option: option)
+  }
+}
