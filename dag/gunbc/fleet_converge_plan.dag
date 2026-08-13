@@ -186,7 +186,7 @@ type FleetConvergePlanArtifact {
 
 fn fleet_converge_plan_content_hash(plan_body: String) -> Fnv1a64StructuralDigestHex {
   match content_hash_of_value(value: plan_body as NonEmptyStr) {
-    Fnv1a64(s: structural) => structural.digest
+    Fnv1a64(structural) => structural.digest
     _ => "0000000000000000"
   }
 }
@@ -271,7 +271,7 @@ fn fleet_converge_plan_artifact(
     "\n",
   )
   match content_hash_of_value(value: baseline as NonEmptyStr) {
-    Fnv1a64(s: structural) =>
+    Fnv1a64(structural) =>
       FleetConvergePlanArtifact {
         observed_baseline_hex: structural.digest,
         plan_body: body,
@@ -288,13 +288,13 @@ fn fleet_converge_plan_artifact(
 
 data fleet_converge_plan_artifact_dir: String = "/tmp/fleet-converge-plan"
 
-fn fleet_converge_plan_body_path: String = "/tmp/fleet-converge-plan/plan.txt"
+data fleet_converge_plan_body_path: String = "/tmp/fleet-converge-plan/plan.txt"
 
-fn fleet_converge_plan_baseline_hex_path: String = "/tmp/fleet-converge-plan/observed_baseline.hex"
+data fleet_converge_plan_baseline_hex_path: String = "/tmp/fleet-converge-plan/observed_baseline.hex"
 
-fn fleet_converge_plan_apply_shell_path: String = "/tmp/fleet-converge-plan/apply.sh"
+data fleet_converge_plan_apply_shell_path: String = "/tmp/fleet-converge-plan/apply.sh"
 
-fn fleet_converge_plan_content_hash_path: String = "/tmp/fleet-converge-plan/plan_content.hex"
+data fleet_converge_plan_content_hash_path: String = "/tmp/fleet-converge-plan/plan_content.hex"
 
 fn fleet_converge_observed_baseline_matches(
   observed_baseline_hex: Fnv1a64StructuralDigestHex,
@@ -303,7 +303,7 @@ fn fleet_converge_observed_baseline_matches(
 ) -> Bool {
   let baseline = observed_baseline_text(observed_timers: observed_timers, observed_caps: observed_caps)
   match content_hash_of_value(value: baseline as NonEmptyStr) {
-    Fnv1a64(s: structural) => structural.digest == observed_baseline_hex
+    Fnv1a64(structural) => structural.digest == observed_baseline_hex
     _ => false
   }
 }
