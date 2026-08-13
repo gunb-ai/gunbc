@@ -3,7 +3,7 @@ module gunbc.floor_component_receipt_document
 import std.types { NonEmptyStr, String, CommitSha }
 import extdeps.languages.json.emit {
   JsonValue, JsonString, JsonNumber,
-  json_object, json_kv, json_string, json_int, json_array,
+  json_object, json_kv, json_string, json_int, json_array, json_null,
   serialize_json
 }
 import extdeps.languages.json.parse {
@@ -141,6 +141,23 @@ fn receipt_required_value_at(v: JsonValue, key: String) -> ReceiptValue {
       ReceiptValueFailed { decoding: ReceiptMemberMalformed { member: key, detail: "member is duplicated" } }
     JsonMemberNotAnObject =>
       ReceiptValueFailed { decoding: ReceiptMemberMalformed { member: key, detail: "enclosing value is not a JSON object" } }
+  }
+}
+
+data receipt_run_terminal_legacy_absent_note: String = "TRANSITIONAL BACK-COMPAT for receipts under GitHub Actions artifact retention written before this PR: run_terminal did not exist, so the member is absent rather than null. Treating absent as ReceiptMemberAbsent would refuse the exact population the falsifier alert still consumes (review 51856). Absent therefore decodes to json_null(), meaning no incomplete envelope was recorded — the same reading as a concluded walk that explicitly emits run_terminal:null. The writer always emits the member on new receipts; only the reader carries this legacy arm. Dissolve-on: counted census shows zero retention receipts lacking the member, then delete this helper and require the member like selection_degradation."
+
+fn receipt_run_terminal_at(v: JsonValue) -> ReceiptValue {
+  match json_object_unique_member(v: v, key: receipt_member_run_terminal) {
+    JsonMemberFound { value: found } => ReceiptValueFound { value: found }
+    JsonMemberAbsent => ReceiptValueFound { value: json_null() }
+    JsonMemberDuplicated { count: _ } =>
+      ReceiptValueFailed {
+        decoding: ReceiptMemberMalformed { member: receipt_member_run_terminal, detail: "member is duplicated" }
+      }
+    JsonMemberNotAnObject =>
+      ReceiptValueFailed {
+        decoding: ReceiptMemberMalformed { member: receipt_member_run_terminal, detail: "enclosing value is not a JSON object" }
+      }
   }
 }
 
@@ -639,7 +656,7 @@ fn floor_component_receipt_decode_with(text: String, expected_schema: NonEmptySt
                             match receipt_required_value_at(v: doc, key: receipt_member_selection_degradation) {
                               ReceiptValueFailed { decoding: d } => d
                               ReceiptValueFound { value: degradation } =>
-                            match receipt_required_value_at(v: doc, key: receipt_member_run_terminal) {
+                            match receipt_run_terminal_at(v: doc) {
                               ReceiptValueFailed { decoding: d } => d
                               ReceiptValueFound { value: run_terminal } =>
                             match component_alert_summaries_of(components: unsuccessful) {
