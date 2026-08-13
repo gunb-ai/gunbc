@@ -95,9 +95,10 @@ fn requirements_are_independent_per_occurrence(r: NameRequirements) -> Bool {
 
 // CONTROL 1 -- one principal, two hosts, different labels AND different numeric identities, and it
 // is still one principal with one policy. This is the whole decomposition in a single claim: the
-// label and the uid are host-local allocations, the policy is the principal. Both sides must
-// actually have GROUNDED, asserted explicitly, because two Absent answers would also compare
-// unequal to nothing and the claim would pass while proving the opposite of what it says.
+// label and the uid are host-local allocations, the policy is the principal.
+// Different labels, different numbers, same principal. Both sides must actually have GROUNDED --
+// asserted explicitly, because two Absent answers would also compare unequal to nothing and the
+// claim would pass while proving the opposite of what it says.
 test fn witness_one_principal_wears_different_local_names_and_uids() -> Bool {
   let a5 = alloc(host: spark5, name: "lumen" as PosixLoginName, uid: 1500)
   let a6 = alloc(host: spark6, name: "cobalt" as PosixLoginName, uid: 1732)
@@ -175,8 +176,8 @@ test fn witness_observation_contradicting_allocation_is_drift() -> Bool {
 }
 
 // CONTROL 5 -- the same label text on two different hosts does NOT merge the accounts. Identity is
-// the occurrence, not the spelling; a name is a host-local handle and nothing more. The fixtures
-// carry an identical label AND an identical number, and are still two distinct occurrences.
+// the occurrence, not the spelling; a name is a host-local handle and nothing more.
+// identical label AND identical number, still two distinct occurrences
 test fn witness_same_label_on_two_hosts_does_not_merge_identities() -> Bool {
   let a5 = alloc(host: spark5, name: "lumen" as PosixLoginName, uid: 1500)
   let a6 = alloc(host: spark6, name: "lumen" as PosixLoginName, uid: 1500)
@@ -221,9 +222,9 @@ test fn witness_name_requirements_forbid_domain_meaning_for_machine_principals()
 // This is the arm that replaced the fabricated UNALLOCATED-PRINCIPAL value: asking a host-less
 // question about a per-host account now REFUSES with a state a caller must match, rather than
 // returning an ordinary GroundedPosixPrincipal carrying a poison name and uid -1 that any consumer
-// could render into an effect, a path, or a log without ever acknowledging failure. The second
-// half asserts the legacy four still ground through that same accessor, so the refusal is scoped
-// to the host-scoped principals rather than having broken the accessor for everyone.
+// could render into an effect, a path, or a log without ever acknowledging failure.
+// The legacy four must still ground through that same accessor, so the refusal is proven to be
+// scoped to host-scoped principals rather than a blanket failure of the accessor.
 test fn witness_host_scoped_principals_refuse_the_hostless_accessor() -> Bool {
   let a = match fleet_posix_principal(key: FleetAccountAutomation) {
     PrincipalRequiresHostScope { principal: _ } => true

@@ -150,6 +150,13 @@ test fn witness_converge_cli_output_projects_receipt_and_exit_signal() -> Bool {
 // NOT-converged — the narrow is closed at the seam the collector actually reads. Also asserts
 // the converge-revision line now carries the OBSERVATION as evidence (observed=/drift/
 // unobserved), never a second verdict= token, so the receipt holds exactly one verdict.
+// The knob run is the srv1 shape: converged with nothing to apply. Against it the joint is
+// exercised on all three revision standings — converged passes the knob verdict through,
+// drift demotes to drifted, and unobserved demotes to absent, each checked on the emitted
+// line as well as the verdict so a line that still said converged could not pass. The
+// end-to-end leg feeds the joint unobserved line back through the collector's OWN parser,
+// because the narrow this claim closes lived at the seam the collector reads rather than in
+// the verdict itself.
 test fn witness_self_receipt_verdict_is_joint_never_false_converged() -> Bool {
   let a = revision_fixture_oid(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
   let b = revision_fixture_oid(hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")

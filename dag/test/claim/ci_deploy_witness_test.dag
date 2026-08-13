@@ -173,11 +173,9 @@ fn ci_fleet_if_for_step_named(needle: String) -> String {
     })
 }
 
-// The READ step and the WRITE steps admit different event sets, and that asymmetry is the
-// whole subject: collect (READ) admits BOTH push and workflow_dispatch, while deploy and
-// advance (WRITE) are push-only and never dispatch. Each write clause therefore asserts the
-// dispatch admission is ABSENT rather than only asserting push is present — a step that
-// admitted both would satisfy the positive half alone.
+// The READ step and the WRITE steps are deliberately gated differently: collect admits BOTH
+// push and workflow_dispatch, while deploy and advance are push-only and never dispatch. A
+// dispatchable write is the fused shape this claim exists to refuse.
 test fn witness_collector_read_unfused_from_writes() -> Bool {
   let collect_if = ci_fleet_if_for_step_named(needle: "Collect fleet converge")
   let deploy_if = ci_fleet_if_for_step_named(needle: "Deploy dashboard to srv1")

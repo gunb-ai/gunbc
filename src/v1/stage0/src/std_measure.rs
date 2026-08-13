@@ -47,6 +47,7 @@ pub enum Quantity {
     Count,
     Currency,
     Power,
+    ApparentPower,
     Energy,
     Temperature,
     TemperatureDifference,
@@ -326,6 +327,8 @@ pub type Millicore = Rc<Measure<(), (), i64>>;
 pub type Watt = Rc<Measure<(), (), i64>>;
 
 pub type Milliwatt = Rc<Measure<(), (), i64>>;
+
+pub type VoltAmpere = Rc<Measure<(), (), i64>>;
 
 pub type Volt = Rc<Measure<(), (), i64>>;
 
@@ -997,6 +1000,21 @@ pub fn energy_from_power_and_time(power: Watt, time: Second) -> Joule {
     joule((watt_count(power.clone()) * second_count(time.clone())))
 }
 
+pub fn volt_ampere(count: Nat) -> VoltAmpere {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn volt_ampere_count(v: VoltAmpere) -> Nat {
+    measure_count(v.clone())
+}
+
+pub fn apparent_power_from_supply(supply_voltage: Volt, rated_current: Ampere) -> VoltAmpere {
+    volt_ampere((volt_count(supply_voltage.clone()) * ampere_count(rated_current.clone())))
+}
+
 pub type Minute = Rc<Measure<(), (), i64>>;
 
 pub fn minute(count: Nat) -> Minute {
@@ -1249,6 +1267,8 @@ pub struct Count;
 pub struct Currency;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Power;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ApparentPower;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Energy;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
