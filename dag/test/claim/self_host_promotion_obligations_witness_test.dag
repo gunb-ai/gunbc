@@ -4,18 +4,17 @@ import gunbc.self_host_promotion_obligations {
   artifact_axis_omits_build_path,
   frontier_numerator_admits_seed_evidence,
   obligation_is_registered,
-  obligation_reports_itself_fired,
-  self_host_promotion_obligations
+  obligation_reports_itself_fired
 }
 import std.types { Bool }
-import v2.std.algebra { all }
 
-// Every registered obligation carries a condition, a claim it puts at risk, and a
-// subject declaration. This is a per-row join over whatever the roster holds, not an
-// assertion about how many rows there are: a count against a hand-authored list is a
-// change detector, and adding a third obligation must not red this claim.
+// Each registered obligation carries a condition, a claim it puts at risk, and a
+// subject declaration. Asserted per row by name rather than as a count over the roster:
+// a count against a hand-authored list is a change detector, and it would also pass
+// vacuously if the roster were emptied.
 test fn every_registered_obligation_carries_its_three_parts() -> Bool {
-  self_host_promotion_obligations |> all(o => obligation_is_registered(o: o))
+  obligation_is_registered(o: artifact_axis_omits_build_path)
+    && obligation_is_registered(o: frontier_numerator_admits_seed_evidence)
 }
 
 // THE TWO ARMS MUST STAY DISTINGUISHABLE, and this is the discriminating claim of the
