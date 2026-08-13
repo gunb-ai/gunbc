@@ -135,9 +135,16 @@ type AreaVector3 {
   z: SignedSquareMillimeter
 }
 
-fn cross3(a: Vector3, b: Vector3) -> SpatialResult<AreaVector3> {
+fn cross3(registry: SpatialFrameRegistry, a: Vector3, b: Vector3) -> SpatialResult<AreaVector3> {
   if !coordinate_frame_identity_eq(a: a.frame, b: b.frame) {
     SpatialFrameRefused { refusal: SpatialFrameRefusal { operation: OpCross3, left_frame: a.frame, right_frame: b.frame, relation: SameFrameOperandsRequired } }
+  } else {
+  // THREE LABELS RATHER THAN ONE, which is why leaving this unguarded was worse than the scalar
+  // case it was grouped with rather than merely equal to it: every component of the returned
+  // AreaVector3 is spelled in square millimetres, so an unguarded micrometre frame mislabels a
+  // whole vector at once and each component then travels independently.
+  if !frame_is_millimetre(registry: registry, identity: a.frame) {
+    SpatialFrameRefused { refusal: metric_frame_refusal(op: OpCross3, frame: a.frame) }
   } else {
   let ax = signed_frame_component_count(c: a.x)
   let ay = signed_frame_component_count(c: a.y)
@@ -150,8 +157,17 @@ fn cross3(a: Vector3, b: Vector3) -> SpatialResult<AreaVector3> {
   let cz = checked_subtract_results(a: checked_int_multiply(a: ax, b: by), b: checked_int_multiply(a: ay, b: bx))
   area_vector3_from_checked(frame: a.frame, x: cx, y: cy, z: cz)
   }
+  }
 }
 
+// NOT GUARDED, AND THAT IS THE CORRECT SCOPE RATHER THAN AN OVERSIGHT. This labels components in
+// square millimetres and takes no registry, so read alone it is the same defect as the unguarded
+// cross3 - the difference is reachability. It has exactly one caller, cross3 above, which checks
+// the frame before reaching here, and no module imports it. A census over this file flags it as
+// the sole remaining labeller without a guard, so this note is what tells the next reader of that
+// census that the answer is a call-graph fact rather than a miss. If it ever gains a second
+// caller or leaves the module, it takes the guard with it.
+//
 // The same first-crossing-wins fold std.affine_space applies to displacement components, over the
 // area carrier. It is not shared with that one: these components are millimetre SQUARED, and the
 // whole reason AreaVector3 is a separate type from Vector3 is that three numbers of a different

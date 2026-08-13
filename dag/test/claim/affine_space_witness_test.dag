@@ -272,7 +272,7 @@ fn witness_dot_and_cross_are_exact_and_dimensioned() -> Bool {
   let v = vector3(frame: room(), x: 0, y: 1000, z: 0)
   dot_is(a: u, b: v, expected: 0)
     && dot_is(a: u, b: u, expected: 1000000)
-    && match cross3(a: u, b: v) {
+    && match cross3(registry: mm_registry(), a: u, b: v) {
          SpatialArithmeticRefused { cause: _ } => false
          SpatialFrameRefused { refusal: _ } => false
          SpatialReady { value: c } => area_vector_equals(a: c, x: 0, y: 0, z: 1000000)
@@ -638,5 +638,24 @@ test fn w_metric_operations_refuse_a_frame_they_cannot_label() -> Bool {
     SpatialReady { value: _ } => false
     SpatialArithmeticRefused { cause: _ } => false
   }
+  // CROSS PRODUCT IS THE SAME WALL, censused rather than waited for: it labels THREE components
+  // in square millimetres, so an unguarded micrometre frame mislabels a whole vector at once.
+  let cross_refused_in_micrometres = match cross3(registry: micro_registry(), a: v, b: vector3(frame: room(), x: 0, y: 1000, z: 0)) {
+    SpatialFrameRefused { refusal: r } =>
+      match r.relation {
+        MillimetreFrameRequired => true
+        SameFrameOperandsRequired => false
+        TransformSourceFrameRequired => false
+        TransformTranslationInDestinationRequired => false
+      }
+    SpatialReady { value: _ } => false
+    SpatialArithmeticRefused { cause: _ } => false
+  }
+  let cross_answers_in_millimetres = match cross3(registry: mm_registry(), a: v, b: vector3(frame: room(), x: 0, y: 1000, z: 0)) {
+    SpatialReady { value: av } => signed_square_millimeter_count(m: av.z) == 1000000
+    SpatialFrameRefused { refusal: _ } => false
+    SpatialArithmeticRefused { cause: _ } => false
+  }
   refused_in_micrometres && answered_in_millimetres && refused_when_unregistered
+    && cross_refused_in_micrometres && cross_answers_in_millimetres
 }
