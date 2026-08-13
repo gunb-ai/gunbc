@@ -374,20 +374,12 @@ type ServingInstallEffect
   | GrantContainerRuntimeAccess
   | RunContainerAsOwnUser
 
+// PRESERVED FOR THE ORDERING FOLD, and now a projection rather than an authority. It answers for
+// the DEFAULT actor -- the named serving account -- because effect_requires_escalation needs an
+// actor and the ranking question presumes one. Root would rank every realization at zero, which is
+// true and useless for choosing between them.
 fn serving_install_effect_requires_privilege(effect: ServingInstallEffect) -> Bool {
-  match effect {
-    WriteSystemUnitFile => true
-    ReloadSystemManager => true
-    EnableSystemUnit => true
-    InstallRuntimePackage => true
-    GrantContainerRuntimeAccess => true
-    WriteUserUnitFile => false
-    ReloadUserManager => false
-    EnableUserUnit => false
-    EnableLingerForOwnAccount => true
-    PullModelArtifact => false
-    RunContainerAsOwnUser => false
-  }
+  effect_requires_escalation(effect: effect, actor: NamedPrincipal { login: "gunbc-automation" as NonEmptyStr })
 }
 
 fn realization_install_effects(realization: SparkServingRealization) -> List<ServingInstallEffect> {
@@ -631,3 +623,181 @@ data spark_user_unit_identity_contract_refutation_note: String = "A systemd user
 data spark_serving_endpoint_intent_is_operator_declared_note: String = "Operator declaration 2026-08-12: the LAN is the boundary, so endpoint intent is UnauthenticatedEndpoint. AuthenticatedEndpoint was authored by me, never by the operator, and had no consumer outside my own model and fixture; it surfaced when the operator asked why it was there. Tailscale is planned; a tailnet authenticates DEVICES and extends the trusted network rather than removing the boundary, so reaching these hosts over it does not by itself reinstate the requirement. Dissolves back to AuthenticatedEndpoint when a principal the network layer does not authenticate can reach the port (Funnel exposure, shared tailnet, an uncontrolled node), or when per-consumer attribution is wanted -- which no network boundary provides, since a tailnet proves which device connected and never which consumer asked."
 
 data spark_serving_runtime_selection_is_declared_intent_note: String = "Measured on srv5: aarch64, GB10, docker present but not usable by gunbc-automation, egress works, no serving runtime installed. The serving install is a SECOND privileged effect population, not covered by the enable-linger grant. Runtime choice is declared intent, not derivation: ollama has no authentication and cannot satisfy endpoint: AuthenticatedEndpoint without a second authenticating component; vLLM accepts an API key; a NIM container carries NVIDIA's own auth and licensing. Awaiting an operator declaration before any serving effect is derived."
+
+
+// ── WHY an effect needs privilege, from which the grant EMERGES ─────────────────────────────────
+
+// THE OPERATOR'S CORRECTION, and it went one level deeper than my first attempt. That version mapped
+// each effect to sudoers lines by hand and called the mapping derivation. It was not: it still
+// asserted "WriteSystemUnitFile is privileged" as a fact about the EFFECT, when that is only true
+// because /etc/systemd/system happens to be owned by root. The privilege is not a property of the
+// effect at all -- it is a relationship between the actor and the thing the effect mutates.
+//
+// So the model is: an effect MUTATES a subject, a subject has an OWNER, and an actor who is not that
+// owner must escalate. Privilege then EMERGES rather than being declared, and it emerges correctly in
+// cases a hand-drawn table gets wrong: the same WriteSystemUnitFile needs no grant when the actor IS
+// root, and PullModelArtifact needs none because it writes a store the serving account already owns.
+// A table cannot express either, because it never mentions who is acting.
+//
+// This also makes a whole class of future error unwritable. If someone re-homes the unit directory,
+// or runs the install as a different principal, the grant follows automatically -- there is no second
+// list to remember to update, because there is no second list.
+
+type SystemPrincipal = RootPrincipal | NamedPrincipal { login: NonEmptyStr }
+
+fn principal_label(p: SystemPrincipal) -> String {
+  match p {
+    RootPrincipal => "root"
+    NamedPrincipal { login: l } => l as String
+  }
+}
+
+fn same_principal(left: SystemPrincipal, right: SystemPrincipal) -> Bool {
+  match left {
+    RootPrincipal =>
+      match right { RootPrincipal => true NamedPrincipal { login: _ } => false }
+    NamedPrincipal { login: a } =>
+      match right { RootPrincipal => false NamedPrincipal { login: b } => (a as String) == (b as String) }
+  }
+}
+
+// WHAT AN EFFECT MUTATES. Each subject is a real thing on the host with a real owner, named at the
+// grain that determines access -- the systemd SYSTEM registry is one subject regardless of which
+// unit is being written, because its ownership is what decides the question.
+type MutationSubject
+  = SystemUnitRegistry
+  | UserUnitRegistry { owner: SystemPrincipal }
+  | PackageDatabase
+  | GroupMembership
+  | LingerState
+  | ModelArtifactStore { owner: SystemPrincipal }
+  | ContainerRuntimeAsOwnUser { owner: SystemPrincipal }
+
+// THE OWNERSHIP FACTS, which are the only place root appears. These are properties of the HOST, and
+// they are what the whole derivation rests on: change one here and every grant that depends on it
+// changes with it.
+fn subject_owner(subject: MutationSubject) -> SystemPrincipal {
+  match subject {
+    SystemUnitRegistry => RootPrincipal
+    PackageDatabase => RootPrincipal
+    GroupMembership => RootPrincipal
+    LingerState => RootPrincipal
+    UserUnitRegistry { owner: o } => o
+    ModelArtifactStore { owner: o } => o
+    ContainerRuntimeAsOwnUser { owner: o } => o
+  }
+}
+
+// Which subject each effect mutates, against a deployment. Total over the coproduct, so a new effect
+// does not compile until it states what it touches -- and stating it is the whole safety property,
+// because an unstated effect cannot silently default to "needs nothing".
+fn effect_mutation_subject(
+  effect: ServingInstallEffect,
+  actor: SystemPrincipal,
+) -> MutationSubject {
+  match effect {
+    WriteSystemUnitFile => SystemUnitRegistry
+    ReloadSystemManager => SystemUnitRegistry
+    EnableSystemUnit => SystemUnitRegistry
+    InstallRuntimePackage => PackageDatabase
+    GrantContainerRuntimeAccess => GroupMembership
+    EnableLingerForOwnAccount => LingerState
+    WriteUserUnitFile => UserUnitRegistry { owner: actor }
+    ReloadUserManager => UserUnitRegistry { owner: actor }
+    EnableUserUnit => UserUnitRegistry { owner: actor }
+    PullModelArtifact => ModelArtifactStore { owner: actor }
+    RunContainerAsOwnUser => ContainerRuntimeAsOwnUser { owner: actor }
+  }
+}
+
+// PRIVILEGE, DERIVED. An actor must escalate exactly when it does not own what it is about to mutate.
+// Nothing here lists effects; the answer falls out of two facts that are independently checkable
+// against the host.
+fn effect_requires_escalation(
+  effect: ServingInstallEffect,
+  actor: SystemPrincipal,
+) -> Bool {
+  !same_principal(
+    left: actor,
+    right: subject_owner(subject: effect_mutation_subject(effect: effect, actor: actor)),
+  )
+}
+
+// The deployment facts a grant is rendered against: policy, not upstream fact, and parameters rather
+// than constants so one model serves several deployments without forking.
+type ServingDeploymentTarget {
+  actor: SystemPrincipal
+  unit_name: NonEmptyStr
+  unit_path: NonEmptyStr
+  staged_unit_path: NonEmptyStr
+  runtime_package: NonEmptyStr
+}
+
+// HOW a mutation is actuated. This is realization, not policy: given that an effect must mutate a
+// subject it does not own, these are the exact argv that perform it. No shell, no wildcard, no token
+// the granted account controls -- a sudoers entry is a capability, and one loose token converts
+// "may restart this unit" into "may become root".
+//
+// A RESIDUE STATED RATHER THAN HIDDEN: the unit write grants `install` FROM a staged path the actor
+// can write, so the actor controls that file's CONTENT though not its location, mode or owner.
+// Closing it needs a delivery mechanism that stages where the actor cannot write. Not built, and not
+// waved past.
+fn effect_actuation_commands(
+  effect: ServingInstallEffect,
+  target: ServingDeploymentTarget,
+) -> List<NonEmptyStr> {
+  match effect {
+    WriteSystemUnitFile => [
+      join([
+        "/usr/bin/install -m 644 -o root -g root ",
+        target.staged_unit_path as String, " ", target.unit_path as String,
+      ], "") as NonEmptyStr,
+    ]
+    ReloadSystemManager => ["/usr/bin/systemctl daemon-reload" as NonEmptyStr]
+    EnableSystemUnit => [
+      join(["/usr/bin/systemctl enable ", target.unit_name as String], "") as NonEmptyStr,
+      join(["/usr/bin/systemctl start ", target.unit_name as String], "") as NonEmptyStr,
+      join(["/usr/bin/systemctl restart ", target.unit_name as String], "") as NonEmptyStr,
+    ]
+    InstallRuntimePackage => [
+      join(["/usr/bin/apt-get install -y ", target.runtime_package as String], "") as NonEmptyStr,
+    ]
+    GrantContainerRuntimeAccess => [
+      join(["/usr/sbin/usermod -aG docker ", principal_label(p: target.actor)], "") as NonEmptyStr,
+    ]
+    EnableLingerForOwnAccount => [
+      join(["/usr/bin/loginctl enable-linger ", principal_label(p: target.actor)], "") as NonEmptyStr,
+    ]
+    WriteUserUnitFile => []
+    ReloadUserManager => []
+    EnableUserUnit => []
+    PullModelArtifact => []
+    RunContainerAsOwnUser => []
+  }
+}
+
+// THE GRANT: only the effects that ACTUALLY require escalation for this actor contribute. Run the
+// same realization as root and the grant is empty -- which is the property a hand-drawn list cannot
+// have, and the clearest statement that privilege here is emergent rather than assigned.
+fn realization_escalated_commands(
+  realization: SparkServingRealization,
+  target: ServingDeploymentTarget,
+) -> List<NonEmptyStr> {
+  flat_map(
+    realization_install_effects(realization: realization),
+    e =>
+      if effect_requires_escalation(effect: e, actor: target.actor) {
+        effect_actuation_commands(effect: e, target: target)
+      } else { [] },
+  )
+}
+
+fn realization_sudoers_grant_lines(
+  realization: SparkServingRealization,
+  target: ServingDeploymentTarget,
+) -> List<String> {
+  map(
+    realization_escalated_commands(realization: realization, target: target),
+    c => join([principal_label(p: target.actor), " ALL=(root) NOPASSWD: ", c as String], ""),
+  )
+}
