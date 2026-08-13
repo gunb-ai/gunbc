@@ -16,6 +16,7 @@ import product.compute_board.digital_control {
   DigitalSignal,
   SignalName,
   signal_names_equal,
+  intent_declares_signal,
 }
 import product.compute_board.verilog_projection { VerilogBinding }
 import extdeps.programmable_logic.ice40.subject {
@@ -121,10 +122,6 @@ fn target_spelling_for(bindings: List<VerilogBinding>, name: SignalName) -> Stri
   })
 }
 
-fn intent_declares(control: DigitalControlIntent, name: SignalName) -> Bool {
-  fold(control.signals, init: false, f: fn(acc, s) { acc || signal_names_equal(a: s.name, b: name) })
-}
-
 fn assignment_refusals(
   realization: ProgrammableDeviceRealization,
   control: DigitalControlIntent,
@@ -137,7 +134,7 @@ fn assignment_refusals(
     } else {
       [PinNotOnPackage { signal: a.signal as NonEmptyStr, pin: a.pin }]
     }
-    let declared = if intent_declares(control: control, name: a.signal) {
+    let declared = if intent_declares_signal(intent: control, name: a.signal) {
       []
     } else {
       [AssignedSignalNotDeclared { signal: a.signal as NonEmptyStr }]
