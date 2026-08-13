@@ -368,6 +368,12 @@ test fn codex_runtime_version_identity_refuses_ambient_srv1_version() -> Bool {
     && !codex_runtime_version_identity_satisfied(
       combined_output: "codex-cli 0.147.0\n",
     )
+    && !codex_runtime_version_identity_satisfied(
+      combined_output: "codex-cli 0.146.0-rc1\n",
+    )
+    && !codex_runtime_version_identity_satisfied(
+      combined_output: "codex-cli 0.146.0abc\n",
+    )
 }
 
 test fn srv1_codex_bundled_executable_is_package_delivery_authority() -> Bool {

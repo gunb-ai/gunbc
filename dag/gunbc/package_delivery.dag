@@ -1,6 +1,7 @@
 module gunbc.package_delivery
 
 import std.types { String, NonEmptyStr, List, FilePath, Bool, Int }
+import std.algebra { trim }
 import std.content_hash {
   Sha512Digest,
   Sha1Digest,
@@ -58,6 +59,7 @@ import gunbc.codex_runtime_paths {
   codex_runtime_current_link_path,
   codex_bundled_executable_at_current_link,
   srv1_codex_runtime_release_root,
+  srv2_codex_runtime_release_root,
 }
 import extdeps.languages.json.emit {
   JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject,
@@ -421,16 +423,16 @@ fn codex_expected_wrapper_version() -> NonEmptyStr {
   (codex_required_package_version as String) as NonEmptyStr
 }
 
-data codex_runtime_version_identity_note: String = "ONE runtime version marker for every Codex CLI identity probe. codex_required_package_version is the sole authority; the marker is codex-cli <version> as printed by codex --version. Weak codex-cli-only checks let srv1's ambient npm install (0.133.0) pass while extdeps.llm.codex_app_server cites 0.146.0 protocol facts — two runtimes producing incompatible protocol surfaces."
+data codex_runtime_version_identity_note: String = "ONE runtime version marker for every Codex CLI identity probe. codex_required_package_version is the sole authority; the marker is codex-cli <version> as printed by codex --version on its own line. codex_runtime_version_identity_satisfied requires an exact trimmed line match — not a substring — so 0.146.0-rc1 and 0.146.0abc cannot pass. Weak codex-cli-only checks let srv1's ambient npm install (0.133.0) pass while extdeps.llm.codex_app_server cites 0.146.0 protocol facts — two runtimes producing incompatible protocol surfaces."
 
 fn codex_runtime_version_identity_marker() -> String {
   concat("codex-cli ", codex_required_package_version as String)
 }
 
 fn codex_runtime_version_identity_satisfied(combined_output: String) -> Bool {
-  string_contains(
-    s: combined_output,
-    pattern: codex_runtime_version_identity_marker(),
+  any(
+    split(s: combined_output, delimiter: "\n"),
+    line => trim(s: line) == codex_runtime_version_identity_marker(),
   )
 }
 
@@ -582,18 +584,30 @@ fn codex_linux_arm64_native_executable_rel() -> NonEmptyStr? {
   )
 }
 
-fn codex_bundled_executable_for_srv1() -> FilePath {
+fn codex_bundled_executable_for_release_parent(release_parent: FilePath) -> FilePath {
   match codex_linux_arm64_native_executable_rel() {
     Absent =>
       codex_runtime_current_link_path(
-        release_parent: srv1_codex_runtime_release_root,
+        release_parent: release_parent,
       )
     Present { value: rel } =>
       codex_bundled_executable_at_current_link(
-        release_parent: srv1_codex_runtime_release_root,
+        release_parent: release_parent,
         native_executable_rel: rel,
       )
   }
+}
+
+fn codex_bundled_executable_for_srv1() -> FilePath {
+  codex_bundled_executable_for_release_parent(
+    release_parent: srv1_codex_runtime_release_root,
+  )
+}
+
+fn codex_bundled_executable_for_srv2() -> FilePath {
+  codex_bundled_executable_for_release_parent(
+    release_parent: srv2_codex_runtime_release_root,
+  )
 }
 
 type CodexTargetPackageLookup
