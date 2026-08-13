@@ -934,6 +934,15 @@ fn c_add_declared_inhabitants_root() -> Node {
 // (a binding-ref plus op_add). Forms C has not yet modeled carry token classes with
 // no lex rule, so reaching one REFUSES at serialization rather than emitting
 // fabricated text -- the fail-closed property the lex-miss arm already provides.
+// Delimiting discipline for this target. C's `if` is a STATEMENT and cannot
+// appear in a value position at all, so the previous spelling -- kw_if with an
+// lbrace then-arm -- was a copy of the .dag shape describing a construct C does
+// not have here; it never emitted, because neither token had a lex rule. The
+// conditional operator is what C actually has, and it is self-delimiting:
+// `c ? a : b` ends with its else arm. C has no value-producing loop, so
+// loop_token stays unspelled and the loop form refuses rather than emitting --
+// self-delimiting is a claim about where a construct ENDS, never a claim that
+// the language has one.
 fn c_value_expression_projection() -> TargetValueExpressionProjection {
   TargetValueExpressionProjection {
     binding_ref_form: TargetBindingRefShape { ident_token: ^c_token_ident },
@@ -963,11 +972,6 @@ fn c_value_expression_projection() -> TargetValueExpressionProjection {
       close: ^c_token_rparen,
       separator: ^c_token_comma
     },
-    // C's `if` is a STATEMENT, so it cannot appear in a value position at all.
-    // The previous spelling -- kw_if with an lbrace then-arm -- was a copy of the
-    // .dag shape describing a construct C does not have here, and it never emitted
-    // because neither token had a lex rule. The conditional operator is what C
-    // actually has, and it is self-delimiting: `c ? a : b` ends with its else arm.
     conditional_form: TargetConditionalShape {
       if_token: ^c_token_ternary_nop,
       then_token: ^c_token_ternary_question,
@@ -979,9 +983,6 @@ fn c_value_expression_projection() -> TargetValueExpressionProjection {
       assign_token: ^c_token_unwired_assign,
       in_token: ^c_token_semicolon
     },
-    // C has no value-producing loop. loop_token remains unspelled, so this refuses
-    // rather than emitting: self-delimiting is a claim about where the construct
-    // ENDS, not a claim that C supports one.
     loop_form: TargetLoopShape {
       loop_token: ^c_token_unwired_loop,
       delimiting: LoopSelfDelimiting

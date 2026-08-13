@@ -528,6 +528,13 @@ fn ts_emitted_add_fn_node() -> Node {
 }
 
 
+// Delimiting discipline for this target. ts_token_kw_then named a THEN KEYWORD
+// TYPESCRIPT DOES NOT HAVE: the shape was a copy of .dag's ML-style
+// if/then/else, and none of its three tokens had a lex rule, so nothing ever
+// executed it and nothing caught the fiction. TypeScript's if/else is a
+// statement; the conditional operator is its value form, and it is
+// self-delimiting -- `c ? a : b` ends with its else arm. No value-producing
+// loop either, so loop_token stays unspelled and the loop form refuses.
 fn ts_value_expression_projection() -> TargetValueExpressionProjection {
   ts_value_expression_projection_full(
     record_literal_names_type: Omit,
@@ -615,11 +622,6 @@ fn ts_value_expression_projection_full(
       separator: ^ts_token_comma
     },
 
-    // ts_token_kw_then named a THEN KEYWORD TYPESCRIPT DOES NOT HAVE. This shape
-    // was a copy of .dag's ML-style if/then/else, and none of its three tokens had
-    // a lex rule, so nothing ever executed it and nothing caught the fiction.
-    // TypeScript's if/else is a statement; the conditional operator is its value
-    // form, and it is self-delimiting: `c ? a : b` ends with its else arm.
     conditional_form: TargetConditionalShape {
       if_token: ^ts_token_ternary_nop,
       then_token: ^ts_token_ternary_question,
@@ -632,8 +634,6 @@ fn ts_value_expression_projection_full(
       assign_token: ^ts_token_eq,
       in_token: ^ts_token_unwired_bind_in
     },
-    // No value-producing loop in TypeScript either; loop_token stays unspelled so
-    // this refuses rather than emitting.
     loop_form: TargetLoopShape {
       loop_token: ^ts_token_unwired_loop,
       delimiting: LoopSelfDelimiting

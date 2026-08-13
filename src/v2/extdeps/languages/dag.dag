@@ -5025,6 +5025,11 @@ fn dag_formal_production_fn_bind() -> FormalProduction {
   )
 }
 
+// Delimiting discipline for this target: .dag is ML-style -- if c then a else b.
+// All three keywords are really lexed, and the else arm ENDS the expression, so
+// there is no closing token, and ConditionalSelfDelimiting carries no field in
+// which one could be invented. The loop form is self-delimiting for the same
+// reason.
 fn dag_value_expression_projection() -> TargetValueExpressionProjection {
   TargetValueExpressionProjection {
     binding_ref_form: TargetBindingRefShape { ident_token: ^dag_token_ident },
@@ -5054,9 +5059,6 @@ fn dag_value_expression_projection() -> TargetValueExpressionProjection {
       close: ^dag_token_rparen,
       separator: ^dag_token_comma
     },
-    // .dag is ML-style: if c then a else b. All three keywords are really lexed,
-    // and the else arm ENDS the expression, so there is no closing token -- and
-    // ConditionalSelfDelimiting carries no field in which to invent one.
     conditional_form: TargetConditionalShape {
       if_token: ^dag_token_kw_if,
       then_token: ^dag_token_kw_then,
