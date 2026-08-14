@@ -1,5 +1,6 @@
 module v2.compiler.self_host.frontier_probe
 
+import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.self_host.compiler_closure_emit {
   emit_compiler_import_closure_from_ingest
 }
@@ -270,7 +271,7 @@ fn frontier_probe_read_failure_reason(result: SourceRefReadResult) -> Symbol {
 }
 
 fn frontier_probe_first_missing_import_lookup(
-  roots: FreeMonoid<Node>,
+  roots: FreeMonoid<NormalizedTree>,
   imports: FreeMonoid<Import>
 ) -> Optional<QualifiedName> {
   fold_list(
