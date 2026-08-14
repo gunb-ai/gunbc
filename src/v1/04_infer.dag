@@ -1651,25 +1651,37 @@ fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: Typ
   }
 }
 
-fn structured_application_structural_type_name(
+fn application_type_name_identity(
   type_name: String,
-  scope: InferScope
+  type_env: TypeEnv,
+  module_name: String,
+  source_indices: Map<String, NewlineIndex>
 ) -> String {
-  let source_indices = scope.type_env.source_indices
-  match lookup_type_by_name(env: scope.type_env, name: type_name) {
+  match lookup_type_by_name(env: type_env, name: type_name) {
     Present { value: decl } =>
       match decl.inferred {
         Present { value: Resolved { node: target } } =>
           authored_name_at(
             source_indices: source_indices,
-            node: peel_nominal_alias_identity(n: target, env: scope.type_env, module_name: scope.module_name))
+            node: peel_nominal_alias_identity(n: target, env: type_env, module_name: module_name))
         _ =>
           authored_name_at(
             source_indices: source_indices,
-            node: peel_nominal_alias_identity(n: decl, env: scope.type_env, module_name: scope.module_name))
+            node: peel_nominal_alias_identity(n: decl, env: type_env, module_name: module_name))
       }
     Absent => type_name
   }
+}
+
+fn structured_application_structural_type_name(
+  type_name: String,
+  scope: InferScope
+) -> String {
+  application_type_name_identity(
+    type_name: type_name,
+    type_env: scope.type_env,
+    module_name: scope.module_name,
+    source_indices: scope.type_env.source_indices)
 }
 
 fn structured_application_record_lit_nominal_name(
@@ -1705,20 +1717,28 @@ fn application_type_names_compatible(
 ) -> Bool {
   if formal_name == "" || lit_name == "" {
     formal_name == lit_name
-  } else if formal_name == lit_name
-    || qualified_last_segment(name: formal_name) == qualified_last_segment(name: lit_name)
-    || dag_can_cast(source_type: lit_name, target_type: formal_name) {
-    true
-  } else if type_name_transparently_aliases_to(
-    alias_name: lit_name, target_name: formal_name, type_env: type_env, module_name: module_name, source_indices: source_indices)
-    || type_name_transparently_aliases_to(
-      alias_name: formal_name, target_name: lit_name, type_env: type_env, module_name: module_name, source_indices: source_indices) {
+  } else if formal_name == lit_name {
     true
   } else {
-    match lookup_type_by_name(env: type_env, name: formal_name) {
-      Present { value: formal_decl } =>
-        brand_grounds_transparently_to(name: lit_name, other: formal_decl, type_env: type_env, source_indices: source_indices)
-      Absent => false
+    let formal_identity = application_type_name_identity(
+      type_name: formal_name, type_env: type_env, module_name: module_name, source_indices: source_indices)
+    let lit_identity = application_type_name_identity(
+      type_name: lit_name, type_env: type_env, module_name: module_name, source_indices: source_indices)
+    if formal_identity == lit_identity {
+      true
+    } else if dag_can_cast(source_type: lit_name, target_type: formal_name) {
+      true
+    } else if type_name_transparently_aliases_to(
+      alias_name: lit_name, target_name: formal_name, type_env: type_env, module_name: module_name, source_indices: source_indices)
+      || type_name_transparently_aliases_to(
+        alias_name: formal_name, target_name: lit_name, type_env: type_env, module_name: module_name, source_indices: source_indices) {
+      true
+    } else {
+      match lookup_type_by_name(env: type_env, name: formal_name) {
+        Present { value: formal_decl } =>
+          brand_grounds_transparently_to(name: lit_name, other: formal_decl, type_env: type_env, source_indices: source_indices)
+        Absent => false
+      }
     }
   }
 }
@@ -1736,8 +1756,7 @@ fn type_name_transparently_aliases_to(
       let peeled_name = authored_name_at(source_indices: source_indices, node: peeled)
       if peeled_name == alias_name {
         false
-      } else if peeled_name == target_name
-        || qualified_last_segment(name: peeled_name) == qualified_last_segment(name: target_name) {
+      } else if peeled_name == target_name {
         true
       } else {
         type_name_transparently_aliases_to(

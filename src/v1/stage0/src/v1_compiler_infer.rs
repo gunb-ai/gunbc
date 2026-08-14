@@ -2551,34 +2551,37 @@ pub fn kernel_value_declared_type_mismatch(
     }
 }
 
+pub fn application_type_name_identity(
+    type_name: String,
+    type_env: Rc<TypeEnv>,
+    module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match lookup_type_by_name(type_env.clone(), type_name.clone()) {
+        Some(decl) => match decl.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: target, .. }) => authored_name_at(
+                source_indices.clone(),
+                peel_nominal_alias_identity(target.clone(), type_env.clone(), module_name.clone()),
+            ),
+            _ => authored_name_at(
+                source_indices.clone(),
+                peel_nominal_alias_identity(decl.clone(), type_env.clone(), module_name.clone()),
+            ),
+        },
+        None => type_name.clone(),
+    }
+}
+
 pub fn structured_application_structural_type_name(
     type_name: String,
     scope: Rc<InferScope>,
 ) -> String {
-    {
-        let source_indices = scope.type_env.clone().source_indices.clone();
-        match lookup_type_by_name(scope.type_env.clone(), type_name.clone()) {
-            Some(decl) => match decl.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: target, .. }) => authored_name_at(
-                    source_indices.clone(),
-                    peel_nominal_alias_identity(
-                        target.clone(),
-                        scope.type_env.clone(),
-                        scope.module_name.clone(),
-                    ),
-                ),
-                _ => authored_name_at(
-                    source_indices.clone(),
-                    peel_nominal_alias_identity(
-                        decl.clone(),
-                        scope.type_env.clone(),
-                        scope.module_name.clone(),
-                    ),
-                ),
-            },
-            None => type_name.clone(),
-        }
-    }
+    application_type_name_identity(
+        type_name.clone(),
+        scope.type_env.clone(),
+        scope.module_name.clone(),
+        scope.type_env.clone().source_indices.clone(),
+    )
 }
 
 pub fn structured_application_record_lit_nominal_name(
@@ -2627,36 +2630,54 @@ pub fn application_type_names_compatible(
     if ((formal_name.clone() == "".to_string()) || (lit_name.clone() == "".to_string())) {
         (formal_name.clone() == lit_name.clone())
     } else {
-        if (((formal_name.clone() == lit_name.clone())
-            || (qualified_last_segment(formal_name.clone())
-                == qualified_last_segment(lit_name.clone())))
-            || dag_can_cast(lit_name.clone(), formal_name.clone()))
-        {
+        if (formal_name.clone() == lit_name.clone()) {
             true
         } else {
-            if (type_name_transparently_aliases_to(
-                lit_name.clone(),
-                formal_name.clone(),
-                type_env.clone(),
-                module_name.clone(),
-                source_indices.clone(),
-            ) || type_name_transparently_aliases_to(
-                formal_name.clone(),
-                lit_name.clone(),
-                type_env.clone(),
-                module_name.clone(),
-                source_indices.clone(),
-            )) {
-                true
-            } else {
-                match lookup_type_by_name(type_env.clone(), formal_name.clone()) {
-                    Some(formal_decl) => brand_grounds_transparently_to(
-                        lit_name.clone(),
-                        formal_decl.clone(),
-                        type_env.clone(),
-                        source_indices.clone(),
-                    ),
-                    None => false,
+            {
+                let formal_identity = application_type_name_identity(
+                    formal_name.clone(),
+                    type_env.clone(),
+                    module_name.clone(),
+                    source_indices.clone(),
+                );
+                let lit_identity = application_type_name_identity(
+                    lit_name.clone(),
+                    type_env.clone(),
+                    module_name.clone(),
+                    source_indices.clone(),
+                );
+                if (formal_identity.clone() == lit_identity.clone()) {
+                    true
+                } else {
+                    if dag_can_cast(lit_name.clone(), formal_name.clone()) {
+                        true
+                    } else {
+                        if (type_name_transparently_aliases_to(
+                            lit_name.clone(),
+                            formal_name.clone(),
+                            type_env.clone(),
+                            module_name.clone(),
+                            source_indices.clone(),
+                        ) || type_name_transparently_aliases_to(
+                            formal_name.clone(),
+                            lit_name.clone(),
+                            type_env.clone(),
+                            module_name.clone(),
+                            source_indices.clone(),
+                        )) {
+                            true
+                        } else {
+                            match lookup_type_by_name(type_env.clone(), formal_name.clone()) {
+                                Some(formal_decl) => brand_grounds_transparently_to(
+                                    lit_name.clone(),
+                                    formal_decl.clone(),
+                                    type_env.clone(),
+                                    source_indices.clone(),
+                                ),
+                                None => false,
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -2682,10 +2703,7 @@ pub fn type_name_transparently_aliases_to(
                 if (peeled_name.clone() == alias_name.clone()) {
                     break false;
                 } else {
-                    if ((peeled_name.clone() == target_name.clone())
-                        || (qualified_last_segment(peeled_name.clone())
-                            == qualified_last_segment(target_name.clone())))
-                    {
+                    if (peeled_name.clone() == target_name.clone()) {
                         break true;
                     } else {
                         {
