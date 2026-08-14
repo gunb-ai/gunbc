@@ -29,14 +29,14 @@ data internet_archive_mt_mitchell_capture_authority: ExternalAuthority = Externa
 
 data mt_mitchell_subject_note: String = "OCP-CONTRIBUTED REFERENCE PLATFORM SPECIFICATION FOR MT. MITCHELL. Usage is under the same OWFa 1.0 / OCP CLA family as Mt. Jade when the document is admitted. THE PUBLISHER LOCATOR REMAINS THE CITATION EVEN WHEN UNREACHABLE: an unauthenticated fetch returned HTTP 403 on 2026-08-14 and that refusal is recorded separately from a dated Internet Archive capture of the same URL that peer session neat-hawk-428 read in full. PLATFORM FACTS LIVE IN extdeps.ocp.mt_mitchell.platform AND ARE GROUNDED ON THE CAPTURE, NOT ON A CLAIM THAT THE PUBLISHER COPY WAS READ."
 
-type MtMitchellRev0_80
-type MtMitchellSpecificationRevision = MtMitchellRev0_80
+type MtMitchellSpecificationRevision
+  = | MtMitchellRev0_80
 
-type Owfa1_0FinalSpecificationAgreement
-type OcpSpecificationLicense = Owfa1_0FinalSpecificationAgreement
+type OcpSpecificationLicense
+  = | Owfa1_0FinalSpecificationAgreement
 
-type OcpContributionLicenseAgreement
-type OcpContributionLicense = OcpContributionLicenseAgreement
+type OcpContributionLicense
+  = | OcpContributionLicenseAgreement
 
 type SpecificationDocumentDate {
   year: Int
