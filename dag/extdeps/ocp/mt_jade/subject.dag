@@ -7,7 +7,11 @@ import extdeps.uri { Uri, Https }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.ampere { ampere_vendor }
-import extdeps.publication { SpecificationDocumentDate }
+import extdeps.publication {
+  SpecificationDocumentDate,
+  SpecificationCitationReadProvenance,
+  OperatorSuppliedDocumentText,
+}
 import extdeps.ocp.publication {
   OcpSpecificationLicense,
   OcpContributionLicense,
@@ -35,10 +39,6 @@ data mt_jade_subject_note: String = "MT. JADE AS AN OCP-ACCEPTED REFERENCE PLATF
 type MtJadeRev1_0 {}
 
 type MtJadeSpecificationRevision = MtJadeRev1_0
-
-type SpecificationCitationReadProvenance
-  = DocumentLocatorFetchRefused { http_status: Int, detail: NonEmptyStr }
-  | OperatorSuppliedDocumentText {}
 
 data mt_jade_specification_version_label: NonEmptyStr = "v1.0"
 
