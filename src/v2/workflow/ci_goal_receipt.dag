@@ -38,6 +38,7 @@ type CiGoal
   | FalsifierPredictionMachineryAbsent
   | WorkIsGenuinelyConcurrent
   | NoDuplicateRecomputeWithoutShare
+  | RegenDriftHealShareOneGeneration
 
 // EVIDENCE NAMES A SYMBOL, NOT A SENTENCE. A declaration reference can be checked
 // against the containment tree; a description cannot be checked against anything, and
@@ -175,6 +176,12 @@ data ci_goal_rows: List<GoalRow> = [
     goal: NoDuplicateRecomputeWithoutShare,
     standing: GoalHeld {
       evidence: ExecutedWitness { declaration: ^materialization_admits_once_then_shares }
+    }
+  },
+  GoalRow {
+    goal: RegenDriftHealShareOneGeneration,
+    standing: GoalNotHeld {
+      detail: "the single-generation dataflow is modeled and sealed; production still generates twice (observe_generated_artifact and main_wet each call artifact_generate)"
     }
   },
   GoalRow {

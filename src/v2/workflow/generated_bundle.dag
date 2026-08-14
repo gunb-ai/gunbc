@@ -1,0 +1,198 @@
+module v2.workflow.generated_bundle
+
+import v2.std.algebra { fold_list, length, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node { combine_hash, Hash, Symbol, symbol_identity_digest }
+import v2.std.text { String }
+
+// ONE GENERATION, TWO CONSUMERS.
+//
+// Today the registered artifact set is generated TWICE on an internal pull request,
+// and both calls are in the tree: gunbc.generated_artifact_observation
+// observe_generated_artifact calls artifact_generate to compare produced bytes with
+// committed bytes, and tools.generated_artifact_gate main_wet calls artifact_generate
+// again to write them. Same operation, same inputs, same tool, same configuration.
+//
+// THE SECOND COST IS WORSE THAN THE FIRST. Heal regenerates AFTER the gate assessed,
+// so the bytes it writes are not the bytes that were judged — they are a fresh
+// production that is merely expected to match. Any nondeterminism, any input that
+// moved between the two passes, and the repository receives content no gate ever
+// approved. Generating once and applying that exact value removes the possibility
+// rather than making it unlikely.
+
+type BundleEntry {
+  path: String
+  content: String
+}
+
+type BundleRefusal {
+  path: String
+  cause: String
+}
+
+// THE BUNDLE HAS ONE CONSTRUCTOR. A consumer cannot mint a bundle, so it cannot
+// substitute freshly generated content for the assessed content — the sealed carrier
+// is what makes "heal applies exactly what drift assessed" a property of the type
+// rather than a rule someone follows. Without the seal, the cheapest way to write a
+// heal step is to call the generator again, which is precisely how the corpus arrived
+// at two generations.
+type GeneratedBundle sole_constructor {
+  subject: Hash
+  entries: List<BundleEntry>
+  refusals: List<BundleRefusal>
+}
+
+// The sole mint. Its caller is the ONE node that performs generation; every other
+// consumer receives the value it returns.
+fn seal_generated_bundle(
+  subject: Hash,
+  entries: List<BundleEntry>,
+  refusals: List<BundleRefusal>
+) -> GeneratedBundle {
+  GeneratedBundle { subject: subject, entries: entries, refusals: refusals }
+}
+
+// ── Drift, assessed from the bundle ───────────────────────────────────────────
+
+type CommittedEntry {
+  path: String
+  content: String
+}
+
+type DriftFinding
+  = PathDrifted { path: String }
+  | PathMissingFromCommit { path: String }
+
+type DriftReceipt
+  = DriftClean { subject: Hash, assessed: Int }
+  | DriftFound { subject: Hash, findings: List<DriftFinding> }
+  | DriftRefused { subject: Hash, refusals: List<BundleRefusal> }
+
+fn committed_content_for(committed: List<CommittedEntry>, path: String) -> String {
+  fold_list(
+    xs: committed,
+    empty: "",
+    cons: fn(acc, c) { if c.path == path { c.content } else { acc } }
+  )
+}
+
+fn committed_has(committed: List<CommittedEntry>, path: String) -> Bool {
+  fold_list(
+    xs: committed,
+    empty: false,
+    cons: fn(acc, c) { acc || (c.path == path) }
+  )
+}
+
+fn drift_finding_for(
+  acc: List<DriftFinding>,
+  entry: BundleEntry,
+  committed: List<CommittedEntry>
+) -> List<DriftFinding> {
+  if !committed_has(committed: committed, path: entry.path) {
+    list_snoc_item(xs: acc, item: PathMissingFromCommit { path: entry.path })
+  } else {
+    if committed_content_for(committed: committed, path: entry.path) == entry.content {
+      acc
+    } else {
+      list_snoc_item(xs: acc, item: PathDrifted { path: entry.path })
+    }
+  }
+}
+
+data no_drift_findings: List<DriftFinding> = []
+
+// A REFUSED GENERATION IS NOT CLEAN. If any artifact could not be produced, the
+// population was never fully assessed, and reporting the assessable subset as clean is
+// the narrowing that lets an unproducible artifact pass as agreeing with its commit.
+fn assess_drift(bundle: GeneratedBundle, committed: List<CommittedEntry>) -> DriftReceipt {
+  if length(xs: bundle.refusals) > 0 {
+    DriftRefused { subject: bundle.subject, refusals: bundle.refusals }
+  } else {
+    let findings = fold_list(
+      xs: bundle.entries,
+      empty: no_drift_findings,
+      cons: fn(acc, e) { drift_finding_for(acc: acc, entry: e, committed: committed) }
+    )
+    if length(xs: findings) == 0 {
+      DriftClean { subject: bundle.subject, assessed: length(xs: bundle.entries) }
+    } else {
+      DriftFound { subject: bundle.subject, findings: findings }
+    }
+  }
+}
+
+// ── Heal, applied from the same bundle ────────────────────────────────────────
+
+type HealWrite {
+  path: String
+  content: String
+}
+
+// A HEAL PLAN CARRIES THE ASSESSED SUBJECT, so the write set and the receipt that
+// authorized it can be joined. A plan whose subject does not match the receipt's is a
+// different generation wearing the same intent, and apply_heal refuses it.
+type HealPlan {
+  subject: Hash
+  writes: List<HealWrite>
+}
+
+type HealAdmission
+  = HealAdmitted { plan: HealPlan }
+  | HealRefusedNothingToDo { subject: Hash }
+  | HealRefusedUnassessedSubject { plan_subject: Hash, receipt_subject: Hash }
+  | HealRefusedDriftUnresolved { subject: Hash }
+
+data no_heal_writes: List<HealWrite> = []
+
+fn heal_write_for(
+  acc: List<HealWrite>,
+  entry: BundleEntry,
+  findings: List<DriftFinding>
+) -> List<HealWrite> {
+  let wanted = fold_list(
+    xs: findings,
+    empty: false,
+    cons: fn(seen, f) {
+      match f {
+        PathDrifted { path: p } => seen || (p == entry.path)
+        PathMissingFromCommit { path: p } => seen || (p == entry.path)
+      }
+    }
+  )
+  if wanted {
+    list_snoc_item(
+      xs: acc,
+      item: HealWrite { path: entry.path, content: entry.content }
+    )
+  } else {
+    acc
+  }
+}
+
+// THE WRITES COME FROM THE BUNDLE, NEVER FROM A FRESH GENERATION. This function has no
+// access to a generator — it takes the bundle whose bytes the receipt assessed and
+// selects from it. That is the whole repair: the write set is a projection of the
+// assessed value, so "heal wrote something the gate never saw" has no representation.
+fn heal_plan_from(bundle: GeneratedBundle, receipt: DriftReceipt) -> HealAdmission {
+  match receipt {
+    DriftClean { subject: s, assessed: _ } => HealRefusedNothingToDo { subject: s }
+    DriftRefused { subject: s, refusals: _ } => HealRefusedDriftUnresolved { subject: s }
+    DriftFound { subject: s, findings: fs } =>
+      if s != bundle.subject {
+        HealRefusedUnassessedSubject { plan_subject: bundle.subject, receipt_subject: s }
+      } else {
+        HealAdmitted {
+          plan: HealPlan {
+            subject: s,
+            writes: fold_list(
+              xs: bundle.entries,
+              empty: no_heal_writes,
+              cons: fn(acc, e) { heal_write_for(acc: acc, entry: e, findings: fs) }
+            )
+          }
+        }
+      }
+  }
+}
