@@ -133,8 +133,7 @@ test fn w_the_model_scope_points_at_the_reference_platform_row() -> Bool {
     && mt_jade_specification_publication_date.year == 2021
     && mt_jade_specification_publication_date.month == 9
     && mt_jade_specification_publication_date.day == 17
-    && (mt_jade_model_scope.first_citation.uri.locator as String)
-      == "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
+    && (mt_jade_model_scope.first_citation.uri.locator as String) == "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
 }
 
 // THE LICENCE TERMS AND APPENDIX EXCLUSION ARE LOAD-BEARING FOR PUBLIC REPOSITORY ADMISSION.
@@ -183,8 +182,7 @@ test fn w_the_processor_power_rail_sequence_matches_the_spec() -> Bool {
 test fn w_the_socket_roles_are_named_distinctly() -> Bool {
   (processor_socket_role_name(role: MasterSocket) as String) == "socket0 master"
     && (processor_socket_role_name(role: SlaveSocket) as String) == "socket1 slave"
-    && (processor_socket_role_name(role: MasterSocket) as String)
-      != (processor_socket_role_name(role: SlaveSocket) as String)
+    && (processor_socket_role_name(role: MasterSocket) as String) != (processor_socket_role_name(role: SlaveSocket) as String)
 }
 
 // SLAVE-SOCKET FIRMWARE START IS GATED THROUGH THE CPLD WITH A ONE-MICROSECOND ALERT3 PULSE.
@@ -222,8 +220,6 @@ test fn w_reference_parts_name_the_bmc_and_clock_generators() -> Bool {
     && reference_part_roles_include(rows: mt_jade_reference_parts, wanted: BaseboardManagementController)
     && reference_part_roles_include(rows: mt_jade_reference_parts, wanted: PcieClockGenerator)
     && fold(mt_jade_reference_parts, init: true, f: fn(acc, r) {
-      acc
-        && (r.authority.uri.locator as String)
-          == "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
+      acc && (r.authority.uri.locator as String) == "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
     })
 }
