@@ -14,14 +14,19 @@ import extdeps.ocp.publication {
   OcpContributionLicenseAgreement,
 }
 
-data mt_mitchell_subject_authority_anchor: ExternalAuthority = ExternalAuthority {
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
     locator: "www.opencompute.org/documents/mt-mitchell-ocp-hardware-spec-v0-80-2-pdf",
   }
 }
 
-data extdeps_external_authority_anchor: ExternalAuthority = mt_mitchell_subject_authority_anchor
+data mt_mitchell_subject_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.opencompute.org/documents/mt-mitchell-ocp-hardware-spec-v0-80-2-pdf",
+  }
+}
 
 data internet_archive_mt_mitchell_capture_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
