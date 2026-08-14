@@ -12,9 +12,24 @@ import std.orthogonal_geometry {
   axis_aligned_rectangle2,
 }
 import product.compute_board.physical {
+  BoardPhysicalArticle,
+  BodyEnvelopesAdmitted,
   ComponentPlacement,
   PackageBodyEnvelope,
+  PhysicalAdmission,
+  PhysicalRefusalSet,
+  PhysicallyRefused,
+  admit_body_envelopes,
   body_envelope_of_ice40_package,
+}
+import std.spatial_frame {
+  FrameRegistered,
+  FrameRegistrationRefused,
+  Micro,
+  SpatialFrameRegistry,
+  empty_frame_registry,
+  register_frame,
+  registry_with,
 }
 import product.altra_motherboard.minimal_design {
   AltraMinimalMotherboard,
@@ -235,11 +250,11 @@ fn envelope_refusals(plan: BoardPlacementPlan) -> List<PlacementRefusal> {
   })
 }
 
-fn identity_occurrences(cs: List<PlannedComponent>, id: NonEmptyStr) -> Int {
+fn planned_identity_occurrences(cs: List<PlannedComponent>, id: NonEmptyStr) -> Int {
   fold(cs, init: 0, f: fn(acc, c) { if (c.identity as String) == (id as String) { acc + 1 } else { acc } })
 }
 
-fn identity_seen(seen: List<NonEmptyStr>, id: NonEmptyStr) -> Bool {
+fn planned_identity_seen(seen: List<NonEmptyStr>, id: NonEmptyStr) -> Bool {
   fold(seen, init: false, f: fn(acc, s) { acc || (s as String) == (id as String) })
 }
 
@@ -252,8 +267,8 @@ type IdentityScan {
 // produce one refusal naming it rather than four saying the same thing.
 fn identity_refusals(plan: BoardPlacementPlan) -> List<PlacementRefusal> {
   let scan = fold(plan.components, init: IdentityScan { seen: [], out: [] }, f: fn(acc, c) {
-    let dup = if identity_occurrences(cs: plan.components, id: c.identity) > 1
-      && !identity_seen(seen: acc.seen, id: c.identity) {
+    let dup = if planned_identity_occurrences(cs: plan.components, id: c.identity) > 1
+      && !planned_identity_seen(seen: acc.seen, id: c.identity) {
       [PlannedIdentityRepeated { component: c.identity }]
     } else {
       []
@@ -461,5 +476,71 @@ fn altra_reference_plan() -> OrthogonalConstruction<BoardPlacementPlan> {
           components: concat(fixed, memory_slot_obligations(d: altra_1p_minimum)),
         }
       }
+  }
+}
+
+// THE BOARD'S FRAME REGISTRATION, which is board configuration rather than a cited fact: we chose
+// to register this board at micrometre grain, and physical.dag checks that choice is fine enough
+// to express the geometry rather than trusting it. At millimetre grain a half-millimetre package
+// pitch is not expressible and two adjacent pins collapse onto one coordinate.
+fn altra_frame_registry() -> SpatialFrameRegistry {
+  let r0 = empty_frame_registry()
+  match register_frame(r: r0, identity: altra_board_frame(), length_scale: Micro) {
+    FrameRegistered { frame: f } => registry_with(r: r0, f: f)
+    FrameRegistrationRefused { cause: _ } => r0
+  }
+}
+
+fn board_article(plan: BoardPlacementPlan) -> BoardPhysicalArticle {
+  BoardPhysicalArticle {
+    frame: plan.frame,
+    outline: plan.outline,
+    placements: placeable_components(plan: plan),
+  }
+}
+
+// HOW MANY PARTS THE GEOMETRY CHECK DID NOT SEE, and it is counted from the causes rather than
+// assumed to be zero. Two of the four refusals describe a part that will occupy board area later
+// and was not available to be checked now: a required role nothing fills, and a component whose
+// envelope is still owed. The other two describe parts that ARE present -- one unjustified, one
+// sharing a name -- so they are defects in what was checked rather than gaps in what was not, and
+// counting them here would overstate the gap.
+fn parts_not_geometrically_checked(d: AltraMinimalMotherboard, plan: BoardPlacementPlan) -> Int {
+  fold(placement_causes(d: d, plan: plan), init: 0, f: fn(acc, c) {
+    match c {
+      RequiredRoleUnfilled { role: _ } => acc + 1
+      ComponentEnvelopeNotEstablished { component: _, gap: _ } => acc + 1
+      ComponentFillsNoRequiredRole { component: _, role_named: _ } => acc
+      PlannedIdentityRepeated { component: _ } => acc
+    }
+  })
+}
+
+// A CLEAN GEOMETRY ANSWER ON A PARTIAL BOARD IS NOT A CLEAN BOARD, and this coproduct is what
+// stops the two from being spelled the same way. Running the body-envelope check over the parts
+// whose size is known is worth doing and its result is worth reporting -- but the parts still
+// owed will occupy area too, and any of them may land on top of something. A single admitted arm
+// would let a board with one placed component and thirteen obligations report exactly what a
+// finished board reports, which is the rung inflation DESIGN 4b names: the honest answer and the
+// flattering one are indistinguishable, so the flattering one is what gets consumed downstream
+// and drawn as if it were checked.
+//
+// The scope is DERIVED from the count of unchecked parts, not authored beside it, so the complete
+// arm has no constructor reachable while anything is owed.
+type BoardBodyLayoutStanding
+  = BodyLayoutAdmittedOverEveryRequiredPart { article: BoardPhysicalArticle }
+  | BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: Int, geometry: PhysicalAdmission }
+  | BodyLayoutRefused { causes: PhysicalRefusalSet }
+
+fn board_body_layout_standing(d: AltraMinimalMotherboard, plan: BoardPlacementPlan) -> BoardBodyLayoutStanding {
+  let owed = parts_not_geometrically_checked(d: d, plan: plan)
+  let geometry = admit_body_envelopes(registry: altra_frame_registry(), article: board_article(plan: plan))
+  if owed > 0 {
+    BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: owed, geometry: geometry }
+  } else {
+    match geometry {
+      BodyEnvelopesAdmitted { article: a } => BodyLayoutAdmittedOverEveryRequiredPart { article: a }
+      PhysicallyRefused { causes: cs } => BodyLayoutRefused { causes: cs }
+    }
   }
 }

@@ -22,9 +22,14 @@ import product.altra_motherboard.placement {
   PlannedIdentityRepeated,
   ProcessorSocket,
   RequiredRoleUnfilled,
+  BodyLayoutAdmittedOverEveryRequiredPart,
+  BodyLayoutCheckedOverEstablishedSubsetOnly,
+  BodyLayoutRefused,
   admit_placement,
   altra_board_frame,
   altra_reference_plan,
+  board_body_layout_standing,
+  parts_not_geometrically_checked,
   board_control_envelope,
   established_envelope_count,
   processor_package_envelope,
@@ -375,5 +380,106 @@ test fn w_two_components_sharing_an_identity_refuse_once() -> Bool {
         ], template: p)),
         wanted: "IdentityRepeated"
       ) == 1
+  }
+}
+
+// THE BOARD AS IT STANDS TODAY REPORTS THE SUBSET ARM, and that is the whole point of the arm
+// existing. Two of fifteen parts have an established envelope, so the body-envelope check ran over
+// two rectangles and found nothing wrong -- and reporting that as a clean board would be a
+// finished-looking answer about a board that is thirteen parts short. The count of unchecked parts
+// travels with the answer so a consumer cannot read the geometry verdict without it.
+test fn w_a_partial_board_reports_the_subset_arm_carrying_what_it_did_not_check() -> Bool {
+  match plan_or_empty() {
+    Absent => false
+    Present { value: p } =>
+      match board_body_layout_standing(d: altra_1p_minimum, plan: p) {
+        BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: n, geometry: _ } =>
+          n == 13 && n == parts_not_geometrically_checked(d: altra_1p_minimum, plan: p)
+        BodyLayoutAdmittedOverEveryRequiredPart { article: _ } => false
+        BodyLayoutRefused { causes: _ } => false
+      }
+  }
+}
+
+// A COMPONENT WHOSE ENVELOPE IS OWED IS A PART THE GEOMETRY NEVER SAW, and a role nothing fills is
+// another. A defect in a part that IS present is neither, and counting it as one would overstate
+// the gap -- so the two classes are asserted apart rather than through one total.
+test fn w_a_present_but_unjustified_part_is_not_counted_as_unchecked() -> Bool {
+  match plan_or_empty() {
+    Absent => false
+    Present { value: p } =>
+      parts_not_geometrically_checked(
+        d: altra_1p_minimum,
+        plan: plan_with_only(cs: concat(p.components, [PlannedComponent {
+          identity: "spurious_extra",
+          role: MemoryModuleSlot { slot: DdrSlotIdentity { channel: DdrChannel2, position: SecondDimmOnChannel } },
+          envelope: board_control_envelope,
+          origin: point2(frame: altra_board_frame(), x: 10000, y: 10000),
+        }]), template: p)
+      ) == 13
+  }
+}
+
+// THE POSITIVE CONTROL, WITHOUT WHICH THE SUBSET ARM PROVES NOTHING. If the complete arm were
+// unreachable, a witness asserting that today's board is partial would be satisfied by a function
+// that always answers partial. Every required role is given an established envelope on a grid that
+// fits inside the outline and does not overlap, and the complete arm is reached.
+fn every_role_established(template: BoardPlacementPlan) -> BoardPlacementPlan {
+  let built = fold(required_roles(d: altra_1p_minimum), init: IndexedComponents { index: 0, out: [] }, f: fn(acc, r) {
+    let col = acc.index - ((acc.index / 5) * 5)
+    let row = acc.index / 5
+    IndexedComponents {
+      index: acc.index + 1,
+      out: concat(acc.out, [PlannedComponent {
+        identity: "grid_part_{acc.index}",
+        role: r,
+        envelope: board_control_envelope,
+        origin: point2(frame: altra_board_frame(), x: 10000 + (col * 30000), y: 10000 + (row * 30000)),
+      }]),
+    }
+  })
+  plan_with_only(cs: built.out, template: template)
+}
+
+type IndexedComponents {
+  index: Int
+  out: List<PlannedComponent>
+}
+
+test fn w_a_complete_board_reaches_the_admitted_arm() -> Bool {
+  match plan_or_empty() {
+    Absent => false
+    Present { value: p } =>
+      match board_body_layout_standing(d: altra_1p_minimum, plan: every_role_established(template: p)) {
+        BodyLayoutAdmittedOverEveryRequiredPart { article: _ } => true
+        BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: _, geometry: _ } => false
+        BodyLayoutRefused { causes: _ } => false
+      }
+  }
+}
+
+// AND THE DISCRIMINATING RED: the same complete board with two parts stacked on one another is
+// refused rather than admitted. Without this the arm above is satisfied by a check that looks at
+// nothing, which is the shape a geometry verdict most easily degenerates into.
+test fn w_a_complete_board_with_overlapping_bodies_is_refused() -> Bool {
+  match plan_or_empty() {
+    Absent => false
+    Present { value: p } =>
+      let complete = every_role_established(template: p)
+      match board_body_layout_standing(d: altra_1p_minimum, plan: plan_with_only(
+        cs: fold(complete.components, init: [], f: fn(acc, c) {
+          concat(acc, [PlannedComponent {
+            identity: c.identity,
+            role: c.role,
+            envelope: c.envelope,
+            origin: point2(frame: altra_board_frame(), x: 10000, y: 10000),
+          }])
+        }),
+        template: p
+      )) {
+        BodyLayoutRefused { causes: _ } => true
+        BodyLayoutAdmittedOverEveryRequiredPart { article: _ } => false
+        BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: _, geometry: _ } => false
+      }
   }
 }
