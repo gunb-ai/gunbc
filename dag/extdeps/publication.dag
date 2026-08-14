@@ -1,8 +1,10 @@
 module extdeps.publication
 
 import std.integer { Int }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, String }
 import extdeps.external_authority { ExternalAuthority }
+
+data publication_status_axis_note: String = "PUBLICATION STATUS IS NOT READ PROVENANCE. SpecificationCitationReadProvenance records how this repository obtained text from a cited locator; DocumentPublicationStatus records whether the document is publicly reachable and what licence or marking it carries. The rule mapping a status to whether gunbc may carry facts lives in gunbc.upstream_document_carriage, not here."
 
 type SpecificationDocumentDate {
   year: Int
@@ -21,3 +23,30 @@ type SpecificationCitationReadProvenance
     }
   | PeerSessionPdfTextIngested { peer_session: NonEmptyStr, detail: NonEmptyStr }
   | OperatorSuppliedDocumentText {}
+
+type DocumentPublicationStatus
+  = PubliclyPublishedUnderOpenLicense {
+      license: NonEmptyStr
+    }
+  | PubliclyPublishedWithRestrictiveMarking {
+      marking: NonEmptyStr
+    }
+  | AccessGatedNotPubliclyPublished {
+      gate: NonEmptyStr
+    }
+
+fn publication_status_is_publicly_published(status: DocumentPublicationStatus) -> Bool {
+  match status {
+    PubliclyPublishedUnderOpenLicense { license: _ } => true
+    PubliclyPublishedWithRestrictiveMarking { marking: _ } => true
+    AccessGatedNotPubliclyPublished { gate: _ } => false
+  }
+}
+
+fn publication_status_restrictive_marking(status: DocumentPublicationStatus) -> NonEmptyStr? {
+  match status {
+    PubliclyPublishedUnderOpenLicense { license: _ } => Absent
+    PubliclyPublishedWithRestrictiveMarking { marking } => Present { value: marking }
+    AccessGatedNotPubliclyPublished { gate: _ } => Absent
+  }
+}
