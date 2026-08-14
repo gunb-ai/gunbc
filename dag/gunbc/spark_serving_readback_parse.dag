@@ -1,7 +1,7 @@
 module gunbc.spark_serving_readback_parse
 
 import std.types { String, Int, NonEmptyStr }
-import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray, JsonObject }
+import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
 import extdeps.languages.json.parse {
   JsonMemberLookup,
   JsonMemberFound,
@@ -137,6 +137,28 @@ type SparkServingTagsModelFold
   | SparkServingTagsModelFoldMany { count: Int }
   | SparkServingTagsModelFoldRefused { cause: NonEmptyStr }
 
+fn spark_serving_tags_model_fold_not_object_refused() -> SparkServingTagsModelFold {
+  SparkServingTagsModelFoldRefused {
+    cause: "ollama /api/tags models entry matching desired ref is not a JSON object" as NonEmptyStr,
+  }
+}
+
+fn spark_serving_tags_model_fold_from_matched_object(element: JsonValue) -> SparkServingTagsModelFold {
+  match spark_serving_model_object_digest(obj: element) {
+    SparkServingReadbackPresent { value: digest } =>
+      SparkServingTagsModelFoldOne {
+        repository: spark_serving_desired_model_ref.name as String,
+        digest: digest,
+      }
+    SparkServingReadbackRefused { cause: c } =>
+      SparkServingTagsModelFoldRefused { cause: c }
+    SparkServingReadbackAbsent =>
+      SparkServingTagsModelFoldRefused {
+        cause: "matched ollama /api/tags model entry has no digest member" as NonEmptyStr,
+      }
+  }
+}
+
 fn spark_serving_tags_model_fold_step(
   state: SparkServingTagsModelFold,
   element: JsonValue,
@@ -160,23 +182,12 @@ fn spark_serving_tags_model_fold_step(
       if spark_serving_model_object_matches_ref(obj: element, want_wire: want_wire) {
         match element {
           JsonObject { members: _ } =>
-            match spark_serving_model_object_digest(obj: element) {
-              SparkServingReadbackPresent { value: digest } =>
-                SparkServingTagsModelFoldOne {
-                  repository: spark_serving_desired_model_ref.name as String,
-                  digest: digest,
-                }
-              SparkServingReadbackRefused { cause: c } =>
-                SparkServingTagsModelFoldRefused { cause: c }
-              SparkServingReadbackAbsent =>
-                SparkServingTagsModelFoldRefused {
-                  cause: "matched ollama /api/tags model entry has no digest member" as NonEmptyStr,
-                }
-            }
-          _ =>
-            SparkServingTagsModelFoldRefused {
-              cause: "ollama /api/tags models entry matching desired ref is not a JSON object" as NonEmptyStr,
-            }
+            spark_serving_tags_model_fold_from_matched_object(element: element)
+          JsonNull => spark_serving_tags_model_fold_not_object_refused()
+          JsonBool { value: _ } => spark_serving_tags_model_fold_not_object_refused()
+          JsonNumber { lexeme: _ } => spark_serving_tags_model_fold_not_object_refused()
+          JsonString { value: _ } => spark_serving_tags_model_fold_not_object_refused()
+          JsonArray { elements: _ } => spark_serving_tags_model_fold_not_object_refused()
         }
       } else {
         SparkServingTagsModelFoldEmpty

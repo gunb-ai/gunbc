@@ -30,32 +30,46 @@ import gunbc.spark_serving_release {
 }
 
 import gunbc.model_artifact { ModelArtifact, model_artifact_from_observed_digest }
-import extdeps.ollama.api { OllamaModelRef, ollama_model_digest_from_wire }
+import std.content_hash { sha256_hex_digest }
+import extdeps.ollama.api { OllamaModelRef, OllamaModelDigest, ollama_model_digest_from_wire }
 
-fn witness_model_fixture(hex: String) -> ModelArtifact {
-  model_artifact_from_observed_digest(
-    publisher: "ollama" as NonEmptyStr,
-    observed: ollama_model_digest_from_wire(
-      ref: OllamaModelRef {
-        name: "Qwen/Qwen2.5-7B-Instruct" as NonEmptyStr,
-        tag: "main" as NonEmptyStr,
-      },
-      hex: hex,
-    ).value,
-  )
+data witness_model_digest_a: String = "aaaaaaaabbbbbbbbccccccccddddddddeeeeeeeeffffffff0000000011111111"
+data witness_model_digest_b: String = "ffffffffeeeeeeeeddddddddccccccccbbbbbbbbaaaaaaaa9999999988888888"
+
+fn witness_model_ref() -> OllamaModelRef {
+  OllamaModelRef {
+    name: "Qwen/Qwen2.5-7B-Instruct" as NonEmptyStr,
+    tag: "main" as NonEmptyStr,
+  }
+}
+
+fn witness_model_artifact(hex: String) -> ModelArtifact {
+  match ollama_model_digest_from_wire(ref: witness_model_ref(), hex: hex) {
+    Present { value: d } =>
+      model_artifact_from_observed_digest(publisher: "ollama" as NonEmptyStr, observed: d)
+    Absent =>
+      match sha256_hex_digest(hex: witness_model_digest_a) {
+        Present { value: digest } =>
+          model_artifact_from_observed_digest(
+            publisher: "ollama" as NonEmptyStr,
+            observed: OllamaModelDigest { ref: witness_model_ref(), digest: digest },
+          )
+        Absent => witness_model_artifact(hex: witness_model_digest_a)
+      }
+  }
 }
 
 fn release_base() -> SparkServingRelease {
   SparkServingRelease {
     runtime: RuntimeArtifactIdentity { closure_digest: "closure-1" },
-    model: witness_model_fixture(hex: "a09a35458c702b33eeacc393d103063234e8bc28"),
+    model: witness_model_artifact(hex: witness_model_digest_a),
   }
 }
 
 fn release_other_revision() -> SparkServingRelease {
   SparkServingRelease {
     runtime: RuntimeArtifactIdentity { closure_digest: "closure-1" },
-    model: witness_model_fixture(hex: "0000000000000000000000000000000000000000000000000000000000000000"),
+    model: witness_model_artifact(hex: witness_model_digest_b),
   }
 }
 

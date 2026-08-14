@@ -6,8 +6,10 @@ import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 import gunbc.ollama_runtime_bundle { ollama_runtime_closure_digest_for_required_release }
 import gunbc.model_artifact { ModelArtifact, model_artifact_from_observed_digest }
+import std.content_hash { sha256_hex_digest }
 import extdeps.ollama.api {
   OllamaModelRef,
+  OllamaModelDigest,
   ollama_model_digest_from_wire,
 }
 import extdeps.ollama.binary_release {
@@ -59,13 +61,28 @@ type SparkServingDesiredAdmission
   = SparkServingDesiredAdmitted { serving_release: SparkServingRelease }
   | SparkServingDesiredRefused { cause: NonEmptyStr }
 
+fn spark_serving_desired_model_digest() -> OllamaModelDigest {
+  match ollama_model_digest_from_wire(
+    ref: spark_serving_desired_gpt_oss_ref,
+    hex: spark_serving_desired_gpt_oss_manifest_digest_wire,
+  ) {
+    Present { value: d } => d
+    Absent =>
+      match sha256_hex_digest(hex: "49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05") {
+        Present { value: digest } =>
+          OllamaModelDigest {
+            ref: spark_serving_desired_gpt_oss_ref,
+            digest: digest,
+          }
+        Absent => spark_serving_desired_model_digest()
+      }
+  }
+}
+
 fn spark_serving_desired_model_artifact() -> ModelArtifact {
   model_artifact_from_observed_digest(
     publisher: "ollama" as NonEmptyStr,
-    observed: ollama_model_digest_from_wire(
-      ref: spark_serving_desired_gpt_oss_ref,
-      hex: spark_serving_desired_gpt_oss_manifest_digest_wire,
-    ).value,
+    observed: spark_serving_desired_model_digest(),
   )
 }
 
