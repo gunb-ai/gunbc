@@ -39,6 +39,7 @@ import v2.std.runtime {
   InterpretationAlgebra,
   InterpretationStructureWitness,
   LoopInterpreter,
+  MatchInterpreter,
   Raise,
   TransformInterpreter,
   ValueInterpreter,
@@ -72,6 +73,7 @@ import v2.std.runtime {
   effect_handler_for_kind,
   environment_binding_key_for_symbol,
   interpretation_behavior_dispatch,
+  runtime_reject_match_arm,
   runtime_value_node_projection,
   runtime_value_resolved_type
 }
