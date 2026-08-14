@@ -667,8 +667,15 @@ fn run_against_one_prepared_subject(
     // and absent from this subject, which is a boundary fact — NOT a file that failed
     // to resolve, and the distinction is the whole difference between a declared
     // subject and an absorbing exclusion. It dissolves by adding src/v1 to the roots.
+    // NOT PRESENT HERE, and worth naming because it was: "test/fixture/layering_scan/".
+    // That row was inherited from the probe roster and carried forward with a
+    // confident justification about deliberately-malformed scanner inputs. The
+    // population does not exist — 454e7acbd deleted those fixtures with Law B, and
+    // the only surviving mentions of the name in the tree were this row and the test
+    // spec beside it. An exclusion guarding an empty population is not harmless: it
+    // reads as evidence that something needed excluding, and nothing would ever
+    // contradict it.
     let excludes: Vec<String> = vec![
-        "test/fixture/layering_scan/".to_string(),
         "test/fixture/meta_exec_confinement_scan/".to_string(),
         "test/manual/ownership_movable_test.dag".to_string(),
     ];

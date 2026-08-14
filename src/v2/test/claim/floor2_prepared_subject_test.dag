@@ -21,9 +21,16 @@ import v2.workflow.floor2_prepared_subject {
   WitnessSite
 }
 
+// The exclusions here name populations that EXIST. An earlier revision listed
+// src/v2/test/fixture/layering_scan, which 454e7acbd deleted along with Law B, so
+// the spec described a subject by excluding nothing — and no witness could have
+// contradicted it, because absence is what an exclusion already predicts.
 data f2_subject: PreparedSubjectSpec = PreparedSubjectSpec {
   source_roots: ["dag", "src/v2"],
-  exclusions: ["src/v2/test/fixture/layering_scan"]
+  exclusions: [
+    "src/v2/test/fixture/meta_exec_confinement_scan",
+    "src/v2/test/manual/ownership_movable_test.dag"
+  ]
 }
 
 // THE DISCRIMINATING PAIR, and it is the real one rather than a synthetic name
