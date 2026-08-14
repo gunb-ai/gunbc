@@ -79,3 +79,26 @@ These three are the **same defect class as §1–§4**, just observed at the opp
 ## 7. Scope boundary
 
 This note does not implement the lens, does not touch the emitter's `PhantomData` rendering path or the checkpoint-scalar-phantom emit wall (§5, Root-4), and does not run the corpus census. It is the design-note-first deliverable the operator asked for as the sequencing gate before implementation starts. Next step on operator go-ahead: implement the lens (§4.1), run it against the full corpus, report the *real* count (replacing the disclaimed §2 number), and name the promotion trigger's actual measured proof.
+
+## 8. Third specimen, and the typecheck-blindness receipt it produced (2026-08-14, warm-fox-179 · BL-1)
+
+### 8.1 `NormalizedTree = Node` is a third specimen of §1's shape
+
+`src/v2/compiler/normalized_tree.dag` declared `type NormalizedTree = Node` — the bodyless alias idiom §6's negative control 2 blesses. It is blessed there because an alias to a real carrier constructs real values, and that reasoning is correct as far as it goes. What this specimen adds is the *cost* of the idiom where the alias names an **admitted product**: `normalize` computes a fact (this root's body lowering left no wrapper behind), and the alias gives that fact nowhere to live, so it travelled as diagnostics beside a bare `Node` and was dropped at the first `FreeMonoid<Node>` carrier on the way to `resolve`. The alias was not merely cosmetic — it was load-bearing in the wrong direction, because `NormalizedTree` and `Node` were the *same type to the checker*, so every position that should have demanded an admitted tree accepted a raw one.
+
+BL-1 replaces it with `type NormalizedTree sole_constructor { root: Node }` plus `admit_normalized_tree`, the single door that refuses a root carrying wrapper-retention evidence. Rung, stated honestly: **accepted refinement with executing refusal**, not structural impossibility — the invalid state remains describable; what changed is that no `Accepted` program reaches the carrier while holding retention evidence.
+
+### 8.2 The receipt: the v2 typechecker did not see either half of the conversion
+
+This is the finding, and it is worth more than the specimen. When `NormalizedTree` was first converted from alias to record, the whole v2 pipeline reported **0 blocking errors** while:
+
+- a `NormalizedTree` record sat in positions typed `Node`, and
+- a raw `Node` sat in the `NormalizedTree` field.
+
+Both directions were wrong; neither was reported. The defect surfaced only under **execution**, as `no field 'kind' on type 'NormalizedTree'` from a witness that actually ran the graft path. A green typecheck was not evidence for this change class, and the whole BL-1 attempt had to be reverted and re-done with execution checks after each signature move.
+
+The same blindness has a second, independently-found specimen on the `ContentHash` family lane (proud-badger-240, gunbc#8250): a family member used in union position, likewise unreported at typecheck and failing at runtime as a non-exhaustive match. Two lanes, two unrelated carriers, one shared root — **the v2 typechecker's nominal-type discrimination is not enforced at these seams**, so carrier-refinement work of exactly the kind this note designs is currently unguarded by the checker that would be its natural home.
+
+Consequence for this note's sequencing: §7's plan (lens first, promote to a typechecker refusal once proven zero-false-positive) assumes the typechecker *would* enforce the refusal once told to. That assumption is now **unverified** at these seams and is the named next-rung trigger for the promotion step. Until it is established by execution, a carrier-sealing change must carry executing witnesses on the real path, not a compile.
+
+Executing evidence for the specimen half: `src/v2/test/claim/normalized_tree_admission_test.dag` (retention refused at the door; retention found past the diagnostic head, proven discriminating by reverting the recognizer to a head-only read and observing the control flip to `false`; clean root admitted; unrelated diagnostic does not refuse; the production retention producer's own output refused) and `dag/test/claim/namespace_graft_body_dissolution_witness_test.dag` `witness_lowered_body_module_still_grafts` green through the sealed carrier.

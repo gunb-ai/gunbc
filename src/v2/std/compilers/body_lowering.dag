@@ -1,10 +1,15 @@
 module v2.std.compilers.body_lowering
 
 import std.algebra { FreeMonoid }
-import v2.std.algebra { list_append, list_snoc_item }
+import v2.std.algebra { fold_list, list_append, list_snoc_item }
 import v2.std.collection { Absent, List, Present, list_at_optional }
+import v2.std.logic { Bool }
 import v2.std.diagnostic {
   Diagnostic,
+  Diagnostics,
+  None,
+  NonEmptyDiagnostics,
+  Some,
   ExternalContractUnknown,
   Outcome,
   Unavailable,
@@ -120,5 +125,26 @@ fn lower_block_body_atoms(atoms: List<Node>, witness: Node) -> Outcome<Node> {
       outcome_rejected(
         d: body_lowering_diagnostic(reason: ^body_lowering_reason_unsupported_form, n: witness)
       )
+  }
+}
+
+data body_lowering_retention_recognition_note: String = "Wrapper retention has exactly ONE producer -- body_lower_wrapper_retained_shell, which emits body_lowering_reason_wrapper_retained_emitted -- so recognising it is a fact about THIS module and belongs beside the producer. A consumer that re-spelled the symbol would be a second name for one concept, and would drift the moment the reason is renamed."
+
+fn body_lowering_diagnostic_is_wrapper_retained(d: Diagnostic) -> Bool {
+  d.reason == ^body_lowering_reason_wrapper_retained_emitted
+}
+
+fn body_lowering_non_empty_carries_wrapper_retention(d: NonEmptyDiagnostics) -> Bool {
+  fold_list(
+    xs: d.tail,
+    empty: body_lowering_diagnostic_is_wrapper_retained(d: d.head),
+    cons: fn(acc, item) { acc || body_lowering_diagnostic_is_wrapper_retained(d: item) }
+  )
+}
+
+fn body_lowering_carries_wrapper_retention(d: Diagnostics) -> Bool {
+  match d {
+    None => false
+    Some { diagnostics: ne } => body_lowering_non_empty_carries_wrapper_retention(d: ne)
   }
 }
