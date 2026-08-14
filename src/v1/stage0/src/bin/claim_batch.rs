@@ -543,6 +543,8 @@ fn run_against_one_prepared_subject(
     source_roots: &[String],
     entry_groups: &[EntryGroup],
     execution_mode: ExecutionMode,
+    fixture_store: Option<Rc<RecordedFixtureStore>>,
+    whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
     eval_budget_ms: Option<u64>,
 ) -> Result<ExitCode, ExitCode> {
     // WITNESS IDENTITY UNDER A SHARED SUBJECT IS `module.function`, NEVER the bare
@@ -685,7 +687,14 @@ fn run_against_one_prepared_subject(
         subject_digest,
         modules_resolved,
         modules_excluded,
-    } = prepare_whole_tree_subject(source_roots, &excludes, execution_mode).map_err(|e| {
+    } = prepare_whole_tree_subject(
+        source_roots,
+        &excludes,
+        execution_mode,
+        fixture_store,
+        whole_tree_published_keys,
+    )
+    .map_err(|e| {
         eprintln!("claim_batch: one-prepared-subject preparation failed:\n{e}");
         ExitCode::from(2)
     })?;
@@ -880,10 +889,16 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut timings = ResolveTimings::default();
 
     if parsed.one_prepared_subject {
+        // THE ENVELOPE TRAVELS WITH THE SUBJECT. The entry-major path has always
+        // supplied the recorded-fixture store and the published mock keys; this path
+        // used to pass neither, so every claim reading a fixture or a mock resolved
+        // against an empty world while the digest claimed the same subject.
         return run_against_one_prepared_subject(
             &source_roots,
             &entry_groups,
             execution_mode,
+            fixture_store,
+            whole_tree_published_keys,
             eval_budget_ms,
         );
     }

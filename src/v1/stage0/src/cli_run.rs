@@ -16033,10 +16033,22 @@ pub struct PreparedWholeTreeSubject {
     pub modules_excluded: usize,
 }
 
+/// THE ENVELOPE IS THE SUBJECT, NOT THE SOURCES.
+///
+/// This used to pass `None, None` for the fixture store and the published mock keys
+/// while the entry-major path supplied both, so every claim that reads a recorded
+/// fixture or a published mock resolved against an empty world. That is not a
+/// slow-path or a missing optimisation: it is a different subject wearing the same
+/// digest, and a parity comparison against the entry-major path would have compared
+/// two different runs and reported disagreement it could not explain. Measured
+/// consequence when the harness supplied neither: 9,057 of 9,317 witnesses could not
+/// find their own code.
 pub fn prepare_whole_tree_subject(
     source_roots: &[String],
     exclude_substrings: &[String],
     execution_mode: v1_interpreter::ExecutionMode,
+    fixture_store: Option<std::rc::Rc<crate::recorded_fixture::RecordedFixtureStore>>,
+    whole_tree_published_keys: Option<std::rc::Rc<std::collections::HashSet<String>>>,
 ) -> Result<PreparedWholeTreeSubject, String> {
     let picked = whole_tree_strict_sources(source_roots, exclude_substrings)?;
     let modules_resolved = picked.modules_resolved;
@@ -16049,8 +16061,8 @@ pub fn prepare_whole_tree_subject(
             graph.as_ref(),
             source_indices,
             execution_mode,
-            None,
-            None,
+            fixture_store,
+            whole_tree_published_keys,
         ),
         subject_digest,
         modules_resolved,
