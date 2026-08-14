@@ -131,3 +131,10 @@ test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
   let entry = workflow_trigger_entry(trigger: fleet_converge_workflow.on[0])
   entry.key == "workflow_dispatch" && mode_input_has_choice_options(v: entry.value)
 }
+
+test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
+  fleet_converge_workflow.jobs.length() == 2
+    && fleet_converge_workflow.jobs[0].id == "build"
+    && fleet_converge_workflow.jobs[1].id == "fleet-converge"
+    && fleet_converge_workflow.jobs[1].needs == ["build"]
+}

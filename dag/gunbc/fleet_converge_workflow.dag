@@ -5,10 +5,15 @@ import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, WorkflowDispatch, DispatchInput, InputString, InputChoice,
   WorkflowPermissions, PermRead, PermWrite,
-  upload_artifact_action, download_artifact_action
+  upload_artifact_action, download_artifact_action,
+  RunnerSpec, RunsOnExpression,
 }
 import gunbc.ci_workflow {
+  ci_prelude_steps,
   ci_artifact_consumer_prelude_steps,
+  ci_release_build_step,
+  ci_release_bins_pack_step,
+  ci_release_bins_upload_step,
   ci_release_bins_download_step,
   ci_release_bins_unpack_verify_step,
   ci_fleet_wif_auth_step,
@@ -17,8 +22,10 @@ import gunbc.ci_workflow {
   gunbc_ci_aux_step_timeout_minutes,
   gunbc_ci_artifact_transfer_step_timeout_minutes,
   gunbc_ci_fleet_job_backstop_timeout_minutes,
+  gunbc_ci_release_build_step_timeout_minutes,
+  gunbc_ci_prelude_allowance_minutes,
 }
-import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
+import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.ci_spec {
   gunbc_ci_fleet_converge_plan_invoke,
   gunbc_ci_fleet_converge_apply_invoke,
@@ -27,9 +34,41 @@ import gunbc.ci_spec {
 import gunbc.fleet_converge_plan { fleet_converge_plan_artifact_dir }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List, String, Int }
 
-data fleet_converge_workflow_note: String = "Emitted on-demand fleet converge workflow (operator directive 2026-08-13, sleek-heron-218). workflow_dispatch with mode=plan|apply: plan observes the host, prints membership_reconcile hunks (including MemberRemovalRefused), uploads a content-addressed artifact; apply downloads a prior plan artifact, verifies the plan hash interlock, CAS-checks observed baseline, then runs the generated apply.sh WITHOUT recomputing reconcile. Replaces the retired 15-minute ctrl-fleet-converge.timer cadence."
+data fleet_converge_workflow_note: String = "Emitted on-demand fleet converge workflow (operator directive 2026-08-13, sleek-heron-218). workflow_dispatch with host=srv1|srv2|srv3|srv4 and mode=plan|apply: plan observes the RUNNER host, prints membership_reconcile hunks (including MemberRemovalRefused), uploads a content-addressed artifact; apply downloads a prior plan artifact from a named workflow run, verifies the plan hash interlock, CAS-checks observed baseline, then runs the generated apply.sh WITHOUT recomputing reconcile. Replaces the retired 15-minute ctrl-fleet-converge.timer cadence on every enrolled CI host (timer install route is TimerRetired fleet-wide). Standalone dispatch carries its own build job (release-bins pack/upload) so the converge job never downloads an artifact the current run did not produce."
+
+data fleet_converge_enrolled_host_options: List<String> = ["srv1", "srv2", "srv3", "srv4"]
+
+data fleet_converge_host_runner_expression: String = "${{ fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host)) }}"
+
+fn gunbc_fleet_converge_build_job_backstop_timeout_minutes() -> Int {
+  gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+}
+
+fn fleet_converge_build_job() -> Job {
+  Job {
+    id: "build",
+    name: none,
+    runner: gunbc_ci_runner_spec(),
+    steps: concat(
+      ci_prelude_steps(),
+      [ci_release_build_step(), ci_release_bins_pack_step(), ci_release_bins_upload_step()],
+    ),
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: Present { value: gunbc_fleet_converge_build_job_backstop_timeout_minutes() },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none,
+  }
+}
+
+fn fleet_converge_host_pinned_runner_spec() -> RunnerSpec {
+  RunsOnExpression { expression: fleet_converge_host_runner_expression }
+}
 
 data fleet_converge_plan_step_if: String = "github.event.inputs.mode == 'plan'"
 data fleet_converge_apply_step_if: String = "github.event.inputs.mode == 'apply'"
@@ -107,7 +146,7 @@ fn fleet_converge_job() -> Job {
   Job {
     id: "fleet-converge",
     name: none,
-    runner: gunbc_ci_deploy_srv1_runner_spec(),
+    runner: fleet_converge_host_pinned_runner_spec(),
     steps: concat(
       concat(
         ci_artifact_consumer_prelude_steps(),
@@ -126,7 +165,7 @@ fn fleet_converge_job() -> Job {
         ci_fleet_key_agent_cleanup_step(),
       ]
     ),
-    needs: [],
+    needs: ["build"],
     env: none,
     outputs: none,
     if_condition: none,
@@ -150,6 +189,13 @@ data fleet_converge_workflow: Workflow = Workflow {
   on: [
     WorkflowDispatch {
       inputs: [
+        DispatchInput {
+          name: "host",
+          description: Present { value: "Fleet host to plan/apply on (runner must be pinned to this host)" },
+          required: true,
+          default: none,
+          type: InputChoice { options: fleet_converge_enrolled_host_options },
+        },
         DispatchInput {
           name: "mode",
           description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact" },
@@ -177,7 +223,7 @@ data fleet_converge_workflow: Workflow = Workflow {
   concurrency: none,
   env: none,
   permissions: none,
-  jobs: [fleet_converge_job()],
+  jobs: [fleet_converge_build_job(), fleet_converge_job()],
 }
 
 fn expected_fleet_converge_yml() -> String {
