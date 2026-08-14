@@ -21,6 +21,7 @@ import product.pcb.world {
   PcbCapabilityStillPending,
   PcbPlacementNotAdmitted,
   PcbBoardOutlineRefused,
+  PcbOutlineCopiedFromCitedForeignBoard,
   PcbSourceDesign,
   PcbBoard,
   PcbPhysicalWorld,
@@ -63,6 +64,7 @@ import product.altra_motherboard.pcb_world {
   world_identity_for,
   source_design_for,
   admit_pcb_world,
+  outline_copies_mt_jade_reference,
 }
 import product.altra_motherboard.scene_emission { emit_altra_board_scene }
 import product.altra_motherboard.minimal_design {
@@ -72,6 +74,7 @@ import product.altra_motherboard.minimal_design {
   SixChannels,
   altra_1p_minimum,
 }
+import extdeps.ocp.mt_jade { ilm4926_designation }
 import extdeps.cpu.ampere_altra_package {
   altra_package_body_width,
   altra_package_body_height,
@@ -259,6 +262,7 @@ test fn w_admit_pcb_world_refuses_the_preview_while_capabilities_are_pending() -
             PcbDesignPlanUnavailable { requested: _ } => false
             PcbPlacementNotAdmitted => false
             PcbBoardOutlineRefused { cause: _ } => false
+            PcbOutlineCopiedFromCitedForeignBoard => false
           }
       }
   }
@@ -289,6 +293,7 @@ test fn w_altra_pcb_world_for_refuses_a_design_without_a_plan() -> Bool {
         PcbCapabilityStillPending { capability: _ } => false
         PcbPlacementNotAdmitted => false
         PcbBoardOutlineRefused { cause: _ } => false
+        PcbOutlineCopiedFromCitedForeignBoard => false
       }
   }
 }
@@ -310,6 +315,14 @@ test fn w_the_emitted_scene_is_non_empty_and_opens_the_cited_root() -> Bool {
   }
 }
 
+test fn w_the_authored_outline_is_not_the_cited_mt_jade_board() -> Bool {
+  match world_or_empty() {
+    Absent => false
+    Present { value: w } =>
+      !outline_copies_mt_jade_reference(o: pcb_world_physical(w: w).board.outline)
+  }
+}
+
 test fn w_the_processor_package_renders_at_cited_body_dimensions() -> Bool {
   match scene_or_empty() {
     Absent => false
@@ -322,7 +335,7 @@ test fn w_the_socket_is_missing_document_not_an_unselected_part() -> Bool {
   match scene_or_empty() {
     Absent => false
     Present { value: s } =>
-      string_contains(s: s, pattern: "cpu_socket (missing document:")
+      string_contains(s: s, pattern: concat("cpu_socket (missing document:", ilm4926_designation as String))
         && !string_contains(s: s, pattern: "cpu_socket (unselected part:")
         && string_contains(s: s, pattern: "pcb-component-missing-document")
   }

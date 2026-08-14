@@ -1,7 +1,15 @@
 module product.altra_motherboard.pcb_world
 
 import std.types { String, Bool, NonEmptyStr, List }
-import std.orthogonal_geometry { OrthogonalReady, OrthogonalRefused }
+import std.integer { Int }
+import std.measure { micrometer_count }
+import std.affine_space { signed_frame_component_count }
+import std.orthogonal_geometry {
+  AxisAlignedRectangle2,
+  OrthogonalReady,
+  OrthogonalRefused,
+  rectangle2_max,
+}
 import product.pcb.world {
   PcbWorld,
   PcbWorldIdentity,
@@ -13,6 +21,7 @@ import product.pcb.world {
   PcbDesignPlanUnavailable,
   PcbCapabilityStillPending,
   PcbPlacementNotAdmitted,
+  PcbOutlineCopiedFromCitedForeignBoard,
   PcbSourceDesign,
   PcbBoard,
   PcbPhysicalWorld,
@@ -30,11 +39,25 @@ import product.pcb.world {
   first_pending_capability,
 }
 import product.altra_motherboard.placement {
+  BoardComponentRole,
+  BoardControlCpld,
   BoardPlacementPlan,
+  BootFirmwareEeprom,
+  ClockGenerator,
+  DebugConnector,
   EnvelopeEstablished,
   EnvelopeNotEstablished,
+  FirmwareFlash,
+  MemoryModuleSlot,
+  NetworkEndpoint,
   PlacementAdmitted,
   PlacementRefused,
+  PowerController,
+  ProcessorPackage,
+  ProcessorSocket,
+  ResetController,
+  StorageEndpoint,
+  PlannedComponent,
   placeable_components,
   altra_reference_plan,
   admit_placement,
@@ -47,6 +70,11 @@ import product.altra_motherboard.attachment_stack {
   NeedsARedistributionDecision,
   attachment_layer_name,
   open_blockers,
+}
+import extdeps.ocp.mt_jade {
+  ilm4926_designation,
+  mt_jade_board_width,
+  mt_jade_board_depth,
 }
 import product.altra_motherboard.minimal_design {
   AltraMinimalMotherboard,
@@ -63,7 +91,7 @@ import product.altra_motherboard.minimal_design {
   altra_1p_minimum,
 }
 
-data pcb_world_note: String = "THE ALTRA BOARD AS A PROJECTION OF 8233'S PLACEMENT PLAN INTO THE SHARED PCB WORLD. This module owns the scene join, not the design: envelopes, blockers and admission stay in product.altra_motherboard.placement and attachment_stack. Obligation causes are the plan's FactAuthorityBlocker, not a role string. Capabilities that 8233 has not modeled are pending with a nonempty obligation, never an empty list. The outline constructing is PartialPcbWorldReady — a preview, not an admitted board. A six-channel design does not share the four-channel identity, and has no plan on this increment, so it refuses rather than borrowing the reference plan."
+data pcb_world_note: String = "THE ALTRA BOARD AS A PROJECTION OF 8233'S PLACEMENT PLAN INTO THE SHARED PCB WORLD. This module owns the scene join, not the design: envelopes, blockers and admission stay in product.altra_motherboard.placement and attachment_stack. Obligation causes are derived from the blocker variant together with the planned role — UnselectedPart is a role with no vendor, MissingDocument is a role that names a document still owed — never recovered by grepping blocker prose. The socket-type designation is extdeps.ocp.mt_jade ilm4926_designation; Mt. Jade's board extents are the same module's foreign reference and are not this board's outline. Capabilities that 8233 has not modeled are pending with a nonempty obligation, never an empty list. The outline constructing is PartialPcbWorldReady — a preview, not an admitted board. A six-channel design does not share the four-channel identity, and has no plan on this increment, so it refuses rather than borrowing the reference plan."
 
 fn intent_tag(i: DesignIntent) -> String {
   match i {
@@ -123,14 +151,41 @@ fn designs_eq(a: AltraMinimalMotherboard, b: AltraMinimalMotherboard) -> Bool {
     && a.pcie_lanes_broken_out == b.pcie_lanes_broken_out
 }
 
-fn cause_from_blocker(g: FactAuthorityBlocker) -> PcbObligationCause {
+fn mt_jade_reference_board_width_um() -> Int {
+  micrometer_count(m: mt_jade_board_width)
+}
+
+fn mt_jade_reference_board_depth_um() -> Int {
+  micrometer_count(m: mt_jade_board_depth)
+}
+
+fn outline_copies_mt_jade_reference(o: AxisAlignedRectangle2) -> Bool {
+  let hi = rectangle2_max(r: o)
+  signed_frame_component_count(c: hi.x) == mt_jade_reference_board_width_um()
+    && signed_frame_component_count(c: hi.y) == mt_jade_reference_board_depth_um()
+}
+
+fn cause_from_unresolved_role(r: BoardComponentRole, w: NonEmptyStr) -> PcbObligationCause {
+  match r {
+    ProcessorSocket => MissingDocument { what_is_missing: ilm4926_designation }
+    ProcessorPackage => MissingDocument { what_is_missing: w }
+    BoardControlCpld => UnselectedPart { because: w }
+    MemoryModuleSlot { channel: _ } => UnselectedPart { because: w }
+    BootFirmwareEeprom => UnselectedPart { because: w }
+    FirmwareFlash => UnselectedPart { because: w }
+    ClockGenerator => UnselectedPart { because: w }
+    ResetController => UnselectedPart { because: w }
+    PowerController => UnselectedPart { because: w }
+    NetworkEndpoint => UnselectedPart { because: w }
+    StorageEndpoint => UnselectedPart { because: w }
+    DebugConnector => UnselectedPart { because: w }
+  }
+}
+
+fn cause_from_outstanding(c: PlannedComponent, g: FactAuthorityBlocker) -> PcbObligationCause {
   match g {
     NeedsSomeoneToFindTheDocument { what_is_missing: w } =>
-      if string_contains(s: w as String, pattern: "no vendor has been chosen") {
-        UnselectedPart { because: w }
-      } else {
-        MissingDocument { what_is_missing: w }
-      }
+      cause_from_unresolved_role(r: c.role, w: w)
     NeedsCommercialAccess { subject: s, access_route: _ } =>
       CommercialAccess { subject: s }
     NeedsARedistributionDecision { reason: r } =>
@@ -145,16 +200,27 @@ fn obligations_from_plan(plan: BoardPlacementPlan) -> List<PcbComponentObligatio
       EnvelopeNotEstablished { gap: g } => concat(acc, [PcbComponentObligation {
         identity: c.identity,
         origin: c.origin,
-        cause: cause_from_blocker(g: g),
+        cause: cause_from_outstanding(c: c, g: g),
       }])
     }
   })
 }
 
+fn cause_from_attachment_blocker(g: FactAuthorityBlocker) -> PcbObligationCause {
+  match g {
+    NeedsSomeoneToFindTheDocument { what_is_missing: w } =>
+      MissingDocument { what_is_missing: w }
+    NeedsCommercialAccess { subject: s, access_route: _ } =>
+      CommercialAccess { subject: s }
+    NeedsARedistributionDecision { reason: r } =>
+      LegalCarriage { reason: r }
+  }
+}
+
 fn attachment_obligation_from_blocker(b: LayerBlocker) -> PcbAttachmentObligation {
   PcbAttachmentObligation {
     layer: attachment_layer_name(l: b.layer),
-    cause: cause_from_blocker(g: b.blocker),
+    cause: cause_from_attachment_blocker(g: b.blocker),
   }
 }
 
@@ -197,7 +263,12 @@ fn altra_pcb_world_for(d: AltraMinimalMotherboard) -> PcbWorldConstruction<PcbWo
   } else {
     match altra_reference_plan() {
       OrthogonalRefused { cause: c } => PcbWorldRefused { cause: PcbBoardOutlineRefused { cause: c } }
-      OrthogonalReady { value: plan } => PartialPcbWorldReady { value: pcb_world_from_plan(d: d, plan: plan) }
+      OrthogonalReady { value: plan } =>
+        if outline_copies_mt_jade_reference(o: plan.outline) {
+          PcbWorldRefused { cause: PcbOutlineCopiedFromCitedForeignBoard }
+        } else {
+          PartialPcbWorldReady { value: pcb_world_from_plan(d: d, plan: plan) }
+        }
     }
   }
 }

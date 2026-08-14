@@ -82,6 +82,7 @@ type PcbWorldRefusal
   | PcbDesignPlanUnavailable { requested: PcbSourceDesign }
   | PcbCapabilityStillPending { capability: NonEmptyStr }
   | PcbPlacementNotAdmitted
+  | PcbOutlineCopiedFromCitedForeignBoard
 
 type PcbWorldConstruction<T>
   = PartialPcbWorldReady { value: T }
@@ -103,10 +104,17 @@ fn capability_pending(what_is_owed: NonEmptyStr) -> PcbCapabilityStanding {
   }
 }
 
-fn capability_is_pending(s: PcbCapabilityStanding) -> Bool {
+fn pending_capability(s: PcbCapabilityStanding, name: NonEmptyStr) -> NonEmptyStr? {
   match s {
-    CapabilityPending { owed: _ } => true
-    CapabilityRefused { cause: _ } => false
+    CapabilityPending { owed: _ } => Present { value: name }
+    CapabilityRefused { cause: _ } => none
+  }
+}
+
+fn first_present_name(a: NonEmptyStr?, b: NonEmptyStr?) -> NonEmptyStr? {
+  match a {
+    Present { value: v } => Present { value: v }
+    Absent => b
   }
 }
 
@@ -162,31 +170,22 @@ fn pcb_population_count(p: PcbPhysicalWorld) -> Int {
 }
 
 fn first_pending_capability(w: PcbWorld) -> NonEmptyStr? {
-  if capability_is_pending(s: w.physical.stackup) {
-    Present { value: "stackup" }
-  } else {
-    if capability_is_pending(s: w.physical.footprints) {
-      Present { value: "footprints" }
-    } else {
-      if capability_is_pending(s: w.physical.pads) {
-        Present { value: "pads" }
-      } else {
-        if capability_is_pending(s: w.physical.routes) {
-          Present { value: "routes" }
-        } else {
-          if capability_is_pending(s: w.electrical.nets) {
-            Present { value: "nets" }
-          } else {
-            if capability_is_pending(s: w.manufacturing.artifacts) {
-              Present { value: "artifacts" }
-            } else {
-              none
-            }
-          }
-        }
-      }
-    }
-  }
+  first_present_name(
+    a: pending_capability(s: w.physical.stackup, name: "stackup"),
+    b: first_present_name(
+      a: pending_capability(s: w.physical.footprints, name: "footprints"),
+      b: first_present_name(
+        a: pending_capability(s: w.physical.pads, name: "pads"),
+        b: first_present_name(
+          a: pending_capability(s: w.physical.routes, name: "routes"),
+          b: first_present_name(
+            a: pending_capability(s: w.electrical.nets, name: "nets"),
+            b: pending_capability(s: w.manufacturing.artifacts, name: "artifacts"),
+          ),
+        ),
+      ),
+    ),
+  )
 }
 
 fn pcb_world(
