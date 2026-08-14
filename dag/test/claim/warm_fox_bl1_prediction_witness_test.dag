@@ -4,7 +4,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data warm_fox_bl1_prediction_note: String = "vivid-bat-377 prediction probe (warm-fox BL-1 × still-tern wall): validate_module_roots on warm-fox expects FreeMonoid<NormalizedTree> while fixtures hand FreeMonoid<Node>. If the structured/container mismatch wall is complete at call boundaries, this pre-fix shape must compile-refuse — not reach nine runtime root.root projection failures downstream."
+data warm_fox_bl1_prediction_note: String = "Compile-refusal RED at a FreeMonoid<Node> actual passed to a FreeMonoid<NormalizedTree> parameter (function-call boundary, not a record literal). Main control (origin/main): the same inline virtual module also refuses — observed mechanism container_element_nominal_brand_mismatch in direct_call_arg_type_mismatch, pre-existing, not structured_application_site_type_mismatch — so this witness does not credit PR #8262's wall for warm-fox BL-1. warm-fox-179's imported-carrier specimen (v2.compiler.normalized_tree.NormalizedTree sealed carrier) is a separate shape; merged scratch still reaches runtime root.root projection failure. Dissolve-on: replace inline virtual source with warm-fox's wall_specimen once the wall refuses that shape at typecheck."
 
 fn w_warm_fox_bl1_call_boundary_red() -> Bool {
   compile_dag_rust_emit_check(
