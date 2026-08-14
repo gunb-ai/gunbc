@@ -41,12 +41,6 @@ type ServingConfigurationIdentity { configuration_digest: NonEmptyStr }
 // while the comment below said prerequisites stay outside precisely so a rotation cannot change
 // the release identity -- a self-contradiction ten lines apart, and the same defect class as prose
 // asserting a guarantee the mechanism does not implement. Rotating an endpoint credential now
-// changes the occurrence's desired state without pretending the model or runtime artifact changed.
-//
-// It is referenced BY EXACT VERSION. A moving `latest` alias defeats the
-// exact-version discipline this repo already models: a rotation between observation and
-// reapplication changes the actuator identity with no receipt saying so.
-type SecretVersionRef { secret: NonEmptyStr  version: NonEmptyStr }
 
 // Unified memory is SHARED between CPU and GPU on GB10, which is why the accelerator reports no
 // separate device total. Admission is against the shared pool; budgeting as though a private
@@ -95,10 +89,21 @@ fn spark_serving_release_identity(spec: SparkServingRelease) -> SparkServingRele
 // it is why the access and identity prerequisites below are NOT fields of the release: fusing a
 // credential or a host-key binding into it would change the release identity whenever a
 // credential rotated, so the two hosts could no longer share one.
+// THE ENDPOINT CREDENTIAL IS GONE, by operator ruling (2026-08-14). The field was REQUIRED on every
+// occurrence while the operator's endpoint intent is UnauthenticatedEndpoint -- so the model demanded
+// a credential for a surface with no authentication, and no code ever read it: the only values that
+// ever filled it were witness fixtures. A required field with no consumer is not a placeholder for
+// future authentication, it is a fact the model asserts and never checks, and it would have been
+// filled with a plausible-looking SecretVersionRef at the first real declaration.
+//
+// The operator's ruling was conditional and the condition was measured rather than assumed: keep it
+// if authentication is already wired, remove it if it needs more wiring. Nothing consumes it, so it
+// needs wiring, so it goes. Authenticating the endpoint later is a real change -- an intent arm, a
+// credential resolution path, and a consumer that presents it -- and it should land as that change
+// rather than being pre-declared by an unread field.
 type SparkServingOccurrence {
   host: HostIdentity
   release_identity: SparkServingReleaseIdentity
-  endpoint_credential: SecretVersionRef
 }
 
 // Prerequisites are ADMITTED DEPENDENCIES, not booleans and not release fields. Each names what
