@@ -69,9 +69,16 @@ import product.altra_motherboard.pcb_world {
 import product.altra_motherboard.scene_emission { emit_altra_board_scene }
 import product.altra_motherboard.minimal_design {
   AltraMinimalMotherboard,
+  ActiveDdrTopology,
+  DdrChannel0,
+  DdrChannel1,
+  DdrChannel2,
+  DdrChannel3,
+  DdrChannel4,
+  DdrChannel5,
+  FirstDimmOnChannel,
   MemoryConfiguration,
   Production,
-  SixChannels,
   altra_1p_minimum,
 }
 import extdeps.ocp.mt_jade { ilm4926_designation }
@@ -196,7 +203,12 @@ fn projected_missing_document(ids: List<NonEmptyStr>) -> String? {
 fn six_channel_design() -> AltraMinimalMotherboard {
   AltraMinimalMotherboard {
     intent: Production,
-    memory: MemoryConfiguration { channels: SixChannels, dimms_per_channel: 1 },
+    memory: MemoryConfiguration {
+      topology: ActiveDdrTopology {
+        populated_channels: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3, DdrChannel4, DdrChannel5],
+        positions_per_channel: [FirstDimmOnChannel],
+      },
+    },
     pcie_lanes_broken_out: 4,
   }
 }
@@ -271,15 +283,16 @@ test fn w_admit_pcb_world_refuses_the_preview_while_capabilities_are_pending() -
 test fn w_source_design_for_uses_its_argument() -> Bool {
   let four = source_design_for(d: altra_1p_minimum)
   let six = source_design_for(d: six_channel_design())
-  string_contains(s: four.subject as String, pattern: "4ch")
-    && string_contains(s: six.subject as String, pattern: "6ch")
+  string_contains(s: four.subject as String, pattern: "ddr3.p0")
+    && !string_contains(s: four.subject as String, pattern: "ddr5.p0")
+    && string_contains(s: six.subject as String, pattern: "ddr5.p0")
     && (four.subject as String) != (six.subject as String)
 }
 
 test fn w_a_six_channel_design_does_not_share_the_four_channel_world_identity() -> Bool {
   (world_identity_for(d: altra_1p_minimum) as String) != (world_identity_for(d: six_channel_design()) as String)
-    && string_contains(s: world_identity_for(d: altra_1p_minimum) as String, pattern: "4ch")
-    && string_contains(s: world_identity_for(d: six_channel_design()) as String, pattern: "6ch")
+    && string_contains(s: world_identity_for(d: altra_1p_minimum) as String, pattern: "ddr3.p0")
+    && string_contains(s: world_identity_for(d: six_channel_design()) as String, pattern: "ddr5.p0")
 }
 
 test fn w_altra_pcb_world_for_refuses_a_design_without_a_plan() -> Bool {
@@ -289,7 +302,7 @@ test fn w_altra_pcb_world_for_refuses_a_design_without_a_plan() -> Bool {
     PcbWorldRefused { cause: c } =>
       match c {
         PcbDesignPlanUnavailable { requested: s } =>
-          string_contains(s: s.subject as String, pattern: "6ch")
+          string_contains(s: s.subject as String, pattern: "ddr5.p0")
         PcbCapabilityStillPending { capability: _ } => false
         PcbPlacementNotAdmitted => false
         PcbBoardOutlineRefused { cause: _ } => false
@@ -347,7 +360,7 @@ test fn w_unselected_roles_render_as_unselected_part() -> Bool {
     Present { value: s } =>
       string_contains(s: s, pattern: "boot_eeprom (unselected part:")
         && string_contains(s: s, pattern: "nvme_conn (unselected part:")
-        && string_contains(s: s, pattern: "dimm_slot_0 (unselected part:")
+        && string_contains(s: s, pattern: "dimm_ddr0_slot0 (unselected part:")
         && string_contains(s: s, pattern: "debug_hdr (unselected part:")
         && !string_contains(s: s, pattern: "boot_eeprom (missing document:")
   }

@@ -1,6 +1,6 @@
 module product.altra_motherboard.pcb_world
 
-import std.types { String, Bool, NonEmptyStr, List }
+import std.types { String, Bool, NonEmptyStr, List, list_length }
 import std.integer { Int }
 import std.measure { micrometer_count }
 import std.affine_space { signed_frame_component_count }
@@ -78,20 +78,19 @@ import extdeps.ocp.mt_jade {
 }
 import product.altra_motherboard.minimal_design {
   AltraMinimalMotherboard,
-  ActiveDdrChannelCount,
+  ActiveDdrTopology,
+  DdrSlotIdentity,
   DesignIntent,
   EngineeringBringUp,
   Production,
-  OneChannel,
-  TwoChannels,
-  FourChannels,
-  SixChannels,
-  EightChannels,
-  active_channel_count,
+  ddr_channel_ordinal,
+  ddr_slot_identity_eq,
+  dimm_slot_position_ordinal,
+  topology_slot_identities,
   altra_1p_minimum,
 }
 
-data pcb_world_note: String = "THE ALTRA BOARD AS A PROJECTION OF 8233'S PLACEMENT PLAN INTO THE SHARED PCB WORLD. This module owns the scene join, not the design: envelopes, blockers and admission stay in product.altra_motherboard.placement and attachment_stack. Obligation causes are derived from the blocker variant together with the planned role — UnselectedPart is a role with no vendor, MissingDocument is a role that names a document still owed — never recovered by grepping blocker prose. The socket-type designation is extdeps.ocp.mt_jade ilm4926_designation; Mt. Jade's board extents are the same module's foreign reference and are not this board's outline. Capabilities that 8233 has not modeled are pending with a nonempty obligation, never an empty list. The outline constructing is PartialPcbWorldReady — a preview, not an admitted board. A six-channel design does not share the four-channel identity, and has no plan on this increment, so it refuses rather than borrowing the reference plan."
+data pcb_world_note: String = "THE ALTRA BOARD AS A PROJECTION OF 8233'S PLACEMENT PLAN INTO THE SHARED PCB WORLD. This module owns the scene join, not the design: envelopes, blockers and admission stay in product.altra_motherboard.placement and attachment_stack. World identity is derived from topology_slot_identities, not from a channel count that would invent which controllers are populated. Obligation causes are derived from the blocker variant together with the planned role — UnselectedPart is a role with no vendor, MissingDocument is a role that names a document still owed — never recovered by grepping blocker prose. The socket-type designation is extdeps.ocp.mt_jade ilm4926_designation; Mt. Jade's board extents are the same module's foreign reference and are not this board's outline. Capabilities that 8233 has not modeled are pending with a nonempty obligation, never an empty list. The outline constructing is PartialPcbWorldReady — a preview, not an admitted board. A six-channel design does not share the four-channel identity, and has no plan on this increment, so it refuses rather than borrowing the reference plan."
 
 fn intent_tag(i: DesignIntent) -> String {
   match i {
@@ -100,24 +99,29 @@ fn intent_tag(i: DesignIntent) -> String {
   }
 }
 
-fn channel_tag(c: ActiveDdrChannelCount) -> String {
-  match c {
-    OneChannel => "1ch"
-    TwoChannels => "2ch"
-    FourChannels => "4ch"
-    SixChannels => "6ch"
-    EightChannels => "8ch"
-  }
+fn slot_revision_tag(s: DdrSlotIdentity) -> String {
+  concat(
+    "ddr",
+    concat(to_string(ddr_channel_ordinal(c: s.channel)), concat(".p", to_string(dimm_slot_position_ordinal(p: s.position))))
+  )
+}
+
+fn topology_revision_tag(t: ActiveDdrTopology) -> String {
+  fold(topology_slot_identities(t: t), init: "", f: fn(acc, s) {
+    if acc == "" {
+      slot_revision_tag(s: s)
+    } else {
+      concat(acc, concat("+", slot_revision_tag(s: s)))
+    }
+  })
 }
 
 fn design_revision_tag(d: AltraMinimalMotherboard) -> String {
   concat(
     intent_tag(i: d.intent),
     concat(":",
-    concat(channel_tag(c: d.memory.channels),
-    concat(":dpc",
-    concat(to_string(d.memory.dimms_per_channel),
-    concat(":pcie", to_string(d.pcie_lanes_broken_out))))))
+    concat(topology_revision_tag(t: d.memory.topology),
+    concat(":pcie", to_string(d.pcie_lanes_broken_out))))
   )
 }
 
@@ -144,10 +148,22 @@ fn intent_eq(a: DesignIntent, b: DesignIntent) -> Bool {
   }
 }
 
+fn slot_list_covers(xs: List<DdrSlotIdentity>, ys: List<DdrSlotIdentity>) -> Bool {
+  fold(ys, init: true, f: fn(acc, p) {
+    acc && fold(xs, init: false, f: fn(seen, q) { seen || ddr_slot_identity_eq(a: p, b: q) })
+  })
+}
+
+fn topologies_eq(a: ActiveDdrTopology, b: ActiveDdrTopology) -> Bool {
+  let aslots = topology_slot_identities(t: a)
+  let bslots = topology_slot_identities(t: b)
+  list_length(items: aslots) == list_length(items: bslots)
+    && slot_list_covers(xs: aslots, ys: bslots)
+}
+
 fn designs_eq(a: AltraMinimalMotherboard, b: AltraMinimalMotherboard) -> Bool {
   intent_eq(a: a.intent, b: b.intent)
-    && active_channel_count(c: a.memory.channels) == active_channel_count(c: b.memory.channels)
-    && a.memory.dimms_per_channel == b.memory.dimms_per_channel
+    && topologies_eq(a: a.memory.topology, b: b.memory.topology)
     && a.pcie_lanes_broken_out == b.pcie_lanes_broken_out
 }
 
@@ -170,7 +186,7 @@ fn cause_from_unresolved_role(r: BoardComponentRole, w: NonEmptyStr) -> PcbOblig
     ProcessorSocket => MissingDocument { what_is_missing: ilm4926_designation }
     ProcessorPackage => MissingDocument { what_is_missing: w }
     BoardControlCpld => UnselectedPart { because: w }
-    MemoryModuleSlot { channel: _ } => UnselectedPart { because: w }
+    MemoryModuleSlot { slot: _ } => UnselectedPart { because: w }
     BootFirmwareEeprom => UnselectedPart { because: w }
     FirmwareFlash => UnselectedPart { because: w }
     ClockGenerator => UnselectedPart { because: w }
