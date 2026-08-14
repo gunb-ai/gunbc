@@ -736,6 +736,8 @@ fn c_validate_partition_r4(
 
 data c_stage0_emit_note: String = "Stage 0 C source emitter seeded on fn add (ISO/IEC 9899:2018 / C17 — extdeps.languages.c.emit extdeps_external_authority_anchor). Grammar relation rows + lex + binding_spellings live here; the smoke main harness suffix is the sole legitimate string scaffold (dissolves when a modeled main producer lands)."
 
+data c_bool_literal_c17_stdbool_derivation_note: String = "C17 (c_stage0_emit_note): true/false are macros from <stdbool.h>, not keywords. Production TU stdbool derivation is a separate header-derivation item; bool_literal_form emission alone does not close it."
+
 data c_stdbool_include_directive: String = "#include <stdbool.h>\n"
 
 fn c_bool_literal_host_source_text(literal: String) -> String {

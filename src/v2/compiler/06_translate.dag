@@ -2,6 +2,7 @@ module v2.compiler.translate
 
 import v2.extdeps.languages.dag {
   dag_surface_operator_canonicalization_member,
+  dag_value_expression_projection,
   emit_import_decl_emitted_node,
   parse_import_block_idents,
   parse_production_emitted_identity_optional,
@@ -950,6 +951,7 @@ fn translate_project_transform_in_arrow_scope(
             arrow: arrow,
             body: body,
             target: target,
+            source_bool_form: dag_value_expression_projection().bool_literal_form,
             handle_transform: fn(a, b, t) {
               translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
             }
@@ -976,6 +978,7 @@ fn target_serialize_bodied_arrow_from_model(
                 o: target_project_arrow_body_to_value_expression(
                   arrow: emitted,
                   target: target,
+                  source_bool_form: dag_value_expression_projection().bool_literal_form,
                   handle_transform: fn(a, b, t) {
                     translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
                   }

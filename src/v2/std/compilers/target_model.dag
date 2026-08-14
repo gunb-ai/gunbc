@@ -6266,22 +6266,17 @@ fn target_value_expr_bool_literal_value_from_atom(node: Node) -> Optional<Bool> 
   }
 }
 
-fn target_value_expr_substrate_bool_literal_value_from_source_symbol(
-  id: Symbol
+fn target_value_expr_bool_literal_value_from_source_symbol(
+  id: Symbol,
+  source_bool_form: TargetBoolLiteralShape
 ) -> Optional<Bool> {
-  if id == ^target_value_expression_bool_true || id == ^dag_token_kw_true {
+  if id == ^target_value_expression_bool_true || id == source_bool_form.true_token {
     optional_present(true)
-  } else if id == ^target_value_expression_bool_false || id == ^dag_token_kw_false {
+  } else if id == ^target_value_expression_bool_false || id == source_bool_form.false_token {
     optional_present(false)
   } else {
     optional_absent()
   }
-}
-
-fn target_value_expr_bool_literal_value_from_source_symbol(
-  id: Symbol
-) -> Optional<Bool> {
-  target_value_expr_substrate_bool_literal_value_from_source_symbol(id: id)
 }
 
 fn target_value_expression_bool_literal_value_from_wire(wire: Node) -> Optional<Bool> {
@@ -6310,7 +6305,8 @@ fn target_value_expression_bool_literal_value_from_wire(wire: Node) -> Optional<
 }
 
 fn target_value_expr_bool_literal_value_from_expression(
-  expr: TargetValueExpression
+  expr: TargetValueExpression,
+  source_bool_form: TargetBoolLiteralShape
 ) -> Optional<Bool> {
   match expr.kind {
     TargetValueExprBoolLiteral =>
@@ -6318,7 +6314,10 @@ fn target_value_expr_bool_literal_value_from_expression(
     TargetValueExprSymbolIdentity =>
       match target_value_expression_symbol_identity_from_wire(wire: expr.node) {
         Accepted { value: id, diagnostics: _ } =>
-          target_value_expr_bool_literal_value_from_source_symbol(id: id)
+          target_value_expr_bool_literal_value_from_source_symbol(
+            id: id,
+            source_bool_form: source_bool_form
+          )
         Rejected { diagnostics: _ } => optional_absent()
       }
     _ => optional_absent()
@@ -6326,20 +6325,28 @@ fn target_value_expr_bool_literal_value_from_expression(
 }
 
 fn target_value_expr_is_bool_literal_expression(
-  expr: TargetValueExpression
+  expr: TargetValueExpression,
+  source_bool_form: TargetBoolLiteralShape
 ) -> Bool {
-  match target_value_expr_bool_literal_value_from_expression(expr: expr) {
+  match target_value_expr_bool_literal_value_from_expression(
+    expr: expr,
+    source_bool_form: source_bool_form
+  ) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
 fn target_value_expr_is_source_bool_literal_atom(
-  node: Node
+  node: Node,
+  source_bool_form: TargetBoolLiteralShape
 ) -> Bool {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      match target_value_expr_bool_literal_value_from_source_symbol(id: id) {
+      match target_value_expr_bool_literal_value_from_source_symbol(
+        id: id,
+        source_bool_form: source_bool_form
+      ) {
         Present { value: _ } => true
         Absent => false
       }
@@ -6356,8 +6363,8 @@ fn target_value_expr_match_arms_are_int_bool_octet_channel(
     !any(
       xs: arms,
       predicate: fn(arm) {
-        !target_value_expr_is_bool_literal_expression(expr: arm.pattern)
-          || !target_value_expr_is_bool_literal_expression(expr: arm.body)
+        arm.pattern.kind != TargetValueExprBoolLiteral
+          || arm.body.kind != TargetValueExprBoolLiteral
       }
     )
   }
@@ -12360,6 +12367,7 @@ fn target_project_callable_arg_in_arrow_scope(
   body: Node,
   arg: Node,
   target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
   match arg.kind {
@@ -12380,6 +12388,7 @@ fn target_project_callable_arg_in_arrow_scope(
         arrow: arrow,
         node: arg,
         target: target,
+        source_bool_form: source_bool_form,
         handle_transform: handle_transform
       )
   }
@@ -12389,6 +12398,7 @@ fn target_project_transform_callable_apply_in_arrow_scope(
   arrow: Node,
   body: Node,
   target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
   bind_outcome(
@@ -12417,6 +12427,7 @@ fn target_project_transform_callable_apply_in_arrow_scope(
                         body: body,
                         arg: arg,
                         target: target,
+                        source_bool_form: source_bool_form,
                         handle_transform: handle_transform
                       ),
                       f: fn(a) {
@@ -12438,14 +12449,18 @@ fn target_project_transform_callable_apply_in_arrow_scope(
 }
 
 fn target_value_expr_branch_bool_gate(
-  node: Node
+  node: Node,
+  source_bool_form: TargetBoolLiteralShape
 ) -> Bool {
   if length(xs: node_positional_child_targets(node: node)) != 3 {
     false
   } else {
     match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
       Present { value: cond } =>
-        target_value_expr_is_source_bool_literal_atom(node: cond)
+        target_value_expr_is_source_bool_literal_atom(
+          node: cond,
+          source_bool_form: source_bool_form
+        )
       Absent => false
     }
   }
@@ -12551,9 +12566,13 @@ fn target_value_expr_binding_ref_for_literal_atom(id: Symbol) -> Optional<Symbol
 }
 
 fn target_value_expr_project_pick_literal_atom(
-  id: Symbol
+  id: Symbol,
+  source_bool_form: TargetBoolLiteralShape
 ) -> Outcome<TargetValueExpression> {
-  match target_value_expr_bool_literal_value_from_source_symbol(id: id) {
+  match target_value_expr_bool_literal_value_from_source_symbol(
+    id: id,
+    source_bool_form: source_bool_form
+  ) {
     Present { value: b } =>
       outcome_accepted(target_value_expression_bool_literal(value: b))
     Absent =>
@@ -12573,7 +12592,8 @@ fn target_value_expr_project_pick_literal_atom(
 fn target_value_expr_project_atom_in_arrow_scope(
   arrow: Node,
   node: Node,
-  target: TargetModel
+  target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape
 ) -> Outcome<TargetValueExpression> {
   bind_outcome(
     o: target_value_expression_projection_from_target(target: target),
@@ -12591,7 +12611,10 @@ fn target_value_expr_project_atom_in_arrow_scope(
                 target_value_expression_binding_ref(binding: scoped)
               )
             Rejected { diagnostics: _ } =>
-              target_value_expr_project_atom_literal(node: node)
+              target_value_expr_project_atom_literal(
+                node: node,
+                source_bool_form: source_bool_form
+              )
           }
         _ =>
           outcome_rejected(
@@ -12606,7 +12629,8 @@ fn target_value_expr_project_atom_in_arrow_scope(
 }
 
 fn target_value_expr_project_atom_literal(
-  node: Node
+  node: Node,
+  source_bool_form: TargetBoolLiteralShape
 ) -> Outcome<TargetValueExpression> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
@@ -12614,7 +12638,10 @@ fn target_value_expr_project_atom_literal(
         bind_outcome(
           o: target_value_expression_symbol_identity_from_wire(wire: node),
           f: fn(inner_id) {
-            target_value_expr_project_pick_literal_atom(id: inner_id)
+            target_value_expr_project_pick_literal_atom(
+              id: inner_id,
+              source_bool_form: source_bool_form
+            )
           }
         )
       } else if target_value_expr_is_int_literal_atom(node: node) {
@@ -12624,7 +12651,10 @@ fn target_value_expr_project_atom_literal(
           Present { value: b } =>
             outcome_accepted(target_value_expression_bool_literal(value: b))
           Absent =>
-            target_value_expr_project_pick_literal_atom(id: id)
+            target_value_expr_project_pick_literal_atom(
+              id: id,
+              source_bool_form: source_bool_form
+            )
         }
       }
     _ =>
@@ -12662,6 +12692,7 @@ fn target_value_expr_record_construct_field_slots_from_edges(
   arrow: Node,
   edges: List<Edge>,
   target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<List<TargetValueExprFieldInitSlot>> {
   match fold(
@@ -12678,6 +12709,7 @@ fn target_value_expr_record_construct_field_slots_from_edges(
                   arrow: arrow,
                   node: edge.target,
                   target: target,
+                  source_bool_form: source_bool_form,
                   handle_transform: handle_transform
                 ),
                 f: fn(projected_value) {
@@ -12712,6 +12744,7 @@ fn target_project_record_construct(
   arrow: Node,
   body: Node,
   target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
   if !target_value_expr_record_construct_gate(node: body) {
@@ -12732,6 +12765,7 @@ fn target_project_record_construct(
                 arrow: arrow,
                 edges: target_value_expr_labeled_edges_tail(labeled: labeled),
                 target: target,
+                source_bool_form: source_bool_form,
                 handle_transform: handle_transform
               ),
               f: fn(fields) {
@@ -12787,6 +12821,7 @@ fn target_project_field_access(
   arrow: Node,
   body: Node,
   target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
   if !target_value_expr_field_access_gate(node: body) {
@@ -12820,6 +12855,7 @@ fn target_project_field_access(
                 arrow: arrow,
                 node: base_node,
                 target: target,
+                source_bool_form: source_bool_form,
                 handle_transform: handle_transform
               ),
               f: fn(projected_base) {
@@ -12862,6 +12898,7 @@ fn target_value_expr_match_arm_slot_from_arm_edge(
   arrow: Node,
   arm_edge: Edge,
   target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExprMatchArmSlot> {
   bind_outcome(
@@ -12875,6 +12912,7 @@ fn target_value_expr_match_arm_slot_from_arm_edge(
               arrow: arrow,
               node: pattern_node,
               target: target,
+              source_bool_form: source_bool_form,
               handle_transform: handle_transform
             ),
             f: fn(projected_pattern) {
@@ -12883,6 +12921,7 @@ fn target_value_expr_match_arm_slot_from_arm_edge(
                   arrow: arrow,
                   node: body_node,
                   target: target,
+                  source_bool_form: source_bool_form,
                   handle_transform: handle_transform
                 ),
                 f: fn(projected_body) {
@@ -12906,6 +12945,7 @@ fn target_value_expr_match_project_arms(
   arrow: Node,
   children: List<Edge>,
   target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<List<TargetValueExprMatchArmSlot>> {
   match fold(
@@ -12920,6 +12960,7 @@ fn target_value_expr_match_project_arms(
               arrow: arrow,
               arm_edge: arm_edge,
               target: target,
+              source_bool_form: source_bool_form,
               handle_transform: handle_transform
             ),
             f: fn(arm) {
@@ -12938,6 +12979,7 @@ fn target_project_match(
   arrow: Node,
   body: Node,
   target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
   if !target_value_expr_match_gate(node: body) {
@@ -12962,6 +13004,7 @@ fn target_project_match(
             arrow: arrow,
             node: scrutinee_node,
             target: target,
+            source_bool_form: source_bool_form,
             handle_transform: handle_transform
           ),
           f: fn(projected_scrutinee) {
@@ -12970,6 +13013,7 @@ fn target_project_match(
                 arrow: arrow,
                 children: body.children,
                 target: target,
+                source_bool_form: source_bool_form,
                 handle_transform: handle_transform
               ),
               f: fn(projected_arms) {
@@ -12991,12 +13035,13 @@ fn target_project_branch_bool_if_else(
   arrow: Node,
   body: Node,
   target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
   bind_outcome(
     o: target_value_expression_projection_from_target(target: target),
     f: fn(projection) {
-      if !target_value_expr_branch_bool_gate(node: body) {
+      if !target_value_expr_branch_bool_gate(node: body, source_bool_form: source_bool_form) {
         outcome_rejected(
           target_value_expr_diagnostic(
             reason: ^target_value_expr_reason_transform_shape_invalid,
@@ -13036,6 +13081,7 @@ fn target_project_branch_bool_if_else(
                     arrow: arrow,
                     node: cond,
                     target: target,
+                    source_bool_form: source_bool_form,
                     handle_transform: handle_transform
                   ),
                   f: fn(projected_cond) {
@@ -13044,6 +13090,7 @@ fn target_project_branch_bool_if_else(
                         arrow: arrow,
                         node: then_arm,
                         target: target,
+                        source_bool_form: source_bool_form,
                         handle_transform: handle_transform
                       ),
                       f: fn(projected_then) {
@@ -13052,6 +13099,7 @@ fn target_project_branch_bool_if_else(
                             arrow: arrow,
                             node: else_arm,
                             target: target,
+                            source_bool_form: source_bool_form,
                             handle_transform: handle_transform
                           ),
                           f: fn(projected_else) {
@@ -13096,6 +13144,7 @@ fn target_project_bind_let(
   arrow: Node,
   body: Node,
   target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
   if !target_value_expr_bind_let_gate(node: body) {
@@ -13126,6 +13175,7 @@ fn target_project_bind_let(
                     arrow: arrow,
                     node: value_node,
                     target: target,
+                    source_bool_form: source_bool_form,
                     handle_transform: handle_transform
                   ),
                   f: fn(projected_value) {
@@ -13150,6 +13200,7 @@ fn target_project_loop(
   arrow: Node,
   body: Node,
   target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
   if !target_value_expr_loop_gate(node: body) {
@@ -13170,7 +13221,10 @@ fn target_project_loop(
         )
       Present { value: literal_node } =>
         bind_outcome(
-          o: target_value_expr_project_atom_literal(node: literal_node),
+          o: target_value_expr_project_atom_literal(
+          node: literal_node,
+          source_bool_form: source_bool_form
+        ),
           f: fn(projected_body) {
             outcome_accepted(
               target_value_expression_loop(body: projected_body)
@@ -13185,6 +13239,7 @@ fn target_value_expr_project_body_subexpression(
   arrow: Node,
   node: Node,
   target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
   match node.kind {
@@ -13194,6 +13249,7 @@ fn target_value_expr_project_body_subexpression(
           arrow: arrow,
           body: node,
           target: target,
+          source_bool_form: source_bool_form,
           handle_transform: handle_transform
         )
       } else {
@@ -13204,6 +13260,7 @@ fn target_value_expr_project_body_subexpression(
         arrow: arrow,
         body: node,
         target: target,
+        source_bool_form: source_bool_form,
         handle_transform: handle_transform
       )
     ComputationNode { behavior: Bind } =>
@@ -13211,6 +13268,7 @@ fn target_value_expr_project_body_subexpression(
         arrow: arrow,
         body: node,
         target: target,
+        source_bool_form: source_bool_form,
         handle_transform: handle_transform
       )
     ComputationNode { behavior: Loop } =>
@@ -13218,6 +13276,7 @@ fn target_value_expr_project_body_subexpression(
         arrow: arrow,
         body: node,
         target: target,
+        source_bool_form: source_bool_form,
         handle_transform: handle_transform
       )
     ComputationNode { behavior: Match } =>
@@ -13225,6 +13284,7 @@ fn target_value_expr_project_body_subexpression(
         arrow: arrow,
         body: node,
         target: target,
+        source_bool_form: source_bool_form,
         handle_transform: handle_transform
       )
     TypeNode { connective: Conj } =>
@@ -13233,6 +13293,7 @@ fn target_value_expr_project_body_subexpression(
           arrow: arrow,
           body: node,
           target: target,
+          source_bool_form: source_bool_form,
           handle_transform: handle_transform
         )
       } else {
@@ -13248,13 +13309,15 @@ fn target_value_expr_project_body_subexpression(
       target_project_closure_in_arrow_scope(
         closure: node,
         target: target,
+        source_bool_form: source_bool_form,
         handle_transform: handle_transform
       )
     TypeNode { connective: Atom { identity: _ } } =>
       target_value_expr_project_atom_in_arrow_scope(
         arrow: arrow,
         node: node,
-        target: target
+        target: target,
+        source_bool_form: source_bool_form
       )
     _ =>
       outcome_rejected(
@@ -13269,6 +13332,7 @@ fn target_value_expr_project_body_subexpression(
 fn target_project_closure_in_arrow_scope(
   closure: Node,
   target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
   bind_outcome(
@@ -13281,6 +13345,7 @@ fn target_project_closure_in_arrow_scope(
               arrow: closure,
               node: body,
               target: target,
+              source_bool_form: source_bool_form,
               handle_transform: handle_transform
             ),
             f: fn(body_expr) {
@@ -13332,6 +13397,7 @@ fn target_value_expression_tokens_from_target(
 fn target_project_arrow_body_to_value_expression(
   arrow: Node,
   target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
   handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
   match find_arrow_body_child(root: arrow) {
@@ -13343,6 +13409,7 @@ fn target_project_arrow_body_to_value_expression(
               arrow: arrow,
               body: body,
               target: target,
+              source_bool_form: source_bool_form,
               handle_transform: handle_transform
             )
           } else {
@@ -13353,6 +13420,7 @@ fn target_project_arrow_body_to_value_expression(
             arrow: arrow,
             body: body,
             target: target,
+            source_bool_form: source_bool_form,
             handle_transform: handle_transform
           )
         ComputationNode { behavior: Bind } =>
@@ -13360,6 +13428,7 @@ fn target_project_arrow_body_to_value_expression(
             arrow: arrow,
             body: body,
             target: target,
+            source_bool_form: source_bool_form,
             handle_transform: handle_transform
           )
         ComputationNode { behavior: Loop } =>
@@ -13367,6 +13436,7 @@ fn target_project_arrow_body_to_value_expression(
             arrow: arrow,
             body: body,
             target: target,
+            source_bool_form: source_bool_form,
             handle_transform: handle_transform
           )
         ComputationNode { behavior: Match } =>
@@ -13374,6 +13444,7 @@ fn target_project_arrow_body_to_value_expression(
             arrow: arrow,
             body: body,
             target: target,
+            source_bool_form: source_bool_form,
             handle_transform: handle_transform
           )
         TypeNode { connective: Conj } =>
@@ -13382,6 +13453,7 @@ fn target_project_arrow_body_to_value_expression(
               arrow: arrow,
               body: body,
               target: target,
+              source_bool_form: source_bool_form,
               handle_transform: handle_transform
             )
           } else {
