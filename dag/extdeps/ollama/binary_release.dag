@@ -32,9 +32,11 @@ type OllamaBinaryRelease {
   digest_linux_arm64: Digest
 }
 
-data ollama_v0_9_6_release: OllamaBinaryRelease = OllamaBinaryRelease {
-  version: "v0.9.6" as NonEmptyStr,
-  digest_linux_arm64: sha256_digest(hex: "0b54918f92636c8e05532c4292e20b2ead3d5bc14913f713accfbad5ac5e722c" as NonEmptyStr),
+data ollama_v0_11_0_gpt_oss_support_note: String = "First upstream release listing OpenAI gpt-oss models (20B and 120B): github.com/ollama/ollama/releases/tag/v0.11.0 published 2025-08-05, release title 'Welcome OpenAI's gpt-oss models'."
+
+data ollama_v0_11_0_release: OllamaBinaryRelease = OllamaBinaryRelease {
+  version: "v0.11.0" as NonEmptyStr,
+  digest_linux_arm64: sha256_digest(hex: "2b271bf318924cccb281f31cf06b1f8f723c5a2d146c629d83a4b35822c480de" as NonEmptyStr),
 }
 
-data ollama_required_release: OllamaBinaryRelease = ollama_v0_9_6_release
+data ollama_required_release: OllamaBinaryRelease = ollama_v0_11_0_release
