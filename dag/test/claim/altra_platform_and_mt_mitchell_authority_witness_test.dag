@@ -4,7 +4,7 @@ import std.logic { Bool }
 import std.types { list_length }
 import std.measure { hertz_count, micrometer_count, rack_unit_count }
 import extdeps.memory.types { dram_generation_eq, dram_generation_ddr4, dram_generation_ddr5 }
-import extdeps.cpu.ampere_altra_package { altra_max_dimms_per_socket, altra_pcie_gen4_lane_count }
+import extdeps.cpu.ampere_altra_package { altra_max_dimms_per_socket, altra_pcie_gen4_lane_count, altra_package_body_width, altra_package_body_height }
 import extdeps.cpu.ampere_altra_platform_hw_design.subject { altra_platform_hw_design_specification }
 import extdeps.ocp.mt_mitchell.subject { mt_mitchell_reference_platform }
 import extdeps.cpu.ampere_altra_platform_hw_design.platform {
@@ -180,7 +180,9 @@ test fn w_altra_pcie_reset_is_cpld_decoded_without_per_controller_perst() -> Boo
 }
 
 test fn w_altra_package_array_geometry_is_exact_and_joins_the_package_authority() -> Bool {
-  micrometer_count(m: altra_package_outline_width) == 77080
+  micrometer_count(m: altra_package_outline_width) == micrometer_count(m: altra_package_body_width)
+    && micrometer_count(m: altra_package_outline_depth) == micrometer_count(m: altra_package_body_height)
+    && micrometer_count(m: altra_package_outline_width) == 77080
     && micrometer_count(m: altra_package_outline_depth) == 67000
     && micrometer_count(m: altra_pad_pitch_dx) == 870
     && micrometer_count(m: altra_pad_pitch_dy) == 500

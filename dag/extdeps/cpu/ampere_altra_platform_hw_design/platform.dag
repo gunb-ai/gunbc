@@ -9,6 +9,8 @@ import extdeps.uri { Uri, Https }
 import extdeps.memory.types { DramGeneration, dram_generation_ddr4 }
 import extdeps.publication { DocumentPublicationStatus, PubliclyPublishedWithRestrictiveMarking }
 import extdeps.cpu.ampere_altra_package {
+  altra_package_body_width,
+  altra_package_body_height,
   altra_declared_contact_count,
   altra_ddr4_channel_count,
   altra_max_dimms_per_socket,
@@ -295,9 +297,19 @@ data altra_platform_pad_array_geometry_availability: MechanicalFactAvailability 
 // SECTION 1.9, PACKAGE OVERVIEW, IN RUNNING TEXT. Micrometres keep every figure
 // exact: 77.080 mm, 67.000 mm and the 0.87 / 0.5 mm hexagonal pitch pair are
 // all sub-millimetre-grained.
-data altra_package_outline_width: Micrometer = micrometer(count: 77080)
+//
+// THE BODY EXTENTS ARE THE PACKAGE AUTHORITY'S, CORROBORATED HERE RATHER THAN RESTATED. Section
+// 1.9 does state 77.080 mm by 67.000 mm, and that agreement between two independently published
+// documents is worth recording -- but the SUBJECT is the package, whose authority is
+// extdeps.cpu.ampere_altra_package, so a second literal here would be two anchors for one physical
+// fact that can drift apart silently. These rows consume the package authority instead, which
+// makes the corroboration real: if the datasheet figure and this specification ever disagree, the
+// disagreement has to be resolved at the package rather than existing quietly as two numbers.
+// The pad pitch pair below is different -- the package module does not carry it, so those ARE
+// this document's own contribution and stay literals.
+data altra_package_outline_width: Micrometer = altra_package_body_width
 
-data altra_package_outline_depth: Micrometer = micrometer(count: 67000)
+data altra_package_outline_depth: Micrometer = altra_package_body_height
 
 data altra_pad_pitch_dx: Micrometer = micrometer(count: 870)
 
