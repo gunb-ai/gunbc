@@ -2799,7 +2799,10 @@ pub fn structured_application_site_type_mismatch(
             }
         }
         Some(decl) if decl.connective.clone() == Connective::Conj => {
-            let decl_name = authored_name_at(source_indices.clone(), decl.clone());
+            let decl_name = structured_application_structural_type_name(
+                authored_name_at(source_indices.clone(), decl.clone()),
+                scope.clone(),
+            );
             (!application_type_names_compatible(
                 decl_name.clone(),
                 lit_nominal.clone(),
