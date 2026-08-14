@@ -1,0 +1,83 @@
+module product.altra_motherboard.platform_document_roster
+
+import std.types { String, NonEmptyStr, List }
+import std.integer { Int }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.cpu.ampere_altra_platform_hw_design.subject {
+  altra_platform_hw_design_specification,
+  extdeps_external_authority_anchor as altra_platform_hw_design_authority,
+}
+import extdeps.ocp.mt_jade.subject {
+  mt_jade_reference_platform,
+  extdeps_external_authority_anchor as mt_jade_authority,
+}
+import extdeps.ocp.mt_mitchell.subject {
+  mt_mitchell_reference_platform,
+  extdeps_external_authority_anchor as mt_mitchell_authority,
+}
+import extdeps.ampere.mt_collins_product_brief.subject {
+  mt_collins_engineering_facts_route,
+  mt_collins_public_product_brief,
+  extdeps_external_authority_anchor as mt_collins_public_brief_authority,
+  EngineeringFactsUnderNda,
+  EngineeringFactsPubliclyIngested,
+}
+
+data platform_document_roster_note: String = "SYMBOLIC REFERENCES TO PLATFORM DOCUMENT AUTHORITIES WITH OUR READ STATE, NOT A SECOND COPY OF THEIR METADATA. Upstream facts live in each extdeps module's anchor; this roster exists so product and planning layers can join which documents exist, which are unread, and which are dead ends without restating locators as raw strings."
+
+type PlatformDocumentReadState
+  = PlatformDocumentTextUnread
+  | PlatformDocumentFetchRefused
+  | PlatformDocumentOperatorSupplied
+  | PlatformDocumentMarketingOnlyDeadEnd
+
+type PlatformDocumentRosterRow {
+  marketing_name: NonEmptyStr
+  authority: ExternalAuthority
+  read_state: PlatformDocumentReadState
+}
+
+data platform_document_roster: List<PlatformDocumentRosterRow> = [
+  PlatformDocumentRosterRow {
+    marketing_name: altra_platform_hw_design_specification.title,
+    authority: altra_platform_hw_design_authority,
+    read_state: PlatformDocumentTextUnread,
+  },
+  PlatformDocumentRosterRow {
+    marketing_name: mt_jade_reference_platform.marketing_name,
+    authority: mt_jade_authority,
+    read_state: PlatformDocumentOperatorSupplied,
+  },
+  PlatformDocumentRosterRow {
+    marketing_name: mt_mitchell_reference_platform.marketing_name,
+    authority: mt_mitchell_authority,
+    read_state: PlatformDocumentFetchRefused,
+  },
+  PlatformDocumentRosterRow {
+    marketing_name: mt_collins_public_product_brief.marketing_name,
+    authority: mt_collins_public_brief_authority,
+    read_state: PlatformDocumentMarketingOnlyDeadEnd,
+  },
+]
+
+fn platform_document_roster_count(rows: List<PlatformDocumentRosterRow>) -> Int {
+  fold(rows, init: 0, f: fn(acc, _r) { acc + 1 })
+}
+
+fn roster_includes_marketing_dead_end(rows: List<PlatformDocumentRosterRow>) -> Bool {
+  fold(rows, init: false, f: fn(acc, r) {
+    acc || match r.read_state {
+      PlatformDocumentMarketingOnlyDeadEnd => true
+      PlatformDocumentTextUnread => acc
+      PlatformDocumentFetchRefused => acc
+      PlatformDocumentOperatorSupplied => acc
+    }
+  })
+}
+
+fn mt_collins_engineering_route_is_nda() -> Bool {
+  match mt_collins_engineering_facts_route {
+    EngineeringFactsUnderNda { access_route: _ } => true
+    EngineeringFactsPubliclyIngested => false
+  }
+}

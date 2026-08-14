@@ -1,0 +1,88 @@
+module extdeps.ocp.mt_mitchell.subject
+
+import std.types { String, NonEmptyStr, List }
+import std.integer { Int }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.ampere { ampere_vendor }
+
+// MT. MITCHELL IS A SEPARATELY GOVERNED OCP SPECIFICATION, NOT A REVISION OF MT. JADE.
+// Ampere and Inspur contributed it as an improvement on the Jade reference platform; the open-
+// licence family matches extdeps.ocp.mt_jade, but the document authority, version row and any
+// future ingested facts live here rather than being folded into the Jade module.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.opencompute.org/documents/mt-mitchell-ocp-hardware-spec-v0-80-2-pdf",
+  }
+}
+
+data mt_mitchell_subject_note: String = "OCP-CONTRIBUTED REFERENCE PLATFORM SPECIFICATION FOR MT. MITCHELL. Usage is under the same OWFa 1.0 / OCP CLA family as Mt. Jade when the document is admitted; this module records only the anchor metadata until specification text is ingested. An unauthenticated fetch of the OCP locator returned HTTP 403 on 2026-08-14, so no interior platform fact is modelled."
+
+type MtMitchellSpecificationRevision
+  = MtMitchellRev0_80
+
+type OcpSpecificationLicense
+  = Owfa1_0FinalSpecificationAgreement
+
+type OcpContributionLicense
+  = OcpContributionLicenseAgreement
+
+type SpecificationDocumentDate {
+  year: Int
+  month: Int
+  day: Int
+}
+
+type SpecificationCitationReadProvenance
+  = DocumentLocatorFetchRefused { http_status: Int, detail: NonEmptyStr }
+  | DocumentLocatorFetchedButTextUnread { http_status: Int, detail: NonEmptyStr }
+  | OperatorSuppliedDocumentText
+
+data mt_mitchell_specification_version_label: NonEmptyStr = "v0.80"
+
+data mt_mitchell_specification_license: OcpSpecificationLicense = Owfa1_0FinalSpecificationAgreement
+
+data mt_mitchell_contribution_license: OcpContributionLicense = OcpContributionLicenseAgreement
+
+data mt_mitchell_citation_read_provenance: SpecificationCitationReadProvenance = DocumentLocatorFetchRefused {
+  http_status: 403,
+  detail: "unauthenticated fetch of the OCP document locator returned 403; no specification text is ingested in this repository",
+}
+
+type MtMitchellReferencePlatform {
+  marketing_name: NonEmptyStr
+  revision: MtMitchellSpecificationRevision
+  version_label: NonEmptyStr
+  contributor: Vendor<Hardware>
+  specification_license: OcpSpecificationLicense
+  contribution_license: OcpContributionLicense
+  citation_read_provenance: SpecificationCitationReadProvenance
+}
+
+data mt_mitchell_reference_platform: MtMitchellReferencePlatform = MtMitchellReferencePlatform {
+  marketing_name: "Mt. Mitchell",
+  revision: MtMitchellRev0_80,
+  version_label: mt_mitchell_specification_version_label,
+  contributor: ampere_vendor,
+  specification_license: mt_mitchell_specification_license,
+  contribution_license: mt_mitchell_contribution_license,
+  citation_read_provenance: mt_mitchell_citation_read_provenance,
+}
+
+data mt_mitchell_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ocp.mt_mitchell.subject",
+      decl_name: "mt_mitchell_reference_platform",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+data extdeps_model_scope: ExternalModelScope = mt_mitchell_model_scope

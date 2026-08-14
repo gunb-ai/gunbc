@@ -1,0 +1,84 @@
+module extdeps.cpu.ampere_altra_platform_hw_design.subject
+
+import std.types { String, NonEmptyStr }
+import std.integer { Int }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.ampere { ampere_vendor }
+
+// THE PLATFORM DESIGN SPECIFICATION IS A DIFFERENT DOCUMENT CLASS FROM THE PACKAGE DATASHEET
+// AND FROM OCP REFERENCE-BOARD COLLATERAL. It is the guide for designing a custom motherboard
+// around Altra — socket land pattern, keepout, DDR4 routing rules, impedance targets and stackup
+// guidance — and is publicly reachable on Ampere's CDN without login.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "d1o0i0v5q5lp8h.cloudfront.net/ampere/live/assets/processor_families/design_specifications/Altra_Platform_HW_Design_Specification_v1.00_20210120.pdf",
+  }
+}
+
+data altra_platform_hw_design_subject_note: String = "THE HIGHEST-VALUE PUBLIC DOCUMENT THIS MOTHERBOARD LANE HAS FOUND. extdeps.cpu.ampere_altra_package carries the processor package pinout; extdeps.ocp.mt_jade carries one OCP reference-board specification; this module is the third axis — the vendor's platform hardware design guide for boards built around Altra rather than around a named reference platform. NO INTERIOR FACT IS MODELLED HERE UNTIL THE PDF TEXT IS INGESTED: the locator returned HTTP 200 on 2026-08-14, but text extraction did not succeed in this environment, so the anchor carries publisher, title, version and date only."
+
+type AltraPlatformHwDesignRevision
+  = AltraPlatformHwDesignRev1_00
+
+type SpecificationDocumentDate {
+  year: Int
+  month: Int
+  day: Int
+}
+
+type SpecificationCitationReadProvenance
+  = DocumentLocatorFetchRefused { http_status: Int, detail: NonEmptyStr }
+  | DocumentLocatorFetchedButTextUnread { http_status: Int, detail: NonEmptyStr }
+  | OperatorSuppliedDocumentText
+
+data altra_platform_hw_design_title: NonEmptyStr = "Ampere Altra Platform Hardware Design Specification"
+
+data altra_platform_hw_design_version_label: NonEmptyStr = "v1.00"
+
+data altra_platform_hw_design_publication_date: SpecificationDocumentDate = SpecificationDocumentDate {
+  year: 2021,
+  month: 1,
+  day: 20,
+}
+
+data altra_platform_hw_design_citation_read_provenance: SpecificationCitationReadProvenance = DocumentLocatorFetchedButTextUnread {
+  http_status: 200,
+  detail: "unauthenticated fetch of the public CDN locator returned HTTP 200; PDF metadata confirms the title but text extraction did not succeed here, so no socket, routing or stackup facts are modelled",
+}
+
+type AltraPlatformHwDesignSpecification {
+  title: NonEmptyStr
+  revision: AltraPlatformHwDesignRevision
+  version_label: NonEmptyStr
+  publication_date: SpecificationDocumentDate
+  publisher: Vendor<Hardware>
+  citation_read_provenance: SpecificationCitationReadProvenance
+}
+
+data altra_platform_hw_design_specification: AltraPlatformHwDesignSpecification = AltraPlatformHwDesignSpecification {
+  title: altra_platform_hw_design_title,
+  revision: AltraPlatformHwDesignRev1_00,
+  version_label: altra_platform_hw_design_version_label,
+  publication_date: altra_platform_hw_design_publication_date,
+  publisher: ampere_vendor,
+  citation_read_provenance: altra_platform_hw_design_citation_read_provenance,
+}
+
+data altra_platform_hw_design_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
+      decl_name: "altra_platform_hw_design_specification",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+data extdeps_model_scope: ExternalModelScope = altra_platform_hw_design_model_scope
