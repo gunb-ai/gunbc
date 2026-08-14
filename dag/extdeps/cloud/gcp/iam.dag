@@ -6,7 +6,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
 import std.types { Bool, Int, Json, List, NonEmptyStr, Secret, String }
 import v2.std.algebra { filter, fold_list }
-import v2.std.network { POST }
+import v2.std.network { GET, POST }
 import v2.std.optional { Present }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

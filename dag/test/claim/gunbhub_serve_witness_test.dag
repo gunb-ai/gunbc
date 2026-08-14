@@ -1,6 +1,6 @@
 module test.claim.gunbhub_serve_witness
 
-
+import std.types { GET, POST }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_compose_ok_html(node: Fragment) -> String {
