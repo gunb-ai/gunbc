@@ -2,6 +2,11 @@ module gunbc.spark_serving_realization
 
 import std.types { String, Bool, List, Int, NonEmptyStr }
 import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import product.placement_supply { HostIdentity }
+import std.content_hash {
+  ContentHash, compare_content_hash, ContentHashEqual, ContentHashDifferent,
+  ContentHashCrossFamilyIncomparable,
+}
 
 // SERVING REALIZATION IS DERIVED, NOT OBSERVED AND NOT ASKED.
 //
@@ -361,6 +366,19 @@ type SparkServingRealizationPolicy {
 // it DOES, and the ordering is a count over that. Adding an effect to a realization changes its
 // ranking automatically; getting the ranking wrong now requires misstating what an effect does,
 // which is a claim a reader can check against the host.
+// InstallOwnedRuntimeClosure IS NOT A CHEAPER SPELLING OF InstallRuntimePackage. They mutate
+// different subjects, which is the whole reason one needs root and the other does not: apt-get
+// writes the host package database, owned by root and shared by every account on the machine, while
+// an owner-installed closure writes a directory the actor owns. The privilege difference is
+// therefore DERIVED from the subject rather than asserted about the method -- exactly what the
+// ownership model exists to do -- and it is why this is a modeling change rather than a workaround
+// that dodges sudo.
+//
+// The trade is real and named rather than hidden: the upstream's documented Linux layout extracts
+// into /usr, so a relocated owner-owned prefix is an adaptation of that layout, not the vendor's
+// supported one. What is bought is that first install on a clean Spark requires no administrator
+// credential at all. Both effects stay in the coproduct because a host that genuinely wants the
+// packaged runtime is still expressible; the realization chooses, and the grant follows.
 type ServingInstallEffect
   = WriteSystemUnitFile
   | ReloadSystemManager
@@ -370,6 +388,7 @@ type ServingInstallEffect
   | EnableUserUnit
   | EnableLingerForOwnAccount
   | InstallRuntimePackage
+  | InstallOwnedRuntimeClosure
   | PullModelArtifact
   | GrantContainerRuntimeAccess
   | RunContainerAsOwnUser
@@ -385,7 +404,7 @@ fn serving_install_effect_requires_privilege(effect: ServingInstallEffect) -> Bo
 fn realization_install_effects(realization: SparkServingRealization) -> List<ServingInstallEffect> {
   match realization {
     UserUnitRealization =>
-      [InstallRuntimePackage, WriteUserUnitFile, ReloadUserManager, EnableUserUnit, EnableLingerForOwnAccount, PullModelArtifact]
+      [InstallOwnedRuntimeClosure, WriteUserUnitFile, ReloadUserManager, EnableUserUnit, EnableLingerForOwnAccount, PullModelArtifact]
     SystemUnitRealization =>
       [InstallRuntimePackage, WriteSystemUnitFile, ReloadSystemManager, EnableSystemUnit, PullModelArtifact]
     RootlessContainerRealization =>
@@ -671,6 +690,7 @@ type MutationSubject
   | GroupMembership
   | LingerState
   | ModelArtifactStore { owner: SystemPrincipal }
+  | RuntimeArtifactStore { owner: SystemPrincipal }
   | ContainerRuntimeAsOwnUser { owner: SystemPrincipal }
 
 // THE OWNERSHIP FACTS, which are the only place root appears. These are properties of the HOST, and
@@ -684,6 +704,7 @@ fn subject_owner(subject: MutationSubject) -> SystemPrincipal {
     LingerState => RootPrincipal
     UserUnitRegistry { owner: o } => o
     ModelArtifactStore { owner: o } => o
+    RuntimeArtifactStore { owner: o } => o
     ContainerRuntimeAsOwnUser { owner: o } => o
   }
 }
@@ -700,6 +721,7 @@ fn effect_mutation_subject(
     ReloadSystemManager => SystemUnitRegistry
     EnableSystemUnit => SystemUnitRegistry
     InstallRuntimePackage => PackageDatabase
+    InstallOwnedRuntimeClosure => RuntimeArtifactStore { owner: actor }
     GrantContainerRuntimeAccess => GroupMembership
     EnableLingerForOwnAccount => LingerState
     WriteUserUnitFile => UserUnitRegistry { owner: actor }
@@ -778,6 +800,7 @@ fn effect_actuation(
     EnableLingerForOwnAccount => ActuatedByEscalation { commands: [
       join(["/usr/bin/loginctl enable-linger ", principal_label(p: target.actor)], "") as NonEmptyStr,
     ] }
+    InstallOwnedRuntimeClosure => ActuatedByOwnerDirectly
     WriteUserUnitFile => ActuatedByOwnerDirectly
     ReloadUserManager => ActuatedByOwnerDirectly
     EnableUserUnit => ActuatedByOwnerDirectly
@@ -813,4 +836,148 @@ fn realization_sudoers_grant_lines(
     realization_escalated_commands(realization: realization, target: target),
     c => join([principal_label(p: target.actor), " ALL=(root) NOPASSWD: ", c as String], ""),
   )
+}
+
+// ── Required escalation joined against observed grants ──────────────────────────────────────────
+
+// WHY THIS EXISTS. The derivation above answers "what needs escalation". It has no notion of what
+// the actor ALREADY holds, so "this realization needs no new privilege" was a sentence a human said
+// after reading two outputs side by side -- exactly the kind of claim that is true on the day it is
+// written and silently false later. The exact-grant probe answers the other half: it enumerates the
+// observed passwordless grant population verbatim rather than reducing it to a boolean, which is the
+// repair that made this join possible at all. A boolean "has sudo" cannot be subtracted from
+// anything.
+//
+// So the honest statement about a serving install is DERIVED here: required escalations minus
+// observed grants. If the result is empty, the plan is applicable with no administrator credential,
+// and the model says so. If it is not, the plan names precisely which commands are missing rather
+// than reporting that privilege is "required".
+//
+// THE UNKNOWN ARM IS NOT AN EMPTY SET. A host whose grant population could not be observed is not a
+// host with no grants -- the first would authorize an install attempt that the second would refuse.
+// Reading an unobserved population as empty is the empty-observation narrow DESIGN names: an
+// observation that could not answer rendered as the verdict "nothing is granted". It refuses.
+// THE POPULATION IS BOUND TO THE SUBJECT IT WAS MEASURED FOR. The first cut carried a bare command
+// list, which meant a grant population observed on srv6, or under root, or through a different
+// credential, could be handed to a shortfall authorizing srv5 x gunbc-automation -- the copied-receipt
+// class this model already refuses one type over, where host_matches exists precisely because a
+// receipt produced for one host must not answer as another's. A grant list is evidence, and evidence
+// with no subject is evidence about nothing.
+//
+// The credential identity rides it for the same reason PrincipalReachObservation carries one: a
+// probe's answer is a fact about (host x principal x key), and dropping the key axis is what produced
+// a wrong Spark finding earlier in this lane -- probing with a fleet-unowned bootstrap key and
+// concluding the fleet key absent while it was present on both hosts.
+type ObservedGrantPopulation
+  = GrantPopulationObserved {
+      host: HostIdentity
+      principal: NonEmptyStr
+      credential_identity: ContentHash
+      commands: List<NonEmptyStr>
+    }
+  | GrantPopulationUnobserved { host: HostIdentity, principal: NonEmptyStr, cause: NonEmptyStr }
+
+type EscalationShortfall
+  = NoNewPrivilegeRequired
+  | NewPrivilegeRequired { first: NonEmptyStr, more: List<NonEmptyStr> }
+  | ShortfallUndecidable { cause: NonEmptyStr }
+  | ShortfallEvidenceMismatch { cause: NonEmptyStr }
+
+fn grant_population_contains(population: List<NonEmptyStr>, command: NonEmptyStr) -> Bool {
+  fold(population, init: false, f: fn(acc, held) {
+    if acc { true } else { (held as String) == (command as String) }
+  })
+}
+
+// THE KEY AXIS IS CHECKED, not merely carried. An earlier revision matched host and principal and
+// bound credential_identity to `_` while the carrier comment claimed the key axis mattered -- so a
+// population observed under a DIFFERENT credential, with the same host, principal and commands,
+// authorized the shortfall (review 51843). A field that is stored and never read is worse than an
+// absent one: the prose beside it reports a guard that does not exist. Cross-family is refused rather
+// than collapsed to "different", because two hashes that cannot be compared is not the same fact as
+// two hashes that disagree.
+//
+// THE SUBJECT IS CHECKED ON BOTH ARMS. An earlier revision guarded only the observed one and let the
+// unobserved arm discard the host and principal it carries, so "we could not observe srv6" answered an
+// srv5 plan as blocked-on-observation (review 51851). That sends an operator to check a reachable host
+// while the actual defect is wiring -- the exact remedy split this carrier exists to preserve. A
+// failure to observe is still evidence, and evidence about the wrong subject is a mismatch first.
+//
+// THE SUBJECT IS CHECKED BEFORE THE SET DIFFERENCE, and a mismatch is its OWN arm rather than folding
+// into undecidable: "the evidence is about a different host or principal" and "we could not observe"
+// have different remedies -- one is a wiring defect, the other a reachability one -- and an operator
+// reading "undecidable" would go looking for an unreachable host that is fine.
+fn escalation_shortfall(
+  realization: SparkServingRealization,
+  subject_host: HostIdentity,
+  expected_credential: ContentHash,
+  target: ServingDeploymentTarget,
+  observed: ObservedGrantPopulation,
+) -> EscalationShortfall {
+  match observed {
+    GrantPopulationUnobserved { host: uh, principal: up, cause: c } =>
+      if (uh as String) != (subject_host as String) {
+        ShortfallEvidenceMismatch {
+          cause: join(["an unobserved-grant record for host ", uh as String, " cannot answer for ", subject_host as String], "") as NonEmptyStr,
+        }
+      } else {
+        if (up as String) != principal_label(p: target.actor) {
+          ShortfallEvidenceMismatch {
+            cause: join(["an unobserved-grant record for principal ", up as String, " cannot answer for ", principal_label(p: target.actor)], "") as NonEmptyStr,
+          }
+        } else {
+          ShortfallUndecidable { cause: c }
+        }
+      }
+    GrantPopulationObserved { host: oh, principal: op, credential_identity: ok, commands: held } =>
+      if (oh as String) != (subject_host as String) {
+        ShortfallEvidenceMismatch {
+          cause: join(["grant population was observed on host ", oh as String, " but authorizes ", subject_host as String], "") as NonEmptyStr,
+        }
+      } else {
+      if (op as String) != principal_label(p: target.actor) {
+        ShortfallEvidenceMismatch {
+          cause: join(["grant population was observed for principal ", op as String, " but authorizes ", principal_label(p: target.actor)], "") as NonEmptyStr,
+        }
+      } else {
+      match compare_content_hash(left: ok, right: expected_credential) {
+        ContentHashDifferent => ShortfallEvidenceMismatch {
+          cause: "grant population was observed under a different credential than the one this plan authorizes" as NonEmptyStr,
+        }
+        ContentHashCrossFamilyIncomparable => ShortfallEvidenceMismatch {
+          cause: "grant population credential identity is not comparable with the expected credential" as NonEmptyStr,
+        }
+        ContentHashEqual => {
+      let missing = fold(
+        realization_escalated_commands(realization: realization, target: target),
+        init: [],
+        f: fn(acc, required) {
+          if grant_population_contains(population: held, command: required) { acc }
+          else { concat(acc, [required]) }
+        },
+      )
+      match list_head(missing) {
+        HeadAbsent => NoNewPrivilegeRequired
+        HeadFound { value: f } => match list_tail(missing) {
+          TailAbsent => NewPrivilegeRequired { first: f, more: [] }
+          TailFound { tail: t } => NewPrivilegeRequired { first: f, more: t }
+        }
+      }
+        }
+      }
+      }
+      }
+  }
+}
+
+// Only a shortfall of NONE may proceed without an administrator credential. Total over the
+// coproduct, so a later arm cannot silently become applicable -- and ShortfallUndecidable answers
+// false, because "we do not know what is granted" is not permission.
+fn applicable_without_administrator(shortfall: EscalationShortfall) -> Bool {
+  match shortfall {
+    NoNewPrivilegeRequired => true
+    NewPrivilegeRequired { first: _, more: _ } => false
+    ShortfallUndecidable { cause: _ } => false
+    ShortfallEvidenceMismatch { cause: _ } => false
+  }
 }
