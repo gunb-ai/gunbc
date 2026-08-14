@@ -180,6 +180,7 @@ type PlacementRefusal
   | RequiredRoleUnfilled { role: BoardComponentRole }
   | ComponentFillsNoRequiredRole { component: NonEmptyStr, role_named: NonEmptyStr }
   | PlannedIdentityRepeated { component: NonEmptyStr }
+  | RoleFilledMoreThanOnce { role: BoardComponentRole, fills: Int }
 
 type BoardPlacementPlan {
   frame: CoordinateFrameIdentity
@@ -210,8 +211,12 @@ fn required_roles(d: AltraMinimalMotherboard) -> List<BoardComponentRole> {
   )
 }
 
+fn role_fill_count(plan: BoardPlacementPlan, r: BoardComponentRole) -> Int {
+  fold(plan.components, init: 0, f: fn(acc, c) { if roles_equal(a: c.role, b: r) { acc + 1 } else { acc } })
+}
+
 fn plan_fills_role(plan: BoardPlacementPlan, r: BoardComponentRole) -> Bool {
-  fold(plan.components, init: false, f: fn(acc, c) { acc || roles_equal(a: c.role, b: r) })
+  role_fill_count(plan: plan, r: r) > 0
 }
 
 fn design_requires_role(d: AltraMinimalMotherboard, r: BoardComponentRole) -> Bool {
@@ -222,12 +227,27 @@ fn design_requires_role(d: AltraMinimalMotherboard, r: BoardComponentRole) -> Bo
 // would pass for a plan with two processor sockets and no clock generator. Both directions are
 // walked because they fail differently: a missing role is an unbuilt board, and an extra component
 // is a part nobody has justified.
+//
+// AND THE JOIN IS ON MULTIPLICITY, NOT MERE PRESENCE. An earlier revision asked only whether SOME
+// component filled each role, which admitted a board with two processor sockets: both answered a
+// required role, so neither was unjustified, and nothing was missing. The board was wrong and every
+// check passed. Every role this board has is exactly-one -- each DIMM slot is a distinct identity
+// rather than a quantity -- so exactly-one is enforced directly. A role that legitimately admits
+// several parts (decoupling, say) is not representable here today, and the day one exists this
+// becomes a projection of that role's declared multiplicity rather than a fixed comparison. It is
+// deliberately not written as one now: a multiplicity axis with a single inhabited value is a field
+// carried but never joined, which reads as a guarantee while deciding nothing.
 fn population_refusals(d: AltraMinimalMotherboard, plan: BoardPlacementPlan) -> List<PlacementRefusal> {
   let missing = fold(required_roles(d: d), init: [], f: fn(acc, r) {
-    if plan_fills_role(plan: plan, r: r) {
+    let fills = role_fill_count(plan: plan, r: r)
+    if fills == 1 {
       acc
     } else {
-      concat(acc, [RequiredRoleUnfilled { role: r }])
+      if fills == 0 {
+        concat(acc, [RequiredRoleUnfilled { role: r }])
+      } else {
+        concat(acc, [RoleFilledMoreThanOnce { role: r, fills: fills }])
+      }
     }
   })
   let extra = fold(plan.components, init: [], f: fn(acc, c) {
@@ -512,6 +532,7 @@ fn parts_not_geometrically_checked(d: AltraMinimalMotherboard, plan: BoardPlacem
       ComponentEnvelopeNotEstablished { component: _, gap: _ } => acc + 1
       ComponentFillsNoRequiredRole { component: _, role_named: _ } => acc
       PlannedIdentityRepeated { component: _ } => acc
+      RoleFilledMoreThanOnce { role: _, fills: _ } => acc
     }
   })
 }
