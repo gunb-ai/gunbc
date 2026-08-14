@@ -9,9 +9,14 @@ import extdeps.land_pattern.types {
   LandPatternDisagreement,
   MountablePart,
   PatternDesignatorDiffersFromPackage,
+  MountingPatternStanding,
   QuadRowLandGeometry,
+  SurfaceMountTerminals,
+  ThroughHoleSolderTail,
+  VendorPatternEstablished,
   VendorRecommendedLandPattern,
   land_pattern_disagreements,
+  mounting_pattern_is_established,
   land_pattern_pitch,
   part_is_coherent,
   peripheral_land_count,
@@ -20,6 +25,7 @@ import extdeps.power.ti_tps3808 { tps3808g01dbvr, tps3808_dbv0006a_outline }
 import extdeps.power.ti_tps53688 { tps53688rsbr }
 import extdeps.clock.ti_cdce913 { cdce913pwr, cdce913_pw0014a_land_pattern }
 import extdeps.network.ti_dp83867 { dp83867irrgz, dp83867_rgz0048b_outline }
+import extdeps.memory.te_ddr4_dimm_socket { ddr4_dimm_socket_solder_tail_288 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -121,4 +127,30 @@ data undercounted_part: MountablePart = MountablePart {
 test fn w_a_land_population_that_disagrees_with_the_package_is_refused_alone() -> Bool {
   let ds = land_pattern_disagreements(p: undercounted_part)
   count_of(ds: ds) == 1 && has_kind(ds: ds, k: "count")
+}
+
+// A SELECTED PART CAN STILL OWE ITS BOARD PATTERN, and the DDR4 socket is the live case. Its
+// specification establishes the position count, the contact spacing and the attachment style, and
+// carries the pc board layout as a drawn figure this repository could not read — so the part is
+// real and cited while its pattern is outstanding. Both halves are asserted, because a row that
+// reported the pattern as established on the strength of the part being selected is exactly the
+// conflation the standing exists to prevent.
+test fn w_a_selected_socket_may_still_owe_its_board_pattern() -> Bool {
+  ddr4_dimm_socket_solder_tail_288.position_count == 288
+    && micrometer_count(m: ddr4_dimm_socket_solder_tail_288.contact_pitch) == 800
+    && !mounting_pattern_is_established(s: ddr4_dimm_socket_solder_tail_288.board_pattern)
+    && match ddr4_dimm_socket_solder_tail_288.attachment {
+      ThroughHoleSolderTail => true
+      SurfaceMountTerminals => false
+    }
+}
+
+// THE POSITIVE CONTROL FOR THAT PREDICATE. Without it, mounting_pattern_is_established could be a
+// function that always answers false and the claim above would still be green.
+data established_standing: MountingPatternStanding = VendorPatternEstablished {
+  pattern: cdce913_pw0014a_land_pattern,
+}
+
+test fn w_an_established_standing_reports_established() -> Bool {
+  mounting_pattern_is_established(s: established_standing)
 }

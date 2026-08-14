@@ -98,6 +98,32 @@ type VendorRecommendedLandPattern {
   geometry: SurfaceMountLandGeometry
 }
 
+// HOW A PART ATTACHES DECIDES WHAT KIND OF PATTERN IT NEEDS, and the two attested here need
+// different kinds. A surface-mount terminal solders to a land, which is what SurfaceMountLandGeometry
+// describes. A solder tail passes through a PLATED HOLE, and a hole pattern is a drill schedule
+// with finished hole sizes and plating requirements — not a land pattern with a different number
+// in it. No geometry in this module represents one, which is why a through-hole part's pattern can
+// only be carried below as an outstanding obligation and cannot be forced into a land geometry.
+// Both variants come from documents read: the four Texas Instruments drawings and the Tyco
+// Electronics DDR4 socket application specification.
+type BoardAttachmentStyle
+  = SurfaceMountTerminals
+  | ThroughHoleSolderTail
+
+// A PATTERN IS EITHER ESTABLISHED FROM THE VENDOR'S DRAWING OR IT IS AN OBLIGATION NAMING WHAT IS
+// MISSING. There is no third arm carrying a provisional geometry, and the absence is the point: a
+// part whose pattern nobody has read cannot be given plausible pads to keep a consumer moving.
+type MountingPatternStanding
+  = VendorPatternEstablished { pattern: VendorRecommendedLandPattern }
+  | VendorPatternNotEstablished { what_is_missing: NonEmptyStr }
+
+fn mounting_pattern_is_established(s: MountingPatternStanding) -> Bool {
+  match s {
+    VendorPatternEstablished { pattern: _ } => true
+    VendorPatternNotEstablished { what_is_missing: _ } => false
+  }
+}
+
 // THE PART IS THE THING THAT HAS COPPER. A ROLE DOES NOT: a role is a requirement a board places
 // on whatever fills it, and requirements have no pads. So the land pattern hangs off the ordering
 // part number, and a board that swaps one clock generator for another swaps its pattern with it
