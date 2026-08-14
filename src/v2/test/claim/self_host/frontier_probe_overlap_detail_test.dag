@@ -210,3 +210,21 @@ test fn overlap_only_chain_keeps_overlap_located_reason() -> Bool {
   let located = frontier_probe_assemble_located_reason_from_diagnostics(d: overlap_only)
   located == ^parse_grammar_choice_overlap_residue
 }
+
+test fn masked_resolve_not_found_unmasks_located_reason() -> Bool {
+  let masked = NonEmptyDiagnostics {
+    head: Diagnostic {
+      reason: ^parse_grammar_choice_overlap_residue,
+      at: port_locus(port: ^parse_stage_locus_port),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    },
+    tail: [
+      Diagnostic {
+        reason: ^resolve_module_not_found,
+        at: port_locus(port: ^parse_stage_locus_port),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    ]
+  }
+  frontier_probe_assemble_located_reason_from_diagnostics(d: masked) == ^resolve_module_not_found
+}
