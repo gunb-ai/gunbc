@@ -51,7 +51,7 @@ text = render(doc, layout_protocol)     // line half (regime-2)
 2. **C2 complete (folded into C1):** runner manifest + JSON are the first proving instance, witnessed by `test.claim.config_record_emit_witness` and `test.claim.runner_placement_witness`.
 3. **C3 complete:** `OutputFormat` and the orphan gitignore renderer are absent. `gunbc.gitignore_emit` derives comments from `std.languages` `gitignore_format` and renders a `Doc` with its `gitignore_protocol`; because gitignore is a line-list rather than a record, it does not acquire fake `SerializationKnobs`.
 4. **C4 complete at the honest boundary:** `extdeps.formats.dnsmasq` projects directives to `Doc` with `dnsmasq_protocol`; its positional micro-syntax remains explicit rather than being forced into a key/value record.
-5. **C5 (low):** classify digest/accelerator key/value blocks (`gunbc.digest_render` and `gunbc.accelerator_demo_render`) by semantic grain: presentation-only lists stay on the correct `std.render` helpers; true record projections route through `std.serialize` `serialize_record_doc` with byte-identical witnesses.
+5. **C5 (low):** classify digest key/value blocks (`gunbc.digest_render`) by semantic grain: presentation-only lists stay on the correct `std.render` helpers; true record projections route through `std.serialize` `serialize_record_doc` with byte-identical witnesses.
 6. **C6 complete:** `gunbc.roadmap_style` now uses typed `CssDecl` rows on shared `BuildRule` machinery; the old `css_rule_props_scaffold` remains only as historical text in its dissolution note.
 
 ## 5. Audit receipts (live tree 2026-07-31)
