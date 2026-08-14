@@ -115,32 +115,58 @@ fn role_tag(r: BoardComponentRole) -> NonEmptyStr {
   }
 }
 
-// EQUALITY IS ONE TOTAL PROJECTION COMPARED FIELDWISE, and it went through two wrong shapes before
-// this one. The first derived a channel with -1 standing for "this role has no channel" — a
-// degenerate value absorbing ignorance, since a processor socket does not have channel minus one,
-// it has no channel at all. The second matched both sides directly, which removed the sentinel but
-// carried eleven nested wildcard arms: a match over a closed coproduct whose off-variant arms are
-// swept by `_`, which is the corpus's rostered non-fold-residue class. A wildcard here would also
-// be a silent hazard rather than only a stylistic one — adding a twelfth role would compare equal
-// to nothing and simply report every plan as missing it, with no arm to update and no failure
-// pointing at this function. The key is total: every variant is enumerated, the absent channel is
-// Absent rather than a number, and a new role cannot be added without deciding its key.
-type RoleKey { kind: Int  slot: DdrSlotIdentity? }
-
-fn role_key(r: BoardComponentRole) -> RoleKey {
+// EQUALITY WENT THROUGH THREE WRONG SHAPES BEFORE THIS ONE, and each is worth keeping because the
+// next author will reach for one of them. The first derived a channel with -1 standing for "this
+// role has no channel" -- a degenerate value absorbing ignorance. The second matched both sides
+// directly and carried eleven nested wildcard arms over a closed coproduct. The third replaced
+// both with a projected key record whose discriminator was a bare Int.
+// NO KEY RECORD, BECAUSE A KEY RECORD IS A WRITABLE ILLEGAL STATE. An earlier revision projected
+// each role to RoleKey { kind: Int, slot }, and the Int was an in-band discriminator: kind 99 was
+// constructible, the numbers were arbitrary (ProcessorPackage ended up 12 because it was added
+// last, which is the "pick another magic number" hazard showing itself), and the record carried
+// the bad state around. The ordinal below is not stored anywhere -- it exists only inside the
+// comparison -- so there is no value that can hold 99 and nothing to validate.
+//
+// WHY NOT A DOUBLE MATCH ON THE COPRODUCT, which is the obvious answer and was tried twice. A
+// nested match over twelve variants is a hundred and forty-four arms if it is total, and eleven
+// nested wildcard arms if it is not -- and a wildcard here is a silent hazard rather than a
+// stylistic one, because a thirteenth role would compare equal to nothing and report every plan as
+// missing it, with no arm to update and no failure pointing here. Two total projections give the
+// same guarantee at twelve arms each: neither has a wildcard, so a thirteenth role fails to
+// compile in both until someone decides its ordinal and whether it carries a slot.
+fn role_ordinal(r: BoardComponentRole) -> Int {
   match r {
-    MemoryModuleSlot { slot: s } => RoleKey { kind: 1, slot: Present { value: s } }
-    ProcessorSocket => RoleKey { kind: 2, slot: none }
-    ProcessorPackage => RoleKey { kind: 12, slot: none }
-    BoardControlCpld => RoleKey { kind: 3, slot: none }
-    BootFirmwareEeprom => RoleKey { kind: 4, slot: none }
-    FirmwareFlash => RoleKey { kind: 5, slot: none }
-    ClockGenerator => RoleKey { kind: 6, slot: none }
-    ResetController => RoleKey { kind: 7, slot: none }
-    PowerController => RoleKey { kind: 8, slot: none }
-    NetworkEndpoint => RoleKey { kind: 9, slot: none }
-    StorageEndpoint => RoleKey { kind: 10, slot: none }
-    DebugConnector => RoleKey { kind: 11, slot: none }
+    MemoryModuleSlot { slot: _ } => 1
+    ProcessorSocket => 2
+    BoardControlCpld => 3
+    BootFirmwareEeprom => 4
+    FirmwareFlash => 5
+    ClockGenerator => 6
+    ResetController => 7
+    PowerController => 8
+    NetworkEndpoint => 9
+    StorageEndpoint => 10
+    DebugConnector => 11
+    ProcessorPackage => 12
+  }
+}
+
+// THE SLOT IS ABSENT, NOT A SENTINEL. A processor socket does not have channel minus one; it has
+// no channel at all, and the option is what says so.
+fn role_slot(r: BoardComponentRole) -> DdrSlotIdentity? {
+  match r {
+    MemoryModuleSlot { slot: s } => Present { value: s }
+    ProcessorSocket => none
+    BoardControlCpld => none
+    BootFirmwareEeprom => none
+    FirmwareFlash => none
+    ClockGenerator => none
+    ResetController => none
+    PowerController => none
+    NetworkEndpoint => none
+    StorageEndpoint => none
+    DebugConnector => none
+    ProcessorPackage => none
   }
 }
 
@@ -164,9 +190,8 @@ fn slots_equal(sa: DdrSlotIdentity?, sb: DdrSlotIdentity?) -> Bool {
 }
 
 fn roles_equal(a: BoardComponentRole, b: BoardComponentRole) -> Bool {
-  let ka = role_key(r: a)
-  let kb = role_key(r: b)
-  ka.kind == kb.kind && slots_equal(sa: ka.slot, sb: kb.slot)
+  role_ordinal(r: a) == role_ordinal(r: b)
+    && slots_equal(sa: role_slot(r: a), sb: role_slot(r: b))
 }
 
 // AN ENVELOPE IS EITHER ESTABLISHED FROM A SOURCE OR IT IS AN OBLIGATION. There is no third arm
