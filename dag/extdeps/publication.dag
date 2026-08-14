@@ -13,7 +13,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data publication_status_axis_note: String = "UPSTREAM PUBLICATION-DATE FACTS ONLY. SpecificationDocumentDate records what the publisher published and when, on subjects that carry that field. The anchor cites the Open Web Foundation Final Specification Agreement (OWFa 1.0) because this module's consumers model whether a document was published under an open licence — the same licence family OCP subject anchors carry on OcpSpecificationLicense. How this repository read or failed to read a cited locator is an observation in gunbc.specification_citation_read_provenance, not here. DocumentPublicationStatus and its projection helpers were removed from this module in #8257 and land in gunbc.upstream_document_carriage (#8260), where platform modules populate the status and a consumer enforces carriage rules."
+data publication_status_axis_note: String = "UPSTREAM PUBLICATION FACTS ONLY. SpecificationDocumentDate records what the publisher published and when, on subjects that carry that field. DocumentPublicationStatus is the upstream status axis for subjects that carry it; #8257 ships only SpecificationDocumentDate here, and #8260 re-adds DocumentPublicationStatus to this same module after retarget. The anchor cites OWFa 1.0 because consumers model open-licence publication. How this repository read or failed to read a cited locator is an observation in gunbc.specification_citation_read_provenance; the rule mapping a status to whether gunbc may carry facts lives in gunbc.upstream_document_carriage."
 
 type SpecificationDocumentDate {
   year: Int
