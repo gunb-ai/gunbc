@@ -28,6 +28,7 @@ import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.diagnostic {
   Accepted,
   None,
+  Outcome,
   Rejected,
   bind_outcome,
   outcome_accepted,
