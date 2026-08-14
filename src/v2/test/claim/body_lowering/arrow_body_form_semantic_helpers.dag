@@ -1,0 +1,287 @@
+module v2.test.claim.body_lowering.arrow_body_form_semantic_helpers
+
+import v2.compiler.eval { eval, inputs_root_only }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.dag { dag_int_literal_node_from_lexeme }
+import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
+import v2.std.cardinality { termination_proof_witness_for_node }
+import v2.std.collection { Map }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.integer {
+  Int,
+  integer_int_to_signed_i32_le_bytes,
+  integer_signed_i32_le_bytes_to_int
+}
+import v2.std.node {
+  ArrowBodyForm,
+  Atom,
+  ComputationBody,
+  ComputationNode,
+  Conj,
+  DirectAtomBody,
+  Edge,
+  Node,
+  Positional,
+  RecordConstructBody,
+  Symbol,
+  SyntheticOccurrence,
+  Transform,
+  TypeNode,
+  UnsupportedArrowBody,
+  arrow_body_record_construct_conforms,
+  arrow_body_target_is_valid_realization,
+  classify_arrow_body_form
+}
+import v2.std.node_query { find_arrow_body_child }
+import v2.std.optional { Optional, Present, optional_absent, optional_present }
+import v2.std.runtime { RuntimePrimitive, RuntimePrimitiveValue, RuntimeValue }
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+
+// Semantic eval helpers for ArrowBodyForm acceptance witnesses: ingested arrows
+// cross normalize through ingested_fixture_arrows, then execute through
+// v2.compiler.eval with v2_evaluator_interpretation.
+
+type ArrowBodyFormAdmissionMirror
+  = ArrowBodyFormAdmissionProduction
+  | ArrowBodyFormAdmissionRedNoDirectAtom
+  | ArrowBodyFormAdmissionRedNoComputationBody
+
+fn classify_arrow_body_form_red_no_direct_atom(target: Node) -> ArrowBodyForm {
+  match target.kind {
+    TypeNode { connective: Atom { identity: _ } } => UnsupportedArrowBody
+    TypeNode { connective: Conj } => RecordConstructBody
+    ComputationNode { behavior: b } => ComputationBody { behavior: b }
+    _ => UnsupportedArrowBody
+  }
+}
+
+fn classify_arrow_body_form_red_no_computation_body(target: Node) -> ArrowBodyForm {
+  match target.kind {
+    TypeNode { connective: Atom { identity: _ } } => DirectAtomBody
+    TypeNode { connective: Conj } => RecordConstructBody
+    ComputationNode { behavior: _ } => UnsupportedArrowBody
+    _ => UnsupportedArrowBody
+  }
+}
+
+fn arrow_body_form_admits_body_with_mirror(target: Node, mirror: ArrowBodyFormAdmissionMirror) -> Bool {
+  match mirror {
+    ArrowBodyFormAdmissionProduction => arrow_body_target_is_valid_realization(target: target)
+    ArrowBodyFormAdmissionRedNoDirectAtom =>
+      match classify_arrow_body_form_red_no_direct_atom(target: target) {
+        UnsupportedArrowBody => false
+        RecordConstructBody => arrow_body_record_construct_conforms(node: target)
+        DirectAtomBody => true
+        ComputationBody { behavior: _ } => true
+      }
+    ArrowBodyFormAdmissionRedNoComputationBody =>
+      match classify_arrow_body_form_red_no_computation_body(target: target) {
+        UnsupportedArrowBody => false
+        RecordConstructBody => arrow_body_record_construct_conforms(node: target)
+        DirectAtomBody => true
+        ComputationBody { behavior: _ } => true
+      }
+  }
+}
+
+fn arrow_body_form_semantic_unary_int_if_body_admits_holds(
+  callee: Node,
+  arg_lex: String,
+  expected: Int,
+  mirror: ArrowBodyFormAdmissionMirror
+) -> Bool {
+  match find_arrow_body_child(root: callee) {
+    Accepted { value: body, diagnostics: _ } =>
+      if arrow_body_form_admits_body_with_mirror(target: body, mirror: mirror) {
+        arrow_body_form_eval_unary_int_holds(callee: callee, arg_lex: arg_lex, expected: expected)
+      } else {
+        false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn arrow_body_form_semantic_nullary_int_if_body_admits_holds(
+  callee: Node,
+  expected: Int,
+  mirror: ArrowBodyFormAdmissionMirror
+) -> Bool {
+  match find_arrow_body_child(root: callee) {
+    Accepted { value: body, diagnostics: _ } =>
+      if arrow_body_form_admits_body_with_mirror(target: body, mirror: mirror) {
+        arrow_body_form_eval_nullary_int_holds(callee: callee, expected: expected)
+      } else {
+        false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn arrow_body_form_semantic_binary_int_if_body_admits_holds(
+  callee: Node,
+  left_lex: String,
+  right_lex: String,
+  expected: Int,
+  mirror: ArrowBodyFormAdmissionMirror
+) -> Bool {
+  match find_arrow_body_child(root: callee) {
+    Accepted { value: body, diagnostics: _ } =>
+      if arrow_body_form_admits_body_with_mirror(target: body, mirror: mirror) {
+        arrow_body_form_eval_binary_int_holds(
+          callee: callee,
+          left_lex: left_lex,
+          right_lex: right_lex,
+          expected: expected
+        )
+      } else {
+        false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn arrow_body_form_eval_atom(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    occurrence_id: SyntheticOccurrence,
+    children: []
+  }
+}
+
+fn arrow_body_form_eval_i64_node() -> Node {
+  arrow_body_form_eval_atom(s: ^arrow_body_form_eval_i64)
+}
+
+fn arrow_body_form_eval_int_literal_optional(lexeme: String) -> Optional<Node> {
+  match dag_int_literal_node_from_lexeme(lexeme: lexeme, occurrence_id: SyntheticOccurrence) {
+    Accepted { value: node, diagnostics: _ } => optional_present(value: node)
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
+fn arrow_body_form_eval_runtime_int_equals(value: RuntimeValue, n: Int) -> Bool {
+  match value {
+    RuntimePrimitive { value: p } =>
+      match integer_signed_i32_le_bytes_to_int(bytes: p.bytes) {
+        Accepted { value: magnitude, diagnostics: _ } => magnitude == n
+        Rejected { diagnostics: _ } => false
+      }
+    _ => false
+  }
+}
+
+fn arrow_body_form_eval_int_runtime_value(n: Int) -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: arrow_body_form_eval_i64_node(),
+      bytes: integer_int_to_signed_i32_le_bytes(value: n)
+    }
+  }
+}
+
+fn arrow_body_form_eval_facts_lookup(key: Node) -> Optional<InferredFacts> {
+  optional_present(value: claim_inferred_facts_from_nodes(
+    resolved: key,
+    algebra: arrow_body_form_eval_i64_node(),
+    descent: termination_proof_witness_for_node(n: key)
+  ))
+}
+
+fn arrow_body_form_eval_admitted_tree(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map { lookup: arrow_body_form_eval_facts_lookup }
+  }
+}
+
+fn arrow_body_form_eval_nullary_call_node(callee: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    occurrence_id: SyntheticOccurrence,
+    children: [Edge { label: Positional, target: callee }]
+  }
+}
+
+fn arrow_body_form_eval_unary_call_node(callee: Node, arg: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    occurrence_id: SyntheticOccurrence,
+    children: [
+      Edge { label: Positional, target: callee },
+      Edge { label: Positional, target: arg }
+    ]
+  }
+}
+
+fn arrow_body_form_eval_binary_call_node(callee: Node, left: Node, right: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    occurrence_id: SyntheticOccurrence,
+    children: [
+      Edge { label: Positional, target: callee },
+      Edge { label: Positional, target: left },
+      Edge { label: Positional, target: right }
+    ]
+  }
+}
+
+fn arrow_body_form_eval_call_outcome_for_call(call: Node) -> Outcome<RuntimeValue> {
+  eval(
+    tree: arrow_body_form_eval_admitted_tree(root: call),
+    interpretation: v2_evaluator_interpretation(),
+    inputs: inputs_root_only(root: call)
+  )
+}
+
+fn arrow_body_form_eval_int_result_equals_for_call(call: Node, expected: Int) -> Bool {
+  match arrow_body_form_eval_call_outcome_for_call(call: call) {
+    Accepted { value: actual, diagnostics: None } =>
+      arrow_body_form_eval_runtime_int_equals(value: actual, n: expected)
+    _ => false
+  }
+}
+
+fn arrow_body_form_eval_unary_int_holds(callee: Node, arg_lex: String, expected: Int) -> Bool {
+  match arrow_body_form_eval_int_literal_optional(lexeme: arg_lex) {
+    Present { value: arg } =>
+      arrow_body_form_eval_int_result_equals_for_call(
+        call: arrow_body_form_eval_unary_call_node(callee: callee, arg: arg),
+        expected: expected
+      )
+    Absent => false
+  }
+}
+
+fn arrow_body_form_eval_nullary_int_holds(callee: Node, expected: Int) -> Bool {
+  arrow_body_form_eval_int_result_equals_for_call(
+    call: arrow_body_form_eval_nullary_call_node(callee: callee),
+    expected: expected
+  )
+}
+
+fn arrow_body_form_eval_binary_int_holds(
+  callee: Node,
+  left_lex: String,
+  right_lex: String,
+  expected: Int
+) -> Bool {
+  match arrow_body_form_eval_int_literal_optional(lexeme: left_lex) {
+    Present { value: left } =>
+      match arrow_body_form_eval_int_literal_optional(lexeme: right_lex) {
+        Present { value: right } =>
+          arrow_body_form_eval_int_result_equals_for_call(
+            call: arrow_body_form_eval_binary_call_node(callee: callee, left: left, right: right),
+            expected: expected
+          )
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn arrow_body_form_eval_call_does_not_reject_unsupported_callee(call: Node) -> Bool {
+  match arrow_body_form_eval_call_outcome_for_call(call: call) {
+    Accepted { value: _, diagnostics: None } => true
+    Rejected { diagnostics: ds } => ds.head.reason != ^eval_rejected_unsupported_callee
+  }
+}
