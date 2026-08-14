@@ -94,9 +94,9 @@ data nfr_reason_content_hash_structural_refusal: String = "ContentHash family st
 
 data nfr_dissolve_content_hash_structural_refusal: DissolutionCondition = unbound_dissolution(description: "SourceRef digest construction grounds each ContentHash family at inhabitance and the wildcard arm becomes a total match — row deletes with that fold (std.content_hash family grounding)")
 
-data nfr_reason_arrow_body_form_classifier: String = "ArrowBodyForm classifier (classify_arrow_body_form) carries a NodeKind catch-all arm mapping every non-atom/non-conj/non-computation body to UnsupportedArrowBody — intentional classification totality, not eval admission; landed with ArrowBodyForm single authority so structural and eval readers share one classifier; declared at landing so the ratchet re-arms"
+data nfr_reason_arrow_body_form_eval_runtime_equals: String = "arrow_body_form_eval_runtime_int_equals matches RuntimeValue with an off-variant wildcard arm returning false for witness-side integer equality checks against eval output; landed with ArrowBodyForm semantic helpers; declared at landing so the ratchet re-arms"
 
-data nfr_dissolve_arrow_body_form_classifier: DissolutionCondition = unbound_dissolution(description: "NodeKind becomes a closed coproduct at the substrate boundary so classify_arrow_body_form is a total match without a catch-all arm — row deletes with that fold")
+data nfr_dissolve_arrow_body_form_eval_runtime_equals: DissolutionCondition = unbound_dissolution(description: "RuntimeValue projection for eval witnesses becomes a total match over inhabited primitive carriers and the wildcard arm deletes with that fold")
 
 data nfr_reason_class_b_binding_projection: String = "Class B declared-import-closure observation projection (match on DeclaredImportClosureBindingObservation with off-variant wildcard refusal arms) landed with #7835 observe_declared_import_closure_symbol_binding builtin; callers judge ListedImport vs PoolCoincidence vs refusal — the match is the typed verdict fold over the host observation carrier, not business policy; declared at landing so the ratchet re-arms"
 
@@ -656,9 +656,9 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_wildcard_total,
   },
   FrontierRow {
-    subject: PathSubject { path: "src/v2/std/node.dag::classify_arrow_body_form" },
-    reason: nfr_reason_arrow_body_form_classifier,
-    dissolution: nfr_dissolve_arrow_body_form_classifier,
+    subject: PathSubject { path: "src/v2/test/claim/body_lowering/arrow_body_form_semantic_helpers.dag::arrow_body_form_eval_runtime_int_equals" },
+    reason: nfr_reason_arrow_body_form_eval_runtime_equals,
+    dissolution: nfr_dissolve_arrow_body_form_eval_runtime_equals,
   },
   FrontierRow {
     subject: PathSubject { path: "src/v2/test/claim/generated/coproduct_exhaustiveness.dag::anchor_is" },

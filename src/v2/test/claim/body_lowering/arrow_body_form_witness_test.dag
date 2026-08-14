@@ -1,11 +1,10 @@
 module v2.test.claim.body_lowering.arrow_body_form_witness
 
-import v2.compiler.ingested_fixture_arrows { ingested_match_arrow_with_body }
-import v2.std.diagnostic { Accepted, Rejected }
 import v2.extdeps.languages.dag {
   dag_add_arrow_with_body_node,
   dag_arrow_with_body_node,
   dag_int_type_binding,
+  dag_match_arrow_with_body_node,
   dag_type_atom_node
 }
 import v2.std.node {
@@ -259,15 +258,14 @@ test fn arrow_body_form_transform_body_admits_eval_through_call_holds() -> Bool 
 }
 
 test fn arrow_body_form_match_body_refused_eval_entry_holds() -> Bool {
-  match ingested_match_arrow_with_body() {
-    Accepted { value: arrow, diagnostics: _ } =>
-      match arrow_body_form_eval_int_literal_optional(lexeme: "1") {
-        Present { value: arg } =>
-          !arrow_body_form_eval_call_does_not_reject_unsupported_callee(
-            call: arrow_body_form_eval_unary_call_node(callee: arrow, arg: arg)
-          )
-        Absent => false
-      }
-    Rejected { diagnostics: _ } => false
+  match arrow_body_form_eval_int_literal_optional(lexeme: "1") {
+    Present { value: arg } =>
+      !arrow_body_form_eval_call_does_not_reject_unsupported_callee(
+        call: arrow_body_form_eval_unary_call_node(
+          callee: dag_match_arrow_with_body_node(),
+          arg: arg
+        )
+      )
+    Absent => false
   }
 }
