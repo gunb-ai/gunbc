@@ -289,14 +289,61 @@ fn source_pool_file_as_identity(file: SourcePoolFile) -> ActiveSourceIdentity {
   }
 }
 
-fn project_active_source_rows(files: List<SourcePoolFile>) -> List<ActiveSourceIdentity> {
-  fold(files, init: [], f: fn(acc, file) {
-    if acc |> any(row => row.module_path == file.module_path) {
-      acc
-    } else {
-      concat(acc, [source_pool_file_as_identity(file: file)])
+fn find_source_pool_file_for_module(
+  files: List<SourcePoolFile>,
+  module_path: String
+) -> SourcePoolFile? {
+  fold(files, init: none, f: fn(found, file) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        if file.module_path == module_path {
+          Present { value: file }
+        } else {
+          none
+        }
     }
   })
+}
+
+fn remove_source_pool_files_for_module(
+  files: List<SourcePoolFile>,
+  module_path: String
+) -> List<SourcePoolFile> {
+  fold(files, init: [], f: fn(acc, file) {
+    if file.module_path == module_path {
+      acc
+    } else {
+      concat(acc, [file])
+    }
+  })
+}
+
+fn upsert_primary_precedence_source_pool_file(
+  acc: List<SourcePoolFile>,
+  file: SourcePoolFile
+) -> List<SourcePoolFile> {
+  match find_source_pool_file_for_module(files: acc, module_path: file.module_path) {
+    Absent => concat(acc, [file])
+    Present { value: incumbent } =>
+      if file.root_ordinal < incumbent.root_ordinal {
+        concat(
+          remove_source_pool_files_for_module(acc: acc, module_path: file.module_path),
+          [file]
+        )
+      } else {
+        acc
+      }
+  }
+}
+
+fn project_active_source_rows(files: List<SourcePoolFile>) -> List<ActiveSourceIdentity> {
+  map(
+    fold(files, init: [], f: fn(acc, file) {
+      upsert_primary_precedence_source_pool_file(acc: acc, file: file)
+    }),
+    file => source_pool_file_as_identity(file: file)
+  )
 }
 
 fn admit_active_source_manifest(

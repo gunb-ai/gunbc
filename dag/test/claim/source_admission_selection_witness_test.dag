@@ -1,7 +1,7 @@
 module test.claim.source_admission_selection_witness
 
 import std.types { String, Bool, List }
-import extdeps.git.object_store { GitObjectId, git_object_id_eq }
+import extdeps.git.object_store { GitObjectId, git_object_id_eq, git_sha1_object_id }
 import gunbc.source_admission_selection {
   ActiveSourceIdentity,
   ActiveSourceManifest,
@@ -30,6 +30,7 @@ import gunbc.source_admission_selection {
   TransitionManifestUnobservable,
   TransitionMechanismIdentityUnobservable,
   admit_active_source_manifest,
+  active_source_lists_identity_join,
   admission_mechanism_seed_roots,
   annotation_corpus_induction_base_tree,
   annotation_corpus_induction_standing,
@@ -473,6 +474,13 @@ test fn source_admission_seed_to_self_emitted_is_entire_head_even_with_same_dige
         )
     }
   })
+}
+
+test fn source_admission_primary_precedence_independent_of_pool_file_list_order() -> Bool {
+  let forward = project_active_source_rows(files: [file_high(), file_low()])
+  let reversed = project_active_source_rows(files: [file_low(), file_high()])
+  active_source_lists_identity_join(expected: forward, observed: reversed)
+    && forward |> any(row => row.path == "root0/alpha.dag")
 }
 
 test fn source_admission_deleting_higher_precedence_exposes_lower_as_incremental() -> Bool {
