@@ -2603,36 +2603,88 @@ pub fn type_name_transparently_aliases_to(
 ) -> bool {
     match lookup_type_by_name(type_env.clone(), alias_name.clone()) {
         Some(decl) => {
-            if ((decl.connective.clone() != Connective::NoConnective)
-                || ((decl.children.clone().len() as i64) > 0))
-            {
+            let peeled =
+                peel_nominal_alias_identity(decl.clone(), type_env.clone(), module_name.clone());
+            let peeled_name = authored_name_at(source_indices.clone(), peeled.clone());
+            if peeled_name.clone() == alias_name.clone() {
                 false
+            } else if ((peeled_name.clone() == target_name.clone())
+                || (qualified_last_segment(peeled_name.clone())
+                    == qualified_last_segment(target_name.clone())))
+            {
+                true
             } else {
-                let peeled = peel_nominal_alias_identity(
-                    decl.clone(),
+                type_name_transparently_aliases_to(
+                    peeled_name.clone(),
+                    target_name.clone(),
                     type_env.clone(),
                     module_name.clone(),
-                );
-                let peeled_name = authored_name_at(source_indices.clone(), peeled.clone());
-                if peeled_name.clone() == alias_name.clone() {
-                    false
-                } else if ((peeled_name.clone() == target_name.clone())
-                    || (qualified_last_segment(peeled_name.clone())
-                        == qualified_last_segment(target_name.clone())))
-                {
-                    true
-                } else {
-                    type_name_transparently_aliases_to(
-                        peeled_name.clone(),
-                        target_name.clone(),
-                        type_env.clone(),
-                        module_name.clone(),
-                        source_indices.clone(),
-                    )
-                }
+                    source_indices.clone(),
+                )
             }
         }
         None => false,
+    }
+}
+
+pub fn structured_application_structural_type_name(
+    type_name: String,
+    scope: Rc<InferScope>,
+) -> String {
+    let source_indices = scope.type_env.clone().source_indices.clone();
+    match lookup_type_by_name(scope.type_env.clone(), type_name.clone()) {
+        Some(decl) => match decl.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: target, .. }) => authored_name_at(
+                source_indices.clone(),
+                peel_nominal_alias_identity(
+                    target.clone(),
+                    scope.type_env.clone(),
+                    scope.module_name.clone(),
+                ),
+            ),
+            _ => authored_name_at(
+                source_indices.clone(),
+                peel_nominal_alias_identity(
+                    decl.clone(),
+                    scope.type_env.clone(),
+                    scope.module_name.clone(),
+                ),
+            ),
+        },
+        None => type_name.clone(),
+    }
+}
+
+pub fn structured_application_record_lit_nominal_name(
+    lit_name: String,
+    scope: Rc<InferScope>,
+) -> String {
+    structured_application_structural_type_name(lit_name.clone(), scope.clone())
+}
+
+pub fn structured_application_lit_is_declared_optional_variant(
+    formal: Rc<Node>,
+    lit_name: String,
+    scope: Rc<InferScope>,
+) -> bool {
+    let source_indices = scope.type_env.clone().source_indices.clone();
+    let formal_resolved = match lookup_type_for(
+        scope.type_env.clone(),
+        with_required_cardinality(formal.clone()),
+    ) {
+        Some(resolved) => resolved.clone(),
+        None => with_required_cardinality(formal.clone()),
+    };
+    if formal.return_cardinality.clone() == Cardinality::CardOptional
+        && (lit_name.clone() == "Present".to_string() || lit_name.clone() == "Absent".to_string())
+    {
+        true
+    } else {
+        has_child_named(
+            formal_resolved.clone(),
+            lit_name.clone(),
+            source_indices.clone(),
+        )
     }
 }
 
@@ -2660,21 +2712,63 @@ pub fn structured_application_site_type_mismatch(
     if formal_name.is_empty() {
         return false;
     }
+    let formal_structural =
+        structured_application_structural_type_name(formal_name.clone(), scope.clone());
     let lit_name =
         record_lit_type_name_at(actual_expr.clone(), source_indices.clone()).unwrap_or_default();
     if lit_name.is_empty() {
         return false;
     }
-    if ((lit_name.clone() == "Present".to_string()) || (lit_name.clone() == "Absent".to_string())) {
+    let lit_nominal =
+        structured_application_record_lit_nominal_name(lit_name.clone(), scope.clone());
+    if structured_application_lit_is_declared_optional_variant(
+        formal.clone(),
+        lit_name.clone(),
+        scope.clone(),
+    ) {
         return false;
     }
-    if application_type_names_compatible(
-        formal_name.clone(),
+    if record_lit_alias_struct_expansion(lit_name.clone(), scope.clone())
+        .map(|expansion| authored_name_at(source_indices.clone(), expansion.resolved.clone()))
+        .map(|expanded_name| {
+            (expanded_name.clone() == formal_structural.clone())
+                || application_type_names_compatible(
+                    formal_structural.clone(),
+                    expanded_name.clone(),
+                    scope.type_env.clone(),
+                    scope.module_name.clone(),
+                    source_indices.clone(),
+                )
+        })
+        .unwrap_or(false)
+    {
+        return false;
+    }
+    if brand_grounds_transparently_to(
         lit_name.clone(),
+        formal_peeled.clone(),
         scope.type_env.clone(),
-        scope.module_name.clone(),
         source_indices.clone(),
     ) {
+        return false;
+    }
+    if ((formal_structural.clone() == lit_nominal.clone())
+        || (formal_structural.clone() == lit_name.clone())
+        || application_type_names_compatible(
+            formal_structural.clone(),
+            lit_nominal.clone(),
+            scope.type_env.clone(),
+            scope.module_name.clone(),
+            source_indices.clone(),
+        ))
+        || application_type_names_compatible(
+            formal_structural.clone(),
+            lit_name.clone(),
+            scope.type_env.clone(),
+            scope.module_name.clone(),
+            source_indices.clone(),
+        )
+    {
         return false;
     }
     let formal_decl = match lookup_type_for(
@@ -2706,13 +2800,19 @@ pub fn structured_application_site_type_mismatch(
         }
         Some(decl) if decl.connective.clone() == Connective::Conj => {
             let decl_name = authored_name_at(source_indices.clone(), decl.clone());
-            !application_type_names_compatible(
+            (!application_type_names_compatible(
+                decl_name.clone(),
+                lit_nominal.clone(),
+                scope.type_env.clone(),
+                scope.module_name.clone(),
+                source_indices.clone(),
+            )) && (!application_type_names_compatible(
                 decl_name.clone(),
                 lit_name.clone(),
                 scope.type_env.clone(),
                 scope.module_name.clone(),
                 source_indices.clone(),
-            )
+            ))
         }
         None => {
             if is_kernel_type(formal_name.clone()) {
@@ -3519,27 +3619,35 @@ pub fn direct_call_arg_mismatch_diags(
                         };
                         match matched_arg.clone() {
                             Some(ta) => {
-                                let actual_raw = resolved_type(arg_value(ta.clone()));
-                                let actual = peel_nominal_alias_identity(
-                                    actual_raw.clone(),
-                                    type_env.clone(),
-                                    module_name.clone(),
-                                );
-                                if direct_call_arg_type_mismatch(
-                                    formal.clone(),
-                                    actual.clone(),
-                                    type_env.clone(),
-                                    module_name.clone(),
-                                    source_indices.clone(),
+                                let actual_expr = arg_value(ta.clone());
+                                if matches!(
+                                    (*actual_expr.expr_data.clone()).clone(),
+                                    ExprData::ExprRecordLit { .. }
                                 ) {
-                                    Rc::new(vec![type_mismatch_error(
-                                        node_type_shape(formal.clone(), source_indices.clone()),
-                                        node_type_shape(actual.clone(), source_indices.clone()),
-                                        arg_value(ta.clone()).span.clone(),
-                                        module_name.clone(),
-                                    )])
-                                } else {
                                     Rc::new(vec![])
+                                } else {
+                                    let actual_raw = resolved_type(actual_expr.clone());
+                                    let actual = peel_nominal_alias_identity(
+                                        actual_raw.clone(),
+                                        type_env.clone(),
+                                        module_name.clone(),
+                                    );
+                                    if direct_call_arg_type_mismatch(
+                                        formal.clone(),
+                                        actual.clone(),
+                                        type_env.clone(),
+                                        module_name.clone(),
+                                        source_indices.clone(),
+                                    ) {
+                                        Rc::new(vec![type_mismatch_error(
+                                            node_type_shape(formal.clone(), source_indices.clone()),
+                                            node_type_shape(actual.clone(), source_indices.clone()),
+                                            actual_expr.span.clone(),
+                                            module_name.clone(),
+                                        )])
+                                    } else {
+                                        Rc::new(vec![])
+                                    }
                                 }
                             }
                             None => Rc::new(vec![]),
@@ -9336,7 +9444,9 @@ pub fn infer_record_lit_structural(
                     {
                         Some(sf) => {
                             let ft = match sf.inferred.clone().as_deref().cloned() {
-                                Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
+                                Some(InferredNode::Resolved { node: rt, .. }) => {
+                                    preserve_outer_optional_cardinality(sf.clone(), rt.clone())
+                                }
                                 _ => field_node_type_expr(sf.clone()),
                             };
                             Some(ft.clone())
@@ -9347,6 +9457,7 @@ pub fn infer_record_lit_structural(
                         Some(ft) => {
                             if (((ft.ident_span.clone() != None)
                                 || type_node_is_callable(ft.clone()))
+                                || (ft.return_cardinality.clone() == Cardinality::CardOptional)
                                 || field_type_is_optional_coproduct(
                                     ft.clone(),
                                     scope.type_env.clone(),
@@ -9434,7 +9545,7 @@ pub fn infer_record_lit_structural(
                                             scope.module_name.clone(),
                                         )])
                                     } else if structured_application_site_type_mismatch(
-                                        expected_required.clone(),
+                                        expected_node.clone(),
                                         field_init_node_value(fi.clone()),
                                         scope.clone(),
                                     ) {

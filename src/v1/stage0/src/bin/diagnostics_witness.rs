@@ -216,6 +216,14 @@ fn establishment_report(module_index: &ModuleIndex) {
              type Prov { id: String, ev: Ev }\n\
              data bad: Prov = Prov { id: \"x\", ev: OtherA { k: 1 } }\n",
         ),
+        (
+            "optional_present_at_product_field",
+            "establish_opt_product.dag",
+            "module establish_opt_product\n\
+             type AnnotationSubject { span: Int }\n\
+             type Pick { following: AnnotationSubject? }\n\
+             fn f() -> Pick { Pick { following: Present { value: AnnotationSubject { span: 1 } } } }\n",
+        ),
     ];
     for (label, path, source) in probes {
         let result = compile_multi(module_index, &[(path, source)]);
@@ -680,6 +688,24 @@ fn record_literal_field_walls(module_index: &ModuleIndex) {
             .any(|d| matches!(&*d.diagnostic, CompilerDiagnostic::MissingField { .. })),
         "optional field omission must stay green, got: {:?}",
         diagnostic_messages(&optional_result)
+    );
+
+    // GREEN: transparent type alias literal at declared target stays compatible
+    let alias_green = "module fieldwall_alias\n\
+        type Node { kind: Int, children: List<Int>, occurrence_id: Int }\n\
+        type NormalizedTree = Node\n\
+        fn takes_node(n: Node) -> Bool { true }\n\
+        fn via_alias() -> Bool {\n\
+          takes_node(n: NormalizedTree { kind: 0, children: [], occurrence_id: 0 })\n\
+        }\n";
+    let alias_result = compile_multi(module_index, &[("fieldwall_alias.dag", alias_green)]);
+    assert!(
+        !alias_result
+            .diagnostics
+            .iter()
+            .any(|d| matches!(&*d.diagnostic, CompilerDiagnostic::TypeMismatch { .. })),
+        "transparent alias literal at declared target must stay green, got: {:?}",
+        diagnostic_messages(&alias_result)
     );
 
     // GREEN: dag_can_cast pair (Int literal for Float field) is sanctioned
