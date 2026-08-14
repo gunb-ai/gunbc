@@ -626,10 +626,27 @@ fn run_against_one_prepared_subject(
     //
     // Kept: only what genuinely cannot resolve — the deliberately-malformed scanner
     // fixtures and the named lens fixtures that exist to be invalid.
-    let excludes: Vec<String> = whole_tree_strict_resolve_exclusion_substrings()
+    // EXACT EXCLUSIONS, and only what is deliberately invalid.
+    //
+    // Three entries in the shared pattern list are substrings that remove a class
+    // rather than a file, and every one of them straddled a dependency:
+    //   "/test/"            kept four modules that DECLARE test modules (their paths
+    //                       lack the substring) while removing everything they import
+    //   "test/fixture/"     removes ALL fixtures, though only the scanner inputs
+    //                       under layering_scan are deliberately malformed; valid
+    //                       fixtures that real tests import went with them
+    //   "nat_semiring_rung" removes the implementation while keeping the tests that
+    //                       call into it
+    // Path text is not the property being selected, so a substring cannot express
+    // "deliberately invalid" and keeps proving it one straddle at a time.
+    let dropped = ["/test/", "test/fixture/", "nat_semiring_rung"];
+    let mut excludes: Vec<String> = whole_tree_strict_resolve_exclusion_substrings()
         .into_iter()
-        .filter(|p| p != "/test/")
+        .filter(|p| !dropped.contains(&p.as_str()))
         .collect();
+    // The genuinely-malformed scanner inputs: modules declaring imports that do not
+    // exist, on purpose, as test DATA for the layering scanner.
+    excludes.push("test/fixture/layering_scan/".to_string());
     let prepare_started = Instant::now();
     let PreparedWholeTreeSubject {
         ctx,

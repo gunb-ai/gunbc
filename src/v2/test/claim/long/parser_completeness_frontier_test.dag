@@ -1,5 +1,7 @@
 module v2.test.long.parser_completeness_frontier
 
+import std.algebra { Empty }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data parser_frontier_module_artifact: Artifact = Artifact {

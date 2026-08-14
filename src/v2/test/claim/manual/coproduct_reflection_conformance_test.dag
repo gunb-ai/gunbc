@@ -1,5 +1,7 @@
 module v2.test.manual.coproduct_reflection_conformance
 
+import std.algebra { Empty }
+
 import std.trait_derive_shape { ReprGroundingDeriveTrait }
 import v2.std.node_query { coproduct_arm_keys, coproduct_nullary_inhabitants }
 import v2.test.fixture.coproduct_reflection_generic_wrapper {

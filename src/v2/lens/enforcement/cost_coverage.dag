@@ -1,5 +1,7 @@
 module v2.lens.enforcement.cost_coverage
 
+import std.algebra { Empty }
+
 
 type CostCoverageIngestVerdict
   = IngestParsedClean

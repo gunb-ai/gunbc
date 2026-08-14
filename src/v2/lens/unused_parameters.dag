@@ -1,5 +1,7 @@
 module v2.lens.unused_parameters
 
+import std.algebra { Empty }
+
 
 type UseRelation
   = IsUseOfDeclaration

@@ -1,5 +1,7 @@
 module v2.test.claim.grammar.validate_grammar
 
+import std.algebra { Empty }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data validate_grammar_fixture_start: Symbol = ^validate_grammar_fixture_start
