@@ -21,7 +21,6 @@ import gunbc.fleet_converge_plan {
   fleet_converge_plan_prior_generation_path,
   fleet_converge_plan_member_set_fp_path,
   fleet_converge_plan_artifact_dir,
-  fleet_converge_plan_content_hash,
   fleet_converge_observed_baseline_matches,
   fleet_converge_member_set_fingerprint_matches,
   timer_retirement_observed_legacy_srv1,
