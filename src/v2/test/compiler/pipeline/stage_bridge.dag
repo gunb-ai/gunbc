@@ -299,7 +299,7 @@ fn pipeline_match_corpus_resolve_relationship_holds() -> Bool {
     file: ^pipeline_corpus_match_file
   ) {
     Accepted { value: tree, diagnostics: _ } =>
-      pipeline_arrow_body_has_behavior(root: tree.root, wanted: Match)
+      pipeline_arrow_body_has_behavior(root: tree, wanted: Match)
     Rejected { diagnostics: _ } => false
   }
 }

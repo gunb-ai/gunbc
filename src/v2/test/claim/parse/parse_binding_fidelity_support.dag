@@ -105,7 +105,7 @@ fn pbf_resolved_add_module() -> Outcome<Node> {
 fn pbf_resolved_add_arrow() -> Optional<Node> {
   match pbf_resolved_add_module() {
     Accepted { value: tree, diagnostics: _ } =>
-      ingested_find_arrow_in_module(root: tree.root)
+      ingested_find_arrow_in_module(root: tree)
     Rejected { diagnostics: _ } => Absent
   }
 }
