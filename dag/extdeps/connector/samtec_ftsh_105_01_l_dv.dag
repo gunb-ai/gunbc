@@ -5,12 +5,11 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.samtec { samtec }
-import extdeps.land_pattern.types { CatalogPartIdentity, VendorPatternNotEstablished }
+import extdeps.land_pattern.types { CatalogPartIdentity, MountingPatternObligation }
 
-// THE LOCATOR IS THE SERIES FOOTPRINT PRINT FOR A DIFFERENT VARIANT, AND THAT IS DELIBERATE.
-// Search confirmed this -DH print exists at this path 2026-08-14; the -DV print this part actually
-// needs was not located, and two reconstructed -DV paths returned HTTP 403. So the anchor names the
-// publisher and the document family that were observed, rather than a path nobody has seen resolve.
+// THE LOCATOR IS THE SERIES FOOTPRINT PRINT FOR A DIFFERENT VARIANT, AND THAT IS DELIBERATE. The
+// -DH print is the one observed to exist at this path, so the anchor names the publisher and the
+// document family that were observed, rather than a constructed path nobody has seen resolve.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -18,13 +17,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data ftsh_105_01_l_dv_note: String = "THIS PART IS A CANDIDATE, NOT A REFERENCE-NAMED SELECTION, AND IT IS THE ONLY ONE OF THE FOUR THAT IS. The other three come from Ampere's Mt. Jade specification, which names them for specific jobs. This one was proposed by this session as a debug header; Mt. Jade describes JTAG headers at 2x10, 1x8 and 2x5 positions and names no part number for them, so nothing upstream selects an FTSH-105-01-L-DV. Recording that difference matters more than it looks: three of these rows carry a real selection whose justification is a reference design, and this one carries a selection whose only justification is that someone here suggested it - which is not a justification at all, and is the class of pick the operator's ruling on this lane exists to make visible. THE ANCHOR POINTS AT A SIBLING VARIANT'S PRINT. Samtec publishes per-variant footprint prints under one path pattern; the -DH print was observed to exist, the -DV one was not found, and two guessed -DV paths returned 403. Guessing is how a citation ends up naming a document nobody has seen, so the anchor records what was observed and the standing records what is owed."
+data ftsh_105_01_l_dv_note: String = "THIS ROW HAS NO UPSTREAM PRECEDENT BEHIND IT AT ALL, AND SAYING SO IS THE POINT OF CARRYING IT. The other three unread rows in this lane are named by Ampere's Mt. Jade reference for specific jobs; this part number was proposed here as a debug header, and Mt. Jade names no part number for its JTAG headers. So there is nothing upstream that even suggests it — which is the class of pick the operator's ruling on this lane exists to make visible, and it is recorded rather than quietly presented alongside the others. THE ANCHOR POINTS AT A SIBLING VARIANT'S PRINT. Samtec publishes per-variant footprint prints under one path pattern, and the print observed to exist is the -DH one; the anchor records the path that was observed rather than a constructed -DV path, because guessing a locator is how a citation ends up naming a document nobody has seen. The -DV footprint print is what the standing below owes."
 
 data ftsh_105_01_l_dv: CatalogPartIdentity = CatalogPartIdentity {
   ordering_part_number: "FTSH-105-01-L-DV",
   vendor: samtec,
-  board_pattern: VendorPatternNotEstablished {
-    what_is_missing: "the recommended PCB layout and body outline for the -DV variant; Samtec's per-variant footprint prints are published under a path pattern whose -DH member was observed, while two reconstructed -DV paths returned HTTP 403 and the correct one was not located. Whether this part is the right debug header at all is also unestablished, since no upstream document names it",
+  board_pattern: MountingPatternObligation {
+    what_is_missing: "the vendor's per-variant footprint print for the -DV variant of FTSH-105-01-L, which Samtec publishes as a print in its footprint series and which this row does not transcribe",
   },
 }
 

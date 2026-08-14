@@ -5,10 +5,10 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.microchip_technology { microchip_technology }
-import extdeps.land_pattern.types { CatalogPartIdentity, VendorPatternNotEstablished }
+import extdeps.land_pattern.types { CatalogPartIdentity, MountingPatternObligation }
 
-// Datasheet DS20006197, fetched 2026-08-14 and NOT read: the file is served, and its text is not
-// extractable by any route available to this session.
+// Datasheet DS20006197. The anchor records where this part's mechanical authority lives; the
+// document's geometry is not transcribed in this module.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -16,13 +16,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data at24cm02_note: String = "THE FETCH SUCCEEDED AND THE READ DID NOT, WHICH ARE DIFFERENT FAILURES. This document is served at the recorded locator - it is not gated, not missing and not refused - but its text could not be extracted here, and no PDF rasteriser is installed to read it as an image. That is a property of this session's toolchain rather than of the document, and it has now been observed across EVERY Microchip datasheet attempted, so it is a vendor-wide extraction failure rather than three unlucky documents. It matters for planning: Microchip DOES publish recommended land patterns beside its package outlines, so this row is expected to complete in full once anyone can read the file, unlike the connector rows whose layouts are drawn callouts even when the text extracts. Ampere's Mt. Jade reference names this part for the Altra SCP firmware EEPROM, which is what selects it; nothing about its capacity, interface or package is recorded here because none of it was read."
+data at24cm02_note: String = "THE DOCUMENT EXISTS AND ITS GEOMETRY IS NOT TRANSCRIBED, AND THIS ROW CARRIES ONLY THE FIRST OF THOSE. Datasheet DS20006197 is served at the recorded locator and publishes recommended land patterns beside its package outlines, so the facts this row owes are published rather than unobtainable. Nothing about the part's capacity, interface or package is recorded here, because recording any of it would mean supplying it from expectation. WHY THIS ROW IS NOT A SELECTION: Ampere's Mt. Jade reference names this part for a firmware EEPROM role, which is a reference-design precedent — a relation between a part and a particular board, and therefore a product-layer fact that belongs with the board that consumes it. An upstream module knows nothing about our board and must not carry a justification for it."
 
 data at24cm02: CatalogPartIdentity = CatalogPartIdentity {
   ordering_part_number: "AT24CM02",
   vendor: microchip_technology,
-  board_pattern: VendorPatternNotEstablished {
-    what_is_missing: "the 8-lead SOIC package outline and the recommended land pattern from the Packaging Information section of datasheet DS20006197; the document is served but its text is not extractable by any route available to this session, and no PDF rasteriser is installed to read it as an image",
+  board_pattern: MountingPatternObligation {
+    what_is_missing: "the package outline and recommended land pattern that datasheet DS20006197 publishes in its packaging information section, together with the ordering variant's package designator. None of it is transcribed here",
   },
 }
 

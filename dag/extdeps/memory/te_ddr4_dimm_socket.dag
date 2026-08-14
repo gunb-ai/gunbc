@@ -11,9 +11,8 @@ import extdeps.hardware { Hardware }
 import extdeps.vendor.tyco_electronics { tyco_electronics }
 import extdeps.land_pattern.types {
   BoardAttachmentStyle,
-  MountingPatternStanding,
+  MountingPatternObligation,
   ThroughHoleSolderTail,
-  VendorPatternNotEstablished,
 }
 
 // Application Specification 114-115012 Rev A, "DDR4 DIMM Socket Solder Tail", dated Nov 24 2016,
@@ -26,7 +25,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data te_ddr4_dimm_socket_note: String = "THE PART IS SELECTED AND ITS BOARD PATTERN IS NOT ESTABLISHED, AND THOSE ARE TWO FACTS. The specification states what this row carries — 288 positions, 0.80 mm contact spacing, solder tail through plated holes, FR-4 or G-10 board material — and it also carries the pc board layout as Figure 3, whose dimension callouts are drawn rather than typed and were not readable by the route available here. So the socket is a real, cited, selected part whose hole pattern remains outstanding, and the standing below says exactly that instead of letting a selected part imply an established pattern. THE BASE PART NUMBER IS NOT AN ORDERABLE PART NUMBER, and the document says so: 2308107 identifies the product line so that inquiries reach the right service network, and the orderable variants differ in tail length for different board thicknesses, which the customer drawing carries. Recording it as an ordering part number would have been a more confident-looking row that was false. THE SPECIFICATION ALSO YIELDS TO THE CUSTOMER DRAWING by its own terms where the two conflict, so a later reader who obtains that drawing is reading a higher authority for this part, not a second opinion."
+data te_ddr4_dimm_socket_note: String = "A PRODUCT FAMILY, NOT A SELECTED PART, AND NOT AN ORDERABLE ONE EITHER. 2308107 is the base product number the specification uses to identify this product line; the orderable variants differ in tail length for different board thicknesses and are carried on the customer drawing. So this row names a family whose mechanical facts are cited, and it does not say that this socket has been chosen for anything. THE SPECIFICATION STATES what is recorded here: 288 positions, 0.80 mm contact spacing, solder tail through plated holes, FR-4 or G-10 board material. IT ALSO PUBLISHES A PC BOARD LAYOUT AS FIGURE 3, and that is a fact about the document rather than about any reader: the hole pattern this part needs EXISTS and is published, it is simply not transcribed here. THE CUSTOMER DRAWING GOVERNS WHERE THE TWO CONFLICT, by the specification own terms, so a later reader who obtains that drawing is reading a higher authority for this part and not a second opinion. A SOLDER TAIL NEEDS A DRILL SCHEDULE, NOT A LAND PATTERN, which is why the obligation below is a plated-hole obligation carrying no success arm at all. An earlier revision of this row used a standing whose only established arm carried surface-mount land geometry, which this part can never inhabit — the type promised a success that was unreachable for the very part it described, and it also stored this session extraction failure as though it were a vendor fact. What a fetch on 2026-08-14 could or could not read is an observation this repository made, and it belongs in the observing layer downstream, never inside an upstream module."
 
 type DimmSocketCatalogRow {
   base_part_number: NonEmptyStr
@@ -34,17 +33,17 @@ type DimmSocketCatalogRow {
   position_count: Nat
   contact_pitch: Micrometer
   attachment: BoardAttachmentStyle
-  board_pattern: MountingPatternStanding
+  board_pattern: MountingPatternObligation
 }
 
-data ddr4_dimm_socket_solder_tail_288: DimmSocketCatalogRow = DimmSocketCatalogRow {
+data ddr4_dimm_socket_solder_tail_288_family: DimmSocketCatalogRow = DimmSocketCatalogRow {
   base_part_number: "2308107",
   vendor: tyco_electronics,
   position_count: 288,
   contact_pitch: micrometer(count: 800),
   attachment: ThroughHoleSolderTail,
-  board_pattern: VendorPatternNotEstablished {
-    what_is_missing: "the plated-hole pattern of application specification 114-115012 Figure 3; its layout dimensions and tolerances are drawn callouts that were not readable from the document, and the specification defers to the per-part customer drawing where the two conflict",
+  board_pattern: MountingPatternObligation {
+    what_is_missing: "the plated-hole pattern this socket requires, which application specification 114-115012 publishes as Figure 3 and which the per-part customer drawing governs where the two conflict. No plated-hole geometry is transcribed here, and this repository carries no plated-hole geometry carrier for one to inhabit",
   },
 }
 
@@ -52,7 +51,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
       module_path: "extdeps.memory.te_ddr4_dimm_socket",
-      decl_name: "ddr4_dimm_socket_solder_tail_288",
+      decl_name: "ddr4_dimm_socket_solder_tail_288_family",
       field: WholeDeclaration
     }
   },

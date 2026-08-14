@@ -15,7 +15,7 @@ import extdeps.hardware { Hardware }
 // alternate designs" on the drawings below. The standard itself is sold rather than published,
 // so this repository has NOT read its fillet tables and cannot derive a land pattern from a
 // package outline. That is why the only land pattern representable here is one a vendor PRINTED,
-// and why no function in this module takes an outline and returns a pattern.
+// and why no function in this module takes a body dimension set and returns a pattern.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -23,15 +23,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data land_pattern_note: String = "THREE FACTS, NOT ONE, AND THEY ARE ROUTINELY COLLAPSED. A PACKAGE OUTLINE is how much volume the part occupies — the vendor's mechanical drawing of the part itself. A VENDOR RECOMMENDED LAND PATTERN is what the vendor says to etch, printed on the same drawing under its own title and its own revision. A BOARD LAND PATTERN is what a particular board actually etches, which depends on the fabricator capability profile that board was designed against. This module carries the first two and DOES NOT CARRY THE THIRD, and the absence is structural rather than an omission: no type here represents a board's copper and no function produces one, so a consumer that wants board pads must obtain a fabricator profile and decide, and cannot instead reach for the vendor's suggestion sitting right beside the outline. The identical collapse one layer up already cost this repository a review cycle, where a package body envelope was called a footprint and approved. A SECOND ABSENCE IS AS DELIBERATE: there is no function from PackageOutline to VendorRecommendedLandPattern. Deriving pads from a package is exactly what IPC-7351 exists to specify and exactly what this repository has not read, so a derivation here would be fabricated plausible output — geometry that passes every check, draws convincingly, and solders to nothing."
+data land_pattern_note: String = "THIS MODULE CARRIES MECHANICAL CANDIDATES. IT DOES NOT SELECT PARTS. A row here says a vendor publishes these dimensions for this part number; it does not say the part is right for any board, and nothing here establishes electrical suitability of any kind — no frequency, jitter or output topology, no reset threshold, polarity or sequencing, no regulator protocol or rail control, no host interface compatibility. Selection is a functional-compatibility join performed at the product layer over requirement, electrical interface, reference precedent, candidate part and package authority. This module supplies the last of those five and nothing else. FOUR FACTS, NOT ONE, AND THEY ARE ROUTINELY COLLAPSED. PACKAGE BODY DIMENSIONS are the plastic body's extent. The OVERALL TERMINAL ENVELOPE is larger wherever terminals project beyond the body, and it is NOT modelled here — a leaded package's leads span further than its body, so a body extent is not occupied volume and calling it that recreates the body-versus-footprint error this lane exists to eliminate. A VENDOR RECOMMENDED LAND PATTERN is what the vendor says to etch. A BOARD LAND PATTERN is what a particular board etches, which depends on a fabricator capability profile nobody has selected. The COURTYARD is a fifth thing and is also absent. This module carries the first and third; the second, fourth and fifth have no representation, and no function here produces any of them. THAT ABSENCE IS THE CONSTRUCTION: a consumer wanting occupied volume, board copper or a keepout cannot reach for the nearest available number, because there is no nearest available number."
 
 // A LAND PATTERN AS THE VENDOR PRINTS IT, which is parametric rather than a list of pads. The
 // drawing does not enumerate forty-eight rectangles; it states a land size, a pitch, a count and
-// a span, and every pad follows. Transcribing the derived pads instead would be a second
-// representation of the printed parameters and would drift from them silently, and for a 288-way
-// connector it is not even transcribable. The land POPULATION is derived from these parameters
-// below; the pads' individual coordinates are not produced here, because placing them needs a
-// coordinate frame and an origin convention that belong to whatever consumes the pattern.
+// a span, and every pad follows. The land POPULATION is derived from these parameters below; the
+// pads' individual coordinates are not produced here, because placing them needs a coordinate
+// frame and an origin convention that belong to whatever consumes the pattern.
 type SurfaceMountLandGeometry
   = DualRowLandGeometry {
       lands_per_row: Nat
@@ -49,9 +47,6 @@ type SurfaceMountLandGeometry
       thermal_land_side: Micrometer?
     }
 
-// THE PERIPHERAL LAND POPULATION, derived from the geometry rather than authored beside it. A
-// stored count would be a second answer to how many pads there are, and the copy that disagrees
-// when someone corrects the per-row figure is the one nobody edits.
 fn peripheral_land_count(g: SurfaceMountLandGeometry) -> Nat {
   match g {
     DualRowLandGeometry { lands_per_row: n, pitch: _, row_span_centre_to_centre: _, land_length: _, land_width: _ } => 2 * n
@@ -76,11 +71,17 @@ type PackageDrawingRef {
   reprinted_in: ExternalAuthority
 }
 
-// THE OUTLINE CARRIES THE VENDOR'S OWN MIN AND MAX, not a nominal. The drawings state body extents
-// as a max over a min and print no nominal, so a single number here would be a figure this
-// repository invented by averaging. A consumer needing one extent — a body-envelope collision
-// check, for instance — takes the max and says that it did.
-type PackageOutline {
+// THE BODY, AND ONLY THE BODY. This is named for what it holds after an earlier revision called it
+// a package OUTLINE and its note called it how much volume the part occupies. Both were wrong in
+// the same direction: for a leaded package the terminals project beyond the plastic, so the body
+// extent under-states the space the part needs, and a clearance check built on it admits boards
+// that cannot be assembled. The overall terminal envelope is a different measurement, present on
+// the same vendor drawings, and it is deliberately NOT carried here rather than approximated from
+// what is.
+//
+// The vendor's own min and max are kept because the drawings state extents that way and print no
+// nominal; a single number would be a figure this repository invented by averaging.
+type PackageBodyDimensions {
   designator: NonEmptyStr
   drawing: PackageDrawingRef
   terminal_count: Nat
@@ -99,60 +100,70 @@ type VendorRecommendedLandPattern {
 }
 
 // HOW A PART ATTACHES DECIDES WHAT KIND OF PATTERN IT NEEDS, and the two attested here need
-// different kinds. A surface-mount terminal solders to a land, which is what SurfaceMountLandGeometry
-// describes. A solder tail passes through a PLATED HOLE, and a hole pattern is a drill schedule
-// with finished hole sizes and plating requirements — not a land pattern with a different number
-// in it. No geometry in this module represents one, which is why a through-hole part's pattern can
-// only be carried below as an outstanding obligation and cannot be forced into a land geometry.
-// Both variants come from documents read: the four Texas Instruments drawings and the Tyco
-// Electronics DDR4 socket application specification.
+// different kinds. A surface-mount terminal solders to a land. A solder tail passes through a
+// PLATED HOLE, and a hole pattern is a drill schedule with finished hole sizes and plating
+// requirements — not a land pattern with different numbers in it.
 type BoardAttachmentStyle
   = SurfaceMountTerminals
   | ThroughHoleSolderTail
 
-// A PATTERN IS EITHER ESTABLISHED FROM THE VENDOR'S DRAWING OR IT IS AN OBLIGATION NAMING WHAT IS
-// MISSING. There is no third arm carrying a provisional geometry, and the absence is the point: a
-// part whose pattern nobody has read cannot be given plausible pads to keep a consumer moving.
-type MountingPatternStanding
-  = VendorPatternEstablished { pattern: VendorRecommendedLandPattern }
-  | VendorPatternNotEstablished { what_is_missing: NonEmptyStr }
+// SURFACE-MOUNT GEOMETRY HAS AN ESTABLISHED ARM BECAUSE THE GEOMETRY EXISTS TO PUT IN IT.
+type SurfaceMountPatternStanding
+  = SurfaceMountPatternEstablished { pattern: VendorRecommendedLandPattern }
+  | SurfaceMountPatternNotEstablished { what_is_missing: NonEmptyStr }
 
-// THE PART IS THE THING THAT HAS COPPER. A ROLE DOES NOT: a role is a requirement a board places
-// on whatever fills it, and requirements have no pads. So the land pattern hangs off the ordering
-// part number, and a board that swaps one clock generator for another swaps its pattern with it
-// rather than editing a role.
-//
-// WHY THIS CARRIES A PATTERN AND NOT A STANDING, WHICH IS A CONSTRUCTION CHOICE RATHER THAN AN
-// OVERSIGHT. A MountablePart is BY DEFINITION a part whose pattern is established: the field is
-// the pattern itself, so a part with an outstanding pattern has no constructor here and cannot be
-// built and then explained. A row whose pattern is still owed carries a MountingPatternStanding
-// instead — extdeps.memory.te_ddr4_dimm_socket is the live case — and that is the ONLY place the
-// obligation is expressible. The two are not two ways to say one thing: one is the established
-// state made unwritable-when-absent, the other is the question of whether it is established, and
-// a MountablePart holding a standing would reintroduce exactly the half-built part this shape
-// forbids.
-type MountablePart {
-  ordering_part_number: NonEmptyStr
-  vendor: Vendor<Hardware>
-  outline: PackageOutline
-  land_pattern: VendorRecommendedLandPattern
+// AND THIS IS A RECORD RATHER THAN A COPRODUCT, WHICH IS THE WHOLE POINT. An earlier revision gave
+// through-hole parts a standing whose only success arm carried a VendorRecommendedLandPattern —
+// surface-mount geometry. So the DDR4 socket, a solder-tail part, could never have reached that
+// arm no matter which document arrived: the type promised a success that was unreachable for the
+// very part it was carrying. The module note said a solder tail needs a drill schedule and the
+// type did not. Until a plated-hole geometry carrier exists, the only representable state for a
+// hole pattern is an obligation, and a record with no success arm says exactly that. The same
+// carrier serves a part whose ATTACHMENT STYLE is itself unread, since a success arm cannot be
+// chosen before the style is known.
+type MountingPatternObligation {
+  what_is_missing: NonEmptyStr
 }
 
-// A PART WHOSE DOCUMENT EXISTS AND HAS NOT BEEN READ. This is the minimum a catalog row can carry
-// and still be a row: who makes it, what it is called, and what is owed. It deliberately has NO
-// dimension, count or pitch field, because every one of those would have to be filled, and the
-// only sources for them would be a distributor listing or a reader's expectation of what a part
-// like this usually is. The upstream authority EXISTS and is citable whether or not anyone here
-// has read it; what is unestablished is the geometry, and that asymmetry is the whole point of
-// separating the citation from the standing.
+// COUNT AND PITCH AND DESIGNATOR DO NOT ESTABLISH THE PIN MAP, and a pattern that matches on all
+// three can still be MIRRORED — routing every signal to the wrong terminal while passing every
+// check in this module. What is missing is pin-one location, numbering direction, the top-versus
+// bottom-view convention the drawing is stated in, the terminal-to-land identity relation, the
+// exposed pad's identity and electrical role, and any exceptional lands.
+//
+// THERE IS NO ESTABLISHED ARM AND THAT IS NOT AN OVERSIGHT. Modelling one means modelling the pin
+// map, which is a separate authority this lane has not built; an established arm today would be a
+// record of strings that a reader would fill from the drawing's appearance. So indexing is an
+// obligation on every candidate, the admission below refuses on it, and consequently NO candidate
+// in this repository is admissible for footprint realization right now. That is the honest state
+// and it is stated in the type rather than in prose.
+type TerminalIndexingObligation {
+  what_is_missing: NonEmptyStr
+}
+
+// A CANDIDATE IS FREELY CONSTRUCTIBLE AND CARRIES NO CLAIM. It says a vendor publishes these
+// mechanical facts for this part number. It does NOT say the part suits any role, and it is not
+// what a footprint realization may consume — only the admitted form below is.
+type PartMechanicalCandidate {
+  ordering_part_number: NonEmptyStr
+  vendor: Vendor<Hardware>
+  body: PackageBodyDimensions
+  land_pattern: VendorRecommendedLandPattern
+  terminal_indexing: TerminalIndexingObligation
+}
+
+// A PART WHOSE DOCUMENT EXISTS AND HAS NOT BEEN READ. No dimension, count or pitch field, because
+// every one would have to be filled and the only sources would be a distributor listing or a
+// reader's expectation of what a part like this usually is. The upstream authority EXISTS and is
+// citable whether or not anyone here has read it; what is unestablished is the geometry.
 type CatalogPartIdentity {
   ordering_part_number: NonEmptyStr
   vendor: Vendor<Hardware>
-  board_pattern: MountingPatternStanding
+  board_pattern: MountingPatternObligation
 }
 
-// THE PATTERN AND THE OUTLINE ARE JOINED, NOT ASSUMED TO MATCH. They are two transcriptions of
-// two drawings, and the failure this refuses is the ordinary one: a land pattern copied from the
+// THE PATTERN AND THE BODY ARE JOINED, NOT ASSUMED TO MATCH. They are two transcriptions of two
+// drawings, and the failure this refuses is the ordinary one: a land pattern copied from the
 // neighbouring package on the same datasheet. A device offered in two packages prints two of each,
 // and nothing about a record's field names stops the wrong pair from being bound together.
 type LandPatternDisagreement
@@ -160,36 +171,76 @@ type LandPatternDisagreement
   | LandCountDiffersFromTerminalCount { lands: Nat, terminals: Nat }
   | LandPitchDiffersFromTerminalPitch { land_pitch: Micrometer, terminal_pitch: Micrometer }
 
-fn land_pattern_disagreements(p: MountablePart) -> List<LandPatternDisagreement> {
-  let designator_cause = if (p.land_pattern.package_designator as String) == (p.outline.designator as String) {
+fn land_pattern_disagreements(p: PartMechanicalCandidate) -> List<LandPatternDisagreement> {
+  let designator_cause = if (p.land_pattern.package_designator as String) == (p.body.designator as String) {
     []
   } else {
     [PatternDesignatorDiffersFromPackage {
       pattern_designator: p.land_pattern.package_designator,
-      package_designator: p.outline.designator,
+      package_designator: p.body.designator,
     }]
   }
-  let count_cause = if peripheral_land_count(g: p.land_pattern.geometry) == p.outline.terminal_count {
+  let count_cause = if peripheral_land_count(g: p.land_pattern.geometry) == p.body.terminal_count {
     []
   } else {
     [LandCountDiffersFromTerminalCount {
       lands: peripheral_land_count(g: p.land_pattern.geometry),
-      terminals: p.outline.terminal_count,
+      terminals: p.body.terminal_count,
     }]
   }
-  let pitch_cause = if micrometer_count(m: land_pattern_pitch(g: p.land_pattern.geometry)) == micrometer_count(m: p.outline.terminal_pitch) {
+  let pitch_cause = if micrometer_count(m: land_pattern_pitch(g: p.land_pattern.geometry)) == micrometer_count(m: p.body.terminal_pitch) {
     []
   } else {
     [LandPitchDiffersFromTerminalPitch {
       land_pitch: land_pattern_pitch(g: p.land_pattern.geometry),
-      terminal_pitch: p.outline.terminal_pitch,
+      terminal_pitch: p.body.terminal_pitch,
     }]
   }
   concat(concat(designator_cause, count_cause), pitch_cause)
 }
 
-fn part_is_coherent(p: MountablePart) -> Bool {
-  fold(land_pattern_disagreements(p: p), init: true, f: fn(_acc, _c) { false })
+type CandidateRefusal
+  = MechanicalDisagreement { cause: LandPatternDisagreement }
+  | TerminalIndexingUnestablished { what_is_missing: NonEmptyStr }
+
+type CandidateRefusalSet {
+  first: CandidateRefusal
+  rest: List<CandidateRefusal>
+}
+
+// ADMISSION IS THE ONLY ROUTE TO THE ADMITTED TYPE, which is what an earlier revision got wrong.
+// It named a type MountablePart, let anyone construct one — including one whose pattern and
+// package disagree, as this module's own negative test does — and offered validity as a separate
+// function a consumer had to remember to call. A malformed part stayed representable and reachable.
+// Now the malformed case cannot inhabit the admitted type at all: AdmittedMountablePart is
+// produced here or not at all, and a refusal carries its nonempty causes.
+type PartAdmission
+  = AdmittedMountablePart { part: PartMechanicalCandidate }
+  | PartRefused { causes: CandidateRefusalSet }
+
+fn push_candidate_refusal(acc: CandidateRefusalSet?, r: CandidateRefusal) -> CandidateRefusalSet? {
+  match acc {
+    Absent => Present { value: CandidateRefusalSet { first: r, rest: [] } }
+    Present { value: s } => Present { value: CandidateRefusalSet { first: s.first, rest: concat(s.rest, [r]) } }
+  }
+}
+
+fn candidate_refusals(p: PartMechanicalCandidate) -> List<CandidateRefusal> {
+  let mechanical = fold(land_pattern_disagreements(p: p), init: [], f: fn(acc, c) {
+    concat(acc, [MechanicalDisagreement { cause: c }])
+  })
+  concat(mechanical, [TerminalIndexingUnestablished { what_is_missing: p.terminal_indexing.what_is_missing }])
+}
+
+fn admit_part_candidate(p: PartMechanicalCandidate) -> PartAdmission {
+  match fold(candidate_refusals(p: p), init: none, f: fn(acc, c) { push_candidate_refusal(acc: acc, r: c) }) {
+    Absent => AdmittedMountablePart { part: p }
+    Present { value: s } => PartRefused { causes: s }
+  }
+}
+
+fn candidate_refusal_count(s: CandidateRefusalSet) -> Nat {
+  1 + fold(s.rest, init: 0, f: fn(acc, _c) { acc + 1 })
 }
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {

@@ -7,9 +7,10 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.vendor.texas_instruments { texas_instruments }
 import extdeps.land_pattern.types {
-  MountablePart,
+  PartMechanicalCandidate,
+  TerminalIndexingObligation,
   PackageDrawingRef,
-  PackageOutline,
+  PackageBodyDimensions,
   QuadRowLandGeometry,
   VendorRecommendedLandPattern,
 }
@@ -32,7 +33,7 @@ data tps53688rsbr_part_details_authority: ExternalAuthority = ExternalAuthority 
   }
 }
 
-data ti_tps53688_note: String = "THE PACKAGE IDENTITY IS ESTABLISHED BY TWO CITED READINGS, NOT BY WHERE THE FILE WAS FOUND. The fetched datasheet yielded its mechanical pages cleanly but not its title page, so binding drawing RSB0040A to this device on the strength of the URL alone would have been a fact established by a file's location. The vendor's orderable part-details listing gives TPS53688RSBR as WQFN (RSB) 40, which is the package that drawing describes, and it is carried as a second authority in this module's scope rather than recounted in prose — an earlier revision of this note asserted the confirmation while the scope row listed no second citation, which left the load-bearing part-number-to-drawing join prose-backed. What this row carries is mechanical only: the multiphase controller's electrical facts, its phase count and its SVID and PMBus interfaces are not modelled here and are not implied by its presence."
+data ti_tps53688_note: String = "THIS ROW IS A MECHANICAL CANDIDATE AND NOT A SELECTED PART. Nothing here says the device suits any board role; a selection is a functional-compatibility join done at the product layer, and this row supplies only the package authority that join consumes. THE PACKAGE IDENTITY IS ESTABLISHED BY TWO CITED READINGS, NOT BY WHERE THE FILE WAS FOUND. The fetched datasheet yielded its mechanical pages cleanly but not its title page, so binding drawing RSB0040A to this device on the strength of the URL alone would have been a fact established by a file's location. The vendor's orderable part-details listing gives TPS53688RSBR as WQFN (RSB) 40, which is the package that drawing describes, and it is carried as a second authority in this module's scope rather than recounted in prose — an earlier revision of this note asserted the confirmation while the scope row listed no second citation, which left the load-bearing part-number-to-drawing join prose-backed. What this row carries is mechanical only: the multiphase controller's electrical facts, its phase count and its SVID and PMBus interfaces are not modelled here and are not implied by its presence."
 
 data tps53688_rsb0040a_drawing: PackageDrawingRef = PackageDrawingRef {
   drawing_number: "4215000/A",
@@ -40,7 +41,7 @@ data tps53688_rsb0040a_drawing: PackageDrawingRef = PackageDrawingRef {
   reprinted_in: extdeps_external_authority_anchor,
 }
 
-data tps53688_rsb0040a_outline: PackageOutline = PackageOutline {
+data tps53688_rsb0040a_body: PackageBodyDimensions = PackageBodyDimensions {
   designator: "RSB0040A",
   drawing: tps53688_rsb0040a_drawing,
   terminal_count: 40,
@@ -65,11 +66,14 @@ data tps53688_rsb0040a_land_pattern: VendorRecommendedLandPattern = VendorRecomm
   },
 }
 
-data tps53688rsbr: MountablePart = MountablePart {
+data tps53688rsbr: PartMechanicalCandidate = PartMechanicalCandidate {
   ordering_part_number: "TPS53688RSBR",
   vendor: texas_instruments,
-  outline: tps53688_rsb0040a_outline,
+  body: tps53688_rsb0040a_body,
   land_pattern: tps53688_rsb0040a_land_pattern,
+  terminal_indexing: TerminalIndexingObligation {
+    what_is_missing: "the pin-one location, the numbering direction, the top-versus-bottom view convention the drawing is stated in, the terminal-to-land identity relation and the electrical role of any exposed pad, for package RSB0040A. None of those were transcribed and this repository carries no pin-map model to receive them, so this candidate cannot be admitted for footprint realization and a consumer cannot mistake matching counts and pitch for a known pin map",
+  },
 }
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {

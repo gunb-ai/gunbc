@@ -8,9 +8,10 @@ import extdeps.uri { Uri, Https }
 import extdeps.vendor.texas_instruments { texas_instruments }
 import extdeps.land_pattern.types {
   DualRowLandGeometry,
-  MountablePart,
+  PartMechanicalCandidate,
+  TerminalIndexingObligation,
   PackageDrawingRef,
-  PackageOutline,
+  PackageBodyDimensions,
   VendorRecommendedLandPattern,
 }
 
@@ -23,7 +24,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data ti_cdce913_note: String = "MECHANICAL FACTS ONLY, FROM ONE DOCUMENT. The CDCE913 is a programmable clock generator and none of that is modelled here — no output count, no frequency range, no PLL fact. The package outline and the vendor's recommended land pattern are what the drawing states and what were read. The document also carries the sibling part CDCEL913 on the same pages; the ordering part number recorded here is the one whose package this drawing describes, and a reader wanting the low-voltage sibling adds a row rather than editing this one, because they are separately ordered parts even where they share a drawing."
+data ti_cdce913_note: String = "THIS ROW IS A MECHANICAL CANDIDATE AND NOT A SELECTED PART. Nothing here says the device suits any board role; a selection is a functional-compatibility join done at the product layer, and this row supplies only the package authority that join consumes. MECHANICAL FACTS ONLY, FROM ONE DOCUMENT. The CDCE913 is a programmable clock generator and none of that is modelled here — no output count, no frequency range, no PLL fact. The package body dimensions and the vendor's recommended land pattern are what the drawing states and what were read. The document also carries the sibling part CDCEL913 on the same pages; the ordering part number recorded here is the one whose package this drawing describes, and a reader wanting the low-voltage sibling adds a row rather than editing this one, because they are separately ordered parts even where they share a drawing."
 
 data cdce913_pw0014a_drawing: PackageDrawingRef = PackageDrawingRef {
   drawing_number: "4220202/B",
@@ -31,7 +32,7 @@ data cdce913_pw0014a_drawing: PackageDrawingRef = PackageDrawingRef {
   reprinted_in: extdeps_external_authority_anchor,
 }
 
-data cdce913_pw0014a_outline: PackageOutline = PackageOutline {
+data cdce913_pw0014a_body: PackageBodyDimensions = PackageBodyDimensions {
   designator: "PW0014A",
   drawing: cdce913_pw0014a_drawing,
   terminal_count: 14,
@@ -55,11 +56,14 @@ data cdce913_pw0014a_land_pattern: VendorRecommendedLandPattern = VendorRecommen
   },
 }
 
-data cdce913pwr: MountablePart = MountablePart {
+data cdce913pwr: PartMechanicalCandidate = PartMechanicalCandidate {
   ordering_part_number: "CDCE913PWR",
   vendor: texas_instruments,
-  outline: cdce913_pw0014a_outline,
+  body: cdce913_pw0014a_body,
   land_pattern: cdce913_pw0014a_land_pattern,
+  terminal_indexing: TerminalIndexingObligation {
+    what_is_missing: "the pin-one location, the numbering direction, the top-versus-bottom view convention the drawing is stated in, the terminal-to-land identity relation and the electrical role of any exposed pad, for package PW0014A. None of those were transcribed and this repository carries no pin-map model to receive them, so this candidate cannot be admitted for footprint realization and a consumer cannot mistake matching counts and pitch for a known pin map",
+  },
 }
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {

@@ -4,29 +4,37 @@ import std.types { Bool, String, List }
 import std.integer { Int }
 import std.measure { micrometer, micrometer_count }
 import extdeps.land_pattern.types {
+  AdmittedMountablePart,
+  CandidateRefusal,
   CatalogPartIdentity,
   LandCountDiffersFromTerminalCount,
   LandPitchDiffersFromTerminalPitch,
   LandPatternDisagreement,
-  MountablePart,
+  MechanicalDisagreement,
+  MountingPatternObligation,
+  PartAdmission,
+  PartMechanicalCandidate,
+  PartRefused,
   PatternDesignatorDiffersFromPackage,
-  MountingPatternStanding,
   QuadRowLandGeometry,
+  SurfaceMountPatternEstablished,
+  SurfaceMountPatternNotEstablished,
+  SurfaceMountPatternStanding,
   SurfaceMountTerminals,
+  TerminalIndexingObligation,
+  TerminalIndexingUnestablished,
   ThroughHoleSolderTail,
-  VendorPatternEstablished,
-  VendorPatternNotEstablished,
   VendorRecommendedLandPattern,
+  admit_part_candidate,
   land_pattern_disagreements,
   land_pattern_pitch,
-  part_is_coherent,
   peripheral_land_count,
 }
-import extdeps.power.ti_tps3808 { tps3808g01dbvr, tps3808_dbv0006a_outline }
+import extdeps.power.ti_tps3808 { tps3808g01dbvr, tps3808_dbv0006a_body }
 import extdeps.power.ti_tps53688 { tps53688rsbr }
 import extdeps.clock.ti_cdce913 { cdce913pwr, cdce913_pw0014a_land_pattern }
-import extdeps.network.ti_dp83867 { dp83867irrgz, dp83867_rgz0048b_outline }
-import extdeps.memory.te_ddr4_dimm_socket { ddr4_dimm_socket_solder_tail_288 }
+import extdeps.network.ti_dp83867 { dp83867irrgz, dp83867_rgz0048b_body }
+import extdeps.memory.te_ddr4_dimm_socket { ddr4_dimm_socket_solder_tail_288_family }
 import extdeps.storage.te_m2_ngff_connector { m2_ngff_minicard_67_position }
 import extdeps.storage.amphenol_mdt420m01001 { mdt420m01001 }
 import extdeps.memory.microchip_at24cm02 { at24cm02 }
@@ -52,15 +60,61 @@ fn count_of(ds: List<LandPatternDisagreement>) -> Int {
   fold(ds, init: 0, f: fn(acc, _d) { acc + 1 })
 }
 
-// THE FOUR SELECTED PARTS JOIN THEIR OWN PACKAGES. Each row was transcribed from two pages of one
-// drawing — an outline and a land pattern — and this is the join between them, executed rather
-// than assumed: the pattern names the package the outline names, its derived land population
-// equals the outline's terminal count, and the two pitches agree.
-test fn w_each_selected_part_joins_its_own_package() -> Bool {
-  part_is_coherent(p: tps3808g01dbvr)
-    && part_is_coherent(p: tps53688rsbr)
-    && part_is_coherent(p: cdce913pwr)
-    && part_is_coherent(p: dp83867irrgz)
+fn refusal_kind(r: CandidateRefusal) -> String {
+  match r {
+    MechanicalDisagreement { cause: _ } => "mechanical"
+    TerminalIndexingUnestablished { what_is_missing: _ } => "indexing"
+  }
+}
+
+fn refusals_of(a: PartAdmission) -> List<CandidateRefusal> {
+  match a {
+    AdmittedMountablePart { part: _ } => []
+    PartRefused { causes: s } => concat([s.first], s.rest)
+  }
+}
+
+fn is_admitted(a: PartAdmission) -> Bool {
+  match a {
+    AdmittedMountablePart { part: _ } => true
+    PartRefused { causes: _ } => false
+  }
+}
+
+fn refusal_count(a: PartAdmission) -> Int {
+  fold(refusals_of(a: a), init: 0, f: fn(acc, _r) { acc + 1 })
+}
+
+fn only_refusal_is(a: PartAdmission, k: String) -> Bool {
+  let n = refusal_count(a: a)
+  let all_match = fold(refusals_of(a: a), init: true, f: fn(acc, r) { acc && refusal_kind(r: r) == k })
+  n == 1 && all_match
+}
+
+// EACH CANDIDATE JOINS ITS OWN PACKAGE. Each row was transcribed from two pages of one drawing — a
+// body dimension set and a land pattern — and this is the join between them, executed rather than
+// assumed: the pattern names the package the body names, its derived land population equals the
+// body's terminal count, and the two pitches agree. This is a MECHANICAL join and nothing more; it
+// says the two transcriptions describe one package, not that the part suits any board role.
+test fn w_each_candidate_joins_its_own_package() -> Bool {
+  count_of(ds: land_pattern_disagreements(p: tps3808g01dbvr)) == 0
+    && count_of(ds: land_pattern_disagreements(p: tps53688rsbr)) == 0
+    && count_of(ds: land_pattern_disagreements(p: cdce913pwr)) == 0
+    && count_of(ds: land_pattern_disagreements(p: dp83867irrgz)) == 0
+}
+
+// AND NOT ONE OF THEM IS ADMISSIBLE, WHICH IS THE FINDING RATHER THAN A GAP IN THE TEST. A clean
+// mechanical join establishes that a designator, a count and a pitch agree; it establishes nothing
+// about which terminal is which. Every candidate here therefore refuses admission on terminal
+// indexing ALONE — exactly one cause, and that cause is the pin map — so a consumer cannot read a
+// matching count as a known footprint. When a pin-map authority lands, these turn green by the
+// candidates gaining a fact, and this claim inverts to assert the admitted arm.
+test fn w_no_candidate_is_admissible_and_indexing_is_the_only_reason() -> Bool {
+  only_refusal_is(a: admit_part_candidate(p: tps3808g01dbvr), k: "indexing")
+    && only_refusal_is(a: admit_part_candidate(p: tps53688rsbr), k: "indexing")
+    && only_refusal_is(a: admit_part_candidate(p: cdce913pwr), k: "indexing")
+    && only_refusal_is(a: admit_part_candidate(p: dp83867irrgz), k: "indexing")
+    && !is_admitted(a: admit_part_candidate(p: dp83867irrgz))
 }
 
 // THE LAND POPULATION IS DERIVED FROM THE GEOMETRY AND EQUALS THE VENDOR'S TERMINAL COUNT. Six
@@ -72,44 +126,48 @@ test fn w_the_land_population_is_derived_and_matches_the_terminal_count() -> Boo
     && peripheral_land_count(g: cdce913pwr.land_pattern.geometry) == 14
     && peripheral_land_count(g: tps53688rsbr.land_pattern.geometry) == 40
     && peripheral_land_count(g: dp83867irrgz.land_pattern.geometry) == 48
-    && peripheral_land_count(g: dp83867irrgz.land_pattern.geometry) == dp83867irrgz.outline.terminal_count
+    && peripheral_land_count(g: dp83867irrgz.land_pattern.geometry) == dp83867irrgz.body.terminal_count
 }
 
-// THE SOT-23 PITCH RECONCILES TWO PAGES OF ONE DRAWING. The outline prints 1.9 across two pitches
-// and the land pattern prints 0.95; two times 950 micrometres is 1900, so the pitch recorded on
-// the outline is an arithmetic reading of the document rather than a figure supplied from memory
-// of what a SOT-23 usually is.
+// THE SOT-23 PITCH RECONCILES TWO PAGES OF ONE DRAWING. The body page prints 1.9 across two pitches
+// and the land pattern prints 0.95; two times 950 micrometres is 1900, so the pitch recorded on the
+// body row is an arithmetic reading of the document rather than a figure supplied from memory of
+// what a SOT-23 usually is.
 test fn w_the_sot23_pitch_reconciles_the_two_printed_readings() -> Bool {
   micrometer_count(m: land_pattern_pitch(g: tps3808g01dbvr.land_pattern.geometry)) == 950
-    && 2 * micrometer_count(m: tps3808_dbv0006a_outline.terminal_pitch) == 1900
+    && 2 * micrometer_count(m: tps3808_dbv0006a_body.terminal_pitch) == 1900
 }
 
 // THE DISCRIMINATING RED, AND IT IS THE REAL FAILURE MODE. The DP83867IR datasheet reprints two
-// package drawings, so binding an outline from one device beside a land pattern from another is
-// exactly the mistake available to a transcriber. Here the 48-terminal no-lead outline is bound
-// to the 14-lead TSSOP's pattern: it typechecks, every field is populated with a real vendor
-// number, and the join refuses it on all three axes at once. If this went green the coherence
-// claim above would be establishing nothing.
-data mismatched_part: MountablePart = MountablePart {
+// package drawings, so binding a body from one device beside a land pattern from another is exactly
+// the mistake available to a transcriber. Here the 48-terminal no-lead body is bound to the 14-lead
+// TSSOP's pattern: it typechecks, every field is populated with a real vendor number, and the join
+// refuses it on all three axes at once. NOTE WHAT THIS CONSTRUCTION IS ALLOWED TO BE — a candidate,
+// freely constructible and carrying no claim. An earlier revision built this same malformed value as
+// a MountablePart, which was the evidence that type was not admission-closed: the name promised a
+// mountable part and a test could hand-build a value that could not be mounted.
+data mismatched_candidate: PartMechanicalCandidate = PartMechanicalCandidate {
   ordering_part_number: "DP83867IRRGZ",
   vendor: dp83867irrgz.vendor,
-  outline: dp83867_rgz0048b_outline,
+  body: dp83867_rgz0048b_body,
   land_pattern: cdce913_pw0014a_land_pattern,
+  terminal_indexing: dp83867irrgz.terminal_indexing,
 }
 
 test fn w_a_pattern_from_the_wrong_package_is_refused_on_every_axis() -> Bool {
-  let ds = land_pattern_disagreements(p: mismatched_part)
-  !part_is_coherent(p: mismatched_part)
-    && count_of(ds: ds) == 3
+  let ds = land_pattern_disagreements(p: mismatched_candidate)
+  count_of(ds: ds) == 3
     && has_kind(ds: ds, k: "designator")
     && has_kind(ds: ds, k: "count")
     && has_kind(ds: ds, k: "pitch")
+    && !is_admitted(a: admit_part_candidate(p: mismatched_candidate))
+    && refusal_count(a: admit_part_candidate(p: mismatched_candidate)) == 4
 }
 
-// A SECOND RED, ISOLATING ONE AXIS. The mismatch above fails three ways at once, which would
-// still pass if two of the three checks were dead. This one differs from its package in the land
-// population alone — the designator and the pitch are the part's own — so exactly one cause must
-// be reported, and the count check is the one that has to be alive to report it.
+// A SECOND RED, ISOLATING ONE AXIS. The mismatch above fails three ways at once, which would still
+// pass if two of the three checks were dead. This one differs from its package in the land
+// population alone — the designator and the pitch are the part's own — so exactly one mechanical
+// cause must be reported, and the count check is the one that has to be alive to report it.
 data undercounted_land_pattern: VendorRecommendedLandPattern = VendorRecommendedLandPattern {
   package_designator: "RSB0040A",
   drawing: tps53688rsbr.land_pattern.drawing,
@@ -123,60 +181,62 @@ data undercounted_land_pattern: VendorRecommendedLandPattern = VendorRecommended
   },
 }
 
-data undercounted_part: MountablePart = MountablePart {
+data undercounted_candidate: PartMechanicalCandidate = PartMechanicalCandidate {
   ordering_part_number: "TPS53688RSBR",
   vendor: tps53688rsbr.vendor,
-  outline: tps53688rsbr.outline,
+  body: tps53688rsbr.body,
   land_pattern: undercounted_land_pattern,
+  terminal_indexing: tps53688rsbr.terminal_indexing,
 }
 
 test fn w_a_land_population_that_disagrees_with_the_package_is_refused_alone() -> Bool {
-  let ds = land_pattern_disagreements(p: undercounted_part)
+  let ds = land_pattern_disagreements(p: undercounted_candidate)
   count_of(ds: ds) == 1 && has_kind(ds: ds, k: "count")
 }
 
-// A SELECTED PART CAN STILL OWE ITS BOARD PATTERN, and the DDR4 socket is the live case. Its
+// A CITED FAMILY CAN STILL OWE ITS HOLE PATTERN, and the DDR4 socket is the live case. Its
 // specification establishes the position count, the contact spacing and the attachment style, and
-// carries the pc board layout as a drawn figure this repository could not read — so the part is
-// real and cited while its pattern is outstanding. Both halves are asserted, because a row that
-// reported the pattern as established on the strength of the part being selected is exactly the
-// conflation the standing exists to prevent.
-test fn w_a_selected_socket_may_still_owe_its_board_pattern() -> Bool {
-  ddr4_dimm_socket_solder_tail_288.position_count == 288
-    && micrometer_count(m: ddr4_dimm_socket_solder_tail_288.contact_pitch) == 800
-    && match ddr4_dimm_socket_solder_tail_288.board_pattern {
-      VendorPatternNotEstablished { what_is_missing: _ } => true
-      VendorPatternEstablished { pattern: _ } => false
-    }
-    && match ddr4_dimm_socket_solder_tail_288.attachment {
+// publishes the pc board layout as a figure this row does not transcribe. THE ATTACHMENT STYLE IS
+// ASSERTED BESIDE THE OBLIGATION because the two are coupled: a solder tail needs a drill schedule,
+// and an earlier revision gave this row a standing whose only success arm carried surface-mount land
+// geometry — a success this part could never have reached no matter which document arrived.
+fn obligation_is_stated(o: MountingPatternObligation) -> Bool {
+  !((o.what_is_missing as String) == "")
+}
+
+test fn w_the_dimm_socket_family_owes_a_hole_pattern_it_cannot_express_as_lands() -> Bool {
+  ddr4_dimm_socket_solder_tail_288_family.position_count == 288
+    && micrometer_count(m: ddr4_dimm_socket_solder_tail_288_family.contact_pitch) == 800
+    && obligation_is_stated(o: ddr4_dimm_socket_solder_tail_288_family.board_pattern)
+    && match ddr4_dimm_socket_solder_tail_288_family.attachment {
       ThroughHoleSolderTail => true
       SurfaceMountTerminals => false
     }
 }
 
-// THE POSITIVE CONTROL FOR THAT DISCRIMINATION. Without it, every arm above could be reading a
-// standing that is never established and the claims would still be green.
-data established_standing: MountingPatternStanding = VendorPatternEstablished {
+// THE POSITIVE CONTROL FOR THE SURFACE-MOUNT DISCRIMINATION. Without it, the M.2 arm below could be
+// reading a standing that is never established and the claim would still be green.
+data established_standing: SurfaceMountPatternStanding = SurfaceMountPatternEstablished {
   pattern: cdce913_pw0014a_land_pattern,
 }
 
 test fn w_an_established_standing_reports_established() -> Bool {
   match established_standing {
-    VendorPatternEstablished { pattern: _ } => true
-    VendorPatternNotEstablished { what_is_missing: _ } => false
+    SurfaceMountPatternEstablished { pattern: _ } => true
+    SurfaceMountPatternNotEstablished { what_is_missing: _ } => false
   }
 }
 
-// THE M.2 CONNECTOR IS THE THIRD SHAPE ON THIS BOARD: a cited family whose pattern AND whose
-// orderable part number are both outstanding. It is surface mount where the DIMM socket is
-// through-hole, so the two outstanding patterns are outstanding for different reasons and the
-// attachment style is asserted here to keep them apart.
+// THE M.2 CONNECTOR IS THE THIRD SHAPE HERE: a cited family whose pattern AND whose orderable part
+// number are both outstanding. It is surface mount where the DIMM socket is through-hole, so the two
+// outstanding patterns are outstanding in different carriers — a standing with a reachable success
+// arm here, a bare obligation there — and the attachment style is asserted to keep them apart.
 test fn w_the_m2_family_is_cited_with_its_pattern_outstanding() -> Bool {
   m2_ngff_minicard_67_position.position_count == 67
     && micrometer_count(m: m2_ngff_minicard_67_position.contact_pitch) == 500
     && match m2_ngff_minicard_67_position.board_pattern {
-      VendorPatternNotEstablished { what_is_missing: _ } => true
-      VendorPatternEstablished { pattern: _ } => false
+      SurfaceMountPatternNotEstablished { what_is_missing: _ } => true
+      SurfaceMountPatternEstablished { pattern: _ } => false
     }
     && match m2_ngff_minicard_67_position.attachment {
       SurfaceMountTerminals => true
@@ -189,21 +249,18 @@ test fn w_the_m2_family_is_cited_with_its_pattern_outstanding() -> Bool {
 // distinguishable — folding independently governed entities into one vendor because they share a
 // brand is the merge DESIGN §3 forbids, and it would make a correction to either edit the other.
 test fn w_the_two_tyco_entities_are_not_one_vendor() -> Bool {
-  let ddr4_vendor = ddr4_dimm_socket_solder_tail_288.vendor.legal_name as String
+  let ddr4_vendor = ddr4_dimm_socket_solder_tail_288_family.vendor.legal_name as String
   let m2_vendor = m2_ngff_minicard_67_position.vendor.legal_name as String
   !(ddr4_vendor == m2_vendor)
 }
 
 // A CITABLE AUTHORITY AND AN UNREAD DOCUMENT ARE COMPATIBLE STATES, and these four rows are the
-// case. Each names a real publisher and a real locator, and not one of their documents has been
-// read here, so every one of them owes its geometry. The claim is asserted over all four because
-// the failure it guards against is a single row quietly acquiring a dimension from a distributor
-// listing or from a reader's sense of what such a part usually measures.
+// case. Each names a real publisher and a real locator, and none of their geometry is transcribed
+// here, so every one of them owes it. The claim is asserted over all four because the failure it
+// guards against is a single row quietly acquiring a dimension from a distributor listing or from a
+// reader's sense of what such a part usually measures.
 fn owes_its_geometry(p: CatalogPartIdentity) -> Bool {
-  match p.board_pattern {
-    VendorPatternNotEstablished { what_is_missing: _ } => true
-    VendorPatternEstablished { pattern: _ } => false
-  }
+  obligation_is_stated(o: p.board_pattern)
 }
 
 test fn w_every_unread_document_row_owes_its_geometry() -> Bool {
@@ -214,9 +271,7 @@ test fn w_every_unread_document_row_owes_its_geometry() -> Bool {
 }
 
 // THE PART NUMBERS ARE THE ONE FACT THESE ROWS DO CARRY, so they are asserted rather than left to
-// be trusted. Three come from Ampere's reference board naming a part for a job; the fourth is this
-// session's own candidate and is marked as such in its module, because a suggestion is not a
-// selection.
+// be trusted.
 test fn w_the_unread_rows_carry_their_part_numbers() -> Bool {
   (mdt420m01001.ordering_part_number as String) == "MDT420M01001"
     && (at24cm02.ordering_part_number as String) == "AT24CM02"
@@ -225,8 +280,8 @@ test fn w_the_unread_rows_carry_their_part_numbers() -> Bool {
 }
 
 // FOUR VENDORS, FOUR ROWS, NO SHARED IDENTITY. The Amphenol row is the one at risk here: its part
-// is listed by distributors under three brand names, and collapsing a brand into an entity - or
-// splitting one entity into three - are the two opposite failures the Tyco decision in this same
+// is listed by distributors under three brand names, and collapsing a brand into an entity — or
+// splitting one entity into three — are the two opposite failures the Tyco decision in this same
 // tree already had to get right in the other direction.
 test fn w_the_four_new_vendors_are_four_distinct_entities() -> Bool {
   let a = mdt420m01001.vendor.legal_name as String
