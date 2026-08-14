@@ -1,6 +1,6 @@
 module test.claim.ollama_capability_witness_test
 
-import std.types { Bool, NonEmptyStr }
+import std.types { Bool, NonEmptyStr, Int }
 import extdeps.ollama.api { OllamaModelRef }
 import extdeps.ollama.binary_release {
   ollama_required_release,
@@ -22,8 +22,11 @@ import extdeps.ollama.capability {
 }
 import gunbc.spark_serving_desired {
   spark_serving_desired_admission,
+  spark_serving_fleet_desired,
   SparkServingDesiredAdmitted,
   SparkServingDesiredRefused,
+  SparkServingFleetDesiredReady,
+  SparkServingFleetDesiredRefused,
 }
 
 data witness_gpt_oss_ref: OllamaModelRef = OllamaModelRef {
@@ -97,5 +100,12 @@ test fn desired_spark_serving_admission_succeeds_for_pinned_pair() -> Bool {
   match spark_serving_desired_admission {
     SparkServingDesiredAdmitted { serving_release: _ } => true
     SparkServingDesiredRefused { cause: _ } => false
+  }
+}
+
+test fn desired_spark_serving_fleet_is_ready_for_pinned_pair() -> Bool {
+  match spark_serving_fleet_desired {
+    SparkServingFleetDesiredReady { occurrences: occs } => length(xs: occs) == 2
+    SparkServingFleetDesiredRefused { cause: _ } => false
   }
 }

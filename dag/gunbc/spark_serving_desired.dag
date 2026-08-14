@@ -26,7 +26,6 @@ import extdeps.ollama.capability {
 }
 import gunbc.spark_serving_release {
   SparkServingRelease,
-  SparkServingReleaseIdentity,
   SparkServingOccurrence,
   SparkServingServingPolicy,
   RuntimeArtifactIdentity,
@@ -113,18 +112,33 @@ fn spark_serving_desired_release_admission() -> SparkServingDesiredAdmission {
 
 data spark_serving_desired_admission: SparkServingDesiredAdmission = spark_serving_desired_release_admission()
 
-fn spark_serving_desired_release() -> SparkServingRelease {
-  match spark_serving_desired_admission {
-    SparkServingDesiredAdmitted { serving_release: r } => r
-    SparkServingDesiredRefused { cause: c } =>
-      SparkServingRelease {
-        runtime: RuntimeArtifactIdentity {
-          closure_digest: join(["INCOMPATIBLE:", c as String], "") as NonEmptyStr,
-        },
-        model: spark_serving_desired_model_artifact(),
-      }
+type SparkServingFleetDesired
+  = SparkServingFleetDesiredReady { occurrences: List<SparkServingOccurrence> }
+  | SparkServingFleetDesiredRefused { cause: NonEmptyStr }
+
+fn spark_serving_occurrence(host: HostIdentity, serving_release: SparkServingRelease) -> SparkServingOccurrence {
+  SparkServingOccurrence {
+    host: host,
+    release_identity: spark_serving_release_identity(spec: serving_release),
+    serving_policy: spark_serving_desired_serving_policy(),
   }
 }
+
+fn spark_serving_fleet_desired() -> SparkServingFleetDesired {
+  match spark_serving_desired_admission {
+    SparkServingDesiredAdmitted { serving_release: r } =>
+      SparkServingFleetDesiredReady {
+        occurrences: [
+          spark_serving_occurrence(host: operator_host_srv5, serving_release: r),
+          spark_serving_occurrence(host: operator_host_srv6, serving_release: r),
+        ],
+      }
+    SparkServingDesiredRefused { cause: c } =>
+      SparkServingFleetDesiredRefused { cause: c }
+  }
+}
+
+data spark_serving_fleet_desired: SparkServingFleetDesired = spark_serving_fleet_desired()
 
 fn spark_serving_desired_serving_policy() -> SparkServingServingPolicy {
   SparkServingServingPolicy {
@@ -136,10 +150,6 @@ fn spark_serving_desired_serving_policy() -> SparkServingServingPolicy {
       shared_memory_budget_bytes: byte_size(120000000000),
     },
   }
-}
-
-fn spark_serving_desired_release_identity() -> SparkServingReleaseIdentity {
-  spark_serving_release_identity(spec: spark_serving_desired_release())
 }
 
 fn spark_serving_terminal_intent() -> SparkServingIntent {
@@ -156,16 +166,3 @@ fn spark_serving_terminal_intent() -> SparkServingIntent {
 fn spark_serving_automation_principal() -> NamedPrincipal {
   NamedPrincipal { login: "gunbc-automation" as NonEmptyStr }
 }
-
-fn spark_serving_occurrence(host: HostIdentity) -> SparkServingOccurrence {
-  SparkServingOccurrence {
-    host: host,
-    release_identity: spark_serving_desired_release_identity(),
-    serving_policy: spark_serving_desired_serving_policy(),
-  }
-}
-
-data spark_serving_fleet_occurrences: List<SparkServingOccurrence> = [
-  spark_serving_occurrence(host: operator_host_srv5),
-  spark_serving_occurrence(host: operator_host_srv6),
-]
