@@ -1839,6 +1839,57 @@ pub fn skip_newlines(mut tokens: Rc<TokenStream>) -> Rc<TokenStream> {
     }
 }
 
+pub fn find_operator_bp(ops: Rc<Vec<Rc<OperatorSpec>>>, symbol: String) -> Option<BindingPower> {
+    {
+        let matching = Rc::new({
+            let mut __result = Vec::new();
+            for op in ops.clone().iter().cloned() {
+                if (op.symbol.clone() == symbol.clone()) {
+                    __result.push(op);
+                }
+            }
+            __result
+        });
+        if ((matching.clone().len() as i64) > 0) {
+            {
+                let op = matching.clone().first().cloned().clone().unwrap();
+                Some(BindingPower {
+                    left: op.left_bp.clone(),
+                    right: op.right_bp.clone(),
+                })
+            }
+        } else {
+            None
+        }
+    }
+}
+
+pub fn find_operator_binop(ops: Rc<Vec<Rc<OperatorSpec>>>, symbol: String) -> Option<BinOp> {
+    {
+        let matching = Rc::new({
+            let mut __result = Vec::new();
+            for op in ops.clone().iter().cloned() {
+                if (op.symbol.clone() == symbol.clone()) {
+                    __result.push(op);
+                }
+            }
+            __result
+        });
+        if ((matching.clone().len() as i64) > 0) {
+            matching
+                .clone()
+                .first()
+                .cloned()
+                .clone()
+                .unwrap()
+                .binop
+                .clone()
+        } else {
+            None
+        }
+    }
+}
+
 pub fn operator_continuation_dual_role_exclusion_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -1850,15 +1901,27 @@ pub fn operator_continuation_dual_role_exclusion_note() -> String {
 
 pub fn operator_continuation_dual_role_excluded_symbols() -> Rc<Vec<String>> {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = Rc::new(vec!["-".to_string()]);
+        static CACHED: Rc<Vec<String>> = {
+            Rc::new(vec!["-".to_string()])
+        };
     }
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
 pub fn is_prefix_infix_dual_role_operator(symbol: String) -> bool {
-    operator_continuation_dual_role_excluded_symbols()
-        .iter()
-        .any(|s| *s == symbol)
+    {
+        let mut __found = false;
+        for s in operator_continuation_dual_role_excluded_symbols()
+            .iter()
+            .cloned()
+        {
+            if (s.clone() == symbol.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
 }
 
 pub fn is_operator_continuation_token(tok: Option<Rc<Token>>) -> bool {
@@ -1867,7 +1930,10 @@ pub fn is_operator_continuation_token(tok: Option<Rc<Token>>) -> bool {
             if is_prefix_infix_dual_role_operator(t.text.clone()) {
                 false
             } else {
-                find_operator_bp(dag_syntax_spec().operators.clone(), t.text.clone()).is_some()
+                match find_operator_bp(dag_syntax_spec().operators.clone(), t.text.clone()) {
+                    Some(_) => true,
+                    None => false,
+                }
             }
         }
         None => false,
@@ -1878,8 +1944,10 @@ pub fn skip_continuation_newlines(tokens: Rc<TokenStream>) -> Rc<TokenStream> {
     {
         let tok = token_stream_first(tokens.clone());
         let is_continuation = if tok_is_newline(tok.clone()) {
-            let after = skip_newlines(tokens.clone());
-            is_operator_continuation_token(token_stream_first(after.clone()))
+            {
+                let after = skip_newlines(tokens.clone());
+                is_operator_continuation_token(token_stream_first(after.clone()))
+            }
         } else {
             false
         };
@@ -11385,61 +11453,10 @@ pub fn parse_expr_loop(
     }
 }
 
-pub fn find_operator_bp(ops: Rc<Vec<Rc<OperatorSpec>>>, symbol: String) -> Option<BindingPower> {
-    {
-        let matching = Rc::new({
-            let mut __result = Vec::new();
-            for op in ops.clone().iter().cloned() {
-                if (op.symbol.clone() == symbol.clone()) {
-                    __result.push(op);
-                }
-            }
-            __result
-        });
-        if ((matching.clone().len() as i64) > 0) {
-            {
-                let op = matching.clone().first().cloned().clone().unwrap();
-                Some(BindingPower {
-                    left: op.left_bp.clone(),
-                    right: op.right_bp.clone(),
-                })
-            }
-        } else {
-            None
-        }
-    }
-}
-
 pub fn infix_bp(tokens: Rc<TokenStream>) -> Option<BindingPower> {
     match token_stream_first(tokens.clone()) {
         Some(t) => find_operator_bp(dag_syntax_spec().operators.clone(), t.text.clone()),
         None => None,
-    }
-}
-
-pub fn find_operator_binop(ops: Rc<Vec<Rc<OperatorSpec>>>, symbol: String) -> Option<BinOp> {
-    {
-        let matching = Rc::new({
-            let mut __result = Vec::new();
-            for op in ops.clone().iter().cloned() {
-                if (op.symbol.clone() == symbol.clone()) {
-                    __result.push(op);
-                }
-            }
-            __result
-        });
-        if ((matching.clone().len() as i64) > 0) {
-            matching
-                .clone()
-                .first()
-                .cloned()
-                .clone()
-                .unwrap()
-                .binop
-                .clone()
-        } else {
-            None
-        }
     }
 }
 
