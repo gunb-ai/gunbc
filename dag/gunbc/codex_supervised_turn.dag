@@ -82,6 +82,8 @@ data codex_supervised_process_supervision_note: String = "PROCESS SUPERVISION (s
 
 data codex_supervised_lease_selection_receipt_note: String = "OPERATOR RULING #8166 (2026-08-13). Disconnect branch settled by srv1 execution, not argument: killing the real app-server binary mid-turn stopped work at 2 of 8 files; the thread survived and thread/resume is the recovery path. Detached reconciliation is refuted; supervised HeldLease over the app-server process is the selected realization. Stay draft until a bounded wet turn returns CodexRunnerTurnTerminalReceipt — the admission fold alone is not mergeable. Wet access is a bounded srv1 execution grant, not a standing child credential."
 
+data codex_supervised_turn_wet_handoff_note: String = "BOUNDED WET HANDOFF. Parent executes on srv1 with bounded grant — not belt dispatch (#8224 /opt/gunbc/provider-runtime/codex refuses until #8225 converges). Flow: materialize_codex_runtime_bundle from committed lock → observe_codex_account_preflight (rateLimits liveness, not account/read) → run_codex_supervised_turn with standing receipt on binding. Executable path comes from CodexRuntimeBundle projection (bundled native), never /usr/bin/codex shim. Witness entry: dag/test/claim/codex_supervised_turn_wet_witness_test.dag::supervised_turn_materialized_bundle_writes_terminal_receipt. Set CODEX_HOME to the roadmap credential root before run."
+
 type CodexThreadActivity
   = CodexThreadAbsent
   | CodexThreadIdle
