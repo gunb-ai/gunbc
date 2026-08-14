@@ -1,5 +1,7 @@
 module v2.test.long.s1_closure_receipt_support
 
+import std.algebra { Empty }
+
 
 data s1_closure_paths: List<String> = [
   "dag/std/algebra.dag",

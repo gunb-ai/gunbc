@@ -1,5 +1,7 @@
 module extdeps.ssh.session
 
+import std.types { FilePath }
+
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

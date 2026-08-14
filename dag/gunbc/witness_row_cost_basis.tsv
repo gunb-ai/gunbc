@@ -14,7 +14,6 @@ entry	function	eval_ms_basis	run_ref	host_class	clock
 # comparator and enshrine a deadline ceiling as normal cost. It stays BasisAbsent - the honest
 # third state - until ClaimOutcome::TimedOut distinguishes killed rows from completed ones.
 # Rows observed in two batches keep the max of the two (all 3 such pairs differ by <2%).
-dag/test/claim/accelerator_demo_execution_witness_test.dag	accelerator_demo_execution_lane_witnesses	2	30550328673	srv_fleet_arm64	wall
 dag/test/claim/annotation_carrier_witness_test.dag	census_closure_frontier_rows_count_is_twenty_one	4	30550328673	srv_fleet_arm64	wall
 dag/test/claim/anomaly_evidence_witness_test.dag	anomaly_reason_is_a_surface	40	30550328673	srv_fleet_arm64	wall
 dag/test/claim/anomaly_evidence_witness_test.dag	anomaly_reason_surface_is_styled	85	30550328673	srv_fleet_arm64	wall

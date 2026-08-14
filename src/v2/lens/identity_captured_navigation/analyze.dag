@@ -1,5 +1,8 @@
 module v2.lens.identity_captured_navigation.analyze
 
+import std.algebra { Empty }
+import v2.lens.identity_captured_navigation { Unclassifiable }
+
 
 fn named_child_optional(cap: Node, name: Symbol) -> Optional<Node> {
   match find_named_child(root: cap, name: name) {

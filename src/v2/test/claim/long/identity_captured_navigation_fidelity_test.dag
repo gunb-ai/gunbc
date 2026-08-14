@@ -1,4 +1,5 @@
 module v2.test.long.identity_captured_navigation_fidelity
+import v2.lens.identity_captured_navigation.roster_gate { source_findings }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

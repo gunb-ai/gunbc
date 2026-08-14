@@ -1,5 +1,7 @@
 module v2.test.claim.manual.cross_tree_constructor_binding_test
 
+import std.algebra { Empty }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

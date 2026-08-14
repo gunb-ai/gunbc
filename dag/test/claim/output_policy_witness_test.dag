@@ -190,3 +190,34 @@ test fn w_outcome_is_data_is_exit_invariant() -> Bool {
   es_flips && ef_flips && oid_still
 }
 
+
+// The display grain is the fact Suppressed | Condensed | Full structurally cannot carry: those three
+// decide what becomes of one line, while the rollup grain decides whether a line exists at all.
+// Verbose keeps leaf grain because the operator asked to see the individual work; Normal and Quiet
+// fold to the batch, where the leaf identities live in the receipt artifact instead.
+test fn w_normal_folds_routine_work_to_batch_grain() -> Bool {
+  match channel_policy(verbosity: Normal).routine_rollup_grain {
+    Absent => false
+    Present { value: g } => match g {
+      BatchGrain => true
+      _ => false
+    }
+  }
+}
+
+test fn w_verbose_keeps_leaf_grain_so_the_operator_sees_individual_work() -> Bool {
+  match channel_policy(verbosity: Verbose).routine_rollup_grain {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn w_quiet_folds_too_rather_than_relying_on_claim_result_suppression() -> Bool {
+  match channel_policy(verbosity: Quiet).routine_rollup_grain {
+    Absent => false
+    Present { value: g } => match g {
+      BatchGrain => true
+      _ => false
+    }
+  }
+}

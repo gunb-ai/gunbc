@@ -1,5 +1,7 @@
 module v2.test.provenance.parse_stamp_span_index
 
+import std.algebra { Empty }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn parse_stamp_list_absent_diagnostic() -> Diagnostic {

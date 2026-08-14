@@ -1045,15 +1045,8 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
-    slug: "accelerator-demo-roundtrip",
-    primary_work: DeclarationRef { module_path: "extdeps.languages.simd.kernel", decl_name: "simd_kernel_medium", field: WholeDeclaration },
-    additional_works: [DeclarationRef { module_path: "gunbc.accelerator_demo_plan", decl_name: "AcceleratorRecognitionOutcome", field: WholeDeclaration }],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "doc migrates into a registered gunbc.plan.Plan row (the registration becomes the binding); §6 item 2 execution lane lands on the simd handler (merged from a two-row form 2026-07-31: home+slug is this list's symbolic identity, so two rows gave one doc two independently removable authority rows)") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
     slug: "machine-shape-orthogonal-scheduling",
-    primary_work: DeclarationRef { module_path: "gunbc.accelerator_demo_plan", decl_name: "AcceleratorRecognitionOutcome", field: WholeDeclaration },
+    primary_work: DeclarationRef { module_path: "extdeps.languages.simd.kernel", decl_name: "simd_kernel_medium", field: WholeDeclaration },
     additional_works: [],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "dissolves into a registered gunbc.plan.Plan row at its Phase-1 landing (trigger declared in the md header)") },
   },

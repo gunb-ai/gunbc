@@ -2,6 +2,8 @@
 // Source module: std.measure
 
 use self::ClockBasis::*;
+use self::ClockDomain::*;
+use self::InstantOrder::*;
 use self::PositiveCelsiusDelta::*;
 use self::PositiveMeasureCount::*;
 use self::PositiveMeasureCountBuild::*;
@@ -1245,6 +1247,93 @@ pub fn basis_point_dissolve_on() -> Rc<DissolutionCondition> {
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ClockDomain {
+    ProcessMonotonic { process: NonEmptyStr },
+    SharedMonotonic { origin: NonEmptyStr },
+}
+
+pub fn clock_domain_eq(a: Rc<ClockDomain>, b: Rc<ClockDomain>) -> bool {
+    match (*a.clone()).clone() {
+        ClockDomain::ProcessMonotonic { process: p, .. } => match (*b.clone()).clone() {
+            ClockDomain::ProcessMonotonic { process: q, .. } => (p.clone() == q.clone()),
+            ClockDomain::SharedMonotonic { origin: _, .. } => false,
+        },
+        ClockDomain::SharedMonotonic { origin: o, .. } => match (*b.clone()).clone() {
+            ClockDomain::ProcessMonotonic { process: _, .. } => false,
+            ClockDomain::SharedMonotonic { origin: p, .. } => (o.clone() == p.clone()),
+        },
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ObservationInstant {
+    pub domain: Rc<ClockDomain>,
+    pub basis: ClockBasis,
+    pub since_origin: Nanosecond,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum InstantOrder {
+    InstantBefore,
+    InstantSame,
+    InstantAfter,
+    InstantIncomparable {
+        left: Rc<ClockDomain>,
+        right: Rc<ClockDomain>,
+    },
+}
+impl InstantOrder {
+    pub fn left(&self) -> Rc<ClockDomain> {
+        match self {
+            InstantOrder::InstantBefore => panic!("no left on unit variant"),
+            InstantOrder::InstantSame => panic!("no left on unit variant"),
+            InstantOrder::InstantAfter => panic!("no left on unit variant"),
+            InstantOrder::InstantIncomparable { left: __val, .. } => __val.clone(),
+        }
+    }
+    pub fn right(&self) -> Rc<ClockDomain> {
+        match self {
+            InstantOrder::InstantBefore => panic!("no right on unit variant"),
+            InstantOrder::InstantSame => panic!("no right on unit variant"),
+            InstantOrder::InstantAfter => panic!("no right on unit variant"),
+            InstantOrder::InstantIncomparable { right: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+pub fn compare_instants(a: Rc<ObservationInstant>, b: Rc<ObservationInstant>) -> Rc<InstantOrder> {
+    if !clock_domain_eq(a.domain.clone(), b.domain.clone()) {
+        Rc::new(InstantOrder::InstantIncomparable {
+            left: a.domain.clone(),
+            right: b.domain.clone(),
+        })
+    } else {
+        if !clock_basis_eq(a.basis.clone(), b.basis.clone()) {
+            Rc::new(InstantOrder::InstantIncomparable {
+                left: a.domain.clone(),
+                right: b.domain.clone(),
+            })
+        } else {
+            {
+                let x = nanosecond_count(a.since_origin.clone());
+                let y = nanosecond_count(b.since_origin.clone());
+                if (x.clone() < y.clone()) {
+                    Rc::new(InstantOrder::InstantBefore)
+                } else {
+                    if (x.clone() == y.clone()) {
+                        Rc::new(InstantOrder::InstantSame)
+                    } else {
+                        Rc::new(InstantOrder::InstantAfter)
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

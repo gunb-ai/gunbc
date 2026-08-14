@@ -1,5 +1,7 @@
 module v2.lens.dependency_fidelity
 
+import std.algebra { Empty }
+
 
 data law_note: String = "dependency-fidelity §2: correctness = declared dependency structure equals witnessed (by-execution) structure. This module is the single authority for the fidelity verdict; each arm reports its located discrepancies into ONE verdict lattice, and the FidelityDiscrepancy variant IS the §3 surface it lives on (UnreachedDeclaredInput = input-reachability, UnreachedDeclaredOutput = output-reachability, UnderClaimedEdge/OverClaimedCoupling = interaction fidelity). Input-reachability is consumed from v2.lens.unused_parameters (no re-mint, §3 single authority). Output-reachability and the under-claim/over-claim edge arms are staged slots (docs/plans/dependency-fidelity-design.md §5, §8)."
 

@@ -1,5 +1,7 @@
 module v2.test.manual.integer_census_stage_receipt
 
+import std.algebra { Empty }
+
 
 data ics_path: String = "src/v2/std/integer.dag"
 data ics_anchor: Symbol = ^ics_anchor

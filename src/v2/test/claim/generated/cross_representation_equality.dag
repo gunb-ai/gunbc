@@ -1,4 +1,5 @@
 module v2.test.generated.cross_representation_equality
+import v2.lens.testgen { cross_repr_native_value_bool, cross_repr_native_value_null, cross_representation_equality_anchor, testgen_emit_cross_representation_equality_claim, testgen_scheduled_cross_representation_equality_generators }
 
 
 fn reference_cross_representation_equality_anchor() -> GeneratedAnchorKey {

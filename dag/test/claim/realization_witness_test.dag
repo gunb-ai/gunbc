@@ -1,4 +1,5 @@
 module test.claim.realization_witness
+import std.effects { InputField, PathParam }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

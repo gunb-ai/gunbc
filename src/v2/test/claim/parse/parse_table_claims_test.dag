@@ -1,5 +1,7 @@
 module v2.test.parse.parse_table_claims
 
+import std.algebra { Empty }
+
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

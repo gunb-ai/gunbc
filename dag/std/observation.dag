@@ -3,12 +3,14 @@ module std.observation
 import std.types { String, NonEmptyStr, Bool, List }
 import std.nat { Nat }
 import std.measure { ClockBasis, CpuClock, WallClock, clock_basis_eq, clock_basis_label }
+import std.measure { ObservationInstant, ClockDomain, clock_domain_eq }
 import std.measure {
   Nanosecond,
   Millisecond,
   ByteSize,
   BasisPoint,
   measure_le,
+  measure_add,
   millisecond,
   millisecond_count,
   millisecond_to_nanosecond,
@@ -809,4 +811,478 @@ data observation_selection_predicate_contract: Disposition = Terminal {
 
 data observation_renders_nothing_disposition: Disposition = Terminal {
   reason: "P0 carries the model only. Renderers are P1 and later, and the CI renderer's wiring lands after the atomic CI PR because both touch the floor's emit sites and churning them twice is the migration class the operator ruled out. This module therefore holds no line formatting, no glyph text, and no ANSI: it holds the vocabulary those renderers project from."
+}
+
+// ---------------------------------------------------------------------------
+// Routine rollup — the fold that makes the collapse in law 4 actually happen.
+// ---------------------------------------------------------------------------
+
+// The module already carried the HIERARCHY (ObservationSubject is a containment path;
+// ObservationGrain names its levels) and the DENSITY (observation_class_density: routine collapses,
+// anomalies expand, summaries always show). What it did not carry is the operation that turns those
+// two facts into one line instead of hundreds: a fold that accumulates routine leaf events into the
+// ancestor subject at a declared grain. Measured on a green floor run (31480965027, 6188 console
+// lines): 4110 lines were one-per-passing-witness, 1074 per-entry retention rows, 359 compile
+// micro-events, 91 raw worker polls, and 26 semantic heartbeats — 99.6% leaf facts against the
+// handful of lines that answer what is running and whether it is healthy. Density alone could not
+// fix that, because collapsible is a per-line formatting verdict and the defect is that 4110 events
+// became 4110 lines at all. Accumulation is the missing operation, and it belongs here beside the
+// vocabulary it folds rather than in a renderer, so every renderer projects the same counts.
+
+type ObservationCounts {
+  begun: Nat
+  done: Nat
+  skipped: Nat
+  refused: Nat
+  failed: Nat
+  timed_out: Nat
+}
+
+// Anomaly classes are COUNTED here even though they are never collapsed. Counting and emission are
+// orthogonal axes and fusing them loses the summary: a batch conclusion that says `0 failed` is
+// only trustworthy if failures were tallied on the same fold that tallied the passes, and a rollup
+// that skipped them could only ever report an absence it never looked for. The collapse decision
+// stays where it already lives (observation_class_density); this record answers how many, not
+// whether to print.
+
+fn observation_counts_zero() -> ObservationCounts {
+  ObservationCounts { begun: 0, done: 0, skipped: 0, refused: 0, failed: 0, timed_out: 0 }
+}
+
+fn observation_counts_accept(counts: ObservationCounts, c: ObservationEventClass) -> ObservationCounts {
+  match c {
+    ClassBegin => ObservationCounts { begun: counts.begun + 1, done: counts.done, skipped: counts.skipped, refused: counts.refused, failed: counts.failed, timed_out: counts.timed_out }
+    ClassStep => counts
+    ClassDone => ObservationCounts { begun: counts.begun, done: counts.done + 1, skipped: counts.skipped, refused: counts.refused, failed: counts.failed, timed_out: counts.timed_out }
+    ClassSkipped => ObservationCounts { begun: counts.begun, done: counts.done, skipped: counts.skipped + 1, refused: counts.refused, failed: counts.failed, timed_out: counts.timed_out }
+    ClassRefused => ObservationCounts { begun: counts.begun, done: counts.done, skipped: counts.skipped, refused: counts.refused + 1, failed: counts.failed, timed_out: counts.timed_out }
+    ClassFailed => ObservationCounts { begun: counts.begun, done: counts.done, skipped: counts.skipped, refused: counts.refused, failed: counts.failed + 1, timed_out: counts.timed_out }
+    ClassTimedOut => ObservationCounts { begun: counts.begun, done: counts.done, skipped: counts.skipped, refused: counts.refused, failed: counts.failed, timed_out: counts.timed_out + 1 }
+    ClassFinal => counts
+    ClassBlocked => counts
+    ClassDwellEscalation => counts
+  }
+}
+
+fn observation_counts_anomalies(counts: ObservationCounts) -> Nat {
+  counts.refused + counts.failed + counts.timed_out
+}
+
+fn observation_subject_prefix_at_grain(
+  subject: ObservationSubject,
+  grain: ObservationGrain,
+) -> ObservationSubject? {
+  let target = observation_grain_depth(g: grain)
+  let kept = filter(subject.segments, seg =>
+    observation_grain_depth(g: observation_grain_of_segment(seg: seg)) <= target)
+  let prefix = ObservationSubject { segments: kept }
+  if count(kept) == target + 1 {
+    Present { value: prefix }
+  } else {
+    none
+  }
+}
+
+// Absent means the subject has no segment at the requested grain — a run-scoped event asked for its
+// batch ancestor, or a malformed subject that skipped a level. It is NOT the empty prefix and NOT
+// the subject itself, because either substitution would silently attribute an event to a scope
+// nobody observed it in, which is the empty-observation narrow DESIGN names: rendering `could not
+// locate the ancestor` as `belongs to the root`. The length check is what distinguishes the two: a
+// well-formed path of the target depth keeps exactly target+1 segments, so a skipped level fails
+// the count rather than closing the gap.
+
+type ObservationRollup {
+  subject: ObservationSubject
+  counts: ObservationCounts
+  active_leaf: ObservationSubject?
+  elapsed: Measured<Nanosecond>
+  peak_rss: Measured<ByteSize>
+  measurement_absent: Nat
+}
+
+// elapsed ACCUMULATES the measured walls and peak_rss keeps the MAXIMUM measured reading, because a
+// batch summary answers two different questions with them: how much work-time the batch spent, and
+// how close it came to the memory envelope. Summing rss would be meaningless (leaf readings overlap
+// in time) and maximising elapsed would report the slowest leaf as the batch cost.
+// measurement_absent counts the events whose reading was MeasuredUnavailable. Without it a partially
+// measured batch would report a sum that silently omits its unmeasured members while reading as a
+// total — the same shape as a count-completeness claim that only counts what it remembered to look
+// at. The renderer can then say `41m02s over 4,878 witnesses (12 unmeasured)` rather than implying
+// full coverage, and a rollup where every reading was absent stays MeasuredUnavailable rather than
+// collapsing to a fabricated zero.
+
+fn observation_rollup_open(subject: ObservationSubject) -> ObservationRollup {
+  ObservationRollup {
+    subject: subject,
+    counts: observation_counts_zero(),
+    active_leaf: none,
+    elapsed: MeasuredUnavailable { cause: "no measured observation folded yet" },
+    peak_rss: MeasuredUnavailable { cause: "no measured observation folded yet" },
+    measurement_absent: 0,
+  }
+}
+
+fn observation_rollup_add_elapsed(
+  acc: Measured<Nanosecond>,
+  reading: Measured<Nanosecond>,
+) -> Measured<Nanosecond> {
+  match reading {
+    MeasuredUnavailable { cause: _ } => acc
+    MeasuredValue { value: v } =>
+      match acc {
+        MeasuredUnavailable { cause: _ } => MeasuredValue { value: v }
+        MeasuredValue { value: a } => MeasuredValue { value: measure_add(a: a, b: v) }
+      }
+  }
+}
+
+fn observation_rollup_max_rss(
+  acc: Measured<ByteSize>,
+  reading: Measured<ByteSize>,
+) -> Measured<ByteSize> {
+  match reading {
+    MeasuredUnavailable { cause: _ } => acc
+    MeasuredValue { value: v } =>
+      match acc {
+        MeasuredUnavailable { cause: _ } => MeasuredValue { value: v }
+        MeasuredValue { value: a } => if measure_le(a: a, b: v) { MeasuredValue { value: v } } else { acc }
+      }
+  }
+}
+
+fn observation_measurement_absent_delta(reading: Measured<Nanosecond>) -> Nat {
+  match reading {
+    MeasuredUnavailable { cause: _ } => 1
+    MeasuredValue { value: _ } => 0
+  }
+}
+
+type ObservationRollupAccept
+  = RollupAccepted { rollup: ObservationRollup }
+  | RollupSubjectOutOfScope { subject: ObservationSubject }
+
+// An event whose subject the rollup does not contain is REFUSED, not silently dropped and not
+// folded anyway. Both silent arms are the absorbing fallback in miniature: folding a foreign event
+// inflates a batch's counts with work that happened elsewhere, and dropping it makes the count
+// quietly incomplete while still reading as a total. The caller holds the rollup roster and knows
+// which one should have matched, so the refusal carries the subject that found no home and the
+// caller decides — open a rollup, or surface the event on its own.
+
+fn observation_rollup_accept(
+  rollup: ObservationRollup,
+  event: ObservationEvent,
+) -> ObservationRollupAccept {
+  if observation_subject_contains(ancestor: rollup.subject, descendant: event.subject) {
+    RollupAccepted {
+      rollup: ObservationRollup {
+        subject: rollup.subject,
+        counts: observation_counts_accept(counts: rollup.counts, c: observation_event_class(event: event)),
+        active_leaf: Present { value: event.subject },
+        elapsed: observation_rollup_add_elapsed(acc: rollup.elapsed, reading: observation_wall(event: event)),
+        peak_rss: observation_rollup_max_rss(acc: rollup.peak_rss, reading: event.rss),
+        measurement_absent: rollup.measurement_absent + observation_measurement_absent_delta(reading: observation_wall(event: event)),
+      }
+    }
+  } else {
+    RollupSubjectOutOfScope { subject: event.subject }
+  }
+}
+
+data observation_rollup_contract: Disposition = Terminal {
+  reason: "The rollup fold is a pure reader over the vocabulary this module already owns — subject containment (observation_subject_contains, itself std.effect_grant.path_is_prefix), grain depth, and the single density table. It mints no grain taxonomy, no second collapse rule and no threshold: which grain to roll up to is the consumer's parameter, and when to emit is the renderer's projection over these counts. Terminal because the fold is total over the closed event-class roster; a new class must extend observation_counts_accept, which the exhaustive match forces."
+}
+
+// Whether a ledger producer can still append. Three arms, not two, because the reader is not always
+// the coordinator: `explain <attempt-dir>` runs with no child handles at all, so every liveness
+// input try_wait provided is gone and the reader has files and nothing else. Defaulting that to
+// Dead reports a torn record on a healthy run; defaulting it to Live hangs explain on a finished
+// one. Unknown is a verdict, not a missing value.
+//
+// A completed attempt is NOT unknown: all its producers are dead by construction, so explain over a
+// terminated attempt gets ProducerDead and a torn tail is genuinely torn.
+// The bytes at the end of a producer's file, before any liveness is consulted.
+type LedgerTail
+  = TailComplete
+  | TailIncomplete { bytes: Nat }
+
+type ProducerState
+  = ProducerLive
+  | ProducerDead
+  | ProducerLivenessUnknown { cause: NonEmptyStr }
+
+// THE ORDERING IS THE CARRIER'S SHAPE, not its name. An earlier revision paired a tail with a
+// liveness in a record called LivenessAfterRead and claimed the ordering was structural; it was not,
+// because both arrived as parameters, so a caller could probe first, read second, and satisfy the
+// constructor with the ordering already violated (review by vivid-bear-458, 2026-08-13 — DESIGN
+// section 4b: a brand is cosmetic until construction enforces the distinction). Sealing it makes the
+// claim true: `probe_liveness_for` is the sole mint and it REQUIRES a LedgerTail, so no
+// ProducerLiveness value can come into existence before a tail value does. Check-first has no
+// expressible form rather than merely no sanctioned one.
+//
+// The ordering is load-bearing because liveness is one-way. Check-then-read misclassifies a producer
+// that dies in between as live, so its torn tail reads as "poll again" and the reader waits forever
+// on a file that will never grow. Read-then-check is sound in both directions: dead after the read
+// means the tail can never grow, so it is torn; live means it may still grow, so poll. Deadness does
+// not reverse.
+//
+// WHAT THIS STILL DOES NOT CLOSE, stated so the wall is not read as covering it: the caller goes to
+// the filesystem, and no carrier can witness that the tail it passes is the CURRENT tail rather than
+// one read earlier and held. Sealing closes "liveness before tail"; it does not close "stale tail,
+// fresh liveness". The control at the read seam is therefore still owed, and per DESIGN section 4b
+// it stays enrolled as this wall's regression evidence rather than being retired by it.
+type ProducerLiveness sole_constructor {
+  tail_witnessed: LedgerTail
+  state: ProducerState
+}
+
+fn probe_liveness_for(tail: LedgerTail, observed: ProducerState) -> ProducerLiveness {
+  ProducerLiveness { tail_witnessed: tail, state: observed }
+}
+
+type LedgerTailVerdict
+  = TailRecordsComplete
+  | TailTorn { bytes: Nat }
+  | TailPending { bytes: Nat }
+  | TailIndeterminate { bytes: Nat, cause: NonEmptyStr }
+
+fn classify_ledger_tail(observed: ProducerLiveness) -> LedgerTailVerdict {
+  match observed.tail_witnessed {
+    TailComplete => TailRecordsComplete
+    TailIncomplete { bytes: n } =>
+      match observed.state {
+        ProducerDead => TailTorn { bytes: n }
+        ProducerLive => TailPending { bytes: n }
+        ProducerLivenessUnknown { cause: c } => TailIndeterminate { bytes: n, cause: c }
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The recorded envelope: what a producer appends, as distinct from what it observed.
+// ---------------------------------------------------------------------------
+
+data recorded_observation_envelope_note: String = "WHY AN ENVELOPE AND NOT SIX MORE FIELDS ON ObservationEvent. The event answers what happened to which subject; the envelope answers who recorded it, when on whose clock, and where it sits in the causal tree. Those are facts about the RECORDING, and a producer that could omit them is a producer whose output cannot be reduced. Putting them on the event would also make every existing constructor of an event carry recording facts it has no business knowing — a render-time projection would have to invent an attempt id to build one. The subject path is a CONTAINMENT address and the occurrence pair is a CAUSAL edge; they are not the same relation and collapsing them loses the distinction between a witness that ran under a batch and one that was spawned by another witness."
+
+// A producer is one appending process. There is exactly one file per producer per attempt, and
+// sequence numbers are per producer, because a global counter across processes would require the
+// coordination the per-producer split exists to avoid.
+type ObservationProducer
+  = CoordinatorProducer
+  | OrdinaryWorkerProducer { worker_index: Nat }
+  | ScopedWorkerProducer { scope_id: NonEmptyStr }
+
+fn observation_producer_key(p: ObservationProducer) -> String {
+  match p {
+    CoordinatorProducer => "coordinator"
+    OrdinaryWorkerProducer { worker_index: i } => concat("ordinary-worker-", to_string(i))
+    ScopedWorkerProducer { scope_id: s } => concat("scoped-", s)
+  }
+}
+
+fn observation_producer_eq(a: ObservationProducer, b: ObservationProducer) -> Bool {
+  observation_producer_key(p: a) == observation_producer_key(p: b)
+}
+
+// AN OCCURRENCE ID IS AN ATTEMPT-LOCAL COORDINATE, so it carries the attempt it is local to. The
+// bare-string form typechecked a comparison across two attempts and answered it — and comparing
+// receipts from two attempts is the whole point of the falsifier, so the meaningless join was on the
+// path of the first consumer (review by vivid-bear-458, 2026-08-13). It is the cross-family
+// comparison the ContentHash family grounding closed, with attempts standing where hash families
+// stood: same representation, different universes, comparable by construction and meaningless when
+// compared.
+//
+// THE RULE THIS MAKES STRUCTURAL: a cross-attempt join keys on the SUBJECT — the containment path,
+// which is the semantic thing two attempts genuinely share — never on occurrence. Occurrences are
+// minted independently per attempt, so an id appearing in both is either the same string by accident
+// or the same subject by luck, and nothing in a bare string distinguishes those.
+type OccurrenceId {
+  attempt: NonEmptyStr
+  id: NonEmptyStr
+}
+
+// Three-valued for the same reason `compare_instants` is: a cross-attempt pair is not "different",
+// it is UNANSWERABLE, and the two carry different remedies. Different means these are two occurrences
+// in one run; cross-attempt means the caller asked a question occurrence identity cannot answer and
+// should have keyed on the subject.
+type OccurrenceComparison
+  = SameOccurrence
+  | DifferentOccurrence
+  | OccurrenceCrossAttempt { left: NonEmptyStr, right: NonEmptyStr }
+
+fn compare_occurrences(a: OccurrenceId, b: OccurrenceId) -> OccurrenceComparison {
+  if a.attempt != b.attempt {
+    OccurrenceCrossAttempt { left: a.attempt, right: b.attempt }
+  } else {
+    if a.id == b.id { SameOccurrence } else { DifferentOccurrence }
+  }
+}
+
+// THE PARENT CARRIES ONLY ITS ID, AND THE ATTEMPT IS DERIVED FROM THE CHILD. A spawn edge cannot
+// cross attempts — a process in one attempt did not spawn an occurrence in another — so a full
+// OccurrenceId here would have made that impossible edge writable, the same hole one level down.
+// Reconstruct the parent through `parent_occurrence`, which takes the attempt from the record that
+// declares the edge.
+type OccurrenceOrigin
+  = RootOccurrence
+  | ChildOf { parent_id: NonEmptyStr }
+
+// NO SEPARATE `attempt` FIELD: the occurrence carries it, and a second copy beside it is a fact with
+// two homes that can disagree (DESIGN section 3). The attempt of a record is read through its
+// occurrence.
+type RecordedObservation {
+  producer: ObservationProducer
+  producer_sequence: Nat
+  occurrence: OccurrenceId
+  origin: OccurrenceOrigin
+  at: ObservationInstant
+  event: ObservationEvent
+}
+
+fn recorded_attempt(r: RecordedObservation) -> NonEmptyStr {
+  r.occurrence.attempt
+}
+
+fn parent_occurrence(r: RecordedObservation) -> OccurrenceId? {
+  match r.origin {
+    RootOccurrence => Absent
+    ChildOf { parent_id: p } => Present { value: OccurrenceId { attempt: r.occurrence.attempt, id: p } }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Per-file sequence integrity.
+// ---------------------------------------------------------------------------
+
+data producer_sequence_note: String = "A GAP AND A REORDER ARE DIFFERENT FACTS WITH DIFFERENT REMEDIES, so they are different verdicts. A gap means records exist that this read did not see — a lost write, a truncated middle, a reader that skipped — and the reduction is INCOMPLETE, so any attribution derived from it understates. A reorder means the file is not what the append protocol promises and the producer itself is wrong. Reporting either as the other sends the investigation to the wrong layer. And a records-from-two-producers verdict is not a sequence defect at all: sequences are per producer, so two producers in one file means the layout invariant broke upstream of any ordering question."
+
+type SequenceVerdict
+  = SequenceIntact
+  | SequenceGap { after: Nat, before: Nat }
+  | SequenceReordered { at_index: Nat, previous: Nat, observed: Nat }
+  | SequenceForeignProducer { expected: String, observed: String }
+  | SequenceEmpty
+
+fn sequence_verdict_meet(a: SequenceVerdict, b: SequenceVerdict) -> SequenceVerdict {
+  match a {
+    SequenceIntact => b
+    SequenceEmpty => b
+    _ => a
+  }
+}
+
+type SequenceScan {
+  started: Bool
+  prev_key: String
+  prev_sequence: Nat
+  verdict: SequenceVerdict
+}
+
+fn sequence_scan_step(acc: SequenceScan, r: RecordedObservation) -> SequenceScan {
+  let key = observation_producer_key(p: r.producer)
+  let seq = r.producer_sequence
+  if !acc.started {
+    SequenceScan { started: true, prev_key: key, prev_sequence: seq, verdict: SequenceIntact }
+  } else {
+    let step =
+      if key != acc.prev_key {
+        SequenceForeignProducer { expected: acc.prev_key, observed: key }
+      } else {
+        if seq <= acc.prev_sequence {
+          SequenceReordered { at_index: seq, previous: acc.prev_sequence, observed: seq }
+        } else {
+          if seq > acc.prev_sequence + 1 {
+            SequenceGap { after: acc.prev_sequence, before: seq }
+          } else {
+            SequenceIntact
+          }
+        }
+      }
+    SequenceScan {
+      started: true,
+      prev_key: key,
+      prev_sequence: seq,
+      verdict: sequence_verdict_meet(a: acc.verdict, b: step),
+    }
+  }
+}
+
+// The first defect wins and later records cannot green it: once a gap is seen the reduction is
+// incomplete no matter how clean the tail reads.
+fn classify_producer_file(records: List<RecordedObservation>) -> SequenceVerdict {
+  fold_list(
+    records,
+    SequenceScan { started: false, prev_key: "", prev_sequence: 0, verdict: SequenceEmpty },
+    (acc, r) => sequence_scan_step(acc: acc, r: r)
+  ).verdict
+}
+
+// ---------------------------------------------------------------------------
+// Resolving a spawn edge, which crosses producer files.
+// ---------------------------------------------------------------------------
+
+data parent_resolution_note: String = "A PARENT THAT RESOLVES TO NOTHING IS TWO FACTS WITH OPPOSITE MEANINGS (review by vivid-bear-458, 2026-08-13). The active stack walks ChildOf across producer files — a worker occurrence is ChildOf an occurrence the COORDINATOR recorded, because the coordinator is what spawned the worker — so a parent absent from the file in hand is the NORMAL case for every worker-rooted occurrence, not damage; it means the reader was handed one file where it needed the attempt's union. A parent absent from every file of the attempt is a real integrity failure: a Begin was never written, or a record was lost somewhere other than the torn tail. Collapsed into one DanglingParent arm the failure runs both ways — a single-file read reports damage on a healthy attempt, or a genuinely lost parent reads as 'probably in another file' and the stack SILENTLY RE-ROOTS. The second is the dangerous one, because a re-rooted occurrence does not look like an error; it looks like a shallower stack, which is a plausible answer to 'where was it' that happens to be wrong. The discriminator is whether the read was scoped to one producer or to the union, which the READER knows and the record does not — so, exactly like producer liveness, it is a required input rather than a fact derivable from the bytes."
+
+type LedgerReadScope
+  = SingleProducerRead { producer: ObservationProducer }
+  | AttemptUnionRead
+
+type ParentResolution
+  = OccurrenceIsRoot
+  | ParentResolved { parent: OccurrenceId }
+  | ParentOutsideReadScope { scope: ObservationProducer, parent_id: NonEmptyStr }
+  | ParentMissingFromAttempt { parent_id: NonEmptyStr }
+
+fn occurrence_present_in(records: List<RecordedObservation>, target: OccurrenceId) -> Bool {
+  fold_list(records, false, (acc, r) =>
+    acc || (r.occurrence.id == target.id && r.occurrence.attempt == target.attempt))
+}
+
+// The scope is a PARAMETER, so a caller holding one producer's file cannot reach the
+// missing-from-attempt verdict at all — that arm is unreachable under SingleProducerRead, and the
+// only way to claim a parent is lost is to have read the union.
+fn resolve_parent(
+  child: RecordedObservation,
+  records: List<RecordedObservation>,
+  scope: LedgerReadScope,
+) -> ParentResolution {
+  match parent_occurrence(r: child) {
+    Absent => OccurrenceIsRoot
+    Present { value: p } =>
+      if occurrence_present_in(records: records, target: p) {
+        ParentResolved { parent: p }
+      } else {
+        match scope {
+          SingleProducerRead { producer: prod } =>
+            ParentOutsideReadScope { scope: prod, parent_id: p.id }
+          AttemptUnionRead => ParentMissingFromAttempt { parent_id: p.id }
+        }
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The active set: which occurrences a killed attempt was inside.
+// ---------------------------------------------------------------------------
+
+data active_occurrence_note: String = "AN UNFINISHED OCCURRENCE IS A POPULATION, NOT A LATEST RECORD. When a producer is SIGKILLed the question 'what was it doing' has a set answer — every occurrence that recorded a Begin and no conclusion — because occurrences nest: a gate inside a batch inside a worker inside the attempt are all unfinished at once, and reporting only the deepest one, or only the last record written, discards the containment that makes the answer useful. THE LAST COMPLETE RECORD IS NOT THE LAST ACTIVE OCCURRENCE, and conflating them is how a torn tail produces a confident wrong answer: the final bytes may belong to a sibling that finished while its parent was still running, so 'the last thing in the file' names something already over. The set is derived from Begin-without-conclusion across the records actually read, and it is therefore only as complete as the read — which is why the read scope travels with it rather than being assumed."
+
+type ActiveOccurrences {
+  scope: LedgerReadScope
+  occurrences: List<OccurrenceId>
+}
+
+fn occurrence_concluded_in(records: List<RecordedObservation>, target: OccurrenceId) -> Bool {
+  fold_list(records, false, (acc, r) =>
+    acc || (r.occurrence.id == target.id
+      && r.occurrence.attempt == target.attempt
+      && match r.event.transition { Concluded { outcome: _ } => true, _ => false }))
+}
+
+fn active_occurrences(
+  records: List<RecordedObservation>,
+  scope: LedgerReadScope,
+) -> ActiveOccurrences {
+  let begun = filter(records, r => match r.event.transition { Begin => true, _ => false })
+  let unfinished = filter(begun, r => !occurrence_concluded_in(records: records, target: r.occurrence))
+  ActiveOccurrences { scope: scope, occurrences: map(unfinished, r => r.occurrence) }
 }

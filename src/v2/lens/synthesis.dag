@@ -1,5 +1,7 @@
 module v2.lens.synthesis
 
+import std.algebra { Empty }
+
 
 type LowerBoundTechnique
   = DecisionTree

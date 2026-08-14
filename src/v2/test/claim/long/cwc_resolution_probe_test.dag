@@ -1,4 +1,5 @@
 module v2.test.long.cwc_resolution_probe
+import v2.compiler.resolve { resolve }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -137,4 +138,3 @@ test fn cwc_review_disj_has_four_arms() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
-

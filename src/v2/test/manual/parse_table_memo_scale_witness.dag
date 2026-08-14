@@ -1,5 +1,7 @@
 module v2.test.manual.parse_table_memo_scale_witness
 
+import std.algebra { Empty }
+
 
 
 data parse_memo_scale_tokenize_path: String = "src/v1/01_tokenize.dag"

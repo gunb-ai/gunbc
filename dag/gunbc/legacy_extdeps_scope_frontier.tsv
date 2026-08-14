@@ -56,11 +56,9 @@ dag/extdeps/cloud/cloud.dag
 dag/extdeps/cloud/gcp/auth_print_access_token.dag
 dag/extdeps/cloud/gcp/errors.dag
 dag/extdeps/cloud/gcp/gcp.dag
-dag/extdeps/cloud/gcp/iam_admin.dag
 dag/extdeps/cloud/gcp/iam.dag
 dag/extdeps/cloud/gcp/secret_manager.dag
 dag/extdeps/cloud/gcp/secret_ref.dag
-dag/extdeps/cloud/gcp/serviceusage.dag
 dag/extdeps/cloud/gcp/sts.dag
 dag/extdeps/cloud/hetzner.dag
 dag/extdeps/cloud_init/cloud_init.dag

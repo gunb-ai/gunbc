@@ -1,5 +1,7 @@
 module v2.test.claim.algebra.list_linear_combinators
 
+import std.algebra { Empty }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

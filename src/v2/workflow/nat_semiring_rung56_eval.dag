@@ -21,11 +21,7 @@ import v2.test.nat_semiring.rung_6 {
   run_phase1_nat_semiring_rung6_rust_mul_associativity_emit_equals_eval,
   run_phase1_nat_semiring_rung6_rust_mul_left_identity_emit_equals_eval
 }
-import v2.test.workflow.testclaim_corpus_runner {
-  CorpusEvalReport,
-  corpus_entries_from_node_runtime_value_runs,
-  corpus_report_tally
-}
+import v2.test.workflow.testclaim_corpus_runner { CorpusEvalReport, corpus_entries_from_node_runtime_value_runs, corpus_report_tally }
 
 data nat_semiring_rung6_additive_monoid_runtime_value_rows: List<TestClaimRun<Node, RuntimeValue>> = [
   run_phase1_nat_semiring_rung6_rust_add_left_identity_emit_equals_eval,

@@ -1593,7 +1593,14 @@ pub struct SelectedFunctionIdentity {
     pub bare_name_ambiguous: bool,
 }
 
-fn selected_module_path(file: &str, module_path_index: &HashMap<String, String>) -> Option<String> {
+/// The module path a source file authors, or `None` when the index cannot name
+/// exactly one. Made public for the FLOOR2 qualified-witness lookup: under one
+/// shared prepared subject a witness must be invoked by `module.function`, and
+/// deriving that mapping a second time in the caller would fork this one.
+pub fn selected_module_path(
+    file: &str,
+    module_path_index: &HashMap<String, String>,
+) -> Option<String> {
     let normalize = |path: &str| {
         path.replace('\\', "/")
             .split("/./")

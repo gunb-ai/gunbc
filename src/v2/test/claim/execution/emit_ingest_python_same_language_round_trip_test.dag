@@ -1,5 +1,7 @@
 module v2.test.execution.emit_ingest_python_same_language_round_trip
 
+import std.algebra { Empty }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn emit_ingest_python_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {

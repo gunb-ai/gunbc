@@ -7,14 +7,16 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use v1_compiler::cli_run::{
-    closure_subject_for_entry, discover_floor_witness_roster,
+    build_module_path_index, closure_subject_for_entry, discover_floor_witness_roster,
     make_eval_context_with_runtime_options, peak_rss_vhwm_bytes,
-    precompute_whole_tree_published_mock_keys, process_shared_index, resolve_entry_with_index,
-    run_claim_measured, witness_exclusion_substrings, ClaimOutcome, DiscoveryRow, MultiEntryIndex,
+    precompute_whole_tree_published_mock_keys, prepare_whole_tree_subject, process_shared_index,
+    resolve_entry_with_index, run_claim_measured, whole_tree_strict_resolve_exclusion_substrings,
+    witness_exclusion_substrings, ClaimOutcome, DiscoveryRow, MultiEntryIndex,
+    PreparedWholeTreeSubject,
 };
 use v1_compiler::recorded_fixture::RecordedFixtureStore;
 use v1_compiler::v1_compiler_compile::ResolvedGraph;
-use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext};
+use v1_compiler::v1_interpreter::{selected_module_path, ExecutionMode, InterpContext};
 use v1_compiler::v1_std_core::NewlineIndex;
 
 type ResolvedEntry = (Rc<ResolvedGraph>, Rc<HashMap<String, Rc<NewlineIndex>>>);
@@ -179,6 +181,7 @@ struct ParsedArgs {
     fixture_store: Option<PathBuf>,
     eval_budget_ms: Option<u64>,
     pre_push: bool,
+    one_prepared_subject: bool,
 }
 
 struct DiscoveryConfig {
@@ -196,6 +199,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     let mut fixture_store: Option<PathBuf> = None;
     let mut eval_budget_ms: Option<u64> = None;
     let mut pre_push = false;
+    let mut one_prepared_subject = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -268,6 +272,10 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
                 fixture_store = Some(PathBuf::from(require_value(args, i, "--fixture-store")?));
             }
             "--pre-push" => pre_push = true,
+            // FLOOR2 experiment: prepare the corpus ONCE and evaluate the whole
+            // roster against that one context, instead of resolving one graph per
+            // entry. Off by default while the old path is still the authority.
+            "--one-prepared-subject" => one_prepared_subject = true,
             other => {
                 eprintln!("claim_batch: unknown argument: {}", other);
                 return Err(ExitCode::from(2));
@@ -299,6 +307,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
         fixture_store,
         eval_budget_ms,
         pre_push,
+        one_prepared_subject,
     })
 }
 
@@ -516,6 +525,171 @@ fn group_discovered_rows(rows: Vec<DiscoveryRow>) -> Vec<EntryGroup> {
     groups
 }
 
+/// FLOOR2 experiment: ONE prepared whole-tree subject, the whole roster evaluated
+/// against it, zero per-entry graph resolves.
+///
+/// THE COLLISION REFUSAL IS NOT OPTIONAL AND IS NOT A POST-CHECK. Witness
+/// invocation resolves a BARE NAME through `fn_nodes`, which is a map. Per-entry
+/// that is safe, because each context holds exactly one closure. Under one shared
+/// context it is not: two entries declaring the same `test fn` name collapse to a
+/// single map entry, so one of them runs twice and the other never runs — and the
+/// row COUNT is unchanged, so the receipt looks identical to a healthy run. That is
+/// silent wrongness, not a degradation, so this refuses before evaluating anything
+/// rather than reporting a suspect green. Measured on the live roster of run
+/// 31745991795: 30 names appear in more than one entry, covering 63 witness rows.
+///
+/// The refusal names every colliding (name, entries) pair, because "some names
+/// collide" is not actionable and the population is the thing an author has to fix.
+fn run_against_one_prepared_subject(
+    source_roots: &[String],
+    entry_groups: &[EntryGroup],
+    execution_mode: ExecutionMode,
+    eval_budget_ms: Option<u64>,
+) -> Result<ExitCode, ExitCode> {
+    // WITNESS IDENTITY UNDER A SHARED SUBJECT IS `module.function`, NEVER the bare
+    // name. `fn_nodes` already carries both keys; per-entry the bare one is safe
+    // because each context holds one closure, and under one shared context it is
+    // not — two entries declaring the same `test fn` name collapse to a single map
+    // entry, so one runs twice and the other never runs AT AN UNCHANGED ROW COUNT.
+    // Measured on the live roster: 30 names covering 63 rows. Qualifying is the
+    // construction that makes that unwritable; a post-hoc duplicate check would
+    // have conceded the ambiguous call was expressible.
+    //
+    // A file the index cannot name with exactly one module path REFUSES. It does
+    // not fall back to the bare name: the fallback is available precisely when
+    // identity is unknown, which is when it is least safe to guess.
+    let module_path_index = build_module_path_index(source_roots);
+    let mut qualified: Vec<(String, String)> = Vec::new();
+    let mut unnamed: Vec<&str> = Vec::new();
+    for group in entry_groups {
+        match selected_module_path(&group.entry, &module_path_index) {
+            Some(module_path) => {
+                for function in &group.functions {
+                    qualified.push((format!("{module_path}.{function}"), group.entry.clone()));
+                }
+            }
+            None => unnamed.push(group.entry.as_str()),
+        }
+    }
+    if !unnamed.is_empty() {
+        eprintln!(
+            "claim_batch: one-prepared-subject REFUSED: {} entry file(s) resolve to no single \
+             module path, so their witnesses have no identity under a shared subject:",
+            unnamed.len()
+        );
+        for entry in &unnamed {
+            eprintln!("  {entry}");
+        }
+        return Err(ExitCode::from(1));
+    }
+    let mut seen: std::collections::BTreeMap<&str, Vec<&str>> = std::collections::BTreeMap::new();
+    for (q, entry) in &qualified {
+        seen.entry(q.as_str()).or_default().push(entry.as_str());
+    }
+    let dupes: Vec<(&&str, &Vec<&str>)> = seen.iter().filter(|(_, e)| e.len() > 1).collect();
+    if !dupes.is_empty() {
+        eprintln!(
+            "claim_batch: one-prepared-subject REFUSED: {} qualified witness identity(ies) are \
+             claimed by more than one entry, so the identity is not unique after qualification:",
+            dupes.len()
+        );
+        for (q, entries) in &dupes {
+            eprintln!("  {} claimed by: {}", q, entries.join(", "));
+        }
+        return Err(ExitCode::from(1));
+    }
+
+    // THE EXCLUSION SET IS THE HAND-WRITTEN PATTERN LIST AND NOTHING ELSE.
+    //
+    // What used to sit here was pattern rows UNION a derived failure closure — a
+    // fixed point that strict-resolved the whole tree, added every failure AND its
+    // transitive importers to the exclusions, and retried until resolution
+    // succeeded. Its job was therefore to make the build pass by removing whatever
+    // failed, which is an absorbing failure arm at repository scale: a module could
+    // stop resolving globally and nothing went red. Measured before deletion: 8.7
+    // minutes, 4 rounds, 715 modules removed, of which only 61 actually failed and
+    // 654 were excluded solely for importing one of those 61.
+    //
+    // Now the whole-repo resolve either succeeds against the declared patterns or
+    // REFUSES naming the file, and that resolve IS the floor's compilation step
+    // rather than a gate beside it.
+    // THE FLOOR'S SUBJECT INCLUDES TESTS, because running them is its entire job.
+    //
+    // whole_tree_strict_resolve_exclusion_substrings carries "/test/" — a single
+    // substring that removes an entire semantic class. That entry is correct for a
+    // PRODUCTION-ONLY probe walk and wrong here, and it is not a harmless
+    // over-exclusion: four modules that DECLARE test modules live at paths without
+    // "/test/" in them, so they are included while every test module they import is
+    // removed, and the resolve fails on files that are not broken. A substring rule
+    // cannot express "the production universe" because path text is not the
+    // property being selected.
+    //
+    // Kept: only what genuinely cannot resolve — the deliberately-malformed scanner
+    // fixtures and the named lens fixtures that exist to be invalid.
+    // EXACT EXCLUSIONS, and only what is deliberately invalid.
+    //
+    // Three entries in the shared pattern list are substrings that remove a class
+    // rather than a file, and every one of them straddled a dependency:
+    //   "/test/"            kept four modules that DECLARE test modules (their paths
+    //                       lack the substring) while removing everything they import
+    //   "test/fixture/"     removes ALL fixtures, though only the scanner inputs
+    //                       under layering_scan are deliberately malformed; valid
+    //                       fixtures that real tests import went with them
+    //   "nat_semiring_rung" removes the implementation while keeping the tests that
+    //                       call into it
+    // Path text is not the property being selected, so a substring cannot express
+    // "deliberately invalid" and keeps proving it one straddle at a time.
+    let dropped = ["/test/", "test/fixture/", "nat_semiring_rung"];
+    let mut excludes: Vec<String> = whole_tree_strict_resolve_exclusion_substrings()
+        .into_iter()
+        .filter(|p| !dropped.contains(&p.as_str()))
+        .collect();
+    // The genuinely-malformed scanner inputs: modules declaring imports that do not
+    // exist, on purpose, as test DATA for the layering scanner.
+    excludes.push("test/fixture/layering_scan/".to_string());
+    let prepare_started = Instant::now();
+    let PreparedWholeTreeSubject {
+        ctx,
+        subject_digest,
+        modules_resolved,
+        modules_excluded,
+    } = prepare_whole_tree_subject(source_roots, &excludes, execution_mode).map_err(|e| {
+        eprintln!("claim_batch: one-prepared-subject preparation failed:\n{e}");
+        ExitCode::from(2)
+    })?;
+    let prepare_ms = prepare_started.elapsed().as_millis();
+    let witnesses: usize = entry_groups.iter().map(|g| g.functions.len()).sum();
+    eprintln!(
+        "[one-prepared-subject] prepared 1 subject in {}ms: {} module(s) resolved, {} excluded, \
+         digest={}; {} witness(es) over {} entry(ies), 0 per-entry graph resolves",
+        prepare_ms,
+        modules_resolved,
+        modules_excluded,
+        subject_digest,
+        witnesses,
+        entry_groups.len()
+    );
+
+    ctx.set_witness_eval_budget(eval_budget_ms);
+    let mut any_failed = false;
+    let mut timings = ResolveTimings::default();
+    let eval_started = Instant::now();
+    for (q, _entry) in &qualified {
+        run_claim_timed(&ctx, &subject_digest, q, &mut any_failed, &mut timings);
+        v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
+    }
+    eprintln!(
+        "[one-prepared-subject] prepare {}ms + evaluate {}ms over {} witness(es)",
+        prepare_ms,
+        eval_started.elapsed().as_millis(),
+        timings.witnesses
+    );
+    if any_failed {
+        return Ok(ExitCode::from(1));
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
 fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let parsed = parse_args(&args)?;
@@ -660,6 +834,15 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     let mut any_failed = false;
     let mut timings = ResolveTimings::default();
+
+    if parsed.one_prepared_subject {
+        return run_against_one_prepared_subject(
+            &source_roots,
+            &entry_groups,
+            execution_mode,
+            eval_budget_ms,
+        );
+    }
 
     if entry_groups.len() == 1 {
         let group = &entry_groups[0];

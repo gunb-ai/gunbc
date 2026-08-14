@@ -1,5 +1,7 @@
 module v2.test.manual.emit_ingest_same_language_row_fold
 
+import std.algebra { Empty }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
