@@ -58,11 +58,13 @@ import product.pcb.plan_view {
   PcbSceneRefused,
   project_pcb_world,
   emit_pcb_plan_view,
-  first_unrepresented_world_identity,
   attachment_label_base,
   attachment_label_step,
 }
-import product.pcb.scene { project_engineering_scene }
+import product.pcb.scene {
+  project_engineering_scene,
+  first_unrepresented_scene_identity,
+}
 import product.altra_motherboard.pcb_world {
   altra_pcb_world,
   altra_pcb_world_for,
@@ -206,6 +208,13 @@ fn projected_missing_document(ids: List<NonEmptyStr>) -> String? {
         PcbSceneEmissionRefused { cause: _ } => none
       }
   }
+}
+
+fn concatenated_non_attachment_identities(p: PcbPhysicalWorld) -> String {
+  concat(
+    fold(p.components, init: "", f: fn(acc, c) { concat(acc, concat(" ", c.identity as String)) }),
+    fold(p.obligations, init: "", f: fn(acc, o) { concat(acc, concat(" ", o.identity as String)) })
+  )
 }
 
 fn six_channel_design() -> AltraMinimalMotherboard {
@@ -478,7 +487,7 @@ test fn w_a_blank_scene_reports_a_dropped_obligation() -> Bool {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
-      match first_unrepresented_world_identity(physical: pcb_world_physical(w: w), document: "") {
+      match first_unrepresented_scene_identity(scene: project_engineering_scene(w: w), document: "") {
         Present { value: _ } => true
         Absent => false
       }
@@ -492,11 +501,27 @@ test fn w_the_emitted_scene_drops_no_world_identity() -> Bool {
       match scene_or_empty() {
         Absent => false
         Present { value: s } =>
-          match first_unrepresented_world_identity(physical: pcb_world_physical(w: w), document: s) {
+          match first_unrepresented_scene_identity(scene: project_engineering_scene(w: w), document: s) {
             Absent => true
             Present { value: _ } => false
           }
       }
+  }
+}
+
+test fn w_cpu_socket_text_does_not_cover_the_socket_attachment() -> Bool {
+  match world_or_empty() {
+    Absent => false
+    Present { value: w } =>
+      let p = pcb_world_physical(w: w)
+      let doc = concat(concatenated_non_attachment_identities(p: p), " attachment: mounting")
+      string_contains(s: doc, pattern: "cpu_socket")
+        && string_contains(s: "cpu_socket", pattern: "socket")
+        && !string_contains(s: doc, pattern: "attachment: socket")
+        && match first_unrepresented_scene_identity(scene: project_engineering_scene(w: w), document: doc) {
+          Absent => false
+          Present { value: id } => (id as String) == "attachment: socket"
+        }
   }
 }
 

@@ -19,15 +19,11 @@ import extdeps.w3c.svg {
 import product.pcb.world {
   PcbWorld,
   PcbWorldRefusal,
-  PcbPhysicalWorld,
   PcbBodyLayoutStanding,
   PcbBodyLayoutAdmittedOverEveryRequiredPart,
   PcbBodyLayoutCheckedOverEstablishedSubsetOnly,
   PcbBodyLayoutRefused,
-  MissingDocument,
-  CommercialAccess,
-  LegalCarriage,
-  UnselectedPart,
+  obligation_cause_tag,
 }
 import product.pcb.scene {
   PcbEngineeringScene,
@@ -202,12 +198,7 @@ fn element_fragments(e: PcbSceneElement, attachment_index: Int, body_layout: Pcb
         origin_x: signed_frame_component_count(c: origin.x),
         origin_y: signed_frame_component_count(c: origin.y),
         cause_label: obligation_cause_label(c: cause),
-        tag: match cause {
-          MissingDocument { what_is_missing: _ } => "missing-document"
-          CommercialAccess { subject: _ } => "commercial-access"
-          LegalCarriage { reason: _ } => "legal-carriage"
-          UnselectedPart { because: _ } => "unselected-part"
-        },
+        tag: (obligation_cause_tag(c: cause) as String),
       )]
     SceneAttachmentMarker { layer: layer, cause: _ } =>
       [svg_text(
@@ -280,25 +271,4 @@ fn emit_pcb_plan_view(c: PcbSceneConstruction<PcbPlanViewScene>) -> PcbSceneEmis
     PcbSceneRefused { cause: cause } => PcbSceneEmissionRefused { cause: cause }
     PcbSceneReady { value: scene } => PcbSceneEmitted { source: scene.document }
   }
-}
-
-fn first_unrepresented_world_identity(physical: PcbPhysicalWorld, document: String) -> NonEmptyStr? {
-  let ids = concat(
-    fold(physical.components, init: [], f: fn(acc, c) { concat(acc, [c.identity]) }),
-    concat(
-      fold(physical.obligations, init: [], f: fn(acc, o) { concat(acc, [o.identity]) }),
-      fold(physical.attachment_obligations, init: [], f: fn(acc, a) { concat(acc, [a.layer]) })
-    )
-  )
-  fold(ids, init: none, f: fn(acc, id) {
-    match acc {
-      Present { value: found } => Present { value: found }
-      Absent =>
-        if string_contains(s: document, pattern: id as String) {
-          none
-        } else {
-          Present { value: id }
-        }
-    }
-  })
 }
