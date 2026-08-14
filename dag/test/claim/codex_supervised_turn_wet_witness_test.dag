@@ -8,6 +8,8 @@ import gunbc.package_delivery {
   codex_runtime_lock_path,
   codex_runtime_manifest_path,
   materialize_codex_runtime_bundle,
+  admit_codex_package_lock_text,
+  CodexPackageLockAdmitted,
   AdmittedCodexRuntimeSource,
   CodexRuntimeMaterialized,
 }
@@ -35,7 +37,11 @@ import extdeps.shell
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data witness_note: String = "WET: materialize committed Codex runtime, observe account standing via rateLimits (not account/read realm), then run_codex_supervised_turn through bundled native app-server (never /usr/bin/codex shim). Requires CODEX_HOME in the environment pointing at a live credential (srv1: .codex@gunbc-roadmap). Writes CodexRunnerTurnTerminalReceipt only after process exit, with client_command_id. Does NOT use belt dispatch /opt/gunbc/provider-runtime/codex. Excluded from per-PR floor; falsifier batch 5 executes."
+data witness_note: String = "WET BISECT + FULL CHAIN (operator-bounded srv1 only). srv1 2026-08-14: supervised_turn_materialized_bundle_writes_terminal_receipt hit ~89 GiB RSS / 22 min CPU, zero child processes — never spawned npm or codex (press-0-step2 wet receipt). Bisect under MemoryMax: wet_committed_admitted_source_lock_admits (2G), wet_materialize_codex_runtime_bundle_only (8G), then full chain (12G cap until root cause located). Full fn is OfflineLocalRecipe — NOT on falsifier roster until envelope + bisect characterize the burn. See wet_supervised_turn_memory_envelope_note."
+
+data wet_supervised_turn_memory_envelope_note: String = "MEMORY ENVELOPE (srv1 kill receipt 2026-08-14, ac5f031d9). Operator enforces caps; these are declared expectations for refusal-not-OOM, not measured yet on bisect: wet_committed_admitted_source_lock_admits — MemoryMax=2G (filesystem_read + admit_codex_package_lock_text only; shared package_delivery path); wet_materialize_codex_runtime_bundle_only — MemoryMax=8G (materialize class ~150s wall on falsifier, spawns npm); supervised_turn_materialized_bundle_writes_terminal_receipt — MemoryMax=12G REFUSED until bisect passes and interpreter burn is characterized (full run killed at 89G with no children — likely interpreter eval before shell spawn, not npm RSS). Example: systemd-run --scope -p MemoryMax=2G -- gunbc run --source-root dag --source-root src/v2 --entry dag/test/claim/codex_supervised_turn_wet_witness_test.dag --function wet_committed_admitted_source_lock_admits"
+
+data wet_supervised_turn_oom_receipt_note: String = "srv1 bounded wet 2026-08-14: parse clean; compile phases ~5s; decl eval 22 min at 98.7% CPU; RSS ~89 GiB at kill; pgrep showed no app-server/npm/mktemp children. Diagnosis: unbounded interpreter work BEFORE process spawn — upstream of run_codex_supervised_turn shell effects. If bisect step 1 OOMs, package_delivery admit_codex_package_lock_text is a shared production defect. If step 2 OOMs, materialize_codex_runtime_bundle is shared. If step 1-2 pass under cap but full chain OOMs without children, codex_app_server_press + codex_supervised_turn eval path is the suspect."
 
 data wet_supervised_turn_probe_key: ProviderProbeKey = "wet-supervised-turn-1" as ProviderProbeKey
 
@@ -85,6 +91,30 @@ fn wet_supervised_turn() -> WorkerTurn {
     attempt_key: "wet-attempt-1",
     consumed_feedback: "Reply with exactly: wet-supervised-turn-ok",
     resulting_head: none,
+  }
+}
+
+test fn wet_committed_admitted_source_lock_admits() -> Bool {
+  match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+    CodexPackageLockAdmitted { graph: _, nodes, registry_artifacts: _ } =>
+      count(nodes) > 0 && count(registry_artifacts) > 0
+    _ => false
+  }
+}
+
+test fn wet_materialize_codex_runtime_bundle_only() -> Bool {
+  let release_tmp = shell.Mktemp.Dir()
+  if release_tmp.success == false {
+    false
+  } else {
+    match materialize_codex_runtime_bundle(
+      source: committed_admitted_codex_runtime_source(),
+      release_parent: release_tmp.path,
+    ) {
+      CodexRuntimeMaterialized { bundle } =>
+        shell.Test.IsFile(path: codex_bundle_executable_path(bundle: bundle)).is_file
+      _ => false
+    }
   }
 }
 
