@@ -39,6 +39,7 @@ import v2.compiler.self_host.frontier_probe_types {
   MissingModuleIdentityUnavailable,
   NonEmptySymbolChain,
   OtherAssembleRefusal,
+  frontier_classify_rejection_reason,
   frontier_probe_cause_location_from_locus,
   ProbeStageAssemble
 }
@@ -77,7 +78,17 @@ fn diagnostic_module_root_missing_qn_optional(d: Diagnostic) -> Optional<Qualifi
   optional_absent()
 }
 
-data diagnostic_module_root_missing_qn_stub_note: String = "diagnostic_module_root_missing_qn_optional is deliberately unavailable in this PR — it always returns Absent, so resolve_module_not_found assemble causes classify as MissingModuleIdentityUnavailable rather than AssembleMissingModule { requested }. FrontierProbeDetail.MissingModule (#7762) carries the structural QualifiedName on receipt.detail when frontier_probe_detail_from_diagnostic binds it. Parse-stage AssembleMissingModule awaits ModuleRootMissingEvidence on ParseDiagnosticEvidence without reintroducing the diagnostic.dag ↔ qualified_name import cycle. Dissolve trigger: wire parse-stage diagnostics to carry that evidence; then replace optional_absent() with extraction from ParseStageDiagnostic.evidence and map Present -> AssembleMissingModule { requested }."
+// diagnostic_module_root_missing_qn_optional is deliberately unavailable in this
+// module — it always returns Absent, so resolve_module_not_found assemble causes
+// classify as MissingModuleIdentityUnavailable rather than AssembleMissingModule {
+// requested }. FrontierProbeDetail.MissingModule (#7762) carries the structural
+// QualifiedName on receipt.detail when frontier_probe_detail_from_diagnostic binds
+// it. Parse-stage AssembleMissingModule awaits ModuleRootMissingEvidence on
+// ParseDiagnosticEvidence without reintroducing the diagnostic.dag ↔
+// qualified_name import cycle. Dissolve trigger: wire parse-stage diagnostics to
+// carry that evidence; then replace optional_absent() with extraction from
+// ParseStageDiagnostic.evidence and map Present -> AssembleMissingModule {
+// requested }.
 
 fn assemble_rejection_cause_from_parse_stage(
   d: NonEmptyParseStageDiagnostics
@@ -133,6 +144,37 @@ fn diagnostic_reason_is_overlap_residue(d: Diagnostic) -> Bool {
   d.reason == ^parse_grammar_choice_overlap_residue
 }
 
+fn frontier_probe_first_non_overlap_residue_diagnostic_optional(
+  d: NonEmptyDiagnostics
+) -> Optional<Diagnostic> {
+  if !diagnostic_reason_is_overlap_residue(d: d.head) {
+    optional_present(value: d.head)
+  } else {
+    fold_list(
+      xs: d.tail,
+      empty: optional_absent(),
+      cons: fn(acc, diag) {
+        match acc {
+          Present { value: _ } => acc
+          Absent =>
+            if diagnostic_reason_is_overlap_residue(d: diag) {
+              optional_absent()
+            } else {
+              optional_present(value: diag)
+            }
+        }
+      }
+    )
+  }
+}
+
+fn frontier_probe_assemble_located_reason_from_diagnostics(d: NonEmptyDiagnostics) -> Symbol {
+  match frontier_probe_first_non_overlap_residue_diagnostic_optional(d: d) {
+    Present { value: diag } => diag.reason
+    Absent => d.head.reason
+  }
+}
+
 fn all_overlap_residue_diagnostic_list(xs: FreeMonoid<Diagnostic>) -> Bool {
   fold_list(
     xs: xs,
@@ -146,7 +188,15 @@ fn all_overlap_residue_non_empty_diagnostics(d: NonEmptyDiagnostics) -> Bool {
     && all_overlap_residue_diagnostic_list(xs: d.tail)
 }
 
-data overlap_diagnostic_row_queue_merge_note: String = "parse_stage_head_from_overlap_row_queue_and_diagnostic and parse_stage_tail_from_overlap_row_queue_and_diagnostics pair plain NonEmptyDiagnostics overlap residues against a GrammarChoiceAmbiguityRow queue from overlap_residue_stage. Both sides derive from the same ambiguity_roster in grammar_validate_and_analyze today — count mismatch is unreachable in-tree. HeadAbsent arms silently narrow to NoParseDiagnosticEvidence (empty-observation narrow at this boundary if parallel representation diverges). Dissolve trigger: carry overlap evidence only on parse-stage diagnostics and delete this queue-merge path; then refuse on evidence deficit instead of narrowing."
+// parse_stage_head_from_overlap_row_queue_and_diagnostic and
+// parse_stage_tail_from_overlap_row_queue_and_diagnostics pair plain
+// NonEmptyDiagnostics overlap residues against a GrammarChoiceAmbiguityRow queue
+// from overlap_residue_stage. Both sides derive from the same ambiguity_roster in
+// grammar_validate_and_analyze today — count mismatch is unreachable in-tree.
+// HeadAbsent arms silently narrow to NoParseDiagnosticEvidence
+// (empty-observation narrow at this boundary if parallel representation diverges).
+// Dissolve trigger: carry overlap evidence only on parse-stage diagnostics and
+// delete this queue-merge path; then refuse on evidence deficit instead of narrowing.
 
 type OverlapQueueMergeAcc {
   stages: FreeMonoid<ParseStageDiagnostic>
@@ -355,11 +405,12 @@ fn frontier_probe_receipt_from_assemble_rejection(
   detail: FrontierProbeDetail,
   overlap_residue_stage: Optional<NonEmptyParseStageDiagnostics>
 ) -> FrontierProbeReceipt {
+  let located_reason = frontier_probe_assemble_located_reason_from_diagnostics(d: diagnostics)
   FrontierProbeReceipt {
     module_path: module_path,
-    blocker_class: blocker,
+    blocker_class: frontier_classify_rejection_reason(reason: located_reason),
     located_stage: ProbeStageAssemble,
-    located_reason: diagnostics.head.reason,
+    located_reason: located_reason,
     detail: detail,
     assemble_detail: frontier_probe_assemble_detail_from_rejection_with_overlap_stage(
       d: diagnostics,
