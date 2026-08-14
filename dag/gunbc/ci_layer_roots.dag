@@ -431,11 +431,6 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_rehomed_bin_wet_reason,
     dissolution: excl_rehomed_bin_wet_dissolve},
   WitnessExclusionRow {
-    pattern: "atom_body_discriminator_witness_test.dag",
-    classification: FalsifierSubstrateLongLane,
-    reason: excl_substrate_long_lane_reason,
-    dissolution: excl_substrate_long_lane_dissolve},
-  WitnessExclusionRow {
     pattern: "affected_set_provenance_producer_witness_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: excl_substrate_long_lane_reason,
@@ -1691,12 +1686,6 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     function: "realization_vocab_live_corpus_receipt_holds",
     reason: "TS-0/LANG-2 live-corpus containment receipt: irreducible live-tree census over realization_vocab_consumer_scan_roots verifying every current leak edge is grandfathered and containment holds corpus-wide. Enrolled on the falsifier substrate long lane for its corpus/integration role — the observation that must read the live import graph — not because per-PR discovery is the right admission surface. Per-PR mechanism coverage stays in no_new_debt_gate_test.dag and the existing synthetic/scanner/roster-soundness receipts.",
     dissolution: unbound_dissolution(description: "replaced by a cheaper structural receipt proving the same live-corpus relation, or live containment observation becomes unnecessary")
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/body_lowering/atom_body_discriminator_witness_test.dag",
-    function: "atom_body_discriminator_single_pass_receipt_holds",
-    reason: "~5002ms thread-CPU measured locally with the 5s fast-lane budget armed (2026-08-14): one tokenize→parse→normalize over the four-declaration atom-body discriminator module, then declaration/parameter_count/ArrowBodyForm production rows plus both RED mirror directions on the same normalized tree. The cost is the production frontend crossing — not a second pass and not a synthetic node_synthetic fixture.",
-    dissolution: unbound_dissolution(description: "witness realization lands the frontend natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row")
   }
 ]
 
