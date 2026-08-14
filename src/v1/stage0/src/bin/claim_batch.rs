@@ -655,9 +655,22 @@ fn run_against_one_prepared_subject(
     // exist, and meta_exec_confinement_scan/leak plants a cross-module construction
     // of the sole_constructor type TransportScript. Including them would make the
     // subject report a working wall as a broken module.
+    //
+    // Two GROUNDS, and they are different facts rather than one bucket. Deliberately
+    // invalid: layering_scan modules declare imports that do not exist, and
+    // meta_exec_confinement_scan/leak plants a cross-module construction of the
+    // sole_constructor type TransportScript — each one's refusal IS the property its
+    // consumer reads, so including it reports a working wall as a broken module.
+    // Outside the declared source roots: ownership_movable_test imports
+    // v1.compiler.ownership, which is declared by src/v1/ownership.dag and this
+    // subject's roots are dag and src/v2. That module is present in the repository
+    // and absent from this subject, which is a boundary fact — NOT a file that failed
+    // to resolve, and the distinction is the whole difference between a declared
+    // subject and an absorbing exclusion. It dissolves by adding src/v1 to the roots.
     let excludes: Vec<String> = vec![
         "test/fixture/layering_scan/".to_string(),
         "test/fixture/meta_exec_confinement_scan/".to_string(),
+        "test/manual/ownership_movable_test.dag".to_string(),
     ];
     let prepare_started = Instant::now();
     let PreparedWholeTreeSubject {

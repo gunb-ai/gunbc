@@ -7,7 +7,7 @@ import std.realization_schedule {
   NoPreWalkExecution
 }
 import v2.workflow.ci_floor_plan {
-  gunbc_falsifier_known_red_probe_batch,
+  gunbc_falsifier_known_red_probe_batches,
   gunbc_falsifier_substrate_long_lane_batch
 }
 
@@ -17,7 +17,7 @@ fn gunbc_falsifier_plan() -> WalkPlan<NoWalkFinalization> {
   WalkPlan {
     pre_walk_execution: NoPreWalkExecution {},
     batches: [
-      [gunbc_falsifier_known_red_probe_batch()],
+      gunbc_falsifier_known_red_probe_batches(),
       [gunbc_falsifier_substrate_long_lane_batch()]
     ],
     finalization: NoFinalizationDeclared {},
