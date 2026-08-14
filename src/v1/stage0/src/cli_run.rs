@@ -15776,6 +15776,52 @@ pub fn whole_tree_resolved_ctx(
     })
 }
 
+/// FLOOR2 — ONE exact whole-tree prepared subject, and the identity that names it.
+///
+/// This is the preparation boundary the claim path consumes. It deliberately hands
+/// back a CONTEXT and a SUBJECT DIGEST and nothing else: no index, no source roots,
+/// no resolver, no entry path. A consumer holding this cannot construct an
+/// entry-private compiler world, which is why "zero per-entry graph resolves" is
+/// true by capability and not only by counter (a counter alone is satisfied by
+/// renaming the constructor; the missing capability is not).
+///
+/// The digest is derived from the SAME source set that was resolved, so the
+/// identity cannot drift from the thing it names. The commit is one coordinate of
+/// the exact subject, never the whole of it — two runs can name one commit while
+/// differing in source roots, exclusions, or execution mode, and all three are
+/// inputs here.
+pub struct PreparedWholeTreeSubject {
+    pub ctx: v1_interpreter::InterpContext,
+    pub subject_digest: String,
+    pub modules_resolved: usize,
+    pub modules_excluded: usize,
+}
+
+pub fn prepare_whole_tree_subject(
+    source_roots: &[String],
+    exclude_substrings: &[String],
+    execution_mode: v1_interpreter::ExecutionMode,
+) -> Result<PreparedWholeTreeSubject, String> {
+    let picked = whole_tree_strict_sources(source_roots, exclude_substrings)?;
+    let modules_resolved = picked.modules_resolved;
+    let modules_excluded = picked.modules_excluded;
+    let subject_digest = subject_digest_for_closure(&picked.sources);
+    let (graph, source_indices) =
+        resolved_graph_from_sources(picked.sources, ResolveTypecheckGate::Strict)?;
+    Ok(PreparedWholeTreeSubject {
+        ctx: v1_interpreter::InterpContext::with_runtime_options(
+            graph.as_ref(),
+            source_indices,
+            execution_mode,
+            None,
+            None,
+        ),
+        subject_digest,
+        modules_resolved,
+        modules_excluded,
+    })
+}
+
 pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result<String, String> {
     let sources = load_sources_for_entry_with_pool(index, entry)?;
     Ok(subject_digest_for_closure(&sources))
