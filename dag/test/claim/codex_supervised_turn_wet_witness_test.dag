@@ -74,14 +74,14 @@ test fn supervised_turn_materialized_bundle_writes_terminal_receipt() -> Bool {
   let release_tmp = shell.Mktemp.Dir()
   let evidence = shell.Mktemp.Dir()
   let cwd = shell.Mktemp.Dir()
-  match wet_codex_home_from_env() {
-    Absent => false
-    Present { value: codex_home } =>
-      if release_tmp.success == false
-        || evidence.success == false
-        || cwd.success == false {
-        false
-      } else {
+  if release_tmp.success == false
+    || evidence.success == false
+    || cwd.success == false {
+    false
+  } else {
+    match wet_codex_home_from_env() {
+      Absent => false
+      Present { value: codex_home } => {
         match materialize_codex_runtime_bundle(
           source: committed_admitted_codex_runtime_source(),
           release_parent: release_tmp.path,
@@ -113,17 +113,21 @@ test fn supervised_turn_materialized_bundle_writes_terminal_receipt() -> Bool {
                     cwd: cwd.path,
                     evidence_root: evidence.path,
                   ) {
-                    CodexSupervisedTurnOk { receipt: terminal } =>
-                      press_display_finished(disposition: terminal.disposition)
-                        && (terminal.client_command_id as String)
+                    CodexSupervisedTurnOk { receipt: terminal } => {
+                      let client_ok =
+                        (terminal.client_command_id as String)
                           == (codex_supervised_turn_client_command_id(turn: turn) as String)
-                        && match terminal.binding.lease.observed {
-                          LeaseAbsent => true
-                          LeaseRunningExpected => false
-                          LeaseRunningStale => false
-                          LeasePortForeign => false
-                          LeaseInaccessible => false
-                        }
+                      let lease_absent = match terminal.binding.lease.observed {
+                        LeaseAbsent => true
+                        LeaseRunningExpected => false
+                        LeaseRunningStale => false
+                        LeasePortForeign => false
+                        LeaseInaccessible => false
+                      }
+                      press_display_finished(disposition: terminal.disposition)
+                        && client_ok
+                        && lease_absent
+                    }
                     CodexSupervisedTurnRefused { reason: _ } => false
                     CodexSupervisedTurnUnavailable { reason: _, process: _ } => false
                   }
@@ -137,5 +141,6 @@ test fn supervised_turn_materialized_bundle_writes_terminal_receipt() -> Bool {
           _ => false
         }
       }
+    }
   }
 }
