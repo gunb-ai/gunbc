@@ -6,6 +6,7 @@ use crate::std_syntax::LiteralValue::{LitInt, LitStr};
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_dag_collect::{dag_collect_insert_slots, dag_node_key};
 pub use crate::v1_compiler_dag_collect_support::dag_node_surface_fingerprint;
+pub use crate::v1_compiler_dag_collect_support::DagCollectSlot;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::ExprData::ExprLiteral;
