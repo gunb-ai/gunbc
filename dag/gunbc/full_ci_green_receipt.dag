@@ -26,8 +26,7 @@ import gunbc.merge_admission_subject {
   workflow_run_id_matches_walk_attempt,
 }
 
-data full_ci_green_receipt_note: String = "Typed proof that the pull-request CI job's floor walk completed green — not build-only, not regen-only, and not the falsifier-alert workflow reading a partial checkpoint. FullCiGreenReceipt is sole_constructor-sealed; mint_full_ci_green_receipt_from_observed_ci_floor is caller-sealed via admit_callers to classify_full_ci_green_from_document only, and is reachable only after that classifier accepts a concluded ci-workflow floor-component document with zero unsuccessful summaries. Cross-module record literals, casts, and direct mint-fn calls refuse at compile time (SoleConstructorViolation / ConstructorCallAdmissionRefused). Merge admission and operator manual merge consume this receipt rather than inferring full CI green from sibling job conclusions or alert no-action arms (DESIGN section 5 state-space conflation)."
-
+// Typed proof that the pull-request CI job's floor walk completed green — not build-only, not regen-only, and not the falsifier-alert workflow reading a partial checkpoint. FullCiGreenReceipt is sole_constructor-sealed; mint_full_ci_green_receipt_from_observed_ci_floor is caller-sealed via admit_callers to classify_full_ci_green_from_document only, and is reachable only after that classifier accepts a concluded ci-workflow floor-component document with zero unsuccessful summaries. Cross-module record literals, casts, and direct mint-fn calls refuse at compile time (SoleConstructorViolation / ConstructorCallAdmissionRefused). Merge admission and operator manual merge consume this receipt rather than inferring full CI green from sibling job conclusions or alert no-action arms (DESIGN section 5 state-space conflation).
 data full_ci_workflow_name: NonEmptyStr = "ci" as NonEmptyStr
 
 data falsifier_alert_workflow_name: NonEmptyStr = "falsifier-alert" as NonEmptyStr
@@ -42,8 +41,7 @@ type PartialCiGreenAdmissionVerdict
   | PartialCiGreenDeniedRegenJobSucceeded
   | PartialCiGreenDeniedFalsifierAlertWorkflowSucceeded
 
-data partial_ci_green_signal_note: String = "Diagnostic taxonomy for REPORTING which partial green path was observed — not the construction wall. FullCiGreenReceipt is sole_constructor-sealed; only mint_full_ci_green_receipt_from_observed_ci_floor (via classify_full_ci_green_from_document on a concluded ci-workflow floor-component document) may construct it, so rule 4 closes for every workflow without maintaining a denylist."
-
+// Diagnostic taxonomy for REPORTING which partial green path was observed — not the construction wall. FullCiGreenReceipt is sole_constructor-sealed; only mint_full_ci_green_receipt_from_observed_ci_floor (via classify_full_ci_green_from_document on a concluded ci-workflow floor-component document) may construct it, so rule 4 closes for every workflow without maintaining a denylist.
 type FullCiGreenReceipt sole_constructor {
   head_sha: CommitSha
   workflow_run_id: NonEmptyStr

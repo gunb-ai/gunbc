@@ -48,10 +48,8 @@ import gunbc.compile_diagnostic_census {
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data full_ci_green_compile_witness_note: String = "compile_dag_diagnostic_census resolves synthetic forge sources against the live module index (ReadsLiveTree), proving cross-module FullCiGreenReceipt record literals refuse SoleConstructorViolation and cross-module mint_full_ci_green_receipt_from_observed_ci_floor calls refuse ConstructorCallAdmissionRefused."
-
-data full_ci_green_witness_note: String = "Discriminating witnesses: only a concluded ci-job floor-component receipt mints FullCiGreenReceipt; build/regen/falsifier-alert partial greens do not; manual merge admits only on FullCiGreen plus MergeAdmitted."
-
+// compile_dag_diagnostic_census resolves synthetic forge sources against the live module index (ReadsLiveTree), proving cross-module FullCiGreenReceipt record literals refuse SoleConstructorViolation and cross-module mint_full_ci_green_receipt_from_observed_ci_floor calls refuse ConstructorCallAdmissionRefused.
+// Discriminating witnesses: only a concluded ci-job floor-component receipt mints FullCiGreenReceipt; build/regen/falsifier-alert partial greens do not; manual merge admits only on FullCiGreen plus MergeAdmitted.
 data witness_run_id: NonEmptyStr = "31672107941" as NonEmptyStr
 
 data witness_prior_run_id: NonEmptyStr = "31672107940" as NonEmptyStr
