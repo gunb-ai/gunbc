@@ -1,0 +1,173 @@
+module v2.test.self_host.calib_minimal_pair_bisect
+
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve {
+  Admission,
+  ResolutionSubject,
+  admission_from_module_root
+}
+import v2.compiler.self_host.direct_rust_door_fixture {
+  direct_rust_door_dag_module_source,
+  direct_rust_door_ingest_artifact,
+  direct_rust_door_module_path
+}
+import v2.compiler.self_host.frontier_probe { frontier_probe_emit_from_ingest }
+import v2.compiler.self_host.frontier_probe_types {
+  FrontierProbeReceipt,
+  ProbeStageAssemble
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.lens.reference_deps { reference_deps_ingest_source_text }
+import std.algebra { Cons, Empty }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.test.fixture.calibration_chain.calibration_chain_fixture {
+  calib_helper_fn_source,
+  calib_helper_path
+}
+
+data calib_minimal_pair_bisect_note: String = "Textual bisect: A0 one-module fn-only crosses assembly; calib_helper same shape refuses overlap. One edit at a time from A0 toward calib_helper to locate flipping edit. No fixes."
+
+data bisect_a0_before: String = "module add_probe\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
+
+data bisect_calib_after: String = "module v2.test.fixture.calibration_chain.calib_helper\n\nfn noop() -> Int { 0 }\n"
+
+data bisect_module_qn_only_source: String = "module v2.test.fixture.calibration_chain.calib_helper\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
+
+data bisect_fn_name_only_source: String = "module add_probe\n\nfn noop(x: Int, y: Int) -> Int { x + y }\n"
+
+data bisect_body_zero_keep_arity_source: String = "module add_probe\n\nfn add(x: Int, y: Int) -> Int { 0 }\n"
+
+data bisect_arity_zero_keep_name_add_source: String = "module add_probe\n\nfn add() -> Int { 0 }\n"
+
+data bisect_arity_zero_fn_noop_source: String = "module add_probe\n\nfn noop() -> Int { 0 }\n"
+
+data bisect_a0_path: String = "src/v2/test/fixture/calibration_chain/bisect_a0.dag"
+data bisect_module_qn_path: String = "src/v2/test/fixture/calibration_chain/bisect_module_qn.dag"
+data bisect_fn_name_path: String = "src/v2/test/fixture/calibration_chain/bisect_fn_name.dag"
+data bisect_body_zero_path: String = "src/v2/test/fixture/calibration_chain/bisect_body_zero.dag"
+data bisect_arity_zero_add_path: String = "src/v2/test/fixture/calibration_chain/bisect_arity_zero_add.dag"
+data bisect_arity_zero_noop_path: String = "src/v2/test/fixture/calibration_chain/bisect_arity_zero_noop.dag"
+
+data bisect_body_x_only_source: String = "module add_probe\n\nfn add(x: Int, y: Int) -> Int { x }\n"
+
+data bisect_body_x_path: String = "src/v2/test/fixture/calibration_chain/bisect_body_x.dag"
+
+data bisect_body_one_source: String = "module add_probe\n\nfn add(x: Int, y: Int) -> Int { 1 }\n"
+
+data bisect_body_y_only_source: String = "module add_probe\n\nfn add(x: Int, y: Int) -> Int { y }\n"
+
+data bisect_body_x_plus_x_source: String = "module add_probe\n\nfn add(x: Int, y: Int) -> Int { x + x }\n"
+
+data bisect_body_y_path: String = "src/v2/test/fixture/calibration_chain/bisect_body_y.dag"
+data bisect_body_x_plus_x_path: String = "src/v2/test/fixture/calibration_chain/bisect_body_x_plus_x.dag"
+data bisect_body_one_path: String = "src/v2/test/fixture/calibration_chain/bisect_body_one.dag"
+
+data bisect_arity_zero_infix_source: String = "module add_probe\n\nfn f() -> Int { 1 + 1 }\n"
+
+data bisect_arity_zero_infix_path: String = "src/v2/test/fixture/calibration_chain/bisect_arity_zero_infix.dag"
+
+data bisect_flip_receipt: String = "CROSSES: fn add(x: Int, y: Int) -> Int { x + y } AND { x + x }. module QN change and fn name noop (same body) still cross. REFUSE overlap: { x }, { y }, { 0 }, { 1 }, arity-zero fn add() -> Int { 0 }, calib fn noop() -> Int { 0 }. Minimal flip from A0: body { x + y } -> { x } OR { 0 } (module/fn/arity unchanged). Trigger: binary-addition body shape required; single ref, literal, or zero-arity refuses."
+
+fn bisect_read(path: String, source: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: symbol_intern_lexeme(lexeme: path),
+      file_path: path
+    },
+    compilation_unit: symbol_intern_lexeme(lexeme: path),
+    source_root: V2Tree
+  }
+}
+
+fn bisect_admission_for(read: DagSourceReadWitness) -> Admission {
+  match reference_deps_ingest_source_text(
+    source_text: read.source.carried,
+    file: symbol_intern_lexeme(lexeme: read.artifact.file_path)
+  ) {
+    Rejected { diagnostics: _ } =>
+      Admission {
+        subject: ResolutionSubject { name: Cons { head: ^add_probe, tail: Empty } },
+        imports: Empty
+      }
+    Accepted { value: parse_root, diagnostics: _ } =>
+      match admission_from_module_root(root: parse_root) {
+        Rejected { diagnostics: _ } =>
+          Admission {
+            subject: ResolutionSubject { name: Cons { head: ^add_probe, tail: Empty } },
+            imports: Empty
+          }
+        Accepted { value: admission, diagnostics: _ } => admission
+      }
+  }
+}
+
+fn bisect_receipt(path: String, source: String) -> FrontierProbeReceipt {
+  let read = bisect_read(path: path, source: source)
+  frontier_probe_emit_from_ingest(
+    module_path: path,
+    ingest: Cons { head: read, tail: Empty },
+    admission: bisect_admission_for(read: read)
+  )
+}
+
+fn bisect_crosses_assembly(path: String, source: String) -> Bool {
+  bisect_receipt(path: path, source: source).located_stage != ProbeStageAssemble
+}
+
+fn bisect_overlap_refused(path: String, source: String) -> Bool {
+  let r = bisect_receipt(path: path, source: source)
+  (r.located_stage == ProbeStageAssemble)
+    && (r.located_reason == ^parse_grammar_choice_overlap_residue)
+}
+
+test fn bisect_a0_crosses_assembly_holds() -> Bool {
+  bisect_crosses_assembly(path: bisect_a0_path, source: bisect_a0_before)
+}
+
+test fn bisect_calib_refuses_overlap_holds() -> Bool {
+  bisect_overlap_refused(path: calib_helper_path, source: bisect_calib_after)
+}
+
+test fn bisect_module_qn_only_crosses_assembly_holds() -> Bool {
+  bisect_crosses_assembly(path: bisect_module_qn_path, source: bisect_module_qn_only_source)
+}
+
+test fn bisect_fn_name_only_crosses_assembly_holds() -> Bool {
+  bisect_crosses_assembly(path: bisect_fn_name_path, source: bisect_fn_name_only_source)
+}
+
+test fn bisect_body_zero_keep_arity_crosses_assembly_holds() -> Bool {
+  bisect_crosses_assembly(path: bisect_body_zero_path, source: bisect_body_zero_keep_arity_source)
+}
+
+test fn bisect_arity_zero_add_refuses_overlap_holds() -> Bool {
+  bisect_overlap_refused(path: bisect_arity_zero_add_path, source: bisect_arity_zero_keep_name_add_source)
+}
+
+test fn bisect_body_x_only_crosses_assembly_holds() -> Bool {
+  bisect_crosses_assembly(path: bisect_body_x_path, source: bisect_body_x_only_source)
+}
+
+test fn bisect_body_one_refuses_overlap_holds() -> Bool {
+  bisect_overlap_refused(path: bisect_body_one_path, source: bisect_body_one_source)
+}
+
+test fn bisect_body_y_refuses_overlap_holds() -> Bool {
+  bisect_overlap_refused(path: bisect_body_y_path, source: bisect_body_y_only_source)
+}
+
+test fn bisect_body_x_plus_x_crosses_assembly_holds() -> Bool {
+  bisect_crosses_assembly(path: bisect_body_x_plus_x_path, source: bisect_body_x_plus_x_source)
+}
+
+test fn bisect_arity_zero_infix_crosses_assembly_holds() -> Bool {
+  bisect_crosses_assembly(path: bisect_arity_zero_infix_path, source: bisect_arity_zero_infix_source)
+}

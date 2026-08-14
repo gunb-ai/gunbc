@@ -1,0 +1,7 @@
+module v2.test.fixture.parser_refusal_scope.prs_definer
+
+import v2.std.node { Symbol }
+
+data prs_poison_a: Symbol = ^dag_production_match_arm_body
+data prs_poison_b: Symbol = ^dag_production_match_arm_stmt_body
+data prs_poison_c: Symbol = ^dag_production_expr

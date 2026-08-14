@@ -1,0 +1,44 @@
+module v2.test.fixture.calibration_chain.calibration_chain_fixture
+
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import std.algebra { Cons, Empty }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.text { String }
+
+data calib_helper_path: String = "src/v2/test/fixture/calibration_chain/calib_helper.dag"
+
+data calib_helper_fn_source: String = "module v2.test.fixture.calibration_chain.calib_helper\n\nfn noop() -> Int { 0 }\n"
+
+data calib_helper_data_source: String = "module v2.test.fixture.calibration_chain.calib_helper\n\ndata noop_val: Int = 0\n"
+
+data calib_add_probe_import_source: String = "module add_probe\n\nimport v2.test.fixture.calibration_chain.calib_helper\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
+
+fn calib_helper_fn_read() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: calib_helper_fn_source, fidelity: Lossless },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: symbol_intern_lexeme(lexeme: calib_helper_path),
+      file_path: calib_helper_path
+    },
+    compilation_unit: symbol_intern_lexeme(lexeme: calib_helper_path),
+    source_root: V2Tree
+  }
+}
+
+fn calib_helper_data_read() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: calib_helper_data_source, fidelity: Lossless },
+    artifact: Artifact {
+      kind: SourceFile,
+      id: symbol_intern_lexeme(lexeme: calib_helper_path),
+      file_path: calib_helper_path
+    },
+    compilation_unit: symbol_intern_lexeme(lexeme: calib_helper_path),
+    source_root: V2Tree
+  }
+}

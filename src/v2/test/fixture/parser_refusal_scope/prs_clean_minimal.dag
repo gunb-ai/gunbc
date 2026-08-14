@@ -1,0 +1,7 @@
+module v2.test.fixture.parser_refusal_scope.prs_clean_minimal
+
+import v2.std.logic { Bool }
+
+fn prs_clean_ok() -> Bool {
+  true
+}

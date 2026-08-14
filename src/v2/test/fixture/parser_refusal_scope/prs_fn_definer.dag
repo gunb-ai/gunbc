@@ -1,0 +1,7 @@
+module v2.test.fixture.parser_refusal_scope.prs_fn_definer
+
+import v2.std.node { Symbol }
+
+fn prs_fn_export() -> Symbol {
+  ^dag_production_match_arm_body
+}

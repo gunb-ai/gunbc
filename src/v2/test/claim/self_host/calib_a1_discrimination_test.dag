@@ -1,0 +1,71 @@
+module v2.test.self_host.calib_a1_discrimination
+
+import v2.compiler.name_resolve { Admission }
+import v2.compiler.self_host.direct_rust_door_fixture {
+  direct_rust_door_admission,
+  direct_rust_door_ingest,
+  direct_rust_door_ingest_artifact,
+  direct_rust_door_module_path
+}
+import v2.compiler.self_host.frontier_probe { frontier_probe_admission_from_ingest }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data calib_a1_discrimination_note: String = "A1 discrimination: frontier_probe_admission_from_ingest locates entry read by literal equality module_path == read.artifact.file_path. Verdict (b): A1 paired direct_rust_door_module_path with ingest whose read artifact is direct_rust_door_ingest_fixture.dag — construction mismatch, seam derivation unindicted. NOT (a): probe does not compute module_path from source; when called with the read artifact path on the identical A0 ingest, admission derives Accepted and matches hand admission."
+
+data calib_a1_ingest_read_artifact_path: String = direct_rust_door_ingest_artifact.file_path
+
+data calib_a1_path_mismatch_receipt: String = "module_path_param=src/v2/compiler/self_host/direct_rust_door_fixture.dag ingest_read_artifact.file_path=src/v2/compiler/self_host/direct_rust_door_ingest_fixture.dag"
+
+data calib_a1_verdict_receipt: String = "(b) construction pairing — see calib_a1_discrimination_test.dag"
+
+data calib_a1_chain_receipt: String = "A1 PASS — probe-derived admission equals hand admission on A0 ingest (calib_a1_probe_derived_admission_matches_hand_holds + calib_a1_read_artifact_path_probe_accepted_holds). Not re-run; discrimination exercised the seam."
+
+data calib_live_vs_table_receipt: String = "03_normalize LIVE door-ledger: ProbeStageAssemble ^parse_grammar_choice_overlap_residue DISAGREES frontier.dag compiler_frontier_row_03_normalize ProbeStageEmit oracle row. Three subjects same assemble overlap is short-circuit until pointwise per-member audit."
+
+fn calib_admissions_match(probe: Admission, hand: Admission) -> Bool {
+  (probe.subject.name == hand.subject.name) && (probe.imports == hand.imports)
+}
+
+test fn calib_a1_ingest_paths_differ_holds() -> Bool {
+  (direct_rust_door_module_path != calib_a1_ingest_read_artifact_path)
+}
+
+test fn calib_a1_wrong_module_path_probe_refused_holds() -> Bool {
+  match frontier_probe_admission_from_ingest(
+    ingest: direct_rust_door_ingest(),
+    module_path: direct_rust_door_module_path
+  ) {
+    Rejected { diagnostics: d } =>
+      (d.head.reason == ^resolve_module_not_found)
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+test fn calib_a1_read_artifact_path_probe_accepted_holds() -> Bool {
+  match frontier_probe_admission_from_ingest(
+    ingest: direct_rust_door_ingest(),
+    module_path: calib_a1_ingest_read_artifact_path
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn calib_a1_probe_derived_admission_matches_hand_holds() -> Bool {
+  match frontier_probe_admission_from_ingest(
+    ingest: direct_rust_door_ingest(),
+    module_path: calib_a1_ingest_read_artifact_path
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: admission, diagnostics: _ } =>
+      calib_admissions_match(probe: admission, hand: direct_rust_door_admission())
+  }
+}
+
+test fn calib_a1_verdict_construction_not_seam_holds() -> Bool {
+  calib_a1_wrong_module_path_probe_refused_holds()
+    && calib_a1_read_artifact_path_probe_accepted_holds()
+    && calib_a1_probe_derived_admission_matches_hand_holds()
+}

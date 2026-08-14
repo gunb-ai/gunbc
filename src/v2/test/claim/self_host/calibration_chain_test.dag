@@ -1,0 +1,429 @@
+module v2.test.self_host.calibration_chain
+
+import extdeps.filesystem.filesystem_io
+import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.name_resolve { Admission, admission_from_module_root }
+import v2.compiler.parse { prepare_grammar }
+import v2.compiler.program_assembly {
+  assemble_program_from_ingest,
+  program_assembly_read_to_normalized_root_prepared
+}
+import v2.compiler.self_host.direct_rust_door_fixture {
+  direct_rust_door_admission,
+  direct_rust_door_ingest,
+  direct_rust_door_ingest_artifact,
+  direct_rust_door_ingest_read,
+  direct_rust_door_module_path
+}
+import v2.compiler.self_host.frontier_probe {
+  frontier_probe_admission_from_ingest,
+  frontier_probe_emit_from_ingest
+}
+import v2.compiler.self_host.frontier_probe_types {
+  FrontierProbeDetailAbsent,
+  FrontierProbeReceipt,
+  MissingModule,
+  NoFrontierProbeDetail,
+  ProbeStageAssemble,
+  ProbeStageEmit,
+  frontier_classify_rejection_reason
+}
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.lens.module_graph { import_closure }
+import v2.lens.reference_deps { reference_deps_ingest_source_text }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { fold_list }
+import v2.std.collection { List }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+import v2.test.fixture.calibration_chain.calibration_chain_fixture {
+  calib_add_probe_import_source,
+  calib_helper_data_read,
+  calib_helper_fn_read,
+  calib_helper_path
+}
+import v2.workflow.compile_door_ledger {
+  AdmissionDerived,
+  AdmissionRefused,
+  DoorCompiled,
+  DoorLedgerRow,
+  DoorRefused,
+  closure_ingest,
+  derive_module_admission,
+  door_ledger_row,
+  module_graph_facts,
+  ModuleGraphFacts
+}
+
+data calibration_chain_note: String = "Monotone A0-E calibration after Gate 0 outcome 1. Chain stop at A1: frontier_probe_admission_from_ingest entry lookup vs hand admission path mismatch. Pointwise assembly audit on 03_normalize, 03_body_producer, discovery_enumeration for candidate blocker identities."
+
+data calib_pool_roots: List<String> = ["dag", "src/v2"]
+
+data calib_normalize_path: String = "src/v2/compiler/03_normalize.dag"
+data calib_body_producer_path: String = "src/v2/compiler/03_body_producer.dag"
+data calib_discovery_path: String = "src/v2/compiler/discovery_enumeration.dag"
+
+data calib_chain_stop_receipt: String = "A0 PASS. A1 PASS via calib_a1_discrimination_test.dag. B-E chain in progress."
+
+data calib_live_stage_receipt: String = "Re-measured via frontier_probe_emit_from_ingest on natural closure ingest — NOT frontier.dag table rows (warm-fox stale-receipt hazard)."
+
+fn calib_subject_frontier_receipt(entry: String) -> FrontierProbeReceipt {
+  let facts = calib_facts()
+  let ingest = closure_ingest(
+    closure_paths: import_closure(
+      entry_path: entry,
+      edges: facts.edges,
+      nodes: facts.nodes
+    )
+  )
+  let subject_text = filesystem_read(path: entry).content
+  match reference_deps_ingest_source_text(
+    source_text: subject_text,
+    file: symbol_intern_lexeme(lexeme: entry)
+  ) {
+    Rejected { diagnostics: d } => {
+      let reason = d.head.reason
+      let blocker = frontier_classify_rejection_reason(reason: reason)
+      FrontierProbeReceipt {
+        module_path: entry,
+        blocker_class: blocker,
+        located_stage: ProbeStageAssemble,
+        located_reason: reason,
+        detail: FrontierProbeDetailAbsent,
+        assemble_detail: NoFrontierProbeDetail
+      }
+    }
+    Accepted { value: parse_root, diagnostics: _ } =>
+      match derive_module_admission(root: parse_root) {
+        AdmissionRefused { reason: r } => {
+          let blocker = frontier_classify_rejection_reason(reason: r)
+          FrontierProbeReceipt {
+            module_path: entry,
+            blocker_class: blocker,
+            located_stage: ProbeStageAssemble,
+            located_reason: r,
+            detail: FrontierProbeDetailAbsent,
+            assemble_detail: NoFrontierProbeDetail
+          }
+        }
+        AdmissionDerived { admission: admission } =>
+          frontier_probe_emit_from_ingest(
+            module_path: entry,
+            ingest: ingest,
+            admission: admission
+          )
+      }
+  }
+}
+
+fn calib_facts() -> ModuleGraphFacts {
+  module_graph_facts(pool_roots: calib_pool_roots)
+}
+
+fn calib_probe_crosses_assembly(receipt: FrontierProbeReceipt) -> Bool {
+  receipt.located_stage != ProbeStageAssemble
+}
+
+fn calib_probe_from_ingest(
+  module_path: String,
+  ingest: SourceRootIngest,
+  admission: Admission
+) -> FrontierProbeReceipt {
+  frontier_probe_emit_from_ingest(
+    module_path: module_path,
+    ingest: ingest,
+    admission: admission
+  )
+}
+
+fn calib_a0_receipt() -> FrontierProbeReceipt {
+  calib_probe_from_ingest(
+    module_path: direct_rust_door_module_path,
+    ingest: direct_rust_door_ingest(),
+    admission: direct_rust_door_admission()
+  )
+}
+
+fn calib_a1_crosses_assembly() -> Bool {
+  match frontier_probe_admission_from_ingest(
+    ingest: direct_rust_door_ingest(),
+    module_path: direct_rust_door_module_path
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: admission, diagnostics: _ } =>
+      calib_probe_crosses_assembly(
+        receipt: calib_probe_from_ingest(
+          module_path: direct_rust_door_module_path,
+          ingest: direct_rust_door_ingest(),
+          admission: admission
+        )
+      )
+  }
+}
+
+fn calib_a1_receipt() -> FrontierProbeReceipt {
+  match frontier_probe_admission_from_ingest(
+    ingest: direct_rust_door_ingest(),
+    module_path: direct_rust_door_module_path
+  ) {
+    Rejected { diagnostics: d } => {
+      let reason = d.head.reason
+      let blocker = frontier_classify_rejection_reason(reason: reason)
+      FrontierProbeReceipt {
+        module_path: direct_rust_door_module_path,
+        blocker_class: blocker,
+        located_stage: ProbeStageAssemble,
+        located_reason: reason,
+        detail: FrontierProbeDetailAbsent,
+        assemble_detail: NoFrontierProbeDetail
+      }
+    }
+    Accepted { value: admission, diagnostics: _ } =>
+      calib_probe_from_ingest(
+        module_path: direct_rust_door_module_path,
+        ingest: direct_rust_door_ingest(),
+        admission: admission
+      )
+  }
+}
+
+fn calib_b_ingest() -> SourceRootIngest {
+  Cons {
+    head: direct_rust_door_ingest_read,
+    tail: Cons { head: calib_helper_fn_read(), tail: Empty }
+  }
+}
+
+fn calib_c_root_read() -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: calib_add_probe_import_source, fidelity: Lossless },
+    artifact: direct_rust_door_ingest_artifact,
+    compilation_unit: symbol_intern_lexeme(lexeme: direct_rust_door_module_path),
+    source_root: V2Tree
+  }
+}
+
+fn calib_admission_from_read(read: DagSourceReadWitness) -> Admission {
+  match reference_deps_ingest_source_text(
+    source_text: read.source.carried,
+    file: symbol_intern_lexeme(lexeme: read.artifact.file_path)
+  ) {
+    Rejected { diagnostics: _ } => direct_rust_door_admission()
+    Accepted { value: parse_root, diagnostics: _ } =>
+      match admission_from_module_root(root: parse_root) {
+        Rejected { diagnostics: _ } => direct_rust_door_admission()
+        Accepted { value: admission, diagnostics: _ } => admission
+      }
+  }
+}
+
+fn calib_helper_hand_admission() -> Admission {
+  match reference_deps_ingest_source_text(
+    source_text: calib_helper_fn_read().source.carried,
+    file: symbol_intern_lexeme(lexeme: calib_helper_path)
+  ) {
+    Rejected { diagnostics: _ } => direct_rust_door_admission()
+    Accepted { value: parse_root, diagnostics: _ } =>
+      match admission_from_module_root(root: parse_root) {
+        Rejected { diagnostics: _ } => direct_rust_door_admission()
+        Accepted { value: admission, diagnostics: _ } => admission
+      }
+  }
+}
+
+fn calib_helper_singleton_ingest() -> SourceRootIngest {
+  Cons { head: calib_helper_fn_read(), tail: Empty }
+}
+
+fn calib_helper_singleton_receipt() -> FrontierProbeReceipt {
+  calib_probe_from_ingest(
+    module_path: calib_helper_path,
+    ingest: calib_helper_singleton_ingest(),
+    admission: calib_helper_hand_admission()
+  )
+}
+
+fn calib_b_receipt() -> FrontierProbeReceipt {
+  calib_probe_from_ingest(
+    module_path: direct_rust_door_module_path,
+    ingest: calib_b_ingest(),
+    admission: direct_rust_door_admission()
+  )
+}
+
+data calib_door_compiled_ok: Symbol = ^calib_door_compiled_ok
+
+fn calib_door_assemble_reason(entry: String) -> Symbol {
+  match door_ledger_row(subject_path: entry, facts: calib_facts()) {
+    DoorLedgerRow { module_path: _, outcome: DoorRefused { reason: r } } => r
+    DoorLedgerRow { module_path: _, outcome: DoorCompiled } => calib_door_compiled_ok
+  }
+}
+
+fn calib_closure_ingest_for(entry: String) -> SourceRootIngest {
+  let facts = calib_facts()
+  closure_ingest(
+    closure_paths: import_closure(
+      entry_path: entry,
+      edges: facts.edges,
+      nodes: facts.nodes
+    )
+  )
+}
+
+fn calib_pointwise_member_overlap_refused(entry: String) -> Bool {
+  let ingest = calib_closure_ingest_for(entry: entry)
+  match prepare_grammar(grammar: dag_language_model().grammar) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: prepared, diagnostics: residue } =>
+      fold_list(
+        xs: ingest,
+        empty: false,
+        cons: fn(acc, read) {
+          acc
+            || match program_assembly_read_to_normalized_root_prepared(
+              read: read,
+              lm: dag_language_model(),
+              prepared: prepared,
+              residue: residue
+            ) {
+              Rejected { diagnostics: d } =>
+                d.head.reason == ^parse_grammar_choice_overlap_residue
+              Accepted { value: _, diagnostics: _ } => false
+            }
+        }
+      )
+  }
+}
+
+fn calib_full_assemble_overlap_refused(entry: String) -> Bool {
+  let ingest = calib_closure_ingest_for(entry: entry)
+  match reference_deps_ingest_source_text(
+    source_text: filesystem_read(path: entry).content,
+    file: symbol_intern_lexeme(lexeme: entry)
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: parse_root, diagnostics: _ } =>
+      match admission_from_module_root(root: parse_root) {
+        Rejected { diagnostics: _ } => true
+        Accepted { value: admission, diagnostics: _ } =>
+          match assemble_program_from_ingest(
+            ingest: ingest,
+            admission: admission,
+            lm: dag_language_model()
+          ) {
+            Rejected { diagnostics: d } =>
+              d.head.reason == ^parse_grammar_choice_overlap_residue
+            Accepted { value: _, diagnostics: _ } => false
+          }
+      }
+  }
+}
+
+data calib_b_row_note: String = "B: A0 root source unchanged, ingest adds inert function-only helper module, NO import edge. Hand admission. One added fact: populated multi-module ingest."
+
+data calib_b_control_receipt: String = "CONFOUNDED: calib_helper singleton (one-module ingest, hand admission) ALSO refuses assembly ^parse_grammar_choice_overlap_residue. B failure is artifact not population — multi-module ingest claim retracted."
+
+test fn calib_helper_singleton_crosses_assembly_holds() -> Bool {
+  calib_probe_crosses_assembly(receipt: calib_helper_singleton_receipt())
+}
+
+test fn calib_helper_singleton_assemble_refused_overlap_holds() -> Bool {
+  (calib_helper_singleton_receipt().located_stage == ProbeStageAssemble)
+    && (calib_helper_singleton_receipt().located_reason == ^parse_grammar_choice_overlap_residue)
+}
+
+test fn calib_b_crosses_assembly_holds() -> Bool {
+  calib_probe_crosses_assembly(receipt: calib_b_receipt())
+}
+
+test fn calib_b_assemble_refused_overlap_holds() -> Bool {
+  (calib_b_receipt().located_stage == ProbeStageAssemble)
+    && (calib_b_receipt().located_reason == ^parse_grammar_choice_overlap_residue)
+}
+
+test fn calib_a0_crosses_assembly_holds() -> Bool {
+  calib_probe_crosses_assembly(receipt: calib_a0_receipt())
+}
+
+test fn calib_a1_crosses_assembly_holds() -> Bool {
+  calib_a1_crosses_assembly()
+}
+
+test fn calib_a1_diagnostic_pin() -> Bool {
+  calib_a1_receipt().located_reason == ^resolve_module_not_found
+}
+
+test fn calib_chain_stops_at_a1_holds() -> Bool {
+  calib_probe_crosses_assembly(receipt: calib_a0_receipt())
+    && !calib_a1_crosses_assembly()
+}
+
+test fn calib_normalize_door_overlap_holds() -> Bool {
+  (calib_door_assemble_reason(entry: calib_normalize_path) == ^parse_grammar_choice_overlap_residue)
+}
+
+test fn calib_body_producer_door_overlap_holds() -> Bool {
+  (calib_door_assemble_reason(entry: calib_body_producer_path) == ^parse_grammar_choice_overlap_residue)
+}
+
+test fn calib_discovery_door_overlap_holds() -> Bool {
+  (calib_door_assemble_reason(entry: calib_discovery_path) == ^parse_grammar_choice_overlap_residue)
+}
+
+test fn calib_normalize_live_probe_assemble_stage_holds() -> Bool {
+  (calib_subject_frontier_receipt(entry: calib_normalize_path).located_stage == ProbeStageAssemble)
+}
+
+test fn calib_normalize_live_probe_not_emit_stage_holds() -> Bool {
+  (calib_subject_frontier_receipt(entry: calib_normalize_path).located_stage != ProbeStageEmit)
+}
+
+test fn calib_normalize_live_probe_overlap_reason_holds() -> Bool {
+  (calib_subject_frontier_receipt(entry: calib_normalize_path).located_reason == ^parse_grammar_choice_overlap_residue)
+}
+
+test fn calib_body_producer_live_probe_assemble_stage_holds() -> Bool {
+  (calib_subject_frontier_receipt(entry: calib_body_producer_path).located_stage == ProbeStageAssemble)
+}
+
+test fn calib_body_producer_live_probe_overlap_reason_holds() -> Bool {
+  (calib_subject_frontier_receipt(entry: calib_body_producer_path).located_reason == ^parse_grammar_choice_overlap_residue)
+}
+
+test fn calib_discovery_live_probe_assemble_stage_holds() -> Bool {
+  (calib_subject_frontier_receipt(entry: calib_discovery_path).located_stage == ProbeStageAssemble)
+}
+
+test fn calib_discovery_live_probe_overlap_reason_holds() -> Bool {
+  (calib_subject_frontier_receipt(entry: calib_discovery_path).located_reason == ^parse_grammar_choice_overlap_residue)
+}
+
+test fn calib_normalize_pointwise_overlap_member_holds() -> Bool {
+  calib_pointwise_member_overlap_refused(entry: calib_normalize_path)
+}
+
+test fn calib_body_producer_pointwise_overlap_member_holds() -> Bool {
+  calib_pointwise_member_overlap_refused(entry: calib_body_producer_path)
+}
+
+test fn calib_discovery_pointwise_overlap_member_holds() -> Bool {
+  calib_pointwise_member_overlap_refused(entry: calib_discovery_path)
+}
+
+test fn calib_normalize_full_assemble_overlap_holds() -> Bool {
+  calib_full_assemble_overlap_refused(entry: calib_normalize_path)
+}
+
+test fn calib_body_producer_full_assemble_overlap_holds() -> Bool {
+  calib_full_assemble_overlap_refused(entry: calib_body_producer_path)
+}
+
+test fn calib_discovery_full_assemble_overlap_holds() -> Bool {
+  calib_full_assemble_overlap_refused(entry: calib_discovery_path)
+}

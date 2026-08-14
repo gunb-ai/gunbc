@@ -1,0 +1,8 @@
+module v2.test.fixture.parser_refusal_scope.prs_fn_transitive
+
+import v2.test.fixture.parser_refusal_scope.prs_fn_direct { prs_fn_direct_holds }
+import v2.std.logic { Bool }
+
+fn prs_fn_transitive_holds() -> Bool {
+  prs_fn_direct_holds()
+}

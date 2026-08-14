@@ -1,0 +1,318 @@
+module v2.test.self_host.parser_refusal_scope_discriminator
+
+import extdeps.filesystem.filesystem_io
+import v2.compiler.self_host.candidate_generation {
+  AssemblyRejected,
+  ArtifactProduced,
+  EmissionRejected,
+  InferenceRejected,
+  ProducerReceiptRejected,
+  ProvenancedRustEmissionObservation,
+  observe_provenanced_rust_emission_from_ingest
+}
+import std.algebra { Cons, Empty }
+import v2.std.algebra { contains, length }
+import v2.std.collection { List }
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.lens.module_graph { import_closure }
+import v2.lens.reference_deps { reference_deps_ingest_source_text }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.diagnostic { Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+import v2.workflow.compile_door_ledger {
+  AdmissionDerived,
+  AdmissionRefused,
+  closure_ingest,
+  derive_module_admission,
+  module_graph_facts,
+  ModuleGraphFacts
+}
+import v2.workflow.realization_attempt { first_located_cause, first_located_file }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data parser_refusal_scope_measurement_note: String = "Closure bisect for prs_clean_minimal: enumerate natural import_closure ingest, singleton-ingest each candidate member, locate first refusing member. Advisor model: assembly stops at first refusing closure member; overlap head is grammar-wide prefix (empty located_file)."
+
+data parser_refusal_scope_closure_census_receipt: String = "prs_clean_minimal natural import_closure is multi-module (imports v2.std.logic); not entry-only."
+
+data parser_refusal_scope_isolated_verdict_receipt: String = "SCOPE UNTESTED on probe path — see singleton_bisect_receipt."
+
+data parser_refusal_scope_singleton_bisect_receipt: String = "pending execution"
+
+data parser_refusal_scope_pool_roots: List<String> = ["dag", "src/v2"]
+
+data prs_definer_path: String = "src/v2/test/fixture/parser_refusal_scope/prs_definer.dag"
+data prs_direct_path: String = "src/v2/test/fixture/parser_refusal_scope/prs_direct.dag"
+data prs_transitive_path: String = "src/v2/test/fixture/parser_refusal_scope/prs_transitive.dag"
+data prs_clean_minimal_path: String = "src/v2/test/fixture/parser_refusal_scope/prs_clean_minimal.dag"
+data prs_v2_logic_path: String = "src/v2/std/logic.dag"
+
+type ParserRefusalScopeStage
+  = ScopeStageClean
+  | ScopeStagePreParseRefused
+  | ScopeStageAdmissionRefused
+  | ScopeStageAssemblyRefused
+  | ScopeStageInferenceRefused
+  | ScopeStageEmissionRefused
+  | ScopeStageProducerReceiptRefused
+
+type ParserRefusalScopeProbe {
+  entry_path: String
+  stage: ParserRefusalScopeStage
+  head_reason: Symbol
+  terminal_cause: Symbol
+  located_file: String
+}
+
+fn scope_stage_from_emission_observation(
+  entry_path: String,
+  head_reason: Symbol,
+  terminal_cause: Symbol,
+  located_file: String,
+  observation: ProvenancedRustEmissionObservation
+) -> ParserRefusalScopeProbe {
+  match observation {
+    AssemblyRejected { diagnostics: d } =>
+      ParserRefusalScopeProbe {
+        entry_path: entry_path,
+        stage: ScopeStageAssemblyRefused,
+        head_reason: d.head.reason,
+        terminal_cause: first_located_cause(ds: d),
+        located_file: first_located_file(ds: d)
+      }
+    InferenceRejected { diagnostics: d } =>
+      ParserRefusalScopeProbe {
+        entry_path: entry_path,
+        stage: ScopeStageInferenceRefused,
+        head_reason: d.head.reason,
+        terminal_cause: first_located_cause(ds: d),
+        located_file: first_located_file(ds: d)
+      }
+    EmissionRejected { diagnostics: d } =>
+      ParserRefusalScopeProbe {
+        entry_path: entry_path,
+        stage: ScopeStageEmissionRefused,
+        head_reason: d.head.reason,
+        terminal_cause: first_located_cause(ds: d),
+        located_file: first_located_file(ds: d)
+      }
+    ProducerReceiptRejected { diagnostics: d } =>
+      ParserRefusalScopeProbe {
+        entry_path: entry_path,
+        stage: ScopeStageProducerReceiptRefused,
+        head_reason: d.head.reason,
+        terminal_cause: first_located_cause(ds: d),
+        located_file: first_located_file(ds: d)
+      }
+    ArtifactProduced { artifact: _ } =>
+      ParserRefusalScopeProbe {
+        entry_path: entry_path,
+        stage: ScopeStageClean,
+        head_reason: head_reason,
+        terminal_cause: terminal_cause,
+        located_file: located_file
+      }
+  }
+}
+
+fn isolated_closure_for_entry(entry_path: String, facts: ModuleGraphFacts) -> FreeMonoid<String> {
+  import_closure(
+    entry_path: entry_path,
+    edges: facts.edges,
+    nodes: facts.nodes
+  )
+}
+
+fn singleton_closure(path: String) -> FreeMonoid<String> {
+  Cons { head: path, tail: Empty }
+}
+
+fn isolated_probe_with_closure(
+  entry_path: String,
+  closure_paths: FreeMonoid<String>
+) -> ParserRefusalScopeProbe {
+  let subject_text = filesystem_read(path: entry_path).content
+  let file_sym = symbol_intern_lexeme(lexeme: entry_path)
+  match reference_deps_ingest_source_text(source_text: subject_text, file: file_sym) {
+    Rejected { diagnostics: d } =>
+      ParserRefusalScopeProbe {
+        entry_path: entry_path,
+        stage: ScopeStagePreParseRefused,
+        head_reason: d.head.reason,
+        terminal_cause: first_located_cause(ds: d),
+        located_file: first_located_file(ds: d)
+      }
+    Accepted { value: parse_root, diagnostics: _ } =>
+      match derive_module_admission(root: parse_root) {
+        AdmissionRefused { reason: r } =>
+          ParserRefusalScopeProbe {
+            entry_path: entry_path,
+            stage: ScopeStageAdmissionRefused,
+            head_reason: r,
+            terminal_cause: r,
+            located_file: entry_path
+          }
+        AdmissionDerived { admission: admission } =>
+          scope_stage_from_emission_observation(
+            entry_path: entry_path,
+            head_reason: ^scope_stage_clean,
+            terminal_cause: ^scope_stage_clean,
+            located_file: "",
+            observation: observe_provenanced_rust_emission_from_ingest(
+              ingest: closure_ingest(closure_paths: closure_paths),
+              admission: admission,
+              target: rust_target_model(),
+              module_path: entry_path
+            )
+          )
+      }
+  }
+}
+
+fn isolated_probe_parser_refusal_scope_entry(
+  entry_path: String,
+  facts: ModuleGraphFacts
+) -> ParserRefusalScopeProbe {
+  isolated_probe_with_closure(
+    entry_path: entry_path,
+    closure_paths: isolated_closure_for_entry(entry_path: entry_path, facts: facts)
+  )
+}
+
+fn minimal_natural_closure(facts: ModuleGraphFacts) -> FreeMonoid<String> {
+  isolated_closure_for_entry(entry_path: prs_clean_minimal_path, facts: facts)
+}
+
+fn parser_refusal_scope_facts() -> ModuleGraphFacts {
+  module_graph_facts(pool_roots: parser_refusal_scope_pool_roots)
+}
+
+fn probe_is_clean(probe: ParserRefusalScopeProbe) -> Bool {
+  probe.stage == ScopeStageClean
+}
+
+fn probe_head_is(probe: ParserRefusalScopeProbe, cause: Symbol) -> Bool {
+  probe.head_reason == cause
+}
+
+fn string_eq_path(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn closure_contains_path(closure: FreeMonoid<String>, path: String) -> Bool {
+  contains(xs: closure, item: path, eq: string_eq_path)
+}
+
+data parser_refusal_scope_batch_verdict_receipt: String = "WITHDRAWN TRANSITIVE-CLOSURE verdict. BATCH measurement UNRESOLVED: definer, direct, transitive, fn-only definer, and poison-free minimal all AssemblyRefused with overlap head when multiple probes ran in one process — negative control failed like positives, so import-distance had no discriminating power."
+
+data parser_refusal_scope_attribution_receipt: String = "PRESERVED: overlap is diagnostic HEAD, not terminal cause (first_located_cause != overlap; negatives tested: body_lowering_wrapper_retained, resolve_unbound, infer_grounding_not_derived, normalize_wrapper_retained, post_normalize_not_well_formed). located_file empty on overlap head — refusal carries no textual locus naming the definer path; located-diagnostic gap."
+
+data parser_refusal_scope_isolated_verdict_receipt: String = "SCOPE UNTESTED on probe path — closure bisect receipt in singleton_bisect_receipt."
+
+data parser_refusal_scope_singleton_bisect_receipt: String = "pending execution — see minimal_self_singleton and logic_singleton tests"
+
+data parser_refusal_scope_definer_receipt: String = "ISOLATED: AssemblyRefused; head overlap; terminal masked; located_file empty."
+
+data parser_refusal_scope_direct_receipt: String = "ISOLATED: AssemblyRefused; head overlap."
+
+data parser_refusal_scope_transitive_receipt: String = "ISOLATED: AssemblyRefused; head overlap."
+
+data parser_refusal_scope_clean_minimal_receipt: String = "natural closure census + singleton bisect — see closure_census_receipt and singleton_bisect_receipt"
+
+test fn parser_refusal_scope_minimal_closure_count_gt_one_holds() -> Bool {
+  length(xs: minimal_natural_closure(facts: parser_refusal_scope_facts())) > 1
+}
+
+test fn parser_refusal_scope_minimal_closure_contains_v2_logic_holds() -> Bool {
+  closure_contains_path(
+    closure: minimal_natural_closure(facts: parser_refusal_scope_facts()),
+    path: prs_v2_logic_path
+  )
+}
+
+test fn parser_refusal_scope_minimal_self_singleton_stage_holds() -> Bool {
+  isolated_probe_with_closure(
+    entry_path: prs_clean_minimal_path,
+    closure_paths: singleton_closure(path: prs_clean_minimal_path)
+  ).stage == ScopeStageAssemblyRefused
+}
+
+test fn parser_refusal_scope_minimal_self_singleton_head_holds() -> Bool {
+  probe_head_is(
+    probe: isolated_probe_with_closure(
+      entry_path: prs_clean_minimal_path,
+      closure_paths: singleton_closure(path: prs_clean_minimal_path)
+    ),
+    cause: ^parse_grammar_choice_overlap_residue
+  )
+}
+
+test fn parser_refusal_scope_logic_singleton_ingest_refuses_holds() -> Bool {
+  let probe = isolated_probe_with_closure(
+    entry_path: prs_v2_logic_path,
+    closure_paths: singleton_closure(path: prs_v2_logic_path)
+  )
+  !probe_is_clean(probe: probe)
+    && probe.stage == ScopeStageAssemblyRefused
+    && probe_head_is(probe: probe, cause: ^parse_grammar_choice_overlap_residue)
+}
+
+test fn parser_refusal_scope_clean_minimal_closure_excludes_poison_holds() -> Bool {
+  let closure = isolated_closure_for_entry(
+    entry_path: prs_clean_minimal_path,
+    facts: parser_refusal_scope_facts()
+  )
+  !closure_contains_path(closure: closure, path: prs_definer_path)
+    && !closure_contains_path(closure: closure, path: prs_direct_path)
+    && !closure_contains_path(closure: closure, path: prs_transitive_path)
+}
+
+test fn parser_refusal_scope_isolated_clean_minimal_holds() -> Bool {
+  let probe = isolated_probe_parser_refusal_scope_entry(
+    entry_path: prs_clean_minimal_path,
+    facts: parser_refusal_scope_facts()
+  )
+  !probe_is_clean(probe: probe)
+    && probe.stage == ScopeStageAssemblyRefused
+    && probe_head_is(probe: probe, cause: ^parse_grammar_choice_overlap_residue)
+}
+
+test fn parser_refusal_scope_isolated_definer_holds() -> Bool {
+  let probe = isolated_probe_parser_refusal_scope_entry(
+    entry_path: prs_definer_path,
+    facts: parser_refusal_scope_facts()
+  )
+  probe.stage == ScopeStageAssemblyRefused
+    && probe_head_is(probe: probe, cause: ^parse_grammar_choice_overlap_residue)
+}
+
+test fn parser_refusal_scope_isolated_direct_holds() -> Bool {
+  let probe = isolated_probe_parser_refusal_scope_entry(
+    entry_path: prs_direct_path,
+    facts: parser_refusal_scope_facts()
+  )
+  probe.stage == ScopeStageAssemblyRefused
+    && probe_head_is(probe: probe, cause: ^parse_grammar_choice_overlap_residue)
+}
+
+test fn parser_refusal_scope_isolated_transitive_holds() -> Bool {
+  let probe = isolated_probe_parser_refusal_scope_entry(
+    entry_path: prs_transitive_path,
+    facts: parser_refusal_scope_facts()
+  )
+  probe.stage == ScopeStageAssemblyRefused
+    && probe_head_is(probe: probe, cause: ^parse_grammar_choice_overlap_residue)
+}
+
+test fn parser_refusal_scope_isolated_definer_terminal_masked_holds() -> Bool {
+  let probe = isolated_probe_parser_refusal_scope_entry(
+    entry_path: prs_definer_path,
+    facts: parser_refusal_scope_facts()
+  )
+  probe.head_reason == ^parse_grammar_choice_overlap_residue
+    && probe.terminal_cause != ^parse_grammar_choice_overlap_residue
+    && probe.located_file == ""
+}

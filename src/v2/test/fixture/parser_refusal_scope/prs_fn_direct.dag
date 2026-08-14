@@ -1,0 +1,9 @@
+module v2.test.fixture.parser_refusal_scope.prs_fn_direct
+
+import v2.test.fixture.parser_refusal_scope.prs_fn_definer { prs_fn_export }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+
+fn prs_fn_direct_holds() -> Bool {
+  prs_fn_export() == ^dag_production_match_arm_body
+}

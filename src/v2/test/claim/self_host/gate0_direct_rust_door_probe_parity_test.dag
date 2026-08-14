@@ -1,0 +1,85 @@
+module v2.test.self_host.gate0_direct_rust_door_probe_parity
+
+import v2.compiler.self_host.candidate_generation {
+  AssemblyRejected,
+  EmissionRejected,
+  InferenceRejected,
+  ProducerReceiptRejected,
+  ProvenancedRustEmissionObservation,
+  observe_provenanced_rust_emission_from_ingest
+}
+import v2.compiler.self_host.direct_rust_door_fixture {
+  direct_rust_door_admission,
+  direct_rust_door_ingest,
+  direct_rust_door_module_path,
+  direct_rust_door_target_model
+}
+import v2.compiler.self_host.frontier_probe { frontier_probe_emit_from_ingest }
+import v2.compiler.self_host.frontier_probe_types {
+  FrontierProbeReceipt,
+  ProbeStageAssemble,
+  ProbeStageEmit
+}
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+
+data gate0_direct_rust_door_probe_parity_note: String = "GATE 0: exact direct_rust_door_ingest() + direct_rust_door_admission() through observe_provenanced_rust_emission_from_ingest vs frontier_probe_emit_from_ingest. Assembly-stage parity only; emission paths may diverge after assembly."
+
+data gate0_outcome_receipt: String = "see gate0_outcome_* tests — exactly one outcome arm should hold"
+
+fn gate0_production_observation() -> ProvenancedRustEmissionObservation {
+  observe_provenanced_rust_emission_from_ingest(
+    ingest: direct_rust_door_ingest(),
+    admission: direct_rust_door_admission(),
+    target: direct_rust_door_target_model(),
+    module_path: direct_rust_door_module_path
+  )
+}
+
+fn gate0_probe_receipt() -> FrontierProbeReceipt {
+  frontier_probe_emit_from_ingest(
+    module_path: direct_rust_door_module_path,
+    ingest: direct_rust_door_ingest(),
+    admission: direct_rust_door_admission()
+  )
+}
+
+fn gate0_production_crosses_assembly() -> Bool {
+  match gate0_production_observation() {
+    AssemblyRejected { diagnostics: _ } => false
+    _ => true
+  }
+}
+
+fn gate0_probe_crosses_assembly() -> Bool {
+  gate0_probe_receipt().located_stage != ProbeStageAssemble
+}
+
+test fn gate0_production_reaches_emission_rejected_holds() -> Bool {
+  match gate0_production_observation() {
+    EmissionRejected { diagnostics: _ } => true
+    _ => false
+  }
+}
+
+test fn gate0_both_cross_assembly_parity_holds() -> Bool {
+  gate0_production_crosses_assembly() && gate0_probe_crosses_assembly()
+}
+
+test fn gate0_production_crosses_probe_refuses_assembly_holds() -> Bool {
+  gate0_production_crosses_assembly() && !gate0_probe_crosses_assembly()
+}
+
+test fn gate0_both_refuse_assembly_holds() -> Bool {
+  !gate0_production_crosses_assembly() && !gate0_probe_crosses_assembly()
+}
+
+test fn gate0_probe_crosses_assembly_production_refuses_holds() -> Bool {
+  !gate0_production_crosses_assembly() && gate0_probe_crosses_assembly()
+}
+
+test fn gate0_probe_emit_stage_when_both_cross_holds() -> Bool {
+  gate0_production_crosses_assembly()
+    && gate0_probe_crosses_assembly()
+    && gate0_probe_receipt().located_stage == ProbeStageEmit
+}

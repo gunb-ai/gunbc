@@ -1,0 +1,14 @@
+module v2.test.fixture.parser_refusal_scope.prs_direct
+
+import v2.test.fixture.parser_refusal_scope.prs_definer {
+  prs_poison_a,
+  prs_poison_b,
+  prs_poison_c
+}
+import v2.std.logic { Bool }
+
+fn prs_direct_holds() -> Bool {
+  (prs_poison_a == ^dag_production_match_arm_body)
+    && (prs_poison_b == ^dag_production_match_arm_stmt_body)
+    && (prs_poison_c == ^dag_production_expr)
+}

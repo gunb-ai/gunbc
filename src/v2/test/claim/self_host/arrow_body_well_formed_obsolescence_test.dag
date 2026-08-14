@@ -1,0 +1,151 @@
+module v2.test.self_host.arrow_body_well_formed_obsolescence
+
+import v2.compiler.eval {
+  InferredTree,
+  empty_evaluation_environment,
+  eval,
+  eval_default_interpretation,
+  eval_transform_body_admits_dispatch,
+  eval_type_node_atom,
+  inputs_root_only
+}
+import v2.extdeps.languages.dag { dag_int_literal_node_from_lexeme }
+import v2.extdeps.runtimes.v2_evaluator {
+  v2_eval_allocate_literal,
+  v2_eval_runtime_value_as_int
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node {
+  arrow_body_target_is_valid_realization,
+  node_synthetic,
+  well_formed
+}
+
+data arrow_body_well_formed_obsolescence_note: String = "Name the Arrow well-formedness rejection that singleton bodies hit after parse. Establish whether arrow_body_target_is_valid_realization is obsolete. No deletion."
+
+fn obsolescence_atom(identity: Symbol) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: []
+  )
+}
+
+fn obsolescence_atom_bodied_arrow() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: obsolescence_atom(identity: ^obsolescence_domain) },
+      Edge { label: Positional, target: obsolescence_atom(identity: ^obsolescence_return) },
+      Edge { label: Positional, target: obsolescence_atom(identity: ^obsolescence_return) },
+      Edge {
+        label: Named { name: ^arrow_body_edge },
+        target: obsolescence_atom(identity: ^obsolescence_bare_body)
+      }
+    ]
+  )
+}
+
+fn obsolescence_value_bodied_arrow() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: obsolescence_atom(identity: ^obsolescence_domain) },
+      Edge { label: Positional, target: obsolescence_atom(identity: ^obsolescence_return) },
+      Edge { label: Positional, target: obsolescence_atom(identity: ^obsolescence_return) },
+      Edge {
+        label: Named { name: ^arrow_body_edge },
+        target: node_synthetic(kind: ComputationNode { behavior: Value }, children: [])
+      }
+    ]
+  )
+}
+
+fn obsolescence_empty_transform() -> Node {
+  node_synthetic(kind: ComputationNode { behavior: Transform }, children: [])
+}
+
+fn obsolescence_empty_value() -> Node {
+  node_synthetic(kind: ComputationNode { behavior: Value }, children: [])
+}
+
+test fn arrow_body_target_is_valid_realization_refuses_atom_admits_computation() -> Bool {
+  !arrow_body_target_is_valid_realization(
+    target: obsolescence_atom(identity: ^obsolescence_bare_body)
+  )
+    && arrow_body_target_is_valid_realization(target: obsolescence_empty_value())
+    && arrow_body_target_is_valid_realization(target: obsolescence_empty_transform())
+}
+
+test fn well_formed_refuses_atom_bodied_arrow() -> Bool {
+  !well_formed(n: obsolescence_atom_bodied_arrow())
+}
+
+test fn well_formed_accepts_value_bodied_arrow() -> Bool {
+  well_formed(n: obsolescence_value_bodied_arrow())
+}
+
+test fn well_formed_accepts_bare_atom_as_value_node() -> Bool {
+  well_formed(n: obsolescence_atom(identity: ^obsolescence_bare_body))
+}
+
+test fn eval_transform_body_admits_dispatch_refuses_atom_and_value() -> Bool {
+  !eval_transform_body_admits_dispatch(
+    body: obsolescence_atom(identity: ^obsolescence_bare_body)
+  )
+    && !eval_transform_body_admits_dispatch(body: obsolescence_empty_value())
+    && eval_transform_body_admits_dispatch(body: obsolescence_empty_transform())
+}
+
+test fn v2_eval_allocate_literal_int_zero_holds() -> Bool {
+  match dag_int_literal_node_from_lexeme(lexeme: "0", occurrence_id: SyntheticOccurrence) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: atom, diagnostics: _ } =>
+      well_formed(n: atom)
+        && match v2_eval_allocate_literal(node: atom, env: empty_evaluation_environment()) {
+          Rejected { diagnostics: _ } => false
+          Accepted { value: runtime, diagnostics: _ } =>
+            match v2_eval_runtime_value_as_int(value: runtime) {
+              Rejected { diagnostics: _ } => false
+              Accepted { value: n, diagnostics: _ } => n == 0
+            }
+        }
+  }
+}
+
+test fn eval_type_node_atom_int_zero_holds() -> Bool {
+  match dag_int_literal_node_from_lexeme(lexeme: "0", occurrence_id: SyntheticOccurrence) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: atom, diagnostics: _ } =>
+      match eval_type_node_atom(
+        node: atom,
+        interpretation: eval_default_interpretation(),
+        environment: empty_evaluation_environment()
+      ) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: runtime, diagnostics: _ } =>
+          match v2_eval_runtime_value_as_int(value: runtime) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: n, diagnostics: _ } => n == 0
+          }
+      }
+  }
+}
+
+test fn eval_refuses_atom_bodied_arrow_as_invalid_node() -> Bool {
+  match eval(
+    tree: InferredTree {
+      root: obsolescence_atom_bodied_arrow(),
+      facts: Map {
+        lookup: fn(n) {
+          Absent
+        }
+      }
+    },
+    interpretation: eval_default_interpretation(),
+    inputs: inputs_root_only(root: obsolescence_empty_value())
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^eval_rejected_invalid_node
+  }
+}

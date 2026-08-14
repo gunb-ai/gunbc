@@ -1,0 +1,7 @@
+module v2.test.fixture.calibration_chain.calib_helper
+
+import v2.std.integer { Int }
+
+fn noop() -> Int {
+  0
+}

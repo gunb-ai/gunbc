@@ -1,0 +1,120 @@
+module v2.test.self_host.calib_atom_body_scope
+
+import extdeps.filesystem.filesystem_io
+import gunbc.tools.frontier_ingestion_probe {
+  FrontendStage,
+  LexRefused,
+  NormalizeAccepted,
+  NormalizeGraftRefused,
+  NormalizeOther,
+  NormalizeRetained,
+  ParseRefused,
+  classify_source,
+  frontend_stage_eq
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data calib_atom_body_scope_note: String = "Scoping: seed vs v2 on atom function bodies. Seed path is this file's own fn seed_atom_body() -> Int { 0 } — claim_batch resolve/eval is the v1 seed compiler. V2 path is classify_source (tokenize+parse_module_prepared+normalize), the same frontend as assembly without resolve. materialization_carriers measured on that instrument, not inferred from frontier.dag. No fixes."
+
+data calib_atom_zero_source: String = "module add_probe\n\nfn add(x: Int, y: Int) -> Int { 0 }\n"
+
+data calib_atom_add_source: String = "module add_probe\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
+
+data calib_materialization_carriers_path: String = "src/v2/compiler/materialization_carriers.dag"
+
+data calib_atom_body_scope_verdict: String = "SEED: fn seed_atom_body() -> Int { 0 } eval PASS (v1 claim_batch). V2 classify_source: { 0 } = NORM_OTHER (parse accepted, normalize unclassified refuse); { x + y } = ACCEPTED. Refusal is v2-normalize, not language-wide, not v2-parse. Assembly overlap head is the mask (located-diagnostic defect). materialization_carriers classify_source = NORM_OTHER; three atom bodies present (parse_table_artifact_kind, Memoize, Memoize). Not on warm-fox 15-member roster; measured here on the same classify_source instrument."
+
+fn seed_atom_body() -> Int {
+  0
+}
+
+fn classified_stage(source: String) -> FrontendStage {
+  match classify_source(source: source) {
+    Rejected { diagnostics: _ } => LexRefused
+    Accepted { value: s, diagnostics: _ } => s
+  }
+}
+
+test fn seed_atom_body_eval_holds() -> Bool {
+  (seed_atom_body() == 0)
+}
+
+test fn v2_atom_zero_parse_refused_holds() -> Bool {
+  frontend_stage_eq(
+    a: classified_stage(source: calib_atom_zero_source),
+    b: ParseRefused
+  )
+}
+
+test fn v2_atom_zero_norm_other_holds() -> Bool {
+  frontend_stage_eq(
+    a: classified_stage(source: calib_atom_zero_source),
+    b: NormalizeOther
+  )
+}
+
+test fn v2_atom_zero_norm_retained_holds() -> Bool {
+  frontend_stage_eq(
+    a: classified_stage(source: calib_atom_zero_source),
+    b: NormalizeRetained
+  )
+}
+
+test fn v2_atom_zero_accepted_holds() -> Bool {
+  frontend_stage_eq(
+    a: classified_stage(source: calib_atom_zero_source),
+    b: NormalizeAccepted
+  )
+}
+
+test fn v2_binary_add_parse_refused_holds() -> Bool {
+  frontend_stage_eq(
+    a: classified_stage(source: calib_atom_add_source),
+    b: ParseRefused
+  )
+}
+
+test fn v2_binary_add_accepted_holds() -> Bool {
+  frontend_stage_eq(
+    a: classified_stage(source: calib_atom_add_source),
+    b: NormalizeAccepted
+  )
+}
+
+test fn v2_binary_add_norm_other_holds() -> Bool {
+  frontend_stage_eq(
+    a: classified_stage(source: calib_atom_add_source),
+    b: NormalizeOther
+  )
+}
+
+test fn materialization_carriers_parse_refused_holds() -> Bool {
+  frontend_stage_eq(
+    a: classified_stage(source: filesystem_read(path: calib_materialization_carriers_path).content),
+    b: ParseRefused
+  )
+}
+
+test fn materialization_carriers_norm_other_holds() -> Bool {
+  frontend_stage_eq(
+    a: classified_stage(source: filesystem_read(path: calib_materialization_carriers_path).content),
+    b: NormalizeOther
+  )
+}
+
+test fn materialization_carriers_norm_retained_holds() -> Bool {
+  frontend_stage_eq(
+    a: classified_stage(source: filesystem_read(path: calib_materialization_carriers_path).content),
+    b: NormalizeRetained
+  )
+}
+
+test fn materialization_carriers_accepted_holds() -> Bool {
+  frontend_stage_eq(
+    a: classified_stage(source: filesystem_read(path: calib_materialization_carriers_path).content),
+    b: NormalizeAccepted
+  )
+}
