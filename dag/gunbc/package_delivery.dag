@@ -59,7 +59,6 @@ import gunbc.codex_runtime_paths {
   codex_runtime_current_link_path,
   codex_bundled_executable_at_current_link,
   srv1_codex_runtime_release_root,
-  srv2_codex_runtime_release_root,
 }
 import extdeps.languages.json.emit {
   JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject,
@@ -423,18 +422,25 @@ fn codex_expected_wrapper_version() -> NonEmptyStr {
   (codex_required_package_version as String) as NonEmptyStr
 }
 
-data codex_runtime_version_identity_note: String = "ONE runtime version marker for every Codex CLI identity probe. codex_required_package_version is the sole authority; the marker is codex-cli <version> as printed by codex --version on its own line. codex_runtime_version_identity_satisfied requires an exact trimmed line match — not a substring — so 0.146.0-rc1 and 0.146.0abc cannot pass. Weak codex-cli-only checks let srv1's ambient npm install (0.133.0) pass while extdeps.llm.codex_app_server cites 0.146.0 protocol facts — two runtimes producing incompatible protocol surfaces."
+data codex_runtime_version_identity_note: String = "ONE runtime version marker for every Codex CLI identity probe. codex_required_package_version is the sole authority; the marker is codex-cli <version> as printed by codex --version. Weak codex-cli-only checks let srv1's ambient npm install (0.133.0) pass while extdeps.llm.codex_app_server cites 0.146.0 protocol facts — two runtimes producing incompatible protocol surfaces. SATISFACTION IS EXACT-LINE, not substring: a line trimmed must equal the marker, so codex-cli 0.146.01 / 0.146.0-rc1 / 0.146.0-dev cannot pass by prefix overlap."
 
 fn codex_runtime_version_identity_marker() -> String {
   concat("codex-cli ", codex_required_package_version as String)
 }
 
+fn codex_runtime_version_identity_line_exact(line: String) -> Bool {
+  trim(s: line) == codex_runtime_version_identity_marker()
+}
+
 fn codex_runtime_version_identity_satisfied(combined_output: String) -> Bool {
-  any(
+  fold(
     split(s: combined_output, delimiter: "\n"),
-    line => trim(s: line) == codex_runtime_version_identity_marker(),
+    init: false,
+    f: (acc, line) => acc || codex_runtime_version_identity_line_exact(line: line),
   )
 }
+
+data publish_codex_runtime_current_link_note: String = "Typed symlink publish via extdeps.shell.Symlink.AtomicReplace (ln -sfnT argv binding). Runs inside materialize_codex_runtime_bundle during gunbc run materialize, not on the host_effect_apply observe/ensure/read-back transport."
 
 fn publish_codex_runtime_current_link(
   release_parent: FilePath,
@@ -543,15 +549,11 @@ fn codex_platform_lock_path_key(target: CodexNpmRuntimeTarget) -> NonEmptyStr? {
   }
 }
 
-data codex_linux_arm64_native_executable_rel_value: NonEmptyStr = "node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex" as NonEmptyStr
-
-data codex_bundled_executable_path_note: String = "Bundled dispatch executable paths MUST name the materialized native binary under current/<native-rel>, never the current symlink directory alone. srv1/srv2 fleet hosts are linux/arm64 and consume codex_linux_arm64_native_executable_rel_value here. Unsupported npm target tuples stay Absent in codex_native_executable_rel and refuse at materialization (CodexRuntimeExecutableAbsent) — they do not widen to a directory-shaped FilePath. OPERATOR HOLD (2026-08-13): interim legacy — path is composed from lock-metadata rel, not read from #8225's installed-runtime receipt at runtime; dissolves when this lane rebases on #8225 and derives executable/native_rel from CodexRuntimeBundleReceipt (sidecar at release root). Absence must refuse; never codex_cli_program or ambient PATH."
-
-data codex_bundled_dispatch_interim_hold_note: String = "INTERIM LEGACY CLI ROUTE (operator HOLD 2026-08-13, eager-koi-458): dispatch spawn and preflight use dashboard_instance_provider_executable (converged bundled path), not extdeps.llm.cli codex_cli_program. Until #8225 merges and this PR rebases, the path is hand-authored from codex_linux_arm64_native_executable_rel_value — not receipt-derived. Deletion trigger: executable, native rel, and process fingerprint derive from the installed-runtime receipt (#8225 materialize + sidecar read-back) plus wet tmux observation for fingerprint — never branch-agreement on a literal. Operator verdict required before any net-new Scaffold; propose trigger via dashboard if an explicit dissolution row is warranted."
-
 fn codex_native_executable_rel(target: CodexNpmRuntimeTarget) -> NonEmptyStr? {
   if (target.os as String) == "linux" && (target.cpu as String) == "arm64" {
-    Present { value: codex_linux_arm64_native_executable_rel_value }
+    Present {
+      value: "node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex" as NonEmptyStr,
+    }
   } else if (target.os as String) == "linux" && (target.cpu as String) == "x64" {
     Present {
       value: "node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex" as NonEmptyStr,
@@ -578,23 +580,17 @@ fn codex_linux_arm64_native_executable_rel() -> NonEmptyStr? {
   )
 }
 
-fn codex_bundled_executable_for_release_parent(release_parent: FilePath) -> FilePath {
-  codex_bundled_executable_at_current_link(
-    release_parent: release_parent,
-    native_executable_rel: codex_linux_arm64_native_executable_rel_value,
-  )
-}
-
-fn codex_bundled_executable_for_srv1() -> FilePath {
-  codex_bundled_executable_for_release_parent(
-    release_parent: srv1_codex_runtime_release_root,
-  )
-}
-
-fn codex_bundled_executable_for_srv2() -> FilePath {
-  codex_bundled_executable_for_release_parent(
-    release_parent: srv2_codex_runtime_release_root,
-  )
+fn codex_bundled_executable_for_srv1() -> FilePath? {
+  match codex_linux_arm64_native_executable_rel() {
+    Absent => none
+    Present { value: rel } =>
+      Present {
+        value: codex_bundled_executable_at_current_link(
+          release_parent: srv1_codex_runtime_release_root,
+          native_executable_rel: rel,
+        )
+      }
+  }
 }
 
 type CodexTargetPackageLookup

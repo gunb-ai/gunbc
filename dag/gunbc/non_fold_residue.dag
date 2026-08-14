@@ -117,7 +117,7 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_dispatch_selection_routing,
   },
   FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::resolve_codex_offer" },
+    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::resolve_codex_offer_with_observed_fingerprint" },
     reason: nfr_reason_dispatch_selection_routing,
     dissolution: nfr_dissolve_dispatch_selection_routing,
   },
