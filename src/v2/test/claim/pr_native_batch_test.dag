@@ -4,7 +4,8 @@ import v2.workflow.ci_floor_plan {
   gunbc_pr_native_entries,
   gunbc_pr_native_batch_enrolled,
   gunbc_ci_floor_ordinary_batches,
-  gunbc_ci_floor_realization_plan_for
+  gunbc_ci_floor_realization_plan_for,
+  v1_claim_scoped_known_red_probe_batch_enrolled
 }
 import gunbc.ci_layer_roots { scoped_witness_batches }
 import gunbc.ci_spec { gunbc_ci_spec }
@@ -28,8 +29,17 @@ test fn witness_selected_native_bundle_enrolled() -> Bool {
     && gunbc_pr_native_entries().first().kind == NativeBundleWitnessKind
 }
 
+// The subject is the NATIVE append and nothing else, so every other conditionally-appended batch
+// enters as its own named term rather than being folded into the constant. The known-red v1-envelope
+// probe (gunbc.explicit_witness_admission known_red_probe_v1_envelope_roster) appends one batch when
+// its roster is non-empty; without the term, enrolling a probe reds a witness about the native lane
+// and reads as a native-append defect.
+fn known_red_probe_appended_batch_count() -> Int {
+  if v1_claim_scoped_known_red_probe_batch_enrolled() { 1 } else { 0 }
+}
+
 test fn witness_floor_appends_one_selected_native_batch() -> Bool {
-  length(xs: gunbc_ci_floor_ordinary_batches()) == length(xs: gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_spec).schedule) + length(xs: scoped_witness_batches) + 1
+  length(xs: gunbc_ci_floor_ordinary_batches()) == length(xs: gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_spec).schedule) + length(xs: scoped_witness_batches) + 1 + known_red_probe_appended_batch_count()
 }
 
 fn native_transition_receipt_fixture(selected: Int, native: Int, interpreted: Int, unavailable: Int, diverged: Int, fallback: Int, verdict: NativeProductionTransitionVerdict) -> NativeWitnessProductionTransitionReceipt {

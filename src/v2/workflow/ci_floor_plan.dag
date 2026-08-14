@@ -426,6 +426,13 @@ fn gunbc_ci_floor_plan_uses_batch_stop_policy(plan_function: String) -> Bool {
     || (plan_function == falsifier_plan_function)
 }
 
+// THE DECLARED SIDE of witness_floor_schedule_preserves_enrolled_set, and it must carry a term for
+// every conditionally-appended batch the schedule side can produce. Both conditional batches — the
+// PR native bundle and the known-red v1-envelope probe — are appended to the schedule by
+// gunbc_ci_floor_ordinary_batches under their own enrollment predicates, so a batch enrolled here
+// and absent there (or the reverse) is precisely the set difference this pair exists to catch. The
+// probe term was owed when the probe batch was introduced; without it, enrolling one known-red row
+// reds a witness about schedule/enrollment agreement for a reason that is agreement working.
 fn gunbc_ci_floor_enrolled_runnable_labels_for(spec: CiSpec) -> List<String> {
   let gate_labels = list_map(xs: spec.gates, f: fn(g) {
     runnable_single_claim_function(r: gate_runnable(g: g))
@@ -434,10 +441,15 @@ fn gunbc_ci_floor_enrolled_runnable_labels_for(spec: CiSpec) -> List<String> {
     runnable_single_claim_function(r: runnable_for_node(node: node, spec: spec))
   })
   let spec_labels = concat(concat(gate_labels, corpus_labels), map(scoped_witness_batches, batch => "__scoped_witness_batch__"))
-  if gunbc_pr_native_batch_enrolled() {
+  let with_native = if gunbc_pr_native_batch_enrolled() {
     list_snoc_item(xs: spec_labels, item: runnable_single_claim_function(r: gunbc_pr_native_batch()))
   } else {
     spec_labels
+  }
+  if v1_claim_scoped_known_red_probe_batch_enrolled() {
+    list_snoc_item(xs: with_native, item: runnable_single_claim_function(r: gunbc_v1_claim_scoped_known_red_probe_batch()))
+  } else {
+    with_native
   }
 }
 

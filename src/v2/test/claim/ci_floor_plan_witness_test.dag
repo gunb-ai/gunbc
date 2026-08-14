@@ -949,8 +949,15 @@ test fn witness_live_floor_discovery_batch_count_includes_wet_lanes() -> Bool {
   }
 }
 
-test fn witness_live_floor_discovery_batch_count_is_four() -> Bool {
-  schedule_discovery_batch_count(batches: gunbc_ci_floor_ordinary_batches()) == 4
+// FOUR is the UNCONDITIONAL discovery population; the known-red v1-envelope probe is a fifth
+// RunnableDiscoveryBatch that exists only while its roster is non-empty, so it enters as a named
+// conditional term. Folding it into the constant would make an enrollment invisible here, and
+// leaving it out entirely reds a claim about the unconditional lanes for a reason belonging to the
+// probe — the same coupling gunbc.ci_spec gunbc_ci_v1_envelope_known_red_probe_clamp_basis_note
+// carries on the clamp side.
+test fn witness_live_floor_discovery_batch_count_is_four_plus_enrolled_probes() -> Bool {
+  let probe = if v1_claim_scoped_known_red_probe_batch_enrolled() { 1 } else { 0 }
+  schedule_discovery_batch_count(batches: gunbc_ci_floor_ordinary_batches()) == 4 + probe
 }
 
 test fn ci_floor_plan_witnesses() -> Bool {
@@ -964,7 +971,7 @@ test fn ci_floor_plan_witnesses() -> Bool {
     witness_floor_schedule_preserves_enrolled_set() &&
     witness_live_floor_schedules_bin_witness_wet_batch() &&
     witness_live_floor_discovery_batch_count_includes_wet_lanes() &&
-    witness_live_floor_discovery_batch_count_is_four() &&
+    witness_live_floor_discovery_batch_count_is_four_plus_enrolled_probes() &&
     witness_non_cheap_gate_absent_from_early_batch() &&
     witness_floor_stop_policy_pr_is_fail_fast() &&
     witness_floor_stop_policy_push_is_full_ledger() &&
