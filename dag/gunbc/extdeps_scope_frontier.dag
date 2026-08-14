@@ -229,6 +229,8 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/w3c/accelerometer.dag",
   "dag/extdeps/w3c/device_orientation_and_motion.dag",
   "dag/extdeps/w3c/generic_sensor.dag",
+  "dag/extdeps/w3c/svg.dag",
+  "dag/extdeps/ocp/mt_jade.dag",
   "dag/extdeps/github/actions_runner.dag",
   "dag/extdeps/llm/claude_agent_sdk_stream.dag",
   "dag/extdeps/llm/claude_sdk.dag",

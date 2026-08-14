@@ -1,0 +1,124 @@
+module extdeps.w3c.svg
+
+import std.types { String, List, Int }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.markup {
+  Fragment,
+  Element,
+  FragmentText,
+  Attribute,
+  attr,
+  MarkupMedium,
+  MarkupBracket,
+  EscapeHtml,
+  SelfClose,
+  serialize_fragment_with,
+}
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.w3.org/TR/SVG2/"
+  }
+}
+
+data svg_subject_note: String = "Cited upstream: W3C Scalable Vector Graphics (SVG) 2, Recommendation-track. Element names, the SVG namespace, and the XML serialization medium live here so a product projection cites this authority rather than minting a second SVG vocabulary. Serialization uses std.markup's generic fragment algebra with an SVG medium; it does not route through HTML, which is a separately governed language."
+
+data svg_spec_edition: String = "W3C SVG 2"
+
+type SvgLanguage
+  = | Svg2
+
+data svg_language: SvgLanguage = Svg2
+
+data svg_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.w3c.svg",
+      decl_name: "svg_language",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data extdeps_model_scope: ExternalModelScope = svg_model_scope
+
+data svg_root_tag: String = "svg"
+data svg_rect_tag: String = "rect"
+data svg_circle_tag: String = "circle"
+data svg_text_tag: String = "text"
+data svg_g_tag: String = "g"
+
+data svg_xmlns: String = "http://www.w3.org/2000/svg"
+data svg_role_img: String = "img"
+
+data svg_xml_brackets: MarkupBracket = MarkupBracket {
+  tag_open: "<",
+  end_tag_open: "</",
+  tag_close: ">",
+  attr_sep: " ",
+  attr_assign: "=",
+  attr_quote: "\"",
+}
+
+fn svg_markup_medium() -> MarkupMedium {
+  MarkupMedium {
+    tag_overrides: [],
+    bracket: svg_xml_brackets,
+    text_escape: EscapeHtml,
+    void_tags: [svg_rect_tag, svg_circle_tag],
+    void_rendering: SelfClose,
+    raw_text_tags: [],
+  }
+}
+
+fn svg_element(tag: String, attributes: List<Attribute>, children: List<Fragment>) -> Fragment {
+  Element { tag: tag, attributes: attributes, children: children }
+}
+
+fn svg_document(view_box: String, class_name: String, aria_label: String, children: List<Fragment>) -> Fragment {
+  svg_element(
+    tag: svg_root_tag,
+    attributes: [
+      attr(name: "viewBox", value: view_box),
+      attr(name: "class", value: class_name),
+      attr(name: "xmlns", value: svg_xmlns),
+      attr(name: "role", value: svg_role_img),
+      attr(name: "aria-label", value: aria_label),
+    ],
+    children: children
+  )
+}
+
+fn svg_group(class_name: String, children: List<Fragment>) -> Fragment {
+  svg_element(tag: svg_g_tag, attributes: [attr(name: "class", value: class_name)], children: children)
+}
+
+fn svg_rect(x: Int, y: Int, width: Int, height: Int, class_name: String, fill: String, stroke: String, stroke_width: String) -> Fragment {
+  svg_element(tag: svg_rect_tag, attributes: [
+    attr(name: "x", value: to_string(x)),
+    attr(name: "y", value: to_string(y)),
+    attr(name: "width", value: to_string(width)),
+    attr(name: "height", value: to_string(height)),
+    attr(name: "class", value: class_name),
+    attr(name: "fill", value: fill),
+    attr(name: "stroke", value: stroke),
+    attr(name: "stroke-width", value: stroke_width),
+  ], children: [])
+}
+
+fn svg_text(x: Int, y: Int, label: String, class_name: String) -> Fragment {
+  svg_element(tag: svg_text_tag, attributes: [
+    attr(name: "x", value: to_string(x)),
+    attr(name: "y", value: to_string(y)),
+    attr(name: "class", value: class_name),
+  ], children: [FragmentText { content: label }])
+}
+
+fn serialize_svg_document(doc: Fragment) -> String {
+  serialize_fragment_with(frag: doc, medium: svg_markup_medium())
+}

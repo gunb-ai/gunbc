@@ -18,7 +18,7 @@ import std.orthogonal_geometry {
   OrthogonalRefused,
   axis_aligned_rectangle2,
 }
-import product.compute_board.physical {
+import product.pcb.physical {
   BoardFrameIsNotSubMillimetre,
   BoardFrameUnregistered,
   BoardPhysicalArticle,
