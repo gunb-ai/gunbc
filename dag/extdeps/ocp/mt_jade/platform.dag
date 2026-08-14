@@ -2,11 +2,29 @@ module extdeps.ocp.mt_jade.platform
 
 import std.types { String, Bool, NonEmptyStr, List }
 import std.integer { Int }
-import std.measure { Hertz, Microsecond, hertz, microsecond }
+import std.measure { Hertz, Microsecond, Micrometer, hertz, microsecond, micrometer, micrometer_count }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.ocp.mt_jade.subject { extdeps_external_authority_anchor }
 
-data platform_note: String = "PLATFORM FACTS FROM THE PUBLIC OCP MT. JADE SPECIFICATION, REV 1.0. Section 7.10 carries clocks, reset and power-on sequence; section 7.6–7.8 carry BMC, I2C, JTAG and GPIO facts that define the board CPLD's role; section 7.10.1 names the clock-generator and buffer parts; other sections name the AST2500 BMC, boot EEPROMs and flash devices. Nothing here transcribes pin tables or proprietary drawings — only the named sequencing order, responsibilities and reference parts the specification itself states."
+data platform_note: String = "PLATFORM FACTS FROM THE PUBLIC OCP MT. JADE SPECIFICATION, REV 1.0 (2021-09-17). Section 7.2 carries the motherboard outline; section 7.3 names the ILM4926 socket; section 7.10 carries clocks, reset and power-on sequence; sections 7.6–7.8 carry BMC, I2C, JTAG and GPIO facts that define the board CPLD's role. Nothing here transcribes pin tables or Appendix A/B content."
+
+// SECTION 7.2 AND 7.3 CARRY THE BOARD ENVELOPE AND SOCKET DESIGNATION. Micrometres are used so
+// 479.36 mm is exact rather than rounded — the specification quotes 428 mm by 479.36 mm.
+type MtJadeMotherboardMechanical {
+  outline_width: Micrometer
+  outline_depth: Micrometer
+  cpu_socket_designation: NonEmptyStr
+  processor_socket_count: Int
+  ddr4_dimms_total: Int
+}
+
+data mt_jade_motherboard_mechanical: MtJadeMotherboardMechanical = MtJadeMotherboardMechanical {
+  outline_width: micrometer(count: 428000),
+  outline_depth: micrometer(count: 479360),
+  cpu_socket_designation: "ILM4926",
+  processor_socket_count: 2,
+  ddr4_dimms_total: 32,
+}
 
 // THE SOCKET ROLES ARE NAMED IN THE SPEC'S POWER-ON NARRATIVE. Socket 0 is the master socket
 // whose firmware must start first; socket 1 is the slave socket whose reset release is gated
