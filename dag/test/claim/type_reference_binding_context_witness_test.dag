@@ -12,6 +12,9 @@ import std.occurrence_identity {
   ReferenceOccurrence,
   OccurrenceCategory,
   TypeOccurrence,
+  ConstructorOccurrence,
+  FieldOccurrence,
+  LexicalValueOccurrence,
   CallableOccurrence,
 }
 import std.occurrence_binding_candidates {
@@ -103,6 +106,7 @@ test fn module_root_containment_derives_root_exposure_holds() -> Bool {
     module_path: trbc_module_path(dotted: "std.content_hash"),
     containment: type_path,
     grounding: NamespaceStructuralRootExposure,
+    category: TypeOccurrence,
   ) {
     RootExposure => true
     _ => false
@@ -116,8 +120,46 @@ test fn single_ancestor_containment_derives_module_exposure_holds() -> Bool {
     module_path: trbc_module_path(dotted: "extdeps.consumer"),
     containment: fn_path,
     grounding: NamespaceStructuralRootExposure,
+    category: TypeOccurrence,
   ) {
     ModuleExposure { module: module } => module == trbc_module_path(dotted: "extdeps.consumer")
+    _ => false
+  }
+}
+
+// The discriminating pair for category-aware nesting. Both declarations sit at the SAME containment
+// depth -- children of a type node, ancestors [module, type] -- and differ only in category, so
+// containment shape alone cannot separate them. A constructor is reachable at module scope and must
+// derive ModuleExposure; a field is not and must stay lexically scoped to the type body. Before this,
+// both derived LexicalExposure and a module-scope reference to a constructor did not bind.
+test fn nested_constructor_derives_module_exposure_holds() -> Bool {
+  let module_occ = OccurrenceId { value: 1 }
+  let type_occ = OccurrenceId { value: 2 }
+  let variant = OccurrenceId { value: 31 }
+  let nested_path = trbc_fixture_path(ancestors: [module_occ, type_occ], terminal: variant)
+  match declaration_exposure_from_containment(
+    module_path: trbc_module_path(dotted: "extdeps.consumer"),
+    containment: nested_path,
+    grounding: NamespaceStructuralRootExposure,
+    category: ConstructorOccurrence,
+  ) {
+    ModuleExposure { module: module } => module == trbc_module_path(dotted: "extdeps.consumer")
+    _ => false
+  }
+}
+
+test fn nested_field_stays_lexically_scoped_holds() -> Bool {
+  let module_occ = OccurrenceId { value: 1 }
+  let type_occ = OccurrenceId { value: 2 }
+  let field = OccurrenceId { value: 32 }
+  let nested_path = trbc_fixture_path(ancestors: [module_occ, type_occ], terminal: field)
+  match declaration_exposure_from_containment(
+    module_path: trbc_module_path(dotted: "extdeps.consumer"),
+    containment: nested_path,
+    grounding: NamespaceStructuralRootExposure,
+    category: FieldOccurrence,
+  ) {
+    LexicalExposure { exposing_scope: scope } => scope.terminal == type_occ
     _ => false
   }
 }
@@ -131,6 +173,7 @@ test fn nested_containment_derives_lexical_exposure_holds() -> Bool {
     module_path: trbc_module_path(dotted: "extdeps.consumer"),
     containment: nested_path,
     grounding: NamespaceStructuralRootExposure,
+    category: LexicalValueOccurrence,
   ) {
     LexicalExposure { exposing_scope: scope } =>
       scope.terminal == inner && (scope.ancestors |> count) == 1

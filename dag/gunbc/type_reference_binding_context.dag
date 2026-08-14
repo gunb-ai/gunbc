@@ -67,6 +67,7 @@ fn occurrence_binding_inputs_from_module_transport(
               module_path: module_path,
               containment: declaration.containment,
               grounding: NamespaceStructuralRootExposure,
+              category: declaration.category,
             ),
           },
         ], acc),

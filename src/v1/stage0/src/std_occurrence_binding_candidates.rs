@@ -53,6 +53,9 @@ use crate::std_occurrence_identity::OccurrenceCategory::TypeOccurrence;
 use crate::std_occurrence_identity::OccurrenceCategoryClauseEDependencyInducingVerdict::{
     OccurrenceCategoryClauseEDependencyInducing, OccurrenceCategoryClauseEDependencyNotInducing,
 };
+use crate::std_occurrence_identity::OccurrenceCategoryModuleScopeExposureVerdict::{
+    OccurrenceCategoryModuleScopeExposed, OccurrenceCategoryModuleScopeNotExposed,
+};
 use crate::std_occurrence_identity::OccurrenceTransportRefusal::UnknownOccurrenceIdentity;
 use crate::std_occurrence_identity::OccurrenceTransportValidation::{
     OccurrenceTransportRefused, OccurrenceTransportValidated,
@@ -60,12 +63,14 @@ use crate::std_occurrence_identity::OccurrenceTransportValidation::{
 pub use crate::std_occurrence_identity::{
     alloc_occurrence_id, authored_token_ordinal_before, authored_token_ordinal_eq,
     occurrence_category_clause_e_dependency_inducing_verdict,
-    occurrence_containment_path_is_prefix_of, occurrence_containment_paths_equal,
-    occurrence_id_allocator_initial, occurrence_transport_validate,
+    occurrence_category_module_scope_exposure_verdict, occurrence_containment_path_is_prefix_of,
+    occurrence_containment_paths_equal, occurrence_id_allocator_initial,
+    occurrence_transport_validate,
 };
 pub use crate::std_occurrence_identity::{
     AuthoredTokenOrdinal, DeclarationOccurrence, OccurrenceCategory,
-    OccurrenceCategoryClauseEDependencyInducingVerdict, OccurrenceContainmentPath, OccurrenceId,
+    OccurrenceCategoryClauseEDependencyInducingVerdict,
+    OccurrenceCategoryModuleScopeExposureVerdict, OccurrenceContainmentPath, OccurrenceId,
     OccurrenceIdAllocResult, OccurrenceIdAllocator, OccurrenceIndex, OccurrenceIndexEntry,
     OccurrenceProjection, OccurrenceTransport, OccurrenceTransportRefusal,
     OccurrenceTransportValidation, ReferenceOccurrence, ValidatedOccurrenceTransport,
@@ -367,9 +372,30 @@ pub fn occurrence_containment_parent_scope(
     }
 }
 
+pub fn declaration_exposure_for_nested(
+    module_path: String,
+    exposing_scope: Rc<OccurrenceContainmentPath>,
+    category: OccurrenceCategory,
+) -> Rc<DeclarationExposure> {
+    match (*occurrence_category_module_scope_exposure_verdict(category.clone())).clone() {
+        OccurrenceCategoryModuleScopeExposureVerdict::OccurrenceCategoryModuleScopeExposed => {
+            Rc::new(DeclarationExposure::ModuleExposure {
+                module: module_path.clone(),
+            })
+        }
+        OccurrenceCategoryModuleScopeExposureVerdict::OccurrenceCategoryModuleScopeNotExposed {
+            category: _,
+            ..
+        } => Rc::new(DeclarationExposure::LexicalExposure {
+            exposing_scope: exposing_scope.clone(),
+        }),
+    }
+}
+
 pub fn declaration_exposure_module_local_member(
     module_path: String,
     containment: Rc<OccurrenceContainmentPath>,
+    category: OccurrenceCategory,
 ) -> Rc<DeclarationExposure> {
     match occurrence_containment_parent_scope(containment.ancestors.clone()) {
         None => Rc::new(DeclarationExposure::ModuleExposure {
@@ -382,9 +408,11 @@ pub fn declaration_exposure_module_local_member(
                     module: module_path.clone(),
                 })
             } else {
-                Rc::new(DeclarationExposure::LexicalExposure {
-                    exposing_scope: exposing_scope.clone(),
-                })
+                declaration_exposure_for_nested(
+                    module_path.clone(),
+                    exposing_scope.clone(),
+                    category.clone(),
+                )
             }
         }
     }
@@ -393,6 +421,7 @@ pub fn declaration_exposure_module_local_member(
 pub fn declaration_exposure_namespace_structural_root(
     module_path: String,
     containment: Rc<OccurrenceContainmentPath>,
+    category: OccurrenceCategory,
 ) -> Rc<DeclarationExposure> {
     match occurrence_containment_parent_scope(containment.ancestors.clone()) {
         None => Rc::new(DeclarationExposure::RootExposure),
@@ -403,9 +432,11 @@ pub fn declaration_exposure_namespace_structural_root(
                     module: module_path.clone(),
                 })
             } else {
-                Rc::new(DeclarationExposure::LexicalExposure {
-                    exposing_scope: exposing_scope.clone(),
-                })
+                declaration_exposure_for_nested(
+                    module_path.clone(),
+                    exposing_scope.clone(),
+                    category.clone(),
+                )
             }
         }
     }
@@ -415,13 +446,22 @@ pub fn declaration_exposure_from_containment(
     module_path: String,
     containment: Rc<OccurrenceContainmentPath>,
     grounding: DeclarationExposureGrounding,
+    category: OccurrenceCategory,
 ) -> Rc<DeclarationExposure> {
     match grounding.clone() {
         DeclarationExposureGrounding::NamespaceStructuralRootExposure => {
-            declaration_exposure_namespace_structural_root(module_path.clone(), containment.clone())
+            declaration_exposure_namespace_structural_root(
+                module_path.clone(),
+                containment.clone(),
+                category.clone(),
+            )
         }
         DeclarationExposureGrounding::ModuleLocalMemberExposure => {
-            declaration_exposure_module_local_member(module_path.clone(), containment.clone())
+            declaration_exposure_module_local_member(
+                module_path.clone(),
+                containment.clone(),
+                category.clone(),
+            )
         }
     }
 }

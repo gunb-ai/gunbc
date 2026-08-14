@@ -108,6 +108,7 @@ test fn module_local_member_exposure_at_module_root_holds() -> Bool {
     module_path: cfba_path(dotted: "extdeps.a"),
     containment: path,
     grounding: ModuleLocalMemberExposure,
+    category: TypeOccurrence,
   ) {
     ModuleExposure { module: module } => module == cfba_path(dotted: "extdeps.a")
     _ => false
@@ -122,6 +123,7 @@ test fn module_local_member_exposure_at_direct_child_stays_module_exposure_holds
     module_path: cfba_path(dotted: "extdeps.b"),
     containment: path,
     grounding: ModuleLocalMemberExposure,
+    category: TypeOccurrence,
   ) {
     ModuleExposure { module: module } => module == cfba_path(dotted: "extdeps.b")
     _ => false
@@ -136,6 +138,7 @@ test fn namespace_structural_root_exposure_at_direct_child_stays_module_exposure
     module_path: cfba_path(dotted: "extdeps.c"),
     containment: path,
     grounding: NamespaceStructuralRootExposure,
+    category: TypeOccurrence,
   ) {
     ModuleExposure { module: module } => module == cfba_path(dotted: "extdeps.c")
     _ => false

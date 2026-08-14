@@ -26,6 +26,9 @@ import std.occurrence_identity {
   OccurrenceCategory,
   TypeOccurrence,
   occurrence_category_clause_e_dependency_inducing_verdict,
+  occurrence_category_module_scope_exposure_verdict,
+  OccurrenceCategoryModuleScopeExposed,
+  OccurrenceCategoryModuleScopeNotExposed,
   OccurrenceCategoryClauseEDependencyInducing,
   OccurrenceCategoryClauseEDependencyNotInducing,
   OccurrenceContainmentPath,
@@ -212,9 +215,30 @@ fn occurrence_containment_parent_scope(
   }
 }
 
+// A declaration nested inside another declaration is lexically scoped UNLESS its category says it is
+// a module member. Containment alone cannot separate the two: a constructor and a field are both
+// children of a type node, so both derive ancestors [module, type], yet a constructor is reachable at
+// module scope and a field is not. The category authority already answers exactly that question, so
+// the nested case asks it rather than guessing from shape. This is not category substituted FOR
+// exposure -- the decision site still reads only DeclarationExposure -- it is the grounding being
+// chosen at derivation, which is what the exposure authority requires. Measured before: a module-scope
+// reference to a constructor did not bind, because the constructor's exposing scope was the type body.
+fn declaration_exposure_for_nested(
+  module_path: NonEmptyStr,
+  exposing_scope: OccurrenceContainmentPath,
+  category: OccurrenceCategory
+) -> DeclarationExposure {
+  match occurrence_category_module_scope_exposure_verdict(category: category) {
+    OccurrenceCategoryModuleScopeExposed => ModuleExposure { module: module_path }
+    OccurrenceCategoryModuleScopeNotExposed { category: _ } =>
+      LexicalExposure { exposing_scope: exposing_scope }
+  }
+}
+
 fn declaration_exposure_module_local_member(
   module_path: NonEmptyStr,
-  containment: OccurrenceContainmentPath
+  containment: OccurrenceContainmentPath,
+  category: OccurrenceCategory
 ) -> DeclarationExposure {
   match occurrence_containment_parent_scope(ancestors: containment.ancestors) {
     Absent =>
@@ -224,7 +248,11 @@ fn declaration_exposure_module_local_member(
         Empty =>
           ModuleExposure { module: module_path }
         Cons { head: _, tail: _ } =>
-          LexicalExposure { exposing_scope: exposing_scope }
+          declaration_exposure_for_nested(
+            module_path: module_path,
+            exposing_scope: exposing_scope,
+            category: category,
+          )
       }
   }
 }
@@ -232,6 +260,7 @@ fn declaration_exposure_module_local_member(
 fn declaration_exposure_namespace_structural_root(
   module_path: NonEmptyStr,
   containment: OccurrenceContainmentPath,
+  category: OccurrenceCategory,
 ) -> DeclarationExposure {
   match occurrence_containment_parent_scope(
     ancestors: containment.ancestors,
@@ -245,7 +274,11 @@ fn declaration_exposure_namespace_structural_root(
           ModuleExposure { module: module_path }
 
         Cons { head: _, tail: _ } =>
-          LexicalExposure { exposing_scope: exposing_scope }
+          declaration_exposure_for_nested(
+            module_path: module_path,
+            exposing_scope: exposing_scope,
+            category: category,
+          )
       }
   }
 }
@@ -253,18 +286,21 @@ fn declaration_exposure_namespace_structural_root(
 fn declaration_exposure_from_containment(
   module_path: NonEmptyStr,
   containment: OccurrenceContainmentPath,
-  grounding: DeclarationExposureGrounding
+  grounding: DeclarationExposureGrounding,
+  category: OccurrenceCategory
 ) -> DeclarationExposure {
   match grounding {
     NamespaceStructuralRootExposure =>
       declaration_exposure_namespace_structural_root(
         module_path: module_path,
         containment: containment,
+        category: category,
       )
     ModuleLocalMemberExposure =>
       declaration_exposure_module_local_member(
         module_path: module_path,
         containment: containment,
+        category: category,
       )
   }
 }

@@ -105,6 +105,7 @@ fn occurrence_binding_inputs_from_transport(
               module_path: module_path,
               containment: declaration.containment,
               grounding: grounding,
+              category: declaration.category,
             ),
           },
         ], acc),

@@ -16,7 +16,9 @@ use std::rc::Rc;
 use v1_compiler::std_occurrence_binding_candidates::{
     declaration_exposure_from_containment, DeclarationExposure, DeclarationExposureGrounding,
 };
-use v1_compiler::std_occurrence_identity::{OccurrenceContainmentPath, OccurrenceId};
+use v1_compiler::std_occurrence_identity::{
+    OccurrenceCategory, OccurrenceContainmentPath, OccurrenceId,
+};
 
 fn fail(msg: impl std::fmt::Display) -> ExitCode {
     eprintln!("namespace_structural_root_exposure_generated_witness: {msg}");
@@ -44,6 +46,7 @@ fn main() -> ExitCode {
         module_path.clone(),
         containment(&[], 1),
         DeclarationExposureGrounding::NamespaceStructuralRootExposure,
+        OccurrenceCategory::TypeOccurrence,
     );
     match &*empty {
         DeclarationExposure::RootExposure => println!("PASS empty_ancestors_root_exposure"),
@@ -60,6 +63,7 @@ fn main() -> ExitCode {
         module_path.clone(),
         containment(&[10], 11),
         DeclarationExposureGrounding::NamespaceStructuralRootExposure,
+        OccurrenceCategory::TypeOccurrence,
     );
     match &*one {
         DeclarationExposure::ModuleExposure { module } if *module == module_path => {
@@ -80,6 +84,11 @@ fn main() -> ExitCode {
         module_path.clone(),
         containment(&[20, 21], 22),
         DeclarationExposureGrounding::NamespaceStructuralRootExposure,
+        // A lexical binder, not a type: nesting alone no longer decides this arm. A declaration
+        // nested inside another is lexically scoped only when its category is not module-scope
+        // exposed, so a nested TYPE or CONSTRUCTOR now derives ModuleExposure and would fail here
+        // for the right reason.
+        OccurrenceCategory::LexicalValueOccurrence,
     );
     match &*two {
         DeclarationExposure::LexicalExposure { exposing_scope } => {

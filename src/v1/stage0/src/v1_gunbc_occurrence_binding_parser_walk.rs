@@ -173,6 +173,7 @@ pub fn occurrence_binding_inputs_from_transport(
                             module_path.clone(),
                             declaration.containment.clone(),
                             grounding.clone(),
+                            declaration.category.clone(),
                         ),
                     })]),
                     acc,
