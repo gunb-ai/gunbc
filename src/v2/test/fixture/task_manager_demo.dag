@@ -1,4 +1,6 @@
 module v2.test.fixture.task_manager_demo
+import std.algebra { Empty }
+import std.serialization { WireContract }
 
 
 type TaskId {

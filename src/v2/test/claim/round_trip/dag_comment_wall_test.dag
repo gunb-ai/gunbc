@@ -1,4 +1,5 @@
 module v2.test.round_trip.dag_comment_wall_test
+import v2.extdeps.languages.fidelity { FailClosed }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

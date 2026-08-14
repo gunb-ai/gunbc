@@ -1,4 +1,5 @@
 module v2.test.lens_structural_resolution.claim_carrier
+import v2.lens.structural_resolution { at }
 
 
 type LensStructuralResolutionClaim {

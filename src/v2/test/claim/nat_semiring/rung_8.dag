@@ -1,4 +1,5 @@
 module v2.test.nat_semiring.rung_8
+import v2.test.algebra_laws.nat_semiring { claim_nat_add_associativity, claim_nat_add_left_identity, claim_nat_add_right_identity, claim_nat_mul_annihilator, claim_nat_mul_associativity, claim_nat_mul_left_identity }
 
 
 fn rung8_tier1_eval_run(claim: TestClaim) -> TestClaimRun<Node, RuntimeValue> {
