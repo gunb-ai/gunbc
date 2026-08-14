@@ -227,6 +227,64 @@ type FactAuthorityBlocker
 // off the carriage axis. Before the split these were one choice, and a subject whose fact was
 // established and whose carriage was undecided had to be filed as not established — which sent a
 // legal question to whoever was reading datasheets.
+// THE TWO AXES ARE INDEPENDENT BUT NOT UNCONSTRAINED, and this admission is the hole I left when
+// I split them. Splitting fact from carriage was right -- whether anyone established a fact and
+// whether this repository may hold it are different questions with different remedies. What I did
+// not do was say which COMBINATIONS mean anything, so the product admitted three that do not, and
+// subject_blocker answered the worst of them with no blocker at all: an established fact whose
+// carriage is "not applicable" read as nothing standing in the way, which is the fabricated
+// plausible output pointed at the legal axis.
+//
+// WHY EACH REFUSAL IS INCOHERENT RATHER THAN MERELY UNUSUAL. Carriage is not applicable only
+// because there is no fact yet to carry, so once the fact IS established the question stops being
+// moot and somebody has to answer it -- silence there is a decision nobody made. Carriage
+// permission for a fact nobody has established is permission to hold nothing, and it will read as
+// a green light the moment the fact lands, without anyone revisiting it. And an access-gated fact
+// does not get an independent carriage decision, because the terms that gate the access are the
+// terms that govern the carriage: deciding them separately is deciding one of them wrongly.
+type AuthorityStandingRefusal
+  = EstablishedFactHasInapplicableCarriage
+  | UnestablishedFactClaimsNormalizedCarriage
+  | AccessGatedFactHasIndependentCarriageDecision
+
+fn authority_standing_refusal(fact: FactAuthorityStanding, carriage: RepositoryCarriageStanding) -> AuthorityStandingRefusal? {
+  match fact {
+    FactEstablished { authority: _, subject: _ } =>
+      match carriage {
+        CarriageNotApplicable { because: _ } => Present { value: EstablishedFactHasInapplicableCarriage }
+        NormalizedFactsMayBeCarried => none
+        CarriageDecisionRequired { reason: _ } => none
+      }
+    FactUnresolved { what_is_missing: _ } =>
+      match carriage {
+        NormalizedFactsMayBeCarried => Present { value: UnestablishedFactClaimsNormalizedCarriage }
+        CarriageNotApplicable { because: _ } => none
+        CarriageDecisionRequired { reason: _ } => none
+      }
+    FactAccessGated { subject: _, access_route: _ } =>
+      match carriage {
+        CarriageDecisionRequired { reason: _ } => Present { value: AccessGatedFactHasIndependentCarriageDecision }
+        NormalizedFactsMayBeCarried => Present { value: AccessGatedFactHasIndependentCarriageDecision }
+        CarriageNotApplicable { because: _ } => none
+      }
+  }
+}
+
+fn standing_pair_is_admitted(fact: FactAuthorityStanding, carriage: RepositoryCarriageStanding) -> Bool {
+  match authority_standing_refusal(fact: fact, carriage: carriage) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// RUNG, STATED HONESTLY rather than implied by the presence of this function. This is mechanically
+// preventable, not structurally impossible: AttachmentLayerStanding is still a freely constructible
+// record, so an incoherent pair remains WRITABLE and safety depends on a witness executing. The
+// next rung is construction closure -- sealing the record so the only mint is a function that
+// consults this refusal -- and that is the trigger, not a wish. It is deliberately not attempted in
+// the same change that discovers the class.
+data authority_standing_admission_rung_note: String = "Mechanically preventable. The incoherent combinations are detected and witnessed, not made unwritable; AttachmentLayerStanding stays a public record literal. Next-rung trigger: seal AttachmentLayerStanding with a sole constructor whose mint returns an admission, so an incoherent pair has no representation rather than a check that must be run."
+
 fn subject_blocker(fact: FactAuthorityStanding, carriage: RepositoryCarriageStanding) -> FactAuthorityBlocker? {
   match fact {
     FactUnresolved { what_is_missing: w } =>
