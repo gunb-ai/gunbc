@@ -1,0 +1,351 @@
+module v2.test.claim.ci_attempt_test
+
+import v2.std.algebra { fold_list, length, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+import v2.std.dependency { DependencyView }
+import v2.workflow.executor { ExecutorBatch }
+import v2.workflow.floor2_prepared_subject { ExcludedNotPartOfThisSubject }
+import v2.workflow.ci_attempt {
+  AttemptFailed,
+  AttemptPassed,
+  AttemptRefused,
+  CargoTargetWrite,
+  ci_attempt_subject_digest,
+  ci_attempt_verdict,
+  ci_batches,
+  ci_dependency,
+  ci_node_to_node,
+  CiAttemptRequest,
+  CiNode,
+  CiNodeReceipt,
+  claims_conflict,
+  CompileCleanStanding,
+  ConfigurationIdentity,
+  EvaluateHermeticClaim,
+  FixtureStoreAbsent,
+  FixtureStoreAt,
+  FormatCheck,
+  LedgerComplete,
+  LedgerDuplicate,
+  LedgerMissing,
+  LedgerSurplus,
+  NodeFailed,
+  NodePassed,
+  PreparedContextAccess,
+  PrepareExactSubject,
+  PublishedMockSetEmpty,
+  PublishedMockSetOf,
+  ReadOnlyRepository,
+  reconcile_ledger,
+  RetainedSeedTests,
+  SourceRootDag,
+  SourceRootV2,
+  SubjectExclusion,
+  ToolIdentity
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── The envelope ──────────────────────────────────────────────────────────────
+
+data base_request: CiAttemptRequest = CiAttemptRequest {
+  source_roots: [SourceRootDag, SourceRootV2],
+  exclusions: [
+    SubjectExclusion {
+      path: "src/v2/test/manual/ownership_movable_test.dag",
+      ground: ExcludedNotPartOfThisSubject
+    }
+  ],
+  tool: ToolIdentity { compiler: ^ci_test_compiler_a },
+  fixture_store: FixtureStoreAbsent,
+  published_mocks: PublishedMockSetEmpty,
+  configuration: ConfigurationIdentity { identity: ^ci_test_config_a }
+}
+
+data request_other_roots: CiAttemptRequest = CiAttemptRequest {
+  source_roots: [SourceRootDag],
+  exclusions: base_request.exclusions,
+  tool: base_request.tool,
+  fixture_store: base_request.fixture_store,
+  published_mocks: base_request.published_mocks,
+  configuration: base_request.configuration
+}
+
+data request_other_tool: CiAttemptRequest = CiAttemptRequest {
+  source_roots: base_request.source_roots,
+  exclusions: base_request.exclusions,
+  tool: ToolIdentity { compiler: ^ci_test_compiler_b },
+  fixture_store: base_request.fixture_store,
+  published_mocks: base_request.published_mocks,
+  configuration: base_request.configuration
+}
+
+// THE FIXTURE-STORE PAIR IS THE POINT OF THE ENVELOPE. Preparation used to be built
+// from source bytes alone, so these two requests would have carried ONE identity
+// while producing different results for every fixture-dependent claim — a parity
+// comparison between them would have compared two subjects and reported agreement.
+data request_other_fixtures: CiAttemptRequest = CiAttemptRequest {
+  source_roots: base_request.source_roots,
+  exclusions: base_request.exclusions,
+  tool: base_request.tool,
+  fixture_store: FixtureStoreAt { identity: ^ci_test_fixture_store },
+  published_mocks: base_request.published_mocks,
+  configuration: base_request.configuration
+}
+
+data request_other_mocks: CiAttemptRequest = CiAttemptRequest {
+  source_roots: base_request.source_roots,
+  exclusions: base_request.exclusions,
+  tool: base_request.tool,
+  fixture_store: base_request.fixture_store,
+  published_mocks: PublishedMockSetOf { identity: ^ci_test_mock_set },
+  configuration: base_request.configuration
+}
+
+data request_other_config: CiAttemptRequest = CiAttemptRequest {
+  source_roots: base_request.source_roots,
+  exclusions: base_request.exclusions,
+  tool: base_request.tool,
+  fixture_store: base_request.fixture_store,
+  published_mocks: base_request.published_mocks,
+  configuration: ConfigurationIdentity { identity: ^ci_test_config_b }
+}
+
+test fn digest_covers_every_envelope_field() -> Bool {
+  let base = ci_attempt_subject_digest(request: base_request)
+  (ci_attempt_subject_digest(request: request_other_roots) != base)
+    && (ci_attempt_subject_digest(request: request_other_tool) != base)
+    && (ci_attempt_subject_digest(request: request_other_fixtures) != base)
+    && (ci_attempt_subject_digest(request: request_other_mocks) != base)
+    && (ci_attempt_subject_digest(request: request_other_config) != base)
+}
+
+// RED CONTROL, in the other direction: a digest that differed for everything would
+// satisfy the claim above while being useless. The same envelope must digest equal.
+test fn digest_is_stable_for_one_envelope() -> Bool {
+  let once = ci_attempt_subject_digest(request: base_request)
+  let again = ci_attempt_subject_digest(request: base_request)
+  once == again
+}
+
+// ── Scheduling ────────────────────────────────────────────────────────────────
+
+data n_format: CiNode = CiNode {
+  identity: ^ci_node_format_check,
+  kind: FormatCheck,
+  claims: [ReadOnlyRepository]
+}
+
+data n_seed_tests: CiNode = CiNode {
+  identity: ^ci_node_retained_seed_tests,
+  kind: RetainedSeedTests,
+  claims: [CargoTargetWrite]
+}
+
+data n_artifact_verify: CiNode = CiNode {
+  identity: ^ci_node_generated_artifact_verify,
+  kind: CompileCleanStanding,
+  claims: [CargoTargetWrite]
+}
+
+data n_prepare: CiNode = CiNode {
+  identity: ^ci_node_prepare_exact_subject,
+  kind: PrepareExactSubject,
+  claims: [ReadOnlyRepository]
+}
+
+data n_claim_a: CiNode = CiNode {
+  identity: ^ci_node_claim_a,
+  kind: EvaluateHermeticClaim { declaration: ^ci_decl_a },
+  claims: [PreparedContextAccess]
+}
+
+data n_claim_b: CiNode = CiNode {
+  identity: ^ci_node_claim_b,
+  kind: EvaluateHermeticClaim { declaration: ^ci_decl_b },
+  claims: [PreparedContextAccess]
+}
+
+fn batch_contains(batch: ExecutorBatch, node: CiNode) -> Bool {
+  let wanted = ci_node_to_node(node: node)
+  fold_list(
+    xs: batch.jobs,
+    empty: false,
+    cons: fn(acc, job) { acc || (job.node == wanted) }
+  )
+}
+
+fn some_batch_holds_both(
+  batches: List<ExecutorBatch>,
+  left: CiNode,
+  right: CiNode
+) -> Bool {
+  fold_list(
+    xs: batches,
+    empty: false,
+    cons: fn(acc, b) {
+      acc || (batch_contains(batch: b, node: left) && batch_contains(batch: b, node: right))
+    }
+  )
+}
+
+data no_deps: List<DependencyView> = []
+
+// INDEPENDENT NODES OVERLAP. Two read-only checks with no edge between them land in
+// one batch, which is the fact that makes "parallel" describe execution rather than
+// describe the plan's shape.
+test fn independent_nodes_share_a_batch() -> Bool {
+  some_batch_holds_both(
+    batches: ci_batches(plan_nodes: [n_format, n_prepare], dependencies: no_deps),
+    left: n_format,
+    right: n_prepare
+  )
+}
+
+// CONFLICTING NODES SERIALIZE, and the check is that they never co-reside — not that
+// something labelled them conflicting. Two nodes writing one cargo target directory
+// are ordered by the edge their claim produces.
+test fn resource_conflicting_nodes_never_share_a_batch() -> Bool {
+  claims_conflict(left: n_seed_tests, right: n_artifact_verify)
+    && !some_batch_holds_both(
+      batches: ci_batches(
+        plan_nodes: [n_seed_tests, n_artifact_verify],
+        dependencies: [ci_dependency(source: n_seed_tests, dependent: n_artifact_verify)]
+      ),
+      left: n_seed_tests,
+      right: n_artifact_verify
+    )
+}
+
+// The witness pair is the honest statement about today's evaluator: both claim
+// PreparedContextAccess, so they conflict and serialize. When the Arc-safe store
+// lands, resource_claim_is_exclusive flips one row and this witness is what tells us
+// the change took effect.
+test fn witness_nodes_conflict_on_the_prepared_context() -> Bool {
+  claims_conflict(left: n_claim_a, right: n_claim_b)
+    && !claims_conflict(left: n_format, right: n_prepare)
+}
+
+// ── Ledger reconciliation ─────────────────────────────────────────────────────
+
+data plan_two: List<CiNode> = [n_format, n_prepare]
+
+data receipts_complete: List<CiNodeReceipt> = [
+  CiNodeReceipt { node_identity: ^ci_node_format_check, outcome: NodePassed },
+  CiNodeReceipt { node_identity: ^ci_node_prepare_exact_subject, outcome: NodePassed }
+]
+
+data receipts_missing: List<CiNodeReceipt> = [
+  CiNodeReceipt { node_identity: ^ci_node_format_check, outcome: NodePassed }
+]
+
+// EQUAL COUNTS, DIFFERENT POPULATIONS. This is the case a length comparison calls
+// agreement: one planned node never reported and one unplanned node did, so the
+// ledger has exactly as many rows as the plan has nodes and still describes a
+// different run.
+data receipts_surplus_at_equal_count: List<CiNodeReceipt> = [
+  CiNodeReceipt { node_identity: ^ci_node_format_check, outcome: NodePassed },
+  CiNodeReceipt { node_identity: ^ci_node_claim_a, outcome: NodePassed }
+]
+
+data receipts_duplicate: List<CiNodeReceipt> = [
+  CiNodeReceipt { node_identity: ^ci_node_format_check, outcome: NodePassed },
+  CiNodeReceipt { node_identity: ^ci_node_format_check, outcome: NodePassed },
+  CiNodeReceipt { node_identity: ^ci_node_prepare_exact_subject, outcome: NodePassed }
+]
+
+test fn reconciliation_is_an_identity_join_not_a_count() -> Bool {
+  let complete = match reconcile_ledger(plan_nodes: plan_two, receipts: receipts_complete) {
+    LedgerComplete => true
+    LedgerMissing { node_identity: _ } => false
+    LedgerSurplus { node_identity: _ } => false
+    LedgerDuplicate { node_identity: _ } => false
+  }
+  let missing = match reconcile_ledger(plan_nodes: plan_two, receipts: receipts_missing) {
+    LedgerMissing { node_identity: m } => m == ^ci_node_prepare_exact_subject
+    LedgerComplete => false
+    LedgerSurplus { node_identity: _ } => false
+    LedgerDuplicate { node_identity: _ } => false
+  }
+  let equal_count_disagrees = match reconcile_ledger(
+    plan_nodes: plan_two,
+    receipts: receipts_surplus_at_equal_count
+  ) {
+    LedgerComplete => false
+    LedgerMissing { node_identity: _ } => true
+    LedgerSurplus { node_identity: _ } => true
+    LedgerDuplicate { node_identity: _ } => false
+  }
+  let duplicate = match reconcile_ledger(plan_nodes: plan_two, receipts: receipts_duplicate) {
+    LedgerDuplicate { node_identity: d } => d == ^ci_node_format_check
+    LedgerComplete => false
+    LedgerMissing { node_identity: _ } => false
+    LedgerSurplus { node_identity: _ } => false
+  }
+  complete
+    && missing
+    && equal_count_disagrees
+    && duplicate
+    && (length(xs: receipts_surplus_at_equal_count) == length(xs: plan_two))
+}
+
+// ── The verdict ───────────────────────────────────────────────────────────────
+
+data receipts_one_failed: List<CiNodeReceipt> = [
+  CiNodeReceipt { node_identity: ^ci_node_format_check, outcome: NodePassed },
+  CiNodeReceipt { node_identity: ^ci_node_prepare_exact_subject, outcome: NodeFailed }
+]
+
+// A LOST RECEIPT IS NOT A PASS. Every node that DID report passed here; the attempt
+// still refuses, because the fold only means something once every planned node
+// reported exactly once. This is the arm that makes the verdict derivable from the
+// ledger rather than from whatever was printed.
+test fn verdict_refuses_an_unreconciled_ledger_even_when_all_reports_passed() -> Bool {
+  let all_reported_passed = fold_list(
+    xs: receipts_missing,
+    empty: true,
+    cons: fn(acc, r) {
+      acc
+        && match r.outcome {
+          NodePassed => true
+          NodeFailed => false
+          NodeRefused { cause: _ } => false
+        }
+    }
+  )
+  all_reported_passed
+    && match ci_attempt_verdict(plan_nodes: plan_two, receipts: receipts_missing) {
+      AttemptRefused { reconciliation: _ } => true
+      AttemptPassed => false
+      AttemptFailed { node_identity: _ } => false
+    }
+}
+
+test fn verdict_passes_and_fails_on_the_reconciled_ledger() -> Bool {
+  let passes = match ci_attempt_verdict(plan_nodes: plan_two, receipts: receipts_complete) {
+    AttemptPassed => true
+    AttemptFailed { node_identity: _ } => false
+    AttemptRefused { reconciliation: _ } => false
+  }
+  let fails = match ci_attempt_verdict(plan_nodes: plan_two, receipts: receipts_one_failed) {
+    AttemptFailed { node_identity: f } => f == ^ci_node_prepare_exact_subject
+    AttemptPassed => false
+    AttemptRefused { reconciliation: _ } => false
+  }
+  passes && fails
+}
+
+test fn ci_attempt_witnesses() -> Bool {
+  digest_covers_every_envelope_field()
+    && digest_is_stable_for_one_envelope()
+    && independent_nodes_share_a_batch()
+    && resource_conflicting_nodes_never_share_a_batch()
+    && witness_nodes_conflict_on_the_prepared_context()
+    && reconciliation_is_an_identity_join_not_a_count()
+    && verdict_refuses_an_unreconciled_ledger_even_when_all_reports_passed()
+    && verdict_passes_and_fails_on_the_reconciled_ledger()
+}

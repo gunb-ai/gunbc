@@ -1,0 +1,436 @@
+module v2.workflow.ci_attempt
+
+import v2.std.algebra { contains, fold_list, length, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.dependency { BarrierBefore, DependencyView, ResourceDependsOn }
+import v2.std.logic { Bool }
+import v2.std.node { combine_hash, Hash, Node, Symbol, symbol_identity_digest }
+import v2.std.text { String }
+import v2.workflow.executor {
+  ExecutorBatch,
+  ExecutorRunBlocked,
+  ExecutorRunComplete,
+  ExecutorRunPlan,
+  ExecutorRunRunnable,
+  parallel_executor_plan_from_dependencies
+}
+import v2.workflow.floor2_prepared_subject { SubjectExclusionGround }
+
+// THE CI ATTEMPT AS ONE PLAN.
+//
+// The floor's policy — which work exists, what depends on what, what may co-reside,
+// what each node's terminal standing is, and what the attempt's verdict is — are
+// facts of this module. The host realizes an exact request and returns a receipt; it
+// decides nothing.
+//
+// This module deliberately does NOT define a scheduler. The ready frontier and the
+// batches come from v2.workflow.executor over v2.std.dependency edges, which is the
+// same authority module resolution uses. A second scheduler here would be the §3
+// fork: one concept, two implementations, reconciled by hope.
+
+// ── The exact request envelope ────────────────────────────────────────────────
+//
+// SUBSTRING SURFACES ARE GONE FROM THE SUBJECT. A source root and an exclusion are
+// exact identities, because path text is not the property being selected: the
+// borrowed roster proved it by removing lens/testgen.dag and workflow/
+// testclaim_corpus_runner.dag while leaving the modules that import them, which
+// reported present code as absent. An identity cannot straddle a dependency the way
+// a substring can.
+type SourceRootId
+  = SourceRootDag
+  | SourceRootV2
+  | SourceRootV1
+
+// An exclusion carries its GROUND, so "why is this out of the subject" has one
+// answer that travels with the row rather than living in a comment beside it. The
+// two grounds are different facts: a deliberately-invalid fixture's refusal IS the
+// property its consumer reads, while an out-of-roots module is present in the
+// repository and absent from this subject. Collapsing them would let a file that
+// merely fails to resolve wear the same badge as one that is supposed to.
+type SubjectExclusion {
+  path: String
+  ground: SubjectExclusionGround
+}
+
+// THE ENVELOPE IS WHAT THE SUBJECT IS, not just its source bytes. The earlier
+// preparation primitive built an evaluable context from sources alone, so any claim
+// depending on a fixture store or a published mock set could not earn outcome parity
+// against the entry-major path that supplies both — the run would differ for a reason
+// the digest could not express.
+type FixtureStoreIdentity
+  = FixtureStoreAbsent
+  | FixtureStoreAt { identity: Symbol }
+
+type PublishedMockSetIdentity
+  = PublishedMockSetEmpty
+  | PublishedMockSetOf { identity: Symbol }
+
+type ToolIdentity {
+  compiler: Symbol
+}
+
+type ConfigurationIdentity {
+  identity: Symbol
+}
+
+type CiAttemptRequest {
+  source_roots: List<SourceRootId>
+  exclusions: List<SubjectExclusion>
+  tool: ToolIdentity
+  fixture_store: FixtureStoreIdentity
+  published_mocks: PublishedMockSetIdentity
+  configuration: ConfigurationIdentity
+}
+
+// ── The work ──────────────────────────────────────────────────────────────────
+
+type CiNodeKind
+  = FormatCheck
+  | RetainedSeedTests
+  | GeneratedArtifactVerify
+  | PrepareExactSubject
+  | CompileCleanStanding
+  | EvaluateHermeticClaim { declaration: Symbol }
+  | EvaluateWetClaim { declaration: Symbol }
+  | ReduceRequiredVerdict
+  | PublishAttemptReceipt
+
+// A RESOURCE CLAIM IS A FACT ABOUT THE WORK, not a scheduling hint. Two nodes may
+// co-reside exactly when no claim they both hold is exclusive; the scheduler then
+// derives seriality from the claim rather than from a hand-written ordering, so a
+// newly added conflicting node serializes without anyone remembering to order it.
+type ResourceClaim
+  = ReadOnlyRepository
+  | CargoTargetWrite
+  | PreparedContextAccess
+  | LiveHostMutation
+  | NetworkAccess
+
+// PreparedContextAccess is EXCLUSIVE today, and that is an honest statement about the
+// interpreter rather than a modeling preference: the evaluator holds Rc/RefCell state
+// and thread-local active-context, so witness nodes cannot share it across threads
+// until the store-path Arc migration lands. Modeling it as an exclusive claim rather
+// than as a hidden Rust loop means every witness is still its own plan node with its
+// own identity and receipt, and the day the evaluator becomes shareable this is a
+// one-row change here rather than a rewrite of the runner.
+fn resource_claim_is_exclusive(claim: ResourceClaim) -> Bool {
+  match claim {
+    ReadOnlyRepository => false
+    CargoTargetWrite => true
+    PreparedContextAccess => true
+    LiveHostMutation => true
+    NetworkAccess => false
+  }
+}
+
+type CiNode {
+  identity: Symbol
+  kind: CiNodeKind
+  claims: List<ResourceClaim>
+}
+
+// ── Identity: the digest covers the whole envelope ────────────────────────────
+
+fn source_root_symbol(root: SourceRootId) -> Symbol {
+  match root {
+    SourceRootDag => ^ci_source_root_dag
+    SourceRootV2 => ^ci_source_root_src_v2
+    SourceRootV1 => ^ci_source_root_src_v1
+  }
+}
+
+fn subject_exclusion_ground_symbol(ground: SubjectExclusionGround) -> Symbol {
+  match ground {
+    ExcludedCannotStrictResolve => ^ci_exclusion_cannot_strict_resolve
+    ExcludedDerivedFailureClosure => ^ci_exclusion_derived_failure_closure
+    ExcludedNotPartOfThisSubject => ^ci_exclusion_not_part_of_this_subject
+  }
+}
+
+fn fixture_store_symbol(store: FixtureStoreIdentity) -> Symbol {
+  match store {
+    FixtureStoreAbsent => ^ci_fixture_store_absent
+    FixtureStoreAt { identity: id } => id
+  }
+}
+
+fn published_mocks_symbol(mocks: PublishedMockSetIdentity) -> Symbol {
+  match mocks {
+    PublishedMockSetEmpty => ^ci_published_mock_set_empty
+    PublishedMockSetOf { identity: id } => id
+  }
+}
+
+fn combine_source_root(acc: Hash, root: SourceRootId) -> Hash {
+  combine_hash(a: acc, b: symbol_identity_digest(sym: source_root_symbol(root: root)))
+}
+
+fn combine_exclusion(acc: Hash, exclusion: SubjectExclusion) -> Hash {
+  combine_hash(
+    a: acc,
+    b: symbol_identity_digest(
+      sym: subject_exclusion_ground_symbol(ground: exclusion.ground)
+    )
+  )
+}
+
+// THE DIGEST COVERS EVERY FIELD, and the witness beside this asserts it field by
+// field rather than asserting that the function returns something. A digest over
+// source bytes alone is the failure this whole envelope exists to prevent: two runs
+// with different fixture stores would carry one identity, so a parity comparison
+// between them would compare two different subjects and report agreement.
+fn ci_attempt_subject_digest(request: CiAttemptRequest) -> Hash {
+  let roots = fold_list(
+    xs: request.source_roots,
+    empty: symbol_identity_digest(sym: ^ci_attempt_envelope_seed),
+    cons: combine_source_root
+  )
+  let with_exclusions = fold_list(
+    xs: request.exclusions,
+    empty: roots,
+    cons: combine_exclusion
+  )
+  let with_tool = combine_hash(
+    a: with_exclusions,
+    b: symbol_identity_digest(sym: request.tool.compiler)
+  )
+  let with_fixtures = combine_hash(
+    a: with_tool,
+    b: symbol_identity_digest(sym: fixture_store_symbol(store: request.fixture_store))
+  )
+  let with_mocks = combine_hash(
+    a: with_fixtures,
+    b: symbol_identity_digest(sym: published_mocks_symbol(mocks: request.published_mocks))
+  )
+  combine_hash(
+    a: with_mocks,
+    b: symbol_identity_digest(sym: request.configuration.identity)
+  )
+}
+
+// ── Projection into the substrate scheduler ───────────────────────────────────
+
+fn ci_node_to_node(node: CiNode) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: node.identity } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn ci_nodes_to_nodes(nodes: List<CiNode>) -> List<Node> {
+  fold_list(
+    xs: nodes,
+    empty: ci_no_nodes,
+    cons: fn(acc, n) { list_snoc_item(xs: acc, item: ci_node_to_node(node: n)) }
+  )
+}
+
+data ci_no_nodes: List<Node> = []
+
+data ci_no_dependencies: List<DependencyView> = []
+
+fn ci_dependency(source: CiNode, dependent: CiNode) -> DependencyView {
+  let s = ci_node_to_node(node: source)
+  DependencyView {
+    source: s,
+    dependent: ci_node_to_node(node: dependent),
+    kind: BarrierBefore,
+    usage_site: s
+  }
+}
+
+// A RESOURCE CONFLICT BECOMES AN EDGE, which is what keeps the exclusivity honest.
+// The alternative — letting the batch contain both and trusting the executor to be
+// careful — proves nothing at plan time, and the ruling's own test is the right one:
+// a conflicting pair must not appear in one batch, not merely be annotated as
+// conflicting.
+fn resource_claim_symbol(claim: ResourceClaim) -> Symbol {
+  match claim {
+    ReadOnlyRepository => ^ci_claim_read_only_repository
+    CargoTargetWrite => ^ci_claim_cargo_target_write
+    PreparedContextAccess => ^ci_claim_prepared_context_access
+    LiveHostMutation => ^ci_claim_live_host_mutation
+    NetworkAccess => ^ci_claim_network_access
+  }
+}
+
+fn resource_claim_eq(a: ResourceClaim, b: ResourceClaim) -> Bool {
+  resource_claim_symbol(claim: a) == resource_claim_symbol(claim: b)
+}
+
+fn claims_conflict(left: CiNode, right: CiNode) -> Bool {
+  fold_list(
+    xs: left.claims,
+    empty: false,
+    cons: fn(acc, c) {
+      acc
+        || (resource_claim_is_exclusive(claim: c)
+          && contains(xs: right.claims, item: c, eq: resource_claim_eq))
+    }
+  )
+}
+
+fn ci_plan_nodes(plan_nodes: List<CiNode>) -> List<Node> {
+  ci_nodes_to_nodes(nodes: plan_nodes)
+}
+
+fn ci_batches(
+  plan_nodes: List<CiNode>,
+  dependencies: List<DependencyView>
+) -> List<ExecutorBatch> {
+  match parallel_executor_plan_from_dependencies(
+    nodes: ci_plan_nodes(plan_nodes: plan_nodes),
+    dependencies: dependencies,
+    scheduled: ci_no_nodes
+  ) {
+    ExecutorRunComplete { batches: bs, scheduled: _ } => bs
+    ExecutorRunRunnable { batch: b, scheduled: _, remaining: _ } => [b]
+    ExecutorRunBlocked { evidence: _, batches: bs, scheduled: _, remaining: _ } => bs
+  }
+}
+
+// ── Terminal standing: exactly one receipt per node ───────────────────────────
+
+type CiNodeOutcome
+  = NodePassed
+  | NodeFailed
+  | NodeRefused { cause: Symbol }
+
+type CiNodeReceipt {
+  node_identity: Symbol
+  outcome: CiNodeOutcome
+}
+
+// RECONCILIATION IS AN IDENTITY JOIN, never a count comparison. Equal counts with a
+// missing node and a surplus node is a real state, and a length check reports it as
+// agreement — the same shape as a census that counts the subjects someone remembered
+// to author.
+type LedgerReconciliation
+  = LedgerComplete
+  | LedgerMissing { node_identity: Symbol }
+  | LedgerSurplus { node_identity: Symbol }
+  | LedgerDuplicate { node_identity: Symbol }
+
+fn receipt_identities(receipts: List<CiNodeReceipt>) -> List<Symbol> {
+  fold_list(
+    xs: receipts,
+    empty: ci_no_symbols,
+    cons: fn(acc, r) { list_snoc_item(xs: acc, item: r.node_identity) }
+  )
+}
+
+data ci_no_symbols: List<Symbol> = []
+
+fn count_identity(ids: List<Symbol>, wanted: Symbol) -> Int {
+  fold_list(
+    xs: ids,
+    empty: 0,
+    cons: fn(acc, id) { if id == wanted { acc + 1 } else { acc } }
+  )
+}
+
+fn reconcile_node(
+  acc: LedgerReconciliation,
+  node: CiNode,
+  ids: List<Symbol>
+) -> LedgerReconciliation {
+  match acc {
+    LedgerMissing { node_identity: m } => LedgerMissing { node_identity: m }
+    LedgerSurplus { node_identity: s } => LedgerSurplus { node_identity: s }
+    LedgerDuplicate { node_identity: d } => LedgerDuplicate { node_identity: d }
+    LedgerComplete => {
+      let n = count_identity(ids: ids, wanted: node.identity)
+      if n == 0 {
+        LedgerMissing { node_identity: node.identity }
+      } else {
+        if n > 1 {
+          LedgerDuplicate { node_identity: node.identity }
+        } else {
+          LedgerComplete
+        }
+      }
+    }
+  }
+}
+
+fn surplus_receipt(
+  acc: LedgerReconciliation,
+  plan_nodes: List<CiNode>,
+  receipt: CiNodeReceipt
+) -> LedgerReconciliation {
+  match acc {
+    LedgerMissing { node_identity: m } => LedgerMissing { node_identity: m }
+    LedgerSurplus { node_identity: s } => LedgerSurplus { node_identity: s }
+    LedgerDuplicate { node_identity: d } => LedgerDuplicate { node_identity: d }
+    LedgerComplete => {
+      let planned = fold_list(
+        xs: plan_nodes,
+        empty: false,
+        cons: fn(seen, n) { seen || (n.identity == receipt.node_identity) }
+      )
+      if planned {
+        LedgerComplete
+      } else {
+        LedgerSurplus { node_identity: receipt.node_identity }
+      }
+    }
+  }
+}
+
+fn reconcile_ledger(
+  plan_nodes: List<CiNode>,
+  receipts: List<CiNodeReceipt>
+) -> LedgerReconciliation {
+  let ids = receipt_identities(receipts: receipts)
+  let planned_side = fold_list(
+    xs: plan_nodes,
+    empty: LedgerComplete,
+    cons: fn(acc, n) { reconcile_node(acc: acc, node: n, ids: ids) }
+  )
+  fold_list(
+    xs: receipts,
+    empty: planned_side,
+    cons: fn(acc, r) { surplus_receipt(acc: acc, plan_nodes: plan_nodes, receipt: r) }
+  )
+}
+
+// ── The verdict ───────────────────────────────────────────────────────────────
+
+// THE VERDICT IS DERIVED FROM THE LEDGER, never from stdout. An unreconciled ledger
+// does not produce a verdict at all: it refuses, because "every planned node reported
+// exactly once" is a precondition for the fold meaning anything. A run that lost a
+// node's receipt and passed everything else is not a pass.
+type CiAttemptVerdict
+  = AttemptPassed
+  | AttemptFailed { node_identity: Symbol }
+  | AttemptRefused { reconciliation: LedgerReconciliation }
+
+fn verdict_from_receipt(acc: CiAttemptVerdict, receipt: CiNodeReceipt) -> CiAttemptVerdict {
+  match acc {
+    AttemptFailed { node_identity: f } => AttemptFailed { node_identity: f }
+    AttemptRefused { reconciliation: r } => AttemptRefused { reconciliation: r }
+    AttemptPassed =>
+      match receipt.outcome {
+        NodePassed => AttemptPassed
+        NodeFailed => AttemptFailed { node_identity: receipt.node_identity }
+        NodeRefused { cause: _ } => AttemptFailed { node_identity: receipt.node_identity }
+      }
+  }
+}
+
+fn ci_attempt_verdict(
+  plan_nodes: List<CiNode>,
+  receipts: List<CiNodeReceipt>
+) -> CiAttemptVerdict {
+  match reconcile_ledger(plan_nodes: plan_nodes, receipts: receipts) {
+    LedgerComplete =>
+      fold_list(xs: receipts, empty: AttemptPassed, cons: verdict_from_receipt)
+    LedgerMissing { node_identity: m } =>
+      AttemptRefused { reconciliation: LedgerMissing { node_identity: m } }
+    LedgerSurplus { node_identity: s } =>
+      AttemptRefused { reconciliation: LedgerSurplus { node_identity: s } }
+    LedgerDuplicate { node_identity: d } =>
+      AttemptRefused { reconciliation: LedgerDuplicate { node_identity: d } }
+  }
+}
