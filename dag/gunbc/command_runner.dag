@@ -8,6 +8,7 @@ import std.resources { Network }
 import extdeps.exec.command {
   ArgvCommand,
   CommandTransport,
+  LocalExec,
   command_over_transport,
   shell_command_render,
 }
@@ -66,6 +67,15 @@ func run_shell_command_capture(command: ArgvCommand, transport: CommandTransport
     )
   )
   ShellCaptureResult { success: run.success, stdout: run.stdout, stderr: run.stderr }
+}
+
+// Receipt owner probe — admitted under command_runner_scaffold until
+// extdeps.filesystem.filesystem_io carries typed owner observation.
+fn stat_owner_name_capture(path: String) -> ShellCaptureResult {
+  run_shell_command_capture(
+    command: ArgvCommand { argv: ["stat", "-c", "%U", path] },
+    transport: LocalExec,
+  )
 }
 
 func run_shell_commands(commands: List<ArgvCommand>, transport: CommandTransport) -> ProcessExit

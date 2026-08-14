@@ -40,6 +40,10 @@ fn systemctl_set_property_argv(unit: NonEmptyStr, property: NonEmptyStr, value: 
   ]
 }
 
+fn systemctl_revert_memory_caps_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "revert", unit as String, "MemoryMax", "MemoryHigh"]
+}
+
 fn systemctl_show_property_argv(unit: NonEmptyStr, property: SystemdUnitProperty) -> List<String> {
   [
     "systemctl",
@@ -141,6 +145,22 @@ service systemd.Systemctl {
     }
     mock_response {
       0 => { success: true, stderr: "" } "hermetic systemd.Systemctl.SetProperty"
+    }
+  }
+
+  operation RevertMemoryCaps {
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "revert", "{unit}", "MemoryMax", "MemoryHigh"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl revert MemoryMax MemoryHigh failed"
+    }
+    mock_response {
+      0 => { success: true, stderr: "" } "hermetic systemd.Systemctl.RevertMemoryCaps"
     }
   }
 

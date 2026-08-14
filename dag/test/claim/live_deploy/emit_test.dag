@@ -76,6 +76,13 @@ import gunbc.ci_deploy_access {
   deploy_access_job_principal_refused_emit_poison,
 }
 import gunbc.fleet_posix_accounts { DeployRunnerPrincipal }
+import gunbc.host_axis_caps {
+  deploy_memory_cap_apply_script_for_host,
+  deploy_memory_cap_script_author_precedes_shadow_revert,
+  runner_slot_service_units_for_host,
+}
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import std.measure { byte_size_count }
 import v2.std.orchestration { Do, Run }
 import std.disposition { Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -277,6 +284,18 @@ test fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
     && string_contains(s: sh, pattern: "if ! dpkg -s tailscale >/dev/null 2>&1; then sudo -n apt-get install --yes tailscale; fi")
     && string_contains(s: sh, pattern: "if ! dpkg -s tmux >/dev/null 2>&1; then sudo -n apt-get install --yes tmux; fi")
     && string_contains(s: sh, pattern: "fold=apply verdict=converged")
+}
+
+test fn witness_apply_script_wires_memory_cap_deploy_consumer() -> Bool {
+  let target = deployment_srv1_target()
+  let units = runner_slot_service_units_for_host(host: target.host.identity)
+  let cap_block = deploy_memory_cap_apply_script_for_host(host: target.host.identity)
+  let sh = witness_apply_script()
+  deploy_memory_cap_script_author_precedes_shadow_revert(script: cap_block, units: units)
+    && string_contains(s: sh, pattern: cap_block)
+    && string_contains(s: sh, pattern: "20-fleet-width.conf")
+    && string_contains(s: sh, pattern: "sudo -n systemctl revert ")
+    && string_contains(s: sh, pattern: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_max)))
 }
 
 data unprivileged_principal_witness_note: String = "Discriminating RED for the run-29822498755 regression class: the ci-runner principal (fleet_posix_accounts FleetAccountCiRunner) holds NO rsync/chown/rmdir grant and no write on the service-user-owned tree, so a bare rsync/chown/rmdir in either script is a deploy that fails on the host again. The tree sync must instead ride the service-user oneshot unit (both rsync directions live INSIDE gunbc-tree-sync.service, principal User=briansrls), and every mutation outside it must be one of the six roster-granted sudo -n commands. Post-hoc admission of each sudo -n command against the ci_deploy_access grant envelope is the named residue (emit_deploy_principal_note)."
@@ -703,9 +722,9 @@ test fn retract_is_not_emitted_without_an_observed_scoped_removal() -> Bool {
 
 // CONVERGE-0 loop member: the deployment installs a per-instance fleet-converge timer
 // whose service converges SELF via the deployed binary, with calendar catch-up
-// (Persistent=true — the offline-host property) and the receipts dir the publication
-// leg writes into. Cadence facts derive from the gunbc.fleet_converge_timer authority,
-// so a drifted cadence here reds against that one row, not a second copy.
+// (Persistent=true — the offline-host property). Receipt dir is ensured owned by the
+// service principal; receipt file publication is atomic rename in fleet_converge_cli.
+// Cadence facts derive from the gunbc.fleet_converge_timer authority.
 test fn fleet_converge_member_installs_self_converging_timer_with_catchup() -> Bool {
   let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
   string_contains(s: live, pattern: " converge --host self")
@@ -718,16 +737,15 @@ test fn fleet_converge_member_installs_self_converging_timer_with_catchup() -> B
 // b1 CONVERGE-close witness: the fleet-converge unit MUST run as the repo-owning,
 // credentialed service principal — never root — or its `git ls-remote origin
 // refs/fleet/desired` hits dubious-ownership + no-credential and the desired ref is never
-// observed. RED if the converge unit reverts to User=root (the pre-b1 defect) OR if the
-// receipts dir loses its service-user owner (the coupled write-side half): a root-only
-// receipts dir means the briansrls converge run fails EACCES after the observation.
+// observed. Receipt dir bootstrap uses install-d; receipt file publication uses atomic
+// rename in fleet_converge_cli. RED if the converge unit reverts to User=root.
 test fn fleet_converge_unit_runs_as_credentialed_owner_never_root() -> Bool {
   let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
   string_contains(s: live, pattern: "Description=gunbc fleet converge (self)")
     && string_contains(s: live, pattern: concat("User=", gunbc_service_user as String))
     && string_contains(s: live, pattern: concat("Group=", gunbc_service_user as String))
-    && string_contains(s: live, pattern: "install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/receipts")
     && !string_contains(s: live, pattern: "User=root")
+    && string_contains(s: live, pattern: "install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/receipts")
 }
 
 // Teardown owns both files: the retract removes the timer AND the service beside it
