@@ -591,7 +591,7 @@ fn record_literal_field_walls(module_index: &ModuleIndex) {
         diagnostic_messages(&kernel_result)
     );
 
-    // RED: record literal where a Node parameter is declared (direct call arg)
+    // RED (original wall specimen, enrolled): record literal at a Node parameter.
     let record_at_node = "module fieldwall_node_arg\n\
         type Node { kind: Int, children: List<Int>, occurrence_id: Int }\n\
         type Box { label: String }\n\
@@ -608,7 +608,7 @@ fn record_literal_field_walls(module_index: &ModuleIndex) {
         diagnostic_messages(&node_arg_result)
     );
 
-    // RED: record literal where a coproduct is expected (field)
+    // RED (original wall specimen, enrolled): record literal at a coproduct field.
     let record_at_union = "module fieldwall_record_at_union\n\
         type Ev = EvA | EvB { n: Int, m: Int }\n\
         type Box { label: String }\n\
@@ -674,6 +674,51 @@ fn record_literal_field_walls(module_index: &ModuleIndex) {
         )),
         "complete literal must stay green, got: {:?}",
         diagnostic_messages(&complete_result)
+    );
+
+    // GREEN (exclusion boundary): Optional wrapper at a CardOptional formal.
+    let optional_wrapper_green = "module fieldwall_optional_wrapper_green\n\
+        type Payload { n: Int }\n\
+        type Holder { value: Payload? }\n\
+        data h: Holder = Holder { value: Present { value: Payload { n: 1 } } }\n";
+    let optional_wrapper_green_result = compile_multi(
+        module_index,
+        &[(
+            "fieldwall_optional_wrapper_green.dag",
+            optional_wrapper_green,
+        )],
+    );
+    assert!(
+        !optional_wrapper_green_result
+            .diagnostics
+            .iter()
+            .any(|d| matches!(&*d.diagnostic, CompilerDiagnostic::TypeMismatch { .. })),
+        "Present wrapper at CardOptional formal must stay green, got: {:?}",
+        diagnostic_messages(&optional_wrapper_green_result)
+    );
+
+    // RED (exclusion boundary): same wrapper shape at a Required formal.
+    let optional_wrapper_red = "module fieldwall_optional_wrapper_red\n\
+        type NonEmptyDiagnostics { head: Int, tail: List<Int> }\n\
+        type Rejected { diagnostics: NonEmptyDiagnostics }\n\
+        fn bad() -> Rejected {\n\
+          Rejected {\n\
+            diagnostics: Some {\n\
+              diagnostics: NonEmptyDiagnostics { head: 1, tail: [] }\n\
+            }\n\
+          }\n\
+        }\n";
+    let optional_wrapper_red_result = compile_multi(
+        module_index,
+        &[("fieldwall_optional_wrapper_red.dag", optional_wrapper_red)],
+    );
+    assert!(
+        optional_wrapper_red_result
+            .diagnostics
+            .iter()
+            .any(|d| matches!(&*d.diagnostic, CompilerDiagnostic::TypeMismatch { .. })),
+        "Some wrapper at required NonEmptyDiagnostics must stay red, got: {:?}",
+        diagnostic_messages(&optional_wrapper_red_result)
     );
 
     // GREEN: optional field may be omitted
