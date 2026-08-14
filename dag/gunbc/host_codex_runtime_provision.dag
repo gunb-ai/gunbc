@@ -1,0 +1,90 @@
+module gunbc.host_codex_runtime_provision
+
+import std.types { String, NonEmptyStr, Bool, FilePath }
+import std.disposition { Disposition, Scaffold, RealizationDispatch, Terminal, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import extdeps.filesystem.filesystem_io
+import product.placement_supply { HostIdentity }
+import gunbc.host_toolchain_ensure { host_toolchain_ensure, CodexRuntime }
+import gunbc.host_effect { HostEffect, ProvisionCodexRuntime }
+import gunbc.host_layout {
+  provider_runtime_placement_for_host,
+  srv1_gunbc_repo_root,
+  srv1_gunbc_serve_binary,
+}
+import gunbc.package_delivery {
+  codex_runtime_manifest_path,
+  codex_runtime_lock_path,
+  codex_runtime_materialization_refusal_reason,
+  materialize_codex_runtime_bundle,
+  AdmittedCodexRuntimeSource,
+  CodexRuntimeMaterialized,
+}
+
+data host_codex_runtime_provision_scope_disposition: Disposition = SingleAuthority
+
+data host_codex_runtime_provision_converge_cadence_note: String = "Assimilation (host_standup P1c) plus recurring reconcile: fleet_converge_policy registers codex_runtime_bundle on every fleet compute host, and gunbc.fleet_converge_cli converge_provider_runtime_codex_receipt runs ProvisionCodexRuntime on every `gunbc converge` for srv1–srv4 after slice1/knob-frontier work (converge_cli_run_host_knobs) and before converge-receipt publication. Standup alone would not heal already-assimilated hosts; the converge adjunct closes that hole."
+
+data host_codex_runtime_provision_realize_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect_realize",
+    decl_name: "realize_provision_codex_runtime",
+    field: WholeDeclaration,
+  }
+}
+
+fn provision_codex_runtime_effect() -> HostEffect {
+  ProvisionCodexRuntime {}
+}
+
+fn provision_codex_runtime_routes_through_host_effect_apply() -> Bool {
+  match host_codex_runtime_provision_realize_scaffold {
+    Scaffold {
+      dissolves_to: RealizationDispatch,
+      bind: DeclarationRef { module_path: m, decl_name: n, field: _ },
+    } =>
+      m == "gunbc.host_effect_realize" && n == "realize_provision_codex_runtime"
+    Terminal { reason: _ } => false
+  }
+}
+
+fn committed_admitted_codex_runtime_source() -> AdmittedCodexRuntimeSource {
+  AdmittedCodexRuntimeSource {
+    manifest_bytes: filesystem_read(path: codex_runtime_manifest_path as String).content,
+    lock_bytes: filesystem_read(path: codex_runtime_lock_path as String).content,
+  }
+}
+
+func materialize_codex_runtime_on_local_host() -> ProcessExit
+  uses net: Network
+{
+  match provider_runtime_placement_for_host(host: "srv1" as HostIdentity) {
+    Absent =>
+      exit_failure(
+        reason: "host_codex_runtime_provision: materialize_codex_runtime_on_local_host requires a fleet compute placement row",
+      )
+    Present { value: placement } =>
+      match materialize_codex_runtime_bundle(
+        source: committed_admitted_codex_runtime_source(),
+        release_parent: placement.runtime_release_root,
+      ) {
+        CodexRuntimeMaterialized { bundle: _ } => ExitSuccess
+        other =>
+          exit_failure(
+            reason: match codex_runtime_materialization_refusal_reason(outcome: other) {
+              Present { value: why } => why as String
+              Absent => "host_codex_runtime_provision: codex runtime materialization refused"
+            },
+          )
+      }
+  }
+}
+
+func provision_codex_runtime(host: HostIdentity) -> ProcessExit
+  uses net: Network
+{
+  host_toolchain_ensure(host: host, kind: CodexRuntime)
+}

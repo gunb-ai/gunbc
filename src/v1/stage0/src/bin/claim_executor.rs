@@ -1907,6 +1907,11 @@ struct ClaimResult {
     /// as data on the path that needs it. It is a projection of `ClaimOutcome::TimedOut`,
     /// not a second authority: nothing sets it except the `TimedOut` arm below.
     budget_refusal: Option<BudgetRefusal>,
+    /// Set when a wet witness refused because a host CLI dependency was absent on PATH
+    /// before execution. Parsed from the failure-receipt wire
+    /// `HostDependencyAbsent{tool=...,hint=...}`. Dissolve-on:
+    /// `gunbc.witness_row_cost` `host_dependency_refusal_seed_deferral_note`.
+    host_dependency_refusal: Option<HostDependencyRefusal>,
     /// Set only when this batch contained a witness declared expected-RED that ran GREEN,
     /// carrying the identities that must be un-quarantined.
     ///
@@ -2061,6 +2066,7 @@ fn pre_verdict_unverified_claim_result(
         witness_row_costs: Vec::new(),
         expectation_refusal: Some(refusal),
         budget_refusal: None,
+        host_dependency_refusal: None,
         selection_degradation: None,
         resolve_realization: None,
     }
@@ -2360,6 +2366,53 @@ struct BudgetRefusal {
     kind: BudgetKind,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct HostDependencyRefusal {
+    tool: String,
+    hint: String,
+}
+
+impl HostDependencyRefusal {
+    fn mode(&self) -> &'static str {
+        HOST_DEPENDENCY_ABSENT_MODE
+    }
+
+    fn detail(&self) -> String {
+        format!(
+            "HostDependencyAbsent{{tool={},hint={}}}",
+            self.tool, self.hint
+        )
+    }
+}
+
+const HOST_DEPENDENCY_ABSENT_MODE: &str = "HostDependencyAbsent";
+
+fn host_dependency_refusal_from_detail(detail: &str) -> Option<HostDependencyRefusal> {
+    const PREFIX: &str = "HostDependencyAbsent{tool=";
+    // Anchor on the last wire token so an earlier accidental substring cannot win.
+    let start = detail.rfind(PREFIX)?;
+    let rest = &detail[start + PREFIX.len()..];
+    let comma = rest.find(",hint=")?;
+    let tool = rest[..comma].to_string();
+    if tool.is_empty() || tool.contains('{') || tool.contains('}') {
+        return None;
+    }
+    let hint_start = comma + ",hint=".len();
+    let hint_rest = &rest[hint_start..];
+    if hint_rest.contains('{') {
+        return None;
+    }
+    let hint_end = hint_rest.rfind('}')?;
+    if hint_end != hint_rest.len() - 1 {
+        return None;
+    }
+    let hint = hint_rest[..hint_end].to_string();
+    if hint.is_empty() {
+        return None;
+    }
+    Some(HostDependencyRefusal { tool, hint })
+}
+
 /// A batch is partitioned into resolve-groups before scheduling. SingleClaims that share one
 /// `entry` collapse into a single `SharedClaims` group: the entry's import closure is resolved
 /// (and typechecked) EXACTLY ONCE and every claim runs on that one shared interpreter context,
@@ -2573,39 +2626,42 @@ fn claim_result_for_outcome(
             witness_row_costs: Vec::new(),
             expectation_refusal: None,
             budget_refusal: None,
+            host_dependency_refusal: None,
             selection_degradation: None,
             resolve_realization,
         },
-        ClaimOutcome::Fail => ClaimResult {
-            detail: {
-                let mut detail = "returned Bool(false)".to_string();
-                v1_compiler::cli_run::append_failure_receipt_companion_loudness(
-                    &mut detail,
-                    ctx,
-                    &function,
-                );
-                v1_compiler::cli_run::append_witness_verdict_diagnostic_loudness(
-                    &mut detail,
-                    ctx,
-                    &function,
-                );
-                detail
-            },
-            function,
-            entry: entry.clone(),
-            ok: false,
-            wall_nanos,
-            resolve_nanos,
-            corpus_resolve_nanos: 0,
-            corpus_eval_nanos: 0,
-            corpus_witnesses: 0,
-            runtime_unit_count: single_claim_runtime_unit_count(),
-            witness_row_costs: Vec::new(),
-            expectation_refusal: None,
-            budget_refusal: None,
-            selection_degradation: None,
-            resolve_realization,
-        },
+        ClaimOutcome::Fail => {
+            let mut detail = "returned Bool(false)".to_string();
+            v1_compiler::cli_run::append_failure_receipt_companion_loudness(
+                &mut detail,
+                ctx,
+                &function,
+            );
+            v1_compiler::cli_run::append_witness_verdict_diagnostic_loudness(
+                &mut detail,
+                ctx,
+                &function,
+            );
+            let host_dependency_refusal = host_dependency_refusal_from_detail(&detail);
+            ClaimResult {
+                detail,
+                function,
+                entry: entry.clone(),
+                ok: false,
+                wall_nanos,
+                resolve_nanos,
+                corpus_resolve_nanos: 0,
+                corpus_eval_nanos: 0,
+                corpus_witnesses: 0,
+                runtime_unit_count: single_claim_runtime_unit_count(),
+                witness_row_costs: Vec::new(),
+                expectation_refusal: None,
+                budget_refusal: None,
+                host_dependency_refusal,
+                selection_degradation: None,
+                resolve_realization,
+            }
+        }
         ClaimOutcome::NotBool { got } => ClaimResult {
             function,
             entry: entry.clone(),
@@ -2620,6 +2676,7 @@ fn claim_result_for_outcome(
             witness_row_costs: Vec::new(),
             expectation_refusal: None,
             budget_refusal: None,
+            host_dependency_refusal: None,
             selection_degradation: None,
             resolve_realization,
         },
@@ -2637,6 +2694,7 @@ fn claim_result_for_outcome(
             witness_row_costs: Vec::new(),
             expectation_refusal: None,
             budget_refusal: None,
+            host_dependency_refusal: None,
             selection_degradation: None,
             resolve_realization,
         },
@@ -2672,6 +2730,7 @@ fn claim_result_for_outcome(
                 budget_ms,
                 kind,
             }),
+            host_dependency_refusal: None,
             selection_degradation: None,
             resolve_realization,
         },
@@ -3031,6 +3090,7 @@ fn run_native_bundle_unit(
         witness_row_costs: Vec::new(),
         expectation_refusal: None,
         budget_refusal: None,
+        host_dependency_refusal: None,
         selection_degradation: None,
         resolve_realization: None,
     };
@@ -3063,6 +3123,7 @@ fn run_native_bundle_unit(
         witness_row_costs: Vec::new(),
         expectation_refusal: None,
         budget_refusal: None,
+        host_dependency_refusal: None,
         selection_degradation: None,
         resolve_realization: resolve_observation(),
     };
@@ -3236,6 +3297,7 @@ fn run_native_bundle_unit(
         witness_row_costs: Vec::new(),
         expectation_refusal: None,
         budget_refusal: None,
+        host_dependency_refusal: None,
         selection_degradation: None,
         resolve_realization: Some(ResolveRealizationObservation::ColdResolvePerformed {
             resolve_nanos,
@@ -3278,6 +3340,7 @@ fn run_batch_unit(
             witness_row_costs: Vec::new(),
             expectation_refusal: None,
             budget_refusal: None,
+            host_dependency_refusal: None,
             selection_degradation: None,
             resolve_realization: None,
         }],
@@ -3436,6 +3499,7 @@ fn run_shared_entry_claims(
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
+                    host_dependency_refusal: None,
                     selection_degradation: None,
                     resolve_realization: None,
                 })
@@ -3525,6 +3589,7 @@ fn run_memo_shared_claims(
                         witness_row_costs: Vec::new(),
                         expectation_refusal: None,
                         budget_refusal: None,
+                        host_dependency_refusal: None,
                         selection_degradation: None,
                         resolve_realization: None,
                     })
@@ -4038,6 +4103,22 @@ fn discovery_budget_refusal(summary: &DiscoverySummary) -> Option<BudgetRefusal>
         })
 }
 
+/// Lift the first host-dependency refusal among this discovery batch's failure lines.
+///
+/// Parallel to `discovery_budget_refusal`: falsifier batch 5 runs Codex materialization
+/// witnesses as a `RunnableDiscoveryBatch`, flattening N reds into one `ClaimResult`.
+/// The failure-receipt wire is appended in `cli_run` on discovery reds, but
+/// `batch_failure_mode_and_detail` reads `host_dependency_refusal` off the value — not
+/// substring-matching `detail` — so this lift is required for `HostDependencyAbsent` on
+/// the primary falsifier path (run 31685755058 component 6). Dissolve-on:
+/// `gunbc.witness_row_cost` `host_dependency_refusal_seed_deferral_note`.
+fn discovery_host_dependency_refusal(summary: &DiscoverySummary) -> Option<HostDependencyRefusal> {
+    summary
+        .failures
+        .iter()
+        .find_map(|failure| host_dependency_refusal_from_detail(failure))
+}
+
 const SCOPED_WITNESS_RECEIPT_PATH: &str = "target/scoped-witness-execution-receipt.tsv";
 const SCOPED_WITNESS_RECEIPT_HEADER: &str =
     "head_sha\tbatch_id\tsource_roots_digest\tentry\tfunction\twitness_kind\toutcome\tdetail";
@@ -4205,6 +4286,7 @@ fn discovery_claim_result(
                 witness_row_costs,
                 expectation_refusal,
                 budget_refusal: discovery_budget_refusal(summary),
+                host_dependency_refusal: discovery_host_dependency_refusal(summary),
                 selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
                     selection, summary,
                 )),
@@ -4240,6 +4322,7 @@ fn discovery_claim_result(
                 // here would hand it back to the substring classifier.
                 expectation_refusal,
                 budget_refusal: discovery_budget_refusal(summary),
+                host_dependency_refusal: discovery_host_dependency_refusal(summary),
                 selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
                     selection, summary,
                 )),
@@ -4352,6 +4435,7 @@ fn run_discovery_batch_node(
                         witness_row_costs: Vec::new(),
                         expectation_refusal: None,
                         budget_refusal: discovery_budget_refusal(&summary),
+                        host_dependency_refusal: discovery_host_dependency_refusal(&summary),
                         selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
                             node_frontier_selection,
                             &summary,
@@ -4527,6 +4611,7 @@ fn run_discovery_batch_node(
                         witness_row_costs: Vec::new(),
                         expectation_refusal: None,
                         budget_refusal: discovery_budget_refusal(&summary),
+                        host_dependency_refusal: discovery_host_dependency_refusal(&summary),
                         selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
                             node_frontier_selection,
                             &summary,
@@ -4661,6 +4746,7 @@ fn run_discovery_batch_node(
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
+                    host_dependency_refusal: None,
                     selection_degradation: None,
                     resolve_realization: None,
                 }
@@ -5357,6 +5443,16 @@ fn batch_failure_mode_and_detail(rec: &BatchRecord) -> (&'static str, String) {
         return (
             "BudgetExceeded",
             joined.chars().take(600).collect::<String>(),
+        );
+    }
+    if let Some(refusal) = rec
+        .results
+        .iter()
+        .find_map(|r| r.host_dependency_refusal.as_ref())
+    {
+        return (
+            refusal.mode(),
+            refusal.detail().chars().take(600).collect::<String>(),
         );
     }
     (
@@ -11993,6 +12089,7 @@ mod tests {
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
+                    host_dependency_refusal: None,
                     selection_degradation: None,
                     resolve_realization: None,
                 })
@@ -12203,6 +12300,7 @@ mod tests {
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
+                    host_dependency_refusal: None,
                     selection_degradation: None,
                     resolve_realization: resolve_observation_for_nanos(anchor_nanos),
                 },
@@ -12222,6 +12320,7 @@ mod tests {
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
+                    host_dependency_refusal: None,
                     selection_degradation: None,
                     resolve_realization: resolve_observation_for_nanos(native_nanos),
                 },
@@ -12251,6 +12350,7 @@ mod tests {
             witness_row_costs: Vec::new(),
             expectation_refusal: None,
             budget_refusal: None,
+            host_dependency_refusal: None,
             selection_degradation: None,
             resolve_realization: None,
         });
@@ -12290,6 +12390,7 @@ mod tests {
                 witness_row_costs: Vec::new(),
                 expectation_refusal: None,
                 budget_refusal: None,
+                host_dependency_refusal: None,
                 selection_degradation: None,
                 resolve_realization: None,
             }],
@@ -12327,6 +12428,7 @@ mod tests {
             witness_row_costs: Vec::new(),
             expectation_refusal: None,
             budget_refusal: None,
+            host_dependency_refusal: None,
             selection_degradation: None,
             resolve_realization: None,
         });
@@ -12374,6 +12476,7 @@ mod tests {
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
+                    host_dependency_refusal: None,
                     selection_degradation: None,
                     resolve_realization: Some(
                         ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos: 9 },
@@ -12403,6 +12506,7 @@ mod tests {
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
+                    host_dependency_refusal: None,
                     selection_degradation: None,
                     resolve_realization: Some(
                         ResolveRealizationObservation::SatisfiedFromSharedPool {
@@ -12437,6 +12541,7 @@ mod tests {
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
+                    host_dependency_refusal: None,
                     selection_degradation: None,
                     resolve_realization: resolve_observation_for_nanos(3),
                 }],
@@ -12485,6 +12590,7 @@ mod tests {
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
+                    host_dependency_refusal: None,
                     selection_degradation: None,
                     resolve_realization: Some(
                         ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos: 9 },
@@ -12504,6 +12610,7 @@ mod tests {
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
+                    host_dependency_refusal: None,
                     selection_degradation: None,
                     resolve_realization: Some(
                         ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos: 7 },
@@ -13112,6 +13219,7 @@ mod tests {
             witness_row_costs: Vec::new(),
             expectation_refusal: refusal,
             budget_refusal: None,
+            host_dependency_refusal: None,
             selection_degradation: None,
             resolve_realization: None,
         }
@@ -13764,6 +13872,7 @@ mod tests {
                 budget_ms: 900_000,
                 kind: BudgetKind::Wall,
             }),
+            host_dependency_refusal: None,
             selection_degradation: None,
             resolve_realization: None,
         };
@@ -13793,11 +13902,78 @@ mod tests {
             witness_row_costs: Vec::new(),
             expectation_refusal: None,
             budget_refusal: None,
+            host_dependency_refusal: None,
             selection_degradation: None,
             resolve_realization: None,
         };
         let (mode, _) = batch_failure_mode_and_detail(&batch_record_for_test(vec![plain]));
         assert_eq!(mode, "WitnessRed");
+    }
+
+    /// A host dependency refusal must classify as HostDependencyAbsent from the VALUE,
+    /// not WitnessRed — same structural rule as budget_kill_classifies_structurally_not_by_message_text.
+    #[test]
+    fn host_dependency_absent_classifies_structurally_not_as_witness_red() {
+        let npm_absent = ClaimResult {
+            function: "materialize_codex_runtime_bundle_produces_native_executable_holds"
+                .to_string(),
+            entry: "dag/test/claim/codex_package_delivery_wet_witness_test.dag".to_string(),
+            ok: false,
+            detail: "returned Bool(false) | HostDependencyAbsent{tool=npm,hint=apt install npm}"
+                .to_string(),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
+            witness_row_costs: Vec::new(),
+            expectation_refusal: None,
+            budget_refusal: None,
+            host_dependency_refusal: Some(HostDependencyRefusal {
+                tool: "npm".to_string(),
+                hint: "apt install npm".to_string(),
+            }),
+            selection_degradation: None,
+            resolve_realization: None,
+        };
+        assert_eq!(
+            falsifier_failure_mode(&[npm_absent.detail.clone()]),
+            "WitnessRed",
+            "control: string classifier alone would misclassify"
+        );
+        let (mode, detail) =
+            batch_failure_mode_and_detail(&batch_record_for_test(vec![npm_absent]));
+        assert_eq!(mode, HOST_DEPENDENCY_ABSENT_MODE);
+        assert!(detail.contains("HostDependencyAbsent{tool=npm"));
+    }
+
+    #[test]
+    fn host_dependency_refusal_from_detail_parses_wire() {
+        let parsed = host_dependency_refusal_from_detail(
+            "returned Bool(false) | HostDependencyAbsent{tool=npm,hint=apt install npm}",
+        )
+        .expect("wire must parse");
+        assert_eq!(parsed.tool, "npm");
+        assert_eq!(parsed.hint, "apt install npm");
+    }
+
+    #[test]
+    fn host_dependency_refusal_from_detail_anchors_last_wire_token() {
+        let parsed = host_dependency_refusal_from_detail(
+            "HostDependencyAbsent{tool=decoy,hint=x} | returned Bool(false) | HostDependencyAbsent{tool=npm,hint=apt install npm}",
+        )
+        .expect("last wire token must win");
+        assert_eq!(parsed.tool, "npm");
+        assert_eq!(parsed.hint, "apt install npm");
+    }
+
+    #[test]
+    fn host_dependency_refusal_from_detail_refuses_brace_in_hint() {
+        assert!(host_dependency_refusal_from_detail(
+            "HostDependencyAbsent{tool=npm,hint=install {pkg} on runner}"
+        )
+        .is_none());
     }
 
     #[test]
@@ -14120,6 +14296,7 @@ mod tests {
             runtime_unit_count: runtime_unit_count_unavailable("resolve refused"),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
+            host_dependency_refusal: None,
             expectation_refusal: None,
             selection_degradation: None,
             resolve_realization: None,
@@ -14143,6 +14320,7 @@ mod tests {
             runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
+            host_dependency_refusal: None,
             expectation_refusal: None,
             selection_degradation: None,
             resolve_realization: None,
@@ -16434,6 +16612,7 @@ mod tests {
                 ],
                 expectation_refusal: None,
                 budget_refusal: None,
+                host_dependency_refusal: None,
                 selection_degradation: None,
                 resolve_realization: None,
             }],
@@ -16535,6 +16714,7 @@ mod tests {
                 ],
                 expectation_refusal: None,
                 budget_refusal: None,
+                host_dependency_refusal: None,
                 selection_degradation: None,
                 resolve_realization: None,
             }],
@@ -16852,6 +17032,88 @@ mod tests {
         assert!(result.budget_refusal.is_none());
     }
 
+    /// RED control for review 51796: discovery batch must lift host-dependency refusals out of
+    /// `summary.failures`, parallel to `discovery_budget_kill_classifies_structurally_on_the_falsifier_path`.
+    #[test]
+    fn discovery_host_dependency_absent_classifies_structurally_on_the_falsifier_path() {
+        use v1_compiler::cli_run::{
+            ClaimOutcome, DiscoverySummary, DiscoveryWitnessOutcome, EntryResolveReceipt,
+            ResolveStageNanos,
+        };
+        let wire = "HostDependencyAbsent{tool=npm,hint=apt install npm}";
+        let failure = format!(
+            "materialize_codex_runtime_bundle_produces_native_executable_holds \
+             (dag/test/claim/codex_package_delivery_wet_witness_test.dag) returned Bool(false) | \
+             {wire}"
+        );
+        let aggregate_detail = format!("1 of 1 discovery witness(es) failed: {failure}");
+        assert_eq!(
+            falsifier_failure_mode(&[aggregate_detail.clone()]),
+            "WitnessRed",
+            "control: string classifier alone would misclassify"
+        );
+
+        let summary_with = |outcome: ClaimOutcome, failures: Vec<String>| DiscoverySummary {
+            total: 1,
+            passed: 0,
+            skipped: 0,
+            selection_skipped_rows: Vec::new(),
+            deferred_rows: Vec::new(),
+            predicted_unaffected: Vec::new(),
+            divergences: Vec::new(),
+            failures,
+            witness_outcomes: vec![DiscoveryWitnessOutcome {
+                entry: "dag/test/claim/codex_package_delivery_wet_witness_test.dag".into(),
+                module_path: "test.claim.codex_package_delivery_wet_witness_test".into(),
+                function: "materialize_codex_runtime_bundle_produces_native_executable_holds"
+                    .into(),
+                outcome,
+                execution_leg: "InterpretedLeg".into(),
+            }],
+            entry_resolve_receipts: Vec::<EntryResolveReceipt>::new(),
+            total_resolve_nanos: 0,
+            total_stage_nanos: ResolveStageNanos::default(),
+            performance_receipts: Vec::new(),
+            total_measured_nanos: 0,
+            roster_closure_nodes: 0,
+            total_entry_groups: 0,
+            selected_entry_groups: 0,
+            selection_categorization_reason: None,
+        };
+
+        for projected in [
+            Ok(Vec::new()),
+            Err("[witness-row-cost] REFUSED: missing measured resolve parent".to_string()),
+        ] {
+            let result = discovery_claim_result(
+                "discovery-corpus".into(),
+                false,
+                aggregate_detail.clone(),
+                NodeFrontierSelectionMode::Applied,
+                &summary_with(ClaimOutcome::Fail, vec![failure.clone()]),
+                projected,
+                None,
+            );
+            assert!(
+                result.host_dependency_refusal.is_some(),
+                "discovery batch must lift the host dependency refusal out of summary.failures"
+            );
+            let (mode, _) = batch_failure_mode_and_detail(&batch_record_for_test(vec![result]));
+            assert_eq!(mode, HOST_DEPENDENCY_ABSENT_MODE);
+        }
+
+        let result = discovery_claim_result(
+            "discovery-corpus".into(),
+            false,
+            "red".into(),
+            NodeFrontierSelectionMode::Applied,
+            &summary_with(ClaimOutcome::Fail, vec!["returned Bool(false)".into()]),
+            Ok(Vec::new()),
+            None,
+        );
+        assert!(result.host_dependency_refusal.is_none());
+    }
+
     #[test]
     fn discovery_claim_result_preserves_caller_detail_on_receipt_refuse() {
         // RED control for review 43284: receipt refusal must append, never overwrite
@@ -16968,6 +17230,7 @@ mod tests {
             witness_row_costs: Vec::new(),
             expectation_refusal: None,
             budget_refusal: None,
+            host_dependency_refusal: None,
             selection_degradation: None,
             resolve_realization: None,
         }

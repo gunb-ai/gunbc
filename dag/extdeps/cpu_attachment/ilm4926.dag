@@ -1,0 +1,162 @@
+module extdeps.cpu_attachment.ilm4926
+
+import std.types { Bool, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.cpu.ampere {
+  ampere_altra_classic_rev_a1_datasheet_authority,
+  ampere_altra_rev_a1_datasheet_authority,
+}
+import extdeps.uri { Uri, Https }
+
+// THE DATASHEET LOCATORS ARE CONSUMED, NOT RE-AUTHORED (review 52024). Both
+// Ampere datasheet anchors already exist in extdeps.cpu.ampere, so these are
+// bindings to those declarations rather than second copies of the same URIs —
+// a re-typed locator is the parallel authority DESIGN section 3 forbids, and it
+// rots independently the day Ampere moves an asset.
+data extdeps_external_authority_anchor: ExternalAuthority = ampere_altra_rev_a1_datasheet_authority
+
+data altra_classic_datasheet_authority: ExternalAuthority = ampere_altra_classic_rev_a1_datasheet_authority
+
+// THE MT. JADE LOCATOR IS AUTHORED HERE BECAUSE NO MODULE ON MAIN OWNS IT.
+// This is a sequencing fact, not admitted debt: on main today this row IS the
+// single authority for that locator, and gunbc#8257 introduces a module that
+// will own it. Whichever of the two lands second reconciles, and the direction
+// is fixed in advance so nobody has to decide it later — the OCP document's own
+// module owns its anchor, this row is deleted, and the attestation consumes
+// extdeps.ocp.mt_jade.subject exactly as the two Ampere rows above already
+// consume extdeps.cpu.ampere. Stacking this PR on that branch instead would
+// trade one reconciliation for a base that CI does not run against at all.
+data ocp_mt_jade_specification_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
+  }
+}
+
+// THE SUBJECT IS A DESIGNATION, NOT A PART, AND THAT IS THE WHOLE POINT OF
+// THIS MODULE. ILM4926 is named by documents from two different publishers —
+// Ampere's Altra processor datasheets and the OCP Mt. Jade motherboard
+// specification — so it is a shared subject rather than a property of either
+// document, and repeating it inside both of their modules would be the fork
+// DESIGN section 3 forbids. What the designator NAMES is deliberately left
+// open: ILM most plausibly expands to Independent Loading Mechanism, which is
+// retention hardware, while the datasheet wording is 'seated in ILM4926
+// socket' and a socket body is a different part that may come from a different
+// vendor. This module therefore carries the designator and every document's
+// exact wording, and refuses to decide between them. A module that had to pick
+// 'socket authority' or 'loading-mechanism authority' in order to exist would
+// be closing by our guess a question no cited document answers.
+// The folder deliberately does not say socket. Placing this under a socket
+// path would decide by directory the exact question the referent axis leaves
+// open, and paths are discriminators rather than gospel (DESIGN section 3).
+// 'cpu_attachment' names what the designation is FOR — how a processor is
+// attached to a board — which every candidate referent has in common.
+type ProcessorAttachmentDesignation {
+  designator: NonEmptyStr
+}
+
+data ilm4926: ProcessorAttachmentDesignation = ProcessorAttachmentDesignation {
+  designator: "ILM4926",
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cpu_attachment.ilm4926",
+      decl_name: "ilm4926",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [altra_classic_datasheet_authority, ocp_mt_jade_specification_authority]
+}
+
+// WHAT THE DESIGNATOR NAMES. The candidates are separated because they are
+// physically different parts with different vendors and different board
+// consequences: a socket body is what lands on the PCB, a loading mechanism is
+// what applies compression to the lid, and an assembly is the two sold
+// together. A board design needs to know which one a designation buys.
+type AttachmentDesignationReferent
+  = SocketBodyOnly
+  | IndependentLoadingMechanismOnly
+  | SocketAssemblyIncludingLoadingMechanism
+  | ReferentUnresolvedByCitedDocuments { reason: NonEmptyStr }
+
+// WHAT WOULD CLOSE THE REFERENT QUESTION, named so the next reader knows what
+// to look for rather than re-deriving the search. A vendor part number
+// attached to the designator in any cited document would settle it, because a
+// part number belongs to one manufacturer's one part. So would a drawing that
+// dimensions a socket body and a retention mechanism separately while
+// attaching the designator to one of them; the Mt. Jade specification and the
+// Altra platform specification both contain socket drawings whose interiors
+// this repository cannot read. Absent either, the honest state is unresolved,
+// and a board design that needs to order a part needs this closed before it
+// can.
+data ilm4926_referent: AttachmentDesignationReferent = ReferentUnresolvedByCitedDocuments {
+  reason: "no cited document expands the designator or attributes it to a vendor part; the Ampere datasheets call it a socket in passing while the initials most plausibly expand to Independent Loading Mechanism, and those name different parts",
+}
+
+fn designation_referent_is_resolved(referent: AttachmentDesignationReferent) -> Bool {
+  match referent {
+    SocketBodyOnly => true
+    IndependentLoadingMechanismOnly => true
+    SocketAssemblyIncludingLoadingMechanism => true
+    ReferentUnresolvedByCitedDocuments { reason } => false
+  }
+}
+
+// EACH DOCUMENT'S OWN WORDING, quoted rather than paraphrased, because the
+// wording is the evidence: 'seated in ILM4926 socket' is a passing mention
+// inside a thermal measurement condition, which is weaker than a part callout
+// and is exactly why the referent stays open. An attestation names the
+// authority it came from, so a second source is a second row rather than a
+// strengthened adjective on the first.
+type DesignationAttestation {
+  authority: ExternalAuthority
+  wording: NonEmptyStr
+  context: NonEmptyStr
+}
+
+data ilm4926_attestations: List<DesignationAttestation> = [
+  DesignationAttestation {
+    authority: extdeps_external_authority_anchor,
+    wording: "device seated in ILM4926 socket",
+    context: "Altra Max Rev A1 datasheet, Document Issue 1.15, thermal specification note stating where case temperature TC is measured",
+  },
+  DesignationAttestation {
+    authority: altra_classic_datasheet_authority,
+    wording: "device seated in ILM4926 socket",
+    context: "Altra Rev A1 datasheet, Document Issue 1.50, the same thermal measurement condition in the classic-family datasheet",
+  },
+  DesignationAttestation {
+    authority: ocp_mt_jade_specification_authority,
+    wording: "ILM4926",
+    context: "OCP Mt. Jade motherboard specification rev 1.0, naming the CPU socket designation of the board",
+  },
+]
+
+fn attestation_count() -> Int {
+  count(ilm4926_attestations)
+}
+
+// INDEPENDENT PUBLISHERS ARE WHAT MAKES THIS A SHARED SUBJECT. Two Ampere
+// datasheets agreeing is one publisher saying a thing twice; Ampere and OCP
+// agreeing is two. The distinction is modelled rather than asserted in prose
+// because it is the entire justification for this module existing separately.
+fn attestations_from_authority(authority: ExternalAuthority) -> List<DesignationAttestation> {
+  ilm4926_attestations |> filter(a => a.authority == authority)
+}
+
+fn attested_by_ampere_datasheets() -> Bool {
+  count(attestations_from_authority(authority: extdeps_external_authority_anchor)) > 0
+    && count(attestations_from_authority(authority: altra_classic_datasheet_authority)) > 0
+}
+
+fn attested_by_ocp_specification() -> Bool {
+  count(attestations_from_authority(authority: ocp_mt_jade_specification_authority)) > 0
+}
+
+fn attested_by_independent_publishers() -> Bool {
+  attested_by_ampere_datasheets() && attested_by_ocp_specification()
+}

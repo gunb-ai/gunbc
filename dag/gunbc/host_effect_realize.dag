@@ -4,7 +4,7 @@ import std.algebra { trim }
 
 import gunbc.host_effect { fleet_ssh_leaf_unmigrated_refused,
   HostEffect, ShellCommand, RedfishAction, ConvergePlan,
-  OsInstallActuatorToolchainEnsure, ProvisionBuildCache,
+  OsInstallActuatorToolchainEnsure, ProvisionBuildCache, ProvisionCodexRuntime,
   SetHostnameCas,
   ReadEffectivePosixPrincipal,
   SudoNopasswdExecuteProbe,
@@ -65,6 +65,7 @@ import gunbc.typed_argv_exec {
 import extdeps.bmc.types { RedfishSystemAction }
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.fleet_intent { ComputeHost, srv1_host, compute_host_primary_cpu }
+import product.placement_supply { HostIdentity }
 import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
 import gunbc.host_converge { HostConverge, FreshStandup, ExistingHostQuiescentReload, gunbc_apply_mode_for_host }
 import gunbc.host_converge_realize {
@@ -129,6 +130,18 @@ import gunbc.runner_lifecycle { RunnerReplacementCause }
 import extdeps.github.actions_runner { ActionsRunnerRelease, ActionsRunnerBinaryArtifact }
 import gunbc.roadmap_static_site { roadmap_site_digest_readback_script }
 import gunbc.host_build_cache_provision_script { build_cache_provision_shell_script }
+import gunbc.host_codex_runtime_provision_script { codex_runtime_provision_shell_script }
+import gunbc.host_codex_runtime_provision_verdict {
+  provision_codex_runtime_verdict_from_shell,
+  ProvisionConverged,
+  ProvisionRefused,
+}
+import gunbc.host_layout {
+  codex_bundled_executable_for_host,
+  provider_runtime_placement_for_host,
+  srv1_gunbc_repo_root,
+  srv1_gunbc_serve_binary,
+}
 import gunbc.host_build_cache_catalog_gate {
   provision_build_cache_catalog_gate_verdict,
   ProvisionBuildCacheCatalogRealizable,
@@ -204,6 +217,7 @@ type ResolvedHostEffectCell =
   | TypedReconcileOnHost { node: ComputeHost, kind: TypedReconcileKind }
   | OsInstallActuatorToolchainOnHost { node: ComputeHost }
   | ProvisionBuildCacheOnHost { node: ComputeHost, catalog_id: String }
+  | ProvisionCodexRuntimeOnHost { node: ComputeHost }
   | HostnameOnHost { node: ComputeHost, hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
   | HostnameReadOnHost { node: ComputeHost }
   | NbdProxySessionOnHost {
@@ -264,6 +278,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           OsInstallActuatorToolchainOnHost { node: n }
         ProvisionBuildCache { catalog_id: id } =>
           ProvisionBuildCacheOnHost { node: n, catalog_id: id }
+        ProvisionCodexRuntime {} =>
+          ProvisionCodexRuntimeOnHost { node: n }
         Srv3ReceiptEmit { lines: lines } =>
           ReceiptEmitOnHost { node: n, lines: lines }
         Srv3BootOnceReadBackSleep =>
@@ -301,6 +317,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
               OsInstallActuatorToolchainOnHost { node: n }
             ProvisionBuildCache { catalog_id: id } =>
               ProvisionBuildCacheOnHost { node: n, catalog_id: id }
+            ProvisionCodexRuntime {} =>
+              ProvisionCodexRuntimeOnHost { node: n }
             Srv3InstallMediaFetch => TypedReconcileOnHost { node: n, kind: TypedReconcileFetch }
             Srv3SeededInstallMediaRemaster => TypedReconcileOnHost { node: n, kind: TypedReconcileRemaster }
             Srv3SeededInstallMediaToolchainEnsure =>
@@ -363,6 +381,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           IncompatibleCell { reason: "host_effect: OsInstallActuatorToolchainEnsure is in-band (actuator host toolchain) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
         ProvisionBuildCache { catalog_id: _ } =>
           IncompatibleCell { reason: "host_effect: ProvisionBuildCache is in-band (per-host sccache daemon) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+        ProvisionCodexRuntime {} =>
+          IncompatibleCell { reason: "host_effect: ProvisionCodexRuntime is in-band (per-host provider runtime bundle) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
         Srv3NbdProxyServe { intent: _, lease_key: _ } =>
           IncompatibleCell { reason: "host_effect: Srv3NbdProxyServe is in-band (actuator host long-running session) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
         _ =>
@@ -376,6 +396,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
               IncompatibleCell { reason: "host_effect: OsInstallActuatorToolchainEnsure is in-band (actuator host toolchain) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             ProvisionBuildCache { catalog_id: _ } =>
               IncompatibleCell { reason: "host_effect: ProvisionBuildCache is in-band (per-host sccache daemon) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+            ProvisionCodexRuntime {} =>
+              IncompatibleCell { reason: "host_effect: ProvisionCodexRuntime is in-band (per-host provider runtime bundle) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             Srv3InstallMediaFetch =>
               IncompatibleCell { reason: "host_effect: Srv3InstallMediaFetch is in-band (actuator host typed reconcile) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
             Srv3SeededInstallMediaRemaster =>
@@ -797,6 +819,134 @@ fn provision_build_cache_reconcile(
     intent: intent,
     effect_label: "ProvisionBuildCache",
   )
+}
+
+fn provision_codex_runtime_reconcile(
+  observed: ShellExecObserved,
+  intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match provision_codex_runtime_target_host(effect_intent: intent) {
+    Absent =>
+      NotConverged {
+        reason: "host_effect_apply: ProvisionCodexRuntime reconcile requires HostOs target with a fleet host identity; fail-closed.",
+        applied: intent,
+      }
+    Present { value: host } =>
+      match provision_codex_runtime_verdict_from_shell(
+        host: host,
+        success: observed.success,
+        stdout: observed.stdout,
+        stderr: observed.stderr,
+      ) {
+        ProvisionConverged { executable: _, version_line: _ } =>
+          toolchain_ensure_reconcile(
+            observed: observed,
+            intent: intent,
+            effect_label: "ProvisionCodexRuntime",
+          )
+        ProvisionRefused { cause: _, reason: reason } =>
+          NotConverged { reason: reason as String, applied: intent }
+      }
+  }
+}
+
+fn provision_codex_runtime_target_host(effect_intent: HostEffectIntent) -> HostIdentity? {
+  match effect_intent.target {
+    HostOs { node: n } => Present { value: n.identity }
+    BmcController { node: _ } => none
+  }
+}
+
+fn realize_provision_codex_runtime_body(
+  transport: HostEffectTransport,
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match provision_codex_runtime_target_host(effect_intent: effect_intent) {
+    Absent =>
+      NotConverged {
+        reason: "host_effect_apply: ProvisionCodexRuntime requires HostOs target with a fleet host identity; fail-closed.",
+        applied: effect_intent,
+      }
+    Present { value: host } =>
+      match codex_bundled_executable_for_host(host: host) {
+        Absent =>
+          NotConverged {
+            reason: join(
+              [
+                "host_effect_apply: ProvisionCodexRuntime refused — no bundled executable placement for host ",
+                host as String,
+                "; fail-closed.",
+              ],
+              "",
+            ),
+            applied: effect_intent,
+          }
+        Present { value: executable } =>
+          match provider_runtime_placement_for_host(host: host) {
+            Absent =>
+              NotConverged {
+                reason: join(
+                  [
+                    "host_effect_apply: ProvisionCodexRuntime refused — no provider runtime placement for host ",
+                    host as String,
+                    "; fail-closed.",
+                  ],
+                  "",
+                ),
+                applied: effect_intent,
+              }
+            Present { value: placement } =>
+              let observed = run_shell_transport(
+                script: retained_srvn(
+                  body: codex_runtime_provision_shell_script(
+                    executable: executable as String,
+                    release_parent: placement.runtime_release_root as String,
+                    gunbc_binary: srv1_gunbc_serve_binary as String,
+                    gunbc_repo: srv1_gunbc_repo_root as String,
+                  ),
+                  reason: "ProvisionCodexRuntime observe/ensure/read-back shell transport",
+                ),
+                transport: transport,
+              )
+              provision_codex_runtime_reconcile(observed: observed, intent: effect_intent)
+          }
+      }
+  }
+}
+
+fn realize_provision_codex_runtime(
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match effect_intent.effect {
+    ProvisionCodexRuntime {} =>
+      match effect_intent.transport {
+        LocalShell =>
+          realize_provision_codex_runtime_body(
+            transport: effect_intent.transport,
+            effect_intent: effect_intent,
+          )
+        SshShell { ssh_host: _ } =>
+          realize_provision_codex_runtime_body(
+            transport: effect_intent.transport,
+            effect_intent: effect_intent,
+          )
+        FleetSsh { target: _, context: _ } =>
+          realize_provision_codex_runtime_body(
+            transport: effect_intent.transport,
+            effect_intent: effect_intent,
+          )
+        EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+          NotConverged {
+            reason: "host_effect_apply: ProvisionCodexRuntime cannot use EmitArtifactThenThinRun transport; typed mismatch.",
+            applied: effect_intent,
+          }
+      }
+    _ =>
+      NotConverged {
+        reason: "host_effect_apply: realize_provision_codex_runtime requires ProvisionCodexRuntime effect",
+        applied: effect_intent,
+      }
+  }
 }
 
 data srv3_join_shell_words_controlled_args_note: String = "SshShell argv composer for toolchain transport helpers only; callers must pass controlled literals (package names, modeled paths) — no shell-quoting until typed argv dispatch lands."
@@ -1871,6 +2021,8 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       realize_os_install_actuator_toolchain_ensure(effect_intent: intent)
     ProvisionBuildCacheOnHost { node: _, catalog_id: _ } =>
       realize_provision_build_cache(effect_intent: intent)
+    ProvisionCodexRuntimeOnHost { node: _ } =>
+      realize_provision_codex_runtime(effect_intent: intent)
     HostnameOnHost { node: _, hostnamectl_path: p, base: b, desired: d } =>
       realize_set_hostname_cas_on_host(hostnamectl_path: p, base: b, desired: d, transport: transport, intent: intent)
     HostnameReadOnHost { node: _ } =>
@@ -2045,6 +2197,8 @@ fn host_effect_apply_gated(
           realize_os_install_actuator_toolchain_ensure(effect_intent: intent)
         ProvisionBuildCacheOnHost { node: _, catalog_id: _ } =>
           realize_provision_build_cache(effect_intent: intent)
+        ProvisionCodexRuntimeOnHost { node: _ } =>
+          realize_provision_codex_runtime(effect_intent: intent)
         HostnameOnHost { node: _, hostnamectl_path: p, base: b, desired: d } =>
           realize_set_hostname_cas_on_host(hostnamectl_path: p, base: b, desired: d, transport: transport, intent: intent)
         HostnameReadOnHost { node: _ } =>
@@ -2135,6 +2289,7 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             TypedReconcileOnHost { node: _, kind: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             OsInstallActuatorToolchainOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ProvisionBuildCacheOnHost { node: _, catalog_id: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            ProvisionCodexRuntimeOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             HostnameOnHost { node: _, hostnamectl_path: _, base: _, desired: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             HostnameReadOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             NbdProxySessionOnHost { node: _, intent: _, lease_key: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))

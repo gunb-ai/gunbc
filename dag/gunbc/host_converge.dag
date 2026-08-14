@@ -5,6 +5,7 @@ import std.measure { ByteSize, byte_size_count, hardware_thread_count_value, per
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
+import gunbc.package_delivery { codex_runtime_version_identity_marker }
 import gunbc.ci_runner_placement {
   RunnerDeploymentPlan,
   PlanDerived,
@@ -233,6 +234,7 @@ type ConvergeTarget
       green_place_marker: GreenPlaceReadinessMarker
       live_apply: ConvergeLiveApplyPolicy
     }
+  | CodexRuntimeBundle { host_identity: HostIdentity }
 
 type ConvergeKnob {
   slice: ConvergeSlice
@@ -475,6 +477,21 @@ fn gunbc_pinned_tree_knobs(host: HostIdentity) -> List<ConvergeKnob> {
   [gunbc_pinned_tree_knob(host: host)]
 }
 
+data codex_runtime_bundle_converge_knob_note: String = "RECURRING reconcile for the pinned Codex provider-runtime bundle — absent materialize, wrong identity replace, present noop. Registered on every fleet compute host in fleet_converge_policy; EXECUTION AUTHORITY is gunbc.fleet_converge_cli converge_provider_runtime_codex_receipt (ProvisionCodexRuntime via realize_provision_codex_runtime), not host_converge_realize interpret_converge_knob — slice1/knob-frontier routes bypass converge_apply today. host_standup P1c remains assimilation-time ensure."
+
+fn codex_runtime_bundle_knob(host: HostIdentity) -> ConvergeKnob {
+  legacy_converge_knob(
+    slice: GunbcSlice,
+    name: "codex_runtime_bundle",
+    desired: codex_runtime_version_identity_marker(),
+    target: CodexRuntimeBundle { host_identity: host },
+  )
+}
+
+fn codex_runtime_bundle_knobs(host: HostIdentity) -> List<ConvergeKnob> {
+  [codex_runtime_bundle_knob(host: host)]
+}
+
 fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
   let glob = runner_instance_glob(host: h.identity)
   [
@@ -637,7 +654,13 @@ fn sessions_membership_probe(session_knobs: List<ConvergeKnob>) -> SessionsMembe
 fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>) -> HostConverge {
   HostConverge {
     identity: h.identity,
-    knobs: concat(concat(gunbc_pinned_tree_knobs(host: h.identity), runner_host_knobs(h: h)), session_knobs),
+    knobs: concat(
+      concat(
+        concat(gunbc_pinned_tree_knobs(host: h.identity), runner_host_knobs(h: h)),
+        session_knobs,
+      ),
+      codex_runtime_bundle_knobs(host: h.identity),
+    ),
     membership: sessions_membership_probe(session_knobs: session_knobs),
   }
 }

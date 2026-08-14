@@ -99,7 +99,7 @@ import gunbc.roadmap_dispatch_actuator {
   tmux_kill_session_argv_for_instance,
   dispatch_live_sessions_from_entries,
   dispatch_live_sessions_with_process,
-  dispatch_tmux_session_scope_for_live_session,
+  dispatch_session_cleanup_for_live_session,
   DispatchStopRunningProcess,
   DispatchClearRetainedSession,
   DispatchCleanupRefused,
@@ -151,6 +151,7 @@ import gunbc.roadmap_dashboard_instance {
   srv1_green_dashboard_instance,
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
+  dashboard_instance_provider_executable_refusal_detail,
   dashboard_instance_dispatch_worktree_root,
   dashboard_instance_dispatch_attempt_state_root,
 }
@@ -1011,7 +1012,7 @@ fn belt_codex_preflight_decision_observed_for_home(
   if !codex_on_path {
     CodexPreflightRefused {
       step: "codex-cli",
-      detail: "codex executable not available at the declared converged path; refusing before worktree creation (no ambient PATH fallback)",
+      detail: "codex not found on PATH; refusing before worktree creation",
     }
   } else if !env_on_path {
     CodexPreflightRefused {
@@ -1048,73 +1049,82 @@ fn belt_codex_preflight_decision_observed_for_home(
 }
 
 fn belt_codex_preflight_for_instance(instance: HostDashboardInstance) -> BeltCodexPreflight {
-  let codex_home = dashboard_instance_provider_state_root(instance: instance) as String
-  let codex_program = dashboard_instance_provider_executable(instance: instance) as String
-  let env_program = dispatch_capability_program(
-    environment: instance.execution_environment,
-    cap: EnvironmentBindingCapability,
-  )
-  let codex_ok = belt_program_available(program: codex_program)
-  let env_ok = belt_program_available(program: env_program)
-  if !codex_ok || !env_ok {
-    belt_codex_preflight_decision_observed_for_home(
-      codex_home: codex_home,
-      codex_on_path: codex_ok,
-      env_on_path: env_ok,
-      identity_command_success: false,
-      identity_stdout: "",
-      identity_stderr: "",
-      login_status_success: false,
-      login_status_stdout: "",
-      login_status_stderr: "",
-    )
-  } else {
-    let identity = gunbc.WitnessBin.Run(
-      workdir: belt_observe_workdir,
-      bin_path: env_program as FilePath,
-      args: shape_codex_version_env_args_for_program(
-        program: codex_program,
-        codex_home: codex_home,
-      ),
-      expect: OutcomeIsData,
-    )
-    let identity_realized = identity.success
-      && codex_runtime_version_identity_satisfied(
-        combined_output: join([identity.stdout, "\n", identity.stderr], ""),
+  match dashboard_instance_provider_executable(instance: instance) {
+    Absent =>
+      CodexPreflightRefused {
+        step: "codex-executable-placement",
+        detail: dashboard_instance_provider_executable_refusal_detail(instance: instance),
+      }
+    Present { value: codex_program } => {
+      let codex_home = dashboard_instance_provider_state_root(instance: instance) as String
+      let codex_program_str = codex_program as String
+      let env_program = dispatch_capability_program(
+        environment: instance.execution_environment,
+        cap: EnvironmentBindingCapability,
       )
-    if !identity_realized {
-      belt_codex_preflight_decision_observed_for_home(
-        codex_home: codex_home,
-        codex_on_path: codex_ok,
-        env_on_path: env_ok,
-        identity_command_success: identity.success,
-        identity_stdout: identity.stdout,
-        identity_stderr: identity.stderr,
-        login_status_success: false,
-        login_status_stdout: "",
-        login_status_stderr: "",
-      )
-    } else {
-    let result = gunbc.WitnessBin.Run(
-      workdir: belt_observe_workdir,
-      bin_path: env_program as FilePath,
-      args: shape_codex_login_status_env_args_for_program(
-        program: codex_program,
-        codex_home: codex_home,
-      ),
-      expect: OutcomeIsData,
-    )
-    belt_codex_preflight_decision_observed_for_home(
-      codex_home: codex_home,
-      codex_on_path: codex_ok,
-      env_on_path: env_ok,
-      identity_command_success: identity.success,
-      identity_stdout: identity.stdout,
-      identity_stderr: identity.stderr,
-      login_status_success: result.success,
-      login_status_stdout: result.stdout,
-      login_status_stderr: result.stderr,
-    )
+      let codex_ok = belt_program_available(program: codex_program_str)
+      let env_ok = belt_program_available(program: env_program)
+      if !codex_ok || !env_ok {
+        belt_codex_preflight_decision_observed_for_home(
+          codex_home: codex_home,
+          codex_on_path: codex_ok,
+          env_on_path: env_ok,
+          identity_command_success: false,
+          identity_stdout: "",
+          identity_stderr: "",
+          login_status_success: false,
+          login_status_stdout: "",
+          login_status_stderr: "",
+        )
+      } else {
+        let identity = gunbc.WitnessBin.Run(
+          workdir: belt_observe_workdir,
+          bin_path: env_program as FilePath,
+          args: shape_codex_version_env_args_for_program(
+            program: codex_program_str,
+            codex_home: codex_home,
+          ),
+          expect: OutcomeIsData,
+        )
+        let identity_realized = identity.success
+          && codex_runtime_version_identity_satisfied(
+            combined_output: join([identity.stdout, "\n", identity.stderr], ""),
+          )
+        if !identity_realized {
+          belt_codex_preflight_decision_observed_for_home(
+            codex_home: codex_home,
+            codex_on_path: codex_ok,
+            env_on_path: env_ok,
+            identity_command_success: identity.success,
+            identity_stdout: identity.stdout,
+            identity_stderr: identity.stderr,
+            login_status_success: false,
+            login_status_stdout: "",
+            login_status_stderr: "",
+          )
+        } else {
+          let result = gunbc.WitnessBin.Run(
+            workdir: belt_observe_workdir,
+            bin_path: env_program as FilePath,
+            args: shape_codex_login_status_env_args_for_program(
+              program: codex_program_str,
+              codex_home: codex_home,
+            ),
+            expect: OutcomeIsData,
+          )
+          belt_codex_preflight_decision_observed_for_home(
+            codex_home: codex_home,
+            codex_on_path: codex_ok,
+            env_on_path: env_ok,
+            identity_command_success: identity.success,
+            identity_stdout: identity.stdout,
+            identity_stderr: identity.stderr,
+            login_status_success: result.success,
+            login_status_stdout: result.stdout,
+            login_status_stderr: result.stderr,
+          )
+        }
+      }
     }
   }
 }
@@ -4448,11 +4458,7 @@ fn belt_sessions_json_value(o: BeltObserve) -> JsonValue {
         json_kv(key: "schema", value: json_string(s: "roadmap-sessions/v1")),
         json_kv(key: "observe_refused", value: json_bool(b: false)),
         json_kv(key: "sessions", value: json_array(elements: live |> map(sess => {
-          let scope = dispatch_tmux_session_scope_for_live_session(sess: sess)
-          let cleanup = dispatch_session_cleanup(
-            scope: scope,
-            session: sess,
-          )
+          let cleanup = dispatch_session_cleanup_for_live_session(sess: sess)
           json_object(members: [
             json_kv(key: "node_id", value: json_string(s: sess.node_id)),
             json_kv(key: "session_name", value: json_string(s: sess.session_name)),
