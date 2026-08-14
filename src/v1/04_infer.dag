@@ -1798,29 +1798,32 @@ fn structured_application_site_type_mismatch(
                   Absent => lookup_type_by_name(env: scope.type_env, name: formal_name)
                 }
                 match formal_decl {
-                  Present { value: decl } if decl.connective == Disj =>
-                    if has_child_named(n: decl, name: lit_name, source_indices: source_indices) {
-                      false
-                    } else {
-                      match variant_owner_node(scope: scope, name: lit_name) {
-                        Present { value: owner } =>
-                          let owner_name = authored_name_at(source_indices: source_indices, node: owner)
-                          !application_type_names_compatible(
-                            formal_name: formal_name, lit_name: owner_name,
+                  Present { value: decl } =>
+                    match decl.connective {
+                      Disj =>
+                        if has_child_named(n: decl, name: lit_name, source_indices: source_indices) {
+                          false
+                        } else {
+                          match variant_owner_node(scope: scope, name: lit_name) {
+                            Present { value: owner } =>
+                              let owner_name = authored_name_at(source_indices: source_indices, node: owner)
+                              !application_type_names_compatible(
+                                formal_name: formal_name, lit_name: owner_name,
+                                type_env: scope.type_env, module_name: scope.module_name, source_indices: source_indices)
+                            Absent => true
+                          }
+                        }
+                      Conj =>
+                        let decl_name = structured_application_structural_type_name(
+                          type_name: authored_name_at(source_indices: source_indices, node: decl), scope: scope)
+                        !application_type_names_compatible(
+                          formal_name: decl_name, lit_name: lit_nominal,
+                          type_env: scope.type_env, module_name: scope.module_name, source_indices: source_indices)
+                          && !application_type_names_compatible(
+                            formal_name: decl_name, lit_name: lit_name,
                             type_env: scope.type_env, module_name: scope.module_name, source_indices: source_indices)
-                        Absent => true
-                      }
+                      _ => false
                     }
-                  Present { value: decl } if decl.connective == Conj =>
-                    let decl_name = structured_application_structural_type_name(
-                      type_name: authored_name_at(source_indices: source_indices, node: decl), scope: scope)
-                    !application_type_names_compatible(
-                      formal_name: decl_name, lit_name: lit_nominal,
-                      type_env: scope.type_env, module_name: scope.module_name, source_indices: source_indices)
-                      && !application_type_names_compatible(
-                        formal_name: decl_name, lit_name: lit_name,
-                        type_env: scope.type_env, module_name: scope.module_name, source_indices: source_indices)
-                  Present { value: _ } => false
                   Absent =>
                     if is_kernel_type(name: formal_name) {
                       match lookup_type_by_name(env: scope.type_env, name: lit_name) {
