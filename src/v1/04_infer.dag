@@ -1870,7 +1870,7 @@ fn direct_call_structured_application_mismatch_diags(
       match matched_arg {
         Present { value: ta } =>
           let actual_expr = arg_value(n: ta)
-          if structured_application_site_type_mismatch(formal: formal, actual_expr: actual_expr, scope: scope) {
+          if structured_application_site_type_mismatch(formal: formal_subst, actual_expr: actual_expr, scope: scope) {
             let actual_raw = resolved_type(n: actual_expr)
             let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
             [type_mismatch_error(
