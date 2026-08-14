@@ -1,7 +1,18 @@
 module gunbc.output_policy
 
 import extdeps.github.log_annotations { neutralize_workflow_commands, subject_text_line_guard }
-import std.observation { ObservationGrain, BatchGrain }
+import std.observation {
+  ObservationGrain,
+  BatchGrain,
+  ObservationEventClass,
+  ClassDone,
+  ClassFailed,
+  ObservationDensity,
+  RoutineCollapsible,
+  SummaryAlwaysShown,
+  AnomalyExpanded,
+  observation_class_density,
+}
 
 type Verbosity = Quiet | Normal | Verbose
 
@@ -259,3 +270,22 @@ fn resolve_shell_trace_stream_policy(verbose: Bool, quiet: Bool) -> EffectStream
 }
 
 data shell_trace_observation_convergence_note: String = "DISSOLVED (operator live-log 2026-07-25, run 30142403230): shell host-effects now emit as ObservationEvents with named-intent subjects (service.op); Ambient Begin/Done are ShellTrace-gated (Suppressed at Normal — silent scaffolding); Anomaly Failed surfaces from divergence disposition alone (channel Suppressed no longer forces StreamSuppressed). Derived attention + ci_line_placement supersede the dual-class conflation. Keep this note as the dissolve receipt; delete when a later census no longer needs the history."
+
+// HOMED BESIDE routine_rollup_folds, NOT BESIDE THE RENDERER, and the reason is a measured one: the
+// seed resolves both verdicts by name in one entry context, and gunbc.observation_ci_render is not
+// in that entry's closure while gunbc.output_policy is. Living in the renderer, this resolved to
+// "no such function" on every real CI run, so per-witness folding was DISABLED and all 9478 witness
+// lines printed — the exact output this lane exists to remove, silently restored by a module
+// placement. A policy question consumed by the process belongs with the process's other policy
+// questions; the renderer consumes the density for its own projection and does not own the verdict.
+//
+// The verdict is still DERIVED from std.observation's density rather than restated: a concluded
+// outcome folds exactly when its class is routine, so a class that becomes an anomaly stops folding
+// without an edit here.
+fn concluded_outcome_folds(passed: Bool) -> Bool {
+  match observation_class_density(c: if passed { ClassDone } else { ClassFailed }) {
+    RoutineCollapsible => true
+    SummaryAlwaysShown => false
+    AnomalyExpanded => false
+  }
+}
