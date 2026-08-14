@@ -151,13 +151,18 @@ type ResourceClaim
   | NetworkAccess
   | ResidentBytes { amount: Int }
 
-// PreparedContextAccess is EXCLUSIVE today, and that is an honest statement about the
-// interpreter rather than a modeling preference: the evaluator holds Rc/RefCell state
-// and thread-local active-context, so witness nodes cannot share it across threads
-// until the store-path Arc migration lands. Modeling it as an exclusive claim rather
-// than as a hidden Rust loop means every witness is still its own plan node with its
-// own identity and receipt, and the day the evaluator becomes shareable this is a
-// one-row change here rather than a rewrite of the runner.
+// PreparedContextAccess is EXCLUSIVE today, and the reason is measured rather than
+// pending. The evaluator holds Rc/RefCell state and a thread-local active context, so
+// witness nodes cannot share it across threads; the Rc-to-Arc alias flip that would
+// change this was BUILT, MEASURED AND REJECTED — +5.84% serial wall on every
+// interpreted path for zero benefit, because production is latched at width 1 and a
+// wider run without a shared index measured 47min-plus unfinished or OOM against
+// 11.75min green serial. The authority is docs/plans/arc-store-path-migration-decision.md
+// and the named un-latch trigger is a shared index, which is what one exact prepared
+// subject is. So the ordering is shared subject, then re-measure the flip against it,
+// then width — and modeling this as an exclusive claim rather than a hidden Rust loop
+// means every witness keeps its own identity and receipt in the meantime, and the day
+// the evaluator becomes shareable this is one row here rather than a new runner.
 fn resource_claim_is_exclusive(claim: ResourceClaim) -> Bool {
   match claim {
     ReadOnlyRepository => false
