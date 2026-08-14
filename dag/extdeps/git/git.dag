@@ -6,7 +6,6 @@ import extdeps.uri { Uri, Https }
 import std.measure { Percent, percent }
 import std.types { Bool, CommitSha, Email, FilePath, GitRef, Int, List, NonEmptyStr, Seconds, Timestamp, none }
 import v2.std.algebra { length, skip }
-import v2.std.node { Diff }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https

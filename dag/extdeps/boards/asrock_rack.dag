@@ -37,8 +37,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import std.nat { Nat }
 import std.types { Bool, List, NonEmptyStr, String }
-import v2.std.node { Absent }
-import v2.std.optional { Present }
+import v2.std.optional { Present, Absent }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

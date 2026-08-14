@@ -7,7 +7,6 @@ import extdeps.bmc.virtual_media { NbdProxyWebsocatParams, VirtualMediaIntent, v
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import v2.std.compilers.lexing { Token }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
