@@ -20,7 +20,9 @@ import gunbc.fleet_converge_plan {
   fleet_converge_plan_apply_shell_path,
   fleet_converge_parse_nonneg_generation_text,
   fleet_converge_generation_from_store_content,
+  fleet_converge_plan_content_hash_path,
 }
+import gunbc.fleet_converge_plan_cli { fleet_converge_plan_cli_note }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -220,6 +222,15 @@ test fn member_set_fingerprint_mismatch_refuses_identity() -> Bool {
     }
     Absent => false
   }
+}
+
+test fn plan_content_hash_path_is_apply_interlock_sidecar() -> Bool {
+  fleet_converge_plan_content_hash_path == "/tmp/fleet-converge-plan/plan_content.hex"
+}
+
+test fn plan_cli_surfaces_content_hash_for_apply_dispatch() -> Bool {
+  string_contains(s: fleet_converge_plan_cli_note, pattern: "plan_content.hex")
+    && string_contains(s: fleet_converge_plan_cli_note, pattern: "plan_artifact_hash")
 }
 
 test fn parse_nonneg_generation_refuses_corrupt_and_negative() -> Bool {
