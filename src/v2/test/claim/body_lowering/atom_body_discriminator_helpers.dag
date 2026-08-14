@@ -57,11 +57,19 @@ type AtomBodyDiscriminatorObservedRows {
   zero_binary: Node
 }
 
+type TopLevelIdentityJoinRefusal {
+  expected: List<String>
+  observed: List<String>
+  missing: List<String>
+  extra: List<String>
+  duplicates: List<String>
+}
+
 type AtomBodyDiscriminatorObservation
   = TokenizeRejected { diagnostics: NonEmptyDiagnostics }
   | ParseRejected { diagnostics: NonEmptyDiagnostics }
   | NormalizeRejected { diagnostics: NonEmptyDiagnostics }
-  | TopLevelIdentityJoinRefused
+  | TopLevelIdentityJoinRefused { refusal: TopLevelIdentityJoinRefusal }
   | DiscriminatorObserved { tree: Node, rows: AtomBodyDiscriminatorObservedRows }
 
 fn atom_body_discriminator_string_count_eq(items: List<String>, wanted: String) -> Int {
@@ -90,6 +98,43 @@ fn atom_body_discriminator_top_level_arrow_lexemes_identity_join(
     && !(atom_body_discriminator_string_list_has_duplicate(items: observed))
     && expected |> all(e => atom_body_discriminator_string_in_list(items: observed, wanted: e))
     && observed |> all(o => atom_body_discriminator_string_in_list(items: expected, wanted: o))
+}
+
+fn atom_body_discriminator_strings_in_first_not_in_second(
+  first: List<String>,
+  second: List<String>
+) -> List<String> {
+  fold(first, init: [], f: fn(acc, item) {
+    if atom_body_discriminator_string_in_list(items: second, wanted: item) {
+      acc
+    } else {
+      list_snoc_item(xs: acc, item: item)
+    }
+  })
+}
+
+fn atom_body_discriminator_duplicate_strings(items: List<String>) -> List<String> {
+  fold(items, init: [], f: fn(acc, item) {
+    if atom_body_discriminator_string_count_eq(items: items, wanted: item) > 1
+      && !(atom_body_discriminator_string_in_list(items: acc, wanted: item)) {
+      list_snoc_item(xs: acc, item: item)
+    } else {
+      acc
+    }
+  })
+}
+
+fn atom_body_discriminator_top_level_identity_join_refusal(
+  expected: List<String>,
+  observed: List<String>
+) -> TopLevelIdentityJoinRefusal {
+  TopLevelIdentityJoinRefusal {
+    expected: expected,
+    observed: observed,
+    missing: atom_body_discriminator_strings_in_first_not_in_second(first: expected, second: observed),
+    extra: atom_body_discriminator_strings_in_first_not_in_second(first: observed, second: expected),
+    duplicates: atom_body_discriminator_duplicate_strings(items: observed),
+  }
 }
 
 fn atom_body_discriminator_walk_spine_to_body(captured: Node) -> Node {
@@ -218,7 +263,13 @@ fn atom_body_discriminator_observe() -> AtomBodyDiscriminatorObservation {
             Accepted { value: normalized, diagnostics: _ } =>
               let root = normalized.root
               match atom_body_discriminator_module_scope_body(root: root) {
-                Absent => TopLevelIdentityJoinRefused
+                Absent =>
+                  TopLevelIdentityJoinRefused {
+                    refusal: atom_body_discriminator_top_level_identity_join_refusal(
+                      expected: atom_body_discriminator_expected_arrow_identities,
+                      observed: []
+                    )
+                  }
                 Present { value: scope } =>
                   let observed =
                     atom_body_discriminator_observed_top_level_arrow_lexemes(root: scope)
@@ -227,12 +278,23 @@ fn atom_body_discriminator_observe() -> AtomBodyDiscriminatorObservation {
                     observed: observed
                   ) {
                     match atom_body_discriminator_observed_rows(scope: scope) {
-                      Absent => TopLevelIdentityJoinRefused
+                      Absent =>
+                        TopLevelIdentityJoinRefused {
+                          refusal: atom_body_discriminator_top_level_identity_join_refusal(
+                            expected: atom_body_discriminator_expected_arrow_identities,
+                            observed: observed
+                          )
+                        }
                       Present { value: rows } =>
                         DiscriminatorObserved { tree: root, rows: rows }
                     }
                   } else {
-                    TopLevelIdentityJoinRefused
+                    TopLevelIdentityJoinRefused {
+                      refusal: atom_body_discriminator_top_level_identity_join_refusal(
+                        expected: atom_body_discriminator_expected_arrow_identities,
+                        observed: observed
+                      )
+                    }
                   }
               }
           }
@@ -318,7 +380,7 @@ fn atom_body_discriminator_batched_receipt_holds() -> Bool {
     TokenizeRejected { diagnostics: _ } => false
     ParseRejected { diagnostics: _ } => false
     NormalizeRejected { diagnostics: _ } => false
-    TopLevelIdentityJoinRefused => false
+    TopLevelIdentityJoinRefused { refusal: _ } => false
     DiscriminatorObserved { tree: _, rows: rows } =>
       atom_body_discriminator_arrow_row_holds(
         arrow: rows.id,
