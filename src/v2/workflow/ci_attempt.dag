@@ -554,3 +554,108 @@ fn ci_attempt_verdict(
       AttemptRefused { reconciliation: LedgerDuplicate { node_identity: d } }
   }
 }
+
+// ── The host primitive seam ───────────────────────────────────────────────────
+//
+// The plan emits an EXACT request; the host realizes it and returns receipts. The
+// four primitives below are the entire seam, and none of them carries a floor mode, a
+// witness directory, a special function name, or an exclusion path — those are facts
+// of this module and the host must not be able to reach them.
+//
+// THE CAPABILITY IS A DIGEST, NOT A CONTEXT. EvaluatePreparedClaimRequest names the
+// prepared subject by its envelope digest, so a claim request cannot carry a source
+// root, an index, a resolver, or an entry path. That is the structural half of
+// "zero per-entry graph resolves": the request has no field in which to ask for one.
+// The counter, when the interpreter exposes it, is the regression control beneath.
+
+type HostCapacity {
+  cpu_slots: Int
+  process_slots: Int
+}
+
+type HostPrimitiveRequest
+  = PrepareExactSubjectRequest { envelope: Hash }
+  | EvaluatePreparedClaimRequest { capability: Hash, declaration: Symbol, budget_ms: Int }
+  | RealizeCiHostEffectRequest { effect: Symbol }
+  | ExecuteExactBatchRequest { jobs: List<Symbol>, capacity: HostCapacity }
+
+// THE HOST MAY NOT ADD WORK, DROP WORK, OR CHOOSE ITS OWN WIDTH, and each of those is
+// a separate refusal rather than one "bad batch" arm, because they have different
+// causes and different fixes: invented work means the host has a source of jobs the
+// plan does not know about, dropped work means a receipt was lost or a job silently
+// skipped, and an exceeded width means the host re-decided a scheduling question the
+// plan already answered.
+//
+// Ordering is deliberately NOT a refusal. A batch is a set of jobs admitted to run
+// together, so the order receipts come back in carries no information, and treating
+// it as identity would make a correct concurrent executor look wrong.
+type BatchExecutionAdmission
+  = BatchExecuted { receipts: List<CiNodeReceipt> }
+  | BatchRefusedInventedWork { node_identity: Symbol }
+  | BatchRefusedDroppedWork { node_identity: Symbol }
+  | BatchRefusedWidthExceeded { permitted: Int, observed: Int }
+
+fn requested_contains(jobs: List<Symbol>, wanted: Symbol) -> Bool {
+  fold_list(xs: jobs, empty: false, cons: fn(acc, j) { acc || (j == wanted) })
+}
+
+fn invented_work(jobs: List<Symbol>, receipts: List<CiNodeReceipt>) -> ProducerLookup {
+  fold_list(
+    xs: receipts,
+    empty: ProducerAbsent,
+    cons: fn(acc, r) {
+      match acc {
+        ProducerFound { producer: p } => ProducerFound { producer: p }
+        ProducerAbsent =>
+          if requested_contains(jobs: jobs, wanted: r.node_identity) {
+            ProducerAbsent
+          } else {
+            ProducerFound { producer: r.node_identity }
+          }
+      }
+    }
+  )
+}
+
+fn dropped_work(jobs: List<Symbol>, receipts: List<CiNodeReceipt>) -> ProducerLookup {
+  let ids = receipt_identities(receipts: receipts)
+  fold_list(
+    xs: jobs,
+    empty: ProducerAbsent,
+    cons: fn(acc, j) {
+      match acc {
+        ProducerFound { producer: p } => ProducerFound { producer: p }
+        ProducerAbsent =>
+          if requested_contains(jobs: ids, wanted: j) {
+            ProducerAbsent
+          } else {
+            ProducerFound { producer: j }
+          }
+      }
+    }
+  )
+}
+
+fn admit_batch_execution(
+  jobs: List<Symbol>,
+  capacity: HostCapacity,
+  receipts: List<CiNodeReceipt>,
+  observed_width: Int
+) -> BatchExecutionAdmission {
+  if observed_width > capacity.process_slots {
+    BatchRefusedWidthExceeded {
+      permitted: capacity.process_slots,
+      observed: observed_width
+    }
+  } else {
+    match invented_work(jobs: jobs, receipts: receipts) {
+      ProducerFound { producer: extra } => BatchRefusedInventedWork { node_identity: extra }
+      ProducerAbsent =>
+        match dropped_work(jobs: jobs, receipts: receipts) {
+          ProducerFound { producer: missing } =>
+            BatchRefusedDroppedWork { node_identity: missing }
+          ProducerAbsent => BatchExecuted { receipts: receipts }
+        }
+    }
+  }
+}

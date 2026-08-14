@@ -21,6 +21,16 @@ import v2.workflow.ci_attempt {
   ci_no_materialized,
   ComputationKey,
   admit_materialization,
+  admit_batch_execution,
+  BatchExecuted,
+  BatchRefusedDroppedWork,
+  BatchRefusedInventedWork,
+  BatchRefusedWidthExceeded,
+  EvaluatePreparedClaimRequest,
+  ExecuteExactBatchRequest,
+  HostCapacity,
+  PrepareExactSubjectRequest,
+  RealizeCiHostEffectRequest,
   MaterializedOnce,
   RefusedDuplicateRecompute,
   record_materialization,
@@ -359,6 +369,9 @@ test fn ci_attempt_witnesses() -> Bool {
     && materialization_admits_once_then_shares()
     && different_input_identity_is_not_a_duplicate()
     && unknown_identity_refuses_rather_than_recomputing()
+    && exact_receipts_admit_regardless_of_order()
+    && host_cannot_invent_drop_or_rewiden_work()
+    && a_claim_request_carries_only_a_capability_digest()
 }
 
 // ── Materialization standing ──────────────────────────────────────────────────
@@ -457,5 +470,102 @@ test fn unknown_identity_refuses_rather_than_recomputing() -> Bool {
       (f == ^ci_node_generated_artifact_verify) && (d == ^ci_node_heal_apply)
     MaterializedOnce { key: _, producer: _ } => false
     SharedFrom { key: _, producer: _, consumer: _ } => false
+  }
+}
+
+// ── The host primitive seam ───────────────────────────────────────────────────
+
+data cap_two: HostCapacity = HostCapacity { cpu_slots: 2, process_slots: 2 }
+
+data requested_jobs: List<Symbol> = [^ci_node_format_check, ^ci_node_prepare_exact_subject]
+
+data receipts_exact: List<CiNodeReceipt> = [
+  CiNodeReceipt { node_identity: ^ci_node_prepare_exact_subject, outcome: NodePassed },
+  CiNodeReceipt { node_identity: ^ci_node_format_check, outcome: NodePassed }
+]
+
+data receipts_invented: List<CiNodeReceipt> = [
+  CiNodeReceipt { node_identity: ^ci_node_format_check, outcome: NodePassed },
+  CiNodeReceipt { node_identity: ^ci_node_prepare_exact_subject, outcome: NodePassed },
+  CiNodeReceipt { node_identity: ^ci_node_claim_a, outcome: NodePassed }
+]
+
+data receipts_dropped: List<CiNodeReceipt> = [
+  CiNodeReceipt { node_identity: ^ci_node_format_check, outcome: NodePassed }
+]
+
+// ORDER IS NOT IDENTITY. The receipts come back reversed and the batch still admits,
+// because a batch is a set admitted to run together -- treating arrival order as
+// identity would make a correct concurrent executor look wrong, which is exactly the
+// failure that would push someone back to a serial runner.
+test fn exact_receipts_admit_regardless_of_order() -> Bool {
+  match admit_batch_execution(
+    jobs: requested_jobs,
+    capacity: cap_two,
+    receipts: receipts_exact,
+    observed_width: 2
+  ) {
+    BatchExecuted { receipts: rs } => length(xs: rs) == 2
+    BatchRefusedInventedWork { node_identity: _ } => false
+    BatchRefusedDroppedWork { node_identity: _ } => false
+    BatchRefusedWidthExceeded { permitted: _, observed: _ } => false
+  }
+}
+
+// THE THREE HOST OVERREACHES ARE THREE REFUSALS, not one. Invented work means the host
+// has a source of jobs the plan does not know about; dropped work means a receipt was
+// lost or a job silently skipped; exceeded width means the host re-decided a
+// scheduling question the plan already answered. Same fix for none of them.
+test fn host_cannot_invent_drop_or_rewiden_work() -> Bool {
+  let invented = match admit_batch_execution(
+    jobs: requested_jobs,
+    capacity: cap_two,
+    receipts: receipts_invented,
+    observed_width: 2
+  ) {
+    BatchRefusedInventedWork { node_identity: n } => n == ^ci_node_claim_a
+    BatchExecuted { receipts: _ } => false
+    BatchRefusedDroppedWork { node_identity: _ } => false
+    BatchRefusedWidthExceeded { permitted: _, observed: _ } => false
+  }
+  let dropped = match admit_batch_execution(
+    jobs: requested_jobs,
+    capacity: cap_two,
+    receipts: receipts_dropped,
+    observed_width: 1
+  ) {
+    BatchRefusedDroppedWork { node_identity: n } => n == ^ci_node_prepare_exact_subject
+    BatchExecuted { receipts: _ } => false
+    BatchRefusedInventedWork { node_identity: _ } => false
+    BatchRefusedWidthExceeded { permitted: _, observed: _ } => false
+  }
+  let rewidened = match admit_batch_execution(
+    jobs: requested_jobs,
+    capacity: cap_two,
+    receipts: receipts_exact,
+    observed_width: 5
+  ) {
+    BatchRefusedWidthExceeded { permitted: p, observed: o } => (p == 2) && (o == 5)
+    BatchExecuted { receipts: _ } => false
+    BatchRefusedInventedWork { node_identity: _ } => false
+    BatchRefusedDroppedWork { node_identity: _ } => false
+  }
+  invented && dropped && rewidened
+}
+
+// A CLAIM REQUEST NAMES THE SUBJECT BY DIGEST. There is no field on it for a source
+// root, an index, a resolver, or an entry path, so a claim cannot ask the host to
+// build a compiler world -- the structural half of "zero per-entry graph resolves".
+test fn a_claim_request_carries_only_a_capability_digest() -> Bool {
+  match (EvaluatePreparedClaimRequest {
+    capability: ci_attempt_subject_digest(request: base_request),
+    declaration: ^ci_decl_a,
+    budget_ms: 5000
+  }) {
+    EvaluatePreparedClaimRequest { capability: c, declaration: d, budget_ms: b } =>
+      (c == ci_attempt_subject_digest(request: base_request)) && (d == ^ci_decl_a) && (b == 5000)
+    PrepareExactSubjectRequest { envelope: _ } => false
+    RealizeCiHostEffectRequest { effect: _ } => false
+    ExecuteExactBatchRequest { jobs: _, capacity: _ } => false
   }
 }
