@@ -1,0 +1,124 @@
+module v2.test.claim.floor2_prepared_subject_test
+
+import v2.std.algebra { length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.workflow.floor2_prepared_subject {
+  admit_floor2_plan,
+  Floor2Plan,
+  Floor2PlanRefused,
+  Floor2PlanRunnable,
+  floor2_plan_refusals,
+  floor2_prepared_subject_count,
+  ModulePathNotUnique,
+  PreparedSubjectSpec,
+  ResolvedWitness,
+  WitnessIdentified,
+  WitnessIdentity,
+  witness_identity_qualified_name,
+  WitnessIdentityRefused,
+  WitnessSite
+}
+
+data f2_subject: PreparedSubjectSpec = PreparedSubjectSpec {
+  source_roots: ["dag", "src/v2"],
+  exclusions: ["src/v2/test/fixture/layering_scan"]
+}
+
+// THE DISCRIMINATING PAIR, and it is the real one rather than a synthetic name
+// collision: both of these are live rows on the floor roster, declaring the same
+// function name in different entries. Under bare-name identity they are one
+// invocation; under qualified identity they are two.
+data f2_doc_witness_site: WitnessSite = WitnessSite {
+  entry: "dag/test/claim/doc_reachability_witness_test.dag",
+  function: "doc_graph_has_no_dangling_links"
+}
+
+data f2_doc_lens_site: WitnessSite = WitnessSite {
+  entry: "src/v2/lens/doc_reachability_test.dag",
+  function: "doc_graph_has_no_dangling_links"
+}
+
+data f2_doc_witness_identity: WitnessIdentity = WitnessIdentity {
+  module_path: "test.claim.doc_reachability_witness_test",
+  function: "doc_graph_has_no_dangling_links"
+}
+
+data f2_doc_lens_identity: WitnessIdentity = WitnessIdentity {
+  module_path: "v2.lens.doc_reachability_test",
+  function: "doc_graph_has_no_dangling_links"
+}
+
+data f2_identified_pair: List<ResolvedWitness> = [
+  WitnessIdentified { identity: f2_doc_witness_identity, site: f2_doc_witness_site },
+  WitnessIdentified { identity: f2_doc_lens_identity, site: f2_doc_lens_site }
+]
+
+data f2_runnable_plan: Floor2Plan = Floor2Plan {
+  subject: f2_subject,
+  claims: f2_identified_pair
+}
+
+data f2_refused_claims: List<ResolvedWitness> = [
+  WitnessIdentified { identity: f2_doc_witness_identity, site: f2_doc_witness_site },
+  WitnessIdentityRefused { refusal: ModulePathNotUnique { site: f2_doc_lens_site } }
+]
+
+data f2_refused_plan: Floor2Plan = Floor2Plan {
+  subject: f2_subject,
+  claims: f2_refused_claims
+}
+
+// The two colliding sites produce DIFFERENT qualified identities. This is the
+// whole point of the carrier: the bare name they share is not the identity.
+test fn f2_colliding_names_get_distinct_qualified_identities() -> Bool {
+  let a = witness_identity_qualified_name(identity: f2_doc_witness_identity)
+  let b = witness_identity_qualified_name(identity: f2_doc_lens_identity)
+  (a == "test.claim.doc_reachability_witness_test.doc_graph_has_no_dangling_links")
+    && (b == "v2.lens.doc_reachability_test.doc_graph_has_no_dangling_links")
+    && (a != b)
+    && (f2_doc_witness_identity.function == f2_doc_lens_identity.function)
+}
+
+// RED CONTROL. Asserted in BOTH directions, because "the identities differ" is
+// satisfied by an implementation that also makes identical things differ. The
+// second half pins that one site qualifies to itself stably.
+test fn f2_same_site_qualifies_to_one_identity() -> Bool {
+  let a = witness_identity_qualified_name(identity: f2_doc_witness_identity)
+  let again = witness_identity_qualified_name(identity: f2_doc_witness_identity)
+  (a == again)
+    && !(witness_identity_qualified_name(identity: f2_doc_lens_identity) == a)
+}
+
+test fn f2_plan_with_only_identified_claims_is_runnable() -> Bool {
+  (length(xs: floor2_plan_refusals(plan: f2_runnable_plan)) == 0)
+    && match admit_floor2_plan(plan: f2_runnable_plan) {
+      Floor2PlanRunnable { plan: _ } => true
+      Floor2PlanRefused { refusals: _ } => false
+    }
+}
+
+// A plan carrying ONE refusal beside an identified claim does not run the
+// identified subset. Reporting on a partial roster is the silent narrowing the
+// identity rule exists to prevent, so admission is all-or-refuse.
+test fn f2_one_unidentified_claim_refuses_the_whole_plan() -> Bool {
+  (length(xs: floor2_plan_refusals(plan: f2_refused_plan)) == 1)
+    && match admit_floor2_plan(plan: f2_refused_plan) {
+      Floor2PlanRunnable { plan: _ } => false
+      Floor2PlanRefused { refusals: rs } => length(xs: rs) == 1
+    }
+}
+
+test fn f2_a_plan_names_exactly_one_prepared_subject() -> Bool {
+  (floor2_prepared_subject_count(plan: f2_runnable_plan) == 1)
+    && (floor2_prepared_subject_count(plan: f2_refused_plan) == 1)
+}
+
+test fn floor2_prepared_subject_witnesses() -> Bool {
+  f2_colliding_names_get_distinct_qualified_identities()
+    && f2_same_site_qualifies_to_one_identity()
+    && f2_plan_with_only_identified_claims_is_runnable()
+    && f2_one_unidentified_claim_refuses_the_whole_plan()
+    && f2_a_plan_names_exactly_one_prepared_subject()
+}

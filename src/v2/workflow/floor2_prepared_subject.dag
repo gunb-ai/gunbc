@@ -94,8 +94,14 @@ fn resolved_witness_refusals(
   }
 }
 
+// The fold's empty case is DECLARED rather than written as a bare literal: an
+// empty list literal carries no element type, so the accumulator's identity would
+// come from inference at the call site rather than from the type this fold is
+// about.
+data floor2_no_refusals: List<WitnessIdentityRefusal> = []
+
 fn floor2_plan_refusals(plan: Floor2Plan) -> List<WitnessIdentityRefusal> {
-  fold_list(xs: plan.claims, empty: [], cons: resolved_witness_refusals)
+  fold_list(xs: plan.claims, empty: floor2_no_refusals, cons: resolved_witness_refusals)
 }
 
 fn admit_floor2_plan(plan: Floor2Plan) -> Floor2PlanAdmission {

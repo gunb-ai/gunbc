@@ -618,16 +618,42 @@ fn run_against_one_prepared_subject(
     // reported separately and never summed into one "cost of preparing".
     let derive_started = Instant::now();
     let mut excludes = whole_tree_strict_resolve_exclusion_substrings();
-    excludes.extend(
-        v1_compiler::cli_run::census_exclude_derive::derived_exclude_closure_memoized()
-            .map_err(|e| {
-                eprintln!("claim_batch: derived strict-resolve exclusion closure failed: {e}");
-                ExitCode::from(2)
-            })?
+    // WHY 2010 MODULES ARE OUT is reported, not just how many. The closure tags
+    // every importer with the seed_chain that dragged it in, so the population
+    // splits into modules that ACTUALLY FAIL a strict whole-tree resolve and
+    // modules excluded only because they import one. Those two have completely
+    // different remedies — the first is a real defect, the second disappears when
+    // its seed does — and reporting a single total hides which is which.
+    let derived = v1_compiler::cli_run::census_exclude_derive::derived_exclude_closure_memoized()
+        .map_err(|e| {
+        eprintln!("claim_batch: derived strict-resolve exclusion closure failed: {e}");
+        ExitCode::from(2)
+    })?;
+    {
+        let importers: std::collections::BTreeSet<&str> = derived
+            .live_importers_excluded
+            .iter()
+            .map(|r| r.module_path.as_str())
+            .collect();
+        let seeds: Vec<&str> = derived
             .module_paths
             .iter()
-            .cloned(),
-    );
+            .map(|m| m.as_str())
+            .filter(|m| !importers.contains(m))
+            .collect();
+        eprintln!(
+            "[one-prepared-subject] exclusion closure: {} module(s) excluded over {} round(s) = \
+             {} seed failure(s) + {} module(s) excluded only for importing one",
+            derived.module_paths.len(),
+            derived.convergence_rounds,
+            seeds.len(),
+            importers.len()
+        );
+        for seed in seeds.iter().take(40) {
+            eprintln!("  seed strict-resolve failure: {seed}");
+        }
+    }
+    excludes.extend(std::iter::once(derived.clone()).flat_map(|c| c.module_paths.into_iter()));
     let derive_ms = derive_started.elapsed().as_millis();
     eprintln!(
         "[one-prepared-subject] exclusion closure derived in {}ms ({} substring(s)) — this is a \
