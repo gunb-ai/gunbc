@@ -7,8 +7,6 @@ import extdeps.uri { Uri, Https }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.ampere { ampere_vendor }
-import extdeps.publication { SpecificationDocumentDate }
-import gunbc.specification_citation_read_provenance { SpecificationCitationReadProvenance }
 import extdeps.ocp.publication {
   OcpSpecificationLicense,
   OcpContributionLicense,
@@ -16,10 +14,6 @@ import extdeps.ocp.publication {
   OcpContributionLicenseAgreement,
 }
 
-// MT. MITCHELL IS A SEPARATELY GOVERNED OCP SPECIFICATION, NOT A REVISION OF MT. JADE.
-// Ampere and Inspur contributed it as an improvement on the Jade reference platform; the open-
-// licence family matches extdeps.ocp.mt_jade, but the document authority, version row and any
-// future ingested facts live here rather than being folded into the Jade module.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
@@ -34,7 +28,7 @@ data internet_archive_mt_mitchell_capture_authority: ExternalAuthority = Externa
   }
 }
 
-data mt_mitchell_subject_note: String = "OCP-CONTRIBUTED REFERENCE PLATFORM SPECIFICATION FOR MT. MITCHELL. Usage is under the same OWFa 1.0 / OCP CLA family as Mt. Jade when the document is admitted. THE PUBLISHER LOCATOR REMAINS THE CITATION EVEN WHEN UNREACHABLE: an unauthenticated fetch returned HTTP 403 on 2026-08-14 and that refusal is recorded separately from a dated Internet Archive capture of the same URL that peer session neat-hawk-428 read in full. THIS MODULE IS THE SUBJECT ANCHOR ONLY; PLATFORM FACTS ARE OWNED BY extdeps.ocp.mt_mitchell.platform AND LAND IN #8260, GROUNDED ON THE MIRROR INGEST BELOW — NOT ON A CLAIM THAT THE PUBLISHER COPY WAS READ."
+data mt_mitchell_subject_note: String = "OCP-CONTRIBUTED REFERENCE PLATFORM SPECIFICATION FOR MT. MITCHELL. Usage is under the same OWFa 1.0 / OCP CLA family as Mt. Jade when the document is admitted. THE PUBLISHER LOCATOR REMAINS THE CITATION EVEN WHEN UNREACHABLE. HOW THIS REPOSITORY READ OR FAILED TO READ THAT LOCATOR — INCLUDING ANY MIRROR CAPTURE CITED IN further_citations — IS RECORDED AS GUNBC RECEIPTS WITH DeclarationRefs TO mt_mitchell_reference_platform, NOT AS FIELDS ON THIS RECORD. THIS MODULE IS THE SUBJECT ANCHOR ONLY; PLATFORM FACTS ARE OWNED BY extdeps.ocp.mt_mitchell.platform AND LAND IN #8260."
 
 type MtMitchellRev0_80 {}
 
@@ -46,24 +40,6 @@ data mt_mitchell_specification_license: OcpSpecificationLicense = Owfa1_0FinalSp
 
 data mt_mitchell_contribution_license: OcpContributionLicense = OcpContributionLicenseAgreement {}
 
-data mt_mitchell_publisher_citation_read_provenance: SpecificationCitationReadProvenance = DocumentLocatorFetchRefused {
-  http_status: 403,
-  detail: "unauthenticated fetch of the OCP publisher document locator returned 403; the publisher copy remains unread in this repository",
-}
-
-data internet_archive_mt_mitchell_capture_date: SpecificationDocumentDate = SpecificationDocumentDate {
-  year: 2022,
-  month: 10,
-  day: 26,
-}
-
-data mt_mitchell_mirror_citation_read_provenance: SpecificationCitationReadProvenance = DatedPublisherLocatorMirrorTextIngested {
-  mirror: internet_archive_mt_mitchell_capture_authority,
-  capture_date: internet_archive_mt_mitchell_capture_date,
-  peer_session: "neat-hawk-428",
-  detail: "full PDF text of the dated Internet Archive capture of the publisher locator was decoded by peer session neat-hawk-428; this is a second artifact from the publisher copy and may not match what the publisher serves today",
-}
-
 type MtMitchellReferencePlatform {
   marketing_name: NonEmptyStr
   revision: MtMitchellSpecificationRevision
@@ -71,8 +47,6 @@ type MtMitchellReferencePlatform {
   contributor: Vendor<Hardware>
   specification_license: OcpSpecificationLicense
   contribution_license: OcpContributionLicense
-  publisher_citation_read_provenance: SpecificationCitationReadProvenance
-  mirror_citation_read_provenance: SpecificationCitationReadProvenance
 }
 
 data mt_mitchell_reference_platform: MtMitchellReferencePlatform = MtMitchellReferencePlatform {
@@ -82,8 +56,6 @@ data mt_mitchell_reference_platform: MtMitchellReferencePlatform = MtMitchellRef
   contributor: ampere_vendor,
   specification_license: mt_mitchell_specification_license,
   contribution_license: mt_mitchell_contribution_license,
-  publisher_citation_read_provenance: mt_mitchell_publisher_citation_read_provenance,
-  mirror_citation_read_provenance: mt_mitchell_mirror_citation_read_provenance,
 }
 
 data mt_mitchell_model_scope: ExternalModelScope = ExternalModelScope {
