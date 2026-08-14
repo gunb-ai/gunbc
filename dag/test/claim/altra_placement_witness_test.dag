@@ -26,7 +26,6 @@ import product.altra_motherboard.placement {
   altra_board_frame,
   altra_reference_plan,
   board_control_envelope,
-  channel_indices,
   established_envelope_count,
   processor_package_envelope,
   outstanding_obligation_count,
@@ -45,8 +44,20 @@ import product.altra_motherboard.attachment_stack {
   subject_blocker,
 }
 import product.altra_motherboard.minimal_design {
-  FourChannels,
-  EightChannels,
+  ActiveDdrTopology,
+  AltraMinimalMotherboard,
+  DdrChannel0,
+  DdrChannel1,
+  DdrChannel2,
+  DdrChannel4,
+  DdrChannel5,
+  DdrChannelIdentity,
+  DdrSlotIdentity,
+  DimmSlotPosition,
+  FirstDimmOnChannel,
+  MemoryConfiguration,
+  Production,
+  SecondDimmOnChannel,
   altra_1p_minimum,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -238,25 +249,55 @@ test fn w_the_package_is_larger_than_the_cpld_by_orders_of_magnitude() -> Bool {
   }
 }
 
-// THE REQUIRED POPULATION FOLLOWS THE DESIGN RATHER THAN A LIST BESIDE IT. Eight channels demand
-// eight memory slots without anyone editing this module, which is what makes the roster derived
-// rather than a second copy of the channel count.
-test fn w_the_required_roles_track_the_selected_channel_count() -> Bool {
-  let four = fold(required_roles(d: altra_1p_minimum), init: 0, f: fn(acc, r) {
+fn memory_role_count(d: AltraMinimalMotherboard) -> Int {
+  fold(required_roles(d: d), init: 0, f: fn(acc, r) {
     if (role_tag(r: r) as String) == "MemoryModuleSlot" { acc + 1 } else { acc }
   })
-  let indices_four = fold(channel_indices(c: FourChannels), init: 0, f: fn(acc, _i) { acc + 1 })
-  let indices_eight = fold(channel_indices(c: EightChannels), init: 0, f: fn(acc, _i) { acc + 1 })
-  four == 4 && indices_four == 4 && indices_eight == 8
 }
 
-// A ROLE IS COMPARED STRUCTURALLY, INCLUDING ITS CHANNEL. Two memory slots on different channels
-// are different roles; an equality that only compared the variant would report the board as having
-// its memory population filled by a single slot repeated.
-test fn w_memory_slots_on_different_channels_are_different_roles() -> Bool {
-  !roles_equal(a: MemoryModuleSlot { channel: 0 }, b: MemoryModuleSlot { channel: 1 })
-    && roles_equal(a: MemoryModuleSlot { channel: 2 }, b: MemoryModuleSlot { channel: 2 })
-    && !roles_equal(a: MemoryModuleSlot { channel: 0 }, b: ProcessorSocket)
+fn requires_slot(d: AltraMinimalMotherboard, c: DdrChannelIdentity, p: DimmSlotPosition) -> Bool {
+  fold(required_roles(d: d), init: false, f: fn(acc, r) {
+    acc || roles_equal(a: r, b: MemoryModuleSlot { slot: DdrSlotIdentity { channel: c, position: p } })
+  })
+}
+
+fn design_over(t: ActiveDdrTopology) -> AltraMinimalMotherboard {
+  AltraMinimalMotherboard {
+    intent: Production,
+    memory: MemoryConfiguration { topology: t },
+    pcie_lanes_broken_out: 4,
+  }
+}
+
+// THE REQUIRED POPULATION FOLLOWS THE DESIGN RATHER THAN A LIST BESIDE IT, and it follows the
+// NAMED population rather than its size. The second design below populates four controllers that
+// are not the first four, with two DIMM positions on each -- a board the previous shape could not
+// describe at all, because it expanded a count into [0..n) and every four-channel design came out
+// as channels zero through three. The eight roles it requires are the cross product of two
+// authored sets, so this witness fails if either axis stops being consulted.
+test fn w_the_required_roles_are_the_named_slots_not_a_generated_range() -> Bool {
+  let split = design_over(t: ActiveDdrTopology {
+    populated_channels: [DdrChannel0, DdrChannel1, DdrChannel4, DdrChannel5],
+    positions_per_channel: [FirstDimmOnChannel, SecondDimmOnChannel],
+  })
+  memory_role_count(d: altra_1p_minimum) == 4
+    && memory_role_count(d: split) == 8
+    && requires_slot(d: split, c: DdrChannel5, p: SecondDimmOnChannel)
+    && !requires_slot(d: split, c: DdrChannel2, p: FirstDimmOnChannel)
+}
+
+// A ROLE IS COMPARED STRUCTURALLY, ON BOTH SLOT COORDINATES. Two memory slots on different
+// channels are different roles, and so are the two positions on ONE channel: an equality blind to
+// position would report a two-DIMM channel as filled by its first slot alone, and the second
+// connector would vanish from the population join without any refusal naming it.
+test fn w_memory_slots_are_distinguished_on_both_coordinates() -> Bool {
+  let c0p0 = MemoryModuleSlot { slot: DdrSlotIdentity { channel: DdrChannel0, position: FirstDimmOnChannel } }
+  let c0p1 = MemoryModuleSlot { slot: DdrSlotIdentity { channel: DdrChannel0, position: SecondDimmOnChannel } }
+  let c1p0 = MemoryModuleSlot { slot: DdrSlotIdentity { channel: DdrChannel1, position: FirstDimmOnChannel } }
+  !roles_equal(a: c0p0, b: c1p0)
+    && !roles_equal(a: c0p0, b: c0p1)
+    && roles_equal(a: c0p1, b: c0p1)
+    && !roles_equal(a: c0p0, b: ProcessorSocket)
     && roles_equal(a: DebugConnector, b: DebugConnector)
 }
 
@@ -292,7 +333,7 @@ test fn w_a_component_filling_no_required_role_refuses() -> Bool {
       count_tagged(
         cs: placement_causes(d: altra_1p_minimum, plan: plan_with_only(cs: [PlannedComponent {
           identity: "dimm_slot_spurious",
-          role: MemoryModuleSlot { channel: 7 },
+          role: MemoryModuleSlot { slot: DdrSlotIdentity { channel: DdrChannel5, position: SecondDimmOnChannel } },
           envelope: board_control_envelope,
           origin: point2(frame: altra_board_frame(), x: 10000, y: 10000),
         }], template: p)),

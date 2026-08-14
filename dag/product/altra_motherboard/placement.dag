@@ -17,13 +17,12 @@ import product.compute_board.physical {
   body_envelope_of_ice40_package,
 }
 import product.altra_motherboard.minimal_design {
-  ActiveDdrChannelCount,
   AltraMinimalMotherboard,
-  EightChannels,
-  FourChannels,
-  OneChannel,
-  SixChannels,
-  TwoChannels,
+  DdrSlotIdentity,
+  ddr_channel_ordinal,
+  ddr_slot_identity_eq,
+  dimm_slot_position_ordinal,
+  topology_slot_identities,
   altra_1p_minimum,
 }
 import product.altra_motherboard.attachment_stack {
@@ -51,7 +50,7 @@ data placement_note: String = "WHERE THE PARTS GO, AND WHICH PARTS THIS REPOSITO
 type BoardComponentRole
   = ProcessorSocket
   | ProcessorPackage
-  | MemoryModuleSlot { channel: Int }
+  | MemoryModuleSlot { slot: DdrSlotIdentity }
   | BoardControlCpld
   | BootFirmwareEeprom
   | FirmwareFlash
@@ -71,7 +70,7 @@ fn role_tag(r: BoardComponentRole) -> NonEmptyStr {
   match r {
     ProcessorSocket => "ProcessorSocket"
     ProcessorPackage => "ProcessorPackage"
-    MemoryModuleSlot { channel: _ } => "MemoryModuleSlot"
+    MemoryModuleSlot { slot: _ } => "MemoryModuleSlot"
     BoardControlCpld => "BoardControlCpld"
     BootFirmwareEeprom => "BootFirmwareEeprom"
     FirmwareFlash => "FirmwareFlash"
@@ -94,34 +93,38 @@ fn role_tag(r: BoardComponentRole) -> NonEmptyStr {
 // to nothing and simply report every plan as missing it, with no arm to update and no failure
 // pointing at this function. The key is total: every variant is enumerated, the absent channel is
 // Absent rather than a number, and a new role cannot be added without deciding its key.
-type RoleKey { kind: Int  channel: Int? }
+type RoleKey { kind: Int  slot: DdrSlotIdentity? }
 
 fn role_key(r: BoardComponentRole) -> RoleKey {
   match r {
-    MemoryModuleSlot { channel: c } => RoleKey { kind: 1, channel: Present { value: c } }
-    ProcessorSocket => RoleKey { kind: 2, channel: none }
-    ProcessorPackage => RoleKey { kind: 12, channel: none }
-    BoardControlCpld => RoleKey { kind: 3, channel: none }
-    BootFirmwareEeprom => RoleKey { kind: 4, channel: none }
-    FirmwareFlash => RoleKey { kind: 5, channel: none }
-    ClockGenerator => RoleKey { kind: 6, channel: none }
-    ResetController => RoleKey { kind: 7, channel: none }
-    PowerController => RoleKey { kind: 8, channel: none }
-    NetworkEndpoint => RoleKey { kind: 9, channel: none }
-    StorageEndpoint => RoleKey { kind: 10, channel: none }
-    DebugConnector => RoleKey { kind: 11, channel: none }
+    MemoryModuleSlot { slot: s } => RoleKey { kind: 1, slot: Present { value: s } }
+    ProcessorSocket => RoleKey { kind: 2, slot: none }
+    ProcessorPackage => RoleKey { kind: 12, slot: none }
+    BoardControlCpld => RoleKey { kind: 3, slot: none }
+    BootFirmwareEeprom => RoleKey { kind: 4, slot: none }
+    FirmwareFlash => RoleKey { kind: 5, slot: none }
+    ClockGenerator => RoleKey { kind: 6, slot: none }
+    ResetController => RoleKey { kind: 7, slot: none }
+    PowerController => RoleKey { kind: 8, slot: none }
+    NetworkEndpoint => RoleKey { kind: 9, slot: none }
+    StorageEndpoint => RoleKey { kind: 10, slot: none }
+    DebugConnector => RoleKey { kind: 11, slot: none }
   }
 }
 
-fn channels_equal(ca: Int?, cb: Int?) -> Bool {
-  match ca {
+// SLOT EQUALITY IS THE DESIGN LAYER'S, NOT RETYPED HERE. An earlier revision compared a bare
+// channel integer, which could not distinguish the two DIMM positions on one channel at all: the
+// near and far slots differ in stub length and loading, and two connectors that compare equal are
+// two connectors that can silently become one.
+fn slots_equal(sa: DdrSlotIdentity?, sb: DdrSlotIdentity?) -> Bool {
+  match sa {
     Present { value: x } =>
-      match cb {
-        Present { value: y } => x == y
+      match sb {
+        Present { value: y } => ddr_slot_identity_eq(a: x, b: y)
         Absent => false
       }
     Absent =>
-      match cb {
+      match sb {
         Absent => true
         Present { value: _ } => false
       }
@@ -131,7 +134,7 @@ fn channels_equal(ca: Int?, cb: Int?) -> Bool {
 fn roles_equal(a: BoardComponentRole, b: BoardComponentRole) -> Bool {
   let ka = role_key(r: a)
   let kb = role_key(r: b)
-  ka.kind == kb.kind && channels_equal(ca: ka.channel, cb: kb.channel)
+  ka.kind == kb.kind && slots_equal(sa: ka.slot, sb: kb.slot)
 }
 
 // AN ENVELOPE IS EITHER ESTABLISHED FROM A SOURCE OR IT IS AN OBLIGATION. There is no third arm
@@ -172,19 +175,17 @@ type BoardPlacementPlan {
 // THE REQUIRED POPULATION IS DERIVED FROM THE DESIGN, never listed beside it. A hand-written
 // roster of four memory slots is a second statement of the channel count, and the copy that
 // disagrees when someone selects six channels is the one nobody edits.
-fn channel_indices(c: ActiveDdrChannelCount) -> List<Int> {
-  match c {
-    OneChannel => [0]
-    TwoChannels => [0, 1]
-    FourChannels => [0, 1, 2, 3]
-    SixChannels => [0, 1, 2, 3, 4, 5]
-    EightChannels => [0, 1, 2, 3, 4, 5, 6, 7]
-  }
-}
-
+//
+// AND IT IS DERIVED FROM NAMED SLOTS, NOT FROM A COUNT. This module previously expanded the
+// channel count into [0..n), which is cardinality standing where identity was required: it
+// asserts that a four-channel board populates channels zero through three, an arithmetic answer
+// to a design question. The topology now names its controllers and its per-channel positions, so
+// the required roles are the cross product of two authored sets rather than a generated range --
+// and a board that populates DDR0, DDR1, DDR4 and DDR5 is expressible, which under the old shape
+// it was not.
 fn required_roles(d: AltraMinimalMotherboard) -> List<BoardComponentRole> {
-  let slots = fold(channel_indices(c: d.memory.channels), init: [], f: fn(acc, i) {
-    concat(acc, [MemoryModuleSlot { channel: i }])
+  let slots = fold(topology_slot_identities(t: d.memory.topology), init: [], f: fn(acc, s) {
+    concat(acc, [MemoryModuleSlot { slot: s }])
   })
   concat(
     [ProcessorSocket, ProcessorPackage, BoardControlCpld, BootFirmwareEeprom, FirmwareFlash,
@@ -395,14 +396,20 @@ fn obligation(g: FactAuthorityBlocker, id: NonEmptyStr, r: BoardComponentRole, x
   }
 }
 
+// THE IDENTITY CARRIES BOTH COORDINATES, because the slot has two. Naming these by channel alone
+// would have given the two positions on one channel a single identity, which the identity-repeat
+// refusal above exists to catch -- but only once their envelopes land, and by then the board is
+// drawn. Naming them fully means the collision cannot be authored in the first place.
 fn memory_slot_obligations(d: AltraMinimalMotherboard) -> List<PlannedComponent> {
-  fold(channel_indices(c: d.memory.channels), init: [], f: fn(acc, i) {
+  fold(topology_slot_identities(t: d.memory.topology), init: [], f: fn(acc, s) {
+    let ch = ddr_channel_ordinal(c: s.channel)
+    let pos = dimm_slot_position_ordinal(p: s.position)
     concat(acc, [obligation(
       g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the MemoryModuleSlot role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" },
-      id: "dimm_slot_{i}",
-      r: MemoryModuleSlot { channel: i },
-      x: 150000,
-      y: 20000 + (i * 12000)
+      id: "dimm_ddr{ch}_slot{pos}",
+      r: MemoryModuleSlot { slot: s },
+      x: 150000 + (pos * 14000),
+      y: 20000 + (ch * 12000)
     )])
   })
 }
