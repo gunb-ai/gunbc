@@ -113,7 +113,10 @@ data socket_board_termination_standing: AttachmentLayerStanding = AttachmentLaye
 }
 
 // THE ONE THAT MATTERS MOST, and the one that looks most available. The board land pattern is the
-// SOCKET vendor's recommended pad array, not the processor's underside.
+// SOCKET vendor's recommended pad array, not the processor's underside. THE CITED PLATFORM
+// DESIGN SPEC IS A POINTER TO WHERE THE ANSWER WOULD LIVE, NOT THE ANSWER: DocumentCitedTextUnread
+// keeps standing_is_established false and routes to NeedsDocumentTextIngested, so no consumer may
+// treat the anchor as evidence that the land pattern is known.
 data board_land_pattern_standing: AttachmentLayerStanding = AttachmentLayerStanding {
   layer: BoardLandPatternLayer,
   standing: DocumentCitedTextUnread {
