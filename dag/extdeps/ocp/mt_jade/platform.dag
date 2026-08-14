@@ -4,7 +4,15 @@ import std.types { String, Bool, NonEmptyStr, List }
 import std.integer { Int }
 import std.measure { Hertz, Microsecond, Micrometer, hertz, microsecond, micrometer, micrometer_count }
 import extdeps.external_authority { ExternalAuthority }
-import extdeps.ocp.mt_jade.subject { extdeps_external_authority_anchor }
+import extdeps.ocp.mt_jade.subject {
+  extdeps_external_authority_anchor,
+  mt_jade_reference_platform,
+  MtJadeReferencePlatform,
+}
+
+data platform_subject_edge_note: String = "PLATFORM FACTS MUST JOIN THE ENTITY THEY DESCRIBE IN THE GRAPH, NOT ONLY THE SHARED OCP LOCATOR. extdeps.ocp.mt_jade.subject owns mt_jade_reference_platform; this row is the typed subject edge that binds every mechanical, sequencing, CPLD, clock and reference-part fact in this module to that declaration — the same pattern as extdeps.sec.issuer.gitlab_facts gitlab_facts_subject."
+
+data mt_jade_platform_subject: MtJadeReferencePlatform = mt_jade_reference_platform
 
 data platform_note: String = "PLATFORM FACTS FROM THE PUBLIC OCP MT. JADE SPECIFICATION, REV 1.0 (2021-09-17). Section 7.2 carries the motherboard outline; section 7.3 names the ILM4926 socket; section 7.10 carries clocks, reset and power-on sequence; sections 7.6–7.8 carry BMC, I2C, JTAG and GPIO facts that define the board CPLD's role. Nothing here transcribes pin tables or Appendix A/B content."
 
