@@ -9,9 +9,22 @@ import extdeps.ollama.api { OllamaModelRef, ollama_model_ref_wire }
 import extdeps.ollama.binary_release {
   OllamaBinaryRelease,
   OllamaLinuxArchitecture,
-  OllamaLinuxArchitecture,
   OllamaLinuxArm64,
+  OllamaLinuxAssetVariant,
+  OllamaLinuxGenericCuda,
+  ollama_binary_release_eq,
   ollama_required_release,
+}
+import extdeps.ollama.gpu_support {
+  OllamaGpuSupportRow,
+  ollama_gb10_gpu_support_row,
+  OllamaNvidiaDriverVersion,
+  ollama_gb10_minimum_nvidia_driver,
+  OllamaNvidiaDriverRequirementVerdict,
+  OllamaNvidiaDriverRequirementSatisfied,
+  OllamaNvidiaDriverRequirementUnmet,
+  OllamaNvidiaDriverRequirementUnobserved,
+  ollama_nvidia_driver_requirement_verdict,
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -162,12 +175,18 @@ type OllamaTargetPlatform = OllamaNvidiaGb10Spark | OllamaTargetPlatformUncatalo
 type OllamaPlatformSupportRow {
   platform: OllamaTargetPlatform
   architecture: OllamaLinuxArchitecture
+  required_variant: OllamaLinuxAssetVariant
+  gpu_support: OllamaGpuSupportRow
+  minimum_nvidia_driver: OllamaNvidiaDriverVersion
   binary_release: OllamaBinaryRelease
 }
 
 data ollama_gb10_linux_arm64_support_row: OllamaPlatformSupportRow = OllamaPlatformSupportRow {
   platform: OllamaNvidiaGb10Spark,
   architecture: OllamaLinuxArm64,
+  required_variant: OllamaLinuxAssetVariant,
+  gpu_support: ollama_gb10_gpu_support_row,
+  minimum_nvidia_driver: ollama_gb10_minimum_nvidia_driver,
   binary_release: ollama_required_release,
 }
 
@@ -179,12 +198,6 @@ type OllamaPlatformSupportVerdict
   | OllamaPlatformSupportUnobserved { cause: NonEmptyStr }
   | OllamaPlatformSupportUncatalogued { cause: NonEmptyStr }
 
-fn ollama_binary_release_eq(a: OllamaBinaryRelease, b: OllamaBinaryRelease) -> Bool {
-  (a.version as String) == (b.version as String)
-    && (a.asset_name as String) == (b.asset_name as String)
-    && (a.digest.hex as String) == (b.digest.hex as String)
-}
-
 fn ollama_platform_support_verdict(
   binary_release: OllamaBinaryRelease,
   platform: OllamaTargetPlatform,
@@ -195,12 +208,13 @@ fn ollama_platform_support_verdict(
     row =>
       row.platform == platform
         && row.architecture == architecture
+        && binary_release.variant == row.required_variant
         && ollama_binary_release_eq(a: row.binary_release, b: binary_release),
   )
   let n = count(hits)
   if n == 0 {
     OllamaPlatformSupportUncatalogued {
-      cause: "no catalogued ollama release supports this platform and architecture pair" as NonEmptyStr,
+      cause: "no catalogued ollama release supports this platform, architecture, and asset variant triple" as NonEmptyStr,
     }
   } else if n == 1 {
     OllamaPlatformSupportApplicable
@@ -245,6 +259,46 @@ fn ollama_runtime_model_compatibility_verdict(
             cause: join(["model support relation uncatalogued for ", w], "") as NonEmptyStr,
           }
       }
+  }
+}
+
+type OllamaRuntimeAdmissionVerdict
+  = OllamaRuntimeAdmissionApplicable
+  | OllamaRuntimeAdmissionUnmet { cause: NonEmptyStr }
+  | OllamaRuntimeAdmissionUnobserved { cause: NonEmptyStr }
+  | OllamaRuntimeAdmissionUncatalogued { cause: NonEmptyStr }
+
+fn ollama_runtime_admission_verdict(
+  binary_release: OllamaBinaryRelease,
+  platform: OllamaTargetPlatform,
+  architecture: OllamaLinuxArchitecture,
+  model: OllamaModelRef,
+  observed_nvidia_driver: OllamaNvidiaDriverVersion?,
+) -> OllamaRuntimeAdmissionVerdict {
+  match ollama_runtime_model_compatibility_verdict(
+    binary_release: binary_release,
+    platform: platform,
+    architecture: architecture,
+    model: model,
+  ) {
+    OllamaPlatformSupportApplicable =>
+      match ollama_nvidia_driver_requirement_verdict(
+        observed: observed_nvidia_driver,
+        minimum: ollama_gb10_minimum_nvidia_driver,
+      ) {
+        OllamaNvidiaDriverRequirementSatisfied => OllamaRuntimeAdmissionApplicable
+        OllamaNvidiaDriverRequirementUnmet { observed: o, minimum: m } =>
+          OllamaRuntimeAdmissionUnmet {
+            cause: join([
+              "nvidia driver ", to_string(o.major), " is below minimum ", to_string(m.major),
+            ], "") as NonEmptyStr,
+          }
+        OllamaNvidiaDriverRequirementUnobserved { cause: c } =>
+          OllamaRuntimeAdmissionUnobserved { cause: c }
+      }
+    OllamaPlatformSupportUnmet { cause: c } => OllamaRuntimeAdmissionUnmet { cause: c }
+    OllamaPlatformSupportUnobserved { cause: c } => OllamaRuntimeAdmissionUnobserved { cause: c }
+    OllamaPlatformSupportUncatalogued { cause: c } => OllamaRuntimeAdmissionUncatalogued { cause: c }
   }
 }
 

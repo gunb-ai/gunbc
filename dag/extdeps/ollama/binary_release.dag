@@ -3,10 +3,21 @@ module extdeps.ollama.binary_release
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.crypto.hash { Digest, sha256_digest }
+import extdeps.archive.format {
+  ArchiveFormat,
+  ArchiveDistributionSuffixStyle,
+  TarDotCodec,
+  TgzShort,
+  archive_format_tar_zstd,
+  archive_format_tar_gzip,
+  archive_format_distribution_suffix,
+  archive_format_eq,
+}
 import std.types { NonEmptyStr, String }
+import std.nat { Nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-data extdeps_ollama_binary_release_note: String = "CITED UPSTREAM FACTS ONLY. Install and extract live in gunbc.package_delivery once #8225 lands (Ollama as the second runtime-bundle consumer beside Codex). This module owns the pinned release row the closure digest derives from — never a shell leaf that would fork a parallel install path."
+data extdeps_ollama_binary_release_note: String = "CITED UPSTREAM FACTS ONLY. Install and extract live in gunbc.package_delivery once #8225 lands (Ollama as the second runtime-bundle consumer beside Codex). This module owns the pinned release row the closure digest derives from — never a shell leaf that would fork a parallel install path. Asset filenames derive from version x os x arch x variant x archive format — never stored as hand-authored literals."
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -27,20 +38,74 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-type OllamaArchiveFormat = TarZst | TarGz
-
 type OllamaLinuxArchitecture = OllamaLinuxArm64 | OllamaLinuxAmd64
+
+type OllamaLinuxAssetVariant = OllamaLinuxGenericCuda | OllamaLinuxJetPack5 | OllamaLinuxJetPack6
 
 type OllamaBinaryRelease {
   version: NonEmptyStr
   release_page: NonEmptyStr
-  asset_name: NonEmptyStr
-  download_locator: NonEmptyStr
   architecture: OllamaLinuxArchitecture
-  archive_format: OllamaArchiveFormat
+  variant: OllamaLinuxAssetVariant
+  archive_format: ArchiveFormat
+  distribution_suffix_style: ArchiveDistributionSuffixStyle
   archive_layout_note: NonEmptyStr
   executable_relative_path: NonEmptyStr
   digest: Digest
+  published_at: NonEmptyStr
+  byte_size: Nat
+}
+
+fn ollama_linux_arch_key(architecture: OllamaLinuxArchitecture) -> String {
+  match architecture {
+    OllamaLinuxArm64 => "arm64"
+    OllamaLinuxAmd64 => "amd64"
+  }
+}
+
+fn ollama_linux_asset_variant_infix(variant: OllamaLinuxAssetVariant) -> String {
+  match variant {
+    OllamaLinuxGenericCuda => ""
+    OllamaLinuxJetPack5 => "-jetpack5"
+    OllamaLinuxJetPack6 => "-jetpack6"
+  }
+}
+
+fn ollama_binary_release_asset_name(binary_release: OllamaBinaryRelease) -> NonEmptyStr {
+  let suffix = archive_format_distribution_suffix(
+    format: binary_release.archive_format,
+    style: binary_release.distribution_suffix_style,
+  )
+  join(
+    [
+      "ollama-linux-",
+      ollama_linux_arch_key(architecture: binary_release.architecture),
+      ollama_linux_asset_variant_infix(variant: binary_release.variant),
+      suffix,
+    ],
+    "",
+  ) as NonEmptyStr
+}
+
+fn ollama_binary_release_download_locator(binary_release: OllamaBinaryRelease) -> NonEmptyStr {
+  join(
+    [
+      "https://github.com/ollama/ollama/releases/download/",
+      binary_release.version as String,
+      "/",
+      ollama_binary_release_asset_name(binary_release: binary_release) as String,
+    ],
+    "",
+  ) as NonEmptyStr
+}
+
+fn ollama_binary_release_eq(a: OllamaBinaryRelease, b: OllamaBinaryRelease) -> Bool {
+  (a.version as String) == (b.version as String)
+    && a.architecture == b.architecture
+    && a.variant == b.variant
+    && archive_format_eq(a: a.archive_format, b: b.archive_format)
+    && a.distribution_suffix_style == b.distribution_suffix_style
+    && (a.digest.hex as String) == (b.digest.hex as String)
 }
 
 data ollama_v0_11_0_feature_floor_note: String = "Feature-introduction floor for OpenAI gpt-oss model support — NOT the deployment artifact. Cited release: https://github.com/ollama/ollama/releases/tag/v0.11.0 published 2025-08-05."
@@ -48,25 +113,57 @@ data ollama_v0_11_0_feature_floor_note: String = "Feature-introduction floor for
 data ollama_v0_11_0_release: OllamaBinaryRelease = OllamaBinaryRelease {
   version: "v0.11.0" as NonEmptyStr,
   release_page: "https://github.com/ollama/ollama/releases/tag/v0.11.0" as NonEmptyStr,
-  asset_name: "ollama-linux-arm64.tgz" as NonEmptyStr,
-  download_locator: "https://github.com/ollama/ollama/releases/download/v0.11.0/ollama-linux-arm64.tgz" as NonEmptyStr,
   architecture: OllamaLinuxArm64,
-  archive_format: TarGz,
+  variant: OllamaLinuxGenericCuda,
+  archive_format: archive_format_tar_gzip,
+  distribution_suffix_style: TgzShort,
   archive_layout_note: "gzip tar root contains bin/ollama and lib/ entries per upstream linux-arm64.tgz layout" as NonEmptyStr,
   executable_relative_path: "bin/ollama" as NonEmptyStr,
   digest: sha256_digest(hex: "2b271bf318924cccb281f31cf06b1f8f723c5a2d146c629d83a4b35822c480de" as NonEmptyStr),
+  published_at: "2025-08-05T00:00:00Z" as NonEmptyStr,
+  byte_size: 0,
 }
 
 data ollama_v0_32_9_release: OllamaBinaryRelease = OllamaBinaryRelease {
   version: "v0.32.9" as NonEmptyStr,
   release_page: "https://github.com/ollama/ollama/releases/tag/v0.32.9" as NonEmptyStr,
-  asset_name: "ollama-linux-arm64.tar.zst" as NonEmptyStr,
-  download_locator: "https://github.com/ollama/ollama/releases/download/v0.32.9/ollama-linux-arm64.tar.zst" as NonEmptyStr,
   architecture: OllamaLinuxArm64,
-  archive_format: TarZst,
+  variant: OllamaLinuxGenericCuda,
+  archive_format: archive_format_tar_zstd,
+  distribution_suffix_style: TarDotCodec,
   archive_layout_note: "zstd tar root contains bin/ollama and lib/ entries per upstream linux-arm64.tar.zst layout" as NonEmptyStr,
   executable_relative_path: "bin/ollama" as NonEmptyStr,
   digest: sha256_digest(hex: "79617139521db251c716d6229505d7530171ff4d68e476d0c22dabc15726a237" as NonEmptyStr),
+  published_at: "2026-08-11T13:23:33Z" as NonEmptyStr,
+  byte_size: 1542526111,
+}
+
+data ollama_v0_32_9_jetpack5_release: OllamaBinaryRelease = OllamaBinaryRelease {
+  version: "v0.32.9" as NonEmptyStr,
+  release_page: "https://github.com/ollama/ollama/releases/tag/v0.32.9" as NonEmptyStr,
+  architecture: OllamaLinuxArm64,
+  variant: OllamaLinuxJetPack5,
+  archive_format: archive_format_tar_zstd,
+  distribution_suffix_style: TarDotCodec,
+  archive_layout_note: "Jetson JetPack 5 arm64 build — distinct from generic CUDA linux-arm64 despite shared arch and archive format" as NonEmptyStr,
+  executable_relative_path: "bin/ollama" as NonEmptyStr,
+  digest: sha256_digest(hex: "0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr),
+  published_at: "2026-08-11T13:23:33Z" as NonEmptyStr,
+  byte_size: 295995327,
+}
+
+data ollama_v0_32_9_jetpack6_release: OllamaBinaryRelease = OllamaBinaryRelease {
+  version: "v0.32.9" as NonEmptyStr,
+  release_page: "https://github.com/ollama/ollama/releases/tag/v0.32.9" as NonEmptyStr,
+  architecture: OllamaLinuxArm64,
+  variant: OllamaLinuxJetPack6,
+  archive_format: archive_format_tar_zstd,
+  distribution_suffix_style: TarDotCodec,
+  archive_layout_note: "Jetson JetPack 6 arm64 build — distinct from generic CUDA linux-arm64 despite shared arch and archive format" as NonEmptyStr,
+  executable_relative_path: "bin/ollama" as NonEmptyStr,
+  digest: sha256_digest(hex: "0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr),
+  published_at: "2026-08-11T13:23:33Z" as NonEmptyStr,
+  byte_size: 268507322,
 }
 
 data ollama_required_release: OllamaBinaryRelease = ollama_v0_32_9_release

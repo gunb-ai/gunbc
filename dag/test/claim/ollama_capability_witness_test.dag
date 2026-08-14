@@ -1,12 +1,24 @@
 module test.claim.ollama_capability_witness_test
 
-import std.types { Bool, NonEmptyStr, Int }
+import std.types { Bool, NonEmptyStr, Int, String }
 import extdeps.ollama.api { OllamaModelRef }
 import extdeps.ollama.binary_release {
   ollama_required_release,
   ollama_v0_11_0_release,
+  ollama_v0_32_9_release,
+  ollama_v0_32_9_jetpack5_release,
+  ollama_v0_32_9_jetpack6_release,
   OllamaLinuxArchitecture,
   OllamaLinuxArm64,
+  ollama_binary_release_asset_name,
+  ollama_binary_release_download_locator,
+}
+import extdeps.ollama.gpu_support {
+  ollama_gb10_gpu_support_row,
+  ollama_gb10_minimum_nvidia_driver,
+  OllamaNvidiaDriverVersion,
+  OllamaNvidiaDriverRequirementUnobserved,
+  ollama_nvidia_driver_requirement_verdict,
 }
 import extdeps.ollama.capability {
   OllamaNvidiaGb10Spark,
@@ -15,8 +27,11 @@ import extdeps.ollama.capability {
   OllamaModelSupportUncatalogued,
   OllamaPlatformSupportApplicable,
   OllamaPlatformSupportUncatalogued,
+  OllamaRuntimeAdmissionApplicable,
+  OllamaRuntimeAdmissionUnobserved,
   ollama_model_support_verdict,
   ollama_runtime_model_compatibility_verdict,
+  ollama_runtime_admission_verdict,
   ollama_v0_9_6_semantic_version,
   ollama_gpt_oss_feature_introduction_floor,
 }
@@ -92,6 +107,82 @@ test fn v0_11_0_floor_release_refuses_gb10_platform_catalog() -> Bool {
   ) {
     OllamaPlatformSupportUncatalogued { cause: _ } => true
     OllamaPlatformSupportApplicable => false
+    _ => false
+  }
+}
+
+test fn jetpack5_asset_name_differs_from_generic_cuda() -> Bool {
+  let generic = ollama_binary_release_asset_name(binary_release: ollama_v0_32_9_release) as String
+  let jetpack5 = ollama_binary_release_asset_name(binary_release: ollama_v0_32_9_jetpack5_release) as String
+  (generic == "ollama-linux-arm64.tar.zst")
+    && (jetpack5 == "ollama-linux-arm64-jetpack5.tar.zst")
+    && (generic != jetpack5)
+}
+
+test fn jetpack6_asset_name_differs_from_generic_cuda() -> Bool {
+  let generic = ollama_binary_release_asset_name(binary_release: ollama_v0_32_9_release) as String
+  let jetpack6 = ollama_binary_release_asset_name(binary_release: ollama_v0_32_9_jetpack6_release) as String
+  (jetpack6 == "ollama-linux-arm64-jetpack6.tar.zst") && (generic != jetpack6)
+}
+
+test fn pinned_generic_download_locator_matches_release_page() -> Bool {
+  let locator = ollama_binary_release_download_locator(binary_release: ollama_required_release) as String
+  locator == "https://github.com/ollama/ollama/releases/download/v0.32.9/ollama-linux-arm64.tar.zst"
+}
+
+test fn jetpack5_release_refuses_gb10_platform_catalog() -> Bool {
+  match ollama_runtime_model_compatibility_verdict(
+    binary_release: ollama_v0_32_9_jetpack5_release,
+    platform: OllamaNvidiaGb10Spark,
+    architecture: OllamaLinuxArm64,
+    model: witness_gpt_oss_ref,
+  ) {
+    OllamaPlatformSupportUncatalogued { cause: _ } => true
+    OllamaPlatformSupportApplicable => false
+    _ => false
+  }
+}
+
+test fn gb10_gpu_support_row_carries_compute_capability_12_1() -> Bool {
+  ollama_gb10_gpu_support_row.compute_capability.major == 12
+    && ollama_gb10_gpu_support_row.compute_capability.minor == 1
+}
+
+test fn unobserved_nvidia_driver_refuses_requirement() -> Bool {
+  match ollama_nvidia_driver_requirement_verdict(
+    observed: none,
+    minimum: ollama_gb10_minimum_nvidia_driver,
+  ) {
+    OllamaNvidiaDriverRequirementUnobserved { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn full_admission_refuses_when_driver_unobserved() -> Bool {
+  match ollama_runtime_admission_verdict(
+    binary_release: ollama_required_release,
+    platform: OllamaNvidiaGb10Spark,
+    architecture: OllamaLinuxArm64,
+    model: witness_gpt_oss_ref,
+    observed_nvidia_driver: none,
+  ) {
+    OllamaRuntimeAdmissionUnobserved { cause: _ } => true
+    OllamaRuntimeAdmissionApplicable => false
+    _ => false
+  }
+}
+
+test fn full_admission_succeeds_when_driver_observed() -> Bool {
+  match ollama_runtime_admission_verdict(
+    binary_release: ollama_required_release,
+    platform: OllamaNvidiaGb10Spark,
+    architecture: OllamaLinuxArm64,
+    model: witness_gpt_oss_ref,
+    observed_nvidia_driver: Present {
+      value: OllamaNvidiaDriverVersion { major: 550 },
+    },
+  ) {
+    OllamaRuntimeAdmissionApplicable => true
     _ => false
   }
 }
