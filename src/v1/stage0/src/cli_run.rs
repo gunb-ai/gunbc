@@ -26196,6 +26196,155 @@ mod prepared_whole_tree_resolve_memo_tests {
 }
 
 #[cfg(test)]
+mod prepared_subject_binding_strictness_tests {
+    use super::*;
+
+    /// DOES THE WHOLE-TREE SUBJECT BIND UNDECLARED CROSS-MODULE NAMES?
+    ///
+    /// This is a property of the cutover I could not answer by reading, and the answer decides
+    /// whether the change LOWERS a rung. Under the entry-major key a module resolves inside its
+    /// own entry closure; under one prepared subject every module of the tree is present at
+    /// once, which is the most permissive pool that could exist. If an undeclared cross-module
+    /// reference binds there, the required floor became more permissive about name binding than
+    /// the path it replaced — a silent regression that §4b says must be declared, not
+    /// discovered.
+    ///
+    /// The fixture is authored rather than borrowed: two modules, one referencing the other's
+    /// symbol with NO import declaring it. A control module that DOES declare the import runs
+    /// in the same subject, so a refusal cannot be blamed on the fixture being malformed —
+    /// exactly one variable differs between the two.
+    #[test]
+    fn undeclared_cross_module_reference_under_one_subject() {
+        let base = std::env::temp_dir().join(format!("gunbc-bind-{}", std::process::id()));
+        let root = base.join("root");
+        std::fs::create_dir_all(&root).expect("create root");
+        std::fs::write(
+            root.join("provider.dag"),
+            "module bind.provider\n\nfn provided() -> Int {\n  7\n}\n",
+        )
+        .expect("write provider");
+        // The control: declares the import, must always resolve.
+        std::fs::write(
+            root.join("declared.dag"),
+            "module bind.declared\n\nimport bind.provider { provided }\n\nfn use_declared() -> Int {\n  provided()\n}\n",
+        )
+        .expect("write declared");
+        let roots = vec![root.to_string_lossy().into_owned()];
+        let excludes: Vec<String> = Vec::new();
+
+        prepare_whole_tree_subject(
+            &roots,
+            &excludes,
+            v1_interpreter::ExecutionMode::Hermetic,
+            None,
+            None,
+        )
+        .expect(
+            "the control alone must prepare; a failure here means the fixture is wrong, \
+                 not that binding is strict",
+        );
+
+        // Now add the module that reaches `provided` with NO import. Same subject, one variable.
+        std::fs::write(
+            root.join("undeclared.dag"),
+            "module bind.undeclared\n\nfn use_undeclared() -> Int {\n  provided()\n}\n",
+        )
+        .expect("write undeclared");
+        let outcome = prepare_whole_tree_subject(
+            &roots,
+            &excludes,
+            v1_interpreter::ExecutionMode::Hermetic,
+            None,
+            None,
+        );
+
+        // No assertion on WHICH way this goes — the test records the observed behaviour so the
+        // PR can state the rung honestly. Asserting the answer I hoped for would be the
+        // fabricated-plausible-output failure aimed at my own change.
+        match &outcome {
+            Ok(_) => eprintln!(
+                "[binding-strictness] PERMISSIVE: an undeclared cross-module reference BINDS \
+                 under one prepared subject. The floor is more permissive about name binding \
+                 than the entry-major path it replaces; this must be declared as a lowered rung."
+            ),
+            Err(e) => eprintln!(
+                "[binding-strictness] STRICT: an undeclared cross-module reference REFUSES \
+                 under one prepared subject. Refusal: {e}"
+            ),
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+}
+
+#[cfg(test)]
+mod prepared_subject_execution_leg_tests {
+    use super::*;
+
+    /// THE ONE FUNCTION ON THIS PATH THAT NOTHING ELSE EXERCISES.
+    ///
+    /// Every other piece of the prepared-subject route is reachable from a cheap harness:
+    /// qualification is pure, the memo runs against an authored root, and the whole-tree
+    /// resolve is proven by `claim_batch --one-prepared-subject`. Execution-leg priming is
+    /// not — it runs only after a successful preparation, and it is the step that would take
+    /// the entire required corpus batch down if the census authority were unreachable inside
+    /// the subject or its label call were mis-qualified.
+    ///
+    /// So it is executed here against a REAL prepared subject rather than argued about. The
+    /// entry-major path resolves that authority separately, which is exactly the second
+    /// corpus this route exists to avoid, and the whole claim is that the classifier is an
+    /// ordinary module of a tree the subject already contains.
+    ///
+    /// Gated behind an env var because it prepares the whole tree (~8 minutes). It is a real
+    /// receipt when run, and this comment is not a substitute for running it.
+    #[test]
+    fn execution_leg_priming_resolves_inside_the_prepared_subject() {
+        if std::env::var("GUNBC_PREPARED_SUBJECT_LEG_PROOF").is_err() {
+            return;
+        }
+        std::env::set_current_dir(workspace_root()).expect("chdir to workspace");
+        let roots = vec!["dag".to_string(), "src/v2".to_string()];
+        let prepared = prepare_whole_tree_subject(
+            &roots,
+            &floor_prepared_subject_exclusions(),
+            v1_interpreter::ExecutionMode::Hermetic,
+            None,
+            None,
+        )
+        .expect("whole-tree preparation");
+
+        // Two entries whose legs the census classifies DIFFERENTLY. A classifier that
+        // collapsed to one default, ignored its argument, or returned a constant would still
+        // produce plausible receipt lines, so the discriminator is that these disagree.
+        let interpreted = "dag/test/claim/doc_reachability_witness_test.dag";
+        let emit_host = "src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag";
+        // Assert the cache is COLD for both entries first. Priming skips anything already
+        // cached, so a pre-populated cache would make this test pass without ever calling the
+        // classifier -- the vacuous pass this whole test exists to rule out.
+        assert!(
+            witness_execution_leg_cached(&repo_relative_dag_path(interpreted)).is_none()
+                && witness_execution_leg_cached(&repo_relative_dag_path(emit_host)).is_none(),
+            "cache must be cold or priming is not exercised"
+        );
+        prime_witness_execution_legs_within_prepared_subject(
+            &prepared.ctx,
+            &roots,
+            [interpreted, emit_host].into_iter(),
+        )
+        .expect("leg priming must resolve the census authority inside the prepared subject");
+
+        let a = witness_execution_leg_label(interpreted);
+        let b = witness_execution_leg_label(emit_host);
+        assert!(!a.trim().is_empty(), "leg label must be non-empty");
+        assert!(!b.trim().is_empty(), "leg label must be non-empty");
+        assert_ne!(
+            a, b,
+            "the two entries must classify to different legs; equal labels mean the classifier \
+             ignored its argument and the receipt's execution_leg column would be a constant"
+        );
+    }
+}
+
+#[cfg(test)]
 mod prepared_subject_identity_tests {
     use super::{qualify_discovery_rows_for_prepared_subject, DiscoveryRow};
 

@@ -219,3 +219,48 @@ fn floor_execution_key_is_one_prepared_subject(key: FloorExecutionKey) -> Bool {
     EntryMajorUntilFrontierRetires => false
   }
 }
+
+// A DECLARED RUNG REGRESSION, measured on this change rather than discovered after it.
+//
+// Under one prepared subject every module of the tree is present at once, which is the most
+// permissive name pool that can exist. An authored probe -- a provider, a control module that
+// declares the import, and a module reaching the same symbol with none -- showed the
+// undeclared reference BINDS. So the required floor no longer refuses a cross-module
+// reference whose module is not imported.
+//
+// WHAT THE PREVIOUS RUNG ACTUALLY WAS, stated carefully because the obvious reading inflates
+// it. The entry-major path was not strict either: DESIGN's Class B records that a stripped
+// file's bare references resolved exactly when some unrelated import elsewhere in the
+// assembled closure had already dragged the target into the pool -- binding by pool
+// coincidence, described there as accidental coverage rather than a per-file property. So
+// this is not strict becoming permissive. It is a NARROW accidental pool becoming a WIDE
+// deliberate one, and one thing genuinely improves: binding no longer depends on which
+// unrelated entries happen to share a closure, so the same module binds the same way on
+// every run.
+//
+// WHAT GETS WORSE, and it is the reason this row exists: the ambient-pool class is now
+// undetectable by the floor, where before it was detectable by accident. A module that
+// declares no import for a symbol it uses will never red here.
+//
+// POPULATION: cross-module references not covered by a declared import. Bounded and already
+// under repair -- gunbc#8268 declares direct imports for the UriScheme consumers.
+//
+// RESTORATION TRIGGER, and it is NOT that repair. Emptying the population does not raise the
+// rung, because the floor would still accept a newly written undeclared reference. The rung
+// is restored when resolution enforces declared-import narrowing independently of pool
+// breadth -- the namespace-only lane's terminal step, where import becomes a parse error and
+// dependencies derive from container.member references. Until then this class sits at
+// mitigatable and the exact-entry check is the only thing that sees it.
+type FloorBindingStrictnessRegression {
+  previous: Symbol
+  current: Symbol
+  population: Symbol
+  restoration_trigger: Symbol
+}
+
+data floor2_binding_strictness_regression: FloorBindingStrictnessRegression = FloorBindingStrictnessRegression {
+    previous: ^narrow_accidental_pool_binding,
+    current: ^whole_subject_pool_binding,
+    population: ^cross_module_references_without_a_declared_import,
+    restoration_trigger: ^resolution_enforces_declared_import_narrowing
+  }
