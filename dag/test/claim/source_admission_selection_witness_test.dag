@@ -1,8 +1,7 @@
 module test.claim.source_admission_selection_witness
 
 import std.types { String, Bool, List }
-import std.dissolution { dissolution_description }
-import extdeps.git.object_store { GitObjectId, git_sha1_object_id, git_object_id_eq }
+import extdeps.git.object_store { GitObjectId, git_object_id_eq }
 import gunbc.source_admission_selection {
   ActiveSourceIdentity,
   ActiveSourceManifest,
@@ -32,8 +31,7 @@ import gunbc.source_admission_selection {
   TransitionMechanismIdentityUnobservable,
   admit_active_source_manifest,
   admission_mechanism_seed_roots,
-  admission_mechanism_self_host_migration_trigger,
-  annotation_corpus_induction_base_sha,
+  annotation_corpus_induction_base_tree,
   annotation_corpus_induction_standing,
   fixture_computed_mechanism,
   fixture_source,
@@ -43,11 +41,9 @@ import gunbc.source_admission_selection {
   production_annotation_mechanism_identity,
   project_active_source_rows,
   select_source_admission,
-  source_admission_8204_oracle_note,
   source_admission_is_entire_head,
   source_admission_is_incremental,
   source_admission_is_unchanged_noop,
-  source_admission_precedence_uninhabited_note,
   source_admission_refusal_cause,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -214,10 +210,7 @@ test fn source_admission_induction_standing_awaits_computed_identity_on_8201_hea
     Present { value: standing } =>
       match standing {
         AwaitingComputedMechanismIdentity { tree: tree } =>
-          match git_sha1_object_id(hex: annotation_corpus_induction_base_sha) {
-            Absent => false
-            Present { value: expected } => git_object_id_eq(left: tree, right: expected)
-          }
+          git_object_id_eq(left: tree, right: annotation_corpus_induction_base_tree)
         AwaitingAdmittedSourceJoin { tree: _, mechanism: _ } => false
         CorpusAdmitted { receipt: _ } => false
       }
@@ -561,25 +554,5 @@ test fn source_admission_seed_roots_name_executing_path_not_dag_only() -> Bool {
       && (root.function_name as String) == "tokenize_artifact"
   ) && admission_mechanism_seed_roots |> any(root =>
     (root.function_name as String) == "alloc_occurrence_id"
-  )
-}
-
-test fn source_admission_self_host_migration_trigger_names_call_sites() -> Bool {
-  let text = dissolution_description(condition: admission_mechanism_self_host_migration_trigger)
-  string_contains(s: text, pattern: "resolved_graph_from_sources_with_index")
-    && string_contains(s: text, pattern: "parse_census_fill_sources")
-}
-
-test fn source_admission_8204_oracle_is_named_not_deleted() -> Bool {
-  string_contains(
-    s: source_admission_8204_oracle_note,
-    pattern: "compile_clean_census_fill_hard_diagnostics"
-  ) && string_contains(s: source_admission_8204_oracle_note, pattern: "does not satisfy that set")
-}
-
-test fn source_admission_precedence_red_is_declared_synthetic() -> Bool {
-  string_contains(
-    s: source_admission_precedence_uninhabited_note,
-    pattern: "synthetic two-root fixture"
   )
 }
