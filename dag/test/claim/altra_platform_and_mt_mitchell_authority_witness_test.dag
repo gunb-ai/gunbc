@@ -45,6 +45,7 @@ import extdeps.cpu.ampere_altra_platform_hw_design.platform {
   altra_platform_ddr_routing_rule_availability,
   altra_platform_keepout_availability,
   altra_platform_memory_generation,
+  altra_platform_hw_design_publication_status,
   altra_platform_orientation_datum_availability,
   bibliography_entry_is_package_mechanical,
   bibliography_lists_a_package_mechanical_document,
@@ -84,12 +85,27 @@ import extdeps.ocp.mt_mitchell.platform {
   mt_mitchell_ocp_nic_connector_count,
   mt_mitchell_one_socket_twelve_channel,
   mt_mitchell_platform_subject,
+  mt_mitchell_publication_status,
   mt_mitchell_revision_table,
   mt_mitchell_two_socket_eight_channel,
   mt_mitchell_two_socket_twelve_channel,
   ocp_nic_host_mode_is_multi_host,
   ocp_nic_host_mode_lane_count,
   ocp_nic_unstrapped_host_mode,
+}
+import extdeps.publication_status {
+  AccessGatedNotPubliclyPublished,
+  PubliclyPublishedUnderOpenLicense,
+  PubliclyPublishedWithRestrictiveMarking,
+  publication_status_is_publicly_published,
+  publication_status_restrictive_marking,
+}
+import gunbc.upstream_document_carriage {
+  FactsBarredDocumentNotPublic,
+  FactsMayBeCarried,
+  ampere_customer_connect_collateral_status,
+  carriage_permits_facts,
+  upstream_fact_carriage,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -247,6 +263,24 @@ test fn w_mt_mitchell_board_dimensions_are_exact_in_micrometres() -> Bool {
     && rack_unit_count(u: mt_mitchell_chassis_height) == 2
 }
 
+// --- Carriage derives from public availability, and only from that ---
+
+test fn w_both_public_documents_are_carriable_by_different_kinds_of_status() -> Bool {
+  altra_platform_hw_design_publication_status == PubliclyPublishedWithRestrictiveMarking { marking: "Ampere Computing Proprietary" }
+    && mt_mitchell_publication_status == PubliclyPublishedUnderOpenLicense { license: "Open Web Foundation Modified Final Specification Agreement (OWFa 1.0)" }
+    && carriage_permits_facts(carriage: upstream_fact_carriage(status: altra_platform_hw_design_publication_status))
+    && carriage_permits_facts(carriage: upstream_fact_carriage(status: mt_mitchell_publication_status))
+    && altra_platform_hw_design_publication_status != mt_mitchell_publication_status
+}
+
+test fn w_the_restrictive_marking_is_recorded_and_decides_nothing() -> Bool {
+  let marking = publication_status_restrictive_marking(status: altra_platform_hw_design_publication_status)
+  let open_licence_marking = publication_status_restrictive_marking(status: mt_mitchell_publication_status)
+  (marking == Present { value: "Ampere Computing Proprietary" })
+    && (open_licence_marking == Absent)
+    && publication_status_is_publicly_published(status: altra_platform_hw_design_publication_status)
+}
+
 // --- The separation itself ---
 
 test fn w_the_two_specifications_target_different_memory_generations() -> Bool {
@@ -269,6 +303,14 @@ test fn w_red_fabricated_architecture_option_fails_the_channel_join() -> Bool {
 test fn w_red_a_grouping_that_lost_lanes_would_not_sum_to_its_root_complex() -> Bool {
   type_a_grouping_lane_total(grouping: TypeATwoX8) != 8
     && type_b_half_grouping_lane_total(grouping: TypeBTwoX4) != 16
+}
+
+test fn w_red_access_gated_collateral_is_barred_on_the_same_axis() -> Bool {
+  let status = ampere_customer_connect_collateral_status
+  !publication_status_is_publicly_published(status: status)
+    && !carriage_permits_facts(carriage: upstream_fact_carriage(status: status))
+    && (upstream_fact_carriage(status: status) == FactsBarredDocumentNotPublic { gate: "Ampere Customer Connect, NDA registration required" })
+    && (upstream_fact_carriage(status: PubliclyPublishedWithRestrictiveMarking { marking: "any marking at all" }) == FactsMayBeCarried)
 }
 
 test fn w_red_a_mechanical_title_would_be_detected_in_the_bibliography() -> Bool {

@@ -8,6 +8,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.memory.types { DimmBuffering, DramGeneration, Registered, dram_generation_ddr5 }
 import extdeps.storage.types { Gen5, PcieGeneration }
+import extdeps.publication_status { DocumentPublicationStatus, PubliclyPublishedUnderOpenLicense }
 import extdeps.ocp.mt_mitchell.subject {
   MtMitchellReferencePlatform,
   internet_archive_mt_mitchell_capture_authority,
@@ -32,6 +33,15 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 data mt_mitchell_ingestion_note: String = "READ, NOT RECALLED — AND READ FROM A CAPTURE, NOT FROM THE PUBLISHER. The publisher locator is the anchor because that is where the document lives, and an unauthenticated fetch of it returned HTTP 403 on 2026-08-14; the bytes behind every row here came from the dated Internet Archive capture of that same URL, which the subject module owns as internet_archive_mt_mitchell_capture_authority and this module cites rather than re-mints (review 51969). Saying we read Mt. Mitchell without that distinction would assert we read the publisher copy, which we did not. The licence is what makes carrying it admissible: usage is under the Open Web Foundation Modified Final Specification Agreement quoted in the document's own licence section, and that section states the licence does NOT apply to the Appendices, which are reference-only and non-normative. No row in this module is attributed to an appendix. The revision-table rows below are the document's section 3 and are carried because the subject module fixes ONE revision label: the series is what makes 0.80 the current one rather than a bare string, and a later revision would join against these rows instead of silently replacing a literal."
+
+// THIS DOCUMENT'S OWN PUBLICATION STATUS. An OCP contribution is public under
+// an explicit open licence its publisher wrote down, which is a different KIND
+// of status from the Ampere specification's public-but-marked — same permission
+// today, different provenance, and kept distinct so the mapping can diverge in
+// one place rather than being reconstructed from prose.
+data mt_mitchell_publication_status: DocumentPublicationStatus = PubliclyPublishedUnderOpenLicense {
+  license: "Open Web Foundation Modified Final Specification Agreement (OWFa 1.0)",
+}
 
 type OcpSpecificationRevisionRow {
   revision: NonEmptyStr

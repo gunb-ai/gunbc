@@ -7,6 +7,7 @@ import std.measure { Hertz, Micrometer, hertz, micrometer }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.memory.types { DramGeneration, dram_generation_ddr4 }
+import extdeps.publication_status { DocumentPublicationStatus, PubliclyPublishedWithRestrictiveMarking }
 import extdeps.cpu.ampere_altra_package {
   altra_declared_contact_count,
   altra_ddr4_channel_count,
@@ -250,6 +251,15 @@ type MechanicalFactAvailability
   = StatedInRunningText { section: NonEmptyStr }
   | StatedOnlyInsideFigure { figure: NonEmptyStr }
   | AbsentFromDocument
+
+// THIS DOCUMENT'S OWN PUBLICATION STATUS, carried here beside its other facts
+// rather than in a shared file: whether a document is publicly published is a
+// fact about that document. The RULE that turns a status into what this
+// repository may carry is gunbc policy and lives in
+// gunbc.upstream_document_carriage; nothing in this module decides it.
+data altra_platform_hw_design_publication_status: DocumentPublicationStatus = PubliclyPublishedWithRestrictiveMarking {
+  marking: "Ampere Computing Proprietary",
+}
 
 // CARRIAGE DERIVES FROM PUBLIC AVAILABILITY, NOT FROM THE MARKING (operator
 // ruling, 2026-08-14). This document is published publicly and is footed

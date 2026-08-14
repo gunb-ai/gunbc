@@ -132,6 +132,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/ipc/dpmx.dag",
   "dag/extdeps/ucamco/gerber.dag",
   "dag/extdeps/cpu/ampere_altra_package.dag",
+  "dag/extdeps/publication_status.dag",
   "dag/extdeps/cpu/ampere_altra_platform_hw_design/subject.dag",
   "dag/extdeps/cpu/ampere_altra_platform_hw_design/platform.dag",
   "dag/extdeps/ocp/mt_mitchell/platform.dag",
