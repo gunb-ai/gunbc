@@ -684,9 +684,21 @@ fn run_against_one_prepared_subject(
     })?;
     let prepare_ms = prepare_started.elapsed().as_millis();
     let witnesses: usize = entry_groups.iter().map(|g| g.functions.len()).sum();
+    // NO RESOLVE-COUNT CLAIM IS PRINTED HERE, and its absence is deliberate.
+    // This line used to end with the text "0 per-entry graph resolves", which was a
+    // STRING LITERAL — a constant rendered in the position a reader takes for a
+    // measurement, so it would have printed zero while the host performed any number
+    // of them. A fabricated plausible output is worse than no output, and worst of
+    // all in an instrument whose entire purpose is to establish that number.
+    // The capability argument in v2.workflow.floor2_prepared_subject is what holds
+    // today: nothing a plan consumer carries can name a source root, an index, a
+    // resolver, or an entry path. That is a construction fact about the model, NOT a
+    // measurement of this host, and it does not license this line to assert one.
+    // Dissolve-on: the interpreter exposes a real per-entry resolve counter, at which
+    // point this prints the observed value and refuses when it is nonzero.
     eprintln!(
         "[one-prepared-subject] prepared 1 subject in {}ms: {} module(s) resolved, {} excluded, \
-         digest={}; {} witness(es) over {} entry(ies), 0 per-entry graph resolves",
+         digest={}; {} witness(es) over {} entry(ies)",
         prepare_ms,
         modules_resolved,
         modules_excluded,
