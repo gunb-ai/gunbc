@@ -1,6 +1,14 @@
 module extdeps.bmc.webui.nbd_proxy_serve
 
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.bmc.virtual_media { NbdProxyWebsocatParams, VirtualMediaIntent, virtual_media_source_iso }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, RealizationDispatch, Scaffold }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import test.claim.falsifier_workflow_witness_test { string_contains }
+import v2.std.compilers.lexing { Token }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https

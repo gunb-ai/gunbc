@@ -1,5 +1,9 @@
 module extdeps.browser
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.css.properties { Fill }
+import std.types { Bool, FilePath, Int, String }
 data extdeps_browser_non_precedent_disposition: String = "NON-PRECEDENT — DO NOT COPY THIS MODULE'S SHAPE FOR NEW BROWSER-PRODUCT MODELING (operator verdict on gunbc#7556; DESIGN §3 'External upstream decomposition'). This module conflates three independently governed things into one authority: the Playwright automation interface (its anchor cites playwright.dev while the module is named 'browser'), a generic browser abstraction (BrowserContext/Page/Element as bare brands), and a shell transport realization (every operation hardwired to a playwright-runner argv — the §3 interface/transport fusion). Its eventual split, staged behind the ExternalModelScope enrollment frontier (gunbc.extdeps_scope_frontier): extdeps.automation.playwright owns the Playwright dependency's real cited interface; the agnostic browser interaction shape lives as a shared standard/interface module with no product enumeration; the shell transport becomes a bound realization handler, one of N, beside the SDK/CDP handlers. Until that split lands, new browser-product facts go in one-module-per-subject authorities (extdeps.browser.chromium, extdeps.browser.google_chrome, ...), never here."
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {

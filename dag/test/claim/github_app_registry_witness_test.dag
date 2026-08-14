@@ -1,12 +1,25 @@
 module test.claim.github_app_registry
 
-import gunbc.auth.github_credential { unsatisfied_capabilities }
+import gunbc.auth.github_credential { CredentialKindCannotSatisfy, CredentialSubjectMismatch, GitHubCredentialAuthority, GitHubCredentialProfileRef, InstallationResolved, InstallationUnresolved, ManagedAppInstallationCredential, resolved_target_credential, unsatisfied_capabilities }
 import gunbc.ci_heal_credential {
   live_heal_control_plane,
   live_heal_dispatch_credential,
   live_heal_push_binding_resolution,
 }
 import gunbc.repository { gunbc_repository }
+import extdeps.uri { Uri, Https }
+import extdeps.cloud.gcp.secret_ref { HashPending, SecretRef }
+import extdeps.github.actions_token { actions_token_may_declare_permission, actions_token_may_write_workflow_files }
+import extdeps.github.app { AdministrationAxis, AppAccessWrite, ContentsAxis, GitHubAppInstallation, GitHubAppInstallationId, GitHubAppPermission, GitHubAppPermissionAccess, GitHubAppPublicKeyFingerprint, GitHubPermissionAxis, MetadataAxis, ModelsAxis, NarrowingUnverifiable, ObservedGitHubPermission, ObservedGitHubPermissionName, OrganizationSelfHostedRunnersAxis, PullRequestsAxis, RepositoryProjectsAxis, SecurityEventsAxis, SelectedPermissions, WorkflowsAxis, key_fingerprint_eq, permission_access_at_least, permission_access_in, permission_axis_from_wire, permission_narrowing_is_within, permission_narrowing_verdict, sha256_base64_key_fingerprint }
+import extdeps.github.effect { DispatchWorkflow, GitBranchRef, GitHubEffect, GitHubOrganizationRef, GitHubWorkflowRef, RegisterOrganizationRunner, RepositoryPath, github_effect_required_permissions, is_workflow_projection_path }
+import extdeps.github.github { GitHubUser }
+import gunbc.auth.github_apps { AcceptInstallationPermissions, AppHasRegisteredSigningKey, AppRegistrationPermissionMissing, AppRegistrationReadbackUnavailable, AppRegistrationUnobserved, BindObservationProducer, BoundObservationProducer, DeclaredGitHubApp, GenerateAppSigningKey, GitHubAppControlPlaneState, InstallationGrantObserved, InstallationHoldsPermissions, InstallationPermissionApprovalPending, InstallationReadbackFailed, InstallationReadbackUnavailable, InstallationUnobserved, MachineActionRequired, ManagedGitHubAppKey, ObservationProducerBound, ObservedGitHubAppSigner, OperatorActionRequired, ReadBackInstallation, SignerCustody, SignerCustodyUnresolved, SignerFingerprintNotRegistered, SignerKeyGenerationRequired, SignerMaterialAvailableForImport, SignerReadbackFailed, app_control_plane_state, app_key_settings_locator, app_settings_permissions_locator, control_plane_next_action, key_fingerprint_matches, next_action_owner, operator_packet_or_producer_binding }
+import std.content_hash { content_hash_of_value }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { Bool, List }
+import v2.std.algebra { fold_list }
+import v2.std.live_tree { LiveTreeDisposition }
+import v2.std.optional { Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,6 +1,12 @@
 module extdeps.formats.elf.segments
 
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.formats.elf.primitives { ElfSegmentType }
+import extdeps.formats.elf.types { UnsupportedElfSegmentType, read_u32_le_in_bounds, read_u64_le_in_bounds }
+import std.exec_format { LoadSegment, SegmentPermission }
+import std.types { Int, List }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https

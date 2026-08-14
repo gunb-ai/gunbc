@@ -1,6 +1,11 @@
 module extdeps.container.oci.linux
 
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.types { Bool, FilePath, Int, List, String }
+import v2.std.optional { Present }
+import v2.test.manual.fn_as_value { get }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
