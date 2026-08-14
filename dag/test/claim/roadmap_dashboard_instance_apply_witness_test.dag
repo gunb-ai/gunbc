@@ -21,6 +21,7 @@ import extdeps.llm.cli {
   shape_codex_version_env_args_for_program,
 }
 import gunbc.typed_argv_exec { typed_argv_shell_safe_refusal_argv }
+import gunbc.host_layout { srv1_codex_bundled_executable }
 import gunbc.roadmap_dashboard_instance {
   srv1_lab_dashboard_instance,
   srv1_live_dashboard_instance,
@@ -227,33 +228,35 @@ test fn dashboard_service_is_named_and_scoped_off_production() -> Bool {
 
 test fn dashboard_provider_runtime_and_auth_share_one_state_binding() -> Bool {
   let lab = srv1_lab_dashboard_instance()
+  let codex_program = dashboard_instance_provider_executable(instance: lab) as String
   let runtime_argv = concat(
     ["/usr/bin/env"],
     shape_codex_version_env_args_for_program(
-      program: dashboard_instance_provider_executable(instance: lab) as String,
+      program: codex_program,
       codex_home: dashboard_instance_provider_state_root(instance: lab) as String,
     ),
   )
   let auth_argv = concat(
     ["/usr/bin/env"],
     shape_codex_login_status_env_args_for_program(
-      program: dashboard_instance_provider_executable(instance: lab) as String,
+      program: codex_program,
       codex_home: dashboard_instance_provider_state_root(instance: lab) as String,
     ),
   )
   runtime_argv == [
     "/usr/bin/env",
     "CODEX_HOME=/home/briansrls/.codex@gunbc-roadmap",
-    "/usr/bin/codex",
+    codex_program,
     "--version",
   ]
     && auth_argv == [
     "/usr/bin/env",
     "CODEX_HOME=/home/briansrls/.codex@gunbc-roadmap",
-    "/usr/bin/codex",
+    codex_program,
     "login",
     "status",
   ]
+    && codex_program == (srv1_codex_bundled_executable() as String)
     && match typed_argv_shell_safe_refusal_argv(argv: runtime_argv) {
       Absent => true
       Present { value: _ } => false

@@ -1,7 +1,10 @@
 module gunbc.fleet_converge_cli
 
 import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
 import std.algebra { trim }
+import gunbc.command_runner { stat_owner_name_capture }
+import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
 
 import extdeps.linux.procfs { ProcSysKernelHostname, procfs_path_literal }
 import gunbc.fleet_converge_apply { converge_apply_for_host }
@@ -34,7 +37,6 @@ import gunbc.fleet_intent_network {
   operator_host_srv5,
   operator_host_srv6,
 }
-
 
 data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {
   reason: "stage0's `gunbc converge --host <h>` argv dispatch (src/v1/stage0/src/cli_run.rs::handle_converge) is the CLI transport handler for this .dag interface (DESIGN §3 transport-is-a-handler): argv parse -> resolve_entry_graph_shared -> run_in_context_with_args(converge_cli_output) -> stdout/exit-code projection, nothing else. All interpretation, the byte-locked receipt grammar, and typed refusal causes are modeled here (gunbc.fleet_converge_cli) and in gunbc.host_converge/gunbc.fleet_converge_apply; the Rust side carries no converge logic and is not scaffold pending dissolution."
@@ -389,7 +391,9 @@ fn converge_cli_verify_run(host: String) -> ConvergeCliReceipt {
 // Receipt publication (CONVERGE-0 loop leg): on the SELF route — the per-host timer's
 // route, where the deployment guarantees the host layout exists — the receipt line is
 // WRITTEN to the declared receipts path before being printed, so a fold-side observation
-// job can read the host's last converge standing without a new commit. Publication
+// job can read the host's last converge standing without a new commit. Publication uses
+// staging write + rename in the same directory (crash-safe; supersedes root-owned stale
+// files when the service principal owns the directory — no elevation). Publication
 // failure on that route FAILS CLOSED (converged=false with a typed reason): the loop's
 // product is the published receipt, so an unpublished converge must not report success.
 // Non-self routes (operator/CI supervised runs against a named host) are unchanged —
@@ -398,19 +402,84 @@ fn fleet_converge_receipt_path(host: String) -> String {
   join([fleet_converge_receipt_dir, "/", host, "-converge-receipt.txt"], "")
 }
 
+// Same directory as the published receipt — POSIX rename permission is on the directory,
+// not the file being replaced, so a root-owned stale receipt from the pre-b1 unit user
+// can be superseded without elevation when the service principal owns the directory.
+fn fleet_converge_receipt_staging_path(host: String) -> String {
+  join([fleet_converge_receipt_dir, "/", host, "-converge-receipt.staging"], "")
+}
+
+fn converge_cli_atomic_receipt_write(host: String, content: String) -> String? {
+  let staging = fleet_converge_receipt_staging_path(host: host)
+  let final_path = fleet_converge_receipt_path(host: host)
+  let w = Filesystem.Write(path: staging, content: content)
+  if !w.success {
+    Present { value: concat("gunbc converge: receipt staging write failed — ", w.error) }
+  } else {
+    let moved = shell.Move.File(source: staging as FilePath, destination: final_path as FilePath)
+    if moved.success {
+      none
+    } else {
+      Present { value: "gunbc converge: receipt rename failed after staging write (mv over root-owned stale file should succeed when the directory is owned by the service principal)" }
+    }
+  }
+}
+
+// Applied means committed plus independent read-back (DESIGN section 5): rename alone is not the claim.
+data converge_cli_receipt_owner_readback_required: Bool = true
+
+// Interim owner readback routes through gunbc.command_runner.stat_owner_name_capture
+// (command_runner_scaffold population). Dissolve-on: extdeps.filesystem.filesystem_io
+// typed owner observation retires the stat argv arm.
+data converge_cli_receipt_owner_readback_interim_note: String = "Owner readback uses command_runner stat_owner_name_capture (command_runner_scaffold) until extdeps.filesystem.filesystem_io carries a typed owner observation; then converge_cli_receipt_owner_readback routes through that extdep."
+
+fn converge_cli_expected_receipt_owner_name() -> String {
+  fleet_posix_operator_user.name
+}
+
+fn converge_cli_receipt_owner_readback(host: String) -> String? {
+  let path = fleet_converge_receipt_path(host: host)
+  let expected = converge_cli_expected_receipt_owner_name()
+  let r = stat_owner_name_capture(path: path)
+  if !r.success {
+    Present { value: concat("gunbc converge: receipt owner read-back refused (stat): ", trim(s: r.stderr)) }
+  } else {
+    let owner = trim(s: r.stdout)
+    if owner == expected {
+      none
+    } else {
+      Present {
+        value: concat(
+          concat("gunbc converge: receipt owner read-back mismatch — expected ", expected),
+          concat(" observed ", owner),
+        ),
+      }
+    }
+  }
+}
+
 fn converge_cli_publish(out: ConvergeCliOutput, resolved: String, revision_line: String) -> ConvergeCliOutput {
-  let w = Filesystem.Write(
-    path: fleet_converge_receipt_path(host: resolved),
+  let publish_err = converge_cli_atomic_receipt_write(
+    host: resolved,
     content: join([out.line, "\n", revision_line, "\n"], ""),
   )
-  if w.success {
-    out
-  } else {
-    ConvergeCliOutput {
-      line: out.line,
-      converged: false,
-      reason: Present { value: concat("gunbc converge: receipt publication failed — ", w.error) },
-    }
+  match publish_err {
+    Absent =>
+      match converge_cli_receipt_owner_readback(host: resolved) {
+        Absent => out
+        Present { value: why } =>
+          ConvergeCliOutput {
+            line: out.line,
+            converged: false,
+            reason: Present { value: why },
+          }
+      }
+    Present { value: why } =>
+      ConvergeCliOutput {
+        line: out.line,
+        converged: false,
+        reason: Present { value: why },
+      }
   }
 }
 

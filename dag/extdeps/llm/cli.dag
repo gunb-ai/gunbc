@@ -33,7 +33,7 @@ data claude_cli_external_authority_anchor: ExternalAuthority = ExternalAuthority
   }
 }
 
-data codex_cli_program_note: String = "The one program-token authority for the Codex CLI. Codex dispatch preflight and shape_codex_exec_argv both consume this row. The external non-interactive contract is explicit: codex exec is the automation surface; --json emits JSONL progress; workspace-write is the least sandbox that permits implementation; approval never makes blocked actions return to the agent instead of hanging an unattended worker; CODEX_HOME selects the dedicated persisted auth/config/session state."
+data codex_cli_program_note: String = "The one program-token authority for the Codex CLI. Codex dispatch preflight and shape_codex_exec_argv both consume this row. The external non-interactive contract is explicit: codex exec is the automation surface; --json emits JSONL progress; workspace-write is the least sandbox that permits implementation; approval never makes blocked actions return to the agent instead of hanging an unattended worker; CODEX_HOME selects the dedicated persisted auth/config/session state. codex_cli_identity_contains is only a weak codex-cli substring marker — callers that must pin an exact codex-cli version use gunbc.package_delivery codex_runtime_version_identity_marker and codex_runtime_version_identity_satisfied; a bare substring cannot separate the pinned bundled runtime from an ambient PATH shim."
 
 data codex_cli_program: String = "codex"
 data codex_cli_identity_contains: String = "codex-cli"

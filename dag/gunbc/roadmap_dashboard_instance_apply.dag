@@ -33,7 +33,10 @@ import extdeps.llm.cli {
   shape_codex_login_status_env_args_for_program,
   shape_codex_device_login_env_args_for_program,
   shape_codex_version_env_args_for_program,
-  codex_cli_identity_contains,
+}
+import gunbc.package_delivery {
+  codex_runtime_version_identity_marker,
+  codex_runtime_version_identity_satisfied,
 }
 import extdeps.languages.json.emit {
   JsonValue,
@@ -814,9 +817,8 @@ fn dashboard_apply_provision_op(
         ),
       )
       if result.success
-          && string_contains(
-            s: join([result.stdout, "\n", result.stderr], ""),
-            pattern: codex_cli_identity_contains,
+          && codex_runtime_version_identity_satisfied(
+            combined_output: join([result.stdout, "\n", result.stderr], ""),
           ) {
         result
       } else {
@@ -825,7 +827,7 @@ fn dashboard_apply_provision_op(
           stdout: result.stdout,
           stderr: join([
             "provider runtime identity did not realize ",
-            codex_cli_identity_contains,
+            codex_runtime_version_identity_marker(),
             if result.stderr == "" { "" } else { join([": ", result.stderr], "") },
           ], ""),
         }
@@ -1162,9 +1164,8 @@ fn dashboard_instance_observe(
     attempts_present: dashboard_observation_present_bit(obs: obs_attempts),
     attempt_state_present: dashboard_observation_present_bit(obs: obs_attempt_state),
     provider_runtime_ready: provider_runtime.success
-      && string_contains(
-        s: join([provider_runtime.stdout, "\n", provider_runtime.stderr], ""),
-        pattern: codex_cli_identity_contains,
+      && codex_runtime_version_identity_satisfied(
+        combined_output: join([provider_runtime.stdout, "\n", provider_runtime.stderr], ""),
       ),
     provider_runtime_detail: trim(join([
       provider_runtime.stdout,
@@ -1604,7 +1605,7 @@ fn dashboard_instance_apply_preflight(
                         step: "provider-runtime-unrealized",
                         detail: join([
                           "codex --version did not realize ",
-                          codex_cli_identity_contains,
+                          codex_runtime_version_identity_marker(),
                           " through ",
                           dashboard_environment_binding_executable as String,
                           if observed.provider_runtime_detail == "" {

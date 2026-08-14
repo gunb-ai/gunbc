@@ -4,8 +4,8 @@ import std.types { String, NonEmptyStr, List }
 import extdeps.llm.cli {
   shape_codex_login_status_env_args_for_program,
   shape_codex_version_env_args_for_program,
-  codex_cli_identity_contains,
 }
+import gunbc.package_delivery { codex_runtime_version_identity_satisfied }
 import extdeps.llm.cli_lifecycle {
   ProviderInstance,
   ProviderInstanceFieldUnobserved,
@@ -48,9 +48,8 @@ data provider_standing_live_probes_note: String = "Wet observation bridge: runs 
 
 fn dashboard_codex_runtime_probe_identity_succeeded(result: DashboardExecResult) -> Bool {
   result.success
-    && string_contains(
-      s: join([result.stdout, "\n", result.stderr], ""),
-      pattern: codex_cli_identity_contains,
+    && codex_runtime_version_identity_satisfied(
+      combined_output: join([result.stdout, "\n", result.stderr], ""),
     )
 }
 
