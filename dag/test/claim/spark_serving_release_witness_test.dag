@@ -13,36 +13,75 @@ import gunbc.spark_serving_realization {
 }
 import gunbc.spark_serving_release {
   SparkServingReleaseIdentity, SparkServingOccurrence,
-  SparkServingRelease, RuntimeArtifactIdentity, ModelArtifactIdentity,
-  ServingConfigurationIdentity, InferenceCapacityPolicy, spark_serving_release_identity,
+  SparkServingRelease, RuntimeArtifactIdentity,
+  ServingConfigurationIdentity, InferenceCapacityPolicy,
+  SparkServingServingPolicy,
+  spark_serving_release_identity,
   SparkServingReconciliation, SparkServingAlreadyConverged, SparkServingDeltaRequired,
   SparkServingInstallRequired,
   SparkServingRefused, SparkServingRefusal,
   SparkServingObservation, SparkServingObserved, SparkServingObservationRefused,
   SparkServingAbsent,
-  SparkServingPrerequisite, PrerequisiteAbsent, ManagedHostAccessGrounded,
+  SparkServingPrerequisite, PrerequisiteAbsent, HostIdentityBindingAdmitted, ManagedHostAccessGrounded,
   reconcile_spark_serving,
   SparkServingPlanRow, spark_serving_plan_row, plan_row_verdict, plan_verdict_label,
   plan_row_applicable, spark_serving_target,
   spark_serving_may_actuate, spark_occurrences_share_release,
 }
 
+import gunbc.model_artifact { ModelArtifact, model_artifact_from_observed_digest }
+import extdeps.ollama.api { OllamaModelRef, ollama_model_digest_from_wire }
+
+fn witness_model_fixture(hex: String) -> ModelArtifact {
+  model_artifact_from_observed_digest(
+    publisher: "ollama" as NonEmptyStr,
+    observed: ollama_model_digest_from_wire(
+      ref: OllamaModelRef {
+        name: "Qwen/Qwen2.5-7B-Instruct" as NonEmptyStr,
+        tag: "main" as NonEmptyStr,
+      },
+      hex: hex,
+    ).value,
+  )
+}
+
 fn release_base() -> SparkServingRelease {
-  SparkServingRelease { runtime: RuntimeArtifactIdentity { closure_digest: "closure-1" }, model: ModelArtifactIdentity { repository: "Qwen/Qwen2.5-7B-Instruct", revision: "a09a35458c702b33eeacc393d103063234e8bc28" }, serving_configuration: ServingConfigurationIdentity { configuration_digest: "cfg-1" }, capacity: InferenceCapacityPolicy { max_model_len: 4096, shared_memory_budget_bytes: byte_size(127600816) } }
+  SparkServingRelease {
+    runtime: RuntimeArtifactIdentity { closure_digest: "closure-1" },
+    model: witness_model_fixture(hex: "a09a35458c702b33eeacc393d103063234e8bc28"),
+  }
 }
 
 fn release_other_revision() -> SparkServingRelease {
-  SparkServingRelease { runtime: RuntimeArtifactIdentity { closure_digest: "closure-1" }, model: ModelArtifactIdentity { repository: "Qwen/Qwen2.5-7B-Instruct", revision: "0000000000000000000000000000000000000000" }, serving_configuration: ServingConfigurationIdentity { configuration_digest: "cfg-1" }, capacity: InferenceCapacityPolicy { max_model_len: 4096, shared_memory_budget_bytes: byte_size(127600816) } }
+  SparkServingRelease {
+    runtime: RuntimeArtifactIdentity { closure_digest: "closure-1" },
+    model: witness_model_fixture(hex: "0000000000000000000000000000000000000000000000000000000000000000"),
+  }
 }
 
-fn release_other_capacity() -> SparkServingRelease {
-  SparkServingRelease { runtime: RuntimeArtifactIdentity { closure_digest: "closure-1" }, model: ModelArtifactIdentity { repository: "Qwen/Qwen2.5-7B-Instruct", revision: "a09a35458c702b33eeacc393d103063234e8bc28" }, serving_configuration: ServingConfigurationIdentity { configuration_digest: "cfg-1" }, capacity: InferenceCapacityPolicy { max_model_len: 8192, shared_memory_budget_bytes: byte_size(127600816) } }
+fn policy_base() -> SparkServingServingPolicy {
+  SparkServingServingPolicy {
+    serving_configuration: ServingConfigurationIdentity { configuration_digest: "cfg-1" },
+    capacity: InferenceCapacityPolicy {
+      max_model_len: 4096,
+      shared_memory_budget_bytes: byte_size(127600816),
+    },
+  }
+}
+
+fn policy_other_capacity() -> SparkServingServingPolicy {
+  SparkServingServingPolicy {
+    serving_configuration: ServingConfigurationIdentity { configuration_digest: "cfg-1" },
+    capacity: InferenceCapacityPolicy {
+      max_model_len: 8192,
+      shared_memory_budget_bytes: byte_size(127600816),
+    },
+  }
 }
 
 // CONTROL 5: the identity is a FUNCTION OF THE RELEASE, both directions. An independently
-// constructed but identical release yields the IDENTICAL digest, and changing any single input --
-// here the model revision, and separately the capacity -- CHANGES it. Without the second direction
-// a constant function passes; without the first, a nondeterministic one does.
+// constructed but identical release yields the IDENTICAL digest, and changing the model manifest
+// digest CHANGES it. Capacity lives on serving_policy and must not affect release identity.
 fn digest_of(spec: SparkServingRelease) -> String {
   spark_serving_release_identity(spec: spec).digest.digest as String
 }
@@ -50,7 +89,11 @@ fn digest_of(spec: SparkServingRelease) -> String {
 test fn release_identity_is_derived_not_authored() -> Bool {
   digest_of(spec: release_base()) == digest_of(spec: release_base())
     && digest_of(spec: release_base()) != digest_of(spec: release_other_revision())
-    && digest_of(spec: release_base()) != digest_of(spec: release_other_capacity())
+}
+
+test fn serving_policy_capacity_does_not_change_release_identity() -> Bool {
+  digest_of(spec: release_base()) == digest_of(spec: release_base())
+    && policy_base().capacity.max_model_len != policy_other_capacity().capacity.max_model_len
 }
 
 fn refusal_specimen() -> SparkServingReconciliation {
@@ -58,15 +101,27 @@ fn refusal_specimen() -> SparkServingReconciliation {
 }
 
 fn occ_srv5() -> SparkServingOccurrence {
-  SparkServingOccurrence { host: "srv5", release_identity: spark_serving_release_identity(spec: release_base()) }
+  SparkServingOccurrence {
+    host: "srv5",
+    release_identity: spark_serving_release_identity(spec: release_base()),
+    serving_policy: policy_base(),
+  }
 }
 
 fn occ_srv6_same() -> SparkServingOccurrence {
-  SparkServingOccurrence { host: "srv6", release_identity: spark_serving_release_identity(spec: release_base()) }
+  SparkServingOccurrence {
+    host: "srv6",
+    release_identity: spark_serving_release_identity(spec: release_base()),
+    serving_policy: policy_base(),
+  }
 }
 
 fn occ_srv6_other() -> SparkServingOccurrence {
-  SparkServingOccurrence { host: "srv6", release_identity: spark_serving_release_identity(spec: release_other_revision()) }
+  SparkServingOccurrence {
+    host: "srv6",
+    release_identity: spark_serving_release_identity(spec: release_other_revision()),
+    serving_policy: policy_base(),
+  }
 }
 
 // BOTH prerequisites, and both naming srv5. This list previously carried only the managed-access

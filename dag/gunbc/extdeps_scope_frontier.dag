@@ -161,6 +161,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/ocp/mt_jade/subject.dag",
   "dag/extdeps/ocp/mt_mitchell/subject.dag",
   "dag/extdeps/ollama/binary_release.dag",
+  "dag/extdeps/ollama/capability.dag",
   "dag/extdeps/automation/playwright.dag",
   "dag/extdeps/package.dag",
   "dag/extdeps/npm.dag",

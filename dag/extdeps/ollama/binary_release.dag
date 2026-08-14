@@ -27,16 +27,46 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
+type OllamaArchiveFormat = TarZst | TarGz
+
+type OllamaLinuxArchitecture = OllamaLinuxArm64 | OllamaLinuxAmd64
+
 type OllamaBinaryRelease {
   version: NonEmptyStr
-  digest_linux_arm64: Digest
+  release_page: NonEmptyStr
+  asset_name: NonEmptyStr
+  download_locator: NonEmptyStr
+  architecture: OllamaLinuxArchitecture
+  archive_format: OllamaArchiveFormat
+  archive_layout_note: NonEmptyStr
+  executable_relative_path: NonEmptyStr
+  digest: Digest
 }
 
-data ollama_v0_11_0_gpt_oss_support_note: String = "First upstream release listing OpenAI gpt-oss models (20B and 120B): github.com/ollama/ollama/releases/tag/v0.11.0 published 2025-08-05, release title 'Welcome OpenAI's gpt-oss models'."
+data ollama_v0_11_0_feature_floor_note: String = "Feature-introduction floor for OpenAI gpt-oss model support — NOT the deployment artifact. Cited release: https://github.com/ollama/ollama/releases/tag/v0.11.0 published 2025-08-05."
 
 data ollama_v0_11_0_release: OllamaBinaryRelease = OllamaBinaryRelease {
   version: "v0.11.0" as NonEmptyStr,
-  digest_linux_arm64: sha256_digest(hex: "2b271bf318924cccb281f31cf06b1f8f723c5a2d146c629d83a4b35822c480de" as NonEmptyStr),
+  release_page: "https://github.com/ollama/ollama/releases/tag/v0.11.0" as NonEmptyStr,
+  asset_name: "ollama-linux-arm64.tgz" as NonEmptyStr,
+  download_locator: "https://github.com/ollama/ollama/releases/download/v0.11.0/ollama-linux-arm64.tgz" as NonEmptyStr,
+  architecture: OllamaLinuxArm64,
+  archive_format: TarGz,
+  archive_layout_note: "gzip tar root contains bin/ollama and lib/ entries per upstream linux-arm64.tgz layout" as NonEmptyStr,
+  executable_relative_path: "bin/ollama" as NonEmptyStr,
+  digest: sha256_digest(hex: "2b271bf318924cccb281f31cf06b1f8f723c5a2d146c629d83a4b35822c480de" as NonEmptyStr),
 }
 
-data ollama_required_release: OllamaBinaryRelease = ollama_v0_11_0_release
+data ollama_v0_32_9_release: OllamaBinaryRelease = OllamaBinaryRelease {
+  version: "v0.32.9" as NonEmptyStr,
+  release_page: "https://github.com/ollama/ollama/releases/tag/v0.32.9" as NonEmptyStr,
+  asset_name: "ollama-linux-arm64.tar.zst" as NonEmptyStr,
+  download_locator: "https://github.com/ollama/ollama/releases/download/v0.32.9/ollama-linux-arm64.tar.zst" as NonEmptyStr,
+  architecture: OllamaLinuxArm64,
+  archive_format: TarZst,
+  archive_layout_note: "zstd tar root contains bin/ollama and lib/ entries per upstream linux-arm64.tar.zst layout" as NonEmptyStr,
+  executable_relative_path: "bin/ollama" as NonEmptyStr,
+  digest: sha256_digest(hex: "79617139521db251c716d6229505d7530171ff4d68e476d0c22dabc15726a237" as NonEmptyStr),
+}
+
+data ollama_required_release: OllamaBinaryRelease = ollama_v0_32_9_release

@@ -1,0 +1,101 @@
+module test.claim.ollama_capability_witness_test
+
+import std.types { Bool, NonEmptyStr }
+import extdeps.ollama.api { OllamaModelRef }
+import extdeps.ollama.binary_release {
+  ollama_required_release,
+  ollama_v0_11_0_release,
+  OllamaLinuxArchitecture,
+  OllamaLinuxArm64,
+}
+import extdeps.ollama.capability {
+  OllamaNvidiaGb10Spark,
+  OllamaModelSupportApplicable,
+  OllamaModelSupportUnmet,
+  OllamaModelSupportUncatalogued,
+  OllamaPlatformSupportApplicable,
+  OllamaPlatformSupportUncatalogued,
+  ollama_model_support_verdict,
+  ollama_runtime_model_compatibility_verdict,
+  ollama_v0_9_6_semantic_version,
+  ollama_gpt_oss_feature_introduction_floor,
+}
+import gunbc.spark_serving_desired {
+  spark_serving_desired_admission,
+  SparkServingDesiredAdmitted,
+  SparkServingDesiredRefused,
+}
+
+data witness_gpt_oss_ref: OllamaModelRef = OllamaModelRef {
+  name: "gpt-oss" as NonEmptyStr,
+  tag: "20b" as NonEmptyStr,
+}
+
+test fn v0_9_6_gpt_oss_support_refuses_as_too_old() -> Bool {
+  match ollama_model_support_verdict(
+    runtime_version: Present { value: ollama_v0_9_6_semantic_version },
+    model: witness_gpt_oss_ref,
+  ) {
+    OllamaModelSupportUnmet { model_wire: _, observed: _, minimum: _ } => true
+    OllamaModelSupportApplicable => false
+    OllamaModelSupportUncatalogued { model_wire: _ } => false
+    _ => false
+  }
+}
+
+test fn v0_11_0_floor_satisfies_gpt_oss_support() -> Bool {
+  match ollama_model_support_verdict(
+    runtime_version: Present { value: ollama_gpt_oss_feature_introduction_floor },
+    model: witness_gpt_oss_ref,
+  ) {
+    OllamaModelSupportApplicable => true
+    OllamaModelSupportUnmet { model_wire: _, observed: _, minimum: _ } => false
+    OllamaModelSupportUncatalogued { model_wire: _ } => false
+    _ => false
+  }
+}
+
+test fn uncatalogued_model_refuses_support() -> Bool {
+  match ollama_model_support_verdict(
+    runtime_version: Present { value: ollama_gpt_oss_feature_introduction_floor },
+    model: OllamaModelRef { name: "unknown-model" as NonEmptyStr, tag: "latest" as NonEmptyStr },
+  ) {
+    OllamaModelSupportUncatalogued { model_wire: _ } => true
+    OllamaModelSupportApplicable => false
+    OllamaModelSupportUnmet { model_wire: _, observed: _, minimum: _ } => false
+    _ => false
+  }
+}
+
+test fn pinned_release_satisfies_gb10_platform_pair() -> Bool {
+  match ollama_runtime_model_compatibility_verdict(
+    binary_release: ollama_required_release,
+    platform: OllamaNvidiaGb10Spark,
+    architecture: OllamaLinuxArm64,
+    model: witness_gpt_oss_ref,
+  ) {
+    OllamaPlatformSupportApplicable => true
+    OllamaPlatformSupportUncatalogued { cause: _ } => false
+    _ => false
+  }
+}
+
+test fn v0_11_0_floor_release_refuses_gb10_platform_catalog() -> Bool {
+  match ollama_runtime_model_compatibility_verdict(
+    binary_release: ollama_v0_11_0_release,
+    platform: OllamaNvidiaGb10Spark,
+    architecture: OllamaLinuxArm64,
+    model: witness_gpt_oss_ref,
+  ) {
+    OllamaPlatformSupportUncatalogued { cause: _ } => true
+    OllamaPlatformSupportApplicable => false
+    _ => false
+  }
+}
+
+test fn desired_spark_serving_admission_succeeds_for_pinned_pair() -> Bool {
+  match spark_serving_desired_admission {
+    SparkServingDesiredAdmitted { serving_release: _ } => true
+    SparkServingDesiredRefused { cause: _ } => false
+  }
+}

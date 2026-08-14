@@ -12,7 +12,7 @@ data ollama_runtime_bundle_note: String = "Release-bundled Ollama runtime closur
 fn ollama_runtime_closure_seed(rel: OllamaBinaryRelease) -> NonEmptyStr {
   join([
     "ollama-runtime-closure|version=", rel.version as String,
-    "|arch=linux-arm64|digest=", rel.digest_linux_arm64.hex as String,
+    "|arch=linux-arm64|digest=", rel.digest.hex as String,
   ], "") as NonEmptyStr
 }
 
