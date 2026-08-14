@@ -175,6 +175,7 @@ test fn w_the_m2_family_is_cited_with_its_pattern_outstanding() -> Bool {
 // distinguishable — folding independently governed entities into one vendor because they share a
 // brand is the merge DESIGN §3 forbids, and it would make a correction to either edit the other.
 test fn w_the_two_tyco_entities_are_not_one_vendor() -> Bool {
-  (ddr4_dimm_socket_solder_tail_288.vendor.legal_name as String)
-    != (m2_ngff_minicard_67_position.vendor.legal_name as String)
+  let ddr4_vendor = ddr4_dimm_socket_solder_tail_288.vendor.legal_name as String
+  let m2_vendor = m2_ngff_minicard_67_position.vendor.legal_name as String
+  !(ddr4_vendor == m2_vendor)
 }
