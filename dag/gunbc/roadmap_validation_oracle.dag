@@ -165,7 +165,7 @@ fn validation_oracle_declaration_count(
 ) -> Int {
   count(filter(
     xs: split(s: source, delimiter: "\n"),
-    f: line => validation_oracle_declaration_line_matches(
+    predicate: line => validation_oracle_declaration_line_matches(
       line: line,
       function: function,
     ),
