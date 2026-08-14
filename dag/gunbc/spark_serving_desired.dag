@@ -124,7 +124,7 @@ fn spark_serving_occurrence(host: HostIdentity, serving_release: SparkServingRel
   }
 }
 
-fn spark_serving_fleet_desired() -> SparkServingFleetDesired {
+fn spark_serving_fleet_desired_from_admission() -> SparkServingFleetDesired {
   match spark_serving_desired_admission {
     SparkServingDesiredAdmitted { serving_release: r } =>
       SparkServingFleetDesiredReady {
@@ -138,7 +138,7 @@ fn spark_serving_fleet_desired() -> SparkServingFleetDesired {
   }
 }
 
-data spark_serving_fleet_desired: SparkServingFleetDesired = spark_serving_fleet_desired()
+data spark_serving_fleet_desired: SparkServingFleetDesired = spark_serving_fleet_desired_from_admission()
 
 fn spark_serving_desired_serving_policy() -> SparkServingServingPolicy {
   SparkServingServingPolicy {
