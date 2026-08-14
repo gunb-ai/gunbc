@@ -9,9 +9,13 @@ import gunbc.package_delivery {
   codex_runtime_manifest_path,
   materialize_codex_runtime_bundle,
   prepare_codex_runtime_closure,
+  select_codex_exact_target_closure,
+  observe_codex_npm_runtime_target,
   admit_codex_package_lock_text,
   CodexPackageLockAdmitted,
   CodexRuntimeClosurePrepared,
+  CodexNpmRuntimeTargetObserved,
+  CodexExactTargetClosureSelected,
   AdmittedCodexRuntimeSource,
   CodexRuntimeMaterialized,
 }
@@ -39,9 +43,9 @@ import extdeps.shell
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data witness_note: String = "WET BISECT + FULL CHAIN (operator-bounded srv1 only). srv1 2026-08-14 bisect: step1 wet_committed_admitted_source_lock_admits PASS 2G; step2 wet_materialize_codex_runtime_bundle_only FAIL pinned ~7.6G 13min zero children — leak is package_delivery.materialize_codex_runtime_bundle on MAIN (not witness). Step1.5 wet_codex_runtime_prepare_closure_only isolates admit+observe+select before mktemp. Full fn OfflineLocalRecipe until production fix lands. See wet_supervised_turn_memory_envelope_note."
+data witness_note: String = "WET BISECT + FULL CHAIN (operator-bounded srv1 only). Bisect: step1 admit PASS 2G; step2 materialize FAIL ~7.6G zero children; step2b wet_select_codex_exact_target_closure_only — select+lookups only (admit+uname setup), MemoryMax=2G. Step1.5 prepare = admit+observe+select bundle. Full chain OfflineLocalRecipe until production fix. See wet_supervised_turn_memory_envelope_note."
 
-data wet_supervised_turn_memory_envelope_note: String = "MEMORY ENVELOPE (srv1 bisect 2026-08-14). Operator enforces caps — safety while debugging, not the remedy: wet_committed_admitted_source_lock_admits — MemoryMax=2G PASS; wet_codex_runtime_prepare_closure_only — MemoryMax=2G (prepare_codex_runtime_closure: admit+uname+select, no mktemp); wet_materialize_codex_runtime_bundle_only — MemoryMax=8G FAIL pinned ~7.6G zero children; supervised_turn_materialized_bundle_writes_terminal_receipt — blocked until materialize fixed. Example: systemd-run --scope -p MemoryMax=2G -- gunbc run --source-root dag --source-root src/v2 --entry dag/test/claim/codex_supervised_turn_wet_witness_test.dag --function wet_codex_runtime_prepare_closure_only"
+data wet_supervised_turn_memory_envelope_note: String = "MEMORY ENVELOPE (srv1 bisect 2026-08-14). Operator caps are safety while debugging, not the remedy. wet_committed_admitted_source_lock_admits — MemoryMax=2G PASS; wet_select_codex_exact_target_closure_only — MemoryMax=2G (admit committed lock + uname observe + select_codex_exact_target_closure only; no mktemp/npm); wet_codex_runtime_prepare_closure_only — MemoryMax=2G; wet_materialize_codex_runtime_bundle_only — MemoryMax=8G FAIL; full chain blocked. Step2b example: systemd-run --scope -p MemoryMax=2G -- gunbc run --source-root dag --source-root src/v2 --entry dag/test/claim/codex_supervised_turn_wet_witness_test.dag --function wet_select_codex_exact_target_closure_only"
 
 data wet_supervised_turn_oom_receipt_note: String = "srv1 bisect 2026-08-14 (eager-koi-458): step1 PASS 2G no growth; step2 materialize_codex_runtime_bundle_only FAIL 8G cap ~7.6-7.7 GiB 13+ min reclaiming at boundary, zero children, no codex/npm/mktemp — killed. Uncapped earlier ~89 GiB / 22 min. Growth is .dag eval before subprocess spawn. Production defect in gunbc.package_delivery materialize_codex_runtime_bundle (main). Gates #8166 wet turn and #8225 host_codex_runtime_provision. Fix production path — do not enlarge witness envelope as remedy. package_lock_lookup_node filter-allocation fix landed; prepare_codex_runtime_closure bisect arm added."
 
@@ -100,6 +104,29 @@ test fn wet_committed_admitted_source_lock_admits() -> Bool {
   match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
     CodexPackageLockAdmitted { graph: _, nodes, registry_artifacts } =>
       count(nodes) > 0 && count(registry_artifacts) > 0
+    _ => false
+  }
+}
+
+test fn wet_select_codex_exact_target_closure_only() -> Bool {
+  match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+    CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
+      match observe_codex_npm_runtime_target() {
+        CodexNpmRuntimeTargetObserved { target } =>
+          match select_codex_exact_target_closure(graph: graph, target: target) {
+            CodexExactTargetClosureSelected {
+              native_executable_rel,
+              platform_lock_key,
+              wrapper: _,
+              platform: _,
+              target: _,
+            } =>
+              (native_executable_rel as String) != ""
+                && (platform_lock_key as String) != ""
+            _ => false
+          }
+        _ => false
+      }
     _ => false
   }
 }
