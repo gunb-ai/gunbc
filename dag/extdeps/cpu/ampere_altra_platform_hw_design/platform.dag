@@ -1,13 +1,14 @@
 module extdeps.cpu.ampere_altra_platform_hw_design.platform
 
-import std.types { Bool, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String }
 import std.integer { Int }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.measure { Hertz, hertz }
+import std.measure { Hertz, Micrometer, hertz, micrometer }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.memory.types { DramGeneration, dram_generation_ddr4 }
 import extdeps.cpu.ampere_altra_package {
+  altra_declared_contact_count,
   altra_ddr4_channel_count,
   altra_max_dimms_per_socket,
   altra_pcie_gen4_lane_count,
@@ -233,6 +234,137 @@ type AltraHotPlugRealization
 
 fn altra_has_native_hot_plug_controller() -> Bool {
   false
+}
+
+// WHAT THIS DOCUMENT DOES NOT SAY, MODELLED RATHER THAN LEFT TO BE REDISCOVERED.
+// A reader looking for attachment geometry will otherwise re-read the whole
+// specification to learn that the answer is not in it, which is a cost paid
+// once per reader. Each mechanical fact a board needs is classified by WHERE
+// the document puts it, and the three states are genuinely different: a fact in
+// running text is one this repository can read and quote, a fact inside a
+// figure is drawn geometry it cannot read at all (the drawing's text is
+// rendered from embedded subset fonts with no character mapping, so guessing at
+// it is exactly the fabricated-plausible-output failure), and an absent fact is
+// one no ruling and no access can produce from this document.
+type MechanicalFactAvailability
+  = StatedInRunningText { section: NonEmptyStr }
+  | StatedOnlyInsideFigure { figure: NonEmptyStr }
+  | AbsentFromDocument
+
+// CARRIAGE DERIVES FROM PUBLIC AVAILABILITY, NOT FROM THE MARKING (operator
+// ruling, 2026-08-14). This document is published publicly and is footed
+// "Ampere Computing Proprietary" on every page; the footer is a recorded
+// attribute that decides nothing, and the facts below are carried because the
+// document is public. The Customer Connect board collateral remains barred on
+// the SAME axis rather than a different one: it is not publicly published. The
+// distinction from an OCP contribution survives and is not flattened away —
+// Mt. Mitchell carries an explicit open licence (OWFa 1.0 plus the CLA), this
+// one is public-but-proprietary, and those are the same permission arrived at
+// differently.
+
+data altra_platform_keepout_availability: MechanicalFactAvailability = AbsentFromDocument
+
+data altra_platform_coordinate_origin_availability: MechanicalFactAvailability = AbsentFromDocument
+
+data altra_platform_ddr_routing_rule_availability: MechanicalFactAvailability = AbsentFromDocument
+
+data altra_platform_package_outline_drawing_availability: MechanicalFactAvailability = StatedOnlyInsideFigure {
+  figure: "Figure 3",
+}
+
+data altra_platform_orientation_datum_availability: MechanicalFactAvailability = StatedOnlyInsideFigure {
+  figure: "Figure 3",
+}
+
+data altra_platform_pad_array_geometry_availability: MechanicalFactAvailability = StatedInRunningText {
+  section: "1.9",
+}
+
+// SECTION 1.9, PACKAGE OVERVIEW, IN RUNNING TEXT. Micrometres keep every figure
+// exact: 77.080 mm, 67.000 mm and the 0.87 / 0.5 mm hexagonal pitch pair are
+// all sub-millimetre-grained.
+data altra_package_outline_width: Micrometer = micrometer(count: 77080)
+
+data altra_package_outline_depth: Micrometer = micrometer(count: 67000)
+
+data altra_pad_pitch_dx: Micrometer = micrometer(count: 870)
+
+data altra_pad_pitch_dy: Micrometer = micrometer(count: 500)
+
+data altra_pad_count: Int = 4926
+
+data altra_pad_column_count: Int = 84
+
+data altra_pad_row_count: Int = 126
+
+// The pad population this document states, joined against the package
+// authority's socket row, so the platform specification and the datasheet
+// disagreeing surfaces as a failing join instead of two literals drifting.
+fn altra_platform_declared_pad_count() -> Int {
+  altra_pad_count
+}
+
+fn altra_package_declared_contact_count() -> Int {
+  altra_declared_contact_count()
+}
+
+// Nx times Ny is the bounding grid, NOT a pad count, and the gap between them
+// is NOT interpretable as the depopulated region from text alone: the array is
+// hexagonal (the document gives a Dx/Dy pair rather than one pitch), so a
+// staggered row does not occupy every column position, and Figure 4's
+// depopulated ball region is a second, independent reason positions are empty.
+// The document separates neither effect in text, so this module reports only
+// that the grid exceeds the population and refuses to attribute the difference.
+fn altra_pad_grid_position_count() -> Int {
+  altra_pad_column_count * altra_pad_row_count
+}
+
+fn pad_grid_exceeds_pad_population() -> Bool {
+  altra_pad_grid_position_count() > altra_pad_count
+}
+
+data altra_pcb_installation_note: String = "Section 1.9 states PCB installation: Using socket. That is a requirement on the board, not a description of the package: an Altra board attaches the processor through a socket, so the land pattern a board needs is the SOCKET's, and the package outline drawing and the socket drawing are separate references (both Figure 3). The datasheet names the designation ILM4926 in its thermal notes, and that designation is deliberately not re-declared here — it is named by two independent documents and belongs to neither of their modules."
+
+// AN AVAILABLE FACT AND A POSITIONABLE ONE ARE DIFFERENT THINGS, and this is
+// the row that keeps a permissive ruling from being read as more than it is:
+// even with every section 1.9 number carried, the array could be sized and
+// counted and still not placed, because no coordinate origin is stated in text
+// anywhere in this document. Pin A1 is an orientation datum with no origin
+// attached to it.
+fn pad_array_is_positionable_from_running_text() -> Bool {
+  match altra_platform_coordinate_origin_availability {
+    StatedInRunningText { section } => true
+    StatedOnlyInsideFigure { figure } => false
+    AbsentFromDocument => false
+  }
+}
+
+// SECTION 10, THE DOCUMENT'S OWN BIBLIOGRAPHY. Carried because it is what
+// closes the search: whether a further Ampere document exists to chase for
+// package mechanics is DERIVED from this roster rather than asserted, so a
+// later revision that adds a mechanical document changes the answer by changing
+// the rows.
+data altra_platform_bibliography: List<NonEmptyStr> = [
+  "Altra Architecture Specifications",
+  "Altra Debug Architecture Specifications",
+  "Altra I/O List",
+  "Altra Clocking Overview",
+  "Altra Power Sequencing",
+  "Altra Reset Specifications",
+  "Altra TSM Design Specifications",
+  "Altra BMC Interface Specifications",
+  "Altra Software Overview",
+]
+
+fn bibliography_entry_is_package_mechanical(title: NonEmptyStr) -> Bool {
+  string_contains(s: title as String, pattern: "Mechanical")
+    || string_contains(s: title as String, pattern: "Package")
+    || string_contains(s: title as String, pattern: "Socket")
+    || string_contains(s: title as String, pattern: "Land")
+}
+
+fn bibliography_lists_a_package_mechanical_document() -> Bool {
+  any(altra_platform_bibliography, t => bibliography_entry_is_package_mechanical(title: t))
 }
 
 data altra_platform_impedance_scope_note: String = "WHAT THIS DOCUMENT'S IMPEDANCE TARGETS ARE NOT. Section 4.1.2 is 'Decoupling Requirements to Achieve Target Impedance' and section 4.4 is 'Power Integrity Simulations': every impedance figure in this specification is POWER-DELIVERY network target impedance, per rail, reached by decoupling. None of it is DDR trace impedance, and this document states no DDR routing rules, no trace impedance target, no length matching and no stackup. The layout guidance it does carry is power (4.1.1 Physical Design, 4.2.2 and 4.3.2 vendor reference layouts) and I2C (7.1.4). A downstream consumer reaching for a number from section 4 as a signal-integrity target would get a category error with plausible numbers attached, which is why the boundary is stated here rather than left to be inferred from what is absent."

@@ -29,7 +29,27 @@ import extdeps.cpu.ampere_altra_platform_hw_design.platform {
   altra_pcie_reset_scheme,
   altra_platform_hw_design_subject,
   altra_platform_max_dimm_slots_per_socket,
+  AbsentFromDocument,
+  StatedOnlyInsideFigure,
+  altra_package_declared_contact_count,
+  altra_package_outline_depth,
+  altra_package_outline_width,
+  altra_pad_column_count,
+  altra_pad_count,
+  altra_pad_grid_position_count,
+  altra_pad_pitch_dx,
+  altra_pad_pitch_dy,
+  altra_pad_row_count,
+  altra_platform_coordinate_origin_availability,
+  altra_platform_declared_pad_count,
+  altra_platform_ddr_routing_rule_availability,
+  altra_platform_keepout_availability,
   altra_platform_memory_generation,
+  altra_platform_orientation_datum_availability,
+  bibliography_entry_is_package_mechanical,
+  bibliography_lists_a_package_mechanical_document,
+  pad_array_is_positionable_from_running_text,
+  pad_grid_exceeds_pad_population,
   altra_refclk_frequency,
   altra_root_complex_count,
   altra_two_socket_ccix_lane_width,
@@ -147,6 +167,36 @@ test fn w_altra_pcie_reset_is_cpld_decoded_without_per_controller_perst() -> Boo
     && altra_pcie_reset_scheme.gpio_output_max == 6
 }
 
+test fn w_altra_package_array_geometry_is_exact_and_joins_the_package_authority() -> Bool {
+  micrometer_count(m: altra_package_outline_width) == 77080
+    && micrometer_count(m: altra_package_outline_depth) == 67000
+    && micrometer_count(m: altra_pad_pitch_dx) == 870
+    && micrometer_count(m: altra_pad_pitch_dy) == 500
+    && altra_pad_count == 4926
+    && altra_platform_declared_pad_count() == altra_package_declared_contact_count()
+}
+
+test fn w_altra_pad_grid_bounds_but_does_not_equal_the_population() -> Bool {
+  altra_pad_column_count == 84
+    && altra_pad_row_count == 126
+    && altra_pad_grid_position_count() == 10584
+    && pad_grid_exceeds_pad_population()
+}
+
+// The negatives, modelled so the next reader does not re-read the document to
+// learn the answer is not in it.
+test fn w_altra_attachment_facts_absent_or_drawn_are_classified_not_missing() -> Bool {
+  altra_platform_keepout_availability == AbsentFromDocument
+    && altra_platform_coordinate_origin_availability == AbsentFromDocument
+    && altra_platform_ddr_routing_rule_availability == AbsentFromDocument
+    && altra_platform_orientation_datum_availability == StatedOnlyInsideFigure { figure: "Figure 3" }
+    && !pad_array_is_positionable_from_running_text()
+}
+
+test fn w_altra_bibliography_names_no_package_mechanical_document() -> Bool {
+  !bibliography_lists_a_package_mechanical_document()
+}
+
 // --- OCP Mt. Mitchell motherboard specification, revision 0.80 ---
 
 test fn w_mt_mitchell_revision_table_ends_at_the_modelled_revision() -> Bool {
@@ -219,6 +269,12 @@ test fn w_red_fabricated_architecture_option_fails_the_channel_join() -> Bool {
 test fn w_red_a_grouping_that_lost_lanes_would_not_sum_to_its_root_complex() -> Bool {
   type_a_grouping_lane_total(grouping: TypeATwoX8) != 8
     && type_b_half_grouping_lane_total(grouping: TypeBTwoX4) != 16
+}
+
+test fn w_red_a_mechanical_title_would_be_detected_in_the_bibliography() -> Bool {
+  bibliography_entry_is_package_mechanical(title: "Altra Package Mechanical Drawing")
+    && bibliography_entry_is_package_mechanical(title: "Altra Socket Land Pattern")
+    && !bibliography_entry_is_package_mechanical(title: "Altra Software Overview")
 }
 
 test fn w_red_the_package_ceiling_is_not_the_one_dimm_per_channel_population() -> Bool {
