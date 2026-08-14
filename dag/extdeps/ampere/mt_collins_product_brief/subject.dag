@@ -7,7 +7,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.ampere { ampere_vendor, ampere_customer_reference_boards_authority }
-import extdeps.publication { SpecificationCitationReadProvenance }
+import gunbc.specification_citation_read_provenance { SpecificationCitationReadProvenance }
 
 // MT. COLLINS IS NOT AN OCP CONTRIBUTION. The public artifact is a dual-socket 2U marketing
 // brief; the engineering design package sits behind Ampere Customer Connect under NDA. Recording
