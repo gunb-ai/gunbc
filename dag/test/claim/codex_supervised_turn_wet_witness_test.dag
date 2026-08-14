@@ -51,9 +51,9 @@ data witness_note: String = "WET BISECT REPRODUCTION (NOT ENROLLED WITNESSES). B
 
 data wet_non_witness_enrollment_note: String = "Admission gate 2026-08-14: OfflineLocalRecipe exclusion + enrolled test fn produced UnclassifiedPathDeferral (five rows, zero executing consumers). Fix: bisect arms are fn not test fn; no witness enrollment until explicit admission with declared envelope after production fix."
 
-data wet_supervised_turn_memory_envelope_note: String = "MEMORY ENVELOPE (srv1 bisect 2026-08-14). Operator caps are safety while debugging. Pre-shell bisect (no mktemp before materialize): wet_committed_admitted_source_construct_only — MemoryMax=2G (manifest+lock filesystem_read only); wet_codex_runtime_prepare_closure_only — MemoryMax=2G (full source + prepare, no materialize body); wet_materialize_through_prepare_only — MemoryMax=2G (package_delivery through_prepare surface). wet_select_codex_exact_target_closure_only — 2G PASS. wet_materialize_codex_runtime_bundle_only — 8G FAIL (~2GB/min, zero children, decl eval). Example step 2d: systemd-run --scope -p MemoryMax=2G -- gunbc run --source-root dag --source-root src/v2 --entry dag/test/claim/codex_supervised_turn_wet_witness_test.dag --function wet_codex_runtime_prepare_closure_only"
+data wet_supervised_turn_memory_envelope_note: String = "MEMORY ENVELOPE (srv1 bisect 2026-08-14). Operator caps are safety while debugging. Ladder 72f6eade0: construct/closure/prepare/wrapper-acquire/through-prepare PASS; full materialize PINS 8G — leak strictly after through-prepare cut. Next: wet_acquire_platform_artifact_only — MemoryMax=2G (native platform tarball acquire only). Then if pass: install path or finish_codex_runtime_materialization_after_install. wet_materialize_codex_runtime_bundle_only — 8G control."
 
-data wet_bisect_instrumented_trace_note: String = "srv1 instrumented 2026-08-14 (eager-koi-458): materialize ~2 GB/min linear to 8G, ZERO children entire run, log at started decl — interpreter eval before first shell in materialize_codex_runtime_bundle. Tarball-into-String hypothesis refuted. Step 2b closure cheap on lock-only path. Remaining surface: source record construction vs prepare vs materialize body graph eval."
+data wet_bisect_ladder_receipt_note: String = "srv1 ladder 72f6eade0 (eager-koi-458): all five rungs through wet_materialize_through_prepare_only PASS capped; wet_materialize_codex_runtime_bundle_only PINS 8G at 3m44s same head. Leak is strictly materialize body after through-prepare: platform acquire, npm ci/extract, or finish_codex_runtime_materialization_after_install tree walks."
 
 data wet_supervised_turn_oom_receipt_note: String = "srv1 bisect 2026-08-14: step2b closure PASS 2G; instrumented materialize ~2GB/min to 8G cap, zero children 4.5min, decl eval stuck — not tarball bytes. Production defect in interpreter eval of materialize_codex_runtime_bundle pre-shell region. Fix production path; do not enlarge witness envelope."
 
@@ -169,6 +169,44 @@ fn wet_acquire_wrapper_artifact_only() -> Bool {
             match acquire_and_admit_registry_artifact(
               artifact: wrapper_artifact,
               lock_node_key: wrapper_key,
+              dest_dir: staging.path,
+            ) {
+              RegistryArtifactAdmitted { staged: _ } => true
+              _ => false
+            }
+          _ => false
+        }
+      }
+    }
+    _ => false
+  }
+}
+
+fn wet_acquire_platform_artifact_only() -> Bool {
+  match prepare_codex_runtime_closure(
+    source: committed_admitted_codex_runtime_source(),
+  ) {
+    CodexRuntimeClosurePrepared {
+      wrapper: _,
+      platform: platform,
+      selected_target: _,
+      platform_lock_key: _,
+      native_executable_rel: _,
+      source: _,
+    } => {
+      let staging = shell.Mktemp.Dir()
+      if staging.success == false {
+        false
+      } else {
+        match platform {
+          CodexSelectedNodeAdmitted {
+            node: _,
+            artifact: platform_artifact,
+            lock_node_key: platform_key,
+          } =>
+            match acquire_and_admit_registry_artifact(
+              artifact: platform_artifact,
+              lock_node_key: platform_key,
               dest_dir: staging.path,
             ) {
               RegistryArtifactAdmitted { staged: _ } => true
