@@ -693,7 +693,6 @@ fn floor_component_receipt_decode_with(text: String, expected_schema: NonEmptySt
                                     run_terminal: run_terminal
                                   }
                                 }
-                                }
                             }
                             }
                             }
