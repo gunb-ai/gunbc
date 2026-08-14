@@ -1,6 +1,7 @@
 module gunbc.host_axis_caps
 
-import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.types { String, NonEmptyStr, List, Bool, Int, list_length }
+import std.algebra { trim }
 import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.membership_reconcile {
   MembershipPlan,
@@ -18,9 +19,23 @@ import gunbc.host_converge {
   gunbc_runner_per_slot_swap_dropin_path,
   gunbc_runner_per_slot_high_dropin_path,
   gunbc_runner_per_slot_tasks_dropin_path,
+  gunbc_runner_control_dropin_dir_prefix,
 }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired, gunbc_runner_slots_per_host }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner_lifecycle { runner_slot_unit_name }
+import gunbc.live_deploy.operations { systemctl_daemon_reload_command, privileged_command }
+import product.placement_supply { HostIdentity }
+import extdeps.systemd {
+  MemoryMax,
+  MemoryHigh,
+  systemd_memory_max_property,
+  systemd_memory_high_property,
+}
+import extdeps.systemd.systemctl { systemctl_revert_memory_caps_argv }
+import std.measure { byte_size_count }
 
-data host_axis_caps_note: String = "PerSlotMemoryCap axis, closed vertically on the membership_reconcile spine — the first non-degenerate reconcile in the repo (desired vs a real OBSERVED set, not observed=[]). A CapMember is a per-slot systemd drop-in keyed by its file path (stable IDENTITY, so a content drift is Modified->MemberChanged, never Remove+Add). The interference domain is the drop-in directory itself: ownership is DERIVED from the path (managed set -> Owned; anything else -> a foreign occupant, Ensured), never stored, so a Removed foreign file yields MemberRemovalRefused (R5, no effect arm, never deleted). Idempotence = zero hunks (Unchanged); perturb = Modified->MemberChanged of exactly the drifted row; foreign occupant = ApplyRefused wholesale. Live apply/observe are host_effect_apply typed transports (operator one-liners for the go-live receipts); this module is the pure, hermetically-witnessed fold."
+data host_axis_caps_note: String = "PerSlotMemoryCap axis, closed vertically on the membership_reconcile spine — the first non-degenerate reconcile in the repo (desired vs a real OBSERVED set, not observed=[]). MemoryMax SINGLE AUTHORITY: drop-in content authored here and applied at live_deploy under the deploy principal (ghrunner sudo) — gunbc converge on the operator principal does NOT write drop-ins, daemon-reload, set-property MemoryMax, or systemctl revert (operator privilege hold 2026-08-13). system.control set-property RESIDUE is a separate reconcile axis: stale 50-MemoryMax.conf / 50-MemoryHigh.conf shadow deploy drop-ins until teardown via deploy apply (author derived drop-ins before revert). A CapMember is a per-slot systemd drop-in keyed by its file path (stable IDENTITY, so a content drift is Modified->MemberChanged, never Remove+Add). The interference domain is the drop-in directory itself: ownership is DERIVED from the path (managed set -> Owned; anything else -> a foreign occupant, Ensured), never stored, so a Removed foreign file yields MemberRemovalRefused (R5, no effect arm, never deleted). Idempotence = zero hunks (Unchanged); perturb = Modified->MemberChanged of exactly the drifted row; foreign occupant = ApplyRefused wholesale. Live apply/observe are host_effect_apply typed transports (operator one-liners for the go-live receipts); this module is the pure, hermetically-witnessed fold."
 
 type CapMember {
   dropin_path: NonEmptyStr
@@ -101,4 +116,208 @@ fn caps_teardown_count(desired: List<CapMember>, observed: List<CapMember>) -> I
 
 fn caps_refusal_count(desired: List<CapMember>, observed: List<CapMember>) -> Int {
   membership_refusal_count(plan: caps_reconcile(desired: desired, observed: observed))
+}
+
+// system.control set-property residue — shadows deploy-authored drop-ins (sorts later, wins).
+type ControlShadowUnit {
+  unit: NonEmptyStr
+}
+
+data control_shadow_memory_max_filename: NonEmptyStr = "50-MemoryMax.conf"
+data control_shadow_memory_high_filename: NonEmptyStr = "50-MemoryHigh.conf"
+
+data control_shadow_managed_filenames: List<NonEmptyStr> = [
+  control_shadow_memory_max_filename,
+  control_shadow_memory_high_filename,
+]
+
+fn control_shadow_dropin_path(unit: NonEmptyStr, filename: NonEmptyStr) -> NonEmptyStr {
+  join([
+    gunbc_runner_control_dropin_dir_prefix,
+    unit as String,
+    ".d/",
+    filename as String,
+  ], "") as NonEmptyStr
+}
+
+fn control_shadow_unit(unit: NonEmptyStr) -> ControlShadowUnit {
+  ControlShadowUnit { unit: unit }
+}
+
+fn control_shadow_unit_key(u: ControlShadowUnit) -> NonEmptyStr {
+  u.unit
+}
+
+fn control_shadow_unit_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+  a as String == b as String
+}
+
+fn control_shadow_unit_value_eq(a: ControlShadowUnit, b: ControlShadowUnit) -> Bool {
+  a.unit as String == b.unit as String
+}
+
+fn control_shadow_unit_ownership(u: ControlShadowUnit) -> Ownership? {
+  Present { value: Owned }
+}
+
+fn control_shadow_revert_script(u: ControlShadowUnit) -> String {
+  concat(join(systemctl_revert_memory_caps_argv(unit: u.unit), " "), "\n")
+}
+
+fn control_shadow_revert_script_matches_extdeps_argv(u: ControlShadowUnit) -> Bool {
+  join(systemctl_revert_memory_caps_argv(unit: u.unit), " ") == trim(s: control_shadow_revert_script(u: u))
+}
+
+fn derived_runner_memory_max_cap_member() -> CapMember {
+  desired_cap_member(
+    dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
+    property: systemd_memory_max_property as NonEmptyStr,
+    bytes_value: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_max)) as NonEmptyStr,
+  )
+}
+
+fn derived_runner_memory_high_cap_member() -> CapMember {
+  desired_cap_member(
+    dropin_path: gunbc_runner_per_slot_high_dropin_path as NonEmptyStr,
+    property: systemd_memory_high_property as NonEmptyStr,
+    bytes_value: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_high)) as NonEmptyStr,
+  )
+}
+
+fn derived_runner_memory_cap_members() -> List<CapMember> {
+  [derived_runner_memory_max_cap_member(), derived_runner_memory_high_cap_member()]
+}
+
+fn runner_memory_cap_author_script() -> String {
+  join([
+    cap_upsert_script(m: derived_runner_memory_max_cap_member()),
+    cap_upsert_script(m: derived_runner_memory_high_cap_member()),
+  ], "")
+}
+
+fn cap_observed_contains_derived_member(observed: List<CapMember>, derived: CapMember) -> Bool {
+  fold(observed, init: false, f: (acc, o) =>
+    acc
+      || (
+        cap_member_key(m: o) as String == cap_member_key(m: derived) as String
+          && cap_member_value_eq(a: o, b: derived)
+      )
+  )
+}
+
+// Shadow revert is safe only after deploy drop-ins carry derived allocation bytes —
+// reverting before author on stale 16/15GiB disk raises effective caps (operator hazard).
+fn runner_memory_cap_author_ready_for_shadow_revert(observed: List<CapMember>) -> Bool {
+  fold(derived_runner_memory_cap_members(), init: true, f: (acc, d) =>
+    acc && cap_observed_contains_derived_member(observed: observed, derived: d)
+  )
+}
+
+data memory_cap_author_before_shadow_revert_ordering_note: String = "Deploy drop-ins (20-fleet-width MemoryMax, 40-fleet-high MemoryHigh) must be authored from gunbc.runner_slot_allocation BEFORE systemctl revert MemoryMax MemoryHigh on any unit. On-disk deploy files may still carry superseded 16/15GiB while effective caps match declared 14/13 via system.control shadows; revert alone drops shadows and falls back to stale disk."
+
+data host_axis_caps_author_before_revert_enforced: Bool = true
+
+fn runner_slot_service_units_range(host: HostIdentity, slot: Int, limit: Int) -> List<NonEmptyStr> {
+  if slot > limit {
+    []
+  } else {
+    concat(
+      [runner_slot_unit_name(slot: RunnerSlotIdentity { host: host, slot_index: slot })],
+      runner_slot_service_units_range(host: host, slot: slot + 1, limit: limit)
+    )
+  }
+}
+
+fn runner_slot_service_units_for_host(host: HostIdentity) -> List<NonEmptyStr> {
+  runner_slot_service_units_range(
+    host: host,
+    slot: 1,
+    limit: gunbc_runner_slots_per_host(host: host),
+  )
+}
+
+fn deploy_cap_upsert_staged_lines(m: CapMember, stage_name: String) -> String {
+  join([
+    "printf '%s' '", m.content, "' > \"$_gunbc_stage/", stage_name, "\"\n",
+    "sudo -n install -m 0644 \"$_gunbc_stage/", stage_name, "\" ", m.dropin_path as String, "\n",
+  ], "")
+}
+
+fn deploy_runner_memory_cap_author_script() -> String {
+  join([
+    deploy_cap_upsert_staged_lines(m: derived_runner_memory_max_cap_member(), stage_name: "20-fleet-width.conf"),
+    deploy_cap_upsert_staged_lines(m: derived_runner_memory_high_cap_member(), stage_name: "40-fleet-high.conf"),
+    systemctl_daemon_reload_command(privileged: true),
+    "\n",
+  ], "")
+}
+
+fn deploy_control_shadow_revert_line(u: ControlShadowUnit) -> String {
+  concat(privileged_command(argv: systemctl_revert_memory_caps_argv(unit: u.unit)), "\n")
+}
+
+fn deploy_memory_cap_shadow_revert_script(units: List<NonEmptyStr>) -> String {
+  fold(units, init: "", f: (acc, unit) =>
+    concat(acc, deploy_control_shadow_revert_line(u: control_shadow_unit(unit: unit)))
+  )
+}
+
+// Production deploy script: author derived template drop-ins, daemon-reload, then per-unit shadow revert.
+fn deploy_memory_cap_apply_script_for_host(host: HostIdentity) -> String {
+  deploy_memory_cap_apply_script_ordered(units: runner_slot_service_units_for_host(host: host))
+}
+
+// Deploy apply composite: author derived drop-ins first, then shadow revert per unit.
+fn deploy_memory_cap_apply_script_ordered(units: List<NonEmptyStr>) -> String {
+  concat(deploy_runner_memory_cap_author_script(), deploy_memory_cap_shadow_revert_script(units: units))
+}
+
+// Pin external script to deploy_memory_cap_apply_script_ordered's concat(author, reverts).
+fn deploy_memory_cap_script_matches_ordered_composition(script: String, units: List<NonEmptyStr>) -> Bool {
+  script == deploy_memory_cap_apply_script_ordered(units: units)
+}
+
+// Independently derive author + revert halves; refuse reversed or padded wrong-order scripts.
+fn deploy_memory_cap_script_author_precedes_shadow_revert(script: String, units: List<NonEmptyStr>) -> Bool {
+  let author = deploy_runner_memory_cap_author_script()
+  let reverts = deploy_memory_cap_shadow_revert_script(units: units)
+  list_length(items: units) > 0 && script == concat(author, reverts)
+}
+
+// Enrolled: live_deploy apply emits deploy_memory_cap_apply_script_for_host after sudoers preamble.
+data deploy_memory_cap_live_deploy_enrollment_note: String = "deploy_memory_cap_apply_script_for_host is emitted into live_deploy apply (gunbc.live_deploy.emit apply_intent_from_effects) after deploy_apply_preamble_steps — author derived drop-ins then systemctl revert per runner_slot_service_units_for_host."
+
+fn control_shadow_reconcile(
+  desired: List<ControlShadowUnit>,
+  observed: List<ControlShadowUnit>,
+) -> MembershipPlan<ControlShadowUnit> {
+  membership_reconcile(
+    desired: desired,
+    observed: observed,
+    key_of: control_shadow_unit_key,
+    key_eq: control_shadow_unit_key_eq,
+    value_eq: control_shadow_unit_value_eq,
+    ownership_of: control_shadow_unit_ownership,
+  )
+}
+
+fn control_shadow_effects(
+  desired: List<ControlShadowUnit>,
+  observed: List<ControlShadowUnit>,
+) -> EffectsOrRefusal<ControlShadowUnit> {
+  membership_effects(plan: control_shadow_reconcile(desired: desired, observed: observed))
+}
+
+fn control_shadow_teardown_count(
+  desired: List<ControlShadowUnit>,
+  observed: List<ControlShadowUnit>,
+) -> Int {
+  membership_removal_count(plan: control_shadow_reconcile(desired: desired, observed: observed))
+}
+
+fn control_shadow_refusal_count(
+  desired: List<ControlShadowUnit>,
+  observed: List<ControlShadowUnit>,
+) -> Int {
+  membership_refusal_count(plan: control_shadow_reconcile(desired: desired, observed: observed))
 }

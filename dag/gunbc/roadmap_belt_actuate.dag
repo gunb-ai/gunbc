@@ -346,10 +346,13 @@ import extdeps.filesystem.filesystem_io
 import extdeps.llm.cli {
   shape_codex_login_status_env_args_for_program,
   shape_codex_version_env_args_for_program,
-  codex_cli_identity_contains,
   claude_cli_program,
   claude_trust_store_path,
   claude_workspace_trust_seeded,
+}
+import gunbc.package_delivery {
+  codex_runtime_version_identity_marker,
+  codex_runtime_version_identity_satisfied,
 }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
@@ -1002,14 +1005,13 @@ fn belt_codex_preflight_decision_observed_for_home(
   login_status_stderr: String,
 ) -> BeltCodexPreflight {
   let identity_realized = identity_command_success
-    && string_contains(
-      s: join([identity_stdout, "\n", identity_stderr], ""),
-      pattern: codex_cli_identity_contains,
+    && codex_runtime_version_identity_satisfied(
+      combined_output: join([identity_stdout, "\n", identity_stderr], ""),
     )
   if !codex_on_path {
     CodexPreflightRefused {
       step: "codex-cli",
-      detail: "codex not found on PATH; refusing before worktree creation",
+      detail: "codex executable not available at the declared converged path; refusing before worktree creation (no ambient PATH fallback)",
     }
   } else if !env_on_path {
     CodexPreflightRefused {
@@ -1021,7 +1023,7 @@ fn belt_codex_preflight_decision_observed_for_home(
       step: "codex-identity",
       detail: join([
         "codex --version did not realize ",
-        codex_cli_identity_contains,
+        codex_runtime_version_identity_marker(),
         "; stdout: ",
         identity_stdout,
         "; stderr: ",
@@ -1077,9 +1079,8 @@ fn belt_codex_preflight_for_instance(instance: HostDashboardInstance) -> BeltCod
       expect: OutcomeIsData,
     )
     let identity_realized = identity.success
-      && string_contains(
-        s: join([identity.stdout, "\n", identity.stderr], ""),
-        pattern: codex_cli_identity_contains,
+      && codex_runtime_version_identity_satisfied(
+        combined_output: join([identity.stdout, "\n", identity.stderr], ""),
       )
     if !identity_realized {
       belt_codex_preflight_decision_observed_for_home(

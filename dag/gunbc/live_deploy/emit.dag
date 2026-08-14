@@ -58,6 +58,12 @@ import gunbc.live_deploy.spec {
   tree_sync_unit_path,
 }
 import gunbc.host_layout { belt_spawn_workdir_env_var, fleet_converge_receipt_dir }
+import gunbc.host_axis_caps {
+  deploy_memory_cap_apply_script_for_host,
+  deploy_memory_cap_script_author_precedes_shadow_revert,
+  host_axis_caps_author_before_revert_enforced,
+  runner_slot_service_units_for_host,
+}
 import gunbc.ownership { Ownership }
 import v2.std.algebra { list_tail, TailFound, TailAbsent }
 import gunbc.membership_reconcile {
@@ -333,10 +339,11 @@ fn apply_belt_service_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
 // AND has no credential, so the desired ref is never observed and every cadence renders
 // verdict=absent (fleet_converge_cli converge_cli_revision_verdict RevisionUnobserved). Running
 // as the repo owner is exactly what the sibling serve/belt/tree-sync units already do
-// (emit_systemd_unit_doc / emit_belt_service_unit_doc: User=+Group=svc.service_user). The
-// coupled half is the receipts-dir owner in FleetConvergeTimerUnit's install -d step below: the
-// receipt WRITE lands in fleet_converge_receipt_dir, so that dir must be owned by the same
-// principal or the write fails EACCES after the observation succeeds.
+// (emit_systemd_unit_doc / emit_belt_service_unit_doc: User=+Group=svc.service_user).
+// Receipt *publication* (superseding a stale root-owned file) is atomic rename in
+// gunbc.fleet_converge_cli (gunbc.host_layout fleet_converge_receipt_atomic_publish_note).
+// Receipt *directory bootstrap* (existence + service-principal ownership) stays on deploy
+// via install_d_owned_command on fleet_converge_receipt_dir — orthogonal problems.
 fn emit_fleet_converge_service_unit_doc(spec: DeploymentSpec) -> Doc {
   let svc = spec.service
   doc_concat(parts: [
@@ -552,6 +559,25 @@ fn deploy_apply_preamble_steps(access: DeployAccess) -> List<PipelineStep> {
   [deploy_raw(command: deploy_sudoers_install_shell(access: access))]
 }
 
+fn deploy_memory_cap_apply_steps(spec: DeploymentSpec) -> List<PipelineStep> {
+  let host = spec.target.host.identity
+  let units = runner_slot_service_units_for_host(host: host)
+  let script = deploy_memory_cap_apply_script_for_host(host: host)
+  if host_axis_caps_author_before_revert_enforced
+    && deploy_memory_cap_script_author_precedes_shadow_revert(script: script, units: units) {
+    [deploy_raw(command: script)]
+  } else {
+    [
+      deploy_raw(
+        command: concat(
+          "__GUNBC_DEPLOY_REFUSED__ memory-cap apply ordering gate failed host=",
+          host as String,
+        ),
+      ),
+    ]
+  }
+}
+
 data apply_tree_split_sync_note: String = "GunbcSourceTree apply is a SPLIT sync (review 40332, DESIGN 5 — the retract-side rmdir wall alone gave false assurance): the shared repo at /opt/gunbc/gunbc accumulates target-LOCAL git state the runner checkout never has — .git/worktrees/<name> registrations for every live dispatch worktree, the session branch refs those worktrees are on, and the objects their commits wrote into the shared store — so a single rsync --delete of ./ would destroy live agent sessions on every redeploy. The working tree syncs with --delete (stale sources must not linger) but excludes /.git; .git syncs ADDITIVELY (no --delete), which keeps origin/main fresh from the runner checkout (the belt's git worktree add resolves origin/main from these remote-tracking refs — srv1 does no fetch) while never deleting worktree metadata, session refs, or their objects. Accumulation of pruned-worktree residue is the safe direction and is reaped by git itself, never by deploy. Flags are -rlpt, not -a: the sync principal is the service user (emit_deploy_principal_note), so -a's owner/group replication would chgrp toward the runner's group and fail EPERM — ownership is the destination principal's by construction, never replicated from the source."
 
 fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<PipelineStep> {
@@ -733,10 +759,13 @@ fn apply_intent_from_effects(
       concat(
         deploy_apply_preamble_steps(access: access),
         concat(
-          flat_map(effects, e => emit_deploy_member_effect(effect: e, spec: spec, revision: revision)),
-          [
-            deploy_raw(command: concat("echo live-deploy-receipt host=", spec.target.host.identity, " fold=apply verdict=converged")),
-          ]
+          deploy_memory_cap_apply_steps(spec: spec),
+          concat(
+            flat_map(effects, e => emit_deploy_member_effect(effect: e, spec: spec, revision: revision)),
+            [
+              deploy_raw(command: concat("echo live-deploy-receipt host=", spec.target.host.identity, " fold=apply verdict=converged")),
+            ]
+          )
         )
       )
     ),

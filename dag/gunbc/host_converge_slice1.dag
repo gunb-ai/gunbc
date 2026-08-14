@@ -6,11 +6,6 @@ import product.placement_supply { HostIdentity }
 import extdeps.systemd {
   systemd_memory_max_property,
   MemoryMax,
-  MemoryCurrent,
-  parse_systemd_memory_limit_show,
-  MemoryLimitBytes,
-  MemoryLimitUnbounded,
-  MemoryLimitAbsent,
   systemd_tasks_max_property,
   TasksMax,
   TasksCurrent,
@@ -25,7 +20,6 @@ import gunbc.systemctl_show_read {
   SystemdPropertyCaptured,
   SystemdPropertyCaptureRefused,
 }
-import std.measure { ByteSize, byte_size, byte_size_count }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
 import gunbc.fleet_host_budget { declared_runner_count_for }
 import gunbc.host_converge {
@@ -47,7 +41,6 @@ import gunbc.runner_unit_live_read {
   RunnerUnitMemoryLiveRead,
   gunbc_srv1_runner_unit_live_read_fixture,
   runner_unit_live_read_typed,
-  runner_unit_usage_exceeds_bytes,
 }
 import gunbc.fleet_show_effective_read {
   per_slot_memory_cap_verdict_from_unit_read,
@@ -55,9 +48,29 @@ import gunbc.fleet_show_effective_read {
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.systemctl_set_property { systemctl_set_property_local }
 import gunbc.systemctl_list_units { systemctl_list_units_active_services }
+import gunbc.host_axis_caps { control_shadow_unit, control_shadow_revert_script, control_shadow_revert_script_matches_extdeps_argv }
 
 data gunbc_host_converge_slice1_scope_disposition: Disposition = Terminal {
-  reason: "Host-converge realized knob: per_slot_memory_max_bytes from fleet_converge_policy through typed systemctl show/set-property/list-units and clock_now_probed_at (LocalShell on-host, runs AS the target host's own job — no SSH transport needed) into ConvergeTarget PerSlotMemoryCap verdict semantics, with independent read-back and reapply-noop proof. Realized on srv1 (single probe unit) and srv3 (multi-unit: live-enumerated via runner_instance_glob, cross-checked against declared_runner_count() — a count mismatch refuses typed rather than silently converging a subset; per-unit outcomes are independent, so one unit's refusal never blocks its siblings, per DESIGN §5's per-cause-typed-refusal/siblings-continue discipline). A pre-apply MemoryCurrent usage guard (host_converge_slice1_usage_guard) refuses per-unit, typed and retryable, rather than applying a cap below live usage — never a fleet-wide abort. srv2 and other knobs stay on the host_converge_realize frontier. Deliberately NOT integrated with the membership-diff reconcile spine (membership-diff-reconcile-spine-design.md) — that spine's R5 teardown-owned-only concerns a different axis (fleet membership, not a live cgroup knob); noted as a future consolidation candidate, not actioned here. Dissolve-on (same bind): knob.desired bytes_value is inherited ConvergeKnob String at the shell seam; emit lane should terminate on ByteSize-typed argv rows, not raw String interpolation. First-execution safety: the apply arm is unreachable except via host_converge_slice1_converge_unit's own control flow — enumeration (host_converge_slice1_enumerate_units) and cross-check must both succeed before any unit is attempted, and within a unit the live MemoryMax read and Drifted verdict must both succeed before host_converge_slice1_usage_guard's own live MemoryCurrent read is attempted and must itself return Safe before set-property fires — so the first live invocation against a real host (srv1 or srv3) necessarily exercises only read-only systemctl show/list-units transports up through several fail-closed gates before any write is reachable; there is no code path to set-property without a prior successful live read in the same pass. Operationally this means the first `gunbc converge` run against srv3 IS the read-proof — no separate wet witness step is required by construction — but the operator should still supervise that first run to confirm the read/enumerate paths return real data rather than tripping an early Refused arm for an unrelated reason (host reachability, transport auth, etc.). CLOSED 2026-08-05, by its own trigger firing rather than by anyone revisiting it. Review 41089 recorded a known non-blocking gap here — host_converge_slice1_cross_check_enumeration took a host param while declared_runner_count() was fleet-wide, so host was threaded through only to LABEL a HostConvergeSlice1EnumerationMismatch and never to select the count being compared. Modeling a per-host budget then would have been speculative (every host shared one width), so the gap was left with a precise dissolve-on: the day a second host's declared runner count genuinely differs, declared_runner_count must take a HostIdentity backed by a per-host budget row and this cross-check wires straight to it, no interim shim. srv3/srv4 moved to 7 slots and srv1/srv2 stayed at 5 (gunbc.runner_slot_allocation gunbc_runner_slot_width_ruling_note), the counts diverged, and the call is now declared_runner_count_for(host: host) against gunbc_runner_pool_budget_for — the shim the note forbade was not needed and was not written.\n\nWhat that gap would have COST had it stayed, which is the reason to record its closure rather than delete the row: this cross-check refuses when live unit enumeration disagrees with the declared width. Against a fleet-wide count it would have compared srv3's seven observed units to a five that belonged to srv1, refused a correctly-converged host, and — worse in the other direction — passed srv1 carrying seven units that its RAM cannot hold. A label-only host param is exactly the state-space conflation that looks harmless while every host agrees."
+  reason: "Host-converge realized knob: per_slot_tasks_max from fleet_converge_policy through typed systemctl show/set-property/list-units and clock_now_probed_at (LocalShell on-host, operator principal briansrls on srv1). MemoryMax/MemoryHigh drop-in authoring and system.control shadow teardown are deploy-time only (gunbc.host_axis_caps at live_deploy apply under ghrunner sudo) — convergence does NOT write /etc/systemd drop-ins, daemon-reload, set-property MemoryMax, or systemctl revert on the operator principal (operator privilege hold 2026-08-13). Ordering invariant (author derived drop-ins before shadow revert) is modeled in host_axis_caps for the deploy path. srv1 TasksMax on probe unit; srv3 multi-unit enumerated via runner_instance_glob. Per-unit outcomes are independent (DESIGN section 5 per-cause refusal / siblings continue). srv2 and other knobs stay on host_converge_realize frontier."
+}
+
+// Operator ruling 2026-08-13: MemoryMax single authority is deploy-time drop-in authoring
+// (gunbc.host_axis_caps). Convergence must not re-apply via set-property — witness enrolls
+// host_converge_slice1_memory_max_converge_apply_suppressed below.
+data host_converge_slice1_memory_max_deploy_authority_note: String = "MemoryMax is authored at deploy through gunbc.host_axis_caps cap membership reconcile and drop-in upsert — not re-applied by gunbc converge. Dual authority (deploy drop-in vs converge set-property) is forbidden."
+
+data host_converge_slice1_memory_max_converge_apply_suppressed: Bool = true
+
+// Live author/revert on the operator converge principal requires root (drop-in writes,
+// daemon-reload, systemctl revert) — withheld by fleet_posix_operator_privilege_hold.
+data host_converge_slice1_memory_cap_live_pipeline_on_converge_suppressed: Bool = true
+
+data host_converge_slice1_control_shadow_converge_note: String = "Aug-11 root-era set-property wrote /etc/systemd/system.control/<unit>.d/50-MemoryMax.conf and 50-MemoryHigh.conf; those drop-ins shadow deploy-authored files until removed. Teardown ordering is author derived drop-ins from gunbc.runner_slot_allocation THEN systemctl revert MemoryMax MemoryHigh — modeled in gunbc.host_axis_caps for the deploy apply path (ghrunner sudo), not gunbc converge on briansrls. Revert-before-author on stale 16/15GiB on-disk deploy drop-ins raises effective caps to the superseded regime."
+
+data host_converge_slice1_cap_author_before_shadow_revert_enforced: Bool = true
+
+fn host_converge_slice1_shadow_revert_script_matches_authority(unit: NonEmptyStr) -> Bool {
+  control_shadow_revert_script_matches_extdeps_argv(u: control_shadow_unit(unit: unit))
 }
 
 data host_converge_slice1_probe_unit: NonEmptyStr = "actions-runner@srv1-01.service"
@@ -168,14 +181,6 @@ fn host_converge_slice1_read_memory_max_raw(unit: NonEmptyStr) -> String? {
   }
 }
 
-fn host_converge_slice1_apply_memory_max(unit: NonEmptyStr, bytes_value: String) -> Bool {
-  systemctl_set_property_local(
-    unit: unit,
-    property: systemd_memory_max_property,
-    value: bytes_value as NonEmptyStr,
-  )
-}
-
 fn host_converge_slice1_live_read(unit: NonEmptyStr, probed_at: NonEmptyStr) -> RunnerUnitMemoryLiveRead? {
   match host_converge_slice1_read_memory_max_raw(unit: unit) {
     Present { value: memory_max_raw } =>
@@ -244,72 +249,6 @@ fn host_converge_slice1_fixture_receipt() -> HostConvergeSlice1MemoryCapReceipt?
   }
 }
 
-type HostConvergeSlice1UsageGuardOutcome
-  = HostConvergeSlice1UsageSafe { unit: NonEmptyStr, current_bytes: ByteSize }
-  | HostConvergeSlice1UsageUnsafe { unit: NonEmptyStr, current_bytes: ByteSize, target_cap_bytes: ByteSize }
-  | HostConvergeSlice1UsageUnknown { unit: NonEmptyStr, reason: String }
-
-data host_converge_slice1_usage_guard_placeholder_probed_at: NonEmptyStr = "host_converge_slice1_usage_guard"
-
-fn host_converge_slice1_read_memory_current_raw(unit: NonEmptyStr) -> String? {
-  match systemctl_show_property_read_local(unit: unit, property: MemoryCurrent) {
-    SystemdPropertyCaptured { value: raw } => Present { value: raw }
-    SystemdPropertyCaptureRefused { reason: _ } => none
-  }
-}
-
-fn host_converge_slice1_usage_guard(unit: NonEmptyStr, target_bytes_value: String) -> HostConvergeSlice1UsageGuardOutcome {
-  match parse_int(s: target_bytes_value) {
-    Present { value: target_bytes } =>
-      match host_converge_slice1_read_memory_current_raw(unit: unit) {
-        Present { value: raw } => {
-          let read = runner_unit_live_read_typed(
-            row: RunnerUnitLiveReadRow {
-              unit: unit,
-              memory_max_raw: "",
-              memory_swap_max_raw: "",
-              memory_high_raw: "",
-              memory_current_raw: raw,
-              probed_at: host_converge_slice1_usage_guard_placeholder_probed_at,
-            }
-          )
-          let target_cap = byte_size(count: target_bytes)
-          match runner_unit_usage_exceeds_bytes(read: read, target_bytes: target_cap) {
-            Present { value: exceeds } =>
-              match read.memory_current {
-                MemoryLimitBytes { bytes: current } =>
-                  if exceeds {
-                    HostConvergeSlice1UsageUnsafe { unit: unit, current_bytes: current, target_cap_bytes: target_cap }
-                  } else {
-                    HostConvergeSlice1UsageSafe { unit: unit, current_bytes: current }
-                  }
-                _ =>
-                  HostConvergeSlice1UsageUnknown {
-                    unit: unit,
-                    reason: "host_converge_slice1: MemoryCurrent read parsed inconsistently between guard and comparison; fail-closed",
-                  }
-              }
-            _ =>
-              HostConvergeSlice1UsageUnknown {
-                unit: unit,
-                reason: "host_converge_slice1: MemoryCurrent read unbounded or unparseable; cannot bound usage against target cap; fail-closed",
-              }
-          }
-        }
-        _ =>
-          HostConvergeSlice1UsageUnknown {
-            unit: unit,
-            reason: "host_converge_slice1: live systemctl show MemoryCurrent read absent; fail-closed",
-          }
-      }
-    _ =>
-      HostConvergeSlice1UsageUnknown {
-        unit: unit,
-        reason: "host_converge_slice1: target cap bytes_value did not parse as Int; fail-closed",
-      }
-  }
-}
-
 type HostConvergeSlice1EnumerationMismatch {
   host: HostIdentity
   declared_count: Int
@@ -351,102 +290,13 @@ fn host_converge_slice1_cross_check_enumeration(host: HostIdentity, units: List<
 }
 
 type HostConvergeSlice1UnitOutcome
-  = HostConvergeSlice1UnitConverged { unit: NonEmptyStr, applied: Bool, receipt: HostConvergeSlice1MemoryCapReceipt }
-  | HostConvergeSlice1UnitTasksConverged { unit: NonEmptyStr, applied: Bool, receipt: HostConvergeSlice1TasksMaxReceipt }
+  = HostConvergeSlice1UnitTasksConverged { unit: NonEmptyStr, applied: Bool, receipt: HostConvergeSlice1TasksMaxReceipt }
   | HostConvergeSlice1UnitRefused { unit: NonEmptyStr, reason: String }
-  | HostConvergeSlice1UnitUsageGuardRefused { unit: NonEmptyStr, current_bytes: ByteSize, target_cap_bytes: ByteSize }
 
 type HostConvergeSlice1HostResult
   = HostConvergeSlice1HostEnumerated { host: HostIdentity, outcomes: List<HostConvergeSlice1UnitOutcome> }
   | HostConvergeSlice1HostRefused { reason: String }
   | HostConvergeSlice1HostEnumerationMismatch { mismatch: HostConvergeSlice1EnumerationMismatch }
-
-fn host_converge_slice1_converge_unit(host: HostIdentity, unit: NonEmptyStr, knob: ConvergeKnob) -> HostConvergeSlice1UnitOutcome {
-  match host_converge_slice1_probed_at() {
-    Present { value: probed_at } =>
-      match host_converge_slice1_live_read(unit: unit, probed_at: probed_at) {
-        Present { value: precondition_read } =>
-          match host_converge_slice1_memory_cap_verdict(read: precondition_read, knob: knob) {
-            Present { value: v } =>
-              match v {
-                VerdictConverged =>
-                  match host_converge_slice1_prove_reapply_noop(unit: unit, knob: knob) {
-                    Present { value: why } => HostConvergeSlice1UnitRefused { unit: unit, reason: why }
-                    _ =>
-                      match host_converge_slice1_receipt_from_read(
-                        host: host,
-                        read: precondition_read,
-                        knob: knob,
-                        applied: false,
-                        read_back_converged: true,
-                        reapply_noop: true,
-                      ) {
-                        Present { value: receipt } => HostConvergeSlice1UnitConverged { unit: unit, applied: false, receipt: receipt }
-                        _ => HostConvergeSlice1UnitRefused { unit: unit, reason: "host_converge_slice1: converged read failed receipt construction; fail-closed" }
-                      }
-                  }
-                Drifted =>
-                  match host_converge_slice1_usage_guard(unit: unit, target_bytes_value: knob.desired) {
-                    HostConvergeSlice1UsageUnsafe { unit: _, current_bytes: cb, target_cap_bytes: tb } =>
-                      HostConvergeSlice1UnitUsageGuardRefused { unit: unit, current_bytes: cb, target_cap_bytes: tb }
-                    HostConvergeSlice1UsageUnknown { unit: _, reason: r } =>
-                      HostConvergeSlice1UnitRefused { unit: unit, reason: concat("host_converge_slice1: usage guard could not prove safety before apply, fail-closed: ", r) }
-                    HostConvergeSlice1UsageSafe { unit: _, current_bytes: _ } =>
-                      if !host_converge_slice1_apply_memory_max(unit: unit, bytes_value: knob.desired) {
-                        HostConvergeSlice1UnitRefused {
-                          unit: unit,
-                          reason: concat(
-                            concat("host_converge_slice1: systemctl set-property MemoryMax failed for ", unit as String),
-                            concat(" desired=", knob.desired)
-                          ),
-                        }
-                      } else {
-                        match host_converge_slice1_probed_at() {
-                          Present { value: readback_at } =>
-                            match host_converge_slice1_live_read(unit: unit, probed_at: readback_at) {
-                              Present { value: read_back } =>
-                                match host_converge_slice1_memory_cap_verdict(read: read_back, knob: knob) {
-                                  Present { value: readback_verdict } =>
-                                    match readback_verdict {
-                                      VerdictConverged =>
-                                        match host_converge_slice1_prove_reapply_noop(unit: unit, knob: knob) {
-                                          Present { value: why } => HostConvergeSlice1UnitRefused { unit: unit, reason: why }
-                                          _ =>
-                                            match host_converge_slice1_receipt_from_read(
-                                              host: host,
-                                              read: read_back,
-                                              knob: knob,
-                                              applied: true,
-                                              read_back_converged: true,
-                                              reapply_noop: true,
-                                            ) {
-                                              Present { value: receipt } => HostConvergeSlice1UnitConverged { unit: unit, applied: true, receipt: receipt }
-                                              _ => HostConvergeSlice1UnitRefused { unit: unit, reason: "host_converge_slice1: post-apply receipt construction failed; fail-closed" }
-                                            }
-                                        }
-                                      Drifted =>
-                                        HostConvergeSlice1UnitRefused { unit: unit, reason: "host_converge_slice1: independent read-back after apply still drifted; fail-closed" }
-                                      _ =>
-                                        HostConvergeSlice1UnitRefused { unit: unit, reason: "host_converge_slice1: read-back after apply returned Absent verdict; fail-closed" }
-                                    }
-                                  _ => HostConvergeSlice1UnitRefused { unit: unit, reason: "host_converge_slice1: read-back verdict missing after apply; fail-closed" }
-                                }
-                              _ => HostConvergeSlice1UnitRefused { unit: unit, reason: "host_converge_slice1: independent read-back after apply returned absent; fail-closed" }
-                            }
-                          _ => HostConvergeSlice1UnitRefused { unit: unit, reason: host_converge_slice1_probed_at_refusal_reason }
-                        }
-                      }
-                  }
-                _ =>
-                  HostConvergeSlice1UnitRefused { unit: unit, reason: concat("host_converge_slice1: live MemoryMax parsed Absent (empty/untyped wire) for ", unit as String) }
-              }
-            _ => HostConvergeSlice1UnitRefused { unit: unit, reason: "host_converge_slice1: live MemoryMax verdict missing; fail-closed" }
-          }
-        _ => HostConvergeSlice1UnitRefused { unit: unit, reason: concat("host_converge_slice1: live systemctl show MemoryMax read absent for ", unit as String) }
-      }
-    _ => HostConvergeSlice1UnitRefused { unit: unit, reason: host_converge_slice1_probed_at_refusal_reason }
-  }
-}
 
 fn host_converge_slice1_tasks_knob(host: HostIdentity) -> ConvergeKnob? {
   match host_converge_from_policy(policy: fleet_converge_policy(), host: host) {
@@ -697,72 +547,26 @@ fn host_converge_slice1_converge_unit_tasks(host: HostIdentity, unit: NonEmptySt
 }
 
 fn host_converge_slice1_converge_host(host: HostIdentity, instance_glob: String) -> HostConvergeSlice1HostResult {
-  match host_converge_slice1_per_slot_memory_max_knob(host: host) {
-    Present { value: knob } =>
-      match host_converge_slice1_tasks_knob(host: host) {
-        Present { value: tasks_knob } =>
-          match host_converge_slice1_enumerate_units(instance_glob: instance_glob) {
-            Present { value: units } =>
-              match host_converge_slice1_cross_check_enumeration(host: host, units: units) {
-                Present { value: mismatch } => HostConvergeSlice1HostEnumerationMismatch { mismatch: mismatch }
-                _ =>
-                  HostConvergeSlice1HostEnumerated {
-                    host: host,
-                    outcomes: units.flat_map(u => [
-                      host_converge_slice1_converge_unit(host: host, unit: u, knob: knob),
-                      host_converge_slice1_converge_unit_tasks(host: host, unit: u, knob: tasks_knob),
-                    ]),
-                  }
+  match host_converge_slice1_tasks_knob(host: host) {
+    Present { value: tasks_knob } =>
+      match host_converge_slice1_enumerate_units(instance_glob: instance_glob) {
+        Present { value: units } =>
+          match host_converge_slice1_cross_check_enumeration(host: host, units: units) {
+            Present { value: mismatch } => HostConvergeSlice1HostEnumerationMismatch { mismatch: mismatch }
+            _ =>
+              HostConvergeSlice1HostEnumerated {
+                host: host,
+                outcomes: map(units, u => host_converge_slice1_converge_unit_tasks(host: host, unit: u, knob: tasks_knob)),
               }
-            _ => HostConvergeSlice1HostRefused { reason: concat("host_converge_slice1: live unit enumeration absent for glob ", instance_glob) }
           }
-        _ => HostConvergeSlice1HostRefused { reason: "host_converge_slice1: per_slot_tasks_max knob absent from fleet_converge_policy for host; fail-closed" }
+        _ => HostConvergeSlice1HostRefused { reason: concat("host_converge_slice1: live unit enumeration absent for glob ", instance_glob) }
       }
-    _ => HostConvergeSlice1HostRefused { reason: "host_converge_slice1: per_slot_memory_max_bytes knob absent from fleet_converge_policy for host; fail-closed" }
+    _ => HostConvergeSlice1HostRefused { reason: "host_converge_slice1: per_slot_tasks_max knob absent from fleet_converge_policy for host; fail-closed" }
   }
 }
 
 fn host_converge_slice1_converge_srv3() -> HostConvergeSlice1HostResult {
   host_converge_slice1_converge_host(host: operator_host_srv3, instance_glob: runner_instance_glob(host: operator_host_srv3))
-}
-
-fn host_converge_slice1_prove_reapply_noop(unit: NonEmptyStr, knob: ConvergeKnob) -> String? {
-  if !host_converge_slice1_apply_memory_max(unit: unit, bytes_value: knob.desired) {
-    Present {
-      value: "host_converge_slice1: reapply-noop second apply (systemctl set-property) failed; fail-closed",
-    }
-  } else {
-    match host_converge_slice1_probed_at() {
-      Present { value: reapply_at } =>
-        match host_converge_slice1_live_read(unit: unit, probed_at: reapply_at) {
-          Present { value: reapply_read } =>
-            match host_converge_slice1_memory_cap_verdict(read: reapply_read, knob: knob) {
-              Present { value: v } =>
-                match v {
-                  VerdictConverged => none
-                  Drifted =>
-                    Present {
-                      value: "host_converge_slice1: reapply-noop failed — still drifted after second apply; fail-closed",
-                    }
-                  _ =>
-                    Present {
-                      value: "host_converge_slice1: reapply-noop read returned Absent verdict after second apply; fail-closed",
-                    }
-                }
-              _ =>
-                Present {
-                  value: "host_converge_slice1: reapply-noop verdict missing after second apply; fail-closed",
-                }
-            }
-          _ =>
-            Present {
-              value: "host_converge_slice1: reapply-noop independent read after second apply absent; fail-closed",
-            }
-        }
-      _ =>
-        Present { value: host_converge_slice1_probed_at_refusal_reason }
-    }
-  }
 }
 
 fn host_converge_slice1_receipt_is_valid(receipt: HostConvergeSlice1MemoryCapReceipt) -> Bool {
@@ -773,19 +577,10 @@ fn host_converge_slice1_receipt_is_valid(receipt: HostConvergeSlice1MemoryCapRec
 
 fn host_converge_slice1_unit_outcome_to_legacy_result(outcome: HostConvergeSlice1UnitOutcome) -> HostConvergeSlice1ConvergeResult {
   match outcome {
-    HostConvergeSlice1UnitConverged { unit: _, applied: a, receipt: r } =>
-      HostConvergeSlice1Converged { applied_knobs: if a { 1 } else { 0 }, receipt: r }
     HostConvergeSlice1UnitTasksConverged { unit: _, applied: a, receipt: r } =>
       HostConvergeSlice1TasksConverged { applied_knobs: if a { 1 } else { 0 }, receipt: r }
     HostConvergeSlice1UnitRefused { unit: _, reason: reason } =>
       HostConvergeSlice1Refused { reason: reason }
-    HostConvergeSlice1UnitUsageGuardRefused { unit: u, current_bytes: cb, target_cap_bytes: tb } =>
-      HostConvergeSlice1Refused {
-        reason: concat(
-          concat(concat("host_converge_slice1: usage guard refused apply for ", u as String), concat(" current_bytes=", to_string(byte_size_count(b: cb)))),
-          concat(concat(" exceeds target_cap_bytes=", to_string(byte_size_count(b: tb))), "; retryable once the slot is quiet"),
-        ),
-      }
   }
 }
 
@@ -810,8 +605,8 @@ fn host_converge_slice1_host_result_all_valid(result: HostConvergeSlice1HostResu
         && fold(os, init: true, f: fn(acc, o) {
           acc
             && match o {
-              HostConvergeSlice1UnitConverged { unit: _, applied: _, receipt: r } => host_converge_slice1_receipt_is_valid(receipt: r)
-              HostConvergeSlice1UnitTasksConverged { unit: _, applied: _, receipt: r } => host_converge_slice1_tasks_receipt_is_valid(receipt: r)
+              HostConvergeSlice1UnitTasksConverged { unit: _, applied: _, receipt: r } =>
+                host_converge_slice1_tasks_receipt_is_valid(receipt: r)
               _ => false
             }
         })
@@ -843,45 +638,26 @@ fn host_converge_slice1_host_result_refusal_reason(result: HostConvergeSlice1Hos
   }
 }
 
-// srv1 probe-unit loop, both knobs: the memory outcome carries the legacy receipt shape;
-// the tasks outcome must ALSO be valid-converged for the loop to report converged — an
-// invalid or refused tasks outcome refuses the whole loop (never silently dropped), and a
-// converged one adds its applied count.
+// srv1: TasksMax on probe unit only — memory-cap live apply is deploy-time (operator principal).
 fn host_converge_slice1_converge_loop() -> HostConvergeSlice1ConvergeResult {
-  match host_converge_slice1_srv1_per_slot_memory_max_knob() {
-    Present { value: knob } =>
-      match host_converge_slice1_tasks_knob(host: operator_host_srv1) {
-        Present { value: tasks_knob } =>
-          match host_converge_slice1_unit_outcome_to_legacy_result(
-            host_converge_slice1_converge_unit(host: operator_host_srv1, unit: host_converge_slice1_probe_unit, knob: knob)
-          ) {
-            HostConvergeSlice1Converged { applied_knobs: n, receipt: r } =>
-              match host_converge_slice1_converge_unit_tasks(host: operator_host_srv1, unit: host_converge_slice1_probe_unit, knob: tasks_knob) {
-                HostConvergeSlice1UnitTasksConverged { unit: _, applied: a, receipt: tr } =>
-                  if host_converge_slice1_tasks_receipt_is_valid(receipt: tr) {
-                    HostConvergeSlice1Converged { applied_knobs: n + (if a { 1 } else { 0 }), receipt: r }
-                  } else {
-                    HostConvergeSlice1Refused { reason: "host_converge_slice1: tasks receipt validity gate failed on srv1 probe unit; fail-closed" }
-                  }
-                HostConvergeSlice1UnitConverged { unit: _, applied: _, receipt: _ } =>
-                  HostConvergeSlice1Refused { reason: "host_converge_slice1: tasks converge returned a memory-cap outcome; fail-closed" }
-                HostConvergeSlice1UnitRefused { unit: _, reason: why } =>
-                  HostConvergeSlice1Refused { reason: why }
-                HostConvergeSlice1UnitUsageGuardRefused { unit: _, current_bytes: _, target_cap_bytes: _ } =>
-                  HostConvergeSlice1Refused { reason: "host_converge_slice1: tasks converge returned a memory usage-guard outcome; fail-closed" }
-              }
-            HostConvergeSlice1TasksConverged { applied_knobs: _, receipt: _ } =>
-              HostConvergeSlice1Refused { reason: "host_converge_slice1: memory converge returned a tasks outcome; fail-closed" }
-            HostConvergeSlice1Refused { reason: why } => HostConvergeSlice1Refused { reason: why }
+  match host_converge_slice1_tasks_knob(host: operator_host_srv1) {
+    Present { value: tasks_knob } =>
+      match host_converge_slice1_unit_outcome_to_legacy_result(
+        host_converge_slice1_converge_unit_tasks(host: operator_host_srv1, unit: host_converge_slice1_probe_unit, knob: tasks_knob)
+      ) {
+        HostConvergeSlice1TasksConverged { applied_knobs: n, receipt: r } =>
+          if host_converge_slice1_tasks_receipt_is_valid(receipt: r) {
+            HostConvergeSlice1TasksConverged { applied_knobs: n, receipt: r }
+          } else {
+            HostConvergeSlice1Refused { reason: "host_converge_slice1: tasks receipt validity gate failed on srv1 probe unit; fail-closed" }
           }
-        _ =>
-          HostConvergeSlice1Refused {
-            reason: "host_converge_slice1: per_slot_tasks_max knob absent from fleet_converge_policy for srv1; fail-closed",
-          }
+        HostConvergeSlice1Converged { applied_knobs: _, receipt: _ } =>
+          HostConvergeSlice1Refused { reason: "host_converge_slice1: converge loop returned a memory-cap outcome; fail-closed" }
+        HostConvergeSlice1Refused { reason: why } => HostConvergeSlice1Refused { reason: why }
       }
     _ =>
       HostConvergeSlice1Refused {
-        reason: "host_converge_slice1: per_slot_memory_max_bytes knob absent from fleet_converge_policy for srv1; fail-closed",
+        reason: "host_converge_slice1: per_slot_tasks_max knob absent from fleet_converge_policy for srv1; fail-closed",
       }
   }
 }

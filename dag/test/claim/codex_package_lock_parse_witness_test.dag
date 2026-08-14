@@ -46,7 +46,16 @@ import gunbc.package_delivery {
   CodexRegistryLocatorAdmitted,
   CodexRegistryLocatorRefused,
   admitted_and_executed_lock_bytes_agree,
+  codex_required_package_version,
+  codex_runtime_version_identity_marker,
+  codex_runtime_version_identity_satisfied,
+  codex_bundled_executable_for_srv1,
 }
+import gunbc.codex_runtime_paths {
+  codex_runtime_current_link_path,
+  srv1_codex_runtime_release_root,
+}
+import gunbc.host_layout { srv1_codex_bundled_executable }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -353,4 +362,32 @@ test fn link_node_is_unsupported_not_half_modeled() -> Bool {
       count(nodes) == 1 && count(unsupported) == 1
     NpmPackageLockParseRefused { cause: _ } => false
   }
+}
+
+test fn codex_runtime_version_identity_refuses_ambient_srv1_version() -> Bool {
+  (codex_required_package_version as String) == "0.146.0"
+    && codex_runtime_version_identity_marker() == "codex-cli 0.146.0"
+    && !codex_runtime_version_identity_satisfied(combined_output: "codex-cli 0.133.0\n")
+    && codex_runtime_version_identity_satisfied(combined_output: "codex-cli 0.146.0\n")
+    && !codex_runtime_version_identity_satisfied(
+      combined_output: "codex-cli 0.147.0\n",
+    )
+    && !codex_runtime_version_identity_satisfied(
+      combined_output: "codex-cli 0.146.0-rc1\n",
+    )
+    && !codex_runtime_version_identity_satisfied(
+      combined_output: "codex-cli 0.146.0abc\n",
+    )
+}
+
+test fn srv1_codex_bundled_executable_is_package_delivery_authority() -> Bool {
+  (srv1_codex_bundled_executable() as String) == (codex_bundled_executable_for_srv1() as String)
+}
+
+test fn codex_bundled_executable_paths_to_native_binary_not_current_link() -> Bool {
+  let exe = codex_bundled_executable_for_srv1() as String
+  let current = codex_runtime_current_link_path(release_parent: srv1_codex_runtime_release_root) as String
+  string_contains(s: exe, pattern: "/bin/codex")
+    && exe != current
+    && string_contains(s: exe, pattern: "codex-linux-arm64")
 }

@@ -44,6 +44,7 @@ import gunbc.host_layout {
   srv1_dispatch_worktree_root,
   srv1_dispatch_attempt_state_root,
   srv1_roadmap_codex_home,
+  srv1_codex_bundled_executable,
   GunbcHostLayout,
   srv1_host_layout,
   srv2_host_layout,
@@ -351,7 +352,7 @@ fn srv1_live_dashboard_instance() -> HostDashboardInstance {
     ),
     provider_state: DashboardExistingProviderState {
       root: srv1_roadmap_codex_home,
-      executable: "/usr/bin/codex" as FilePath,
+      executable: srv1_codex_bundled_executable(),
       binding: admitted_single_session_binding(
         selection: codex_roadmap_account_selection(),
         evidence: codex_roadmap_account_evidence,
@@ -389,7 +390,7 @@ fn srv1_green_dashboard_instance() -> HostDashboardInstance {
     execution_environment: dashboard_execution_environment(serve_binary: binary),
     provider_state: DashboardExistingProviderState {
       root: srv1_roadmap_codex_home,
-      executable: "/usr/bin/codex" as FilePath,
+      executable: srv1_codex_bundled_executable(),
       binding: admitted_single_session_binding(
         selection: codex_roadmap_account_selection(),
         evidence: codex_roadmap_account_evidence,
@@ -440,7 +441,7 @@ fn isolated_dashboard_instance(
     ),
     provider_state: DashboardExistingProviderState {
       root: layout.roadmap_codex_home,
-      executable: "/usr/bin/codex" as FilePath,
+      executable: layout.codex_bundled_executable,
       binding: admitted_single_session_binding(
         selection: codex_roadmap_account_selection(),
         evidence: codex_roadmap_account_evidence,

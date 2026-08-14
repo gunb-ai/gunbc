@@ -10685,6 +10685,136 @@ pub fn heartbeat_feed_snapshot() -> Option<HeartbeatFeedSnapshot> {
     })
 }
 
+/// One in-flight witness attempt the floor has admitted but not yet finished.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ActiveWorksetEntry {
+    pub attempt_id: String,
+    pub entry: String,
+    pub function: String,
+}
+
+struct ActiveWorksetState {
+    entries: Vec<ActiveWorksetEntry>,
+}
+
+static ACTIVE_WORKSET: Mutex<ActiveWorksetState> = Mutex::new(ActiveWorksetState {
+    entries: Vec::new(),
+});
+
+const FLOOR_PHASE_JOURNAL_ENV: &str = "GUNBC_FLOOR_PHASE_JOURNAL";
+
+// TEMPORARY PROJECTION (operator ruling 2026-08-13, #8239 → #8163): active-workset
+// admit/completed rows in GUNBC_FLOOR_PHASE_JOURNAL carry in-flight witness identity until
+// subject + measurement events land on the #8163 RecordedObservation per-producer ledger
+// (target/floor-attempts/<attempt>/events/<producer>.jsonl). Dissolve-on: #8163 on main +
+// floor walk emits through that ledger with a dedicated producer identity; delete this append
+// path once FLOOR2 consumes the ledger green by execution. NOT serialized into the floor
+// component receipt — see floor_component_resource_checkpoint_note.
+fn append_active_workset_phase_journal(state: &str, detail: &str) {
+    let Some(path) = std::env::var_os(FLOOR_PHASE_JOURNAL_ENV) else {
+        return;
+    };
+    let path = PathBuf::from(path);
+    if let Some(parent) = path.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            eprintln!(
+                "cli_run: create floor phase journal directory {}: {e}",
+                parent.display()
+            );
+            return;
+        }
+    }
+    let mut file = match std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        Ok(file) => file,
+        Err(e) => {
+            eprintln!("cli_run: open floor phase journal {}: {e}", path.display());
+            return;
+        }
+    };
+    let unix_millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let clean_detail = detail.replace(['\t', '\r', '\n'], " ");
+    let row = format!(
+        "{unix_millis}\t{}\tactive-workset\t{state}\t{clean_detail}\n",
+        std::process::id()
+    );
+    use std::io::Write as _;
+    if let Err(e) = file
+        .write_all(row.as_bytes())
+        .and_then(|()| file.flush())
+        .and_then(|()| file.sync_data())
+    {
+        eprintln!(
+            "cli_run: persist floor phase journal {}: {e}",
+            path.display()
+        );
+    }
+}
+
+pub fn floor_walk_attempt_id_from_env() -> String {
+    std::env::var("GUNBC_FLOOR_WALK_ATTEMPT_ID")
+        .or_else(|_| std::env::var("GUNBC_WALK_ATTEMPT_ID"))
+        .unwrap_or_else(|_| "local".to_string())
+}
+
+pub fn witness_attempt_id(entry: &str, function: &str) -> String {
+    format!(
+        "{}|{}|{}",
+        floor_walk_attempt_id_from_env(),
+        entry,
+        function
+    )
+}
+
+pub fn active_workset_admit(entry: &str, function: &str) {
+    let attempt_id = witness_attempt_id(entry, function);
+    append_active_workset_phase_journal(
+        "admitted",
+        &format!("attempt_id={attempt_id} entry={entry} function={function}"),
+    );
+    let mut g = ACTIVE_WORKSET.lock().unwrap_or_else(|p| p.into_inner());
+    g.entries.retain(|e| e.attempt_id != attempt_id);
+    g.entries.push(ActiveWorksetEntry {
+        attempt_id,
+        entry: entry.to_string(),
+        function: function.to_string(),
+    });
+}
+
+pub fn active_workset_complete(entry: &str, function: &str) {
+    let attempt_id = witness_attempt_id(entry, function);
+    append_active_workset_phase_journal(
+        "completed",
+        &format!("attempt_id={attempt_id} entry={entry} function={function}"),
+    );
+    let mut g = ACTIVE_WORKSET.lock().unwrap_or_else(|p| p.into_inner());
+    g.entries.retain(|e| e.attempt_id != attempt_id);
+}
+
+pub fn active_workset_snapshot() -> Vec<ActiveWorksetEntry> {
+    ACTIVE_WORKSET
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .entries
+        .clone()
+}
+
+/// Test helper: clears the process-wide active-workset registry between discriminating tests.
+#[doc(hidden)]
+pub fn active_workset_reset_for_test() {
+    ACTIVE_WORKSET
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .entries
+        .clear();
+}
+
 /// Drive one entry-completion: decrement the entry's closure refcounts, drop the
 /// per-module state that reached zero from every per-module cache (typed, parse,
 /// normalize-diag, ownership-diag, source-hash), AND drop the entry's assembled
@@ -10842,6 +10972,99 @@ mod heartbeat_feed_red_controls {
         heartbeat_feed_entry_completed();
         let snap = heartbeat_feed_snapshot().expect("still armed");
         assert_eq!(snap.entry_done, 1);
+    }
+}
+
+#[cfg(test)]
+mod active_workset_kill_path_controls {
+    use super::{
+        active_workset_admit, active_workset_complete, active_workset_reset_for_test,
+        active_workset_snapshot, witness_attempt_id,
+    };
+
+    static ACTIVE_WORKSET_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn with_active_workset_test_lock<F: FnOnce()>(f: F) {
+        let _guard = ACTIVE_WORKSET_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        active_workset_reset_for_test();
+        let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        active_workset_reset_for_test();
+        match run {
+            Ok(()) => {}
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
+    }
+
+    /// SIGKILL / step-cap / panic paths never run `active_workset_complete`. Durable
+    /// in-flight identity for that class is the GUNBC_FLOOR_PHASE_JOURNAL active-workset
+    /// rows (admitted without a matching completed), not the floor component receipt —
+    /// see floor_component_resource_checkpoint_note and floor_component_phase_journal_scaffold_note.
+    #[test]
+    fn admitted_entry_survives_without_completion() {
+        with_active_workset_test_lock(|| {
+            std::env::set_var("GUNBC_FLOOR_WALK_ATTEMPT_ID", "kill-control-admit-only");
+            let entry = "dag/test/claim/floor_component_receipt_witness_test.dag";
+            let function = "floor_component_receipt_run_incomplete_tail_holds";
+            active_workset_admit(entry, function);
+            let snap = active_workset_snapshot();
+            assert_eq!(
+                snap.len(),
+                1,
+                "kill path must leave admitted entry in registry without completion"
+            );
+            assert_eq!(snap[0].entry, entry);
+            assert_eq!(snap[0].function, function);
+            assert_eq!(snap[0].attempt_id, witness_attempt_id(entry, function));
+        });
+    }
+
+    #[test]
+    fn phase_journal_records_admit_without_completed_on_kill_path() {
+        with_active_workset_test_lock(|| {
+            let dir =
+                std::env::temp_dir().join(format!("active-workset-journal-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).expect("journal dir");
+            let journal = dir.join("phase.tsv");
+            std::env::set_var("GUNBC_FLOOR_PHASE_JOURNAL", &journal);
+            std::env::set_var("GUNBC_FLOOR_WALK_ATTEMPT_ID", "kill-control-journal");
+            let entry = "dag/test/claim/kill_path_fixture_test.dag";
+            let function = "kill_path_fixture_holds";
+            active_workset_admit(entry, function);
+            let text = std::fs::read_to_string(&journal).expect("journal written on admit");
+            assert!(
+                text.contains("active-workset") && text.contains("admitted"),
+                "admit must land in phase journal before any completion handler runs: {text}"
+            );
+            assert!(
+                text.contains("attempt_id="),
+                "journal row must carry attempt identity: {text}"
+            );
+            assert!(
+                !text.contains("completed"),
+                "kill path must not fabricate a completion journal row: {text}"
+            );
+            std::env::remove_var("GUNBC_FLOOR_PHASE_JOURNAL");
+            let _ = std::fs::remove_dir_all(&dir);
+        });
+    }
+
+    #[test]
+    fn completion_removes_entry_after_graceful_exit() {
+        with_active_workset_test_lock(|| {
+            std::env::set_var("GUNBC_FLOOR_WALK_ATTEMPT_ID", "graceful-complete-control");
+            let entry = "dag/test/claim/graceful_fixture_test.dag";
+            let function = "graceful_fixture_holds";
+            active_workset_admit(entry, function);
+            assert_eq!(active_workset_snapshot().len(), 1);
+            active_workset_complete(entry, function);
+            assert!(
+                active_workset_snapshot().is_empty(),
+                "graceful completion must drop the entry"
+            );
+        });
     }
 }
 
@@ -15966,6 +16189,10 @@ pub fn failure_receipt_companion(function: &str) -> FailureReceiptCompanionLooku
     test_module_hygiene_bridge::failure_receipt_companion_from_authority(function)
 }
 
+pub fn witness_verdict_diagnostic_companion(function: &str) -> FailureReceiptCompanionLookup {
+    test_module_hygiene_bridge::witness_verdict_diagnostic_companion_from_authority(function)
+}
+
 /// Append failure-receipt loudness to a Bool(false) witness detail string.
 pub fn append_failure_receipt_companion_loudness(
     detail: &mut String,
@@ -15988,6 +16215,43 @@ pub fn append_failure_receipt_companion_loudness(
     }
 }
 
+/// Append a typed witness verdict diagnostic when the witness declares a companion.
+pub fn append_witness_verdict_diagnostic_loudness(
+    detail: &mut String,
+    ctx: &v1_interpreter::InterpContext,
+    witness_function: &str,
+) {
+    match witness_verdict_diagnostic_companion(witness_function) {
+        FailureReceiptCompanionLookup::Declared(companion) => {
+            let diagnostic = run_witness_verdict_diagnostic(ctx, &companion);
+            if !diagnostic.is_empty() {
+                detail.push_str(" | ");
+                detail.push_str(&diagnostic);
+            }
+        }
+        FailureReceiptCompanionLookup::AuthorityRefused { cause } => {
+            detail.push_str(" | witness_verdict_diagnostic_refused: ");
+            detail.push_str(&cause);
+        }
+        FailureReceiptCompanionLookup::NotDeclared => {}
+    }
+}
+
+pub fn run_witness_verdict_diagnostic(
+    ctx: &v1_interpreter::InterpContext,
+    function: &str,
+) -> String {
+    match v1_interpreter::run_in_context(ctx, function, false) {
+        Ok(v1_interpreter::Value::Str(s)) => s,
+        Ok(other) => format!(
+            "witness_verdict_diagnostic_refused: {function} returned {}, expected String",
+            ctx.format_value(&other)
+        ),
+        Err(v1_interpreter::InterpError::NoSuchFunction { .. }) => String::new(),
+        Err(e) => format!("witness_verdict_diagnostic_refused: {function}: {e}"),
+    }
+}
+
 /// Production claim_executor / discovery-summary Bool(false) detail rendering.
 /// Exposed to `.dag` witnesses via `seed_runner_bool_false_failure_detail` so CI can
 /// exercise the same `append_failure_receipt_companion_loudness` path the floor runner uses.
@@ -16006,6 +16270,7 @@ pub fn seed_runner_bool_false_failure_detail(
 ) -> String {
     let mut detail = "returned Bool(false)".to_string();
     append_failure_receipt_companion_loudness(&mut detail, ctx, witness_function);
+    append_witness_verdict_diagnostic_loudness(&mut detail, ctx, witness_function);
     detail
 }
 
@@ -25641,7 +25906,9 @@ fn run_discovery_rows(
             FloorPhase::Eval,
             &format!("{}::{}", row.entry, row.function),
         );
+        active_workset_admit(&row.entry, &row.function);
         let (outcome, receipt) = run_claim_measured(ctx_ref, closure_subject, &row.function);
+        active_workset_complete(&row.entry, &row.function);
         let wall_nanos = receipt.wall_nanos;
         summary.total_measured_nanos += wall_nanos;
         summary.performance_receipts.push(receipt);
@@ -25691,6 +25958,7 @@ fn run_discovery_rows(
             ClaimOutcome::Fail => {
                 let mut failure = format!("{} ({}) returned Bool(false)", row.function, row.entry);
                 append_failure_receipt_companion_loudness(&mut failure, ctx_ref, &row.function);
+                append_witness_verdict_diagnostic_loudness(&mut failure, ctx_ref, &row.function);
                 summary.failures.push(failure);
             }
             ClaimOutcome::NotBool { got } => summary.failures.push(format!(
