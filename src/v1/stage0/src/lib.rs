@@ -151,6 +151,7 @@ pub mod v1_tests_claim_v1_annotation_erasure_test;
 pub mod v1_tests_claim_v1_annotation_round_trip_test;
 pub mod v1_tests_claim_v1_annotation_target_emission_test;
 pub mod v1_tests_claim_v1_complexity_eviction_hazard_test;
+pub mod v1_tests_claim_v1_match_pattern_identity_test;
 pub mod wt_a;
 pub mod wt_b;
 pub mod wt_common;
