@@ -2,11 +2,33 @@ module extdeps.publication
 
 import std.integer { Int }
 import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
 
-data publication_status_axis_note: String = "SHARED UPSTREAM VOCABULARY ONLY — no single publisher locator, so this module is machinery-exempt from extdeps_external_authority_anchor (same class as extdeps.uri). SpecificationDocumentDate records what the publisher published and when, on subjects that carry that field. How this repository read or failed to read a cited locator is an observation in gunbc.specification_citation_read_provenance, not here. DocumentPublicationStatus and its projection helpers land with gunbc.upstream_document_carriage in #8260, where platform modules populate the status and a consumer enforces carriage rules."
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.openwebfoundation.org/legal/the-owf-1-0-agreements/owfa-1-0",
+  }
+}
+
+data publication_status_axis_note: String = "UPSTREAM PUBLICATION-DATE FACTS ONLY. SpecificationDocumentDate records what the publisher published and when, on subjects that carry that field. The anchor cites the Open Web Foundation Final Specification Agreement (OWFa 1.0) because this module's consumers model whether a document was published under an open licence — the same licence family OCP subject anchors carry on OcpSpecificationLicense. How this repository read or failed to read a cited locator is an observation in gunbc.specification_citation_read_provenance, not here. DocumentPublicationStatus and its projection helpers were removed from this module in #8257 and land in gunbc.upstream_document_carriage (#8260), where platform modules populate the status and a consumer enforces carriage rules."
 
 type SpecificationDocumentDate {
   year: Int
   month: Int
   day: Int
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.publication",
+      decl_name: "SpecificationDocumentDate",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
 }
