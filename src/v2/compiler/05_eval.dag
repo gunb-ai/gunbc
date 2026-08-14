@@ -94,6 +94,7 @@ import v2.std.node {
   Value,
   Arrow,
   Atom,
+  DirectAtomBody,
   arrow_body_admits_eval_entry,
   bag_hash_digest,
   classify_arrow_body_form,
@@ -1643,14 +1644,23 @@ fn eval_transform_node(
                       node: node
                     ),
                     f: fn(call_environment) {
-                      eval_runtime_node(
-                        node: body,
-                        tree: tree,
-                        interpretation: interpretation,
-                        environment: call_environment,
-                        runtime: runtime,
-                        effect_io: effect_io
-                      )
+                      match body_form {
+                        DirectAtomBody =>
+                          eval_type_node_atom(
+                            node: body,
+                            interpretation: interpretation,
+                            environment: call_environment
+                          )
+                        _ =>
+                          eval_runtime_node(
+                            node: body,
+                            tree: tree,
+                            interpretation: interpretation,
+                            environment: call_environment,
+                            runtime: runtime,
+                            effect_io: effect_io
+                          )
+                      }
                     }
                   )
                 } else {

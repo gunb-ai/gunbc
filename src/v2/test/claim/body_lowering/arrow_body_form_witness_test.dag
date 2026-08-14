@@ -50,8 +50,8 @@ import v2.test.claim.body_lowering.arrow_body_form_semantic_helpers {
 
 // ArrowBodyForm contract witnesses: classification matrix, structural admission,
 // eval-entry population, eval dispatch through call, and RED mirrors that delete
-// one classifier arm each. Ingested-normalize semantic execution (id/zero/add) is
-// deferred until eval helpers wire; follow-on lands with long-lane enrollment.
+// one classifier arm each. Production-normalized value assertions (id/zero/add)
+// execute in atom_body_discriminator_witness_test.dag (one normalize, batched receipt).
 
 fn arrow_body_form_fixture_atom(identity: Symbol) -> Node {
   node_synthetic(
