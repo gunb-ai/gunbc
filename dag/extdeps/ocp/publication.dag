@@ -1,0 +1,19 @@
+module extdeps.ocp.publication
+
+type Owfa1_0FinalSpecificationAgreement {}
+
+type OcpContributionLicenseAgreement {}
+
+type OcpSpecificationLicense
+  = | Owfa1_0FinalSpecificationAgreement {}
+
+type OcpContributionLicense
+  = | OcpContributionLicenseAgreement {}
+
+type AppendixA {}
+
+type AppendixB {}
+
+type ExcludedNonNormativeAppendix
+  = AppendixA {}
+  | AppendixB {}

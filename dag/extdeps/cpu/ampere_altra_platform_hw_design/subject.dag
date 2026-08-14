@@ -1,13 +1,16 @@
 module extdeps.cpu.ampere_altra_platform_hw_design.subject
 
 import std.types { String, NonEmptyStr }
-import std.integer { Int }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.ampere { ampere_vendor }
+import extdeps.publication {
+  SpecificationDocumentDate,
+  SpecificationCitationReadProvenance,
+}
 
 // THE PLATFORM DESIGN SPECIFICATION IS A DIFFERENT DOCUMENT CLASS FROM THE PACKAGE DATASHEET
 // AND FROM OCP REFERENCE-BOARD COLLATERAL. It is the guide for designing a custom motherboard
@@ -27,22 +30,11 @@ data ampere_technical_document_index_authority: ExternalAuthority = ExternalAuth
   }
 }
 
-data altra_platform_hw_design_subject_note: String = "THE HIGHEST-VALUE PUBLIC DOCUMENT THIS MOTHERBOARD LANE HAS FOUND. extdeps.cpu.ampere_altra_package carries the processor package pinout; extdeps.ocp.mt_jade carries one OCP reference-board specification; this module is the third axis — the vendor's platform hardware design guide for boards built around Altra rather than around a named reference platform. THE ANCHOR CITES THE PUBLIC CDN v1.00 COPY; AMPERE'S TECHNICAL-DOCUMENT INDEX LISTS A NEWER v1.20 REVISION DATED 2025-07-15 THAT THIS REPOSITORY HAS NOT RETRIEVED. PLATFORM FACTS LIVE IN extdeps.cpu.ampere_altra_platform_hw_design.platform, INGESTED FROM THE v1.00 PDF BY A PEER SESSION — NOT BY THIS MODULE FETCHING THE LOCATOR."
+data altra_platform_hw_design_subject_note: String = "THE HIGHEST-VALUE PUBLIC DOCUMENT THIS MOTHERBOARD LANE HAS FOUND. extdeps.cpu.ampere_altra_package carries the processor package pinout; extdeps.ocp.mt_jade carries one OCP reference-board specification; this module is the third axis — the vendor's platform hardware design guide for boards built around Altra rather than around a named reference platform. THE ANCHOR CITES THE PUBLIC CDN v1.00 COPY; AMPERE'S TECHNICAL-DOCUMENT INDEX LISTS A NEWER v1.20 REVISION DATED 2025-07-15 THAT THIS REPOSITORY HAS NOT RETRIEVED. THIS MODULE IS THE SUBJECT ANCHOR ONLY; PLATFORM FACTS ARE OWNED BY extdeps.cpu.ampere_altra_platform_hw_design.platform AND LAND IN #8260, INGESTED FROM THE v1.00 PDF BY PEER SESSION neat-hawk-428 — NOT BY THIS MODULE FETCHING THE LOCATOR."
 
-type AltraPlatformHwDesignRev1_00
+type AltraPlatformHwDesignRev1_00 {}
+
 type AltraPlatformHwDesignRevision = AltraPlatformHwDesignRev1_00
-
-type SpecificationDocumentDate {
-  year: Int
-  month: Int
-  day: Int
-}
-
-type SpecificationCitationReadProvenance
-  = DocumentLocatorFetchRefused { http_status: Int, detail: NonEmptyStr }
-  | DocumentLocatorFetchedButTextUnread { http_status: Int, detail: NonEmptyStr }
-  | PeerSessionPdfTextIngested { peer_session: NonEmptyStr, detail: NonEmptyStr }
-  | OperatorSuppliedDocumentText
 
 type HeldSpecificationSupersessionStanding
   = HeldRevisionIsCurrentPublicCopy
@@ -93,7 +85,7 @@ type AltraPlatformHwDesignSpecification {
 
 data altra_platform_hw_design_specification: AltraPlatformHwDesignSpecification = AltraPlatformHwDesignSpecification {
   title: altra_platform_hw_design_title,
-  revision: AltraPlatformHwDesignRev1_00,
+  revision: AltraPlatformHwDesignRev1_00 {},
   version_label: altra_platform_hw_design_version_label,
   publication_date: altra_platform_hw_design_publication_date,
   publisher: ampere_vendor,

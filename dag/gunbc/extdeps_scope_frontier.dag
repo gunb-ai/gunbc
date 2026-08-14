@@ -138,6 +138,8 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/ocp/mt_mitchell/platform.dag",
   "dag/extdeps/ssh/client_options.dag",
   "dag/extdeps/ollama/api.dag",
+  "dag/extdeps/publication.dag",
+  "dag/extdeps/ocp/publication.dag",
   "dag/extdeps/ocp/mt_jade/platform.dag",
   "dag/extdeps/ocp/mt_jade/subject.dag",
   "dag/extdeps/ocp/mt_mitchell/subject.dag",

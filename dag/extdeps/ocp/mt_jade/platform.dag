@@ -322,7 +322,7 @@ data mt_jade_reference_parts: List<MtJadeReferencePartRow> = [
   MtJadeReferencePartRow {
     ordering_part_number: "9FGL0841",
     vendor_label: "Renesas (IDT)",
-    role: PcieClockGenerator,
+    role: PcieClockBuffer,
     authority: extdeps_external_authority_anchor,
   },
   MtJadeReferencePartRow {
@@ -339,51 +339,14 @@ data mt_jade_reference_parts: List<MtJadeReferencePartRow> = [
   },
 ]
 
-fn processor_power_rail_count(rails: List<ProcessorPowerRail>) -> Int {
-  fold(rails, init: 0, f: fn(acc, _r) { acc + 1 })
-}
-
-fn cpld_responsibility_count(rows: List<MtJadeBoardCpldResponsibility>) -> Int {
-  fold(rows, init: 0, f: fn(acc, _r) { acc + 1 })
-}
-
-fn clock_tree_node_count(nodes: List<ClockTreeNode>) -> Int {
-  fold(nodes, init: 0, f: fn(acc, _n) { acc + 1 })
-}
-
-fn reference_part_count(rows: List<MtJadeReferencePartRow>) -> Int {
-  fold(rows, init: 0, f: fn(acc, _r) { acc + 1 })
-}
-
 fn clock_tree_contains_part_number(nodes: List<ClockTreeNode>, part: NonEmptyStr) -> Bool {
   fold(nodes, init: false, f: fn(acc, n) {
     acc || ((n.ordering_part_number as String) == (part as String))
   })
 }
 
-fn reference_part_role_eq(a: ReferencePartRole, b: ReferencePartRole) -> Bool {
-  match a {
-    BaseboardManagementController =>
-      match b { BaseboardManagementController => true, BootI2cEeprom => false, HostQspiFlash => false, BmcSpiFlash => false, BmcEthernetPhy => false, PcieClockGenerator => false, PcieClockBuffer => false, ProgrammableClockGenerator => false }
-    BootI2cEeprom =>
-      match b { BaseboardManagementController => false, BootI2cEeprom => true, HostQspiFlash => false, BmcSpiFlash => false, BmcEthernetPhy => false, PcieClockGenerator => false, PcieClockBuffer => false, ProgrammableClockGenerator => false }
-    HostQspiFlash =>
-      match b { BaseboardManagementController => false, BootI2cEeprom => false, HostQspiFlash => true, BmcSpiFlash => false, BmcEthernetPhy => false, PcieClockGenerator => false, PcieClockBuffer => false, ProgrammableClockGenerator => false }
-    BmcSpiFlash =>
-      match b { BaseboardManagementController => false, BootI2cEeprom => false, HostQspiFlash => false, BmcSpiFlash => true, BmcEthernetPhy => false, PcieClockGenerator => false, PcieClockBuffer => false, ProgrammableClockGenerator => false }
-    BmcEthernetPhy =>
-      match b { BaseboardManagementController => false, BootI2cEeprom => false, HostQspiFlash => false, BmcSpiFlash => false, BmcEthernetPhy => true, PcieClockGenerator => false, PcieClockBuffer => false, ProgrammableClockGenerator => false }
-    PcieClockGenerator =>
-      match b { BaseboardManagementController => false, BootI2cEeprom => false, HostQspiFlash => false, BmcSpiFlash => false, BmcEthernetPhy => false, PcieClockGenerator => true, PcieClockBuffer => false, ProgrammableClockGenerator => false }
-    PcieClockBuffer =>
-      match b { BaseboardManagementController => false, BootI2cEeprom => false, HostQspiFlash => false, BmcSpiFlash => false, BmcEthernetPhy => false, PcieClockGenerator => false, PcieClockBuffer => true, ProgrammableClockGenerator => false }
-    ProgrammableClockGenerator =>
-      match b { BaseboardManagementController => false, BootI2cEeprom => false, HostQspiFlash => false, BmcSpiFlash => false, BmcEthernetPhy => false, PcieClockGenerator => false, PcieClockBuffer => false, ProgrammableClockGenerator => true }
-  }
-}
-
 fn reference_part_roles_include(rows: List<MtJadeReferencePartRow>, wanted: ReferencePartRole) -> Bool {
-  fold(rows, init: false, f: fn(acc, r) { acc || reference_part_role_eq(a: r.role, b: wanted) })
+  fold(rows, init: false, f: fn(acc, r) { acc || r.role == wanted })
 }
 
 data extdeps_model_scope: ExternalModelScope = mt_jade_model_scope

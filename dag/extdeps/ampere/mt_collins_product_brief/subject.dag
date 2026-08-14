@@ -7,6 +7,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.ampere { ampere_vendor, ampere_customer_reference_boards_authority }
+import extdeps.publication { SpecificationCitationReadProvenance }
 
 // MT. COLLINS IS NOT AN OCP CONTRIBUTION. The public artifact is a dual-socket 2U marketing
 // brief; the engineering design package sits behind Ampere Customer Connect under NDA. Recording
@@ -21,13 +22,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data mt_collins_product_brief_subject_note: String = "PUBLIC MARKETING COLLATERAL ONLY. Mt. Collins is dual-socket 2U reference hardware whose engineering documents are NDA-gated through Customer Connect; this brief is recorded so the lane does not repeat the search. The locator returned HTTP 200 on 2026-08-14, but no engineering fact from inside the PDF is modelled — establishing those facts would require the NDA route, which this public repository does not carry."
 
-type MtCollinsBrief2022V2
-type MtCollinsProductBriefRevision = MtCollinsBrief2022V2
+type MtCollinsBrief2022V2 {}
 
-type PublicBriefReadProvenance
-  = DocumentLocatorFetchRefused { http_status: Int, detail: NonEmptyStr }
-  | DocumentLocatorFetchedButTextUnread { http_status: Int, detail: NonEmptyStr }
-  | OperatorSuppliedDocumentText
+type MtCollinsProductBriefRevision = MtCollinsBrief2022V2
 
 type EngineeringFactsRoute
   = EngineeringFactsUnderNda { access_route: ExternalAuthority }
@@ -37,7 +34,7 @@ data mt_collins_product_brief_title: NonEmptyStr = "Mt. Collins 2U product brief
 
 data mt_collins_product_brief_version_label: NonEmptyStr = "2022 V2"
 
-data mt_collins_product_brief_citation_read_provenance: PublicBriefReadProvenance = DocumentLocatorFetchedButTextUnread {
+data mt_collins_product_brief_citation_read_provenance: SpecificationCitationReadProvenance = DocumentLocatorFetchedButTextUnread {
   http_status: 200,
   detail: "public marketing PDF fetched successfully; no interior engineering fact is modelled because the authoritative design package is NDA-gated",
 }
@@ -51,13 +48,13 @@ type MtCollinsPublicProductBrief {
   revision: MtCollinsProductBriefRevision
   version_label: NonEmptyStr
   publisher: Vendor<Hardware>
-  citation_read_provenance: PublicBriefReadProvenance
+  citation_read_provenance: SpecificationCitationReadProvenance
   engineering_facts_route: EngineeringFactsRoute
 }
 
 data mt_collins_public_product_brief: MtCollinsPublicProductBrief = MtCollinsPublicProductBrief {
   marketing_name: "Mt. Collins",
-  revision: MtCollinsBrief2022V2,
+  revision: MtCollinsBrief2022V2 {},
   version_label: mt_collins_product_brief_version_label,
   publisher: ampere_vendor,
   citation_read_provenance: mt_collins_product_brief_citation_read_provenance,
