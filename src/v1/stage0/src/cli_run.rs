@@ -2394,9 +2394,22 @@ pub fn whole_tree_resolve_exclusion_substrings() -> Vec<String> {
 }
 
 /// Whole-tree strict-walk probe exclusion authority — pattern rows ∪ derived module-path
-/// closure (`census_exclude_derive`). Replaces hand-pinned `--exclude-subpath` lists.
+/// PATTERN ROWS ONLY. The derived failure closure that used to be unioned here is
+/// DELETED. It ran a fixed point — strict-resolve the whole tree, add every failure
+/// AND its transitive importers to the exclusions, retry until resolution succeeds —
+/// which meant its job was to make the build pass by removing whatever failed. A
+/// module could stop resolving globally and no gate went red; the only observable
+/// effect was a longer skip-list and a slower derivation (measured: 8.7 minutes,
+/// 4 rounds, 715 modules removed = 61 real failures plus 654 excluded solely for
+/// importing one). That is an absorbing failure arm at repository scale, and it is
+/// exactly why nobody had a list of what was broken: the loop kept the failing
+/// PATHS and discarded the DIAGNOSTICS.
+///
+/// Consumers now get the hand-written pattern rows and nothing else, so a whole-tree
+/// resolve either succeeds or REFUSES naming the file. The remaining failures are
+/// real work, tracked as such, rather than absorbed.
 pub fn whole_tree_probe_exclusion_substrings() -> Vec<String> {
-    census_exclude_derive::whole_tree_probe_exclusion_substrings()
+    whole_tree_resolve_exclusion_substrings()
 }
 
 /// Live compile-clean pipeline module paths for census exclusion silent-loss checks.
@@ -42874,9 +42887,6 @@ mod selected_entry_closure_overlap_arithmetic {
         assert!(json.contains("\"max\":null"));
     }
 }
-
-#[path = "census_exclude_derive.rs"]
-pub mod census_exclude_derive;
 
 #[cfg(test)]
 mod annotation_erased_scan_projection {

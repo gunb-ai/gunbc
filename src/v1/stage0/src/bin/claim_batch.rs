@@ -599,95 +599,21 @@ fn run_against_one_prepared_subject(
         return Err(ExitCode::from(1));
     }
 
-    // THE EXCLUSION SET IS PART OF THE SUBJECT, so it is chosen rather than
-    // borrowed. `whole_tree_probe_exclusion_substrings()` is pattern rows UNION a
-    // derived closure of strict-resolve failures, and its pattern half is the
-    // WITNESS-DISCOVERY roster — offline recipes, fixtures, quarantine probes —
-    // whose purpose is to keep witnesses OUT of a probe over production code. Here
-    // the witnesses ARE the subject, so borrowing that set prepared a corpus with
-    // 2010 of 3621 modules missing and 9057 of 9317 witnesses failing to find their
-    // own code. What must stay excluded is only what cannot strict-resolve: the
-    // deliberately-malformed scanner fixtures and the derived failure closure.
-    // THE EXCLUSION DERIVATION IS A PHASE, NOT A LIST READ, and it is timed as one.
-    // `derived_exclude_closure_memoized` runs a FIXED POINT: strict-resolve the whole
-    // tree, add every failure and its transitive importers to the exclusions, retry
-    // until resolution succeeds. On a cold process that is several whole-tree
-    // resolves BEFORE the subject is prepared. A timer started after it reports a
-    // preparation cost the run did not actually pay, and the process peak RSS it
-    // sits inside belongs to the prelude as much as to the subject — so the two are
-    // reported separately and never summed into one "cost of preparing".
-    let derive_started = Instant::now();
-    let mut excludes = whole_tree_strict_resolve_exclusion_substrings();
-    // WHY 2010 MODULES ARE OUT is reported, not just how many. The closure tags
-    // every importer with the seed_chain that dragged it in, so the population
-    // splits into modules that ACTUALLY FAIL a strict whole-tree resolve and
-    // modules excluded only because they import one. Those two have completely
-    // different remedies — the first is a real defect, the second disappears when
-    // its seed does — and reporting a single total hides which is which.
-    // GUNBC_NO_DERIVED_EXCLUDES=1 skips the derived failure closure so the whole-tree
-    // resolve REPORTS what it cannot resolve instead of absorbing it. This is the
-    // loud mode: the derivation exists to make the build succeed by removing
-    // whatever failed, which is precisely why a module can stop resolving globally
-    // while every gate stays green.
-    if std::env::var_os("GUNBC_NO_DERIVED_EXCLUDES").is_some() {
-        eprintln!(
-            "[one-prepared-subject] derived exclusion closure DISABLED — strict resolve will \
-             report failures rather than exclude them"
-        );
-        let derive_ms = derive_started.elapsed().as_millis();
-        let prepared = prepare_whole_tree_subject(source_roots, &excludes, execution_mode);
-        match prepared {
-            Ok(p) => {
-                eprintln!(
-                    "[one-prepared-subject] LOUD MODE OK: {} module(s) resolved, {} excluded \
-                     (derive {}ms)",
-                    p.modules_resolved, p.modules_excluded, derive_ms
-                );
-                return Ok(ExitCode::SUCCESS);
-            }
-            Err(e) => {
-                eprintln!("[one-prepared-subject] LOUD MODE FAILURES:\n{e}");
-                return Err(ExitCode::from(1));
-            }
-        }
-    }
-    let derived = v1_compiler::cli_run::census_exclude_derive::derived_exclude_closure_memoized()
-        .map_err(|e| {
-        eprintln!("claim_batch: derived strict-resolve exclusion closure failed: {e}");
-        ExitCode::from(2)
-    })?;
-    {
-        let importers: std::collections::BTreeSet<&str> = derived
-            .live_importers_excluded
-            .iter()
-            .map(|r| r.module_path.as_str())
-            .collect();
-        let seeds: Vec<&str> = derived
-            .module_paths
-            .iter()
-            .map(|m| m.as_str())
-            .filter(|m| !importers.contains(m))
-            .collect();
-        eprintln!(
-            "[one-prepared-subject] exclusion closure: {} module(s) excluded over {} round(s) = \
-             {} seed failure(s) + {} module(s) excluded only for importing one",
-            derived.module_paths.len(),
-            derived.convergence_rounds,
-            seeds.len(),
-            importers.len()
-        );
-        for seed in seeds.iter().take(40) {
-            eprintln!("  seed strict-resolve failure: {seed}");
-        }
-    }
-    excludes.extend(std::iter::once(derived.clone()).flat_map(|c| c.module_paths.into_iter()));
-    let derive_ms = derive_started.elapsed().as_millis();
-    eprintln!(
-        "[one-prepared-subject] exclusion closure derived in {}ms ({} substring(s)) — this is a \
-         whole-tree strict-resolve FIXED POINT, not a list read, and is not preparation",
-        derive_ms,
-        excludes.len()
-    );
+    // THE EXCLUSION SET IS THE HAND-WRITTEN PATTERN LIST AND NOTHING ELSE.
+    //
+    // What used to sit here was pattern rows UNION a derived failure closure — a
+    // fixed point that strict-resolved the whole tree, added every failure AND its
+    // transitive importers to the exclusions, and retried until resolution
+    // succeeded. Its job was therefore to make the build pass by removing whatever
+    // failed, which is an absorbing failure arm at repository scale: a module could
+    // stop resolving globally and nothing went red. Measured before deletion: 8.7
+    // minutes, 4 rounds, 715 modules removed, of which only 61 actually failed and
+    // 654 were excluded solely for importing one of those 61.
+    //
+    // Now the whole-repo resolve either succeeds against the declared patterns or
+    // REFUSES naming the file, and that resolve IS the floor's compilation step
+    // rather than a gate beside it.
+    let excludes = whole_tree_strict_resolve_exclusion_substrings();
     let prepare_started = Instant::now();
     let PreparedWholeTreeSubject {
         ctx,
@@ -720,8 +646,7 @@ fn run_against_one_prepared_subject(
         v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
     }
     eprintln!(
-        "[one-prepared-subject] derive {}ms + prepare {}ms + evaluate {}ms over {} witness(es)",
-        derive_ms,
+        "[one-prepared-subject] prepare {}ms + evaluate {}ms over {} witness(es)",
         prepare_ms,
         eval_started.elapsed().as_millis(),
         timings.witnesses
