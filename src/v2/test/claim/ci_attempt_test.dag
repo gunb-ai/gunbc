@@ -18,7 +18,11 @@ import v2.workflow.ci_attempt {
   CargoTargetWrite,
   ci_attempt_subject_digest,
   ci_attempt_verdict,
-  ci_batches,
+  ci_dependency,
+  ci_schedule,
+  CiScheduleBlocked,
+  CiScheduleComplete,
+  CiScheduleStanding,
   ci_no_materialized,
   ComputationKey,
   admit_materialization,
@@ -178,13 +182,23 @@ data n_format: CiNode = CiNode {
 data n_seed_tests: CiNode = CiNode {
   identity: ^ci_node_retained_seed_tests,
   kind: RetainedSeedTests,
-  claims: [CargoTargetWrite]
+  claims: [CargoTargetWrite { target: ^ci_target_stage0 }]
 }
 
 data n_artifact_verify: CiNode = CiNode {
   identity: ^ci_node_generated_artifact_verify,
   kind: CompileCleanStanding,
-  claims: [CargoTargetWrite]
+  claims: [CargoTargetWrite { target: ^ci_target_stage0 }]
+}
+
+// SAME KIND OF CLAIM, DIFFERENT TARGET. This node writes a cargo target too, and
+// writing a DIFFERENT one is not a conflict — the discriminating case for the
+// parameterized claim, and the one an unparameterized model gets wrong by
+// serializing work that never contended.
+data n_other_target_build: CiNode = CiNode {
+  identity: ^ci_node_other_target_build,
+  kind: RetainedSeedTests,
+  claims: [CargoTargetWrite { target: ^ci_target_emitted }]
 }
 
 data n_prepare: CiNode = CiNode {
@@ -234,11 +248,11 @@ data no_deps: List<DependencyView> = []
 // one batch, which is the fact that makes "parallel" describe execution rather than
 // describe the plan's shape.
 test fn independent_nodes_share_a_batch() -> Bool {
-  some_batch_holds_both(
-    batches: ci_batches(plan_nodes: [n_format, n_prepare], dependencies: no_deps),
-    left: n_format,
-    right: n_prepare
-  )
+  match ci_schedule(plan_nodes: [n_format, n_prepare], dependencies: no_deps) {
+    CiScheduleComplete { batches: bs } =>
+      some_batch_holds_both(batches: bs, left: n_format, right: n_prepare)
+    CiScheduleBlocked { evidence: _, unschedulable: _ } => false
+  }
 }
 
 // CONFLICTING NODES SERIALIZE, and the check is that they never co-reside — not that
@@ -246,14 +260,47 @@ test fn independent_nodes_share_a_batch() -> Bool {
 // are ordered by the edge their claim produces.
 test fn resource_conflicting_nodes_never_share_a_batch() -> Bool {
   claims_conflict(left: n_seed_tests, right: n_artifact_verify)
-    && !some_batch_holds_both(
-      batches: ci_batches(
-        plan_nodes: [n_seed_tests, n_artifact_verify],
-        dependencies: no_deps
-      ),
-      left: n_seed_tests,
-      right: n_artifact_verify
-    )
+    && match ci_schedule(
+      plan_nodes: [n_seed_tests, n_artifact_verify],
+      dependencies: no_deps
+    ) {
+      CiScheduleComplete { batches: bs } =>
+        !some_batch_holds_both(batches: bs, left: n_seed_tests, right: n_artifact_verify)
+      CiScheduleBlocked { evidence: _, unschedulable: _ } => false
+    }
+}
+
+// THE OTHER DIRECTION, and without it the conflict rule is satisfied by an
+// implementation that serializes everything. Two nodes writing DIFFERENT cargo
+// targets do not conflict and do share a batch.
+test fn different_targets_of_one_claim_kind_do_not_conflict() -> Bool {
+  !claims_conflict(left: n_seed_tests, right: n_other_target_build)
+    && match ci_schedule(
+      plan_nodes: [n_seed_tests, n_other_target_build],
+      dependencies: no_deps
+    ) {
+      CiScheduleComplete { batches: bs } =>
+        some_batch_holds_both(batches: bs, left: n_seed_tests, right: n_other_target_build)
+      CiScheduleBlocked { evidence: _, unschedulable: _ } => false
+    }
+}
+
+// A CYCLIC PLAN YIELDS NO BATCHES AT ALL. This is the arm that used to return the
+// partial prefix accumulated before the blockage, so a plan that can never run
+// produced a schedule that ran part of it and reported nothing wrong. The witness
+// asserts the standing is blocked AND names unschedulable work, because a blocked
+// standing carrying an empty remainder would be the same silence one level in.
+test fn a_cyclic_plan_refuses_rather_than_scheduling_a_prefix() -> Bool {
+  match ci_schedule(
+    plan_nodes: [n_format, n_prepare],
+    dependencies: [
+      ci_dependency(source: n_format, dependent: n_prepare),
+      ci_dependency(source: n_prepare, dependent: n_format)
+    ]
+  ) {
+    CiScheduleComplete { batches: _ } => false
+    CiScheduleBlocked { evidence: _, unschedulable: rem } => length(xs: rem) > 0
+  }
 }
 
 // The witness pair is the honest statement about today's evaluator: both claim
@@ -382,6 +429,8 @@ test fn ci_attempt_witnesses() -> Bool {
     && digest_is_stable_for_one_envelope()
     && independent_nodes_share_a_batch()
     && resource_conflicting_nodes_never_share_a_batch()
+    && different_targets_of_one_claim_kind_do_not_conflict()
+    && a_cyclic_plan_refuses_rather_than_scheduling_a_prefix()
     && witness_nodes_conflict_on_the_prepared_context()
     && reconciliation_is_an_identity_join_not_a_count()
     && verdict_refuses_an_unreconciled_ledger_even_when_all_reports_passed()
@@ -496,7 +545,11 @@ test fn unknown_identity_refuses_rather_than_recomputing() -> Bool {
 
 // ── The host primitive seam ───────────────────────────────────────────────────
 
-data cap_two: HostCapacity = HostCapacity { cpu_slots: 2, process_slots: 2 }
+data cap_two: HostCapacity = HostCapacity {
+  cpu_slots: 2,
+  process_slots: 2,
+  resident_bytes: 8589934592
+}
 
 data requested_jobs: List<Symbol> = [^ci_node_format_check, ^ci_node_prepare_exact_subject]
 

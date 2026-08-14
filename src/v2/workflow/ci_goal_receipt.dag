@@ -198,11 +198,13 @@ type AcceptanceStanding
   = AcceptanceAdmitted
   | AcceptanceRefusedNotHeld { goal: CiGoal }
   | AcceptanceRefusedUnevaluated { goal: CiGoal }
+  | AcceptanceRefusedRoster { roster: GoalRosterStanding }
 
 fn admit_acceptance(acc: AcceptanceStanding, row: GoalRow) -> AcceptanceStanding {
   match acc {
     AcceptanceRefusedNotHeld { goal: g } => AcceptanceRefusedNotHeld { goal: g }
     AcceptanceRefusedUnevaluated { goal: g } => AcceptanceRefusedUnevaluated { goal: g }
+    AcceptanceRefusedRoster { roster: r } => AcceptanceRefusedRoster { roster: r }
     AcceptanceAdmitted =>
       match row.standing {
         GoalHeld { evidence: _ } => AcceptanceAdmitted
@@ -306,6 +308,83 @@ fn standing_for(goal: CiGoal, bindings: List<GoalEvidenceBinding>) -> GoalStandi
   )
 }
 
+// ── The roster reconciles before it derives anything ──────────────────────────
+//
+// Two ways a derived roster still lies, both decidable and neither caught by the
+// per-row standing:
+//
+// A DUPLICATED SUBJECT produces two rows for one goal. Acceptance then reports on a
+// population that counts one obligation twice, and — worse — a goal whose evidence
+// binding is missing can be masked by reading like an ordinary short roster.
+//
+// A SURPLUS BINDING names a goal the roster does not carry. Evidence was produced,
+// admitted, and then silently discarded, because standing_for only ever looks up
+// goals it already knows. That is the same shape as the exclusion set that reported
+// present code as absent: the join was performed in one direction only.
+//
+// NOT CLOSED HERE, and named rather than left to be discovered: nothing checks that
+// ci_goal_subjects covers every authored CiGoal variant. Deleting a variant from the
+// roster shortens it and every remaining row can still be admitted. The check is not
+// expressible in this module because a coproduct's variants cannot be enumerated from
+// inside the language; it needs a lens reading the CiGoal declaration off the Node
+// tree, which is the same read v2.lens already performs elsewhere. Rung: mechanically
+// preventable for duplicates and surplus, and NOT covered for omission. Next-rung
+// trigger: the declaration-reading lens.
+type GoalRosterStanding
+  = GoalRosterReconciled { subjects: Int }
+  | GoalRosterDuplicateSubject { goal: CiGoal }
+  | GoalRosterSurplusBinding { goal: CiGoal }
+
+fn goal_occurrences(goal: CiGoal, subjects: List<CiGoal>) -> Int {
+  fold_list(
+    xs: subjects,
+    empty: 0,
+    cons: fn(acc, s) { if goal_eq(a: s, b: goal) { acc + 1 } else { acc } }
+  )
+}
+
+fn roster_carries(goal: CiGoal) -> Bool {
+  goal_occurrences(goal: goal, subjects: ci_goal_subjects) > 0
+}
+
+fn duplicate_scan(acc: GoalRosterStanding, goal: CiGoal) -> GoalRosterStanding {
+  match acc {
+    GoalRosterDuplicateSubject { goal: g } => GoalRosterDuplicateSubject { goal: g }
+    GoalRosterSurplusBinding { goal: g } => GoalRosterSurplusBinding { goal: g }
+    GoalRosterReconciled { subjects: n } =>
+      if goal_occurrences(goal: goal, subjects: ci_goal_subjects) > 1 {
+        GoalRosterDuplicateSubject { goal: goal }
+      } else {
+        GoalRosterReconciled { subjects: n }
+      }
+  }
+}
+
+fn surplus_scan(
+  acc: GoalRosterStanding,
+  binding: GoalEvidenceBinding
+) -> GoalRosterStanding {
+  match acc {
+    GoalRosterDuplicateSubject { goal: g } => GoalRosterDuplicateSubject { goal: g }
+    GoalRosterSurplusBinding { goal: g } => GoalRosterSurplusBinding { goal: g }
+    GoalRosterReconciled { subjects: n } =>
+      if roster_carries(goal: binding.goal) {
+        GoalRosterReconciled { subjects: n }
+      } else {
+        GoalRosterSurplusBinding { goal: binding.goal }
+      }
+  }
+}
+
+fn reconcile_goal_roster(bindings: List<GoalEvidenceBinding>) -> GoalRosterStanding {
+  let after_duplicates = fold_list(
+    xs: ci_goal_subjects,
+    empty: GoalRosterReconciled { subjects: length(xs: ci_goal_subjects) },
+    cons: duplicate_scan
+  )
+  fold_list(xs: bindings, empty: after_duplicates, cons: surplus_scan)
+}
+
 fn derived_goal_rows(bindings: List<GoalEvidenceBinding>) -> List<GoalRow> {
   fold_list(
     xs: ci_goal_subjects,
@@ -327,4 +406,20 @@ data no_goal_rows: List<GoalRow> = []
 // file.
 fn ci_goal_rows() -> List<GoalRow> {
   derived_goal_rows(bindings: no_goal_evidence)
+}
+
+// THE ONE ACCEPTANCE ENTRY, and it reconciles before it reads a single standing.
+// Taking rows directly remains possible for witnesses that want to exercise the row
+// fold alone, but a consumer deciding acceptance must come through here, because a
+// roster that double-counts an obligation or discards produced evidence has already
+// invalidated every row derived from it.
+fn acceptance_from_bindings(bindings: List<GoalEvidenceBinding>) -> AcceptanceStanding {
+  match reconcile_goal_roster(bindings: bindings) {
+    GoalRosterDuplicateSubject { goal: g } =>
+      AcceptanceRefusedRoster { roster: GoalRosterDuplicateSubject { goal: g } }
+    GoalRosterSurplusBinding { goal: g } =>
+      AcceptanceRefusedRoster { roster: GoalRosterSurplusBinding { goal: g } }
+    GoalRosterReconciled { subjects: _ } =>
+      acceptance_standing(rows: derived_goal_rows(bindings: bindings))
+  }
 }

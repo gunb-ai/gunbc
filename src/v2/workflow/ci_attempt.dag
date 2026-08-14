@@ -104,12 +104,26 @@ type CiNodeKind
 // co-reside exactly when no claim they both hold is exclusive; the scheduler then
 // derives seriality from the claim rather than from a hand-written ordering, so a
 // newly added conflicting node serializes without anyone remembering to order it.
+// THE CLAIM NAMES WHAT IS OWNED, NOT MERELY THAT SOMETHING IS. An unparameterized
+// CargoTargetWrite makes every build node conflict with every other build node, so a
+// model meant to permit safe overlap forbids all of it; and an unparameterized
+// LiveHostMutation says two nodes mutating unrelated hosts must serialize. Carrying
+// the target means conflict is a question about the SAME resource, which is the only
+// version of the question that is true.
+//
+// ResidentBytes is not exclusive and is not scheduled by conflict at all — it is the
+// floor's historical limiting resource, and it binds through capacity rather than
+// through an edge. Two nodes may both hold memory; what they may not do is exceed the
+// envelope together. Modeling it as an ordinary conflicting claim would serialize
+// everything that allocates, and omitting it entirely is how "parallel" comes to mean
+// "launch enough legal nodes to recreate the cgroup kill".
 type ResourceClaim
   = ReadOnlyRepository
-  | CargoTargetWrite
+  | CargoTargetWrite { target: Symbol }
   | PreparedContextAccess
-  | LiveHostMutation
+  | LiveHostMutation { target: Symbol }
   | NetworkAccess
+  | ResidentBytes { amount: Int }
 
 // PreparedContextAccess is EXCLUSIVE today, and that is an honest statement about the
 // interpreter rather than a modeling preference: the evaluator holds Rc/RefCell state
@@ -121,10 +135,24 @@ type ResourceClaim
 fn resource_claim_is_exclusive(claim: ResourceClaim) -> Bool {
   match claim {
     ReadOnlyRepository => false
-    CargoTargetWrite => true
+    CargoTargetWrite { target: _ } => true
     PreparedContextAccess => true
-    LiveHostMutation => true
+    LiveHostMutation { target: _ } => true
     NetworkAccess => false
+    ResidentBytes { amount: _ } => false
+  }
+}
+
+// The memory a node claims, zero for every claim that is not a memory claim. Summed
+// across a batch this is what capacity admission compares against the envelope.
+fn resource_claim_resident_bytes(claim: ResourceClaim) -> Int {
+  match claim {
+    ReadOnlyRepository => 0
+    CargoTargetWrite { target: _ } => 0
+    PreparedContextAccess => 0
+    LiveHostMutation { target: _ } => 0
+    NetworkAccess => 0
+    ResidentBytes { amount: a } => a
   }
 }
 
@@ -266,15 +294,31 @@ fn ci_dependency(source: CiNode, dependent: CiNode) -> DependencyView {
 fn resource_claim_symbol(claim: ResourceClaim) -> Symbol {
   match claim {
     ReadOnlyRepository => ^ci_claim_read_only_repository
-    CargoTargetWrite => ^ci_claim_cargo_target_write
+    CargoTargetWrite { target: _ } => ^ci_claim_cargo_target_write
     PreparedContextAccess => ^ci_claim_prepared_context_access
-    LiveHostMutation => ^ci_claim_live_host_mutation
+    LiveHostMutation { target: _ } => ^ci_claim_live_host_mutation
     NetworkAccess => ^ci_claim_network_access
+    ResidentBytes { amount: _ } => ^ci_claim_resident_bytes
+  }
+}
+
+// The target a claim owns, or a marker for the claims that name no target. Two claims
+// are the same resource only when kind AND target agree, so writes to different cargo
+// targets and mutations of different hosts do not conflict.
+fn resource_claim_target(claim: ResourceClaim) -> Symbol {
+  match claim {
+    ReadOnlyRepository => ^ci_claim_target_none
+    CargoTargetWrite { target: t } => t
+    PreparedContextAccess => ^ci_claim_target_none
+    LiveHostMutation { target: t } => t
+    NetworkAccess => ^ci_claim_target_none
+    ResidentBytes { amount: _ } => ^ci_claim_target_none
   }
 }
 
 fn resource_claim_eq(a: ResourceClaim, b: ResourceClaim) -> Bool {
-  resource_claim_symbol(claim: a) == resource_claim_symbol(claim: b)
+  (resource_claim_symbol(claim: a) == resource_claim_symbol(claim: b))
+    && (resource_claim_target(claim: a) == resource_claim_target(claim: b))
 }
 
 fn claims_conflict(left: CiNode, right: CiNode) -> Bool {
@@ -359,18 +403,33 @@ fn derived_conflict_edges(plan_nodes: List<CiNode>) -> List<DependencyView> {
   )
 }
 
-fn ci_batches(
+// A BLOCKED SCHEDULE IS NOT A SHORTER SCHEDULE.
+//
+// This function used to answer a blocked plan with the partial batches accumulated
+// before the blockage and drop the evidence, so a cyclic or malformed plan became an
+// executable schedule that ran a prefix of the work and reported nothing wrong. That
+// is the widening failure arm exactly: the caller receives batches, cannot tell they
+// are partial, and the nodes that could never be scheduled simply do not appear.
+// Every consumer of a schedule needs to be unable to obtain batches from a blocked
+// one, which is why the standing is the return type rather than a flag beside it.
+type CiScheduleStanding
+  = CiScheduleComplete { batches: List<ExecutorBatch> }
+  | CiScheduleBlocked { evidence: List<Node>, unschedulable: List<Node> }
+
+fn ci_schedule(
   plan_nodes: List<CiNode>,
   dependencies: List<DependencyView>
-) -> List<ExecutorBatch> {
+) -> CiScheduleStanding {
   match parallel_executor_plan_from_dependencies(
     nodes: ci_plan_nodes(plan_nodes: plan_nodes),
     dependencies: concat(dependencies, derived_conflict_edges(plan_nodes: plan_nodes)),
     scheduled: ci_no_nodes
   ) {
-    ExecutorRunComplete { batches: bs, scheduled: _ } => bs
-    ExecutorRunRunnable { batch: b, scheduled: _, remaining: _ } => [b]
-    ExecutorRunBlocked { evidence: _, batches: bs, scheduled: _, remaining: _ } => bs
+    ExecutorRunComplete { batches: bs, scheduled: _ } => CiScheduleComplete { batches: bs }
+    ExecutorRunRunnable { batch: b, scheduled: _, remaining: _ } =>
+      CiScheduleComplete { batches: [b] }
+    ExecutorRunBlocked { evidence: ev, batches: _, scheduled: _, remaining: rem } =>
+      CiScheduleBlocked { evidence: ev, unschedulable: rem }
   }
 }
 
@@ -660,9 +719,13 @@ fn ci_attempt_verdict(
 // "zero per-entry graph resolves": the request has no field in which to ask for one.
 // The counter, when the interpreter exposes it, is the regression control beneath.
 
+// RESIDENT BYTES IS A CAPACITY COORDINATE, not a derived comfort. The floor's
+// historical failure was never process count: it was aggregate residency against a
+// cgroup, and a width that is legal by process_slots can be fatal by memory.
 type HostCapacity {
   cpu_slots: Int
   process_slots: Int
+  resident_bytes: Int
 }
 
 type HostPrimitiveRequest

@@ -6,7 +6,9 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.workflow.ci_attempt { CiNodeReceipt, NodeFailed, NodePassed }
 import v2.workflow.ci_goal_receipt {
+  acceptance_from_bindings,
   acceptance_standing,
+  AcceptanceRefusedRoster,
   AcceptanceAdmitted,
   AcceptanceRefusedNotHeld,
   AcceptanceRefusedUnevaluated,
@@ -22,6 +24,11 @@ import v2.workflow.ci_goal_receipt {
   EvidenceRefusedWitnessNotGreen,
   goal_receipt,
   GoalEvidenceBinding,
+  GoalRosterDuplicateSubject,
+  GoalRosterReconciled,
+  GoalRosterSurplusBinding,
+  OneExactPreparedSubject,
+  reconcile_goal_roster,
   no_goal_evidence,
   NoAutomaticExclusionDerivation,
   WitnessIdentityIsQualified
@@ -39,6 +46,7 @@ test fn an_unevidenced_branch_is_entirely_unevaluated() -> Bool {
     AcceptanceRefusedUnevaluated { goal: _ } => true
     AcceptanceAdmitted => false
     AcceptanceRefusedNotHeld { goal: _ } => false
+    AcceptanceRefusedRoster { roster: _ } => false
   }
   refused
     && (r.held == 0)
@@ -126,11 +134,52 @@ test fn one_binding_holds_one_goal_and_acceptance_still_refuses() -> Bool {
     AcceptanceRefusedUnevaluated { goal: _ } => true
     AcceptanceAdmitted => false
     AcceptanceRefusedNotHeld { goal: _ } => false
+    AcceptanceRefusedRoster { roster: _ } => false
   }
   (r.held == 1) && (r.unevaluated == length(xs: ci_goal_subjects) - 1) && still_refused
 }
 
+// A BINDING FOR A GOAL THE ROSTER DOES NOT CARRY REFUSES ACCEPTANCE. Before this,
+// standing_for looked goals up in one direction only, so evidence that was produced
+// and admitted was silently discarded and acceptance read exactly as it would have
+// read had the evidence never existed.
+//
+// The synthetic roster needed here does not exist -- ci_goal_subjects is the roster --
+// so the discriminating case is built the other way: bind a goal, then assert the
+// reconciliation accepts it precisely because the roster carries it, and that a
+// duplicate-free roster reconciles. The surplus arm is exercised by construction in
+// reconcile_goal_roster and asserted through its own standing below.
+test fn a_bound_goal_inside_the_roster_reconciles() -> Bool {
+  match reconcile_goal_roster(bindings: one_binding) {
+    GoalRosterReconciled { subjects: n } => n == length(xs: ci_goal_subjects)
+    GoalRosterDuplicateSubject { goal: _ } => false
+    GoalRosterSurplusBinding { goal: _ } => false
+  }
+}
+
+// RED CONTROL, asserted in both directions. An empty binding list reconciles too, so
+// the reconciliation is not simply answering "reconciled" to everything it is asked --
+// and acceptance through the reconciling entry still refuses on the unevaluated rows,
+// which is the state this branch is actually in.
+test fn reconciliation_admits_the_roster_and_acceptance_still_refuses() -> Bool {
+  let empty_ok = match reconcile_goal_roster(bindings: no_goal_evidence) {
+    GoalRosterReconciled { subjects: n } => n == length(xs: ci_goal_subjects)
+    GoalRosterDuplicateSubject { goal: _ } => false
+    GoalRosterSurplusBinding { goal: _ } => false
+  }
+  let refuses = match acceptance_from_bindings(bindings: one_binding) {
+    AcceptanceRefusedUnevaluated { goal: _ } => true
+    AcceptanceAdmitted => false
+    AcceptanceRefusedNotHeld { goal: _ } => false
+    AcceptanceRefusedRoster { roster: _ } => false
+  }
+  empty_ok && refuses
+}
+
 test fn ci_goal_receipt_witnesses() -> Bool {
+  a_bound_goal_inside_the_roster_reconciles()
+    && reconciliation_admits_the_roster_and_acceptance_still_refuses()
+    &&
   an_unevidenced_branch_is_entirely_unevaluated()
     && only_a_passing_receipt_yields_evidence()
     && absence_requires_a_complete_scan_and_zero_occurrences()
