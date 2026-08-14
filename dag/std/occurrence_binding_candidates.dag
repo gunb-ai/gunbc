@@ -1720,6 +1720,71 @@ type ReferenceDependencyAdmission
   | ReferenceDependencyAdmittedTypeReference
   | ReferenceDependencyExcluded { category: OccurrenceCategory }
 
+data module_member_projection_note: String = "THE HEAD-ONLY WIDEN, CLOSED. An expression path p.first is a FieldOccurrence reference whose base is its child, and FieldOccurrence is excluded from clause-E dependency inducement -- correctly, for a record field access. The exclusion was applied to the DEPENDENCY question and silently answered the BINDING question too: an excluded reference is never added to the required population, so it never had to resolve. Measured consequence, reproduced before the repair: p.no_such_member settled with one edge against a provider that declares no such member, because the edge came from the head binding to the module while the member was never asked about. A projection off a module head is not a record field access, and the difference is decidable here rather than at the category: the base resolves to a NamespaceSegmentOccurrence or it does not. When it does, the segment must resolve among that module's own members, and the dependency is attributed to the TERMINAL declaration -- which is what a file dependency actually rests on -- rather than to the module head that merely names where to look."
+
+fn reference_base_child(
+  references: List<ReferenceOccurrence>,
+  reference: ReferenceOccurrence
+) -> ReferenceOccurrence? {
+  fold(references, init: none, f: (found, candidate) =>
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        match reverse(candidate.containment.ancestors) {
+          Empty => none
+          Cons { head: parent, tail: _ } =>
+            match parent.value == reference.occurrence.value {
+              true => Present { value: candidate }
+              false => none
+            }
+        }
+    })
+}
+
+fn module_declaration_named_by_reference(
+  index: OccurrenceCandidateIndex,
+  base: ReferenceOccurrence
+) -> DeclarationOccurrence? {
+  match map_get(index.entries_by_id, base.occurrence.value) {
+    Absent => none
+    Present { value: entry } =>
+      match map_get(index.module_declarations_by_segment, entry.projection.authored_name) {
+        Absent => none
+        Present { value: modules } =>
+          match modules {
+            Empty => none
+            Cons { head: only, tail: rest } =>
+              match rest {
+                Empty => Present { value: only }
+                Cons { head: _, tail: _ } => none
+              }
+          }
+      }
+  }
+}
+
+fn module_member_candidate_ids(
+  index: OccurrenceCandidateIndex,
+  provider: DeclarationOccurrence,
+  segment_name: String
+) -> List<OccurrenceId> {
+  match map_get(index.entries_by_id, provider.occurrence.value) {
+    Absent => []
+    Present { value: provider_entry } =>
+      match map_get(index.declarations_by_name, segment_name) {
+        Absent => []
+        Present { value: same_spelling } =>
+          reverse(same_spelling)
+            |> filter(declaration => declaration_projected_from_named_module(
+              declaration: declaration,
+              qualifier: provider_entry.projection.authored_name,
+              exposure_by_occurrence: index.exposure_by_occurrence,
+            ))
+            |> map(declaration => declaration.occurrence)
+      }
+  }
+}
+
 fn reference_dependency_admission_for_category(
   category: OccurrenceCategory
 ) -> ReferenceDependencyAdmission {
@@ -1831,7 +1896,26 @@ fn joined_dependency_binding_walk_selected(
                       acc.projections_reversed,
                     ),
                   }
-                ReferenceDependencyExcluded { category: _ } => acc
+                ReferenceDependencyExcluded { category: _ } =>
+                  match reference_base_child(references: references, reference: reference) {
+                    Absent => acc
+                    Present { value: base } =>
+                      match module_declaration_named_by_reference(index: index, base: base) {
+                        Absent => acc
+                        Present { value: provider } =>
+                          JoinedDependencyBindingBuild {
+                            projections_reversed: concat(
+                              [resolve_module_member_projection(
+                                transport: transport,
+                                index: index,
+                                reference: reference,
+                                provider: provider,
+                              )],
+                              acc.projections_reversed,
+                            ),
+                          }
+                      }
+                  }
               },
           ).projections_reversed),
         ),
@@ -2675,15 +2759,51 @@ fn resolve_type_reference_containment_binding(
 
 data resolve_reference_via_structural_candidates_note: String = "THE P2a entry point. It builds the exact candidate population for one reference from the precomputed index (candidate_occurrence_ids_for_reference) and hands that population to std.occurrence_binding_resolve.resolve_reference_occurrence_binding as supplied_candidates -- P1's fold over occurrence_binding_from_candidates is the only cardinality decision in this path. Only the OccurrenceBound arm is projected into a BoundReferenceProvider; Unbound and Ambiguous are surfaced as their own typed, located outcomes so a caller can never mistake 'no edge' for 'one edge'."
 
+fn resolve_module_member_projection(
+  transport: OccurrenceTransport,
+  index: OccurrenceCandidateIndex,
+  reference: ReferenceOccurrence,
+  provider: DeclarationOccurrence
+) -> ReferenceBindingProjection {
+  let segment_name =
+    match map_get(index.entries_by_id, reference.occurrence.value) {
+      Absent => ""
+      Present { value: entry } => entry.projection.authored_name
+    }
+  resolve_reference_from_candidates(
+    transport: transport,
+    index: index,
+    reference: reference,
+    candidates: module_member_candidate_ids(
+      index: index,
+      provider: provider,
+      segment_name: segment_name,
+    ),
+  )
+}
+
 fn resolve_reference_via_structural_candidates(
   transport: OccurrenceTransport,
   index: OccurrenceCandidateIndex,
   reference: ReferenceOccurrence
 ) -> ReferenceBindingProjection {
-  let candidates = candidate_occurrence_ids_for_reference(
+  resolve_reference_from_candidates(
+    transport: transport,
     index: index,
     reference: reference,
+    candidates: candidate_occurrence_ids_for_reference(
+      index: index,
+      reference: reference,
+    ),
   )
+}
+
+fn resolve_reference_from_candidates(
+  transport: OccurrenceTransport,
+  index: OccurrenceCandidateIndex,
+  reference: ReferenceOccurrence,
+  candidates: List<OccurrenceId>
+) -> ReferenceBindingProjection {
   match resolve_reference_occurrence_binding(
     transport: transport,
     occurrence: reference.occurrence,

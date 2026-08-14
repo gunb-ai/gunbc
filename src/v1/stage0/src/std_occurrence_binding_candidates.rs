@@ -2328,6 +2328,118 @@ impl ReferenceDependencyAdmission {
     }
 }
 
+pub fn module_member_projection_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE HEAD-ONLY WIDEN, CLOSED. An expression path p.first is a FieldOccurrence reference whose base is its child, and FieldOccurrence is excluded from clause-E dependency inducement -- correctly, for a record field access. The exclusion was applied to the DEPENDENCY question and silently answered the BINDING question too: an excluded reference is never added to the required population, so it never had to resolve. Measured consequence, reproduced before the repair: p.no_such_member settled with one edge against a provider that declares no such member, because the edge came from the head binding to the module while the member was never asked about. A projection off a module head is not a record field access, and the difference is decidable here rather than at the category: the base resolves to a NamespaceSegmentOccurrence or it does not. When it does, the segment must resolve among that module's own members, and the dependency is attributed to the TERMINAL declaration -- which is what a file dependency actually rests on -- rather than to the module head that merely names where to look.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn reference_base_child(
+    references: Rc<Vec<Rc<ReferenceOccurrence>>>,
+    reference: Rc<ReferenceOccurrence>,
+) -> Option<Rc<ReferenceOccurrence>> {
+    references
+        .clone()
+        .iter()
+        .cloned()
+        .fold(
+            None,
+            |found: _, candidate: Rc<ReferenceOccurrence>| match found.clone() {
+                Some(_) => found.clone(),
+                None => {
+                    let __fm = v1_rt::reverse(candidate.containment.clone().ancestors.clone());
+                    if __fm.is_empty() {
+                        None
+                    } else {
+                        let parent = (*__fm)[0].clone();
+                        match (parent.value.clone() == reference.occurrence.clone().value.clone()) {
+                            true => Some(candidate.clone()),
+                            false => None,
+                        }
+                    }
+                }
+            },
+        )
+}
+
+pub fn module_declaration_named_by_reference(
+    index: Rc<OccurrenceCandidateIndex>,
+    base: Rc<ReferenceOccurrence>,
+) -> Option<Rc<DeclarationOccurrence>> {
+    match v1_rt::map_get(
+        &index.entries_by_id.clone(),
+        base.occurrence.clone().value.clone(),
+    ) {
+        None => None,
+        Some(entry) => match v1_rt::map_get(
+            &index.module_declarations_by_segment.clone(),
+            entry.projection.clone().authored_name.clone(),
+        ) {
+            None => None,
+            Some(modules) => {
+                let __fm = modules.clone();
+                if __fm.is_empty() {
+                    None
+                } else {
+                    let only = (*__fm)[0].clone();
+                    let rest: Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect());
+                    {
+                        let __fm = rest.clone();
+                        if __fm.is_empty() {
+                            Some(only.clone())
+                        } else {
+                            None
+                        }
+                    }
+                }
+            }
+        },
+    }
+}
+
+pub fn module_member_candidate_ids(
+    index: Rc<OccurrenceCandidateIndex>,
+    provider: Rc<DeclarationOccurrence>,
+    segment_name: String,
+) -> Rc<Vec<OccurrenceId>> {
+    match v1_rt::map_get(
+        &index.entries_by_id.clone(),
+        provider.occurrence.clone().value.clone(),
+    ) {
+        None => Rc::new(vec![]),
+        Some(provider_entry) => {
+            match v1_rt::map_get(&index.declarations_by_name.clone(), segment_name.clone()) {
+                None => Rc::new(vec![]),
+                Some(same_spelling) => Rc::new({
+                    let mut __result = Vec::new();
+                    for declaration in Rc::new({
+                        let mut __result = Vec::new();
+                        for declaration in v1_rt::reverse(same_spelling.clone()).iter().cloned() {
+                            if declaration_projected_from_named_module(
+                                declaration.clone(),
+                                provider_entry.projection.clone().authored_name.clone(),
+                                index.exposure_by_occurrence.clone(),
+                            ) {
+                                __result.push(declaration);
+                            }
+                        }
+                        __result
+                    })
+                    .iter()
+                    .cloned()
+                    {
+                        __result.push(declaration.occurrence.clone());
+                    }
+                    __result
+                }),
+            }
+        }
+    }
+}
+
 pub fn reference_dependency_admission_for_category(
     category: OccurrenceCategory,
 ) -> Rc<ReferenceDependencyAdmission> {
@@ -2444,7 +2556,15 @@ pub fn joined_dependency_binding_walk_selected(
     ReferenceDependencyAdmission::ReferenceDependencyAdmittedTypeReference => Rc::new(JoinedDependencyBindingBuild {
     projections_reversed: v1_rt::concat(Rc::new(vec![resolve_type_reference_via_structural_candidates(transport.clone(), index.clone(), reference.clone())]), acc.projections_reversed.clone()),
 }),
-    ReferenceDependencyAdmission::ReferenceDependencyExcluded { category: _, .. } => acc.clone(),
+    ReferenceDependencyAdmission::ReferenceDependencyExcluded { category: _, .. } => match reference_base_child(references.clone(), reference.clone()) {
+    None => acc.clone(),
+    Some(base) => match module_declaration_named_by_reference(index.clone(), base.clone()) {
+    None => acc.clone(),
+    Some(provider) => Rc::new(JoinedDependencyBindingBuild {
+    projections_reversed: v1_rt::concat(Rc::new(vec![resolve_module_member_projection(transport.clone(), index.clone(), reference.clone(), provider.clone())]), acc.projections_reversed.clone()),
+}),
+},
+},
 }).projections_reversed.clone())),
 }),
 }
@@ -3502,54 +3622,89 @@ pub fn resolve_reference_via_structural_candidates_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn resolve_module_member_projection(
+    transport: Rc<OccurrenceTransport>,
+    index: Rc<OccurrenceCandidateIndex>,
+    reference: Rc<ReferenceOccurrence>,
+    provider: Rc<DeclarationOccurrence>,
+) -> Rc<ReferenceBindingProjection> {
+    {
+        let segment_name = match v1_rt::map_get(
+            &index.entries_by_id.clone(),
+            reference.occurrence.clone().value.clone(),
+        ) {
+            None => "".to_string(),
+            Some(entry) => entry.projection.clone().authored_name.clone(),
+        };
+        resolve_reference_from_candidates(
+            transport.clone(),
+            index.clone(),
+            reference.clone(),
+            module_member_candidate_ids(index.clone(), provider.clone(), segment_name.clone()),
+        )
+    }
+}
+
 pub fn resolve_reference_via_structural_candidates(
     transport: Rc<OccurrenceTransport>,
     index: Rc<OccurrenceCandidateIndex>,
     reference: Rc<ReferenceOccurrence>,
 ) -> Rc<ReferenceBindingProjection> {
+    resolve_reference_from_candidates(
+        transport.clone(),
+        index.clone(),
+        reference.clone(),
+        candidate_occurrence_ids_for_reference(index.clone(), reference.clone()),
+    )
+}
+
+pub fn resolve_reference_from_candidates(
+    transport: Rc<OccurrenceTransport>,
+    index: Rc<OccurrenceCandidateIndex>,
+    reference: Rc<ReferenceOccurrence>,
+    candidates: Rc<Vec<OccurrenceId>>,
+) -> Rc<ReferenceBindingProjection> {
+    match (*resolve_reference_occurrence_binding(
+        transport.clone(),
+        reference.occurrence.clone(),
+        candidates.clone(),
+    ))
+    .clone()
     {
-        let candidates = candidate_occurrence_ids_for_reference(index.clone(), reference.clone());
-        match (*resolve_reference_occurrence_binding(
-            transport.clone(),
-            reference.occurrence.clone(),
-            candidates.clone(),
-        ))
-        .clone()
-        {
-            OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused {
-                refusal: refusal,
-                ..
-            } => Rc::new(
-                ReferenceBindingProjection::ReferenceBindingProjectionTransportRefused {
-                    refusal: refusal.clone(),
+        OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused {
+            refusal: refusal,
+            ..
+        } => Rc::new(
+            ReferenceBindingProjection::ReferenceBindingProjectionTransportRefused {
+                refusal: refusal.clone(),
+            },
+        ),
+        OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingDecided {
+            result: result,
+            ..
+        } => match (*result.clone()).clone() {
+            OccurrenceBindingResult::OccurrenceUnbound { occurrence: _, .. } => Rc::new(
+                ReferenceBindingProjection::ReferenceBindingProjectionUnbound {
+                    occurrence: reference.occurrence.clone(),
                 },
             ),
-            OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingDecided {
-                result: result,
-                ..
-            } => match (*result.clone()).clone() {
-                OccurrenceBindingResult::OccurrenceUnbound { occurrence: _, .. } => Rc::new(
-                    ReferenceBindingProjection::ReferenceBindingProjectionUnbound {
-                        occurrence: reference.occurrence.clone(),
-                    },
-                ),
-                OccurrenceBindingResult::OccurrenceAmbiguous { candidates, .. } => Rc::new(
-                    ReferenceBindingProjection::ReferenceBindingProjectionAmbiguous {
-                        occurrence: reference.occurrence.clone(),
-                        candidates: candidates.clone(),
-                    },
-                ),
-                OccurrenceBindingResult::OccurrenceBound {
-                    binding: binding, ..
-                } => {
-                    let declaration_occurrence = binding
-                        .candidate
-                        .clone()
-                        .containment
-                        .clone()
-                        .terminal
-                        .clone();
-                    match module_of_occurrence(index.module_by_occurrence.clone(), reference.occurrence.clone()) {
+            OccurrenceBindingResult::OccurrenceAmbiguous { candidates, .. } => Rc::new(
+                ReferenceBindingProjection::ReferenceBindingProjectionAmbiguous {
+                    occurrence: reference.occurrence.clone(),
+                    candidates: candidates.clone(),
+                },
+            ),
+            OccurrenceBindingResult::OccurrenceBound {
+                binding: binding, ..
+            } => {
+                let declaration_occurrence = binding
+                    .candidate
+                    .clone()
+                    .containment
+                    .clone()
+                    .terminal
+                    .clone();
+                match module_of_occurrence(index.module_by_occurrence.clone(), reference.occurrence.clone()) {
     None => Rc::new(ReferenceBindingProjection::ReferenceBindingProjectionModulePathMissing {
     occurrence: reference.occurrence.clone(),
 }),
@@ -3567,9 +3722,8 @@ pub fn resolve_reference_via_structural_candidates(
 }),
 },
 }
-                }
-            },
-        }
+            }
+        },
     }
 }
 

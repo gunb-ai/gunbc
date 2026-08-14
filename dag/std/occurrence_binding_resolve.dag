@@ -96,6 +96,10 @@ fn occurrence_category_binding_verdict(
     FieldOccurrence =>
       match declaration {
         FieldOccurrence => OccurrenceCategoryBindingAdmissible
+        ModuleValueOccurrence => OccurrenceCategoryBindingAdmissible
+        CallableOccurrence => OccurrenceCategoryBindingAdmissible
+        TypeOccurrence => OccurrenceCategoryBindingAdmissible
+        ConstructorOccurrence => OccurrenceCategoryBindingAdmissible
         _ => OccurrenceCategoryBindingInadmissible {
           reference: reference,
           declaration: declaration,

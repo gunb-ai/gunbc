@@ -170,6 +170,18 @@ pub fn occurrence_category_binding_verdict(
             OccurrenceCategory::FieldOccurrence => {
                 Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
             }
+            OccurrenceCategory::ModuleValueOccurrence => {
+                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
+            }
+            OccurrenceCategory::CallableOccurrence => {
+                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
+            }
+            OccurrenceCategory::TypeOccurrence => {
+                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
+            }
+            OccurrenceCategory::ConstructorOccurrence => {
+                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
+            }
             _ => Rc::new(
                 OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
                     reference: reference.clone(),
