@@ -20,10 +20,17 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data altra_platform_hw_design_subject_note: String = "THE HIGHEST-VALUE PUBLIC DOCUMENT THIS MOTHERBOARD LANE HAS FOUND. extdeps.cpu.ampere_altra_package carries the processor package pinout; extdeps.ocp.mt_jade carries one OCP reference-board specification; this module is the third axis — the vendor's platform hardware design guide for boards built around Altra rather than around a named reference platform. NO INTERIOR FACT IS MODELLED HERE UNTIL THE PDF TEXT IS INGESTED: the locator returned HTTP 200 on 2026-08-14, but text extraction did not succeed in this environment, so the anchor carries publisher, title, version and date only."
+data ampere_technical_document_index_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "amperecomputing.com/products/processors/altra",
+  }
+}
 
-type AltraPlatformHwDesignRevision
-  = AltraPlatformHwDesignRev1_00
+data altra_platform_hw_design_subject_note: String = "THE HIGHEST-VALUE PUBLIC DOCUMENT THIS MOTHERBOARD LANE HAS FOUND. extdeps.cpu.ampere_altra_package carries the processor package pinout; extdeps.ocp.mt_jade carries one OCP reference-board specification; this module is the third axis — the vendor's platform hardware design guide for boards built around Altra rather than around a named reference platform. THE ANCHOR CITES THE PUBLIC CDN v1.00 COPY; AMPERE'S TECHNICAL-DOCUMENT INDEX LISTS A NEWER v1.20 REVISION DATED 2025-07-15 THAT THIS REPOSITORY HAS NOT RETRIEVED. PLATFORM FACTS LIVE IN extdeps.cpu.ampere_altra_platform_hw_design.platform, INGESTED FROM THE v1.00 PDF BY A PEER SESSION — NOT BY THIS MODULE FETCHING THE LOCATOR."
+
+type AltraPlatformHwDesignRev1_00
+type AltraPlatformHwDesignRevision = AltraPlatformHwDesignRev1_00
 
 type SpecificationDocumentDate {
   year: Int
@@ -34,7 +41,18 @@ type SpecificationDocumentDate {
 type SpecificationCitationReadProvenance
   = DocumentLocatorFetchRefused { http_status: Int, detail: NonEmptyStr }
   | DocumentLocatorFetchedButTextUnread { http_status: Int, detail: NonEmptyStr }
+  | PeerSessionPdfTextIngested { peer_session: NonEmptyStr, detail: NonEmptyStr }
   | OperatorSuppliedDocumentText
+
+type HeldSpecificationSupersessionStanding
+  = HeldRevisionIsCurrentPublicCopy
+  | NewerRevisionExistsUnretrieved {
+      newer_version_label: NonEmptyStr,
+      newer_publication_date: SpecificationDocumentDate,
+      index_authority: ExternalAuthority,
+      held_version_label: NonEmptyStr,
+      detail: NonEmptyStr,
+    }
 
 data altra_platform_hw_design_title: NonEmptyStr = "Ampere Altra Platform Hardware Design Specification"
 
@@ -46,9 +64,21 @@ data altra_platform_hw_design_publication_date: SpecificationDocumentDate = Spec
   day: 20,
 }
 
-data altra_platform_hw_design_citation_read_provenance: SpecificationCitationReadProvenance = DocumentLocatorFetchedButTextUnread {
-  http_status: 200,
-  detail: "unauthenticated fetch of the public CDN locator returned HTTP 200; PDF metadata confirms the title but text extraction did not succeed here, so no socket, routing or stackup facts are modelled",
+data altra_platform_hw_design_citation_read_provenance: SpecificationCitationReadProvenance = PeerSessionPdfTextIngested {
+  peer_session: "neat-hawk-428",
+  detail: "full PDF text of the public CDN v1.00 locator was decoded by peer session neat-hawk-428 (zlib content-stream decompression with per-font ToUnicode CMap decoding); this subject module did not perform the fetch",
+}
+
+data altra_platform_hw_design_supersession_standing: HeldSpecificationSupersessionStanding = NewerRevisionExistsUnretrieved {
+  newer_version_label: "v1.20",
+  newer_publication_date: SpecificationDocumentDate {
+    year: 2025,
+    month: 7,
+    day: 15,
+  },
+  index_authority: ampere_technical_document_index_authority,
+  held_version_label: altra_platform_hw_design_version_label,
+  detail: "Ampere technical-document index lists revision 1.20 dated 2025-07-15; the public CDN locator cited here still serves v1.00 dated 2021-01-20",
 }
 
 type AltraPlatformHwDesignSpecification {
@@ -58,6 +88,7 @@ type AltraPlatformHwDesignSpecification {
   publication_date: SpecificationDocumentDate
   publisher: Vendor<Hardware>
   citation_read_provenance: SpecificationCitationReadProvenance
+  supersession_standing: HeldSpecificationSupersessionStanding
 }
 
 data altra_platform_hw_design_specification: AltraPlatformHwDesignSpecification = AltraPlatformHwDesignSpecification {
@@ -67,6 +98,7 @@ data altra_platform_hw_design_specification: AltraPlatformHwDesignSpecification 
   publication_date: altra_platform_hw_design_publication_date,
   publisher: ampere_vendor,
   citation_read_provenance: altra_platform_hw_design_citation_read_provenance,
+  supersession_standing: altra_platform_hw_design_supersession_standing,
 }
 
 data altra_platform_hw_design_model_scope: ExternalModelScope = ExternalModelScope {

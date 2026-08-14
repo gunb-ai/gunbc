@@ -6,22 +6,12 @@ import extdeps.cpu.ampere { altra_max_m12830_catalog, ampere_altra_rev_a1_datash
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.ampere.mt_collins_product_brief.subject {
-  mt_collins_public_product_brief,
-  extdeps_external_authority_anchor as mt_collins_public_brief_authority,
-}
+import extdeps.vendor.ampere { ampere_customer_reference_boards_authority }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
     locator: "amperecomputing.com/briefs/ampere-altra-family-product-brief"
-  }
-}
-
-data ampere_customer_reference_boards_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https,
-    locator: "amperecomputing.com/home/customer-reference-boards"
   }
 }
 
@@ -199,14 +189,6 @@ fn altra_reference_board_collateral_standing() -> ReferenceBoardCollateralStandi
     subject: "Ampere reference motherboard design packages (Mt. Jade, Mt. Collins, Mt. Bonnell, Mt. Snow) with UEFI, OpenBMC and CPLD source",
     access_route: ampere_customer_reference_boards_authority,
   }
-}
-
-// THE PUBLIC MT. COLLINS BRIEF IS RECORDED SO THE SEARCH IS NOT REPEATED, NOT SO MARKETING
-// COLLATERAL CAN STAND IN FOR ENGINEERING FACTS. Engineering documents for Mt. Collins remain on
-// the Customer Connect NDA route; the public brief anchor is consumed here as a dead end.
-fn mt_collins_public_brief_is_marketing_only() -> Bool {
-  (mt_collins_public_product_brief.marketing_name as String) == "Mt. Collins"
-    && (mt_collins_public_brief_authority.uri.locator as String) == "uawartifacts.blob.core.windows.net/upload-files/data/uawbrochures/cloud_native_demo/Mt._Collins_2U_2022_V2.pdf"
 }
 
 data ampere_altra_package_model_scope: ExternalModelScope = ExternalModelScope {

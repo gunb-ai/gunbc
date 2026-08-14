@@ -20,16 +20,23 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data mt_mitchell_subject_note: String = "OCP-CONTRIBUTED REFERENCE PLATFORM SPECIFICATION FOR MT. MITCHELL. Usage is under the same OWFa 1.0 / OCP CLA family as Mt. Jade when the document is admitted; this module records only the anchor metadata until specification text is ingested. An unauthenticated fetch of the OCP locator returned HTTP 403 on 2026-08-14, so no interior platform fact is modelled."
+data internet_archive_mt_mitchell_capture_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "web.archive.org/web/20221026/https://www.opencompute.org/documents/mt-mitchell-ocp-hardware-spec-v0-80-2-pdf",
+  }
+}
 
-type MtMitchellSpecificationRevision
-  = MtMitchellRev0_80
+data mt_mitchell_subject_note: String = "OCP-CONTRIBUTED REFERENCE PLATFORM SPECIFICATION FOR MT. MITCHELL. Usage is under the same OWFa 1.0 / OCP CLA family as Mt. Jade when the document is admitted. THE PUBLISHER LOCATOR REMAINS THE CITATION EVEN WHEN UNREACHABLE: an unauthenticated fetch returned HTTP 403 on 2026-08-14 and that refusal is recorded separately from a dated Internet Archive capture of the same URL that peer session neat-hawk-428 read in full. PLATFORM FACTS LIVE IN extdeps.ocp.mt_mitchell.platform AND ARE GROUNDED ON THE CAPTURE, NOT ON A CLAIM THAT THE PUBLISHER COPY WAS READ."
 
-type OcpSpecificationLicense
-  = Owfa1_0FinalSpecificationAgreement
+type MtMitchellRev0_80
+type MtMitchellSpecificationRevision = MtMitchellRev0_80
 
-type OcpContributionLicense
-  = OcpContributionLicenseAgreement
+type Owfa1_0FinalSpecificationAgreement
+type OcpSpecificationLicense = Owfa1_0FinalSpecificationAgreement
+
+type OcpContributionLicenseAgreement
+type OcpContributionLicense = OcpContributionLicenseAgreement
 
 type SpecificationDocumentDate {
   year: Int
@@ -40,6 +47,12 @@ type SpecificationDocumentDate {
 type SpecificationCitationReadProvenance
   = DocumentLocatorFetchRefused { http_status: Int, detail: NonEmptyStr }
   | DocumentLocatorFetchedButTextUnread { http_status: Int, detail: NonEmptyStr }
+  | DatedPublisherLocatorMirrorTextIngested {
+      mirror: ExternalAuthority,
+      capture_date: SpecificationDocumentDate,
+      peer_session: NonEmptyStr,
+      detail: NonEmptyStr,
+    }
   | OperatorSuppliedDocumentText
 
 data mt_mitchell_specification_version_label: NonEmptyStr = "v0.80"
@@ -48,9 +61,22 @@ data mt_mitchell_specification_license: OcpSpecificationLicense = Owfa1_0FinalSp
 
 data mt_mitchell_contribution_license: OcpContributionLicense = OcpContributionLicenseAgreement
 
-data mt_mitchell_citation_read_provenance: SpecificationCitationReadProvenance = DocumentLocatorFetchRefused {
+data mt_mitchell_publisher_citation_read_provenance: SpecificationCitationReadProvenance = DocumentLocatorFetchRefused {
   http_status: 403,
-  detail: "unauthenticated fetch of the OCP document locator returned 403; no specification text is ingested in this repository",
+  detail: "unauthenticated fetch of the OCP publisher document locator returned 403; the publisher copy remains unread in this repository",
+}
+
+data internet_archive_mt_mitchell_capture_date: SpecificationDocumentDate = SpecificationDocumentDate {
+  year: 2022,
+  month: 10,
+  day: 26,
+}
+
+data mt_mitchell_mirror_citation_read_provenance: SpecificationCitationReadProvenance = DatedPublisherLocatorMirrorTextIngested {
+  mirror: internet_archive_mt_mitchell_capture_authority,
+  capture_date: internet_archive_mt_mitchell_capture_date,
+  peer_session: "neat-hawk-428",
+  detail: "full PDF text of the dated Internet Archive capture of the publisher locator was decoded by peer session neat-hawk-428; this is a second artifact from the publisher copy and may not match what the publisher serves today",
 }
 
 type MtMitchellReferencePlatform {
@@ -60,7 +86,8 @@ type MtMitchellReferencePlatform {
   contributor: Vendor<Hardware>
   specification_license: OcpSpecificationLicense
   contribution_license: OcpContributionLicense
-  citation_read_provenance: SpecificationCitationReadProvenance
+  publisher_citation_read_provenance: SpecificationCitationReadProvenance
+  mirror_citation_read_provenance: SpecificationCitationReadProvenance
 }
 
 data mt_mitchell_reference_platform: MtMitchellReferencePlatform = MtMitchellReferencePlatform {
@@ -70,7 +97,8 @@ data mt_mitchell_reference_platform: MtMitchellReferencePlatform = MtMitchellRef
   contributor: ampere_vendor,
   specification_license: mt_mitchell_specification_license,
   contribution_license: mt_mitchell_contribution_license,
-  citation_read_provenance: mt_mitchell_citation_read_provenance,
+  publisher_citation_read_provenance: mt_mitchell_publisher_citation_read_provenance,
+  mirror_citation_read_provenance: mt_mitchell_mirror_citation_read_provenance,
 }
 
 data mt_mitchell_model_scope: ExternalModelScope = ExternalModelScope {
@@ -82,7 +110,7 @@ data mt_mitchell_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: [],
+  further_citations: [internet_archive_mt_mitchell_capture_authority],
 }
 
 data extdeps_model_scope: ExternalModelScope = mt_mitchell_model_scope
