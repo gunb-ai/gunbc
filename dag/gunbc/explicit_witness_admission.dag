@@ -173,6 +173,14 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolution: unbound_dissolution(description: "the S2 behavioral-closure lane greens it locally, then this row deletes")
   ),
   known_red_probe(
+    entry: "src/v1/tests/claim/occurrence_binding_parser_walk_witness_test.dag",
+    f: "parser_sibling_match_arm_pattern_binder_holds",
+    kind: CorpusWitnessKind,
+    budget: FastLaneEvalBudget,
+    reason: "STRUCTURALLY RED FROM AUTHORED SOURCE, and the parser is the reason rather than the witness. v1.compiler.parse stamps a match-arm pattern binder with the ARM's ancestors, so the binder is a SIBLING of the arm body rather than an ancestor of it; the binder's containment-derived LexicalExposure therefore has an exposing scope that does not contain the arm-body reference, and the isolation this witness asserts -- each arm's reference binding its own binder and refusing the other arm's -- cannot hold from authored source however the exposure authority is written. The file's own parser_sibling_match_arm_pattern_binder_holds_note has said so since the B1 rollup; what it lacked was an admission row, so the function stayed an ordinary green-required test that happened to be selected only when something in its import closure changed. It was newly selected by gunbc#8115's dag/std/occurrence_binding_resolve change and read as that PR's regression; it is not, and two bisect cycles on the wrong subject were the cost of the missing row. The equivalent property IS discharged, on a hand-built transport where the arm body nests under the binder occurrence, by occurrence_binding_candidates_witness -- so this row loses no coverage, it stops a known-structural red from being rediscovered as a new one.",
+    dissolution: unbound_dissolution(description: "the parser nests arm-body references under pattern-binder occurrences, or an equivalent exposure derivation lands that does not require that nesting; then this witness greens from authored source, this row deletes, and the function re-enrolls in namespace_reference_derived_closure_parser_integration_holds as its own note directs")
+  ),
+  known_red_probe(
     entry: "dag/test/claim/legacy_test_behavior_disposition_acceptance_test.dag",
     f: "legacy_test_behavior_unclassified_frontier_is_zero",
     kind: CorpusWitnessKind,
