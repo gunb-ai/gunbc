@@ -54,6 +54,7 @@ data gunbc_runner_per_slot_dropin_path: String = "/etc/systemd/system/actions-ru
 data gunbc_runner_per_slot_swap_dropin_path: String = "/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf"
 data gunbc_runner_per_slot_high_dropin_path: String = "/etc/systemd/system/actions-runner@.service.d/40-fleet-high.conf"
 data gunbc_runner_per_slot_tasks_dropin_path: String = "/etc/systemd/system/actions-runner@.service.d/50-fleet-tasks.conf"
+data gunbc_runner_control_dropin_dir_prefix: String = "/etc/systemd/system.control/"
 data gunbc_runner_jobserver_env_file: String = "/etc/default/ctrl-jobserver"
 data gunbc_runner_jobserver_env_key: String = "CTRL_JOBSERVER_TOKENS"
 data gunbc_runner_jobserver_service: String = "ctrl-jobserver.service"

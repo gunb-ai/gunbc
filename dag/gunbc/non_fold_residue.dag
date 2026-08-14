@@ -106,6 +106,10 @@ data nfr_reason_pool_independence_projection: String = "ReferenceDerivedDependen
 
 data nfr_dissolve_pool_independence_projection: DissolutionCondition = unbound_dissolution(description: "ReferenceDerivedDependencyProjection carrier equality becomes derived from inhabitance (total match over Ready, BindingRefused, and FileRefused with named refusal arms, or a single std projection-equality carrier) and the wildcard arms delete with their rows")
 
+data nfr_reason_floor_component_receipt_validation: String = "receipt alert validation predicate (match on ComponentOutcomeRead with nested match on FloorComponentFailureMode; the NOT-CONCLUDED arm whitelists only ModeRunIncomplete and ModeUnrecorded, returning false for every other mode via an off-variant wildcard) landed with the floor progress/terminal receipt split (#8239); declared at landing so the ratchet re-arms"
+
+data nfr_dissolve_floor_component_receipt_validation: DissolutionCondition = unbound_dissolution(description: "the writer-side pair projection becomes derived from inhabitance (total match over the NOT-CONCLUDED × failure-mode combinations the receipt can actually carry) and the wildcard arm deletes with its row")
+
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::offer_matches_request_shape" },
@@ -931,6 +935,11 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/fleet_runner_connectivity.dag::connectivity_verdict_is_unknown" },
     reason: nfr_reason_mint_era,
     dissolution: nfr_dissolve_wildcard_total,
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/floor_component_receipt_document.dag::component_outcome_agrees_with_failure_mode" },
+    reason: nfr_reason_floor_component_receipt_validation,
+    dissolution: nfr_dissolve_floor_component_receipt_validation,
   },
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/live_deploy/readiness.dag::healthz_release_identity_refusal" },
