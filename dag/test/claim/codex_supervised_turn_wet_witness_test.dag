@@ -8,8 +8,10 @@ import gunbc.package_delivery {
   codex_runtime_lock_path,
   codex_runtime_manifest_path,
   materialize_codex_runtime_bundle,
+  prepare_codex_runtime_closure,
   admit_codex_package_lock_text,
   CodexPackageLockAdmitted,
+  CodexRuntimeClosurePrepared,
   AdmittedCodexRuntimeSource,
   CodexRuntimeMaterialized,
 }
@@ -37,11 +39,11 @@ import extdeps.shell
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data witness_note: String = "WET BISECT + FULL CHAIN (operator-bounded srv1 only). srv1 2026-08-14: supervised_turn_materialized_bundle_writes_terminal_receipt hit ~89 GiB RSS / 22 min CPU, zero child processes — never spawned npm or codex (press-0-step2 wet receipt). Bisect under MemoryMax: wet_committed_admitted_source_lock_admits (2G), wet_materialize_codex_runtime_bundle_only (8G), then full chain (12G cap until root cause located). Full fn is OfflineLocalRecipe — NOT on falsifier roster until envelope + bisect characterize the burn. See wet_supervised_turn_memory_envelope_note."
+data witness_note: String = "WET BISECT + FULL CHAIN (operator-bounded srv1 only). srv1 2026-08-14 bisect: step1 wet_committed_admitted_source_lock_admits PASS 2G; step2 wet_materialize_codex_runtime_bundle_only FAIL pinned ~7.6G 13min zero children — leak is package_delivery.materialize_codex_runtime_bundle on MAIN (not witness). Step1.5 wet_codex_runtime_prepare_closure_only isolates admit+observe+select before mktemp. Full fn OfflineLocalRecipe until production fix lands. See wet_supervised_turn_memory_envelope_note."
 
-data wet_supervised_turn_memory_envelope_note: String = "MEMORY ENVELOPE (srv1 kill receipt 2026-08-14, ac5f031d9). Operator enforces caps; these are declared expectations for refusal-not-OOM, not measured yet on bisect: wet_committed_admitted_source_lock_admits — MemoryMax=2G (filesystem_read + admit_codex_package_lock_text only; shared package_delivery path); wet_materialize_codex_runtime_bundle_only — MemoryMax=8G (materialize class ~150s wall on falsifier, spawns npm); supervised_turn_materialized_bundle_writes_terminal_receipt — MemoryMax=12G REFUSED until bisect passes and interpreter burn is characterized (full run killed at 89G with no children — likely interpreter eval before shell spawn, not npm RSS). Example: systemd-run --scope -p MemoryMax=2G -- gunbc run --source-root dag --source-root src/v2 --entry dag/test/claim/codex_supervised_turn_wet_witness_test.dag --function wet_committed_admitted_source_lock_admits"
+data wet_supervised_turn_memory_envelope_note: String = "MEMORY ENVELOPE (srv1 bisect 2026-08-14). Operator enforces caps — safety while debugging, not the remedy: wet_committed_admitted_source_lock_admits — MemoryMax=2G PASS; wet_codex_runtime_prepare_closure_only — MemoryMax=2G (prepare_codex_runtime_closure: admit+uname+select, no mktemp); wet_materialize_codex_runtime_bundle_only — MemoryMax=8G FAIL pinned ~7.6G zero children; supervised_turn_materialized_bundle_writes_terminal_receipt — blocked until materialize fixed. Example: systemd-run --scope -p MemoryMax=2G -- gunbc run --source-root dag --source-root src/v2 --entry dag/test/claim/codex_supervised_turn_wet_witness_test.dag --function wet_codex_runtime_prepare_closure_only"
 
-data wet_supervised_turn_oom_receipt_note: String = "srv1 bounded wet 2026-08-14: parse clean; compile phases ~5s; decl eval 22 min at 98.7% CPU; RSS ~89 GiB at kill; pgrep showed no app-server/npm/mktemp children. Diagnosis: unbounded interpreter work BEFORE process spawn — upstream of run_codex_supervised_turn shell effects. If bisect step 1 OOMs, package_delivery admit_codex_package_lock_text is a shared production defect. If step 2 OOMs, materialize_codex_runtime_bundle is shared. If step 1-2 pass under cap but full chain OOMs without children, codex_app_server_press + codex_supervised_turn eval path is the suspect."
+data wet_supervised_turn_oom_receipt_note: String = "srv1 bisect 2026-08-14 (eager-koi-458): step1 PASS 2G no growth; step2 materialize_codex_runtime_bundle_only FAIL 8G cap ~7.6-7.7 GiB 13+ min reclaiming at boundary, zero children, no codex/npm/mktemp — killed. Uncapped earlier ~89 GiB / 22 min. Growth is .dag eval before subprocess spawn. Production defect in gunbc.package_delivery materialize_codex_runtime_bundle (main). Gates #8166 wet turn and #8225 host_codex_runtime_provision. Fix production path — do not enlarge witness envelope as remedy. package_lock_lookup_node filter-allocation fix landed; prepare_codex_runtime_closure bisect arm added."
 
 data wet_supervised_turn_probe_key: ProviderProbeKey = "wet-supervised-turn-1" as ProviderProbeKey
 
@@ -98,6 +100,24 @@ test fn wet_committed_admitted_source_lock_admits() -> Bool {
   match admit_codex_package_lock_text(text: committed_codex_lock_text()) {
     CodexPackageLockAdmitted { graph: _, nodes, registry_artifacts } =>
       count(nodes) > 0 && count(registry_artifacts) > 0
+    _ => false
+  }
+}
+
+test fn wet_codex_runtime_prepare_closure_only() -> Bool {
+  match prepare_codex_runtime_closure(
+    source: committed_admitted_codex_runtime_source(),
+  ) {
+    CodexRuntimeClosurePrepared {
+      native_executable_rel,
+      platform_lock_key,
+      selected_target: _,
+      wrapper: _,
+      platform: _,
+      source: _,
+    } =>
+      (native_executable_rel as String) != ""
+        && (platform_lock_key as String) != ""
     _ => false
   }
 }
