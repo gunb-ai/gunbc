@@ -5,11 +5,13 @@ import v2.test.claim.body_lowering.atom_body_discriminator_helpers {
 }
 
 // Atom-body vs arity discriminator: one tokenize→parse→normalize pass over the
-// four-declaration module, then declaration/parameter_count/ArrowBodyForm rows
-// plus both RED mirror directions on the same normalized tree (no second frontend
-// pass). Substrate long-lane enrolled (~18.6s thread-CPU locally; 5001ms is only
-// the fast-lane budget-probe abort point, not completed cost): the mechanism
-// is the production frontend crossing, not a synthetic fixture.
+// four-declaration module, then exact top-level Arrow identity join plus
+// parameter_count/ArrowBodyForm rows on the joined tree (no second frontend
+// pass). RED mirror classifiers are test-only mutation machinery — not a
+// second production authority. Substrate long-lane enrolled (~18.6s thread-CPU
+// locally; 5001ms is only the fast-lane budget-probe abort point, not
+// completed cost): the mechanism is the production frontend crossing, not a
+// synthetic fixture.
 
 test fn atom_body_discriminator_single_pass_receipt_holds() -> Bool {
   atom_body_discriminator_batched_receipt_holds()
