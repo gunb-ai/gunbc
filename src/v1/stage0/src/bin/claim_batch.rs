@@ -10,7 +10,7 @@ use v1_compiler::cli_run::{
     build_module_path_index, closure_subject_for_entry, discover_floor_witness_roster,
     make_eval_context_with_runtime_options, peak_rss_vhwm_bytes,
     precompute_whole_tree_published_mock_keys, prepare_whole_tree_subject, process_shared_index,
-    resolve_entry_with_index, run_claim_measured, whole_tree_probe_exclusion_substrings,
+    resolve_entry_with_index, run_claim_measured, whole_tree_strict_resolve_exclusion_substrings,
     witness_exclusion_substrings, ClaimOutcome, DiscoveryRow, MultiEntryIndex,
     PreparedWholeTreeSubject,
 };
@@ -599,7 +599,42 @@ fn run_against_one_prepared_subject(
         return Err(ExitCode::from(1));
     }
 
-    let excludes = whole_tree_probe_exclusion_substrings();
+    // THE EXCLUSION SET IS PART OF THE SUBJECT, so it is chosen rather than
+    // borrowed. `whole_tree_probe_exclusion_substrings()` is pattern rows UNION a
+    // derived closure of strict-resolve failures, and its pattern half is the
+    // WITNESS-DISCOVERY roster — offline recipes, fixtures, quarantine probes —
+    // whose purpose is to keep witnesses OUT of a probe over production code. Here
+    // the witnesses ARE the subject, so borrowing that set prepared a corpus with
+    // 2010 of 3621 modules missing and 9057 of 9317 witnesses failing to find their
+    // own code. What must stay excluded is only what cannot strict-resolve: the
+    // deliberately-malformed scanner fixtures and the derived failure closure.
+    // THE EXCLUSION DERIVATION IS A PHASE, NOT A LIST READ, and it is timed as one.
+    // `derived_exclude_closure_memoized` runs a FIXED POINT: strict-resolve the whole
+    // tree, add every failure and its transitive importers to the exclusions, retry
+    // until resolution succeeds. On a cold process that is several whole-tree
+    // resolves BEFORE the subject is prepared. A timer started after it reports a
+    // preparation cost the run did not actually pay, and the process peak RSS it
+    // sits inside belongs to the prelude as much as to the subject — so the two are
+    // reported separately and never summed into one "cost of preparing".
+    let derive_started = Instant::now();
+    let mut excludes = whole_tree_strict_resolve_exclusion_substrings();
+    excludes.extend(
+        v1_compiler::cli_run::census_exclude_derive::derived_exclude_closure_memoized()
+            .map_err(|e| {
+                eprintln!("claim_batch: derived strict-resolve exclusion closure failed: {e}");
+                ExitCode::from(2)
+            })?
+            .module_paths
+            .iter()
+            .cloned(),
+    );
+    let derive_ms = derive_started.elapsed().as_millis();
+    eprintln!(
+        "[one-prepared-subject] exclusion closure derived in {}ms ({} substring(s)) — this is a \
+         whole-tree strict-resolve FIXED POINT, not a list read, and is not preparation",
+        derive_ms,
+        excludes.len()
+    );
     let prepare_started = Instant::now();
     let PreparedWholeTreeSubject {
         ctx,
@@ -632,7 +667,8 @@ fn run_against_one_prepared_subject(
         v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
     }
     eprintln!(
-        "[one-prepared-subject] prepare {}ms + evaluate {}ms over {} witness(es)",
+        "[one-prepared-subject] derive {}ms + prepare {}ms + evaluate {}ms over {} witness(es)",
+        derive_ms,
         prepare_ms,
         eval_started.elapsed().as_millis(),
         timings.witnesses

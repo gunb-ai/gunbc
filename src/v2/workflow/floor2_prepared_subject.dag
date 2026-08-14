@@ -1,0 +1,126 @@
+module v2.workflow.floor2_prepared_subject
+
+import v2.std.algebra { fold_list, length, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+// FLOOR2 — the floor as ONE prepared subject and N claims against it, modeled
+// here rather than in the runner. The seed retains exactly two host primitives:
+// build an evaluable context from a source set, and evaluate one qualified name
+// in it. Which witnesses run, what identity each has, what refuses, and what the
+// run's verdict is are facts of this module.
+//
+// WHY THE MODEL EXISTS AT ALL, in one measured sentence: the runner spent 1927.6s
+// preparing 1137 entry-private compiler worlds to enable 148.1s of evaluation
+// (run 31745991795, resolve_ms grouped once per entry against summed
+// eval_wall_ms). One preparation serving every claim is the same work with the
+// entry removed from the key.
+
+type PreparedSubjectSpec {
+  source_roots: List<String>
+  exclusions: List<String>
+}
+
+// The exclusion set is PART OF THE SUBJECT, so it is declared beside the roots
+// and never borrowed from a roster that answers a different question. The probe
+// exclusion roster is pattern rows UNION a derived strict-resolve failure
+// closure, and its pattern half exists to keep witnesses OUT of a probe over
+// production code. Borrowed here it prepared 1611 of 3621 modules and 9057 of
+// 9317 witnesses could not find their own code — a subject that resolves cleanly
+// while being the wrong subject.
+type SubjectExclusionGround
+  = ExcludedCannotStrictResolve
+  | ExcludedDerivedFailureClosure
+  | ExcludedNotPartOfThisSubject
+
+type WitnessSite {
+  entry: String
+  function: String
+}
+
+// WITNESS IDENTITY IS `module.function`, NEVER the bare function name.
+//
+// The host resolves an invocation through a name-keyed map. Per-entry that is
+// safe: one context holds one closure, so one name means one node. Under a
+// SHARED prepared subject it is not — two entries declaring the same test fn name
+// collapse to a single map entry, so one runs twice and the other never runs, AT
+// AN UNCHANGED ROW COUNT. The receipt is then indistinguishable from a healthy
+// run, which is silent wrongness rather than a degradation.
+//
+// Measured on the live roster: 30 names covering 63 rows. Predicted first from
+// the CI receipt at the same 30/63 and reproduced by execution.
+//
+// Qualification is CONSTRUCTION, not validation: the ambiguous call has no
+// representation here, so no consumer can express it. The refusal arms below are
+// only for the residue where identity genuinely cannot be derived.
+type WitnessIdentity {
+  module_path: String
+  function: String
+}
+
+type WitnessIdentityRefusal
+  = ModulePathNotUnique { site: WitnessSite }
+  | QualifiedIdentityClaimedByManySites { qualified: String, sites: List<WitnessSite> }
+
+type ResolvedWitness
+  = WitnessIdentified { identity: WitnessIdentity, site: WitnessSite }
+  | WitnessIdentityRefused { refusal: WitnessIdentityRefusal }
+
+type Floor2Plan {
+  subject: PreparedSubjectSpec
+  claims: List<ResolvedWitness>
+}
+
+// A plan whose claim list carries ANY refusal is not a runnable plan. This is the
+// fail-closed arm: the run does not proceed with the identifiable subset and
+// report on the rest, because a partial roster reported as a roster is the same
+// silent narrowing the identity rule exists to prevent.
+type Floor2PlanAdmission
+  = Floor2PlanRunnable { plan: Floor2Plan }
+  | Floor2PlanRefused { refusals: List<WitnessIdentityRefusal> }
+
+fn witness_identity_qualified_name(identity: WitnessIdentity) -> String {
+  concat(concat(identity.module_path, "."), identity.function)
+}
+
+fn resolved_witness_refusals(
+  acc: List<WitnessIdentityRefusal>,
+  resolved: ResolvedWitness
+) -> List<WitnessIdentityRefusal> {
+  match resolved {
+    WitnessIdentified { identity: _, site: _ } => acc
+    WitnessIdentityRefused { refusal: r } => list_snoc_item(xs: acc, item: r)
+  }
+}
+
+fn floor2_plan_refusals(plan: Floor2Plan) -> List<WitnessIdentityRefusal> {
+  fold_list(xs: plan.claims, empty: [], cons: resolved_witness_refusals)
+}
+
+fn admit_floor2_plan(plan: Floor2Plan) -> Floor2PlanAdmission {
+  let refusals = floor2_plan_refusals(plan: plan)
+  if length(xs: refusals) == 0 {
+    Floor2PlanRunnable { plan: plan }
+  } else {
+    Floor2PlanRefused { refusals: refusals }
+  }
+}
+
+// THE PREPARATION COUNT IS A PROPERTY OF THE PLAN, not an observation of the run.
+// One plan names one subject, so a plan cannot express two preparations and a
+// consumer cannot accidentally perform a second one. "prepared_subject_count == 1"
+// therefore holds by the shape of Floor2Plan; the runner's counter is a
+// regression control over the host, not the guarantee.
+fn floor2_prepared_subject_count(plan: Floor2Plan) -> Int {
+  1
+}
+
+// And per-entry graph construction has no representation here AT ALL: no field,
+// arm, or function in this module names an entry-private resolve, so a consumer
+// of this plan cannot request one. That is the capability half of
+// "per_entry_graph_resolve_count == 0" — a counter alone is satisfied by renaming
+// the constructor, while a missing constructor is not.
+data floor2_zero_entry_resolve_construction_note: String = "Zero per-entry graph resolves holds two ways, and only one of them is a check. CONSTRUCTION: the prepared subject is named once by PreparedSubjectSpec and the claim carries only an identity, so nothing a consumer holds can name a source root, an index, a resolver, or an entry path — an entry-private compiler world is unrepresentable rather than merely counted. COUNTER: the host still reports its resolve count, which catches a regression in the seed below this model. Dissolve-on: the seed's context construction becomes a modeled realization, at which point the counter has no independent subject and deletes."
+
+data floor2_seed_boundary_note: String = "EXACTLY TWO HOST PRIMITIVES REMAIN, and naming them is what keeps this model honest rather than aspirational: build an evaluable context from a declared source set, and evaluate one qualified name in that context. Both are interpreter capability, not floor policy, and neither can be modeled here until self-hosting closes — a .dag function cannot construct the interpreter that runs it. Everything else the runner used to decide — roster grouping, witness identity, refusal arms, admission, and the verdict fold — is a fact of this module, so changing floor policy is a row edit rather than a Rust edit. What this note must NOT be read as claiming: that the runner is deleted. The entry-major path is still the authority on the required floor; this model is consumed by the opt-in path until the agreement receipt is produced."
