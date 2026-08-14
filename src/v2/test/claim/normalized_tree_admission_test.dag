@@ -1,7 +1,8 @@
 module v2.test.claim.normalized_tree_admission
 
 import v2.compiler.body_lowering_fold { body_lower_wrapper_retained_shell }
-import v2.compiler.normalized_tree { admit_normalized_tree }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.compiler.normalized_tree { admit_normalized_roots, admit_normalized_tree }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -13,6 +14,7 @@ import v2.std.diagnostic {
   Rejected,
   Some,
   Unavailable,
+  diagnostics_eq,
   node_locus
 }
 import v2.std.logic { Bool }
@@ -85,5 +87,39 @@ test fn the_production_retention_producer_is_refused_by_the_door() -> Bool {
   match body_lower_wrapper_retained_shell(shell: probe_shell()) {
     Accepted { value: v, diagnostics: d } => is_rejected(o: admit_normalized_tree(root: v, diagnostics: d))
     Rejected { diagnostics: _ } => false
+  }
+}
+
+fn two_probe_roots() -> FreeMonoid<Node> {
+  Cons { head: probe_shell(), tail: Cons { head: probe_shell(), tail: Empty } }
+}
+
+test fn plural_admission_does_not_duplicate_shared_diagnostics_RED() -> Bool {
+  match admit_normalized_roots(
+    roots: two_probe_roots(),
+    diagnostics: Some {
+      diagnostics: NonEmptyDiagnostics { head: unrelated_diagnostic(), tail: [] }
+    }
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_eq(
+        a: d,
+        b: Some {
+          diagnostics: NonEmptyDiagnostics { head: unrelated_diagnostic(), tail: [] }
+        }
+      )
+  }
+}
+
+test fn plural_admission_refuses_a_retained_batch() -> Bool {
+  match admit_normalized_roots(
+    roots: two_probe_roots(),
+    diagnostics: Some {
+      diagnostics: NonEmptyDiagnostics { head: retention_diagnostic(), tail: [] }
+    }
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
   }
 }

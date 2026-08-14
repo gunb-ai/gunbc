@@ -64,19 +64,38 @@ fn normalized_tree_roots_to_nodes(roots: FreeMonoid<NormalizedTree>) -> FreeMono
 // The plural door. Admitting a list of roots is not a new decision -- it is the
 // same one per element, refusing as a whole so a partially admitted list has no
 // representation.
+//
+// The threading is explicit rather than bind_outcome because bind_outcome MERGES
+// the accumulated diagnostics with each step's, and every step here carries the
+// same shared diagnostics -- so threading them would accumulate N+1 copies of one
+// set. The decision is still made per element (it is the same verdict each time,
+// since it reads only the shared diagnostics), the refusal carries its pending
+// set exactly once via admit_normalized_tree, and the accepted diagnostics are
+// attached once at the end.
 fn admit_normalized_roots(
   roots: FreeMonoid<Node>,
   diagnostics: Diagnostics
 ) -> Outcome<FreeMonoid<NormalizedTree>> {
-  fold_list(
+  match fold_list(
     xs: roots,
-    empty: Accepted { value: Empty, diagnostics: diagnostics },
+    empty: Accepted { value: Empty, diagnostics: v2.std.diagnostic.None },
     cons: fn(acc, root) {
-      bind_outcome(o: acc, f: fn(admitted) {
-        bind_outcome(o: admit_normalized_tree(root: root, diagnostics: diagnostics), f: fn(one) {
-          Accepted { value: list_snoc_item(xs: admitted, item: one), diagnostics: v2.std.diagnostic.None }
-        })
-      })
+      match acc {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: admitted, diagnostics: _ } =>
+          match admit_normalized_tree(root: root, diagnostics: diagnostics) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: one, diagnostics: _ } =>
+              Accepted {
+                value: list_snoc_item(xs: admitted, item: one),
+                diagnostics: v2.std.diagnostic.None
+              }
+          }
+      }
     }
-  )
+  ) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: all, diagnostics: _ } =>
+      Accepted { value: all, diagnostics: diagnostics }
+  }
 }
