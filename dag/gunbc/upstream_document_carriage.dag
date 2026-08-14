@@ -1,0 +1,43 @@
+module gunbc.upstream_document_carriage
+
+import std.types { Bool, NonEmptyStr, String }
+import extdeps.publication {
+  AccessGatedNotPubliclyPublished,
+  DocumentPublicationStatus,
+  PubliclyPublishedUnderOpenLicense,
+  PubliclyPublishedWithRestrictiveMarking,
+}
+
+data upstream_document_carriage_law: String = "WHETHER THIS REPOSITORY MAY CARRY AN UPSTREAM DOCUMENT'S FACTS IS OUR POLICY, NOT AN UPSTREAM FACT (operator ruling, 2026-08-14, relayed through the mobo-design lane). Ampere did not decide what a public gunbc repository may contain; the operator did. So the rule lives in the gunbc layer and the STATUS it reads lives on each document's own module — recording that one Ampere specification is publicly published must not require editing a file every other module imports, and a gunbc decision must not sit inside the modules that model other people's authorities. THE AXIS IS PUBLIC AVAILABILITY. A restrictive marking is a recorded attribute that decides nothing: the Ampere Altra platform specification is footed 'Ampere Computing Proprietary' on every page and its facts are carriable because the document is published publicly. The Customer Connect board collateral is barred on the SAME axis rather than a different one — it is access-gated, so it is not public. The prior repository position, that transcription from a proprietary-marked document was an open licensing question, is SUPERSEDED by this ruling."
+
+data carriage_kind_distinction_note: String = "TWO STATUSES MAP TO ONE DISPOSITION TODAY AND ARE STILL NOT THE SAME THING. An OCP contribution carries an explicit open licence its publisher wrote down (OWFa 1.0 plus the contribution agreement); an Ampere specification is reachable by anyone while carrying a marking that grants nothing. Same permission, arrived at differently. They stay distinct status values so that the day the mapping diverges, one row changes here rather than a distinction being reconstructed from prose."
+
+// The disposition is DERIVED from status, never stored beside it. There is no
+// arm by which a marking, a vendor, or an author's judgement reaches this
+// verdict: the only input is whether the document is publicly published.
+type UpstreamFactCarriage
+  = FactsMayBeCarried
+  | FactsBarredDocumentNotPublic { gate: NonEmptyStr }
+
+fn upstream_fact_carriage(status: DocumentPublicationStatus) -> UpstreamFactCarriage {
+  match status {
+    PubliclyPublishedUnderOpenLicense { license } => FactsMayBeCarried
+    PubliclyPublishedWithRestrictiveMarking { marking } => FactsMayBeCarried
+    AccessGatedNotPubliclyPublished { gate } => FactsBarredDocumentNotPublic { gate: gate }
+  }
+}
+
+fn carriage_permits_facts(carriage: UpstreamFactCarriage) -> Bool {
+  match carriage {
+    FactsMayBeCarried => true
+    FactsBarredDocumentNotPublic { gate } => false
+  }
+}
+
+// The barred population, named rather than left implicit, because the honest
+// alternative to a ruling was never patience: the Ampere reference-board design
+// packages are behind Customer Connect, they cannot enter this repository at
+// all, and no ruling about public documents changes that.
+data ampere_customer_connect_collateral_status: DocumentPublicationStatus = AccessGatedNotPubliclyPublished {
+  gate: "Ampere Customer Connect, NDA registration required",
+}
