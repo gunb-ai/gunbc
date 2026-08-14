@@ -119,6 +119,18 @@ The corrected population is drawn at **every declaration that meets a converted 
 
 That is the third time the population was drawn at the wrong boundary, and the pattern across all three is one thing: *provenance is not a substitute for declaration*. The check that actually decides this class is mechanical — for every function, does it pass one of its own `Node`-or-`FreeMonoid<Node>` parameters into a converted API? — and it is decidable from the containment tree without running anything. Run corpus-wide it reports **zero**, and the instrument is validated against the defect it must catch: reintroducing the `frontier_probe` parameter makes it report exactly that one site, and restoring the fix returns it to zero. A "zero found" from an unvalidated instrument would have been worth nothing, which is the same specification-without-execution trap one level up.
 
+**The class has three syntactic shapes, and enumerating them by hand is the only instrument available.** Review 52042 then found a *fifth* instance in a shape neither earlier check covered. Each shape was discovered only after a review or CI surfaced an instance of it, which is itself the finding — a checker blind to wrapper-payload conflation gives no way to derive the shapes, only to enumerate them:
+
+| shape | the defect | found by |
+|---|---|---|
+| **A** | a function passes its own `Node` / `FreeMonoid<Node>` parameter into a converted API | review 52034 (`frontier_probe`) |
+| **B** | a value bound from a `NormalizedTree` producer is passed into a `Node`-declared parameter | review 52042 (`wave1_gate1_b1` helper) |
+| **C** | a function declares `-> Outcome<Node>` while its body returns a `NormalizedTree` producer | shape-B sweep, transitively |
+
+The three compose into a **fixpoint**, which is what finally closed the population: fixing a shape-C return type makes its consumers newly visible to shape B, and fixing those exposes more shape C. Iterated to convergence the sweeps report **A: 0, B: 0**; shape C's remaining 4 hits are confirmed false positives (they feed `resolve`, which *takes* the admitted carrier, and `ResolvedTree = Node` so their declared return is correct). Sweep A is validated against a known instance — reintroducing the `frontier_probe` parameter makes it report exactly that site.
+
+Population closed this way, beyond the caller census above: 1 self-host intermediate, 6 witness/lens helpers on shape B, 6 return declarations on shape C, and 8 consumers surfaced by the fixpoint.
+
 **The residue this cannot reach, stated rather than implied.** The instrument is execution, so a witness that meets a converted value and *does not execute* is broken identically and silently right now, and nothing reports it. That set was measured rather than guessed: intersecting the corpus-wide roster of witnesses with no executing consumer (190 files carrying a bare `: TestClaim =`, from the lane working that population) against the converted-API callers yields **6 files, 4 of them hand-built** — all four accounted for and executed green here. The intersection is small, but it is small *as measured*, and it is the honest bound on what "executed green" covers.
 
 ### 8.2.1 How the class first showed itself

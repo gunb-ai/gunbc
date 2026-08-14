@@ -1,5 +1,6 @@
 module v2.test.long.validate_ingest_staging_stage_bisect
 
+import v2.compiler.normalized_tree { NormalizedTree }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.compile {
   LensGateWitness,  always_required_lenses,
@@ -65,7 +66,7 @@ fn bisect_through_parse() -> Outcome<ParseTree> {
   )
 }
 
-fn bisect_through_normalize() -> Outcome<Node> {
+fn bisect_through_normalize() -> Outcome<NormalizedTree> {
   let lm = dag_language_model()
   bind_outcome(
     o: tokenize(
@@ -189,7 +190,7 @@ fn bisect_parse_module_add_well_formed_after_normalize() -> Bool {
       match parse(tokens: token_stream, grammar: lm.grammar) {
         Accepted { value: parsed, diagnostics: _ } =>
           match normalize(parse_tree: parsed) {
-            Accepted { value: normalized, diagnostics: _ } => well_formed(n: normalized)
+            Accepted { value: normalized, diagnostics: _ } => well_formed(n: normalized.root)
             Rejected { diagnostics: _ } => false
           }
         Rejected { diagnostics: _ } => false

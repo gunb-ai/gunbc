@@ -1,5 +1,7 @@
 module v2.lens.enforcement.cost_coverage
 
+import v2.compiler.normalized_tree { NormalizedTree }
+
 
 type CostCoverageIngestVerdict
   = IngestParsedClean
@@ -237,7 +239,7 @@ fn cost_coverage_file_receipt_from_module(
 fn cost_coverage_ingest_source_text(
   source_text: String,
   file: Symbol
-) -> Outcome<Node> {
+) -> Outcome<NormalizedTree> {
   let lm = dag_language_model()
   match tokenize(text: source_text, file: file, rules: lm.lex) {
     Rejected { diagnostics: d } =>
@@ -280,7 +282,7 @@ fn cost_coverage_file_receipt(rel_path: String) -> CostCoverageFileReceipt {
         reason: d.head.reason
       )
     Accepted { value: module_root, diagnostics: _ } =>
-      cost_coverage_file_receipt_from_module(rel_path: rel_path, module_root: module_root)
+      cost_coverage_file_receipt_from_module(rel_path: rel_path, module_root: module_root.root)
   }
 }
 
