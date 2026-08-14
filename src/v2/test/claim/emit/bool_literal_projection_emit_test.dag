@@ -2,11 +2,19 @@ module v2.test.emit.bool_literal_projection
 
 import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source_string }
 import v2.extdeps.languages.c {
+  CStage0EmitStandardC17,
+  CValueExpressionEmitValidityUnderStandard,
+  KnownInvalidUnderDeclaredStandard,
+  MissingStdboolInclude,
+  c_bool_literal_emit_validity_under_declared_standard,
   c_operator_realizations_catalog_node,
-  c_stage0_emit_note,
   c_target_model,
   c_value_expression_projection
 }
+import v2.extdeps.languages.c_bool_literal_emit {
+  c_bool_literal_stdbool_preamble_emit_disposition
+}
+import std.disposition { RealizationDispatch, Scaffold }
 import v2.extdeps.languages.dag { dag_value_expression_projection }
 import v2.extdeps.languages.rust {
   rust_lex_rule,
@@ -50,9 +58,6 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // construct canonical TargetValueExprBoolLiteral values and prove spelling derives from the
 // output projection only. Source recognition threads source_bool_form from the dag language
 // projection at the emit boundary; std/compilers holds no dag keyword roster.
-//
-// C: c_stage0_emit_note cites ISO/IEC 9899:2018 (C17). Under C17, bare true/false require
-// <stdbool.h>; production TU header derivation is a separate item — not exercised here.
 
 data bool_literal_true_lower_golden: String = "true"
 
@@ -218,13 +223,24 @@ test fn production_typescript_bool_literal_declares_ts_spelling() -> Bool {
   )
 }
 
-test fn production_c_bool_literal_declares_c_spelling() -> Bool {
-  blp_production_emits(
-    target: c_target_model(),
-    projection: c_value_expression_projection(),
-    catalog: c_operator_realizations_catalog_node()
-  )
-    && (c_stage0_emit_note != "")
+test fn production_c_bool_literal_pins_spelling_while_known_invalid_under_c17() -> Bool {
+  match c_bool_literal_emit_validity_under_declared_standard() {
+    KnownInvalidUnderDeclaredStandard {
+      standard_edition: CStage0EmitStandardC17,
+      standard_citation: _,
+      defect: MissingStdboolInclude { emitted_bool_literal_requires: _ }
+    } =>
+      blp_production_emits(
+        target: c_target_model(),
+        projection: c_value_expression_projection(),
+        catalog: c_operator_realizations_catalog_node()
+      )
+        && match c_bool_literal_stdbool_preamble_emit_disposition {
+          Scaffold { dissolves_to: RealizationDispatch, bind: _ } => true
+          _ => false
+        }
+    _ => false
+  }
 }
 
 test fn dag_source_bool_form_recognizes_dag_token() -> Bool {
