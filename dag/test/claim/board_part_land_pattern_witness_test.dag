@@ -14,9 +14,9 @@ import extdeps.land_pattern.types {
   SurfaceMountTerminals,
   ThroughHoleSolderTail,
   VendorPatternEstablished,
+  VendorPatternNotEstablished,
   VendorRecommendedLandPattern,
   land_pattern_disagreements,
-  mounting_pattern_is_established,
   land_pattern_pitch,
   part_is_coherent,
   peripheral_land_count,
@@ -139,21 +139,27 @@ test fn w_a_land_population_that_disagrees_with_the_package_is_refused_alone() -
 test fn w_a_selected_socket_may_still_owe_its_board_pattern() -> Bool {
   ddr4_dimm_socket_solder_tail_288.position_count == 288
     && micrometer_count(m: ddr4_dimm_socket_solder_tail_288.contact_pitch) == 800
-    && !mounting_pattern_is_established(s: ddr4_dimm_socket_solder_tail_288.board_pattern)
+    && match ddr4_dimm_socket_solder_tail_288.board_pattern {
+      VendorPatternNotEstablished { what_is_missing: _ } => true
+      VendorPatternEstablished { pattern: _ } => false
+    }
     && match ddr4_dimm_socket_solder_tail_288.attachment {
       ThroughHoleSolderTail => true
       SurfaceMountTerminals => false
     }
 }
 
-// THE POSITIVE CONTROL FOR THAT PREDICATE. Without it, mounting_pattern_is_established could be a
-// function that always answers false and the claim above would still be green.
+// THE POSITIVE CONTROL FOR THAT DISCRIMINATION. Without it, every arm above could be reading a
+// standing that is never established and the claims would still be green.
 data established_standing: MountingPatternStanding = VendorPatternEstablished {
   pattern: cdce913_pw0014a_land_pattern,
 }
 
 test fn w_an_established_standing_reports_established() -> Bool {
-  mounting_pattern_is_established(s: established_standing)
+  match established_standing {
+    VendorPatternEstablished { pattern: _ } => true
+    VendorPatternNotEstablished { what_is_missing: _ } => false
+  }
 }
 
 // THE M.2 CONNECTOR IS THE THIRD SHAPE ON THIS BOARD: a cited family whose pattern AND whose
@@ -163,7 +169,10 @@ test fn w_an_established_standing_reports_established() -> Bool {
 test fn w_the_m2_family_is_cited_with_its_pattern_outstanding() -> Bool {
   m2_ngff_minicard_67_position.position_count == 67
     && micrometer_count(m: m2_ngff_minicard_67_position.contact_pitch) == 500
-    && !mounting_pattern_is_established(s: m2_ngff_minicard_67_position.board_pattern)
+    && match m2_ngff_minicard_67_position.board_pattern {
+      VendorPatternNotEstablished { what_is_missing: _ } => true
+      VendorPatternEstablished { pattern: _ } => false
+    }
     && match m2_ngff_minicard_67_position.attachment {
       SurfaceMountTerminals => true
       ThroughHoleSolderTail => false

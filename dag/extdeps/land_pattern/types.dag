@@ -117,13 +117,6 @@ type MountingPatternStanding
   = VendorPatternEstablished { pattern: VendorRecommendedLandPattern }
   | VendorPatternNotEstablished { what_is_missing: NonEmptyStr }
 
-fn mounting_pattern_is_established(s: MountingPatternStanding) -> Bool {
-  match s {
-    VendorPatternEstablished { pattern: _ } => true
-    VendorPatternNotEstablished { what_is_missing: _ } => false
-  }
-}
-
 // THE PART IS THE THING THAT HAS COPPER. A ROLE DOES NOT: a role is a requirement a board places
 // on whatever fills it, and requirements have no pads. So the land pattern hangs off the ordering
 // part number, and a board that swaps one clock generator for another swaps its pattern with it
@@ -152,7 +145,7 @@ type MountablePart {
 type LandPatternDisagreement
   = PatternDesignatorDiffersFromPackage { pattern_designator: NonEmptyStr, package_designator: NonEmptyStr }
   | LandCountDiffersFromTerminalCount { lands: Nat, terminals: Nat }
-  | LandPitchDiffersFromTerminalPitch { land_pitch: Nat, terminal_pitch: Nat }
+  | LandPitchDiffersFromTerminalPitch { land_pitch: Micrometer, terminal_pitch: Micrometer }
 
 fn land_pattern_disagreements(p: MountablePart) -> List<LandPatternDisagreement> {
   let designator_cause = if (p.land_pattern.package_designator as String) == (p.outline.designator as String) {
@@ -175,8 +168,8 @@ fn land_pattern_disagreements(p: MountablePart) -> List<LandPatternDisagreement>
     []
   } else {
     [LandPitchDiffersFromTerminalPitch {
-      land_pitch: micrometer_count(m: land_pattern_pitch(g: p.land_pattern.geometry)),
-      terminal_pitch: micrometer_count(m: p.outline.terminal_pitch),
+      land_pitch: land_pattern_pitch(g: p.land_pattern.geometry),
+      terminal_pitch: p.outline.terminal_pitch,
     }]
   }
   concat(concat(designator_cause, count_cause), pitch_cause)

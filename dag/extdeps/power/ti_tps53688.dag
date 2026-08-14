@@ -23,7 +23,16 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data ti_tps53688_note: String = "THE PACKAGE IDENTITY WAS CONFIRMED FROM A SECOND SOURCE BEFORE IT WAS RECORDED. The fetched document yielded its mechanical pages cleanly but not its title page, so binding the drawing to this device on the strength of the URL alone would have been a positional citation of the worst kind — a fact established by where a file was found. The vendor's own part-details listing names TPS53688RSBR as a 40-pin WQFN (RSB), which is the package the drawing describes, so two independent readings agree on the join. What this row carries is mechanical only: the multiphase controller's electrical facts, its phase count and its SVID and PMBus interfaces are not modelled here and are not implied by its presence."
+// THE SECOND SOURCE THAT ESTABLISHES THE JOIN, cited rather than described. Read 2026-08-14: the
+// vendor's orderable part-details listing for TPS53688RSBR gives its package as "WQFN (RSB) 40".
+data tps53688rsbr_part_details_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.ti.com/product/TPS53688/part-details/TPS53688RSBR"
+  }
+}
+
+data ti_tps53688_note: String = "THE PACKAGE IDENTITY IS ESTABLISHED BY TWO CITED READINGS, NOT BY WHERE THE FILE WAS FOUND. The fetched datasheet yielded its mechanical pages cleanly but not its title page, so binding drawing RSB0040A to this device on the strength of the URL alone would have been a fact established by a file's location. The vendor's orderable part-details listing gives TPS53688RSBR as WQFN (RSB) 40, which is the package that drawing describes, and it is carried as a second authority in this module's scope rather than recounted in prose — an earlier revision of this note asserted the confirmation while the scope row listed no second citation, which left the load-bearing part-number-to-drawing join prose-backed. What this row carries is mechanical only: the multiphase controller's electrical facts, its phase count and its SVID and PMBus interfaces are not modelled here and are not implied by its presence."
 
 data tps53688_rsb0040a_drawing: PackageDrawingRef = PackageDrawingRef {
   drawing_number: "4215000/A",
@@ -72,5 +81,5 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: []
+  further_citations: [tps53688rsbr_part_details_authority]
 }
