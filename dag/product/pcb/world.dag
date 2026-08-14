@@ -1,0 +1,266 @@
+module product.pcb.world
+
+import std.types { String, NonEmptyStr, List }
+import std.integer { Int }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.coordinate_frame { CoordinateFrameIdentity }
+import std.affine_space { Point2 }
+import std.orthogonal_geometry { AxisAlignedRectangle2, OrthogonalRefusal }
+import product.pcb.physical { ComponentPlacement }
+
+data world_note: String = "ONE PCB WORLD, AND EMPTY IS NOT A DEFAULT. Established body envelopes occupy components. Every other planned identity is an obligation that carries a typed cause — missing document, commercial access, legal carriage, unselected part, or a drawing a human must read — rather than a role string those distinctions collapse into. A figure already cited is not a missing document: collapsing that into MissingDocument sends someone to search a bibliography that already returned a location. Body-envelope geometry is a standing, not a Bool over the envelopes that happen to exist: the complete arm is reachable only when every required part was in the check, and the subset arm carries the count of parts the geometry never saw, so a consumer cannot read a clean answer without also receiving what it did not cover. Design is an IDENTITY (a DeclarationRef naming the declaration the plan was built from), not a revision: it distinguishes two designs and does not change when one design's contents are edited in place. An established envelope's source is the same kind of identity: which declaration this board read, not a sentence about a datasheet section, and not a verified citation — nothing here checks that those refs resolve. Capabilities that have no row type yet (stackup, footprints, pads, routes, nets, manufacturing artifacts) are not empty lists: an empty list cannot tell a board that needs none from a board whose routing has not been modeled from a board whose routing completed at zero. Each of those fields is a capability standing, pending with a nonempty obligation or refused with a cause. There is no Established arm here because there is no consumer and no row type; each carrier lands with its first consumer. A PARTIAL world is a preview whose outline constructed; it is not an admitted board."
+
+type PcbBoard {
+  frame: CoordinateFrameIdentity
+  outline: AxisAlignedRectangle2
+}
+
+type PcbObligationCause
+  = MissingDocument { what_is_missing: NonEmptyStr }
+  | CommercialAccess { subject: NonEmptyStr }
+  | LegalCarriage { reason: NonEmptyStr }
+  | UnselectedPart { because: NonEmptyStr }
+  | DrawingMustBeRead { figure: NonEmptyStr, what_is_drawn: NonEmptyStr }
+
+type PcbComponentObligation {
+  identity: NonEmptyStr
+  origin: Point2
+  cause: PcbObligationCause
+}
+
+type PcbAttachmentObligation {
+  layer: NonEmptyStr
+  cause: PcbObligationCause
+}
+
+type PcbCapabilityObligation {
+  what_is_owed: NonEmptyStr
+}
+
+type NonemptyCapabilityObligations {
+  first: PcbCapabilityObligation
+  rest: List<PcbCapabilityObligation>
+}
+
+type PcbCapabilityStanding
+  = CapabilityPending { owed: NonemptyCapabilityObligations }
+  | CapabilityRefused { cause: NonEmptyStr }
+
+type PcbBodyLayoutStanding
+  = PcbBodyLayoutAdmittedOverEveryRequiredPart
+  | PcbBodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: Int }
+  | PcbBodyLayoutRefused
+
+type EstablishedEnvelopeRead {
+  identity: NonEmptyStr
+  source: DeclarationRef
+}
+
+type PcbPhysicalWorld {
+  board: PcbBoard
+  components: List<ComponentPlacement>
+  envelope_reads: List<EstablishedEnvelopeRead>
+  obligations: List<PcbComponentObligation>
+  attachment_obligations: List<PcbAttachmentObligation>
+  body_layout: PcbBodyLayoutStanding
+  stackup: PcbCapabilityStanding
+  footprints: PcbCapabilityStanding
+  pads: PcbCapabilityStanding
+  routes: PcbCapabilityStanding
+}
+
+type PcbElectricalWorld {
+  nets: PcbCapabilityStanding
+}
+
+type PcbManufacturingWorld {
+  artifacts: PcbCapabilityStanding
+}
+
+type PcbWorld sole_constructor {
+  design: DeclarationRef
+  electrical: PcbElectricalWorld
+  physical: PcbPhysicalWorld
+  manufacturing: PcbManufacturingWorld
+}
+
+type PcbWorldRefusal
+  = PcbBoardOutlineRefused { cause: OrthogonalRefusal }
+  | PcbDesignPlanUnavailable { only_available: DeclarationRef }
+  | PcbPlanWasBuiltFromADifferentDesign { plan_design: DeclarationRef, admitted_against: DeclarationRef }
+  | PcbCapabilityStillPending { capability: NonEmptyStr }
+  | PcbPlacementNotAdmitted
+  | PcbOutlineCopiedFromCitedForeignBoard
+
+type PcbWorldConstruction<T>
+  = PartialPcbWorldReady { value: T }
+  | AdmittedPcbWorld { value: T }
+  | PcbWorldRefused { cause: PcbWorldRefusal }
+
+fn pcb_world_design(w: PcbWorld) -> DeclarationRef { w.design }
+fn pcb_worlds_share_design(a: PcbWorld, b: PcbWorld) -> Bool {
+  declaration_ref_eq(a: a.design, b: b.design)
+}
+fn pcb_world_physical(w: PcbWorld) -> PcbPhysicalWorld { w.physical }
+fn pcb_envelope_reads(p: PcbPhysicalWorld) -> List<EstablishedEnvelopeRead> { p.envelope_reads }
+fn pcb_body_layout(p: PcbPhysicalWorld) -> PcbBodyLayoutStanding { p.body_layout }
+fn pcb_world_electrical(w: PcbWorld) -> PcbElectricalWorld { w.electrical }
+fn pcb_world_manufacturing(w: PcbWorld) -> PcbManufacturingWorld { w.manufacturing }
+
+fn capability_pending(what_is_owed: NonEmptyStr) -> PcbCapabilityStanding {
+  CapabilityPending {
+    owed: NonemptyCapabilityObligations {
+      first: PcbCapabilityObligation { what_is_owed: what_is_owed },
+      rest: [],
+    }
+  }
+}
+
+fn pending_capability(s: PcbCapabilityStanding, name: NonEmptyStr) -> NonEmptyStr? {
+  match s {
+    CapabilityPending { owed: _ } => Present { value: name }
+    CapabilityRefused { cause: _ } => none
+  }
+}
+
+fn first_present_name(a: NonEmptyStr?, b: NonEmptyStr?) -> NonEmptyStr? {
+  match a {
+    Present { value: v } => Present { value: v }
+    Absent => b
+  }
+}
+
+fn pcb_component_count(p: PcbPhysicalWorld) -> Int {
+  fold(p.components, init: 0, f: fn(acc, _c) { acc + 1 })
+}
+
+fn pcb_obligation_count(p: PcbPhysicalWorld) -> Int {
+  fold(p.obligations, init: 0, f: fn(acc, _o) { acc + 1 })
+}
+
+fn pcb_attachment_obligation_count(p: PcbPhysicalWorld) -> Int {
+  fold(p.attachment_obligations, init: 0, f: fn(acc, _o) { acc + 1 })
+}
+
+type PcbCauseCounts {
+  missing_document: Int
+  commercial_access: Int
+  legal_carriage: Int
+  unselected_part: Int
+  drawing_must_be_read: Int
+}
+
+fn pcb_cause_counts(p: PcbPhysicalWorld) -> PcbCauseCounts {
+  fold(p.obligations, init: PcbCauseCounts {
+    missing_document: 0,
+    commercial_access: 0,
+    legal_carriage: 0,
+    unselected_part: 0,
+    drawing_must_be_read: 0,
+  }, f: fn(acc, o) {
+    match o.cause {
+      MissingDocument { what_is_missing: _ } => PcbCauseCounts {
+        missing_document: acc.missing_document + 1,
+        commercial_access: acc.commercial_access,
+        legal_carriage: acc.legal_carriage,
+        unselected_part: acc.unselected_part,
+        drawing_must_be_read: acc.drawing_must_be_read,
+      }
+      CommercialAccess { subject: _ } => PcbCauseCounts {
+        missing_document: acc.missing_document,
+        commercial_access: acc.commercial_access + 1,
+        legal_carriage: acc.legal_carriage,
+        unselected_part: acc.unselected_part,
+        drawing_must_be_read: acc.drawing_must_be_read,
+      }
+      LegalCarriage { reason: _ } => PcbCauseCounts {
+        missing_document: acc.missing_document,
+        commercial_access: acc.commercial_access,
+        legal_carriage: acc.legal_carriage + 1,
+        unselected_part: acc.unselected_part,
+        drawing_must_be_read: acc.drawing_must_be_read,
+      }
+      UnselectedPart { because: _ } => PcbCauseCounts {
+        missing_document: acc.missing_document,
+        commercial_access: acc.commercial_access,
+        legal_carriage: acc.legal_carriage,
+        unselected_part: acc.unselected_part + 1,
+        drawing_must_be_read: acc.drawing_must_be_read,
+      }
+      DrawingMustBeRead { figure: _, what_is_drawn: _ } => PcbCauseCounts {
+        missing_document: acc.missing_document,
+        commercial_access: acc.commercial_access,
+        legal_carriage: acc.legal_carriage,
+        unselected_part: acc.unselected_part,
+        drawing_must_be_read: acc.drawing_must_be_read + 1,
+      }
+    }
+  })
+}
+
+fn obligation_cause_tag(c: PcbObligationCause) -> NonEmptyStr {
+  match c {
+    MissingDocument { what_is_missing: _ } => "missing-document"
+    CommercialAccess { subject: _ } => "commercial-access"
+    LegalCarriage { reason: _ } => "legal-carriage"
+    UnselectedPart { because: _ } => "unselected-part"
+    DrawingMustBeRead { figure: _, what_is_drawn: _ } => "drawing-must-be-read"
+  }
+}
+
+fn pcb_missing_document_count(p: PcbPhysicalWorld) -> Int {
+  pcb_cause_counts(p: p).missing_document
+}
+
+fn pcb_commercial_access_count(p: PcbPhysicalWorld) -> Int {
+  pcb_cause_counts(p: p).commercial_access
+}
+
+fn pcb_legal_carriage_count(p: PcbPhysicalWorld) -> Int {
+  pcb_cause_counts(p: p).legal_carriage
+}
+
+fn pcb_unselected_part_count(p: PcbPhysicalWorld) -> Int {
+  pcb_cause_counts(p: p).unselected_part
+}
+
+fn pcb_drawing_must_be_read_count(p: PcbPhysicalWorld) -> Int {
+  pcb_cause_counts(p: p).drawing_must_be_read
+}
+
+fn pcb_population_count(p: PcbPhysicalWorld) -> Int {
+  pcb_component_count(p: p) + pcb_obligation_count(p: p)
+}
+
+fn first_pending_capability(w: PcbWorld) -> NonEmptyStr? {
+  first_present_name(
+    a: pending_capability(s: w.physical.stackup, name: "stackup"),
+    b: first_present_name(
+      a: pending_capability(s: w.physical.footprints, name: "footprints"),
+      b: first_present_name(
+        a: pending_capability(s: w.physical.pads, name: "pads"),
+        b: first_present_name(
+          a: pending_capability(s: w.physical.routes, name: "routes"),
+          b: first_present_name(
+            a: pending_capability(s: w.electrical.nets, name: "nets"),
+            b: pending_capability(s: w.manufacturing.artifacts, name: "artifacts"),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+fn pcb_world(
+  design: DeclarationRef,
+  electrical: PcbElectricalWorld,
+  physical: PcbPhysicalWorld,
+  manufacturing: PcbManufacturingWorld,
+) -> PcbWorld {
+  PcbWorld {
+    design: design,
+    electrical: electrical,
+    physical: physical,
+    manufacturing: manufacturing,
+  }
+}
