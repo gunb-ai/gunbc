@@ -315,15 +315,18 @@ fn interpretation_structure_witness_slots_digest(w: InterpretationStructureWitne
   combine_hash(
     a: combine_hash(
       a: combine_hash(
-        a: test_claim_symbol_digest(sym: w.allocate_literal),
-        b: test_claim_symbol_digest(sym: w.call_primitive)
+        a: combine_hash(
+          a: test_claim_symbol_digest(sym: w.allocate_literal),
+          b: test_claim_symbol_digest(sym: w.call_primitive)
+        ),
+        b: test_claim_symbol_digest(sym: w.choose_branch)
       ),
-      b: test_claim_symbol_digest(sym: w.choose_branch)
+      b: combine_hash(
+        a: test_claim_symbol_digest(sym: w.step_loop),
+        b: test_claim_symbol_digest(sym: w.bind_value)
+      )
     ),
-    b: combine_hash(
-      a: test_claim_symbol_digest(sym: w.step_loop),
-      b: test_claim_symbol_digest(sym: w.bind_value)
-    )
+    b: test_claim_symbol_digest(sym: w.choose_arm)
   )
 }
 
@@ -379,6 +382,18 @@ fn interpretation_bind_interpreter_executed_digest(b: BindInterpreter) -> Hash {
   }
 }
 
+// match_pattern's InterpretationAlgebra sibling is the match slot: choose_arm.
+// The registered v4 evaluator wires choose_arm to runtime_reject_match_arm (Match
+// eval is unimplemented, not absent), so that is the recognized identity here,
+// same as every other slot recognizing its registered production function.
+fn interpretation_match_interpreter_executed_digest(m: MatchInterpreter) -> Hash {
+  if m.choose_arm == runtime_reject_match_arm {
+    test_claim_symbol_digest(sym: ^runtime_reject_match_arm)
+  } else {
+    test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_fn_slot_unregistered_match_tag)
+  }
+}
+
 fn interpretation_value_interpreter_slot_coherent(v: ValueInterpreter, witness_sym: Symbol) -> Bool {
   if v.allocate_literal == v2_eval_allocate_literal {
     test_claim_symbol_digest(sym: ^v2_eval_allocate_literal_sym) == test_claim_symbol_digest(sym: witness_sym)
@@ -421,6 +436,14 @@ fn interpretation_bind_interpreter_slot_coherent(b: BindInterpreter, witness_sym
   }
 }
 
+fn interpretation_match_interpreter_slot_coherent(m: MatchInterpreter, witness_sym: Symbol) -> Bool {
+  if m.choose_arm == runtime_reject_match_arm {
+    test_claim_symbol_digest(sym: ^runtime_reject_match_arm) == test_claim_symbol_digest(sym: witness_sym)
+  } else {
+    false
+  }
+}
+
 fn interpretation_structure_witness_coherent(
   interpretation: InterpretationAlgebra,
   structure_witness: InterpretationStructureWitness
@@ -430,21 +453,25 @@ fn interpretation_structure_witness_coherent(
     && interpretation_branch_interpreter_slot_coherent(b: interpretation.branch, witness_sym: structure_witness.choose_branch)
     && interpretation_loop_interpreter_slot_coherent(l: interpretation.loop, witness_sym: structure_witness.step_loop)
     && interpretation_bind_interpreter_slot_coherent(b: interpretation.bind, witness_sym: structure_witness.bind_value)
+    && interpretation_match_interpreter_slot_coherent(m: interpretation.match, witness_sym: structure_witness.choose_arm)
 }
 
 fn interpretation_algebra_executed_slots_digest(interpretation: InterpretationAlgebra) -> Hash {
   combine_hash(
     a: combine_hash(
       a: combine_hash(
-        a: interpretation_value_interpreter_executed_digest(v: interpretation.value),
-        b: interpretation_transform_interpreter_executed_digest(t: interpretation.transform)
+        a: combine_hash(
+          a: interpretation_value_interpreter_executed_digest(v: interpretation.value),
+          b: interpretation_transform_interpreter_executed_digest(t: interpretation.transform)
+        ),
+        b: interpretation_branch_interpreter_executed_digest(b: interpretation.branch)
       ),
-      b: interpretation_branch_interpreter_executed_digest(b: interpretation.branch)
+      b: combine_hash(
+        a: interpretation_loop_interpreter_executed_digest(l: interpretation.loop),
+        b: interpretation_bind_interpreter_executed_digest(b: interpretation.bind)
+      )
     ),
-    b: combine_hash(
-      a: interpretation_loop_interpreter_executed_digest(l: interpretation.loop),
-      b: interpretation_bind_interpreter_executed_digest(b: interpretation.bind)
-    )
+    b: interpretation_match_interpreter_executed_digest(m: interpretation.match)
   )
 }
 
