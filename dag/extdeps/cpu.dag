@@ -1,4 +1,5 @@
 module extdeps.cpu
+import extdeps.uri { Https, Uri }
 
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {

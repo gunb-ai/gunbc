@@ -1,4 +1,6 @@
 module extdeps.cpu.amd
+import extdeps.uri { Https, Uri }
+import extdeps.vendor.amd { amd }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

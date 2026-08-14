@@ -1,6 +1,7 @@
 module v2.test.synthesis_gate.optimality_gap_completeness
 
 import v2.std.algebra { Empty }
+import v2.test.lens_synthesis.synthesis_gap_polynomial { synthesis_gap_poly_input }
 
 
 fn synthesis_row_acquired(row: SynthesisSubjectRow) -> Bool {
