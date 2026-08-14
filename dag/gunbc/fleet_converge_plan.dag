@@ -362,6 +362,31 @@ fn timer_apply_lines(plan: MembershipPlan<TimerRetirementMember>) -> List<String
 
 data fleet_converge_generation_store_path: String = "/var/lib/gunbc/fleet-converge/plan_generation"
 
+fn fleet_converge_parse_nonneg_generation_text(content: String) -> Int? {
+  let trimmed = trim(s: content)
+  if trimmed == "" {
+    none
+  } else {
+    match parse_int(s: trimmed) {
+      Present { value: n } =>
+        if n >= 0 {
+          Present { value: n }
+        } else {
+          none
+        }
+      Absent => none
+    }
+  }
+}
+
+fn fleet_converge_generation_from_store_content(store_present: Bool, content: String) -> Int? {
+  if !store_present {
+    Present { value: 0 }
+  } else {
+    fleet_converge_parse_nonneg_generation_text(content: content)
+  }
+}
+
 data fleet_converge_generation_lock_path: String = "/var/lib/gunbc/fleet-converge/plan_generation.lock"
 
 data fleet_converge_locked_apply_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: fleet_converge_locked_apply_script — flock-guarded generation compare, apply.sh, and store commit in one shell transport; DISSOLVES WHEN bash-emit or host_effect_apply provides typed lease acquisition without medium-as-string concat")

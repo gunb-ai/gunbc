@@ -30,6 +30,7 @@ import gunbc.ci_spec {
   gunbc_ci_fleet_converge_plan_invoke,
   gunbc_ci_fleet_converge_apply_invoke,
   gunbc_fleet_converge_plan_artifact_name,
+  gunbc_ci_fleet_converge_plan_artifact_hash_env_name,
 }
 import gunbc.fleet_converge_plan { fleet_converge_plan_artifact_dir }
 import extdeps.languages.yaml.emit { serialize_yaml }
@@ -134,7 +135,14 @@ fn fleet_converge_apply_step() -> Step {
     id: Present { value: "apply" },
     run: gunbc_ci_fleet_converge_apply_invoke(),
     shell: none,
-    env: none,
+    env: Present {
+      value: [
+        kv(
+          key: gunbc_ci_fleet_converge_plan_artifact_hash_env_name,
+          value: yaml_string(s: "${{ github.event.inputs.plan_artifact_hash }}"),
+        ),
+      ]
+    },
     working_directory: none,
     if_condition: Present { value: fleet_converge_apply_step_if },
     continue_on_error: none,

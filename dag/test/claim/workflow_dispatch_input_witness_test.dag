@@ -4,6 +4,7 @@ import extdeps.github.actions {
   WorkflowDispatch, DispatchInput, InputString, InputChoice
 }
 import gunbc.fleet_converge_workflow { fleet_converge_workflow, expected_fleet_converge_yml }
+import gunbc.ci_spec { gunbc_ci_fleet_converge_apply_invoke }
 import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
 import extdeps.languages.yaml.types {
   YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping
@@ -141,4 +142,16 @@ test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
 
 test fn fleet_converge_workflow_has_no_heal_revalidation_paste_through() -> Bool {
   !string_contains(s: expected_fleet_converge_yml(), pattern: "expected_healed_sha")
+}
+
+test fn fleet_converge_apply_step_binds_plan_hash_to_env_not_shell_literal() -> Bool {
+  string_contains(
+    s: expected_fleet_converge_yml(),
+    pattern: "EXPECTED_HASH: $\{\{ github.event.inputs.plan_artifact_hash \}\}",
+  )
+    && !string_contains(
+      s: expected_fleet_converge_yml(),
+      pattern: "EXPECTED=\"$\{\{ github.event.inputs.plan_artifact_hash \}\}\"",
+    )
+    && string_contains(s: gunbc_ci_fleet_converge_apply_invoke(), pattern: "$\{EXPECTED_HASH:-\}")
 }

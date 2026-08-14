@@ -705,6 +705,8 @@ fn gunbc_ci_fleet_converge_plan_invoke() -> String {
   )
 }
 
+data gunbc_ci_fleet_converge_plan_artifact_hash_env_name: String = "EXPECTED_HASH"
+
 data gunbc_ci_fleet_converge_apply_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -720,10 +722,9 @@ fn gunbc_ci_fleet_converge_apply_invoke() -> String {
   join([
     "# ", dissolution_description(condition: gunbc_ci_fleet_converge_apply_shell_emit_dissolution_trigger), "\n",
     "set -euo pipefail\n",
-    "EXPECTED=\"${{ github.event.inputs.plan_artifact_hash }}\"\n",
     "ACTUAL=\"$(cat /tmp/fleet-converge-plan/plan_content.hex)\"\n",
-    "if [ -z \"$EXPECTED\" ] || [ \"$EXPECTED\" != \"$ACTUAL\" ]; then\n",
-    "  echo \"::error::PlanArtifactHashMismatch expected=$EXPECTED actual=$ACTUAL\" >&2\n",
+    "if [ -z \"$\{EXPECTED_HASH:-\}\" ] || [ \"$EXPECTED_HASH\" != \"$ACTUAL\" ]; then\n",
+    "  echo \"::error::PlanArtifactHashMismatch expected=$EXPECTED_HASH actual=$ACTUAL\" >&2\n",
     "  exit 1\n",
     "fi\n",
     concat("ROOT=", ci_repo_root_shell(), "\n"),

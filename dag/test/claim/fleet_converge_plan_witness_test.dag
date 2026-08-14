@@ -18,6 +18,8 @@ import gunbc.fleet_converge_plan {
   timer_retirement_plan,
   fleet_converge_locked_apply_script,
   fleet_converge_plan_apply_shell_path,
+  fleet_converge_parse_nonneg_generation_text,
+  fleet_converge_generation_from_store_content,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -218,6 +220,36 @@ test fn member_set_fingerprint_mismatch_refuses_identity() -> Bool {
     }
     Absent => false
   }
+}
+
+test fn parse_nonneg_generation_refuses_corrupt_and_negative() -> Bool {
+  match fleet_converge_parse_nonneg_generation_text(content: "42") {
+    Present { value: n } => n == 42
+    Absent => false
+  }
+    && match fleet_converge_parse_nonneg_generation_text(content: "") {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match fleet_converge_parse_nonneg_generation_text(content: "-1") {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match fleet_converge_parse_nonneg_generation_text(content: "abc") {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
+test fn generation_from_store_content_missing_is_zero_corrupt_refuses() -> Bool {
+  match fleet_converge_generation_from_store_content(store_present: false, content: "") {
+    Present { value: 0 } => true
+    _ => false
+  }
+    && match fleet_converge_generation_from_store_content(store_present: true, content: "garbage") {
+      Absent => true
+      Present { value: _ } => false
+    }
 }
 
 test fn locked_apply_script_serializes_generation_under_flock() -> Bool {

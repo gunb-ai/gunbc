@@ -207,14 +207,15 @@ jobs:
         run: |
           # 🟡 dissolve-on: gunbc_ci_fleet_converge_apply_invoke — foreign-executor shell verifying plan hash then invoking fleet_converge_apply_wet; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run
           set -euo pipefail
-          EXPECTED="${{ github.event.inputs.plan_artifact_hash }}"
           ACTUAL="$(cat /tmp/fleet-converge-plan/plan_content.hex)"
-          if [ -z "$EXPECTED" ] || [ "$EXPECTED" != "$ACTUAL" ]; then
-            echo "::error::PlanArtifactHashMismatch expected=$EXPECTED actual=$ACTUAL" >&2
+          if [ -z "${EXPECTED_HASH:-}" ] || [ "$EXPECTED_HASH" != "$ACTUAL" ]; then
+            echo "::error::PlanArtifactHashMismatch expected=$EXPECTED_HASH actual=$ACTUAL" >&2
             exit 1
           fi
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet_converge_plan_cli.dag --function fleet_converge_apply_wet
+        env:
+          EXPECTED_HASH: ${{ github.event.inputs.plan_artifact_hash }}
         if: github.event.inputs.mode == 'apply'
         timeout-minutes: 5
       - name: Kill the in-run ssh-agent (key never outlives the job)
