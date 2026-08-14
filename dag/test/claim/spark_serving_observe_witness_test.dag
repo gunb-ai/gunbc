@@ -15,20 +15,31 @@ import gunbc.spark_serving_loaded_release {
   derive_spark_serving_observation,
   derive_loaded_spark_serving_release_identity,
 }
+import gunbc.spark_serving_readback_parse {
+  SparkServingReadbackAbsent,
+  SparkServingReadbackPresent,
+  SparkServingReadbackRefused,
+  spark_serving_parse_version_json,
+  spark_serving_parse_tags_json,
+}
 import gunbc.spark_serving_observe { spark_serving_unit_outcome_from_probe_results }
 
-data witness_model_digest: String = "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456"
+data witness_model_digest: String = "sha256:49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05"
 
-data witness_pinned_runtime_version: String = "v0.11.0"
+data witness_pinned_runtime_version_wire: String = "0.11.0"
+
+data witness_version_json_positive: String = "{\"version\":\"0.11.0\"}"
+
+data witness_tags_json_positive: String = "{\"models\":[{\"name\":\"gpt-oss:20b\",\"model\":\"gpt-oss:20b\",\"digest\":\"sha256:49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05\"}]}"
 
 fn readback_absent() -> SparkServingReadback {
   SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitAbsent,
-    runtime_version: none,
-    model_repository: none,
-    model_revision_digest: none,
-    bind_address: none,
+    runtime_version: SparkServingReadbackAbsent,
+    model_repository: SparkServingReadbackAbsent,
+    model_revision_digest: SparkServingReadbackAbsent,
+    bind_address: SparkServingReadbackAbsent,
   }
 }
 
@@ -38,10 +49,10 @@ fn readback_unreachable() -> SparkServingReadback {
     unit_outcome: SparkServingUnitObservationRefused {
       cause: "unit LoadState probe leg did not run" as NonEmptyStr,
     },
-    runtime_version: none,
-    model_repository: none,
-    model_revision_digest: none,
-    bind_address: none,
+    runtime_version: SparkServingReadbackAbsent,
+    model_repository: SparkServingReadbackAbsent,
+    model_revision_digest: SparkServingReadbackAbsent,
+    bind_address: SparkServingReadbackAbsent,
   }
 }
 
@@ -49,10 +60,10 @@ fn readback_active_incomplete() -> SparkServingReadback {
   SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
-    runtime_version: Present { value: witness_pinned_runtime_version },
-    model_repository: none,
-    model_revision_digest: none,
-    bind_address: none,
+    runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
+    model_repository: SparkServingReadbackAbsent,
+    model_revision_digest: SparkServingReadbackAbsent,
+    bind_address: SparkServingReadbackAbsent,
   }
 }
 
@@ -60,10 +71,10 @@ fn readback_active_complete() -> SparkServingReadback {
   SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
-    runtime_version: Present { value: witness_pinned_runtime_version },
-    model_repository: Present { value: "gpt-oss" },
-    model_revision_digest: Present { value: witness_model_digest },
-    bind_address: none,
+    runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
+    model_repository: SparkServingReadbackPresent { value: "gpt-oss" },
+    model_revision_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    bind_address: SparkServingReadbackAbsent,
   }
 }
 
@@ -124,6 +135,72 @@ test fn load_state_probe_leg_absent_refuses_unit_outcome() -> Bool {
   }
 }
 
+data version_parse_positive_control_note: String = "POSITIVE CONTROL: a real ollama /api/version payload must parse to the reported version string, never the desired pin."
+
+test fn version_json_positive_parses_reported_version() -> Bool {
+  match spark_serving_parse_version_json(stdout: witness_version_json_positive) {
+    SparkServingReadbackPresent { value: v } => v == witness_pinned_runtime_version_wire
+    SparkServingReadbackAbsent => false
+    SparkServingReadbackRefused { cause: _ } => false
+  }
+}
+
+data version_parse_malformed_red_control_note: String = "RED CONTROL: malformed /api/version output must refuse rather than return any version."
+
+test fn malformed_version_json_refuses_parse() -> Bool {
+  match spark_serving_parse_version_json(stdout: "{\"version\":") {
+    SparkServingReadbackRefused { cause: _ } => true
+    SparkServingReadbackPresent { value: _ } => false
+    SparkServingReadbackAbsent => false
+  }
+}
+
+data version_drift_red_control_note: String = "RED CONTROL: a different reported runtime version must not converge to the pinned release identity."
+
+test fn different_runtime_version_refuses_loaded_identity() -> Bool {
+  match derive_loaded_spark_serving_release_identity(readback: SparkServingReadback {
+    host: "srv6",
+    unit_outcome: SparkServingUnitActive,
+    runtime_version: SparkServingReadbackPresent { value: "0.11.0-rc1" },
+    model_repository: SparkServingReadbackPresent { value: "gpt-oss" },
+    model_revision_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    bind_address: SparkServingReadbackAbsent,
+  }) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn different_runtime_version_refuses_observation() -> Bool {
+  match derive_spark_serving_observation(readback: SparkServingReadback {
+    host: "srv6",
+    unit_outcome: SparkServingUnitActive,
+    runtime_version: SparkServingReadbackPresent { value: "10.11.0" },
+    model_repository: SparkServingReadbackPresent { value: "gpt-oss" },
+    model_revision_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    bind_address: SparkServingReadbackAbsent,
+  }) {
+    SparkServingObservationRefused { host: _, cause: _ } => true
+    SparkServingObserved { host: _, loaded_release: _ } => false
+    SparkServingAbsent { host: _ } => false
+  }
+}
+
+test fn tags_json_positive_parses_model_digest() -> Bool {
+  let parsed = spark_serving_parse_tags_json(stdout: witness_tags_json_positive)
+  match parsed.repository {
+    SparkServingReadbackPresent { value: repo } =>
+      match parsed.revision_digest {
+        SparkServingReadbackPresent { value: digest } =>
+          repo == "gpt-oss" && digest == witness_model_digest
+        SparkServingReadbackAbsent => false
+        SparkServingReadbackRefused { cause: _ } => false
+      }
+    SparkServingReadbackAbsent => false
+    SparkServingReadbackRefused { cause: _ } => false
+  }
+}
+
 test fn active_incomplete_readback_refuses_observation() -> Bool {
   match derive_spark_serving_observation(readback: readback_active_incomplete()) {
     SparkServingObservationRefused { host: h, cause: c } =>
@@ -153,34 +230,36 @@ test fn active_complete_readback_derives_observed() -> Bool {
   }
 }
 
-data wrong_runtime_version_red_control_note: String = "RED CONTROL: a unit marked active without the pinned runtime version must refuse identity, never fabricate a digest from desired state."
-
-test fn wrong_runtime_version_refuses_loaded_identity() -> Bool {
-  match derive_loaded_spark_serving_release_identity(readback: SparkServingReadback {
-    host: "srv6",
-    unit_outcome: SparkServingUnitActive,
-    runtime_version: Present { value: "v0.0.0" },
-    model_repository: Present { value: "gpt-oss" },
-    model_revision_digest: Present { value: witness_model_digest },
-    bind_address: none,
-  }) {
-    Absent => true
-    Present { value: _ } => false
-  }
-}
-
 test fn inactive_unit_readback_refuses_observation() -> Bool {
   match derive_spark_serving_observation(readback: SparkServingReadback {
     host: "srv6",
     unit_outcome: SparkServingUnitInactive,
-    runtime_version: none,
-    model_repository: none,
-    model_revision_digest: none,
-    bind_address: none,
+    runtime_version: SparkServingReadbackAbsent,
+    model_repository: SparkServingReadbackAbsent,
+    model_revision_digest: SparkServingReadbackAbsent,
+    bind_address: SparkServingReadbackAbsent,
   }) {
     SparkServingObservationRefused { host: h, cause: c } =>
       h == "srv6" && string_contains(s: c as String, pattern: "inactive")
     SparkServingAbsent { host: _ } => false
     SparkServingObserved { host: _, loaded_release: _ } => false
+  }
+}
+
+test fn api_field_refusal_surfaces_before_fingerprint_refusal() -> Bool {
+  match derive_spark_serving_observation(readback: SparkServingReadback {
+    host: "srv5",
+    unit_outcome: SparkServingUnitActive,
+    runtime_version: SparkServingReadbackRefused {
+      cause: "ollama /api/version body is not parseable JSON" as NonEmptyStr,
+    },
+    model_repository: SparkServingReadbackAbsent,
+    model_revision_digest: SparkServingReadbackAbsent,
+    bind_address: SparkServingReadbackAbsent,
+  }) {
+    SparkServingObservationRefused { host: _, cause: c } =>
+      string_contains(s: c as String, pattern: "not parseable JSON")
+    SparkServingObserved { host: _, loaded_release: _ } => false
+    SparkServingAbsent { host: _ } => false
   }
 }

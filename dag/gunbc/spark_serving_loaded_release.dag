@@ -7,6 +7,11 @@ import gunbc.spark_serving_desired {
   spark_serving_configuration_digest,
   spark_serving_desired_release,
 }
+import gunbc.spark_serving_readback_parse {
+  SparkServingReadbackField,
+  spark_serving_readback_field_present_value,
+  spark_serving_first_readback_refusal,
+}
 import gunbc.spark_serving_release {
   SparkServingObservation,
   SparkServingObserved,
@@ -33,10 +38,10 @@ type SparkServingUnitProbeOutcome
 type SparkServingReadback {
   host: HostIdentity
   unit_outcome: SparkServingUnitProbeOutcome
-  runtime_version: String?
-  model_repository: String?
-  model_revision_digest: String?
-  bind_address: String?
+  runtime_version: SparkServingReadbackField
+  model_repository: SparkServingReadbackField
+  model_revision_digest: SparkServingReadbackField
+  bind_address: SparkServingReadbackField
 }
 
 fn derive_loaded_spark_serving_release(readback: SparkServingReadback) -> SparkServingRelease? {
@@ -45,16 +50,16 @@ fn derive_loaded_spark_serving_release(readback: SparkServingReadback) -> SparkS
     SparkServingUnitAbsent => none
     SparkServingUnitObservationRefused { cause: _ } => none
     SparkServingUnitActive =>
-      match readback.runtime_version {
+      match spark_serving_readback_field_present_value(field: readback.runtime_version) {
         Absent => none
         Present { value: ver } =>
           match ollama_runtime_closure_digest_for_reported_version(version: ver) {
             Absent => none
             Present { value: runtime_digest } =>
-              match readback.model_repository {
+              match spark_serving_readback_field_present_value(field: readback.model_repository) {
                 Absent => none
                 Present { value: repo } =>
-                  match readback.model_revision_digest {
+                  match spark_serving_readback_field_present_value(field: readback.model_revision_digest) {
                     Absent => none
                     Present { value: rev } =>
                       Present {
@@ -98,14 +103,23 @@ fn derive_spark_serving_observation(readback: SparkServingReadback) -> SparkServ
     SparkServingUnitObservationRefused { cause: c } =>
       SparkServingObservationRefused { host: readback.host, cause: c }
     SparkServingUnitActive =>
-      match derive_loaded_spark_serving_release_identity(readback: readback) {
+      match spark_serving_first_readback_refusal(fields: [
+        readback.runtime_version,
+        readback.model_repository,
+        readback.model_revision_digest,
+      ]) {
+        Present { value: cause } =>
+          SparkServingObservationRefused { host: readback.host, cause: cause }
         Absent =>
-          SparkServingObservationRefused {
-            host: readback.host,
-            cause: "serving unit is active but loaded-release fingerprint could not be derived from independent readback" as NonEmptyStr,
+          match derive_loaded_spark_serving_release_identity(readback: readback) {
+            Absent =>
+              SparkServingObservationRefused {
+                host: readback.host,
+                cause: "serving unit is active but loaded-release fingerprint could not be derived from independent readback" as NonEmptyStr,
+              }
+            Present { value: loaded } =>
+              SparkServingObserved { host: readback.host, loaded_release: loaded }
           }
-        Present { value: loaded } =>
-          SparkServingObserved { host: readback.host, loaded_release: loaded }
       }
   }
 }

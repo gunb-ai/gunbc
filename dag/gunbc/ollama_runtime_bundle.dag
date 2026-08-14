@@ -24,10 +24,20 @@ fn ollama_runtime_closure_digest_for_required_release() -> Fnv1a64Structural {
   ollama_runtime_closure_digest(rel: ollama_required_release)
 }
 
-data ollama_runtime_version_mapping_note: String = "Maps an observed ollama /api/version string to the cited closure when it matches the pinned release; otherwise refuses so an unknown runtime cannot be mistaken for the desired one."
+data ollama_runtime_version_mapping_note: String = "Maps an observed ollama /api/version string to the cited closure when it matches the pinned release wire form; otherwise refuses so an unknown runtime cannot be mistaken for the desired one."
+
+fn ollama_reported_version_matches_cited_release(version: String) -> Bool {
+  let cited = ollama_required_release.version as String
+  let cited_bare = if starts_with(s: cited, prefix: "v") {
+    substring(s: cited, start: 1, end: length(cited))
+  } else {
+    cited
+  }
+  version == cited || version == cited_bare
+}
 
 fn ollama_runtime_closure_digest_for_reported_version(version: String) -> Fnv1a64Structural? {
-  if version == (ollama_required_release.version as String) {
+  if ollama_reported_version_matches_cited_release(version: version) {
     Present { value: ollama_runtime_closure_digest(rel: ollama_required_release) }
   } else {
     none

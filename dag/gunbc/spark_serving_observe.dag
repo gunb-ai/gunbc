@@ -38,7 +38,15 @@ import gunbc.spark_serving_release {
   SparkServingObserved,
   SparkServingObservationRefused,
 }
-import extdeps.ollama.binary_release { ollama_required_release }
+import gunbc.spark_serving_readback_parse {
+  SparkServingReadbackField,
+  SparkServingReadbackAbsent,
+  SparkServingReadbackRefused,
+  SparkServingTagsReadbackFields,
+  spark_serving_parse_version_json,
+  spark_serving_parse_tags_json,
+  spark_serving_readback_field_label,
+}
 
 data spark_serving_observe_transport_note: String = "OBSERVATION PRODUCER (SPARK-SERVE-BIND-0 item B) over FleetSsh — the same bound-credential context spark_managed_access_apply uses, never a second SSH path."
 
@@ -137,22 +145,53 @@ fn spark_serving_unit_outcome_from_probe_results(
   }
 }
 
-fn spark_serving_runtime_version_from_version_json(stdout: String) -> String? {
-  let needle = ollama_required_release.version as String
-  if string_contains(s: stdout, pattern: needle) {
-    Present { value: needle }
-  } else if string_contains(s: stdout, pattern: "0.11.0") {
-    Present { value: needle }
-  } else {
-    none
+fn spark_serving_version_field_from_probe(probe: SshSessionExecResult?) -> SparkServingReadbackField {
+  match probe {
+    Absent =>
+      SparkServingReadbackRefused {
+        cause: "probe leg did not run" as NonEmptyStr,
+      }
+    Present { value: r } =>
+      if r.success {
+        spark_serving_parse_version_json(stdout: r.stdout)
+      } else {
+        SparkServingReadbackRefused {
+          cause: join([
+            "probe failed exit=", to_string(r.exit_code), " stderr=", r.stderr,
+          ], "") as NonEmptyStr,
+        }
+      }
   }
 }
 
-fn spark_serving_model_digest_from_tags_json(stdout: String) -> String? {
-  if string_contains(s: stdout, pattern: "gpt-oss") && string_contains(s: stdout, pattern: "sha256:") {
-    Present { value: "observed-from-tags-pending-exact-parse" }
-  } else {
-    none
+fn spark_serving_tags_fields_from_probe(probe: SshSessionExecResult?) -> SparkServingTagsReadbackFields {
+  match probe {
+    Absent =>
+      SparkServingTagsReadbackFields {
+        repository: SparkServingReadbackRefused {
+          cause: "probe leg did not run" as NonEmptyStr,
+        },
+        revision_digest: SparkServingReadbackRefused {
+          cause: "probe leg did not run" as NonEmptyStr,
+        },
+      }
+    Present { value: r } =>
+      if r.success {
+        spark_serving_parse_tags_json(stdout: r.stdout)
+      } else {
+        SparkServingTagsReadbackFields {
+          repository: SparkServingReadbackRefused {
+            cause: join([
+              "probe failed exit=", to_string(r.exit_code), " stderr=", r.stderr,
+            ], "") as NonEmptyStr,
+          },
+          revision_digest: SparkServingReadbackRefused {
+            cause: join([
+              "probe failed exit=", to_string(r.exit_code), " stderr=", r.stderr,
+            ], "") as NonEmptyStr,
+          },
+        }
+      }
   }
 }
 
@@ -172,25 +211,17 @@ fn spark_serving_readback_from_probe_results(
   version: SshSessionExecResult?,
   tags: SshSessionExecResult?,
 ) -> SparkServingReadback {
+  let tags_fields = spark_serving_tags_fields_from_probe(probe: tags)
   SparkServingReadback {
     host: host,
     unit_outcome: spark_serving_unit_outcome_from_probe_results(
       load_state: load_state,
       is_active: is_active,
     ),
-    runtime_version: match version {
-      Absent => none
-      Present { value: r } => if r.success { spark_serving_runtime_version_from_version_json(stdout: r.stdout) } else { none }
-    },
-    model_repository: match tags {
-      Absent => none
-      Present { value: r } => if r.success && string_contains(s: r.stdout, pattern: "gpt-oss") { Present { value: "gpt-oss" } } else { none }
-    },
-    model_revision_digest: match tags {
-      Absent => none
-      Present { value: r } => if r.success { spark_serving_model_digest_from_tags_json(stdout: r.stdout) } else { none }
-    },
-    bind_address: none,
+    runtime_version: spark_serving_version_field_from_probe(probe: version),
+    model_repository: tags_fields.repository,
+    model_revision_digest: tags_fields.revision_digest,
+    bind_address: SparkServingReadbackAbsent,
   }
 }
 
@@ -198,9 +229,9 @@ fn spark_serving_readback_line(readback: SparkServingReadback) -> String {
   join([
     "observe host=", readback.host as String,
     " unit_outcome=", spark_serving_unit_outcome_label(outcome: readback.unit_outcome),
-    " runtime_version=", match readback.runtime_version { Absent => "absent" Present { value: v } => v },
-    " model_repo=", match readback.model_repository { Absent => "absent" Present { value: v } => v },
-    " model_rev=", match readback.model_revision_digest { Absent => "absent" Present { value: v } => v },
+    " runtime_version=", spark_serving_readback_field_label(field: readback.runtime_version),
+    " model_repo=", spark_serving_readback_field_label(field: readback.model_repository),
+    " model_rev=", spark_serving_readback_field_label(field: readback.model_revision_digest),
     "\n",
   ], "")
 }
