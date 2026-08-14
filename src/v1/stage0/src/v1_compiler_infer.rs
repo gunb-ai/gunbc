@@ -2568,6 +2568,21 @@ pub fn application_type_names_compatible(
     {
         return true;
     }
+    if type_name_transparently_aliases_to(
+        lit_name.clone(),
+        formal_name.clone(),
+        type_env.clone(),
+        module_name.clone(),
+        source_indices.clone(),
+    ) || type_name_transparently_aliases_to(
+        formal_name.clone(),
+        lit_name.clone(),
+        type_env.clone(),
+        module_name.clone(),
+        source_indices.clone(),
+    ) {
+        return true;
+    }
     match lookup_type_by_name(type_env.clone(), formal_name.clone()) {
         Some(formal_decl) => brand_grounds_transparently_to(
             lit_name.clone(),
@@ -2575,6 +2590,48 @@ pub fn application_type_names_compatible(
             type_env.clone(),
             source_indices.clone(),
         ),
+        None => false,
+    }
+}
+
+pub fn type_name_transparently_aliases_to(
+    alias_name: String,
+    target_name: String,
+    type_env: Rc<TypeEnv>,
+    module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match lookup_type_by_name(type_env.clone(), alias_name.clone()) {
+        Some(decl) => {
+            if ((decl.connective.clone() != Connective::NoConnective)
+                || ((decl.children.clone().len() as i64) > 0))
+            {
+                false
+            } else {
+                let peeled = peel_nominal_alias_identity(
+                    decl.clone(),
+                    type_env.clone(),
+                    module_name.clone(),
+                );
+                let peeled_name = authored_name_at(source_indices.clone(), peeled.clone());
+                if peeled_name.clone() == alias_name.clone() {
+                    false
+                } else if ((peeled_name.clone() == target_name.clone())
+                    || (qualified_last_segment(peeled_name.clone())
+                        == qualified_last_segment(target_name.clone())))
+                {
+                    true
+                } else {
+                    type_name_transparently_aliases_to(
+                        peeled_name.clone(),
+                        target_name.clone(),
+                        type_env.clone(),
+                        module_name.clone(),
+                        source_indices.clone(),
+                    )
+                }
+            }
+        }
         None => false,
     }
 }
@@ -2606,6 +2663,9 @@ pub fn structured_application_site_type_mismatch(
     let lit_name =
         record_lit_type_name_at(actual_expr.clone(), source_indices.clone()).unwrap_or_default();
     if lit_name.is_empty() {
+        return false;
+    }
+    if ((lit_name.clone() == "Present".to_string()) || (lit_name.clone() == "Absent".to_string())) {
         return false;
     }
     if application_type_names_compatible(
@@ -2654,7 +2714,24 @@ pub fn structured_application_site_type_mismatch(
                 source_indices.clone(),
             )
         }
-        _ => true,
+        None => {
+            if is_kernel_type(formal_name.clone()) {
+                match lookup_type_by_name(scope.type_env.clone(), lit_name.clone()) {
+                    Some(lit_decl) => {
+                        ((lit_decl.connective.clone() == Connective::Conj)
+                            || (lit_decl.connective.clone() == Connective::Disj))
+                    }
+                    None => variant_owner_node(scope.clone(), lit_name.clone()).is_some(),
+                }
+            } else if ((lookup_type_by_name(scope.type_env.clone(), lit_name.clone()).is_some())
+                && (lookup_type_by_name(scope.type_env.clone(), formal_name.clone()).is_some()))
+            {
+                true
+            } else {
+                false
+            }
+        }
+        Some(_) => false,
     }
 }
 

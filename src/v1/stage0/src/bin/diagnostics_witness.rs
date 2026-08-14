@@ -27,6 +27,7 @@ const SUITE_TYPE_AND_ARITY: &str = "type_and_arity";
 const SUITE_EMPTY_LIST_CONTEXT: &str = "empty_list_context";
 const SUITE_CONSTRUCTOR_OWNER: &str = "constructor_owner";
 const SUITE_RECORD_FIELD_WALLS: &str = "record_field_walls";
+const SUITE_ESTABLISHMENT: &str = "establishment";
 
 fn fail(msg: impl std::fmt::Display) -> ExitCode {
     eprintln!("diagnostics_witness: {msg}");
@@ -156,6 +157,74 @@ fn diag_line_col(diag: &ErrorNode, source: &str, file: &str) -> (i64, i64) {
     let idx = build_newline_index(file.to_string(), source.to_string());
     let lc = byte_to_line_col(idx, span.start);
     (lc.line, lc.col)
+}
+
+fn type_mismatch_count(result: &PipelineResult) -> usize {
+    result
+        .diagnostics
+        .iter()
+        .filter(|d| matches!(&*d.diagnostic, CompilerDiagnostic::TypeMismatch { .. }))
+        .count()
+}
+
+fn establishment_report(module_index: &ModuleIndex) {
+    let probes: &[(&str, &str, &str)] = &[
+        (
+            "distinct_record_at_arg",
+            "establish_distinct.dag",
+            "module establish_distinct\n\
+             type Box { label: String }\n\
+             type Other { x: Int }\n\
+             fn takes_other(o: Other) -> Bool { true }\n\
+             fn bad() -> Bool { takes_other(o: Box { label: \"x\" }) }\n",
+        ),
+        (
+            "record_at_node_arg",
+            "establish_node.dag",
+            "module establish_node\n\
+             type Node { kind: Int, children: List<Int>, occurrence_id: Int }\n\
+             type Box { label: String }\n\
+             fn takes_node(n: Node) -> Bool { true }\n\
+             fn bad() -> Bool { takes_node(n: Box { label: \"x\" }) }\n",
+        ),
+        (
+            "alias_normalized_tree_at_node",
+            "establish_alias.dag",
+            "module establish_alias\n\
+             type Node { kind: Int, children: List<Int>, occurrence_id: Int }\n\
+             type NormalizedTree = Node\n\
+             fn takes_node(n: Node) -> Bool { true }\n\
+             fn via_alias() -> Bool {\n\
+               takes_node(n: NormalizedTree { kind: 0, children: [], occurrence_id: 0 })\n\
+             }\n",
+        ),
+        (
+            "record_at_coproduct_field",
+            "establish_union.dag",
+            "module establish_union\n\
+             type Ev = EvA | EvB { n: Int, m: Int }\n\
+             type Box { label: String }\n\
+             type Prov { id: String, ev: Ev }\n\
+             data bad: Prov = Prov { id: \"x\", ev: Box { label: \"y\" } }\n",
+        ),
+        (
+            "wrong_coproduct_variant_field",
+            "establish_wrong_variant.dag",
+            "module establish_wrong_variant\n\
+             type Ev = EvA | EvB { n: Int, m: Int }\n\
+             type Other = OtherA | OtherB { k: Int }\n\
+             type Prov { id: String, ev: Ev }\n\
+             data bad: Prov = Prov { id: \"x\", ev: OtherA { k: 1 } }\n",
+        ),
+    ];
+    for (label, path, source) in probes {
+        let result = compile_multi(module_index, &[(path, source)]);
+        eprintln!(
+            "establishment {label}: type_mismatch={} total_diags={}",
+            type_mismatch_count(&result),
+            result.diagnostics.len()
+        );
+    }
 }
 
 fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {
@@ -432,6 +501,7 @@ fn suite_cases(suite: &str) -> Result<Vec<WitnessCase>, String> {
             "record_literal_field_walls",
             record_literal_field_walls,
         )]),
+        SUITE_ESTABLISHMENT => Ok(vec![("establishment_report", establishment_report)]),
         _ => Err(format!(
             "unknown suite '{suite}'; expected one of: {SUITE_IMPORT_RESOLUTION}, \
              {SUITE_REEXPORT_SURFACE}, {SUITE_TYPE_AND_ARITY}, {SUITE_EMPTY_LIST_CONTEXT}, \
@@ -515,7 +585,7 @@ fn record_literal_field_walls(module_index: &ModuleIndex) {
 
     // RED: record literal where a Node parameter is declared (direct call arg)
     let record_at_node = "module fieldwall_node_arg\n\
-        import v2.std.node { Node }\n\
+        type Node { kind: Int, children: List<Int>, occurrence_id: Int }\n\
         type Box { label: String }\n\
         fn takes_node(n: Node) -> Bool { true }\n\
         fn bad_node_arg() -> Bool { takes_node(n: Box { label: \"x\" }) }\n";
