@@ -12,7 +12,7 @@ import gunbc.spark_serving_realization {
   SparkServingRealization, UserUnitRealization, SystemUnitRealization,
 }
 import gunbc.spark_serving_release {
-  SparkServingReleaseIdentity, SparkServingOccurrence, SecretVersionRef,
+  SparkServingReleaseIdentity, SparkServingOccurrence,
   SparkServingRelease, RuntimeArtifactIdentity, ModelArtifactIdentity,
   ServingConfigurationIdentity, InferenceCapacityPolicy, spark_serving_release_identity,
   SparkServingReconciliation, SparkServingAlreadyConverged, SparkServingDeltaRequired,
@@ -58,15 +58,15 @@ fn refusal_specimen() -> SparkServingReconciliation {
 }
 
 fn occ_srv5() -> SparkServingOccurrence {
-  SparkServingOccurrence { host: "srv5", release_identity: spark_serving_release_identity(spec: release_base()), endpoint_credential: SecretVersionRef { secret: "spark-serving-api-key", version: "3" } }
+  SparkServingOccurrence { host: "srv5", release_identity: spark_serving_release_identity(spec: release_base()) }
 }
 
 fn occ_srv6_same() -> SparkServingOccurrence {
-  SparkServingOccurrence { host: "srv6", release_identity: spark_serving_release_identity(spec: release_base()), endpoint_credential: SecretVersionRef { secret: "spark-serving-api-key", version: "3" } }
+  SparkServingOccurrence { host: "srv6", release_identity: spark_serving_release_identity(spec: release_base()) }
 }
 
 fn occ_srv6_other() -> SparkServingOccurrence {
-  SparkServingOccurrence { host: "srv6", release_identity: spark_serving_release_identity(spec: release_other_revision()), endpoint_credential: SecretVersionRef { secret: "spark-serving-api-key", version: "3" } }
+  SparkServingOccurrence { host: "srv6", release_identity: spark_serving_release_identity(spec: release_other_revision()) }
 }
 
 // BOTH prerequisites, and both naming srv5. This list previously carried only the managed-access
