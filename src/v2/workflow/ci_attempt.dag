@@ -49,7 +49,7 @@ type SourceRootId
 // repository and absent from this subject. Collapsing them would let a file that
 // merely fails to resolve wear the same badge as one that is supposed to.
 type SubjectExclusion {
-  path: String
+  subject: Symbol
   ground: SubjectExclusionGround
 }
 
@@ -166,9 +166,20 @@ fn combine_source_root(acc: Hash, root: SourceRootId) -> Hash {
   combine_hash(a: acc, b: symbol_identity_digest(sym: source_root_symbol(root: root)))
 }
 
+// BOTH FIELDS ENTER THE DIGEST. An earlier revision folded only the ground, so two
+// exclusions differing solely in WHICH module they exclude produced one digest — the
+// envelope claim was overstated in exactly the field the envelope exists to cover, and
+// the witness missed it by varying every other component and never varying two
+// exclusions against each other. The subject is a Symbol rather than a path string for
+// the same reason the roots are: an exact identity is hashable and a text surface is
+// the thing this module removed from the subject.
 fn combine_exclusion(acc: Hash, exclusion: SubjectExclusion) -> Hash {
-  combine_hash(
+  let with_subject = combine_hash(
     a: acc,
+    b: symbol_identity_digest(sym: exclusion.subject)
+  )
+  combine_hash(
+    a: with_subject,
     b: symbol_identity_digest(
       sym: subject_exclusion_ground_symbol(ground: exclusion.ground)
     )
@@ -276,13 +287,79 @@ fn ci_plan_nodes(plan_nodes: List<CiNode>) -> List<Node> {
   ci_nodes_to_nodes(nodes: plan_nodes)
 }
 
+// EDGES ARE DERIVED FROM CLAIMS, NOT WRITTEN BY A CALLER. claims_conflict answered the
+// question and then nothing acted on it: ci_batches took whatever dependency list it
+// was handed, so serialization held only where someone remembered to author the edge —
+// a validation the caller performs rather than a property of the plan. A node added
+// tomorrow with an exclusive claim now serializes because the edge is computed here.
+//
+// Each pair is visited ONCE, in list order. Emitting both directions would make the
+// graph cyclic, and the scheduler would then report the plan blocked rather than
+// serialized — a different and far more confusing failure than the one being
+// prevented.
+data ci_no_ci_nodes: List<CiNode> = []
+
+data ci_no_derived_edges: List<DependencyView> = []
+
+type PairScan {
+  seen: Bool
+  later: List<CiNode>
+}
+
+fn nodes_after(nodes: List<CiNode>, after: Symbol) -> List<CiNode> {
+  let scan = fold_list(
+    xs: nodes,
+    empty: PairScan { seen: false, later: ci_no_ci_nodes },
+    cons: fn(acc, n) {
+      if acc.seen {
+        PairScan { seen: true, later: list_snoc_item(xs: acc.later, item: n) }
+      } else {
+        PairScan { seen: n.identity == after, later: acc.later }
+      }
+    }
+  )
+  scan.later
+}
+
+fn conflict_edges_for(
+  acc: List<DependencyView>,
+  left: CiNode,
+  rest: List<CiNode>
+) -> List<DependencyView> {
+  fold_list(
+    xs: rest,
+    empty: acc,
+    cons: fn(edges, right) {
+      if claims_conflict(left: left, right: right) {
+        list_snoc_item(xs: edges, item: ci_dependency(source: left, dependent: right))
+      } else {
+        edges
+      }
+    }
+  )
+}
+
+fn derived_conflict_edges(plan_nodes: List<CiNode>) -> List<DependencyView> {
+  fold_list(
+    xs: plan_nodes,
+    empty: ci_no_derived_edges,
+    cons: fn(acc, left) {
+      conflict_edges_for(
+        acc: acc,
+        left: left,
+        rest: nodes_after(nodes: plan_nodes, after: left.identity)
+      )
+    }
+  )
+}
+
 fn ci_batches(
   plan_nodes: List<CiNode>,
   dependencies: List<DependencyView>
 ) -> List<ExecutorBatch> {
   match parallel_executor_plan_from_dependencies(
     nodes: ci_plan_nodes(plan_nodes: plan_nodes),
-    dependencies: dependencies,
+    dependencies: concat(dependencies, derived_conflict_edges(plan_nodes: plan_nodes)),
     scheduled: ci_no_nodes
   ) {
     ExecutorRunComplete { batches: bs, scheduled: _ } => bs
@@ -521,20 +598,29 @@ fn reconcile_ledger(
 // does not produce a verdict at all: it refuses, because "every planned node reported
 // exactly once" is a precondition for the fold meaning anything. A run that lost a
 // node's receipt and passed everything else is not a pass.
+// A REFUSED NODE IS NOT A FAILED NODE. A failure is a checked property that did not
+// hold; a refusal is a node that could not be judged at all, and folding the second
+// into the first reports an unanswered question as an answer. They also route
+// differently: a failure is a defect in the subject, a refusal is a defect in the
+// attempt.
 type CiAttemptVerdict
   = AttemptPassed
   | AttemptFailed { node_identity: Symbol }
+  | AttemptNodeRefused { node_identity: Symbol, cause: Symbol }
   | AttemptRefused { reconciliation: LedgerReconciliation }
 
 fn verdict_from_receipt(acc: CiAttemptVerdict, receipt: CiNodeReceipt) -> CiAttemptVerdict {
   match acc {
     AttemptFailed { node_identity: f } => AttemptFailed { node_identity: f }
+    AttemptNodeRefused { node_identity: n, cause: c } =>
+      AttemptNodeRefused { node_identity: n, cause: c }
     AttemptRefused { reconciliation: r } => AttemptRefused { reconciliation: r }
     AttemptPassed =>
       match receipt.outcome {
         NodePassed => AttemptPassed
         NodeFailed => AttemptFailed { node_identity: receipt.node_identity }
-        NodeRefused { cause: _ } => AttemptFailed { node_identity: receipt.node_identity }
+        NodeRefused { cause: c } =>
+          AttemptNodeRefused { node_identity: receipt.node_identity, cause: c }
       }
   }
 }

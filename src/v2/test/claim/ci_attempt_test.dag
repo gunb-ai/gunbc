@@ -12,6 +12,7 @@ import v2.workflow.executor { ExecutorBatch }
 import v2.workflow.floor2_prepared_subject { ExcludedNotPartOfThisSubject }
 import v2.workflow.ci_attempt {
   AttemptFailed,
+  AttemptNodeRefused,
   AttemptPassed,
   AttemptRefused,
   CargoTargetWrite,
@@ -52,6 +53,7 @@ import v2.workflow.ci_attempt {
   LedgerMissing,
   LedgerSurplus,
   NodeFailed,
+  NodeRefused,
   NodePassed,
   PreparedContextAccess,
   PrepareExactSubject,
@@ -74,7 +76,7 @@ data base_request: CiAttemptRequest = CiAttemptRequest {
   source_roots: [SourceRootDag, SourceRootV2],
   exclusions: [
     SubjectExclusion {
-      path: "src/v2/test/manual/ownership_movable_test.dag",
+      subject: ^ownership_movable_test,
       ground: ExcludedNotPartOfThisSubject
     }
   ],
@@ -133,6 +135,20 @@ data request_other_config: CiAttemptRequest = CiAttemptRequest {
   configuration: ConfigurationIdentity { identity: ^ci_test_config_b }
 }
 
+data request_other_exclusion_subject: CiAttemptRequest = CiAttemptRequest {
+  source_roots: base_request.source_roots,
+  exclusions: [
+    SubjectExclusion {
+      subject: ^some_other_excluded_module,
+      ground: ExcludedNotPartOfThisSubject
+    }
+  ],
+  tool: base_request.tool,
+  fixture_store: base_request.fixture_store,
+  published_mocks: base_request.published_mocks,
+  configuration: base_request.configuration
+}
+
 test fn digest_covers_every_envelope_field() -> Bool {
   let base = ci_attempt_subject_digest(request: base_request)
   (ci_attempt_subject_digest(request: request_other_roots) != base)
@@ -140,6 +156,7 @@ test fn digest_covers_every_envelope_field() -> Bool {
     && (ci_attempt_subject_digest(request: request_other_fixtures) != base)
     && (ci_attempt_subject_digest(request: request_other_mocks) != base)
     && (ci_attempt_subject_digest(request: request_other_config) != base)
+    && (ci_attempt_subject_digest(request: request_other_exclusion_subject) != base)
 }
 
 // RED CONTROL, in the other direction: a digest that differed for everything would
@@ -232,7 +249,7 @@ test fn resource_conflicting_nodes_never_share_a_batch() -> Bool {
     && !some_batch_holds_both(
       batches: ci_batches(
         plan_nodes: [n_seed_tests, n_artifact_verify],
-        dependencies: [ci_dependency(source: n_seed_tests, dependent: n_artifact_verify)]
+        dependencies: no_deps
       ),
       left: n_seed_tests,
       right: n_artifact_verify
@@ -340,6 +357,7 @@ test fn verdict_refuses_an_unreconciled_ledger_even_when_all_reports_passed() ->
       AttemptRefused { reconciliation: _ } => true
       AttemptPassed => false
       AttemptFailed { node_identity: _ } => false
+      AttemptNodeRefused { node_identity: _, cause: _ } => false
     }
 }
 
@@ -347,11 +365,13 @@ test fn verdict_passes_and_fails_on_the_reconciled_ledger() -> Bool {
   let passes = match ci_attempt_verdict(plan_nodes: plan_two, receipts: receipts_complete) {
     AttemptPassed => true
     AttemptFailed { node_identity: _ } => false
+    AttemptNodeRefused { node_identity: _, cause: _ } => false
     AttemptRefused { reconciliation: _ } => false
   }
   let fails = match ci_attempt_verdict(plan_nodes: plan_two, receipts: receipts_one_failed) {
     AttemptFailed { node_identity: f } => f == ^ci_node_prepare_exact_subject
     AttemptPassed => false
+    AttemptNodeRefused { node_identity: _, cause: _ } => false
     AttemptRefused { reconciliation: _ } => false
   }
   passes && fails
@@ -372,6 +392,7 @@ test fn ci_attempt_witnesses() -> Bool {
     && exact_receipts_admit_regardless_of_order()
     && host_cannot_invent_drop_or_rewiden_work()
     && a_claim_request_carries_only_a_capability_digest()
+    && a_refused_node_is_distinct_from_a_failed_node()
 }
 
 // ── Materialization standing ──────────────────────────────────────────────────
@@ -568,4 +589,32 @@ test fn a_claim_request_carries_only_a_capability_digest() -> Bool {
     RealizeCiHostEffectRequest { effect: _ } => false
     ExecuteExactBatchRequest { jobs: _, capacity: _ } => false
   }
+}
+
+// A REFUSED NODE IS NOT A FAILED NODE. A failure is a checked property that did not
+// hold; a refusal is a node that could not be judged at all, and they route
+// differently -- a defect in the subject versus a defect in the attempt.
+data receipts_one_refused: List<CiNodeReceipt> = [
+  CiNodeReceipt { node_identity: ^ci_node_format_check, outcome: NodePassed },
+  CiNodeReceipt {
+    node_identity: ^ci_node_prepare_exact_subject,
+    outcome: NodeRefused { cause: ^ci_cause_capability_unavailable }
+  }
+]
+
+test fn a_refused_node_is_distinct_from_a_failed_node() -> Bool {
+  let refused = match ci_attempt_verdict(plan_nodes: plan_two, receipts: receipts_one_refused) {
+    AttemptNodeRefused { node_identity: n, cause: c } =>
+      (n == ^ci_node_prepare_exact_subject) && (c == ^ci_cause_capability_unavailable)
+    AttemptFailed { node_identity: _ } => false
+    AttemptPassed => false
+    AttemptRefused { reconciliation: _ } => false
+  }
+  let failed = match ci_attempt_verdict(plan_nodes: plan_two, receipts: receipts_one_failed) {
+    AttemptFailed { node_identity: n } => n == ^ci_node_prepare_exact_subject
+    AttemptNodeRefused { node_identity: _, cause: _ } => false
+    AttemptPassed => false
+    AttemptRefused { reconciliation: _ } => false
+  }
+  refused && failed
 }
