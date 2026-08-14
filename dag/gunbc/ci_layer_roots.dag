@@ -656,12 +656,6 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: unbound_dissolution(description: "a dedicated integration workflow enrolls the account-standing trip with a durable receipt, or measured wall lands under bin_witness_wet_per_row_wall_budget_seconds and re-enrolls per-PR consciously")
   },
   WitnessExclusionRow {
-    pattern: "codex_supervised_turn_wet_witness_test.dag",
-    classification: OfflineLocalRecipe,
-    reason: "WET BISECT OFFLINE (srv1 2026-08-14 OOM receipt): supervised_turn_materialized_bundle_writes_terminal_receipt hit ~89 GiB RSS with zero child processes before codex spawn — never enrolled for blind execution. Bisect fns wet_committed_admitted_source_lock_admits and wet_materialize_codex_runtime_bundle_only run only under operator MemoryMax caps via local recipe (wet_supervised_turn_memory_envelope_note). Full chain re-enrolls only after bisect characterizes the burn.",
-    dissolution: unbound_dissolution(description: "bisect under declared envelopes passes and full supervised turn returns CodexRunnerTurnTerminalReceipt under cap, or root cause fixed in shared package_delivery / interpreter path")
-  },
-  WitnessExclusionRow {
     pattern: "resolution_divergence_silent_pick_gate_witness_test.dag",
     classification: BinWitnessWet,
     reason: "nightly falsifier batch 4 bin-execution witness: closure-scoped resolution-divergence census with SILENT-PICK-GATE fail-closed arms (falsifier_silent_pick_gate_note)",
