@@ -124,6 +124,12 @@ fn scope_placement_refused_paths(added: List<String>, carriers: List<String>, ma
 }
 
 data scope_carrier_paths: List<String> = [
+  "dag/extdeps/vendor/texas_instruments.dag",
+  "dag/extdeps/land_pattern/types.dag",
+  "dag/extdeps/power/ti_tps3808.dag",
+  "dag/extdeps/power/ti_tps53688.dag",
+  "dag/extdeps/clock/ti_cdce913.dag",
+  "dag/extdeps/network/ti_dp83867.dag",
   "dag/extdeps/firmware/types.dag",
   "dag/extdeps/memory/training.dag",
   "dag/extdeps/ampere/scp_diagnostic.dag",
