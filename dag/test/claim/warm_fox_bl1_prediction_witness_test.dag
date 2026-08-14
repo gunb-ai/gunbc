@@ -1,0 +1,20 @@
+module test.claim.warm_fox_bl1_prediction_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data warm_fox_bl1_prediction_note: String = "vivid-bat-377 prediction probe (warm-fox BL-1 × still-tern wall): validate_module_roots on warm-fox expects FreeMonoid<NormalizedTree> while fixtures hand FreeMonoid<Node>. If the structured/container mismatch wall is complete at call boundaries, this pre-fix shape must compile-refuse — not reach nine runtime root.root projection failures downstream."
+
+fn w_warm_fox_bl1_call_boundary_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module warmfox_bl1_prediction\nimport std.algebra { Cons, Empty, FreeMonoid }\nimport v2.std.node { Node, TypeNode, Atom, SyntheticOccurrence }\n\ntype NormalizedTree sole_constructor {\n  root: Node,\n}\n\nfn fc_module_root() -> Node {\n  Node {\n    kind: TypeNode { connective: Atom { identity: ^fc_seg } },\n    children: [],\n    occurrence_id: SyntheticOccurrence,\n  }\n}\n\nfn fc_single_found_root() -> FreeMonoid<Node> {\n  Cons { head: fc_module_root(), tail: Empty }\n}\n\nfn validate_module_roots(roots: FreeMonoid<NormalizedTree>) -> Bool {\n  true\n}\n\nfn bad_call() -> Bool {\n  validate_module_roots(roots: fc_single_found_root())\n}\n",
+    "src/warmfox_bl1_prediction.rs",
+    [],
+    []
+  )
+}
+
+test fn warm_fox_bl1_free_monoid_node_at_normalized_tree_param_refuses() -> Bool {
+  !w_warm_fox_bl1_call_boundary_red()
+}
