@@ -46,7 +46,12 @@ import gunbc.package_delivery {
   CodexRegistryLocatorAdmitted,
   CodexRegistryLocatorRefused,
   admitted_and_executed_lock_bytes_agree,
+  codex_required_package_version,
+  codex_runtime_version_identity_marker,
+  codex_runtime_version_identity_satisfied,
+  codex_bundled_executable_for_srv1,
 }
+import gunbc.host_layout { srv1_codex_bundled_executable }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -352,5 +357,46 @@ test fn link_node_is_unsupported_not_half_modeled() -> Bool {
     NpmPackageLockParsed { manager: _, nodes, unsupported, graph: _ } =>
       count(nodes) == 1 && count(unsupported) == 1
     NpmPackageLockParseRefused { cause: _ } => false
+  }
+}
+
+test fn codex_runtime_version_identity_refuses_ambient_srv1_version() -> Bool {
+  (codex_required_package_version as String) == "0.146.0"
+    && codex_runtime_version_identity_marker() == "codex-cli 0.146.0"
+    && !codex_runtime_version_identity_satisfied(combined_output: "codex-cli 0.133.0\n")
+    && codex_runtime_version_identity_satisfied(combined_output: "codex-cli 0.146.0\n")
+    && !codex_runtime_version_identity_satisfied(
+      combined_output: "codex-cli 0.147.0\n",
+    )
+    && !codex_runtime_version_identity_satisfied(
+      combined_output: "codex-cli 0.146.01\n",
+    )
+    && !codex_runtime_version_identity_satisfied(
+      combined_output: "codex-cli 0.146.0-rc1\n",
+    )
+    && !codex_runtime_version_identity_satisfied(
+      combined_output: "codex-cli 0.146.0-dev+build\n",
+    )
+    && !codex_runtime_version_identity_satisfied(
+      combined_output: "codex-cli 0.146.0 extra\n",
+    )
+}
+
+test fn srv1_codex_bundled_executable_is_package_delivery_authority() -> Bool {
+  match srv1_codex_bundled_executable() {
+    Present { value: layout_path } =>
+      match codex_bundled_executable_for_srv1() {
+        Present { value: delivery_path } =>
+          (layout_path as String) == (delivery_path as String)
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+test fn srv1_committed_lock_bundled_executable_is_present() -> Bool {
+  match codex_bundled_executable_for_srv1() {
+    Present { value: _ } => true
+    Absent => false
   }
 }

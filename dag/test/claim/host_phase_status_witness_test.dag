@@ -206,7 +206,7 @@ data synthetic_ci_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
 
 fn cell_label_is_runner_only(c: HostPhaseCellStatus) -> Bool {
   let l = c.cell.phase_label
-  l == "prefix:bmc-credential-converge" || l == "prefix:os-install-mechanism" || l == "prefix:os-install-actuated" || l == "P1:runner-deploy-slot" || l == "P1b:build-cache-provision" || l == "P3:green-place-readiness" || l == "P4:session-placement-enrollment"
+  l == "prefix:bmc-credential-converge" || l == "prefix:os-install-mechanism" || l == "prefix:os-install-actuated" || l == "P1:runner-deploy-slot" || l == "P1b:build-cache-provision" || l == "P1c:codex-runtime-provision" || l == "P3:green-place-readiness" || l == "P4:session-placement-enrollment"
 }
 
 fn cell_label_is_shared(c: HostPhaseCellStatus) -> Bool {
