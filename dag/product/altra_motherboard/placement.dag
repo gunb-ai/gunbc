@@ -156,8 +156,21 @@ fn roles_equal(a: BoardComponentRole, b: BoardComponentRole) -> Bool {
 // AN ENVELOPE IS EITHER ESTABLISHED FROM A SOURCE OR IT IS AN OBLIGATION. There is no third arm
 // carrying a provisional number, and that absence is the construction: a placement cannot be built
 // from a guess because a guess has no representation here.
+// THE SOURCE IS A DECLARATION, NOT A SENTENCE ABOUT ONE. This carried a NonEmptyStr, and the two
+// values it held show why that was wrong in two different ways. One was literally a module path and
+// a declaration name written as prose -- a second, unresolvable spelling of something the namespace
+// already names, which nothing can check and which rots silently when the declaration is renamed.
+// The other fused two facts: the declaration this module read AND the document section that
+// declaration came from. The second is not ours to state. Where the package authority got its
+// dimensions is a fact belonging to the package authority; restating it here creates a copy that
+// stays confidently wrong when the authority corrects itself.
+//
+// A DeclarationRef says only what this module actually did: it read that declaration. It is not yet
+// CHECKED -- nothing in the corpus verifies these resolve, which is the citation-staleness class
+// DESIGN section 3 names -- but a name the namespace could resolve is decidable in principle, and a
+// sentence is not decidable at all.
 type ComponentEnvelopeStanding
-  = EnvelopeEstablished { envelope: PackageBodyEnvelope, source: NonEmptyStr }
+  = EnvelopeEstablished { envelope: PackageBodyEnvelope, source: DeclarationRef }
   | EnvelopeNotEstablished { gap: FactAuthorityBlocker }
 
 type PlannedComponent {
@@ -411,7 +424,7 @@ fn altra_board_outline() -> OrthogonalConstruction<AxisAlignedRectangle2> {
 // with a number that has changed.
 data board_control_envelope: ComponentEnvelopeStanding = EnvelopeEstablished {
   envelope: body_envelope_of_ice40_package(p: ice40_tq144_package),
-  source: "extdeps.programmable_logic.ice40.subject ice40_tq144_package",
+  source: decl_ref(module_path: "extdeps.programmable_logic.ice40.subject", decl_name: "ice40_tq144_package"),
 }
 
 // THE FIRST ENVELOPE THIS BOARD ESTABLISHES FROM A CITED AUTHORITY RATHER THAN OWING. Every other
@@ -432,7 +445,7 @@ data processor_package_envelope: ComponentEnvelopeStanding = EnvelopeEstablished
     body_width: altra_package_body_width,
     body_height: altra_package_body_height,
   },
-  source: "extdeps.cpu.ampere_altra_package section 3 Mechanical Data (Rev A1 datasheet Issue 1.15)",
+  source: decl_ref(module_path: "extdeps.cpu.ampere_altra_package", decl_name: "altra_package_body_width"),
 }
 
 // THE SOCKET IS NOT THE PACKAGE. Binding the socket role to processor_package_standing was this

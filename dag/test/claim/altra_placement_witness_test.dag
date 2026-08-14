@@ -2,7 +2,7 @@ module test.claim.altra_placement_witness
 
 import std.types { Bool, String, NonEmptyStr, List }
 import std.integer { Int }
-import std.decl_ref { declaration_ref_eq, decl_ref }
+import std.decl_ref { DeclarationRef, declaration_ref_eq, decl_ref }
 import std.measure { micrometer_count }
 import std.affine_space { point2 }
 import std.orthogonal_geometry { OrthogonalReady, OrthogonalRefused }
@@ -13,6 +13,7 @@ import product.altra_motherboard.placement {
   ComponentEnvelopeNotEstablished,
   ComponentFillsNoRequiredRole,
   DebugConnector,
+  ComponentEnvelopeStanding,
   EnvelopeEstablished,
   EnvelopeNotEstablished,
   MemoryModuleSlot,
@@ -570,4 +571,37 @@ test fn w_the_reference_plan_names_the_design_it_came_from() -> Bool {
       declaration_ref_eq(a: p.design, b: altra_1p_minimum_ref())
         && count_tagged(cs: placement_causes(d: altra_1p_minimum, plan: p), wanted: "DesignMismatch") == 0
   }
+}
+
+fn envelope_source(e: ComponentEnvelopeStanding) -> DeclarationRef? {
+  match e {
+    EnvelopeEstablished { envelope: _, source: sc } => Present { value: sc }
+    EnvelopeNotEstablished { gap: _ } => none
+  }
+}
+
+// EVERY ESTABLISHED ENVELOPE NAMES A DECLARATION, AND THE TWO NAME DIFFERENT ONES. The second half
+// is the part worth testing. While the source was prose, one authority pasted onto both envelopes
+// was invisible -- two plausible sentences, no way to compare them -- and it would have meant this
+// board claiming the processor package's extent came from the CPLD's datasheet or the reverse.
+// Comparing declarations makes that a decidable question, and this asserts the answer.
+test fn w_the_established_envelopes_cite_distinct_declarations() -> Bool {
+  match envelope_source(e: processor_package_envelope) {
+    Absent => false
+    Present { value: pkg } =>
+      match envelope_source(e: board_control_envelope) {
+        Absent => false
+        Present { value: cpld } => !declaration_ref_eq(a: pkg, b: cpld)
+      }
+  }
+}
+
+// THE CONTROL, on a pair this witness authors: two envelopes citing one declaration ARE detected as
+// the same, so the claim above is capable of failing rather than asserting that two things somebody
+// wrote differently are different.
+test fn w_two_envelopes_citing_one_declaration_are_seen_as_the_same() -> Bool {
+  let one = decl_ref(module_path: "planted.module", decl_name: "planted_row")
+  let same = decl_ref(module_path: "planted.module", decl_name: "planted_row")
+  let other = decl_ref(module_path: "planted.module", decl_name: "a_different_row")
+  declaration_ref_eq(a: one, b: same) && !declaration_ref_eq(a: one, b: other)
 }
