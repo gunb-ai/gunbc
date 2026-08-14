@@ -327,7 +327,7 @@ fn upsert_primary_precedence_source_pool_file(
     Present { value: incumbent } =>
       if file.root_ordinal < incumbent.root_ordinal {
         concat(
-          remove_source_pool_files_for_module(acc: acc, module_path: file.module_path),
+          remove_source_pool_files_for_module(files: acc, module_path: file.module_path),
           [file]
         )
       } else {
