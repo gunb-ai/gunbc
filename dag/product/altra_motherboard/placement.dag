@@ -2,6 +2,7 @@ module product.altra_motherboard.placement
 
 import std.types { String, Bool, NonEmptyStr, List }
 import std.integer { Int }
+import std.decl_ref { DeclarationRef, declaration_ref_eq, decl_ref }
 import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
 import std.affine_space { Point2, point2 }
 import std.orthogonal_geometry {
@@ -181,11 +182,30 @@ type PlacementRefusal
   | ComponentFillsNoRequiredRole { component: NonEmptyStr, role_named: NonEmptyStr }
   | PlannedIdentityRepeated { component: NonEmptyStr }
   | RoleFilledMoreThanOnce { role: BoardComponentRole, fills: Int }
+  | PlanWasBuiltFromADifferentDesign { plan_design: DeclarationRef, admitted_against: DeclarationRef }
 
+// WHICH DESIGN THIS PLAN WAS BUILT FROM, carried so that a projection cannot mix two boards. A
+// plan is derived from a design, and once several projections exist -- a scene, a fabrication
+// artifact, a receipt -- the failure that costs the most is not one of them being wrong. It is two
+// of them being right about DIFFERENT boards: each internally consistent, each passing its own
+// checks, and disagreeing about what was built. Nothing downstream can detect that unless the plan
+// says which design it came from.
+//
+// IT IS AN IDENTITY, AND DELIBERATELY NOT CALLED A REVISION. A DeclarationRef names the design
+// declaration; it does not change when that declaration's CONTENTS are edited in place, so it
+// distinguishes two designs and not two states of one design. Calling it a revision would claim
+// the second and deliver the first, and a stamp that cannot notice an edit is worse than no stamp
+// while wearing the name of one. What a real revision needs is a content hash of the design, which
+// std.content_hash already provides; that is a further step and it is not taken here.
 type BoardPlacementPlan {
   frame: CoordinateFrameIdentity
   outline: AxisAlignedRectangle2
+  design: DeclarationRef
   components: List<PlannedComponent>
+}
+
+fn altra_1p_minimum_ref() -> DeclarationRef {
+  decl_ref(module_path: "product.altra_motherboard.minimal_design", decl_name: "altra_1p_minimum")
 }
 
 // THE REQUIRED POPULATION IS DERIVED FROM THE DESIGN, never listed beside it. A hand-written
@@ -298,10 +318,26 @@ fn identity_refusals(plan: BoardPlacementPlan) -> List<PlacementRefusal> {
   scan.out
 }
 
+// THE DESIGN JOIN IS ITS OWN CAUSE RATHER THAN A PRECONDITION, because a plan built from another
+// design does not merely fail the population check -- it fails it in a way that reads like ordinary
+// missing work. An eight-channel plan admitted against a four-channel design reports four
+// unjustified slots, which is what a board with four spare connectors would report, and the reader
+// fixes the wrong thing. Naming the mismatch says the two are not comparable at all.
+fn design_refusals(d_ref: DeclarationRef, plan: BoardPlacementPlan) -> List<PlacementRefusal> {
+  if declaration_ref_eq(a: plan.design, b: d_ref) {
+    []
+  } else {
+    [PlanWasBuiltFromADifferentDesign { plan_design: plan.design, admitted_against: d_ref }]
+  }
+}
+
 fn placement_causes(d: AltraMinimalMotherboard, plan: BoardPlacementPlan) -> List<PlacementRefusal> {
   concat(
-    concat(population_refusals(d: d, plan: plan), envelope_refusals(plan: plan)),
-    identity_refusals(plan: plan)
+    concat(
+      concat(population_refusals(d: d, plan: plan), envelope_refusals(plan: plan)),
+      identity_refusals(plan: plan)
+    ),
+    design_refusals(d_ref: altra_1p_minimum_ref(), plan: plan)
   )
 }
 
@@ -493,6 +529,7 @@ fn altra_reference_plan() -> OrthogonalConstruction<BoardPlacementPlan> {
         value: BoardPlacementPlan {
           frame: altra_board_frame(),
           outline: o,
+          design: altra_1p_minimum_ref(),
           components: concat(fixed, memory_slot_obligations(d: altra_1p_minimum)),
         }
       }
@@ -533,6 +570,7 @@ fn parts_not_geometrically_checked(d: AltraMinimalMotherboard, plan: BoardPlacem
       ComponentFillsNoRequiredRole { component: _, role_named: _ } => acc
       PlannedIdentityRepeated { component: _ } => acc
       RoleFilledMoreThanOnce { role: _, fills: _ } => acc
+      PlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => acc
     }
   })
 }

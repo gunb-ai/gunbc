@@ -2,6 +2,7 @@ module test.claim.altra_placement_witness
 
 import std.types { Bool, String, NonEmptyStr, List }
 import std.integer { Int }
+import std.decl_ref { declaration_ref_eq, decl_ref }
 import std.measure { micrometer_count }
 import std.affine_space { point2 }
 import std.orthogonal_geometry { OrthogonalReady, OrthogonalRefused }
@@ -22,12 +23,14 @@ import product.altra_motherboard.placement {
   PlannedIdentityRepeated,
   ProcessorSocket,
   RequiredRoleUnfilled,
+  PlanWasBuiltFromADifferentDesign,
   RoleFilledMoreThanOnce,
   BodyLayoutAdmittedOverEveryRequiredPart,
   BodyLayoutCheckedOverEstablishedSubsetOnly,
   BodyLayoutRefused,
   admit_placement,
   altra_board_frame,
+  altra_1p_minimum_ref,
   altra_reference_plan,
   board_body_layout_standing,
   parts_not_geometrically_checked,
@@ -86,6 +89,7 @@ fn cause_tag(r: PlacementRefusal) -> NonEmptyStr {
     ComponentFillsNoRequiredRole { component: _, role_named: _ } => "RoleUnjustified"
     PlannedIdentityRepeated { component: _ } => "IdentityRepeated"
     RoleFilledMoreThanOnce { role: _, fills: _ } => "RoleFilledTwice"
+    PlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => "DesignMismatch"
   }
 }
 
@@ -318,7 +322,7 @@ test fn w_memory_slots_are_distinguished_on_both_coordinates() -> Bool {
 // roles, and the join reports them — so the completeness check is an identity join and not a
 // count that happens to agree.
 fn plan_with_only(cs: List<PlannedComponent>, template: BoardPlacementPlan) -> BoardPlacementPlan {
-  BoardPlacementPlan { frame: template.frame, outline: template.outline, components: cs }
+  BoardPlacementPlan { frame: template.frame, outline: template.outline, design: template.design, components: cs }
 }
 
 test fn w_a_plan_missing_roles_names_every_one_of_them() -> Bool {
@@ -519,6 +523,7 @@ test fn w_a_role_filled_twice_refuses_naming_how_many_fill_it() -> Bool {
             ComponentEnvelopeNotEstablished { component: _, gap: _ } => false
             ComponentFillsNoRequiredRole { component: _, role_named: _ } => false
             PlannedIdentityRepeated { component: _ } => false
+            PlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => false
           }
         }
       )
@@ -532,5 +537,37 @@ test fn w_the_reference_plan_fills_every_role_exactly_once() -> Bool {
     Absent => false
     Present { value: p } =>
       count_tagged(cs: placement_causes(d: altra_1p_minimum, plan: p), wanted: "RoleFilledTwice") == 0
+  }
+}
+
+// A PLAN BUILT FROM ANOTHER DESIGN IS NOT COMPARABLE, and saying so is different from reporting the
+// symptoms. Retargeting the reference plan at a design declaration it did not come from produces a
+// named mismatch carrying both references. The alternative -- letting the population join speak --
+// would report a list of unjustified parts, which is exactly what a board with spare connectors
+// reports, and the reader would go and delete real components.
+test fn w_a_plan_from_another_design_is_refused_as_incomparable() -> Bool {
+  match plan_or_empty() {
+    Absent => false
+    Present { value: p } =>
+      count_tagged(
+        cs: placement_causes(d: altra_1p_minimum, plan: BoardPlacementPlan {
+          frame: p.frame,
+          outline: p.outline,
+          design: decl_ref(module_path: "product.altra_motherboard.minimal_design", decl_name: "some_other_board"),
+          components: p.components,
+        }),
+        wanted: "DesignMismatch"
+      ) == 1
+  }
+}
+
+// AND THE POSITIVE CONTROL: the reference plan names the design it was built from, so the join is
+// not satisfied by a check that refuses every plan.
+test fn w_the_reference_plan_names_the_design_it_came_from() -> Bool {
+  match plan_or_empty() {
+    Absent => false
+    Present { value: p } =>
+      declaration_ref_eq(a: p.design, b: altra_1p_minimum_ref())
+        && count_tagged(cs: placement_causes(d: altra_1p_minimum, plan: p), wanted: "DesignMismatch") == 0
   }
 }
