@@ -6,7 +6,7 @@ import extdeps.cpu.types { CacheGeometryCitation, CpuDeploymentFacts, CpuFacts, 
 import extdeps.toolchain.types { X86_64 }
 import extdeps.vendor.amd { amd }
 import std.measure { byte_size, hardware_thread_count, hertz, watt }
-import std.types { List, none }
+import std.types { List }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -5,7 +5,6 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.cpu.types { CpuModelCatalogRow }
 import std.machine_shape { DomainId, ExecutionDomain, LevelId, MachineShape, MachineShapeConstruction, MemoryLevel, MemoryShape, execution_shape_independent_lanes }
-import std.types { none }
 import v2.std.optional { Present }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
