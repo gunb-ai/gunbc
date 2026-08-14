@@ -20,7 +20,6 @@ import gunbc.systemctl_show_read {
   SystemdPropertyCaptureRefused,
   systemctl_show_property_operation_argv_matches_transport,
 }
-import gunbc.systemctl_set_property { systemctl_set_property_operation_argv_matches_transport }
 import gunbc.systemctl_list_units {
   systemctl_list_units_active_services,
   systemctl_list_units_line_as_unit,
@@ -32,15 +31,10 @@ import gunbc.host_converge_slice1 {
   host_converge_slice1_memory_cap_verdict,
   host_converge_slice1_fixture_receipt,
   host_converge_slice1_cross_check_enumeration,
-  host_converge_slice1_usage_guard,
-  HostConvergeSlice1UsageSafe,
-  HostConvergeSlice1UsageUnsafe,
-  HostConvergeSlice1UsageUnknown,
   HostConvergeSlice1EnumerationMismatch,
-  HostConvergeSlice1UnitOutcome,
-  HostConvergeSlice1UnitUsageGuardRefused,
   HostConvergeSlice1Refused,
   host_converge_slice1_unit_outcome_to_legacy_result,
+  host_converge_slice1_memory_max_converge_apply_suppressed,
   host_converge_slice1_tasks_knob_name,
   host_converge_slice1_tasks_knob,
   host_converge_slice1_tasks_verdict,
@@ -52,7 +46,6 @@ import gunbc.host_converge_slice1 {
 }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import gunbc.fleet_host_budget { declared_runner_count_for }
-import std.measure { byte_size }
 import std.disposition { Scaffold, Terminal }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -137,11 +130,6 @@ test fn witness_transport_reads_use_show_property_authority() -> Bool {
     property: MemoryMax,
   )
     && witness_slice1_show_property_local_read_holds()
-    && systemctl_set_property_operation_argv_matches_transport(
-      unit: host_converge_slice1_probe_unit,
-      property: systemd_memory_max_property,
-      value: "17179869184" as NonEmptyStr,
-    )
 }
 
 test fn witness_list_units_line_parser_takes_first_field_only() -> Bool {
@@ -183,20 +171,9 @@ test fn witness_cross_check_refuses_observed_exceeds_declared() -> Bool {
   }
 }
 
-test fn witness_usage_guard_refusal_routes_to_legacy_refused_with_retryable_reason() -> Bool {
-  let outcome: HostConvergeSlice1UnitOutcome = HostConvergeSlice1UnitUsageGuardRefused {
-    unit: host_converge_slice1_probe_unit,
-    current_bytes: byte_size(count: 200),
-    target_cap_bytes: byte_size(count: 100),
-  }
-  match host_converge_slice1_unit_outcome_to_legacy_result(outcome) {
-    HostConvergeSlice1Refused { reason: r } =>
-      string_contains(s: r, pattern: "usage guard")
-        && string_contains(s: r, pattern: "retryable")
-    _ => false
-  }
+test fn witness_convergence_suppresses_memory_max_set_property_apply() -> Bool {
+  host_converge_slice1_memory_max_converge_apply_suppressed
 }
-
 
 // --- TasksMax knob (second knob on the slice1 circuit; desired = 16384, the incident
 // repair value — 512 is the diagnosed EAGAIN outage value and must read Drifted) ---
