@@ -50,8 +50,26 @@ type PrincipalReachObservation {
   principal_login_name: NonEmptyStr
   credential_identity: ContentHash
   authenticated: Bool
-  passwordless_privilege: Bool
+  holds_any_passwordless_grant: Bool
 }
+
+// THE FIELD IS NAMED FOR WHAT IT MEASURES, and the rename is a repair rather than a preference.
+// It was `passwordless_privilege`, measured by `sudo -n -l` -- which exits 0 whenever the account
+// holds ANY nopasswd entry, including a single-command grant. The name promised a general capability
+// the measurement never established, and I acted on the name: I read it as "can perform privileged
+// installs", reported the serving install unblocked, and was refuted by enumerating the actual
+// grant (one command, `loginctl enable-linger`, on both Sparks).
+//
+// This is the record's OWN stated defect arriving one level down. The comment above explains that a
+// host-grained shape would let one principal's evidence answer another's question; a field named
+// more broadly than its measurement does the same thing along a different axis -- it lets one
+// question's evidence answer a bigger question -- and a Bool cannot be narrowed by its reader.
+//
+// So the name now states exactly what a successful `sudo -n -l` proves and nothing beyond it. What
+// commands the account may actually run is a POPULATION, not a Bool, and reducing it is what caused
+// the error; that enumeration is reported verbatim by fleet_multi_principal_probe
+// spark_exact_grant_probe_wet. Any consumer asking "may this account perform effect X" must join
+// against that population -- this field cannot answer it and no longer appears to.
 
 fn observation_for(
   observations: List<PrincipalReachObservation>,

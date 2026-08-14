@@ -2,8 +2,10 @@ module test.claim.planar_projection_witness
 
 import std.types { Bool, Int }
 import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
-import std.affine_space { Point2, Point3, point3 }
-import std.measure { signed_millimeter_component_count }
+import std.affine_space { Point2, Point3, point3,
+  signed_frame_component_count
+}
+
 import std.planar_projection {
   ViewAxisTriple, view_axis_triple,
   ProjectionView, ProjectionMap, ViewPoint2,
@@ -159,8 +161,8 @@ test fn a_plan_page_coordinate_reads_back_as_millimetres() -> Bool {
           match view_point_millimetres(v: plan, p: p) {
             ProjectionRefused { cause: _ } => false
             ProjectionReady { value: mm } =>
-              signed_millimeter_component_count(m: mm.x) == 3000
-                && signed_millimeter_component_count(m: mm.y) == 4000
+              signed_frame_component_count(c: mm.x) == 3000
+                && signed_frame_component_count(c: mm.y) == 4000
           }
       }
   }

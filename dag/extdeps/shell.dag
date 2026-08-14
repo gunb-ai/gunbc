@@ -225,6 +225,18 @@ service shell.Link {
   }
 }
 
+service shell.Symlink {
+  operation AtomicReplace {
+    input { target: FilePath, link: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["ln", "-sfnT", "{target}", "{link}"] }
+    exit {
+      0 => Unit "Symlink published; -T treats link as a normal file (no nest into existing dir); -f replaces existing link"
+      nonzero => String "ln -sfnT failed"
+    }
+  }
+}
+
 service shell.Remove {
   operation FileForce {
     input { path: FilePath }
