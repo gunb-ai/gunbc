@@ -1,17 +1,18 @@
 module v2.compiler.program_assembly
 
+import v2.compiler.normalized_tree { NormalizedTree }
 import v2.extdeps.languages.dag { qualified_name_from_module_node }
 
 type ProgramAssemblyFoldState
   = ProgramAssemblyFoldOk {
-      roots: FreeMonoid<Node>,
+      roots: FreeMonoid<NormalizedTree>,
       index: v2.std.cross_tree.resolution.SourceRootIndex
     }
   | ProgramAssemblyFoldFailed {
       diagnostics: NonEmptyDiagnostics
     }
 
-fn program_assembly_empty_roots() -> FreeMonoid<Node> {
+fn program_assembly_empty_roots() -> FreeMonoid<NormalizedTree> {
   Empty
 }
 
@@ -20,7 +21,7 @@ fn program_assembly_read_to_normalized_root_prepared(
   lm: LanguageModel,
   prepared: PreparedGrammar,
   residue: Diagnostics
-) -> Outcome<Node> {
+) -> Outcome<NormalizedTree> {
   match read.artifact.kind {
     SourceFile =>
       bind_outcome(
@@ -48,7 +49,7 @@ fn program_assembly_read_to_normalized_root_prepared(
 fn program_assembly_read_to_normalized_root(
   read: DagSourceReadWitness,
   lm: LanguageModel
-) -> Outcome<Node> {
+) -> Outcome<NormalizedTree> {
   match prepare_grammar(grammar: lm.grammar) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: prepared, diagnostics: residue } =>
@@ -74,7 +75,7 @@ fn program_assembly_fold_step(
     ProgramAssemblyFoldOk { roots: acc, index: idx } =>
       match program_assembly_read_to_normalized_root_prepared(read: read, lm: lm, prepared: prepared, residue: residue) {
         Accepted { value: root, diagnostics: _ } =>
-          match qualified_name_from_module_node(root: root) {
+          match qualified_name_from_module_node(root: root.root) {
             Accepted { value: qn, diagnostics: _ } =>
               ProgramAssemblyFoldOk {
                 roots: list_snoc_item(xs: acc, item: root),
@@ -125,7 +126,7 @@ fn program_assembly_fold_ingest(
 fn module_roots_from_source_root_ingest(
   ingest: SourceRootIngest,
   lm: LanguageModel
-) -> Outcome<FreeMonoid<Node>> {
+) -> Outcome<FreeMonoid<NormalizedTree>> {
   match program_assembly_fold_ingest(ingest: ingest, lm: lm) {
     ProgramAssemblyFoldOk { roots: roots, index: _ } =>
       outcome_accepted(value: roots)
@@ -135,7 +136,7 @@ fn module_roots_from_source_root_ingest(
 }
 
 fn assemble_program_from_module_roots(
-  roots: FreeMonoid<Node>,
+  roots: FreeMonoid<NormalizedTree>,
   admission: Admission,
   lm: LanguageModel
 ) -> Outcome<Node> {

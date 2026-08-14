@@ -1,0 +1,76 @@
+module test.claim.ilm4926_designation_witness
+
+import std.logic { Bool }
+import std.types { list_length }
+import extdeps.cpu_attachment.ilm4926 {
+  IndependentLoadingMechanismOnly,
+  ReferentUnresolvedByCitedDocuments,
+  SocketAssemblyIncludingLoadingMechanism,
+  SocketBodyOnly,
+  altra_classic_datasheet_authority,
+  attestation_count,
+  attested_by_ampere_datasheets,
+  attested_by_independent_publishers,
+  attested_by_ocp_specification,
+  attestations_from_authority,
+  designation_referent_is_resolved,
+  extdeps_external_authority_anchor,
+  ilm4926,
+  ilm4926_attestations,
+  ilm4926_referent,
+  ocp_mt_jade_specification_authority,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn w_ilm4926_is_carried_as_a_designator() -> Bool {
+  ilm4926.designator == "ILM4926"
+}
+
+// The justification for a separate authority is INDEPENDENT publishers, not a
+// count of mentions: two Ampere datasheets are one publisher saying it twice.
+test fn w_the_designation_is_attested_by_independent_publishers() -> Bool {
+  attestation_count() == 3
+    && list_length(items: ilm4926_attestations) == 3
+    && attested_by_ampere_datasheets()
+    && attested_by_ocp_specification()
+    && attested_by_independent_publishers()
+}
+
+test fn w_each_attestation_carries_its_own_authority_and_wording() -> Bool {
+  let ampere_max = attestations_from_authority(authority: extdeps_external_authority_anchor)
+  let ampere_classic = attestations_from_authority(authority: altra_classic_datasheet_authority)
+  let ocp = attestations_from_authority(authority: ocp_mt_jade_specification_authority)
+  list_length(items: ampere_max) == 1
+    && list_length(items: ampere_classic) == 1
+    && list_length(items: ocp) == 1
+    && ampere_max.first().wording == "device seated in ILM4926 socket"
+    && ocp.first().wording == "ILM4926"
+}
+
+// THE OPEN QUESTION IS MODELLED, NOT ASSUMED AWAY. No cited document expands
+// the designator or attributes it to a vendor part, so the referent is
+// unresolved and the predicate says so.
+test fn w_the_referent_is_unresolved_by_the_cited_documents() -> Bool {
+  !designation_referent_is_resolved(referent: ilm4926_referent)
+}
+
+// RED control: each concrete referent WOULD resolve, so the unresolved answer
+// above is a property of the evidence rather than a predicate that can only
+// return false.
+test fn w_red_a_concrete_referent_would_resolve_the_question() -> Bool {
+  designation_referent_is_resolved(referent: SocketBodyOnly)
+    && designation_referent_is_resolved(referent: IndependentLoadingMechanismOnly)
+    && designation_referent_is_resolved(referent: SocketAssemblyIncludingLoadingMechanism)
+    && !designation_referent_is_resolved(referent: ReferentUnresolvedByCitedDocuments { reason: "any reason at all" })
+}
+
+// RED control: a single-publisher population must NOT read as independent
+// attestation, which is the claim this module's existence rests on.
+test fn w_red_one_publisher_twice_is_not_independent_attestation() -> Bool {
+  let ampere_only = attestations_from_authority(authority: extdeps_external_authority_anchor)
+  let ocp_only = attestations_from_authority(authority: ocp_mt_jade_specification_authority)
+  list_length(items: ampere_only) != list_length(items: ilm4926_attestations)
+    && list_length(items: ocp_only) != list_length(items: ilm4926_attestations)
+}

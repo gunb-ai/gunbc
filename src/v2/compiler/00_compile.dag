@@ -378,7 +378,7 @@ fn validate_then_compile(
 fn compile_ingest_with_admission(
   source: Medium<String>,
   target: TargetModel,
-  peer_roots: FreeMonoid<Node>,
+  peer_roots: FreeMonoid<NormalizedTree>,
   admission: Admission
 ) -> Outcome<Medium<String>> {
   let lm = dag_language_model()
