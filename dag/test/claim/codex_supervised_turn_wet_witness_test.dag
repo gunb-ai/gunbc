@@ -206,8 +206,7 @@ fn wet_materialize_through_prepare_only() -> Bool {
   )
 }
 
-data wet_materialize_bisect_release_parent: FilePath =
-  "/tmp/gunbc-wet-materialize-bisect-release" as FilePath
+data wet_materialize_bisect_release_parent: FilePath = "/tmp/gunbc-wet-materialize-bisect-release" as FilePath
 
 fn wet_materialize_codex_runtime_bundle_only() -> Bool {
   match materialize_codex_runtime_bundle(
