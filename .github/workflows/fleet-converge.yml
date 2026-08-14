@@ -5,6 +5,7 @@ on:
       mode:
         description: plan shows membership hunks; apply executes a prior plan artifact
         required: true
+        options: [plan, apply]
         type: choice
       plan_artifact_hash:
         description: Fnv1a64Structural digest of plan.txt — required for apply (printed by plan step)
