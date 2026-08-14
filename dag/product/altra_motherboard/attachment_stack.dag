@@ -15,9 +15,6 @@ import extdeps.cpu.ampere_altra_package {
   ampere_customer_reference_boards_authority,
   extdeps_external_authority_anchor,
 }
-import extdeps.cpu.ampere_altra_platform_hw_design.subject {
-  extdeps_external_authority_anchor as altra_platform_hw_design_authority,
-}
 
 data attachment_stack_note: String = "SIX THINGS BETWEEN A PROCESSOR DIE AND A BOARD, AND THEY ARE NOT ONE THING. The processor package, the socket, the socket's own board termination, the motherboard land pattern that termination solders to, the loading mechanism that clamps the processor into the socket, and the mounting that carries the load are six independently governed identities with six different authorities — one vendor publishes the package, another manufactures the socket, and the motherboard designer owns neither. THE ERROR THIS MODULE EXISTS TO MAKE UNWRITABLE is deriving the board land pattern from the processor package's bottom-land geometry. Both are grids of lands with 4926 members and the same pitch, so they LOOK like the same fact, and the datasheet's mechanical section is right there. They are not the same fact: one is the package's underside, the other is the pad array the SOCKET solders to, and the socket sits between them adding its own tolerance, termination style and keepout. A board built on the first is a board where nothing solders. The identical category error was already made one layer down in this repository, where a package body envelope was called a footprint and approved by review before it was caught."
 
@@ -68,7 +65,6 @@ fn attachment_layer_name(l: AttachmentLayer) -> NonEmptyStr {
 type AuthorityStanding
   = PubliclyCited { authority: ExternalAuthority }
   | PublicButRedistributionUndecided { authority: ExternalAuthority, footer: NonEmptyStr }
-  | DocumentCitedTextUnread { authority: ExternalAuthority, what_is_missing: NonEmptyStr }
   | NdaGated { subject: NonEmptyStr, access_route: ExternalAuthority }
   | Unresolved { what_is_missing: NonEmptyStr }
 
@@ -113,15 +109,11 @@ data socket_board_termination_standing: AttachmentLayerStanding = AttachmentLaye
 }
 
 // THE ONE THAT MATTERS MOST, and the one that looks most available. The board land pattern is the
-// SOCKET vendor's recommended pad array, not the processor's underside. THE CITED PLATFORM
-// DESIGN SPEC IS A POINTER TO WHERE THE ANSWER WOULD LIVE, NOT THE ANSWER: DocumentCitedTextUnread
-// keeps standing_is_established false and routes to NeedsDocumentTextIngested, so no consumer may
-// treat the anchor as evidence that the land pattern is known.
+// SOCKET vendor's recommended pad array, not the processor's underside.
 data board_land_pattern_standing: AttachmentLayerStanding = AttachmentLayerStanding {
   layer: BoardLandPatternLayer,
-  standing: DocumentCitedTextUnread {
-    authority: altra_platform_hw_design_authority,
-    what_is_missing: "socket land pattern, keepout, DDR4 routing rules, impedance targets and stackup guidance from the platform hardware design specification; the document is identified but its text is not ingested",
+  standing: Unresolved {
+    what_is_missing: "the socket vendor's recommended motherboard land pattern; the processor datasheet's mechanical section gives the PACKAGE's bottom-land geometry, which is a different surface on the other side of the socket",
   },
 }
 
@@ -166,7 +158,6 @@ fn standing_is_established(s: AuthorityStanding) -> Bool {
   match s {
     PubliclyCited { authority: _ } => true
     PublicButRedistributionUndecided { authority: _, footer: _ } => false
-    DocumentCitedTextUnread { authority: _, what_is_missing: _ } => false
     NdaGated { subject: _, access_route: _ } => false
     Unresolved { what_is_missing: _ } => false
   }
@@ -178,7 +169,6 @@ fn standing_is_established(s: AuthorityStanding) -> Bool {
 // all three to the same person and make the tractable ones look like the intractable one.
 type LayerBlocker
   = NeedsSomeoneToFindTheDocument { layer: AttachmentLayer, what_is_missing: NonEmptyStr }
-  | NeedsDocumentTextIngested { layer: AttachmentLayer, authority: ExternalAuthority, what_is_missing: NonEmptyStr }
   | NeedsARedistributionDecision { layer: AttachmentLayer, footer: NonEmptyStr }
   | NeedsCommercialAccess { layer: AttachmentLayer, subject: NonEmptyStr, access_route: ExternalAuthority }
 
@@ -187,8 +177,6 @@ fn layer_blocker(row: AttachmentLayerStanding) -> LayerBlocker? {
     PubliclyCited { authority: _ } => none
     Unresolved { what_is_missing: w } =>
       Present { value: NeedsSomeoneToFindTheDocument { layer: row.layer, what_is_missing: w } }
-    DocumentCitedTextUnread { authority: a, what_is_missing: w } =>
-      Present { value: NeedsDocumentTextIngested { layer: row.layer, authority: a, what_is_missing: w } }
     PublicButRedistributionUndecided { authority: _, footer: f } =>
       Present { value: NeedsARedistributionDecision { layer: row.layer, footer: f } }
     NdaGated { subject: sub, access_route: route } =>
