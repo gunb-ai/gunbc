@@ -73,10 +73,26 @@ fn attachment_layer_name(l: AttachmentLayer) -> NonEmptyStr {
 // holding an established value, a contradiction the type permitted.
 //
 // IS THE FACT ESTABLISHED. This axis says nothing about what may be copied.
+// AND THE FOURTH STATE, WHICH THE FIRST THREE COULD NOT SAY. A fact can sit in a document that is
+// found, public, and already cited by this repository, and still be unreadable: it is drawn rather
+// than written. The Altra land geometry is exactly this -- the mechanical section IS the drawing,
+// and its dimensions render from subset fonts carrying no character map, so a machine reading it
+// gets glyph codes rather than numbers.
+//
+// Filing that as FactUnresolved was wrong in the way that matters most here, because this type's
+// own principle is that the reason decides who acts. Unresolved dispatches someone to find a
+// document; there is no document left to find, the bibliography lists nine and none is a mechanical
+// drawing, and the search would return empty after costing a day. What is owed is a HUMAN READING A
+// DRAWING, which is a different actor and a different unblocking event.
+//
+// It is deliberately NOT a carriage question. The document is public and the ruling permits its
+// facts, so nothing legal stands here -- fusing this into carriage would send a reading task to
+// whoever decides what the repository may hold.
 type FactAuthorityStanding
   = FactEstablished { authority: ExternalAuthority, subject: DeclarationRef }
   | FactUnresolved { what_is_missing: NonEmptyStr }
   | FactAccessGated { subject: NonEmptyStr, access_route: ExternalAuthority }
+  | FactStatedOnlyInFigure { figure: NonEmptyStr, what_is_drawn: NonEmptyStr }
 
 // WHAT THIS REPOSITORY MAY CARRY FOR THAT SUBJECT. Deliberately three arms rather than the four a
 // naive split would give, and the missing one is worth stating: there is no
@@ -95,6 +111,7 @@ fn fact_is_established(f: FactAuthorityStanding) -> Bool {
     FactEstablished { authority: _, subject: _ } => true
     FactUnresolved { what_is_missing: _ } => false
     FactAccessGated { subject: _, access_route: _ } => false
+    FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => false
   }
 }
 
@@ -130,10 +147,20 @@ data processor_package_standing: AttachmentLayerStanding = AttachmentLayerStandi
 // The socket is a purchased part from a socket manufacturer, and nobody here has yet identified
 // which one. That is an unresolved authority, NOT an NDA blocker — recording it as NDA-gated
 // would invent a wall and stop anyone from looking for the datasheet that probably exists.
+// CORRECTED BY EXECUTION. This layer said the processor datasheet names the package and not the
+// socket that receives it. That is false: the datasheet's thermal notes state the case temperature
+// is measured with the device seated in a named socket, and the OCP board specification names the
+// same designation independently. Two documents agreeing is what promoted it to its own authority.
+//
+// The layer stays unresolved because what is still missing narrowed rather than cleared: a
+// designation is not a vendor part number, and which physical part the designation names -- the
+// socket body or the retention hardware, plausibly different vendors -- is unsettled. The
+// designation itself is not repeated here; it lives in one authority and this layer will reference
+// it rather than carry a second spelling.
 data socket_standing: AttachmentLayerStanding = AttachmentLayerStanding {
   layer: SocketLayer,
   fact: FactUnresolved {
-    what_is_missing: "socket vendor identity and part number; the processor datasheet names the package, not the socket that receives it",},
+    what_is_missing: "the socket vendor and part number, and which physical part the shared designation names; a designation appearing in two independent documents establishes the name, not the part",},
   carriage: CarriageNotApplicable {
     because: "no fact is established for this layer, so there is nothing to decide carriage for",
   },
@@ -150,12 +177,23 @@ data socket_board_termination_standing: AttachmentLayerStanding = AttachmentLaye
 
 // THE ONE THAT MATTERS MOST, and the one that looks most available. The board land pattern is the
 // SOCKET vendor's recommended pad array, not the processor's underside.
+// LOCATED, NOT MISSING. This layer was filed as a document nobody had found, and it is now known
+// exactly where the geometry sits: inside a figure in a document this repository already cites and
+// is permitted to carry. The search is over and it returned a location rather than a document, so
+// the actor changes from someone reading a bibliography to someone reading a drawing.
+//
+// The package-versus-board distinction the earlier wording made is still correct and still load
+// bearing: the platform specification's running text gives the PACKAGE pad array, which is the
+// underside of the part, not the board surface on the other side of the socket. Having the first
+// does not give the second, and the figure is where the question is settled either way.
 data board_land_pattern_standing: AttachmentLayerStanding = AttachmentLayerStanding {
   layer: BoardLandPatternLayer,
-  fact: FactUnresolved {
-    what_is_missing: "the socket vendor's recommended motherboard land pattern; the processor datasheet's mechanical section gives the PACKAGE's bottom-land geometry, which is a different surface on the other side of the socket",},
+  fact: FactStatedOnlyInFigure {
+    figure: "Ampere Altra Platform Hardware Design Specification v1.00, Figure 3, Altra Package Size and Pad Array",
+    what_is_drawn: "the package outline drawing and the socket drawing, which is where a board land pattern would be stated if either document states one; the running text gives the package pad array only, and that is the other surface",
+  },
   carriage: CarriageNotApplicable {
-    because: "no fact is established for this layer, so there is nothing to decide carriage for",
+    because: "no fact is established for this layer yet, so there is nothing to decide carriage for; the document itself is public and permitted, so nothing legal blocks this layer",
   },
 }
 
@@ -220,6 +258,7 @@ type FactAuthorityBlocker
   = NeedsSomeoneToFindTheDocument { what_is_missing: NonEmptyStr }
   | NeedsARedistributionDecision { reason: NonEmptyStr }
   | NeedsCommercialAccess { subject: NonEmptyStr, access_route: ExternalAuthority }
+  | NeedsAHumanToReadTheDrawing { figure: NonEmptyStr, what_is_drawn: NonEmptyStr }
 
 // THE BLOCKER FOR ANY SUBJECT, derived from both axes rather than either alone. AN ESTABLISHED
 // FACT CAN STILL BE BLOCKED, and only the split makes that sayable: the question is then not
@@ -261,6 +300,12 @@ fn authority_standing_refusal(fact: FactAuthorityStanding, carriage: RepositoryC
         CarriageNotApplicable { because: _ } => none
         CarriageDecisionRequired { reason: _ } => none
       }
+    FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } =>
+      match carriage {
+        NormalizedFactsMayBeCarried => Present { value: UnestablishedFactClaimsNormalizedCarriage }
+        CarriageNotApplicable { because: _ } => none
+        CarriageDecisionRequired { reason: _ } => none
+      }
     FactAccessGated { subject: _, access_route: _ } =>
       match carriage {
         CarriageDecisionRequired { reason: _ } => Present { value: AccessGatedFactHasIndependentCarriageDecision }
@@ -289,6 +334,8 @@ fn subject_blocker(fact: FactAuthorityStanding, carriage: RepositoryCarriageStan
   match fact {
     FactUnresolved { what_is_missing: w } =>
       Present { value: NeedsSomeoneToFindTheDocument { what_is_missing: w } }
+    FactStatedOnlyInFigure { figure: f, what_is_drawn: d } =>
+      Present { value: NeedsAHumanToReadTheDrawing { figure: f, what_is_drawn: d } }
     FactAccessGated { subject: sub, access_route: route } =>
       Present { value: NeedsCommercialAccess { subject: sub, access_route: route } }
     FactEstablished { authority: _, subject: _ } =>

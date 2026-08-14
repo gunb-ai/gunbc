@@ -42,6 +42,8 @@ import product.altra_motherboard.placement {
   roles_equal,
 }
 import product.altra_motherboard.attachment_stack {
+  FactAuthorityBlocker,
+  NeedsAHumanToReadTheDrawing,
   NeedsARedistributionDecision,
   NeedsCommercialAccess,
   NeedsSomeoneToFindTheDocument,
@@ -163,14 +165,23 @@ test fn w_the_socket_and_package_standings_are_distinguishable() -> Bool {
 // on either side, so the test states an identity rather than recognizing a phrase somebody could
 // paste onto the wrong standing. Mutation-verified: rebinding placement to the package standing
 // reds this, because the package reports no blocker and the socket obligation loses its payload.
+// THE PAYLOAD OF ANY BLOCKER, projected once and used on both sides of the join below. Reading it
+// per-variant at each site would make the witness a statement about which KIND of blocker the
+// socket layer currently has, and the land-pattern layer has already changed kind once -- from a
+// document nobody had found to a figure nobody has read. The claim being made is that the plan's
+// socket gap IS the socket layer's blocker, and that claim should survive the layer changing kind.
+fn blocker_payload(b: FactAuthorityBlocker) -> String {
+  match b {
+    NeedsSomeoneToFindTheDocument { what_is_missing: w } => w as String
+    NeedsCommercialAccess { subject: sj, access_route: _ } => sj as String
+    NeedsARedistributionDecision { reason: r } => r as String
+    NeedsAHumanToReadTheDrawing { figure: _, what_is_drawn: d } => d as String
+  }
+}
+
 fn socket_layer_gap_text() -> String {
   match subject_blocker(fact: socket_standing.fact, carriage: socket_standing.carriage) {
-    Present { value: b } =>
-      match b {
-        NeedsSomeoneToFindTheDocument { what_is_missing: w } => w as String
-        NeedsCommercialAccess { subject: sj, access_route: _ } => sj as String
-        NeedsARedistributionDecision { reason: r } => r as String
-      }
+    Present { value: b } => blocker_payload(b: b)
     Absent => ""
   }
 }
@@ -187,12 +198,7 @@ test fn w_the_plan_socket_obligation_carries_the_socket_layers_own_blocker() -> 
             match c.envelope {
               EnvelopeEstablished { envelope: _, source: _ } => acc
               EnvelopeNotEstablished { gap: g } =>
-                match g {
-                  NeedsSomeoneToFindTheDocument { what_is_missing: w } =>
-                    acc || (w as String) == (socket_layer_gap_text() as String)
-                  NeedsCommercialAccess { subject: _, access_route: _ } => acc
-                  NeedsARedistributionDecision { reason: _ } => acc
-                }
+                acc || (blocker_payload(b: g) as String) == (socket_layer_gap_text() as String)
             }
           }
         })

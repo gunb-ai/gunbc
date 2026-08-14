@@ -15,10 +15,12 @@ import product.altra_motherboard.attachment_stack {
   LayerBlocker,
   FactAccessGated,
   NeedsARedistributionDecision,
+  NeedsAHumanToReadTheDrawing,
   NeedsCommercialAccess,
   NeedsSomeoneToFindTheDocument,
   ProcessorPackageLayer,
   FactEstablished,
+  FactStatedOnlyInFigure,
   FactUnresolved,
   SocketLayer,
   attachment_layer_name,
@@ -50,6 +52,7 @@ fn blocker_kind(b: LayerBlocker) -> String {
     NeedsSomeoneToFindTheDocument { what_is_missing: _ } => "find-document"
     NeedsARedistributionDecision { reason: _ } => "redistribution"
     NeedsCommercialAccess { subject: _, access_route: _ } => "commercial"
+    NeedsAHumanToReadTheDrawing { figure: _, what_is_drawn: _ } => "read-drawing"
   }
 }
 
@@ -89,7 +92,8 @@ test fn w_a_public_package_does_not_establish_the_board_land_pattern() -> Bool {
   fact_is_established(f: processor_package_standing.fact)
     && !fact_is_established(f: board_land_pattern_standing.fact)
     && match board_land_pattern_standing.fact {
-      FactUnresolved { what_is_missing: _ } => true
+      FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => true
+      FactUnresolved { what_is_missing: _ } => false
       FactEstablished { authority: _, subject: _ } => false
       FactAccessGated { subject: _, access_route: _ } => false
     }
@@ -141,7 +145,7 @@ test fn w_the_three_blocker_kinds_are_distinct() -> Bool {
     Present { value: b } => blocker_kind(b: b)
   }
   package_blocker == "none"
-    && land_blocker == "find-document"
+    && land_blocker == "read-drawing"
     && undecided_carriage_blocker() == "redistribution"
     && match reference_board_collateral_standing() {
       FactAccessGated { subject: sub, access_route: route } =>
@@ -149,6 +153,7 @@ test fn w_the_three_blocker_kinds_are_distinct() -> Bool {
           && (route.uri.locator as String) == "amperecomputing.com/home/customer-reference-boards"
       FactEstablished { authority: _, subject: _ } => false
       FactUnresolved { what_is_missing: _ } => false
+      FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => false
     }
 }
 
@@ -178,6 +183,7 @@ test fn w_the_nda_boundary_covers_board_collateral_only() -> Bool {
       FactAccessGated { subject: _, access_route: _ } => acc + 1
       FactEstablished { authority: _, subject: _ } => acc
       FactUnresolved { what_is_missing: _ } => acc
+      FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => acc
     }
   })
   nda_layers == 0
