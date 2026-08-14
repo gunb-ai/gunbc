@@ -1,7 +1,7 @@
 module extdeps.publication
 
 import std.integer { Int }
-import std.types { NonEmptyStr, String }
+import std.types { Bool, NonEmptyStr, String }
 
 data publication_status_axis_note: String = "UPSTREAM DOCUMENT FACTS ONLY. SpecificationDocumentDate and DocumentPublicationStatus record what the publisher published and when. How this repository read or failed to read a cited locator is an observation in gunbc.specification_citation_read_provenance, not here. The rule mapping a status to whether gunbc may carry facts lives in gunbc.upstream_document_carriage."
 
