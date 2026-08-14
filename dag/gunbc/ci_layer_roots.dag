@@ -662,9 +662,9 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   },
   WitnessExclusionRow {
     pattern: "codex_supervised_turn_wet_witness_test.dag",
-    classification: FalsifierRehomedBinWet,
-    reason: "wet real-execution class re-homed off the per-PR floor: materialize Codex runtime + account preflight + full supervised turn (thread/start, turn/start, terminal receipt after process exit). Wall >> bin_witness_wet_per_row_wall_budget_seconds. Exact fn enrolls in falsifier_rehomed_bin_wet_rows. Does not use belt dispatch /opt/gunbc/provider-runtime/codex.",
-    dissolution: unbound_dissolution(description: "a dedicated integration workflow enrolls the supervised turn with a durable CodexRunnerTurnTerminalReceipt, or measured wall lands under bin_witness_wet_per_row_wall_budget_seconds and re-enrolls per-PR consciously")
+    classification: OfflineLocalRecipe,
+    reason: "WET BISECT OFFLINE (srv1 2026-08-14 OOM receipt): supervised_turn_materialized_bundle_writes_terminal_receipt hit ~89 GiB RSS with zero child processes before codex spawn — never enrolled for blind execution. Bisect fns wet_committed_admitted_source_lock_admits and wet_materialize_codex_runtime_bundle_only run only under operator MemoryMax caps via local recipe (wet_supervised_turn_memory_envelope_note). Full chain re-enrolls only after bisect characterizes the burn.",
+    dissolution: unbound_dissolution(description: "bisect under declared envelopes passes and full supervised turn returns CodexRunnerTurnTerminalReceipt under cap, or root cause fixed in shared package_delivery / interpreter path")
   },
   WitnessExclusionRow {
     pattern: "resolution_divergence_silent_pick_gate_witness_test.dag",
@@ -1225,12 +1225,6 @@ data falsifier_rehomed_bin_wet_rows: List<RehomedBinWetRow> = [
     function: "press_account_trip_yields_standing_or_typed_refusal_never_turn_started_holds",
     reason: "Wet Codex account-standing trip (materialize + app-server initialize/account/rateLimits). Wall >> per-PR bin budget; must never claim turn_started. Falsifier batch 5 is the executing consumer until a dedicated integration workflow lands. HOST OBLIGATION: gunbc.host_cli_dependency codex_wet_materialization_host_cli_requirements (npm → apt install npm on cadence image); absent npm is HostDependencyAbsent, never auto-install inside the witness.",
     dissolution: unbound_dissolution(description: "dedicated integration workflow enrolls with durable receipt, or measured wall under bin_witness_wet_per_row_wall_budget_seconds re-enrolls per-PR")
-  },
-  RehomedBinWetRow {
-    entry: "dag/test/claim/codex_supervised_turn_wet_witness_test.dag",
-    function: "supervised_turn_materialized_bundle_writes_terminal_receipt",
-    reason: "Wet supervised Codex turn: materialize bundled native + preflight standing + thread/start + turn/start + terminal receipt after process exit with client_command_id. Wall >> per-PR bin budget. Parent bounded srv1 grant executes this entry directly, not belt dispatch.",
-    dissolution: unbound_dissolution(description: "bounded wet turn returns CodexRunnerTurnTerminalReceipt and #8166 merges, or dedicated integration workflow enrolls with durable receipt")
   }
 ]
 
