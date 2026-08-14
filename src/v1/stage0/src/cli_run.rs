@@ -14631,7 +14631,7 @@ fn decode_output_decision(
 static ROUTINE_ROLLUP_FOLD: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 
 /// Whether a CONCLUDED witness outcome folds, resolved from
-/// `gunbc.observation_ci_render concluded_outcome_folds` — which derives it from
+/// `gunbc.output_policy concluded_outcome_folds` — which derives it from
 /// `observation_class_density` — once at policy install and transported as a pair of verdicts.
 /// `(passing, failing)`. The seed holds an ANSWER; the rule stays in the authority.
 static CONCLUDED_OUTCOME_FOLD: std::sync::OnceLock<(bool, bool)> = std::sync::OnceLock::new();
@@ -14795,8 +14795,6 @@ pub fn install_output_policy(source_roots: &[String]) {
         false,
     ) {
         Ok(Value::Bool(b)) => b,
-        // Counted, not absorbed: the run still prints every line (the safe direction), but it says
-        // so, so a policy that stopped being readable cannot present as a policy that said leaf.
         // REFUSES, RATHER THAN WIDENING. This arm printed a warning and carried on with
         // folding disabled, which is the absorbing fallback in its purest form: the
         // degraded state is the OLD behaviour, so a policy that stopped being readable is
@@ -14849,11 +14847,10 @@ pub fn install_output_policy(source_roots: &[String]) {
         (p, f) => {
             let causes: Vec<String> = [p.err(), f.err()].into_iter().flatten().collect();
             eprintln!(
-                "::error::output policy drift: gunbc.observation_ci_render \
-                 `concluded_outcome_folds` did not answer a Bool ({}). If the cause is `no such \
-                 function`, the symbol is not in the closure of dag/gunbc/output_policy.dag, \
-                 which is the entry this context is built from — declare the import there rather \
-                 than relying on the module arriving by way of some other consumer",
+                "::error::output policy drift: gunbc.output_policy \
+                 `concluded_outcome_folds` did not answer a Bool ({}). The policy resolved but \
+                 this verdict could not be read, which is a defect in the policy or in this \
+                 seed's call, not a reason to pick a default",
                 causes.join("; ")
             );
             std::process::exit(1);

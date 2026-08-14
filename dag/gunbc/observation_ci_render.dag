@@ -543,14 +543,6 @@ type LeafEmissionReason
 // witness across ~9,000), but it does not need to: the density of a concluded outcome depends only
 // on its CLASS, so the verdict is resolved ONCE at policy install and transported, exactly like
 // routine_rollup_folds. The rule stays here; the seed carries an answer, not a copy of the rule.
-fn concluded_outcome_folds(passed: Bool) -> Bool {
-  match observation_class_density(c: if passed { ClassDone } else { ClassFailed }) {
-    RoutineCollapsible => true
-    SummaryAlwaysShown => false
-    AnomalyExpanded => false
-  }
-}
-
 fn ci_routine_projection(
   event: ObservationEvent,
   grain: ObservationGrain?,
@@ -667,6 +659,12 @@ fn ci_population_reconciliation_text(declared: Nat, classified: Nat) -> String {
   }
 }
 
+// DEFERRED IS NOT A CLASSIFICATION OF THE DECLARED POPULATION, it is a population beside it: a
+// deferred row never entered the run the declared count describes. Summing it in reported
+// "over-counted: 10562 classified against a declared 9478" on a HEALTHY run — a false anomaly in the
+// very line whose job is to catch a real one, which is worse than not reconciling at all because it
+// teaches a reader to ignore the parenthetical. The reconciliation covers exactly the rows the run
+// disposed of; deferred is printed beside it as its own number.
 fn ci_batch_summary_text(
   batch_index: Nat,
   batch_label: NonEmptyStr,
@@ -677,7 +675,7 @@ fn ci_batch_summary_text(
   failed: Nat,
   work: Nanosecond,
 ) -> String {
-  let classified = passed + unaffected + deferred + failed
+  let classified = passed + unaffected + failed
   ci_render_line(
     line: RenderedLine {
       glyph: if failed > 0 { NodeFailed } else { NodeCompleted },
