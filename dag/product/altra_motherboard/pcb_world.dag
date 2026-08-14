@@ -94,11 +94,8 @@ import product.altra_motherboard.attachment_stack {
   attachment_layer_name,
   open_blockers,
 }
-import extdeps.ocp.mt_jade {
-  ilm4926_designation,
-  mt_jade_board_width,
-  mt_jade_board_depth,
-}
+import extdeps.ocp.mt_jade.platform { mt_jade_motherboard_mechanical }
+import extdeps.cpu_attachment.ilm4926 { ilm4926 }
 import product.altra_motherboard.minimal_design {
   AltraMinimalMotherboard,
   ActiveDdrTopology,
@@ -123,7 +120,7 @@ import product.altra_motherboard.minimal_design {
 // labelled verified. Obligation causes are derived from the blocker variant together with the
 // planned role — UnselectedPart is a role with no vendor, MissingDocument is a role that names a
 // document still owed — never recovered by grepping blocker prose. The socket-type designation is
-// extdeps.ocp.mt_jade ilm4926_designation; Mt. Jade's board extents are the same module's foreign
+// extdeps.cpu_attachment.ilm4926; Mt. Jade's board extents are extdeps.ocp.mt_jade.platform's foreign
 // reference and are not this board's outline. Capabilities that 8233 has not modeled are pending
 // with a nonempty obligation, never an empty list. The outline constructing is
 // PartialPcbWorldReady — a preview, not an admitted board. A six-channel design has no plan on
@@ -161,11 +158,11 @@ fn designs_eq(a: AltraMinimalMotherboard, b: AltraMinimalMotherboard) -> Bool {
 }
 
 fn mt_jade_reference_board_width_um() -> Int {
-  micrometer_count(m: mt_jade_board_width)
+  micrometer_count(m: mt_jade_motherboard_mechanical.outline_width)
 }
 
 fn mt_jade_reference_board_depth_um() -> Int {
-  micrometer_count(m: mt_jade_board_depth)
+  micrometer_count(m: mt_jade_motherboard_mechanical.outline_depth)
 }
 
 fn outline_copies_mt_jade_reference(o: AxisAlignedRectangle2) -> Bool {
@@ -176,7 +173,7 @@ fn outline_copies_mt_jade_reference(o: AxisAlignedRectangle2) -> Bool {
 
 fn cause_from_unresolved_role(r: BoardComponentRole, w: NonEmptyStr) -> PcbObligationCause {
   match r {
-    ProcessorSocket => MissingDocument { what_is_missing: ilm4926_designation }
+    ProcessorSocket => MissingDocument { what_is_missing: ilm4926.designator }
     ProcessorPackage => MissingDocument { what_is_missing: w }
     BoardControlCpld => UnselectedPart { because: w }
     MemoryModuleSlot { slot: _ } => UnselectedPart { because: w }

@@ -101,7 +101,7 @@ import product.altra_motherboard.minimal_design {
   Production,
   altra_1p_minimum,
 }
-import extdeps.ocp.mt_jade { ilm4926_designation }
+import extdeps.cpu_attachment.ilm4926 { ilm4926 }
 import extdeps.cpu.ampere_altra_package {
   altra_package_body_width,
   altra_package_body_height,
@@ -389,7 +389,7 @@ test fn w_the_socket_is_missing_document_not_an_unselected_part() -> Bool {
     Absent => false
     Present { value: s } =>
       string_contains(s: s, pattern: "class=\"pcb-component-missing-document\">cpu_socket<")
-        && string_contains(s: s, pattern: concat("(missing document:", ilm4926_designation as String))
+        && string_contains(s: s, pattern: concat("(missing document:", ilm4926.designator as String))
         && !string_contains(s: s, pattern: "class=\"pcb-component-unselected-part\">cpu_socket<")
   }
 }
