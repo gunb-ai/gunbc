@@ -11,11 +11,14 @@ import gunbc.package_delivery {
   prepare_codex_runtime_closure,
   select_codex_exact_target_closure,
   observe_codex_npm_runtime_target,
+  acquire_and_admit_registry_artifact,
   admit_codex_package_lock_text,
   CodexPackageLockAdmitted,
   CodexRuntimeClosurePrepared,
   CodexNpmRuntimeTargetObserved,
   CodexExactTargetClosureSelected,
+  CodexSelectedNodeAdmitted,
+  RegistryArtifactAdmitted,
   AdmittedCodexRuntimeSource,
   CodexRuntimeMaterialized,
 }
@@ -47,7 +50,9 @@ data witness_note: String = "WET BISECT REPRODUCTION (NOT ENROLLED WITNESSES). B
 
 data wet_non_witness_enrollment_note: String = "Admission gate 2026-08-14: OfflineLocalRecipe exclusion + enrolled test fn produced UnclassifiedPathDeferral (five rows, zero executing consumers). Fix: bisect arms are fn not test fn; no witness enrollment until explicit admission with declared envelope after production fix."
 
-data wet_supervised_turn_memory_envelope_note: String = "MEMORY ENVELOPE (srv1 bisect 2026-08-14). Operator caps are safety while debugging, not the remedy. wet_committed_admitted_source_lock_admits — MemoryMax=2G PASS; wet_select_codex_exact_target_closure_only — MemoryMax=2G (step 2b); wet_codex_runtime_prepare_closure_only — MemoryMax=2G; wet_materialize_codex_runtime_bundle_only — MemoryMax=8G FAIL; full chain blocked until materialize fixed. Step2b: systemd-run --scope -p MemoryMax=2G -- gunbc run --source-root dag --source-root src/v2 --entry dag/test/claim/codex_supervised_turn_wet_witness_test.dag --function wet_select_codex_exact_target_closure_only"
+data wet_supervised_turn_memory_envelope_note: String = "MEMORY ENVELOPE (srv1 bisect 2026-08-14). Operator caps are safety while debugging, not the remedy. wet_committed_admitted_source_lock_admits — MemoryMax=2G PASS; wet_select_codex_exact_target_closure_only — MemoryMax=2G PASS (step 2b); wet_acquire_wrapper_artifact_only — MemoryMax=2G (step 2c: wrapper tarball DownloadToFile + sha512 verify); wet_codex_runtime_prepare_closure_only — MemoryMax=2G; wet_materialize_codex_runtime_bundle_only — MemoryMax=8G FAIL; full chain blocked. Step2c: systemd-run --scope -p MemoryMax=2G -- gunbc run --source-root dag --source-root src/v2 --entry dag/test/claim/codex_supervised_turn_wet_witness_test.dag --function wet_acquire_wrapper_artifact_only"
+
+data wet_bisect_step2b_receipt_note: String = "srv1 step 2b 2026-08-14 (eager-koi-458, main): wet_select_codex_exact_target_closure_only PASS under 2G in seconds — closure selection and lookups are cheap. Leak is downstream in materialize after closure (acquire/stage path). pgrep-at-instant sampling understates short-lived shell children (mktemp/curl/sha512sum)."
 
 data wet_supervised_turn_oom_receipt_note: String = "srv1 bisect 2026-08-14 (eager-koi-458): step1 PASS 2G no growth; step2 materialize_codex_runtime_bundle_only FAIL 8G cap ~7.6-7.7 GiB 13+ min reclaiming at boundary, zero children, no codex/npm/mktemp — killed. Uncapped earlier ~89 GiB / 22 min. Growth is .dag eval before subprocess spawn. Production defect in gunbc.package_delivery materialize_codex_runtime_bundle (main). Gates #8166 wet turn and #8225 host_codex_runtime_provision. Fix production path — do not enlarge witness envelope as remedy. package_lock_lookup_node filter-allocation fix landed; prepare_codex_runtime_closure bisect arm added."
 
@@ -129,6 +134,44 @@ fn wet_select_codex_exact_target_closure_only() -> Bool {
           }
         _ => false
       }
+    _ => false
+  }
+}
+
+fn wet_acquire_wrapper_artifact_only() -> Bool {
+  match prepare_codex_runtime_closure(
+    source: committed_admitted_codex_runtime_source(),
+  ) {
+    CodexRuntimeClosurePrepared {
+      wrapper: wrapper,
+      platform: _,
+      selected_target: _,
+      platform_lock_key: _,
+      native_executable_rel: _,
+      source: _,
+    } => {
+      let staging = shell.Mktemp.Dir()
+      if staging.success == false {
+        false
+      } else {
+        match wrapper {
+          CodexSelectedNodeAdmitted {
+            node: _,
+            artifact: wrapper_artifact,
+            lock_node_key: wrapper_key,
+          } =>
+            match acquire_and_admit_registry_artifact(
+              artifact: wrapper_artifact,
+              lock_node_key: wrapper_key,
+              dest_dir: staging.path,
+            ) {
+              RegistryArtifactAdmitted { staged: _ } => true
+              _ => false
+            }
+          _ => false
+        }
+      }
+    }
     _ => false
   }
 }
