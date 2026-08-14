@@ -12,9 +12,6 @@ import std.measure { Millisecond, millisecond }
 import std.measure { ClockBasis, CpuClock, WallClock }
 import gunbc.floor_component_receipt {
   FloorComponentRow,
-  ControlConcluded,
-  ControlAbsent,
-  ControlAmbiguous,
   floor_component_row,
   floor_component_row_of_failure_mode,
   floor_component_row_not_concluded,
@@ -234,8 +231,6 @@ test fn fcr_run_incomplete_is_a_distinct_mode_from_not_reached() -> Bool {
   fcr_not_concluded_mode_of(mode: "run_incomplete" as NonEmptyStr, detail: detail) == "run_incomplete"
     && !(fcr_not_concluded_mode_of(mode: "run_incomplete" as NonEmptyStr, detail: detail) == fcr_mode_of(mode: "not_reached" as NonEmptyStr))
 }
-
-data fcr_unreached_control_note: String = "The projection half of the receipt's TOTALITY property (the seed half is claim_executor's unreached_components_carry_planned_identity_not_placeholder). An enrolled component the stop policy never reached is padded into the receipt so the component count stays total. WHICH IDENTITY that padded row carries decides whether the receipt can still tell two different states apart. Carrying the PLANNED selection tag, an unreached cold control stays a predict_only row and resolves to ControlConcluded with a Skipped outcome — enrolled, did not run, verified false. Carrying a placeholder off tag instead, the same run resolves to ControlAbsent, whose cause reads 'the affected-set cold control did not run' — true by accident, and indistinguishable from a run where the control was never enrolled at all. Two states with different remedies collapsing to one output is the state-space conflation this module exists to prevent, so the pair below asserts they stay distinct rather than asserting either arm alone."
 
 data fcr_failure_mode_edge_note: String = "The row-grain failure-mode edge, and the collapse it exists to undo. floor_component_outcome_of_failure_mode maps Infra and WitnessRed onto the SAME ObservationOutcome (Failed), which is right for the observation record and wrong for anyone deciding what to do next: a dead runner and a genuinely false claim are different faults with different owners. Before the edge, a consumer holding the Failed arm could only tell them apart by reading the diagnostic prose — the string classification the seed boundary already refuses. The pair below asserts BOTH halves of the property, because either alone is satisfiable by a broken projection: the outcomes must still agree (both Failed — the edge did not fork the observation record) AND the modes must differ (Infra vs WitnessRed — the edge actually recovers the distinction). A projection that renamed the outcomes apart would pass a modes-differ check while breaking the record; one that dropped the mode would pass an outcomes-agree check while restoring the blindness."
 

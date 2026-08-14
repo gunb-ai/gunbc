@@ -1,0 +1,12 @@
+module v2.test.fixture.floor_skip.live_tree_declared
+
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data live_tree_declared_fixture_note: String = "Control fixture for the declared live-tree disposition: this entry DECLARES ReadsLiveTree, so no diff-derived affected set may predict-skip its rows (floor_skip_discovery_witness proves by execution that an unrelated diff still RUNS the witness, and that predict-only mode never records it predicted-unaffected). The sibling falsifier_divergence_control fixture declares SubstrateInputsOnly and proves the enforcement side: a declared-not-live row that reds while predicted-unaffected is a counted divergence."
+
+test fn live_tree_declared_control_holds() -> Bool {
+  true
+}
