@@ -2,11 +2,22 @@ module test.claim.mt_jade_platform_witness
 
 import std.types { Bool, String, NonEmptyStr, List }
 import std.integer { Int }
-import std.measure { hertz_count, microsecond_count }
+import std.measure { hertz_count, microsecond_count, micrometer_count }
 import extdeps.ocp.mt_jade.subject {
+  AppendixA,
+  AppendixB,
+  DocumentLocatorFetchRefused,
   MtJadeRev1_0,
+  Owfa1_0FinalSpecificationAgreement,
+  OcpContributionLicenseAgreement,
+  mt_jade_citation_read_provenance,
+  mt_jade_contribution_license,
+  mt_jade_excluded_non_normative_appendices,
   mt_jade_model_scope,
   mt_jade_reference_platform,
+  mt_jade_specification_license,
+  mt_jade_specification_publication_date,
+  mt_jade_specification_version_label,
 }
 import extdeps.ocp.mt_jade.platform {
   BaseboardManagementController,
@@ -34,6 +45,7 @@ import extdeps.ocp.mt_jade.platform {
   mt_jade_board_cpld_responsibilities,
   mt_jade_clock_tree,
   mt_jade_cpld_timer_clock,
+  mt_jade_motherboard_mechanical,
   mt_jade_reference_parts,
   processor_power_rail_count,
   processor_power_rail_enable_order,
@@ -90,8 +102,39 @@ test fn w_the_model_scope_points_at_the_reference_platform_row() -> Bool {
     b: expected_mt_jade_subject_ref,
   )
     && mt_jade_reference_platform.revision == MtJadeRev1_0
+    && (mt_jade_specification_version_label as String) == "v1.0"
+    && mt_jade_specification_publication_date.year == 2021
+    && mt_jade_specification_publication_date.month == 9
+    && mt_jade_specification_publication_date.day == 17
     && (mt_jade_model_scope.first_citation.uri.locator as String)
       == "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
+}
+
+// THE LICENCE TERMS AND APPENDIX EXCLUSION ARE LOAD-BEARING FOR PUBLIC REPOSITORY ADMISSION.
+test fn w_the_specification_license_excludes_non_normative_appendices() -> Bool {
+  mt_jade_specification_license == Owfa1_0FinalSpecificationAgreement
+    && mt_jade_contribution_license == OcpContributionLicenseAgreement
+    && fold(mt_jade_excluded_non_normative_appendices, init: true, f: fn(acc, a) {
+      acc && (a == AppendixA || a == AppendixB)
+    })
+    && fold(mt_jade_excluded_non_normative_appendices, init: 0, f: fn(acc, _a) { acc + 1 }) == 2
+}
+
+// THE CITATION READ PATH IS RECORDED HONESTLY: THE LOCATOR FETCH REFUSED AND TEXT WAS SUPPLIED.
+test fn w_the_citation_provenance_records_the_refused_fetch() -> Bool {
+  match mt_jade_citation_read_provenance {
+    DocumentLocatorFetchRefused { http_status: code, detail: _ } => code == 403
+    OperatorSuppliedDocumentText => false
+  }
+}
+
+// SECTION 7.2/7.3: 428 BY 479.36 MM OUTLINE AND ILM4926 SOCKET ON A DUAL-SOCKET 32-DIMM BOARD.
+test fn w_the_motherboard_outline_and_socket_facts_are_carried() -> Bool {
+  micrometer_count(m: mt_jade_motherboard_mechanical.outline_width) == 428000
+    && micrometer_count(m: mt_jade_motherboard_mechanical.outline_depth) == 479360
+    && (mt_jade_motherboard_mechanical.cpu_socket_designation as String) == "ILM4926"
+    && mt_jade_motherboard_mechanical.processor_socket_count == 2
+    && mt_jade_motherboard_mechanical.ddr4_dimms_total == 32
 }
 
 // SECTION 7.10.3 NAMES SEVEN RAILS IN ORDER, STARTING AT VDD_SOC AND ENDING AT VDD3V3_SOC.
