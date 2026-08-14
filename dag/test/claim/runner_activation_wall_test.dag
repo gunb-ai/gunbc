@@ -1,5 +1,7 @@
 module test.claim.runner_activation_wall
 import gunbc.build_cache_instance { ProcessIdentity }
+import gunbc.runner_activation { observation_admits_activation, placement_admits_activation }
+import gunbc.runner_host_deploy { srv4_runner_host_deploy }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

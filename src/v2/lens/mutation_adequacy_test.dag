@@ -27,6 +27,7 @@ import v2.lens.mutation_adequacy {
   StructureMutation,
   is_adequate
 }
+import v2.lens.discrimination { unit_is_discriminating }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

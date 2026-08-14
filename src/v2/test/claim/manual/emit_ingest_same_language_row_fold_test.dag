@@ -1,6 +1,7 @@
 module v2.test.manual.emit_ingest_same_language_row_fold
 
 import v2.std.algebra { Empty }
+import v2.extdeps.languages.dag { dag_translation_rules_node }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

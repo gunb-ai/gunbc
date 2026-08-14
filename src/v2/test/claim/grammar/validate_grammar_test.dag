@@ -1,6 +1,7 @@
 module v2.test.claim.grammar.validate_grammar
 
 import v2.std.algebra { Empty }
+import v2.std.grammar { grammar_formal_nonterminal }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

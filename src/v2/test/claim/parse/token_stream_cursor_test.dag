@@ -1,6 +1,7 @@
 module v2.test.parse.token_stream_cursor
 
 import v2.std.algebra { Empty }
+import v2.std.compilers.lexing { token_stream_empty, token_stream_new }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

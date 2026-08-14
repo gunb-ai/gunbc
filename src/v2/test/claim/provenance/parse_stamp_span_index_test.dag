@@ -1,6 +1,7 @@
 module v2.test.provenance.parse_stamp_span_index
 
 import v2.std.algebra { Empty }
+import v2.std.diagnostic { port_locus }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

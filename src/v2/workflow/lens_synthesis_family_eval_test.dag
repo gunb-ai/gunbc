@@ -5,6 +5,7 @@ import v2.test.synthesis_gate.optimality_gap_completeness {
   synthesis_optimality_family_gate
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.test.synthesis_gate.subject_technique_roster { synthesis_subject_rows }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

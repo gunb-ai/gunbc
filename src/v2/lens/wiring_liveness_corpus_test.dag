@@ -1,6 +1,7 @@
 module v2.test.lens_wiring_liveness.wiring_liveness_corpus_test
 
 import v2.std.algebra { Empty }
+import v2.std.fn_index { fn_arrow_decl_facts_live }
 
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

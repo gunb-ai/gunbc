@@ -1,5 +1,6 @@
 module test.claim.build_cache_placement_observation
 import gunbc.build_cache_instance { ProcessIdentity }
+import gunbc.host_build_cache_provision { placement_verdict }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

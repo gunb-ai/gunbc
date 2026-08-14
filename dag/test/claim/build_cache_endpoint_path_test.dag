@@ -1,5 +1,6 @@
 module test.claim.build_cache_endpoint_path
 import gunbc.build_cache_instance { ProcessIdentity }
+import gunbc.build_cache_endpoint_path { admit_stale_socket_unlink, unconditional_unlink_sketch }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

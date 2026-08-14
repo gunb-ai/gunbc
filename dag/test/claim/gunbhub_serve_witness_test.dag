@@ -1,5 +1,6 @@
 module test.claim.gunbhub_serve_witness
 import v2.std.network { GET, POST }
+import gunbc.gunbhub_serve { gunbhub_served_static_route_table }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

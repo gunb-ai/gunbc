@@ -1,5 +1,6 @@
 module v2.test.round_trip.dag_comment_wall_test
 import v2.extdeps.languages.fidelity { FailClosed }
+import v2.extdeps.languages.dag { dag_block_comment_fidelity, dag_line_comment_fidelity }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

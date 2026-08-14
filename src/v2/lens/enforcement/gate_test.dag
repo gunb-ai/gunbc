@@ -1,6 +1,7 @@
 module v2.test.lens_enforcement.gate_test
 import v2.lens.enforcement.vocab { Blocking, Exact }
 import v2.lens.enforcement.standing_intent { Refuse }
+import v2.lens.enforcement.gate { all_intents_admissible, blocking_consumers_enrolled, contract_internally_consistent, intent_family_holds, intent_family_verdict }
 
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
