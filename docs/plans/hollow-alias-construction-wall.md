@@ -79,3 +79,99 @@ These three are the **same defect class as §1–§4**, just observed at the opp
 ## 7. Scope boundary
 
 This note does not implement the lens, does not touch the emitter's `PhantomData` rendering path or the checkpoint-scalar-phantom emit wall (§5, Root-4), and does not run the corpus census. It is the design-note-first deliverable the operator asked for as the sequencing gate before implementation starts. Next step on operator go-ahead: implement the lens (§4.1), run it against the full corpus, report the *real* count (replacing the disclaimed §2 number), and name the promotion trigger's actual measured proof.
+
+## 8. Third specimen, and the typecheck-blindness receipt it produced (2026-08-14, warm-fox-179 · BL-1)
+
+### 8.1 `NormalizedTree = Node` is a third specimen of §1's shape
+
+`src/v2/compiler/normalized_tree.dag` declared `type NormalizedTree = Node` — the bodyless alias idiom §6's negative control 2 blesses. It is blessed there because an alias to a real carrier constructs real values, and that reasoning is correct as far as it goes. What this specimen adds is the *cost* of the idiom where the alias names an **admitted product**: `normalize` computes a fact (this root's body lowering left no wrapper behind), and the alias gives that fact nowhere to live, so it travelled as diagnostics beside a bare `Node` and was dropped at the first `FreeMonoid<Node>` carrier on the way to `resolve`. The alias was not merely cosmetic — it was load-bearing in the wrong direction, because `NormalizedTree` and `Node` were the *same type to the checker*, so every position that should have demanded an admitted tree accepted a raw one.
+
+BL-1 replaces it with `type NormalizedTree sole_constructor { root: Node }` plus `admit_normalized_tree`, the single door that refuses a root carrying wrapper-retention evidence. Rung, stated honestly: **accepted refinement with executing refusal**, not structural impossibility — the invalid state remains describable; what changed is that no `Accepted` program reaches the carrier while holding retention evidence.
+
+### 8.2 The receipt: the v2 typechecker does not distinguish a wrapper from the thing it wraps
+
+This is the finding, and it is worth more than the specimen.
+
+**Lead with the live half, because it is what makes the class load-bearing rather than archaeological.** Doing BL-1 — a single carrier conversion, judged narrow at the design level and correctly so — produced **five** instances of this class. Two were found by review on other lanes. **Three were found inside the change that documents the class**, each invisible to the typechecker, each surfaced only by running the code, and each discovered one at a time because fixing one revealed the next:
+
+| # | site | declared | actually received | runtime |
+|---|---|---|---|---|
+| 1 | `03_name_resolve` `admit_import_root_find` | `found: Outcome<Node>` | `Outcome<NormalizedTree>` | `no field 'children'` |
+| 2 | `symbol_index_fill` `symbol_index_fill_module_roots` | `roots: FreeMonoid<Node>` | `FreeMonoid<NormalizedTree>` | `no field 'kind'` |
+| 3 | `03_name_resolve` `ModuleRootLookup.ModuleRootFound` and the shared `v2.std.passing_candidate_fold` `PassingCandidateFold.OnePassingCandidate` | `root` / `candidate: Node` | `NormalizedTree` | `no field 'kind'` |
+
+Instance 3 is the one worth dwelling on: the conflation reached a **shared std carrier** used by six modules, none of which had anything to do with this change. That is the class escaping the module that introduced it.
+
+**The consequence for estimating work.** A carrier conversion is design-narrow — evidence exists at every point it is needed, so no stage is re-plumbed — while being *execution-search-wide*, because the checker gives no signal and every seam must be found by running something that reaches it. Those are different quantities, and quoting the first for the second is how this change was scoped as small.
+
+**The denominator, since a green sweep is not a bound — and the boundary it is drawn at, because a denominator whose scope is implicit reads as complete and is not.**
+
+The first cut of this enumeration covered **production modules reachable from the converted chain**: 39 declarations mentioning `NormalizedTree` across 7 modules, every `Node`-meeting point resolved as 16 `.root` projections, 1 order-preserving list projection (`normalized_tree_roots_to_nodes`), or 3 converted callees. That claim held for what it covered — and the floor then failed with **nine more instances in three witness modules**, because *witness modules meet a converted value exactly as production modules do* and the first cut silently excluded them. The method was sound; the scope was wrong, and the scope was wrong because it was never written down.
+
+The corrected population is drawn at **every declaration that meets a converted value, production or witness**, and it is enumerated as a caller census rather than a declaration census:
+
+- **28 modules** reference the converted APIs (`resolve`, `resolve_with_admission*`, `assemble_program_from_module_roots`, `validate_module_roots`, `module_root_find`, `admit_import_entry`, `build_program_namespace`).
+- **13** feed their roots from `normalize(...)`, whose result is already `NormalizedTree` — unaffected by construction.
+- **15** hand-build roots and therefore had to admit them through the door; 12 required conversion, the rest resolved to prose mentions or ingest-fed roots.
+- Everything converted is verified **by execution**, not by compile.
+
+**A third scope correction, and the method that finally closed it.** Review 52034 then found a *fourth* instance the caller census still missed: `frontier_probe_first_missing_import_lookup` declared `roots: FreeMonoid<Node>`, received `validated_roots` from `validate_module_roots`, and forwarded it into `module_root_lookup`. The census had classified that module as safe by checking **where its roots came from** (an ingest fold, already admitted) rather than **what each intermediate function declared** — so an unconverted parameter sat in the middle of an otherwise-correct chain.
+
+That is the third time the population was drawn at the wrong boundary, and the pattern across all three is one thing: *provenance is not a substitute for declaration*. The check that actually decides this class is mechanical — for every function, does it pass one of its own `Node`-or-`FreeMonoid<Node>` parameters into a converted API? — and it is decidable from the containment tree without running anything. Run corpus-wide it reports **zero**, and the instrument is validated against the defect it must catch: reintroducing the `frontier_probe` parameter makes it report exactly that one site, and restoring the fix returns it to zero. A "zero found" from an unvalidated instrument would have been worth nothing, which is the same specification-without-execution trap one level up.
+
+**The class has three syntactic shapes, and enumerating them by hand is the only instrument available.** Review 52042 then found a *fifth* instance in a shape neither earlier check covered. Each shape was discovered only after a review or CI surfaced an instance of it, which is itself the finding — a checker blind to wrapper-payload conflation gives no way to derive the shapes, only to enumerate them:
+
+| shape | the defect | found by |
+|---|---|---|
+| **A** | a function passes its own `Node` / `FreeMonoid<Node>` parameter into a converted API | review 52034 (`frontier_probe`) |
+| **B** | a value bound from a `NormalizedTree` producer is passed into a `Node`-declared parameter | review 52042 (`wave1_gate1_b1` helper) |
+| **C** | a function declares `-> Outcome<Node>` while its body returns a `NormalizedTree` producer | shape-B sweep, transitively |
+
+The three compose into a **fixpoint**, which is what finally closed the population: fixing a shape-C return type makes its consumers newly visible to shape B, and fixing those exposes more shape C. Iterated to convergence the sweeps report **A: 0, B: 0**; shape C's remaining 4 hits are confirmed false positives (they feed `resolve`, which *takes* the admitted carrier, and `ResolvedTree = Node` so their declared return is correct). Sweep A is validated against a known instance — reintroducing the `frontier_probe` parameter makes it report exactly that site.
+
+Population closed this way, beyond the caller census above: 1 self-host intermediate, 6 witness/lens helpers on shape B, 6 return declarations on shape C, and 8 consumers surfaced by the fixpoint.
+
+**One symptom, two defects, and the discriminator is neither the direction nor the stage.** Every failure this change produced reads identically — `no field 'root' on type 'Node'` — and they split across stages: **81 occurrences at runtime** on one floor run, **1 at resolve** on the next. A first draft of this paragraph explained that by direction (payload-into-wrapper invisible, wrapper-onto-payload caught) and was refuted by the receipt's own two runs, since both failures are literally the same projection on the same two types.
+
+What actually varies is **whether the declaration at the projection site is truthful**, because the checker validates a projection against the *declared* type and nothing else:
+
+- The 81 came from `validate_module_roots`, whose fold binder is declared `NormalizedTree` and whose `root.root` is therefore statically correct. The defect was upstream at the **call boundary** — fixtures passing `FreeMonoid<Node>` into a `FreeMonoid<NormalizedTree>` parameter — which is the invisible class. The projection error is a *downstream symptom* surfacing at runtime, wherever the untruthful value finally gets read.
+- The 1 came from `pbf_resolved_add_arrow`, where the binder is declared `Node` (from `pbf_resolved_add_module -> Outcome<Node>`, since `ResolvedTree = Node`) and a `.root` was written on it directly. Here the declaration *is* the mismatch, so resolve refuses it immediately.
+
+So the sharpened claim, which both runs support: **a mismatch is caught exactly where it is expressible against a declaration, and is invisible wherever the declaration is correct and only the value flowing into it is wrong.** That is why sloppy bulk-replace edits surfaced within one cycle while the nine seams did not — and it is a stronger statement of the blindness than a direction rule, because it says *where* the checker has nothing to check rather than merely that it failed to. Counting the 81 as 81 instances of the class would also be wrong: they are the symptom of a smaller number of boundary defects, read at many sites.
+
+**What kept being wrong was the enumeration, not the fix.** The population was cut three times — production modules reachable from the chain, then witness `_test.dag` modules, then witness *support* modules — and each cut was drawn where the previous failure had landed rather than derived from a rule. All three are proxies keyed on path or role. The rule that covers all of them, and that the sweeps now implement, refers to neither: **every declaration that meets a converted value**, since meeting one is a property of the code and not of where it lives. The sweeps glob the entire tree with no path, suffix, or directory filter.
+
+**The residue this cannot reach, stated rather than implied.** The instrument is execution, so a witness that meets a converted value and *does not execute* is broken identically and silently right now, and nothing reports it. That set was measured rather than guessed: intersecting the corpus-wide roster of witnesses with no executing consumer (190 files carrying a bare `: TestClaim =`, from the lane working that population) against the converted-API callers yields **6 files, 4 of them hand-built** — all four accounted for and executed green here. The intersection is small, but it is small *as measured*, and it is the honest bound on what "executed green" covers.
+
+### 8.2.1 How the class first showed itself
+
+When `NormalizedTree` was first converted from alias to record, the whole v2 pipeline reported **0 blocking errors** while:
+
+- a `NormalizedTree` record sat in positions typed `Node`, and
+- a raw `Node` sat in the `NormalizedTree` field.
+
+Both directions were wrong; neither was reported. The defect surfaced only under **execution**, as `no field 'kind' on type 'NormalizedTree'` from a witness that actually ran the graft path. A green typecheck was not evidence for this change class, and the whole BL-1 attempt had to be reverted and re-done with execution checks after each signature move.
+
+The same blindness has a second, independently-found specimen on the `ContentHash` family lane (gunbc#8250). It is worth stating precisely, because the imprecise version of it ("a family member used in union position") understates what the pair proves. Read off `dag/std/content_hash.dag` on main:
+
+```
+type ContentHash =
+  | Fnv1a64(Fnv1a64Structural)
+  | Sha256Hash(Sha256Digest)
+  | Sha1Hash(Sha1Digest)
+  | Sha512Hash(Sha512Digest)
+
+fn content_hash_atom(value: NonEmptyStr) -> Fnv1a64Structural
+fn content_hash_of_value(value: NonEmptyStr) -> ContentHash
+```
+
+`Fnv1a64Structural` is the coproduct's **payload**, not one of its members. The witnesses passed the unwrapped payload where the tagged coproduct value was required; the typechecker accepted it, and at runtime `match hash { Fnv1a64(_) => … }` met a bare `Fnv1a64Structural { digest: … }` with no arm — `non-exhaustive pattern match on: Fnv1a64Structural { digest: f81a5e039343e65b }`.
+
+**So the two specimens are one shape, not two directions: the typechecker does not distinguish a wrapper from the thing it wraps.** Here it is `NormalizedTree` versus the `Node` it wrapped, admitted because the wrapper was an alias. There it is `ContentHash` versus the `Fnv1a64Structural` it wraps, admitted **with no alias involved at all**. That second half is the load-bearing one: it rules out the natural objection that this is a quirk of alias declarations. The class is **wrapper-payload conflation generally**, and an alias is merely its cheapest instance.
+
+Two lanes, two unrelated carriers, one shared root — **the v2 typechecker's nominal-type discrimination is not enforced at these seams**, so carrier-refinement work of exactly the kind this note designs is currently unguarded by the checker that would be its natural home.
+
+Consequence for this note's sequencing: §7's plan (lens first, promote to a typechecker refusal once proven zero-false-positive) assumes the typechecker *would* enforce the refusal once told to. That assumption is now **unverified** at these seams and is the named next-rung trigger for the promotion step. Note also that a lens scoped to hollow *declarations* would not have caught the `ContentHash` specimen at all, since no hollow declaration participates in it. Until it is established by execution, a carrier-sealing change must carry executing witnesses on the real path, not a compile.
+
+Executing evidence for the specimen half: `src/v2/test/claim/normalized_tree_admission_test.dag` (retention refused at the door; retention found past the diagnostic head, proven discriminating by reverting the recognizer to a head-only read and observing the control flip to `false`, using the whole-list scan at its single authority in `v2.compiler.body_lowering_fold`; clean root admitted; unrelated diagnostic does not refuse; the production retention producer's own output refused) and `dag/test/claim/namespace_graft_body_dissolution_witness_test.dag` `witness_lowered_body_module_still_grafts` green through the sealed carrier.

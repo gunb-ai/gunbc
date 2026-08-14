@@ -162,7 +162,7 @@ fn pick_probe_normalized_has_branch_holds() -> Bool {
         Accepted { value: artifact, diagnostics: _ } =>
           match normalize(parse_tree: artifact.tree) {
             Accepted { value: normalized, diagnostics: _ } =>
-              match find_arrow_body_child(root: pick_probe_find_arrow(root: normalized)) {
+              match find_arrow_body_child(root: pick_probe_find_arrow(root: normalized.root)) {
                 Accepted { value: body, diagnostics: _ } =>
                   match body.kind {
                     ComputationNode { behavior: Branch } => true

@@ -97,9 +97,9 @@ import gunbc.dispatch_selection {
   default_provider_selection_request,
   resolve_dispatch_selection,
   fixture_codex_offer_with_standing,
-  codex_offer_for_instance,
   codex_offer_for_instance_with_standing,
   fixture_inventory_codex_only_available,
+  fixture_codex_process_fingerprint_standing,
   dispatch_codex_process_fingerprint,
   DispatchSelectionRefused,
   DispatchSelectionResolved,
@@ -261,43 +261,49 @@ test fn witness_tmux_spawn_argv_threads_claude_argv() -> Bool {
 
 test fn witness_probe_bridge_ineligible_standing_refuses_actuator_selection() -> Bool {
   let instance = srv1_live_dashboard_instance()
-  let inventory = ProviderInventory {
-    offers: [
-      fixture_codex_offer_with_standing(
-        instance: instance,
-        standing: provider_standing_from_observed_bundle(
-          fact_id: selection_fixture_standing_fact_id,
-          provider: codex_offer_for_instance_with_standing(
-            instance: instance,
-            standing: provider_standing_inventory_unobserved(),
-          ).instance,
-          bundle: provider_standing_bundle_from_codex_dashboard_probes(
-            observation: CodexProviderDashboardProbeObservation {
-              state_root: CodexStateRootPresent,
-              runtime: ProviderDashboardExecProbeReported {
-                succeeded: true,
-                stdout: "codex-cli 0.145.0",
-                stderr: "",
-              },
-              auth: ProviderDashboardExecProbeReported {
-                succeeded: true,
-                stdout: "",
-                stderr: "Logged in using ChatGPT",
-              },
-            },
-          ),
-        ),
-      ),
-    ],
-  }
-  match resolve_dispatch_selection(
-    inventory: inventory,
-    request: default_provider_selection_request(),
-    node_sizing: Unsized,
-  ) {
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
-      reason == dispatch_selection_standing_ineligible_reason
-    DispatchSelectionResolved { receipt: _ } => false
+  match dashboard_instance_provider_executable(instance: instance) {
+    Absent => false
+    Present { value: executable } =>
+      match resolve_dispatch_selection(
+        inventory: ProviderInventory {
+          offers: [
+            fixture_codex_offer_with_standing(
+              instance: instance,
+              standing: provider_standing_from_observed_bundle(
+                fact_id: selection_fixture_standing_fact_id,
+                provider: codex_offer_for_instance_with_standing(
+                  instance: instance,
+                  standing: provider_standing_inventory_unobserved(),
+                  executable: executable,
+                  process_fingerprint: fixture_codex_process_fingerprint_standing(),
+                ).instance,
+                bundle: provider_standing_bundle_from_codex_dashboard_probes(
+                  observation: CodexProviderDashboardProbeObservation {
+                    state_root: CodexStateRootPresent,
+                    runtime: ProviderDashboardExecProbeReported {
+                      succeeded: true,
+                      stdout: "codex-cli 0.145.0",
+                      stderr: "",
+                    },
+                    auth: ProviderDashboardExecProbeReported {
+                      succeeded: true,
+                      stdout: "",
+                      stderr: "Logged in using ChatGPT",
+                    },
+                  },
+                ),
+              ),
+              executable: executable,
+            ),
+          ],
+        },
+        request: default_provider_selection_request(),
+        node_sizing: Unsized,
+      ) {
+        DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason } =>
+          reason == dispatch_selection_standing_ineligible_reason
+        DispatchSelectionResolved { receipt: _ } => false
+      }
   }
 }
 
@@ -315,7 +321,7 @@ test fn witness_actuator_projection_refuses_missing_provider() -> Bool {
   }
 }
 
-test fn witness_codex_npm_launcher_fingerprint_is_live_receipt() -> Bool {
+test fn witness_fixture_codex_fingerprint_is_historical_npm_shim_receipt() -> Bool {
   match resolve_dispatch_selection(
     inventory: fixture_inventory_codex_only_available(
       instance: srv1_live_dashboard_instance(),
@@ -385,15 +391,21 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
     DispatchSpawnReady { commands: cmds } =>
       codex_tmux_command_shape_holds(
         cmds: cmds,
-        codex_executable: dashboard_instance_provider_executable(
+        codex_executable: match dashboard_instance_provider_executable(
           instance: srv1_live_dashboard_instance(),
-        ) as String,
+        ) {
+          Present { value: executable } => executable as String
+          Absent => ""
+        },
       )
   }
 }
 
 fn lab_instance_command_shape_holds(commands: DispatchSpawnCommands, lab: HostDashboardInstance) -> Bool {
-  let codex_executable = dashboard_instance_provider_executable(instance: lab) as String
+  match dashboard_instance_provider_executable(instance: lab) {
+    Absent => false
+    Present { value: codex_path } => {
+  let codex_executable = codex_path as String
   let git_wire = join(commands.worktree_add.args, separator: "\0")
   let state_wire = join(commands.attempt_state_prepare.args, separator: "\0")
   let pointer_wire = join(commands.attempt_current_pointer.args, separator: "\0")
@@ -427,6 +439,8 @@ fn lab_instance_command_shape_holds(commands: DispatchSpawnCommands, lab: HostDa
       s: provider_wire,
       pattern: concat("\0CODEX_HOME=/home/briansrls/.codex@gunbc-roadmap\0", codex_executable),
     )
+    }
+  }
 }
 
 test fn witness_lab_instance_moves_repo_tmux_and_codex_state_together() -> Bool {
@@ -518,7 +532,7 @@ test fn codex_provider_v0_argv_keystone_holds() -> Bool {
   witness_probe_bridge_ineligible_standing_refuses_actuator_selection()
     && witness_actuator_automatic_selection_refuses_with_standing_reason()
     && witness_projection_standing_refusal_specimen_holds()
-    && witness_codex_npm_launcher_fingerprint_is_live_receipt()
+    && witness_fixture_codex_fingerprint_is_historical_npm_shim_receipt()
     && witness_codex_argv_is_unattended_but_sandboxed()
     && witness_selected_provider_shapes_codex_tmux_command()
     && witness_lab_instance_moves_repo_tmux_and_codex_state_together()

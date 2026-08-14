@@ -8,7 +8,9 @@ import v2.compiler.name_resolve {
   ImportVisible,
   admit_import_entry
 }
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree }
 import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome, outcome_accepted }
 import v2.extdeps.languages.dag {
   dag_grammar_atom,
   dag_named_edge
@@ -59,11 +61,10 @@ fn malformed_entry_name() -> QualifiedName {
   Cons { head: ^malformed_seg, tail: Empty }
 }
 
-fn roots_with_malformed_entry() -> FreeMonoid<Node> {
-  Cons {
-    head: malformed_root_node(),
-    tail: Empty
-  }
+fn roots_with_malformed_entry() -> Outcome<FreeMonoid<NormalizedTree>> {
+  bind_outcome(o: admit_normalized_tree(root: malformed_root_node(), diagnostics: None), f: fn(a) {
+    outcome_accepted(value: Cons { head: a, tail: Empty })
+  })
 }
 
 fn import_edge_for_malformed() -> Import {
@@ -82,7 +83,9 @@ fn admit_result_is_rejected(state: AdmissionState) -> Bool {
 }
 
 test fn witness_malformed_root_is_rejected_holds() -> Bool {
-  let roots = roots_with_malformed_entry()
+  match roots_with_malformed_entry() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: roots, diagnostics: _ } =>
   admit_result_is_rejected(
     state: admit_import_entry(
       roots: roots,
@@ -93,4 +96,5 @@ test fn witness_malformed_root_is_rejected_holds() -> Bool {
       active_roots: Empty
     )
   )
+  }
 }

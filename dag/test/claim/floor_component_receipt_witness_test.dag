@@ -303,6 +303,7 @@ fn fcr_mode_outcome_is(mode: NonEmptyStr, expected_outcome: String) -> Bool {
 test fn fcr_failure_mode_maps_to_the_distinguishing_outcomes() -> Bool {
   fcr_mode_outcome_is(mode: "none" as NonEmptyStr, expected_outcome: "done")
     && fcr_mode_outcome_is(mode: "BudgetExceeded" as NonEmptyStr, expected_outcome: "refused")
+    && fcr_mode_outcome_is(mode: "HostDependencyAbsent" as NonEmptyStr, expected_outcome: "refused")
     && fcr_mode_outcome_is(mode: "Infra" as NonEmptyStr, expected_outcome: "failed")
     && fcr_mode_outcome_is(mode: "WitnessRed" as NonEmptyStr, expected_outcome: "failed")
 }

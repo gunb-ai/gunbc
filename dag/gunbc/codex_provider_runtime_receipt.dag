@@ -1,0 +1,79 @@
+module gunbc.codex_provider_runtime_receipt
+
+import std.types { String, NonEmptyStr, FilePath, Bool }
+import product.placement_supply { HostIdentity }
+import gunbc.host_layout {
+  ProviderRuntimePlacement,
+  provider_runtime_placement_for_host,
+}
+import gunbc.package_delivery { codex_runtime_version_identity_marker }
+
+data codex_provider_runtime_receipt_authority_note: String = "ONE authority for the Codex provider-runtime receipt #8224 consumes. Placement (all three ProviderRuntimePlacement roots), bundled executable path, exact bundle identity (receipt_identity hex from the materialized release sidecar), and process fingerprint are derived from what converge installed — never hand-authored literals agreeing across branches (operator ruling 2026-08-13). Process fingerprint is CodexProcessFingerprintUnobserved until a wet tmux observation on the bundled binary lands; dispatch must not treat the legacy dispatch_codex_process_fingerprint literal as evidence. Publication target: ProviderRuntimePlacement.wire_evidence_root/codex-provider-runtime/HOST.json — written when converge succeeds; absent until first successful fleet execution (#8226 prerequisite). srv2/srv3/srv4 standing is unobserved from the operator key; do not claim observed placement beyond what a host receipt proves."
+
+type CodexProcessFingerprintStanding
+  = CodexProcessFingerprintObserved { fingerprint: NonEmptyStr }
+  | CodexProcessFingerprintUnobserved { reason: NonEmptyStr }
+
+data codex_process_fingerprint_unobserved_reason: NonEmptyStr = "bundled-native pane_current_command not yet observed on this host; derive from CodexProviderRuntimeReceipt once wet observation updates process_fingerprint — never from a hand-authored literal" as NonEmptyStr
+
+type CodexProviderRuntimeReceipt {
+  host: HostIdentity
+  placement: ProviderRuntimePlacement
+  bundled_executable: FilePath
+  version_marker: NonEmptyStr
+  bundle_receipt_identity_hex: NonEmptyStr
+  process_fingerprint: CodexProcessFingerprintStanding
+}
+
+fn codex_provider_runtime_receipt_wire_path(
+  placement: ProviderRuntimePlacement,
+  host: HostIdentity,
+) -> FilePath {
+  concat(
+    placement.wire_evidence_root as String,
+    concat(
+      "/codex-provider-runtime/",
+      concat(host as String, ".json"),
+    ),
+  ) as FilePath
+}
+
+fn derive_codex_provider_runtime_receipt(
+  host: HostIdentity,
+  bundled_executable: FilePath,
+  bundle_receipt_identity_hex: NonEmptyStr,
+) -> CodexProviderRuntimeReceipt? {
+  match provider_runtime_placement_for_host(host: host) {
+    Absent => none
+    Present { value: placement } =>
+      Present {
+        value: CodexProviderRuntimeReceipt {
+          host: host,
+          placement: placement,
+          bundled_executable: bundled_executable,
+          version_marker: codex_runtime_version_identity_marker() as NonEmptyStr,
+          bundle_receipt_identity_hex: bundle_receipt_identity_hex,
+          process_fingerprint: CodexProcessFingerprintUnobserved {
+            reason: codex_process_fingerprint_unobserved_reason,
+          },
+        }
+      }
+  }
+}
+
+fn codex_provider_runtime_receipt_converges_three_roots(
+  receipt: CodexProviderRuntimeReceipt,
+) -> Bool {
+  (receipt.placement.runtime_release_root as String) != ""
+    && (receipt.placement.runtime_mutable_state_root as String) != ""
+    && (receipt.placement.wire_evidence_root as String) != ""
+}
+
+fn codex_provider_runtime_receipt_process_fingerprint_observed(
+  receipt: CodexProviderRuntimeReceipt,
+) -> NonEmptyStr? {
+  match receipt.process_fingerprint {
+    CodexProcessFingerprintObserved { fingerprint } => Present { value: fingerprint }
+    CodexProcessFingerprintUnobserved { reason: _ } => none
+  }
+}

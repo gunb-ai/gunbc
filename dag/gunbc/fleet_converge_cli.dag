@@ -6,8 +6,12 @@ import std.algebra { trim }
 import gunbc.command_runner { stat_owner_name_capture }
 import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
 
-import extdeps.linux.procfs { ProcSysKernelHostname, procfs_path_literal }
-import gunbc.fleet_converge_apply { converge_apply_for_host }
+import gunbc.hostname_read {
+  HostnameShortCaptured,
+  HostnameShortCaptureRefused,
+  hostname_short_read_local,
+}
+import gunbc.fleet_converge_apply { converge_apply_for_host, fleet_compute_host_for_identity }
 import gunbc.host_layout { fleet_converge_receipt_dir, srv1_gunbc_repo_root }
 import gunbc.fleet_desired_observe {
   FleetRevisionStanding,
@@ -28,7 +32,16 @@ import gunbc.host_converge_slice1 {
 }
 import gunbc.host_runner_memory_provision { runner_memory_host_converge }
 import gunbc.host_runner_memory_cap_verify { runner_memory_cap_verify_run }
-import gunbc.host_converge { fleet_converge_policy, find_by_identity, converge_verdict, converge_verdict_label, converge_verdict_meet }
+import gunbc.host_converge { fleet_converge_policy, find_by_identity, converge_verdict, converge_verdict_label, converge_verdict_meet, codex_runtime_bundle_knob }
+import gunbc.host_effect {
+  HostOs,
+  ProvisionCodexRuntime,
+  host_effect_identity_evidence,
+  LocalShell,
+}
+import gunbc.host_effect_realize { host_effect_apply }
+import std.realization_reconcile { Converged, NotConverged }
+import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network {
   operator_host_srv1,
   operator_host_srv2,
@@ -94,6 +107,128 @@ fn converge_cli_receipt_converged(r: ConvergeCliReceipt) -> Bool {
   r.verdict == VerdictConverged
 }
 
+fn converge_cli_is_fleet_compute_host(host: String) -> Bool {
+  host == (operator_host_srv1 as String)
+    || host == (operator_host_srv2 as String)
+    || host == (operator_host_srv3 as String)
+    || host == (operator_host_srv4 as String)
+}
+
+// Provider-runtime cadence (Option A): srv1–srv4 fleet compute converge runs reconcile the
+// pinned Codex bundle via converge_provider_runtime_codex_receipt after slice1/knob-frontier
+// work (converge_cli_run_host_knobs) and join the adjunct into the host receipt before
+// converge_cli_publish writes the converge-receipt line. The knob is registered in
+// fleet_converge_policy (CodexRuntimeBundle). LocalShell is intentional for the per-host
+// timer route (`--host self` → kernel hostname); cross-host named-host converge must refuse
+// until transport selects SshShell per target — see codex_runtime_converge_local_shell_locus_note.
+data codex_runtime_converge_local_shell_locus_note: String = "ProvisionCodexRuntime on the converge adjunct uses LocalShell — the observe/ensure/read-back script runs on the machine executing gunbc, not on a named remote host. Production cadence is the per-host timer (`gunbc converge --host self` resolves kernel hostname before routing). Named-host converge from another machine (e.g. converge_cli_run(\"srv2\") on srv1) must refuse until transport selects SshShell per target (review 51883; dissolve-on: fleet_ssh transport binding for ProvisionCodexRuntime, same class as realize_provision_build_cache SshShell arms)."
+
+fn converge_kernel_short_hostname_from_content(raw: String) -> String {
+  trim(s: raw)
+}
+
+fn converge_local_kernel_short_hostname() -> String {
+  match hostname_short_read_local() {
+    HostnameShortCaptured { value: v } => v
+    HostnameShortCaptureRefused { reason: _ } => ""
+  }
+}
+
+fn converge_codex_runtime_local_locus_matches_host(host: String) -> Bool {
+  let local = converge_local_kernel_short_hostname()
+  local != "" && host == local
+}
+
+fn converge_provider_runtime_codex_receipt(host: String) -> ConvergeCliReceipt? {
+  if !converge_cli_is_fleet_compute_host(host: host) {
+    none
+  } else {
+    let local_hostname = converge_local_kernel_short_hostname()
+    if local_hostname == "" || host != local_hostname {
+      Present {
+        value: ConvergeCliReceipt {
+          host: host,
+          applied: 0,
+          drifted: 0,
+          verdict: Absent,
+          reason: Present {
+            value: KnobFrontier {
+              reason: concat(
+                "converge_provider_runtime_codex: ProvisionCodexRuntime LocalShell refused — target host ",
+                host,
+                " does not match local kernel hostname ",
+                local_hostname,
+                "; cross-host transport is SshShell dissolve-on (review 51883)",
+              ),
+            },
+          },
+        },
+      }
+    } else {
+    match fleet_compute_host_for_identity(identity: host as HostIdentity) {
+      Present { value: compute_host } =>
+        Present {
+          value: match host_effect_apply(
+            target: HostOs { node: compute_host },
+            effect: ProvisionCodexRuntime {},
+            evidence: host_effect_identity_evidence,
+            transport: LocalShell,
+          ) {
+            Converged { evidence: _, applied: _ } =>
+              ConvergeCliReceipt {
+                host: host,
+                applied: 1,
+                drifted: 0,
+                verdict: VerdictConverged,
+                reason: none,
+              }
+            NotConverged { reason: why, applied: _ } =>
+              ConvergeCliReceipt {
+                host: host,
+                applied: 0,
+                drifted: 0,
+                verdict: Absent,
+                reason: Present { value: KnobFrontier { reason: why } },
+              }
+          }
+        }
+      Absent => none
+    }
+    }
+  }
+}
+
+// Join semantics: host_knobs is PRIMARY so enrolled knob-frontier/slice1 refusal
+// messages survive when the codex adjunct also reports a Present reason.
+fn converge_cli_receipt_join_steps(primary: ConvergeCliReceipt, adjunct: ConvergeCliReceipt) -> ConvergeCliReceipt {
+  ConvergeCliReceipt {
+    host: primary.host,
+    applied: primary.applied + adjunct.applied,
+    drifted: primary.drifted + adjunct.drifted,
+    verdict: converge_verdict_meet(a: primary.verdict, b: adjunct.verdict),
+    reason: match primary.reason {
+      Present { value: _ } => primary.reason
+      Absent => adjunct.reason
+    },
+  }
+}
+
+fn converge_cli_codex_runtime_knob_registered_for_host(host: HostIdentity) -> Bool {
+  match fleet_converge_policy() {
+    ConvergePolicyDerived { hosts: hosts } =>
+      match host_converge_for_identity(hosts: hosts, identity: host) {
+        Present { value: hc } =>
+          fold(
+            hc.knobs,
+            init: false,
+            f: (acc, knob) => acc || knob.name == codex_runtime_bundle_knob(host: host).name,
+          )
+        Absent => false
+      }
+    ConvergePolicyUnsound { reason: _ } => false
+  }
+}
+
 fn host_converge_for_identity(hosts: List<HostConverge>, identity: HostIdentity) -> HostConverge? {
   find_by_identity(hosts, identity: identity, key: fn(h) { h.identity })
 }
@@ -109,6 +244,7 @@ fn converge_cli_applied_knob_count(intent: HostEffectIntent, fallback: Int) -> I
     SudoNopasswdGrantListProbe { probe: _ } => fallback
     OsInstallActuatorToolchainEnsure {} => fallback
     ProvisionBuildCache { catalog_id: _ } => fallback
+    ProvisionCodexRuntime {} => fallback
     Srv3InstallMediaFetch => fallback
     Srv3SeededInstallMediaRemaster => fallback
     Srv3SeededInstallMediaToolchainEnsure => fallback
@@ -612,15 +748,15 @@ fn converge_cli_verify_output(host: String) -> ConvergeCliOutput {
 // identity as a named ambiguity (never first-wins), so a collision surfaces as
 // NotConverged instead of one machine's receipt silently satisfying the other.
 // --host self (CONVERGE-0 loop leg): the per-host timer unit converges SELF, so the
-// literal "self" resolves to the machine's own kernel-reported short hostname before
-// routing — the ONE observation a host can always make about itself, read at the cited
-// procfs authority, never an env var or a config file a deploy could skew. Any other
-// value routes unchanged (the operator/CI form). An unresolvable read falls through as
-// the literal, landing in UnknownHost — a typed refusal, never a fabricated identity.
+// literal "self" resolves to the machine's own short hostname before routing — the ONE
+// observation a host can always make about itself, read via extdeps.tools.hostname
+// os.Hostname.ReadShort (hermetic mock: localhost), never an env var or a config file a
+// deploy could skew. Any other value routes unchanged (the operator/CI form). An
+// unresolvable read falls through as the literal, landing in UnknownHost — a typed
+// refusal, never a fabricated identity.
 fn converge_cli_resolve_self(host: String) -> String {
   if host == "self" {
-    let raw = filesystem_read(path: procfs_path_literal(p: ProcSysKernelHostname) as String).content
-    let line = raw.trim()
+    let line = converge_local_kernel_short_hostname()
     if line == "" {
       host
     } else {
@@ -649,6 +785,14 @@ fn converge_cli_output_with_verify(host: String, verify_only: Bool) -> ConvergeC
 }
 
 fn converge_cli_run(host: String) -> ConvergeCliReceipt {
+  let host_knobs = converge_cli_run_host_knobs(host: host)
+  match converge_provider_runtime_codex_receipt(host: host) {
+    Present { value: codex } => converge_cli_receipt_join_steps(primary: host_knobs, adjunct: codex)
+    Absent => host_knobs
+  }
+}
+
+fn converge_cli_run_host_knobs(host: String) -> ConvergeCliReceipt {
   match fleet_converge_policy() {
     ConvergePolicyUnsound { reason: why } =>
       ConvergeCliReceipt {
