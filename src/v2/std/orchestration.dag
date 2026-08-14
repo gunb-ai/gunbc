@@ -63,9 +63,27 @@ data predicate_string_test_note: String = "StrEq is binary [ lhs = rhs ]. Unary 
 
 data predicate_int_ne_note: String = "IntNe \{ lhs, rhs \} is the integer inequality test ([ lhs -ne rhs ]). Its former merge-admission floor-exit consumer deleted when success became derivable from WalkPlan stage reachability. Emitted via bash_test_int_ne_* grammar rows (sibling of StrEq). Operands are still String (interim): orch_emit_predicate refuses anything outside orch_shell_test_operand_alphabet before emit (^orch_emit_int_ne_operand_invalid) so bracket escape / metachar injection is unwritable-at-emit. 🟡 dissolve-on: typed shell-integer / test-operand carriers make the alphabet check unwritable-by-construction."
 
+// A RETRY THAT RECOVERS IS PROGRESS, NOT A WARNING.
+//
+// This field was an EmitDirective carrying SeverityWarning, and its bash realization
+// echoed a `::warning::` workflow command, so the ordinary act of retrying under fleet
+// pressure annotated the run. That conflates two different outcomes with different
+// remedies: a retry that later succeeds is a successful build whose narration happens to
+// be interesting, and a retry that exhausts every attempt is a FAILURE which must exit
+// nonzero rather than annotate. Neither of them is a warning, and spelling the first one
+// as a workflow command spends the run's ten-annotation budget on the case where nothing
+// is wrong.
+//
+// RetryObservation carries text and no severity, because there is no severity decision
+// left to make here: the line is progress narration and its realization must not begin
+// with '::'.
+type RetryObservation {
+  message: String
+}
+
 type EscalationLevel {
   detect: Predicate
-  warning: EmitDirective
+  observation: RetryObservation
   env: FreeMonoid<EnvBinding>
 }
 

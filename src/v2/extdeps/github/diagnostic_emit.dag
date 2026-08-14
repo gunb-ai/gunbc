@@ -3,30 +3,73 @@ module v2.extdeps.github.diagnostic_emit
 import v2.std.diagnostic { EmitDirective, DiagnosticSeverity, SeverityError, SeverityWarning }
 import extdeps.github.log_annotations {
   gha_log_command_error,
-  gha_log_command_warning,
+  gha_log_command_notice,
   gha_message_command_prefix
 }
 import v2.extdeps.languages.bash { emit_directive_bash_target_model }
 import v2.std.compilers.target_model { TargetModel }
+import v2.std.text { String }
 
-fn gha_severity_command(severity: DiagnosticSeverity) -> String {
-  match severity {
-    SeverityError => gha_log_command_error
-    SeverityWarning => gha_log_command_warning
+// THE GITHUB TARGET ACCEPTS NO WARNING-BEARING VALUE, and that is the wall.
+//
+// This module used to take an arbitrary EmitDirective and translate its severity
+// through a total DiagnosticSeverity match, so SeverityWarning emitted `::warning::`
+// and the only thing standing between a caller and a warning annotation was that
+// nobody wrote one. A warning annotation cannot fail a step — only exit codes do, and
+// annotations additionally cap at ten per step — so a warning is a report that is
+// neither blocking nor reliably visible, which is how a dead feature survived every
+// run for the life of the probe that reported it.
+//
+// The repair is NOT to translate SeverityWarning into an error or a notice. Either
+// mapping makes a policy decision the caller never stated. It is to narrow the target's
+// input so the request is inexpressible: GithubAnnotationDirective has an error arm and
+// a notice arm and no third, so `github_annotation_target_model` cannot be asked for a
+// warning and the call does not typecheck rather than being refused at runtime.
+//
+// SeverityWarning survives in v2.std.diagnostic as ordinary domain vocabulary for
+// terminal output, local tooling and accumulated diagnostics. What it no longer has is
+// a route to GitHub's command namespace.
+//
+// AND A NOTICE IS NOT A QUIETER WARNING. A failure, refusal, degraded execution,
+// unreadable policy, incomplete observation or exhausted retry may NOT realize as
+// GithubNoticeDirective. Without this the same defect returns one rung down under a
+// non-blocking spelling, which is the absorbing fallback wearing a different name. A
+// notice reports something true and non-terminal that nobody has to act on; anything
+// somebody has to act on is an error and exits nonzero.
+type GithubAnnotationDirective
+  = GithubErrorDirective { message: String }
+  | GithubNoticeDirective { message: String }
+
+fn github_annotation_command(directive: GithubAnnotationDirective) -> String {
+  match directive {
+    GithubErrorDirective { message: _ } => gha_log_command_error
+    GithubNoticeDirective { message: _ } => gha_log_command_notice
   }
 }
 
-fn emit_directive_gha_message(d: EmitDirective) -> String {
+fn github_annotation_message(directive: GithubAnnotationDirective) -> String {
+  match directive {
+    GithubErrorDirective { message: m } => m
+    GithubNoticeDirective { message: m } => m
+  }
+}
+
+fn github_annotation_line(directive: GithubAnnotationDirective) -> String {
   concat(
-    gha_message_command_prefix(command: gha_severity_command(severity: d.severity)),
-    d.message
+    gha_message_command_prefix(command: github_annotation_command(directive: directive)),
+    github_annotation_message(directive: directive)
   )
 }
 
-fn emit_directive_gha_directive(d: EmitDirective) -> EmitDirective {
-  EmitDirective { severity: d.severity, message: emit_directive_gha_message(d: d) }
-}
-
-fn emit_directive_gha_target_model(d: EmitDirective) -> TargetModel {
-  emit_directive_bash_target_model(d: emit_directive_gha_directive(d: d))
+// The bash realization takes an EmitDirective because that is the shell emitter's
+// vocabulary, and it is constructed HERE at SeverityError for both arms: the severity
+// carried into bash describes how the line is emitted, not what the annotation claims,
+// and a notice line is already fully determined by its own `::notice::` prefix.
+fn github_annotation_target_model(directive: GithubAnnotationDirective) -> TargetModel {
+  emit_directive_bash_target_model(
+    d: EmitDirective {
+      severity: SeverityError,
+      message: github_annotation_line(directive: directive)
+    }
+  )
 }

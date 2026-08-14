@@ -22,7 +22,14 @@ import v2.std.text { String }
 // it. Reporting "13 of 16 goals hold" while three were never measured is the rung
 // inflation DESIGN §4b names, applied to a status table.
 
-type CiGoal
+// WarningAnnotationsAreUnconstructible is held only from executing evidence that no
+// warning workflow command is authorable OR reachable: zero AnnotationWarning
+// constructors, zero warning command authorities, zero production source occurrences,
+// zero generated warning lines, no SeverityWarning-to-GitHub conversion, a recovering
+// retry exiting 0 with no annotation, an exhausted retry exiting nonzero, and foreign
+// child text carrying a warning command surviving as neutralized text without minting a
+// parent annotation.
+//
 // TWO GOALS WHERE THERE WAS ONE, because the mechanism that exists establishes the
 // weaker of them and the roster was claiming the stronger.
 //
@@ -33,6 +40,7 @@ type CiGoal
 // and also never answers. Naming both under one row meant evidence for the cheap
 // property would have discharged the expensive one, which is rung inflation inside
 // the carrier built to prevent it.
+type CiGoal
   = MainCommitAttemptsAreNotSuperseded
   | EveryMainCommitReachesATerminalVerdict
   | EveryOrdinaryWitnessRunsUnconditionally
@@ -51,6 +59,7 @@ type CiGoal
   | WorkIsGenuinelyConcurrent
   | NoDuplicateRecomputeWithoutShare
   | RegenDriftHealShareOneGeneration
+  | WarningAnnotationsAreUnconstructible
 
 // EVIDENCE IS SEALED, BECAUSE NAMING A SYMBOL IS NOT PRODUCING A PROOF.
 //
@@ -258,7 +267,8 @@ data ci_goal_subjects: List<CiGoal> = [
   FalsifierPredictionMachineryAbsent,
   WorkIsGenuinelyConcurrent,
   NoDuplicateRecomputeWithoutShare,
-  RegenDriftHealShareOneGeneration
+  RegenDriftHealShareOneGeneration,
+  WarningAnnotationsAreUnconstructible
 ]
 
 type GoalEvidenceBinding {
@@ -293,6 +303,7 @@ fn goal_symbol(goal: CiGoal) -> Symbol {
     WorkIsGenuinelyConcurrent => ^goal_work_is_genuinely_concurrent
     NoDuplicateRecomputeWithoutShare => ^goal_no_duplicate_recompute
     RegenDriftHealShareOneGeneration => ^goal_regen_drift_heal_one_generation
+    WarningAnnotationsAreUnconstructible => ^goal_warning_annotations_are_unconstructible
   }
 }
 

@@ -942,7 +942,7 @@ fn orch_emit_retry_1level(
                       m1.carried,
                       m2.carried,
                       grep_pat,
-                      level.warning.message,
+                      level.observation.message,
                       exhausted
                     )
                   )
@@ -996,8 +996,8 @@ fn orch_emit_retry_levels(
                     capture: capture,
                     pattern1: p1,
                     pattern2: p2,
-                    warn1: level1.warning.message,
-                    warn2: level2.warning.message,
+                    warn1: level1.observation.message,
+                    warn2: level2.observation.message,
                     env1: level1.env,
                     env2: level2.env,
                     exhausted: exhausted,

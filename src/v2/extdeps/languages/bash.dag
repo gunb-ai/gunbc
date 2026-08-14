@@ -1098,7 +1098,7 @@ fn retry_eagain_seg_b() -> String {
 }
 
 fn retry_eagain_seg_c() -> String {
-  "' \"$BUILD_LOG\"; then\n    echo \"::warning::"
+  "' \"$BUILD_LOG\"; then\n    echo \"retry: "
 }
 
 fn retry_eagain_seg_d() -> String {
@@ -1110,7 +1110,7 @@ fn retry_eagain_seg_e() -> String {
 }
 
 fn retry_eagain_seg_f() -> String {
-  "' \"$RETRY_LOG\"; then\n        echo \"::warning::"
+  "' \"$RETRY_LOG\"; then\n        echo \"retry: "
 }
 
 fn retry_eagain_seg_g() -> String {
@@ -1543,7 +1543,7 @@ fn orch_retry_escalation_step_seg_c() -> String {
 }
 
 fn orch_retry_escalation_step_seg_d() -> String {
-  "' \"$RETRY_LOG\"; then\n        echo \"::warning::"
+  "' \"$RETRY_LOG\"; then\n        echo \"retry: "
 }
 
 fn orch_retry_escalation_step_seg_e() -> String {

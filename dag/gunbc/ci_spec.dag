@@ -71,6 +71,7 @@ import v2.std.orchestration {
   EnvSet,
   EnvUnset,
   EscalationLevel,
+  RetryObservation,
   FailFast,
   LogMatches,
   Pipeline,
@@ -79,7 +80,6 @@ import v2.std.orchestration {
   Run
 }
 import v2.std.collection { Absent, Present }
-import v2.std.diagnostic { EmitDirective, SeverityWarning }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -314,8 +314,7 @@ fn ci_retry_exhausted_pipeline() -> Pipeline {
 fn ci_retry_escalation_level1() -> EscalationLevel {
   EscalationLevel {
     detect: LogMatches { source: "BUILD_LOG", pattern: infra_retry_grep_alternation() },
-    warning: EmitDirective {
-      severity: SeverityWarning,
+    observation: RetryObservation {
       message: "cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
     },
     env: [EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }]

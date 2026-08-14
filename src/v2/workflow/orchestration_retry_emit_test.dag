@@ -24,6 +24,7 @@ import v2.std.orchestration {
   PipelineStep,
   Retry,
   EscalationLevel,
+  RetryObservation,
   EnvSet,
   EnvUnset,
   LogMatches,
@@ -76,7 +77,7 @@ fn ci_cargo_eagain_retry_core_golden(command: String) -> String {
     concat(
       concat(
         concat(concat("  if grep -qiE '", infra_retry_grep_alternation()), "' \"$BUILD_LOG\"; then\n"),
-        "    echo \"::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)\"\n"
+        "    echo \"retry: cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)\"\n"
       ),
       concat(
         concat("    CARGO_BUILD_JOBS=1 ", concat(command, "\n")),
@@ -118,10 +119,7 @@ test fn orch_retry_row_direct_emit_accepted_holds() -> Bool {
 fn orch_retry_perturbed_level2() -> EscalationLevel {
   EscalationLevel {
     detect: LogMatches { source: "RETRY_LOG", pattern: infra_retry_grep_alternation() },
-    warning: EmitDirective {
-      severity: SeverityWarning,
-      message: "cargo/sccache still failing; retry without RUSTC_WRAPPER"
-    },
+    observation: RetryObservation { message: "cargo/sccache still failing; retry without RUSTC_WRAPPER" },
     env: [
       EnvUnset { name: "RUSTC_WRAPPER" },
       EnvSet { name: "CARGO_BUILD_JOBS", value: "2" }
@@ -214,10 +212,7 @@ data orch_retry_1level_exhausted_command: String = "exit 9"
 fn orch_retry_1level_escalation() -> EscalationLevel {
   EscalationLevel {
     detect: LogMatches { source: "BUILD_LOG", pattern: "PAT1" },
-    warning: EmitDirective {
-      severity: SeverityWarning,
-      message: "w1"
-    },
+    observation: RetryObservation { message: "w1" },
     env: [EnvSet { name: "E1", value: "1" }]
   }
 }
@@ -262,7 +257,7 @@ fn orch_retry_1level_golden() -> String {
     ),
     concat(
       concat(
-        concat(concat("  if grep -qiE 'PAT1' \"$BUILD_LOG\"; then\n", "    echo \"::warning::w1\"\n"),
+        concat(concat("  if grep -qiE 'PAT1' \"$BUILD_LOG\"; then\n", "    echo \"retry: w1\"\n"),
         concat("    E1=1 ", concat(orch_retry_1level_probe_command, "\n")))
       ),
       concat(
@@ -281,10 +276,7 @@ fn orch_retry_1level_perturbed_intent() -> PipelineStep {
         escalations: [
           EscalationLevel {
             detect: LogMatches { source: "BUILD_LOG", pattern: "PAT1" },
-            warning: EmitDirective {
-              severity: SeverityWarning,
-              message: "w1"
-            },
+            observation: RetryObservation { message: "w1" },
             env: [EnvSet { name: "E1", value: "2" }]
           }
         ],
@@ -374,10 +366,7 @@ test fn orch_retry_1level_row_direct_emit_accepted_holds() -> Bool {
 fn orch_retry_level2_escalation() -> EscalationLevel {
   EscalationLevel {
     detect: LogMatches { source: "RETRY_LOG", pattern: "PAT2" },
-    warning: EmitDirective {
-      severity: SeverityWarning,
-      message: "w2"
-    },
+    observation: RetryObservation { message: "w2" },
     env: [EnvSet { name: "E2", value: "1" }]
   }
 }
@@ -385,10 +374,7 @@ fn orch_retry_level2_escalation() -> EscalationLevel {
 fn orch_retry_level3_escalation() -> EscalationLevel {
   EscalationLevel {
     detect: LogMatches { source: "RETRY_LOG", pattern: "PAT3" },
-    warning: EmitDirective {
-      severity: SeverityWarning,
-      message: "w3"
-    },
+    observation: RetryObservation { message: "w3" },
     env: [EnvSet { name: "E3", value: "1" }]
   }
 }
@@ -442,10 +428,7 @@ test fn orch_retry_3level_refused_holds() -> Bool {
 fn orch_retry_probe_escalation(source: String) -> EscalationLevel {
   EscalationLevel {
     detect: LogMatches { source: source, pattern: "PAT" },
-    warning: EmitDirective {
-      severity: SeverityWarning,
-      message: "probe"
-    },
+    observation: RetryObservation { message: "probe" },
     env: []
   }
 }

@@ -7,7 +7,13 @@ import v2.extdeps.languages.bash {
   emit_directive_bash_emitted_command,
   emit_directive_bash_target_model
 }
-import v2.extdeps.github.diagnostic_emit { emit_directive_gha_target_model }
+import v2.extdeps.github.diagnostic_emit {
+  GithubAnnotationDirective,
+  GithubErrorDirective,
+  GithubNoticeDirective,
+  github_annotation_line,
+  github_annotation_target_model
+}
 import v2.std.collection {
   Map
 }
@@ -27,7 +33,6 @@ import v2.std.diagnostic {
   Outcome,
   Rejected,
   SeverityError,
-  SeverityWarning,
   Unavailable,
   node_locus
 }
@@ -46,27 +51,38 @@ data emit_directive_gha_error_example: EmitDirective = EmitDirective {
   message: "build verification failed"
 }
 
-data emit_directive_gha_warning_example: EmitDirective = EmitDirective {
-  severity: SeverityWarning,
-  message: "build verification failed"
-}
-
 data emit_directive_gha_other_example: EmitDirective = EmitDirective {
   severity: SeverityError,
   message: "cache corruption"
 }
 
 data emit_directive_gha_error_expected: String = "'echo' '::error::build verification failed' >&2"
-data emit_directive_gha_warning_expected: String = "'echo' '::warning::build verification failed' >&2"
+// NO WARNING EXPECTATION EXISTS, because no warning request does. This file used to
+// carry `'echo' '::warning::build verification failed' >&2` as a golden and a test
+// asserting the GitHub target produced it from SeverityWarning. That test PASSED, and
+// what it proved was that a warning annotation was expressible — the golden was the
+// specification of the hole. The replacement below argues the opposite property, and it
+// is not a string comparison: GithubAnnotationDirective has an error arm and a notice
+// arm and no third, so `github_annotation_target_model` cannot be handed a warning and
+// the call fails to typecheck rather than being refused at runtime. A negative test
+// cannot execute the inexpressible case, so what executes here is that both arms that DO
+// exist realize as their own annotation and neither one is a warning.
+data emit_directive_gha_notice_expected: String = "'echo' '::notice::build verification failed' >&2"
 data emit_directive_gha_other_expected: String = "'echo' '::error::cache corruption' >&2"
 
-fn emit_directive_gha_emit(d: EmitDirective) -> Outcome<Medium<String>> {
+data gha_error_directive: GithubAnnotationDirective = GithubErrorDirective { message: "build verification failed" }
+
+data gha_notice_directive: GithubAnnotationDirective = GithubNoticeDirective { message: "build verification failed" }
+
+data gha_other_error_directive: GithubAnnotationDirective = GithubErrorDirective { message: "cache corruption" }
+
+fn emit_directive_gha_emit(directive: GithubAnnotationDirective) -> Outcome<Medium<String>> {
   emit(
     tree: InferredTree {
       root: emit_directive_bash_emitted_command,
       facts: Map { lookup: emit_directive_facts_lookup }
     },
-    target: emit_directive_gha_target_model(d: d)
+    target: github_annotation_target_model(directive: directive)
   )
 }
 
@@ -81,25 +97,37 @@ fn emit_directive_bash_emit(d: EmitDirective) -> Outcome<Medium<String>> {
 }
 
 test fn emit_directive_gha_error_emits_error_annotation_holds() -> Bool {
-  match emit_directive_gha_emit(d: emit_directive_gha_error_example) {
+  match emit_directive_gha_emit(directive: gha_error_directive) {
     Accepted { value: source, diagnostics: dg } =>
       (source.carried == emit_directive_gha_error_expected) && (dg == None)
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn emit_directive_gha_warning_emits_warning_annotation_holds() -> Bool {
-  match emit_directive_gha_emit(d: emit_directive_gha_warning_example) {
+// THE ARMS THAT EXIST DO NOT PRODUCE A WARNING. Neither realization contains the
+// warning command, asserted on the rendered bytes rather than on the directive, because
+// the question is what reaches GitHub's log.
+test fn emit_directive_gha_notice_emits_notice_and_no_warning_holds() -> Bool {
+  match emit_directive_gha_emit(directive: gha_notice_directive) {
     Accepted { value: source, diagnostics: dg } =>
-      (source.carried == emit_directive_gha_warning_expected) && (dg == None)
+      (source.carried == emit_directive_gha_notice_expected)
+        && (dg == None)
+        && !string_contains(s: source.carried, pattern: "::warning::")
     Rejected { diagnostics: _ } => false
   }
 }
 
+test fn no_github_annotation_arm_renders_a_warning_command_holds() -> Bool {
+  !string_contains(s: github_annotation_line(directive: gha_error_directive), pattern: "::warning::")
+    && !string_contains(s: github_annotation_line(directive: gha_notice_directive), pattern: "::warning::")
+    && string_contains(s: github_annotation_line(directive: gha_error_directive), pattern: "::error::")
+    && string_contains(s: github_annotation_line(directive: gha_notice_directive), pattern: "::notice::")
+}
+
 test fn emit_directive_gha_severity_variant_holds() -> Bool {
-  match emit_directive_gha_emit(d: emit_directive_gha_error_example) {
+  match emit_directive_gha_emit(directive: gha_error_directive) {
     Accepted { value: se, diagnostics: _ } =>
-      match emit_directive_gha_emit(d: emit_directive_gha_warning_example) {
+      match emit_directive_gha_emit(directive: gha_notice_directive) {
         Accepted { value: sw, diagnostics: _ } => se.carried != sw.carried
         Rejected { diagnostics: _ } => false
       }
@@ -108,9 +136,9 @@ test fn emit_directive_gha_severity_variant_holds() -> Bool {
 }
 
 test fn emit_directive_gha_message_flows_holds() -> Bool {
-  match emit_directive_gha_emit(d: emit_directive_gha_error_example) {
+  match emit_directive_gha_emit(directive: gha_error_directive) {
     Accepted { value: s1, diagnostics: _ } =>
-      match emit_directive_gha_emit(d: emit_directive_gha_other_example) {
+      match emit_directive_gha_emit(directive: gha_other_error_directive) {
         Accepted { value: s2, diagnostics: _ } =>
           (s2.carried == emit_directive_gha_other_expected) && (s1.carried != s2.carried)
         Rejected { diagnostics: _ } => false
@@ -120,7 +148,7 @@ test fn emit_directive_gha_message_flows_holds() -> Bool {
 }
 
 test fn emit_directive_gha_distinct_from_bash_holds() -> Bool {
-  match emit_directive_gha_emit(d: emit_directive_gha_error_example) {
+  match emit_directive_gha_emit(directive: gha_error_directive) {
     Accepted { value: g, diagnostics: _ } =>
       match emit_directive_bash_emit(d: emit_directive_gha_error_example) {
         Accepted { value: b, diagnostics: _ } => g.carried != b.carried

@@ -10,9 +10,25 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// THERE IS NO WARNING ARM, and its absence is the construction rather than a rule.
+//
+// AnnotationWarning was declared here with zero production constructors anywhere in the
+// tree, which is exactly the state in which a variant costs nothing to delete and
+// everything to keep: it stood available as the cheap way to report something that
+// nobody would then have to act on. A GitHub warning annotation cannot fail a step —
+// only exit codes can — and annotations cap at ten warnings and ten errors per step, so
+// a warning is neither blocking nor reliably visible. The receipt is in the tree's own
+// history: an output-policy probe named a function outside its entry closure, warned on
+// every run from the day it landed, and the feature it gated never once executed,
+// because the arm kept the run green.
+//
+// A NOTICE IS NOT A QUIETER WARNING. A failure, refusal, degraded execution, unreadable
+// policy, incomplete observation or exhausted retry may NOT realize as AnnotationNotice.
+// Without that invariant the deleted arm returns one rung down under a non-blocking
+// spelling and nothing has changed. A notice reports something true and non-terminal
+// that requires no action; anything requiring action is an error and exits nonzero.
 type LogAnnotation
   = AnnotationError { message: String, file: String?, line: Int?, col: Int? }
-  | AnnotationWarning { message: String, file: String?, line: Int?, col: Int? }
   | AnnotationNotice { message: String, file: String?, line: Int?, col: Int? }
   | AnnotationGroup { title: String }
   | AnnotationEndGroup
@@ -21,7 +37,6 @@ type LogAnnotation
   | StopCommands { token: String }
 
 data gha_log_command_error: String = "error"
-data gha_log_command_warning: String = "warning"
 data gha_log_command_notice: String = "notice"
 
 fn gha_param_command_prefix(command: String) -> String {
@@ -33,7 +48,6 @@ fn gha_message_command_prefix(command: String) -> String {
 }
 
 data annotation_error_prefix: String = gha_param_command_prefix(command: gha_log_command_error)
-data annotation_warning_prefix: String = gha_param_command_prefix(command: gha_log_command_warning)
 data annotation_notice_prefix: String = gha_param_command_prefix(command: gha_log_command_notice)
 data annotation_group_prefix: String = "::group::"
 data annotation_endgroup: String = "::endgroup::"
