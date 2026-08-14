@@ -1,5 +1,7 @@
 module v2.lens.complexity_accumulator_copy.analyze
 
+import std.algebra { Empty }
+
 
 fn named_child_optional(cap: Node, name: Symbol) -> Optional<Node> {
   match v2.std.node_query.find_named_child(root: cap, name: name) {

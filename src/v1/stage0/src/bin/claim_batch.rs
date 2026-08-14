@@ -613,7 +613,23 @@ fn run_against_one_prepared_subject(
     // Now the whole-repo resolve either succeeds against the declared patterns or
     // REFUSES naming the file, and that resolve IS the floor's compilation step
     // rather than a gate beside it.
-    let excludes = whole_tree_strict_resolve_exclusion_substrings();
+    // THE FLOOR'S SUBJECT INCLUDES TESTS, because running them is its entire job.
+    //
+    // whole_tree_strict_resolve_exclusion_substrings carries "/test/" — a single
+    // substring that removes an entire semantic class. That entry is correct for a
+    // PRODUCTION-ONLY probe walk and wrong here, and it is not a harmless
+    // over-exclusion: four modules that DECLARE test modules live at paths without
+    // "/test/" in them, so they are included while every test module they import is
+    // removed, and the resolve fails on files that are not broken. A substring rule
+    // cannot express "the production universe" because path text is not the
+    // property being selected.
+    //
+    // Kept: only what genuinely cannot resolve — the deliberately-malformed scanner
+    // fixtures and the named lens fixtures that exist to be invalid.
+    let excludes: Vec<String> = whole_tree_strict_resolve_exclusion_substrings()
+        .into_iter()
+        .filter(|p| p != "/test/")
+        .collect();
     let prepare_started = Instant::now();
     let PreparedWholeTreeSubject {
         ctx,
