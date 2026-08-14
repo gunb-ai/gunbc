@@ -16,6 +16,7 @@ import product.altra_motherboard.attachment_stack {
   FactAccessGated,
   NeedsARedistributionDecision,
   NeedsAHumanToReadTheDrawing,
+  NeedsTheStandingItselfRepaired,
   NeedsCommercialAccess,
   NeedsSomeoneToFindTheDocument,
   ProcessorPackageLayer,
@@ -53,6 +54,7 @@ fn blocker_kind(b: LayerBlocker) -> String {
     NeedsARedistributionDecision { reason: _ } => "redistribution"
     NeedsCommercialAccess { subject: _, access_route: _ } => "commercial"
     NeedsAHumanToReadTheDrawing { figure: _, what_is_drawn: _ } => "read-drawing"
+    NeedsTheStandingItselfRepaired { refusal: _ } => "standing-self-contradictory"
   }
 }
 
@@ -92,8 +94,8 @@ test fn w_a_public_package_does_not_establish_the_board_land_pattern() -> Bool {
   fact_is_established(f: processor_package_standing.fact)
     && !fact_is_established(f: board_land_pattern_standing.fact)
     && match board_land_pattern_standing.fact {
-      FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => true
-      FactUnresolved { what_is_missing: _ } => false
+      FactUnresolved { what_is_missing: _ } => true
+      FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => false
       FactEstablished { authority: _, subject: _ } => false
       FactAccessGated { subject: _, access_route: _ } => false
     }
@@ -145,7 +147,7 @@ test fn w_the_three_blocker_kinds_are_distinct() -> Bool {
     Present { value: b } => blocker_kind(b: b)
   }
   package_blocker == "none"
-    && land_blocker == "read-drawing"
+    && land_blocker == "find-document"
     && undecided_carriage_blocker() == "redistribution"
     && match reference_board_collateral_standing() {
       FactAccessGated { subject: sub, access_route: route } =>
@@ -277,4 +279,29 @@ test fn w_the_coherent_pairs_are_admitted() -> Bool {
       fact: FactUnresolved { what_is_missing: "planted" },
       carriage: CarriageNotApplicable { because: "planted" }
     )
+}
+
+// THE DISCRIMINATING CONTROL FOR THE JOINT CHECK. This row is planted, not live: an established
+// fact whose carriage says the question does not apply, which is precisely the pair
+// authority_standing_refusal names EstablishedFactHasInapplicableCarriage. Before the projection
+// consulted that refusal, the coherence check called this row refused while layer_blocker answered
+// Absent, so a consumer reading the blockers saw a settled layer -- two answers about one row,
+// disagreeing, with the reassuring one on the path everything downstream reads. Both directions
+// are asserted here so neither half can quietly stop firing.
+fn incoherent_row() -> AttachmentLayerStanding {
+  AttachmentLayerStanding {
+    layer: BoardLandPatternLayer,
+    fact: processor_package_standing.fact,
+    carriage: CarriageNotApplicable {
+      because: "planted: an established fact may not also declare carriage inapplicable",
+    },
+  }
+}
+
+test fn w_an_incoherent_standing_is_reported_as_a_blocker_not_as_settled() -> Bool {
+  !standing_pair_is_admitted(fact: incoherent_row().fact, carriage: incoherent_row().carriage)
+    && match layer_blocker(row: incoherent_row()) {
+         Absent => false
+         Present { value: b } => blocker_kind(b: b) == "standing-self-contradictory"
+       }
 }

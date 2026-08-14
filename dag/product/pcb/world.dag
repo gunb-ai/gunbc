@@ -39,6 +39,7 @@ type PcbObligationCause
   | LegalCarriage { reason: NonEmptyStr }
   | UnselectedPart { because: NonEmptyStr }
   | DrawingMustBeRead { figure: NonEmptyStr, what_is_drawn: NonEmptyStr }
+  | StandingIsSelfContradictory { what_is_wrong: NonEmptyStr }
 
 type PcbComponentObligation {
   identity: NonEmptyStr
@@ -177,6 +178,7 @@ type PcbCauseCounts {
   legal_carriage: Int
   unselected_part: Int
   drawing_must_be_read: Int
+  standing_self_contradictory: Int
 }
 
 fn pcb_cause_counts(p: PcbPhysicalWorld) -> PcbCauseCounts {
@@ -186,6 +188,7 @@ fn pcb_cause_counts(p: PcbPhysicalWorld) -> PcbCauseCounts {
     legal_carriage: 0,
     unselected_part: 0,
     drawing_must_be_read: 0,
+    standing_self_contradictory: 0,
   }, f: fn(acc, o) {
     match o.cause {
       MissingDocument { what_is_missing: _ } => PcbCauseCounts {
@@ -194,6 +197,7 @@ fn pcb_cause_counts(p: PcbPhysicalWorld) -> PcbCauseCounts {
         legal_carriage: acc.legal_carriage,
         unselected_part: acc.unselected_part,
         drawing_must_be_read: acc.drawing_must_be_read,
+        standing_self_contradictory: acc.standing_self_contradictory,
       }
       CommercialAccess { subject: _ } => PcbCauseCounts {
         missing_document: acc.missing_document,
@@ -201,6 +205,7 @@ fn pcb_cause_counts(p: PcbPhysicalWorld) -> PcbCauseCounts {
         legal_carriage: acc.legal_carriage,
         unselected_part: acc.unselected_part,
         drawing_must_be_read: acc.drawing_must_be_read,
+        standing_self_contradictory: acc.standing_self_contradictory,
       }
       LegalCarriage { reason: _ } => PcbCauseCounts {
         missing_document: acc.missing_document,
@@ -208,6 +213,7 @@ fn pcb_cause_counts(p: PcbPhysicalWorld) -> PcbCauseCounts {
         legal_carriage: acc.legal_carriage + 1,
         unselected_part: acc.unselected_part,
         drawing_must_be_read: acc.drawing_must_be_read,
+        standing_self_contradictory: acc.standing_self_contradictory,
       }
       UnselectedPart { because: _ } => PcbCauseCounts {
         missing_document: acc.missing_document,
@@ -215,6 +221,7 @@ fn pcb_cause_counts(p: PcbPhysicalWorld) -> PcbCauseCounts {
         legal_carriage: acc.legal_carriage,
         unselected_part: acc.unselected_part + 1,
         drawing_must_be_read: acc.drawing_must_be_read,
+        standing_self_contradictory: acc.standing_self_contradictory,
       }
       DrawingMustBeRead { figure: _, what_is_drawn: _ } => PcbCauseCounts {
         missing_document: acc.missing_document,
@@ -222,6 +229,15 @@ fn pcb_cause_counts(p: PcbPhysicalWorld) -> PcbCauseCounts {
         legal_carriage: acc.legal_carriage,
         unselected_part: acc.unselected_part,
         drawing_must_be_read: acc.drawing_must_be_read + 1,
+        standing_self_contradictory: acc.standing_self_contradictory,
+      }
+      StandingIsSelfContradictory { what_is_wrong: _ } => PcbCauseCounts {
+        missing_document: acc.missing_document,
+        commercial_access: acc.commercial_access,
+        legal_carriage: acc.legal_carriage,
+        unselected_part: acc.unselected_part,
+        drawing_must_be_read: acc.drawing_must_be_read,
+        standing_self_contradictory: acc.standing_self_contradictory + 1,
       }
     }
   })
@@ -234,6 +250,7 @@ fn obligation_cause_tag(c: PcbObligationCause) -> NonEmptyStr {
     LegalCarriage { reason: _ } => "legal-carriage"
     UnselectedPart { because: _ } => "unselected-part"
     DrawingMustBeRead { figure: _, what_is_drawn: _ } => "drawing-must-be-read"
+    StandingIsSelfContradictory { what_is_wrong: _ } => "standing-self-contradictory"
   }
 }
 
@@ -255,6 +272,10 @@ fn pcb_unselected_part_count(p: PcbPhysicalWorld) -> Int {
 
 fn pcb_drawing_must_be_read_count(p: PcbPhysicalWorld) -> Int {
   pcb_cause_counts(p: p).drawing_must_be_read
+}
+
+fn pcb_standing_self_contradictory_count(p: PcbPhysicalWorld) -> Int {
+  pcb_cause_counts(p: p).standing_self_contradictory
 }
 
 fn pcb_population_count(p: PcbPhysicalWorld) -> Int {

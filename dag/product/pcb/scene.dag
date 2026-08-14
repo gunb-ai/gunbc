@@ -16,6 +16,7 @@ import product.pcb.world {
   LegalCarriage,
   UnselectedPart,
   DrawingMustBeRead,
+  StandingIsSelfContradictory,
   pcb_world_physical,
   pcb_world_design,
   pcb_body_layout,
@@ -211,5 +212,6 @@ fn obligation_cause_label(c: PcbObligationCause) -> String {
     LegalCarriage { reason: r } => concat("legal carriage:", r as String)
     UnselectedPart { because: b } => concat("unselected part:", b as String)
     DrawingMustBeRead { figure: f, what_is_drawn: _ } => concat("drawing must be read:", f as String)
+    StandingIsSelfContradictory { what_is_wrong: w } => concat("standing is self-contradictory:", w as String)
   }
 }

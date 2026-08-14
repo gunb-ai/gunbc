@@ -37,6 +37,7 @@ import product.pcb.world {
   LegalCarriage,
   UnselectedPart,
   DrawingMustBeRead,
+  StandingIsSelfContradictory,
   pcb_world,
   capability_pending,
   first_unsettled_capability,
@@ -88,6 +89,8 @@ import product.altra_motherboard.attachment_stack {
   NeedsCommercialAccess,
   NeedsARedistributionDecision,
   NeedsAHumanToReadTheDrawing,
+  NeedsTheStandingItselfRepaired,
+  authority_standing_refusal_text,
   attachment_layer_name,
   open_blockers,
 }
@@ -198,6 +201,8 @@ fn cause_from_outstanding(c: PlannedComponent, g: FactAuthorityBlocker) -> PcbOb
       LegalCarriage { reason: r }
     NeedsAHumanToReadTheDrawing { figure: f, what_is_drawn: d } =>
       DrawingMustBeRead { figure: f, what_is_drawn: d }
+    NeedsTheStandingItselfRepaired { refusal: r } =>
+      StandingIsSelfContradictory { what_is_wrong: authority_standing_refusal_text(r: r) }
   }
 }
 
@@ -224,6 +229,8 @@ fn cause_from_attachment_blocker(g: FactAuthorityBlocker) -> PcbObligationCause 
       LegalCarriage { reason: r }
     NeedsAHumanToReadTheDrawing { figure: f, what_is_drawn: d } =>
       DrawingMustBeRead { figure: f, what_is_drawn: d }
+    NeedsTheStandingItselfRepaired { refusal: r } =>
+      StandingIsSelfContradictory { what_is_wrong: authority_standing_refusal_text(r: r) }
   }
 }
 

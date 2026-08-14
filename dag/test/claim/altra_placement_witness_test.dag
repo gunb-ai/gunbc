@@ -51,6 +51,7 @@ import product.altra_motherboard.placement {
 import product.altra_motherboard.attachment_stack {
   FactAuthorityBlocker,
   NeedsAHumanToReadTheDrawing,
+  NeedsTheStandingItselfRepaired,
   NeedsARedistributionDecision,
   NeedsCommercialAccess,
   NeedsSomeoneToFindTheDocument,
@@ -184,6 +185,7 @@ fn blocker_payload(b: FactAuthorityBlocker) -> String {
     NeedsCommercialAccess { subject: sj, access_route: _ } => sj as String
     NeedsARedistributionDecision { reason: r } => r as String
     NeedsAHumanToReadTheDrawing { figure: _, what_is_drawn: d } => d as String
+    NeedsTheStandingItselfRepaired { refusal: _ } => "standing-self-contradictory"
   }
 }
 

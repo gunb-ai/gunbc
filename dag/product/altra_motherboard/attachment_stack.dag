@@ -189,20 +189,17 @@ data socket_board_termination_standing: AttachmentLayerStanding = AttachmentLaye
 
 // THE ONE THAT MATTERS MOST, and the one that looks most available. The board land pattern is the
 // SOCKET vendor's recommended pad array, not the processor's underside.
-// LOCATED, NOT MISSING. This layer was filed as a document nobody had found, and it is now known
-// exactly where the geometry sits: inside a figure in a document this repository already cites and
-// is permitted to carry. The search is over and it returned a location rather than a document, so
-// the actor changes from someone reading a bibliography to someone reading a drawing.
-//
-// The package-versus-board distinction the earlier wording made is still correct and still load
-// bearing: the platform specification's running text gives the PACKAGE pad array, which is the
-// underside of the part, not the board surface on the other side of the socket. Having the first
-// does not give the second, and the figure is where the question is settled either way.
+// WHY THIS IS UNRESOLVED RATHER THAN STATED-ONLY-IN-A-FIGURE. FactStatedOnlyInFigure asserts the
+// fact IS drawn in a named figure and merely needs a human to read it, and nothing establishes
+// that here. The platform specification's Figure 3 is the package outline and pad array -- the
+// underside of the PART, the other surface entirely -- so citing it routed the blocker to a
+// person who would open the drawing and find nothing, which is a worse answer than saying the
+// document has not been found. The package-versus-board distinction is unchanged and still load
+// bearing; what changed is the claim about where the board-side fact is written down.
 data board_land_pattern_standing: AttachmentLayerStanding = AttachmentLayerStanding {
   layer: BoardLandPatternLayer,
-  fact: FactStatedOnlyInFigure {
-    figure: "Ampere Altra Platform Hardware Design Specification v1.00, Figure 3, Altra Package Size and Pad Array",
-    what_is_drawn: "the package outline drawing and the socket drawing, which is where a board land pattern would be stated if either document states one; the running text gives the package pad array only, and that is the other surface",
+  fact: FactUnresolved {
+    what_is_missing: "the socket vendor's recommended board-side land pattern; no document consulted so far states one, in text or in a figure",
   },
   carriage: CarriageNotApplicable {
     because: "no fact is established for this layer yet, so there is nothing to decide carriage for; the document itself is public and permitted, so nothing legal blocks this layer",
@@ -271,6 +268,7 @@ type FactAuthorityBlocker
   | NeedsARedistributionDecision { reason: NonEmptyStr }
   | NeedsCommercialAccess { subject: NonEmptyStr, access_route: ExternalAuthority }
   | NeedsAHumanToReadTheDrawing { figure: NonEmptyStr, what_is_drawn: NonEmptyStr }
+  | NeedsTheStandingItselfRepaired { refusal: AuthorityStandingRefusal }
 
 // THE BLOCKER FOR ANY SUBJECT, derived from both axes rather than either alone. AN ESTABLISHED
 // FACT CAN STILL BE BLOCKED, and only the split makes that sayable: the question is then not
@@ -327,6 +325,20 @@ fn authority_standing_refusal(fact: FactAuthorityStanding, carriage: RepositoryC
   }
 }
 
+// The refusal rendered as text for a consumer that can only carry a string. The three arms are
+// named individually rather than folded to one generic sentence, because which coherence law a row
+// broke is the fact a reader needs.
+fn authority_standing_refusal_text(r: AuthorityStandingRefusal) -> NonEmptyStr {
+  match r {
+    EstablishedFactHasInapplicableCarriage =>
+      "this layer's fact is established, yet its carriage says the question does not apply; an established fact always has a carriage answer"
+    UnestablishedFactClaimsNormalizedCarriage =>
+      "this layer claims normalized facts may be carried, yet no fact is established for it; there is nothing to carry"
+    AccessGatedFactHasIndependentCarriageDecision =>
+      "this layer's fact is behind commercial access, so its carriage is governed by the access terms and may not be decided independently here"
+  }
+}
+
 fn standing_pair_is_admitted(fact: FactAuthorityStanding, carriage: RepositoryCarriageStanding) -> Bool {
   match authority_standing_refusal(fact: fact, carriage: carriage) {
     Present { value: _ } => false
@@ -344,7 +356,20 @@ fn standing_pair_is_admitted(fact: FactAuthorityStanding, carriage: RepositoryCa
 // unwritable; AttachmentLayerStanding stays a public record literal. Next-rung trigger: seal
 // AttachmentLayerStanding with a sole constructor whose mint returns an admission, so an
 // incoherent pair has no representation rather than a check that must be run.
+// THE JOINT REFUSAL IS CONSULTED FIRST, so an incoherent row cannot read as an unblocked one.
+// An earlier revision asked only what the FACT was missing, and answered Absent -- no blocker --
+// for an established fact whose carriage said the question did not apply. That pair is exactly
+// what authority_standing_refusal calls EstablishedFactHasInapplicableCarriage, so the row was
+// simultaneously refused by the coherence check and reported clean by the blocker projection, and
+// a consumer reading the blockers saw a settled layer. The two answers now come from one place.
 fn subject_blocker(fact: FactAuthorityStanding, carriage: RepositoryCarriageStanding) -> FactAuthorityBlocker? {
+  match authority_standing_refusal(fact: fact, carriage: carriage) {
+    Present { value: r } => Present { value: NeedsTheStandingItselfRepaired { refusal: r } }
+    Absent => subject_blocker_for_coherent_standing(fact: fact, carriage: carriage)
+  }
+}
+
+fn subject_blocker_for_coherent_standing(fact: FactAuthorityStanding, carriage: RepositoryCarriageStanding) -> FactAuthorityBlocker? {
   match fact {
     FactUnresolved { what_is_missing: w } =>
       Present { value: NeedsSomeoneToFindTheDocument { what_is_missing: w } }
