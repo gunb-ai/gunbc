@@ -25,8 +25,16 @@ import product.pcb.world {
   EstablishedEnvelopeRead,
 }
 
-data scene_note: String = "A TARGET-NEUTRAL ENGINEERING SCENE. The world is projected into elements that name geometry and typed causes, not a drawing medium. SVG is one realization of this scene; a second target must not require a second fold of the world. Known body envelopes are scene bodies; whether those bodies are a complete layout check lives on the legend as PcbBodyLayoutStanding, never inferred from the body count. An established envelope's source is formatted as the declaration this board read — a DeclarationRef display key — never reconstructed into a datasheet section, and never labelled verified: nothing here checks that those refs resolve. Empty capabilities stay on the world as standings and do not appear here as empty element lists. A scene identity is represented only by an exact emitted label: a longer label that merely contains it as a prefix is not a representation."
-
+// A TARGET-NEUTRAL ENGINEERING SCENE. The world is projected into elements that name geometry and
+// typed causes, not a drawing medium. SVG is one realization of this scene; a second target must
+// not require a second fold of the world. Known body envelopes are scene bodies; whether those
+// bodies are a complete layout check lives on the legend as PcbBodyLayoutStanding, never inferred
+// from the body count. An established envelope's source is formatted as the declaration this board
+// read — a DeclarationRef display key — never reconstructed into a datasheet section, and never
+// labelled verified: nothing here checks that those refs resolve. Empty capabilities stay on the
+// world as standings and do not appear here as empty element lists. A scene identity is
+// represented only by an exact emitted label: a longer label that merely contains it as a prefix
+// is not a representation.
 type PcbSceneLegend {
   established: Int
   missing_document: Int

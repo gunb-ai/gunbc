@@ -8,8 +8,26 @@ import std.affine_space { Point2 }
 import std.orthogonal_geometry { AxisAlignedRectangle2, OrthogonalRefusal }
 import product.pcb.physical { ComponentPlacement }
 
-data world_note: String = "ONE PCB WORLD, AND EMPTY IS NOT A DEFAULT. Established body envelopes occupy components. Every other planned identity is an obligation that carries a typed cause — missing document, commercial access, legal carriage, unselected part, or a drawing a human must read — rather than a role string those distinctions collapse into. A figure already cited is not a missing document: collapsing that into MissingDocument sends someone to search a bibliography that already returned a location. Body-envelope geometry is a standing, not a Bool over the envelopes that happen to exist: the complete arm is reachable only when every required part was in the check, and the subset arm carries the count of parts the geometry never saw, so a consumer cannot read a clean answer without also receiving what it did not cover. Design is an IDENTITY (a DeclarationRef naming the declaration the plan was built from), not a revision: it distinguishes two designs and does not change when one design's contents are edited in place. An established envelope's source is the same kind of identity: which declaration this board read, not a sentence about a datasheet section, and not a verified citation — nothing here checks that those refs resolve. Capabilities that have no row type yet (stackup, footprints, pads, routes, nets, manufacturing artifacts) are not empty lists: an empty list cannot tell a board that needs none from a board whose routing has not been modeled from a board whose routing completed at zero. Each of those fields is a capability standing, pending with a nonempty obligation or refused with a cause. There is no Established arm here because there is no consumer and no row type; each carrier lands with its first consumer. A PARTIAL world is a preview whose outline constructed; it is not an admitted board."
-
+// ONE PCB WORLD, AND EMPTY IS NOT A DEFAULT. Established body envelopes occupy components. Every
+// other planned identity is an obligation that carries a typed cause — missing document,
+// commercial access, legal carriage, unselected part, or a drawing a human must read — rather than
+// a role string those distinctions collapse into. A figure already cited is not a missing
+// document: collapsing that into MissingDocument sends someone to search a bibliography that
+// already returned a location. Body-envelope geometry is a standing, not a Bool over the envelopes
+// that happen to exist: the complete arm is reachable only when every required part was in the
+// check, and the subset arm carries the count of parts the geometry never saw, so a consumer
+// cannot read a clean answer without also receiving what it did not cover. Design is an IDENTITY
+// (a DeclarationRef naming the declaration the plan was built from), not a revision: it
+// distinguishes two designs and does not change when one design's contents are edited in place. An
+// established envelope's source is the same kind of identity: which declaration this board read,
+// not a sentence about a datasheet section, and not a verified citation — nothing here checks that
+// those refs resolve. Capabilities that have no row type yet (stackup, footprints, pads, routes,
+// nets, manufacturing artifacts) are not empty lists: an empty list cannot tell a board that needs
+// none from a board whose routing has not been modeled from a board whose routing completed at
+// zero. Each of those fields is a capability standing, pending with a nonempty obligation or
+// refused with a cause. There is no Established arm here because there is no consumer and no row
+// type; each carrier lands with its first consumer. A PARTIAL world is a preview whose outline
+// constructed; it is not an admitted board.
 type PcbBoard {
   frame: CoordinateFrameIdentity
   outline: AxisAlignedRectangle2

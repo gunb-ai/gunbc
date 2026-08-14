@@ -11,8 +11,9 @@ import product.pcb.plan_view {
   emit_pcb_plan_view,
 }
 
-data scene_emission_note: String = "Production entry for the Altra reference board plan view. The world is minted once through product.altra_motherboard.pcb_world as a partial preview and realized through product.pcb.plan_view as SVG. This module names no component and no channel."
-
+// Production entry for the Altra reference board plan view. The world is minted once through
+// product.altra_motherboard.pcb_world as a partial preview and realized through
+// product.pcb.plan_view as SVG. This module names no component and no channel.
 fn emit_altra_board_scene() -> PcbSceneEmission {
   match altra_pcb_world() {
     PcbWorldRefused { cause: c } => PcbSceneEmissionRefused { cause: PcbSceneWorldRefused { cause: c } }
