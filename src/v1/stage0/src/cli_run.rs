@@ -41005,7 +41005,12 @@ fn project_external_authority_anchor(module_path: &str) -> ExternalAuthorityAnch
 }
 
 fn external_authority_machinery_exempt_module_paths() -> &'static [&'static str] {
-    &["extdeps.uri", "extdeps.external_authority"]
+    &[
+        "extdeps.uri",
+        "extdeps.external_authority",
+        "extdeps.publication",
+        "extdeps.ocp.publication",
+    ]
 }
 
 pub fn extdeps_derived_extdeps_module_paths() -> Vec<String> {
