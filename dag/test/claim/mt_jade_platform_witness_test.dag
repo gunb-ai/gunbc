@@ -1,0 +1,152 @@
+module test.claim.mt_jade_platform_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.integer { Int }
+import std.measure { hertz_count, microsecond_count }
+import extdeps.ocp.mt_jade.subject {
+  MtJadeRev1_0,
+  mt_jade_model_scope,
+  mt_jade_reference_platform,
+}
+import extdeps.ocp.mt_jade.platform {
+  BaseboardManagementController,
+  BmcJtagMasterProgramsCpld,
+  GlobalTimerClockGeneration,
+  MasterSocket,
+  MtJadeBoardCpldResponsibility,
+  PcieClockGenerator,
+  PciePerstDecodeFromCpuGpio,
+  PcpPwrgdObserved,
+  PcpRailEnabled,
+  PlatformSequencingHandshake,
+  SlaveSocket,
+  SlaveSocketSysResetReleaseGating,
+  SlaveStartHandshake,
+  SocPwrgdObserved,
+  SysResetPathWithBmc,
+  SysResetReleased,
+  TimerResetReleased,
+  Vdd3v3Soc,
+  VddSoc,
+  clock_tree_contains_part_number,
+  clock_tree_node_count,
+  cpld_responsibility_count,
+  mt_jade_board_cpld_responsibilities,
+  mt_jade_clock_tree,
+  mt_jade_cpld_timer_clock,
+  mt_jade_reference_parts,
+  processor_power_rail_count,
+  processor_power_rail_enable_order,
+  processor_power_rail_name,
+  processor_socket_role_name,
+  reference_part_count,
+  reference_part_roles_include,
+  slave_socket_alert3_pulse_width,
+  soc_pwrgd_minimum_system_clock_cycles,
+  platform_sequencing_handshake_chain,
+}
+import extdeps.external_authority { external_subject_ref_eq }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data expected_mt_jade_subject_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.ocp.mt_jade.subject",
+  decl_name: "mt_jade_reference_platform",
+  field: WholeDeclaration,
+}
+
+fn list_contains_cpld_role(
+  rows: List<MtJadeBoardCpldResponsibility>,
+  wanted: MtJadeBoardCpldResponsibility,
+) -> Bool {
+  fold(rows, init: false, f: fn(acc, r) { acc || r == wanted })
+}
+
+fn handshake_includes_slave_start(chain: List<PlatformSequencingHandshake>) -> Bool {
+  fold(chain, init: false, f: fn(acc, step) {
+    acc || match step {
+      SlaveStartHandshake {
+        alert9_asserted: _,
+        alert3_one_microsecond_pulse: _,
+        cpld_releases_slave_sys_reset: _,
+      } => true
+      SocPwrgdObserved { socket: _ } => acc
+      SysResetReleased { socket: _ } => acc
+      TimerResetReleased { socket: _ } => acc
+      PcpRailEnabled { socket: _ } => acc
+      PcpPwrgdObserved { socket: _ } => acc
+    }
+  })
+}
+
+// THE SUBJECT SCOPE NAMES THE PLATFORM ROW AND CITES THE OCP DOCUMENT. A module that models facts
+// without declaring which declaration they are about is the floating-island shape extdeps exists
+// to refuse.
+test fn w_the_model_scope_points_at_the_reference_platform_row() -> Bool {
+  external_subject_ref_eq(
+    a: mt_jade_model_scope.subject,
+    b: expected_mt_jade_subject_ref,
+  )
+    && mt_jade_reference_platform.revision == MtJadeRev1_0
+    && (mt_jade_model_scope.first_citation.uri.locator as String)
+      == "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
+}
+
+// SECTION 7.10.3 NAMES SEVEN RAILS IN ORDER, STARTING AT VDD_SOC AND ENDING AT VDD3V3_SOC.
+test fn w_the_processor_power_rail_sequence_matches_the_spec() -> Bool {
+  processor_power_rail_count(rails: processor_power_rail_enable_order) == 7
+    && (processor_power_rail_name(rail: VddSoc) as String) == "VDD_SOC"
+    && (processor_power_rail_name(rail: Vdd3v3Soc) as String) == "VDD3V3_SOC"
+    && soc_pwrgd_minimum_system_clock_cycles == 32
+}
+
+// THE MASTER AND SLAVE SOCKET NAMES ARE DISTINCT ROLES, NOT TWO LABELS FOR ONE SOCKET.
+test fn w_the_socket_roles_are_named_distinctly() -> Bool {
+  (processor_socket_role_name(role: MasterSocket) as String) == "socket0 master"
+    && (processor_socket_role_name(role: SlaveSocket) as String) == "socket1 slave"
+    && (processor_socket_role_name(role: MasterSocket) as String)
+      != (processor_socket_role_name(role: SlaveSocket) as String)
+}
+
+// SLAVE-SOCKET FIRMWARE START IS GATED THROUGH THE CPLD WITH A ONE-MICROSECOND ALERT3 PULSE.
+test fn w_the_slave_start_handshake_names_the_cpld_and_the_pulse_width() -> Bool {
+  handshake_includes_slave_start(chain: platform_sequencing_handshake_chain)
+    && microsecond_count(m: slave_socket_alert3_pulse_width) == 1
+    && list_contains_cpld_role(
+      rows: mt_jade_board_cpld_responsibilities,
+      wanted: SlaveSocketSysResetReleaseGating,
+    )
+}
+
+// THE CPLD ROLE SET INCLUDES THE THREE FUNCTIONS THE SPEC SPREADS ACROSS GPIO, JTAG AND RESET.
+test fn w_the_board_cpld_responsibilities_cover_gpio_jtag_and_perst() -> Bool {
+  cpld_responsibility_count(rows: mt_jade_board_cpld_responsibilities) == 7
+    && list_contains_cpld_role(rows: mt_jade_board_cpld_responsibilities, wanted: PciePerstDecodeFromCpuGpio)
+    && list_contains_cpld_role(rows: mt_jade_board_cpld_responsibilities, wanted: BmcJtagMasterProgramsCpld)
+    && list_contains_cpld_role(rows: mt_jade_board_cpld_responsibilities, wanted: SysResetPathWithBmc)
+    && list_contains_cpld_role(rows: mt_jade_board_cpld_responsibilities, wanted: GlobalTimerClockGeneration)
+}
+
+// THE CLOCK TREE NAMES THE RENESAS GENERATORS AT 100 MHZ AND KEEPS THE CPLD TIMER DERIVATION SEPARATE.
+test fn w_the_clock_tree_names_the_cited_generators_and_the_cpld_divider() -> Bool {
+  clock_tree_node_count(nodes: mt_jade_clock_tree) == 6
+    && clock_tree_contains_part_number(nodes: mt_jade_clock_tree, part: "9FGV1006B")
+    && clock_tree_contains_part_number(nodes: mt_jade_clock_tree, part: "9FGL0841")
+    && clock_tree_contains_part_number(nodes: mt_jade_clock_tree, part: "5P35023")
+    && hertz_count(h: mt_jade_cpld_timer_clock.input_frequency) == 50000000
+    && hertz_count(h: mt_jade_cpld_timer_clock.output_frequency) == 25000000
+}
+
+// REFERENCE PART ROWS CARRY THE AST2500 BMC AND THE CLOCK GENERATORS AS PRECEDENT, EACH CITING THE OCP AUTHORITY.
+test fn w_reference_parts_name_the_bmc_and_clock_generators() -> Bool {
+  reference_part_count(rows: mt_jade_reference_parts) == 9
+    && reference_part_roles_include(rows: mt_jade_reference_parts, wanted: BaseboardManagementController)
+    && reference_part_roles_include(rows: mt_jade_reference_parts, wanted: PcieClockGenerator)
+    && fold(mt_jade_reference_parts, init: true, f: fn(acc, r) {
+      acc
+        && (r.authority.uri.locator as String)
+          == "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
+    })
+}
