@@ -1,13 +1,19 @@
 module extdeps.ocp.mt_mitchell.subject
 
 import std.types { String, NonEmptyStr, List }
-import std.integer { Int }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.ampere { ampere_vendor }
+import extdeps.publication { SpecificationDocumentDate }
+import extdeps.ocp.publication {
+  OcpSpecificationLicense,
+  OcpContributionLicense,
+  Owfa1_0FinalSpecificationAgreement,
+  OcpContributionLicenseAgreement,
+}
 
 // MT. MITCHELL IS A SEPARATELY GOVERNED OCP SPECIFICATION, NOT A REVISION OF MT. JADE.
 // Ampere and Inspur contributed it as an improvement on the Jade reference platform; the open-
@@ -23,26 +29,15 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data internet_archive_mt_mitchell_capture_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
-    locator: "web.archive.org/web/20221026/https://www.opencompute.org/documents/mt-mitchell-ocp-hardware-spec-v0-80-2-pdf",
+    locator: "web.archive.org/web/20221026103641id_/https://www.opencompute.org/documents/mt-mitchell-ocp-hardware-spec-v0-80-2-pdf",
   }
 }
 
-data mt_mitchell_subject_note: String = "OCP-CONTRIBUTED REFERENCE PLATFORM SPECIFICATION FOR MT. MITCHELL. Usage is under the same OWFa 1.0 / OCP CLA family as Mt. Jade when the document is admitted. THE PUBLISHER LOCATOR REMAINS THE CITATION EVEN WHEN UNREACHABLE: an unauthenticated fetch returned HTTP 403 on 2026-08-14 and that refusal is recorded separately from a dated Internet Archive capture of the same URL that peer session neat-hawk-428 read in full. PLATFORM FACTS LIVE IN extdeps.ocp.mt_mitchell.platform AND ARE GROUNDED ON THE CAPTURE, NOT ON A CLAIM THAT THE PUBLISHER COPY WAS READ."
+data mt_mitchell_subject_note: String = "OCP-CONTRIBUTED REFERENCE PLATFORM SPECIFICATION FOR MT. MITCHELL. Usage is under the same OWFa 1.0 / OCP CLA family as Mt. Jade when the document is admitted. THE PUBLISHER LOCATOR REMAINS THE CITATION EVEN WHEN UNREACHABLE: an unauthenticated fetch returned HTTP 403 on 2026-08-14 and that refusal is recorded separately from a dated Internet Archive capture of the same URL that peer session neat-hawk-428 read in full. THIS MODULE IS THE SUBJECT ANCHOR ONLY; PLATFORM FACTS ARE OWNED BY extdeps.ocp.mt_mitchell.platform AND LAND IN #8260, GROUNDED ON THE MIRROR INGEST BELOW — NOT ON A CLAIM THAT THE PUBLISHER COPY WAS READ."
 
-type MtMitchellSpecificationRevision
-  = | MtMitchellRev0_80
+type MtMitchellRev0_80 {}
 
-type OcpSpecificationLicense
-  = | Owfa1_0FinalSpecificationAgreement
-
-type OcpContributionLicense
-  = | OcpContributionLicenseAgreement
-
-type SpecificationDocumentDate {
-  year: Int
-  month: Int
-  day: Int
-}
+type MtMitchellSpecificationRevision = MtMitchellRev0_80
 
 type SpecificationCitationReadProvenance
   = DocumentLocatorFetchRefused { http_status: Int, detail: NonEmptyStr }
@@ -57,9 +52,9 @@ type SpecificationCitationReadProvenance
 
 data mt_mitchell_specification_version_label: NonEmptyStr = "v0.80"
 
-data mt_mitchell_specification_license: OcpSpecificationLicense = Owfa1_0FinalSpecificationAgreement
+data mt_mitchell_specification_license: OcpSpecificationLicense = Owfa1_0FinalSpecificationAgreement {}
 
-data mt_mitchell_contribution_license: OcpContributionLicense = OcpContributionLicenseAgreement
+data mt_mitchell_contribution_license: OcpContributionLicense = OcpContributionLicenseAgreement {}
 
 data mt_mitchell_publisher_citation_read_provenance: SpecificationCitationReadProvenance = DocumentLocatorFetchRefused {
   http_status: 403,
@@ -92,7 +87,7 @@ type MtMitchellReferencePlatform {
 
 data mt_mitchell_reference_platform: MtMitchellReferencePlatform = MtMitchellReferencePlatform {
   marketing_name: "Mt. Mitchell",
-  revision: MtMitchellRev0_80,
+  revision: MtMitchellRev0_80 {},
   version_label: mt_mitchell_specification_version_label,
   contributor: ampere_vendor,
   specification_license: mt_mitchell_specification_license,

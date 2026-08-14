@@ -322,7 +322,7 @@ data mt_jade_reference_parts: List<MtJadeReferencePartRow> = [
   MtJadeReferencePartRow {
     ordering_part_number: "9FGL0841",
     vendor_label: "Renesas (IDT)",
-    role: PcieClockGenerator,
+    role: PcieClockBuffer,
     authority: extdeps_external_authority_anchor,
   },
   MtJadeReferencePartRow {
@@ -338,22 +338,6 @@ data mt_jade_reference_parts: List<MtJadeReferencePartRow> = [
     authority: extdeps_external_authority_anchor,
   },
 ]
-
-fn processor_power_rail_count(rails: List<ProcessorPowerRail>) -> Int {
-  fold(rails, init: 0, f: fn(acc, _r) { acc + 1 })
-}
-
-fn cpld_responsibility_count(rows: List<MtJadeBoardCpldResponsibility>) -> Int {
-  fold(rows, init: 0, f: fn(acc, _r) { acc + 1 })
-}
-
-fn clock_tree_node_count(nodes: List<ClockTreeNode>) -> Int {
-  fold(nodes, init: 0, f: fn(acc, _n) { acc + 1 })
-}
-
-fn reference_part_count(rows: List<MtJadeReferencePartRow>) -> Int {
-  fold(rows, init: 0, f: fn(acc, _r) { acc + 1 })
-}
 
 fn clock_tree_contains_part_number(nodes: List<ClockTreeNode>, part: NonEmptyStr) -> Bool {
   fold(nodes, init: false, f: fn(acc, n) {

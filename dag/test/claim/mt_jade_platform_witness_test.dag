@@ -1,16 +1,18 @@
 module test.claim.mt_jade_platform_witness
 
-import std.types { Bool, String, NonEmptyStr, List }
+import std.types { Bool, String, NonEmptyStr, List, list_length }
 import std.integer { Int }
 import std.measure { hertz_count, microsecond_count, micrometer_count }
-import extdeps.ocp.mt_jade.subject {
+import extdeps.ocp.publication {
   AppendixA,
   AppendixB,
+  Owfa1_0FinalSpecificationAgreement,
+  OcpContributionLicenseAgreement,
+}
+import extdeps.ocp.mt_jade.subject {
   DocumentLocatorFetchRefused,
   MtJadeRev1_0,
   OperatorSuppliedDocumentText,
-  Owfa1_0FinalSpecificationAgreement,
-  OcpContributionLicenseAgreement,
   mt_jade_publisher_citation_read_provenance,
   mt_jade_ingested_citation_read_provenance,
   mt_jade_contribution_license,
@@ -30,6 +32,7 @@ import extdeps.ocp.mt_jade.platform {
   MasterSocket,
   MtJadeBoardCpldResponsibility,
   PcieClockGenerator,
+  PcieClockBuffer,
   PciePerstDecodeFromCpuGpio,
   PcpPwrgdObserved,
   PcpRailEnabled,
@@ -44,19 +47,15 @@ import extdeps.ocp.mt_jade.platform {
   Vdd3v3Soc,
   VddSoc,
   clock_tree_contains_part_number,
-  clock_tree_node_count,
-  cpld_responsibility_count,
   mt_jade_board_cpld_responsibilities,
   mt_jade_clock_tree,
   mt_jade_cpld_timer_clock,
   mt_jade_motherboard_mechanical,
   mt_jade_platform_subject,
   mt_jade_reference_parts,
-  processor_power_rail_count,
   processor_power_rail_enable_order,
   processor_power_rail_name,
   processor_socket_role_name,
-  reference_part_count,
   reference_part_roles_include,
   slave_socket_alert3_pulse_width,
   soc_pwrgd_minimum_system_clock_cycles,
@@ -129,7 +128,7 @@ test fn w_the_model_scope_points_at_the_reference_platform_row() -> Bool {
     b: expected_mt_jade_subject_ref,
   )
     && match mt_jade_reference_platform.revision {
-      MtJadeRev1_0 => true
+      MtJadeRev1_0 {} => true
     }
     && (mt_jade_specification_version_label as String) == "v1.0"
     && mt_jade_specification_publication_date.year == 2021
@@ -142,8 +141,8 @@ test fn w_the_model_scope_points_at_the_reference_platform_row() -> Bool {
 test fn w_the_platform_module_carries_a_typed_subject_edge() -> Bool {
   (mt_jade_platform_subject.marketing_name as String) == (mt_jade_reference_platform.marketing_name as String)
     && match mt_jade_platform_subject.revision {
-      MtJadeRev1_0 => match mt_jade_reference_platform.revision {
-        MtJadeRev1_0 => true
+      MtJadeRev1_0 {} => match mt_jade_reference_platform.revision {
+        MtJadeRev1_0 {} => true
       }
     }
     && (mt_jade_platform_subject.version_label as String) == (mt_jade_reference_platform.version_label as String)
@@ -155,15 +154,15 @@ test fn w_the_platform_module_carries_a_typed_subject_edge() -> Bool {
 // THE LICENCE TERMS AND APPENDIX EXCLUSION ARE LOAD-BEARING FOR PUBLIC REPOSITORY ADMISSION.
 test fn w_the_specification_license_excludes_non_normative_appendices() -> Bool {
   match mt_jade_specification_license {
-    Owfa1_0FinalSpecificationAgreement => true
+    Owfa1_0FinalSpecificationAgreement {} => true
   }
     && match mt_jade_contribution_license {
-      OcpContributionLicenseAgreement => true
+      OcpContributionLicenseAgreement {} => true
     }
     && fold(mt_jade_excluded_non_normative_appendices, init: true, f: fn(acc, a) {
       acc && match a {
-        AppendixA => true
-        AppendixB => true
+        AppendixA {} => true
+        AppendixB {} => true
       }
     })
     && fold(mt_jade_excluded_non_normative_appendices, init: 0, f: fn(acc, _a) { acc + 1 }) == 2
@@ -173,17 +172,17 @@ test fn w_the_specification_license_excludes_non_normative_appendices() -> Bool 
 test fn w_the_publisher_citation_provenance_records_the_refused_fetch() -> Bool {
   match mt_jade_publisher_citation_read_provenance {
     DocumentLocatorFetchRefused { http_status: code, detail: _ } => code == 403
-    OperatorSuppliedDocumentText => false
+    OperatorSuppliedDocumentText {} => false
   }
 }
 
 test fn w_platform_facts_ground_on_operator_supplied_text() -> Bool {
   match mt_jade_ingested_citation_read_provenance {
-    OperatorSuppliedDocumentText => true
+    OperatorSuppliedDocumentText {} => true
     DocumentLocatorFetchRefused { http_status: _, detail: _ } => false
   }
     && match mt_jade_reference_platform.ingested_citation_read_provenance {
-      OperatorSuppliedDocumentText => true
+      OperatorSuppliedDocumentText {} => true
       DocumentLocatorFetchRefused { http_status: _, detail: _ } => false
     }
 }
@@ -199,7 +198,7 @@ test fn w_the_motherboard_outline_and_socket_facts_are_carried() -> Bool {
 
 // SECTION 7.10.3 NAMES SEVEN RAILS IN ORDER, STARTING AT VDD_SOC AND ENDING AT VDD3V3_SOC.
 test fn w_the_processor_power_rail_sequence_matches_the_spec() -> Bool {
-  processor_power_rail_count(rails: processor_power_rail_enable_order) == 7
+  list_length(items: processor_power_rail_enable_order) == 7
     && (processor_power_rail_name(rail: VddSoc) as String) == "VDD_SOC"
     && (processor_power_rail_name(rail: Vdd3v3Soc) as String) == "VDD3V3_SOC"
     && soc_pwrgd_minimum_system_clock_cycles == 32
@@ -224,7 +223,7 @@ test fn w_the_slave_start_handshake_names_the_cpld_and_the_pulse_width() -> Bool
 
 // THE CPLD ROLE SET INCLUDES THE THREE FUNCTIONS THE SPEC SPREADS ACROSS GPIO, JTAG AND RESET.
 test fn w_the_board_cpld_responsibilities_cover_gpio_jtag_and_perst() -> Bool {
-  cpld_responsibility_count(rows: mt_jade_board_cpld_responsibilities) == 7
+  list_length(items: mt_jade_board_cpld_responsibilities) == 7
     && list_contains_cpld_role(rows: mt_jade_board_cpld_responsibilities, wanted: PciePerstDecodeFromCpuGpio)
     && list_contains_cpld_role(rows: mt_jade_board_cpld_responsibilities, wanted: BmcJtagMasterProgramsCpld)
     && list_contains_cpld_role(rows: mt_jade_board_cpld_responsibilities, wanted: SysResetPathWithBmc)
@@ -233,7 +232,7 @@ test fn w_the_board_cpld_responsibilities_cover_gpio_jtag_and_perst() -> Bool {
 
 // THE CLOCK TREE NAMES THE RENESAS GENERATORS AT 100 MHZ AND KEEPS THE CPLD TIMER DERIVATION SEPARATE.
 test fn w_the_clock_tree_names_the_cited_generators_and_the_cpld_divider() -> Bool {
-  clock_tree_node_count(nodes: mt_jade_clock_tree) == 6
+  list_length(items: mt_jade_clock_tree) == 6
     && clock_tree_contains_part_number(nodes: mt_jade_clock_tree, part: "9FGV1006B")
     && clock_tree_contains_part_number(nodes: mt_jade_clock_tree, part: "9FGL0841")
     && clock_tree_contains_part_number(nodes: mt_jade_clock_tree, part: "5P35023")
@@ -243,9 +242,10 @@ test fn w_the_clock_tree_names_the_cited_generators_and_the_cpld_divider() -> Bo
 
 // REFERENCE PART ROWS CARRY THE AST2500 BMC AND THE CLOCK GENERATORS AS PRECEDENT, EACH CITING THE OCP AUTHORITY.
 test fn w_reference_parts_name_the_bmc_and_clock_generators() -> Bool {
-  reference_part_count(rows: mt_jade_reference_parts) == 9
+  list_length(items: mt_jade_reference_parts) == 9
     && reference_part_roles_include(rows: mt_jade_reference_parts, wanted: BaseboardManagementController)
     && reference_part_roles_include(rows: mt_jade_reference_parts, wanted: PcieClockGenerator)
+    && reference_part_roles_include(rows: mt_jade_reference_parts, wanted: PcieClockBuffer)
     && fold(mt_jade_reference_parts, init: true, f: fn(acc, r) {
       acc && (r.authority.uri.locator as String) == "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
     })
