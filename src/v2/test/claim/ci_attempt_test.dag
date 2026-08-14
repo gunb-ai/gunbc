@@ -4,7 +4,7 @@ import v2.std.algebra { fold_list, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Node, Symbol, symbol_identity_digest }
 import v2.std.text { String }
 import std.computation_identity { IdentityUnknown, MissingEnforcement, StructurallyIdentical }
 import v2.std.dependency { DependencyView }
@@ -66,10 +66,12 @@ import v2.workflow.ci_attempt {
   ReadOnlyRepository,
   reconcile_ledger,
   RetainedSeedTests,
+  SourceManifestIdentity,
   SourceRootDag,
   SourceRootV2,
   SubjectExclusion,
-  ToolIdentity
+  ToolIdentity,
+  TreeIdentity
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -77,6 +79,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // ── The envelope ──────────────────────────────────────────────────────────────
 
 data base_request: CiAttemptRequest = CiAttemptRequest {
+  tree_identity: TreeIdentity { commit: ^ci_test_commit_a },
+  source_manifest: SourceManifestIdentity {
+    digest: symbol_identity_digest(sym: ^ci_test_manifest_a)
+  },
   source_roots: [SourceRootDag, SourceRootV2],
   exclusions: [
     SubjectExclusion {
@@ -91,6 +97,8 @@ data base_request: CiAttemptRequest = CiAttemptRequest {
 }
 
 data request_other_roots: CiAttemptRequest = CiAttemptRequest {
+  tree_identity: base_request.tree_identity,
+  source_manifest: base_request.source_manifest,
   source_roots: [SourceRootDag],
   exclusions: base_request.exclusions,
   tool: base_request.tool,
@@ -100,6 +108,8 @@ data request_other_roots: CiAttemptRequest = CiAttemptRequest {
 }
 
 data request_other_tool: CiAttemptRequest = CiAttemptRequest {
+  tree_identity: base_request.tree_identity,
+  source_manifest: base_request.source_manifest,
   source_roots: base_request.source_roots,
   exclusions: base_request.exclusions,
   tool: ToolIdentity { compiler: ^ci_test_compiler_b },
@@ -113,6 +123,8 @@ data request_other_tool: CiAttemptRequest = CiAttemptRequest {
 // while producing different results for every fixture-dependent claim — a parity
 // comparison between them would have compared two subjects and reported agreement.
 data request_other_fixtures: CiAttemptRequest = CiAttemptRequest {
+  tree_identity: base_request.tree_identity,
+  source_manifest: base_request.source_manifest,
   source_roots: base_request.source_roots,
   exclusions: base_request.exclusions,
   tool: base_request.tool,
@@ -122,6 +134,8 @@ data request_other_fixtures: CiAttemptRequest = CiAttemptRequest {
 }
 
 data request_other_mocks: CiAttemptRequest = CiAttemptRequest {
+  tree_identity: base_request.tree_identity,
+  source_manifest: base_request.source_manifest,
   source_roots: base_request.source_roots,
   exclusions: base_request.exclusions,
   tool: base_request.tool,
@@ -131,6 +145,8 @@ data request_other_mocks: CiAttemptRequest = CiAttemptRequest {
 }
 
 data request_other_config: CiAttemptRequest = CiAttemptRequest {
+  tree_identity: base_request.tree_identity,
+  source_manifest: base_request.source_manifest,
   source_roots: base_request.source_roots,
   exclusions: base_request.exclusions,
   tool: base_request.tool,
@@ -139,7 +155,40 @@ data request_other_config: CiAttemptRequest = CiAttemptRequest {
   configuration: ConfigurationIdentity { identity: ^ci_test_config_b }
 }
 
+// THE TWO CONTENT COORDINATES, each varied alone. Without these the digest described
+// how to read sources and never what they were, so one request against two different
+// commits carried one identity — and a materialization keyed on it would share a
+// result across a code change.
+data request_other_tree: CiAttemptRequest = CiAttemptRequest {
+  tree_identity: TreeIdentity { commit: ^ci_test_commit_b },
+  source_manifest: base_request.source_manifest,
+  source_roots: base_request.source_roots,
+  exclusions: base_request.exclusions,
+  tool: base_request.tool,
+  fixture_store: base_request.fixture_store,
+  published_mocks: base_request.published_mocks,
+  configuration: base_request.configuration
+}
+
+// SAME TREE, DIFFERENT ADMITTED FILE SET. This is why the manifest is a separate
+// coordinate rather than implied by the commit: what the roots resolve to can move
+// without the tree moving.
+data request_other_manifest: CiAttemptRequest = CiAttemptRequest {
+  tree_identity: base_request.tree_identity,
+  source_manifest: SourceManifestIdentity {
+    digest: symbol_identity_digest(sym: ^ci_test_manifest_b)
+  },
+  source_roots: base_request.source_roots,
+  exclusions: base_request.exclusions,
+  tool: base_request.tool,
+  fixture_store: base_request.fixture_store,
+  published_mocks: base_request.published_mocks,
+  configuration: base_request.configuration
+}
+
 data request_other_exclusion_subject: CiAttemptRequest = CiAttemptRequest {
+  tree_identity: base_request.tree_identity,
+  source_manifest: base_request.source_manifest,
   source_roots: base_request.source_roots,
   exclusions: [
     SubjectExclusion {
@@ -155,7 +204,9 @@ data request_other_exclusion_subject: CiAttemptRequest = CiAttemptRequest {
 
 test fn digest_covers_every_envelope_field() -> Bool {
   let base = ci_attempt_subject_digest(request: base_request)
-  (ci_attempt_subject_digest(request: request_other_roots) != base)
+  (ci_attempt_subject_digest(request: request_other_tree) != base)
+    && (ci_attempt_subject_digest(request: request_other_manifest) != base)
+    && (ci_attempt_subject_digest(request: request_other_roots) != base)
     && (ci_attempt_subject_digest(request: request_other_tool) != base)
     && (ci_attempt_subject_digest(request: request_other_fixtures) != base)
     && (ci_attempt_subject_digest(request: request_other_mocks) != base)

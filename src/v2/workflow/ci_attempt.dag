@@ -78,13 +78,39 @@ type ConfigurationIdentity {
   identity: Symbol
 }
 
+// THE CONTENT IS PART OF THE SUBJECT, NOT CONTEXT AROUND IT.
+//
+// Every field below described how to READ the sources and none described WHAT the
+// sources were, so one request evaluated against two different commits produced the
+// same subject digest. That is not a coarse identity — it is the wrong one: a
+// materialization keyed on it would share a result across a code change, and a
+// parity comparison between two runs would report agreement it never established.
+//
+// Two coordinates, because they answer different questions and one does not imply
+// the other. tree_identity names the repository state the attempt was requested
+// against. source_manifest digests the exact file set actually admitted into the
+// subject after exclusions, so a change to what the roots resolve to moves the
+// digest even where the tree did not.
 type CiAttemptRequest {
+  tree_identity: TreeIdentity
+  source_manifest: SourceManifestIdentity
   source_roots: List<SourceRootId>
   exclusions: List<SubjectExclusion>
   tool: ToolIdentity
   fixture_store: FixtureStoreIdentity
   published_mocks: PublishedMockSetIdentity
   configuration: ConfigurationIdentity
+}
+
+// TreeIdentity is deliberately NOT an optional field with an absent arm. A run that
+// cannot name the tree it read has not produced a weaker subject identity, it has
+// produced an unusable one, and an absent arm is where that distinction goes to die.
+type TreeIdentity {
+  commit: Symbol
+}
+
+type SourceManifestIdentity {
+  digest: Hash
 }
 
 // ── The work ──────────────────────────────────────────────────────────────────
@@ -226,9 +252,14 @@ fn combine_exclusion(acc: Hash, exclusion: SubjectExclusion) -> Hash {
 // with different fixture stores would carry one identity, so a parity comparison
 // between them would compare two different subjects and report agreement.
 fn ci_attempt_subject_digest(request: CiAttemptRequest) -> Hash {
+  let seeded = combine_hash(
+    a: symbol_identity_digest(sym: ^ci_attempt_envelope_seed),
+    b: symbol_identity_digest(sym: request.tree_identity.commit)
+  )
+  let with_manifest = combine_hash(a: seeded, b: request.source_manifest.digest)
   let roots = fold_list(
     xs: request.source_roots,
-    empty: symbol_identity_digest(sym: ^ci_attempt_envelope_seed),
+    empty: with_manifest,
     cons: combine_source_root
   )
   let with_exclusions = fold_list(
