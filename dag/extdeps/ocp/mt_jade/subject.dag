@@ -25,7 +25,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data mt_jade_subject_authority_anchor: ExternalAuthority = extdeps_external_authority_anchor
+data mt_jade_subject_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
+  }
+}
 
 data mt_jade_subject_note: String = "MT. JADE AS AN OCP-ACCEPTED REFERENCE PLATFORM, NOT AS A PACKAGE FACT. extdeps.cpu.ampere_altra_package correctly separates the public Altra package datasheet from the NDA reference-board collateral listing Mt. Jade among four Ampere boards. This module is the third axis: the OCP-published motherboard specification, which names platform architecture facts without being the full Customer Connect design-file drop. THE PUBLISHER LOCATOR REMAINS THE CITATION EVEN WHEN UNREACHABLE. HOW THIS REPOSITORY READ OR FAILED TO READ THAT LOCATOR IS RECORDED AS A GUNBC RECEIPT WITH A DeclarationRef TO mt_jade_reference_platform, NOT AS A FIELD ON THIS RECORD. THE LICENCE IS WHAT MAKES PUBLIC MODELLING ADMISSIBLE: usage is under OWFa 1.0 (Open Web Foundation Final Specification Agreement), contributions are under the OCP Contribution License Agreement, and the licence explicitly does NOT apply to the Appendices — they are reference-only and non-normative, so no fact in this repository may be attributed to Appendix A or Appendix B."
 
