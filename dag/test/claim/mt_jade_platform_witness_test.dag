@@ -49,6 +49,7 @@ import extdeps.ocp.mt_jade.platform {
   mt_jade_clock_tree,
   mt_jade_cpld_timer_clock,
   mt_jade_motherboard_mechanical,
+  mt_jade_platform_subject,
   mt_jade_reference_parts,
   processor_power_rail_count,
   processor_power_rail_enable_order,
@@ -134,6 +135,20 @@ test fn w_the_model_scope_points_at_the_reference_platform_row() -> Bool {
     && mt_jade_specification_publication_date.month == 9
     && mt_jade_specification_publication_date.day == 17
     && (mt_jade_model_scope.first_citation.uri.locator as String) == "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
+}
+
+// THE PLATFORM MODULE MUST CARRY THE SAME TYPED SUBJECT EDGE, NOT ONLY A SHARED URI IMPORT.
+test fn w_the_platform_module_carries_a_typed_subject_edge() -> Bool {
+  (mt_jade_platform_subject.marketing_name as String) == (mt_jade_reference_platform.marketing_name as String)
+    && match mt_jade_platform_subject.revision {
+      MtJadeRev1_0 => match mt_jade_reference_platform.revision {
+        MtJadeRev1_0 => true
+      }
+    }
+    && (mt_jade_platform_subject.version_label as String) == (mt_jade_reference_platform.version_label as String)
+    && mt_jade_platform_subject.publication_date.year == mt_jade_reference_platform.publication_date.year
+    && mt_jade_platform_subject.publication_date.month == mt_jade_reference_platform.publication_date.month
+    && mt_jade_platform_subject.publication_date.day == mt_jade_reference_platform.publication_date.day
 }
 
 // THE LICENCE TERMS AND APPENDIX EXCLUSION ARE LOAD-BEARING FOR PUBLIC REPOSITORY ADMISSION.
