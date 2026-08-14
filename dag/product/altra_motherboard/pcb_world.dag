@@ -19,7 +19,6 @@ import product.pcb.world {
   PcbWorldRefused,
   PcbBoardOutlineRefused,
   PcbDesignPlanUnavailable,
-  PcbCapabilityStillPending,
   PcbPlacementNotAdmitted,
   PcbOutlineCopiedFromCitedForeignBoard,
   PcbBoard,
@@ -40,7 +39,7 @@ import product.pcb.world {
   DrawingMustBeRead,
   pcb_world,
   capability_pending,
-  first_pending_capability,
+  first_unsettled_capability,
   pcb_world_design,
   PcbPlanWasBuiltFromADifferentDesign,
   EstablishedEnvelopeRead,
@@ -335,8 +334,8 @@ fn admit_pcb_world(d: AltraMinimalMotherboard, w: PcbWorld) -> PcbWorldConstruct
       if !declaration_ref_eq(a: pcb_world_design(w: w), b: plan.design) {
         PcbWorldRefused { cause: PcbPlanWasBuiltFromADifferentDesign { plan_design: plan.design, admitted_against: pcb_world_design(w: w) } }
       } else {
-        match first_pending_capability(w: w) {
-          Present { value: cap } => PcbWorldRefused { cause: PcbCapabilityStillPending { capability: cap } }
+        match first_unsettled_capability(w: w) {
+          Present { value: r } => PcbWorldRefused { cause: r }
           Absent =>
             match admit_placement(d: d, plan: plan) {
               PlacementAdmitted { plan: _ } => AdmittedPcbWorld { value: w }

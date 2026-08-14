@@ -107,6 +107,7 @@ type PcbWorldRefusal
   | PcbDesignPlanUnavailable { only_available: DeclarationRef }
   | PcbPlanWasBuiltFromADifferentDesign { plan_design: DeclarationRef, admitted_against: DeclarationRef }
   | PcbCapabilityStillPending { capability: NonEmptyStr }
+  | PcbCapabilityRefused { capability: NonEmptyStr, cause: NonEmptyStr }
   | PcbPlacementNotAdmitted
   | PcbOutlineCopiedFromCitedForeignBoard
 
@@ -134,14 +135,24 @@ fn capability_pending(what_is_owed: NonEmptyStr) -> PcbCapabilityStanding {
   }
 }
 
-fn pending_capability(s: PcbCapabilityStanding, name: NonEmptyStr) -> NonEmptyStr? {
+// EVERY NON-ESTABLISHED CAPABILITY BLOCKS ADMISSION, and a refused one blocks LOUDER than a
+// pending one rather than quieter. An earlier revision answered Absent for CapabilityRefused,
+// which read a world whose stackup, footprints, pads, routes, nets and artifacts had all been
+// REFUSED as a world with nothing outstanding -- the empty-observation narrow DESIGN names, and
+// the worse half of it, because the narrow is silently uncovered rather than merely expensive.
+// PcbCapabilityStanding carries no established arm at all today, so the honest consequence is
+// that AdmittedPcbWorld is unreachable for every world this repository can currently build; that
+// is what this function makes true by construction instead of leaving it to whichever unrelated
+// check happens to fail first.
+fn unsettled_capability(s: PcbCapabilityStanding, name: NonEmptyStr) -> PcbWorldRefusal? {
   match s {
-    CapabilityPending { owed: _ } => Present { value: name }
-    CapabilityRefused { cause: _ } => none
+    CapabilityPending { owed: _ } => Present { value: PcbCapabilityStillPending { capability: name } }
+    CapabilityRefused { cause: c } =>
+      Present { value: PcbCapabilityRefused { capability: name, cause: c } }
   }
 }
 
-fn first_present_name(a: NonEmptyStr?, b: NonEmptyStr?) -> NonEmptyStr? {
+fn first_present_refusal(a: PcbWorldRefusal?, b: PcbWorldRefusal?) -> PcbWorldRefusal? {
   match a {
     Present { value: v } => Present { value: v }
     Absent => b
@@ -250,18 +261,18 @@ fn pcb_population_count(p: PcbPhysicalWorld) -> Int {
   pcb_component_count(p: p) + pcb_obligation_count(p: p)
 }
 
-fn first_pending_capability(w: PcbWorld) -> NonEmptyStr? {
-  first_present_name(
-    a: pending_capability(s: w.physical.stackup, name: "stackup"),
-    b: first_present_name(
-      a: pending_capability(s: w.physical.footprints, name: "footprints"),
-      b: first_present_name(
-        a: pending_capability(s: w.physical.pads, name: "pads"),
-        b: first_present_name(
-          a: pending_capability(s: w.physical.routes, name: "routes"),
-          b: first_present_name(
-            a: pending_capability(s: w.electrical.nets, name: "nets"),
-            b: pending_capability(s: w.manufacturing.artifacts, name: "artifacts"),
+fn first_unsettled_capability(w: PcbWorld) -> PcbWorldRefusal? {
+  first_present_refusal(
+    a: unsettled_capability(s: w.physical.stackup, name: "stackup"),
+    b: first_present_refusal(
+      a: unsettled_capability(s: w.physical.footprints, name: "footprints"),
+      b: first_present_refusal(
+        a: unsettled_capability(s: w.physical.pads, name: "pads"),
+        b: first_present_refusal(
+          a: unsettled_capability(s: w.physical.routes, name: "routes"),
+          b: first_present_refusal(
+            a: unsettled_capability(s: w.electrical.nets, name: "nets"),
+            b: unsettled_capability(s: w.manufacturing.artifacts, name: "artifacts"),
           ),
         ),
       ),
