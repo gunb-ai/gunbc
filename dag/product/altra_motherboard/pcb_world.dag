@@ -25,6 +25,10 @@ import product.pcb.world {
   PcbSourceDesign,
   PcbBoard,
   PcbPhysicalWorld,
+  PcbBodyLayoutStanding,
+  PcbBodyLayoutAdmittedOverEveryRequiredPart,
+  PcbBodyLayoutCheckedOverEstablishedSubsetOnly,
+  PcbBodyLayoutRefused,
   PcbElectricalWorld,
   PcbManufacturingWorld,
   PcbComponentObligation,
@@ -58,7 +62,12 @@ import product.altra_motherboard.placement {
   ResetController,
   StorageEndpoint,
   PlannedComponent,
+  BoardBodyLayoutStanding,
+  BodyLayoutAdmittedOverEveryRequiredPart,
+  BodyLayoutCheckedOverEstablishedSubsetOnly,
+  BodyLayoutRefused,
   placeable_components,
+  board_body_layout_standing,
   altra_reference_plan,
   admit_placement,
 }
@@ -90,7 +99,7 @@ import product.altra_motherboard.minimal_design {
   altra_1p_minimum,
 }
 
-data pcb_world_note: String = "THE ALTRA BOARD AS A PROJECTION OF 8233'S PLACEMENT PLAN INTO THE SHARED PCB WORLD. This module owns the scene join, not the design: envelopes, blockers and admission stay in product.altra_motherboard.placement and attachment_stack. World identity is derived from topology_slot_identities, not from a channel count that would invent which controllers are populated. Obligation causes are derived from the blocker variant together with the planned role — UnselectedPart is a role with no vendor, MissingDocument is a role that names a document still owed — never recovered by grepping blocker prose. The socket-type designation is extdeps.ocp.mt_jade ilm4926_designation; Mt. Jade's board extents are the same module's foreign reference and are not this board's outline. Capabilities that 8233 has not modeled are pending with a nonempty obligation, never an empty list. The outline constructing is PartialPcbWorldReady — a preview, not an admitted board. A six-channel design does not share the four-channel identity, and has no plan on this increment, so it refuses rather than borrowing the reference plan."
+data pcb_world_note: String = "THE ALTRA BOARD AS A PROJECTION OF 8233'S PLACEMENT PLAN INTO THE SHARED PCB WORLD. This module owns the scene join, not the design: envelopes, blockers and admission stay in product.altra_motherboard.placement and attachment_stack. Body-envelope geometry is consumed as BoardBodyLayoutStanding — this module does not call admit_body_envelopes itself — so a check over the two envelopes that exist cannot report as a finished board while thirteen parts are still owed. World identity is derived from topology_slot_identities, not from a channel count that would invent which controllers are populated. Obligation causes are derived from the blocker variant together with the planned role — UnselectedPart is a role with no vendor, MissingDocument is a role that names a document still owed — never recovered by grepping blocker prose. The socket-type designation is extdeps.ocp.mt_jade ilm4926_designation; Mt. Jade's board extents are the same module's foreign reference and are not this board's outline. Capabilities that 8233 has not modeled are pending with a nonempty obligation, never an empty list. The outline constructing is PartialPcbWorldReady — a preview, not an admitted board. A six-channel design does not share the four-channel identity, and has no plan on this increment, so it refuses rather than borrowing the reference plan."
 
 fn intent_tag(i: DesignIntent) -> String {
   match i {
@@ -246,12 +255,24 @@ fn attachment_obligations() -> List<PcbAttachmentObligation> {
   })
 }
 
-fn physical_world_from_plan(plan: BoardPlacementPlan) -> PcbPhysicalWorld {
+fn project_body_layout(s: BoardBodyLayoutStanding) -> PcbBodyLayoutStanding {
+  match s {
+    BodyLayoutAdmittedOverEveryRequiredPart { article: _ } =>
+      PcbBodyLayoutAdmittedOverEveryRequiredPart
+    BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: n, geometry: _ } =>
+      PcbBodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: n }
+    BodyLayoutRefused { causes: _ } =>
+      PcbBodyLayoutRefused
+  }
+}
+
+fn physical_world_from_plan(d: AltraMinimalMotherboard, plan: BoardPlacementPlan) -> PcbPhysicalWorld {
   PcbPhysicalWorld {
     board: PcbBoard { frame: plan.frame, outline: plan.outline },
     components: placeable_components(plan: plan),
     obligations: obligations_from_plan(plan: plan),
     attachment_obligations: attachment_obligations(),
+    body_layout: project_body_layout(s: board_body_layout_standing(d: d, plan: plan)),
     stackup: capability_pending(what_is_owed: "a cited dielectric stackup for this board; no fabricator profile has been joined"),
     footprints: capability_pending(what_is_owed: "vendor land patterns placed on this board; body envelopes are not footprints"),
     pads: capability_pending(what_is_owed: "a pad population derived from placed footprints"),
@@ -266,7 +287,7 @@ fn pcb_world_from_plan(d: AltraMinimalMotherboard, plan: BoardPlacementPlan) -> 
     electrical: PcbElectricalWorld {
       nets: capability_pending(what_is_owed: "a netlist joined to this board; electrical connectivity has not been modeled"),
     },
-    physical: physical_world_from_plan(plan: plan),
+    physical: physical_world_from_plan(d: d, plan: plan),
     manufacturing: PcbManufacturingWorld {
       artifacts: capability_pending(what_is_owed: "manufacturing artifacts (gerber, drill, fab drawing); none have been emitted"),
     },

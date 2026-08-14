@@ -1,6 +1,6 @@
 module test.claim.altra_pcb_world_svg_witness
 
-import std.types { Bool, String, NonEmptyStr, List }
+import std.types { Bool, String, NonEmptyStr, List, list_length }
 import std.integer { Int }
 import std.measure { micrometer_count }
 import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
@@ -25,6 +25,10 @@ import product.pcb.world {
   PcbSourceDesign,
   PcbBoard,
   PcbPhysicalWorld,
+  PcbBodyLayoutStanding,
+  PcbBodyLayoutAdmittedOverEveryRequiredPart,
+  PcbBodyLayoutCheckedOverEstablishedSubsetOnly,
+  PcbBodyLayoutRefused,
   PcbElectricalWorld,
   PcbManufacturingWorld,
   PcbComponentObligation,
@@ -34,6 +38,7 @@ import product.pcb.world {
   CapabilityRefused,
   pcb_world,
   pcb_world_physical,
+  pcb_body_layout,
   pcb_world_identity,
   pcb_world_source_design,
   pcb_component_count,
@@ -165,6 +170,9 @@ fn world_with_obligations(obs: List<PcbComponentObligation>) -> PcbWorld? {
             components: [],
             obligations: obs,
             attachment_obligations: [],
+            body_layout: PcbBodyLayoutCheckedOverEstablishedSubsetOnly {
+              parts_still_owed: list_length(items: obs),
+            },
             stackup: capability_pending(what_is_owed: "synthetic stackup"),
             footprints: capability_pending(what_is_owed: "synthetic footprints"),
             pads: capability_pending(what_is_owed: "synthetic pads"),
@@ -233,6 +241,18 @@ test fn w_the_world_carries_two_established_twelve_unselected_and_one_missing_do
         && pcb_commercial_access_count(p: p) == 0
         && pcb_legal_carriage_count(p: p) == 0
         && pcb_population_count(p: p) == 15
+  }
+}
+
+test fn w_the_reference_board_body_layout_is_the_established_subset_with_thirteen_parts_owed() -> Bool {
+  match world_or_empty() {
+    Absent => false
+    Present { value: w } =>
+      match pcb_body_layout(p: pcb_world_physical(w: w)) {
+        PcbBodyLayoutAdmittedOverEveryRequiredPart => false
+        PcbBodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: n } => n == 13
+        PcbBodyLayoutRefused => false
+      }
   }
 }
 
@@ -366,20 +386,22 @@ test fn w_unselected_roles_render_as_unselected_part() -> Bool {
   }
 }
 
-test fn w_established_components_use_the_established_class() -> Bool {
+test fn w_subset_bodies_are_not_drawn_as_checked() -> Bool {
   match scene_or_empty() {
     Absent => false
     Present { value: s } =>
-      count_substring(haystack: s, needle: "pcb-component-established") == 2
+      count_substring(haystack: s, needle: "pcb-component-established") == 0
+        && count_substring(haystack: s, needle: "pcb-component-subset-body") == 2
         && count_substring(haystack: s, needle: "pcb-component-unselected-part") == 12
         && count_substring(haystack: s, needle: "pcb-component-missing-document") == 1
+        && string_contains(s: s, pattern: "body layout checked over established subset only; 13 parts owed")
   }
 }
 
 test fn w_the_legend_states_the_cause_populations() -> Bool {
   match scene_or_empty() {
     Absent => false
-    Present { value: s } => string_contains(s: s, pattern: "2 established / 12 unselected / 1 missing-document / 0 commercial-access / 0 legal-carriage")
+    Present { value: s } => string_contains(s: s, pattern: "2 established / 12 unselected / 1 missing-document / 0 commercial-access / 0 legal-carriage — body layout checked over established subset only; 13 parts owed")
   }
 }
 

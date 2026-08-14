@@ -7,7 +7,7 @@ import std.affine_space { Point2 }
 import std.orthogonal_geometry { AxisAlignedRectangle2, OrthogonalRefusal }
 import product.pcb.physical { ComponentPlacement }
 
-data world_note: String = "ONE PCB WORLD, AND EMPTY IS NOT A DEFAULT. Established body envelopes occupy components. Every other planned identity is an obligation that carries a typed cause — missing document, commercial access, legal carriage, or unselected part — rather than a role string those distinctions collapse into. Capabilities that have no row type yet (stackup, footprints, pads, routes, nets, manufacturing artifacts) are not empty lists: an empty list cannot tell a board that needs none from a board whose routing has not been modeled from a board whose routing completed at zero. Each of those fields is a capability standing, pending with a nonempty obligation or refused with a cause. There is no Established arm here because there is no consumer and no row type; each carrier lands with its first consumer. A PARTIAL world is a preview whose outline constructed; it is not an admitted board."
+data world_note: String = "ONE PCB WORLD, AND EMPTY IS NOT A DEFAULT. Established body envelopes occupy components. Every other planned identity is an obligation that carries a typed cause — missing document, commercial access, legal carriage, or unselected part — rather than a role string those distinctions collapse into. Body-envelope geometry is a standing, not a Bool over the envelopes that happen to exist: the complete arm is reachable only when every required part was in the check, and the subset arm carries the count of parts the geometry never saw, so a consumer cannot read a clean answer without also receiving what it did not cover. Capabilities that have no row type yet (stackup, footprints, pads, routes, nets, manufacturing artifacts) are not empty lists: an empty list cannot tell a board that needs none from a board whose routing has not been modeled from a board whose routing completed at zero. Each of those fields is a capability standing, pending with a nonempty obligation or refused with a cause. There is no Established arm here because there is no consumer and no row type; each carrier lands with its first consumer. A PARTIAL world is a preview whose outline constructed; it is not an admitted board."
 
 type PcbWorldIdentity = NonEmptyStr where brand("PcbWorldIdentity")
 
@@ -50,11 +50,17 @@ type PcbCapabilityStanding
   = CapabilityPending { owed: NonemptyCapabilityObligations }
   | CapabilityRefused { cause: NonEmptyStr }
 
+type PcbBodyLayoutStanding
+  = PcbBodyLayoutAdmittedOverEveryRequiredPart
+  | PcbBodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: Int }
+  | PcbBodyLayoutRefused
+
 type PcbPhysicalWorld {
   board: PcbBoard
   components: List<ComponentPlacement>
   obligations: List<PcbComponentObligation>
   attachment_obligations: List<PcbAttachmentObligation>
+  body_layout: PcbBodyLayoutStanding
   stackup: PcbCapabilityStanding
   footprints: PcbCapabilityStanding
   pads: PcbCapabilityStanding
@@ -92,6 +98,7 @@ type PcbWorldConstruction<T>
 fn pcb_world_identity(w: PcbWorld) -> PcbWorldIdentity { w.identity }
 fn pcb_world_source_design(w: PcbWorld) -> PcbSourceDesign { w.source_design }
 fn pcb_world_physical(w: PcbWorld) -> PcbPhysicalWorld { w.physical }
+fn pcb_body_layout(p: PcbPhysicalWorld) -> PcbBodyLayoutStanding { p.body_layout }
 fn pcb_world_electrical(w: PcbWorld) -> PcbElectricalWorld { w.electrical }
 fn pcb_world_manufacturing(w: PcbWorld) -> PcbManufacturingWorld { w.manufacturing }
 

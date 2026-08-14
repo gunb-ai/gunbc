@@ -20,6 +20,10 @@ import product.pcb.world {
   PcbWorld,
   PcbWorldRefusal,
   PcbPhysicalWorld,
+  PcbBodyLayoutStanding,
+  PcbBodyLayoutAdmittedOverEveryRequiredPart,
+  PcbBodyLayoutCheckedOverEstablishedSubsetOnly,
+  PcbBodyLayoutRefused,
   MissingDocument,
   CommercialAccess,
   LegalCarriage,
@@ -39,7 +43,7 @@ import product.pcb.scene {
   obligation_cause_label,
 }
 
-data plan_view_note: String = "THE SVG TARGET REALIZES THE ENGINEERING SCENE. It does not fold the world: a new drawing medium is a new realization of the same scene elements. Established bodies render at cited extent. Obligation and attachment markers are origin labels carrying the typed cause; none of those may look like a footprint. A serialized document that omits any scene identity is refused rather than emitted partial."
+data plan_view_note: String = "THE SVG TARGET REALIZES THE ENGINEERING SCENE. It does not fold the world: a new drawing medium is a new realization of the same scene elements. The complete body-layout arm is the only standing that may render as checked. A subset standing is known envelopes the geometry never finished covering; those rectangles use a distinct class and the legend names the parts still owed. Obligation and attachment markers are origin labels carrying the typed cause; none of those may look like a footprint. A serialized document that omits any scene identity is refused rather than emitted partial."
 
 data attachment_label_base: Micrometer = micrometer(count: 24000)
 data attachment_label_step: Micrometer = micrometer(count: 2400)
@@ -99,16 +103,46 @@ fn board_outline_fragment(o: AxisAlignedRectangle2) -> Fragment {
   )
 }
 
-fn established_body_fragments(identity: NonEmptyStr, origin_x: Int, origin_y: Int, width: Int, height: Int) -> List<Fragment> {
+type BodyRenderStyle {
+  class_name: String
+  label_class: String
+  fill: String
+  stroke: String
+}
+
+fn body_render_style(s: PcbBodyLayoutStanding) -> BodyRenderStyle {
+  match s {
+    PcbBodyLayoutAdmittedOverEveryRequiredPart => BodyRenderStyle {
+      class_name: "pcb-component-established",
+      label_class: "pcb-label-established",
+      fill: "#c8d6e8",
+      stroke: "#1a2744",
+    }
+    PcbBodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: _ } => BodyRenderStyle {
+      class_name: "pcb-component-subset-body",
+      label_class: "pcb-label-subset-body",
+      fill: "#edf1f5",
+      stroke: "#8a97a8",
+    }
+    PcbBodyLayoutRefused => BodyRenderStyle {
+      class_name: "pcb-component-layout-refused",
+      label_class: "pcb-label-layout-refused",
+      fill: "#f3e8e8",
+      stroke: "#8a4a4a",
+    }
+  }
+}
+
+fn established_body_fragments(identity: NonEmptyStr, origin_x: Int, origin_y: Int, width: Int, height: Int, style: BodyRenderStyle) -> List<Fragment> {
   [
     svg_rect(
       x: origin_x, y: origin_y, width: width, height: height,
-      class_name: "pcb-component-established",
-      fill: "#c8d6e8",
-      stroke: "#1a2744",
+      class_name: style.class_name,
+      fill: style.fill,
+      stroke: style.stroke,
       stroke_width: "400",
     ),
-    svg_text(x: origin_x, y: origin_y - micrometer_count(m: established_label_lift), label: identity as String, class_name: "pcb-label-established"),
+    svg_text(x: origin_x, y: origin_y - micrometer_count(m: established_label_lift), label: identity as String, class_name: style.label_class),
   ]
 }
 
@@ -125,6 +159,17 @@ fn obligation_marker_fragment(identity: NonEmptyStr, origin_x: Int, origin_y: In
   )
 }
 
+fn body_layout_legend(s: PcbBodyLayoutStanding) -> String {
+  match s {
+    PcbBodyLayoutAdmittedOverEveryRequiredPart =>
+      "body layout admitted over every required part"
+    PcbBodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: n } =>
+      concat("body layout checked over established subset only; ", concat(to_string(n), " parts owed"))
+    PcbBodyLayoutRefused =>
+      "body layout refused"
+  }
+}
+
 fn legend_text(c: PcbSceneLegend) -> String {
   concat(
     "PCB world — ",
@@ -132,11 +177,12 @@ fn legend_text(c: PcbSceneLegend) -> String {
     concat(to_string(c.unselected_part), concat(" unselected / ",
     concat(to_string(c.missing_document), concat(" missing-document / ",
     concat(to_string(c.commercial_access), concat(" commercial-access / ",
-    concat(to_string(c.legal_carriage), " legal-carriage")))))))))
+    concat(to_string(c.legal_carriage), concat(" legal-carriage — ",
+    body_layout_legend(s: c.body_layout)))))))))))
   )
 }
 
-fn element_fragments(e: PcbSceneElement, attachment_index: Int) -> List<Fragment> {
+fn element_fragments(e: PcbSceneElement, attachment_index: Int, body_layout: PcbBodyLayoutStanding) -> List<Fragment> {
   match e {
     SceneBoardOutline { outline: o } => [board_outline_fragment(o: o)]
     SceneLegend { counts: c } =>
@@ -148,6 +194,7 @@ fn element_fragments(e: PcbSceneElement, attachment_index: Int) -> List<Fragment
         origin_y: signed_frame_component_count(c: origin.y),
         width: micrometer_count(m: w),
         height: micrometer_count(m: h),
+        style: body_render_style(s: body_layout),
       )
     SceneObligationMarker { identity: id, origin: origin, cause: cause } =>
       [obligation_marker_fragment(
@@ -173,6 +220,7 @@ fn element_fragments(e: PcbSceneElement, attachment_index: Int) -> List<Fragment
 }
 
 fn fold_scene_fragments(scene: PcbEngineeringScene) -> List<Fragment> {
+  let body_layout = scene.world.physical.body_layout
   let acc = fold(scene.elements, init: AttachmentLabelAcc { index: 0, fragments: [] }, f: fn(state, e) {
     let next_index = match e {
       SceneAttachmentMarker { layer: _, cause: _ } => state.index + 1
@@ -183,7 +231,7 @@ fn fold_scene_fragments(scene: PcbEngineeringScene) -> List<Fragment> {
     }
     AttachmentLabelAcc {
       index: next_index,
-      fragments: concat(state.fragments, element_fragments(e: e, attachment_index: state.index)),
+      fragments: concat(state.fragments, element_fragments(e: e, attachment_index: state.index, body_layout: body_layout)),
     }
   })
   acc.fragments

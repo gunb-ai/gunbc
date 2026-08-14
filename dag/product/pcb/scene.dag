@@ -8,12 +8,14 @@ import std.orthogonal_geometry { AxisAlignedRectangle2 }
 import product.pcb.world {
   PcbWorld,
   PcbPhysicalWorld,
+  PcbBodyLayoutStanding,
   PcbObligationCause,
   MissingDocument,
   CommercialAccess,
   LegalCarriage,
   UnselectedPart,
   pcb_world_physical,
+  pcb_body_layout,
   pcb_component_count,
   pcb_missing_document_count,
   pcb_commercial_access_count,
@@ -21,7 +23,7 @@ import product.pcb.world {
   pcb_unselected_part_count,
 }
 
-data scene_note: String = "A TARGET-NEUTRAL ENGINEERING SCENE. The world is projected into elements that name geometry and typed causes, not a drawing medium. SVG is one realization of this scene; a second target must not require a second fold of the world. Empty capabilities stay on the world as standings and do not appear here as empty element lists."
+data scene_note: String = "A TARGET-NEUTRAL ENGINEERING SCENE. The world is projected into elements that name geometry and typed causes, not a drawing medium. SVG is one realization of this scene; a second target must not require a second fold of the world. Known body envelopes are scene bodies; whether those bodies are a complete layout check lives on the legend as PcbBodyLayoutStanding, never inferred from the body count. Empty capabilities stay on the world as standings and do not appear here as empty element lists."
 
 type PcbSceneLegend {
   established: Int
@@ -29,6 +31,7 @@ type PcbSceneLegend {
   commercial_access: Int
   legal_carriage: Int
   unselected_part: Int
+  body_layout: PcbBodyLayoutStanding
 }
 
 type PcbSceneElement
@@ -66,6 +69,7 @@ fn legend_of(p: PcbPhysicalWorld) -> PcbSceneLegend {
     commercial_access: pcb_commercial_access_count(p: p),
     legal_carriage: pcb_legal_carriage_count(p: p),
     unselected_part: pcb_unselected_part_count(p: p),
+    body_layout: pcb_body_layout(p: p),
   }
 }
 
