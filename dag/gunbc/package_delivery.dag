@@ -60,7 +60,6 @@ import extdeps.tools.sha512sum {
   Sha512FileObserved,
   Sha512FileObservationRefused,
 }
-import extdeps.tools.npm
 import extdeps.tools.node
 import gunbc.codex_runtime_paths {
   codex_runtime_current_link_path,
