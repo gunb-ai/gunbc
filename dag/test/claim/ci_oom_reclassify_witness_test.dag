@@ -1,4 +1,5 @@
 module test.claim.ci_oom_reclassify_witness
+import gunbc.ci_oom_reclassify { Clustered, ClusteringEvidence, NotClustered, OomKillObservation, SimultaneousMultiJobDeath, clustering_is_present, clustering_signal_from_boot_id, host_boot_id_reset, observe_oom_kill, oom_is_confirmed, oom_kill_from_cgroup_counter, oom_kill_from_oomd_journal, reclassify_floor_outcome }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -97,4 +98,3 @@ test fn witness_reclassify_never_demotes_or_touches_non_137() -> Bool {
     && outcome_is_structural(o: unchanged)
     && floor_outcome_blocks_merge(o: unchanged)
 }
-

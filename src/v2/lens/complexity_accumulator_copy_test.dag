@@ -1,4 +1,5 @@
 module v2.test.lens_complexity_accumulator_copy
+import v2.lens.complexity_accumulator_copy { Finding }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

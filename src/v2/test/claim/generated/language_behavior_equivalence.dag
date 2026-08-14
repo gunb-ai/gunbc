@@ -51,17 +51,7 @@ import v2.std.runtime {
 
 import v2.std.witness { Holds, Violates }
 
-import v2.lens.testgen {
-  LanguageBehaviorIoMock,
-  lbe_io_mock_conj_dag_surface,
-  lbe_io_mock_disj_dag_surface,
-  lbe_io_mock_transform_dag_surface,
-  lbe_label_conj_dag_surface,
-  lbe_label_disj_dag_surface,
-  lbe_label_transform_dag_surface,
-  testgen_emit_language_behavior_equivalence_claim,
-  testgen_scheduled_language_behavior_generators
-}
+import v2.lens.testgen { LanguageBehaviorIoMock, lbe_io_mock_conj_dag_surface, lbe_io_mock_disj_dag_surface, lbe_io_mock_transform_dag_surface, lbe_label_conj_dag_surface, lbe_label_disj_dag_surface, lbe_label_transform_dag_surface, testgen_emit_language_behavior_equivalence_claim, testgen_scheduled_language_behavior_generators }
 import v2.std.verification {
   DiagnosticClaim,
   TestClaim,

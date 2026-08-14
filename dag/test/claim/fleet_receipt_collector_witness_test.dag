@@ -1,4 +1,5 @@
 module test.claim.fleet_receipt_collector_witness
+import gunbc.fleet_receipt_collector { ReceiptAbsent }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

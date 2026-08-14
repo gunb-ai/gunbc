@@ -1,26 +1,6 @@
 module v2.test.generated.testgen_category_wishlist
 
-import v2.lens.testgen {
-  AlgebraLaw,
-  AlgebraLawSubject,
-  BidirectionalRoundtrip,
-  BidirectionalRoundtripSubject,
-  DiagnosticExhaustiveness,
-  Generator,
-  LanguageBehaviorEquivalence,
-  LensApplicability,
-  LensApplicabilitySubject,
-  RefinementPreservation,
-  RefinementPreservationSubject,
-  TestgenConcept,
-  TypeConstruction,
-  TypeConstructionSubject,
-  ConnectiveKernel,
-  default_generator_profile,
-  generator_provenance,
-  lbe_io_mock_conj_dag_surface,
-  lbe_subject_conj_dag_surface
-}
+import v2.lens.testgen { AlgebraLaw, AlgebraLawSubject, BidirectionalRoundtrip, BidirectionalRoundtripSubject, ConnectiveKernel, DiagnosticExhaustiveness, Generator, LanguageBehaviorEquivalence, LensApplicability, LensApplicabilitySubject, RefinementPreservation, RefinementPreservationSubject, TestgenConcept, TypeConstruction, TypeConstructionSubject, default_generator_profile, generator_provenance, lbe_io_mock_conj_dag_surface, lbe_subject_conj_dag_surface }
 import v2.std.algebra { length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }

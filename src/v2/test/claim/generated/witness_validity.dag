@@ -1,4 +1,5 @@
 module v2.test.generated.witness_validity
+import v2.lens.testgen { testgen_emit_witness_validity_claim }
 
 data row_witness_validity_constraint_satisfaction_holds: Outcome<TestClaim> = testgen_emit_witness_validity_claim(
     label: "witness-validity: constraint-satisfaction holds (positive)",

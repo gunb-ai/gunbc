@@ -1,4 +1,5 @@
 module test.claim.gunbhub_serve_witness
+import v2.std.network { GET, POST }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

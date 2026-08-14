@@ -1,4 +1,6 @@
 module v2.test.manual.manual_corpus_roster
+import v2.test.lens_idempotency.write_effect { subject_idempotency_write_effect_receipt }
+import v2.test.lens_parallelism.data_dependency { subject_parallelism_data_dependency_receipt }
 
 
 data manual_corpus_node_subject_rows: List<TestClaimEvalSubject<Node>> = [

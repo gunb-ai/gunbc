@@ -1,4 +1,5 @@
 module test.claim.docker_container_stats_witness
+import extdeps.docker.container_inspect { Exited }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

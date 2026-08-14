@@ -1,4 +1,5 @@
 module test.claim.host_converge_delta_witness
+import gunbc.host_converge_delta { ConvergeKnobKey, converge_knob_values_equal, host_converge_knob_in_patch, host_converge_knob_verdict, host_converge_patch_hunk_count, host_converge_three_way_patch, host_converge_two_way_diff }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -193,4 +194,3 @@ test fn witness_payload_drift_not_flattened() -> Bool {
       b: probe_effective_knob(ee: "16000000000"),
     )
 }
-

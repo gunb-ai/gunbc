@@ -1,4 +1,5 @@
 module test.claim.runner_activation_wall
+import gunbc.build_cache_instance { ProcessIdentity }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -83,6 +83,7 @@ import std.types { String, NonEmptyStr, Bool, Int, List }
 import v2.std.algebra { fold_list }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.optional { Present, Absent }
+import std.materialization_ladder { string_list_contains }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

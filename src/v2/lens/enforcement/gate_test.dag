@@ -1,4 +1,6 @@
 module v2.test.lens_enforcement.gate_test
+import v2.lens.enforcement.vocab { Blocking, Exact }
+import v2.lens.enforcement.standing_intent { Refuse }
 
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
