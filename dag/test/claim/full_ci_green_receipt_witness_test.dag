@@ -1,0 +1,567 @@
+module test.claim.full_ci_green_receipt_witness
+
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.types { NonEmptyStr, String, CommitSha, Bool }
+import std.measure { Millisecond, millisecond, WallClock }
+import gunbc.full_ci_green_receipt {
+  classify_full_ci_green_from_receipt_text,
+  FullCiGreenAdmitted,
+  FullCiGreenDeniedNotCiWorkflow,
+  FullCiGreenDeniedRunIncomplete,
+  FullCiGreenDeniedComponentFailure,
+  classify_partial_ci_green_signal,
+  PartialCiGreenDeniedBuildJobSucceeded,
+  PartialCiGreenDeniedRegenJobSucceeded,
+  PartialCiGreenDeniedFalsifierAlertWorkflowSucceeded,
+  CiBuildJobSucceeded,
+  CiRegenJobSucceeded,
+  FalsifierAlertWorkflowSucceeded,
+  manual_merge_admits,
+  mint_merge_admission_receipt_v2_from_full_ci_green,
+  FullCiGreenMergeAdmissionMinted,
+  FullCiGreenMergeAdmissionMintDeniedSubjectMismatch,
+  FullCiGreenMergeAdmissionMintDeniedWorkflowRunMismatch,
+}
+import gunbc.floor_component_receipt {
+  FloorComponentRow,
+  floor_component_row,
+  floor_component_receipt_document,
+  floor_component_receipt_document_incomplete,
+}
+import gunbc.merge_admission {
+  current_gate_roster_hash,
+  classify_merge_admission_verdict_v2,
+  MergeAdmitted,
+  merge_admission_witness_git_tree,
+}
+import gunbc.merge_admission_subject {
+  compose_walk_attempt_id,
+  TestedSubject,
+}
+import extdeps.git.object_store { GitObjectId }
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_rows_of_class,
+  census_total_count,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data full_ci_green_compile_witness_note: String = "compile_dag_diagnostic_census resolves synthetic forge sources against the live module index (ReadsLiveTree), proving cross-module FullCiGreenReceipt record literals refuse SoleConstructorViolation and cross-module mint_full_ci_green_receipt_from_observed_ci_floor calls refuse ConstructorCallAdmissionRefused."
+
+data full_ci_green_witness_note: String = "Discriminating witnesses: only a concluded ci-job floor-component receipt mints FullCiGreenReceipt; build/regen/falsifier-alert partial greens do not; manual merge admits only on FullCiGreen plus MergeAdmitted."
+
+data witness_run_id: NonEmptyStr = "31672107941" as NonEmptyStr
+
+data witness_prior_run_id: NonEmptyStr = "31672107940" as NonEmptyStr
+
+data witness_digit_prefix_run_id: NonEmptyStr = "3167210794" as NonEmptyStr
+
+data witness_head_sha: CommitSha = "abcdef0123456789abcdef0123456789abcdef01" as CommitSha
+
+data witness_ci_workflow: NonEmptyStr = "ci" as NonEmptyStr
+
+data witness_falsifier_workflow: NonEmptyStr = "affected-set-falsifier" as NonEmptyStr
+
+data witness_other_head_sha: CommitSha = "0000000000000000000000000000000000000000" as CommitSha
+
+data full_ci_green_forged_literal_source: String = "module probe_full_ci_green_forged\nimport std.types { CommitSha, NonEmptyStr }\nimport gunbc.full_ci_green_receipt { FullCiGreenReceipt }\nimport gunbc.merge_admission { current_gate_roster_hash }\nfn forged() -> FullCiGreenReceipt {\n  FullCiGreenReceipt {\n    head_sha: \"abcdef0123456789abcdef0123456789abcdef01\" as CommitSha,\n    workflow_run_id: \"1\" as NonEmptyStr,\n    gate_roster_hash: current_gate_roster_hash,\n  }\n}\n"
+
+data full_ci_green_forged_mint_source: String = "module probe_full_ci_green_mint_forge\nimport std.types { CommitSha, NonEmptyStr }\nimport gunbc.full_ci_green_receipt { mint_full_ci_green_receipt_from_observed_ci_floor, FullCiGreenReceipt }\nimport gunbc.merge_admission { current_gate_roster_hash }\nfn forged() -> FullCiGreenReceipt {\n  mint_full_ci_green_receipt_from_observed_ci_floor(\n    head_sha: \"abcdef0123456789abcdef0123456789abcdef01\" as CommitSha,\n    workflow_run_id: \"1\" as NonEmptyStr,\n    gate_roster_hash: current_gate_roster_hash,\n  )\n}\n"
+
+fn witness_green_row() -> FloorComponentRow? {
+  floor_component_row(
+    run_id: witness_run_id,
+    index: 1,
+    label: "corpus" as NonEmptyStr,
+    selection_tag: "off" as NonEmptyStr,
+    witnesses: 9024,
+    outcome_tag: "done" as NonEmptyStr,
+    detail: "floor concluded green" as NonEmptyStr,
+    basis: WallClock,
+    budget: millisecond(count: 0),
+    elapsed: millisecond(count: 0),
+    shown_failures: 0,
+    wall: millisecond(count: 1)
+  )
+}
+
+fn witness_failed_row() -> FloorComponentRow? {
+  floor_component_row(
+    run_id: witness_run_id,
+    index: 2,
+    label: "silent-pick" as NonEmptyStr,
+    selection_tag: "off" as NonEmptyStr,
+    witnesses: 12,
+    outcome_tag: "failed" as NonEmptyStr,
+    detail: "shown failure" as NonEmptyStr,
+    basis: WallClock,
+    budget: millisecond(count: 0),
+    elapsed: millisecond(count: 0),
+    shown_failures: 1,
+    wall: millisecond(count: 1)
+  )
+}
+
+fn witness_ci_green_receipt_text() -> String {
+  match witness_green_row() {
+    Absent => ""
+    Present { value: row } =>
+      floor_component_receipt_document(
+        workflow_name: witness_ci_workflow,
+        run_id: witness_run_id,
+        head_sha: witness_head_sha,
+        rows: [row],
+      )
+  }
+}
+
+fn witness_other_head_ci_receipt_text() -> String {
+  match witness_green_row() {
+    Absent => ""
+    Present { value: row } =>
+      floor_component_receipt_document(
+        workflow_name: witness_ci_workflow,
+        run_id: witness_run_id,
+        head_sha: witness_other_head_sha,
+        rows: [row],
+      )
+  }
+}
+
+fn witness_prior_run_ci_green_receipt_text() -> String {
+  match witness_green_row() {
+    Absent => ""
+    Present { value: row } =>
+      floor_component_receipt_document(
+        workflow_name: witness_ci_workflow,
+        run_id: witness_prior_run_id,
+        head_sha: witness_head_sha,
+        rows: [row],
+      )
+  }
+}
+
+fn witness_digit_prefix_run_ci_green_receipt_text() -> String {
+  match witness_green_row() {
+    Absent => ""
+    Present { value: row } =>
+      floor_component_receipt_document(
+        workflow_name: witness_ci_workflow,
+        run_id: witness_digit_prefix_run_id,
+        head_sha: witness_head_sha,
+        rows: [row],
+      )
+  }
+}
+
+test fn witness_cross_module_full_ci_green_literal_refuses() -> Bool {
+  match compile_dag_diagnostic_census(source: full_ci_green_forged_literal_source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: rows, wanted: "SoleConstructorViolation")) >= 1
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+test fn witness_cross_module_mint_fn_refuses() -> Bool {
+  match compile_dag_diagnostic_census(source: full_ci_green_forged_mint_source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: rows, wanted: "ConstructorCallAdmissionRefused")) >= 1
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+test fn witness_full_ci_green_admits_concluded_ci_floor_receipt() -> Bool {
+  match classify_full_ci_green_from_receipt_text(
+    text: witness_ci_green_receipt_text(),
+    roster: current_gate_roster_hash,
+  ) {
+    FullCiGreenAdmitted { receipt: r } =>
+      (r.head_sha as String) == (witness_head_sha as String)
+        && (r.workflow_run_id as String) == (witness_run_id as String)
+        && r.gate_roster_hash == current_gate_roster_hash
+    _ => false
+  }
+}
+
+test fn witness_falsifier_floor_receipt_is_not_full_ci_green() -> Bool {
+  match witness_green_row() {
+    Absent => false
+    Present { value: row } =>
+      match classify_full_ci_green_from_receipt_text(
+        text: floor_component_receipt_document(
+          workflow_name: witness_falsifier_workflow,
+          run_id: witness_run_id,
+          head_sha: witness_head_sha,
+          rows: [row],
+        ),
+        roster: current_gate_roster_hash,
+      ) {
+        FullCiGreenDeniedNotCiWorkflow { observed: _ } => true
+        _ => false
+      }
+  }
+}
+
+test fn witness_incomplete_ci_floor_receipt_is_not_full_ci_green() -> Bool {
+  match witness_green_row() {
+    Absent => false
+    Present { value: row } =>
+      match classify_full_ci_green_from_receipt_text(
+        text: floor_component_receipt_document_incomplete(
+          workflow_name: witness_ci_workflow,
+          run_id: witness_run_id,
+          head_sha: witness_head_sha,
+          rows: [row],
+          run_terminal_cause: "deadline_reached" as NonEmptyStr,
+          concluded_count: 0,
+          pending_from_index: 1,
+        ),
+        roster: current_gate_roster_hash,
+      ) {
+        FullCiGreenDeniedRunIncomplete => true
+        _ => false
+      }
+  }
+}
+
+test fn witness_ci_floor_with_failed_component_is_not_full_ci_green() -> Bool {
+  match witness_green_row() {
+    Absent => false
+    Present { value: green } =>
+      match witness_failed_row() {
+        Absent => false
+        Present { value: failed } =>
+          match classify_full_ci_green_from_receipt_text(
+            text: floor_component_receipt_document(
+              workflow_name: witness_ci_workflow,
+              run_id: witness_run_id,
+              head_sha: witness_head_sha,
+              rows: [green, failed],
+            ),
+            roster: current_gate_roster_hash,
+          ) {
+            FullCiGreenDeniedComponentFailure { count: count } => count > 0
+            _ => false
+          }
+      }
+  }
+}
+
+test fn witness_partial_ci_greens_do_not_admit_full_ci_green() -> Bool {
+  classify_partial_ci_green_signal(signal: CiBuildJobSucceeded) == PartialCiGreenDeniedBuildJobSucceeded
+    && classify_partial_ci_green_signal(signal: CiRegenJobSucceeded) == PartialCiGreenDeniedRegenJobSucceeded
+    && classify_partial_ci_green_signal(signal: FalsifierAlertWorkflowSucceeded) == PartialCiGreenDeniedFalsifierAlertWorkflowSucceeded
+}
+
+test fn witness_mint_denies_workflow_run_digit_prefix_collision() -> Bool {
+  match classify_full_ci_green_from_receipt_text(
+    text: witness_digit_prefix_run_ci_green_receipt_text(),
+    roster: current_gate_roster_hash,
+  ) {
+    FullCiGreenAdmitted { receipt: prefix_full_ci } =>
+      match compose_walk_attempt_id(run_id: witness_run_id as String, run_attempt: "1", job: "ci") {
+        Absent => false
+        Present { value: attempt_id } =>
+          match mint_merge_admission_receipt_v2_from_full_ci_green(
+            full_ci: prefix_full_ci,
+            attempt_id: attempt_id,
+            tested_subject: TestedSubject {
+              attempt_id: attempt_id,
+              head_sha: witness_head_sha,
+              base_ref: "origin/main",
+              base_tree_hash: merge_admission_witness_git_tree(label: "merge-admission-witness-base-b0"),
+            },
+            pr_number: none,
+          ) {
+            FullCiGreenMergeAdmissionMintDeniedWorkflowRunMismatch { workflow_run_id: _, attempt_id: _ } => true
+            FullCiGreenMergeAdmissionMinted { receipt: _ } => false
+            FullCiGreenMergeAdmissionMintDeniedSubjectMismatch { receipt_head_sha: _, subject_head_sha: _ } => false
+            FullCiGreenMergeAdmissionMintDeniedAttemptMismatch { mint_attempt_id: _, subject_attempt_id: _ } => false
+          }
+      }
+    _ => false
+  }
+}
+
+test fn witness_manual_merge_denies_workflow_run_digit_prefix_collision() -> Bool {
+  match classify_full_ci_green_from_receipt_text(
+    text: witness_digit_prefix_run_ci_green_receipt_text(),
+    roster: current_gate_roster_hash,
+  ) {
+    FullCiGreenAdmitted { receipt: prefix_full_ci } => {
+      let base = merge_admission_witness_git_tree(label: "merge-admission-witness-base-b0")
+      match compose_walk_attempt_id(run_id: witness_run_id as String, run_attempt: "1", job: "ci") {
+        Absent => false
+        Present { value: attempt_id } => {
+          let subject = TestedSubject {
+            attempt_id: attempt_id,
+            head_sha: witness_head_sha,
+            base_ref: "origin/main",
+            base_tree_hash: base,
+          }
+          match classify_full_ci_green_from_receipt_text(
+            text: witness_ci_green_receipt_text(),
+            roster: current_gate_roster_hash,
+          ) {
+            FullCiGreenAdmitted { receipt: current_full_ci } =>
+              match mint_merge_admission_receipt_v2_from_full_ci_green(
+                full_ci: current_full_ci,
+                attempt_id: attempt_id,
+                tested_subject: subject,
+                pr_number: none,
+              ) {
+                FullCiGreenMergeAdmissionMintDeniedSubjectMismatch { receipt_head_sha: _, subject_head_sha: _ } => false
+                FullCiGreenMergeAdmissionMintDeniedWorkflowRunMismatch { workflow_run_id: _, attempt_id: _ } => false
+                FullCiGreenMergeAdmissionMintDeniedAttemptMismatch { mint_attempt_id: _, subject_attempt_id: _ } => false
+                FullCiGreenMergeAdmissionMinted { receipt: receipt } => {
+                  let verdict = classify_merge_admission_verdict_v2(
+                    current_attempt_id: attempt_id,
+                    tested_subject: subject,
+                    receipt: receipt,
+                    merge_target_tree_hash: base,
+                    current_roster_hash: current_gate_roster_hash,
+                  )
+                  !manual_merge_admits(
+                    full_ci: prefix_full_ci,
+                    tested_subject: subject,
+                    merge_admission_receipt: receipt,
+                    merge_verdict: verdict,
+                  )
+                    && verdict == MergeAdmitted
+                    && (prefix_full_ci.workflow_run_id as String) == (witness_digit_prefix_run_id as String)
+                    && (witness_run_id as String) != (witness_digit_prefix_run_id as String)
+                }
+              }
+            _ => false
+          }
+        }
+      }
+    }
+    _ => false
+  }
+}
+
+test fn witness_mint_denies_workflow_run_mismatch() -> Bool {
+  match classify_full_ci_green_from_receipt_text(
+    text: witness_prior_run_ci_green_receipt_text(),
+    roster: current_gate_roster_hash,
+  ) {
+    FullCiGreenAdmitted { receipt: prior_full_ci } =>
+      match compose_walk_attempt_id(run_id: witness_run_id as String, run_attempt: "1", job: "ci") {
+        Absent => false
+        Present { value: attempt_id } =>
+          match mint_merge_admission_receipt_v2_from_full_ci_green(
+            full_ci: prior_full_ci,
+            attempt_id: attempt_id,
+            tested_subject: TestedSubject {
+              attempt_id: attempt_id,
+              head_sha: witness_head_sha,
+              base_ref: "origin/main",
+              base_tree_hash: merge_admission_witness_git_tree(label: "merge-admission-witness-base-b0"),
+            },
+            pr_number: none,
+          ) {
+            FullCiGreenMergeAdmissionMintDeniedWorkflowRunMismatch { workflow_run_id: _, attempt_id: _ } => true
+            FullCiGreenMergeAdmissionMinted { receipt: _ } => false
+            FullCiGreenMergeAdmissionMintDeniedSubjectMismatch { receipt_head_sha: _, subject_head_sha: _ } => false
+            FullCiGreenMergeAdmissionMintDeniedAttemptMismatch { mint_attempt_id: _, subject_attempt_id: _ } => false
+          }
+      }
+    _ => false
+  }
+}
+
+test fn witness_manual_merge_denies_same_head_different_workflow_run() -> Bool {
+  match classify_full_ci_green_from_receipt_text(
+    text: witness_prior_run_ci_green_receipt_text(),
+    roster: current_gate_roster_hash,
+  ) {
+    FullCiGreenAdmitted { receipt: prior_full_ci } => {
+      let base = merge_admission_witness_git_tree(label: "merge-admission-witness-base-b0")
+      match compose_walk_attempt_id(run_id: witness_run_id as String, run_attempt: "1", job: "ci") {
+        Absent => false
+        Present { value: attempt_id } => {
+          let subject = TestedSubject {
+            attempt_id: attempt_id,
+            head_sha: witness_head_sha,
+            base_ref: "origin/main",
+            base_tree_hash: base,
+          }
+          match classify_full_ci_green_from_receipt_text(
+            text: witness_ci_green_receipt_text(),
+            roster: current_gate_roster_hash,
+          ) {
+            FullCiGreenAdmitted { receipt: current_full_ci } =>
+              match mint_merge_admission_receipt_v2_from_full_ci_green(
+                full_ci: current_full_ci,
+                attempt_id: attempt_id,
+                tested_subject: subject,
+                pr_number: none,
+              ) {
+                FullCiGreenMergeAdmissionMintDeniedSubjectMismatch { receipt_head_sha: _, subject_head_sha: _ } => false
+                FullCiGreenMergeAdmissionMintDeniedWorkflowRunMismatch { workflow_run_id: _, attempt_id: _ } => false
+                FullCiGreenMergeAdmissionMintDeniedAttemptMismatch { mint_attempt_id: _, subject_attempt_id: _ } => false
+                FullCiGreenMergeAdmissionMinted { receipt: receipt } => {
+                  let verdict = classify_merge_admission_verdict_v2(
+                    current_attempt_id: attempt_id,
+                    tested_subject: subject,
+                    receipt: receipt,
+                    merge_target_tree_hash: base,
+                    current_roster_hash: current_gate_roster_hash,
+                  )
+                  !manual_merge_admits(
+                    full_ci: prior_full_ci,
+                    tested_subject: subject,
+                    merge_admission_receipt: receipt,
+                    merge_verdict: verdict,
+                  )
+                    && verdict == MergeAdmitted
+                    && prior_full_ci.head_sha == witness_head_sha
+                    && (prior_full_ci.workflow_run_id as String) == (witness_prior_run_id as String)
+                }
+              }
+            _ => false
+          }
+        }
+      }
+    }
+    _ => false
+  }
+}
+
+test fn witness_mint_denies_subject_head_mismatch() -> Bool {
+  match classify_full_ci_green_from_receipt_text(
+    text: witness_ci_green_receipt_text(),
+    roster: current_gate_roster_hash,
+  ) {
+    FullCiGreenAdmitted { receipt: full_ci } =>
+      match compose_walk_attempt_id(run_id: witness_run_id as String, run_attempt: "1", job: "ci") {
+        Absent => false
+        Present { value: attempt_id } =>
+          match mint_merge_admission_receipt_v2_from_full_ci_green(
+            full_ci: full_ci,
+            attempt_id: attempt_id,
+            tested_subject: TestedSubject {
+              attempt_id: attempt_id,
+              head_sha: "0000000000000000000000000000000000000000" as CommitSha,
+              base_ref: "origin/main",
+              base_tree_hash: merge_admission_witness_git_tree(label: "merge-admission-witness-base-b0"),
+            },
+            pr_number: none,
+          ) {
+            FullCiGreenMergeAdmissionMintDeniedSubjectMismatch { receipt_head_sha: _, subject_head_sha: _ } => true
+            FullCiGreenMergeAdmissionMinted { receipt: _ } => false
+            FullCiGreenMergeAdmissionMintDeniedWorkflowRunMismatch { workflow_run_id: _, attempt_id: _ } => false
+            FullCiGreenMergeAdmissionMintDeniedAttemptMismatch { mint_attempt_id: _, subject_attempt_id: _ } => false
+          }
+      }
+    _ => false
+  }
+}
+
+test fn witness_manual_merge_requires_full_ci_and_admitted_verdict() -> Bool {
+  match classify_full_ci_green_from_receipt_text(
+    text: witness_ci_green_receipt_text(),
+    roster: current_gate_roster_hash,
+  ) {
+    FullCiGreenAdmitted { receipt: full_ci } => {
+      let base = merge_admission_witness_git_tree(label: "merge-admission-witness-base-b0")
+      match compose_walk_attempt_id(run_id: witness_run_id as String, run_attempt: "1", job: "ci") {
+        Absent => false
+        Present { value: attempt_id } => {
+          let subject = TestedSubject {
+            attempt_id: attempt_id,
+            head_sha: witness_head_sha,
+            base_ref: "origin/main",
+            base_tree_hash: base,
+          }
+          match mint_merge_admission_receipt_v2_from_full_ci_green(
+            full_ci: full_ci,
+            attempt_id: attempt_id,
+            tested_subject: subject,
+            pr_number: none,
+          ) {
+            FullCiGreenMergeAdmissionMintDeniedSubjectMismatch { receipt_head_sha: _, subject_head_sha: _ } => false
+            FullCiGreenMergeAdmissionMintDeniedWorkflowRunMismatch { workflow_run_id: _, attempt_id: _ } => false
+            FullCiGreenMergeAdmissionMintDeniedAttemptMismatch { mint_attempt_id: _, subject_attempt_id: _ } => false
+            FullCiGreenMergeAdmissionMinted { receipt: receipt } =>
+              let verdict = classify_merge_admission_verdict_v2(
+                current_attempt_id: attempt_id,
+                tested_subject: subject,
+                receipt: receipt,
+                merge_target_tree_hash: base,
+                current_roster_hash: current_gate_roster_hash,
+              )
+              manual_merge_admits(
+                full_ci: full_ci,
+                tested_subject: subject,
+                merge_admission_receipt: receipt,
+                merge_verdict: verdict,
+              )
+                && verdict == MergeAdmitted
+          }
+        }
+      }
+    }
+    _ => false
+  }
+}
+
+test fn witness_manual_merge_denies_full_ci_head_mismatch() -> Bool {
+  match classify_full_ci_green_from_receipt_text(
+    text: witness_other_head_ci_receipt_text(),
+    roster: current_gate_roster_hash,
+  ) {
+    FullCiGreenAdmitted { receipt: other_full_ci } => {
+      let base = merge_admission_witness_git_tree(label: "merge-admission-witness-base-b0")
+      match compose_walk_attempt_id(run_id: witness_run_id as String, run_attempt: "1", job: "ci") {
+        Absent => false
+        Present { value: attempt_id } => {
+          let subject = TestedSubject {
+            attempt_id: attempt_id,
+            head_sha: witness_head_sha,
+            base_ref: "origin/main",
+            base_tree_hash: base,
+          }
+          match classify_full_ci_green_from_receipt_text(
+            text: witness_ci_green_receipt_text(),
+            roster: current_gate_roster_hash,
+          ) {
+            FullCiGreenAdmitted { receipt: subject_full_ci } =>
+              match mint_merge_admission_receipt_v2_from_full_ci_green(
+                full_ci: subject_full_ci,
+                attempt_id: attempt_id,
+                tested_subject: subject,
+                pr_number: none,
+              ) {
+                FullCiGreenMergeAdmissionMintDeniedSubjectMismatch { receipt_head_sha: _, subject_head_sha: _ } => false
+                FullCiGreenMergeAdmissionMintDeniedWorkflowRunMismatch { workflow_run_id: _, attempt_id: _ } => false
+                FullCiGreenMergeAdmissionMintDeniedAttemptMismatch { mint_attempt_id: _, subject_attempt_id: _ } => false
+                FullCiGreenMergeAdmissionMinted { receipt: receipt } => {
+                  let verdict = classify_merge_admission_verdict_v2(
+                    current_attempt_id: attempt_id,
+                    tested_subject: subject,
+                    receipt: receipt,
+                    merge_target_tree_hash: base,
+                    current_roster_hash: current_gate_roster_hash,
+                  )
+                  !manual_merge_admits(
+                    full_ci: other_full_ci,
+                    tested_subject: subject,
+                    merge_admission_receipt: receipt,
+                    merge_verdict: verdict,
+                  )
+                    && verdict == MergeAdmitted
+                    && other_full_ci.head_sha != witness_head_sha
+                }
+              }
+            _ => false
+          }
+        }
+      }
+    }
+    _ => false
+  }
+}

@@ -1,6 +1,6 @@
 module gunbc.merge_admission_subject
 
-import std.types { CommitSha, String, List, PathSegment, path_segment_is_safe }
+import std.types { CommitSha, String, List, PathSegment, path_segment_is_safe, NonEmptyStr }
 import extdeps.git.object_store {
   GitObjectId,
   GitSha1ObjectId,
@@ -26,6 +26,25 @@ fn walk_attempt_id(raw: String) -> WalkAttemptId? {
 
 fn walk_attempt_id_eq(left: WalkAttemptId, right: WalkAttemptId) -> Bool {
   (left as String) == (right as String)
+}
+
+data workflow_run_id_matches_walk_attempt_note: String = "WalkAttemptId is compose_walk_attempt_id(run_id, run_attempt, job) with run_id first. A concluded floor receipt's workflow_run_id must equal that run_id segment exactly — the first hyphen-delimited segment of the attempt id — not merely share head_sha with a different GitHub Actions re-run on the same commit. Prefix tests on concat(run_id, '-') do not establish that boundary when a shorter numeric run id is a digit-prefix of a longer one; exact segment equality matches compose_walk_attempt_id's join semantics."
+
+fn walk_attempt_workflow_run_id(attempt_id: WalkAttemptId) -> String? {
+  let raw = attempt_id as String
+  let segments = split(s: raw, delimiter: "-")
+  if segments.first() == "" {
+    none
+  } else {
+    Present { value: segments.first() }
+  }
+}
+
+fn workflow_run_id_matches_walk_attempt(workflow_run_id: NonEmptyStr, attempt_id: WalkAttemptId) -> Bool {
+  match walk_attempt_workflow_run_id(attempt_id: attempt_id) {
+    Absent => false
+    Present { value: attempt_run_id } => attempt_run_id == (workflow_run_id as String)
+  }
 }
 
 type TestedSubject {

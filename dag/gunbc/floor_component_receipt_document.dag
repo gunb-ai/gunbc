@@ -2,7 +2,7 @@ module gunbc.floor_component_receipt_document
 
 import std.types { NonEmptyStr, String, CommitSha }
 import extdeps.languages.json.emit {
-  JsonValue, JsonString, JsonNumber,
+  JsonValue, JsonNull, JsonString, JsonNumber,
   json_object, json_kv, json_string, json_int, json_array, json_null,
   serialize_json
 }
@@ -157,6 +157,29 @@ fn receipt_run_terminal_at(v: JsonValue) -> ReceiptValue {
     JsonMemberNotAnObject =>
       ReceiptValueFailed {
         decoding: ReceiptMemberMalformed { member: receipt_member_run_terminal, detail: "enclosing value is not a JSON object" }
+      }
+  }
+}
+
+data receipt_run_terminal_disposition_member: String = "disposition"
+data receipt_run_terminal_disposition_concluded: String = "concluded"
+
+data receipt_run_terminal_is_concluded_note: String = "Single authority for whether a decoded run_terminal wire value names a concluded walk: json_null (explicit or legacy-absent decode) means concluded; an incomplete envelope carries disposition incomplete. Consumers classify admission from FloorComponentReceiptDocument.run_terminal through this projection rather than hand-parsing JsonValue."
+
+fn floor_component_receipt_run_terminal_is_concluded(run_terminal: JsonValue) -> Bool {
+  match run_terminal {
+    JsonNull => true
+    _ =>
+      match json_object_unique_member(v: run_terminal, key: receipt_run_terminal_disposition_member) {
+        JsonMemberFound { value: disposition_value } =>
+          match disposition_value {
+            JsonString { value: disposition } =>
+              disposition == receipt_run_terminal_disposition_concluded
+            _ => false
+          }
+        JsonMemberAbsent => false
+        JsonMemberDuplicated { count: _ } => false
+        JsonMemberNotAnObject => false
       }
   }
 }
