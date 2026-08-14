@@ -28,7 +28,6 @@ import gunbc.gunbhub_serve {
 import gunbc.gunbhub_serve_html { gunbhub_html_render_keystone_holds }
 import std.markup { Fragment }
 import std.types { GET, POST }
-import v2.std.algebra { count, fold }
 import v2.std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
