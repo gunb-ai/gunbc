@@ -2744,150 +2744,76 @@ pub fn structured_application_site_type_mismatch(
                                     ) {
                                         false
                                     } else {
-                                        let lit_nominal =
-                                            structured_application_record_lit_nominal_name(
-                                                lit_name.clone(),
-                                                scope.clone(),
-                                            );
-                                        if ((lit_name.clone() == "".to_string())
-                                        || structured_application_lit_is_declared_optional_variant(
-                                            formal.clone(),
-                                            lit_name.clone(),
-                                            scope.clone(),
-                                        ))
-                                    {
+                                        {
+                                            let lit_nominal =
+                                                structured_application_record_lit_nominal_name(
+                                                    lit_name.clone(),
+                                                    scope.clone(),
+                                                );
+                                            if ((lit_name.clone() == "".to_string()) || structured_application_lit_is_declared_optional_variant(formal.clone(), lit_name.clone(), scope.clone())) {
+                                    false
+                                } else {
+                                    if match record_lit_alias_struct_expansion(lit_name.clone(), scope.clone()) {
+    Some(expansion) => {
+                                        let expanded_name = authored_name_at(source_indices.clone(), expansion.resolved.clone());
+((expanded_name.clone() == formal_structural.clone()) || application_type_names_compatible(formal_structural.clone(), expanded_name.clone(), scope.type_env.clone(), scope.module_name.clone(), source_indices.clone()))
+},
+    None => false,
+} {
                                         false
                                     } else {
-                                        if match record_lit_alias_struct_expansion(
-                                            lit_name.clone(),
-                                            scope.clone(),
-                                        ) {
-                                            Some(expansion) => {
-                                                let expanded_name = authored_name_at(
-                                                    source_indices.clone(),
-                                                    expansion.resolved.clone(),
-                                                );
-                                                ((expanded_name.clone()
-                                                    == formal_structural.clone())
-                                                    || application_type_names_compatible(
-                                                        formal_structural.clone(),
-                                                        expanded_name.clone(),
-                                                        scope.type_env.clone(),
-                                                        scope.module_name.clone(),
-                                                        source_indices.clone(),
-                                                    ))
-                                            }
-                                            None => false,
-                                        } {
+                                        if brand_grounds_transparently_to(lit_name.clone(), formal_peeled.clone(), scope.type_env.clone(), source_indices.clone()) {
                                             false
                                         } else {
-                                            if brand_grounds_transparently_to(
-                                                lit_name.clone(),
-                                                formal_peeled.clone(),
-                                                scope.type_env.clone(),
-                                                source_indices.clone(),
-                                            ) {
+                                            if ((((formal_structural.clone() == lit_nominal.clone()) || (formal_structural.clone() == lit_name.clone())) || application_type_names_compatible(formal_structural.clone(), lit_nominal.clone(), scope.type_env.clone(), scope.module_name.clone(), source_indices.clone())) || application_type_names_compatible(formal_structural.clone(), lit_name.clone(), scope.type_env.clone(), scope.module_name.clone(), source_indices.clone())) {
                                                 false
                                             } else {
-                                                if ((((formal_structural.clone()
-                                                    == lit_nominal.clone())
-                                                    || (formal_structural.clone()
-                                                        == lit_name.clone()))
-                                                    || application_type_names_compatible(
-                                                        formal_structural.clone(),
-                                                        lit_nominal.clone(),
-                                                        scope.type_env.clone(),
-                                                        scope.module_name.clone(),
-                                                        source_indices.clone(),
-                                                    ))
-                                                    || application_type_names_compatible(
-                                                        formal_structural.clone(),
-                                                        lit_name.clone(),
-                                                        scope.type_env.clone(),
-                                                        scope.module_name.clone(),
-                                                        source_indices.clone(),
-                                                    ))
                                                 {
-                                                    false
-                                                } else {
-                                                    {
-                                                        let formal_decl = match lookup_type_for(
-                                                            scope.type_env.clone(),
-                                                            with_required_cardinality(
-                                                                formal_peeled.clone(),
-                                                            ),
-                                                        ) {
-                                                            Some(resolved) => {
-                                                                Some(resolved.clone())
-                                                            }
-                                                            None => lookup_type_by_name(
-                                                                scope.type_env.clone(),
-                                                                formal_name.clone(),
-                                                            ),
-                                                        };
-                                                        match formal_decl.clone() {
-                                                            Some(decl) => {
-                                                                match decl.connective.clone() {
-                                                                    Connective::Disj => {
-                                                                        if has_child_named(
-                                                                            decl.clone(),
-                                                                            lit_name.clone(),
-                                                                            source_indices.clone(),
-                                                                        ) {
-                                                                            false
-                                                                        } else {
-                                                                            match variant_owner_node(
-                                                                                scope.clone(),
-                                                                                lit_name.clone(),
-                                                                            ) {
-                                                                                Some(owner) => {
-                                                                                    let owner_name = authored_name_at(source_indices.clone(), owner.clone());
-                                                                                    !application_type_names_compatible(formal_name.clone(), owner_name.clone(), scope.type_env.clone(), scope.module_name.clone(), source_indices.clone())
-                                                                                }
-                                                                                None => true,
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                    Connective::Conj => {
-                                                                        let decl_name = structured_application_structural_type_name(authored_name_at(source_indices.clone(), decl.clone()), scope.clone());
-                                                                        (!application_type_names_compatible(decl_name.clone(), lit_nominal.clone(), scope.type_env.clone(), scope.module_name.clone(), source_indices.clone()) && !application_type_names_compatible(decl_name.clone(), lit_name.clone(), scope.type_env.clone(), scope.module_name.clone(), source_indices.clone()))
-                                                                    }
-                                                                    _ => false,
-                                                                }
-                                                            }
-                                                            None => {
-                                                                if is_kernel_type(
-                                                                    formal_name.clone(),
-                                                                ) {
-                                                                    match lookup_type_by_name(scope.type_env.clone(), lit_name.clone()) {
+                                                    let formal_decl = match lookup_type_for(scope.type_env.clone(), with_required_cardinality(formal_peeled.clone())) {
+    Some(resolved) => Some(resolved.clone()),
+    None => lookup_type_by_name(scope.type_env.clone(), formal_name.clone()),
+};
+match formal_decl.clone() {
+    Some(decl) => match decl.connective.clone() {
+    Connective::Disj => if has_child_named(decl.clone(), lit_name.clone(), source_indices.clone()) {
+                                                        false
+                                                    } else {
+                                                        match variant_owner_node(scope.clone(), lit_name.clone()) {
+    Some(owner) => {
+                                                            let owner_name = authored_name_at(source_indices.clone(), owner.clone());
+!application_type_names_compatible(formal_name.clone(), owner_name.clone(), scope.type_env.clone(), scope.module_name.clone(), source_indices.clone())
+},
+    None => true,
+}
+                                                    },
+    Connective::Conj => {
+                                                        let decl_name = structured_application_structural_type_name(authored_name_at(source_indices.clone(), decl.clone()), scope.clone());
+(!application_type_names_compatible(decl_name.clone(), lit_nominal.clone(), scope.type_env.clone(), scope.module_name.clone(), source_indices.clone()) && !application_type_names_compatible(decl_name.clone(), lit_name.clone(), scope.type_env.clone(), scope.module_name.clone(), source_indices.clone()))
+},
+    _ => false,
+},
+    None => if is_kernel_type(formal_name.clone()) {
+                                                        match lookup_type_by_name(scope.type_env.clone(), lit_name.clone()) {
     Some(lit_decl) => ((lit_decl.connective.clone() == Connective::Conj) || (lit_decl.connective.clone() == Connective::Disj)),
     None => match variant_owner_node(scope.clone(), lit_name.clone()) {
     Some(_) => true,
     None => false,
 },
 }
-                                                                } else {
-                                                                    if ((lookup_type_by_name(
-                                                                        scope.type_env.clone(),
-                                                                        lit_name.clone(),
-                                                                    ) != None)
-                                                                        && (lookup_type_by_name(
-                                                                            scope.type_env.clone(),
-                                                                            formal_name.clone(),
-                                                                        ) != None))
-                                                                    {
-                                                                        true
-                                                                    } else {
-                                                                        false
-                                                                    }
-                                                                }
-                                                            }
+                                                    } else {
+                                                        if ((lookup_type_by_name(scope.type_env.clone(), lit_name.clone()) != None) && (lookup_type_by_name(scope.type_env.clone(), formal_name.clone()) != None)) {
+                                                            true
+                                                        } else {
+                                                            false
                                                         }
-                                                    }
-                                                }
+                                                    },
+}
+}
                                             }
                                         }
                                     }
+                                }
+                                        }
                                     }
                                 }
                                 None => false,
@@ -2908,8 +2834,8 @@ pub fn direct_call_structured_record_literal_resolved_type_mismatch(
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    match &*actual_expr.expr_data {
-        ExprData::ExprRecordLit { .. } => {
+    match (*actual_expr.expr_data.clone()).clone() {
+        ExprData::ExprRecordLit { parent_enum: _, .. } => {
             let formal_peeled =
                 peel_nominal_alias_identity(formal.clone(), type_env.clone(), module_name.clone());
             let formal_name = authored_name_at(source_indices.clone(), formal_peeled.clone());
@@ -2924,19 +2850,21 @@ pub fn direct_call_structured_record_literal_resolved_type_mismatch(
                     ) {
                         false
                     } else {
-                        let actual_raw = resolved_type(actual_expr.clone());
-                        let actual = peel_nominal_alias_identity(
-                            actual_raw.clone(),
-                            type_env.clone(),
-                            module_name.clone(),
-                        );
-                        direct_call_arg_type_mismatch(
-                            formal.clone(),
-                            actual.clone(),
-                            type_env.clone(),
-                            module_name.clone(),
-                            source_indices.clone(),
-                        )
+                        {
+                            let actual_raw = resolved_type(actual_expr.clone());
+                            let actual = peel_nominal_alias_identity(
+                                actual_raw.clone(),
+                                type_env.clone(),
+                                module_name.clone(),
+                            );
+                            direct_call_arg_type_mismatch(
+                                formal.clone(),
+                                actual.clone(),
+                                type_env.clone(),
+                                module_name.clone(),
+                                source_indices.clone(),
+                            )
+                        }
                     }
                 }
                 None => {
@@ -3025,17 +2953,19 @@ pub fn direct_call_structured_application_mismatch_diags(
                         match matched_arg.clone() {
                             Some(ta) => {
                                 let actual_expr = arg_value(ta.clone());
-                                if structured_application_site_type_mismatch(
+                                if (structured_application_site_type_mismatch(
                                     formal_subst.clone(),
                                     actual_expr.clone(),
                                     scope.clone(),
-                                ) || direct_call_structured_record_literal_resolved_type_mismatch(
-                                    formal.clone(),
-                                    actual_expr.clone(),
-                                    type_env.clone(),
-                                    module_name.clone(),
-                                    source_indices.clone(),
-                                ) {
+                                )
+                                    || direct_call_structured_record_literal_resolved_type_mismatch(
+                                        formal.clone(),
+                                        actual_expr.clone(),
+                                        type_env.clone(),
+                                        module_name.clone(),
+                                        source_indices.clone(),
+                                    ))
+                                {
                                     {
                                         let actual_raw = resolved_type(actual_expr.clone());
                                         let actual = peel_nominal_alias_identity(
