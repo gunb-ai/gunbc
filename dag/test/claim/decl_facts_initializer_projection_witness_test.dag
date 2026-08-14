@@ -41,6 +41,8 @@ data terminal_specimen_qn: String = "test.fixture.decl_facts_reflection.specimen
 data mechanism_single_authority_qn: String = "test.fixture.decl_facts_reflection.specimens.mechanism_single_authority"
 data mechanism_realization_dispatch_qn: String = "test.fixture.decl_facts_reflection.specimens.mechanism_realization_dispatch"
 data missing_variant_specimen_qn: String = "test.fixture.decl_facts_reflection.specimens.missing_variant_specimen"
+
+data structured_application_mismatch_wall_regression_note: String = "The compile-clean fixture uses SingleAuthority at dissolves_to; the pre-wall Terminal-at-ConstructionMechanism specimen is pinned as a permanent compile-refusal regression control in test.claim.structured_application_mismatch_wall_witness (review 52087 §4b dissolution-on-climb)."
 data ambiguous_arm_specimen_qn: String = "test.fixture.decl_facts_reflection.ambiguous_specimen.ambiguous_arm_specimen"
 data ambiguous_b_arm_specimen_qn: String = "test.fixture.decl_facts_reflection.ambiguous_b_specimen.ambiguous_b_arm_specimen"
 data duplicate_shadowed_specimen_qn: String = "test.fixture.decl_facts_reflection_duplicate_qn.shadowed_module.shadowed_specimen"

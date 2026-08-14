@@ -646,6 +646,59 @@ fn record_literal_field_walls(module_index: &ModuleIndex) {
         diagnostic_messages(&wrong_variant_result)
     );
 
+    // RED (permanent regression control — review 52087): pre-wall decl_facts
+    // missing_variant specimen inlined Terminal at a ConstructionMechanism field.
+    let missing_variant_mechanism = "module fieldwall_missing_variant_mechanism\n\
+        type ConstructionMechanism = SingleAuthority | RealizationDispatch\n\
+        type Disposition\n\
+          = Terminal { reason: String }\n\
+          | Scaffold { dissolves_to: ConstructionMechanism, bind: String }\n\
+        data missing_variant_specimen: Disposition = Scaffold {\n\
+          dissolves_to: Terminal { reason: \"phantom-mechanism\" },\n\
+          bind: \"anchor\",\n\
+        }\n";
+    let missing_variant_mechanism_result = compile_multi(
+        module_index,
+        &[(
+            "fieldwall_missing_variant_mechanism.dag",
+            missing_variant_mechanism,
+        )],
+    );
+    assert!(
+        missing_variant_mechanism_result
+            .diagnostics
+            .iter()
+            .any(|d| matches!(&*d.diagnostic, CompilerDiagnostic::TypeMismatch { .. })),
+        "expected TypeMismatch for Terminal at ConstructionMechanism field, got: {:?}",
+        diagnostic_messages(&missing_variant_mechanism_result)
+    );
+
+    // GREEN (positive control — review 52087): valid mechanism arm at same site.
+    let missing_variant_mechanism_green = "module fieldwall_missing_variant_mechanism_green\n\
+        type ConstructionMechanism = SingleAuthority | RealizationDispatch\n\
+        type Disposition\n\
+          = Terminal { reason: String }\n\
+          | Scaffold { dissolves_to: ConstructionMechanism, bind: String }\n\
+        data missing_variant_specimen: Disposition = Scaffold {\n\
+          dissolves_to: SingleAuthority,\n\
+          bind: \"anchor\",\n\
+        }\n";
+    let missing_variant_mechanism_green_result = compile_multi(
+        module_index,
+        &[(
+            "fieldwall_missing_variant_mechanism_green.dag",
+            missing_variant_mechanism_green,
+        )],
+    );
+    assert!(
+        !missing_variant_mechanism_green_result
+            .diagnostics
+            .iter()
+            .any(|d| matches!(&*d.diagnostic, CompilerDiagnostic::TypeMismatch { .. })),
+        "SingleAuthority at ConstructionMechanism field must stay green, got: {:?}",
+        diagnostic_messages(&missing_variant_mechanism_green_result)
+    );
+
     // RED: kernel value where a declared coproduct is expected (direct call arg)
     let call_arg = "module fieldwall_callarg\n\
         type Ev = EvA | EvB { n: Int, m: Int }\n\
