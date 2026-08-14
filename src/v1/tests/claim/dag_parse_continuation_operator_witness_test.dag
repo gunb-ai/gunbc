@@ -1,5 +1,6 @@
 module v1.tests.claim.dag_parse_continuation_operator_witness_test
 
+import extdeps.languages.dag.syntax { dag_operators }
 import v1.std.core {
   NewlineIndex,
   build_newline_index,
@@ -8,12 +9,14 @@ import v1.std.core {
 import v1.compiler.tokenize { tokenize }
 import v1.compiler.parse {
   ParseContext,
+  find_operator_bp,
+  operator_continuation_dual_role_excluded_symbols,
   parse_with_table,
 }
 
 data dag_parse_continuation_operator_witness_note: String = "Hermetic parse witnesses for operator-table-derived newline continuations (snappy-moth-736). Continuation-leading tokens are every dag_syntax_spec.operators infix symbol except prefix/infix dual-role exclusions documented in operator_continuation_dual_role_exclusion_note. Covers comparison and arithmetic families — not a remembered four-shape allowlist."
 
-data dag_parse_continuation_operator_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/dag_parse_continuation_operator_witness_test.dag --functions w_leading_or,w_leading_eq,w_null_coalesce_newline_continuation,w_comparison_operator_newline_family,w_arithmetic_operator_newline_family,w_dot_newline_continuation,w_pipe_newline_continuation,w_dual_role_minus_still_two_statements"
+data dag_parse_continuation_operator_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/dag_parse_continuation_operator_witness_test.dag --functions w_leading_or,w_leading_eq,w_null_coalesce_newline_continuation,w_comparison_operator_newline_family,w_arithmetic_operator_newline_family,w_dot_newline_continuation,w_pipe_newline_continuation,w_dual_role_minus_still_two_statements,w_dual_role_exclusion_intersection_is_singleton_minus"
 
 fn newline_parse_ctx(file: String, source: String) -> ParseContext {
   ParseContext {
@@ -93,4 +96,14 @@ test fn w_dual_role_minus_still_two_statements() -> Bool {
     source: "module test\nfn bar(x: Int) -> Int { x }\nfn demo() -> Int {\n  let a = 1\n  -bar(1)\n  a\n}\n",
     file: "dual_role_minus.dag"
   )
+}
+
+test fn w_dual_role_exclusion_intersection_is_singleton_minus() -> Bool {
+  let excluded = operator_continuation_dual_role_excluded_symbols
+  (excluded |> count) == 1
+    && first(excluded).value == "-"
+    && find_operator_bp(ops: dag_operators, symbol: "-") != none
+    && find_operator_bp(ops: dag_operators, symbol: "!") == none
+    && find_operator_bp(ops: dag_operators, symbol: "!=") != none
+    && (dag_operators |> filter(op => op.symbol == "!") |> count) == 0
 }
