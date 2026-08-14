@@ -2,7 +2,7 @@
 module test.claim.generated_artifact_drift
 
 import gunbc.generated_artifact {
-  GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
+  GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, FleetConvergeYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
   RepoConsumer, GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler,
   CommitPolicy, CommitRequired, NotCommitted,
   generated_artifact_registry,
@@ -185,9 +185,10 @@ test fn witness_ignored_paths_excluded() -> Bool {
 }
 
 test fn witness_registry_complete() -> Bool {
-  count(generated_artifact_registry) == (15 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
+  count(generated_artifact_registry) == (16 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
     && registry_contains(a: CiYamlArtifact)
     && registry_contains(a: FalsifierYamlArtifact)
+    && registry_contains(a: FleetConvergeYamlArtifact)
     && registry_contains(a: GitignoreArtifact)
     && registry_contains(a: GitattributesArtifact)
     && registry_contains(a: RoadmapArtifact)
@@ -206,6 +207,7 @@ test fn witness_registry_complete() -> Bool {
     && fleet_install_server_specs.length() == 0
     && artifact_is_committed(a: CiYamlArtifact)
     && artifact_is_committed(a: FalsifierYamlArtifact)
+    && artifact_is_committed(a: FleetConvergeYamlArtifact)
     && artifact_is_committed(a: GitignoreArtifact)
     && artifact_is_committed(a: GitattributesArtifact)
     && artifact_is_committed(a: RoadmapArtifact)
@@ -244,6 +246,7 @@ test fn witness_commit_policy_reasons() -> Bool {
     && consumer_is(a: GithooksPreCommitArtifact, expected: GitProtocol)
     && consumer_is(a: CiYamlArtifact, expected: GithubActionsWorkflow)
     && consumer_is(a: FalsifierYamlArtifact, expected: GithubActionsWorkflow)
+    && consumer_is(a: FleetConvergeYamlArtifact, expected: GithubActionsWorkflow)
     && consumer_is(a: RoadmapArtifact, expected: ProjectDocumentation)
     && consumer_is(a: DesignArtifact, expected: ProjectDocumentation)
     && consumer_is(a: PlanArtifact { plan: idea_machine_plan }, expected: ProjectDocumentation)
@@ -395,7 +398,7 @@ test fn witness_machine_fault_never_becomes_author_work() -> Bool {
   } && (count(remediation_author_commit_paths(r: plan_remediation(plan: broken_checkout))) == 0)
     && match live_heal_remediation {
          AuthorCommitRequired { paths, causes } =>
-           (count(paths) == 2) && (count(causes) == 1) && any(
+           (count(paths) == 3) && (count(causes) == 1) && any(
              map(causes, c => heal_push_refusal_cause_token(cause: c)),
              t => t == "ActionsJobCredentialScopeUnavailable"
            )
@@ -578,10 +581,11 @@ test fn witness_heal_plan_workflow_only_refuses_wholesale() -> Bool {
 }
 
 test fn witness_heal_policy_workflow_artifacts_require_author_commit() -> Bool {
-  (count(author_commit_required_committed_artifacts()) == 2)
-    && (count(auto_push_eligible_committed_artifacts()) == count(committed_generated_artifacts()) - 2)
+  (count(author_commit_required_committed_artifacts()) == 3)
+    && (count(auto_push_eligible_committed_artifacts()) == count(committed_generated_artifacts()) - 3)
     && path_requires_author_commit(path: ".github/workflows/ci.yml")
     && path_requires_author_commit(path: ".github/workflows/falsifier.yml")
+    && path_requires_author_commit(path: ".github/workflows/fleet-converge.yml")
     && !path_requires_author_commit(path: ".gitignore")
 
 }

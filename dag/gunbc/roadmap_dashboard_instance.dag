@@ -72,7 +72,7 @@ data provider_state_requires_admission_note: String = "THE ADMITTED BINDING IS A
 type DashboardProviderStateBinding
   = DashboardExistingProviderState {
       root: FilePath,
-      executable: FilePath,
+      executable: FilePath?,
       binding: AdmittedAccountBinding,
     }
 
@@ -133,10 +133,28 @@ fn dashboard_instance_provider_state_root(instance: HostDashboardInstance) -> Fi
   }
 }
 
-fn dashboard_instance_provider_executable(instance: HostDashboardInstance) -> FilePath {
+fn dashboard_instance_provider_executable(instance: HostDashboardInstance) -> FilePath? {
   match instance.provider_state {
     DashboardExistingProviderState { root: _, executable, binding: _ } => executable
   }
+}
+
+fn dashboard_instance_provider_executable_matches(
+  executable: FilePath,
+  instance: HostDashboardInstance,
+) -> Bool {
+  match dashboard_instance_provider_executable(instance: instance) {
+    Present { value: expected } => executable == expected
+    Absent => false
+  }
+}
+
+fn dashboard_instance_provider_executable_refusal_detail(instance: HostDashboardInstance) -> String {
+  join([
+    "bundled Codex executable path unavailable for host ",
+    instance.host_identity as String,
+    "; fail-closed — committed lock placement not realized",
+  ], "")
 }
 
 fn dashboard_instance_capability_executable(
@@ -744,26 +762,39 @@ fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<Da
       },
     ]
   }
-  concat(controller_source_ops, concat(common, concat(source_ops, [
-    DashboardVerifyProviderRuntime {
-      executable: dashboard_instance_provider_executable(instance: instance),
-      state_root: dashboard_instance_provider_state_root(instance: instance),
-    },
-    DashboardVerifyProviderAuth {
-      executable: dashboard_instance_provider_executable(instance: instance),
-      state_root: dashboard_instance_provider_state_root(instance: instance),
-    },
-    DashboardEnsureService {
-      instance_id: instance.instance_id,
-      binary: instance.serve_binary,
-      workdir: instance.repo_root,
-      handler: instance.serve_function,
-      host: instance.listen_host,
-      port: instance.listen_port,
-      tmux_server: instance.tmux_server,
-    },
-    DashboardVerifyHealth { host: instance.listen_host, port: instance.listen_port },
-  ])))
+  concat(controller_source_ops, concat(common, concat(source_ops, concat(
+    dashboard_instance_provider_verification_ops(instance: instance),
+    [
+      DashboardEnsureService {
+        instance_id: instance.instance_id,
+        binary: instance.serve_binary,
+        workdir: instance.repo_root,
+        handler: instance.serve_function,
+        host: instance.listen_host,
+        port: instance.listen_port,
+        tmux_server: instance.tmux_server,
+      },
+      DashboardVerifyHealth { host: instance.listen_host, port: instance.listen_port },
+    ],
+  ))))
+}
+
+fn dashboard_instance_provider_verification_ops(
+  instance: HostDashboardInstance,
+) -> List<DashboardInstanceProvisionOp> {
+  match dashboard_instance_provider_executable(instance: instance) {
+    Present { value: executable } => [
+      DashboardVerifyProviderRuntime {
+        executable: executable,
+        state_root: dashboard_instance_provider_state_root(instance: instance),
+      },
+      DashboardVerifyProviderAuth {
+        executable: executable,
+        state_root: dashboard_instance_provider_state_root(instance: instance),
+      },
+    ]
+    Absent => []
+  }
 }
 
 type DashboardInstanceProvisionPlanRow {

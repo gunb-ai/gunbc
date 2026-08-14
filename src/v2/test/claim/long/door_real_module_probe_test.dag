@@ -1,5 +1,10 @@
 module v2.test.long.door_real_module_probe
 
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_roots }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.compiler.name_resolve { resolve_with_admission_policy }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -70,8 +75,9 @@ fn quad_subject_with_import_use() -> Node {
   }
 }
 
-fn quad_roots() -> FreeMonoid<Node> {
-  Cons {
+fn quad_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+  admit_normalized_roots(
+    roots: Cons {
     head: quad_subject_with_import_use(),
     tail: Cons {
       head: quad_module_root(
@@ -81,7 +87,9 @@ fn quad_roots() -> FreeMonoid<Node> {
       ),
       tail: Empty
     }
-  }
+  },
+    diagnostics: None
+  )
 }
 
 fn quad_admission() -> Admission {
@@ -100,30 +108,38 @@ fn quad_admission() -> Admission {
 }
 
 test fn quad_namespace_only_resolve_accepts_holds() -> Bool {
-  match resolve_with_admission_policy(
-    lm: dag_language_model(),
-    roots: quad_roots(),
-    admission: quad_admission(),
-    index: source_root_index_empty(),
-    active_roots: Empty,
-    policy: NamespaceOnlyY
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
+  match quad_roots() {
     Rejected { diagnostics: _ } => false
+    Accepted { value: admitted, diagnostics: _ } =>
+    match resolve_with_admission_policy(
+      lm: dag_language_model(),
+      roots: admitted,
+      admission: quad_admission(),
+      index: source_root_index_empty(),
+      active_roots: Empty,
+      policy: NamespaceOnlyY
+    ) {
+      Accepted { value: _, diagnostics: _ } => true
+      Rejected { diagnostics: _ } => false
+    }
   }
 }
 
 test fn quad_import_scoped_admission_reds_ambiguous_export_holds() -> Bool {
-  match resolve_with_admission_policy(
-    lm: dag_language_model(),
-    roots: quad_roots(),
-    admission: quad_admission(),
-    index: source_root_index_empty(),
-    active_roots: Empty,
-    policy: ImportScoped
-  ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d.head.reason == ^resolve_ambiguous_export
+  match quad_roots() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: admitted, diagnostics: _ } =>
+    match resolve_with_admission_policy(
+      lm: dag_language_model(),
+      roots: admitted,
+      admission: quad_admission(),
+      index: source_root_index_empty(),
+      active_roots: Empty,
+      policy: ImportScoped
+    ) {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: d } => d.head.reason == ^resolve_ambiguous_export
+    }
   }
 }
 

@@ -239,8 +239,8 @@ fn add_bind_atom_binder(n: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol
 fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace {
   Namespace {
     bindings: harvest_direct_atom_binding(
-      root: tree,
-      acc: add_module_named_exports(root: tree, acc: empty_map())
+      root: tree.root,
+      acc: add_module_named_exports(root: tree.root, acc: empty_map())
     ),
     canonical_symbols: dag_language_model_canonical_symbols(lm: lm),
     symbol_index: empty_symbol_index(),
@@ -1035,12 +1035,12 @@ fn resolve_with_namespace_policy(
   lm: LanguageModel,
   policy: NameResolutionPolicy
 ) -> Outcome<ResolvedTree> {
-  if well_formed(n: tree) {
+  if well_formed(n: tree.root) {
     resolve_node(
       ctx: resolve_ctx_init(namespace: namespace, lm: lm, policy: policy),
-      n: tree
+      n: tree.root
     )
   } else {
-    Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: tree)) }
+    Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: tree.root)) }
   }
 }

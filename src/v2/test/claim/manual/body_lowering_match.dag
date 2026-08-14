@@ -154,7 +154,7 @@ fn body_lowering_normalized_module_has_match() -> Bool {
       match normalize(parse_tree: tree) {
         Rejected { diagnostics: _ } => false
         Accepted { value: normalized, diagnostics: _ } =>
-          body_lowering_tree_has_match_behavior(root: normalized)
+          body_lowering_tree_has_match_behavior(root: normalized.root)
       }
   }
 }

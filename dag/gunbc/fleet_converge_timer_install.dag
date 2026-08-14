@@ -44,20 +44,12 @@ type FleetTimerRoute
   | TimerViaSelfInstall { host: String }
   | TimerPreEnrollment { host: String }
   | TimerOutsideFleet { host: String }
+  | TimerRetired { host: String }
 
 fn fleet_timer_install_route(host: String) -> FleetTimerRoute {
   match fleet_converge_applicability(host: host) {
-    ConvergeSlice1Route =>
-      if host == "srv1" {
-        TimerViaLiveDeployMembership { host: host }
-      } else {
-        TimerViaSelfInstall { host: host }
-      }
-    ConvergeKnobFrontier => TimerViaSelfInstall { host: host }
-    ConvergeSparkRoute { access: SparkManagedAccessUnobserved { host: _, dissolves_on: _ } } => TimerPreEnrollment { host: host }
-    ConvergeSparkRoute { access: SparkManagedAccessAbsent { cause: _ } } => TimerPreEnrollment { host: host }
-    ConvergeSparkRoute { access: SparkManagedAccessGrounded } => TimerViaSelfInstall { host: host }
     ConvergeOutsideFleet => TimerOutsideFleet { host: host }
+    _ => TimerRetired { host: host }
   }
 }
 
@@ -118,7 +110,12 @@ func fleet_timer_self_install_wet() -> ProcessExit
     TimerViaSelfInstall { host: _ } => true
     _ => false
   }
-  if !route_ok {
+  if match fleet_timer_install_route(host: this_host) {
+    TimerRetired { host: _ } => true
+    _ => false
+  } {
+    exit_failure(reason: "fleet_timer_self_install: TimerRetired — unattended ctrl-fleet-converge.timer cadence is replaced by the emitted fleet-converge.yml on-demand plan/apply workflow (sleek-heron-218)")
+  } else if !route_ok {
     exit_failure(reason: join([
       "fleet_timer_self_install: RouteMismatch — this job landed on host '",
       this_host,
