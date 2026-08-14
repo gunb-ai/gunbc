@@ -1,9 +1,10 @@
 module extdeps.vendor.alphabet
 
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.vendor { Vendor }
 import extdeps.securities { Securities }
 
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -12,5 +13,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     locator: "www.sec.gov/cgi-bin/browse-edgar?CIK=GOOGL"
   }
 }
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.alphabet",
+      decl_name: "alphabet",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
 
 data alphabet: Vendor<Securities> = Vendor { legal_name: "Alphabet Inc." }

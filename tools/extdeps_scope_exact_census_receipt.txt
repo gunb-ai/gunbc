@@ -1,0 +1,31 @@
+# EXTDEPS-SCOPE-DRAIN exact-derivation census (2026-08-14)
+
+Manifest at start: 401 rows (all dag/extdeps not in scope_carrier_paths or machinery exempt).
+
+## Exact derivation rules attempted (no heuristics)
+
+1. **vendor_leaf_identity_row** — module `extdeps.vendor.<leaf>` with exactly one non-note data declaration whose name equals `<leaf>`. Precedent: extdeps.vendor.microsoft, extdeps.vendor.texas_instruments (already in scope_carrier_paths).
+
+2. **language_subject_carrier** — not applicable; language subjects already migrated.
+
+3. **single_service_interface** — REJECTED as derivation rule. Matching module leaf to service local name (case-insensitive) is not exact; cron.Tab ≠ extdeps.cron subject; publication_transport precedent is module-as-transport with documented interface, not "only one service".
+
+4. **module_leaf_data_identity** — single data name equals module leaf outside vendor.* — zero matches in manifest.
+
+## Results
+
+| Category | Count |
+|----------|-------|
+| Exactly derivable (vendor_leaf only) | 18 |
+| Refused — requires hand-authored subject | 383 |
+
+## This PR lands
+
+- 18 vendor modules migrated (vendor_leaf_identity_row)
+- Manifest 401 → 383
+- scope_carrier_paths += 18
+- Staging apparatus **retained** (partial drain; manifest non-empty)
+
+## Remaining 383
+
+Hand-authoring / entity minting per module. No batch heuristic migration planned.
