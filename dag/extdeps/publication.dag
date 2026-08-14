@@ -1,0 +1,9 @@
+module extdeps.publication
+
+import std.integer { Int }
+
+type SpecificationDocumentDate {
+  year: Int
+  month: Int
+  day: Int
+}
