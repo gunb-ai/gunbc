@@ -9,12 +9,14 @@ import extdeps.hardware { Hardware }
 import extdeps.vendor.ampere { ampere_vendor }
 import extdeps.publication { SpecificationDocumentDate }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+data altra_platform_hw_design_subject_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
     locator: "d1o0i0v5q5lp8h.cloudfront.net/ampere/live/assets/processor_families/design_specifications/Altra_Platform_HW_Design_Specification_v1.00_20210120.pdf",
   }
 }
+
+data extdeps_external_authority_anchor: ExternalAuthority = altra_platform_hw_design_subject_authority_anchor
 
 data ampere_technical_document_index_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {

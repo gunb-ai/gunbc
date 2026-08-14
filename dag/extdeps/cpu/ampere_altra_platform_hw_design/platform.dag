@@ -19,8 +19,10 @@ import extdeps.cpu.ampere_altra_platform_hw_design.subject {
   HeldRevisionIsCurrentPublicCopy,
   NewerRevisionExistsUnretrieved,
   altra_platform_hw_design_specification,
-  extdeps_external_authority_anchor,
+  altra_platform_hw_design_subject_authority_anchor,
 }
+
+data extdeps_external_authority_anchor: ExternalAuthority = altra_platform_hw_design_subject_authority_anchor
 
 data platform_subject_edge_note: String = "THE DOCUMENT IDENTITY IS NOT RE-DECLARED HERE. extdeps.cpu.ampere_altra_platform_hw_design.subject owns the title, revision label, publication date, publisher and citation-read provenance of this specification; this module carries the design facts the document states in running text and binds every one of them to that declaration through the subject edge below, the same shape extdeps.ocp.mt_jade.platform uses. A second identity row beside the first is the fork the subject/platform split exists to prevent."
 

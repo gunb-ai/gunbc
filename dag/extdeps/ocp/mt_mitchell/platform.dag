@@ -16,9 +16,11 @@ import extdeps.publication {
 import extdeps.ocp.mt_mitchell.subject {
   MtMitchellReferencePlatform,
   internet_archive_mt_mitchell_capture_authority,
-  extdeps_external_authority_anchor,
   mt_mitchell_reference_platform,
+  mt_mitchell_subject_authority_anchor,
 }
+
+data extdeps_external_authority_anchor: ExternalAuthority = mt_mitchell_subject_authority_anchor
 
 data platform_subject_edge_note: String = "THE SPECIFICATION IDENTITY IS NOT RE-DECLARED HERE. extdeps.ocp.mt_mitchell.subject owns the marketing name, revision, version label, contributor and licence rows; this module carries the board facts the specification states and binds them to that declaration through the subject edge below — the extdeps.ocp.mt_jade.platform shape. Mt. Mitchell and the Ampere Altra Platform Hardware Design Specification stay separate authorities for the reason DESIGN section 3 gives: OCP publishes and licenses this document under the Open Web Foundation agreements with its own revision series and contributor population, Ampere publishes the other under a proprietary marking, and neither may require editing the other's module. Nothing here dispatches between them and neither module imports the other; a consumer that needs both joins them downstream. This module likewise does not widen extdeps.boards.types BaseboardModel — adding a board must not edit a generic product enum."
 
