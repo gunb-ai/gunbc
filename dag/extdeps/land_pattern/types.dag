@@ -128,6 +128,16 @@ fn mounting_pattern_is_established(s: MountingPatternStanding) -> Bool {
 // on whatever fills it, and requirements have no pads. So the land pattern hangs off the ordering
 // part number, and a board that swaps one clock generator for another swaps its pattern with it
 // rather than editing a role.
+//
+// WHY THIS CARRIES A PATTERN AND NOT A STANDING, WHICH IS A CONSTRUCTION CHOICE RATHER THAN AN
+// OVERSIGHT. A MountablePart is BY DEFINITION a part whose pattern is established: the field is
+// the pattern itself, so a part with an outstanding pattern has no constructor here and cannot be
+// built and then explained. A row whose pattern is still owed carries a MountingPatternStanding
+// instead — extdeps.memory.te_ddr4_dimm_socket is the live case — and that is the ONLY place the
+// obligation is expressible. The two are not two ways to say one thing: one is the established
+// state made unwritable-when-absent, the other is the question of whether it is established, and
+// a MountablePart holding a standing would reintroduce exactly the half-built part this shape
+// forbids.
 type MountablePart {
   ordering_part_number: NonEmptyStr
   vendor: Vendor<Hardware>
