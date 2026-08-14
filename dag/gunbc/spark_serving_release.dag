@@ -233,8 +233,12 @@ fn reconcile_spark_serving(
           SparkServingRefused { first: missing_managed_access_refusal, more: no_further_refusals }
         } else {
           match observation {
-            SparkServingObservationRefused { host: _, cause: why } =>
-              SparkServingRefused { first: SparkServingRefusal { subject: "observation", cause: why }, more: no_further_refusals }
+            SparkServingObservationRefused { host: seen, cause: why } =>
+              if host_matches(a: seen, b: desired.host) == false {
+                SparkServingRefused { first: observation_subject_mismatch_refusal, more: no_further_refusals }
+              } else {
+                SparkServingRefused { first: SparkServingRefusal { subject: "observation", cause: why }, more: no_further_refusals }
+              }
             SparkServingAbsent { host: seen } =>
               if host_matches(a: seen, b: desired.host) == false {
                 SparkServingRefused { first: observation_subject_mismatch_refusal, more: no_further_refusals }

@@ -450,3 +450,29 @@ test fn w_an_unobserved_record_for_this_host_blocks_on_observation() -> Bool {
       grants: GrantPopulationUnobserved { host: "srv5", principal: "gunbc-automation" as NonEmptyStr, cause: "sudo -n -l could not be reached" as NonEmptyStr }))),
     pattern: "blocked-on-observation")
 }
+
+// THE REFUSAL ARM CARRIES A SUBJECT TOO, and it was the last arm of this coproduct still discarding
+// it (review 51880). srv6 failing to be observed must not block srv5's reconciliation with srv6's
+// cause -- and because both Sparks deliberately share one release identity, a swapped subject is
+// invisible in every other field. The mismatch reports the SUBJECT, not the borrowed cause.
+test fn w_a_refusal_taken_on_another_host_does_not_block_this_one() -> Bool {
+  reconcile_arm(
+    observation: SparkServingObservationRefused { host: "srv6", cause: "loaded revision not observable from the unit MainPID" },
+    prereqs: grounded_prereqs) == "refused"
+    && spark_apply_refusal_subject(observation: SparkServingObservationRefused { host: "srv6", cause: "loaded revision not observable" }) == "observation subject"
+}
+
+fn spark_apply_refusal_subject(observation: SparkServingObservation) -> String {
+  match reconcile_spark_serving(desired: occ_srv5(), observation: observation, prerequisites: grounded_prereqs) {
+    SparkServingRefused { first: f, more: _ } => f.subject as String
+    SparkServingAlreadyConverged { converged_release: _ } => "converged"
+    SparkServingInstallRequired { subject: _, desired_release: _ } => "install"
+    SparkServingDeltaRequired { plan_subject: _ } => "delta"
+  }
+}
+
+// THE POSITIVE CONTROL: a refusal for the RIGHT host still surfaces its own cause, so the guard above
+// is the subject check rather than the arm being swallowed.
+test fn w_a_refusal_for_this_host_still_reports_its_own_cause() -> Bool {
+  spark_apply_refusal_subject(observation: observation_refused()) == "observation"
+}
