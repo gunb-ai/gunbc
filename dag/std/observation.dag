@@ -1176,11 +1176,16 @@ type SequenceVerdict
   | SequenceForeignProducer { expected: String, observed: String }
   | SequenceEmpty
 
+// Enumerated rather than wildcarded: a `_ => a` arm here would keep every future verdict silently on
+// the first-defect-wins side, which is right for a defect and wrong for any arm that means "nothing
+// seen yet". Listing them makes a new verdict a compile-time decision instead of an inherited one.
 fn sequence_verdict_meet(a: SequenceVerdict, b: SequenceVerdict) -> SequenceVerdict {
   match a {
     SequenceIntact => b
     SequenceEmpty => b
-    _ => a
+    SequenceGap { after: _, before: _ } => a
+    SequenceReordered { at_index: _, previous: _, observed: _ } => a
+    SequenceForeignProducer { expected: _, observed: _ } => a
   }
 }
 
