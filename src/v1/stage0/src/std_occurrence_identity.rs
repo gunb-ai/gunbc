@@ -266,6 +266,30 @@ pub struct OccurrenceTransport {
     pub references: Rc<Vec<Rc<ReferenceOccurrence>>>,
 }
 
+pub fn reference_path_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "ONE CARRIER FOR BOTH SPELLINGS OF A PROJECTION. The dot is containment projection, and the two syntactic positions that write one spell it differently: a TYPE path arrives as a single occurrence whose authored_name is the whole dotted text (live_tree.LiveTreeDisposition), while an EXPRESSION path arrives as a base reference plus one FieldOccurrence node per segment, the base reachable as the segment's containment child. ReferencePath is what both fold into, so the resolution rule is authored once and neither position carries a private one. The head is a NAME plus the span that located it, not an occurrence: the type spelling has no separate occurrence for its head, and pretending it does would mint an identity the parser never allocated. A segment likewise carries its own span where one exists and the whole path's span where the spelling gives it none -- an honestly coarse location, never a fabricated offset into a blob. THE LAW THE SHAPE ENFORCES: a path with no segments is an ordinary bare reference, and every segment is a step that must land on exactly one containment child of the previous declaration -- so no terminal declaration, no binding, and no dependency-ready outcome from a head that merely bound. What this replaces is two admissions that stood in for it: the value-reference arm admitting a namespace category (the head widen) and the field-reference arm admitting module-member categories (the segment widen); both were the reference site guessing at a question the path shape decides.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ReferencePathSegment {
+    pub name: String,
+    pub diagnostic_span: Rc<SourceSpan>,
+    pub occurrence: Option<OccurrenceId>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ReferencePath {
+    pub head_name: String,
+    pub head_span: Rc<SourceSpan>,
+    pub head_occurrence: OccurrenceId,
+    pub segments: Rc<Vec<Rc<ReferencePathSegment>>>,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceIdentityAcceptanceLaw {
     pub id: String,

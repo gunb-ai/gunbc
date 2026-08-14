@@ -1737,7 +1737,7 @@ type ReferencePathRefusal
   | ReferencePathDescentUnbounded { occurrence: OccurrenceId }
 
 fn reference_list_count(xs: List<ReferenceOccurrence>) -> Int {
-  fold(xs, init: 0, f: (acc, _) => acc + 1)
+  length(xs)
 }
 
 fn reference_children(
@@ -1862,6 +1862,146 @@ fn reference_path_of(
           segments: Empty,
           fuel: reference_list_count(xs: references),
         )
+      }
+  }
+}
+
+data reference_path_resolution_note: String = "ONE HEAD BINDING, THEN CONTAINMENT. The head is resolved exactly once, through the same on-chain-plus-named-modules candidate rule an ordinary bare reference uses -- there is no second, segment-index reconstruction of the head beside it, because two derivations of one fact are two chances to disagree and the disagreement would be silent. Every later segment is a CONTAINMENT CHILD step: the declarations whose containment parent is the previous accepted declaration and whose authored name is the segment. That step is uniform for the first segment and the tenth, and it needed no qualifier suffix-match, because a module member's containment parent is measurably the module declaration occurrence itself. THE CARDINALITY RULE IS THE SAME AT EVERY STEP AND IS NOT SPECIAL-CASED: zero children Unbound, one child descend, more than one Ambiguous naming every candidate -- never a nearest match, never first-wins. WHAT MAKES THIS A WALL RATHER THAN A CHECK: the only value that can carry a terminal declaration is produced by consuming every segment, so a head that bound while a segment did not has no representation as a resolved path. A caller cannot read a provider file off a partial descent, because a partial descent yields a refusal and refusals carry no declaration."
+
+type ReferencePathResolution
+  = ReferencePathResolved { terminal: DeclarationOccurrence }
+  | ReferencePathHeadUnbound { head_name: String, span: SourceSpan }
+  | ReferencePathHeadAmbiguous { head_name: String, span: SourceSpan, candidates: List<OccurrenceId> }
+  | ReferencePathSegmentUnbound { segment: ReferencePathSegment, parent: OccurrenceId }
+  | ReferencePathSegmentAmbiguous { segment: ReferencePathSegment, parent: OccurrenceId, candidates: List<DeclarationOccurrence> }
+  | ReferencePathBuildRefused { reason: ReferencePathRefusal }
+
+fn declaration_occurrence_ids(xs: List<DeclarationOccurrence>) -> List<OccurrenceId> {
+  reverse(fold(xs, init: Empty, f: (acc, declaration) =>
+    Cons { head: declaration.occurrence, tail: acc }))
+}
+
+fn head_candidate_declarations(
+  index: OccurrenceCandidateIndex,
+  reference: ReferenceOccurrence,
+  head_name: String
+) -> List<DeclarationOccurrence> {
+  let on_chain =
+    match map_get(index.declarations_by_name, head_name) {
+      Absent => []
+      Present { value: same_spelling } =>
+        reverse(same_spelling)
+          |> filter(declaration => declaration_exposed_on_reference_chain(
+            declaration: declaration,
+            reference: reference,
+            module_by_occurrence: index.module_by_occurrence,
+            exposure_by_occurrence: index.exposure_by_occurrence,
+            order_by_occurrence: index.order_by_occurrence,
+          ))
+    }
+  let named_modules =
+    match map_get(index.module_declarations_by_segment, head_name) {
+      Absent => []
+      Present { value: modules } => reverse(modules)
+    }
+  concat(on_chain, named_modules)
+}
+
+fn declaration_children_named(
+  transport: OccurrenceTransport,
+  index: OccurrenceCandidateIndex,
+  parent: OccurrenceId,
+  name: String
+) -> List<DeclarationOccurrence> {
+  reverse(fold(transport.declarations, init: Empty, f: (acc, declaration) =>
+    match reverse(declaration.containment.ancestors) {
+      Empty => acc
+      Cons { head: declared_parent, tail: _ } =>
+        match declared_parent.value == parent.value {
+          false => acc
+          true =>
+            match map_get(index.entries_by_id, declaration.occurrence.value) {
+              Absent => acc
+              Present { value: entry } =>
+                match entry.projection.authored_name == name {
+                  true => Cons { head: declaration, tail: acc }
+                  false => acc
+                }
+            }
+        }
+    }))
+}
+
+fn reference_path_descend_segments(
+  transport: OccurrenceTransport,
+  index: OccurrenceCandidateIndex,
+  current: DeclarationOccurrence,
+  segments: List<ReferencePathSegment>
+) -> ReferencePathResolution {
+  match segments {
+    Empty => ReferencePathResolved { terminal: current }
+    Cons { head: segment, tail: rest } =>
+      match declaration_children_named(
+        transport: transport,
+        index: index,
+        parent: current.occurrence,
+        name: segment.name,
+      ) {
+        Empty => ReferencePathSegmentUnbound { segment: segment, parent: current.occurrence }
+        Cons { head: only, tail: others } =>
+          match others {
+            Cons { head: _, tail: _ } =>
+              ReferencePathSegmentAmbiguous {
+                segment: segment,
+                parent: current.occurrence,
+                candidates: Cons { head: only, tail: others },
+              }
+            Empty => reference_path_descend_segments(
+              transport: transport,
+              index: index,
+              current: only,
+              segments: rest,
+            )
+          }
+      }
+  }
+}
+
+fn resolve_reference_path(
+  transport: OccurrenceTransport,
+  index: OccurrenceCandidateIndex,
+  reference: ReferenceOccurrence
+) -> ReferencePathResolution {
+  match reference_path_of(
+    index: index,
+    references: transport.references,
+    reference: reference,
+  ) {
+    ReferencePathRefused { reason: reason } => ReferencePathBuildRefused { reason: reason }
+    ReferencePathBuilt { path: path } =>
+      match head_candidate_declarations(
+        index: index,
+        reference: reference,
+        head_name: path.head_name,
+      ) {
+        Empty => ReferencePathHeadUnbound { head_name: path.head_name, span: path.head_span }
+        Cons { head: only, tail: others } =>
+          match others {
+            Cons { head: _, tail: _ } =>
+              ReferencePathHeadAmbiguous {
+                head_name: path.head_name,
+                span: path.head_span,
+                candidates: declaration_occurrence_ids(
+                  xs: Cons { head: only, tail: others },
+                ),
+              }
+            Empty => reference_path_descend_segments(
+              transport: transport,
+              index: index,
+              current: only,
+              segments: path.segments,
+            )
+          }
       }
   }
 }

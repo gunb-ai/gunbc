@@ -19,6 +19,7 @@ use crate::std_occurrence_binding_candidates::ModulePathFileIndex::{
     ModulePathFileIndexReady, ModulePathFileIndexRefused,
 };
 use crate::std_occurrence_binding_candidates::ModulePathFileIndexRefusal::ModulePathFileConflict;
+use crate::std_occurrence_binding_candidates::OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexReady;
 use crate::std_occurrence_binding_candidates::ReferenceBindingProjection::{
     ReferenceBindingProjectionAmbiguous, ReferenceBindingProjectionBound,
     ReferenceBindingProjectionUnbound,
@@ -31,6 +32,10 @@ use crate::std_occurrence_binding_candidates::ReferenceDerivedDependencyProjecti
     ReferenceDerivedDependencyProjectionBindingRefused,
     ReferenceDerivedDependencyProjectionFileRefused, ReferenceDerivedDependencyProjectionReady,
 };
+use crate::std_occurrence_binding_candidates::ReferencePathResolution::{
+    ReferencePathBuildRefused, ReferencePathHeadAmbiguous, ReferencePathHeadUnbound,
+    ReferencePathResolved, ReferencePathSegmentAmbiguous, ReferencePathSegmentUnbound,
+};
 use crate::std_occurrence_binding_candidates::StructuralBindingIndexRefusal::*;
 use crate::std_occurrence_binding_candidates::StructuralBindingWalk::{
     StructuralBindingWalkReady, StructuralBindingWalkRefused,
@@ -38,9 +43,10 @@ use crate::std_occurrence_binding_candidates::StructuralBindingWalk::{
 pub use crate::std_occurrence_binding_candidates::{
     assemble_cross_file_binding_closure, cross_file_binding_provenance_from_bound_population,
     direct_file_dependencies_from_provenances, joined_dependency_binding_walk,
-    module_path_file_index_from_rows, occurrence_category_clause_e_dependency_inducing_verdict,
+    module_path_file_index_from_rows, occurrence_candidate_index_build,
+    occurrence_category_clause_e_dependency_inducing_verdict,
     reference_dependency_admission_for_category, reference_derived_dependency_projection,
-    resolve_reference_binding_via_structural_candidates,
+    resolve_reference_binding_via_structural_candidates, resolve_reference_path,
     structural_binding_walk_selected_references,
 };
 pub use crate::std_occurrence_binding_candidates::{
@@ -48,8 +54,9 @@ pub use crate::std_occurrence_binding_candidates::{
     BoundReferencePopulation, BoundReferenceProvider, CrossFileBindingClosureRow,
     CrossFileBindingProvenance, CrossFileBindingProvenancePopulation, DeclarationExposureGrounding,
     DirectFileDependency, ModulePathFileIndex, ModulePathFileIndexRefusal, ModulePathFileRow,
-    OccurrenceBindingCandidateInputs, ReferenceBindingProjection, ReferenceDependencyAdmission,
-    ReferenceDerivedDependencyProjection, StructuralBindingIndexRefusal, StructuralBindingWalk,
+    OccurrenceBindingCandidateInputs, OccurrenceCandidateIndexBuild, ReferenceBindingProjection,
+    ReferenceDependencyAdmission, ReferenceDerivedDependencyProjection, ReferencePathResolution,
+    StructuralBindingIndexRefusal, StructuralBindingWalk,
 };
 use crate::std_occurrence_identity::OccurrenceCategory::{
     CallableOccurrence, ConstructorOccurrence, FieldOccurrence, LexicalValueOccurrence,
@@ -230,7 +237,47 @@ pub fn idb_candidates() -> Rc<Vec<Rc<IdbCandidate>>> {
             file: idb_type_consumer_source_path(),
             source: idb_type_consumer_source(),
         }),
+        Rc::new(IdbCandidate {
+            file: idb_path_consumer_source_path(),
+            source: idb_path_consumer_source(),
+        }),
     ])
+}
+
+pub fn idb_path_consumer_source_path() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "dag/test/fixture/import_deletion_bridge/path_controls_consumer.dag".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn idb_path_consumer_source_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "A DEDICATED consumer for the reference-path controls, deliberately not the type-join consumer those other witnesses count references in. Three references in one file: one that must resolve to a terminal declaration, one whose head resolves and whose segment names nothing, and one whose head names nothing at all. They share a file because the controls must be read against the SAME parse -- a segment refusal is only evidence that head and segment are distinguishable if a resolving path exists beside it in the same population.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn idb_path_consumer_source() -> String {
+    (((((((((((("module test.fixture.import_deletion_bridge.path_controls_consumer\n".to_string()
+        + &"\n".to_string())
+        + &"fn reads_good(d: live_tree.LiveTreeDisposition) -> live_tree.LiveTreeDisposition {\n"
+            .to_string()) + &"  d\n".to_string())
+        + &"}\n".to_string())
+        + &"\n".to_string())
+        + &"fn reads_missing_member(d: live_tree.NoSuchMember) -> live_tree.NoSuchMember {\n"
+            .to_string())
+        + &"  d\n".to_string())
+        + &"}\n".to_string())
+        + &"\n".to_string())
+        + &"fn reads_missing_head(d: no_such_module.Anything) -> no_such_module.Anything {\n"
+            .to_string())
+        + &"  d\n".to_string())
+        + &"}\n".to_string())
 }
 
 pub fn idb_unrelated_source_path() -> String {
@@ -1545,5 +1592,136 @@ pub fn idb_all_refs_for(path: String) -> Rc<Vec<Rc<ReferenceOccurrence>>> {
                 ..
             } => t.references.clone(),
         },
+    }
+}
+
+pub fn idb_reference_path_controls_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "REFERENCE-PATH CONTROLS, on real parsed source rather than hand-built values. Each asserts a DIFFERENT decision of resolve_reference_path, which is what keeps them from being one claim written four ways: a path whose head and terminal both bind resolves to the TERMINAL declaration (not the module head, so the assertion names the terminal's own authored spelling); a path whose head binds and whose segment names nothing refuses AT THE SEGMENT, which is the discriminating red for the head-only widen this carrier deletes -- under that widen this case produced a ready dependency; a path whose head names nothing refuses at the HEAD, before any descent, so head and segment failures are distinguishable rather than one Unbound; and a head naming two modules refuses as head ambiguity BEFORE descent, so a nearest-match never gets the chance to pick. The resolved case is the positive control the three refusals are read against: without it, four refusals would be satisfiable by a resolver that refuses everything.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn idb_reference_path_closure() -> Option<Rc<AssembledCrossFileBindingClosure>> {
+    match idb_closure_row_for(
+        idb_path_consumer_source_path(),
+        DeclarationExposureGrounding::ModuleLocalMemberExposure,
+    )
+    .first()
+    .cloned()
+    {
+        None => None,
+        Some(consumer_row) => Some(assemble_cross_file_binding_closure(
+            consumer_row.clone(),
+            idb_closure_row_for(
+                idb_live_tree_source_path(),
+                DeclarationExposureGrounding::ModuleLocalMemberExposure,
+            ),
+        )),
+    }
+}
+
+pub fn idb_reference_path_resolution_for(name: String) -> Option<Rc<ReferencePathResolution>> {
+    match idb_reference_path_closure().as_deref().cloned() {
+        None => None,
+        Some(AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureRefused {
+            refusal: _,
+            ..
+        }) => None,
+        Some(AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureReady {
+            transport: t,
+            inputs: i,
+            ..
+        }) => match (*occurrence_candidate_index_build(t.clone(), i.clone())).clone() {
+            OccurrenceCandidateIndexBuild::OccurrenceCandidateIndexReady {
+                index: index, ..
+            } => t.references.clone().iter().cloned().fold(
+                None,
+                |found: _, r: Rc<ReferenceOccurrence>| match found.clone() {
+                    Some(_) => found.clone(),
+                    None => match v1_rt::map_get(
+                        &index.entries_by_id.clone(),
+                        r.occurrence.clone().value.clone(),
+                    ) {
+                        None => None,
+                        Some(entry) => match (entry.projection.clone().authored_name.clone()
+                            == name.clone())
+                        {
+                            false => None,
+                            true => {
+                                Some(resolve_reference_path(t.clone(), index.clone(), r.clone()))
+                            }
+                        },
+                    },
+                },
+            ),
+            _ => None,
+        },
+    }
+}
+
+pub fn idb_resolved_terminal_name(name: String) -> Option<String> {
+    match idb_reference_path_resolution_for(name.clone())
+        .as_deref()
+        .cloned()
+    {
+        None => None,
+        Some(ReferencePathResolution::ReferencePathResolved {
+            terminal: terminal, ..
+        }) => match idb_reference_path_authored_name_of(terminal.occurrence.clone()) {
+            None => None,
+            Some(spelled) => Some(spelled.clone()),
+        },
+        Some(_) => None,
+    }
+}
+
+pub fn idb_reference_path_authored_name_of(occurrence: OccurrenceId) -> Option<String> {
+    match idb_reference_path_closure().as_deref().cloned() {
+        None => None,
+        Some(AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureRefused {
+            refusal: _,
+            ..
+        }) => None,
+        Some(AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureReady {
+            transport: t,
+            ..
+        }) => match idb_index_entry_for_occurrence(t.clone(), occurrence.clone()) {
+            None => None,
+            Some(entry) => Some(entry.projection.clone().authored_name.clone()),
+        },
+    }
+}
+
+pub fn reference_path_resolves_to_the_terminal_declaration() -> bool {
+    match idb_resolved_terminal_name(idb_subject_name()) {
+        None => false,
+        Some(spelled) => (spelled.clone() == idb_subject_leaf_name()),
+    }
+}
+
+pub fn reference_path_missing_member_refuses_at_the_segment() -> bool {
+    match idb_reference_path_resolution_for("live_tree.NoSuchMember".to_string())
+        .as_deref()
+        .cloned()
+    {
+        Some(ReferencePathResolution::ReferencePathSegmentUnbound { segment, .. }) => {
+            (segment.name.clone() == "NoSuchMember".to_string())
+        }
+        _ => false,
+    }
+}
+
+pub fn reference_path_missing_head_refuses_before_descent() -> bool {
+    match idb_reference_path_resolution_for("no_such_module.Anything".to_string())
+        .as_deref()
+        .cloned()
+    {
+        Some(ReferencePathResolution::ReferencePathHeadUnbound {
+            head_name: head, ..
+        }) => (head.clone() == "no_such_module".to_string()),
+        _ => false,
     }
 }

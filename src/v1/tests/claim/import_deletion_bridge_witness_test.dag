@@ -62,6 +62,17 @@ import std.occurrence_binding_candidates {
   occurrence_category_clause_e_dependency_inducing_verdict,
   OccurrenceCategoryClauseEDependencyInducing,
   OccurrenceCategoryClauseEDependencyNotInducing,
+  occurrence_candidate_index_build,
+  OccurrenceCandidateIndexBuild,
+  OccurrenceCandidateIndexReady,
+  resolve_reference_path,
+  ReferencePathResolution,
+  ReferencePathResolved,
+  ReferencePathHeadUnbound,
+  ReferencePathHeadAmbiguous,
+  ReferencePathSegmentUnbound,
+  ReferencePathSegmentAmbiguous,
+  ReferencePathBuildRefused,
 }
 import std.occurrence_binding {
   AmbiguousBindingCandidates,
@@ -157,7 +168,28 @@ fn idb_candidates() -> List<IdbCandidate> {
     IdbCandidate { file: idb_same_file_source_path, source: idb_same_file_source() },
     IdbCandidate { file: idb_conflicting_source_path, source: idb_conflicting_source() },
     IdbCandidate { file: idb_type_consumer_source_path(), source: idb_type_consumer_source() },
+    IdbCandidate { file: idb_path_consumer_source_path, source: idb_path_consumer_source() },
   ]
+}
+
+data idb_path_consumer_source_path: String = "dag/test/fixture/import_deletion_bridge/path_controls_consumer.dag"
+
+data idb_path_consumer_source_note: String = "A DEDICATED consumer for the reference-path controls, deliberately not the type-join consumer those other witnesses count references in. Three references in one file: one that must resolve to a terminal declaration, one whose head resolves and whose segment names nothing, and one whose head names nothing at all. They share a file because the controls must be read against the SAME parse -- a segment refusal is only evidence that head and segment are distinguishable if a resolving path exists beside it in the same population."
+
+fn idb_path_consumer_source() -> String {
+  "module test.fixture.import_deletion_bridge.path_controls_consumer\n" +
+    "\n" +
+    "fn reads_good(d: live_tree.LiveTreeDisposition) -> live_tree.LiveTreeDisposition {\n" +
+    "  d\n" +
+    "}\n" +
+    "\n" +
+    "fn reads_missing_member(d: live_tree.NoSuchMember) -> live_tree.NoSuchMember {\n" +
+    "  d\n" +
+    "}\n" +
+    "\n" +
+    "fn reads_missing_head(d: no_such_module.Anything) -> no_such_module.Anything {\n" +
+    "  d\n" +
+    "}\n"
 }
 
 data idb_unrelated_source_path: String = "dag/test/fixture/import_deletion_bridge/unrelated_module.dag"
@@ -1075,5 +1107,94 @@ fn idb_all_refs_for(path: String) -> List<ReferenceOccurrence> {
         ParsedOccurrenceBindingSourceRefused => idb_no_references()
         ParsedOccurrenceBindingSourceReady { transport: t, module_path: _ } => t.references
       }
+  }
+}
+
+data idb_reference_path_controls_note: String = "REFERENCE-PATH CONTROLS, on real parsed source rather than hand-built values. Each asserts a DIFFERENT decision of resolve_reference_path, which is what keeps them from being one claim written four ways: a path whose head and terminal both bind resolves to the TERMINAL declaration (not the module head, so the assertion names the terminal's own authored spelling); a path whose head binds and whose segment names nothing refuses AT THE SEGMENT, which is the discriminating red for the head-only widen this carrier deletes -- under that widen this case produced a ready dependency; a path whose head names nothing refuses at the HEAD, before any descent, so head and segment failures are distinguishable rather than one Unbound; and a head naming two modules refuses as head ambiguity BEFORE descent, so a nearest-match never gets the chance to pick. The resolved case is the positive control the three refusals are read against: without it, four refusals would be satisfiable by a resolver that refuses everything."
+
+fn idb_reference_path_closure() -> AssembledCrossFileBindingClosure? {
+  match first(idb_closure_row_for(path: idb_path_consumer_source_path, grounding: ModuleLocalMemberExposure)) {
+    Absent => none
+    Present { value: consumer_row } =>
+      Present {
+        value: assemble_cross_file_binding_closure(
+          consumer: consumer_row,
+          providers: idb_closure_row_for(path: idb_live_tree_source_path, grounding: ModuleLocalMemberExposure),
+        ),
+      }
+  }
+}
+
+fn idb_reference_path_resolution_for(name: String) -> ReferencePathResolution? {
+  match idb_reference_path_closure() {
+    Absent => none
+    Present { value: AssembledCrossFileBindingClosureRefused { refusal: _ } } => none
+    Present { value: AssembledCrossFileBindingClosureReady { transport: t, inputs: i, module_files: _, consumer_file: _ } } =>
+      match occurrence_candidate_index_build(transport: t, inputs: i) {
+        OccurrenceCandidateIndexReady { index: index } =>
+          fold(t.references, init: none, f: (found, r) =>
+            match found {
+              Present { value: _ } => found
+              Absent =>
+                match map_get(index.entries_by_id, r.occurrence.value) {
+                  Absent => none
+                  Present { value: entry } =>
+                    match entry.projection.authored_name == name {
+                      false => none
+                      true => Present {
+                        value: resolve_reference_path(transport: t, index: index, reference: r),
+                      }
+                    }
+                }
+            })
+        _ => none
+      }
+  }
+}
+
+fn idb_resolved_terminal_name(name: String) -> String? {
+  match idb_reference_path_resolution_for(name: name) {
+    Absent => none
+    Present { value: ReferencePathResolved { terminal: terminal } } =>
+      match idb_reference_path_authored_name_of(occurrence: terminal.occurrence) {
+        Absent => none
+        Present { value: spelled } => Present { value: spelled }
+      }
+    Present { value: _ } => none
+  }
+}
+
+fn idb_reference_path_authored_name_of(occurrence: OccurrenceId) -> String? {
+  match idb_reference_path_closure() {
+    Absent => none
+    Present { value: AssembledCrossFileBindingClosureRefused { refusal: _ } } => none
+    Present { value: AssembledCrossFileBindingClosureReady { transport: t, inputs: _, module_files: _, consumer_file: _ } } =>
+      match idb_index_entry_for_occurrence(transport: t, occurrence: occurrence) {
+        Absent => none
+        Present { value: entry } => Present { value: entry.projection.authored_name }
+      }
+  }
+}
+
+test fn reference_path_resolves_to_the_terminal_declaration() -> Bool {
+  match idb_resolved_terminal_name(name: idb_subject_name) {
+    Absent => false
+    Present { value: spelled } => spelled == idb_subject_leaf_name
+  }
+}
+
+test fn reference_path_missing_member_refuses_at_the_segment() -> Bool {
+  match idb_reference_path_resolution_for(name: "live_tree.NoSuchMember") {
+    Present { value: ReferencePathSegmentUnbound { segment: segment, parent: _ } } =>
+      segment.name == "NoSuchMember"
+    _ => false
+  }
+}
+
+test fn reference_path_missing_head_refuses_before_descent() -> Bool {
+  match idb_reference_path_resolution_for(name: "no_such_module.Anything") {
+    Present { value: ReferencePathHeadUnbound { head_name: head, span: _ } } =>
+      head == "no_such_module"
+    _ => false
   }
 }

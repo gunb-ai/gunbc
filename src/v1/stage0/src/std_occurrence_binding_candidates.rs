@@ -27,6 +27,9 @@ use self::ReferenceDerivedClauseEProductionRefusal::*;
 use self::ReferenceDerivedDependencyProjection::*;
 use self::ReferenceDerivedProviderFileProjection::*;
 use self::ReferenceDerivedProviderFilesForAssembledClosure::*;
+use self::ReferencePathBuild::*;
+use self::ReferencePathRefusal::*;
+use self::ReferencePathResolution::*;
 use self::Section13PopulationLawEvidence::*;
 use self::Section13PopulationLawId::*;
 use self::Section13PopulationLawRosterVerdict::*;
@@ -73,11 +76,12 @@ pub use crate::std_occurrence_identity::{
     OccurrenceCategoryModuleScopeExposureVerdict, OccurrenceContainmentPath, OccurrenceId,
     OccurrenceIdAllocResult, OccurrenceIdAllocator, OccurrenceIndex, OccurrenceIndexEntry,
     OccurrenceProjection, OccurrenceTransport, OccurrenceTransportRefusal,
-    OccurrenceTransportValidation, ReferenceOccurrence, ValidatedOccurrenceTransport,
+    OccurrenceTransportValidation, ReferenceOccurrence, ReferencePath, ReferencePathSegment,
+    ValidatedOccurrenceTransport,
 };
 pub use crate::std_roster_frontier::declaration_ref_eq;
 use crate::std_types::Bool::*;
-pub use crate::std_types::{Bool, CommitSha, FilePath, List, NonEmptyStr};
+pub use crate::std_types::{Bool, CommitSha, FilePath, List, NonEmptyStr, SourceSpan};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -2335,6 +2339,514 @@ pub fn module_member_projection_note() -> String {
         };
     }
     CACHED.with(|c: &String| c.clone())
+}
+
+pub fn reference_path_producer_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "TWO SPELLINGS IN, ONE PATH OUT. The dotted spelling is decided first because it is decidable from the authored text alone: a name carrying a dot is one occurrence covering the whole path, so its head is the first segment and every later segment inherits the one span the parser allocated -- coarse, and honestly so, because there is no second occurrence to carry a narrower one. Otherwise the reference is walked DOWN its containment children: a projection segment has exactly one child (its receiver), so more than one child is not a longer path but a shape this producer does not model, and it refuses rather than picking one. A reference with no child and no dot is a bare name, which is a path of zero segments -- the ordinary case, not a special one. THE ORDER: walking down yields segments outermost-first, so the accumulator is built head-adjacent-last and reversed once at the end, never appended per step.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ReferencePathBuild {
+    ReferencePathBuilt { path: Rc<ReferencePath> },
+    ReferencePathRefused { reason: Rc<ReferencePathRefusal> },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ReferencePathRefusal {
+    ReferencePathOccurrenceNotIndexed {
+        occurrence: OccurrenceId,
+    },
+    ReferencePathBranchingProjection {
+        occurrence: OccurrenceId,
+        child_count: i64,
+    },
+    ReferencePathEmptySegmentText {
+        occurrence: OccurrenceId,
+    },
+    ReferencePathDescentUnbounded {
+        occurrence: OccurrenceId,
+    },
+}
+impl ReferencePathRefusal {
+    pub fn occurrence(&self) -> OccurrenceId {
+        match self {
+            ReferencePathRefusal::ReferencePathOccurrenceNotIndexed {
+                occurrence: __val, ..
+            } => __val.clone(),
+            ReferencePathRefusal::ReferencePathBranchingProjection {
+                occurrence: __val, ..
+            } => __val.clone(),
+            ReferencePathRefusal::ReferencePathEmptySegmentText {
+                occurrence: __val, ..
+            } => __val.clone(),
+            ReferencePathRefusal::ReferencePathDescentUnbounded {
+                occurrence: __val, ..
+            } => __val.clone(),
+        }
+    }
+}
+
+pub fn reference_list_count(xs: Rc<Vec<Rc<ReferenceOccurrence>>>) -> i64 {
+    (xs.clone().len() as i64)
+}
+
+pub fn reference_children(
+    references: Rc<Vec<Rc<ReferenceOccurrence>>>,
+    reference: Rc<ReferenceOccurrence>,
+) -> Rc<Vec<Rc<ReferenceOccurrence>>> {
+    v1_rt::reverse(references.clone().iter().cloned().fold(
+        Rc::new(vec![]),
+        |acc: _, candidate: Rc<ReferenceOccurrence>| {
+            let __fm = v1_rt::reverse(candidate.containment.clone().ancestors.clone());
+            if __fm.is_empty() {
+                acc.clone()
+            } else {
+                let parent = (*__fm)[0].clone();
+                match (parent.value.clone() == reference.occurrence.clone().value.clone()) {
+                    true => Rc::new({
+                        let mut __cons_v = (*acc.clone()).clone();
+                        __cons_v.insert(0, candidate.clone());
+                        __cons_v
+                    }),
+                    false => acc.clone(),
+                }
+            }
+        },
+    ))
+}
+
+pub fn reference_authored_name(
+    index: Rc<OccurrenceCandidateIndex>,
+    reference: Rc<ReferenceOccurrence>,
+) -> Option<String> {
+    match v1_rt::map_get(
+        &index.entries_by_id.clone(),
+        reference.occurrence.clone().value.clone(),
+    ) {
+        None => None,
+        Some(entry) => Some(entry.projection.clone().authored_name.clone()),
+    }
+}
+
+pub fn reference_path_segments_from_dotted(
+    name: String,
+    span: Rc<SourceSpan>,
+) -> Rc<Vec<Rc<ReferencePathSegment>>> {
+    Rc::new(
+        name.clone()
+            .split(&".".to_string())
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>(),
+    )
+    .iter()
+    .cloned()
+    .fold(Rc::new(vec![]), |acc: _, segment: String| {
+        Rc::new({
+            let mut __cons_v = (*acc).clone();
+            __cons_v.insert(
+                0,
+                Rc::new(ReferencePathSegment {
+                    name: segment.clone(),
+                    diagnostic_span: span.clone(),
+                    occurrence: None,
+                }),
+            );
+            __cons_v
+        })
+    })
+}
+
+pub fn reference_path_from_dotted_name(
+    reference: Rc<ReferenceOccurrence>,
+    name: String,
+) -> Rc<ReferencePathBuild> {
+    {
+        let __fm = v1_rt::reverse(reference_path_segments_from_dotted(
+            name.clone(),
+            reference.diagnostic_span.clone(),
+        ));
+        if __fm.is_empty() {
+            Rc::new(ReferencePathBuild::ReferencePathRefused {
+                reason: Rc::new(ReferencePathRefusal::ReferencePathEmptySegmentText {
+                    occurrence: reference.occurrence.clone(),
+                }),
+            })
+        } else {
+            let head_segment = (*__fm)[0].clone();
+            let rest: Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect());
+            match (head_segment.name.clone() == "".to_string()) {
+                true => Rc::new(ReferencePathBuild::ReferencePathRefused {
+                    reason: Rc::new(ReferencePathRefusal::ReferencePathEmptySegmentText {
+                        occurrence: reference.occurrence.clone(),
+                    }),
+                }),
+                false => Rc::new(ReferencePathBuild::ReferencePathBuilt {
+                    path: Rc::new(ReferencePath {
+                        head_name: head_segment.name.clone(),
+                        head_span: reference.diagnostic_span.clone(),
+                        head_occurrence: reference.occurrence.clone(),
+                        segments: rest.clone(),
+                    }),
+                }),
+            }
+        }
+    }
+}
+
+pub fn reference_path_descend(
+    mut index: Rc<OccurrenceCandidateIndex>,
+    mut references: Rc<Vec<Rc<ReferenceOccurrence>>>,
+    mut reference: Rc<ReferenceOccurrence>,
+    mut segments: Rc<Vec<Rc<ReferencePathSegment>>>,
+    mut fuel: i64,
+) -> Rc<ReferencePathBuild> {
+    loop {
+        match reference_authored_name(index.clone(), reference.clone()) {
+            None => {
+                break Rc::new(ReferencePathBuild::ReferencePathRefused {
+                    reason: Rc::new(ReferencePathRefusal::ReferencePathOccurrenceNotIndexed {
+                        occurrence: reference.occurrence.clone(),
+                    }),
+                });
+            }
+            Some(name) => {
+                let __fm = reference_children(references.clone(), reference.clone());
+                if __fm.is_empty() {
+                    break Rc::new(ReferencePathBuild::ReferencePathBuilt {
+                        path: Rc::new(ReferencePath {
+                            head_name: name.clone(),
+                            head_span: reference.diagnostic_span.clone(),
+                            head_occurrence: reference.occurrence.clone(),
+                            segments: v1_rt::reverse(segments.clone()),
+                        }),
+                    });
+                } else {
+                    let child = (*__fm)[0].clone();
+                    let siblings: Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect());
+                    {
+                        let __fm = siblings.clone();
+                        if __fm.is_empty() {
+                            match (fuel.clone() <= 0) {
+                                true => {
+                                    break Rc::new(ReferencePathBuild::ReferencePathRefused {
+                                        reason: Rc::new(
+                                            ReferencePathRefusal::ReferencePathDescentUnbounded {
+                                                occurrence: reference.occurrence.clone(),
+                                            },
+                                        ),
+                                    });
+                                }
+                                false => {
+                                    let __tco_0 = child.clone();
+                                    let __tco_1 = Rc::new({
+                                        let mut __cons_v = (*segments).clone();
+                                        __cons_v.insert(
+                                            0,
+                                            Rc::new(ReferencePathSegment {
+                                                name: name.clone(),
+                                                diagnostic_span: reference.diagnostic_span.clone(),
+                                                occurrence: Some(reference.occurrence.clone()),
+                                            }),
+                                        );
+                                        __cons_v
+                                    });
+                                    let __tco_2 = (fuel - 1);
+                                    reference = __tco_0;
+                                    segments = __tco_1;
+                                    fuel = __tco_2;
+                                    continue;
+                                }
+                            }
+                        } else {
+                            break Rc::new(ReferencePathBuild::ReferencePathRefused {
+                                reason: Rc::new(
+                                    ReferencePathRefusal::ReferencePathBranchingProjection {
+                                        occurrence: reference.occurrence.clone(),
+                                        child_count: (1 + reference_list_count(siblings.clone())),
+                                    },
+                                ),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn reference_path_of(
+    index: Rc<OccurrenceCandidateIndex>,
+    references: Rc<Vec<Rc<ReferenceOccurrence>>>,
+    reference: Rc<ReferenceOccurrence>,
+) -> Rc<ReferencePathBuild> {
+    match reference_authored_name(index.clone(), reference.clone()) {
+        None => Rc::new(ReferencePathBuild::ReferencePathRefused {
+            reason: Rc::new(ReferencePathRefusal::ReferencePathOccurrenceNotIndexed {
+                occurrence: reference.occurrence.clone(),
+            }),
+        }),
+        Some(name) => match v1_rt::string_contains(&name, ".".to_string()) {
+            true => reference_path_from_dotted_name(reference.clone(), name.clone()),
+            false => reference_path_descend(
+                index.clone(),
+                references.clone(),
+                reference.clone(),
+                Rc::new(vec![]),
+                reference_list_count(references.clone()),
+            ),
+        },
+    }
+}
+
+pub fn reference_path_resolution_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "ONE HEAD BINDING, THEN CONTAINMENT. The head is resolved exactly once, through the same on-chain-plus-named-modules candidate rule an ordinary bare reference uses -- there is no second, segment-index reconstruction of the head beside it, because two derivations of one fact are two chances to disagree and the disagreement would be silent. Every later segment is a CONTAINMENT CHILD step: the declarations whose containment parent is the previous accepted declaration and whose authored name is the segment. That step is uniform for the first segment and the tenth, and it needed no qualifier suffix-match, because a module member's containment parent is measurably the module declaration occurrence itself. THE CARDINALITY RULE IS THE SAME AT EVERY STEP AND IS NOT SPECIAL-CASED: zero children Unbound, one child descend, more than one Ambiguous naming every candidate -- never a nearest match, never first-wins. WHAT MAKES THIS A WALL RATHER THAN A CHECK: the only value that can carry a terminal declaration is produced by consuming every segment, so a head that bound while a segment did not has no representation as a resolved path. A caller cannot read a provider file off a partial descent, because a partial descent yields a refusal and refusals carry no declaration.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum ReferencePathResolution {
+    ReferencePathResolved {
+        terminal: Rc<DeclarationOccurrence>,
+    },
+    ReferencePathHeadUnbound {
+        head_name: String,
+        span: Rc<SourceSpan>,
+    },
+    ReferencePathHeadAmbiguous {
+        head_name: String,
+        span: Rc<SourceSpan>,
+        candidates: Rc<Vec<OccurrenceId>>,
+    },
+    ReferencePathSegmentUnbound {
+        segment: Rc<ReferencePathSegment>,
+        parent: OccurrenceId,
+    },
+    ReferencePathSegmentAmbiguous {
+        segment: Rc<ReferencePathSegment>,
+        parent: OccurrenceId,
+        candidates: Rc<Vec<Rc<DeclarationOccurrence>>>,
+    },
+    ReferencePathBuildRefused {
+        reason: Rc<ReferencePathRefusal>,
+    },
+}
+
+pub fn declaration_occurrence_ids(xs: Rc<Vec<Rc<DeclarationOccurrence>>>) -> Rc<Vec<OccurrenceId>> {
+    v1_rt::reverse(xs.clone().iter().cloned().fold(
+        Rc::new(vec![]),
+        |acc: _, declaration: Rc<DeclarationOccurrence>| {
+            Rc::new({
+                let mut __cons_v = (*acc).clone();
+                __cons_v.insert(0, declaration.occurrence.clone());
+                __cons_v
+            })
+        },
+    ))
+}
+
+pub fn head_candidate_declarations(
+    index: Rc<OccurrenceCandidateIndex>,
+    reference: Rc<ReferenceOccurrence>,
+    head_name: String,
+) -> Rc<Vec<Rc<DeclarationOccurrence>>> {
+    {
+        let on_chain = match v1_rt::map_get(&index.declarations_by_name.clone(), head_name.clone())
+        {
+            None => Rc::new(vec![]),
+            Some(same_spelling) => Rc::new({
+                let mut __result = Vec::new();
+                for declaration in v1_rt::reverse(same_spelling.clone()).iter().cloned() {
+                    if declaration_exposed_on_reference_chain(
+                        declaration.clone(),
+                        reference.clone(),
+                        index.module_by_occurrence.clone(),
+                        index.exposure_by_occurrence.clone(),
+                        index.order_by_occurrence.clone(),
+                    ) {
+                        __result.push(declaration);
+                    }
+                }
+                __result
+            }),
+        };
+        let named_modules = match v1_rt::map_get(
+            &index.module_declarations_by_segment.clone(),
+            head_name.clone(),
+        ) {
+            None => Rc::new(vec![]),
+            Some(modules) => v1_rt::reverse(modules.clone()),
+        };
+        v1_rt::concat(on_chain.clone(), named_modules.clone())
+    }
+}
+
+pub fn declaration_children_named(
+    transport: Rc<OccurrenceTransport>,
+    index: Rc<OccurrenceCandidateIndex>,
+    parent: OccurrenceId,
+    name: String,
+) -> Rc<Vec<Rc<DeclarationOccurrence>>> {
+    v1_rt::reverse(transport.declarations.clone().iter().cloned().fold(
+        Rc::new(vec![]),
+        |acc: _, declaration: Rc<DeclarationOccurrence>| {
+            let __fm = v1_rt::reverse(declaration.containment.clone().ancestors.clone());
+            if __fm.is_empty() {
+                acc.clone()
+            } else {
+                let declared_parent = (*__fm)[0].clone();
+                match (declared_parent.value.clone() == parent.value.clone()) {
+                    false => acc.clone(),
+                    true => match v1_rt::map_get(
+                        &index.entries_by_id.clone(),
+                        declaration.occurrence.clone().value.clone(),
+                    ) {
+                        None => acc.clone(),
+                        Some(entry) => {
+                            match (entry.projection.clone().authored_name.clone() == name.clone()) {
+                                true => Rc::new({
+                                    let mut __cons_v = (*acc.clone()).clone();
+                                    __cons_v.insert(0, declaration.clone());
+                                    __cons_v
+                                }),
+                                false => acc.clone(),
+                            }
+                        }
+                    },
+                }
+            }
+        },
+    ))
+}
+
+pub fn reference_path_descend_segments(
+    mut transport: Rc<OccurrenceTransport>,
+    mut index: Rc<OccurrenceCandidateIndex>,
+    mut current: Rc<DeclarationOccurrence>,
+    mut segments: Rc<Vec<Rc<ReferencePathSegment>>>,
+) -> Rc<ReferencePathResolution> {
+    loop {
+        {
+            let __fm = segments.clone();
+            if __fm.is_empty() {
+                break Rc::new(ReferencePathResolution::ReferencePathResolved {
+                    terminal: current.clone(),
+                });
+            } else {
+                let segment = (*__fm)[0].clone();
+                let rest: Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect());
+                {
+                    let __fm = declaration_children_named(
+                        transport.clone(),
+                        index.clone(),
+                        current.occurrence.clone(),
+                        segment.name.clone(),
+                    );
+                    if __fm.is_empty() {
+                        break Rc::new(ReferencePathResolution::ReferencePathSegmentUnbound {
+                            segment: segment.clone(),
+                            parent: current.occurrence.clone(),
+                        });
+                    } else {
+                        let only = (*__fm)[0].clone();
+                        let others: Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect());
+                        {
+                            let __fm = others.clone();
+                            if __fm.is_empty() {
+                                {
+                                    let __tco_0 = only.clone();
+                                    let __tco_1 = rest.clone();
+                                    current = __tco_0;
+                                    segments = __tco_1;
+                                    continue;
+                                }
+                            } else {
+                                break Rc::new(
+                                    ReferencePathResolution::ReferencePathSegmentAmbiguous {
+                                        segment: segment.clone(),
+                                        parent: current.occurrence.clone(),
+                                        candidates: Rc::new({
+                                            let mut __cons_v = (*others.clone()).clone();
+                                            __cons_v.insert(0, only.clone());
+                                            __cons_v
+                                        }),
+                                    },
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn resolve_reference_path(
+    transport: Rc<OccurrenceTransport>,
+    index: Rc<OccurrenceCandidateIndex>,
+    reference: Rc<ReferenceOccurrence>,
+) -> Rc<ReferencePathResolution> {
+    match (*reference_path_of(
+        index.clone(),
+        transport.references.clone(),
+        reference.clone(),
+    ))
+    .clone()
+    {
+        ReferencePathBuild::ReferencePathRefused { reason: reason, .. } => {
+            Rc::new(ReferencePathResolution::ReferencePathBuildRefused {
+                reason: reason.clone(),
+            })
+        }
+        ReferencePathBuild::ReferencePathBuilt { path: path, .. } => {
+            let __fm = head_candidate_declarations(
+                index.clone(),
+                reference.clone(),
+                path.head_name.clone(),
+            );
+            if __fm.is_empty() {
+                Rc::new(ReferencePathResolution::ReferencePathHeadUnbound {
+                    head_name: path.head_name.clone(),
+                    span: path.head_span.clone(),
+                })
+            } else {
+                let only = (*__fm)[0].clone();
+                let others: Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect());
+                {
+                    let __fm = others.clone();
+                    if __fm.is_empty() {
+                        reference_path_descend_segments(
+                            transport.clone(),
+                            index.clone(),
+                            only.clone(),
+                            path.segments.clone(),
+                        )
+                    } else {
+                        Rc::new(ReferencePathResolution::ReferencePathHeadAmbiguous {
+                            head_name: path.head_name.clone(),
+                            span: path.head_span.clone(),
+                            candidates: declaration_occurrence_ids(Rc::new({
+                                let mut __cons_v = (*others.clone()).clone();
+                                __cons_v.insert(0, only.clone());
+                                __cons_v
+                            })),
+                        })
+                    }
+                }
+            }
+        }
+    }
 }
 
 pub fn reference_base_child(
