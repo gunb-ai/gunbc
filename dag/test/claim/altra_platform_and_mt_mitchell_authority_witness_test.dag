@@ -1,0 +1,216 @@
+module test.claim.altra_platform_and_mt_mitchell_authority_witness
+
+import std.logic { Bool }
+import std.types { list_length }
+import std.measure { micrometer_count, rack_unit_count }
+import extdeps.memory.types { dram_generation_eq, dram_generation_ddr4, dram_generation_ddr5 }
+import extdeps.cpu.ampere_altra_package { altra_max_dimms_per_socket, altra_pcie_gen4_lane_count }
+import extdeps.cpu.ampere_altra_platform_hw_design.subject { altra_platform_hw_design_specification }
+import extdeps.ocp.mt_mitchell.subject { mt_mitchell_reference_platform }
+import extdeps.cpu.ampere_altra_platform_hw_design.platform {
+  DimmSlot0,
+  OneDimmPerChannel,
+  RefclkSrns,
+  RefclkSris,
+  RootComplexTypeA,
+  RootComplexTypeB,
+  TwoDimmsPerChannel,
+  TypeAFourX4,
+  TypeAOneX16,
+  TypeAOneX8AndTwoX4,
+  TypeATwoX8,
+  TypeBOneX8,
+  TypeBTwoX4,
+  altra_declared_lane_total,
+  altra_derived_lane_total,
+  altra_has_dedicated_perst_per_controller,
+  altra_has_native_hot_plug_controller,
+  altra_pcie_controller_count,
+  altra_pcie_reset_scheme,
+  altra_platform_hw_design_subject,
+  altra_platform_max_dimm_slots_per_socket,
+  altra_platform_memory_generation,
+  altra_refclk_megahertz,
+  altra_root_complex_count,
+  altra_two_socket_ccix_lane_width,
+  altra_two_socket_ccix_port_count,
+  dimm_slot_farther_from_cpu,
+  dimm_slots_per_socket,
+  one_dimm_per_channel_populated_slot,
+  platform_facts_are_from_the_latest_revision,
+  refclk_always_required,
+  root_complex_count_of_type,
+  root_complex_supports_ccix,
+  type_a_grouping_lane_total,
+  type_b_half_grouping_lane_total,
+}
+import extdeps.ocp.mt_mitchell.platform {
+  MtMitchellArchitectureOption,
+  MultiHostX16,
+  SingleHostX16,
+  SingleHostX8,
+  architecture_channel_total,
+  architecture_dimms_per_channel,
+  architecture_slot_count_divides_channels,
+  inter_processor_link_socket,
+  mt_mitchell_architecture_options,
+  mt_mitchell_board_depth,
+  mt_mitchell_board_width,
+  mt_mitchell_chassis_height,
+  mt_mitchell_derived_mcio_connector_total,
+  mt_mitchell_inter_processor_link_ports,
+  mt_mitchell_mcio_connector_total,
+  mt_mitchell_memory_generation,
+  mt_mitchell_ocp_nic_connector_count,
+  mt_mitchell_one_socket_twelve_channel,
+  mt_mitchell_platform_subject,
+  mt_mitchell_revision_table,
+  mt_mitchell_two_socket_eight_channel,
+  mt_mitchell_two_socket_twelve_channel,
+  ocp_nic_host_mode_is_multi_host,
+  ocp_nic_host_mode_lane_count,
+  ocp_nic_unstrapped_host_mode,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// --- Each platform module joins the subject module that owns its identity ---
+
+test fn w_platform_facts_hang_off_the_subject_declarations() -> Bool {
+  altra_platform_hw_design_subject == altra_platform_hw_design_specification
+    && mt_mitchell_platform_subject == mt_mitchell_reference_platform
+}
+
+// --- Ampere Altra Platform Hardware Design Specification, revision 1.00 ---
+
+test fn w_altra_platform_facts_are_not_claimed_current() -> Bool {
+  !platform_facts_are_from_the_latest_revision()
+}
+
+test fn w_altra_two_dimms_per_channel_reaches_package_ceiling() -> Bool {
+  dimm_slots_per_socket(topology: OneDimmPerChannel) == 8
+    && dimm_slots_per_socket(topology: TwoDimmsPerChannel) == 16
+    && altra_platform_max_dimm_slots_per_socket() == altra_max_dimms_per_socket
+}
+
+test fn w_altra_one_dimm_per_channel_uses_the_far_slot() -> Bool {
+  one_dimm_per_channel_populated_slot() == DimmSlot0
+    && dimm_slot_farther_from_cpu() == DimmSlot0
+}
+
+test fn w_altra_root_complex_structure_derives_the_lane_total() -> Bool {
+  root_complex_count_of_type(kind: RootComplexTypeA) == 4
+    && root_complex_count_of_type(kind: RootComplexTypeB) == 4
+    && altra_root_complex_count() == 8
+    && altra_derived_lane_total() == 128
+    && altra_derived_lane_total() == altra_declared_lane_total()
+    && altra_declared_lane_total() == altra_pcie_gen4_lane_count
+    && altra_pcie_controller_count == 48
+}
+
+test fn w_altra_lane_groupings_partition_their_root_complex() -> Bool {
+  type_a_grouping_lane_total(grouping: TypeAOneX16) == 16
+    && type_a_grouping_lane_total(grouping: TypeATwoX8) == 16
+    && type_a_grouping_lane_total(grouping: TypeAOneX8AndTwoX4) == 16
+    && type_a_grouping_lane_total(grouping: TypeAFourX4) == 16
+    && type_b_half_grouping_lane_total(grouping: TypeBOneX8) == 8
+    && type_b_half_grouping_lane_total(grouping: TypeBTwoX4) == 8
+}
+
+test fn w_altra_ccix_capability_belongs_to_type_a_only() -> Bool {
+  root_complex_supports_ccix(kind: RootComplexTypeA)
+    && !root_complex_supports_ccix(kind: RootComplexTypeB)
+    && altra_two_socket_ccix_port_count == 2
+    && altra_two_socket_ccix_lane_width == 16
+}
+
+test fn w_altra_refclk_requirement_splits_by_input() -> Bool {
+  refclk_always_required(input: RefclkSrns)
+    && !refclk_always_required(input: RefclkSris)
+    && altra_refclk_megahertz == 100
+}
+
+test fn w_altra_pcie_reset_is_cpld_decoded_without_per_controller_perst() -> Bool {
+  !altra_has_dedicated_perst_per_controller()
+    && !altra_has_native_hot_plug_controller()
+    && altra_pcie_reset_scheme.gpio_output_max == 6
+}
+
+// --- OCP Mt. Mitchell motherboard specification, revision 0.80 ---
+
+test fn w_mt_mitchell_revision_table_ends_at_the_modelled_revision() -> Bool {
+  let latest = mt_mitchell_revision_table.last()
+  list_length(items: mt_mitchell_revision_table) == 3
+    && latest.revision == "0.80"
+    && latest.year == 2022
+    && latest.month == 9
+    && latest.day == 9
+    && mt_mitchell_revision_table.first().revision == "0.50"
+}
+
+test fn w_mt_mitchell_architecture_options_divide_into_whole_dimms_per_channel() -> Bool {
+  list_length(items: mt_mitchell_architecture_options) == 3
+    && all(mt_mitchell_architecture_options, o => architecture_slot_count_divides_channels(option: o))
+    && architecture_dimms_per_channel(option: mt_mitchell_two_socket_eight_channel) == 2
+    && architecture_dimms_per_channel(option: mt_mitchell_two_socket_twelve_channel) == 1
+    && architecture_dimms_per_channel(option: mt_mitchell_one_socket_twelve_channel) == 2
+    && architecture_channel_total(option: mt_mitchell_two_socket_eight_channel) == 16
+    && architecture_channel_total(option: mt_mitchell_one_socket_twelve_channel) == 12
+}
+
+test fn w_mt_mitchell_mcio_population_cross_foots() -> Bool {
+  mt_mitchell_derived_mcio_connector_total() == mt_mitchell_mcio_connector_total
+    && mt_mitchell_mcio_connector_total == 13
+}
+
+test fn w_mt_mitchell_ocp_nic_modes_separate_width_from_host_count() -> Bool {
+  mt_mitchell_ocp_nic_connector_count == 2
+    && ocp_nic_unstrapped_host_mode() == SingleHostX8
+    && ocp_nic_host_mode_lane_count(mode: SingleHostX8) == 8
+    && ocp_nic_host_mode_lane_count(mode: SingleHostX16) == 16
+    && ocp_nic_host_mode_lane_count(mode: MultiHostX16) == 16
+    && !ocp_nic_host_mode_is_multi_host(mode: SingleHostX16)
+    && ocp_nic_host_mode_is_multi_host(mode: MultiHostX16)
+}
+
+test fn w_mt_mitchell_inter_processor_links_split_evenly_across_sockets() -> Bool {
+  let ports = mt_mitchell_inter_processor_link_ports
+  list_length(items: ports) == 4
+    && list_length(items: ports |> filter(p => inter_processor_link_socket(port: p) == 0)) == 2
+    && list_length(items: ports |> filter(p => inter_processor_link_socket(port: p) == 1)) == 2
+}
+
+test fn w_mt_mitchell_board_dimensions_are_exact_in_micrometres() -> Bool {
+  micrometer_count(m: mt_mitchell_board_width) == 424900
+    && micrometer_count(m: mt_mitchell_board_depth) == 422900
+    && rack_unit_count(u: mt_mitchell_chassis_height) == 2
+}
+
+// --- The separation itself ---
+
+test fn w_the_two_specifications_target_different_memory_generations() -> Bool {
+  dram_generation_eq(a: altra_platform_memory_generation, b: dram_generation_ddr4)
+    && dram_generation_eq(a: mt_mitchell_memory_generation, b: dram_generation_ddr5)
+    && !dram_generation_eq(a: altra_platform_memory_generation, b: mt_mitchell_memory_generation)
+}
+
+// --- RED controls: each goes red if the modelled fact stops discriminating ---
+
+test fn w_red_fabricated_architecture_option_fails_the_channel_join() -> Bool {
+  let fabricated = MtMitchellArchitectureOption {
+    socket_count: 2,
+    ddr_channels_per_socket: 12,
+    dimm_slot_total: 30,
+  }
+  !architecture_slot_count_divides_channels(option: fabricated)
+}
+
+test fn w_red_a_grouping_that_lost_lanes_would_not_sum_to_its_root_complex() -> Bool {
+  type_a_grouping_lane_total(grouping: TypeATwoX8) != 8
+    && type_b_half_grouping_lane_total(grouping: TypeBTwoX4) != 16
+}
+
+test fn w_red_the_package_ceiling_is_not_the_one_dimm_per_channel_population() -> Bool {
+  dimm_slots_per_socket(topology: OneDimmPerChannel) != altra_max_dimms_per_socket
+}

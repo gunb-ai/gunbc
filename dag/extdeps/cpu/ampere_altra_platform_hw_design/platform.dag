@@ -1,0 +1,257 @@
+module extdeps.cpu.ampere_altra_platform_hw_design.platform
+
+import std.types { Bool, NonEmptyStr, String }
+import std.integer { Int }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.memory.types { DramGeneration, dram_generation_ddr4 }
+import extdeps.cpu.ampere_altra_package {
+  altra_ddr4_channel_count,
+  altra_max_dimms_per_socket,
+  altra_pcie_gen4_lane_count,
+}
+import extdeps.cpu.ampere_altra_platform_hw_design.subject {
+  AltraPlatformHwDesignSpecification,
+  altra_platform_hw_design_specification,
+  extdeps_external_authority_anchor,
+}
+
+data platform_subject_edge_note: String = "THE DOCUMENT IDENTITY IS NOT RE-DECLARED HERE. extdeps.cpu.ampere_altra_platform_hw_design.subject owns the title, revision label, publication date, publisher and citation-read provenance of this specification; this module carries the design facts the document states in running text and binds every one of them to that declaration through the subject edge below, the same shape extdeps.ocp.mt_jade.platform uses. A second identity row beside the first is the fork the subject/platform split exists to prevent."
+
+data altra_platform_hw_design_subject: AltraPlatformHwDesignSpecification = altra_platform_hw_design_specification
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
+      decl_name: "altra_platform_hw_design_specification",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [altra_platform_hw_design_document_index_authority]
+}
+
+data platform_ingestion_note: String = "READ, NOT RECALLED. The v1.00 PDF at the subject module's public CDN locator was fetched and its text extracted on 2026-08-14 — content streams inflated and each string decoded through the PDF's own per-font ToUnicode CMap — so every row below is transcribed from a section this repository actually read, and the section is named. What is deliberately NOT carried: the document is footed 'Ampere Computing Proprietary' on every page, so this module takes STRUCTURAL statements from running text and no tables, figures, layout geometry, impedance targets or electrical limits. That is the same access-versus-carriage split extdeps.cpu.ampere_altra_package records for the datasheet, and it is a licensing question rather than an availability one."
+
+// THE REVISION THIS REPOSITORY READ IS SUPERSEDED, AND SAYING SO IS THE POINT.
+// Ampere's board development collateral index lists revision 1.20 dated
+// 07/15/2025; the copy reachable without a Customer Connect login is v1.00
+// dated 2021-01-20. A citation pinned to a superseded revision that does not
+// record the newer one is the stale-citation class, so the standing is a typed
+// row rather than an omission, and the newer revision's facts are NOT guessed
+// at, summarised or assumed unchanged.
+data altra_platform_hw_design_document_index_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "amperecomputing.com/customer-connect/products/altra-family-board-development-collateral"
+  }
+}
+
+type SupersededRevisionStanding
+  = LaterRevisionListedButUnretrieved {
+      listed_revision: NonEmptyStr
+      listed_year: Int
+      listed_month: Int
+      listed_day: Int
+      index_authority: ExternalAuthority
+    }
+  | NoLaterRevisionListed
+
+data altra_platform_hw_design_revision_standing: SupersededRevisionStanding = LaterRevisionListedButUnretrieved {
+  listed_revision: "1.20",
+  listed_year: 2025,
+  listed_month: 7,
+  listed_day: 15,
+  index_authority: altra_platform_hw_design_document_index_authority,
+}
+
+fn platform_facts_are_from_the_latest_revision() -> Bool {
+  match altra_platform_hw_design_revision_standing {
+    NoLaterRevisionListed => true
+    LaterRevisionListedButUnretrieved { listed_revision, listed_year, listed_month, listed_day, index_authority } => false
+  }
+}
+
+data altra_platform_memory_generation: DramGeneration = dram_generation_ddr4
+
+// MEMORY TOPOLOGY (section 2.2.1). The specification admits exactly two linear
+// topologies. A population outside them is not a smaller version of a supported
+// one, so the admitted set is a closed coproduct rather than a DIMM count.
+type DimmsPerChannelTopology
+  = OneDimmPerChannel
+  | TwoDimmsPerChannel
+
+fn dimms_per_channel_count(topology: DimmsPerChannelTopology) -> Int {
+  match topology {
+    OneDimmPerChannel => 1
+    TwoDimmsPerChannel => 2
+  }
+}
+
+// Derived from the package authority's channel count, never a second literal.
+fn dimm_slots_per_socket(topology: DimmsPerChannelTopology) -> Int {
+  altra_ddr4_channel_count * dimms_per_channel_count(topology: topology)
+}
+
+fn altra_platform_max_dimm_slots_per_socket() -> Int {
+  dimm_slots_per_socket(topology: TwoDimmsPerChannel)
+}
+
+fn altra_platform_package_dimm_ceiling() -> Int {
+  altra_max_dimms_per_socket
+}
+
+// Section 2.2.3, and it is a REQUIREMENT on slot assignment rather than a note
+// about a figure: with 2DPC, Slot0 (DIMM0) is the slot farther from the CPU and
+// Slot1 (DIMM1) is closer, which is what decides where a 1DPC population goes.
+type DimmSlotPosition = DimmSlot0 | DimmSlot1
+
+fn dimm_slot_farther_from_cpu() -> DimmSlotPosition {
+  DimmSlot0
+}
+
+fn one_dimm_per_channel_populated_slot() -> DimmSlotPosition {
+  DimmSlot0
+}
+
+// PCIe / CCIX SUBSYSTEM (section 2.3.1). Eight 16-lane multi-port root
+// complexes, four of each type; the lane total is DERIVED from that structure
+// and joined against the package authority's declared Gen4 lane count, so the
+// two Ampere documents disagreeing surfaces as a failing join.
+type RootComplexType = RootComplexTypeA | RootComplexTypeB
+
+data altra_root_complex_lane_width: Int = 16
+
+data altra_type_a_root_complex_count: Int = 4
+
+data altra_type_b_root_complex_count: Int = 4
+
+data altra_pcie_controller_count: Int = 48
+
+fn altra_root_complex_count() -> Int {
+  altra_type_a_root_complex_count + altra_type_b_root_complex_count
+}
+
+fn altra_derived_lane_total() -> Int {
+  altra_root_complex_count() * altra_root_complex_lane_width
+}
+
+fn altra_declared_lane_total() -> Int {
+  altra_pcie_gen4_lane_count
+}
+
+fn root_complex_count_of_type(kind: RootComplexType) -> Int {
+  match kind {
+    RootComplexTypeA => altra_type_a_root_complex_count
+    RootComplexTypeB => altra_type_b_root_complex_count
+  }
+}
+
+// A Type A root complex carries a dual-mode x16 PCIe/CCIX controller and a Type
+// B root complex does not, so CCIX capability is a property of the TYPE rather
+// than a count standing beside it.
+fn root_complex_supports_ccix(kind: RootComplexType) -> Bool {
+  match kind {
+    RootComplexTypeA => true
+    RootComplexTypeB => false
+  }
+}
+
+// The admitted SerDes groupings, from section 2.3.1. Each grouping partitions
+// its root complex's lanes, which is the property a witness can check: a
+// fabricated grouping fails the lane sum instead of merely reading plausibly.
+type TypeALaneGrouping
+  = TypeAOneX16
+  | TypeATwoX8
+  | TypeAOneX8AndTwoX4
+  | TypeAFourX4
+
+fn type_a_grouping_lane_total(grouping: TypeALaneGrouping) -> Int {
+  match grouping {
+    TypeAOneX16 => 16
+    TypeATwoX8 => 8 + 8
+    TypeAOneX8AndTwoX4 => 8 + 4 + 4
+    TypeAFourX4 => 4 + 4 + 4 + 4
+  }
+}
+
+// A Type B root complex's x16 divides into two identical x8 halves, so a Type B
+// grouping is a property of a HALF and its lane sum is 8, not 16.
+type TypeBHalfGrouping
+  = TypeBOneX8
+  | TypeBTwoX4
+
+data altra_type_b_half_lane_width: Int = 8
+
+fn type_b_half_grouping_lane_total(grouping: TypeBHalfGrouping) -> Int {
+  match grouping {
+    TypeBOneX8 => 8
+    TypeBTwoX4 => 4 + 4
+  }
+}
+
+data altra_ccix_x16_links_per_socket: Int = 2
+
+data altra_pcie_only_lane_count: Int = 96
+
+data altra_ccix_link_framing_note: String = "TWO STATEMENTS IN ONE DOCUMENT, CARRIED AS THEY STAND. Section 2.3.1 says Altra provides 128 PCIe Gen4 lanes with 48 controllers to support 96 lanes of PCIe and up to 2 x16 Cache Coherent Interconnect for Accelerators links. The overview, section 1.4, instead lists 4 CCIX links beside 192 lanes in 2P configuration. The two are NOT reconciled here and no third number is derived from them: the section 2.3.1 figures are per socket at a stated split, the overview bullets are family-level and their grain is not stated, and inventing a reconciliation would be the fabricated-plausible-output failure DESIGN section 5 forbids. Consumers take the per-socket rows; a grain the document itself states is the only thing that retires this note."
+
+data altra_overview_ccix_link_count: Int = 4
+
+data altra_overview_two_socket_lane_count: Int = 192
+
+// DUAL-SOCKET INTERCONNECT (section 2.1, running text): a dual-socket
+// implementation uses TWO x16 CCIX ports. The signalling rate printed inside
+// the figure is deliberately not carried: figure content is outside the
+// running-text boundary this module holds while the proprietary-marking
+// question is open, and a rate is exactly the kind of number that boundary is
+// drawn around.
+data altra_two_socket_ccix_lane_width: Int = 16
+
+data altra_two_socket_ccix_port_count: Int = 2
+
+// REFERENCE CLOCKS (section 2.3.2). Two defined refclk inputs, both 100 MHz
+// PCIe-compliant differential HCSL inputs. REFCLK_SRNS 'is always needed and
+// must always be provided'; REFCLK_SRIS is the spread-spectrum refclk for the
+// PCIe SerDes only. The requirement is therefore derived from the input rather
+// than being a flag a board designer may set either way.
+type AltraRefclkInput = RefclkSrns | RefclkSris
+
+data altra_refclk_megahertz: Int = 100
+
+fn refclk_always_required(input: AltraRefclkInput) -> Bool {
+  match input {
+    RefclkSrns => true
+    RefclkSris => false
+  }
+}
+
+// PCIe RESET (section 2.3.3). Altra has 48 PCIe controllers and does NOT have a
+// dedicated PERST for each; the platform must decode reset requests in a CPLD
+// driven by at most six GPIO outputs. Modelled as a closed scheme so the
+// absence of per-controller PERST is a structural constraint on any board built
+// to this document rather than an omission a designer may assume away.
+type AltraPcieResetScheme
+  = CpldDecodedPerst { gpio_output_max: Int }
+
+data altra_pcie_reset_scheme: AltraPcieResetScheme = CpldDecodedPerst {
+  gpio_output_max: 6,
+}
+
+fn altra_has_dedicated_perst_per_controller() -> Bool {
+  false
+}
+
+// HOT PLUG (section 2.3.5): no native hot-plug controller, so hot plug is an
+// external controller reached over I2C or GPIO depending on the platform.
+type AltraHotPlugRealization
+  = ExternalHotPlugControllerOverI2c
+  | ExternalHotPlugControllerOverGpio
+
+fn altra_has_native_hot_plug_controller() -> Bool {
+  false
+}
+
+data altra_platform_section_coverage_note: String = "WHAT THIS MODULE MODELS AND WHAT IT DOES NOT, so absence is never read as a claim about the document. MODELLED, from running text: the memory topologies and slot ordering (2.2), the root-complex structure and admitted lane groupings (2.3.1), the reference-clock inputs (2.3.2), the PCIe reset scheme (2.3.3), hot-plug realization (2.3.5) and the dual-socket CCIX interconnect (2.1). NOT MODELLED, each a real section rather than an oversight: the BMC subsystem (3), power supply design, decoupling, regulator selection and power sequencing (4), clock distribution (5), the PERST encode table (6.1), miscellaneous I/O interfaces (7), system boot sequences (8) and the hardware bring-up guide (9). Those are tables, figures and electrical limits under the proprietary marking; a consumer that needs one is what earns its transcription, subject to the licensing question above. The socket land pattern, keepout, DDR4 routing rules, impedance targets and stackup guidance this lane most wants are in that second group, and several of them may only exist in the unretrieved 1.20 revision."
