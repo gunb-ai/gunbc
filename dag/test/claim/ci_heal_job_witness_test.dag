@@ -263,7 +263,7 @@ test fn heal_commit_scope_is_auto_push_eligible_only() -> Bool {
     && string_contains(s: script, pattern: "git diff --cached --quiet")
     && !string_contains(s: script, pattern: "git add -A")
     && (count(auto_push_eligible_committed_artifact_paths()) > 0)
-    && (count(author_commit_required_committed_artifact_paths()) == 2)
+    && (count(author_commit_required_committed_artifact_paths()) == 3)
 }
 
 // The packaging diagnostic must be reachable. GitHub runs `run:` under
@@ -401,6 +401,7 @@ test fn author_commit_required_paths_all_carry_a_hidden_segment() -> Bool {
 test fn hidden_segment_predicate_discriminates() -> Bool {
   path_has_hidden_segment(path: ".github/workflows/ci.yml")
     && path_has_hidden_segment(path: ".github/workflows/falsifier.yml")
+    && path_has_hidden_segment(path: ".github/workflows/fleet-converge.yml")
     && path_has_hidden_segment(path: "a/.hidden/b")
     && !path_has_hidden_segment(path: "release-bins.tgz")
     && !path_has_hidden_segment(path: "target/floor-component-receipt.json")

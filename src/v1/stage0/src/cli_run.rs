@@ -10685,6 +10685,136 @@ pub fn heartbeat_feed_snapshot() -> Option<HeartbeatFeedSnapshot> {
     })
 }
 
+/// One in-flight witness attempt the floor has admitted but not yet finished.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ActiveWorksetEntry {
+    pub attempt_id: String,
+    pub entry: String,
+    pub function: String,
+}
+
+struct ActiveWorksetState {
+    entries: Vec<ActiveWorksetEntry>,
+}
+
+static ACTIVE_WORKSET: Mutex<ActiveWorksetState> = Mutex::new(ActiveWorksetState {
+    entries: Vec::new(),
+});
+
+const FLOOR_PHASE_JOURNAL_ENV: &str = "GUNBC_FLOOR_PHASE_JOURNAL";
+
+// TEMPORARY PROJECTION (operator ruling 2026-08-13, #8239 → #8163): active-workset
+// admit/completed rows in GUNBC_FLOOR_PHASE_JOURNAL carry in-flight witness identity until
+// subject + measurement events land on the #8163 RecordedObservation per-producer ledger
+// (target/floor-attempts/<attempt>/events/<producer>.jsonl). Dissolve-on: #8163 on main +
+// floor walk emits through that ledger with a dedicated producer identity; delete this append
+// path once FLOOR2 consumes the ledger green by execution. NOT serialized into the floor
+// component receipt — see floor_component_resource_checkpoint_note.
+fn append_active_workset_phase_journal(state: &str, detail: &str) {
+    let Some(path) = std::env::var_os(FLOOR_PHASE_JOURNAL_ENV) else {
+        return;
+    };
+    let path = PathBuf::from(path);
+    if let Some(parent) = path.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            eprintln!(
+                "cli_run: create floor phase journal directory {}: {e}",
+                parent.display()
+            );
+            return;
+        }
+    }
+    let mut file = match std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        Ok(file) => file,
+        Err(e) => {
+            eprintln!("cli_run: open floor phase journal {}: {e}", path.display());
+            return;
+        }
+    };
+    let unix_millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let clean_detail = detail.replace(['\t', '\r', '\n'], " ");
+    let row = format!(
+        "{unix_millis}\t{}\tactive-workset\t{state}\t{clean_detail}\n",
+        std::process::id()
+    );
+    use std::io::Write as _;
+    if let Err(e) = file
+        .write_all(row.as_bytes())
+        .and_then(|()| file.flush())
+        .and_then(|()| file.sync_data())
+    {
+        eprintln!(
+            "cli_run: persist floor phase journal {}: {e}",
+            path.display()
+        );
+    }
+}
+
+pub fn floor_walk_attempt_id_from_env() -> String {
+    std::env::var("GUNBC_FLOOR_WALK_ATTEMPT_ID")
+        .or_else(|_| std::env::var("GUNBC_WALK_ATTEMPT_ID"))
+        .unwrap_or_else(|_| "local".to_string())
+}
+
+pub fn witness_attempt_id(entry: &str, function: &str) -> String {
+    format!(
+        "{}|{}|{}",
+        floor_walk_attempt_id_from_env(),
+        entry,
+        function
+    )
+}
+
+pub fn active_workset_admit(entry: &str, function: &str) {
+    let attempt_id = witness_attempt_id(entry, function);
+    append_active_workset_phase_journal(
+        "admitted",
+        &format!("attempt_id={attempt_id} entry={entry} function={function}"),
+    );
+    let mut g = ACTIVE_WORKSET.lock().unwrap_or_else(|p| p.into_inner());
+    g.entries.retain(|e| e.attempt_id != attempt_id);
+    g.entries.push(ActiveWorksetEntry {
+        attempt_id,
+        entry: entry.to_string(),
+        function: function.to_string(),
+    });
+}
+
+pub fn active_workset_complete(entry: &str, function: &str) {
+    let attempt_id = witness_attempt_id(entry, function);
+    append_active_workset_phase_journal(
+        "completed",
+        &format!("attempt_id={attempt_id} entry={entry} function={function}"),
+    );
+    let mut g = ACTIVE_WORKSET.lock().unwrap_or_else(|p| p.into_inner());
+    g.entries.retain(|e| e.attempt_id != attempt_id);
+}
+
+pub fn active_workset_snapshot() -> Vec<ActiveWorksetEntry> {
+    ACTIVE_WORKSET
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .entries
+        .clone()
+}
+
+/// Test helper: clears the process-wide active-workset registry between discriminating tests.
+#[doc(hidden)]
+pub fn active_workset_reset_for_test() {
+    ACTIVE_WORKSET
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .entries
+        .clear();
+}
+
 /// Drive one entry-completion: decrement the entry's closure refcounts, drop the
 /// per-module state that reached zero from every per-module cache (typed, parse,
 /// normalize-diag, ownership-diag, source-hash), AND drop the entry's assembled
@@ -10771,6 +10901,27 @@ fn index_schedule_entry_completed(
     // line appears for entries the affected set skipped without ever resolving them. The
     // former `entry='…'` spelling was read as "this entry was scheduled and ran" by two
     // independent readers hours apart, which is a property of the label, not the readers.
+    // Routine drain steps FOLD (law 4): the schedule passing an entry is the most ordinary event
+    // the floor produces — one line per discovered entry, thousands per run, none of them carrying
+    // a fact a reader acts on. What a reader acts on is `retention_unknown` GROWING, which is the
+    // drain admitting it could not classify a module's retention, so that is the arm that pierces.
+    //
+    // The trigger is the INCREASE, not the total: the total is monotone, so gating on `> 0` would
+    // print every remaining entry once the first unknown appeared — the fold would collapse exactly
+    // when the run got interesting. The aggregate `[floor-drain] receipt:` line still reports the
+    // totals at close, so folding here loses no count, only the per-entry retelling of it.
+    let unknown_grew = {
+        // `fetch_max`, not `swap`: retention_unknown is a cumulative monotone counter, and a swap
+        // lets two threads observing real growth each read the other's newer value as `prev` and
+        // conclude nothing grew — the signal is lost on both. fetch_max returns the previous
+        // maximum, so exactly the thread that raised it reports, and a raise is never dropped.
+        static LAST_UNKNOWN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let prev = LAST_UNKNOWN.fetch_max(retention_unknown, std::sync::atomic::Ordering::Relaxed);
+        retention_unknown > prev
+    };
+    if !unknown_grew && routine_rollup_folds() {
+        return Ok(());
+    }
     eprintln!(
         "[floor-drain] schedule-retention: schedule_passed_entry='{entry}' \
          released_modules={} evicted_modules={} evicted_graph={} \
@@ -10821,6 +10972,99 @@ mod heartbeat_feed_red_controls {
         heartbeat_feed_entry_completed();
         let snap = heartbeat_feed_snapshot().expect("still armed");
         assert_eq!(snap.entry_done, 1);
+    }
+}
+
+#[cfg(test)]
+mod active_workset_kill_path_controls {
+    use super::{
+        active_workset_admit, active_workset_complete, active_workset_reset_for_test,
+        active_workset_snapshot, witness_attempt_id,
+    };
+
+    static ACTIVE_WORKSET_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn with_active_workset_test_lock<F: FnOnce()>(f: F) {
+        let _guard = ACTIVE_WORKSET_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        active_workset_reset_for_test();
+        let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        active_workset_reset_for_test();
+        match run {
+            Ok(()) => {}
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
+    }
+
+    /// SIGKILL / step-cap / panic paths never run `active_workset_complete`. Durable
+    /// in-flight identity for that class is the GUNBC_FLOOR_PHASE_JOURNAL active-workset
+    /// rows (admitted without a matching completed), not the floor component receipt —
+    /// see floor_component_resource_checkpoint_note and floor_component_phase_journal_scaffold_note.
+    #[test]
+    fn admitted_entry_survives_without_completion() {
+        with_active_workset_test_lock(|| {
+            std::env::set_var("GUNBC_FLOOR_WALK_ATTEMPT_ID", "kill-control-admit-only");
+            let entry = "dag/test/claim/floor_component_receipt_witness_test.dag";
+            let function = "floor_component_receipt_run_incomplete_tail_holds";
+            active_workset_admit(entry, function);
+            let snap = active_workset_snapshot();
+            assert_eq!(
+                snap.len(),
+                1,
+                "kill path must leave admitted entry in registry without completion"
+            );
+            assert_eq!(snap[0].entry, entry);
+            assert_eq!(snap[0].function, function);
+            assert_eq!(snap[0].attempt_id, witness_attempt_id(entry, function));
+        });
+    }
+
+    #[test]
+    fn phase_journal_records_admit_without_completed_on_kill_path() {
+        with_active_workset_test_lock(|| {
+            let dir =
+                std::env::temp_dir().join(format!("active-workset-journal-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).expect("journal dir");
+            let journal = dir.join("phase.tsv");
+            std::env::set_var("GUNBC_FLOOR_PHASE_JOURNAL", &journal);
+            std::env::set_var("GUNBC_FLOOR_WALK_ATTEMPT_ID", "kill-control-journal");
+            let entry = "dag/test/claim/kill_path_fixture_test.dag";
+            let function = "kill_path_fixture_holds";
+            active_workset_admit(entry, function);
+            let text = std::fs::read_to_string(&journal).expect("journal written on admit");
+            assert!(
+                text.contains("active-workset") && text.contains("admitted"),
+                "admit must land in phase journal before any completion handler runs: {text}"
+            );
+            assert!(
+                text.contains("attempt_id="),
+                "journal row must carry attempt identity: {text}"
+            );
+            assert!(
+                !text.contains("completed"),
+                "kill path must not fabricate a completion journal row: {text}"
+            );
+            std::env::remove_var("GUNBC_FLOOR_PHASE_JOURNAL");
+            let _ = std::fs::remove_dir_all(&dir);
+        });
+    }
+
+    #[test]
+    fn completion_removes_entry_after_graceful_exit() {
+        with_active_workset_test_lock(|| {
+            std::env::set_var("GUNBC_FLOOR_WALK_ATTEMPT_ID", "graceful-complete-control");
+            let entry = "dag/test/claim/graceful_fixture_test.dag";
+            let function = "graceful_fixture_holds";
+            active_workset_admit(entry, function);
+            assert_eq!(active_workset_snapshot().len(), 1);
+            active_workset_complete(entry, function);
+            assert!(
+                active_workset_snapshot().is_empty(),
+                "graceful completion must drop the entry"
+            );
+        });
     }
 }
 
@@ -14988,6 +15232,133 @@ pub fn make_eval_context(
 /// decision logic lives entirely in .dag; this only transports the evaluated
 /// verdicts across the seed↔.dag boundary. Best-effort: if the policy module can't
 /// be resolved/evaluated, the funnel keeps its `Full` fallback (pre-funnel behavior).
+/// Decode one channel's evaluated `gunbc.output_policy.OutputDecision` variant.
+///
+/// REFUSES an unrecognised or absent variant instead of answering `Full`. The
+/// distinction the previous arm erased: a module that cannot be resolved is an
+/// environment fact the caller already treats as best-effort, but a variant this
+/// seed does not recognise is DRIFT between the .dag authority and its
+/// realization — the authority grew an arm the seed cannot honour. Answering
+/// `Full` there is the worst available reply, because `Full` is the pre-funnel
+/// behaviour: a new decision would decode as "unchanged", emit no diagnostic, and
+/// read as landed while doing nothing. Found while adding the rollup grain the
+/// batch-grain projection needs (DESIGN section 5 — a failure arm must refuse,
+/// never widen).
+fn decode_output_decision(
+    channel: &str,
+    observed_variant: Option<&str>,
+) -> Result<v1_interpreter::OutputDecision, String> {
+    use v1_interpreter::OutputDecision;
+    match observed_variant {
+        Some("Suppressed") => Ok(OutputDecision::Suppressed),
+        Some("Condensed") => Ok(OutputDecision::Condensed),
+        Some("Full") => Ok(OutputDecision::Full),
+        Some(other) => Err(format!(
+            "output policy drift: gunbc.output_policy resolved channel `{channel}` to OutputDecision variant `{other}`, which this seed does not decode. The .dag authority and its seed realization disagree; refusing rather than substituting Full (which is the pre-funnel behaviour and would read as landed)."
+        )),
+        None => Err(format!(
+            "output policy drift: gunbc.output_policy resolved channel `{channel}` to a value that is not an OutputDecision variant. Refusing rather than substituting Full."
+        )),
+    }
+}
+
+/// Whether routine per-witness lines fold into a batch-grain rollup instead of printing one
+/// line each. The DECISION is `gunbc.output_policy routine_rollup_grain_for`, resolved once at
+/// install; the seed only transports the verdict. Unset means the policy was never installed
+/// (a bare `gunbc run`, a test harness), and the honest default there is the old behaviour:
+/// print every line. Folding without having been told to fold is how output disappears.
+static ROUTINE_ROLLUP_FOLD: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+/// Whether a CONCLUDED witness outcome folds, resolved from
+/// `gunbc.observation_ci_render concluded_outcome_folds` — which derives it from
+/// `observation_class_density` — once at policy install and transported as a pair of verdicts.
+/// `(passing, failing)`. The seed holds an ANSWER; the rule stays in the authority.
+static CONCLUDED_OUTCOME_FOLD: std::sync::OnceLock<(bool, bool)> = std::sync::OnceLock::new();
+
+fn concluded_outcome_folds(passed: bool) -> bool {
+    match CONCLUDED_OUTCOME_FOLD.get() {
+        Some((p, f)) => {
+            if passed {
+                *p
+            } else {
+                *f
+            }
+        }
+        // Unresolved policy prints everything, the same honest default as the fold flag itself.
+        None => false,
+    }
+}
+
+/// Source roots the policy install resolved against, kept so the batch-summary render can reach
+/// `gunbc.observation_ci_render` at shard close. Stored rather than threaded because the floor
+/// walk between install and close is thirty frames of call stack that have no business carrying
+/// a rendering concern.
+static OBSERVATION_SOURCE_ROOTS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+
+fn routine_rollup_folds() -> bool {
+    *ROUTINE_ROLLUP_FOLD.get().unwrap_or(&false)
+}
+
+/// Render one batch-grain summary through the `.dag` authority. Every choice about how the line
+/// READS lives there; this is scalars out, string back.
+///
+/// `None` means the render did not happen, and the caller must say so rather than print nothing:
+/// having already suppressed the per-witness lines, silent absence here would turn a rendering
+/// failure into a batch that appears not to have run — the empty-observation narrow DESIGN names,
+/// with the seed as its author.
+#[allow(clippy::too_many_arguments)]
+fn render_batch_summary_line(
+    batch_index: u64,
+    batch_label: &str,
+    declared_population: u64,
+    passed: u64,
+    unaffected: u64,
+    deferred: u64,
+    failed: u64,
+    work_nanos: u64,
+) -> Option<String> {
+    // The duration crosses the seam as the std.measure carrier, not a bare integer: the seam's
+    // parameter is `work: Nanosecond`, and a caller passing milliseconds into a `work_nanos: Nat`
+    // would have typechecked. The seed builds no record of its own — it calls the `nanosecond`
+    // constructor across the interpreter boundary, so that constructor stays the single authority.
+    use v1_interpreter::Value;
+    let roots = OBSERVATION_SOURCE_ROOTS.get()?;
+    let entry = "dag/gunbc/observation_ci_render.dag";
+    let (graph, indices) = resolve_entry_graph_shared(roots, entry).ok()?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let arg = |name: &str, v: u64| (Some(name.to_string()), Value::Int(v as i64));
+    let work = v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "nanosecond",
+        &[(Some("count".to_string()), Value::Int(work_nanos as i64))],
+        false,
+    )
+    .ok()?;
+    let out = v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "ci_batch_summary_text",
+        &[
+            arg("batch_index", batch_index),
+            (
+                Some("batch_label".to_string()),
+                Value::Str(batch_label.to_string()),
+            ),
+            (Some("work".to_string()), work),
+            arg("declared_population", declared_population),
+            arg("passed", passed),
+            arg("unaffected", unaffected),
+            arg("deferred", deferred),
+            arg("failed", failed),
+        ],
+        false,
+    )
+    .ok()?;
+    match out {
+        Value::Str(s) => Some(s),
+        _ => None,
+    }
+}
+
 pub fn install_output_policy(source_roots: &[String]) {
     use v1_interpreter::{OutputDecision, Value};
     let (verbose, quiet) = match v1_interpreter::cli_verbosity() {
@@ -15017,17 +15388,26 @@ pub fn install_output_policy(source_roots: &[String]) {
         return;
     };
     let decision = |name: &str| -> OutputDecision {
-        match ctx.field(fields, name) {
+        let observed = match ctx.field(fields, name) {
             Some(Value::Variant { variant_name, .. }) => {
                 if ctx.sym_eq(*variant_name, "Suppressed") {
-                    OutputDecision::Suppressed
+                    Some("Suppressed")
                 } else if ctx.sym_eq(*variant_name, "Condensed") {
-                    OutputDecision::Condensed
+                    Some("Condensed")
+                } else if ctx.sym_eq(*variant_name, "Full") {
+                    Some("Full")
                 } else {
-                    OutputDecision::Full
+                    None
                 }
             }
-            _ => OutputDecision::Full,
+            _ => None,
+        };
+        match decode_output_decision(name, observed) {
+            Ok(d) => d,
+            Err(diagnostic) => {
+                eprintln!("::error::{diagnostic}");
+                std::process::exit(1);
+            }
         }
     };
     v1_interpreter::set_output_policy([
@@ -15037,6 +15417,73 @@ pub fn install_output_policy(source_roots: &[String]) {
         decision("shell_trace"),
         decision("instrumentation"),
     ]);
+
+    let _ = OBSERVATION_SOURCE_ROOTS.set(source_roots.to_vec());
+    // Ask the policy in a form with exactly two readings. An earlier revision called
+    // `routine_rollup_grain_for` — whose parameter is a `Verbosity`, not the two Bools passed —
+    // so every call errored and the catch-all arm read the error as "do not fold". CI duly ran
+    // with 5,310 per-witness lines and every witness green, because a policy read that fails
+    // closed to the OLD behaviour is indistinguishable from a policy that chose it.
+    let folds = match v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "routine_rollup_folds",
+        &[
+            (Some("verbose".to_string()), Value::Bool(verbose)),
+            (Some("quiet".to_string()), Value::Bool(quiet)),
+        ],
+        false,
+    ) {
+        Ok(Value::Bool(b)) => b,
+        // Counted, not absorbed: the run still prints every line (the safe direction), but it says
+        // so, so a policy that stopped being readable cannot present as a policy that said leaf.
+        other => {
+            eprintln!(
+                "::warning::output policy drift: gunbc.output_policy `routine_rollup_folds` did \
+                 not answer a Bool ({}); routine observation folding is DISABLED for this run and \
+                 every per-witness line will print",
+                match other {
+                    Ok(_) => "returned a non-Bool value".to_string(),
+                    Err(e) => format!("evaluation failed: {e}"),
+                }
+            );
+            false
+        }
+    };
+    let _ = ROUTINE_ROLLUP_FOLD.set(folds);
+    // Two evaluations per process, not one per witness: the density of a concluded outcome depends
+    // only on its class, so the projection's verdict is resolved here and carried.
+    // The cause travels with the failure, symmetrically with `routine_rollup_folds` above. An
+    // earlier revision matched `_ => None` here, so the two distinguishable failures — the policy
+    // answered something that is not a Bool, and the policy could not be evaluated in this entry's
+    // closure at all — arrived as one indistinguishable warning. That is the same conflation this
+    // whole lane is about, in the diagnostic that reports it: "the policy is wrong" and "the policy
+    // is not loaded here" have different remedies, and only the first is drift.
+    let ask_fold = |passed: bool| -> Result<bool, String> {
+        match v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "concluded_outcome_folds",
+            &[(Some("passed".to_string()), Value::Bool(passed))],
+            false,
+        ) {
+            Ok(Value::Bool(b)) => Ok(b),
+            Ok(_) => Err(format!("passed={passed}: returned a non-Bool value")),
+            Err(e) => Err(format!("passed={passed}: evaluation failed: {e}")),
+        }
+    };
+    match (ask_fold(true), ask_fold(false)) {
+        (Ok(p), Ok(f)) => {
+            let _ = CONCLUDED_OUTCOME_FOLD.set((p, f));
+        }
+        (p, f) => {
+            let causes: Vec<String> = [p.err(), f.err()].into_iter().flatten().collect();
+            eprintln!(
+                "::warning::output policy drift: gunbc.observation_ci_render \
+                 `concluded_outcome_folds` did not answer a Bool ({}); per-witness folding is \
+                 DISABLED for this run and every witness line will print",
+                causes.join("; ")
+            );
+        }
+    }
 
     install_effect_stream_policy(&ctx, verbose, quiet);
 }
@@ -15742,6 +16189,10 @@ pub fn failure_receipt_companion(function: &str) -> FailureReceiptCompanionLooku
     test_module_hygiene_bridge::failure_receipt_companion_from_authority(function)
 }
 
+pub fn witness_verdict_diagnostic_companion(function: &str) -> FailureReceiptCompanionLookup {
+    test_module_hygiene_bridge::witness_verdict_diagnostic_companion_from_authority(function)
+}
+
 /// Append failure-receipt loudness to a Bool(false) witness detail string.
 pub fn append_failure_receipt_companion_loudness(
     detail: &mut String,
@@ -15764,6 +16215,43 @@ pub fn append_failure_receipt_companion_loudness(
     }
 }
 
+/// Append a typed witness verdict diagnostic when the witness declares a companion.
+pub fn append_witness_verdict_diagnostic_loudness(
+    detail: &mut String,
+    ctx: &v1_interpreter::InterpContext,
+    witness_function: &str,
+) {
+    match witness_verdict_diagnostic_companion(witness_function) {
+        FailureReceiptCompanionLookup::Declared(companion) => {
+            let diagnostic = run_witness_verdict_diagnostic(ctx, &companion);
+            if !diagnostic.is_empty() {
+                detail.push_str(" | ");
+                detail.push_str(&diagnostic);
+            }
+        }
+        FailureReceiptCompanionLookup::AuthorityRefused { cause } => {
+            detail.push_str(" | witness_verdict_diagnostic_refused: ");
+            detail.push_str(&cause);
+        }
+        FailureReceiptCompanionLookup::NotDeclared => {}
+    }
+}
+
+pub fn run_witness_verdict_diagnostic(
+    ctx: &v1_interpreter::InterpContext,
+    function: &str,
+) -> String {
+    match v1_interpreter::run_in_context(ctx, function, false) {
+        Ok(v1_interpreter::Value::Str(s)) => s,
+        Ok(other) => format!(
+            "witness_verdict_diagnostic_refused: {function} returned {}, expected String",
+            ctx.format_value(&other)
+        ),
+        Err(v1_interpreter::InterpError::NoSuchFunction { .. }) => String::new(),
+        Err(e) => format!("witness_verdict_diagnostic_refused: {function}: {e}"),
+    }
+}
+
 /// Production claim_executor / discovery-summary Bool(false) detail rendering.
 /// Exposed to `.dag` witnesses via `seed_runner_bool_false_failure_detail` so CI can
 /// exercise the same `append_failure_receipt_companion_loudness` path the floor runner uses.
@@ -15782,6 +16270,7 @@ pub fn seed_runner_bool_false_failure_detail(
 ) -> String {
     let mut detail = "returned Bool(false)".to_string();
     append_failure_receipt_companion_loudness(&mut detail, ctx, witness_function);
+    append_witness_verdict_diagnostic_loudness(&mut detail, ctx, witness_function);
     detail
 }
 
@@ -24695,6 +25184,7 @@ fn finalize_discovery_summary(
         .collect::<std::collections::HashSet<_>>()
         .len();
     summary.selection_categorization_reason = selection_categorization_reason;
+    emit_batch_summary(&summary);
     summary
 }
 
@@ -24773,6 +25263,56 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
             .max(summary.roster_closure_nodes);
     }
     merged
+}
+
+/// The ONE line that stands in for every routine witness the fold swallowed.
+///
+/// It emits from `finalize_discovery_summary`, and both halves of that placement were learned the
+/// hard way. Not from `run_discovery_rows`, which runs per entry-group: emitting there produced
+/// 1,112 summaries of one witness each on a real floor — a per-witness line wearing a batch's name
+/// — plus 1,112 resolves of the render module, which put batch 1 over its wall clamp. And not from
+/// `merge_discovery_summaries` either, because the merge is an ARGUMENT to finalize, so
+/// `deferred_rows` is still empty there and the line printed `0 deferred` on a run with 1,078 of
+/// them — a displayed zero standing where the fold had not looked, which is the exact claim this
+/// summary was rewritten to stop making. Finalize is where the summary is complete, and it is also
+/// the one point every path passes through, including the serial path that never merges.
+///
+/// Emitted only when the fold ran: with folding off every witness already printed, and a summary
+/// would be a second telling of the same thing.
+fn emit_batch_summary(merged: &DiscoverySummary) {
+    if !floor_stream_enabled() || !routine_rollup_folds() {
+        return;
+    }
+    let deferred = merged.deferred_rows.len() as u64;
+    let failed = merged.failures.len() as u64;
+    // DECLARED GAP: this is one line per DISCOVERY INVOCATION, not per floor-plan batch. A run with
+    // six plan batches emits four of these, all carrying the same label, because merge time is
+    // where a merged summary exists and the plan's RunSegment/BatchSegment identity is not in
+    // scope here. The population is passed so the lines are at least distinguishable by what they
+    // covered, and the identity stays honest by not being invented.
+    // Dissolve-on: the summary moves to the floor-plan batch lifecycle and carries the plan's real
+    // run and batch segments.
+    match render_batch_summary_line(
+        0,
+        "witness discovery",
+        merged.total as u64,
+        merged.passed as u64,
+        merged.skipped as u64,
+        deferred,
+        failed,
+        merged.total_measured_nanos as u64,
+    ) {
+        Some(line) => eprintln!("{line}"),
+        // Fail-closed: the routine lines are already gone, so a silent return would render a batch
+        // that ran thousands of witnesses as one that printed nothing at all.
+        None => eprintln!(
+            "::error::observation render unavailable: could not render the batch summary through \
+             gunbc.observation_ci_render `ci_batch_summary_text`; the routine witness lines were \
+             folded and their summary is therefore MISSING, not empty (passed={} unaffected={} \
+             deferred={deferred} failed={failed})",
+            merged.passed, merged.skipped
+        ),
+    }
 }
 
 // SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): the floor-observability cluster
@@ -25020,6 +25560,14 @@ impl ShardStyle {
         passed: bool,
     ) {
         if !self.stream {
+            return;
+        }
+        // Law 4's fold at the site that produces two thirds of the console. The routing decision
+        // is NOT restated here: `concluded_outcome_folds` is the verdict `ci_routine_projection`
+        // and `observation_class_density` produced, resolved once at policy install. A pass folds
+        // into the batch rollup and prints nothing; an anomaly pierces at its exact leaf, which is
+        // the whole point of collapsing the routine.
+        if routine_rollup_folds() && concluded_outcome_folds(passed) {
             return;
         }
         let ms = wall_nanos as f64 / 1.0e6;
@@ -25358,7 +25906,9 @@ fn run_discovery_rows(
             FloorPhase::Eval,
             &format!("{}::{}", row.entry, row.function),
         );
+        active_workset_admit(&row.entry, &row.function);
         let (outcome, receipt) = run_claim_measured(ctx_ref, closure_subject, &row.function);
+        active_workset_complete(&row.entry, &row.function);
         let wall_nanos = receipt.wall_nanos;
         summary.total_measured_nanos += wall_nanos;
         summary.performance_receipts.push(receipt);
@@ -25408,6 +25958,7 @@ fn run_discovery_rows(
             ClaimOutcome::Fail => {
                 let mut failure = format!("{} ({}) returned Bool(false)", row.function, row.entry);
                 append_failure_receipt_companion_loudness(&mut failure, ctx_ref, &row.function);
+                append_witness_verdict_diagnostic_loudness(&mut failure, ctx_ref, &row.function);
                 summary.failures.push(failure);
             }
             ClaimOutcome::NotBool { got } => summary.failures.push(format!(
@@ -40737,7 +41288,11 @@ fn project_external_authority_anchor(module_path: &str) -> ExternalAuthorityAnch
 }
 
 fn external_authority_machinery_exempt_module_paths() -> &'static [&'static str] {
-    &["extdeps.uri", "extdeps.external_authority"]
+    &[
+        "extdeps.uri",
+        "extdeps.external_authority",
+        "extdeps.publication",
+    ]
 }
 
 pub fn extdeps_derived_extdeps_module_paths() -> Vec<String> {
@@ -42627,6 +43182,58 @@ mod annotation_erased_scan_projection {
             vec!["std.decl_ref".to_string()],
             "a real reference to the same module must still produce the edge"
         );
+    }
+}
+
+#[cfg(test)]
+mod output_policy_decode_tests {
+    use super::decode_output_decision;
+    use crate::v1_interpreter::OutputDecision;
+
+    // matches! rather than assert_eq! deliberately: OutputDecision carries no Debug,
+    // and deriving one on an interpreter carrier so a test can print it would be the
+    // test dictating the shape of the thing it observes.
+    #[test]
+    fn known_variants_decode_to_their_decision() {
+        assert!(matches!(
+            decode_output_decision("claim_result", Some("Suppressed")),
+            Ok(OutputDecision::Suppressed)
+        ));
+        assert!(matches!(
+            decode_output_decision("claim_result", Some("Condensed")),
+            Ok(OutputDecision::Condensed)
+        ));
+        assert!(matches!(
+            decode_output_decision("claim_result", Some("Full")),
+            Ok(OutputDecision::Full)
+        ));
+    }
+
+    // The discriminating control: before this repair an unrecognised variant answered
+    // Full, which is the pre-funnel behaviour — so an arm added to the .dag authority
+    // would have decoded as "unchanged" with no diagnostic. The refusal must name the
+    // channel and the variant, because those are the two facts needed to locate the
+    // drift between authority and seed.
+    #[test]
+    fn an_unrecognised_variant_refuses_instead_of_answering_full() {
+        let err = match decode_output_decision("claim_result", Some("RolledUp")) {
+            Ok(_) => panic!("an unknown OutputDecision variant must refuse, not decode"),
+            Err(e) => e,
+        };
+        assert!(
+            err.contains("claim_result"),
+            "refusal names the channel: {err}"
+        );
+        assert!(err.contains("RolledUp"), "refusal names the variant: {err}");
+    }
+
+    #[test]
+    fn an_absent_variant_refuses_instead_of_answering_full() {
+        let err = match decode_output_decision("progress", None) {
+            Ok(_) => panic!("a non-variant policy field must refuse, not decode"),
+            Err(e) => e,
+        };
+        assert!(err.contains("progress"), "refusal names the channel: {err}");
     }
 }
 

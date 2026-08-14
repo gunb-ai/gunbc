@@ -63,9 +63,10 @@ import gunbc.floor_component_receipt_document {
   receipt_member_schema, receipt_member_run_id, receipt_member_component_count,
   receipt_member_affected_set_cold_control, receipt_member_unsuccessful_components,
   receipt_member_components, receipt_member_selection_degradation,
+  receipt_member_run_terminal,
   receipt_member_workflow_name, receipt_member_head_sha
 ,
-  FloorComponentFailureMode, ModeNoFailure, ModeBudgetExceeded, ModeInfra, ModeWitnessRed, ModeNotReached, ModeUnrecorded,
+  FloorComponentFailureMode, ModeNoFailure, ModeBudgetExceeded, ModeInfra, ModeWitnessRed, ModeHostDependencyAbsent, ModeNotReached, ModeRunIncomplete, ModeUnrecorded,
   floor_component_failure_mode_of, floor_component_failure_mode_tag, floor_component_outcome_of_mode,
   ComponentOutcomeRead, ComponentConcluded, ComponentNotConcluded,
   floor_component_outcome_tag, floor_component_outcome_wire_tag}
@@ -81,6 +82,10 @@ data floor_component_receipt_seed_transport_deferral_note: String = "PURE BOOTST
 data floor_component_receipt_unit_surface_note: String = "Every duration on this module's public surface is the std.measure carrier Millisecond (= Measure<Time, Milli, Nat>, the ratified Measure<Q,S,M> shape), never a bare Nat named *_ms. Two independent reviews (review 45058, review 45070) flagged the earlier *_ms: Nat constructor parameters, and they were right: a duration whose unit lives only in the field name is form 3 of the standing unit-modeling merge-hold, and the fact that a sibling seed seam still spells it that way makes that seam debt rather than a licence. Immediate millisecond(count:) wrapping inside the body does NOT discharge it — the parameter surface is what callers can get wrong, and a caller passing seconds into wall_ms would have typechecked. The seed constructs no carrier: it calls millisecond(count:) across the interpreter boundary and passes the Millisecond back in, so the constructor stays the single authority (a Value::Record built in Rust would have forked it). There is exactly ONE seed entry point, floor_component_row_of_failure_mode, whose failure_mode vocabulary covers every disposition the walk can report including not_reached."
 
 data floor_component_receipt_schema: String = "floor-component-receipt/v1"
+
+data floor_component_resource_checkpoint_note: String = "OPERATOR RULING 2026-08-13 (#8239 → #8163): this receipt is a per-component RESOURCE CHECKPOINT for alert routing — batch/component outcomes, run_terminal incomplete envelope, selection degradation — NOT a second observation ledger and NOT a carrier for the exact active workset. Subject identity (entry/module/phase) and live measurements (RSS, swap, PSI, progress) belong on the one attempt ledger #8163 lands (std.observation RecordedObservation at target/floor-attempts/<attempt>/events/<producer>.jsonl, carrier a974f44 / sunny-pike-825), which the coordinator tails. A receipt field named active_workset would be empty by construction at every checkpoint the sequential floor writes today, while the subjects it would have named ride GUNBC_FLOOR_PHASE_JOURNAL instead — two channels reconciled by hand is the split the ruling refuses. The field is therefore absent from this schema; fold absorption into #8163 rather than mint a parallel authority here."
+
+data floor_component_phase_journal_scaffold_note: String = "TEMPORARY PROJECTION (operator ruling 2026-08-13, verdict bound to #8239 head): GUNBC_FLOOR_PHASE_JOURNAL active-workset admit/completed rows are the interim channel for in-flight witness identity until measurements and subjects emit as RecordedObservation events on the #8163 per-producer ledger (own producer identity — sequence-checked files refuse a second writer). Dissolve-on: #8163 carrier on main + floor walk emits subject/measurement events through that ledger; delete journal rows and cli_run active-workset append once FLOOR2 reducer consumes the ledger path green by execution."
 
 data floor_component_receipt_path: String = "target/floor-component-receipt.json"
 
@@ -277,6 +282,40 @@ fn floor_component_row_of_failure_mode(
   }
 }
 
+fn floor_component_row_not_concluded(
+  run_id: NonEmptyStr,
+  index: Nat,
+  label: NonEmptyStr,
+  selection_tag: NonEmptyStr,
+  failure_mode: NonEmptyStr,
+  detail: NonEmptyStr
+) -> FloorComponentRow? {
+  match floor_component_selection_of_tag(tag: selection_tag) {
+    Absent => none
+    Present { value: sel } =>
+      match floor_component_failure_mode_of(mode: failure_mode) {
+        Absent => none
+        Present { value: mode } => Present {
+          value: FloorComponentRow {
+            event: ObservationEvent {
+              subject: floor_component_subject(run_id: run_id, index: index, label: label),
+              transition: Begin,
+              durations: observation_durations_wall(
+                elapsed: millisecond_to_nanosecond(m: millisecond(count: 0))
+              ),
+              rss: MeasuredUnavailable {
+                cause: "per-component RSS not sampled by the floor walk" as NonEmptyStr
+              }
+            },
+            selection: sel,
+            witnesses: 0,
+            failure_mode: mode
+          }
+        }
+      }
+  }
+}
+
 fn floor_component_row_index(row: FloorComponentRow) -> Nat {
   fold(row.event.subject.segments, init: 0, f: (acc, seg) =>
     match seg {
@@ -406,6 +445,20 @@ fn floor_unsuccessful_component_rows(rows: List<FloorComponentRow>) -> List<Floo
   rows |> filter(r => !floor_component_row_is_done(row: r))
 }
 
+fn floor_run_terminal_json(
+  disposition: NonEmptyStr,
+  cause: NonEmptyStr,
+  concluded_count: Nat,
+  pending_from_index: Nat
+) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "disposition", value: json_string(s: disposition as String)),
+    json_kv(key: "cause", value: json_string(s: cause as String)),
+    json_kv(key: "concluded_count", value: json_int(n: concluded_count)),
+    json_kv(key: "pending_from_index", value: json_int(n: pending_from_index))
+  ])
+}
+
 fn floor_component_receipt_json_value(
   workflow_name: NonEmptyStr,
   run_id: NonEmptyStr,
@@ -416,7 +469,12 @@ fn floor_component_receipt_json_value(
   selected: Nat,
   total: Nat,
   categorization_unavailable: Bool,
-  categorization_reason: String
+  categorization_reason: String,
+  run_terminal_present: Bool,
+  run_terminal_disposition: NonEmptyStr,
+  run_terminal_cause: NonEmptyStr,
+  concluded_count: Nat,
+  pending_from_index: Nat
 ) -> JsonValue {
   let base = [
     json_kv(key: receipt_member_schema, value: json_string(s: floor_component_receipt_schema)),
@@ -432,8 +490,25 @@ fn floor_component_receipt_json_value(
       elements: rows |> map(r => floor_component_row_json(row: r))
     ))
   ]
+  let with_terminal = if run_terminal_present {
+    concat(base, [
+      json_kv(
+        key: receipt_member_run_terminal,
+        value: floor_run_terminal_json(
+          disposition: run_terminal_disposition,
+          cause: run_terminal_cause,
+          concluded_count: concluded_count,
+          pending_from_index: pending_from_index
+        )
+      )
+    ])
+  } else {
+    concat(base, [
+      json_kv(key: receipt_member_run_terminal, value: json_null())
+    ])
+  }
   if selection_present {
-    json_object(members: concat(base, [
+    json_object(members: concat(with_terminal, [
       json_kv(
         key: receipt_member_selection_degradation,
         value: selection_degradation_receipt_json(
@@ -446,7 +521,7 @@ fn floor_component_receipt_json_value(
       )
     ]))
   } else {
-    json_object(members: concat(base, [
+    json_object(members: concat(with_terminal, [
       json_kv(key: receipt_member_selection_degradation, value: json_null())
     ]))
   }
@@ -470,7 +545,73 @@ fn floor_component_receipt_document(
     selected: 0,
     total: 0,
     categorization_unavailable: false,
-    categorization_reason: ""
+    categorization_reason: "",
+    run_terminal_present: false,
+    run_terminal_disposition: "concluded" as NonEmptyStr,
+    run_terminal_cause: "none" as NonEmptyStr,
+    concluded_count: count(rows),
+    pending_from_index: 0
+  ))
+}
+
+fn floor_component_receipt_document_incomplete(
+  workflow_name: NonEmptyStr,
+  run_id: NonEmptyStr,
+  head_sha: CommitSha,
+  rows: List<FloorComponentRow>,
+  run_terminal_cause: NonEmptyStr,
+  concluded_count: Nat,
+  pending_from_index: Nat
+) -> String {
+  serialize_json(v: floor_component_receipt_json_value(
+    workflow_name: workflow_name,
+    run_id: run_id,
+    head_sha: head_sha,
+    rows: rows,
+    selection_present: false,
+    selection_mode_tag: "off" as NonEmptyStr,
+    selected: 0,
+    total: 0,
+    categorization_unavailable: false,
+    categorization_reason: "",
+    run_terminal_present: true,
+    run_terminal_disposition: "incomplete" as NonEmptyStr,
+    run_terminal_cause: run_terminal_cause,
+    concluded_count: concluded_count,
+    pending_from_index: pending_from_index
+  ))
+}
+
+fn floor_component_receipt_document_incomplete_with_selection(
+  workflow_name: NonEmptyStr,
+  run_id: NonEmptyStr,
+  head_sha: CommitSha,
+  rows: List<FloorComponentRow>,
+  run_terminal_cause: NonEmptyStr,
+  concluded_count: Nat,
+  pending_from_index: Nat,
+  selection_mode_tag: NonEmptyStr,
+  selected: Nat,
+  total: Nat,
+  categorization_unavailable: Bool,
+  categorization_reason: String
+) -> String {
+  serialize_json(v: floor_component_receipt_json_value(
+    workflow_name: workflow_name,
+    run_id: run_id,
+    head_sha: head_sha,
+    rows: rows,
+    selection_present: true,
+    selection_mode_tag: selection_mode_tag,
+    selected: selected,
+    total: total,
+    categorization_unavailable: categorization_unavailable,
+    categorization_reason: categorization_reason,
+    run_terminal_present: true,
+    run_terminal_disposition: "incomplete" as NonEmptyStr,
+    run_terminal_cause: run_terminal_cause,
+    concluded_count: concluded_count,
+    pending_from_index: pending_from_index
   ))
 }
 
@@ -495,6 +636,11 @@ fn floor_component_receipt_document_with_selection(
     selected: selected,
     total: total,
     categorization_unavailable: categorization_unavailable,
-    categorization_reason: categorization_reason
+    categorization_reason: categorization_reason,
+    run_terminal_present: false,
+    run_terminal_disposition: "concluded" as NonEmptyStr,
+    run_terminal_cause: "none" as NonEmptyStr,
+    concluded_count: count(rows),
+    pending_from_index: 0
   ))
 }

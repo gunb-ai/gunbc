@@ -35,7 +35,12 @@ import gunbc.provider_standing {
   dispatch_automatic_provider_preference,
   select_first_preferred_kind,
 }
-import gunbc.provider_standing_live_probes { provider_standing_from_live_codex_probes }
+import gunbc.codex_provider_runtime_receipt {
+  CodexProcessFingerprintStanding,
+  CodexProcessFingerprintObserved,
+  CodexProcessFingerprintUnobserved,
+  codex_process_fingerprint_unobserved_reason,
+}
 import extdeps.llm.cursor_cli { CursorModelId, cursor_model_auto }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import gunbc.roadmap_model {
@@ -104,7 +109,7 @@ type CodexOffer {
   standing: ProviderStanding
   default_effort: ReasoningEffort
   deep: DeepRealization
-  process_fingerprint: NonEmptyStr
+  process_fingerprint: CodexProcessFingerprintStanding
 }
 
 type ClaudeOffer {
@@ -237,9 +242,10 @@ type DispatchSelectionResult
       reason: NonEmptyStr
     }
 
-data dispatch_codex_process_fingerprint_note: String = "LIVE RECEIPT (srv1, 2026-07-27): the authenticated npm-installed Codex CLI (`/usr/bin/codex` launcher, codex-cli 0.133.0) reports pane_current_command `node` while a real read-only `codex exec --json` turn is active. The pane emitted thread.started, turn.started, and item.completed before exit. Therefore the current host realization's expected fingerprint is node, not the argv token codex. This is deliberately fail-closed across packaging changes: if provisioning moves srv1 to a standalone native binary and tmux begins reporting codex, ownership/Stop refuses until that new realization is observed and this row changes with its receipt."
+data dispatch_codex_process_fingerprint_note: String = "SUPERSEDED AS EVIDENCE (operator ruling 2026-08-13): the literal below is NOT a process fingerprint receipt — two branches agreeing on a hand-authored string is agreement, not observation. Authoritative standing lives in gunbc.codex_provider_runtime_receipt CodexProviderRuntimeReceipt.process_fingerprint, derived from the bundled runtime converge installs; #8224 must consume that receipt, not this constant. Until wet tmux observation on the bundled binary lands, process_fingerprint is CodexProcessFingerprintUnobserved and dispatch must refuse rather than substitute this literal. Historical context (srv1 npm-shim, 2026-07-27): authenticated /usr/bin/codex (0.133.0) reported pane_current_command node during exec — that observation applied to the npm launcher, not the bundled-native 0.146.0 tree this PR converges."
 
 data dispatch_codex_process_fingerprint: NonEmptyStr = "node" as NonEmptyStr
+data dispatch_codex_process_fingerprint_unobserved_selection_refusal: NonEmptyStr = "Codex dispatch selection refused: bundled-native process fingerprint unobserved; derive from CodexProviderRuntimeReceipt after wet tmux observation — never from dispatch_codex_process_fingerprint literal" as NonEmptyStr
 data dispatch_claude_process_fingerprint: NonEmptyStr = "claude" as NonEmptyStr
 data dispatch_cursor_process_fingerprint: NonEmptyStr = "cursor-agent" as NonEmptyStr
 
@@ -357,7 +363,7 @@ data dispatch_selection_standing_ineligible_reason: NonEmptyStr = "no provider o
 
 data dispatch_selection_shape_mismatch_reason: NonEmptyStr = "no provider offer matches the requested selection shape" as NonEmptyStr
 
-data dispatch_production_standing_unobserved_refusal_note: String = "Production Codex inventory rows carry probe-derived ProviderStandingFromFact via provider_standing_from_live_codex_probes (dashboard version + login-status probes). Entitlement and account-limit axes stay honestly unobserved at this bridge; selection refuses when those axes block eligibility. RecordedFact standing observations (nimble-owl-833) supersede probe-derived bundles. Spawn-shape witnesses use fixture_inventory_* builders."
+data dispatch_production_standing_unobserved_refusal_note: String = "Production Codex inventory rows carry declared provider_standing_inventory_unobserved standing and CodexProcessFingerprintUnobserved at selection time; wet probe-derived standing via provider_standing_from_live_codex_probes is reserved for dashboard readiness, not hermetic inventory build. Entitlement and account-limit axes stay honestly unobserved at this bridge; selection refuses when those axes block eligibility. RecordedFact standing observations (nimble-owl-833) supersede probe-derived bundles. Spawn-shape witnesses use fixture_inventory_* builders."
 
 fn dispatch_temporal_unobserved() -> DispatchTemporalBounds {
   DispatchTemporalUnobserved { reason: dispatch_selection_temporal_unobserved_reason }
@@ -431,9 +437,30 @@ fn dispatch_execution_receipt(
   }
 }
 
+fn production_codex_process_fingerprint_standing() -> CodexProcessFingerprintStanding {
+  CodexProcessFingerprintUnobserved {
+    reason: codex_process_fingerprint_unobserved_reason,
+  }
+}
+
+fn fixture_codex_process_fingerprint_standing() -> CodexProcessFingerprintStanding {
+  CodexProcessFingerprintObserved {
+    fingerprint: dispatch_codex_process_fingerprint,
+  }
+}
+
+fn codex_offer_observed_process_fingerprint(offer: CodexOffer) -> NonEmptyStr? {
+  match offer.process_fingerprint {
+    CodexProcessFingerprintObserved { fingerprint } => Present { value: fingerprint }
+    CodexProcessFingerprintUnobserved { reason: _ } => none
+  }
+}
+
 fn codex_offer_for_instance_with_standing(
   instance: HostDashboardInstance,
   standing: ProviderStanding,
+  executable: FilePath,
+  process_fingerprint: CodexProcessFingerprintStanding,
 ) -> CodexOffer {
   CodexOffer {
     instance: ProviderInstance {
@@ -441,7 +468,7 @@ fn codex_offer_for_instance_with_standing(
       host: ProviderInstanceFieldUnobserved {
         reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
       },
-      executable: dashboard_instance_provider_executable(instance: instance) as NonEmptyStr,
+      executable: executable as NonEmptyStr,
       observed_version: ProviderInstanceFieldUnobserved {
         reason: "inventory row is declared, not observed at selection time" as NonEmptyStr,
       },
@@ -463,15 +490,87 @@ fn codex_offer_for_instance_with_standing(
     standing: standing,
     default_effort: ReasoningMedium,
     deep: DeepUnavailable,
-    process_fingerprint: dispatch_codex_process_fingerprint,
+    process_fingerprint: process_fingerprint,
   }
 }
 
-fn codex_offer_for_instance(instance: HostDashboardInstance) -> CodexOffer {
-  codex_offer_for_instance_with_standing(
-    instance: instance,
-    standing: provider_standing_from_live_codex_probes(instance: instance),
-  )
+fn codex_inventory_offers_for_instance(instance: HostDashboardInstance) -> List<ProviderOffer> {
+  match dashboard_instance_provider_executable(instance: instance) {
+    Absent => []
+    Present { value: executable } => [
+      OfferCodex {
+        offer: codex_offer_for_instance_with_standing(
+          instance: instance,
+          standing: provider_standing_inventory_unobserved(),
+          executable: executable,
+          process_fingerprint: production_codex_process_fingerprint_standing(),
+        ),
+      },
+    ]
+  }
+}
+
+fn fixture_codex_offer_with_standing(
+  instance: HostDashboardInstance,
+  standing: ProviderStanding,
+  executable: FilePath,
+) -> ProviderOffer {
+  OfferCodex {
+    offer: codex_offer_for_instance_with_standing(
+      instance: instance,
+      standing: standing,
+      executable: executable,
+      process_fingerprint: fixture_codex_process_fingerprint_standing(),
+    ),
+  }
+}
+
+fn fixture_inventory_codex_then_claude(
+  instance: HostDashboardInstance,
+  codex_standing: ProviderStanding,
+  claude_standing: ProviderStanding,
+) -> ProviderInventory {
+  match dashboard_instance_provider_executable(instance: instance) {
+    Absent =>
+      ProviderInventory {
+        offers: [fixture_claude_offer(standing: claude_standing)],
+      }
+    Present { value: executable } =>
+      ProviderInventory {
+        offers: [
+          fixture_codex_offer_with_standing(
+            instance: instance,
+            standing: codex_standing,
+            executable: executable,
+          ),
+          fixture_claude_offer(standing: claude_standing),
+        ],
+      }
+  }
+}
+
+fn fixture_inventory_claude_then_codex(
+  instance: HostDashboardInstance,
+  codex_standing: ProviderStanding,
+  claude_standing: ProviderStanding,
+) -> ProviderInventory {
+  match dashboard_instance_provider_executable(instance: instance) {
+    Absent =>
+      ProviderInventory {
+        offers: [fixture_claude_offer(standing: claude_standing)],
+      }
+    Present { value: executable } =>
+      ProviderInventory {
+        offers: [
+          fixture_claude_offer(standing: claude_standing),
+          fixture_codex_offer_with_standing(
+            instance: instance,
+            standing: codex_standing,
+            executable: executable,
+          ),
+        ],
+      }
+  }
 }
 
 fn claude_offer_for_instance_with_standing(
@@ -517,8 +616,9 @@ fn provider_inventory_for_instance(instance: HostDashboardInstance) -> ProviderI
   if instance.instance_id == srv2_dashboard_lab_id
     || instance.instance_id == srv2_dashboard_preview_id {
     ProviderInventory {
-      offers: [
-        OfferCodex { offer: codex_offer_for_instance(instance: instance) },
+      offers: concat(
+        codex_inventory_offers_for_instance(instance: instance),
+        [
         OfferCursor {
           offer: CursorOffer {
             instance: ProviderInstance {
@@ -546,13 +646,12 @@ fn provider_inventory_for_instance(instance: HostDashboardInstance) -> ProviderI
             process_fingerprint: dispatch_cursor_process_fingerprint,
           },
         },
-      ],
+        ],
+      ),
     }
   } else {
     ProviderInventory {
-      offers: [
-        OfferCodex { offer: codex_offer_for_instance(instance: instance) },
-      ],
+      offers: codex_inventory_offers_for_instance(instance: instance),
     }
   }
 }
@@ -564,6 +663,7 @@ fn default_provider_selection_request() -> ProviderSelectionRequest {
 fn codex_effort_for_profile(
   offer: CodexOffer,
   profile: ExecutionProfile,
+  observed_fingerprint: NonEmptyStr,
 ) -> DispatchSelectionResult {
   match profile {
     ProfileAutomatic => {
@@ -572,7 +672,7 @@ fn codex_effort_for_profile(
           account: codex_roadmap_account_selection(),
           model: dispatch_codex_default_model,
           effort: offer.default_effort,
-          process_fingerprint: offer.process_fingerprint,
+          process_fingerprint: observed_fingerprint,
         },
         instance: offer.instance,
         account_binding: offer.account_binding,
@@ -595,7 +695,7 @@ fn codex_effort_for_profile(
               account: codex_roadmap_account_selection(),
               model: dispatch_codex_default_model,
               effort: effort,
-              process_fingerprint: offer.process_fingerprint,
+              process_fingerprint: observed_fingerprint,
             },
             instance: offer.instance,
             account_binding: offer.account_binding,
@@ -631,11 +731,35 @@ fn resolve_codex_offer(
   request: ProviderSelectionRequest,
   node_sizing: NodeSizing,
 ) -> DispatchSelectionResult {
+  match codex_offer_observed_process_fingerprint(offer: offer) {
+    Absent =>
+      DispatchSelectionRefused {
+        node_sizing: node_sizing,
+        requested_selection: request,
+        reason: dispatch_codex_process_fingerprint_unobserved_selection_refusal,
+      }
+    Present { value: observed_fingerprint } =>
+      resolve_codex_offer_with_observed_fingerprint(
+        offer: offer,
+        observed_fingerprint: observed_fingerprint,
+        request: request,
+        node_sizing: node_sizing,
+      )
+  }
+}
+
+fn resolve_codex_offer_with_observed_fingerprint(
+  offer: CodexOffer,
+  observed_fingerprint: NonEmptyStr,
+  request: ProviderSelectionRequest,
+  node_sizing: NodeSizing,
+) -> DispatchSelectionResult {
   match request {
     SelectAutomatically { profile } =>
       match codex_effort_for_profile(
         offer: offer,
         profile: profile,
+        observed_fingerprint: observed_fingerprint,
       ) {
         DispatchSelectionResolved { receipt } =>
           DispatchSelectionResolved {
@@ -662,7 +786,7 @@ fn resolve_codex_offer(
               account: account,
               model: model,
               effort: offer.default_effort,
-              process_fingerprint: offer.process_fingerprint,
+              process_fingerprint: observed_fingerprint,
             },
             instance: offer.instance,
             account_binding: offer.account_binding,
@@ -685,7 +809,7 @@ fn resolve_codex_offer(
                   account: account,
                   model: model,
                   effort: deep_effort,
-                  process_fingerprint: offer.process_fingerprint,
+                  process_fingerprint: observed_fingerprint,
                 },
                 instance: offer.instance,
                 account_binding: offer.account_binding,
@@ -713,7 +837,7 @@ fn resolve_codex_offer(
               account: account,
               model: model,
               effort: effort,
-              process_fingerprint: offer.process_fingerprint,
+              process_fingerprint: observed_fingerprint,
             },
             instance: offer.instance,
             account_binding: offer.account_binding,
@@ -1282,42 +1406,51 @@ fn inventory_includes_provider_kind(
 }
 
 fn automatic_codex_behavior_preservation_holds(instance: HostDashboardInstance) -> Bool {
-  let shell = codex_offer_for_instance_with_standing(
-    instance: instance,
-    standing: provider_standing_inventory_unobserved(),
-  )
-  let inventory = ProviderInventory {
-    offers: [
-      OfferCodex {
-        offer: codex_offer_for_instance_with_standing(
-          instance: instance,
-          standing: provider_standing_from_fixture_bundle(
-            provider: shell.instance,
-            bundle: fixture_standing_bundle_authenticated_available(),
-          ),
-        ),
-      },
-    ],
-  }
-  match resolve_dispatch_selection(
-    inventory: inventory,
-    request: default_provider_selection_request(),
-    node_sizing: Sized {
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
-      repo: "gunbc",
-      acceptance: PrsMerged,
-    },
-  ) {
-    DispatchSelectionResolved { receipt } =>
-      receipt.provider_kind == CodexCliProvider
-        && receipt.applied_effort == shell.default_effort
-        && selection_requests_match(
-          requested: receipt.requested_selection,
-          resolved: receipt.resolved_selection,
-          codex_default_effort: shell.default_effort,
-        )
-    DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+  match dashboard_instance_provider_executable(instance: instance) {
+    Absent => false
+    Present { value: executable } => {
+      let shell = codex_offer_for_instance_with_standing(
+        instance: instance,
+        standing: provider_standing_inventory_unobserved(),
+        executable: executable,
+        process_fingerprint: fixture_codex_process_fingerprint_standing(),
+      )
+      let inventory = ProviderInventory {
+        offers: [
+          OfferCodex {
+            offer: codex_offer_for_instance_with_standing(
+              instance: instance,
+              standing: provider_standing_from_fixture_bundle(
+                provider: shell.instance,
+                bundle: fixture_standing_bundle_authenticated_available(),
+              ),
+              executable: executable,
+              process_fingerprint: fixture_codex_process_fingerprint_standing(),
+            ),
+          },
+        ],
+      }
+      match resolve_dispatch_selection(
+        inventory: inventory,
+        request: default_provider_selection_request(),
+        node_sizing: Sized {
+          intricacy: IntricacyHigh,
+          volume: VolumeMedium,
+          repo: "gunbc",
+          acceptance: PrsMerged,
+        },
+      ) {
+        DispatchSelectionResolved { receipt } =>
+          receipt.provider_kind == CodexCliProvider
+            && receipt.applied_effort == shell.default_effort
+            && selection_requests_match(
+              requested: receipt.requested_selection,
+              resolved: receipt.resolved_selection,
+              codex_default_effort: shell.default_effort,
+            )
+        DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
+      }
+    }
   }
 }
 
@@ -1352,68 +1485,43 @@ fn fixture_claude_offer(standing: ProviderStanding) -> ProviderOffer {
   }
 }
 
-fn fixture_codex_offer_with_standing(
-  instance: HostDashboardInstance,
-  standing: ProviderStanding,
-) -> ProviderOffer {
-  OfferCodex {
-    offer: codex_offer_for_instance_with_standing(
-      instance: instance,
-      standing: standing,
-    ),
-  }
-}
-
-fn fixture_inventory_codex_then_claude(
-  instance: HostDashboardInstance,
-  codex_standing: ProviderStanding,
-  claude_standing: ProviderStanding,
-) -> ProviderInventory {
-  ProviderInventory {
-    offers: [
-      fixture_codex_offer_with_standing(instance: instance, standing: codex_standing),
-      fixture_claude_offer(standing: claude_standing),
-    ],
-  }
-}
-
-fn fixture_inventory_claude_then_codex(
-  instance: HostDashboardInstance,
-  codex_standing: ProviderStanding,
-  claude_standing: ProviderStanding,
-) -> ProviderInventory {
-  ProviderInventory {
-    offers: [
-      fixture_claude_offer(standing: claude_standing),
-      fixture_codex_offer_with_standing(instance: instance, standing: codex_standing),
-    ],
-  }
-}
-
 fn fixture_inventory_codex_only_available(instance: HostDashboardInstance) -> ProviderInventory {
-  let shell = codex_offer_for_instance_with_standing(
-    instance: instance,
-    standing: provider_standing_inventory_unobserved(),
-  )
-  ProviderInventory {
-    offers: [
-      fixture_codex_offer_with_standing(
+  match dashboard_instance_provider_executable(instance: instance) {
+    Absent => ProviderInventory { offers: [] }
+    Present { value: executable } => {
+      let shell = codex_offer_for_instance_with_standing(
         instance: instance,
-        standing: provider_standing_from_fixture_bundle(
-          provider: shell.instance,
-          bundle: fixture_standing_bundle_authenticated_available(),
-        ),
-      ),
-    ],
+        standing: provider_standing_inventory_unobserved(),
+        executable: executable,
+        process_fingerprint: fixture_codex_process_fingerprint_standing(),
+      )
+      ProviderInventory {
+        offers: [
+          fixture_codex_offer_with_standing(
+            instance: instance,
+            standing: provider_standing_from_fixture_bundle(
+              provider: shell.instance,
+              bundle: fixture_standing_bundle_authenticated_available(),
+            ),
+            executable: executable,
+          ),
+        ],
+      }
+    }
   }
 }
 
 fn fixture_inventory_codex_and_cursor_available(
   instance: HostDashboardInstance,
 ) -> ProviderInventory {
+  match dashboard_instance_provider_executable(instance: instance) {
+    Absent => ProviderInventory { offers: [] }
+    Present { value: executable } => {
   let base = codex_offer_for_instance_with_standing(
     instance: instance,
     standing: provider_standing_inventory_unobserved(),
+    executable: executable,
+    process_fingerprint: fixture_codex_process_fingerprint_standing(),
   )
   let cursor_instance = ProviderInstance {
     kind: CursorCliProvider,
@@ -1463,5 +1571,7 @@ fn fixture_inventory_codex_and_cursor_available(
         },
       },
     ],
+  }
+    }
   }
 }

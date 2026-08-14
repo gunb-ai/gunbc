@@ -143,9 +143,9 @@ type DeployStage {
   runner: RunnerSpec
 }
 
-data ci_spec_witness_entries_note: String = "witness_entries is the opt-in CI witness roster (operator inversion 2026-07-04): declared CommitWitnessClaim rows on the GithubActionsCiJob surface (see ci_witness_optin_inversion in gunbc.commit_workflow), projected as explicit entries. Since the discovery flip (see ci_spec_discovery_flip_note) the roster is no longer the only witness source: discovery_scan_dirs re-admits the tree-wide corpus shrunk by affected-set selection, and the roster remains the home for rows that must run as declared explicit entries (execution-kind rows with their own resource profile). Empty witness_entries AND empty discovery_scan_dirs means the plan carries no witness-corpus node at all (the regen spec's shape)."
+data ci_spec_witness_entries_note: String = "witness_entries is the opt-in CI witness roster (operator inversion 2026-07-04): declared CommitWitnessClaim rows on the GithubActionsCiJob surface (see ci_witness_optin_inversion in gunbc.commit_workflow), projected as explicit entries. Since the discovery flip (see ci_spec_discovery_flip_note) the roster is no longer the only witness source: discovery_scan_dirs re-admits the tree-wide corpus, WHOLE — the three ordinary corpus batches carry SelectionOff as of 2026-08-13 (v2.workflow.ci_floor_plan corpus_selection_off_note), so there is no affected-set shrink on this path. The roster remains the home for rows that must run as declared explicit entries (execution-kind rows with their own resource profile). Empty witness_entries AND empty discovery_scan_dirs means the plan carries no witness-corpus node at all (the regen spec's shape)."
 
-data ci_spec_discovery_flip_note: String = "discovery_scan_dirs is the affected-set enrollment flip (operator acceptance 2026-07-09 on #6403; re-landed 2026-07-10 after the operator's direct go, merged onto the resolve-receipt-gate era): the ci floor's corpus batch scans these dirs (plus the source-root *_test.dag walk) with SelectionApplied, so a PR runs the tree-wide witness corpus SHRUNK to the diff's affected set instead of the fixed opt-in roster. Rationale accepted: at flip authoring per-PR coverage was 8 of ~1721 discoverable witnesses, so a selection miss (skipped-but-affected witness) is bounded by the status quo - the witness would not have run at all - while the nightly affected-set-falsifier keeps running the full corpus cold with predictions recorded, so any missing selection edge still surfaces as a counted divergence within one cadence window. Selection stays fail-closed per the PR-A rulings (a provenance gap refuses, never widens; host-scaffold/live-tree rows never predict-skip). The 8-clean-window falsifier criterion continues to govern the falsifier's own retirement, not this flip. Empty list = no discovery (the regen spec, and synthetic test specs exercising pure roster machinery)."
+data ci_spec_discovery_flip_note: String = "SUPERSEDED IN ITS OPERATIVE HALF 2026-08-13: the corpus batch now carries SelectionOff (v2.workflow.ci_floor_plan corpus_selection_off_note), so a PR and a main push both run the tree-wide witness corpus WHOLE. The shrink this note was written to describe is gone; the enrollment half it also describes — discovery_scan_dirs being the roster source at all, rather than a fixed opt-in list — still stands and is why the row survives instead of being deleted. Read the rest as the history of how the roster came to be discovered, not as the live selection policy.\n\nAS ORIGINALLY WRITTEN (affected-set enrollment flip, operator acceptance 2026-07-09 on #6403; re-landed 2026-07-10 after the operator's direct go, merged onto the resolve-receipt-gate era): the ci floor's corpus batch scans these dirs (plus the source-root *_test.dag walk) with SelectionApplied, so a PR runs the tree-wide witness corpus SHRUNK to the diff's affected set instead of the fixed opt-in roster. Rationale accepted: at flip authoring per-PR coverage was 8 of ~1721 discoverable witnesses, so a selection miss (skipped-but-affected witness) is bounded by the status quo - the witness would not have run at all - while the nightly affected-set-falsifier keeps running the full corpus cold with predictions recorded, so any missing selection edge still surfaces as a counted divergence within one cadence window. Selection stays fail-closed per the PR-A rulings (a provenance gap refuses, never widens; host-scaffold/live-tree rows never predict-skip). The 8-clean-window falsifier criterion continues to govern the falsifier's own retirement, not this flip. Empty list = no discovery (the regen spec, and synthetic test specs exercising pure roster machinery)."
 type CiSpec {
   gates: List<Gate>
   witness_entries: List<ScheduleWitnessEntry>
@@ -674,6 +674,68 @@ fn gunbc_ci_fleet_timer_install_invoke() -> String {
       )
     )
   )
+}
+
+data gunbc_fleet_converge_plan_artifact_name: String = "fleet-converge-plan"
+
+data gunbc_ci_fleet_converge_plan_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_fleet_converge_plan_invoke",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_fleet_converge_plan_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_converge_plan_invoke — foreign-executor shell invoking fleet_converge_plan_wet; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run")
+
+fn gunbc_ci_fleet_converge_plan_invoke() -> String {
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_fleet_converge_plan_shell_emit_dissolution_trigger), "\n")),
+    concat(
+      concat("ROOT=", ci_repo_root_shell(), "\n"),
+      gunbc_run_shell(
+        source_roots: witness_layer_roots,
+        entry: "dag/gunbc/fleet_converge_plan_cli.dag",
+        function: "fleet_converge_plan_wet",
+        rooted: true,
+        claim_run: false
+      )
+    )
+  )
+}
+
+data gunbc_ci_fleet_converge_plan_artifact_hash_env_name: String = "EXPECTED_HASH"
+
+data gunbc_ci_fleet_converge_apply_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_fleet_converge_apply_invoke",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_fleet_converge_apply_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_converge_apply_invoke — foreign-executor shell verifying plan hash then invoking fleet_converge_apply_wet; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run")
+
+fn gunbc_ci_fleet_converge_apply_invoke() -> String {
+  join([
+    "# ", dissolution_description(condition: gunbc_ci_fleet_converge_apply_shell_emit_dissolution_trigger), "\n",
+    "set -euo pipefail\n",
+    "ACTUAL=\"$(cat /tmp/fleet-converge-plan/plan_content.hex)\"\n",
+    "if [ -z \"$\{EXPECTED_HASH:-\}\" ] || [ \"$EXPECTED_HASH\" != \"$ACTUAL\" ]; then\n",
+    "  echo \"::error::PlanArtifactHashMismatch expected=$EXPECTED_HASH actual=$ACTUAL\" >&2\n",
+    "  exit 1\n",
+    "fi\n",
+    concat("ROOT=", ci_repo_root_shell(), "\n"),
+    gunbc_run_shell(
+      source_roots: witness_layer_roots,
+      entry: "dag/gunbc/fleet_converge_plan_cli.dag",
+      function: "fleet_converge_apply_wet",
+      rooted: true,
+      claim_run: false
+    ),
+  ], "")
 }
 
 // Fleet convergence collection (operator verdict join 5, parent verification

@@ -41,6 +41,7 @@ type HostEffect =
   | ConvergePlan { policy: HostConverge }
   | OsInstallActuatorToolchainEnsure {}
   | ProvisionBuildCache { catalog_id: CacheInterfaceId }
+  | ProvisionCodexRuntime {}
   | SetHostnameCas { hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
   | ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead }
   | SudoNopasswdExecuteProbe { probe: SudoNopasswdExecuteProbeShape }

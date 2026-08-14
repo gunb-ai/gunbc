@@ -384,6 +384,48 @@ fn arrow_body_target_lookup(children: List<Edge>) -> NamedEdgeTargetLookup {
   named_edge_target_lookup(children: children, name: ^arrow_body_edge)
 }
 
+// ArrowBodyForm classifies arrow-body targets for structural admission
+// (arrow_body_target_is_valid_realization in well_formed) and eval entry
+// (arrow_body_admits_eval_entry in v2.compiler.eval). It carries NO identity:
+// arrow-body content identity is content_hash over the full body subtree
+// (fold_node_content_hash), which preserves atom identity via
+// canonical_hash_of_connective. Refusing a form-level digest that hashes only
+// canonical_hash_of_behavior is deliberate — behavior tag alone erases Value
+// payloads and repeats the InterpretationAlgebra fork where a partial slot digest
+// lets distinct semantics share cache identity. Computation child/edge discipline
+// is behavior_edges_conform in locally_well_formed only; ArrowBodyForm does not
+// re-check computation edges. Record Conj field wiring is the only
+// ArrowBodyForm-specific structural gate beyond classification
+// (arrow_body_record_construct_conforms).
+type ArrowBodyForm
+  = DirectAtomBody
+  | RecordConstructBody
+  | ComputationBody { behavior: Behavior }
+  | UnsupportedArrowBody
+
+fn classify_arrow_body_form(target: Node) -> ArrowBodyForm {
+  match target.kind {
+    TypeNode { connective: Atom { identity: _ } } => DirectAtomBody
+    TypeNode { connective: Conj } => RecordConstructBody
+    ComputationNode { behavior: b } => ComputationBody { behavior: b }
+    _ => UnsupportedArrowBody
+  }
+}
+
+fn arrow_body_admits_eval_entry(form: ArrowBodyForm) -> Bool {
+  match form {
+    UnsupportedArrowBody => false
+    DirectAtomBody => true
+    RecordConstructBody => false
+    ComputationBody { behavior: Value } => false
+    ComputationBody { behavior: Transform } => true
+    ComputationBody { behavior: Branch } => true
+    ComputationBody { behavior: Loop } => true
+    ComputationBody { behavior: Bind } => true
+    ComputationBody { behavior: Match } => false
+  }
+}
+
 fn arrow_body_record_construct_conforms(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Conj } =>
@@ -410,10 +452,11 @@ fn arrow_body_record_construct_conforms(node: Node) -> Bool {
 }
 
 fn arrow_body_target_is_valid_realization(target: Node) -> Bool {
-  match target.kind {
-    ComputationNode { behavior: _ } => true
-    TypeNode { connective: Conj } => arrow_body_record_construct_conforms(node: target)
-    _ => false
+  match classify_arrow_body_form(target: target) {
+    UnsupportedArrowBody => false
+    RecordConstructBody => arrow_body_record_construct_conforms(node: target)
+    DirectAtomBody => true
+    ComputationBody { behavior: _ } => true
   }
 }
 

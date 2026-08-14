@@ -13,9 +13,9 @@ import extdeps.cpu.ampere_altra_package {
   altra_declared_contact_count,
   altra_fclga_socket,
   altra_reference_board_collateral_standing,
-  ampere_customer_reference_boards_authority,
   extdeps_external_authority_anchor,
 }
+import extdeps.vendor.ampere { ampere_customer_reference_boards_authority }
 
 // SIX THINGS BETWEEN A PROCESSOR DIE AND A BOARD, AND THEY ARE NOT ONE THING. The processor
 // package, the socket, the socket's own board termination, the motherboard land pattern that

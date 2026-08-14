@@ -11,12 +11,13 @@ use std::time::Instant;
 #[cfg(test)]
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{
-    build_floor_discovery_request, compute_histogram_data,
-    discover_floor_witness_roster_with_snapshot, enable_floor_compile_clean_lazy_install,
-    heartbeat_feed_enter_batch, heartbeat_feed_entry_completed, heartbeat_feed_snapshot,
-    install_floor_compile_clean_receipt, make_eval_context, project_witness_cost_receipt,
-    record_resolution_divergence_phase, render_selection_degradation_receipt_body,
-    reset_resolution_divergence_phase_receipt, resolution_divergence_parent_plan_capture_begin,
+    active_workset_admit, active_workset_complete, build_floor_discovery_request,
+    compute_histogram_data, discover_floor_witness_roster_with_snapshot,
+    enable_floor_compile_clean_lazy_install, heartbeat_feed_enter_batch,
+    heartbeat_feed_entry_completed, heartbeat_feed_snapshot, install_floor_compile_clean_receipt,
+    make_eval_context, project_witness_cost_receipt, record_resolution_divergence_phase,
+    render_selection_degradation_receipt_body, reset_resolution_divergence_phase_receipt,
+    resolution_divergence_parent_plan_capture_begin,
     resolution_divergence_parent_plan_capture_finish, resolve_entry_graph,
     resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
     top_n_slowest_witnesses, verify_floor_discovery_terminal_for_coordinator, BudgetKind,
@@ -1906,6 +1907,11 @@ struct ClaimResult {
     /// as data on the path that needs it. It is a projection of `ClaimOutcome::TimedOut`,
     /// not a second authority: nothing sets it except the `TimedOut` arm below.
     budget_refusal: Option<BudgetRefusal>,
+    /// Set when a wet witness refused because a host CLI dependency was absent on PATH
+    /// before execution. Parsed from the failure-receipt wire
+    /// `HostDependencyAbsent{tool=...,hint=...}`. Dissolve-on:
+    /// `gunbc.witness_row_cost` `host_dependency_refusal_seed_deferral_note`.
+    host_dependency_refusal: Option<HostDependencyRefusal>,
     /// Set only when this batch contained a witness declared expected-RED that ran GREEN,
     /// carrying the identities that must be un-quarantined.
     ///
@@ -2060,6 +2066,7 @@ fn pre_verdict_unverified_claim_result(
         witness_row_costs: Vec::new(),
         expectation_refusal: Some(refusal),
         budget_refusal: None,
+        host_dependency_refusal: None,
         selection_degradation: None,
         resolve_realization: None,
     }
@@ -2359,6 +2366,53 @@ struct BudgetRefusal {
     kind: BudgetKind,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct HostDependencyRefusal {
+    tool: String,
+    hint: String,
+}
+
+impl HostDependencyRefusal {
+    fn mode(&self) -> &'static str {
+        HOST_DEPENDENCY_ABSENT_MODE
+    }
+
+    fn detail(&self) -> String {
+        format!(
+            "HostDependencyAbsent{{tool={},hint={}}}",
+            self.tool, self.hint
+        )
+    }
+}
+
+const HOST_DEPENDENCY_ABSENT_MODE: &str = "HostDependencyAbsent";
+
+fn host_dependency_refusal_from_detail(detail: &str) -> Option<HostDependencyRefusal> {
+    const PREFIX: &str = "HostDependencyAbsent{tool=";
+    // Anchor on the last wire token so an earlier accidental substring cannot win.
+    let start = detail.rfind(PREFIX)?;
+    let rest = &detail[start + PREFIX.len()..];
+    let comma = rest.find(",hint=")?;
+    let tool = rest[..comma].to_string();
+    if tool.is_empty() || tool.contains('{') || tool.contains('}') {
+        return None;
+    }
+    let hint_start = comma + ",hint=".len();
+    let hint_rest = &rest[hint_start..];
+    if hint_rest.contains('{') {
+        return None;
+    }
+    let hint_end = hint_rest.rfind('}')?;
+    if hint_end != hint_rest.len() - 1 {
+        return None;
+    }
+    let hint = hint_rest[..hint_end].to_string();
+    if hint.is_empty() {
+        return None;
+    }
+    Some(HostDependencyRefusal { tool, hint })
+}
+
 /// A batch is partitioned into resolve-groups before scheduling. SingleClaims that share one
 /// `entry` collapse into a single `SharedClaims` group: the entry's import closure is resolved
 /// (and typechecked) EXACTLY ONCE and every claim runs on that one shared interpreter context,
@@ -2572,34 +2626,42 @@ fn claim_result_for_outcome(
             witness_row_costs: Vec::new(),
             expectation_refusal: None,
             budget_refusal: None,
+            host_dependency_refusal: None,
             selection_degradation: None,
             resolve_realization,
         },
-        ClaimOutcome::Fail => ClaimResult {
-            detail: {
-                let mut detail = "returned Bool(false)".to_string();
-                v1_compiler::cli_run::append_failure_receipt_companion_loudness(
-                    &mut detail,
-                    ctx,
-                    &function,
-                );
-                detail
-            },
-            function,
-            entry: entry.clone(),
-            ok: false,
-            wall_nanos,
-            resolve_nanos,
-            corpus_resolve_nanos: 0,
-            corpus_eval_nanos: 0,
-            corpus_witnesses: 0,
-            runtime_unit_count: single_claim_runtime_unit_count(),
-            witness_row_costs: Vec::new(),
-            expectation_refusal: None,
-            budget_refusal: None,
-            selection_degradation: None,
-            resolve_realization,
-        },
+        ClaimOutcome::Fail => {
+            let mut detail = "returned Bool(false)".to_string();
+            v1_compiler::cli_run::append_failure_receipt_companion_loudness(
+                &mut detail,
+                ctx,
+                &function,
+            );
+            v1_compiler::cli_run::append_witness_verdict_diagnostic_loudness(
+                &mut detail,
+                ctx,
+                &function,
+            );
+            let host_dependency_refusal = host_dependency_refusal_from_detail(&detail);
+            ClaimResult {
+                detail,
+                function,
+                entry: entry.clone(),
+                ok: false,
+                wall_nanos,
+                resolve_nanos,
+                corpus_resolve_nanos: 0,
+                corpus_eval_nanos: 0,
+                corpus_witnesses: 0,
+                runtime_unit_count: single_claim_runtime_unit_count(),
+                witness_row_costs: Vec::new(),
+                expectation_refusal: None,
+                budget_refusal: None,
+                host_dependency_refusal,
+                selection_degradation: None,
+                resolve_realization,
+            }
+        }
         ClaimOutcome::NotBool { got } => ClaimResult {
             function,
             entry: entry.clone(),
@@ -2614,6 +2676,7 @@ fn claim_result_for_outcome(
             witness_row_costs: Vec::new(),
             expectation_refusal: None,
             budget_refusal: None,
+            host_dependency_refusal: None,
             selection_degradation: None,
             resolve_realization,
         },
@@ -2631,6 +2694,7 @@ fn claim_result_for_outcome(
             witness_row_costs: Vec::new(),
             expectation_refusal: None,
             budget_refusal: None,
+            host_dependency_refusal: None,
             selection_degradation: None,
             resolve_realization,
         },
@@ -2666,6 +2730,7 @@ fn claim_result_for_outcome(
                 budget_ms,
                 kind,
             }),
+            host_dependency_refusal: None,
             selection_degradation: None,
             resolve_realization,
         },
@@ -3025,6 +3090,7 @@ fn run_native_bundle_unit(
         witness_row_costs: Vec::new(),
         expectation_refusal: None,
         budget_refusal: None,
+        host_dependency_refusal: None,
         selection_degradation: None,
         resolve_realization: None,
     };
@@ -3057,6 +3123,7 @@ fn run_native_bundle_unit(
         witness_row_costs: Vec::new(),
         expectation_refusal: None,
         budget_refusal: None,
+        host_dependency_refusal: None,
         selection_degradation: None,
         resolve_realization: resolve_observation(),
     };
@@ -3230,6 +3297,7 @@ fn run_native_bundle_unit(
         witness_row_costs: Vec::new(),
         expectation_refusal: None,
         budget_refusal: None,
+        host_dependency_refusal: None,
         selection_degradation: None,
         resolve_realization: Some(ResolveRealizationObservation::ColdResolvePerformed {
             resolve_nanos,
@@ -3272,6 +3340,7 @@ fn run_batch_unit(
             witness_row_costs: Vec::new(),
             expectation_refusal: None,
             budget_refusal: None,
+            host_dependency_refusal: None,
             selection_degradation: None,
             resolve_realization: None,
         }],
@@ -3430,6 +3499,7 @@ fn run_shared_entry_claims(
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
+                    host_dependency_refusal: None,
                     selection_degradation: None,
                     resolve_realization: None,
                 })
@@ -3447,7 +3517,9 @@ fn run_shared_entry_claims(
         .map(|function| {
             set_phase(FloorPhase::Gate, &format!("{entry}::{function}"));
             let claim_start = Instant::now();
+            active_workset_admit(entry, function);
             let outcome = run_claim(&ctx, function);
+            active_workset_complete(entry, function);
             // Witness frame exit: the memo must not retain values across
             // witnesses sharing this ctx (byte-unbounded, 20GiB-class kills).
             v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
@@ -3517,6 +3589,7 @@ fn run_memo_shared_claims(
                         witness_row_costs: Vec::new(),
                         expectation_refusal: None,
                         budget_refusal: None,
+                        host_dependency_refusal: None,
                         selection_degradation: None,
                         resolve_realization: None,
                     })
@@ -3550,7 +3623,9 @@ fn run_memo_shared_claims(
         .map(|function| {
             set_phase(FloorPhase::Gate, &format!("{entry}::{function}"));
             let claim_start = Instant::now();
+            active_workset_admit(entry, function);
             let outcome = run_claim(ctx, function);
+            active_workset_complete(entry, function);
             // Witness frame exit — this memoized ctx outlives whole entry
             // groups, so per-witness release matters here most of all.
             v1_compiler::v1_interpreter::eval_call_memo_frame_exit(ctx);
@@ -4028,6 +4103,22 @@ fn discovery_budget_refusal(summary: &DiscoverySummary) -> Option<BudgetRefusal>
         })
 }
 
+/// Lift the first host-dependency refusal among this discovery batch's failure lines.
+///
+/// Parallel to `discovery_budget_refusal`: falsifier batch 5 runs Codex materialization
+/// witnesses as a `RunnableDiscoveryBatch`, flattening N reds into one `ClaimResult`.
+/// The failure-receipt wire is appended in `cli_run` on discovery reds, but
+/// `batch_failure_mode_and_detail` reads `host_dependency_refusal` off the value — not
+/// substring-matching `detail` — so this lift is required for `HostDependencyAbsent` on
+/// the primary falsifier path (run 31685755058 component 6). Dissolve-on:
+/// `gunbc.witness_row_cost` `host_dependency_refusal_seed_deferral_note`.
+fn discovery_host_dependency_refusal(summary: &DiscoverySummary) -> Option<HostDependencyRefusal> {
+    summary
+        .failures
+        .iter()
+        .find_map(|failure| host_dependency_refusal_from_detail(failure))
+}
+
 const SCOPED_WITNESS_RECEIPT_PATH: &str = "target/scoped-witness-execution-receipt.tsv";
 const SCOPED_WITNESS_RECEIPT_HEADER: &str =
     "head_sha\tbatch_id\tsource_roots_digest\tentry\tfunction\twitness_kind\toutcome\tdetail";
@@ -4195,6 +4286,7 @@ fn discovery_claim_result(
                 witness_row_costs,
                 expectation_refusal,
                 budget_refusal: discovery_budget_refusal(summary),
+                host_dependency_refusal: discovery_host_dependency_refusal(summary),
                 selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
                     selection, summary,
                 )),
@@ -4230,6 +4322,7 @@ fn discovery_claim_result(
                 // here would hand it back to the substring classifier.
                 expectation_refusal,
                 budget_refusal: discovery_budget_refusal(summary),
+                host_dependency_refusal: discovery_host_dependency_refusal(summary),
                 selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
                     selection, summary,
                 )),
@@ -4342,6 +4435,7 @@ fn run_discovery_batch_node(
                         witness_row_costs: Vec::new(),
                         expectation_refusal: None,
                         budget_refusal: discovery_budget_refusal(&summary),
+                        host_dependency_refusal: discovery_host_dependency_refusal(&summary),
                         selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
                             node_frontier_selection,
                             &summary,
@@ -4517,6 +4611,7 @@ fn run_discovery_batch_node(
                         witness_row_costs: Vec::new(),
                         expectation_refusal: None,
                         budget_refusal: discovery_budget_refusal(&summary),
+                        host_dependency_refusal: discovery_host_dependency_refusal(&summary),
                         selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
                             node_frontier_selection,
                             &summary,
@@ -4651,6 +4746,7 @@ fn run_discovery_batch_node(
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
+                    host_dependency_refusal: None,
                     selection_degradation: None,
                     resolve_realization: None,
                 }
@@ -5349,6 +5445,16 @@ fn batch_failure_mode_and_detail(rec: &BatchRecord) -> (&'static str, String) {
             joined.chars().take(600).collect::<String>(),
         );
     }
+    if let Some(refusal) = rec
+        .results
+        .iter()
+        .find_map(|r| r.host_dependency_refusal.as_ref())
+    {
+        return (
+            refusal.mode(),
+            refusal.detail().chars().take(600).collect::<String>(),
+        );
+    }
     (
         falsifier_failure_mode(&details),
         joined.chars().take(600).collect::<String>(),
@@ -5503,104 +5609,47 @@ fn write_floor_component_receipt_at(
     // run instead yields `ControlConcluded` with a `Skipped` outcome, and the alert reports
     // the control RED with its real cause.
     for bi in batch_records.len()..total_batches {
-        match floor_component_row_value(
-            &ctx,
-            &run_id,
-            bi as i64 + 1,
-            &batch_heartbeat_label(&batches[bi]),
-            batch_selection_tag(&batches[bi]),
-            0,
-            unreached.failure_mode(),
-            unreached.detail(),
-            0,
-        ) {
+        let label = batch_heartbeat_label(&batches[bi]);
+        let selection_tag = batch_selection_tag(&batches[bi]);
+        let row = if unreached == UnreachedCause::RunIncomplete {
+            floor_component_row_not_concluded_value(
+                &ctx,
+                &run_id,
+                bi as i64 + 1,
+                &label,
+                selection_tag,
+                unreached.failure_mode(),
+                unreached.detail(),
+            )
+        } else {
+            floor_component_row_value(
+                &ctx,
+                &run_id,
+                bi as i64 + 1,
+                &label,
+                selection_tag,
+                0,
+                unreached.failure_mode(),
+                unreached.detail(),
+                0,
+            )
+        };
+        match row {
             Some(v) => rows.push(v),
             None => return false,
         }
     }
 
-    let doc = if let Some(snapshot) = selection_degradation_from_batch_records(batch_records) {
-        match run_in_context_with_args(
-            &ctx,
-            "floor_component_receipt_document_with_selection",
-            &[
-                (
-                    Some("workflow_name".to_string()),
-                    Value::Str(workflow_name.clone()),
-                ),
-                (Some("run_id".to_string()), Value::Str(run_id.clone())),
-                (Some("head_sha".to_string()), Value::Str(head_sha.clone())),
-                (Some("rows".to_string()), Value::List(Rc::new(rows.into()))),
-                (
-                    Some("selection_mode_tag".to_string()),
-                    Value::Str(snapshot.selection_mode_tag.clone()),
-                ),
-                (
-                    Some("selected".to_string()),
-                    Value::Int(snapshot.selected_entry_groups as i64),
-                ),
-                (
-                    Some("total".to_string()),
-                    Value::Int(snapshot.total_entry_groups as i64),
-                ),
-                (
-                    Some("categorization_unavailable".to_string()),
-                    Value::Bool(snapshot.categorization_unavailable),
-                ),
-                (
-                    Some("categorization_reason".to_string()),
-                    Value::Str(snapshot.categorization_reason.clone()),
-                ),
-            ],
-            false,
-        ) {
-            Ok(Value::Str(s)) => s,
-            Ok(other) => {
-                eprintln!(
-                    "claim_executor: floor component receipt REFUSED — \
-                     floor_component_receipt_document_with_selection returned {other:?}, not Str"
-                );
-                return false;
-            }
-            Err(e) => {
-                eprintln!(
-                    "claim_executor: floor component receipt REFUSED — \
-                     floor_component_receipt_document_with_selection eval: {e}"
-                );
-                return false;
-            }
-        }
-    } else {
-        match run_in_context_with_args(
-            &ctx,
-            "floor_component_receipt_document",
-            &[
-                (
-                    Some("workflow_name".to_string()),
-                    Value::Str(workflow_name.clone()),
-                ),
-                (Some("run_id".to_string()), Value::Str(run_id.clone())),
-                (Some("head_sha".to_string()), Value::Str(head_sha.clone())),
-                (Some("rows".to_string()), Value::List(Rc::new(rows.into()))),
-            ],
-            false,
-        ) {
-            Ok(Value::Str(s)) => s,
-            Ok(other) => {
-                eprintln!(
-                    "claim_executor: floor component receipt REFUSED — \
-                     floor_component_receipt_document returned {other:?}, not Str"
-                );
-                return false;
-            }
-            Err(e) => {
-                eprintln!(
-                    "claim_executor: floor component receipt REFUSED — \
-                     floor_component_receipt_document eval: {e}"
-                );
-                return false;
-            }
-        }
+    let Some(doc) = write_floor_component_receipt_document(
+        &ctx,
+        &workflow_name,
+        &run_id,
+        &head_sha,
+        rows,
+        unreached,
+        batch_records,
+    ) else {
+        return false;
     };
 
     let path = base.join("floor-component-receipt.json");
@@ -5737,6 +5786,240 @@ fn floor_component_row_value(
                 "claim_executor: floor component receipt REFUSED — {constructor} eval for batch {index}: {e}"
             );
             None
+        }
+    }
+}
+
+fn floor_component_row_not_concluded_value(
+    ctx: &InterpContext,
+    run_id: &str,
+    index: i64,
+    label: &str,
+    selection_tag: &str,
+    failure_mode: &str,
+    detail: &str,
+) -> Option<Value> {
+    let constructor = "floor_component_row_not_concluded";
+    let args: Vec<(Option<String>, Value)> = vec![
+        (Some("run_id".to_string()), Value::Str(run_id.to_string())),
+        (Some("index".to_string()), Value::Int(index)),
+        (Some("label".to_string()), Value::Str(label.to_string())),
+        (
+            Some("selection_tag".to_string()),
+            Value::Str(selection_tag.to_string()),
+        ),
+        (
+            Some("failure_mode".to_string()),
+            Value::Str(failure_mode.to_string()),
+        ),
+        (Some("detail".to_string()), Value::Str(detail.to_string())),
+    ];
+    let out = run_in_context_with_args(ctx, constructor, &args, false);
+    match out {
+        Ok(Value::Variant {
+            ref variant_name,
+            ref fields,
+            ..
+        }) if ctx.sym_eq(*variant_name, "Present") => fields
+            .iter()
+            .find(|(n, _)| ctx.sym_eq(*n, "value"))
+            .map(|(_, v)| v.clone())
+            .or_else(|| {
+                eprintln!(
+                    "claim_executor: floor component receipt REFUSED — \
+                     Present row without a `value` field (batch {index})"
+                );
+                None
+            }),
+        Ok(Value::Null) => {
+            eprintln!(
+                "claim_executor: floor component receipt REFUSED — {constructor} returned \
+                 absent for batch {index}: selection_tag={selection_tag:?} \
+                 failure_mode={failure_mode:?} are outside the .dag vocabulary"
+            );
+            None
+        }
+        Ok(other) => {
+            eprintln!(
+                "claim_executor: floor component receipt REFUSED — {constructor} returned {other:?} for batch {index}"
+            );
+            None
+        }
+        Err(e) => {
+            eprintln!("claim_executor: floor component receipt REFUSED — {constructor} eval: {e}");
+            None
+        }
+    }
+}
+
+fn write_floor_component_receipt_document(
+    ctx: &InterpContext,
+    workflow_name: &str,
+    run_id: &str,
+    head_sha: &str,
+    rows: Vec<Value>,
+    unreached: UnreachedCause,
+    batch_records: &[BatchRecord],
+) -> Option<String> {
+    let rows_list = Value::List(Rc::new(rows.into()));
+    let snapshot = selection_degradation_from_batch_records(batch_records);
+    if unreached == UnreachedCause::RunIncomplete {
+        let concluded_count = batch_records.len() as i64;
+        let pending_from_index = (batch_records.len() + 1) as i64;
+        let mut args: Vec<(Option<String>, Value)> = vec![
+            (
+                Some("workflow_name".to_string()),
+                Value::Str(workflow_name.to_string()),
+            ),
+            (Some("run_id".to_string()), Value::Str(run_id.to_string())),
+            (
+                Some("head_sha".to_string()),
+                Value::Str(head_sha.to_string()),
+            ),
+            (Some("rows".to_string()), rows_list),
+            (
+                Some("run_terminal_cause".to_string()),
+                Value::Str(unreached.failure_mode().to_string()),
+            ),
+            (
+                Some("concluded_count".to_string()),
+                Value::Int(concluded_count),
+            ),
+            (
+                Some("pending_from_index".to_string()),
+                Value::Int(pending_from_index),
+            ),
+        ];
+        let constructor = if let Some(snapshot) = snapshot {
+            args.extend([
+                (
+                    Some("selection_mode_tag".to_string()),
+                    Value::Str(snapshot.selection_mode_tag.clone()),
+                ),
+                (
+                    Some("selected".to_string()),
+                    Value::Int(snapshot.selected_entry_groups as i64),
+                ),
+                (
+                    Some("total".to_string()),
+                    Value::Int(snapshot.total_entry_groups as i64),
+                ),
+                (
+                    Some("categorization_unavailable".to_string()),
+                    Value::Bool(snapshot.categorization_unavailable),
+                ),
+                (
+                    Some("categorization_reason".to_string()),
+                    Value::Str(snapshot.categorization_reason.clone()),
+                ),
+            ]);
+            "floor_component_receipt_document_incomplete_with_selection"
+        } else {
+            "floor_component_receipt_document_incomplete"
+        };
+        match run_in_context_with_args(ctx, constructor, &args, false) {
+            Ok(Value::Str(s)) => Some(s),
+            Ok(other) => {
+                eprintln!(
+                    "claim_executor: floor component receipt REFUSED — \
+                     {constructor} returned {other:?}, not Str"
+                );
+                None
+            }
+            Err(e) => {
+                eprintln!(
+                    "claim_executor: floor component receipt REFUSED — {constructor} eval: {e}"
+                );
+                None
+            }
+        }
+    } else if let Some(snapshot) = snapshot {
+        match run_in_context_with_args(
+            ctx,
+            "floor_component_receipt_document_with_selection",
+            &[
+                (
+                    Some("workflow_name".to_string()),
+                    Value::Str(workflow_name.to_string()),
+                ),
+                (Some("run_id".to_string()), Value::Str(run_id.to_string())),
+                (
+                    Some("head_sha".to_string()),
+                    Value::Str(head_sha.to_string()),
+                ),
+                (Some("rows".to_string()), rows_list),
+                (
+                    Some("selection_mode_tag".to_string()),
+                    Value::Str(snapshot.selection_mode_tag.clone()),
+                ),
+                (
+                    Some("selected".to_string()),
+                    Value::Int(snapshot.selected_entry_groups as i64),
+                ),
+                (
+                    Some("total".to_string()),
+                    Value::Int(snapshot.total_entry_groups as i64),
+                ),
+                (
+                    Some("categorization_unavailable".to_string()),
+                    Value::Bool(snapshot.categorization_unavailable),
+                ),
+                (
+                    Some("categorization_reason".to_string()),
+                    Value::Str(snapshot.categorization_reason.clone()),
+                ),
+            ],
+            false,
+        ) {
+            Ok(Value::Str(s)) => Some(s),
+            Ok(other) => {
+                eprintln!(
+                    "claim_executor: floor component receipt REFUSED — \
+                     floor_component_receipt_document_with_selection returned {other:?}, not Str"
+                );
+                None
+            }
+            Err(e) => {
+                eprintln!(
+                    "claim_executor: floor component receipt REFUSED — \
+                     floor_component_receipt_document_with_selection eval: {e}"
+                );
+                None
+            }
+        }
+    } else {
+        match run_in_context_with_args(
+            ctx,
+            "floor_component_receipt_document",
+            &[
+                (
+                    Some("workflow_name".to_string()),
+                    Value::Str(workflow_name.to_string()),
+                ),
+                (Some("run_id".to_string()), Value::Str(run_id.to_string())),
+                (
+                    Some("head_sha".to_string()),
+                    Value::Str(head_sha.to_string()),
+                ),
+                (Some("rows".to_string()), rows_list),
+            ],
+            false,
+        ) {
+            Ok(Value::Str(s)) => Some(s),
+            Ok(other) => {
+                eprintln!(
+                    "claim_executor: floor component receipt REFUSED — \
+                     floor_component_receipt_document returned {other:?}, not Str"
+                );
+                None
+            }
+            Err(e) => {
+                eprintln!(
+                    "claim_executor: floor component receipt REFUSED — \
+                     floor_component_receipt_document eval: {e}"
+                );
+                None
+            }
         }
     }
 }
@@ -8044,6 +8327,9 @@ fn arm_population_budget_watchdog(
                 let elapsed_ms = started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
                 let locus = progress.snapshot();
                 let label = population.to_ascii_uppercase().replace('_', "-");
+                let detail = population_budget_over_budget_detail(
+                    &label, &site, &locus, elapsed_ms, budget_ms,
+                );
 
                 // THE REFUSAL IS ANNOUNCED BEFORE ANY WORK THAT CAN BLOCK OR FAIL, because the
                 // incident this ordering fixes is a budget exhaustion that killed the floor and
@@ -8066,20 +8352,13 @@ fn arm_population_budget_watchdog(
                 // it is policing can hold.
                 //
                 // The annotation goes to stdout as `::error::` so the cause reaches the run summary
-                // rather than only line ~7000 of a step log; the detail line stays on stderr for
-                // the terminal receipt. eprintln!/println! take the lock per call rather than
-                // holding a guard across several operations, and the receipt write moves after
-                // both, where a failure to write it can no longer suppress the diagnosis.
-                println!(
-                    "::error::claim_executor: {label}-OVER-BUDGET — plan_site={site} population_index={} active_unit={} elapsed_ms={elapsed_ms} budget_ms={budget_ms}; executor refusing inside the population boundary",
-                    locus.population_index,
-                    locus.active_unit,
-                );
-                eprintln!(
-                    "claim_executor: {label}-OVER-BUDGET — plan_site={site} population_index={} active_unit={} elapsed_ms={elapsed_ms} budget_ms={budget_ms}; executor refusing inside the population boundary",
-                    locus.population_index,
-                    locus.active_unit,
-                );
+                // rather than only line ~7000 of a step log; the same located detail is replayed
+                // into the worker terminal receipt after these lines flush. eprintln!/println!
+                // take the lock per call rather than holding a guard across several operations,
+                // and the durable receipt writes move after both, where a failure to write can
+                // no longer suppress the diagnosis.
+                println!("::error::claim_executor: {detail}");
+                eprintln!("claim_executor: {detail}");
                 use std::io::Write as _;
                 let _ = std::io::stdout().flush();
                 let _ = std::io::stderr().flush();
@@ -8092,12 +8371,13 @@ fn arm_population_budget_watchdog(
                     elapsed_ms,
                     budget_ms,
                 };
-                let receipt_path = write_population_budget_refusal_at(Path::new("target"), &receipt)
-                    .map(|path| path.display().to_string())
-                    .unwrap_or_else(|error| format!("UNWRITABLE ({error})"));
+                let receipt_path =
+                    write_population_budget_refusal_at(Path::new("target"), &receipt)
+                        .map(|path| path.display().to_string())
+                        .unwrap_or_else(|error| format!("UNWRITABLE ({error})"));
                 eprintln!("claim_executor: {label}-OVER-BUDGET receipt={receipt_path}");
                 let _ = std::io::stderr().flush();
-                std::process::exit(1);
+                population_budget_watchdog_exit(&detail);
             }
         });
     armed
@@ -8146,6 +8426,19 @@ struct PopulationBudgetRefusal<'a> {
     active_unit: &'a str,
     elapsed_ms: u64,
     budget_ms: u64,
+}
+
+fn population_budget_over_budget_detail(
+    label: &str,
+    plan_site: &str,
+    locus: &PopulationBudgetLocus,
+    elapsed_ms: u64,
+    budget_ms: u64,
+) -> String {
+    format!(
+        "{label}-OVER-BUDGET plan_site={plan_site} population_index={} active_unit={} elapsed_ms={elapsed_ms} budget_ms={budget_ms}; executor refusing inside the population boundary",
+        locus.population_index, locus.active_unit,
+    )
 }
 
 fn population_budget_refusal_body(receipt: &PopulationBudgetRefusal<'_>) -> String {
@@ -9822,6 +10115,11 @@ fn spawn_floor_worker(
         .spawn()
         .map_err(|e| format!("spawn floor worker `{worker}`: {e}"))?;
     let wait_started = Instant::now();
+    // Per-worker, beside `wait_started`, NOT a `static`: a process-global counter is shared by
+    // every worker's wait loop, so with N workers each one prints roughly every Nth tick and a
+    // given worker can skip all of its own heartbeats. Liveness per worker is the entire fact this
+    // line carries, so the counter has to have the same scope as the thing it reports on.
+    let mut wait_ticks: u64 = 0;
     let status = loop {
         match child
             .try_wait()
@@ -9847,10 +10145,31 @@ fn spawn_floor_worker(
                         wait_started.elapsed().as_secs()
                     ),
                 );
-                eprintln!(
-                    "[floor-worker-wait] worker={worker} elapsed_seconds={} state=running",
-                    wait_started.elapsed().as_secs()
-                );
+                // CADENCE DIVERGENCE, marked here because this diff creates it: the journal append
+                // above runs EVERY iteration, this print runs every tenth. They were one cadence
+                // before, so anything that reads these two sites as interchangeable is now wrong.
+                // Attach no state write to this site — a snapshot written here is up to five
+                // minutes stale, and a consumer polling it for liveness (a stuck-worker detector is
+                // the live proposal) would inherit that staleness as its detection floor. The
+                // per-iteration journal site is where a progress fact belongs.
+                //
+                // The wait tick is journaled above on every iteration; the console keeps one line
+                // per worker per five minutes rather than one per thirty seconds. Not journal-only, and the
+                // difference is deliberate: the journal is an artifact a reader reaches AFTER the
+                // run, so a floor that hangs would print nothing for ninety minutes and then a
+                // timeout, which reads as a dead process rather than a waiting one. Liveness is
+                // the one fact a heartbeat exists to carry, so it stays on the console at the
+                // coarsest cadence that still carries it.
+                {
+                    let n = wait_ticks;
+                    wait_ticks += 1;
+                    if n % 10 == 0 {
+                        eprintln!(
+                            "[floor-worker-wait] worker={worker} elapsed_seconds={} state=running",
+                            wait_started.elapsed().as_secs()
+                        );
+                    }
+                }
                 std::thread::sleep(std::time::Duration::from_secs(30));
             }
         }
@@ -11545,6 +11864,16 @@ fn walk_terminal_detail(
 /// terminal row — so a post-walk compile_clean refusal or a receipt-write failure looked
 /// like a silent exit-1 with every batch green. Emit the same detail on stderr and the
 /// durable journal before `process::exit`.
+fn population_budget_watchdog_exit(detail: &str) -> ! {
+    emit_floor_terminal_outcome("failed", detail);
+    if let Err(msg) = write_floor_worker_terminal("refused", detail) {
+        eprintln!("claim_executor: population budget watchdog terminal receipt refusal: {msg}");
+    }
+    use std::io::Write as _;
+    let _ = std::io::stderr().flush();
+    std::process::exit(1);
+}
+
 fn floor_terminal_fast_exit(code: i32, detail: &str) -> ! {
     use std::io::Write as _;
     let terminal_outcome = if code == 0 { "completed" } else { "failed" };
@@ -11633,6 +11962,9 @@ mod tests {
         if std::env::var(CHILD_MARKER).as_deref() == Ok("1") {
             let progress = PopulationBudgetProgress::before_first_unit();
             progress.enter(3, "dag/tools/fixture.dag::bounded_stage_claim".to_string());
+            let terminal = PathBuf::from("target/population-budget-watchdog-terminal.tsv");
+            let _ = fs::remove_file(&terminal);
+            std::env::set_var(FLOOR_WORKER_TERMINAL_ENV, &terminal);
             let _armed = arm_population_budget_watchdog(
                 "ordinary_floor",
                 "fixture::bounded_plan",
@@ -11649,6 +11981,7 @@ mod tests {
         ));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("create watchdog fixture directory");
+        let terminal = dir.join("target/population-budget-watchdog-terminal.tsv");
         let output = std::process::Command::new(std::env::current_exe().expect("current test exe"))
             .arg("--exact")
             .arg("tests::population_budget_watchdog_refuses_and_writes_located_receipt")
@@ -11679,6 +12012,16 @@ mod tests {
                 && receipt.contains("budget_ms=50")
                 && receipt.contains("outcome=refused"),
             "receipt must carry the refused population and its subject: {receipt}"
+        );
+        let worker_terminal = fs::read_to_string(&terminal).expect("worker terminal receipt");
+        assert!(
+            worker_terminal.starts_with("refused\t")
+                && worker_terminal.contains("ORDINARY-FLOOR-OVER-BUDGET")
+                && worker_terminal.contains("fixture::bounded_plan")
+                && worker_terminal.contains("population_index=3")
+                && worker_terminal.contains("dag/tools/fixture.dag::bounded_stage_claim")
+                && worker_terminal.contains("budget_ms=50"),
+            "progress announcement and worker terminal receipt must carry the same located refusal: {worker_terminal:?}"
         );
         fs::remove_dir_all(&dir).expect("remove watchdog fixture directory");
     }
@@ -11746,6 +12089,7 @@ mod tests {
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
+                    host_dependency_refusal: None,
                     selection_degradation: None,
                     resolve_realization: None,
                 })
@@ -11956,6 +12300,7 @@ mod tests {
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
+                    host_dependency_refusal: None,
                     selection_degradation: None,
                     resolve_realization: resolve_observation_for_nanos(anchor_nanos),
                 },
@@ -11975,6 +12320,7 @@ mod tests {
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
+                    host_dependency_refusal: None,
                     selection_degradation: None,
                     resolve_realization: resolve_observation_for_nanos(native_nanos),
                 },
@@ -12004,6 +12350,7 @@ mod tests {
             witness_row_costs: Vec::new(),
             expectation_refusal: None,
             budget_refusal: None,
+            host_dependency_refusal: None,
             selection_degradation: None,
             resolve_realization: None,
         });
@@ -12043,6 +12390,7 @@ mod tests {
                 witness_row_costs: Vec::new(),
                 expectation_refusal: None,
                 budget_refusal: None,
+                host_dependency_refusal: None,
                 selection_degradation: None,
                 resolve_realization: None,
             }],
@@ -12080,6 +12428,7 @@ mod tests {
             witness_row_costs: Vec::new(),
             expectation_refusal: None,
             budget_refusal: None,
+            host_dependency_refusal: None,
             selection_degradation: None,
             resolve_realization: None,
         });
@@ -12127,6 +12476,7 @@ mod tests {
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
+                    host_dependency_refusal: None,
                     selection_degradation: None,
                     resolve_realization: Some(
                         ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos: 9 },
@@ -12156,6 +12506,7 @@ mod tests {
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
+                    host_dependency_refusal: None,
                     selection_degradation: None,
                     resolve_realization: Some(
                         ResolveRealizationObservation::SatisfiedFromSharedPool {
@@ -12190,6 +12541,7 @@ mod tests {
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
+                    host_dependency_refusal: None,
                     selection_degradation: None,
                     resolve_realization: resolve_observation_for_nanos(3),
                 }],
@@ -12238,6 +12590,7 @@ mod tests {
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
+                    host_dependency_refusal: None,
                     selection_degradation: None,
                     resolve_realization: Some(
                         ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos: 9 },
@@ -12257,6 +12610,7 @@ mod tests {
                     witness_row_costs: Vec::new(),
                     expectation_refusal: None,
                     budget_refusal: None,
+                    host_dependency_refusal: None,
                     selection_degradation: None,
                     resolve_realization: Some(
                         ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos: 7 },
@@ -12865,6 +13219,7 @@ mod tests {
             witness_row_costs: Vec::new(),
             expectation_refusal: refusal,
             budget_refusal: None,
+            host_dependency_refusal: None,
             selection_degradation: None,
             resolve_realization: None,
         }
@@ -13517,6 +13872,7 @@ mod tests {
                 budget_ms: 900_000,
                 kind: BudgetKind::Wall,
             }),
+            host_dependency_refusal: None,
             selection_degradation: None,
             resolve_realization: None,
         };
@@ -13546,11 +13902,78 @@ mod tests {
             witness_row_costs: Vec::new(),
             expectation_refusal: None,
             budget_refusal: None,
+            host_dependency_refusal: None,
             selection_degradation: None,
             resolve_realization: None,
         };
         let (mode, _) = batch_failure_mode_and_detail(&batch_record_for_test(vec![plain]));
         assert_eq!(mode, "WitnessRed");
+    }
+
+    /// A host dependency refusal must classify as HostDependencyAbsent from the VALUE,
+    /// not WitnessRed — same structural rule as budget_kill_classifies_structurally_not_by_message_text.
+    #[test]
+    fn host_dependency_absent_classifies_structurally_not_as_witness_red() {
+        let npm_absent = ClaimResult {
+            function: "materialize_codex_runtime_bundle_produces_native_executable_holds"
+                .to_string(),
+            entry: "dag/test/claim/codex_package_delivery_wet_witness_test.dag".to_string(),
+            ok: false,
+            detail: "returned Bool(false) | HostDependencyAbsent{tool=npm,hint=apt install npm}"
+                .to_string(),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+            runtime_unit_count: single_claim_runtime_unit_count(),
+            witness_row_costs: Vec::new(),
+            expectation_refusal: None,
+            budget_refusal: None,
+            host_dependency_refusal: Some(HostDependencyRefusal {
+                tool: "npm".to_string(),
+                hint: "apt install npm".to_string(),
+            }),
+            selection_degradation: None,
+            resolve_realization: None,
+        };
+        assert_eq!(
+            falsifier_failure_mode(&[npm_absent.detail.clone()]),
+            "WitnessRed",
+            "control: string classifier alone would misclassify"
+        );
+        let (mode, detail) =
+            batch_failure_mode_and_detail(&batch_record_for_test(vec![npm_absent]));
+        assert_eq!(mode, HOST_DEPENDENCY_ABSENT_MODE);
+        assert!(detail.contains("HostDependencyAbsent{tool=npm"));
+    }
+
+    #[test]
+    fn host_dependency_refusal_from_detail_parses_wire() {
+        let parsed = host_dependency_refusal_from_detail(
+            "returned Bool(false) | HostDependencyAbsent{tool=npm,hint=apt install npm}",
+        )
+        .expect("wire must parse");
+        assert_eq!(parsed.tool, "npm");
+        assert_eq!(parsed.hint, "apt install npm");
+    }
+
+    #[test]
+    fn host_dependency_refusal_from_detail_anchors_last_wire_token() {
+        let parsed = host_dependency_refusal_from_detail(
+            "HostDependencyAbsent{tool=decoy,hint=x} | returned Bool(false) | HostDependencyAbsent{tool=npm,hint=apt install npm}",
+        )
+        .expect("last wire token must win");
+        assert_eq!(parsed.tool, "npm");
+        assert_eq!(parsed.hint, "apt install npm");
+    }
+
+    #[test]
+    fn host_dependency_refusal_from_detail_refuses_brace_in_hint() {
+        assert!(host_dependency_refusal_from_detail(
+            "HostDependencyAbsent{tool=npm,hint=install {pkg} on runner}"
+        )
+        .is_none());
     }
 
     #[test]
@@ -13873,6 +14296,7 @@ mod tests {
             runtime_unit_count: runtime_unit_count_unavailable("resolve refused"),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
+            host_dependency_refusal: None,
             expectation_refusal: None,
             selection_degradation: None,
             resolve_realization: None,
@@ -13896,6 +14320,7 @@ mod tests {
             runtime_unit_count: single_claim_runtime_unit_count(),
             witness_row_costs: Vec::new(),
             budget_refusal: None,
+            host_dependency_refusal: None,
             expectation_refusal: None,
             selection_degradation: None,
             resolve_realization: None,
@@ -14012,8 +14437,16 @@ mod tests {
             "a checkpoint's unreached tail carries run_incomplete: {checkpoint}"
         );
         assert!(
-            !checkpoint.contains("\"failure_mode\": \"not_reached\""),
-            "a checkpoint must NOT claim the plan decided to skip the tail: {checkpoint}"
+            checkpoint.contains("\"outcome\": \"pending\""),
+            "a checkpoint's unreached tail is pending, not a fabricated skip: {checkpoint}"
+        );
+        assert!(
+            !checkpoint.contains("\"outcome\": \"skipped\""),
+            "a checkpoint must not manufacture skipped verdicts for unreached batches: {checkpoint}"
+        );
+        assert!(
+            checkpoint.contains("\"disposition\": \"incomplete\""),
+            "a checkpoint names the run-level incomplete fact: {checkpoint}"
         );
 
         // CONCLUDED: the same records, but the plan is over — the tail was genuinely skipped.
@@ -16179,6 +16612,7 @@ mod tests {
                 ],
                 expectation_refusal: None,
                 budget_refusal: None,
+                host_dependency_refusal: None,
                 selection_degradation: None,
                 resolve_realization: None,
             }],
@@ -16280,6 +16714,7 @@ mod tests {
                 ],
                 expectation_refusal: None,
                 budget_refusal: None,
+                host_dependency_refusal: None,
                 selection_degradation: None,
                 resolve_realization: None,
             }],
@@ -16597,6 +17032,88 @@ mod tests {
         assert!(result.budget_refusal.is_none());
     }
 
+    /// RED control for review 51796: discovery batch must lift host-dependency refusals out of
+    /// `summary.failures`, parallel to `discovery_budget_kill_classifies_structurally_on_the_falsifier_path`.
+    #[test]
+    fn discovery_host_dependency_absent_classifies_structurally_on_the_falsifier_path() {
+        use v1_compiler::cli_run::{
+            ClaimOutcome, DiscoverySummary, DiscoveryWitnessOutcome, EntryResolveReceipt,
+            ResolveStageNanos,
+        };
+        let wire = "HostDependencyAbsent{tool=npm,hint=apt install npm}";
+        let failure = format!(
+            "materialize_codex_runtime_bundle_produces_native_executable_holds \
+             (dag/test/claim/codex_package_delivery_wet_witness_test.dag) returned Bool(false) | \
+             {wire}"
+        );
+        let aggregate_detail = format!("1 of 1 discovery witness(es) failed: {failure}");
+        assert_eq!(
+            falsifier_failure_mode(&[aggregate_detail.clone()]),
+            "WitnessRed",
+            "control: string classifier alone would misclassify"
+        );
+
+        let summary_with = |outcome: ClaimOutcome, failures: Vec<String>| DiscoverySummary {
+            total: 1,
+            passed: 0,
+            skipped: 0,
+            selection_skipped_rows: Vec::new(),
+            deferred_rows: Vec::new(),
+            predicted_unaffected: Vec::new(),
+            divergences: Vec::new(),
+            failures,
+            witness_outcomes: vec![DiscoveryWitnessOutcome {
+                entry: "dag/test/claim/codex_package_delivery_wet_witness_test.dag".into(),
+                module_path: "test.claim.codex_package_delivery_wet_witness_test".into(),
+                function: "materialize_codex_runtime_bundle_produces_native_executable_holds"
+                    .into(),
+                outcome,
+                execution_leg: "InterpretedLeg".into(),
+            }],
+            entry_resolve_receipts: Vec::<EntryResolveReceipt>::new(),
+            total_resolve_nanos: 0,
+            total_stage_nanos: ResolveStageNanos::default(),
+            performance_receipts: Vec::new(),
+            total_measured_nanos: 0,
+            roster_closure_nodes: 0,
+            total_entry_groups: 0,
+            selected_entry_groups: 0,
+            selection_categorization_reason: None,
+        };
+
+        for projected in [
+            Ok(Vec::new()),
+            Err("[witness-row-cost] REFUSED: missing measured resolve parent".to_string()),
+        ] {
+            let result = discovery_claim_result(
+                "discovery-corpus".into(),
+                false,
+                aggregate_detail.clone(),
+                NodeFrontierSelectionMode::Applied,
+                &summary_with(ClaimOutcome::Fail, vec![failure.clone()]),
+                projected,
+                None,
+            );
+            assert!(
+                result.host_dependency_refusal.is_some(),
+                "discovery batch must lift the host dependency refusal out of summary.failures"
+            );
+            let (mode, _) = batch_failure_mode_and_detail(&batch_record_for_test(vec![result]));
+            assert_eq!(mode, HOST_DEPENDENCY_ABSENT_MODE);
+        }
+
+        let result = discovery_claim_result(
+            "discovery-corpus".into(),
+            false,
+            "red".into(),
+            NodeFrontierSelectionMode::Applied,
+            &summary_with(ClaimOutcome::Fail, vec!["returned Bool(false)".into()]),
+            Ok(Vec::new()),
+            None,
+        );
+        assert!(result.host_dependency_refusal.is_none());
+    }
+
     #[test]
     fn discovery_claim_result_preserves_caller_detail_on_receipt_refuse() {
         // RED control for review 43284: receipt refusal must append, never overwrite
@@ -16713,6 +17230,7 @@ mod tests {
             witness_row_costs: Vec::new(),
             expectation_refusal: None,
             budget_refusal: None,
+            host_dependency_refusal: None,
             selection_degradation: None,
             resolve_realization: None,
         }

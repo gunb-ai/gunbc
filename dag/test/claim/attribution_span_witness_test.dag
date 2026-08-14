@@ -1,0 +1,171 @@
+module test.claim.attribution_span_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { NonEmptyStr, String, Bool, List }
+import std.nat { Nat }
+import std.interval { OrderedClosedInterval, interval_low, interval_high }
+import std.measure {
+  Nanosecond,
+  nanosecond,
+  nanosecond_count,
+  CpuClock,
+  WallClock,
+  ClockDomain,
+  ProcessMonotonic,
+  ObservationInstant,
+}
+import std.observation { OccurrenceId }
+import std.attribution {
+  ClockFrame,
+  clock_frame_eq,
+  OccurrenceExtent,
+  ExtentConstruction,
+  ExtentReady,
+  ExtentRefused,
+  occurrence_extent,
+  ExtentInFrame,
+  ExtentSpec,
+  attribute_specs,
+  AttributionRefusedImpossibleInterval,
+  AttributionSpan,
+  Attributed,
+  Unattributed,
+  AttributionResult,
+  AttributionComputed,
+  AttributionRefusedForeignClock,
+  AttributionRefusedChildOutsideParent,
+  attribute_within,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn worker_domain() -> ClockDomain { ProcessMonotonic { process: "ordinary-worker" as NonEmptyStr } }
+
+fn occ(id: NonEmptyStr) -> OccurrenceId {
+  OccurrenceId { attempt: "attempt-1" as NonEmptyStr, id: id }
+}
+
+fn frame() -> ClockFrame { ClockFrame { domain: worker_domain(), basis: CpuClock } }
+
+fn span_of(id: NonEmptyStr, low: Nat, high: Nat) -> ExtentSpec {
+  ExtentSpec { occurrence: occ(id: id), frame: frame(), start_ns: low, width_ns: high - low }
+}
+
+fn unattributed_widths(r: AttributionResult) -> List<Nat> {
+  match r {
+    AttributionComputed { spans: ss } =>
+      map(
+        filter(ss, s => match s { Unattributed { parent: _, interval: _ } => true, _ => false }),
+        s => match s {
+          Unattributed { parent: _, interval: i } =>
+            nanosecond_count(n: interval_high(interval: i)) - nanosecond_count(n: interval_low(interval: i))
+          _ => 0
+        }
+      )
+    _ => []
+  }
+}
+
+fn attributed_count(r: AttributionResult) -> Nat {
+  match r {
+    AttributionComputed { spans: ss } =>
+      length(filter(ss, s => match s { Attributed { occurrence: _, interval: _ } => true, _ => false }))
+    _ => 0
+  }
+}
+
+// THE SPECIMEN THIS EXISTS FOR. Two children OVERLAP, so their widths sum to more than the ground
+// they cover. parent_total minus sum_of_children answers 100 - (60 + 60) and underflows or reports
+// nonsense; the complement of the union answers the truth: [0,20] and [80,100] are unaccounted, 40
+// in total, and the middle is covered once.
+test fn w_RED_overlapping_children_do_not_double_count_against_the_parent() -> Bool {
+  let parent = span_of(id: "occ-batch" as NonEmptyStr, low: 0, high: 100)
+  let a = span_of(id: "occ-a" as NonEmptyStr, low: 20, high: 80)
+  let b = span_of(id: "occ-b" as NonEmptyStr, low: 30, high: 70)
+  let r = attribute_specs(parent: parent, children: [a, b])
+  let gaps = unattributed_widths(r: r)
+  attributed_count(r: r) == 2 && length(gaps) == 2 && contains(gaps, 20) && contains(gaps, 20)
+}
+
+// Gaps are EXACT intervals, not a scalar remainder: two separate silences of 10 are two spans, and
+// a reducer reporting "20ns unattributed" cannot tell you where to look.
+test fn w_RED_two_separate_silences_are_two_located_spans_not_one_total() -> Bool {
+  let parent = span_of(id: "occ-batch" as NonEmptyStr, low: 0, high: 100)
+  let a = span_of(id: "occ-a" as NonEmptyStr, low: 10, high: 40)
+  let b = span_of(id: "occ-b" as NonEmptyStr, low: 50, high: 90)
+  let gaps = unattributed_widths(r: attribute_specs(parent: parent, children: [a, b]))
+  length(gaps) == 3 && contains(gaps, 10)
+}
+
+// Order of reading the producer files cannot change the answer.
+test fn w_the_result_is_independent_of_the_order_children_were_read() -> Bool {
+  let parent = span_of(id: "occ-batch" as NonEmptyStr, low: 0, high: 100)
+  let a = span_of(id: "occ-a" as NonEmptyStr, low: 10, high: 40)
+  let b = span_of(id: "occ-b" as NonEmptyStr, low: 50, high: 90)
+  let forward = unattributed_widths(r: attribute_specs(parent: parent, children: [a, b]))
+  let backward = unattributed_widths(r: attribute_specs(parent: parent, children: [b, a]))
+  forward == backward
+}
+
+// A child on a different clock REFUSES. Summing it into a total would produce a figure describing
+// no single timeline — the 2801s-versus-2076s shape.
+test fn w_RED_a_child_on_a_foreign_clock_refuses_rather_than_being_summed() -> Bool {
+  let parent = span_of(id: "occ-batch" as NonEmptyStr, low: 0, high: 100)
+  let foreign = ExtentSpec {
+    occurrence: occ(id: "occ-wall" as NonEmptyStr),
+    frame: ClockFrame { domain: worker_domain(), basis: WallClock },
+    start_ns: 10,
+    width_ns: 30
+  }
+  match attribute_specs(parent: parent, children: [foreign]) {
+    AttributionRefusedForeignClock { child: c } => c.id == "occ-wall"
+    _ => false
+  }
+}
+
+// A child extending past its parent would otherwise steal time from a sibling and drive the
+// remainder negative.
+test fn w_RED_a_child_outside_its_parent_refuses_rather_than_stealing_from_a_sibling() -> Bool {
+  let parent = span_of(id: "occ-batch" as NonEmptyStr, low: 0, high: 100)
+  let overrun = span_of(id: "occ-overrun" as NonEmptyStr, low: 90, high: 140)
+  match attribute_specs(parent: parent, children: [overrun]) {
+    AttributionRefusedChildOutsideParent { child: c } => c.id == "occ-overrun"
+    _ => false
+  }
+}
+
+// A parent with NO children is entirely unattributed — one located span covering it, not an empty
+// result that reads as "fully accounted for".
+test fn w_RED_a_parent_with_no_children_is_wholly_unattributed_not_silently_accounted() -> Bool {
+  let parent = span_of(id: "occ-batch" as NonEmptyStr, low: 0, high: 100)
+  let gaps = unattributed_widths(r: attribute_specs(parent: parent, children: []))
+  length(gaps) == 1 && contains(gaps, 100)
+}
+
+// Full coverage yields NO gap spans — the complement of a covering union is empty, and this is the
+// control that keeps the gap emitter from inventing zero-width spans.
+test fn w_a_fully_covered_parent_reports_no_unattributed_span() -> Bool {
+  let parent = span_of(id: "occ-batch" as NonEmptyStr, low: 0, high: 100)
+  let whole = span_of(id: "occ-a" as NonEmptyStr, low: 0, high: 100)
+  length(unattributed_widths(r: attribute_specs(parent: parent, children: [whole]))) == 0
+}
+
+// An extent cannot be assembled from endpoints on different clocks: the width would describe no
+// timeline, so it refuses at construction rather than at attribution.
+test fn w_RED_an_extent_from_two_clocks_refuses_at_construction() -> Bool {
+  let begin = ObservationInstant { domain: worker_domain(), basis: CpuClock, since_origin: nanosecond(count: 10) }
+  let end = ObservationInstant { domain: worker_domain(), basis: WallClock, since_origin: nanosecond(count: 90) }
+  match occurrence_extent(occurrence: occ(id: "occ-a" as NonEmptyStr), begin: begin, end: end) {
+    ExtentRefused { cause: _ } => true
+    ExtentReady { frame: _, extent: _ } => false
+  }
+}
+
+test fn w_RED_an_extent_whose_end_precedes_its_begin_refuses() -> Bool {
+  let begin = ObservationInstant { domain: worker_domain(), basis: CpuClock, since_origin: nanosecond(count: 90) }
+  let end = ObservationInstant { domain: worker_domain(), basis: CpuClock, since_origin: nanosecond(count: 10) }
+  match occurrence_extent(occurrence: occ(id: "occ-a" as NonEmptyStr), begin: begin, end: end) {
+    ExtentRefused { cause: _ } => true
+    ExtentReady { frame: _, extent: _ } => false
+  }
+}
