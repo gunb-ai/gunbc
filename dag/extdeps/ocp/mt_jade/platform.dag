@@ -346,26 +346,7 @@ fn clock_tree_contains_part_number(nodes: List<ClockTreeNode>, part: NonEmptyStr
 }
 
 fn reference_part_roles_include(rows: List<MtJadeReferencePartRow>, wanted: ReferencePartRole) -> Bool {
-  fold(rows, init: false, f: fn(acc, r) {
-    acc || match wanted {
-      BaseboardManagementController =>
-        match r.role { BaseboardManagementController => true, BootI2cEeprom => false, HostQspiFlash => false, BmcSpiFlash => false, BmcEthernetPhy => false, PcieClockGenerator => false, PcieClockBuffer => false, ProgrammableClockGenerator => false }
-      BootI2cEeprom =>
-        match r.role { BaseboardManagementController => false, BootI2cEeprom => true, HostQspiFlash => false, BmcSpiFlash => false, BmcEthernetPhy => false, PcieClockGenerator => false, PcieClockBuffer => false, ProgrammableClockGenerator => false }
-      HostQspiFlash =>
-        match r.role { BaseboardManagementController => false, BootI2cEeprom => false, HostQspiFlash => true, BmcSpiFlash => false, BmcEthernetPhy => false, PcieClockGenerator => false, PcieClockBuffer => false, ProgrammableClockGenerator => false }
-      BmcSpiFlash =>
-        match r.role { BaseboardManagementController => false, BootI2cEeprom => false, HostQspiFlash => false, BmcSpiFlash => true, BmcEthernetPhy => false, PcieClockGenerator => false, PcieClockBuffer => false, ProgrammableClockGenerator => false }
-      BmcEthernetPhy =>
-        match r.role { BaseboardManagementController => false, BootI2cEeprom => false, HostQspiFlash => false, BmcSpiFlash => false, BmcEthernetPhy => true, PcieClockGenerator => false, PcieClockBuffer => false, ProgrammableClockGenerator => false }
-      PcieClockGenerator =>
-        match r.role { BaseboardManagementController => false, BootI2cEeprom => false, HostQspiFlash => false, BmcSpiFlash => false, BmcEthernetPhy => false, PcieClockGenerator => true, PcieClockBuffer => false, ProgrammableClockGenerator => false }
-      PcieClockBuffer =>
-        match r.role { BaseboardManagementController => false, BootI2cEeprom => false, HostQspiFlash => false, BmcSpiFlash => false, BmcEthernetPhy => false, PcieClockGenerator => false, PcieClockBuffer => true, ProgrammableClockGenerator => false }
-      ProgrammableClockGenerator =>
-        match r.role { BaseboardManagementController => false, BootI2cEeprom => false, HostQspiFlash => false, BmcSpiFlash => false, BmcEthernetPhy => false, PcieClockGenerator => false, PcieClockBuffer => false, ProgrammableClockGenerator => true }
-    }
-  })
+  fold(rows, init: false, f: fn(acc, r) { acc || r.role == wanted })
 }
 
 data extdeps_model_scope: ExternalModelScope = mt_jade_model_scope
