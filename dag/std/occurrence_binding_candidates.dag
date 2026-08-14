@@ -2,7 +2,7 @@ module std.occurrence_binding_candidates
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha, FilePath }
+import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha, FilePath, SourceSpan }
 import std.algebra { FreeMonoid, Empty, Cons }
 import std.occurrence_binding {
   OccurrenceBound,
@@ -31,6 +31,8 @@ import std.occurrence_identity {
   OccurrenceCategoryModuleScopeNotExposed,
   OccurrenceCategoryClauseEDependencyInducing,
   OccurrenceCategoryClauseEDependencyNotInducing,
+  ReferencePath,
+  ReferencePathSegment,
   OccurrenceContainmentPath,
   occurrence_containment_path_is_prefix_of,
   occurrence_containment_paths_equal,
@@ -1721,6 +1723,148 @@ type ReferenceDependencyAdmission
   | ReferenceDependencyExcluded { category: OccurrenceCategory }
 
 data module_member_projection_note: String = "THE HEAD-ONLY WIDEN, CLOSED. An expression path p.first is a FieldOccurrence reference whose base is its child, and FieldOccurrence is excluded from clause-E dependency inducement -- correctly, for a record field access. The exclusion was applied to the DEPENDENCY question and silently answered the BINDING question too: an excluded reference is never added to the required population, so it never had to resolve. Measured consequence, reproduced before the repair: p.no_such_member settled with one edge against a provider that declares no such member, because the edge came from the head binding to the module while the member was never asked about. A projection off a module head is not a record field access, and the difference is decidable here rather than at the category: the base resolves to a NamespaceSegmentOccurrence or it does not. When it does, the segment must resolve among that module's own members, and the dependency is attributed to the TERMINAL declaration -- which is what a file dependency actually rests on -- rather than to the module head that merely names where to look."
+
+data reference_path_producer_note: String = "TWO SPELLINGS IN, ONE PATH OUT. The dotted spelling is decided first because it is decidable from the authored text alone: a name carrying a dot is one occurrence covering the whole path, so its head is the first segment and every later segment inherits the one span the parser allocated -- coarse, and honestly so, because there is no second occurrence to carry a narrower one. Otherwise the reference is walked DOWN its containment children: a projection segment has exactly one child (its receiver), so more than one child is not a longer path but a shape this producer does not model, and it refuses rather than picking one. A reference with no child and no dot is a bare name, which is a path of zero segments -- the ordinary case, not a special one. THE ORDER: walking down yields segments outermost-first, so the accumulator is built head-adjacent-last and reversed once at the end, never appended per step."
+
+type ReferencePathBuild
+  = ReferencePathBuilt { path: ReferencePath }
+  | ReferencePathRefused { reason: ReferencePathRefusal }
+
+type ReferencePathRefusal
+  = ReferencePathOccurrenceNotIndexed { occurrence: OccurrenceId }
+  | ReferencePathBranchingProjection { occurrence: OccurrenceId, child_count: Int }
+  | ReferencePathEmptySegmentText { occurrence: OccurrenceId }
+  | ReferencePathDescentUnbounded { occurrence: OccurrenceId }
+
+fn reference_list_count(xs: List<ReferenceOccurrence>) -> Int {
+  fold(xs, init: 0, f: (acc, _) => acc + 1)
+}
+
+fn reference_children(
+  references: List<ReferenceOccurrence>,
+  reference: ReferenceOccurrence
+) -> List<ReferenceOccurrence> {
+  reverse(fold(references, init: Empty, f: (acc, candidate) =>
+    match reverse(candidate.containment.ancestors) {
+      Empty => acc
+      Cons { head: parent, tail: _ } =>
+        match parent.value == reference.occurrence.value {
+          true => Cons { head: candidate, tail: acc }
+          false => acc
+        }
+    }))
+}
+
+fn reference_authored_name(
+  index: OccurrenceCandidateIndex,
+  reference: ReferenceOccurrence
+) -> String? {
+  match map_get(index.entries_by_id, reference.occurrence.value) {
+    Absent => none
+    Present { value: entry } => Present { value: entry.projection.authored_name }
+  }
+}
+
+fn reference_path_segments_from_dotted(
+  name: String,
+  span: SourceSpan
+) -> List<ReferencePathSegment> {
+  fold(name |> split(delimiter: "."), init: Empty, f: (acc, segment) =>
+    Cons { head: ReferencePathSegment { name: segment, diagnostic_span: span, occurrence: none }, tail: acc })
+}
+
+fn reference_path_from_dotted_name(
+  reference: ReferenceOccurrence,
+  name: String
+) -> ReferencePathBuild {
+  match reverse(reference_path_segments_from_dotted(name: name, span: reference.diagnostic_span)) {
+    Empty => ReferencePathRefused { reason: ReferencePathEmptySegmentText { occurrence: reference.occurrence } }
+    Cons { head: head_segment, tail: rest } =>
+      match head_segment.name == "" {
+        true => ReferencePathRefused { reason: ReferencePathEmptySegmentText { occurrence: reference.occurrence } }
+        false => ReferencePathBuilt {
+          path: ReferencePath {
+            head_name: head_segment.name,
+            head_span: reference.diagnostic_span,
+            head_occurrence: reference.occurrence,
+            segments: rest,
+          }
+        }
+      }
+  }
+}
+
+fn reference_path_descend(
+  index: OccurrenceCandidateIndex,
+  references: List<ReferenceOccurrence>,
+  reference: ReferenceOccurrence,
+  segments: List<ReferencePathSegment>,
+  fuel: Int
+) -> ReferencePathBuild {
+  match reference_authored_name(index: index, reference: reference) {
+    Absent => ReferencePathRefused { reason: ReferencePathOccurrenceNotIndexed { occurrence: reference.occurrence } }
+    Present { value: name } =>
+      match reference_children(references: references, reference: reference) {
+        Empty => ReferencePathBuilt {
+          path: ReferencePath {
+            head_name: name,
+            head_span: reference.diagnostic_span,
+            head_occurrence: reference.occurrence,
+            segments: reverse(segments),
+          }
+        }
+        Cons { head: child, tail: siblings } =>
+          match siblings {
+            Cons { head: _, tail: _ } =>
+              ReferencePathRefused {
+                reason: ReferencePathBranchingProjection {
+                  occurrence: reference.occurrence,
+                  child_count: 1 + reference_list_count(xs: siblings),
+                }
+              }
+            Empty =>
+              match fuel <= 0 {
+                true => ReferencePathRefused { reason: ReferencePathDescentUnbounded { occurrence: reference.occurrence } }
+                false => reference_path_descend(
+                  index: index,
+                  references: references,
+                  reference: child,
+                  segments: Cons {
+                    head: ReferencePathSegment {
+                      name: name,
+                      diagnostic_span: reference.diagnostic_span,
+                      occurrence: Present { value: reference.occurrence },
+                    },
+                    tail: segments,
+                  },
+                  fuel: fuel - 1,
+                )
+              }
+          }
+      }
+  }
+}
+
+fn reference_path_of(
+  index: OccurrenceCandidateIndex,
+  references: List<ReferenceOccurrence>,
+  reference: ReferenceOccurrence
+) -> ReferencePathBuild {
+  match reference_authored_name(index: index, reference: reference) {
+    Absent => ReferencePathRefused { reason: ReferencePathOccurrenceNotIndexed { occurrence: reference.occurrence } }
+    Present { value: name } =>
+      match string_contains(name, ".") {
+        true => reference_path_from_dotted_name(reference: reference, name: name)
+        false => reference_path_descend(
+          index: index,
+          references: references,
+          reference: reference,
+          segments: Empty,
+          fuel: reference_list_count(xs: references),
+        )
+      }
+  }
+}
 
 fn reference_base_child(
   references: List<ReferenceOccurrence>,

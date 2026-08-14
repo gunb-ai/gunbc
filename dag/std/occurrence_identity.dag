@@ -151,6 +151,21 @@ type OccurrenceTransport {
   references: List<ReferenceOccurrence>
 }
 
+data reference_path_note: String = "ONE CARRIER FOR BOTH SPELLINGS OF A PROJECTION. The dot is containment projection, and the two syntactic positions that write one spell it differently: a TYPE path arrives as a single occurrence whose authored_name is the whole dotted text (live_tree.LiveTreeDisposition), while an EXPRESSION path arrives as a base reference plus one FieldOccurrence node per segment, the base reachable as the segment's containment child. ReferencePath is what both fold into, so the resolution rule is authored once and neither position carries a private one. The head is a NAME plus the span that located it, not an occurrence: the type spelling has no separate occurrence for its head, and pretending it does would mint an identity the parser never allocated. A segment likewise carries its own span where one exists and the whole path's span where the spelling gives it none -- an honestly coarse location, never a fabricated offset into a blob. THE LAW THE SHAPE ENFORCES: a path with no segments is an ordinary bare reference, and every segment is a step that must land on exactly one containment child of the previous declaration -- so no terminal declaration, no binding, and no dependency-ready outcome from a head that merely bound. What this replaces is two admissions that stood in for it: the value-reference arm admitting a namespace category (the head widen) and the field-reference arm admitting module-member categories (the segment widen); both were the reference site guessing at a question the path shape decides."
+
+type ReferencePathSegment {
+  name: String
+  diagnostic_span: SourceSpan
+  occurrence: OccurrenceId?
+}
+
+type ReferencePath {
+  head_name: String
+  head_span: SourceSpan
+  head_occurrence: OccurrenceId
+  segments: List<ReferencePathSegment>
+}
+
 type OccurrenceIdentityAcceptanceLaw {
   id: String
   required_receipt: String
