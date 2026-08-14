@@ -1,0 +1,96 @@
+module v1.tests.claim.dag_parse_continuation_operator_witness_test
+
+import v1.std.core {
+  NewlineIndex,
+  build_newline_index,
+  empty_intern_table,
+}
+import v1.compiler.tokenize { tokenize }
+import v1.compiler.parse {
+  ParseContext,
+  parse_with_table,
+}
+
+data dag_parse_continuation_operator_witness_note: String = "Hermetic parse witnesses for operator-table-derived newline continuations (snappy-moth-736). Continuation-leading tokens are every dag_syntax_spec.operators infix symbol except prefix/infix dual-role exclusions documented in operator_continuation_dual_role_exclusion_note. Covers comparison and arithmetic families — not a remembered four-shape allowlist."
+
+data dag_parse_continuation_operator_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/dag_parse_continuation_operator_witness_test.dag --functions w_leading_or,w_leading_eq,w_null_coalesce_newline_continuation,w_comparison_operator_newline_family,w_arithmetic_operator_newline_family,w_dot_newline_continuation,w_pipe_newline_continuation,w_dual_role_minus_still_two_statements"
+
+fn newline_parse_ctx(file: String, source: String) -> ParseContext {
+  ParseContext {
+    source_indices: map_insert(
+      empty_map(),
+      file,
+      build_newline_index(file: file, source: source)
+    ),
+    intern_table: empty_intern_table(),
+    occurrence_allocator: none,
+    occurrence_index: none,
+    declaration_occurrences: none,
+    reference_occurrences: none,
+  }
+}
+
+fn parse_module_source_ok(source: String, file: String) -> Bool {
+  let parsed = parse_with_table(
+    tokens: tokenize(source: source, file: file),
+    source_indices: newline_parse_ctx(file: file, source: source).source_indices,
+    intern_table: empty_intern_table()
+  )
+  parsed.result.error == none
+}
+
+test fn w_leading_or() -> Bool {
+  parse_module_source_ok(
+    source: "module test\nfn leading_or() -> Bool {\n  let a = \"x\"\n  if a == \"\"\n    || a == \"y\" { false }\n  else { true }\n}\n",
+    file: "leading_or.dag"
+  )
+}
+
+test fn w_leading_eq() -> Bool {
+  parse_module_source_ok(
+    source: "module test\nfn leading_eq() -> Bool {\n  let a = \"x\"\n  a\n    == \"x\"\n}\n",
+    file: "leading_eq.dag"
+  )
+}
+
+test fn w_null_coalesce_newline_continuation() -> Bool {
+  parse_module_source_ok(
+    source: "module test\nfn null_coalesce() -> Int {\n  none\n    ?? 1\n}\n",
+    file: "null_coalesce.dag"
+  )
+}
+
+test fn w_comparison_operator_newline_family() -> Bool {
+  parse_module_source_ok(
+    source: "module test\nfn cmp_family() -> Bool {\n  let a = 1\n  a\n    != 2\n    && a\n    < 3\n    && a\n    <= 3\n    && a\n    > 0\n    && a\n    >= 1\n}\n",
+    file: "comparison_family.dag"
+  )
+}
+
+test fn w_arithmetic_operator_newline_family() -> Bool {
+  parse_module_source_ok(
+    source: "module test\nfn arith_family() -> Int {\n  let a = 1\n  a\n    + 2\n    * 3\n    / 2\n    % 2\n}\n",
+    file: "arithmetic_family.dag"
+  )
+}
+
+test fn w_dot_newline_continuation() -> Bool {
+  parse_module_source_ok(
+    source: "module test\ntype Row { v: Int }\nfn dot() -> Int {\n  let r = Row { v: 1 }\n  r\n    .v\n}\n",
+    file: "dot_newline.dag"
+  )
+}
+
+test fn w_pipe_newline_continuation() -> Bool {
+  parse_module_source_ok(
+    source: "module test\nfn demo(x: Int) -> Int { x }\nfn pipe() -> Int {\n  1\n    |> demo\n}\n",
+    file: "pipe_newline.dag"
+  )
+}
+
+test fn w_dual_role_minus_still_two_statements() -> Bool {
+  parse_module_source_ok(
+    source: "module test\nfn bar(x: Int) -> Int { x }\nfn demo() -> Int {\n  let a = 1\n  -bar(1)\n  a\n}\n",
+    file: "dual_role_minus.dag"
+  )
+}

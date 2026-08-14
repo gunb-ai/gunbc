@@ -1839,23 +1839,47 @@ pub fn skip_newlines(mut tokens: Rc<TokenStream>) -> Rc<TokenStream> {
     }
 }
 
-pub fn is_continuation_shape(shape: TokenShape) -> bool {
-    (((is_pipe_arrow_shape(shape.clone()) || is_dot_shape(shape.clone()))
-        || is_or_shape(shape.clone()))
-        || is_and_shape(shape.clone()))
+pub fn operator_continuation_dual_role_exclusion_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Continuation-leading tokens are derived from dag_syntax_spec.operators via find_operator_bp, not a shape allowlist. EXCLUSION: '-' alone — parse_prefix treats ShMinus as unary Neg (prefix) while the operator table also lists '-' as infix Sub; skipping continuation on '-' keeps `let a = foo` newline `-bar(x)` as two statements (unary minus call) instead of silently re-parsing as `foo - bar(x)`. No other dag_operators symbol has a parse_prefix arm today (ShBang is unary-only and is not in the operator table).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn operator_continuation_dual_role_excluded_symbols() -> Rc<Vec<String>> {
+    thread_local! {
+        static CACHED: Rc<Vec<String>> = Rc::new(vec!["-".to_string()]);
+    }
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+}
+
+pub fn is_prefix_infix_dual_role_operator(symbol: String) -> bool {
+    operator_continuation_dual_role_excluded_symbols()
+        .iter()
+        .any(|s| *s == symbol)
+}
+
+pub fn is_operator_continuation_token(tok: Option<Rc<Token>>) -> bool {
+    match tok.clone() {
+        Some(t) => {
+            if is_prefix_infix_dual_role_operator(t.text.clone()) {
+                false
+            } else {
+                find_operator_bp(dag_syntax_spec().operators.clone(), t.text.clone()).is_some()
+            }
+        }
+        None => false,
+    }
 }
 
 pub fn skip_continuation_newlines(tokens: Rc<TokenStream>) -> Rc<TokenStream> {
     {
         let tok = token_stream_first(tokens.clone());
         let is_continuation = if tok_is_newline(tok.clone()) {
-            {
-                let after = skip_newlines(tokens.clone());
-                match token_stream_first(after.clone()) {
-                    Some(next) => is_continuation_shape(next.shape.clone()),
-                    None => false,
-                }
-            }
+            let after = skip_newlines(tokens.clone());
+            is_operator_continuation_token(token_stream_first(after.clone()))
         } else {
             false
         };
