@@ -1013,9 +1013,9 @@ type ProducerState
 // THE ORDERING IS THE CARRIER'S SHAPE, not its name. An earlier revision paired a tail with a
 // liveness in a record called LivenessAfterRead and claimed the ordering was structural; it was not,
 // because both arrived as parameters, so a caller could probe first, read second, and satisfy the
-// constructor with the ordering already violated (review by vivid-bear-458, 2026-08-13 — DESIGN
-// section 4b: a brand is cosmetic until construction enforces the distinction). Sealing it makes the
-// claim true: `probe_liveness_for` is the sole mint and it REQUIRES a LedgerTail, so no
+// constructor with the ordering already violated. That is the trap DESIGN section 4b names outright:
+// a brand is cosmetic until construction enforces the distinction. Sealing it makes the claim true:
+// `probe_liveness_for` is the sole mint and it REQUIRES a LedgerTail, so no
 // ProducerLiveness value can come into existence before a tail value does. Check-first has no
 // expressible form rather than merely no sanctioned one.
 //
@@ -1061,7 +1061,15 @@ fn classify_ledger_tail(observed: ProducerLiveness) -> LedgerTailVerdict {
 // The recorded envelope: what a producer appends, as distinct from what it observed.
 // ---------------------------------------------------------------------------
 
-data recorded_observation_envelope_note: String = "WHY AN ENVELOPE AND NOT SIX MORE FIELDS ON ObservationEvent. The event answers what happened to which subject; the envelope answers who recorded it, when on whose clock, and where it sits in the causal tree. Those are facts about the RECORDING, and a producer that could omit them is a producer whose output cannot be reduced. Putting them on the event would also make every existing constructor of an event carry recording facts it has no business knowing — a render-time projection would have to invent an attempt id to build one. The subject path is a CONTAINMENT address and the occurrence pair is a CAUSAL edge; they are not the same relation and collapsing them loses the distinction between a witness that ran under a batch and one that was spawned by another witness."
+// WHY AN ENVELOPE AND NOT SIX MORE FIELDS ON ObservationEvent. The event answers what happened to
+// which subject; the envelope answers who recorded it, when on whose clock, and where it sits in
+// the causal tree. Those are facts about the RECORDING, and a producer that could omit them is a
+// producer whose output cannot be reduced. Putting them on the event would also make every
+// existing constructor of an event carry recording facts it has no business knowing — a render-
+// time projection would have to invent an attempt id to build one. The subject path is a
+// CONTAINMENT address and the occurrence pair is a CAUSAL edge; they are not the same relation and
+// collapsing them loses the distinction between a witness that ran under a batch and one that was
+// spawned by another witness.
 
 // A producer is one appending process. There is exactly one file per producer per attempt, and
 // sequence numbers are per producer, because a global counter across processes would require the
@@ -1086,8 +1094,8 @@ fn observation_producer_eq(a: ObservationProducer, b: ObservationProducer) -> Bo
 // AN OCCURRENCE ID IS AN ATTEMPT-LOCAL COORDINATE, so it carries the attempt it is local to. The
 // bare-string form typechecked a comparison across two attempts and answered it — and comparing
 // receipts from two attempts is the whole point of the falsifier, so the meaningless join was on the
-// path of the first consumer (review by vivid-bear-458, 2026-08-13). It is the cross-family
-// comparison the ContentHash family grounding closed, with attempts standing where hash families
+// path of the first consumer. It is the cross-family comparison the ContentHash family grounding
+// closed, with attempts standing where hash families
 // stood: same representation, different universes, comparable by construction and meaningless when
 // compared.
 //
@@ -1153,7 +1161,13 @@ fn parent_occurrence(r: RecordedObservation) -> OccurrenceId? {
 // Per-file sequence integrity.
 // ---------------------------------------------------------------------------
 
-data producer_sequence_note: String = "A GAP AND A REORDER ARE DIFFERENT FACTS WITH DIFFERENT REMEDIES, so they are different verdicts. A gap means records exist that this read did not see — a lost write, a truncated middle, a reader that skipped — and the reduction is INCOMPLETE, so any attribution derived from it understates. A reorder means the file is not what the append protocol promises and the producer itself is wrong. Reporting either as the other sends the investigation to the wrong layer. And a records-from-two-producers verdict is not a sequence defect at all: sequences are per producer, so two producers in one file means the layout invariant broke upstream of any ordering question."
+// A GAP AND A REORDER ARE DIFFERENT FACTS WITH DIFFERENT REMEDIES, so they are different verdicts.
+// A gap means records exist that this read did not see — a lost write, a truncated middle, a
+// reader that skipped — and the reduction is INCOMPLETE, so any attribution derived from it
+// understates. A reorder means the file is not what the append protocol promises and the producer
+// itself is wrong. Reporting either as the other sends the investigation to the wrong layer. And a
+// records-from-two-producers verdict is not a sequence defect at all: sequences are per producer,
+// so two producers in one file means the layout invariant broke upstream of any ordering question.
 
 type SequenceVerdict
   = SequenceIntact
@@ -1220,7 +1234,20 @@ fn classify_producer_file(records: List<RecordedObservation>) -> SequenceVerdict
 // Resolving a spawn edge, which crosses producer files.
 // ---------------------------------------------------------------------------
 
-data parent_resolution_note: String = "A PARENT THAT RESOLVES TO NOTHING IS TWO FACTS WITH OPPOSITE MEANINGS (review by vivid-bear-458, 2026-08-13). The active stack walks ChildOf across producer files — a worker occurrence is ChildOf an occurrence the COORDINATOR recorded, because the coordinator is what spawned the worker — so a parent absent from the file in hand is the NORMAL case for every worker-rooted occurrence, not damage; it means the reader was handed one file where it needed the attempt's union. A parent absent from every file of the attempt is a real integrity failure: a Begin was never written, or a record was lost somewhere other than the torn tail. Collapsed into one DanglingParent arm the failure runs both ways — a single-file read reports damage on a healthy attempt, or a genuinely lost parent reads as 'probably in another file' and the stack SILENTLY RE-ROOTS. The second is the dangerous one, because a re-rooted occurrence does not look like an error; it looks like a shallower stack, which is a plausible answer to 'where was it' that happens to be wrong. The discriminator is whether the read was scoped to one producer or to the union, which the READER knows and the record does not — so, exactly like producer liveness, it is a required input rather than a fact derivable from the bytes."
+// A PARENT THAT RESOLVES TO NOTHING IS TWO FACTS WITH OPPOSITE MEANINGS. The active stack walks
+// ChildOf across producer files — a worker occurrence is
+// ChildOf an occurrence the COORDINATOR recorded, because the coordinator is what spawned the
+// worker — so a parent absent from the file in hand is the NORMAL case for every worker-rooted
+// occurrence, not damage; it means the reader was handed one file where it needed the attempt's
+// union. A parent absent from every file of the attempt is a real integrity failure: a Begin was
+// never written, or a record was lost somewhere other than the torn tail. Collapsed into one
+// DanglingParent arm the failure runs both ways — a single-file read reports damage on a healthy
+// attempt, or a genuinely lost parent reads as 'probably in another file' and the stack SILENTLY
+// RE-ROOTS. The second is the dangerous one, because a re-rooted occurrence does not look like an
+// error; it looks like a shallower stack, which is a plausible answer to 'where was it' that
+// happens to be wrong. The discriminator is whether the read was scoped to one producer or to the
+// union, which the READER knows and the record does not — so, exactly like producer liveness, it
+// is a required input rather than a fact derivable from the bytes.
 
 type LedgerReadScope
   = SingleProducerRead { producer: ObservationProducer }
@@ -1264,7 +1291,16 @@ fn resolve_parent(
 // The active set: which occurrences a killed attempt was inside.
 // ---------------------------------------------------------------------------
 
-data active_occurrence_note: String = "AN UNFINISHED OCCURRENCE IS A POPULATION, NOT A LATEST RECORD. When a producer is SIGKILLed the question 'what was it doing' has a set answer — every occurrence that recorded a Begin and no conclusion — because occurrences nest: a gate inside a batch inside a worker inside the attempt are all unfinished at once, and reporting only the deepest one, or only the last record written, discards the containment that makes the answer useful. THE LAST COMPLETE RECORD IS NOT THE LAST ACTIVE OCCURRENCE, and conflating them is how a torn tail produces a confident wrong answer: the final bytes may belong to a sibling that finished while its parent was still running, so 'the last thing in the file' names something already over. The set is derived from Begin-without-conclusion across the records actually read, and it is therefore only as complete as the read — which is why the read scope travels with it rather than being assumed."
+// AN UNFINISHED OCCURRENCE IS A POPULATION, NOT A LATEST RECORD. When a producer is SIGKILLed the
+// question 'what was it doing' has a set answer — every occurrence that recorded a Begin and no
+// conclusion — because occurrences nest: a gate inside a batch inside a worker inside the attempt
+// are all unfinished at once, and reporting only the deepest one, or only the last record written,
+// discards the containment that makes the answer useful. THE LAST COMPLETE RECORD IS NOT THE LAST
+// ACTIVE OCCURRENCE, and conflating them is how a torn tail produces a confident wrong answer: the
+// final bytes may belong to a sibling that finished while its parent was still running, so 'the
+// last thing in the file' names something already over. The set is derived from Begin-without-
+// conclusion across the records actually read, and it is therefore only as complete as the read —
+// which is why the read scope travels with it rather than being assumed.
 
 type ActiveOccurrences {
   scope: LedgerReadScope
