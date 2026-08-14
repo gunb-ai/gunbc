@@ -6,6 +6,7 @@ import std.content_hash { content_hash_atom, ContentHash }
 import product.placement_supply { HostIdentity }
 import gunbc.spark_serving_realization {
   SystemPrincipal, NamedPrincipal, ObservedGrantPopulation, GrantPopulationObserved,
+  GrantPopulationUnobserved,
   SparkServingIntent, SurvivesReboot, RestartsOnFailure, ManagedConvergenceOwned,
   NoLoginNoSudoIdentity, ExecutorOwnedIdentity, UnauthenticatedEndpoint, IndependentlyObservable,
   UserUnitRealization, SystemUnitRealization,
