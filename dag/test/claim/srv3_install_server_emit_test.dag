@@ -1,4 +1,8 @@
 module test.claim.srv3_install_server_emit
+import extdeps.uri { Https }
+import extdeps.provisioning.dhcp_client_arch { dhcp_client_processor_architecture }
+import gunbc.os_install { srv3_install_server_spec }
+import gunbc.install_server_emit { install_server_dnsmasq_conf }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

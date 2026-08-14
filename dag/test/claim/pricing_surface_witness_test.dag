@@ -19,6 +19,7 @@ import std.measure {
   per_hour_equivalent_from_per_month,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.uri { Https }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

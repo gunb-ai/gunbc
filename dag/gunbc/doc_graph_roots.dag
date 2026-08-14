@@ -1045,6 +1045,13 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "accelerator-demo-roundtrip",
+    primary_work: DeclarationRef { module_path: "extdeps.languages.simd.kernel", decl_name: "simd_kernel_medium", field: WholeDeclaration },
+    additional_works: [],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "doc migrates into a registered gunbc.plan.Plan row (the registration becomes the binding); the section 6 item 2 execution lane lands on the simd handler. The additional_works citation to gunbc.accelerator_demo_plan AcceleratorRecognitionOutcome was dropped when that module was deleted as inert; the primary work it names survives, which is why this bind survives with it.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "machine-shape-orthogonal-scheduling",
     primary_work: DeclarationRef { module_path: "extdeps.languages.simd.kernel", decl_name: "simd_kernel_medium", field: WholeDeclaration },
     additional_works: [],

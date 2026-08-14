@@ -1,4 +1,8 @@
 module test.claim.os_install_deduction
+import extdeps.uri { Https }
+import gunbc.os_install { srv3_ubuntu_autoinstall_on_iso }
+import gunbc.os_install_emit { autoinstall_user_data }
+import gunbc.os_install_deduction { fold_nbd_proxy_os_install_preflight_verdict, plan_for_os_install_preflight_verdict, runtime_verdict_from_kvm_attestation }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

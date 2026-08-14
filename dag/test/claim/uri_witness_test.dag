@@ -1,4 +1,5 @@
 module test.claim.uri_witness
+import extdeps.uri { File, Https }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

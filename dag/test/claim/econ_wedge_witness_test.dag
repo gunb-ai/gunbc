@@ -61,6 +61,7 @@ import std.measure {
   money_per_minute_micros,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.uri { Https }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

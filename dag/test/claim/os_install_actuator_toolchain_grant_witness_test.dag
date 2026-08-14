@@ -1,4 +1,5 @@
 module test.claim.os_install_actuator_toolchain_grant
+import extdeps.uri { Https }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
