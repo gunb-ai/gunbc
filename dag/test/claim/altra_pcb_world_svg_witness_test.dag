@@ -311,7 +311,7 @@ test fn w_admit_pcb_world_refuses_the_preview_while_capabilities_are_pending() -
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
-      match admit_pcb_world(d: altra_1p_minimum, w: w) {
+      match admit_pcb_world(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), w: w) {
         PartialPcbWorldReady { value: _ } => false
         AdmittedPcbWorld { value: _ } => false
         PcbWorldRefused { cause: c } =>
@@ -693,7 +693,7 @@ test fn w_a_world_whose_capabilities_are_all_refused_is_not_admitted() -> Bool {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
-      match admit_pcb_world(d: altra_1p_minimum, w: all_capabilities_refused(w: w)) {
+      match admit_pcb_world(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), w: all_capabilities_refused(w: w)) {
         PartialPcbWorldReady { value: _ } => false
         AdmittedPcbWorld { value: _ } => false
         PcbWorldRefused { cause: c } =>

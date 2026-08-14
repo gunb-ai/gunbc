@@ -9,6 +9,7 @@ import std.affine_space { Point2, point2, signed_frame_component_count }
 import std.spatial_frame {
   FrameRegistered,
   FrameRegistrationRefused,
+  FrameRegistrationRefusal,
   SpatialFrameRegistry,
   empty_frame_registry,
   frame_length_scale,
@@ -88,6 +89,7 @@ type BoardPhysicalArticle {
 
 type PhysicalRefusal
   = BoardFrameUnregistered { frame: CoordinateFrameIdentity }
+  | BoardFrameRegistrationRefused { cause: FrameRegistrationRefusal }
   | BoardFrameIsNotSubMillimetre { frame: CoordinateFrameIdentity }
   | PlacementFrameDiffersFromBoard { placement: NonEmptyStr }
   | PlacementExtentNotPositive { placement: NonEmptyStr }

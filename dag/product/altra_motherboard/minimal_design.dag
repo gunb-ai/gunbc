@@ -65,6 +65,7 @@ type DesignRefusal
   | ChannelPopulationIsNotAnAdmittedCount { populated: Int }
   | ChannelPopulatedMoreThanOnce { channel: Int }
   | ChannelHasNoDimmPositions
+  | DimmPositionRepeatedOnChannel { position: Int }
   | PcieLanesExceedPackage { requested: Int, available: Int }
 
 // A CHANNEL HAS AN IDENTITY, AND IT IS NOT ITS ORDINAL POSITION IN A COUNT. An earlier revision
@@ -173,6 +174,39 @@ fn channel_occurrences(cs: List<DdrChannelIdentity>, c: DdrChannelIdentity) -> I
   })
 }
 
+// AND THE SAME CLASS EXISTS ON THE OTHER AXIS, which the channel half alone did not close. The
+// slot identities are the cross product of populated channels and positions per channel, so a
+// repeated POSITION duplicates every slot on every channel just as surely as a repeated channel
+// duplicates every slot on one — [FirstDimmOnChannel, FirstDimmOnChannel] against four channels
+// yields eight identities naming four slots. Refusing only the channel axis left that writable,
+// and a duplicated DdrSlotIdentity is exactly the fact everything downstream keys on.
+fn position_occurrences(ps: List<DimmSlotPosition>, p: DimmSlotPosition) -> Int {
+  fold(ps, init: 0, f: fn(acc, q) {
+    if dimm_slot_position_ordinal(p: q) == dimm_slot_position_ordinal(p: p) { acc + 1 } else { acc }
+  })
+}
+
+fn duplicate_position_causes(t: ActiveDdrTopology) -> List<DesignRefusal> {
+  fold(t.positions_per_channel, init: [], f: fn(acc, p) {
+    if position_occurrences(ps: t.positions_per_channel, p: p) > 1
+      && !fold(acc, init: false, f: fn(seen, r) {
+        seen || match r {
+          DimmPositionRepeatedOnChannel { position: n } => n == dimm_slot_position_ordinal(p: p)
+          ChannelPopulatedMoreThanOnce { channel: _ } => false
+          DebugOnlyChannelCountUnderProductionIntent { selected: _ } => false
+          ChannelCountExceedsControllerPopulation { selected: _, available: _ } => false
+          ChannelPopulationIsNotAnAdmittedCount { populated: _ } => false
+          ChannelHasNoDimmPositions => false
+          PcieLanesExceedPackage { requested: _, available: _ } => false
+        }
+      }) {
+      concat(acc, [DimmPositionRepeatedOnChannel { position: dimm_slot_position_ordinal(p: p) }])
+    } else {
+      acc
+    }
+  })
+}
+
 // A CONTROLLER POPULATED TWICE IS A FAILURE THE COUNT FORM COULD NOT EXPRESS, which is the
 // clearest evidence that identity was the missing fact rather than a nicety. A generated range
 // is duplicate-free by construction, so this class did not exist to be caught; naming the
@@ -187,6 +221,7 @@ fn duplicate_channel_causes(t: ActiveDdrTopology) -> List<DesignRefusal> {
           ChannelCountExceedsControllerPopulation { selected: _, available: _ } => false
           ChannelPopulationIsNotAnAdmittedCount { populated: _ } => false
           ChannelHasNoDimmPositions => false
+          DimmPositionRepeatedOnChannel { position: _ } => false
           PcieLanesExceedPackage { requested: _, available: _ } => false
         }
       }) {
@@ -254,7 +289,7 @@ fn design_causes(d: AltraMinimalMotherboard) -> List<DesignRefusal> {
   let dimm_cause = if list_length(items: d.memory.topology.positions_per_channel) < 1 {
     [ChannelHasNoDimmPositions]
   } else {
-    []
+    duplicate_position_causes(t: d.memory.topology)
   }
   let pcie_cause = if d.pcie_lanes_broken_out > altra_pcie_gen4_lane_count {
     [PcieLanesExceedPackage { requested: d.pcie_lanes_broken_out, available: altra_pcie_gen4_lane_count }]

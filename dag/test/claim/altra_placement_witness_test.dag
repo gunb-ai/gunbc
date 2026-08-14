@@ -8,6 +8,9 @@ import std.affine_space { point2 }
 import std.orthogonal_geometry { OrthogonalReady, OrthogonalRefused }
 import product.altra_motherboard.placement {
   BoardControlCpld,
+  FrameRegistryEstablished,
+  FrameRegistryRefused,
+  altra_frame_registry,
   BoardPlacementPlan,
   ClockGenerator,
   ComponentEnvelopeNotEstablished,
@@ -116,7 +119,7 @@ test fn w_the_reference_plan_refuses_because_envelopes_are_outstanding() -> Bool
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
-      match admit_placement(d: altra_1p_minimum, plan: p) {
+      match admit_placement(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: p) {
         PlacementAdmitted { plan: _ } => false
         PlacementRefused { causes: cs } => count_tagged(cs: cs, wanted: "EnvelopeMissing") > 0
       }
@@ -130,8 +133,8 @@ test fn w_the_population_is_complete_so_the_refusal_is_only_about_envelopes() ->
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
-      count_tagged(cs: placement_causes(d: altra_1p_minimum, plan: p), wanted: "RoleUnfilled") == 0
-        && count_tagged(cs: placement_causes(d: altra_1p_minimum, plan: p), wanted: "RoleUnjustified") == 0
+      count_tagged(cs: placement_causes(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: p), wanted: "RoleUnfilled") == 0
+        && count_tagged(cs: placement_causes(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: p), wanted: "RoleUnjustified") == 0
   }
 }
 
@@ -331,7 +334,7 @@ test fn w_a_plan_missing_roles_names_every_one_of_them() -> Bool {
     Absent => false
     Present { value: p } =>
       count_tagged(
-        cs: placement_causes(d: altra_1p_minimum, plan: plan_with_only(cs: [PlannedComponent {
+        cs: placement_causes(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: plan_with_only(cs: [PlannedComponent {
           identity: "board_control_cpld",
           role: BoardControlCpld,
           envelope: board_control_envelope,
@@ -349,7 +352,7 @@ test fn w_a_component_filling_no_required_role_refuses() -> Bool {
     Absent => false
     Present { value: p } =>
       count_tagged(
-        cs: placement_causes(d: altra_1p_minimum, plan: plan_with_only(cs: [PlannedComponent {
+        cs: placement_causes(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: plan_with_only(cs: [PlannedComponent {
           identity: "dimm_slot_spurious",
           role: MemoryModuleSlot { slot: DdrSlotIdentity { channel: DdrChannel5, position: SecondDimmOnChannel } },
           envelope: board_control_envelope,
@@ -369,7 +372,7 @@ test fn w_every_planned_component_has_a_distinct_identity() -> Bool {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
-      count_tagged(cs: placement_causes(d: altra_1p_minimum, plan: p), wanted: "IdentityRepeated") == 0
+      count_tagged(cs: placement_causes(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: p), wanted: "IdentityRepeated") == 0
   }
 }
 
@@ -381,7 +384,7 @@ test fn w_two_components_sharing_an_identity_refuse_once() -> Bool {
     Absent => false
     Present { value: p } =>
       count_tagged(
-        cs: placement_causes(d: altra_1p_minimum, plan: plan_with_only(cs: [
+        cs: placement_causes(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: plan_with_only(cs: [
           PlannedComponent {
             identity: "collides", role: BoardControlCpld, envelope: board_control_envelope,
             origin: point2(frame: altra_board_frame(), x: 10000, y: 10000),
@@ -405,9 +408,9 @@ test fn w_a_partial_board_reports_the_subset_arm_carrying_what_it_did_not_check(
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
-      match board_body_layout_standing(d: altra_1p_minimum, plan: p) {
+      match board_body_layout_standing(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: p) {
         BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: n, geometry: _ } =>
-          n == 13 && n == parts_not_geometrically_checked(d: altra_1p_minimum, plan: p)
+          n == 13 && n == parts_not_geometrically_checked(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: p)
         BodyLayoutAdmittedOverEveryRequiredPart { article: _ } => false
         BodyLayoutRefused { causes: _ } => false
       }
@@ -423,6 +426,7 @@ test fn w_a_present_but_unjustified_part_is_not_counted_as_unchecked() -> Bool {
     Present { value: p } =>
       parts_not_geometrically_checked(
         d: altra_1p_minimum,
+        d_ref: altra_1p_minimum_ref(),
         plan: plan_with_only(cs: concat(p.components, [PlannedComponent {
           identity: "spurious_extra",
           role: MemoryModuleSlot { slot: DdrSlotIdentity { channel: DdrChannel2, position: SecondDimmOnChannel } },
@@ -463,7 +467,7 @@ test fn w_a_complete_board_reaches_the_admitted_arm() -> Bool {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
-      match board_body_layout_standing(d: altra_1p_minimum, plan: every_role_established(template: p)) {
+      match board_body_layout_standing(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: every_role_established(template: p)) {
         BodyLayoutAdmittedOverEveryRequiredPart { article: _ } => true
         BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: _, geometry: _ } => false
         BodyLayoutRefused { causes: _ } => false
@@ -479,7 +483,7 @@ test fn w_a_complete_board_with_overlapping_bodies_is_refused() -> Bool {
     Absent => false
     Present { value: p } =>
       let complete = every_role_established(template: p)
-      match board_body_layout_standing(d: altra_1p_minimum, plan: plan_with_only(
+      match board_body_layout_standing(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: plan_with_only(
         cs: fold(complete.components, init: [], f: fn(acc, c) {
           concat(acc, [PlannedComponent {
             identity: c.identity,
@@ -507,7 +511,7 @@ test fn w_a_role_filled_twice_refuses_naming_how_many_fill_it() -> Bool {
     Absent => false
     Present { value: p } =>
       fold(
-        placement_causes(d: altra_1p_minimum, plan: plan_with_only(
+        placement_causes(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: plan_with_only(
           cs: concat(p.components, [PlannedComponent {
             identity: "second_cpu_socket",
             role: ProcessorSocket,
@@ -537,7 +541,7 @@ test fn w_the_reference_plan_fills_every_role_exactly_once() -> Bool {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
-      count_tagged(cs: placement_causes(d: altra_1p_minimum, plan: p), wanted: "RoleFilledTwice") == 0
+      count_tagged(cs: placement_causes(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: p), wanted: "RoleFilledTwice") == 0
   }
 }
 
@@ -551,7 +555,7 @@ test fn w_a_plan_from_another_design_is_refused_as_incomparable() -> Bool {
     Absent => false
     Present { value: p } =>
       count_tagged(
-        cs: placement_causes(d: altra_1p_minimum, plan: BoardPlacementPlan {
+        cs: placement_causes(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: BoardPlacementPlan {
           frame: p.frame,
           outline: p.outline,
           design: decl_ref(module_path: "product.altra_motherboard.minimal_design", decl_name: "some_other_board"),
@@ -569,7 +573,7 @@ test fn w_the_reference_plan_names_the_design_it_came_from() -> Bool {
     Absent => false
     Present { value: p } =>
       declaration_ref_eq(a: p.design, b: altra_1p_minimum_ref())
-        && count_tagged(cs: placement_causes(d: altra_1p_minimum, plan: p), wanted: "DesignMismatch") == 0
+        && count_tagged(cs: placement_causes(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: p), wanted: "DesignMismatch") == 0
   }
 }
 
@@ -604,4 +608,20 @@ test fn w_two_envelopes_citing_one_declaration_are_seen_as_the_same() -> Bool {
   let same = decl_ref(module_path: "planted.module", decl_name: "planted_row")
   let other = decl_ref(module_path: "planted.module", decl_name: "a_different_row")
   declaration_ref_eq(a: one, b: same) && !declaration_ref_eq(a: one, b: other)
+}
+
+// THE BOARD FRAME REGISTERS, AND THE STANDING SAYS SO RATHER THAN AN EMPTY REGISTRY SAYING
+// NOTHING. This is a positive control, and it is the only half of this class that is provable
+// here: register_frame refuses on a non-decimal length scale or a frame already present, and
+// altra_frame_registry supplies Micro against an empty registry, so neither refusal is reachable
+// from this call site and no discriminating red can be built for it without planting a defect in
+// the function's own body. What the change bought is therefore not a new wall -- it is that if
+// either refusal ever does become reachable, the cause travels to BodyLayoutRefused as
+// BoardFrameRegistrationRefused instead of being replaced downstream by BoardFrameUnregistered,
+// which names a different state.
+test fn w_the_board_frame_registry_is_established_not_silently_empty() -> Bool {
+  match altra_frame_registry() {
+    FrameRegistryEstablished { registry: _ } => true
+    FrameRegistryRefused { cause: _ } => false
+  }
 }

@@ -12,6 +12,7 @@ import product.altra_motherboard.minimal_design {
   DesignRefusal,
   ActiveDdrTopology,
   ChannelHasNoDimmPositions,
+  DimmPositionRepeatedOnChannel,
   ChannelPopulatedMoreThanOnce,
   ChannelPopulationIsNotAnAdmittedCount,
   DdrChannel0,
@@ -71,6 +72,7 @@ fn refusal_is(r: DesignRefusal, wanted: String) -> Bool {
     DebugOnlyChannelCountUnderProductionIntent { selected: _ } => wanted == "DebugOnly"
     ChannelCountExceedsControllerPopulation { selected: _, available: _ } => wanted == "ExceedsControllers"
     ChannelHasNoDimmPositions => wanted == "DimmPopulation"
+    DimmPositionRepeatedOnChannel { position: _ } => wanted == "DuplicatePosition"
     ChannelPopulationIsNotAnAdmittedCount { populated: _ } => wanted == "NotAdmittedCount"
     ChannelPopulatedMoreThanOnce { channel: _ } => wanted == "DuplicateChannel"
     PcieLanesExceedPackage { requested: _, available: _ } => wanted == "PcieLanes"
@@ -140,6 +142,38 @@ test fn w_an_unpopulated_channel_refuses() -> Bool {
 // class did not exist under the count form -- the count was chosen FROM the admissible type, so
 // an inadmissible one was unwritable and therefore never checked. Naming the channels makes it
 // writable, and this is where it stops.
+// AND A REPEATED DIMM POSITION REFUSES ON THE SAME GROUNDS, which the channel half did not cover.
+// The slot identities are the cross product, so [FirstDimmOnChannel, FirstDimmOnChannel] against
+// four distinct channels produces eight identities naming four slots -- every channel duplicated
+// at once, with a perfectly legal channel list. The count assertion is what makes this
+// discriminating rather than decorative: one cause for one repeated position, not one per affected
+// channel, so a fold that reported per slot would go red here.
+test fn w_a_repeated_dimm_position_refuses() -> Bool {
+  let d = design(
+    intent_is_production: true,
+    chans: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
+    positions: [FirstDimmOnChannel, FirstDimmOnChannel],
+    lanes: 4
+  )
+  refuses_naming(d: d, wanted: "DuplicatePosition")
+    && match admit_design(d: d) {
+         DesignAdmitted { design: _ } => false
+         DesignRefused { causes: cs } => design_refusal_count(s: cs) == 1
+       }
+}
+
+// THE POSITIVE CONTROL FOR THE ARM ABOVE: two DISTINCT positions on the same channels is a
+// two-DIMM-per-channel board, which is an ordinary capacity decision and must still be admitted.
+// Without this, refusing every multi-position topology would also read green.
+test fn w_two_distinct_dimm_positions_are_admitted() -> Bool {
+  admits(d: design(
+    intent_is_production: true,
+    chans: [DdrChannel0, DdrChannel1, DdrChannel2, DdrChannel3],
+    positions: [FirstDimmOnChannel, SecondDimmOnChannel],
+    lanes: 4
+  ))
+}
+
 test fn w_a_population_outside_the_admitted_set_refuses() -> Bool {
   refuses_naming(
     d: design(intent_is_production: true, chans: [DdrChannel0, DdrChannel1, DdrChannel2], positions: one_dimm(), lanes: 4),

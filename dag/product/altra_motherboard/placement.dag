@@ -20,12 +20,14 @@ import product.pcb.physical {
   PhysicalAdmission,
   PhysicalRefusalSet,
   PhysicallyRefused,
+  BoardFrameRegistrationRefused,
   admit_body_envelopes,
   body_envelope_of_ice40_package,
 }
 import std.spatial_frame {
   FrameRegistered,
   FrameRegistrationRefused,
+  FrameRegistrationRefusal,
   Micro,
   SpatialFrameRegistry,
   empty_frame_registry,
@@ -358,13 +360,18 @@ fn design_refusals(d_ref: DeclarationRef, plan: BoardPlacementPlan) -> List<Plac
   }
 }
 
-fn placement_causes(d: AltraMinimalMotherboard, plan: BoardPlacementPlan) -> List<PlacementRefusal> {
+// THE DESIGN IDENTITY IS AN ARGUMENT, NOT A CONSTANT REACHED FOR INSIDE. An earlier revision took
+// the design value d and then compared the plan against a hardcoded altra_1p_minimum_ref(), so the
+// join answered the same question no matter which design was passed: a plan built from design A,
+// admitted against design B, agreed with A and passed. The caller is the one who knows which
+// declaration it read the design out of, so the caller states it and the mismatch becomes real.
+fn placement_causes(d: AltraMinimalMotherboard, d_ref: DeclarationRef, plan: BoardPlacementPlan) -> List<PlacementRefusal> {
   concat(
     concat(
       concat(population_refusals(d: d, plan: plan), envelope_refusals(plan: plan)),
       identity_refusals(plan: plan)
     ),
-    design_refusals(d_ref: altra_1p_minimum_ref(), plan: plan)
+    design_refusals(d_ref: d_ref, plan: plan)
   )
 }
 
@@ -381,8 +388,8 @@ type PlacementAdmission
 // bring-up board that cannot be assembled is not a lesser failure than a production one. The
 // intent already decides what the design admits in minimal_design; it does not get a second,
 // weaker meaning here.
-fn admit_placement(d: AltraMinimalMotherboard, plan: BoardPlacementPlan) -> PlacementAdmission {
-  let causes = placement_causes(d: d, plan: plan)
+fn admit_placement(d: AltraMinimalMotherboard, d_ref: DeclarationRef, plan: BoardPlacementPlan) -> PlacementAdmission {
+  let causes = placement_causes(d: d, d_ref: d_ref, plan: plan)
   if placement_refusal_count(cs: causes) == 0 {
     PlacementAdmitted { plan: plan }
   } else {
@@ -567,11 +574,22 @@ fn altra_reference_plan() -> OrthogonalConstruction<BoardPlacementPlan> {
 // to register this board at micrometre grain, and physical.dag checks that choice is fine enough
 // to express the geometry rather than trusting it. At millimetre grain a half-millimetre package
 // pitch is not expressible and two adjacent pins collapse onto one coordinate.
-fn altra_frame_registry() -> SpatialFrameRegistry {
+// A REFUSED REGISTRATION IS REPORTED, NOT SWALLOWED. An earlier revision answered the EMPTY
+// registry when register_frame refused, discarding the cause. That is the absorbing fallback in
+// its quietest form: the board frame is then simply absent, the geometry check downstream reports
+// BoardFrameUnregistered, and the actual cause -- a non-decimal length scale, or a frame
+// registered twice -- is replaced by a symptom that names neither. The two states are different
+// (nobody registered it / registering it was refused, and for a stated reason) and only one of
+// them is a defect in this function's own argument.
+type AltraFrameRegistryStanding
+  = FrameRegistryEstablished { registry: SpatialFrameRegistry }
+  | FrameRegistryRefused { cause: FrameRegistrationRefusal }
+
+fn altra_frame_registry() -> AltraFrameRegistryStanding {
   let r0 = empty_frame_registry()
   match register_frame(r: r0, identity: altra_board_frame(), length_scale: Micro) {
-    FrameRegistered { frame: f } => registry_with(r: r0, f: f)
-    FrameRegistrationRefused { cause: _ } => r0
+    FrameRegistered { frame: f } => FrameRegistryEstablished { registry: registry_with(r: r0, f: f) }
+    FrameRegistrationRefused { cause: c } => FrameRegistryRefused { cause: c }
   }
 }
 
@@ -589,8 +607,8 @@ fn board_article(plan: BoardPlacementPlan) -> BoardPhysicalArticle {
 // envelope is still owed. The other two describe parts that ARE present -- one unjustified, one
 // sharing a name -- so they are defects in what was checked rather than gaps in what was not, and
 // counting them here would overstate the gap.
-fn parts_not_geometrically_checked(d: AltraMinimalMotherboard, plan: BoardPlacementPlan) -> Int {
-  fold(placement_causes(d: d, plan: plan), init: 0, f: fn(acc, c) {
+fn parts_not_geometrically_checked(d: AltraMinimalMotherboard, d_ref: DeclarationRef, plan: BoardPlacementPlan) -> Int {
+  fold(placement_causes(d: d, d_ref: d_ref, plan: plan), init: 0, f: fn(acc, c) {
     match c {
       RequiredRoleUnfilled { role: _ } => acc + 1
       ComponentEnvelopeNotEstablished { component: _, gap: _ } => acc + 1
@@ -618,9 +636,17 @@ type BoardBodyLayoutStanding
   | BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: Int, geometry: PhysicalAdmission }
   | BodyLayoutRefused { causes: PhysicalRefusalSet }
 
-fn board_body_layout_standing(d: AltraMinimalMotherboard, plan: BoardPlacementPlan) -> BoardBodyLayoutStanding {
-  let owed = parts_not_geometrically_checked(d: d, plan: plan)
-  let geometry = admit_body_envelopes(registry: altra_frame_registry(), article: board_article(plan: plan))
+fn board_body_layout_standing(d: AltraMinimalMotherboard, d_ref: DeclarationRef, plan: BoardPlacementPlan) -> BoardBodyLayoutStanding {
+  let owed = parts_not_geometrically_checked(d: d, d_ref: d_ref, plan: plan)
+  let geometry = match altra_frame_registry() {
+    FrameRegistryEstablished { registry: r } =>
+      admit_body_envelopes(registry: r, article: board_article(plan: plan))
+    FrameRegistryRefused { cause: c } =>
+      PhysicallyRefused { causes: PhysicalRefusalSet {
+        first: BoardFrameRegistrationRefused { cause: c },
+        rest: [],
+      } }
+  }
   if owed > 0 {
     BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: owed, geometry: geometry }
   } else {

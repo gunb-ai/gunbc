@@ -261,14 +261,14 @@ fn envelope_reads_from_plan(plan: BoardPlacementPlan) -> List<EstablishedEnvelop
   })
 }
 
-fn physical_world_from_plan(d: AltraMinimalMotherboard, plan: BoardPlacementPlan) -> PcbPhysicalWorld {
+fn physical_world_from_plan(d: AltraMinimalMotherboard, d_ref: DeclarationRef, plan: BoardPlacementPlan) -> PcbPhysicalWorld {
   PcbPhysicalWorld {
     board: PcbBoard { frame: plan.frame, outline: plan.outline },
     components: placeable_components(plan: plan),
     envelope_reads: envelope_reads_from_plan(plan: plan),
     obligations: obligations_from_plan(plan: plan),
     attachment_obligations: attachment_obligations(),
-    body_layout: project_body_layout(s: board_body_layout_standing(d: d, plan: plan)),
+    body_layout: project_body_layout(s: board_body_layout_standing(d: d, d_ref: d_ref, plan: plan)),
     stackup: capability_pending(what_is_owed: "a cited dielectric stackup for this board; no fabricator profile has been joined"),
     footprints: capability_pending(what_is_owed: "vendor land patterns placed on this board; body envelopes are not footprints"),
     pads: capability_pending(what_is_owed: "a pad population derived from placed footprints"),
@@ -276,13 +276,13 @@ fn physical_world_from_plan(d: AltraMinimalMotherboard, plan: BoardPlacementPlan
   }
 }
 
-fn pcb_world_from_plan(d: AltraMinimalMotherboard, plan: BoardPlacementPlan) -> PcbWorld {
+fn pcb_world_from_plan(d: AltraMinimalMotherboard, d_ref: DeclarationRef, plan: BoardPlacementPlan) -> PcbWorld {
   pcb_world(
     design: plan.design,
     electrical: PcbElectricalWorld {
       nets: capability_pending(what_is_owed: "a netlist joined to this board; electrical connectivity has not been modeled"),
     },
-    physical: physical_world_from_plan(d: d, plan: plan),
+    physical: physical_world_from_plan(d: d, d_ref: d_ref, plan: plan),
     manufacturing: PcbManufacturingWorld {
       artifacts: capability_pending(what_is_owed: "manufacturing artifacts (gerber, drill, fab drawing); none have been emitted"),
     },
@@ -299,7 +299,7 @@ fn altra_pcb_world_for(d: AltraMinimalMotherboard) -> PcbWorldConstruction<PcbWo
         if outline_copies_mt_jade_reference(o: plan.outline) {
           PcbWorldRefused { cause: PcbOutlineCopiedFromCitedForeignBoard }
         } else {
-          PartialPcbWorldReady { value: pcb_world_from_plan(d: d, plan: plan) }
+          PartialPcbWorldReady { value: pcb_world_from_plan(d: d, d_ref: altra_1p_minimum_ref(), plan: plan) }
         }
     }
   }
@@ -327,7 +327,10 @@ fn design_mismatch_from_causes(cs: List<PlacementRefusal>) -> PcbWorldRefusal? {
   })
 }
 
-fn admit_pcb_world(d: AltraMinimalMotherboard, w: PcbWorld) -> PcbWorldConstruction<PcbWorld> {
+// THE DESIGN'S IDENTITY IS SUPPLIED BY WHOEVER READ IT. Passing plan.design here instead would
+// make the join compare the plan against itself -- a tautology, and a worse defect than the
+// hardcoded reference it replaced, because it can never fail.
+fn admit_pcb_world(d: AltraMinimalMotherboard, d_ref: DeclarationRef, w: PcbWorld) -> PcbWorldConstruction<PcbWorld> {
   match altra_reference_plan() {
     OrthogonalRefused { cause: c } => PcbWorldRefused { cause: PcbBoardOutlineRefused { cause: c } }
     OrthogonalReady { value: plan } =>
@@ -337,7 +340,7 @@ fn admit_pcb_world(d: AltraMinimalMotherboard, w: PcbWorld) -> PcbWorldConstruct
         match first_unsettled_capability(w: w) {
           Present { value: r } => PcbWorldRefused { cause: r }
           Absent =>
-            match admit_placement(d: d, plan: plan) {
+            match admit_placement(d: d, d_ref: d_ref, plan: plan) {
               PlacementAdmitted { plan: _ } => AdmittedPcbWorld { value: w }
               PlacementRefused { causes: cs } =>
                 match design_mismatch_from_causes(cs: cs) {
