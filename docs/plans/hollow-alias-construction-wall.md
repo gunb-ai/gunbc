@@ -104,7 +104,18 @@ Instance 3 is the one worth dwelling on: the conflation reached a **shared std c
 
 **The consequence for estimating work.** A carrier conversion is design-narrow — evidence exists at every point it is needed, so no stage is re-plumbed — while being *execution-search-wide*, because the checker gives no signal and every seam must be found by running something that reaches it. Those are different quantities, and quoting the first for the second is how this change was scoped as small.
 
-**The denominator, since a green sweep is not a bound.** "Every witness I could execute is green" cannot rule out a fourth seam. What can be stated: the converted frontier is **39 declarations mentioning `NormalizedTree` across 7 modules**; every point where such a value meets a `Node`-declared position is resolved in exactly one of three ways, and there are no others — **16 `.root` projections** at genuine Node inspections, **1 order-preserving list projection** (`normalized_tree_roots_to_nodes`, for the symbol-index fill, which is about Node structure and not admission), and **3 callees converted** to carry the admitted type (the table above). That is a bounded, checkable claim; the green sweep is evidence for it, not a substitute.
+**The denominator, since a green sweep is not a bound — and the boundary it is drawn at, because a denominator whose scope is implicit reads as complete and is not.**
+
+The first cut of this enumeration covered **production modules reachable from the converted chain**: 39 declarations mentioning `NormalizedTree` across 7 modules, every `Node`-meeting point resolved as 16 `.root` projections, 1 order-preserving list projection (`normalized_tree_roots_to_nodes`), or 3 converted callees. That claim held for what it covered — and the floor then failed with **nine more instances in three witness modules**, because *witness modules meet a converted value exactly as production modules do* and the first cut silently excluded them. The method was sound; the scope was wrong, and the scope was wrong because it was never written down.
+
+The corrected population is drawn at **every declaration that meets a converted value, production or witness**, and it is enumerated as a caller census rather than a declaration census:
+
+- **28 modules** reference the converted APIs (`resolve`, `resolve_with_admission*`, `assemble_program_from_module_roots`, `validate_module_roots`, `module_root_find`, `admit_import_entry`, `build_program_namespace`).
+- **13** feed their roots from `normalize(...)`, whose result is already `NormalizedTree` — unaffected by construction.
+- **15** hand-build roots and therefore had to admit them through the door; 12 required conversion, the rest resolved to prose mentions or ingest-fed roots.
+- Everything converted is verified **by execution**, not by compile.
+
+**The residue this cannot reach, stated rather than implied.** The instrument is execution, so a witness that meets a converted value and *does not execute* is broken identically and silently right now, and nothing reports it. That set was measured rather than guessed: intersecting the corpus-wide roster of witnesses with no executing consumer (190 files carrying a bare `: TestClaim =`, from the lane working that population) against the converted-API callers yields **6 files, 4 of them hand-built** — all four accounted for and executed green here. The intersection is small, but it is small *as measured*, and it is the honest bound on what "executed green" covers.
 
 ### 8.2.1 How the class first showed itself
 

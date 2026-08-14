@@ -8,6 +8,7 @@ import v2.std.diagnostic {
   ExternalContractUnknown,
   Outcome,
   Rejected,
+  bind_outcome,
   diagnostics_singleton,
   Unavailable,
   node_locus,
@@ -57,5 +58,25 @@ fn normalized_tree_roots_to_nodes(roots: FreeMonoid<NormalizedTree>) -> FreeMono
     xs: roots,
     empty: Empty,
     cons: fn(acc, root) { list_snoc_item(xs: acc, item: root.root) }
+  )
+}
+
+// The plural door. Admitting a list of roots is not a new decision -- it is the
+// same one per element, refusing as a whole so a partially admitted list has no
+// representation.
+fn admit_normalized_roots(
+  roots: FreeMonoid<Node>,
+  diagnostics: Diagnostics
+) -> Outcome<FreeMonoid<NormalizedTree>> {
+  fold_list(
+    xs: roots,
+    empty: Accepted { value: Empty, diagnostics: diagnostics },
+    cons: fn(acc, root) {
+      bind_outcome(o: acc, f: fn(admitted) {
+        bind_outcome(o: admit_normalized_tree(root: root, diagnostics: diagnostics), f: fn(one) {
+          Accepted { value: list_snoc_item(xs: admitted, item: one), diagnostics: v2.std.diagnostic.None }
+        })
+      })
+    }
   )
 }
