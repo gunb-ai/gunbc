@@ -5,7 +5,6 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.types { List, String, none }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import test.claim.falsifier_workflow_witness_test { string_contains }
 import v2.std.optional { Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -72,7 +71,7 @@ fn gcloud_auth_deficit_for_pattern(
   stderr: String,
   row: GcloudAuthDeficitPatternRow,
 ) -> GcloudAuthDeficit? {
-  if string_contains(s: stderr, pattern: row.stderr_substring) {
+  if stderr.contains(row.stderr_substring) {
     Present { value: row.deficit }
   } else {
     none

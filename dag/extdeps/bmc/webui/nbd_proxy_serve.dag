@@ -7,7 +7,6 @@ import extdeps.bmc.virtual_media { NbdProxyWebsocatParams, VirtualMediaIntent, v
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import test.claim.falsifier_workflow_witness_test { string_contains }
 import v2.std.compilers.lexing { Token }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -151,14 +150,11 @@ fn nbd_proxy_serve_websocat_argv_leading_tool_is_websocat(intent: NbdProxyServeT
 }
 
 fn nbd_proxy_serve_nbdkit_argv_includes_iso(intent: NbdProxyServeTransportIntent) -> Bool {
-  string_contains(
-    s: fold(
-      nbd_proxy_serve_nbdkit_argv(intent: intent),
-      init: "",
-      f: (acc, word) => if acc == "" { word } else { concat(acc, concat(" ", word)) },
-    ),
-    pattern: intent.iso_path as String,
-  )
+  fold(
+    nbd_proxy_serve_nbdkit_argv(intent: intent),
+    init: "",
+    f: (acc, word) => if acc == "" { word } else { concat(acc, concat(" ", word)) },
+  ).contains(intent.iso_path as String)
 }
 
 fn nbd_proxy_serve_append_argv(acc: List<String>, argv: List<String>) -> List<String> {
@@ -177,11 +173,11 @@ fn nbd_proxy_serve_argv_surface_text(intent: NbdProxyServeTransportIntent) -> St
 }
 
 fn nbd_proxy_serve_argv_surface_contains_supervision_marker(surface: String) -> Bool {
-  string_contains(s: surface, pattern: "trap")
-    || string_contains(s: surface, pattern: "$!")
-    || string_contains(s: surface, pattern: " &")
-    || string_contains(s: surface, pattern: "& ")
-    || string_contains(s: surface, pattern: "nohup")
+  surface.contains("trap")
+    || surface.contains("$!")
+    || surface.contains(" &")
+    || surface.contains("& ")
+    || surface.contains("nohup")
 }
 
 fn nbd_proxy_serve_has_no_shell_supervision_grammar(intent: NbdProxyServeTransportIntent) -> Bool {
