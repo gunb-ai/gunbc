@@ -53,6 +53,7 @@ import product.pcb.world {
   pcb_commercial_access_count,
   pcb_legal_carriage_count,
   pcb_drawing_must_be_read_count,
+  pcb_envelope_reads,
   capability_pending,
 }
 import product.pcb.plan_view {
@@ -177,6 +178,7 @@ fn world_with_obligations(obs: List<PcbComponentObligation>) -> PcbWorld? {
           physical: PcbPhysicalWorld {
             board: PcbBoard { frame: synthetic_frame(), outline: o },
             components: [],
+            envelope_reads: [],
             obligations: obs,
             attachment_obligations: [],
             body_layout: PcbBodyLayoutCheckedOverEstablishedSubsetOnly {
@@ -215,6 +217,18 @@ fn projected_missing_document(ids: List<NonEmptyStr>) -> String? {
         PcbSceneEmissionRefused { cause: _ } => none
       }
   }
+}
+
+fn concatenated_envelope_read_keys(p: PcbPhysicalWorld) -> String {
+  fold(pcb_envelope_reads(p: p), init: "", f: fn(acc, r) {
+    concat(acc, concat(" ", declaration_ref_display_key(ref: r.source)))
+  })
+}
+
+fn concatenated_attachment_identities(p: PcbPhysicalWorld) -> String {
+  fold(p.attachment_obligations, init: "", f: fn(acc, a) {
+    concat(acc, concat(" attachment: ", a.layer as String))
+  })
 }
 
 fn concatenated_non_attachment_identities(p: PcbPhysicalWorld) -> String {
@@ -498,9 +512,53 @@ test fn w_the_projection_matches_the_emission_entry() -> Bool {
                   pattern: concat("design identity: ", declaration_ref_display_key(ref: pcb_world_design(w: w))),
                 )
                 && !string_contains(s: from_entry, pattern: "board revision")
+                && !string_contains(s: from_entry, pattern: "Mechanical Data")
+                && !string_contains(s: from_entry, pattern: "verified provenance")
             PcbSceneRefused { cause: _ } => false
           }
         PcbSceneEmissionRefused { cause: _ } => false
+      }
+  }
+}
+
+test fn w_established_envelopes_name_the_declaration_read_not_a_datasheet_sentence() -> Bool {
+  match scene_or_empty() {
+    Absent => false
+    Present { value: s } =>
+      string_contains(s: s, pattern: "read: ")
+        && string_contains(s: s, pattern: "extdeps.programmable_logic.ice40.subject::ice40_tq144_package")
+        && string_contains(s: s, pattern: "extdeps.cpu.ampere_altra_package::altra_package_body_width")
+        && !string_contains(s: s, pattern: "Mechanical Data")
+        && !string_contains(s: s, pattern: "verified")
+  }
+}
+
+test fn w_the_two_envelope_reads_are_distinct_declarations() -> Bool {
+  match world_or_empty() {
+    Absent => false
+    Present { value: w } =>
+      let reads = pcb_envelope_reads(p: pcb_world_physical(w: w))
+      list_length(items: reads) == 2
+        && fold(reads, init: true, f: fn(ok, r) {
+          ok && fold(reads, init: true, f: fn(inner, q) {
+            inner && ((r.identity as String) == (q.identity as String) || !declaration_ref_eq(a: r.source, b: q.source))
+          })
+        })
+  }
+}
+
+test fn w_dropping_an_envelope_read_from_the_document_is_detected() -> Bool {
+  match world_or_empty() {
+    Absent => false
+    Present { value: w } =>
+      let p = pcb_world_physical(w: w)
+      let doc = concat(
+        concat(concatenated_non_attachment_identities(p: p), concat(" ", declaration_ref_display_key(ref: pcb_world_design(w: w)))),
+        concat(" extdeps.programmable_logic.ice40.subject::ice40_tq144_package", concatenated_attachment_identities(p: p)),
+      )
+      match first_unrepresented_scene_identity(scene: project_engineering_scene(w: w), document: doc) {
+        Absent => false
+        Present { value: id } => (id as String) == "extdeps.cpu.ampere_altra_package::altra_package_body_width"
       }
   }
 }
@@ -538,7 +596,7 @@ test fn w_cpu_socket_text_does_not_cover_the_socket_attachment() -> Bool {
       let p = pcb_world_physical(w: w)
       let doc = concat(
         concat(concatenated_non_attachment_identities(p: p), concat(" ", declaration_ref_display_key(ref: pcb_world_design(w: w)))),
-        " attachment: mounting",
+        concat(concatenated_envelope_read_keys(p: p), " attachment: mounting"),
       )
       string_contains(s: doc, pattern: "cpu_socket")
         && string_contains(s: "cpu_socket", pattern: "socket")

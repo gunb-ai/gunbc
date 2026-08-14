@@ -3,7 +3,7 @@ module product.pcb.plan_view
 import std.types { String, NonEmptyStr, List }
 import std.integer { Int }
 import std.measure { Micrometer, micrometer, micrometer_count }
-import std.decl_ref { declaration_ref_display_key }
+import std.decl_ref { DeclarationRef, declaration_ref_display_key }
 import std.markup { Fragment }
 import std.affine_space { signed_frame_component_count }
 import std.orthogonal_geometry {
@@ -130,7 +130,14 @@ fn body_render_style(s: PcbBodyLayoutStanding) -> BodyRenderStyle {
   }
 }
 
-fn established_body_fragments(identity: NonEmptyStr, origin_x: Int, origin_y: Int, width: Int, height: Int, style: BodyRenderStyle) -> List<Fragment> {
+fn established_body_label(identity: NonEmptyStr, source: DeclarationRef?) -> String {
+  match source {
+    Absent => identity as String
+    Present { value: r } => concat(identity as String, concat(" read ", declaration_ref_display_key(ref: r)))
+  }
+}
+
+fn established_body_fragments(identity: NonEmptyStr, origin_x: Int, origin_y: Int, width: Int, height: Int, source: DeclarationRef?, style: BodyRenderStyle) -> List<Fragment> {
   [
     svg_rect(
       x: origin_x, y: origin_y, width: width, height: height,
@@ -139,7 +146,7 @@ fn established_body_fragments(identity: NonEmptyStr, origin_x: Int, origin_y: In
       stroke: style.stroke,
       stroke_width: "400",
     ),
-    svg_text(x: origin_x, y: origin_y - micrometer_count(m: established_label_lift), label: identity as String, class_name: style.label_class),
+    svg_text(x: origin_x, y: origin_y - micrometer_count(m: established_label_lift), label: established_body_label(identity: identity, source: source), class_name: style.label_class),
   ]
 }
 
@@ -167,6 +174,21 @@ fn body_layout_legend(s: PcbBodyLayoutStanding) -> String {
   }
 }
 
+fn envelope_reads_legend(xs: List<DeclarationRef>) -> String {
+  let body = fold(xs, init: "", f: fn(acc, r) {
+    if acc == "" {
+      declaration_ref_display_key(ref: r)
+    } else {
+      concat(acc, concat("; ", declaration_ref_display_key(ref: r)))
+    }
+  })
+  if body == "" {
+    "read: none"
+  } else {
+    concat("read: ", body)
+  }
+}
+
 fn legend_text(c: PcbSceneLegend) -> String {
   concat(
     "PCB world — ",
@@ -177,7 +199,8 @@ fn legend_text(c: PcbSceneLegend) -> String {
     concat(to_string(c.legal_carriage), concat(" legal-carriage / ",
     concat(to_string(c.drawing_must_be_read), concat(" drawing-must-be-read — ",
     concat(body_layout_legend(s: c.body_layout), concat(" — design identity: ",
-    declaration_ref_display_key(ref: c.design)))))))))))))))
+    concat(declaration_ref_display_key(ref: c.design), concat(" — ",
+    envelope_reads_legend(xs: c.envelope_reads)))))))))))))))))
   )
 }
 
@@ -186,13 +209,14 @@ fn element_fragments(e: PcbSceneElement, attachment_index: Int, body_layout: Pcb
     SceneBoardOutline { outline: o } => [board_outline_fragment(o: o)]
     SceneLegend { counts: c } =>
       [svg_text(x: micrometer_count(m: legend_origin_x), y: micrometer_count(m: legend_origin_y), label: legend_text(c: c), class_name: "pcb-legend")]
-    SceneEstablishedBody { identity: id, origin: origin, body_width: w, body_height: h } =>
+    SceneEstablishedBody { identity: id, origin: origin, body_width: w, body_height: h, source: src } =>
       established_body_fragments(
         identity: id,
         origin_x: signed_frame_component_count(c: origin.x),
         origin_y: signed_frame_component_count(c: origin.y),
         width: micrometer_count(m: w),
         height: micrometer_count(m: h),
+        source: src,
         style: body_render_style(s: body_layout),
       )
     SceneObligationMarker { identity: id, origin: origin, cause: cause } =>
@@ -219,7 +243,7 @@ fn fold_scene_fragments(scene: PcbEngineeringScene) -> List<Fragment> {
     let next_index = match e {
       SceneAttachmentMarker { layer: _, cause: _ } => state.index + 1
       SceneBoardOutline { outline: _ } => state.index
-      SceneEstablishedBody { identity: _, origin: _, body_width: _, body_height: _ } => state.index
+      SceneEstablishedBody { identity: _, origin: _, body_width: _, body_height: _, source: _ } => state.index
       SceneObligationMarker { identity: _, origin: _, cause: _ } => state.index
       SceneLegend { counts: _ } => state.index
     }
@@ -239,7 +263,7 @@ fn project_pcb_world(w: PcbWorld) -> PcbSceneConstruction<PcbPlanViewScene> {
       Absent =>
         match e {
           SceneBoardOutline { outline: o } => Present { value: o }
-          SceneEstablishedBody { identity: _, origin: _, body_width: _, body_height: _ } => none
+          SceneEstablishedBody { identity: _, origin: _, body_width: _, body_height: _, source: _ } => none
           SceneObligationMarker { identity: _, origin: _, cause: _ } => none
           SceneAttachmentMarker { layer: _, cause: _ } => none
           SceneLegend { counts: _ } => none
