@@ -576,10 +576,10 @@ test fn an_unsuccessful_component_missing_failure_mode_refuses_located() -> Bool
 
 test fn a_required_auxiliary_member_absent_refuses_rather_than_becoming_null() -> Bool {
   match floor_component_receipt_decode_with(
-    text: "{\"schema\":\"floor-component-receipt/v1\",\"workflow_name\":\"affected-set-falsifier\",\"run_id\":\"1\",\"head_sha\":\"abc\",\"component_count\":0,\"unsuccessful_components\":[],\"components\":[]}",
+    text: "{\"schema\":\"floor-component-receipt/v1\",\"workflow_name\":\"affected-set-falsifier\",\"run_id\":\"1\",\"head_sha\":\"abc\",\"component_count\":0,\"components\":[]}",
     expected_schema: alert_expected_schema
   ) {
-    ReceiptMemberAbsent { member: m } => m == "affected_set_cold_control"
+    ReceiptMemberAbsent { member: m } => m == "unsuccessful_components"
     _ => false
   }
 }

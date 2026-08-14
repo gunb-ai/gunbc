@@ -13,22 +13,19 @@ import gunbc.merge_admission_produce { ci_repo_root_shell }
 import v2.std.collection { Absent }
 
 type FalsifierControlRole
-  = AffectedSetPredictOnlyCold
-  | CompileCleanWholeTreeCold
+  = CompileCleanWholeTreeCold
   | NativeCacheCold
 
 data falsifier_run_control_note: String = "Closed population of required falsifier control roles (F0, operator mandate 2026-08-04, corrected 2026-08-04 msg_f71d6501). A control cannot silently vanish because a step was renamed or moved — the roster is the authority the totality receipt (F1) and alert router consume. This module owns the RUN-LEVEL control model for the falsifier cadence: cold controls execute after the affected-set control CONCLUDES (always + release_build success), not only when it succeeds — verified defect on run 30935833427 where steps 13-14 SKIPPED while step 12 receipt upload PASSED. RETRACTED: per-PR compile-clean containment on the ci job — measured receipts proved the falsifier is correctly reporting main is red (witness redness, not infrastructure failure); containing an unreliable control was the wrong frame. floor_component_receipt owns batch-grain rows inside the affected-set control."
 
 fn falsifier_control_role_label(role: FalsifierControlRole) -> NonEmptyStr {
   match role {
-    AffectedSetPredictOnlyCold => "affected-set predict-only cold" as NonEmptyStr
     CompileCleanWholeTreeCold => "compile-clean whole-tree cold" as NonEmptyStr
     NativeCacheCold => "native-cache cold" as NonEmptyStr
   }
 }
 
 data falsifier_required_control_roles: List<FalsifierControlRole> = [
-  AffectedSetPredictOnlyCold,
   CompileCleanWholeTreeCold,
   NativeCacheCold
 ]

@@ -5235,10 +5235,6 @@ struct BatchRecord {
     /// Heartbeat label for this batch — carried so the component receipt names the
     /// component the same way the progress lines did.
     label: String,
-    /// The batch's node-frontier selection role, the STRUCTURAL identity the component
-    /// receipt keys on (`gunbc.floor_component_receipt` role note): the affected-set
-    /// cold control is the `predict_only` component, never "batch 1" — indices shift
-    /// when a `gunbc_falsifier_batches` enrollment flag flips.
     /// Wet-profiled batches (bin_witness wet corpus, falsifier wet follow-on, …).
     is_wet: bool,
 }
@@ -5445,16 +5441,11 @@ fn write_floor_component_receipt_at(
     // and anonymous by IDENTITY for exactly the components that did not run — the shape
     // DESIGN §5 rules out ("Completeness is an identity join, not a count equality").
     //
-    // The erased `selection_tag` was the load-bearing half. The affected-set cold control is
-    // identified by the property that DEFINES it — `predict_only`
-    // (`gunbc.floor_component_receipt` role note) — so padding it as "off" deleted the cold
-    // control from its own receipt: `floor_affected_set_control_state` then returned
-    // `ControlAbsent`, which cannot distinguish "the control was never enrolled" from "the
-    // control was enrolled and an earlier batch stopped the line before it ran". Two states,
-    // two different remedies, one output — a state-space conflation in the receipt whose
-    // whole purpose is to keep component states distinct. With the planned tag carried, that
-    // run instead yields `ControlConcluded` with a `Skipped` outcome, and the alert reports
-    // the control RED with its real cause.
+    // The erased `selection_tag` was the load-bearing half of this padding when the
+    // affected-set cold control existed: padding its row as "off" deleted the one property
+    // that identified it. That column is now DELETED (FLOOR2) along with the control, so
+    // the identity carried here is the planned label alone — which is what the padding must
+    // preserve, and what the discriminating test below asserts.
     for bi in batch_records.len()..total_batches {
         let label = batch_heartbeat_label(&batches[bi]);
         let row = if unreached == UnreachedCause::RunIncomplete {
@@ -13828,19 +13819,16 @@ mod tests {
     /// receipt under its OWN planned identity, not a placeholder.
     ///
     /// This is the discriminating pair for the identity join. The plan below is the shape
-    /// that matters: batch 0 is an ordinary claim that fails, batch 1 is the affected-set
-    /// cold control (`predict_only`), and the stop policy means batch 1 never runs — so it
-    /// exists only as a padded row. Before this fix that row was written with a literal
-    /// "not reached" label and an "off" selection tag, which deleted the one property that
-    /// IDENTIFIES the cold control (`gunbc.floor_component_receipt` role note keys on
-    /// `predict_only`). `floor_affected_set_control_state` then answered `ControlAbsent`,
-    /// conflating "the control was never enrolled" with "the control was enrolled and the
-    /// line stopped before it ran" — different states with different remedies.
+    /// that matters: batch 0 is an ordinary claim that fails, batch 1 never runs under the
+    /// stop policy — so it exists only as a padded row. Before this fix that row was
+    /// written with a literal "not reached" label, which erased its planned identity.
     ///
-    /// The negative half is the point: asserting only that `predict_only` is present would
-    /// also pass on a receipt that tagged EVERY padded row predict_only. So the batch-0
-    /// side is asserted too — a real `off` component stays `off` — and the vanished
-    /// placeholder literal is asserted absent.
+    /// The selection half of this test is DELETED with the affected-set cold control
+    /// (FLOOR2): the receipt no longer carries a `selection` column, so there is no
+    /// `predict_only` tag to preserve and no `off` negative control to assert. What the
+    /// test still owns is the identity claim — the unreached component appears under its
+    /// own planned label with an honest Skipped outcome, and the placeholder literal is
+    /// absent — which is independent of how any batch was selected.
     #[test]
     fn unreached_components_carry_planned_identity_not_placeholder() {
         let root = workspace_root();
@@ -13895,11 +13883,6 @@ mod tests {
         ));
         let body = fs::read_to_string(base.join("floor-component-receipt.json")).unwrap();
 
-        // The unreached cold control is present AS the cold control.
-        assert!(
-            body.contains("\"selection\": \"predict_only\""),
-            "the unreached cold control must keep the predict_only tag that identifies it: {body}"
-        );
         assert!(
             body.contains("some_gate_holds"),
             "the reached component keeps its own label: {body}"
@@ -13914,12 +13897,6 @@ mod tests {
             !body.contains("\"label\": \"not reached\""),
             "the placeholder label must not survive: {body}"
         );
-        // NEGATIVE HALF: a genuinely `off` component is not relabelled predict_only.
-        assert!(
-            body.contains("\"selection\": \"off\""),
-            "batch 0 is an ordinary off component and must stay off: {body}"
-        );
-
         let _ = fs::remove_dir_all(&base);
     }
 

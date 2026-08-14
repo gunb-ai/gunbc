@@ -21,7 +21,7 @@ data falsifier_lane_note: String = "The falsifier's per-component LANE identity,
 data falsifier_lane_index_join_note: String = "The join key is the 1-based batch INDEX, and that is not in tension with floor_component_receipt_role_note's rule against keying on indices. That rule forbids treating an index as a STABLE NAME across runs — 'batch 4 is the silent-pick gate' relocates a hardcoded assumption, because gunbc_falsifier_ordinary_batches composes conditionally on enrollment flags and one flip shifts every later index. Here the index is used only WITHIN ONE RUN, to join a receipt against the very plan that produced it: both sides are projections of the same enrollment state, evaluated for the same run, so the correspondence is exact by construction rather than assumed. What crosses runs is the LANE, which is a name and stays one. The index is the join; the lane is the identity."
 
 type FalsifierLane
-  = LanePredictOnly
+  = LaneColdCorpus
   | LaneSelfHostWet
   | LaneSelfHostWetKnownRed
   | LaneKnownRedProbe
@@ -33,7 +33,7 @@ type FalsifierLane
 
 fn falsifier_lane_name(l: FalsifierLane) -> String {
   match l {
-    LanePredictOnly => "predict_only"
+    LaneColdCorpus => "cold_corpus"
     LaneSelfHostWet => "self_host_wet"
     LaneSelfHostWetKnownRed => "self_host_wet_known_red"
     LaneKnownRedProbe => "known_red_probe"
@@ -341,7 +341,7 @@ fn falsifier_witness_row(index: Nat, done: Bool) -> FloorComponentRow {
 
 fn falsifier_witness_planned_three() -> List<FalsifierPlannedComponent> {
   falsifier_planned_components(enrollments: [
-    FalsifierLaneEnrollment { lane: LanePredictOnly, enrolled: true },
+    FalsifierLaneEnrollment { lane: LaneColdCorpus, enrolled: true },
     FalsifierLaneEnrollment { lane: LaneKnownRedProbe, enrolled: true },
     FalsifierLaneEnrollment { lane: LaneSilentPickGate, enrolled: true }
   ])
@@ -349,13 +349,13 @@ fn falsifier_witness_planned_three() -> List<FalsifierPlannedComponent> {
 
 fn witness_planned_components_skip_unenrolled_and_renumber() -> Bool {
   let planned = falsifier_planned_components(enrollments: [
-    FalsifierLaneEnrollment { lane: LanePredictOnly, enrolled: true },
+    FalsifierLaneEnrollment { lane: LaneColdCorpus, enrolled: true },
     FalsifierLaneEnrollment { lane: LaneSelfHostWet, enrolled: false },
     FalsifierLaneEnrollment { lane: LaneKnownRedProbe, enrolled: true }
   ])
   (list_length(items: planned) == 2)
     && match falsifier_lane_of_index(planned: planned, index: 1) {
-         Present { value: l } => falsifier_lane_eq(left: l, right: LanePredictOnly)
+         Present { value: l } => falsifier_lane_eq(left: l, right: LaneColdCorpus)
          Absent => false
        }
     && match falsifier_lane_of_index(planned: planned, index: 2) {
@@ -396,7 +396,7 @@ fn witness_standing_reds_on_missing_component() -> Bool {
 
 fn witness_standing_reds_on_surplus_component() -> Bool {
   let planned = falsifier_planned_components(enrollments: [
-    FalsifierLaneEnrollment { lane: LanePredictOnly, enrolled: true },
+    FalsifierLaneEnrollment { lane: LaneColdCorpus, enrolled: true },
     FalsifierLaneEnrollment { lane: LaneKnownRedProbe, enrolled: true }
   ])
   let verdict = falsifier_run_standing_from(
@@ -416,7 +416,7 @@ fn witness_standing_reds_on_surplus_component() -> Bool {
 
 fn witness_standing_reds_on_duplicate_component() -> Bool {
   let planned = falsifier_planned_components(enrollments: [
-    FalsifierLaneEnrollment { lane: LanePredictOnly, enrolled: true },
+    FalsifierLaneEnrollment { lane: LaneColdCorpus, enrolled: true },
     FalsifierLaneEnrollment { lane: LaneKnownRedProbe, enrolled: true }
   ])
   let verdict = falsifier_run_standing_from(
@@ -673,7 +673,7 @@ fn witness_incomplete_standing_refuses_observed() -> Bool {
 
 fn witness_lane_names_are_distinct() -> Bool {
   let names = [
-    falsifier_lane_name(l: LanePredictOnly),
+    falsifier_lane_name(l: LaneColdCorpus),
     falsifier_lane_name(l: LaneSelfHostWet),
     falsifier_lane_name(l: LaneSelfHostWetKnownRed),
     falsifier_lane_name(l: LaneKnownRedProbe),

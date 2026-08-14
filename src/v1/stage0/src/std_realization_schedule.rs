@@ -7,7 +7,6 @@ use self::FloorWorkerObservationOutcome::*;
 use self::FloorWorkerTerminalReceipt::*;
 use self::FloorWorkerTerminalReport::*;
 use self::NoWalkFinalization::*;
-use self::NodeFrontierSelection::*;
 use self::OnSuccessRunnableDisposition::*;
 use self::PreWalkExecution::*;
 use self::Runnable::*;
@@ -545,7 +544,6 @@ pub struct ScopedWitnessBatch {
     pub source_roots: Rc<Vec<String>>,
     pub entries: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
     pub scan_dirs: Rc<Vec<String>>,
-    pub node_frontier_selection: NodeFrontierSelection,
     pub execution_authority: ScopedWitnessExecutionAuthority,
     pub execution_mode: ExecutionMode,
     pub resource_profile: Rc<ScopedWitnessBatchResourceProfile>,
@@ -565,7 +563,6 @@ pub fn scoped_witness_batch(
     source_roots: Rc<Vec<String>>,
     entries: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
     scan_dirs: Rc<Vec<String>>,
-    node_frontier_selection: NodeFrontierSelection,
     resource_profile: Rc<ScopedWitnessBatchResourceProfile>,
 ) -> Rc<ScopedWitnessBatch> {
     Rc::new(ScopedWitnessBatch {
@@ -573,7 +570,6 @@ pub fn scoped_witness_batch(
         source_roots: source_roots.clone(),
         entries: entries.clone(),
         scan_dirs: scan_dirs.clone(),
-        node_frontier_selection: node_frontier_selection.clone(),
         execution_authority: ScopedWitnessExecutionAuthority::InheritedWalkSourceRoots {},
         execution_mode: resource_profile.runnable.clone().execution_mode.clone(),
         resource_profile: resource_profile.clone(),
@@ -1142,39 +1138,6 @@ pub fn runnable_forbids_corpus_co_residence(r: Rc<Runnable>) -> bool {
     }
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[serde(tag = "_variant")]
-pub enum NodeFrontierSelection {
-    SelectionOff,
-    SelectionApplied,
-    SelectionPredictOnly,
-}
-
-pub fn node_frontier_selection_eq(
-    left: NodeFrontierSelection,
-    right: NodeFrontierSelection,
-) -> bool {
-    match left.clone() {
-        NodeFrontierSelection::SelectionOff => match right.clone() {
-            NodeFrontierSelection::SelectionOff => true,
-            NodeFrontierSelection::SelectionApplied => false,
-            NodeFrontierSelection::SelectionPredictOnly => false,
-        },
-        NodeFrontierSelection::SelectionApplied => match right.clone() {
-            NodeFrontierSelection::SelectionOff => false,
-            NodeFrontierSelection::SelectionApplied => true,
-            NodeFrontierSelection::SelectionPredictOnly => false,
-        },
-        NodeFrontierSelection::SelectionPredictOnly => match right.clone() {
-            NodeFrontierSelection::SelectionOff => false,
-            NodeFrontierSelection::SelectionApplied => false,
-            NodeFrontierSelection::SelectionPredictOnly => true,
-        },
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum Runnable {
@@ -1187,7 +1150,6 @@ pub enum Runnable {
         source_roots: Rc<Vec<String>>,
         scan_dirs: Rc<Vec<String>>,
         explicit_entries: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
-        node_frontier_selection: NodeFrontierSelection,
         exclude_substrings: Rc<Vec<String>>,
         discovery_scope_dirs: Rc<Vec<String>>,
         profile: Rc<RunnableResourceProfile>,
@@ -1387,30 +1349,6 @@ pub fn walk_population_budget_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn node_frontier_selection_applied(sel: NodeFrontierSelection) -> bool {
-    match sel.clone() {
-        NodeFrontierSelection::SelectionApplied => true,
-        NodeFrontierSelection::SelectionOff => false,
-        NodeFrontierSelection::SelectionPredictOnly => false,
-    }
-}
-
-pub fn runnable_selection_applied(r: Rc<Runnable>) -> bool {
-    match (*r.clone()).clone() {
-        Runnable::RunnableDiscoveryBatch {
-            node_frontier_selection: sel,
-            ..
-        } => node_frontier_selection_applied(sel.clone()),
-        Runnable::RunnableScopedWitnessBatch { batch: batch, .. } => {
-            node_frontier_selection_applied(batch.node_frontier_selection.clone())
-        }
-        Runnable::RunnableSingleClaim { .. } => false,
-        Runnable::RunnableKernelWorkload {
-            fused_op_count: _, ..
-        } => false,
-    }
-}
-
 pub type Schedule = Rc<Vec<Rc<Vec<Rc<Runnable>>>>>;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1560,7 +1498,6 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
             source_roots: lsr,
             scan_dirs: lsd,
             explicit_entries: lex,
-            node_frontier_selection: lskip,
             exclude_substrings: lex2,
             discovery_scope_dirs: lsc,
             profile: lp,
@@ -1571,16 +1508,14 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
                 source_roots: rsr,
                 scan_dirs: rsd,
                 explicit_entries: rex,
-                node_frontier_selection: rskip,
                 exclude_substrings: rex2,
                 discovery_scope_dirs: rsc,
                 profile: rp,
                 ..
             } => {
-                ((((((string_list_eq(lsr.clone(), rsr.clone())
+                (((((string_list_eq(lsr.clone(), rsr.clone())
                     && string_list_eq(lsd.clone(), rsd.clone()))
                     && schedule_witness_entry_list_eq(lex.clone(), rex.clone()))
-                    && node_frontier_selection_eq(lskip.clone(), rskip.clone()))
                     && string_list_eq(lex2.clone(), rex2.clone()))
                     && string_list_eq(lsc.clone(), rsc.clone()))
                     && runnable_resource_profile_eq(lp.clone(), rp.clone()))
@@ -1693,12 +1628,6 @@ pub struct SequentialChildProcess;
 pub struct FreshJobProcess;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct InheritedWalkSourceRoots;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct SelectionOff;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct SelectionApplied;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct SelectionPredictOnly;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OnSuccessRunnableAdmitted;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

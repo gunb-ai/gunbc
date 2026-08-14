@@ -136,15 +136,6 @@ data witness_row_cost_migration_disclosure_site: CensusedEmitSite = CensusedEmit
 }
 
 
-data selection_degradation_site: CensusedEmitSite = CensusedEmitSite {
-  marker: "[selection-degradation]" as NonEmptyStr,
-  source_file: "src/v1/stage0/src/cli_run.rs" as NonEmptyStr,
-  disposition: CountedFrontierSite {
-    reason: "floor prep-tax P2 selection honesty receipt — selection_state, selected/total entry groups, ratio, fallback_reason on every discovery completion" as NonEmptyStr,
-    dissolution: unbound_dissolution(description: "fold into observation receipt projection once selection degradation speaks the observation vocabulary")
-  }
-}
-
 data observation_emit_roster: List<CensusedEmitSite> = [
   floor_memory_site,
   typecheck_attribution_site,
@@ -159,7 +150,6 @@ data observation_emit_roster: List<CensusedEmitSite> = [
   assembly_split_site,
   witness_row_cost_site,
   witness_row_cost_migration_disclosure_site,
-  selection_degradation_site
 ]
 
 data observation_emit_roster_completeness_disposition: Disposition = Scaffold {

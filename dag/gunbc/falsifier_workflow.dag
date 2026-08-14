@@ -133,7 +133,7 @@ fn falsifier_invoke() -> String {
 
 fn falsifier_step() -> Step {
   RunStep {
-    name: Present { value: "affected-set falsifier (predict-only cold run)" },
+    name: Present { value: "falsifier cold corpus run" },
     id: Present { value: "floor" },
     run: falsifier_invoke(),
     shell: none,

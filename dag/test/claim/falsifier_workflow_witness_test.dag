@@ -185,7 +185,7 @@ test fn falsifier_has_three_jobs_in_topology_order() -> Bool {
 test fn peak_bracket_brackets_only_cold_corpus_floor_path() -> Bool {
   let steps = falsifier_cold_corpus_job_steps()
   let peak_pre = step_index_of(steps: steps, name: "Floor cgroup peak pre-read (calibration; reset if permitted)")
-  let falsifier = step_index_of(steps: steps, name: "affected-set falsifier (predict-only cold run)")
+  let falsifier = step_index_of(steps: steps, name: "falsifier cold corpus run")
   (peak_pre >= 0) && (falsifier >= 0) && (peak_pre < falsifier)
 }
 
@@ -199,7 +199,7 @@ test fn falsifier_yaml_projection_evaluates() -> Bool {
 
 test fn falsifier_cold_control_steps_follow_floor_in_job_order() -> Bool {
   let steps = falsifier_cold_corpus_job_steps()
-  let floor = step_index_of(steps: steps, name: "affected-set falsifier (predict-only cold run)")
+  let floor = step_index_of(steps: steps, name: "falsifier cold corpus run")
   let compile_clean = step_index_of(steps: steps, name: "compile-clean whole-tree cold control (scoped-PR admission counterpart)")
   let native_cache = step_index_of(steps: steps, name: "native-cache cold control (warm-tier admission counterpart)")
   (floor >= 0) && (compile_clean >= 0) && (native_cache >= 0)
