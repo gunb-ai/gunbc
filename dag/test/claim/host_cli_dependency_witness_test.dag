@@ -1,0 +1,49 @@
+module test.claim.host_cli_dependency_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.optional { Absent, Present }
+import std.types { Bool, String, NonEmptyStr }
+import gunbc.host_cli_dependency {
+  host_dependency_absent_wire,
+  host_cli_dependency_failure_receipt,
+  HostCliDependencyPresent,
+  HostCliDependencyAbsent,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_note: String = "Hermetic controls for gunbc.host_cli_dependency: wire shape is built by host_dependency_absent_wire (escaped braces in source); failure_receipt is Optional so Present does not conflate with an empty string."
+
+test fn host_dependency_absent_wire_is_stable() -> Bool {
+  let wire = host_dependency_absent_wire(
+    tool: "npm" as NonEmptyStr,
+    hint: "apt install npm",
+  )
+  wire.starts_with(prefix: "HostDependencyAbsent")
+    && wire.contains("tool=npm")
+    && wire.contains("hint=apt install npm")
+    && wire.contains("apt install npm\}")
+}
+
+test fn host_cli_dependency_failure_receipt_absent_on_present() -> Bool {
+  match host_cli_dependency_failure_receipt(observation: HostCliDependencyPresent) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn host_cli_dependency_failure_receipt_present_on_absent() -> Bool {
+  let wire = host_dependency_absent_wire(
+    tool: "npm" as NonEmptyStr,
+    hint: "apt install npm",
+  )
+  match host_cli_dependency_failure_receipt(
+    observation: HostCliDependencyAbsent {
+      tool: "npm" as NonEmptyStr,
+      hint: "apt install npm",
+    },
+  ) {
+    Present { value: got } => got == wire
+    Absent => false
+  }
+}

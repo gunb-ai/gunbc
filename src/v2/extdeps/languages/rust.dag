@@ -161,6 +161,7 @@ import v2.std.compilers.target_model {
   TargetRecordConstructShape,
   TargetFieldAccessShape,
   TargetMatchShape,
+  TargetBoolLiteralShape,
   TargetValueExpressionProjection,
   grammar_relation_row_attach_bodied_scaffold,
   target_operator_realization_node,
@@ -1238,6 +1239,10 @@ fn rust_value_expression_projection() -> TargetValueExpressionProjection {
       fat_arrow: ^rust_token_unwired_fat_arrow,
       arm_separator: ^rust_token_comma
     },
+    bool_literal_form: TargetBoolLiteralShape {
+      true_token: ^rust_token_kw_true,
+      false_token: ^rust_token_kw_false
+    },
     block_evaluation_mode: ValueProducing
   }
 }
@@ -2273,8 +2278,8 @@ fn rust_staging_match_additional_lex_rules() -> List<LexRule> {
   [
     rust_lex_rule(token_class: ^rust_token_unwired_match, text: "match "),
     rust_lex_rule(token_class: ^rust_token_unwired_fat_arrow, text: " => "),
-    rust_lex_rule(token_class: ^dag_token_kw_true, text: "true"),
-    rust_lex_rule(token_class: ^dag_token_kw_false, text: "false")
+    rust_lex_rule(token_class: ^rust_token_kw_true, text: "true"),
+    rust_lex_rule(token_class: ^rust_token_kw_false, text: "false")
   ]
 }
 
@@ -2304,7 +2309,9 @@ fn rust_value_expression_family_lex_rules() -> List<LexRule> {
     rust_lex_rule(token_class: ^rust_token_closure_nop, text: ""),
     rust_lex_rule(token_class: ^rust_token_kw_let, text: "let "),
     rust_lex_rule(token_class: ^rust_token_equal, text: " = "),
-    rust_lex_rule(token_class: ^rust_token_semicolon, text: "; ")
+    rust_lex_rule(token_class: ^rust_token_semicolon, text: "; "),
+    rust_lex_rule(token_class: ^rust_token_kw_true, text: "true"),
+    rust_lex_rule(token_class: ^rust_token_kw_false, text: "false")
   ]
 }
 

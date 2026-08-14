@@ -105,7 +105,11 @@ type DispatchInput {
   type: DispatchInputType
 }
 
-type DispatchInputType = InputString | InputBoolean | InputChoice | InputEnvironment
+type DispatchInputType
+  = InputString
+  | InputBoolean
+  | InputChoice { options: List<String> }
+  | InputEnvironment
 
 type SecretScope = StepScope | JobScope | WorkflowScope
 

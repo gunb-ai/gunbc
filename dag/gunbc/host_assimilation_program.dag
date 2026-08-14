@@ -16,6 +16,7 @@ import gunbc.host_standup {
   ReachSecretsNetwork,
   RunnerDeploySlot,
   BuildCacheProvision,
+  CodexRuntimeProvision,
   ComputeFabricEnroll,
   GreenPlaceReadiness,
   SessionPlacementEnrollment,
@@ -80,7 +81,7 @@ fn prefix_phase_participations(p: HostStandupPrefixPhase) -> List<FleetParticipa
   }
 }
 
-data host_phase_assimilation_participation_note: String = "HostIdentityConverge and ReachSecretsNetwork are shared: every enrolled host needs a converged identity and an admitted reach path whatever it does for the fleet. ComputeFabricEnroll is shared because both kinds offer capacity, though of different shapes -- hardware threads for a runner, an inference envelope for an appliance -- and that is the fit-predicate work downstream, not a reason to fork the phase. StandupAssimilationComplete is shared because every program needs a terminal obligation. RunnerDeploySlot, BuildCacheProvision, GreenPlaceReadiness and SessionPlacementEnrollment are CI-runner only: Actions runner slots, an sccache build cache, dashboard green-place pinning and session placement are all facts about executing CI work, and an inference appliance that acquired them would be competing with its own serving."
+data host_phase_assimilation_participation_note: String = "HostIdentityConverge and ReachSecretsNetwork are shared: every enrolled host needs a converged identity and an admitted reach path whatever it does for the fleet. ComputeFabricEnroll is shared because both kinds offer capacity, though of different shapes -- hardware threads for a runner, an inference envelope for an appliance -- and that is the fit-predicate work downstream, not a reason to fork the phase. StandupAssimilationComplete is shared because every program needs a terminal obligation. RunnerDeploySlot, BuildCacheProvision, CodexRuntimeProvision, GreenPlaceReadiness and SessionPlacementEnrollment are CI-runner only: Actions runner slots, an sccache build cache, a pinned Codex provider-runtime bundle, dashboard green-place pinning and session placement are all facts about executing CI work, and an inference appliance that acquired them would be competing with its own serving."
 
 fn assimilation_phase_participations(p: HostStandupAssimilationPhase) -> List<FleetParticipation> {
   match p {
@@ -88,6 +89,7 @@ fn assimilation_phase_participations(p: HostStandupAssimilationPhase) -> List<Fl
     ReachSecretsNetwork => [CiRunnerParticipation, InferenceServingParticipation]
     RunnerDeploySlot => [CiRunnerParticipation]
     BuildCacheProvision => [CiRunnerParticipation]
+    CodexRuntimeProvision => [CiRunnerParticipation]
     ComputeFabricEnroll => [CiRunnerParticipation, InferenceServingParticipation]
     GreenPlaceReadiness => [CiRunnerParticipation]
     SessionPlacementEnrollment => [CiRunnerParticipation]

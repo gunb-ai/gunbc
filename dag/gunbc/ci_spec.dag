@@ -675,6 +675,68 @@ fn gunbc_ci_fleet_timer_install_invoke() -> String {
   )
 }
 
+data gunbc_fleet_converge_plan_artifact_name: String = "fleet-converge-plan"
+
+data gunbc_ci_fleet_converge_plan_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_fleet_converge_plan_invoke",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_fleet_converge_plan_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_converge_plan_invoke — foreign-executor shell invoking fleet_converge_plan_wet; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run")
+
+fn gunbc_ci_fleet_converge_plan_invoke() -> String {
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_fleet_converge_plan_shell_emit_dissolution_trigger), "\n")),
+    concat(
+      concat("ROOT=", ci_repo_root_shell(), "\n"),
+      gunbc_run_shell(
+        source_roots: witness_layer_roots,
+        entry: "dag/gunbc/fleet_converge_plan_cli.dag",
+        function: "fleet_converge_plan_wet",
+        rooted: true,
+        claim_run: false
+      )
+    )
+  )
+}
+
+data gunbc_ci_fleet_converge_plan_artifact_hash_env_name: String = "EXPECTED_HASH"
+
+data gunbc_ci_fleet_converge_apply_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_fleet_converge_apply_invoke",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_fleet_converge_apply_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_converge_apply_invoke — foreign-executor shell verifying plan hash then invoking fleet_converge_apply_wet; DISSOLVES WHEN bash-emit binds the step to orchestration emit over typed WitnessBin.Run")
+
+fn gunbc_ci_fleet_converge_apply_invoke() -> String {
+  join([
+    "# ", dissolution_description(condition: gunbc_ci_fleet_converge_apply_shell_emit_dissolution_trigger), "\n",
+    "set -euo pipefail\n",
+    "ACTUAL=\"$(cat /tmp/fleet-converge-plan/plan_content.hex)\"\n",
+    "if [ -z \"$\{EXPECTED_HASH:-\}\" ] || [ \"$EXPECTED_HASH\" != \"$ACTUAL\" ]; then\n",
+    "  echo \"::error::PlanArtifactHashMismatch expected=$EXPECTED_HASH actual=$ACTUAL\" >&2\n",
+    "  exit 1\n",
+    "fi\n",
+    concat("ROOT=", ci_repo_root_shell(), "\n"),
+    gunbc_run_shell(
+      source_roots: witness_layer_roots,
+      entry: "dag/gunbc/fleet_converge_plan_cli.dag",
+      function: "fleet_converge_apply_wet",
+      rooted: true,
+      claim_run: false
+    ),
+  ], "")
+}
+
 // Fleet convergence collection (operator verdict join 5, parent verification
 // msg_8d84ae4f): the LIVE invocation wire for collect_fleet_convergence_wet — runs on
 // main pushes downstream of the required ci check, from srv1 (inside the fleet, over

@@ -1,6 +1,8 @@
 module v2.test.long.cwc_resolution_probe
 import v2.compiler.resolve { resolve }
 
+import v2.compiler.normalized_tree { NormalizedTree }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data cwc_src_type_two: String = "module probe\ntype T = A | B\n"
@@ -13,7 +15,7 @@ data cwc_src_type_malformed_coproduct: String = "module probe\ntype T = { x: Int
 
 data cwc_src_cwc_module: String = "module probe\ntype VariantNaming = AsAuthored | ScreamingSnakeCase\ntype VariantEncoding = StringVariant { naming: VariantNaming }\ntype CoproductWireContract { coproduct: String, encoding: VariantEncoding }\ntype ReviewEvent = Approve | RequestChanges | Comment | Pending\ndata review_event_wire_contract: CoproductWireContract = { coproduct: \"ReviewEvent\", encoding: StringVariant { naming: ScreamingSnakeCase } }\n"
 
-fn cwc_norm_of(src: String) -> Outcome<Node> {
+fn cwc_norm_of(src: String) -> Outcome<NormalizedTree> {
   let lm = dag_language_model()
   bind_outcome(
     o: tokenize(text: src, file: ^cwc_probe_file, rules: lm.lex),
@@ -91,7 +93,7 @@ fn cwc_norm_rejects(src: String) -> Bool {
 
 test fn cwc_non_coproduct_rhs_passes_through() -> Bool {
   match cwc_norm_of(src: cwc_src_type_scalar) {
-    Accepted { value: root, diagnostics: _ } => !cwc_tree_has_disj(n: root)
+    Accepted { value: root, diagnostics: _ } => !cwc_tree_has_disj(n: root.root)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -127,14 +129,14 @@ test fn cwc_cwc_module_resolve_accepts() -> Bool {
 
 test fn cwc_review_normalized_has_disj() -> Bool {
   match cwc_norm_of(src: cwc_src_type_review) {
-    Accepted { value: root, diagnostics: _ } => cwc_tree_has_disj(n: root)
+    Accepted { value: root, diagnostics: _ } => cwc_tree_has_disj(n: root.root)
     Rejected { diagnostics: _ } => false
   }
 }
 
 test fn cwc_review_disj_has_four_arms() -> Bool {
   match cwc_norm_of(src: cwc_src_type_review) {
-    Accepted { value: root, diagnostics: _ } => cwc_disj_arm_count(n: root) == 4
+    Accepted { value: root, diagnostics: _ } => cwc_disj_arm_count(n: root.root) == 4
     Rejected { diagnostics: _ } => false
   }
 }

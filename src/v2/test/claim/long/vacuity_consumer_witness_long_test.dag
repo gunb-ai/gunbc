@@ -44,7 +44,7 @@ fn vacuity_consumer_witness_live_derived_sites() -> List<VacuitySiteKey> {
     Rejected { diagnostics: _ } => Empty
     Accepted { value: module_root, diagnostics: _ } =>
       fold_list(
-        xs: vacuity_collect_fn_decls(root: module_root, acc: Empty),
+        xs: vacuity_collect_fn_decls(root: module_root.root, acc: Empty),
         empty: Empty,
         cons: fn(acc, fn_decl) {
           match vacuity_fn_decl_name_optional(fn_decl: fn_decl) {
@@ -153,7 +153,7 @@ test fn vacuity_consumer_witness_real_test_fn_gap_stays_unknown_by_execution() -
     Rejected { diagnostics: _ } => false
     Accepted { value: module_root, diagnostics: _ } =>
       let fn_lookup = vacuity_find_fn_decl_by_name(
-        decls: vacuity_collect_fn_decls(root: module_root, acc: Empty),
+        decls: vacuity_collect_fn_decls(root: module_root.root, acc: Empty),
         name: target_fn
       )
       let fn_genuinely_absent = match fn_lookup {

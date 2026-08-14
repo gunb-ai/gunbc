@@ -138,6 +138,9 @@ import v2.std.compilers.target_model {
   TargetConditionalShape,
   TargetEffectApplyShape,
   TargetPrimitiveApplyShape,
+  TargetFieldAccessShape,
+  TargetMatchShape,
+  TargetBoolLiteralShape,
   TargetValueExpressionProjection,
   grammar_relation_row_attach_bodied_scaffold,
   target_operator_realizations_catalog_node,
@@ -5090,6 +5093,10 @@ fn dag_value_expression_projection() -> TargetValueExpressionProjection {
       close: ^dag_token_rbrace,
       fat_arrow: ^dag_token_fat_arrow,
       arm_separator: ^dag_token_comma
+    },
+    bool_literal_form: TargetBoolLiteralShape {
+      true_token: ^dag_token_kw_true,
+      false_token: ^dag_token_kw_false
     },
     block_evaluation_mode: dag_block_evaluation_mode()
   }

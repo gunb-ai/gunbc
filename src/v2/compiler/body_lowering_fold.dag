@@ -150,6 +150,13 @@ fn body_lowering_any_diagnostic_is_wrapper_retained(ne: NonEmptyDiagnostics) -> 
   )
 }
 
+fn body_lowering_diagnostics_carry_wrapper_retention(d: Diagnostics) -> Bool {
+  match d {
+    None => false
+    Some { diagnostics: ne } => body_lowering_any_diagnostic_is_wrapper_retained(ne: ne)
+  }
+}
+
 fn body_lower_outcome_is_wrapper_retained(o: Outcome<Node>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: d } =>

@@ -6,6 +6,7 @@ import v2.test.complexity_gate.table_fixture_add_subject_producer {
   table_fixture_add_arrow_with_body_swapped_operands
 }
 import v2.compiler.translate { translate_project_transform_in_arrow_scope }
+import v2.extdeps.languages.dag { dag_value_expression_projection }
 import v2.extdeps.languages.typescript {
   ts_add_return_body_tokens,
   ts_binding_spellings,
@@ -179,6 +180,7 @@ fn add_body_fold_body_tokens_for_arrow(
     o: target_project_arrow_body_to_value_expression(
       arrow: arrow,
       target: target,
+      source_bool_form: dag_value_expression_projection().bool_literal_form,
       handle_transform: fn(a, b, t) {
         translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
       }

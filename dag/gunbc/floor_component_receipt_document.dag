@@ -196,6 +196,7 @@ type FloorComponentFailureMode
   | ModeStaleKnownRed
   | ModeExpectedRedEvidenceAbsent
   | ModeExpectedRedPreVerdictUnverified
+  | ModeHostDependencyAbsent
   | ModeNotReached
   | ModeRunIncomplete
   | ModeDeadlineReached
@@ -209,6 +210,7 @@ fn floor_component_failure_mode_of(mode: NonEmptyStr) -> FloorComponentFailureMo
   else if (mode as String) == "StaleKnownRed" { Present { value: ModeStaleKnownRed } }
   else if (mode as String) == "ExpectedRedEvidenceAbsent" { Present { value: ModeExpectedRedEvidenceAbsent } }
   else if (mode as String) == "ExpectedRedPreVerdictUnverified" { Present { value: ModeExpectedRedPreVerdictUnverified } }
+  else if (mode as String) == "HostDependencyAbsent" { Present { value: ModeHostDependencyAbsent } }
   else if (mode as String) == "not_reached" { Present { value: ModeNotReached } }
   else if (mode as String) == "run_incomplete" { Present { value: ModeRunIncomplete } }
   else if (mode as String) == "deadline_reached" { Present { value: ModeDeadlineReached } }
@@ -224,6 +226,7 @@ fn floor_component_failure_mode_tag(m: FloorComponentFailureMode) -> String {
     ModeStaleKnownRed => "StaleKnownRed"
     ModeExpectedRedEvidenceAbsent => "ExpectedRedEvidenceAbsent"
     ModeExpectedRedPreVerdictUnverified => "ExpectedRedPreVerdictUnverified"
+    ModeHostDependencyAbsent => "HostDependencyAbsent"
     ModeNotReached => "not_reached"
     ModeRunIncomplete => "run_incomplete"
     ModeDeadlineReached => "deadline_reached"
@@ -269,6 +272,7 @@ fn floor_component_failure_mode_of_wire_tag(tag: String) -> FloorComponentFailur
   else if tag == floor_component_failure_mode_tag(m: ModeStaleKnownRed) { Present { value: ModeStaleKnownRed } }
   else if tag == floor_component_failure_mode_tag(m: ModeExpectedRedEvidenceAbsent) { Present { value: ModeExpectedRedEvidenceAbsent } }
   else if tag == floor_component_failure_mode_tag(m: ModeExpectedRedPreVerdictUnverified) { Present { value: ModeExpectedRedPreVerdictUnverified } }
+  else if tag == floor_component_failure_mode_tag(m: ModeHostDependencyAbsent) { Present { value: ModeHostDependencyAbsent } }
   else if tag == floor_component_failure_mode_tag(m: ModeNotReached) { Present { value: ModeNotReached } }
   else if tag == floor_component_failure_mode_tag(m: ModeRunIncomplete) { Present { value: ModeRunIncomplete } }
   else if tag == floor_component_failure_mode_tag(m: ModeDeadlineReached) { Present { value: ModeDeadlineReached } }
@@ -448,6 +452,8 @@ data floor_component_run_incomplete_note: String = "ModeRunIncomplete is NOT a t
 
 data floor_component_deadline_reached_note: String = "ModeDeadlineReached is the THIRD unadmitted-component cause and the only one of the three that is Refused rather than Skipped — the split is deliberate and is the whole reason it is not folded into its neighbours. Skipped says the component produced no verdict and the walk is not claiming responsibility for that; Refused says THE LINE STOPPED DELIBERATELY, LOCATED, AT A DECLARED CEILING, which observation_refused_distinct_note defines as the stopped line an operator is meant to analyse. That is exactly what the internal soft deadline is (gunbc.falsifier_workflow gunbc_falsifier_soft_deadline_minutes), so this mode routes with ModeBudgetExceeded — same remedy family, re-basis the ceiling or reduce the cost — rather than with the two Skipped causes whose remedies are 'fix the earlier component' and 'find out why the run never finished'. WHY IT IS NOT ModeBudgetExceeded ITSELF: that mode means THIS component crossed ITS OWN budget and was killed. A deadline-reached component was never STARTED — the walk declined to admit it because the RUN was out of time — so reusing BudgetExceeded would attribute a whole-run cost problem to whichever component happened to be next in the plan, which is a wrong location on a receipt whose entire purpose is locating things. WHAT REACHING IT MEANS: the corpus did not fit in the lane's time. Every unadmitted component is counted and the run is red. The deadline measures that; it does not fix it, and it is not licence to raise the cap (DESIGN's five-minute-CI-gate lane: do not raise the CI step cap first)."
 
+data floor_component_host_dependency_absent_mode_note: String = "ModeHostDependencyAbsent is the falsifier recovery arm for wet Codex materialization when npm is not on PATH (run 31685755058 component 6). Before the host-cli check, the shell transport raised failed to execute npm and claim_executor classified the batch as WitnessRed — indistinguishable from a subject failure. The remedy is fleet provisioning (apt install npm on falsifier runners executing falsifier_rehomed_bin_wet_rows Codex entries), not witness deletion and not auto-install inside the witness. It maps to Refused like BudgetExceeded: the line stops with a located host obligation, not a broken claim."
+
 fn floor_component_outcome_of_mode(m: FloorComponentFailureMode, detail: NonEmptyStr) -> ObservationOutcome? {
   match m {
     ModeNoFailure => Present { value: Done }
@@ -457,6 +463,7 @@ fn floor_component_outcome_of_mode(m: FloorComponentFailureMode, detail: NonEmpt
     ModeStaleKnownRed => Present { value: Refused { diagnostic: detail } }
     ModeExpectedRedEvidenceAbsent => Present { value: Refused { diagnostic: detail } }
     ModeExpectedRedPreVerdictUnverified => Present { value: Refused { diagnostic: detail } }
+    ModeHostDependencyAbsent => Present { value: Refused { diagnostic: detail } }
     ModeNotReached => Present { value: Skipped { reason: detail } }
     ModeRunIncomplete => none
     ModeDeadlineReached => Present { value: Refused { diagnostic: detail } }
@@ -491,6 +498,7 @@ fn component_outcome_agrees_with_failure_mode(read: ComponentOutcomeRead, mode: 
         ModeStaleKnownRed => outcome_matches_implied_mode(o: o, mode: mode)
         ModeExpectedRedEvidenceAbsent => outcome_matches_implied_mode(o: o, mode: mode)
         ModeExpectedRedPreVerdictUnverified => outcome_matches_implied_mode(o: o, mode: mode)
+        ModeHostDependencyAbsent => outcome_matches_implied_mode(o: o, mode: mode)
         ModeNotReached => outcome_matches_implied_mode(o: o, mode: mode)
         ModeRunIncomplete => false
         ModeDeadlineReached => outcome_matches_implied_mode(o: o, mode: mode)
