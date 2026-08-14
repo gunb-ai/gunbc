@@ -11,7 +11,7 @@ import std.orthogonal_geometry {
   OrthogonalRefused,
   axis_aligned_rectangle2,
 }
-import product.compute_board.physical {
+import product.pcb.physical {
   ComponentPlacement,
   PackageBodyEnvelope,
   body_envelope_of_ice40_package,

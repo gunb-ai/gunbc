@@ -1,0 +1,101 @@
+module extdeps.w3c.svg
+
+import std.types { String, List }
+import std.markup { Fragment, Element, FragmentText, Attribute, attr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.html_fragment { serialize_fragment }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.w3.org/TR/SVG2/"
+  }
+}
+
+data svg_subject_note: String = "Cited upstream: W3C Scalable Vector Graphics (SVG) 2. Language realization for plan-view PCB scenes. Element and attribute spellings live here so product projections cite this authority rather than minting a second SVG vocabulary in dag/product."
+
+data svg_spec_edition: String = "W3C Recommendation-track SVG 2"
+
+data svg_root_tag: String = "svg"
+data svg_rect_tag: String = "rect"
+data svg_circle_tag: String = "circle"
+data svg_text_tag: String = "text"
+data svg_g_tag: String = "g"
+
+data svg_xmlns: String = "http://www.w3.org/2000/svg"
+data svg_role_img: String = "img"
+
+fn svg_element(tag: String, attributes: List<Attribute>, children: List<Fragment>) -> Fragment {
+  Element { tag: tag, attributes: attributes, children: children }
+}
+
+fn svg_document(view_box: String, class_name: String, aria_label: String, children: List<Fragment>) -> Fragment {
+  svg_element(
+    tag: svg_root_tag,
+    attributes: [
+      attr(name: "viewBox", value: view_box),
+      attr(name: "class", value: class_name),
+      attr(name: "xmlns", value: svg_xmlns),
+      attr(name: "role", value: svg_role_img),
+      attr(name: "aria-label", value: aria_label),
+    ],
+    children: children
+  )
+}
+
+fn svg_group(class_name: String, children: List<Fragment>) -> Fragment {
+  svg_element(tag: svg_g_tag, attributes: [attr(name: "class", value: class_name)], children: children)
+}
+
+fn svg_rect(x: Int, y: Int, width: Int, height: Int, class_name: String, fill: String, stroke: String, stroke_width: String) -> Fragment {
+  svg_element(tag: svg_rect_tag, attributes: [
+    attr(name: "x", value: to_string(x)),
+    attr(name: "y", value: to_string(y)),
+    attr(name: "width", value: to_string(width)),
+    attr(name: "height", value: to_string(height)),
+    attr(name: "class", value: class_name),
+    attr(name: "fill", value: fill),
+    attr(name: "stroke", value: stroke),
+    attr(name: "stroke-width", value: stroke_width),
+  ], children: [])
+}
+
+fn svg_dashed_rect(x: Int, y: Int, width: Int, height: Int, class_name: String, stroke: String, stroke_width: String, dash: String) -> Fragment {
+  svg_element(tag: svg_rect_tag, attributes: [
+    attr(name: "x", value: to_string(x)),
+    attr(name: "y", value: to_string(y)),
+    attr(name: "width", value: to_string(width)),
+    attr(name: "height", value: to_string(height)),
+    attr(name: "class", value: class_name),
+    attr(name: "fill", value: "none"),
+    attr(name: "stroke", value: stroke),
+    attr(name: "stroke-width", value: stroke_width),
+    attr(name: "stroke-dasharray", value: dash),
+  ], children: [])
+}
+
+fn svg_circle(cx: Int, cy: Int, r: Int, class_name: String, fill: String, stroke: String, stroke_width: String, dash: String) -> Fragment {
+  svg_element(tag: svg_circle_tag, attributes: [
+    attr(name: "cx", value: to_string(cx)),
+    attr(name: "cy", value: to_string(cy)),
+    attr(name: "r", value: to_string(r)),
+    attr(name: "class", value: class_name),
+    attr(name: "fill", value: fill),
+    attr(name: "stroke", value: stroke),
+    attr(name: "stroke-width", value: stroke_width),
+    attr(name: "stroke-dasharray", value: dash),
+  ], children: [])
+}
+
+fn svg_text(x: Int, y: Int, label: String, class_name: String) -> Fragment {
+  svg_element(tag: svg_text_tag, attributes: [
+    attr(name: "x", value: to_string(x)),
+    attr(name: "y", value: to_string(y)),
+    attr(name: "class", value: class_name),
+  ], children: [FragmentText { content: label }])
+}
+
+fn serialize_svg_document(doc: Fragment) -> String {
+  serialize_fragment(frag: doc)
+}

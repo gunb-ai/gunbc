@@ -1,0 +1,106 @@
+module product.altra_motherboard.pcb_world
+
+import std.types { String, Bool, NonEmptyStr, List }
+import std.integer { Int }
+import std.orthogonal_geometry { OrthogonalReady, OrthogonalRefused }
+import product.pcb.world {
+  PcbWorld,
+  PcbWorldIdentity,
+  PcbWorldConstruction,
+  PcbWorldReady,
+  PcbWorldRefused,
+  PcbBoardOutlineRefused,
+  PcbSourceDesign,
+  PcbBoard,
+  PcbPhysicalWorld,
+  PcbElectricalWorld,
+  PcbManufacturingWorld,
+  PcbComponentObligation,
+  PcbAttachmentObligation,
+  pcb_world,
+}
+import product.pcb.physical { ComponentPlacement }
+import product.altra_motherboard.minimal_design { AltraMinimalMotherboard, altra_1p_minimum }
+import product.altra_motherboard.placement {
+  BoardPlacementPlan,
+  PlannedComponent,
+  EnvelopeEstablished,
+  EnvelopeNotEstablished,
+  placeable_components,
+  role_tag,
+  altra_reference_plan,
+}
+import product.altra_motherboard.attachment_stack {
+  LayerBlocker,
+  attachment_layer_name,
+  open_blockers,
+}
+
+data pcb_world_note: String = "THE ALTRA BOARD AS ONE PCB WORLD AUTHORITY. The placement plan is projected into product.pcb.world's populations: established envelopes become components, unresolved envelopes become obligations, and attachment-layer blockers become attachment obligations. The renderer never reads placement directly."
+
+data altra_reference_world_identity: PcbWorldIdentity = "altra-reference-1p" as PcbWorldIdentity
+
+fn source_design_for(d: AltraMinimalMotherboard) -> PcbSourceDesign {
+  PcbSourceDesign { subject: "product.altra_motherboard.minimal_design" }
+}
+
+fn component_obligation(c: PlannedComponent) -> PcbComponentObligation {
+  PcbComponentObligation {
+    identity: c.identity,
+    role: role_tag(r: c.role),
+    origin: c.origin,
+  }
+}
+
+fn obligations_from_plan(plan: BoardPlacementPlan) -> List<PcbComponentObligation> {
+  fold(plan.components, init: [], f: fn(acc, c) {
+    match c.envelope {
+      EnvelopeEstablished { envelope: _, source: _ } => acc
+      EnvelopeNotEstablished { gap: _ } => concat(acc, [component_obligation(c: c)])
+    }
+  })
+}
+
+fn attachment_obligation_from_blocker(b: LayerBlocker) -> PcbAttachmentObligation {
+  PcbAttachmentObligation { layer: attachment_layer_name(l: b.layer) }
+}
+
+fn attachment_obligations() -> List<PcbAttachmentObligation> {
+  fold(open_blockers(), init: [], f: fn(acc, b) {
+    concat(acc, [attachment_obligation_from_blocker(b: b)])
+  })
+}
+
+fn physical_world_from_plan(plan: BoardPlacementPlan) -> PcbPhysicalWorld {
+  PcbPhysicalWorld {
+    board: PcbBoard { frame: plan.frame, outline: plan.outline },
+    stackup: [],
+    components: placeable_components(plan: plan),
+    footprints: [],
+    pads: [],
+    holes: [],
+    routes: [],
+    copper_regions: [],
+    keepouts: [],
+    obligations: obligations_from_plan(plan: plan),
+    attachment_obligations: attachment_obligations(),
+  }
+}
+
+fn pcb_world_from_plan(d: AltraMinimalMotherboard, plan: BoardPlacementPlan) -> PcbWorld {
+  pcb_world(
+    identity: altra_reference_world_identity,
+    source_design: source_design_for(d: d),
+    electrical: PcbElectricalWorld { nets: [] },
+    physical: physical_world_from_plan(plan: plan),
+    manufacturing: PcbManufacturingWorld { artifacts: [] },
+  )
+}
+
+fn altra_pcb_world() -> PcbWorldConstruction<PcbWorld> {
+  match altra_reference_plan() {
+    OrthogonalRefused { cause: c } => PcbWorldRefused { cause: PcbBoardOutlineRefused { cause: c } }
+    OrthogonalReady { value: plan } =>
+      PcbWorldReady { value: pcb_world_from_plan(d: altra_1p_minimum, plan: plan) }
+  }
+}

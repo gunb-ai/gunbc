@@ -1,0 +1,191 @@
+module test.claim.altra_pcb_world_svg_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.integer { Int }
+import std.measure { micrometer_count }
+import product.pcb.world {
+  PcbWorld,
+  PcbWorldReady,
+  PcbWorldRefused,
+  pcb_world_physical,
+  pcb_component_count,
+  pcb_obligation_count,
+  pcb_population_count,
+}
+import product.pcb.svg_projection {
+  PcbSvgEmitted,
+  PcbSvgEmissionRefused,
+  PcbSvgReady,
+  PcbSvgRefused,
+  project_pcb_world,
+}
+import product.altra_motherboard.pcb_world { altra_pcb_world }
+import product.altra_motherboard.svg_emission { emit_altra_board_svg }
+import product.altra_motherboard.placement {
+  channel_indices,
+  required_roles,
+}
+import product.altra_motherboard.minimal_design {
+  AltraMinimalMotherboard,
+  MemoryConfiguration,
+  Production,
+  FourChannels,
+  SixChannels,
+  altra_1p_minimum,
+}
+import extdeps.cpu.ampere_altra_package {
+  altra_package_body_width,
+  altra_package_body_height,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn world_or_empty() -> PcbWorld? {
+  match altra_pcb_world() {
+    PcbWorldRefused { cause: _ } => none
+    PcbWorldReady { value: w } => Present { value: w }
+  }
+}
+
+fn svg_or_empty() -> String? {
+  match emit_altra_board_svg() {
+    PcbSvgEmitted { source: s } => Present { value: s }
+    PcbSvgEmissionRefused { cause: _ } => none
+  }
+}
+
+fn count_substring(haystack: String, needle: String) -> Int {
+  fold(split(s: haystack, delimiter: needle), init: 0, f: fn(acc, _part) { acc + 1 }) - 1
+}
+
+test fn w_the_altra_pcb_world_constructs() -> Bool {
+  match world_or_empty() {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn w_the_world_carries_two_established_and_thirteen_obligations() -> Bool {
+  match world_or_empty() {
+    Absent => false
+    Present { value: w } =>
+      pcb_component_count(p: pcb_world_physical(w: w)) == 2
+        && pcb_obligation_count(p: pcb_world_physical(w: w)) == 13
+  }
+}
+
+test fn w_the_emitted_svg_is_non_empty_and_opens_the_cited_root() -> Bool {
+  match svg_or_empty() {
+    Absent => false
+    Present { value: s } =>
+      s != ""
+        && string_contains(s: s, pattern: "<svg")
+        && string_contains(s: s, pattern: "pcb-world-scene")
+        && string_contains(s: s, pattern: "viewBox=\"0 0 305000 267000\"")
+        && string_contains(s: s, pattern: "http://www.w3.org/2000/svg")
+  }
+}
+
+test fn w_the_processor_package_renders_at_cited_body_dimensions() -> Bool {
+  match svg_or_empty() {
+    Absent => false
+    Present { value: s } =>
+      string_contains(s: s, pattern: concat("width=\"", to_string(micrometer_count(m: altra_package_body_width))))
+        && string_contains(s: s, pattern: concat("height=\"", to_string(micrometer_count(m: altra_package_body_height))))
+        && string_contains(s: s, pattern: "processor_package")
+  }
+}
+
+test fn w_the_socket_is_an_obligation_not_a_body_rectangle() -> Bool {
+  match svg_or_empty() {
+    Absent => false
+    Present { value: s } =>
+      string_contains(s: s, pattern: "cpu_socket (obligation)")
+        && string_contains(s: s, pattern: "pcb-component-obligation")
+        && !string_contains(s: s, pattern: "cpu_socket</text>")
+  }
+}
+
+test fn w_established_components_use_the_established_class() -> Bool {
+  match svg_or_empty() {
+    Absent => false
+    Present { value: s } =>
+      count_substring(haystack: s, needle: "pcb-component-established") == 2
+        && count_substring(haystack: s, needle: "pcb-component-obligation") == 13
+  }
+}
+
+test fn w_the_legend_states_two_established_and_thirteen_obligations() -> Bool {
+  match svg_or_empty() {
+    Absent => false
+    Present { value: s } => string_contains(s: s, pattern: "2 established / 13 obligations")
+  }
+}
+
+test fn w_every_world_component_identity_appears_in_the_svg() -> Bool {
+  match world_or_empty() {
+    Absent => false
+    Present { value: w } =>
+      let physical = pcb_world_physical(w: w)
+      let svg = match svg_or_empty() { Absent => "", Present { value: s } => s }
+      fold(physical.components, init: true, f: fn(acc, c) {
+        acc && string_contains(s: svg, pattern: c.identity as String)
+      })
+        && fold(physical.obligations, init: true, f: fn(acc, o) {
+          acc && string_contains(s: svg, pattern: o.identity as String)
+        })
+  }
+}
+
+test fn w_six_channels_requires_more_roles_than_four_without_touching_the_renderer() -> Bool {
+  let four = channel_indices(c: FourChannels)
+  let six = channel_indices(c: SixChannels)
+  let four_roles = required_roles(d: altra_1p_minimum)
+  let six_design = AltraMinimalMotherboard {
+    intent: Production,
+    memory: MemoryConfiguration { channels: SixChannels, dimms_per_channel: 1 },
+    pcie_lanes_broken_out: 4,
+  }
+  let six_roles = required_roles(d: six_design)
+  length(six) > length(four)
+    && length(six_roles) > length(four_roles)
+}
+
+test fn w_the_projection_matches_the_emission_entry() -> Bool {
+  match world_or_empty() {
+    Absent => false
+    Present { value: w } =>
+      match emit_altra_board_svg() {
+        PcbSvgEmitted { source: from_entry } =>
+          match project_pcb_world(w: w) {
+            PcbSvgReady { value: scene } => scene.document == from_entry
+            PcbSvgRefused { cause: _ } => false
+          }
+        PcbSvgEmissionRefused { cause: _ } => false
+      }
+  }
+}
+
+test fn w_mutation_control_obligation_count_must_be_thirteen() -> Bool {
+  match world_or_empty() {
+    Absent => false
+    Present { value: w } => pcb_obligation_count(p: pcb_world_physical(w: w)) == 13
+  }
+}
+
+test fn w_mutation_control_established_count_must_be_two() -> Bool {
+  match world_or_empty() {
+    Absent => false
+    Present { value: w } => pcb_component_count(p: pcb_world_physical(w: w)) == 2
+  }
+}
+
+test fn w_mutation_control_population_is_established_plus_obligations() -> Bool {
+  match world_or_empty() {
+    Absent => false
+    Present { value: w } =>
+      let physical = pcb_world_physical(w: w)
+      pcb_population_count(p: physical) == pcb_component_count(p: physical) + pcb_obligation_count(p: physical)
+  }
+}
