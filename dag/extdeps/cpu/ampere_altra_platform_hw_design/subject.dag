@@ -7,15 +7,8 @@ import extdeps.uri { Uri, Https }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.ampere { ampere_vendor }
-import extdeps.publication {
-  SpecificationDocumentDate,
-  SpecificationCitationReadProvenance,
-}
+import extdeps.publication { SpecificationDocumentDate }
 
-// THE PLATFORM DESIGN SPECIFICATION IS A DIFFERENT DOCUMENT CLASS FROM THE PACKAGE DATASHEET
-// AND FROM OCP REFERENCE-BOARD COLLATERAL. It is the guide for designing a custom motherboard
-// around Altra — socket land pattern, keepout, DDR4 routing rules, impedance targets and stackup
-// guidance — and is publicly reachable on Ampere's CDN without login.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https,
@@ -30,7 +23,7 @@ data ampere_technical_document_index_authority: ExternalAuthority = ExternalAuth
   }
 }
 
-data altra_platform_hw_design_subject_note: String = "THE HIGHEST-VALUE PUBLIC DOCUMENT THIS MOTHERBOARD LANE HAS FOUND. extdeps.cpu.ampere_altra_package carries the processor package pinout; extdeps.ocp.mt_jade carries one OCP reference-board specification; this module is the third axis — the vendor's platform hardware design guide for boards built around Altra rather than around a named reference platform. THE ANCHOR CITES THE PUBLIC CDN v1.00 COPY; AMPERE'S TECHNICAL-DOCUMENT INDEX LISTS A NEWER v1.20 REVISION DATED 2025-07-15 THAT THIS REPOSITORY HAS NOT RETRIEVED. THIS MODULE IS THE SUBJECT ANCHOR ONLY; PLATFORM FACTS ARE OWNED BY extdeps.cpu.ampere_altra_platform_hw_design.platform AND LAND IN #8260, INGESTED FROM THE v1.00 PDF BY PEER SESSION neat-hawk-428 — NOT BY THIS MODULE FETCHING THE LOCATOR."
+data altra_platform_hw_design_subject_note: String = "THE HIGHEST-VALUE PUBLIC DOCUMENT THIS MOTHERBOARD LANE HAS FOUND. extdeps.cpu.ampere_altra_package carries the processor package pinout; extdeps.ocp.mt_jade carries one OCP reference-board specification; this module is the third axis — the vendor's platform hardware design guide for boards built around Altra rather than around a named reference platform. THE ANCHOR CITES THE PUBLIC CDN v1.00 COPY; AMPERE'S TECHNICAL-DOCUMENT INDEX LISTS A NEWER v1.20 REVISION DATED 2025-07-15 THAT THIS REPOSITORY HAS NOT RETRIEVED. HOW THIS REPOSITORY READ THAT LOCATOR IS RECORDED AS A GUNBC RECEIPT WITH A DeclarationRef TO altra_platform_hw_design_specification, NOT AS A FIELD ON THIS RECORD. THIS MODULE IS THE SUBJECT ANCHOR ONLY; PLATFORM FACTS ARE OWNED BY extdeps.cpu.ampere_altra_platform_hw_design.platform AND LAND IN #8260."
 
 type AltraPlatformHwDesignRev1_00 {}
 
@@ -56,11 +49,6 @@ data altra_platform_hw_design_publication_date: SpecificationDocumentDate = Spec
   day: 20,
 }
 
-data altra_platform_hw_design_citation_read_provenance: SpecificationCitationReadProvenance = PeerSessionPdfTextIngested {
-  peer_session: "neat-hawk-428",
-  detail: "full PDF text of the public CDN v1.00 locator was decoded by peer session neat-hawk-428 (zlib content-stream decompression with per-font ToUnicode CMap decoding); this subject module did not perform the fetch",
-}
-
 data altra_platform_hw_design_supersession_standing: HeldSpecificationSupersessionStanding = NewerRevisionExistsUnretrieved {
   newer_version_label: "v1.20",
   newer_publication_date: SpecificationDocumentDate {
@@ -79,7 +67,6 @@ type AltraPlatformHwDesignSpecification {
   version_label: NonEmptyStr
   publication_date: SpecificationDocumentDate
   publisher: Vendor<Hardware>
-  citation_read_provenance: SpecificationCitationReadProvenance
   supersession_standing: HeldSpecificationSupersessionStanding
 }
 
@@ -89,7 +76,6 @@ data altra_platform_hw_design_specification: AltraPlatformHwDesignSpecification 
   version_label: altra_platform_hw_design_version_label,
   publication_date: altra_platform_hw_design_publication_date,
   publisher: ampere_vendor,
-  citation_read_provenance: altra_platform_hw_design_citation_read_provenance,
   supersession_standing: altra_platform_hw_design_supersession_standing,
 }
 

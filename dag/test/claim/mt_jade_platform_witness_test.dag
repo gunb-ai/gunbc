@@ -3,9 +3,11 @@ module test.claim.mt_jade_platform_witness
 import std.types { Bool, String, NonEmptyStr, List, list_length }
 import std.integer { Int }
 import std.measure { hertz_count, microsecond_count, micrometer_count }
-import extdeps.publication {
+import gunbc.specification_citation_read_provenance {
   DocumentLocatorFetchRefused,
   OperatorSuppliedDocumentText,
+  mt_jade_publisher_citation_read_receipt,
+  mt_jade_ingested_citation_read_receipt,
 }
 import extdeps.ocp.publication {
   AppendixA,
@@ -15,8 +17,6 @@ import extdeps.ocp.publication {
 }
 import extdeps.ocp.mt_jade.subject {
   MtJadeRev1_0,
-  mt_jade_publisher_citation_read_provenance,
-  mt_jade_ingested_citation_read_provenance,
   mt_jade_contribution_license,
   mt_jade_excluded_non_normative_appendices,
   mt_jade_model_scope,
@@ -172,21 +172,19 @@ test fn w_the_specification_license_excludes_non_normative_appendices() -> Bool 
 
 // THE PUBLISHER FETCH REFUSAL AND THE INGESTED TEXT PATH ARE TWO OBSERVATIONS, NOT ONE.
 test fn w_the_publisher_citation_provenance_records_the_refused_fetch() -> Bool {
-  match mt_jade_publisher_citation_read_provenance {
+  match mt_jade_publisher_citation_read_receipt.provenance {
     DocumentLocatorFetchRefused { http_status: code, detail: _ } => code == 403
     OperatorSuppliedDocumentText {} => false
   }
 }
 
 test fn w_platform_facts_ground_on_operator_supplied_text() -> Bool {
-  match mt_jade_ingested_citation_read_provenance {
+  match mt_jade_ingested_citation_read_receipt.provenance {
     OperatorSuppliedDocumentText {} => true
     DocumentLocatorFetchRefused { http_status: _, detail: _ } => false
   }
-    && match mt_jade_reference_platform.ingested_citation_read_provenance {
-      OperatorSuppliedDocumentText {} => true
-      DocumentLocatorFetchRefused { http_status: _, detail: _ } => false
-    }
+    && (mt_jade_ingested_citation_read_receipt.subject.module_path as String) == "extdeps.ocp.mt_jade.subject"
+    && (mt_jade_ingested_citation_read_receipt.subject.decl_name as String) == "mt_jade_reference_platform"
 }
 
 // SECTION 7.2/7.3: 428 BY 479.36 MM OUTLINE AND ILM4926 SOCKET ON A DUAL-SOCKET 32-DIMM BOARD.
