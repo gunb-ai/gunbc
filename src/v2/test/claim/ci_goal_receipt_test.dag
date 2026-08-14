@@ -4,86 +4,135 @@ import v2.std.algebra { length }
 import v2.std.collection { List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
+import v2.workflow.ci_attempt { CiNodeReceipt, NodeFailed, NodePassed }
 import v2.workflow.ci_goal_receipt {
   acceptance_standing,
   AcceptanceAdmitted,
   AcceptanceRefusedNotHeld,
   AcceptanceRefusedUnevaluated,
   ci_goal_rows,
-  CompileCleanSharesThePreparation,
-  DerivedFromPlan,
-  ExecutedWitness,
+  ci_goal_subjects,
+  derived_goal_rows,
+  evidence_from_absence_scan,
+  evidence_from_plan_predicate,
+  evidence_from_witness_receipt,
+  EvidenceAdmitted,
+  EvidenceRefusedScanIncomplete,
+  EvidenceRefusedSubjectPresent,
+  EvidenceRefusedWitnessNotGreen,
   goal_receipt,
-  GoalHeld,
-  GoalRow,
-  GoalUnevaluated,
-  EveryOrdinaryWitnessRunsUnconditionally,
-  ZeroPerEntryGraphResolves
+  GoalEvidenceBinding,
+  no_goal_evidence,
+  NoAutomaticExclusionDerivation,
+  WitnessIdentityIsQualified
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE BRANCH IS NOT READY, AND THE CARRIER SAYS SO. This is the receipt's whole
-// purpose: acceptance is refused by a value the gate reads, not by a reviewer
-// remembering which goals were dropped.
-test fn this_branch_is_refused_by_its_own_goal_rows() -> Bool {
-  match acceptance_standing(rows: ci_goal_rows) {
-    AcceptanceRefusedNotHeld { goal: _ } => true
+// WITH NO EVIDENCE BOUND, EVERY GOAL IS UNEVALUATED AND ACCEPTANCE REFUSES. This is
+// the branch's true state, and it is derived rather than authored -- the roster carries
+// goals, not verdicts, so no edit to that file can make a goal hold.
+test fn an_unevidenced_branch_is_entirely_unevaluated() -> Bool {
+  let rows = ci_goal_rows()
+  let r = goal_receipt(rows: rows)
+  let refused = match acceptance_standing(rows: rows) {
     AcceptanceRefusedUnevaluated { goal: _ } => true
     AcceptanceAdmitted => false
+    AcceptanceRefusedNotHeld { goal: _ } => false
   }
+  refused
+    && (r.held == 0)
+    && (r.not_held == 0)
+    && (r.unevaluated == length(xs: ci_goal_subjects))
 }
 
-// AN UNWIRED GOAL CANNOT PASS. A roster of goals every one of which is Held is the
-// only admitted shape; swapping a single row to Unevaluated -- the cheapest possible
-// way to make a status table look finished -- refuses.
-data all_held: List<GoalRow> = [
-  GoalRow {
-    goal: EveryOrdinaryWitnessRunsUnconditionally,
-    standing: GoalHeld { evidence: DerivedFromPlan { declaration: ^corpus_runnable_for } }
-  },
-  GoalRow {
-    goal: CompileCleanSharesThePreparation,
-    standing: GoalHeld { evidence: ExecutedWitness { declaration: ^some_witness } }
+// EVIDENCE COMES FROM A PASSING RECEIPT, NOT FROM A NAME. A red witness yields no
+// evidence, so a failing check cannot hold its own goal -- the hole the previous
+// revision had, where any symbol admitted.
+test fn only_a_passing_receipt_yields_evidence() -> Bool {
+  let green = evidence_from_witness_receipt(
+    receipt: CiNodeReceipt { node_identity: ^w_qualified, outcome: NodePassed }
+  )
+  let red = evidence_from_witness_receipt(
+    receipt: CiNodeReceipt { node_identity: ^w_qualified, outcome: NodeFailed }
+  )
+  let admitted = match green {
+    EvidenceAdmitted { evidence: _ } => true
+    EvidenceRefusedWitnessNotGreen { declaration: _ } => false
+    EvidenceRefusedScanIncomplete { subject: _, scanned: _, population: _ } => false
+    EvidenceRefusedSubjectPresent { subject: _, occurrences: _ } => false
+    EvidenceRefusedPredicateFalse { declaration: _ } => false
   }
-]
-
-data one_unevaluated: List<GoalRow> = [
-  GoalRow {
-    goal: EveryOrdinaryWitnessRunsUnconditionally,
-    standing: GoalHeld { evidence: DerivedFromPlan { declaration: ^corpus_runnable_for } }
-  },
-  GoalRow {
-    goal: ZeroPerEntryGraphResolves,
-    standing: GoalUnevaluated { trigger: "a per-entry resolve counter the plan can read" }
-  }
-]
-
-test fn unevaluated_is_not_a_pass() -> Bool {
-  let admitted = match acceptance_standing(rows: all_held) {
-    AcceptanceAdmitted => true
-    AcceptanceRefusedNotHeld { goal: _ } => false
-    AcceptanceRefusedUnevaluated { goal: _ } => false
-  }
-  let refused = match acceptance_standing(rows: one_unevaluated) {
-    AcceptanceRefusedUnevaluated { goal: _ } => true
-    AcceptanceAdmitted => false
-    AcceptanceRefusedNotHeld { goal: _ } => false
+  let refused = match red {
+    EvidenceRefusedWitnessNotGreen { declaration: d } => d == ^w_qualified
+    EvidenceAdmitted { evidence: _ } => false
+    EvidenceRefusedScanIncomplete { subject: _, scanned: _, population: _ } => false
+    EvidenceRefusedSubjectPresent { subject: _, occurrences: _ } => false
+    EvidenceRefusedPredicateFalse { declaration: _ } => false
   }
   admitted && refused
 }
 
-// THE RECEIPT IS THREE COUNTS AND THEY PARTITION THE ROSTER. A ratio would have to
-// place the unevaluated rows on one side or the other, and both placements destroy
-// the distinction the standing exists to carry.
-test fn counts_partition_the_roster() -> Bool {
-  let r = goal_receipt(rows: ci_goal_rows)
-  let total = r.held + r.not_held + r.unevaluated
-  (total == length(xs: ci_goal_rows)) && (r.unevaluated > 0) && (r.not_held > 0)
+// A PARTIAL SCAN IS NOT ABSENCE. "We looked at some of the corpus and found nothing" is
+// the exact shape of the censuses that answered from whatever population they happened
+// to hold.
+test fn absence_requires_a_complete_scan_and_zero_occurrences() -> Bool {
+  let complete = match evidence_from_absence_scan(
+    subject: ^census_exclude_derive, scanned: 3613, population: 3613, occurrences: 0
+  ) {
+    EvidenceAdmitted { evidence: _ } => true
+    EvidenceRefusedScanIncomplete { subject: _, scanned: _, population: _ } => false
+    EvidenceRefusedSubjectPresent { subject: _, occurrences: _ } => false
+    EvidenceRefusedWitnessNotGreen { declaration: _ } => false
+    EvidenceRefusedPredicateFalse { declaration: _ } => false
+  }
+  let partial = match evidence_from_absence_scan(
+    subject: ^census_exclude_derive, scanned: 1611, population: 3613, occurrences: 0
+  ) {
+    EvidenceRefusedScanIncomplete { subject: _, scanned: s, population: p } =>
+      (s == 1611) && (p == 3613)
+    EvidenceAdmitted { evidence: _ } => false
+    EvidenceRefusedSubjectPresent { subject: _, occurrences: _ } => false
+    EvidenceRefusedWitnessNotGreen { declaration: _ } => false
+    EvidenceRefusedPredicateFalse { declaration: _ } => false
+  }
+  let present = match evidence_from_absence_scan(
+    subject: ^census_exclude_derive, scanned: 3613, population: 3613, occurrences: 2
+  ) {
+    EvidenceRefusedSubjectPresent { subject: _, occurrences: n } => n == 2
+    EvidenceAdmitted { evidence: _ } => false
+    EvidenceRefusedScanIncomplete { subject: _, scanned: _, population: _ } => false
+    EvidenceRefusedWitnessNotGreen { declaration: _ } => false
+    EvidenceRefusedPredicateFalse { declaration: _ } => false
+  }
+  complete && partial && present
+}
+
+// ONE BOUND GOAL BECOMES HELD; THE REST STAY UNEVALUATED AND STILL BLOCK. Progress is
+// visible without becoming permission.
+data one_binding: List<GoalEvidenceBinding> = [
+  GoalEvidenceBinding {
+    goal: WitnessIdentityIsQualified,
+    admission: evidence_from_witness_receipt(
+      receipt: CiNodeReceipt { node_identity: ^w_qualified, outcome: NodePassed }
+    )
+  }
+]
+
+test fn one_binding_holds_one_goal_and_acceptance_still_refuses() -> Bool {
+  let rows = derived_goal_rows(bindings: one_binding)
+  let r = goal_receipt(rows: rows)
+  let still_refused = match acceptance_standing(rows: rows) {
+    AcceptanceRefusedUnevaluated { goal: _ } => true
+    AcceptanceAdmitted => false
+    AcceptanceRefusedNotHeld { goal: _ } => false
+  }
+  (r.held == 1) && (r.unevaluated == length(xs: ci_goal_subjects) - 1) && still_refused
 }
 
 test fn ci_goal_receipt_witnesses() -> Bool {
-  this_branch_is_refused_by_its_own_goal_rows()
-    && unevaluated_is_not_a_pass()
-    && counts_partition_the_roster()
+  an_unevidenced_branch_is_entirely_unevaluated()
+    && only_a_passing_receipt_yields_evidence()
+    && absence_requires_a_complete_scan_and_zero_occurrences()
+    && one_binding_holds_one_goal_and_acceptance_still_refuses()
 }

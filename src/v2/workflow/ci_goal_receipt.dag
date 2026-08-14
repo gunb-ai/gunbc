@@ -4,6 +4,7 @@ import v2.std.algebra { fold_list, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
+import v2.workflow.ci_attempt { CiNodeReceipt, NodeFailed, NodePassed, NodeRefused }
 import v2.std.text { String }
 
 // THE ORIGINAL GOALS, AS A CARRIER RATHER THAN A PR DESCRIPTION.
@@ -40,14 +41,88 @@ type CiGoal
   | NoDuplicateRecomputeWithoutShare
   | RegenDriftHealShareOneGeneration
 
-// EVIDENCE NAMES A SYMBOL, NOT A SENTENCE. A declaration reference can be checked
-// against the containment tree; a description cannot be checked against anything, and
-// DESIGN §3's cite-the-symbol rule exists because the unverifiable form decays
-// silently while the verifiable one does not.
-type GoalEvidence
-  = ExecutedWitness { declaration: Symbol }
-  | StructuralAbsence { subject: Symbol }
-  | DerivedFromPlan { declaration: Symbol }
+// EVIDENCE IS SEALED, BECAUSE NAMING A SYMBOL IS NOT PRODUCING A PROOF.
+//
+// The first revision of this module accepted GoalHeld { evidence: ExecutedWitness {
+// declaration: sym } } for ANY symbol, and its own test proved the hole by admitting a
+// row built from the arbitrary name ^some_witness. Nothing resolved the declaration,
+// executed it, scanned the population, or evaluated the plan predicate — the carrier
+// read a tag someone had already authored, which is the same shape as the resolve
+// count that printed a literal zero. A status table that cannot be contradicted is not
+// a receipt.
+//
+// GoalEvidence is sole_constructor, so the only way to obtain one is through the
+// admitting functions below, and each of those requires the artifact that constitutes
+// the proof rather than a name for it. This does not yet EXECUTE anything from inside
+// .dag — the witness receipt still arrives from the host — but it removes the arm
+// where a goal is held because a symbol was typed.
+type GoalEvidence sole_constructor {
+  form: EvidenceForm
+  subject: Symbol
+}
+
+type EvidenceForm
+  = ExecutedWitnessForm
+  | StructuralAbsenceForm
+  | DerivedFromPlanForm
+
+// A passing receipt is the artifact; the declaration name travels WITH it rather than
+// standing in for it. A failing or refused receipt yields no evidence, so a red witness
+// cannot hold its own goal.
+fn evidence_from_witness_receipt(receipt: CiNodeReceipt) -> GoalEvidenceAdmission {
+  match receipt.outcome {
+    NodePassed =>
+      EvidenceAdmitted {
+        evidence: GoalEvidence {
+          form: ExecutedWitnessForm,
+          subject: receipt.node_identity
+        }
+      }
+    NodeFailed => EvidenceRefusedWitnessNotGreen { declaration: receipt.node_identity }
+    NodeRefused { cause: _ } =>
+      EvidenceRefusedWitnessNotGreen { declaration: receipt.node_identity }
+  }
+}
+
+// Absence is established by a COMPLETE scan reporting zero occurrences, not by a
+// grep someone ran once. An incomplete scan refuses: "we looked at part of the corpus
+// and found nothing" is not absence, and this is the same distinction the corpus-wide
+// censuses lost when they answered from whatever population they happened to hold.
+fn evidence_from_absence_scan(
+  subject: Symbol,
+  scanned: Int,
+  population: Int,
+  occurrences: Int
+) -> GoalEvidenceAdmission {
+  if scanned != population {
+    EvidenceRefusedScanIncomplete { subject: subject, scanned: scanned, population: population }
+  } else {
+    if occurrences > 0 {
+      EvidenceRefusedSubjectPresent { subject: subject, occurrences: occurrences }
+    } else {
+      EvidenceAdmitted {
+        evidence: GoalEvidence { form: StructuralAbsenceForm, subject: subject }
+      }
+    }
+  }
+}
+
+fn evidence_from_plan_predicate(declaration: Symbol, holds: Bool) -> GoalEvidenceAdmission {
+  if holds {
+    EvidenceAdmitted {
+      evidence: GoalEvidence { form: DerivedFromPlanForm, subject: declaration }
+    }
+  } else {
+    EvidenceRefusedPredicateFalse { declaration: declaration }
+  }
+}
+
+type GoalEvidenceAdmission
+  = EvidenceAdmitted { evidence: GoalEvidence }
+  | EvidenceRefusedWitnessNotGreen { declaration: Symbol }
+  | EvidenceRefusedScanIncomplete { subject: Symbol, scanned: Int, population: Int }
+  | EvidenceRefusedSubjectPresent { subject: Symbol, occurrences: Int }
+  | EvidenceRefusedPredicateFalse { declaration: Symbol }
 
 // Unevaluated carries its TRIGGER, so "we have not measured this" is separable from
 // "we cannot measure this". DESIGN §4b calls the first a tracked stall and the second
@@ -141,109 +216,115 @@ fn acceptance_standing(rows: List<GoalRow>) -> AcceptanceStanding {
   fold_list(xs: rows, empty: AcceptanceAdmitted, cons: admit_acceptance)
 }
 
-// ── The live rows for this branch ─────────────────────────────────────────────
+// ── The roster, and why it carries NO standings ───────────────────────────────
 //
-// These are the standings as measured, not as intended. Several are deliberately
-// NotHeld or Unevaluated, and that is the receipt working: the branch is not ready,
-// and the carrier says so in a form that a gate can read.
-
-data ci_goal_rows: List<GoalRow> = [
-  GoalRow {
-    goal: EveryOrdinaryWitnessRunsUnconditionally,
-    standing: GoalHeld {
-      evidence: DerivedFromPlan { declaration: ^corpus_runnable_for }
-    }
-  },
-  GoalRow {
-    goal: NoAutomaticExclusionDerivation,
-    standing: GoalHeld {
-      evidence: StructuralAbsence { subject: ^census_exclude_derive }
-    }
-  },
-  GoalRow {
-    goal: WitnessIdentityIsQualified,
-    standing: GoalHeld {
-      evidence: ExecutedWitness { declaration: ^floor2_prepared_subject_witnesses }
-    }
-  },
-  GoalRow {
-    goal: ExactSubjectCoversTheEnvelope,
-    standing: GoalHeld {
-      evidence: ExecutedWitness { declaration: ^digest_covers_every_envelope_field }
-    }
-  },
-  GoalRow {
-    goal: NoDuplicateRecomputeWithoutShare,
-    standing: GoalHeld {
-      evidence: ExecutedWitness { declaration: ^materialization_admits_once_then_shares }
-    }
-  },
-  GoalRow {
-    goal: RegenDriftHealShareOneGeneration,
-    standing: GoalNotHeld {
-      detail: "the single-generation dataflow is modeled and sealed; production still generates twice (observe_generated_artifact and main_wet each call artifact_generate)"
-    }
-  },
-  GoalRow {
-    goal: OneExactPreparedSubject,
-    standing: GoalNotHeld {
-      detail: "modeled and probed; the required floor still prepares per entry"
-    }
-  },
-  GoalRow {
-    goal: CompileCleanSharesThePreparation,
-    standing: GoalNotHeld {
-      detail: "compile-clean is a separate resolve over an overlapping population"
-    }
-  },
-  GoalRow {
-    goal: DagOwnsFloorPolicy,
-    standing: GoalNotHeld {
-      detail: "claim_batch.rs still owns identity construction, exclusions, iteration and the verdict fold"
-    }
-  },
-  GoalRow {
-    goal: OldEntryMajorPathHasNoConsumers,
-    standing: GoalNotHeld { detail: "the entry-major runner is still the required path" }
-  },
-  GoalRow {
-    goal: SelectionMachineryAbsent,
-    standing: GoalNotHeld { detail: "skip-witness binaries and selection modes are still present" }
-  },
-  GoalRow {
-    goal: FalsifierPredictionMachineryAbsent,
-    standing: GoalNotHeld {
-      detail: "selection-control, cold-corpus and aggregate-verdict jobs still exist"
-    }
-  },
-  GoalRow {
-    goal: WorkIsGenuinelyConcurrent,
-    standing: GoalNotHeld {
-      detail: "the plan derives resource-admissible batches; no host primitive executes one concurrently"
-    }
-  },
-  GoalRow {
-    goal: ZeroPerEntryGraphResolves,
-    standing: GoalUnevaluated {
-      trigger: "the interpreter exposes a per-entry resolve counter the plan can read and refuse on"
-    }
-  },
-  GoalRow {
-    goal: EveryMainCommitGetsAVerdict,
-    standing: GoalUnevaluated {
-      trigger: "a control that reads the generated concurrency key rather than asserting it here"
-    }
-  },
-  GoalRow {
-    goal: PreparationFailuresAreLoud,
-    standing: GoalUnevaluated {
-      trigger: "the loud resolve becomes the required compile path rather than the experimental one"
-    }
-  },
-  GoalRow {
-    goal: LedgerExplainsTheAttempt,
-    standing: GoalUnevaluated {
-      trigger: "the attempt ledger is produced by a run rather than by a witness fixture"
-    }
-  }
+// This is a list of GOALS, not a list of verdicts. The previous revision authored a
+// standing per goal, which meant the branch's acceptance state was whatever the branch
+// said it was — and the review that caught it was right that no amount of typing makes
+// an authored tag into a receipt.
+//
+// A standing is now DERIVED from evidence that arrives, so the honest state of a
+// branch with no evidence wired is every goal Unevaluated and acceptance refused. That
+// is the correct answer today and it is not flattering, which is the point: the carrier
+// cannot be talked into agreeing.
+data ci_goal_subjects: List<CiGoal> = [
+  EveryMainCommitGetsAVerdict,
+  EveryOrdinaryWitnessRunsUnconditionally,
+  NoAutomaticExclusionDerivation,
+  PreparationFailuresAreLoud,
+  WitnessIdentityIsQualified,
+  OneExactPreparedSubject,
+  CompileCleanSharesThePreparation,
+  ZeroPerEntryGraphResolves,
+  ExactSubjectCoversTheEnvelope,
+  LedgerExplainsTheAttempt,
+  DagOwnsFloorPolicy,
+  OldEntryMajorPathHasNoConsumers,
+  SelectionMachineryAbsent,
+  FalsifierPredictionMachineryAbsent,
+  WorkIsGenuinelyConcurrent,
+  NoDuplicateRecomputeWithoutShare,
+  RegenDriftHealShareOneGeneration
 ]
+
+type GoalEvidenceBinding {
+  goal: CiGoal
+  admission: GoalEvidenceAdmission
+}
+
+data no_goal_evidence: List<GoalEvidenceBinding> = []
+
+fn goal_eq(a: CiGoal, b: CiGoal) -> Bool {
+  goal_symbol(goal: a) == goal_symbol(goal: b)
+}
+
+fn goal_symbol(goal: CiGoal) -> Symbol {
+  match goal {
+    EveryMainCommitGetsAVerdict => ^goal_every_main_commit_gets_a_verdict
+    EveryOrdinaryWitnessRunsUnconditionally => ^goal_every_ordinary_witness_runs
+    NoAutomaticExclusionDerivation => ^goal_no_automatic_exclusion_derivation
+    PreparationFailuresAreLoud => ^goal_preparation_failures_are_loud
+    WitnessIdentityIsQualified => ^goal_witness_identity_is_qualified
+    OneExactPreparedSubject => ^goal_one_exact_prepared_subject
+    CompileCleanSharesThePreparation => ^goal_compile_clean_shares_preparation
+    ZeroPerEntryGraphResolves => ^goal_zero_per_entry_graph_resolves
+    ExactSubjectCoversTheEnvelope => ^goal_exact_subject_covers_envelope
+    LedgerExplainsTheAttempt => ^goal_ledger_explains_the_attempt
+    DagOwnsFloorPolicy => ^goal_dag_owns_floor_policy
+    OldEntryMajorPathHasNoConsumers => ^goal_old_path_has_no_consumers
+    SelectionMachineryAbsent => ^goal_selection_machinery_absent
+    FalsifierPredictionMachineryAbsent => ^goal_falsifier_machinery_absent
+    WorkIsGenuinelyConcurrent => ^goal_work_is_genuinely_concurrent
+    NoDuplicateRecomputeWithoutShare => ^goal_no_duplicate_recompute
+    RegenDriftHealShareOneGeneration => ^goal_regen_drift_heal_one_generation
+  }
+}
+
+// AN ABSENT BINDING IS Unevaluated, NEVER Held. The default has to be the state that
+// blocks, because the alternative rewards forgetting to wire evidence.
+fn standing_for(goal: CiGoal, bindings: List<GoalEvidenceBinding>) -> GoalStanding {
+  fold_list(
+    xs: bindings,
+    empty: GoalUnevaluated { trigger: "no evidence bound for this goal" },
+    cons: fn(acc, b) {
+      if goal_eq(a: b.goal, b: goal) {
+        match b.admission {
+          EvidenceAdmitted { evidence: e } => GoalHeld { evidence: e }
+          EvidenceRefusedWitnessNotGreen { declaration: _ } =>
+            GoalNotHeld { detail: "witness did not pass" }
+          EvidenceRefusedScanIncomplete { subject: _, scanned: _, population: _ } =>
+            GoalNotHeld { detail: "absence scan did not cover the population" }
+          EvidenceRefusedSubjectPresent { subject: _, occurrences: _ } =>
+            GoalNotHeld { detail: "subject is still present" }
+          EvidenceRefusedPredicateFalse { declaration: _ } =>
+            GoalNotHeld { detail: "plan predicate does not hold" }
+        }
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn derived_goal_rows(bindings: List<GoalEvidenceBinding>) -> List<GoalRow> {
+  fold_list(
+    xs: ci_goal_subjects,
+    empty: no_goal_rows,
+    cons: fn(acc, g) {
+      list_snoc_item(
+        xs: acc,
+        item: GoalRow { goal: g, standing: standing_for(goal: g, bindings: bindings) }
+      )
+    }
+  )
+}
+
+data no_goal_rows: List<GoalRow> = []
+
+// THE BRANCH'S STATE, DERIVED. No evidence is bound on this branch, so every goal is
+// Unevaluated and acceptance refuses. When the host starts returning receipts, rows
+// become Held one binding at a time — and a goal can never be held by editing this
+// file.
+fn ci_goal_rows() -> List<GoalRow> {
+  derived_goal_rows(bindings: no_goal_evidence)
+}

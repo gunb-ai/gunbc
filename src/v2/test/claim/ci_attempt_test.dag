@@ -9,7 +9,7 @@ import v2.std.text { String }
 import std.computation_identity { IdentityUnknown, MissingEnforcement, StructurallyIdentical }
 import v2.std.dependency { DependencyView }
 import v2.workflow.executor { ExecutorBatch }
-import v2.workflow.floor2_prepared_subject { ExcludedNotPartOfThisSubject }
+import v2.workflow.floor2_prepared_subject { ExcludedOutsideDeclaredSourceRoots }
 import v2.workflow.ci_attempt {
   AttemptFailed,
   AttemptNodeRefused,
@@ -77,7 +77,7 @@ data base_request: CiAttemptRequest = CiAttemptRequest {
   exclusions: [
     SubjectExclusion {
       subject: ^ownership_movable_test,
-      ground: ExcludedNotPartOfThisSubject
+      ground: ExcludedOutsideDeclaredSourceRoots { containing_root: ^ci_source_root_src_v1 }
     }
   ],
   tool: ToolIdentity { compiler: ^ci_test_compiler_a },
@@ -140,7 +140,7 @@ data request_other_exclusion_subject: CiAttemptRequest = CiAttemptRequest {
   exclusions: [
     SubjectExclusion {
       subject: ^some_other_excluded_module,
-      ground: ExcludedNotPartOfThisSubject
+      ground: ExcludedOutsideDeclaredSourceRoots { containing_root: ^ci_source_root_src_v1 }
     }
   ],
   tool: base_request.tool,

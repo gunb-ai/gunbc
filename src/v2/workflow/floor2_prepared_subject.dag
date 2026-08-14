@@ -3,6 +3,7 @@ module v2.workflow.floor2_prepared_subject
 import v2.std.algebra { fold_list, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
+import v2.std.node { Symbol }
 import v2.std.text { String }
 
 // FLOOR2 — the floor as ONE prepared subject and N claims against it, modeled
@@ -22,17 +23,28 @@ type PreparedSubjectSpec {
   exclusions: List<String>
 }
 
-// The exclusion set is PART OF THE SUBJECT, so it is declared beside the roots
-// and never borrowed from a roster that answers a different question. The probe
-// exclusion roster is pattern rows UNION a derived strict-resolve failure
-// closure, and its pattern half exists to keep witnesses OUT of a probe over
-// production code. Borrowed here it prepared 1611 of 3621 modules and 9057 of
-// 9317 witnesses could not find their own code — a subject that resolves cleanly
-// while being the wrong subject.
+// The exclusion set is PART OF THE SUBJECT, so it is declared beside the roots and
+// never borrowed from a roster that answers a different question. The probe exclusion
+// roster is pattern rows UNION a derived strict-resolve failure closure, and its
+// pattern half exists to keep witnesses OUT of a probe over production code. Borrowed
+// here it prepared 1611 of 3621 modules and 9057 of 9317 witnesses could not find
+// their own code — a subject that resolves cleanly while being the wrong subject.
+//
+// THERE IS NO GROUND MEANING "IT FAILED TO RESOLVE". Two arms were deleted rather than
+// kept for completeness: ExcludedDerivedFailureClosure readmitted the self-growing
+// closure under a name, and a generic ExcludedCannotStrictResolve let an accidental
+// breakage wear the same badge as a deliberately invalid fixture — which is exactly
+// the move that hid ~150 undeclared imports for however long. The remaining two grounds
+// say what the case IS, not what happened when it was tried:
+//
+// A deliberately-invalid fixture carries the WITNESS that consumes its invalidity. If
+// nothing reads the refusal, the file is not a fixture, it is a broken module, and the
+// field is what makes that distinction checkable instead of asserted. An out-of-roots
+// module carries the root that WOULD contain it, so the exclusion names its own
+// dissolution: add that root and the row is unnecessary.
 type SubjectExclusionGround
-  = ExcludedCannotStrictResolve
-  | ExcludedDerivedFailureClosure
-  | ExcludedNotPartOfThisSubject
+  = ExcludedDeliberatelyInvalidFixture { property_witness: Symbol }
+  | ExcludedOutsideDeclaredSourceRoots { containing_root: Symbol }
 
 type WitnessSite {
   entry: String

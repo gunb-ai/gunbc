@@ -15,7 +15,11 @@ import v2.workflow.executor {
   ExecutorRunRunnable,
   parallel_executor_plan_from_dependencies
 }
-import v2.workflow.floor2_prepared_subject { SubjectExclusionGround }
+import v2.workflow.floor2_prepared_subject {
+  ExcludedDeliberatelyInvalidFixture,
+  ExcludedOutsideDeclaredSourceRoots,
+  SubjectExclusionGround
+}
 
 // THE CI ATTEMPT AS ONE PLAN.
 //
@@ -140,11 +144,13 @@ fn source_root_symbol(root: SourceRootId) -> Symbol {
   }
 }
 
+// The ground's OWN payload enters the digest too: two rows excluding one module as a
+// deliberately-invalid fixture under different property witnesses are different
+// subjects, and the same omission that lost the exclusion subject would lose this.
 fn subject_exclusion_ground_symbol(ground: SubjectExclusionGround) -> Symbol {
   match ground {
-    ExcludedCannotStrictResolve => ^ci_exclusion_cannot_strict_resolve
-    ExcludedDerivedFailureClosure => ^ci_exclusion_derived_failure_closure
-    ExcludedNotPartOfThisSubject => ^ci_exclusion_not_part_of_this_subject
+    ExcludedDeliberatelyInvalidFixture { property_witness: w } => w
+    ExcludedOutsideDeclaredSourceRoots { containing_root: r } => r
   }
 }
 
