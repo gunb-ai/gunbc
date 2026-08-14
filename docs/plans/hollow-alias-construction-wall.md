@@ -97,8 +97,25 @@ This is the finding, and it is worth more than the specimen. When `NormalizedTre
 
 Both directions were wrong; neither was reported. The defect surfaced only under **execution**, as `no field 'kind' on type 'NormalizedTree'` from a witness that actually ran the graft path. A green typecheck was not evidence for this change class, and the whole BL-1 attempt had to be reverted and re-done with execution checks after each signature move.
 
-The same blindness has a second, independently-found specimen on the `ContentHash` family lane (proud-badger-240, gunbc#8250): a family member used in union position, likewise unreported at typecheck and failing at runtime as a non-exhaustive match. Two lanes, two unrelated carriers, one shared root — **the v2 typechecker's nominal-type discrimination is not enforced at these seams**, so carrier-refinement work of exactly the kind this note designs is currently unguarded by the checker that would be its natural home.
+The same blindness has a second, independently-found specimen on the `ContentHash` family lane (gunbc#8250). It is worth stating precisely, because the imprecise version of it ("a family member used in union position") understates what the pair proves. Read off `dag/std/content_hash.dag` on main:
 
-Consequence for this note's sequencing: §7's plan (lens first, promote to a typechecker refusal once proven zero-false-positive) assumes the typechecker *would* enforce the refusal once told to. That assumption is now **unverified** at these seams and is the named next-rung trigger for the promotion step. Until it is established by execution, a carrier-sealing change must carry executing witnesses on the real path, not a compile.
+```
+type ContentHash =
+  | Fnv1a64(Fnv1a64Structural)
+  | Sha256Hash(Sha256Digest)
+  | Sha1Hash(Sha1Digest)
+  | Sha512Hash(Sha512Digest)
+
+fn content_hash_atom(value: NonEmptyStr) -> Fnv1a64Structural
+fn content_hash_of_value(value: NonEmptyStr) -> ContentHash
+```
+
+`Fnv1a64Structural` is the coproduct's **payload**, not one of its members. The witnesses passed the unwrapped payload where the tagged coproduct value was required; the typechecker accepted it, and at runtime `match hash { Fnv1a64(_) => … }` met a bare `Fnv1a64Structural { digest: … }` with no arm — `non-exhaustive pattern match on: Fnv1a64Structural { digest: f81a5e039343e65b }`.
+
+**So the two specimens are one shape, not two directions: the typechecker does not distinguish a wrapper from the thing it wraps.** Here it is `NormalizedTree` versus the `Node` it wrapped, admitted because the wrapper was an alias. There it is `ContentHash` versus the `Fnv1a64Structural` it wraps, admitted **with no alias involved at all**. That second half is the load-bearing one: it rules out the natural objection that this is a quirk of alias declarations. The class is **wrapper-payload conflation generally**, and an alias is merely its cheapest instance.
+
+Two lanes, two unrelated carriers, one shared root — **the v2 typechecker's nominal-type discrimination is not enforced at these seams**, so carrier-refinement work of exactly the kind this note designs is currently unguarded by the checker that would be its natural home.
+
+Consequence for this note's sequencing: §7's plan (lens first, promote to a typechecker refusal once proven zero-false-positive) assumes the typechecker *would* enforce the refusal once told to. That assumption is now **unverified** at these seams and is the named next-rung trigger for the promotion step. Note also that a lens scoped to hollow *declarations* would not have caught the `ContentHash` specimen at all, since no hollow declaration participates in it. Until it is established by execution, a carrier-sealing change must carry executing witnesses on the real path, not a compile.
 
 Executing evidence for the specimen half: `src/v2/test/claim/normalized_tree_admission_test.dag` (retention refused at the door; retention found past the diagnostic head, proven discriminating by reverting the recognizer to a head-only read and observing the control flip to `false`; clean root admitted; unrelated diagnostic does not refuse; the production retention producer's own output refused) and `dag/test/claim/namespace_graft_body_dissolution_witness_test.dag` `witness_lowered_body_module_still_grafts` green through the sealed carrier.
