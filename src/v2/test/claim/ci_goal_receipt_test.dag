@@ -1,0 +1,89 @@
+module v2.test.claim.ci_goal_receipt_test
+
+import v2.std.algebra { length }
+import v2.std.collection { List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.workflow.ci_goal_receipt {
+  acceptance_standing,
+  AcceptanceAdmitted,
+  AcceptanceRefusedNotHeld,
+  AcceptanceRefusedUnevaluated,
+  ci_goal_rows,
+  CompileCleanSharesThePreparation,
+  DerivedFromPlan,
+  ExecutedWitness,
+  goal_receipt,
+  GoalHeld,
+  GoalRow,
+  GoalUnevaluated,
+  EveryOrdinaryWitnessRunsUnconditionally,
+  ZeroPerEntryGraphResolves
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE BRANCH IS NOT READY, AND THE CARRIER SAYS SO. This is the receipt's whole
+// purpose: acceptance is refused by a value the gate reads, not by a reviewer
+// remembering which goals were dropped.
+test fn this_branch_is_refused_by_its_own_goal_rows() -> Bool {
+  match acceptance_standing(rows: ci_goal_rows) {
+    AcceptanceRefusedNotHeld { goal: _ } => true
+    AcceptanceRefusedUnevaluated { goal: _ } => true
+    AcceptanceAdmitted => false
+  }
+}
+
+// AN UNWIRED GOAL CANNOT PASS. A roster of goals every one of which is Held is the
+// only admitted shape; swapping a single row to Unevaluated -- the cheapest possible
+// way to make a status table look finished -- refuses.
+data all_held: List<GoalRow> = [
+  GoalRow {
+    goal: EveryOrdinaryWitnessRunsUnconditionally,
+    standing: GoalHeld { evidence: DerivedFromPlan { declaration: ^corpus_runnable_for } }
+  },
+  GoalRow {
+    goal: CompileCleanSharesThePreparation,
+    standing: GoalHeld { evidence: ExecutedWitness { declaration: ^some_witness } }
+  }
+]
+
+data one_unevaluated: List<GoalRow> = [
+  GoalRow {
+    goal: EveryOrdinaryWitnessRunsUnconditionally,
+    standing: GoalHeld { evidence: DerivedFromPlan { declaration: ^corpus_runnable_for } }
+  },
+  GoalRow {
+    goal: ZeroPerEntryGraphResolves,
+    standing: GoalUnevaluated { trigger: "a per-entry resolve counter the plan can read" }
+  }
+]
+
+test fn unevaluated_is_not_a_pass() -> Bool {
+  let admitted = match acceptance_standing(rows: all_held) {
+    AcceptanceAdmitted => true
+    AcceptanceRefusedNotHeld { goal: _ } => false
+    AcceptanceRefusedUnevaluated { goal: _ } => false
+  }
+  let refused = match acceptance_standing(rows: one_unevaluated) {
+    AcceptanceRefusedUnevaluated { goal: _ } => true
+    AcceptanceAdmitted => false
+    AcceptanceRefusedNotHeld { goal: _ } => false
+  }
+  admitted && refused
+}
+
+// THE RECEIPT IS THREE COUNTS AND THEY PARTITION THE ROSTER. A ratio would have to
+// place the unevaluated rows on one side or the other, and both placements destroy
+// the distinction the standing exists to carry.
+test fn counts_partition_the_roster() -> Bool {
+  let r = goal_receipt(rows: ci_goal_rows)
+  let total = r.held + r.not_held + r.unevaluated
+  (total == length(xs: ci_goal_rows)) && (r.unevaluated > 0) && (r.not_held > 0)
+}
+
+test fn ci_goal_receipt_witnesses() -> Bool {
+  this_branch_is_refused_by_its_own_goal_rows()
+    && unevaluated_is_not_a_pass()
+    && counts_partition_the_roster()
+}

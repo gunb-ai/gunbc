@@ -4,6 +4,7 @@ import v2.std.algebra { contains, fold_list, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.dependency { BarrierBefore, DependencyView, ResourceDependsOn }
 import v2.std.logic { Bool }
+import std.computation_identity { ComputationIdentity, identity_permits_share }
 import v2.std.node { combine_hash, Hash, Node, Symbol, symbol_identity_digest }
 import v2.std.text { String }
 import v2.workflow.executor {
@@ -287,6 +288,125 @@ fn ci_batches(
     ExecutorRunComplete { batches: bs, scheduled: _ } => bs
     ExecutorRunRunnable { batch: b, scheduled: _, remaining: _ } => [b]
     ExecutorRunBlocked { evidence: _, batches: bs, scheduled: _, remaining: _ } => bs
+  }
+}
+
+// ── Materialization: one computation per identity ─────────────────────────────
+//
+// THE GRADE COMES FROM std.computation_identity AND IS NOT RE-MINTED HERE. That
+// module already owns what "identical computation" means — StructurallyIdentical,
+// NormalizedIdentical, ExtensionallyIdentical, IdentityUnknown — and a second
+// vocabulary for the same concept is the fork this repository keeps paying for. What
+// is missing there is the STANDING: what happened when a node tried to materialize a
+// key that already exists.
+type ComputationKey {
+  operation: Symbol
+  inputs: Hash
+  tool: Symbol
+  configuration: Symbol
+}
+
+fn computation_key_digest(key: ComputationKey) -> Hash {
+  let with_inputs = combine_hash(
+    a: symbol_identity_digest(sym: key.operation),
+    b: key.inputs
+  )
+  let with_tool = combine_hash(a: with_inputs, b: symbol_identity_digest(sym: key.tool))
+  combine_hash(a: with_tool, b: symbol_identity_digest(sym: key.configuration))
+}
+
+// THERE IS NO ARM FOR "MATERIALIZED A SECOND TIME". That is the construction move:
+// duplicate_recompute_without_share_count == 0 holds because the standing cannot
+// express the state, not because a counter is checked afterwards. A second attempt at
+// a live key either shares it or refuses, naming both occurrences so the refusal
+// locates the authored duplication rather than reporting a total.
+type MaterializationStanding
+  = MaterializedOnce { key: Hash, producer: Symbol }
+  | SharedFrom { key: Hash, producer: Symbol, consumer: Symbol }
+  | RefusedDuplicateRecompute {
+      key: Hash,
+      first_occurrence: Symbol,
+      duplicate_occurrence: Symbol,
+      grade: ComputationIdentity
+    }
+
+type MaterializedKey {
+  key: Hash
+  producer: Symbol
+}
+
+data ci_no_materialized: List<MaterializedKey> = []
+
+// A NAMED LOOKUP RESULT RATHER THAN Optional<Symbol>. The generic carrier forced the
+// fold's accumulator type to be inferred at the call site, and this module has a
+// specific question -- "does a live key already have a producer" -- whose answer
+// deserves to say so.
+type ProducerLookup
+  = ProducerFound { producer: Symbol }
+  | ProducerAbsent
+
+fn producer_step(acc: ProducerLookup, m: MaterializedKey, key: Hash) -> ProducerLookup {
+  match acc {
+    ProducerFound { producer: p } => ProducerFound { producer: p }
+    ProducerAbsent =>
+      if m.key == key {
+        ProducerFound { producer: m.producer }
+      } else {
+        ProducerAbsent
+      }
+  }
+}
+
+fn find_producer(live: List<MaterializedKey>, key: Hash) -> ProducerLookup {
+  fold_list(
+    xs: live,
+    empty: ProducerAbsent,
+    cons: fn(acc, m) { producer_step(acc: acc, m: m, key: key) }
+  )
+}
+
+// A REPEAT WHOSE GRADE IS NOT KNOWN REFUSES RATHER THAN SHARING OR RECOMPUTING.
+// IdentityUnknown is a typed debt, and std.computation_identity is explicit that it
+// is never treated as identical NOR as distinct-by-default — so the arm that would
+// quietly recompute it is exactly the absorbing fallback: it cannot be wrong, and it
+// cannot be measured either.
+fn admit_materialization(
+  live: List<MaterializedKey>,
+  occurrence: Symbol,
+  key: ComputationKey,
+  grade: ComputationIdentity
+) -> MaterializationStanding {
+  let digest = computation_key_digest(key: key)
+  match find_producer(live: live, key: digest) {
+    ProducerAbsent => MaterializedOnce { key: digest, producer: occurrence }
+    ProducerFound { producer: first } =>
+      if identity_permits_share(ci: grade) {
+        SharedFrom { key: digest, producer: first, consumer: occurrence }
+      } else {
+        RefusedDuplicateRecompute {
+          key: digest,
+          first_occurrence: first,
+          duplicate_occurrence: occurrence,
+          grade: grade
+        }
+      }
+  }
+}
+
+fn record_materialization(
+  live: List<MaterializedKey>,
+  standing: MaterializationStanding
+) -> List<MaterializedKey> {
+  match standing {
+    MaterializedOnce { key: k, producer: p } =>
+      list_snoc_item(xs: live, item: MaterializedKey { key: k, producer: p })
+    SharedFrom { key: _, producer: _, consumer: _ } => live
+    RefusedDuplicateRecompute {
+      key: _,
+      first_occurrence: _,
+      duplicate_occurrence: _,
+      grade: _
+    } => live
   }
 }
 

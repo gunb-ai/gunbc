@@ -6,6 +6,7 @@ import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol }
 import v2.std.text { String }
+import std.computation_identity { IdentityUnknown, MissingEnforcement, StructurallyIdentical }
 import v2.std.dependency { DependencyView }
 import v2.workflow.executor { ExecutorBatch }
 import v2.workflow.floor2_prepared_subject { ExcludedNotPartOfThisSubject }
@@ -17,6 +18,13 @@ import v2.workflow.ci_attempt {
   ci_attempt_subject_digest,
   ci_attempt_verdict,
   ci_batches,
+  ci_no_materialized,
+  ComputationKey,
+  admit_materialization,
+  MaterializedOnce,
+  RefusedDuplicateRecompute,
+  record_materialization,
+  SharedFrom,
   ci_dependency,
   ci_node_to_node,
   CiAttemptRequest,
@@ -348,4 +356,106 @@ test fn ci_attempt_witnesses() -> Bool {
     && reconciliation_is_an_identity_join_not_a_count()
     && verdict_refuses_an_unreconciled_ledger_even_when_all_reports_passed()
     && verdict_passes_and_fails_on_the_reconciled_ledger()
+    && materialization_admits_once_then_shares()
+    && different_input_identity_is_not_a_duplicate()
+    && unknown_identity_refuses_rather_than_recomputing()
+}
+
+// ── Materialization standing ──────────────────────────────────────────────────
+
+data key_a: ComputationKey = ComputationKey {
+  operation: ^ci_op_generate_artifacts,
+  inputs: ci_attempt_subject_digest(request: base_request),
+  tool: ^ci_test_compiler_a,
+  configuration: ^ci_test_config_a
+}
+
+data key_b: ComputationKey = ComputationKey {
+  operation: ^ci_op_generate_artifacts,
+  inputs: ci_attempt_subject_digest(request: request_other_fixtures),
+  tool: ^ci_test_compiler_a,
+  configuration: ^ci_test_config_a
+}
+
+// THE DRIFT-GATE / HEAL PAIR, which is the live duplicate this models: heal generates
+// every registered artifact to WRITE it, and the floor generates every registered
+// artifact to COMPARE it. Same operation, same inputs, same tool, same configuration
+// — so the second one shares rather than regenerating.
+test fn materialization_admits_once_then_shares() -> Bool {
+  let first = admit_materialization(
+    live: ci_no_materialized,
+    occurrence: ^ci_node_generated_artifact_verify,
+    key: key_a,
+    grade: StructurallyIdentical
+  )
+  let live = record_materialization(live: ci_no_materialized, standing: first)
+  let second = admit_materialization(
+    live: live,
+    occurrence: ^ci_node_heal_apply,
+    key: key_a,
+    grade: StructurallyIdentical
+  )
+  let first_is_once = match first {
+    MaterializedOnce { key: _, producer: p } => p == ^ci_node_generated_artifact_verify
+    SharedFrom { key: _, producer: _, consumer: _ } => false
+    RefusedDuplicateRecompute { key: _, first_occurrence: _, duplicate_occurrence: _, grade: _ } => false
+  }
+  let second_shares = match second {
+    SharedFrom { key: _, producer: p, consumer: c } =>
+      (p == ^ci_node_generated_artifact_verify) && (c == ^ci_node_heal_apply)
+    MaterializedOnce { key: _, producer: _ } => false
+    RefusedDuplicateRecompute { key: _, first_occurrence: _, duplicate_occurrence: _, grade: _ } => false
+  }
+  first_is_once && second_shares
+}
+
+// A DIFFERENT INPUT IDENTITY IS A DIFFERENT COMPUTATION, not a duplicate. This is the
+// regen case: generation 0 over the seed and generation 1 over the rebuilt seed are
+// legitimately two runs, and a rule that could not tell them apart would either refuse
+// the fixed point or bless an accidental repeat.
+test fn different_input_identity_is_not_a_duplicate() -> Bool {
+  let first = admit_materialization(
+    live: ci_no_materialized,
+    occurrence: ^ci_node_generated_artifact_verify,
+    key: key_a,
+    grade: StructurallyIdentical
+  )
+  let live = record_materialization(live: ci_no_materialized, standing: first)
+  match admit_materialization(
+    live: live,
+    occurrence: ^ci_node_regen_second_generation,
+    key: key_b,
+    grade: StructurallyIdentical
+  ) {
+    MaterializedOnce { key: _, producer: p } => p == ^ci_node_regen_second_generation
+    SharedFrom { key: _, producer: _, consumer: _ } => false
+    RefusedDuplicateRecompute { key: _, first_occurrence: _, duplicate_occurrence: _, grade: _ } => false
+  }
+}
+
+// AN UNKNOWN GRADE REFUSES. It cannot share, because nothing established the two
+// computations are the same; it cannot recompute, because nothing established they
+// differ. Recomputing on unknown is the absorbing fallback -- never wrong, never
+// measurable, and the deficit's frequency zeroed by construction.
+test fn unknown_identity_refuses_rather_than_recomputing() -> Bool {
+  let first = admit_materialization(
+    live: ci_no_materialized,
+    occurrence: ^ci_node_generated_artifact_verify,
+    key: key_a,
+    grade: StructurallyIdentical
+  )
+  let live = record_materialization(live: ci_no_materialized, standing: first)
+  match admit_materialization(
+    live: live,
+    occurrence: ^ci_node_heal_apply,
+    key: key_a,
+    grade: IdentityUnknown {
+      cause: MissingEnforcement { detail: "no declared normalizer for this operation" }
+    }
+  ) {
+    RefusedDuplicateRecompute { key: _, first_occurrence: f, duplicate_occurrence: d, grade: _ } =>
+      (f == ^ci_node_generated_artifact_verify) && (d == ^ci_node_heal_apply)
+    MaterializedOnce { key: _, producer: _ } => false
+    SharedFrom { key: _, producer: _, consumer: _ } => false
+  }
 }

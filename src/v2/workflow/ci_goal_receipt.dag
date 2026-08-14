@@ -1,0 +1,242 @@
+module v2.workflow.ci_goal_receipt
+
+import v2.std.algebra { fold_list, length, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+// THE ORIGINAL GOALS, AS A CARRIER RATHER THAN A PR DESCRIPTION.
+//
+// A goal written in a pull-request body is checked by whoever remembers to re-read
+// it, which is how a branch arrives at acceptance having quietly dropped one. The
+// selection regression is the worked example: the ordinary roster went back to
+// SelectionApplied without any commit deciding that, and prose could not have caught
+// it because prose is not evaluated.
+//
+// WHAT THIS MODULE REFUSES TO DO IS THE POINT. There is no arm that lets a goal be
+// reported as held because someone believes it. A goal is Held only when it carries
+// an evidence reference; a goal nobody has wired evidence for is Unevaluated with a
+// named trigger, which is a different state from NotHeld and must not be folded into
+// it. Reporting "13 of 16 goals hold" while three were never measured is the rung
+// inflation DESIGN §4b names, applied to a status table.
+
+type CiGoal
+  = EveryMainCommitGetsAVerdict
+  | EveryOrdinaryWitnessRunsUnconditionally
+  | NoAutomaticExclusionDerivation
+  | PreparationFailuresAreLoud
+  | WitnessIdentityIsQualified
+  | OneExactPreparedSubject
+  | CompileCleanSharesThePreparation
+  | ZeroPerEntryGraphResolves
+  | ExactSubjectCoversTheEnvelope
+  | LedgerExplainsTheAttempt
+  | DagOwnsFloorPolicy
+  | OldEntryMajorPathHasNoConsumers
+  | SelectionMachineryAbsent
+  | FalsifierPredictionMachineryAbsent
+  | WorkIsGenuinelyConcurrent
+  | NoDuplicateRecomputeWithoutShare
+
+// EVIDENCE NAMES A SYMBOL, NOT A SENTENCE. A declaration reference can be checked
+// against the containment tree; a description cannot be checked against anything, and
+// DESIGN §3's cite-the-symbol rule exists because the unverifiable form decays
+// silently while the verifiable one does not.
+type GoalEvidence
+  = ExecutedWitness { declaration: Symbol }
+  | StructuralAbsence { subject: Symbol }
+  | DerivedFromPlan { declaration: Symbol }
+
+// Unevaluated carries its TRIGGER, so "we have not measured this" is separable from
+// "we cannot measure this". DESIGN §4b calls the first a tracked stall and the second
+// a ceiling, and collapsing them is what lets a permanent gap masquerade as pending
+// work.
+type GoalStanding
+  = GoalHeld { evidence: GoalEvidence }
+  | GoalNotHeld { detail: String }
+  | GoalUnevaluated { trigger: String }
+
+type GoalRow {
+  goal: CiGoal
+  standing: GoalStanding
+}
+
+fn goal_is_held(row: GoalRow) -> Bool {
+  match row.standing {
+    GoalHeld { evidence: _ } => true
+    GoalNotHeld { detail: _ } => false
+    GoalUnevaluated { trigger: _ } => false
+  }
+}
+
+fn goal_is_unevaluated(row: GoalRow) -> Bool {
+  match row.standing {
+    GoalUnevaluated { trigger: _ } => true
+    GoalHeld { evidence: _ } => false
+    GoalNotHeld { detail: _ } => false
+  }
+}
+
+// THE RECEIPT IS THREE COUNTS, NEVER ONE RATIO. A single "goals met" number has to
+// decide where the unevaluated rows go, and both answers are wrong: counting them as
+// met is a lie, counting them as unmet makes a measured regression indistinguishable
+// from an unwired probe, so the reader loses the ability to act on either.
+type GoalReceipt {
+  held: Int
+  not_held: Int
+  unevaluated: Int
+}
+
+fn goal_receipt(rows: List<GoalRow>) -> GoalReceipt {
+  GoalReceipt {
+    held: fold_list(
+      xs: rows,
+      empty: 0,
+      cons: fn(acc, r) { if goal_is_held(row: r) { acc + 1 } else { acc } }
+    ),
+    not_held: fold_list(
+      xs: rows,
+      empty: 0,
+      cons: fn(acc, r) {
+        match r.standing {
+          GoalNotHeld { detail: _ } => acc + 1
+          GoalHeld { evidence: _ } => acc
+          GoalUnevaluated { trigger: _ } => acc
+        }
+      }
+    ),
+    unevaluated: fold_list(
+      xs: rows,
+      empty: 0,
+      cons: fn(acc, r) { if goal_is_unevaluated(row: r) { acc + 1 } else { acc } }
+    )
+  }
+}
+
+// ADMISSION REQUIRES EVERY GOAL HELD — unevaluated is not a pass. This is the arm
+// that makes the receipt a gate rather than a dashboard: a branch cannot reach
+// AcceptanceAdmitted by leaving a goal unwired, which is precisely the move that
+// would otherwise be cheapest.
+type AcceptanceStanding
+  = AcceptanceAdmitted
+  | AcceptanceRefusedNotHeld { goal: CiGoal }
+  | AcceptanceRefusedUnevaluated { goal: CiGoal }
+
+fn admit_acceptance(acc: AcceptanceStanding, row: GoalRow) -> AcceptanceStanding {
+  match acc {
+    AcceptanceRefusedNotHeld { goal: g } => AcceptanceRefusedNotHeld { goal: g }
+    AcceptanceRefusedUnevaluated { goal: g } => AcceptanceRefusedUnevaluated { goal: g }
+    AcceptanceAdmitted =>
+      match row.standing {
+        GoalHeld { evidence: _ } => AcceptanceAdmitted
+        GoalNotHeld { detail: _ } => AcceptanceRefusedNotHeld { goal: row.goal }
+        GoalUnevaluated { trigger: _ } => AcceptanceRefusedUnevaluated { goal: row.goal }
+      }
+  }
+}
+
+fn acceptance_standing(rows: List<GoalRow>) -> AcceptanceStanding {
+  fold_list(xs: rows, empty: AcceptanceAdmitted, cons: admit_acceptance)
+}
+
+// ── The live rows for this branch ─────────────────────────────────────────────
+//
+// These are the standings as measured, not as intended. Several are deliberately
+// NotHeld or Unevaluated, and that is the receipt working: the branch is not ready,
+// and the carrier says so in a form that a gate can read.
+
+data ci_goal_rows: List<GoalRow> = [
+  GoalRow {
+    goal: EveryOrdinaryWitnessRunsUnconditionally,
+    standing: GoalHeld {
+      evidence: DerivedFromPlan { declaration: ^corpus_runnable_for }
+    }
+  },
+  GoalRow {
+    goal: NoAutomaticExclusionDerivation,
+    standing: GoalHeld {
+      evidence: StructuralAbsence { subject: ^census_exclude_derive }
+    }
+  },
+  GoalRow {
+    goal: WitnessIdentityIsQualified,
+    standing: GoalHeld {
+      evidence: ExecutedWitness { declaration: ^floor2_prepared_subject_witnesses }
+    }
+  },
+  GoalRow {
+    goal: ExactSubjectCoversTheEnvelope,
+    standing: GoalHeld {
+      evidence: ExecutedWitness { declaration: ^digest_covers_every_envelope_field }
+    }
+  },
+  GoalRow {
+    goal: NoDuplicateRecomputeWithoutShare,
+    standing: GoalHeld {
+      evidence: ExecutedWitness { declaration: ^materialization_admits_once_then_shares }
+    }
+  },
+  GoalRow {
+    goal: OneExactPreparedSubject,
+    standing: GoalNotHeld {
+      detail: "modeled and probed; the required floor still prepares per entry"
+    }
+  },
+  GoalRow {
+    goal: CompileCleanSharesThePreparation,
+    standing: GoalNotHeld {
+      detail: "compile-clean is a separate resolve over an overlapping population"
+    }
+  },
+  GoalRow {
+    goal: DagOwnsFloorPolicy,
+    standing: GoalNotHeld {
+      detail: "claim_batch.rs still owns identity construction, exclusions, iteration and the verdict fold"
+    }
+  },
+  GoalRow {
+    goal: OldEntryMajorPathHasNoConsumers,
+    standing: GoalNotHeld { detail: "the entry-major runner is still the required path" }
+  },
+  GoalRow {
+    goal: SelectionMachineryAbsent,
+    standing: GoalNotHeld { detail: "skip-witness binaries and selection modes are still present" }
+  },
+  GoalRow {
+    goal: FalsifierPredictionMachineryAbsent,
+    standing: GoalNotHeld {
+      detail: "selection-control, cold-corpus and aggregate-verdict jobs still exist"
+    }
+  },
+  GoalRow {
+    goal: WorkIsGenuinelyConcurrent,
+    standing: GoalNotHeld {
+      detail: "the plan derives resource-admissible batches; no host primitive executes one concurrently"
+    }
+  },
+  GoalRow {
+    goal: ZeroPerEntryGraphResolves,
+    standing: GoalUnevaluated {
+      trigger: "the interpreter exposes a per-entry resolve counter the plan can read and refuse on"
+    }
+  },
+  GoalRow {
+    goal: EveryMainCommitGetsAVerdict,
+    standing: GoalUnevaluated {
+      trigger: "a control that reads the generated concurrency key rather than asserting it here"
+    }
+  },
+  GoalRow {
+    goal: PreparationFailuresAreLoud,
+    standing: GoalUnevaluated {
+      trigger: "the loud resolve becomes the required compile path rather than the experimental one"
+    }
+  },
+  GoalRow {
+    goal: LedgerExplainsTheAttempt,
+    standing: GoalUnevaluated {
+      trigger: "the attempt ledger is produced by a run rather than by a witness fixture"
+    }
+  }
+]
