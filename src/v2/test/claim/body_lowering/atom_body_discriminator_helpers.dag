@@ -1,0 +1,285 @@
+module v2.test.claim.body_lowering.atom_body_discriminator_helpers
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  ArrowBodyForm,
+  Behavior,
+  ComputationBody,
+  ComputationNode,
+  Conj,
+  DirectAtomBody,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  RecordConstructBody,
+  Symbol,
+  Transform,
+  TypeNode,
+  UnsupportedArrowBody,
+  classify_arrow_body_form
+}
+import v2.std.node_query { find_arrow_body_child, node_positional_child_targets }
+import v2.std.collection { list_at_optional }
+import v2.std.optional { Absent, Optional, Present, optional_present }
+
+data atom_body_discriminator_module_source: String = "module atom_body_discriminator\n\nfn id(x: Int) -> Int { x }\nfn zero() -> Int { 0 }\nfn add(x: Int, y: Int) -> Int { x + y }\nfn zero_binary() -> Int { 1 + 1 }\n"
+
+type AtomBodyDiscriminatorMirror
+  = AtomBodyDiscriminatorProduction
+  | AtomBodyDiscriminatorRedNoDirectAtom
+  | AtomBodyDiscriminatorRedNoComputationBody
+
+fn atom_body_discriminator_normalized_module() -> Optional<Node> {
+  let lm = dag_language_model()
+  match tokenize(
+    text: atom_body_discriminator_module_source,
+    file: ^atom_body_discriminator_file,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: tree, diagnostics: _ } => Present { value: tree }
+          }
+      }
+  }
+}
+
+fn atom_body_discriminator_find_named_arrow(root: Node, fn_lexeme: String) -> Optional<Node> {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      fold(root.children, init: Absent, f: fn(acc, edge) {
+        match acc {
+          Present { value: _ } => acc
+          Absent =>
+            match edge.label {
+              Named { name: sym } =>
+                match symbol_lexeme(sym: sym) == fn_lexeme {
+                  true =>
+                    match edge.target.kind {
+                      TypeNode { connective: Arrow } => optional_present(value: edge.target)
+                      _ => Absent
+                    }
+                  false =>
+                    atom_body_discriminator_find_named_arrow(root: edge.target, fn_lexeme: fn_lexeme)
+                }
+              Positional =>
+                atom_body_discriminator_find_named_arrow(root: edge.target, fn_lexeme: fn_lexeme)
+            }
+        }
+      })
+    _ =>
+      fold(root.children, init: Absent, f: fn(acc, edge) {
+        match acc {
+          Present { value: _ } => acc
+          Absent => atom_body_discriminator_find_named_arrow(root: edge.target, fn_lexeme: fn_lexeme)
+        }
+      })
+  }
+}
+
+fn atom_body_discriminator_arrow_body_optional(arrow: Node) -> Optional<Node> {
+  match find_arrow_body_child(root: arrow) {
+    Accepted { value: body, diagnostics: _ } => optional_present(value: body)
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn atom_body_discriminator_named_binding_count(domain: Node) -> Int {
+  match domain.kind {
+    TypeNode { connective: Conj } =>
+      fold(domain.children, init: 0, f: fn(count, edge) {
+        match edge.label {
+          Named { name: _ } => count + 1
+          Positional => count
+        }
+      })
+    _ => 0
+  }
+}
+
+fn atom_body_discriminator_parameter_count(arrow: Node) -> Optional<Int> {
+  match arrow.kind {
+    TypeNode { connective: Arrow } =>
+      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+        Present { value: domain } =>
+          optional_present(value: atom_body_discriminator_named_binding_count(domain: domain))
+        Absent => Absent
+      }
+    _ => Absent
+  }
+}
+
+fn atom_body_discriminator_classify_red_no_direct_atom(target: Node) -> ArrowBodyForm {
+  match target.kind {
+    TypeNode { connective: Atom { identity: _ } } => UnsupportedArrowBody
+    TypeNode { connective: Conj } => RecordConstructBody
+    ComputationNode { behavior: b } => ComputationBody { behavior: b }
+    _ => UnsupportedArrowBody
+  }
+}
+
+fn atom_body_discriminator_classify_red_no_computation_body(target: Node) -> ArrowBodyForm {
+  match target.kind {
+    TypeNode { connective: Atom { identity: _ } } => DirectAtomBody
+    TypeNode { connective: Conj } => RecordConstructBody
+    ComputationNode { behavior: _ } => UnsupportedArrowBody
+    _ => UnsupportedArrowBody
+  }
+}
+
+fn atom_body_discriminator_classify_body(target: Node, mirror: AtomBodyDiscriminatorMirror) -> ArrowBodyForm {
+  match mirror {
+    AtomBodyDiscriminatorProduction => classify_arrow_body_form(target: target)
+    AtomBodyDiscriminatorRedNoDirectAtom =>
+      atom_body_discriminator_classify_red_no_direct_atom(target: target)
+    AtomBodyDiscriminatorRedNoComputationBody =>
+      atom_body_discriminator_classify_red_no_computation_body(target: target)
+  }
+}
+
+fn atom_body_discriminator_arrow_row_holds(
+  arrow: Node,
+  expected_param_count: Int,
+  expected_form: ArrowBodyForm,
+  mirror: AtomBodyDiscriminatorMirror
+) -> Bool {
+  match atom_body_discriminator_parameter_count(arrow: arrow) {
+    Absent => false
+    Present { value: param_count } =>
+      match atom_body_discriminator_arrow_body_optional(arrow: arrow) {
+        Absent => false
+        Present { value: body } =>
+          param_count == expected_param_count
+            && atom_body_discriminator_classify_body(target: body, mirror: mirror) == expected_form
+      }
+  }
+}
+
+fn atom_body_discriminator_arrow_classifies(
+  arrow: Node,
+  mirror: AtomBodyDiscriminatorMirror
+) -> Optional<ArrowBodyForm> {
+  match atom_body_discriminator_arrow_body_optional(arrow: arrow) {
+    Absent => Absent
+    Present { value: body } =>
+      optional_present(
+        value: atom_body_discriminator_classify_body(target: body, mirror: mirror)
+      )
+  }
+}
+
+fn atom_body_discriminator_batched_receipt_holds() -> Bool {
+  match atom_body_discriminator_normalized_module() {
+    Absent => false
+    Present { value: root } =>
+      match atom_body_discriminator_find_named_arrow(root: root, fn_lexeme: "id") {
+        Absent => false
+        Present { value: id_arrow } =>
+          match atom_body_discriminator_find_named_arrow(root: root, fn_lexeme: "zero") {
+            Absent => false
+            Present { value: zero_arrow } =>
+              match atom_body_discriminator_find_named_arrow(root: root, fn_lexeme: "add") {
+                Absent => false
+                Present { value: add_arrow } =>
+                  match atom_body_discriminator_find_named_arrow(root: root, fn_lexeme: "zero_binary") {
+                    Absent => false
+                    Present { value: zero_binary_arrow } =>
+                      atom_body_discriminator_arrow_row_holds(
+                        arrow: id_arrow,
+                        expected_param_count: 1,
+                        expected_form: DirectAtomBody,
+                        mirror: AtomBodyDiscriminatorProduction
+                      )
+                        && atom_body_discriminator_arrow_row_holds(
+                          arrow: zero_arrow,
+                          expected_param_count: 0,
+                          expected_form: DirectAtomBody,
+                          mirror: AtomBodyDiscriminatorProduction
+                        )
+                        && atom_body_discriminator_arrow_row_holds(
+                          arrow: add_arrow,
+                          expected_param_count: 2,
+                          expected_form: ComputationBody { behavior: Transform },
+                          mirror: AtomBodyDiscriminatorProduction
+                        )
+                        && atom_body_discriminator_arrow_row_holds(
+                          arrow: zero_binary_arrow,
+                          expected_param_count: 0,
+                          expected_form: ComputationBody { behavior: Transform },
+                          mirror: AtomBodyDiscriminatorProduction
+                        )
+                        && match atom_body_discriminator_arrow_classifies(
+                          arrow: id_arrow,
+                          mirror: AtomBodyDiscriminatorRedNoDirectAtom
+                        ) {
+                          Present { value: form } => form == UnsupportedArrowBody
+                          Absent => false
+                        }
+                        && match atom_body_discriminator_arrow_classifies(
+                          arrow: zero_arrow,
+                          mirror: AtomBodyDiscriminatorRedNoDirectAtom
+                        ) {
+                          Present { value: form } => form == UnsupportedArrowBody
+                          Absent => false
+                        }
+                        && match atom_body_discriminator_arrow_classifies(
+                          arrow: add_arrow,
+                          mirror: AtomBodyDiscriminatorRedNoDirectAtom
+                        ) {
+                          Present { value: form } => form != UnsupportedArrowBody
+                          Absent => false
+                        }
+                        && match atom_body_discriminator_arrow_classifies(
+                          arrow: zero_binary_arrow,
+                          mirror: AtomBodyDiscriminatorRedNoDirectAtom
+                        ) {
+                          Present { value: form } => form != UnsupportedArrowBody
+                          Absent => false
+                        }
+                        && match atom_body_discriminator_arrow_classifies(
+                          arrow: id_arrow,
+                          mirror: AtomBodyDiscriminatorRedNoComputationBody
+                        ) {
+                          Present { value: form } => form == DirectAtomBody
+                          Absent => false
+                        }
+                        && match atom_body_discriminator_arrow_classifies(
+                          arrow: zero_arrow,
+                          mirror: AtomBodyDiscriminatorRedNoComputationBody
+                        ) {
+                          Present { value: form } => form == DirectAtomBody
+                          Absent => false
+                        }
+                        && match atom_body_discriminator_arrow_classifies(
+                          arrow: add_arrow,
+                          mirror: AtomBodyDiscriminatorRedNoComputationBody
+                        ) {
+                          Present { value: form } => form == UnsupportedArrowBody
+                          Absent => false
+                        }
+                        && match atom_body_discriminator_arrow_classifies(
+                          arrow: zero_binary_arrow,
+                          mirror: AtomBodyDiscriminatorRedNoComputationBody
+                        ) {
+                          Present { value: form } => form == UnsupportedArrowBody
+                          Absent => false
+                        }
+                  }
+              }
+          }
+      }
+  }
+}
