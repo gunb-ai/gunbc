@@ -7,7 +7,7 @@ import std.measure { Hertz, Micrometer, hertz, micrometer }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.memory.types { DramGeneration, dram_generation_ddr4 }
-import extdeps.publication_status { DocumentPublicationStatus, PubliclyPublishedWithRestrictiveMarking }
+import extdeps.publication { DocumentPublicationStatus, PubliclyPublishedWithRestrictiveMarking }
 import extdeps.cpu.ampere_altra_package {
   altra_declared_contact_count,
   altra_ddr4_channel_count,

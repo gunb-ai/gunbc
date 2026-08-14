@@ -93,7 +93,7 @@ import extdeps.ocp.mt_mitchell.platform {
   ocp_nic_host_mode_lane_count,
   ocp_nic_unstrapped_host_mode,
 }
-import extdeps.publication_status {
+import extdeps.publication {
   AccessGatedNotPubliclyPublished,
   PubliclyPublishedUnderOpenLicense,
   PubliclyPublishedWithRestrictiveMarking,

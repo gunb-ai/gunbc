@@ -1,7 +1,7 @@
 module gunbc.upstream_document_carriage
 
 import std.types { Bool, NonEmptyStr, String }
-import extdeps.publication_status {
+import extdeps.publication {
   AccessGatedNotPubliclyPublished,
   DocumentPublicationStatus,
   PubliclyPublishedUnderOpenLicense,
