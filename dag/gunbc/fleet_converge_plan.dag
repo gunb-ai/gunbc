@@ -318,7 +318,7 @@ fn fleet_converge_plan_artifact_hash(artifact: FleetConvergePlanArtifact) -> Fnv
   fleet_converge_plan_content_hash(plan_body: artifact.plan_body)
 }
 
-data fleet_converge_apply_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: fleet_converge_apply_shell — concat-built bash apply runner for timer retirement only (sudo systemctl disable/rm + daemon-reload); cap drop-in mutations are live_deploy deploy-principal authority (host_axis_caps_note) and are plan-output-only here; generation store commit runs in fleet_converge_apply_wet AFTER bash succeeds (.dag authority, fail-closed CAS); subject-host / generation CAS / member-set / baseline gates live ONLY in fleet_converge_apply_wet before bash; DISSOLVES WHEN bash-emit or host_effect_apply realizes timer teardown without medium-as-string concat")
+data fleet_converge_apply_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: fleet_converge_apply_shell — concat-built bash apply runner for timer retirement only (sudo systemctl disable/rm + daemon-reload); cap drop-in mutations are live_deploy deploy-principal authority (host_axis_caps_note) and are plan-output-only here; generation compare+apply+commit runs under flock in fleet_converge_locked_apply_script; subject-host / member-set / observed-baseline gates live in fleet_converge_apply_wet before the locked transport; DISSOLVES WHEN bash-emit or host_effect_apply realizes timer teardown and lease acquisition without medium-as-string concat")
 
 data fleet_converge_apply_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -362,19 +362,55 @@ fn timer_apply_lines(plan: MembershipPlan<TimerRetirementMember>) -> List<String
 
 data fleet_converge_generation_store_path: String = "/var/lib/gunbc/fleet-converge/plan_generation"
 
-fn fleet_converge_generation_store_commit_commands(planned_generation: Int) -> List<ArgvCommand> {
-  [
-    ArgvCommand { argv: ["sudo", "-n", "mkdir", "-p", "/var/lib/gunbc/fleet-converge"] },
-    ArgvCommand {
-      argv: [
-        "sudo",
-        "-n",
-        "sh",
-        "-c",
-        concat("echo ", to_string(planned_generation), " > ", fleet_converge_generation_store_path),
-      ],
-    },
-  ]
+data fleet_converge_generation_lock_path: String = "/var/lib/gunbc/fleet-converge/plan_generation.lock"
+
+data fleet_converge_locked_apply_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: fleet_converge_locked_apply_script — flock-guarded generation compare, apply.sh, and store commit in one shell transport; DISSOLVES WHEN bash-emit or host_effect_apply provides typed lease acquisition without medium-as-string concat")
+
+fn fleet_converge_locked_apply_script(
+  prior_generation: Int,
+  planned_generation: Int,
+  apply_shell_path: String,
+) -> String {
+  let inner = join(
+    [
+      concat(
+        "CURRENT=$(cat \"",
+        fleet_converge_generation_store_path,
+        "\" 2>/dev/null || echo 0)",
+      ),
+      concat("if [ \"$CURRENT\" != \"", to_string(prior_generation), "\" ]; then"),
+      concat(
+        "  echo LeaseGenerationStale planned=",
+        to_string(planned_generation),
+        " observed=$CURRENT >&2",
+      ),
+      "  exit 1",
+      "fi",
+      concat("bash \"", apply_shell_path, "\""),
+      concat(
+        "echo \"",
+        to_string(planned_generation),
+        "\" > \"",
+        fleet_converge_generation_store_path,
+        "\"",
+      ),
+    ],
+    "\n",
+  )
+  join(
+    [
+      "set -euo pipefail",
+      "sudo -n mkdir -p /var/lib/gunbc/fleet-converge",
+      concat(
+        "sudo -n flock -x \"",
+        fleet_converge_generation_lock_path,
+        "\" bash -c '",
+        inner,
+        "'",
+      ),
+    ],
+    "\n",
+  )
 }
 
 fn fleet_converge_apply_shell(timer_plan: MembershipPlan<TimerRetirementMember>) -> String {
