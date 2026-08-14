@@ -3,6 +3,7 @@ module product.pcb.plan_view
 import std.types { String, NonEmptyStr, List }
 import std.integer { Int }
 import std.measure { Micrometer, micrometer, micrometer_count }
+import std.decl_ref { declaration_ref_display_key }
 import std.markup { Fragment }
 import std.affine_space { signed_frame_component_count }
 import std.orthogonal_geometry {
@@ -173,8 +174,10 @@ fn legend_text(c: PcbSceneLegend) -> String {
     concat(to_string(c.unselected_part), concat(" unselected / ",
     concat(to_string(c.missing_document), concat(" missing-document / ",
     concat(to_string(c.commercial_access), concat(" commercial-access / ",
-    concat(to_string(c.legal_carriage), concat(" legal-carriage — ",
-    body_layout_legend(s: c.body_layout)))))))))))
+    concat(to_string(c.legal_carriage), concat(" legal-carriage / ",
+    concat(to_string(c.drawing_must_be_read), concat(" drawing-must-be-read — ",
+    concat(body_layout_legend(s: c.body_layout), concat(" — design identity: ",
+    declaration_ref_display_key(ref: c.design)))))))))))))))
   )
 }
 

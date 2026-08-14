@@ -2,6 +2,7 @@ module test.claim.altra_pcb_world_svg_witness
 
 import std.types { Bool, String, NonEmptyStr, List, list_length }
 import std.integer { Int }
+import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_display_key, decl_ref }
 import std.measure { micrometer_count }
 import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
 import std.affine_space { Point2, point2 }
@@ -13,16 +14,15 @@ import std.orthogonal_geometry {
 }
 import product.pcb.world {
   PcbWorld,
-  PcbWorldIdentity,
   PartialPcbWorldReady,
   AdmittedPcbWorld,
   PcbWorldRefused,
   PcbDesignPlanUnavailable,
+  PcbPlanWasBuiltFromADifferentDesign,
   PcbCapabilityStillPending,
   PcbPlacementNotAdmitted,
   PcbBoardOutlineRefused,
   PcbOutlineCopiedFromCitedForeignBoard,
-  PcbSourceDesign,
   PcbBoard,
   PcbPhysicalWorld,
   PcbBodyLayoutStanding,
@@ -34,13 +34,16 @@ import product.pcb.world {
   PcbComponentObligation,
   UnselectedPart,
   MissingDocument,
+  DrawingMustBeRead,
+  CommercialAccess,
+  LegalCarriage,
   CapabilityPending,
   CapabilityRefused,
   pcb_world,
   pcb_world_physical,
   pcb_body_layout,
-  pcb_world_identity,
-  pcb_world_source_design,
+  pcb_world_design,
+  pcb_worlds_share_design,
   pcb_component_count,
   pcb_obligation_count,
   pcb_population_count,
@@ -49,6 +52,7 @@ import product.pcb.world {
   pcb_missing_document_count,
   pcb_commercial_access_count,
   pcb_legal_carriage_count,
+  pcb_drawing_must_be_read_count,
   capability_pending,
 }
 import product.pcb.plan_view {
@@ -68,10 +72,12 @@ import product.pcb.scene {
 import product.altra_motherboard.pcb_world {
   altra_pcb_world,
   altra_pcb_world_for,
-  world_identity_for,
-  source_design_for,
   admit_pcb_world,
   outline_copies_mt_jade_reference,
+}
+import product.altra_motherboard.placement {
+  altra_reference_plan,
+  altra_1p_minimum_ref,
 }
 import product.altra_motherboard.scene_emission { emit_altra_board_scene }
 import product.altra_motherboard.minimal_design {
@@ -97,7 +103,9 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data synthetic_world_identity: PcbWorldIdentity = "synthetic-plan-view" as PcbWorldIdentity
+fn synthetic_design_identity() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.altra_pcb_world_svg_witness", decl_name: "synthetic_design_identity")
+}
 
 fn world_or_empty() -> PcbWorld? {
   match altra_pcb_world() {
@@ -162,8 +170,7 @@ fn world_with_obligations(obs: List<PcbComponentObligation>) -> PcbWorld? {
     Present { value: o } =>
       Present {
         value: pcb_world(
-          identity: synthetic_world_identity,
-          source_design: PcbSourceDesign { subject: "synthetic" },
+          design: synthetic_design_identity(),
           electrical: PcbElectricalWorld {
             nets: capability_pending(what_is_owed: "synthetic nets"),
           },
@@ -300,7 +307,8 @@ test fn w_admit_pcb_world_refuses_the_preview_while_capabilities_are_pending() -
         PcbWorldRefused { cause: c } =>
           match c {
             PcbCapabilityStillPending { capability: cap } => (cap as String) == "stackup"
-            PcbDesignPlanUnavailable { requested: _ } => false
+            PcbDesignPlanUnavailable { only_available: _ } => false
+            PcbPlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => false
             PcbPlacementNotAdmitted => false
             PcbBoardOutlineRefused { cause: _ } => false
             PcbOutlineCopiedFromCitedForeignBoard => false
@@ -309,29 +317,15 @@ test fn w_admit_pcb_world_refuses_the_preview_while_capabilities_are_pending() -
   }
 }
 
-test fn w_source_design_for_uses_its_argument() -> Bool {
-  let four = source_design_for(d: altra_1p_minimum)
-  let six = source_design_for(d: six_channel_design())
-  string_contains(s: four.subject as String, pattern: "ddr3.p0")
-    && !string_contains(s: four.subject as String, pattern: "ddr5.p0")
-    && string_contains(s: six.subject as String, pattern: "ddr5.p0")
-    && (four.subject as String) != (six.subject as String)
-}
-
-test fn w_a_six_channel_design_does_not_share_the_four_channel_world_identity() -> Bool {
-  (world_identity_for(d: altra_1p_minimum) as String) != (world_identity_for(d: six_channel_design()) as String)
-    && string_contains(s: world_identity_for(d: altra_1p_minimum) as String, pattern: "ddr3.p0")
-    && string_contains(s: world_identity_for(d: six_channel_design()) as String, pattern: "ddr5.p0")
-}
-
 test fn w_altra_pcb_world_for_refuses_a_design_without_a_plan() -> Bool {
   match altra_pcb_world_for(d: six_channel_design()) {
     PartialPcbWorldReady { value: _ } => false
     AdmittedPcbWorld { value: _ } => false
     PcbWorldRefused { cause: c } =>
       match c {
-        PcbDesignPlanUnavailable { requested: s } =>
-          string_contains(s: s.subject as String, pattern: "ddr5.p0")
+        PcbDesignPlanUnavailable { only_available: r } =>
+          declaration_ref_eq(a: r, b: altra_1p_minimum_ref())
+        PcbPlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => false
         PcbCapabilityStillPending { capability: _ } => false
         PcbPlacementNotAdmitted => false
         PcbBoardOutlineRefused { cause: _ } => false
@@ -340,12 +334,16 @@ test fn w_altra_pcb_world_for_refuses_a_design_without_a_plan() -> Bool {
   }
 }
 
-test fn w_the_bound_world_identity_is_the_four_channel_revision() -> Bool {
+test fn w_the_world_carries_the_plan_design_identity() -> Bool {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
-      (pcb_world_identity(w: w) as String) == (world_identity_for(d: altra_1p_minimum) as String)
-        && (pcb_world_source_design(w: w).subject as String) == (source_design_for(d: altra_1p_minimum).subject as String)
+      match altra_reference_plan() {
+        OrthogonalRefused { cause: _ } => false
+        OrthogonalReady { value: plan } =>
+          declaration_ref_eq(a: pcb_world_design(w: w), b: plan.design)
+            && declaration_ref_eq(a: plan.design, b: altra_1p_minimum_ref())
+      }
   }
 }
 
@@ -410,7 +408,7 @@ test fn w_subset_bodies_are_not_drawn_as_checked() -> Bool {
 test fn w_the_legend_states_the_cause_populations() -> Bool {
   match scene_or_empty() {
     Absent => false
-    Present { value: s } => string_contains(s: s, pattern: "2 established / 12 unselected / 1 missing-document / 0 commercial-access / 0 legal-carriage — body layout checked over established subset only; 13 parts owed")
+    Present { value: s } => string_contains(s: s, pattern: "2 established / 12 unselected / 1 missing-document / 0 commercial-access / 0 legal-carriage / 0 drawing-must-be-read — body layout checked over established subset only; 13 parts owed")
   }
 }
 
@@ -438,8 +436,25 @@ test fn w_mounting_and_socket_attachment_obligations_appear() -> Bool {
       match scene_or_empty() {
         Absent => false
         Present { value: s } =>
-          string_contains(s: s, pattern: "attachment: mounting") && string_contains(s: s, pattern: "attachment: socket") && count_substring(haystack: s, needle: "pcb-label-attachment-obligation") == pcb_attachment_obligation_count(p: pcb_world_physical(w: w))
+          string_contains(s: s, pattern: "attachment: mounting") && string_contains(s: s, pattern: "attachment: socket") && string_contains(s: s, pattern: "attachment: board land pattern") && count_substring(haystack: s, needle: "pcb-label-attachment-obligation") == pcb_attachment_obligation_count(p: pcb_world_physical(w: w))
       }
+  }
+}
+
+test fn w_a_cited_figure_is_not_filed_as_a_missing_document() -> Bool {
+  match world_or_empty() {
+    Absent => false
+    Present { value: w } =>
+      fold(pcb_world_physical(w: w).attachment_obligations, init: false, f: fn(acc, a) {
+        acc || match a.cause {
+          DrawingMustBeRead { figure: f, what_is_drawn: _ } =>
+            (a.layer as String) == "board land pattern" && (f as String) != ""
+          MissingDocument { what_is_missing: _ } => false
+          CommercialAccess { subject: _ } => false
+          LegalCarriage { reason: _ } => false
+          UnselectedPart { because: _ } => false
+        }
+      })
   }
 }
 
@@ -475,7 +490,14 @@ test fn w_the_projection_matches_the_emission_entry() -> Bool {
       match emit_altra_board_scene() {
         PcbSceneEmitted { source: from_entry } =>
           match project_pcb_world(w: w) {
-            PcbSceneReady { value: scene } => scene.document == from_entry
+            PcbSceneReady { value: scene } =>
+              pcb_worlds_share_design(a: w, b: scene.world)
+                && scene.document == from_entry
+                && string_contains(
+                  s: from_entry,
+                  pattern: concat("design identity: ", declaration_ref_display_key(ref: pcb_world_design(w: w))),
+                )
+                && !string_contains(s: from_entry, pattern: "board revision")
             PcbSceneRefused { cause: _ } => false
           }
         PcbSceneEmissionRefused { cause: _ } => false
@@ -514,7 +536,10 @@ test fn w_cpu_socket_text_does_not_cover_the_socket_attachment() -> Bool {
     Absent => false
     Present { value: w } =>
       let p = pcb_world_physical(w: w)
-      let doc = concat(concatenated_non_attachment_identities(p: p), " attachment: mounting")
+      let doc = concat(
+        concat(concatenated_non_attachment_identities(p: p), concat(" ", declaration_ref_display_key(ref: pcb_world_design(w: w)))),
+        " attachment: mounting",
+      )
       string_contains(s: doc, pattern: "cpu_socket")
         && string_contains(s: "cpu_socket", pattern: "socket")
         && !string_contains(s: doc, pattern: "attachment: socket")
@@ -553,7 +578,7 @@ test fn w_mutation_control_unselected_twelve_and_missing_document_one() -> Bool 
     Absent => false
     Present { value: w } =>
       let p = pcb_world_physical(w: w)
-      pcb_unselected_part_count(p: p) == 12 && pcb_missing_document_count(p: p) == 1
+      pcb_unselected_part_count(p: p) == 12 && pcb_missing_document_count(p: p) == 1 && pcb_drawing_must_be_read_count(p: p) == 0
   }
 }
 
