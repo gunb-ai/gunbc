@@ -3,7 +3,7 @@ module gunbc.floor_component_receipt_document
 import std.types { NonEmptyStr, String, CommitSha }
 import extdeps.languages.json.emit {
   JsonValue, JsonString, JsonNumber,
-  json_object, json_kv, json_string, json_int, json_array,
+  json_object, json_kv, json_string, json_int, json_array, json_null,
   serialize_json
 }
 import extdeps.languages.json.parse {
@@ -28,6 +28,7 @@ data receipt_member_affected_set_cold_control: String = "affected_set_cold_contr
 data receipt_member_unsuccessful_components: String = "unsuccessful_components"
 data receipt_member_components: String = "components"
 data receipt_member_selection_degradation: String = "selection_degradation"
+data receipt_member_run_terminal: String = "run_terminal"
 
 data receipt_member_workflow_name: String = "workflow_name"
 data receipt_member_head_sha: String = "head_sha"
@@ -50,6 +51,7 @@ type FloorComponentReceiptDocument {
   component_summaries: List<ComponentAlertSummary>
   affected_set_control: JsonValue
   selection_degradation: JsonValue
+  run_terminal: JsonValue
 }
 
 data floor_component_receipt_component_grain_note: String = "COMPONENTS ARE CARRIED AT JSON GRAIN INSIDE THE DOCUMENT, AND THAT IS A DECLARED BOUNDARY RATHER THAN LAZINESS. The document's own identity — subject, counts, which components were unsuccessful — is fully typed and fully round-tripped, because that is what the consumer decides on. A component's INTERIOR is a projection of std.observation.ObservationEvent, whose decoding is a separate and larger obligation: ObservationEvent carries transitions, outcomes with per-variant payloads, measured walls with unavailability causes, and a clock basis, and a half-decoding of it here would be a second, weaker representation of a coproduct that already has an authority — the §3 fork this module's own member-name note argues against.\n\nWHAT THAT COSTS, STATED PLAINLY: a component whose interior is malformed is not caught by this decoder. It is caught by the consumer that reads a field it needs, and that consumer must answer an absent field rather than defaulting it. DISSOLVE-ON: gunbc.floor_component_receipt gains a total ObservationEvent decoder — the reverse of floor_component_row_json — at which point components become List<FloorComponentRow> here and this note deletes. Until then the honest claim is that the document is typed and the component interiors are transported, not that the whole receipt is validated."
@@ -142,6 +144,23 @@ fn receipt_required_value_at(v: JsonValue, key: String) -> ReceiptValue {
   }
 }
 
+data receipt_run_terminal_legacy_absent_note: String = "TRANSITIONAL BACK-COMPAT for receipts under GitHub Actions artifact retention written before this PR: run_terminal did not exist, so the member is absent rather than null. Treating absent as ReceiptMemberAbsent would refuse the exact population the falsifier alert still consumes (review 51856). Absent therefore decodes to json_null(), meaning no incomplete envelope was recorded — the same reading as a concluded walk that explicitly emits run_terminal:null. The writer always emits the member on new receipts; only the reader carries this legacy arm. Dissolve-on: counted census shows zero retention receipts lacking the member, then delete this helper and require the member like selection_degradation."
+
+fn receipt_run_terminal_at(v: JsonValue) -> ReceiptValue {
+  match json_object_unique_member(v: v, key: receipt_member_run_terminal) {
+    JsonMemberFound { value: found } => ReceiptValueFound { value: found }
+    JsonMemberAbsent => ReceiptValueFound { value: json_null() }
+    JsonMemberDuplicated { count: _ } =>
+      ReceiptValueFailed {
+        decoding: ReceiptMemberMalformed { member: receipt_member_run_terminal, detail: "member is duplicated" }
+      }
+    JsonMemberNotAnObject =>
+      ReceiptValueFailed {
+        decoding: ReceiptMemberMalformed { member: receipt_member_run_terminal, detail: "enclosing value is not a JSON object" }
+      }
+  }
+}
+
 fn floor_component_receipt_subject_json(subject: FloorComponentReceiptSubject) -> List<JsonKeyValue> {
   [
     json_kv(key: receipt_member_schema, value: json_string(s: subject.schema as String)),
@@ -159,7 +178,8 @@ fn floor_component_receipt_document_json(doc: FloorComponentReceiptDocument) -> 
       json_kv(key: receipt_member_affected_set_cold_control, value: doc.affected_set_control),
       json_kv(key: receipt_member_unsuccessful_components, value: json_array(elements: doc.unsuccessful_components)),
       json_kv(key: receipt_member_components, value: json_array(elements: doc.components)),
-      json_kv(key: receipt_member_selection_degradation, value: doc.selection_degradation)
+      json_kv(key: receipt_member_selection_degradation, value: doc.selection_degradation),
+      json_kv(key: receipt_member_run_terminal, value: doc.run_terminal)
     ]
   ))
 }
@@ -229,10 +249,12 @@ type ComponentOutcomeRead
   | ComponentNotConcluded
 
 data floor_component_outcome_wire_not_concluded_tag: String = "not_concluded"
+data floor_component_outcome_wire_pending_tag: String = "pending"
+data component_outcome_wire_legacy_pending_tag_note: String = "component_outcome_read_of_tag still accepts the legacy not_concluded wire tag beside pending so in-flight receipts written before the rename decode without refusal. No writer emits not_concluded anymore; the dual acceptance is a deliberate transitional window, not a second vocabulary. Dissolve-on: delete the legacy branch once no receipt-on-disk (including uploaded CI artifacts under retention) carries not_concluded — verified by a counted census, not by grep alone."
 
 fn floor_component_outcome_wire_tag(r: ComponentOutcomeRead) -> String {
   match r {
-    ComponentNotConcluded => floor_component_outcome_wire_not_concluded_tag
+    ComponentNotConcluded => floor_component_outcome_wire_pending_tag
     ComponentConcluded { outcome: o } => floor_component_outcome_tag(o: o)
   }
 }
@@ -369,7 +391,8 @@ fn component_outcome_payload_text(component: JsonValue, key: String) -> String? 
 }
 
 fn component_outcome_read_of_tag(tag: String, component: JsonValue) -> ComponentOutcomeRecovery {
-  if tag == floor_component_outcome_wire_not_concluded_tag {
+  if tag == floor_component_outcome_wire_pending_tag
+    || tag == floor_component_outcome_wire_not_concluded_tag {
     ComponentOutcomeRecovered { read: ComponentNotConcluded }
   } else if tag == "done" {
     ComponentOutcomeRecovered { read: ComponentConcluded { outcome: Done } }
@@ -421,7 +444,7 @@ data floor_component_expected_red_evidence_absent_mode_note: String = "ModeExpec
 
 data floor_component_stale_known_red_mode_note: String = "ModeStaleKnownRed is its own mode, not a WitnessRed, because a known-red witness that starts PASSING and a witness that regresses are opposite events with opposite remedies — delete the admission row that is now stale, versus fix the code — and collapsing them makes an un-quarantine indistinguishable from a regression in the alert's class signature. It maps to Refused rather than Failed for the same reason BudgetExceeded does: nothing about the witness is broken, the LINE STOPS for analysis and the diagnostic names the exact identities to un-quarantine (DESIGN 5, the factory model). Critically it is NOT Done: an expected-red row that silently went green would otherwise accumulate on a roster nobody revisits, which is the fail-open this arm closes. The producer derives it from ROSTER MEMBERSHIP joined against per-witness outcomes and carries it as typed data (claim_executor ExpectationRefusal), never from a message, so it is not exposed to the substring classifier's WitnessRed fallback."
 
-data floor_component_run_incomplete_note: String = "ModeRunIncomplete and ModeNotReached BOTH collapse to Skipped, and that is the edge note's shape working as designed rather than a duplicate: the outcome records that the component produced no verdict, the MODE records why it produced none, and the two whys route to different people. ModeNotReached means the plan concluded and an earlier batch stopped the line under the stop policy — the run finished, this component was deliberately not run, and the remedy is the earlier component's failure. ModeRunIncomplete means the receipt was written while the run was STILL IN PROGRESS, so the component's fate is unknown at write time and the remedy is to find out why the run never concluded. Collapsing them would recreate exactly the state-space conflation the unreached-component padding was written to prevent (claim_executor's `for bi in batch_records.len()..total_batches` loop and the note above it): a reader could not distinguish a component the plan deliberately skipped from a component whose run was killed underneath it, and those have opposite triage. WHY IT EXISTS AT ALL: the falsifier's floor step carries a foreign 170-minute SIGKILL (gunbc.falsifier_workflow gunbc_falsifier_step_timeout_minutes) and the receipt was written once, after every batch, so a run that crossed the wall produced NO file — the alert reported ENOENT and every completed component's real state was destroyed by the one failure mode most in need of evidence. The receipt is now checkpointed after each completed batch, and a checkpoint's not-yet-run tail is this mode. A checkpoint is therefore never mistakable for a conclusion: the final write, and only the final write, carries not_reached."
+data floor_component_run_incomplete_note: String = "ModeRunIncomplete is NOT a terminal component verdict — it names a component whose fate is UNKNOWN because the receipt was written while the run was still in progress. Such rows use the pending wire outcome (ComponentNotConcluded / Begin transition), never skipped: skipped claims the walk produced a verdict of none, and manufacturing that for a batch that never executed is the fabricated-plausible-output failure at run level (run 31685755058: batches 7–9 reported outcome=skipped with failure_mode=run_incomplete although they never ran). ModeNotReached remains Skipped: the plan concluded and an earlier batch stopped the line under the stop policy — a deliberate skip with a known cause. The MODE still records which of the two non-terminal situations applies; the OUTCOME now records whether a verdict exists at all. Collapsing run_incomplete into skipped made a killed run's checkpoint indistinguishable from a concluded skip and changed the incident signature with every batch that happened to finish before the kill. WHY IT EXISTS AT ALL: the falsifier's floor step carries a foreign 170-minute SIGKILL and the receipt is checkpointed after each batch so a kill leaves evidence; the tail is pending, and run_terminal.disposition=incomplete names the run-level fact separately from per-component rows."
 
 data floor_component_deadline_reached_note: String = "ModeDeadlineReached is the THIRD unadmitted-component cause and the only one of the three that is Refused rather than Skipped — the split is deliberate and is the whole reason it is not folded into its neighbours. Skipped says the component produced no verdict and the walk is not claiming responsibility for that; Refused says THE LINE STOPPED DELIBERATELY, LOCATED, AT A DECLARED CEILING, which observation_refused_distinct_note defines as the stopped line an operator is meant to analyse. That is exactly what the internal soft deadline is (gunbc.falsifier_workflow gunbc_falsifier_soft_deadline_minutes), so this mode routes with ModeBudgetExceeded — same remedy family, re-basis the ceiling or reduce the cost — rather than with the two Skipped causes whose remedies are 'fix the earlier component' and 'find out why the run never finished'. WHY IT IS NOT ModeBudgetExceeded ITSELF: that mode means THIS component crossed ITS OWN budget and was killed. A deadline-reached component was never STARTED — the walk declined to admit it because the RUN was out of time — so reusing BudgetExceeded would attribute a whole-run cost problem to whichever component happened to be next in the plan, which is a wrong location on a receipt whose entire purpose is locating things. WHAT REACHING IT MEANS: the corpus did not fit in the lane's time. Every unadmitted component is counted and the run is red. The deadline measures that; it does not fix it, and it is not licence to raise the cap (DESIGN's five-minute-CI-gate lane: do not raise the CI step cap first)."
 
@@ -435,7 +458,7 @@ fn floor_component_outcome_of_mode(m: FloorComponentFailureMode, detail: NonEmpt
     ModeExpectedRedEvidenceAbsent => Present { value: Refused { diagnostic: detail } }
     ModeExpectedRedPreVerdictUnverified => Present { value: Refused { diagnostic: detail } }
     ModeNotReached => Present { value: Skipped { reason: detail } }
-    ModeRunIncomplete => Present { value: Skipped { reason: detail } }
+    ModeRunIncomplete => none
     ModeDeadlineReached => Present { value: Refused { diagnostic: detail } }
     ModeUnrecorded => none
   }
@@ -452,7 +475,12 @@ fn outcome_matches_implied_mode(o: ObservationOutcome, mode: FloorComponentFailu
 
 fn component_outcome_agrees_with_failure_mode(read: ComponentOutcomeRead, mode: FloorComponentFailureMode) -> Bool {
   match read {
-    ComponentNotConcluded => true
+    ComponentNotConcluded =>
+      match mode {
+        ModeRunIncomplete => true
+        ModeUnrecorded => true
+        _ => false
+      }
     ComponentConcluded { outcome: o } =>
       match mode {
         ModeUnrecorded => true
@@ -464,7 +492,7 @@ fn component_outcome_agrees_with_failure_mode(read: ComponentOutcomeRead, mode: 
         ModeExpectedRedEvidenceAbsent => outcome_matches_implied_mode(o: o, mode: mode)
         ModeExpectedRedPreVerdictUnverified => outcome_matches_implied_mode(o: o, mode: mode)
         ModeNotReached => outcome_matches_implied_mode(o: o, mode: mode)
-        ModeRunIncomplete => outcome_matches_implied_mode(o: o, mode: mode)
+        ModeRunIncomplete => false
         ModeDeadlineReached => outcome_matches_implied_mode(o: o, mode: mode)
       }
   }
@@ -628,6 +656,9 @@ fn floor_component_receipt_decode_with(text: String, expected_schema: NonEmptySt
                             match receipt_required_value_at(v: doc, key: receipt_member_selection_degradation) {
                               ReceiptValueFailed { decoding: d } => d
                               ReceiptValueFound { value: degradation } =>
+                            match receipt_run_terminal_at(v: doc) {
+                              ReceiptValueFailed { decoding: d } => d
+                              ReceiptValueFound { value: run_terminal } =>
                             match component_alert_summaries_of(components: unsuccessful) {
                               ComponentSummaryListFailed { decoding: d } => d
                               ComponentSummaryListDecoded { summaries: summaries } =>
@@ -658,9 +689,11 @@ fn floor_component_receipt_decode_with(text: String, expected_schema: NonEmptySt
                                     unsuccessful_summaries: summaries,
                                     component_summaries: complete_summaries,
                                     affected_set_control: control,
-                                    selection_degradation: degradation
+                                    selection_degradation: degradation,
+                                    run_terminal: run_terminal
                                   }
                                 }
+                            }
                             }
                             }
                             }
