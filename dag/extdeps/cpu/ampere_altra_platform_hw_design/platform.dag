@@ -3,6 +3,7 @@ module extdeps.cpu.ampere_altra_platform_hw_design.platform
 import std.types { Bool, NonEmptyStr, String }
 import std.integer { Int }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure { Hertz, hertz }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.memory.types { DramGeneration, dram_generation_ddr4 }
@@ -13,6 +14,8 @@ import extdeps.cpu.ampere_altra_package {
 }
 import extdeps.cpu.ampere_altra_platform_hw_design.subject {
   AltraPlatformHwDesignSpecification,
+  HeldRevisionIsCurrentPublicCopy,
+  NewerRevisionExistsUnretrieved,
   altra_platform_hw_design_specification,
   extdeps_external_authority_anchor,
 }
@@ -30,47 +33,25 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: [altra_platform_hw_design_document_index_authority]
+  further_citations: []
 }
 
 data platform_ingestion_note: String = "READ, NOT RECALLED. The v1.00 PDF at the subject module's public CDN locator was fetched and its text extracted on 2026-08-14 — content streams inflated and each string decoded through the PDF's own per-font ToUnicode CMap — so every row below is transcribed from a section this repository actually read, and the section is named. What is deliberately NOT carried: the document is footed 'Ampere Computing Proprietary' on every page, so this module takes STRUCTURAL statements from running text and no tables, figures, layout geometry, impedance targets or electrical limits. That is the same access-versus-carriage split extdeps.cpu.ampere_altra_package records for the datasheet, and it is a licensing question rather than an availability one."
 
-// THE REVISION THIS REPOSITORY READ IS SUPERSEDED, AND SAYING SO IS THE POINT.
-// Ampere's board development collateral index lists revision 1.20 dated
-// 07/15/2025; the copy reachable without a Customer Connect login is v1.00
-// dated 2021-01-20. A citation pinned to a superseded revision that does not
-// record the newer one is the stale-citation class, so the standing is a typed
-// row rather than an omission, and the newer revision's facts are NOT guessed
-// at, summarised or assumed unchanged.
-data altra_platform_hw_design_document_index_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "amperecomputing.com/customer-connect/products/altra-family-board-development-collateral"
-  }
-}
-
-type SupersededRevisionStanding
-  = LaterRevisionListedButUnretrieved {
-      listed_revision: NonEmptyStr
-      listed_year: Int
-      listed_month: Int
-      listed_day: Int
-      index_authority: ExternalAuthority
-    }
-  | NoLaterRevisionListed
-
-data altra_platform_hw_design_revision_standing: SupersededRevisionStanding = LaterRevisionListedButUnretrieved {
-  listed_revision: "1.20",
-  listed_year: 2025,
-  listed_month: 7,
-  listed_day: 15,
-  index_authority: altra_platform_hw_design_document_index_authority,
-}
-
+// THE REVISION THIS REPOSITORY READ IS SUPERSEDED, AND THE STANDING IS THE
+// SUBJECT MODULE'S FACT, NOT A SECOND ONE HERE. The subject carries
+// HeldSpecificationSupersessionStanding with the newer revision label, its date
+// and the index authority; this module PROJECTS that standing rather than
+// re-declaring the version and date, so the two cannot drift apart (review
+// 51969). Ampere's index lists revision 1.20 dated 2025-07-15 while the copy
+// reachable without a Customer Connect login is v1.00, so the answer below is
+// false — a citation pinned to a superseded revision that does not say so is
+// the stale-citation class, and the newer revision's facts are not guessed at,
+// summarised or assumed unchanged.
 fn platform_facts_are_from_the_latest_revision() -> Bool {
-  match altra_platform_hw_design_revision_standing {
-    NoLaterRevisionListed => true
-    LaterRevisionListedButUnretrieved { listed_revision, listed_year, listed_month, listed_day, index_authority } => false
+  match altra_platform_hw_design_subject.supersession_standing {
+    HeldRevisionIsCurrentPublicCopy => true
+    NewerRevisionExistsUnretrieved { newer_version_label, newer_publication_date, index_authority, held_version_label, detail } => false
   }
 }
 
@@ -219,7 +200,7 @@ data altra_two_socket_ccix_port_count: Int = 2
 // than being a flag a board designer may set either way.
 type AltraRefclkInput = RefclkSrns | RefclkSris
 
-data altra_refclk_megahertz: Int = 100
+data altra_refclk_frequency: Hertz = hertz(count: 100000000)
 
 fn refclk_always_required(input: AltraRefclkInput) -> Bool {
   match input {
@@ -253,5 +234,7 @@ type AltraHotPlugRealization
 fn altra_has_native_hot_plug_controller() -> Bool {
   false
 }
+
+data altra_platform_impedance_scope_note: String = "WHAT THIS DOCUMENT'S IMPEDANCE TARGETS ARE NOT. Section 4.1.2 is 'Decoupling Requirements to Achieve Target Impedance' and section 4.4 is 'Power Integrity Simulations': every impedance figure in this specification is POWER-DELIVERY network target impedance, per rail, reached by decoupling. None of it is DDR trace impedance, and this document states no DDR routing rules, no trace impedance target, no length matching and no stackup. The layout guidance it does carry is power (4.1.1 Physical Design, 4.2.2 and 4.3.2 vendor reference layouts) and I2C (7.1.4). A downstream consumer reaching for a number from section 4 as a signal-integrity target would get a category error with plausible numbers attached, which is why the boundary is stated here rather than left to be inferred from what is absent."
 
 data altra_platform_section_coverage_note: String = "WHAT THIS MODULE MODELS AND WHAT IT DOES NOT, so absence is never read as a claim about the document. MODELLED, from running text: the memory topologies and slot ordering (2.2), the root-complex structure and admitted lane groupings (2.3.1), the reference-clock inputs (2.3.2), the PCIe reset scheme (2.3.3), hot-plug realization (2.3.5) and the dual-socket CCIX interconnect (2.1). NOT MODELLED, each a real section rather than an oversight: the BMC subsystem (3), power supply design, decoupling, regulator selection and power sequencing (4), clock distribution (5), the PERST encode table (6.1), miscellaneous I/O interfaces (7), system boot sequences (8) and the hardware bring-up guide (9). Those are tables, figures and electrical limits under the proprietary marking; a consumer that needs one is what earns its transcription, subject to the licensing question above. The socket land pattern, keepout, DDR4 routing rules, impedance targets and stackup guidance this lane most wants are in that second group, and several of them may only exist in the unretrieved 1.20 revision."

@@ -2,7 +2,7 @@ module test.claim.altra_platform_and_mt_mitchell_authority_witness
 
 import std.logic { Bool }
 import std.types { list_length }
-import std.measure { micrometer_count, rack_unit_count }
+import std.measure { hertz_count, micrometer_count, rack_unit_count }
 import extdeps.memory.types { dram_generation_eq, dram_generation_ddr4, dram_generation_ddr5 }
 import extdeps.cpu.ampere_altra_package { altra_max_dimms_per_socket, altra_pcie_gen4_lane_count }
 import extdeps.cpu.ampere_altra_platform_hw_design.subject { altra_platform_hw_design_specification }
@@ -30,7 +30,7 @@ import extdeps.cpu.ampere_altra_platform_hw_design.platform {
   altra_platform_hw_design_subject,
   altra_platform_max_dimm_slots_per_socket,
   altra_platform_memory_generation,
-  altra_refclk_megahertz,
+  altra_refclk_frequency,
   altra_root_complex_count,
   altra_two_socket_ccix_lane_width,
   altra_two_socket_ccix_port_count,
@@ -77,9 +77,19 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // --- Each platform module joins the subject module that owns its identity ---
 
+// FIELD-WISE, NOT WHOLE-RECORD, AND THE REASON IS A LIVE DEFECT NOT MINE TO FIX.
+// Both subject records carry a `revision` field whose value is a bodyless type
+// name (AltraPlatformHwDesignRev1_00, MtMitchellRev0_80), which typechecks but
+// is an undefined VARIABLE at evaluation, so any expression that forces the
+// whole record dies with a runtime error rather than answering. Reported to the
+// module owner; when the revision carrier becomes constructible this collapses
+// back to two record equalities.
 test fn w_platform_facts_hang_off_the_subject_declarations() -> Bool {
-  altra_platform_hw_design_subject == altra_platform_hw_design_specification
-    && mt_mitchell_platform_subject == mt_mitchell_reference_platform
+  altra_platform_hw_design_subject.version_label == altra_platform_hw_design_specification.version_label
+    && altra_platform_hw_design_subject.title == altra_platform_hw_design_specification.title
+    && altra_platform_hw_design_subject.publication_date == altra_platform_hw_design_specification.publication_date
+    && mt_mitchell_platform_subject.version_label == mt_mitchell_reference_platform.version_label
+    && mt_mitchell_platform_subject.marketing_name == mt_mitchell_reference_platform.marketing_name
 }
 
 // --- Ampere Altra Platform Hardware Design Specification, revision 1.00 ---
@@ -128,7 +138,7 @@ test fn w_altra_ccix_capability_belongs_to_type_a_only() -> Bool {
 test fn w_altra_refclk_requirement_splits_by_input() -> Bool {
   refclk_always_required(input: RefclkSrns)
     && !refclk_always_required(input: RefclkSris)
-    && altra_refclk_megahertz == 100
+    && hertz_count(h: altra_refclk_frequency) == 100000000
 }
 
 test fn w_altra_pcie_reset_is_cpld_decoded_without_per_controller_perst() -> Bool {

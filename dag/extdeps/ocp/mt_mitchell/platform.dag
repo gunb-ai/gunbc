@@ -10,6 +10,7 @@ import extdeps.memory.types { DimmBuffering, DramGeneration, Registered, dram_ge
 import extdeps.storage.types { Gen5, PcieGeneration }
 import extdeps.ocp.mt_mitchell.subject {
   MtMitchellReferencePlatform,
+  internet_archive_mt_mitchell_capture_authority,
   extdeps_external_authority_anchor,
   mt_mitchell_reference_platform,
 }
@@ -27,24 +28,10 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: [mt_mitchell_read_capture_authority]
+  further_citations: [internet_archive_mt_mitchell_capture_authority]
 }
 
-// WHICH BYTES WERE ACTUALLY READ IS A SEPARATE FACT FROM WHERE THE DOCUMENT
-// LIVES. The publisher locator stays the anchor and is Cloudflare-gated: an
-// unauthenticated fetch returned HTTP 403 on 2026-08-14. The text behind every
-// row below came from a dated Internet Archive capture OF THAT SAME publisher
-// URL, taken 2022-10-26, which is carried as a second citation so a reader who
-// cannot reach the publisher copy can reach the exact bytes these rows came
-// from. A citation nobody could open is a claim about a document, not a source.
-data mt_mitchell_read_capture_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "web.archive.org/web/20221026103641id_/https://www.opencompute.org/documents/mt-mitchell-ocp-hardware-spec-v0-80-2-pdf"
-  }
-}
-
-data mt_mitchell_ingestion_note: String = "READ, NOT RECALLED, and the licence is what makes carrying it admissible: usage is under the Open Web Foundation Modified Final Specification Agreement quoted in the document's own licence section, and that section states the licence does NOT apply to the Appendices, which are reference-only and non-normative. No row in this module is attributed to an appendix. The revision-table rows below are the document's section 3 and are carried because the subject module fixes ONE revision label: the series is what makes 0.80 the current one rather than a bare string, and a later revision would join against these rows instead of silently replacing a literal."
+data mt_mitchell_ingestion_note: String = "READ, NOT RECALLED — AND READ FROM A CAPTURE, NOT FROM THE PUBLISHER. The publisher locator is the anchor because that is where the document lives, and an unauthenticated fetch of it returned HTTP 403 on 2026-08-14; the bytes behind every row here came from the dated Internet Archive capture of that same URL, which the subject module owns as internet_archive_mt_mitchell_capture_authority and this module cites rather than re-mints (review 51969). Saying we read Mt. Mitchell without that distinction would assert we read the publisher copy, which we did not. The licence is what makes carrying it admissible: usage is under the Open Web Foundation Modified Final Specification Agreement quoted in the document's own licence section, and that section states the licence does NOT apply to the Appendices, which are reference-only and non-normative. No row in this module is attributed to an appendix. The revision-table rows below are the document's section 3 and are carried because the subject module fixes ONE revision label: the series is what makes 0.80 the current one rather than a bare string, and a later revision would join against these rows instead of silently replacing a literal."
 
 type OcpSpecificationRevisionRow {
   revision: NonEmptyStr
