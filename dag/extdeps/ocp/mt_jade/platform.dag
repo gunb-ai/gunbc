@@ -5,11 +5,12 @@ import std.integer { Int }
 import std.measure { Hertz, Microsecond, Micrometer, hertz, microsecond, micrometer, micrometer_count }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope }
 import extdeps.ocp.mt_jade.subject {
-  extdeps_external_authority_anchor,
   mt_jade_model_scope,
   mt_jade_reference_platform,
   MtJadeReferencePlatform,
 }
+
+data extdeps_external_authority_anchor: ExternalAuthority = extdeps.ocp.mt_jade.subject.extdeps_external_authority_anchor
 
 data platform_subject_edge_note: String = "PLATFORM FACTS MUST JOIN THE ENTITY THEY DESCRIBE IN THE GRAPH, NOT ONLY THE SHARED OCP LOCATOR. extdeps.ocp.mt_jade.subject owns mt_jade_reference_platform; this row is the typed subject edge that binds every mechanical, sequencing, CPLD, clock and reference-part fact in this module to that declaration — the same pattern as extdeps.sec.issuer.gitlab_facts gitlab_facts_subject."
 

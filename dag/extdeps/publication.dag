@@ -3,7 +3,7 @@ module extdeps.publication
 import std.integer { Int }
 import std.types { String }
 
-data publication_status_axis_note: String = "UPSTREAM DOCUMENT FACTS ONLY. SpecificationDocumentDate records what the publisher published and when, on subjects that carry that field. How this repository read or failed to read a cited locator is an observation in gunbc.specification_citation_read_provenance, not here. DocumentPublicationStatus and its projection helpers land with gunbc.upstream_document_carriage in #8260, where platform modules populate the status and a consumer enforces carriage rules."
+data publication_status_axis_note: String = "SHARED UPSTREAM VOCABULARY ONLY — no single publisher locator, so this module is machinery-exempt from extdeps_external_authority_anchor (same class as extdeps.uri). SpecificationDocumentDate records what the publisher published and when, on subjects that carry that field. How this repository read or failed to read a cited locator is an observation in gunbc.specification_citation_read_provenance, not here. DocumentPublicationStatus and its projection helpers land with gunbc.upstream_document_carriage in #8260, where platform modules populate the status and a consumer enforces carriage rules."
 
 type SpecificationDocumentDate {
   year: Int

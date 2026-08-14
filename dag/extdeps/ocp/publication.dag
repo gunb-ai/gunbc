@@ -1,5 +1,7 @@
 module extdeps.ocp.publication
 
+data ocp_publication_vocabulary_note: String = "SHARED OCP LICENCE VOCABULARY ONLY — no single publisher locator, so this module is machinery-exempt from extdeps_external_authority_anchor (same class as extdeps.uri). Subject anchors import these closed variants; upstream document facts and read receipts live elsewhere."
+
 type Owfa1_0FinalSpecificationAgreement {}
 
 type OcpContributionLicenseAgreement {}
