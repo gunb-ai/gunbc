@@ -1,9 +1,23 @@
 module extdeps.publication
 
 import std.integer { Int }
+import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
 
 type SpecificationDocumentDate {
   year: Int
   month: Int
   day: Int
 }
+
+type SpecificationCitationReadProvenance
+  = DocumentLocatorFetchRefused { http_status: Int, detail: NonEmptyStr }
+  | DocumentLocatorFetchedButTextUnread { http_status: Int, detail: NonEmptyStr }
+  | DatedPublisherLocatorMirrorTextIngested {
+      mirror: ExternalAuthority,
+      capture_date: SpecificationDocumentDate,
+      peer_session: NonEmptyStr,
+      detail: NonEmptyStr,
+    }
+  | PeerSessionPdfTextIngested { peer_session: NonEmptyStr, detail: NonEmptyStr }
+  | OperatorSuppliedDocumentText {}

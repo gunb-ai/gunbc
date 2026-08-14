@@ -7,7 +7,10 @@ import extdeps.uri { Uri, Https }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.ampere { ampere_vendor }
-import extdeps.publication { SpecificationDocumentDate }
+import extdeps.publication {
+  SpecificationDocumentDate,
+  SpecificationCitationReadProvenance,
+}
 
 // THE PLATFORM DESIGN SPECIFICATION IS A DIFFERENT DOCUMENT CLASS FROM THE PACKAGE DATASHEET
 // AND FROM OCP REFERENCE-BOARD COLLATERAL. It is the guide for designing a custom motherboard
@@ -32,12 +35,6 @@ data altra_platform_hw_design_subject_note: String = "THE HIGHEST-VALUE PUBLIC D
 type AltraPlatformHwDesignRev1_00 {}
 
 type AltraPlatformHwDesignRevision = AltraPlatformHwDesignRev1_00
-
-type SpecificationCitationReadProvenance
-  = DocumentLocatorFetchRefused { http_status: Int, detail: NonEmptyStr }
-  | DocumentLocatorFetchedButTextUnread { http_status: Int, detail: NonEmptyStr }
-  | PeerSessionPdfTextIngested { peer_session: NonEmptyStr, detail: NonEmptyStr }
-  | OperatorSuppliedDocumentText
 
 type HeldSpecificationSupersessionStanding
   = HeldRevisionIsCurrentPublicCopy

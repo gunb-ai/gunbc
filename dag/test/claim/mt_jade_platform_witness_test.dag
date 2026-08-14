@@ -3,6 +3,10 @@ module test.claim.mt_jade_platform_witness
 import std.types { Bool, String, NonEmptyStr, List, list_length }
 import std.integer { Int }
 import std.measure { hertz_count, microsecond_count, micrometer_count }
+import extdeps.publication {
+  DocumentLocatorFetchRefused,
+  OperatorSuppliedDocumentText,
+}
 import extdeps.ocp.publication {
   AppendixA,
   AppendixB,
@@ -10,9 +14,7 @@ import extdeps.ocp.publication {
   OcpContributionLicenseAgreement,
 }
 import extdeps.ocp.mt_jade.subject {
-  DocumentLocatorFetchRefused,
   MtJadeRev1_0,
-  OperatorSuppliedDocumentText,
   mt_jade_publisher_citation_read_provenance,
   mt_jade_ingested_citation_read_provenance,
   mt_jade_contribution_license,

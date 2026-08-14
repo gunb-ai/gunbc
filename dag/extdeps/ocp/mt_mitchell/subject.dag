@@ -7,7 +7,10 @@ import extdeps.uri { Uri, Https }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.ampere { ampere_vendor }
-import extdeps.publication { SpecificationDocumentDate }
+import extdeps.publication {
+  SpecificationDocumentDate,
+  SpecificationCitationReadProvenance,
+}
 import extdeps.ocp.publication {
   OcpSpecificationLicense,
   OcpContributionLicense,
@@ -38,17 +41,6 @@ data mt_mitchell_subject_note: String = "OCP-CONTRIBUTED REFERENCE PLATFORM SPEC
 type MtMitchellRev0_80 {}
 
 type MtMitchellSpecificationRevision = MtMitchellRev0_80
-
-type SpecificationCitationReadProvenance
-  = DocumentLocatorFetchRefused { http_status: Int, detail: NonEmptyStr }
-  | DocumentLocatorFetchedButTextUnread { http_status: Int, detail: NonEmptyStr }
-  | DatedPublisherLocatorMirrorTextIngested {
-      mirror: ExternalAuthority,
-      capture_date: SpecificationDocumentDate,
-      peer_session: NonEmptyStr,
-      detail: NonEmptyStr,
-    }
-  | OperatorSuppliedDocumentText
 
 data mt_mitchell_specification_version_label: NonEmptyStr = "v0.80"
 
