@@ -1,6 +1,6 @@
 module product.altra_motherboard.source_documents
 
-import std.types { String, Bool, NonEmptyStr, List }
+import std.types { String, Bool, NonEmptyStr, List, list_length }
 import std.integer { Int }
 import extdeps.uri { Uri, Https }
 
@@ -135,23 +135,24 @@ fn source_documents() -> List<SourceDocument> {
   ]
 }
 
-fn document_is_read(d: SourceDocument) -> Bool {
-  match d.observation {
-    DocumentRead { facts_now_cited_at: _ } => true
-    FetchRefused { observed: _ } => false
-    ObtainedButTextNotExtractable { observed: _ } => false
-    NeverAttempted => false
-  }
-}
-
-// THE CONSUMER, so this roster is a work queue rather than a list nobody reads: the documents
-// still owed, which is every row whose facts have not reached an extdeps module.
+// OUTSTANDING IS A FILTER, NOT A HAND-ROLLED ACCUMULATOR. An earlier revision folded with concat
+// to build this list and folded again to count it, which copies the accumulator on every step for
+// a quadratic build of a linear answer. DESIGN section 6 is explicit that a proven cost-shape
+// defect is always fixed regardless of the realized n, because "n is small here" is not a
+// time-stable fact - this roster grows every time someone finds a document.
+//
+// THE ARMS ARE MATCHED HERE rather than through a Bool helper. A predicate that reduces a
+// four-armed coproduct to true-or-false is a second, lossier representation of a decision the
+// coproduct already carries, and with one caller the helper bought nothing but the loss.
 fn outstanding_documents() -> List<SourceDocument> {
-  fold(source_documents(), init: [], f: fn(acc, d) {
-    if document_is_read(d: d) { acc } else { concat(acc, [d]) }
+  filter(source_documents(), d => match d.observation {
+    DocumentRead { facts_now_cited_at: _ } => false
+    FetchRefused { observed: _ } => true
+    ObtainedButTextNotExtractable { observed: _ } => true
+    NeverAttempted => true
   })
 }
 
 fn outstanding_document_count() -> Int {
-  fold(outstanding_documents(), init: 0, f: fn(acc, _d) { acc + 1 })
+  list_length(items: outstanding_documents())
 }

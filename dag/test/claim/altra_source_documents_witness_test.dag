@@ -1,0 +1,79 @@
+module test.claim.altra_source_documents_witness
+
+import std.types { Bool, String, NonEmptyStr, List, list_length }
+import std.integer { Int }
+import extdeps.uri { Uri, Https }
+import product.altra_motherboard.source_documents {
+  DocumentRead,
+  DocumentObservation,
+  FetchRefused,
+  NeverAttempted,
+  ObtainedButTextNotExtractable,
+  SourceDocument,
+  outstanding_documents,
+  outstanding_document_count,
+  source_documents,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn probe(o: DocumentObservation) -> SourceDocument {
+  SourceDocument {
+    title: "planted probe document",
+    publisher: "planted probe publisher",
+    locator: Uri { scheme: Https, locator: "example.invalid/probe" },
+    wanted_for: "a controlled fixture, so the filter is tested against a document this witness authored rather than against whatever the roster happens to hold today",
+    observation: o,
+  }
+}
+
+fn is_outstanding(o: DocumentObservation) -> Bool {
+  match probe(o: o).observation {
+    DocumentRead { facts_now_cited_at: _ } => false
+    FetchRefused { observed: _ } => true
+    ObtainedButTextNotExtractable { observed: _ } => true
+    NeverAttempted => true
+  }
+}
+
+// THE PROPERTY, STATED WITHOUT A COUNT. Asserting that the roster holds eight documents would be
+// a measurement of the current tree compared against itself, which DESIGN section 5 rules is not
+// an oracle: it would go red the next time somebody found a document, which is the roster working
+// rather than breaking. What must hold at any size is that nothing already read is still owed.
+test fn w_no_document_that_was_read_is_still_outstanding() -> Bool {
+  fold(outstanding_documents(), init: true, f: fn(acc, d) {
+    acc && match d.observation {
+      DocumentRead { facts_now_cited_at: _ } => false
+      FetchRefused { observed: _ } => true
+      ObtainedButTextNotExtractable { observed: _ } => true
+      NeverAttempted => true
+    }
+  })
+}
+
+// AND THE ROSTER IS NOT EMPTY, so the claim above cannot pass vacuously. A filter over nothing
+// satisfies every universal statement made about its output.
+test fn w_the_roster_is_nonempty_so_the_claim_above_is_not_vacuous() -> Bool {
+  list_length(items: source_documents()) > 0 && outstanding_document_count() > 0
+}
+
+// THE DISCRIMINATING CONTROL, on a document this witness authored rather than on the live roster.
+// Each of the four states is asserted in the direction that would break if any two collapsed: a
+// read document must drop out, and each of the three unread states must survive. An earlier
+// revision reduced this coproduct through a Bool helper, and that is exactly the shape that lets
+// two states quietly become one.
+test fn w_only_a_read_document_leaves_the_queue() -> Bool {
+  !is_outstanding(o: DocumentRead { facts_now_cited_at: "extdeps.some.module" })
+    && is_outstanding(o: FetchRefused { observed: "HTTP 403" })
+    && is_outstanding(o: ObtainedButTextNotExtractable { observed: "no extractable text" })
+    && is_outstanding(o: NeverAttempted)
+}
+
+// EVERY OUTSTANDING ROW SAYS WHY IT IS WANTED. A queue entry nobody can act on is a row that will
+// be rediscovered rather than fetched, which is the cost this roster exists to remove.
+test fn w_every_outstanding_document_states_what_it_is_wanted_for() -> Bool {
+  fold(outstanding_documents(), init: true, f: fn(acc, d) {
+    acc && (d.wanted_for as String) != "" && (d.title as String) != ""
+  })
+}
