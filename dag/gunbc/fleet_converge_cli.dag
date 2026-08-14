@@ -112,11 +112,49 @@ fn converge_cli_is_fleet_compute_host(host: String) -> Bool {
 // pinned Codex bundle via converge_provider_runtime_codex_receipt after slice1/knob-frontier
 // work (converge_cli_run_host_knobs) and join the adjunct into the host receipt before
 // converge_cli_publish writes the converge-receipt line. The knob is registered in
-// fleet_converge_policy (CodexRuntimeBundle); this adjunct step executes it on LocalShell
-// even when the host routes through ConvergeSlice1Route or ConvergeKnobFrontier.
+// fleet_converge_policy (CodexRuntimeBundle). LocalShell is intentional for the per-host
+// timer route (`--host self` → kernel hostname); cross-host named-host converge must refuse
+// until transport selects SshShell per target — see codex_runtime_converge_local_shell_locus_note.
+data codex_runtime_converge_local_shell_locus_note: String = "ProvisionCodexRuntime on the converge adjunct uses LocalShell — the observe/ensure/read-back script runs on the machine executing gunbc, not on a named remote host. Production cadence is the per-host timer (`gunbc converge --host self` resolves kernel hostname before routing). Named-host converge from another machine (e.g. converge_cli_run(\"srv2\") on srv1) must refuse until transport selects SshShell per target (review 51883; dissolve-on: fleet_ssh transport binding for ProvisionCodexRuntime, same class as realize_provision_build_cache SshShell arms)."
+
+fn converge_kernel_short_hostname_from_content(raw: String) -> String {
+  trim(s: raw)
+}
+
+fn converge_local_kernel_short_hostname() -> String {
+  converge_kernel_short_hostname_from_content(
+    raw: filesystem_read(path: procfs_path_literal(p: ProcSysKernelHostname) as String).content,
+  )
+}
+
+fn converge_codex_runtime_local_locus_matches_host(host: String) -> Bool {
+  let local = converge_local_kernel_short_hostname()
+  local != "" && host == local
+}
+
 fn converge_provider_runtime_codex_receipt(host: String) -> ConvergeCliReceipt? {
   if !converge_cli_is_fleet_compute_host(host: host) {
     none
+  } else if !converge_codex_runtime_local_locus_matches_host(host: host) {
+    Present {
+      value: ConvergeCliReceipt {
+        host: host,
+        applied: 0,
+        drifted: 0,
+        verdict: Absent,
+        reason: Present {
+          value: KnobFrontier {
+            reason: concat(
+              "converge_provider_runtime_codex: ProvisionCodexRuntime LocalShell refused — target host ",
+              host,
+              " does not match local kernel hostname ",
+              converge_local_kernel_short_hostname(),
+              "; cross-host transport is SshShell dissolve-on (review 51883)",
+            ),
+          },
+        },
+      },
+    }
   } else {
     match fleet_compute_host_for_identity(identity: host as HostIdentity) {
       Present { value: compute_host } =>

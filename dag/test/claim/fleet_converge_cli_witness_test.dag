@@ -256,6 +256,15 @@ test fn witness_spark_managed_access_unmeasured_is_typed_and_distinct_from_unkno
     }
 }
 
+test fn witness_converge_kernel_hostname_trim_strips_whitespace() -> Bool {
+  converge_kernel_short_hostname_from_content(raw: "srv2\n") == "srv2"
+}
+
+test fn witness_converge_codex_runtime_local_locus_refuses_cross_host() -> Bool {
+  !converge_codex_runtime_local_locus_matches_host(host: "srv2")
+    || converge_local_kernel_short_hostname() == "srv2"
+}
+
 test fn witness_codex_runtime_bundle_knob_registered_in_fleet_converge_policy() -> Bool {
   converge_cli_codex_runtime_knob_registered_for_host(host: operator_host_srv1)
     && converge_cli_codex_runtime_knob_registered_for_host(host: operator_host_srv4)
