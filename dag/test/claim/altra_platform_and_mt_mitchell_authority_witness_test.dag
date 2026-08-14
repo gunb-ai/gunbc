@@ -113,19 +113,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // --- Each platform module joins the subject module that owns its identity ---
 
-// FIELD-WISE, NOT WHOLE-RECORD, AND THE REASON IS A LIVE DEFECT NOT MINE TO FIX.
-// Both subject records carry a `revision` field whose value is a bodyless type
-// name (AltraPlatformHwDesignRev1_00, MtMitchellRev0_80), which typechecks but
-// is an undefined VARIABLE at evaluation, so any expression that forces the
-// whole record dies with a runtime error rather than answering. Reported to the
-// module owner; when the revision carrier becomes constructible this collapses
-// back to two record equalities.
+// WHOLE-RECORD, RESTORED. This was field-wise for one commit because both
+// subject records carried a revision field whose value was a bodyless type
+// name — compiling clean, undefined variable at evaluation, so forcing either
+// record died. The owning session fixed the carrier; the equality is back to
+// what it should always have been, and it now also acts as the control that
+// keeps those records evaluable.
 test fn w_platform_facts_hang_off_the_subject_declarations() -> Bool {
-  altra_platform_hw_design_subject.version_label == altra_platform_hw_design_specification.version_label
-    && altra_platform_hw_design_subject.title == altra_platform_hw_design_specification.title
-    && altra_platform_hw_design_subject.publication_date == altra_platform_hw_design_specification.publication_date
-    && mt_mitchell_platform_subject.version_label == mt_mitchell_reference_platform.version_label
-    && mt_mitchell_platform_subject.marketing_name == mt_mitchell_reference_platform.marketing_name
+  altra_platform_hw_design_subject == altra_platform_hw_design_specification
+    && mt_mitchell_platform_subject == mt_mitchell_reference_platform
 }
 
 // --- Ampere Altra Platform Hardware Design Specification, revision 1.00 ---
