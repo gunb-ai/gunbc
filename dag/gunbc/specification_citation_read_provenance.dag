@@ -1,0 +1,104 @@
+module gunbc.specification_citation_read_provenance
+
+import std.integer { Int }
+import std.types { NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.publication { SpecificationDocumentDate }
+import extdeps.ocp.mt_mitchell.subject { internet_archive_mt_mitchell_capture_authority }
+
+data specification_citation_read_provenance_law: String = "OBSERVATIONS PRODUCED BY THIS REPOSITORY, NOT FACTS OWNED BY THE OBSERVED UPSTREAM (DESIGN section 3). Each receipt names the upstream declaration it is about and records what gunbc did on a particular day against a cited locator. WHETHER THE PUBLISHER PUBLISHED THE DOCUMENT PUBLICLY IS A SEPARATE UPSTREAM AXIS: DocumentPublicationStatus is an extdeps.publication fact re-landed by #8260; status values live on document modules; the rule mapping status to whether gunbc may carry facts lives in gunbc.upstream_document_carriage. OCP subject anchors in this lane carry licence terms on OcpSpecificationLicense instead. The two axes stay independent — a document may be publicly published under OWFa 1.0 while our publisher fetch was refused."
+
+type SpecificationCitationReadProvenance
+  = DocumentLocatorFetchRefused { http_status: Int, detail: NonEmptyStr }
+  | DocumentLocatorFetchedButTextUnread { http_status: Int, detail: NonEmptyStr }
+  | DatedPublisherLocatorMirrorTextIngested {
+      mirror: ExternalAuthority,
+      capture_date: SpecificationDocumentDate,
+      peer_session: NonEmptyStr,
+      detail: NonEmptyStr,
+    }
+  | PeerSessionPdfTextIngested { peer_session: NonEmptyStr, detail: NonEmptyStr }
+  | OperatorSuppliedDocumentText {}
+
+type SpecificationCitationReadReceipt {
+  subject: DeclarationRef
+  provenance: SpecificationCitationReadProvenance
+}
+
+data mt_jade_reference_platform_subject_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.ocp.mt_jade.subject",
+  decl_name: "mt_jade_reference_platform",
+  field: WholeDeclaration,
+}
+
+data mt_mitchell_reference_platform_subject_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.ocp.mt_mitchell.subject",
+  decl_name: "mt_mitchell_reference_platform",
+  field: WholeDeclaration,
+}
+
+data altra_platform_hw_design_specification_subject_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
+  decl_name: "altra_platform_hw_design_specification",
+  field: WholeDeclaration,
+}
+
+data mt_collins_public_product_brief_subject_ref: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.ampere.mt_collins_product_brief.subject",
+  decl_name: "mt_collins_public_product_brief",
+  field: WholeDeclaration,
+}
+
+data mt_jade_publisher_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
+  subject: mt_jade_reference_platform_subject_ref,
+  provenance: DocumentLocatorFetchRefused {
+    http_status: 403,
+    detail: "unauthenticated fetch of the OCP publisher document locator returned 403; the publisher copy remains unread in this repository",
+  },
+}
+
+data mt_jade_ingested_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
+  subject: mt_jade_reference_platform_subject_ref,
+  provenance: OperatorSuppliedDocumentText {},
+}
+
+data mt_mitchell_publisher_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
+  subject: mt_mitchell_reference_platform_subject_ref,
+  provenance: DocumentLocatorFetchRefused {
+    http_status: 403,
+    detail: "unauthenticated fetch of the OCP publisher document locator returned 403; the publisher copy remains unread in this repository",
+  },
+}
+
+data internet_archive_mt_mitchell_capture_date: SpecificationDocumentDate = SpecificationDocumentDate {
+  year: 2022,
+  month: 10,
+  day: 26,
+}
+
+data mt_mitchell_mirror_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
+  subject: mt_mitchell_reference_platform_subject_ref,
+  provenance: DatedPublisherLocatorMirrorTextIngested {
+    mirror: internet_archive_mt_mitchell_capture_authority,
+    capture_date: internet_archive_mt_mitchell_capture_date,
+    peer_session: "neat-hawk-428",
+    detail: "full PDF text of the dated Internet Archive capture of the publisher locator was decoded by peer session neat-hawk-428; this is a second artifact from the publisher copy and may not match what the publisher serves today",
+  },
+}
+
+data altra_platform_hw_design_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
+  subject: altra_platform_hw_design_specification_subject_ref,
+  provenance: PeerSessionPdfTextIngested {
+    peer_session: "neat-hawk-428",
+    detail: "full PDF text of the public CDN v1.00 locator was decoded by peer session neat-hawk-428 (zlib content-stream decompression with per-font ToUnicode CMap decoding); this subject module did not perform the fetch",
+  },
+}
+
+data mt_collins_product_brief_citation_read_receipt: SpecificationCitationReadReceipt = SpecificationCitationReadReceipt {
+  subject: mt_collins_public_product_brief_subject_ref,
+  provenance: DocumentLocatorFetchedButTextUnread {
+    http_status: 200,
+    detail: "public marketing PDF fetched successfully; no interior engineering fact is modelled because the authoritative design package is NDA-gated",
+  },
+}
