@@ -1,6 +1,6 @@
 module v2.lens.interface_summary
 
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 
 
 fn decl_kind_to_export_kind(kind: ItemKind) -> ExportKind? {

@@ -15,7 +15,7 @@ import v2.extdeps.languages.dag {
   dag_target_model,
   dag_translation_rules_node
 }
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 import v2.std.algebra { list_append }
 import v2.std.collection { List }
 import v2.std.compilers.lexing { TokenStream }

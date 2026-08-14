@@ -1,6 +1,6 @@
 module v2.lens.complexity_accumulator_copy.analyze
 
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 
 
 fn named_child_optional(cap: Node, name: Symbol) -> Optional<Node> {

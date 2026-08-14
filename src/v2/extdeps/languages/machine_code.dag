@@ -16,7 +16,7 @@ import v2.std.compilers.lexing {
   TriviaRule,
   WhitespaceChar
 }
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 import v2.std.algebra { list_map }
 import v2.std.collection { Absent, List, Map, Present }
 import v2.std.machine { Byte }

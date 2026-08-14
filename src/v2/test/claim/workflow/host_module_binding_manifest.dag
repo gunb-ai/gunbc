@@ -1,7 +1,7 @@
 module v2.test.workflow.host_module_binding_manifest
 
 import v2.compiler.source_authority { ModuleStorageIndex }
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 import v2.std.integer { Int }
 import v2.std.text { String }
 

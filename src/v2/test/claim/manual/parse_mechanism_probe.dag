@@ -1,6 +1,6 @@
 module v2.test.manual.parse_mechanism_probe
 
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 
 
 data pmp_anchor: Symbol = ^pmp_anchor

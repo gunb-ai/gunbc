@@ -1,6 +1,6 @@
 module v2.std.compilers.lexing
 
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.source_annotation { AnnotationPlacement, LeadingAfterLineIndent, TrailingAfterSemanticToken }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }

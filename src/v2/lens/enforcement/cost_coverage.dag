@@ -1,6 +1,6 @@
 module v2.lens.enforcement.cost_coverage
 
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 
 
 type CostCoverageIngestVerdict

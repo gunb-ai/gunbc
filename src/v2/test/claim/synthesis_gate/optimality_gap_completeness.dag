@@ -1,6 +1,6 @@
 module v2.test.synthesis_gate.optimality_gap_completeness
 
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 
 
 fn synthesis_row_acquired(row: SynthesisSubjectRow) -> Bool {

@@ -11,7 +11,7 @@ import v2.std.logic { Bool }
 import v2.std.node { Conj, Disj, Edge, Named, Node, SyntheticOccurrence, TypeNode }
 import v2.std.collection { List, fold_list }
 import v2.std.text { is_empty }
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 
 fn bool_coproduct() -> Node {
   Node {

@@ -10,9 +10,8 @@ use v1_compiler::cli_run::{
     build_module_path_index, closure_subject_for_entry, discover_floor_witness_roster,
     make_eval_context_with_runtime_options, peak_rss_vhwm_bytes,
     precompute_whole_tree_published_mock_keys, prepare_whole_tree_subject, process_shared_index,
-    resolve_entry_with_index, run_claim_measured, whole_tree_strict_resolve_exclusion_substrings,
-    witness_exclusion_substrings, ClaimOutcome, DiscoveryRow, MultiEntryIndex,
-    PreparedWholeTreeSubject,
+    resolve_entry_with_index, run_claim_measured, witness_exclusion_substrings, ClaimOutcome,
+    DiscoveryRow, MultiEntryIndex, PreparedWholeTreeSubject,
 };
 use v1_compiler::recorded_fixture::RecordedFixtureStore;
 use v1_compiler::v1_compiler_compile::ResolvedGraph;
@@ -639,14 +638,27 @@ fn run_against_one_prepared_subject(
     //                       call into it
     // Path text is not the property being selected, so a substring cannot express
     // "deliberately invalid" and keeps proving it one straddle at a time.
-    let dropped = ["/test/", "test/fixture/", "nat_semiring_rung"];
-    let mut excludes: Vec<String> = whole_tree_strict_resolve_exclusion_substrings()
-        .into_iter()
-        .filter(|p| !dropped.contains(&p.as_str()))
-        .collect();
-    // The genuinely-malformed scanner inputs: modules declaring imports that do not
-    // exist, on purpose, as test DATA for the layering scanner.
-    excludes.push("test/fixture/layering_scan/".to_string());
+    // So this subject DECLARES its own exclusions instead of filtering someone
+    // else's roster. Filtering was still borrowing: the probe roster removes
+    // lens/testgen.dag, workflow/testclaim_corpus_runner.dag,
+    // workflow/affected_testgen_ci_runner.dag, lens/idempotency/write_effect.dag and
+    // lens/parallelism/data_dependency.dag while leaving the modules that IMPORT
+    // them in, which produced 16 "unresolved import: module not found" errors naming
+    // modules that exist in the tree under exactly the imported name. An exclusion
+    // that is not closed under the importer relation reports present code as absent.
+    //
+    // The one row here is the deliberately-malformed scanner input: modules that
+    // declare imports which do not exist, on purpose, as test DATA for the layering
+    // scanner. It is the only population whose failure to resolve is the point.
+    // Both rows are deliberately-invalid test DATA, and each one's refusal is the
+    // property its consumer reads: layering_scan modules declare imports that do not
+    // exist, and meta_exec_confinement_scan/leak plants a cross-module construction
+    // of the sole_constructor type TransportScript. Including them would make the
+    // subject report a working wall as a broken module.
+    let excludes: Vec<String> = vec![
+        "test/fixture/layering_scan/".to_string(),
+        "test/fixture/meta_exec_confinement_scan/".to_string(),
+    ];
     let prepare_started = Instant::now();
     let PreparedWholeTreeSubject {
         ctx,

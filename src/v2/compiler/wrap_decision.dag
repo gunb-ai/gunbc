@@ -10,7 +10,7 @@ import v2.std.compilers.target_model {
   wrap_decision_lookup_in_catalog_node,
   target_value_semantics_carriers_from_node
 }
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 import v2.std.collection {
   List,
   Symbol

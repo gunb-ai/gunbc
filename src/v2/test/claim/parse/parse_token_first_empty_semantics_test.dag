@@ -1,6 +1,6 @@
 module v2.test.parse.parse_token_first_empty_semantics
 
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

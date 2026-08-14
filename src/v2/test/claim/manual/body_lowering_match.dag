@@ -14,7 +14,7 @@ import v2.extdeps.languages.dag {
   parse_production_emitted_identity_optional,
   parse_subtree_find_production_captured
 }
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 import v2.std.algebra { length }
 import v2.std.optional {
   Absent,

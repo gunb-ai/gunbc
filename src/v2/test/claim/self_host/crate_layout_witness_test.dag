@@ -28,7 +28,7 @@ import v2.compiler.self_host.frontier {
 import v2.compiler.source_authority { ModuleStorageIndex }
 import v2.test.workflow.host_module_binding_manifest { host_module_bindings }
 import v2.std.diagnostic { Accepted, Rejected }
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 import v2.std.algebra { any, fold_list, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }

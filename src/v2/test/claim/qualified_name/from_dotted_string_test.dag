@@ -1,6 +1,6 @@
 module v2.test.claim.qualified_name.from_dotted_string
 
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

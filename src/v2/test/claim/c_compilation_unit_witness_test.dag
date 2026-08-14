@@ -1,6 +1,6 @@
 module v2.test.claim.c_compilation_unit_witness
 
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 import std.types { NonEmptyStr, List, String }
 import v2.extdeps.languages.c {
   c_include_directive_for_dep,

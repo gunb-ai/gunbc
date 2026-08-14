@@ -1,7 +1,7 @@
 module v2.test.lens_mutation_adequacy.mutation_adequacy_test
 
 import v2.std.logic { Bool }
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 import v2.std.node { Node, node_synthetic, TypeNode, Atom }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.diagnostic {

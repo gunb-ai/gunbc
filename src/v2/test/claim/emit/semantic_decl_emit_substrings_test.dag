@@ -7,7 +7,7 @@ import v2.std.diagnostic { Accepted, Rejected, Outcome, None }
 import v2.std.logic { Bool }
 import v2.std.node { Conj, Disj, Edge, Named, Node, SyntheticOccurrence, Symbol, TypeNode }
 import v2.std.text { String }
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 
 fn sdr_empty_conj() -> Node {
   Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }

@@ -26,7 +26,7 @@ import v2.std.diagnostic {
 import v2.std.node { Disj, Conj, Node, Symbol, TypeNode }
 import extdeps.communication.medium { Medium }
 import v2.std.text { String }
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 
 fn emit_semantic_decl_unsupported_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {

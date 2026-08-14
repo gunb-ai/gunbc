@@ -1,6 +1,6 @@
 module v2.compiler.ingest
 
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 import v2.std.algebra { list_append }
 import v2.std.collection {
   Absent,

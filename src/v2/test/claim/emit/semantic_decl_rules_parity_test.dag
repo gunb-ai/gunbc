@@ -16,7 +16,7 @@ import v2.std.compilers.target_model { concrete_syntax_token_list_from_node }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Conj, Disj, Edge, Named, Node, SyntheticOccurrence, Symbol, TypeNode }
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 
 fn bool_coproduct() -> Node {
   Node {

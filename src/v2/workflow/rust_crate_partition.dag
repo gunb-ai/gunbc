@@ -2,7 +2,7 @@ module v2.workflow.rust_crate_partition
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.graph {
   CallGraph,

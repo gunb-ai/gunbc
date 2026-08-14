@@ -1,6 +1,6 @@
 module v2.std.concept_index
 
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 import v2.std.algebra { list_map, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.node {

@@ -14,7 +14,7 @@ import v2.compiler.self_host.frontier_probe_types {
 }
 import v2.compiler.source_authority { SourceRootIngest }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }

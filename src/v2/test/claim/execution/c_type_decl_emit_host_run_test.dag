@@ -14,7 +14,7 @@ import v2.extdeps.languages.c {
   c_type_decl_inject_fault_runtime_row,
   c_type_decl_target_model
 }
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 import v2.std.diagnostic { Accepted, Rejected, None }
 import v2.std.host_run { HostLogicalRun }
 import v2.std.host_transport {

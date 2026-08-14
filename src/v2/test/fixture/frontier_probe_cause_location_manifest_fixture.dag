@@ -10,7 +10,7 @@ import v2.compiler.self_host.frontier_probe_types {
   ProbeStageAssemble,
   UnknownProbeCause
 }
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 import v2.std.diagnostic { ByteRange }
 import v2.std.text { String }
 

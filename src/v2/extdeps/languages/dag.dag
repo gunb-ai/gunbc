@@ -162,7 +162,7 @@ import v2.std.diagnostic {
   outcome_rejected,
   port_locus
 }
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 import v2.std.integer {
   decimal_digits_to_magnitude,
   integer_decimal_magnitude_node,

@@ -1,6 +1,6 @@
 module v2.test.manual.infer_emit_compile_anchor
 
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 import v2.compiler.emit { emit }
 
 

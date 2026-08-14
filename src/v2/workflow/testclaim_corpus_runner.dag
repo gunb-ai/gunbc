@@ -10,7 +10,7 @@ import v2.compiler.eval {
 import v2.std.collection { List }
 import v2.std.algebra { Equal, Greater, Less, length, list_append }
 import v2.std.logic { Bool }
-import v2.std.nat { Nat, Succ, Zero, nat_compare }
+import v2.std.nat { Nat, Succ, Zero }
 import v2.std.node { Node, Symbol }
 import v2.std.runtime { RuntimeValue }
 import v2.std.verdict {
@@ -162,7 +162,7 @@ fn list_length_nat<T>(xs: List<T>) -> v2.std.nat.Nat {
 }
 
 fn nat_eq(a: v2.std.nat.Nat, b: v2.std.nat.Nat) -> Bool {
-  match nat_compare(a: a, b: b) {
+  match v2.std.nat.nat_compare(a: a, b: b) {
     Equal => true
     Less => false
     Greater => false

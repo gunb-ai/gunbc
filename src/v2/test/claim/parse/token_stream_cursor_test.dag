@@ -1,6 +1,6 @@
 module v2.test.parse.token_stream_cursor
 
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

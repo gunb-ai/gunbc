@@ -5,7 +5,7 @@ import v2.lens.common.construction_justification {
   WallAfterGrounding
 }
 import std.disposition { RealizationDispatch }
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 import v2.std.algebra { fold_list, list_snoc_item, list_tail, length, TailFound, TailAbsent }
 import v2.std.collection { Absent, List, Optional, Present }
 import v2.std.logic { Bool }

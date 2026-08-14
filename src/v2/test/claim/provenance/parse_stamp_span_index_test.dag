@@ -1,6 +1,6 @@
 module v2.test.provenance.parse_stamp_span_index
 
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

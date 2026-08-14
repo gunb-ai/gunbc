@@ -1,6 +1,6 @@
 module v2.lens.synthesis
 
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 
 
 type LowerBoundTechnique

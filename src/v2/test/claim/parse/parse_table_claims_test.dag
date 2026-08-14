@@ -1,6 +1,6 @@
 module v2.test.parse.parse_table_claims
 
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 
 
 

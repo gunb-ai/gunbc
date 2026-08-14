@@ -1,6 +1,6 @@
 module v2.test.manual.parse_forensics_scaling_witness
 
-import std.algebra { Empty }
+import v2.std.algebra { Empty }
 
 
 data forensics_scaling_witness_note: String = "adhoc-c328b166-bca interpreted-parse cost forensics: per-file packrat memo stats (hits/misses/lookup_calls) at increasing corpus-file sizes, timed externally via `time ./target/release/gunbc run --claim-run`. One fn per fixture file so each can be timed as an isolated process (amortizes nothing; each pays full corpus-load overhead, which is the point -- wall time here is (fixed load) + (parse cost) and the parse-cost delta across sizes is read off the growth curve, not the absolute number)."
