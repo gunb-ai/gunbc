@@ -600,87 +600,21 @@ fn run_against_one_prepared_subject(
         return Err(ExitCode::from(1));
     }
 
-    // THE EXCLUSION SET IS THE HAND-WRITTEN PATTERN LIST AND NOTHING ELSE.
+    // THE EXCLUSION SET IS PART OF THE SUBJECT, so it comes from the one authority
+    // every prepared-subject consumer reads (`floor_prepared_subject_exclusions`)
+    // rather than a copy maintained here. Two lists that agree today are still two
+    // subjects, and the digest — derived from the sources each list selected — would
+    // not say which one a receipt described.
     //
-    // What used to sit here was pattern rows UNION a derived failure closure — a
-    // fixed point that strict-resolved the whole tree, added every failure AND its
-    // transitive importers to the exclusions, and retried until resolution
-    // succeeded. Its job was therefore to make the build pass by removing whatever
-    // failed, which is an absorbing failure arm at repository scale: a module could
-    // stop resolving globally and nothing went red. Measured before deletion: 8.7
-    // minutes, 4 rounds, 715 modules removed, of which only 61 actually failed and
-    // 654 were excluded solely for importing one of those 61.
-    //
-    // Now the whole-repo resolve either succeeds against the declared patterns or
-    // REFUSES naming the file, and that resolve IS the floor's compilation step
-    // rather than a gate beside it.
-    // THE FLOOR'S SUBJECT INCLUDES TESTS, because running them is its entire job.
-    //
-    // whole_tree_strict_resolve_exclusion_substrings carries "/test/" — a single
-    // substring that removes an entire semantic class. That entry is correct for a
-    // PRODUCTION-ONLY probe walk and wrong here, and it is not a harmless
-    // over-exclusion: four modules that DECLARE test modules live at paths without
-    // "/test/" in them, so they are included while every test module they import is
-    // removed, and the resolve fails on files that are not broken. A substring rule
-    // cannot express "the production universe" because path text is not the
-    // property being selected.
-    //
-    // Kept: only what genuinely cannot resolve — the deliberately-malformed scanner
-    // fixtures and the named lens fixtures that exist to be invalid.
-    // EXACT EXCLUSIONS, and only what is deliberately invalid.
-    //
-    // Three entries in the shared pattern list are substrings that remove a class
-    // rather than a file, and every one of them straddled a dependency:
-    //   "/test/"            kept four modules that DECLARE test modules (their paths
-    //                       lack the substring) while removing everything they import
-    //   "test/fixture/"     removes ALL fixtures, though only the scanner inputs
-    //                       under layering_scan are deliberately malformed; valid
-    //                       fixtures that real tests import went with them
-    //   "nat_semiring_rung" removes the implementation while keeping the tests that
-    //                       call into it
-    // Path text is not the property being selected, so a substring cannot express
-    // "deliberately invalid" and keeps proving it one straddle at a time.
-    // So this subject DECLARES its own exclusions instead of filtering someone
-    // else's roster. Filtering was still borrowing: the probe roster removes
-    // lens/testgen.dag, workflow/testclaim_corpus_runner.dag,
-    // workflow/affected_testgen_ci_runner.dag, lens/idempotency/write_effect.dag and
-    // lens/parallelism/data_dependency.dag while leaving the modules that IMPORT
-    // them in, which produced 16 "unresolved import: module not found" errors naming
-    // modules that exist in the tree under exactly the imported name. An exclusion
-    // that is not closed under the importer relation reports present code as absent.
-    //
-    // The one row here is the deliberately-malformed scanner input: modules that
-    // declare imports which do not exist, on purpose, as test DATA for the layering
-    // scanner. It is the only population whose failure to resolve is the point.
-    // Both rows are deliberately-invalid test DATA, and each one's refusal is the
-    // property its consumer reads: layering_scan modules declare imports that do not
-    // exist, and meta_exec_confinement_scan/leak plants a cross-module construction
-    // of the sole_constructor type TransportScript. Including them would make the
-    // subject report a working wall as a broken module.
-    //
-    // Two GROUNDS, and they are different facts rather than one bucket. Deliberately
-    // invalid: layering_scan modules declare imports that do not exist, and
-    // meta_exec_confinement_scan/leak plants a cross-module construction of the
-    // sole_constructor type TransportScript — each one's refusal IS the property its
-    // consumer reads, so including it reports a working wall as a broken module.
-    // Outside the declared source roots: ownership_movable_test imports
-    // v1.compiler.ownership, which is declared by src/v1/ownership.dag and this
-    // subject's roots are dag and src/v2. That module is present in the repository
-    // and absent from this subject, which is a boundary fact — NOT a file that failed
-    // to resolve, and the distinction is the whole difference between a declared
-    // subject and an absorbing exclusion. It dissolves by adding src/v1 to the roots.
-    // NOT PRESENT HERE, and worth naming because it was: "test/fixture/layering_scan/".
-    // That row was inherited from the probe roster and carried forward with a
-    // confident justification about deliberately-malformed scanner inputs. The
-    // population does not exist — 454e7acbd deleted those fixtures with Law B, and
-    // the only surviving mentions of the name in the tree were this row and the test
-    // spec beside it. An exclusion guarding an empty population is not harmless: it
-    // reads as evidence that something needed excluding, and nothing would ever
-    // contradict it.
-    let excludes: Vec<String> = vec![
-        "test/fixture/meta_exec_confinement_scan/".to_string(),
-        "test/manual/ownership_movable_test.dag".to_string(),
-    ];
+    // What used to sit here was pattern rows UNION a derived failure closure: a fixed
+    // point that strict-resolved the tree, added every failure AND its transitive
+    // importers to the exclusions, and retried until resolution succeeded. Its job was
+    // therefore to make the build pass by removing whatever failed — an absorbing
+    // failure arm at repository scale, under which a module could stop resolving
+    // globally and nothing went red. Measured before deletion: 8.7 minutes, 4 rounds,
+    // 715 modules removed, of which only 61 actually failed and 654 were excluded
+    // solely for importing one of those 61.
+    let excludes: Vec<String> = v1_compiler::cli_run::floor_prepared_subject_exclusions();
     let prepare_started = Instant::now();
     let PreparedWholeTreeSubject {
         ctx,

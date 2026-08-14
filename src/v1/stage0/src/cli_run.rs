@@ -16047,6 +16047,27 @@ pub struct PreparedWholeTreeSubject {
     pub modules_excluded: usize,
 }
 
+/// THE FLOOR'S EXCLUSION SET, at ONE authority for every prepared-subject consumer.
+///
+/// The exclusion set is part of the SUBJECT, so two consumers preparing "the floor's
+/// subject" from two copies of this list are preparing two subjects that merely happen
+/// to agree today — and the digest would not say so, because it is derived from the
+/// sources each list selected. One list, two call sites (the required discovery corpus
+/// and `claim_batch --one-prepared-subject`), so a row edit moves both or neither.
+///
+/// Both rows are deliberately-invalid test DATA whose refusal is the property a witness
+/// reads, or a boundary fact — never "it failed to resolve". `meta_exec_confinement_scan`
+/// plants a cross-module construction of the `sole_constructor` type `TransportScript`,
+/// so including it reports a working wall as a broken module. `ownership_movable_test`
+/// imports `v1.compiler.ownership`, declared by `src/v1/ownership.dag`, and this subject's
+/// roots are `dag` and `src/v2` — the row names its own dissolution: add that root.
+pub fn floor_prepared_subject_exclusions() -> Vec<String> {
+    vec![
+        "test/fixture/meta_exec_confinement_scan/".to_string(),
+        "test/manual/ownership_movable_test.dag".to_string(),
+    ]
+}
+
 /// THE ENVELOPE IS THE SUBJECT, NOT THE SOURCES.
 ///
 /// This used to pass `None, None` for the fixture store and the published mock keys
@@ -16057,6 +16078,39 @@ pub struct PreparedWholeTreeSubject {
 /// two different runs and reported disagreement it could not explain. Measured
 /// consequence when the harness supplied neither: 9,057 of 9,317 witnesses could not
 /// find their own code.
+/// ONE RESOLVE, N CONSUMERS — the resolved graph memoized by the digest of the sources
+/// that produced it.
+///
+/// The load-bearing observation is that `ExecutionMode` is NOT an input to resolution. It
+/// reaches only `InterpContext::with_runtime_options`, so a Hermetic batch and a Wet batch
+/// over the same tree are two CONTEXTS over one graph, not two subjects. Without this memo
+/// every consumer that wanted a prepared world paid a full whole-tree resolve, which is why
+/// the explicit-entry lanes had to stay entry-major: a whole-tree preparation to serve ten
+/// named entries is the entry-major cost-shape defect pointing the other way. Memoized, the
+/// second consumer pays a file walk and nothing else, and that objection dissolves.
+///
+/// THE KEY IS CONTENT, NOT THE ROOTS. Keying on `(roots, exclusions)` would be a cache whose
+/// key omits an input — the sources themselves — so an edited tree would serve a stale graph
+/// under a digest claiming to name the current one. Walking and digesting is the cheap half
+/// of preparation (reads, no parse or typecheck); resolve and typecheck are the expensive
+/// half, and only that half is reused.
+///
+/// ONE SLOT, so retention is bounded to a single whole-tree graph rather than growing per
+/// distinct subject. A different digest evicts rather than accumulating: the floor prepares
+/// one subject at a time and co-resident whole-tree graphs are exactly the retention that
+/// produced the 2026-07-21 exit-137 kills.
+struct PreparedWholeTreeResolve {
+    graph: Rc<v1_compiler_compile::ResolvedGraph>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    modules_resolved: usize,
+    modules_excluded: usize,
+}
+
+thread_local! {
+    static PREPARED_WHOLE_TREE_RESOLVE: std::cell::RefCell<Option<(String, Rc<PreparedWholeTreeResolve>)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
 pub fn prepare_whole_tree_subject(
     source_roots: &[String],
     exclude_substrings: &[String],
@@ -16065,22 +16119,47 @@ pub fn prepare_whole_tree_subject(
     whole_tree_published_keys: Option<std::rc::Rc<std::collections::HashSet<String>>>,
 ) -> Result<PreparedWholeTreeSubject, String> {
     let picked = whole_tree_strict_sources(source_roots, exclude_substrings)?;
-    let modules_resolved = picked.modules_resolved;
-    let modules_excluded = picked.modules_excluded;
     let subject_digest = subject_digest_for_closure(&picked.sources);
-    let (graph, source_indices) =
-        resolved_graph_from_sources(picked.sources, ResolveTypecheckGate::Strict)?;
+    let hit = PREPARED_WHOLE_TREE_RESOLVE.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .filter(|(digest, _)| digest == &subject_digest)
+            .map(|(_, resolved)| resolved.clone())
+    });
+    let resolved = match hit {
+        Some(resolved) => {
+            eprintln!(
+                "[one-prepared-subject] reusing the resolved graph for digest={subject_digest} (execution mode is not an input to resolution; this consumer builds its own context)"
+            );
+            resolved
+        }
+        None => {
+            let modules_resolved = picked.modules_resolved;
+            let modules_excluded = picked.modules_excluded;
+            let (graph, source_indices) =
+                resolved_graph_from_sources(picked.sources, ResolveTypecheckGate::Strict)?;
+            let resolved = Rc::new(PreparedWholeTreeResolve {
+                graph,
+                source_indices,
+                modules_resolved,
+                modules_excluded,
+            });
+            PREPARED_WHOLE_TREE_RESOLVE
+                .with(|slot| *slot.borrow_mut() = Some((subject_digest.clone(), resolved.clone())));
+            resolved
+        }
+    };
     Ok(PreparedWholeTreeSubject {
         ctx: v1_interpreter::InterpContext::with_runtime_options(
-            graph.as_ref(),
-            source_indices,
+            resolved.graph.as_ref(),
+            resolved.source_indices.clone(),
             execution_mode,
             fixture_store,
             whole_tree_published_keys,
         ),
         subject_digest,
-        modules_resolved,
-        modules_excluded,
+        modules_resolved: resolved.modules_resolved,
+        modules_excluded: resolved.modules_excluded,
     })
 }
 
@@ -24447,6 +24526,61 @@ fn run_discovery_corpus_with_options_inner(
         );
     }
     let execution_authority_is_subject = options.execution_authority_source_roots == source_roots;
+
+    // FLOOR2 CUTOVER — the required floor's execution key, with the entry removed from it.
+    //
+    // Everything below this branch is ENTRY-MAJOR machinery: a corpus-wide index built to
+    // answer per-entry questions, a pre-resolve closure walk per roster row, per-entry
+    // frontier attribution, and a width governor whose entire job is packing per-entry
+    // preparations into a memory envelope. One preparation serving every claim does not
+    // make that machinery cheaper — it removes its subject. There is no width to govern
+    // when there is one subject, so this path is width-one by construction rather than by
+    // policy, and the governor is simply not consulted.
+    //
+    // ONE CONDITION, and it is the only fact that still discriminates: selection must be OFF.
+    // A selection-bearing lane needs per-entry frontier evaluation, and an entry-private
+    // context is precisely what supplies it; retiring that is the follow-on that removes
+    // `node_frontier_selection` from `Runnable`, not this change.
+    //
+    // A SECOND CONDITION WAS HERE AND IS DELETED, because the fact under it stopped being
+    // true. The branch also required a WALKED roster (`scan_dirs` non-empty), so the
+    // explicit-entry lanes stayed entry-major on the ground that one whole-tree preparation
+    // to serve ten named entries is the entry-major cost-shape defect pointing the other
+    // way. That was correct while every consumer paid its own resolve. It is not correct now:
+    // `ExecutionMode` is not an input to resolution, so `prepare_whole_tree_subject` memoizes
+    // the graph by its source digest and a Wet lane following the Hermetic corpus pays a file
+    // walk and builds its own context. Keeping the condition would have preserved a second
+    // execution key for a cost that no longer exists — and an early return around the old
+    // floor is a migration technique, not an architecture.
+    //
+    // `explicit_roster_only` stays out of the condition deliberately: the executor never sets
+    // it, and the harnesses that do (the width-policy cohort probe, the floor-skip witness)
+    // are measuring the entry-major path itself, so moving them would delete their subject.
+    if options.node_frontier_selection == NodeFrontierSelectionMode::Off
+        && !options.explicit_roster_only
+    {
+        heartbeat_feed_set_entry_total(entry_row_groups(&rows).len() as u64);
+        let summary = run_discovery_rows_against_prepared_subject(
+            &rows,
+            source_roots,
+            execution_mode,
+            options.witness_budget_policy(),
+            ShardStyle {
+                shard_id: 0,
+                shard_count: 1,
+                color: floor_color_enabled(),
+                stream: floor_stream_enabled(),
+            },
+        )?;
+        return Ok(finalize_discovery_summary(
+            summary,
+            &rows,
+            options.node_frontier_selection,
+            None,
+            deferred_rows,
+        ));
+    }
+
     // No degradation arm: a non-Off node_frontier_selection is a DECLARED capability,
     // so every input it needs (the git-diff observation, the frontier attribution, the
     // affected-set runner) must be present — a failure is a loud typed error, never a
@@ -25675,6 +25809,618 @@ impl ShardStyle {
 }
 
 #[allow(clippy::too_many_arguments)]
+/// FLOOR2 — the floor's execution key with the ENTRY removed from it.
+///
+/// The entry-major runner below prepares one compiler world per roster entry and runs
+/// that entry's witnesses inside it. This runs every witness of the whole roster against
+/// ONE prepared subject. Measured on run 31745991795, the run this replaces: 1927.6s
+/// preparing 1137 entry-private worlds to enable 148.1s of evaluation.
+///
+/// WITNESS IDENTITY IS `module.function` HERE, and that is the load-bearing difference
+/// rather than an incidental one. The host resolves an invocation through a name-keyed
+/// map, which is safe per-entry because one context holds one closure — one name is one
+/// node. Under a shared subject it is not: two entries declaring the same `test fn` name
+/// collapse to a single map entry, so one runs twice and the other never runs AT AN
+/// UNCHANGED ROW COUNT, and the receipt is then indistinguishable from a healthy run.
+/// Measured on the live roster: 30 names covering 63 rows. Qualification is construction —
+/// the ambiguous call is not expressible — and the two refusals below cover only the
+/// residue where identity genuinely cannot be derived.
+fn run_discovery_rows_against_prepared_subject(
+    rows: &[DiscoveryRow],
+    source_roots: &[String],
+    execution_mode: v1_interpreter::ExecutionMode,
+    budgets: WitnessBudgetPolicy,
+    style: ShardStyle,
+) -> Result<DiscoverySummary, String> {
+    let qualified = qualify_discovery_rows_for_prepared_subject(rows, source_roots)?;
+
+    // The published-mock corpus is part of the ENVELOPE, and therefore part of the
+    // subject. Preparing without it produced a world in which every claim reading a
+    // published mock resolved against nothing: 9,057 of 9,317 witnesses could not find
+    // their own code, at a digest that claimed to name the same subject.
+    let whole_tree_published_keys = match precompute_whole_tree_published_mock_keys(source_roots) {
+        Ok(keys) if keys.is_empty() => None,
+        Ok(keys) => Some(Rc::new(keys)),
+        Err(e) => {
+            return Err(format!(
+                "whole-tree published mock corpus precompute failed: {e}"
+            ));
+        }
+    };
+
+    set_phase(FloorPhase::Resolve, "one-prepared-subject");
+    let prepare_started = std::time::Instant::now();
+    let PreparedWholeTreeSubject {
+        ctx,
+        subject_digest,
+        modules_resolved,
+        modules_excluded,
+    } = prepare_whole_tree_subject(
+        source_roots,
+        &floor_prepared_subject_exclusions(),
+        execution_mode,
+        None,
+        whole_tree_published_keys,
+    )?;
+    let prepare_nanos = prepare_started.elapsed().as_nanos();
+    // THE STAGE SPLIT IS UNATTRIBUTED ON THIS PATH, and reporting zeros is the honest form.
+    //
+    // The instrumentation that fills `RESOLVE_STAGE_SLOT` lives in
+    // `resolved_graph_from_sources_with_index`, and it is reset at the top of
+    // `resolve_entry_with_parse_cache_inner` — an ENTRY-keyed resolve. The preparation goes
+    // through `resolved_graph_from_sources`, which touches the slot nowhere, so snapshotting
+    // it here would report whatever an unrelated earlier resolve left behind as this
+    // preparation's split. That is not merely a cosmetic mislabel: the exclusive cost
+    // partition REFUSES with `OverAttributed` whenever the summed stages exceed the parent
+    // span, so a stale slot larger than one preparation turns the receipt into a refusal
+    // whose cause has nothing to do with the run. Zeros reconcile, and the whole preparation
+    // lands in the derived remainder — which says exactly what is true, that the cost is
+    // real and its interior is not attributed here.
+    //
+    // Dissolve-on: the whole-tree compile entrypoint carries the same stage instrumentation
+    // as the entry-keyed one, at which point this snapshots a split that is genuinely its
+    // own.
+    let stage_nanos = ResolveStageNanos::default();
+    let entry_group_count = entry_row_groups(rows).len();
+    eprintln!(
+        "[one-prepared-subject] prepared 1 subject in {}ms: {} module(s) resolved, {} excluded, digest={}; {} witness(es) over {} entr{}",
+        prepare_nanos / 1_000_000,
+        modules_resolved,
+        modules_excluded,
+        subject_digest,
+        rows.len(),
+        entry_group_count,
+        if entry_group_count == 1 { "y" } else { "ies" },
+    );
+
+    // THE SUBJECT MUST CONTAIN EVERY MODULE THE ROSTER NAMES, checked here rather than
+    // discovered one witness at a time.
+    //
+    // The roster's exclusions and the subject's exclusions answer different questions, so
+    // they are different lists and neither may be derived from the other. That is correct
+    // and it leaves one seam: a witness admitted by the roster whose module the subject
+    // excluded. Today that population is empty — `test/manual/` is a roster exclusion and
+    // the meta-exec scan fixtures declare no witnesses — but "empty today" is not a
+    // property anyone maintains, and the failure it decays into is the worst available
+    // shape: every affected witness reports its own `no such function`, so a subject
+    // boundary reads as N unrelated broken witnesses. One located refusal naming the entry
+    // and the module is what the reader can act on.
+    let mut subject_modules: HashSet<String> = HashSet::new();
+    collect_typed_module_names(
+        ctx.modules.iter().cloned(),
+        &ctx.source_indices,
+        &mut subject_modules,
+    );
+    let mut absent: Vec<String> = Vec::new();
+    for (row, identity) in rows.iter().zip(qualified.iter()) {
+        if !subject_modules.contains(&identity.module_path) {
+            absent.push(format!("{} (module {})", row.entry, identity.module_path));
+        }
+    }
+    // Sorted before dedup rather than relying on the caller's ordering: `dedup` drops only
+    // CONSECUTIVE repeats, so on an unsorted roster it would report one entry once per
+    // witness it declares and the count would read as a wider breakage than it is.
+    absent.sort();
+    absent.dedup();
+    if !absent.is_empty() {
+        return Err(format!(
+            "ONE-PREPARED-SUBJECT REFUSAL cause=RosterEntryOutsidePreparedSubject entries={} \
+             — the roster admitted these witnesses but the subject's exclusions removed the \
+             module that declares them, so they have code in the tree and none in the run; \
+             either the roster exclusion or the subject exclusion is wrong, and the two lists \
+             answer different questions so neither may simply copy the other:\n  {}",
+            absent.len(),
+            absent.join("\n  ")
+        ));
+    }
+
+    // The execution-leg classifier runs INSIDE the prepared subject. The entry-major path
+    // resolves its authority separately, and doing that here would stand up a second
+    // corpus beside the one just prepared — the exact duplicate-corpus cost (~6GB, +426s)
+    // that `prime_witness_execution_legs_from_authority` was written to avoid.
+    prime_witness_execution_legs_within_prepared_subject(
+        &ctx,
+        source_roots,
+        rows.iter().map(|row| row.entry.as_str()),
+    )?;
+
+    ctx.set_witness_eval_budget(budgets.cpu_eval_budget_ms);
+    ctx.set_witness_wall_budget(budgets.wet_receipt_wall_budget_ms);
+
+    let mut summary = DiscoverySummary {
+        total: rows.len(),
+        passed: 0,
+        skipped: 0,
+        deferred_rows: Vec::new(),
+        predicted_unaffected: Vec::new(),
+        selection_skipped_rows: Vec::new(),
+        divergences: Vec::new(),
+        failures: Vec::new(),
+        witness_outcomes: Vec::with_capacity(rows.len()),
+        // ONE resolve happened, so there is ONE receipt, and its subject is named by the
+        // digest of what was actually resolved rather than by a file path. Synthesizing a
+        // per-entry row here would report N preparations to the cost partition and be
+        // exactly the fabricated plausible output this path exists to remove.
+        entry_resolve_receipts: vec![EntryResolveReceipt {
+            entry: format!("prepared-subject:{subject_digest}"),
+            closure_subject: subject_digest.clone(),
+            resolve_nanos: prepare_nanos,
+            stage_nanos,
+        }],
+        total_resolve_nanos: prepare_nanos,
+        total_stage_nanos: stage_nanos,
+        performance_receipts: Vec::new(),
+        total_measured_nanos: 0,
+        // The closure IS the subject: every module the run can reach was resolved once,
+        // so this is a count of the prepared world, not a union over per-entry closures.
+        roster_closure_nodes: modules_resolved,
+        total_entry_groups: 0,
+        selected_entry_groups: 0,
+        selection_categorization_reason: None,
+    };
+
+    let eval_started = std::time::Instant::now();
+    for (row, qualified_name) in rows.iter().zip(qualified.iter()) {
+        set_phase(
+            FloorPhase::Eval,
+            &format!("{}::{}", row.entry, row.function),
+        );
+        active_workset_admit(&row.entry, &row.function);
+        let (outcome, receipt) =
+            run_claim_measured(&ctx, &subject_digest, &qualified_name.qualified);
+        active_workset_complete(&row.entry, &row.function);
+        // Drop the call-memo frame per witness. Under one long-lived context the memo is
+        // never torn down with an entry's world, so without this it accumulates across the
+        // whole roster instead of across one entry's rows.
+        v1_interpreter::eval_call_memo_frame_exit(&ctx);
+        let wall_nanos = receipt.wall_nanos;
+        summary.total_measured_nanos += wall_nanos;
+        summary.performance_receipts.push(receipt);
+        let execution_leg = witness_execution_leg_label(&row.entry);
+        summary.witness_outcomes.push(DiscoveryWitnessOutcome {
+            entry: row.entry.clone(),
+            module_path: qualified_name.module_path.clone(),
+            function: row.function.clone(),
+            outcome: outcome.clone(),
+            execution_leg: execution_leg.clone(),
+        });
+        style.stream_witness(
+            &row.function,
+            &row.entry,
+            &execution_leg,
+            wall_nanos,
+            matches!(outcome, ClaimOutcome::Pass),
+        );
+        match outcome {
+            ClaimOutcome::Pass => summary.passed += 1,
+            ClaimOutcome::Fail => {
+                let mut failure = format!("{} ({}) returned Bool(false)", row.function, row.entry);
+                append_failure_receipt_companion_loudness(
+                    &mut failure,
+                    &ctx,
+                    &qualified_name.qualified,
+                );
+                append_witness_verdict_diagnostic_loudness(
+                    &mut failure,
+                    &ctx,
+                    &qualified_name.qualified,
+                );
+                summary.failures.push(failure);
+            }
+            ClaimOutcome::NotBool { got } => summary.failures.push(format!(
+                "{} ({}) returned `{}`, not Bool",
+                row.function, row.entry, got
+            )),
+            ClaimOutcome::RuntimeError { message } => summary.failures.push(format!(
+                "{} ({}) runtime error: {}",
+                row.function, row.entry, message
+            )),
+            ClaimOutcome::TimedOut {
+                elapsed_ms,
+                budget_ms,
+                kind,
+            } => summary.failures.push(format!(
+                "{} ({}) killed at its {} budget: {}ms elapsed > {}ms budget \
+                 (elapsed is a ceiling, not a completed duration)",
+                row.function,
+                row.entry,
+                kind.label(),
+                elapsed_ms,
+                budget_ms
+            )),
+        }
+    }
+    // EVERY NUMBER ON THIS LINE IS OBSERVED, and the one a reader most wants is
+    // deliberately absent. It used to end `per_entry_graph_resolve_count=0`, which was a
+    // STRING LITERAL in the position a reader takes for a measurement — it would have
+    // printed zero while the host performed any number of them, and a fabricated plausible
+    // output is worst of all in the instrument whose entire purpose is to establish that
+    // number. `graph_resolve_receipts` is counted from the receipts actually pushed, so a
+    // regression in the seed below this function shows up here as a number greater than 1.
+    // The capability argument that makes zero PER-ENTRY resolves true is separate and lives
+    // in v2.workflow.floor2_prepared_subject: nothing this path holds can name a source
+    // root, an index, a resolver, or an entry path, so an entry-private world is
+    // unrepresentable rather than merely uncounted.
+    //
+    // The distinct-identity count is measured over what EXECUTED rather than over the
+    // roster, so it is independent of the construction wall above it. Two rows collapsing
+    // onto one identity is the failure that leaves the row count unchanged, and this is the
+    // number that would move.
+    let distinct_executed: std::collections::BTreeSet<&str> =
+        qualified.iter().map(|q| q.qualified.as_str()).collect();
+    if distinct_executed.len() != rows.len() {
+        return Err(format!(
+            "ONE-PREPARED-SUBJECT REFUSAL cause=QualifiedIdentityCollapsedDuringRun rows={} \
+             distinct_identities={} — the executed identity set is smaller than the roster, so \
+             some witness ran more than once and another did not run at all",
+            rows.len(),
+            distinct_executed.len()
+        ));
+    }
+    eprintln!(
+        "[one-prepared-subject] prepare {}ms + evaluate {}ms over {} witness(es); prepared_subject_count=1 graph_resolve_receipts={} distinct_qualified_identities={}",
+        prepare_nanos / 1_000_000,
+        eval_started.elapsed().as_millis(),
+        rows.len(),
+        summary.entry_resolve_receipts.len(),
+        distinct_executed.len(),
+    );
+    Ok(summary)
+}
+
+#[cfg(test)]
+mod prepared_whole_tree_resolve_memo_tests {
+    use super::*;
+
+    /// A source root the test authors itself, so the subject is controlled rather than
+    /// borrowed from the live tree: a memo test whose input is the repository would have its
+    /// oracle move underneath it, and "the digest changed" would stop discriminating.
+    fn write_root(dir: &std::path::Path, module: &str, body: &str) {
+        std::fs::create_dir_all(dir).expect("create root");
+        std::fs::write(
+            dir.join("m.dag"),
+            format!("module {module}\n\nfn probe() -> Int {{\n  {body}\n}}\n"),
+        )
+        .expect("write module");
+    }
+
+    /// Read the graph the memo is currently holding. Pointer identity is the oracle here,
+    /// so the test needs the stored `Rc` itself rather than anything derived from it.
+    fn memoized_graph() -> Option<Rc<v1_compiler_compile::ResolvedGraph>> {
+        PREPARED_WHOLE_TREE_RESOLVE
+            .with(|slot| slot.borrow().as_ref().map(|(_, r)| r.graph.clone()))
+    }
+
+    /// THE MEMO IS A CACHE ON THE HOT PATH, and it is proven by POINTER IDENTITY rather than
+    /// by a clock or a counter.
+    ///
+    /// A clock would make a loaded host look like a miss and a warm allocator look like a hit.
+    /// A counter was tried first and is the wrong instrument for a different reason worth
+    /// recording: `typecheck_compute_count` counts misses on the ENTRY-keyed typecheck cache,
+    /// and this path compiles through `resolved_graph_from_sources`, which never touches it —
+    /// a cold whole-tree preparation leaves it at zero, so "unchanged after the second call"
+    /// would have held vacuously and the test would have proven nothing while passing.
+    ///
+    /// `resolved_graph_from_sources` allocates a fresh `Rc` on every call, so the SAME pointer
+    /// after a second preparation is direct evidence that it was not called. That cannot be
+    /// satisfied by a re-resolve that happens to produce an equal graph.
+    ///
+    /// Both arms are asserted because either alone is satisfied by a broken cache: a memo that
+    /// never hits passes "changed content recomputes", and a memo keyed on the roots instead
+    /// of the content passes "unchanged content reuses" while serving a stale graph under a
+    /// digest that names the current tree. That second failure is what this design is most
+    /// exposed to, and the changed-content arm is what catches it.
+    #[test]
+    fn resolve_memo_reuses_on_identical_content_and_recomputes_on_changed_content() {
+        let base = std::env::temp_dir().join(format!("gunbc-memo-{}", std::process::id()));
+        let root = base.join("root");
+        write_root(&root, "memo.probe", "1");
+        let roots = vec![root.to_string_lossy().into_owned()];
+        let excludes: Vec<String> = Vec::new();
+
+        let first = prepare_whole_tree_subject(
+            &roots,
+            &excludes,
+            v1_interpreter::ExecutionMode::Hermetic,
+            None,
+            None,
+        )
+        .expect("first preparation");
+        let cold_graph = memoized_graph().expect("a preparation must populate the memo");
+
+        // Second consumer, DIFFERENT execution mode. That is the fact the memo rests on: mode
+        // reaches only the context, never resolution. If resolution ever became mode-dependent
+        // this reuse would be the lie, and this is where it would surface.
+        let second = prepare_whole_tree_subject(
+            &roots,
+            &excludes,
+            v1_interpreter::ExecutionMode::Wet,
+            None,
+            None,
+        )
+        .expect("second preparation");
+        let warm_graph = memoized_graph().expect("memo still populated");
+        assert!(
+            Rc::ptr_eq(&cold_graph, &warm_graph),
+            "identical content must hand the second consumer the SAME resolved graph; a new \
+             allocation here means the tree was resolved twice"
+        );
+        assert_eq!(
+            first.subject_digest, second.subject_digest,
+            "identical content must produce one subject identity"
+        );
+        assert_eq!(first.modules_resolved, second.modules_resolved);
+
+        // Same roots, different CONTENT. A memo keyed on the roots returns the stale graph here.
+        write_root(&root, "memo.probe", "2");
+        let third = prepare_whole_tree_subject(
+            &roots,
+            &excludes,
+            v1_interpreter::ExecutionMode::Hermetic,
+            None,
+            None,
+        )
+        .expect("third preparation");
+        let recomputed = memoized_graph().expect("memo repopulated");
+        assert!(
+            !Rc::ptr_eq(&cold_graph, &recomputed),
+            "changed content must resolve again; a roots-keyed memo would have reused"
+        );
+        assert_ne!(
+            third.subject_digest, first.subject_digest,
+            "changed content must change the subject identity"
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+}
+
+#[cfg(test)]
+mod prepared_subject_identity_tests {
+    use super::{qualify_discovery_rows_for_prepared_subject, DiscoveryRow};
+
+    fn source_roots() -> Vec<String> {
+        let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace root");
+        vec![
+            workspace.join("dag").to_string_lossy().into_owned(),
+            workspace.join("src/v2").to_string_lossy().into_owned(),
+        ]
+    }
+
+    fn row(entry: &str, function: &str) -> DiscoveryRow {
+        DiscoveryRow {
+            label: function.to_string(),
+            entry: entry.to_string(),
+            function: function.to_string(),
+            reads_live_tree: false,
+        }
+    }
+
+    /// THE DISCRIMINATING PAIR, and it is a real one rather than a synthetic collision:
+    /// both entries are live rows on the floor roster declaring the same function name in
+    /// different modules. Under the bare-name identity the entry-major path can safely use,
+    /// these are ONE map entry — one witness would run twice and the other never, at an
+    /// unchanged row count. Under qualification they are two.
+    #[test]
+    fn colliding_bare_names_qualify_to_distinct_identities() {
+        let roots = source_roots();
+        let rows = vec![
+            row(
+                "dag/test/claim/doc_reachability_witness_test.dag",
+                "doc_graph_has_no_dangling_links",
+            ),
+            row(
+                "src/v2/lens/doc_reachability_test.dag",
+                "doc_graph_has_no_dangling_links",
+            ),
+        ];
+        let qualified = qualify_discovery_rows_for_prepared_subject(&rows, &roots)
+            .expect("two distinct modules declaring one function name must qualify, not refuse");
+        assert_eq!(qualified.len(), 2);
+        assert_ne!(
+            qualified[0].qualified, qualified[1].qualified,
+            "qualification did not separate the colliding bare names"
+        );
+        // The half that makes the assertion above mean something: the bare names really are
+        // identical, so the separation came from the module path and not from the input.
+        assert_eq!(rows[0].function, rows[1].function);
+        assert!(qualified[0]
+            .qualified
+            .ends_with(&format!(".{}", rows[0].function)));
+        assert!(qualified[1]
+            .qualified
+            .ends_with(&format!(".{}", rows[1].function)));
+        assert!(!qualified[0].module_path.is_empty());
+        assert!(!qualified[1].module_path.is_empty());
+    }
+
+    /// RED CONTROL for the collision arm. An implementation that qualified and then trusted
+    /// the result accepts this; the arm exists because a qualified name claimed by two rows
+    /// is the same silent double-run one level up.
+    #[test]
+    fn one_qualified_identity_claimed_twice_refuses() {
+        let roots = source_roots();
+        let entry = "dag/test/claim/doc_reachability_witness_test.dag";
+        let rows = vec![
+            row(entry, "doc_graph_has_no_dangling_links"),
+            row(entry, "doc_graph_has_no_dangling_links"),
+        ];
+        let refusal = qualify_discovery_rows_for_prepared_subject(&rows, &roots)
+            .expect_err("one identity claimed by two rows must refuse");
+        assert!(
+            refusal.contains("QualifiedIdentityClaimedByManySites"),
+            "{refusal}"
+        );
+    }
+
+    /// RED CONTROL for the identity arm. There is deliberately no bare-name fallback: it
+    /// would be available exactly when identity is unknown, which is when guessing is least
+    /// safe. The refusal names the offending entry so the failure is located.
+    #[test]
+    fn an_entry_with_no_module_identity_refuses_and_names_itself() {
+        let roots = source_roots();
+        let rows = vec![row(
+            "dag/does/not/exist_prepared_subject_probe.dag",
+            "probe",
+        )];
+        let refusal = qualify_discovery_rows_for_prepared_subject(&rows, &roots)
+            .expect_err("an entry with no module identity must refuse");
+        assert!(refusal.contains("ModulePathNotUnique"), "{refusal}");
+        assert!(
+            refusal.contains("exist_prepared_subject_probe.dag"),
+            "refusal must locate the offending entry: {refusal}"
+        );
+    }
+}
+
+/// The qualified identity of one roster row, carried beside the module path the receipt
+/// reports so both come from the SAME derivation rather than two lookups that agree.
+#[derive(Debug)]
+struct QualifiedWitnessIdentity {
+    module_path: String,
+    qualified: String,
+}
+
+/// Qualify every roster row, or REFUSE. There is no bare-name arm: the fallback would be
+/// available exactly when identity is unknown, which is when guessing is least safe.
+fn qualify_discovery_rows_for_prepared_subject(
+    rows: &[DiscoveryRow],
+    source_roots: &[String],
+) -> Result<Vec<QualifiedWitnessIdentity>, String> {
+    let module_path_index = build_module_path_index(source_roots);
+    let mut out: Vec<QualifiedWitnessIdentity> = Vec::with_capacity(rows.len());
+    let mut unnamed: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    for row in rows {
+        match v1_interpreter::selected_module_path(&row.entry, &module_path_index) {
+            Some(module_path) => {
+                let qualified = format!("{module_path}.{}", row.function);
+                out.push(QualifiedWitnessIdentity {
+                    module_path,
+                    qualified,
+                });
+            }
+            None => {
+                unnamed.insert(row.entry.as_str());
+                // Keep the vector row-aligned so the refusal below reports every offender
+                // rather than the first one.
+                out.push(QualifiedWitnessIdentity {
+                    module_path: String::new(),
+                    qualified: String::new(),
+                });
+            }
+        }
+    }
+    if !unnamed.is_empty() {
+        let mut msg = format!(
+            "ONE-PREPARED-SUBJECT REFUSAL cause=ModulePathNotUnique entries={} — these entry \
+             file(s) resolve to no single module path, so their witnesses have no identity \
+             under a shared subject:",
+            unnamed.len()
+        );
+        for entry in &unnamed {
+            msg.push_str(&format!("\n  {entry}"));
+        }
+        return Err(msg);
+    }
+    let mut claimed: std::collections::BTreeMap<&str, Vec<&str>> =
+        std::collections::BTreeMap::new();
+    for (row, identity) in rows.iter().zip(out.iter()) {
+        claimed
+            .entry(identity.qualified.as_str())
+            .or_default()
+            .push(row.entry.as_str());
+    }
+    let collided: Vec<(&&str, &Vec<&str>)> = claimed.iter().filter(|(_, e)| e.len() > 1).collect();
+    if !collided.is_empty() {
+        let mut msg = format!(
+            "ONE-PREPARED-SUBJECT REFUSAL cause=QualifiedIdentityClaimedByManySites identities={} \
+             — qualification did not make these identities unique, so one witness would run \
+             twice and another never at an unchanged row count:",
+            collided.len()
+        );
+        for (qualified, entries) in &collided {
+            msg.push_str(&format!(
+                "\n  {} claimed by: {}",
+                qualified,
+                entries.join(", ")
+            ));
+        }
+        return Err(msg);
+    }
+    Ok(out)
+}
+
+/// Derive each distinct entry's execution leg against the ALREADY PREPARED subject.
+///
+/// The classification authority is an ordinary module of the tree, so under a whole-tree
+/// subject it is already resolved and the label is one call away. The entry-major path has
+/// to resolve that authority separately because an entry-private world does not contain it.
+fn prime_witness_execution_legs_within_prepared_subject<'a>(
+    ctx: &v1_interpreter::InterpContext,
+    source_roots: &[String],
+    entries: impl IntoIterator<Item = &'a str>,
+) -> Result<(), String> {
+    let mut distinct: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for entry in entries {
+        let rel = repo_relative_dag_path(entry);
+        if witness_execution_leg_cached(&rel).is_none() {
+            distinct.insert(rel);
+        }
+    }
+    if distinct.is_empty() {
+        return Ok(());
+    }
+    let module_path_index = build_module_path_index(source_roots);
+    let module_path = v1_interpreter::selected_module_path(
+        WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY,
+        &module_path_index,
+    )
+    .ok_or_else(|| {
+        format!(
+            "witness execution leg: {WITNESS_ENTRY_ELIGIBILITY_CENSUS_AUTHORITY_ENTRY} resolves \
+             to no single module path, so the classifier has no identity under a shared subject \
+             (refuse)"
+        )
+    })?;
+    let qualified = format!("{module_path}.census_execution_leg_label");
+    for rel in distinct {
+        let leg = match eval_census_string_fn(ctx, &qualified, &rel) {
+            Ok(leg) if !leg.trim().is_empty() => leg,
+            Ok(_) => {
+                return Err(format!(
+                    "witness execution leg: {qualified}({rel:?}) returned an empty label (refuse)"
+                ));
+            }
+            Err(e) => return Err(format!("witness execution leg: {e} (refuse)")),
+        };
+        witness_execution_leg_cache_put(&rel, &leg);
+    }
+    Ok(())
+}
+
 fn run_discovery_rows(
     rows: &[DiscoveryRow],
     index: &MultiEntryIndex,

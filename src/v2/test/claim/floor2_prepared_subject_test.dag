@@ -6,14 +6,20 @@ import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.workflow.floor2_prepared_subject {
   admit_floor2_plan,
+  EntryMajorUntilFrontierRetires,
   Floor2Plan,
   Floor2PlanRefused,
   Floor2PlanRunnable,
   floor2_plan_refusals,
   floor2_prepared_subject_count,
+  floor_execution_key,
+  floor_execution_key_is_one_prepared_subject,
   ModulePathNotUnique,
+  NoSelectionMachinery,
+  OnePreparedSubjectKey,
   PreparedSubjectSpec,
   ResolvedWitness,
+  SelectionRequiresPerEntryFrontier,
   WitnessIdentified,
   WitnessIdentity,
   witness_identity_qualified_name,
@@ -47,13 +53,20 @@ data f2_doc_lens_site: WitnessSite = WitnessSite {
   function: "doc_graph_has_no_dangling_links"
 }
 
+// The module paths here are the ones those two files actually declare, not plausible
+// spellings derived from their paths. An earlier revision carried
+// "test.claim.doc_reachability_witness_test" and "v2.lens.doc_reachability_test", both
+// invented by reading the file path — and the comment above calls these live roster rows,
+// so the row asserted a fact about the tree that a one-line grep decides and that was
+// false. Neither the carrier nor its witness could ever have contradicted it, because the
+// identity is data here.
 data f2_doc_witness_identity: WitnessIdentity = WitnessIdentity {
-  module_path: "test.claim.doc_reachability_witness_test",
+  module_path: "test.claim.doc_reachability_witness",
   function: "doc_graph_has_no_dangling_links"
 }
 
 data f2_doc_lens_identity: WitnessIdentity = WitnessIdentity {
-  module_path: "v2.lens.doc_reachability_test",
+  module_path: "v2.test.lens_doc_reachability.doc_reachability_test",
   function: "doc_graph_has_no_dangling_links"
 }
 
@@ -82,8 +95,8 @@ data f2_refused_plan: Floor2Plan = Floor2Plan {
 test fn f2_colliding_names_get_distinct_qualified_identities() -> Bool {
   let a = witness_identity_qualified_name(identity: f2_doc_witness_identity)
   let b = witness_identity_qualified_name(identity: f2_doc_lens_identity)
-  (a == "test.claim.doc_reachability_witness_test.doc_graph_has_no_dangling_links")
-    && (b == "v2.lens.doc_reachability_test.doc_graph_has_no_dangling_links")
+  (a == "test.claim.doc_reachability_witness.doc_graph_has_no_dangling_links")
+    && (b == "v2.test.lens_doc_reachability.doc_reachability_test.doc_graph_has_no_dangling_links")
     && (a != b)
     && (f2_doc_witness_identity.function == f2_doc_lens_identity.function)
 }
@@ -122,10 +135,51 @@ test fn f2_a_plan_names_exactly_one_prepared_subject() -> Bool {
     && (floor2_prepared_subject_count(plan: f2_refused_plan) == 1)
 }
 
+// A selection-free lane takes the prepared subject, and this pins it POSITIVELY so the rule
+// cannot be satisfied by an implementation that never routes there at all.
+//
+// Roster provenance is deliberately absent from these witnesses now. It used to appear as a
+// second argument, and three of the four input combinations stayed entry-major; the seed
+// memoizing the resolved graph by source digest removed the cost that distinction named, so
+// the rule reads one input and the witnesses read one input. A witness still passing both
+// would be asserting a shape the carrier no longer has.
+test fn f2_selection_free_lane_takes_the_prepared_subject() -> Bool {
+  floor_execution_key_is_one_prepared_subject(
+    key: floor_execution_key(posture: NoSelectionMachinery, subject: f2_subject)
+  )
+}
+
+// RED CONTROL, and the pair is what makes either half mean anything: a rule that answered
+// OnePreparedSubjectKey for everything passes the positive witness above and fails here.
+test fn f2_selection_bearing_lane_stays_entry_major() -> Bool {
+  !floor_execution_key_is_one_prepared_subject(
+    key: floor_execution_key(posture: SelectionRequiresPerEntryFrontier, subject: f2_subject)
+  )
+    && match floor_execution_key(posture: SelectionRequiresPerEntryFrontier, subject: f2_subject) {
+      EntryMajorUntilFrontierRetires => true
+      OnePreparedSubjectKey { subject: _ } => false
+    }
+}
+
+// The prepared-subject arm carries the SUBJECT through unchanged. Without this the rule could
+// route correctly while handing the consumer a subject it invented, and every witness above
+// would still pass -- they only read which arm was selected.
+test fn f2_prepared_subject_arm_carries_the_declared_subject() -> Bool {
+  match floor_execution_key(posture: NoSelectionMachinery, subject: f2_subject) {
+    OnePreparedSubjectKey { subject: s } =>
+      length(xs: s.source_roots) == length(xs: f2_subject.source_roots)
+        && length(xs: s.exclusions) == length(xs: f2_subject.exclusions)
+    EntryMajorUntilFrontierRetires => false
+  }
+}
+
 test fn floor2_prepared_subject_witnesses() -> Bool {
   f2_colliding_names_get_distinct_qualified_identities()
     && f2_same_site_qualifies_to_one_identity()
     && f2_plan_with_only_identified_claims_is_runnable()
     && f2_one_unidentified_claim_refuses_the_whole_plan()
     && f2_a_plan_names_exactly_one_prepared_subject()
+    && f2_selection_free_lane_takes_the_prepared_subject()
+    && f2_selection_bearing_lane_stays_entry_major()
+    && f2_prepared_subject_arm_carries_the_declared_subject()
 }

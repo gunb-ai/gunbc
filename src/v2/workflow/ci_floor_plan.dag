@@ -694,6 +694,15 @@ data bin_witness_corpus_node: Node = Node {
 
 data bin_witness_corpus_note: String = "The bin-execution witness batch: the declared Wet lane for witnesses whose fns execute compiled seed witness binaries (gunbc.ci_layer_roots bin_witness_wet_entries — see bin_witness_wet_note there). They ran silently wet inside the discovery corpus until the hermetic flip; now the discovery batch is Hermetic and these rows keep their per-PR coverage under an explicit Wet profile (spawns_host_compiler: the runner may cargo-build a missing witness bin locally; in CI the build job prebuilds them). Enrolled only when the spec runs live discovery (bin_witness_corpus_enrolled), so regen/emit-determinism/synthetic specs carry no bin batch."
 
+// heavy_whole_tree_resolve FLIPPED TO true WITH THE EXECUTION-KEY CUTOVER, and the row is
+// what keeps the scheduler honest rather than a formality. Every SelectionOff batch now runs
+// against one prepared whole-tree subject, so this lane can perform a whole-tree resolve —
+// it usually will not, because the resolved graph is memoized by source digest and the
+// ordinary corpus has already paid for it, but "usually reuses" is a scheduling coincidence
+// and not a property of this row. Declaring false while the batch is capable of resolving
+// the tree would let the scheduler treat it as light and co-schedule it beside something
+// heavy, which is the co-residence the memory envelope exists to prevent. The declaration
+// states what the batch MAY do; the memo decides what it actually pays.
 fn bin_witness_corpus_runnable_for() -> Runnable {
   RunnableDiscoveryBatch {
     source_roots: corpus_source_roots(),
@@ -703,7 +712,7 @@ fn bin_witness_corpus_runnable_for() -> Runnable {
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
-      heavy_whole_tree_resolve: false,
+      heavy_whole_tree_resolve: true,
       spawns_host_compiler: true,
       memory: runnable_memory_substantial(),
       execution_mode: Wet

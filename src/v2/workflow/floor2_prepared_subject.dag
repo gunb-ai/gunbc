@@ -123,9 +123,27 @@ fn floor2_plan_refusals(plan: Floor2Plan) -> List<WitnessIdentityRefusal> {
 // function cannot construct the interpreter that runs it. Everything else the runner
 // used to decide — roster grouping, witness identity, refusal arms, admission, and the
 // verdict fold — is a fact of this module, so changing floor policy is a row edit rather
-// than a Rust edit. What this note must NOT be read as claiming: that the runner is
-// deleted. The entry-major path is still the authority on the required floor; this model
-// is consumed by the opt-in path until the agreement receipt is produced.
+// than a Rust edit.
+//
+// CUTOVER STANDING, stated at the scope it actually has. The required floor's DISCOVERED
+// witness corpus now executes this way: cli_run's run_discovery_corpus_with_options_inner
+// routes to run_discovery_rows_against_prepared_subject when selection is Off and the
+// roster was walked from scan_dirs, which is every ordinary merge-critical witness batch
+// (ci_floor_plan corpus_runnable_for). That branch returns BEFORE the entry-major
+// machinery, so the corpus index build, the per-roster pre-resolve closure walk, the
+// frontier attribution and the width governor are not merely unused on it -- they are not
+// reached. There is no width to govern when there is one subject, so the path is width-one
+// by construction rather than by policy.
+//
+// WHAT IS NOT CLAIMED, because two populations still run entry-major and saying otherwise
+// would be rung inflation. Selection-bearing lanes (the falsifier cadence, the expect-red
+// quarantine probes, the v1 scoped batch) need per-entry frontier evaluation, which is
+// exactly what an entry-private context supplies; retiring that is the follow-on that
+// removes node_frontier_selection from Runnable, not this change. And the explicit-entry
+// lanes (the Wet execution corpus, the bin-witness corpus) name around ten entries each,
+// where one whole-tree preparation serving ten is the same cost-shape defect pointing the
+// other way. So run_discovery_rows is NOT deleted, and this note does not say the floor is
+// one subject -- it says the batch that cost 1927.6s of preparation is.
 
 fn admit_floor2_plan(plan: Floor2Plan) -> Floor2PlanAdmission {
   let refusals = floor2_plan_refusals(plan: plan)
@@ -156,4 +174,48 @@ fn admit_floor2_plan(plan: Floor2Plan) -> Floor2PlanAdmission {
 // regression control over the host, not the guarantee.
 fn floor2_prepared_subject_count(plan: Floor2Plan) -> Int {
   1
+}
+
+// WHICH EXECUTION KEY A BATCH GETS IS FLOOR POLICY, so it is a row here rather than a
+// condition in the seed. The note above claims changing floor policy is a row edit and not
+// a Rust edit; landing the routing rule only in cli_run would have made that sentence false
+// in the same change that wrote it.
+//
+// ONE INPUT DECIDES, and it used to be two. An earlier revision of this rule also read
+// roster provenance -- walked from scan_dirs versus named by the batch -- because a batch
+// naming ten entries would have paid a whole-tree preparation to serve them, which is the
+// entry-major cost-shape defect pointing the other way. That ground was real and it is now
+// dissolved rather than merely unused: ExecutionMode is not an input to resolution, so the
+// seed memoizes the resolved graph by its source digest and a second consumer over the same
+// tree pays a file walk and builds its own context. The distinction bought nothing once the
+// cost it named was gone, so FloorRosterProvenance and the
+// WholeTreePreparationNotAmortized ground are DELETED here rather than left standing beside
+// the climb that obsoleted them.
+type FloorSelectionPosture
+  = NoSelectionMachinery
+  | SelectionRequiresPerEntryFrontier
+
+// The surviving entry-major arm names its own dissolution in its constructor: a
+// selection-bearing lane evaluates a per-entry frontier, and an entry-private context is
+// what supplies one. It retires when node_frontier_selection leaves Runnable, at which point
+// this coproduct collapses to a single inhabitant and deletes with it.
+type FloorExecutionKey
+  = OnePreparedSubjectKey { subject: PreparedSubjectSpec }
+  | EntryMajorUntilFrontierRetires
+
+fn floor_execution_key(
+  posture: FloorSelectionPosture,
+  subject: PreparedSubjectSpec
+) -> FloorExecutionKey {
+  match posture {
+    SelectionRequiresPerEntryFrontier => EntryMajorUntilFrontierRetires
+    NoSelectionMachinery => OnePreparedSubjectKey { subject: subject }
+  }
+}
+
+fn floor_execution_key_is_one_prepared_subject(key: FloorExecutionKey) -> Bool {
+  match key {
+    OnePreparedSubjectKey { subject: _ } => true
+    EntryMajorUntilFrontierRetires => false
+  }
 }
