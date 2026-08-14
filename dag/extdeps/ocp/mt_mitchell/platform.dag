@@ -8,7 +8,11 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.memory.types { DimmBuffering, DramGeneration, Registered, dram_generation_ddr5 }
 import extdeps.storage.types { Gen5, PcieGeneration }
-import extdeps.publication { DocumentPublicationStatus, PubliclyPublishedUnderOpenLicense }
+import extdeps.publication {
+  DocumentPublicationStatus,
+  PubliclyPublishedUnderOpenLicense,
+  SpecificationDocumentDate,
+}
 import extdeps.ocp.mt_mitchell.subject {
   MtMitchellReferencePlatform,
   internet_archive_mt_mitchell_capture_authority,
@@ -45,15 +49,22 @@ data mt_mitchell_publication_status: DocumentPublicationStatus = PubliclyPublish
 
 type OcpSpecificationRevisionRow {
   revision: NonEmptyStr
-  year: Int
-  month: Int
-  day: Int
+  publication_date: SpecificationDocumentDate
 }
 
 data mt_mitchell_revision_table: List<OcpSpecificationRevisionRow> = [
-  OcpSpecificationRevisionRow { revision: "0.50", year: 2022, month: 6, day: 6 },
-  OcpSpecificationRevisionRow { revision: "0.75", year: 2022, month: 6, day: 25 },
-  OcpSpecificationRevisionRow { revision: "0.80", year: 2022, month: 9, day: 9 },
+  OcpSpecificationRevisionRow {
+    revision: "0.50",
+    publication_date: SpecificationDocumentDate { year: 2022, month: 6, day: 6 },
+  },
+  OcpSpecificationRevisionRow {
+    revision: "0.75",
+    publication_date: SpecificationDocumentDate { year: 2022, month: 6, day: 25 },
+  },
+  OcpSpecificationRevisionRow {
+    revision: "0.80",
+    publication_date: SpecificationDocumentDate { year: 2022, month: 9, day: 9 },
+  },
 ]
 
 // ARCHITECTURE OPTIONS (section 7.4). The specification states three, and they

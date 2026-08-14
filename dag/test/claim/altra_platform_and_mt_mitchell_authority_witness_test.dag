@@ -215,9 +215,9 @@ test fn w_mt_mitchell_revision_table_ends_at_the_modelled_revision() -> Bool {
   let latest = mt_mitchell_revision_table.last()
   list_length(items: mt_mitchell_revision_table) == 3
     && latest.revision == "0.80"
-    && latest.year == 2022
-    && latest.month == 9
-    && latest.day == 9
+    && latest.publication_date.year == 2022
+    && latest.publication_date.month == 9
+    && latest.publication_date.day == 9
     && mt_mitchell_revision_table.first().revision == "0.50"
 }
 
