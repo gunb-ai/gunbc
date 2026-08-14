@@ -25,6 +25,7 @@ import gunbc.codex_supervised_turn {
   CodexSupervisedTurnOk,
   CodexSupervisedTurnRefused,
   CodexSupervisedTurnUnavailable,
+  CodexRunnerTurnTerminalReceipt,
   codex_supervised_turn_binding,
   codex_supervised_turn_client_command_id,
   run_codex_supervised_turn,
@@ -51,14 +52,31 @@ fn committed_admitted_codex_runtime_source() -> AdmittedCodexRuntimeSource {
 
 fn wet_codex_home_from_env() -> FilePath? {
   match shell.Env.Get(name: "CODEX_HOME" as NonEmptyStr).value {
-    Present { value: home } =>
+    Present { value: home } => {
       if home == "" {
         none
       } else {
         Present { value: home as FilePath }
       }
+    }
     Absent => none
   }
+}
+
+fn wet_supervised_turn_terminal_ok(
+  turn: WorkerTurn,
+  terminal: CodexRunnerTurnTerminalReceipt,
+) -> Bool {
+  (terminal.client_command_id as String) ==
+    (codex_supervised_turn_client_command_id(turn: turn) as String)
+    && match terminal.binding.lease.observed {
+      LeaseAbsent => true
+      LeaseRunningExpected => false
+      LeaseRunningStale => false
+      LeasePortForeign => false
+      LeaseInaccessible => false
+    }
+    && press_display_finished(disposition: terminal.disposition)
 }
 
 fn wet_supervised_turn() -> WorkerTurn {
@@ -113,21 +131,8 @@ test fn supervised_turn_materialized_bundle_writes_terminal_receipt() -> Bool {
                     cwd: cwd.path,
                     evidence_root: evidence.path,
                   ) {
-                    CodexSupervisedTurnOk { receipt: terminal } => {
-                      let client_ok =
-                        (terminal.client_command_id as String)
-                          == (codex_supervised_turn_client_command_id(turn: turn) as String)
-                      let lease_absent = match terminal.binding.lease.observed {
-                        LeaseAbsent => true
-                        LeaseRunningExpected => false
-                        LeaseRunningStale => false
-                        LeasePortForeign => false
-                        LeaseInaccessible => false
-                      }
-                      press_display_finished(disposition: terminal.disposition)
-                        && client_ok
-                        && lease_absent
-                    }
+                    CodexSupervisedTurnOk { receipt: terminal } =>
+                      wet_supervised_turn_terminal_ok(turn: turn, terminal: terminal)
                     CodexSupervisedTurnRefused { reason: _ } => false
                     CodexSupervisedTurnUnavailable { reason: _, process: _ } => false
                   }
