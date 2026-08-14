@@ -63,16 +63,18 @@ import extdeps.ocp.mt_jade.platform {
   soc_pwrgd_minimum_system_clock_cycles,
   platform_sequencing_handshake_chain,
 }
-import extdeps.external_authority { external_subject_ref_eq }
+import extdeps.external_authority { external_subject_ref_eq, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data expected_mt_jade_subject_ref: DeclarationRef = DeclarationRef {
-  module_path: "extdeps.ocp.mt_jade.subject",
-  decl_name: "mt_jade_reference_platform",
-  field: WholeDeclaration,
+data expected_mt_jade_subject_ref: ExternalSubjectRef = ExternalSubjectRef {
+  declaration: DeclarationRef {
+    module_path: "extdeps.ocp.mt_jade.subject",
+    decl_name: "mt_jade_reference_platform",
+    field: WholeDeclaration,
+  }
 }
 
 fn cpld_role_eq(
