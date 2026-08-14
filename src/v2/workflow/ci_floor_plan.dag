@@ -75,9 +75,6 @@ import std.nat { Nat }
 import std.measure { Second, second, second_count, millisecond_count, minute_to_millisecond }
 import std.realization_width { width_fold_objective_goals }
 import std.realization_schedule {
-  SelectionApplied,
-  SelectionPredictOnly,
-  SelectionOff,
   RealizationPlan,
   RealizationObjective,
   Runnable,
@@ -451,7 +448,7 @@ fn gunbc_ci_floor_schedule_runnable_labels(batches: List<List<Runnable>>) -> Lis
 
 fn runnable_is_discovery_batch(r: Runnable) -> Bool {
   match r {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => true
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => true
     RunnableScopedWitnessBatch { batch: _ } => true
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
     RunnableKernelWorkload { fused_op_count: _ } => false
@@ -651,7 +648,6 @@ fn corpus_runnable_for(spec: CiSpec) -> Runnable {
     source_roots: corpus_source_roots(),
     scan_dirs: spec.discovery_scan_dirs,
     explicit_entries: corpus_witness_entries(spec: spec),
-    node_frontier_selection: SelectionOff,
     exclude_substrings: witness_exclusion_substrings(),
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
@@ -674,7 +670,6 @@ fn execution_corpus_runnable_for(spec: CiSpec) -> Runnable {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
     explicit_entries: execution_witness_entries(spec: spec),
-    node_frontier_selection: SelectionOff,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
@@ -708,7 +703,6 @@ fn bin_witness_corpus_runnable_for() -> Runnable {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
     explicit_entries: bin_witness_wet_entries,
-    node_frontier_selection: SelectionOff,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
@@ -998,7 +992,6 @@ fn gunbc_falsifier_predict_only_batch() -> Runnable {
     source_roots: corpus_source_roots(),
     scan_dirs: gunbc_ci_spec.discovery_scan_dirs,
     explicit_entries: [],
-    node_frontier_selection: SelectionPredictOnly,
     exclude_substrings: witness_exclusion_substrings(),
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
@@ -1034,7 +1027,6 @@ fn gunbc_falsifier_silent_pick_gate_batch() -> Runnable {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
     explicit_entries: falsifier_silent_pick_gate_entries,
-    node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
@@ -1053,7 +1045,6 @@ fn gunbc_falsifier_self_host_wet_known_red_batch() -> Runnable {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
     explicit_entries: falsifier_self_host_wet_known_red_entries,
-    node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
@@ -1074,7 +1065,6 @@ fn gunbc_falsifier_known_red_probe_batch_over(
     source_roots: corpus_source_roots(),
     scan_dirs: [],
     explicit_entries: entries,
-    node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
@@ -1120,7 +1110,6 @@ fn gunbc_falsifier_self_host_wet_batch() -> Runnable {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
     explicit_entries: falsifier_self_host_wet_entries(),
-    node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
@@ -1139,7 +1128,6 @@ fn gunbc_falsifier_native_cache_cold_batch() -> Runnable {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
     explicit_entries: falsifier_native_cache_cold_roster(),
-    node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
@@ -1191,7 +1179,6 @@ fn gunbc_falsifier_rehomed_bin_wet_batch() -> Runnable {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
     explicit_entries: falsifier_rehomed_bin_wet_entries(),
-    node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
@@ -1214,7 +1201,6 @@ fn gunbc_falsifier_substrate_long_lane_batch() -> Runnable {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
     explicit_entries: falsifier_substrate_long_lane_entries(),
-    node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
@@ -1312,7 +1298,6 @@ fn gunbc_falsifier_cadence_witness_batch() -> Runnable {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
     explicit_entries: falsifier_cadence_witness_entries(),
-    node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
@@ -1343,7 +1328,6 @@ fn gunbc_pr_native_batch() -> Runnable {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
     explicit_entries: gunbc_pr_native_entries(),
-    node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
@@ -1382,7 +1366,6 @@ fn gunbc_v1_claim_scoped_known_red_probe_batch() -> Runnable {
     source_roots: ["dag", "src/v1"],
     scan_dirs: [],
     explicit_entries: known_red_probe_v1_envelope_roster(),
-    node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
@@ -1404,7 +1387,7 @@ fn gunbc_ci_witness_corpus_only_batches() -> List<List<Runnable>> {
 
 fn runnable_scan_dir_count(r: Runnable) -> Int {
   match r {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => length(xs: dirs)
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => length(xs: dirs)
     RunnableScopedWitnessBatch { batch: batch } => length(xs: batch.scan_dirs)
     RunnableSingleClaim { entry: _, function: _, profile: _ } => 0 - 1
     RunnableKernelWorkload { fused_op_count: _ } => 0 - 1
@@ -1462,7 +1445,7 @@ fn gunbc_ci_regen_floor_ordinary_batches() -> List<List<Runnable>> {
 fn runnable_single_claim_function(r: Runnable) -> String {
   match r {
     RunnableSingleClaim { entry: _, function: f, profile: _ } => f
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => "__discovery_corpus__"
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => "__discovery_corpus__"
     RunnableScopedWitnessBatch { batch: _ } => "__scoped_witness_batch__"
     RunnableKernelWorkload { fused_op_count: _ } => "__kernel_workload__"
   }
@@ -1587,7 +1570,7 @@ fn gunbc_ci_floor_breadth() -> Int {
 fn floor_batch_heavy_gate_resolve_count(batch: List<Runnable>) -> Int {
   fold(batch, init: 0, f: fn(acc, r) {
     match r {
-      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => acc
+      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => acc
       RunnableScopedWitnessBatch { batch: _ } => acc
       RunnableKernelWorkload { fused_op_count: _ } => acc
       RunnableSingleClaim { entry: _, function: f, profile: p } =>

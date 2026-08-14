@@ -24,10 +24,8 @@ data floor_component_receipt_document_member_authority_note: String = "THE MEMBE
 data receipt_member_schema: String = "schema"
 data receipt_member_run_id: String = "run_id"
 data receipt_member_component_count: String = "component_count"
-data receipt_member_affected_set_cold_control: String = "affected_set_cold_control"
 data receipt_member_unsuccessful_components: String = "unsuccessful_components"
 data receipt_member_components: String = "components"
-data receipt_member_selection_degradation: String = "selection_degradation"
 data receipt_member_run_terminal: String = "run_terminal"
 
 data receipt_member_workflow_name: String = "workflow_name"
@@ -49,8 +47,6 @@ type FloorComponentReceiptDocument {
   unsuccessful_components: List<JsonValue>
   unsuccessful_summaries: List<ComponentAlertSummary>
   component_summaries: List<ComponentAlertSummary>
-  affected_set_control: JsonValue
-  selection_degradation: JsonValue
   run_terminal: JsonValue
 }
 
@@ -175,10 +171,8 @@ fn floor_component_receipt_document_json(doc: FloorComponentReceiptDocument) -> 
     floor_component_receipt_subject_json(subject: doc.subject),
     [
       json_kv(key: receipt_member_component_count, value: json_int(n: doc.component_count)),
-      json_kv(key: receipt_member_affected_set_cold_control, value: doc.affected_set_control),
       json_kv(key: receipt_member_unsuccessful_components, value: json_array(elements: doc.unsuccessful_components)),
       json_kv(key: receipt_member_components, value: json_array(elements: doc.components)),
-      json_kv(key: receipt_member_selection_degradation, value: doc.selection_degradation),
       json_kv(key: receipt_member_run_terminal, value: doc.run_terminal)
     ]
   ))
@@ -658,12 +652,6 @@ fn floor_component_receipt_decode_with(text: String, expected_schema: NonEmptySt
                             if declared_count_n != count(components) {
                               ReceiptComponentCountMismatch { declared: declared_count_n as String, decoded: count(components) }
                             } else {
-                            match receipt_required_value_at(v: doc, key: receipt_member_affected_set_cold_control) {
-                              ReceiptValueFailed { decoding: d } => d
-                              ReceiptValueFound { value: control } =>
-                            match receipt_required_value_at(v: doc, key: receipt_member_selection_degradation) {
-                              ReceiptValueFailed { decoding: d } => d
-                              ReceiptValueFound { value: degradation } =>
                             match receipt_run_terminal_at(v: doc) {
                               ReceiptValueFailed { decoding: d } => d
                               ReceiptValueFound { value: run_terminal } =>
@@ -696,8 +684,6 @@ fn floor_component_receipt_decode_with(text: String, expected_schema: NonEmptySt
                                     unsuccessful_components: unsuccessful,
                                     unsuccessful_summaries: summaries,
                                     component_summaries: complete_summaries,
-                                    affected_set_control: control,
-                                    selection_degradation: degradation,
                                     run_terminal: run_terminal
                                   }
                                 }
@@ -716,8 +702,6 @@ fn floor_component_receipt_decode_with(text: String, expected_schema: NonEmptySt
             }
           }
       }
-  }
-}
 
 data floor_component_receipt_subject_match_note: String = "THE ALERT REFUSES A RECEIPT WHOSE SUBJECT DOES NOT MATCH THE EVENT IT IS REACTING TO. This is the check the whole subject exists for, and each coordinate catches a different real failure. A run-id mismatch means the artifact came from a different run than the event describes — the download was misparameterized, or an artifact was resolved from a cached or retried run. A workflow mismatch means the receipt is from a different workflow entirely, which the shared artifact name makes possible. A head-SHA mismatch means the receipt is about a different tree, which is the one an operator would act on wrongly without ever suspecting it, because the run id would look right.\n\nMISMATCH IS A REFUSAL, NOT A DEGRADED RENDER. The tempting arm — report the components but note the subject is uncertain — is the absorbing fallback: it produces a plausible issue body from data of unknown provenance, and the uncertainty note is exactly the part a reader skims. An unmatched receipt is reported as an explicit unknown about the run, which is what the alert already does for a missing receipt, so the two blind cases behave the same way rather than one of them being quietly worse."
 

@@ -4,7 +4,7 @@ import std.realization_schedule {
   ScheduleWitnessEntry, ExecutionWitnessKind, CorpusWitnessKind, schedule_witness_entry_eq,
   schedule_witness_entry_roster_contains,
   ScopedWitnessBatch, ScopedWitnessBatchId, ScopedWitnessBatchResourceProfile,
-  RunnableBatchClamp, SequentialChildProcess, SelectionApplied,
+  RunnableBatchClamp, SequentialChildProcess, 
   scoped_witness_batch, runnable_resource_profile, runnable_memory_substantial,
 }
 import std.execution_mode { Hermetic }
@@ -978,7 +978,6 @@ data v1_claim_scoped_witness_batch: ScopedWitnessBatch = scoped_witness_batch(
   source_roots: ["dag", "src/v1"],
   entries: v1_claim_scoped_witness_entries,
   scan_dirs: [],
-  node_frontier_selection: SelectionApplied,
   resource_profile: ScopedWitnessBatchResourceProfile {
     runnable: runnable_resource_profile(
       heavy_whole_tree_resolve: true,

@@ -1025,8 +1025,6 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "five_minute_ci_gate_program_note", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "roadmap_authority_for", field: WholeDeclaration },
-      DeclarationRef { module_path: "gunbc.selection_degradation_receipt", decl_name: "selection_degradation_receipt_note", field: WholeDeclaration },
-      DeclarationRef { module_path: "gunbc.p1_retention_cohort_receipt", decl_name: "p1_retention_cohort_receipt_verdict", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.ci_cost_arc_closeout_receipt", decl_name: "end_to_end_residual", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.ci_cost_arc_closeout_receipt", decl_name: "retention_settle", field: WholeDeclaration },
     ],
@@ -1038,7 +1036,6 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     primary_work: DeclarationRef { module_path: "gunbc.executor_schedule_retention", decl_name: "schedule_retention_heads_stay_resident", field: WholeDeclaration },
     additional_works: [
       DeclarationRef { module_path: "gunbc.executor_schedule_retention", decl_name: "schedule_retention_policy_note", field: WholeDeclaration },
-      DeclarationRef { module_path: "gunbc.p1_retention_cohort_receipt", decl_name: "p1_retention_cohort_receipt_verdict", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "five_minute_ci_gate_program_note", field: WholeDeclaration },
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the width-2 crossover decision is taken and cites these terms or a superseding measurement, or the ResolvedGraph-anchored bundle this receipt names becomes shared — at which point the decomposition no longer describes a worker and this bind deletes with the doc.") },
@@ -1240,7 +1237,6 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     primary_work: DeclarationRef { module_path: "gunbc.floor_materialization", decl_name: "floor_typecheck_store_share_note", field: WholeDeclaration },
     additional_works: [
       DeclarationRef { module_path: "gunbc.floor_materialization", decl_name: "floor_typecheck_store_share_provider_id", field: WholeDeclaration },
-      DeclarationRef { module_path: "gunbc.p1_retention_cohort_receipt", decl_name: "p1_retention_cohort_receipt_reproduction_steps", field: WholeDeclaration },
       DeclarationRef { module_path: "test.claim.floor_materialization_witness", decl_name: "floor_materialization_witness_note", field: WholeDeclaration },
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the width-2 crossover decision is banked on its carriers (ControlledWidthTwo harness + process_shared_typecheck_store) or superseded by shared immutable indexes / pre-index artifact reuse — then surviving facts migrate to DESIGN open-thread or a registered gunbc.plan.Plan row and this bind deletes with the doc.") },
@@ -1354,13 +1350,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "P1/P2 land the digest-bearing pin and the tool instantiation of gunbc.membership_reconcile — extdeps.tools.resolve gains its ensure arm and the four forked resolvers delete; the pin carrier becomes the authority and the plan registers as a gunbc.plan.Plan row") },
   },
-  HandAuthoredDocBind {
-    home: PlanDoc,
-    slug: "ci-invocation-fixed-tax-attribution",
-    primary_work: DeclarationRef { module_path: "gunbc.ci_workflow", decl_name: "gunbc_ci_selection_control_step_note", field: WholeDeclaration },
-    additional_works: [],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "dissolves when the pre-evaluation whole-corpus passes are persisted across processes or derived from the containment tree (namespace-only resolution lane) — its levers then re-price against the new baseline, and the demotion's outcome-based return trigger (selection control back per-PR once a named receipt shows the whole control step consistently below a seconds-scale ceiling on the CI fleet across a full falsifier window) consumes its measurements") },
-  },
+
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "srv1-deploy-serialization-and-false-greens",
@@ -1389,13 +1379,7 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "Nat lives only in std.nat (coproduct + Peano ops), v2.std.nat imports rather than redefines it, the 138-entry co-occurrence class is gone, and integer's GroupCompletion<Nat> cites the unified type — then this per-concept census doc deletes with this row (full criteria in the doc §9)") },
   },
-  HandAuthoredDocBind {
-    home: PlanDoc,
-    slug: "p1-retention-vs-drain-cohort-receipt",
-    primary_work: DeclarationRef { module_path: "gunbc.p1_retention_cohort_receipt", decl_name: "p1_retention_cohort_receipt_reproduction_steps", field: WholeDeclaration },
-    additional_works: [DeclarationRef { module_path: "gunbc.p1_retention_cohort_receipt", decl_name: "p1_retention_cohort_receipt_verdict", field: WholeDeclaration }],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the redirected assembly/materialization lane this receipt's REJECT verdict points to is picked up and either supersedes this pinned measurement with a canonical carrier or the parent floor-prep-tax-program plan closes P1 outright — then this receipt and its anchor module delete together, per the same scaffold trigger named beside p1_cohort_receipt_enabled in cli_run.rs.") },
-  },
+
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "p3-classification-cost-ab-receipt",

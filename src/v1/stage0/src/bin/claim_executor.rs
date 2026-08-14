@@ -16,16 +16,14 @@ use v1_compiler::cli_run::{
     enable_floor_compile_clean_lazy_install, heartbeat_feed_enter_batch,
     heartbeat_feed_entry_completed, heartbeat_feed_snapshot, install_floor_compile_clean_receipt,
     make_eval_context, project_witness_cost_receipt, record_resolution_divergence_phase,
-    render_selection_degradation_receipt_body, reset_resolution_divergence_phase_receipt,
-    resolution_divergence_parent_plan_capture_begin,
+    reset_resolution_divergence_phase_receipt, resolution_divergence_parent_plan_capture_begin,
     resolution_divergence_parent_plan_capture_finish, resolve_entry_graph,
     resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
     top_n_slowest_witnesses, verify_floor_discovery_terminal_for_coordinator, BudgetKind,
-    ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary, DiscoveryWidthPolicy,
-    DiscoveryWitnessOutcome, FloorDiscoveryConsumerRole, FloorPhase, HistogramData,
-    NodeFrontierSelectionMode, PhaseProfile, ResolutionDivergencePhase,
-    ResolutionDivergencePhaseState, SelectionDegradationSnapshot, TimingPercentiles,
-    WitnessRowCost, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
+    ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary, DiscoveryWitnessOutcome,
+    FloorDiscoveryConsumerRole, FloorPhase, HistogramData, PhaseProfile, ResolutionDivergencePhase,
+    ResolutionDivergencePhaseState, TimingPercentiles, WitnessRowCost,
+    DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::memory_governor::{
     binding_cap_cgroup_dir, binding_high_cgroup_dir, floor_budget_below_minimum_footprint,
@@ -747,7 +745,6 @@ enum Runnable {
         scan_dirs: Vec<String>,
         explicit_entries: Vec<(String, String)>,
         native_bundle_entries: Vec<(String, String)>,
-        node_frontier_selection: NodeFrontierSelectionMode,
         exclude_substrings: Vec<String>,
         discovery_scope_dirs: Vec<String>,
         execution_mode: ExecutionMode,
@@ -759,7 +756,6 @@ enum Runnable {
         source_roots_digest: String,
         entries: Vec<ScopedScheduleEntry>,
         scan_dirs: Vec<String>,
-        node_frontier_selection: NodeFrontierSelectionMode,
         execution_authority: ScopedWitnessExecutionAuthority,
         profile: ParsedRunnableProfile,
         clamp: ResolvedFloorBatchClamp,
@@ -1138,41 +1134,6 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 }
                 None => (Vec::new(), Vec::new()),
             };
-            let node_frontier_selection = match ctx.field(fields, "node_frontier_selection") {
-                Some(Value::Variant { variant_name, .. }) => {
-                    if ctx.sym_eq(*variant_name, "SelectionOff") {
-                        NodeFrontierSelectionMode::Off
-                    } else if ctx.sym_eq(*variant_name, "SelectionApplied") {
-                        NodeFrontierSelectionMode::Applied
-                    } else if ctx.sym_eq(*variant_name, "SelectionPredictOnly") {
-                        NodeFrontierSelectionMode::PredictOnly
-                    } else {
-                        return Err(format!(
-                            "RunnableDiscoveryBatch.node_frontier_selection: unknown \
-                                 NodeFrontierSelection variant `{}`",
-                            ctx.resolve(*variant_name)
-                        ));
-                    }
-                }
-                Some(other) => {
-                    return Err(format!(
-                        "RunnableDiscoveryBatch.node_frontier_selection must be a \
-                             NodeFrontierSelection variant, got {}",
-                        other.type_label_public()
-                    ))
-                }
-                // Absent is a REFUSAL, not a default: the former Bool defaulted to false
-                // when the field was missing — a fail-open where a stale plan silently
-                // ran without its declared selection semantics.
-                None => {
-                    return Err(
-                        "RunnableDiscoveryBatch.node_frontier_selection is absent — the \
-                             plan row must declare its selection mode (SelectionOff / \
-                             SelectionApplied / SelectionPredictOnly); no silent default"
-                            .to_string(),
-                    )
-                }
-            };
             let exclude_substrings = match ctx.field(fields, "exclude_substrings") {
                 Some(v) => str_list_from_value(v, ctx)?,
                 // Field absent means the plan author specified no exclusions — default is empty,
@@ -1193,7 +1154,6 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 scan_dirs,
                 explicit_entries,
                 native_bundle_entries,
-                node_frontier_selection,
                 exclude_substrings,
                 discovery_scope_dirs,
                 execution_mode: profile.execution_mode,
@@ -1296,21 +1256,6 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
             let scan_dirs = match ctx.field(batch, "scan_dirs") {
                 Some(v) => str_list_from_value(v, ctx)?,
                 None => return Err("ScopedWitnessBatch missing field `scan_dirs`".to_string()),
-            };
-            let node_frontier_selection = match ctx.field(batch, "node_frontier_selection") {
-                Some(Value::Variant { variant_name, .. })
-                    if ctx.sym_eq(*variant_name, "SelectionOff") => NodeFrontierSelectionMode::Off,
-                Some(Value::Variant { variant_name, .. })
-                    if ctx.sym_eq(*variant_name, "SelectionApplied") => NodeFrontierSelectionMode::Applied,
-                Some(Value::Variant { variant_name, .. })
-                    if ctx.sym_eq(*variant_name, "SelectionPredictOnly") => NodeFrontierSelectionMode::PredictOnly,
-                Some(other) => {
-                    return Err(format!(
-                        "ScopedWitnessBatch.node_frontier_selection must be NodeFrontierSelection, got {}",
-                        other.type_label_public()
-                    ))
-                }
-                None => return Err("ScopedWitnessBatch missing field `node_frontier_selection`".to_string()),
             };
             let execution_authority = match ctx.field(batch, "execution_authority") {
                 Some(Value::Variant { variant_name, .. })
@@ -1426,7 +1371,6 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 source_roots_digest,
                 entries,
                 scan_dirs,
-                node_frontier_selection,
                 execution_authority,
                 profile,
                 clamp: ResolvedFloorBatchClamp {
@@ -1923,7 +1867,6 @@ struct ClaimResult {
     /// message, so no rewording can move the class.
     expectation_refusal: Option<ExpectationRefusal>,
     /// Discovery batch only: finalized selection-degradation facts for floor receipts.
-    selection_degradation: Option<SelectionDegradationSnapshot>,
     /// Recorded at the reuse decision site for rostered obligation subjects only.
     /// Disposition is NEVER inferred from `resolve_nanos` alone — timing is cost evidence.
     resolve_realization: Option<ResolveRealizationObservation>,
@@ -2067,7 +2010,6 @@ fn pre_verdict_unverified_claim_result(
         expectation_refusal: Some(refusal),
         budget_refusal: None,
         host_dependency_refusal: None,
-        selection_degradation: None,
         resolve_realization: None,
     }
 }
@@ -2442,7 +2384,6 @@ enum BatchUnit {
         source_roots: Vec<String>,
         scan_dirs: Vec<String>,
         explicit_entries: Vec<(String, String)>,
-        node_frontier_selection: NodeFrontierSelectionMode,
         exclude_substrings: Vec<String>,
         discovery_scope_dirs: Vec<String>,
         execution_mode: ExecutionMode,
@@ -2454,7 +2395,6 @@ enum BatchUnit {
         entries_with_kind: Vec<ScopedScheduleEntry>,
         source_roots: Vec<String>,
         scan_dirs: Vec<String>,
-        node_frontier_selection: NodeFrontierSelectionMode,
         execution_authority: ScopedWitnessExecutionAuthority,
         execution_mode: ExecutionMode,
         spawns_host_compiler: bool,
@@ -2516,7 +2456,6 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                 scan_dirs,
                 explicit_entries,
                 native_bundle_entries,
-                node_frontier_selection,
                 exclude_substrings,
                 discovery_scope_dirs,
                 execution_mode,
@@ -2527,7 +2466,6 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                         source_roots: source_roots.clone(),
                         scan_dirs: scan_dirs.clone(),
                         explicit_entries: explicit_entries.clone(),
-                        node_frontier_selection: *node_frontier_selection,
                         exclude_substrings: exclude_substrings.clone(),
                         discovery_scope_dirs: discovery_scope_dirs.clone(),
                         execution_mode: *execution_mode,
@@ -2548,7 +2486,6 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                 source_roots_digest,
                 entries,
                 scan_dirs,
-                node_frontier_selection,
                 execution_authority,
                 profile,
                 ..
@@ -2558,7 +2495,6 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                 entries_with_kind: entries.clone(),
                 source_roots: source_roots.clone(),
                 scan_dirs: scan_dirs.clone(),
-                node_frontier_selection: *node_frontier_selection,
                 execution_authority: *execution_authority,
                 execution_mode: profile.execution_mode,
                 spawns_host_compiler: profile.spawns_host_compiler,
@@ -2627,7 +2563,6 @@ fn claim_result_for_outcome(
             expectation_refusal: None,
             budget_refusal: None,
             host_dependency_refusal: None,
-            selection_degradation: None,
             resolve_realization,
         },
         ClaimOutcome::Fail => {
@@ -2658,7 +2593,6 @@ fn claim_result_for_outcome(
                 expectation_refusal: None,
                 budget_refusal: None,
                 host_dependency_refusal,
-                selection_degradation: None,
                 resolve_realization,
             }
         }
@@ -2677,7 +2611,6 @@ fn claim_result_for_outcome(
             expectation_refusal: None,
             budget_refusal: None,
             host_dependency_refusal: None,
-            selection_degradation: None,
             resolve_realization,
         },
         ClaimOutcome::RuntimeError { message } => ClaimResult {
@@ -2695,7 +2628,6 @@ fn claim_result_for_outcome(
             expectation_refusal: None,
             budget_refusal: None,
             host_dependency_refusal: None,
-            selection_degradation: None,
             resolve_realization,
         },
         ClaimOutcome::TimedOut {
@@ -2731,7 +2663,6 @@ fn claim_result_for_outcome(
                 kind,
             }),
             host_dependency_refusal: None,
-            selection_degradation: None,
             resolve_realization,
         },
     }
@@ -3091,7 +3022,6 @@ fn run_native_bundle_unit(
         expectation_refusal: None,
         budget_refusal: None,
         host_dependency_refusal: None,
-        selection_degradation: None,
         resolve_realization: None,
     };
     if execution_mode != ExecutionMode::Wet {
@@ -3124,7 +3054,6 @@ fn run_native_bundle_unit(
         expectation_refusal: None,
         budget_refusal: None,
         host_dependency_refusal: None,
-        selection_degradation: None,
         resolve_realization: resolve_observation(),
     };
     let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
@@ -3298,7 +3227,6 @@ fn run_native_bundle_unit(
         expectation_refusal: None,
         budget_refusal: None,
         host_dependency_refusal: None,
-        selection_degradation: None,
         resolve_realization: Some(ResolveRealizationObservation::ColdResolvePerformed {
             resolve_nanos,
         }),
@@ -3341,7 +3269,6 @@ fn run_batch_unit(
             expectation_refusal: None,
             budget_refusal: None,
             host_dependency_refusal: None,
-            selection_degradation: None,
             resolve_realization: None,
         }],
         BatchUnit::NativeBundle {
@@ -3360,7 +3287,6 @@ fn run_batch_unit(
             source_roots: roots,
             scan_dirs,
             explicit_entries,
-            node_frontier_selection,
             exclude_substrings,
             discovery_scope_dirs,
             execution_mode,
@@ -3385,10 +3311,8 @@ fn run_batch_unit(
                 execution_authority_source_roots,
                 scan_dirs,
                 explicit_entries,
-                node_frontier_selection,
                 exclude_substrings,
                 discovery_scope_dirs,
-                governor,
                 execution_mode,
                 spawns_host_compiler,
                 effective_fast_lane,
@@ -3407,7 +3331,6 @@ fn run_batch_unit(
             entries_with_kind,
             source_roots: roots,
             scan_dirs,
-            node_frontier_selection,
             execution_authority,
             execution_mode,
             spawns_host_compiler,
@@ -3423,10 +3346,8 @@ fn run_batch_unit(
                 execution_authority_source_roots,
                 scan_dirs,
                 explicit_entries,
-                node_frontier_selection,
                 Vec::new(),
                 Vec::new(),
-                governor,
                 execution_mode,
                 spawns_host_compiler,
                 fast_lane_eval_budget_ms,
@@ -3500,7 +3421,6 @@ fn run_shared_entry_claims(
                     expectation_refusal: None,
                     budget_refusal: None,
                     host_dependency_refusal: None,
-                    selection_degradation: None,
                     resolve_realization: None,
                 })
                 .collect();
@@ -3590,7 +3510,6 @@ fn run_memo_shared_claims(
                         expectation_refusal: None,
                         budget_refusal: None,
                         host_dependency_refusal: None,
-                        selection_degradation: None,
                         resolve_realization: None,
                     })
                     .collect();
@@ -4245,7 +4164,6 @@ fn discovery_claim_result(
     function: String,
     ok: bool,
     detail: String,
-    selection: NodeFrontierSelectionMode,
     summary: &DiscoverySummary,
     projected: Result<Vec<WitnessRowCost>, String>,
     expectation_refusal: Option<ExpectationRefusal>,
@@ -4287,9 +4205,6 @@ fn discovery_claim_result(
                 expectation_refusal,
                 budget_refusal: discovery_budget_refusal(summary),
                 host_dependency_refusal: discovery_host_dependency_refusal(summary),
-                selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
-                    selection, summary,
-                )),
                 resolve_realization: None,
             }
         }
@@ -4323,9 +4238,6 @@ fn discovery_claim_result(
                 expectation_refusal,
                 budget_refusal: discovery_budget_refusal(summary),
                 host_dependency_refusal: discovery_host_dependency_refusal(summary),
-                selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
-                    selection, summary,
-                )),
                 resolve_realization: None,
             }
         }
@@ -4357,10 +4269,8 @@ fn run_discovery_batch_node(
     execution_authority_source_roots: Vec<String>,
     scan_dirs: Vec<String>,
     explicit_entries: Vec<(String, String)>,
-    node_frontier_selection: NodeFrontierSelectionMode,
     exclude_substrings: Vec<String>,
     discovery_scope_dirs: Vec<String>,
-    governor: Arc<MemoryGovernor>,
     execution_mode: ExecutionMode,
     spawns_host_compiler: bool,
     fast_lane_eval_budget_ms: Option<u64>,
@@ -4398,9 +4308,7 @@ fn run_discovery_batch_node(
         &scan_dirs,
         &explicit_entries,
         execution_mode,
-        DiscoveryWidthPolicy::Adaptive(governor),
         DiscoveryCorpusOptions {
-            node_frontier_selection,
             execution_authority_source_roots,
             explicit_roster_only: false,
             exclude_substrings,
@@ -4436,10 +4344,6 @@ fn run_discovery_batch_node(
                         expectation_refusal: None,
                         budget_refusal: discovery_budget_refusal(&summary),
                         host_dependency_refusal: discovery_host_dependency_refusal(&summary),
-                        selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
-                            node_frontier_selection,
-                            &summary,
-                        )),
                         resolve_realization: None,
                     };
                 }
@@ -4570,7 +4474,6 @@ fn run_discovery_batch_node(
                     label,
                     false,
                     refusal.detail(),
-                    node_frontier_selection,
                     &summary,
                     projected,
                     Some(refusal),
@@ -4579,7 +4482,6 @@ fn run_discovery_batch_node(
                     format!("{label} ({} witnesses)", summary.total),
                     true,
                     String::new(),
-                    node_frontier_selection,
                     &summary,
                     projected,
                     None,
@@ -4612,10 +4514,6 @@ fn run_discovery_batch_node(
                         expectation_refusal: None,
                         budget_refusal: discovery_budget_refusal(&summary),
                         host_dependency_refusal: discovery_host_dependency_refusal(&summary),
-                        selection_degradation: Some(SelectionDegradationSnapshot::from_summary(
-                            node_frontier_selection,
-                            &summary,
-                        )),
                         resolve_realization: None,
                     };
                 }
@@ -4643,7 +4541,6 @@ fn run_discovery_batch_node(
                     label,
                     false,
                     refusal.detail(),
-                    node_frontier_selection,
                     &summary,
                     projected,
                     Some(refusal),
@@ -4660,7 +4557,6 @@ fn run_discovery_batch_node(
                         format!("{label} (expect_red still-red OK)"),
                         true,
                         String::new(),
-                        node_frontier_selection,
                         &summary,
                         projected,
                         None,
@@ -4682,7 +4578,6 @@ fn run_discovery_batch_node(
                         },
                         summary.failures.join("; ")
                     ),
-                    node_frontier_selection,
                     &summary,
                     projected,
                     None,
@@ -4747,7 +4642,6 @@ fn run_discovery_batch_node(
                     expectation_refusal: None,
                     budget_refusal: None,
                     host_dependency_refusal: None,
-                    selection_degradation: None,
                     resolve_realization: None,
                 }
             }
@@ -5345,54 +5239,8 @@ struct BatchRecord {
     /// receipt keys on (`gunbc.floor_component_receipt` role note): the affected-set
     /// cold control is the `predict_only` component, never "batch 1" — indices shift
     /// when a `gunbc_falsifier_batches` enrollment flag flips.
-    selection_tag: &'static str,
     /// Wet-profiled batches (bin_witness wet corpus, falsifier wet follow-on, …).
     is_wet: bool,
-}
-
-/// Materialization-ladder receipt: how many entry resolves this floor run actually
-/// paid (walk_memo hits charge resolve_nanos == 0 and are excluded — this counts the
-/// duplicated work across DISTINCT entries, the cross-entry share the memo cannot do).
-/// Discovery corpus resolve time is reported on its own key, never folded into the
-/// entry count (different grain; conflating them would mask either regression).
-/// Consumed by the ci.yml resolve-receipt gate emitted from dag/gunbc/ci_materialization.dag.
-/// Returns false on a write error — the walk fails closed at the point of
-/// failure rather than relying only on the downstream missing-file gate.
-/// The batch's node-frontier selection role, as the tag vocabulary
-/// `gunbc.floor_component_receipt.floor_component_selection_of_tag` admits.
-/// Two or more DISTINCT selections in one batch returns `"ambiguous"`, which that
-/// function refuses — the role would not identify a unique component, and a silently
-/// picked first one is exactly the kind of guess the receipt exists to remove.
-fn batch_selection_tag(batch: &[Runnable]) -> &'static str {
-    let mut seen: Vec<&'static str> = Vec::new();
-    for r in batch {
-        let selection = match r {
-            Runnable::DiscoveryBatch {
-                node_frontier_selection,
-                ..
-            }
-            | Runnable::ScopedWitnessBatch {
-                node_frontier_selection,
-                ..
-            } => Some(node_frontier_selection),
-            Runnable::SingleClaim { .. } => None,
-        };
-        if let Some(node_frontier_selection) = selection {
-            let tag = match node_frontier_selection {
-                NodeFrontierSelectionMode::Off => "off",
-                NodeFrontierSelectionMode::Applied => "applied",
-                NodeFrontierSelectionMode::PredictOnly => "predict_only",
-            };
-            if !seen.contains(&tag) {
-                seen.push(tag);
-            }
-        }
-    }
-    match seen.len() {
-        0 => "off",
-        1 => seen[0],
-        _ => "ambiguous",
-    }
 }
 
 /// One batch's failure MODE and detail — the seed's existing `falsifier_failure_mode`
@@ -5578,7 +5426,6 @@ fn write_floor_component_receipt_at(
             &run_id,
             rec.batch_index as i64 + 1,
             &rec.label,
-            rec.selection_tag,
             batch_witness_count(rec) as i64,
             failure_mode,
             &detail,
@@ -5610,14 +5457,12 @@ fn write_floor_component_receipt_at(
     // the control RED with its real cause.
     for bi in batch_records.len()..total_batches {
         let label = batch_heartbeat_label(&batches[bi]);
-        let selection_tag = batch_selection_tag(&batches[bi]);
         let row = if unreached == UnreachedCause::RunIncomplete {
             floor_component_row_not_concluded_value(
                 &ctx,
                 &run_id,
                 bi as i64 + 1,
                 &label,
-                selection_tag,
                 unreached.failure_mode(),
                 unreached.detail(),
             )
@@ -5627,7 +5472,6 @@ fn write_floor_component_receipt_at(
                 &run_id,
                 bi as i64 + 1,
                 &label,
-                selection_tag,
                 0,
                 unreached.failure_mode(),
                 unreached.detail(),
@@ -5707,7 +5551,6 @@ fn floor_component_row_value(
     run_id: &str,
     index: i64,
     label: &str,
-    selection_tag: &str,
     witnesses: i64,
     failure_mode: &str,
     detail: &str,
@@ -5738,10 +5581,6 @@ fn floor_component_row_value(
         (Some("run_id".to_string()), Value::Str(run_id.to_string())),
         (Some("index".to_string()), Value::Int(index)),
         (Some("label".to_string()), Value::Str(label.to_string())),
-        (
-            Some("selection_tag".to_string()),
-            Value::Str(selection_tag.to_string()),
-        ),
         (Some("witnesses".to_string()), Value::Int(witnesses)),
         (
             Some("failure_mode".to_string()),
@@ -5770,8 +5609,7 @@ fn floor_component_row_value(
         Ok(Value::Null) => {
             eprintln!(
                 "claim_executor: floor component receipt REFUSED — {constructor} returned \
-                 absent for batch {index}: selection_tag={selection_tag:?} \
-                 failure_mode={failure_mode:?} are outside the .dag vocabulary"
+                 absent for batch {index}:                 failure_mode={failure_mode:?} are outside the .dag vocabulary"
             );
             None
         }
@@ -5795,7 +5633,6 @@ fn floor_component_row_not_concluded_value(
     run_id: &str,
     index: i64,
     label: &str,
-    selection_tag: &str,
     failure_mode: &str,
     detail: &str,
 ) -> Option<Value> {
@@ -5804,10 +5641,6 @@ fn floor_component_row_not_concluded_value(
         (Some("run_id".to_string()), Value::Str(run_id.to_string())),
         (Some("index".to_string()), Value::Int(index)),
         (Some("label".to_string()), Value::Str(label.to_string())),
-        (
-            Some("selection_tag".to_string()),
-            Value::Str(selection_tag.to_string()),
-        ),
         (
             Some("failure_mode".to_string()),
             Value::Str(failure_mode.to_string()),
@@ -5834,8 +5667,7 @@ fn floor_component_row_not_concluded_value(
         Ok(Value::Null) => {
             eprintln!(
                 "claim_executor: floor component receipt REFUSED — {constructor} returned \
-                 absent for batch {index}: selection_tag={selection_tag:?} \
-                 failure_mode={failure_mode:?} are outside the .dag vocabulary"
+                 absent for batch {index}:                 failure_mode={failure_mode:?} are outside the .dag vocabulary"
             );
             None
         }
@@ -5862,11 +5694,10 @@ fn write_floor_component_receipt_document(
     batch_records: &[BatchRecord],
 ) -> Option<String> {
     let rows_list = Value::List(Rc::new(rows.into()));
-    let snapshot = selection_degradation_from_batch_records(batch_records);
     if unreached == UnreachedCause::RunIncomplete {
         let concluded_count = batch_records.len() as i64;
         let pending_from_index = (batch_records.len() + 1) as i64;
-        let mut args: Vec<(Option<String>, Value)> = vec![
+        let args: Vec<(Option<String>, Value)> = vec![
             (
                 Some("workflow_name".to_string()),
                 Value::Str(workflow_name.to_string()),
@@ -5890,33 +5721,7 @@ fn write_floor_component_receipt_document(
                 Value::Int(pending_from_index),
             ),
         ];
-        let constructor = if let Some(snapshot) = snapshot {
-            args.extend([
-                (
-                    Some("selection_mode_tag".to_string()),
-                    Value::Str(snapshot.selection_mode_tag.clone()),
-                ),
-                (
-                    Some("selected".to_string()),
-                    Value::Int(snapshot.selected_entry_groups as i64),
-                ),
-                (
-                    Some("total".to_string()),
-                    Value::Int(snapshot.total_entry_groups as i64),
-                ),
-                (
-                    Some("categorization_unavailable".to_string()),
-                    Value::Bool(snapshot.categorization_unavailable),
-                ),
-                (
-                    Some("categorization_reason".to_string()),
-                    Value::Str(snapshot.categorization_reason.clone()),
-                ),
-            ]);
-            "floor_component_receipt_document_incomplete_with_selection"
-        } else {
-            "floor_component_receipt_document_incomplete"
-        };
+        let constructor = "floor_component_receipt_document_incomplete";
         match run_in_context_with_args(ctx, constructor, &args, false) {
             Ok(Value::Str(s)) => Some(s),
             Ok(other) => {
@@ -5929,60 +5734,6 @@ fn write_floor_component_receipt_document(
             Err(e) => {
                 eprintln!(
                     "claim_executor: floor component receipt REFUSED — {constructor} eval: {e}"
-                );
-                None
-            }
-        }
-    } else if let Some(snapshot) = snapshot {
-        match run_in_context_with_args(
-            ctx,
-            "floor_component_receipt_document_with_selection",
-            &[
-                (
-                    Some("workflow_name".to_string()),
-                    Value::Str(workflow_name.to_string()),
-                ),
-                (Some("run_id".to_string()), Value::Str(run_id.to_string())),
-                (
-                    Some("head_sha".to_string()),
-                    Value::Str(head_sha.to_string()),
-                ),
-                (Some("rows".to_string()), rows_list),
-                (
-                    Some("selection_mode_tag".to_string()),
-                    Value::Str(snapshot.selection_mode_tag.clone()),
-                ),
-                (
-                    Some("selected".to_string()),
-                    Value::Int(snapshot.selected_entry_groups as i64),
-                ),
-                (
-                    Some("total".to_string()),
-                    Value::Int(snapshot.total_entry_groups as i64),
-                ),
-                (
-                    Some("categorization_unavailable".to_string()),
-                    Value::Bool(snapshot.categorization_unavailable),
-                ),
-                (
-                    Some("categorization_reason".to_string()),
-                    Value::Str(snapshot.categorization_reason.clone()),
-                ),
-            ],
-            false,
-        ) {
-            Ok(Value::Str(s)) => Some(s),
-            Ok(other) => {
-                eprintln!(
-                    "claim_executor: floor component receipt REFUSED — \
-                     floor_component_receipt_document_with_selection returned {other:?}, not Str"
-                );
-                None
-            }
-            Err(e) => {
-                eprintln!(
-                    "claim_executor: floor component receipt REFUSED — \
-                     floor_component_receipt_document_with_selection eval: {e}"
                 );
                 None
             }
@@ -6025,13 +5776,11 @@ fn write_floor_component_receipt_document(
 }
 
 fn write_resolve_receipt(
-    source_roots: &[String],
     batch_records: &[BatchRecord],
     floor_finalization: Option<&FloorFinalization>,
 ) -> bool {
     write_resolve_receipt_at(
         std::path::Path::new("target"),
-        source_roots,
         batch_records,
         floor_finalization,
     )
@@ -7077,47 +6826,6 @@ fn write_on_success_receipt(
     true
 }
 
-fn selection_degradation_from_batch_records(
-    batch_records: &[BatchRecord],
-) -> Option<SelectionDegradationSnapshot> {
-    batch_records
-        .iter()
-        .flat_map(|rec| &rec.results)
-        .find_map(|result| result.selection_degradation.clone())
-}
-
-fn write_selection_degradation_receipt_at(
-    base: &std::path::Path,
-    source_roots: &[String],
-    batch_records: &[BatchRecord],
-) -> bool {
-    let Some(snapshot) = selection_degradation_from_batch_records(batch_records) else {
-        return true;
-    };
-    let body = match render_selection_degradation_receipt_body(source_roots, &snapshot) {
-        Ok(body) => body,
-        Err(msg) => {
-            eprintln!("claim_executor: {msg}");
-            return false;
-        }
-    };
-    let path = base.join("floor-selection-degradation-receipt.txt");
-    if let Err(e) = std::fs::create_dir_all(base).and_then(|_| std::fs::write(&path, &body)) {
-        eprintln!(
-            "claim_executor: failed to write selection degradation receipt {}: {e} — walk fails closed",
-            path.display()
-        );
-        return false;
-    }
-    eprintln!(
-        "[receipt] floor selection degradation: {} entry group(s) selected of {} (receipt: {})",
-        snapshot.selected_entry_groups,
-        snapshot.total_entry_groups,
-        path.display()
-    );
-    true
-}
-
 /// Receipt line derived from transported obligations joined to observed realizations.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ResolveObligationLine {
@@ -7337,7 +7045,6 @@ fn append_resolve_obligation_receipt_body(
 
 fn write_resolve_receipt_at(
     base: &std::path::Path,
-    source_roots: &[String],
     batch_records: &[BatchRecord],
     floor_finalization: Option<&FloorFinalization>,
 ) -> bool {
@@ -7363,19 +7070,6 @@ fn write_resolve_receipt_at(
         if let Err(msg) = append_resolve_obligation_receipt_body(&mut body, fin, batch_records) {
             eprintln!("claim_executor: resolve obligation receipt refused: {msg}");
             return false;
-        }
-    }
-    if let Some(snapshot) = selection_degradation_from_batch_records(batch_records) {
-        match render_selection_degradation_receipt_body(source_roots, &snapshot) {
-            Ok(selection_body) => {
-                body.push_str("\n[selection_degradation]\n");
-                body.push_str(&selection_body);
-                body.push('\n');
-            }
-            Err(msg) => {
-                eprintln!("claim_executor: resolve receipt selection degradation refused: {msg}");
-                return false;
-            }
         }
     }
     let path = base.join("floor-resolve-receipt.txt");
@@ -8841,7 +8535,6 @@ fn run_walk(
             runtime_units: batch_runtime_units,
             results: batch_results,
             label: label.clone(),
-            selection_tag: batch_selection_tag(batch),
             is_wet: batch_is_wet(batch),
         });
         // CHECKPOINT. The receipt used to be written once, after every batch, so the one
@@ -8921,17 +8614,9 @@ fn run_walk(
     let total_wall_nanos = walk_start.elapsed().as_nanos();
     emit_gantt(&batch_records, total_wall_nanos);
     trace_floor_phase("resolve-receipt", "started", "");
-    let resolve_receipt_ok = !emit_ordinary_floor_receipts
-        || write_resolve_receipt(source_roots, &batch_records, floor_finalization);
+    let resolve_receipt_ok =
+        !emit_ordinary_floor_receipts || write_resolve_receipt(&batch_records, floor_finalization);
     trace_floor_phase("resolve-receipt", "completed", "");
-    trace_floor_phase("selection-degradation-receipt", "started", "");
-    let selection_degradation_receipt_ok = !emit_ordinary_floor_receipts
-        || write_selection_degradation_receipt_at(
-            std::path::Path::new("target"),
-            source_roots,
-            &batch_records,
-        );
-    trace_floor_phase("selection-degradation-receipt", "completed", "");
     trace_floor_phase("batch-wall-receipt", "started", "");
     let batch_wall_receipt_ok =
         !emit_ordinary_floor_receipts || write_batch_wall_receipt(&batch_records);
@@ -9016,7 +8701,6 @@ fn run_walk(
         || !wet_witness_row_outcome_receipt_ok
         || !witness_row_cost_drift_receipt_ok
         || !witness_row_cost_migration_disclosure_receipt_ok
-        || !selection_degradation_receipt_ok
         || !floor_component_receipt_ok
         || !materialization_receipt_ok;
     push_ordinary_receipt_write_refusals(
@@ -9028,7 +8712,6 @@ fn run_walk(
         wet_witness_row_outcome_receipt_ok,
         witness_row_cost_drift_receipt_ok,
         witness_row_cost_migration_disclosure_receipt_ok,
-        selection_degradation_receipt_ok,
         floor_component_receipt_ok,
         materialization_receipt_ok,
     );
@@ -9488,7 +9171,6 @@ fn run_perturb_check(
                         scan_dirs,
                         explicit_entries,
                         native_bundle_entries,
-                        node_frontier_selection,
                         exclude_substrings,
                         discovery_scope_dirs,
                         execution_mode,
@@ -9498,7 +9180,6 @@ fn run_perturb_check(
                         scan_dirs: scan_dirs.iter().map(|d| remap_root(d)).collect(),
                         explicit_entries: explicit_entries.clone(),
                         native_bundle_entries: native_bundle_entries.clone(),
-                        node_frontier_selection: *node_frontier_selection,
                         exclude_substrings: exclude_substrings.clone(),
                         discovery_scope_dirs: discovery_scope_dirs.clone(),
                         execution_mode: *execution_mode,
@@ -9510,7 +9191,6 @@ fn run_perturb_check(
                         source_roots_digest,
                         entries,
                         scan_dirs,
-                        node_frontier_selection,
                         execution_authority,
                         profile,
                         clamp,
@@ -9530,7 +9210,6 @@ fn run_perturb_check(
                             })
                             .collect(),
                         scan_dirs: scan_dirs.iter().map(|d| remap_root(d)).collect(),
-                        node_frontier_selection: *node_frontier_selection,
                         execution_authority: *execution_authority,
                         profile: *profile,
                         clamp: clamp.clone(),
@@ -10386,7 +10065,6 @@ struct ScopedExecutionRequest {
     source_roots_digest: String,
     entries: Vec<ScopedScheduleEntry>,
     scan_dirs: Vec<String>,
-    node_frontier_selection: NodeFrontierSelectionMode,
     execution_authority: ScopedWitnessExecutionAuthority,
     profile: ParsedRunnableProfile,
     clamp: ResolvedFloorBatchClamp,
@@ -10410,7 +10088,6 @@ impl ScopedExecutionRequest {
             source_roots_digest: self.source_roots_digest.clone(),
             entries: self.entries.clone(),
             scan_dirs: self.scan_dirs.clone(),
-            node_frontier_selection: self.node_frontier_selection,
             execution_authority: self.execution_authority,
             profile: self.profile,
             clamp: self.clamp.clone(),
@@ -10435,7 +10112,6 @@ fn scoped_execution_requests_from_rows(
             source_roots_digest,
             entries,
             scan_dirs,
-            node_frontier_selection,
             execution_authority,
             profile,
             clamp,
@@ -10453,7 +10129,6 @@ fn scoped_execution_requests_from_rows(
                 source_roots_digest: source_roots_digest.clone(),
                 entries: entries.clone(),
                 scan_dirs: scan_dirs.clone(),
-                node_frontier_selection: *node_frontier_selection,
                 execution_authority: *execution_authority,
                 profile: *profile,
                 clamp: clamp.clone(),
@@ -11698,7 +11373,6 @@ fn push_ordinary_receipt_write_refusals(
     wet_witness_row_outcome_receipt_ok: bool,
     witness_row_cost_drift_receipt_ok: bool,
     witness_row_cost_migration_disclosure_receipt_ok: bool,
-    selection_degradation_receipt_ok: bool,
     floor_component_receipt_ok: bool,
     materialization_receipt_ok: bool,
 ) {
@@ -11734,10 +11408,6 @@ fn push_ordinary_receipt_write_refusals(
     push(
         witness_row_cost_migration_disclosure_receipt_ok,
         "ordinary-floor witness row-cost migration disclosure receipt write refused",
-    );
-    push(
-        selection_degradation_receipt_ok,
-        "ordinary-floor selection degradation receipt write refused",
     );
     push(
         floor_component_receipt_ok,
@@ -12071,7 +11741,6 @@ mod tests {
             unit_count: 0,
             runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
             label: "finalization-fixture".to_string(),
-            selection_tag: "fixture",
             is_wet: false,
             results: resolve_counts
                 .iter()
@@ -12090,7 +11759,6 @@ mod tests {
                     expectation_refusal: None,
                     budget_refusal: None,
                     host_dependency_refusal: None,
-                    selection_degradation: None,
                     resolve_realization: None,
                 })
                 .collect(),
@@ -12283,7 +11951,6 @@ mod tests {
             unit_count: 0,
             runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
             label: "obligation-fixture".to_string(),
-            selection_tag: "fixture",
             is_wet: false,
             results: vec![
                 ClaimResult {
@@ -12301,7 +11968,6 @@ mod tests {
                     expectation_refusal: None,
                     budget_refusal: None,
                     host_dependency_refusal: None,
-                    selection_degradation: None,
                     resolve_realization: resolve_observation_for_nanos(anchor_nanos),
                 },
                 ClaimResult {
@@ -12321,7 +11987,6 @@ mod tests {
                     expectation_refusal: None,
                     budget_refusal: None,
                     host_dependency_refusal: None,
-                    selection_degradation: None,
                     resolve_realization: resolve_observation_for_nanos(native_nanos),
                 },
             ],
@@ -12351,7 +12016,6 @@ mod tests {
             expectation_refusal: None,
             budget_refusal: None,
             host_dependency_refusal: None,
-            selection_degradation: None,
             resolve_realization: None,
         });
         let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records, false);
@@ -12374,7 +12038,6 @@ mod tests {
             unit_count: 0,
             runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
             label: "emit-only".to_string(),
-            selection_tag: "fixture",
             is_wet: false,
             results: vec![ClaimResult {
                 function: "emit_host_gate_passes".to_string(),
@@ -12391,7 +12054,6 @@ mod tests {
                 expectation_refusal: None,
                 budget_refusal: None,
                 host_dependency_refusal: None,
-                selection_degradation: None,
                 resolve_realization: None,
             }],
         }];
@@ -12429,7 +12091,6 @@ mod tests {
             expectation_refusal: None,
             budget_refusal: None,
             host_dependency_refusal: None,
-            selection_degradation: None,
             resolve_realization: None,
         });
         let refusals = validate_floor_finalization(&fin, TEST_PLAN_SITE, &records, false);
@@ -12460,7 +12121,6 @@ mod tests {
                 unit_count: 0,
                 runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
                 label: "cheap-gates".to_string(),
-                selection_tag: "fixture",
                 is_wet: false,
                 results: vec![ClaimResult {
                     function: "cheap_claim_pool_gate_passes".to_string(),
@@ -12477,7 +12137,6 @@ mod tests {
                     expectation_refusal: None,
                     budget_refusal: None,
                     host_dependency_refusal: None,
-                    selection_degradation: None,
                     resolve_realization: Some(
                         ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos: 9 },
                     ),
@@ -12490,7 +12149,6 @@ mod tests {
                 unit_count: 0,
                 runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
                 label: "compile-anchor".to_string(),
-                selection_tag: "fixture",
                 is_wet: false,
                 results: vec![ClaimResult {
                     function: "dag_compile_clean_gate_passes".to_string(),
@@ -12507,7 +12165,6 @@ mod tests {
                     expectation_refusal: None,
                     budget_refusal: None,
                     host_dependency_refusal: None,
-                    selection_degradation: None,
                     resolve_realization: Some(
                         ResolveRealizationObservation::SatisfiedFromSharedPool {
                             computation_identity: format!("entry-closure:{anchor_entry}:Hermetic"),
@@ -12523,7 +12180,6 @@ mod tests {
                 unit_count: 0,
                 runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
                 label: "native-bundle".to_string(),
-                selection_tag: "fixture",
                 is_wet: false,
                 results: vec![ClaimResult {
                     function: "native_selected_logic_production_spec".to_string(),
@@ -12542,7 +12198,6 @@ mod tests {
                     expectation_refusal: None,
                     budget_refusal: None,
                     host_dependency_refusal: None,
-                    selection_degradation: None,
                     resolve_realization: resolve_observation_for_nanos(3),
                 }],
             },
@@ -12573,7 +12228,6 @@ mod tests {
             unit_count: 0,
             runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
             label: "memo-regression".to_string(),
-            selection_tag: "fixture",
             is_wet: false,
             results: vec![
                 ClaimResult {
@@ -12591,7 +12245,6 @@ mod tests {
                     expectation_refusal: None,
                     budget_refusal: None,
                     host_dependency_refusal: None,
-                    selection_degradation: None,
                     resolve_realization: Some(
                         ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos: 9 },
                     ),
@@ -12611,7 +12264,6 @@ mod tests {
                     expectation_refusal: None,
                     budget_refusal: None,
                     host_dependency_refusal: None,
-                    selection_degradation: None,
                     resolve_realization: Some(
                         ResolveRealizationObservation::ColdResolvePerformed { resolve_nanos: 7 },
                     ),
@@ -13151,7 +12803,6 @@ mod tests {
             true,
             true,
             true,
-            true,
             false,
             true,
         );
@@ -13220,7 +12871,6 @@ mod tests {
             expectation_refusal: refusal,
             budget_refusal: None,
             host_dependency_refusal: None,
-            selection_degradation: None,
             resolve_realization: None,
         }
     }
@@ -13840,7 +13490,6 @@ mod tests {
             runtime_units: FloorRuntimeUnitCount::Observed { units: unit_count },
             results,
             label: "batch-under-test".to_string(),
-            selection_tag: "off",
             is_wet: false,
         }
     }
@@ -13873,7 +13522,6 @@ mod tests {
                 kind: BudgetKind::Wall,
             }),
             host_dependency_refusal: None,
-            selection_degradation: None,
             resolve_realization: None,
         };
         // Sanity: the string classifier alone really would misclassify this detail.
@@ -13903,7 +13551,6 @@ mod tests {
             expectation_refusal: None,
             budget_refusal: None,
             host_dependency_refusal: None,
-            selection_degradation: None,
             resolve_realization: None,
         };
         let (mode, _) = batch_failure_mode_and_detail(&batch_record_for_test(vec![plain]));
@@ -13934,7 +13581,6 @@ mod tests {
                 tool: "npm".to_string(),
                 hint: "apt install npm".to_string(),
             }),
-            selection_degradation: None,
             resolve_realization: None,
         };
         assert_eq!(
@@ -14173,7 +13819,7 @@ mod tests {
             std::env::temp_dir().join(format!("claim-executor-receipt-red-{}", std::process::id()));
         let _ = fs::remove_file(&base);
         fs::write(&base, b"a file where the receipt dir should be").unwrap();
-        assert!(!write_resolve_receipt_at(&base, &[], &[], None));
+        assert!(!write_resolve_receipt_at(&base, &[], None));
         assert!(!write_batch_wall_receipt_at(&base, &[]));
         let _ = fs::remove_file(&base);
     }
@@ -14221,7 +13867,6 @@ mod tests {
                 scan_dirs: vec!["dag/test/claim".to_string()],
                 explicit_entries: Vec::new(),
                 native_bundle_entries: Vec::new(),
-                node_frontier_selection: NodeFrontierSelectionMode::PredictOnly,
                 exclude_substrings: Vec::new(),
                 discovery_scope_dirs: Vec::new(),
                 execution_mode: ExecutionMode::Hermetic,
@@ -14238,7 +13883,6 @@ mod tests {
             runtime_units: FloorRuntimeUnitCount::Observed { units: 1 },
             results: Vec::new(),
             label: batch_heartbeat_label(&batches[0]),
-            selection_tag: batch_selection_tag(&batches[0]),
             is_wet: false,
         }];
 
@@ -14298,7 +13942,6 @@ mod tests {
             budget_refusal: None,
             host_dependency_refusal: None,
             expectation_refusal: None,
-            selection_degradation: None,
             resolve_realization: None,
         };
         let units = aggregate_batch_runtime_units(&[discovery_fail]);
@@ -14322,7 +13965,6 @@ mod tests {
             budget_refusal: None,
             host_dependency_refusal: None,
             expectation_refusal: None,
-            selection_degradation: None,
             resolve_realization: None,
         };
         assert_eq!(
@@ -14358,7 +14000,6 @@ mod tests {
             runtime_units: runtime_unit_count_unavailable("discovery corpus failed: test"),
             results: Vec::new(),
             label: "discovery-corpus".to_string(),
-            selection_tag: "applied",
             is_wet: false,
         }];
         assert!(write_batch_wall_receipt_at(&base, &records));
@@ -14419,7 +14060,6 @@ mod tests {
             unit_count: 1,
             results: Vec::new(),
             label: batch_heartbeat_label(&batches[0]),
-            selection_tag: batch_selection_tag(&batches[0]),
             is_wet: false,
         }];
 
@@ -14500,7 +14140,6 @@ mod tests {
                 runtime_units: FloorRuntimeUnitCount::Observed { units: 3 },
                 results: Vec::new(),
                 label: "batch-0".to_string(),
-                selection_tag: "off",
                 is_wet: false,
             },
             BatchRecord {
@@ -14511,7 +14150,6 @@ mod tests {
                 runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
                 results: Vec::new(),
                 label: "batch-1".to_string(),
-                selection_tag: "off",
                 is_wet: false,
             },
         ];
@@ -14532,7 +14170,6 @@ mod tests {
             runtime_units: FloorRuntimeUnitCount::Observed { units: 0 },
             results: Vec::new(),
             label: "batch-0".to_string(),
-            selection_tag: "off",
             is_wet: false,
         }];
         assert!(write_batch_wall_receipt_at(&base, &unbudgeted_records));
@@ -15719,7 +15356,6 @@ mod tests {
             scan_dirs: vec!["dag/test/claim".to_string()],
             explicit_entries: vec![],
             native_bundle_entries: vec![],
-            node_frontier_selection: NodeFrontierSelectionMode::Applied,
             exclude_substrings: vec![],
             discovery_scope_dirs: vec![],
             execution_mode: ExecutionMode::Hermetic,
@@ -15786,7 +15422,6 @@ mod tests {
             scan_dirs: vec![],
             explicit_entries: vec![],
             native_bundle_entries: vec![("bundle.dag".to_string(), "bundle_spec".to_string())],
-            node_frontier_selection: NodeFrontierSelectionMode::Applied,
             exclude_substrings: vec![],
             discovery_scope_dirs: vec![],
             execution_mode: ExecutionMode::Wet,
@@ -16564,7 +16199,6 @@ mod tests {
             unit_count: 3,
             runtime_units: FloorRuntimeUnitCount::Observed { units: 3 },
             label: "bin-witness-corpus".to_string(),
-            selection_tag: "applied",
             is_wet: true,
             results: vec![ClaimResult {
                 function: "bin-witness-corpus (3 witnesses)".to_string(),
@@ -16613,7 +16247,6 @@ mod tests {
                 expectation_refusal: None,
                 budget_refusal: None,
                 host_dependency_refusal: None,
-                selection_degradation: None,
                 resolve_realization: None,
             }],
         }];
@@ -16662,7 +16295,6 @@ mod tests {
             unit_count: 2,
             runtime_units: FloorRuntimeUnitCount::Observed { units: 2 },
             label: "collision".to_string(),
-            selection_tag: "applied",
             is_wet: false,
             results: vec![ClaimResult {
                 function: "discovery-corpus".to_string(),
@@ -16715,7 +16347,6 @@ mod tests {
                 expectation_refusal: None,
                 budget_refusal: None,
                 host_dependency_refusal: None,
-                selection_degradation: None,
                 resolve_realization: None,
             }],
         }]
@@ -17006,7 +16637,6 @@ mod tests {
                 "discovery-corpus".into(),
                 false,
                 killed_detail.to_string(),
-                NodeFrontierSelectionMode::Applied,
                 &summary_with(killed.clone()),
                 projected,
                 None,
@@ -17024,7 +16654,6 @@ mod tests {
             "discovery-corpus".into(),
             false,
             "red".into(),
-            NodeFrontierSelectionMode::Applied,
             &summary_with(ClaimOutcome::Fail),
             Ok(Vec::new()),
             None,
@@ -17089,7 +16718,6 @@ mod tests {
                 "discovery-corpus".into(),
                 false,
                 aggregate_detail.clone(),
-                NodeFrontierSelectionMode::Applied,
                 &summary_with(ClaimOutcome::Fail, vec![failure.clone()]),
                 projected,
                 None,
@@ -17106,7 +16734,6 @@ mod tests {
             "discovery-corpus".into(),
             false,
             "red".into(),
-            NodeFrontierSelectionMode::Applied,
             &summary_with(ClaimOutcome::Fail, vec!["returned Bool(false)".into()]),
             Ok(Vec::new()),
             None,
@@ -17154,7 +16781,6 @@ mod tests {
             "probe".into(),
             false,
             prior.to_string(),
-            NodeFrontierSelectionMode::Applied,
             &summary,
             Err("[witness-row-cost] REFUSED: missing measured resolve parent for e.dag".into()),
             None,
@@ -17231,7 +16857,6 @@ mod tests {
             expectation_refusal: None,
             budget_refusal: None,
             host_dependency_refusal: None,
-            selection_degradation: None,
             resolve_realization: None,
         }
     }
@@ -17648,7 +17273,6 @@ mod scoped_execution_request_tests {
             source_roots_digest: "digest".to_string(),
             entries,
             scan_dirs: Vec::new(),
-            node_frontier_selection: NodeFrontierSelectionMode::Applied,
             execution_authority: ScopedWitnessExecutionAuthority::InheritedWalkSourceRoots,
             profile: ParsedRunnableProfile {
                 provenance: ParsedProfileProvenance::Declared,

@@ -41,7 +41,6 @@ import gunbc.repo_identity {
   gunbc_default_branch_name,
 }
 import extdeps.git { GitRemoteRefParts, git_remote_ref }
-import gunbc.ci_workflow { ci_selection_control_script }
 import gunbc.ci_yaml_emit { expected_ci_yml }
 import gunbc.merge_admission_subject {
   merge_admission_merge_base_ref,
@@ -275,32 +274,6 @@ test fn witness_repo_identity_single_authority_perturbation() -> Bool {
     && (perturbed as String) == "origin/develop"
 }
 
-data witness_selection_control_scoped_note: String = "Keeps the affected-set scoping of the selection-control step WIRED (v2.workflow.ci_workflow_run_emit ci_selection_control_skip_policy_note). Three of the four clauses pin the skip band's shape: the pull_request event gate (without it, push-to-main would stop running the suite cold and the cold control that catches a wrong closure would be silently retired), the witness's OWN skip label rather than a hand-spelled copy, and the skip witness invocation. The FOURTH clause is what makes this discriminating rather than decorative: the floor_skip_discovery_witness invocation must SURVIVE the skip band. An edit that replaced the step with the skip alone would satisfy every other clause while deleting the control outright, so the surviving-invocation assertion is the one that reds on it."
-
-fn selection_control_scoped_holds_for(s: String) -> Bool {
-  string_contains(s: s, pattern: "\"$GITHUB_EVENT_NAME\" = pull_request")
-    && string_contains(s: s, pattern: "selection_control_not_affected_skip")
-    && string_contains(s: s, pattern: "$ROOT/target/release/selection_control_skip_witness")
-    && string_contains(s: s, pattern: "$ROOT/target/release/floor_skip_discovery_witness")
-}
-
-test fn witness_selection_control_step_is_affected_set_scoped() -> Bool {
-  selection_control_scoped_holds_for(s: ci_selection_control_script())
-}
-
-data witness_selection_control_scoped_red_control_note: String = "The discriminating RED for the witness above, proven by execution rather than asserted in prose. The synthetic subject carries the event gate, the skip label, and the skip-witness invocation but NOT the suite invocation — exactly the shape a 'replace the step with the skip' edit would produce. The predicate must answer false on it. Synthetic rather than a live mutation deliberately: mutating the emitter to observe the red would leave a broken tree for the auto-WIP commit to capture, and the property under test is the conjunction's discriminating power, which a hand-built negative exercises exactly."
-
-test fn witness_selection_control_scoped_red_control() -> Bool {
-  let missing_suite_invocation = concat(
-    "if [ \"$GITHUB_EVENT_NAME\" = pull_request ]; then\n",
-    concat(
-      "_ci_selection_skip=\"$(\"$ROOT/target/release/selection_control_skip_witness\" )\"\n",
-      "if [ \"$_ci_selection_skip\" = selection_control_not_affected_skip ]; then\nexit 0\nfi\nfi\n"
-    )
-  )
-  !selection_control_scoped_holds_for(s: missing_suite_invocation)
-}
-
 data receipt_gate_scripts_deleted_note: String = "The resolve-receipt and materialization-receipt gate SCRIPTS are deleted, not just unwired (ruling 2026-07-30): their laws run inside claim_executor as ordinary-floor finalization, and a surviving script would be a second representation of the floor-completion rule whose still-green tests could mask a live-path regression — the exact shape that hid the lost admission fetch. This witness therefore asserts their step names are ABSENT from the emitted workflow, and the disposition-transport check below keeps covering only the scripts that still exist."
 
 test fn witness_receipt_gate_steps_absent_from_workflow() -> Bool {
@@ -324,11 +297,8 @@ test fn witness_documentation_only_disposition_transport_retired() -> Bool {
   let marker_path = "target/ci-floor-disposition.txt"
   let skipped_disposition = "documentation_only_skipped"
   let floor = gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
-  let selection_gate = ci_selection_control_script()
   !string_contains(s: floor, pattern: marker_path) &&
-    !string_contains(s: floor, pattern: skipped_disposition) &&
-    !string_contains(s: selection_gate, pattern: marker_path) &&
-    !string_contains(s: selection_gate, pattern: skipped_disposition)
+    !string_contains(s: floor, pattern: skipped_disposition)
 }
 
 test fn witness_collapsed_run_script_is_build_plus_floor() -> Bool {

@@ -46,7 +46,6 @@ fn runnable_subject_occurrences(runnable: Runnable, subject: ScheduleWitnessEntr
       source_roots: _,
       scan_dirs: _,
       explicit_entries: explicit_entries,
-      node_frontier_selection: _,
       exclude_substrings: _,
       discovery_scope_dirs: _,
       profile: _

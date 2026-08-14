@@ -190,49 +190,19 @@ path = "src/bin/auth_declared_but_unwired_witness.rs"
 name = "bootstrap_witness"
 path = "src/bin/bootstrap_witness.rs"
 
-# Host-physics floor witness for the affected-set floor skip/discovery mechanism
-# (run_discovery_corpus_with_options node-precise skip semantics). Runtime host-effect
-# behavior (git diff observation, multi-entry resolve, per-witness skip decisions), not
-# pure logic, so a bare .dag test fn would be spec-without-execution (DESIGN §5).
-[[bin]]
-name = "floor_skip_discovery_witness"
-path = "src/bin/floor_skip_discovery_witness.rs"
-
-[[bin]]
-name = "p1_cohort_probe"
-path = "src/bin/p1_cohort_probe.rs"
-
-# Per-worker private-footprint decomposition (node://adhoc-2a689db3-964). Requires
-# `--features interp_test_witness` for the force/drop handles on MultiEntryIndex.
-# Measurement harness only: builds one index on one thread, never admits a second
-# worker, and touches neither DiscoveryWidthPolicy nor the cross-worker store.
-[[bin]]
-name = "measure_worker_private_memory"
-path = "src/bin/measure_worker_private_memory.rs"
-
 # Host-physics CI witness: regen self-host fixed-point affected-set skip. Prints
 # regen_not_affected_skip | run_regen for the generated ci regen step by intersecting
 # the merge-base diff with the [src/v1, dag] regen input closure (shared authority
-# cli_run::regen_input_sources). Empty diff / diff failure / closure failure → run_regen
+# cli_run::regen_input_sources). Empty diff / diff failure / closure failure -> run_regen
 # (fail-closed; main + the 4-hourly falsifier run regen cold as the control).
 [[bin]]
 name = "regen_floor_skip_witness"
 path = "src/bin/regen_floor_skip_witness.rs"
 
-# Affected-set selection-control skip witness. Declared explicitly for the same reason every
-# other witness here is: edition-2021 autodiscovery WOULD find src/bin/*.rs (cargo metadata
-# lists this target with or without this block, and CI's --bin build has been green
-# throughout), but an undeclared target is invisible to a reader of the manifest and would
-# vanish if autobins were ever turned off. Consistency with the roster above, not a fix
-# (review 44778 read the omission as a build break; it was not).
-[[bin]]
-name = "selection_control_skip_witness"
-path = "src/bin/selection_control_skip_witness.rs"
-
 # Host-physics floor witness for the v1 interpreter recorded-fixture record ->
 # hermetic-replay -> fail-closed lifecycle (DESIGN §5 determinism). Drives the real
 # claim_batch binary with --record/--hermetic/--fixture-store + mutates fixtures on
-# disk to prove fail-closed. SCAFFOLD — dissolves when the record/replay lifecycle
+# disk to prove fail-closed. SCAFFOLD -- dissolves when the record/replay lifecycle
 # is modeled + executed in the v2 .dag floor (open thread: v2.std.determinism).
 [[bin]]
 name = "interp_recorded_fixture_witness"

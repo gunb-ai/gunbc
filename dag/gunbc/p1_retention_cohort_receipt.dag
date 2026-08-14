@@ -1,7 +1,0 @@
-module gunbc.p1_retention_cohort_receipt
-
-import std.types { String }
-
-data p1_retention_cohort_receipt_reproduction_steps: String = "git checkout the commit where p1_cohort_probe.rs first lands; ctrl-build --local -- cargo build -p v1-compiler --bin p1_cohort_probe --release; run twice over the fixed 50-entry cohort in p1_cohort_roster.txt — Mode A with GUNBC_FLOOR_DRAIN_RETENTION=1 GUNBC_P1_COHORT_RECEIPT=1 (default eviction ON), Mode B additionally with GUNBC_SCHEDULE_RETENTION_EVICT=0 (retain-all pole); compare [p1-cohort] wall_ms/resolve_ms per entry over the valid overlapping range. Full receipt: docs/plans/p1-retention-vs-drain-cohort-receipt.md."
-
-data p1_retention_cohort_receipt_verdict: String = "REJECT — entries 2..34 (the valid Mode-B overlap before its OOM kill at entry 34/50) do not stop repaying the ~1-2s per-entry tax when schedule-derived retention eviction is disabled; mean/median wall_ms and resolve_ms are statistically indistinguishable between Mode A (eviction on) and Mode B (retain-all). Schedule-derived retention/eviction is not the cause of the tax; redirect to assembly/materialization reuse."

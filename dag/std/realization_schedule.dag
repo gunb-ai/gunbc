@@ -272,7 +272,6 @@ type ScopedWitnessBatch {
   source_roots: List<String>
   entries: List<ScheduleWitnessEntry>
   scan_dirs: List<String>
-  node_frontier_selection: NodeFrontierSelection
   execution_authority: ScopedWitnessExecutionAuthority
   execution_mode: ExecutionMode
   resource_profile: ScopedWitnessBatchResourceProfile
@@ -289,7 +288,6 @@ fn scoped_witness_batch(
   source_roots: List<String>,
   entries: List<ScheduleWitnessEntry>,
   scan_dirs: List<String>,
-  node_frontier_selection: NodeFrontierSelection,
   resource_profile: ScopedWitnessBatchResourceProfile,
 ) -> ScopedWitnessBatch {
   ScopedWitnessBatch {
@@ -297,7 +295,6 @@ fn scoped_witness_batch(
     source_roots: source_roots,
     entries: entries,
     scan_dirs: scan_dirs,
-    node_frontier_selection: node_frontier_selection,
     execution_authority: InheritedWalkSourceRoots {},
     execution_mode: resource_profile.runnable.execution_mode,
     resource_profile: resource_profile,
@@ -580,7 +577,7 @@ fn runnable_heavy_whole_tree_resolve(profile: RunnableResourceProfile) -> Bool {
 fn runnable_profile(r: Runnable) -> RunnableResourceProfile {
   match r {
     RunnableSingleClaim { entry: _, function: _, profile: p } => p
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: p } => p
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: p } => p
     RunnableScopedWitnessBatch { batch: batch } => batch.resource_profile.runnable
     RunnableKernelWorkload { fused_op_count: _ } => runnable_resource_profile_negligible()
   }
@@ -590,42 +587,17 @@ fn runnable_batch_clamp_source(r: Runnable) -> RunnableBatchClampSource {
   match r {
     RunnableScopedWitnessBatch { batch: batch } => RunnableOwnsBatchClamp { clamp: batch.resource_profile.clamp }
     RunnableSingleClaim { entry: _, function: _, profile: _ } => RunnableUsesFloorPositionalClamp
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => RunnableUsesFloorPositionalClamp
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => RunnableUsesFloorPositionalClamp
     RunnableKernelWorkload { fused_op_count: _ } => RunnableUsesFloorPositionalClamp
   }
 }
 
 fn runnable_forbids_corpus_co_residence(r: Runnable) -> Bool {
   match r {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
     RunnableScopedWitnessBatch { batch: batch } => runnable_excludes_corpus_co_residence(profile: batch.resource_profile.runnable)
     RunnableSingleClaim { entry: _, function: _, profile: p } => runnable_excludes_corpus_co_residence(profile: p)
     RunnableKernelWorkload { fused_op_count: _ } => false
-  }
-}
-
-type NodeFrontierSelection
-  = SelectionOff
-  | SelectionApplied
-  | SelectionPredictOnly
-
-fn node_frontier_selection_eq(left: NodeFrontierSelection, right: NodeFrontierSelection) -> Bool {
-  match left {
-    SelectionOff => match right {
-      SelectionOff => true
-      SelectionApplied => false
-      SelectionPredictOnly => false
-    }
-    SelectionApplied => match right {
-      SelectionOff => false
-      SelectionApplied => true
-      SelectionPredictOnly => false
-    }
-    SelectionPredictOnly => match right {
-      SelectionOff => false
-      SelectionApplied => false
-      SelectionPredictOnly => true
-    }
   }
 }
 
@@ -635,7 +607,6 @@ type Runnable
       source_roots: List<String>
       scan_dirs: List<String>
       explicit_entries: List<ScheduleWitnessEntry>
-      node_frontier_selection: NodeFrontierSelection
       exclude_substrings: List<String>
       discovery_scope_dirs: List<String>
       profile: RunnableResourceProfile
@@ -655,7 +626,7 @@ data on_success_runnable_disposition_note: String = "The single modeled admissio
 
 fn on_success_runnable_disposition(runnable: Runnable) -> OnSuccessRunnableDisposition {
   match runnable {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } =>
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } =>
       OnSuccessDiscoveryRefused
     RunnableScopedWitnessBatch { batch: _ } =>
       OnSuccessDiscoveryRefused
@@ -743,25 +714,6 @@ type WalkPopulationBudgetRefusal {
 
 data walk_population_budget_note: String = "WalkPlan carries an explicit Optional<Millisecond> budget for each population — the unit lives in the std.measure carrier, never in a field name (the RunnableBatchClamp precedent). Absent is authored unboundedness, never a parser fallback; Present must be positive. The ordinary watchdog owns the entire ordinary interval through receipt finalization and is disarmed only before green-only stages arm, so ordinary work cannot consume a reserved postcondition allowance. The postcondition watchdog separately bounds stages plus their receipts. A breach constructs WalkPopulationBudgetRefusal and durably writes floor-population-budget-refusal.txt with the population, plan site, one-based active stage/batch index, active unit, measured elapsed wall, and the budget that fired BEFORE claim_executor flushes stderr and exits nonzero. Index zero means the population had not entered its first unit. The outer workflow timeout remains only a larger wrapper backstop."
 
-fn node_frontier_selection_applied(sel: NodeFrontierSelection) -> Bool {
-  match sel {
-    SelectionApplied => true
-    SelectionOff => false
-    SelectionPredictOnly => false
-  }
-}
-
-fn runnable_selection_applied(r: Runnable) -> Bool {
-  match r {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: sel, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } =>
-      node_frontier_selection_applied(sel: sel)
-    RunnableScopedWitnessBatch { batch: batch } =>
-      node_frontier_selection_applied(sel: batch.node_frontier_selection)
-    RunnableSingleClaim { entry: _, function: _, profile: _ } => false
-    RunnableKernelWorkload { fused_op_count: _ } => false
-  }
-}
-
 type Schedule = List<List<Runnable>>
 
 type RealizationPlan<S> {
@@ -775,7 +727,7 @@ type RealizationPlan<S> {
 fn runnable_step_label(r: Runnable) -> String {
   match r {
     RunnableSingleClaim { entry: _, function: f, profile: _ } => f
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => "__discovery_corpus__"
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => "__discovery_corpus__"
     RunnableScopedWitnessBatch { batch: _ } => "__scoped_witness_batch__"
     RunnableKernelWorkload { fused_op_count: _ } => "__kernel_workload__"
   }
@@ -833,17 +785,16 @@ fn runnable_eq(left: Runnable, right: Runnable) -> Bool {
     RunnableSingleClaim { entry: le, function: lf, profile: lp } => match right {
       RunnableSingleClaim { entry: re, function: rf, profile: rp } =>
         (le == re) && (lf == rf) && runnable_resource_profile_eq(left: lp, right: rp)
-      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
+      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
       RunnableScopedWitnessBatch { batch: _ } => false
       RunnableKernelWorkload { fused_op_count: _ } => false
     }
-    RunnableDiscoveryBatch { source_roots: lsr, scan_dirs: lsd, explicit_entries: lex, node_frontier_selection: lskip, exclude_substrings: lex2, discovery_scope_dirs: lsc, profile: lp } => match right {
+    RunnableDiscoveryBatch { source_roots: lsr, scan_dirs: lsd, explicit_entries: lex, exclude_substrings: lex2, discovery_scope_dirs: lsc, profile: lp } => match right {
       RunnableSingleClaim { entry: _, function: _, profile: _ } => false
-      RunnableDiscoveryBatch { source_roots: rsr, scan_dirs: rsd, explicit_entries: rex, node_frontier_selection: rskip, exclude_substrings: rex2, discovery_scope_dirs: rsc, profile: rp } =>
+      RunnableDiscoveryBatch { source_roots: rsr, scan_dirs: rsd, explicit_entries: rex, exclude_substrings: rex2, discovery_scope_dirs: rsc, profile: rp } =>
         string_list_eq(left: lsr, right: rsr)
           && string_list_eq(left: lsd, right: rsd)
           && schedule_witness_entry_list_eq(left: lex, right: rex)
-          && node_frontier_selection_eq(left: lskip, right: rskip)
           && string_list_eq(left: lex2, right: rex2)
           && string_list_eq(left: lsc, right: rsc)
           && runnable_resource_profile_eq(left: lp, right: rp)
@@ -852,13 +803,13 @@ fn runnable_eq(left: Runnable, right: Runnable) -> Bool {
     }
     RunnableScopedWitnessBatch { batch: lb } => match right {
       RunnableSingleClaim { entry: _, function: _, profile: _ } => false
-      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
+      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
       RunnableScopedWitnessBatch { batch: rb } => lb == rb
       RunnableKernelWorkload { fused_op_count: _ } => false
     }
     RunnableKernelWorkload { fused_op_count: lleft } => match right {
       RunnableSingleClaim { entry: _, function: _, profile: _ } => false
-      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
+      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
       RunnableScopedWitnessBatch { batch: _ } => false
       RunnableKernelWorkload { fused_op_count: rcount } => lleft == rcount
     }

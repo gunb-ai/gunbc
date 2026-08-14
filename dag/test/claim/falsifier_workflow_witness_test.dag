@@ -9,7 +9,6 @@ import gunbc.falsifier_workflow {
   falsifier_workflow,
   gunbc_falsifier_job_backstop_timeout_minutes,
   gunbc_falsifier_build_job_backstop_timeout_minutes,
-  gunbc_falsifier_selection_control_job_backstop_timeout_minutes,
   gunbc_falsifier_cold_corpus_job_backstop_timeout_minutes,
   gunbc_falsifier_aggregate_verdict_job_backstop_timeout_minutes,
   gunbc_falsifier_step_timeout_minutes,
@@ -65,7 +64,6 @@ import gunbc.floor_component_receipt {
   floor_component_receipt_artifact_name,
   floor_component_receipt_schema,
 }
-import gunbc.ci_workflow { gunbc_ci_selection_control_step_timeout_minutes }
 import extdeps.github.actions { ConcurrencyMappingQueueNotMax, CancelInProgressBool }
 import gunbc.ci_workflow {
   gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes,
@@ -118,7 +116,7 @@ test fn falsifier_step_timeout_basis_is_measured_not_composed() -> Bool {
 
 test fn falsifier_backstop_is_step_sum_plus_prelude() -> Bool {
   gunbc_falsifier_job_backstop_timeout_minutes() == (gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_selection_control_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_falsifier_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_falsifier_compile_clean_cold_control_timeout_minutes + gunbc_falsifier_native_cache_cold_control_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes)
-    && gunbc_falsifier_job_backstop_timeout_minutes() == (gunbc_falsifier_build_job_backstop_timeout_minutes() + gunbc_falsifier_selection_control_job_backstop_timeout_minutes() + gunbc_falsifier_cold_corpus_job_backstop_timeout_minutes() + gunbc_falsifier_aggregate_verdict_job_backstop_timeout_minutes())
+    && gunbc_falsifier_job_backstop_timeout_minutes() == (gunbc_falsifier_build_job_backstop_timeout_minutes() + gunbc_falsifier_cold_corpus_job_backstop_timeout_minutes() + gunbc_falsifier_aggregate_verdict_job_backstop_timeout_minutes())
     && !(gunbc_falsifier_job_backstop_timeout_minutes() == gunbc_falsifier_step_timeout_minutes)
 }
 
@@ -129,15 +127,6 @@ test fn falsifier_soft_deadline_is_derived_and_strictly_inside_the_hard_cap() ->
     && gunbc_falsifier_soft_deadline_minutes() == (gunbc_falsifier_step_timeout_minutes - gunbc_falsifier_receipt_flush_allowance_minutes)
     && gunbc_falsifier_soft_deadline_minutes() < gunbc_falsifier_step_timeout_minutes
 }
-
-data selection_control_step_name: String = "Affected-set selection control (floor_skip_discovery_witness)"
-
-test fn selection_control_rides_falsifier_not_per_pr_ci() -> Bool {
-  string_contains(s: expected_falsifier_yml(), pattern: selection_control_step_name)
-    && !string_contains(s: expected_ci_yml(), pattern: selection_control_step_name)
-}
-
-data selection_control_order_witness_note: String = "STRUCTURAL order pin (2026-08-07 four-job topology): selection-control job holds exactly one control step after release-bin unpack; cold-corpus job holds peak bracket + falsifier_step + cold controls. cold-corpus needs only falsifier-build so selector RED cannot skip the corpus."
 
 fn step_index_of(steps: List<Step>, name: String) -> Int {
   let seen = fold(steps, init: { idx: 0, hit: 0 - 1 }, f: fn(acc, s) {
@@ -166,10 +155,6 @@ fn falsifier_build_job_steps() -> List<Step> {
   falsifier_job_steps(job_id: "falsifier-build")
 }
 
-fn falsifier_selection_control_job_steps() -> List<Step> {
-  falsifier_job_steps(job_id: "selection-control")
-}
-
 fn falsifier_cold_corpus_job_steps() -> List<Step> {
   falsifier_job_steps(job_id: "cold-corpus")
 }
@@ -180,37 +165,21 @@ fn ci_job_steps() -> List<Step> {
   })
 }
 
-test fn selection_control_sits_after_unpack_in_selection_job() -> Bool {
-  let steps = falsifier_selection_control_job_steps()
-  let unpack = step_index_of(steps: steps, name: "Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)")
-  let control = step_index_of(steps: steps, name: selection_control_step_name)
-  (unpack >= 0) && (control >= 0) && (unpack < control)
-}
-
-test fn cold_corpus_job_needs_build_only_not_selection() -> Bool {
+test fn cold_corpus_job_needs_build_only() -> Bool {
   fold(falsifier_workflow.jobs, init: false, f: fn(acc, j) {
     if j.id == falsifier_cold_corpus_job_id {
       any(j.needs, n => n == "falsifier-build")
-        && !any(j.needs, n => n == "selection-control")
     } else {
       acc
     }
   })
 }
 
-test fn falsifier_has_four_jobs_in_topology_order() -> Bool {
-  count(falsifier_workflow.jobs) == 4
+test fn falsifier_has_three_jobs_in_topology_order() -> Bool {
+  count(falsifier_workflow.jobs) == 3
     && falsifier_workflow.jobs[0].id == "falsifier-build"
-    && falsifier_workflow.jobs[1].id == "selection-control"
-    && falsifier_workflow.jobs[2].id == falsifier_cold_corpus_job_id
-    && falsifier_workflow.jobs[3].id == "aggregate-verdict"
-}
-
-test fn selection_control_enrolled_exactly_once_on_falsifier_and_never_on_ci() -> Bool {
-  step_count_named(steps: falsifier_build_job_steps(), name: selection_control_step_name) == 0
-    && step_count_named(steps: falsifier_selection_control_job_steps(), name: selection_control_step_name) == 1
-    && step_count_named(steps: falsifier_cold_corpus_job_steps(), name: selection_control_step_name) == 0
-    && step_count_named(steps: ci_job_steps(), name: selection_control_step_name) == 0
+    && falsifier_workflow.jobs[1].id == falsifier_cold_corpus_job_id
+    && falsifier_workflow.jobs[2].id == "aggregate-verdict"
 }
 
 test fn peak_bracket_brackets_only_cold_corpus_floor_path() -> Bool {
@@ -258,7 +227,6 @@ test fn aggregate_verdict_job_waits_for_all_arms() -> Bool {
     if j.id == "aggregate-verdict" {
       j.if_condition == Present { value: falsifier_aggregate_verdict_if }
         && any(j.needs, n => n == "falsifier-build")
-        && any(j.needs, n => n == "selection-control")
         && any(j.needs, n => n == falsifier_cold_corpus_job_id)
     } else {
       acc
@@ -416,13 +384,12 @@ test fn cold_corpus_not_run_is_not_regression_evidence() -> Bool {
   )
 }
 
-test fn selection_red_with_corpus_executed_still_counts_as_executed() -> Bool {
+test fn cold_red_with_corpus_executed_still_counts_as_executed() -> Bool {
   cold_corpus_execution_is_executed(
     c: classify_cold_corpus_execution(build: JobOutcomeSuccess, cold: JobOutcomeFailure, floor_receipt_present: true)
   )
     && cadence_verdict_should_fail(
       build: JobOutcomeSuccess,
-      selection: JobOutcomeFailure,
       cold: JobOutcomeFailure,
       floor_receipt_present: true
     )
@@ -431,7 +398,6 @@ test fn selection_red_with_corpus_executed_still_counts_as_executed() -> Bool {
 test fn failed_before_receipt_still_fails_cadence() -> Bool {
   cadence_verdict_should_fail(
     build: JobOutcomeSuccess,
-    selection: JobOutcomeSuccess,
     cold: JobOutcomeFailure,
     floor_receipt_present: false
   )

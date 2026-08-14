@@ -8,7 +8,6 @@ import std.realization_schedule {
   RunnableSingleClaim,
   RunnableDiscoveryBatch,
   RunnableKernelWorkload,
-  SelectionOff,
   WalkPlan,
   NoWalkFinalization,
   NoFinalizationDeclared,
@@ -127,7 +126,6 @@ fn discovery_runnable() -> Runnable {
     source_roots: ["dag"],
     scan_dirs: [],
     explicit_entries: [],
-    node_frontier_selection: SelectionOff,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile_negligible()

@@ -13,7 +13,6 @@ import gunbc.floor_component_receipt {
   floor_component_row_of_failure_mode,
   floor_component_transition_outcome
 }
-import std.realization_schedule { SelectionApplied }
 import std.observation { Done, Refused, Failed, TimedOut, Skipped, Final }
 import std.measure { millisecond }
 
@@ -333,7 +332,6 @@ fn falsifier_witness_row(index: Nat, done: Bool) -> FloorComponentRow {
     run_id: "witness" as NonEmptyStr,
     index: index,
     label: "discovery-corpus[2 root(s)+0 explicit, adaptive width]" as NonEmptyStr,
-    selection: SelectionApplied,
     witnesses: 0,
     outcome: if done { Done } else { Failed { error: "synthetic red" as NonEmptyStr, output: "" } },
     wall: millisecond(count: 0),
@@ -550,7 +548,6 @@ fn falsifier_witness_row_with(index: Nat, mode: NonEmptyStr, detail: NonEmptyStr
     run_id: "witness" as NonEmptyStr,
     index: index,
     label: "discovery-corpus[2 root(s)+0 explicit, adaptive width]" as NonEmptyStr,
-    selection_tag: "applied" as NonEmptyStr,
     witnesses: 0,
     failure_mode: mode,
     detail: detail,
