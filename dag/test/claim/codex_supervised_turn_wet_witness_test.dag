@@ -18,6 +18,7 @@ import gunbc.package_delivery {
   materialize_codex_runtime_finish_bisect_observe_native_digest_only,
   materialize_codex_runtime_finish_bisect_observe_toolchain_only,
   materialize_codex_runtime_finish_bisect_observe_protocol_schema_only,
+  materialize_codex_runtime_finish_bisect_parse_canonicalize_largest_protocol_schema_only,
   materialize_codex_runtime_finish_bisect_observe_package_tree_only,
   materialize_codex_runtime_finish_bisect_observe_receipt_identity_only,
   finish_bisect_observe_package_materialized_tree_tiny_fixture,
@@ -63,7 +64,7 @@ data witness_note: String = "WET BISECT REPRODUCTION (NOT ENROLLED WITNESSES). B
 
 data wet_non_witness_enrollment_note: String = "Admission gate 2026-08-14: OfflineLocalRecipe exclusion + enrolled test fn produced UnclassifiedPathDeferral (five rows, zero executing consumers). Fix: bisect arms are fn not test fn; no witness enrollment until explicit admission with declared envelope after production fix."
 
-data wet_supervised_turn_memory_envelope_note: String = "MEMORY ENVELOPE (srv1 bisect 2026-08-14). LOCATED: finish_after_install PINS 8G; pair-acquire and npm-ci-offline PASS 2G. Finish observe rungs (install + one observe each, order matches finish): wet_finish_observe_set_identity_only — 2G; wet_finish_observe_manifest_digest_only — 2G; wet_finish_observe_lock_digest_only — 2G; wet_finish_observe_native_digest_only — 2G; wet_finish_observe_toolchain_only — 2G; wet_finish_observe_protocol_schema_only — 2G; wet_finish_observe_package_tree_only — 2G/8G; wet_finish_observe_receipt_identity_only — 8G; wet_finish_observe_package_tree_tiny_fixture — 2G (two-file tree, no install). Control: wet_materialize_finish_after_install_only — 8G; wet_materialize_codex_runtime_bundle_only — 8G."
+data wet_supervised_turn_memory_envelope_note: String = "MEMORY ENVELOPE (srv1 bisect 2026-08-14). LOCATED: finish_after_install PINS 8G; pair-acquire and npm-ci-offline PASS 2G. Finish observe rungs (install + one observe each, order matches finish): wet_finish_observe_set_identity_only — 2G; wet_finish_observe_manifest_digest_only — 2G; wet_finish_observe_lock_digest_only — 2G; wet_finish_observe_native_digest_only — 2G; wet_finish_observe_toolchain_only — 2G; wet_finish_observe_protocol_schema_only — 2G; wet_finish_observe_package_tree_only — 2G/8G; wet_finish_observe_receipt_identity_only — 8G; wet_finish_observe_package_tree_tiny_fixture — 2G (two-file tree, no install). INTERPRETER BISECT: wet_finish_parse_canonicalize_largest_protocol_schema_only — install + generate-json-schema + parse_json/canonicalize_json_value on codex_app_server_protocol.schemas.json only (507 KB); no fold/manifest/sha512. Control: wet_materialize_finish_after_install_only — 8G; wet_materialize_codex_runtime_bundle_only — 8G."
 
 data wet_bisect_ladder_receipt_note: String = "srv1 ladder (eager-koi-458): construct/closure/prepare/wrapper-acquire/platform-acquire/through-prepare PASS; full materialize PINS 8G. Next: pair acquire together, npm ci offline install path, finish after install (tree walk / release)."
 
@@ -307,6 +308,12 @@ fn wet_finish_observe_toolchain_only() -> Bool {
 
 fn wet_finish_observe_protocol_schema_only() -> Bool {
   materialize_codex_runtime_finish_bisect_observe_protocol_schema_only(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_finish_parse_canonicalize_largest_protocol_schema_only() -> Bool {
+  materialize_codex_runtime_finish_bisect_parse_canonicalize_largest_protocol_schema_only(
     source: committed_admitted_codex_runtime_source(),
   )
 }
