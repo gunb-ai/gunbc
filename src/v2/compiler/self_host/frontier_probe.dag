@@ -673,11 +673,9 @@ fn frontier_probe_emit_from_populated_ingest(
     admission: admission,
     lm: dag_language_model()
   ) {
-    Rejected { diagnostics: d } => {
-      let blocker = frontier_classify_rejection_reason(reason: d.head.reason)
+    Rejected { diagnostics: d } =>
       frontier_probe_receipt_from_assemble_rejection(
         module_path: module_path,
-        blocker: blocker,
         diagnostics: d,
         detail: frontier_probe_detail_from_diagnostic(
           reason: d.head.reason,
@@ -689,7 +687,6 @@ fn frontier_probe_emit_from_populated_ingest(
           grammar: dag_language_model().grammar
         )
       )
-    }
     Accepted { value: _, diagnostics: _ } =>
       match emit_compiler_import_closure_from_ingest(
         ingest: ingest,

@@ -135,7 +135,6 @@ test fn assemble_receipt_carries_nonempty_rejection_chain() -> Bool {
   }
   let receipt = frontier_probe_receipt_from_assemble_rejection(
     module_path: "src/v2/compiler/example.dag",
-    blocker: RealizationGap,
     diagnostics: non_empty_diagnostics_from_parse_stage(d: stage),
     detail: FrontierProbeDetailAbsent,
     overlap_residue_stage: optional_present(value: stage)

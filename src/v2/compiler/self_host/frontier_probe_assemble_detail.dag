@@ -29,7 +29,6 @@ import v2.compiler.self_host.frontier_probe_types {
   AssembleMissingModule,
   AssembleRejectionCause,
   AssembleRejectionDetail,
-  FrontierBlockerClass,
   FrontierProbeAssembleDetail,
   FrontierProbeDetail,
   FrontierProbeReceipt,
@@ -400,7 +399,6 @@ fn frontier_probe_assemble_detail_from_rejection_with_overlap_stage(
 
 fn frontier_probe_receipt_from_assemble_rejection(
   module_path: String,
-  blocker: FrontierBlockerClass,
   diagnostics: NonEmptyDiagnostics,
   detail: FrontierProbeDetail,
   overlap_residue_stage: Optional<NonEmptyParseStageDiagnostics>
