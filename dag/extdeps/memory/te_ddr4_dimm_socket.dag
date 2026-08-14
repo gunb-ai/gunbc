@@ -1,0 +1,60 @@
+module extdeps.memory.te_ddr4_dimm_socket
+
+import std.types { String, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { Micrometer, micrometer }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.tyco_electronics { tyco_electronics }
+import extdeps.land_pattern.types {
+  BoardAttachmentStyle,
+  MountingPatternObligation,
+  ThroughHoleSolderTail,
+}
+
+// Application Specification 114-115012 Rev A, "DDR4 DIMM Socket Solder Tail", dated Nov 24 2016,
+// read 2026-08-14. It covers the 288-position solder-tail DDR4 DIMM socket and names 2308107 as
+// the representative base product part number for that product line.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.te.com/commerce/DocumentDelivery/DDEController?Action=showdoc&DocId=Specification+Or+Standard%7F114-115012%7FA%7Fpdf%7FEnglish%7FENG_SS_114-115012_A.pdf%7F2308107-5"
+  }
+}
+
+data te_ddr4_dimm_socket_note: String = "A PRODUCT FAMILY, NOT A SELECTED PART, AND NOT AN ORDERABLE ONE EITHER. 2308107 is the base product number the specification uses to identify this product line; the orderable variants differ in tail length for different board thicknesses and are carried on the customer drawing. So this row names a family whose mechanical facts are cited, and it does not say that this socket has been chosen for anything. THE SPECIFICATION STATES what is recorded here: 288 positions, 0.80 mm contact spacing, solder tail through plated holes, FR-4 or G-10 board material. IT ALSO PUBLISHES A PC BOARD LAYOUT AS FIGURE 3, and that is a fact about the document rather than about any reader: the hole pattern this part needs EXISTS and is published, it is simply not transcribed here. THE CUSTOMER DRAWING GOVERNS WHERE THE TWO CONFLICT, by the specification own terms, so a later reader who obtains that drawing is reading a higher authority for this part and not a second opinion. A SOLDER TAIL NEEDS A DRILL SCHEDULE, NOT A LAND PATTERN, which is why the obligation below is a plated-hole obligation carrying no success arm at all. An earlier revision of this row used a standing whose only established arm carried surface-mount land geometry, which this part can never inhabit — the type promised a success that was unreachable for the very part it described, and it also stored this session extraction failure as though it were a vendor fact. What a fetch on 2026-08-14 could or could not read is an observation this repository made, and it belongs in the observing layer downstream, never inside an upstream module."
+
+type DimmSocketCatalogRow {
+  base_part_number: NonEmptyStr
+  vendor: Vendor<Hardware>
+  position_count: Nat
+  contact_pitch: Micrometer
+  attachment: BoardAttachmentStyle
+  board_pattern: MountingPatternObligation
+}
+
+data ddr4_dimm_socket_solder_tail_288_family: DimmSocketCatalogRow = DimmSocketCatalogRow {
+  base_part_number: "2308107",
+  vendor: tyco_electronics,
+  position_count: 288,
+  contact_pitch: micrometer(count: 800),
+  attachment: ThroughHoleSolderTail,
+  board_pattern: MountingPatternObligation {
+    what_is_missing: "the plated-hole pattern this socket requires, which application specification 114-115012 publishes as Figure 3 and which the per-part customer drawing governs where the two conflict. No plated-hole geometry is transcribed here, and this repository carries no plated-hole geometry carrier for one to inhabit",
+  },
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.memory.te_ddr4_dimm_socket",
+      decl_name: "ddr4_dimm_socket_solder_tail_288_family",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

@@ -74,6 +74,7 @@ import gunbc.roadmap_dashboard_instance {
   DashboardLocalProvision,
   dashboard_instance_provider_state_root,
   dashboard_instance_provider_executable,
+  dashboard_instance_provider_executable_matches,
   dashboard_instance_ownership_marker_path,
   dashboard_instance_paths_are_owned,
   dashboard_instances_have_disjoint_owned_paths,
@@ -161,13 +162,19 @@ fn plan_binds_instance_paths(
   let auth_bound = any(plan, op => match op {
     DashboardVerifyProviderAuth { executable, state_root } =>
       state_root == dashboard_instance_provider_state_root(instance: instance)
-        && executable == dashboard_instance_provider_executable(instance: instance)
+        && dashboard_instance_provider_executable_matches(
+          executable: executable,
+          instance: instance,
+        )
     _ => false
   })
   let runtime_bound = any(plan, op => match op {
     DashboardVerifyProviderRuntime { executable, state_root } =>
       state_root == dashboard_instance_provider_state_root(instance: instance)
-        && executable == dashboard_instance_provider_executable(instance: instance)
+        && dashboard_instance_provider_executable_matches(
+          executable: executable,
+          instance: instance,
+        )
     _ => false
   })
   let service_bound = any(plan, op => match op {
@@ -518,7 +525,7 @@ fn witness_synthetic_layout() -> GunbcHostLayout {
     gunbc_serve_binary: "/witness/bin/gunbc" as FilePath,
     roadmap_codex_home: "/witness/codex-home" as FilePath,
     controller_repo: "/witness/controller-repo" as FilePath,
-    codex_bundled_executable: "/witness/codex-bundled" as FilePath,
+    codex_bundled_executable: Present { value: "/witness/codex-bundled" as FilePath },
   }
 }
 
@@ -554,7 +561,10 @@ test fn isolated_instance_carries_the_layout_it_was_given() -> Bool {
   i.host_identity == "witness-host"
     && i.serve_binary == "/witness/root/bin/gunbc"
     && dashboard_instance_provider_state_root(instance: i) == "/witness/codex-home"
-    && dashboard_instance_provider_executable(instance: i) == "/witness/codex-bundled"
+    && match dashboard_instance_provider_executable(instance: i) {
+      Present { value: executable } => executable == "/witness/codex-bundled"
+      Absent => false
+    }
     && match i.source_seed {
       DashboardGitBundle {
         controller_repo,

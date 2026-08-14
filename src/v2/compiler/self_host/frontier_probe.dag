@@ -24,6 +24,7 @@ import v2.compiler.program_assembly {
   ProgramAssemblyFoldOk
 }
 import v2.compiler.self_host.frontier_probe_assemble_detail {
+  frontier_probe_assemble_located_reason_from_diagnostics,
   frontier_probe_receipt_from_assemble_rejection
 }
 import v2.compiler.self_host.frontier_probe_types {
@@ -293,9 +294,10 @@ fn frontier_probe_first_missing_import_lookup(
 fn frontier_probe_missing_module_from_assemble_context(
   ingest: SourceRootIngest,
   admission: Admission,
-  d: NonEmptyDiagnostics
+  d: NonEmptyDiagnostics,
+  reason: Symbol
 ) -> Optional<QualifiedName> {
-  if d.head.reason != ^resolve_module_not_found {
+  if reason != ^resolve_module_not_found {
     optional_absent()
   } else {
     match program_assembly_fold_ingest(ingest: ingest, lm: dag_language_model()) {
@@ -323,7 +325,8 @@ fn frontier_probe_detail_from_diagnostic(
     match frontier_probe_missing_module_from_assemble_context(
       ingest: ingest,
       admission: admission,
-      d: d
+      d: d,
+      reason: reason
     ) {
       Present { value: qn } => MissingModule { requested: qn }
       Absent => FrontierProbeDetailAbsent
@@ -674,14 +677,12 @@ fn frontier_probe_emit_from_populated_ingest(
     admission: admission,
     lm: dag_language_model()
   ) {
-    Rejected { diagnostics: d } => {
-      let blocker = frontier_classify_rejection_reason(reason: d.head.reason)
+    Rejected { diagnostics: d } =>
       frontier_probe_receipt_from_assemble_rejection(
         module_path: module_path,
-        blocker: blocker,
         diagnostics: d,
         detail: frontier_probe_detail_from_diagnostic(
-          reason: d.head.reason,
+          reason: frontier_probe_assemble_located_reason_from_diagnostics(d: d),
           d: d,
           ingest: ingest,
           admission: admission
@@ -690,7 +691,6 @@ fn frontier_probe_emit_from_populated_ingest(
           grammar: dag_language_model().grammar
         )
       )
-    }
     Accepted { value: _, diagnostics: _ } =>
       match emit_compiler_import_closure_from_ingest(
         ingest: ingest,

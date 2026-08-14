@@ -94,6 +94,10 @@ data nfr_reason_content_hash_structural_refusal: String = "ContentHash family st
 
 data nfr_dissolve_content_hash_structural_refusal: DissolutionCondition = unbound_dissolution(description: "SourceRef digest construction grounds each ContentHash family at inhabitance and the wildcard arm becomes a total match — row deletes with that fold (std.content_hash family grounding)")
 
+data nfr_reason_arrow_body_form_eval_runtime_equals: String = "arrow_body_form_eval_runtime_int_equals matches RuntimeValue with an off-variant wildcard arm returning false for witness-side integer equality checks against eval output; landed with ArrowBodyForm semantic helpers; declared at landing so the ratchet re-arms"
+
+data nfr_dissolve_arrow_body_form_eval_runtime_equals: DissolutionCondition = unbound_dissolution(description: "RuntimeValue projection for eval witnesses becomes a total match over inhabited primitive carriers and the wildcard arm deletes with that fold")
+
 data nfr_reason_class_b_binding_projection: String = "Class B declared-import-closure observation projection (match on DeclaredImportClosureBindingObservation with off-variant wildcard refusal arms) landed with #7835 observe_declared_import_closure_symbol_binding builtin; callers judge ListedImport vs PoolCoincidence vs refusal — the match is the typed verdict fold over the host observation carrier, not business policy; declared at landing so the ratchet re-arms"
 
 data nfr_reason_release_identity_absent_split: String = "one-special-variant split over RunningReleaseUnidentifiedCause: ReleaseRevisionAbsent answers ProcessIdentityAbsent because a process predating the identity channel is a MIGRATION state, and the other nine causes answer ProcessIdentityMalformed because a live channel carrying something that is not an identity is a DEFECT in the deploying machinery. The nine share one arm because they already differ where it matters — running_release_unidentified_detail names each cause before the match runs, so the arm carries the distinction rather than erasing it, and enumerating the nine would clone one arm nine times (the DESIGN §2 redundancy, not the DESIGN §4 totality). Landed with Phase A release-identity readiness; declared at landing so the ratchet arms with the code."
@@ -106,6 +110,10 @@ data nfr_reason_pool_independence_projection: String = "ReferenceDerivedDependen
 
 data nfr_dissolve_pool_independence_projection: DissolutionCondition = unbound_dissolution(description: "ReferenceDerivedDependencyProjection carrier equality becomes derived from inhabitance (total match over Ready, BindingRefused, and FileRefused with named refusal arms, or a single std projection-equality carrier) and the wildcard arms delete with their rows")
 
+data nfr_reason_floor_component_receipt_validation: String = "receipt alert validation predicate (match on ComponentOutcomeRead with nested match on FloorComponentFailureMode; the NOT-CONCLUDED arm whitelists only ModeRunIncomplete and ModeUnrecorded, returning false for every other mode via an off-variant wildcard) landed with the floor progress/terminal receipt split (#8239); declared at landing so the ratchet re-arms"
+
+data nfr_dissolve_floor_component_receipt_validation: DissolutionCondition = unbound_dissolution(description: "the writer-side pair projection becomes derived from inhabitance (total match over the NOT-CONCLUDED × failure-mode combinations the receipt can actually carry) and the wildcard arm deletes with its row")
+
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::offer_matches_request_shape" },
@@ -113,7 +121,7 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_dispatch_selection_routing,
   },
   FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::resolve_codex_offer" },
+    subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::resolve_codex_offer_with_observed_fingerprint" },
     reason: nfr_reason_dispatch_selection_routing,
     dissolution: nfr_dissolve_dispatch_selection_routing,
   },
@@ -648,6 +656,11 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_wildcard_total,
   },
   FrontierRow {
+    subject: PathSubject { path: "src/v2/test/claim/body_lowering/arrow_body_form_semantic_helpers.dag::arrow_body_form_eval_runtime_int_equals" },
+    reason: nfr_reason_arrow_body_form_eval_runtime_equals,
+    dissolution: nfr_dissolve_arrow_body_form_eval_runtime_equals,
+  },
+  FrontierRow {
     subject: PathSubject { path: "src/v2/test/claim/generated/coproduct_exhaustiveness.dag::anchor_is" },
     reason: nfr_reason_mint_era,
     dissolution: nfr_dissolve_wildcard_total,
@@ -931,6 +944,11 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/fleet_runner_connectivity.dag::connectivity_verdict_is_unknown" },
     reason: nfr_reason_mint_era,
     dissolution: nfr_dissolve_wildcard_total,
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/floor_component_receipt_document.dag::component_outcome_agrees_with_failure_mode" },
+    reason: nfr_reason_floor_component_receipt_validation,
+    dissolution: nfr_dissolve_floor_component_receipt_validation,
   },
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/live_deploy/readiness.dag::healthz_release_identity_refusal" },
