@@ -2,33 +2,11 @@ module extdeps.publication
 
 import std.integer { Int }
 import std.types { String }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https,
-    locator: "www.openwebfoundation.org/legal/the-owf-1-0-agreements/owfa-1-0",
-  }
-}
-
-data publication_status_axis_note: String = "UPSTREAM PUBLICATION FACTS ONLY. SpecificationDocumentDate records what the publisher published and when, on subjects that carry that field. DocumentPublicationStatus is the upstream status axis for subjects that carry it; #8257 ships only SpecificationDocumentDate here, and #8260 re-adds DocumentPublicationStatus to this same module after retarget. The anchor cites OWFa 1.0 because consumers model open-licence publication. How this repository read or failed to read a cited locator is an observation in gunbc.specification_citation_read_provenance; the rule mapping a status to whether gunbc may carry facts lives in gunbc.upstream_document_carriage."
+data publication_status_axis_note: String = "PURE PUBLICATION VOCABULARY — no upstream document subject of its own (same class as extdeps.external_authority and extdeps.uri). SpecificationDocumentDate is a shared type; DocumentPublicationStatus re-lands here on #8260 retarget. Document rows, anchors, and status values live on per-document modules. Machinery admission is via external_authority_machinery_exempt_module_paths in cli_run.rs. Read observations live in gunbc.specification_citation_read_provenance; the carriage rule lives in gunbc.upstream_document_carriage."
 
 type SpecificationDocumentDate {
   year: Int
   month: Int
   day: Int
-}
-
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
-      module_path: "extdeps.publication",
-      decl_name: "SpecificationDocumentDate",
-      field: WholeDeclaration,
-    }
-  },
-  first_citation: extdeps_external_authority_anchor,
-  further_citations: [],
 }
