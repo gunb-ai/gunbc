@@ -1,7 +1,7 @@
 module product.altra_motherboard.scene_emission
 
 import product.altra_motherboard.pcb_world { altra_pcb_world }
-import product.pcb.world { PcbWorldReady, PcbWorldRefused }
+import product.pcb.world { PartialPcbWorldReady, AdmittedPcbWorld, PcbWorldRefused }
 import product.pcb.plan_view {
   PcbSceneEmission,
   PcbSceneEmitted,
@@ -11,11 +11,12 @@ import product.pcb.plan_view {
   emit_pcb_plan_view,
 }
 
-data scene_emission_note: String = "Production entry for the Altra reference board plan view. The world is minted once through product.altra_motherboard.pcb_world and projected through product.pcb.plan_view; this module names no component and no channel."
+data scene_emission_note: String = "Production entry for the Altra reference board plan view. The world is minted once through product.altra_motherboard.pcb_world as a partial preview and realized through product.pcb.plan_view as SVG. This module names no component and no channel."
 
 fn emit_altra_board_scene() -> PcbSceneEmission {
   match altra_pcb_world() {
     PcbWorldRefused { cause: c } => PcbSceneEmissionRefused { cause: PcbSceneWorldRefused { cause: c } }
-    PcbWorldReady { value: w } => emit_pcb_plan_view(c: project_pcb_world(w: w))
+    PartialPcbWorldReady { value: w } => emit_pcb_plan_view(c: project_pcb_world(w: w))
+    AdmittedPcbWorld { value: w } => emit_pcb_plan_view(c: project_pcb_world(w: w))
   }
 }

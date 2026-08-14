@@ -1,14 +1,18 @@
 module product.altra_motherboard.pcb_world
 
-import std.types { String, List }
+import std.types { String, Bool, NonEmptyStr, List }
 import std.orthogonal_geometry { OrthogonalReady, OrthogonalRefused }
 import product.pcb.world {
   PcbWorld,
   PcbWorldIdentity,
   PcbWorldConstruction,
-  PcbWorldReady,
+  PartialPcbWorldReady,
+  AdmittedPcbWorld,
   PcbWorldRefused,
   PcbBoardOutlineRefused,
+  PcbDesignPlanUnavailable,
+  PcbCapabilityStillPending,
+  PcbPlacementNotAdmitted,
   PcbSourceDesign,
   PcbBoard,
   PcbPhysicalWorld,
@@ -16,50 +20,121 @@ import product.pcb.world {
   PcbManufacturingWorld,
   PcbComponentObligation,
   PcbAttachmentObligation,
-  PcbObligationStanding,
-  PcbSelectionJustification,
-  AuthorityUnresolved,
+  PcbObligationCause,
+  MissingDocument,
+  CommercialAccess,
+  LegalCarriage,
+  UnselectedPart,
   pcb_world,
+  capability_pending,
+  first_pending_capability,
 }
 import product.altra_motherboard.placement {
   BoardPlacementPlan,
-  PlannedComponent,
   EnvelopeEstablished,
   EnvelopeNotEstablished,
+  PlacementAdmitted,
+  PlacementRefused,
   placeable_components,
-  role_tag,
   altra_reference_plan,
+  admit_placement,
 }
-import product.altra_motherboard.part_standing { obligation_standing_for, justification_for }
 import product.altra_motherboard.attachment_stack {
   LayerBlocker,
+  FactAuthorityBlocker,
+  NeedsSomeoneToFindTheDocument,
+  NeedsCommercialAccess,
+  NeedsARedistributionDecision,
   attachment_layer_name,
   open_blockers,
 }
-
-data pcb_world_note: String = "THE ALTRA BOARD AS ONE PCB WORLD AUTHORITY. The placement plan is projected into product.pcb.world's populations: established envelopes become components, and every other planned role becomes an obligation whose standing is joined from product.altra_motherboard.part_standing. The part/geometry ladder is four rungs — established, PatternOutstanding consuming MountingPatternStanding, TypeNamed, and nothing-known (SelectionNeverAttempted, AccessRefused, or AuthorityUnresolved). Collapsing any two rungs reports less than the repository knows. JUSTIFICATION IS A FIFTH AXIS beside those rungs, not a fifth rung: every planned identity carries a SelectionJustificationStanding from the same observing layer. The plan view never reads placement directly."
-
-data altra_reference_world_identity: PcbWorldIdentity = "altra-reference-1p" as PcbWorldIdentity
-
-data altra_source_design: PcbSourceDesign = PcbSourceDesign {
-  subject: "product.altra_motherboard.minimal_design"
+import product.altra_motherboard.minimal_design {
+  AltraMinimalMotherboard,
+  ActiveDdrChannelCount,
+  DesignIntent,
+  EngineeringBringUp,
+  Production,
+  OneChannel,
+  TwoChannels,
+  FourChannels,
+  SixChannels,
+  EightChannels,
+  active_channel_count,
+  altra_1p_minimum,
 }
 
-fn standing_of(c: PlannedComponent) -> PcbObligationStanding {
-  match obligation_standing_for(r: c.role) {
-    Present { value: s } => s
-    Absent => AuthorityUnresolved {
-      because: "this role has no established envelope and no recorded selection standing",
+data pcb_world_note: String = "THE ALTRA BOARD AS A PROJECTION OF 8233'S PLACEMENT PLAN INTO THE SHARED PCB WORLD. This module owns the scene join, not the design: envelopes, blockers and admission stay in product.altra_motherboard.placement and attachment_stack. Obligation causes are the plan's FactAuthorityBlocker, not a role string. Capabilities that 8233 has not modeled are pending with a nonempty obligation, never an empty list. The outline constructing is PartialPcbWorldReady — a preview, not an admitted board. A six-channel design does not share the four-channel identity, and has no plan on this increment, so it refuses rather than borrowing the reference plan."
+
+fn intent_tag(i: DesignIntent) -> String {
+  match i {
+    EngineeringBringUp => "bring-up"
+    Production => "production"
+  }
+}
+
+fn channel_tag(c: ActiveDdrChannelCount) -> String {
+  match c {
+    OneChannel => "1ch"
+    TwoChannels => "2ch"
+    FourChannels => "4ch"
+    SixChannels => "6ch"
+    EightChannels => "8ch"
+  }
+}
+
+fn design_revision_tag(d: AltraMinimalMotherboard) -> String {
+  concat(
+    intent_tag(i: d.intent),
+    concat(":",
+    concat(channel_tag(c: d.memory.channels),
+    concat(":dpc",
+    concat(to_string(d.memory.dimms_per_channel),
+    concat(":pcie", to_string(d.pcie_lanes_broken_out))))))
+  )
+}
+
+fn world_identity_for(d: AltraMinimalMotherboard) -> PcbWorldIdentity {
+  concat("altra:", design_revision_tag(d: d)) as PcbWorldIdentity
+}
+
+fn source_design_for(d: AltraMinimalMotherboard) -> PcbSourceDesign {
+  PcbSourceDesign {
+    subject: concat("product.altra_motherboard.minimal_design:", design_revision_tag(d: d)) as NonEmptyStr,
+  }
+}
+
+fn intent_eq(a: DesignIntent, b: DesignIntent) -> Bool {
+  match a {
+    EngineeringBringUp => match b {
+      EngineeringBringUp => true
+      Production => false
+    }
+    Production => match b {
+      Production => true
+      EngineeringBringUp => false
     }
   }
 }
 
-fn component_obligation(c: PlannedComponent) -> PcbComponentObligation {
-  PcbComponentObligation {
-    identity: c.identity,
-    role: role_tag(r: c.role),
-    origin: c.origin,
-    standing: standing_of(c: c),
+fn designs_eq(a: AltraMinimalMotherboard, b: AltraMinimalMotherboard) -> Bool {
+  intent_eq(a: a.intent, b: b.intent)
+    && active_channel_count(c: a.memory.channels) == active_channel_count(c: b.memory.channels)
+    && a.memory.dimms_per_channel == b.memory.dimms_per_channel
+    && a.pcie_lanes_broken_out == b.pcie_lanes_broken_out
+}
+
+fn cause_from_blocker(g: FactAuthorityBlocker) -> PcbObligationCause {
+  match g {
+    NeedsSomeoneToFindTheDocument { what_is_missing: w } =>
+      if string_contains(s: w as String, pattern: "no vendor has been chosen") {
+        UnselectedPart { because: w }
+      } else {
+        MissingDocument { what_is_missing: w }
+      }
+    NeedsCommercialAccess { subject: s, access_route: _ } =>
+      CommercialAccess { subject: s }
+    NeedsARedistributionDecision { reason: r } =>
+      LegalCarriage { reason: r }
   }
 }
 
@@ -67,13 +142,20 @@ fn obligations_from_plan(plan: BoardPlacementPlan) -> List<PcbComponentObligatio
   fold(plan.components, init: [], f: fn(acc, c) {
     match c.envelope {
       EnvelopeEstablished { envelope: _, source: _ } => acc
-      EnvelopeNotEstablished { gap: _ } => concat(acc, [component_obligation(c: c)])
+      EnvelopeNotEstablished { gap: g } => concat(acc, [PcbComponentObligation {
+        identity: c.identity,
+        origin: c.origin,
+        cause: cause_from_blocker(g: g),
+      }])
     }
   })
 }
 
 fn attachment_obligation_from_blocker(b: LayerBlocker) -> PcbAttachmentObligation {
-  PcbAttachmentObligation { layer: attachment_layer_name(l: b.layer) }
+  PcbAttachmentObligation {
+    layer: attachment_layer_name(l: b.layer),
+    cause: cause_from_blocker(g: b.blocker),
+  }
 }
 
 fn attachment_obligations() -> List<PcbAttachmentObligation> {
@@ -82,49 +164,59 @@ fn attachment_obligations() -> List<PcbAttachmentObligation> {
   })
 }
 
-fn selection_justification(c: PlannedComponent) -> PcbSelectionJustification {
-  PcbSelectionJustification {
-    identity: c.identity,
-    standing: justification_for(r: c.role),
-  }
-}
-
-fn justifications_from_plan(plan: BoardPlacementPlan) -> List<PcbSelectionJustification> {
-  fold(plan.components, init: [], f: fn(acc, c) {
-    concat(acc, [selection_justification(c: c)])
-  })
-}
-
 fn physical_world_from_plan(plan: BoardPlacementPlan) -> PcbPhysicalWorld {
   PcbPhysicalWorld {
     board: PcbBoard { frame: plan.frame, outline: plan.outline },
-    stackup: [],
     components: placeable_components(plan: plan),
-    footprints: [],
-    pads: [],
-    holes: [],
-    routes: [],
-    copper_regions: [],
-    keepouts: [],
     obligations: obligations_from_plan(plan: plan),
     attachment_obligations: attachment_obligations(),
-    justifications: justifications_from_plan(plan: plan),
+    stackup: capability_pending(what_is_owed: "a cited dielectric stackup for this board; no fabricator profile has been joined"),
+    footprints: capability_pending(what_is_owed: "vendor land patterns placed on this board; body envelopes are not footprints"),
+    pads: capability_pending(what_is_owed: "a pad population derived from placed footprints"),
+    routes: capability_pending(what_is_owed: "a route population; routing has not been modeled for this board"),
   }
 }
 
-fn pcb_world_from_plan(plan: BoardPlacementPlan) -> PcbWorld {
+fn pcb_world_from_plan(d: AltraMinimalMotherboard, plan: BoardPlacementPlan) -> PcbWorld {
   pcb_world(
-    identity: altra_reference_world_identity,
-    source_design: altra_source_design,
-    electrical: PcbElectricalWorld { nets: [] },
+    identity: world_identity_for(d: d),
+    source_design: source_design_for(d: d),
+    electrical: PcbElectricalWorld {
+      nets: capability_pending(what_is_owed: "a netlist joined to this board; electrical connectivity has not been modeled"),
+    },
     physical: physical_world_from_plan(plan: plan),
-    manufacturing: PcbManufacturingWorld { artifacts: [] },
+    manufacturing: PcbManufacturingWorld {
+      artifacts: capability_pending(what_is_owed: "manufacturing artifacts (gerber, drill, fab drawing); none have been emitted"),
+    },
   )
 }
 
+fn altra_pcb_world_for(d: AltraMinimalMotherboard) -> PcbWorldConstruction<PcbWorld> {
+  if !designs_eq(a: d, b: altra_1p_minimum) {
+    PcbWorldRefused { cause: PcbDesignPlanUnavailable { requested: source_design_for(d: d) } }
+  } else {
+    match altra_reference_plan() {
+      OrthogonalRefused { cause: c } => PcbWorldRefused { cause: PcbBoardOutlineRefused { cause: c } }
+      OrthogonalReady { value: plan } => PartialPcbWorldReady { value: pcb_world_from_plan(d: d, plan: plan) }
+    }
+  }
+}
+
 fn altra_pcb_world() -> PcbWorldConstruction<PcbWorld> {
-  match altra_reference_plan() {
-    OrthogonalRefused { cause: c } => PcbWorldRefused { cause: PcbBoardOutlineRefused { cause: c } }
-    OrthogonalReady { value: plan } => PcbWorldReady { value: pcb_world_from_plan(plan: plan) }
+  altra_pcb_world_for(d: altra_1p_minimum)
+}
+
+fn admit_pcb_world(d: AltraMinimalMotherboard, w: PcbWorld) -> PcbWorldConstruction<PcbWorld> {
+  match first_pending_capability(w: w) {
+    Present { value: cap } => PcbWorldRefused { cause: PcbCapabilityStillPending { capability: cap } }
+    Absent =>
+      match altra_reference_plan() {
+        OrthogonalRefused { cause: c } => PcbWorldRefused { cause: PcbBoardOutlineRefused { cause: c } }
+        OrthogonalReady { value: plan } =>
+          match admit_placement(d: d, plan: plan) {
+            PlacementAdmitted { plan: _ } => AdmittedPcbWorld { value: w }
+            PlacementRefused { causes: _ } => PcbWorldRefused { cause: PcbPlacementNotAdmitted }
+          }
+      }
   }
 }

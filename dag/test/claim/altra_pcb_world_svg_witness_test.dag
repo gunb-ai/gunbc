@@ -14,30 +14,36 @@ import std.orthogonal_geometry {
 import product.pcb.world {
   PcbWorld,
   PcbWorldIdentity,
-  PcbWorldReady,
+  PartialPcbWorldReady,
+  AdmittedPcbWorld,
   PcbWorldRefused,
+  PcbDesignPlanUnavailable,
+  PcbCapabilityStillPending,
+  PcbPlacementNotAdmitted,
+  PcbBoardOutlineRefused,
   PcbSourceDesign,
   PcbBoard,
   PcbPhysicalWorld,
   PcbElectricalWorld,
   PcbManufacturingWorld,
   PcbComponentObligation,
-  AuthorityUnresolved,
-  PatternOutstanding,
+  UnselectedPart,
+  MissingDocument,
+  CapabilityPending,
+  CapabilityRefused,
   pcb_world,
   pcb_world_physical,
+  pcb_world_identity,
+  pcb_world_source_design,
   pcb_component_count,
   pcb_obligation_count,
   pcb_population_count,
   pcb_attachment_obligation_count,
-  pcb_pattern_outstanding_count,
-  pcb_unfilled_count,
-  pcb_type_named_count,
-  pcb_selection_never_attempted_count,
-  pcb_access_refused_count,
-  pcb_justification_count,
-  pcb_justification_precedent_count,
-  pcb_justification_outstanding_count,
+  pcb_unselected_part_count,
+  pcb_missing_document_count,
+  pcb_commercial_access_count,
+  pcb_legal_carriage_count,
+  capability_pending,
 }
 import product.pcb.plan_view {
   PcbSceneEmitted,
@@ -47,18 +53,22 @@ import product.pcb.plan_view {
   project_pcb_world,
   emit_pcb_plan_view,
   first_unrepresented_world_identity,
+  attachment_label_base,
+  attachment_label_step,
 }
-import product.altra_motherboard.pcb_world { altra_pcb_world }
+import product.pcb.scene { project_engineering_scene }
+import product.altra_motherboard.pcb_world {
+  altra_pcb_world,
+  altra_pcb_world_for,
+  world_identity_for,
+  source_design_for,
+  admit_pcb_world,
+}
 import product.altra_motherboard.scene_emission { emit_altra_board_scene }
-import product.altra_motherboard.placement {
-  channel_indices,
-  required_roles,
-}
 import product.altra_motherboard.minimal_design {
   AltraMinimalMotherboard,
   MemoryConfiguration,
   Production,
-  FourChannels,
   SixChannels,
   altra_1p_minimum,
 }
@@ -66,8 +76,6 @@ import extdeps.cpu.ampere_altra_package {
   altra_package_body_width,
   altra_package_body_height,
 }
-import extdeps.land_pattern.types { VendorPatternNotEstablished }
-import extdeps.power.ti_tps3808 { tps3808g01dbvr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -77,7 +85,8 @@ data synthetic_world_identity: PcbWorldIdentity = "synthetic-plan-view" as PcbWo
 fn world_or_empty() -> PcbWorld? {
   match altra_pcb_world() {
     PcbWorldRefused { cause: _ } => none
-    PcbWorldReady { value: w } => Present { value: w }
+    PartialPcbWorldReady { value: w } => Present { value: w }
+    AdmittedPcbWorld { value: _ } => none
   }
 }
 
@@ -110,26 +119,22 @@ fn synthetic_outline() -> AxisAlignedRectangle2? {
   }
 }
 
-fn synthetic_unfilled_obligations(ids: List<NonEmptyStr>) -> List<PcbComponentObligation> {
+fn synthetic_unselected_obligations(ids: List<NonEmptyStr>) -> List<PcbComponentObligation> {
   fold(ids, init: [], f: fn(acc, id) {
     concat(acc, [PcbComponentObligation {
       identity: id,
-      role: "slot",
       origin: synthetic_origin(),
-      standing: AuthorityUnresolved { because: "synthetic" },
+      cause: UnselectedPart { because: "synthetic unselected" },
     }])
   })
 }
 
-fn synthetic_pattern_outstanding_obligations(ids: List<NonEmptyStr>) -> List<PcbComponentObligation> {
+fn synthetic_missing_document_obligations(ids: List<NonEmptyStr>) -> List<PcbComponentObligation> {
   fold(ids, init: [], f: fn(acc, id) {
     concat(acc, [PcbComponentObligation {
       identity: id,
-      role: "slot",
       origin: synthetic_origin(),
-      standing: PatternOutstanding {
-        standing: VendorPatternNotEstablished { what_is_missing: "synthetic hole pattern" },
-      },
+      cause: MissingDocument { what_is_missing: "synthetic document" },
     }])
   })
 }
@@ -142,29 +147,29 @@ fn world_with_obligations(obs: List<PcbComponentObligation>) -> PcbWorld? {
         value: pcb_world(
           identity: synthetic_world_identity,
           source_design: PcbSourceDesign { subject: "synthetic" },
-          electrical: PcbElectricalWorld { nets: [] },
+          electrical: PcbElectricalWorld {
+            nets: capability_pending(what_is_owed: "synthetic nets"),
+          },
           physical: PcbPhysicalWorld {
             board: PcbBoard { frame: synthetic_frame(), outline: o },
-            stackup: [],
             components: [],
-            footprints: [],
-            pads: [],
-            holes: [],
-            routes: [],
-            copper_regions: [],
-            keepouts: [],
             obligations: obs,
             attachment_obligations: [],
-            justifications: [],
+            stackup: capability_pending(what_is_owed: "synthetic stackup"),
+            footprints: capability_pending(what_is_owed: "synthetic footprints"),
+            pads: capability_pending(what_is_owed: "synthetic pads"),
+            routes: capability_pending(what_is_owed: "synthetic routes"),
           },
-          manufacturing: PcbManufacturingWorld { artifacts: [] },
+          manufacturing: PcbManufacturingWorld {
+            artifacts: capability_pending(what_is_owed: "synthetic artifacts"),
+          },
         )
       }
   }
 }
 
 fn projected_document(ids: List<NonEmptyStr>) -> String? {
-  match world_with_obligations(obs: synthetic_unfilled_obligations(ids: ids)) {
+  match world_with_obligations(obs: synthetic_unselected_obligations(ids: ids)) {
     Absent => none
     Present { value: w } =>
       match emit_pcb_plan_view(c: project_pcb_world(w: w)) {
@@ -174,8 +179,8 @@ fn projected_document(ids: List<NonEmptyStr>) -> String? {
   }
 }
 
-fn projected_pattern_outstanding_document(ids: List<NonEmptyStr>) -> String? {
-  match world_with_obligations(obs: synthetic_pattern_outstanding_obligations(ids: ids)) {
+fn projected_missing_document(ids: List<NonEmptyStr>) -> String? {
+  match world_with_obligations(obs: synthetic_missing_document_obligations(ids: ids)) {
     Absent => none
     Present { value: w } =>
       match emit_pcb_plan_view(c: project_pcb_world(w: w)) {
@@ -185,28 +190,115 @@ fn projected_pattern_outstanding_document(ids: List<NonEmptyStr>) -> String? {
   }
 }
 
-test fn w_the_altra_pcb_world_constructs() -> Bool {
-  match world_or_empty() {
-    Present { value: _ } => true
-    Absent => false
+fn six_channel_design() -> AltraMinimalMotherboard {
+  AltraMinimalMotherboard {
+    intent: Production,
+    memory: MemoryConfiguration { channels: SixChannels, dimms_per_channel: 1 },
+    pcie_lanes_broken_out: 4,
   }
 }
 
-test fn w_the_world_carries_six_established_eight_pattern_outstanding_one_type_named_and_zero_unfilled() -> Bool {
+test fn w_the_altra_pcb_world_constructs_as_a_partial_preview() -> Bool {
+  match altra_pcb_world() {
+    PartialPcbWorldReady { value: _ } => true
+    AdmittedPcbWorld { value: _ } => false
+    PcbWorldRefused { cause: _ } => false
+  }
+}
+
+test fn w_the_world_carries_two_established_twelve_unselected_and_one_missing_document() -> Bool {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
       let p = pcb_world_physical(w: w)
-      pcb_component_count(p: p) == 6
-        && pcb_obligation_count(p: p) == 9
-        && pcb_pattern_outstanding_count(p: p) == 8
-        && pcb_type_named_count(p: p) == 1
-        && pcb_unfilled_count(p: p) == 0
-        && pcb_selection_never_attempted_count(p: p) == 0
-        && pcb_access_refused_count(p: p) == 0
-        && pcb_justification_count(p: p) == pcb_population_count(p: p)
-        && pcb_justification_precedent_count(p: p) == 1
-        && pcb_justification_outstanding_count(p: p) == 14
+      pcb_component_count(p: p) == 2
+        && pcb_obligation_count(p: p) == 13
+        && pcb_unselected_part_count(p: p) == 12
+        && pcb_missing_document_count(p: p) == 1
+        && pcb_commercial_access_count(p: p) == 0
+        && pcb_legal_carriage_count(p: p) == 0
+        && pcb_population_count(p: p) == 15
+  }
+}
+
+test fn w_unmodeled_capabilities_are_pending_with_a_nonempty_obligation() -> Bool {
+  match world_or_empty() {
+    Absent => false
+    Present { value: w } =>
+      let p = pcb_world_physical(w: w)
+      match p.routes {
+        CapabilityRefused { cause: _ } => false
+        CapabilityPending { owed: o } =>
+          (o.first.what_is_owed as String) != ""
+            && match w.electrical.nets {
+              CapabilityRefused { cause: _ } => false
+              CapabilityPending { owed: n } => (n.first.what_is_owed as String) != ""
+            }
+            && match w.manufacturing.artifacts {
+              CapabilityRefused { cause: _ } => false
+              CapabilityPending { owed: a } => (a.first.what_is_owed as String) != ""
+            }
+            && match p.stackup {
+              CapabilityRefused { cause: _ } => false
+              CapabilityPending { owed: s } => (s.first.what_is_owed as String) != ""
+            }
+      }
+  }
+}
+
+test fn w_admit_pcb_world_refuses_the_preview_while_capabilities_are_pending() -> Bool {
+  match world_or_empty() {
+    Absent => false
+    Present { value: w } =>
+      match admit_pcb_world(d: altra_1p_minimum, w: w) {
+        PartialPcbWorldReady { value: _ } => false
+        AdmittedPcbWorld { value: _ } => false
+        PcbWorldRefused { cause: c } =>
+          match c {
+            PcbCapabilityStillPending { capability: cap } => (cap as String) == "stackup"
+            PcbDesignPlanUnavailable { requested: _ } => false
+            PcbPlacementNotAdmitted => false
+            PcbBoardOutlineRefused { cause: _ } => false
+          }
+      }
+  }
+}
+
+test fn w_source_design_for_uses_its_argument() -> Bool {
+  let four = source_design_for(d: altra_1p_minimum)
+  let six = source_design_for(d: six_channel_design())
+  string_contains(s: four.subject as String, pattern: "4ch")
+    && string_contains(s: six.subject as String, pattern: "6ch")
+    && (four.subject as String) != (six.subject as String)
+}
+
+test fn w_a_six_channel_design_does_not_share_the_four_channel_world_identity() -> Bool {
+  (world_identity_for(d: altra_1p_minimum) as String) != (world_identity_for(d: six_channel_design()) as String)
+    && string_contains(s: world_identity_for(d: altra_1p_minimum) as String, pattern: "4ch")
+    && string_contains(s: world_identity_for(d: six_channel_design()) as String, pattern: "6ch")
+}
+
+test fn w_altra_pcb_world_for_refuses_a_design_without_a_plan() -> Bool {
+  match altra_pcb_world_for(d: six_channel_design()) {
+    PartialPcbWorldReady { value: _ } => false
+    AdmittedPcbWorld { value: _ } => false
+    PcbWorldRefused { cause: c } =>
+      match c {
+        PcbDesignPlanUnavailable { requested: s } =>
+          string_contains(s: s.subject as String, pattern: "6ch")
+        PcbCapabilityStillPending { capability: _ } => false
+        PcbPlacementNotAdmitted => false
+        PcbBoardOutlineRefused { cause: _ } => false
+      }
+  }
+}
+
+test fn w_the_bound_world_identity_is_the_four_channel_revision() -> Bool {
+  match world_or_empty() {
+    Absent => false
+    Present { value: w } =>
+      (pcb_world_identity(w: w) as String) == (world_identity_for(d: altra_1p_minimum) as String)
+        && (pcb_world_source_design(w: w).subject as String) == (source_design_for(d: altra_1p_minimum).subject as String)
   }
 }
 
@@ -226,50 +318,25 @@ test fn w_the_processor_package_renders_at_cited_body_dimensions() -> Bool {
   }
 }
 
-test fn w_the_socket_is_type_named_not_a_body_rectangle() -> Bool {
+test fn w_the_socket_is_missing_document_not_an_unselected_part() -> Bool {
   match scene_or_empty() {
     Absent => false
     Present { value: s } =>
-      string_contains(s: s, pattern: "cpu_socket (type named:ILM4926")
-        && string_contains(s: s, pattern: "pcb-component-type-named")
-        && !string_contains(s: s, pattern: "cpu_socket (selection never attempted")
-        && !string_contains(s: s, pattern: "cpu_socket</text>")
+      string_contains(s: s, pattern: "cpu_socket (missing document:")
+        && !string_contains(s: s, pattern: "cpu_socket (unselected part:")
+        && string_contains(s: s, pattern: "pcb-component-missing-document")
   }
 }
 
-test fn w_the_storage_endpoint_is_pattern_outstanding_not_unfilled() -> Bool {
+test fn w_unselected_roles_render_as_unselected_part() -> Bool {
   match scene_or_empty() {
     Absent => false
     Present { value: s } =>
-      string_contains(s: s, pattern: "nvme_conn (pattern outstanding")
-        && !string_contains(s: s, pattern: "nvme_conn (selection never attempted")
-        && !string_contains(s: s, pattern: "nvme_conn (access refused")
-  }
-}
-
-test fn w_dimm_slots_are_pattern_outstanding_not_established_and_not_unfilled() -> Bool {
-  match scene_or_empty() {
-    Absent => false
-    Present { value: s } =>
-      string_contains(s: s, pattern: "dimm_slot_0 (pattern outstanding")
-        && string_contains(s: s, pattern: "dimm_slot_3 (pattern outstanding")
-        && string_contains(s: s, pattern: "pcb-component-pattern-outstanding")
-        && !string_contains(s: s, pattern: "dimm_slot_0 (obligation")
-        && !string_contains(s: s, pattern: "dimm_slot_0 (selection never attempted")
-        && !string_contains(s: s, pattern: "dimm_slot_0 (access refused")
-        && !string_contains(s: s, pattern: "dimm_slot_0</text>")
-  }
-}
-
-test fn w_unread_catalog_roles_render_as_pattern_outstanding() -> Bool {
-  match scene_or_empty() {
-    Absent => false
-    Present { value: s } =>
-      string_contains(s: s, pattern: "boot_eeprom (pattern outstanding")
-        && string_contains(s: s, pattern: "spi_nor (pattern outstanding")
-        && string_contains(s: s, pattern: "debug_hdr (pattern outstanding")
-        && string_contains(s: s, pattern: "nvme_conn (pattern outstanding")
-        && !string_contains(s: s, pattern: "boot_eeprom (access refused")
+      string_contains(s: s, pattern: "boot_eeprom (unselected part:")
+        && string_contains(s: s, pattern: "nvme_conn (unselected part:")
+        && string_contains(s: s, pattern: "dimm_slot_0 (unselected part:")
+        && string_contains(s: s, pattern: "debug_hdr (unselected part:")
+        && !string_contains(s: s, pattern: "boot_eeprom (missing document:")
   }
 }
 
@@ -277,27 +344,16 @@ test fn w_established_components_use_the_established_class() -> Bool {
   match scene_or_empty() {
     Absent => false
     Present { value: s } =>
-      count_substring(haystack: s, needle: "pcb-component-established") == 6
-        && count_substring(haystack: s, needle: "pcb-component-pattern-outstanding") == 8
-        && count_substring(haystack: s, needle: "pcb-component-type-named") == 1
-        && count_substring(haystack: s, needle: "pcb-component-obligation") == 0
+      count_substring(haystack: s, needle: "pcb-component-established") == 2
+        && count_substring(haystack: s, needle: "pcb-component-unselected-part") == 12
+        && count_substring(haystack: s, needle: "pcb-component-missing-document") == 1
   }
 }
 
-test fn w_the_legend_states_the_three_populations() -> Bool {
+test fn w_the_legend_states_the_cause_populations() -> Bool {
   match scene_or_empty() {
     Absent => false
-    Present { value: s } => string_contains(s: s, pattern: "6 established / 8 pattern-outstanding / 1 type-named / 0 unfilled")
-  }
-}
-
-test fn w_the_reset_controller_renders_at_the_vendor_max_outline() -> Bool {
-  match scene_or_empty() {
-    Absent => false
-    Present { value: s } =>
-      string_contains(s: s, pattern: "reset_ctl")
-        && string_contains(s: s, pattern: concat("width=\"", to_string(micrometer_count(m: tps3808g01dbvr.outline.body_width_max))))
-        && string_contains(s: s, pattern: concat("height=\"", to_string(micrometer_count(m: tps3808g01dbvr.outline.body_length_max))))
+    Present { value: s } => string_contains(s: s, pattern: "2 established / 12 unselected / 1 missing-document / 0 commercial-access / 0 legal-carriage")
   }
 }
 
@@ -330,41 +386,27 @@ test fn w_mounting_and_socket_attachment_obligations_appear() -> Bool {
   }
 }
 
-test fn w_six_channels_requires_more_roles_than_four_without_touching_the_renderer() -> Bool {
-  let four = channel_indices(c: FourChannels)
-  let six = channel_indices(c: SixChannels)
-  let four_roles = required_roles(d: altra_1p_minimum)
-  let six_design = AltraMinimalMotherboard {
-    intent: Production,
-    memory: MemoryConfiguration { channels: SixChannels, dimms_per_channel: 1 },
-    pcie_lanes_broken_out: 4,
-  }
-  let six_roles = required_roles(d: six_design)
-  length(six) > length(four) && length(six_roles) > length(four_roles)
-}
-
-test fn w_plan_view_pattern_outstanding_count_follows_population() -> Bool {
-  match projected_pattern_outstanding_document(ids: ["p0", "p1"]) {
-    Absent => false
-    Present { value: two_doc } =>
-      match projected_pattern_outstanding_document(ids: ["p0", "p1", "p2"]) {
-        Absent => false
-        Present { value: three_doc } =>
-          count_substring(haystack: two_doc, needle: "pcb-component-pattern-outstanding") == 2
-            && count_substring(haystack: three_doc, needle: "pcb-component-pattern-outstanding") == 3
-            && count_substring(haystack: two_doc, needle: "pcb-component-obligation") == 0
-      }
-  }
-}
-
-test fn w_plan_view_unfilled_marker_count_follows_population() -> Bool {
+test fn w_plan_view_unselected_marker_count_follows_population() -> Bool {
   match projected_document(ids: ["m0", "m1", "m2", "m3"]) {
     Absent => false
     Present { value: four_doc } =>
       match projected_document(ids: ["m0", "m1", "m2", "m3", "m4", "m5"]) {
         Absent => false
         Present { value: six_doc } =>
-          count_substring(haystack: four_doc, needle: "pcb-component-obligation") == 4 && count_substring(haystack: six_doc, needle: "pcb-component-obligation") == 6
+          count_substring(haystack: four_doc, needle: "pcb-component-unselected-part") == 4 && count_substring(haystack: six_doc, needle: "pcb-component-unselected-part") == 6
+      }
+  }
+}
+
+test fn w_plan_view_missing_document_count_follows_population() -> Bool {
+  match projected_missing_document(ids: ["p0", "p1"]) {
+    Absent => false
+    Present { value: two_doc } =>
+      match projected_missing_document(ids: ["p0", "p1", "p2"]) {
+        Absent => false
+        Present { value: three_doc } =>
+          count_substring(haystack: two_doc, needle: "pcb-component-missing-document") == 2
+            && count_substring(haystack: three_doc, needle: "pcb-component-missing-document") == 3
       }
   }
 }
@@ -410,40 +452,35 @@ test fn w_the_emitted_scene_drops_no_world_identity() -> Bool {
   }
 }
 
-test fn w_mutation_control_obligation_count_must_be_nine() -> Bool {
+test fn w_the_engineering_scene_is_projected_from_the_world() -> Bool {
   match world_or_empty() {
     Absent => false
-    Present { value: w } => pcb_obligation_count(p: pcb_world_physical(w: w)) == 9
+    Present { value: w } =>
+      let scene = project_engineering_scene(w: w)
+      fold(scene.elements, init: false, f: fn(acc, _e) { true })
   }
 }
 
-test fn w_mutation_control_established_count_must_be_six() -> Bool {
+test fn w_mutation_control_obligation_count_must_be_thirteen() -> Bool {
   match world_or_empty() {
     Absent => false
-    Present { value: w } => pcb_component_count(p: pcb_world_physical(w: w)) == 6
+    Present { value: w } => pcb_obligation_count(p: pcb_world_physical(w: w)) == 13
   }
 }
 
-test fn w_mutation_control_never_attempted_and_access_refused_must_be_zero_type_named_one() -> Bool {
+test fn w_mutation_control_established_count_must_be_two() -> Bool {
+  match world_or_empty() {
+    Absent => false
+    Present { value: w } => pcb_component_count(p: pcb_world_physical(w: w)) == 2
+  }
+}
+
+test fn w_mutation_control_unselected_twelve_and_missing_document_one() -> Bool {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
       let p = pcb_world_physical(w: w)
-      pcb_selection_never_attempted_count(p: p) == 0
-        && pcb_type_named_count(p: p) == 1
-        && pcb_access_refused_count(p: p) == 0
-        && pcb_unfilled_count(p: p) == 0
-  }
-}
-
-test fn w_mutation_control_justification_is_one_precedent_and_covers_the_population() -> Bool {
-  match world_or_empty() {
-    Absent => false
-    Present { value: w } =>
-      let p = pcb_world_physical(w: w)
-      pcb_justification_count(p: p) == pcb_population_count(p: p)
-        && pcb_justification_precedent_count(p: p) == 1
-        && pcb_justification_outstanding_count(p: p) == 14
+      pcb_unselected_part_count(p: p) == 12 && pcb_missing_document_count(p: p) == 1
   }
 }
 
@@ -454,4 +491,9 @@ test fn w_mutation_control_population_is_established_plus_obligations() -> Bool 
       let physical = pcb_world_physical(w: w)
       pcb_population_count(p: physical) == pcb_component_count(p: physical) + pcb_obligation_count(p: physical)
   }
+}
+
+test fn w_attachment_label_offsets_are_micrometre_measures() -> Bool {
+  micrometer_count(m: attachment_label_base) > 0
+    && micrometer_count(m: attachment_label_step) > 0
 }

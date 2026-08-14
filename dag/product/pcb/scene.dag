@@ -1,0 +1,150 @@
+module product.pcb.scene
+
+import std.types { String, NonEmptyStr, List }
+import std.integer { Int }
+import std.measure { Micrometer }
+import std.affine_space { Point2 }
+import std.orthogonal_geometry { AxisAlignedRectangle2 }
+import product.pcb.world {
+  PcbWorld,
+  PcbPhysicalWorld,
+  PcbObligationCause,
+  MissingDocument,
+  CommercialAccess,
+  LegalCarriage,
+  UnselectedPart,
+  pcb_world_physical,
+  pcb_component_count,
+  pcb_missing_document_count,
+  pcb_commercial_access_count,
+  pcb_legal_carriage_count,
+  pcb_unselected_part_count,
+}
+
+data scene_note: String = "A TARGET-NEUTRAL ENGINEERING SCENE. The world is projected into elements that name geometry and typed causes, not a drawing medium. SVG is one realization of this scene; a second target must not require a second fold of the world. Empty capabilities stay on the world as standings and do not appear here as empty element lists."
+
+type PcbSceneLegend {
+  established: Int
+  missing_document: Int
+  commercial_access: Int
+  legal_carriage: Int
+  unselected_part: Int
+}
+
+type PcbSceneElement
+  = SceneBoardOutline { outline: AxisAlignedRectangle2 }
+  | SceneEstablishedBody {
+      identity: NonEmptyStr
+      origin: Point2
+      body_width: Micrometer
+      body_height: Micrometer
+    }
+  | SceneObligationMarker {
+      identity: NonEmptyStr
+      origin: Point2
+      cause: PcbObligationCause
+    }
+  | SceneAttachmentMarker {
+      layer: NonEmptyStr
+      cause: PcbObligationCause
+    }
+  | SceneLegend { counts: PcbSceneLegend }
+
+type PcbEngineeringScene sole_constructor {
+  world: PcbWorld
+  elements: List<PcbSceneElement>
+}
+
+fn pcb_engineering_scene(world: PcbWorld, elements: List<PcbSceneElement>) -> PcbEngineeringScene {
+  PcbEngineeringScene { world: world, elements: elements }
+}
+
+fn legend_of(p: PcbPhysicalWorld) -> PcbSceneLegend {
+  PcbSceneLegend {
+    established: pcb_component_count(p: p),
+    missing_document: pcb_missing_document_count(p: p),
+    commercial_access: pcb_commercial_access_count(p: p),
+    legal_carriage: pcb_legal_carriage_count(p: p),
+    unselected_part: pcb_unselected_part_count(p: p),
+  }
+}
+
+fn established_elements(p: PcbPhysicalWorld) -> List<PcbSceneElement> {
+  fold(p.components, init: [], f: fn(acc, c) {
+    concat(acc, [SceneEstablishedBody {
+      identity: c.identity,
+      origin: c.origin,
+      body_width: c.body_envelope.body_width,
+      body_height: c.body_envelope.body_height,
+    }])
+  })
+}
+
+fn obligation_elements(p: PcbPhysicalWorld) -> List<PcbSceneElement> {
+  fold(p.obligations, init: [], f: fn(acc, o) {
+    concat(acc, [SceneObligationMarker {
+      identity: o.identity,
+      origin: o.origin,
+      cause: o.cause,
+    }])
+  })
+}
+
+fn attachment_elements(p: PcbPhysicalWorld) -> List<PcbSceneElement> {
+  fold(p.attachment_obligations, init: [], f: fn(acc, a) {
+    concat(acc, [SceneAttachmentMarker {
+      layer: a.layer,
+      cause: a.cause,
+    }])
+  })
+}
+
+fn project_engineering_scene(w: PcbWorld) -> PcbEngineeringScene {
+  let p = pcb_world_physical(w: w)
+  let outline = [SceneBoardOutline { outline: p.board.outline }]
+  let legend = [SceneLegend { counts: legend_of(p: p) }]
+  pcb_engineering_scene(
+    world: w,
+    elements: concat(
+      concat(outline, legend),
+      concat(established_elements(p: p), concat(obligation_elements(p: p), attachment_elements(p: p)))
+    ),
+  )
+}
+
+fn scene_element_identity(e: PcbSceneElement) -> NonEmptyStr? {
+  match e {
+    SceneBoardOutline { outline: _ } => none
+    SceneEstablishedBody { identity: id, origin: _, body_width: _, body_height: _ } => Present { value: id }
+    SceneObligationMarker { identity: id, origin: _, cause: _ } => Present { value: id }
+    SceneAttachmentMarker { layer: layer, cause: _ } => Present { value: concat("attachment: ", layer as String) as NonEmptyStr }
+    SceneLegend { counts: _ } => none
+  }
+}
+
+fn first_unrepresented_scene_identity(scene: PcbEngineeringScene, document: String) -> NonEmptyStr? {
+  fold(scene.elements, init: none, f: fn(acc, e) {
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent =>
+        match scene_element_identity(e: e) {
+          Absent => none
+          Present { value: id } =>
+            if string_contains(s: document, pattern: id as String) {
+              none
+            } else {
+              Present { value: id }
+            }
+        }
+    }
+  })
+}
+
+fn obligation_cause_label(c: PcbObligationCause) -> String {
+  match c {
+    MissingDocument { what_is_missing: w } => concat("missing document:", w as String)
+    CommercialAccess { subject: s } => concat("commercial access:", s as String)
+    LegalCarriage { reason: r } => concat("legal carriage:", r as String)
+    UnselectedPart { because: b } => concat("unselected part:", b as String)
+  }
+}

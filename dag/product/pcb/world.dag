@@ -6,9 +6,8 @@ import std.coordinate_frame { CoordinateFrameIdentity }
 import std.affine_space { Point2 }
 import std.orthogonal_geometry { AxisAlignedRectangle2, OrthogonalRefusal }
 import product.pcb.physical { ComponentPlacement }
-import extdeps.land_pattern.types { MountingPatternStanding }
 
-data world_note: String = "ONE PCB WORLD, FOUR RUNGS ON THE PART/GEOMETRY LADDER, AND A FIFTH AXIS BESIDE THEM. Established parts occupy components with a cited body envelope. A selected part whose board pattern is still owed is an obligation carrying the vendor's MountingPatternStanding — consumed from extdeps.land_pattern.types, not re-minted. A named socket type with no vendor, no orderable part and no geometry is TypeNamed — ILM4926 is the live case, and it is not a land pattern. A role with nothing known is an obligation naming why: never attempted, access refused, or unresolved by authority. Collapsing any two rungs reports less than the repository knows, and collapsing the unfilled causes into one not-ready Bool loses the remedy. JUSTIFICATION IS NOT A RUNG: it answers whether a selection is justified for this board, which is a relation between a part and a board, so it lives here rather than in extdeps."
+data world_note: String = "ONE PCB WORLD, AND EMPTY IS NOT A DEFAULT. Established body envelopes occupy components. Every other planned identity is an obligation that carries a typed cause — missing document, commercial access, legal carriage, or unselected part — rather than a role string those distinctions collapse into. Capabilities that have no row type yet (stackup, footprints, pads, routes, nets, manufacturing artifacts) are not empty lists: an empty list cannot tell a board that needs none from a board whose routing has not been modeled from a board whose routing completed at zero. Each of those fields is a capability standing, pending with a nonempty obligation or refused with a cause. There is no Established arm here because there is no consumer and no row type; each carrier lands with its first consumer. A PARTIAL world is a preview whose outline constructed; it is not an admitted board."
 
 type PcbWorldIdentity = NonEmptyStr where brand("PcbWorldIdentity")
 
@@ -21,94 +20,53 @@ type PcbBoard {
   outline: AxisAlignedRectangle2
 }
 
-type PcbFootprint {
-  identity: NonEmptyStr
-}
-
-type PcbPad {
-  identity: NonEmptyStr
-}
-
-type PcbHole {
-  identity: NonEmptyStr
-}
-
-type PcbRoute {
-  identity: NonEmptyStr
-}
-
-type PcbCopperRegion {
-  identity: NonEmptyStr
-}
-
-type PcbKeepout {
-  identity: NonEmptyStr
-}
-
-type PcbStackupLayer {
-  identity: NonEmptyStr
-}
-
-type PcbNet {
-  identity: NonEmptyStr
-}
-
-type PcbManufacturingArtifact {
-  identity: NonEmptyStr
-}
-
-type PcbObligationStanding
-  = PatternOutstanding { standing: MountingPatternStanding }
-  | TypeNamed { type_name: NonEmptyStr, because: NonEmptyStr }
-  | SelectionNeverAttempted { because: NonEmptyStr }
-  | AccessRefused { observed_on: NonEmptyStr }
-  | AuthorityUnresolved { because: NonEmptyStr }
-
-// A SELECTION'S JUSTIFICATION IS A RELATION TO THIS BOARD, not a property of the part. Outstanding
-// means no reference-design precedent has been joined. Precedent names the cited document and
-// section that already exist as an upstream row — the product layer points at them; extdeps does
-// not carry the design-relative standing.
-type SelectionJustificationStanding
-  = JustificationOutstanding { because: NonEmptyStr }
-  | ReferenceDesignPrecedent { document: NonEmptyStr, section: NonEmptyStr }
-
-type PcbSelectionJustification {
-  identity: NonEmptyStr
-  standing: SelectionJustificationStanding
-}
+type PcbObligationCause
+  = MissingDocument { what_is_missing: NonEmptyStr }
+  | CommercialAccess { subject: NonEmptyStr }
+  | LegalCarriage { reason: NonEmptyStr }
+  | UnselectedPart { because: NonEmptyStr }
 
 type PcbComponentObligation {
   identity: NonEmptyStr
-  role: NonEmptyStr
   origin: Point2
-  standing: PcbObligationStanding
+  cause: PcbObligationCause
 }
 
 type PcbAttachmentObligation {
   layer: NonEmptyStr
+  cause: PcbObligationCause
 }
+
+type PcbCapabilityObligation {
+  what_is_owed: NonEmptyStr
+}
+
+type NonemptyCapabilityObligations {
+  first: PcbCapabilityObligation
+  rest: List<PcbCapabilityObligation>
+}
+
+type PcbCapabilityStanding
+  = CapabilityPending { owed: NonemptyCapabilityObligations }
+  | CapabilityRefused { cause: NonEmptyStr }
 
 type PcbPhysicalWorld {
   board: PcbBoard
-  stackup: List<PcbStackupLayer>
   components: List<ComponentPlacement>
-  footprints: List<PcbFootprint>
-  pads: List<PcbPad>
-  holes: List<PcbHole>
-  routes: List<PcbRoute>
-  copper_regions: List<PcbCopperRegion>
-  keepouts: List<PcbKeepout>
   obligations: List<PcbComponentObligation>
   attachment_obligations: List<PcbAttachmentObligation>
-  justifications: List<PcbSelectionJustification>
+  stackup: PcbCapabilityStanding
+  footprints: PcbCapabilityStanding
+  pads: PcbCapabilityStanding
+  routes: PcbCapabilityStanding
 }
 
 type PcbElectricalWorld {
-  nets: List<PcbNet>
+  nets: PcbCapabilityStanding
 }
 
 type PcbManufacturingWorld {
-  artifacts: List<PcbManufacturingArtifact>
+  artifacts: PcbCapabilityStanding
 }
 
 type PcbWorld sole_constructor {
@@ -121,9 +79,13 @@ type PcbWorld sole_constructor {
 
 type PcbWorldRefusal
   = PcbBoardOutlineRefused { cause: OrthogonalRefusal }
+  | PcbDesignPlanUnavailable { requested: PcbSourceDesign }
+  | PcbCapabilityStillPending { capability: NonEmptyStr }
+  | PcbPlacementNotAdmitted
 
 type PcbWorldConstruction<T>
-  = PcbWorldReady { value: T }
+  = PartialPcbWorldReady { value: T }
+  | AdmittedPcbWorld { value: T }
   | PcbWorldRefused { cause: PcbWorldRefusal }
 
 fn pcb_world_identity(w: PcbWorld) -> PcbWorldIdentity { w.identity }
@@ -131,6 +93,22 @@ fn pcb_world_source_design(w: PcbWorld) -> PcbSourceDesign { w.source_design }
 fn pcb_world_physical(w: PcbWorld) -> PcbPhysicalWorld { w.physical }
 fn pcb_world_electrical(w: PcbWorld) -> PcbElectricalWorld { w.electrical }
 fn pcb_world_manufacturing(w: PcbWorld) -> PcbManufacturingWorld { w.manufacturing }
+
+fn capability_pending(what_is_owed: NonEmptyStr) -> PcbCapabilityStanding {
+  CapabilityPending {
+    owed: NonemptyCapabilityObligations {
+      first: PcbCapabilityObligation { what_is_owed: what_is_owed },
+      rest: [],
+    }
+  }
+}
+
+fn capability_is_pending(s: PcbCapabilityStanding) -> Bool {
+  match s {
+    CapabilityPending { owed: _ } => true
+    CapabilityRefused { cause: _ } => false
+  }
+}
 
 fn pcb_component_count(p: PcbPhysicalWorld) -> Int {
   fold(p.components, init: 0, f: fn(acc, _c) { acc + 1 })
@@ -144,90 +122,71 @@ fn pcb_attachment_obligation_count(p: PcbPhysicalWorld) -> Int {
   fold(p.attachment_obligations, init: 0, f: fn(acc, _o) { acc + 1 })
 }
 
-fn pcb_pattern_outstanding_count(p: PcbPhysicalWorld) -> Int {
+fn pcb_cause_count(p: PcbPhysicalWorld, wanted: NonEmptyStr) -> Int {
   fold(p.obligations, init: 0, f: fn(acc, o) {
-    match o.standing {
-      PatternOutstanding { standing: _ } => acc + 1
-      TypeNamed { type_name: _, because: _ } => acc
-      SelectionNeverAttempted { because: _ } => acc
-      AccessRefused { observed_on: _ } => acc
-      AuthorityUnresolved { because: _ } => acc
+    if (obligation_cause_tag(c: o.cause) as String) == (wanted as String) {
+      acc + 1
+    } else {
+      acc
     }
   })
 }
 
-fn pcb_type_named_count(p: PcbPhysicalWorld) -> Int {
-  fold(p.obligations, init: 0, f: fn(acc, o) {
-    match o.standing {
-      PatternOutstanding { standing: _ } => acc
-      TypeNamed { type_name: _, because: _ } => acc + 1
-      SelectionNeverAttempted { because: _ } => acc
-      AccessRefused { observed_on: _ } => acc
-      AuthorityUnresolved { because: _ } => acc
-    }
-  })
+fn obligation_cause_tag(c: PcbObligationCause) -> NonEmptyStr {
+  match c {
+    MissingDocument { what_is_missing: _ } => "missing-document"
+    CommercialAccess { subject: _ } => "commercial-access"
+    LegalCarriage { reason: _ } => "legal-carriage"
+    UnselectedPart { because: _ } => "unselected-part"
+  }
 }
 
-fn pcb_unfilled_count(p: PcbPhysicalWorld) -> Int {
-  fold(p.obligations, init: 0, f: fn(acc, o) {
-    match o.standing {
-      PatternOutstanding { standing: _ } => acc
-      TypeNamed { type_name: _, because: _ } => acc
-      SelectionNeverAttempted { because: _ } => acc + 1
-      AccessRefused { observed_on: _ } => acc + 1
-      AuthorityUnresolved { because: _ } => acc + 1
-    }
-  })
+fn pcb_missing_document_count(p: PcbPhysicalWorld) -> Int {
+  pcb_cause_count(p: p, wanted: "missing-document")
 }
 
-fn pcb_selection_never_attempted_count(p: PcbPhysicalWorld) -> Int {
-  fold(p.obligations, init: 0, f: fn(acc, o) {
-    match o.standing {
-      PatternOutstanding { standing: _ } => acc
-      TypeNamed { type_name: _, because: _ } => acc
-      SelectionNeverAttempted { because: _ } => acc + 1
-      AccessRefused { observed_on: _ } => acc
-      AuthorityUnresolved { because: _ } => acc
-    }
-  })
+fn pcb_commercial_access_count(p: PcbPhysicalWorld) -> Int {
+  pcb_cause_count(p: p, wanted: "commercial-access")
 }
 
-fn pcb_access_refused_count(p: PcbPhysicalWorld) -> Int {
-  fold(p.obligations, init: 0, f: fn(acc, o) {
-    match o.standing {
-      PatternOutstanding { standing: _ } => acc
-      TypeNamed { type_name: _, because: _ } => acc
-      SelectionNeverAttempted { because: _ } => acc
-      AccessRefused { observed_on: _ } => acc + 1
-      AuthorityUnresolved { because: _ } => acc
-    }
-  })
+fn pcb_legal_carriage_count(p: PcbPhysicalWorld) -> Int {
+  pcb_cause_count(p: p, wanted: "legal-carriage")
+}
+
+fn pcb_unselected_part_count(p: PcbPhysicalWorld) -> Int {
+  pcb_cause_count(p: p, wanted: "unselected-part")
 }
 
 fn pcb_population_count(p: PcbPhysicalWorld) -> Int {
   pcb_component_count(p: p) + pcb_obligation_count(p: p)
 }
 
-fn pcb_justification_count(p: PcbPhysicalWorld) -> Int {
-  fold(p.justifications, init: 0, f: fn(acc, _j) { acc + 1 })
-}
-
-fn pcb_justification_precedent_count(p: PcbPhysicalWorld) -> Int {
-  fold(p.justifications, init: 0, f: fn(acc, j) {
-    match j.standing {
-      JustificationOutstanding { because: _ } => acc
-      ReferenceDesignPrecedent { document: _, section: _ } => acc + 1
+fn first_pending_capability(w: PcbWorld) -> NonEmptyStr? {
+  if capability_is_pending(s: w.physical.stackup) {
+    Present { value: "stackup" }
+  } else {
+    if capability_is_pending(s: w.physical.footprints) {
+      Present { value: "footprints" }
+    } else {
+      if capability_is_pending(s: w.physical.pads) {
+        Present { value: "pads" }
+      } else {
+        if capability_is_pending(s: w.physical.routes) {
+          Present { value: "routes" }
+        } else {
+          if capability_is_pending(s: w.electrical.nets) {
+            Present { value: "nets" }
+          } else {
+            if capability_is_pending(s: w.manufacturing.artifacts) {
+              Present { value: "artifacts" }
+            } else {
+              none
+            }
+          }
+        }
+      }
     }
-  })
-}
-
-fn pcb_justification_outstanding_count(p: PcbPhysicalWorld) -> Int {
-  fold(p.justifications, init: 0, f: fn(acc, j) {
-    match j.standing {
-      JustificationOutstanding { because: _ } => acc + 1
-      ReferenceDesignPrecedent { document: _, section: _ } => acc
-    }
-  })
+  }
 }
 
 fn pcb_world(
