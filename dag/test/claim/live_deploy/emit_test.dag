@@ -35,6 +35,7 @@ import gunbc.live_deploy.spec {
   AttemptStateRoot,
   SystemdUnit,
   BeltTimerUnit,
+  FleetConvergeTimerUnit,
   TailscaleServeMapping,
   TeardownDisposition,
   TeardownActs,
@@ -720,38 +721,16 @@ test fn retract_is_not_emitted_without_an_observed_scoped_removal() -> Bool {
     && string_contains(s: measured, pattern: "sudo -n tailscale serve --https=443 off")
 }
 
-// CONVERGE-0 loop member: the deployment installs a per-instance fleet-converge timer
-// whose service converges SELF via the deployed binary, with calendar catch-up
-// (Persistent=true — the offline-host property). Receipt dir is ensured owned by the
-// service principal; receipt file publication is atomic rename in fleet_converge_cli.
-// Cadence facts derive from the gunbc.fleet_converge_timer authority.
-test fn fleet_converge_member_installs_self_converging_timer_with_catchup() -> Bool {
-  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
-  string_contains(s: live, pattern: " converge --host self")
-    && string_contains(s: live, pattern: "OnCalendar=*:0/15")
-    && string_contains(s: live, pattern: "Persistent=true")
-    && string_contains(s: live, pattern: "-fleet-converge.timer")
-    && string_contains(s: live, pattern: "install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/receipts")
-}
-
-// b1 CONVERGE-close witness: the fleet-converge unit MUST run as the repo-owning,
-// credentialed service principal — never root — or its `git ls-remote origin
-// refs/fleet/desired` hits dubious-ownership + no-credential and the desired ref is never
-// observed. Receipt dir bootstrap uses install-d; receipt file publication uses atomic
-// rename in fleet_converge_cli. RED if the converge unit reverts to User=root.
-test fn fleet_converge_unit_runs_as_credentialed_owner_never_root() -> Bool {
-  let live = live_deploy_apply_script_for(spec: deployment_spec_srv1(), revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
-  string_contains(s: live, pattern: "Description=gunbc fleet converge (self)")
-    && string_contains(s: live, pattern: concat("User=", gunbc_service_user as String))
-    && string_contains(s: live, pattern: concat("Group=", gunbc_service_user as String))
-    && !string_contains(s: live, pattern: "User=root")
-    && string_contains(s: live, pattern: "install -d -m 0755 -o briansrls -g briansrls /opt/gunbc/receipts")
-}
-
-// Teardown owns both files: the retract removes the timer AND the service beside it
-// (the belt-member one-member-two-files shape), never production's fixed-name units.
-test fn fleet_converge_member_retract_removes_both_unit_files() -> Bool {
-  let retract = live_deploy_retract_script_for(spec: deployment_spec_srv1())
-  string_contains(s: retract, pattern: "-fleet-converge.timer")
-    && string_contains(s: retract, pattern: "-fleet-converge.service")
+// Fleet converge timer is RETIRED from live_deploy apply membership (sleek-heron-218).
+// FleetConvergeTimerUnit is absent from deployment_owned_steps; on-demand plan/apply
+// is emitted via fleet-converge.yml instead of a deploy-installed timer.
+test fn fleet_converge_timer_not_installed_by_deploy_apply() -> Bool {
+  let spec = deployment_spec_srv1()
+  let live = live_deploy_apply_script_for(spec: spec, revision: RevisionBoundAtEmission { revision: deploy_witness_release_revision })
+  !any(
+    deployment_owned_steps(instance: srv1_live_dashboard_instance(), names: spec.names),
+    s => match s.kind { FleetConvergeTimerUnit => true  _ => false }
+  )
+    && !string_contains(s: live, pattern: "OnCalendar=*:0/15")
+    && !string_contains(s: live, pattern: "ctrl-fleet-converge.timer")
 }

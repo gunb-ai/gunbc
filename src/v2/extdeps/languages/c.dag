@@ -2,6 +2,8 @@ module v2.extdeps.languages.c
 
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
 import extdeps.languages.c.emit {
   c_header_extension,
   c_include_directive_for_header_path,
@@ -70,6 +72,7 @@ import v2.std.compilers.target_model {
   TargetFieldAccessShape,
   TargetLoopShape,
   TargetMatchShape,
+  TargetBoolLiteralShape,
   TargetPrimitiveApplyShape,
   TargetRecordConstructShape,
   TargetValueExpressionProjection,
@@ -90,6 +93,7 @@ import v2.std.node_query { node_positional_child_targets }
 import v2.std.host_transport {
   EmitHostRuntimeRow,
   EmittedWithSuffix,
+  FixedText,
   FixedWidthBytes,
   HostRuntimeRowPresent,
   HostToolProgram,
@@ -734,6 +738,84 @@ fn c_validate_partition_r4(
 
 data c_stage0_emit_note: String = "Stage 0 C source emitter seeded on fn add (ISO/IEC 9899:2018 / C17 — extdeps.languages.c.emit extdeps_external_authority_anchor). Grammar relation rows + lex + binding_spellings live here; the smoke main harness suffix is the sole legitimate string scaffold (dissolves when a modeled main producer lands)."
 
+type CStage0EmitStandardEdition
+  = | CStage0EmitStandardC17
+
+data c_stage0_emit_standard_edition: CStage0EmitStandardEdition = CStage0EmitStandardC17
+
+data c_stage0_emit_standard_citation: DeclarationRef = DeclarationRef {
+  module_path: "extdeps.languages.c.emit",
+  decl_name: "extdeps_external_authority_anchor",
+  field: WholeDeclaration
+}
+
+type CTranslationUnitPreambleDefect
+  = MissingStdboolInclude {
+      emitted_bool_literal_requires: DeclarationRef
+    }
+
+type CValueExpressionEmitValidityUnderStandard
+  = ValidUnderDeclaredStandard
+  | KnownInvalidUnderDeclaredStandard {
+      standard_edition: CStage0EmitStandardEdition,
+      standard_citation: DeclarationRef,
+      defect: CTranslationUnitPreambleDefect
+    }
+
+fn c_bool_literal_emit_validity_under_declared_standard() -> CValueExpressionEmitValidityUnderStandard {
+  KnownInvalidUnderDeclaredStandard {
+    standard_edition: c_stage0_emit_standard_edition,
+    standard_citation: c_stage0_emit_standard_citation,
+    defect: MissingStdboolInclude {
+      emitted_bool_literal_requires: DeclarationRef {
+        module_path: "v2.extdeps.languages.c",
+        decl_name: "c_stdbool_include_directive",
+        field: WholeDeclaration
+      }
+    }
+  }
+}
+
+data c_stdbool_include_directive: String = "#include <stdbool.h>\n"
+
+fn c_bool_literal_host_source_text(literal: String) -> String {
+  concat(
+    left: concat(
+      left: c_stdbool_include_directive,
+      right: "\nint main(void) {\n  bool x = "
+    ),
+    right: concat(left: literal, right: ";\n  return x ? 0 : 1;\n}\n")
+  )
+}
+
+fn c_bool_literal_host_runtime_row(literal: String) -> TargetEmitHostRuntimeRow {
+  HostRuntimeRowPresent {
+    row: EmitHostRuntimeRow {
+      transport: HostTransportDescriptor {
+        identity: ^c_bool_literal_host_transport_identity,
+        workspace: [
+          WorkspaceFile {
+            path: "fixture.c",
+            content: FixedText { text: c_bool_literal_host_source_text(literal: literal) }
+          }
+        ],
+        build: [
+          ProcessInvocation {
+            program: HostToolProgram { executable: "cc" },
+            args: [LiteralArg { text: "fixture.c" }, LiteralArg { text: "-o" }, LiteralArg { text: "fixture" }]
+          }
+        ],
+        run: ProcessInvocation {
+          program: ProducedProgram { path: "fixture" },
+          args: []
+        },
+        runtime_value_codec: FixedWidthBytes { width: 0 }
+      },
+      runtime_primitive_type: c_emit_host_runtime_primitive_type_node()
+    }
+  }
+}
+
 data c_cpp_realization_relationship_note: String = "C and C++ share the ISO C subset: cpp_target_model retains the C++ scalar/primitive-facts model (38+ fns) while c_target_model owns the C Stage-0 fn-add grammar + cc runtime_row. Intended end-state: C is the base realization; C++ extends/reuses the C bundle for shared C-syntax rows rather than forking parallel spellings (cpp_source_text and c_source_text currently agree on add — a §3 nicknaming risk until C++ dispatches through c rows or a shared c_subset home). DISSOLVES WHEN cpp_target_model re-homes shared C-syntax translation rules onto c_target_model (or a lifted c_subset authority) and cpp keeps only C++-only extensions."
 
 data c_source_text: String = "int add(int x, int y) { return x + y; }"
@@ -1000,6 +1082,10 @@ fn c_value_expression_projection() -> TargetValueExpressionProjection {
       fat_arrow: ^c_token_unwired_fat_arrow,
       arm_separator: ^c_token_comma
     },
+    bool_literal_form: TargetBoolLiteralShape {
+      true_token: ^c_token_kw_true,
+      false_token: ^c_token_kw_false
+    },
     block_evaluation_mode: StatementSequenced {
       return_token: ^c_token_kw_return,
       statement_terminator: ^c_token_semicolon
@@ -1084,6 +1170,8 @@ fn c_lex_rules() -> List<LexRule> {
     c_lex_rule(token_class: ^c_token_plus, text: " + "),
     c_lex_rule(token_class: ^c_token_semicolon, text: ";"),
     c_lex_rule(token_class: ^c_token_rbrace, text: " }"),
+    c_lex_rule(token_class: ^c_token_kw_true, text: "true"),
+    c_lex_rule(token_class: ^c_token_kw_false, text: "false"),
     c_lex_rule(token_class: ^c_token_ternary_nop, text: ""),
     c_lex_rule(token_class: ^c_token_ternary_question, text: " ? "),
     c_lex_rule(token_class: ^c_token_ternary_colon, text: " : ")

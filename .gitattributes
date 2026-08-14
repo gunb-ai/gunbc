@@ -13,6 +13,7 @@
 .githooks/pre-push merge=generated-artifact
 .github/workflows/ci.yml merge=generated-artifact
 .github/workflows/falsifier.yml merge=generated-artifact
+.github/workflows/fleet-converge.yml merge=generated-artifact
 .gitignore merge=generated-artifact
 DESIGN.md merge=generated-artifact
 ROADMAP.md merge=generated-artifact

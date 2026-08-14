@@ -22,6 +22,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 data fleet_converge_service_unit_name: String = "ctrl-fleet-converge.service"
 data fleet_converge_timer_unit_name: String = "ctrl-fleet-converge.timer"
 data fleet_converge_timer_on_calendar: String = "*:0/15"
+data fleet_converge_timer_cadence_retired_note: String = "RETIRED (operator directive 2026-08-13, sleek-heron-218): the *:0/15 unattended cadence is no longer installed by live_deploy membership or CI self-install. Fleet convergence is on-demand via the emitted .github/workflows/fleet-converge.yml plan/apply workflow with content-addressed plan artifacts and CAS apply. Unit content rows remain for teardown of legacy hosts and witness regression controls only."
 data fleet_converge_timer_randomized_delay: Second = second(count: 90)
 data fleet_converge_binary_path: String = "/opt/gunbc/bin/gunbc"
 data fleet_converge_env_file_path: String = "/etc/gunbc/fleet-converge.env"

@@ -94,8 +94,18 @@ fn dispatch_input_type_label(t: DispatchInputType) -> String {
   match t {
     InputString => "string"
     InputBoolean => "boolean"
-    InputChoice => "choice"
+    InputChoice { options: _ } => "choice"
     InputEnvironment => "environment"
+  }
+}
+
+fn dispatch_input_type_extra_fields(t: DispatchInputType) -> List<YamlKeyValue> {
+  match t {
+    InputChoice { options: opts } =>
+      [kv(key: "options", value: string_list_flow(items: opts))]
+    InputString => []
+    InputBoolean => []
+    InputEnvironment => []
   }
 }
 
@@ -115,7 +125,10 @@ fn dispatch_input_yaml(input: DispatchInput) -> YamlKeyValue {
         [kv(key: "required", value: yaml_bool(b: input.required))],
         concat(
           dispatch_input_optional_string(key: "default", value: input.default),
-          [kv(key: "type", value: yaml_string(s: dispatch_input_type_label(t: input.type)))]
+          concat(
+            dispatch_input_type_extra_fields(t: input.type),
+            [kv(key: "type", value: yaml_string(s: dispatch_input_type_label(t: input.type)))]
+          )
         )
       )
     ))
@@ -135,7 +148,7 @@ fn workflow_dispatch_yaml(inputs: List<DispatchInput>) -> YamlValue {
   }
 }
 
-data workflow_dispatch_input_projection_note: String = "WorkflowDispatch.inputs was modeled in extdeps.github.actions but this serializer discarded the entire list and emitted workflow_dispatch: null. That specification-without-execution gap is now closed: every modeled input is projected into the workflow syntax, while the empty list deliberately retains the compact null form. The CI heal revalidation input is the first production consumer and its witness reads the projected YamlValue rather than trusting generated text."
+data workflow_dispatch_input_projection_note: String = "WorkflowDispatch.inputs was modeled in extdeps.github.actions but this serializer discarded the entire list and emitted workflow_dispatch: null. That specification-without-execution gap is now closed: every modeled input is projected into the workflow syntax, while the empty list deliberately retains the compact null form. InputChoice carries a non-empty options list and projects it as the required GitHub Actions options: mapping entry — a type: choice input without options is undispatchable. The CI heal revalidation input is the first production consumer and its witness reads the projected YamlValue rather than trusting generated text."
 
 fn workflow_trigger_entry(trigger: WorkflowTrigger) -> YamlKeyValue {
   match trigger {

@@ -58,3 +58,20 @@ test fn test_module_hygiene_failure_receipt_companion_absent_on_non_witness() ->
     Present { value: _ } => false
   }
 }
+
+test fn codex_wet_enrolled_witnesses_resolve_failure_receipt_companion() -> Bool {
+  match failure_receipt_companion(
+    function: "materialize_codex_runtime_bundle_produces_native_executable_holds",
+  ) {
+    Present { value: materialize } =>
+      materialize == "materialize_codex_runtime_bundle_produces_native_executable_failure_receipt"
+    Absent => false
+  }
+    && match failure_receipt_companion(
+      function: "press_account_trip_yields_standing_or_typed_refusal_never_turn_started_holds",
+    ) {
+      Present { value: press } =>
+        press == "press_account_trip_yields_standing_or_typed_refusal_never_turn_started_failure_receipt"
+      Absent => false
+    }
+}

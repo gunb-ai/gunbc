@@ -1,8 +1,8 @@
 module v2.std.passing_candidate_fold
 
-import v2.std.node { Node }
+data passing_candidate_fold_note: String = "Zero / one / many passing candidates. The candidate is a TYPE PARAMETER because the concept is about the CARDINALITY of a search result, not about what was searched for -- it was declared over Node when every consumer happened to fold over Node, and that accident became load-bearing the moment a consumer folded over an admitted carrier instead. Parameterising is the same move std/integer.dag makes for machine widths: one axis, not one type per inhabitant."
 
-type PassingCandidateFold
+type PassingCandidateFold<T>
   = NoPassingCandidate
-  | OnePassingCandidate { candidate: Node }
+  | OnePassingCandidate { candidate: T }
   | ManyPassingCandidates
