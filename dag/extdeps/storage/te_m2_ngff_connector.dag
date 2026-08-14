@@ -1,0 +1,63 @@
+module extdeps.storage.te_m2_ngff_connector
+
+import std.types { String, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { Micrometer, micrometer }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.tyco_electronics_amp_kk { tyco_electronics_amp_kk }
+import extdeps.land_pattern.types {
+  BoardAttachmentStyle,
+  MountingPatternStanding,
+  SurfaceMountTerminals,
+  VendorPatternNotEstablished,
+}
+
+// Application Specification 114-115006, "67 Positions 0.5 Pitch M.2(NGFF) MINICARD", Rev C dated
+// 04JAN23, read 2026-08-14. The fetched file is the Rev B delivery URL and its content is Rev C;
+// the revision recorded below is the one printed on the sheets.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.te.com/commerce/DocumentDelivery/DDEController?Action=showdoc&DocId=Specification+Or+Standard%7F114-115006%7FB%7Fpdf%7FEnglish%7FENG_SS_114-115006_B_114-115006_REV_B.pdf%7F2199119-3"
+  }
+}
+
+data te_m2_ngff_note: String = "THIS ROW IS A CONNECTOR FAMILY, NOT AN ORDERING SELECTION, AND THE DIFFERENCE IS WHAT THE READ DOCUMENT SUPPORTS. The specification establishes 67 positions on 0.50 mm centres, surface-mount solder tails onto pads, and the stack-height and mid-plane variants it governs. It does NOT say which ordering part number is M-keyed: the key is a property of the individual part, carried on the per-part customer drawing, and every route to one failed - te.com product pages returned HTTP 403 and the customer drawing for 2199230 is vector CAD with no extractable text. SO THERE IS NO KEY FIELD HERE. An M2Key field would have had to be filled, and filling it from the design intent rather than from a document is precisely how an intent becomes indistinguishable from a fact. The M-key decision is real and was made at the product layer; what is missing is the part number that satisfies it. THE BOARD PATTERN IS OUTSTANDING FOR THE SAME REASON AS THE DDR4 SOCKET: the recommended PCB layout is Figures 2 and 3, drawn callouts with no extractable text, and the specification defers to the customer drawing where the two conflict."
+
+type M2ConnectorCatalogRow {
+  specification_number: NonEmptyStr
+  specification_revision: NonEmptyStr
+  vendor: Vendor<Hardware>
+  position_count: Nat
+  contact_pitch: Micrometer
+  attachment: BoardAttachmentStyle
+  board_pattern: MountingPatternStanding
+}
+
+data m2_ngff_minicard_67_position: M2ConnectorCatalogRow = M2ConnectorCatalogRow {
+  specification_number: "114-115006",
+  specification_revision: "C",
+  vendor: tyco_electronics_amp_kk,
+  position_count: 67,
+  contact_pitch: micrometer(count: 500),
+  attachment: SurfaceMountTerminals,
+  board_pattern: VendorPatternNotEstablished {
+    what_is_missing: "the recommended PCB layout of application specification 114-115006 Figures 2 and 3; the layouts are drawn callouts with no extractable text, and the specification defers to the per-part customer drawing where the two conflict. An orderable M-keyed part number is owed with it, since the key is a per-part fact this document does not carry",
+  },
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.storage.te_m2_ngff_connector",
+      decl_name: "m2_ngff_minicard_67_position",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

@@ -26,6 +26,7 @@ import extdeps.power.ti_tps53688 { tps53688rsbr }
 import extdeps.clock.ti_cdce913 { cdce913pwr, cdce913_pw0014a_land_pattern }
 import extdeps.network.ti_dp83867 { dp83867irrgz, dp83867_rgz0048b_outline }
 import extdeps.memory.te_ddr4_dimm_socket { ddr4_dimm_socket_solder_tail_288 }
+import extdeps.storage.te_m2_ngff_connector { m2_ngff_minicard_67_position }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -153,4 +154,27 @@ data established_standing: MountingPatternStanding = VendorPatternEstablished {
 
 test fn w_an_established_standing_reports_established() -> Bool {
   mounting_pattern_is_established(s: established_standing)
+}
+
+// THE M.2 CONNECTOR IS THE THIRD SHAPE ON THIS BOARD: a cited family whose pattern AND whose
+// orderable part number are both outstanding. It is surface mount where the DIMM socket is
+// through-hole, so the two outstanding patterns are outstanding for different reasons and the
+// attachment style is asserted here to keep them apart.
+test fn w_the_m2_family_is_cited_with_its_pattern_outstanding() -> Bool {
+  m2_ngff_minicard_67_position.position_count == 67
+    && micrometer_count(m: m2_ngff_minicard_67_position.contact_pitch) == 500
+    && !mounting_pattern_is_established(s: m2_ngff_minicard_67_position.board_pattern)
+    && match m2_ngff_minicard_67_position.attachment {
+      SurfaceMountTerminals => true
+      ThroughHoleSolderTail => false
+    }
+}
+
+// TWO ENTITIES, NOT ONE BRAND. The DDR4 socket specification is issued by Tyco Electronics
+// Corporation and the M.2 specification by Tyco Electronics AMP K.K., and the two rows must stay
+// distinguishable — folding independently governed entities into one vendor because they share a
+// brand is the merge DESIGN §3 forbids, and it would make a correction to either edit the other.
+test fn w_the_two_tyco_entities_are_not_one_vendor() -> Bool {
+  (ddr4_dimm_socket_solder_tail_288.vendor.legal_name as String)
+    != (m2_ngff_minicard_67_position.vendor.legal_name as String)
 }
