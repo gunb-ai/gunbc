@@ -11,13 +11,11 @@ import product.altra_motherboard.attachment_stack {
   NeedsARedistributionDecision,
   NeedsCommercialAccess,
   NeedsSomeoneToFindTheDocument,
-  NeedsDocumentTextIngested,
   ProcessorPackageLayer,
   PubliclyCited,
   PublicButRedistributionUndecided,
   SocketLayer,
   Unresolved,
-  DocumentCitedTextUnread,
   attachment_layer_name,
   attachment_stack,
   board_land_pattern_standing,
@@ -42,7 +40,6 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn blocker_kind(b: LayerBlocker) -> String {
   match b {
     NeedsSomeoneToFindTheDocument { layer: _, what_is_missing: _ } => "find-document"
-    NeedsDocumentTextIngested { layer: _, authority: _, what_is_missing: _ } => "ingest-document"
     NeedsARedistributionDecision { layer: _, footer: _ } => "redistribution"
     NeedsCommercialAccess { layer: _, subject: _, access_route: _ } => "commercial"
   }
@@ -51,7 +48,6 @@ fn blocker_kind(b: LayerBlocker) -> String {
 fn blocker_layer(b: LayerBlocker) -> AttachmentLayer {
   match b {
     NeedsSomeoneToFindTheDocument { layer: l, what_is_missing: _ } => l
-    NeedsDocumentTextIngested { layer: l, authority: _, what_is_missing: _ } => l
     NeedsARedistributionDecision { layer: l, footer: _ } => l
     NeedsCommercialAccess { layer: l, subject: _, access_route: _ } => l
   }
@@ -86,8 +82,7 @@ test fn w_a_public_package_does_not_establish_the_board_land_pattern() -> Bool {
   !standing_is_established(s: processor_package_standing.standing)
     && !standing_is_established(s: board_land_pattern_standing.standing)
     && match board_land_pattern_standing.standing {
-      DocumentCitedTextUnread { authority: _, what_is_missing: _ } => true
-      Unresolved { what_is_missing: _ } => false
+      Unresolved { what_is_missing: _ } => true
       PubliclyCited { authority: _ } => false
       PublicButRedistributionUndecided { authority: _, footer: _ } => false
       NdaGated { subject: _, access_route: _ } => false
@@ -114,14 +109,13 @@ test fn w_the_three_blocker_kinds_are_distinct() -> Bool {
     Present { value: b } => blocker_kind(b: b)
   }
   package_blocker == "redistribution"
-    && land_blocker == "ingest-document"
+    && land_blocker == "find-document"
     && match reference_board_collateral_standing() {
       NdaGated { subject: sub, access_route: route } =>
         list_length(items: split(s: sub as String, delimiter: "Mt. Jade")) > 1
           && (route.uri.locator as String) == "amperecomputing.com/home/customer-reference-boards"
       PubliclyCited { authority: _ } => false
       PublicButRedistributionUndecided { authority: _, footer: _ } => false
-      DocumentCitedTextUnread { authority: _, what_is_missing: _ } => false
       Unresolved { what_is_missing: _ } => false
     }
 }
@@ -135,7 +129,6 @@ test fn w_the_nda_boundary_covers_board_collateral_only() -> Bool {
       NdaGated { subject: _, access_route: _ } => acc + 1
       PubliclyCited { authority: _ } => acc
       PublicButRedistributionUndecided { authority: _, footer: _ } => acc
-      DocumentCitedTextUnread { authority: _, what_is_missing: _ } => acc
       Unresolved { what_is_missing: _ } => acc
     }
   })
