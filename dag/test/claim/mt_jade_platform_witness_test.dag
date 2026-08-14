@@ -8,6 +8,7 @@ import extdeps.ocp.mt_jade.subject {
   AppendixB,
   DocumentLocatorFetchRefused,
   MtJadeRev1_0,
+  OperatorSuppliedDocumentText,
   Owfa1_0FinalSpecificationAgreement,
   OcpContributionLicenseAgreement,
   mt_jade_citation_read_provenance,
@@ -21,6 +22,8 @@ import extdeps.ocp.mt_jade.subject {
 }
 import extdeps.ocp.mt_jade.platform {
   BaseboardManagementController,
+  CpuBmcGpioVoltageIsolation,
+  CpuJtagDaisyChainMux,
   BmcJtagMasterProgramsCpld,
   GlobalTimerClockGeneration,
   MasterSocket,
@@ -69,11 +72,33 @@ data expected_mt_jade_subject_ref: DeclarationRef = DeclarationRef {
   field: WholeDeclaration,
 }
 
+fn cpld_role_eq(
+  a: MtJadeBoardCpldResponsibility,
+  b: MtJadeBoardCpldResponsibility,
+) -> Bool {
+  match a {
+    CpuBmcGpioVoltageIsolation =>
+      match b { CpuBmcGpioVoltageIsolation => true, _ => false }
+    CpuJtagDaisyChainMux =>
+      match b { CpuJtagDaisyChainMux => true, _ => false }
+    BmcJtagMasterProgramsCpld =>
+      match b { BmcJtagMasterProgramsCpld => true, _ => false }
+    PciePerstDecodeFromCpuGpio =>
+      match b { PciePerstDecodeFromCpuGpio => true, _ => false }
+    GlobalTimerClockGeneration =>
+      match b { GlobalTimerClockGeneration => true, _ => false }
+    SlaveSocketSysResetReleaseGating =>
+      match b { SlaveSocketSysResetReleaseGating => true, _ => false }
+    SysResetPathWithBmc =>
+      match b { SysResetPathWithBmc => true, _ => false }
+  }
+}
+
 fn list_contains_cpld_role(
   rows: List<MtJadeBoardCpldResponsibility>,
   wanted: MtJadeBoardCpldResponsibility,
 ) -> Bool {
-  fold(rows, init: false, f: fn(acc, r) { acc || r == wanted })
+  fold(rows, init: false, f: fn(acc, r) { acc || cpld_role_eq(a: r, b: wanted) })
 }
 
 fn handshake_includes_slave_start(chain: List<PlatformSequencingHandshake>) -> Bool {
@@ -101,7 +126,9 @@ test fn w_the_model_scope_points_at_the_reference_platform_row() -> Bool {
     a: mt_jade_model_scope.subject,
     b: expected_mt_jade_subject_ref,
   )
-    && mt_jade_reference_platform.revision == MtJadeRev1_0
+    && match mt_jade_reference_platform.revision {
+      MtJadeRev1_0 => true
+    }
     && (mt_jade_specification_version_label as String) == "v1.0"
     && mt_jade_specification_publication_date.year == 2021
     && mt_jade_specification_publication_date.month == 9
@@ -112,10 +139,17 @@ test fn w_the_model_scope_points_at_the_reference_platform_row() -> Bool {
 
 // THE LICENCE TERMS AND APPENDIX EXCLUSION ARE LOAD-BEARING FOR PUBLIC REPOSITORY ADMISSION.
 test fn w_the_specification_license_excludes_non_normative_appendices() -> Bool {
-  mt_jade_specification_license == Owfa1_0FinalSpecificationAgreement
-    && mt_jade_contribution_license == OcpContributionLicenseAgreement
+  match mt_jade_specification_license {
+    Owfa1_0FinalSpecificationAgreement => true
+  }
+    && match mt_jade_contribution_license {
+      OcpContributionLicenseAgreement => true
+    }
     && fold(mt_jade_excluded_non_normative_appendices, init: true, f: fn(acc, a) {
-      acc && (a == AppendixA || a == AppendixB)
+      acc && match a {
+        AppendixA => true
+        AppendixB => true
+      }
     })
     && fold(mt_jade_excluded_non_normative_appendices, init: 0, f: fn(acc, _a) { acc + 1 }) == 2
 }
