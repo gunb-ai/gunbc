@@ -135,27 +135,29 @@ fn converge_codex_runtime_local_locus_matches_host(host: String) -> Bool {
 fn converge_provider_runtime_codex_receipt(host: String) -> ConvergeCliReceipt? {
   if !converge_cli_is_fleet_compute_host(host: host) {
     none
-  } else if !converge_codex_runtime_local_locus_matches_host(host: host) {
-    Present {
-      value: ConvergeCliReceipt {
-        host: host,
-        applied: 0,
-        drifted: 0,
-        verdict: Absent,
-        reason: Present {
-          value: KnobFrontier {
-            reason: concat(
-              "converge_provider_runtime_codex: ProvisionCodexRuntime LocalShell refused — target host ",
-              host,
-              " does not match local kernel hostname ",
-              converge_local_kernel_short_hostname(),
-              "; cross-host transport is SshShell dissolve-on (review 51883)",
-            ),
+  } else {
+    let local_hostname = converge_local_kernel_short_hostname()
+    if local_hostname == "" || host != local_hostname {
+      Present {
+        value: ConvergeCliReceipt {
+          host: host,
+          applied: 0,
+          drifted: 0,
+          verdict: Absent,
+          reason: Present {
+            value: KnobFrontier {
+              reason: concat(
+                "converge_provider_runtime_codex: ProvisionCodexRuntime LocalShell refused — target host ",
+                host,
+                " does not match local kernel hostname ",
+                local_hostname,
+                "; cross-host transport is SshShell dissolve-on (review 51883)",
+              ),
+            },
           },
         },
-      },
-    }
-  } else {
+      }
+    } else {
     match fleet_compute_host_for_identity(identity: host as HostIdentity) {
       Present { value: compute_host } =>
         Present {
@@ -184,6 +186,7 @@ fn converge_provider_runtime_codex_receipt(host: String) -> ConvergeCliReceipt? 
           }
         }
       Absent => none
+    }
     }
   }
 }
