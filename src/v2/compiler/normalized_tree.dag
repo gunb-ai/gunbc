@@ -1,6 +1,6 @@
 module v2.compiler.normalized_tree
 
-import v2.std.compilers.body_lowering { body_lowering_carries_wrapper_retention }
+import v2.compiler.body_lowering_fold { body_lowering_diagnostics_carry_wrapper_retention }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -34,7 +34,7 @@ fn normalized_tree_retention_diagnostic(root: Node) -> Diagnostic {
 }
 
 fn admit_normalized_tree(root: Node, diagnostics: Diagnostics) -> Outcome<NormalizedTree> {
-  if body_lowering_carries_wrapper_retention(d: diagnostics) {
+  if body_lowering_diagnostics_carry_wrapper_retention(d: diagnostics) {
     Rejected {
       diagnostics: rejected_with_pending(
         pending: diagnostics,
