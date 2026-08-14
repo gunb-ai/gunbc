@@ -9,6 +9,9 @@ import gunbc.package_delivery {
   codex_runtime_manifest_path,
   materialize_codex_runtime_bundle,
   materialize_codex_runtime_bundle_through_prepare,
+  materialize_codex_runtime_bundle_through_pair_acquire,
+  materialize_codex_runtime_bundle_through_npm_ci_offline,
+  materialize_codex_runtime_bundle_finish_after_install,
   prepare_codex_runtime_closure,
   select_codex_exact_target_closure,
   observe_codex_npm_runtime_target,
@@ -51,9 +54,9 @@ data witness_note: String = "WET BISECT REPRODUCTION (NOT ENROLLED WITNESSES). B
 
 data wet_non_witness_enrollment_note: String = "Admission gate 2026-08-14: OfflineLocalRecipe exclusion + enrolled test fn produced UnclassifiedPathDeferral (five rows, zero executing consumers). Fix: bisect arms are fn not test fn; no witness enrollment until explicit admission with declared envelope after production fix."
 
-data wet_supervised_turn_memory_envelope_note: String = "MEMORY ENVELOPE (srv1 bisect 2026-08-14). Operator caps are safety while debugging. Ladder 72f6eade0: construct/closure/prepare/wrapper-acquire/through-prepare PASS; full materialize PINS 8G — leak strictly after through-prepare cut. Next: wet_acquire_platform_artifact_only — MemoryMax=2G (native platform tarball acquire only). Then if pass: install path or finish_codex_runtime_materialization_after_install. wet_materialize_codex_runtime_bundle_only — 8G control."
+data wet_supervised_turn_memory_envelope_note: String = "MEMORY ENVELOPE (srv1 bisect 2026-08-14). Ladder: through-prepare PASS; full materialize PINS 8G. Remaining rungs: wet_acquire_selected_pair_only — 2G; wet_materialize_npm_ci_offline_only — 2G (pair acquire + cache seed + npm ci offline + native/platform verify); wet_materialize_finish_after_install_only — 8G (install then finish_codex_runtime_materialization_after_install). wet_materialize_codex_runtime_bundle_only — 8G control."
 
-data wet_bisect_ladder_receipt_note: String = "srv1 ladder 72f6eade0 (eager-koi-458): all five rungs through wet_materialize_through_prepare_only PASS capped; wet_materialize_codex_runtime_bundle_only PINS 8G at 3m44s same head. Leak is strictly materialize body after through-prepare: platform acquire, npm ci/extract, or finish_codex_runtime_materialization_after_install tree walks."
+data wet_bisect_ladder_receipt_note: String = "srv1 ladder (eager-koi-458): construct/closure/prepare/wrapper-acquire/platform-acquire/through-prepare PASS; full materialize PINS 8G. Next: pair acquire together, npm ci offline install path, finish after install (tree walk / release)."
 
 data wet_supervised_turn_oom_receipt_note: String = "srv1 bisect 2026-08-14: step2b closure PASS 2G; instrumented materialize ~2GB/min to 8G cap, zero children 4.5min, decl eval stuck — not tarball bytes. Production defect in interpreter eval of materialize_codex_runtime_bundle pre-shell region. Fix production path; do not enlarge witness envelope."
 
@@ -241,6 +244,25 @@ fn wet_codex_runtime_prepare_closure_only() -> Bool {
 fn wet_materialize_through_prepare_only() -> Bool {
   materialize_codex_runtime_bundle_through_prepare(
     source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_acquire_selected_pair_only() -> Bool {
+  materialize_codex_runtime_bundle_through_pair_acquire(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_materialize_npm_ci_offline_only() -> Bool {
+  materialize_codex_runtime_bundle_through_npm_ci_offline(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_materialize_finish_after_install_only() -> Bool {
+  materialize_codex_runtime_bundle_finish_after_install(
+    source: committed_admitted_codex_runtime_source(),
+    release_parent: wet_materialize_bisect_release_parent,
   )
 }
 
