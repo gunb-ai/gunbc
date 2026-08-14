@@ -3,7 +3,7 @@ module test.claim.workflow_dispatch_input_witness
 import extdeps.github.actions {
   WorkflowDispatch, DispatchInput, InputString, InputChoice
 }
-import gunbc.fleet_converge_workflow { fleet_converge_workflow }
+import gunbc.fleet_converge_workflow { fleet_converge_workflow, expected_fleet_converge_yml }
 import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
 import extdeps.languages.yaml.types {
   YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping
@@ -137,4 +137,8 @@ test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
     && fleet_converge_workflow.jobs[0].id == "build"
     && fleet_converge_workflow.jobs[1].id == "fleet-converge"
     && fleet_converge_workflow.jobs[1].needs == ["build"]
+}
+
+test fn fleet_converge_workflow_has_no_heal_revalidation_paste_through() -> Bool {
+  !string_contains(s: expected_fleet_converge_yml(), pattern: "expected_healed_sha")
 }

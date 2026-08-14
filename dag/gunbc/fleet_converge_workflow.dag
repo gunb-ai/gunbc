@@ -10,7 +10,7 @@ import extdeps.github.actions {
 }
 import gunbc.ci_workflow {
   ci_prelude_steps,
-  ci_artifact_consumer_prelude_steps,
+  ci_checkout_step,
   ci_release_build_step,
   ci_release_bins_pack_step,
   ci_release_bins_upload_step,
@@ -142,6 +142,12 @@ fn fleet_converge_apply_step() -> Step {
   }
 }
 
+data fleet_converge_consumer_prelude_note: String = "Plain fetch-depth-0 checkout only — this workflow has no workflow_dispatch expected_healed_sha input (unlike ci.yml heal revalidation). ci_artifact_consumer_prelude_steps paste-through would reference an undeclared input and emit a dormant preflight guard."
+
+fn fleet_converge_consumer_prelude_steps() -> List<Step> {
+  [ci_checkout_step()]
+}
+
 fn fleet_converge_job() -> Job {
   Job {
     id: "fleet-converge",
@@ -149,7 +155,7 @@ fn fleet_converge_job() -> Job {
     runner: fleet_converge_host_pinned_runner_spec(),
     steps: concat(
       concat(
-        ci_artifact_consumer_prelude_steps(),
+        fleet_converge_consumer_prelude_steps(),
         [
           ci_release_bins_download_step(),
           ci_release_bins_unpack_verify_step(),

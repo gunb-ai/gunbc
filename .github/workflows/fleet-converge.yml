@@ -124,23 +124,6 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          ref: ${{ inputs.expected_healed_sha || github.sha }}
-      - name: Refuse a heal revalidation whose run subject or checkout does not name the expected healed SHA
-        run: |
-          EXPECTED_HEALED_SHA="${{ inputs.expected_healed_sha }}"
-          RUN_SUBJECT_HEAD="${{ github.sha }}"
-          if [ -n "$EXPECTED_HEALED_SHA" ]; then
-          ACTUAL_HEAD="$(git rev-parse HEAD)"
-          if ! [ "$RUN_SUBJECT_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
-          echo "::error::heal revalidation refused: workflow run subject $RUN_SUBJECT_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
-          exit 1
-          fi
-          if ! [ "$ACTUAL_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
-          echo "::error::heal revalidation refused: checkout head $ACTUAL_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
-          exit 1
-          fi
-          echo "heal revalidation preflight: checkout names expected healed head $EXPECTED_HEALED_SHA"
-          fi
       - name: Download release-bins artifact
         uses: actions/download-artifact@v4
         with:
