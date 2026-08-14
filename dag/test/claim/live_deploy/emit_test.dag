@@ -78,7 +78,7 @@ import gunbc.ci_deploy_access {
 import gunbc.fleet_posix_accounts { DeployRunnerPrincipal }
 import gunbc.host_axis_caps {
   deploy_memory_cap_apply_script_for_host,
-  deploy_memory_cap_apply_script_author_before_shadow_revert,
+  deploy_memory_cap_script_author_precedes_shadow_revert,
   runner_slot_service_units_for_host,
 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
@@ -291,7 +291,7 @@ test fn witness_apply_script_wires_memory_cap_deploy_consumer() -> Bool {
   let units = runner_slot_service_units_for_host(host: target.host.identity)
   let cap_block = deploy_memory_cap_apply_script_for_host(host: target.host.identity)
   let sh = witness_apply_script()
-  deploy_memory_cap_apply_script_author_before_shadow_revert(units: units)
+  deploy_memory_cap_script_author_precedes_shadow_revert(script: cap_block, units: units)
     && string_contains(s: sh, pattern: cap_block)
     && string_contains(s: sh, pattern: "20-fleet-width.conf")
     && string_contains(s: sh, pattern: "sudo -n systemctl revert ")

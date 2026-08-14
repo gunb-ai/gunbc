@@ -60,7 +60,7 @@ import gunbc.live_deploy.spec {
 import gunbc.host_layout { belt_spawn_workdir_env_var, fleet_converge_receipt_dir }
 import gunbc.host_axis_caps {
   deploy_memory_cap_apply_script_for_host,
-  deploy_memory_cap_apply_script_author_before_shadow_revert,
+  deploy_memory_cap_script_author_precedes_shadow_revert,
   host_axis_caps_author_before_revert_enforced,
   runner_slot_service_units_for_host,
 }
@@ -562,9 +562,10 @@ fn deploy_apply_preamble_steps(access: DeployAccess) -> List<PipelineStep> {
 fn deploy_memory_cap_apply_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   let host = spec.target.host.identity
   let units = runner_slot_service_units_for_host(host: host)
+  let script = deploy_memory_cap_apply_script_for_host(host: host)
   if host_axis_caps_author_before_revert_enforced
-    && deploy_memory_cap_apply_script_author_before_shadow_revert(units: units) {
-    [deploy_raw(command: deploy_memory_cap_apply_script_for_host(host: host))]
+    && deploy_memory_cap_script_author_precedes_shadow_revert(script: script, units: units) {
+    [deploy_raw(command: script)]
   } else {
     [
       deploy_raw(

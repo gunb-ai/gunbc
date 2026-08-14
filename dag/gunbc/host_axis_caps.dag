@@ -272,17 +272,16 @@ fn deploy_memory_cap_apply_script_ordered(units: List<NonEmptyStr>) -> String {
   concat(deploy_runner_memory_cap_author_script(), deploy_memory_cap_shadow_revert_script(units: units))
 }
 
-// Pin caller script to deploy_memory_cap_apply_script_ordered's concat(author, reverts).
+// Pin external script to deploy_memory_cap_apply_script_ordered's concat(author, reverts).
 fn deploy_memory_cap_script_matches_ordered_composition(script: String, units: List<NonEmptyStr>) -> Bool {
   script == deploy_memory_cap_apply_script_ordered(units: units)
 }
 
-fn deploy_memory_cap_apply_script_author_before_shadow_revert(units: List<NonEmptyStr>) -> Bool {
-  list_length(items: units) > 0
-    && deploy_memory_cap_script_matches_ordered_composition(
-      script: deploy_memory_cap_apply_script_ordered(units: units),
-      units: units,
-    )
+// Independently derive author + revert halves; refuse reversed or padded wrong-order scripts.
+fn deploy_memory_cap_script_author_precedes_shadow_revert(script: String, units: List<NonEmptyStr>) -> Bool {
+  let author = deploy_runner_memory_cap_author_script()
+  let reverts = deploy_memory_cap_shadow_revert_script(units: units)
+  list_length(items: units) > 0 && script == concat(author, reverts)
 }
 
 // Enrolled: live_deploy apply emits deploy_memory_cap_apply_script_for_host after sudoers preamble.
