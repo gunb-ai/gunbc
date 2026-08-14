@@ -2735,12 +2735,21 @@ pub fn structured_application_site_type_mismatch(
                                 source_indices.clone(),
                             ) {
                                 Some(lit_name) => {
-                                    let lit_nominal =
-                                        structured_application_record_lit_nominal_name(
-                                            lit_name.clone(),
-                                            scope.clone(),
-                                        );
-                                    if ((lit_name.clone() == "".to_string())
+                                    if application_type_names_compatible(
+                                        formal_name.clone(),
+                                        lit_name.clone(),
+                                        scope.type_env.clone(),
+                                        scope.module_name.clone(),
+                                        source_indices.clone(),
+                                    ) {
+                                        false
+                                    } else {
+                                        let lit_nominal =
+                                            structured_application_record_lit_nominal_name(
+                                                lit_name.clone(),
+                                                scope.clone(),
+                                            );
+                                        if ((lit_name.clone() == "".to_string())
                                         || structured_application_lit_is_declared_optional_variant(
                                             formal.clone(),
                                             lit_name.clone(),
@@ -2879,11 +2888,71 @@ pub fn structured_application_site_type_mismatch(
                                             }
                                         }
                                     }
+                                    }
                                 }
                                 None => false,
                             }
                         }
                     }
+                }
+            }
+        }
+        _ => false,
+    }
+}
+
+pub fn direct_call_structured_record_literal_resolved_type_mismatch(
+    formal: Rc<Node>,
+    actual_expr: Rc<Node>,
+    type_env: Rc<TypeEnv>,
+    module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match &*actual_expr.expr_data {
+        ExprData::ExprRecordLit { .. } => {
+            let formal_peeled =
+                peel_nominal_alias_identity(formal.clone(), type_env.clone(), module_name.clone());
+            let formal_name = authored_name_at(source_indices.clone(), formal_peeled.clone());
+            match record_lit_type_name_at(actual_expr.clone(), source_indices.clone()) {
+                Some(lit_name) => {
+                    if application_type_names_compatible(
+                        formal_name.clone(),
+                        lit_name.clone(),
+                        type_env.clone(),
+                        module_name.clone(),
+                        source_indices.clone(),
+                    ) {
+                        false
+                    } else {
+                        let actual_raw = resolved_type(actual_expr.clone());
+                        let actual = peel_nominal_alias_identity(
+                            actual_raw.clone(),
+                            type_env.clone(),
+                            module_name.clone(),
+                        );
+                        direct_call_arg_type_mismatch(
+                            formal.clone(),
+                            actual.clone(),
+                            type_env.clone(),
+                            module_name.clone(),
+                            source_indices.clone(),
+                        )
+                    }
+                }
+                None => {
+                    let actual_raw = resolved_type(actual_expr.clone());
+                    let actual = peel_nominal_alias_identity(
+                        actual_raw.clone(),
+                        type_env.clone(),
+                        module_name.clone(),
+                    );
+                    direct_call_arg_type_mismatch(
+                        formal.clone(),
+                        actual.clone(),
+                        type_env.clone(),
+                        module_name.clone(),
+                        source_indices.clone(),
+                    )
                 }
             }
         }
@@ -2960,6 +3029,12 @@ pub fn direct_call_structured_application_mismatch_diags(
                                     formal_subst.clone(),
                                     actual_expr.clone(),
                                     scope.clone(),
+                                ) || direct_call_structured_record_literal_resolved_type_mismatch(
+                                    formal.clone(),
+                                    actual_expr.clone(),
+                                    type_env.clone(),
+                                    module_name.clone(),
+                                    source_indices.clone(),
                                 ) {
                                     {
                                         let actual_raw = resolved_type(actual_expr.clone());

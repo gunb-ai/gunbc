@@ -1766,6 +1766,11 @@ fn structured_application_site_type_mismatch(
           let formal_structural = structured_application_structural_type_name(type_name: formal_name, scope: scope)
           match record_lit_type_name_at(texpr: actual_expr, source_indices: source_indices) {
             Present { value: lit_name } =>
+              if application_type_names_compatible(
+                formal_name: formal_name, lit_name: lit_name,
+                type_env: scope.type_env, module_name: scope.module_name, source_indices: source_indices) {
+                false
+              } else {
               let lit_nominal = structured_application_record_lit_nominal_name(lit_name: lit_name, scope: scope)
               if lit_name == "" || structured_application_lit_is_declared_optional_variant(
                 formal: formal, lit_name: lit_name, scope: scope) {
@@ -1842,9 +1847,43 @@ fn structured_application_site_type_mismatch(
                     }
                 }
               }
+              }
             Absent => false
           }
         }
+      }
+    _ => false
+  }
+}
+
+fn direct_call_structured_record_literal_resolved_type_mismatch(
+  formal: Node,
+  actual_expr: Node,
+  type_env: TypeEnv,
+  module_name: String,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  match actual_expr.expr_data {
+    ExprRecordLit { parent_enum: _ } =>
+      let formal_peeled = peel_nominal_alias_identity(n: formal, env: type_env, module_name: module_name)
+      let formal_name = authored_name_at(source_indices: source_indices, node: formal_peeled)
+      match record_lit_type_name_at(texpr: actual_expr, source_indices: source_indices) {
+        Present { value: lit_name } =>
+          if application_type_names_compatible(
+            formal_name: formal_name, lit_name: lit_name,
+            type_env: type_env, module_name: module_name, source_indices: source_indices) {
+            false
+          } else {
+            let actual_raw = resolved_type(n: actual_expr)
+            let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
+            direct_call_arg_type_mismatch(
+              formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices)
+          }
+        Absent =>
+          let actual_raw = resolved_type(n: actual_expr)
+          let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
+          direct_call_arg_type_mismatch(
+            formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices)
       }
     _ => false
   }
@@ -1873,7 +1912,9 @@ fn direct_call_structured_application_mismatch_diags(
       match matched_arg {
         Present { value: ta } =>
           let actual_expr = arg_value(n: ta)
-          if structured_application_site_type_mismatch(formal: formal_subst, actual_expr: actual_expr, scope: scope) {
+          if structured_application_site_type_mismatch(formal: formal_subst, actual_expr: actual_expr, scope: scope)
+            || direct_call_structured_record_literal_resolved_type_mismatch(
+              formal: formal, actual_expr: actual_expr, type_env: type_env, module_name: module_name, source_indices: source_indices) {
             let actual_raw = resolved_type(n: actual_expr)
             let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
             [type_mismatch_error(
@@ -2205,6 +2246,7 @@ fn direct_call_arg_mismatch_diags(
             ExprRecordLit { parent_enum: _ } => true
             _ => false
           } {
+            // Handoff to direct_call_structured_application_mismatch_diags (+ resolved-type legacy checks there).
             []
           } else {
           let actual_raw = resolved_type(n: actual_expr)

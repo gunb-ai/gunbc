@@ -1,0 +1,46 @@
+module test.claim.record_literal_call_arg_handoff_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data record_literal_call_arg_handoff_witness_note: String = "Permanent regression control for PR #8262 record-literal call-arg handoff. direct_call_arg_mismatch_diags skips record-literal actuals; direct_call_structured_application_mismatch_diags must still refuse every mismatch the legacy path refused for that shape. Pair 1 (nominal-at-literal): Box at Node param. Pair 2 (resolved-type legacy): warm-fox virtual-harness Cons/FreeMonoid<Node> at FreeMonoid<NormalizedTree> param — the shape main's legacy path refused in compile_dag_rust_emit_check before the skip; production compile with v2.compiler.normalized_tree.NormalizedTree (= Node alias) correctly stays green. diagnostics_witness record_literal_field_walls carries pair 1 on the production compile path."
+
+fn w_nominal_record_at_call_arg_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module handoff_nominal\ntype Node { kind: Int, children: List<Int>, occurrence_id: Int }\ntype Box { label: String }\nfn takes_node(n: Node) -> Bool { true }\nfn bad() -> Bool { takes_node(n: Box { label: \"x\" }) }\n",
+    "src/handoff_nominal.rs",
+    [],
+    []
+  )
+}
+
+fn w_container_element_record_at_call_arg_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module warmfox_bl1_prediction\nimport std.algebra { Cons, Empty, FreeMonoid }\nimport v2.std.node { Node, TypeNode, Atom, SyntheticOccurrence }\n\ntype NormalizedTree sole_constructor {\n  root: Node,\n}\n\nfn fc_module_root() -> Node {\n  Node {\n    kind: TypeNode { connective: Atom { identity: ^fc_seg } },\n    children: [],\n    occurrence_id: SyntheticOccurrence,\n  }\n}\n\nfn fc_single_found_root() -> FreeMonoid<Node> {\n  Cons { head: fc_module_root(), tail: Empty }\n}\n\nfn validate_module_roots(roots: FreeMonoid<NormalizedTree>) -> Bool {\n  true\n}\n\nfn bad_call() -> Bool {\n  validate_module_roots(roots: fc_single_found_root())\n}\n",
+    "src/warmfox_bl1_prediction.rs",
+    [],
+    []
+  )
+}
+
+fn w_nominal_record_at_call_arg_green() -> Bool {
+  compile_dag_rust_emit_check(
+    "module handoff_nominal_green\ntype Node { kind: Int, children: List<Int>, occurrence_id: Int }\nfn takes_node(n: Node) -> Bool { true }\nfn ok() -> Bool { takes_node(n: Node { kind: 0, children: [], occurrence_id: 0 }) }\n",
+    "src/handoff_nominal_green.rs",
+    [],
+    []
+  )
+}
+
+test fn record_literal_nominal_mismatch_at_call_arg_still_refuses() -> Bool {
+  !w_nominal_record_at_call_arg_red()
+}
+
+test fn record_literal_container_element_mismatch_at_call_arg_still_refuses() -> Bool {
+  !w_container_element_record_at_call_arg_red()
+}
+
+test fn record_literal_matching_nominal_at_call_arg_accepts() -> Bool {
+  w_nominal_record_at_call_arg_green()
+}
