@@ -13,6 +13,8 @@ import v2.std.diagnostic {
   node_locus,
   rejected_with_pending
 }
+import std.algebra { Empty, FreeMonoid }
+import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.node { Node }
 
 // A NormalizedTree is the ADMITTED product of normalize: a root whose own
@@ -44,4 +46,16 @@ fn admit_normalized_tree(root: Node, diagnostics: Diagnostics) -> Outcome<Normal
   } else {
     Accepted { value: NormalizedTree { root: root }, diagnostics: diagnostics }
   }
+}
+
+// Projection out of the sealed carrier for consumers that are genuinely about
+// Node structure and not about admission -- the symbol-index fill, for one.
+// Order-preserving: a symbol index built from a reordered root list is a
+// different index.
+fn normalized_tree_roots_to_nodes(roots: FreeMonoid<NormalizedTree>) -> FreeMonoid<Node> {
+  fold_list(
+    xs: roots,
+    empty: Empty,
+    cons: fn(acc, root) { list_snoc_item(xs: acc, item: root.root) }
+  )
 }

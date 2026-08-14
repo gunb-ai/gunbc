@@ -88,9 +88,27 @@ This note does not implement the lens, does not touch the emitter's `PhantomData
 
 BL-1 replaces it with `type NormalizedTree sole_constructor { root: Node }` plus `admit_normalized_tree`, the single door that refuses a root carrying wrapper-retention evidence. Rung, stated honestly: **accepted refinement with executing refusal**, not structural impossibility — the invalid state remains describable; what changed is that no `Accepted` program reaches the carrier while holding retention evidence.
 
-### 8.2 The receipt: the v2 typechecker did not see either half of the conversion
+### 8.2 The receipt: the v2 typechecker does not distinguish a wrapper from the thing it wraps
 
-This is the finding, and it is worth more than the specimen. When `NormalizedTree` was first converted from alias to record, the whole v2 pipeline reported **0 blocking errors** while:
+This is the finding, and it is worth more than the specimen.
+
+**Lead with the live half, because it is what makes the class load-bearing rather than archaeological.** Doing BL-1 — a single carrier conversion, judged narrow at the design level and correctly so — produced **five** instances of this class. Two were found by review on other lanes. **Three were found inside the change that documents the class**, each invisible to the typechecker, each surfaced only by running the code, and each discovered one at a time because fixing one revealed the next:
+
+| # | site | declared | actually received | runtime |
+|---|---|---|---|---|
+| 1 | `03_name_resolve` `admit_import_root_find` | `found: Outcome<Node>` | `Outcome<NormalizedTree>` | `no field 'children'` |
+| 2 | `symbol_index_fill` `symbol_index_fill_module_roots` | `roots: FreeMonoid<Node>` | `FreeMonoid<NormalizedTree>` | `no field 'kind'` |
+| 3 | `03_name_resolve` `ModuleRootLookup.ModuleRootFound` and the shared `v2.std.passing_candidate_fold` `PassingCandidateFold.OnePassingCandidate` | `root` / `candidate: Node` | `NormalizedTree` | `no field 'kind'` |
+
+Instance 3 is the one worth dwelling on: the conflation reached a **shared std carrier** used by six modules, none of which had anything to do with this change. That is the class escaping the module that introduced it.
+
+**The consequence for estimating work.** A carrier conversion is design-narrow — evidence exists at every point it is needed, so no stage is re-plumbed — while being *execution-search-wide*, because the checker gives no signal and every seam must be found by running something that reaches it. Those are different quantities, and quoting the first for the second is how this change was scoped as small.
+
+**The denominator, since a green sweep is not a bound.** "Every witness I could execute is green" cannot rule out a fourth seam. What can be stated: the converted frontier is **39 declarations mentioning `NormalizedTree` across 7 modules**; every point where such a value meets a `Node`-declared position is resolved in exactly one of three ways, and there are no others — **16 `.root` projections** at genuine Node inspections, **1 order-preserving list projection** (`normalized_tree_roots_to_nodes`, for the symbol-index fill, which is about Node structure and not admission), and **3 callees converted** to carry the admitted type (the table above). That is a bounded, checkable claim; the green sweep is evidence for it, not a substitute.
+
+### 8.2.1 How the class first showed itself
+
+When `NormalizedTree` was first converted from alias to record, the whole v2 pipeline reported **0 blocking errors** while:
 
 - a `NormalizedTree` record sat in positions typed `Node`, and
 - a raw `Node` sat in the `NormalizedTree` field.

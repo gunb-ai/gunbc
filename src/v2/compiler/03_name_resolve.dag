@@ -3,7 +3,7 @@ module v2.compiler.name_resolve
 import v2.std.language_model { LanguageModel }
 
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
-import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_nodes }
 import v2.std.symbol_index { empty_symbol_index }
 import v2.compiler.resolve {
   DeclaredBinding,
@@ -137,7 +137,7 @@ fn resolve_diagnostics(reason: Symbol) -> NonEmptyDiagnostics {
 
 // module_root_find refuses with the exact QualifiedName sought — rendered as a dotted string on the Textual diagnostic file locus (§3: structural QN is identity; dotted form is projection for display). ModuleRootLookup is the structural authority; diagnostics project from ModuleRootMissing rather than parsing display text back.
 type ModuleRootLookup
-  = ModuleRootFound { root: Node }
+  = ModuleRootFound { root: NormalizedTree }
   | ModuleRootMissing { requested: QualifiedName }
   | ModuleRootAmbiguous { requested: QualifiedName }
   | ModuleRootLookupRejected { diagnostics: NonEmptyDiagnostics }
@@ -341,7 +341,7 @@ fn validate_module_roots(roots: FreeMonoid<NormalizedTree>) -> Outcome<FreeMonoi
   }
 }
 
-data module_root_lookup_note: String = "Typed lookup result beside module_root_find diagnostics. ModuleRootMissing and ModuleRootAmbiguous preserve the exact QualifiedName sought; diagnostics are projections of these results for consumers that still read Outcome<Node>."
+data module_root_lookup_note: String = "Typed lookup result beside module_root_find diagnostics. ModuleRootMissing and ModuleRootAmbiguous preserve the exact QualifiedName sought; diagnostics are projections of these results for consumers that still read the Outcome directly."
 
 fn module_root_lookup(
   roots: FreeMonoid<NormalizedTree>,
@@ -517,7 +517,7 @@ fn admit_named_exports(
 }
 
 fn admit_import_root_find(
-  found: Outcome<Node>,
+  found: Outcome<NormalizedTree>,
   origin: QualifiedName,
   state: AdmissionState
 ) -> AdmissionState {
@@ -525,9 +525,9 @@ fn admit_import_root_find(
     Rejected { diagnostics: d } =>
       AdmissionRejected { diagnostics: d }
     Accepted { value: imported_root, diagnostics: _ } =>
-      if well_formed(n: imported_root) {
+      if well_formed(n: imported_root.root) {
         admit_named_exports(
-          root: imported_root,
+          root: imported_root.root,
           origin: origin,
           state: state
         )
@@ -670,7 +670,7 @@ fn admitted_subject_from_bindings(
       canonical_symbols: base.canonical_symbols,
       symbol_index: symbol_index_fill_module_roots(
         index: empty_symbol_index(),
-        roots: validated_roots
+        roots: normalized_tree_roots_to_nodes(roots: validated_roots)
       ),
       module_qn: module_qn
     },
