@@ -369,11 +369,16 @@ data processor_package_envelope: ComponentEnvelopeStanding = EnvelopeEstablished
 // own axes. Deriving it rather than asserting one also means the legal decision recorded against
 // the package cannot silently unblock the socket, which is precisely the false dependency this
 // module previously encoded.
+//
+// THE ABSENT ARM IS UNREACHABLE WHILE THE SOCKET IS UNRESOLVED, and it refuses rather than
+// inventing an obstacle. A socket layer reporting no blocker means the fact was established and
+// the carriage decided, at which point what is owed here is a real envelope binding to the socket
+// vendor's drawing — not a fabricated obligation standing in for one. Answering with a plausible
+// blocker would report an established subject as blocked, which is the fabricated plausible output
+// pointed the other way.
 fn socket_envelope_blocker() -> FactAuthorityBlocker {
   match subject_blocker(fact: socket_standing.fact, carriage: socket_standing.carriage) {
     Present { value: b } => b
-    // Unreachable while the socket is unresolved, and it refuses rather than inventing a blocker:
-    // an established socket needs a real envelope binding, not a fabricated obstacle.
     Absent =>
       NeedsSomeoneToFindTheDocument {
         what_is_missing: "the socket layer reports no blocker, so a socket envelope binding is owed here rather than an obligation",
