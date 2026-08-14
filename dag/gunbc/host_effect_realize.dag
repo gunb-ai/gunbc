@@ -136,7 +136,12 @@ import gunbc.host_codex_runtime_provision_verdict {
   ProvisionConverged,
   ProvisionRefused,
 }
-import gunbc.host_layout { codex_bundled_executable_for_host }
+import gunbc.host_layout {
+  codex_bundled_executable_for_host,
+  provider_runtime_placement_for_host,
+  srv1_gunbc_repo_root,
+  srv1_gunbc_serve_binary,
+}
 import gunbc.host_build_cache_catalog_gate {
   provision_build_cache_catalog_gate_verdict,
   ProvisionBuildCacheCatalogRealizable,
@@ -877,14 +882,34 @@ fn realize_provision_codex_runtime_body(
             applied: effect_intent,
           }
         Present { value: executable } =>
-          let observed = run_shell_transport(
-            script: retained_srvn(
-              body: codex_runtime_provision_shell_script(executable: executable as String),
-              reason: "ProvisionCodexRuntime observe/ensure/read-back shell transport",
-            ),
-            transport: transport,
-          )
-          provision_codex_runtime_reconcile(observed: observed, intent: effect_intent)
+          match provider_runtime_placement_for_host(host: host) {
+            Absent =>
+              NotConverged {
+                reason: join(
+                  [
+                    "host_effect_apply: ProvisionCodexRuntime refused — no provider runtime placement for host ",
+                    host as String,
+                    "; fail-closed.",
+                  ],
+                  "",
+                ),
+                applied: effect_intent,
+              }
+            Present { value: placement } =>
+              let observed = run_shell_transport(
+                script: retained_srvn(
+                  body: codex_runtime_provision_shell_script(
+                    executable: executable as String,
+                    release_parent: placement.runtime_release_root as String,
+                    gunbc_binary: srv1_gunbc_serve_binary as String,
+                    gunbc_repo: srv1_gunbc_repo_root as String,
+                  ),
+                  reason: "ProvisionCodexRuntime observe/ensure/read-back shell transport",
+                ),
+                transport: transport,
+              )
+              provision_codex_runtime_reconcile(observed: observed, intent: effect_intent)
+          }
       }
   }
 }

@@ -4,6 +4,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.types { String, NonEmptyStr, Bool }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.exec.command { shell_quote }
 import gunbc.shell_bash_runner { shell_exec_via_bash }
 import gunbc.package_delivery { codex_runtime_version_identity_marker }
 import gunbc.host_layout {
@@ -25,18 +26,24 @@ data host_codex_runtime_provision_script_scaffold: Disposition = Scaffold {
   }
 }
 
+fn codex_runtime_gunbc_src_v2_root(gunbc_repo: String) -> String {
+  concat(gunbc_repo, "/src/v2")
+}
+
 fn codex_runtime_observe_body(executable: String, marker: String) -> String {
+  let executable_q = shell_quote(arg: executable)
+  let marker_q = shell_quote(arg: marker)
   join([
     "observe_out=\"\"",
     "observe_rc=0",
-    join(["if [ -x '", executable, "' ]; then"], ""),
-    join(["  observe_out=\"$('", executable, "' --version 2>&1)\" || observe_rc=$?"], ""),
+    join(["if [ -x ", executable_q, " ]; then"], " "),
+    join(["  observe_out=$(", executable_q, " --version 2>&1) || observe_rc=$?"], " "),
     "else",
     "  printf '%s\\n' \"CodexRuntimeProvisionReceipt: observe=absent\"",
     "  observe_rc=127",
     "fi",
     "if [ \"$observe_rc\" -eq 0 ]; then",
-    join(["  if printf '%s' \"$observe_out\" | grep -Fx '", marker, "' >/dev/null; then"], ""),
+    join(["  if printf '%s' \"$observe_out\" | grep -Fx ", marker_q, " >/dev/null; then"], " "),
     "    printf '%s\\n' \"CodexRuntimeProvisionReceipt: observe=ok\"",
     "    printf '%s\\n' \"$observe_out\"",
     "    exit 0",
@@ -51,28 +58,34 @@ fn codex_runtime_ensure_body(
   gunbc_binary: String,
   gunbc_repo: String,
 ) -> String {
+  let release_parent_q = shell_quote(arg: release_parent)
+  let gunbc_binary_q = shell_quote(arg: gunbc_binary)
+  let gunbc_repo_q = shell_quote(arg: gunbc_repo)
+  let gunbc_src_v2_q = shell_quote(arg: codex_runtime_gunbc_src_v2_root(gunbc_repo: gunbc_repo))
   join([
-    join(["mkdir -p '", release_parent, "'"], ""),
+    join(["mkdir -p ", release_parent_q], " "),
     join([
-      "if ! '",
-      gunbc_binary,
-      "' run --source-root '",
-      gunbc_repo,
-      "' --source-root '",
-      gunbc_repo,
-      "/src/v2' --entry dag/gunbc/host_codex_runtime_provision.dag --function materialize_codex_runtime_on_local_host; then",
+      "if ! ",
+      gunbc_binary_q,
+      " run --source-root ",
+      gunbc_repo_q,
+      " --source-root ",
+      gunbc_src_v2_q,
+      " --entry dag/gunbc/host_codex_runtime_provision.dag --function materialize_codex_runtime_on_local_host; then",
       "  printf '%s\\n' \"CodexRuntimeProvisionReceipt: ensure=FAILED\"",
       "  exit 1",
       "fi",
-    ], ""),
+    ], " "),
     "",
   ], "\n")
 }
 
 fn codex_runtime_read_back_body(executable: String, marker: String) -> String {
+  let executable_q = shell_quote(arg: executable)
+  let marker_q = shell_quote(arg: marker)
   join([
-    join(["if ver_out=\"$('", executable, "' --version 2>&1)\"; then"], ""),
-    join(["  if printf '%s' \"$ver_out\" | grep -Fx '", marker, "' >/dev/null; then"], ""),
+    join(["if ver_out=$(", executable_q, " --version 2>&1); then"], " "),
+    join(["  if printf '%s' \"$ver_out\" | grep -Fx ", marker_q, " >/dev/null; then"], " "),
     "    printf '%s\\n' \"CodexRuntimeProvisionReceipt: read_back=ok\"",
     "    printf '%s\\n' \"$ver_out\"",
     "    exit 0",
@@ -84,16 +97,21 @@ fn codex_runtime_read_back_body(executable: String, marker: String) -> String {
   ], "\n")
 }
 
-fn codex_runtime_provision_script_body(executable: String) -> String {
+fn codex_runtime_provision_script_body(
+  executable: String,
+  release_parent: String,
+  gunbc_binary: String,
+  gunbc_repo: String,
+) -> String {
   let marker = codex_runtime_version_identity_marker()
   join([
     "set -euo pipefail",
     codex_runtime_observe_body(executable: executable, marker: marker),
     "printf '%s\\n' \"CodexRuntimeProvisionReceipt: ensure=starting\"",
     codex_runtime_ensure_body(
-      release_parent: srv1_codex_runtime_release_root as String,
-      gunbc_binary: srv1_gunbc_serve_binary as String,
-      gunbc_repo: srv1_gunbc_repo_root as String,
+      release_parent: release_parent,
+      gunbc_binary: gunbc_binary,
+      gunbc_repo: gunbc_repo,
     ),
     codex_runtime_read_back_body(executable: executable, marker: marker),
   ], "\n")
@@ -111,11 +129,52 @@ fn codex_runtime_provision_read_back_fails_closed() -> Bool {
 fn codex_runtime_provision_shell_uses_exact_line_grep() -> Bool {
   let body = codex_runtime_provision_script_body(
     executable: "/opt/gunbc/provider-runtime/codex/current/bin/codex",
+    release_parent: srv1_codex_runtime_release_root as String,
+    gunbc_binary: srv1_gunbc_serve_binary as String,
+    gunbc_repo: srv1_gunbc_repo_root as String,
   )
   string_contains(s: body, pattern: "grep -Fx ")
     && !string_contains(s: body, pattern: "grep -Fq ")
 }
 
-fn codex_runtime_provision_shell_script(executable: String) -> String {
-  shell_exec_via_bash(body: codex_runtime_provision_script_body(executable: executable))
+fn codex_runtime_provision_fleet_paths_are_shell_safe() -> Bool {
+  let paths = [
+    srv1_codex_runtime_release_root as String,
+    srv1_gunbc_serve_binary as String,
+    srv1_gunbc_repo_root as String,
+    codex_runtime_version_identity_marker(),
+    "/opt/gunbc/provider-runtime/codex/current/bin/codex",
+  ]
+  fold(
+    paths,
+    init: true,
+    f: (acc, path) => acc && !string_contains(s: path, pattern: "'"),
+  )
+}
+
+fn codex_runtime_provision_shell_uses_shell_quote_authority() -> Bool {
+  let body = codex_runtime_provision_script_body(
+    executable: "/opt/gunbc/provider-runtime/codex/current/bin/codex",
+    release_parent: srv1_codex_runtime_release_root as String,
+    gunbc_binary: srv1_gunbc_serve_binary as String,
+    gunbc_repo: srv1_gunbc_repo_root as String,
+  )
+  string_contains(s: body, pattern: shell_quote(arg: srv1_gunbc_serve_binary as String))
+    && string_contains(s: body, pattern: shell_quote(arg: srv1_gunbc_repo_root as String))
+}
+
+fn codex_runtime_provision_shell_script(
+  executable: String,
+  release_parent: String,
+  gunbc_binary: String,
+  gunbc_repo: String,
+) -> String {
+  shell_exec_via_bash(
+    body: codex_runtime_provision_script_body(
+      executable: executable,
+      release_parent: release_parent,
+      gunbc_binary: gunbc_binary,
+      gunbc_repo: gunbc_repo,
+    ),
+  )
 }

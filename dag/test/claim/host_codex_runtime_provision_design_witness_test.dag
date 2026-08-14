@@ -14,6 +14,8 @@ import gunbc.host_codex_runtime_provision {
 import gunbc.host_codex_runtime_provision_script {
   codex_runtime_provision_read_back_fails_closed,
   codex_runtime_provision_shell_uses_exact_line_grep,
+  codex_runtime_provision_fleet_paths_are_shell_safe,
+  codex_runtime_provision_shell_uses_shell_quote_authority,
   host_codex_runtime_provision_script_scaffold,
 }
 import gunbc.host_codex_runtime_provision_verdict {
@@ -39,6 +41,14 @@ test fn design_witness_read_back_fails_closed_in_shell() -> Bool {
 
 test fn design_witness_shell_uses_exact_line_grep() -> Bool {
   codex_runtime_provision_shell_uses_exact_line_grep()
+}
+
+test fn design_witness_provision_shell_paths_are_shell_safe() -> Bool {
+  codex_runtime_provision_fleet_paths_are_shell_safe()
+}
+
+test fn design_witness_provision_shell_uses_shell_quote_authority() -> Bool {
+  codex_runtime_provision_shell_uses_shell_quote_authority()
 }
 
 test fn design_witness_provision_script_carries_scaffold() -> Bool {
