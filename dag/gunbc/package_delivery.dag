@@ -871,7 +871,7 @@ data codex_runtime_receipt_sidecar_name: NonEmptyStr = ".gunbc-codex-runtime-rec
 
 data admitted_codex_runtime_source_note: String = "ONE carrier binds the bytes adjudicated to the bytes executed. materialize_codex_runtime_bundle admits lock_bytes, then Filesystem.Write those exact lock_bytes and manifest_bytes into the build root before npm ci. A path-based copy of a second lock file is unwritable on this path — the admitted/executed fork is construction-closed."
 
-data codex_runtime_materialize_memory_defect_note: String = "PRODUCTION DEFECT — INTERPRETER VERDICT (srv1 2026-08-14, eager-koi-458). NOT .dag fold/retention: wet_finish_parse_canonicalize_largest_protocol_schema_only — ONE file codex_app_server_protocol.schemas.json (507 KB), Read+parse_json+canonicalize_json_value only, no fold/manifest/serialize/sha512 — PINS 8 GiB (~16500x input), no completion. Cross-file retention REFUTED; accumulator REFUTED. Remedy: interpreter JsonValue representation (substrate); wider blast radius than Codex. OPEN SPLIT: parse-only vs canonicalize-only rung not yet run. .dag bounded manifest + canonicalize set/sort_by improvements kept but do not fix this defect. #8166: stop .dag optimisation here."
+data codex_runtime_materialize_memory_defect_note: String = "PRODUCTION DEFECT — CONFIRMED (srv1 2026-08-14, warm-dove-760 + eager-koi-458 independent replay, systemd MemoryMax=8G). ONE file codex_app_server_protocol.schemas.json, 506,984 bytes (~507 KB). Read + parse_json only (parse-only rung) pins 8 GiB (~16,500x input), no completion — curve 0.05→2.36→4.89→7.99 GiB flat. Parse+canonicalize on same file/cap is indistinguishable (0.05→2.36→2.97→7.99). DEFECT: parse_json / JsonValue representation it constructs. EXONERATED: canonicalize_json_value (no separate marginal blow-up), .dag caller (no fold/accumulator/cross-file retention). NOT a Codex/materialize caller problem — three .dag rewrites moved ceiling zero. Remedy: substrate JsonValue representation; operator design review BEFORE implementation. #8166: stop .dag optimisation here."
 
 type AdmittedCodexRuntimeSource {
   manifest_bytes: String
@@ -2502,7 +2502,7 @@ fn codex_runtime_install_context_from_source(
 
 data protocol_schema_largest_file_rel: NonEmptyStr = "codex_app_server_protocol.schemas.json"
 
-data protocol_schema_interpreter_bisect_note: String = "INTERPRETER VERDICT (srv1 2026-08-14): wet_finish_parse_canonicalize_largest_protocol_schema_only — 507 KB single file, no fold — PINS 8 GiB, ~16500x input. .dag exonerated. Remedy substrate JsonValue representation. Next split (not run): parse-only vs canonicalize-only to locate parse_json vs canonicalize_json_value vs shared representation."
+data protocol_schema_interpreter_bisect_note: String = "INTERPRETER DEFECT CONFIRMED (srv1 2026-08-14, two sessions, two harnesses, hard 8G cap agrees with uncapped). Subject: codex_app_server_protocol.schemas.json, 506,984 bytes (~507 KB). parse-only and parse+canonicalize both pin 8 GiB without completion (~16,500x input) — indistinguishable curves. Defect is parse_json / JsonValue construction, not canonicalize_json_value or .dag caller shape. Witness + claim_batch recipe: dag/test/claim/json_protocol_schema_memory_split_wet_witness_test.dag witness_note. Substrate design review precedes fix."
 
 fn finish_bisect_observe_sha512_file(path: FilePath) -> Bool {
   match observe_file_sha512(path: path) {
@@ -2569,6 +2569,18 @@ fn finish_bisect_generate_protocol_schema_dir(
   }
 }
 
+fn finish_bisect_parse_protocol_schema_file(path: FilePath) -> Bool {
+  let raw = Filesystem.Read(path: path as String)
+  if raw.success == false {
+    false
+  } else {
+    match parse_json(s: raw.content) {
+      Absent => false
+      Present { value: _ } => true
+    }
+  }
+}
+
 fn finish_bisect_parse_canonicalize_protocol_schema_file(path: FilePath) -> Bool {
   let raw = Filesystem.Read(path: path as String)
   if raw.success == false {
@@ -2603,6 +2615,27 @@ fn finish_bisect_parse_canonicalize_largest_protocol_schema_file(
       ),
     ) as FilePath
     finish_bisect_parse_canonicalize_protocol_schema_file(path: schema_path)
+  }
+}
+
+fn finish_bisect_parse_largest_protocol_schema_file(
+  native_executable: FilePath,
+  work_dir: FilePath,
+) -> Bool {
+  if finish_bisect_generate_protocol_schema_dir(
+    native_executable: native_executable,
+    work_dir: work_dir,
+  ) == false {
+    false
+  } else {
+    let schema_path = concat(
+      work_dir as String,
+      concat(
+        "/protocol-schema/",
+        protocol_schema_largest_file_rel as String,
+      ),
+    ) as FilePath
+    finish_bisect_parse_protocol_schema_file(path: schema_path)
   }
 }
 
@@ -2767,6 +2800,19 @@ fn materialize_codex_runtime_finish_bisect_observe_protocol_schema_only(
 ) -> Bool {
   match codex_runtime_install_context_from_source(source: source) {
     Present { value: ctx } => finish_bisect_observe_protocol_schema_identity(ctx: ctx)
+    Absent => false
+  }
+}
+
+fn materialize_codex_runtime_finish_bisect_parse_largest_protocol_schema_only(
+  source: AdmittedCodexRuntimeSource,
+) -> Bool {
+  match codex_runtime_install_context_from_source(source: source) {
+    Present { value: ctx } =>
+      finish_bisect_parse_largest_protocol_schema_file(
+        native_executable: ctx.native_path,
+        work_dir: ctx.build_root,
+      )
     Absent => false
   }
 }
