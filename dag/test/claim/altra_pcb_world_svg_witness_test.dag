@@ -63,12 +63,15 @@ import product.pcb.plan_view {
   PcbSceneRefused,
   project_pcb_world,
   emit_pcb_plan_view,
+  represented_scene_labels,
   attachment_label_base,
   attachment_label_step,
 }
 import product.pcb.scene {
   project_engineering_scene,
   first_unrepresented_scene_identity,
+  scene_identities,
+  label_is_represented,
 }
 import product.altra_motherboard.pcb_world {
   altra_pcb_world,
@@ -219,23 +222,14 @@ fn projected_missing_document(ids: List<NonEmptyStr>) -> String? {
   }
 }
 
-fn concatenated_envelope_read_keys(p: PcbPhysicalWorld) -> String {
-  fold(pcb_envelope_reads(p: p), init: "", f: fn(acc, r) {
-    concat(acc, concat(" ", declaration_ref_display_key(ref: r.source)))
+fn drop_label(xs: List<NonEmptyStr>, needle: String) -> List<NonEmptyStr> {
+  fold(xs, init: [], f: fn(acc, x) {
+    if (x as String) == needle {
+      acc
+    } else {
+      concat(acc, [x])
+    }
   })
-}
-
-fn concatenated_attachment_identities(p: PcbPhysicalWorld) -> String {
-  fold(p.attachment_obligations, init: "", f: fn(acc, a) {
-    concat(acc, concat(" attachment: ", a.layer as String))
-  })
-}
-
-fn concatenated_non_attachment_identities(p: PcbPhysicalWorld) -> String {
-  concat(
-    fold(p.components, init: "", f: fn(acc, c) { concat(acc, concat(" ", c.identity as String)) }),
-    fold(p.obligations, init: "", f: fn(acc, o) { concat(acc, concat(" ", o.identity as String)) })
-  )
 }
 
 fn six_channel_design() -> AltraMinimalMotherboard {
@@ -389,9 +383,9 @@ test fn w_the_socket_is_missing_document_not_an_unselected_part() -> Bool {
   match scene_or_empty() {
     Absent => false
     Present { value: s } =>
-      string_contains(s: s, pattern: concat("cpu_socket (missing document:", ilm4926_designation as String))
-        && !string_contains(s: s, pattern: "cpu_socket (unselected part:")
-        && string_contains(s: s, pattern: "pcb-component-missing-document")
+      string_contains(s: s, pattern: "class=\"pcb-component-missing-document\">cpu_socket<")
+        && string_contains(s: s, pattern: concat("(missing document:", ilm4926_designation as String))
+        && !string_contains(s: s, pattern: "class=\"pcb-component-unselected-part\">cpu_socket<")
   }
 }
 
@@ -399,11 +393,11 @@ test fn w_unselected_roles_render_as_unselected_part() -> Bool {
   match scene_or_empty() {
     Absent => false
     Present { value: s } =>
-      string_contains(s: s, pattern: "boot_eeprom (unselected part:")
-        && string_contains(s: s, pattern: "nvme_conn (unselected part:")
-        && string_contains(s: s, pattern: "dimm_ddr0_slot0 (unselected part:")
-        && string_contains(s: s, pattern: "debug_hdr (unselected part:")
-        && !string_contains(s: s, pattern: "boot_eeprom (missing document:")
+      string_contains(s: s, pattern: "class=\"pcb-component-unselected-part\">boot_eeprom<")
+        && string_contains(s: s, pattern: "class=\"pcb-component-unselected-part\">nvme_conn<")
+        && string_contains(s: s, pattern: "class=\"pcb-component-unselected-part\">dimm_ddr0_slot0<")
+        && string_contains(s: s, pattern: "class=\"pcb-component-unselected-part\">debug_hdr<")
+        && !string_contains(s: s, pattern: "class=\"pcb-component-missing-document\">boot_eeprom<")
   }
 }
 
@@ -551,12 +545,12 @@ test fn w_dropping_an_envelope_read_from_the_document_is_detected() -> Bool {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
-      let p = pcb_world_physical(w: w)
-      let doc = concat(
-        concat(concatenated_non_attachment_identities(p: p), concat(" ", declaration_ref_display_key(ref: pcb_world_design(w: w)))),
-        concat(" extdeps.programmable_logic.ice40.subject::ice40_tq144_package", concatenated_attachment_identities(p: p)),
+      let scene = project_engineering_scene(w: w)
+      let represented = drop_label(
+        xs: scene_identities(scene: scene),
+        needle: "extdeps.cpu.ampere_altra_package::altra_package_body_width",
       )
-      match first_unrepresented_scene_identity(scene: project_engineering_scene(w: w), document: doc) {
+      match first_unrepresented_scene_identity(scene: scene, represented: represented) {
         Absent => false
         Present { value: id } => (id as String) == "extdeps.cpu.ampere_altra_package::altra_package_body_width"
       }
@@ -567,7 +561,7 @@ test fn w_a_blank_scene_reports_a_dropped_obligation() -> Bool {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
-      match first_unrepresented_scene_identity(scene: project_engineering_scene(w: w), document: "") {
+      match first_unrepresented_scene_identity(scene: project_engineering_scene(w: w), represented: []) {
         Present { value: _ } => true
         Absent => false
       }
@@ -578,13 +572,10 @@ test fn w_the_emitted_scene_drops_no_world_identity() -> Bool {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
-      match scene_or_empty() {
-        Absent => false
-        Present { value: s } =>
-          match first_unrepresented_scene_identity(scene: project_engineering_scene(w: w), document: s) {
-            Absent => true
-            Present { value: _ } => false
-          }
+      let scene = project_engineering_scene(w: w)
+      match first_unrepresented_scene_identity(scene: scene, represented: represented_scene_labels(scene: scene)) {
+        Absent => true
+        Present { value: _ } => false
       }
   }
 }
@@ -593,15 +584,25 @@ test fn w_cpu_socket_text_does_not_cover_the_socket_attachment() -> Bool {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
-      let p = pcb_world_physical(w: w)
-      let doc = concat(
-        concat(concatenated_non_attachment_identities(p: p), concat(" ", declaration_ref_display_key(ref: pcb_world_design(w: w)))),
-        concat(concatenated_envelope_read_keys(p: p), " attachment: mounting"),
-      )
-      string_contains(s: doc, pattern: "cpu_socket")
-        && string_contains(s: "cpu_socket", pattern: "socket")
-        && !string_contains(s: doc, pattern: "attachment: socket")
-        && match first_unrepresented_scene_identity(scene: project_engineering_scene(w: w), document: doc) {
+      let scene = project_engineering_scene(w: w)
+      let represented = drop_label(xs: scene_identities(scene: scene), needle: "attachment: socket")
+      string_contains(s: "cpu_socket", pattern: "socket")
+        && match first_unrepresented_scene_identity(scene: scene, represented: represented) {
+          Absent => false
+          Present { value: id } => (id as String) == "attachment: socket"
+        }
+  }
+}
+
+test fn w_a_longer_attachment_label_does_not_cover_its_prefix() -> Bool {
+  match world_or_empty() {
+    Absent => false
+    Present { value: w } =>
+      let scene = project_engineering_scene(w: w)
+      let represented = drop_label(xs: scene_identities(scene: scene), needle: "attachment: socket")
+      label_is_represented(represented: represented, id: "attachment: socket board termination" as NonEmptyStr)
+        && !label_is_represented(represented: represented, id: "attachment: socket" as NonEmptyStr)
+        && match first_unrepresented_scene_identity(scene: scene, represented: represented) {
           Absent => false
           Present { value: id } => (id as String) == "attachment: socket"
         }
