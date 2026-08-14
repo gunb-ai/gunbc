@@ -137,12 +137,45 @@ fn pcb_attachment_obligation_count(p: PcbPhysicalWorld) -> Int {
   fold(p.attachment_obligations, init: 0, f: fn(acc, _o) { acc + 1 })
 }
 
-fn pcb_cause_count(p: PcbPhysicalWorld, wanted: NonEmptyStr) -> Int {
-  fold(p.obligations, init: 0, f: fn(acc, o) {
-    if (obligation_cause_tag(c: o.cause) as String) == (wanted as String) {
-      acc + 1
-    } else {
-      acc
+type PcbCauseCounts {
+  missing_document: Int
+  commercial_access: Int
+  legal_carriage: Int
+  unselected_part: Int
+}
+
+fn pcb_cause_counts(p: PcbPhysicalWorld) -> PcbCauseCounts {
+  fold(p.obligations, init: PcbCauseCounts {
+    missing_document: 0,
+    commercial_access: 0,
+    legal_carriage: 0,
+    unselected_part: 0,
+  }, f: fn(acc, o) {
+    match o.cause {
+      MissingDocument { what_is_missing: _ } => PcbCauseCounts {
+        missing_document: acc.missing_document + 1,
+        commercial_access: acc.commercial_access,
+        legal_carriage: acc.legal_carriage,
+        unselected_part: acc.unselected_part,
+      }
+      CommercialAccess { subject: _ } => PcbCauseCounts {
+        missing_document: acc.missing_document,
+        commercial_access: acc.commercial_access + 1,
+        legal_carriage: acc.legal_carriage,
+        unselected_part: acc.unselected_part,
+      }
+      LegalCarriage { reason: _ } => PcbCauseCounts {
+        missing_document: acc.missing_document,
+        commercial_access: acc.commercial_access,
+        legal_carriage: acc.legal_carriage + 1,
+        unselected_part: acc.unselected_part,
+      }
+      UnselectedPart { because: _ } => PcbCauseCounts {
+        missing_document: acc.missing_document,
+        commercial_access: acc.commercial_access,
+        legal_carriage: acc.legal_carriage,
+        unselected_part: acc.unselected_part + 1,
+      }
     }
   })
 }
@@ -157,19 +190,19 @@ fn obligation_cause_tag(c: PcbObligationCause) -> NonEmptyStr {
 }
 
 fn pcb_missing_document_count(p: PcbPhysicalWorld) -> Int {
-  pcb_cause_count(p: p, wanted: "missing-document")
+  pcb_cause_counts(p: p).missing_document
 }
 
 fn pcb_commercial_access_count(p: PcbPhysicalWorld) -> Int {
-  pcb_cause_count(p: p, wanted: "commercial-access")
+  pcb_cause_counts(p: p).commercial_access
 }
 
 fn pcb_legal_carriage_count(p: PcbPhysicalWorld) -> Int {
-  pcb_cause_count(p: p, wanted: "legal-carriage")
+  pcb_cause_counts(p: p).legal_carriage
 }
 
 fn pcb_unselected_part_count(p: PcbPhysicalWorld) -> Int {
-  pcb_cause_count(p: p, wanted: "unselected-part")
+  pcb_cause_counts(p: p).unselected_part
 }
 
 fn pcb_population_count(p: PcbPhysicalWorld) -> Int {
