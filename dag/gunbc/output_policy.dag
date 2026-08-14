@@ -2,6 +2,17 @@ module gunbc.output_policy
 
 import extdeps.github.log_annotations { neutralize_workflow_commands, subject_text_line_guard }
 import std.observation { ObservationGrain, BatchGrain }
+// THE SEED RESOLVES BOTH POLICY QUESTIONS FROM THIS ENTRY'S CLOSURE, so the second one
+// has to BE in it. install_output_policy builds one context from dag/gunbc/output_policy.dag
+// and asks it for routine_rollup_folds (here) and concluded_outcome_folds (there) — and
+// this module never imported that one, in either direction, so the second lookup has
+// failed with "no such function" on every run since the probe landed. The visible cost
+// was not the warning: per-witness folding was disabled for the entire life of the
+// feature, so CI printed every witness line while reporting that it had been told to.
+// The rule stays in gunbc.observation_ci_render, which owns observation_class_density;
+// this import is the declaration that the output policy depends on it, replacing a
+// reachability the seed was assuming.
+import gunbc.observation_ci_render { concluded_outcome_folds }
 
 type Verbosity = Quiet | Normal | Verbose
 

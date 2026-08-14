@@ -15449,17 +15449,28 @@ pub fn install_output_policy(source_roots: &[String]) {
         Ok(Value::Bool(b)) => b,
         // Counted, not absorbed: the run still prints every line (the safe direction), but it says
         // so, so a policy that stopped being readable cannot present as a policy that said leaf.
+        // REFUSES, RATHER THAN WIDENING. This arm printed a warning and carried on with
+        // folding disabled, which is the absorbing fallback in its purest form: the
+        // degraded state is the OLD behaviour, so a policy that stopped being readable is
+        // indistinguishable from a policy that chose to print everything, and the deficit's
+        // frequency is zero by construction because nothing ever fails. Its sibling probe
+        // proved the point — it named a function that was not in this entry's closure, and
+        // therefore warned on every single run from the day it landed while the feature it
+        // gates never once executed. A GitHub warning annotation cannot fail a step (only
+        // exit codes can, and annotations additionally cap at ten per step), so warning was
+        // never going to be the thing that got it noticed.
         other => {
             eprintln!(
-                "::warning::output policy drift: gunbc.output_policy `routine_rollup_folds` did \
-                 not answer a Bool ({}); routine observation folding is DISABLED for this run and \
-                 every per-witness line will print",
+                "::error::output policy drift: gunbc.output_policy `routine_rollup_folds` did \
+                 not answer a Bool ({}). The output policy resolved but could not be read, which \
+                 is a defect in the policy or in this seed's call, not a reason to pick a \
+                 default",
                 match other {
                     Ok(_) => "returned a non-Bool value".to_string(),
                     Err(e) => format!("evaluation failed: {e}"),
                 }
             );
-            false
+            std::process::exit(1);
         }
     };
     let _ = ROUTINE_ROLLUP_FOLD.set(folds);
@@ -15490,11 +15501,14 @@ pub fn install_output_policy(source_roots: &[String]) {
         (p, f) => {
             let causes: Vec<String> = [p.err(), f.err()].into_iter().flatten().collect();
             eprintln!(
-                "::warning::output policy drift: gunbc.observation_ci_render \
-                 `concluded_outcome_folds` did not answer a Bool ({}); per-witness folding is \
-                 DISABLED for this run and every witness line will print",
+                "::error::output policy drift: gunbc.observation_ci_render \
+                 `concluded_outcome_folds` did not answer a Bool ({}). If the cause is `no such \
+                 function`, the symbol is not in the closure of dag/gunbc/output_policy.dag, \
+                 which is the entry this context is built from — declare the import there rather \
+                 than relying on the module arriving by way of some other consumer",
                 causes.join("; ")
             );
+            std::process::exit(1);
         }
     }
 
