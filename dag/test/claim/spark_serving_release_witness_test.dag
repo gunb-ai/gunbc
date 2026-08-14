@@ -9,7 +9,7 @@ import gunbc.spark_serving_realization {
   GrantPopulationUnobserved,
   SparkServingIntent, SurvivesReboot, RestartsOnFailure, ManagedConvergenceOwned,
   NoLoginNoSudoIdentity, ExecutorOwnedIdentity, UnauthenticatedEndpoint, IndependentlyObservable,
-  UserUnitRealization, SystemUnitRealization,
+  SparkServingRealization, UserUnitRealization, SystemUnitRealization,
 }
 import gunbc.spark_serving_release {
   SparkServingReleaseIdentity, SparkServingOccurrence, SecretVersionRef,
