@@ -1,0 +1,39 @@
+module extdeps.memory.microchip_at24cm02
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.microchip_technology { microchip_technology }
+import extdeps.land_pattern.types { CatalogPartIdentity, VendorPatternNotEstablished }
+
+// Datasheet DS20006197, fetched 2026-08-14 and NOT read: the file is served, and its text is not
+// extractable by any route available to this session.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/DataSheets/AT24CM02-2-Mbit-I2C-Serial-EEPROM-DS20006197.pdf"
+  }
+}
+
+data at24cm02_note: String = "THE FETCH SUCCEEDED AND THE READ DID NOT, WHICH ARE DIFFERENT FAILURES. This document is served at the recorded locator - it is not gated, not missing and not refused - but its text could not be extracted here, and no PDF rasteriser is installed to read it as an image. That is a property of this session's toolchain rather than of the document, and it has now been observed across EVERY Microchip datasheet attempted, so it is a vendor-wide extraction failure rather than three unlucky documents. It matters for planning: Microchip DOES publish recommended land patterns beside its package outlines, so this row is expected to complete in full once anyone can read the file, unlike the connector rows whose layouts are drawn callouts even when the text extracts. Ampere's Mt. Jade reference names this part for the Altra SCP firmware EEPROM, which is what selects it; nothing about its capacity, interface or package is recorded here because none of it was read."
+
+data at24cm02: CatalogPartIdentity = CatalogPartIdentity {
+  ordering_part_number: "AT24CM02",
+  vendor: microchip_technology,
+  board_pattern: VendorPatternNotEstablished {
+    what_is_missing: "the 8-lead SOIC package outline and the recommended land pattern from the Packaging Information section of datasheet DS20006197; the document is served but its text is not extractable by any route available to this session, and no PDF rasteriser is installed to read it as an image",
+  },
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.memory.microchip_at24cm02",
+      decl_name: "at24cm02",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

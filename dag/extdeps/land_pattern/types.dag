@@ -138,6 +138,19 @@ type MountablePart {
   land_pattern: VendorRecommendedLandPattern
 }
 
+// A PART WHOSE DOCUMENT EXISTS AND HAS NOT BEEN READ. This is the minimum a catalog row can carry
+// and still be a row: who makes it, what it is called, and what is owed. It deliberately has NO
+// dimension, count or pitch field, because every one of those would have to be filled, and the
+// only sources for them would be a distributor listing or a reader's expectation of what a part
+// like this usually is. The upstream authority EXISTS and is citable whether or not anyone here
+// has read it; what is unestablished is the geometry, and that asymmetry is the whole point of
+// separating the citation from the standing.
+type CatalogPartIdentity {
+  ordering_part_number: NonEmptyStr
+  vendor: Vendor<Hardware>
+  board_pattern: MountingPatternStanding
+}
+
 // THE PATTERN AND THE OUTLINE ARE JOINED, NOT ASSUMED TO MATCH. They are two transcriptions of
 // two drawings, and the failure this refuses is the ordinary one: a land pattern copied from the
 // neighbouring package on the same datasheet. A device offered in two packages prints two of each,

@@ -1,0 +1,39 @@
+module extdeps.memory.macronix_mx25l25673g
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.macronix { macronix }
+import extdeps.land_pattern.types { CatalogPartIdentity, VendorPatternNotEstablished }
+
+// The publisher's own datasheet attachment, fetched 2026-08-14 and NOT read: served, and not
+// text-extractable by any route available to this session.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.mxic.com.tw/Lists/Datasheet/Attachments/9137/MX25L25673G, 3V, 256Mb, v1.9.pdf"
+  }
+}
+
+data mx25l25673g_note: String = "THE REVISION IN THIS LOCATOR WAS READ FROM THE FILENAME, NOT FROM A COVER PAGE, and the distinction is recorded because it is exactly the kind of shortcut that later reads as a citation. The published attachment is named for revision v1.9 and a search listing dated it 29 May 2025; this session fetched the file and could not extract its text, so the cover page confirming that revision has not been seen. A reader who opens it and finds a different revision is correcting a filename-derived claim, not a document-derived one. Ampere's Mt. Jade reference names this part for the ATF and BIOS firmware store, which is what selects it. Macronix was the one untried vendor on the fetch list, so whether its PDFs are readable was genuinely unknown before today; it is now answered, and the answer is no."
+
+data mx25l25673g: CatalogPartIdentity = CatalogPartIdentity {
+  ordering_part_number: "MX25L25673G",
+  vendor: macronix,
+  board_pattern: VendorPatternNotEstablished {
+    what_is_missing: "the package outline and any recommended land pattern from the MX25L25673G datasheet; the document is served at the recorded locator but its text is not extractable by any route available to this session. Which package this board would use is also unrecorded, since the part is offered in several and no document read here names one",
+  },
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.memory.macronix_mx25l25673g",
+      decl_name: "mx25l25673g",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

@@ -1,0 +1,40 @@
+module extdeps.storage.amphenol_mdt420m01001
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.amphenol { amphenol }
+import extdeps.land_pattern.types { CatalogPartIdentity, VendorPatternNotEstablished }
+
+// The publisher's own product page for this part, located 2026-08-14 and NOT read: the page is
+// script-rendered and returns no document content to this session, and cdn.amphenol-cs.com refused
+// an earlier datasheet fetch with HTTP 403.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.amphenol-cs.com/product/mdt420m01001.html"
+  }
+}
+
+data mdt420m01001_note: String = "NAMED BY AMPERE'S OWN REFERENCE BOARD, WHICH IS WHY IT IS HERE RATHER THAN A PART THIS SESSION LIKED THE LOOK OF. The OCP Mt. Jade Ampere Altra motherboard specification names this connector for the M.2 role, so the SELECTION has an authority even though the GEOMETRY has none. THE CONTACT COUNT IS DELIBERATELY ABSENT AND IS AN OPEN QUESTION. The Mt. Jade text describes a 75-pin M.2 NGFF connector; every distributor listing for this part number describes 67 contacts. Those are very likely one connector counted two ways - M.2 numbers pin positions to 75 while the connector carries 67 physical contacts, the difference being the key - but a contact population is load-bearing and reconciling it by reasoning is exactly how a plausible wrong number enters a repository. Neither number is recorded until a drawing states one. Note the sibling row extdeps.storage.te_m2_ngff_connector carries 67 positions from a specification that WAS read, so if this part supersedes it the two should agree, and a disagreement would be a real finding rather than a rounding. Distributor listings also describe key M, 0.50 mm pitch and 4.2 mm height; none of that is recorded either, for the same reason."
+
+data mdt420m01001: CatalogPartIdentity = CatalogPartIdentity {
+  ordering_part_number: "MDT420M01001",
+  vendor: amphenol,
+  board_pattern: VendorPatternNotEstablished {
+    what_is_missing: "the vendor's mechanical drawing and recommended PCB layout for MDT420M01001; the publisher's product page is script-rendered and its content did not reach this session, and cdn.amphenol-cs.com refused an earlier fetch with HTTP 403. The contact population is owed with the geometry, since the reference board's description and the distributor listings disagree at 75 against 67",
+  },
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.storage.amphenol_mdt420m01001",
+      decl_name: "mdt420m01001",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

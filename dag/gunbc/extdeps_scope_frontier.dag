@@ -124,6 +124,14 @@ fn scope_placement_refused_paths(added: List<String>, carriers: List<String>, ma
 }
 
 data scope_carrier_paths: List<String> = [
+  "dag/extdeps/vendor/amphenol.dag",
+  "dag/extdeps/vendor/microchip_technology.dag",
+  "dag/extdeps/vendor/macronix.dag",
+  "dag/extdeps/vendor/samtec.dag",
+  "dag/extdeps/storage/amphenol_mdt420m01001.dag",
+  "dag/extdeps/memory/microchip_at24cm02.dag",
+  "dag/extdeps/memory/macronix_mx25l25673g.dag",
+  "dag/extdeps/connector/samtec_ftsh_105_01_l_dv.dag",
   "dag/extdeps/vendor/texas_instruments.dag",
   "dag/extdeps/vendor/tyco_electronics.dag",
   "dag/extdeps/vendor/tyco_electronics_amp_kk.dag",

@@ -4,6 +4,7 @@ import std.types { Bool, String, List }
 import std.integer { Int }
 import std.measure { micrometer, micrometer_count }
 import extdeps.land_pattern.types {
+  CatalogPartIdentity,
   LandCountDiffersFromTerminalCount,
   LandPitchDiffersFromTerminalPitch,
   LandPatternDisagreement,
@@ -27,6 +28,10 @@ import extdeps.clock.ti_cdce913 { cdce913pwr, cdce913_pw0014a_land_pattern }
 import extdeps.network.ti_dp83867 { dp83867irrgz, dp83867_rgz0048b_outline }
 import extdeps.memory.te_ddr4_dimm_socket { ddr4_dimm_socket_solder_tail_288 }
 import extdeps.storage.te_m2_ngff_connector { m2_ngff_minicard_67_position }
+import extdeps.storage.amphenol_mdt420m01001 { mdt420m01001 }
+import extdeps.memory.microchip_at24cm02 { at24cm02 }
+import extdeps.memory.macronix_mx25l25673g { mx25l25673g }
+import extdeps.connector.samtec_ftsh_105_01_l_dv { ftsh_105_01_l_dv }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -187,4 +192,46 @@ test fn w_the_two_tyco_entities_are_not_one_vendor() -> Bool {
   let ddr4_vendor = ddr4_dimm_socket_solder_tail_288.vendor.legal_name as String
   let m2_vendor = m2_ngff_minicard_67_position.vendor.legal_name as String
   !(ddr4_vendor == m2_vendor)
+}
+
+// A CITABLE AUTHORITY AND AN UNREAD DOCUMENT ARE COMPATIBLE STATES, and these four rows are the
+// case. Each names a real publisher and a real locator, and not one of their documents has been
+// read here, so every one of them owes its geometry. The claim is asserted over all four because
+// the failure it guards against is a single row quietly acquiring a dimension from a distributor
+// listing or from a reader's sense of what such a part usually measures.
+fn owes_its_geometry(p: CatalogPartIdentity) -> Bool {
+  match p.board_pattern {
+    VendorPatternNotEstablished { what_is_missing: _ } => true
+    VendorPatternEstablished { pattern: _ } => false
+  }
+}
+
+test fn w_every_unread_document_row_owes_its_geometry() -> Bool {
+  owes_its_geometry(p: mdt420m01001)
+    && owes_its_geometry(p: at24cm02)
+    && owes_its_geometry(p: mx25l25673g)
+    && owes_its_geometry(p: ftsh_105_01_l_dv)
+}
+
+// THE PART NUMBERS ARE THE ONE FACT THESE ROWS DO CARRY, so they are asserted rather than left to
+// be trusted. Three come from Ampere's reference board naming a part for a job; the fourth is this
+// session's own candidate and is marked as such in its module, because a suggestion is not a
+// selection.
+test fn w_the_unread_rows_carry_their_part_numbers() -> Bool {
+  (mdt420m01001.ordering_part_number as String) == "MDT420M01001"
+    && (at24cm02.ordering_part_number as String) == "AT24CM02"
+    && (mx25l25673g.ordering_part_number as String) == "MX25L25673G"
+    && (ftsh_105_01_l_dv.ordering_part_number as String) == "FTSH-105-01-L-DV"
+}
+
+// FOUR VENDORS, FOUR ROWS, NO SHARED IDENTITY. The Amphenol row is the one at risk here: its part
+// is listed by distributors under three brand names, and collapsing a brand into an entity - or
+// splitting one entity into three - are the two opposite failures the Tyco decision in this same
+// tree already had to get right in the other direction.
+test fn w_the_four_new_vendors_are_four_distinct_entities() -> Bool {
+  let a = mdt420m01001.vendor.legal_name as String
+  let m = at24cm02.vendor.legal_name as String
+  let x = mx25l25673g.vendor.legal_name as String
+  let s = ftsh_105_01_l_dv.vendor.legal_name as String
+  !(a == m) && !(a == x) && !(a == s) && !(m == x) && !(m == s) && !(x == s)
 }
