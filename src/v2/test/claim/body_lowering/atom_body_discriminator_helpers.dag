@@ -11,22 +11,22 @@ import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   ArrowBodyForm,
-  Atom,
-  Behavior,
   ComputationBody,
-  ComputationNode,
   Conj,
   DirectAtomBody,
   Edge,
   Named,
   Node,
   Positional,
-  RecordConstructBody,
   Symbol,
   Transform,
   TypeNode,
   UnsupportedArrowBody,
   classify_arrow_body_form
+}
+import v2.test.claim.body_lowering.arrow_body_form_semantic_helpers {
+  classify_arrow_body_form_red_no_computation_body,
+  classify_arrow_body_form_red_no_direct_atom
 }
 import v2.std.node_query {
   find_arrow_body_child,
@@ -272,33 +272,13 @@ fn atom_body_discriminator_parameter_count(arrow: Node) -> Optional<Int> {
   }
 }
 
-// Test-only mutation machinery for RED mirror directions — not a production authority.
-fn atom_body_discriminator_classify_red_no_direct_atom(target: Node) -> ArrowBodyForm {
-  match target.kind {
-    TypeNode { connective: Atom { identity: _ } } => UnsupportedArrowBody
-    TypeNode { connective: Conj } => RecordConstructBody
-    ComputationNode { behavior: b } => ComputationBody { behavior: b }
-    _ => UnsupportedArrowBody
-  }
-}
-
-// Test-only mutation machinery for RED mirror directions — not a production authority.
-fn atom_body_discriminator_classify_red_no_computation_body(target: Node) -> ArrowBodyForm {
-  match target.kind {
-    TypeNode { connective: Atom { identity: _ } } => DirectAtomBody
-    TypeNode { connective: Conj } => RecordConstructBody
-    ComputationNode { behavior: _ } => UnsupportedArrowBody
-    _ => UnsupportedArrowBody
-  }
-}
-
 fn atom_body_discriminator_classify_body(target: Node, mirror: AtomBodyDiscriminatorMirror) -> ArrowBodyForm {
   match mirror {
     AtomBodyDiscriminatorProduction => classify_arrow_body_form(target: target)
     AtomBodyDiscriminatorRedNoDirectAtom =>
-      atom_body_discriminator_classify_red_no_direct_atom(target: target)
+      classify_arrow_body_form_red_no_direct_atom(target: target)
     AtomBodyDiscriminatorRedNoComputationBody =>
-      atom_body_discriminator_classify_red_no_computation_body(target: target)
+      classify_arrow_body_form_red_no_computation_body(target: target)
   }
 }
 
