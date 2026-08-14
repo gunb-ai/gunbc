@@ -624,6 +624,33 @@ fn run_against_one_prepared_subject(
     // modules excluded only because they import one. Those two have completely
     // different remedies — the first is a real defect, the second disappears when
     // its seed does — and reporting a single total hides which is which.
+    // GUNBC_NO_DERIVED_EXCLUDES=1 skips the derived failure closure so the whole-tree
+    // resolve REPORTS what it cannot resolve instead of absorbing it. This is the
+    // loud mode: the derivation exists to make the build succeed by removing
+    // whatever failed, which is precisely why a module can stop resolving globally
+    // while every gate stays green.
+    if std::env::var_os("GUNBC_NO_DERIVED_EXCLUDES").is_some() {
+        eprintln!(
+            "[one-prepared-subject] derived exclusion closure DISABLED — strict resolve will \
+             report failures rather than exclude them"
+        );
+        let derive_ms = derive_started.elapsed().as_millis();
+        let prepared = prepare_whole_tree_subject(source_roots, &excludes, execution_mode);
+        match prepared {
+            Ok(p) => {
+                eprintln!(
+                    "[one-prepared-subject] LOUD MODE OK: {} module(s) resolved, {} excluded \
+                     (derive {}ms)",
+                    p.modules_resolved, p.modules_excluded, derive_ms
+                );
+                return Ok(ExitCode::SUCCESS);
+            }
+            Err(e) => {
+                eprintln!("[one-prepared-subject] LOUD MODE FAILURES:\n{e}");
+                return Err(ExitCode::from(1));
+            }
+        }
+    }
     let derived = v1_compiler::cli_run::census_exclude_derive::derived_exclude_closure_memoized()
         .map_err(|e| {
         eprintln!("claim_batch: derived strict-resolve exclusion closure failed: {e}");
