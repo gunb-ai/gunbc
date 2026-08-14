@@ -1,5 +1,7 @@
 module v2.test.claim.body_lowering.arrow_body_form_witness
 
+import v2.compiler.ingested_fixture_arrows { ingested_match_arrow_with_body }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.extdeps.languages.dag {
   dag_add_arrow_with_body_node,
   dag_arrow_with_body_node,
@@ -49,8 +51,8 @@ import v2.test.claim.body_lowering.arrow_body_form_semantic_helpers {
 
 // ArrowBodyForm contract witnesses: classification matrix, structural admission,
 // eval-entry population, eval dispatch through call, and RED mirrors that delete
-// one classifier arm each. Semantic ingested-normalize witnesses (id/zero/add) live
-// in src/v2/test/claim/long/arrow_body_form_witness_test.dag — not long-lane enrolled yet.
+// one classifier arm each. Ingested-normalize semantic execution (id/zero/add) is
+// deferred until eval helpers wire; follow-on lands with long-lane enrollment.
 
 fn arrow_body_form_fixture_atom(identity: Symbol) -> Node {
   node_synthetic(
@@ -253,5 +255,19 @@ test fn arrow_body_form_transform_body_admits_eval_through_call_holds() -> Bool 
         Absent => false
       }
     Absent => false
+  }
+}
+
+test fn arrow_body_form_match_body_refused_eval_entry_holds() -> Bool {
+  match ingested_match_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      match arrow_body_form_eval_int_literal_optional(lexeme: "1") {
+        Present { value: arg } =>
+          !arrow_body_form_eval_call_does_not_reject_unsupported_callee(
+            call: arrow_body_form_eval_unary_call_node(callee: arrow, arg: arg)
+          )
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
   }
 }
