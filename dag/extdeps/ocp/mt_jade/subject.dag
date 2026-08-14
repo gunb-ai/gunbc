@@ -1,0 +1,55 @@
+module extdeps.ocp.mt_jade.subject
+
+import std.types { String, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.ampere { ampere_vendor }
+
+// VERIFIED LIVE 2026-08-14: the Open Compute Project hosts "Open Compute Specification Mt Jade
+// Rev 1.0" (authors Yoon Chae and Jayesh Shah, Ampere Computing; dated August 31, 2021 in the
+// document header). It describes the dual-socket Mt. Jade server motherboard for Ampere Altra
+// and Altra Max processors and is publicly downloadable — which is a different subject from the
+// Customer Connect reference-board design packages that extdeps.cpu.ampere_altra_package records
+// as NDA-gated. Platform sequencing, the board CPLD's role, the clock tree and the reference
+// parts named in that public specification are modelled in extdeps.ocp.mt_jade.platform; this
+// module is the cited SUBJECT those rows are about.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
+  }
+}
+
+data mt_jade_subject_note: String = "MT. JADE AS AN OCP-ACCEPTED REFERENCE PLATFORM, NOT AS A PACKAGE FACT. extdeps.cpu.ampere_altra_package correctly separates the public Altra package datasheet from the NDA reference-board collateral listing Mt. Jade among four Ampere boards. This module is the third axis: the OCP-published motherboard specification, which is public and names platform architecture facts — power-on sequencing, reset and clock distribution, the board CPLD's responsibilities, and selected bill-of-materials part numbers — without being the full design-file drop. Conflating the OCP spec with either the processor package or the Customer Connect board package would re-fuse authorities this lane exists to keep apart."
+
+type MtJadeSpecificationRevision
+  = MtJadeRev1_0
+
+type MtJadeReferencePlatform {
+  marketing_name: NonEmptyStr
+  revision: MtJadeSpecificationRevision
+  contributor: Vendor<Hardware>
+}
+
+data mt_jade_reference_platform: MtJadeReferencePlatform = MtJadeReferencePlatform {
+  marketing_name: "Mt. Jade",
+  revision: MtJadeRev1_0,
+  contributor: ampere_vendor,
+}
+
+data mt_jade_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ocp.mt_jade.subject",
+      decl_name: "mt_jade_reference_platform",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+data extdeps_model_scope: ExternalModelScope = mt_jade_model_scope
