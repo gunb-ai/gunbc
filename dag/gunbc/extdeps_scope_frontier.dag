@@ -156,10 +156,14 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/cpu_attachment/ilm4926.dag",
   "dag/extdeps/ssh/client_options.dag",
   "dag/extdeps/ollama/api.dag",
+<<<<<<< HEAD
   "dag/extdeps/ocp/publication.dag",
   "dag/extdeps/ocp/mt_jade/platform.dag",
   "dag/extdeps/ocp/mt_jade/subject.dag",
   "dag/extdeps/ocp/mt_mitchell/subject.dag",
+=======
+  "dag/extdeps/ollama/binary_release.dag",
+>>>>>>> 7b4413dd6 (Enroll Ollama binary_release in extdeps scope carrier roster.)
   "dag/extdeps/automation/playwright.dag",
   "dag/extdeps/package.dag",
   "dag/extdeps/npm.dag",
