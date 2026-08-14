@@ -27,6 +27,7 @@ import gunbc.fleet_converge_plan {
   fleet_converge_member_set_fingerprint_matches,
   timer_retirement_observed_legacy_srv1,
   fleet_converge_generation_store_path,
+  fleet_converge_generation_store_commit_commands,
 }
 
 data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converge plan/apply (sleek-heron-218). Plan observes the host, runs membership_reconcile once, names the subject (host + member-set fingerprint), mints a std.temporal_effect HeldLease generation in the artifact, and writes the human-readable plan plus apply.sh. Apply re-observes for subject identity, baseline CAS, and lease generation (store must still equal prior_generation); only the first concurrent apply against the same observed state can pass the generation gate and commit planned_generation."
@@ -229,10 +230,27 @@ func fleet_converge_apply_wet() -> ProcessExit
       ) {
         exit_failure(reason: "fleet_converge_apply: ObservedBaselineMismatch — host drifted since plan; rerun plan and review (CAS refusal)")
       } else {
-        run_shell_commands(
+        match run_shell_commands(
           commands: [ArgvCommand { argv: ["bash", fleet_converge_plan_apply_shell_path] }],
           transport: LocalExec,
-        )
+        ) {
+          ExitFailure { code: _, reason: why } =>
+            exit_failure(reason: concat("fleet_converge_apply: apply.sh refused: ", why))
+          ExitSuccess =>
+            match run_shell_commands(
+              commands: fleet_converge_generation_store_commit_commands(planned_generation: planned_generation),
+              transport: LocalExec,
+            ) {
+              ExitFailure { code: _, reason: why } =>
+                exit_failure(
+                  reason: concat(
+                    "fleet_converge_apply: generation store commit refused after successful apply.sh: ",
+                    why,
+                  ),
+                )
+              ExitSuccess => ExitSuccess
+            }
+        }
       }
     }
   }

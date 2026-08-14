@@ -229,6 +229,9 @@ test fn apply_shell_carries_dissolve_on_marker_not_host_gate() -> Bool {
       string_contains(s: artifact.apply_shell, pattern: "dissolve-on: fleet_converge_apply_shell")
         && !string_contains(s: artifact.apply_shell, pattern: "HOST_SHORT=$(hostname -s)")
         && !string_contains(s: artifact.apply_shell, pattern: "SubjectHostMismatch")
+        && !string_contains(s: artifact.apply_shell, pattern: "GEN_STORE")
+        && !string_contains(s: artifact.apply_shell, pattern: "printf '%s'")
+        && !string_contains(s: artifact.apply_shell, pattern: "/etc/systemd/system/")
     Absent => false
   }
 }

@@ -16,6 +16,7 @@ import std.content_hash {
   ContentHash,
 }
 import std.temporal_effect { HeldLease, HeldLeaseObservedState, LeaseAbsent }
+import extdeps.exec.command { ArgvCommand }
 import gunbc.membership_reconcile {
   MembershipPlan,
   MemberAction,
@@ -317,7 +318,7 @@ fn fleet_converge_plan_artifact_hash(artifact: FleetConvergePlanArtifact) -> Fnv
   fleet_converge_plan_content_hash(plan_body: artifact.plan_body)
 }
 
-data fleet_converge_apply_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: fleet_converge_apply_shell — concat-built bash apply runner (timer disable/remove, cap dropin upsert, daemon-reload, generation store commit); subject-host / generation CAS / member-set / baseline gates live ONLY in fleet_converge_apply_wet (.dag authority) before bash is invoked; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) or host_effect_apply realizes these mutations without medium-as-string concat")
+data fleet_converge_apply_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: fleet_converge_apply_shell — concat-built bash apply runner for timer retirement only (sudo systemctl disable/rm + daemon-reload); cap drop-in mutations are live_deploy deploy-principal authority (host_axis_caps_note) and are plan-output-only here; generation store commit runs in fleet_converge_apply_wet AFTER bash succeeds (.dag authority, fail-closed CAS); subject-host / generation CAS / member-set / baseline gates live ONLY in fleet_converge_apply_wet before bash; DISSOLVES WHEN bash-emit or host_effect_apply realizes timer teardown without medium-as-string concat")
 
 data fleet_converge_apply_shell_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -345,6 +346,8 @@ fn cap_apply_line(action: MemberAction<CapMember>) -> String {
   }
 }
 
+data fleet_converge_cap_apply_shell_note: String = "Cap MemberAdded/Changed/Removed arms are rendered in plan.txt for human review but are NOT emitted into apply.sh — PerSlotMemoryCap drop-in writes are live_deploy deploy-principal authority (host_axis_caps host_axis_caps_note); converge on the operator runner does not sudo-write /etc/systemd drop-ins."
+
 fn timer_apply_lines(plan: MembershipPlan<TimerRetirementMember>) -> List<String> {
   flat_map(plan.actions, a =>
     match a {
@@ -357,36 +360,35 @@ fn timer_apply_lines(plan: MembershipPlan<TimerRetirementMember>) -> List<String
   )
 }
 
-fn cap_apply_lines(plan: MembershipPlan<CapMember>) -> List<String> {
-  filter(
-    flat_map(plan.actions, a => [cap_apply_line(action: a)]),
-    line => line != "",
-  )
-}
-
 data fleet_converge_generation_store_path: String = "/var/lib/gunbc/fleet-converge/plan_generation"
 
-fn fleet_converge_generation_commit_shell(planned_generation: Int) -> List<String> {
-  [concat("echo ", to_string(planned_generation), " > \"$GEN_STORE\"")]
+fn fleet_converge_generation_store_commit_commands(planned_generation: Int) -> List<ArgvCommand> {
+  [
+    ArgvCommand { argv: ["sudo", "-n", "mkdir", "-p", "/var/lib/gunbc/fleet-converge"] },
+    ArgvCommand {
+      argv: [
+        "sudo",
+        "-n",
+        "sh",
+        "-c",
+        concat("echo ", to_string(planned_generation), " > ", fleet_converge_generation_store_path),
+      ],
+    },
+  ]
 }
 
-fn fleet_converge_apply_shell(
-  planned_generation: Int,
-  timer_plan: MembershipPlan<TimerRetirementMember>,
-  cap_plan: MembershipPlan<CapMember>,
-) -> String {
+fn fleet_converge_apply_shell(timer_plan: MembershipPlan<TimerRetirementMember>) -> String {
   join(
     concat(
       [
         concat("# ", dissolution_description(condition: fleet_converge_apply_shell_emit_dissolution_trigger)),
-        "# Admission gates enforced in fleet_converge_apply_wet before bash — this script runs mutations only",
+        concat("# ", fleet_converge_cap_apply_shell_note),
+        "# Admission gates enforced in fleet_converge_apply_wet before bash — this script runs timer teardown only",
         "set -euo pipefail",
       ],
       ["# generated at plan time — apply MUST NOT recompute membership_reconcile"],
       timer_apply_lines(plan: timer_plan),
-      cap_apply_lines(plan: cap_plan),
       ["sudo -n systemctl daemon-reload"],
-      fleet_converge_generation_commit_shell(planned_generation: planned_generation),
     ),
     "\n",
   )
@@ -444,11 +446,7 @@ fn fleet_converge_plan_artifact(
     prior_generation: prior_generation,
     owner_fingerprint: owner_fp,
   )
-  let apply_shell = fleet_converge_apply_shell(
-    planned_generation: planned_generation,
-    timer_plan: timer_plan,
-    cap_plan: cap_plan,
-  )
+  let apply_shell = fleet_converge_apply_shell(timer_plan: timer_plan)
   match content_hash_of_value(value: baseline as NonEmptyStr) {
     Fnv1a64(structural) =>
       Present {
