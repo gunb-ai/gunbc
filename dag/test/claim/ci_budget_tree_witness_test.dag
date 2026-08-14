@@ -1,6 +1,7 @@
 module test.claim.ci_budget_tree_witness
 
 import gunbc.ci_runner_placement { resolve_session_slice }
+import gunbc.ci_runner_target { FleetSelfHosted, ci_runner_target_ram_speed_budget }
 import gunbc.ci_budget_tree {
   srv1_budget_tree,
   srv1_gha_runner_pool_budget,
