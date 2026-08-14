@@ -1,0 +1,195 @@
+module product.pcb.svg_projection
+
+import std.types { String, Bool, NonEmptyStr, List }
+import std.integer { Int }
+import std.measure { micrometer_count }
+import std.markup { Fragment }
+import std.affine_space { signed_frame_component_count }
+import std.orthogonal_geometry {
+  AxisAlignedRectangle2,
+  rectangle2_min,
+  rectangle2_max,
+}
+import extdeps.w3c.svg {
+  svg_document,
+  svg_rect,
+  svg_circle,
+  svg_text,
+  serialize_svg_document,
+}
+import product.pcb.world {
+  PcbWorld,
+  PcbWorldRefusal,
+  PcbPhysicalWorld,
+  PcbComponentObligation,
+  pcb_world_physical,
+  pcb_component_count,
+  pcb_obligation_count,
+}
+import product.pcb.physical { ComponentPlacement }
+
+data svg_projection_note: String = "THE PLAN VIEW FOLDS THE WORLD'S POPULATIONS. Nothing here names a component role or channel count: established body envelopes and typed obligations are the only inputs, so a design that adds two memory slots changes only the world's lists, not this module. Obligations render as anchor markers at their authored origin with a fixed convention radius that is explicitly not part geometry."
+
+data obligation_anchor_radius_um: Int = 1200
+data attachment_label_base_y_um: Int = 24000
+data attachment_label_step_y_um: Int = 2400
+
+type OutlineExtent {
+  x0: Int
+  y0: Int
+  x1: Int
+  y1: Int
+}
+
+type PcbSvgRefusal
+  = PcbSvgWorldRefused { cause: PcbWorldRefusal }
+  | PcbSvgObligationDropped { identity: NonEmptyStr }
+
+type PcbSvgConstruction<T>
+  = PcbSvgReady { value: T }
+  | PcbSvgRefused { cause: PcbSvgRefusal }
+
+type PcbSvgScene sole_constructor {
+  world: PcbWorld
+  document: String
+}
+
+type AttachmentLabelAcc {
+  index: Int
+  fragments: List<Fragment>
+}
+
+fn outline_extent(o: AxisAlignedRectangle2) -> OutlineExtent {
+  let lo = rectangle2_min(r: o)
+  let hi = rectangle2_max(r: o)
+  OutlineExtent {
+    x0: signed_frame_component_count(c: lo.x),
+    y0: signed_frame_component_count(c: lo.y),
+    x1: signed_frame_component_count(c: hi.x),
+    y1: signed_frame_component_count(c: hi.y),
+  }
+}
+
+fn established_component_fragments(c: ComponentPlacement) -> List<Fragment> {
+  let x = signed_frame_component_count(c: c.origin.x)
+  let y = signed_frame_component_count(c: c.origin.y)
+  let w = micrometer_count(m: c.body_envelope.body_width)
+  let h = micrometer_count(m: c.body_envelope.body_height)
+  [
+    svg_rect(
+      x: x, y: y, width: w, height: h,
+      class_name: "pcb-component-established",
+      fill: "#c8d6e8",
+      stroke: "#1a2744",
+      stroke_width: "400",
+    ),
+    svg_text(x: x, y: y - 1200, label: c.identity as String, class_name: "pcb-label-established"),
+  ]
+}
+
+fn obligation_marker_fragments(o: PcbComponentObligation) -> List<Fragment> {
+  let x = signed_frame_component_count(c: o.origin.x)
+  let y = signed_frame_component_count(c: o.origin.y)
+  let r = obligation_anchor_radius_um
+  [
+    svg_circle(
+      cx: x, cy: y, r: r,
+      class_name: "pcb-component-obligation",
+      fill: "none",
+      stroke: "#8b3a3a",
+      stroke_width: "400",
+      dash: "1200 800",
+    ),
+    svg_text(
+      x: x + r + 800,
+      y: y,
+      label: concat(o.identity as String, " (obligation)"),
+      class_name: "pcb-label-obligation",
+    ),
+  ]
+}
+
+fn fold_attachment_fragments(physical: PcbPhysicalWorld) -> List<Fragment> {
+  let acc = fold(physical.attachment_obligations, init: AttachmentLabelAcc { index: 0, fragments: [] }, f: fn(state, row) {
+    AttachmentLabelAcc {
+      index: state.index + 1,
+      fragments: concat(state.fragments, [
+        svg_text(
+          x: 8000,
+          y: attachment_label_base_y_um + (state.index * attachment_label_step_y_um),
+          label: concat("attachment: ", row.layer as String),
+          class_name: "pcb-label-attachment-obligation",
+        ),
+      ]),
+    }
+  })
+  acc.fragments
+}
+
+fn legend_fragment(physical: PcbPhysicalWorld) -> Fragment {
+  let established = pcb_component_count(p: physical)
+  let obligations = pcb_obligation_count(p: physical)
+  svg_text(
+    x: 8000,
+    y: 12000,
+    label: concat(
+      "PCB world — ",
+      concat(to_string(established), concat(" established / ", concat(to_string(obligations), " obligations")))
+    ),
+    class_name: "pcb-legend",
+  )
+}
+
+fn board_outline_fragment(o: AxisAlignedRectangle2) -> Fragment {
+  let e = outline_extent(o: o)
+  svg_rect(
+    x: e.x0, y: e.y0, width: e.x1 - e.x0, height: e.y1 - e.y0,
+    class_name: "pcb-board-outline",
+    fill: "none",
+    stroke: "#1a2744",
+    stroke_width: "800",
+  )
+}
+
+fn fold_component_fragments(physical: PcbPhysicalWorld) -> List<Fragment> {
+  fold(physical.components, init: [], f: fn(acc, c) {
+    concat(acc, established_component_fragments(c: c))
+  })
+}
+
+fn fold_obligation_fragments(physical: PcbPhysicalWorld) -> List<Fragment> {
+  fold(physical.obligations, init: [], f: fn(acc, o) {
+    concat(acc, obligation_marker_fragments(o: o))
+  })
+}
+
+fn project_pcb_world(w: PcbWorld) -> PcbSvgConstruction<PcbSvgScene> {
+  let physical = pcb_world_physical(w: w)
+  let e = outline_extent(o: physical.board.outline)
+  let width = e.x1 - e.x0
+  let height = e.y1 - e.y0
+  let bodies = fold_component_fragments(physical: physical)
+  let markers = fold_obligation_fragments(physical: physical)
+  let attachments = fold_attachment_fragments(physical: physical)
+  let doc = svg_document(
+    view_box: concat("0 0 ", concat(to_string(width), concat(" ", to_string(height)))),
+    class_name: "pcb-world-scene",
+    aria_label: "PCB plan view",
+    children: concat(
+      [board_outline_fragment(o: physical.board.outline), legend_fragment(physical: physical)],
+      concat(bodies, concat(markers, attachments))
+    ),
+  )
+  PcbSvgReady { value: PcbSvgScene { world: w, document: serialize_svg_document(doc: doc) } }
+}
+
+type PcbSvgEmission
+  = PcbSvgEmitted { source: String }
+  | PcbSvgEmissionRefused { cause: PcbSvgRefusal }
+
+fn emit_pcb_svg_scene(c: PcbSvgConstruction<PcbSvgScene>) -> PcbSvgEmission {
+  match c {
+    PcbSvgRefused { cause: cause } => PcbSvgEmissionRefused { cause: cause }
+    PcbSvgReady { value: scene } => PcbSvgEmitted { source: scene.document }
+  }
+}

@@ -1,4 +1,4 @@
-module product.compute_board.physical
+module product.pcb.physical
 
 import std.types { String, Bool, NonEmptyStr, List }
 import std.integer { Int }

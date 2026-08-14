@@ -1,0 +1,22 @@
+module product.altra_motherboard.svg_emission
+
+import product.altra_motherboard.pcb_world { altra_pcb_world }
+import product.pcb.world { PcbWorldConstruction, PcbWorldReady, PcbWorldRefused }
+import product.pcb.world { PcbWorldRefusal }
+import product.pcb.svg_projection {
+  PcbSvgEmission,
+  PcbSvgEmitted,
+  PcbSvgEmissionRefused,
+  PcbSvgWorldRefused,
+  project_pcb_world,
+  emit_pcb_svg_scene,
+}
+
+data svg_emission_note: String = "Production entry for the Altra reference board SVG scene. The world is minted once through product.altra_motherboard.pcb_world and serialized through product.pcb.svg_projection."
+
+fn emit_altra_board_svg() -> PcbSvgEmission {
+  match altra_pcb_world() {
+    PcbWorldRefused { cause: c } => PcbSvgEmissionRefused { cause: PcbSvgWorldRefused { cause: c } }
+    PcbWorldReady { value: w } => emit_pcb_svg_scene(c: project_pcb_world(w: w))
+  }
+}

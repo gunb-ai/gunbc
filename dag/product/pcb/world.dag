@@ -1,0 +1,140 @@
+module product.pcb.world
+
+import std.types { String, Bool, NonEmptyStr, List }
+import std.integer { Int }
+import std.coordinate_frame { CoordinateFrameIdentity }
+import std.affine_space { Point2 }
+import std.orthogonal_geometry { AxisAlignedRectangle2, OrthogonalRefusal }
+import product.pcb.physical { ComponentPlacement }
+
+type PcbWorldIdentity = NonEmptyStr where brand("PcbWorldIdentity")
+
+type PcbSourceDesign {
+  subject: NonEmptyStr
+}
+
+type PcbBoard {
+  frame: CoordinateFrameIdentity
+  outline: AxisAlignedRectangle2
+}
+
+type PcbFootprint {
+  identity: NonEmptyStr
+}
+
+type PcbPad {
+  identity: NonEmptyStr
+}
+
+type PcbHole {
+  identity: NonEmptyStr
+}
+
+type PcbRoute {
+  identity: NonEmptyStr
+}
+
+type PcbCopperRegion {
+  identity: NonEmptyStr
+}
+
+type PcbKeepout {
+  identity: NonEmptyStr
+}
+
+type PcbStackupLayer {
+  identity: NonEmptyStr
+}
+
+type PcbNet {
+  identity: NonEmptyStr
+}
+
+type PcbManufacturingArtifact {
+  identity: NonEmptyStr
+}
+
+type PcbComponentObligation {
+  identity: NonEmptyStr
+  role: NonEmptyStr
+  origin: Point2
+}
+
+type PcbAttachmentObligation {
+  layer: NonEmptyStr
+}
+
+type PcbPhysicalWorld {
+  board: PcbBoard
+  stackup: List<PcbStackupLayer>
+  components: List<ComponentPlacement>
+  footprints: List<PcbFootprint>
+  pads: List<PcbPad>
+  holes: List<PcbHole>
+  routes: List<PcbRoute>
+  copper_regions: List<PcbCopperRegion>
+  keepouts: List<PcbKeepout>
+  obligations: List<PcbComponentObligation>
+  attachment_obligations: List<PcbAttachmentObligation>
+}
+
+type PcbElectricalWorld {
+  nets: List<PcbNet>
+}
+
+type PcbManufacturingWorld {
+  artifacts: List<PcbManufacturingArtifact>
+}
+
+type PcbWorld sole_constructor {
+  identity: PcbWorldIdentity
+  source_design: PcbSourceDesign
+  electrical: PcbElectricalWorld
+  physical: PcbPhysicalWorld
+  manufacturing: PcbManufacturingWorld
+}
+
+type PcbWorldRefusal
+  = PcbBoardOutlineRefused { cause: OrthogonalRefusal }
+
+type PcbWorldConstruction<T>
+  = PcbWorldReady { value: T }
+  | PcbWorldRefused { cause: PcbWorldRefusal }
+
+fn pcb_world_identity(w: PcbWorld) -> PcbWorldIdentity { w.identity }
+fn pcb_world_source_design(w: PcbWorld) -> PcbSourceDesign { w.source_design }
+fn pcb_world_physical(w: PcbWorld) -> PcbPhysicalWorld { w.physical }
+fn pcb_world_electrical(w: PcbWorld) -> PcbElectricalWorld { w.electrical }
+fn pcb_world_manufacturing(w: PcbWorld) -> PcbManufacturingWorld { w.manufacturing }
+
+fn pcb_component_count(p: PcbPhysicalWorld) -> Int {
+  fold(p.components, init: 0, f: fn(acc, _c) { acc + 1 })
+}
+
+fn pcb_obligation_count(p: PcbPhysicalWorld) -> Int {
+  fold(p.obligations, init: 0, f: fn(acc, _o) { acc + 1 })
+}
+
+fn pcb_attachment_obligation_count(p: PcbPhysicalWorld) -> Int {
+  fold(p.attachment_obligations, init: 0, f: fn(acc, _o) { acc + 1 })
+}
+
+fn pcb_population_count(p: PcbPhysicalWorld) -> Int {
+  pcb_component_count(p: p) + pcb_obligation_count(p: p)
+}
+
+fn pcb_world(
+  identity: PcbWorldIdentity,
+  source_design: PcbSourceDesign,
+  electrical: PcbElectricalWorld,
+  physical: PcbPhysicalWorld,
+  manufacturing: PcbManufacturingWorld,
+) -> PcbWorld {
+  PcbWorld {
+    identity: identity,
+    source_design: source_design,
+    electrical: electrical,
+    physical: physical,
+    manufacturing: manufacturing,
+  }
+}
