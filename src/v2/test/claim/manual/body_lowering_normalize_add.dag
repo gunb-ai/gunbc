@@ -741,8 +741,8 @@ fn body_lowering_left_operand_is_param_x() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
-      body_lowering_tree_contains_atom(root: tree, wanted: ^dag_binding_param_x)
-        && body_lowering_tree_contains_atom(root: tree, wanted: ^dag_binding_param_y)
+      body_lowering_tree_contains_atom(root: tree.root, wanted: ^dag_binding_param_x)
+        && body_lowering_tree_contains_atom(root: tree.root, wanted: ^dag_binding_param_y)
   }
 }
 
