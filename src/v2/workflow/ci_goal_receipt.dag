@@ -23,7 +23,18 @@ import v2.std.text { String }
 // inflation DESIGN §4b names, applied to a status table.
 
 type CiGoal
-  = EveryMainCommitGetsAVerdict
+// TWO GOALS WHERE THERE WAS ONE, because the mechanism that exists establishes the
+// weaker of them and the roster was claiming the stronger.
+//
+// A unique concurrency key per main commit proves no main attempt is CANCELLED by a
+// later push — that is a real property and it is the one the workflow's concurrency
+// group actually delivers. It says nothing about whether any attempt reaches a
+// terminal verdict: a run that hangs, times out, or dies mid-batch is not superseded
+// and also never answers. Naming both under one row meant evidence for the cheap
+// property would have discharged the expensive one, which is rung inflation inside
+// the carrier built to prevent it.
+  = MainCommitAttemptsAreNotSuperseded
+  | EveryMainCommitReachesATerminalVerdict
   | EveryOrdinaryWitnessRunsUnconditionally
   | NoAutomaticExclusionDerivation
   | PreparationFailuresAreLoud
@@ -230,7 +241,8 @@ fn acceptance_standing(rows: List<GoalRow>) -> AcceptanceStanding {
 // is the correct answer today and it is not flattering, which is the point: the carrier
 // cannot be talked into agreeing.
 data ci_goal_subjects: List<CiGoal> = [
-  EveryMainCommitGetsAVerdict,
+  MainCommitAttemptsAreNotSuperseded,
+  EveryMainCommitReachesATerminalVerdict,
   EveryOrdinaryWitnessRunsUnconditionally,
   NoAutomaticExclusionDerivation,
   PreparationFailuresAreLoud,
@@ -262,7 +274,9 @@ fn goal_eq(a: CiGoal, b: CiGoal) -> Bool {
 
 fn goal_symbol(goal: CiGoal) -> Symbol {
   match goal {
-    EveryMainCommitGetsAVerdict => ^goal_every_main_commit_gets_a_verdict
+    MainCommitAttemptsAreNotSuperseded => ^goal_main_commit_attempts_are_not_superseded
+    EveryMainCommitReachesATerminalVerdict =>
+      ^goal_every_main_commit_reaches_a_terminal_verdict
     EveryOrdinaryWitnessRunsUnconditionally => ^goal_every_ordinary_witness_runs
     NoAutomaticExclusionDerivation => ^goal_no_automatic_exclusion_derivation
     PreparationFailuresAreLoud => ^goal_preparation_failures_are_loud
