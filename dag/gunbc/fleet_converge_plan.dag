@@ -3,6 +3,9 @@ module gunbc.fleet_converge_plan
 import std.types { String, List, Bool, Int, NonEmptyStr }
 import std.measure { byte_size_count }
 import std.algebra { trim }
+import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.content_hash {
   content_hash_of_value,
   serialize_content_hash,
@@ -303,15 +306,26 @@ type FleetConvergePlanArtifact {
   apply_shell: String
 }
 
-fn fleet_converge_plan_content_hash(plan_body: String) -> Fnv1a64StructuralDigestHex {
+fn fleet_converge_plan_content_hash(plan_body: String) -> Fnv1a64StructuralDigestHex? {
   match content_hash_of_value(value: plan_body as NonEmptyStr) {
-    Fnv1a64(structural) => structural.digest
-    _ => "0000000000000000"
+    Fnv1a64(structural) => Present { value: structural.digest }
+    _ => Absent
   }
 }
 
-fn fleet_converge_plan_artifact_hash(artifact: FleetConvergePlanArtifact) -> Fnv1a64StructuralDigestHex {
+fn fleet_converge_plan_artifact_hash(artifact: FleetConvergePlanArtifact) -> Fnv1a64StructuralDigestHex? {
   fleet_converge_plan_content_hash(plan_body: artifact.plan_body)
+}
+
+data fleet_converge_apply_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: fleet_converge_apply_shell — concat-built bash apply runner (timer disable/remove, cap dropin upsert, daemon-reload, generation store commit); subject-host / generation CAS / member-set / baseline gates live ONLY in fleet_converge_apply_wet (.dag authority) before bash is invoked; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) or host_effect_apply realizes these mutations without medium-as-string concat")
+
+data fleet_converge_apply_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.fleet_converge_plan",
+    decl_name: "fleet_converge_apply_shell_emit_dissolution_trigger",
+    field: WholeDeclaration,
+  },
 }
 
 fn timer_retirement_disable_line(unit_name: NonEmptyStr) -> String {
@@ -352,62 +366,22 @@ fn cap_apply_lines(plan: MembershipPlan<CapMember>) -> List<String> {
 
 data fleet_converge_generation_store_path: String = "/var/lib/gunbc/fleet-converge/plan_generation"
 
-fn fleet_converge_subject_host_gate_shell(subject: FleetConvergePlanSubject) -> List<String> {
-  [
-    "HOST_SHORT=$(hostname -s)",
-    concat("if [ \"$HOST_SHORT\" != \"", subject.host as String, "\" ]; then"),
-    concat("  echo \"SubjectHostMismatch planned=", subject.host as String, " observed=$HOST_SHORT\" >&2"),
-    "  exit 1",
-    "fi",
-  ]
-}
-
-fn fleet_converge_generation_gate_shell(prior_generation: Int, planned_generation: Int) -> List<String> {
-  [
-    concat("GEN_STORE=\"", fleet_converge_generation_store_path, "\""),
-    "mkdir -p /var/lib/gunbc/fleet-converge",
-    concat(
-      "CURRENT=$(cat \"$GEN_STORE\" 2>/dev/null || echo ",
-      to_string(prior_generation),
-      ")",
-    ),
-    concat("if [ \"$CURRENT\" != \"", to_string(prior_generation), "\" ]; then"),
-    concat(
-      "  echo \"LeaseGenerationStale planned=",
-      to_string(planned_generation),
-      " observed=$CURRENT\" >&2",
-    ),
-    "  exit 1",
-    "fi",
-  ]
-}
-
 fn fleet_converge_generation_commit_shell(planned_generation: Int) -> List<String> {
   [concat("echo ", to_string(planned_generation), " > \"$GEN_STORE\"")]
 }
 
-fn fleet_converge_plan_generation_claim_shell(prior_generation: Int, planned_generation: Int) -> List<String> {
-  fleet_converge_generation_gate_shell(
-    prior_generation: prior_generation,
-    planned_generation: planned_generation,
-  )
-}
-
 fn fleet_converge_apply_shell(
-  subject: FleetConvergePlanSubject,
-  prior_generation: Int,
   planned_generation: Int,
   timer_plan: MembershipPlan<TimerRetirementMember>,
   cap_plan: MembershipPlan<CapMember>,
 ) -> String {
   join(
     concat(
-      ["set -euo pipefail"],
-      fleet_converge_subject_host_gate_shell(subject: subject),
-      fleet_converge_generation_gate_shell(
-        prior_generation: prior_generation,
-        planned_generation: planned_generation,
-      ),
+      [
+        concat("# ", dissolution_description(condition: fleet_converge_apply_shell_emit_dissolution_trigger)),
+        "# Admission gates enforced in fleet_converge_apply_wet before bash — this script runs mutations only",
+        "set -euo pipefail",
+      ],
       ["# generated at plan time — apply MUST NOT recompute membership_reconcile"],
       timer_apply_lines(plan: timer_plan),
       cap_apply_lines(plan: cap_plan),
@@ -423,7 +397,7 @@ fn fleet_converge_plan_artifact(
   prior_generation: Int,
   observed_timers: List<TimerRetirementMember>,
   observed_caps: List<CapMember>,
-) -> FleetConvergePlanArtifact {
+) -> FleetConvergePlanArtifact? {
   let subject = fleet_converge_plan_subject(
     host: host,
     observed_timers: observed_timers,
@@ -471,31 +445,23 @@ fn fleet_converge_plan_artifact(
     owner_fingerprint: owner_fp,
   )
   let apply_shell = fleet_converge_apply_shell(
-    subject: subject,
-    prior_generation: prior_generation,
     planned_generation: planned_generation,
     timer_plan: timer_plan,
     cap_plan: cap_plan,
   )
   match content_hash_of_value(value: baseline as NonEmptyStr) {
     Fnv1a64(structural) =>
-      FleetConvergePlanArtifact {
-        subject: subject,
-        prior_generation: prior_generation,
-        plan_lease: lease,
-        observed_baseline_hex: structural.digest,
-        plan_body: body,
-        apply_shell: apply_shell,
+      Present {
+        value: FleetConvergePlanArtifact {
+          subject: subject,
+          prior_generation: prior_generation,
+          plan_lease: lease,
+          observed_baseline_hex: structural.digest,
+          plan_body: body,
+          apply_shell: apply_shell,
+        },
       }
-    _ =>
-      FleetConvergePlanArtifact {
-        subject: subject,
-        prior_generation: prior_generation,
-        plan_lease: lease,
-        observed_baseline_hex: "0000000000000000",
-        plan_body: body,
-        apply_shell: apply_shell,
-      }
+    _ => Absent
   }
 }
 

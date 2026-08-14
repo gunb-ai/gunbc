@@ -30,14 +30,17 @@ test fn timer_retirement_plan_shows_refused_removal_for_foreign_cap() -> Bool {
     dropin_path: "/etc/systemd/system/foo.service.d/99-foreign.conf" as NonEmptyStr,
     content: "[Service]\nMemoryMax=1\n",
   }
-  let artifact = fleet_converge_plan_artifact(
+  match fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [foreign],
-  )
-  string_contains(s: artifact.plan_body, pattern: "REFUSED-REMOVAL cap ")
-    && string_contains(s: artifact.plan_body, pattern: "MemberNotOwned")
+  ) {
+    Present { value: artifact } =>
+      string_contains(s: artifact.plan_body, pattern: "REFUSED-REMOVAL cap ")
+        && string_contains(s: artifact.plan_body, pattern: "MemberNotOwned")
+    Absent => false
+  }
 }
 
 test fn timer_retirement_plan_lists_removed_legacy_timer() -> Bool {
@@ -53,19 +56,32 @@ test fn plan_artifact_hash_is_stable_for_fixed_observation() -> Bool {
     dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
     content: "[Service]\nMemoryMax=15032385536\n",
   }
-  let a1 = fleet_converge_plan_artifact(
+  match fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 3,
     observed_timers: [],
     observed_caps: [observed_cap],
-  )
-  let a2 = fleet_converge_plan_artifact(
-    host: witness_host_srv1,
-    prior_generation: 3,
-    observed_timers: [],
-    observed_caps: [observed_cap],
-  )
-  fleet_converge_plan_artifact_hash(artifact: a1) == fleet_converge_plan_artifact_hash(artifact: a2)
+  ) {
+    Present { value: a1 } =>
+      match fleet_converge_plan_artifact(
+        host: witness_host_srv1,
+        prior_generation: 3,
+        observed_timers: [],
+        observed_caps: [observed_cap],
+      ) {
+        Present { value: a2 } =>
+          match fleet_converge_plan_artifact_hash(artifact: a1) {
+            Present { value: h1 } =>
+              match fleet_converge_plan_artifact_hash(artifact: a2) {
+                Present { value: h2 } => h1 == h2
+                Absent => false
+              }
+            Absent => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
 }
 
 test fn observed_baseline_cas_refuses_after_drift() -> Bool {
@@ -73,35 +89,43 @@ test fn observed_baseline_cas_refuses_after_drift() -> Bool {
     dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
     content: "[Service]\nMemoryMax=15032385536\n",
   }
-  let artifact = fleet_converge_plan_artifact(
+  match fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [observed_cap],
-  )
-  let drifted = CapMember {
-    dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
-    content: "[Service]\nMemoryMax=17179869184\n",
+  ) {
+    Present { value: artifact } => {
+      let drifted = CapMember {
+        dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
+        content: "[Service]\nMemoryMax=17179869184\n",
+      }
+      !fleet_converge_observed_baseline_matches(
+        host: witness_host_srv1,
+        observed_baseline_hex: artifact.observed_baseline_hex,
+        observed_timers: [],
+        observed_caps: [drifted],
+      )
+    }
+    Absent => false
   }
-  !fleet_converge_observed_baseline_matches(
-    host: witness_host_srv1,
-    observed_baseline_hex: artifact.observed_baseline_hex,
-    observed_timers: [],
-    observed_caps: [drifted],
-  )
 }
 
 test fn plan_body_names_subject_host_and_generation() -> Bool {
-  let artifact = fleet_converge_plan_artifact(
+  match fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 4,
     observed_timers: [],
     observed_caps: [],
-  )
-  string_contains(s: artifact.plan_body, pattern: "subject_host:srv1")
-    && string_contains(s: artifact.plan_body, pattern: "plan_generation:5")
-    && string_contains(s: artifact.plan_body, pattern: "lease_key:fleet-converge-plan:srv1")
-    && artifact.plan_lease.generation == 5
+  ) {
+    Present { value: artifact } =>
+      string_contains(s: artifact.plan_body, pattern: "subject_host:srv1")
+        && string_contains(s: artifact.plan_body, pattern: "plan_generation:5")
+        && string_contains(s: artifact.plan_body, pattern: "lease_key:fleet-converge-plan:srv1")
+        && artifact.plan_lease.generation == 5
+        && artifact.observed_baseline_hex != "0000000000000000"
+    Absent => false
+  }
 }
 
 test fn cross_host_apply_refuses_subject_identity() -> Bool {
@@ -109,18 +133,21 @@ test fn cross_host_apply_refuses_subject_identity() -> Bool {
     dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
     content: "[Service]\nMemoryMax=15032385536\n",
   }
-  let artifact = fleet_converge_plan_artifact(
+  match fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [observed_cap],
-  )
-  !fleet_converge_apply_subject_admits(
-    planned_subject: artifact.subject,
-    observed_host: witness_host_srv2,
-    observed_timers: [],
-    observed_caps: [observed_cap],
-  )
+  ) {
+    Present { value: artifact } =>
+      !fleet_converge_apply_subject_admits(
+        planned_subject: artifact.subject,
+        observed_host: witness_host_srv2,
+        observed_timers: [],
+        observed_caps: [observed_cap],
+      )
+    Absent => false
+  }
 }
 
 test fn same_host_different_generation_changes_plan_hash() -> Bool {
@@ -128,19 +155,32 @@ test fn same_host_different_generation_changes_plan_hash() -> Bool {
     dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
     content: "[Service]\nMemoryMax=15032385536\n",
   }
-  let gen0 = fleet_converge_plan_artifact(
+  match fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [observed_cap],
-  )
-  let gen1 = fleet_converge_plan_artifact(
-    host: witness_host_srv1,
-    prior_generation: 1,
-    observed_timers: [],
-    observed_caps: [observed_cap],
-  )
-  fleet_converge_plan_artifact_hash(artifact: gen0) != fleet_converge_plan_artifact_hash(artifact: gen1)
+  ) {
+    Present { value: gen0 } =>
+      match fleet_converge_plan_artifact(
+        host: witness_host_srv1,
+        prior_generation: 1,
+        observed_timers: [],
+        observed_caps: [observed_cap],
+      ) {
+        Present { value: gen1 } =>
+          match fleet_converge_plan_artifact_hash(artifact: gen0) {
+            Present { value: h0 } =>
+              match fleet_converge_plan_artifact_hash(artifact: gen1) {
+                Present { value: h1 } => h0 != h1
+                Absent => false
+              }
+            Absent => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
 }
 
 test fn second_concurrent_apply_refuses_generation_gate() -> Bool {
@@ -156,20 +196,39 @@ test fn member_set_fingerprint_mismatch_refuses_identity() -> Bool {
     dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
     content: "[Service]\nMemoryMax=15032385536\n",
   }
-  let artifact = fleet_converge_plan_artifact(
+  match fleet_converge_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [observed_cap],
-  )
-  let drifted = CapMember {
-    dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
-    content: "[Service]\nMemoryMax=17179869184\n",
+  ) {
+    Present { value: artifact } => {
+      let drifted = CapMember {
+        dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
+        content: "[Service]\nMemoryMax=17179869184\n",
+      }
+      !fleet_converge_member_set_fingerprint_matches(
+        planned_fingerprint_text: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
+        host: witness_host_srv1,
+        observed_timers: [],
+        observed_caps: [drifted],
+      )
+    }
+    Absent => false
   }
-  !fleet_converge_member_set_fingerprint_matches(
-    planned_fingerprint_text: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
+}
+
+test fn apply_shell_carries_dissolve_on_marker_not_host_gate() -> Bool {
+  match fleet_converge_plan_artifact(
     host: witness_host_srv1,
+    prior_generation: 0,
     observed_timers: [],
-    observed_caps: [drifted],
-  )
+    observed_caps: [],
+  ) {
+    Present { value: artifact } =>
+      string_contains(s: artifact.apply_shell, pattern: "dissolve-on: fleet_converge_apply_shell")
+        && !string_contains(s: artifact.apply_shell, pattern: "HOST_SHORT=$(hostname -s)")
+        && !string_contains(s: artifact.apply_shell, pattern: "SubjectHostMismatch")
+    Absent => false
+  }
 }

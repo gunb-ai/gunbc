@@ -103,54 +103,70 @@ func fleet_converge_plan_wet() -> ProcessExit
   let prior_generation = observe_generation_store_wet()
   let observed_timers = observe_timer_members_wet()
   let observed_caps = observe_cap_members_wet()
-  let artifact = fleet_converge_plan_artifact(
+  match fleet_converge_plan_artifact(
     host: host,
     prior_generation: prior_generation,
     observed_timers: observed_timers,
     observed_caps: observed_caps,
-  )
-  let planned_generation = prior_generation + 1
-  let content_hash = fleet_converge_plan_content_hash(plan_body: artifact.plan_body)
-  let mkdir = run_shell_commands(
-    commands: [ArgvCommand { argv: ["mkdir", "-p", fleet_converge_plan_artifact_dir] }],
-    transport: LocalExec,
-  )
-  match mkdir {
-    ExitFailure { code: _, reason: why } => exit_failure(reason: concat("fleet_converge_plan: mkdir refused: ", why))
-    ExitSuccess => {
-      let w_plan = Filesystem.Write(path: fleet_converge_plan_body_path, content: artifact.plan_body)
-      let w_base = Filesystem.Write(path: fleet_converge_plan_baseline_hex_path, content: artifact.observed_baseline_hex)
-      let w_hash = Filesystem.Write(path: fleet_converge_plan_content_hash_path, content: content_hash)
-      let w_apply = Filesystem.Write(path: fleet_converge_plan_apply_shell_path, content: artifact.apply_shell)
-      let w_host = Filesystem.Write(path: fleet_converge_plan_subject_host_path, content: host_short)
-      let w_gen = Filesystem.Write(path: fleet_converge_plan_generation_path, content: to_string(planned_generation))
-      let w_prior = Filesystem.Write(
-        path: fleet_converge_plan_prior_generation_path,
-        content: to_string(prior_generation),
-      )
-      let w_member_fp = Filesystem.Write(
-        path: fleet_converge_plan_member_set_fp_path,
-        content: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
-      )
-      if w_plan.success
-        && w_base.success
-        && w_hash.success
-        && w_apply.success
-        && w_host.success
-        && w_gen.success
-        && w_prior.success
-        && w_member_fp.success {
-        run_shell_commands(
-          commands: [
-            ArgvCommand { argv: ["chmod", "0755", fleet_converge_plan_apply_shell_path] },
-            ArgvCommand { argv: ["cat", fleet_converge_plan_body_path] },
-          ],
-          transport: LocalExec,
-        )
-      } else {
-        exit_failure(reason: "fleet_converge_plan: artifact write refused")
+  ) {
+    Absent =>
+      exit_failure(reason: "fleet_converge_plan: observed baseline is not Fnv1a64Structural — plan refused")
+    Present { value: artifact } =>
+      match fleet_converge_plan_content_hash(plan_body: artifact.plan_body) {
+        Absent =>
+          exit_failure(reason: "fleet_converge_plan: plan body content hash is not Fnv1a64Structural — plan refused")
+        Present { value: content_hash } => {
+          let planned_generation = prior_generation + 1
+          let mkdir = run_shell_commands(
+            commands: [ArgvCommand { argv: ["mkdir", "-p", fleet_converge_plan_artifact_dir] }],
+            transport: LocalExec,
+          )
+          match mkdir {
+            ExitFailure { code: _, reason: why } =>
+              exit_failure(reason: concat("fleet_converge_plan: mkdir refused: ", why))
+            ExitSuccess => {
+              let w_plan = Filesystem.Write(path: fleet_converge_plan_body_path, content: artifact.plan_body)
+              let w_base = Filesystem.Write(
+                path: fleet_converge_plan_baseline_hex_path,
+                content: artifact.observed_baseline_hex,
+              )
+              let w_hash = Filesystem.Write(path: fleet_converge_plan_content_hash_path, content: content_hash)
+              let w_apply = Filesystem.Write(path: fleet_converge_plan_apply_shell_path, content: artifact.apply_shell)
+              let w_host = Filesystem.Write(path: fleet_converge_plan_subject_host_path, content: host_short)
+              let w_gen = Filesystem.Write(
+                path: fleet_converge_plan_generation_path,
+                content: to_string(planned_generation),
+              )
+              let w_prior = Filesystem.Write(
+                path: fleet_converge_plan_prior_generation_path,
+                content: to_string(prior_generation),
+              )
+              let w_member_fp = Filesystem.Write(
+                path: fleet_converge_plan_member_set_fp_path,
+                content: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
+              )
+              if w_plan.success
+                && w_base.success
+                && w_hash.success
+                && w_apply.success
+                && w_host.success
+                && w_gen.success
+                && w_prior.success
+                && w_member_fp.success {
+                run_shell_commands(
+                  commands: [
+                    ArgvCommand { argv: ["chmod", "0755", fleet_converge_plan_apply_shell_path] },
+                    ArgvCommand { argv: ["cat", fleet_converge_plan_body_path] },
+                  ],
+                  transport: LocalExec,
+                )
+              } else {
+                exit_failure(reason: "fleet_converge_plan: artifact write refused")
+              }
+            }
+          }
+        }
       }
-    }
   }
 }
 
