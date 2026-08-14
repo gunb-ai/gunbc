@@ -70,10 +70,36 @@ test fn w_only_a_read_document_leaves_the_queue() -> Bool {
     && is_outstanding(o: NeverAttempted)
 }
 
-// EVERY OUTSTANDING ROW SAYS WHY IT IS WANTED. A queue entry nobody can act on is a row that will
-// be rediscovered rather than fetched, which is the cost this roster exists to remove.
-test fn w_every_outstanding_document_states_what_it_is_wanted_for() -> Bool {
-  fold(outstanding_documents(), init: true, f: fn(acc, d) {
-    acc && (d.wanted_for as String) != "" && (d.title as String) != ""
+// NO TWO ROWS NAME THE SAME DOCUMENT. This replaces a witness that asserted every row carried a
+// nonempty title and reason -- which review 51945 correctly called a tautology, because both
+// fields are NonEmptyStr and the type already makes the empty case unwritable. A check that
+// cannot fail is worse than no check: it occupies the slot where a real one would go and reports
+// green forever. What the types do NOT carry is uniqueness, and a duplicated row is the exact
+// failure this roster is exposed to -- two sessions adding the same document under slightly
+// different titles is how one document acquires two read-states that can disagree.
+//
+// ON THE PAIRWISE SHAPE: counting how many rows share a title is quadratic because the QUESTION
+// is pairwise, which is not the defect review 51939 flagged in the module. That one built a
+// linear answer -- a filtered list and its length -- with a copying accumulator. Here the
+// comparison itself is the work.
+fn rows_with_title(t: NonEmptyStr) -> Int {
+  list_length(items: filter(source_documents(), d => (d.title as String) == (t as String)))
+}
+
+test fn w_no_two_rows_name_the_same_document() -> Bool {
+  fold(source_documents(), init: true, f: fn(acc, d) {
+    acc && rows_with_title(t: d.title) == 1
   })
+}
+
+// THE DISCRIMINATING CONTROL FOR THE CHECK ABOVE, on a pair this witness authors rather than on
+// the live roster: two rows sharing one title must be counted as two, so the uniqueness claim is
+// known to be capable of failing.
+fn duplicate_pair() -> List<SourceDocument> {
+  [probe(o: NeverAttempted), probe(o: FetchRefused { observed: "HTTP 403" })]
+}
+
+test fn w_a_duplicated_title_is_counted_twice() -> Bool {
+  list_length(items: filter(duplicate_pair(), d => (d.title as String) == "planted probe document")) == 2
+    && rows_with_title(t: "planted probe document") == 0
 }
