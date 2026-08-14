@@ -3,7 +3,11 @@ module gunbc.fleet_converge_cli
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.algebra { trim }
 
-import extdeps.linux.procfs { ProcSysKernelHostname, procfs_path_literal }
+import gunbc.hostname_read {
+  HostnameShortCaptured,
+  HostnameShortCaptureRefused,
+  hostname_short_read_local,
+}
 import gunbc.fleet_converge_apply { converge_apply_for_host, fleet_compute_host_for_identity }
 import gunbc.host_layout { fleet_converge_receipt_dir, srv1_gunbc_repo_root }
 import gunbc.fleet_desired_observe {
@@ -122,9 +126,10 @@ fn converge_kernel_short_hostname_from_content(raw: String) -> String {
 }
 
 fn converge_local_kernel_short_hostname() -> String {
-  converge_kernel_short_hostname_from_content(
-    raw: filesystem_read(path: procfs_path_literal(p: ProcSysKernelHostname) as String).content,
-  )
+  match hostname_short_read_local() {
+    HostnameShortCaptured { value: v } => v
+    HostnameShortCaptureRefused { reason: _ } => ""
+  }
 }
 
 fn converge_codex_runtime_local_locus_matches_host(host: String) -> Bool {
@@ -674,15 +679,15 @@ fn converge_cli_verify_output(host: String) -> ConvergeCliOutput {
 // identity as a named ambiguity (never first-wins), so a collision surfaces as
 // NotConverged instead of one machine's receipt silently satisfying the other.
 // --host self (CONVERGE-0 loop leg): the per-host timer unit converges SELF, so the
-// literal "self" resolves to the machine's own kernel-reported short hostname before
-// routing — the ONE observation a host can always make about itself, read at the cited
-// procfs authority, never an env var or a config file a deploy could skew. Any other
-// value routes unchanged (the operator/CI form). An unresolvable read falls through as
-// the literal, landing in UnknownHost — a typed refusal, never a fabricated identity.
+// literal "self" resolves to the machine's own short hostname before routing — the ONE
+// observation a host can always make about itself, read via extdeps.tools.hostname
+// os.Hostname.ReadShort (hermetic mock: localhost), never an env var or a config file a
+// deploy could skew. Any other value routes unchanged (the operator/CI form). An
+// unresolvable read falls through as the literal, landing in UnknownHost — a typed
+// refusal, never a fabricated identity.
 fn converge_cli_resolve_self(host: String) -> String {
   if host == "self" {
-    let raw = filesystem_read(path: procfs_path_literal(p: ProcSysKernelHostname) as String).content
-    let line = raw.trim()
+    let line = converge_local_kernel_short_hostname()
     if line == "" {
       host
     } else {
