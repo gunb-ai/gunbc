@@ -3,7 +3,7 @@ module test.claim.mt_jade_platform_witness
 import std.types { Bool, String, NonEmptyStr, List, list_length }
 import std.integer { Int }
 import std.measure { hertz_count, microsecond_count, micrometer_count }
-import extdeps.publication {
+import gunbc.specification_citation_read_provenance {
   DocumentLocatorFetchRefused,
   OperatorSuppliedDocumentText,
 }

@@ -2,27 +2,14 @@ module extdeps.publication
 
 import std.integer { Int }
 import std.types { NonEmptyStr, String }
-import extdeps.external_authority { ExternalAuthority }
 
-data publication_status_axis_note: String = "PUBLICATION STATUS IS NOT READ PROVENANCE. SpecificationCitationReadProvenance records how this repository obtained text from a cited locator; DocumentPublicationStatus records whether the document is publicly reachable and what licence or marking it carries. The rule mapping a status to whether gunbc may carry facts lives in gunbc.upstream_document_carriage, not here."
+data publication_status_axis_note: String = "UPSTREAM DOCUMENT FACTS ONLY. SpecificationDocumentDate and DocumentPublicationStatus record what the publisher published and when. How this repository read or failed to read a cited locator is an observation in gunbc.specification_citation_read_provenance, not here. The rule mapping a status to whether gunbc may carry facts lives in gunbc.upstream_document_carriage."
 
 type SpecificationDocumentDate {
   year: Int
   month: Int
   day: Int
 }
-
-type SpecificationCitationReadProvenance
-  = DocumentLocatorFetchRefused { http_status: Int, detail: NonEmptyStr }
-  | DocumentLocatorFetchedButTextUnread { http_status: Int, detail: NonEmptyStr }
-  | DatedPublisherLocatorMirrorTextIngested {
-      mirror: ExternalAuthority,
-      capture_date: SpecificationDocumentDate,
-      peer_session: NonEmptyStr,
-      detail: NonEmptyStr,
-    }
-  | PeerSessionPdfTextIngested { peer_session: NonEmptyStr, detail: NonEmptyStr }
-  | OperatorSuppliedDocumentText {}
 
 type DocumentPublicationStatus
   = PubliclyPublishedUnderOpenLicense {

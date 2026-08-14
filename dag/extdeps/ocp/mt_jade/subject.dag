@@ -7,8 +7,8 @@ import extdeps.uri { Uri, Https }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.vendor.ampere { ampere_vendor }
-import extdeps.publication {
-  SpecificationDocumentDate,
+import extdeps.publication { SpecificationDocumentDate }
+import gunbc.specification_citation_read_provenance {
   SpecificationCitationReadProvenance,
   OperatorSuppliedDocumentText,
 }
