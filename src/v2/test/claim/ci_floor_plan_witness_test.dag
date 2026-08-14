@@ -90,6 +90,7 @@ import std.realization_schedule {
   FloorWorkerTerminalReceiptObserved, FloorWorkerReportedCompleted,
   FloorWorkerCompleted, FloorWorkerFailed, floor_worker_observation_outcome,
   SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
+  node_frontier_selection_eq,
   runnable_eq, runnable_resource_profile, runnable_memory_substantial,
   runnable_forbids_corpus_co_residence, runnable_heavy_whole_tree_resolve,
   ScheduleWitnessEntry, schedule_witness_entry_eq, schedule_witness_entry_roster_contains,
@@ -547,6 +548,42 @@ fn witness_hermetic_floor_posture_declared() -> Bool {
     && discovery_batch_declares_hermetic(r: gunbc_falsifier_ordinary_batches().first().first())
 }
 
+fn discovery_batch_selection_is(r: Runnable, expected: NodeFrontierSelection) -> Bool {
+  match r {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: mode, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } =>
+      node_frontier_selection_eq(left: mode, right: expected)
+    RunnableScopedWitnessBatch { batch: _ } => false
+    RunnableSingleClaim { entry: _, function: _, profile: _ } => false
+    RunnableKernelWorkload { fused_op_count: _ } => false
+  }
+}
+
+// The three ordinary merge-critical witness batches run their whole roster. Pinned
+// positively (each is SelectionOff) AND negatively (none is SelectionApplied), because a
+// three-valued field makes "not applied" and "off" different claims: a drift to
+// SelectionPredictOnly would satisfy the negative half alone while quietly restoring a
+// mechanism the flip exists to stop consuming.
+test fn witness_ordinary_floor_batches_run_the_whole_roster() -> Bool {
+  discovery_batch_selection_is(r: corpus_runnable_for(spec: gunbc_ci_spec), expected: SelectionOff)
+    && discovery_batch_selection_is(r: execution_corpus_runnable_for(spec: gunbc_ci_spec), expected: SelectionOff)
+    && discovery_batch_selection_is(r: bin_witness_corpus_runnable_for(), expected: SelectionOff)
+    && !discovery_batch_selection_is(r: corpus_runnable_for(spec: gunbc_ci_spec), expected: SelectionApplied)
+    && !discovery_batch_selection_is(r: execution_corpus_runnable_for(spec: gunbc_ci_spec), expected: SelectionApplied)
+    && !discovery_batch_selection_is(r: bin_witness_corpus_runnable_for(), expected: SelectionApplied)
+}
+
+// The declared scope boundary of the flip, asserted rather than described: the falsifier's
+// cold control still carries its predict-only arm, and the v1 scoped batch still selects.
+// If a later change widens the flip to either, this reds and the widening becomes a
+// decision instead of a side effect.
+test fn witness_selection_flip_scope_is_exactly_the_ordinary_corpus() -> Bool {
+  (v1_claim_scoped_witness_batch.node_frontier_selection == SelectionApplied)
+    && discovery_batch_selection_is(
+         r: gunbc_falsifier_ordinary_batches().first().first(),
+         expected: SelectionPredictOnly
+       )
+}
+
 test fn witness_emit_host_profile_forbids_corpus_co_residence() -> Bool {
   runnable_forbids_corpus_co_residence(r: gate_runnable(g: EmitHostGate))
 }
@@ -884,9 +921,9 @@ fn bin_witness_wet_batch_holds(r: Runnable) -> Bool {
   match r {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: entries, node_frontier_selection: mode, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } =>
       match mode {
-        SelectionApplied => true
+        SelectionApplied => false
         SelectionPredictOnly => false
-        SelectionOff => false
+        SelectionOff => true
       }
         && (length(xs: dirs) == 0)
         && (length(xs: entries) == length(xs: bin_witness_wet_entries))

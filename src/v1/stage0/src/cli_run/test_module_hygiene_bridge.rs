@@ -139,6 +139,70 @@ pub(crate) fn failure_receipt_companion_from_authority(
     }
 }
 
+pub(crate) fn witness_verdict_diagnostic_companion_from_authority(
+    function: &str,
+) -> FailureReceiptCompanionLookup {
+    let roots = super::default_source_roots();
+    let ctx = match resolve_hygiene_ctx(&roots) {
+        Ok(ctx) => ctx,
+        Err(detail) => {
+            return FailureReceiptCompanionLookup::AuthorityRefused { cause: detail };
+        }
+    };
+    let args = [(
+        Some("function".to_string()),
+        v1_interpreter::Value::Str(function.to_string()),
+    )];
+    let result = match v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "witness_verdict_diagnostic_companion",
+        &args,
+        false,
+    ) {
+        Ok(value) => value,
+        Err(detail) => {
+            return FailureReceiptCompanionLookup::AuthorityRefused {
+                cause: detail.to_string(),
+            };
+        }
+    };
+    match &result {
+        v1_interpreter::Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Present") => {
+            match ctx.field(fields, "value") {
+                Some(v1_interpreter::Value::Str(companion)) => {
+                    FailureReceiptCompanionLookup::Declared(companion.clone())
+                }
+                other => FailureReceiptCompanionLookup::AuthorityRefused {
+                    cause: format!(
+                        "Present value must be String, got {}",
+                        other
+                            .map(|v| ctx.format_value(v))
+                            .unwrap_or_else(|| "<missing>".to_string())
+                    ),
+                },
+            }
+        }
+        v1_interpreter::Value::Variant {
+            type_name,
+            variant_name,
+            ..
+        } if ctx.sym_eq(*type_name, "Optional") && ctx.sym_eq(*variant_name, "Absent") => {
+            FailureReceiptCompanionLookup::NotDeclared
+        }
+        other => FailureReceiptCompanionLookup::AuthorityRefused {
+            cause: format!(
+                "returned {}, expected Optional<String>",
+                ctx.format_value(other)
+            ),
+        },
+    }
+}
+
 pub(crate) fn enumerate_entry_test_fns(entry_path: &str) -> Result<Vec<String>, String> {
     let content = std::fs::read_to_string(entry_path)
         .map_err(|e| format!("file-grain enumerate: read {entry_path}: {e}"))?;

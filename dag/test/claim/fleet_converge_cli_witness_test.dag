@@ -136,6 +136,12 @@ test fn witness_converge_cli_output_projects_receipt_and_exit_signal() -> Bool {
     }
 }
 
+// Atomic publication: staging file lives beside the final receipt so rename(2) needs
+// directory write permission only — superseding a root-owned stale file without elevation.
+test fn witness_fleet_converge_receipt_staging_path_same_directory_as_final() -> Bool {
+  fleet_converge_receipt_staging_path(host: "srv1") == "/opt/gunbc/receipts/srv1-converge-receipt.staging"
+    && fleet_converge_receipt_path(host: "srv1") == "/opt/gunbc/receipts/srv1-converge-receipt.txt"
+}
 
 // Join 1 (operator verdict) — construction rework 2026-08-10, the §5 empty-observation
 // narrow. converge_cli_receipt_join_revision MEETS the knob verdict with the revision

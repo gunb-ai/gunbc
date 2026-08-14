@@ -4,18 +4,38 @@ import std.logic { Bool }
 import std.types { NonEmptyStr, String, List, list_length }
 import gunbc.host_axis_caps {
   CapMember,
+  ControlShadowUnit,
+  control_shadow_unit,
+  control_shadow_revert_script,
+  control_shadow_revert_script_matches_extdeps_argv,
   desired_cap_member,
   cap_dropin_content,
   caps_effects,
   caps_upsert_count,
   caps_teardown_count,
   caps_refusal_count,
+  control_shadow_effects,
+  control_shadow_teardown_count,
+  control_shadow_refusal_count,
+  derived_runner_memory_max_cap_member,
+  derived_runner_memory_high_cap_member,
+  derived_runner_memory_cap_members,
+  runner_memory_cap_author_script,
+  runner_memory_cap_author_ready_for_shadow_revert,
+  host_axis_caps_author_before_revert_enforced,
+  deploy_memory_cap_apply_script_ordered,
+  deploy_memory_cap_script_author_precedes_shadow_revert,
+  deploy_memory_cap_script_matches_ordered_composition,
+  deploy_memory_cap_shadow_revert_script,
+  deploy_runner_memory_cap_author_script,
 }
 import gunbc.membership_reconcile { EffectsReady, ApplyRefused }
 import gunbc.host_converge {
   gunbc_runner_per_slot_dropin_path,
   gunbc_runner_per_slot_swap_dropin_path,
 }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+import std.measure { byte_size_count }
 
 data path20: NonEmptyStr = gunbc_runner_per_slot_dropin_path as NonEmptyStr
 data path30: NonEmptyStr = gunbc_runner_per_slot_swap_dropin_path as NonEmptyStr
@@ -80,4 +100,74 @@ test fn caps_content_is_derived_not_handspelled() -> Bool {
   cap_dropin_content(property: mem_max, bytes_value: bytes16g) == "[Service]\nMemoryMax=17179869184\n"
     && cap_dropin_content(property: swap_max, bytes_value: bytes32g) == "[Service]\nMemorySwapMax=34359738368\n"
     && cap_dropin_content(property: mem_max, bytes_value: bytes8g) != cap_dropin_content(property: mem_max, bytes_value: bytes16g)
+}
+
+data shadow_unit: NonEmptyStr = "actions-runner@srv1-01.service"
+
+test fn control_shadow_residue_teardowns_owned_unit() -> Bool {
+  let observed = [control_shadow_unit(unit: shadow_unit)]
+  control_shadow_teardown_count(desired: [], observed: observed) == 1
+    && control_shadow_refusal_count(desired: [], observed: observed) == 0
+    && match control_shadow_effects(desired: [], observed: observed) {
+         EffectsReady { effects: e } => list_length(items: e) == 1
+         ApplyRefused { refusals: _ } => false
+       }
+    && control_shadow_revert_script_matches_extdeps_argv(u: control_shadow_unit(unit: shadow_unit))
+}
+
+test fn control_shadow_idempotence_zero_effects() -> Bool {
+  control_shadow_teardown_count(desired: [], observed: []) == 0
+    && control_shadow_refusal_count(desired: [], observed: []) == 0
+}
+
+test fn witness_derived_memory_caps_match_allocation_authority() -> Bool {
+  let max = derived_runner_memory_max_cap_member()
+  let high = derived_runner_memory_high_cap_member()
+  let desired = gunbc_runner_slot_desired()
+  string_contains(s: max.content, pattern: to_string(byte_size_count(b: desired.memory_max)))
+    && string_contains(s: max.dropin_path as String, pattern: "20-fleet-width")
+    && string_contains(s: high.content, pattern: to_string(byte_size_count(b: desired.memory_high)))
+    && string_contains(s: high.dropin_path as String, pattern: "40-fleet-high")
+}
+
+test fn witness_control_shadow_revert_script_matches_extdeps_argv() -> Bool {
+  control_shadow_revert_script_matches_extdeps_argv(u: control_shadow_unit(unit: shadow_unit))
+}
+
+test fn witness_shadow_revert_not_ready_without_derived_dropins() -> Bool {
+  !runner_memory_cap_author_ready_for_shadow_revert(observed: [])
+    && runner_memory_cap_author_ready_for_shadow_revert(observed: derived_runner_memory_cap_members())
+}
+
+test fn witness_runner_memory_cap_author_script_derived() -> Bool {
+  let desired = gunbc_runner_slot_desired()
+  string_contains(s: runner_memory_cap_author_script(), pattern: to_string(byte_size_count(b: desired.memory_max)))
+    && string_contains(s: runner_memory_cap_author_script(), pattern: to_string(byte_size_count(b: desired.memory_high)))
+    && !string_contains(s: runner_memory_cap_author_script(), pattern: "systemctl revert")
+}
+
+test fn witness_cap_author_before_shadow_revert_enforced_in_axis_caps() -> Bool {
+  let units = [shadow_unit]
+  host_axis_caps_author_before_revert_enforced
+    && deploy_memory_cap_script_author_precedes_shadow_revert(
+      script: deploy_memory_cap_apply_script_ordered(units: units),
+      units: units,
+    )
+}
+
+test fn witness_reversed_deploy_script_fails_author_before_shadow_revert_gate() -> Bool {
+  let units = [shadow_unit]
+  let author = deploy_runner_memory_cap_author_script()
+  let reverts = deploy_memory_cap_shadow_revert_script(units: units)
+  !deploy_memory_cap_script_author_precedes_shadow_revert(script: concat(reverts, author), units: units)
+}
+
+test fn witness_padded_wrong_order_script_fails_author_before_shadow_revert_gate() -> Bool {
+  let units = [shadow_unit]
+  let author = deploy_runner_memory_cap_author_script()
+  let reverts = deploy_memory_cap_shadow_revert_script(units: units)
+  !deploy_memory_cap_script_author_precedes_shadow_revert(
+    script: concat(concat(reverts, author), "padding"),
+    units: units,
+  )
 }

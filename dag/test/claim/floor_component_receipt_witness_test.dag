@@ -4,7 +4,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, String, Bool, List, Int, CommitSha }
 import gunbc.floor_component_receipt_document {
   FloorComponentReceiptDecoding, ReceiptDecoded,
-  floor_component_receipt_decode_with
+  floor_component_receipt_decode_with,
+  floor_component_receipt_document_text
 }
 import std.nat { Nat }
 import std.measure { Millisecond, millisecond }
@@ -17,10 +18,13 @@ import gunbc.floor_component_receipt {
   ControlAmbiguous,
   floor_component_row,
   floor_component_row_of_failure_mode,
+  floor_component_row_not_concluded,
   floor_component_row_is_done,
   floor_affected_set_control_state,
   floor_unsuccessful_component_rows,
   floor_component_receipt_document,
+  floor_component_receipt_document_incomplete,
+  floor_component_receipt_schema,
   floor_component_failure_mode_tag,
 }
 
@@ -262,6 +266,31 @@ fn fcr_mode_row(mode: NonEmptyStr) -> FloorComponentRow? {
   )
 }
 
+fn fcr_not_concluded_mode_row(mode: NonEmptyStr, detail: NonEmptyStr) -> FloorComponentRow? {
+  floor_component_row_not_concluded(
+    run_id: fcr_run_id,
+    index: 7,
+    label: "discovery-corpus wet self-host" as NonEmptyStr,
+    selection_tag: "applied" as NonEmptyStr,
+    failure_mode: mode,
+    detail: detail
+  )
+}
+
+fn fcr_not_concluded_outcome_is(mode: NonEmptyStr, expected_outcome: String) -> Bool {
+  let rows = fcr_rows_of(opts: [
+    fcr_not_concluded_mode_row(
+      mode: mode,
+      detail: "batch not concluded — checkpoint written while the run was still in progress; this component's fate is unknown at write time" as NonEmptyStr
+    )
+  ])
+  count(rows) == 1
+    && string_contains(
+         s: floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: rows),
+         pattern: concat(concat("\"outcome\": \"", expected_outcome), "\"")
+       )
+}
+
 fn fcr_mode_outcome_is(mode: NonEmptyStr, expected_outcome: String) -> Bool {
   let rows = fcr_rows_of(opts: [fcr_mode_row(mode: mode)])
   count(rows) == 1
@@ -282,10 +311,11 @@ test fn fcr_not_reached_mode_is_skipped_not_failed() -> Bool {
   fcr_mode_outcome_is(mode: "not_reached" as NonEmptyStr, expected_outcome: "skipped")
 }
 
-data fcr_run_incomplete_note: String = "run_incomplete and not_reached share the Skipped outcome and MUST NOT share a mode — the same both-halves discipline fcr_failure_mode_edge_note states for Infra/WitnessRed, applied to the pair the checkpoint introduced. The outcomes agreeing is the record staying correct (neither produced a verdict); the modes differing is what lets a reader tell a run that was KILLED mid-flight from a plan that CONCLUDED and deliberately skipped the tail. Those route to different owners — one is 'find out why the run never finished', the other is 'fix the earlier component' — and the receipt is the only evidence a SIGKILLed run leaves, so getting this pair wrong tells a wrong causal story about precisely the incident the checkpoint exists to explain. Either half alone is satisfiable by a broken projection, so both are asserted."
+data fcr_run_incomplete_note: String = "run_incomplete rows are pending (ComponentNotConcluded), not skipped. Skipped claims the walk produced a verdict of none; pending claims no verdict exists yet because the receipt was written mid-run. not_reached remains skipped: the plan concluded and deliberately skipped the tail. The modes must stay distinct so a SIGKILL checkpoint is not misread as a stop-policy skip."
 
-test fn fcr_run_incomplete_mode_is_skipped_like_not_reached() -> Bool {
-  fcr_mode_outcome_is(mode: "run_incomplete" as NonEmptyStr, expected_outcome: "skipped")
+test fn fcr_run_incomplete_mode_is_pending_not_skipped() -> Bool {
+  fcr_not_concluded_outcome_is(mode: "run_incomplete" as NonEmptyStr, expected_outcome: "pending")
+    && !fcr_not_concluded_outcome_is(mode: "run_incomplete" as NonEmptyStr, expected_outcome: "skipped")
 }
 
 test fn fcr_deadline_reached_is_refused_not_skipped() -> Bool {
@@ -294,14 +324,21 @@ test fn fcr_deadline_reached_is_refused_not_skipped() -> Bool {
 }
 
 test fn fcr_deadline_reached_is_distinct_from_both_skipped_causes() -> Bool {
+  let incomplete_detail = "batch not concluded — checkpoint written while the run was still in progress; this component's fate is unknown at write time" as NonEmptyStr
   fcr_mode_of(mode: "deadline_reached" as NonEmptyStr) == "deadline_reached"
     && !(fcr_mode_of(mode: "deadline_reached" as NonEmptyStr) == fcr_mode_of(mode: "not_reached" as NonEmptyStr))
-    && !(fcr_mode_of(mode: "deadline_reached" as NonEmptyStr) == fcr_mode_of(mode: "run_incomplete" as NonEmptyStr))
+    && !(fcr_mode_of(mode: "deadline_reached" as NonEmptyStr) == fcr_not_concluded_mode_of(mode: "run_incomplete" as NonEmptyStr, detail: incomplete_detail))
+}
+
+fn fcr_not_concluded_mode_of(mode: NonEmptyStr, detail: NonEmptyStr) -> String {
+  let rows = fcr_rows_of(opts: [fcr_not_concluded_mode_row(mode: mode, detail: detail)])
+  fold(rows, init: "no-row", f: (acc, r) => floor_component_failure_mode_tag(m: r.failure_mode))
 }
 
 test fn fcr_run_incomplete_is_a_distinct_mode_from_not_reached() -> Bool {
-  fcr_mode_of(mode: "run_incomplete" as NonEmptyStr) == "run_incomplete"
-    && !(fcr_mode_of(mode: "run_incomplete" as NonEmptyStr) == fcr_mode_of(mode: "not_reached" as NonEmptyStr))
+  let detail = "batch not concluded — checkpoint written while the run was still in progress; this component's fate is unknown at write time" as NonEmptyStr
+  fcr_not_concluded_mode_of(mode: "run_incomplete" as NonEmptyStr, detail: detail) == "run_incomplete"
+    && !(fcr_not_concluded_mode_of(mode: "run_incomplete" as NonEmptyStr, detail: detail) == fcr_mode_of(mode: "not_reached" as NonEmptyStr))
 }
 
 test fn fcr_red_control_unmodelled_failure_mode_refuses_never_widens() -> Bool {
@@ -464,6 +501,86 @@ test fn fcr_no_selection_receipt_decodes_through_the_strict_reader() -> Bool {
   )
   match floor_component_receipt_decode_with(text: doc, expected_schema: floor_component_receipt_schema as NonEmptyStr) {
     ReceiptDecoded { document: d } => (d.subject.run_id as String) == (fcr_run_id as String)
+    _ => false
+  }
+}
+
+data fcr_run_terminal_legacy_absent_note: String = "Pre-PR receipts under artifact retention omit run_terminal entirely. receipt_run_terminal_at maps absent to null so the alert decoder does not refuse them (review 51856); same transitional pattern as component_outcome_wire_legacy_pending_tag_note."
+
+data fcr_legacy_receipt_without_run_terminal: String = "{\"schema\":\"floor-component-receipt/v1\",\"workflow_name\":\"affected-set-falsifier\",\"run_id\":\"30509024051\",\"head_sha\":\"0123456789abcdef0123456789abcdef01234567\",\"component_count\":0,\"affected_set_cold_control\":null,\"selection_degradation\":null,\"unsuccessful_components\":[],\"components\":[]}"
+
+test fn fcr_legacy_receipt_without_run_terminal_member_decodes() -> Bool {
+  match floor_component_receipt_decode_with(
+    text: fcr_legacy_receipt_without_run_terminal,
+    expected_schema: floor_component_receipt_schema as NonEmptyStr
+  ) {
+    ReceiptDecoded { document: d } =>
+      (d.subject.run_id as String) == "30509024051"
+        && !string_contains(s: fcr_legacy_receipt_without_run_terminal, pattern: "\"run_terminal\"")
+    _ => false
+  }
+}
+
+data fcr_incomplete_checkpoint_round_trip_note: String = "The incomplete checkpoint envelope is what claim_executor writes on SIGKILL/step-cap death: run_terminal.disposition=incomplete and pending tail rows (outcome=pending, failure_mode=run_incomplete). The concluded-path round trip was already witnessed; this arm exercises the path this PR exists to fix. SUBJECT IDENTITY IS NOT ON THIS RECEIPT (operator ruling 2026-08-13, #8239 → #8163): in-flight witness identity is a temporary GUNBC_FLOOR_PHASE_JOURNAL projection until measurements and subjects emit on the #8163 RecordedObservation ledger; see floor_component_resource_checkpoint_note and floor_component_phase_journal_scaffold_note."
+
+test fn fcr_incomplete_checkpoint_receipt_decodes_through_the_strict_reader() -> Bool {
+  let rows = fcr_rows_of(opts: [
+    fcr_control_row_with(outcome_tag: "done" as NonEmptyStr, detail: "batch 1 concluded" as NonEmptyStr),
+    fcr_not_concluded_mode_row(
+      mode: "run_incomplete" as NonEmptyStr,
+      detail: "batch not concluded — checkpoint written while the run was still in progress; this component's fate is unknown at write time" as NonEmptyStr
+    )
+  ])
+  let doc = floor_component_receipt_document_incomplete(
+    workflow_name: fcr_workflow_name,
+    run_id: fcr_run_id,
+    head_sha: fcr_head_sha,
+    rows: rows,
+    run_terminal_cause: "run_incomplete" as NonEmptyStr,
+    concluded_count: 1,
+    pending_from_index: 2
+  )
+  match floor_component_receipt_decode_with(text: doc, expected_schema: floor_component_receipt_schema as NonEmptyStr) {
+    ReceiptDecoded { document: d } =>
+      (d.subject.run_id as String) == (fcr_run_id as String)
+        && string_contains(s: doc, pattern: "\"disposition\": \"incomplete\"")
+        && string_contains(s: doc, pattern: "\"outcome\": \"pending\"")
+        && !string_contains(s: doc, pattern: "\"active_workset\"")
+    _ => false
+  }
+}
+
+test fn fcr_incomplete_checkpoint_receipt_reencodes_through_document_encoder() -> Bool {
+  let rows = fcr_rows_of(opts: [
+    fcr_control_row_with(outcome_tag: "done" as NonEmptyStr, detail: "batch 1 concluded" as NonEmptyStr),
+    fcr_not_concluded_mode_row(
+      mode: "run_incomplete" as NonEmptyStr,
+      detail: "batch not concluded — checkpoint written while the run was still in progress; this component's fate is unknown at write time" as NonEmptyStr
+    )
+  ])
+  let doc = floor_component_receipt_document_incomplete(
+    workflow_name: fcr_workflow_name,
+    run_id: fcr_run_id,
+    head_sha: fcr_head_sha,
+    rows: rows,
+    run_terminal_cause: "run_incomplete" as NonEmptyStr,
+    concluded_count: 1,
+    pending_from_index: 2
+  )
+  match floor_component_receipt_decode_with(text: doc, expected_schema: floor_component_receipt_schema as NonEmptyStr) {
+    ReceiptDecoded { document: d } =>
+      match floor_component_receipt_decode_with(
+        text: floor_component_receipt_document_text(doc: d),
+        expected_schema: floor_component_receipt_schema as NonEmptyStr
+      ) {
+        ReceiptDecoded { document: roundtrip } =>
+          (roundtrip.subject.run_id as String) == (fcr_run_id as String)
+            && string_contains(
+                 s: floor_component_receipt_document_text(doc: roundtrip),
+                 pattern: "\"disposition\": \"incomplete\""
+               )
+        _ => false
+      }
     _ => false
   }
 }
