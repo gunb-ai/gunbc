@@ -182,6 +182,7 @@ test fn w_socket_board_termination_style_is_soldered_and_geometry_is_outstanding
         string_contains(s: w as String, pattern: "soldered")
           && string_contains(s: w as String, pattern: "geometry")
           && string_contains(s: w as String, pattern: "12")
+          && string_contains(s: w as String, pattern: "supersede")
       FactEstablished { authority: _, subject: _ } => false
       FactAccessGated { subject: _, access_route: _ } => false
     }

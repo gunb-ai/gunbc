@@ -192,18 +192,18 @@ test fn w_the_altra_pcb_world_constructs() -> Bool {
   }
 }
 
-test fn w_the_world_carries_six_established_four_pattern_outstanding_one_type_named_and_four_unfilled() -> Bool {
+test fn w_the_world_carries_six_established_eight_pattern_outstanding_one_type_named_and_zero_unfilled() -> Bool {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
       let p = pcb_world_physical(w: w)
       pcb_component_count(p: p) == 6
         && pcb_obligation_count(p: p) == 9
-        && pcb_pattern_outstanding_count(p: p) == 4
+        && pcb_pattern_outstanding_count(p: p) == 8
         && pcb_type_named_count(p: p) == 1
-        && pcb_unfilled_count(p: p) == 4
+        && pcb_unfilled_count(p: p) == 0
         && pcb_selection_never_attempted_count(p: p) == 0
-        && pcb_access_refused_count(p: p) == 4
+        && pcb_access_refused_count(p: p) == 0
         && pcb_justification_count(p: p) == pcb_population_count(p: p)
         && pcb_justification_precedent_count(p: p) == 1
         && pcb_justification_outstanding_count(p: p) == 14
@@ -237,11 +237,13 @@ test fn w_the_socket_is_type_named_not_a_body_rectangle() -> Bool {
   }
 }
 
-test fn w_the_storage_endpoint_is_access_refused_not_never_attempted() -> Bool {
+test fn w_the_storage_endpoint_is_pattern_outstanding_not_unfilled() -> Bool {
   match scene_or_empty() {
     Absent => false
     Present { value: s } =>
-      string_contains(s: s, pattern: "nvme_conn (access refused") && !string_contains(s: s, pattern: "nvme_conn (selection never attempted")
+      string_contains(s: s, pattern: "nvme_conn (pattern outstanding")
+        && !string_contains(s: s, pattern: "nvme_conn (selection never attempted")
+        && !string_contains(s: s, pattern: "nvme_conn (access refused")
   }
 }
 
@@ -259,14 +261,15 @@ test fn w_dimm_slots_are_pattern_outstanding_not_established_and_not_unfilled() 
   }
 }
 
-test fn w_access_refused_roles_render_as_access_refused() -> Bool {
+test fn w_unread_catalog_roles_render_as_pattern_outstanding() -> Bool {
   match scene_or_empty() {
     Absent => false
     Present { value: s } =>
-      string_contains(s: s, pattern: "boot_eeprom (access refused")
-        && string_contains(s: s, pattern: "spi_nor (access refused")
-        && string_contains(s: s, pattern: "debug_hdr (access refused")
-        && string_contains(s: s, pattern: "nvme_conn (access refused")
+      string_contains(s: s, pattern: "boot_eeprom (pattern outstanding")
+        && string_contains(s: s, pattern: "spi_nor (pattern outstanding")
+        && string_contains(s: s, pattern: "debug_hdr (pattern outstanding")
+        && string_contains(s: s, pattern: "nvme_conn (pattern outstanding")
+        && !string_contains(s: s, pattern: "boot_eeprom (access refused")
   }
 }
 
@@ -275,16 +278,16 @@ test fn w_established_components_use_the_established_class() -> Bool {
     Absent => false
     Present { value: s } =>
       count_substring(haystack: s, needle: "pcb-component-established") == 6
-        && count_substring(haystack: s, needle: "pcb-component-pattern-outstanding") == 4
+        && count_substring(haystack: s, needle: "pcb-component-pattern-outstanding") == 8
         && count_substring(haystack: s, needle: "pcb-component-type-named") == 1
-        && count_substring(haystack: s, needle: "pcb-component-obligation") == 4
+        && count_substring(haystack: s, needle: "pcb-component-obligation") == 0
   }
 }
 
 test fn w_the_legend_states_the_three_populations() -> Bool {
   match scene_or_empty() {
     Absent => false
-    Present { value: s } => string_contains(s: s, pattern: "6 established / 4 pattern-outstanding / 1 type-named / 4 unfilled")
+    Present { value: s } => string_contains(s: s, pattern: "6 established / 8 pattern-outstanding / 1 type-named / 0 unfilled")
   }
 }
 
@@ -421,14 +424,15 @@ test fn w_mutation_control_established_count_must_be_six() -> Bool {
   }
 }
 
-test fn w_mutation_control_never_attempted_must_be_zero_type_named_one_and_access_refused_four() -> Bool {
+test fn w_mutation_control_never_attempted_and_access_refused_must_be_zero_type_named_one() -> Bool {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
       let p = pcb_world_physical(w: w)
       pcb_selection_never_attempted_count(p: p) == 0
         && pcb_type_named_count(p: p) == 1
-        && pcb_access_refused_count(p: p) == 4
+        && pcb_access_refused_count(p: p) == 0
+        && pcb_unfilled_count(p: p) == 0
   }
 }
 
