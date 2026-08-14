@@ -1,11 +1,14 @@
 module product.pcb.world
 
-import std.types { String, Bool, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List }
 import std.integer { Int }
 import std.coordinate_frame { CoordinateFrameIdentity }
 import std.affine_space { Point2 }
 import std.orthogonal_geometry { AxisAlignedRectangle2, OrthogonalRefusal }
 import product.pcb.physical { ComponentPlacement }
+import extdeps.land_pattern.types { MountingPatternStanding }
+
+data world_note: String = "ONE PCB WORLD, FOUR RUNGS ON THE PART/GEOMETRY LADDER, AND A FIFTH AXIS BESIDE THEM. Established parts occupy components with a cited body envelope. A selected part whose board pattern is still owed is an obligation carrying the vendor's MountingPatternStanding — consumed from extdeps.land_pattern.types, not re-minted. A named socket type with no vendor, no orderable part and no geometry is TypeNamed — ILM4926 is the live case, and it is not a land pattern. A role with nothing known is an obligation naming why: never attempted, access refused, or unresolved by authority. Collapsing any two rungs reports less than the repository knows, and collapsing the unfilled causes into one not-ready Bool loses the remedy. JUSTIFICATION IS NOT A RUNG: it answers whether a selection is justified for this board, which is a relation between a part and a board, so it lives here rather than in extdeps."
 
 type PcbWorldIdentity = NonEmptyStr where brand("PcbWorldIdentity")
 
@@ -54,10 +57,31 @@ type PcbManufacturingArtifact {
   identity: NonEmptyStr
 }
 
+type PcbObligationStanding
+  = PatternOutstanding { standing: MountingPatternStanding }
+  | TypeNamed { type_name: NonEmptyStr, because: NonEmptyStr }
+  | SelectionNeverAttempted { because: NonEmptyStr }
+  | AccessRefused { observed_on: NonEmptyStr }
+  | AuthorityUnresolved { because: NonEmptyStr }
+
+// A SELECTION'S JUSTIFICATION IS A RELATION TO THIS BOARD, not a property of the part. Outstanding
+// means no reference-design precedent has been joined. Precedent names the cited document and
+// section that already exist as an upstream row — the product layer points at them; extdeps does
+// not carry the design-relative standing.
+type SelectionJustificationStanding
+  = JustificationOutstanding { because: NonEmptyStr }
+  | ReferenceDesignPrecedent { document: NonEmptyStr, section: NonEmptyStr }
+
+type PcbSelectionJustification {
+  identity: NonEmptyStr
+  standing: SelectionJustificationStanding
+}
+
 type PcbComponentObligation {
   identity: NonEmptyStr
   role: NonEmptyStr
   origin: Point2
+  standing: PcbObligationStanding
 }
 
 type PcbAttachmentObligation {
@@ -76,6 +100,7 @@ type PcbPhysicalWorld {
   keepouts: List<PcbKeepout>
   obligations: List<PcbComponentObligation>
   attachment_obligations: List<PcbAttachmentObligation>
+  justifications: List<PcbSelectionJustification>
 }
 
 type PcbElectricalWorld {
@@ -119,8 +144,90 @@ fn pcb_attachment_obligation_count(p: PcbPhysicalWorld) -> Int {
   fold(p.attachment_obligations, init: 0, f: fn(acc, _o) { acc + 1 })
 }
 
+fn pcb_pattern_outstanding_count(p: PcbPhysicalWorld) -> Int {
+  fold(p.obligations, init: 0, f: fn(acc, o) {
+    match o.standing {
+      PatternOutstanding { standing: _ } => acc + 1
+      TypeNamed { type_name: _, because: _ } => acc
+      SelectionNeverAttempted { because: _ } => acc
+      AccessRefused { observed_on: _ } => acc
+      AuthorityUnresolved { because: _ } => acc
+    }
+  })
+}
+
+fn pcb_type_named_count(p: PcbPhysicalWorld) -> Int {
+  fold(p.obligations, init: 0, f: fn(acc, o) {
+    match o.standing {
+      PatternOutstanding { standing: _ } => acc
+      TypeNamed { type_name: _, because: _ } => acc + 1
+      SelectionNeverAttempted { because: _ } => acc
+      AccessRefused { observed_on: _ } => acc
+      AuthorityUnresolved { because: _ } => acc
+    }
+  })
+}
+
+fn pcb_unfilled_count(p: PcbPhysicalWorld) -> Int {
+  fold(p.obligations, init: 0, f: fn(acc, o) {
+    match o.standing {
+      PatternOutstanding { standing: _ } => acc
+      TypeNamed { type_name: _, because: _ } => acc
+      SelectionNeverAttempted { because: _ } => acc + 1
+      AccessRefused { observed_on: _ } => acc + 1
+      AuthorityUnresolved { because: _ } => acc + 1
+    }
+  })
+}
+
+fn pcb_selection_never_attempted_count(p: PcbPhysicalWorld) -> Int {
+  fold(p.obligations, init: 0, f: fn(acc, o) {
+    match o.standing {
+      PatternOutstanding { standing: _ } => acc
+      TypeNamed { type_name: _, because: _ } => acc
+      SelectionNeverAttempted { because: _ } => acc + 1
+      AccessRefused { observed_on: _ } => acc
+      AuthorityUnresolved { because: _ } => acc
+    }
+  })
+}
+
+fn pcb_access_refused_count(p: PcbPhysicalWorld) -> Int {
+  fold(p.obligations, init: 0, f: fn(acc, o) {
+    match o.standing {
+      PatternOutstanding { standing: _ } => acc
+      TypeNamed { type_name: _, because: _ } => acc
+      SelectionNeverAttempted { because: _ } => acc
+      AccessRefused { observed_on: _ } => acc + 1
+      AuthorityUnresolved { because: _ } => acc
+    }
+  })
+}
+
 fn pcb_population_count(p: PcbPhysicalWorld) -> Int {
   pcb_component_count(p: p) + pcb_obligation_count(p: p)
+}
+
+fn pcb_justification_count(p: PcbPhysicalWorld) -> Int {
+  fold(p.justifications, init: 0, f: fn(acc, _j) { acc + 1 })
+}
+
+fn pcb_justification_precedent_count(p: PcbPhysicalWorld) -> Int {
+  fold(p.justifications, init: 0, f: fn(acc, j) {
+    match j.standing {
+      JustificationOutstanding { because: _ } => acc
+      ReferenceDesignPrecedent { document: _, section: _ } => acc + 1
+    }
+  })
+}
+
+fn pcb_justification_outstanding_count(p: PcbPhysicalWorld) -> Int {
+  fold(p.justifications, init: 0, f: fn(acc, j) {
+    match j.standing {
+      JustificationOutstanding { because: _ } => acc + 1
+      ReferenceDesignPrecedent { document: _, section: _ } => acc
+    }
+  })
 }
 
 fn pcb_world(

@@ -1,0 +1,76 @@
+module extdeps.power.ti_tps53688
+
+import std.types { String }
+import std.measure { micrometer }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.texas_instruments { texas_instruments }
+import extdeps.land_pattern.types {
+  MountablePart,
+  PackageDrawingRef,
+  PackageOutline,
+  QuadRowLandGeometry,
+  VendorRecommendedLandPattern,
+}
+
+// The TPS53688 datasheet, read 2026-08-14 for its mechanical pages only. The package drawing it
+// reprints is RSB0040A, stamped 4215000/A, 08/2016.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.ti.com/lit/ds/symlink/tps53688.pdf"
+  }
+}
+
+data ti_tps53688_note: String = "THE PACKAGE IDENTITY WAS CONFIRMED FROM A SECOND SOURCE BEFORE IT WAS RECORDED. The fetched document yielded its mechanical pages cleanly but not its title page, so binding the drawing to this device on the strength of the URL alone would have been a positional citation of the worst kind — a fact established by where a file was found. The vendor's own part-details listing names TPS53688RSBR as a 40-pin WQFN (RSB), which is the package the drawing describes, so two independent readings agree on the join. What this row carries is mechanical only: the multiphase controller's electrical facts, its phase count and its SVID and PMBus interfaces are not modelled here and are not implied by its presence."
+
+data tps53688_rsb0040a_drawing: PackageDrawingRef = PackageDrawingRef {
+  drawing_number: "4215000/A",
+  revision_date: "08/2016",
+  reprinted_in: extdeps_external_authority_anchor,
+}
+
+data tps53688_rsb0040a_outline: PackageOutline = PackageOutline {
+  designator: "RSB0040A",
+  drawing: tps53688_rsb0040a_drawing,
+  terminal_count: 40,
+  terminal_pitch: micrometer(count: 400),
+  body_length_min: micrometer(count: 4900),
+  body_length_max: micrometer(count: 5100),
+  body_width_min: micrometer(count: 4900),
+  body_width_max: micrometer(count: 5100),
+  height_max: micrometer(count: 800),
+}
+
+data tps53688_rsb0040a_land_pattern: VendorRecommendedLandPattern = VendorRecommendedLandPattern {
+  package_designator: "RSB0040A",
+  drawing: tps53688_rsb0040a_drawing,
+  geometry: QuadRowLandGeometry {
+    lands_per_side: 10,
+    pitch: micrometer(count: 400),
+    side_span_centre_to_centre: micrometer(count: 4800),
+    land_length: micrometer(count: 600),
+    land_width: micrometer(count: 200),
+    thermal_land_side: Present { value: micrometer(count: 3600) },
+  },
+}
+
+data tps53688rsbr: MountablePart = MountablePart {
+  ordering_part_number: "TPS53688RSBR",
+  vendor: texas_instruments,
+  outline: tps53688_rsb0040a_outline,
+  land_pattern: tps53688_rsb0040a_land_pattern,
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.power.ti_tps53688",
+      decl_name: "tps53688rsbr",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

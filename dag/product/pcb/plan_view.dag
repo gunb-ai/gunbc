@@ -1,0 +1,271 @@
+module product.pcb.plan_view
+
+import std.types { String, NonEmptyStr, List }
+import std.integer { Int }
+import std.measure { micrometer_count }
+import std.markup { Fragment }
+import std.affine_space { signed_frame_component_count }
+import std.orthogonal_geometry {
+  AxisAlignedRectangle2,
+  rectangle2_min,
+  rectangle2_max,
+}
+import extdeps.w3c.svg {
+  svg_document,
+  svg_rect,
+  svg_text,
+  serialize_svg_document,
+}
+import product.pcb.world {
+  PcbWorld,
+  PcbWorldRefusal,
+  PcbPhysicalWorld,
+  PcbObligationStanding,
+  PatternOutstanding,
+  TypeNamed,
+  SelectionNeverAttempted,
+  AccessRefused,
+  AuthorityUnresolved,
+  pcb_world_physical,
+  pcb_component_count,
+  pcb_pattern_outstanding_count,
+  pcb_type_named_count,
+  pcb_unfilled_count,
+}
+import product.pcb.physical { ComponentPlacement }
+
+data plan_view_note: String = "THE PLAN VIEW FOLDS THE WORLD'S POPULATIONS. Nothing here names a component role or channel count: established body envelopes and typed obligations are the only inputs, so a design that adds two memory slots changes only the world's lists, not this module. Established parts render at their cited body extent. A selected part whose board pattern is still owed, a named type with no part, and a role with nothing known each render as a labelled origin with no geometric extent — none of those may look like a footprint. A serialized document that omits any world identity is refused rather than emitted partial."
+
+data attachment_label_base_y_um: Int = 24000
+data attachment_label_step_y_um: Int = 2400
+
+type OutlineExtent {
+  x0: Int
+  y0: Int
+  x1: Int
+  y1: Int
+}
+
+type PcbSceneRefusal
+  = PcbSceneWorldRefused { cause: PcbWorldRefusal }
+  | PcbSceneSubjectDropped { identity: NonEmptyStr }
+
+type PcbSceneConstruction<T>
+  = PcbSceneReady { value: T }
+  | PcbSceneRefused { cause: PcbSceneRefusal }
+
+type PcbPlanViewScene sole_constructor {
+  world: PcbWorld
+  document: String
+}
+
+type AttachmentLabelAcc {
+  index: Int
+  fragments: List<Fragment>
+}
+
+fn pcb_plan_view_scene(world: PcbWorld, document: String) -> PcbPlanViewScene {
+  PcbPlanViewScene { world: world, document: document }
+}
+
+fn outline_extent(o: AxisAlignedRectangle2) -> OutlineExtent {
+  let lo = rectangle2_min(r: o)
+  let hi = rectangle2_max(r: o)
+  OutlineExtent {
+    x0: signed_frame_component_count(c: lo.x),
+    y0: signed_frame_component_count(c: lo.y),
+    x1: signed_frame_component_count(c: hi.x),
+    y1: signed_frame_component_count(c: hi.y),
+  }
+}
+
+fn established_component_fragments(c: ComponentPlacement) -> List<Fragment> {
+  let x = signed_frame_component_count(c: c.origin.x)
+  let y = signed_frame_component_count(c: c.origin.y)
+  let w = micrometer_count(m: c.body_envelope.body_width)
+  let h = micrometer_count(m: c.body_envelope.body_height)
+  [
+    svg_rect(
+      x: x, y: y, width: w, height: h,
+      class_name: "pcb-component-established",
+      fill: "#c8d6e8",
+      stroke: "#1a2744",
+      stroke_width: "400",
+    ),
+    svg_text(x: x, y: y - 1200, label: c.identity as String, class_name: "pcb-label-established"),
+  ]
+}
+
+fn obligation_class(s: PcbObligationStanding) -> String {
+  match s {
+    PatternOutstanding { standing: _ } => "pcb-component-pattern-outstanding"
+    TypeNamed { type_name: _, because: _ } => "pcb-component-type-named"
+    SelectionNeverAttempted { because: _ } => "pcb-component-obligation"
+    AccessRefused { observed_on: _ } => "pcb-component-obligation"
+    AuthorityUnresolved { because: _ } => "pcb-component-obligation"
+  }
+}
+
+fn obligation_label(identity: NonEmptyStr, role: NonEmptyStr, s: PcbObligationStanding) -> String {
+  match s {
+    PatternOutstanding { standing: _ } =>
+      concat(identity as String, concat(" (pattern outstanding:", concat(role as String, ")")))
+    TypeNamed { type_name: n, because: _ } =>
+      concat(identity as String, concat(" (type named:", concat(n as String, ")")))
+    SelectionNeverAttempted { because: _ } =>
+      concat(identity as String, concat(" (selection never attempted:", concat(role as String, ")")))
+    AccessRefused { observed_on: _ } =>
+      concat(identity as String, concat(" (access refused:", concat(role as String, ")")))
+    AuthorityUnresolved { because: _ } =>
+      concat(identity as String, concat(" (obligation:", concat(role as String, ")")))
+  }
+}
+
+fn obligation_marker_fragments(identity: NonEmptyStr, role: NonEmptyStr, origin_x: Int, origin_y: Int, standing: PcbObligationStanding) -> List<Fragment> {
+  [
+    svg_text(
+      x: origin_x,
+      y: origin_y,
+      label: obligation_label(identity: identity, role: role, s: standing),
+      class_name: obligation_class(s: standing),
+    ),
+  ]
+}
+
+fn fold_attachment_fragments(physical: PcbPhysicalWorld) -> List<Fragment> {
+  let acc = fold(physical.attachment_obligations, init: AttachmentLabelAcc { index: 0, fragments: [] }, f: fn(state, row) {
+    AttachmentLabelAcc {
+      index: state.index + 1,
+      fragments: concat(state.fragments, [
+        svg_text(
+          x: 8000,
+          y: attachment_label_base_y_um + (state.index * attachment_label_step_y_um),
+          label: concat("attachment: ", row.layer as String),
+          class_name: "pcb-label-attachment-obligation",
+        ),
+      ]),
+    }
+  })
+  acc.fragments
+}
+
+fn legend_fragment(physical: PcbPhysicalWorld) -> Fragment {
+  let established = pcb_component_count(p: physical)
+  let pattern_outstanding = pcb_pattern_outstanding_count(p: physical)
+  let type_named = pcb_type_named_count(p: physical)
+  let unfilled = pcb_unfilled_count(p: physical)
+  svg_text(
+    x: 8000,
+    y: 12000,
+    label: concat(
+      "PCB world — ",
+      concat(to_string(established), concat(" established / ", concat(to_string(pattern_outstanding), concat(" pattern-outstanding / ", concat(to_string(type_named), concat(" type-named / ", concat(to_string(unfilled), " unfilled")))))))
+    ),
+    class_name: "pcb-legend",
+  )
+}
+
+fn board_outline_fragment(o: AxisAlignedRectangle2) -> Fragment {
+  let e = outline_extent(o: o)
+  svg_rect(
+    x: e.x0, y: e.y0, width: e.x1 - e.x0, height: e.y1 - e.y0,
+    class_name: "pcb-board-outline",
+    fill: "none",
+    stroke: "#1a2744",
+    stroke_width: "800",
+  )
+}
+
+fn fold_component_fragments(physical: PcbPhysicalWorld) -> List<Fragment> {
+  fold(physical.components, init: [], f: fn(acc, c) {
+    concat(acc, established_component_fragments(c: c))
+  })
+}
+
+fn fold_obligation_fragments(physical: PcbPhysicalWorld) -> List<Fragment> {
+  fold(physical.obligations, init: [], f: fn(acc, o) {
+    concat(acc, obligation_marker_fragments(
+      identity: o.identity,
+      role: o.role,
+      origin_x: signed_frame_component_count(c: o.origin.x),
+      origin_y: signed_frame_component_count(c: o.origin.y),
+      standing: o.standing,
+    ))
+  })
+}
+
+fn first_absent_identity(identities: List<NonEmptyStr>, document: String) -> NonEmptyStr? {
+  fold(identities, init: none, f: fn(acc, id) {
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent =>
+        if string_contains(s: document, pattern: id as String) {
+          none
+        } else {
+          Present { value: id }
+        }
+    }
+  })
+}
+
+fn placed_identities(physical: PcbPhysicalWorld) -> List<NonEmptyStr> {
+  let from_components = fold(physical.components, init: [], f: fn(acc, c) { concat(acc, [c.identity]) })
+  let from_obligations = fold(physical.obligations, init: [], f: fn(acc, o) { concat(acc, [o.identity]) })
+  concat(from_components, from_obligations)
+}
+
+fn first_absent_attachment(physical: PcbPhysicalWorld, document: String) -> NonEmptyStr? {
+  fold(physical.attachment_obligations, init: none, f: fn(acc, row) {
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent =>
+        if string_contains(s: document, pattern: concat("attachment: ", row.layer as String)) {
+          none
+        } else {
+          Present { value: row.layer }
+        }
+    }
+  })
+}
+
+fn first_unrepresented_world_identity(physical: PcbPhysicalWorld, document: String) -> NonEmptyStr? {
+  match first_absent_identity(identities: placed_identities(physical: physical), document: document) {
+    Present { value: id } => Present { value: id }
+    Absent => first_absent_attachment(physical: physical, document: document)
+  }
+}
+
+fn project_pcb_world(w: PcbWorld) -> PcbSceneConstruction<PcbPlanViewScene> {
+  let physical = pcb_world_physical(w: w)
+  let e = outline_extent(o: physical.board.outline)
+  let width = e.x1 - e.x0
+  let height = e.y1 - e.y0
+  let bodies = fold_component_fragments(physical: physical)
+  let markers = fold_obligation_fragments(physical: physical)
+  let attachments = fold_attachment_fragments(physical: physical)
+  let doc = svg_document(
+    view_box: concat("0 0 ", concat(to_string(width), concat(" ", to_string(height)))),
+    class_name: "pcb-world-scene",
+    aria_label: "PCB plan view",
+    children: concat(
+      [board_outline_fragment(o: physical.board.outline), legend_fragment(physical: physical)],
+      concat(bodies, concat(markers, attachments))
+    ),
+  )
+  let document = serialize_svg_document(doc: doc)
+  match first_unrepresented_world_identity(physical: physical, document: document) {
+    Present { value: id } => PcbSceneRefused { cause: PcbSceneSubjectDropped { identity: id } }
+    Absent => PcbSceneReady { value: pcb_plan_view_scene(world: w, document: document) }
+  }
+}
+
+type PcbSceneEmission
+  = PcbSceneEmitted { source: String }
+  | PcbSceneEmissionRefused { cause: PcbSceneRefusal }
+
+fn emit_pcb_plan_view(c: PcbSceneConstruction<PcbPlanViewScene>) -> PcbSceneEmission {
+  match c {
+    PcbSceneRefused { cause: cause } => PcbSceneEmissionRefused { cause: cause }
+    PcbSceneReady { value: scene } => PcbSceneEmitted { source: scene.document }
+  }
+}

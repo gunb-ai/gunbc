@@ -32,6 +32,7 @@ import product.altra_motherboard.attachment_stack {
   open_blockers,
   processor_package_standing,
   reference_board_collateral_standing,
+  socket_board_termination_standing,
   fact_is_established,
   CarriageNotApplicable,
   NormalizedFactsMayBeCarried,
@@ -172,6 +173,18 @@ fn undecided_carriage_blocker() -> String {
     Absent => "none"
     Present { value: b } => blocker_kind(b: b)
   }
+}
+
+test fn w_socket_board_termination_style_is_soldered_and_geometry_is_outstanding() -> Bool {
+  !fact_is_established(f: socket_board_termination_standing.fact)
+    && match socket_board_termination_standing.fact {
+      FactUnresolved { what_is_missing: w } =>
+        string_contains(s: w as String, pattern: "soldered")
+          && string_contains(s: w as String, pattern: "geometry")
+          && string_contains(s: w as String, pattern: "12")
+      FactEstablished { authority: _, subject: _ } => false
+      FactAccessGated { subject: _, access_route: _ } => false
+    }
 }
 
 // THE NDA BOUNDARY IS THE REFERENCE BOARDS, NOT THE PACKAGE. Stated as an executed comparison

@@ -1,0 +1,274 @@
+module product.altra_motherboard.part_standing
+
+import std.types { String, NonEmptyStr, List }
+import std.integer { Int }
+import product.altra_motherboard.placement {
+  BoardComponentRole,
+  ProcessorSocket,
+  ProcessorPackage,
+  MemoryModuleSlot,
+  BoardControlCpld,
+  BootFirmwareEeprom,
+  FirmwareFlash,
+  ClockGenerator,
+  ResetController,
+  PowerController,
+  NetworkEndpoint,
+  StorageEndpoint,
+  DebugConnector,
+  role_tag,
+}
+import extdeps.land_pattern.types {
+  MountablePart,
+  MountingPatternStanding,
+}
+import extdeps.uri { Uri, Https }
+import extdeps.power.ti_tps3808 { tps3808g01dbvr }
+import extdeps.power.ti_tps53688 { tps53688rsbr }
+import extdeps.clock.ti_cdce913 { cdce913pwr }
+import extdeps.network.ti_dp83867 { dp83867irrgz }
+import extdeps.memory.te_ddr4_dimm_socket { ddr4_dimm_socket_solder_tail_288 }
+import product.pcb.world {
+  PcbObligationStanding,
+  PatternOutstanding,
+  TypeNamed,
+  AccessRefused,
+  SelectionJustificationStanding,
+  JustificationOutstanding,
+  ReferenceDesignPrecedent,
+}
+import extdeps.ocp.mt_jade { ilm4926_designation }
+
+data part_standing_note: String = "THE OBSERVING LAYER FOR ALTRA BOARD ROLES. ALTRA-PARTS-0 selected parts and land patterns in extdeps; this module consumes those rows and records coverage observations this repository made, which DESIGN section 3 says must not be authored inside the upstream modules. THE PART/GEOMETRY LADDER IS FOUR RUNGS, not a filled Bool: established MountablePart geometry; part selected with MountingPatternStanding still outstanding; type named but no vendor, part or geometry (ILM4926, cited from extdeps.ocp.mt_jade); and nothing known, split into SelectionNeverAttempted versus AccessRefused. Collapsing any two rungs reports less than the repository knows. JUSTIFICATION IS A FIFTH AXIS beside those rungs: it is a relation between a part and this board, so it is authored here rather than in extdeps, and a second board consuming the same part does not inherit it. DOCUMENT ATTEMPTS ARE KEYED ON DOCUMENTS WITH A ROLE EDGE, not on roles: three MemoryModuleSlot documents are two superseded alternatives plus the selected TE specification whose unread Figure 3 already lives as MountingPatternStanding in extdeps, and BootFirmwareEeprom has two documents of different status — a Microchip vendor-level extraction failure (every Microchip PDF tried this session, including AT24CM02) kept distinct from a Digi-Key 410 GONE. THE AMPHENOL 403 AND THE MOLEX TIMEOUT ARE DIMM-SOCKET ALTERNATIVES, superseded by the TE part. STORAGEENDPOINT MOVED TO ACCESS-REFUSED on 2026-08-14 (Amphenol MDT420M01001 first-tier targets bounced); locators were not supplied, so there is no document receipt for that role yet. DebugConnector's two Samtec 403s are reconstructed URLs, so their observation is UrlUnconfirmedForbidden rather than a clean forbidden on a confirmed path. NO CONTACT COUNT IS RECORDED for the Amphenol M.2 candidate: a drawing has not been read, and a 75-versus-67 disagreement without a drawing is not a fact."
+
+data altra_parts_access_observed_on: NonEmptyStr = "2026-08-14"
+
+data te_ddr4_socket_selected_row: NonEmptyStr = "extdeps.memory.te_ddr4_dimm_socket ddr4_dimm_socket_solder_tail_288"
+
+// FETCH OBSERVATIONS STAY DISTINCT BY CAUSE. A vendor-level extraction failure (every Microchip
+// PDF tried this session) is not three unrelated text-not-extractable rows, and it is not a
+// Digi-Key 410 GONE. A reconstructed URL that 403s is not a clean forbidden on a confirmed path.
+type DocumentFetchObservation
+  = HttpOkTextNotExtractable
+  | VendorExtractionFailure { vendor: NonEmptyStr }
+  | HttpGone
+  | HttpForbidden
+  | FetchTimedOut
+  | UrlUnconfirmedForbidden
+
+type DocumentAttemptDisposition
+  = AttemptOpen
+  | AttemptSuperseded { selected_instead: NonEmptyStr }
+
+type DocumentAttemptReceipt {
+  role_named: NonEmptyStr
+  document: NonEmptyStr
+  uri: Uri
+  wanted: NonEmptyStr
+  observed_on: NonEmptyStr
+  observation: DocumentFetchObservation
+  disposition: DocumentAttemptDisposition
+}
+
+data altra_parts_document_attempts: List<DocumentAttemptReceipt> = [
+  DocumentAttemptReceipt {
+    role_named: role_tag(r: BootFirmwareEeprom),
+    document: "Microchip EEPROM datasheets (24AA02E48 family, AT24CM02 DS20006197, and every Microchip PDF tried this session)",
+    uri: Uri { scheme: Https, locator: "ww1.microchip.com/downloads/en/DeviceDoc/24AA02E48-24AA025E48-24AA02E64-24AA025E64-Data-Sheet-20002124H.pdf" },
+    wanted: "package outline + recommended land pattern",
+    observed_on: altra_parts_access_observed_on,
+    observation: VendorExtractionFailure { vendor: "Microchip" },
+    disposition: AttemptOpen,
+  },
+  DocumentAttemptReceipt {
+    role_named: role_tag(r: BootFirmwareEeprom),
+    document: "Digi-Key HTML mirror of Microchip DS20002124H",
+    uri: Uri { scheme: Https, locator: "www.digikey.com/htmldatasheets/production/473879/0/0/1/24aa02-5-e48-24aa02-5-e64.html" },
+    wanted: "package outline + recommended land pattern",
+    observed_on: altra_parts_access_observed_on,
+    observation: HttpGone,
+    disposition: AttemptOpen,
+  },
+  DocumentAttemptReceipt {
+    role_named: role_tag(r: FirmwareFlash),
+    document: "Winbond W25Q128JV Rev H, March 10 2021",
+    uri: Uri { scheme: Https, locator: "www.winbond.com/resource-files/W25Q128JV%20RevH%2003102021%20Plus.pdf" },
+    wanted: "package outline, and whether a land pattern is published at all",
+    observed_on: altra_parts_access_observed_on,
+    observation: HttpOkTextNotExtractable,
+    disposition: AttemptOpen,
+  },
+  DocumentAttemptReceipt {
+    role_named: role_tag(r: DebugConnector),
+    document: "Samtec FTSH -DV footprint print",
+    uri: Uri { scheme: Https, locator: "suddendocs.samtec.com/prints/ftsh-1xx-xx-xxx-dv-xx%20footprint.pdf" },
+    wanted: "recommended PCB layout + body outline",
+    observed_on: altra_parts_access_observed_on,
+    observation: UrlUnconfirmedForbidden,
+    disposition: AttemptOpen,
+  },
+  DocumentAttemptReceipt {
+    role_named: role_tag(r: DebugConnector),
+    document: "Samtec FTSH -DV print, second path",
+    uri: Uri { scheme: Https, locator: "suddendocs.samtec.com/prints/ftsh-1xx-xx-xx-dv-xx-mkt.pdf" },
+    wanted: "recommended PCB layout + body outline",
+    observed_on: altra_parts_access_observed_on,
+    observation: UrlUnconfirmedForbidden,
+    disposition: AttemptOpen,
+  },
+  DocumentAttemptReceipt {
+    role_named: role_tag(r: MemoryModuleSlot { channel: 0 }),
+    document: "Amphenol ICC DDR4 SSIO datasheet, alternative socket source",
+    uri: Uri { scheme: Https, locator: "cdn.amphenol-cs.com/media/wysiwyg/files/documentation/datasheet/ssio/ssio_ddr4.pdf" },
+    wanted: "an alternative DDR4 socket with a readable layout",
+    observed_on: altra_parts_access_observed_on,
+    observation: HttpForbidden,
+    disposition: AttemptSuperseded { selected_instead: te_ddr4_socket_selected_row },
+  },
+  DocumentAttemptReceipt {
+    role_named: role_tag(r: MemoryModuleSlot { channel: 0 }),
+    document: "Molex DDR4 DIMM socket 288ckt application specification AS-78730-001-001",
+    uri: Uri { scheme: Https, locator: "molex.com/content/dam/molex/molex-dot-com/products/automated/en-us/applicationspecificationspdf/787/78730/AS-78730-001-001.pdf" },
+    wanted: "an alternative DDR4 socket with a readable layout",
+    observed_on: altra_parts_access_observed_on,
+    observation: FetchTimedOut,
+    disposition: AttemptSuperseded { selected_instead: te_ddr4_socket_selected_row },
+  },
+]
+
+fn established_mountable_part(r: BoardComponentRole) -> MountablePart? {
+  match r {
+    ResetController => Present { value: tps3808g01dbvr }
+    ClockGenerator => Present { value: cdce913pwr }
+    NetworkEndpoint => Present { value: dp83867irrgz }
+    PowerController => Present { value: tps53688rsbr }
+    ProcessorSocket => none
+    ProcessorPackage => none
+    MemoryModuleSlot { channel: _ } => none
+    BoardControlCpld => none
+    BootFirmwareEeprom => none
+    FirmwareFlash => none
+    StorageEndpoint => none
+    DebugConnector => none
+  }
+}
+
+fn dimm_socket_pattern_standing() -> MountingPatternStanding {
+  ddr4_dimm_socket_solder_tail_288.board_pattern
+}
+
+fn processor_socket_type_named_because() -> NonEmptyStr {
+  "vendor identity and orderable part number remain unresolved; ILM4926 is a socket type, not a vendor, not an orderable part, and not a land pattern, and minting a part number here would reopen the package/socket split"
+}
+
+data mt_jade_spec_document: NonEmptyStr = "extdeps.ocp.mt_jade Ampere Altra/AltraMax Motherboard Specification v1.0"
+
+fn justification_for(r: BoardComponentRole) -> SelectionJustificationStanding {
+  match r {
+    ProcessorSocket =>
+      ReferenceDesignPrecedent { document: mt_jade_spec_document, section: "12 Mechanical" }
+    ProcessorPackage =>
+      JustificationOutstanding { because: "the package body is cited from the Ampere datasheet; no motherboard reference-design precedent has been joined to this board's use of it" }
+    MemoryModuleSlot { channel: _ } =>
+      JustificationOutstanding { because: "the TE 2308107 socket is selected from the vendor specification; no motherboard reference-design precedent has been joined" }
+    BoardControlCpld =>
+      JustificationOutstanding { because: "the iCE40 TQ144 is cited from the Lattice datasheet; no motherboard reference-design precedent has been joined" }
+    BootFirmwareEeprom =>
+      JustificationOutstanding { because: "no part is selected, so no reference-design precedent can be joined" }
+    FirmwareFlash =>
+      JustificationOutstanding { because: "no part is selected, so no reference-design precedent can be joined" }
+    ClockGenerator =>
+      JustificationOutstanding { because: "the CDCE913PWR is selected from the vendor drawing; no motherboard reference-design precedent has been joined" }
+    ResetController =>
+      JustificationOutstanding { because: "the TPS3808G01DBVR is selected from the vendor drawing; no motherboard reference-design precedent has been joined" }
+    PowerController =>
+      JustificationOutstanding { because: "the TPS53688RSBR is selected from the vendor drawing; no motherboard reference-design precedent has been joined" }
+    NetworkEndpoint =>
+      JustificationOutstanding { because: "the DP83867IRRGZ is selected from the vendor drawing; no motherboard reference-design precedent has been joined" }
+    StorageEndpoint =>
+      JustificationOutstanding { because: "no part is selected, so no reference-design precedent can be joined" }
+    DebugConnector =>
+      JustificationOutstanding { because: "no part is selected, so no reference-design precedent can be joined" }
+  }
+}
+
+fn obligation_standing_for(r: BoardComponentRole) -> PcbObligationStanding? {
+  match r {
+    MemoryModuleSlot { channel: _ } =>
+      Present { value: PatternOutstanding { standing: dimm_socket_pattern_standing() } }
+    ProcessorSocket =>
+      Present {
+        value: TypeNamed {
+          type_name: ilm4926_designation,
+          because: processor_socket_type_named_because(),
+        }
+      }
+    StorageEndpoint =>
+      Present { value: AccessRefused { observed_on: altra_parts_access_observed_on } }
+    BootFirmwareEeprom =>
+      Present { value: AccessRefused { observed_on: altra_parts_access_observed_on } }
+    FirmwareFlash =>
+      Present { value: AccessRefused { observed_on: altra_parts_access_observed_on } }
+    DebugConnector =>
+      Present { value: AccessRefused { observed_on: altra_parts_access_observed_on } }
+    ProcessorPackage => none
+    BoardControlCpld => none
+    ResetController => none
+    ClockGenerator => none
+    NetworkEndpoint => none
+    PowerController => none
+  }
+}
+
+fn document_attempt_count() -> Int {
+  fold(altra_parts_document_attempts, init: 0, f: fn(acc, _r) { acc + 1 })
+}
+
+fn document_attempts_for_role_name(name: NonEmptyStr) -> List<DocumentAttemptReceipt> {
+  fold(altra_parts_document_attempts, init: [], f: fn(acc, r) {
+    if (r.role_named as String) == (name as String) {
+      concat(acc, [r])
+    } else {
+      acc
+    }
+  })
+}
+
+fn open_document_attempts() -> List<DocumentAttemptReceipt> {
+  fold(altra_parts_document_attempts, init: [], f: fn(acc, r) {
+    match r.disposition {
+      AttemptOpen => concat(acc, [r])
+      AttemptSuperseded { selected_instead: _ } => acc
+    }
+  })
+}
+
+fn superseded_document_attempts() -> List<DocumentAttemptReceipt> {
+  fold(altra_parts_document_attempts, init: [], f: fn(acc, r) {
+    match r.disposition {
+      AttemptOpen => acc
+      AttemptSuperseded { selected_instead: _ } => concat(acc, [r])
+    }
+  })
+}
+
+fn observation_tag(o: DocumentFetchObservation) -> NonEmptyStr {
+  match o {
+    HttpOkTextNotExtractable => "text-not-extractable"
+    VendorExtractionFailure { vendor: _ } => "vendor-extraction-failure"
+    HttpGone => "gone"
+    HttpForbidden => "forbidden"
+    FetchTimedOut => "timeout"
+    UrlUnconfirmedForbidden => "url-unconfirmed-forbidden"
+  }
+}
+
+fn receipt_count(rs: List<DocumentAttemptReceipt>) -> Int {
+  fold(rs, init: 0, f: fn(acc, _r) { acc + 1 })
+}
+
+fn roster_has_locator(loc: String) -> Bool {
+  fold(altra_parts_document_attempts, init: false, f: fn(acc, r) {
+    acc || (r.uri.locator as String) == loc
+  })
+}

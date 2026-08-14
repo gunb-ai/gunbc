@@ -1,0 +1,156 @@
+module test.claim.board_part_land_pattern_witness
+
+import std.types { Bool, String, List }
+import std.integer { Int }
+import std.measure { micrometer, micrometer_count }
+import extdeps.land_pattern.types {
+  LandCountDiffersFromTerminalCount,
+  LandPitchDiffersFromTerminalPitch,
+  LandPatternDisagreement,
+  MountablePart,
+  PatternDesignatorDiffersFromPackage,
+  MountingPatternStanding,
+  QuadRowLandGeometry,
+  SurfaceMountTerminals,
+  ThroughHoleSolderTail,
+  VendorPatternEstablished,
+  VendorRecommendedLandPattern,
+  land_pattern_disagreements,
+  mounting_pattern_is_established,
+  land_pattern_pitch,
+  part_is_coherent,
+  peripheral_land_count,
+}
+import extdeps.power.ti_tps3808 { tps3808g01dbvr, tps3808_dbv0006a_outline }
+import extdeps.power.ti_tps53688 { tps53688rsbr }
+import extdeps.clock.ti_cdce913 { cdce913pwr, cdce913_pw0014a_land_pattern }
+import extdeps.network.ti_dp83867 { dp83867irrgz, dp83867_rgz0048b_outline }
+import extdeps.memory.te_ddr4_dimm_socket { ddr4_dimm_socket_solder_tail_288 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn disagreement_kind(d: LandPatternDisagreement) -> String {
+  match d {
+    PatternDesignatorDiffersFromPackage { pattern_designator: _, package_designator: _ } => "designator"
+    LandCountDiffersFromTerminalCount { lands: _, terminals: _ } => "count"
+    LandPitchDiffersFromTerminalPitch { land_pitch: _, terminal_pitch: _ } => "pitch"
+  }
+}
+
+fn has_kind(ds: List<LandPatternDisagreement>, k: String) -> Bool {
+  fold(ds, init: false, f: fn(acc, d) { acc || disagreement_kind(d: d) == k })
+}
+
+fn count_of(ds: List<LandPatternDisagreement>) -> Int {
+  fold(ds, init: 0, f: fn(acc, _d) { acc + 1 })
+}
+
+// THE FOUR SELECTED PARTS JOIN THEIR OWN PACKAGES. Each row was transcribed from two pages of one
+// drawing — an outline and a land pattern — and this is the join between them, executed rather
+// than assumed: the pattern names the package the outline names, its derived land population
+// equals the outline's terminal count, and the two pitches agree.
+test fn w_each_selected_part_joins_its_own_package() -> Bool {
+  part_is_coherent(p: tps3808g01dbvr)
+    && part_is_coherent(p: tps53688rsbr)
+    && part_is_coherent(p: cdce913pwr)
+    && part_is_coherent(p: dp83867irrgz)
+}
+
+// THE LAND POPULATION IS DERIVED FROM THE GEOMETRY AND EQUALS THE VENDOR'S TERMINAL COUNT. Six
+// lands for a six-terminal SOT-23, fourteen for a fourteen-lead TSSOP, forty and forty-eight for
+// the two no-lead flatpacks. A stored count would have made this tautological; these numbers come
+// out of the per-row figures.
+test fn w_the_land_population_is_derived_and_matches_the_terminal_count() -> Bool {
+  peripheral_land_count(g: tps3808g01dbvr.land_pattern.geometry) == 6
+    && peripheral_land_count(g: cdce913pwr.land_pattern.geometry) == 14
+    && peripheral_land_count(g: tps53688rsbr.land_pattern.geometry) == 40
+    && peripheral_land_count(g: dp83867irrgz.land_pattern.geometry) == 48
+    && peripheral_land_count(g: dp83867irrgz.land_pattern.geometry) == dp83867irrgz.outline.terminal_count
+}
+
+// THE SOT-23 PITCH RECONCILES TWO PAGES OF ONE DRAWING. The outline prints 1.9 across two pitches
+// and the land pattern prints 0.95; two times 950 micrometres is 1900, so the pitch recorded on
+// the outline is an arithmetic reading of the document rather than a figure supplied from memory
+// of what a SOT-23 usually is.
+test fn w_the_sot23_pitch_reconciles_the_two_printed_readings() -> Bool {
+  micrometer_count(m: land_pattern_pitch(g: tps3808g01dbvr.land_pattern.geometry)) == 950
+    && 2 * micrometer_count(m: tps3808_dbv0006a_outline.terminal_pitch) == 1900
+}
+
+// THE DISCRIMINATING RED, AND IT IS THE REAL FAILURE MODE. The DP83867IR datasheet reprints two
+// package drawings, so binding an outline from one device beside a land pattern from another is
+// exactly the mistake available to a transcriber. Here the 48-terminal no-lead outline is bound
+// to the 14-lead TSSOP's pattern: it typechecks, every field is populated with a real vendor
+// number, and the join refuses it on all three axes at once. If this went green the coherence
+// claim above would be establishing nothing.
+data mismatched_part: MountablePart = MountablePart {
+  ordering_part_number: "DP83867IRRGZ",
+  vendor: dp83867irrgz.vendor,
+  outline: dp83867_rgz0048b_outline,
+  land_pattern: cdce913_pw0014a_land_pattern,
+}
+
+test fn w_a_pattern_from_the_wrong_package_is_refused_on_every_axis() -> Bool {
+  let ds = land_pattern_disagreements(p: mismatched_part)
+  !part_is_coherent(p: mismatched_part)
+    && count_of(ds: ds) == 3
+    && has_kind(ds: ds, k: "designator")
+    && has_kind(ds: ds, k: "count")
+    && has_kind(ds: ds, k: "pitch")
+}
+
+// A SECOND RED, ISOLATING ONE AXIS. The mismatch above fails three ways at once, which would
+// still pass if two of the three checks were dead. This one differs from its package in the land
+// population alone — the designator and the pitch are the part's own — so exactly one cause must
+// be reported, and the count check is the one that has to be alive to report it.
+data undercounted_land_pattern: VendorRecommendedLandPattern = VendorRecommendedLandPattern {
+  package_designator: "RSB0040A",
+  drawing: tps53688rsbr.land_pattern.drawing,
+  geometry: QuadRowLandGeometry {
+    lands_per_side: 9,
+    pitch: micrometer(count: 400),
+    side_span_centre_to_centre: micrometer(count: 4800),
+    land_length: micrometer(count: 600),
+    land_width: micrometer(count: 200),
+    thermal_land_side: Present { value: micrometer(count: 3600) },
+  },
+}
+
+data undercounted_part: MountablePart = MountablePart {
+  ordering_part_number: "TPS53688RSBR",
+  vendor: tps53688rsbr.vendor,
+  outline: tps53688rsbr.outline,
+  land_pattern: undercounted_land_pattern,
+}
+
+test fn w_a_land_population_that_disagrees_with_the_package_is_refused_alone() -> Bool {
+  let ds = land_pattern_disagreements(p: undercounted_part)
+  count_of(ds: ds) == 1 && has_kind(ds: ds, k: "count")
+}
+
+// A SELECTED PART CAN STILL OWE ITS BOARD PATTERN, and the DDR4 socket is the live case. Its
+// specification establishes the position count, the contact spacing and the attachment style, and
+// carries the pc board layout as a drawn figure this repository could not read — so the part is
+// real and cited while its pattern is outstanding. Both halves are asserted, because a row that
+// reported the pattern as established on the strength of the part being selected is exactly the
+// conflation the standing exists to prevent.
+test fn w_a_selected_socket_may_still_owe_its_board_pattern() -> Bool {
+  ddr4_dimm_socket_solder_tail_288.position_count == 288
+    && micrometer_count(m: ddr4_dimm_socket_solder_tail_288.contact_pitch) == 800
+    && !mounting_pattern_is_established(s: ddr4_dimm_socket_solder_tail_288.board_pattern)
+    && match ddr4_dimm_socket_solder_tail_288.attachment {
+      ThroughHoleSolderTail => true
+      SurfaceMountTerminals => false
+    }
+}
+
+// THE POSITIVE CONTROL FOR THAT PREDICATE. Without it, mounting_pattern_is_established could be a
+// function that always answers false and the claim above would still be green.
+data established_standing: MountingPatternStanding = VendorPatternEstablished {
+  pattern: cdce913_pw0014a_land_pattern,
+}
+
+test fn w_an_established_standing_reports_established() -> Bool {
+  mounting_pattern_is_established(s: established_standing)
+}

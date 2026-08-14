@@ -26,8 +26,9 @@ import std.orthogonal_geometry {
   rectangle2_overlaps,
 }
 import extdeps.programmable_logic.ice40.subject { Ice40Package }
+import extdeps.land_pattern.types { PackageOutline }
 
-data physical_note: String = "THE BOARD AS A BODY-LEVEL SHAPE, WHICH IS WHAT THE ARTICLE'S PHYSICAL STANDING WAS STANDING IN FOR. That standing admitted an outline as a NonEmptyStr — a shape no consumer can intersect, measure or test for containment, so nothing could ask the two questions a board layout actually has to answer: is every part on the board, and does any part's BODY sit on top of another. This module answers both from geometry, and answers NOTHING about pads: a package body envelope is not a land pattern, the TQ144's leads span 22 mm against a 20 mm body, and a body-only collision check therefore under-approximates real clearance. The admission arm is named BodyEnvelopesAdmitted so that under-approximation cannot be read as a clearance claim. It reuses std.orthogonal_geometry's rectangle rather than minting a board-local one, and it draws in a micrometre-registered frame, which is why the two slices before it had to land first: at millimetre grain a 0.5 mm package pitch is not expressible and two adjacent pins collapse onto one coordinate."
+data physical_note: String = "THE BOARD AS A BODY-LEVEL SHAPE, WHICH IS WHAT THE ARTICLE'S PHYSICAL STANDING WAS STANDING IN FOR. That standing admitted an outline as a NonEmptyStr — a shape no consumer can intersect, measure or test for containment, so nothing could ask the two questions a board layout actually has to answer: is every part on the board, and does any part's BODY sit on top of another. This module answers both from geometry, and answers NOTHING about pads: a package body envelope is not a land pattern, the TQ144's leads span 22 mm against a 20 mm body, and a body-only collision check therefore under-approximates real clearance. The admission arm is named BodyEnvelopesAdmitted so that under-approximation cannot be read as a clearance claim. It reuses std.orthogonal_geometry's rectangle rather than minting a board-local one, and it draws in a micrometre-registered frame, which is why the two slices before it had to land first: at millimetre grain a 0.5 mm package pitch is not expressible and two adjacent pins collapse onto one coordinate. THIS IS THE SHARED PHYSICAL AUTHORITY for every board product — compute-board witnesses and the Altra placement plan both consume it. A second body-envelope model beside it would be the nicknaming DESIGN section 3 forbids."
 
 // THIS IS A PACKAGE BODY ENVELOPE. IT IS NOT A FOOTPRINT, and an earlier revision of this module
 // called it one — a category error worth recording rather than quietly renaming, because it was
@@ -56,6 +57,18 @@ fn body_envelope_of_ice40_package(p: Ice40Package) -> PackageBodyEnvelope {
     package_designator: p.designator,
     body_width: p.body_width,
     body_height: p.body_height,
+  }
+}
+
+// THE VENDOR PRINTS A MIN AND A MAX AND NO NOMINAL. extdeps.land_pattern.types PackageOutline
+// carries both, and a consumer that needs one extent takes the max and says that it did — so this
+// bridge does not invent a centre value. Plan-view width is body_width_max; plan-view height is
+// body_length_max. Height above the board (the outline's height_max) is not a plan-view fact.
+fn body_envelope_from_package_outline(o: PackageOutline) -> PackageBodyEnvelope {
+  PackageBodyEnvelope {
+    package_designator: o.designator,
+    body_width: o.body_width_max,
+    body_height: o.body_length_max,
   }
 }
 

@@ -1,0 +1,199 @@
+module extdeps.land_pattern.types
+
+import std.types { String, Bool, NonEmptyStr, List }
+import std.nat { Nat }
+import std.measure { Micrometer, micrometer_count }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+
+// THE STANDARD IS CITED FOR THE CONCEPT AND ITS CONTENT IS DELIBERATELY NOT MODELLED. IPC-7351
+// is the intersubjective authority for what a land pattern IS, and every vendor drawing this
+// module carries points back at it — Texas Instruments prints "Publication IPC-7351 may have
+// alternate designs" on the drawings below. The standard itself is sold rather than published,
+// so this repository has NOT read its fillet tables and cannot derive a land pattern from a
+// package outline. That is why the only land pattern representable here is one a vendor PRINTED,
+// and why no function in this module takes an outline and returns a pattern.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "shop.ipc.org/ipc-7351/ipc-7351-standard-only/Revision-b/english"
+  }
+}
+
+data land_pattern_note: String = "THREE FACTS, NOT ONE, AND THEY ARE ROUTINELY COLLAPSED. A PACKAGE OUTLINE is how much volume the part occupies — the vendor's mechanical drawing of the part itself. A VENDOR RECOMMENDED LAND PATTERN is what the vendor says to etch, printed on the same drawing under its own title and its own revision. A BOARD LAND PATTERN is what a particular board actually etches, which depends on the fabricator capability profile that board was designed against. This module carries the first two and DOES NOT CARRY THE THIRD, and the absence is structural rather than an omission: no type here represents a board's copper and no function produces one, so a consumer that wants board pads must obtain a fabricator profile and decide, and cannot instead reach for the vendor's suggestion sitting right beside the outline. The identical collapse one layer up already cost this repository a review cycle, where a package body envelope was called a footprint and approved. A SECOND ABSENCE IS AS DELIBERATE: there is no function from PackageOutline to VendorRecommendedLandPattern. Deriving pads from a package is exactly what IPC-7351 exists to specify and exactly what this repository has not read, so a derivation here would be fabricated plausible output — geometry that passes every check, draws convincingly, and solders to nothing."
+
+// A LAND PATTERN AS THE VENDOR PRINTS IT, which is parametric rather than a list of pads. The
+// drawing does not enumerate forty-eight rectangles; it states a land size, a pitch, a count and
+// a span, and every pad follows. Transcribing the derived pads instead would be a second
+// representation of the printed parameters and would drift from them silently, and for a 288-way
+// connector it is not even transcribable. The land POPULATION is derived from these parameters
+// below; the pads' individual coordinates are not produced here, because placing them needs a
+// coordinate frame and an origin convention that belong to whatever consumes the pattern.
+type SurfaceMountLandGeometry
+  = DualRowLandGeometry {
+      lands_per_row: Nat
+      pitch: Micrometer
+      row_span_centre_to_centre: Micrometer
+      land_length: Micrometer
+      land_width: Micrometer
+    }
+  | QuadRowLandGeometry {
+      lands_per_side: Nat
+      pitch: Micrometer
+      side_span_centre_to_centre: Micrometer
+      land_length: Micrometer
+      land_width: Micrometer
+      thermal_land_side: Micrometer?
+    }
+
+// THE PERIPHERAL LAND POPULATION, derived from the geometry rather than authored beside it. A
+// stored count would be a second answer to how many pads there are, and the copy that disagrees
+// when someone corrects the per-row figure is the one nobody edits.
+fn peripheral_land_count(g: SurfaceMountLandGeometry) -> Nat {
+  match g {
+    DualRowLandGeometry { lands_per_row: n, pitch: _, row_span_centre_to_centre: _, land_length: _, land_width: _ } => 2 * n
+    QuadRowLandGeometry { lands_per_side: n, pitch: _, side_span_centre_to_centre: _, land_length: _, land_width: _, thermal_land_side: _ } => 4 * n
+  }
+}
+
+fn land_pattern_pitch(g: SurfaceMountLandGeometry) -> Micrometer {
+  match g {
+    DualRowLandGeometry { lands_per_row: _, pitch: p, row_span_centre_to_centre: _, land_length: _, land_width: _ } => p
+    QuadRowLandGeometry { lands_per_side: _, pitch: p, side_span_centre_to_centre: _, land_length: _, land_width: _, thermal_land_side: _ } => p
+  }
+}
+
+// A DRAWING IS ITS OWN VERSIONED DOCUMENT, separate from the datasheet that reprints it. Texas
+// Instruments stamps every package page with a drawing number and a revision date — 4214840/G,
+// 08/2024 — which move independently of the datasheet's own revision, so citing only the
+// datasheet would leave a correction to the mechanical drawing invisible.
+type PackageDrawingRef {
+  drawing_number: NonEmptyStr
+  revision_date: NonEmptyStr
+  reprinted_in: ExternalAuthority
+}
+
+// THE OUTLINE CARRIES THE VENDOR'S OWN MIN AND MAX, not a nominal. The drawings state body extents
+// as a max over a min and print no nominal, so a single number here would be a figure this
+// repository invented by averaging. A consumer needing one extent — a body-envelope collision
+// check, for instance — takes the max and says that it did.
+type PackageOutline {
+  designator: NonEmptyStr
+  drawing: PackageDrawingRef
+  terminal_count: Nat
+  terminal_pitch: Micrometer
+  body_length_min: Micrometer
+  body_length_max: Micrometer
+  body_width_min: Micrometer
+  body_width_max: Micrometer
+  height_max: Micrometer
+}
+
+type VendorRecommendedLandPattern {
+  package_designator: NonEmptyStr
+  drawing: PackageDrawingRef
+  geometry: SurfaceMountLandGeometry
+}
+
+// HOW A PART ATTACHES DECIDES WHAT KIND OF PATTERN IT NEEDS, and the two attested here need
+// different kinds. A surface-mount terminal solders to a land, which is what SurfaceMountLandGeometry
+// describes. A solder tail passes through a PLATED HOLE, and a hole pattern is a drill schedule
+// with finished hole sizes and plating requirements — not a land pattern with a different number
+// in it. No geometry in this module represents one, which is why a through-hole part's pattern can
+// only be carried below as an outstanding obligation and cannot be forced into a land geometry.
+// Both variants come from documents read: the four Texas Instruments drawings and the Tyco
+// Electronics DDR4 socket application specification.
+type BoardAttachmentStyle
+  = SurfaceMountTerminals
+  | ThroughHoleSolderTail
+
+// A PATTERN IS EITHER ESTABLISHED FROM THE VENDOR'S DRAWING OR IT IS AN OBLIGATION NAMING WHAT IS
+// MISSING. There is no third arm carrying a provisional geometry, and the absence is the point: a
+// part whose pattern nobody has read cannot be given plausible pads to keep a consumer moving.
+type MountingPatternStanding
+  = VendorPatternEstablished { pattern: VendorRecommendedLandPattern }
+  | VendorPatternNotEstablished { what_is_missing: NonEmptyStr }
+
+fn mounting_pattern_is_established(s: MountingPatternStanding) -> Bool {
+  match s {
+    VendorPatternEstablished { pattern: _ } => true
+    VendorPatternNotEstablished { what_is_missing: _ } => false
+  }
+}
+
+// THE PART IS THE THING THAT HAS COPPER. A ROLE DOES NOT: a role is a requirement a board places
+// on whatever fills it, and requirements have no pads. So the land pattern hangs off the ordering
+// part number, and a board that swaps one clock generator for another swaps its pattern with it
+// rather than editing a role.
+//
+// WHY THIS CARRIES A PATTERN AND NOT A STANDING, WHICH IS A CONSTRUCTION CHOICE RATHER THAN AN
+// OVERSIGHT. A MountablePart is BY DEFINITION a part whose pattern is established: the field is
+// the pattern itself, so a part with an outstanding pattern has no constructor here and cannot be
+// built and then explained. A row whose pattern is still owed carries a MountingPatternStanding
+// instead — extdeps.memory.te_ddr4_dimm_socket is the live case — and that is the ONLY place the
+// obligation is expressible. The two are not two ways to say one thing: one is the established
+// state made unwritable-when-absent, the other is the question of whether it is established, and
+// a MountablePart holding a standing would reintroduce exactly the half-built part this shape
+// forbids.
+type MountablePart {
+  ordering_part_number: NonEmptyStr
+  vendor: Vendor<Hardware>
+  outline: PackageOutline
+  land_pattern: VendorRecommendedLandPattern
+}
+
+// THE PATTERN AND THE OUTLINE ARE JOINED, NOT ASSUMED TO MATCH. They are two transcriptions of
+// two drawings, and the failure this refuses is the ordinary one: a land pattern copied from the
+// neighbouring package on the same datasheet. A device offered in two packages prints two of each,
+// and nothing about a record's field names stops the wrong pair from being bound together.
+type LandPatternDisagreement
+  = PatternDesignatorDiffersFromPackage { pattern_designator: NonEmptyStr, package_designator: NonEmptyStr }
+  | LandCountDiffersFromTerminalCount { lands: Nat, terminals: Nat }
+  | LandPitchDiffersFromTerminalPitch { land_pitch: Nat, terminal_pitch: Nat }
+
+fn land_pattern_disagreements(p: MountablePart) -> List<LandPatternDisagreement> {
+  let designator_cause = if (p.land_pattern.package_designator as String) == (p.outline.designator as String) {
+    []
+  } else {
+    [PatternDesignatorDiffersFromPackage {
+      pattern_designator: p.land_pattern.package_designator,
+      package_designator: p.outline.designator,
+    }]
+  }
+  let count_cause = if peripheral_land_count(g: p.land_pattern.geometry) == p.outline.terminal_count {
+    []
+  } else {
+    [LandCountDiffersFromTerminalCount {
+      lands: peripheral_land_count(g: p.land_pattern.geometry),
+      terminals: p.outline.terminal_count,
+    }]
+  }
+  let pitch_cause = if micrometer_count(m: land_pattern_pitch(g: p.land_pattern.geometry)) == micrometer_count(m: p.outline.terminal_pitch) {
+    []
+  } else {
+    [LandPitchDiffersFromTerminalPitch {
+      land_pitch: micrometer_count(m: land_pattern_pitch(g: p.land_pattern.geometry)),
+      terminal_pitch: micrometer_count(m: p.outline.terminal_pitch),
+    }]
+  }
+  concat(concat(designator_cause, count_cause), pitch_cause)
+}
+
+fn part_is_coherent(p: MountablePart) -> Bool {
+  fold(land_pattern_disagreements(p: p), init: true, f: fn(_acc, _c) { false })
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.land_pattern.types",
+      decl_name: "land_pattern_note",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

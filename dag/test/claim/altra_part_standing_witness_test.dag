@@ -1,0 +1,258 @@
+module test.claim.altra_part_standing_witness
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.integer { Int }
+import product.altra_motherboard.placement {
+  BoardComponentRole,
+  ProcessorSocket,
+  ProcessorPackage,
+  MemoryModuleSlot,
+  BoardControlCpld,
+  BootFirmwareEeprom,
+  FirmwareFlash,
+  ClockGenerator,
+  ResetController,
+  PowerController,
+  NetworkEndpoint,
+  StorageEndpoint,
+  DebugConnector,
+  role_tag,
+}
+import product.altra_motherboard.part_standing {
+  AttemptOpen,
+  AttemptSuperseded,
+  altra_parts_access_observed_on,
+  altra_parts_document_attempts,
+  dimm_socket_pattern_standing,
+  document_attempt_count,
+  document_attempts_for_role_name,
+  established_mountable_part,
+  observation_tag,
+  obligation_standing_for,
+  open_document_attempts,
+  processor_socket_type_named_because,
+  receipt_count,
+  roster_has_locator,
+  justification_for,
+  mt_jade_spec_document,
+  superseded_document_attempts,
+  te_ddr4_socket_selected_row,
+}
+import product.pcb.world {
+  AccessRefused,
+  PatternOutstanding,
+  SelectionNeverAttempted,
+  TypeNamed,
+  AuthorityUnresolved,
+  JustificationOutstanding,
+  ReferenceDesignPrecedent,
+}
+import extdeps.land_pattern.types {
+  VendorPatternEstablished,
+  VendorPatternNotEstablished,
+}
+import extdeps.memory.te_ddr4_dimm_socket { ddr4_dimm_socket_solder_tail_288 }
+import extdeps.ocp.mt_jade { ilm4926_designation }
+import extdeps.cpu.ampere_altra_package { altra_package_body_designator }
+import extdeps.power.ti_tps3808 { tps3808g01dbvr }
+import extdeps.clock.ti_cdce913 { cdce913pwr }
+import extdeps.network.ti_dp83867 { dp83867irrgz }
+import extdeps.power.ti_tps53688 { tps53688rsbr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn standing_tag(r: BoardComponentRole) -> String {
+  match obligation_standing_for(r: r) {
+    Absent => "none"
+    Present { value: s } =>
+      match s {
+        PatternOutstanding { standing: _ } => "pattern-outstanding"
+        TypeNamed { type_name: _, because: _ } => "type-named"
+        SelectionNeverAttempted { because: _ } => "never-attempted"
+        AccessRefused { observed_on: _ } => "access-refused"
+        AuthorityUnresolved { because: _ } => "unresolved"
+      }
+  }
+}
+
+test fn w_the_four_ti_roles_bind_the_cited_mountable_parts() -> Bool {
+  match established_mountable_part(r: ResetController) {
+    Absent => false
+    Present { value: p } => (p.ordering_part_number as String) == (tps3808g01dbvr.ordering_part_number as String)
+  }
+    && match established_mountable_part(r: ClockGenerator) {
+      Absent => false
+      Present { value: p } => (p.ordering_part_number as String) == (cdce913pwr.ordering_part_number as String)
+    }
+    && match established_mountable_part(r: NetworkEndpoint) {
+      Absent => false
+      Present { value: p } => (p.ordering_part_number as String) == (dp83867irrgz.ordering_part_number as String)
+    }
+    && match established_mountable_part(r: PowerController) {
+      Absent => false
+      Present { value: p } => (p.ordering_part_number as String) == (tps53688rsbr.ordering_part_number as String)
+    }
+}
+
+test fn w_dimm_standing_is_the_vendor_pattern_standing() -> Bool {
+  standing_tag(r: MemoryModuleSlot { channel: 0 }) == "pattern-outstanding"
+    && standing_tag(r: MemoryModuleSlot { channel: 3 }) == "pattern-outstanding"
+    && match dimm_socket_pattern_standing() {
+      VendorPatternEstablished { pattern: _ } => false
+      VendorPatternNotEstablished { what_is_missing: w } =>
+        match ddr4_dimm_socket_solder_tail_288.board_pattern {
+          VendorPatternEstablished { pattern: _ } => false
+          VendorPatternNotEstablished { what_is_missing: expected } =>
+            (w as String) == (expected as String)
+        }
+    }
+}
+
+test fn w_the_processor_socket_is_a_named_type_not_a_part() -> Bool {
+  standing_tag(r: ProcessorSocket) == "type-named"
+    && standing_tag(r: StorageEndpoint) == "access-refused"
+    && standing_tag(r: ProcessorSocket) != standing_tag(r: StorageEndpoint)
+    && match obligation_standing_for(r: ProcessorSocket) {
+      Absent => false
+      Present { value: s } =>
+        match s {
+          TypeNamed { type_name: n, because: b } =>
+            (n as String) == (ilm4926_designation as String)
+              && (n as String) != (altra_package_body_designator as String)
+              && (b as String) == (processor_socket_type_named_because() as String)
+          PatternOutstanding { standing: _ } => false
+          SelectionNeverAttempted { because: _ } => false
+          AccessRefused { observed_on: _ } => false
+          AuthorityUnresolved { because: _ } => false
+        }
+    }
+}
+
+test fn w_storage_endpoint_is_access_refused_without_a_document_receipt() -> Bool {
+  standing_tag(r: StorageEndpoint) == "access-refused"
+    && standing_tag(r: StorageEndpoint) != "never-attempted"
+    && receipt_count(rs: document_attempts_for_role_name(name: role_tag(r: StorageEndpoint))) == 0
+}
+
+test fn w_four_roles_are_access_refused() -> Bool {
+  standing_tag(r: BootFirmwareEeprom) == "access-refused"
+    && standing_tag(r: FirmwareFlash) == "access-refused"
+    && standing_tag(r: DebugConnector) == "access-refused"
+    && standing_tag(r: StorageEndpoint) == "access-refused"
+}
+
+test fn w_established_roles_have_no_obligation_standing() -> Bool {
+  standing_tag(r: ProcessorPackage) == "none"
+    && standing_tag(r: BoardControlCpld) == "none"
+    && standing_tag(r: ResetController) == "none"
+    && standing_tag(r: ClockGenerator) == "none"
+    && standing_tag(r: NetworkEndpoint) == "none"
+    && standing_tag(r: PowerController) == "none"
+}
+
+test fn w_document_attempts_are_keyed_on_documents_not_roles() -> Bool {
+  let boot = receipt_count(rs: document_attempts_for_role_name(name: role_tag(r: BootFirmwareEeprom)))
+  let flash = receipt_count(rs: document_attempts_for_role_name(name: role_tag(r: FirmwareFlash)))
+  let debug = receipt_count(rs: document_attempts_for_role_name(name: role_tag(r: DebugConnector)))
+  let dimm = receipt_count(rs: document_attempts_for_role_name(name: role_tag(r: MemoryModuleSlot { channel: 0 })))
+  boot == 2 && flash == 1 && debug == 2 && dimm == 2
+    && (boot + flash + debug + dimm) == document_attempt_count()
+    && document_attempt_count() > 4
+}
+
+test fn w_each_attempted_document_is_present_by_locator() -> Bool {
+  roster_has_locator(loc: "ww1.microchip.com/downloads/en/DeviceDoc/24AA02E48-24AA025E48-24AA02E64-24AA025E64-Data-Sheet-20002124H.pdf")
+    && roster_has_locator(loc: "www.digikey.com/htmldatasheets/production/473879/0/0/1/24aa02-5-e48-24aa02-5-e64.html")
+    && roster_has_locator(loc: "www.winbond.com/resource-files/W25Q128JV%20RevH%2003102021%20Plus.pdf")
+    && roster_has_locator(loc: "suddendocs.samtec.com/prints/ftsh-1xx-xx-xxx-dv-xx%20footprint.pdf")
+    && roster_has_locator(loc: "suddendocs.samtec.com/prints/ftsh-1xx-xx-xx-dv-xx-mkt.pdf")
+    && roster_has_locator(loc: "cdn.amphenol-cs.com/media/wysiwyg/files/documentation/datasheet/ssio/ssio_ddr4.pdf")
+    && roster_has_locator(loc: "molex.com/content/dam/molex/molex-dot-com/products/automated/en-us/applicationspecificationspdf/787/78730/AS-78730-001-001.pdf")
+}
+
+test fn w_amphenol_and_molex_are_superseded_dimm_attempts() -> Bool {
+  receipt_count(rs: superseded_document_attempts()) == 2
+    && receipt_count(rs: open_document_attempts()) == 5
+    && fold(superseded_document_attempts(), init: true, f: fn(acc, r) {
+      acc
+        && (r.role_named as String) == (role_tag(r: MemoryModuleSlot { channel: 0 }) as String)
+        && match r.disposition {
+          AttemptOpen => false
+          AttemptSuperseded { selected_instead: s } =>
+            (s as String) == (te_ddr4_socket_selected_row as String)
+        }
+    })
+}
+
+test fn w_debug_connector_documents_are_url_unconfirmed_not_clean_forbidden() -> Bool {
+  fold(document_attempts_for_role_name(name: role_tag(r: DebugConnector)), init: true, f: fn(acc, r) {
+    acc && (observation_tag(o: r.observation) as String) == "url-unconfirmed-forbidden"
+  })
+    && standing_tag(r: DebugConnector) == "access-refused"
+}
+
+test fn w_boot_eeprom_documents_keep_distinct_observations() -> Bool {
+  let tags = fold(document_attempts_for_role_name(name: role_tag(r: BootFirmwareEeprom)), init: [], f: fn(acc, r) {
+    concat(acc, [observation_tag(o: r.observation) as String])
+  })
+  fold(tags, init: false, f: fn(acc, t) { acc || t == "vendor-extraction-failure" })
+    && fold(tags, init: false, f: fn(acc, t) { acc || t == "gone" })
+    && !fold(tags, init: false, f: fn(acc, t) { acc || t == "text-not-extractable" })
+    && receipt_count(rs: document_attempts_for_role_name(name: role_tag(r: BootFirmwareEeprom))) == 2
+}
+
+test fn w_the_selected_te_socket_document_is_not_duplicated_here() -> Bool {
+  !roster_has_locator(loc: "www.te.com/commerce/DocumentDelivery/DDEController?Action=showdoc&DocId=Specification+Or+Standard%7F114-115012%7FA%7Fpdf%7FEnglish%7FENG_SS_114-115012_A.pdf%7F2308107-5")
+    && match ddr4_dimm_socket_solder_tail_288.board_pattern {
+      VendorPatternNotEstablished { what_is_missing: _ } => true
+      VendorPatternEstablished { pattern: _ } => false
+    }
+}
+
+test fn w_processor_socket_has_no_document_attempt() -> Bool {
+  receipt_count(rs: document_attempts_for_role_name(name: role_tag(r: ProcessorSocket))) == 0
+}
+
+test fn w_firmware_flash_stays_a_per_document_extraction_failure() -> Bool {
+  fold(document_attempts_for_role_name(name: role_tag(r: FirmwareFlash)), init: true, f: fn(acc, r) {
+    acc && (observation_tag(o: r.observation) as String) == "text-not-extractable"
+  })
+    && standing_tag(r: FirmwareFlash) == "access-refused"
+}
+
+test fn w_every_open_attempt_is_dated() -> Bool {
+  fold(altra_parts_document_attempts, init: true, f: fn(acc, r) {
+    acc && (r.observed_on as String) == (altra_parts_access_observed_on as String)
+  })
+}
+
+test fn w_mutation_control_socket_type_named_must_not_share_the_storage_arm() -> Bool {
+  standing_tag(r: ProcessorSocket) == "type-named"
+    && standing_tag(r: StorageEndpoint) == "access-refused"
+}
+
+test fn w_only_the_processor_socket_carries_mt_jade_precedent() -> Bool {
+  match justification_for(r: ProcessorSocket) {
+    ReferenceDesignPrecedent { document: d, section: s } =>
+      (d as String) == (mt_jade_spec_document as String)
+        && (s as String) == "12 Mechanical"
+    JustificationOutstanding { because: _ } => false
+  }
+    && match justification_for(r: ResetController) {
+      JustificationOutstanding { because: _ } => true
+      ReferenceDesignPrecedent { document: _, section: _ } => false
+    }
+    && match justification_for(r: MemoryModuleSlot { channel: 0 }) {
+      JustificationOutstanding { because: _ } => true
+      ReferenceDesignPrecedent { document: _, section: _ } => false
+    }
+    && match justification_for(r: StorageEndpoint) {
+      JustificationOutstanding { because: _ } => true
+      ReferenceDesignPrecedent { document: _, section: _ } => false
+    }
+}
+
+test fn w_mutation_control_superseded_dimm_attempts_must_be_two() -> Bool {
+  receipt_count(rs: superseded_document_attempts()) == 2
+}
