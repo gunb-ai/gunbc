@@ -11,7 +11,6 @@ import product.altra_motherboard.source_documents {
   ObtainedButTextNotExtractable,
   SourceDocument,
   outstanding_documents,
-  outstanding_document_count,
   source_documents,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -52,10 +51,17 @@ test fn w_no_document_that_was_read_is_still_outstanding() -> Bool {
   })
 }
 
-// AND THE ROSTER IS NOT EMPTY, so the claim above cannot pass vacuously. A filter over nothing
-// satisfies every universal statement made about its output.
+// AND THE ROSTER IS NOT EMPTY, so the claim above is made about a real population rather than
+// about nothing. An earlier revision also required outstanding_document_count() > 0, which
+// review 51959 correctly rejected: that arm pins "there is always unread work" as an invariant,
+// so the witness would go red on the day the last document was read -- the roster succeeding,
+// reported as the roster breaking. Emptiness of the OUTSTANDING queue is a legitimate end state
+// and no test may forbid it. What that arm was reaching for -- proof the filter can actually
+// remove and retain rows -- is supplied by the planted-probe control below, which exercises all
+// four observation states on documents this witness authors, and so does not decay as the live
+// roster advances.
 test fn w_the_roster_is_nonempty_so_the_claim_above_is_not_vacuous() -> Bool {
-  list_length(items: source_documents()) > 0 && outstanding_document_count() > 0
+  list_length(items: source_documents()) > 0
 }
 
 // THE DISCRIMINATING CONTROL, on a document this witness authored rather than on the live roster.

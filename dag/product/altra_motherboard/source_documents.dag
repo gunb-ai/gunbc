@@ -1,7 +1,6 @@
 module product.altra_motherboard.source_documents
 
-import std.types { String, Bool, NonEmptyStr, List, list_length }
-import std.integer { Int }
+import std.types { String, Bool, NonEmptyStr, List }
 import extdeps.uri { Uri, Https }
 
 // THE DOCUMENTS THIS BOARD IS BEING BUILT FROM, AND WHAT HAS ACTUALLY BEEN READ OF EACH. This is
@@ -153,6 +152,3 @@ fn outstanding_documents() -> List<SourceDocument> {
   })
 }
 
-fn outstanding_document_count() -> Int {
-  list_length(items: outstanding_documents())
-}
