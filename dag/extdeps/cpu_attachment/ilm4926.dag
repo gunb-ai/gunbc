@@ -1,6 +1,6 @@
 module extdeps.cpu_attachment.ilm4926
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.cpu.ampere {
@@ -34,10 +34,24 @@ data ocp_mt_jade_specification_authority: ExternalAuthority = ExternalAuthority 
   }
 }
 
-data ilm4926_subject_note: String = "THE SUBJECT IS A DESIGNATION, NOT A PART, AND THAT IS THE WHOLE POINT OF THIS MODULE. ILM4926 is named by documents from two different publishers — Ampere's Altra processor datasheets and the OCP Mt. Jade motherboard specification — so it is a shared subject rather than a property of either document, and repeating it inside both of their modules would be the fork DESIGN section 3 forbids. What the designator NAMES is deliberately left open: ILM most plausibly expands to Independent Loading Mechanism, which is retention hardware, while the datasheet wording is 'seated in ILM4926 socket' and a socket body is a different part that may come from a different vendor. This module therefore carries the designator and every document's exact wording, and refuses to decide between them. A module that had to pick 'socket authority' or 'loading-mechanism authority' in order to exist would be closing by our guess a question no cited document answers."
-
-data ilm4926_placement_note: String = "The folder deliberately does not say socket. Placing this under a socket path would decide by directory the exact question the referent axis leaves open, and paths are discriminators rather than gospel (DESIGN section 3). 'cpu_attachment' names what the designation is FOR — how a processor is attached to a board — which every candidate referent has in common."
-
+// THE SUBJECT IS A DESIGNATION, NOT A PART, AND THAT IS THE WHOLE POINT OF
+// THIS MODULE. ILM4926 is named by documents from two different publishers —
+// Ampere's Altra processor datasheets and the OCP Mt. Jade motherboard
+// specification — so it is a shared subject rather than a property of either
+// document, and repeating it inside both of their modules would be the fork
+// DESIGN section 3 forbids. What the designator NAMES is deliberately left
+// open: ILM most plausibly expands to Independent Loading Mechanism, which is
+// retention hardware, while the datasheet wording is 'seated in ILM4926
+// socket' and a socket body is a different part that may come from a different
+// vendor. This module therefore carries the designator and every document's
+// exact wording, and refuses to decide between them. A module that had to pick
+// 'socket authority' or 'loading-mechanism authority' in order to exist would
+// be closing by our guess a question no cited document answers.
+// The folder deliberately does not say socket. Placing this under a socket
+// path would decide by directory the exact question the referent axis leaves
+// open, and paths are discriminators rather than gospel (DESIGN section 3).
+// 'cpu_attachment' names what the designation is FOR — how a processor is
+// attached to a board — which every candidate referent has in common.
 type ProcessorAttachmentDesignation {
   designator: NonEmptyStr
 }
@@ -69,6 +83,16 @@ type AttachmentDesignationReferent
   | SocketAssemblyIncludingLoadingMechanism
   | ReferentUnresolvedByCitedDocuments { reason: NonEmptyStr }
 
+// WHAT WOULD CLOSE THE REFERENT QUESTION, named so the next reader knows what
+// to look for rather than re-deriving the search. A vendor part number
+// attached to the designator in any cited document would settle it, because a
+// part number belongs to one manufacturer's one part. So would a drawing that
+// dimensions a socket body and a retention mechanism separately while
+// attaching the designator to one of them; the Mt. Jade specification and the
+// Altra platform specification both contain socket drawings whose interiors
+// this repository cannot read. Absent either, the honest state is unresolved,
+// and a board design that needs to order a part needs this closed before it
+// can.
 data ilm4926_referent: AttachmentDesignationReferent = ReferentUnresolvedByCitedDocuments {
   reason: "no cited document expands the designator or attributes it to a vendor part; the Ampere datasheets call it a socket in passing while the initials most plausibly expand to Independent Loading Mechanism, and those name different parts",
 }
@@ -136,5 +160,3 @@ fn attested_by_ocp_specification() -> Bool {
 fn attested_by_independent_publishers() -> Bool {
   attested_by_ampere_datasheets() && attested_by_ocp_specification()
 }
-
-data ilm4926_open_question_note: String = "WHAT WOULD CLOSE THE REFERENT QUESTION, named so the next reader knows what to look for rather than re-deriving the search. A vendor part number attached to the designator in any cited document would settle it, because a part number belongs to one manufacturer's one part. So would a drawing that dimensions a socket body and a retention mechanism separately while attaching the designator to one of them; the Mt. Jade specification and the Altra platform specification both contain socket drawings whose interiors this repository cannot read. Absent either, the honest state is unresolved, and a board design that needs to order a part needs this closed before it can."
