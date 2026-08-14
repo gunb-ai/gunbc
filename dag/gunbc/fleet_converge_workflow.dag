@@ -219,7 +219,7 @@ data fleet_converge_workflow: Workflow = Workflow {
         },
         DispatchInput {
           name: "plan_artifact_hash",
-          description: Present { value: "Fnv1a64Structural digest of plan.txt — required for apply (printed by plan step)" },
+          description: Present { value: "Fnv1a64Structural bundle digest of plan.txt + apply.sh — required for apply (printed by plan step)" },
           required: false,
           default: none,
           type: InputString,

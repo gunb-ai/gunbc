@@ -12,8 +12,10 @@ import std.content_hash {
   compare_content_hash,
   ContentHashEqual,
   Fnv1a64StructuralDigestHex,
+  Fnv1a64Structural,
   Fnv1a64,
   ContentHash,
+  content_hash_combine_structural,
 }
 import std.temporal_effect { HeldLease, HeldLeaseObservedState, LeaseAbsent }
 import extdeps.exec.command { ArgvCommand }
@@ -307,15 +309,57 @@ type FleetConvergePlanArtifact {
   apply_shell: String
 }
 
-fn fleet_converge_plan_content_hash(plan_body: String) -> Fnv1a64StructuralDigestHex? {
+fn fleet_converge_plan_body_structural_hash(plan_body: String) -> Fnv1a64Structural? {
   match content_hash_of_value(value: plan_body as NonEmptyStr) {
-    Fnv1a64(structural) => Present { value: structural.digest }
+    Fnv1a64(structural) => Present { value: structural }
     _ => Absent
   }
 }
 
+fn fleet_converge_plan_apply_shell_structural_hash(apply_shell: String) -> Fnv1a64Structural? {
+  match content_hash_of_value(value: apply_shell as NonEmptyStr) {
+    Fnv1a64(structural) => Present { value: structural }
+    _ => Absent
+  }
+}
+
+fn fleet_converge_plan_bundle_structural_hash(plan_body: String, apply_shell: String) -> Fnv1a64Structural? {
+  match fleet_converge_plan_body_structural_hash(plan_body: plan_body) {
+    Present { value: plan_struct } =>
+      match fleet_converge_plan_apply_shell_structural_hash(apply_shell: apply_shell) {
+        Present { value: shell_struct } =>
+          Present {
+            value: content_hash_combine_structural(left: plan_struct, right: shell_struct),
+          }
+        Absent => Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn fleet_converge_plan_bundle_digest_hex(plan_body: String, apply_shell: String) -> Fnv1a64StructuralDigestHex? {
+  match fleet_converge_plan_bundle_structural_hash(plan_body: plan_body, apply_shell: apply_shell) {
+    Present { value: bundle } => Present { value: bundle.digest }
+    Absent => Absent
+  }
+}
+
+fn fleet_converge_plan_bundle_matches(plan_body: String, apply_shell: String, claimed_hex: String) -> Bool {
+  match fleet_converge_plan_bundle_digest_hex(plan_body: plan_body, apply_shell: apply_shell) {
+    Present { value: computed } => trim(s: claimed_hex) == computed as String
+    Absent => false
+  }
+}
+
+fn fleet_converge_plan_content_hash(plan_body: String) -> Fnv1a64StructuralDigestHex? {
+  match fleet_converge_plan_body_structural_hash(plan_body: plan_body) {
+    Present { value: structural } => Present { value: structural.digest }
+    Absent => Absent
+  }
+}
+
 fn fleet_converge_plan_artifact_hash(artifact: FleetConvergePlanArtifact) -> Fnv1a64StructuralDigestHex? {
-  fleet_converge_plan_content_hash(plan_body: artifact.plan_body)
+  fleet_converge_plan_bundle_digest_hex(plan_body: artifact.plan_body, apply_shell: artifact.apply_shell)
 }
 
 data fleet_converge_apply_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: fleet_converge_apply_shell — concat-built bash apply runner for timer retirement only (sudo systemctl disable/rm + daemon-reload); cap drop-in mutations are live_deploy deploy-principal authority (host_axis_caps_note) and are plan-output-only here; generation compare+apply+commit runs under flock in fleet_converge_locked_apply_script; subject-host / member-set / observed-baseline gates live in fleet_converge_apply_wet before the locked transport; DISSOLVES WHEN bash-emit or host_effect_apply realizes timer teardown and lease acquisition without medium-as-string concat")

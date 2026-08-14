@@ -13,7 +13,7 @@ on:
         options: [plan, apply]
         type: choice
       plan_artifact_hash:
-        description: Fnv1a64Structural digest of plan.txt — required for apply (printed by plan step)
+        description: Fnv1a64Structural bundle digest of plan.txt + apply.sh — required for apply (printed by plan step)
         required: false
         type: string
       plan_workflow_run_id:

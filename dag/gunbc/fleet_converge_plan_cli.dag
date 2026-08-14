@@ -29,9 +29,12 @@ import gunbc.fleet_converge_plan {
   fleet_converge_locked_apply_script,
   fleet_converge_parse_nonneg_generation_text,
   fleet_converge_generation_from_store_content,
+  fleet_converge_plan_bundle_digest_hex,
+  fleet_converge_plan_bundle_matches,
+  fleet_converge_plan_content_hash_path,
 }
 
-data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converge plan/apply (sleek-heron-218). Plan observes the host, runs membership_reconcile once, names the subject (host + member-set fingerprint), mints a std.temporal_effect HeldLease generation in the artifact, and writes the human-readable plan plus apply.sh. On success plan_wet prints plan.txt then plan_content.hex (Fnv1a64Structural digest for workflow_dispatch plan_artifact_hash). Apply re-observes subject identity and observed-baseline fingerprint in .dag, then runs fleet_converge_locked_apply_script: flock -x on plan_generation.lock serializes concurrent appliers; inside the lock the store is re-read, compared to prior_generation, apply.sh runs, and planned_generation is committed — so only one concurrent apply against the same generation can succeed. Generation store reads refuse corrupt or negative values; a missing store file is generation 0."
+data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converge plan/apply (sleek-heron-218). Plan observes the host, runs membership_reconcile once, names the subject (host + member-set fingerprint), mints a std.temporal_effect HeldLease generation in the artifact, and writes the human-readable plan plus apply.sh. plan_content.hex is the Fnv1a64Structural bundle digest of plan.txt + apply.sh; on success plan_wet prints plan.txt then that digest for workflow_dispatch plan_artifact_hash. Apply re-observes subject identity and observed-baseline fingerprint in .dag, refuses unless on-disk plan.txt + apply.sh match plan_content.hex, then runs fleet_converge_locked_apply_script under flock. Generation store reads refuse corrupt or negative values; a missing store file is generation 0."
 
 func observe_host_short_wet() -> String
   uses net: Network
@@ -96,9 +99,12 @@ func fleet_converge_plan_wet() -> ProcessExit
     Absent =>
       exit_failure(reason: "fleet_converge_plan: observed baseline is not Fnv1a64Structural — plan refused")
     Present { value: artifact } =>
-      match fleet_converge_plan_content_hash(plan_body: artifact.plan_body) {
+      match fleet_converge_plan_bundle_digest_hex(
+        plan_body: artifact.plan_body,
+        apply_shell: artifact.apply_shell,
+      ) {
         Absent =>
-          exit_failure(reason: "fleet_converge_plan: plan body content hash is not Fnv1a64Structural — plan refused")
+          exit_failure(reason: "fleet_converge_plan: plan bundle hash is not Fnv1a64Structural — plan refused")
         Present { value: content_hash } => {
           let planned_generation = prior_generation + 1
           let mkdir = run_shell_commands(
@@ -166,12 +172,16 @@ func fleet_converge_apply_wet() -> ProcessExit
   let read_prior = Filesystem.Read(path: fleet_converge_plan_prior_generation_path)
   let read_gen = Filesystem.Read(path: fleet_converge_plan_generation_path)
   let read_member_fp = Filesystem.Read(path: fleet_converge_plan_member_set_fp_path)
+  let read_apply = Filesystem.Read(path: fleet_converge_plan_apply_shell_path)
+  let read_hash = Filesystem.Read(path: fleet_converge_plan_content_hash_path)
   if !read_plan.success
     || !read_base.success
     || !read_host.success
     || !read_prior.success
     || !read_gen.success
-    || !read_member_fp.success {
+    || !read_member_fp.success
+    || !read_apply.success
+    || !read_hash.success {
     exit_failure(reason: "fleet_converge_apply: plan artifact missing — run plan first")
   } else {
     let host_short = observe_host_short_wet()
@@ -209,6 +219,14 @@ func fleet_converge_apply_wet() -> ProcessExit
                 observed_caps: observed_caps,
               ) {
                 exit_failure(reason: "fleet_converge_apply: ObservedBaselineMismatch — host drifted since plan; rerun plan and review")
+              } else if !fleet_converge_plan_bundle_matches(
+                plan_body: read_plan.content,
+                apply_shell: read_apply.content,
+                claimed_hex: read_hash.content,
+              ) {
+                exit_failure(
+                  reason: "fleet_converge_apply: PlanArtifactHashMismatch — plan.txt + apply.sh bundle does not match plan_content.hex",
+                )
               } else {
                 run_shell_commands(
                   commands: [

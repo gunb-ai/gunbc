@@ -21,6 +21,8 @@ import gunbc.fleet_converge_plan {
   fleet_converge_parse_nonneg_generation_text,
   fleet_converge_generation_from_store_content,
   fleet_converge_plan_content_hash_path,
+  fleet_converge_plan_bundle_digest_hex,
+  fleet_converge_plan_bundle_matches,
 }
 import gunbc.fleet_converge_plan_cli { fleet_converge_plan_cli_note }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -231,6 +233,36 @@ test fn plan_content_hash_path_is_apply_interlock_sidecar() -> Bool {
 test fn plan_cli_surfaces_content_hash_for_apply_dispatch() -> Bool {
   string_contains(s: fleet_converge_plan_cli_note, pattern: "plan_content.hex")
     && string_contains(s: fleet_converge_plan_cli_note, pattern: "plan_artifact_hash")
+    && string_contains(s: fleet_converge_plan_cli_note, pattern: "apply.sh")
+}
+
+test fn bundle_hash_binds_apply_shell_not_plan_body_only() -> Bool {
+  match fleet_converge_plan_artifact(
+    host: witness_host_srv1,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+  ) {
+    Present { value: artifact } =>
+      match fleet_converge_plan_bundle_digest_hex(
+        plan_body: artifact.plan_body,
+        apply_shell: artifact.apply_shell,
+      ) {
+        Present { value: hex } =>
+          fleet_converge_plan_bundle_matches(
+            plan_body: artifact.plan_body,
+            apply_shell: artifact.apply_shell,
+            claimed_hex: hex as String,
+          )
+            && !fleet_converge_plan_bundle_matches(
+              plan_body: artifact.plan_body,
+              apply_shell: concat(artifact.apply_shell, "# tamper"),
+              claimed_hex: hex as String,
+            )
+        Absent => false
+      }
+    Absent => false
+  }
 }
 
 test fn parse_nonneg_generation_refuses_corrupt_and_negative() -> Bool {
