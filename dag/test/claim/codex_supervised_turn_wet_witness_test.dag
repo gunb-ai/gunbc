@@ -1,0 +1,141 @@
+module test.claim.codex_supervised_turn_wet_witness_test
+
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.types { Bool, String, FilePath, NonEmptyStr }
+import std.temporal_effect { LeaseAbsent, LeaseRunningExpected }
+import gunbc.package_delivery {
+  codex_runtime_lock_path,
+  codex_runtime_manifest_path,
+  materialize_codex_runtime_bundle,
+  AdmittedCodexRuntimeSource,
+  CodexRuntimeMaterialized,
+}
+import gunbc.codex_app_server_press {
+  observe_codex_account_preflight,
+  ProviderProbeKey,
+  CodexPressAccountReady,
+  CodexPressLoginRequired,
+  CodexPressUnavailable,
+  CodexPressRefused,
+}
+import gunbc.codex_runtime_bundle { codex_bundle_executable_path }
+import gunbc.roadmap_workflow_command { WorkerTurn }
+import gunbc.codex_supervised_turn {
+  CodexSupervisedTurnOk,
+  CodexSupervisedTurnRefused,
+  CodexSupervisedTurnUnavailable,
+  codex_supervised_turn_binding,
+  codex_supervised_turn_client_command_id,
+  run_codex_supervised_turn,
+}
+import gunbc.provider_turn_adjudication { press_display_finished }
+import extdeps.shell
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data witness_note: String = "WET: materialize committed Codex runtime, observe account standing via rateLimits (not account/read realm), then run_codex_supervised_turn through bundled native app-server (never /usr/bin/codex shim). Requires CODEX_HOME in the environment pointing at a live credential (srv1: .codex@gunbc-roadmap). Writes CodexRunnerTurnTerminalReceipt only after process exit, with client_command_id. Does NOT use belt dispatch /opt/gunbc/provider-runtime/codex. Excluded from per-PR floor; falsifier batch 5 executes."
+
+data wet_supervised_turn_probe_key: ProviderProbeKey = "wet-supervised-turn-1" as ProviderProbeKey
+
+fn committed_codex_lock_text() -> String {
+  filesystem_read(path: codex_runtime_lock_path as String).content
+}
+
+fn committed_admitted_codex_runtime_source() -> AdmittedCodexRuntimeSource {
+  AdmittedCodexRuntimeSource {
+    manifest_bytes: filesystem_read(path: codex_runtime_manifest_path as String).content,
+    lock_bytes: committed_codex_lock_text(),
+  }
+}
+
+fn wet_codex_home_from_env() -> FilePath? {
+  match shell.Env.Get(name: "CODEX_HOME" as NonEmptyStr).value {
+    Present { value: home } =>
+      if home == "" {
+        none
+      } else {
+        Present { value: home as FilePath }
+      }
+    Absent => none
+  }
+}
+
+fn wet_supervised_turn() -> WorkerTurn {
+  WorkerTurn {
+    turn_key: "wet-turn-1",
+    attempt_key: "wet-attempt-1",
+    consumed_feedback: "Reply with exactly: wet-supervised-turn-ok",
+    resulting_head: none,
+  }
+}
+
+test fn supervised_turn_materialized_bundle_writes_terminal_receipt() -> Bool {
+  let release_tmp = shell.Mktemp.Dir()
+  let evidence = shell.Mktemp.Dir()
+  let cwd = shell.Mktemp.Dir()
+  match wet_codex_home_from_env() {
+    Absent => false
+    Present { value: codex_home } =>
+      if release_tmp.success == false
+        || evidence.success == false
+        || cwd.success == false {
+        false
+      } else {
+        match materialize_codex_runtime_bundle(
+          source: committed_admitted_codex_runtime_source(),
+          release_parent: release_tmp.path,
+        ) {
+          CodexRuntimeMaterialized { bundle } => {
+            let path = codex_bundle_executable_path(bundle: bundle)
+            if shell.Test.IsFile(path: path).is_file == false {
+              false
+            } else {
+              let turn = wet_supervised_turn()
+              let credential = observe_codex_account_preflight(
+                bundle: bundle,
+                probe_key: wet_supervised_turn_probe_key,
+                evidence_root: evidence.path,
+                codex_home: codex_home,
+              )
+              match credential {
+                CodexPressAccountReady { receipt } => {
+                  let binding = codex_supervised_turn_binding(
+                    turn: turn,
+                    credential: receipt.subject.credential,
+                    observed: LeaseAbsent,
+                    standing_receipt: Present { value: receipt },
+                  )
+                  match run_codex_supervised_turn(
+                    bundle: bundle,
+                    credential: receipt.subject.credential,
+                    binding: binding,
+                    cwd: cwd.path,
+                    evidence_root: evidence.path,
+                  ) {
+                    CodexSupervisedTurnOk { receipt: terminal } =>
+                      press_display_finished(disposition: terminal.disposition)
+                        && (terminal.client_command_id as String)
+                          == (codex_supervised_turn_client_command_id(turn: turn) as String)
+                        && match terminal.binding.lease.observed {
+                          LeaseAbsent => true
+                          LeaseRunningExpected => false
+                          LeaseRunningStale => false
+                          LeasePortForeign => false
+                          LeaseInaccessible => false
+                        }
+                    CodexSupervisedTurnRefused { reason: _ } => false
+                    CodexSupervisedTurnUnavailable { reason: _, process: _ } => false
+                  }
+                }
+                CodexPressLoginRequired { reason: _, receipt: _ } => false
+                CodexPressRefused { reason: _, receipt: _ } => false
+                CodexPressUnavailable { reason: _, process: _ } => false
+              }
+            }
+          }
+          _ => false
+        }
+      }
+  }
+}
