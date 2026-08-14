@@ -1,0 +1,157 @@
+module product.altra_motherboard.source_documents
+
+import std.types { String, Bool, NonEmptyStr, List }
+import std.integer { Int }
+import extdeps.uri { Uri, Https }
+
+// THE DOCUMENTS THIS BOARD IS BEING BUILT FROM, AND WHAT HAS ACTUALLY BEEN READ OF EACH. This is
+// a PRODUCT-layer roster and deliberately not an extdeps module, because DESIGN section 3 rules
+// that observations this repository makes are receipts in the OBSERVING layer and that a missing
+// observation is a coverage obligation downstream, never an Unobserved property authored inside
+// an upstream module. A document nobody has read establishes no upstream fact, so it cannot have
+// an extdeps authority row; what it has is an obligation here.
+//
+// WHY IT EXISTS AT ALL: locators were being carried in conversation. A URL that lives only in a
+// message is lost the moment the message scrolls, and every one of these cost real effort to
+// find - one of them is the single highest-value lead the lane has produced. Recording the
+// locator is cheap; rediscovering it is not.
+//
+// AS A DOCUMENT IS READ its facts move OUT of here and into an extdeps module cited to it, and
+// its row flips to DocumentRead naming that module. This roster shrinks as the tree learns; it
+// is a work queue, not a second copy of anything.
+
+// The state is four-valued because the remedies differ and collapsing them loses the difference.
+// A refused fetch may succeed from another network. An unextractable PDF was OBTAINED and needs a
+// human or a rasteriser, not another fetch. Never-attempted means nobody has looked, which is not
+// evidence of difficulty. And a read document is done.
+type DocumentObservation
+  = DocumentRead { facts_now_cited_at: NonEmptyStr }
+  | FetchRefused { observed: NonEmptyStr }
+  | ObtainedButTextNotExtractable { observed: NonEmptyStr }
+  | NeverAttempted
+
+type SourceDocument {
+  title: NonEmptyStr
+  publisher: NonEmptyStr
+  locator: Uri
+  wanted_for: NonEmptyStr
+  observation: DocumentObservation
+}
+
+data altra_platform_hw_design_spec: SourceDocument = SourceDocument {
+  title: "Ampere Altra Platform Hardware Design Specification v1.00, dated 2021-01-20",
+  publisher: "Ampere Computing",
+  locator: Uri {
+    scheme: Https,
+    locator: "d1o0i0v5q5lp8h.cloudfront.net/ampere/live/assets/processor_families/design_specifications/Altra_Platform_HW_Design_Specification_v1.00_20210120.pdf",
+  },
+  wanted_for: "the highest-value outstanding document for this board: a platform design specification is the guide for designing YOUR OWN board around this processor, which is the class of document that carries socket land pattern, keepout, DDR4 routing rules, impedance targets and stackup guidance - none of which a datasheet or a board specification supplies, and all of which this lane currently has zero of",
+  observation: ObtainedButTextNotExtractable {
+    observed: "fetched 2026-08-14, HTTP 200, 4.2 MB, public CDN with no login; the converter available here returned compressed object streams with no extractable text, and this container has no pip, no pdftotext and no rasteriser",
+  },
+}
+
+data mt_mitchell_ocp_spec: SourceDocument = SourceDocument {
+  title: "Mt. Mitchell Ampere CPU Hardware Specification V0.80",
+  publisher: "Open Compute Project",
+  locator: Uri {
+    scheme: Https,
+    locator: "www.opencompute.org/documents/mt-mitchell-ocp-hardware-spec-v0-80-2-pdf",
+  },
+  wanted_for: "a second openly licensed Ampere platform contributed by Ampere with Inspur, described as improving on Mt. Jade; expected to carry the same class of facts as extdeps.ocp.mt_jade for a newer board, and worth its own extdeps subject because a separately governed specification is never folded into a sibling's module",
+  observation: NeverAttempted,
+}
+
+data mt_collins_product_brief: SourceDocument = SourceDocument {
+  title: "Ampere Mt. Collins 2U dual-socket rack server product brief",
+  publisher: "Ampere Computing",
+  locator: Uri {
+    scheme: Https,
+    locator: "uawartifacts.blob.core.windows.net/upload-files/data/uawbrochures/cloud_native_demo/Mt._Collins_2U_2022_V2.pdf",
+  },
+  wanted_for: "recorded so the search is not repeated rather than because it is valuable: Mt. Collins is NOT an OCP contribution, its engineering documentation sits behind Ampere Customer Connect under NDA, and what is public is marketing collateral. The NDA route would establish facts this public repository could not then carry, so this is a dead end noted as one",
+  observation: NeverAttempted,
+}
+
+data amphenol_m2_connector_drawing: SourceDocument = SourceDocument {
+  title: "Amphenol MDT420M01001 M.2 NGFF connector product drawing or datasheet",
+  publisher: "Amphenol Communications Solutions",
+  locator: Uri { scheme: Https, locator: "cdn.amphenol-cs.com" },
+  wanted_for: "recommended PCB layout and body outline for the M.2 connector Ampere's own reference board uses; needed to establish the StorageEndpoint role's geometry. Also settles a live discrepancy: the Mt. Jade specification's figure caption reads PIN 75 while distributor listings describe 67 contacts, which are probably one connector counted two ways, and the drawing decides it rather than a reconciliation nobody read",
+  observation: FetchRefused {
+    observed: "cdn.amphenol-cs.com returned HTTP 403; a Mouser-hosted Amphenol brochure timed out",
+  },
+}
+
+data microchip_at24cm02_datasheet: SourceDocument = SourceDocument {
+  title: "Microchip AT24CM02 I2C EEPROM data sheet DS20006197, Packaging Information section",
+  publisher: "Microchip Technology",
+  locator: Uri { scheme: Https, locator: "ww1.microchip.com/downloads/aemDocuments" },
+  wanted_for: "8-lead SOIC package outline and recommended land pattern for the boot EEPROM Ampere's reference board uses; Microchip does publish land patterns, so this role completes once the document is readable",
+  observation: ObtainedButTextNotExtractable {
+    observed: "HTTP 200 but no extractable text by any route available here, reproduced across several Microchip documents and now treated as a vendor-wide extraction failure rather than one bad file; an RS-hosted Atmel-era mirror timed out",
+  },
+}
+
+data macronix_mx25l25673g_datasheet: SourceDocument = SourceDocument {
+  title: "Macronix MX25L25673G 256 Mbit QSPI flash data sheet, package outline section",
+  publisher: "Macronix International",
+  locator: Uri { scheme: Https, locator: "www.macronix.com" },
+  wanted_for: "package outline, and an explicit answer to whether Macronix publishes a recommended land pattern at all - if it does not, the honest state for the FirmwareFlash role is a selected part with an outstanding pattern rather than a failure",
+  observation: NeverAttempted,
+}
+
+data samtec_ftsh_105_footprint: SourceDocument = SourceDocument {
+  title: "Samtec FTSH-105-01-L-DV recommended PCB layout footprint print",
+  publisher: "Samtec",
+  locator: Uri { scheme: Https, locator: "suddendocs.samtec.com/prints" },
+  wanted_for: "recommended PCB layout and body outline for the debug header; note the exact -DV print path is unconfirmed, since only the -DH variant print was surfaced by search and the -DV path was reconstructed from it",
+  observation: FetchRefused { observed: "HTTP 403 on both attempted print paths" },
+}
+
+data te_ddr4_socket_board_layout: SourceDocument = SourceDocument {
+  title: "TE Connectivity application specification 114-115012 Rev A, Figures 2 and 3, for the 288-position DDR4 DIMM socket 2308107",
+  publisher: "TE Connectivity",
+  locator: Uri {
+    scheme: Https,
+    locator: "www.te.com/commerce/DocumentDelivery/DDEController?Action=showdoc&DocId=Specification+Or+Standard%7F114-115012%7FA%7Fpdf%7FEnglish%7FENG_SS_114-115012_A.pdf%7F2308107-5",
+  },
+  wanted_for: "the finished hole sizes, hole-to-hole spacing and boardlock positions - a drill schedule, not a land pattern, because this socket is solder tail through plated holes. Highest value per unit of effort on this list: it converts all four DIMM slots from selected-with-pattern-outstanding to established",
+  observation: ObtainedButTextNotExtractable {
+    observed: "fetched successfully and its prose decoded; the pc board layout figure carries its dimensions as drawn vector callouts with no extractable text, so a human reading the PDF closes it in about a minute",
+  },
+}
+
+fn source_documents() -> List<SourceDocument> {
+  [
+    altra_platform_hw_design_spec,
+    mt_mitchell_ocp_spec,
+    mt_collins_product_brief,
+    amphenol_m2_connector_drawing,
+    microchip_at24cm02_datasheet,
+    macronix_mx25l25673g_datasheet,
+    samtec_ftsh_105_footprint,
+    te_ddr4_socket_board_layout,
+  ]
+}
+
+fn document_is_read(d: SourceDocument) -> Bool {
+  match d.observation {
+    DocumentRead { facts_now_cited_at: _ } => true
+    FetchRefused { observed: _ } => false
+    ObtainedButTextNotExtractable { observed: _ } => false
+    NeverAttempted => false
+  }
+}
+
+// THE CONSUMER, so this roster is a work queue rather than a list nobody reads: the documents
+// still owed, which is every row whose facts have not reached an extdeps module.
+fn outstanding_documents() -> List<SourceDocument> {
+  fold(source_documents(), init: [], f: fn(acc, d) {
+    if document_is_read(d: d) { acc } else { concat(acc, [d]) }
+  })
+}
+
+fn outstanding_document_count() -> Int {
+  fold(outstanding_documents(), init: 0, f: fn(acc, _d) { acc + 1 })
+}
