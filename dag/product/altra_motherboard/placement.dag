@@ -56,8 +56,22 @@ import extdeps.cpu.ampere_altra_package {
   altra_package_body_width,
 }
 
-data placement_note: String = "WHERE THE PARTS GO, AND WHICH PARTS THIS REPOSITORY IS ENTITLED TO SAY THAT ABOUT. Placing a component requires its body envelope, and a body envelope is a VENDOR fact: the part is whatever size the vendor made it, so a number chosen because it looks about right is fabricated plausible output in its most dangerous form — a layout built from invented dimensions passes every geometric check, draws convincingly, and cannot be assembled. THE BOARD OUTLINE IS A DIFFERENT KIND OF FACT and is authored here without citation: how big we make our own board is our decision, not a claim about anyone document. WHY EACH COMPONENT IS BLOCKED COMES FROM THE ATTACHMENT STACK, and specifically from EACH LAYER ITS OWN. An earlier revision of this module bound the processor SOCKET to the processor PACKAGE standing, which reopened the category error that module exists to prevent: the package is the part placed inside the socket, its bottom-land geometry is not the socket board geometry, and the two are separately governed by different vendors. A witness then locked that wrong edge in. Because of it this module also asserted a false dependency — that a redistribution decision about the package would unblock socket geometry and DDR routing. It does not; it establishes the package body and nothing else. The socket now derives its blocker from the socket layer, so a decision recorded against the package cannot silently unblock it."
-
+// WHERE THE PARTS GO, AND WHICH PARTS THIS REPOSITORY IS ENTITLED TO SAY THAT ABOUT. Placing a
+// component requires its body envelope, and a body envelope is a VENDOR fact: the part is whatever
+// size the vendor made it, so a number chosen because it looks about right is fabricated plausible
+// output in its most dangerous form — a layout built from invented dimensions passes every
+// geometric check, draws convincingly, and cannot be assembled. THE BOARD OUTLINE IS A DIFFERENT
+// KIND OF FACT and is authored here without citation: how big we make our own board is our
+// decision, not a claim about anyone document. WHY EACH COMPONENT IS BLOCKED COMES FROM THE
+// ATTACHMENT STACK, and specifically from EACH LAYER ITS OWN. An earlier revision of this module
+// bound the processor SOCKET to the processor PACKAGE standing, which reopened the category error
+// that module exists to prevent: the package is the part placed inside the socket, its bottom-land
+// geometry is not the socket board geometry, and the two are separately governed by different
+// vendors. A witness then locked that wrong edge in. Because of it this module also asserted a
+// false dependency — that a redistribution decision about the package would unblock socket
+// geometry and DDR routing. It does not; it establishes the package body and nothing else. The
+// socket now derives its blocker from the socket layer, so a decision recorded against the package
+// cannot silently unblock it.
 // WHAT A COMPONENT IS ON THIS BOARD, which is what the population is checked against. A roster of
 // identities would say the board has twelve parts; a roster of ROLES says it has a processor
 // socket, four memory slots and a boot device, which is the claim a design review actually makes.

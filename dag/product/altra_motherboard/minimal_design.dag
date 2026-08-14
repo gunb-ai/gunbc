@@ -8,8 +8,15 @@ import extdeps.cpu.ampere_altra_package {
   altra_pcie_gen4_lane_count,
 }
 
-data minimal_design_note: String = "THE SMALLEST ALTRA MOTHERBOARD THAT IS A SERVER RATHER THAN A BRING-UP FIXTURE, and the distinction is the vendor's own rather than ours. The datasheet admits 1, 2, 4, 6 or 8 active DDR4 channels and describes the one- and two-channel configurations as engineering debug and bring-up. So a memory configuration is not merely a number to minimise: below four channels the part is documented as being outside its production envelope, and a design that quietly selected two to save routing effort would be shipping a debug fixture wearing a product's name. That is why the channel count is selected against a declared INTENT here rather than chosen as a scalar — the same count is admissible for one purpose and refused for another, which a bare Int cannot express."
-
+// THE SMALLEST ALTRA MOTHERBOARD THAT IS A SERVER RATHER THAN A BRING-UP FIXTURE, and the
+// distinction is the vendor's own rather than ours. The datasheet admits 1, 2, 4, 6 or 8 active
+// DDR4 channels and describes the one- and two-channel configurations as engineering debug and
+// bring-up. So a memory configuration is not merely a number to minimise: below four channels the
+// part is documented as being outside its production envelope, and a design that quietly selected
+// two to save routing effort would be shipping a debug fixture wearing a product's name. That is
+// why the channel count is selected against a declared INTENT here rather than chosen as a scalar
+// — the same count is admissible for one purpose and refused for another, which a bare Int cannot
+// express.
 // THE ADMITTED SET IS THE VENDOR'S, NOT AN ARITHMETIC RANGE. Three, five and seven active
 // channels are not slow configurations, they are unsupported ones — the controller populations
 // the part admits are enumerated, so this is a closed coproduct rather than an Int with a bound.

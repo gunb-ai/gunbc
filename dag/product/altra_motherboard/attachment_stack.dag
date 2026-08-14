@@ -17,8 +17,20 @@ import extdeps.cpu.ampere_altra_package {
   extdeps_external_authority_anchor,
 }
 
-data attachment_stack_note: String = "SIX THINGS BETWEEN A PROCESSOR DIE AND A BOARD, AND THEY ARE NOT ONE THING. The processor package, the socket, the socket's own board termination, the motherboard land pattern that termination solders to, the loading mechanism that clamps the processor into the socket, and the mounting that carries the load are six independently governed identities with six different authorities — one vendor publishes the package, another manufactures the socket, and the motherboard designer owns neither. THE ERROR THIS MODULE EXISTS TO MAKE UNWRITABLE is deriving the board land pattern from the processor package's bottom-land geometry. Both are grids of lands with 4926 members and the same pitch, so they LOOK like the same fact, and the datasheet's mechanical section is right there. They are not the same fact: one is the package's underside, the other is the pad array the SOCKET solders to, and the socket sits between them adding its own tolerance, termination style and keepout. A board built on the first is a board where nothing solders. The identical category error was already made one layer down in this repository, where a package body envelope was called a footprint and approved by review before it was caught."
-
+// SIX THINGS BETWEEN A PROCESSOR DIE AND A BOARD, AND THEY ARE NOT ONE THING. The processor
+// package, the socket, the socket's own board termination, the motherboard land pattern that
+// termination solders to, the loading mechanism that clamps the processor into the socket, and the
+// mounting that carries the load are six independently governed identities with six different
+// authorities — one vendor publishes the package, another manufactures the socket, and the
+// motherboard designer owns neither. THE ERROR THIS MODULE EXISTS TO MAKE UNWRITABLE is deriving
+// the board land pattern from the processor package's bottom-land geometry. Both are grids of
+// lands with 4926 members and the same pitch, so they LOOK like the same fact, and the datasheet's
+// mechanical section is right there. They are not the same fact: one is the package's underside,
+// the other is the pad array the SOCKET solders to, and the socket sits between them adding its
+// own tolerance, termination style and keepout. A board built on the first is a board where
+// nothing solders. The identical category error was already made one layer down in this
+// repository, where a package body envelope was called a footprint and approved by review before
+// it was caught.
 // EACH LAYER IS ITS OWN SUBJECT WITH ITS OWN AUTHORITY. They are separate types rather than one
 // parameterised row because their FACTS differ in kind, not only in value: a package has contacts
 // and a mechanical outline, a socket has a vendor part number and an insertion force, a loading
@@ -328,8 +340,10 @@ fn standing_pair_is_admitted(fact: FactAuthorityStanding, carriage: RepositoryCa
 // next rung is construction closure -- sealing the record so the only mint is a function that
 // consults this refusal -- and that is the trigger, not a wish. It is deliberately not attempted in
 // the same change that discovers the class.
-data authority_standing_admission_rung_note: String = "Mechanically preventable. The incoherent combinations are detected and witnessed, not made unwritable; AttachmentLayerStanding stays a public record literal. Next-rung trigger: seal AttachmentLayerStanding with a sole constructor whose mint returns an admission, so an incoherent pair has no representation rather than a check that must be run."
-
+// Mechanically preventable. The incoherent combinations are detected and witnessed, not made
+// unwritable; AttachmentLayerStanding stays a public record literal. Next-rung trigger: seal
+// AttachmentLayerStanding with a sole constructor whose mint returns an admission, so an
+// incoherent pair has no representation rather than a check that must be run.
 fn subject_blocker(fact: FactAuthorityStanding, carriage: RepositoryCarriageStanding) -> FactAuthorityBlocker? {
   match fact {
     FactUnresolved { what_is_missing: w } =>
