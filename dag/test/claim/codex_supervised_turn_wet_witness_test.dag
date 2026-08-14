@@ -8,6 +8,7 @@ import gunbc.package_delivery {
   codex_runtime_lock_path,
   codex_runtime_manifest_path,
   materialize_codex_runtime_bundle,
+  materialize_codex_runtime_bundle_through_prepare,
   prepare_codex_runtime_closure,
   select_codex_exact_target_closure,
   observe_codex_npm_runtime_target,
@@ -50,11 +51,11 @@ data witness_note: String = "WET BISECT REPRODUCTION (NOT ENROLLED WITNESSES). B
 
 data wet_non_witness_enrollment_note: String = "Admission gate 2026-08-14: OfflineLocalRecipe exclusion + enrolled test fn produced UnclassifiedPathDeferral (five rows, zero executing consumers). Fix: bisect arms are fn not test fn; no witness enrollment until explicit admission with declared envelope after production fix."
 
-data wet_supervised_turn_memory_envelope_note: String = "MEMORY ENVELOPE (srv1 bisect 2026-08-14). Operator caps are safety while debugging, not the remedy. wet_committed_admitted_source_lock_admits — MemoryMax=2G PASS; wet_select_codex_exact_target_closure_only — MemoryMax=2G PASS (step 2b); wet_acquire_wrapper_artifact_only — MemoryMax=2G (step 2c: wrapper tarball DownloadToFile + sha512 verify); wet_codex_runtime_prepare_closure_only — MemoryMax=2G; wet_materialize_codex_runtime_bundle_only — MemoryMax=8G FAIL; full chain blocked. Step2c: systemd-run --scope -p MemoryMax=2G -- gunbc run --source-root dag --source-root src/v2 --entry dag/test/claim/codex_supervised_turn_wet_witness_test.dag --function wet_acquire_wrapper_artifact_only"
+data wet_supervised_turn_memory_envelope_note: String = "MEMORY ENVELOPE (srv1 bisect 2026-08-14). Operator caps are safety while debugging. Pre-shell bisect (no mktemp before materialize): wet_committed_admitted_source_construct_only — MemoryMax=2G (manifest+lock filesystem_read only); wet_codex_runtime_prepare_closure_only — MemoryMax=2G (full source + prepare, no materialize body); wet_materialize_through_prepare_only — MemoryMax=2G (package_delivery through_prepare surface). wet_select_codex_exact_target_closure_only — 2G PASS. wet_materialize_codex_runtime_bundle_only — 8G FAIL (~2GB/min, zero children, decl eval). Example step 2d: systemd-run --scope -p MemoryMax=2G -- gunbc run --source-root dag --source-root src/v2 --entry dag/test/claim/codex_supervised_turn_wet_witness_test.dag --function wet_codex_runtime_prepare_closure_only"
 
-data wet_bisect_step2b_receipt_note: String = "srv1 step 2b 2026-08-14 (eager-koi-458, main): wet_select_codex_exact_target_closure_only PASS under 2G in seconds — closure selection and lookups are cheap. Leak is downstream in materialize after closure (acquire/stage path). pgrep-at-instant sampling understates short-lived shell children (mktemp/curl/sha512sum)."
+data wet_bisect_instrumented_trace_note: String = "srv1 instrumented 2026-08-14 (eager-koi-458): materialize ~2 GB/min linear to 8G, ZERO children entire run, log at started decl — interpreter eval before first shell in materialize_codex_runtime_bundle. Tarball-into-String hypothesis refuted. Step 2b closure cheap on lock-only path. Remaining surface: source record construction vs prepare vs materialize body graph eval."
 
-data wet_supervised_turn_oom_receipt_note: String = "srv1 bisect 2026-08-14 (eager-koi-458): step1 PASS 2G no growth; step2 materialize_codex_runtime_bundle_only FAIL 8G cap ~7.6-7.7 GiB 13+ min reclaiming at boundary, zero children, no codex/npm/mktemp — killed. Uncapped earlier ~89 GiB / 22 min. Growth is .dag eval before subprocess spawn. Production defect in gunbc.package_delivery materialize_codex_runtime_bundle (main). Gates #8166 wet turn and #8225 host_codex_runtime_provision. Fix production path — do not enlarge witness envelope as remedy. package_lock_lookup_node filter-allocation fix landed; prepare_codex_runtime_closure bisect arm added."
+data wet_supervised_turn_oom_receipt_note: String = "srv1 bisect 2026-08-14: step2b closure PASS 2G; instrumented materialize ~2GB/min to 8G cap, zero children 4.5min, decl eval stuck — not tarball bytes. Production defect in interpreter eval of materialize_codex_runtime_bundle pre-shell region. Fix production path; do not enlarge witness envelope."
 
 data wet_supervised_turn_probe_key: ProviderProbeKey = "wet-supervised-turn-1" as ProviderProbeKey
 
@@ -113,6 +114,11 @@ fn wet_committed_admitted_source_lock_admits() -> Bool {
       count(nodes) > 0 && count(registry_artifacts) > 0
     _ => false
   }
+}
+
+fn wet_committed_admitted_source_construct_only() -> Bool {
+  let source = committed_admitted_codex_runtime_source()
+  (source.lock_bytes != "") && (source.manifest_bytes != "")
 }
 
 fn wet_select_codex_exact_target_closure_only() -> Bool {
@@ -194,19 +200,23 @@ fn wet_codex_runtime_prepare_closure_only() -> Bool {
   }
 }
 
+fn wet_materialize_through_prepare_only() -> Bool {
+  materialize_codex_runtime_bundle_through_prepare(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+data wet_materialize_bisect_release_parent: FilePath =
+  "/tmp/gunbc-wet-materialize-bisect-release" as FilePath
+
 fn wet_materialize_codex_runtime_bundle_only() -> Bool {
-  let release_tmp = shell.Mktemp.Dir()
-  if release_tmp.success == false {
-    false
-  } else {
-    match materialize_codex_runtime_bundle(
-      source: committed_admitted_codex_runtime_source(),
-      release_parent: release_tmp.path,
-    ) {
-      CodexRuntimeMaterialized { bundle } =>
-        shell.Test.IsFile(path: codex_bundle_executable_path(bundle: bundle)).is_file
-      _ => false
-    }
+  match materialize_codex_runtime_bundle(
+    source: committed_admitted_codex_runtime_source(),
+    release_parent: wet_materialize_bisect_release_parent,
+  ) {
+    CodexRuntimeMaterialized { bundle } =>
+      shell.Test.IsFile(path: codex_bundle_executable_path(bundle: bundle)).is_file
+    _ => false
   }
 }
 
