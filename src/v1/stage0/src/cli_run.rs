@@ -10716,14 +10716,24 @@ fn append_active_workset_phase_journal(state: &str, detail: &str) {
     };
     let path = PathBuf::from(path);
     if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            eprintln!(
+                "cli_run: create floor phase journal directory {}: {e}",
+                parent.display()
+            );
+            return;
+        }
     }
-    let Ok(mut file) = std::fs::OpenOptions::new()
+    let mut file = match std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(&path)
-    else {
-        return;
+    {
+        Ok(file) => file,
+        Err(e) => {
+            eprintln!("cli_run: open floor phase journal {}: {e}", path.display());
+            return;
+        }
     };
     let unix_millis = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -10735,7 +10745,16 @@ fn append_active_workset_phase_journal(state: &str, detail: &str) {
         std::process::id()
     );
     use std::io::Write as _;
-    let _ = file.write_all(row.as_bytes()).and_then(|()| file.flush());
+    if let Err(e) = file
+        .write_all(row.as_bytes())
+        .and_then(|()| file.flush())
+        .and_then(|()| file.sync_data())
+    {
+        eprintln!(
+            "cli_run: persist floor phase journal {}: {e}",
+            path.display()
+        );
+    }
 }
 
 pub fn floor_walk_attempt_id_from_env() -> String {
