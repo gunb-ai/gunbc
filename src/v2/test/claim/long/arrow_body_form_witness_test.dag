@@ -22,7 +22,12 @@ import v2.test.claim.body_lowering.arrow_body_form_semantic_helpers {
 
 // Semantic ArrowBodyForm witnesses: id(7)==7, zero()==0, add(2,3)==5 through
 // ingested normalize, plus RED mirrors over the same admission population.
-// Eval exceeds the per-PR fast-lane budget; enrolled on falsifier_substrate_long_lane_rows.
+// NOT enrolled on falsifier_substrate_long_lane_rows in this PR — eval helpers
+// still need wiring before cadence enrollment. Fast-lane witnesses exercise the
+// classifier, structural admission, eval-entry population, and eval dispatch
+// (including DirectAtomBody through-call admission). Local recipe:
+// claim_batch --source-root dag --source-root src/v2 --entry
+// src/v2/test/claim/long/arrow_body_form_witness_test.dag --functions <csv>.
 
 test fn arrow_body_form_semantic_id_seven_executes_holds() -> Bool {
   match ingested_id_arrow_with_body() {
