@@ -2,7 +2,7 @@ module test.claim.spark_serving_release_witness_test
 
 import std.types { String, Bool, List, Int, NonEmptyStr }
 import std.measure { byte_size }
-import std.content_hash { content_hash_atom, ContentHash }
+import std.content_hash { content_hash_of_value, ContentHash }
 import product.placement_supply { HostIdentity }
 import gunbc.spark_serving_realization {
   SystemPrincipal, NamedPrincipal, ObservedGrantPopulation, GrantPopulationObserved,
@@ -252,9 +252,9 @@ fn no_login_intent() -> SparkServingIntent {
   }
 }
 
-data fleet_key_identity: ContentHash = content_hash_atom(value: "fleet-automation-key" as NonEmptyStr)
+data fleet_key_identity: ContentHash = content_hash_of_value(value: "fleet-automation-key" as NonEmptyStr)
 
-data other_key_identity: ContentHash = content_hash_atom(value: "operator-macbook-key" as NonEmptyStr)
+data other_key_identity: ContentHash = content_hash_of_value(value: "operator-macbook-key" as NonEmptyStr)
 
 fn plan_row_under(
   intent: SparkServingIntent,
