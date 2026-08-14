@@ -1,0 +1,100 @@
+module test.claim.spark_serving_observe_witness_test
+
+import std.types { String, Bool }
+import gunbc.spark_serving_release {
+  SparkServingObservation, SparkServingAbsent, SparkServingObserved,
+  SparkServingObservationRefused,
+}
+import gunbc.spark_serving_loaded_release {
+  SparkServingReadback,
+  derive_spark_serving_observation,
+  derive_loaded_spark_serving_release_identity,
+}
+
+data witness_model_digest: String = "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456"
+
+fn readback_absent() -> SparkServingReadback {
+  SparkServingReadback {
+    host: "srv5",
+    unit_active: false,
+    runtime_version: none,
+    model_repository: none,
+    model_revision_digest: none,
+    bind_address: none,
+  }
+}
+
+fn readback_active_incomplete() -> SparkServingReadback {
+  SparkServingReadback {
+    host: "srv5",
+    unit_active: true,
+    runtime_version: Present { value: "v0.9.6" },
+    model_repository: none,
+    model_revision_digest: none,
+    bind_address: none,
+  }
+}
+
+fn readback_active_complete() -> SparkServingReadback {
+  SparkServingReadback {
+    host: "srv5",
+    unit_active: true,
+    runtime_version: Present { value: "v0.9.6" },
+    model_repository: Present { value: "gpt-oss" },
+    model_revision_digest: Present { value: witness_model_digest },
+    bind_address: none,
+  }
+}
+
+test fn absent_readback_derives_absent_observation() -> Bool {
+  match derive_spark_serving_observation(readback: readback_absent()) {
+    SparkServingAbsent { host: h } => h == "srv5"
+    SparkServingObserved { host: _, loaded_release: _ } => false
+    SparkServingObservationRefused { host: _, cause: _ } => false
+  }
+}
+
+test fn active_incomplete_readback_refuses_observation() -> Bool {
+  match derive_spark_serving_observation(readback: readback_active_incomplete()) {
+    SparkServingObservationRefused { host: h, cause: c } =>
+      h == "srv5" && string_contains(s: c as String, pattern: "fingerprint")
+    SparkServingAbsent { host: _ } => false
+    SparkServingObserved { host: _, loaded_release: _ } => false
+  }
+}
+
+test fn active_complete_readback_derives_loaded_identity() -> Bool {
+  match derive_loaded_spark_serving_release_identity(readback: readback_active_complete()) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn active_complete_readback_derives_observed() -> Bool {
+  match derive_loaded_spark_serving_release_identity(readback: readback_active_complete()) {
+    Absent => false
+    Present { value: expected } =>
+      match derive_spark_serving_observation(readback: readback_active_complete()) {
+        SparkServingObserved { host: h, loaded_release: r } =>
+          h == "srv5" && (r.digest.digest as String) == (expected.digest.digest as String)
+        SparkServingAbsent { host: _ } => false
+        SparkServingObservationRefused { host: _, cause: _ } => false
+      }
+  }
+}
+
+data wrong_runtime_version_red_control_note: String = "RED CONTROL: a unit marked active without the pinned runtime version must refuse identity, never fabricate a digest from desired state."
+
+test fn wrong_runtime_version_refuses_loaded_identity() -> Bool {
+  match derive_loaded_spark_serving_release_identity(readback: SparkServingReadback {
+    host: "srv6",
+    unit_active: true,
+    runtime_version: Present { value: "v0.0.0" },
+    model_repository: Present { value: "gpt-oss" },
+    model_revision_digest: Present { value: witness_model_digest },
+    bind_address: none,
+  }) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}

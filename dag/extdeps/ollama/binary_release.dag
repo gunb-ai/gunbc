@@ -1,0 +1,27 @@
+module extdeps.ollama.binary_release
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.crypto.hash { Digest, sha256_digest }
+import std.types { NonEmptyStr, String }
+
+data extdeps_ollama_binary_release_note: String = "CITED UPSTREAM FACTS ONLY. Install and extract live in gunbc.package_delivery once #8225 lands (Ollama as the second runtime-bundle consumer beside Codex). This module owns the pinned release row the closure digest derives from — never a shell leaf that would fork a parallel install path."
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ollama/ollama/releases"
+  }
+}
+
+type OllamaBinaryRelease {
+  version: NonEmptyStr
+  digest_linux_arm64: Digest
+}
+
+data ollama_v0_9_6_release: OllamaBinaryRelease = OllamaBinaryRelease {
+  version: "v0.9.6" as NonEmptyStr,
+  digest_linux_arm64: sha256_digest(hex: "0b54918f92636c8e05532c4292e20b2ead3d5bc14913f713accfbad5ac5e722c" as NonEmptyStr),
+}
+
+data ollama_required_release: OllamaBinaryRelease = ollama_v0_9_6_release

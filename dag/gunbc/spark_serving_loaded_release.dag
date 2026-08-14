@@ -1,0 +1,93 @@
+module gunbc.spark_serving_loaded_release
+
+import std.types { String, Bool, NonEmptyStr }
+import product.placement_supply { HostIdentity }
+import gunbc.ollama_runtime_bundle { ollama_runtime_closure_digest_for_reported_version }
+import gunbc.spark_serving_desired {
+  spark_serving_configuration_digest,
+  spark_serving_desired_release,
+}
+import gunbc.spark_serving_release {
+  SparkServingObservation,
+  SparkServingObserved,
+  SparkServingAbsent,
+  SparkServingObservationRefused,
+  SparkServingRelease,
+  SparkServingReleaseIdentity,
+  RuntimeArtifactIdentity,
+  ModelArtifactIdentity,
+  ServingConfigurationIdentity,
+  spark_serving_release_identity,
+}
+
+data spark_serving_loaded_release_note: String = "LOADED-RELEASE FINGERPRINT (SPARK-SERVE-BIND-0 item C). Independent of transport: the same derivation consumes wet SSH readback or fixture rows in witnesses."
+
+type SparkServingReadback {
+  host: HostIdentity
+  unit_active: Bool
+  runtime_version: String?
+  model_repository: String?
+  model_revision_digest: String?
+  bind_address: String?
+}
+
+fn derive_loaded_spark_serving_release(readback: SparkServingReadback) -> SparkServingRelease? {
+  if readback.unit_active == false {
+    none
+  } else {
+    match readback.runtime_version {
+      Absent => none
+      Present { value: ver } =>
+        match ollama_runtime_closure_digest_for_reported_version(version: ver) {
+          Absent => none
+          Present { value: runtime_digest } =>
+            match readback.model_repository {
+              Absent => none
+              Present { value: repo } =>
+                match readback.model_revision_digest {
+                  Absent => none
+                  Present { value: rev } =>
+                    Present {
+                      value: SparkServingRelease {
+                        runtime: RuntimeArtifactIdentity {
+                          closure_digest: runtime_digest.digest as NonEmptyStr,
+                        },
+                        model: ModelArtifactIdentity {
+                          repository: repo as NonEmptyStr,
+                          revision: rev as NonEmptyStr,
+                        },
+                        serving_configuration: ServingConfigurationIdentity {
+                          configuration_digest: spark_serving_configuration_digest,
+                        },
+                        capacity: spark_serving_desired_release().capacity,
+                      }
+                    }
+                }
+            }
+        }
+    }
+  }
+}
+
+fn derive_loaded_spark_serving_release_identity(readback: SparkServingReadback) -> SparkServingReleaseIdentity? {
+  match derive_loaded_spark_serving_release(readback: readback) {
+    Absent => none
+    Present { value: spec } => Present { value: spark_serving_release_identity(spec: spec) }
+  }
+}
+
+fn derive_spark_serving_observation(readback: SparkServingReadback) -> SparkServingObservation {
+  if readback.unit_active == false {
+    SparkServingAbsent { host: readback.host }
+  } else {
+    match derive_loaded_spark_serving_release_identity(readback: readback) {
+      Absent =>
+        SparkServingObservationRefused {
+          host: readback.host,
+          cause: "serving unit is active but loaded-release fingerprint could not be derived from independent readback" as NonEmptyStr,
+        }
+      Present { value: loaded } =>
+        SparkServingObserved { host: readback.host, loaded_release: loaded }
+    }
+  }
+}

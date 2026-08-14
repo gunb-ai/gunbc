@@ -1,0 +1,87 @@
+module gunbc.spark_serving_desired
+
+import std.types { String, Bool, List, NonEmptyStr }
+import std.measure { byte_size }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+import gunbc.ollama_runtime_bundle { ollama_runtime_closure_digest_for_required_release }
+import gunbc.spark_serving_release {
+  SparkServingRelease,
+  SparkServingReleaseIdentity,
+  SparkServingOccurrence,
+  RuntimeArtifactIdentity,
+  ModelArtifactIdentity,
+  ServingConfigurationIdentity,
+  InferenceCapacityPolicy,
+  SparkServingEndpointCredential,
+  EndpointCredentialUnauthenticated,
+  spark_serving_release_identity,
+}
+import gunbc.spark_serving_realization {
+  SparkServingIntent,
+  UserUnitRealization,
+  SurvivesReboot,
+  RestartsOnFailure,
+  ManagedConvergenceOwned,
+  ExecutorOwnedIdentity,
+  UnauthenticatedEndpoint,
+  IndependentlyObservable,
+  NamedPrincipal,
+}
+
+data spark_serving_desired_note: String = "OPERATOR DECLARATION (2026-08-12): LAN boundary, ollama runtime, gpt-oss:20b model, executor-owned serving process under gunbc-automation. Runtime closure identity derives from extdeps.ollama.binary_release cited digest — materialization binds through gunbc.package_delivery (#8225), not a parallel install path. Model revision is pinned at the TAG GRAIN until spark_serving_observe grounds the post-pull sha256 digest into ModelArtifactIdentity.revision."
+
+data spark_serving_model_revision_tag_pin_note: String = "ModelArtifactIdentity.revision carries the declared tag pin '20b' for gpt-oss, NOT the post-pull sha256 digest yet. spark_serving_observe readback upgrades observation to digest-keyed comparison without rewriting the desired occurrence."
+
+data spark_serving_configuration_digest: NonEmptyStr = "spark-serving|runtime=ollama|model=gpt-oss:20b|bind=0.0.0.0:11434|endpoint=lan-unauthenticated" as NonEmptyStr
+
+fn spark_serving_desired_release() -> SparkServingRelease {
+  SparkServingRelease {
+    runtime: RuntimeArtifactIdentity {
+      closure_digest: ollama_runtime_closure_digest_for_required_release().digest as NonEmptyStr,
+    },
+    model: ModelArtifactIdentity {
+      repository: "gpt-oss" as NonEmptyStr,
+      revision: "20b" as NonEmptyStr,
+    },
+    serving_configuration: ServingConfigurationIdentity {
+      configuration_digest: spark_serving_configuration_digest,
+    },
+    capacity: InferenceCapacityPolicy {
+      max_model_len: 8192,
+      shared_memory_budget_bytes: byte_size(120000000000),
+    },
+  }
+}
+
+fn spark_serving_desired_release_identity() -> SparkServingReleaseIdentity {
+  spark_serving_release_identity(spec: spark_serving_desired_release())
+}
+
+fn spark_serving_terminal_intent() -> SparkServingIntent {
+  SparkServingIntent {
+    lifecycle: SurvivesReboot,
+    availability: RestartsOnFailure,
+    authority: ManagedConvergenceOwned,
+    service_identity: ExecutorOwnedIdentity,
+    endpoint: UnauthenticatedEndpoint,
+    observability: IndependentlyObservable,
+  }
+}
+
+fn spark_serving_automation_principal() -> NamedPrincipal {
+  NamedPrincipal { login: "gunbc-automation" as NonEmptyStr }
+}
+
+fn spark_serving_occurrence(host: HostIdentity) -> SparkServingOccurrence {
+  SparkServingOccurrence {
+    host: host,
+    release_identity: spark_serving_desired_release_identity(),
+    endpoint_credential: EndpointCredentialUnauthenticated,
+  }
+}
+
+data spark_serving_fleet_occurrences: List<SparkServingOccurrence> = [
+  spark_serving_occurrence(host: operator_host_srv5),
+  spark_serving_occurrence(host: operator_host_srv6),
+]

@@ -1,0 +1,35 @@
+module gunbc.ollama_runtime_bundle
+
+import std.types { NonEmptyStr, String }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import extdeps.ollama.binary_release {
+  OllamaBinaryRelease,
+  ollama_required_release,
+}
+
+data ollama_runtime_bundle_note: String = "Release-bundled Ollama runtime closure identity at ollama_required_release (extdeps.ollama.binary_release). Produces the RuntimeArtifactIdentity.closure_digest consumed by gunbc.spark_serving_release. Materialization binds through gunbc.package_delivery per #8225 — this module derives identity only; it does not install."
+
+fn ollama_runtime_closure_seed(rel: OllamaBinaryRelease) -> NonEmptyStr {
+  join([
+    "ollama-runtime-closure|version=", rel.version as String,
+    "|arch=linux-arm64|digest=", rel.digest_linux_arm64.hex as String,
+  ], "") as NonEmptyStr
+}
+
+fn ollama_runtime_closure_digest(rel: OllamaBinaryRelease) -> Fnv1a64Structural {
+  content_hash_atom(value: ollama_runtime_closure_seed(rel: rel))
+}
+
+fn ollama_runtime_closure_digest_for_required_release() -> Fnv1a64Structural {
+  ollama_runtime_closure_digest(rel: ollama_required_release)
+}
+
+data ollama_runtime_version_mapping_note: String = "Maps an observed ollama /api/version string to the cited closure when it matches the pinned release; otherwise refuses so an unknown runtime cannot be mistaken for the desired one."
+
+fn ollama_runtime_closure_digest_for_reported_version(version: String) -> Fnv1a64Structural? {
+  if version == (ollama_required_release.version as String) {
+    Present { value: ollama_runtime_closure_digest(rel: ollama_required_release) }
+  } else {
+    none
+  }
+}
