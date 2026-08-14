@@ -3,9 +3,10 @@ module extdeps.ocp.mt_jade.platform
 import std.types { String, Bool, NonEmptyStr, List }
 import std.integer { Int }
 import std.measure { Hertz, Microsecond, Micrometer, hertz, microsecond, micrometer, micrometer_count }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope }
 import extdeps.ocp.mt_jade.subject {
   extdeps_external_authority_anchor,
+  mt_jade_model_scope,
   mt_jade_reference_platform,
   MtJadeReferencePlatform,
 }
@@ -384,3 +385,5 @@ fn reference_part_role_eq(a: ReferencePartRole, b: ReferencePartRole) -> Bool {
 fn reference_part_roles_include(rows: List<MtJadeReferencePartRow>, wanted: ReferencePartRole) -> Bool {
   fold(rows, init: false, f: fn(acc, r) { acc || reference_part_role_eq(a: r.role, b: wanted) })
 }
+
+data extdeps_model_scope: ExternalModelScope = mt_jade_model_scope
