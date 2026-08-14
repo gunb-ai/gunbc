@@ -2551,6 +2551,197 @@ pub fn kernel_value_declared_type_mismatch(
     }
 }
 
+pub fn application_type_names_compatible(
+    formal_name: String,
+    lit_name: String,
+    type_env: Rc<TypeEnv>,
+    module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if formal_name.is_empty() || lit_name.is_empty() {
+        return formal_name == lit_name;
+    }
+    if ((formal_name.clone() == lit_name.clone())
+        || (qualified_last_segment(formal_name.clone())
+            == qualified_last_segment(lit_name.clone()))
+        || dag_can_cast(lit_name.clone(), formal_name.clone()))
+    {
+        return true;
+    }
+    match lookup_type_by_name(type_env.clone(), formal_name.clone()) {
+        Some(formal_decl) => brand_grounds_transparently_to(
+            lit_name.clone(),
+            formal_decl.clone(),
+            type_env.clone(),
+            source_indices.clone(),
+        ),
+        None => false,
+    }
+}
+
+pub fn structured_application_site_type_mismatch(
+    formal: Rc<Node>,
+    actual_expr: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    if !matches!(
+        (*actual_expr.expr_data.clone()).clone(),
+        ExprData::ExprRecordLit { .. }
+    ) {
+        return false;
+    }
+    let source_indices = scope.type_env.clone().source_indices.clone();
+    let formal_peeled = peel_nominal_alias_identity(
+        formal.clone(),
+        scope.type_env.clone(),
+        scope.module_name.clone(),
+    );
+    if type_node_is_callable(formal_peeled.clone()) {
+        return false;
+    }
+    let formal_name = authored_name_at(source_indices.clone(), formal_peeled.clone());
+    if formal_name.is_empty() {
+        return false;
+    }
+    let lit_name =
+        record_lit_type_name_at(actual_expr.clone(), source_indices.clone()).unwrap_or_default();
+    if lit_name.is_empty() {
+        return false;
+    }
+    if application_type_names_compatible(
+        formal_name.clone(),
+        lit_name.clone(),
+        scope.type_env.clone(),
+        scope.module_name.clone(),
+        source_indices.clone(),
+    ) {
+        return false;
+    }
+    let formal_decl = match lookup_type_for(
+        scope.type_env.clone(),
+        with_required_cardinality(formal_peeled.clone()),
+    ) {
+        Some(resolved) => Some(resolved.clone()),
+        None => lookup_type_by_name(scope.type_env.clone(), formal_name.clone()),
+    };
+    match formal_decl {
+        Some(decl) if decl.connective.clone() == Connective::Disj => {
+            if has_child_named(decl.clone(), lit_name.clone(), source_indices.clone()) {
+                false
+            } else {
+                match variant_owner_node(scope.clone(), lit_name.clone()) {
+                    Some(owner) => {
+                        let owner_name = authored_name_at(source_indices.clone(), owner.clone());
+                        !application_type_names_compatible(
+                            formal_name.clone(),
+                            owner_name.clone(),
+                            scope.type_env.clone(),
+                            scope.module_name.clone(),
+                            source_indices.clone(),
+                        )
+                    }
+                    None => true,
+                }
+            }
+        }
+        Some(decl) if decl.connective.clone() == Connective::Conj => {
+            let decl_name = authored_name_at(source_indices.clone(), decl.clone());
+            !application_type_names_compatible(
+                decl_name.clone(),
+                lit_name.clone(),
+                scope.type_env.clone(),
+                scope.module_name.clone(),
+                source_indices.clone(),
+            )
+        }
+        _ => true,
+    }
+}
+
+pub fn direct_call_structured_application_mismatch_diags(
+    value_params: Rc<Vec<Rc<Node>>>,
+    typed_args: Rc<Vec<Rc<Node>>>,
+    call_subst: Rc<HashMap<String, Rc<Node>>>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    let type_env = scope.type_env.clone();
+    let module_name = scope.module_name.clone();
+    let source_indices = type_env.clone().source_indices.clone();
+    Rc::new({
+        let mut __result = Vec::new();
+        for pair in Rc::new(
+            value_params
+                .clone()
+                .iter()
+                .cloned()
+                .enumerate()
+                .map(|(i, v)| (i as i64, v))
+                .collect::<Vec<_>>(),
+        )
+        .iter()
+        .cloned()
+        {
+            let formal_raw = param_node_type_expr(pair.1.clone());
+            let formal_subst = substitute_generics(
+                formal_raw.clone(),
+                call_subst.clone(),
+                source_indices.clone(),
+            );
+            let formal = peel_nominal_alias_identity(
+                formal_subst.clone(),
+                type_env.clone(),
+                module_name.clone(),
+            );
+            let param_name = authored_name_at(source_indices.clone(), pair.1.clone());
+            let matched_arg = match Rc::new({
+                let mut __result = Vec::new();
+                for ta in typed_args.clone().iter().cloned() {
+                    if arg_has_name(ta.clone(), param_name.clone(), source_indices.clone()) {
+                        __result.push(ta);
+                    }
+                }
+                __result
+            })
+            .first()
+            .cloned()
+            {
+                Some(named_ta) => Some(named_ta.clone()),
+                None => typed_args
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(pair.0.clone() as usize)
+                    .next(),
+            };
+            match matched_arg.clone() {
+                Some(ta) => {
+                    let actual_expr = arg_value(ta.clone());
+                    if structured_application_site_type_mismatch(
+                        formal.clone(),
+                        actual_expr.clone(),
+                        scope.clone(),
+                    ) {
+                        let actual_raw = resolved_type(actual_expr.clone());
+                        let actual = peel_nominal_alias_identity(
+                            actual_raw.clone(),
+                            type_env.clone(),
+                            module_name.clone(),
+                        );
+                        __result.push(type_mismatch_error(
+                            node_type_shape(formal.clone(), source_indices.clone()),
+                            node_type_shape(actual.clone(), source_indices.clone()),
+                            actual_expr.span.clone(),
+                            module_name.clone(),
+                        ));
+                    }
+                }
+                None => {}
+            }
+        }
+        __result
+    })
+}
+
 pub fn container_element_nominal_brand_mismatch(
     formal: Rc<Node>,
     actual: Rc<Node>,
@@ -5816,6 +6007,13 @@ pub fn infer_expr_body(
                                             scope.module_name.clone(),
                                         )
                                     };
+                                    let structured_arg_diags =
+                                        direct_call_structured_application_mismatch_diags(
+                                            value_params_for_check.clone(),
+                                            typed_args.clone(),
+                                            call_subst.clone(),
+                                            scope.clone(),
+                                        );
                                     Rc::new(InferResult {
                                         typed: make_named_expr_node(
                                             func_name.clone(),
@@ -5836,7 +6034,10 @@ pub fn infer_expr_body(
                                             arg_diags.clone(),
                                             v1_rt::concat(
                                                 arg_shape_diags.clone(),
-                                                arg_compat_diags.clone(),
+                                                v1_rt::concat(
+                                                    arg_compat_diags.clone(),
+                                                    structured_arg_diags.clone(),
+                                                ),
                                             ),
                                         ),
                                     })
@@ -9040,7 +9241,7 @@ pub fn infer_record_lit_structural(
                         }
                         None => Rc::new(vec![]),
                     };
-                    let field_expected = match Rc::new({
+                    let field_declared_type = match Rc::new({
                         let mut __result = Vec::new();
                         for sf in struct_fields.clone().iter().cloned() {
                             if (authored_name_at(
@@ -9061,6 +9262,12 @@ pub fn infer_record_lit_structural(
                                 Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
                                 _ => field_node_type_expr(sf.clone()),
                             };
+                            Some(ft.clone())
+                        }
+                        None => None,
+                    };
+                    let field_expected = match field_declared_type.clone() {
+                        Some(ft) => {
                             if (((ft.ident_span.clone() != None)
                                 || type_node_is_callable(ft.clone()))
                                 || field_type_is_optional_coproduct(
@@ -9082,7 +9289,7 @@ pub fn infer_record_lit_structural(
                     );
                     let ar_typed = ar.typed.clone();
                     let ar_diags = ar.diagnostics.clone();
-                    let field_type_diags = match field_expected.clone() {
+                    let field_type_diags = match field_declared_type.clone() {
                         Some(expected_node) => {
                             let got_node = resolved_type(ar_typed.clone());
                             if rejects_string_for_optional_coproduct_field(
@@ -9136,6 +9343,23 @@ pub fn infer_record_lit_structural(
                                         actual_peeled.clone(),
                                         scope.type_env.clone(),
                                         scope.type_env.clone().source_indices.clone(),
+                                    ) {
+                                        Rc::new(vec![type_mismatch_error(
+                                            node_type_shape(
+                                                formal_peeled.clone(),
+                                                scope.type_env.clone().source_indices.clone(),
+                                            ),
+                                            node_type_shape(
+                                                actual_peeled.clone(),
+                                                scope.type_env.clone().source_indices.clone(),
+                                            ),
+                                            ar_typed.span.clone(),
+                                            scope.module_name.clone(),
+                                        )])
+                                    } else if structured_application_site_type_mismatch(
+                                        expected_required.clone(),
+                                        field_init_node_value(fi.clone()),
+                                        scope.clone(),
                                     ) {
                                         Rc::new(vec![type_mismatch_error(
                                             node_type_shape(

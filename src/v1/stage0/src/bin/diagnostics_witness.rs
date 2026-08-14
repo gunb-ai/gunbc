@@ -513,6 +513,61 @@ fn record_literal_field_walls(module_index: &ModuleIndex) {
         diagnostic_messages(&kernel_result)
     );
 
+    // RED: record literal where a Node parameter is declared (direct call arg)
+    let record_at_node = "module fieldwall_node_arg\n\
+        import v2.std.node { Node }\n\
+        type Box { label: String }\n\
+        fn takes_node(n: Node) -> Bool { true }\n\
+        fn bad_node_arg() -> Bool { takes_node(n: Box { label: \"x\" }) }\n";
+    let node_arg_result =
+        compile_multi(module_index, &[("fieldwall_node_arg.dag", record_at_node)]);
+    assert!(
+        node_arg_result
+            .diagnostics
+            .iter()
+            .any(|d| matches!(&*d.diagnostic, CompilerDiagnostic::TypeMismatch { .. })),
+        "expected TypeMismatch for Box at Node param, got: {:?}",
+        diagnostic_messages(&node_arg_result)
+    );
+
+    // RED: record literal where a coproduct is expected (field)
+    let record_at_union = "module fieldwall_record_at_union\n\
+        type Ev = EvA | EvB { n: Int, m: Int }\n\
+        type Box { label: String }\n\
+        type Prov { id: String, ev: Ev }\n\
+        data r: Prov = Prov { id: \"x\", ev: Box { label: \"y\" } }\n";
+    let record_union_result = compile_multi(
+        module_index,
+        &[("fieldwall_record_at_union.dag", record_at_union)],
+    );
+    assert!(
+        record_union_result
+            .diagnostics
+            .iter()
+            .any(|d| matches!(&*d.diagnostic, CompilerDiagnostic::TypeMismatch { .. })),
+        "expected TypeMismatch for Box at Ev field, got: {:?}",
+        diagnostic_messages(&record_union_result)
+    );
+
+    // RED: variant from the wrong coproduct at a union field
+    let wrong_variant = "module fieldwall_wrong_variant\n\
+        type Ev = EvA | EvB { n: Int, m: Int }\n\
+        type Other = OtherA | OtherB { k: Int }\n\
+        type Prov { id: String, ev: Ev }\n\
+        data w: Prov = Prov { id: \"x\", ev: OtherA { k: 1 } }\n";
+    let wrong_variant_result = compile_multi(
+        module_index,
+        &[("fieldwall_wrong_variant.dag", wrong_variant)],
+    );
+    assert!(
+        wrong_variant_result
+            .diagnostics
+            .iter()
+            .any(|d| matches!(&*d.diagnostic, CompilerDiagnostic::TypeMismatch { .. })),
+        "expected TypeMismatch for OtherA at Ev field, got: {:?}",
+        diagnostic_messages(&wrong_variant_result)
+    );
+
     // RED: kernel value where a declared coproduct is expected (direct call arg)
     let call_arg = "module fieldwall_callarg\n\
         type Ev = EvA | EvB { n: Int, m: Int }\n\
