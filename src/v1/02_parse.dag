@@ -1303,6 +1303,12 @@ fn stamp_parsed_node_list_with_head_role(
 // an item's own shape a safe discriminator (see parsed_module_item_declares_type_name). And a nullary
 // constructor takes the same arm as a payload one — it simply has no children — so the rule does not
 // fork on arity.
+// The ModuleValueOccurrence arm shares the lexical binder's child shape -- `data name: T = v` carries
+// its type annotation as head and its value expression as tail -- and needs its own arm rather than
+// the catch-all, which stamps every child Unclassified: that would make the type annotation an
+// ordinary value reference and lose the reference the value expression carries. Measured: without the
+// arm the provider file's own constructor reference stops binding, so admitting a file did not admit
+// what that file declares.
 fn stamp_parsed_node_children(
   node: Node,
   ancestors: FreeMonoid<OccurrenceId>,
@@ -1336,6 +1342,14 @@ fn stamp_parsed_node_children(
     _ =>
       match role {
         ParsedOccurrenceDeclaration { category: LexicalValueOccurrence } =>
+          stamp_parsed_node_list_with_head_role(
+            nodes: node.children,
+            ancestors: ancestors,
+            ctx: ctx,
+            head_role: ParsedOccurrenceReference { category: TypeOccurrence },
+            tail_role: ParsedOccurrenceUnclassified
+          )
+        ParsedOccurrenceDeclaration { category: ModuleValueOccurrence } =>
           stamp_parsed_node_list_with_head_role(
             nodes: node.children,
             ancestors: ancestors,

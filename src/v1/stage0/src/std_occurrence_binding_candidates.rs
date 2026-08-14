@@ -809,6 +809,15 @@ pub fn declaration_exposed_on_reference_chain(
     }
 }
 
+pub fn head_reference_names_a_module_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE HEAD OF A PROJECTION IS A MODULE, and at this grain the parser cannot say so. An expression path p.first arrives as a bare reference p plus a field projection, not as one dotted occurrence the way a TYPE path does, because the dot IS containment projection and the expression form is the structurally faithful one. So the head arrives spelled as an ordinary value reference (ExprVar, LexicalValueOccurrence) while the thing it names is a module declaration (NamespaceSegmentOccurrence), which is why the value-reference arm admits that pair: the reference site genuinely does not know whether a bare name is a local binder, a module member or a module, and the reference site is not where that is decided. A module declaration is supplied to a bare reference WITHOUT the on-chain exposure filter, deliberately: module-sibling exposure gates on same-module plus source order, both of which are within-file relations, and a module name is visible across files by design. Cardinality still decides -- a name that is both a local binder and a module segment supplies both and folds to Ambiguous. DISSOLVE-ON: one ReferencePath carrier {head, projections} that both syntactic positions feed, at which point the parser mints the head as a namespace reference directly and this category admission stops being needed. WHAT THIS DOES NOT DO: it binds the HEAD, which is what a file DEPENDENCY needs -- the provider file follows from the module declaration's own file. It does not descend to the member, so a bound head with a missing or ambiguous member is not yet distinguished here; that belongs to the resolver cutover, not to dependency derivation.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn projected_reference_candidates_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -884,6 +893,7 @@ pub fn occurrence_candidate_index_note() -> String {
 pub struct OccurrenceCandidateIndex {
     pub entries_by_id: Rc<HashMap<i64, Rc<OccurrenceIndexEntry>>>,
     pub declarations_by_name: Rc<HashMap<String, Rc<Vec<Rc<DeclarationOccurrence>>>>>,
+    pub module_declarations_by_segment: Rc<HashMap<String, Rc<Vec<Rc<DeclarationOccurrence>>>>>,
     pub module_by_occurrence: Rc<HashMap<i64, NonEmptyStr>>,
     pub exposure_by_occurrence: Rc<HashMap<i64, Rc<DeclarationExposure>>>,
     pub order_by_occurrence: Rc<HashMap<i64, AuthoredTokenOrdinal>>,
@@ -992,6 +1002,76 @@ pub fn declarations_by_name_build(
     }
 }
 
+pub fn module_declarations_by_segment_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "A module declaration carries its WHOLE dotted path as one authored name (v1.compiler.parse parse_module stamps the module node once, name: mod_name), so a head reference spelled with the last segment alone -- the p in p.first -- finds nothing in declarations_by_name, which is keyed by authored spelling. This index buckets module declarations by their last segment so a head reference has something to resolve against, and it is keyed by segment rather than by full path because the ratified migration form is the SHORTEST qualifying container path, not the path from the root. Two modules ending in the same segment therefore supply two candidates and fold to Ambiguous downstream -- the refusal, never a nearest-match. Only NamespaceSegmentOccurrence declarations enter: the category is read from the DeclarationOccurrence rather than inferred from the presence of a dot in the text, so an ordinary declaration whose name happened to contain a dot could not impersonate a module.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn module_declaration_last_segment(authored_name: String) -> String {
+    match Rc::new(
+        authored_name
+            .clone()
+            .split(&".".to_string())
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>(),
+    )
+    .last()
+    .cloned()
+    {
+        None => authored_name.clone(),
+        Some(segment) => segment.clone(),
+    }
+}
+
+pub fn module_declarations_by_segment_step(
+    acc: Rc<HashMap<String, Rc<Vec<Rc<DeclarationOccurrence>>>>>,
+    entries_by_id: Rc<HashMap<i64, Rc<OccurrenceIndexEntry>>>,
+    declaration: Rc<DeclarationOccurrence>,
+) -> Rc<HashMap<String, Rc<Vec<Rc<DeclarationOccurrence>>>>> {
+    match declaration.category.clone() {
+        OccurrenceCategory::NamespaceSegmentOccurrence => {
+            match v1_rt::map_get(&entries_by_id, declaration.occurrence.clone().value.clone()) {
+                None => acc.clone(),
+                Some(entry) => {
+                    let segment = module_declaration_last_segment(
+                        entry.projection.clone().authored_name.clone(),
+                    );
+                    match v1_rt::map_get(&acc, segment.clone()) {
+                        None => v1_rt::rc_map_insert(
+                            acc.clone(),
+                            segment.clone(),
+                            Rc::new(vec![declaration.clone()]),
+                        ),
+                        Some(existing) => v1_rt::rc_map_insert(
+                            acc.clone(),
+                            segment.clone(),
+                            v1_rt::concat(Rc::new(vec![declaration.clone()]), existing.clone()),
+                        ),
+                    }
+                }
+            }
+        }
+        _ => acc.clone(),
+    }
+}
+
+pub fn module_declarations_by_segment_build(
+    entries_by_id: Rc<HashMap<i64, Rc<OccurrenceIndexEntry>>>,
+    declarations: Rc<Vec<Rc<DeclarationOccurrence>>>,
+) -> Rc<HashMap<String, Rc<Vec<Rc<DeclarationOccurrence>>>>> {
+    declarations.clone().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<Vec<Rc<DeclarationOccurrence>>>>(),
+        |acc: Rc<HashMap<String, Rc<Vec<Rc<DeclarationOccurrence>>>>>,
+         declaration: Rc<DeclarationOccurrence>| {
+            module_declarations_by_segment_step(acc, entries_by_id.clone(), declaration.clone())
+        },
+    )
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum OccurrenceCandidateIndexBuild {
@@ -1067,6 +1147,7 @@ pub fn occurrence_candidate_index_build(
     index: Rc::new(OccurrenceCandidateIndex {
     entries_by_id: validated.entries_by_id.clone(),
     declarations_by_name: by_name.clone(),
+    module_declarations_by_segment: module_declarations_by_segment_build(validated.entries_by_id.clone(), validated.declarations.clone()),
     module_by_occurrence: module_path_build.module_by_occurrence.clone(),
     exposure_by_occurrence: exposure_build.exposure_by_occurrence.clone(),
     order_by_occurrence: order_build.order_by_occurrence.clone(),
@@ -1104,36 +1185,53 @@ pub fn candidate_occurrence_ids_for_reference(
         Some(entry) => match reference_qualifier_of_authored_name(
             entry.projection.clone().authored_name.clone(),
         ) {
-            None => match v1_rt::map_get(
-                &index.declarations_by_name.clone(),
-                entry.projection.clone().authored_name.clone(),
-            ) {
-                None => Rc::new(vec![]),
-                Some(same_spelling) => Rc::new({
-                    let mut __result = Vec::new();
-                    for declaration in Rc::new({
+            None => {
+                let on_chain = match v1_rt::map_get(
+                    &index.declarations_by_name.clone(),
+                    entry.projection.clone().authored_name.clone(),
+                ) {
+                    None => Rc::new(vec![]),
+                    Some(same_spelling) => Rc::new({
                         let mut __result = Vec::new();
-                        for declaration in v1_rt::reverse(same_spelling.clone()).iter().cloned() {
-                            if declaration_exposed_on_reference_chain(
-                                declaration.clone(),
-                                reference.clone(),
-                                index.module_by_occurrence.clone(),
-                                index.exposure_by_occurrence.clone(),
-                                index.order_by_occurrence.clone(),
-                            ) {
-                                __result.push(declaration);
+                        for declaration in Rc::new({
+                            let mut __result = Vec::new();
+                            for declaration in v1_rt::reverse(same_spelling.clone()).iter().cloned()
+                            {
+                                if declaration_exposed_on_reference_chain(
+                                    declaration.clone(),
+                                    reference.clone(),
+                                    index.module_by_occurrence.clone(),
+                                    index.exposure_by_occurrence.clone(),
+                                    index.order_by_occurrence.clone(),
+                                ) {
+                                    __result.push(declaration);
+                                }
                             }
+                            __result
+                        })
+                        .iter()
+                        .cloned()
+                        {
+                            __result.push(declaration.occurrence.clone());
                         }
                         __result
-                    })
-                    .iter()
-                    .cloned()
-                    {
-                        __result.push(declaration.occurrence.clone());
-                    }
-                    __result
-                }),
-            },
+                    }),
+                };
+                let named_modules = match v1_rt::map_get(
+                    &index.module_declarations_by_segment.clone(),
+                    entry.projection.clone().authored_name.clone(),
+                ) {
+                    None => Rc::new(vec![]),
+                    Some(modules) => Rc::new({
+                        let mut __result = Vec::new();
+                        for declaration in v1_rt::reverse(modules.clone()).iter().cloned() {
+                            __result.push(declaration.occurrence.clone());
+                        }
+                        __result
+                    }),
+                };
+                v1_rt::concat(on_chain.clone(), named_modules.clone())
+            }
             Some(qualifier) => {
                 let leaf = v1_rt::substring(
                     &entry.projection.clone().authored_name.clone(),

@@ -634,6 +634,8 @@ fn declaration_exposed_on_reference_chain(
   }
 }
 
+data head_reference_names_a_module_note: String = "THE HEAD OF A PROJECTION IS A MODULE, and at this grain the parser cannot say so. An expression path p.first arrives as a bare reference p plus a field projection, not as one dotted occurrence the way a TYPE path does, because the dot IS containment projection and the expression form is the structurally faithful one. So the head arrives spelled as an ordinary value reference (ExprVar, LexicalValueOccurrence) while the thing it names is a module declaration (NamespaceSegmentOccurrence), which is why the value-reference arm admits that pair: the reference site genuinely does not know whether a bare name is a local binder, a module member or a module, and the reference site is not where that is decided. A module declaration is supplied to a bare reference WITHOUT the on-chain exposure filter, deliberately: module-sibling exposure gates on same-module plus source order, both of which are within-file relations, and a module name is visible across files by design. Cardinality still decides -- a name that is both a local binder and a module segment supplies both and folds to Ambiguous. DISSOLVE-ON: one ReferencePath carrier \{head, projections\} that both syntactic positions feed, at which point the parser mints the head as a namespace reference directly and this category admission stops being needed. WHAT THIS DOES NOT DO: it binds the HEAD, which is what a file DEPENDENCY needs -- the provider file follows from the module declaration's own file. It does not descend to the member, so a bound head with a missing or ambiguous member is not yet distinguished here; that belongs to the resolver cutover, not to dependency derivation."
+
 data projected_reference_candidates_note: String = "A reference whose authored text carries a qualifier (live_tree.LiveTreeDisposition) is ONE occurrence whose authored_name is the whole dotted path — the parser already mints it that way, so nothing new is minted here; what this adds is the resolution rule the flat declarations_by_name lookup never had. The leaf segment selects the same-spelled bucket; the qualifier selects which declaring module may answer, by segment-suffix over the declaration's own OccurrenceModulePathRow (tmp.q.b is named by b or by q.b or in full). Exposure for a projected reference is ModuleExposure for exactly that module and NOTHING else: RootExposure does not answer a qualified name (a root declaration is not a member of the named module) and the module-sibling ordinal gate is deliberately NOT applied, because source order is a within-file relation and two files have no authored order between them. Cardinality stays downstream: if two modules end in the same segment both declarations are supplied and the population folds to Ambiguous, which is the correct refusal rather than a nearest-match heuristic (DESIGN section 4 — a heuristic is never necessary in a closed system)."
 
 fn reference_qualifier_of_authored_name(name: String) -> String? {
@@ -687,6 +689,7 @@ data occurrence_candidate_index_note: String = "OccurrenceCandidateIndex is buil
 type OccurrenceCandidateIndex {
   entries_by_id: Map<Int, OccurrenceIndexEntry>
   declarations_by_name: Map<String, List<DeclarationOccurrence>>
+  module_declarations_by_segment: Map<String, List<DeclarationOccurrence>>
   module_by_occurrence: Map<Int, NonEmptyStr>
   exposure_by_occurrence: Map<Int, DeclarationExposure>
   order_by_occurrence: Map<Int, AuthoredTokenOrdinal>
@@ -757,6 +760,54 @@ fn declarations_by_name_build(
   }
 }
 
+data module_declarations_by_segment_note: String = "A module declaration carries its WHOLE dotted path as one authored name (v1.compiler.parse parse_module stamps the module node once, name: mod_name), so a head reference spelled with the last segment alone -- the p in p.first -- finds nothing in declarations_by_name, which is keyed by authored spelling. This index buckets module declarations by their last segment so a head reference has something to resolve against, and it is keyed by segment rather than by full path because the ratified migration form is the SHORTEST qualifying container path, not the path from the root. Two modules ending in the same segment therefore supply two candidates and fold to Ambiguous downstream -- the refusal, never a nearest-match. Only NamespaceSegmentOccurrence declarations enter: the category is read from the DeclarationOccurrence rather than inferred from the presence of a dot in the text, so an ordinary declaration whose name happened to contain a dot could not impersonate a module."
+
+fn module_declaration_last_segment(authored_name: String) -> String {
+  match last(authored_name |> split(delimiter: ".")) {
+    Absent => authored_name
+    Present { value: segment } => segment
+  }
+}
+
+fn module_declarations_by_segment_step(
+  acc: Map<String, List<DeclarationOccurrence>>,
+  entries_by_id: Map<Int, OccurrenceIndexEntry>,
+  declaration: DeclarationOccurrence
+) -> Map<String, List<DeclarationOccurrence>> {
+  match declaration.category {
+    NamespaceSegmentOccurrence =>
+      match map_get(entries_by_id, declaration.occurrence.value) {
+        Absent => acc
+        Present { value: entry } =>
+          let segment = module_declaration_last_segment(
+            authored_name: entry.projection.authored_name,
+          )
+          match map_get(acc, segment) {
+            Absent => map_insert(acc, segment, [declaration])
+            Present { value: existing } =>
+              map_insert(acc, segment, concat([declaration], existing))
+          }
+      }
+    _ => acc
+  }
+}
+
+fn module_declarations_by_segment_build(
+  entries_by_id: Map<Int, OccurrenceIndexEntry>,
+  declarations: List<DeclarationOccurrence>
+) -> Map<String, List<DeclarationOccurrence>> {
+  fold(
+    declarations,
+    init: empty_map(),
+    f: (acc, declaration) =>
+      module_declarations_by_segment_step(
+        acc: acc,
+        entries_by_id: entries_by_id,
+        declaration: declaration,
+      ),
+  )
+}
+
 type OccurrenceCandidateIndexBuild
   = OccurrenceCandidateIndexReady { index: OccurrenceCandidateIndex }
   | OccurrenceCandidateIndexTransportRefused { refusal: OccurrenceTransportRefusal }
@@ -825,6 +876,10 @@ fn occurrence_candidate_index_build(
                                     index: OccurrenceCandidateIndex {
                                       entries_by_id: validated.entries_by_id,
                                       declarations_by_name: by_name,
+                                      module_declarations_by_segment: module_declarations_by_segment_build(
+                                        entries_by_id: validated.entries_by_id,
+                                        declarations: validated.declarations,
+                                      ),
                                       module_by_occurrence: module_path_build.module_by_occurrence,
                                       exposure_by_occurrence: exposure_build.exposure_by_occurrence,
                                       order_by_occurrence: order_build.order_by_occurrence,
@@ -853,19 +908,30 @@ fn candidate_occurrence_ids_for_reference(
         name: entry.projection.authored_name,
       ) {
         Absent =>
-          match map_get(index.declarations_by_name, entry.projection.authored_name) {
-            Absent => []
-            Present { value: same_spelling } =>
-              reverse(same_spelling)
-                |> filter(declaration => declaration_exposed_on_reference_chain(
-                  declaration: declaration,
-                  reference: reference,
-                  module_by_occurrence: index.module_by_occurrence,
-                  exposure_by_occurrence: index.exposure_by_occurrence,
-                  order_by_occurrence: index.order_by_occurrence,
-                ))
-                |> map(declaration => declaration.occurrence)
-          }
+          let on_chain =
+            match map_get(index.declarations_by_name, entry.projection.authored_name) {
+              Absent => []
+              Present { value: same_spelling } =>
+                reverse(same_spelling)
+                  |> filter(declaration => declaration_exposed_on_reference_chain(
+                    declaration: declaration,
+                    reference: reference,
+                    module_by_occurrence: index.module_by_occurrence,
+                    exposure_by_occurrence: index.exposure_by_occurrence,
+                    order_by_occurrence: index.order_by_occurrence,
+                  ))
+                  |> map(declaration => declaration.occurrence)
+            }
+          let named_modules =
+            match map_get(
+              index.module_declarations_by_segment,
+              entry.projection.authored_name,
+            ) {
+              Absent => []
+              Present { value: modules } =>
+                reverse(modules) |> map(declaration => declaration.occurrence)
+            }
+          concat(on_chain, named_modules)
         Present { value: qualifier } =>
           let leaf = substring(
             s: entry.projection.authored_name,

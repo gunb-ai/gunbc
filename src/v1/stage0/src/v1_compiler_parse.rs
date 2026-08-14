@@ -2625,6 +2625,18 @@ pub fn stamp_parsed_node_children(
                 Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
             ),
             ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+                category: OccurrenceCategory::ModuleValueOccurrence,
+                ..
+            } => stamp_parsed_node_list_with_head_role(
+                node.children.clone(),
+                ancestors.clone(),
+                ctx.clone(),
+                Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
+                    category: OccurrenceCategory::TypeOccurrence,
+                }),
+                Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+            ),
+            ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
                 category: OccurrenceCategory::NamespaceSegmentOccurrence,
                 ..
             } => {

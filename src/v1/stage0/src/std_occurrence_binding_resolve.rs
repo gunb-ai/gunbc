@@ -134,6 +134,9 @@ pub fn occurrence_category_binding_verdict(
             OccurrenceCategory::ModuleValueOccurrence => {
                 Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
             }
+            OccurrenceCategory::NamespaceSegmentOccurrence => {
+                Rc::new(OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible)
+            }
             _ => Rc::new(
                 OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible {
                     reference: reference.clone(),

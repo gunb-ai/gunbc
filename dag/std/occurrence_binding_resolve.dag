@@ -71,6 +71,7 @@ fn occurrence_category_binding_verdict(
         CallableOccurrence => OccurrenceCategoryBindingAdmissible
         ConstructorOccurrence => OccurrenceCategoryBindingAdmissible
         ModuleValueOccurrence => OccurrenceCategoryBindingAdmissible
+        NamespaceSegmentOccurrence => OccurrenceCategoryBindingAdmissible
         _ => OccurrenceCategoryBindingInadmissible {
           reference: reference,
           declaration: declaration,
