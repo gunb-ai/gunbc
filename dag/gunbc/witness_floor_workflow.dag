@@ -34,11 +34,25 @@ import std.types { List, String, Int }
 // to, and no `needs` edge to get wrong.
 //
 // WHAT IS DELIBERATELY ABSENT, so that a later reader does not restore it as an oversight:
-// regen, heal, the generated-artifact drift gates, the seven effect gates, the fmt gate,
+// heal, the generated-artifact drift gates, the seven effect gates, the fmt gate,
 // merge-admission stamping and the falsifier cadence are all real obligations and all currently
 // unmet. They return one at a time, each re-derived from its own first principles under its own
 // operator agreement. Their absence here is the declared state of the ladder, not a gap in this
 // module.
+//
+// REGEN IS ABSENT FOR A DIFFERENT REASON AND DOES NOT RETURN (operator ruling, 2026-08-15,
+// landed on integration/v1-cut at eebdeca813 -- 71 files, 62,261 lines deleted). This list named
+// regen as an unmet obligation awaiting its turn; that is no longer true, because its SUBJECT is
+// deleted. `regen_stage0` went with the whole v1 .dag compiler authority and its 142-entry
+// emit-plan roster. The emitted Rust under src/v1/stage0/src is retained and frozen -- every .rs
+// is committed, so a clone still builds with rustc alone -- and what died is the loop that kept
+// those files in sync with a .dag authority that no longer exists. Deleting regen in the same
+// commit was load-bearing rather than tidy: left standing, it would have computed an empty emit
+// set against the deleted authority and deleted the 142 frozen files, so the regrowth trap
+// pointed at the seed itself. A regen job, a regen verify gate, a self-host staleness gate and a
+// regen affected-set skip witness are therefore all off this queue permanently; each had exactly
+// one subject. The consequence for this fold is that no second required CI path competes with it
+// for the floor budget.
 
 data witness_floor_workflow_job_id: String = "witnesses"
 
