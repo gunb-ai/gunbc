@@ -7,7 +7,7 @@ import gunbc.stage0_crate_partition_generated {
   generated_partition_crate_rows,
 }
 import gunbc.stage0_emit_plan { stage0_module_emit_basename }
-import gunbc.stage0_emit_model { is_generated_stage0_file }
+import gunbc.stage0_emit_model { is_committed_generated_stage0_artifact }
 import std.algebra { Cons }
 import extdeps.filesystem.filesystem_io
 import v2.std.collection { Map, empty_map, map_insert, map_get }
@@ -252,7 +252,7 @@ fn emitted_module_path(basename: String) -> String {
 // RAISES on a missing path, so probing existence by reading would turn "the target is not an
 // emitted module" - an ordinary and expected answer - into a crash.
 fn module_is_emitted(basename: String) -> Bool {
-  is_generated_stage0_file(basename: concat(basename, ".rs"))
+  is_committed_generated_stage0_artifact(basename: concat(basename, ".rs"))
 }
 
 // THE IMPORTER'S SOURCE IS READ ONCE PER IMPORTER, NOT ONCE PER TARGET, and that is a

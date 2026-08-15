@@ -1,7 +1,7 @@
 module test.claim.stage0_emit_model_witness
 
 import gunbc.stage0_emit_model {
-  is_generated_stage0_file,
+  is_committed_generated_stage0_artifact,
   stage0_module_emit_basename,
   stage0_module_emit_filename
 }
@@ -29,25 +29,25 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data stage0_emit_model_witness_note: String = "Authority: gunbc.stage0_emit_plan -> enrolled gunbc.stage0_emit_plan_generated projection. Positives catch missing derived basenames; negatives prove frontier-classified seed-retained files stay out. Regen's independent EmitResult agreement rejects both modeled-but-not-produced and produced-but-unmodeled paths."
 
-test fn w_hand_maintained_not_classified_generated() -> Bool {
-  !is_generated_stage0_file(basename: "cli_run.rs") &&
-  !is_generated_stage0_file(basename: "v1_interpreter.rs") &&
-  !is_generated_stage0_file(basename: "main.rs")
+test fn w_three_named_hand_files_are_not_committed_generated_artifacts() -> Bool {
+  !is_committed_generated_stage0_artifact(basename: "cli_run.rs") &&
+  !is_committed_generated_stage0_artifact(basename: "v1_interpreter.rs") &&
+  !is_committed_generated_stage0_artifact(basename: "main.rs")
 }
 
 
 
-data enrolled_manifest_claim_retirement_note: String = "RETIRED WITH ITS SUBJECT, AND REPLACED BY THE OPPOSITE CLAIM. This position formerly asserted enrolled == derived: that gunbc.stage0_emit_plan_generated.generated_stage0_files equalled the typed emission plan's derivation. That was the drift gate over regen_stage0's output roster; the v1 cut deleted the regen loop and the roster, so the equality has no left-hand side. It is not dropped silently -- the two claims below assert the replacement grounding instead, so the retirement keeps an executing consumer and a restored roster would red rather than pass unnoticed."
+data enrolled_manifest_claim_retirement_note: String = "RETIRED WITH ITS SUBJECT, AND REPLACED BY THE OPPOSITE CLAIM. This position formerly asserted enrolled == derived: that gunbc.stage0_emit_plan_generated.committed_generated_stage0_artifact_files equalled the typed emission plan's derivation. That was the drift gate over regen_stage0's output roster; the v1 cut deleted the regen loop and the roster, so the equality has no left-hand side. It is not dropped silently -- the two claims below assert the replacement grounding instead, so the retirement keeps an executing consumer and a restored roster would red rather than pass unnoticed."
 
 test fn w_generated_membership_is_registry_derived() -> Bool {
-  is_generated_stage0_file(basename: "bootstrap_stage0_crate_layout_generated.rs")
-    && is_generated_stage0_file(basename: "v1_interpreter_dispatch_generated.rs")
+  is_committed_generated_stage0_artifact(basename: "bootstrap_stage0_crate_layout_generated.rs")
+    && is_committed_generated_stage0_artifact(basename: "v1_interpreter_dispatch_generated.rs")
 }
 
 test fn w_frozen_seed_rust_is_not_generated() -> Bool {
-  !is_generated_stage0_file(basename: "std_algebra.rs")
-    && !is_generated_stage0_file(basename: "cli_run.rs")
-    && !is_generated_stage0_file(basename: "lib.rs")
+  !is_committed_generated_stage0_artifact(basename: "std_algebra.rs")
+    && !is_committed_generated_stage0_artifact(basename: "cli_run.rs")
+    && !is_committed_generated_stage0_artifact(basename: "lib.rs")
 }
 test fn w_emit_naming_rule() -> Bool {
   stage0_module_emit_basename(module_path: "v1.compiler.emit_rust") == "v1_compiler_emit_rust" &&
