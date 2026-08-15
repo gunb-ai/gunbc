@@ -197,15 +197,20 @@ fn live_program_view_result() -> LiveProgramView {
     RoadmapAcceptanceReceiptsProjectionRefused { detail } =>
       LiveViewRefused { causes: [join(["acceptance receipts unavailable: ", detail], "")] }
     RoadmapAcceptanceReceiptsProjected { receipts } =>
-      match v1_program_view(
-        nodes: declared_roadmap_nodes(),
-        edges: declared_roadmap_edges(),
-        receipts: receipts,
-        in_flight: [],
-      ) {
-        ProgramViewDerived { view } => LiveViewDerived { view: view }
-        ProgramViewRefused { causes } =>
-          LiveViewRefused { causes: map(causes, c => refusal_cause_text(c: c)) }
+      match projected_roadmap_dependency_edges_projection() {
+        ProjectedRoadmapDependencyEdgesProjectionRefused { detail } =>
+          LiveViewRefused { causes: [join(["dependency edges unavailable: ", detail], "")] }
+        ProjectedRoadmapDependencyEdgesProjected { edges } =>
+          match v1_program_view(
+            nodes: declared_roadmap_nodes(),
+            edges: edges,
+            receipts: receipts,
+            in_flight: [],
+          ) {
+            ProgramViewDerived { view } => LiveViewDerived { view: view }
+            ProgramViewRefused { causes } =>
+              LiveViewRefused { causes: map(causes, c => refusal_cause_text(c: c)) }
+          }
       }
   }
 }

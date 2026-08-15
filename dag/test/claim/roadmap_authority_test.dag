@@ -730,3 +730,31 @@ test fn witness_ghost_node_outside_authority_is_counted() -> Bool {
 test fn witness_altered_copy_of_declared_node_is_counted() -> Bool {
   roadmap_altered_copy_red_probe_count() == 1
 }
+
+test fn witness_projected_dependency_edges_include_closing_contract_projection() -> Bool {
+  match closing_contract_task_edges_projection() {
+    ClosingContractTaskEdgesProjected { edges: closing_edges } =>
+      match projected_roadmap_dependency_edges_projection() {
+        ProjectedRoadmapDependencyEdgesProjected { edges: projected } =>
+          fold(closing_edges, init: true, f: fn(acc, edge) {
+            acc && projected |> any(p => p.child == edge.child && p.parent == edge.parent)
+          })
+        ProjectedRoadmapDependencyEdgesProjectionRefused { detail: _ } => false
+      }
+    ClosingContractTaskEdgesProjectionRefused { detail: _ } => false
+  }
+}
+
+test fn witness_projected_dependency_edges_include_active_edges() -> Bool {
+  match accepted_roadmap_node_ids_projection() {
+    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
+      match projected_roadmap_dependency_edges_projection() {
+        ProjectedRoadmapDependencyEdgesProjected { edges: projected } =>
+          fold(active_roadmap_edges_for_accepted(accepted: accepted), init: true, f: fn(acc, edge) {
+            acc && projected |> any(p => p.child == edge.child && p.parent == edge.parent)
+          })
+        ProjectedRoadmapDependencyEdgesProjectionRefused { detail: _ } => false
+      }
+    AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => false
+  }
+}
