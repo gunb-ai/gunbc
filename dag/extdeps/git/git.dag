@@ -3,6 +3,11 @@ module extdeps.git
 import std.types { FilePath }
 
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.measure { Percent, percent }
+import std.types { Bool, CommitSha, Email, FilePath, GitRef, Int, List, NonEmptyStr, Seconds, Timestamp }
+import v2.std.algebra { length, skip }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https

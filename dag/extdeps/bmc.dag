@@ -1,6 +1,12 @@
 module extdeps.bmc
 
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.bmc.redfish { bmc_ground_host_observations }
+import extdeps.bmc.types { BmcGroundedHostObservations, BmcTelemetrySnapshot }
+import std.measure { ByteSize, HardwareThreadCount }
+import std.types { NonEmptyStr }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https

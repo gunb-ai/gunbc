@@ -6,6 +6,10 @@ import std.bmc { BmcFirmwareFamily, BmcEndpoint }
 import std.nat { Nat }
 import extdeps.firmware.types { FirmwareSemanticVersion, firmware_semantic_version }
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import v2.std.algebra { any, filter, length, skip }
+import v2.std.optional { Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

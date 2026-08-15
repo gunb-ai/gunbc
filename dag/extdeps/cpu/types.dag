@@ -1,6 +1,12 @@
 module extdeps.cpu.types
 
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.toolchain.types { Architecture }
+import extdeps.vendor { Vendor }
+import std.measure { ByteSize, Celsius, HardwareThreadCount, Hertz, Watt }
+import std.types { Int, List, NonEmptyStr }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
