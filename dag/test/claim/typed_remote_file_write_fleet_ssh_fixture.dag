@@ -41,7 +41,7 @@ fn fleet_openssh_trust_policy_hermetic_witness_fixture(
 
 fn fleet_ssh_execution_context_hermetic_witness_fixture() -> FleetSshExecutionContext?
   admit_callers: [
-    decl_ref(module_path: "test.claim.typed_remote_file_write_witness", decl_name: "w_over_fleet_ssh_hermetic_mock_converges"),
+    decl_ref(module_path: "test.claim.typed_remote_file_write_witness", decl_name: "w_over_fleet_ssh_hermetic_mock_exec_accepted"),
   ]
 {
   match fixture_attempt() {

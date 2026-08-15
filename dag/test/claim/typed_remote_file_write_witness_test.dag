@@ -205,7 +205,7 @@ test fn w_executor_home_unit_path_seals_for_spark_layout() -> Bool {
   }
 }
 
-test fn w_over_fleet_ssh_hermetic_mock_converges() -> Bool {
+test fn w_over_fleet_ssh_hermetic_mock_exec_accepted() -> Bool {
   match typed_remote_file_write_seal(
     path: "/tmp/gunbc-trfw-over-fleet-ssh" as FilePath,
     content: witness_metachar_payload,
