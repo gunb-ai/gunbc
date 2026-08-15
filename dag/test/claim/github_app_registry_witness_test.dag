@@ -7,6 +7,7 @@ import gunbc.ci_heal_credential {
   live_heal_push_binding_resolution,
 }
 import gunbc.repository { gunbc_repository }
+import extdeps.uri { Uri, uri_https }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -42,10 +43,9 @@ data ordinary_advance_effect: GitHubEffect = AdvanceRepositoryBranch {
 data bot_installation_id: GitHubAppInstallationId = GitHubAppInstallationId { value: 999 }
 data other_installation_id: GitHubAppInstallationId = GitHubAppInstallationId { value: 1000 }
 
-data bot_installation_locator: Uri = Uri {
-  scheme: Https
+data bot_installation_locator: Uri = uri_https(
   locator: "github.com/organizations/gunb-ai/settings/installations/999"
-}
+)
 
 fn installation_of(
   app: DeclaredGitHubApp,

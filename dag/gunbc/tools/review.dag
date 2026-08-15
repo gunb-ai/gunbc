@@ -28,7 +28,7 @@ type ReviewContextRead =
   | ReviewContextRefused { reason: String }
 
 fn has_review_at_sha(reviews: List<PullReview>, sha: CommitSha) -> Bool {
-  any(reviews, r => r.commit_id == sha && contains(r.body, "Review"))
+  any(reviews, r => r.commit_id == sha && r.body.contains("Review"))
 }
 
 fn git_show_file_at_ref(ref: GitRef, path: FilePath) -> GitShowAtRef {

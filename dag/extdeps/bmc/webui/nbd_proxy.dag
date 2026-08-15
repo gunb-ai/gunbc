@@ -1,6 +1,11 @@
 module extdeps.bmc.webui.nbd_proxy
 
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.http_path { ParamToken, PathParamBinding, PathTemplate, render_path_template }
+import std.measure { ByteSize }
+import std.types { Bool, Int, List, NonEmptyStr }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
