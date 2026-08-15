@@ -24294,6 +24294,20 @@ pub struct ShardStyle {
 }
 
 impl ShardStyle {
+    /// The style the required witness floor runs under. It is a single shard by construction —
+    /// there is no sharding to describe, so the `s{id}` tag is absent rather than set to a
+    /// constant — and colour/streaming come from the same environment the rest of the floor
+    /// reads. This exists because the fields are private to this module and the floor's CLI
+    /// entry lives in a binary; it is a constructor, not a policy.
+    pub fn single_shard() -> Self {
+        ShardStyle {
+            shard_id: 0,
+            shard_count: 1,
+            color: floor_color_enabled(),
+            stream: floor_stream_enabled(),
+        }
+    }
+
     /// Distinct hue per concurrent shard so the interleaved stream reads as parallelism. Green
     /// and red are reserved for the pass/fail glyph, so the label palette avoids them.
     fn shard_color_code(self) -> &'static str {

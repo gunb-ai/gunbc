@@ -399,22 +399,6 @@ fn ci_release_build_step() -> Step {
   }
 }
 
-fn ci_floor_step() -> Step {
-  RunStep {
-    name: Present { value: "gunbc ci (.dag witnesses + gates)" },
-    id: Present { value: "floor" },
-    run: gunbc_ci_floor_run(spec: ci_floor_spec_from_roster()),
-    shell: none,
-    env: Present {
-      value: [kv(key: ci_floor_phase_journal_env_name, value: yaml_string(s: ci_floor_phase_journal_path))]
-    },
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: Present { value: minute_count(m: gunbc_ci_workflow_wrapper_budget_minutes()) }
-  }
-}
-
 data ci_release_bins_artifact_name: String = "release-bins"
 
 fn ci_release_bins_pack_step() -> Step {
@@ -1072,12 +1056,55 @@ fn ci_job() -> Job {
     id: "ci",
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: concat([ci_floor_upstream_red_refusal_step()], concat(ci_floor_job_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_floor_peak_pre_step(), ci_floor_step(), ci_floor_peak_post_step(), ci_floor_receipts_upload_step()])),
+    steps: concat([ci_floor_upstream_red_refusal_step()], concat(ci_floor_job_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step()])),
     needs: ["build", "regen", "heal_generated_artifacts"],
     env: none,
     outputs: none,
     if_condition: Present { value: ci_floor_runs_unless_cancelled_if },
     timeout_minutes: Present { value: gunbc_ci_job_backstop_timeout_minutes() },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
+data gunbc_ci_all_witnesses_step_timeout_minutes: Int = 15
+
+fn ci_all_witnesses_script() -> String {
+  concat(
+    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+    concat(
+      "\"$ROOT/target/release/claim_executor\" --required-floor",
+      " --source-root \"$ROOT/dag\" --source-root \"$ROOT/src/v2\"\n"
+    )
+  )
+}
+
+fn ci_all_witnesses_step() -> Step {
+  RunStep {
+    name: Present { value: "all witnesses (one prepared subject, unconditional)" },
+    id: none,
+    run: ci_all_witnesses_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_all_witnesses_step_timeout_minutes }
+  }
+}
+
+fn ci_all_witnesses_job() -> Job {
+  Job {
+    id: "witnesses",
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: concat(ci_floor_job_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_all_witnesses_step()]),
+    needs: ["build"],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: none,
     continue_on_error: none,
     concurrency: none,
     permissions: none
@@ -1163,5 +1190,5 @@ data ci_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: [ci_build_job(), ci_regen_job(), ci_job(), ci_heal_generated_artifacts_job(), ci_fleet_job()]
+  jobs: [ci_build_job(), ci_regen_job(), ci_job(), ci_all_witnesses_job(), ci_heal_generated_artifacts_job(), ci_fleet_job()]
 }
