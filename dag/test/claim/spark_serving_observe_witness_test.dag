@@ -37,6 +37,11 @@ import gunbc.spark_serving_observe {
   SparkServingObservationsProduced,
   spark_serving_observation_report_succeeded,
 }
+import gunbc.spark_serving_runtime_receipt {
+  spark_serving_parse_runtime_receipt_json,
+  spark_serving_runtime_receipt_field_from_probe,
+  spark_serving_runtime_receipt_probe_words,
+}
 
 data witness_required_release_asset_digest_hex: String = "79617139521db251c716d6229505d7530171ff4d68e476d0c22dabc15726a237"
 
@@ -57,6 +62,8 @@ data witness_tags_json_positive: String = "{\"models\":[{\"name\":\"gpt-oss:20b\
 data witness_nvidia_driver_satisfied_wire: String = "550.90.07"
 
 data witness_nvidia_driver_too_old_wire: String = "549.12.01"
+
+data witness_runtime_receipt_json_positive: String = "{\"release_asset_digest_hex\":\"79617139521db251c716d6229505d7530171ff4d68e476d0c22dabc15726a237\"}"
 
 fn witness_nvidia_driver_present(wire: String) -> SparkServingReadbackPresent {
   SparkServingReadbackPresent { value: wire }
@@ -187,6 +194,43 @@ test fn version_json_positive_parses_reported_version() -> Bool {
   }
 }
 
+test fn runtime_receipt_json_positive_parses_asset_digest() -> Bool {
+  match spark_serving_parse_runtime_receipt_json(stdout: witness_runtime_receipt_json_positive) {
+    SparkServingReadbackPresent { value: hex } =>
+      hex == witness_required_release_asset_digest_hex
+    SparkServingReadbackAbsent => false
+    SparkServingReadbackRefused { cause: _ } => false
+  }
+}
+
+test fn runtime_receipt_probe_success_populates_digest_field() -> Bool {
+  match spark_serving_runtime_receipt_field_from_probe(
+    probe: Present {
+      value: SshSessionExecResult {
+        exit_code: 0,
+        success: true,
+        stdout: witness_runtime_receipt_json_positive,
+        stderr: "",
+      },
+    },
+  ) {
+    SparkServingReadbackPresent { value: hex } =>
+      hex == witness_required_release_asset_digest_hex
+    SparkServingReadbackAbsent => false
+    SparkServingReadbackRefused { cause: _ } => false
+  }
+}
+
+test fn runtime_receipt_probe_words_target_executor_receipt_path() -> Bool {
+  let words = spark_serving_runtime_receipt_probe_words(host: "srv5")
+  words.length() == 2
+    && words.first() == "cat"
+    && string_contains(
+      s: words.skip(n: 1).first(),
+      pattern: "/home/gunbc-automation/.local/share/gunbc/spark-serving/ollama-runtime-receipt.json",
+    )
+}
+
 data version_parse_malformed_red_control_note: String = "RED CONTROL: malformed /api/version output must refuse rather than return any version."
 
 test fn malformed_version_json_refuses_parse() -> Bool {
@@ -257,9 +301,35 @@ test fn tags_json_positive_parses_model_digest() -> Bool {
 test fn active_incomplete_readback_refuses_observation() -> Bool {
   match derive_spark_serving_observation(readback: readback_active_incomplete()) {
     SparkServingObservationRefused { host: h, cause: c } =>
-      h == "srv5" && string_contains(s: c as String, pattern: "fingerprint")
+      h == "srv5"
+        && (
+          string_contains(s: c as String, pattern: "fingerprint")
+            || string_contains(s: c as String, pattern: "runtime_release_asset_digest")
+            || string_contains(s: c as String, pattern: "install receipt")
+        )
     SparkServingAbsent { host: _ } => false
     SparkServingObserved { host: _, loaded_release: _ } => false
+  }
+}
+
+test fn missing_runtime_receipt_probe_refuses_active_observation() -> Bool {
+  match derive_spark_serving_observation(readback: SparkServingReadback {
+    host: "srv5",
+    unit_outcome: SparkServingUnitActive,
+    runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
+    runtime_release_asset_digest: SparkServingReadbackRefused {
+      cause: "runtime install receipt probe failed exit=1 stderr=No such file" as NonEmptyStr,
+    },
+    model_name: SparkServingReadbackPresent { value: "gpt-oss" },
+    model_tag: SparkServingReadbackPresent { value: "20b" },
+    model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
+    bind_address: SparkServingReadbackAbsent,
+  }) {
+    SparkServingObservationRefused { host: _, cause: c } =>
+      string_contains(s: c as String, pattern: "install receipt")
+    SparkServingObserved { host: _, loaded_release: _ } => false
+    SparkServingAbsent { host: _ } => false
   }
 }
 

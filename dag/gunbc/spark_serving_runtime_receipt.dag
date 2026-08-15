@@ -1,0 +1,84 @@
+module gunbc.spark_serving_runtime_receipt
+
+import std.types { String, List, NonEmptyStr, FilePath }
+import product.placement_supply { HostIdentity }
+import extdeps.ssh.session { SshSessionExecResult }
+import extdeps.languages.json.parse {
+  json_object_unique_member,
+  parse_json,
+}
+import gunbc.spark_serving_readback_parse {
+  SparkServingReadbackField,
+  SparkServingReadbackPresent,
+  SparkServingReadbackRefused,
+  spark_serving_readback_field_from_member_lookup,
+}
+
+data spark_serving_runtime_install_receipt_provenance_note: String = "INSTALL PROVENANCE, not running-process attestation. Records which cited release-asset row gunbc.package_delivery (#8225) materialized on this host. Out-of-band binary replacement leaves the receipt stale while /api/version may still answer — wet observation joins receipt digest with the independently probed version wire via ollama_runtime_closure_digest_for_observed_release. It does not hash the on-disk executable: upstream publishes archive digests, and extracted-binary hashing would require per-variant expected values recorded at install time anyway."
+
+data spark_serving_runtime_receipt_note: String = "Install receipt authority for Ollama runtime closure identity on Spark hosts. #8225 package_delivery materialization writes spark_serving_runtime_receipt_wire_path as gunbc-automation; wet observation reads it via spark_serving_runtime_receipt_probe_words — never re-derives the cited release-asset digest from desired state or /api/version alone. Missing or unreadable receipt on an active unit refuses rather than collapsing to SparkServingReadbackAbsent."
+
+type SparkServingRuntimeInstallReceipt {
+  host: HostIdentity
+  release_asset_digest_hex: NonEmptyStr
+}
+
+data spark_serving_executor_home: FilePath = "/home/gunbc-automation" as FilePath
+
+data spark_serving_runtime_receipt_rel: String = ".local/share/gunbc/spark-serving/ollama-runtime-receipt.json"
+
+data spark_serving_runtime_receipt_release_asset_digest_member: String = "release_asset_digest_hex"
+
+fn spark_serving_runtime_receipt_wire_path(host: HostIdentity) -> FilePath {
+  spark_serving_runtime_receipt_path(host: host)
+}
+
+fn spark_serving_runtime_receipt_path(host: HostIdentity) -> FilePath {
+  concat(
+    spark_serving_executor_home as String,
+    concat("/", spark_serving_runtime_receipt_rel),
+  ) as FilePath
+}
+
+fn spark_serving_runtime_receipt_probe_words(host: HostIdentity) -> List<String> {
+  ["cat", spark_serving_runtime_receipt_wire_path(host: host) as String]
+}
+
+fn spark_serving_parse_runtime_receipt_json(stdout: String) -> SparkServingReadbackField {
+  match parse_json(s: stdout) {
+    Absent =>
+      SparkServingReadbackRefused {
+        cause: "ollama runtime install receipt is not parseable JSON" as NonEmptyStr,
+      }
+    Present { value: doc } =>
+      spark_serving_readback_field_from_member_lookup(
+        lookup: json_object_unique_member(
+          v: doc,
+          key: spark_serving_runtime_receipt_release_asset_digest_member,
+        ),
+        member: spark_serving_runtime_receipt_release_asset_digest_member,
+      )
+  }
+}
+
+fn spark_serving_runtime_receipt_field_from_probe(
+  probe: SshSessionExecResult?,
+) -> SparkServingReadbackField {
+  match probe {
+    Absent =>
+      SparkServingReadbackRefused {
+        cause: "runtime install receipt probe leg did not run" as NonEmptyStr,
+      }
+    Present { value: r } =>
+      if r.success {
+        spark_serving_parse_runtime_receipt_json(stdout: r.stdout)
+      } else {
+        SparkServingReadbackRefused {
+          cause: join([
+            "runtime install receipt probe failed exit=", to_string(r.exit_code),
+            " stderr=", r.stderr,
+          ], "") as NonEmptyStr,
+        }
+      }
+  }
+}
