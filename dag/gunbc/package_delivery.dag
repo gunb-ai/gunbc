@@ -2481,14 +2481,17 @@ fn spark_serving_install_user_unit() -> Bool {
 }
 
 fn spark_serving_enable_user_unit() -> Bool {
+  let login_q = shell_quote(arg: spark_serving_automation_login())
+  let linger_cmd_q = shell_quote(arg: spark_serving_linger_command() as String)
+  let unit_name_q = shell_quote(arg: spark_serving_unit_name())
   let script = join([
     "set -eu\n",
-    "if ! loginctl show-user ", spark_serving_automation_login(),
+    "if ! loginctl show-user ", login_q,
     " -p Linger --value 2>/dev/null | grep -qx yes; then\n",
-    "  sudo -n ", spark_serving_linger_command() as String, "\n",
+    "  sudo -n ", linger_cmd_q, "\n",
     "fi\n",
     "systemctl --user daemon-reload\n",
-    "systemctl --user enable --now ", spark_serving_unit_name(), "\n",
+    "systemctl --user enable --now ", unit_name_q, "\n",
   ], "")
   shell.Exec.Run(script: script as NonEmptyStr).success
 }
