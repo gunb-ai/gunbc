@@ -155,12 +155,17 @@ fn signal_has_negative_polarity_suffix(signal: NonEmptyStr) -> Bool {
 
 fn differential_pair_base_name(signal: NonEmptyStr) -> NonEmptyStr? {
   if signal_has_positive_polarity_suffix(signal: signal) || signal_has_negative_polarity_suffix(signal: signal) {
-    Present {
-      value: substring(
-        s: signal as String,
-        start: 0,
-        end: (signal as String).length() - 2,
-      ) as NonEmptyStr,
+    let len = (signal as String).length()
+    if len > 2 {
+      Present {
+        value: substring(
+          s: signal as String,
+          start: 0,
+          end: len - 2,
+        ) as NonEmptyStr,
+      }
+    } else {
+      Absent
     }
   } else {
     none
