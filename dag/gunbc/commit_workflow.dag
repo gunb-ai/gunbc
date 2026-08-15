@@ -1942,9 +1942,13 @@ fn enrollment_is_witness_claim(e: CommitCheckEnrollment) -> Bool {
   }
 }
 
-fn witness_enrollment_is_scheduled(e: CommitCheckEnrollment) -> Bool {
+fn enrollment_is_scheduled(e: CommitCheckEnrollment) -> Bool {
   enrollment_has_surface(e: e, surface: GithubActionsCiJob)
     || enrollment_has_surface(e: e, surface: FalsifierCadenceJob)
+}
+
+fn witness_enrollment_is_scheduled(e: CommitCheckEnrollment) -> Bool {
+  enrollment_is_scheduled(e: e)
 }
 
 fn enrollment_is_spec_gate(e: CommitCheckEnrollment) -> Bool {
@@ -1955,13 +1959,12 @@ fn enrollment_is_spec_gate(e: CommitCheckEnrollment) -> Bool {
   }
 }
 
-data gate_enrollment_surface_asymmetry_note: String = "WHY GATES NEED THEIR OWN SCHEDULED-SURFACE PREDICATE rather than reusing witness_enrollment_is_scheduled. The law is 'a declared row must ride a surface that executes ITS kind'. MEASURED CORRECTION (v1 cut, 2026-08-15): the two predicates are now BYTE-IDENTICAL — both read GithubActionsCiJob or FalsifierCadenceJob and nothing else — so this note no longer describes a live asymmetry, and saying they are 'one law read against two projector sets' would be false. The asymmetry had exactly ONE instance, GithubActionsCiRegenJob, which executed gates but not witnesses; the v1 cut deleted that surface with the regen loop, and the separation lost its subject in the same motion. WHAT IS NOT CLAIMED: that the two should therefore be merged. A gate and a witness remain different kinds, and a future surface executing one but not the other would re-separate them — so this records the identity as a MEASURED FACT with its cause, rather than pre-deciding a de-fork that belongs to whoever owns the enrollment authority. Left as one concept under two names, declared, which is a §2 violation held open deliberately rather than a fork nobody noticed. GitPrePushHook counts for NEITHER kind, for the reason the standing ruling gives: opt-in per clone, bypassable with --no-verify, absent in container worktrees, and PROVEN ineffective by #6658.
+data gate_enrollment_surface_asymmetry_note: String = "WHY GATES NEED THEIR OWN SCHEDULED-SURFACE PREDICATE rather than reusing witness_enrollment_is_scheduled. The law is 'a declared row must ride a surface that executes ITS kind'. MEASURED CORRECTION (v1 cut, 2026-08-15): the two predicates are now BYTE-IDENTICAL — both read GithubActionsCiJob or FalsifierCadenceJob and nothing else — so this note no longer describes a live asymmetry, and saying they are 'one law read against two projector sets' would be false. The asymmetry had exactly ONE instance, GithubActionsCiRegenJob, which executed gates but not witnesses; the v1 cut deleted that surface with the regen loop, and the separation lost its subject in the same motion. WHAT IS NOT CLAIMED: that the two should therefore be merged. A gate and a witness remain different kinds, and a future surface executing one but not the other would re-separate them — so this records the identity as a MEASURED FACT with its cause, rather than pre-deciding a de-fork that belongs to whoever owns the enrollment authority. RESOLVED BY DERIVATION rather than by choosing (operator ruling on this specimen): the shared fact lives once in enrollment_is_scheduled, and both named predicates delegate to it. Every consumer keeps its name, both CONCEPTS survive, and no future is decided — the day a surface executes one kind but not the other, one of the two stops delegating and the divergence lands in the place built to receive it. Merging the names would have deleted a live distinction; leaving two identical bodies would have stated one fact twice. Deriving does neither. GitPrePushHook counts for NEITHER kind, for the reason the standing ruling gives: opt-in per clone, bypassable with --no-verify, absent in container worktrees, and PROVEN ineffective by #6658.
 
 HISTORICAL, AND THE REASON THIS NOTE SHRANK (v1 cut): the asymmetry used to have a second instance. GithubActionsCiRegenJob executed GATES but not WITNESSES -- project_ci_regen_job_gates read it, RegenVerifyGate and SelfHostStalenessGate rode it as their only surface, and a witness parked there executed nowhere. That surface, its projector, and those gates are all retired with the regen loop, so the divergence they illustrated no longer exists in the tree. The predicate stays split because the LAW is what justifies it, not the number of surfaces that currently disagree -- collapsing it now would have to be re-derived the next time a surface executes one kind and not the other."
 
 fn gate_enrollment_is_scheduled(e: CommitCheckEnrollment) -> Bool {
-  enrollment_has_surface(e: e, surface: GithubActionsCiJob)
-    || enrollment_has_surface(e: e, surface: FalsifierCadenceJob)
+  enrollment_is_scheduled(e: e)
 }
 
 fn bare_deenrolled_gate_rows(roster: List<CommitCheckEnrollment>) -> List<CommitCheckEnrollment> {
