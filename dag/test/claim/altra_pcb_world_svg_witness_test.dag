@@ -153,9 +153,9 @@ test fn w_the_altra_pcb_world_constructs_as_a_partial_preview() -> Bool {
 // THE SOCKET LEFT THE MISSING-DOCUMENT POPULATION AND HAS ITS OWN. It used to be counted as a
 // missing document naming "ILM4926", which told a reader to go and find a document by that name.
 // ILM4926 is not a document; it is a designation whose vendor and orderable part are unresolved,
-// so it is its own cause and its own count. The missing-document population for COMPONENTS is now
-// zero, which is the honest number: the one live missing document is the board land pattern, and
-// that is an ATTACHMENT obligation, counted separately.
+// so it is its own cause and its own count. Component missing-document is zero. The board land
+// pattern is a commercial-access ATTACHMENT obligation (Customer Connect); attachment causes are
+// not folded into pcb_cause_counts or the legend population string.
 test fn w_the_world_carries_two_established_eleven_unselected_and_one_attachment_part_unresolved() -> Bool {
   match world_or_empty() {
     Absent => false
@@ -370,26 +370,19 @@ test fn w_mounting_and_socket_attachment_obligations_appear() -> Bool {
   }
 }
 
-// THE BOARD LAND PATTERN IS FILED AS A DOCUMENT NOBODY HAS FOUND, and this witness was reversed
-// to say so. It previously asserted the opposite -- that the layer produced DrawingMustBeRead,
-// naming a figure -- which followed the model when board_land_pattern_standing claimed the fact
-// was stated in the platform specification's Figure 3. That claim was an overclaim: Figure 3 is
-// the package outline and pad array, the underside of the PART, and no document consulted states
-// a board-side land pattern at all. Routing a reader to a drawing that does not contain the fact
-// is a worse answer than admitting the document is missing, so the standing changed and this
-// assertion changed with it. No live obligation produces DrawingMustBeRead today; the arm remains
-// modelled because the state is real, and the planted-obligation controls elsewhere in this file
-// are what keep the causes distinguishable now that no live row exercises that one.
-test fn w_the_board_land_pattern_is_filed_as_a_missing_document() -> Bool {
+// THE BOARD LAND PATTERN IS BEHIND A COMMERCIAL GATE. The standing is projected from
+// extdeps.cpu_attachment.ilm4926 ilm4926_resolution_obligations.board_land_pattern, which names
+// Altra PCB Layout Guidelines on Customer Connect as the authority (platform spec §4.2.2/4.3.2).
+test fn w_the_board_land_pattern_is_behind_a_commercial_gate() -> Bool {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
       fold(pcb_world_physical(w: w).attachment_obligations, init: false, f: fn(acc, a) {
         acc || match a.cause {
-          MissingDocument { what_is_missing: m } =>
-            (a.layer as String) == "board land pattern" && (m as String) != ""
+          CommercialAccess { subject: sub } =>
+            (a.layer as String) == "board land pattern" && (sub as String) != ""
           DrawingMustBeRead { figure: _, what_is_drawn: _ } => false
-          CommercialAccess { subject: _ } => false
+          MissingDocument { what_is_missing: _ } => false
           LegalCarriage { reason: _ } => false
           UnselectedPart { because: _ } => false
           StandingIsSelfContradictory { what_is_wrong: _ } => false

@@ -10,21 +10,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ampere_altra_rev_a1_
 
 data altra_classic_datasheet_authority: ExternalAuthority = ampere_altra_classic_rev_a1_datasheet_authority
 
-// THE MT. JADE LOCATOR IS AUTHORED HERE BECAUSE NO MODULE ON MAIN OWNS IT.
-// This is a sequencing fact, not admitted debt: on main today this row IS the
-// single authority for that locator, and gunbc#8257 introduces a module that
-// will own it. Whichever of the two lands second reconciles, and the direction
-// is fixed in advance so nobody has to decide it later — the OCP document's own
-// module owns its anchor, this row is deleted, and the attestation consumes
-// extdeps.ocp.mt_jade.subject exactly as the two Ampere rows above already
-// consume extdeps.cpu.ampere. Stacking this PR on that branch instead would
-// trade one reconciliation for a base that CI does not run against at all.
-data ocp_mt_jade_specification_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
-  }
-}
+data ocp_mt_jade_specification_authority: ExternalAuthority = mt_jade_subject_authority_anchor
 
 // THE SUBJECT IS A DESIGNATION, NOT A PART, AND THAT IS THE WHOLE POINT OF
 // THIS MODULE. ILM4926 is named by documents from two different publishers —
@@ -151,4 +137,47 @@ fn attested_by_ocp_specification() -> Bool {
 
 fn attested_by_independent_publishers() -> Bool {
   attested_by_ampere_datasheets() && attested_by_ocp_specification()
+}
+
+// THE FOUR BOARD-DESIGN QUESTIONS A DESIGNATION MUST ANSWER BEFORE A PART CAN BE
+// ORDERED OR A LAND PATTERN RELEASED. They are four named fields rather than a
+// tagged list because the axis set is closed and fixed: a missing or duplicate
+// axis must be unwritable, not caught by a witness counting list rows. Each
+// field is a resolved-vs-unresolved sum so absence prose cannot masquerade as a
+// cited fact — a vendor name without an authority is a different arm from a
+// reason the cited set does not yet establish.
+type DesignationResolutionStanding
+  = DesignationFactEstablished {
+      value: NonEmptyStr
+      authority: ExternalAuthority
+    }
+  | DesignationFactUnresolved {
+      reason: NonEmptyStr
+      next_authority_to_consult: ExternalAuthority?
+    }
+
+type DesignationResolutionObligations {
+  vendor_identity: DesignationResolutionStanding
+  orderable_part_number: DesignationResolutionStanding
+  board_land_pattern: DesignationResolutionStanding
+  loading_mechanism_identity: DesignationResolutionStanding
+}
+
+data ilm4926_resolution_obligations: DesignationResolutionObligations = DesignationResolutionObligations {
+  vendor_identity: DesignationFactUnresolved {
+    reason: "no cited document attributes ILM4926 to a manufacturer; Ampere and OCP name the designator only",
+    next_authority_to_consult: none,
+  },
+  orderable_part_number: DesignationFactUnresolved {
+    reason: "no cited document attaches a catalog or ordering part number to the designator ILM4926",
+    next_authority_to_consult: none,
+  },
+  board_land_pattern: DesignationFactUnresolved {
+    reason: "the board-side land pattern for the attachment named ILM4926 is stated in no public document consulted; the Altra platform hardware design specification sections 4.2.2 and 4.3.2 name Altra PCB Layout Guidelines on Ampere Customer Connect as the reference layout authority, and that document is access-gated rather than publicly fetchable — the search for a public land pattern is closed",
+    next_authority_to_consult: Present { value: ampere_customer_reference_boards_authority },
+  },
+  loading_mechanism_identity: DesignationFactUnresolved {
+    reason: "no cited document states whether ILM4926 names the socket body, the independent loading mechanism, or the assembly of both; Ampere datasheets say device seated in ILM4926 socket in a thermal note while ILM plausibly expands to Independent Loading Mechanism",
+    next_authority_to_consult: none,
+  },
 }
