@@ -2,7 +2,6 @@ module test.claim.typed_remote_file_write_witness
 
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import std.resources { Network }
 import gunbc.file_access { FileTreeScope, path_within_file_tree_scope }
 import gunbc.typed_remote_file_write {
   TypedRemoteFileWrite,
@@ -164,9 +163,7 @@ test fn w_executor_home_unit_path_seals_for_spark_layout() -> Bool {
   }
 }
 
-func w_local_filesystem_roundtrip_preserves_bytes() -> Bool
-  uses net: Network
-{
+func w_local_filesystem_roundtrip_preserves_bytes() -> Bool {
   let dest = "/tmp/gunbc-trfw-roundtrip-bytes" as FilePath
   match typed_remote_file_write_seal(
     path: dest,
