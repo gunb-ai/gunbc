@@ -2,7 +2,7 @@ module std.key_relation
 
 import std.types { Bool }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import v2.std.nat { Zero, Succ, nat_compare, Equal, Greater }
+import v2.std.nat { Zero, Succ, nat_compare, Equal, Less, Greater }
 import v2.std.cardinality {
   UpperBoundedNat,
   NatLeWitness,

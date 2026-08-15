@@ -2,8 +2,6 @@ module gunbc.roadmap_belt
 
 import std.types { String, Int, List, Bool }
 import std.key_relation { KeyRelation, GlobalKeyScope, key_relation_global }
-
-type BeltMembershipKeyRelation
 import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId }
 import gunbc.roadmap_document { RoadmapDocument }
 import gunbc.roadmap_spawner { SpawnFrontier, spawn_frontier }
@@ -29,6 +27,8 @@ import extdeps.languages.json.emit {
   json_object,
   json_kv,
 }
+
+type BeltMembershipKeyRelation
 
 type BeltRunState
   = Running

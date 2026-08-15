@@ -2,8 +2,6 @@ module gunbc.fleet_converge_plan
 
 import std.types { String, List, Bool, Int, NonEmptyStr }
 import std.key_relation { KeyRelation, GlobalKeyScope, key_relation_global }
-
-type TimerRetirementMembershipKeyRelation
 import std.measure { byte_size_count }
 import std.algebra { trim }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
@@ -62,6 +60,8 @@ import gunbc.host_converge {
   systemd_tasks_max_property,
 }
 import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
+
+type TimerRetirementMembershipKeyRelation
 
 data fleet_converge_plan_authority_note: String = "On-demand fleet converge PLAN authority (operator directive 2026-08-13, sleek-heron-218): membership_reconcile computes the typed hunks — MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused — that a human reviews BEFORE apply. Plan and apply are the same spine at different poles; this module owns serialization, the content-addressed artifact, subject identity, std.temporal_effect HeldLease generation protection, and the observed baseline fingerprint apply must CAS against. A plan names its subject (host + member-set fingerprint) and mints a generation-scoped lease so two applies against the same observed baseline cannot both act. Timer retirement: desired has NO fleet-converge timers; observed lists legacy units still on the host. MemberRemovalRefused arms are rendered in plan output and never filtered — they are precisely what a reviewer needs to see before approving."
 

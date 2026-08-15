@@ -2,8 +2,6 @@ module gunbc.runner_slot_provision
 
 import std.types { NonEmptyStr, String, List, Bool, Int }
 import std.key_relation { KeyRelation, GlobalKeyScope, key_relation_global }
-
-type RunnerSlotMembershipKeyRelation
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.membership_reconcile {
@@ -29,6 +27,8 @@ import extdeps.github.actions_runner {
 }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_host_budget { declared_runner_count_for }
+
+type RunnerSlotMembershipKeyRelation
 
 // RunnerSlotProvision owns runner installation end-to-end in gunbc (operator ruling 2026-08-06:
 // ctrl is a dead repo; prior ctrl:install-actions-runner citations are void legacy pointers).

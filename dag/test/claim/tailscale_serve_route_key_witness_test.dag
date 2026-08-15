@@ -2,9 +2,6 @@ module test.claim.tailscale_serve_route_key_witness
 
 import std.types { Bool, NonEmptyStr, String, List }
 import std.key_relation { KeyRelation, GlobalKeyScope, key_relation_global }
-
-type RetiredFlattenedServeFlagsKeyRelation
-type TailscaleEnableArgvIdentityKeyRelation
 import extdeps.tailscale.serve {
   TailscaleServeEndpoint,
   ServeRootMount,
@@ -30,6 +27,9 @@ import gunbc.membership_reconcile {
 }
 import gunbc.ownership { Ownership, Owned }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+type RetiredFlattenedServeFlagsKeyRelation
+type TailscaleEnableArgvIdentityKeyRelation
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

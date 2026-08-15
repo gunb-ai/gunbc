@@ -2,8 +2,6 @@ module gunbc.workflow_reconcile
 
 import std.types { String, Bool, Int, List }
 import std.key_relation { key_relation_global }
-
-type WorkflowFactMembershipKeyRelation
 import std.reducible { ReduceVerdict, Reduced, Unknown }
 import std.workflow_recursive {
   VerdictTree,
@@ -21,6 +19,8 @@ import gunbc.membership_reconcile {
   membership_reconcile,
 }
 import gunbc.ownership { Ownership, Ensured }
+
+type WorkflowFactMembershipKeyRelation
 
 type WorkflowFactState
   = WorkflowFactPending

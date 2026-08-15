@@ -2,8 +2,6 @@ module test.claim.membership_reconcile_witness
 
 import std.types { String, List, Bool, Int }
 import std.key_relation { KeyRelation, GlobalKeyScope, key_relation_global }
-
-type TMembershipKeyRelation
 import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.membership_reconcile {
   MembershipPlan, MemberAction,
@@ -19,6 +17,8 @@ import gunbc.membership_reconcile {
   MembershipTally, membership_tally,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+type TMembershipKeyRelation
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

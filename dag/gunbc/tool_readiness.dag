@@ -2,8 +2,6 @@ module gunbc.tool_readiness
 
 import std.types { Int, List, NonEmptyStr, String }
 import std.key_relation { key_relation_global }
-
-type CliToolPinMembershipKeyRelation
 import std.integer { NonNegativeInt }
 import std.decl_ref { DeclarationRef }
 import extdeps.tools { CliTool }
@@ -31,6 +29,8 @@ import gunbc.membership_reconcile {
   membership_tally,
 }
 import gunbc.ownership { Ownership, Ensured }
+
+type CliToolPinMembershipKeyRelation
 
 type UnpinnedToolFrontierRow {
   tool: CliTool
