@@ -49,7 +49,7 @@ fn synthetic_ordinary_plan() -> RealizationPlan<Runnable> {
       [synthetic_claim(function: synthetic_compile_gate_fn)],
       [
         synthetic_claim(function: "emit_host_gate_passes"),
-        synthetic_claim(function: "regen_verify_gate_passes")
+        synthetic_claim(function: "extdeps_external_authority_gate_passes")
       ]
     ],
     total: cost_account_predicted_zero()

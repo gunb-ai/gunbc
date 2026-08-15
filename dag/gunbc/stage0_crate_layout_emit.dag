@@ -20,7 +20,7 @@ fn escape_rust_string_literal_body(s: String) -> String {
 
 fn render_dag_string_list_items(xs: List<String>) -> String {
   fold_list(xs, empty: "", cons: fn(acc, item) {
-    let line = concat("  \"", item, "\"")
+    let line = concat("  \"", concat(escape_dag_string_body(s: item), "\""))
     if acc == "" {
       line
     } else {
