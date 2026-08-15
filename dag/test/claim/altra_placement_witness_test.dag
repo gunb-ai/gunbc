@@ -530,6 +530,7 @@ test fn w_a_role_filled_twice_refuses_naming_how_many_fill_it() -> Bool {
             ComponentFillsNoRequiredRole { component: _, role_named: _ } => false
             PlannedIdentityRepeated { component: _ } => false
             PlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => false
+            RequiredFunctionWithoutJustifiedPartOnBoard { requirement: _ } => false
           }
         }
       )
