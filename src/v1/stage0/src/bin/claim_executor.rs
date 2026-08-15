@@ -11586,9 +11586,12 @@ fn run() -> Result<ExitCode, ExitCode> {
 
 /// Typed terminal failure class for the falsifier/floor walk (brief Step 2, 2026-07-25):
 /// names BudgetExceeded{wall,budget} vs WitnessRed{claims} vs Infra{spawn/toolchain/eviction}
-/// so "falsifier dark" is one of three modes, never an undifferentiated exit 1.
+/// vs FailureCauseUndetermined{no classified detail} so "falsifier dark" is never an
+/// undifferentiated exit 1 and empty details never fabricate a witness-red verdict.
 fn falsifier_failure_mode(details: &[String]) -> &'static str {
-    if details.iter().any(|d| {
+    if details.is_empty() {
+        "FailureCauseUndetermined"
+    } else if details.iter().any(|d| {
         d.contains("BudgetExceeded{")
             || d.contains("witness receipt wall budget exceeded")
             || d.contains("wet self-host receipt wall budget exceeded")
@@ -11650,6 +11653,9 @@ fn ci_failure_class_arm(mode: &str) -> String {
         "Infra" => "FloorFailed{class:Infra}".to_string(),
         "BudgetExceeded" => "FloorFailed{class:Structural{reason:BudgetExceeded}}".to_string(),
         "WitnessRed" => "FloorFailed{class:Structural{reason:WitnessRed}}".to_string(),
+        "FailureCauseUndetermined" => {
+            "FloorFailed{class:Structural{reason:FailureCauseUndetermined}}".to_string()
+        }
         other => format!("FloorFailed{{class:Structural{{reason:{other}}}}}"),
     }
 }
@@ -14042,6 +14048,20 @@ mod tests {
                 "batch=2 BudgetExceeded{wall_ms=601000,budget_ms=600000}".into()
             ]),
             "BudgetExceeded"
+        );
+        assert_eq!(
+            falsifier_failure_mode(&[]),
+            "FailureCauseUndetermined",
+            "empty details must not fabricate WitnessRed (receipt: main 31847906164)"
+        );
+        assert_eq!(
+            falsifier_failure_mode_with_faults(&[], &[]),
+            "FailureCauseUndetermined"
+        );
+        assert_ne!(
+            falsifier_failure_mode(&[]),
+            "WitnessRed",
+            "no-evidence exit must not read as a semantic witness red"
         );
     }
 

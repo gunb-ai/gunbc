@@ -222,6 +222,7 @@ type FloorComponentFailureMode
   | ModeNotReached
   | ModeRunIncomplete
   | ModeDeadlineReached
+  | ModeFailureCauseUndetermined
   | ModeUnrecorded
 
 fn floor_component_failure_mode_of(mode: NonEmptyStr) -> FloorComponentFailureMode? {
@@ -236,6 +237,7 @@ fn floor_component_failure_mode_of(mode: NonEmptyStr) -> FloorComponentFailureMo
   else if (mode as String) == "not_reached" { Present { value: ModeNotReached } }
   else if (mode as String) == "run_incomplete" { Present { value: ModeRunIncomplete } }
   else if (mode as String) == "deadline_reached" { Present { value: ModeDeadlineReached } }
+  else if (mode as String) == "FailureCauseUndetermined" { Present { value: ModeFailureCauseUndetermined } }
   else { none }
 }
 
@@ -252,6 +254,7 @@ fn floor_component_failure_mode_tag(m: FloorComponentFailureMode) -> String {
     ModeNotReached => "not_reached"
     ModeRunIncomplete => "run_incomplete"
     ModeDeadlineReached => "deadline_reached"
+    ModeFailureCauseUndetermined => "FailureCauseUndetermined"
     ModeUnrecorded => "unrecorded"
   }
 }
@@ -298,6 +301,9 @@ fn floor_component_failure_mode_of_wire_tag(tag: String) -> FloorComponentFailur
   else if tag == floor_component_failure_mode_tag(m: ModeNotReached) { Present { value: ModeNotReached } }
   else if tag == floor_component_failure_mode_tag(m: ModeRunIncomplete) { Present { value: ModeRunIncomplete } }
   else if tag == floor_component_failure_mode_tag(m: ModeDeadlineReached) { Present { value: ModeDeadlineReached } }
+  else if tag == floor_component_failure_mode_tag(m: ModeFailureCauseUndetermined) {
+    Present { value: ModeFailureCauseUndetermined }
+  }
   else if tag == floor_component_failure_mode_tag(m: ModeUnrecorded) { Present { value: ModeUnrecorded } }
   else { none }
 }
@@ -489,6 +495,7 @@ fn floor_component_outcome_of_mode(m: FloorComponentFailureMode, detail: NonEmpt
     ModeNotReached => Present { value: Skipped { reason: detail } }
     ModeRunIncomplete => none
     ModeDeadlineReached => Present { value: Refused { diagnostic: detail } }
+    ModeFailureCauseUndetermined => Present { value: Refused { diagnostic: detail } }
     ModeUnrecorded => none
   }
 }
@@ -524,6 +531,7 @@ fn component_outcome_agrees_with_failure_mode(read: ComponentOutcomeRead, mode: 
         ModeNotReached => outcome_matches_implied_mode(o: o, mode: mode)
         ModeRunIncomplete => false
         ModeDeadlineReached => outcome_matches_implied_mode(o: o, mode: mode)
+        ModeFailureCauseUndetermined => outcome_matches_implied_mode(o: o, mode: mode)
       }
   }
 }
