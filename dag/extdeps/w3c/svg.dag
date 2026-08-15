@@ -55,6 +55,7 @@ data svg_rect_tag: String = "rect"
 data svg_circle_tag: String = "circle"
 data svg_text_tag: String = "text"
 data svg_g_tag: String = "g"
+data svg_style_tag: String = "style"
 
 data svg_xmlns: String = "http://www.w3.org/2000/svg"
 data svg_role_img: String = "img"
@@ -95,6 +96,16 @@ fn svg_document(view_box: String, class_name: String, aria_label: String, childr
     ],
     children: children
   )
+}
+
+// A STYLE ELEMENT, WHICH SVG 2 DEFINES AND THE MEDIUM ALREADY SUPPORTS. Without one an emitted
+// document carries semantic class names and no presentation, so its text renders at the user
+// agent's default size inside a coordinate space measured in micrometres -- legible only through
+// an external stylesheet somebody writes by hand, which makes the artifact not self-contained.
+// The content is emitted through the ordinary text escape, so a selector may not use the child
+// combinator or an ampersand; descendant selectors express everything this document needs.
+fn svg_style(css: String) -> Fragment {
+  svg_element(tag: svg_style_tag, attributes: [], children: [FragmentText { content: css }])
 }
 
 fn svg_group(class_name: String, children: List<Fragment>) -> Fragment {
