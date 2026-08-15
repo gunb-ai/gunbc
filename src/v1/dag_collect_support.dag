@@ -5,8 +5,11 @@ import v1.std.core {
   InferredNode, Resolved, CompilerError, TypeVariable,
   ExprData,
   Connective, NoConnective, Arrow,
+  MatchPattern, Bind, LitPattern, VariantPattern, Wildcard,
   SourceSpan, ErrorNode, make_error_node, InternalError
 }
+
+import std.syntax { LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull, LitSymbol }
 
 import v1.compiler.emit_core_support { escape_json_string }
 
@@ -109,11 +112,45 @@ fn dag_node_surface_leaf_mix(node: Node) -> String {
     expr_data_variant(data: node.expr_data)))
 }
 
+fn literal_value_fingerprint(value: LiteralValue) -> String {
+  match value {
+    LitStr { value: v } => concat("LitStr:", v)
+    LitInt { value: v } => concat("LitInt:", to_string(value: v))
+    LitFloat { value: v } => concat("LitFloat:", v)
+    LitBool { value: v } => concat("LitBool:", to_string(value: v))
+    LitNull => "LitNull"
+    LitSymbol { value: v } => concat("LitSymbol:", v)
+  }
+}
+
+// match_pattern is a SubValueField (v1.std.core node_field_roles) carrying the
+// match-arm/field-binding semantics; the pattern's own Node subtrees
+// (Bind.declaration, VariantPattern.field_bindings) must be folded in
+// recursively or two arms/bindings differing only by pattern collapse to the
+// same fingerprint.
+fn match_pattern_fingerprint_rec(pattern: MatchPattern?) -> String {
+  match pattern {
+    Absent => atom_identity_hash("^dag_collect_match_pattern_absent")
+    Present { value: Bind { declaration: d } } =>
+      hash_combine(atom_identity_hash("Bind"), dag_node_surface_fingerprint_rec(node: d))
+    Present { value: LitPattern { value: v } } =>
+      atom_identity_hash(concat("LitPattern:", literal_value_fingerprint(value: v)))
+    Present { value: VariantPattern { name: n, parent_enum: pe, field_bindings: fbs } } =>
+      let base = atom_identity_hash(concat(
+        "VariantPattern:", n, "|",
+        match pe { Present { value: p } => p  Absent => "" }))
+      let field_hashes = fbs |> map(f => dag_node_surface_fingerprint_rec(node: f))
+      hash_combine(base, dag_node_seq_hash(digests: field_hashes))
+    Present { value: Wildcard } => atom_identity_hash("Wildcard")
+  }
+}
+
 fn dag_node_surface_fingerprint_rec(node: Node) -> String {
   let child_hashes = node.children |> map(c => dag_node_surface_fingerprint_rec(node: c))
   let param_hashes = node.params |> map(p => dag_node_surface_fingerprint_rec(node: p))
   let with_children = hash_combine(dag_node_surface_leaf_mix(node: node), child_subtree_hash(connective: node.connective, digests: child_hashes))
-  hash_combine(with_children, dag_node_seq_hash(digests: param_hashes))
+  let with_params = hash_combine(with_children, dag_node_seq_hash(digests: param_hashes))
+  hash_combine(with_params, match_pattern_fingerprint_rec(pattern: node.match_pattern))
 }
 
 fn dag_node_surface_fingerprint(node: Node) -> String {
