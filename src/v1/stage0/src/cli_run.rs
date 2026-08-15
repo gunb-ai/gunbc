@@ -6407,10 +6407,6 @@ fn entry_eligible_for_discovery_skip_before_resolve(
 struct DiscoveryEntryResolve {
     ctx: v1_interpreter::InterpContext,
     closure_subject: String,
-    frontier_nodes: Vec<v1_interpreter::Value>,
-    touches_frontier: bool,
-    entry_file_touched: bool,
-    entry_runtime_dependency_touched: bool,
     resolve_nanos: u128,
     stage_nanos: ResolveStageNanos,
 }
@@ -6420,10 +6416,6 @@ fn resolve_discovery_entry_for_corpus_row(
     entry_path: &str,
     execution_mode: v1_interpreter::ExecutionMode,
     whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
-    skip_enabled: bool,
-    diff_edits: &FloorDiffEdits,
-    touched_entry_paths: &[String],
-    module_graph_declared_paths: &HashSet<String>,
     closure_modules: &mut HashSet<String>,
 ) -> Result<DiscoveryEntryResolve, String> {
     let sources = load_sources_for_entry_with_pool(index, entry_path)
@@ -6448,64 +6440,9 @@ fn resolve_discovery_entry_for_corpus_row(
         None,
         whole_tree_published_keys,
     );
-    let (frontier_nodes, touches_frontier, entry_file_touched, entry_runtime_dependency_touched) =
-        if skip_enabled {
-            let frontier_nodes =
-                rerun_frontier_nodes_for_entry(&entry_ctx, entry_path, diff_edits)?;
-            let touches_frontier = if frontier_nodes.is_empty() {
-                false
-            } else {
-                entry_touches_rerun_frontier(
-                    &entry_ctx,
-                    &list_value_from_vec(frontier_nodes.clone()),
-                )?
-            };
-            let entry_file_touched = if touched_entry_paths.is_empty() {
-                false
-            } else {
-                entry_file_touched_via_import_closure(
-                    entry_path,
-                    &index.module_graph_facts,
-                    module_graph_declared_paths,
-                    touched_entry_paths,
-                )?
-            };
-            let declared_axis = declared_source_refs_axis_for_entry(
-                entry_path,
-                &index.module_graph_facts,
-                &default_source_roots(),
-                touched_entry_paths,
-            );
-            let entry_runtime_dependency_touched =
-                runtime_data_dependency_touched_via_carrier_closure(
-                    entry_path,
-                    &index.module_graph_facts,
-                    touched_entry_paths,
-                ) || match declared_axis {
-                    DeclaredSourceRefAxis::Absent => effect_reach_touched_via_path_literals(
-                        entry_path,
-                        &index.module_graph_facts,
-                        touched_entry_paths,
-                    ),
-                    DeclaredSourceRefAxis::Touched | DeclaredSourceRefAxis::Unresolved => true,
-                    DeclaredSourceRefAxis::Untouched => false,
-                };
-            (
-                frontier_nodes,
-                touches_frontier,
-                entry_file_touched,
-                entry_runtime_dependency_touched,
-            )
-        } else {
-            (Vec::new(), true, true, true)
-        };
     Ok(DiscoveryEntryResolve {
         ctx: entry_ctx,
         closure_subject,
-        frontier_nodes,
-        touches_frontier,
-        entry_file_touched,
-        entry_runtime_dependency_touched,
         resolve_nanos,
         stage_nanos,
     })
@@ -18708,13 +18645,6 @@ pub struct DiscoverySummary {
     pub skipped: usize,
     /// Witness rows excluded from discovery at scan time — counted, typed, observable.
     pub deferred_rows: Vec<DeferredDiscoveryRow>,
-    /// PredictOnly mode: rows the selection predicted unaffected (they still ran).
-    pub predicted_unaffected: Vec<(String, String)>,
-    /// Applied mode: enrolled rows retained with the provenance by which affected-set
-    /// selection declined execution. This is an honest nonfailure, never absence-as-pass.
-    pub selection_skipped_rows: Vec<SelectionSkippedDiscoveryRow>,
-    /// PredictOnly mode: predicted-unaffected rows whose cold run was red — each line is a
-    /// counted, typed attribution of a missing selection edge (never a rerun trigger).
     pub divergences: Vec<String>,
     pub failures: Vec<String>,
     pub witness_outcomes: Vec<DiscoveryWitnessOutcome>,
@@ -18734,18 +18664,13 @@ pub struct DiscoverySummary {
     /// cache MISSES on the current thread and is never reset in production, so it equals a closure
     /// size only from a cold start — a condition this measurement cannot assume. It is warm here on
     /// the `width == 1` path (the same thread already resolved the changed-file entries in
-    /// `floor_diff_edits_from_line_ranges` and both prefix entries), and warm across repeat calls in
-    /// `floor_skip_discovery_witness`, which runs discovery three times in one thread. The union of
-    /// module names is a property of the source closure: independent of cache warmth, resolve order,
-    /// and — critically for a calibration datum — of the diff under test.
+    /// module names is a property of the source closure: independent of cache warmth and resolve
+    /// order.
     pub roster_closure_nodes: usize,
     /// Entry-group grain of the discovery roster (`entry_row_groups`); set at completion.
     pub total_entry_groups: usize,
-    /// Distinct entries with at least one executed witness (not selection-skipped only).
+    /// Distinct entries with at least one executed witness.
     pub selected_entry_groups: usize,
-    /// When Applied mode could not run upfront import-closure categorization; per-shard
-    /// selection remains authoritative and the completion receipt still publishes counts.
-    pub selection_categorization_reason: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -21477,7 +21402,6 @@ pub(crate) fn refuse_on_module_graph_read_refusals(
 }
 
 pub struct DiscoveryCorpusOptions {
-    pub node_frontier_selection: NodeFrontierSelectionMode,
     /// Module universe that owns executor decisions such as affected-set selection and witness
     /// execution-leg classification. Normally identical to `source_roots`; scoped batches
     /// inherit the enclosing walk roots so executor machinery does not widen the witness subject.
@@ -21521,7 +21445,6 @@ impl DiscoveryCorpusOptions {
 impl Default for DiscoveryCorpusOptions {
     fn default() -> Self {
         Self {
-            node_frontier_selection: NodeFrontierSelectionMode::Off,
             execution_authority_source_roots: vec![],
             explicit_roster_only: false,
             exclude_substrings: witness_exclusion_substrings(),
@@ -23708,7 +23631,6 @@ pub fn run_discovery_corpus_with_options(
     options: DiscoveryCorpusOptions,
 ) -> Result<DiscoverySummary, String> {
     let pump_started = std::time::Instant::now();
-    let selection = options.node_frontier_selection;
     let out = run_discovery_corpus_with_options_inner(
         source_roots,
         scan_dirs,
@@ -23721,9 +23643,6 @@ pub fn run_discovery_corpus_with_options(
         &discovery_phase_totals::PUMP_WALL_MS,
         pump_started.elapsed(),
     );
-    if let Ok(summary) = &out {
-        emit_selection_degradation_receipt(source_roots, selection, summary);
-    }
     out
 }
 
@@ -23846,20 +23765,13 @@ fn run_discovery_corpus_with_options_inner(
         &discovery_phase_totals::PRERESOLVE_CALIBRATION_MS,
         preresolve_calibration_started.elapsed(),
     );
-    let whole_tree_published_keys = if skip_precompute {
-        eprintln!(
-            "run_discovery_corpus: skipping whole-tree published-mock precompute (scoped diff, empty node frontier, no edited test fns, no entry-file fn edits)"
-        );
-        None
-    } else {
-        match precompute_whole_tree_published_mock_keys(source_roots) {
-            Ok(keys) if keys.is_empty() => None,
-            Ok(keys) => Some(keys),
-            Err(e) => {
-                return Err(format!(
-                    "whole-tree published mock corpus precompute failed: {e}"
-                ));
-            }
+    let whole_tree_published_keys = match precompute_whole_tree_published_mock_keys(source_roots) {
+        Ok(keys) if keys.is_empty() => None,
+        Ok(keys) => Some(keys),
+        Err(e) => {
+            return Err(format!(
+                "whole-tree published mock corpus precompute failed: {e}"
+            ));
         }
     };
     // Derive every leg for the WHOLE roster here, above the width dispatch, while this
@@ -23923,13 +23835,7 @@ fn run_discovery_corpus_with_options_inner(
                 "[calibration] closure consistency: pre-resolve loader-closure union == post-resolve union == {} node(s)",
                 pre_resolve_closure_nodes
             );
-            Ok(finalize_discovery_summary(
-                summary,
-                &rows,
-                options.node_frontier_selection,
-                selection_categorization_reason.clone(),
-                deferred_rows,
-            ))
+            Ok(finalize_discovery_summary(summary, &rows, deferred_rows))
         }
         DiscoveryWidthPolicy::ControlledWidthTwo => {
             const CONTROLLED_WIDTH: usize = 2;
@@ -24038,8 +23944,6 @@ fn run_discovery_corpus_with_options_inner(
             Ok(finalize_discovery_summary(
                 merge_discovery_summaries(summaries),
                 &rows,
-                options.node_frontier_selection,
-                selection_categorization_reason,
                 deferred_rows,
             ))
         }
@@ -24203,8 +24107,6 @@ fn run_discovery_corpus_with_options_inner(
                 return Ok(finalize_discovery_summary(
                     merge_discovery_summaries(summaries),
                     &rows,
-                    options.node_frontier_selection,
-                    selection_categorization_reason.clone(),
                     deferred_rows,
                 ));
             }
@@ -24349,8 +24251,6 @@ fn run_discovery_corpus_with_options_inner(
             Ok(finalize_discovery_summary(
                 merge_discovery_summaries(summaries),
                 &rows,
-                options.node_frontier_selection,
-                selection_categorization_reason,
                 deferred_rows,
             ))
         }
@@ -24360,8 +24260,6 @@ fn run_discovery_corpus_with_options_inner(
 fn finalize_discovery_summary(
     mut summary: DiscoverySummary,
     rows: &[DiscoveryRow],
-    _selection: NodeFrontierSelectionMode,
-    selection_categorization_reason: Option<String>,
     deferred_rows: Vec<DeferredDiscoveryRow>,
 ) -> DiscoverySummary {
     summary.deferred_rows = deferred_rows;
@@ -24372,7 +24270,6 @@ fn finalize_discovery_summary(
         .map(|o| o.entry.as_str())
         .collect::<std::collections::HashSet<_>>()
         .len();
-    summary.selection_categorization_reason = selection_categorization_reason;
     emit_batch_summary(&summary);
     summary
 }
@@ -24406,8 +24303,6 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         passed: 0,
         skipped: 0,
         deferred_rows: Vec::new(),
-        predicted_unaffected: Vec::new(),
-        selection_skipped_rows: Vec::new(),
         divergences: Vec::new(),
         failures: Vec::new(),
         witness_outcomes: Vec::new(),
@@ -24419,18 +24314,11 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         roster_closure_nodes: 0,
         total_entry_groups: 0,
         selected_entry_groups: 0,
-        selection_categorization_reason: None,
     };
     for summary in summaries {
         merged.total += summary.total;
         merged.passed += summary.passed;
         merged.skipped += summary.skipped;
-        merged
-            .predicted_unaffected
-            .extend(summary.predicted_unaffected);
-        merged
-            .selection_skipped_rows
-            .extend(summary.selection_skipped_rows);
         merged.divergences.extend(summary.divergences);
         merged.failures.extend(summary.failures);
         merged.witness_outcomes.extend(summary.witness_outcomes);
@@ -24545,65 +24433,6 @@ fn floor_ts() -> String {
     let m = (secs / 60) % 60;
     let s = secs % 60;
     format!("{h:02}:{m:02}:{s:02}.{millis:03}")
-}
-
-/// One upfront line categorizing the corpus before any witness runs — the operator-facing
-/// "N skipped, M impacted, running X" read of the affected-set selection. The skip count here
-/// is the cheap import-closure disposition (entry-grain, no resolve); the finer per-node
-/// frontier decision runs the affected closure down further, so `[measurement]` at the end
-/// reports the exact ran/skipped tally. Print-only: the authoritative decision (and its
-/// fail-closed refusal on a provenance gap) still happens per-shard in `run_discovery_rows`.
-fn eprintln_affected_set_categorization(
-    selection: NodeFrontierSelectionMode,
-    rows: &[DiscoveryRow],
-    index: &MultiEntryIndex,
-    diff_edits: &FloorDiffEdits,
-    changed_paths: &[String],
-) {
-    let total = rows.len();
-    let entries = rows
-        .iter()
-        .map(|r| r.entry.as_str())
-        .collect::<HashSet<&str>>()
-        .len();
-    let ts = floor_ts();
-    match selection {
-        NodeFrontierSelectionMode::Off => {
-            eprintln!(
-                "{ts} [affected-set] selection off — running all {total} witness(es) across {entries} entr(y/ies)"
-            );
-        }
-        NodeFrontierSelectionMode::PredictOnly => {
-            eprintln!(
-                "{ts} [affected-set] predict-only — running all {total} witness(es) cold across {entries} entr(y/ies); node-frontier predictions recorded, divergences counted"
-            );
-        }
-        NodeFrontierSelectionMode::Applied => {
-            let declared_paths = index.module_graph_facts.declared_repo_paths();
-            let touched: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
-            let skipped = discovery_entry_fast_skip_without_resolve(
-                rows,
-                &index.module_graph_facts,
-                &declared_paths,
-                &touched,
-                changed_paths,
-                diff_edits,
-            )
-            .map(|fast| rows.iter().filter(|r| fast.contains(&r.entry)).count());
-            // The baseline is read back ONLY in the state that needs locating, so the
-            // ordinary path pays nothing for it.
-            let located = changed_paths
-                .is_empty()
-                .then(|| match floor_diff_baseline_readout() {
-                    Ok((base, event)) => format!("baseline='{base}' event='{event}'"),
-                    Err(e) => format!("baseline=UNREADABLE ({e})"),
-                });
-            eprintln!(
-                "{ts} {}",
-                affected_set_applied_report_line(total, entries, skipped, located.as_deref())
-            );
-        }
-    }
 }
 
 /// The Applied-mode report, rendered purely so both of its states are assertable.
@@ -24792,8 +24621,6 @@ fn run_discovery_rows(
         passed: 0,
         skipped: 0,
         deferred_rows: Vec::new(),
-        predicted_unaffected: Vec::new(),
-        selection_skipped_rows: Vec::new(),
         divergences: Vec::new(),
         failures: Vec::new(),
         witness_outcomes: Vec::with_capacity(rows.len()),
@@ -24805,15 +24632,12 @@ fn run_discovery_rows(
         roster_closure_nodes: 0,
         total_entry_groups: 0,
         selected_entry_groups: 0,
-        selection_categorization_reason: None,
     };
     // This shard's SUBJECT union closure, accumulated from the graphs it resolves as each
     // entry is loaded. It once also folded in a floor-runner prefix context, resolved before the
     // roster so the affected-set machinery was available to every row; that prefix is gone with
     // selection, so the closure is exactly the rows' own graphs.
     let mut closure_modules: HashSet<String> = HashSet::new();
-    // Existence set for the entry_file_touched refuse-vs-answer decision, built once per shard.
-    let module_graph_declared_paths = index.module_graph_facts.declared_repo_paths();
     // Schedule-derived retention is armed by the CALLER over the WHOLE batch schedule
     // (Serial: the single call; Adaptive width=1: once before the entry-group loop), so a
     // shared module's refcount spans every entry that reaches it and it stays resident until
@@ -24830,10 +24654,6 @@ fn run_discovery_rows(
     let mut current_entry: Option<String> = None;
     let mut current_closure_subject: Option<String> = None;
     let mut ctx: Option<v1_interpreter::InterpContext> = None;
-    let mut current_entry_touches = true;
-    let mut current_entry_frontier_nodes: Vec<v1_interpreter::Value> = Vec::new();
-    let mut current_entry_file_touched = true;
-    let mut current_entry_runtime_dependency_touched = true;
     let pool_roots = witness_layer_roots();
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
     for row in rows {
@@ -24858,7 +24678,6 @@ fn run_discovery_rows(
                     &row.entry,
                     execution_mode,
                     whole_tree_published_keys.clone(),
-                    &module_graph_declared_paths,
                     &mut closure_modules,
                 )?;
                 summary.total_resolve_nanos += resolved.resolve_nanos;
@@ -24870,11 +24689,6 @@ fn run_discovery_rows(
                     stage_nanos: resolved.stage_nanos,
                 });
                 current_closure_subject = Some(resolved.closure_subject);
-                current_entry_frontier_nodes = resolved.frontier_nodes;
-                current_entry_touches = resolved.touches_frontier;
-                current_entry_file_touched = resolved.entry_file_touched;
-                current_entry_runtime_dependency_touched =
-                    resolved.entry_runtime_dependency_touched;
                 ctx = Some(resolved.ctx);
                 if let Some(c) = ctx.as_ref() {
                     c.set_witness_eval_budget(budgets.cpu_eval_budget_ms);
@@ -24889,7 +24703,6 @@ fn run_discovery_rows(
                 &row.entry,
                 execution_mode,
                 whole_tree_published_keys.clone(),
-                &module_graph_declared_paths,
                 &mut closure_modules,
             )?;
             summary.total_resolve_nanos += resolved.resolve_nanos;
@@ -24901,10 +24714,6 @@ fn run_discovery_rows(
                 stage_nanos: resolved.stage_nanos,
             });
             current_closure_subject = Some(resolved.closure_subject);
-            current_entry_frontier_nodes = resolved.frontier_nodes;
-            current_entry_touches = resolved.touches_frontier;
-            current_entry_file_touched = resolved.entry_file_touched;
-            current_entry_runtime_dependency_touched = resolved.entry_runtime_dependency_touched;
             ctx = Some(resolved.ctx);
             if let Some(c) = ctx.as_ref() {
                 c.set_witness_eval_budget(budgets.cpu_eval_budget_ms);
@@ -24952,20 +24761,6 @@ fn run_discovery_rows(
             wall_nanos,
             matches!(outcome, ClaimOutcome::Pass),
         );
-        if selection == NodeFrontierSelectionMode::PredictOnly
-            && would_skip
-            && !matches!(outcome, ClaimOutcome::Pass)
-        {
-            // The red itself already fails the batch through the failure channel below;
-            // this line is the ATTRIBUTION receipt — a missing selection edge, counted.
-            let line = format!(
-                "DIVERGENCE [affected-set-falsifier] {} ({}) predicted=unaffected \
-                 actual=red class=node-frontier",
-                row.function, row.entry
-            );
-            eprintln!("{line}");
-            summary.divergences.push(line);
-        }
         match outcome {
             ClaimOutcome::Pass => summary.passed += 1,
             ClaimOutcome::Fail => {
@@ -29656,8 +29451,7 @@ mod discovery_summary_merge_tests {
         repo_relative_dag_path, run_discovery_corpus_with_options, top_n_slowest_witnesses,
         witness_execution_leg_cache_put, ClaimOutcome, DiscoveryCorpusOptions, DiscoveryRow,
         DiscoverySummary, DiscoveryWidthPolicy, DiscoveryWitnessOutcome, EntryResolveReceipt,
-        NodeFrontierSelectionMode, ResolveStageNanos, SelectionDegradationSnapshot,
-        SelectionSkippedDiscoveryRow,
+        ResolveStageNanos, SelectionSkippedDiscoveryRow,
     };
     use crate::v1_interpreter::{ExecutionMode, PerformanceReceipt};
 
@@ -29678,8 +29472,6 @@ mod discovery_summary_merge_tests {
             passed: 3,
             skipped: 0,
             deferred_rows: Vec::new(),
-            predicted_unaffected: Vec::new(),
-            selection_skipped_rows: Vec::new(),
             divergences: Vec::new(),
             failures: Vec::new(),
             witness_outcomes: vec![
@@ -29751,7 +29543,6 @@ mod discovery_summary_merge_tests {
             roster_closure_nodes: 42,
             total_entry_groups: 2,
             selected_entry_groups: 2,
-            selection_categorization_reason: None,
         }
     }
 
@@ -29767,93 +29558,6 @@ mod discovery_summary_merge_tests {
         b.roster_closure_nodes = 71;
         let merged = merge_discovery_summaries(vec![a, b]);
         assert_eq!(merged.roster_closure_nodes, 71);
-    }
-
-    /// RED control: skip-before-resolve records `selection_skipped_rows` but does NOT add
-    /// `witness_outcomes` for those entries. `selected_entry_groups` must count executed
-    /// entry groups only — otherwise narrowed Applied runs mislabel as Superset.
-    #[test]
-    fn finalize_discovery_summary_selected_entry_groups_exclude_skip_before_resolve() {
-        let rows = vec![
-            DiscoveryRow {
-                label: "w1".into(),
-                entry: "entry_a.dag".into(),
-                function: "f1".into(),
-                reads_live_tree: false,
-            },
-            DiscoveryRow {
-                label: "w2".into(),
-                entry: "entry_b.dag".into(),
-                function: "f2".into(),
-                reads_live_tree: false,
-            },
-            DiscoveryRow {
-                label: "w3".into(),
-                entry: "entry_c.dag".into(),
-                function: "f3".into(),
-                reads_live_tree: false,
-            },
-        ];
-        let summary = DiscoverySummary {
-            total: 2,
-            passed: 2,
-            skipped: 1,
-            deferred_rows: Vec::new(),
-            predicted_unaffected: Vec::new(),
-            selection_skipped_rows: vec![SelectionSkippedDiscoveryRow {
-                entry: "entry_c.dag".into(),
-                function: "f3".into(),
-                provenance: "skip-before-resolve-fast-path".into(),
-            }],
-            divergences: Vec::new(),
-            failures: Vec::new(),
-            witness_outcomes: vec![
-                DiscoveryWitnessOutcome {
-                    entry: "entry_a.dag".into(),
-                    module_path: "test.a".into(),
-                    function: "f1".into(),
-                    outcome: ClaimOutcome::Pass,
-                    execution_leg: "InterpretedLeg".into(),
-                },
-                DiscoveryWitnessOutcome {
-                    entry: "entry_b.dag".into(),
-                    module_path: "test.b".into(),
-                    function: "f2".into(),
-                    outcome: ClaimOutcome::Pass,
-                    execution_leg: "InterpretedLeg".into(),
-                },
-            ],
-            entry_resolve_receipts: Vec::new(),
-            total_resolve_nanos: 0,
-            total_stage_nanos: ResolveStageNanos::default(),
-            performance_receipts: Vec::new(),
-            total_measured_nanos: 0,
-            roster_closure_nodes: 0,
-            total_entry_groups: 0,
-            selected_entry_groups: 0,
-            selection_categorization_reason: None,
-        };
-        let finalized = finalize_discovery_summary(
-            summary,
-            &rows,
-            NodeFrontierSelectionMode::Applied,
-            None,
-            Vec::new(),
-        );
-        assert_eq!(finalized.total_entry_groups, 3);
-        assert_eq!(finalized.selected_entry_groups, 2);
-        let snapshot = SelectionDegradationSnapshot::from_summary(
-            NodeFrontierSelectionMode::Applied,
-            &finalized,
-        );
-        let line =
-            render_selection_degradation_receipt_line(&source_roots(), &snapshot).expect("receipt");
-        assert!(
-            line.contains("selection_state=SelectionApplied"),
-            "skip-before-resolve must not inflate selected to total (would read Superset): {line}"
-        );
-        assert!(line.contains("selected_entry_groups=2"));
-        assert!(line.contains("total_entry_groups=3"));
     }
 
     #[test]
@@ -29988,7 +29692,6 @@ mod discovery_summary_merge_tests {
             ExecutionMode::Hermetic,
             DiscoveryWidthPolicy::Serial,
             DiscoveryCorpusOptions {
-                node_frontier_selection: NodeFrontierSelectionMode::Off,
                 execution_authority_source_roots: roots.clone(),
                 explicit_roster_only: true,
                 exclude_substrings: Vec::new(),
