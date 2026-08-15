@@ -15,7 +15,7 @@ import gunbc.fleet_known_hosts_anchor {
 }
 import gunbc.file_access { FileTreeScope, path_within_file_tree_scope }
 
-data typed_remote_file_write_authority_note: String = "Typed remote file-bytes write at the FleetSsh seam. TypedRemoteFileWrite is sole_constructor: the ONLY representable meaning is write these exact bytes to this exact path. Remote realization is portable argv [tee, path] with content on stdin — bytes are DATA, never interpreted as shell. No script body arm, no sh -c, no command string constructor. Path containment uses gunbc.file_access path_within_file_tree_scope (exact root, root/…, .. rejected); portable-word allowlist uses gunbc.fleet_known_hosts_anchor portable_remote_word at seal and portable_remote_words at execute (one authority, no typed_argv fork). typed_remote_file_write_over_fleet_ssh accepts only TypedRemoteFileWriteAdmitted. EXEC EXIT SUCCESS IS NOT CONVERGENCE: a zero tee exit proves only that the remote process accepted stdin — not that bytes landed at the declared path with declared mode/ownership. Convergence requires independent read-back digest match (operator ruling msg_71f67aa9); stage-and-rename + mode/ownership + read-back are follow-on in this module before any consumer may treat the outcome as converged."
+data typed_remote_file_write_authority_note: String = "Typed remote file-bytes write at the FleetSsh seam. TypedRemoteFileWrite is sole_constructor: the ONLY representable meaning is write these exact bytes to this exact path. Remote realization is portable argv [tee, path] with content on stdin — bytes are DATA, never interpreted as shell. No script body arm, no sh -c, no command string constructor. Path containment uses gunbc.file_access path_within_file_tree_scope (exact root, root/…, .. rejected); portable-word allowlist uses gunbc.fleet_known_hosts_anchor portable_remote_word at seal and portable_remote_words at execute (one authority, no typed_argv fork). typed_remote_file_write_over_fleet_ssh accepts only TypedRemoteFileWriteAdmitted. TypedRemoteFileWriteOutcome success arm is TypedRemoteFileWriteRemoteExecAccepted (tee exit 0 only) — NOT convergence. A zero tee exit proves only that the remote process accepted stdin — not that bytes landed at the declared path with declared mode/ownership. A future TypedRemoteFileWriteConverged variant requires independent read-back digest match (operator ruling msg_71f67aa9); stage-and-rename + mode/ownership + read-back land before that arm is writable."
 
 data typed_remote_file_write_wet_fleet_ssh_execute_deferred_note: String = "Wet FleetSsh tee+stdin roundtrip, stage-and-rename atomicity, declared mode/ownership, and independent read-back digest verification are required before convergence — deferred to fleet-converge integration with #8281 as first consumer. Hermetic witnesses exercise seal, argv, execute preflight, and typed_remote_file_write_over_fleet_ssh exec-exit routing via ssh.Session.ExecPortableWordsWithStdin mock_response only."
 
@@ -31,7 +31,7 @@ type TypedRemoteFileWriteAdmission
   | TypedRemoteFileWriteAdmissionRefused { cause: NonEmptyStr }
 
 type TypedRemoteFileWriteOutcome
-  = TypedRemoteFileWriteConverged { result: SshSessionExecResult }
+  = TypedRemoteFileWriteRemoteExecAccepted { result: SshSessionExecResult }
   | TypedRemoteFileWriteOutcomeRefused { reason: String }
 
 data typed_remote_file_write_tee_command: String = "tee"
@@ -110,7 +110,7 @@ fn typed_remote_file_write_outcome_after_ssh_exec(
   result: SshSessionExecResult,
 ) -> TypedRemoteFileWriteOutcome {
   if result.success {
-    TypedRemoteFileWriteConverged { result: result }
+    TypedRemoteFileWriteRemoteExecAccepted { result: result }
   } else {
     TypedRemoteFileWriteOutcomeRefused {
       reason: concat(

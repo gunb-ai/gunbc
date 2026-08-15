@@ -10,7 +10,7 @@ import test.claim.typed_remote_file_write_fleet_ssh_fixture {
 import gunbc.typed_remote_file_write {
   TypedRemoteFileWriteAdmitted,
   TypedRemoteFileWriteAdmissionRefused,
-  TypedRemoteFileWriteConverged,
+  TypedRemoteFileWriteRemoteExecAccepted,
   TypedRemoteFileWriteOutcomeRefused,
   typed_remote_file_write_seal,
   typed_remote_file_write_stdin_payload,
@@ -219,7 +219,7 @@ test fn w_over_fleet_ssh_hermetic_mock_converges() -> Bool {
             context: context,
             admission: TypedRemoteFileWriteAdmitted { write: w },
           ) {
-            TypedRemoteFileWriteConverged { result: r } =>
+            TypedRemoteFileWriteRemoteExecAccepted { result: r } =>
               r.success
                 && r.stdout == "mock-ssh-portable-words-stdin"
                 && typed_remote_file_write_stdin_payload(write: w) == witness_metachar_payload
@@ -249,7 +249,7 @@ test fn w_ssh_exec_failure_routes_to_outcome_refused() -> Bool {
       ) {
         TypedRemoteFileWriteOutcomeRefused { reason: r } =>
           string_contains(s: r, pattern: "/tmp/gunbc-trfw-ssh-failure")
-        TypedRemoteFileWriteConverged { result: _ } => false
+        TypedRemoteFileWriteRemoteExecAccepted { result: _ } => false
       }
     TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
   }
