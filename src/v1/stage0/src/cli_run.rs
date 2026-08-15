@@ -4587,13 +4587,6 @@ fn reset_regen_verify_gate_failure_detail_for_test() {
     }
 }
 
-#[cfg(test)]
-fn reset_generated_artifact_drift_gate_failure_detail_for_test() {
-    if let Ok(mut guard) = GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
-        *guard = None;
-    }
-}
-
 pub fn consume_generated_artifact_drift_gate_failure_detail() -> String {
     match GENERATED_ARTIFACT_DRIFT_GATE_FAILURE_DETAIL.lock() {
         Ok(guard) => guard.clone().unwrap_or_else(|| {
@@ -6287,20 +6280,9 @@ thread_local! {
         RefCell::new(HashMap::new());
 }
 
-#[cfg(test)]
-pub(crate) fn reset_module_path_index_cache_for_test() {
-    MODULE_PATH_INDEX_CACHE.with(|cache| cache.borrow_mut().clear());
-}
-
 thread_local! {
     static MODULE_GRAPH_FACTS_CACHE: RefCell<HashMap<String, ModuleGraphFactsLive>> =
         RefCell::new(HashMap::new());
-}
-
-#[cfg(test)]
-pub(crate) fn reset_module_graph_facts_cache_for_test() {
-    MODULE_GRAPH_FACTS_CACHE.with(|cache| cache.borrow_mut().clear());
-    reset_module_path_index_cache_for_test();
 }
 
 pub(crate) fn build_module_graph_facts_live_uncached(
