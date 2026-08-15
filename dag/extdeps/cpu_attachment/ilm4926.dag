@@ -185,7 +185,7 @@ data ilm4926_resolution_obligations: DesignationResolutionObligations = Designat
   },
   board_land_pattern: DesignationFactUnresolved {
     reason: "no cited document states the board-side land pattern for the attachment named ILM4926; the Altra platform hardware design specification cites Figure 3 as carrying both package and socket drawings but neither geometry is transcribed here",
-    next_authority_to_consult: some(altra_platform_hw_design_subject_authority_anchor),
+    next_authority_to_consult: Present { value: altra_platform_hw_design_subject_authority_anchor },
   },
   loading_mechanism_identity: DesignationFactUnresolved {
     reason: "no cited document states whether ILM4926 names the socket body, the independent loading mechanism, or the assembly of both; Ampere datasheets say device seated in ILM4926 socket in a thermal note while ILM plausibly expands to Independent Loading Mechanism",
