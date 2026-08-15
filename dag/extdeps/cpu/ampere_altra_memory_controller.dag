@@ -1,0 +1,171 @@
+module extdeps.cpu.ampere_altra_memory_controller
+
+import std.types { Bool, String, NonEmptyStr, List }
+import std.integer { Int }
+import std.measure { BitWidth, ByteSize, bit_width, bit_width_count, byte_size }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.memory.types {
+  DramGeneration,
+  dram_generation_ddr4,
+  DimmBuffering,
+  Registered,
+  LoadReduced,
+  Unbuffered,
+  DramDieStacking,
+  MonolithicDie,
+  ThreeDimensionalStacked,
+  DramModuleClass,
+  dram_module_class_eq,
+}
+import extdeps.cpu.ampere { ampere_altra_classic_rev_a1_datasheet_authority }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ampere_altra_classic_rev_a1_datasheet_authority
+
+// READ FROM THE PDF, NOT RECALLED. Every row below is transcribed from section 2.10 "Eight
+// DDR4-3200 SDRAM Memory Controllers" of the Ampere Altra Rev A1 Processor Datasheet, Issue 1.50
+// dated 2024-01-30, whose content streams were inflated and decoded on 2026-08-15. The feature
+// list reads, verbatim modulo the PDF's letter spacing: eight 72-bit DDR4 channels featuring up
+// to DDR4-3200; up to 2 DPC; up to 4 TB of memory; support for x4 and x8, and for 8 Gb and 16 Gb,
+// DRAM devices; support for RDIMMs, LRDIMMs, and Stacked (3DS) RDIMMs; support for 1/2/4/6/8
+// active channels (1 and 2 only for engineering debug / bring-up); hashed memory interleave
+// across active channels.
+//
+// THIS IS ALTRA, NOT ALTRA MAX. They are separately versioned datasheets for separately governed
+// products and their memory sections are not assumed to agree — the Max part has its own document
+// and would need its own row set. That distinction is load-bearing here rather than pedantic: see
+// the UDIMM withdrawal below, which is a fact about THIS document's revision history.
+data altra_memory_controller_ingestion_note: String = "Section 2.10 only. Deliberately NOT carried: the DDR electrical specifications, the training sequence, the RAS feature list beyond its existence, and the signal tables — an ingestion-scope boundary, not a carriage refusal. The document is publicly reachable at the cited locator without a login, so gunbc.upstream_document_carriage permits its facts; the proprietary page footer is a recorded attribute that decides nothing."
+
+data altra_memory_generation: DramGeneration = dram_generation_ddr4
+
+data altra_memory_channel_count: Int = 8
+
+data altra_memory_channel_width: BitWidth = bit_width(count: 72)
+
+data altra_memory_max_data_rate_mts: Int = 3200
+
+data altra_memory_max_dimms_per_channel: Int = 2
+
+// Four terabytes, as the datasheet states it for the whole processor rather than per channel.
+data altra_memory_max_capacity: ByteSize = byte_size(count: 4398046511104)
+
+// DEVICE ORGANIZATION. Both admitted widths, as BitWidth rather than a bare Int, because the
+// datasheet's "x4 and x8" names the device's data width and the corpus already grounds widths on
+// that carrier.
+data altra_admitted_device_widths: List<BitWidth> = [bit_width(count: 4), bit_width(count: 8)]
+
+// DENSITY, WITH ITS QUOTED UNIT RECORDED. The datasheet says "8 Gb and 16 Gb" — gigaBITS, which
+// for DRAM density is 2^30 bits by JEDEC convention, so 8 Gb is exactly 2^30 bytes and 16 Gb is
+// exactly 2^31. The conversion is exact and stated rather than left implicit, because a density
+// silently re-denominated into bytes is the unit trap the storage-pricing carriers already
+// record: the unit word is not the unit.
+data altra_admitted_device_densities: List<ByteSize> = [
+  byte_size(count: 1073741824),
+  byte_size(count: 2147483648),
+]
+
+data altra_device_density_quoted_unit: NonEmptyStr = "gigabits (8 Gb, 16 Gb), converted at 2^30 bits per Gb"
+
+// THE ADMITTED MODULE CLASSES, AND THE ONE THAT WAS TAKEN AWAY. All three admitted classes carry
+// a register or a buffer; none is unbuffered. That is the fact a board-down DRAM proposal must
+// confront, so it is carried as data a consumer can fold rather than as a sentence.
+data altra_admitted_module_classes: List<DramModuleClass> = [
+  DramModuleClass { buffering: Registered, stacking: MonolithicDie },
+  DramModuleClass { buffering: LoadReduced, stacking: MonolithicDie },
+  DramModuleClass { buffering: Registered, stacking: ThreeDimensionalStacked },
+]
+
+fn altra_admits_module_class(c: DramModuleClass) -> Bool {
+  any(altra_admitted_module_classes, k => dram_module_class_eq(a: k, b: c))
+}
+
+// A WITHDRAWAL IS NOT AN ABSENCE, and collapsing the two would lose the strongest signal this
+// document carries. Issue 1.50's own revision history reads: "Deleted unbuffered DIMM (UDIMM)
+// from Eight DDR4-3200 SDRAM Memory Controllers on page 10". So an earlier revision of THIS
+// datasheet listed UDIMM among the admitted classes and Ampere removed it.
+//
+// The distinction decides what a designer may infer. An unmentioned class might simply be
+// untested, and a test could establish it. A class the vendor listed and then struck is a
+// position the vendor moved away from, and the honest reading of a withdrawal is that the
+// capability was found not to hold or not to be supportable — not that nobody looked.
+type ModuleClassWithdrawal {
+  buffering: DimmBuffering
+  withdrawn_in_issue: NonEmptyStr
+  withdrawn_on: NonEmptyStr
+  revision_history_text: NonEmptyStr
+}
+
+data altra_udimm_withdrawal: ModuleClassWithdrawal = ModuleClassWithdrawal {
+  buffering: Unbuffered,
+  withdrawn_in_issue: "1.50",
+  withdrawn_on: "2024-01-30",
+  revision_history_text: "Deleted unbuffered DIMM (UDIMM) from Eight DDR4-3200 SDRAM Memory Controllers on page 10",
+}
+
+// ACTIVE CHANNEL POPULATIONS, SPLIT BY WHAT THEY ARE FOR. The datasheet lists 1/2/4/6/8 and then
+// qualifies two of them: "(1 and 2 only for engineering debug / bring-up)". Carrying the five as
+// one list would let a board declare a two-channel production population and pass, which is the
+// overclaim the parenthesis exists to prevent — so the qualifier is structure here, not prose.
+// Note that 3, 5 and 7 are admitted by NEITHER list: they are not populations this controller
+// supports at all.
+data altra_production_active_channel_counts: List<Int> = [4, 6, 8]
+
+data altra_bringup_only_active_channel_counts: List<Int> = [1, 2]
+
+type ActiveChannelStanding
+  = ActiveChannelsProductionAdmitted
+  | ActiveChannelsBringUpOnly
+  | ActiveChannelsNotSupported
+
+fn altra_active_channel_standing(count: Int) -> ActiveChannelStanding {
+  if any(altra_production_active_channel_counts, n => n == count) {
+    ActiveChannelsProductionAdmitted
+  } else {
+    if any(altra_bringup_only_active_channel_counts, n => n == count) {
+      ActiveChannelsBringUpOnly
+    } else {
+      ActiveChannelsNotSupported
+    }
+  }
+}
+
+// Stated because it constrains what a partial population MEANS. Interleave is hashed across the
+// ACTIVE channels, so reducing the active count is not merely a capacity reduction — it changes
+// the address distribution, and a board that populates fewer channels is a different memory
+// system rather than a smaller one.
+data altra_memory_interleave_note: String = "Section 2.10 states hashed memory interleave across active channels."
+
+// The full-population data width, DERIVED from the channel facts rather than authored beside
+// them, so a corrected channel count cannot leave a stale aggregate behind.
+fn altra_total_memory_data_width() -> Int {
+  altra_memory_channel_count * bit_width_count(b: altra_memory_channel_width)
+}
+
+// WHETHER THIS CONTROLLER ADMITS DRAM SOLDERED DIRECTLY TO THE BOARD, answered from the admitted
+// classes rather than asserted. Every admitted class is a MODULE class carrying a register or
+// buffer, and a board-down topology has neither, so the controller authority does not admit it.
+//
+// The three states are kept apart because they route differently. Unestablished invites someone
+// to find a document. NotAdmitted says the authority was read and does not permit it. Withdrawn
+// says the authority once permitted the nearest thing and stopped — which is the state Altra is
+// actually in, and it is the one that should stop a board-down proposal rather than start a test
+// campaign.
+type BoardDownDramStanding
+  = BoardDownAdmitted { authority: ExternalAuthority }
+  | BoardDownNotAdmittedByController { authority: ExternalAuthority, because: NonEmptyStr }
+  | BoardDownNearestClassWithdrawn { authority: ExternalAuthority, withdrawal: ModuleClassWithdrawal }
+  | BoardDownSupportUnestablished { required_authority: NonEmptyStr }
+
+fn altra_board_down_dram_standing() -> BoardDownDramStanding {
+  BoardDownNearestClassWithdrawn {
+    authority: ampere_altra_classic_rev_a1_datasheet_authority,
+    withdrawal: altra_udimm_withdrawal,
+  }
+}
+
+// The residue this module does NOT close, stated so its silence is never read as permission.
+// The datasheet settles which MODULE classes the controller admits. It does not describe a
+// connector-less topology at all, in either direction, and firmware acceptance of a board-owned
+// SPD source is a separate question this document does not reach. So the standing above is a
+// controller-authority verdict, not a proof of electrical impossibility.
+data altra_board_down_residue_note: String = "The datasheet admits module classes and never addresses direct-attach topology, so BoardDownNearestClassWithdrawn reports what the controller authority establishes and nothing more. What remains unestablished, and would need a different authority: whether Ampere firmware trains a channel whose SPD is board-provided rather than module-resident, and whether any Ampere reference design has ever done so. Neither is answered by absence here."
