@@ -157,13 +157,9 @@ pub mod wt_a;
 pub mod wt_b;
 pub mod wt_common;
 #[macro_use]
-pub mod ci_control_plane;
 pub mod cli_run;
-pub mod coproduct_reflection;
-pub mod data_initializer_identity;
 pub mod memory_governor;
 pub mod module_path_index;
-pub mod recorded_fixture;
 pub mod resolved_graph_cache;
 pub mod shared_typecheck_store;
 pub mod usv_pilot_v2_std_algebra;

@@ -3,13 +3,9 @@
 
 #[rustfmt::skip]
 pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
-    "ci_control_plane.rs",
     "cli_run.rs",
-    "coproduct_reflection.rs",
-    "data_initializer_identity.rs",
     "resolved_graph_cache.rs",
     "shared_typecheck_store.rs",
-    "recorded_fixture.rs",
     "main.rs",
     "phase_profile.rs",
     "pre_push.rs",
