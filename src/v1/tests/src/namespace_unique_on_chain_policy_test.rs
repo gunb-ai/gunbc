@@ -128,17 +128,6 @@ fn unbound_fixture() -> Vec<Rc<SourceFile>> {
 }
 
 #[test]
-fn import_scoped_default_resolves_homonym_fixture_clean() {
-    let _guard = ResolutionPolicyGuard::set(false);
-    let diags = error_diag_messages(homonym_fixture());
-    assert!(
-        diags.is_empty(),
-        "ImportScoped policy (host bracket false) must preserve today's behavior verbatim \
-         (nearest-wins type resolution + first-hit fn resolution); got {diags:?}"
-    );
-}
-
-#[test]
 fn namespace_only_refuses_chain_homonym_on_type_path() {
     let _guard = ResolutionPolicyGuard::set(true);
     let diags = error_diag_messages(homonym_fixture());

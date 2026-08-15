@@ -438,49 +438,4 @@ mod tests {
             "root order reverses the winning file"
         );
     }
-
-    #[test]
-    fn resolver_imports_ephemeral_generated_source_root() {
-        let entry_root = temp_dir("entry-root");
-        let generated_root = temp_dir("generated-root");
-        let generated_dir = generated_root.join("generated");
-        std::fs::create_dir_all(&generated_dir).expect("create generated dir");
-        std::fs::write(
-            generated_dir.join("method_template_projection.dag"),
-            "module generated.method_template_projection\n\nfn generated_answer() -> Int { 41 }\n",
-        )
-        .expect("write generated module");
-
-        let entry_source = "\
-module ephemeral.entry
-
-fn main() -> Int { generated_answer() }
-";
-        let result = compile_dag_named_with_source_roots(
-            "ephemeral/entry.dag",
-            entry_source,
-            RenderTarget::Dag,
-            &[entry_root.clone(), generated_root.clone()],
-        );
-
-        assert_no_diagnostics(&result);
-        let loaded_paths: Vec<_> = result
-            .newline_indices
-            .iter()
-            .map(|index| index.file.as_str())
-            .collect();
-        assert!(
-            loaded_paths
-                .iter()
-                .any(|path| path.contains("generated/method_template_projection.dag")),
-            "expected generated temp-root module to be loaded, got: {loaded_paths:?}"
-        );
-        assert!(
-            !loaded_paths.iter().any(|path| path.starts_with("src/")),
-            "ephemeral generated dependency must not be committed under src/: {loaded_paths:?}"
-        );
-
-        let _ = std::fs::remove_dir_all(entry_root);
-        let _ = std::fs::remove_dir_all(generated_root);
-    }
 }

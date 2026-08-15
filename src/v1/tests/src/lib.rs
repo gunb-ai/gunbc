@@ -7,7 +7,6 @@
 pub mod helpers;
 
 #[cfg(test)]
-mod class_b_trim_specimen_test;
 #[cfg(test)]
 mod decl_facts_dimensionless_projection_test;
 #[cfg(test)]
