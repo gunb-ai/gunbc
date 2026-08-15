@@ -117,30 +117,49 @@ data altra_udimm_withdrawal: ModuleClassWithdrawal = ModuleClassWithdrawal {
   revision_history_text: "Deleted unbuffered DIMM (UDIMM) from Eight DDR4-3200 SDRAM Memory Controllers on page 10",
 }
 
-// ACTIVE CHANNEL POPULATIONS, SPLIT BY WHAT THEY ARE FOR. The datasheet lists 1/2/4/6/8 and then
-// qualifies two of them: "(1 and 2 only for engineering debug / bring-up)". Carrying the five as
-// one list would let a board declare a two-channel production population and pass, which is the
-// overclaim the parenthesis exists to prevent — so the qualifier is structure here, not prose.
-// Note that 3, 5 and 7 are admitted by NEITHER list: they are not populations this controller
-// supports at all.
-data altra_production_active_channel_counts: List<Int> = [4, 6, 8]
+// ACTIVE CHANNEL POPULATIONS, AS A CLOSED COPRODUCT. The datasheet lists 1/2/4/6/8 and then
+// qualifies two of them: "(1 and 2 only for engineering debug / bring-up)".
+//
+// THIS TYPE WAS RE-HOMED HERE FROM product.altra_motherboard.minimal_design, where it was
+// authored first. It is a cited vendor fact -- section 2.10's admitted populations and its
+// parenthetical qualifier -- so its home is the authority that cites the datasheet, and the
+// product layer consumes it. An earlier revision of this module authored a SECOND representation
+// of the same contract as two Int lists plus a three-state standing, which is the parallel
+// authority §3 forbids: two rows free to drift on the next datasheet edit, each with its own
+// witness and no join between them.
+//
+// The coproduct is kept and the Int lists deleted rather than the reverse, because it is the
+// stronger shape. Three, five and seven active channels are not slow configurations, they are
+// unsupported ones -- and here they are UNREPRESENTABLE rather than classified. That is why the
+// deleted standing needed a NotSupported arm at all: it existed only to carry a state this type
+// cannot express, so consolidating removed the arm and the classifier together.
+type ActiveDdrChannelCount
+  = OneChannel
+  | TwoChannels
+  | FourChannels
+  | SixChannels
+  | EightChannels
 
-data altra_bringup_only_active_channel_counts: List<Int> = [1, 2]
+fn active_channel_count(c: ActiveDdrChannelCount) -> Int {
+  match c {
+    OneChannel => 1
+    TwoChannels => 2
+    FourChannels => 4
+    SixChannels => 6
+    EightChannels => 8
+  }
+}
 
-type ActiveChannelStanding
-  = ActiveChannelsProductionAdmitted
-  | ActiveChannelsBringUpOnly
-  | ActiveChannelsNotSupported
-
-fn altra_active_channel_standing(count: Int) -> ActiveChannelStanding {
-  if any(altra_production_active_channel_counts, n => n == count) {
-    ActiveChannelsProductionAdmitted
-  } else {
-    if any(altra_bringup_only_active_channel_counts, n => n == count) {
-      ActiveChannelsBringUpOnly
-    } else {
-      ActiveChannelsNotSupported
-    }
+// The vendor documents one- and two-channel operation as debug and bring-up. That is a property
+// of the CONFIGURATION, carried so a consumer's refusal reads off a fact rather than repeating a
+// threshold.
+fn channel_count_is_production_qualified(c: ActiveDdrChannelCount) -> Bool {
+  match c {
+    OneChannel => false
+    TwoChannels => false
+    FourChannels => true
+    SixChannels => true
+    EightChannels => true
   }
 }
 

@@ -19,9 +19,14 @@ import extdeps.cpu.ampere { ampere_lga4926_socket, altra_max_m12830_catalog, alt
 import extdeps.cpu.ampere_altra_package { altra_fclga_socket, altra_declared_contact_count, altra_ddr4_channel_count }
 import extdeps.cpu.ampere_altra_platform_hw_design.platform { dimms_per_channel_count }
 import extdeps.cpu.ampere_altra_memory_controller {
-  ActiveChannelsProductionAdmitted,
-  ActiveChannelsBringUpOnly,
-  ActiveChannelsNotSupported,
+  ActiveDdrChannelCount,
+  OneChannel,
+  TwoChannels,
+  FourChannels,
+  SixChannels,
+  EightChannels,
+  active_channel_count,
+  channel_count_is_production_qualified,
   BoardDownAdmitted,
   BoardDownNotAdmittedByController,
   BoardDownNearestClassWithdrawn,
@@ -30,7 +35,6 @@ import extdeps.cpu.ampere_altra_memory_controller {
   BoardProvidesRegisterOrBuffer,
   gigabits_to_byte_size,
   altra_admitted_device_densities_gigabits,
-  altra_active_channel_standing,
   altra_admits_module_class,
   altra_admitted_device_densities,
   altra_admitted_device_widths,
@@ -118,19 +122,19 @@ test fn w_device_density_derives_from_the_quoted_gigabit_figure() -> Bool {
     && (list_length(items: altra_admitted_device_densities_gigabits) == 2)
 }
 
-// ACTIVE CHANNEL POPULATIONS, ALL THREE STANDINGS EXERCISED. The engineering-debug qualifier is
-// the point: a two-channel population must NOT read as production-admitted, and 3/5/7 must reach
-// neither list. A single admitted-set would fail all three of these at once.
-test fn w_active_channel_standings_separate_production_from_bringup() -> Bool {
-  (altra_active_channel_standing(count: 8) == ActiveChannelsProductionAdmitted)
-    && (altra_active_channel_standing(count: 6) == ActiveChannelsProductionAdmitted)
-    && (altra_active_channel_standing(count: 4) == ActiveChannelsProductionAdmitted)
-    && (altra_active_channel_standing(count: 2) == ActiveChannelsBringUpOnly)
-    && (altra_active_channel_standing(count: 1) == ActiveChannelsBringUpOnly)
-    && (altra_active_channel_standing(count: 3) == ActiveChannelsNotSupported)
-    && (altra_active_channel_standing(count: 5) == ActiveChannelsNotSupported)
-    && (altra_active_channel_standing(count: 7) == ActiveChannelsNotSupported)
-    && (altra_active_channel_standing(count: 0) == ActiveChannelsNotSupported)
+// THE PRODUCTION/BRING-UP SPLIT, over the closed coproduct. The engineering-debug qualifier is
+// the point: a two-channel population must NOT read as production-qualified. What this witness no
+// longer has to assert is that 3, 5 and 7 are unsupported -- they have no representation in
+// ActiveDdrChannelCount at all, so that claim moved from a runtime check to unwritability, which
+// is why the Int-list classifier this replaced could be deleted rather than re-homed.
+test fn w_production_qualification_separates_bringup_from_production() -> Bool {
+  channel_count_is_production_qualified(c: EightChannels)
+    && channel_count_is_production_qualified(c: SixChannels)
+    && channel_count_is_production_qualified(c: FourChannels)
+    && !channel_count_is_production_qualified(c: TwoChannels)
+    && !channel_count_is_production_qualified(c: OneChannel)
+    && active_channel_count(c: EightChannels) == 8
+    && active_channel_count(c: TwoChannels) == 2
 }
 
 // Device organization, both axes, against the datasheet's stated values. Densities are asserted
