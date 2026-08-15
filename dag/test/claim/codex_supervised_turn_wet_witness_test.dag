@@ -18,6 +18,7 @@ import gunbc.package_delivery {
   materialize_codex_runtime_finish_bisect_observe_native_digest_only,
   materialize_codex_runtime_finish_bisect_observe_toolchain_only,
   materialize_codex_runtime_finish_bisect_observe_protocol_schema_only,
+  materialize_codex_runtime_finish_bisect_parse_largest_protocol_schema_only,
   materialize_codex_runtime_finish_bisect_parse_canonicalize_largest_protocol_schema_only,
   materialize_codex_runtime_finish_bisect_observe_package_tree_only,
   materialize_codex_runtime_finish_bisect_observe_receipt_identity_only,
@@ -308,6 +309,12 @@ fn wet_finish_observe_toolchain_only() -> Bool {
 
 fn wet_finish_observe_protocol_schema_only() -> Bool {
   materialize_codex_runtime_finish_bisect_observe_protocol_schema_only(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_finish_parse_largest_protocol_schema_only() -> Bool {
+  materialize_codex_runtime_finish_bisect_parse_largest_protocol_schema_only(
     source: committed_admitted_codex_runtime_source(),
   )
 }
