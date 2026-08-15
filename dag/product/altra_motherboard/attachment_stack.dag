@@ -15,6 +15,7 @@ import extdeps.cpu.ampere_altra_package {
   altra_reference_board_collateral_standing,
   extdeps_external_authority_anchor,
 }
+import extdeps.cpu_attachment.ilm4926 { ilm4926 }
 import extdeps.vendor.ampere { ampere_customer_reference_boards_authority }
 
 // SIX THINGS BETWEEN A PROCESSOR DIE AND A BOARD, AND THEY ARE NOT ONE THING. The processor
@@ -167,12 +168,17 @@ data processor_package_standing: AttachmentLayerStanding = AttachmentLayerStandi
 // The layer stays unresolved because what is still missing narrowed rather than cleared: a
 // designation is not a vendor part number, and which physical part the designation names -- the
 // socket body or the retention hardware, plausibly different vendors -- is unsettled. The
-// designation itself is not repeated here; it lives in one authority and this layer will reference
-// it rather than carry a second spelling.
+// designation and its four resolution obligations live in extdeps.cpu_attachment.ilm4926;
+// this layer consumes ilm4926.designator rather than repeating the spelling.
 data socket_standing: AttachmentLayerStanding = AttachmentLayerStanding {
   layer: SocketLayer,
   fact: FactUnresolved {
-    what_is_missing: "the socket vendor and part number, and which physical part the shared designation names; a designation appearing in two independent documents establishes the name, not the part",},
+    what_is_missing: concat(
+      "the socket vendor and part number for the ",
+      ilm4926.designator as String,
+      " designation, and which physical part that designation names; see extdeps.cpu_attachment.ilm4926 ilm4926_resolution_obligations",
+    ),
+  },
   carriage: CarriageNotApplicable {
     because: "no fact is established for this layer, so there is nothing to decide carriage for",
   },
