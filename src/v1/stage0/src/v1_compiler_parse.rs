@@ -1839,10 +1839,105 @@ pub fn skip_newlines(mut tokens: Rc<TokenStream>) -> Rc<TokenStream> {
     }
 }
 
-pub fn is_continuation_shape(shape: TokenShape) -> bool {
-    (((is_pipe_arrow_shape(shape.clone()) || is_dot_shape(shape.clone()))
-        || is_or_shape(shape.clone()))
-        || is_and_shape(shape.clone()))
+pub fn find_operator_bp(ops: Rc<Vec<Rc<OperatorSpec>>>, symbol: String) -> Option<BindingPower> {
+    {
+        let matching = Rc::new({
+            let mut __result = Vec::new();
+            for op in ops.clone().iter().cloned() {
+                if (op.symbol.clone() == symbol.clone()) {
+                    __result.push(op);
+                }
+            }
+            __result
+        });
+        if ((matching.clone().len() as i64) > 0) {
+            {
+                let op = matching.clone().first().cloned().clone().unwrap();
+                Some(BindingPower {
+                    left: op.left_bp.clone(),
+                    right: op.right_bp.clone(),
+                })
+            }
+        } else {
+            None
+        }
+    }
+}
+
+pub fn find_operator_binop(ops: Rc<Vec<Rc<OperatorSpec>>>, symbol: String) -> Option<BinOp> {
+    {
+        let matching = Rc::new({
+            let mut __result = Vec::new();
+            for op in ops.clone().iter().cloned() {
+                if (op.symbol.clone() == symbol.clone()) {
+                    __result.push(op);
+                }
+            }
+            __result
+        });
+        if ((matching.clone().len() as i64) > 0) {
+            matching
+                .clone()
+                .first()
+                .cloned()
+                .clone()
+                .unwrap()
+                .binop
+                .clone()
+        } else {
+            None
+        }
+    }
+}
+
+pub fn operator_continuation_dual_role_exclusion_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Continuation-leading tokens are derived from dag_syntax_spec.operators via find_operator_bp, not a shape allowlist. PREFIX/INFIX INTERSECTION IS PROVABLY COMPLETE — not a remembered one-element hand-list. parse_prefix admits exactly two unary prefix shapes: ShBang → ExprUnaryOp { op: Not } and ShMinus → ExprUnaryOp { op: Neg } (UnaryOpKind is closed: Not | Neg only). The infix table carries '!=' but no bare '!', so operator-table derivation already excludes '!' without any exclusion row. '-' is the sole symbol with both a parse_prefix arm (unary Neg) and an infix OperatorSpec row (Sub). operator_continuation_dual_role_excluded_symbols is therefore the full intersection, with one member, and skipping '-' continuation keeps `let a = foo` newline `-bar(x)` as two statements (unary minus call) instead of silently re-parsing as `foo - bar(x)`. A future prefix/infix dual-role operator must extend UnaryOpKind and parse_prefix and will redd the singleton witness rather than silently changing existing code.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn operator_continuation_dual_role_excluded_symbols() -> Rc<Vec<String>> {
+    thread_local! {
+        static CACHED: Rc<Vec<String>> = {
+            Rc::new(vec!["-".to_string()])
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+}
+
+pub fn is_prefix_infix_dual_role_operator(symbol: String) -> bool {
+    {
+        let mut __found = false;
+        for s in operator_continuation_dual_role_excluded_symbols()
+            .iter()
+            .cloned()
+        {
+            if (s.clone() == symbol.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn is_operator_continuation_token(tok: Option<Rc<Token>>) -> bool {
+    match tok.clone() {
+        Some(t) => {
+            if is_prefix_infix_dual_role_operator(t.text.clone()) {
+                false
+            } else {
+                match find_operator_bp(dag_syntax_spec().operators.clone(), t.text.clone()) {
+                    Some(_) => true,
+                    None => false,
+                }
+            }
+        }
+        None => false,
+    }
 }
 
 pub fn skip_continuation_newlines(tokens: Rc<TokenStream>) -> Rc<TokenStream> {
@@ -1851,10 +1946,7 @@ pub fn skip_continuation_newlines(tokens: Rc<TokenStream>) -> Rc<TokenStream> {
         let is_continuation = if tok_is_newline(tok.clone()) {
             {
                 let after = skip_newlines(tokens.clone());
-                match token_stream_first(after.clone()) {
-                    Some(next) => is_continuation_shape(next.shape.clone()),
-                    None => false,
-                }
+                is_operator_continuation_token(token_stream_first(after.clone()))
             }
         } else {
             false
@@ -11361,61 +11453,10 @@ pub fn parse_expr_loop(
     }
 }
 
-pub fn find_operator_bp(ops: Rc<Vec<Rc<OperatorSpec>>>, symbol: String) -> Option<BindingPower> {
-    {
-        let matching = Rc::new({
-            let mut __result = Vec::new();
-            for op in ops.clone().iter().cloned() {
-                if (op.symbol.clone() == symbol.clone()) {
-                    __result.push(op);
-                }
-            }
-            __result
-        });
-        if ((matching.clone().len() as i64) > 0) {
-            {
-                let op = matching.clone().first().cloned().clone().unwrap();
-                Some(BindingPower {
-                    left: op.left_bp.clone(),
-                    right: op.right_bp.clone(),
-                })
-            }
-        } else {
-            None
-        }
-    }
-}
-
 pub fn infix_bp(tokens: Rc<TokenStream>) -> Option<BindingPower> {
     match token_stream_first(tokens.clone()) {
         Some(t) => find_operator_bp(dag_syntax_spec().operators.clone(), t.text.clone()),
         None => None,
-    }
-}
-
-pub fn find_operator_binop(ops: Rc<Vec<Rc<OperatorSpec>>>, symbol: String) -> Option<BinOp> {
-    {
-        let matching = Rc::new({
-            let mut __result = Vec::new();
-            for op in ops.clone().iter().cloned() {
-                if (op.symbol.clone() == symbol.clone()) {
-                    __result.push(op);
-                }
-            }
-            __result
-        });
-        if ((matching.clone().len() as i64) > 0) {
-            matching
-                .clone()
-                .first()
-                .cloned()
-                .clone()
-                .unwrap()
-                .binop
-                .clone()
-        } else {
-            None
-        }
     }
 }
 
