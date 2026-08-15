@@ -1,6 +1,9 @@
 module test.claim.run_verdict_exit_status_witness_test
 
 import tools.host_prelude { run_witness_bin }
+import extdeps.git
+import extdeps.git.inspect
+import extdeps.gunbc
 
 // WHY THIS IS WET, and why wet is the only honest option.
 //
@@ -19,20 +22,32 @@ data run_verdict_wet_subject_note: String = "Enrolled because the property was C
 
 data run_verdict_wall_note: String = "The measured wall of the ORIGINAL planted-drift control was 143s, because it ran the whole generated-artifact gate over roughly seventy artifacts. These rows do not: they invoke a three-function fixture whose bodies are a constructor each, so the cost is subprocess startup plus the fixture's own resolve, not a corpus scan. That distinction is the point of the fixture existing — the discriminating mechanism is small even though the incident that produced it was large."
 
+data run_verdict_refusal_polarity_note: String = "THE CAUSE IS A TYPE, NOT AN ASSERTION. tools.host_prelude run_witness_bin, run_witness_bin_program and run_witness_bin_ready_program all return Bool, and its run_witness_bin_program body collapses WitnessBinRefused to false — the SAME VALUE a genuine nonzero exit produces. One bit cannot carry 'ran, exit nonzero' and 'could not run' as different states, so NO assertion over that helper can separate them and no care in the assertion fixes it. That is the state-space conflation DESIGN names, with the specific consequence that the refusal path and the failure path share a value.
+
+THE GENERAL RULE THIS ROW EXISTS UNDER: never assert == false over a call whose REFUSAL path also yields false. The polarity is what makes a row vacuous, not its wetness — the two positive rows here were fine in the same context precisely because refusal and their expected value differ.
+
+MEASURED, not hypothetical. An earlier revision of the failure row called run_witness_bin and asserted == false. Executed through claim_batch, which runs HERMETIC, it PASSED WITHOUT EXECUTING A SUBPROCESS: hermetic mode refused IsExecutable, the refusal read as false, and the row answered yes on nothing. The two positive rows FAILED loudly in that same run ('hermetic mode: no mock_response for operation IsExecutable — refusing to fabricate Unit'), which is what kept the set honest while the individual row was not.
+
+THE FIX IS THE UNCONFLATED ROUTE, already in the tree: the failure row now calls gunbc.WitnessBin.Run directly and reads result.success from a RECORD. A hermetic context cannot satisfy it — the operation refuses and the witness fails loudly — so the row can no longer answer yes on nothing. The precedent is typed_witness_bin_run_loud_failure_red_control_holds in test.claim.typed_witness_invocation, whose own note records that this route replaced a cheaper one to keep exactly this discrimination.
+
+DISSOLVE-ON: run_witness_bin returns a result that distinguishes an unexecuted invocation from a nonzero exit, at which point rows may use the helper without the polarity hazard. Rewriting an assertion does not discharge this; changing the return type does."
+
 // The failure arm. A returned ExitFailure MUST reach a nonzero status.
 // This is the exact defect the planted-drift control caught; if this row ever greens by
 // returning true, the driver is reporting success for a run that declared failure.
 test fn run_failure_verdict_reaches_nonzero_exit() -> Bool {
-  run_witness_bin(
-    var_name: "GUNBC",
-    bin_name: "gunbc",
+  let toplevel = git.Inspect.Toplevel()
+  let result = gunbc.WitnessBin.Run(
+    workdir: toplevel.path,
+    bin_path: concat(toplevel.path, "/target/release/gunbc"),
     args: [
       "run",
       "--source-root", "dag",
       "--entry", "dag/test/claim/run_verdict_exit_status_fixture.dag",
       "--function", "verdict_failure"
     ]
-  ) == false
+  )
+  result.success == false
 }
 
 // The positive control. Without it the row above is satisfiable by a seam that fails on
