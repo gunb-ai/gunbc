@@ -45,12 +45,14 @@ Standing census on the branch (2026-08-15): **5,531 hard diagnostics · 280 dist
 
 **Trap (regen fixed point):** every v1 `.dag` deletion has a generated `.rs` twin under `src/v1/stage0/src/` — cut both sides in the same pass or `regen_verify` reds.
 
+**Trap (attribute orphans, measured 2026-08-15 — three defects):** deleting a generated Rust struct while leaving its preceding `#[derive(...)]` lines behind attaches them to the next item (E0774 / conflicting impls). The rule: a struct deletion takes its preceding attribute lines with it — and the repair sweep is scoped to the files the deletion touched, never repo-wide (a repo-wide sweep removed three legitimate derives in untouched files, including the CLI's `#[derive(Parser)]`; caught only by pre-commit diff).
+
 ## Step 4 — repoints (contested: surviving consumers change edge supply)
 
 - `src/v2/lens/module_graph.dag`: repoint `dependency_resolution_facts_live` to the reference-derived producer per the file's own `dependency_edge_source_migration_note`; `dependency_closure`, `import_closure`, `touched_path_in_closure`, `entry_affected_by_touched_paths` are edge-source-agnostic and survive under the new supply. Consumers riding through unchanged: `dag/tools/dag_compile_clean_scope.dag`, `dag/tools/module_impact_query_front_door.dag`, `dag/tools/rust_stage0_gates.dag`, `dag/gunbc/doc_graph_roots.dag`, `gunbc.stage0_partition_closure`, `gunbc.repo_atlas_projection`, affected-set entry selection
 - `cli_run.rs` `import_resolution_facts` / `dependency_resolution_facts` / `union_dedup_import_facts_reference_first`: the reference-first union collapses to reference-only; the dedup authority survives with one arm
 - `layer_import_facts` family + its interpreter builtin arm: `v2.std.layer` consumes it; the transitional reference arm already exists (`reference_edges_as_import_facts` strict=true, per `docs/plans/layering-imports-reference-repoint-design.md` §3.1) — becomes reference-only; repoint + rename
-- `src/v1/05_emit_rust.dag` `reference_derived_use_lines`: one input channel is `UnlistedImportUse` diagnostics, which die with the mask — re-derive that channel from the containment resolver; the pass becomes the sole use-line producer once `emit_imports` goes
+- `src/v1/05_emit_rust.dag` `reference_derived_use_lines`: re-derive its type-ref channel from the containment resolver; the pass becomes the sole use-line producer once `emit_imports` goes. **This is restoration, not cleanup** (crisp-crab finding, 2026-08-15): the channel was fed by `UnlistedImportUse` diagnostics whose mask guards on a non-empty `source_visible_names` — empty for every module post-strip — so the strip already silently emptied it. Rust emission is degraded on the branch until this lands, and an emit-green result before it is the suspicious one. Related: `topological_sort` derives build order from `module_imports`, so ordering is flat (every module in-degree 0) until reference-derived edges supply it — ordering-sensitive results are not meaningful before then.
 - `src/v1/05_emit_python.dag` `emit_py_imports` / `05_emit_go.dag` `emit_go_imports` etc.: target-language import emission survives; only the input (dag import nodes) is re-derived from references
 - `dag/tools/dag_compile_clean_scope.dag`: re-word the import-closure prose; keep the tool
 - `src/v1/04_emit_info.dag` `collect_type_node_import_surface_names`: re-derive from references
@@ -65,7 +67,7 @@ Method (post-retraction): instrument **real specimens** from the census, never s
 
 ## Green bar / cutover
 
-`import` refuses at parse with a typed, located refusal; the corpus resolves through the containment rule **by construction — never pool coincidence**; the census worked to zero or every remaining row dispositioned; the regen fixed point and drift gates re-established on the branch. Then #8282 flips ready and the operator merges — one atomic cutover.
+`import` refuses at parse with a typed, located refusal (DONE, step 1); the corpus resolves through the containment rule **by construction — never pool coincidence**; Rust-emit use-lines restored from the containment resolver (the strip silently emptied the old channel — see step 4); the census worked to zero or every remaining row dispositioned; the regen fixed point and drift gates re-established on the branch. Then #8282 flips ready and the operator merges — one atomic cutover.
 
 ## Registration
 
