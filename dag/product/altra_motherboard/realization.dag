@@ -246,6 +246,19 @@ fn row_covers_requirement(row: RequirementPartRealization, req: BoardRequirement
   row.requirement == req
 }
 
+// DISCHARGE READS JUSTIFICATION, NOT ONLY PROVIDER PRESENCE. CandidateCompatibilityOnly names
+// mechanical-fit facts and outstanding compatibility joins; it is not a part selection, so a
+// roster row in that arm cannot satisfy RequiredFunctionWithoutJustifiedPart even when every
+// named provider appears on the plan. ReferenceDesignPrecedent and RequirementsDerived are the
+// arms that can discharge once every roster provider is populated on the plan.
+fn justification_discharges_required_function(j: RealizationJustification) -> Bool {
+  match j {
+    ReferenceDesignPrecedent { reference_design: _, authority: _ } => true
+    RequirementsDerived { requirements: _, evidence: _ } => true
+    CandidateCompatibilityOnly { candidate: _, obligations: _ } => false
+  }
+}
+
 fn provider_identities_from_roster(roster: List<RequirementPartRealization>) -> List<NonEmptyStr> {
   fold(roster, init: [], f: fn(acc, row) { concat(acc, row.providers) })
 }
@@ -261,6 +274,8 @@ fn requirement_has_providers_on_plan(
     } else if !row_covers_requirement(row: row, req: req) {
       false
     } else if list_length(items: row.providers) == 0 {
+      false
+    } else if !justification_discharges_required_function(j: row.justification) {
       false
     } else {
       fold(row.providers, init: true, f: fn(ok, p) {

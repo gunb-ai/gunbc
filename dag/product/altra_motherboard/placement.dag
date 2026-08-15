@@ -717,11 +717,12 @@ fn board_article(plan: BoardPlacementPlan) -> BoardPhysicalArticle {
 }
 
 // HOW MANY PARTS THE GEOMETRY CHECK DID NOT SEE, and it is counted from the causes rather than
-// assumed to be zero. Two of the four refusals describe a part that will occupy board area later
-// and was not available to be checked now: a required role nothing fills, and a component whose
-// envelope is still owed. The other two describe parts that ARE present -- one unjustified, one
-// sharing a name -- so they are defects in what was checked rather than gaps in what was not, and
-// counting them here would overstate the gap.
+// assumed to be zero. Two refusal classes describe a part that will occupy board area later and
+// was not available to be checked now: a required role nothing fills, and a component whose
+// envelope is still owed. Realization refusals name functional gaps on identities that may already
+// have cited bodies on the plan — those parts were checked geometrically, so they do not belong
+// in this count. The other placement refusals describe parts that ARE present and are defects in
+// what was checked rather than gaps in what was not.
 fn parts_not_geometrically_checked(d: AltraMinimalMotherboard, d_ref: DeclarationRef, plan: BoardPlacementPlan) -> Int {
   fold(placement_causes(d: d, d_ref: d_ref, plan: plan), init: 0, f: fn(acc, c) {
     match c {
@@ -731,7 +732,6 @@ fn parts_not_geometrically_checked(d: AltraMinimalMotherboard, d_ref: Declaratio
       PlannedIdentityRepeated { component: _ } => acc
       RoleFilledMoreThanOnce { role: _, fills: _ } => acc
       PlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => acc
-      RequiredFunctionWithoutJustifiedPartOnBoard { requirement: _ } => acc
     }
   })
 }

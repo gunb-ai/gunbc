@@ -235,13 +235,35 @@ test fn w_the_reference_plan_carries_all_realization_providers() -> Bool {
   })
 }
 
-test fn w_every_physical_population_requirement_has_providers_on_the_plan() -> Bool {
-  population_realization_refusal_count(
-    cs: population_realization_refusals(
-      roster: altra_1p_requirement_part_realizations,
-      plan_identities: plan_identities_from_reference(),
-    )
-  ) == 0
+test fn w_candidate_only_rows_do_not_discharge_with_providers_on_plan() -> Bool {
+  let cs = population_realization_refusals(
+    roster: altra_1p_requirement_part_realizations,
+    plan_identities: plan_identities_from_reference(),
+  )
+  population_realization_refusal_count(cs: cs) == 3
+    && fold(cs, init: true, f: fn(acc, r) {
+      acc && match r {
+        RequiredFunctionWithoutJustifiedPart { requirement: req } =>
+          match req {
+            HostNetworkConnectivity => true
+            ProcessorPowerStageControl => true
+            ProcessorPowerGoodSupervision => true
+            ManagementNetworkConnectivity => false
+            ProcessorRailEnableSequencing => false
+            ClockReferenceGeneration => false
+            ClockReferenceDistribution => false
+            BootFirmwareRetention => false
+            HostFirmwareStorage => false
+            ResetSupervision => false
+            NvmeConnectorPopulation => false
+            BoardControlLogic => false
+            DebugAccess => false
+            ProcessorSocketMount => false
+            ProcessorPackageFit => false
+            MemoryModuleSocketPopulation { slot: _ } => false
+          }
+      }
+    })
 }
 
 test fn w_removing_host_phy_refuses_host_network_requirement() -> Bool {
@@ -335,19 +357,37 @@ test fn w_realization_refusals_surface_through_placement_admission() -> Bool {
     OrthogonalReady { value: p } =>
       fold(
         placement_causes(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: p),
-        init: true,
+        init: 0,
         f: fn(acc, r) {
-          acc && match r {
-            RequiredFunctionWithoutJustifiedPartOnBoard { requirement: _ } => false
-            ComponentEnvelopeNotEstablished { component: _, gap: _ } => true
-            RequiredRoleUnfilled { role: _ } => true
-            ComponentFillsNoRequiredRole { component: _, role_named: _ } => true
-            PlannedIdentityRepeated { component: _ } => true
-            RoleFilledMoreThanOnce { role: _, fills: _ } => true
-            PlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => true
+          match r {
+            RequiredFunctionWithoutJustifiedPartOnBoard { requirement: req } =>
+              match req {
+                HostNetworkConnectivity => acc + 1
+                ProcessorPowerStageControl => acc + 1
+                ProcessorPowerGoodSupervision => acc + 1
+                ManagementNetworkConnectivity => acc + 100
+                ProcessorRailEnableSequencing => acc + 100
+                ClockReferenceGeneration => acc + 100
+                ClockReferenceDistribution => acc + 100
+                BootFirmwareRetention => acc + 100
+                HostFirmwareStorage => acc + 100
+                ResetSupervision => acc + 100
+                NvmeConnectorPopulation => acc + 100
+                BoardControlLogic => acc + 100
+                DebugAccess => acc + 100
+                ProcessorSocketMount => acc + 100
+                ProcessorPackageFit => acc + 100
+                MemoryModuleSocketPopulation { slot: _ } => acc + 100
+              }
+            ComponentEnvelopeNotEstablished { component: _, gap: _ } => acc
+            RequiredRoleUnfilled { role: _ } => acc
+            ComponentFillsNoRequiredRole { component: _, role_named: _ } => acc
+            PlannedIdentityRepeated { component: _ } => acc
+            RoleFilledMoreThanOnce { role: _, fills: _ } => acc
+            PlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => acc
           }
         }
-      )
+      ) == 3
   }
 }
 
