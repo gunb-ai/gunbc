@@ -539,7 +539,7 @@ test fn w_a_role_filled_twice_refuses_naming_how_many_fill_it() -> Bool {
 }
 
 // AND THE POSITIVE CONTROL, so the arm above is not satisfied by a check that refuses every board.
-// The reference plan fills each of its eighteen roles exactly once and raises no multiplicity cause.
+// The reference plan fills each of its seventeen roles exactly once and raises no multiplicity cause.
 test fn w_the_reference_plan_fills_every_role_exactly_once() -> Bool {
   match plan_or_empty() {
     Absent => false

@@ -44,6 +44,14 @@ import product.altra_motherboard.realization {
 import product.altra_motherboard.placement {
   altra_reference_plan,
   RequiredFunctionWithoutJustifiedPartOnBoard,
+  ComponentEnvelopeNotEstablished,
+  RequiredRoleUnfilled,
+  ComponentFillsNoRequiredRole,
+  PlannedIdentityRepeated,
+  RoleFilledMoreThanOnce,
+  PlanWasBuiltFromADifferentDesign,
+  FunctionCarrierWithoutPopulationJustification,
+  FunctionCarrierRealizesNoDeclaredFunctionOnBoard,
   placement_causes,
 }
 import product.altra_motherboard.minimal_design { altra_1p_minimum, altra_1p_minimum_ref }
@@ -335,7 +343,14 @@ test fn w_realization_refusals_surface_through_placement_admission() -> Bool {
         f: fn(acc, r) {
           acc && match r {
             RequiredFunctionWithoutJustifiedPartOnBoard { requirement: _ } => false
-            _ => true
+            ComponentEnvelopeNotEstablished { component: _, gap: _ } => true
+            RequiredRoleUnfilled { role: _ } => true
+            ComponentFillsNoRequiredRole { component: _, role_named: _ } => true
+            PlannedIdentityRepeated { component: _ } => true
+            RoleFilledMoreThanOnce { role: _, fills: _ } => true
+            PlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => true
+            FunctionCarrierWithoutPopulationJustification { component: _ } => true
+            FunctionCarrierRealizesNoDeclaredFunctionOnBoard { component: _ } => true
           }
         }
       )
