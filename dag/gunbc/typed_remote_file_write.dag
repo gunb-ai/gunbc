@@ -1,6 +1,6 @@
 module gunbc.typed_remote_file_write
 
-import std.types { String, Bool, List, NonEmptyStr, FilePath }
+import std.types { String, List, NonEmptyStr, FilePath }
 import std.content_hash { content_hash_atom }
 import extdeps.ssh.session {
   ssh_session_exec_portable_words_with_stdin,
@@ -36,13 +36,6 @@ type TypedRemoteFileWriteOutcome
 
 data typed_remote_file_write_tee_command: String = "tee"
 
-fn typed_remote_file_write_path_portable(path: FilePath) -> Bool {
-  match portable_remote_word(raw: path as String) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
 fn typed_remote_file_write_seal(
   path: FilePath,
   content: String,
@@ -61,21 +54,22 @@ fn typed_remote_file_write_seal(
       ) as NonEmptyStr,
     }
   } else {
-    if !typed_remote_file_write_path_portable(path: path) {
-      TypedRemoteFileWriteAdmissionRefused {
-        cause: join(
-          [
-            "typed_remote_file_write: path ",
-            path as String,
-            " is not portable under the far-side shell re-parse allowlist",
-          ],
-          "",
-        ) as NonEmptyStr,
-      }
-    } else {
-      TypedRemoteFileWriteAdmitted {
-        write: TypedRemoteFileWrite { path: path, content: content },
-      }
+    match portable_remote_word(raw: path as String) {
+      Absent =>
+        TypedRemoteFileWriteAdmissionRefused {
+          cause: join(
+            [
+              "typed_remote_file_write: path ",
+              path as String,
+              " is not portable under the far-side shell re-parse allowlist",
+            ],
+            "",
+          ) as NonEmptyStr,
+        }
+      Present { value: _ } =>
+        TypedRemoteFileWriteAdmitted {
+          write: TypedRemoteFileWrite { path: path, content: content },
+        }
     }
   }
 }
