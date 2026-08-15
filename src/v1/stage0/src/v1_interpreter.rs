@@ -13320,6 +13320,33 @@ pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
                 record_flatten_site(out.len(), site);
                 return Some(out);
             }
+            // A `Cons` reaches here as a RECORD, not a variant, whenever the literal's
+            // parent coproduct was not resolved at the construction site — the same authored
+            // constructor, one inference fact apart. Reading only the variant shape made this
+            // walker's answer depend on that fact rather than on the value: a correctly built
+            // sequence answered `None`, and every caller renders `None` as "no list", which is
+            // an empty population rather than a shape this function declined to walk. The
+            // record arm is keyed on the SAME `Cons`/`Empty` names and the same head/tail
+            // fields, so it admits exactly the free monoid and nothing else.
+            Value::Record { type_name, fields } => {
+                let (empty_sym, cons_sym, head_sym, tail_sym) = monoid_syms?;
+                if *type_name == empty_sym {
+                    record_flatten(out.len());
+                    record_flatten_site(out.len(), site);
+                    return Some(out);
+                }
+                if *type_name == cons_sym {
+                    match (fields_get(fields, head_sym), fields_get(fields, tail_sym)) {
+                        (Some(head), Some(tail)) => {
+                            out.push(head.clone());
+                            cur = tail.clone();
+                        }
+                        _ => return None,
+                    }
+                } else {
+                    return None;
+                }
+            }
             Value::Variant {
                 variant_name,
                 fields,

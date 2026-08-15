@@ -1,5 +1,6 @@
 module v2.workflow.ci_attempt
 
+import std.measure { ByteSize, Millisecond, byte_size }
 import v2.std.algebra { contains, fold_list, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.dependency { BarrierBefore, DependencyView, ResourceDependsOn }
@@ -149,7 +150,7 @@ type ResourceClaim
   | PreparedContextAccess
   | LiveHostMutation { target: Symbol }
   | NetworkAccess
-  | ResidentBytes { amount: Int }
+  | ResidentBytes { amount: ByteSize }
 
 // PreparedContextAccess is EXCLUSIVE today, and the reason is measured rather than
 // pending. The evaluator holds Rc/RefCell state and a thread-local active context, so
@@ -176,13 +177,13 @@ fn resource_claim_is_exclusive(claim: ResourceClaim) -> Bool {
 
 // The memory a node claims, zero for every claim that is not a memory claim. Summed
 // across a batch this is what capacity admission compares against the envelope.
-fn resource_claim_resident_bytes(claim: ResourceClaim) -> Int {
+fn resource_claim_resident(claim: ResourceClaim) -> ByteSize {
   match claim {
-    ReadOnlyRepository => 0
-    CargoTargetWrite { target: _ } => 0
-    PreparedContextAccess => 0
-    LiveHostMutation { target: _ } => 0
-    NetworkAccess => 0
+    ReadOnlyRepository => byte_size(count: 0)
+    CargoTargetWrite { target: _ } => byte_size(count: 0)
+    PreparedContextAccess => byte_size(count: 0)
+    LiveHostMutation { target: _ } => byte_size(count: 0)
+    NetworkAccess => byte_size(count: 0)
     ResidentBytes { amount: a } => a
   }
 }
@@ -758,15 +759,22 @@ fn ci_attempt_verdict(
 // RESIDENT BYTES IS A CAPACITY COORDINATE, not a derived comfort. The floor's
 // historical failure was never process count: it was aggregate residency against a
 // cgroup, and a width that is legal by process_slots can be fatal by memory.
+// THE MEMORY COORDINATE IS A MEASURE, not a bare count. `cpu_slots` and
+// `process_slots` are cardinals -- a count of slots, dimensionless -- while a byte
+// figure is a magnitude in a unit, and the two are not the same kind of Int. Grounding
+// it on `std.measure` `ByteSize` is what stops a mebibyte figure and a byte figure
+// inhabiting one field, which is the arithmetic that reads as a 1,048,576x capacity
+// error and typechecks either way (DESIGN section 2 -- reuse the existing magnitude,
+// never re-coin it).
 type HostCapacity {
   cpu_slots: Int
   process_slots: Int
-  resident_bytes: Int
+  resident: ByteSize
 }
 
 type HostPrimitiveRequest
   = PrepareExactSubjectRequest { envelope: Hash }
-  | EvaluatePreparedClaimRequest { capability: Hash, declaration: Symbol, budget_ms: Int }
+  | EvaluatePreparedClaimRequest { capability: Hash, declaration: Symbol, budget: Millisecond }
   | RealizeCiHostEffectRequest { effect: Symbol }
   | ExecuteExactBatchRequest { jobs: List<Symbol>, capacity: HostCapacity }
 

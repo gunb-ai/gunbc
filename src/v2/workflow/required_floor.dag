@@ -169,23 +169,27 @@ fn required_floor_claim_qualified(claim: RequiredFloorClaim) -> String {
 // THE JOIN IS AN INDEX, NOT A RESCAN. One binding-shaped question is asked once per site, and
 // the population it is asked against is the whole binding list — so answering it by folding
 // the bindings is quadratic in (sites x bindings) by construction. Measured on the live
-// corpus that is 9,573 sites against 1,155 bindings: eleven million interpreted comparisons
-// to answer nine thousand lookups, in a fold that reports nothing while it runs.
+// corpus that is 10,715 sites against 3,674 bindings: thirty-nine million interpreted
+// comparisons to answer ten thousand lookups, in a fold that reports nothing while it runs.
 //
-// Two maps rather than one, because the join has THREE answers and a `Map<String, String>`
-// can only carry two. Overwriting on insert would make a doubly-bound entry indistinguishable
-// from a singly-bound one — the last writer would simply win, which is the silent-narrowing
-// arm `ModulePathNotUnique` exists to refuse. The count is what keeps zero, one and many
-// distinguishable after the fold has collapsed the rows.
-type EntryModuleIndex {
-  path_of: Map<String, String>
-  count_of: Map<String, Int>
+// ONE ENTRY, ONE ROW, ONE LOOKUP. The join has THREE answers — no binding, one binding, many
+// bindings — and a `Map<String, String>` can only carry two: overwriting on insert would make
+// a doubly-bound entry indistinguishable from a singly-bound one, the last writer simply
+// winning, which is the silent narrowing `ModulePathNotUnique` exists to refuse. So the row
+// carries the count beside the path. It is ONE row rather than two parallel maps because two
+// maps are two lookups per site at a seam where an interpreted call is the unit cost, and
+// because parallel maps can disagree — a path present with no count is a state this shape
+// cannot represent.
+type EntryBinding {
+  module_path: String
+  occurrences: Int
 }
 
-data empty_entry_module_index: EntryModuleIndex = EntryModuleIndex {
-    path_of: empty_map(),
-    count_of: empty_map()
-  }
+type EntryModuleIndex {
+  rows: Map<String, EntryBinding>
+}
+
+data empty_entry_module_index: EntryModuleIndex = EntryModuleIndex { rows: empty_map() }
 
 // A refused lookup and an absent key are the same fact to every consumer here: this index does
 // not answer for that entry. Neither may be reported as a binding.
@@ -196,21 +200,19 @@ fn index_lookup<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
   }
 }
 
-fn entry_binding_count(index: EntryModuleIndex, entry: String) -> Int {
-  match index_lookup(m: index.count_of, key: entry) {
-    Present { value: n } => n
-    Absent => 0
-  }
-}
-
 fn build_entry_module_index(bindings: List<ModulePathBinding>) -> EntryModuleIndex {
   fold_list(xs: bindings, empty: empty_entry_module_index, cons: fn(acc, b) {
     EntryModuleIndex {
-      path_of: map_insert(m: acc.path_of, key: b.entry, value: b.module_path),
-      count_of: map_insert(
-        m: acc.count_of,
+      rows: map_insert(
+        m: acc.rows,
         key: b.entry,
-        value: entry_binding_count(index: acc, entry: b.entry) + 1
+        value: match index_lookup(m: acc.rows, key: b.entry) {
+          Present { value: seen } => EntryBinding {
+            module_path: seen.module_path,
+            occurrences: seen.occurrences + 1
+          }
+          Absent => EntryBinding { module_path: b.module_path, occurrences: 1 }
+        }
       )
     }
   })
@@ -219,11 +221,11 @@ fn build_entry_module_index(bindings: List<ModulePathBinding>) -> EntryModuleInd
 // Exactly one binding identifies; zero and many both refuse, and they refuse through the same
 // arm because both mean the same thing to a consumer: this entry does not name one module.
 fn resolve_site(index: EntryModuleIndex, site: WitnessSite) -> ResolvedWitness {
-  match index_lookup(m: index.path_of, key: site.entry) {
-    Present { value: module_path } =>
-      if entry_binding_count(index: index, entry: site.entry) == 1 {
+  match index_lookup(m: index.rows, key: site.entry) {
+    Present { value: row } =>
+      if row.occurrences == 1 {
         WitnessIdentified {
-          identity: WitnessIdentity { module_path: module_path, function: site.function },
+          identity: WitnessIdentity { module_path: row.module_path, function: site.function },
           site: site
         }
       } else {
@@ -317,6 +319,17 @@ fn extend_claim_name_group(group: ClaimNameGroup, mode: ExecutionMode) -> ClaimN
 // subject. The same declaration under two modes is a contradiction about how it must execute,
 // and the tempting repair — pick one — discards the fact worth knowing. Both refuse; only the
 // second is unrecoverable without a decision.
+// ONE PREPEND, at one declared type. An `if` whose arms are the bare accumulator and a bare
+// `Cons` does not unify — the accumulator is spelled `List<T>` and `Cons` is the `FreeMonoid`
+// constructor — so the construction is named once, where the declared return type is what the
+// literal is checked against, and every arm of every caller answers that one type.
+fn prepend_refusal(
+  acc: List<ManifestRefusal>,
+  item: ManifestRefusal
+) -> List<ManifestRefusal> {
+  Cons { head: item, tail: acc }
+}
+
 fn claim_group_refusal(
   acc: List<ManifestRefusal>,
   group: ClaimNameGroup,
@@ -325,9 +338,12 @@ fn claim_group_refusal(
   if group.count < 2 {
     acc
   } else if group.modes_agree {
-    Cons { head: DeclarationEnrolledTwice { qualified: qualified }, tail: acc }
+    prepend_refusal(acc: acc, item: DeclarationEnrolledTwice { qualified: qualified })
   } else {
-    Cons { head: DeclarationEnrolledWithConflictingModes { qualified: qualified }, tail: acc }
+    prepend_refusal(
+      acc: acc,
+      item: DeclarationEnrolledWithConflictingModes { qualified: qualified }
+    )
   }
 }
 
@@ -354,6 +370,12 @@ data manifest_scan_empty: ManifestScan = ManifestScan {
 // linearly-searched `seen` list built by append. On the live roster that is 9,573 rows: about
 // ninety million interpreted comparisons for the rescan and forty-five million more for the
 // membership test, to answer a question a single grouping pass answers exactly.
+//
+// The refusal order is the order the names were first encountered: `seen` is newest-first and
+// the deriving fold prepends, which is the order the previous append-based form produced. The
+// `Absent` arm is unreachable by construction — every name in `seen` was inserted into `groups`
+// in the same step — and it refuses rather than skipping, because a name whose group cannot be
+// read is a name whose duplicate status is unknown, not one that is known clean.
 //
 // It is still not a prefix answer, and that is the property to preserve: the grouping fold
 // completes BEFORE any refusal is derived, so a duplicate whose second occurrence comes last
@@ -385,17 +407,12 @@ fn duplicate_refusals(claims: List<RequiredFloorClaim>) -> List<ManifestRefusal>
       }
     }
   })
-  // `seen` is newest-first, and the fold prepends — so the refusals come out in the order the
-  // names were first encountered, which is the order the previous append-based form produced.
   fold_list(
     xs: scan.seen,
     empty: no_manifest_refusals,
     cons: fn(acc, qualified) {
       match index_lookup(m: scan.groups, key: qualified) {
-        // Unreachable by construction — every name in `seen` was inserted into `groups` in the
-        // same step — and it refuses rather than skipping, because a name whose group cannot be
-        // read is a name whose duplicate status is unknown, not one that is known clean.
-        Absent => Cons { head: DeclarationEnrolledTwice { qualified: qualified }, tail: acc }
+        Absent => prepend_refusal(acc: acc, item: DeclarationEnrolledTwice { qualified: qualified })
         Present { value: group } =>
           claim_group_refusal(acc: acc, group: group, qualified: qualified)
       }
@@ -405,6 +422,9 @@ fn duplicate_refusals(claims: List<RequiredFloorClaim>) -> List<ManifestRefusal>
 
 // THE MANIFEST. One fold over the observed populations, producing one claim list and the
 // refusals that make it inadmissible.
+//
+// The one reversal that restores authored order is taken here, after both populations are
+// scanned, rather than per row.
 //
 // `hermetic_sites` are the discovered witnesses; `wet_sites` are the rows whose subject IS a
 // live effect and which therefore need a dispatching frame. They arrive as separate lists
@@ -429,7 +449,6 @@ fn required_floor_manifest(
     sites: wet_sites,
     mode: Wet
   )
-  // The one reversal that restores authored order, taken after both populations are scanned.
   let after_wet = ClaimScan {
     claims: list_reverse(xs: scanned.claims),
     refusals: list_reverse(xs: scanned.refusals)

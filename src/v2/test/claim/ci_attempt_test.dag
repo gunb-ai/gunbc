@@ -1,5 +1,6 @@
 module v2.test.claim.ci_attempt_test
 
+import std.measure { gibibyte, gibibyte_to_byte_size, millisecond, millisecond_count }
 import v2.std.algebra { fold_list, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
@@ -599,7 +600,7 @@ test fn unknown_identity_refuses_rather_than_recomputing() -> Bool {
 data cap_two: HostCapacity = HostCapacity {
   cpu_slots: 2,
   process_slots: 2,
-  resident_bytes: 8589934592
+  resident: gibibyte_to_byte_size(gibibyte(count: 8))
 }
 
 data requested_jobs: List<Symbol> = [^ci_node_format_check, ^ci_node_prepare_exact_subject]
@@ -685,10 +686,12 @@ test fn a_claim_request_carries_only_a_capability_digest() -> Bool {
   match (EvaluatePreparedClaimRequest {
     capability: ci_attempt_subject_digest(request: base_request),
     declaration: ^ci_decl_a,
-    budget_ms: 5000
+    budget: millisecond(count: 5000)
   }) {
-    EvaluatePreparedClaimRequest { capability: c, declaration: d, budget_ms: b } =>
-      (c == ci_attempt_subject_digest(request: base_request)) && (d == ^ci_decl_a) && (b == 5000)
+    EvaluatePreparedClaimRequest { capability: c, declaration: d, budget: b } =>
+      (c == ci_attempt_subject_digest(request: base_request))
+        && (d == ^ci_decl_a)
+        && (millisecond_count(b) == 5000)
     PrepareExactSubjectRequest { envelope: _ } => false
     RealizeCiHostEffectRequest { effect: _ } => false
     ExecuteExactBatchRequest { jobs: _, capacity: _ } => false

@@ -25039,13 +25039,16 @@ fn required_floor_claims_from_admission(
         );
     };
     if ctx.sym_eq(*variant_name, "RequiredFloorRefused") {
-        let rendered = match ctx.field(fields, "refusals") {
-            Some(v1_interpreter::Value::List(items)) => items
+        let rendered = match ctx
+            .field(fields, "refusals")
+            .and_then(v1_interpreter::free_monoid_to_vec)
+        {
+            Some(items) => items
                 .iter()
                 .map(|r| format!("{r:?}"))
                 .collect::<Vec<_>>()
                 .join("\n  "),
-            _ => "<refusal list unreadable>".to_string(),
+            None => "<refusal list unreadable>".to_string(),
         };
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=ManifestInadmissible — the claim manifest carries \
@@ -25060,8 +25063,26 @@ fn required_floor_claims_from_admission(
     else {
         return Err("RequiredFloorRunnable carries no attempt record".to_string());
     };
-    let Some(v1_interpreter::Value::List(rows)) = ctx.field(af, "claims") else {
-        return Err("the attempt carries no claim list".to_string());
+    // A `.dag` sequence reaches the host in EITHER of the two representations the substrate
+    // uses for one concept -- a native list value, or the `Cons`/`Empty` free-monoid chain a
+    // prepend builds -- and which one arrives is a fact about how the producing fold was
+    // written, not about the claim list. Matching one arm made the reader depend on the
+    // producer's spelling: a manifest that folded correctly and answered a chain reported as
+    // "the attempt carries no claim list", which reads as an empty roster rather than as a
+    // representation the reader declined to walk. `free_monoid_to_vec` is the single authority
+    // that already accepts both (DESIGN section 3), so it is used here rather than a second
+    // walker taught the same two shapes.
+    let Some(rows) = ctx
+        .field(af, "claims")
+        .and_then(v1_interpreter::free_monoid_to_vec)
+    else {
+        // The refusal names the SHAPE it received. "carries no claim list" read as an empty
+        // roster and cost two full eight-minute runs to distinguish from a value the walker
+        // declined to walk; those are different facts with different fixes.
+        return Err(format!(
+            "the attempt's claim list is not a readable sequence (got {:?})",
+            ctx.field(af, "claims")
+        ));
     };
     let mut out = Vec::with_capacity(rows.len());
     for row in rows.iter() {
