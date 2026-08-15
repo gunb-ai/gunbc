@@ -1068,7 +1068,24 @@ fn ci_job() -> Job {
   }
 }
 
-data gunbc_ci_all_witnesses_step_timeout_minutes: Int = 15
+// THE CAP IS A BACKSTOP ABOVE A MEASURED COST, never a target the work is expected to meet.
+//
+// 15 was authored before this path had ever completed a roster, and it is below the floor's
+// measured cost by a factor of two, so the job could only ever report a timeout -- a run that
+// says nothing about the tree. The measurement, one prepared subject, whole roster, local, with
+// nothing else on the host: strict preparation 433s (reconcile ~6 min of it), published-mock
+// 0.8s, manifest inputs 0.05s, manifest fold 298s, scope projection 18s, evaluation ~21 min at
+// the observed ~8.5 claims/s over 10,725 claims. That is ~34 minutes before the effect gates,
+// whose own warm costs are minutes each.
+//
+// 55 is therefore the same ceiling the composed floor step carried
+// (`gunbc_ci_floor_step_timeout_discovery_flip_note`), because this job now does that job's
+// work: the cost moved between jobs, it did not disappear, and pretending otherwise with a cap
+// is how a budget stops being a measurement. It comes DOWN as the measured terms come down --
+// the manifest fold's quadratic (v1_interpreter `eval_call_memo_get`, measured 15x on the
+// isolated probe) and preparation's reconcile are both named, and neither is a fact about this
+// cap.
+data gunbc_ci_all_witnesses_step_timeout_minutes: Int = 55
 
 fn ci_all_witnesses_script() -> String {
   concat(

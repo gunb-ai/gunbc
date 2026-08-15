@@ -9,7 +9,15 @@ import v2.std.logic { Bool }
 import v2.std.text { String }
 import std.measure { Millisecond, millisecond }
 import std.execution_mode { ExecutionMode, Hermetic, Record, Wet, execution_mode_eq }
+import gunbc.ci_layer_roots { witness_exclusion_substrings }
 import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates }
+import gunbc.explicit_witness_admission {
+  ExplicitWitnessAdmission,
+  explicit_witness_admission_is_known_red,
+  explicit_witness_admission_matches,
+  explicit_witness_admission_requires_long_eval_budget,
+  explicit_witness_admissions
+}
 import v2.workflow.floor_gate_claim_site { gate_witness_site }
 import v2.workflow.floor2_prepared_subject {
   ResolvedWitness,
@@ -173,13 +181,120 @@ fn required_floor_gate_budget() -> Millisecond {
   millisecond(count: 900000)
 }
 
+// A WITNESS THAT DECLARES A LONG BUDGET GETS IT. The 5s row is the fast-lane rule for a witness
+// that declared nothing; a row carrying `SubstrateLongLaneEvalBudget` has declared that reaching
+// a verdict at all costs more than that, and refusing it at 5s would report a declared cost as a
+// witness failure -- the same fabricated verdict the gate budget exists to prevent.
+fn required_floor_long_lane_budget() -> Millisecond {
+  millisecond(count: 600000)
+}
+
+// THE PER-PR ADMISSION DECISION FOR ONE DISCOVERED SITE, with the precedence the authorities
+// themselves declare (gunbc.explicit_witness_admission
+// `explicit_witness_admission_separation_note`): an exact function-grain admission decides the
+// site, and broad path policy applies only to a site that has none.
+//
+// This exists because discovery alone is not admission. `inventory_witness_files` returns every
+// `test fn` in the subject, including the known-red probes whose agreement IS a red and whose
+// consumer is the falsifier cadence, and the path-policy populations (`test/claim/long/`,
+// offline local recipes) that per-PR discovery removed on purpose. Enrolling those as ordinary
+// 5-second Hermetic claims does not widen coverage; it reds the floor on rows that are behaving
+// exactly as declared.
+type SiteAdmission
+  = SiteAdmitted { budget: Millisecond }
+  | SiteDeferredToDeclaredCadence
+  | SiteDeferredByPathPolicy
+
+fn present_admission(row: ExplicitWitnessAdmission) -> Optional<ExplicitWitnessAdmission> {
+  Present { value: row }
+}
+
+fn matching_admission_row(site: WitnessSite) -> Optional<ExplicitWitnessAdmission> {
+  fold_list(
+    xs: explicit_witness_admissions,
+    empty: Absent,
+    cons: fn(found, row) {
+      match found {
+        Present { value: r } => present_admission(row: r)
+        Absent =>
+          if explicit_witness_admission_matches(
+            row: row,
+            entry: site.entry,
+            function: site.function
+          ) {
+            present_admission(row: row)
+          } else {
+            Absent
+          }
+      }
+    }
+  )
+}
+
+fn path_policy_defers(entry: String) -> Bool {
+  fold_list(
+    xs: witness_exclusion_substrings(),
+    empty: false,
+    cons: fn(hit, excluded) { hit || string_contains(s: entry, pattern: excluded) }
+  )
+}
+
+fn hermetic_site_admission(site: WitnessSite) -> SiteAdmission {
+  match matching_admission_row(site: site) {
+    Present { value: row } =>
+      if explicit_witness_admission_is_known_red(row: row) {
+        SiteDeferredToDeclaredCadence
+      } else if explicit_witness_admission_requires_long_eval_budget(row: row) {
+        SiteAdmitted { budget: required_floor_long_lane_budget() }
+      } else {
+        SiteAdmitted { budget: required_floor_claim_budget() }
+      }
+    Absent =>
+      if path_policy_defers(entry: site.entry) {
+        SiteDeferredByPathPolicy
+      } else {
+        SiteAdmitted { budget: required_floor_claim_budget() }
+      }
+  }
+}
+
+fn prepend_site(acc: List<WitnessSite>, item: WitnessSite) -> List<WitnessSite> {
+  Cons { head: item, tail: acc }
+}
+
+data no_witness_sites: List<WitnessSite> = []
+
+fn admitted_hermetic_sites(sites: List<WitnessSite>) -> List<WitnessSite> {
+  list_reverse(
+    xs: fold_list(
+      xs: sites,
+      empty: no_witness_sites,
+      cons: fn(acc, s) {
+        match hermetic_site_admission(site: s) {
+          SiteAdmitted { budget: _ } => prepend_site(acc: acc, item: s)
+          SiteDeferredToDeclaredCadence => acc
+          SiteDeferredByPathPolicy => acc
+        }
+      }
+    )
+  )
+}
+
+fn hermetic_site_budget(site: WitnessSite) -> Millisecond {
+  match hermetic_site_admission(site: site) {
+    SiteAdmitted { budget: b } => b
+    SiteDeferredToDeclaredCadence => required_floor_claim_budget()
+    SiteDeferredByPathPolicy => required_floor_claim_budget()
+  }
+}
+
 // The deadline is DERIVED from the claim's own mode, never passed alongside it. A budget
 // argument beside a mode is two facts that can disagree, and the disagreeing pair is exactly
 // how a gate acquires a witness's deadline.
-fn required_floor_budget_for(mode: ExecutionMode) -> Millisecond {
+fn required_floor_budget_for(mode: ExecutionMode, site: WitnessSite) -> Millisecond {
   match mode {
-    Hermetic => required_floor_claim_budget()
-    Record => required_floor_claim_budget()
+    Hermetic => hermetic_site_budget(site: site)
+    Record => hermetic_site_budget(site: site)
     Wet => required_floor_gate_budget()
   }
 }
@@ -299,12 +414,12 @@ fn scan_resolved(
   mode: ExecutionMode
 ) -> ClaimScan {
   match resolved {
-    WitnessIdentified { identity: id, site: _ } => ClaimScan {
+    WitnessIdentified { identity: id, site: site } => ClaimScan {
       claims: Cons {
         head: RequiredFloorClaim {
           declaration: id,
           execution_mode: mode,
-          budget: required_floor_budget_for(mode: mode)
+          budget: required_floor_budget_for(mode: mode, site: site)
         },
         tail: acc.claims
       },
@@ -487,7 +602,7 @@ fn required_floor_manifest(
   let after_hermetic = scan_sites(
     acc: claim_scan_empty,
     index: index,
-    sites: hermetic_sites,
+    sites: admitted_hermetic_sites(sites: hermetic_sites),
     mode: Hermetic
   )
   let scanned = scan_sites(

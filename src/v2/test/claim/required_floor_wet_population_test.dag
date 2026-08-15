@@ -10,7 +10,12 @@ import v2.std.text { String }
 import v2.workflow.floor_gate_claim_site { gate_witness_site }
 import v2.workflow.floor2_prepared_subject { WitnessSite }
 import v2.workflow.required_floor {
+  admitted_hermetic_sites,
+  hermetic_site_admission,
   required_floor_budget_for,
+  SiteAdmitted,
+  SiteDeferredByPathPolicy,
+  SiteDeferredToDeclaredCadence,
   required_floor_claim_budget,
   required_floor_gate_budget,
   required_floor_wet_sites
@@ -54,13 +59,73 @@ test fn required_floor_wet_population_carries_the_named_effect_gates() -> Bool {
 // A gate reached with the witness deadline is a gate refused on time and reported as a gate
 // failure -- a fabricated verdict about the gate. The budget is derived from the mode, so the
 // two populations cannot share one deadline by accident.
+data undeclared_site: WitnessSite = WitnessSite {
+  entry: "dag/test/claim/no_such_witness_test.dag",
+  function: "w_nothing_declares_this"
+}
+
 test fn required_floor_gate_budget_exceeds_the_witness_budget() -> Bool {
-  millisecond_count(required_floor_budget_for(mode: Wet))
-    > millisecond_count(required_floor_budget_for(mode: Hermetic))
-    && millisecond_count(required_floor_budget_for(mode: Hermetic))
+  millisecond_count(required_floor_budget_for(mode: Wet, site: undeclared_site))
+    > millisecond_count(required_floor_budget_for(mode: Hermetic, site: undeclared_site))
+    && millisecond_count(required_floor_budget_for(mode: Hermetic, site: undeclared_site))
       == millisecond_count(required_floor_claim_budget())
-    && millisecond_count(required_floor_budget_for(mode: Record))
+    && millisecond_count(required_floor_budget_for(mode: Record, site: undeclared_site))
       == millisecond_count(required_floor_claim_budget())
-    && millisecond_count(required_floor_budget_for(mode: Wet))
+    && millisecond_count(required_floor_budget_for(mode: Wet, site: undeclared_site))
       == millisecond_count(required_floor_gate_budget())
+}
+
+// DISCOVERY IS NOT ADMISSION, and this is the half that says so by execution.
+//
+// The inventory returns every `test fn` in the subject. Two populations in it are declared
+// NOT to run per-PR: a known-red probe, whose agreement IS a red and whose consumer is the
+// falsifier cadence, and the path-policy homes (`test/claim/long/`, offline recipes). Enrolling
+// either as an ordinary 5-second claim reds the floor on a row behaving exactly as declared.
+data known_red_specimen: WitnessSite = WitnessSite {
+  entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag",
+  function: "logic_complement_truth_table"
+}
+
+data long_lane_specimen: WitnessSite = WitnessSite {
+  entry: "dag/test/claim/long/s1_closure_receipt_test.dag",
+  function: "s1_closure_parses_holds"
+}
+
+data ordinary_specimen: WitnessSite = WitnessSite {
+  entry: "dag/test/claim/required_floor_ordinary_witness_test.dag",
+  function: "w_ordinary"
+}
+
+test fn required_floor_defers_the_declared_known_red_probe() -> Bool {
+  match hermetic_site_admission(site: known_red_specimen) {
+    SiteDeferredToDeclaredCadence => true
+    SiteDeferredByPathPolicy => false
+    SiteAdmitted { budget: _ } => false
+  }
+}
+
+test fn required_floor_defers_the_path_policy_population() -> Bool {
+  match hermetic_site_admission(site: long_lane_specimen) {
+    SiteDeferredByPathPolicy => true
+    SiteDeferredToDeclaredCadence => false
+    SiteAdmitted { budget: _ } => false
+  }
+}
+
+// The positive control. Without it the two refusals above are satisfied by an admission that
+// defers EVERYTHING, which would report as a clean floor with no claims at all.
+test fn required_floor_admits_an_ordinary_witness_at_the_fast_lane_budget() -> Bool {
+  match hermetic_site_admission(site: ordinary_specimen) {
+    SiteAdmitted { budget: b } => millisecond_count(b) == millisecond_count(required_floor_claim_budget())
+    SiteDeferredByPathPolicy => false
+    SiteDeferredToDeclaredCadence => false
+  }
+}
+
+test fn required_floor_filter_drops_exactly_the_deferred_sites() -> Bool {
+  let admitted = admitted_hermetic_sites(
+    sites: [known_red_specimen, long_lane_specimen, ordinary_specimen]
+  )
+  length(xs: admitted) == 1
+    && contains_function(sites: admitted, name: ordinary_specimen.function)
 }

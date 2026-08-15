@@ -370,7 +370,7 @@ jobs:
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/claim_executor" --required-floor --source-root "$ROOT/dag" --source-root "$ROOT/src/v2"
-        timeout-minutes: 15
+        timeout-minutes: 55
   heal_generated_artifacts:
     runs-on: [self-hosted, linux, arm64]
     needs: [build]
