@@ -1,0 +1,161 @@
+module v2.test.claim.manual.required_floor_fold_scaling_runner
+
+// A COST-SHAPE PROBE, not a claim. It exists to answer one question the floor's own log cannot:
+// is `required_floor_manifest` linear in the site count, or does its wall grow faster? The live
+// floor folds 10,718 sites in ~298s (~28ms per site), which is far above what the fold's own
+// operations should cost, and a wall-clock total cannot distinguish "many cheap rows" from "a
+// shape that re-walks". Doubling the synthetic population and comparing walls does distinguish
+// them: linear doubles, quadratic quadruples.
+//
+// The populations are SYNTHETIC and self-generated so the probe needs no repository inventory.
+
+import std.algebra { Cons }
+import v2.std.algebra { fold_list, length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import std.types { Int }
+import v2.workflow.floor2_prepared_subject { WitnessIdentified, WitnessIdentityRefused, WitnessSite }
+import v2.workflow.required_floor {
+  build_entry_module_index,
+  EntryModuleIndex,
+  ModulePathBinding,
+  required_floor_manifest,
+  resolve_site
+}
+
+data no_ints: List<Int> = []
+
+data no_bindings: List<ModulePathBinding> = []
+
+data no_sites: List<WitnessSite> = []
+
+fn prepend_int(acc: List<Int>, item: Int) -> List<Int> {
+  Cons { head: item, tail: acc }
+}
+
+fn prepend_binding(acc: List<ModulePathBinding>, item: ModulePathBinding) -> List<ModulePathBinding> {
+  Cons { head: item, tail: acc }
+}
+
+fn prepend_site(acc: List<WitnessSite>, item: WitnessSite) -> List<WitnessSite> {
+  Cons { head: item, tail: acc }
+}
+
+fn iota(n: Int) -> List<Int> {
+  if n <= 0 {
+    no_ints
+  } else {
+    prepend_int(acc: iota(n: n - 1), item: n)
+  }
+}
+
+fn synthetic_entry(i: Int) -> String {
+  concat("dag/test/synthetic/", concat(to_string(i), ".dag"))
+}
+
+fn synthetic_bindings(n: Int) -> List<ModulePathBinding> {
+  fold_list(
+    xs: iota(n: n),
+    empty: no_bindings,
+    cons: fn(acc, i) {
+      prepend_binding(
+        acc: acc,
+        item: ModulePathBinding {
+          entry: synthetic_entry(i: i),
+          module_path: concat("test.synthetic.m", to_string(i))
+        }
+      )
+    }
+  )
+}
+
+fn synthetic_sites(n: Int) -> List<WitnessSite> {
+  fold_list(
+    xs: iota(n: n),
+    empty: no_sites,
+    cons: fn(acc, i) {
+      prepend_site(
+        acc: acc,
+        item: WitnessSite { entry: synthetic_entry(i: i), function: concat("w", to_string(i)) }
+      )
+    }
+  )
+}
+
+fn fold_claim_count(n: Int) -> Int {
+  length(
+    xs: required_floor_manifest(
+      bindings: synthetic_bindings(n: n),
+      hermetic_sites: synthetic_sites(n: n)
+    ).claims
+  )
+}
+
+func probe_1000() -> Int {
+  fold_claim_count(n: 1000)
+}
+
+func probe_2000() -> Int {
+  fold_claim_count(n: 2000)
+}
+
+func probe_4000() -> Int {
+  fold_claim_count(n: 4000)
+}
+
+// The control: build the same populations and DO NOT fold them. Subtracting this from the
+// probes above separates the generator's cost from the manifest's, which a single total
+// cannot distinguish -- and the generator is this file's own scaffolding, not the subject.
+func probe_build_only_4000() -> Int {
+  length(xs: synthetic_bindings(n: 4000)) + length(xs: synthetic_sites(n: 4000))
+}
+
+func probe_build_only_2000() -> Int {
+  length(xs: synthetic_bindings(n: 2000)) + length(xs: synthetic_sites(n: 2000))
+}
+
+// Which term carries the growth: the index build, or the per-site resolve against it. Both are
+// timed against the SAME populations the whole-manifest probes use, so the three numbers
+// subtract.
+func probe_index_only_4000() -> Int {
+  index_row_count(index: build_entry_module_index(bindings: synthetic_bindings(n: 4000)), probe: 7)
+}
+
+func probe_index_only_2000() -> Int {
+  index_row_count(index: build_entry_module_index(bindings: synthetic_bindings(n: 2000)), probe: 7)
+}
+
+// One lookup, so the index is CONSUMED rather than built and discarded -- an unread result is
+// the kind of thing an optimizer or a lazy carrier could elide, which would time nothing.
+fn index_row_count(index: EntryModuleIndex, probe: Int) -> Int {
+  match resolve_site(
+    index: index,
+    site: WitnessSite { entry: synthetic_entry(i: probe), function: "w" }
+  ) {
+    WitnessIdentified { identity: _, site: _ } => 1
+    WitnessIdentityRefused { refusal: _ } => 0
+  }
+}
+
+fn resolve_all(n: Int) -> Int {
+  let index = build_entry_module_index(bindings: synthetic_bindings(n: n))
+  fold_list(
+    xs: synthetic_sites(n: n),
+    empty: 0,
+    cons: fn(acc, s) {
+      match resolve_site(index: index, site: s) {
+        WitnessIdentified { identity: _, site: _ } => acc + 1
+        WitnessIdentityRefused { refusal: _ } => acc
+      }
+    }
+  )
+}
+
+func probe_resolve_only_4000() -> Int {
+  resolve_all(n: 4000)
+}
+
+func probe_resolve_only_2000() -> Int {
+  resolve_all(n: 2000)
+}
