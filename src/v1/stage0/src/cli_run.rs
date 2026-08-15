@@ -10021,20 +10021,6 @@ fn typed_module_content_key(
             )
         })?;
     let mut import_hashes: im::Vector<String> = im::Vector::new();
-    for import in resolved.resolved_imports.iter() {
-        let hash = interface_hash_by_name
-            .get(&import.module_path)
-            .cloned()
-            .ok_or_else(|| {
-                format!(
-                    "typed-module content key refused: direct import '{}' of module \
-                     '{mod_name}' has no interface hash yet — imports must be typechecked \
-                     (or cache-served) before their dependents are keyed",
-                    import.module_path
-                )
-            })?;
-        import_hashes.push_back(hash);
-    }
     // Stripped (no `import` line) modules resolve their dependencies through the corpus-wide
     // bare-name census instead — real cross-module dependencies that `resolved_imports` above
     // cannot see (PR #6848, namespace wave 1: 815/2301 modules). Without this term a stripped
@@ -14030,26 +14016,9 @@ fn check_module_source_identity_map(
 /// Batches are deterministic: within a level, modules keep their original relative order.
 fn module_schedule_batches(
     modules: &[Rc<v1_compiler_resolve::ResolvedModule>],
-    module_names: &[String],
     index: &MultiEntryIndex,
 ) -> (Vec<Vec<usize>>, HashSet<usize>) {
-    let position: HashMap<&str, usize> = module_names
-        .iter()
-        .enumerate()
-        .map(|(i, name)| (name.as_str(), i))
-        .collect();
-    let mut edges: Vec<(usize, usize)> = modules
-        .iter()
-        .enumerate()
-        .flat_map(|(i, resolved)| {
-            let position = &position;
-            resolved
-                .resolved_imports
-                .iter()
-                .filter_map(move |imp| position.get(imp.module_path.as_str()).map(|&src| (src, i)))
-                .collect::<Vec<_>>()
-        })
-        .collect();
+    let mut edges: Vec<(usize, usize)> = Vec::new();
     let path_to_slot: HashMap<String, usize> = modules
         .iter()
         .enumerate()
@@ -14771,8 +14740,7 @@ fn reconcile_with_typed_cache(
         .collect();
     resolve_stage_slot_add(|s| s.assembly_graph += graph_started.elapsed().as_nanos());
     let schedule_started = std::time::Instant::now();
-    let (schedule, cycle_residue_slots) =
-        module_schedule_batches(&closure_modules, &closure_names, index);
+    let (schedule, cycle_residue_slots) = module_schedule_batches(&closure_modules, index);
     resolve_stage_slot_add(|s| s.assembly_schedule += schedule_started.elapsed().as_nanos());
     if let Some(assembled) = try_reconcile_all_cache_hits(
         &closure_modules,

@@ -36,16 +36,8 @@ fn module_occurrence_input_transport(
 
 type ResolvedModule {
   module: Node
-  resolved_imports: List<ResolvedImport>
   dep_order: Int
   occurrence_transport: OccurrenceTransport
-}
-
-type ResolvedImport {
-  module_path: String
-  is_all: Bool
-  specific_names: List<String>
-  target_module: Node?
 }
 
 type DepEdge {
@@ -99,7 +91,6 @@ fn resolve_modules_with_occurrence_transport(
       Present { value: order } =>
         [ResolvedModule {
           module: m,
-          resolved_imports: [],
           dep_order: order,
           occurrence_transport: module_occurrence_input_transport(input: input),
         }]

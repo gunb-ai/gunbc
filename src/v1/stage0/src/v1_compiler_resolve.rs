@@ -55,17 +55,8 @@ pub fn module_occurrence_input_transport(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedModule {
     pub module: Rc<Node>,
-    pub resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     pub dep_order: i64,
     pub occurrence_transport: Rc<OccurrenceTransport>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ResolvedImport {
-    pub module_path: String,
-    pub is_all: bool,
-    pub specific_names: Rc<Vec<String>>,
-    pub target_module: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -158,7 +149,6 @@ pub fn resolve_modules_with_occurrence_transport(
                         ) {
                             Some(order) => Rc::new(vec![Rc::new(ResolvedModule {
                                 module: m.clone(),
-                                resolved_imports: Rc::new(vec![]),
                                 dep_order: order.clone(),
                                 occurrence_transport: module_occurrence_input_transport(
                                     input.clone(),
