@@ -96,6 +96,7 @@ import gunbc.spark_serving_install_paths {
   spark_serving_runtime_executable,
   spark_serving_models_root,
   spark_serving_user_unit_path,
+  spark_serving_user_unit_parent_path,
   spark_serving_user_unit_contents,
   spark_serving_desired_model_wire,
   spark_serving_unit_name,
@@ -2453,7 +2454,7 @@ type SparkServingOllamaRuntimeMaterialization
 fn spark_serving_prepare_runtime_dirs() -> Bool {
   shell.Mkdir.Parents(path: spark_serving_runtime_root()).success
     && shell.Mkdir.Parents(path: spark_serving_models_root()).success
-    && shell.Mkdir.Parents(path: spark_serving_user_unit_path()).success
+    && shell.Mkdir.Parents(path: spark_serving_user_unit_parent_path()).success
 }
 
 fn spark_serving_extract_admitted_archive(
@@ -2516,11 +2517,13 @@ fn spark_serving_wait_for_api() -> Bool {
 }
 
 fn spark_serving_pull_desired_model() -> Bool {
+  let executable_q = shell_quote(arg: spark_serving_runtime_executable() as String)
+  let model_q = shell_quote(arg: spark_serving_desired_model_wire())
   shell.Exec.Run(
     script: join([
-      spark_serving_runtime_executable() as String,
+      executable_q,
       " pull ",
-      spark_serving_desired_model_wire(),
+      model_q,
     ], "") as NonEmptyStr,
   ).success
 }

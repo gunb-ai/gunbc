@@ -195,12 +195,12 @@ fn spark_serving_member(
 
 fn spark_serving_desired_members(
   occurrence: SparkServingOccurrence,
-  release: SparkServingRelease,
+  serving_release: SparkServingRelease,
 ) -> List<SparkServingMember> {
   let rid = occurrence.release_identity
   let host = occurrence.host
-  let closure_digest = release.runtime.closure_digest
-  let model_digest = serialize_content_hash(hash: release.model.identity) as NonEmptyStr
+  let closure_digest = serving_release.runtime.closure_digest
+  let model_digest = serialize_content_hash(hash: serving_release.model.identity) as NonEmptyStr
   [
     spark_serving_member(
       host: host,
