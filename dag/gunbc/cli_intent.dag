@@ -2,6 +2,7 @@ module gunbc.cli_intent
 
 import std.types { Bool, Int, NonEmptyStr, Port, String }
 import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
+import gunbc.output_policy { ChannelPolicy, resolve_channel_policy }
 
 // WHY THIS MODULE EXISTS, and what it deliberately is not.
 //
@@ -414,5 +415,70 @@ fn admit_argv(tokens: List<String>) -> IntentAdmission {
     IntentAdmitted { intent: ci_preset_intent() }
   } else {
     IntentRefused { refusal: UnknownVerb { token: verb } }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 7. Projection — the one entry the seed seam calls
+// ---------------------------------------------------------------------------
+
+// THE INVERSION, concretely. `gunbc_cli_outcome` is handed the verbosity facts and resolves the
+// channel policy ONCE, here, through gunbc.output_policy's existing authority. Nothing downstream
+// re-derives it, and no projection in this module owns a resolve. That is the arrangement the
+// deleted seed had backwards: there, four diagnostic counters each re-read the blocking policy
+// through a private compile.
+type RunPlan {
+  intent: RunIntent
+  output: ChannelPolicy
+}
+
+type CliOutcome
+  = CliRefused { exit_code: Int, message: String }
+  | CliPlanned { plan: RunPlan }
+
+// The seed's observable exit contract is preserved deliberately: 2 for a malformed --arg, 1 for
+// every other refusal. That is a user-facing fact rather than one of the functions the ruling threw
+// out — scripts and CI steps read these codes, and silently renumbering them would break callers
+// this cut has no quarrel with. New refusal classes join the 1 arm rather than inventing codes.
+fn refusal_exit_code(r: IntentRefusal) -> Int {
+  match r {
+    RunArgMissingEquals { token: _ } => 2
+    RunArgEmptyName { token: _ } => 2
+    NoSourceRoot => 1
+    ClaimRunWithoutEntry => 1
+    ReleaseRevisionMalformed { text: _ } => 1
+    ServePortOutOfRange { text: _ } => 1
+    UnknownVerb { token: _ } => 1
+  }
+}
+
+// Every message names the offending token, because a refusal a user cannot locate costs them the
+// same search the diagnostic was supposed to save.
+fn refusal_message(r: IntentRefusal) -> String {
+  match r {
+    NoSourceRoot => "error: provide at least one --source-root"
+    ClaimRunWithoutEntry =>
+      "error: --claim-run requires --entry <file.dag> (a claim run is scoped to one import closure)"
+    RunArgMissingEquals { token: t } =>
+      concat(concat("error: --arg ", t), " has no `=`; expected --arg name=value")
+    RunArgEmptyName { token: t } =>
+      concat(concat("error: --arg ", t), " has an empty name; expected --arg name=value")
+    ReleaseRevisionMalformed { text: t } =>
+      concat(concat("error: --release-revision ", t), " is not 40 lowercase hex digits (a git commit object name)")
+    ServePortOutOfRange { text: t } =>
+      concat(concat("error: --port ", t), " is not in 1..65535")
+    UnknownVerb { token: t } =>
+      concat(concat("error: unknown command ", t), "; expected one of compile, ci, run, converge, serve")
+  }
+}
+
+fn gunbc_cli_outcome(tokens: List<String>, verbose: Bool, quiet: Bool) -> CliOutcome {
+  match admit_argv(tokens: tokens) {
+    IntentRefused { refusal: r } =>
+      CliRefused { exit_code: refusal_exit_code(r: r), message: refusal_message(r: r) }
+    IntentAdmitted { intent: i } =>
+      CliPlanned {
+        plan: RunPlan { intent: i, output: resolve_channel_policy(verbose: verbose, quiet: quiet) },
+      }
   }
 }
