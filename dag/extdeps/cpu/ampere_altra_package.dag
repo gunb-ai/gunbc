@@ -122,11 +122,6 @@ data power_supply_signal_prefixes: List<NonEmptyStr> = [
   "PVDD",
   "AVDD",
   "DVDD",
-  "VDDQ",
-  "VDD18",
-  "VDDH",
-  "VDDP",
-  "VDD_",
 ]
 
 fn signal_has_power_supply_prefix(signal: NonEmptyStr) -> Bool {
