@@ -3,14 +3,19 @@ module gunbc.spark_serving_install_paths
 import std.types { String, FilePath }
 import gunbc.spark_serving_desired { spark_serving_desired_bind_listen }
 import gunbc.spark_serving_runtime_receipt { spark_serving_executor_home }
+import gunbc.spark_serving_observe { spark_serving_unit_name }
 
-data spark_serving_install_paths_note: String = "Owned-runtime layout for UserUnitRealization + InstallOwnedRuntimeClosure on Spark hosts. Executor home and receipt path are gunbc.spark_serving_runtime_receipt. Unit contents are modeled DATA consumed by gunbc.spark_serving_membership spark_serving_user_unit_file_write_intent — remote delivery is stdin-bytes file-content effect in Phase 2 (SparkServingRemoteFileWriteTransportGap); INI composition debt is SparkServingSystemdUnitCompositionGap."
+data spark_serving_install_paths_note: String = "Owned-runtime layout for UserUnitRealization + InstallOwnedRuntimeClosure on Spark hosts. Executor home and receipt path are gunbc.spark_serving_runtime_receipt. User unit basename is gunbc.spark_serving_observe spark_serving_unit_name — not re-embedded here. Unit contents are modeled DATA consumed by gunbc.spark_serving_membership spark_serving_user_unit_file_write_intent — remote delivery is stdin-bytes file-content effect in Phase 2 (SparkServingRemoteFileWriteTransportGap); INI composition debt is SparkServingSystemdUnitCompositionGap."
 
 data spark_serving_runtime_root_rel: String = ".local/share/gunbc/spark-serving/ollama"
 
 data spark_serving_models_root_rel: String = ".local/share/gunbc/spark-serving/models"
 
-data spark_serving_user_unit_rel: String = ".config/systemd/user/gunbc-spark-serving.service"
+data spark_serving_user_unit_dir_rel: String = ".config/systemd/user"
+
+fn spark_serving_user_unit_rel() -> String {
+  join([spark_serving_user_unit_dir_rel, spark_serving_unit_name], "/")
+}
 
 fn spark_serving_runtime_root() -> FilePath {
   concat(
@@ -29,7 +34,7 @@ fn spark_serving_models_root() -> FilePath {
 fn spark_serving_user_unit_path() -> FilePath {
   concat(
     spark_serving_executor_home as String,
-    concat("/", spark_serving_user_unit_rel),
+    concat("/", spark_serving_user_unit_rel()),
   ) as FilePath
 }
 
