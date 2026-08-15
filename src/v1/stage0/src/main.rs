@@ -711,53 +711,35 @@ fn main() {
             }
         }
 
-        Commands::Ci {} => {
-            cli_run::handle_ci();
-        }
-
-        Commands::Run {
-            source_roots,
-            function,
-            entry,
-            claim_run,
-            args,
-        } => {
-            cli_run::handle_run_with_options(
-                source_roots,
-                function,
-                entry,
-                cli.dry_run,
-                claim_run,
-                args,
+        // THE FOUR VERB HANDLERS ARE DELETED, AND THIS ARM IS THE DECLARED INTERIM.
+        //
+        // Their Y is `gunbc.cli_intent` — argv is decoded to a modeled `RunIntent` there,
+        // and `gunbc_cli_outcome` already returns `CliPlanned { plan }` or a typed
+        // `CliRefused`. What is not built yet is the seam that hands a `CliPlanned` to the
+        // retained engine (`load_sources_for_entry*` + `make_eval_context*`, both `pub`),
+        // so until that lands these verbs have a decoder and no dispatcher.
+        //
+        // This REFUSES rather than degrading. It prints a typed, located reason and exits
+        // nonzero; it does not fall back to a partial run, does not guess a default verb,
+        // and does not print a plausible success. A cut that leaves a verb unimplemented
+        // must say so loudly at the boundary — an absorbing fallback here would be the
+        // exact §5 failure this deletion exists to remove, reintroduced by the deletion.
+        //
+        // NOT a scaffold with a trigger standing in for a decision: the terminal
+        // construction is named, its two halves exist, and the missing piece is the
+        // wiring between them.
+        Commands::Ci {}
+        | Commands::Run { .. }
+        | Commands::Converge { .. }
+        | Commands::Serve { .. } => {
+            eprintln!(
+                "error: this verb is not available on integration/cli-run-cut.\n  \
+                 cause: the cli_run verb handlers are deleted; their replacement \
+                 (gunbc.cli_intent) decodes argv into a RunIntent but is not yet wired to \
+                 the retained resolve/eval engine.\n  \
+                 status: declared Y-incomplete, not a runtime failure — see PR #8286."
             );
-        }
-
-        Commands::Converge { host } => {
-            cli_run::handle_converge(host);
-        }
-
-        Commands::Serve {
-            source_roots,
-            entry,
-            function,
-            host,
-            port,
-            release_revision,
-            eval_budget_cpu_ms,
-            eval_budget_wall_ms,
-        } => {
-            cli_run::handle_serve(
-                source_roots,
-                entry,
-                function,
-                host,
-                port,
-                release_revision,
-                cli_run::ServeEvaluationBudget {
-                    cpu_limit_ms: eval_budget_cpu_ms,
-                    wall_limit_ms: eval_budget_wall_ms,
-                },
-            );
+            std::process::exit(2);
         }
     };
 }
