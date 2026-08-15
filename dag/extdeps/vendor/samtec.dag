@@ -1,0 +1,33 @@
+module extdeps.vendor.samtec
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+
+// Read 2026-08-14. samtec.com's own terms page returned HTTP 403, so the registration record is
+// the read authority rather than the company's own publication.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "opencorpdata.com/us-or/19520295"
+  }
+}
+
+data samtec_registrant_note: String = "THE REGISTRY RENDERS IT SAMTEC INC AND THAT SPELLING IS NOT WHAT IS RECORDED. Read 2026-08-14: a corporate registry aggregator's entry for the Oregon Secretary of State registration, giving entity name SAMTEC INC, type Foreign Business Corporation, home jurisdiction Indiana, registered address 520 Park East Blvd, New Albany, IN 47150. Registry indexes normalise to upper case and strip punctuation - the same artefact this corpus already recorded for the EDGAR submissions endpoint on the Lattice row - so legal_name carries the conventional spelling with its comma. WHAT IS NOT ESTABLISHED: the punctuated form was not read from a filing cover page or from the company's own materials, both of which refused this session's fetches, so the comma is convention rather than citation. This is a weaker grounding than the rest of the vendor rows and is recorded as such rather than smoothed over."
+
+data samtec: Vendor<Hardware> = Vendor { legal_name: "Samtec, Inc." }
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.samtec",
+      decl_name: "samtec",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

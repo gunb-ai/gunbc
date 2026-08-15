@@ -14,6 +14,7 @@ import v2.compiler.name_resolve {
   subject_module_root_for_name,
   validate_module_roots
 }
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree }
 import v2.std.cross_tree.resolution { source_root_index_empty }
 import v2.extdeps.languages.dag {
   dag_grammar_atom,
@@ -29,6 +30,8 @@ import v2.std.diagnostic {
   None,
   Outcome,
   Rejected,
+  bind_outcome,
+  outcome_accepted,
   Textual,
   diagnostics_eq
 }
@@ -48,7 +51,8 @@ import v2.std.verification {
 
 fn resolve_module_not_found_preserves_missing_module_identity() -> Bool {
   let missing = fc_qn(seg: ^fc_missing_seg)
-  match subject_module_root_for_name(roots: fc_single_found_root(), name: missing) {
+  fc_with_roots(o: fc_single_found_root(), f: fn(roots) {
+  match subject_module_root_for_name(roots: roots, name: missing) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
       match d.head.at {
@@ -58,6 +62,7 @@ fn resolve_module_not_found_preserves_missing_module_identity() -> Bool {
         _ => false
       }
   }
+  })
 }
 
 fn fc_pass_node() -> Node {
@@ -120,15 +125,34 @@ fn fc_qn(seg: Symbol) -> QualifiedName {
   Cons { head: seg, tail: Empty }
 }
 
-fn fc_duplicate_roots() -> FreeMonoid<Node> {
-  Cons {
-    head: fc_module_root(seg: ^fc_dup_seg),
-    tail: Cons { head: fc_module_root(seg: ^fc_dup_seg), tail: Empty }
+data fc_admitted_fixture_note: String = "These fixtures pass module roots to validate_module_roots / resolve_with_admission, which since BL-1 take FreeMonoid<NormalizedTree>. They therefore admit each synthetic root through the real door rather than casting past it -- a fixture that reached the sealed carrier without admission would be the wrapper-payload conflation the receipt in docs/plans/hollow-alias-construction-wall.md section 8.2 records, planted in the witness population. Admission is threaded as an Outcome and its refusal arm FAILS the witness: a fixture that cannot be admitted is a broken fixture, and reporting that as a passing verdict is the fabrication these witnesses exist to catch."
+
+fn fc_with_roots(
+  o: Outcome<FreeMonoid<NormalizedTree>>,
+  f: fn(FreeMonoid<NormalizedTree>) -> Bool
+) -> Bool {
+  match o {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: roots, diagnostics: _ } => f(roots)
   }
 }
 
-fn fc_single_found_root() -> FreeMonoid<Node> {
-  Cons { head: fc_module_root(seg: ^fc_found_seg), tail: Empty }
+fn fc_admitted(n: Node) -> Outcome<NormalizedTree> {
+  admit_normalized_tree(root: n, diagnostics: None)
+}
+
+fn fc_duplicate_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+  bind_outcome(o: fc_admitted(n: fc_module_root(seg: ^fc_dup_seg)), f: fn(a) {
+    bind_outcome(o: fc_admitted(n: fc_module_root(seg: ^fc_dup_seg)), f: fn(b) {
+      outcome_accepted(value: Cons { head: a, tail: Cons { head: b, tail: Empty } })
+    })
+  })
+}
+
+fn fc_single_found_root() -> Outcome<FreeMonoid<NormalizedTree>> {
+  bind_outcome(o: fc_admitted(n: fc_module_root(seg: ^fc_found_seg)), f: fn(a) {
+    outcome_accepted(value: Cons { head: a, tail: Empty })
+  })
 }
 
 fn fc_malformed_subject_root() -> Node {
@@ -156,8 +180,10 @@ fn fc_malformed_subject_root() -> Node {
 }
 }
 
-fn fc_malformed_subject_roots() -> FreeMonoid<Node> {
-  Cons { head: fc_malformed_subject_root(), tail: Empty }
+fn fc_malformed_subject_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+  bind_outcome(o: fc_admitted(n: fc_malformed_subject_root()), f: fn(a) {
+    outcome_accepted(value: Cons { head: a, tail: Empty })
+  })
 }
 
 fn fc_import_missing_target() -> Import {
@@ -169,7 +195,7 @@ fn fc_initial_admission_state() -> AdmissionState {
 }
 
 fn admit_import_missing_module_is_rejected() -> Bool {
-  let roots = fc_single_found_root()
+  fc_with_roots(o: fc_single_found_root(), f: fn(roots) {
   match admit_import_entry(
     roots: roots,
     import_edge: fc_import_missing_target(),
@@ -181,12 +207,14 @@ fn admit_import_missing_module_is_rejected() -> Bool {
     AdmissionAccepted { bindings: _, origins: _ } => false
     AdmissionRejected { diagnostics: _ } => true
   }
+  })
 }
 
 fn resolve_duplicate_module_roots_is_rejected() -> Bool {
+  fc_with_roots(o: fc_duplicate_roots(), f: fn(roots) {
   match resolve_with_admission(
     lm: dag_language_model_surface_empty_prelude(),
-    roots: fc_duplicate_roots(),
+    roots: roots,
     admission: Admission {
       subject: ResolutionSubject {
         name: fc_qn(seg: ^fc_dup_seg)
@@ -197,12 +225,14 @@ fn resolve_duplicate_module_roots_is_rejected() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
+  })
 }
 
 fn resolve_subject_name_not_in_roots_is_rejected() -> Bool {
+  fc_with_roots(o: fc_single_found_root(), f: fn(roots) {
   match resolve_with_admission(
     lm: dag_language_model_surface_empty_prelude(),
-    roots: fc_single_found_root(),
+    roots: roots,
     admission: Admission {
       subject: ResolutionSubject {
         name: fc_qn(seg: ^fc_missing_seg)
@@ -213,34 +243,42 @@ fn resolve_subject_name_not_in_roots_is_rejected() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
+  })
 }
 
 fn validate_module_roots_threads_accepted_projection_diagnostics() -> Bool {
-  match validate_module_roots(roots: fc_single_found_root()) {
+  fc_with_roots(o: fc_single_found_root(), f: fn(roots) {
+  match validate_module_roots(roots: roots) {
     Accepted { value: _, diagnostics: d } =>
       diagnostics_eq(a: d, b: None)
     Rejected { diagnostics: _ } => false
   }
+  })
 }
 
 fn validate_module_roots_merges_pending_before_duplicate_reject() -> Bool {
-  match validate_module_roots(roots: fc_duplicate_roots()) {
+  fc_with_roots(o: fc_duplicate_roots(), f: fn(roots) {
+  match validate_module_roots(roots: roots) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
+  })
 }
 
 fn validate_module_roots_malformed_root_is_rejected() -> Bool {
-  match validate_module_roots(roots: fc_malformed_subject_roots()) {
+  fc_with_roots(o: fc_malformed_subject_roots(), f: fn(roots) {
+  match validate_module_roots(roots: roots) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
+  })
 }
 
 fn resolve_malformed_subject_root_is_rejected() -> Bool {
+  fc_with_roots(o: fc_malformed_subject_roots(), f: fn(roots) {
   match resolve_with_admission(
     lm: dag_language_model_surface_empty_prelude(),
-    roots: fc_malformed_subject_roots(),
+    roots: roots,
     admission: Admission {
       subject: ResolutionSubject {
         name: fc_qn(seg: ^fc_malformed_seg)
@@ -251,25 +289,24 @@ fn resolve_malformed_subject_root_is_rejected() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
+  })
 }
 
-fn fc_dual_import_roots() -> FreeMonoid<Node> {
-  Cons {
-    head: fc_module_root_export(seg: ^fc_subject_seg, export_sym: ^fc_export_sym),
-    tail: Cons {
-      head: fc_module_root_export(seg: ^fc_import_a_seg, export_sym: ^fc_export_a_sym),
-      tail: Cons {
-        head: fc_module_root_export(seg: ^fc_import_b_seg, export_sym: ^fc_export_b_sym),
-        tail: Empty
-      }
-    }
-  }
+fn fc_dual_import_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+  bind_outcome(o: fc_admitted(n: fc_module_root_export(seg: ^fc_subject_seg, export_sym: ^fc_export_sym)), f: fn(a) {
+    bind_outcome(o: fc_admitted(n: fc_module_root_export(seg: ^fc_import_a_seg, export_sym: ^fc_export_a_sym)), f: fn(b) {
+      bind_outcome(o: fc_admitted(n: fc_module_root_export(seg: ^fc_import_b_seg, export_sym: ^fc_export_b_sym)), f: fn(c) {
+        outcome_accepted(value: Cons { head: a, tail: Cons { head: b, tail: Cons { head: c, tail: Empty } } })
+      })
+    })
+  })
 }
 
 fn resolve_dual_imports_do_not_collide_on_header_metadata() -> Bool {
+  fc_with_roots(o: fc_dual_import_roots(), f: fn(roots) {
   match resolve_with_admission_policy(
     lm: dag_language_model_surface_empty_prelude(),
-    roots: fc_dual_import_roots(),
+    roots: roots,
     admission: Admission {
       subject: ResolutionSubject {
         name: fc_qn(seg: ^fc_subject_seg)
@@ -289,14 +326,16 @@ fn resolve_dual_imports_do_not_collide_on_header_metadata() -> Bool {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
+  })
 }
 
 fn resolve_with_admission_threads_validate_diagnostics_on_accept() -> Bool {
-  match validate_module_roots(roots: fc_dual_import_roots()) {
+  fc_with_roots(o: fc_dual_import_roots(), f: fn(roots) {
+  match validate_module_roots(roots: roots) {
     Accepted { value: _, diagnostics: validate_diag } =>
       match resolve_with_admission_policy(
         lm: dag_language_model_surface_empty_prelude(),
-        roots: fc_dual_import_roots(),
+        roots: roots,
         admission: Admission {
           subject: ResolutionSubject {
             name: fc_qn(seg: ^fc_subject_seg)
@@ -319,6 +358,7 @@ fn resolve_with_admission_threads_validate_diagnostics_on_accept() -> Bool {
       }
     Rejected { diagnostics: _ } => false
   }
+  })
 }
 
 data claim_admit_import_missing_module_is_rejected: TestClaim = CompilesClaim {

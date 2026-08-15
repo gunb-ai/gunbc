@@ -1,5 +1,6 @@
 module v2.test.claim.name_resolve_cross_tree_resolution
 
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_roots }
 import v2.compiler.name_resolve {
   Admission,
   Import,
@@ -22,6 +23,8 @@ import v2.std.cross_tree.resolution {
 }
 import v2.std.diagnostic {
   Accepted,
+  None,
+  Outcome,
   Rejected,
   locus_eq,
   port_locus
@@ -153,8 +156,9 @@ fn ct_both_trees() -> SourceRootSet {
   Cons { head: V2Tree, tail: Cons { head: DagTree, tail: Empty } }
 }
 
-fn ct_dag_same_tree_roots() -> FreeMonoid<Node> {
-  Cons {
+fn ct_dag_same_tree_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+  admit_normalized_roots(
+    roots: Cons {
     head: ct_graft_module_root(
       root: ct_subject_with_import_use(
         qn_spine: ct_qn_node(seg: ^ct_dag_subject_seg),
@@ -172,7 +176,9 @@ fn ct_dag_same_tree_roots() -> FreeMonoid<Node> {
       ),
       tail: Empty
     }
-  }
+  },
+    diagnostics: None
+  )
 }
 
 fn ct_dag_same_tree_admission() -> Admission {
@@ -188,8 +194,9 @@ fn ct_dag_same_tree_admission() -> Admission {
   }
 }
 
-fn ct_v2_same_tree_roots() -> FreeMonoid<Node> {
-  Cons {
+fn ct_v2_same_tree_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+  admit_normalized_roots(
+    roots: Cons {
     head: ct_graft_module_root(
       root: ct_subject_with_import_use(
         qn_spine: ct_qn_spine(
@@ -211,7 +218,9 @@ fn ct_v2_same_tree_roots() -> FreeMonoid<Node> {
       ),
       tail: Empty
     }
-  }
+  },
+    diagnostics: None
+  )
 }
 
 fn ct_v2_same_tree_admission() -> Admission {
@@ -227,8 +236,9 @@ fn ct_v2_same_tree_admission() -> Admission {
   }
 }
 
-fn ct_cross_tree_roots() -> FreeMonoid<Node> {
-  Cons {
+fn ct_cross_tree_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+  admit_normalized_roots(
+    roots: Cons {
     head: ct_graft_module_root(
       root: ct_subject_with_import_use(
         qn_spine: ct_qn_spine(
@@ -248,7 +258,9 @@ fn ct_cross_tree_roots() -> FreeMonoid<Node> {
       ),
       tail: Empty
     }
-  }
+  },
+    diagnostics: None
+  )
 }
 
 fn ct_cross_tree_admission() -> Admission {
@@ -278,8 +290,9 @@ fn ct_v2_to_dag_index() -> SourceRootIndex {
   )
 }
 
-fn ct_dag_to_v2_roots() -> FreeMonoid<Node> {
-  Cons {
+fn ct_dag_to_v2_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+  admit_normalized_roots(
+    roots: Cons {
     head: ct_graft_module_root(
       root: ct_subject_with_import_use(
         qn_spine: ct_qn_node(seg: ^ct_inv_dag_subject_seg),
@@ -299,7 +312,9 @@ fn ct_dag_to_v2_roots() -> FreeMonoid<Node> {
       ),
       tail: Empty
     }
-  }
+  },
+    diagnostics: None
+  )
 }
 
 fn ct_dag_to_v2_admission() -> Admission {
@@ -330,63 +345,79 @@ fn ct_dag_to_v2_index() -> SourceRootIndex {
 }
 
 test fn witness_dag_same_tree_import_resolves_holds() -> Bool {
-  match resolve_with_admission_policy(
-    lm: dag_language_model_surface_empty_prelude(),
-    roots: ct_dag_same_tree_roots(),
-    admission: ct_dag_same_tree_admission(),
-    index: source_root_index_empty(),
-    active_roots: Empty,
-    policy: ImportScoped
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
+  match ct_dag_same_tree_roots() {
     Rejected { diagnostics: _ } => false
+    Accepted { value: admitted, diagnostics: _ } =>
+    match resolve_with_admission_policy(
+      lm: dag_language_model_surface_empty_prelude(),
+      roots: admitted,
+      admission: ct_dag_same_tree_admission(),
+      index: source_root_index_empty(),
+      active_roots: Empty,
+      policy: ImportScoped
+    ) {
+      Accepted { value: _, diagnostics: _ } => true
+      Rejected { diagnostics: _ } => false
+    }
   }
 }
 
 test fn witness_v2_same_tree_import_resolves_holds() -> Bool {
-  match resolve_with_admission_policy(
-    lm: dag_language_model_surface_empty_prelude(),
-    roots: ct_v2_same_tree_roots(),
-    admission: ct_v2_same_tree_admission(),
-    index: source_root_index_empty(),
-    active_roots: Empty,
-    policy: ImportScoped
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
+  match ct_v2_same_tree_roots() {
     Rejected { diagnostics: _ } => false
+    Accepted { value: admitted, diagnostics: _ } =>
+    match resolve_with_admission_policy(
+      lm: dag_language_model_surface_empty_prelude(),
+      roots: admitted,
+      admission: ct_v2_same_tree_admission(),
+      index: source_root_index_empty(),
+      active_roots: Empty,
+      policy: ImportScoped
+    ) {
+      Accepted { value: _, diagnostics: _ } => true
+      Rejected { diagnostics: _ } => false
+    }
   }
 }
 
 test fn witness_cross_tree_v2_to_dag_grounded_resolves_holds() -> Bool {
-  match resolve_with_admission_policy(
-    lm: dag_language_model_surface_empty_prelude(),
-    roots: ct_cross_tree_roots(),
-    admission: ct_cross_tree_admission(),
-    index: ct_v2_to_dag_index(),
-    active_roots: ct_both_trees(),
-    policy: ImportScoped
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
+  match ct_cross_tree_roots() {
     Rejected { diagnostics: _ } => false
+    Accepted { value: admitted, diagnostics: _ } =>
+    match resolve_with_admission_policy(
+      lm: dag_language_model_surface_empty_prelude(),
+      roots: admitted,
+      admission: ct_cross_tree_admission(),
+      index: ct_v2_to_dag_index(),
+      active_roots: ct_both_trees(),
+      policy: ImportScoped
+    ) {
+      Accepted { value: _, diagnostics: _ } => true
+      Rejected { diagnostics: _ } => false
+    }
   }
 }
 
 test fn witness_cross_tree_dag_to_v2_grounded_denied_holds() -> Bool {
-  match resolve_with_admission_policy(
-    lm: dag_language_model_surface_empty_prelude(),
-    roots: ct_dag_to_v2_roots(),
-    admission: ct_dag_to_v2_admission(),
-    index: ct_dag_to_v2_index(),
-    active_roots: ct_both_trees(),
-    policy: ImportScoped
-  ) {
-    Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: r } =>
-      (r.head.reason == ^resolve_cross_tree_import_denied)
-        && locus_eq(
-          a: r.head.at,
-          b: port_locus(port: ^resolve_cross_tree_import_denied)
-        )
+  match ct_dag_to_v2_roots() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: admitted, diagnostics: _ } =>
+    match resolve_with_admission_policy(
+      lm: dag_language_model_surface_empty_prelude(),
+      roots: admitted,
+      admission: ct_dag_to_v2_admission(),
+      index: ct_dag_to_v2_index(),
+      active_roots: ct_both_trees(),
+      policy: ImportScoped
+    ) {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: r } =>
+        (r.head.reason == ^resolve_cross_tree_import_denied)
+          && locus_eq(
+            a: r.head.at,
+            b: port_locus(port: ^resolve_cross_tree_import_denied)
+          )
+    }
   }
 }
 

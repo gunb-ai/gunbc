@@ -78,6 +78,7 @@ import v2.std.runtime {
   runtime_value_resolved_type
 }
 import v2.std.node {
+  ArrowBodyForm,
   Behavior,
   Bind,
   Branch,
@@ -95,7 +96,10 @@ import v2.std.node {
   Value,
   Arrow,
   Atom,
+  DirectAtomBody,
+  arrow_body_admits_eval_entry,
   bag_hash_digest,
+  classify_arrow_body_form,
   combine_hash,
   content_hash,
   ByteOffsetCacheEligible,
@@ -1438,48 +1442,6 @@ fn eval_arrow_admits_callee_dispatch(arrow: Node) -> Bool {
   }
 }
 
-fn eval_transform_body_admits_dispatch(body: Node) -> Bool {
-  match body.kind {
-    ComputationNode { behavior: Transform } =>
-
-      match list_at_optional(xs: node_positional_child_targets(node: body), index: 3) {
-        Present { value: _ } => false
-        Absent => true
-      }
-    ComputationNode { behavior: Branch } =>
-
-      match list_at_optional(xs: node_positional_child_targets(node: body), index: 3) {
-        Present { value: _ } => false
-        Absent =>
-          match list_at_optional(xs: node_positional_child_targets(node: body), index: 2) {
-            Present { value: _ } => true
-            Absent => false
-          }
-      }
-    ComputationNode { behavior: Bind } =>
-
-      match list_at_optional(xs: node_positional_child_targets(node: body), index: 3) {
-        Present { value: _ } => false
-        Absent =>
-          match list_at_optional(xs: node_positional_child_targets(node: body), index: 2) {
-            Present { value: _ } => true
-            Absent => false
-          }
-      }
-    ComputationNode { behavior: Loop } =>
-
-      match list_at_optional(xs: node_positional_child_targets(node: body), index: 1) {
-        Present { value: _ } => false
-        Absent =>
-          match list_at_optional(xs: node_positional_child_targets(node: body), index: 0) {
-            Present { value: _ } => true
-            Absent => false
-          }
-      }
-    _ => false
-  }
-}
-
 fn eval_transform_has_callee_reference(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Transform } =>
@@ -1699,8 +1661,9 @@ fn eval_transform_node(
           f: fn(callee_edge) {
             match find_arrow_body_child(root: callee_edge.target) {
               Accepted { value: body, diagnostics: _ } =>
+                let body_form = classify_arrow_body_form(target: body)
                 if eval_arrow_admits_callee_dispatch(arrow: callee_edge.target)
-                  && eval_transform_body_admits_dispatch(body: body) {
+                  && arrow_body_admits_eval_entry(form: body_form) {
                   bind_outcome(
                     o: eval_bind_arrow_params(
                       arrow: callee_edge.target,
@@ -1710,14 +1673,23 @@ fn eval_transform_node(
                       node: node
                     ),
                     f: fn(call_environment) {
-                      eval_runtime_node(
-                        node: body,
-                        tree: tree,
-                        interpretation: interpretation,
-                        environment: call_environment,
-                        runtime: runtime,
-                        effect_io: effect_io
-                      )
+                      match body_form {
+                        DirectAtomBody =>
+                          eval_type_node_atom(
+                            node: body,
+                            interpretation: interpretation,
+                            environment: call_environment
+                          )
+                        _ =>
+                          eval_runtime_node(
+                            node: body,
+                            tree: tree,
+                            interpretation: interpretation,
+                            environment: call_environment,
+                            runtime: runtime,
+                            effect_io: effect_io
+                          )
+                      }
                     }
                   )
                 } else {

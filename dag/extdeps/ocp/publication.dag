@@ -1,0 +1,45 @@
+module extdeps.ocp.publication
+
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.types { String }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.openwebfoundation.org/legal/the-owf-1-0-agreements/owfa-1-0",
+  }
+}
+
+data ocp_publication_vocabulary_note: String = "OCP LICENCE VOCABULARY GROUNDED ON OWFa 1.0. Owfa1_0FinalSpecificationAgreement and OcpContributionLicenseAgreement are closed variants for subject anchors; the anchor cites the Open Web Foundation Final Specification Agreement text that defines the open-licence arm. Upstream document facts and read receipts live in subject modules and gunbc.specification_citation_read_provenance respectively."
+
+type Owfa1_0FinalSpecificationAgreement {}
+
+type OcpContributionLicenseAgreement {}
+
+type OcpSpecificationLicense
+  = | Owfa1_0FinalSpecificationAgreement {}
+
+type OcpContributionLicense
+  = | OcpContributionLicenseAgreement {}
+
+type AppendixA {}
+
+type AppendixB {}
+
+type ExcludedNonNormativeAppendix
+  = AppendixA {}
+  | AppendixB {}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ocp.publication",
+      decl_name: "OcpSpecificationLicense",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}

@@ -1,0 +1,308 @@
+module std.attribution
+
+import std.types { Bool, NonEmptyStr, String, List }
+import std.nat { Nat }
+import std.interval {
+  OrderedClosedInterval,
+  IntervalConstruction,
+  IntervalReady,
+  IntervalRefused,
+  closed_interval,
+  interval_low,
+  interval_high,
+}
+import std.measure {
+  Nanosecond,
+  nanosecond,
+  nanosecond_count,
+  ClockBasis,
+  clock_basis_eq,
+  ClockDomain,
+  clock_domain_eq,
+  ObservationInstant,
+  InstantOrder,
+  InstantBefore,
+  InstantSame,
+  InstantAfter,
+  InstantIncomparable,
+  compare_instants,
+}
+import std.observation { OccurrenceId }
+
+// TIME NOT ACCOUNTED FOR IS A SET COMPLEMENT, NEVER A SUBTRACTION. The tempting reduction is
+// parent_total minus the sum of the children, which produces a number under every input and is
+// wrong under most of them: children that overlap are counted twice so the remainder understates or
+// goes negative, children measured on a different clock are summed into a total that describes no
+// single timeline, and a child extending past its parent silently steals from a sibling. None of
+// those failures are visible in the answer — a subtraction always yields a plausible figure. So
+// unattributed time is computed as the complement of the UNION of the children within the parent's
+// extent, which forces every one of those conditions to be decided rather than absorbed: overlaps
+// merge into the union, a foreign clock refuses, and a child outside the parent refuses.
+//
+// The measured specimen this exists for: a floor batch reporting 2801s elapsed against 2076s of
+// summed per-row terms. Those are different universes — summed thread-time at adaptive width versus
+// elapsed wall — and their difference is not idle time. Subtracting them yields 725s of nothing.
+
+// A clock frame is carried ONCE for a whole attribution rather than per span, so a set of spans
+// mixing clocks has no representation. Comparing instants pairwise would let a mixed set exist and
+// be caught late; carrying one frame means the mixed set cannot be assembled.
+type ClockFrame {
+  domain: ClockDomain
+  basis: ClockBasis
+}
+
+fn clock_frame_eq(a: ClockFrame, b: ClockFrame) -> Bool {
+  clock_domain_eq(a: a.domain, b: b.domain) && clock_basis_eq(a: a.basis, b: b.basis)
+}
+
+type OccurrenceExtent {
+  occurrence: OccurrenceId
+  interval: OrderedClosedInterval<Nanosecond>
+}
+
+type ExtentConstruction
+  = ExtentReady { frame: ClockFrame, extent: OccurrenceExtent }
+  | ExtentRefused { cause: NonEmptyStr }
+
+fn nanosecond_le(a: Nanosecond, b: Nanosecond) -> Bool {
+  nanosecond_count(n: a) <= nanosecond_count(n: b)
+}
+
+// An extent is built from the two instants actually recorded, so a caller cannot assemble one from
+// a begin and an end that never belonged to the same clock: incomparable endpoints refuse here
+// rather than producing a width.
+fn occurrence_extent(
+  occurrence: OccurrenceId,
+  begin: ObservationInstant,
+  end: ObservationInstant,
+) -> ExtentConstruction {
+  match compare_instants(a: begin, b: end) {
+    InstantIncomparable { left: _, right: _ } =>
+      ExtentRefused { cause: "begin and end are on different clocks; the width would describe no timeline" }
+    InstantAfter =>
+      ExtentRefused { cause: "end precedes begin" }
+    InstantBefore => extent_from_ordered(occurrence: occurrence, begin: begin, end: end)
+    InstantSame => extent_from_ordered(occurrence: occurrence, begin: begin, end: end)
+  }
+}
+
+fn extent_from_ordered(
+  occurrence: OccurrenceId,
+  begin: ObservationInstant,
+  end: ObservationInstant,
+) -> ExtentConstruction {
+  match closed_interval(low: begin.since_origin, high: end.since_origin, le: nanosecond_le) {
+    IntervalRefused { reason: r } => ExtentRefused { cause: r }
+    IntervalReady { interval: i } =>
+      ExtentReady {
+        frame: ClockFrame { domain: begin.domain, basis: begin.basis },
+        extent: OccurrenceExtent { occurrence: occurrence, interval: i }
+      }
+  }
+}
+
+// Attributed spans MAY OVERLAP — concurrent children are a fact about the run, not a defect — while
+// Unattributed is the complement of their union, so no instant is ever unattributed and attributed
+// at once.
+type AttributionSpan
+  = Attributed { occurrence: OccurrenceId, interval: OrderedClosedInterval<Nanosecond> }
+  | Unattributed { parent: OccurrenceId, interval: OrderedClosedInterval<Nanosecond> }
+
+type AttributionResult
+  = AttributionComputed { spans: List<AttributionSpan> }
+  | AttributionRefusedForeignClock { child: OccurrenceId }
+  | AttributionRefusedChildOutsideParent { child: OccurrenceId }
+  | AttributionRefusedImpossibleInterval { cause: NonEmptyStr }
+
+type ExtentInFrame {
+  frame: ClockFrame
+  extent: OccurrenceExtent
+}
+
+fn extent_low_ns(e: ExtentInFrame) -> Nat {
+  nanosecond_count(n: interval_low(interval: e.extent.interval))
+}
+
+fn extent_high_ns(e: ExtentInFrame) -> Nat {
+  nanosecond_count(n: interval_high(interval: e.extent.interval))
+}
+
+type AttributionScan {
+  cursor: Nat
+  spans: List<AttributionSpan>
+  refusal: AttributionResult?
+}
+
+// Every interval in this module is minted by std.interval, never written as a literal — that
+// carrier is sole_constructor precisely so a reversed pair has no representation, and the wall
+// applies to this module like any other. The refusal arm is unreachable under the from < to guard
+// and is PROPAGATED rather than swallowed: an arm returning [] on refusal would report a silence as
+// full coverage, which is the one wrong answer this whole module exists to prevent. (A first draft
+// of this file did exactly that, in the function immediately below a comment saying it must not.)
+type GapConstruction
+  = GapEmpty
+  | GapReady { span: AttributionSpan }
+  | GapRefused { cause: NonEmptyStr }
+
+fn gap_span(parent: OccurrenceId, from: Nat, to: Nat) -> GapConstruction {
+  if to > from {
+    match closed_interval(low: nanosecond(count: from), high: nanosecond(count: to), le: nanosecond_le) {
+      IntervalRefused { reason: r } => GapRefused { cause: r }
+      IntervalReady { interval: i } => GapReady { span: Unattributed { parent: parent, interval: i } }
+    }
+  } else {
+    GapEmpty
+  }
+}
+
+
+
+fn attribution_step(
+  acc: AttributionScan,
+  parent: ExtentInFrame,
+  child: ExtentInFrame,
+) -> AttributionScan {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      if !clock_frame_eq(a: parent.frame, b: child.frame) {
+        AttributionScan {
+          cursor: acc.cursor,
+          spans: acc.spans,
+          refusal: Present { value: AttributionRefusedForeignClock { child: child.extent.occurrence } }
+        }
+      } else {
+        if extent_low_ns(e: child) < extent_low_ns(e: parent)
+          || extent_high_ns(e: child) > extent_high_ns(e: parent) {
+          AttributionScan {
+            cursor: acc.cursor,
+            spans: acc.spans,
+            refusal: Present {
+              value: AttributionRefusedChildOutsideParent { child: child.extent.occurrence }
+            }
+          }
+        } else {
+          let low = extent_low_ns(e: child)
+          let high = extent_high_ns(e: child)
+          let attributed = Attributed {
+            occurrence: child.extent.occurrence,
+            interval: child.extent.interval
+          }
+          let next_cursor = if high > acc.cursor { high } else { acc.cursor }
+          match gap_span(parent: parent.extent.occurrence, from: acc.cursor, to: low) {
+            GapRefused { cause: c } =>
+              AttributionScan {
+                cursor: acc.cursor,
+                spans: acc.spans,
+                refusal: Present { value: AttributionRefusedImpossibleInterval { cause: c } }
+              }
+            GapEmpty =>
+              AttributionScan {
+                cursor: next_cursor,
+                spans: concat(acc.spans, [attributed]),
+                refusal: Absent
+              }
+            GapReady { span: g } =>
+              AttributionScan {
+                cursor: next_cursor,
+                spans: concat(acc.spans, [g, attributed]),
+                refusal: Absent
+              }
+          }
+        }
+      }
+  }
+}
+
+// Four steps, in this order and no other: reject a foreign clock, reject a child outside its
+// parent, merge overlaps by carrying a cursor over the union, then emit the exact remaining gaps.
+// Sorting is by start, so a caller cannot change the answer by changing the order it read the files
+// in.
+fn attribute_within(
+  parent: ExtentInFrame,
+  children: List<ExtentInFrame>,
+) -> AttributionResult {
+  let ordered = sort_by(children, fn(c) { extent_low_ns(e: c) })
+  let scanned = fold_list(
+    ordered,
+    AttributionScan { cursor: extent_low_ns(e: parent), spans: [], refusal: Absent },
+    (acc, c) => attribution_step(acc: acc, parent: parent, child: c)
+  )
+  match scanned.refusal {
+    Present { value: r } => r
+    Absent =>
+      match gap_span(
+        parent: parent.extent.occurrence,
+        from: scanned.cursor,
+        to: extent_high_ns(e: parent)
+      ) {
+        GapRefused { cause: c } => AttributionRefusedImpossibleInterval { cause: c }
+        GapEmpty => AttributionComputed { spans: scanned.spans }
+        GapReady { span: g } => AttributionComputed { spans: concat(scanned.spans, [g]) }
+      }
+  }
+}
+
+
+// A SPAN IS A START PLUS A WIDTH, which is how a producer records one and why it is the caller's
+// input shape: a Nat width cannot be negative, so the ordered-pair refusal that OrderedClosedInterval
+// exists to catch is already impossible at this door. The refusal arm below is therefore unreachable
+// under Nat arithmetic and is still carried, because "cannot happen" is a claim about today's
+// carrier and not a licence to fabricate a span if it ever does.
+type ExtentSpec {
+  occurrence: OccurrenceId
+  frame: ClockFrame
+  start_ns: Nat
+  width_ns: Nat
+}
+
+type SpecConstruction
+  = SpecReady { extent: ExtentInFrame }
+  | SpecRefused { cause: NonEmptyStr }
+
+fn extent_from_spec(spec: ExtentSpec) -> SpecConstruction {
+  match closed_interval(
+    low: nanosecond(count: spec.start_ns),
+    high: nanosecond(count: spec.start_ns + spec.width_ns),
+    le: nanosecond_le
+  ) {
+    IntervalRefused { reason: r } => SpecRefused { cause: r }
+    IntervalReady { interval: i } =>
+      SpecReady {
+        extent: ExtentInFrame {
+          frame: spec.frame,
+          extent: OccurrenceExtent { occurrence: spec.occurrence, interval: i }
+        }
+      }
+  }
+}
+
+type SpecScan {
+  extents: List<ExtentInFrame>
+  refusal: NonEmptyStr?
+}
+
+fn spec_scan_step(acc: SpecScan, spec: ExtentSpec) -> SpecScan {
+  match extent_from_spec(spec: spec) {
+    SpecRefused { cause: c } => SpecScan { extents: acc.extents, refusal: Present { value: c } }
+    SpecReady { extent: e } =>
+      SpecScan { extents: concat(acc.extents, [e]), refusal: acc.refusal }
+  }
+}
+
+fn attribute_specs(parent: ExtentSpec, children: List<ExtentSpec>) -> AttributionResult {
+  match extent_from_spec(spec: parent) {
+    SpecRefused { cause: c } => AttributionRefusedImpossibleInterval { cause: c }
+    SpecReady { extent: p } => {
+      let scanned = fold_list(
+        children,
+        SpecScan { extents: [], refusal: Absent },
+        (acc, spec) => spec_scan_step(acc: acc, spec: spec)
+      )
+      match scanned.refusal {
+        Present { value: c } => AttributionRefusedImpossibleInterval { cause: c }
+        Absent => attribute_within(parent: p, children: scanned.extents)
+      }
+    }
+  }
+}

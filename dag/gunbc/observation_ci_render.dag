@@ -7,6 +7,7 @@ import std.measure {
   Millisecond,
   ByteSize,
   BasisPoint,
+  nanosecond,
   nanosecond_count,
   nanoseconds_per_millisecond,
   nanosecond_to_millisecond_floor,
@@ -20,11 +21,13 @@ import std.measure {
   milliseconds_per_second,
   seconds_per_minute,
 }
-import std.symbols { SymbolId, Tier, Emoji, Unicode, Ascii, StatusPulse, StatusDwell, StatusBlocked, StatusRefused, StatusFinal, NodeCompleted, NodeFailed, NodeRunning, NodeSkipped }
+import std.symbols { SymbolId, Tier, Emoji, Unicode, Ascii, StatusPulse, StatusDwell, StatusBlocked, StatusRefused, StatusTimedOut, StatusFinal, NodeCompleted, NodeFailed, NodeRunning, NodeSkipped }
 import std.disposition { Disposition, Terminal }
 import extdeps.render.glyphs { resolve_symbol }
 import extdeps.github.log_annotations { annotation_group_prefix, annotation_endgroup, neutralize_workflow_commands }
 import std.observation {
+  ClassDone,
+  ClassFailed,
   ObservationSubject,
   ObservationSegment,
   RunSegment,
@@ -58,6 +61,11 @@ import std.observation {
   observation_event_class,
   observation_presentation,
   observation_class_density,
+  ObservationGrain,
+  BatchGrain,
+  observation_subject_prefix_at_grain,
+  ObservationRollup,
+  ObservationCounts,
   ObservationDensity,
   RoutineCollapsible,
   SummaryAlwaysShown,
@@ -141,6 +149,16 @@ data ci_human_duration_note: String = "A second duration projection beside gunbc
 fn ci_measured_bytes_text(m: Measured<ByteSize>) -> String {
   match m {
     MeasuredValue { value: b } => ci_human_bytes(b: b)
+    MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
+  }
+}
+
+// The elapsed counterpart of ci_measured_bytes_text, and it keeps the same discipline: an
+// unavailable reading prints its CAUSE rather than a zero, because a batch that reports 0s is
+// indistinguishable from one that finished instantly.
+fn ci_measured_elapsed_text(m: Measured<Nanosecond>) -> String {
+  match m {
+    MeasuredValue { value: d } => ci_human_elapsed(d: d)
     MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
   }
 }
@@ -492,4 +510,188 @@ fn ci_measurement_rss_line(label: NonEmptyStr, rss: Measured<ByteSize>) -> Rende
 
 data observation_ci_render_disposition: Disposition = Terminal {
   reason: "The CI-log renderer is Terminal, not a scaffold: append-only line projection is what the GitHub Actions medium IS, not an interim stand-in for a richer one. The TTY renderer is a sibling projection of the same carriers rather than this module's successor, and the dashboard is a third. What dissolves later is the hand-rolled emit sites this renderer replaces, each counted by the P3 census."
+}
+
+// ---------------------------------------------------------------------------
+// Batch-grain projection — the decision that makes the fold visible.
+// ---------------------------------------------------------------------------
+
+// ci_collapsed_summary above hides finished work inside a GitHub group. That is placement, not
+// accumulation: 4110 lines still exist, still cost their emission, and still sit between the reader
+// and the eight lines that answer what is running. This projection is the other operation — a
+// routine event below the declared grain updates its batch's rollup and produces NO line, so the
+// console carries batch transitions, dwell heartbeats, and anomalies at their exact leaf subject.
+type RoutineProjection
+  = FoldedIntoRollup { at: ObservationSubject }
+  | EmittedAtLeaf { reason: LeafEmissionReason }
+
+// Why an event still reached the console, as a named state rather than a fall-through. Three of the
+// four are deliberate; NoAncestorAtGrain is the fail-closed arm, and it emits rather than drops:
+// an event whose batch ancestor cannot be located is exactly the event a reader must still see, and
+// silently discarding it would be the empty-observation narrow — rendering "I could not place this"
+// as "there was nothing to place".
+type LeafEmissionReason
+  = LeafGrainRequested
+  | AnomalyPierces
+  | RunSummaryShown
+  | NoAncestorAtGrain
+
+
+// The seed's per-witness suppression asked the SAME question the projection answers — does routine
+// work fold? — and answered it in hand-Rust, so the density rule had two representations and only
+// this one was witnessed. It cannot call ci_routine_projection per witness (one .dag evaluation per
+// witness across ~9,000), but it does not need to: the density of a concluded outcome depends only
+// on its CLASS, so the verdict is resolved ONCE at policy install and transported, exactly like
+// routine_rollup_folds. The rule stays here; the seed carries an answer, not a copy of the rule.
+fn ci_routine_projection(
+  event: ObservationEvent,
+  grain: ObservationGrain?,
+) -> RoutineProjection {
+  match observation_class_density(c: observation_event_class(event: event)) {
+    AnomalyExpanded => EmittedAtLeaf { reason: AnomalyPierces }
+    SummaryAlwaysShown => EmittedAtLeaf { reason: RunSummaryShown }
+    RoutineCollapsible =>
+      match grain {
+        Absent => EmittedAtLeaf { reason: LeafGrainRequested }
+        Present { value: g } =>
+          match observation_subject_prefix_at_grain(subject: event.subject, grain: g) {
+            Absent => EmittedAtLeaf { reason: NoAncestorAtGrain }
+            Present { value: ancestor } => FoldedIntoRollup { at: ancestor }
+          }
+      }
+  }
+}
+
+fn ci_rollup_summary_glyph(rollup: ObservationRollup) -> SymbolId {
+  if rollup.counts.failed > 0 {
+    NodeFailed
+  } else if rollup.counts.refused > 0 {
+    StatusRefused
+  } else if rollup.counts.timed_out > 0 {
+    StatusTimedOut
+  } else {
+    NodeCompleted
+  }
+}
+
+// The measurement clause is emitted ONLY when something was actually unmeasured, so an ordinary
+// batch reads clean and a partially measured one says so rather than implying full coverage.
+fn ci_rollup_measurement_note(rollup: ObservationRollup) -> String {
+  if rollup.measurement_absent == 0 {
+    ""
+  } else {
+    concat(" (", concat(to_string(rollup.measurement_absent), " unmeasured)"))
+  }
+}
+
+
+// Elapsed is the SUM of the folded leaves' measured walls, and the leaves run concurrently across
+// shards, so it is WORK-TIME and never elapsed wall — DESIGN's cost-partition law says exactly this
+// ("elapsed wall is NOT additive over concurrent spans"). The word `work` is in the rendered line
+// because a bare duration beside a batch is read as how long the batch took, and on a wide run the
+// two differ by the shard count.
+//
+// Peak renders only when a batch-scoped reading exists. The seed cannot supply one: its only
+// memory fact is the PROCESS high-water mark, which is monotone over the whole run, so attributing
+// it to a batch reported `peak 11.5 GiB` beside a four-millisecond single-witness batch — a real
+// number located on the wrong subject, which DESIGN section 5 treats as the same defect class as a
+// wrong number. Absence is disclosed by ci_rollup_measurement_note rather than filled in.
+fn ci_rollup_peak_text(rollup: ObservationRollup) -> String {
+  match rollup.peak_rss {
+    MeasuredValue { value: v } => concat(" · peak ", ci_measured_bytes_text(m: rollup.peak_rss))
+    MeasuredUnavailable { cause: _ } => ""
+  }
+}
+
+fn ci_batch_summary_line(rollup: ObservationRollup) -> RenderedLine {
+  let problems = rollup.counts.refused + rollup.counts.failed + rollup.counts.timed_out
+  RenderedLine {
+    glyph: ci_rollup_summary_glyph(rollup: rollup),
+    text: join([
+      ci_subject_leaf_text(subject: rollup.subject),
+      " — ",
+      to_string(rollup.counts.done), " passed · ",
+      to_string(rollup.counts.skipped), " skipped · ",
+      to_string(rollup.counts.refused), " refused · ",
+      to_string(rollup.counts.failed), " failed · ",
+      ci_measured_elapsed_text(m: rollup.elapsed),
+      " work",
+      ci_rollup_peak_text(rollup: rollup),
+      ci_rollup_measurement_note(rollup: rollup),
+    ], ""),
+    attention: if problems == 0 { Ambient } else { Anomaly }
+  }
+}
+
+// The duration crosses as the std.measure carrier, never a bare Nat named `*_nanos`. Wrapping it
+// immediately inside the body would NOT discharge that — the PARAMETER surface is what a caller can
+// get wrong, and a caller passing milliseconds into a `work_nanos: Nat` would have typechecked. The
+// seed constructs no carrier of its own: it calls `nanosecond(count:)` across the interpreter
+// boundary and passes the result back in, so the constructor stays the single authority (a record
+// built in Rust would have forked it). Same shape as gunbc.floor_component_receipt's surface.
+//
+// The seed's ONE seam into this authority. The floor walk lives in Rust and cannot construct a
+// .dag record, so it hands over the scalars it already has and receives one finished line back.
+// Everything that decides how a batch READS — the glyph, the field order, the anomaly split, the
+// unmeasured-reading wording — stays here; the seed transports counts and prints a string. A seam
+// that took a preformatted string instead would be the second representation this whole lane exists
+// to remove.
+//
+
+// A partition is trustworthy only if it is EXHAUSTIVE, so the line states whether it is. The counts
+// the seed can supply are passed / unaffected / deferred / failed / timed-out; if those do not add
+// up to the population the batch declared, the remainder is named rather than absorbed into one of
+// the arms. The previous version printed `0 refused` while 1,078 rows sat deferred — a category the
+// summary did not carry, supplied to the argument named `refused` — so a reader saw a clean
+// partition that had never been checked against anything.
+//
+// `refused` and `timed_out` are deliberately ABSENT rather than printed as zero: the seed has
+// neither count to give, and a displayed zero is a claim that the fold looked and found none. A
+// timed-out row reaches the seed inside the failure list, so it is already counted under `failed`;
+// carrying a separate zero beside it would have been a silent claim AND a double-count hazard.
+fn ci_population_reconciliation_text(declared: Nat, classified: Nat) -> String {
+  if classified == declared {
+    ""
+  } else if classified < declared {
+    join([" (", to_string(declared - classified), " of ", to_string(declared), " unclassified)"], "")
+  } else {
+    join([" (over-counted: ", to_string(classified), " classified against a declared ", to_string(declared), ")"], "")
+  }
+}
+
+// DEFERRED IS NOT A CLASSIFICATION OF THE DECLARED POPULATION, it is a population beside it: a
+// deferred row never entered the run the declared count describes. Summing it in reported
+// "over-counted: 10562 classified against a declared 9478" on a HEALTHY run — a false anomaly in the
+// very line whose job is to catch a real one, which is worse than not reconciling at all because it
+// teaches a reader to ignore the parenthetical. The reconciliation covers exactly the rows the run
+// disposed of; deferred is printed beside it as its own number.
+fn ci_batch_summary_text(
+  batch_index: Nat,
+  batch_label: NonEmptyStr,
+  declared_population: Nat,
+  passed: Nat,
+  unaffected: Nat,
+  deferred: Nat,
+  failed: Nat,
+  work: Nanosecond,
+) -> String {
+  let classified = passed + unaffected + failed
+  ci_render_line(
+    line: RenderedLine {
+      glyph: if failed > 0 { NodeFailed } else { NodeCompleted },
+      text: join([
+        batch_label,
+        " — ",
+        to_string(passed), " passed · ",
+        to_string(unaffected), " unaffected · ",
+        to_string(deferred), " deferred · ",
+        to_string(failed), " failed · ",
+        ci_measured_elapsed_text(m: MeasuredValue { value: work }),
+        " work",
+        ci_population_reconciliation_text(declared: declared_population, classified: classified),
+      ], ""),
+      attention: if failed > 0 { Anomaly } else { Ambient }
+    },
+    tier: Ascii,
+  )
 }

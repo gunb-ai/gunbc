@@ -1,0 +1,643 @@
+module gunbc.source_admission_selection
+// Compile-clean's source-transition selection, independent of tools.dag_compile_clean_scope (the import-closure SemanticEntrySelection). The two join only at the final verdict. This landing does not wire the axis into production compile-clean and does not delete compile_clean_census_fill_hard_diagnostics.
+
+import std.types { String, Bool, List, Int, NonEmptyStr }
+import std.content_hash {
+  Fnv1a64Structural,
+  Sha1Digest,
+  Sha1DigestHex,
+  content_hash_atom,
+  content_hash_eq_structural,
+}
+import std.keyed_row { KeyedRow }
+import std.change {
+  KeyedDiffHunk,
+  KeyedDiffAddedHunk,
+  KeyedDiffRemovedHunk,
+  KeyedDiffModifiedHunk,
+  keyed_two_way_diff,
+}
+import extdeps.git.object_store {
+  GitObjectId,
+  GitSha1ObjectId,
+  git_object_id_eq,
+}
+import gunbc.namespace_reference_derived_closure_admission {
+  ReferenceDerivedClosureTrigger,
+  P2aStructuralCandidateProducer7515,
+}
+
+type AdmissionMechanismRoot {
+  realization_file: NonEmptyStr
+  function_name: NonEmptyStr
+}
+
+// src/v1 is not in witness_layer_roots, so mechanism identity is a separate axis from the compile-clean active-source manifest: a tokenize_artifact edit cannot appear as an IncrementalSources path-diff of corpus files. Until self-host, the executing admission path is the seed: tokenize_artifact, parse_with_table_at / parse_module, admit_source_annotations, attach_annotations / admit_annotations, and alloc_occurrence_id. A .dag-only identity is MechanismIdentityUnobservable, not an identity. Omitting the seed is broken by construction. transform_content_digest and hashing those five files whole are both rejected: file-grain is still a roster, and a parse-only edit of v1_compiler_parse.rs would EntireHead the corpus. Identity is the reachable-declaration closure of those roots, which gunbc.namespace_reference_derived_closure cannot yet produce (production admissions Unavailable; closing witness red on purpose). Seed-Rust declaration closure is likewise uncomputable (rustc dep-info is file/crate grain). Do not substitute a 4-file or 38-file module union.
+data admission_mechanism_seed_roots: List<AdmissionMechanismRoot> = [
+  AdmissionMechanismRoot {
+    realization_file: "src/v1/stage0/src/v1_compiler_tokenize.rs" as NonEmptyStr,
+    function_name: "tokenize_artifact" as NonEmptyStr,
+  },
+  AdmissionMechanismRoot {
+    realization_file: "src/v1/stage0/src/v1_compiler_parse.rs" as NonEmptyStr,
+    function_name: "parse_with_table_at" as NonEmptyStr,
+  },
+  AdmissionMechanismRoot {
+    realization_file: "src/v1/stage0/src/v1_compiler_parse.rs" as NonEmptyStr,
+    function_name: "parse_module" as NonEmptyStr,
+  },
+  AdmissionMechanismRoot {
+    realization_file: "src/v1/stage0/src/v1_compiler_annotation_bind.rs" as NonEmptyStr,
+    function_name: "admit_source_annotations" as NonEmptyStr,
+  },
+  AdmissionMechanismRoot {
+    realization_file: "src/v1/stage0/src/std_source_annotation.rs" as NonEmptyStr,
+    function_name: "attach_annotations" as NonEmptyStr,
+  },
+  AdmissionMechanismRoot {
+    realization_file: "src/v1/stage0/src/std_source_annotation.rs" as NonEmptyStr,
+    function_name: "admit_annotations" as NonEmptyStr,
+  },
+  AdmissionMechanismRoot {
+    realization_file: "src/v1/stage0/src/std_occurrence_identity.rs" as NonEmptyStr,
+    function_name: "alloc_occurrence_id" as NonEmptyStr,
+  },
+]
+
+// dissolve-on: admission-mechanism-executing-realization — mechanism-identity inputs change from SeedRustExecuting to SelfEmittedExecuting when resolved_graph_from_sources_with_index and parse_census_fill_sources stop binding the seed functions in admission_mechanism_seed_roots and bind a self-emitted realization instead. That transition is a known mechanism-identity change (EntireHeadCorpusAffected), not a later discovery. The trigger is the call-site binding of the admission path, not a neighbouring tokenize frontier row.
+type ExecutingAdmissionRealization
+  = SeedRustExecuting
+  | SelfEmittedExecuting
+
+type ComputedMechanismIdentity {
+  executing: ExecutingAdmissionRealization
+  digest: Fnv1a64Structural
+}
+
+type SeedDeclarationClosureStanding
+  = SeedDeclarationClosureUnavailable
+  | SeedDeclarationClosureComputed { digest: Fnv1a64Structural }
+
+type MechanismIdentityUnobservableCause {
+  modeled_trigger: ReferenceDerivedClosureTrigger
+  seed_standing: SeedDeclarationClosureStanding
+}
+
+type AnnotationMechanismIdentity
+  = MechanismIdentityComputed { computed: ComputedMechanismIdentity }
+  | MechanismIdentityUnobservable { cause: MechanismIdentityUnobservableCause }
+
+type ActiveSourceIdentity {
+  module_path: String
+  path: String
+  content_digest: Fnv1a64Structural
+}
+
+type NonEmptyActiveSourceIdentities {
+  head: ActiveSourceIdentity
+  tail: List<ActiveSourceIdentity>
+}
+
+type SourcePoolFile {
+  root_ordinal: Int
+  module_path: String
+  path: String
+  content_digest: Fnv1a64Structural
+}
+
+type NonEmptySourceKeys {
+  head: String
+  tail: List<String>
+}
+
+type ManifestUnobservableCause
+  = EmptyUniverse
+  | IncompleteWalk { expected_keys: NonEmptySourceKeys, observed_count: Int }
+  | DuplicateModulePath { module_path: String }
+
+type ActiveSourceManifest
+  = ManifestObserved { rows: NonEmptyActiveSourceIdentities }
+  | ManifestUnobservable { cause: ManifestUnobservableCause }
+
+type AnnotationCorpusAdmitted {
+  tree: GitObjectId
+  mechanism: ComputedMechanismIdentity
+  manifest: NonEmptyActiveSourceIdentities
+  admitted: NonEmptyActiveSourceIdentities
+}
+
+type AnnotationCorpusInductionStanding
+  = AwaitingComputedMechanismIdentity { tree: GitObjectId }
+  | AwaitingAdmittedSourceJoin { tree: GitObjectId, mechanism: ComputedMechanismIdentity }
+  | CorpusAdmitted { receipt: AnnotationCorpusAdmitted }
+
+type SourceTransitionRefusalCause
+  = BaseReceiptAbsent
+  | BaseReceiptTreeMismatch
+  | TransitionManifestUnobservable
+  | NotMergeTree
+  | TransitionMechanismIdentityUnobservable
+
+// TWO INDEPENDENT SELECTIONS, joined only at the compile-clean verdict. SemanticEntrySelection (tools.dag_compile_clean_scope) walks the import-closure relation. SourceAdmissionSelection walks the source-transition relation: head active-source rows whose selected identity, path, or content digest differ from an exact base AnnotationCorpusAdmitted receipt, compared through the same primary-precedence view MultiEntryIndex uses (build_module_index_primary_precedence), never raw git paths. IncrementalSources is legitimate only when the base carries that receipt, both sides share a Computed mechanism identity, both manifests are ManifestObserved, and the evaluated tree is the one that would merge. EntireHeadCorpusAffected is the exact dependency result of a known mechanism-identity change, not an absorbing fallback. SourceTransitionRefused never selects files. B remains rejected: admission is not fused into index construction.
+// The live compile-clean MultiEntryIndex (witness_layer_roots: dag then src/v2) had 0 shadowed modules and 0 path collisions when this axis was specified, so the higher-precedence-delete-exposes-lower-precedence RED is a synthetic two-root fixture for an uninhabited law, not a specimen drawn from the corpus. The inverse control (deleting a shadowed loser is a no-op on the active map though git shows a delete) is the spurious-work direction.
+type SourceAdmissionSelection
+  = IncrementalSources { changed: NonEmptyActiveSourceIdentities }
+  | UnchangedNoop { base: GitObjectId, head: GitObjectId }
+  | EntireHeadCorpusAffected {
+      head: GitObjectId
+      base_mechanism: ComputedMechanismIdentity
+      head_mechanism: ComputedMechanismIdentity
+    }
+  | SourceTransitionRefused {
+      cause: SourceTransitionRefusalCause
+      base_tree: GitObjectId
+      head_tree: GitObjectId
+    }
+
+fn nonempty_active_sources_all(rows: NonEmptyActiveSourceIdentities) -> List<ActiveSourceIdentity> {
+  concat([rows.head], rows.tail)
+}
+
+fn nonempty_active_sources_from_list(
+  rows: List<ActiveSourceIdentity>
+) -> NonEmptyActiveSourceIdentities? {
+  match first(rows) {
+    Absent => none
+    Present { value: head } =>
+      Present {
+        value: NonEmptyActiveSourceIdentities {
+          head: head,
+          tail: skip(rows, 1),
+        },
+      }
+  }
+}
+
+fn nonempty_source_keys_from_list(keys: List<String>) -> NonEmptySourceKeys? {
+  match first(keys) {
+    Absent => none
+    Present { value: head } =>
+      Present {
+        value: NonEmptySourceKeys {
+          head: head,
+          tail: skip(keys, 1),
+        },
+      }
+  }
+}
+
+fn nonempty_source_keys_all(keys: NonEmptySourceKeys) -> List<String> {
+  concat([keys.head], keys.tail)
+}
+
+fn string_count_eq(items: List<String>, wanted: String) -> Int {
+  fold(items, init: 0, f: fn(n, item) {
+    if item == wanted {
+      n + 1
+    } else {
+      n
+    }
+  })
+}
+
+fn string_list_has_duplicate(items: List<String>) -> Bool {
+  items |> any(item => string_count_eq(items: items, wanted: item) > 1)
+}
+
+fn first_duplicate_string(items: List<String>) -> String? {
+  fold(items, init: none, f: fn(acc, item) {
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent =>
+        if string_count_eq(items: items, wanted: item) > 1 {
+          Present { value: item }
+        } else {
+          none
+        }
+    }
+  })
+}
+
+fn string_in_list(items: List<String>, wanted: String) -> Bool {
+  items |> any(item => item == wanted)
+}
+
+fn string_lists_identity_join(expected: List<String>, observed: List<String>) -> Bool {
+  !(string_list_has_duplicate(items: expected))
+    && !(string_list_has_duplicate(items: observed))
+    && expected |> all(e => string_in_list(items: observed, wanted: e))
+    && observed |> all(o => string_in_list(items: expected, wanted: o))
+}
+
+fn active_source_identity_eq(left: ActiveSourceIdentity, right: ActiveSourceIdentity) -> Bool {
+  left.module_path == right.module_path
+    && left.path == right.path
+    && content_hash_eq_structural(left: left.content_digest, right: right.content_digest)
+}
+
+fn active_source_in_list(
+  items: List<ActiveSourceIdentity>,
+  wanted: ActiveSourceIdentity
+) -> Bool {
+  items |> any(item => active_source_identity_eq(left: item, right: wanted))
+}
+
+fn active_source_lists_identity_join(
+  expected: List<ActiveSourceIdentity>,
+  observed: List<ActiveSourceIdentity>
+) -> Bool {
+  let expected_keys = map(expected, r => r.module_path)
+  let observed_keys = map(observed, r => r.module_path)
+  !(string_list_has_duplicate(items: expected_keys))
+    && !(string_list_has_duplicate(items: observed_keys))
+    && expected |> all(e => active_source_in_list(items: observed, wanted: e))
+    && observed |> all(o => active_source_in_list(items: expected, wanted: o))
+}
+
+fn executing_admission_realization_eq(
+  left: ExecutingAdmissionRealization,
+  right: ExecutingAdmissionRealization
+) -> Bool {
+  match left {
+    SeedRustExecuting =>
+      match right {
+        SeedRustExecuting => true
+        SelfEmittedExecuting => false
+      }
+    SelfEmittedExecuting =>
+      match right {
+        SeedRustExecuting => false
+        SelfEmittedExecuting => true
+      }
+  }
+}
+
+fn computed_mechanism_identity_eq(
+  left: ComputedMechanismIdentity,
+  right: ComputedMechanismIdentity
+) -> Bool {
+  executing_admission_realization_eq(left: left.executing, right: right.executing)
+    && content_hash_eq_structural(left: left.digest, right: right.digest)
+}
+
+fn source_pool_file_as_identity(file: SourcePoolFile) -> ActiveSourceIdentity {
+  ActiveSourceIdentity {
+    module_path: file.module_path,
+    path: file.path,
+    content_digest: file.content_digest,
+  }
+}
+
+fn find_source_pool_file_for_module(
+  files: List<SourcePoolFile>,
+  module_path: String
+) -> SourcePoolFile? {
+  fold(files, init: none, f: fn(found, file) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        if file.module_path == module_path {
+          Present { value: file }
+        } else {
+          none
+        }
+    }
+  })
+}
+
+fn remove_source_pool_files_for_module(
+  files: List<SourcePoolFile>,
+  module_path: String
+) -> List<SourcePoolFile> {
+  fold(files, init: [], f: fn(acc, file) {
+    if file.module_path == module_path {
+      acc
+    } else {
+      concat(acc, [file])
+    }
+  })
+}
+
+fn upsert_primary_precedence_source_pool_file(
+  acc: List<SourcePoolFile>,
+  file: SourcePoolFile
+) -> List<SourcePoolFile> {
+  match find_source_pool_file_for_module(files: acc, module_path: file.module_path) {
+    Absent => concat(acc, [file])
+    Present { value: incumbent } =>
+      if file.root_ordinal < incumbent.root_ordinal {
+        concat(
+          remove_source_pool_files_for_module(files: acc, module_path: file.module_path),
+          [file]
+        )
+      } else {
+        acc
+      }
+  }
+}
+
+fn project_active_source_rows(files: List<SourcePoolFile>) -> List<ActiveSourceIdentity> {
+  map(
+    fold(files, init: [], f: fn(acc, file) {
+      upsert_primary_precedence_source_pool_file(acc: acc, file: file)
+    }),
+    file => source_pool_file_as_identity(file: file)
+  )
+}
+
+fn admit_active_source_manifest(
+  rows: List<ActiveSourceIdentity>,
+  expected_keys: List<String>
+) -> ActiveSourceManifest {
+  match nonempty_source_keys_from_list(keys: expected_keys) {
+    Absent => ManifestUnobservable { cause: EmptyUniverse }
+    Present { value: expected_ne } =>
+      match first_duplicate_string(items: expected_keys) {
+        Present { value: dup } =>
+          ManifestUnobservable {
+            cause: DuplicateModulePath { module_path: dup },
+          }
+        Absent =>
+          match first_duplicate_string(items: map(rows, r => r.module_path)) {
+            Present { value: dup } =>
+              ManifestUnobservable {
+                cause: DuplicateModulePath { module_path: dup },
+              }
+            Absent =>
+              if string_lists_identity_join(
+                expected: expected_keys,
+                observed: map(rows, r => r.module_path)
+              ) {
+                match nonempty_active_sources_from_list(rows: rows) {
+                  Absent => ManifestUnobservable {
+                    cause: IncompleteWalk {
+                      expected_keys: expected_ne,
+                      observed_count: 0,
+                    },
+                  }
+                  Present { value: observed } => ManifestObserved { rows: observed }
+                }
+              } else {
+                ManifestUnobservable {
+                  cause: IncompleteWalk {
+                    expected_keys: expected_ne,
+                    observed_count: fold(rows, init: 0, f: fn(n, _) { n + 1 }),
+                  },
+                }
+              }
+          }
+      }
+  }
+}
+
+fn mint_annotation_corpus_admitted(
+  tree: GitObjectId,
+  mechanism: AnnotationMechanismIdentity,
+  manifest: ActiveSourceManifest,
+  admitted: List<ActiveSourceIdentity>
+) -> AnnotationCorpusAdmitted? {
+  match mechanism {
+    MechanismIdentityUnobservable { cause: _ } => none
+    MechanismIdentityComputed { computed: computed } =>
+      match manifest {
+        ManifestUnobservable { cause: _ } => none
+        ManifestObserved { rows: rows } =>
+          if active_source_lists_identity_join(
+            expected: nonempty_active_sources_all(rows: rows),
+            observed: admitted
+          ) {
+            match nonempty_active_sources_from_list(rows: admitted) {
+              Absent => none
+              Present { value: admitted_ne } =>
+                Present {
+                  value: AnnotationCorpusAdmitted {
+                    tree: tree,
+                    mechanism: computed,
+                    manifest: rows,
+                    admitted: admitted_ne,
+                  },
+                }
+            }
+          } else {
+            none
+          }
+      }
+  }
+}
+
+// compile_clean_census_fill_hard_diagnostics stays the differential oracle. Delete it only in the diff that lands all of: via-index admission green; file-locality executed; changed out-of-closure source RED; untouched-source-plus-mechanism-change RED; departure/precedence control; unobservable-transition refuses; exact population join; differential equivalence with that census across a controlled transition matrix; and an independent cold whole-corpus execution still green as a falsifier of incremental selection. This module does not satisfy that set: IncrementalSources is not production-wired, and AnnotationCorpusAdmitted cannot be minted while mechanism identity is unobservable.
+fn production_annotation_mechanism_identity() -> AnnotationMechanismIdentity {
+  MechanismIdentityUnobservable {
+    cause: MechanismIdentityUnobservableCause {
+      modeled_trigger: P2aStructuralCandidateProducer7515,
+      seed_standing: SeedDeclarationClosureUnavailable,
+    },
+  }
+}
+
+// gunbc#8201 merge commit. AnnotationCorpusAdmitted may be minted only against this exact tree, after a census that identity-joins the active-source manifest, under a Computed mechanism identity. Main has moved since that merge; a receipt against any later tree is not this induction base. Completeness is an identity join over admitted source identities, never diagnostic-count-is-zero. This landing does not mint the receipt: production_annotation_mechanism_identity is Unobservable.
+data annotation_corpus_induction_base_tree: GitObjectId = GitSha1ObjectId {
+  digest: Sha1Digest { hex: "a85594dc557386f4c85d9bc6d7be057325b75c58" as Sha1DigestHex },
+}
+
+fn annotation_corpus_induction_standing() -> AnnotationCorpusInductionStanding? {
+  match production_annotation_mechanism_identity() {
+    MechanismIdentityUnobservable { cause: _ } =>
+      Present {
+        value: AwaitingComputedMechanismIdentity { tree: annotation_corpus_induction_base_tree },
+      }
+    MechanismIdentityComputed { computed: computed } =>
+      Present {
+        value: AwaitingAdmittedSourceJoin {
+          tree: annotation_corpus_induction_base_tree,
+          mechanism: computed,
+        },
+      }
+  }
+}
+
+fn refused_selection(
+  cause: SourceTransitionRefusalCause,
+  base_tree: GitObjectId,
+  head_tree: GitObjectId
+) -> SourceAdmissionSelection {
+  SourceTransitionRefused {
+    cause: cause,
+    base_tree: base_tree,
+    head_tree: head_tree,
+  }
+}
+
+fn hunk_admission_rows(
+  hunk: KeyedDiffHunk<String, ActiveSourceIdentity>
+) -> List<ActiveSourceIdentity> {
+  match hunk {
+    KeyedDiffAddedHunk { hunk_key: _, to: row } => [row]
+    KeyedDiffModifiedHunk { hunk_key: _, from: _, to: row } => [row]
+    KeyedDiffRemovedHunk { hunk_key: _, from: _ } => []
+  }
+}
+
+fn select_from_observed_manifests(
+  base_tree: GitObjectId,
+  head_tree: GitObjectId,
+  base_rows: NonEmptyActiveSourceIdentities,
+  head_rows: NonEmptyActiveSourceIdentities
+) -> SourceAdmissionSelection {
+  let patch = keyed_two_way_diff(
+    left: map(nonempty_active_sources_all(rows: base_rows), r =>
+      KeyedRow { row_key: r.module_path, value: r }
+    ),
+    right: map(nonempty_active_sources_all(rows: head_rows), r =>
+      KeyedRow { row_key: r.module_path, value: r }
+    ),
+    key_eq: (a, b) => a == b,
+    value_eq: active_source_identity_eq,
+  )
+  let changed = flat_map(patch.hunks, h => hunk_admission_rows(hunk: h))
+  match nonempty_active_sources_from_list(rows: changed) {
+    Absent => UnchangedNoop { base: base_tree, head: head_tree }
+    Present { value: changed_ne } => IncrementalSources { changed: changed_ne }
+  }
+}
+
+fn select_source_admission(
+  evaluating_merge_tree: Bool,
+  base_tree: GitObjectId,
+  head_tree: GitObjectId,
+  base_receipt: AnnotationCorpusAdmitted?,
+  head_mechanism: AnnotationMechanismIdentity,
+  head_manifest: ActiveSourceManifest
+) -> SourceAdmissionSelection {
+  if evaluating_merge_tree == false {
+    refused_selection(cause: NotMergeTree, base_tree: base_tree, head_tree: head_tree)
+  } else {
+    match head_manifest {
+      ManifestUnobservable { cause: _ } =>
+        refused_selection(
+          cause: TransitionManifestUnobservable,
+          base_tree: base_tree,
+          head_tree: head_tree,
+        )
+      ManifestObserved { rows: head_rows } =>
+        match head_mechanism {
+          MechanismIdentityUnobservable { cause: _ } =>
+            refused_selection(
+              cause: TransitionMechanismIdentityUnobservable,
+              base_tree: base_tree,
+              head_tree: head_tree,
+            )
+          MechanismIdentityComputed { computed: head_computed } =>
+            match base_receipt {
+              Absent =>
+                refused_selection(
+                  cause: BaseReceiptAbsent,
+                  base_tree: base_tree,
+                  head_tree: head_tree,
+                )
+              Present { value: receipt } =>
+                if git_object_id_eq(left: receipt.tree, right: base_tree) == false {
+                  refused_selection(
+                    cause: BaseReceiptTreeMismatch,
+                    base_tree: base_tree,
+                    head_tree: head_tree,
+                  )
+                } else if computed_mechanism_identity_eq(
+                  left: receipt.mechanism,
+                  right: head_computed
+                ) == false {
+                  EntireHeadCorpusAffected {
+                    head: head_tree,
+                    base_mechanism: receipt.mechanism,
+                    head_mechanism: head_computed,
+                  }
+                } else {
+                  select_from_observed_manifests(
+                    base_tree: base_tree,
+                    head_tree: head_tree,
+                    base_rows: receipt.admitted,
+                    head_rows: head_rows,
+                  )
+                }
+            }
+        }
+    }
+  }
+}
+
+fn source_admission_is_incremental(sel: SourceAdmissionSelection) -> Bool {
+  match sel {
+    IncrementalSources { changed: _ } => true
+    UnchangedNoop { base: _, head: _ } => false
+    EntireHeadCorpusAffected { head: _, base_mechanism: _, head_mechanism: _ } => false
+    SourceTransitionRefused { cause: _, base_tree: _, head_tree: _ } => false
+  }
+}
+
+fn source_admission_is_unchanged_noop(sel: SourceAdmissionSelection) -> Bool {
+  match sel {
+    IncrementalSources { changed: _ } => false
+    UnchangedNoop { base: _, head: _ } => true
+    EntireHeadCorpusAffected { head: _, base_mechanism: _, head_mechanism: _ } => false
+    SourceTransitionRefused { cause: _, base_tree: _, head_tree: _ } => false
+  }
+}
+
+fn source_admission_is_entire_head(sel: SourceAdmissionSelection) -> Bool {
+  match sel {
+    IncrementalSources { changed: _ } => false
+    UnchangedNoop { base: _, head: _ } => false
+    EntireHeadCorpusAffected { head: _, base_mechanism: _, head_mechanism: _ } => true
+    SourceTransitionRefused { cause: _, base_tree: _, head_tree: _ } => false
+  }
+}
+
+fn source_admission_refusal_cause(
+  sel: SourceAdmissionSelection
+) -> SourceTransitionRefusalCause? {
+  match sel {
+    IncrementalSources { changed: _ } => none
+    UnchangedNoop { base: _, head: _ } => none
+    EntireHeadCorpusAffected { head: _, base_mechanism: _, head_mechanism: _ } => none
+    SourceTransitionRefused { cause: cause, base_tree: _, head_tree: _ } =>
+      Present { value: cause }
+  }
+}
+
+fn incremental_changed_module_paths(sel: SourceAdmissionSelection) -> List<String> {
+  match sel {
+    IncrementalSources { changed: changed } =>
+      map(nonempty_active_sources_all(rows: changed), r => r.module_path)
+    UnchangedNoop { base: _, head: _ } => []
+    EntireHeadCorpusAffected { head: _, base_mechanism: _, head_mechanism: _ } => []
+    SourceTransitionRefused { cause: _, base_tree: _, head_tree: _ } => []
+  }
+}
+
+fn fixture_content_digest(label: String) -> Fnv1a64Structural {
+  content_hash_atom(value: label as NonEmptyStr)
+}
+
+fn fixture_source(
+  root_ordinal: Int,
+  module_path: String,
+  path: String,
+  label: String
+) -> SourcePoolFile {
+  SourcePoolFile {
+    root_ordinal: root_ordinal,
+    module_path: module_path,
+    path: path,
+    content_digest: fixture_content_digest(label: label),
+  }
+}
+
+fn fixture_computed_mechanism(
+  executing: ExecutingAdmissionRealization,
+  label: String
+) -> ComputedMechanismIdentity {
+  ComputedMechanismIdentity {
+    executing: executing,
+    digest: fixture_content_digest(label: label),
+  }
+}

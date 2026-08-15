@@ -48,6 +48,13 @@ import extdeps.http.client
 import extdeps.shell
 import extdeps.shell.exec
 import extdeps.filesystem.filesystem_io
+import extdeps.tools.npm
+import gunbc.host_cli_dependency {
+  observe_host_cli_dependency,
+  HostCliDependencyAbsent,
+  host_dependency_absent_wire,
+  first_absent_codex_wet_materialization_host_cli_dependency,
+}
 import extdeps.tools.sha512sum {
   sha512sum_observe_file,
   Sha512FileObserved,
@@ -1908,6 +1915,47 @@ type CodexRuntimeMaterialization
       existing_root: FilePath
       cause: NonEmptyStr
     }
+  | CodexRuntimeHostDependencyRefused {
+      tool: NonEmptyStr
+      hint: String
+    }
+
+fn require_npm_host_dependency_for_materialization() -> CodexRuntimeMaterialization? {
+  match first_absent_codex_wet_materialization_host_cli_dependency() {
+    Present { value: HostCliDependencyAbsent { tool, hint } } =>
+      Present {
+        value: CodexRuntimeHostDependencyRefused { tool: tool, hint: hint },
+      }
+    Absent => none
+  }
+}
+
+fn codex_runtime_materialization_failure_receipt(
+  outcome: CodexRuntimeMaterialization,
+) -> String {
+  let generic = match codex_runtime_materialization_refusal_reason(outcome: outcome) {
+    Present { value: reason } => reason as String
+    Absent => ""
+  }
+  match outcome {
+    CodexRuntimeHostDependencyRefused { tool, hint } =>
+      host_dependency_absent_wire(tool: tool, hint: hint)
+    CodexRuntimeMaterialized { bundle: _ } => generic
+    CodexRuntimeLockRefused { admission: _ } => generic
+    CodexRuntimeExactClosureRefused { closure: _ } => generic
+    CodexRuntimeTargetObservationRefused { observation: _ } => generic
+    CodexRuntimeAcquisitionRefused { acquisition: _ } => generic
+    CodexRuntimeWorkspaceRefused { cause: _ } => generic
+    CodexRuntimeCacheSeedRefused { path: _, stderr: _ } => generic
+    CodexRuntimeNpmCiOfflineRefused { stderr: _ } => generic
+    CodexRuntimeExecutableAbsent { path: _ } => generic
+    CodexRuntimePlatformPackageAbsent { path: _ } => generic
+    CodexRuntimeIdentityObservationRefused => generic
+    CodexRuntimeReceiptObservationRefused { cause: _ } => generic
+    CodexRuntimeReleaseRefused { cause: _ } => generic
+    CodexRuntimeMaterializationReuseMismatch { existing_root: _, cause: _ } => generic
+  }
+}
 
 fn codex_runtime_materialization_refusal_reason(
   outcome: CodexRuntimeMaterialization,
@@ -1936,6 +1984,8 @@ fn codex_runtime_materialization_refusal_reason(
     CodexRuntimeReceiptObservationRefused { cause } => Present { value: cause }
     CodexRuntimeReleaseRefused { cause } => Present { value: cause }
     CodexRuntimeMaterializationReuseMismatch { existing_root: _, cause } => Present { value: cause }
+    CodexRuntimeHostDependencyRefused { tool: _, hint: _ } =>
+      Present { value: "codex runtime host dependency refused" as NonEmptyStr }
   }
 }
 
@@ -2190,7 +2240,10 @@ fn materialize_codex_runtime_bundle(
   source: AdmittedCodexRuntimeSource,
   release_parent: FilePath,
 ) -> CodexRuntimeMaterialization {
-  match admit_codex_package_lock_text(text: source.lock_bytes) {
+  match require_npm_host_dependency_for_materialization() {
+    Present { value: refused } => refused
+    Absent =>
+      match admit_codex_package_lock_text(text: source.lock_bytes) {
     CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
       match observe_codex_npm_runtime_target() {
         CodexNpmRuntimeTargetObserved { target } =>
@@ -2316,5 +2369,6 @@ fn materialize_codex_runtime_bundle(
         other => CodexRuntimeTargetObservationRefused { observation: other }
       }
     other => CodexRuntimeLockRefused { admission: other }
+      }
   }
 }
