@@ -16,6 +16,7 @@ import extdeps.github.actions {
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
+import gunbc.ci_layer_roots { witness_layer_roots }
 import std.types { List, String, Int }
 
 // THE ONLY CI EMISSION THIS REPOSITORY HAS.
@@ -136,9 +137,21 @@ fn witness_floor_build_step() -> Step {
   }
 }
 
+// The source-root flags are FOLDED from gunbc.ci_layer_roots witness_layer_roots, never spelled
+// here. That authority is what the compile-clean closure and the divergence census already read,
+// so a literal list in this emitter would be a second representation of it (DESIGN §3) -- and the
+// rung drop is invisible exactly while the bytes still agree, because the copy typechecks and
+// looks finished. It went in as a literal on the first authoring of this file and is corrected
+// here; the class was named by tidy-gull-813 on a sibling lane, same day, from its own migration.
+fn witness_floor_source_root_flags() -> String {
+  fold(witness_layer_roots, init: "", f: fn(acc, root) {
+    concat(acc, concat(" --source-root \"$ROOT/", concat(root, "\"")))
+  })
+}
+
 // ONE INVOCATION OF OUR OWN BINARY. Everything the run decides -- which witnesses exist, what
 // identity each has, which frame it needs, and whether the roster is admissible at all -- is
-// decided in .dag by v2.workflow.required_floor. This step passes the two source roots and
+// decided in .dag by v2.workflow.required_floor. This step passes the source roots and
 // nothing else: there is no plan entry, no plan function, no batch id, no worker role and no
 // selection flag, because the fold has no such concepts to configure.
 fn witness_floor_run_script() -> String {
@@ -146,7 +159,7 @@ fn witness_floor_run_script() -> String {
     concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
     concat(
       "\"$ROOT/target/release/claim_executor\" --required-floor",
-      " --source-root \"$ROOT/dag\" --source-root \"$ROOT/src/v2\"\n"
+      concat(witness_floor_source_root_flags(), "\n")
     )
   )
 }
