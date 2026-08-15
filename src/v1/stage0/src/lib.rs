@@ -167,6 +167,7 @@ pub mod module_path_index;
 pub mod recorded_fixture;
 pub mod resolved_graph_cache;
 pub mod shared_typecheck_store;
+pub mod source_closure;
 pub mod usv_pilot_v2_std_algebra;
 pub mod usv_pilot_v2_std_collection;
 pub mod usv_pilot_v2_std_node;

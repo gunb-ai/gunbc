@@ -150,19 +150,8 @@ fn module_index() -> &'static std::collections::HashMap<String, std::path::PathB
     MODULE_INDEX.get_or_init(build_module_index)
 }
 
-fn extract_imports(source: &str) -> Vec<String> {
-    let result = parse_source(source);
-    match &result.module {
-        Some(module) => v1_compiler::v1_std_core::module_imports(module.clone())
-            .iter()
-            .map(|imp| imp.name.clone())
-            .collect(),
-        None => vec![],
-    }
-}
-
 pub fn resolve_imports_transitively(entry_path: &str, entry_content: &str) -> Vec<Rc<SourceFile>> {
-    resolve_imports_transitively_with_index(entry_path, entry_content, module_index())
+    resolve_references_transitively_for_roots(entry_path, entry_content, &source_roots())
 }
 
 pub fn resolve_imports_transitively_with_source_roots(
@@ -170,8 +159,7 @@ pub fn resolve_imports_transitively_with_source_roots(
     entry_content: &str,
     source_roots: &[std::path::PathBuf],
 ) -> Vec<Rc<SourceFile>> {
-    let index = build_module_index_for_roots(source_roots);
-    resolve_imports_transitively_with_index(entry_path, entry_content, &index)
+    resolve_references_transitively_for_roots(entry_path, entry_content, source_roots)
 }
 
 fn display_source_path(path: &std::path::Path, ws: &std::path::Path) -> String {
@@ -181,43 +169,50 @@ fn display_source_path(path: &std::path::Path, ws: &std::path::Path) -> String {
         .to_string()
 }
 
-fn resolve_imports_transitively_with_index(
+/// Declaration index over a root set, memoized per root set per thread.
+///
+/// Building it parses every candidate file, so it is paid once per thread and
+/// shared by every test that thread runs. It is thread-local rather than a
+/// process-wide static because the index holds `Rc<SourceFile>`, which is
+/// neither `Send` nor `Sync`.
+fn declaration_index_for(
+    roots: &[std::path::PathBuf],
+) -> Rc<v1_compiler::source_closure::DeclarationIndex> {
+    thread_local! {
+        static CACHE: std::cell::RefCell<
+            HashMap<String, Rc<v1_compiler::source_closure::DeclarationIndex>>,
+        > = std::cell::RefCell::new(HashMap::new());
+    }
+    let key = roots
+        .iter()
+        .map(|r| r.to_string_lossy().to_string())
+        .collect::<Vec<_>>()
+        .join("|");
+    if let Some(hit) = CACHE.with(|c| c.borrow().get(&key).cloned()) {
+        return hit;
+    }
+    let ws = workspace_root();
+    let (index, unparsed) = v1_compiler::source_closure::build_declaration_index(roots, &ws);
+    assert!(
+        unparsed.is_empty(),
+        "declaration index refuses: {} source file(s) under {:?} did not parse, so the pool \
+         would have a hole in it: {:?}",
+        unparsed.len(),
+        roots,
+        unparsed.iter().take(5).collect::<Vec<_>>()
+    );
+    let index = Rc::new(index);
+    CACHE.with(|c| c.borrow_mut().insert(key, index.clone()));
+    index
+}
+
+fn resolve_references_transitively_for_roots(
     entry_path: &str,
     entry_content: &str,
-    module_index: &std::collections::HashMap<String, std::path::PathBuf>,
+    roots: &[std::path::PathBuf],
 ) -> Vec<Rc<SourceFile>> {
-    let ws = workspace_root();
-    let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
-    let mut queue: Vec<(String, String)> = Vec::new(); // (path, content)
-
-    queue.push((entry_path.to_string(), entry_content.to_string()));
-
-    while let Some((_path, content)) = queue.pop() {
-        let imports = extract_imports(&content);
-        for module_path in imports {
-            if seen.contains_key(&module_path) {
-                continue; // already loaded — O(1) check
-            }
-            if let Some(file_path) = module_index.get(&module_path) {
-                if let Ok(file_content) = std::fs::read_to_string(file_path) {
-                    let rel_path = display_source_path(file_path, &ws);
-                    let source = Rc::new(SourceFile {
-                        path: rel_path.clone(),
-                        content: file_content.clone(),
-                    });
-                    seen.insert(module_path.clone(), source);
-                    queue.push((rel_path, file_content));
-                }
-            }
-        }
-    }
-
-    let mut sources: Vec<Rc<SourceFile>> = seen.into_iter().map(|(_, v)| v).collect();
-    sources.push(Rc::new(SourceFile {
-        path: entry_path.to_string(),
-        content: entry_content.to_string(),
-    }));
-    sources
+    let index = declaration_index_for(roots);
+    v1_compiler::source_closure::closure_for_entry(entry_path, entry_content, &index)
 }
 
 fn analyze_complexity_options() -> Rc<CompilePipelineOptions> {
