@@ -167,10 +167,10 @@ fn differential_pair_base_name(signal: NonEmptyStr) -> NonEmptyStr? {
         ) as NonEmptyStr,
       }
     } else {
-      Absent
+      none
     }
   } else {
-    Absent
+    none
   }
 }
 
@@ -203,6 +203,8 @@ fn differential_pair_is_complete(scan: DifferentialPolarityScan) -> Bool {
   scan.has_positive && scan.has_negative
 }
 
+// Active-low and other single-ended _N/_M names (WE_N, RAS_N, …) with no _P mate route to
+// SingleEndedSignalContact when scan.has_negative && !scan.has_positive.
 fn classify_table4_signal(
   signal: NonEmptyStr,
   polarities: Map<NonEmptyStr, DifferentialPolarityScan>
@@ -225,7 +227,6 @@ fn classify_table4_signal(
           if differential_pair_is_complete(scan: scan) {
             DifferentialPairMemberContact { pair: base }
           } else if scan.has_negative && !scan.has_positive {
-            // Active-low and other single-ended _N/_M names (WE_N, RAS_N, …) with no _P mate.
             SingleEndedSignalContact
           } else {
             IncompleteDifferentialPolarityContact { pair: base }
