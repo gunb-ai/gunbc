@@ -2,8 +2,9 @@ module gunbc.tool_readiness
 
 import std.types { Int, List, NonEmptyStr, String }
 import std.integer { NonNegativeInt }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.tools { CliTool }
+import extdeps.tools.rustfmt { rustfmt_cli_tool }
 import extdeps.pin {
   Pin,
   PinAdmission,
@@ -68,6 +69,20 @@ type ToolReadiness
 type ToolReadinessRequest
   = PinnedToolReadinessRequest { pin: Pin<CliTool> }
   | UnpinnedToolReadinessRequest { tool: CliTool }
+
+data rustfmt_unpinned_frontier_rehome_note: String = "RE-HOMED FROM v2.workflow.ci_regen_rustfmt_path_emit BY THE v1 CUT, AND THE TRIGGER IS RE-DERIVED RATHER THAN COPIED. The row lived beside the regen job's PATH-ensure script because that script was its only consumer, and it pointed its DeclarationRef at that script. The v1 cut retired the regen job and the script with it -- but NOT the fact the row states: rustfmt is still spawned on every CI run by the build job's cargo fmt gate, and it still has no stable expected identity to pin against. So the row's subject survives its former consumer, which is why this is a re-home and not a retirement.
+
+TWO THINGS WERE DELIBERATELY NOT DONE. The trigger was not carried across unchanged: it named a declaration that no longer exists, and a DeclarationRef to a deleted symbol is the stale-citation class DESIGN section 3 rules on -- it greps clean while being false. It now names gunbc.ci_spec ci_fmt_gate_line, the live consumer that actually spawns the tool. And the row was not parked in the workflow layer beside its new consumer: the frontier is a tool-readiness concept, and this module already declares UnpinnedToolFrontierRow and already says in its own authority note that the frontier count is the migration remainder until hermetic provisioning. Home is the layer that owns the concept, not the file that happens to read it."
+
+data rustfmt_unpinned_frontier: UnpinnedToolFrontierRow = UnpinnedToolFrontierRow {
+  tool: rustfmt_cli_tool,
+  reason: "The CI fmt gate can establish rustfmt presence but cannot author a stable expected executable identity until toolchain-rust-hermetic provisions rustfmt into the declared repo-local root.",
+  trigger: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "ci_fmt_gate_line",
+    field: WholeDeclaration
+  }
+}
 
 data tool_readiness_authority_note: String = "Tool readiness is one desired-versus-observed membership reconcile, not another PATH resolver. ToolReadinessRequest is a SUM: the pinned arm carries only the pin and derives its tool from pin.subject; the unpinned arm carries only the tool. A contradictory tool plus pin.subject pair is therefore unwritable rather than checked after construction. A desired Pin<CliTool> is keyed by the subject name and compared with extdeps.pin.pin_value_eq; the observed member is derived only from the named per-tool row returned by extdeps.realization.emit_on_demand_host.observed_tool_identity, never from the aggregate toolchain_identity and never from a second digest probe. Readiness is the CONJUNCTION of two non-redundant answers: membership_reconcile decides whether an ensure/upsert remains, while admit_pin_integrity decides whether the selected pin may be trusted (notably, TrackedChannel refuses even when membership is unchanged). Any reconcile hunk returns ToolMembershipNotConverged before a path/spawn effect, so the plan gates the verdict rather than riding as decorative evidence. Missing and Duplicate are separate typed, located, counted refusals. System tools are Ensured, so removing one refuses through membership_reconcile's existing R5 wall. PinnedRefused carries no spawn/path effect. UnpinnedFrontier is not an admission and not a default: it is reachable only through one declared per-tool frontier row after a Found observation. Zero rows refuses UnpinnedToolUndeclared and multiple rows refuse UnpinnedToolFrontierDuplicate. The frontier count is the honest migration remainder until hermetic provisioning makes stable expected identities authorable."
 
