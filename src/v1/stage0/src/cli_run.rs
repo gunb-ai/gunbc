@@ -41928,13 +41928,26 @@ pub fn prepare_repository_once(
     }
     let modules_excluded = total - sources.len();
     let subject_digest = subject_digest_for_closure(&sources);
-    let (graph, source_indices) =
-        resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)?;
+    // THE SUBJECT IS STATED BY THE REFUSAL ITSELF, not only by the success path.
+    //
+    // The digest and the two counts are computed above, BEFORE the gate that can reject.
+    // Reporting them only in the `Ok` arm made a refusal unattributable by construction: the
+    // caller printed `refused: <diagnostics>` with no statement of which population, over which
+    // source roots, the compile had been run against — so two refusals over different subjects
+    // are indistinguishable in a log, and a subject that silently narrowed reads exactly like
+    // one that did not. A receipt identifying the subject must precede the gate that can reject
+    // it, so the error carries them rather than a second emit site racing the first.
+    let modules_resolved = total - modules_excluded;
+    let subject_statement = format!(
+        "subject={subject_digest} modules_resolved={modules_resolved} modules_excluded={modules_excluded}"
+    );
+    let resolved = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict);
+    let (graph, source_indices) = resolved.map_err(|e| format!("{subject_statement}\n{e}"))?;
     Ok(PreparedRepository {
         graph,
         source_indices,
         subject_digest,
-        modules_resolved: total - modules_excluded,
+        modules_resolved,
         modules_excluded,
         inventory,
     })
