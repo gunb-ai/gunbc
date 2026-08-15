@@ -1,0 +1,148 @@
+module gunbc.cli_intent
+
+import std.types { Bool, Int, NonEmptyStr, Port, String }
+import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
+
+// WHY THIS MODULE EXISTS, and what it deliberately is not.
+//
+// `cli_run.rs` was deleted whole (integration/cli-run-cut, 2026-08-15). Its four CLI verb
+// handlers are NOT ported: the operator ruled them garbage, and the measurement behind that
+// ruling is worth keeping because it is the shape this module inverts. A seven-line diagnostic
+// counter in that file transitively reached ~17k lines, because
+// compile_clean_im_vector_hard_error_count called compile_clean_diagnostic_is_hard, which read
+// the unlisted-import-use policy through a PRIVATE resolve: default_source_roots, then
+// resolve_entry_graph_shared, then make_eval_context, then an interpreter run. A projection over
+// a diagnostic list owned a compiler invocation.
+//
+// The inversion, which is DESIGN section 2's Realization shape (one evaluation, N consumers):
+// the ordinary resolve/eval path runs ONCE and PRODUCES the policy and output-decision facts;
+// projections CONSUME already-evaluated facts and hold no resolve of their own. That is why this
+// module models an intent and nothing else — it never reads a policy, never resolves, and has no
+// path to an interpreter.
+data cli_intent_inversion_note: String = "The escape hatch's mechanism, one level down: a projection that owns a compiler invocation. cli_run's compile-clean predicates were not pure functions of a diagnostic list — each re-derived the blocking policy through its own resolve, memoised in a thread_local. That is why hollowing the file in pieces kept failing: lifting the four predicates alone drags the resolve stack behind them. This module carries the opposite arrangement, and carries no compile-clean predicate at all: hard-versus-advisory derives from a diagnostic's OWN typed class, never from a policy interpreter call."
+
+// ---------------------------------------------------------------------------
+// 1. The forward reading of an argv relation that already exists
+// ---------------------------------------------------------------------------
+
+// `gunbc.cli_invoke` `gunbc_run_transport_argv` already reads this relation BACKWARD: it folds a
+// run intent into argv tokens for a transport to invoke. Parsing is the same relation read
+// FORWARD (DESIGN section 4, one grammar in both directions), so the intent shape below is the
+// thing that builder projects from, not a second private model of the same command line. A
+// separate parse-side vocabulary would be exactly the N x M adapter pair section 4 rules out.
+data argv_relation_direction_note: String = "One relation, two readings. gunbc.cli_invoke builds argv from an intent; this module decodes argv into one. Neither is the authority for the other's vocabulary — the intent IS the shared middle. When a verb gains a flag it is added here once and both directions follow, rather than a builder and a parser drifting into two spellings of one command line."
+
+type RunArg {
+  name: NonEmptyStr
+  value: String
+}
+
+type SourceSelection {
+  source_roots: List<String>
+  entry: String?
+}
+
+// ---------------------------------------------------------------------------
+// 2. The verbs
+// ---------------------------------------------------------------------------
+
+// `Ci` carries no payload because it is not a verb — in the deleted seed it was
+// `handle_ci() { handle_run_with_options(witness_layer_roots(), "main", "dag/tools/gunbc_ci.dag", ...) }`,
+// eleven lines whose entire content was a preset. It is a ROW below (`ci_preset`), so the preset
+// is data one can read, diff and re-point rather than a function one must open to discover.
+type CliVerb
+  = Compile { selection: SourceSelection, output_dir: NonEmptyStr, target: NonEmptyStr }
+  | Run { selection: SourceSelection, function: NonEmptyStr, claim_run: Bool, args: List<RunArg> }
+  | Converge { host: NonEmptyStr }
+  | Serve { selection: SourceSelection, function: NonEmptyStr, bind: ServeBinding }
+
+type ServeEvaluationBudget {
+  cpu_limit_ms: Int?
+  wall_limit_ms: Int?
+}
+
+// `revision` is a GitObjectId, NOT a String and NOT std.types CommitSha. Two reasons, one of them
+// a finding rather than a preference.
+//
+// The design reason: the seed validated `--release-revision` as exactly 40 lowercase hex BEFORE
+// compiling its graph and BEFORE binding the listener, so a process that cannot say which release
+// it is could never be routed to. That ordering was correct and load-bearing, and an ordering held
+// by convention is one refactor away from being lost. Here it is held by CONSTRUCTION: the only
+// mint for a GitObjectId at 40 hex digits is extdeps.git.object_store `git_sha1_object_id`, which
+// refuses to `Absent` rather than fabricating, so a ServeBinding carrying an unvalidated revision
+// has no constructor and an unidentifiable process cannot reach a bind. The ordering climbs from
+// "checked first" to "the invalid state has no representation" (DESIGN section 4b).
+//
+// The finding: std.types `CommitSha = String` is a bare alias with no refinement, so every string
+// inhabits it and grounding on it would have left the wall at validation. Reported rather than
+// edited — refining a load-bearing std alias is not this lane's call.
+type ServeBinding {
+  host: NonEmptyStr
+  port: Port
+  revision: GitObjectId
+  budget: ServeEvaluationBudget
+}
+
+type RunIntent {
+  verb: CliVerb
+  dry_run: Bool
+}
+
+// ---------------------------------------------------------------------------
+// 3. The intent-validation phase
+// ---------------------------------------------------------------------------
+
+// Every refusal is typed and located at the argv token that caused it. None of them is a default,
+// a widen, or a fallback: an argument this module cannot decode has no admitted reading (DESIGN
+// section 5 — a failure arm must refuse, never widen).
+type IntentRefusal
+  = NoSourceRoot
+  | RunArgMissingEquals { token: String }
+  | RunArgEmptyName { token: String }
+  | ClaimRunWithoutEntry
+  | ReleaseRevisionMalformed { text: String }
+  | ServePortOutOfRange { text: String }
+
+type IntentAdmission
+  = IntentAdmitted { intent: RunIntent }
+  | IntentRefused { refusal: IntentRefusal }
+
+// THE PHASE IS THE POINT, not the function. `RunIntent` is reachable only through an
+// `IntentAdmitted` arm, and the resolve/eval entry takes a `RunIntent` — so unvalidated argv has
+// no path to a compile. In the seed this was an ordering inside one 371-line handler ("refuse a
+// malformed --arg before the compile, so the diagnostic is the first thing printed rather than the
+// last"); a comment describing where a check sits in a control flow. Here the control flow cannot
+// be arranged the other way round.
+data intent_validation_phase_note: String = "Two orderings the deleted handlers encoded as comments are carried here as typed facts. FIRST: a malformed --arg refuses before any compile, so the diagnostic a user reads is the one about their command line rather than a compiler's complaint that arrives after a minute of work. SECOND: an unparseable release revision refuses before the graph compiles and before the listener binds. Both are now structural rather than ordered — RunArg and GitObjectId have no forgeable constructor, so an intent carrying either malformed value cannot be built, and a phase that cannot produce one cannot hand it onward. What was a comment about ordering is a statement about inhabitance."
+
+// A missing `=` and an empty name are separate arms rather than one MalformedRunArg, because they
+// are different author mistakes with different corrections: `--arg foo` forgot the value, `--arg
+// =bar` forgot the name. Collapsing them would be the state-space conflation DESIGN lists as a
+// recurring failure mode, in miniature.
+fn admit_run_arg(token: String) -> IntentRefusal? {
+  let parts = token |> split(delimiter: "=")
+  if (parts |> count) < 2 {
+    Present { value: RunArgMissingEquals { token: token } }
+  } else {
+    match parts |> first {
+      Present { value: name } =>
+        if name == "" {
+          Present { value: RunArgEmptyName { token: token } }
+        } else {
+          Absent
+        }
+      Absent => Present { value: RunArgMissingEquals { token: token } }
+    }
+  }
+}
+
+fn admit_release_revision(text: String) -> GitObjectId? {
+  git_sha1_object_id(hex: text)
+}
+
+// ---------------------------------------------------------------------------
+// 4. handle_ci, as a row
+// ---------------------------------------------------------------------------
+
+data ci_preset_entry: NonEmptyStr = "dag/tools/gunbc_ci.dag"
+data ci_preset_function: NonEmptyStr = "main"
