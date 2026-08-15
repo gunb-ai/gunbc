@@ -164,6 +164,26 @@ fn ci_cargo_build_jobs_count() -> Int {
   ))
 }
 
+// STEP IDS ARE INLINE HERE, AND THE CONDITION THAT MAKES THAT SAFE IS A FACT ABOUT THE CURRENT
+// POPULATION -- NOT A PROPERTY OF THIS CONSTRUCTION. Both ids ("release_build" below,
+// "release_bins" in ci_release_bins_unpack_verify_step) were named constants in the deleted
+// gunbc.ci_workflow: falsifier_release_build_step_id and ci_release_bins_step_id. Those
+// constants existed to BIND a step's id to the if-condition gating on it, and their only
+// consumer was gunbc.falsifier_run_control falsifier_control_prerequisite_if, which built
+// "steps.<id>.outcome == 'success'" by concat over the constant. That file went in this cut, so
+// measured at this head there is no reference to steps.release_build or steps.release_bins
+// anywhere in the tree, and inlining is safe TODAY.
+//
+// WHY IT IS RECORDED RATHER THAN SCORED SMALL: GitHub Actions resolves steps.<id> job-scoped and
+// a mismatch does not fail -- it resolves to null and the comparison is unconditionally false,
+// silently. That exact defect ran at least sixteen days across three repair attempts, one of
+// which (#7812) introduced a strictly worse version while fixing the prior one, and nineteen
+// corpus diagnostics went uncaught in the window; the history is in the deleted module's
+// falsifier_control_prerequisite_execution_proof_note (git history). The binding's only consumer
+// went with the cut. THE NEXT PERSON TO ADD AN if: GATING ON steps.release_bins.outcome WILL
+// HAND-WRITE THE STRING, AND NOTHING HERE BINDS IT TO THE ID -- that re-opens the class. If a
+// condition ever consumes either id, restore the constant first and derive both sides from it.
+// (Class and history: tidy-pike-117, 2026-08-15; consumer census verified at this head.)
 fn ci_release_build_step() -> Step {
   RunStep {
     name: Present { value: "Build release bins (claim_executor + gunbc)" },
