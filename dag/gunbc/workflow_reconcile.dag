@@ -259,6 +259,10 @@ fn workflow_fact_member_ownership(
   workflow_fact_ownership(fact: member.fact)
 }
 
+fn workflow_fact_member_key_of(member: WorkflowFactMember) -> WorkflowFactKey {
+  member.fact.key
+}
+
 fn workflow_fact_reduce_verdict(fact: WorkflowFact) -> ReduceVerdict {
   match fact.state {
     WorkflowFactSatisfied => Reduced { last_parts: 1 }
@@ -387,7 +391,7 @@ fn workflow_fact_reconcile(
     desired: workflow_fact_forest_members(forest: desired),
     observed: workflow_fact_forest_members(forest: observed),
     relation: key_relation_global(
-      key_of: fn(member) { member.fact.key },
+      key_of: workflow_fact_member_key_of,
       key_eq: workflow_fact_key_equal,
       multiplicity: KeyExactlyOne,
     ),
