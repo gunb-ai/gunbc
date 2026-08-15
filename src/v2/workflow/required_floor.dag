@@ -100,31 +100,16 @@ type RequiredFloorClaim {
   budget: Millisecond
 }
 
-// THE DISPOSITION OF EVERY DECLARED WITNESS, total by construction.
+// WHERE A DECLARED WITNESS RUNS is answered by `SiteAdmission` below, which has consumers.
 //
-// There is no `Deferred` arm, and its absence is the point. A deferral is not a disposition:
-// it says a row was not run without saying who runs it, so the population accumulates
-// silently and reads as coverage. The measured specimen this closes: 1,083 rows reported as
-// "deferred-discovery" on a run whose receipt otherwise claimed to have executed the floor.
-//
-// `ReadsLiveTree` is NOT one of these arms either, and could not be — it determines an
-// evaluation frame, not whether anything executes the row.
-type WitnessDisposition
-  = RequiredFloor
-  | ScheduledWet
-  | ScheduledLong
-  | KnownRedQuarantine
-  | DeletedNotAWitness
-
-fn disposition_is_required_floor(d: WitnessDisposition) -> Bool {
-  match d {
-    RequiredFloor => true
-    ScheduledWet => false
-    ScheduledLong => false
-    KnownRedQuarantine => false
-    DeletedNotAWitness => false
-  }
-}
+// A `WitnessDisposition` coproduct and its `disposition_is_required_floor` predicate stood here
+// and were read by nothing -- an unconsumed taxonomy beside the live one, which is the §3 dual
+// representation with the weaker half winning by being cheaper to write. Deleted rather than
+// wired up: the arm a deferral needs (who runs it instead) is exactly what `SiteAdmission`
+// carries, and one fact wants one carrier. Its rule survives in that carrier's shape -- there is
+// no bare `Deferred` arm, because a deferral that does not name its cadence accumulates silently
+// and reads as coverage. The measured specimen: 1,083 rows reported as "deferred-discovery" on a
+// run whose receipt otherwise claimed to have executed the floor.
 
 // A file's module path, observed once from the one source inventory.
 //

@@ -142,8 +142,17 @@ fn floor2_plan_refusals(plan: Floor2Plan) -> List<WitnessIdentityRefusal> {
 // removes node_frontier_selection from Runnable, not this change. And the explicit-entry
 // lanes (the Wet execution corpus, the bin-witness corpus) name around ten entries each,
 // where one whole-tree preparation serving ten is the same cost-shape defect pointing the
-// other way. So run_discovery_rows is NOT deleted, and this note does not say the floor is
-// one subject -- it says the batch that cost 1927.6s of preparation is.
+// other way. This note does not say the floor is one subject -- it says the batch that cost
+// 1927.6s of preparation is.
+//
+// CORRECTED (review 52333): an earlier revision ended "so run_discovery_rows is NOT deleted",
+// and by then it was. The seed's dispatcher now always routes to
+// run_discovery_rows_against_prepared_subject and the entry-major function is gone, so the
+// model asserted a seed it no longer describes. What survives of the point is the residue
+// named on the next line: that path prepares ONE WHOLE-TREE context and evaluates every
+// witness in it, rather than projecting a scope per claim the way run_required_floor does --
+// so the bare-name collision documented at cli_run.rs claim_scope_for is still reachable
+// there. Dissolve-on: the discovery path takes its frames from claim_scope_for too.
 
 fn admit_floor2_plan(plan: Floor2Plan) -> Floor2PlanAdmission {
   let refusals = floor2_plan_refusals(plan: plan)
@@ -210,13 +219,6 @@ fn floor_execution_key(
   match posture {
     SelectionRequiresPerEntryFrontier => EntryMajorUntilFrontierRetires
     NoSelectionMachinery => OnePreparedSubjectKey { subject: subject }
-  }
-}
-
-fn floor_execution_key_is_one_prepared_subject(key: FloorExecutionKey) -> Bool {
-  match key {
-    OnePreparedSubjectKey { subject: _ } => true
-    EntryMajorUntilFrontierRetires => false
   }
 }
 

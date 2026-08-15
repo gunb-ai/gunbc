@@ -13,7 +13,6 @@ import v2.workflow.floor2_prepared_subject {
   floor2_plan_refusals,
   floor2_prepared_subject_count,
   floor_execution_key,
-  floor_execution_key_is_one_prepared_subject,
   ModulePathNotUnique,
   NoSelectionMachinery,
   OnePreparedSubjectKey,
@@ -144,21 +143,19 @@ test fn f2_a_plan_names_exactly_one_prepared_subject() -> Bool {
 // the rule reads one input and the witnesses read one input. A witness still passing both
 // would be asserting a shape the carrier no longer has.
 test fn f2_selection_free_lane_takes_the_prepared_subject() -> Bool {
-  floor_execution_key_is_one_prepared_subject(
-    key: floor_execution_key(posture: NoSelectionMachinery, subject: f2_subject)
-  )
+  match floor_execution_key(posture: NoSelectionMachinery, subject: f2_subject) {
+    OnePreparedSubjectKey { subject: _ } => true
+    EntryMajorUntilFrontierRetires => false
+  }
 }
 
 // RED CONTROL, and the pair is what makes either half mean anything: a rule that answered
 // OnePreparedSubjectKey for everything passes the positive witness above and fails here.
 test fn f2_selection_bearing_lane_stays_entry_major() -> Bool {
-  !floor_execution_key_is_one_prepared_subject(
-    key: floor_execution_key(posture: SelectionRequiresPerEntryFrontier, subject: f2_subject)
-  )
-    && match floor_execution_key(posture: SelectionRequiresPerEntryFrontier, subject: f2_subject) {
-      EntryMajorUntilFrontierRetires => true
-      OnePreparedSubjectKey { subject: _ } => false
-    }
+  match floor_execution_key(posture: SelectionRequiresPerEntryFrontier, subject: f2_subject) {
+    EntryMajorUntilFrontierRetires => true
+    OnePreparedSubjectKey { subject: _ } => false
+  }
 }
 
 // The prepared-subject arm carries the SUBJECT through unchanged. Without this the rule could
