@@ -1,0 +1,72 @@
+# Namespace cut (NAMESPACE-Y): delete the import concept, resolve by containment
+
+Doctrine: DESIGN §3 *replacement migrations cut over at the root* (delete-first; the deletion is the census). Vehicle: integration branch `integration/namespace-cut`, forked from main `64ebefa74`; standing cutover PR gunbc#8282 (draft — the one merge main receives). Executing session: crisp-crab-430; doctrine/coordination: tidy-pike-117. Operator ruling (2026-08-15): delete all the grammar/import up front, then solve each problem as it is revealed — expecting the deletion to also reveal problems import was standing up (the concealment census). **Step gating:** each major step closes only when the operator is satisfied with its performance — the executing session stops at the boundary and presents, never rolls into the next step on its own judgment; within a step, the fix-forward loop runs continuously.
+
+## The cut, stated in .dag terms
+
+- **Old root:** the `import` concept — the grammar production, the parse surface, and the import-name universe (visibility = own declarations ∪ direct import lists).
+- **New root:** containment-tree resolution — `v2.std.symbol_index` `SymbolIndex` filled by `src/v2/compiler/symbol_index_fill.dag`, walked by `src/v2/compiler/03_resolve.dag` (`lookup_symbol_index_atom_identity`, chain lookup, qualified projection) — with dependency edges **derived from references**, exactly as `src/v2/lens/module_graph.dag`'s own `dependency_edge_source_migration_note` already specifies.
+- **X's residual roles:** the pre-strip resolver (from quarry or a pinned ref) as OFFLINE differential oracle for the qualification sweep — occurrence → exact old target → canonical qualified spelling; only exact old bindings rewrite mechanically; old-ambiguous and old-unbound refuse migration. Never a fallback, never a production second opinion.
+
+## Step 0 — DONE (dated receipts, 2026-08-15): the strip
+
+- `d4916cacf3` — Delete every import statement from `dag/` and `src/v2/` (2,975 files, −62,850 lines)
+- `59db42ffc9` — Delete every import statement from `src/v1/` (the seed; 60 files, −1,837 lines)
+
+Standing census on the branch (2026-08-15): **5,531 hard diagnostics · 280 distinct names · 935 files · 2,355 of 3,709 modules in closure**; by class: function-not-found 2,065 · unresolved type 1,742 · undefined variable 1,067; top names `LiveTreeDisposition` 579 · `SubstrateInputsOnly` 506 · `OccurrenceId` 347. Two earlier root-cause hypotheses (declaration-registration gap; sibling-homonym eligibility) were **retracted** — the probes ran under conditions that differ from the corpus (their diagnostic appears zero times in the census). The census stands; the hypotheses are open questions for step 5's instrument.
+
+## Step 1 — grammar/parse deletion (`import` becomes a parse error)
+
+- `src/v2/extdeps/languages/dag.dag`: `dag_grammar_import_decl_expr`, `dag_grammar_import_block_expr`, `emit_import_decl_emitted_node`, `emit_row_import_decl`, `parse_import_block_idents`, the `dag_token_kw_import` lex rule, the import grammar formal rows, the production registrations, and the top-level-item alternative for import (retires the `dag_production_import_decl`/`_block` and `dag_surface_import_decl`/`_block`/`_qualified_name` identities). The v2 parser is production-table-driven, so deleting these rows is the cut.
+- `dag/extdeps/languages/dag/syntax.dag`: the `import` entry in `dag_keyword_set` — plus its generated twin `src/v1/stage0/src/extdeps_languages_dag_syntax.rs`.
+- v1 parse: `src/v1/02_parse.dag` `parse_imports`, `parse_imports_acc`, `parse_import`, `parse_import_names`, `parse_import_names_acc`, types `ImportResult`/`ImportsResult`, the call site in `parse_module` (+ twin `v1_compiler_parse.rs`). `src/v1/00_core.dag` `import_node`, `import_is_all`, `import_specific_names_at`, `module_imports`, the `imports` param on `module_node`, diagnostics `UnresolvedImport`/`MissingExport`/`UnlistedImportUse` (+ twin `v1_std_core.rs`). `src/v1/dag_collect.dag` `is_import_slot_node`. `src/v1/compile.dag` `serialize_import_node`, `is_import_statement_node`, `serialize_module_imports_json`.
+
+**Trap (typed refusal):** removing the keyword alone makes `import` lex as a bare identifier that fails much later with a confusing message. Keep a token class and add a refusing production so the refusal is typed, located, and names the cut.
+
+## Step 2 — import-name-universe deletion (before deep census diagnosis)
+
+- `src/v1/03_resolve.dag`: `resolve_module_imports`, `resolve_import`, `ResolvedImport` + `resolved_imports`, `imports_by_name`, the `imported_names` term in `get_exported_names`, module-graph adjacency from `module_imports` (+ twin `v1_compiler_resolve.rs`)
+- `src/v1/04_env.dag`: the `source_visible_names` field on `TypeEnv` — **this field is the import universe** — plus `bare_free_call_requires_listed_import`, `import_visible_name`, `global_bare_blocked_by_listed_import_requirement`, `listed_import_required_bare_call_blocked` (+ twin `v1_compiler_infer_env.rs`)
+- `src/v1/04_infer.dag`: the `source_visible_names` fold, `merge_scope_from_imports`, `type_env_for_import`, `interface_env_for_import`, `overlay_direct_import_exports`, `bind_imported_name_from_surface`, `build_imported_variants`, `import_module_path_at`, `direct_import_export_name_sets`, `direct_import_exporter_counts`/`_count_of`, `rewire_type_env_import_str_binding_identity` (+ twin `v1_compiler_infer.rs`)
+- `src/v1/04_resolve.dag`: the mask arm in `resolve_node` emitting `UnlistedImportUse`
+- `src/v2/compiler/03_name_resolve.dag`: `collect_import_decl_nodes`, `import_rows_from_parsed_module`, `admit_import_root_find`, `admit_import_visible_entry`, `admit_import_entry`, `admit_imports`, the `Import` type + `imports` field, the `resolve_import_not_visible` / cross-tree-import refusal reasons
+- `src/v2/compiler/06_translate.dag`: `is_dag_import_production_node`, `translate_import_production_qn_node`/`_block_node`/`_to_carrier`, `is_dag_import_carrier`, `translate_import_shortcut_after_subtree_gate` + both dispatch sites
+- `src/v2/compiler/body_lowering_fold.dag`: the `dag_surface_import_decl`/`_block` passthrough arms
+- `src/v2/lens/reference_deps.dag`: only the import-reading arms (`reference_qn_from_import_decl_strict` + dispatch, `reference_paths_from_import_edges`, `import_edge_to_reference_fact`) — the module survives as the replacement producer
+
+**Sequencing consequence:** land this before deep-diagnosing the census. Until X's resolution arms are gone, part of the 5,531 may be X's machinery judging over now-empty import lists (for example `get_exported_names` folding `imported_names` into export sets) — measuring the corpse, not Y. Re-derive the census after; the numbers moving is expected.
+
+## Step 3 — host and emit machinery
+
+- `src/v1/stage0/src/cli_run.rs` (**frozen file — surgical trims, never deletion**): `extract_import_paths` (the starts-with-import text scanner every host import fact builds on), `resolve_virtual_source_with_imports`, `source_declares_import_lines`, `import_module_paths_for_typed_module`, `emit_import_admission_list`; the closure-walk family (`build_import_adjacency`, `import_closure_from_adjacency`/`_from_facts`/`_live_paths`/`_live_paths_with_facts`, `reference_only_direct_import_paths`, `entry_file_touched_via_import_closure`, `import_closure_module_reaches_carrier_home`, `collect_import_closure_module_names_from_facts`, `roster_import_closure_nodes_pre_resolve`, `import_closure_files_from_graph`, `touched_file_in_import_closure`, `import_closure_repo_paths_for_entry`, `augment_closure_modules_from_import_facts`, `import_closure_dag_files`); the `declared_import_closure_*` compile family incl. `compile_entry_on_declared_import_closure_only` and `observe_declared_import_closure_symbol_binding`; the unlisted-import census family (`classify_unlisted_import_binding_source`, `compile_clean_unlisted_import_census`, `compile_clean_unlisted_import_use_blocks_from_policy`/`_cached`); the class-b import-closure gates
+- `src/v1/05_emit_rust.dag` (+ twin `v1_compiler_emit_rust.rs`): `emit_imports`, `emit_extract_import_paths_fn` — **this one prints the import scanner into generated stage0; cut it in the same pass or the seed regrows it on regen** — `augment_scoped_data_item_index_with_imports`, `module_imports_std_serialization_coproduct_wire_contract`, `record_lit_resolved_ctor_import_names`, `emit_specific_import_block`, `explicit_import_source_module_for_name`, `import_variant_parent_for_name`, `wildcard_import_pool_surface_names`, `import_module_enum_scope`
+- Whole-file deletions: `dag/tools/namespace_import_closure_behavioral_transport.dag` (its own dissolution trigger names this cut) · `dag/gunbc/class_b_import_closure_overlay.dag` · `dag/gunbc/declared_import_closure_binding.dag` · `dag/tools/dag_compile_clean_cli_floor_agreement.dag` · `dag/std/import.dag` (empty stub) · `src/v2/test/claim/long/dag_import_block_lexeme_stamp_test.dag` · `dag/test/claim/module_graph_edge_source_witness_test.dag`
+- Partial deletions: `dag/gunbc/compile_clean_diagnostic_policy.dag` (only the `UnlistedImportUse` enforcement declarations + dissolve rows) · `dag/tools/diagnostics_witness_transport.dag` (`diagnostics_import_resolution_suite`, `run_diagnostics_import_resolution_witness`)
+
+**Trap (regen fixed point):** every v1 `.dag` deletion has a generated `.rs` twin under `src/v1/stage0/src/` — cut both sides in the same pass or `regen_verify` reds.
+
+## Step 4 — repoints (contested: surviving consumers change edge supply)
+
+- `src/v2/lens/module_graph.dag`: repoint `dependency_resolution_facts_live` to the reference-derived producer per the file's own `dependency_edge_source_migration_note`; `dependency_closure`, `import_closure`, `touched_path_in_closure`, `entry_affected_by_touched_paths` are edge-source-agnostic and survive under the new supply. Consumers riding through unchanged: `dag/tools/dag_compile_clean_scope.dag`, `dag/tools/module_impact_query_front_door.dag`, `dag/tools/rust_stage0_gates.dag`, `dag/gunbc/doc_graph_roots.dag`, `gunbc.stage0_partition_closure`, `gunbc.repo_atlas_projection`, affected-set entry selection
+- `cli_run.rs` `import_resolution_facts` / `dependency_resolution_facts` / `union_dedup_import_facts_reference_first`: the reference-first union collapses to reference-only; the dedup authority survives with one arm
+- `layer_import_facts` family + its interpreter builtin arm: `v2.std.layer` consumes it; the transitional reference arm already exists (`reference_edges_as_import_facts` strict=true, per `docs/plans/layering-imports-reference-repoint-design.md` §3.1) — becomes reference-only; repoint + rename
+- `src/v1/05_emit_rust.dag` `reference_derived_use_lines`: one input channel is `UnlistedImportUse` diagnostics, which die with the mask — re-derive that channel from the containment resolver; the pass becomes the sole use-line producer once `emit_imports` goes
+- `src/v1/05_emit_python.dag` `emit_py_imports` / `05_emit_go.dag` `emit_go_imports` etc.: target-language import emission survives; only the input (dag import nodes) is re-derived from references
+- `dag/tools/dag_compile_clean_scope.dag`: re-word the import-closure prose; keep the tool
+- `src/v1/04_emit_info.dag` `collect_type_node_import_surface_names`: re-derive from references
+
+## Step 5 — fix-forward on the census, class grain
+
+Method (post-retraction): instrument **real specimens** from the census, never synthetic fixtures — a probe answers questions about the probe. First specimen: `LiveTreeDisposition` (579 failures) at `dag/test/claim/lifecycle_survivor_corpus_census_test.dag`. Per specimen, the first fact to pin is **which resolver path judged it** (mask / single-candidate-from-anywhere / NamespaceOnlyY chain filter); the instrumented binary is rebuilt from the branch head. Classes are decided deliberately in sequence, applied mechanically within a class; the function-not-found majority carries an open question — were function references ever candidates in the reference-derived path, or only visible through the import universe? The qualification sweep uses the old resolver as offline oracle only.
+
+## Do-not-delete (the replacement, and grep false-positives)
+
+`src/v2/std/symbol_index.dag` · `src/v2/compiler/symbol_index_fill.dag` · `src/v2/compiler/03_resolve.dag` (verified zero import machinery) · `src/v2/compiler/namespace_graft.dag` · `src/v2/std/qualified_name.dag` · `src/v2/std/decl_ref_resolution.dag` · the rest of `src/v2/extdeps/languages/dag.dag` beyond the import production · the v2 stage files `01_tokenize`/`02_parse`/`03_normalize`/`03_ingest`/`program_assembly`/`parse_engine_hooks`/`normalized_tree` (verified import-free) · `src/v1/stage0/src/gunbc_namespace_reference_derived_closure_admission.rs` + `_contract.rs` · in `cli_run.rs`: `referenced_module_paths_in_text`, `extend_with_reference_closure`(`_for_pool`), `reference_pull_paths_for_source` — the sole closure-discovery authority post-cut (its known comment-line defect, recorded in `dag/gunbc/namespace_pool_independence.dag`, is fixed separately, not inside the cut). Grep false-positives: the TypeScript/Go/Swift extdeps files and the two typescript import pipeline tests — other languages own their `import` keywords.
+
+## Green bar / cutover
+
+`import` refuses at parse with a typed, located refusal; the corpus resolves through the containment rule **by construction — never pool coincidence**; the census worked to zero or every remaining row dispositioned; the regen fixed point and drift gates re-established on the branch. Then #8282 flips ready and the operator merges — one atomic cutover.
+
+## Registration
+
+`gunbc.replacement_cut` row `NAMESPACE-Y` — authored as a follow-up once gunbc#8276 (the carrier) merges to main.

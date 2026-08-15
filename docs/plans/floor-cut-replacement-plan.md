@@ -1,0 +1,77 @@
+# Floor cut (FLOOR-Y): delete all of CI, rebuild job-by-job from agreement
+
+Doctrine: DESIGN §3 *replacement migrations cut over at the root* (delete-first; the deletion is the census). Vehicle: integration branch `integration/floor-cut`, forked from main `64ebefa74`; standing cutover PR gunbc#8283 (draft — the one merge main receives; red mid-loop is legitimate there and nowhere else). Executing session: sleek-moth-351; doctrine/coordination: tidy-pike-117. Operator rulings (2026-08-15): delete what is certainly scheduled for death up front, before any fix-forward work; then **wipe every single thing in CI — full deletion now; jobs return one by one only as agreed.** **Step gating:** each major step closes only when the operator is satisfied with its performance — the executing session stops at the boundary and presents, never rolls into the next step on its own judgment; within a step, the fix-forward loop runs continuously.
+
+## The cut, stated in .dag terms
+
+The `.github/workflows/*.yml` files are projections; the cut population is the **authorities that emit them** plus the floor execution machinery.
+
+- **Old root:** the generated CI surface and its .dag authorities — every job of `ci.yml` (`build`, `regen`, `ci` — whose core is the floor pass `claim_executor --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_floor_plan` — and `heal_generated_artifacts`), plus the falsifier cadence (`falsifier.yml`, `falsifier-alert.yml`).
+- **New root:** one job calling `run_required_floor`, then whatever jobs the operator re-agrees, one at a time. The seed exists as quarry: branch `session/vivid-bear-458-floor2`, commit `b19a3e2942` — the `run_required_floor` fn in `cli_run.rs`, the `claim_executor` dispatch arm, the one-job emit in `dag/gunbc/ci_workflow.dag`.
+- **X's residual roles** (closed vocabulary per the doctrine): bootstrap producer and historical measurement source, served from git history and the vivid-bear branch. Never a fallback, internal resolver, or production second opinion.
+- **Boundary exclusion:** `.github/workflows/fleet-converge.yml` and `dag/gunbc/fleet_converge_workflow.dag` are fleet operations, not CI — outside this cut unless the operator rules otherwise.
+
+## Step 0 — DONE (dated receipt, 2026-08-15): selection deletion
+
+Eight commits on the branch (`cb9277a4fe..c741d64204`): affected-set selection deleted end to end — model, plan, receipts, workflow jobs, the seed paths in `src/v1/stage0/src/cli_run.rs` + `src/v1/stage0/src/bin/claim_executor.rs`, `src/v1/stage0/src/bin/selection_control_skip_witness.rs` — with the three workflow ymls regenerated. Net −6,397/+310 across 61 files.
+
+## Step 1 — the wipe (the next commit)
+
+Delete entirely:
+
+- `.github/workflows/ci.yml`
+- `.github/workflows/falsifier.yml`
+- `.github/workflows/falsifier-alert.yml`
+
+Gut or delete the emitting authorities **in the same motion**, so drift gates stop expecting the artifacts:
+
+- `src/v2/workflow/ci_floor_plan.dag` — whole file, including `gunbc_ci_regen_floor_plan` (it returns from quarry when the regen job is re-agreed; keeping the obvious survivor is how X's structure creeps back)
+- `dag/gunbc/ci_workflow.dag` and the `dag/gunbc/ci_spec.dag` job rows / emit surface for the three files; `dag/tools/gunbc_ci.dag` refuses or emits nothing until the first agreed job returns
+- `dag/tools/emit_falsifier_yaml.dag` · `dag/gunbc/falsifier_workflow.dag` · `dag/gunbc/falsifier_cold_corpus_execution.dag` · `dag/gunbc/falsifier_lane.dag` · `dag/gunbc/falsifier_alert_admission.dag` · `dag/gunbc/falsifier_alert_decision.dag` · `dag/gunbc/falsifier_alert_residue.dag` · `dag/gunbc/falsifier_alert_state.dag` · `dag/gunbc/falsifier_run_control.dag` (the shared release-build step ids `falsifier_release_build_step_id` / `ci_release_bins_step_id` move or die with it)
+- the `CiYamlArtifact` / `FalsifierYamlArtifact` rows in `dag/gunbc/generated_artifact.dag`
+
+The wipe commit carries the §4b rung-drop declaration (previous rung, temporary rung, reason, bounded population, restoration trigger); **its obligation list is the re-add queue** (step 3).
+
+Side effect: once `ci.yml` is deleted on the branch, PR #8283 stops running CI at all (the merge ref carries no workflow file) — the known-red runner burn stops.
+
+## Step 2 — unreachable machinery falls out (the census does the rest)
+
+Known-certain from the sweep; delete as reachability confirms:
+
+- `src/v2/workflow/affected_set_floor_runner.dag` + `affected_set_floor_runner_test.dag` · `floor_skip_proof_plan.dag` · `floor_preparation.dag` (+ `dag/test/claim/floor_preparation_witness_test.dag`) · `affected_set_selection.dag` remnants · `probe_selector_affected_tests.dag` · `probe_selector_ci_runner_test.dag` · `probe_selector_host_health.dag` · `affected_testgen_ci_runner.dag` (+ its gate test) · `claim_witness_corpus_ci_runner.dag`
+- `dag/gunbc/floor_component_receipt.dag` + `floor_component_receipt_document.dag` · `dag/gunbc/floor_materialization.dag` · `dag/gunbc/floor_resolve_realization.dag` · `dag/gunbc/floor_discovery_scaffold.dag` · `dag/gunbc/affected_set_stop_line.dag`
+- `dag/tools/floor_effect_gate_witness.dag` — the wrapper dies; its **seven gate obligations** go to the re-add queue
+- `dag/tools/floor_skip_discovery_witness_transport.dag` + `src/v1/stage0/src/bin/floor_skip_discovery_witness.rs` (requires the `dag/gunbc/ci_release_bins.dag` row removal)
+- `src/v1/stage0/src/cli_run/floor_discovery_snapshot.rs` (767 lines; sole consumer is the claim_executor coordinator pre-plan digest)
+- fixtures: `src/v2/test/fixture/floor_skip/` (all 7 files)
+- witness tests: `dag/test/claim/falsifier_workflow_witness_test.dag` · `falsifier_lane_witness_test.dag` · `falsifier_run_control_witness_test.dag` · `falsifier_alert_decision_witness_test.dag` · `falsifier_alert_migration_witness_test.dag` · `floor_component_receipt_witness_test.dag` · `floor_batch_clamp_authority_witness_test.dag` · `floor_gate_failure_receipt_witness_test.dag` · `ci_floor_measurement_test.dag` · `floor_materialization_witness_test.dag` · `ci_floor_on_success_materialization_receipt_hand_rust_witness_test.dag` · `floor_skip_discovery_witness_test.dag` · the `dag_compile_clean_cli_floor_agreement` pair · `src/v2/test/claim/ci_floor_plan_witness_test.dag` · `src/v2/test/claim/falsifier_lane_plan_agreement_test.dag`
+
+## Step 3 — the re-add queue (one job at a time, operator agreement each, **recursively delete-first**)
+
+The orphaned obligations, from the wipe's rung-drop declaration. Nothing returns unagreed — and a re-add is **not** a restore-from-quarry: each returning obligation gets the same sequence applied recursively (operator ruling, 2026-08-15: "they all have a lot of cruft — the same sequence has to be followed recursively"). Per re-add: state the obligation from first principles, design the minimal job that discharges it, mine the quarry as oracle only, and expect the old job's structure to die in the re-derivation. Two known cruft specimens illustrate why: the old build job's 19-binary roster is mostly floor/falsifier bins this cut deletes, and its `CARGO_BUILD_JOBS=1`-then-unset-`RUSTC_WRAPPER` retry arm is the absorbing fallback DESIGN's srvN build-cache thread already names as masking the sccache deficit. Neither survives a first-principles re-derivation. The queue:
+
+1. build + `claim_executor --verify-build-artifacts` (prerequisite for everything else)
+2. the `run_required_floor` one-job witness corpus (the new floor; port from quarry `b19a3e2942`)
+3. regen self-host fixed point (the modules `regen_stage0.rs`, `regen_floor_skip_witness.rs`, `dag/tools/regen_verify_gate.dag`, `regen_verify_transport.dag` survive throughout; their **job** returns here)
+4. generated-artifact drift gates
+5. the seven effect gates: compile-clean · generated-artifact drift · emit-host · extdeps citation · extdeps placement · prose-row · cheap-claim pool
+6. rust fmt gate
+7. heal — proposed: reconsider whether the new minimal CI needs it before re-adding
+8. falsifier cadence — proposed: never returns (DESIGN already records it measuring a mechanism nothing consumes)
+
+## Contested / do-not-delete (sweep-verified non-floor consumers)
+
+- **Keep whole:** `src/v1/stage0/src/bin/claim_batch.rs` (the local path) · `src/v2/workflow/floor_discovery.dag`, `floor_discovery_producer.dag`, `floor_discovery_transport.dag` (reached by the local producer path in cli_run, not by the floor) · `src/v2/workflow/floor_naming_hygiene.dag` (surviving `test fn` placement rule; non-floor importer) · `src/v2/workflow/executor.dag`, `scheduler.dag`, `batch_runner.dag` (generic substrate) · the fleet-converge pair · the regen bins
+- **Trim rows only:** `dag/tools/dag_compile_clean_scope.dag` (broad non-floor consumers) · `dag/gunbc/ci_layer_roots.dag` (~40 importers) · `dag/gunbc/ci_release_bins.dag` · `src/v1/stage0/src/ci_control_plane.rs` (string edits at its six `gunbc_ci_floor_plan` sites)
+- `dag/gunbc/ci_floor_measurement.dag` is a **fleet budget authority** (runner placement, oomd, host budgets import it) — survives despite the name
+- **Field grain:** `node_frontier_selection` comes off the generic `Runnable` in `dag/std/realization_schedule.dag` + `src/v1/stage0/src/std_realization_schedule.rs` (in flight with step 0's area)
+- `dag/gunbc/plans/ci_*.dag` planning carriers are registered quarry — deleting any requires plan-registry surgery; `dag/gunbc/plans/affected_set_self_confirmation.dag` is the only unregistered one
+- **Frozen X:** `src/v1/stage0/src/cli_run.rs` and the interpreter — trims only, never file deletion, and no new builtin rows land there
+
+## Green bar / cutover
+
+The agreed job set green by execution on the branch; the obligations ledger empty or every remaining row retired with a receipt; the declared silent residue restored or retired. Then #8283 flips ready and the operator merges — one atomic cutover; main never hosts a dual-authority interval and never sees the red.
+
+## Registration
+
+`gunbc.replacement_cut` row `FLOOR-Y` — authored as a follow-up once gunbc#8276 (the carrier) merges to main.
