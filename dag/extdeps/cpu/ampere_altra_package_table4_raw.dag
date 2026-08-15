@@ -9,6 +9,15 @@ data extdeps_external_authority_anchor: ExternalAuthority = ampere_altra_rev_a1_
 
 data extdeps_model_scope: ExternalModelScope = ampere_altra_package_model_scope
 
+// ONE-SHOT HAND TRANSCRIPTION — authoritative source data committed directly in .dag; no
+// mechanical regenerator exists on this branch. Electrical classification is derived by
+// extdeps.cpu.ampere_altra_package contacts_from_table4; population laws cross-foot Table 5.
+// Cited document: Ampere Altra Max Rev A1 Issue 1.15
+// (extdeps.cpu.ampere ampere_altra_rev_a1_datasheet_authority), matching altra_max_m12830_catalog.
+// Classic Altra Rev A1 Issue 1.50 is ampere_altra_classic_rev_a1_datasheet_authority — a separate
+// document; shared 4926-pin FCLGA count does not establish identical Table 4 assignment.
+data table4_transcription_provenance_note: String = "ONE-SHOT HAND TRANSCRIPTION. The 4926 Table4PinRow entries in altra_table4_pin_rows are authoritative source data committed directly in .dag; no mechanical regenerator exists on this branch. Electrical classification is derived by extdeps.cpu.ampere_altra_package contacts_from_table4; population laws in altra_contact_map_standing cross-foot against Table 5. Cited document: Ampere Altra Max Rev A1 Issue 1.15 (extdeps.cpu.ampere ampere_altra_rev_a1_datasheet_authority), not the classic Altra Rev A1 Issue 1.50 authority."
+
 // TRANSCRIBED designator/signal rows from Ampere Altra Max Rev A1 datasheet Issue 1.15,
 // section 5 Table 4 (extdeps.cpu.ampere ampere_altra_rev_a1_datasheet_authority).
 data altra_table4_pin_rows: List<Table4PinRow> = [
