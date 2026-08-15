@@ -5338,65 +5338,27 @@ pub fn lib_rs_mod_name_from_file(f: Rc<TextFile>) -> String {
 }
 
 pub fn emit_lib_rs_mod_decl(mod_name: String) -> String {
-    {
-        let declaration = v1_rt::concat(
+    v1_rt::concat(
+        v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(
-                        rust_visibility_prefix(),
-                        rust_items().module_keyword.clone(),
-                    ),
-                    " ".to_string(),
+                    rust_visibility_prefix(),
+                    rust_items().module_keyword.clone(),
                 ),
-                mod_name.clone(),
+                " ".to_string(),
             ),
-            ";".to_string(),
-        );
-        if is_lib_rs_macro_provider(mod_name.clone()) {
-            v1_rt::concat("#[macro_use]\n".to_string(), declaration.clone())
-        } else {
-            declaration.clone()
-        }
-    }
-}
-
-pub fn is_lib_rs_macro_provider(mod_name: String) -> bool {
-    (mod_name.clone() == "v1_interpreter_dispatch_generated".to_string())
+            mod_name.clone(),
+        ),
+        ";".to_string(),
+    )
 }
 
 pub fn order_lib_rs_mod_names(mod_names: Rc<Vec<String>>) -> Rc<Vec<String>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for n in mod_names.clone().iter().cloned() {
-            if !is_lib_rs_macro_provider(n.clone()) {
-                __result.push(n);
-            }
-        }
-        __result
-    })
+    mod_names
 }
 
 pub fn order_partial_lib_rs_mod_names(mod_names: Rc<Vec<String>>) -> Rc<Vec<String>> {
-    v1_rt::concat(
-        Rc::new({
-            let mut __result = Vec::new();
-            for n in mod_names.clone().iter().cloned() {
-                if is_lib_rs_macro_provider(n.clone()) {
-                    __result.push(n);
-                }
-            }
-            __result
-        }),
-        Rc::new({
-            let mut __result = Vec::new();
-            for n in mod_names.clone().iter().cloned() {
-                if !is_lib_rs_macro_provider(n.clone()) {
-                    __result.push(n);
-                }
-            }
-            __result
-        }),
-    )
+    mod_names
 }
 
 pub fn emit_lib_rs_from_files(

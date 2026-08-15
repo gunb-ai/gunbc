@@ -9,7 +9,6 @@ import gunbc.generated_artifact {
   Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
   Stage0CratePartitionGeneratedDagArtifact,
   Stage0EmitPlanGeneratedDagArtifact,
-  V1InterpreterDispatchGeneratedRsArtifact,
   artifact_path
 }
 import gunbc.ci_yaml_emit { expected_ci_yml }
@@ -39,11 +38,6 @@ import gunbc.stage0_emit_plan_emit {
   Stage0EmitPlanGenerated,
   Stage0EmitPlanGenerationRefused,
   expected_stage0_emit_plan_generated_dag
-}
-import gunbc.v1_interpreter_dispatch_emit {
-  expected_v1_interpreter_dispatch_generated_rs,
-  V1InterpreterDispatchGenerated,
-  V1InterpreterDispatchGenerationRefused,
 }
 
 type ArtifactGenerationOutcome
@@ -77,18 +71,13 @@ fn artifact_generate(a: GeneratedArtifact) -> ArtifactGenerationOutcome {
       Stage0EmitPlanGenerated { content } => artifact_generated(content: content)
       Stage0EmitPlanGenerationRefused => ArtifactGenerationRefused { reason: "stage0 emission plan refused" }
     }
-    V1InterpreterDispatchGeneratedRsArtifact => match expected_v1_interpreter_dispatch_generated_rs() {
-      V1InterpreterDispatchGenerated { content } => artifact_generated(content: content)
-      V1InterpreterDispatchGenerationRefused { reason } =>
-        ArtifactGenerationRefused { reason: reason }
-    }
     AutoinstallUserDataArtifact { spec } => artifact_generated(content: autoinstall_user_data(payload: spec.payload))
     ProxyDhcpDnsmasqArtifact { spec } => artifact_generated(content: install_server_dnsmasq_conf(spec: spec))
     PlanArtifact { plan } => artifact_generated(content: expected_plan_md(p: plan))
   }
 }
 
-data artifact_extra_valid_note: String = "P0 (operator-directed, 2026-08-05; loyal-ram-550 review of #7823): takes the ALREADY-COMPUTED generation outcome rather than calling artifact_generate itself. The two variants whose extra check depends on generation success (Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact) used to call artifact_generate(a: a) a second time here, discarding the content and keeping only success/failure — one Filesystem.Read, but TWO artifact_generate calls per artifact for those two variants, contradicting gunbc.generated_artifact_observation's 'one artifact_generate per artifact' claim. Every caller now supplies the outcome it already produced (observe_generated_artifact reuses its own match result); no second entry point to generation remains."
+data artifact_extra_valid_note: String = "P0 (operator-directed, 2026-08-05; loyal-ram-550 review of #7823): takes the ALREADY-COMPUTED generation outcome rather than calling artifact_generate itself. The variants whose extra check depends on generation success used to call artifact_generate(a: a) a second time here, discarding the content and keeping only success/failure — one Filesystem.Read, but TWO artifact_generate calls per artifact for those variants, contradicting gunbc.generated_artifact_observation's 'one artifact_generate per artifact' claim. Every caller now supplies the outcome it already produced (observe_generated_artifact reuses its own match result); no second entry point to generation remains."
 
 fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutcome) -> Bool {
   match a {
@@ -107,10 +96,6 @@ fn artifact_extra_valid(a: GeneratedArtifact, generated: ArtifactGenerationOutco
     Stage0CrateLayoutGeneratedRsArtifact => true
     Stage0CratePartitionGeneratedDagArtifact => true
     Stage0EmitPlanGeneratedDagArtifact => match generated {
-      ArtifactGenerated { content: _ } => true
-      ArtifactGenerationRefused { reason: _ } => false
-    }
-    V1InterpreterDispatchGeneratedRsArtifact => match generated {
       ArtifactGenerated { content: _ } => true
       ArtifactGenerationRefused { reason: _ } => false
     }

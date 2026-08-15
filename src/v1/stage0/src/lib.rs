@@ -157,7 +157,6 @@ pub mod wt_a;
 pub mod wt_b;
 pub mod wt_common;
 #[macro_use]
-pub mod v1_interpreter_dispatch_generated;
 pub mod ci_control_plane;
 pub mod cli_run;
 pub mod coproduct_reflection;
@@ -170,7 +169,6 @@ pub mod shared_typecheck_store;
 pub mod usv_pilot_v2_std_algebra;
 pub mod usv_pilot_v2_std_collection;
 pub mod usv_pilot_v2_std_node;
-pub mod v1_interpreter;
 pub mod v2_compiler_infer;
 pub mod v2_compiler_program_partition;
 pub mod v2_compiler_resolve;
