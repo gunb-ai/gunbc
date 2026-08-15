@@ -180,8 +180,12 @@ type RunnableBatchClampSource
   = RunnableUsesFloorPositionalClamp
   | RunnableOwnsBatchClamp { clamp: RunnableBatchClamp }
 
+// A single-variant carrier, and deliberately still a coproduct rather than a collapse to a
+// bare product: it once had a ScopedWitnessFloorWorker arm carrying a batch id, deleted with
+// the scoped witness batch (2026-08-15). The remaining arm keeps its own name so a second
+// worker kind is one row rather than a type change at every reader.
 type FloorWorkerIdentity
-  = OrdinaryFloorWorker
+  = OrdinaryFloorWorker {}
 
 type FloorWorkerTerminalReceipt
   = FloorWorkerTerminalReceiptObserved { report: FloorWorkerTerminalReport }

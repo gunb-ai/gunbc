@@ -336,14 +336,14 @@ fn runnable_batch_index(batches: List<List<Runnable>>, target: Runnable) -> Int 
 
 test fn floor_worker_observation_outcome_is_derived_from_evidence() -> Bool {
   let completed = FloorWorkerObservation {
-    worker: OrdinaryFloorWorker,
+    worker: OrdinaryFloorWorker {},
     termination: ProcessExited { code: 0 },
     terminal_receipt: FloorWorkerTerminalReceiptObserved {
       report: FloorWorkerReportedCompleted { detail: "walk terminal exit code 0" }
     },
   }
   let contradicted = FloorWorkerObservation {
-    worker: OrdinaryFloorWorker,
+    worker: OrdinaryFloorWorker {},
     termination: ProcessSignaled { signal: 9 },
     terminal_receipt: FloorWorkerTerminalReceiptObserved {
       report: FloorWorkerReportedCompleted { detail: "walk terminal exit code 0" }

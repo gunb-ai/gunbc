@@ -31,7 +31,6 @@ docs/plans/ci-merge-freshness.md merge=generated-artifact
 docs/plans/ci-oom-reclassification.md merge=generated-artifact
 docs/plans/ci-performance-tanking-evidence.md merge=generated-artifact
 docs/plans/ci-process-end-to-end.md merge=generated-artifact
-docs/plans/ci-selection-vs-scheduling.md merge=generated-artifact
 docs/plans/cli-run-hollowing-plan.md merge=generated-artifact
 docs/plans/compile-clean-forcecheck.md merge=generated-artifact
 docs/plans/compute-envelope-model.md merge=generated-artifact

@@ -230,10 +230,10 @@ fn falsifier_floor_component_receipt_download_step() -> Step {
 }
 
 fn gunbc_falsifier_job_backstop_timeout_minutes() -> Int {
-  gunbc_falsifier_build_job_backstop_timeout_minutes() + gunbc_falsifier_selection_control_job_backstop_timeout_minutes() + gunbc_falsifier_cold_corpus_job_backstop_timeout_minutes() + gunbc_falsifier_aggregate_verdict_job_backstop_timeout_minutes()
+  gunbc_falsifier_build_job_backstop_timeout_minutes() + gunbc_falsifier_cold_corpus_job_backstop_timeout_minutes() + gunbc_falsifier_aggregate_verdict_job_backstop_timeout_minutes()
 }
 
-data gunbc_falsifier_job_split_note: String = "Four-job topology (2026-08-07, operator ruling proud-bear-834 adhoc-8b992195-d13; pre-authorized follow-up named in gunbc.falsifier_run_control falsifier_control_prerequisite_note): falsifier-build compiles and uploads release-bins ONLY; selection-control independently validates prediction machinery; cold-corpus runs whenever build artifacts are available — needs: [falsifier-build] alone, NOT selection-control — so a selector RED is a reason to run the broad backstop, not suppress it (specimen run 31181460723: selection failure skipped the entire corpus job). aggregate-verdict fails if either arm is red and emits gunbc.falsifier_cold_corpus_execution ColdCorpusExecution so CorpusNotRun is never read as 'falsifier found a regression'. Prior two-job split (2026-08-04) isolated cgroup peak for the floor path; this change isolates SELECTION from CORPUS scheduling."
+data gunbc_falsifier_job_split_note: String = "Four-job topology (2026-08-07, operator ruling proud-bear-834 adhoc-8b992195-d13; pre-authorized follow-up named in gunbc.falsifier_run_control falsifier_control_prerequisite_note): falsifier-build compiles and uploads release-bins ONLY; cold-corpus runs whenever build artifacts are available. The topology was FOUR jobs until 2026-08-15: a selection-control job independently validated affected-set prediction machinery, and cold-corpus deliberately did NOT depend on it, so a selector RED was a reason to run the broad backstop rather than suppress it (specimen run 31181460723: selection failure skipped the entire corpus job). Affected-set selection is deleted, so that job and the arm of this verdict that read its result are gone with it. aggregate-verdict fails if the cold arm is red and emits gunbc.falsifier_cold_corpus_execution ColdCorpusExecution so CorpusNotRun is never read as 'falsifier found a regression'. Prior two-job split (2026-08-04) isolated cgroup peak for the floor path; this change isolates SELECTION from CORPUS scheduling."
 
 data falsifier_aggregate_verdict_if: String = "always() && !cancelled()"
 
@@ -265,9 +265,9 @@ fn falsifier_aggregate_verdict_script() -> String {
         concat(
           "BUILD_RESULT=\"${{ needs.falsifier-build.result }}\"\n",
           concat(
-            "SELECTION_RESULT=\"${{ needs.selection-control.result }}\"\n",
+            "COLD_RESULT=\"${{ needs.cold-corpus.result }}\"\n",
             concat(
-              "COLD_RESULT=\"${{ needs.cold-corpus.result }}\"\n",
+              "",
               concat(
                 concat(
                   "if [ \"$\{BUILD_RESULT}\" = \"cancelled\" ]; then\n",
@@ -371,9 +371,9 @@ fn falsifier_aggregate_verdict_script() -> String {
                                                                                                                               concat(
                                                                                                                                 falsifier_aggregate_verdict_write_receipt(json: aggregate_shell_receipt_corpus_executed()),
                                                                                                                                 concat(
-                                                                                                                                  "if [ \"$\{SELECTION_RESULT}\" != \"success\" ] || [ \"$\{COLD_RESULT}\" != \"success\" ]; then\n",
+                                                                                                                                  "if [ \"$\{COLD_RESULT}\" != \"success\" ]; then\n",
                                                                                                                                   concat(
-                                                                                                                                    "  printf '%s\\n' \"::error::Falsifier cadence red — selection=$\{SELECTION_RESULT} cold=$\{COLD_RESULT} (corpus executed; see target/falsifier-cold-corpus-execution.json)\"\n",
+                                                                                                                                    "  printf '%s\\n' \"::error::Falsifier cadence red — cold=$\{COLD_RESULT} (corpus executed; see target/falsifier-cold-corpus-execution.json)\"\n",
                                                                                                                                     concat(
                                                                                                                                       "  exit 1\n",
                                                                                                                                       concat(
@@ -483,7 +483,63 @@ fn falsifier_build_job() -> Job {
   }
 }
 
-fn falsifier_selection_control_job() -> Job {
+fn falsifier_cold_corpus_job() -> Job {
+  Job {
+    id: "cold-corpus",
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: concat(ci_floor_job_prelude_steps(), [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_floor_peak_pre_step(), falsifier_step(), floor_component_receipt_upload_step(), floor_phase_journal_upload_step(), ci_floor_receipts_upload_step(), compile_clean_cold_control_step(), native_cache_cold_control_step(), ci_floor_peak_post_step()]),
+    needs: ["falsifier-build"],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: Present { value: gunbc_falsifier_cold_corpus_job_backstop_timeout_minutes() },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
+fn falsifier_aggregate_verdict_job() -> Job {
+  Job {
+    id: "aggregate-verdict",
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: [falsifier_floor_component_receipt_download_step(), falsifier_aggregate_verdict_step()],
+    needs: ["falsifier-build", "cold-corpus"],
+    env: none,
+    outputs: none,
+    if_condition: Present { value: falsifier_aggregate_verdict_if },
+    timeout_minutes: Present { value: gunbc_falsifier_aggregate_verdict_job_backstop_timeout_minutes() },
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
+data falsifier_cadence_note: String = "nightly (0 7 * * *) -> every 4h (operator ruling 2026-07-14): a once-daily divergence receipt goes unread; a 4h cadence makes the cold-run receipt a same-day dial. Overlap is handled structurally, not assumed away: the job backstop (230-min class) can tail past a 240-min period, so the workflow carries a queue-not-cancel concurrency group - a scheduled run firing while one is live QUEUES rather than killing a measuring run mid-corpus."
+
+data falsifier_cadence_cron: CronSchedule = CronSchedule {
+  minute: Exact { value: 0 },
+  hour: Listed { values: [0, 4, 8, 12, 16, 20] },
+  day_of_month: Wildcard,
+  month: Wildcard,
+  day_of_week: Wildcard
+}
+
+data falsifier_workflow: Workflow = {
+  name: "affected-set-falsifier",
+  on: [
+    WorkflowDispatch { inputs: [] },
+    Schedule { cron: falsifier_cadence_cron }
+  ],
+  concurrency: Present {
+    value: ConcurrencyMappingQueueNotMax {
+      group: "affected-set-falsifier",
+      cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
+      explicit_single: none
+    }
+  },
   env: Present {
     value: [kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always"))]
   },
@@ -498,7 +554,6 @@ fn falsifier_selection_control_job() -> Job {
   },
   jobs: [
     falsifier_build_job(),
-    falsifier_selection_control_job(),
     falsifier_cold_corpus_job(),
     falsifier_aggregate_verdict_job()
   ]
