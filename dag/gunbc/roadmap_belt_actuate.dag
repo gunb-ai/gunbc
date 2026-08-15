@@ -1803,8 +1803,15 @@ data belt_tick_receipt_note: String = "THE PERSISTED TICK RECEIPT IS WHAT THE WO
 
 data belt_tick_receipt_schema: String = "roadmap-belt-tick-receipt/v2"
 
+data belt_tick_receipt_path_ownership_note: String = "THE RECEIPT PATH DRIFTED FROM ITS OWN AUTHORITY, and the drift silenced the belt (srv1, observed 2026-08-15). belt_tick_receipt_note says the receipt is 'written beside the instance's attempt-state root'; the implementation wrote it to instance_root instead. /opt/gunbc-green is created root-owned by the deploy's `install -d`, the belt unit runs User=briansrls, so every tick ended 'the belt tick receipt could not be written: Permission denied (os error 13)'. The receipt never existed on either slot, so the workflow UI read BeltTickReceiptAbsent forever and the belt's refusals had no route to a consumer.\\n\\nWHY NO WITNESS CAUGHT IT, which is the part worth keeping. This is a pure String function, so a witness can only assert it equals the path it computes — which it did. Whether the resulting directory is writable BY THE UNIT'S PRINCIPAL is a host fact no pure .dag witness can observe, so the EACCES sits outside what this layer can see and is discoverable only wet. The defense is therefore construction, not validation: write where the service user already owns, rather than checking afterwards that the write worked.\\n\\nTHE ATTEMPT-STATE ROOT IS THAT PLACE, and it is not an arbitrary pick. It is the one per-instance path the deploy already creates through install_d_managed_command with service-user ownership at creation (the AttemptStateRoot member), it is already the belt's own write territory, and it is what the receipt note named in the first place. No new deployment member is needed, which also means the fix does not wait on a provisioning round to take effect.\\n\\nKEYED BY instance_id BECAUSE THE ROOT IS HOST-SHARED. srv1-live and srv1-green deliberately share dispatch state (srv1_green_dashboard_instance_note: stateful members are host-shared, a slot carries only what a slot may safely own), so an unkeyed belt-last-tick.json would have two writers and each slot would read the other's tick as its own. The tick receipt is a per-INSTANCE fact living in a host-shared directory, so the instance name belongs in the key."
+
 fn belt_tick_receipt_path_for_instance(instance: HostDashboardInstance) -> String {
-  join([instance.instance_root as String, "/belt-last-tick.json"], "")
+  join([
+    dashboard_instance_dispatch_attempt_state_root(instance: instance) as String,
+    "/",
+    instance.instance_id as String,
+    "-belt-last-tick.json",
+  ], "")
 }
 
 fn belt_pass_outcome_key(o: BeltPassOutcome) -> String {
@@ -5333,6 +5340,23 @@ fn belt_verification_segment(progress: WorkflowAttemptProgress) -> WorkflowSegme
   })
 }
 
+data belt_tick_absent_is_not_queued_note: String = "ABSENCE OF A RECEIPT USED TO RENDER AS GOOD NEWS. The BeltTickReceiptAbsent arm answered 'Verification queued - next belt tick', so a belt that had never run, a belt whose receipt write was refused, and a belt exiting 1 every sixty seconds all reported the same reassuring sentence to the operator. That is the empty-observation narrow DESIGN's failure list names — bottom-as-answer conflated with bottom-as-ignorance — and it is worse than silence, because a promise that a tick is coming is a claim about the future that nothing observed.\\n\\nWHAT THE ARM MAY HONESTLY SAY is only what absence establishes: no receipt was found. Whether a tick is queued is precisely the fact that is missing, so the replacement names the missing evidence and stops. It deliberately does NOT guess between the three causes above — distinguishing them needs the receipt this arm is reporting the lack of, and inventing a cause here would repeat the original error in a new direction.\\n\\nTHE OPERATOR ORIGINALLY WANTED THIS QUIET, and that intent is preserved rather than overridden (ruling 2026-08-15). The register's calm-field law is about SALIENCE — how loudly a true thing is presented — not about substituting a false thing for an unobserved one. A refusal shown at Critical salience satisfies both; a fabricated 'queued' satisfies neither, because it also cost the operator days of a dead belt reading as healthy."
+
+data belt_tick_receipt_absent_detail: String = "Verification unobserved · no belt tick receipt found"
+
+data belt_tick_standing_suffix_note: String = "THE BELT'S OWN REFUSAL REACHES THE ROW, WITHOUT WIDENING IT INTO A VERIFICATION VERDICT. verification_presentation_decouples_verify_from_spawn_observe_refusal correctly established that a spawn-side observe refusal must not be reported as a verification failure — verify reads the attempt ledger on its own authority, and zeroing a sibling pass is the widening DESIGN section 5 forbids. That decoupling stands and its witness keeps asserting it.\\n\\nBUT SUPPRESSION WAS IMPLEMENTED AS SAYING NOTHING AT ALL, and no sibling surface was given the job of saying it instead, so the fact went nowhere. On srv1 the belt refused every tick with 'ls-remote refused: fatal: origin does not appear to be a git repository' and the dashboard displayed a queued verification beside it for days. The refusal is not a verification verdict, but it IS the reason no verification will occur, and the operator reading that row is exactly who needs it.\\n\\nSO THE SUFFIX IS ADDITIVE AND SUBORDINATE: the verification clause keeps its own semantics and its own words, and the belt's standing is appended after it, named as the belt's rather than verification's. A reader learns both facts and cannot mistake one for the other. Recorded and Deferred produce no suffix, so a healthy belt adds nothing to the row."
+
+fn belt_tick_standing_suffix(receipt: BeltTickReceipt) -> String {
+  match receipt.spawn_pass {
+    BeltPassRefused { reason: r } =>
+      join([" · belt tick refused: ", r], "")
+    BeltPassFailed { reason: r } =>
+      join([" · belt tick failed: ", r], "")
+    BeltPassRecorded => ""
+    BeltPassDeferred { reason: _ } => ""
+  }
+}
+
 fn belt_verification_presentation_detail(
   progress: WorkflowAttemptProgress,
   tick_read: BeltTickReceiptRead,
@@ -5357,16 +5381,23 @@ fn belt_verification_presentation_detail(
                 BeltPassFailed { reason: r } =>
                   join(["Verification failed · ", r], "")
                 BeltPassDeferred { reason: _ } =>
-                  "Verification queued - next belt tick"
+                  join([
+                    "Verification queued - next belt tick",
+                    belt_tick_standing_suffix(receipt: receipt),
+                  ], "")
                 BeltPassRecorded =>
                   if string_contains(s: segment.detail, pattern: "could not be read") {
                     join(["Verification refused · ", segment.detail], "")
                   } else {
-                    join(["Verification queued - next belt tick · ", segment.detail], "")
+                    join([
+                      "Verification queued - next belt tick · ",
+                      segment.detail,
+                      belt_tick_standing_suffix(receipt: receipt),
+                    ], "")
                   }
               }
             BeltTickReceiptAbsent =>
-              "Verification queued - next belt tick"
+              belt_tick_receipt_absent_detail
             BeltTickReceiptUnreadable { reason: r } =>
               join(["Verification blocked · belt tick receipt unreadable: ", r], "")
           }

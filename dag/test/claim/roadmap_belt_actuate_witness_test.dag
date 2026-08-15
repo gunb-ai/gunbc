@@ -78,6 +78,8 @@ import gunbc.roadmap_belt_actuate {
   belt_workflow_attempt_presentation_json,
   belt_workflow_attempt_presentation_json_with_tick_read,
   belt_verification_presentation_detail,
+  belt_tick_receipt_absent_detail,
+  belt_tick_receipt_path_for_instance,
   belt_tick_receipt_decode,
   belt_tick_receipt_read_from_filesystem,
   belt_tick_receipt_wire_json_from_read,
@@ -1114,7 +1116,8 @@ test fn dashboard_instance_dispatch_contract_keystone_holds() -> Bool {
     && observe_refused_with_empty_verify_is_deferred_not_recorded()
     && unknown_spawn_workdir_refuses_instance_resolution()
     && known_spawn_workdirs_resolve_to_distinct_instances()
-    && verification_presentation_absent_receipt_is_queued()
+    && verification_presentation_absent_receipt_does_not_claim_queued()
+    && witness_tick_receipt_path_is_service_user_owned_and_per_instance()
     && verification_presentation_unreadable_receipt_is_blocked()
     && verification_presentation_decouples_verify_from_spawn_observe_refusal()
     && verification_presentation_verify_refused_is_blocked()
@@ -1206,13 +1209,34 @@ test fn observe_refused_with_empty_verify_is_deferred_not_recorded() -> Bool {
   }
 }
 
-data verification_presentation_witness_note: String = "review 47210 spec-without-execution: decoupling is witnessed at the receipt layer but the presentation join had no executing consumer. These rows execute belt_verification_presentation_detail and the wire join against synthetic tick reads so the headline strings ('Verification queued - next belt tick', 'Verification blocked · …', observe-refusal vs verify-recorded at the UI layer) cannot drift without going red."
+data verification_presentation_witness_note: String = "review 47210 spec-without-execution: decoupling is witnessed at the receipt layer but the presentation join had no executing consumer. These rows execute belt_verification_presentation_detail and the wire join against synthetic tick reads so the headline strings ('Verification queued - next belt tick', 'Verification blocked · …', observe-refusal vs verify-recorded at the UI layer) cannot drift without going red.\\n\\nTHE DECOUPLING ROW BELOW KEEPS ITS SUBJECT AND LOSES ONE CLAUSE (2026-08-15). Its content — a spawn-side observe refusal must not be reported as a verification verdict — is correct and is now asserted more precisely, against all three verdict words rather than the single 'Verification queued' presence check it used to pair with. What it no longer requires is that the refusal REASON disappear from the row entirely, because that clause was the mechanism by which a belt refusing every tick for days displayed a queued verification and nothing else. Suppressing a fact from one clause is not the same as suppressing it from the page, and this row asserts the first while the added belt-standing assertions prove the second does not happen."
 
-test fn verification_presentation_absent_receipt_is_queued() -> Bool {
-  belt_verification_presentation_detail(
+data tick_receipt_path_witness_note: String = "Discriminating RED for the srv1 EACCES (2026-08-15): the receipt was written to instance_root, which the deploy creates root-owned, under a belt unit running as the service user — so every tick refused the write and the UI never saw a receipt at all. The path must land under the attempt-state root, the one per-instance location the deploy already creates with service-user ownership at creation.\\n\\nThe second claim is the one a single-instance test would miss. srv1-live and srv1-green deliberately SHARE that root, so an unkeyed filename gives two belts one file and each slot reads the other's tick as its own. Asserting both paths differ is what makes the sharing safe; asserting each contains its own instance id is what makes a mixed-up key visible rather than merely different."
+
+test fn witness_tick_receipt_path_is_service_user_owned_and_per_instance() -> Bool {
+  let live = belt_tick_receipt_path_for_instance(instance: srv1_live_dashboard_instance())
+  let green = belt_tick_receipt_path_for_instance(instance: srv1_green_dashboard_instance())
+  string_contains(s: live, pattern: "/opt/gunbc/attempt-state/")
+    && string_contains(s: green, pattern: "/opt/gunbc/attempt-state/")
+    && string_contains(s: live, pattern: "srv1-live")
+    && string_contains(s: green, pattern: "srv1-green")
+    && live != green
+    && !string_contains(s: live, pattern: "/opt/gunbc/belt-last-tick.json")
+    && !string_contains(s: green, pattern: "/opt/gunbc-green/belt-last-tick.json")
+}
+
+data absent_receipt_is_not_queued_witness_note: String = "THIS ROW USED TO ASSERT THE DEFECT AS THE CONTRACT. It required BeltTickReceiptAbsent to render exactly 'Verification queued - next belt tick', so the fabricated-plausible-output arm was pinned green in two places (here and the wire row below) and correcting the behavior could only ever go red. That is the shape DESIGN records for floor_witness_run_disposition — tests asserting the string, enshrining the degradation as the contract — reproduced in this module.\\n\\nThe oracle is re-pointed rather than deleted, and it is STRONGER than what it replaces: the old row admitted exactly one string, this one refuses the whole class of claims absence cannot support. It asserts positively what absence does establish (no receipt was found) AND negatively that the line promises no tick and reports no verification verdict, so neither the original arm nor a differently-worded reassurance can pass it."
+
+test fn verification_presentation_absent_receipt_does_not_claim_queued() -> Bool {
+  let detail = belt_verification_presentation_detail(
     progress: completed_attempt_progress(node_id: "pres-absent-node"),
     tick_read: BeltTickReceiptAbsent,
-  ) == "Verification queued - next belt tick"
+  )
+  detail == belt_tick_receipt_absent_detail
+    && string_contains(s: detail, pattern: "no belt tick receipt found")
+    && !string_contains(s: detail, pattern: "queued")
+    && !string_contains(s: detail, pattern: "next belt tick")
+    && !string_contains(s: detail, pattern: "passed")
 }
 
 test fn verification_presentation_unreadable_receipt_is_blocked() -> Bool {
@@ -1247,8 +1271,12 @@ test fn verification_presentation_decouples_verify_from_spawn_observe_refusal() 
     progress: completed_attempt_progress(node_id: "pres-decouple-node"),
     tick_read: BeltTickReceiptPresent { receipt: receipt },
   )
-  !string_contains(s: detail, pattern: "tmux ls failed")
-    && string_contains(s: detail, pattern: "Verification queued")
+  string_contains(s: detail, pattern: "Verification queued")
+    && !string_contains(s: detail, pattern: "Verification failed")
+    && !string_contains(s: detail, pattern: "Verification blocked")
+    && !string_contains(s: detail, pattern: "Verification refused")
+    && string_contains(s: detail, pattern: "belt tick refused: ")
+    && string_contains(s: detail, pattern: "tmux ls failed")
 }
 
 test fn verification_presentation_verify_refused_is_blocked() -> Bool {
@@ -1286,7 +1314,10 @@ test fn verification_presentation_wire_carries_detail() -> Bool {
     progress: completed_attempt_progress(node_id: "pres-wire-node"),
     tick_read: BeltTickReceiptAbsent,
   ))
-  string_contains(s: j, pattern: "\"verification_presentation\": \"Verification queued - next belt tick\"")
+  string_contains(s: j, pattern: join([
+    "\"verification_presentation\": \"", belt_tick_receipt_absent_detail, "\"",
+  ], ""))
+    && !string_contains(s: j, pattern: "\"verification_presentation\": \"Verification queued - next belt tick\"")
 }
 
 test fn malformed_pass_reason_makes_receipt_unreadable() -> Bool {
