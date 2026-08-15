@@ -1,0 +1,157 @@
+module gunbc.replacement_cut
+
+import std.types { String, NonEmptyStr, Bool, Int, List, list_length }
+
+data replacement_cut_model_note: String = "THE MECHANICAL PLANNING CARRIER FOR REPLACEMENT MIGRATIONS (DESIGN section 3 standing rule, operator-directed 2026-08-15). A ReplacementCut names one consumer-relative boundary: the exact old root consumer, subject population and semantic contract; the Y authority proposed at that boundary; the X region deleted at cutover; every boundary consumer with its earned disposition; X's permitted external roles; and the evidence retained or retired. Construction encodes the greedy root-first search: why_not_higher is a required field, so a cut cannot be authored without stating either that its boundary is outermost or which higher cut refused and how. admit_replacement_cut is the planning-grain admission: it refuses, all causes counted, on any undecided consumer, any surviving consumer without a named coverage authority, and an empty covered region -- a cut that deletes nothing is not a cut. Dispositions follow the rule that a consumer must earn survival: retention names its justifying authority; reliance alone establishes migration cost, never correctness; a retired consumer needs no coverage; retired evidence carries a receipt so rejected behavior cannot grant itself immortality through its tests.\n\nWHAT ADMISSION DOES NOT ESTABLISH, stated per DESIGN 4b rung honesty: this fold judges the PLAN, not the world. It does not prove Y's independence from the region, behavioral parity, refusal preservation, or that the deletion executed -- those are attempt-layer facts belonging to the lane's shadow, parity and cutover receipts. NAMED NEXT LAYER, deliberately not pre-built here (DESIGN 6, model just-in-time -- the migration-cut authority program): cut standing (planned, shadow-constructed, parity-held, refused, admitted, cut-over, superseded) DERIVED from executed attempt receipts and never stored beside the plan, because a stored standing is exactly the hand-authored progress an outcome ledger must count as a planning failure; attempt-layer refusal causes the plan fold cannot judge (dependency backedge into the deletion region, missing refusal, subject-population mismatch); the cut-outcome receipt with its failure-class counters (missed consumer, premature descent, superseded work, deletion drift, cut-plan churn); and the roadmap projection in which a lane's contract, shadow, parity and cutover-plus-deletion nodes derive from ONE cut row -- cutover and deletion one accepted state so no accepted state can mean Y controls production while X awaits later deletion, a deeper cut addable only under an exact parent-cut refusal, and unregistered migration work red. Until that projection lands, roadmap nodes reference a cut by its minted ReplacementCutId via node carriers and the cut row stays standing-free."
+
+type ReplacementCutId = NonEmptyStr where brand("ReplacementCutId")
+
+type CoverageClaim
+  = Covered { by: NonEmptyStr }
+  | CoverageOpen
+
+type ConsumerDisposition
+  = RetainSameContract { justification: NonEmptyStr, coverage: CoverageClaim }
+  | RetainChangedContract { terminal_contract: NonEmptyStr, justification: NonEmptyStr, coverage: CoverageClaim }
+  | ReplacedByY { new_authority: NonEmptyStr }
+  | EvidenceOnly { surviving_claim: NonEmptyStr, reenrolled_witness: NonEmptyStr }
+  | Retire { reason: NonEmptyStr }
+  | Undecided
+
+type BoundaryConsumer { consumer: NonEmptyStr, disposition: ConsumerDisposition }
+
+type HigherBoundaryAnswer
+  = OutermostBoundary
+  | HigherCutRefusedBy { boundary: NonEmptyStr, refusal: NonEmptyStr }
+
+type EvidenceDisposition
+  = ReenrollAgainstY { evidence: NonEmptyStr, surviving_claim: NonEmptyStr }
+  | ReplaceEvidence { old_evidence: NonEmptyStr, new_evidence: NonEmptyStr }
+  | RetireEvidence { evidence: NonEmptyStr, retired_subject: NonEmptyStr }
+  | EvidenceUndecided { evidence: NonEmptyStr }
+
+type ReplacementCut {
+  identity: ReplacementCutId
+  old_root: NonEmptyStr
+  subject: NonEmptyStr
+  contract: NonEmptyStr
+  new_root: NonEmptyStr
+  why_not_higher: HigherBoundaryAnswer
+  covered_region: List<NonEmptyStr>
+  boundary_consumers: List<BoundaryConsumer>
+  external_oracle_roles: List<NonEmptyStr>
+  evidence_dispositions: List<EvidenceDisposition>
+}
+
+type CutRefusalCause
+  = UndispositionedConsumer { consumer: NonEmptyStr }
+  | UncoveredSurvivingConsumer { consumer: NonEmptyStr }
+  | UndispositionedEvidence { evidence: NonEmptyStr }
+  | EmptyCoveredRegion
+
+type CutAdmission
+  = CutAdmitted {
+      retained_count: Int,
+      replaced_count: Int,
+      evidence_only_count: Int,
+      retired_count: Int,
+      covered_region_count: Int,
+    }
+  | CutRefused { causes: List<CutRefusalCause> }
+
+type CountStanding = CountZero | CountPositive
+
+fn count_standing(count: Int) -> CountStanding {
+  if count == 0 { CountZero } else { CountPositive }
+}
+
+fn consumer_causes(acc: List<CutRefusalCause>, c: BoundaryConsumer) -> List<CutRefusalCause> {
+  match c.disposition {
+    Undecided => Cons { head: UndispositionedConsumer { consumer: c.consumer }, tail: acc }
+    RetainSameContract { justification: _, coverage: cov } =>
+      match cov {
+        CoverageOpen => Cons { head: UncoveredSurvivingConsumer { consumer: c.consumer }, tail: acc }
+        Covered { by: _ } => acc
+      }
+    RetainChangedContract { terminal_contract: _, justification: _, coverage: cov } =>
+      match cov {
+        CoverageOpen => Cons { head: UncoveredSurvivingConsumer { consumer: c.consumer }, tail: acc }
+        Covered { by: _ } => acc
+      }
+    ReplacedByY { new_authority: _ } => acc
+    EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => acc
+    Retire { reason: _ } => acc
+  }
+}
+
+fn evidence_causes(acc: List<CutRefusalCause>, e: EvidenceDisposition) -> List<CutRefusalCause> {
+  match e {
+    EvidenceUndecided { evidence: w } => Cons { head: UndispositionedEvidence { evidence: w }, tail: acc }
+    ReenrollAgainstY { evidence: _, surviving_claim: _ } => acc
+    ReplaceEvidence { old_evidence: _, new_evidence: _ } => acc
+    RetireEvidence { evidence: _, retired_subject: _ } => acc
+  }
+}
+
+type DispositionCounts {
+  retained: Int
+  replaced: Int
+  evidence_only: Int
+  retired: Int
+  undecided: Int
+}
+
+fn count_dispositions(consumers: List<BoundaryConsumer>) -> DispositionCounts {
+  fold(
+    consumers,
+    init: DispositionCounts { retained: 0, replaced: 0, evidence_only: 0, retired: 0, undecided: 0 },
+    f: fn(acc, c) {
+      match c.disposition {
+        RetainSameContract { justification: _, coverage: _ } =>
+          DispositionCounts { retained: acc.retained + 1, replaced: acc.replaced, evidence_only: acc.evidence_only, retired: acc.retired, undecided: acc.undecided }
+        RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } =>
+          DispositionCounts { retained: acc.retained + 1, replaced: acc.replaced, evidence_only: acc.evidence_only, retired: acc.retired, undecided: acc.undecided }
+        ReplacedByY { new_authority: _ } =>
+          DispositionCounts { retained: acc.retained, replaced: acc.replaced + 1, evidence_only: acc.evidence_only, retired: acc.retired, undecided: acc.undecided }
+        EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } =>
+          DispositionCounts { retained: acc.retained, replaced: acc.replaced, evidence_only: acc.evidence_only + 1, retired: acc.retired, undecided: acc.undecided }
+        Retire { reason: _ } =>
+          DispositionCounts { retained: acc.retained, replaced: acc.replaced, evidence_only: acc.evidence_only, retired: acc.retired + 1, undecided: acc.undecided }
+        Undecided =>
+          DispositionCounts { retained: acc.retained, replaced: acc.replaced, evidence_only: acc.evidence_only, retired: acc.retired, undecided: acc.undecided + 1 }
+      }
+    },
+  )
+}
+
+fn admitted_from(cut: ReplacementCut) -> CutAdmission {
+  let counts = count_dispositions(consumers: cut.boundary_consumers)
+  CutAdmitted {
+    retained_count: counts.retained,
+    replaced_count: counts.replaced,
+    evidence_only_count: counts.evidence_only,
+    retired_count: counts.retired,
+    covered_region_count: list_length(items: cut.covered_region),
+  }
+}
+
+fn admit_replacement_cut(cut: ReplacementCut) -> CutAdmission {
+  let consumer_cause_rows = fold(
+    cut.boundary_consumers,
+    init: [],
+    f: fn(acc, c) { consumer_causes(acc: acc, c: c) },
+  )
+  let row_causes = fold(
+    cut.evidence_dispositions,
+    init: consumer_cause_rows,
+    f: fn(acc, e) { evidence_causes(acc: acc, e: e) },
+  )
+  let all_causes = match count_standing(count: list_length(items: cut.covered_region)) {
+    CountZero => Cons { head: EmptyCoveredRegion, tail: row_causes }
+    CountPositive => row_causes
+  }
+  match count_standing(count: list_length(items: all_causes)) {
+    CountZero => admitted_from(cut: cut)
+    CountPositive => CutRefused { causes: all_causes }
+  }
+}

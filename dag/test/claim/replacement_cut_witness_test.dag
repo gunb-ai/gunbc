@@ -1,0 +1,255 @@
+module test.claim.replacement_cut_witness
+
+// Imported from the definer rather than left as bare references, per the
+// accidental-coverage class the import-strip diagnosis names: a module this
+// new is in nobody else's closure, so bare references would not bind.
+import std.types { String, NonEmptyStr, Bool, Int, List, list_length }
+import gunbc.replacement_cut {
+  ReplacementCutId,
+  CoverageClaim, Covered, CoverageOpen,
+  ConsumerDisposition,
+  RetainSameContract, RetainChangedContract, ReplacedByY, EvidenceOnly, Retire, Undecided,
+  BoundaryConsumer,
+  HigherBoundaryAnswer, OutermostBoundary, HigherCutRefusedBy,
+  EvidenceDisposition, ReenrollAgainstY, ReplaceEvidence, RetireEvidence, EvidenceUndecided,
+  ReplacementCut,
+  CutRefusalCause, UndispositionedConsumer, UncoveredSurvivingConsumer, UndispositionedEvidence, EmptyCoveredRegion,
+  CutAdmission, CutAdmitted, CutRefused,
+  admit_replacement_cut,
+}
+
+fn nes(s: String) -> NonEmptyStr { s as NonEmptyStr }
+
+fn covered_consumer() -> BoundaryConsumer {
+  BoundaryConsumer {
+    consumer: nes(s: "surviving external interface"),
+    disposition: RetainSameContract {
+      justification: nes(s: "supported public surface"),
+      coverage: Covered { by: nes(s: "new root authority") },
+    },
+  }
+}
+
+fn open_consumer() -> BoundaryConsumer {
+  BoundaryConsumer {
+    consumer: nes(s: "surviving invariant consumer"),
+    disposition: RetainChangedContract {
+      terminal_contract: nes(s: "narrowed terminal contract"),
+      justification: nes(s: "invariant survives with narrower surface"),
+      coverage: CoverageOpen,
+    },
+  }
+}
+
+fn undecided_consumer() -> BoundaryConsumer {
+  BoundaryConsumer { consumer: nes(s: "undispositioned caller"), disposition: Undecided }
+}
+
+fn retired_consumer() -> BoundaryConsumer {
+  BoundaryConsumer {
+    consumer: nes(s: "workaround built to compensate for x"),
+    disposition: Retire { reason: nes(s: "only justification was x itself") },
+  }
+}
+
+fn replaced_consumer() -> BoundaryConsumer {
+  BoundaryConsumer {
+    consumer: nes(s: "old dispatch client"),
+    disposition: ReplacedByY { new_authority: nes(s: "y boundary authority") },
+  }
+}
+
+fn evidence_consumer() -> BoundaryConsumer {
+  BoundaryConsumer {
+    consumer: nes(s: "discriminating refusal witness"),
+    disposition: EvidenceOnly {
+      surviving_claim: nes(s: "refusal y still claims"),
+      reenrolled_witness: nes(s: "witness re-enrolled against y"),
+    },
+  }
+}
+
+fn dispositioned_evidence() -> List<EvidenceDisposition> {
+  [
+    ReenrollAgainstY {
+      evidence: nes(s: "surviving discriminating witness"),
+      surviving_claim: nes(s: "refusal y still claims"),
+    },
+    RetireEvidence {
+      evidence: nes(s: "witness whose only subject was retired behavior"),
+      retired_subject: nes(s: "behavior deliberately rejected by y"),
+    },
+  ]
+}
+
+fn cut_with(
+  consumers: List<BoundaryConsumer>,
+  region: List<NonEmptyStr>,
+  evidence: List<EvidenceDisposition>,
+) -> ReplacementCut {
+  ReplacementCut {
+    identity: "cut-fixture" as ReplacementCutId,
+    old_root: nes(s: "old root consumer operation"),
+    subject: nes(s: "exact subject population"),
+    contract: nes(s: "complete contract including refusals"),
+    new_root: nes(s: "new root authority"),
+    why_not_higher: OutermostBoundary,
+    covered_region: region,
+    boundary_consumers: consumers,
+    external_oracle_roles: [nes(s: "external differential oracle")],
+    evidence_dispositions: evidence,
+  }
+}
+
+fn two_region() -> List<NonEmptyStr> { [nes(s: "x root module"), nes(s: "x internal helper")] }
+
+fn causes_of(admission: CutAdmission) -> List<CutRefusalCause> {
+  match admission {
+    CutAdmitted { retained_count: _, replaced_count: _, evidence_only_count: _, retired_count: _, covered_region_count: _ } => []
+    CutRefused { causes: cs } => cs
+  }
+}
+
+fn has_undispositioned(causes: List<CutRefusalCause>, name: String) -> Bool {
+  fold(causes, init: false, f: fn(acc, cause) {
+    match cause {
+      UndispositionedConsumer { consumer: c } => acc || (c as String) == name
+      UncoveredSurvivingConsumer { consumer: _ } => acc
+      UndispositionedEvidence { evidence: _ } => acc
+      EmptyCoveredRegion => acc
+    }
+  })
+}
+
+fn has_uncovered_surviving(causes: List<CutRefusalCause>, name: String) -> Bool {
+  fold(causes, init: false, f: fn(acc, cause) {
+    match cause {
+      UndispositionedConsumer { consumer: _ } => acc
+      UncoveredSurvivingConsumer { consumer: c } => acc || (c as String) == name
+      UndispositionedEvidence { evidence: _ } => acc
+      EmptyCoveredRegion => acc
+    }
+  })
+}
+
+fn has_undispositioned_evidence(causes: List<CutRefusalCause>, name: String) -> Bool {
+  fold(causes, init: false, f: fn(acc, cause) {
+    match cause {
+      UndispositionedConsumer { consumer: _ } => acc
+      UncoveredSurvivingConsumer { consumer: _ } => acc
+      UndispositionedEvidence { evidence: w } => acc || (w as String) == name
+      EmptyCoveredRegion => acc
+    }
+  })
+}
+
+fn has_empty_region(causes: List<CutRefusalCause>) -> Bool {
+  fold(causes, init: false, f: fn(acc, cause) {
+    match cause {
+      UndispositionedConsumer { consumer: _ } => acc
+      UncoveredSurvivingConsumer { consumer: _ } => acc
+      UndispositionedEvidence { evidence: _ } => acc
+      EmptyCoveredRegion => true
+    }
+  })
+}
+
+test fn fully_dispositioned_cut_admits_with_exact_counts() -> Bool {
+  let admission = admit_replacement_cut(cut: cut_with(
+    consumers: [covered_consumer(), replaced_consumer(), evidence_consumer(), retired_consumer()],
+    region: two_region(),
+    evidence: dispositioned_evidence(),
+  ))
+  match admission {
+    CutAdmitted { retained_count: r, replaced_count: p, evidence_only_count: e, retired_count: t, covered_region_count: n } =>
+      r == 1 && p == 1 && e == 1 && t == 1 && n == 2
+    CutRefused { causes: _ } => false
+  }
+}
+
+test fn undecided_consumer_blocks_the_cut() -> Bool {
+  let causes = causes_of(admission: admit_replacement_cut(cut: cut_with(
+    consumers: [covered_consumer(), undecided_consumer()],
+    region: two_region(),
+    evidence: dispositioned_evidence(),
+  )))
+  list_length(items: causes) == 1 && has_undispositioned(causes: causes, name: "undispositioned caller")
+}
+
+test fn surviving_consumer_without_coverage_refuses() -> Bool {
+  let causes = causes_of(admission: admit_replacement_cut(cut: cut_with(
+    consumers: [open_consumer()],
+    region: two_region(),
+    evidence: dispositioned_evidence(),
+  )))
+  list_length(items: causes) == 1
+    && has_uncovered_surviving(causes: causes, name: "surviving invariant consumer")
+}
+
+test fn undecided_evidence_blocks_the_cut() -> Bool {
+  let causes = causes_of(admission: admit_replacement_cut(cut: cut_with(
+    consumers: [covered_consumer()],
+    region: two_region(),
+    evidence: [EvidenceUndecided { evidence: nes(s: "parked witness") }],
+  )))
+  list_length(items: causes) == 1
+    && has_undispositioned_evidence(causes: causes, name: "parked witness")
+}
+
+test fn retired_consumer_needs_no_coverage() -> Bool {
+  let admission = admit_replacement_cut(cut: cut_with(
+    consumers: [retired_consumer()],
+    region: two_region(),
+    evidence: dispositioned_evidence(),
+  ))
+  match admission {
+    CutAdmitted { retained_count: r, replaced_count: p, evidence_only_count: e, retired_count: t, covered_region_count: _ } =>
+      r == 0 && p == 0 && e == 0 && t == 1
+    CutRefused { causes: _ } => false
+  }
+}
+
+test fn a_cut_that_deletes_nothing_is_not_a_cut() -> Bool {
+  let causes = causes_of(admission: admit_replacement_cut(cut: cut_with(
+    consumers: [covered_consumer()],
+    region: [],
+    evidence: dispositioned_evidence(),
+  )))
+  list_length(items: causes) == 1 && has_empty_region(causes: causes)
+}
+
+test fn every_cause_is_counted_not_first_wins() -> Bool {
+  let causes = causes_of(admission: admit_replacement_cut(cut: cut_with(
+    consumers: [undecided_consumer(), open_consumer()],
+    region: [],
+    evidence: [EvidenceUndecided { evidence: nes(s: "parked witness") }],
+  )))
+  list_length(items: causes) == 4
+    && has_undispositioned(causes: causes, name: "undispositioned caller")
+    && has_uncovered_surviving(causes: causes, name: "surviving invariant consumer")
+    && has_undispositioned_evidence(causes: causes, name: "parked witness")
+    && has_empty_region(causes: causes)
+}
+
+test fn why_not_higher_carries_the_refusal_that_pushed_the_cut_down() -> Bool {
+  let cut = ReplacementCut {
+    identity: "cut-descended" as ReplacementCutId,
+    old_root: nes(s: "b0 boundary"),
+    subject: nes(s: "exact subject population"),
+    contract: nes(s: "complete contract including refusals"),
+    new_root: nes(s: "b1"),
+    why_not_higher: HigherCutRefusedBy {
+      boundary: nes(s: "a0"),
+      refusal: nes(s: "escaping consumer q0 uncovered"),
+    },
+    covered_region: two_region(),
+    boundary_consumers: [covered_consumer()],
+    external_oracle_roles: [],
+    evidence_dispositions: [],
+  }
+  match cut.why_not_higher {
+    HigherCutRefusedBy { boundary: b, refusal: r } =>
+      (b as String) == "a0" && (r as String) == "escaping consumer q0 uncovered"
+    OutermostBoundary => false
+  }
+}
