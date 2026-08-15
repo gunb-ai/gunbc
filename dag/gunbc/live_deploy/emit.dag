@@ -27,6 +27,8 @@ import extdeps.systemd.systemctl {
 }
 import extdeps.systemd { systemd_unit_load_state_not_found_wire }
 import gunbc.live_deploy.deployed_tree_scope { deployed_tree_rsync_exclude_flags }
+import gunbc.repository { gunbc_repository }
+import extdeps.github.github { github_https_clone_url }
 import extdeps.version.semver { semver_version_label }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -456,6 +458,8 @@ fn apply_systemd_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevision
 
 data tree_sync_git_whitelist_note: String = "The .git/ leg is a WHITELIST sync (2026-07-22, journal receipt on srv1: three deploys failed rsync exit 23 on ONE file — objects/pack/pack-25d0810548020708d75d5510c2107766baaf86d2.keep, a git fetch-time marker written 0600 by ghrunner, unreadable to the User= principal; and /opt/gunbc/gunbc/.git/config was found carrying a live actions extraheader auth token from an earlier blanket sync — a credential leak). The belt needs exactly four things for `git worktree add` resolving origin/main: HEAD (repo validity), objects/ (minus *.keep / tmp_pack_* fetch transients, which are 0600 runner-private and never needed), packed-refs, and refs/. Everything else — config (CREDENTIALS), config.worktree, index, hooks, logs — never syncs, so both failure classes are unwritable by construction: no runner-private 0600 file can red the sync, and no credential can reach the service tree (DESIGN 5 construction over validation; the blacklist alternative re-reds on the next unknown transient). Still additive (no --delete): target-local worktree registrations, session refs, and their objects must survive redeploys (apply_tree_split_sync_note). Filter order is load-bearing: the two pack-transient excludes precede the /objects/*** include (first match wins), and the terminal --exclude=* is the whitelist wall."
 
+data tree_sync_remote_url_leg_note: String = "THE REMOTE URL IS SET, NOT SYNCED, and the distinction is what keeps the whitelist wall above intact. tree_sync_git_whitelist_note excludes .git/config because a blanket sync once carried a live actions extraheader token into the service tree. That exclusion is correct and stays: config is never copied from the runner checkout, so no credential can ride in. What this leg does instead is WRITE one key whose value is derived here, from gunbc.repository — the public HTTPS clone URL, projected by extdeps.github.github github_https_clone_url. A derived public URL cannot carry a secret the way a copied file can, because nothing upstream of it is a secret; the value is a function of owner and name, both of which are already public facts in this repository's own source.\\n\\nWHY THE LEG IS NEEDED AT ALL, since the whitelist note reasons that four items suffice. That reasoning is sound for what it examined — `git worktree add` resolving origin/main reads refs/remotes/origin/*, which sync, and needs no remote configured. But it enumerated the belt's SPAWN path only. gunbc.fleet_desired_observe reads refs/fleet/desired by `git ls-remote origin`, which is a network call THROUGH a configured remote, and no remote survives the whitelist. So the deployed tree was built structurally incapable of an observation the belt performs on every tick: ls-remote refused, observe_refused went true, spawn and reap were withheld, and the belt unit exited 1 every 60 seconds. srv1-live appeared healthy only because its tree predates the whitelist and still carries a hand-cloned config; srv1-green, provisioned after it, is what the model actually produces and it could never have worked. The refusal was the fail-closed arm behaving correctly on a host the deploy had made unobservable — the defect is here, not there.\\n\\nWHY IT RIDES THIS UNIT RATHER THAN THE APPLY SCRIPT. The deploy principal is the unprivileged CI runner (emit_deploy_principal_note) and git is not among its six sudo grants, while the tree is owned by the service user — so `git -C <tree> config` in the apply would be refused by sudoers on one side and EACCES on the other. devboot_root_realization_note already establishes the pattern for exactly this shape: the deploy ensures the directory, the SERVICE makes it a repository. This unit already runs as the service user and already writes this tree, so the owner writes its own config and no grant widens and no privilege boundary is crossed. `git config <key> <value>` is idempotent by upstream contract, so the leg converges rather than accumulating.\\n\\nONLY THE URL IS SET, DELIBERATELY — no fetch refspec. ls-remote needs the URL alone, and apply_tree_split_sync_note records that srv1 does no fetch: its remote-tracking refs come from the additive .git sync. Writing a refspec would advertise a fetch this host must not perform, and a fetch here would overwrite the very refs the sync is the authority for."
+
 fn emit_tree_sync_unit_doc(spec: DeploymentSpec, tree_path: String) -> Doc {
   let user = spec.service.service_user
   doc_concat(parts: [
@@ -472,6 +476,10 @@ fn emit_tree_sync_unit_doc(spec: DeploymentSpec, tree_path: String) -> Doc {
     ], "")),
     doc_line_of(text: join([
       "ExecStart=/usr/bin/rsync -rlpt --exclude=objects/pack/*.keep --exclude=objects/pack/tmp_pack_* --include=/HEAD --include=/objects/*** --include=/packed-refs --include=/refs/*** --exclude=* \"$\{GUNBC_TREE_SRC\}/.git/\" ", tree_path, "/.git/",
+    ], "")),
+    doc_line_of(text: join([
+      "ExecStart=/usr/bin/git -C ", tree_path, " config remote.origin.url ",
+      github_https_clone_url(repo: gunbc_repository) as String,
     ], "")),
   ])
 }

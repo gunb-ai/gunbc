@@ -47,6 +47,8 @@ import gunbc.live_deploy.spec {
   gunbc_service_user,
 }
 import gunbc.host_layout { srv1_dispatch_attempt_state_root, belt_spawn_workdir_env_var }
+import gunbc.repository { gunbc_repository }
+import extdeps.github.github { github_https_clone_url }
 import gunbc.managed_directory {
   managed_directory_mode_octal,
   managed_directory_permissions,
@@ -321,6 +323,18 @@ test fn witness_scripts_stay_within_ci_runner_grants() -> Bool {
     && !string_contains(s: unit, pattern: "--include=/config")
     && !string_contains(s: unit, pattern: "rsync -a")
     && string_contains(s: apply, pattern: unit)
+}
+
+data tree_sync_remote_url_witness_note: String = "Discriminating RED for the srv1-green belt crash loop (observed 2026-08-15): the deployed tree carried no .git/config, so gunbc.fleet_desired_observe's `git ls-remote origin refs/fleet/desired` refused on every belt tick, observe_refused went true, spawn and reap were withheld, and gunbc-srv1-green-belt.service exited 1 every 60 seconds. The tree-sync unit must therefore set remote.origin.url — AS the service user, inside this unit, because git is not among the deploy principal's six sudo grants.\\n\\nTHE REDs GUARD THE WALL THIS LEG SITS BESIDE, not just the leg's presence. The URL must be the DERIVED public clone URL (a fabricated or hand-spelled one would pass a presence check while pointing anywhere), .git/config must still never be synced from the runner checkout, no credential-bearing form may appear in the unit, and no fetch refspec may be written — a fetch would overwrite the remote-tracking refs the additive .git sync is the authority for (apply_tree_split_sync_note)."
+
+test fn witness_tree_sync_sets_public_remote_url() -> Bool {
+  let unit = live_deploy_tree_sync_unit_for(spec: deployment_spec_srv1())
+  string_contains(s: unit, pattern: "ExecStart=/usr/bin/git -C /opt/gunbc/gunbc config remote.origin.url https://github.com/gunb-ai/gunbc.git")
+    && string_contains(s: unit, pattern: github_https_clone_url(repo: gunbc_repository) as String)
+    && !string_contains(s: unit, pattern: "--include=/config")
+    && !string_contains(s: unit, pattern: "extraheader")
+    && !string_contains(s: unit, pattern: "remote.origin.fetch")
+    && !string_contains(s: unit, pattern: "@github.com")
 }
 
 data tree_sync_restart_diagnosis_witness_note: String = "Discriminating RED for #7011/receipt 29928424523: the tree-sync restart is synchronous and precedes the poll-based unit_diagnosis capture, so a bare restart failure carries no WHY. The apply script must fall through to the same unit-status-tail authority the roadmap-unit diagnosis already uses (never a second format), append it to stderr, and still fail the step — never proceed as if the restart had succeeded."
