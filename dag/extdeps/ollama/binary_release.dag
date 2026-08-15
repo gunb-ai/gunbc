@@ -69,6 +69,36 @@ fn ollama_linux_asset_variant_infix(variant: OllamaLinuxAssetVariant) -> String 
   }
 }
 
+fn ollama_linux_asset_variant_closure_key(variant: OllamaLinuxAssetVariant) -> String {
+  match variant {
+    OllamaLinuxGenericCuda => "generic-cuda"
+    OllamaLinuxJetPack5 => "jetpack5"
+    OllamaLinuxJetPack6 => "jetpack6"
+  }
+}
+
+fn ollama_reported_version_matches_release(version: String, rel: OllamaBinaryRelease) -> Bool {
+  let cited = rel.version as String
+  let cited_bare = if starts_with(s: cited, prefix: "v") {
+    substring(s: cited, start: 1, end: length(cited))
+  } else {
+    cited
+  }
+  version == cited || version == cited_bare
+}
+
+fn ollama_binary_release_for_observed_asset_digest(digest_hex: String) -> OllamaBinaryRelease? {
+  if (ollama_v0_32_9_release.digest.hex as String) == digest_hex {
+    Present { value: ollama_v0_32_9_release }
+  } else if (ollama_v0_32_9_jetpack5_release.digest.hex as String) == digest_hex {
+    Present { value: ollama_v0_32_9_jetpack5_release }
+  } else if (ollama_v0_32_9_jetpack6_release.digest.hex as String) == digest_hex {
+    Present { value: ollama_v0_32_9_jetpack6_release }
+  } else {
+    none
+  }
+}
+
 fn ollama_binary_release_asset_name(binary_release: OllamaBinaryRelease) -> NonEmptyStr {
   let suffix = archive_format_distribution_suffix(
     format: binary_release.archive_format,

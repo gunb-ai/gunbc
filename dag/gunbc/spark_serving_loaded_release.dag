@@ -2,7 +2,7 @@ module gunbc.spark_serving_loaded_release
 
 import std.types { String, NonEmptyStr }
 import product.placement_supply { HostIdentity }
-import gunbc.ollama_runtime_bundle { ollama_runtime_closure_digest_for_reported_version }
+import gunbc.ollama_runtime_bundle { ollama_runtime_closure_digest_for_observed_release }
 import gunbc.model_artifact { ModelArtifact, model_artifact_from_observed_digest }
 import extdeps.ollama.api { OllamaModelRef, ollama_model_digest_from_wire }
 import gunbc.spark_serving_readback_parse {
@@ -36,6 +36,7 @@ type SparkServingReadback {
   host: HostIdentity
   unit_outcome: SparkServingUnitProbeOutcome
   runtime_version: SparkServingReadbackField
+  runtime_release_asset_digest: SparkServingReadbackField
   model_name: SparkServingReadbackField
   model_tag: SparkServingReadbackField
   model_manifest_digest: SparkServingReadbackField
@@ -72,32 +73,39 @@ fn derive_loaded_spark_serving_release(readback: SparkServingReadback) -> SparkS
       match spark_serving_readback_field_present_value(field: readback.runtime_version) {
         Absent => none
         Present { value: ver } =>
-          match ollama_runtime_closure_digest_for_reported_version(version: ver) {
+          match spark_serving_readback_field_present_value(field: readback.runtime_release_asset_digest) {
             Absent => none
-            Present { value: runtime_digest } =>
-              match spark_serving_readback_field_present_value(field: readback.model_name) {
+            Present { value: asset_digest_hex } =>
+              match ollama_runtime_closure_digest_for_observed_release(
+                version: ver,
+                asset_digest_hex: asset_digest_hex,
+              ) {
                 Absent => none
-                Present { value: name } =>
-                  match spark_serving_readback_field_present_value(field: readback.model_tag) {
+                Present { value: runtime_digest } =>
+                  match spark_serving_readback_field_present_value(field: readback.model_name) {
                     Absent => none
-                    Present { value: tag } =>
-                      match spark_serving_readback_field_present_value(field: readback.model_manifest_digest) {
+                    Present { value: name } =>
+                      match spark_serving_readback_field_present_value(field: readback.model_tag) {
                         Absent => none
-                        Present { value: digest_wire } =>
-                          match spark_serving_loaded_model_artifact(
-                            name: name,
-                            tag: tag,
-                            digest_wire: digest_wire,
-                          ) {
+                        Present { value: tag } =>
+                          match spark_serving_readback_field_present_value(field: readback.model_manifest_digest) {
                             Absent => none
-                            Present { value: model } =>
-                              Present {
-                                value: SparkServingRelease {
-                                  runtime: RuntimeArtifactIdentity {
-                                    closure_digest: runtime_digest.digest as NonEmptyStr,
-                                  },
-                                  model: model,
-                                }
+                            Present { value: digest_wire } =>
+                              match spark_serving_loaded_model_artifact(
+                                name: name,
+                                tag: tag,
+                                digest_wire: digest_wire,
+                              ) {
+                                Absent => none
+                                Present { value: model } =>
+                                  Present {
+                                    value: SparkServingRelease {
+                                      runtime: RuntimeArtifactIdentity {
+                                        closure_digest: runtime_digest.digest as NonEmptyStr,
+                                      },
+                                      model: model,
+                                    }
+                                  }
                               }
                           }
                       }
@@ -129,6 +137,7 @@ fn derive_spark_serving_observation(readback: SparkServingReadback) -> SparkServ
     SparkServingUnitActive =>
       match spark_serving_first_readback_refusal(fields: [
         readback.runtime_version,
+        readback.runtime_release_asset_digest,
         readback.model_name,
         readback.model_tag,
         readback.model_manifest_digest,
