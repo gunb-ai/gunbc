@@ -6,8 +6,6 @@ import gunbc.stage0_emit_model {
   stage0_module_emit_filename
 }
 import gunbc.stage0_emit_plan {
-  GeneratedStage0FilesAvailable,
-  GeneratedStage0FilesRefused,
   HandMaintainedCandidate,
   ParsedFromRegenSourceClosure,
   SourceIdentityUnavailable,
@@ -20,15 +18,9 @@ import gunbc.stage0_emit_plan {
   Stage0SourceIdentitySupplyUnavailable,
   V1SourceTree,
   generated_stage0_files_from_plan_rows,
-  generated_stage0_files_from_emission_plan,
   stage0_emission_plan_from_source,
   stage0_emission_plan_from_supply,
   stage0_generated_output_sets_agree
-}
-import gunbc.stage0_emit_plan_generated { generated_stage0_files }
-import gunbc.stage0_emit_plan_emit {
-  Stage0EmitPlanGenerationRefused,
-  stage0_emit_plan_generation_from_outcome
 }
 import std.types { List, String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -43,29 +35,19 @@ test fn w_hand_maintained_not_classified_generated() -> Bool {
   !is_generated_stage0_file(basename: "main.rs")
 }
 
-test fn w_occurrence_binding_identity_emit_enrolled_generated() -> Bool {
-  is_generated_stage0_file(basename: "std_occurrence_identity.rs")
+
+
+data enrolled_manifest_claim_retirement_note: String = "RETIRED WITH ITS SUBJECT, AND REPLACED BY THE OPPOSITE CLAIM. This position formerly asserted enrolled == derived: that gunbc.stage0_emit_plan_generated.generated_stage0_files equalled the typed emission plan's derivation. That was the drift gate over regen_stage0's output roster; the v1 cut deleted the regen loop and the roster, so the equality has no left-hand side. It is not dropped silently -- the two claims below assert the replacement grounding instead, so the retirement keeps an executing consumer and a restored roster would red rather than pass unnoticed."
+
+test fn w_generated_membership_is_registry_derived() -> Bool {
+  is_generated_stage0_file(basename: "bootstrap_stage0_crate_layout_generated.rs")
+    && is_generated_stage0_file(basename: "v1_interpreter_dispatch_generated.rs")
 }
 
-test fn w_generated_files_classified_generated() -> Bool {
-  is_generated_stage0_file(basename: "std_execution_mode.rs") &&
-  is_generated_stage0_file(basename: "v1_compiler_closure_stub_v2_std_integer_rust.rs") &&
-  is_generated_stage0_file(basename: "v1_compiler_closure_stub_v2_std_text_rust.rs") &&
-  is_generated_stage0_file(basename: "extdeps_units_dimensionless.rs") &&
-  is_generated_stage0_file(basename: "extdeps_units_iec_80000_13.rs") &&
-  is_generated_stage0_file(basename: "extdeps_units_iso8601.rs") &&
-  is_generated_stage0_file(basename: "lib.rs") &&
-  is_generated_stage0_file(basename: "std_algebra.rs") &&
-  is_generated_stage0_file(basename: "std_keyed_row.rs") &&
-  is_generated_stage0_file(basename: "std_keyed_roster.rs")
-}
-
-test fn w_enrolled_manifest_equals_typed_emission_plan_derivation() -> Bool {
-  match generated_stage0_files_from_emission_plan() {
-    GeneratedStage0FilesRefused { cause: _ } => false
-    GeneratedStage0FilesAvailable { files } =>
-      (files |> sort_by(file => file)) == (generated_stage0_files |> sort_by(file => file))
-  }
+test fn w_frozen_seed_rust_is_not_generated() -> Bool {
+  !is_generated_stage0_file(basename: "std_algebra.rs")
+    && !is_generated_stage0_file(basename: "cli_run.rs")
+    && !is_generated_stage0_file(basename: "lib.rs")
 }
 test fn w_emit_naming_rule() -> Bool {
   stage0_module_emit_basename(module_path: "v1.compiler.emit_rust") == "v1_compiler_emit_rust" &&
@@ -159,11 +141,7 @@ test fn w_absent_host_supply_cannot_generate_artifact_bytes() -> Bool {
     Stage0EmissionPlanRefused { cause: SourceIdentitySupplyUnavailableRefusal { cause } } => length(cause) > 0
     _ => false
   }
-  let generation_refuses = match stage0_emit_plan_generation_from_outcome(outcome: outcome) {
-    Stage0EmitPlanGenerationRefused => true
-    _ => false
-  }
-  plan_refuses && generation_refuses
+  plan_refuses
 }
 
 test fn w_frontier_classifies_seed_retained_candidate() -> Bool {

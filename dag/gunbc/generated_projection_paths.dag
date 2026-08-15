@@ -1,32 +1,18 @@
 module gunbc.generated_projection_paths
 
 import gunbc.generated_artifact { committed_generated_artifact_paths }
-import gunbc.stage0_emit_plan {
-  Stage0EmissionPlanAccepted,
-  Stage0EmissionPlanOutcome,
-  Stage0EmissionPlanRefusalCause,
-  Stage0EmissionPlanRefused,
-  generated_stage0_paths_from_plan_rows,
-  stage0_emission_plan
-}
 import std.types { List, String }
 
-type GeneratedProjectionPathSource
-  = CommittedGeneratedArtifact
-  | Stage0EmittedRust
+data generated_projection_stage0_retirement_note: String = "THE STAGE0 RUST HALF OF THIS JOIN IS RETIRED WITH THE v1 CUT, AND THE SOURCE AXIS IS NOW SINGLE-VALUED. It formerly joined committed generated artifacts with plan-derived stage0 Rust paths, refusing duplicates across the two. That second half was derived from gunbc.stage0_emit_plan over parse-derived src/v1 source identities — the regen loop's own output roster — and the v1 cut deleted both the src/v1 .dag authority and regen_stage0. A path is a generated projection because something can re-derive it; with no generator, src/v1/stage0/src/**.rs is frozen seed source, so its merge=generated-artifact policy rows and their auto-resolve licence retire rather than migrate (the same fact that retired the stage0 half of the heal job's skew-guard exclusion set). RECEIPT, at identity grain: 140 stage0 rows left .gitattributes through this live derivation with no hand edit, and the two survivors — compiler_tests.rs and bootstrap_stage0_crate_layout_generated.rs — remain only because they are registry artifacts in their own right, not because they are stage0. The collision refusal below is KEPT: it is a property of the path set, not of the second source, and it stays discriminating under synthetic rows.
+
+THE SOURCE AXIS IS DISSOLVED RATHER THAN LEFT ONE-VALUED, and the substrate is what settled it. The first cut of this retirement kept GeneratedProjectionPathSource as a single-variant coproduct on the theory that the axis is where a future second source re-enters. It does not typecheck: `type A = B` with one arm is an ALIAS, so the compiler read it as an alias to an undefined type and refused with `unresolved type CommittedGeneratedArtifact` — a one-valued discriminant has no constructor form to be written in. That is the right answer independently of the diagnostic: a field with one inhabitant carries no information and is the anemic axis DESIGN §2 says to remove, so the row is now just a path. A second source re-enters by re-introducing the axis with both its arms at once, which is when it first means anything."
 
 type GeneratedProjectionPathRow {
   path: String
-  source: GeneratedProjectionPathSource
 }
 
 type GeneratedProjectionPathsRefusal
-  = GeneratedProjectionPathCollision {
-      path: String,
-      first_source: GeneratedProjectionPathSource,
-      duplicate_source: GeneratedProjectionPathSource
-    }
-  | GeneratedProjectionStage0PlanRefused { cause: Stage0EmissionPlanRefusalCause }
+  = GeneratedProjectionPathCollision { path: String }
 
 type GeneratedProjectionPathsOutcome
   = GeneratedProjectionPathsAccepted { paths: List<String> }
@@ -44,15 +30,8 @@ fn deterministic_generated_projection_paths_from_rows(
       GeneratedProjectionPathRowsRefused { cause } => GeneratedProjectionPathRowsRefused { cause: cause }
       GeneratedProjectionPathRowsAccepted { rows: accepted } => {
         if accepted |> any(candidate => candidate.path == row.path) {
-          let first_source = fold(accepted, init: row.source, f: fn(found, candidate) {
-            if candidate.path == row.path { candidate.source } else { found }
-          })
           GeneratedProjectionPathRowsRefused {
-            cause: GeneratedProjectionPathCollision {
-              path: row.path,
-              first_source: first_source,
-              duplicate_source: row.source
-            }
+            cause: GeneratedProjectionPathCollision { path: row.path }
           }
         } else {
           GeneratedProjectionPathRowsAccepted { rows: concat(accepted, [row]) }
@@ -68,23 +47,9 @@ fn deterministic_generated_projection_paths_from_rows(
   }
 }
 
-fn deterministic_generated_projection_paths_from_stage0_plan(
-  outcome: Stage0EmissionPlanOutcome
-) -> GeneratedProjectionPathsOutcome {
-  let committed = committed_generated_artifact_paths()
-    |> map(path => GeneratedProjectionPathRow { path: path, source: CommittedGeneratedArtifact })
-  match outcome {
-    Stage0EmissionPlanRefused { cause } => GeneratedProjectionPathsRefused {
-      cause: GeneratedProjectionStage0PlanRefused { cause: cause }
-    }
-    Stage0EmissionPlanAccepted { rows } => {
-      let stage0 = generated_stage0_paths_from_plan_rows(rows: rows)
-        |> map(path => GeneratedProjectionPathRow { path: path, source: Stage0EmittedRust })
-      deterministic_generated_projection_paths_from_rows(rows: concat(committed, stage0))
-    }
-  }
-}
-
 fn deterministic_generated_projection_paths() -> GeneratedProjectionPathsOutcome {
-  deterministic_generated_projection_paths_from_stage0_plan(outcome: stage0_emission_plan())
+  deterministic_generated_projection_paths_from_rows(
+    rows: committed_generated_artifact_paths()
+      |> map(path => GeneratedProjectionPathRow { path: path })
+  )
 }
