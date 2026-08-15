@@ -780,18 +780,53 @@ fn skip_newlines(tokens: TokenStream) -> TokenStream {
   }
 }
 
-fn is_continuation_shape(shape: TokenShape) -> Bool {
-  is_pipe_arrow_shape(shape: shape) || is_dot_shape(shape: shape) || is_or_shape(shape: shape) || is_and_shape(shape: shape)
+fn find_operator_bp(ops: List<OperatorSpec>, symbol: String) -> BindingPower? {
+  let matching = ops |> filter(op => op.symbol == symbol)
+  if matching |> count > 0 {
+    let op = first(matching).value
+    Present { value: BindingPower { left: op.left_bp, right: op.right_bp } }
+  } else {
+    none
+  }
+}
+
+fn find_operator_binop(ops: List<OperatorSpec>, symbol: String) -> BinOp? {
+  let matching = ops |> filter(op => op.symbol == symbol)
+  if matching |> count > 0 {
+    first(matching).value.binop
+  } else {
+    none
+  }
+}
+
+data operator_continuation_dual_role_exclusion_note: String = "Continuation-leading tokens are derived from dag_syntax_spec.operators via find_operator_bp, not a shape allowlist. PREFIX/INFIX INTERSECTION IS PROVABLY COMPLETE — not a remembered one-element hand-list. parse_prefix admits exactly two unary prefix shapes: ShBang → ExprUnaryOp { op: Not } and ShMinus → ExprUnaryOp { op: Neg } (UnaryOpKind is closed: Not | Neg only). The infix table carries '!=' but no bare '!', so operator-table derivation already excludes '!' without any exclusion row. '-' is the sole symbol with both a parse_prefix arm (unary Neg) and an infix OperatorSpec row (Sub). operator_continuation_dual_role_excluded_symbols is therefore the full intersection, with one member, and skipping '-' continuation keeps `let a = foo` newline `-bar(x)` as two statements (unary minus call) instead of silently re-parsing as `foo - bar(x)`. A future prefix/infix dual-role operator must extend UnaryOpKind and parse_prefix and will redd the singleton witness rather than silently changing existing code."
+
+data operator_continuation_dual_role_excluded_symbols: List<String> = ["-"]
+
+fn is_prefix_infix_dual_role_operator(symbol: String) -> Bool {
+  operator_continuation_dual_role_excluded_symbols |> any(s => s == symbol)
+}
+
+fn is_operator_continuation_token(tok: Token?) -> Bool {
+  match tok {
+    Present { value: t } =>
+      if is_prefix_infix_dual_role_operator(symbol: t.text) {
+        false
+      } else {
+        match find_operator_bp(ops: dag_syntax_spec.operators, symbol: t.text) {
+          Present { value: _ } => true
+          Absent => false
+        }
+      }
+    Absent => false
+  }
 }
 
 fn skip_continuation_newlines(tokens: TokenStream) -> TokenStream {
   let tok = token_stream_first(stream: tokens)
   let is_continuation = if tok_is_newline(tok: tok) {
     let after = skip_newlines(tokens: tokens)
-    match token_stream_first(stream: after) {
-      Present { value: next } => is_continuation_shape(shape: next.shape)
-      Absent => false
-    }
+    is_operator_continuation_token(tok: token_stream_first(stream: after))
   } else {
     false
   }
@@ -4047,29 +4082,10 @@ fn parse_expr_loop(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: In
   }
 }
 
-fn find_operator_bp(ops: List<OperatorSpec>, symbol: String) -> BindingPower? {
-  let matching = ops |> filter(op => op.symbol == symbol)
-  if matching |> count > 0 {
-    let op = first(matching).value
-    Present { value: BindingPower { left: op.left_bp, right: op.right_bp } }
-  } else {
-    none
-  }
-}
-
 fn infix_bp(tokens: TokenStream) -> BindingPower? {
   match token_stream_first(stream: tokens) {
     Present { value: t } => find_operator_bp(ops: dag_syntax_spec.operators, symbol: t.text)
     Absent => none
-  }
-}
-
-fn find_operator_binop(ops: List<OperatorSpec>, symbol: String) -> BinOp? {
-  let matching = ops |> filter(op => op.symbol == symbol)
-  if matching |> count > 0 {
-    first(matching).value.binop
-  } else {
-    none
   }
 }
 
