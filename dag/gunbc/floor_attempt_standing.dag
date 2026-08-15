@@ -1,0 +1,204 @@
+module gunbc.floor_attempt_standing
+
+import std.types { Bool, Int, String, NonEmptyStr }
+import std.measure {
+  Millisecond,
+  minute,
+  minute_count,
+  minute_to_millisecond,
+  millisecond,
+  millisecond_count,
+}
+import extdeps.github.checks {
+  CheckConclusion,
+  Failure,
+  Cancelled,
+  TimedOut,
+}
+
+// Evidence-based floor outcome taxonomy — subdivides not-green into remedies that differ (witness repair vs cost-shape repair vs re-run). A GitHub conclusion of failure is NOT sufficient for FloorCompletedRed; FloorTimedOut requires elapsed at/ beyond the declared ci job deadline AND absence of a terminal witness verdict.
+type FloorTerminalWitnessVerdict
+  = FloorTerminalWitnessGreen
+  | FloorTerminalWitnessRed { reason: NonEmptyStr }
+  | FloorTerminalWitnessAbsent
+
+type RecoveryLaneId = NonEmptyStr where brand("RecoveryLaneId")
+
+// Declared recovery lane for floor cost-shape repair (#8244). Admission consults this row — not a runtime toggle.
+data floor_cost_shape_recovery_lane_id: RecoveryLaneId = "8244" as RecoveryLaneId
+
+type FloorJobDeadlineObservation {
+  declared_deadline_minutes: Int
+  elapsed: Millisecond
+}
+
+fn floor_job_deadline_observation(
+  elapsed: Millisecond,
+  declared_deadline_minutes: Int,
+) -> FloorJobDeadlineObservation {
+  FloorJobDeadlineObservation {
+    declared_deadline_minutes: declared_deadline_minutes,
+    elapsed: elapsed,
+  }
+}
+
+fn deadline_minutes_to_millisecond(minutes: Int) -> Millisecond {
+  minute_to_millisecond(m: minute(count: minutes))
+}
+
+fn deadline_elapsed_at_or_beyond(obs: FloorJobDeadlineObservation) -> Bool {
+  millisecond_count(m: obs.elapsed) >= millisecond_count(m: deadline_minutes_to_millisecond(minutes: obs.declared_deadline_minutes))
+}
+
+type FloorAttemptEvidence {
+  deadline_observation: FloorJobDeadlineObservation
+  terminal_verdict: FloorTerminalWitnessVerdict
+  run_terminal_concluded: Bool
+  infrastructure_interrupted: Bool
+  infrastructure_detail: NonEmptyStr
+}
+
+type FloorAttemptStanding
+  = FloorCompletedGreen
+  | FloorCompletedRed { reason: NonEmptyStr }
+  | FloorTimedOut { elapsed: Millisecond, deadline_minutes: Int }
+  | FloorInfrastructureInterrupted { detail: NonEmptyStr }
+  | FloorPending
+
+fn floor_orphan_process_termination_log_fragment() -> String {
+  "Terminate orphan process"
+}
+
+fn floor_infrastructure_interrupted_from_log(fragment: String) -> Bool {
+  string_contains(s: fragment, pattern: floor_orphan_process_termination_log_fragment())
+}
+
+fn floor_terminal_verdict_is_absent(verdict: FloorTerminalWitnessVerdict) -> Bool {
+  match verdict {
+    FloorTerminalWitnessAbsent => true
+    FloorTerminalWitnessGreen => false
+    FloorTerminalWitnessRed { reason: _ } => false
+  }
+}
+
+fn floor_standing_is_completed_green(standing: FloorAttemptStanding) -> Bool {
+  standing == FloorCompletedGreen
+}
+
+fn floor_standing_is_pending(standing: FloorAttemptStanding) -> Bool {
+  standing == FloorPending
+}
+
+fn derive_floor_attempt_standing(evidence: FloorAttemptEvidence) -> FloorAttemptStanding {
+  if evidence.infrastructure_interrupted {
+    FloorInfrastructureInterrupted { detail: evidence.infrastructure_detail }
+  } else if floor_terminal_verdict_is_absent(verdict: evidence.terminal_verdict) && deadline_elapsed_at_or_beyond(obs: evidence.deadline_observation) {
+    FloorTimedOut {
+      elapsed: evidence.deadline_observation.elapsed,
+      deadline_minutes: evidence.deadline_observation.declared_deadline_minutes,
+    }
+  } else {
+    match evidence.terminal_verdict {
+      FloorTerminalWitnessGreen =>
+        if evidence.run_terminal_concluded {
+          FloorCompletedGreen
+        } else {
+          FloorPending
+        }
+      FloorTerminalWitnessRed { reason: r } => FloorCompletedRed { reason: r }
+      FloorTerminalWitnessAbsent => FloorPending
+    }
+  }
+}
+
+// Measurement only — structurally incapable of minting FullCiGreenReceipt or admitting merge. A run that only passed under an extended deadline remains FloorTimedOut under the nominal deadline.
+type ExtendedDeadlineParityObservation {
+  nominal_deadline_minutes: Int
+  extended_deadline_minutes: Int
+  elapsed: Millisecond
+  terminal_verdict: FloorTerminalWitnessVerdict
+}
+
+fn extended_deadline_parity_standing_under_nominal(
+  obs: ExtendedDeadlineParityObservation,
+) -> FloorAttemptStanding {
+  let nominal_obs = FloorJobDeadlineObservation {
+    declared_deadline_minutes: obs.nominal_deadline_minutes,
+    elapsed: obs.elapsed,
+  }
+  if floor_terminal_verdict_is_absent(verdict: obs.terminal_verdict) && deadline_elapsed_at_or_beyond(obs: nominal_obs) {
+    FloorTimedOut {
+      elapsed: obs.elapsed,
+      deadline_minutes: obs.nominal_deadline_minutes,
+    }
+  } else {
+    match obs.terminal_verdict {
+      FloorTerminalWitnessGreen => FloorCompletedGreen
+      FloorTerminalWitnessRed { reason: r } => FloorCompletedRed { reason: r }
+      FloorTerminalWitnessAbsent => FloorPending
+    }
+  }
+}
+
+fn floor_attempt_standing_is_green(standing: FloorAttemptStanding) -> Bool {
+  floor_standing_is_completed_green(standing: standing)
+}
+
+fn github_conclusion_observed(conclusion: CheckConclusion) -> Bool {
+  match conclusion {
+    Success => true
+    Failure => true
+    Cancelled => true
+    TimedOut => true
+    Skipped => true
+    ActionRequired => true
+    Stale => true
+    Neutral => true
+  }
+}
+
+// Evidence guard: a GitHub failure conclusion alone does NOT establish FloorCompletedRed — callers must derive standing from FloorAttemptEvidence, never from conclusion alone.
+fn github_conclusion_implies_floor_completed_red(conclusion: CheckConclusion) -> Bool {
+  match conclusion {
+    Failure => true
+    TimedOut => true
+    Cancelled => true
+    Success => false
+    Skipped => false
+    ActionRequired => false
+    Stale => false
+    Neutral => false
+  }
+}
+
+type FloorRecoveryMergeAdmissionVerdict
+  = FloorRecoveryMergeAdmitted
+  | FloorRecoveryMergeDeniedLaneMismatch {
+    asserted_lane: RecoveryLaneId,
+    declared_lane: RecoveryLaneId,
+  }
+  | FloorRecoveryMergeDeniedPrNotGreen
+  | FloorRecoveryMergeDeniedBaseAlreadyGreen
+  | FloorRecoveryMergeDeniedBasePending
+
+fn classify_floor_recovery_merge_admission(
+  asserted_lane: RecoveryLaneId,
+  declared_lane: RecoveryLaneId,
+  base_standing: FloorAttemptStanding,
+  pr_standing: FloorAttemptStanding,
+) -> FloorRecoveryMergeAdmissionVerdict {
+  if (asserted_lane as String) != (declared_lane as String) {
+    FloorRecoveryMergeDeniedLaneMismatch {
+      asserted_lane: asserted_lane,
+      declared_lane: declared_lane,
+    }
+  } else if !floor_attempt_standing_is_green(standing: pr_standing) {
+    FloorRecoveryMergeDeniedPrNotGreen
+  } else if floor_standing_is_completed_green(standing: base_standing) {
+    FloorRecoveryMergeDeniedBaseAlreadyGreen
+  } else if floor_standing_is_pending(standing: base_standing) {
+    FloorRecoveryMergeDeniedBasePending
+  } else {
+    FloorRecoveryMergeAdmitted
+  }
+}

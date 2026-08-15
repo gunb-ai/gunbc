@@ -16,6 +16,7 @@ import gunbc.merge_admission {
   MergeAdmissionReceiptV2,
   MergeAdmissionVerdict,
   MergeAdmitted,
+  FloorRecoveryMergeAdmitted,
   GateRosterHash,
   current_gate_roster_hash,
 }
@@ -24,6 +25,11 @@ import gunbc.merge_admission_subject {
   TestedSubject,
   walk_attempt_id_eq,
   workflow_run_id_matches_walk_attempt,
+}
+import gunbc.floor_attempt_standing {
+  FloorAttemptStanding,
+  FloorCompletedGreen,
+  floor_cost_shape_recovery_lane_id,
 }
 
 // Typed proof that the pull-request CI job's floor walk completed green — not build-only, not regen-only, and not the falsifier-alert workflow reading a partial checkpoint. FullCiGreenReceipt is sole_constructor-sealed; mint_full_ci_green_receipt_from_observed_ci_floor is caller-sealed via admit_callers to classify_full_ci_green_from_document only, and is reachable only after that classifier accepts a concluded ci-workflow floor-component document with zero unsuccessful summaries. Cross-module record literals, casts, and direct mint-fn calls refuse at compile time (SoleConstructorViolation / ConstructorCallAdmissionRefused). Merge admission and operator manual merge consume this receipt rather than inferring full CI green from sibling job conclusions or alert no-action arms (DESIGN section 5 state-space conflation).
@@ -174,19 +180,50 @@ fn manual_merge_admits(
   merge_admission_receipt: MergeAdmissionReceiptV2,
   merge_verdict: MergeAdmissionVerdict,
 ) -> Bool {
-  merge_verdict == MergeAdmitted
-    && full_ci.head_sha == tested_subject.head_sha
-    && merge_admission_receipt.tested_head_sha == tested_subject.head_sha
-    && full_ci.head_sha == merge_admission_receipt.tested_head_sha
-    && full_ci.gate_roster_hash == current_gate_roster_hash
-    && full_ci.gate_roster_hash == merge_admission_receipt.gate_roster_hash
-    && workflow_run_id_matches_walk_attempt(
-      workflow_run_id: full_ci.workflow_run_id,
-      attempt_id: tested_subject.attempt_id,
-    )
-    && walk_attempt_id_eq(left: tested_subject.attempt_id, right: merge_admission_receipt.attempt_id)
-    && workflow_run_id_matches_walk_attempt(
-      workflow_run_id: full_ci.workflow_run_id,
-      attempt_id: merge_admission_receipt.attempt_id,
-    )
+  match merge_verdict {
+    MergeAdmitted =>
+      full_ci.head_sha == tested_subject.head_sha
+        && merge_admission_receipt.tested_head_sha == tested_subject.head_sha
+        && full_ci.head_sha == merge_admission_receipt.tested_head_sha
+        && full_ci.gate_roster_hash == current_gate_roster_hash
+        && full_ci.gate_roster_hash == merge_admission_receipt.gate_roster_hash
+        && workflow_run_id_matches_walk_attempt(
+          workflow_run_id: full_ci.workflow_run_id,
+          attempt_id: tested_subject.attempt_id,
+        )
+        && walk_attempt_id_eq(left: tested_subject.attempt_id, right: merge_admission_receipt.attempt_id)
+        && workflow_run_id_matches_walk_attempt(
+          workflow_run_id: full_ci.workflow_run_id,
+          attempt_id: merge_admission_receipt.attempt_id,
+        )
+    FloorRecoveryMergeAdmitted { recovery_lane_id: lane } =>
+      (lane as String) == (floor_cost_shape_recovery_lane_id as String)
+        && full_ci.head_sha == tested_subject.head_sha
+        && merge_admission_receipt.tested_head_sha == tested_subject.head_sha
+        && full_ci.head_sha == merge_admission_receipt.tested_head_sha
+        && full_ci.gate_roster_hash == current_gate_roster_hash
+        && full_ci.gate_roster_hash == merge_admission_receipt.gate_roster_hash
+        && workflow_run_id_matches_walk_attempt(
+          workflow_run_id: full_ci.workflow_run_id,
+          attempt_id: tested_subject.attempt_id,
+        )
+        && walk_attempt_id_eq(left: tested_subject.attempt_id, right: merge_admission_receipt.attempt_id)
+        && workflow_run_id_matches_walk_attempt(
+          workflow_run_id: full_ci.workflow_run_id,
+          attempt_id: merge_admission_receipt.attempt_id,
+        )
+    MergeDeniedStaleBase => false
+    MergeDeniedStaleRoster => false
+    MergeDeniedNotSuccess => false
+    MergeDeniedWrongAttempt => false
+    MergeDeniedSubjectMismatch => false
+    MergeDeniedRecoveryLaneMismatch { asserted_lane: _, declared_lane: _ } => false
+    MergeDeniedRecoveryPrNotGreen => false
+    MergeDeniedRecoveryBaseAlreadyGreen => false
+    MergeDeniedRecoveryBasePending => false
+  }
+}
+
+fn floor_standing_is_full_ci_green_admissible(standing: FloorAttemptStanding) -> Bool {
+  standing == FloorCompletedGreen
 }

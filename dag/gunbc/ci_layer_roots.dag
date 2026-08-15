@@ -1695,8 +1695,14 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
   },
   SubstrateLongLaneRow {
     entry: "dag/test/claim/full_ci_green_cross_module_witness_test.dag",
-    function: "witness_cross_module_full_ci_green_forgeries_refuse",
-    reason: "MERGE-GATE #8271 cross-module construction-wall witness: compile_dag_diagnostic_census over synthetic forge sources against the live module index costs ~17s CPU on CI (run 31850767392 killed both prior witnesses at 17267-17311ms). Per-PR consumer is gunbc_full_ci_green_cross_module_long_budget_batch on the ordinary floor; discovery excludes the file at FalsifierSubstrateLongLane grain.",
+    function: "witness_cross_module_full_ci_green_literal_refuses",
+    reason: "MERGE-GATE #8271 cross-module SoleConstructorViolation wall: compile_dag_diagnostic_census over a synthetic cross-module FullCiGreenReceipt literal against the live module index costs ~17s CPU on CI. Per-PR consumer is gunbc_full_ci_green_cross_module_long_budget_batch on the ordinary floor; discovery excludes the file at FalsifierSubstrateLongLane grain.",
+    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_eval_budget_ms on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/full_ci_green_cross_module_witness_test.dag",
+    function: "witness_cross_module_full_ci_green_mint_refuses",
+    reason: "MERGE-GATE #8271 cross-module ConstructorCallAdmissionRefused wall: compile_dag_diagnostic_census over a synthetic cross-module mint_full_ci_green_receipt_from_observed_ci_floor call against the live module index costs ~17s CPU on CI. Per-PR consumer is gunbc_full_ci_green_cross_module_long_budget_batch on the ordinary floor; discovery excludes the file at FalsifierSubstrateLongLane grain.",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_eval_budget_ms on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
   SubstrateLongLaneRow {
@@ -1710,7 +1716,12 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
 data full_ci_green_cross_module_long_budget_witness_entries: List<ScheduleWitnessEntry> = [
   ScheduleWitnessEntry {
     entry: "dag/test/claim/full_ci_green_cross_module_witness_test.dag",
-    function: "witness_cross_module_full_ci_green_forgeries_refuse",
+    function: "witness_cross_module_full_ci_green_literal_refuses",
+    kind: CorpusWitnessKind,
+  },
+  ScheduleWitnessEntry {
+    entry: "dag/test/claim/full_ci_green_cross_module_witness_test.dag",
+    function: "witness_cross_module_full_ci_green_mint_refuses",
     kind: CorpusWitnessKind,
   }
 ]

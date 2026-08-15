@@ -1,0 +1,215 @@
+module test.claim.floor_attempt_standing_witness
+
+import std.types { Bool, NonEmptyStr }
+import std.measure { Millisecond, millisecond, minute_to_millisecond, minute, millisecond_count }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.github.checks { Failure }
+import gunbc.ci_workflow { gunbc_ci_job_backstop_timeout_minutes }
+import gunbc.floor_attempt_standing {
+  FloorCompletedGreen,
+  FloorCompletedRed,
+  FloorTimedOut,
+  FloorInfrastructureInterrupted,
+  FloorPending,
+  FloorTerminalWitnessAbsent,
+  FloorTerminalWitnessGreen,
+  FloorTerminalWitnessRed,
+  FloorAttemptEvidence,
+  floor_job_deadline_observation,
+  floor_attempt_evidence_from_process_exit,
+  derive_floor_attempt_standing,
+  extended_deadline_parity_standing_under_nominal,
+  ExtendedDeadlineParityObservation,
+  github_conclusion_implies_floor_completed_red,
+  classify_floor_recovery_merge_admission,
+  FloorRecoveryMergeAdmitted,
+  FloorRecoveryMergeDeniedLaneMismatch,
+  FloorRecoveryMergeDeniedPrNotGreen,
+  floor_cost_shape_recovery_lane_id,
+  floor_orphan_process_termination_log_fragment,
+  RecoveryLaneId,
+}
+
+data witness_timeout_reason: NonEmptyStr = "witness red" as NonEmptyStr
+
+data witness_orphan_kill_reason: NonEmptyStr = "Terminate orphan process: pid (claim_executor)" as NonEmptyStr
+
+fn witness_ci_job_deadline_ms() -> Millisecond {
+  minute_to_millisecond(m: minute(count: gunbc_ci_job_backstop_timeout_minutes()))
+}
+
+fn witness_past_deadline_elapsed() -> Millisecond {
+  millisecond(count: millisecond_count(m: witness_ci_job_deadline_ms()) + 1)
+}
+
+fn witness_ci_job_deadline_minutes() -> Int {
+  gunbc_ci_job_backstop_timeout_minutes()
+}
+
+test fn witness_floor_timed_out_requires_deadline_and_absent_verdict() -> Bool {
+  let evidence = FloorAttemptEvidence {
+    deadline_observation: floor_job_deadline_observation(
+      elapsed: witness_past_deadline_elapsed(),
+      declared_deadline_minutes: witness_ci_job_deadline_minutes(),
+    ),
+    terminal_verdict: FloorTerminalWitnessAbsent,
+    run_terminal_concluded: false,
+    infrastructure_interrupted: false,
+    infrastructure_detail: "none" as NonEmptyStr,
+  }
+  match derive_floor_attempt_standing(evidence: evidence) {
+    FloorTimedOut { elapsed: _, deadline_minutes: d } =>
+      d == gunbc_ci_job_backstop_timeout_minutes()
+    _ => false
+  }
+}
+
+test fn witness_floor_timed_out_refuses_deadline_only() -> Bool {
+  let evidence = FloorAttemptEvidence {
+    deadline_observation: floor_job_deadline_observation(
+      elapsed: millisecond(count: 0),
+      declared_deadline_minutes: witness_ci_job_deadline_minutes(),
+    ),
+    terminal_verdict: FloorTerminalWitnessAbsent,
+    run_terminal_concluded: false,
+    infrastructure_interrupted: false,
+    infrastructure_detail: "none" as NonEmptyStr,
+  }
+  derive_floor_attempt_standing(evidence: evidence) == FloorPending
+}
+
+test fn witness_github_failure_conclusion_is_not_floor_completed_red() -> Bool {
+  github_conclusion_implies_floor_completed_red(conclusion: Failure)
+    && derive_floor_attempt_standing(
+      evidence: FloorAttemptEvidence {
+        deadline_observation: floor_job_deadline_observation(
+      elapsed: millisecond(count: 0),
+      declared_deadline_minutes: witness_ci_job_deadline_minutes(),
+    ),
+        terminal_verdict: FloorTerminalWitnessAbsent,
+        run_terminal_concluded: false,
+        infrastructure_interrupted: false,
+        infrastructure_detail: "none" as NonEmptyStr,
+      }
+    ) == FloorPending
+}
+
+test fn witness_floor_completed_red_from_terminal_verdict() -> Bool {
+  match derive_floor_attempt_standing(
+    evidence: FloorAttemptEvidence {
+      deadline_observation: floor_job_deadline_observation(
+      elapsed: millisecond(count: 0),
+      declared_deadline_minutes: witness_ci_job_deadline_minutes(),
+    ),
+      terminal_verdict: FloorTerminalWitnessRed { reason: witness_timeout_reason },
+      run_terminal_concluded: false,
+      infrastructure_interrupted: false,
+      infrastructure_detail: "none" as NonEmptyStr,
+    }
+  ) {
+    FloorCompletedRed { reason: r } => (r as String) == (witness_timeout_reason as String)
+    _ => false
+  }
+}
+
+test fn witness_floor_infrastructure_interrupted_from_orphan_kill() -> Bool {
+  let evidence = FloorAttemptEvidence {
+    deadline_observation: floor_job_deadline_observation(
+      elapsed: witness_past_deadline_elapsed(),
+      declared_deadline_minutes: witness_ci_job_deadline_minutes(),
+    ),
+    terminal_verdict: FloorTerminalWitnessAbsent,
+    run_terminal_concluded: false,
+    infrastructure_interrupted: floor_infrastructure_interrupted_from_log(
+      fragment: witness_orphan_kill_reason as String,
+    ),
+    infrastructure_detail: witness_orphan_kill_reason,
+  }
+  match derive_floor_attempt_standing(evidence: evidence) {
+    FloorInfrastructureInterrupted { detail: d } =>
+      string_contains(s: d as String, pattern: floor_orphan_process_termination_log_fragment())
+    _ => false
+  }
+}
+
+test fn witness_extended_deadline_parity_cannot_authorize_green_under_nominal() -> Bool {
+  match extended_deadline_parity_standing_under_nominal(
+    obs: ExtendedDeadlineParityObservation {
+      nominal_deadline_minutes: witness_ci_job_deadline_minutes(),
+      extended_deadline_minutes: witness_ci_job_deadline_minutes() + 30,
+      elapsed: witness_past_deadline_elapsed(),
+      terminal_verdict: FloorTerminalWitnessGreen,
+    }
+  ) {
+    FloorTimedOut { elapsed: _, deadline_minutes: d } =>
+      d == gunbc_ci_job_backstop_timeout_minutes()
+    _ => false
+  }
+}
+
+test fn witness_floor_recovery_merge_admits_timed_out_base_green_pr() -> Bool {
+  classify_floor_recovery_merge_admission(
+    asserted_lane: floor_cost_shape_recovery_lane_id,
+    declared_lane: floor_cost_shape_recovery_lane_id,
+    base_standing: FloorTimedOut {
+      elapsed: witness_past_deadline_elapsed(),
+      deadline_minutes: witness_ci_job_deadline_minutes(),
+    },
+    pr_standing: FloorCompletedGreen,
+  ) == FloorRecoveryMergeAdmitted
+}
+
+test fn witness_floor_recovery_merge_denies_wrong_lane() -> Bool {
+  match classify_floor_recovery_merge_admission(
+    asserted_lane: "9999" as RecoveryLaneId,
+    declared_lane: floor_cost_shape_recovery_lane_id,
+    base_standing: FloorTimedOut {
+      elapsed: witness_past_deadline_elapsed(),
+      deadline_minutes: witness_ci_job_deadline_minutes(),
+    },
+    pr_standing: FloorCompletedGreen,
+  ) {
+    FloorRecoveryMergeDeniedLaneMismatch { asserted_lane: a, declared_lane: d } =>
+      (a as String) == "9999" && (d as String) == (floor_cost_shape_recovery_lane_id as String)
+    _ => false
+  }
+}
+
+test fn witness_floor_recovery_merge_denies_when_pr_not_green() -> Bool {
+  classify_floor_recovery_merge_admission(
+    asserted_lane: floor_cost_shape_recovery_lane_id,
+    declared_lane: floor_cost_shape_recovery_lane_id,
+    base_standing: FloorTimedOut {
+      elapsed: witness_past_deadline_elapsed(),
+      deadline_minutes: witness_ci_job_deadline_minutes(),
+    },
+    pr_standing: FloorPending,
+  ) == FloorRecoveryMergeDeniedPrNotGreen
+}
+
+test fn witness_floor_completed_green_requires_concluded_run_terminal() -> Bool {
+  derive_floor_attempt_standing(
+    evidence: FloorAttemptEvidence {
+      deadline_observation: floor_job_deadline_observation(
+      elapsed: millisecond(count: 0),
+      declared_deadline_minutes: witness_ci_job_deadline_minutes(),
+    ),
+      terminal_verdict: FloorTerminalWitnessGreen,
+      run_terminal_concluded: false,
+      infrastructure_interrupted: false,
+      infrastructure_detail: "none" as NonEmptyStr,
+    }
+  ) == FloorPending
+    && derive_floor_attempt_standing(
+      evidence: FloorAttemptEvidence {
+        deadline_observation: floor_job_deadline_observation(
+      elapsed: millisecond(count: 0),
+      declared_deadline_minutes: witness_ci_job_deadline_minutes(),
+    ),
+        terminal_verdict: FloorTerminalWitnessGreen,
+        run_terminal_concluded: true,
+        infrastructure_interrupted: false,
+        infrastructure_detail: "none" as NonEmptyStr,
+      }
+    ) == FloorCompletedGreen
+}

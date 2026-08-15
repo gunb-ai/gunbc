@@ -11103,7 +11103,31 @@ fn run() -> Result<ExitCode, ExitCode> {
     } else {
         None
     };
-    let falsifier_self_host_wet_budgets = if plan_function == "gunbc_falsifier_plan" {
+    let falsifier_self_host_wet_budgets = if plan_function == "gunbc_ci_floor_plan" {
+        FalsifierSelfHostWetBudgets {
+            substrate_long_lane_entry_paths: match read_schedule_witness_entry_paths(
+                plan_ctx_or_refuse!("plan read"),
+                "witness_long_eval_budget_entries",
+            ) {
+                Ok(v) => v,
+                Err(msg) => {
+                    eprintln!("{msg}");
+                    return Err(ExitCode::from(1));
+                }
+            },
+            substrate_long_lane_eval_budget_ms: match read_positive_budget_ms(
+                plan_ctx_or_refuse!("falsifier budget"),
+                "gunbc_falsifier_substrate_long_lane_eval_budget_ms",
+            ) {
+                Ok(v) => v,
+                Err(msg) => {
+                    eprintln!("{msg}");
+                    return Err(ExitCode::from(1));
+                }
+            },
+            ..FalsifierSelfHostWetBudgets::default()
+        }
+    } else if plan_function == "gunbc_falsifier_plan" {
         FalsifierSelfHostWetBudgets {
             wall_budget_ms: match read_positive_budget_ms(
                 plan_ctx_or_refuse!("falsifier budget"),
