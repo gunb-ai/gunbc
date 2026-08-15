@@ -53,6 +53,24 @@ import std.types { List, String, Int }
 // regen affected-set skip witness are therefore all off this queue permanently; each had exactly
 // one subject. The consequence for this fold is that no second required CI path competes with it
 // for the floor budget.
+//
+// THAT RETIREMENT IS ORDER-DEPENDENT, and the paragraph above states it in a settled present
+// tense it has not earned (corrected 2026-08-15, cross-branch review). `regen_stage0` and its
+// roster are deleted on integration/v1-cut and ALIVE on main. So "its subject is deleted" is true
+// on that branch and not yet true of the repository, and the retirement above discharges only if
+// v1-cut reaches main. If this cut lands FIRST, main carries a live regen authority with no
+// required job invoking it -- which is a real gap someone must own, not the settled absence the
+// paragraph describes -- and if v1-cut never lands, the item returns to the queue as an ordinary
+// unmet obligation rather than a retired one. This is the same branch-dependent-population defect
+// already declared on the src/v1 coverage gap row, and it is recorded here because a reader
+// checking main and a reader checking the cut branch would otherwise disagree about whether this
+// obligation exists at all. Whichever cut merges second owns the reconciliation.
+//
+// THE DRIFT GATES DO NOT RIDE ON THIS. Measured on the v1-cut branch: heal_generated_artifacts
+// PASSES while regen is RED. So "the regen fixed point and the generated-artifact drift gates"
+// is two obligations with two subjects, and only the regen half is order-dependent. The drift
+// gates stay on the queue above unconditionally, and a future reader must not retire them by
+// association when the regen half retires.
 
 data witness_floor_workflow_job_id: String = "witnesses"
 
