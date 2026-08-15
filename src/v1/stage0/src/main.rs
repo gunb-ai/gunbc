@@ -587,7 +587,7 @@ fn main() {
                     result.diagnostics.len()
                 );
                 render_diagnostics(&result);
-                if cli_run::compile_clean_im_vector_has_hard_errors(result.diagnostics.as_ref()) {
+                if has_blocking_diagnostics(result.diagnostics.as_ref()) {
                     std::process::exit(1);
                 }
             } else {
@@ -619,8 +619,7 @@ fn main() {
                     render_diagnostics(&result);
                     total_files += result.files.len();
                     total_diagnostics += result.diagnostics.len();
-                    if cli_run::compile_clean_im_vector_has_hard_errors(result.diagnostics.as_ref())
-                    {
+                    if has_blocking_diagnostics(result.diagnostics.as_ref()) {
                         std::process::exit(1);
                     }
                 }
@@ -700,6 +699,51 @@ fn main() {
     };
 }
 
+/// Severity of one diagnostic, as a TOTAL partition.
+///
+/// The deleted `cli_run` pair asked two independent questions — `..._is_hard` and an
+/// `..._is_advisory` ALLOWLIST — and its own comment recorded the consequence: a
+/// non-blocking variant absent from the allowlist was counted by NEITHER, so it rendered
+/// to the terminal while every count the gate reported read zero for it. A frontier
+/// claiming to be counted while nothing counts it is the silent-wrongness §5 forbids, and
+/// it was reachable by adding a variant and forgetting a list.
+///
+/// One classification with no third arm makes that unwritable rather than checked:
+/// `hard + advisory == diagnostics.len()` holds by construction, not by assertion.
+///
+/// `is_interpreter_blocking_diagnostic` is the whole native answer. `cli_run` differed
+/// from it in exactly one arm — `UnlistedImportUse`, which it could escalate to blocking
+/// via a policy read that reached a full source resolve, entry-graph build and interpreter
+/// run to decide. That is the escape-hatch mechanism this cut exists to remove: a
+/// projection owning a compiler invocation. The base predicate already answers `false`
+/// for that variant, and import-list enforcement is being deleted at its root, so the
+/// override has no referent in the terminal model.
+enum DiagnosticSeverity {
+    Blocking,
+    Advisory,
+}
+
+fn classify_diagnostic(d: &Rc<v1_compiler::v1_std_core::ErrorNode>) -> DiagnosticSeverity {
+    if v1_compiler::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
+        DiagnosticSeverity::Blocking
+    } else {
+        DiagnosticSeverity::Advisory
+    }
+}
+
+fn blocking_diagnostic_count(diagnostics: &Vec<Rc<v1_compiler::v1_std_core::ErrorNode>>) -> usize {
+    diagnostics
+        .iter()
+        .filter(|d| matches!(classify_diagnostic(d), DiagnosticSeverity::Blocking))
+        .count()
+}
+
+fn has_blocking_diagnostics(diagnostics: &Vec<Rc<v1_compiler::v1_std_core::ErrorNode>>) -> bool {
+    diagnostics
+        .iter()
+        .any(|d| matches!(classify_diagnostic(d), DiagnosticSeverity::Blocking))
+}
+
 fn render_diagnostics(result: &PipelineResult) {
     if result.diagnostics.is_empty() {
         return;
@@ -715,8 +759,10 @@ fn render_diagnostics(result: &PipelineResult) {
         render_one_diagnostic(d, &index_map, "");
     }
 
-    let hard = cli_run::compile_clean_im_vector_hard_error_count(result.diagnostics.as_ref());
-    let advisory = cli_run::compile_clean_im_vector_advisory_count(result.diagnostics.as_ref());
+    let hard = blocking_diagnostic_count(result.diagnostics.as_ref());
+    // Derived, not separately scanned: the two counts partition one population, so they
+    // cannot disagree with the total or with each other.
+    let advisory = result.diagnostics.len() - hard;
     if advisory > 0 {
         eprintln!(
             "\n{hard} blocking error(s), {advisory} advisory diagnostic(s) (policy: gunbc.compile_clean_diagnostic_policy)"
@@ -731,10 +777,9 @@ fn render_one_diagnostic(
     index_map: &HashMap<String, Rc<NewlineIndex>>,
     indent: &str,
 ) {
-    let severity = if cli_run::compile_clean_diagnostic_is_advisory(d) {
-        "advisory"
-    } else {
-        "error"
+    let severity = match classify_diagnostic(d) {
+        DiagnosticSeverity::Advisory => "advisory",
+        DiagnosticSeverity::Blocking => "error",
     };
     let message = diagnostic_to_message(d.diagnostic.clone());
     let span = diagnostic_to_span(d.diagnostic.clone());
