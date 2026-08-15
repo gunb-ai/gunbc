@@ -41,8 +41,6 @@ import extdeps.git {
   shape_git_rev_parse_verify_quiet_argv
 }
 import gunbc.generated_artifact { committed_generated_artifact_paths }
-import gunbc.stage0_emit_plan { stage0_canonical_repo_path }
-import gunbc.stage0_emit_plan_generated { generated_stage0_files }
 
 data ci_heal_skew_guard_emit_authority_note: String = "FOREIGN-EXECUTOR SHELL EMISSION FOR THE HEAL JOB'S BINARY/SOURCE SKEW GUARD AND ITS AUTO-REMEDY. Control flow is a v2.std.orchestration Pipeline of If / Not / Or / StrNonempty / Let / Exit nodes — orchestration, not bash-in-String — and every git leaf derives its argv from an extdeps.git shape declaration rather than a hand-spelled command. This module replaces the 55-line join([...]) that formerly lived at gunbc.ci_spec.gunbc_ci_heal_binary_source_skew_guard_script, whose Scaffold and dissolution-trigger rows are deleted by the same change (the receipt: the scaffold is gone, not reworded). Kept in v2.workflow beside ci_regen_rustfmt_path_emit — the same placement, and for the same reason — so gunbc.ci_spec can import the rendered script without the ci_materialization <-> ci_spec cycle."
 
@@ -235,13 +233,10 @@ fn ci_heal_skew_shell_single_quoted(word: String) -> String {
   concat("'", concat(word, "'"))
 }
 
-data ci_heal_skew_excluded_population_note: String = "THE EXCLUSION POPULATION IS THE FULL merge=generated-artifact POLICY SET (review 47515): committed generated artifacts PLUS the plan-derived stage0 Rust surface, matching gitattributes_emit's merge-policy rows — a skew conflict on an emitted stage0 file is a generated-projection conflict (provisional ours, then regenerate), never AUTHORED_CONFLICTS. The stage0 half reads the ENROLLED gunbc.stage0_emit_plan_generated projection rather than the refusing live derivation because this emitter needs a total surface: the drift gate already enforces enrolled == derived, and the duplicate/supply refusals guard at the generation seam, so the enrolled read inherits those guarantees without inventing a second refusal channel through ci.yml emission."
+data ci_heal_skew_excluded_population_note: String = "THE EXCLUSION POPULATION IS THE COMMITTED GENERATED-ARTIFACT REGISTRY, AND NOTHING ELSE. It formerly also carried the plan-derived stage0 Rust surface, on the ground that a skew conflict on an emitted stage0 file is a generated-projection conflict (take ours, then regenerate). THAT GROUND IS GONE: the v1 cut deleted the src/v1 .dag authority and the regen loop over it, so src/v1/stage0/src/**.rs is no longer a projection of anything — it is frozen seed source with no generator to re-derive it from. Auto-resolving a conflict there with --ours would therefore DISCARD the other side's bytes with no way to regenerate them, which is precisely the failure the merge-driver refusal exists to prevent (twice measured on #7836, per the merge-driver row in DESIGN Building & checks). So a conflict on a stage0 .rs is now an AUTHORED conflict and the guard refuses, which is the fail-closed direction. Retired with the regen loop, not narrowed to get green: the exclusion set shrank because its second half stopped being generated, and no path was dispositioned out of the subject."
 
 fn ci_heal_skew_excluded_paths() -> List<String> {
-  concat(
-    committed_generated_artifact_paths(),
-    map(generated_stage0_files, b => stage0_canonical_repo_path(basename: b))
-  )
+  committed_generated_artifact_paths()
 }
 
 fn ci_heal_skew_excluded_pathspec_words() -> List<String> {
