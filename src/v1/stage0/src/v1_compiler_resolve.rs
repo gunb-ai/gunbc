@@ -74,7 +74,6 @@ pub struct DepEdge {
     pub to_module: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub fn map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
     match v1_rt::map_get(&m, key.clone()) {
         Some(_) => true,
@@ -230,7 +229,6 @@ pub fn find_module(module_index: Rc<HashMap<String, Rc<Node>>>, path: String) ->
     v1_rt::map_get(&module_index, path.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub fn get_exported_names(
     module: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
