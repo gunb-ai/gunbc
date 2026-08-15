@@ -37,6 +37,7 @@ import gunbc.spark_serving_release {
   OllamaRuntime,
   SparkServingBindListen,
   spark_serving_configuration_identity,
+  spark_serving_bind_listen_wire,
 }
 import gunbc.spark_serving_realization {
   SparkServingIntent,
@@ -68,11 +69,7 @@ data spark_serving_desired_bind_listen: SparkServingBindListen = SparkServingBin
 }
 
 fn spark_serving_desired_bind_host_port() -> String {
-  join([
-    spark_serving_desired_bind_listen.host as String,
-    ":",
-    to_string(spark_serving_desired_bind_listen.port),
-  ], "")
+  spark_serving_bind_listen_wire(bind: spark_serving_desired_bind_listen)
 }
 
 data spark_serving_desired_endpoint_intent: ServingEndpointIntent = UnauthenticatedEndpoint

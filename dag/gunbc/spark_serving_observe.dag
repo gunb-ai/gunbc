@@ -45,7 +45,10 @@ import gunbc.spark_serving_runtime_receipt {
   spark_serving_runtime_receipt_field_from_probe,
 }
 import gunbc.spark_serving_runtime_admission { spark_serving_parse_nvidia_driver_version }
-import gunbc.spark_serving_desired { spark_serving_desired_hosts }
+import gunbc.spark_serving_desired {
+  spark_serving_desired_hosts,
+  spark_serving_automation_principal_login,
+}
 import gunbc.spark_serving_readback_parse {
   SparkServingReadbackField,
   SparkServingReadbackAbsent,
@@ -61,8 +64,6 @@ data spark_serving_observe_transport_note: String = "OBSERVATION PRODUCER (SPARK
 data spark_serving_observe_note: String = "Wet observation only; a green witness over fixture strings is not proof gpt-oss:20b is serving. Runtime closure identity requires the release-archive admission receipt under ~/.local/share/gunbc/spark-serving/ (archive digest admitted at materialization — not proof of completed install) plus independent /api/version and /api/tags probes. This branch does not install or start Ollama on the hosts."
 
 data spark_serving_observe_receipt_path: String = "target/spark-serving-observe-receipt.txt"
-
-data spark_serving_probe_principal: String = "gunbc-automation"
 
 fn spark_serving_load_state_probe_words() -> List<String> {
   [
@@ -108,7 +109,7 @@ fn spark_serving_probe_leg(
           context: context,
           target: SshTarget {
             endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
-            principal: spark_serving_probe_principal as NonEmptyStr,
+            principal: spark_serving_automation_principal_login(),
           },
           words: words,
         ),
