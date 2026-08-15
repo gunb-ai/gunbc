@@ -34,6 +34,80 @@ fn read_v2_file(relative_path: &str) -> String {
         .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e))
 }
 
+/// The surviving `.dag` corpus, DISCOVERED rather than named.
+///
+/// This replaces eleven hand-picked `*_parses_strict` rows, nine of which read
+/// `src/v1/*.dag` sources the v1 cut deleted. Re-pointing nine names at nine other
+/// names would have re-imported the same defect the roster always had: it counted the
+/// files someone remembered to name. The subject of the breadth claim is "a real corpus
+/// of varied syntax parses", and that population is discoverable, so it is discovered —
+/// an identity join over every file present, not a count over an authored list.
+///
+/// Deterministic by construction: the walk sorts, so a failure roster is stable across
+/// runs and hosts.
+///
+/// THE DENOMINATOR IS THE TWO SOURCE ROOTS, NOT THE REPOSITORY, and saying so is the
+/// point. `.dag` files exist outside `dag/` and `src/v2` — test fixtures under
+/// `src/v1/tests/fixtures` among them — and this walk does not see them. That is
+/// deliberate: a fixture may be deliberately malformed, so a corpus claim must not
+/// silently adopt one as a subject. What must not happen is the gap going unstated, so a
+/// future reader asking "does everything parse" gets the honest answer "everything under
+/// these two roots does", and the fixtures keep their own named consumers below.
+fn corpus_dag_files() -> Vec<String> {
+    fn walk(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<String>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, root, out);
+            } else if path.extension().map_or(false, |e| e == "dag") {
+                if let Ok(rel) = path.strip_prefix(root) {
+                    out.push(rel.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+
+    let root = workspace_root();
+    let mut out = Vec::new();
+    for source_root in ["dag", "src/v2"] {
+        walk(&root.join(source_root), &root, &mut out);
+    }
+    out.sort();
+    out
+}
+
+/// A (smallest, largest) pair from the discovered corpus, for the scaling claims.
+///
+/// The size oracles below are RATIOS (time ratio against size ratio), so they need a
+/// spread rather than any particular file. Selecting the extremes at runtime keeps the
+/// spread as wide as the corpus offers and keeps the claim true as the corpus churns —
+/// where the deleted `ownership.dag` / `02_parse.dag` pair had to be re-picked by hand.
+fn corpus_size_extremes() -> (String, String) {
+    let mut sized: Vec<(u64, String)> = corpus_dag_files()
+        .into_iter()
+        .filter_map(|rel| {
+            let bytes = std::fs::metadata(workspace_root().join(&rel)).ok()?.len();
+            Some((bytes, rel))
+        })
+        .collect();
+    sized.sort();
+    let small = sized
+        .iter()
+        .find(|(bytes, _)| *bytes >= 8 * 1024)
+        .expect("corpus has a file of at least 8KB");
+    let large = sized.last().expect("corpus is non-empty");
+    assert!(
+        large.0 >= small.0 * 4,
+        "scaling claim needs a 4x size spread; got {}B and {}B",
+        small.0,
+        large.0
+    );
+    (small.1.clone(), large.1.clone())
+}
+
 fn tokenize(source: &str) -> Rc<im::Vector<Rc<Token>>> {
     v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string())
 }
@@ -454,56 +528,53 @@ type Pair<KeyT, ValueU> = Map<KeyT, ValueU>
     assert_eq!(value_ident.start, source.find("ValueU").unwrap() as i64);
 }
 
-fn stack_parses_strict() {
-    assert_parses_strict("dag/std/stack.dag");
-}
+/// Every `.dag` in the discovered corpus parses, and every failure is NAMED.
+///
+/// Subsumes the eleven per-file rows this replaces, including the two surviving
+/// `dag/std/*.dag` ones: a walk that covers the tree covers them, and keeping a named
+/// row beside it would be the second representation DESIGN section 3 forbids.
+///
+/// The refusal reports the full roster rather than the first failure, because a cut that
+/// breaks parsing usually breaks it in a population, and stopping at the first file makes
+/// the operator rediscover the rest one run at a time.
+fn corpus_parses_strict() {
+    let files = corpus_dag_files();
+    assert!(
+        files.len() > 1_000,
+        "discovery found only {} .dag files — the walk is misconfigured, not the corpus empty",
+        files.len()
+    );
 
-fn core_parses_strict() {
-    assert_parses_strict("src/v1/00_core.dag");
-}
+    let mut failures: Vec<String> = Vec::new();
+    for rel in &files {
+        let source = read_v2_file(rel);
+        let result = parse_source(&source);
+        if let Some(ref err) = result.error {
+            let s = diagnostic_to_span(err.diagnostic.clone());
+            let line = source[..s.start.max(0) as usize]
+                .chars()
+                .filter(|c| *c == '\n')
+                .count()
+                + 1;
+            failures.push(format!(
+                "{}:{}: {}",
+                rel,
+                line,
+                diagnostic_to_message(err.diagnostic.clone())
+            ));
+        } else if result.module.is_none() {
+            failures.push(format!("{rel}: produced no module and no error"));
+        }
+    }
 
-fn tokenize_parses_strict() {
-    assert_parses_strict("src/v1/01_tokenize.dag");
-}
-
-fn parse_parses_strict() {
-    assert_parses_strict("src/v1/02_parse.dag");
-}
-
-fn resolve_parses_strict() {
-    assert_parses_strict("src/v1/03_resolve.dag");
-}
-
-fn typecheck_parses_strict() {
-    assert_parses_strict("src/v1/04_infer.dag");
-}
-
-fn emit_parses_strict() {
-    assert_parses_strict("src/v1/05_emit.dag");
-}
-
-fn pipeline_parses_strict() {
-    assert_parses_strict("src/v1/compile.dag");
-}
-
-fn artifact_parses_strict() {
-    assert_parses_strict("src/v1/artifact.dag");
-}
-
-fn complexity_parses_strict() {
-    assert_parses_strict("src/v1/complexity.dag");
-}
-
-fn ownership_parses_strict() {
-    assert_parses_strict("src/v1/ownership.dag");
-}
-
-fn shared_behavioral_parses_strict() {
-    assert_parses_strict("dag/std/behavioral.dag");
-}
-
-fn shared_primitives_parses_strict() {
-    assert_parses_strict("dag/std/primitives.dag");
+    eprintln!("corpus_parses_strict: {} .dag files walked", files.len());
+    assert!(
+        failures.is_empty(),
+        "{} of {} corpus files failed to parse:\n{}",
+        failures.len(),
+        files.len(),
+        failures.join("\n")
+    );
 }
 
 fn tokenizer_non_ascii_performance_regression() {
@@ -547,7 +618,8 @@ fn tokenizer_non_ascii_performance_regression() {
 
 fn tokenizer_text_lookup_flat_in_file_size() {
     const LOOKUPS: usize = 1_000;
-    let large_source = read_v2_file("src/v1/02_parse.dag");
+    let (_, large_rel) = corpus_size_extremes();
+    let large_source = read_v2_file(&large_rel);
     let source = tokenizer_source_ref(&large_source);
     let tail_pos = source_len(source.clone()) - 1;
 
@@ -643,8 +715,9 @@ fn source_text_at_lookup_flat_in_file_padding() {
 }
 
 fn tokenizer_scales_linearly_with_file_size() {
-    let small_source = read_v2_file("src/v1/ownership.dag"); // ~23KB
-    let large_source = read_v2_file("src/v1/02_parse.dag"); // ~271KB
+    let (small_rel, large_rel) = corpus_size_extremes();
+    let small_source = read_v2_file(&small_rel);
+    let large_source = read_v2_file(&large_rel);
 
     let _ = tokenize(&small_source);
     let _ = tokenize(&large_source);
@@ -673,8 +746,9 @@ fn tokenizer_scales_linearly_with_file_size() {
 }
 
 fn tokenizer_scanning_scales_linearly() {
-    let small_source = read_v2_file("src/v1/ownership.dag");
-    let large_source = read_v2_file("src/v1/02_parse.dag");
+    let (small_rel, large_rel) = corpus_size_extremes();
+    let small_source = read_v2_file(&small_rel);
+    let large_source = read_v2_file(&large_rel);
 
     let _ = tokenize(&small_source);
     let _ = tokenize(&large_source);
@@ -703,8 +777,9 @@ fn tokenizer_scanning_scales_linearly() {
 }
 
 fn parser_scales_linearly_with_token_count() {
-    let small_source = read_v2_file("src/v1/ownership.dag");
-    let large_source = read_v2_file("src/v1/02_parse.dag");
+    let (small_rel, large_rel) = corpus_size_extremes();
+    let small_source = read_v2_file(&small_rel);
+    let large_source = read_v2_file(&large_rel);
 
     let small_tokens = tokenize(&small_source);
     let large_tokens = tokenize(&large_source);
@@ -956,25 +1031,7 @@ fn floor_suite() -> Vec<WitnessCase> {
             "type_param_spans_point_at_identifiers_not_delimiters",
             type_param_spans_point_at_identifiers_not_delimiters,
         ),
-        ("stack_parses_strict", stack_parses_strict),
-        ("core_parses_strict", core_parses_strict),
-        ("tokenize_parses_strict", tokenize_parses_strict),
-        ("parse_parses_strict", parse_parses_strict),
-        ("resolve_parses_strict", resolve_parses_strict),
-        ("typecheck_parses_strict", typecheck_parses_strict),
-        ("emit_parses_strict", emit_parses_strict),
-        ("pipeline_parses_strict", pipeline_parses_strict),
-        ("artifact_parses_strict", artifact_parses_strict),
-        ("complexity_parses_strict", complexity_parses_strict),
-        ("ownership_parses_strict", ownership_parses_strict),
-        (
-            "shared_behavioral_parses_strict",
-            shared_behavioral_parses_strict,
-        ),
-        (
-            "shared_primitives_parses_strict",
-            shared_primitives_parses_strict,
-        ),
+        ("corpus_parses_strict", corpus_parses_strict),
         ("tokenizer_smoke", tokenizer_smoke),
         ("tokenizer_empty_input", tokenizer_empty_input),
         ("tokenizer_keywords", tokenizer_keywords),

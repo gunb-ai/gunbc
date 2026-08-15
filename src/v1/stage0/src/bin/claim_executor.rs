@@ -17184,8 +17184,8 @@ mod tests {
             deferred_rows: Vec::new(),
             predicted_unaffected: Vec::new(),
             selection_skipped_rows: vec![SelectionSkippedDiscoveryRow {
-                entry: "src/v1/tests/claim/caret_parse_smoke_test.dag".into(),
-                function: "w_caret_tokenizes_as_sh_caret".into(),
+                entry: "synthetic/entry/selection_skip_receipt_fixture.dag".into(),
+                function: "w_synthetic_selection_skip_row".into(),
                 provenance: "skip-before-resolve-fast-path".into(),
             }],
             divergences: Vec::new(),
@@ -17203,8 +17203,8 @@ mod tests {
         };
         let (label, provenance) = scoped_witness_summary_outcome(
             &summary,
-            "src/v1/tests/claim/caret_parse_smoke_test.dag",
-            "w_caret_tokenizes_as_sh_caret",
+            "synthetic/entry/selection_skip_receipt_fixture.dag",
+            "w_synthetic_selection_skip_row",
         )
         .expect("an unaffected enrolled row must remain present in the receipt");
         assert_eq!(label, "selection-skipped");
