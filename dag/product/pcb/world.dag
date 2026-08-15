@@ -6,7 +6,7 @@ import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import std.coordinate_frame { CoordinateFrameIdentity }
 import std.affine_space { Point2 }
 import std.orthogonal_geometry { AxisAlignedRectangle2, OrthogonalRefusal }
-import product.pcb.physical { ComponentPlacement }
+import product.pcb.physical { ComponentPlacement, PhysicalRefusalSet }
 
 // ONE PCB WORLD, AND EMPTY IS NOT A DEFAULT. Established body envelopes occupy components. Every
 // other planned identity is an obligation that carries a typed cause — missing document,
@@ -40,6 +40,7 @@ type PcbObligationCause
   | UnselectedPart { because: NonEmptyStr }
   | DrawingMustBeRead { figure: NonEmptyStr, what_is_drawn: NonEmptyStr }
   | StandingIsSelfContradictory { what_is_wrong: NonEmptyStr }
+  | NamedAttachmentTypePartUnresolved { designation: NonEmptyStr, missing: NonEmptyStr }
 
 type PcbComponentObligation {
   identity: NonEmptyStr
@@ -65,10 +66,18 @@ type PcbCapabilityStanding
   = CapabilityPending { owed: NonemptyCapabilityObligations }
   | CapabilityRefused { cause: NonEmptyStr }
 
+// FOUR ARMS, BECAUSE "CHECKED" WAS HIDING A REFUSAL. The subset arm previously carried only a
+// count, and the projection that produced it discarded the nested geometry result -- so a world
+// with two established components whose bodies COLLIDE and thirteen parts still owed rendered as
+// "checked over established subset only", which reads as an incomplete but clean board. It was
+// neither: the part of it that was checked had failed. Completeness and verdict are two axes and
+// one arm cannot carry both, so each combination is now its own arm and a refusal survives at
+// either population.
 type PcbBodyLayoutStanding
   = PcbBodyLayoutAdmittedOverEveryRequiredPart
-  | PcbBodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: Int }
-  | PcbBodyLayoutRefused
+  | PcbBodyLayoutAdmittedOverEstablishedSubsetOnly { parts_still_owed: Int }
+  | PcbBodyLayoutRefusedOverEstablishedSubset { parts_still_owed: Int, causes: PhysicalRefusalSet }
+  | PcbBodyLayoutRefusedOverCompletePopulation { causes: PhysicalRefusalSet }
 
 type EstablishedEnvelopeRead {
   identity: NonEmptyStr
@@ -179,6 +188,7 @@ type PcbCauseCounts {
   unselected_part: Int
   drawing_must_be_read: Int
   standing_self_contradictory: Int
+  named_attachment_part_unresolved: Int
 }
 
 fn pcb_cause_counts(p: PcbPhysicalWorld) -> PcbCauseCounts {
@@ -189,6 +199,7 @@ fn pcb_cause_counts(p: PcbPhysicalWorld) -> PcbCauseCounts {
     unselected_part: 0,
     drawing_must_be_read: 0,
     standing_self_contradictory: 0,
+    named_attachment_part_unresolved: 0,
   }, f: fn(acc, o) {
     match o.cause {
       MissingDocument { what_is_missing: _ } => PcbCauseCounts {
@@ -198,6 +209,7 @@ fn pcb_cause_counts(p: PcbPhysicalWorld) -> PcbCauseCounts {
         unselected_part: acc.unselected_part,
         drawing_must_be_read: acc.drawing_must_be_read,
         standing_self_contradictory: acc.standing_self_contradictory,
+        named_attachment_part_unresolved: acc.named_attachment_part_unresolved,
       }
       CommercialAccess { subject: _ } => PcbCauseCounts {
         missing_document: acc.missing_document,
@@ -206,6 +218,7 @@ fn pcb_cause_counts(p: PcbPhysicalWorld) -> PcbCauseCounts {
         unselected_part: acc.unselected_part,
         drawing_must_be_read: acc.drawing_must_be_read,
         standing_self_contradictory: acc.standing_self_contradictory,
+        named_attachment_part_unresolved: acc.named_attachment_part_unresolved,
       }
       LegalCarriage { reason: _ } => PcbCauseCounts {
         missing_document: acc.missing_document,
@@ -214,6 +227,7 @@ fn pcb_cause_counts(p: PcbPhysicalWorld) -> PcbCauseCounts {
         unselected_part: acc.unselected_part,
         drawing_must_be_read: acc.drawing_must_be_read,
         standing_self_contradictory: acc.standing_self_contradictory,
+        named_attachment_part_unresolved: acc.named_attachment_part_unresolved,
       }
       UnselectedPart { because: _ } => PcbCauseCounts {
         missing_document: acc.missing_document,
@@ -222,6 +236,7 @@ fn pcb_cause_counts(p: PcbPhysicalWorld) -> PcbCauseCounts {
         unselected_part: acc.unselected_part + 1,
         drawing_must_be_read: acc.drawing_must_be_read,
         standing_self_contradictory: acc.standing_self_contradictory,
+        named_attachment_part_unresolved: acc.named_attachment_part_unresolved,
       }
       DrawingMustBeRead { figure: _, what_is_drawn: _ } => PcbCauseCounts {
         missing_document: acc.missing_document,
@@ -229,6 +244,16 @@ fn pcb_cause_counts(p: PcbPhysicalWorld) -> PcbCauseCounts {
         legal_carriage: acc.legal_carriage,
         unselected_part: acc.unselected_part,
         drawing_must_be_read: acc.drawing_must_be_read + 1,
+        standing_self_contradictory: acc.standing_self_contradictory,
+        named_attachment_part_unresolved: acc.named_attachment_part_unresolved,
+      }
+      NamedAttachmentTypePartUnresolved { designation: _, missing: _ } => PcbCauseCounts {
+        missing_document: acc.missing_document,
+        commercial_access: acc.commercial_access,
+        legal_carriage: acc.legal_carriage,
+        unselected_part: acc.unselected_part,
+        named_attachment_part_unresolved: acc.named_attachment_part_unresolved + 1,
+        drawing_must_be_read: acc.drawing_must_be_read,
         standing_self_contradictory: acc.standing_self_contradictory,
       }
       StandingIsSelfContradictory { what_is_wrong: _ } => PcbCauseCounts {
@@ -238,6 +263,7 @@ fn pcb_cause_counts(p: PcbPhysicalWorld) -> PcbCauseCounts {
         unselected_part: acc.unselected_part,
         drawing_must_be_read: acc.drawing_must_be_read,
         standing_self_contradictory: acc.standing_self_contradictory + 1,
+        named_attachment_part_unresolved: acc.named_attachment_part_unresolved,
       }
     }
   })
@@ -251,6 +277,7 @@ fn obligation_cause_tag(c: PcbObligationCause) -> NonEmptyStr {
     UnselectedPart { because: _ } => "unselected-part"
     DrawingMustBeRead { figure: _, what_is_drawn: _ } => "drawing-must-be-read"
     StandingIsSelfContradictory { what_is_wrong: _ } => "standing-self-contradictory"
+    NamedAttachmentTypePartUnresolved { designation: _, missing: _ } => "named-attachment-type-part-unresolved"
   }
 }
 
@@ -276,6 +303,10 @@ fn pcb_drawing_must_be_read_count(p: PcbPhysicalWorld) -> Int {
 
 fn pcb_standing_self_contradictory_count(p: PcbPhysicalWorld) -> Int {
   pcb_cause_counts(p: p).standing_self_contradictory
+}
+
+fn pcb_named_attachment_part_unresolved_count(p: PcbPhysicalWorld) -> Int {
+  pcb_cause_counts(p: p).named_attachment_part_unresolved
 }
 
 fn pcb_population_count(p: PcbPhysicalWorld) -> Int {

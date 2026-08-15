@@ -11,6 +11,8 @@ import extdeps.publication { DocumentPublicationStatus, PubliclyPublishedWithRes
 import extdeps.cpu.ampere_altra_package {
   altra_package_body_width,
   altra_package_body_height,
+  altra_package_pad_pitch_dx,
+  altra_package_pad_pitch_dy,
   altra_declared_contact_count,
   altra_ddr4_channel_count,
   altra_max_dimms_per_socket,
@@ -298,18 +300,20 @@ data altra_platform_pad_array_geometry_availability: MechanicalFactAvailability 
 // exact: 77.080 mm, 67.000 mm and the 0.87 / 0.5 mm hexagonal pitch pair are
 // all sub-millimetre-grained.
 //
-// THE BODY EXTENTS ARE THE PACKAGE AUTHORITY'S, CORROBORATED HERE RATHER THAN RESTATED. Section
-// 1.9 does state 77.080 mm by 67.000 mm, and that agreement between two independently published
-// documents is worth recording -- but the SUBJECT is the package, whose authority is
-// extdeps.cpu.ampere_altra_package, so a second literal here would be two anchors for one physical
-// fact that can drift apart silently. These rows consume the package authority instead, which
-// makes the corroboration real: if the datasheet figure and this specification ever disagree, the
-// disagreement has to be resolved at the package rather than existing quietly as two numbers.
-// The pad pitch pair below is different -- the package module does not carry it, so those ARE
-// this document's own contribution and stay literals.
-data altra_package_outline_width: Micrometer = altra_package_body_width
+// WHAT THIS DOCUMENT INDEPENDENTLY STATES, JOINED TO THE PACKAGE AUTHORITY RATHER THAN ALIASED TO
+// IT. The canonical facts are the package's -- extdeps.cpu.ampere_altra_package owns the body
+// extent and the land pitch, because they are properties of the part. These rows are this
+// specification's own reading of the same quantities, and they stay independent values on purpose:
+// an alias would make agreement true by construction and therefore unable to express disagreement,
+// which is the one thing corroboration is for. If a future revision of this document states
+// 77.081 mm, that has to become visible rather than silently inheriting the datasheet's number.
+// The join is asserted by an executing witness, which is what makes these rows corroboration
+// instead of the two unjoined literals that were here before -- the defect was never the second
+// number, it was that nothing compared them. This is the same shape altra_pad_count already used
+// against the package's contact count.
+data altra_package_outline_width: Micrometer = micrometer(count: 77080)
 
-data altra_package_outline_depth: Micrometer = altra_package_body_height
+data altra_package_outline_depth: Micrometer = micrometer(count: 67000)
 
 data altra_pad_pitch_dx: Micrometer = micrometer(count: 870)
 

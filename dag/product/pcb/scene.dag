@@ -17,6 +17,7 @@ import product.pcb.world {
   UnselectedPart,
   DrawingMustBeRead,
   StandingIsSelfContradictory,
+  NamedAttachmentTypePartUnresolved,
   pcb_world_physical,
   pcb_world_design,
   pcb_body_layout,
@@ -43,6 +44,7 @@ type PcbSceneLegend {
   legal_carriage: Int
   unselected_part: Int
   drawing_must_be_read: Int
+  named_attachment_part_unresolved: Int
   body_layout: PcbBodyLayoutStanding
   design: DeclarationRef
   envelope_reads: List<DeclarationRef>
@@ -87,6 +89,7 @@ fn legend_of(w: PcbWorld) -> PcbSceneLegend {
     legal_carriage: causes.legal_carriage,
     unselected_part: causes.unselected_part,
     drawing_must_be_read: causes.drawing_must_be_read,
+    named_attachment_part_unresolved: causes.named_attachment_part_unresolved,
     body_layout: pcb_body_layout(p: p),
     design: pcb_world_design(w: w),
     envelope_reads: fold(pcb_envelope_reads(p: p), init: [], f: fn(acc, r) {
@@ -213,5 +216,6 @@ fn obligation_cause_label(c: PcbObligationCause) -> String {
     UnselectedPart { because: b } => concat("unselected part:", b as String)
     DrawingMustBeRead { figure: f, what_is_drawn: _ } => concat("drawing must be read:", f as String)
     StandingIsSelfContradictory { what_is_wrong: w } => concat("standing is self-contradictory:", w as String)
+    NamedAttachmentTypePartUnresolved { designation: d, missing: m } => concat(concat(d as String, " part unresolved:"), m as String)
   }
 }

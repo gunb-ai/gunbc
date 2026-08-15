@@ -28,8 +28,9 @@ import product.pcb.world {
   PcbPhysicalWorld,
   PcbBodyLayoutStanding,
   PcbBodyLayoutAdmittedOverEveryRequiredPart,
-  PcbBodyLayoutCheckedOverEstablishedSubsetOnly,
-  PcbBodyLayoutRefused,
+  PcbBodyLayoutAdmittedOverEstablishedSubsetOnly,
+  PcbBodyLayoutRefusedOverEstablishedSubset,
+  PcbBodyLayoutRefusedOverCompletePopulation,
   PcbElectricalWorld,
   PcbManufacturingWorld,
   PcbComponentObligation,
@@ -37,6 +38,7 @@ import product.pcb.world {
   MissingDocument,
   DrawingMustBeRead,
   StandingIsSelfContradictory,
+  NamedAttachmentTypePartUnresolved,
   CommercialAccess,
   LegalCarriage,
   CapabilityPending,
@@ -52,6 +54,7 @@ import product.pcb.world {
   pcb_attachment_obligation_count,
   pcb_unselected_part_count,
   pcb_missing_document_count,
+  pcb_named_attachment_part_unresolved_count,
   pcb_commercial_access_count,
   pcb_legal_carriage_count,
   pcb_drawing_must_be_read_count,
@@ -76,13 +79,28 @@ import product.pcb.scene {
   scene_identities,
   label_is_represented,
 }
+import product.pcb.physical {
+  PhysicalRefusalSet,
+  PhysicallyRefused,
+  PlacementsOverlap,
+  BoardFrameUnregistered,
+  BoardFrameRegistrationRefused,
+  BoardFrameIsNotSubMillimetre,
+  PlacementFrameDiffersFromBoard,
+  PlacementExtentNotPositive,
+  PlacementNotWithinOutline,
+  PlacementIdentityRepeated,
+}
 import product.altra_motherboard.pcb_world {
+  project_body_layout,
   altra_pcb_world,
   altra_pcb_world_for,
   admit_pcb_world,
   outline_copies_mt_jade_reference,
 }
 import product.altra_motherboard.placement {
+  BoardBodyLayoutStanding,
+  BodyLayoutCheckedOverEstablishedSubsetOnly,
   altra_reference_plan,
   altra_1p_minimum_ref,
 }
@@ -187,7 +205,7 @@ fn world_with_obligations(obs: List<PcbComponentObligation>) -> PcbWorld? {
             envelope_reads: [],
             obligations: obs,
             attachment_obligations: [],
-            body_layout: PcbBodyLayoutCheckedOverEstablishedSubsetOnly {
+            body_layout: PcbBodyLayoutAdmittedOverEstablishedSubsetOnly {
               parts_still_owed: list_length(items: obs),
             },
             stackup: capability_pending(what_is_owed: "synthetic stackup"),
@@ -256,29 +274,37 @@ test fn w_the_altra_pcb_world_constructs_as_a_partial_preview() -> Bool {
   }
 }
 
-test fn w_the_world_carries_two_established_twelve_unselected_and_one_missing_document() -> Bool {
+// THE SOCKET LEFT THE MISSING-DOCUMENT POPULATION AND HAS ITS OWN. It used to be counted as a
+// missing document naming "ILM4926", which told a reader to go and find a document by that name.
+// ILM4926 is not a document; it is a designation whose vendor and orderable part are unresolved,
+// so it is its own cause and its own count. The missing-document population for COMPONENTS is now
+// zero, which is the honest number: the one live missing document is the board land pattern, and
+// that is an ATTACHMENT obligation, counted separately.
+test fn w_the_world_carries_two_established_thirteen_unselected_and_one_attachment_part_unresolved() -> Bool {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
       let p = pcb_world_physical(w: w)
       pcb_component_count(p: p) == 2
-        && pcb_obligation_count(p: p) == 13
-        && pcb_unselected_part_count(p: p) == 12
-        && pcb_missing_document_count(p: p) == 1
+        && pcb_obligation_count(p: p) == 14
+        && pcb_unselected_part_count(p: p) == 13
+        && pcb_named_attachment_part_unresolved_count(p: p) == 1
+        && pcb_missing_document_count(p: p) == 0
         && pcb_commercial_access_count(p: p) == 0
         && pcb_legal_carriage_count(p: p) == 0
-        && pcb_population_count(p: p) == 15
+        && pcb_population_count(p: p) == 16
   }
 }
 
-test fn w_the_reference_board_body_layout_is_the_established_subset_with_thirteen_parts_owed() -> Bool {
+test fn w_the_reference_board_body_layout_is_the_established_subset_with_fourteen_parts_owed() -> Bool {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
       match pcb_body_layout(p: pcb_world_physical(w: w)) {
         PcbBodyLayoutAdmittedOverEveryRequiredPart => false
-        PcbBodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: n } => n == 13
-        PcbBodyLayoutRefused => false
+        PcbBodyLayoutAdmittedOverEstablishedSubsetOnly { parts_still_owed: n } => n == 14
+        PcbBodyLayoutRefusedOverEstablishedSubset { parts_still_owed: _, causes: _ } => false
+        PcbBodyLayoutRefusedOverCompletePopulation { causes: _ } => false
       }
   }
 }
@@ -384,13 +410,20 @@ test fn w_the_processor_package_renders_at_cited_body_dimensions() -> Bool {
   }
 }
 
-test fn w_the_socket_is_missing_document_not_an_unselected_part() -> Bool {
+// THE SOCKET IS NEITHER A MISSING DOCUMENT NOR A PLAIN UNSELECTED PART, and this witness used to
+// assert the first of those. The scene said "missing document: ILM4926", which sends a reader to
+// look for a document with that name; no such document is missing. What is unresolved is which
+// vendor part the designation buys. The marker now carries the designation AND the real reason,
+// and both are asserted here so neither can be dropped back into the other.
+test fn w_the_socket_names_its_designation_and_its_real_unresolved_reason() -> Bool {
   match scene_or_empty() {
     Absent => false
     Present { value: s } =>
-      string_contains(s: s, pattern: "class=\"pcb-component-missing-document\">cpu_socket<")
-        && string_contains(s: s, pattern: concat("(missing document:", ilm4926.designator as String))
+      string_contains(s: s, pattern: "class=\"pcb-component-named-attachment-type-part-unresolved\">cpu_socket<")
+        && string_contains(s: s, pattern: concat(ilm4926.designator as String, " part unresolved:"))
         && !string_contains(s: s, pattern: "class=\"pcb-component-unselected-part\">cpu_socket<")
+        && !string_contains(s: s, pattern: "class=\"pcb-component-missing-document\">cpu_socket<")
+        && !string_contains(s: s, pattern: concat("(missing document:", ilm4926.designator as String))
   }
 }
 
@@ -412,16 +445,18 @@ test fn w_subset_bodies_are_not_drawn_as_checked() -> Bool {
     Present { value: s } =>
       count_substring(haystack: s, needle: "pcb-component-established") == 0
         && count_substring(haystack: s, needle: "pcb-component-subset-body") == 2
-        && count_substring(haystack: s, needle: "pcb-component-unselected-part") == 12
-        && count_substring(haystack: s, needle: "pcb-component-missing-document") == 1
-        && string_contains(s: s, pattern: "body layout checked over established subset only; 13 parts owed")
+        && count_substring(haystack: s, needle: "pcb-component-unselected-part") == 13
+        && count_substring(haystack: s, needle: "pcb-component-named-attachment-type-part-unresolved") == 1
+        && count_substring(haystack: s, needle: "pcb-component-missing-document") == 0
+        && string_contains(s: s, pattern: "body layout admitted over established subset only; 14 parts owed")
+        && !string_contains(s: s, pattern: "body layout checked over established subset only")
   }
 }
 
 test fn w_the_legend_states_the_cause_populations() -> Bool {
   match scene_or_empty() {
     Absent => false
-    Present { value: s } => string_contains(s: s, pattern: "2 established / 12 unselected / 1 missing-document / 0 commercial-access / 0 legal-carriage / 0 drawing-must-be-read — body layout checked over established subset only; 13 parts owed")
+    Present { value: s } => string_contains(s: s, pattern: "2 established / 13 unselected / 0 missing-document / 0 commercial-access / 0 legal-carriage / 0 drawing-must-be-read / 1 attachment-part-unresolved — body layout admitted over established subset only; 14 parts owed")
   }
 }
 
@@ -477,6 +512,7 @@ test fn w_the_board_land_pattern_is_filed_as_a_missing_document() -> Bool {
           LegalCarriage { reason: _ } => false
           UnselectedPart { because: _ } => false
           StandingIsSelfContradictory { what_is_wrong: _ } => false
+          NamedAttachmentTypePartUnresolved { designation: _, missing: _ } => false
         }
       })
   }
@@ -634,10 +670,10 @@ test fn w_the_engineering_scene_is_projected_from_the_world() -> Bool {
   }
 }
 
-test fn w_mutation_control_obligation_count_must_be_thirteen() -> Bool {
+test fn w_mutation_control_obligation_count_must_be_fourteen() -> Bool {
   match world_or_empty() {
     Absent => false
-    Present { value: w } => pcb_obligation_count(p: pcb_world_physical(w: w)) == 13
+    Present { value: w } => pcb_obligation_count(p: pcb_world_physical(w: w)) == 14
   }
 }
 
@@ -648,12 +684,15 @@ test fn w_mutation_control_established_count_must_be_two() -> Bool {
   }
 }
 
-test fn w_mutation_control_unselected_twelve_and_missing_document_one() -> Bool {
+test fn w_mutation_control_unselected_thirteen_and_attachment_part_unresolved_one() -> Bool {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
       let p = pcb_world_physical(w: w)
-      pcb_unselected_part_count(p: p) == 12 && pcb_missing_document_count(p: p) == 1 && pcb_drawing_must_be_read_count(p: p) == 0
+      pcb_unselected_part_count(p: p) == 13
+        && pcb_named_attachment_part_unresolved_count(p: p) == 1
+        && pcb_missing_document_count(p: p) == 0
+        && pcb_drawing_must_be_read_count(p: p) == 0
   }
 }
 
@@ -742,5 +781,44 @@ test fn w_a_refused_capability_is_reported_as_outstanding() -> Bool {
             PcbOutlineCopiedFromCitedForeignBoard => false
           }
       }
+  }
+}
+
+// THE DISCRIMINATING CONTROL FOR THE REFUSED SUBSET. This is the exact world the old projection
+// hid: an established subset whose geometry REFUSED, with parts still owed. The subset arm carried
+// the nested PhysicalAdmission and the projection bound it to `_`, so the count of what was not
+// examined survived and the verdict on what WAS examined was discarded -- two colliding bodies
+// rendered as "checked over established subset only", which reads as incomplete but clean. It was
+// not clean; the only geometry this board had actually performed had failed. Both halves are
+// asserted: the refusal reaches the world, and the word that used to hide it is absent.
+fn refused_subset_standing() -> BoardBodyLayoutStanding {
+  BodyLayoutCheckedOverEstablishedSubsetOnly {
+    parts_still_owed: 13,
+    geometry: PhysicallyRefused {
+      causes: PhysicalRefusalSet {
+        first: PlacementsOverlap { first: "planted_a", second: "planted_b" },
+        rest: [],
+      },
+    },
+  }
+}
+
+test fn w_a_refused_subset_does_not_project_as_a_checked_subset() -> Bool {
+  match project_body_layout(s: refused_subset_standing()) {
+    PcbBodyLayoutRefusedOverEstablishedSubset { parts_still_owed: n, causes: cs } =>
+      n == 13 && match cs.first {
+        PlacementsOverlap { first: a, second: b } =>
+          (a as String) == "planted_a" && (b as String) == "planted_b"
+        BoardFrameUnregistered { frame: _ } => false
+        BoardFrameRegistrationRefused { cause: _ } => false
+        BoardFrameIsNotSubMillimetre { frame: _ } => false
+        PlacementFrameDiffersFromBoard { placement: _ } => false
+        PlacementExtentNotPositive { placement: _ } => false
+        PlacementNotWithinOutline { placement: _ } => false
+        PlacementIdentityRepeated { placement: _ } => false
+      }
+    PcbBodyLayoutAdmittedOverEstablishedSubsetOnly { parts_still_owed: _ } => false
+    PcbBodyLayoutAdmittedOverEveryRequiredPart => false
+    PcbBodyLayoutRefusedOverCompletePopulation { causes: _ } => false
   }
 }

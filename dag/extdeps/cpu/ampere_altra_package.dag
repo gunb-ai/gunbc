@@ -69,6 +69,15 @@ data altra_package_body_width: Micrometer = micrometer(count: 77080)
 
 data altra_package_body_height: Micrometer = micrometer(count: 67000)
 
+// THE LAND PITCH BELONGS TO THE PACKAGE, NOT TO WHICHEVER DOCUMENT TRANSCRIBED IT FIRST. The
+// datasheet's package mechanical drawing states e = 0.87 BASIC and f = 0.50 BASIC on the same
+// figure as the body extent and the 4926-contact identity, so the hexagonal pitch pair is a
+// property of the part. It was previously authored only in the platform-specification module, and
+// a fact's ABSENCE from its subject's authority is not what makes it belong somewhere else.
+data altra_package_pad_pitch_dx: Micrometer = micrometer(count: 870)
+
+data altra_package_pad_pitch_dy: Micrometer = micrometer(count: 500)
+
 data altra_package_body_designator: NonEmptyStr = "FCLGA4926"
 
 data altra_ddr4_channel_count: Int = 8

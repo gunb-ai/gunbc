@@ -22,8 +22,9 @@ import product.pcb.world {
   PcbWorldRefusal,
   PcbBodyLayoutStanding,
   PcbBodyLayoutAdmittedOverEveryRequiredPart,
-  PcbBodyLayoutCheckedOverEstablishedSubsetOnly,
-  PcbBodyLayoutRefused,
+  PcbBodyLayoutAdmittedOverEstablishedSubsetOnly,
+  PcbBodyLayoutRefusedOverEstablishedSubset,
+  PcbBodyLayoutRefusedOverCompletePopulation,
   obligation_cause_tag,
 }
 import product.pcb.scene {
@@ -124,13 +125,19 @@ fn body_render_style(s: PcbBodyLayoutStanding) -> BodyRenderStyle {
       fill: "#c8d6e8",
       stroke: "#1a2744",
     }
-    PcbBodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: _ } => BodyRenderStyle {
+    PcbBodyLayoutAdmittedOverEstablishedSubsetOnly { parts_still_owed: _ } => BodyRenderStyle {
       class_name: "pcb-component-subset-body",
       label_class: "pcb-label-subset-body",
       fill: "#edf1f5",
       stroke: "#8a97a8",
     }
-    PcbBodyLayoutRefused => BodyRenderStyle {
+    PcbBodyLayoutRefusedOverEstablishedSubset { parts_still_owed: _, causes: _ } => BodyRenderStyle {
+      class_name: "pcb-component-layout-refused",
+      label_class: "pcb-label-layout-refused",
+      fill: "#f3e8e8",
+      stroke: "#8a4a4a",
+    }
+    PcbBodyLayoutRefusedOverCompletePopulation { causes: _ } => BodyRenderStyle {
       class_name: "pcb-component-layout-refused",
       label_class: "pcb-label-layout-refused",
       fill: "#f3e8e8",
@@ -189,10 +196,12 @@ fn body_layout_legend(s: PcbBodyLayoutStanding) -> String {
   match s {
     PcbBodyLayoutAdmittedOverEveryRequiredPart =>
       "body layout admitted over every required part"
-    PcbBodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: n } =>
-      concat("body layout checked over established subset only; ", concat(to_string(n), " parts owed"))
-    PcbBodyLayoutRefused =>
-      "body layout refused"
+    PcbBodyLayoutAdmittedOverEstablishedSubsetOnly { parts_still_owed: n } =>
+      concat("body layout admitted over established subset only; ", concat(to_string(n), " parts owed"))
+    PcbBodyLayoutRefusedOverEstablishedSubset { parts_still_owed: n, causes: _ } =>
+      concat("body layout REFUSED over the established subset; ", concat(to_string(n), " parts owed"))
+    PcbBodyLayoutRefusedOverCompletePopulation { causes: _ } =>
+      "body layout refused over the complete population"
   }
 }
 
@@ -219,10 +228,11 @@ fn legend_text(c: PcbSceneLegend) -> String {
     concat(to_string(c.missing_document), concat(" missing-document / ",
     concat(to_string(c.commercial_access), concat(" commercial-access / ",
     concat(to_string(c.legal_carriage), concat(" legal-carriage / ",
-    concat(to_string(c.drawing_must_be_read), concat(" drawing-must-be-read — ",
+    concat(to_string(c.drawing_must_be_read), concat(" drawing-must-be-read / ",
+    concat(to_string(c.named_attachment_part_unresolved), concat(" attachment-part-unresolved — ",
     concat(body_layout_legend(s: c.body_layout), concat(" — design identity: ",
     concat(declaration_ref_display_key(ref: c.design), concat(" — ",
-    envelope_reads_legend(xs: c.envelope_reads)))))))))))))))))
+    envelope_reads_legend(xs: c.envelope_reads)))))))))))))))))))
   )
 }
 

@@ -11,6 +11,7 @@ import std.orthogonal_geometry {
   OrthogonalRefused,
   rectangle2_max,
 }
+import product.pcb.physical { BodyEnvelopesAdmitted, PhysicallyRefused }
 import product.pcb.world {
   PcbWorld,
   PcbWorldConstruction,
@@ -25,8 +26,9 @@ import product.pcb.world {
   PcbPhysicalWorld,
   PcbBodyLayoutStanding,
   PcbBodyLayoutAdmittedOverEveryRequiredPart,
-  PcbBodyLayoutCheckedOverEstablishedSubsetOnly,
-  PcbBodyLayoutRefused,
+  PcbBodyLayoutAdmittedOverEstablishedSubsetOnly,
+  PcbBodyLayoutRefusedOverEstablishedSubset,
+  PcbBodyLayoutRefusedOverCompletePopulation,
   PcbElectricalWorld,
   PcbManufacturingWorld,
   PcbComponentObligation,
@@ -50,7 +52,8 @@ import product.altra_motherboard.placement {
   BoardControlCpld,
   BoardPlacementPlan,
   BootFirmwareEeprom,
-  ClockGenerator,
+  ClockSource,
+  ClockFanout,
   DebugConnector,
   EnvelopeEstablished,
   EnvelopeNotEstablished,
@@ -173,13 +176,14 @@ fn outline_copies_mt_jade_reference(o: AxisAlignedRectangle2) -> Bool {
 
 fn cause_from_unresolved_role(r: BoardComponentRole, w: NonEmptyStr) -> PcbObligationCause {
   match r {
-    ProcessorSocket => MissingDocument { what_is_missing: ilm4926.designator }
+    ProcessorSocket => NamedAttachmentTypePartUnresolved { designation: ilm4926.designator, missing: w }
     ProcessorPackage => MissingDocument { what_is_missing: w }
     BoardControlCpld => UnselectedPart { because: w }
     MemoryModuleSlot { slot: _ } => UnselectedPart { because: w }
     BootFirmwareEeprom => UnselectedPart { because: w }
     FirmwareFlash => UnselectedPart { because: w }
-    ClockGenerator => UnselectedPart { because: w }
+    ClockSource => UnselectedPart { because: w }
+    ClockFanout => UnselectedPart { because: w }
     ResetController => UnselectedPart { because: w }
     PowerController => UnselectedPart { because: w }
     NetworkEndpoint => UnselectedPart { because: w }
@@ -244,14 +248,24 @@ fn attachment_obligations() -> List<PcbAttachmentObligation> {
   })
 }
 
+// THE NESTED GEOMETRY VERDICT IS MATCHED, NOT DROPPED. This function used to bind the subset
+// arm's geometry to `_`, which is how a refused subset reached the world as a checked one: the
+// count of what was NOT examined was projected, and the verdict on what WAS examined was thrown
+// away. Two established components overlapping is a hard failure of the only geometry this board
+// has actually done, and it must not be reported behind a word that means "so far so good".
 fn project_body_layout(s: BoardBodyLayoutStanding) -> PcbBodyLayoutStanding {
   match s {
     BodyLayoutAdmittedOverEveryRequiredPart { article: _ } =>
       PcbBodyLayoutAdmittedOverEveryRequiredPart
-    BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: n, geometry: _ } =>
-      PcbBodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: n }
-    BodyLayoutRefused { causes: _ } =>
-      PcbBodyLayoutRefused
+    BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: n, geometry: g } =>
+      match g {
+        BodyEnvelopesAdmitted { article: _ } =>
+          PcbBodyLayoutAdmittedOverEstablishedSubsetOnly { parts_still_owed: n }
+        PhysicallyRefused { causes: cs } =>
+          PcbBodyLayoutRefusedOverEstablishedSubset { parts_still_owed: n, causes: cs }
+      }
+    BodyLayoutRefused { causes: cs } =>
+      PcbBodyLayoutRefusedOverCompletePopulation { causes: cs }
   }
 }
 

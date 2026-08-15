@@ -79,6 +79,14 @@ import extdeps.cpu.ampere_altra_package {
 // socket, four memory slots and a boot device, which is the claim a design review actually makes.
 // The memory slot carries its channel because two slots on one channel and one slot on each of two
 // channels are different boards, and an identity-only roster cannot tell them apart.
+// CLOCK GENERATION AND CLOCK FANOUT ARE TWO JOBS, and one role demanding one part for both was
+// underspecified. The Mt. Jade reference board is the evidence: extdeps.ocp.mt_jade.platform lists
+// four distinct Renesas parts across the two functions -- 9FGV1006B and 5P35023 generating,
+// 9FGL0841 and 92XL1231 buffering -- so a single ClockGenerator role would have been satisfied by
+// one part while the board needs both functions present. Splitting the REQUIREMENT does not select
+// any part and does not decide how many fanout devices a design needs; that multiplicity derives
+// from the consumers and is a realization question. What it does is stop the requirement from
+// asserting something the reference board contradicts.
 type BoardComponentRole
   = ProcessorSocket
   | ProcessorPackage
@@ -86,7 +94,8 @@ type BoardComponentRole
   | BoardControlCpld
   | BootFirmwareEeprom
   | FirmwareFlash
-  | ClockGenerator
+  | ClockSource
+  | ClockFanout
   | ResetController
   | PowerController
   | NetworkEndpoint
@@ -106,7 +115,8 @@ fn role_tag(r: BoardComponentRole) -> NonEmptyStr {
     BoardControlCpld => "BoardControlCpld"
     BootFirmwareEeprom => "BootFirmwareEeprom"
     FirmwareFlash => "FirmwareFlash"
-    ClockGenerator => "ClockGenerator"
+    ClockSource => "ClockSource"
+    ClockFanout => "ClockFanout"
     ResetController => "ResetController"
     PowerController => "PowerController"
     NetworkEndpoint => "NetworkEndpoint"
@@ -141,7 +151,8 @@ fn role_ordinal(r: BoardComponentRole) -> Int {
     BoardControlCpld => 3
     BootFirmwareEeprom => 4
     FirmwareFlash => 5
-    ClockGenerator => 6
+    ClockSource => 6
+    ClockFanout => 13
     ResetController => 7
     PowerController => 8
     NetworkEndpoint => 9
@@ -160,7 +171,8 @@ fn role_slot(r: BoardComponentRole) -> DdrSlotIdentity? {
     BoardControlCpld => none
     BootFirmwareEeprom => none
     FirmwareFlash => none
-    ClockGenerator => none
+    ClockSource => none
+    ClockFanout => none
     ResetController => none
     PowerController => none
     NetworkEndpoint => none
@@ -279,7 +291,7 @@ fn required_roles(d: AltraMinimalMotherboard) -> List<BoardComponentRole> {
   })
   concat(
     [ProcessorSocket, ProcessorPackage, BoardControlCpld, BootFirmwareEeprom, FirmwareFlash,
-     ClockGenerator, ResetController, PowerController, NetworkEndpoint,
+     ClockSource, ClockFanout, ResetController, PowerController, NetworkEndpoint,
      StorageEndpoint, DebugConnector],
     slots
   )
@@ -574,7 +586,8 @@ fn altra_reference_plan() -> OrthogonalConstruction<BoardPlacementPlan> {
     },
     obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the BootFirmwareEeprom role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "boot_eeprom", r: BootFirmwareEeprom, x: 250000, y: 40000),
     obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the FirmwareFlash role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "spi_nor", r: FirmwareFlash, x: 260000, y: 60000),
-    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the ClockGenerator role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "clock_gen", r: ClockGenerator, x: 220000, y: 150000),
+    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the ClockSource role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "clock_source", r: ClockSource, x: 220000, y: 150000),
+    obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the ClockFanout role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "clock_fanout", r: ClockFanout, x: 220000, y: 160000),
     obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the ResetController role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "reset_ctl", r: ResetController, x: 220000, y: 170000),
     obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the PowerController role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "power_ctl", r: PowerController, x: 30000, y: 220000),
     obligation(g: NeedsSomeoneToFindTheDocument { what_is_missing: "a selected part for the NetworkEndpoint role; no vendor has been chosen, so there is no mechanical drawing to read a body envelope from" }, id: "net_phy", r: NetworkEndpoint, x: 280000, y: 120000),
