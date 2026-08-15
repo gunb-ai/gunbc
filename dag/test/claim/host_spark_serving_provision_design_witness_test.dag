@@ -1,0 +1,36 @@
+module test.claim.host_spark_serving_provision_design
+
+import std.disposition { Scaffold, SingleAuthority, Terminal }
+import std.decl_ref { DeclarationRef }
+import gunbc.host_spark_serving_provision_script {
+  spark_serving_provision_read_back_fails_closed,
+  spark_serving_provision_ensure_delegates_to_materializer,
+  spark_serving_provision_shell_uses_shell_quote_authority,
+  host_spark_serving_provision_script_scaffold,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn design_witness_read_back_fails_closed_in_shell() -> Bool {
+  spark_serving_provision_read_back_fails_closed()
+}
+
+test fn design_witness_ensure_delegates_to_materializer() -> Bool {
+  spark_serving_provision_ensure_delegates_to_materializer()
+}
+
+test fn design_witness_provision_shell_uses_shell_quote_authority() -> Bool {
+  spark_serving_provision_shell_uses_shell_quote_authority()
+}
+
+test fn design_witness_provision_script_carries_scaffold() -> Bool {
+  match host_spark_serving_provision_script_scaffold {
+    Scaffold {
+      dissolves_to: SingleAuthority,
+      bind: DeclarationRef { module_path: m, decl_name: n, field: _ },
+    } =>
+      m == "gunbc.host_spark_serving_provision_script"
+        && n == "host_spark_serving_provision_script_dissolution_trigger"
+    Terminal { reason: _ } => false
+  }
+}

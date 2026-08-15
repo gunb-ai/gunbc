@@ -2401,7 +2401,7 @@ fn materialize_codex_runtime_bundle(
   }
 }
 
-data spark_serving_ollama_runtime_materialization_note: String = "Full Spark serving runtime materialization (#8225 runtime-bundle follow-on). Downloads the cited extdeps.ollama.binary_release archive, admits SHA-256, extracts into the owned runtime root under gunbc-automation, writes the executor-local receipt, installs the gunbc-spark-serving user unit, enables the service, and pulls the declared gpt-oss:20b model. Remote per-host delivery uses spark_serving_provision_apply (host_spark_serving_provision_script over FleetSsh); plan/apply CAS lives in spark_serving_plan_apply (#8230 pattern at Spark grain)."
+data spark_serving_ollama_runtime_materialization_note: String = "Full Spark serving runtime materialization (#8225 runtime-bundle follow-on). Downloads the cited extdeps.ollama.binary_release archive, admits SHA-256, extracts into the owned runtime root under gunbc-automation, writes the executor-local receipt, installs the gunbc-spark-serving user unit, enables the service, and pulls the declared gpt-oss:20b model. Remote ensure delegates to gunbc run materialize_spark_serving_on_local_host on the target host (host_spark_serving_provision_script — single materializer authority, not a parallel shell pipeline). Plan/apply CAS: spark_serving_plan_apply (#8230 Spark grain)."
 
 type SparkServingOllamaArchiveAdmission
   = SparkServingOllamaArchiveAdmitted {

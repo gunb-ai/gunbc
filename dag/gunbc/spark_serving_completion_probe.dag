@@ -1,7 +1,10 @@
 module gunbc.spark_serving_completion_probe
 
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.types { String, NonEmptyStr, Bool }
 import std.algebra { trim }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -28,7 +31,18 @@ import gunbc.spark_serving_install_paths {
 }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 
-data spark_serving_completion_probe_note: String = "Acceptance probe for SPARK-SERVE-INSTALL-0: a real /api/generate completion from each Spark host over FleetSsh. This is the finish line — not a converged plan receipt."
+data spark_serving_completion_probe_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: spark_serving_completion_probe — concat-built /api/generate acceptance shell over FleetSsh sh -s; DISSOLVES WHEN typed observe/ensure/read-back host effects replace the probe script (same class as host_spark_serving_provision_script).")
+
+data spark_serving_completion_probe_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.spark_serving_completion_probe",
+    decl_name: "spark_serving_completion_probe_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+data spark_serving_completion_probe_note: String = "Acceptance probe for SPARK-SERVE-INSTALL-0: a real /api/generate completion from each Spark host over FleetSsh. This is the finish line — not a converged plan receipt. Interim concat shell; scaffold registered above."
 
 data spark_serving_completion_probe_receipt_path: String = "target/spark-serving-completion-probe-receipt.txt"
 
