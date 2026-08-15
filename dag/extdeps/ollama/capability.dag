@@ -1,0 +1,310 @@
+module extdeps.ollama.capability
+
+import std.types { String, Bool, List, Int, NonEmptyStr }
+import std.nat { Nat }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.ollama.api { OllamaModelRef, ollama_model_ref_wire }
+import extdeps.ollama.binary_release {
+  OllamaBinaryRelease,
+  OllamaLinuxArchitecture,
+  OllamaLinuxArm64,
+  OllamaLinuxAssetVariant,
+  OllamaLinuxGenericCuda,
+  ollama_binary_release_eq,
+  ollama_required_release,
+}
+import extdeps.ollama.gpu_support {
+  OllamaGpuSupportRow,
+  ollama_gb10_gpu_support_row,
+  OllamaNvidiaDriverVersion,
+  ollama_gb10_minimum_nvidia_driver,
+  OllamaNvidiaDriverRequirementVerdict,
+  OllamaNvidiaDriverRequirementSatisfied,
+  OllamaNvidiaDriverRequirementUnmet,
+  OllamaNvidiaDriverRequirementUnobserved,
+  ollama_nvidia_driver_requirement_verdict,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/ollama/ollama/releases"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ollama.capability",
+      decl_name: "OllamaModelSupportRow",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+type OllamaSemanticVersion {
+  major: Nat
+  minor: Nat
+  patch: Nat
+}
+
+fn ollama_semantic_version(major: Nat, minor: Nat, patch: Nat) -> OllamaSemanticVersion {
+  OllamaSemanticVersion { major: major, minor: minor, patch: patch }
+}
+
+data ollama_gpt_oss_feature_introduction_floor: OllamaSemanticVersion = ollama_semantic_version(major: 0, minor: 11, patch: 0)
+
+data ollama_gpt_oss_feature_introduction_citation: NonEmptyStr = "https://github.com/ollama/ollama/releases/tag/v0.11.0" as NonEmptyStr
+
+type OllamaModelSupportRow {
+  model: OllamaModelRef
+  minimum_runtime: OllamaSemanticVersion
+  introduction_citation: NonEmptyStr
+}
+
+data ollama_gpt_oss_20b_model_ref: OllamaModelRef = OllamaModelRef {
+  name: "gpt-oss" as NonEmptyStr,
+  tag: "20b" as NonEmptyStr,
+}
+
+data ollama_gpt_oss_20b_support_row: OllamaModelSupportRow = OllamaModelSupportRow {
+  model: ollama_gpt_oss_20b_model_ref,
+  minimum_runtime: ollama_gpt_oss_feature_introduction_floor,
+  introduction_citation: ollama_gpt_oss_feature_introduction_citation,
+}
+
+data ollama_model_support_catalog: List<OllamaModelSupportRow> = [ollama_gpt_oss_20b_support_row]
+
+type OllamaModelSupportVerdict
+  = OllamaModelSupportApplicable
+  | OllamaModelSupportUnmet {
+      model_wire: String,
+      observed: OllamaSemanticVersion,
+      minimum: OllamaSemanticVersion,
+    }
+  | OllamaModelSupportUnobserved { cause: NonEmptyStr }
+  | OllamaModelSupportUncatalogued { model_wire: String }
+
+fn ollama_model_ref_eq(a: OllamaModelRef, b: OllamaModelRef) -> Bool {
+  (a.name as String) == (b.name as String) && (a.tag as String) == (b.tag as String)
+}
+
+fn ollama_semantic_version_cmp(a: OllamaSemanticVersion, b: OllamaSemanticVersion) -> Int {
+  if a.major != b.major { a.major - b.major }
+  else if a.minor != b.minor { a.minor - b.minor }
+  else { a.patch - b.patch }
+}
+
+fn ollama_semantic_version_at_least(observed: OllamaSemanticVersion, minimum: OllamaSemanticVersion) -> Bool {
+  ollama_semantic_version_cmp(a: observed, b: minimum) >= 0
+}
+
+fn ollama_semantic_version_from_wire_text(raw: String) -> OllamaSemanticVersion? {
+  let bare = if starts_with(s: raw, prefix: "v") {
+    substring(s: raw, start: 1, end: length(raw))
+  } else {
+    raw
+  }
+  let fields = split(s: bare, delimiter: ".")
+  if fields.length() != 3 { none }
+  else {
+    match parse_int(s: fields.first()) {
+      Absent => none
+      Present { value: major } =>
+        match parse_int(s: fields.skip(n: 1).first()) {
+          Absent => none
+          Present { value: minor } =>
+            match parse_int(s: fields.skip(n: 2).first()) {
+              Absent => none
+              Present { value: patch } =>
+                if major < 0 || minor < 0 || patch < 0 { none }
+                else { Present { value: ollama_semantic_version(major: major, minor: minor, patch: patch) } }
+            }
+        }
+    }
+  }
+}
+
+fn ollama_model_support_row_for(model: OllamaModelRef, catalog: List<OllamaModelSupportRow>) -> OllamaModelSupportRow? {
+  fold(
+    catalog,
+    init: none,
+    f: (found, row) =>
+      match found {
+        Present { value: _ } => found
+        Absent =>
+          if ollama_model_ref_eq(a: row.model, b: model) {
+            Present { value: row }
+          } else {
+            none
+          }
+      },
+  )
+}
+
+fn ollama_model_support_verdict(
+  runtime_version: OllamaSemanticVersion?,
+  model: OllamaModelRef,
+) -> OllamaModelSupportVerdict {
+  match runtime_version {
+    Absent =>
+      OllamaModelSupportUnobserved {
+        cause: "runtime version is unobserved; model support cannot be decided" as NonEmptyStr,
+      }
+    Present { value: observed } =>
+      match ollama_model_support_row_for(model: model, catalog: ollama_model_support_catalog) {
+        Absent =>
+          OllamaModelSupportUncatalogued {
+            model_wire: ollama_model_ref_wire(ref: model),
+          }
+        Present { value: row } =>
+          if ollama_semantic_version_at_least(observed: observed, minimum: row.minimum_runtime) {
+            OllamaModelSupportApplicable
+          } else {
+            OllamaModelSupportUnmet {
+              model_wire: ollama_model_ref_wire(ref: model),
+              observed: observed,
+              minimum: row.minimum_runtime,
+            }
+          }
+      }
+  }
+}
+
+type OllamaTargetPlatform = OllamaNvidiaGb10Spark | OllamaTargetPlatformUncatalogued
+
+type OllamaPlatformSupportRow {
+  platform: OllamaTargetPlatform
+  architecture: OllamaLinuxArchitecture
+  required_variant: OllamaLinuxAssetVariant
+  gpu_support: OllamaGpuSupportRow
+  minimum_nvidia_driver: OllamaNvidiaDriverVersion
+  binary_release: OllamaBinaryRelease
+}
+
+data ollama_gb10_linux_arm64_support_row: OllamaPlatformSupportRow = OllamaPlatformSupportRow {
+  platform: OllamaNvidiaGb10Spark,
+  architecture: OllamaLinuxArm64,
+  required_variant: OllamaLinuxGenericCuda,
+  gpu_support: ollama_gb10_gpu_support_row,
+  minimum_nvidia_driver: ollama_gb10_minimum_nvidia_driver,
+  binary_release: ollama_required_release,
+}
+
+data ollama_platform_support_catalog: List<OllamaPlatformSupportRow> = [ollama_gb10_linux_arm64_support_row]
+
+type OllamaPlatformSupportVerdict
+  = OllamaPlatformSupportApplicable
+  | OllamaPlatformSupportUnmet { cause: NonEmptyStr }
+  | OllamaPlatformSupportUnobserved { cause: NonEmptyStr }
+  | OllamaPlatformSupportUncatalogued { cause: NonEmptyStr }
+
+fn ollama_platform_support_verdict(
+  binary_release: OllamaBinaryRelease,
+  platform: OllamaTargetPlatform,
+  architecture: OllamaLinuxArchitecture,
+) -> OllamaPlatformSupportVerdict {
+  let hits = filter(
+    ollama_platform_support_catalog,
+    row =>
+      row.platform == platform
+        && row.architecture == architecture
+        && binary_release.variant == row.required_variant
+        && ollama_binary_release_eq(a: row.binary_release, b: binary_release),
+  )
+  let n = count(hits)
+  if n == 0 {
+    OllamaPlatformSupportUncatalogued {
+      cause: "no catalogued ollama release supports this platform, architecture, and asset variant triple" as NonEmptyStr,
+    }
+  } else if n == 1 {
+    OllamaPlatformSupportApplicable
+  } else {
+    OllamaPlatformSupportUnmet {
+      cause: "platform support catalog lists multiple rows for one release" as NonEmptyStr,
+    }
+  }
+}
+
+fn ollama_runtime_model_compatibility_verdict(
+  binary_release: OllamaBinaryRelease,
+  platform: OllamaTargetPlatform,
+  architecture: OllamaLinuxArchitecture,
+  model: OllamaModelRef,
+) -> OllamaPlatformSupportVerdict {
+  match ollama_semantic_version_from_wire_text(raw: binary_release.version as String) {
+    Absent =>
+      OllamaPlatformSupportUnobserved {
+        cause: "pinned ollama release version is not a parseable semantic version" as NonEmptyStr,
+      }
+    Present { value: runtime_version } =>
+      match ollama_model_support_verdict(runtime_version: Present { value: runtime_version }, model: model) {
+        OllamaModelSupportApplicable =>
+          ollama_platform_support_verdict(
+            binary_release: binary_release,
+            platform: platform,
+            architecture: architecture,
+          )
+        OllamaModelSupportUnmet { model_wire: w, observed: o, minimum: m } =>
+          OllamaPlatformSupportUnmet {
+            cause: join([
+              "ollama release ", binary_release.version as String, " does not support model ", w,
+              " (observed ", to_string(o.major), ".", to_string(o.minor), ".", to_string(o.patch),
+              " < minimum ", to_string(m.major), ".", to_string(m.minor), ".", to_string(m.patch), ")",
+            ], "") as NonEmptyStr,
+          }
+        OllamaModelSupportUnobserved { cause: c } =>
+          OllamaPlatformSupportUnobserved { cause: c }
+        OllamaModelSupportUncatalogued { model_wire: w } =>
+          OllamaPlatformSupportUncatalogued {
+            cause: join(["model support relation uncatalogued for ", w], "") as NonEmptyStr,
+          }
+      }
+  }
+}
+
+type OllamaRuntimeAdmissionVerdict
+  = OllamaRuntimeAdmissionApplicable
+  | OllamaRuntimeAdmissionUnmet { cause: NonEmptyStr }
+  | OllamaRuntimeAdmissionUnobserved { cause: NonEmptyStr }
+  | OllamaRuntimeAdmissionUncatalogued { cause: NonEmptyStr }
+
+fn ollama_runtime_admission_verdict(
+  binary_release: OllamaBinaryRelease,
+  platform: OllamaTargetPlatform,
+  architecture: OllamaLinuxArchitecture,
+  model: OllamaModelRef,
+  observed_nvidia_driver: OllamaNvidiaDriverVersion?,
+) -> OllamaRuntimeAdmissionVerdict {
+  match ollama_runtime_model_compatibility_verdict(
+    binary_release: binary_release,
+    platform: platform,
+    architecture: architecture,
+    model: model,
+  ) {
+    OllamaPlatformSupportApplicable =>
+      match ollama_nvidia_driver_requirement_verdict(
+        observed: observed_nvidia_driver,
+        minimum: ollama_gb10_minimum_nvidia_driver,
+      ) {
+        OllamaNvidiaDriverRequirementSatisfied => OllamaRuntimeAdmissionApplicable
+        OllamaNvidiaDriverRequirementUnmet { observed: o, minimum: m } =>
+          OllamaRuntimeAdmissionUnmet {
+            cause: join([
+              "nvidia driver ", to_string(o.major), " is below minimum ", to_string(m.major),
+            ], "") as NonEmptyStr,
+          }
+        OllamaNvidiaDriverRequirementUnobserved { cause: c } =>
+          OllamaRuntimeAdmissionUnobserved { cause: c }
+      }
+    OllamaPlatformSupportUnmet { cause: c } => OllamaRuntimeAdmissionUnmet { cause: c }
+    OllamaPlatformSupportUnobserved { cause: c } => OllamaRuntimeAdmissionUnobserved { cause: c }
+    OllamaPlatformSupportUncatalogued { cause: c } => OllamaRuntimeAdmissionUncatalogued { cause: c }
+  }
+}
+
+data ollama_v0_9_6_semantic_version: OllamaSemanticVersion = ollama_semantic_version(major: 0, minor: 9, patch: 6)

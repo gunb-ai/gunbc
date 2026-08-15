@@ -1,0 +1,521 @@
+module test.claim.spark_serving_observe_witness_test
+
+import std.types { String, NonEmptyStr }
+import extdeps.ssh.session { SshSessionExecResult }
+import gunbc.spark_serving_release {
+  SparkServingObservation, SparkServingAbsent, SparkServingObserved,
+  SparkServingObservationRefused,
+}
+import gunbc.spark_serving_loaded_release {
+  SparkServingReadback,
+  SparkServingUnitActive,
+  SparkServingUnitInactive,
+  SparkServingUnitAbsent,
+  SparkServingUnitObservationRefused,
+  derive_spark_serving_observation,
+  derive_loaded_spark_serving_release_identity,
+}
+import gunbc.spark_serving_readback_parse {
+  SparkServingReadbackAbsent,
+  SparkServingReadbackPresent,
+  SparkServingReadbackRefused,
+  spark_serving_parse_version_json,
+  spark_serving_parse_tags_json,
+}
+import extdeps.ollama.binary_release {
+  ollama_required_release,
+  ollama_v0_32_9_jetpack5_release,
+}
+import gunbc.ollama_runtime_bundle {
+  ollama_runtime_closure_digest,
+  ollama_runtime_closure_digest_for_observed_release,
+  ollama_runtime_closure_digest_for_required_release,
+}
+import gunbc.spark_serving_observe {
+  spark_serving_unit_outcome_from_probe_results,
+  SparkServingObservationReportRefused,
+  SparkServingObservationsProduced,
+  spark_serving_observation_report_succeeded,
+}
+import gunbc.spark_serving_runtime_receipt {
+  spark_serving_parse_runtime_receipt_json,
+  spark_serving_runtime_receipt_field_from_probe,
+  spark_serving_runtime_receipt_probe_words,
+}
+
+data witness_required_release_asset_digest_hex: String = "79617139521db251c716d6229505d7530171ff4d68e476d0c22dabc15726a237"
+
+data witness_jetpack5_release_asset_digest_hex: String = "721af44a33380893cb35c2124832e64563e9abbd40b4c0280167110ff390dead"
+
+fn witness_runtime_release_asset_digest_present(hex: String) -> SparkServingReadbackPresent {
+  SparkServingReadbackPresent { value: hex }
+}
+
+data witness_model_digest: String = "sha256:49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05"
+
+data witness_pinned_runtime_version_wire: String = "0.32.9"
+
+data witness_version_json_positive: String = "{\"version\":\"0.32.9\"}"
+
+data witness_tags_json_positive: String = "{\"models\":[{\"name\":\"gpt-oss:20b\",\"model\":\"gpt-oss:20b\",\"digest\":\"sha256:49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05\"}]}"
+
+data witness_nvidia_driver_satisfied_wire: String = "550.90.07"
+
+data witness_nvidia_driver_too_old_wire: String = "549.12.01"
+
+data witness_runtime_receipt_json_positive: String = "{\"release_asset_digest_hex\":\"79617139521db251c716d6229505d7530171ff4d68e476d0c22dabc15726a237\"}"
+
+fn witness_nvidia_driver_present(wire: String) -> SparkServingReadbackPresent {
+  SparkServingReadbackPresent { value: wire }
+}
+
+fn readback_absent() -> SparkServingReadback {
+  SparkServingReadback {
+    host: "srv5",
+    unit_outcome: SparkServingUnitAbsent,
+    runtime_version: SparkServingReadbackAbsent,
+    runtime_release_asset_digest: SparkServingReadbackAbsent,
+    model_name: SparkServingReadbackAbsent,
+    model_tag: SparkServingReadbackAbsent,
+    model_manifest_digest: SparkServingReadbackAbsent,
+    nvidia_driver: SparkServingReadbackAbsent,
+    bind_address: SparkServingReadbackAbsent,
+  }
+}
+
+fn readback_unreachable() -> SparkServingReadback {
+  SparkServingReadback {
+    host: "srv5",
+    unit_outcome: SparkServingUnitObservationRefused {
+      cause: "unit LoadState probe leg did not run" as NonEmptyStr,
+    },
+    runtime_version: SparkServingReadbackAbsent,
+    runtime_release_asset_digest: SparkServingReadbackAbsent,
+    model_name: SparkServingReadbackAbsent,
+    model_tag: SparkServingReadbackAbsent,
+    model_manifest_digest: SparkServingReadbackAbsent,
+    nvidia_driver: SparkServingReadbackAbsent,
+    bind_address: SparkServingReadbackAbsent,
+  }
+}
+
+fn readback_active_incomplete() -> SparkServingReadback {
+  SparkServingReadback {
+    host: "srv5",
+    unit_outcome: SparkServingUnitActive,
+    runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
+    runtime_release_asset_digest: SparkServingReadbackAbsent,
+    model_name: SparkServingReadbackAbsent,
+    model_tag: SparkServingReadbackAbsent,
+    model_manifest_digest: SparkServingReadbackAbsent,
+    nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
+    bind_address: SparkServingReadbackAbsent,
+  }
+}
+
+fn readback_active_complete() -> SparkServingReadback {
+  SparkServingReadback {
+    host: "srv5",
+    unit_outcome: SparkServingUnitActive,
+    runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
+    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
+    model_name: SparkServingReadbackPresent { value: "gpt-oss" },
+    model_tag: SparkServingReadbackPresent { value: "20b" },
+    model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
+    bind_address: SparkServingReadbackAbsent,
+  }
+}
+
+test fn absent_readback_derives_absent_observation() -> Bool {
+  match derive_spark_serving_observation(readback: readback_absent()) {
+    SparkServingAbsent { host: h } => h == "srv5"
+    SparkServingObserved { host: _, loaded_release: _ } => false
+    SparkServingObservationRefused { host: _, cause: _ } => false
+  }
+}
+
+data unreachable_host_red_control_note: String = "RED CONTROL: an unreachable host or any probe leg that did not run must refuse observation, never license SparkServingAbsent (empty-observation narrow)."
+
+test fn unreachable_readback_does_not_derive_absent_observation() -> Bool {
+  match derive_spark_serving_observation(readback: readback_unreachable()) {
+    SparkServingObservationRefused { host: h, cause: _ } => h == "srv5"
+    SparkServingAbsent { host: _ } => false
+    SparkServingObserved { host: _, loaded_release: _ } => false
+  }
+}
+
+test fn load_state_not_found_probe_derives_unit_absent() -> Bool {
+  match spark_serving_unit_outcome_from_probe_results(
+    load_state: Present {
+      value: SshSessionExecResult {
+        exit_code: 0,
+        success: true,
+        stdout: "not-found",
+        stderr: "",
+      },
+    },
+    is_active: Present {
+      value: SshSessionExecResult {
+        exit_code: 3,
+        success: false,
+        stdout: "inactive",
+        stderr: "",
+      },
+    },
+  ) {
+    SparkServingUnitAbsent => true
+    SparkServingUnitActive => false
+    SparkServingUnitInactive => false
+    SparkServingUnitObservationRefused { cause: _ } => false
+  }
+}
+
+test fn load_state_probe_leg_absent_refuses_unit_outcome() -> Bool {
+  match spark_serving_unit_outcome_from_probe_results(
+    load_state: none,
+    is_active: none,
+  ) {
+    SparkServingUnitObservationRefused { cause: c } =>
+      string_contains(s: c as String, pattern: "LoadState probe leg did not run")
+    SparkServingUnitAbsent => false
+    SparkServingUnitActive => false
+    SparkServingUnitInactive => false
+  }
+}
+
+data version_parse_positive_control_note: String = "POSITIVE CONTROL: a real ollama /api/version payload must parse to the reported version string, never the desired pin."
+
+test fn version_json_positive_parses_reported_version() -> Bool {
+  match spark_serving_parse_version_json(stdout: witness_version_json_positive) {
+    SparkServingReadbackPresent { value: v } => v == witness_pinned_runtime_version_wire
+    SparkServingReadbackAbsent => false
+    SparkServingReadbackRefused { cause: _ } => false
+  }
+}
+
+test fn runtime_receipt_json_positive_parses_asset_digest() -> Bool {
+  match spark_serving_parse_runtime_receipt_json(stdout: witness_runtime_receipt_json_positive) {
+    SparkServingReadbackPresent { value: hex } =>
+      hex == witness_required_release_asset_digest_hex
+    SparkServingReadbackAbsent => false
+    SparkServingReadbackRefused { cause: _ } => false
+  }
+}
+
+test fn runtime_receipt_probe_success_populates_digest_field() -> Bool {
+  match spark_serving_runtime_receipt_field_from_probe(
+    probe: Present {
+      value: SshSessionExecResult {
+        exit_code: 0,
+        success: true,
+        stdout: witness_runtime_receipt_json_positive,
+        stderr: "",
+      },
+    },
+  ) {
+    SparkServingReadbackPresent { value: hex } =>
+      hex == witness_required_release_asset_digest_hex
+    SparkServingReadbackAbsent => false
+    SparkServingReadbackRefused { cause: _ } => false
+  }
+}
+
+test fn runtime_receipt_probe_words_target_executor_receipt_path() -> Bool {
+  let words = spark_serving_runtime_receipt_probe_words()
+  words.length() == 2
+    && words.first() == "cat"
+    && string_contains(
+      s: words.skip(n: 1).first(),
+      pattern: "/home/gunbc-automation/.local/share/gunbc/spark-serving/ollama-runtime-receipt.json",
+    )
+}
+
+data version_parse_malformed_red_control_note: String = "RED CONTROL: malformed /api/version output must refuse rather than return any version."
+
+test fn malformed_version_json_refuses_parse() -> Bool {
+  match spark_serving_parse_version_json(stdout: "{\"version\":") {
+    SparkServingReadbackRefused { cause: _ } => true
+    SparkServingReadbackPresent { value: _ } => false
+    SparkServingReadbackAbsent => false
+  }
+}
+
+data version_drift_red_control_note: String = "RED CONTROL: a different reported runtime version must not converge to the pinned release identity."
+
+test fn different_runtime_version_refuses_loaded_identity() -> Bool {
+  match derive_loaded_spark_serving_release_identity(readback: SparkServingReadback {
+    host: "srv6",
+    unit_outcome: SparkServingUnitActive,
+    runtime_version: SparkServingReadbackPresent { value: "0.11.0-rc1" },
+    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
+    model_name: SparkServingReadbackPresent { value: "gpt-oss" },
+    model_tag: SparkServingReadbackPresent { value: "20b" },
+    model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
+    bind_address: SparkServingReadbackAbsent,
+  }) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn different_runtime_version_refuses_observation() -> Bool {
+  match derive_spark_serving_observation(readback: SparkServingReadback {
+    host: "srv6",
+    unit_outcome: SparkServingUnitActive,
+    runtime_version: SparkServingReadbackPresent { value: "10.11.0" },
+    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
+    model_name: SparkServingReadbackPresent { value: "gpt-oss" },
+    model_tag: SparkServingReadbackPresent { value: "20b" },
+    model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
+    bind_address: SparkServingReadbackAbsent,
+  }) {
+    SparkServingObservationRefused { host: _, cause: _ } => true
+    SparkServingObserved { host: _, loaded_release: _ } => false
+    SparkServingAbsent { host: _ } => false
+  }
+}
+
+test fn tags_json_positive_parses_model_digest() -> Bool {
+  let parsed = spark_serving_parse_tags_json(stdout: witness_tags_json_positive)
+  match parsed.model_name {
+    SparkServingReadbackPresent { value: name } =>
+      match parsed.model_tag {
+        SparkServingReadbackPresent { value: tag } =>
+          match parsed.model_manifest_digest {
+            SparkServingReadbackPresent { value: digest } =>
+              name == "gpt-oss" && tag == "20b" && digest == witness_model_digest
+            SparkServingReadbackAbsent => false
+            SparkServingReadbackRefused { cause: _ } => false
+          }
+        SparkServingReadbackAbsent => false
+        SparkServingReadbackRefused { cause: _ } => false
+      }
+    SparkServingReadbackAbsent => false
+    SparkServingReadbackRefused { cause: _ } => false
+  }
+}
+
+test fn active_incomplete_readback_refuses_observation() -> Bool {
+  match derive_spark_serving_observation(readback: readback_active_incomplete()) {
+    SparkServingObservationRefused { host: h, cause: c } =>
+      h == "srv5"
+        && (
+          string_contains(s: c as String, pattern: "fingerprint")
+            || string_contains(s: c as String, pattern: "runtime_release_asset_digest")
+            || string_contains(s: c as String, pattern: "install receipt")
+        )
+    SparkServingAbsent { host: _ } => false
+    SparkServingObserved { host: _, loaded_release: _ } => false
+  }
+}
+
+test fn missing_runtime_receipt_probe_refuses_active_observation() -> Bool {
+  match derive_spark_serving_observation(readback: SparkServingReadback {
+    host: "srv5",
+    unit_outcome: SparkServingUnitActive,
+    runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
+    runtime_release_asset_digest: SparkServingReadbackRefused {
+      cause: "runtime install receipt probe failed exit=1 stderr=No such file" as NonEmptyStr,
+    },
+    model_name: SparkServingReadbackPresent { value: "gpt-oss" },
+    model_tag: SparkServingReadbackPresent { value: "20b" },
+    model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
+    bind_address: SparkServingReadbackAbsent,
+  }) {
+    SparkServingObservationRefused { host: _, cause: c } =>
+      string_contains(s: c as String, pattern: "install receipt")
+    SparkServingObserved { host: _, loaded_release: _ } => false
+    SparkServingAbsent { host: _ } => false
+  }
+}
+
+test fn active_complete_readback_derives_loaded_identity() -> Bool {
+  match derive_loaded_spark_serving_release_identity(readback: readback_active_complete()) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn active_complete_readback_derives_observed() -> Bool {
+  match derive_loaded_spark_serving_release_identity(readback: readback_active_complete()) {
+    Absent => false
+    Present { value: expected } =>
+      match derive_spark_serving_observation(readback: readback_active_complete()) {
+        SparkServingObserved { host: h, loaded_release: r } =>
+          h == "srv5" && (r.digest.digest as String) == (expected.digest.digest as String)
+        SparkServingAbsent { host: _ } => false
+        SparkServingObservationRefused { host: _, cause: _ } => false
+      }
+  }
+}
+
+test fn inactive_unit_readback_refuses_observation() -> Bool {
+  match derive_spark_serving_observation(readback: SparkServingReadback {
+    host: "srv6",
+    unit_outcome: SparkServingUnitInactive,
+    runtime_version: SparkServingReadbackAbsent,
+    runtime_release_asset_digest: SparkServingReadbackAbsent,
+    model_name: SparkServingReadbackAbsent,
+    model_tag: SparkServingReadbackAbsent,
+    model_manifest_digest: SparkServingReadbackAbsent,
+    nvidia_driver: SparkServingReadbackAbsent,
+    bind_address: SparkServingReadbackAbsent,
+  }) {
+    SparkServingObservationRefused { host: h, cause: c } =>
+      h == "srv6" && string_contains(s: c as String, pattern: "inactive")
+    SparkServingAbsent { host: _ } => false
+    SparkServingObserved { host: _, loaded_release: _ } => false
+  }
+}
+
+test fn api_field_refusal_surfaces_before_fingerprint_refusal() -> Bool {
+  match derive_spark_serving_observation(readback: SparkServingReadback {
+    host: "srv5",
+    unit_outcome: SparkServingUnitActive,
+    runtime_version: SparkServingReadbackRefused {
+      cause: "ollama /api/version body is not parseable JSON" as NonEmptyStr,
+    },
+    runtime_release_asset_digest: SparkServingReadbackAbsent,
+    model_name: SparkServingReadbackAbsent,
+    model_tag: SparkServingReadbackAbsent,
+    model_manifest_digest: SparkServingReadbackAbsent,
+    nvidia_driver: SparkServingReadbackAbsent,
+    bind_address: SparkServingReadbackAbsent,
+  }) {
+    SparkServingObservationRefused { host: _, cause: c } =>
+      string_contains(s: c as String, pattern: "not parseable JSON")
+    SparkServingObserved { host: _, loaded_release: _ } => false
+    SparkServingAbsent { host: _ } => false
+  }
+}
+
+test fn observation_report_refused_is_not_success() -> Bool {
+  !spark_serving_observation_report_succeeded(
+    report: SparkServingObservationReportRefused {
+      cause: "attempt identity is not a safe path segment" as NonEmptyStr,
+    },
+  )
+}
+
+test fn per_host_refusal_report_is_not_success() -> Bool {
+  match derive_spark_serving_observation(readback: readback_active_complete()) {
+    SparkServingObserved { host: _, loaded_release: loaded } =>
+      !spark_serving_observation_report_succeeded(
+        report: SparkServingObservationsProduced {
+          first: SparkServingObserved { host: "srv5", loaded_release: loaded },
+          more: [
+            SparkServingObservationRefused {
+              host: "srv6",
+              cause: "gunbc-spark-serving.service is inactive" as NonEmptyStr,
+            },
+          ],
+        },
+      )
+    SparkServingAbsent { host: _ } => false
+    SparkServingObservationRefused { host: _, cause: _ } => false
+  }
+}
+
+test fn unobserved_nvidia_driver_refuses_active_observation() -> Bool {
+  match derive_spark_serving_observation(readback: SparkServingReadback {
+    host: "srv5",
+    unit_outcome: SparkServingUnitActive,
+    runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
+    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
+    model_name: SparkServingReadbackPresent { value: "gpt-oss" },
+    model_tag: SparkServingReadbackPresent { value: "20b" },
+    model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    nvidia_driver: SparkServingReadbackAbsent,
+    bind_address: SparkServingReadbackAbsent,
+  }) {
+    SparkServingObservationRefused { host: _, cause: c } =>
+      string_contains(s: c as String, pattern: "unobserved")
+    SparkServingObserved { host: _, loaded_release: _ } => false
+    SparkServingAbsent { host: _ } => false
+  }
+}
+
+test fn driver_too_old_refuses_active_observation() -> Bool {
+  match derive_spark_serving_observation(readback: SparkServingReadback {
+    host: "srv5",
+    unit_outcome: SparkServingUnitActive,
+    runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
+    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
+    model_name: SparkServingReadbackPresent { value: "gpt-oss" },
+    model_tag: SparkServingReadbackPresent { value: "20b" },
+    model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_too_old_wire),
+    bind_address: SparkServingReadbackAbsent,
+  }) {
+    SparkServingObservationRefused { host: _, cause: c } =>
+      string_contains(s: c as String, pattern: "below minimum")
+    SparkServingObserved { host: _, loaded_release: _ } => false
+    SparkServingAbsent { host: _ } => false
+  }
+}
+
+test fn driver_too_old_report_is_not_success() -> Bool {
+  match derive_spark_serving_observation(readback: SparkServingReadback {
+    host: "srv5",
+    unit_outcome: SparkServingUnitActive,
+    runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
+    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
+    model_name: SparkServingReadbackPresent { value: "gpt-oss" },
+    model_tag: SparkServingReadbackPresent { value: "20b" },
+    model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_too_old_wire),
+    bind_address: SparkServingReadbackAbsent,
+  }) {
+    SparkServingObservationRefused { host: h, cause: c } =>
+      !spark_serving_observation_report_succeeded(
+        report: SparkServingObservationsProduced {
+          first: SparkServingObservationRefused { host: h, cause: c },
+          more: [],
+        },
+      )
+    SparkServingObserved { host: _, loaded_release: _ } => false
+    SparkServingAbsent { host: _ } => false
+  }
+}
+
+data p0_6_loaded_release_note: String = "P0-6: SparkServingReadback carries no configuration_digest or capacity fields; derive_loaded_spark_serving_release builds SparkServingRelease from runtime closure + model only."
+
+test fn loaded_release_derivation_excludes_desired_policy_fields() -> Bool {
+  match derive_loaded_spark_serving_release_identity(readback: readback_active_complete()) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn version_only_without_asset_digest_refuses_loaded_identity() -> Bool {
+  match derive_loaded_spark_serving_release_identity(readback: SparkServingReadback {
+    host: "srv5",
+    unit_outcome: SparkServingUnitActive,
+    runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
+    runtime_release_asset_digest: SparkServingReadbackAbsent,
+    model_name: SparkServingReadbackPresent { value: "gpt-oss" },
+    model_tag: SparkServingReadbackPresent { value: "20b" },
+    model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
+    bind_address: SparkServingReadbackAbsent,
+  }) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn jetpack5_asset_digest_does_not_match_required_closure_digest() -> Bool {
+  match ollama_runtime_closure_digest_for_observed_release(
+    version: witness_pinned_runtime_version_wire,
+    asset_digest_hex: witness_jetpack5_release_asset_digest_hex,
+  ) {
+    Present { value: jetpack_digest } =>
+      (jetpack_digest.digest as String) != (ollama_runtime_closure_digest_for_required_release().digest as String)
+        && (jetpack_digest.digest as String) == (ollama_runtime_closure_digest(rel: ollama_v0_32_9_jetpack5_release).digest as String)
+    Absent => false
+  }
+}
