@@ -43,7 +43,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use crate::v1_compiler_compile::SourceFile;
-use crate::v1_std_core::{module_items, Node};
+use crate::v1_std_core::{module_items, Connective, Node};
 
 /// Maps every declared name to the module declaring it, and every module to its
 /// file. Built once over a set of source roots; the expensive half (parsing
@@ -135,11 +135,22 @@ pub fn names_in_tree(node: &Rc<Node>, out: &mut HashSet<String>) {
 }
 
 /// The names a module declares at its own top level, including variant arms.
+///
+/// An item's children are its VARIANTS only when the item is a coproduct; for
+/// a record they are its FIELDS, which are not module-scope names. The guard is
+/// the same one `v1.compiler.resolve get_variant_names` applies, and dropping it
+/// is not a small imprecision: field names like `num`, `name`, `value` and `id`
+/// recur across the corpus, so indexing them as declarations made any tree that
+/// merely mentioned such a name pull every module declaring a field of that
+/// name, and the closure degenerated to nearly the whole corpus.
 pub fn declared_names(module: &Rc<Node>) -> Vec<String> {
     let mut out = Vec::new();
     for item in module_items(module.clone()).iter() {
         if !item.name.is_empty() {
             out.push(item.name.clone());
+        }
+        if item.connective != Connective::Disj {
+            continue;
         }
         for variant in item.children.iter() {
             if !variant.name.is_empty() {
