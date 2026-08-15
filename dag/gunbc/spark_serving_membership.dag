@@ -1,0 +1,267 @@
+module gunbc.spark_serving_membership
+
+import std.types { String, Bool, List, NonEmptyStr, FilePath }
+import std.content_hash { content_hash_atom, serialize_content_hash }
+import product.placement_supply { HostIdentity }
+import gunbc.ownership { Ownership, Owned, Ensured }
+import gunbc.spark_serving_release {
+  SparkServingOccurrence,
+  SparkServingRelease,
+  SparkServingReleaseIdentity,
+}
+import gunbc.membership_reconcile {
+  MembershipPlan,
+  membership_reconcile,
+  membership_write_count,
+  membership_removal_count,
+  membership_refusal_count,
+  membership_effects,
+  EffectsOrRefusal,
+}
+import gunbc.spark_serving_install_paths {
+  spark_serving_runtime_root,
+  spark_serving_models_root,
+  spark_serving_user_unit_path,
+  spark_serving_user_unit_contents,
+}
+import gunbc.spark_serving_runtime_receipt { spark_serving_runtime_receipt_path }
+
+data spark_serving_membership_authority_note: String = "Member-grain membership reconcile for Spark serving install (SPARK-SERVE-INSTALL-0 Phase 1). key_of is host × release identity × member kind — explicitly NOT content- or path-derived. value_eq compares state_digest only. Ensured members converge on drift; non-owned removal refuses with no effect arm (R5). Unchanged → zero effects must witness hard."
+
+data spark_serving_remote_file_write_transport_gap_note: String = "CONDITION 1 FINDING — unit file write: spark_serving_user_unit_contents is modeled DATA; delivery MUST be a file-content effect with bytes on stdin (receipt-write precedent), never unit text composed into a remote command string. No typed remote stdin-file-write transport is wired in Phase 1; report before improvising a script body for the whole install."
+
+data spark_serving_generate_acceptance_transport_gap_note: String = "CONDITION 2 FINDING — acceptance probe: POST /api/generate with JSON body MUST use a typed HTTP client or modeled service op, NOT shell_quote on JSON for curl argv. The deleted spark_serving_completion_probe concat shell is not replaced in Phase 1."
+
+data spark_serving_remote_operation_context_note: String = "CONDITION 3 — cross-invocation state: download, verify, and extract are separate typed argv operations with NO shared shell state. Staging paths are modeled values in SparkServingRemoteOperationContext carried across steps; a step whose predecessor side effect is absent MUST fail closed via spark_serving_admit_* helpers rather than proceeding on an unmodeled path."
+
+type SparkServingMemberKind
+  = SparkServingRuntimeClosureMember
+  | SparkServingUserUnitMember
+  | SparkServingPulledModelMember
+  | SparkServingArchiveReceiptMember
+  | SparkServingExecutorLingerMember
+
+type SparkServingMember {
+  host: HostIdentity
+  release_identity: SparkServingReleaseIdentity
+  kind: SparkServingMemberKind
+  state_digest: NonEmptyStr
+  ownership: Ownership
+}
+
+type SparkServingRemoteOperationContext {
+  host: HostIdentity
+  archive_download_staging_path: FilePath
+  runtime_root: FilePath
+  models_root: FilePath
+  user_unit_path: FilePath
+  runtime_receipt_path: FilePath
+}
+
+type SparkServingRemoteFileContentWrite {
+  path: FilePath
+  content: String
+}
+
+type SparkServingRemoteStepAdmission
+  = SparkServingRemoteStepAdmitted
+  | SparkServingRemoteStepRefused { step: NonEmptyStr, cause: NonEmptyStr }
+
+data spark_serving_archive_staging_basename: String = "gunbc-spark-serving-archive.tgz"
+
+fn spark_serving_member_kind_wire(kind: SparkServingMemberKind) -> String {
+  match kind {
+    SparkServingRuntimeClosureMember => "runtime-closure"
+    SparkServingUserUnitMember => "user-unit"
+    SparkServingPulledModelMember => "pulled-model"
+    SparkServingArchiveReceiptMember => "archive-receipt"
+    SparkServingExecutorLingerMember => "executor-linger"
+  }
+}
+
+fn spark_serving_release_identity_wire(identity: SparkServingReleaseIdentity) -> String {
+  serialize_content_hash(hash: identity.digest) as String
+}
+
+fn spark_serving_member_key(member: SparkServingMember) -> String {
+  join([
+    member.host as String,
+    "|",
+    spark_serving_release_identity_wire(identity: member.release_identity),
+    "|",
+    spark_serving_member_kind_wire(kind: member.kind),
+  ], "")
+}
+
+fn spark_serving_member_key_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn spark_serving_member_value_eq(a: SparkServingMember, b: SparkServingMember) -> Bool {
+  a.state_digest == b.state_digest
+}
+
+fn spark_serving_member_ownership(member: SparkServingMember) -> Ownership? {
+  Present { value: member.ownership }
+}
+
+fn spark_serving_user_unit_state_digest() -> NonEmptyStr {
+  content_hash_atom(value: spark_serving_user_unit_contents()).digest as NonEmptyStr
+}
+
+fn spark_serving_executor_linger_state_digest() -> NonEmptyStr {
+  "linger=enabled" as NonEmptyStr
+}
+
+fn spark_serving_archive_staging_path() -> FilePath {
+  concat("/tmp/", spark_serving_archive_staging_basename) as FilePath
+}
+
+fn spark_serving_remote_operation_context(host: HostIdentity) -> SparkServingRemoteOperationContext {
+  SparkServingRemoteOperationContext {
+    host: host,
+    archive_download_staging_path: spark_serving_archive_staging_path(),
+    runtime_root: spark_serving_runtime_root(),
+    models_root: spark_serving_models_root(),
+    user_unit_path: spark_serving_user_unit_path(),
+    runtime_receipt_path: spark_serving_runtime_receipt_path(),
+  }
+}
+
+fn spark_serving_user_unit_file_write_intent() -> SparkServingRemoteFileContentWrite {
+  SparkServingRemoteFileContentWrite {
+    path: spark_serving_user_unit_path(),
+    content: spark_serving_user_unit_contents(),
+  }
+}
+
+fn spark_serving_admit_staging_present(
+  context: SparkServingRemoteOperationContext,
+  staging_present: Bool,
+) -> SparkServingRemoteStepAdmission {
+  if staging_present {
+    SparkServingRemoteStepAdmitted
+  } else {
+    SparkServingRemoteStepRefused {
+      step: "extract-admitted-archive" as NonEmptyStr,
+      cause: join(
+        [
+          "modeled staging artifact absent at ",
+          context.archive_download_staging_path as String,
+          "; separate remote invocations share no shell variable — predecessor download side effect required",
+        ],
+        "",
+      ) as NonEmptyStr,
+    }
+  }
+}
+
+fn spark_serving_admit_runtime_root_present(
+  context: SparkServingRemoteOperationContext,
+  runtime_root_present: Bool,
+) -> SparkServingRemoteStepAdmission {
+  if runtime_root_present {
+    SparkServingRemoteStepAdmitted
+  } else {
+    SparkServingRemoteStepRefused {
+      step: "enable-user-unit" as NonEmptyStr,
+      cause: join(
+        [
+          "modeled runtime root absent at ",
+          context.runtime_root as String,
+          "; extract predecessor must have placed the owned closure",
+        ],
+        "",
+      ) as NonEmptyStr,
+    }
+  }
+}
+
+fn spark_serving_member(
+  host: HostIdentity,
+  release_identity: SparkServingReleaseIdentity,
+  kind: SparkServingMemberKind,
+  state_digest: NonEmptyStr,
+  ownership: Ownership,
+) -> SparkServingMember {
+  SparkServingMember {
+    host: host,
+    release_identity: release_identity,
+    kind: kind,
+    state_digest: state_digest,
+    ownership: ownership,
+  }
+}
+
+fn spark_serving_desired_members(
+  occurrence: SparkServingOccurrence,
+  release: SparkServingRelease,
+) -> List<SparkServingMember> {
+  let rid = occurrence.release_identity
+  let host = occurrence.host
+  let closure_digest = release.runtime.closure_digest
+  let model_digest = serialize_content_hash(hash: release.model.identity) as NonEmptyStr
+  [
+    spark_serving_member(
+      host: host,
+      release_identity: rid,
+      kind: SparkServingRuntimeClosureMember,
+      state_digest: closure_digest,
+      ownership: Owned,
+    ),
+    spark_serving_member(
+      host: host,
+      release_identity: rid,
+      kind: SparkServingArchiveReceiptMember,
+      state_digest: closure_digest,
+      ownership: Owned,
+    ),
+    spark_serving_member(
+      host: host,
+      release_identity: rid,
+      kind: SparkServingUserUnitMember,
+      state_digest: spark_serving_user_unit_state_digest(),
+      ownership: Owned,
+    ),
+    spark_serving_member(
+      host: host,
+      release_identity: rid,
+      kind: SparkServingPulledModelMember,
+      state_digest: model_digest,
+      ownership: Owned,
+    ),
+    spark_serving_member(
+      host: host,
+      release_identity: rid,
+      kind: SparkServingExecutorLingerMember,
+      state_digest: spark_serving_executor_linger_state_digest(),
+      ownership: Ensured,
+    ),
+  ]
+}
+
+fn spark_serving_membership_reconcile(
+  desired: List<SparkServingMember>,
+  observed: List<SparkServingMember>,
+) -> MembershipPlan<SparkServingMember> {
+  membership_reconcile(
+    desired: desired,
+    observed: observed,
+    key_of: spark_serving_member_key,
+    key_eq: spark_serving_member_key_eq,
+    value_eq: spark_serving_member_value_eq,
+    ownership_of: spark_serving_member_ownership,
+  )
+}
+
+fn spark_serving_membership_effects(
+  plan: MembershipPlan<SparkServingMember>,
+) -> EffectsOrRefusal<SparkServingMember> {
+  membership_effects(plan: plan)
+}
+
+fn spark_serving_membership_noop(plan: MembershipPlan<SparkServingMember>) -> Bool {
+  membership_write_count(plan: plan) == 0
+    && membership_removal_count(plan: plan) == 0
+    && membership_refusal_count(plan: plan) == 0
+}

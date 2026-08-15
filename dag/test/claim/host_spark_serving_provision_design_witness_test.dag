@@ -1,15 +1,5 @@
 module test.claim.host_spark_serving_provision_design
 
-import std.disposition { Scaffold, SingleAuthority, Terminal }
-import std.decl_ref { DeclarationRef }
-import gunbc.host_spark_serving_provision_script {
-  spark_serving_provision_read_back_fails_closed,
-  spark_serving_provision_ensure_delegates_to_materializer,
-  spark_serving_provision_shell_uses_shell_quote_authority,
-  spark_serving_provision_script_body,
-  host_spark_serving_provision_script_scaffold,
-}
-import gunbc.spark_serving_plan_apply { spark_serving_plan_script_body_still_current }
 import gunbc.host_spark_serving_provision_verdict {
   spark_serving_observe_ok_converges_idempotent,
   spark_serving_read_back_ok_converges,
@@ -22,32 +12,11 @@ import gunbc.host_spark_serving_provision_verdict {
   RefusalMaterializationFailed,
   RefusalReadBackFailed,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn design_witness_read_back_fails_closed_in_shell() -> Bool {
-  spark_serving_provision_read_back_fails_closed()
-}
-
-test fn design_witness_ensure_delegates_to_materializer() -> Bool {
-  spark_serving_provision_ensure_delegates_to_materializer()
-}
-
-test fn design_witness_provision_shell_uses_shell_quote_authority() -> Bool {
-  spark_serving_provision_shell_uses_shell_quote_authority()
-}
-
-test fn design_witness_provision_script_carries_scaffold() -> Bool {
-  match host_spark_serving_provision_script_scaffold {
-    Scaffold {
-      dissolves_to: SingleAuthority,
-      bind: DeclarationRef { module_path: m, decl_name: n, field: _ },
-    } =>
-      m == "gunbc.host_spark_serving_provision_script"
-        && n == "host_spark_serving_provision_script_dissolution_trigger"
-    Terminal { reason: _ } => false
-  }
-}
+data host_spark_serving_provision_design_witness_note: String = "Shell script / plan-apply / completion-probe witnesses retired with Phase 1 membership model (SPARK-SERVE-INSTALL-0). Verdict fold controls remain until Phase 2 structured ProvisionSparkServing receipts replace shell classification."
 
 test fn design_witness_observe_ok_converges_idempotent() -> Bool {
   spark_serving_observe_ok_converges_idempotent()
@@ -79,13 +48,4 @@ test fn design_witness_shell_verdict_observe_ok_not_read_back_failed() -> Bool {
     ProvisionRefused { cause: RefusalReadBackFailed, reason: _ } => false
     ProvisionRefused { cause: RefusalMaterializationFailed, reason: _ } => false
   }
-}
-
-test fn design_witness_plan_script_body_still_current_when_identical() -> Bool {
-  let body = spark_serving_provision_script_body()
-  spark_serving_plan_script_body_still_current(plan_body: body)
-}
-
-test fn design_witness_plan_script_body_stale_refused() -> Bool {
-  spark_serving_plan_script_body_still_current(plan_body: "stale-planned-script") == false
 }

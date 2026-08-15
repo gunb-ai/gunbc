@@ -27,9 +27,9 @@ import gunbc.spark_serving_install_paths {
 
 data host_spark_serving_provision_scope_disposition: Disposition = SingleAuthority
 
-data host_spark_serving_provision_note: String = "Local-host Spark serving runtime materialization entry (#8225 runtime-bundle follow-on). Runs package_delivery.materialize_spark_serving_ollama_runtime_bundle on the invoking host as gunbc-automation — extract, place owned closure, write receipt, install user unit, enable service, pull gpt-oss:20b. Operative only when gunbc is present on that host; observed absent on srv5/srv6 2026-08-15 (host_spark_serving_gunbc_layout_note). Remote ensure delegates to this entry via gunbc run on the target (host_spark_serving_provision_script); plan/apply CAS is spark_serving_plan_apply."
+data host_spark_serving_provision_note: String = "Local-host Spark serving runtime materialization entry (#8225 runtime-bundle follow-on). Runs package_delivery.materialize_spark_serving_ollama_runtime_bundle on the invoking host as gunbc-automation — extract, place owned closure, write receipt, install user unit, enable service, pull gpt-oss:20b. Remote converge is member-grain membership reconcile (gunbc.spark_serving_membership) over typed argv — Phase 2 wires ProvisionSparkServing through host_effect_apply; Phase 1 is modeling + witnesses only."
 
-data host_spark_serving_provision_realize_dispatch_note: String = "RealizationDispatch scaffold withheld until ProvisionSparkServing lands in gunbc.host_effect_realize as realize_provision_spark_serving (codex precedent: host_codex_runtime_provision_realize_scaffold binds realize_provision_codex_runtime). Interim remote actuation is spark_serving_provision_apply FleetSsh transport only — not realization dispatch; binding that interim path as RealizationDispatch was rung inflation (review 52354)."
+data host_spark_serving_provision_realize_dispatch_note: String = "RealizationDispatch scaffold lands in Phase 2 when ProvisionSparkServing reaches gunbc.host_effect_realize as realize_provision_spark_serving (codex precedent: host_codex_runtime_provision_realize_scaffold). Interim shell script / plan-apply / completion-probe modules deleted in Phase 1 — not replaced by parallel shell."
 
 fn materialize_spark_serving_on_local_host_refusal(
   outcome: SparkServingOllamaRuntimeMaterialization,

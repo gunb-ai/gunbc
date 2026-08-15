@@ -1,0 +1,270 @@
+module test.claim.spark_serving_membership_witness
+
+import std.types { String, List, Bool, Int, NonEmptyStr }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv5 }
+import gunbc.ownership { Ownership, Owned, Ensured }
+import gunbc.membership_reconcile {
+  MembershipPlan,
+  MemberAdded,
+  MemberChanged,
+  MemberRemoved,
+  MemberRemovalRefused,
+  membership_write_count,
+  membership_removal_count,
+  membership_refusal_count,
+  membership_change_count,
+  membership_added_count,
+  membership_effects,
+  EffectsReady,
+  ApplyRefused,
+  MemberEffect,
+  EffectAdd,
+  EffectReplace,
+  EffectRemove,
+}
+import gunbc.spark_serving_release {
+  SparkServingReleaseIdentity,
+  SparkServingRelease,
+  RuntimeArtifactIdentity,
+  spark_serving_release_identity,
+}
+import gunbc.spark_serving_desired {
+  spark_serving_desired_release_admission,
+  SparkServingDesiredAdmitted,
+  SparkServingDesiredRefused,
+  spark_serving_occurrence,
+  spark_serving_desired_model_artifact,
+}
+import gunbc.spark_serving_install_paths { spark_serving_user_unit_path }
+import gunbc.spark_serving_membership {
+  SparkServingMember,
+  SparkServingMemberKind,
+  SparkServingRuntimeClosureMember,
+  SparkServingUserUnitMember,
+  SparkServingPulledModelMember,
+  SparkServingArchiveReceiptMember,
+  SparkServingExecutorLingerMember,
+  spark_serving_member,
+  spark_serving_member_key,
+  spark_serving_desired_members,
+  spark_serving_membership_reconcile,
+  spark_serving_membership_effects,
+  spark_serving_membership_noop,
+  spark_serving_user_unit_state_digest,
+  spark_serving_executor_linger_state_digest,
+  spark_serving_remote_operation_context,
+  spark_serving_admit_staging_present,
+  spark_serving_admit_runtime_root_present,
+  SparkServingRemoteStepAdmitted,
+  SparkServingRemoteStepRefused,
+  spark_serving_user_unit_file_write_intent,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn w_release_identity() -> SparkServingReleaseIdentity {
+  match spark_serving_desired_release_admission() {
+    SparkServingDesiredAdmitted { serving_release: r } => spark_serving_release_identity(spec: r)
+    SparkServingDesiredRefused { cause: _ } =>
+      spark_serving_release_identity(
+        spec: SparkServingRelease {
+          runtime: RuntimeArtifactIdentity { closure_digest: "fixture-closure" as NonEmptyStr },
+          model: spark_serving_desired_model_artifact(),
+        },
+      )
+  }
+}
+
+fn w_host() -> HostIdentity {
+  operator_host_srv5
+}
+
+fn w_runtime_member(state: NonEmptyStr, ownership: Ownership) -> SparkServingMember {
+  spark_serving_member(
+    host: w_host(),
+    release_identity: w_release_identity(),
+    kind: SparkServingRuntimeClosureMember,
+    state_digest: state,
+    ownership: ownership,
+  )
+}
+
+fn w_unit_member(state: NonEmptyStr, ownership: Ownership) -> SparkServingMember {
+  spark_serving_member(
+    host: w_host(),
+    release_identity: w_release_identity(),
+    kind: SparkServingUserUnitMember,
+    state_digest: state,
+    ownership: ownership,
+  )
+}
+
+fn w_linger_member(state: NonEmptyStr) -> SparkServingMember {
+  spark_serving_member(
+    host: w_host(),
+    release_identity: w_release_identity(),
+    kind: SparkServingExecutorLingerMember,
+    state_digest: state,
+    ownership: Ensured,
+  )
+}
+
+fn plan_has_change_for_kind(
+  plan: MembershipPlan<SparkServingMember>,
+  kind: SparkServingMemberKind,
+  from_digest: NonEmptyStr,
+  to_digest: NonEmptyStr,
+) -> Bool {
+  any(plan.actions, a =>
+    match a {
+      MemberChanged { from: f, to: t } =>
+        f.kind == kind
+          && t.kind == kind
+          && f.state_digest == from_digest
+          && t.state_digest == to_digest
+      _ => false
+    }
+  )
+}
+
+fn plan_has_add_for_kind(plan: MembershipPlan<SparkServingMember>, kind: SparkServingMemberKind) -> Bool {
+  any(plan.actions, a => match a { MemberAdded { to: m } => m.kind == kind  _ => false })
+}
+
+fn plan_has_refused_kind(plan: MembershipPlan<SparkServingMember>, kind: SparkServingMemberKind) -> Bool {
+  any(plan.actions, a =>
+    match a {
+      MemberRemovalRefused { from: m, cause: _ } => m.kind == kind
+      _ => false
+    }
+  )
+}
+
+data w_noop_note: String = "Already-correct host converging to ZERO effects is the claim most likely to be quietly false — reinstall-every-time is indistinguishable from correct from the outside. Asserts plan AND membership_effects both empty."
+
+test fn w_spark_serving_noop_when_converged() -> Bool {
+  match spark_serving_desired_release_admission() {
+    SparkServingDesiredAdmitted { serving_release: r } =>
+      let occ = spark_serving_occurrence(host: w_host(), serving_release: r)
+      let desired = spark_serving_desired_members(occurrence: occ, release: r)
+      let plan = spark_serving_membership_reconcile(desired: desired, observed: desired)
+      spark_serving_membership_noop(plan: plan)
+        && match spark_serving_membership_effects(plan: plan) {
+          EffectsReady { effects: es } => count(es) == 0
+          ApplyRefused { refusals: _ } => false
+        }
+    SparkServingDesiredRefused { cause: _ } =>
+      let m = w_runtime_member(state: "v1" as NonEmptyStr, ownership: Owned)
+      let plan = spark_serving_membership_reconcile(desired: [m], observed: [m])
+      spark_serving_membership_noop(plan: plan)
+  }
+}
+
+test fn w_spark_serving_modified_is_change_not_add() -> Bool {
+  let from_unit = spark_serving_user_unit_state_digest()
+  let to_unit = "unit-drifted" as NonEmptyStr
+  let plan = spark_serving_membership_reconcile(
+    desired: [w_unit_member(state: to_unit, ownership: Owned)],
+    observed: [w_unit_member(state: from_unit, ownership: Owned)],
+  )
+  plan_has_change_for_kind(
+    plan: plan,
+    kind: SparkServingUserUnitMember,
+    from_digest: from_unit,
+    to_digest: to_unit,
+  )
+    && !plan_has_add_for_kind(plan: plan, kind: SparkServingUserUnitMember)
+    && membership_change_count(plan: plan) == 1
+    && membership_added_count(plan: plan) == 0
+}
+
+test fn w_spark_serving_added_when_runtime_absent() -> Bool {
+  match spark_serving_desired_release_admission() {
+    SparkServingDesiredAdmitted { serving_release: r } =>
+      let occ = spark_serving_occurrence(host: w_host(), serving_release: r)
+      let desired = spark_serving_desired_members(occurrence: occ, release: r)
+      let plan = spark_serving_membership_reconcile(desired: desired, observed: [])
+      membership_write_count(plan: plan) == count(desired)
+        && membership_removal_count(plan: plan) == 0
+    SparkServingDesiredRefused { cause: _ } =>
+      let plan = spark_serving_membership_reconcile(
+        desired: [w_runtime_member(state: "v1" as NonEmptyStr, ownership: Owned)],
+        observed: [],
+      )
+      plan_has_add_for_kind(plan: plan, kind: SparkServingRuntimeClosureMember)
+  }
+}
+
+test fn w_spark_serving_ensured_linger_converges_on_drift() -> Bool {
+  let plan = spark_serving_membership_reconcile(
+    desired: [w_linger_member(state: spark_serving_executor_linger_state_digest())],
+    observed: [w_linger_member(state: "linger=drifted" as NonEmptyStr)],
+  )
+  plan_has_change_for_kind(
+    plan: plan,
+    kind: SparkServingExecutorLingerMember,
+    from_digest: "linger=drifted" as NonEmptyStr,
+    to_digest: spark_serving_executor_linger_state_digest(),
+  )
+    && membership_removal_count(plan: plan) == 0
+    && membership_refusal_count(plan: plan) == 0
+}
+
+test fn w_spark_serving_ensured_linger_removal_refused() -> Bool {
+  let plan = spark_serving_membership_reconcile(
+    desired: [],
+    observed: [w_linger_member(state: spark_serving_executor_linger_state_digest())],
+  )
+  plan_has_refused_kind(plan: plan, kind: SparkServingExecutorLingerMember)
+    && membership_removal_count(plan: plan) == 0
+    && membership_refusal_count(plan: plan) == 1
+}
+
+test fn w_spark_serving_key_is_host_release_kind_not_content() -> Bool {
+  let a = w_runtime_member(state: "content-a" as NonEmptyStr, ownership: Owned)
+  let b = w_runtime_member(state: "content-b" as NonEmptyStr, ownership: Owned)
+  spark_serving_member_key(member: a) == spark_serving_member_key(member: b)
+}
+
+test fn w_spark_serving_extract_refuses_without_staging() -> Bool {
+  let ctx = spark_serving_remote_operation_context(host: w_host())
+  match spark_serving_admit_staging_present(context: ctx, staging_present: false) {
+    SparkServingRemoteStepRefused { step: _, cause: _ } => true
+    SparkServingRemoteStepAdmitted => false
+  }
+}
+
+test fn w_spark_serving_enable_refuses_without_runtime_root() -> Bool {
+  let ctx = spark_serving_remote_operation_context(host: w_host())
+  match spark_serving_admit_runtime_root_present(context: ctx, runtime_root_present: false) {
+    SparkServingRemoteStepRefused { step: _, cause: _ } => true
+    SparkServingRemoteStepAdmitted => false
+  }
+}
+
+test fn w_spark_serving_unit_write_intent_carries_modeled_contents() -> Bool {
+  let intent = spark_serving_user_unit_file_write_intent()
+  string_contains(s: intent.content, pattern: "[Service]")
+    && intent.path == spark_serving_user_unit_path()
+}
+
+test fn w_spark_serving_change_projects_effect_replace() -> Bool {
+  let plan = spark_serving_membership_reconcile(
+    desired: [w_runtime_member(state: "v2" as NonEmptyStr, ownership: Owned)],
+    observed: [w_runtime_member(state: "v1" as NonEmptyStr, ownership: Owned)],
+  )
+  match spark_serving_membership_effects(plan: plan) {
+    EffectsReady { effects: es } =>
+      count(es) == 1
+        && any(es, e =>
+             match e {
+               EffectReplace { from: f, to: t } =>
+                 f.kind == SparkServingRuntimeClosureMember && f.state_digest == ("v1" as NonEmptyStr) && t.state_digest == ("v2" as NonEmptyStr)
+               EffectAdd { to: _ } => false
+               EffectRemove { from: _ } => false
+             })
+    ApplyRefused { refusals: _ } => false
+  }
+}
