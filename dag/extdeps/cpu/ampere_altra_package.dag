@@ -170,7 +170,7 @@ fn differential_pair_base_name(signal: NonEmptyStr) -> NonEmptyStr? {
       Absent
     }
   } else {
-    none
+    Absent
   }
 }
 

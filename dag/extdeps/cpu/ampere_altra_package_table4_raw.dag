@@ -9,8 +9,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ampere_altra_rev_a1_
 
 data extdeps_model_scope: ExternalModelScope = ampere_altra_package_model_scope
 
-// TRANSCRIBED designator/signal rows from Ampere Altra Max Rev A1 datasheet Issue 1.15, section 5 Table 4.
-// Source: extdeps/cpu/altra_max_rev_a1_table4_pins.json — regenerate via node dag/tools/generate_altra_table4_raw.js
+// TRANSCRIBED designator/signal rows from Ampere Altra Max Rev A1 datasheet Issue 1.15,
+// section 5 Table 4 (extdeps.cpu.ampere ampere_altra_rev_a1_datasheet_authority).
 data altra_table4_pin_rows: List<Table4PinRow> = [
   Table4PinRow { designator: "A5", signal_name: "VSS" },
   Table4PinRow { designator: "A7", signal_name: "VSS" },
