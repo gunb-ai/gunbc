@@ -1,6 +1,6 @@
 module gunbc.spark_serving_membership
 
-import std.types { String, Bool, List, NonEmptyStr, FilePath }
+import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
 import std.content_hash { content_hash_atom, serialize_content_hash }
 import product.placement_supply { HostIdentity }
 import gunbc.ownership { Ownership, Owned, Ensured }
@@ -28,11 +28,28 @@ import gunbc.spark_serving_runtime_receipt { spark_serving_runtime_receipt_path 
 
 data spark_serving_membership_authority_note: String = "Member-grain membership reconcile for Spark serving install (SPARK-SERVE-INSTALL-0 Phase 1). key_of is host × release identity × member kind — explicitly NOT content- or path-derived. value_eq compares state_digest only. Ensured members converge on drift; non-owned removal refuses with no effect arm (R5). Unchanged → zero effects must witness hard."
 
-data spark_serving_remote_file_write_transport_gap_note: String = "CONDITION 1 FINDING — unit file write: spark_serving_user_unit_contents is modeled DATA; delivery MUST be a file-content effect with bytes on stdin (receipt-write precedent), never unit text composed into a remote command string. No typed remote stdin-file-write transport is wired in Phase 1; report before improvising a script body for the whole install."
+type SparkServingPhase1TransportGap
+  = SparkServingRemoteFileWriteTransportGap
+  | SparkServingGenerateAcceptanceTransportGap
+  | SparkServingCrossStepRemoteContextGap
 
-data spark_serving_generate_acceptance_transport_gap_note: String = "CONDITION 2 FINDING — acceptance probe: POST /api/generate with JSON body MUST use a typed HTTP client or modeled service op, NOT shell_quote on JSON for curl argv. The deleted spark_serving_completion_probe concat shell is not replaced in Phase 1."
+data spark_serving_remote_file_write_transport_gap_note: String = "CONDITION 1 — unit file write: spark_serving_user_unit_contents is modeled DATA; delivery MUST be a file-content effect with bytes on stdin (receipt-write precedent), never unit text composed into a remote command string. Typed gap: SparkServingRemoteFileWriteTransportGap in spark_serving_phase1_transport_gaps."
 
-data spark_serving_remote_operation_context_note: String = "CONDITION 3 — cross-invocation state: download, verify, and extract are separate typed argv operations with NO shared shell state. Staging paths are modeled values in SparkServingRemoteOperationContext carried across steps; a step whose predecessor side effect is absent MUST fail closed via spark_serving_admit_* helpers rather than proceeding on an unmodeled path."
+data spark_serving_generate_acceptance_transport_gap_note: String = "CONDITION 2 — acceptance probe: POST /api/generate with JSON body MUST use a typed HTTP client or modeled service op, NOT shell_quote on JSON for curl argv. Typed gap: SparkServingGenerateAcceptanceTransportGap in spark_serving_phase1_transport_gaps."
+
+data spark_serving_remote_operation_context_note: String = "CONDITION 3 — cross-invocation state: download, verify, and extract are separate typed argv operations with NO shared shell state. Staging paths are modeled values in SparkServingRemoteOperationContext carried across steps; a step whose predecessor side effect is absent MUST fail closed via spark_serving_admit_* helpers. Typed gap: SparkServingCrossStepRemoteContextGap in spark_serving_phase1_transport_gaps."
+
+fn spark_serving_phase1_transport_gaps() -> List<SparkServingPhase1TransportGap> {
+  [
+    SparkServingRemoteFileWriteTransportGap,
+    SparkServingGenerateAcceptanceTransportGap,
+    SparkServingCrossStepRemoteContextGap,
+  ]
+}
+
+fn spark_serving_phase1_transport_gap_count() -> Int {
+  count(spark_serving_phase1_transport_gaps())
+}
 
 type SparkServingMemberKind
   = SparkServingRuntimeClosureMember

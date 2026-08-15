@@ -59,22 +59,24 @@ import gunbc.spark_serving_membership {
   SparkServingRemoteStepAdmitted,
   SparkServingRemoteStepRefused,
   spark_serving_user_unit_file_write_intent,
+  spark_serving_phase1_transport_gaps,
+  spark_serving_phase1_transport_gap_count,
+  SparkServingPhase1TransportGap,
+  SparkServingRemoteFileWriteTransportGap,
+  SparkServingGenerateAcceptanceTransportGap,
+  SparkServingCrossStepRemoteContextGap,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn w_release_identity() -> SparkServingReleaseIdentity {
-  match spark_serving_desired_release_admission() {
-    SparkServingDesiredAdmitted { serving_release: r } => spark_serving_release_identity(spec: r)
-    SparkServingDesiredRefused { cause: _ } =>
-      spark_serving_release_identity(
-        spec: SparkServingRelease {
-          runtime: RuntimeArtifactIdentity { closure_digest: "fixture-closure" as NonEmptyStr },
-          model: spark_serving_desired_model_artifact(),
-        },
-      )
-  }
+fn w_fixture_release_identity() -> SparkServingReleaseIdentity {
+  spark_serving_release_identity(
+    spec: SparkServingRelease {
+      runtime: RuntimeArtifactIdentity { closure_digest: "witness-fixture-closure" as NonEmptyStr },
+      model: spark_serving_desired_model_artifact(),
+    },
+  )
 }
 
 fn w_host() -> HostIdentity {
@@ -84,7 +86,7 @@ fn w_host() -> HostIdentity {
 fn w_runtime_member(state: NonEmptyStr, ownership: Ownership) -> SparkServingMember {
   spark_serving_member(
     host: w_host(),
-    release_identity: w_release_identity(),
+    release_identity: w_fixture_release_identity(),
     kind: SparkServingRuntimeClosureMember,
     state_digest: state,
     ownership: ownership,
@@ -94,7 +96,7 @@ fn w_runtime_member(state: NonEmptyStr, ownership: Ownership) -> SparkServingMem
 fn w_unit_member(state: NonEmptyStr, ownership: Ownership) -> SparkServingMember {
   spark_serving_member(
     host: w_host(),
-    release_identity: w_release_identity(),
+    release_identity: w_fixture_release_identity(),
     kind: SparkServingUserUnitMember,
     state_digest: state,
     ownership: ownership,
@@ -104,7 +106,7 @@ fn w_unit_member(state: NonEmptyStr, ownership: Ownership) -> SparkServingMember
 fn w_linger_member(state: NonEmptyStr) -> SparkServingMember {
   spark_serving_member(
     host: w_host(),
-    release_identity: w_release_identity(),
+    release_identity: w_fixture_release_identity(),
     kind: SparkServingExecutorLingerMember,
     state_digest: state,
     ownership: Ensured,
@@ -144,6 +146,29 @@ fn plan_has_refused_kind(plan: MembershipPlan<SparkServingMember>, kind: SparkSe
 
 data w_noop_note: String = "Already-correct host converging to ZERO effects is the claim most likely to be quietly false — reinstall-every-time is indistinguishable from correct from the outside. Asserts plan AND membership_effects both empty."
 
+test fn w_spark_serving_phase1_transport_gaps_enrolled() -> Bool {
+  spark_serving_phase1_transport_gap_count() == 3
+    && any(
+      spark_serving_phase1_transport_gaps(),
+      gap => gap == SparkServingRemoteFileWriteTransportGap,
+    )
+    && any(
+      spark_serving_phase1_transport_gaps(),
+      gap => gap == SparkServingGenerateAcceptanceTransportGap,
+    )
+    && any(
+      spark_serving_phase1_transport_gaps(),
+      gap => gap == SparkServingCrossStepRemoteContextGap,
+    )
+}
+
+test fn w_spark_serving_desired_release_admits_for_admission_backed_witnesses() -> Bool {
+  match spark_serving_desired_release_admission() {
+    SparkServingDesiredAdmitted { serving_release: _ } => true
+    SparkServingDesiredRefused { cause: _ } => false
+  }
+}
+
 test fn w_spark_serving_noop_when_converged() -> Bool {
   match spark_serving_desired_release_admission() {
     SparkServingDesiredAdmitted { serving_release: r } =>
@@ -155,11 +180,18 @@ test fn w_spark_serving_noop_when_converged() -> Bool {
           EffectsReady { effects: es } => count(es) == 0
           ApplyRefused { refusals: _ } => false
         }
-    SparkServingDesiredRefused { cause: _ } =>
-      let m = w_runtime_member(state: "v1" as NonEmptyStr, ownership: Owned)
-      let plan = spark_serving_membership_reconcile(desired: [m], observed: [m])
-      spark_serving_membership_noop(plan: plan)
+    SparkServingDesiredRefused { cause: _ } => false
   }
+}
+
+test fn w_spark_serving_noop_when_converged_synthetic_fixture() -> Bool {
+  let m = w_runtime_member(state: "v1" as NonEmptyStr, ownership: Owned)
+  let plan = spark_serving_membership_reconcile(desired: [m], observed: [m])
+  spark_serving_membership_noop(plan: plan)
+    && match spark_serving_membership_effects(plan: plan) {
+      EffectsReady { effects: es } => count(es) == 0
+      ApplyRefused { refusals: _ } => false
+    }
 }
 
 test fn w_spark_serving_modified_is_change_not_add() -> Bool {
@@ -188,13 +220,16 @@ test fn w_spark_serving_added_when_runtime_absent() -> Bool {
       let plan = spark_serving_membership_reconcile(desired: desired, observed: [])
       membership_write_count(plan: plan) == count(desired)
         && membership_removal_count(plan: plan) == 0
-    SparkServingDesiredRefused { cause: _ } =>
-      let plan = spark_serving_membership_reconcile(
-        desired: [w_runtime_member(state: "v1" as NonEmptyStr, ownership: Owned)],
-        observed: [],
-      )
-      plan_has_add_for_kind(plan: plan, kind: SparkServingRuntimeClosureMember)
+    SparkServingDesiredRefused { cause: _ } => false
   }
+}
+
+test fn w_spark_serving_added_when_runtime_absent_synthetic_fixture() -> Bool {
+  let plan = spark_serving_membership_reconcile(
+    desired: [w_runtime_member(state: "v1" as NonEmptyStr, ownership: Owned)],
+    observed: [],
+  )
+  plan_has_add_for_kind(plan: plan, kind: SparkServingRuntimeClosureMember)
 }
 
 test fn w_spark_serving_ensured_linger_converges_on_drift() -> Bool {
