@@ -9,7 +9,6 @@ pub mod helpers;
 mod decl_facts_dimensionless_projection_test;
 #[cfg(test)]
 #[cfg(test)]
-mod declaration_index_probe_test;
 #[cfg(test)]
 mod field_of_fractions_construction_test;
 #[cfg(test)]

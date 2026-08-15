@@ -95,3 +95,65 @@ reporting a corpus authoring problem, and no narrowing of the reference walk can
 fix it: subtracting binders and restricting to reference positions moved width
 only 1503 -> 1376. Diagnosis A costs nothing in width (2 candidates); diagnosis
 B costs everything (551 and 1097).
+
+---
+
+## Measurements banked from the probe instrument (retired 2026-08-15)
+
+These came from `src/v1/tests/src/declaration_index_probe_test.rs`, a measurement
+instrument built to drive this census. **The file is deleted**; the numbers it
+produced are recorded here because they are the evidence, and the instrument was
+never a witness of a claim.
+
+**Why it was retired rather than kept.** It lived in `v1-compiler-tests`, whose
+CI gate is a 15-minute budget, and 12 of its 13 tests build a whole-corpus index
+— one measured at **26.3s alone, in debug**. Cargo runs tests in parallel, so a
+dozen concurrent corpus builds contend for memory and CPU on a capped runner.
+DESIGN's rule is direct: *a test is not entitled to arbitrary computation merely
+because it is a test*, and a test's size must be **derived from what it proves**.
+An instrument answering a one-time question is a benchmark, and a benchmark may
+not gate.
+
+### Corpus shape
+
+| quantity | value |
+|---|---|
+| `.dag` files under the corpus roots | 3713 |
+| type-argument occurrences | 9027 |
+| — bare | 8978 |
+| — dotted | 49 (control-verified: a planted dotted argument IS seen) |
+| dotted occurrences in one module (`v2.lens.complexity_accumulator_copy`) | 19 of 49 |
+| authored `import` statements remaining | 0 |
+
+### Uniqueness profile of bare type-argument names
+
+| | occurrences | distinct names |
+|---|---|---|
+| unique (one declarer) | 6269 | 1172 |
+| homonym (2+ declarers) | 1949 | 37 |
+| undeclared | 760 | 86 |
+
+This **refutes the naive "98% of names are globally unique" extrapolation by
+roughly 10x** at the type-argument position. The residue is not a rounding error;
+it is the qualification population.
+
+### Closure width
+
+A five-line entry (`specimens.dag`) closes over **1386 of 3713 modules**, with
+**524 direct pulls from `extdeps_external_authority_anchor`** alone — because a
+bare reference to a name 551 modules declare must pull *every* declarer. Closure
+width is a corpus-authoring fact, not a walk defect (§ above).
+
+### Dotted-argument seven-cell matrix — all clean
+
+Cells over self-contained fixture modules compiled without source roots: bare arg
+/ dotted arg / dotted-not-an-argument / no-match / direct-type / **alias in
+another module** / bare + alias in another module. Every cell clean.
+
+So module-separation of an alias from its target coproduct **does not** reproduce
+the reported defect. That eliminates the cheaper of two explanations and leaves
+**tree-separation** as the surviving factor — which a controlled fixture cannot
+synthesize, because "another tree" is a property of corpus source roots and
+supplying them would put ~3700 modules in the pool, making it a corpus
+measurement rather than a controlled one. Reproducing it needs a different
+harness: two synthetic source roots.
