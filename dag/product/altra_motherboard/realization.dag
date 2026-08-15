@@ -209,8 +209,12 @@ fn board_clock_functional_obligations() -> List<BoardRequirementIdentity> {
   [ClockReferenceGeneration, ClockReferenceDistribution]
 }
 
+fn board_functional_obligations() -> List<BoardRequirementIdentity> {
+  concat(board_clock_functional_obligations(), physical_population_requirements())
+}
+
 fn board_functional_requirements() -> List<BoardRequirementIdentity> {
-  board_clock_functional_obligations()
+  board_functional_obligations()
 }
 
 fn functional_requirement_name(f: BoardRequirementIdentity) -> NonEmptyStr {

@@ -287,10 +287,11 @@ fn envelope_reads_from_plan(plan: BoardPlacementPlan) -> List<EstablishedEnvelop
   })
 }
 
-// EVERY REQUIRED FUNCTION WITH NO REALIZATION REACHES THE WORLD, so that moving the clock
-// requirements off the physical roster reported them differently rather than stopped reporting
-// them. Dropping an obligation while relocating it would be the exact failure this board's
-// projection is supposed to make impossible.
+// EVERY REQUIRED FUNCTION WHOSE REALIZATION IS NOT FULLY ESTABLISHED REACHES THE WORLD — clocks
+// with no physical providers, and physical-population requirements whose roster rows still carry
+// candidate-only, precedent, or derived-but-unjoined justifications. A cited body envelope on the
+// plan must not read as functional establishment; dropping the obligation would be the exact
+// failure this board's projection is supposed to make impossible.
 fn functional_obligations() -> List<PcbFunctionalObligation> {
   fold(board_functional_requirements(), init: [], f: fn(acc, f) {
     concat(acc, [PcbFunctionalObligation {
