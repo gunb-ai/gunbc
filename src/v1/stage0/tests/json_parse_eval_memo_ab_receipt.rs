@@ -117,11 +117,6 @@ fn json_parse_eval_memo_ab_probe() {
     let (memo_hits, memo_misses, memo_overflow) = eval_call_memo_counters(&ctx);
     let rss_at_parse_exit = peak_rss_vhwm_bytes();
 
-    assert!(
-        parse_ok,
-        "parse_json must accept synthetic literal document"
-    );
-
     let parse_phase_increase = match (rss_at_parse_entry, rss_at_parse_exit) {
         (Some(entry), Some(exit)) => Some(exit.saturating_sub(entry)),
         _ => None,
@@ -145,6 +140,7 @@ fn json_parse_eval_memo_ab_probe() {
     println!("  eval_call_memo_enabled={memo_enabled}");
     println!("  decoded_len={decoded_len}");
     println!("  input_bytes={}", doc.len());
+    println!("  parse_ok={parse_ok}");
     print_rss_line("rss_process_start_bytes", rss_process_start);
     print_rss_line("rss_after_fixture_bytes", rss_after_fixture);
     print_rss_line("rss_at_parse_entry_bytes", rss_at_parse_entry);
@@ -169,4 +165,9 @@ fn json_parse_eval_memo_ab_probe() {
     }
     println!("  hypothesis_refuted_by_hit_rate={hypothesis_refuted}");
     println!("  in_process_termination=CompletedExit0");
+
+    assert!(
+        parse_ok,
+        "parse_json must accept synthetic literal document"
+    );
 }
