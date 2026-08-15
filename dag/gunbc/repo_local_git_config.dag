@@ -4,7 +4,9 @@ import std.algebra { trim }
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { FilePath, List, String }
-import std.key_relation { KeyRelation, KeyExactlyOne, GlobalKeyScope, key_relation_global }
+import std.key_relation { KeyRelation, GlobalKeyScope, key_relation_global }
+
+type RepoLocalGitConfigMembershipKeyRelation
 import gunbc.membership_reconcile {
   MembershipPlan,
   MemberAction,
@@ -79,10 +81,9 @@ fn binding_ownership(_: RepoLocalGitConfigBinding) -> Ownership? {
   Present { value: Ensured }
 }
 
-data repo_local_git_config_membership_key_relation: KeyRelation<RepoLocalGitConfigBinding, GlobalKeyScope, String> = key_relation_global(
+data repo_local_git_config_membership_key_relation: KeyRelation<RepoLocalGitConfigMembershipKeyRelation, RepoLocalGitConfigBinding, GlobalKeyScope, String> = key_relation_global(
   key_of: binding_key,
   key_eq: binding_key_eq,
-  multiplicity: KeyExactlyOne,
 )
 
 fn repo_local_git_config_reconcile(

@@ -1,7 +1,9 @@
 module test.claim.membership_reconcile_witness
 
 import std.types { String, List, Bool, Int }
-import std.key_relation { KeyRelation, KeyExactlyOne, GlobalKeyScope, key_relation_global }
+import std.key_relation { KeyRelation, GlobalKeyScope, key_relation_global }
+
+type TMembershipKeyRelation
 import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.membership_reconcile {
   MembershipPlan, MemberAction,
@@ -39,10 +41,9 @@ fn t_key_eq(a: String, b: String) -> Bool { a == b }
 fn t_val_eq(a: TMember, b: TMember) -> Bool { a.ver == b.ver }
 fn t_own(m: TMember) -> Ownership? { m.own }
 
-data t_membership_key_relation: KeyRelation<TMember, GlobalKeyScope, String> = key_relation_global(
+data t_membership_key_relation: KeyRelation<TMembershipKeyRelation, TMember, GlobalKeyScope, String> = key_relation_global(
   key_of: t_key,
   key_eq: t_key_eq,
-  multiplicity: KeyExactlyOne,
 )
 
 fn t_reconcile(desired: List<TMember>, observed: List<TMember>) -> MembershipPlan<TMember> {

@@ -1,7 +1,10 @@
 module test.claim.tailscale_serve_route_key_witness
 
 import std.types { Bool, NonEmptyStr, String, List }
-import std.key_relation { KeyRelation, KeyExactlyOne, GlobalKeyScope, key_relation_global }
+import std.key_relation { KeyRelation, GlobalKeyScope, key_relation_global }
+
+type RetiredFlattenedServeFlagsKeyRelation
+type TailscaleEnableArgvIdentityKeyRelation
 import extdeps.tailscale.serve {
   TailscaleServeEndpoint,
   ServeRootMount,
@@ -50,10 +53,9 @@ fn retired_flattened_serve_flags_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool 
   a as String == b as String
 }
 
-data retired_flattened_serve_flags_key_relation: KeyRelation<TailscaleServeEndpoint, GlobalKeyScope, NonEmptyStr> = key_relation_global(
+data retired_flattened_serve_flags_key_relation: KeyRelation<RetiredFlattenedServeFlagsKeyRelation, TailscaleServeEndpoint, GlobalKeyScope, NonEmptyStr> = key_relation_global(
   key_of: retired_flattened_serve_flags_key,
   key_eq: retired_flattened_serve_flags_key_eq,
-  multiplicity: KeyExactlyOne,
 )
 
 fn tailscale_enable_argv_identity_key(endpoint: TailscaleServeEndpoint) -> NonEmptyStr {
@@ -64,10 +66,9 @@ fn tailscale_enable_argv_identity_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool
   a as String == b as String
 }
 
-data tailscale_enable_argv_identity_key_relation: KeyRelation<TailscaleServeEndpoint, GlobalKeyScope, NonEmptyStr> = key_relation_global(
+data tailscale_enable_argv_identity_key_relation: KeyRelation<TailscaleEnableArgvIdentityKeyRelation, TailscaleServeEndpoint, GlobalKeyScope, NonEmptyStr> = key_relation_global(
   key_of: tailscale_enable_argv_identity_key,
   key_eq: tailscale_enable_argv_identity_key_eq,
-  multiplicity: KeyExactlyOne,
 )
 
 fn plan_has_change_between_backends(

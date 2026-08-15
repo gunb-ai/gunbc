@@ -1,7 +1,9 @@
 module gunbc.host_phase_status
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.key_relation { KeyRelation, KeyExactlyOne, GlobalKeyScope, key_relation_global }
+import std.key_relation { KeyRelation, GlobalKeyScope, key_relation_global }
+
+type HostPhaseMembershipKeyRelation
 import std.upsert_decision { ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -254,10 +256,9 @@ fn host_phase_desired_disposition() -> PhaseDisposition {
   }
 }
 
-data host_phase_membership_key_relation: KeyRelation<HostPhaseCellStatus, GlobalKeyScope, String> = key_relation_global(
+data host_phase_membership_key_relation: KeyRelation<HostPhaseMembershipKeyRelation, HostPhaseCellStatus, GlobalKeyScope, String> = key_relation_global(
   key_of: host_phase_cell_key,
   key_eq: host_phase_cell_key_eq,
-  multiplicity: KeyExactlyOne,
 )
 
 fn host_phase_reconcile(

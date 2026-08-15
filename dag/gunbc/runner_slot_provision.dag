@@ -1,7 +1,9 @@
 module gunbc.runner_slot_provision
 
 import std.types { NonEmptyStr, String, List, Bool, Int }
-import std.key_relation { KeyRelation, KeyExactlyOne, GlobalKeyScope, key_relation_global }
+import std.key_relation { KeyRelation, GlobalKeyScope, key_relation_global }
+
+type RunnerSlotMembershipKeyRelation
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.membership_reconcile {
@@ -89,10 +91,9 @@ fn runner_slot_member_ownership(m: RunnerSlotMember) -> Ownership? {
   Absent
 }
 
-data runner_slot_membership_key_relation: KeyRelation<RunnerSlotMember, GlobalKeyScope, NonEmptyStr> = key_relation_global(
+data runner_slot_membership_key_relation: KeyRelation<RunnerSlotMembershipKeyRelation, RunnerSlotMember, GlobalKeyScope, NonEmptyStr> = key_relation_global(
   key_of: runner_slot_member_key,
   key_eq: runner_slot_member_key_eq,
-  multiplicity: KeyExactlyOne,
 )
 
 fn runner_slot_membership_reconcile(

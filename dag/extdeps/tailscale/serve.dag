@@ -1,7 +1,11 @@
 module extdeps.tailscale.serve
 
 import std.types { NonEmptyStr, Port, String, List, Bool }
-import std.key_relation { KeyRelation, KeyExactlyOne, GlobalKeyScope, key_relation_global }
+import std.key_relation { KeyRelation, GlobalKeyScope, key_relation_global }
+
+type TailscaleServeRouteKeyRelation
+
+data tailscale_serve_route_key_relation_brand_note: String = "Phantom relation brand (std.key_relation key_relation_brand_type_tag_note): keeps Tailscale serve route membership distinct from other TailscaleServeEndpoint x GlobalKeyScope x TailscaleServeRouteKey relations."
 import std.algebra { Less, Equal, Greater }
 import extdeps.version.semver { SemVerVersion, semver_compare, semver_version_label }
 
@@ -201,10 +205,9 @@ fn tailscale_serve_route_key_label(key: TailscaleServeRouteKey) -> NonEmptyStr {
   ) as NonEmptyStr
 }
 
-data tailscale_serve_route_key_relation: KeyRelation<TailscaleServeEndpoint, GlobalKeyScope, TailscaleServeRouteKey> = key_relation_global(
+data tailscale_serve_route_key_relation: KeyRelation<TailscaleServeRouteKeyRelation, TailscaleServeEndpoint, GlobalKeyScope, TailscaleServeRouteKey> = key_relation_global(
   key_of: tailscale_serve_route_key,
   key_eq: tailscale_serve_route_key_eq,
-  multiplicity: KeyExactlyOne,
 )
 
 // EnableBackground IS DELETED RATHER THAN CORRECTED. It took a local port and shaped the literal argv `serve --bg {local_port}`, which is precisely the unscoped root-mount rebind described above — the operation whose every invocation on a second deployment silently steals `/` from the first. Correcting it in place would have meant a template with a conditional flag, which the argv template form cannot express; carrying it beside the endpoint fns would have left two spellings of one operation, the fork this module is being repaired for.\n\nSo the enable argv is a fn (the established form for conditional argv — see extdeps.llm.cursor_cli), and the collision shape is unwritable because it no longer exists. It had zero consumers at deletion: the one caller that mattered hand-built the same string in the emitter instead of consuming this module at all.

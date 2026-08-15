@@ -2,27 +2,36 @@ module std.key_relation
 
 import std.types { Bool }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import v2.std.nat { Zero, Succ, nat_compare, Equal, Greater }
+import v2.std.cardinality {
+  UpperBoundedNat,
+  NatLeWitness,
+  LeqZero,
+  upper_bounded_nat_inclusive_max,
+  upper_bounded_nat_well_formed,
+}
 
-data key_relation_authority_note: String = "NAMING MOVE, NOT A WALL (honest rung, DESIGN §4b). KeyRelation packages scope_of, key_of, scope_eq, key_eq, and a KeyMultiplicity label so each consumer names the relation under which its population reconciles — a real §3 improvement over anonymous key_of/key_eq pairs passed at every call site. It does NOT enforce the load-bearing identity law: any content-derived key_of still typechecks and still inhabits a KeyRelation unchanged. GlobalKeyScope is an empty record today, so the scope axis does no work — every migrated relation is GlobalKeyScope + KeyExactlyOne as a declared 1:1 policy, not a proved property. Multiplicity is prose attached to the record until membership paths consult it with a typed refusal (key_relation_supports_membership_reconcile exists but is not yet a production gate). Rung today: mitigatable — the law is stated once beside the named authority; witnesses discriminate failure classes by execution. Ceiling: structural impossibility — key_of returns SubjectKey only, and ContentIdentity (and other impostor carriers) cannot inhabit SubjectKey, per the impostor separation in docs/plans/keying-relation-design.md §4. Whether an arbitrary fn returns identity vs content is undecidable in general; the decidable wall is that carrier constraint, not a linter over fn bodies."
+data key_relation_authority_note: String = "NAMING MOVE, NOT A WALL (honest rung, DESIGN §4b). KeyRelation packages scope_of, key_of, scope_eq, key_eq, a phantom Relation brand, and a fiber bound (v2.std.cardinality UpperBoundedNat) so each consumer names the relation under which its population reconciles — a real §3 improvement over anonymous key_of/key_eq pairs that coincidentally share carriers. The Relation type parameter is a legitimate bodyless type-tag (DESIGN Hardware precedent): never construction-reached, not a hollow alias. It does NOT enforce the load-bearing identity law: any content-derived key_of still typechecks and still inhabits a KeyRelation unchanged. GlobalKeyScope is an empty record today, so the scope axis does no work. Fiber: key_of is total and single-valued, so keys-per-subject is already exactly one by construction — the old KeyAtMostOne|KeyExactlyOne half was dead. The carried question is subjects-per-scoped-key; KEY-0 declares key_fiber_unique_per_scope (UpperBoundedNat inclusive max 1) only. No parallel KeyFiberCardinality enum — v2.std.cardinality already carries Never/Unit/UpperBoundedNat for the closed decidable fragment. Multiplicity/fiber is prose on the record until membership paths refuse unsupported bounds (key_relation_supports_membership_reconcile exists but is not yet a production gate). Rung today: mitigatable — law stated beside named authority; witnesses discriminate failure classes by execution. Ceiling: structural impossibility — key_of returns SubjectKey only, and ContentIdentity cannot inhabit SubjectKey (impostor separation in docs/plans/keying-relation-design.md)."
 
 data key_relation_identity_wall_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: key_relation_identity_wall — introduce SubjectKey<K> / ResourceLocator<L> / ContentIdentity<H> impostor carriers (keying-relation-design.md Separating the impostors) and constrain production key_of projections to return SubjectKey only, so a content-derived key stops compiling. Until then KeyRelation remains a naming authority only; identity-not-content stays an author/review obligation, not a construction refusal.")
 
-type ScopedKey<Scope, Key> {
+data key_relation_brand_type_tag_note: String = "Relation brand types (e.g. TailscaleServeRouteKeyRelation) are uninhabited phantom tags — legitimate under the hollow-alias rule because they are never construction-reached, only used as type parameters to keep unrelated relations non-substitutable when Subject/Scope/Key carriers coincide."
+
+data key_fiber_unique_per_scope_witness: NatLeWitness = LeqZero { upper: Succ { prev: Zero } }
+
+data key_fiber_unique_per_scope: UpperBoundedNat = UpperBoundedNat { le: key_fiber_unique_per_scope_witness }
+
+type ScopedKey<Relation, Scope, Key> {
   scope: Scope
   key: Key
 }
 
-type KeyMultiplicity
-  = KeyAtMostOne
-  | KeyExactlyOne
-  | KeyZeroToMany
-
-type KeyRelation<Subject, Scope, Key> {
+type KeyRelation<Relation, Subject, Scope, Key> {
   scope_of: fn(Subject) -> Scope
   key_of: fn(Subject) -> Key
   scope_eq: fn(Scope, Scope) -> Bool
   key_eq: fn(Key, Key) -> Bool
-  multiplicity: KeyMultiplicity
+  fiber_cardinality: UpperBoundedNat
 }
 
 type GlobalKeyScope {}
@@ -41,35 +50,45 @@ fn key_relation_global_scope_of<Subject>(_subject: Subject) -> GlobalKeyScope {
   global_key_scope()
 }
 
-fn key_relation_scoped_key<Subject, Scope, Key>(
-  relation: KeyRelation<Subject, Scope, Key>,
+fn key_relation_scoped_key<Relation, Subject, Scope, Key>(
+  relation: KeyRelation<Relation, Subject, Scope, Key>,
   subject: Subject,
-) -> ScopedKey<Scope, Key> {
+) -> ScopedKey<Relation, Scope, Key> {
   let scope_of = relation.scope_of
   let key_of = relation.key_of
   ScopedKey { scope: scope_of(subject), key: key_of(subject) }
 }
 
-fn key_relation_global<Subject, Key>(
+fn key_relation_global<Relation, Subject, Key>(
   key_of: fn(Subject) -> Key,
   key_eq: fn(Key, Key) -> Bool,
-  multiplicity: KeyMultiplicity,
-) -> KeyRelation<Subject, GlobalKeyScope, Key> {
+) -> KeyRelation<Relation, Subject, GlobalKeyScope, Key> {
   KeyRelation {
     scope_of: key_relation_global_scope_of,
     key_of: key_of,
     scope_eq: global_key_scope_eq,
     key_eq: key_eq,
-    multiplicity: multiplicity,
+    fiber_cardinality: key_fiber_unique_per_scope,
   }
 }
 
-fn key_relation_supports_membership_reconcile<Subject, Scope, Key>(
-  relation: KeyRelation<Subject, Scope, Key>,
-) -> Bool {
-  match relation.multiplicity {
-    KeyExactlyOne => true
-    KeyAtMostOne => true
-    KeyZeroToMany => false
+fn key_relation_fiber_supports_membership_reconcile(fiber: UpperBoundedNat) -> Bool {
+  if !upper_bounded_nat_well_formed(b: fiber) {
+    false
+  } else {
+    match nat_compare(
+      a: upper_bounded_nat_inclusive_max(b: fiber),
+      b: Succ { prev: Zero },
+    ) {
+      Greater => false
+      Equal => true
+      Less => true
+    }
   }
+}
+
+fn key_relation_supports_membership_reconcile<Relation, Subject, Scope, Key>(
+  relation: KeyRelation<Relation, Subject, Scope, Key>,
+) -> Bool {
+  key_relation_fiber_supports_membership_reconcile(fiber: relation.fiber_cardinality)
 }
