@@ -58,7 +58,7 @@ name = "cssl_assemble"
 path = "src/bin/cssl_assemble.rs"
 
 # Batch claim runner: resolve one --entry closure once, run many witnesses.
-# Hand-written CI tool (like regen_stage0); reuses the v1-compiler lib, does NOT
+# Hand-written CI tool (like parse_witness); reuses the v1-compiler lib, does NOT
 # go through the generated main.rs / emit stage. Amortizes the per-row full-tree
 # resolve in the v2 node-frontier CI gate's green pass.
 [[bin]]
