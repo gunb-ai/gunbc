@@ -24,9 +24,9 @@ fn bash_fold_unsupported_variant_diagnostic(variant: Symbol) -> Diagnostic {
 
 fn bash_fold_serialize_refused(variant: Symbol) -> Outcome<String> {
   Rejected {
-    diagnostics: Some {
-      diagnostics: [bash_fold_unsupported_variant_diagnostic(variant: variant)]
-    }
+    diagnostics: diagnostics_singleton(
+      d: bash_fold_unsupported_variant_diagnostic(variant: variant)
+    )
   }
 }
 

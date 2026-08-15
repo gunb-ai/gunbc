@@ -25,7 +25,7 @@ fn sql_fold_fold_serialize(
           }
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
-    Violates { diagnostic: d } => Rejected { diagnostics: Some { diagnostics: [d] } }
+    Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 
@@ -34,7 +34,7 @@ fn sql_fold_fold_serialize_operation(op: SqlSchemaOperation) -> Outcome<String> 
     Holds { value: target } =>
       sql_fold_fold_serialize(op: op, target: target)
     Violates { diagnostic: d } =>
-      Rejected { diagnostics: Some { diagnostics: [d] } }
+      Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 

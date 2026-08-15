@@ -59,7 +59,7 @@ data scaffold_with_data_ref: Disposition = Scaffold {
 }
 
 data missing_variant_specimen: Disposition = Scaffold {
-  dissolves_to: Terminal { reason: "phantom-mechanism" },
+  dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "test.fixture.decl_facts_reflection.specimens",
     decl_name: "whole_declaration_anchor",

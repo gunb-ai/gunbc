@@ -61,6 +61,28 @@ fn provider_ready_claim(
   }
 }
 
+fn provider_readiness_evidence_link(
+  fact: RecordedFact<ProviderReadinessObservation>,
+  direction: EvidenceDirection,
+  inference_rule: InferenceRuleId,
+  authority: ExternalAuthority,
+  provenance: EvidenceProvenance,
+  freshness: EvidenceFreshness<ProviderReadinessClaim>,
+  fidelity: EvidenceFidelity<ProviderReadiness>,
+  probe: ReadBackProbe,
+) -> ProviderReadinessEvidenceLink {
+  EvidenceLink {
+    fact: fact,
+    direction: direction,
+    inference_rule: inference_rule,
+    authority: authority,
+    provenance: provenance,
+    freshness: freshness,
+    fidelity: fidelity,
+    probe_independence: probe,
+  }
+}
+
 fn provider_observation_insufficient(
   fact: RecordedFact<ProviderReadinessObservation>,
   claim: ProviderReadinessClaim,

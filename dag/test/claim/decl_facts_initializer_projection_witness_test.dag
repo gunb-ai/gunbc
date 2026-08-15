@@ -10,6 +10,8 @@ data terminal_specimen_qn: String = "test.fixture.decl_facts_reflection.specimen
 data mechanism_single_authority_qn: String = "test.fixture.decl_facts_reflection.specimens.mechanism_single_authority"
 data mechanism_realization_dispatch_qn: String = "test.fixture.decl_facts_reflection.specimens.mechanism_realization_dispatch"
 data missing_variant_specimen_qn: String = "test.fixture.decl_facts_reflection.specimens.missing_variant_specimen"
+
+data structured_application_mismatch_wall_regression_note: String = "The compile-clean fixture uses SingleAuthority at dissolves_to; the pre-wall Terminal-at-ConstructionMechanism specimen is pinned as a permanent compile-refusal regression control in test.claim.structured_application_mismatch_wall_witness (review 52087 §4b dissolution-on-climb)."
 data ambiguous_arm_specimen_qn: String = "test.fixture.decl_facts_reflection.ambiguous_specimen.ambiguous_arm_specimen"
 data ambiguous_b_arm_specimen_qn: String = "test.fixture.decl_facts_reflection.ambiguous_b_specimen.ambiguous_b_arm_specimen"
 data duplicate_shadowed_specimen_qn: String = "test.fixture.decl_facts_reflection_duplicate_qn.shadowed_module.shadowed_specimen"
@@ -145,9 +147,14 @@ test fn decl_facts_reflection_whole_declaration_vs_named_field_field_grain() -> 
   }
 }
 
-test fn decl_facts_reflection_missing_variant_refuses_missing_projection() -> Bool {
+test fn decl_facts_reflection_scaffold_dissolves_to_resolves_single_authority() -> Bool {
   match decl_facts_reflection_field_projection(qn: missing_variant_specimen_qn, field: "dissolves_to") {
-    Present { value: projection } => value_projection_is_missing(node: projection)
+    Present { value: projection } =>
+      value_projection_is_resolved_variant(node: projection)
+        && match resolved_variant_name_optional(node: projection) {
+          Present { value: variant } => variant == "SingleAuthority"
+          Absent => false
+        }
     Absent => false
   }
 }
@@ -219,13 +226,13 @@ test fn decl_facts_reflection_lookup_missing_vs_present_fact_distinct() -> Bool 
     }
 }
 
-test fn decl_facts_reflection_absent_vs_refused_vs_missing_projections_distinct() -> Bool {
+test fn decl_facts_reflection_refused_vs_not_variant_value_projections_distinct() -> Bool {
   match decl_facts_reflection_fact_node(qn: unimported_globally_unique_specimen_qn) {
     Present { value: refused_node } =>
       if data_initializer_is_constructor_resolution_refused_projection(node: refused_node) {
-        match decl_facts_reflection_field_projection(qn: missing_variant_specimen_qn, field: "dissolves_to") {
-          Present { value: missing_projection } =>
-            value_projection_is_missing(node: missing_projection)
+        match decl_facts_reflection_field_projection(qn: scaffold_with_data_ref_qn, field: "dissolves_to") {
+          Present { value: not_variant_projection } =>
+            value_projection_is_not_variant_value(node: not_variant_projection)
               && !data_initializer_is_typechecked_subject_absent_projection(node: refused_node)
           Absent => false
         }

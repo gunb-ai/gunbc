@@ -313,7 +313,7 @@ test fn witness_forged_support_metadata_cannot_satisfy_readiness() -> Bool {
     provider: provider,
     bound: provider_other_evidence_bound,
   )
-  let forged: ProviderReadinessEvidenceLink = EvidenceLink {
+  let forged = provider_readiness_evidence_link(
     fact: provider_live_request_succeeded_fact(
       id: "forged-provider-support-link",
     ),
@@ -333,14 +333,14 @@ test fn witness_forged_support_metadata_cannot_satisfy_readiness() -> Bool {
       boundary: ProviderAuthenticated,
       losses: ["the response was not independently classified"],
     },
-    probe_independence: ReadBackProbe {
+    probe: ReadBackProbe {
       label: "ensure provider then claim success",
       subject: "provider authentication",
       effect_on_subject: ProbeMayEstablish {
         mechanism: "the operation refreshes credentials before reporting",
       },
     },
-  }
+  )
   let readiness = claim_readiness_assessment(
     policy: ClaimReadinessPolicy {
       first_required: required,
