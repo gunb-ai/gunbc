@@ -821,3 +821,26 @@ two-std forks `Set`/`Map`/`Byte`/`Char` → 0) are tracked in
 62 of the 90 clear in the doable-now lane (homonym renames + local consolidations, no Root-A
 dependency); the remaining 28 are the two-std forks, of which only `Char` rides the Root-A emit
 seam.
+
+---
+
+## Findings from the import cut (integration/namespace-cut)
+
+The cut deleted every `import` statement and made the keyword a parse error, which
+exposed the bare cross-module references that had been resolving by
+pool-membership coincidence. Two notes carry what that measured:
+
+- [bare cross-module references: two diagnoses](bare-reference-census-two-diagnoses.md)
+  — the exposed references are **not** one class. A genuine homonym (`Empty`, 2
+  candidates meaning different things) needs qualification; a per-module naming
+  convention (`extdeps_external_authority_anchor`, 551 declarers;
+  `live_tree_disposition`, 1097) makes a bare reference meaningless by
+  construction, and because each declarer holds a *different* value, a
+  coincidental binding yields a well-typed wrong citation rather than a refusal.
+  The note also records why closure width is a corpus problem rather than an
+  algorithm one: 1376 of 3711 modules for a five-line entry, with one name
+  accounting for 296 direct pulls.
+
+- [behaviors recovered from the deleted import tests](import-deletion-recovered-behaviors.md)
+  — the properties worth re-establishing in namespace terms after the tests that
+  asserted import *semantics* were deleted with the mechanism.
