@@ -4,6 +4,7 @@ import std.logic { Bool }
 import std.types { list_length }
 import std.integer { Int }
 import std.measure { bit_width, bit_width_count, byte_size, byte_size_count }
+import extdeps.memory.jedec { ddr4_generation_catalog }
 import extdeps.memory.types {
   DimmBuffering,
   Unbuffered,
@@ -33,8 +34,6 @@ import extdeps.cpu.ampere_altra_memory_controller {
   BoardDownSupportUnestablished,
   BoardProvidesNoRegisterOrBuffer,
   BoardProvidesRegisterOrBuffer,
-  gigabits_to_byte_size,
-  altra_admitted_device_densities_gigabits,
   altra_admits_module_class,
   altra_admitted_device_densities,
   altra_admitted_device_widths,
@@ -112,14 +111,18 @@ test fn w_a_buffered_soldered_topology_is_unestablished_not_withdrawn() -> Bool 
   }
 }
 
-// DENSITY IS DERIVED FROM THE QUOTED GIGABITS, not a hand-computed byte literal. 8 Gb is exactly
-// 2^30 bytes and 16 Gb exactly 2^31, so this pins the conversion factor itself: a wrong factor
-// (bits-vs-bytes, or 10^9-vs-2^30) moves both figures and reds here rather than silently
-// re-denominating a density, which is the unit trap the storage-pricing carriers already record.
-test fn w_device_density_derives_from_the_quoted_gigabit_figure() -> Bool {
-  (byte_size_count(b: gigabits_to_byte_size(gb: 8)) == 1073741824)
-    && (byte_size_count(b: gigabits_to_byte_size(gb: 16)) == 2147483648)
-    && (list_length(items: altra_admitted_device_densities_gigabits) == 2)
+// THE CROSS-AUTHORITY JOIN, and it is a law rather than a restatement. JEDEC JESD79-4 sets the
+// monolithic die density ceiling for DDR4, and no controller may admit a device above it. This
+// asserts the inequality, NOT equality: a controller that topped out below the JEDEC ceiling
+// would be a legitimate part, so pinning the two equal would red on a true fact. Written this way
+// it survives a JEDEC revision raising the ceiling, and reds if this module ever admits a density
+// the generation cannot physically carry.
+test fn w_admitted_densities_respect_the_jedec_monolithic_ceiling() -> Bool {
+  let ceiling = byte_size_count(b: ddr4_generation_catalog.max_monolithic_die_density)
+  fold(altra_admitted_device_densities, init: true, f: fn(acc, d) {
+    acc && (byte_size_count(b: d) <= ceiling)
+  })
+    && byte_size_count(b: altra_admitted_device_densities.last()) == ceiling
 }
 
 // THE PRODUCTION/BRING-UP SPLIT, over the closed coproduct. The engineering-debug qualifier is

@@ -59,26 +59,22 @@ data altra_memory_max_capacity: ByteSize = byte_size(count: 4398046511104)
 // that carrier.
 data altra_admitted_device_widths: List<BitWidth> = [bit_width(count: 4), bit_width(count: 8)]
 
-// DENSITY, CARRIED IN THE UNIT THE SOURCE QUOTES. The datasheet says "8 Gb and 16 Gb" — gigaBITS.
-// The source quantity is therefore the primary row and the byte figure is DERIVED from it, rather
-// than a hand-computed byte literal sitting beside a sentence claiming what it was converted
-// from: a conversion stated in prose is a second representation of an arithmetic the model can
-// perform, and only the derived form stays correct if the quoted density ever changes.
+// DENSITY AS ByteSize, WHICH IS THE CORPUS CONVENTION FOR DRAM DIE DENSITY. The datasheet quotes
+// "8 Gb and 16 Gb" -- gigaBITS -- and an earlier revision of this module made the gigabit figure
+// primary as a List<Int> with a derived byte value, on the reasoning that the source unit should
+// lead. That was wrong for a reason worth recording: extdeps.memory.jedec already carries DRAM
+// die density as ByteSize (JedecDdrGenerationCatalogRow max_monolithic_die_density), so a bare
+// Int gigabit row here was not carrying the source unit faithfully, it was forking the carrier an
+// existing authority had already chosen for this exact quantity.
 //
-// The conversion factor is the JEDEC 2^30-bits-per-Gb convention for DRAM density, which the
-// Ampere citation uses but does not itself state — so it is named here as a convention this
-// module applies, not as a fact the cited authority supplies.
-data altra_admitted_device_densities_gigabits: List<Int> = [8, 16]
-
-data altra_device_density_conversion_basis: NonEmptyStr = "JEDEC DRAM density convention: 1 Gb = 2^30 bits = 134217728 bytes. Applied by this module; not stated by the Ampere citation."
-
-fn gigabits_to_byte_size(gb: Int) -> ByteSize {
-  byte_size(count: gb * 134217728)
-}
+// The quoted unit is not lost by this. It is recorded below as the conversion basis, and the
+// agreement between the two authorities is asserted by execution rather than by comment: see
+// w_admitted_densities_respect_the_jedec_monolithic_ceiling.
+data altra_device_density_conversion_basis: NonEmptyStr = "Datasheet quotes 8 Gb and 16 Gb (gigabits). JEDEC DRAM density convention: 1 Gb = 2^30 bits, so 8 Gb = 2^30 bytes and 16 Gb = 2^31 bytes. Carried as ByteSize to match extdeps.memory.jedec, which is the existing authority for DRAM die density."
 
 data altra_admitted_device_densities: List<ByteSize> = [
-  gigabits_to_byte_size(gb: 8),
-  gigabits_to_byte_size(gb: 16),
+  byte_size(count: 1073741824),
+  byte_size(count: 2147483648),
 ]
 
 // THE ADMITTED MODULE CLASSES, AND THE ONE THAT WAS TAKEN AWAY. All three admitted classes carry
