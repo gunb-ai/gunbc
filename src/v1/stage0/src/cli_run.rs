@@ -15553,8 +15553,12 @@ pub fn prepare_repository_once(
 /// module population is selected from what preparation already resolved and the item registry
 /// is filtered by `ItemInfo.module_name` to the same population.
 pub struct PreparedClaimScope {
-    graph: v1_compiler_compile::ResolvedGraph,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    /// THE IMMUTABLE INTERPRETER INDEXES FOR THIS SCOPE, built ONCE here rather than once per
+    /// claim. `InterpContext::with_runtime_options` walks every module and every item to build
+    /// them, so calling it per claim would rebuild 1,155 scopes' worth of maps 9,573 times —
+    /// the entry-major cost shape reproduced one layer below the compiler, immediately after
+    /// the compiler's own copy of it was deleted.
+    indexes: Rc<v1_interpreter::PreparedScopeIndexes>,
     /// Digest of the ORDERED module identities in this scope. Ordered because the defect being
     /// fixed is last-writer-wins over an unordered flattening: two scopes holding the same
     /// module set in different orders can bind a colliding bare name differently, so a
@@ -15649,15 +15653,19 @@ pub fn claim_scope_for(
         v1_rt::atom_identity_hash(entry_module_path.to_string()),
         |acc, module| v1_rt::hash_combine(acc, v1_rt::atom_identity_hash(module.clone())),
     );
+    let module_count = modules.len();
+    let scoped_graph = v1_compiler_compile::ResolvedGraph {
+        modules: Rc::new(modules.into_iter().collect()),
+        item_registry: Rc::new(item_registry),
+        diagnostics: prepared.graph.diagnostics.clone(),
+        emit_graph_info: prepared.graph.emit_graph_info.clone(),
+    };
     Ok(PreparedClaimScope {
-        module_count: modules.len(),
-        graph: v1_compiler_compile::ResolvedGraph {
-            modules: Rc::new(modules.into_iter().collect()),
-            item_registry: Rc::new(item_registry),
-            diagnostics: prepared.graph.diagnostics.clone(),
-            emit_graph_info: prepared.graph.emit_graph_info.clone(),
-        },
-        source_indices: prepared.source_indices.clone(),
+        indexes: v1_interpreter::InterpContext::build_scope_indexes(
+            &scoped_graph,
+            prepared.source_indices.clone(),
+        ),
+        module_count,
         scope_identity,
     })
 }
@@ -15674,9 +15682,8 @@ pub fn evaluation_frame(
     fixture_store: Option<std::rc::Rc<crate::recorded_fixture::RecordedFixtureStore>>,
     published_mocks: Option<std::rc::Rc<std::collections::HashSet<String>>>,
 ) -> v1_interpreter::InterpContext {
-    v1_interpreter::InterpContext::with_runtime_options(
-        &scope.graph,
-        scope.source_indices.clone(),
+    v1_interpreter::InterpContext::over_scope_indexes(
+        scope.indexes.clone(),
         execution_mode,
         fixture_store,
         published_mocks,
@@ -25324,16 +25331,31 @@ mod prepared_repository_tests {
         // scope holding the SAME pointers as the prepared graph is direct evidence that nothing
         // was parsed, resolved or typechecked again. That cannot be satisfied by a re-resolve
         // that happens to produce an equal module.
+        v1_interpreter::reset_scope_index_construction_count();
         let scope = claim_scope_for(&prepared, "prep.kept").expect("scope for the kept module");
         let prepared_module = prepared.graph.modules[0].clone();
         assert!(
             scope
-                .graph
+                .indexes
                 .modules
                 .iter()
                 .any(|m| Rc::ptr_eq(m, &prepared_module)),
             "the scope must carry the prepared graph's own typed module; a fresh allocation here \
              means scope construction resolved again"
+        );
+
+        // THE SPLIT, ASSERTED AS A COUNT RATHER THAN LEFT TO A PROFILE.
+        //
+        // Building one scope constructs the immutable index set exactly once. Every frame over
+        // that scope must then construct ZERO more: a frame joins shared indexes with fresh
+        // mutable state, and if it rebuilt them instead, this counter would climb with the
+        // number of claims rather than the number of scopes. That is the multiplier the
+        // required floor would otherwise have hidden inside "evaluation" — 9,573 rebuilds of
+        // maps only 1,155 scopes can differ in.
+        let after_scope = v1_interpreter::scope_index_construction_count();
+        assert_eq!(
+            after_scope, 1,
+            "projecting one scope must construct exactly one immutable index set"
         );
 
         // Two frames at different execution modes over one scope. Mode reaches only the
@@ -25342,6 +25364,12 @@ mod prepared_repository_tests {
         let hermetic =
             evaluation_frame(&scope, v1_interpreter::ExecutionMode::Hermetic, None, None);
         let wet = evaluation_frame(&scope, v1_interpreter::ExecutionMode::Wet, None, None);
+        assert_eq!(
+            v1_interpreter::scope_index_construction_count(),
+            after_scope,
+            "a frame must JOIN the scope's indexes, never rebuild them; a climb here is the \
+             per-claim index reconstruction that replaces one multiplier with another"
+        );
         drop(hermetic);
         drop(wet);
 

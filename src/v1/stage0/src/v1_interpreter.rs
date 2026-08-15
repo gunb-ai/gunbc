@@ -1488,7 +1488,19 @@ impl ExecutionMode {
     }
 }
 
-pub struct InterpContext {
+/// THE IMMUTABLE HALF OF AN EVALUATION CONTEXT — built once per distinct scope, shared by
+/// every claim that scope serves.
+///
+/// These indexes are a pure function of the module population: given the same modules they are
+/// the same maps. Building them belongs to preparing a scope, not to running a claim.
+///
+/// The split exists because the obvious reading of "a fresh context per claim, so witnesses
+/// cannot contaminate each other" rebuilds ALL of this per claim. On the required floor that is
+/// 9,573 reconstructions of maps that only 1,155 distinct scopes can possibly differ in — the
+/// entry-major cost shape reproduced one layer below the compiler, after the compiler's own
+/// copy of it was removed. Fresh state per claim is correct; fresh INDEXES per claim is the
+/// same defect wearing the word "fresh".
+pub struct PreparedScopeIndexes {
     pub modules: Rc<im::Vector<Rc<TypedModule>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -1496,6 +1508,33 @@ pub struct InterpContext {
     fn_nodes: HashMap<String, Rc<Node>>,
     ambiguous_bare_function_names: std::collections::HashSet<String>,
     service_ops: HashMap<String, ServiceOp>,
+}
+
+thread_local! {
+    /// How many times the immutable index set has been constructed. The acceptance bar asks
+    /// for `full interpreter index constructions <= distinct prepared scope identities`, and a
+    /// bound nothing counts is a bound nobody can check — this is the counter that makes the
+    /// per-claim rebuild observable instead of inferable from a profile.
+    static SCOPE_INDEX_CONSTRUCTIONS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+pub fn scope_index_construction_count() -> u64 {
+    SCOPE_INDEX_CONSTRUCTIONS.with(|c| c.get())
+}
+
+pub fn reset_scope_index_construction_count() {
+    SCOPE_INDEX_CONSTRUCTIONS.with(|c| c.set(0));
+}
+
+pub struct InterpContext {
+    /// The heavy maps, SHARED across every claim this scope serves. The four `Rc` handles
+    /// below are cloned per frame because cloning a handle is free; these three are behind one
+    /// handle because BUILDING them is not.
+    indexes: Rc<PreparedScopeIndexes>,
+    pub modules: Rc<im::Vector<Rc<TypedModule>>>,
+    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub emit_graph_info: Rc<EmitGraphInfo>,
     pub execution_mode: ExecutionMode,
     pub fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
     data_cache: std::cell::RefCell<HashMap<usize, Value>>,
@@ -1716,6 +1755,22 @@ impl InterpContext {
         fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
         whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
     ) -> Self {
+        Self::over_scope_indexes(
+            Self::build_scope_indexes(graph, source_indices),
+            execution_mode,
+            fixture_store,
+            whole_tree_published_keys,
+        )
+    }
+
+    /// Build the immutable index set for one module population. THE EXPENSIVE HALF: it walks
+    /// every module and every item, so its cost is denominated in the scope, and a caller that
+    /// runs it per claim has re-introduced a multiplier.
+    pub fn build_scope_indexes(
+        graph: &ResolvedGraph,
+        source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    ) -> Rc<PreparedScopeIndexes> {
+        SCOPE_INDEX_CONSTRUCTIONS.with(|c| c.set(c.get() + 1));
         let mut fn_nodes = HashMap::new();
         let mut bare_name_counts = HashMap::<String, usize>::new();
         let mut service_ops = HashMap::new();
@@ -1762,7 +1817,7 @@ impl InterpContext {
             .into_iter()
             .filter_map(|(name, count)| (count > 1).then_some(name))
             .collect();
-        InterpContext {
+        Rc::new(PreparedScopeIndexes {
             modules: graph.modules.clone(),
             item_registry: graph.item_registry.clone(),
             source_indices,
@@ -1770,6 +1825,29 @@ impl InterpContext {
             fn_nodes,
             ambiguous_bare_function_names,
             service_ops,
+        })
+    }
+
+    /// Join shared immutable indexes with FRESH MUTABLE STATE. This is the per-claim
+    /// constructor, and it is cheap by construction: it clones `Rc` handles and allocates empty
+    /// caches. Nothing here walks a module.
+    ///
+    /// Every mutable field below is deliberately fresh rather than shared. Memos, name caches,
+    /// the effect odometer and the deadline arms all carry state from the claim that ran
+    /// before, and sharing them across claims is how one witness's evaluation becomes another
+    /// witness's answer.
+    pub fn over_scope_indexes(
+        indexes: Rc<PreparedScopeIndexes>,
+        execution_mode: ExecutionMode,
+        fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
+        whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
+    ) -> Self {
+        InterpContext {
+            modules: indexes.modules.clone(),
+            item_registry: indexes.item_registry.clone(),
+            source_indices: indexes.source_indices.clone(),
+            emit_graph_info: indexes.emit_graph_info.clone(),
+            indexes,
             execution_mode,
             fixture_store,
             data_cache: std::cell::RefCell::new(HashMap::new()),
@@ -1992,11 +2070,11 @@ impl InterpContext {
     }
 
     fn lookup_fn(&self, name: &str) -> Option<&Rc<Node>> {
-        self.fn_nodes.get(name)
+        self.indexes.fn_nodes.get(name)
     }
 
     pub fn lookup_fn_node(&self, qualified_name: &str) -> Option<Rc<Node>> {
-        self.fn_nodes.get(qualified_name).cloned()
+        self.indexes.fn_nodes.get(qualified_name).cloned()
     }
 
     pub fn resolved_graph(&self) -> ResolvedGraph {
@@ -2023,7 +2101,7 @@ impl InterpContext {
             module_path,
             decl_name: authored_name_at(self.source_indices.clone(), node.clone()),
             bare_name_ambiguous: !name.contains('.')
-                && self.ambiguous_bare_function_names.contains(name),
+                && self.indexes.ambiguous_bare_function_names.contains(name),
         })
     }
 }
@@ -6288,7 +6366,7 @@ fn eval_algebra_method_inner(
 }
 
 pub fn fixture_now_secs(ctx: &InterpContext) -> Result<u64, crate::recorded_fixture::FixtureError> {
-    if ctx.service_ops.contains_key("Clock.UnixSecs") {
+    if ctx.indexes.service_ops.contains_key("Clock.UnixSecs") {
         let val = wet_service_call(ctx, "Clock", "UnixSecs", &[], &Env::empty())
             .map_err(|_| crate::recorded_fixture::FixtureError::ClockUnavailable)?;
         unix_secs_from_clock_value(&val, ctx)
@@ -6306,7 +6384,8 @@ fn wet_service_call(
 ) -> InterpResult<Value> {
     let key = format!("{}.{}", service_name, op_name);
     let (service_node, op_node) =
-        ctx.service_ops
+        ctx.indexes
+            .service_ops
             .get(&key)
             .ok_or_else(|| InterpError::Unimplemented {
                 what: format!("unknown service operation: {}", key),
@@ -6398,7 +6477,7 @@ fn wet_env_var(name: &str) -> Option<String> {
 /// because the split changes this function's return type and every caller's
 /// handling, which is its own change with its own witnesses.
 fn resolve_env_var_token(ctx: &InterpContext, var_name: &str) -> Option<String> {
-    if ctx.service_ops.contains_key("shell.Env.Get") {
+    if ctx.indexes.service_ops.contains_key("shell.Env.Get") {
         let args = [(Some("name".to_string()), Value::Str(var_name.to_string()))];
         match eval_service_call(
             "shell.Env",
@@ -6488,7 +6567,8 @@ fn eval_service_call(
         .set(ctx.effect_dispatch_count.get().wrapping_add(1));
     let key = format!("{}.{}", service_name, op_name);
     let (service_node, op_node) =
-        ctx.service_ops
+        ctx.indexes
+            .service_ops
             .get(&key)
             .ok_or_else(|| InterpError::Unimplemented {
                 what: format!("unknown service operation: {}", key),
@@ -9863,7 +9943,7 @@ fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<V
 }
 
 fn eval_filesystem_read_builtin(path: String, ctx: &InterpContext) -> InterpResult<Value> {
-    if !ctx.service_ops.contains_key("Filesystem.Read") {
+    if !ctx.indexes.service_ops.contains_key("Filesystem.Read") {
         return Err(if ctx.execution_mode.is_hermetic() {
             InterpError::TypeError {
                 msg:
