@@ -8,6 +8,7 @@ import extdeps.cpu.ampere_altra_package {
   ContactMapPubliclyAvailableNotIngested,
   ContactPopulationIncomplete,
   DuplicateContactDesignator,
+  IncompleteDifferentialPolarity,
   PackageContactMapAdmitted,
   PackageContactMapStanding,
   ReferenceBoardCollateralAvailable,
@@ -260,6 +261,7 @@ type DesignIncompleteRefusal
   | UnearnedComponentPresent { designator: NonEmptyStr }
   | PackageContactPopulationIncomplete { expected: Int, resolved: Int }
   | DuplicatePackageContact { designator: NonEmptyStr }
+  | IncompleteDifferentialPolarityPair { pair: NonEmptyStr }
 
 type ManufacturingRefusal
   = FabricatorStackupUnconfirmed { fabricator: NonEmptyStr }
@@ -311,6 +313,12 @@ fn project_contact_map_standing(
       BoardReadiness {
         collateral: [],
         design: [DuplicatePackageContact { designator: d }],
+        manufacturing: [],
+      }
+    IncompleteDifferentialPolarity { pair: p } =>
+      BoardReadiness {
+        collateral: [],
+        design: [IncompleteDifferentialPolarityPair { pair: p }],
         manufacturing: [],
       }
   }

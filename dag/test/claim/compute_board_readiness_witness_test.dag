@@ -17,6 +17,7 @@ import extdeps.ucamco.gerber { gerber_semantic_carriage }
 import extdeps.cpu.ampere_altra_package {
   ContactPopulationIncomplete,
   DuplicateContactDesignator,
+  IncompleteDifferentialPolarity,
   altra_pin_summary_total,
   altra_reference_board_collateral_standing,
   ReferenceBoardCollateralAvailable,
@@ -135,6 +136,15 @@ test fn w_duplicate_designator_refuses_at_correct_count() -> Bool {
     DuplicateContactDesignator { designator: d } => d == "A1"
     _ => false
   }
+}
+
+test fn w_incomplete_differential_polarity_projects_to_design_refusal() -> Bool {
+  let projected = project_contact_map_standing(
+    standing: IncompleteDifferentialPolarity { pair: "DDR4_CLK_0" }
+  )
+  list_count(xs: projected.design) == 1
+    && list_is_empty(xs: projected.collateral)
+    && !board_is_ready(r: projected)
 }
 
 // GAP-0's live claim, CORRECTED TWICE. The Altra pin map is public (Rev A1 datasheet Issue
