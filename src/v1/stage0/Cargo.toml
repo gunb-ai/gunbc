@@ -54,11 +54,6 @@ name = "gunbc"
 path = "src/main.rs"
 
 [[bin]]
-name = "regen_stage0"
-path = "src/bin/regen_stage0.rs"
-# cache-bust-v2-binary-20260526
-
-[[bin]]
 name = "cssl_assemble"
 path = "src/bin/cssl_assemble.rs"
 

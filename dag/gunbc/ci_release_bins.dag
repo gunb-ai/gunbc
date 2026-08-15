@@ -29,7 +29,6 @@ data ci_floor_invoked_bins: List<String> = [
 data witness_declared_release_bins: List<String> = [
   "discover_source_root_ingest",
   "claim_batch",
-  "regen_stage0",
   "interp_recorded_fixture_witness",
   "v1_src_dag_parse",
   "auth_declared_but_unwired_witness",
