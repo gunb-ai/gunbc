@@ -2433,7 +2433,19 @@ type SparkServingOllamaRuntimeMaterialization
   | SparkServingOllamaRuntimeWorkspaceRefused {
       cause: NonEmptyStr
     }
-  | SparkServingOllamaRuntimeInstallRefused {
+  | SparkServingOllamaRuntimeArchiveExtractRefused {
+      cause: NonEmptyStr
+    }
+  | SparkServingOllamaRuntimeUnitWriteRefused {
+      cause: NonEmptyStr
+    }
+  | SparkServingOllamaRuntimeUnitEnableRefused {
+      cause: NonEmptyStr
+    }
+  | SparkServingOllamaRuntimeApiReadyRefused {
+      cause: NonEmptyStr
+    }
+  | SparkServingOllamaRuntimeModelPullRefused {
       cause: NonEmptyStr
     }
 
@@ -2517,7 +2529,7 @@ fn finish_spark_serving_runtime_materialization(
     }
   } else {
     if spark_serving_extract_admitted_archive(archive_path: archive_path) == false {
-      SparkServingOllamaRuntimeInstallRefused {
+      SparkServingOllamaRuntimeArchiveExtractRefused {
         cause: "ollama archive extraction refused" as NonEmptyStr,
       }
     } else {
@@ -2527,22 +2539,22 @@ fn finish_spark_serving_runtime_materialization(
         }
       } else {
         if spark_serving_install_user_unit() == false {
-          SparkServingOllamaRuntimeInstallRefused {
+          SparkServingOllamaRuntimeUnitWriteRefused {
             cause: "systemd user unit write refused" as NonEmptyStr,
           }
         } else {
           if spark_serving_enable_user_unit() == false {
-            SparkServingOllamaRuntimeInstallRefused {
+            SparkServingOllamaRuntimeUnitEnableRefused {
               cause: "systemd user unit enable refused" as NonEmptyStr,
             }
           } else {
             if spark_serving_wait_for_api() == false {
-              SparkServingOllamaRuntimeInstallRefused {
+              SparkServingOllamaRuntimeApiReadyRefused {
                 cause: "ollama api did not become ready" as NonEmptyStr,
               }
             } else {
               if spark_serving_pull_desired_model() == false {
-                SparkServingOllamaRuntimeInstallRefused {
+                SparkServingOllamaRuntimeModelPullRefused {
                   cause: "ollama model pull refused" as NonEmptyStr,
                 }
               } else {

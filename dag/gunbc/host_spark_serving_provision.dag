@@ -13,7 +13,11 @@ import gunbc.package_delivery {
   SparkServingOllamaRuntimeIntegrityRefused,
   SparkServingOllamaRuntimeReceiptWriteRefused,
   SparkServingOllamaRuntimeWorkspaceRefused,
-  SparkServingOllamaRuntimeInstallRefused,
+  SparkServingOllamaRuntimeArchiveExtractRefused,
+  SparkServingOllamaRuntimeUnitWriteRefused,
+  SparkServingOllamaRuntimeUnitEnableRefused,
+  SparkServingOllamaRuntimeApiReadyRefused,
+  SparkServingOllamaRuntimeModelPullRefused,
 }
 import gunbc.spark_serving_install_paths {
   spark_serving_runtime_executable,
@@ -36,7 +40,11 @@ fn materialize_spark_serving_on_local_host_refusal(
     SparkServingOllamaRuntimeIntegrityRefused { cause: c } => c as String
     SparkServingOllamaRuntimeReceiptWriteRefused { cause: c } => c as String
     SparkServingOllamaRuntimeWorkspaceRefused { cause: c } => c as String
-    SparkServingOllamaRuntimeInstallRefused { cause: c } => c as String
+    SparkServingOllamaRuntimeArchiveExtractRefused { cause: c } => c as String
+    SparkServingOllamaRuntimeUnitWriteRefused { cause: c } => c as String
+    SparkServingOllamaRuntimeUnitEnableRefused { cause: c } => c as String
+    SparkServingOllamaRuntimeApiReadyRefused { cause: c } => c as String
+    SparkServingOllamaRuntimeModelPullRefused { cause: c } => c as String
     SparkServingOllamaRuntimeMaterialized { receipt: _ } =>
       "host_spark_serving_provision: unexpected materialized outcome in refusal fold"
   }
