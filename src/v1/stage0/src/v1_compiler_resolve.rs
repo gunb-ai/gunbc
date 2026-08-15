@@ -75,11 +75,6 @@ pub struct DepEdge {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ResolveAccum {
-    pub imports_by_name: Rc<HashMap<String, Rc<Vec<Rc<ResolvedImport>>>>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-}
-
 pub fn map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
     match v1_rt::map_get(&m, key.clone()) {
         Some(_) => true,
@@ -128,33 +123,7 @@ pub fn resolve_modules_with_occurrence_transport(
                 )
             },
         );
-        let resolve_accum = modules.clone().iter().cloned().fold(
-            Rc::new(ResolveAccum {
-                imports_by_name: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<ResolvedImport>>>>(),
-                diagnostics: Rc::new(vec![]),
-            }),
-            |acc: Rc<ResolveAccum>, m: Rc<Node>| {
-                let acc = v1_rt::take_owned(acc);
-                {
-                    let result = resolve_module_imports(
-                        m.clone(),
-                        module_index.clone(),
-                        export_sets.clone(),
-                        source_indices.clone(),
-                    );
-                    Rc::new(ResolveAccum {
-                        imports_by_name: v1_rt::rc_map_insert(
-                            acc.imports_by_name,
-                            authored_name_at(source_indices.clone(), m.clone()),
-                            result.resolved_imports.clone(),
-                        ),
-                        diagnostics: v1_rt::concat(acc.diagnostics, result.diagnostics.clone()),
-                    })
-                }
-            },
-        );
-        let imports_by_name = resolve_accum.imports_by_name.clone();
-        let import_diags = resolve_accum.diagnostics.clone();
+        let import_diags: Rc<Vec<Rc<ErrorNode>>> = Rc::new(vec![]);
         let topo_result = topological_sort(modules.clone(), source_indices.clone());
         let topo_diags = match topo_result.cycle_error.clone() {
             Some(diag) => Rc::new(vec![diag.clone()]),
@@ -188,20 +157,14 @@ pub fn resolve_modules_with_occurrence_transport(
                             &sorted_order_map,
                             authored_name_at(source_indices.clone(), m.clone()),
                         ) {
-                            Some(order) => match v1_rt::map_get(
-                                &imports_by_name,
-                                authored_name_at(source_indices.clone(), m.clone()),
-                            ) {
-                                Some(imps) => Rc::new(vec![Rc::new(ResolvedModule {
-                                    module: m.clone(),
-                                    resolved_imports: imps.clone(),
-                                    dep_order: order.clone(),
-                                    occurrence_transport: module_occurrence_input_transport(
-                                        input.clone(),
-                                    ),
-                                })]),
-                                None => Rc::new(vec![]),
-                            },
+                            Some(order) => Rc::new(vec![Rc::new(ResolvedModule {
+                                module: m.clone(),
+                                resolved_imports: Rc::new(vec![]),
+                                dep_order: order.clone(),
+                                occurrence_transport: module_occurrence_input_transport(
+                                    input.clone(),
+                                ),
+                            })]),
                             None => Rc::new(vec![]),
                         }
                     })
@@ -268,160 +231,6 @@ pub fn find_module(module_index: Rc<HashMap<String, Rc<Node>>>, path: String) ->
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ModuleResolveResult {
-    pub resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-}
-
-pub fn resolve_module_imports(
-    module: Rc<Node>,
-    module_index: Rc<HashMap<String, Rc<Node>>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<ModuleResolveResult> {
-    {
-        let results = Rc::new({
-            let mut __result = Vec::new();
-            for imp in module_imports(module.clone()).iter().cloned() {
-                __result.push(resolve_import(
-                    imp.clone(),
-                    module_index.clone(),
-                    authored_name_at(source_indices.clone(), module.clone()),
-                    export_sets.clone(),
-                    source_indices.clone(),
-                ));
-            }
-            __result
-        });
-        let resolved = Rc::new({
-            let mut __result = Vec::new();
-            for r in Rc::new({
-                let mut __result = Vec::new();
-                for r in results.clone().iter().cloned() {
-                    if ((r.resolved.clone().target_module.clone() != None)
-                        && ((r.diagnostics.clone().len() as i64) == 0))
-                    {
-                        __result.push(r);
-                    }
-                }
-                __result
-            })
-            .iter()
-            .cloned()
-            {
-                __result.push(r.resolved.clone());
-            }
-            __result
-        });
-        let diags = Rc::new({
-            let mut __result = Vec::new();
-            for r in results.clone().iter().cloned() {
-                __result.extend((*r.diagnostics.clone()).iter().cloned());
-            }
-            __result
-        });
-        Rc::new(ModuleResolveResult {
-            resolved_imports: resolved.clone(),
-            diagnostics: diags.clone(),
-        })
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ImportResolveResult {
-    pub resolved: Rc<ResolvedImport>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-}
-
-pub fn resolve_import(
-    import: Rc<Node>,
-    module_index: Rc<HashMap<String, Rc<Node>>>,
-    importing_module: String,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<ImportResolveResult> {
-    {
-        let import_path = authored_name_at(source_indices.clone(), import.clone());
-        let target = find_module(module_index.clone(), import_path.clone());
-        match target.clone() {
-            None => {
-                let diag = make_error_node(
-                    Rc::new(CompilerDiagnostic::UnresolvedImport {
-                        module_path: import_path.clone(),
-                        importing_module: importing_module.clone(),
-                        span: import.span.clone(),
-                    }),
-                    importing_module.clone(),
-                );
-                Rc::new(ImportResolveResult {
-                    resolved: Rc::new(ResolvedImport {
-                        module_path: import_path.clone(),
-                        is_all: import_is_all(import.clone()),
-                        specific_names: import_specific_names_at(
-                            import.clone(),
-                            source_indices.clone(),
-                        ),
-                        target_module: None,
-                    }),
-                    diagnostics: Rc::new(vec![diag.clone()]),
-                })
-            }
-            Some(target_mod) => {
-                let exported_set = match v1_rt::map_get(&export_sets, import_path.clone()) {
-                    Some(set) => set.clone(),
-                    None => v1_rt::rc_empty_map::<String, bool>(),
-                };
-                let name_diags = if import_is_all(import.clone()) {
-                    Rc::new(vec![])
-                } else {
-                    Rc::new({
-                        let mut __result = Vec::new();
-                        for child in Rc::new({
-                            let mut __result = Vec::new();
-                            for child in import.children.clone().iter().cloned() {
-                                if (v1_rt::map_has(
-                                    &exported_set,
-                                    authored_name_at(source_indices.clone(), child.clone()),
-                                ) == false)
-                                {
-                                    __result.push(child);
-                                }
-                            }
-                            __result
-                        })
-                        .iter()
-                        .cloned()
-                        {
-                            __result.push(make_error_node(
-                                Rc::new(CompilerDiagnostic::MissingExport {
-                                    name: authored_name_at(source_indices.clone(), child.clone()),
-                                    module_path: import_path.clone(),
-                                    importing_module: importing_module.clone(),
-                                    span: child.span.clone(),
-                                }),
-                                importing_module.clone(),
-                            ));
-                        }
-                        __result
-                    })
-                };
-                Rc::new(ImportResolveResult {
-                    resolved: Rc::new(ResolvedImport {
-                        module_path: import_path.clone(),
-                        is_all: import_is_all(import.clone()),
-                        specific_names: import_specific_names_at(
-                            import.clone(),
-                            source_indices.clone(),
-                        ),
-                        target_module: Some(target_mod.clone()),
-                    }),
-                    diagnostics: name_diags.clone(),
-                })
-            }
-        }
-    }
-}
-
 pub fn get_exported_names(
     module: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -445,26 +254,8 @@ pub fn get_exported_names(
             }
             __result
         });
-        let imported_names = Rc::new({
-            let mut __result = Vec::new();
-            for imp in module_imports(module.clone()).iter().cloned() {
-                __result.extend(
-                    (*if import_is_all(imp.clone()) {
-                        Rc::new(vec![])
-                    } else {
-                        import_specific_names_at(imp.clone(), source_indices.clone())
-                    })
-                    .iter()
-                    .cloned(),
-                );
-            }
-            __result
-        });
         v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(item_names.clone(), variant_names.clone()),
-                imported_names.clone(),
-            ),
+            v1_rt::concat(item_names.clone(), variant_names.clone()),
             Rc::new(v1_rt::map_keys(&kernel_type_set())),
         )
     }
