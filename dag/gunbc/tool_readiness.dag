@@ -1,7 +1,7 @@
 module gunbc.tool_readiness
 
 import std.types { Int, List, NonEmptyStr, String }
-import std.key_relation { KeyRelation, key_relation_global }
+import std.key_relation { KeyRelation, GlobalKeyScope, key_relation_global }
 import std.integer { NonNegativeInt }
 import std.decl_ref { DeclarationRef }
 import extdeps.tools { CliTool }
@@ -78,7 +78,7 @@ fn tool_pin_ownership(pin: Pin<CliTool>) -> Ownership? {
   Present { value: Ensured }
 }
 
-data cli_tool_pin_membership_key_relation: KeyRelation<CliToolPinMembershipKeyRelation, Pin<CliTool>, NonEmptyStr> = key_relation_global(
+data cli_tool_pin_membership_key_relation: KeyRelation<CliToolPinMembershipKeyRelation, Pin<CliTool>, GlobalKeyScope, NonEmptyStr> = key_relation_global(
   key_of: cli_tool_pin_key_of,
   key_eq: (a, b) => a == b,
 )

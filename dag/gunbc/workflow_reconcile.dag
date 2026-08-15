@@ -1,7 +1,7 @@
 module gunbc.workflow_reconcile
 
 import std.types { String, Bool, Int, List }
-import std.key_relation { KeyRelation, key_relation_global }
+import std.key_relation { KeyRelation, GlobalKeyScope, key_relation_global }
 import std.reducible { ReduceVerdict, Reduced, Unknown }
 import std.workflow_recursive {
   VerdictTree,
@@ -265,7 +265,7 @@ fn workflow_fact_member_key_of(member: WorkflowFactMember) -> WorkflowFactKey {
   member.fact.key
 }
 
-data workflow_fact_membership_key_relation: KeyRelation<WorkflowFactMembershipKeyRelation, WorkflowFactMember, WorkflowFactKey> = key_relation_global(
+data workflow_fact_membership_key_relation: KeyRelation<WorkflowFactMembershipKeyRelation, WorkflowFactMember, GlobalKeyScope, WorkflowFactKey> = key_relation_global(
   key_of: workflow_fact_member_key_of,
   key_eq: workflow_fact_key_equal,
 )
