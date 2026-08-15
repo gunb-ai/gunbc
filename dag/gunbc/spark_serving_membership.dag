@@ -1,6 +1,7 @@
 module gunbc.spark_serving_membership
 
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.content_hash { content_hash_atom, serialize_content_hash }
 import product.placement_supply { HostIdentity }
 import gunbc.ownership { Ownership, Owned, Ensured }
@@ -34,13 +35,34 @@ type SparkServingPhase1TransportGap
   | SparkServingCrossStepRemoteContextGap
   | SparkServingSystemdUnitCompositionGap
 
-data spark_serving_remote_file_write_transport_gap_note: String = "CONDITION 1 — unit file write: spark_serving_user_unit_contents is modeled DATA; delivery MUST be a file-content effect with bytes on stdin (receipt-write precedent), never unit text composed into a remote command string. Typed gap: SparkServingRemoteFileWriteTransportGap in spark_serving_phase1_transport_gaps."
+data spark_serving_remote_file_write_transport_gap_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: SparkServingRemoteFileWriteTransportGap — unit bytes are modeled DATA in spark_serving_user_unit_file_write_intent but no typed FleetSsh stdin-file-bytes transport is wired. DISSOLVES WHEN gunbc.typed_remote_file_write (or equivalent sole_constructor write-bytes carrier) seals path+content and realize_provision_spark_serving routes unit delivery through it — never unit text composed into a remote command string.")
 
-data spark_serving_generate_acceptance_transport_gap_note: String = "CONDITION 2 — acceptance probe: POST /api/generate with JSON body MUST use a typed HTTP client or modeled service op, NOT shell_quote on JSON for curl argv. Typed gap: SparkServingGenerateAcceptanceTransportGap in spark_serving_phase1_transport_gaps."
+data spark_serving_generate_acceptance_transport_gap_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: SparkServingGenerateAcceptanceTransportGap — POST /api/generate acceptance requires a typed HTTP client or modeled service op with parsed JSON response. DISSOLVES WHEN completion observation reads response/model identity through that typed client inside the same apply — NOT shell_quote on JSON for curl argv.")
 
-data spark_serving_remote_operation_context_note: String = "CONDITION 3 — cross-invocation state: download, verify, and extract are separate typed argv operations with NO shared shell state. Staging paths are modeled values in SparkServingRemoteOperationContext carried across steps; a step whose predecessor side effect is absent MUST fail closed via spark_serving_admit_* helpers. Typed gap: SparkServingCrossStepRemoteContextGap in spark_serving_phase1_transport_gaps."
+data spark_serving_cross_step_remote_context_gap_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: SparkServingCrossStepRemoteContextGap — download, verify, and extract are separate typed argv operations with no shared shell state. DISSOLVES WHEN each step consumes SparkServingRemoteOperationContext paths as typed argv parameters and spark_serving_admit_* refusals gate predecessor absence on the fleet-converge apply path.")
 
-data spark_serving_systemd_unit_composition_gap_note: String = "CONDITION 4 — unit syntax composition: spark_serving_user_unit_contents hand-joins systemd INI sections as a string literal (medium-as-string). DISSOLVE-ON: modeled systemd-user-unit grammar rows emit unit bytes from typed fields, same pattern as bash grammar rows. Typed gap: SparkServingSystemdUnitCompositionGap in spark_serving_phase1_transport_gaps."
+data spark_serving_systemd_unit_composition_gap_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: SparkServingSystemdUnitCompositionGap — spark_serving_user_unit_contents hand-joins systemd INI sections as a string literal (medium-as-string; precedent: host_hygiene_reap_service_unit_body). DISSOLVES WHEN a typed systemd user-unit model in extdeps.systemd derives unit bytes from typed fields instead of join([\"[Unit]\\n\", ...]).")
+
+data spark_serving_remote_file_write_transport_gap_note: String = "CONDITION 1 — typed gap SparkServingRemoteFileWriteTransportGap; machine trigger: spark_serving_remote_file_write_transport_gap_dissolution_trigger."
+
+data spark_serving_generate_acceptance_transport_gap_note: String = "CONDITION 2 — typed gap SparkServingGenerateAcceptanceTransportGap; machine trigger: spark_serving_generate_acceptance_transport_gap_dissolution_trigger."
+
+data spark_serving_remote_operation_context_note: String = "CONDITION 3 — typed gap SparkServingCrossStepRemoteContextGap; machine trigger: spark_serving_cross_step_remote_context_gap_dissolution_trigger."
+
+data spark_serving_systemd_unit_composition_gap_note: String = "CONDITION 4 — typed gap SparkServingSystemdUnitCompositionGap; machine trigger: spark_serving_systemd_unit_composition_gap_dissolution_trigger."
+
+fn spark_serving_phase1_gap_dissolution_trigger(gap: SparkServingPhase1TransportGap) -> DissolutionCondition {
+  match gap {
+    SparkServingRemoteFileWriteTransportGap =>
+      spark_serving_remote_file_write_transport_gap_dissolution_trigger
+    SparkServingGenerateAcceptanceTransportGap =>
+      spark_serving_generate_acceptance_transport_gap_dissolution_trigger
+    SparkServingCrossStepRemoteContextGap =>
+      spark_serving_cross_step_remote_context_gap_dissolution_trigger
+    SparkServingSystemdUnitCompositionGap =>
+      spark_serving_systemd_unit_composition_gap_dissolution_trigger
+  }
+}
 
 fn spark_serving_phase1_transport_gaps() -> List<SparkServingPhase1TransportGap> {
   [

@@ -29,6 +29,7 @@ import gunbc.spark_serving_release {
   RuntimeArtifactIdentity,
   spark_serving_release_identity,
 }
+import std.dissolution { dissolution_description }
 import gunbc.spark_serving_desired {
   spark_serving_desired_release_admission,
   SparkServingDesiredAdmitted,
@@ -61,6 +62,7 @@ import gunbc.spark_serving_membership {
   spark_serving_user_unit_file_write_intent,
   spark_serving_phase1_transport_gaps,
   spark_serving_phase1_transport_gap_count,
+  spark_serving_phase1_gap_dissolution_trigger,
   SparkServingPhase1TransportGap,
   SparkServingRemoteFileWriteTransportGap,
   SparkServingGenerateAcceptanceTransportGap,
@@ -165,6 +167,20 @@ test fn w_spark_serving_phase1_transport_gaps_enrolled() -> Bool {
       spark_serving_phase1_transport_gaps(),
       gap => gap == SparkServingSystemdUnitCompositionGap,
     )
+}
+
+test fn w_spark_serving_phase1_gap_dissolution_triggers_are_typed() -> Bool {
+  fold(
+    spark_serving_phase1_transport_gaps(),
+    init: true,
+    f: (acc, gap) =>
+      acc
+        && string_length(
+          s: dissolution_description(
+            condition: spark_serving_phase1_gap_dissolution_trigger(gap: gap),
+          ),
+        ) > 0,
+  )
 }
 
 test fn w_spark_serving_desired_release_admits_for_admission_backed_witnesses() -> Bool {
