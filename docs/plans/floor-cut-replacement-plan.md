@@ -15,7 +15,11 @@ The `.github/workflows/*.yml` files are projections; the cut population is the *
 
 Eight commits on the branch (`cb9277a4fe..c741d64204`): affected-set selection deleted end to end — model, plan, receipts, workflow jobs, the seed paths in `src/v1/stage0/src/cli_run.rs` + `src/v1/stage0/src/bin/claim_executor.rs`, `src/v1/stage0/src/bin/selection_control_skip_witness.rs` — with the three workflow ymls regenerated. Net −6,397/+310 across 61 files.
 
-## Step 1 — the wipe (the next commit)
+## Step 1 — the wipe — LANDED and ACCEPTED (2026-08-15)
+
+Receipt: `3a6398276f` (the wipe commit −12,367; branch cumulative −18,716 across 105 files); corpus compiles clean of wipe-induced errors; regen ran, `.gitattributes` shrank; cutover-PR CI stops by construction (no workflow file on the merge ref). Operator accepted at the boundary. One deviation from the list below, since ruled: `ci_workflow.dag`/`ci_spec.dag` initially survived as gutted GHA step vocabulary because `fleet_converge_workflow` imports ten step constructors and five timeout rows from them — ruled at the boundary: re-home those into a fleet-owned module, repoint `fleet_converge_workflow`, delete the remnants; CI machinery reduces to the single emission of step 3 item 1.
+
+The wipe as specified:
 
 Delete entirely:
 
@@ -50,14 +54,15 @@ Known-certain from the sweep; delete as reachability confirms:
 
 The orphaned obligations, from the wipe's rung-drop declaration. Nothing returns unagreed — and a re-add is **not** a restore-from-quarry: each returning obligation gets the same sequence applied recursively (operator ruling, 2026-08-15: "they all have a lot of cruft — the same sequence has to be followed recursively"). Per re-add: state the obligation from first principles, design the minimal job that discharges it, mine the quarry as oracle only, and expect the old job's structure to die in the re-derivation. Two known cruft specimens illustrate why: the old build job's 19-binary roster is mostly floor/falsifier bins this cut deletes, and its `CARGO_BUILD_JOBS=1`-then-unset-`RUSTC_WRAPPER` retry arm is the absorbing fallback DESIGN's srvN build-cache thread already names as masking the sccache deficit. Neither survives a first-principles re-derivation. The queue:
 
-1. build + `claim_executor --verify-build-artifacts` (prerequisite for everything else)
-2. the `run_required_floor` one-job witness corpus (the new floor; port from quarry `b19a3e2942`)
+1. **APPROVED (operator, 2026-08-15), spec verbatim: "a single github actions emission into our own binary - that then runs all test witnesses in the repo via a single fold."** One emitted workflow, one job — checkout · toolchain · build only the bins the fold needs · invoke the binary once; inside, `run_required_floor` as one fold over the whole tree-wide witness roster, SelectionOff — no plans, batches, coordinator, or selection. The emission authority is built fresh and minimal (never grown inside `ci_spec`/`ci_workflow`); the quarry's one-job emit (`b19a3e2942`) is the oracle; the `run_required_floor` stack (`prepare_repository_once` / `PreparedClaimScope` / `evaluation_frame` + interpreter-side `PreparedScopeIndexes` support) ports surgically — never a merge of the quarry branch. Subsumes the previously listed build and witness-corpus items. Boundary: land, execute on a real push, present wall time + witness count + the red/green census (reds are boundary data, never silently pre-fixed).
 3. regen self-host fixed point (the modules `regen_stage0.rs`, `regen_floor_skip_witness.rs`, `dag/tools/regen_verify_gate.dag`, `regen_verify_transport.dag` survive throughout; their **job** returns here)
 4. generated-artifact drift gates
 5. the seven effect gates: compile-clean · generated-artifact drift · emit-host · extdeps citation · extdeps placement · prose-row · cheap-claim pool
 6. rust fmt gate
 7. heal — proposed: reconsider whether the new minimal CI needs it before re-adding
 8. falsifier cadence — proposed: never returns (DESIGN already records it measuring a mechanism nothing consumes)
+
+Observed at the wipe boundary (identity-grain, 2026-08-15), beyond the predicted queue: (a) with the drift gate gone, `.gitattributes` and the surviving generated artifacts can drift **silently** until item 4 returns; (b) `tools.merge_admission_gate` reads a receipt the floor run used to stamp — merge admission has **no producer** until re-added; (c) the falsifier rows carried the only unselected whole-corpus cold control; (d) fmt exists only as the bypassable opt-in pre-push hook. The full ledger lives in the lane's boundary report and in `commit_workflow.dag`'s gate roster, retained deliberately — it IS the ledger.
 
 ## Contested / do-not-delete (sweep-verified non-floor consumers)
 
