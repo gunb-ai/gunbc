@@ -2933,10 +2933,10 @@ pub fn parse_module(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Module
                 ),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: Some(Rc::new(parse_error(
+                err: Some(parse_error(
                     "the import statement is deleted; name the container instead (a cross-module reference is written container.member, and that reference IS the dependency edge)".to_string(),
                     token_span(token_stream_first(tokens.clone())),
-                ))),
+                )),
             });
         }
         let imports: Rc<Vec<Rc<Node>>> = Rc::new(vec![]);
