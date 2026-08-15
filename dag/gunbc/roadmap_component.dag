@@ -892,6 +892,82 @@ fn dispatch_expand_chain_expr() -> TsExpr {
       right: ts_binop(left: ts_ident(name: "band"), op: "===", right: ts_lit_str(value: k))))
 }
 
+data dispatch_wire_reason_fields_note: String = "THE CLIENT READ TWO WIRE FIELDS WHILE THE SERVER SENT SEVEN, so five of the six loud dispatch variants delivered a located cause that the page then reported as absent. The old derivation was `j.step ? j.step + ': ' + j.detail : j.reason || ''`, which means a payload carrying `detail` WITHOUT `step` fell into the reason branch and evaluated empty — and the loud fallback beside it then printed 'belt fault — no located reason on the wire', asserting the wire was silent about a refusal it had in fact described. That is a fabricated claim about the evidence rather than a missing message, which is why it outranks a merely unhelpful blank.\\n\\nWHICH VARIANTS WERE AFFECTED, from belt_dispatch_result_json: DispatchAuthorityRefused sends detail alone; DispatchStaleSession sends session and detail; DispatchRevisionDrifted sends desired and local; DispatchRevisionUnobserved sends cause; DispatchSessionMultiplicityConflict sends sessions and session_count. Only DispatchSpawnFailed carries step, which is exactly why it was the single loud variant whose cause ever appeared and why the defect stayed invisible — the one path anyone exercised deliberately worked.\\n\\nFIRST NON-EMPTY WINS, IN DECLARED ORDER, and the rows are ordered most-specific first so a variant carrying two fields reports the one that identifies it. A row may name a SECOND key because one refusal is irreducibly a pair: a drifted revision is the relation between desired and local, and reporting either alone tells the operator a revision is wrong without saying which two disagree. also_key is empty for the ordinary single-field rows.\\n\\nWHY A FOLD OVER ROWS RATHER THAN A LONGER CONDITIONAL. The failure was a hand-maintained field list falling behind a hand-maintained emitter, so a second hand-list spelled more carefully would be the same defect with a longer runway. The rows are one authority the emitted program folds over, and the witness joins them against belt_dispatch_result_exemplars at identity grain, so a newly added loud variant whose payload no row reads goes red rather than silently printing that the wire said nothing."
+
+type DispatchWireReasonField {
+  key: String,
+  prefix: String,
+  also_key: String,
+  also_prefix: String,
+}
+
+fn dispatch_wire_reason_fields() -> List<DispatchWireReasonField> {
+  [
+    DispatchWireReasonField { key: "detail", prefix: "", also_key: "", also_prefix: "" },
+    DispatchWireReasonField { key: "cause", prefix: "", also_key: "", also_prefix: "" },
+    DispatchWireReasonField {
+      key: "desired",
+      prefix: "desired ",
+      also_key: "local",
+      also_prefix: " · local ",
+    },
+    DispatchWireReasonField {
+      key: "sessions",
+      prefix: "sessions ",
+      also_key: "",
+      also_prefix: "",
+    },
+    DispatchWireReasonField { key: "reason", prefix: "", also_key: "", also_prefix: "" },
+  ]
+}
+
+fn dispatch_reason_field_value_expr(row: DispatchWireReasonField) -> TsExpr {
+  if row.also_key == "" {
+    ts_binop(
+      left: ts_lit_str(value: row.prefix),
+      op: "+",
+      right: js_j_member(name: row.key),
+    )
+  } else {
+    ts_binop(
+      left: ts_binop(
+        left: ts_binop(
+          left: ts_lit_str(value: row.prefix),
+          op: "+",
+          right: js_j_member(name: row.key),
+        ),
+        op: "+",
+        right: ts_lit_str(value: row.also_prefix),
+      ),
+      op: "+",
+      right: ts_binop(
+        left: js_j_member(name: row.also_key),
+        op: "||",
+        right: ts_lit_str(value: ""),
+      ),
+    )
+  }
+}
+
+fn dispatch_reason_recovery_block() -> TsStmt {
+  ts_block(stmts: map(dispatch_wire_reason_fields(), row =>
+    ts_if(
+      cond: ts_binop(
+        left: ts_prefix(op: "!", expr: ts_ident(name: "why")),
+        op: "&&",
+        right: js_j_member(name: row.key),
+      ),
+      then: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_ident(name: "why"),
+          op: "=",
+          right: dispatch_reason_field_value_expr(row: row),
+        )),
+      ]),
+      else_stmt: none,
+    )))
+}
+
 fn dispatch_terminal_apply_body() -> TsStmt {
   ts_block(stmts: [
     ts_const(name: "s", value: ts_binop(left: js_j_status(), op: "||", right: ts_lit_str(value: ""))),
@@ -938,16 +1014,16 @@ fn dispatch_terminal_apply_body() -> TsStmt {
       ]),
       else_stmt: none,
     ),
-    ts_const(name: "d", value: ts_binop(left: js_j_member(name: "detail"), op: "||", right: ts_lit_str(value: ""))),
-    ts_const(name: "why", value: ts_cond(
+    ts_let(name: "why", value: ts_cond(
       test: js_j_member(name: "step"),
       consequent: ts_binop(
         left: ts_binop(left: js_j_member(name: "step"), op: "+", right: ts_lit_str(value: ": ")),
         op: "+",
-        right: ts_ident(name: "d"),
+        right: ts_binop(left: js_j_member(name: "detail"), op: "||", right: ts_lit_str(value: "")),
       ),
-      alternate: ts_binop(left: js_j_member(name: "reason"), op: "||", right: ts_lit_str(value: "")),
+      alternate: ts_lit_str(value: ""),
     )),
+    dispatch_reason_recovery_block(),
     ts_const(name: "base", value: ts_cond(
       test: ts_ident(name: "p"),
       consequent: ts_binop(

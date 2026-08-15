@@ -9,13 +9,19 @@ import gunbc.roadmap_component {
   dispatch_class_requested, dispatch_class_ok, dispatch_class_refused,
   dispatch_button_component, dispatch_client_js_source,
   dispatch_caption_set,
+  DispatchWireReasonField,
+  dispatch_wire_reason_fields,
 }
 import gunbc.roadmap_belt_actuate {
   belt_dispatch_all_status_labels,
   belt_dispatch_label_band_key,
   belt_dispatch_disabled_status_label,
   belt_dispatch_provider_label,
+  belt_dispatch_result_exemplars,
+  belt_dispatch_result_json_value,
+  belt_dispatch_status_label,
 }
+import extdeps.languages.json.emit { serialize_json }
 import gunbc.roadmap_style { roadmap_css }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -102,4 +108,46 @@ test fn witness_js_and_css_share_class_authority() -> Bool {
     && string_contains(s: css, pattern: join([".dispatch-btn.", dispatch_class_ok], ""))
     && string_contains(s: css, pattern: join([".dispatch-btn.", dispatch_class_refused], ""))
     && string_contains(s: css, pattern: join([".dispatch-btn.", dispatch_class_requested], ""))
+}
+
+data dispatch_wire_reason_join_note: String = "COMPLETENESS AS AN IDENTITY JOIN, not a count. The defect this closes was a client that read two wire fields while the emitter sent seven, so five loud variants delivered a located cause the page reported as absent. Asserting 'the client reads five fields' would have passed just as happily against the wrong five, and asserting a count would pass against any five.\\n\\nSo the join runs over belt_dispatch_result_exemplars — the roster the wire contract already pins, one exemplar per BeltDispatchResult variant — selects the loud band, serializes each payload through the real emitter, and requires that every one of them carries either step (the DispatchSpawnFailed shape the client already handled) or a key some dispatch_wire_reason_fields row actually reads. A new loud variant emitting a field no row names goes red HERE, at the variant that introduced it, rather than on the operator's screen as a claim that the wire said nothing."
+
+fn dispatch_reason_field_keys() -> List<String> {
+  fold(dispatch_wire_reason_fields(), init: [], f: (acc, row) =>
+    if row.also_key == "" {
+      concat(acc, [row.key])
+    } else {
+      concat(acc, [row.key, row.also_key])
+    })
+}
+
+fn json_carries_readable_reason(payload: String) -> Bool {
+  string_contains(s: payload, pattern: "\"step\"")
+    || fold(dispatch_reason_field_keys(), init: false, f: (acc, k) =>
+         acc || string_contains(s: payload, pattern: join(["\"", k, "\""], "")))
+}
+
+fn loud_dispatch_exemplars() -> List<String> {
+  fold(belt_dispatch_result_exemplars(), init: [], f: (acc, r) =>
+    if belt_dispatch_label_band_key(wire_label: belt_dispatch_status_label(r: r)) == "loud" {
+      concat(acc, [serialize_json(v: belt_dispatch_result_json_value(r: r))])
+    } else {
+      acc
+    })
+}
+
+test fn witness_every_loud_dispatch_payload_carries_a_readable_reason() -> Bool {
+  let louds = loud_dispatch_exemplars()
+  count(louds) >= 6
+    && all(louds, p => json_carries_readable_reason(payload: p))
+}
+
+data dispatch_reason_client_reads_rows_note: String = "The emitted program is the consumer that matters, so the rows are asserted against the BYTES the browser receives rather than against the row list itself — a fold that produced no statements would satisfy a check on its own input. The negative control pins the exact defective derivation: `j.step ? j.step + ': ' + d : j.reason || ''` routed every step-less payload into the reason branch, and its absence is what makes the recovery reachable."
+
+test fn witness_dispatch_client_reads_every_declared_reason_field() -> Bool {
+  let js = dispatch_client_js_source()
+  all(dispatch_reason_field_keys(), k => string_contains(s: js, pattern: join(["j.", k], "")))
+    && !string_contains(s: js, pattern: "j.step + ': ' + d : j.reason")
+    && string_contains(s: js, pattern: "desired ")
+    && string_contains(s: js, pattern: " · local ")
 }
