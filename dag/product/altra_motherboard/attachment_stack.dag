@@ -219,7 +219,7 @@ data board_land_pattern_standing: AttachmentLayerStanding = AttachmentLayerStand
     DesignationFactUnresolved { reason: r, next_authority_to_consult: next } =>
       match next {
         Present { value: a } =>
-          if a.uri.locator == ampere_customer_reference_boards_authority.uri.locator {
+          if a == ampere_customer_reference_boards_authority {
             FactAccessGated {
               subject: "Altra PCB Layout Guidelines — the board-side reference layout, named by the public platform specification sections 4.2.2 and 4.3.2 as the authority for it",
               access_route: ampere_customer_reference_boards_authority,
