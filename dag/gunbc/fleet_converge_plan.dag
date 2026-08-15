@@ -1,6 +1,7 @@
 module gunbc.fleet_converge_plan
 
 import std.types { String, List, Bool, Int, NonEmptyStr }
+import std.key_relation { KeyRelation, KeyExactlyOne, GlobalKeyScope, key_relation_global }
 import std.measure { byte_size_count }
 import std.algebra { trim }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
@@ -187,6 +188,12 @@ fn timer_member_ownership(m: TimerRetirementMember) -> Ownership? {
   Present { value: Owned }
 }
 
+data timer_retirement_membership_key_relation: KeyRelation<TimerRetirementMember, GlobalKeyScope, NonEmptyStr> = key_relation_global(
+  key_of: timer_member_key,
+  key_eq: timer_member_key_eq,
+  multiplicity: KeyExactlyOne,
+)
+
 fn timer_member_unit_path(unit_name: NonEmptyStr) -> NonEmptyStr {
   concat("/etc/systemd/system/", unit_name as String) as NonEmptyStr
 }
@@ -209,8 +216,7 @@ fn timer_retirement_plan(observed: List<TimerRetirementMember>) -> MembershipPla
   membership_reconcile(
     desired: timer_retirement_desired(),
     observed: observed,
-    key_of: timer_member_key,
-    key_eq: timer_member_key_eq,
+    relation: timer_retirement_membership_key_relation,
     value_eq: timer_member_value_eq,
     ownership_of: timer_member_ownership,
   )

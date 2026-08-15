@@ -1,6 +1,7 @@
 module gunbc.workflow_reconcile
 
 import std.types { String, Bool, Int, List }
+import std.key_relation { KeyExactlyOne, key_relation_global }
 import std.reducible { ReduceVerdict, Reduced, Unknown }
 import std.workflow_recursive {
   VerdictTree,
@@ -385,8 +386,11 @@ fn workflow_fact_reconcile(
   membership_reconcile(
     desired: workflow_fact_forest_members(forest: desired),
     observed: workflow_fact_forest_members(forest: observed),
-    key_of: fn(member) { member.fact.key },
-    key_eq: workflow_fact_key_equal,
+    relation: key_relation_global(
+      key_of: fn(member) { member.fact.key },
+      key_eq: workflow_fact_key_equal,
+      multiplicity: KeyExactlyOne,
+    ),
     value_eq: workflow_fact_member_value_equal,
     ownership_of: workflow_fact_member_ownership,
   )

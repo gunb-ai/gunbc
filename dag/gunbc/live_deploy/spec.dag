@@ -22,7 +22,8 @@ import extdeps.tailscale.serve {
   ScopedRemovalSupported,
   ScopedRemovalUnsupported,
   ScopedRemovalUnobserved,
-  tailscale_serve_endpoint_key,
+  tailscale_serve_route_key,
+  tailscale_serve_route_key_label,
 }
 import gunbc.fleet_intent { srv1_host, ComputeHost }
 import gunbc.fleet_intent_network {
@@ -349,7 +350,7 @@ fn deployment_owned_steps(
     DeploymentArtifactStep { kind: AttemptStateRoot, path: dashboard_instance_dispatch_attempt_state_root(instance: instance) as String as NonEmptyStr },
     DeploymentArtifactStep { kind: SystemdUnit, path: deployment_systemd_unit_path(names: names) },
     DeploymentArtifactStep { kind: BeltTimerUnit, path: deployment_belt_timer_unit_path(names: names) },
-    DeploymentArtifactStep { kind: TailscaleServeMapping, path: tailscale_serve_endpoint_key(endpoint: names.tailscale_serve_endpoint) },
+    DeploymentArtifactStep { kind: TailscaleServeMapping, path: tailscale_serve_route_key_label(key: tailscale_serve_route_key(endpoint: names.tailscale_serve_endpoint)) },
   ]
 }
 

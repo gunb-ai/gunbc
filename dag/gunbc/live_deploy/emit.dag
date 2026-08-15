@@ -8,6 +8,7 @@ import std.measure { second_count, positive_millisecond_count }
 import std.evaluation_budget { EvaluationLimit, LimitSet, LimitUnset }
 
 import std.types { String, List, Bool, NonEmptyStr, Int, FilePath, CommitSha }
+import std.key_relation { KeyRelation, KeyExactlyOne, GlobalKeyScope, key_relation_global }
 import gunbc.managed_directory {
   ManagedDirectory,
   managed_directory_mode_octal,
@@ -420,12 +421,17 @@ fn deployment_step_ownership_opt(step: DeploymentStep) -> Ownership? {
   Present { value: deployment_step_ownership(step: step) }
 }
 
+data deployment_step_membership_key_relation: KeyRelation<DeploymentStep, GlobalKeyScope, NonEmptyStr> = key_relation_global(
+  key_of: deployment_step_key,
+  key_eq: deployment_step_key_eq,
+  multiplicity: KeyExactlyOne,
+)
+
 fn deployment_apply_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentStep> {
   membership_reconcile(
     desired: spec.steps,
     observed: [],
-    key_of: deployment_step_key,
-    key_eq: deployment_step_key_eq,
+    relation: deployment_step_membership_key_relation,
     value_eq: deployment_step_value_eq,
     ownership_of: deployment_step_ownership_opt,
   )
@@ -435,8 +441,7 @@ fn deployment_retract_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentSte
   membership_reconcile(
     desired: [],
     observed: map(deployment_owned_steps_retract_order(spec: spec), s => ArtifactStep { step: s }),
-    key_of: deployment_step_key,
-    key_eq: deployment_step_key_eq,
+    relation: deployment_step_membership_key_relation,
     value_eq: deployment_step_value_eq,
     ownership_of: deployment_step_ownership_opt,
   )

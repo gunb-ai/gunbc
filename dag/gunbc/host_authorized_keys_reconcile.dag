@@ -1,6 +1,7 @@
 module gunbc.host_authorized_keys_reconcile
 
 import std.types { String, List, Bool, NonEmptyStr }
+import std.key_relation { KeyRelation, KeyExactlyOne, GlobalKeyScope, key_relation_global }
 import extdeps.ssh { SshPublicKey, SshKeyAlgorithm, ssh_key_algorithm_token }
 import gunbc.fleet_ssh_access {
   fleet_authorized_keys,
@@ -49,12 +50,17 @@ fn authorized_key_ownership(k: SshPublicKey) -> Ownership? {
 
 data host_authorized_keys_reconcile_note: String = "desired = fleet_authorized_keys (the model's declared key set); observed = a live read of the host's authorized_keys (an OBSERVATION effect, staged — the fixtures below are point-in-time reads, not the live provider). The apply-grain POLICY is deliberately NOT resolved in this module: authorized_keys is an EVERYTHING-ON-HOST observed scope (foreign keys are normal, not anomalies), which is exactly the scope where membership_reconcile's wholesale-refuse policy (membership_effects) would be wrong — a foreign key's refusal would block our owned upsert. That is the conscious wholesale-vs-siblings-continue call the spine reserves to a human (membership_effects_wholesale_refuse_policy_note); this module produces the PLAN grain only and leaves the apply projection to that decision."
 
+data host_authorized_keys_membership_key_relation: KeyRelation<SshPublicKey, GlobalKeyScope, NonEmptyStr> = key_relation_global(
+  key_of: authorized_key_identity,
+  key_eq: authorized_key_identity_eq,
+  multiplicity: KeyExactlyOne,
+)
+
 fn host_authorized_keys_reconcile(observed: List<SshPublicKey>) -> MembershipPlan<SshPublicKey> {
   membership_reconcile(
     desired: fleet_authorized_keys,
     observed: observed,
-    key_of: authorized_key_identity,
-    key_eq: authorized_key_identity_eq,
+    relation: host_authorized_keys_membership_key_relation,
     value_eq: authorized_key_value_eq,
     ownership_of: authorized_key_ownership,
   )

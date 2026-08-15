@@ -1,6 +1,7 @@
 module gunbc.roadmap_belt
 
 import std.types { String, Int, List, Bool }
+import std.key_relation { KeyRelation, KeyExactlyOne, GlobalKeyScope, key_relation_global }
 import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId }
 import gunbc.roadmap_document { RoadmapDocument }
 import gunbc.roadmap_spawner { SpawnFrontier, spawn_frontier }
@@ -238,6 +239,12 @@ fn belt_observed_members(live: List<DispatchLiveSession>) -> List<DispatchMember
   live |> map(s => ObservedMember { node_id: s.node_id, session: s })
 }
 
+data belt_membership_key_relation: KeyRelation<DispatchMember, GlobalKeyScope, String> = key_relation_global(
+  key_of: dispatch_member_key,
+  key_eq: dispatch_member_key_eq,
+  multiplicity: KeyExactlyOne,
+)
+
 fn belt_membership_plan(
   frontier: SpawnFrontier,
   live: List<DispatchLiveSession>,
@@ -245,8 +252,7 @@ fn belt_membership_plan(
   membership_reconcile(
     desired: belt_desired_members(frontier: frontier),
     observed: belt_observed_members(live: live),
-    key_of: dispatch_member_key,
-    key_eq: dispatch_member_key_eq,
+    relation: belt_membership_key_relation,
     value_eq: dispatch_member_value_eq,
     ownership_of: dispatch_member_ownership,
   )

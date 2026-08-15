@@ -1,0 +1,59 @@
+module test.claim.tailscale_serve_route_key_witness
+
+import std.types { Bool, NonEmptyStr, String, List }
+import extdeps.tailscale.serve {
+  TailscaleServeEndpoint,
+  ServeRootMount,
+  ServeSetPath,
+  tailscale_serve_route_key,
+  tailscale_serve_route_key_eq,
+  tailscale_serve_route_key_label,
+  tailscale_serve_endpoint_flags,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data tailscale_route_key_witness_note: String = "Discriminating controls for extdeps.tailscale.serve TailscaleServeRouteKey: backend drift must not change identity; distinct listener x mount pairs must not compare equal; and the membership label must not be the rendered argv string the design note retires."
+
+test fn backend_change_preserves_route_key() -> Bool {
+  let root = TailscaleServeEndpoint {
+    https_port: 443,
+    mount: ServeRootMount,
+    backend: "8080" as NonEmptyStr,
+  }
+  let repointed = TailscaleServeEndpoint {
+    https_port: 443,
+    mount: ServeRootMount,
+    backend: "18081" as NonEmptyStr,
+  }
+  tailscale_serve_route_key_eq(
+    a: tailscale_serve_route_key(endpoint: root),
+    b: tailscale_serve_route_key(endpoint: repointed),
+  )
+}
+
+test fn distinct_mounts_have_distinct_keys() -> Bool {
+  let root = tailscale_serve_route_key(endpoint: TailscaleServeEndpoint {
+    https_port: 443,
+    mount: ServeRootMount,
+    backend: "8080" as NonEmptyStr,
+  })
+  let lab = tailscale_serve_route_key(endpoint: TailscaleServeEndpoint {
+    https_port: 443,
+    mount: ServeSetPath { path: "/srv1-lab" as NonEmptyStr },
+    backend: "18081" as NonEmptyStr,
+  })
+  !tailscale_serve_route_key_eq(a: root, b: lab)
+}
+
+test fn membership_label_is_not_rendered_argv() -> Bool {
+  let endpoint = TailscaleServeEndpoint {
+    https_port: 443,
+    mount: ServeSetPath { path: "/srv1-lab" as NonEmptyStr },
+    backend: "18081" as NonEmptyStr,
+  }
+  let label = tailscale_serve_route_key_label(key: tailscale_serve_route_key(endpoint: endpoint)) as String
+  let argv = join(tailscale_serve_endpoint_flags(endpoint: endpoint), " ")
+  label != argv
+}

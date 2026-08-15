@@ -111,8 +111,7 @@ test fn reconcile_would_teardown_only_if_ownership_claimed_it() -> Bool {
   let lying = membership_tally(plan: membership_reconcile(
     desired: fleet_authorized_keys,
     observed: srv3_observed_authorized_keys,
-    key_of: authorized_key_identity,
-    key_eq: authorized_key_identity_eq,
+    relation: host_authorized_keys_membership_key_relation,
     value_eq: authorized_key_value_eq,
     ownership_of: ownership_lies_owned,
   ))

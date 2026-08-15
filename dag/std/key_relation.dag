@@ -1,0 +1,72 @@
+module std.key_relation
+
+import std.types { Bool }
+
+data key_relation_authority_note: String = "Keying is a named relation, not an anonymous key_of/key_eq pair passed by each consumer. ScopedKey names (scope, key); KeyMultiplicity declares whether a key may denote zero, one, or many values; KeyRelation bundles scope_of, key_of, scope_eq, key_eq, and multiplicity so the identity law is stated once per concept rather than as prose beside membership_reconcile. GlobalKeyScope is the degenerate scope for populations reconciled without an explicit ambient axis."
+
+type ScopedKey<Scope, Key> {
+  scope: Scope
+  key: Key
+}
+
+type KeyMultiplicity
+  = KeyAtMostOne
+  | KeyExactlyOne
+  | KeyZeroToMany
+
+type KeyRelation<Subject, Scope, Key> {
+  scope_of: fn(Subject) -> Scope
+  key_of: fn(Subject) -> Key
+  scope_eq: fn(Scope, Scope) -> Bool
+  key_eq: fn(Key, Key) -> Bool
+  multiplicity: KeyMultiplicity
+}
+
+type GlobalKeyScope {}
+
+data global_key_scope_marker: GlobalKeyScope = GlobalKeyScope {}
+
+fn global_key_scope() -> GlobalKeyScope {
+  global_key_scope_marker
+}
+
+fn global_key_scope_eq(_: GlobalKeyScope, _: GlobalKeyScope) -> Bool {
+  true
+}
+
+fn key_relation_global_scope_of<Subject>(_subject: Subject) -> GlobalKeyScope {
+  global_key_scope()
+}
+
+fn key_relation_scoped_key<Subject, Scope, Key>(
+  relation: KeyRelation<Subject, Scope, Key>,
+  subject: Subject,
+) -> ScopedKey<Scope, Key> {
+  let scope_of = relation.scope_of
+  let key_of = relation.key_of
+  ScopedKey { scope: scope_of(subject), key: key_of(subject) }
+}
+
+fn key_relation_global<Subject, Key>(
+  key_of: fn(Subject) -> Key,
+  key_eq: fn(Key, Key) -> Bool,
+  multiplicity: KeyMultiplicity,
+) -> KeyRelation<Subject, GlobalKeyScope, Key> {
+  KeyRelation {
+    scope_of: key_relation_global_scope_of,
+    key_of: key_of,
+    scope_eq: global_key_scope_eq,
+    key_eq: key_eq,
+    multiplicity: multiplicity,
+  }
+}
+
+fn key_relation_supports_membership_reconcile<Subject, Scope, Key>(
+  relation: KeyRelation<Subject, Scope, Key>,
+) -> Bool {
+  match relation.multiplicity {
+    KeyExactlyOne => true
+    KeyAtMostOne => true
+    KeyZeroToMany => false
+  }
+}

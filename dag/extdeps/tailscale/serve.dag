@@ -1,6 +1,7 @@
 module extdeps.tailscale.serve
 
-import std.types { NonEmptyStr, Port, String, List }
+import std.types { NonEmptyStr, Port, String, List, Bool }
+import std.key_relation { KeyRelation, KeyExactlyOne, GlobalKeyScope, key_relation_global }
 import std.algebra { Less, Equal, Greater }
 import extdeps.version.semver { SemVerVersion, semver_compare, semver_version_label }
 
@@ -156,9 +157,55 @@ fn tailscale_scoped_removal_capability(observed: SemVerVersion) -> TailscaleServ
   }
 }
 
-fn tailscale_serve_endpoint_key(endpoint: TailscaleServeEndpoint) -> NonEmptyStr {
-  join(tailscale_serve_endpoint_flags(endpoint: endpoint), " ") as NonEmptyStr
+type TailscaleServeRouteKey {
+  https_port: Port
+  mount: TailscaleServeMount
 }
+
+data tailscale_route_key_is_listener_x_mount_note: String = "THE UPSTREAM KEY IS LISTENER x MOUNT, NOT BACKEND AND NOT A RENDERED ARGV STRING. tailscale_serve_route_key projects the two discriminants the `off` form requires; backend changes are re-points of the same route, which is why it is excluded from the key. tailscale_serve_route_key_label is a display locator for membership carriers that still spell a NonEmptyStr path — it is NOT the identity and must not be confused with tailscale_serve_endpoint_flags."
+
+fn tailscale_serve_route_key(endpoint: TailscaleServeEndpoint) -> TailscaleServeRouteKey {
+  TailscaleServeRouteKey {
+    https_port: endpoint.https_port,
+    mount: endpoint.mount,
+  }
+}
+
+fn tailscale_serve_mount_eq(a: TailscaleServeMount, b: TailscaleServeMount) -> Bool {
+  match a {
+    ServeRootMount =>
+      match b {
+        ServeRootMount => true
+        ServeSetPath { path: _ } => false
+      }
+    ServeSetPath { path: pa } =>
+      match b {
+        ServeRootMount => false
+        ServeSetPath { path: pb } => pa as String == pb as String
+      }
+  }
+}
+
+fn tailscale_serve_route_key_eq(a: TailscaleServeRouteKey, b: TailscaleServeRouteKey) -> Bool {
+  a.https_port == b.https_port && tailscale_serve_mount_eq(a: a.mount, b: b.mount)
+}
+
+fn tailscale_serve_route_key_label(key: TailscaleServeRouteKey) -> NonEmptyStr {
+  join(
+    [
+      to_string(key.https_port),
+      ":",
+      tailscale_serve_mount_status_key(mount: key.mount),
+    ],
+    "",
+  ) as NonEmptyStr
+}
+
+data tailscale_serve_route_key_relation: KeyRelation<TailscaleServeEndpoint, GlobalKeyScope, TailscaleServeRouteKey> = key_relation_global(
+  key_of: tailscale_serve_route_key,
+  key_eq: tailscale_serve_route_key_eq,
+  multiplicity: KeyExactlyOne,
+)
 
 // EnableBackground IS DELETED RATHER THAN CORRECTED. It took a local port and shaped the literal argv `serve --bg {local_port}`, which is precisely the unscoped root-mount rebind described above — the operation whose every invocation on a second deployment silently steals `/` from the first. Correcting it in place would have meant a template with a conditional flag, which the argv template form cannot express; carrying it beside the endpoint fns would have left two spellings of one operation, the fork this module is being repaired for.\n\nSo the enable argv is a fn (the established form for conditional argv — see extdeps.llm.cursor_cli), and the collision shape is unwritable because it no longer exists. It had zero consumers at deletion: the one caller that mattered hand-built the same string in the emitter instead of consuming this module at all.
 service tailscale.Serve {

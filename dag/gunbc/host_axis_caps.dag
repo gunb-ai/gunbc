@@ -1,6 +1,7 @@
 module gunbc.host_axis_caps
 
 import std.types { String, NonEmptyStr, List, Bool, Int, list_length }
+import std.key_relation { KeyRelation, KeyExactlyOne, GlobalKeyScope, key_relation_global }
 import std.algebra { trim }
 import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.membership_reconcile {
@@ -91,12 +92,17 @@ fn cap_upsert_script(m: CapMember) -> String {
   ], "")
 }
 
+data cap_membership_key_relation: KeyRelation<CapMember, GlobalKeyScope, NonEmptyStr> = key_relation_global(
+  key_of: cap_member_key,
+  key_eq: cap_member_key_eq,
+  multiplicity: KeyExactlyOne,
+)
+
 fn caps_reconcile(desired: List<CapMember>, observed: List<CapMember>) -> MembershipPlan<CapMember> {
   membership_reconcile(
     desired: desired,
     observed: observed,
-    key_of: cap_member_key,
-    key_eq: cap_member_key_eq,
+    relation: cap_membership_key_relation,
     value_eq: cap_member_value_eq,
     ownership_of: cap_member_ownership,
   )
@@ -287,6 +293,12 @@ fn deploy_memory_cap_script_author_precedes_shadow_revert(script: String, units:
 // Enrolled: live_deploy apply emits deploy_memory_cap_apply_script_for_host after sudoers preamble.
 data deploy_memory_cap_live_deploy_enrollment_note: String = "deploy_memory_cap_apply_script_for_host is emitted into live_deploy apply (gunbc.live_deploy.emit apply_intent_from_effects) after deploy_apply_preamble_steps — author derived drop-ins then systemctl revert per runner_slot_service_units_for_host."
 
+data control_shadow_membership_key_relation: KeyRelation<ControlShadowUnit, GlobalKeyScope, NonEmptyStr> = key_relation_global(
+  key_of: control_shadow_unit_key,
+  key_eq: control_shadow_unit_key_eq,
+  multiplicity: KeyExactlyOne,
+)
+
 fn control_shadow_reconcile(
   desired: List<ControlShadowUnit>,
   observed: List<ControlShadowUnit>,
@@ -294,8 +306,7 @@ fn control_shadow_reconcile(
   membership_reconcile(
     desired: desired,
     observed: observed,
-    key_of: control_shadow_unit_key,
-    key_eq: control_shadow_unit_key_eq,
+    relation: control_shadow_membership_key_relation,
     value_eq: control_shadow_unit_value_eq,
     ownership_of: control_shadow_unit_ownership,
   )
