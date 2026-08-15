@@ -4170,7 +4170,7 @@ fn discovery_claim_result(
     // incomplete row set must refuse the discovery claim (typed/located), never silently
     // emit a partial receipt as complete (§5 / review 43261 + review 43274).
     match projected {
-        Ok(mut witness_row_costs) => ClaimResult {
+        Ok(witness_row_costs) => ClaimResult {
             function,
             entry: DISCOVERY_AGGREGATE_ENTRY.to_string(),
             ok,
@@ -5674,7 +5674,7 @@ fn write_floor_component_receipt_document(
     if unreached == UnreachedCause::RunIncomplete {
         let concluded_count = batch_records.len() as i64;
         let pending_from_index = (batch_records.len() + 1) as i64;
-        let mut args: Vec<(Option<String>, Value)> = vec![
+        let args: Vec<(Option<String>, Value)> = vec![
             (
                 Some("workflow_name".to_string()),
                 Value::Str(workflow_name.to_string()),
@@ -7024,7 +7024,7 @@ fn append_resolve_obligation_receipt_body(
 
 fn write_resolve_receipt_at(
     base: &std::path::Path,
-    source_roots: &[String],
+    _source_roots: &[String],
     batch_records: &[BatchRecord],
     floor_finalization: Option<&FloorFinalization>,
 ) -> bool {
