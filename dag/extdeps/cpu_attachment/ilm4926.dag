@@ -148,46 +148,19 @@ fn attested_by_independent_publishers() -> Bool {
 }
 
 // THE FOUR BOARD-DESIGN QUESTIONS A DESIGNATION MUST ANSWER BEFORE A PART CAN BE
-// ORDERED OR A LAND PATTERN RELEASED. They are separate axes rather than one
-// unresolved string because each has a different closing document and a different
-// owner: a vendor name, an orderable part number, the socket vendor's board-side
-// land pattern, and which physical assembly the initials name. None of the three
-// cited authorities above establishes any of the four; the obligations name what
-// is still owed rather than summarising that fact once in prose.
-type DesignationResolutionAxis
-  = VendorIdentity
-  | OrderablePartNumber
-  | BoardLandPattern
-  | LoadingMechanismIdentity
-
-type DesignationResolutionObligation {
-  axis: DesignationResolutionAxis
-  what_is_missing: NonEmptyStr
+// ORDERED OR A LAND PATTERN RELEASED. They are four named fields rather than a
+// tagged list because the axis set is closed and fixed: a missing or duplicate
+// axis must be unwritable, not caught by a witness counting list rows.
+type DesignationResolutionObligations {
+  vendor_identity: NonEmptyStr
+  orderable_part_number: NonEmptyStr
+  board_land_pattern: NonEmptyStr
+  loading_mechanism_identity: NonEmptyStr
 }
 
-data ilm4926_resolution_obligations: List<DesignationResolutionObligation> = [
-  DesignationResolutionObligation {
-    axis: VendorIdentity,
-    what_is_missing: "no cited document attributes ILM4926 to a manufacturer; Ampere and OCP name the designator only",
-  },
-  DesignationResolutionObligation {
-    axis: OrderablePartNumber,
-    what_is_missing: "no cited document attaches a catalog or ordering part number to the designator ILM4926",
-  },
-  DesignationResolutionObligation {
-    axis: BoardLandPattern,
-    what_is_missing: "no cited document states the board-side land pattern for the attachment named ILM4926; the Altra platform hardware design specification cites Figure 3 as carrying both package and socket drawings but neither geometry is transcribed here",
-  },
-  DesignationResolutionObligation {
-    axis: LoadingMechanismIdentity,
-    what_is_missing: "no cited document states whether ILM4926 names the socket body, the independent loading mechanism, or the assembly of both; Ampere datasheets say device seated in ILM4926 socket in a thermal note while ILM plausibly expands to Independent Loading Mechanism",
-  },
-]
-
-fn resolution_obligation_count() -> Int {
-  count(ilm4926_resolution_obligations)
-}
-
-fn resolution_obligations_include_axis(axis: DesignationResolutionAxis) -> Bool {
-  any(ilm4926_resolution_obligations, o => o.axis == axis)
+data ilm4926_resolution_obligations: DesignationResolutionObligations = DesignationResolutionObligations {
+  vendor_identity: "no cited document attributes ILM4926 to a manufacturer; Ampere and OCP name the designator only",
+  orderable_part_number: "no cited document attaches a catalog or ordering part number to the designator ILM4926",
+  board_land_pattern: "no cited document states the board-side land pattern for the attachment named ILM4926; the Altra platform hardware design specification cites Figure 3 as carrying both package and socket drawings but neither geometry is transcribed here",
+  loading_mechanism_identity: "no cited document states whether ILM4926 names the socket body, the independent loading mechanism, or the assembly of both; Ampere datasheets say device seated in ILM4926 socket in a thermal note while ILM plausibly expands to Independent Loading Mechanism",
 }

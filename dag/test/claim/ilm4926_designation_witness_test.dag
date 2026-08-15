@@ -3,14 +3,10 @@ module test.claim.ilm4926_designation_witness
 import std.logic { Bool }
 import std.types { list_length }
 import extdeps.cpu_attachment.ilm4926 {
-  BoardLandPattern,
   IndependentLoadingMechanismOnly,
-  LoadingMechanismIdentity,
-  OrderablePartNumber,
   ReferentUnresolvedByCitedDocuments,
   SocketAssemblyIncludingLoadingMechanism,
   SocketBodyOnly,
-  VendorIdentity,
   altra_classic_datasheet_authority,
   attestation_count,
   attested_by_ampere_datasheets,
@@ -24,8 +20,6 @@ import extdeps.cpu_attachment.ilm4926 {
   ilm4926_referent,
   ilm4926_resolution_obligations,
   ocp_mt_jade_specification_authority,
-  resolution_obligation_count,
-  resolution_obligations_include_axis,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -82,13 +76,12 @@ test fn w_red_one_publisher_twice_is_not_independent_attestation() -> Bool {
     && list_length(items: ocp_only) != list_length(items: ilm4926_attestations)
 }
 
-// THE FOUR BOARD-DESIGN AXES STAY OPEN UNTIL A CITED DOCUMENT CLOSES EACH ONE.
+// THE FOUR BOARD-DESIGN AXES ARE STRUCTURAL FIELDS; each must carry a reason.
 test fn w_four_resolution_obligations_name_vendor_part_land_pattern_and_loading() -> Bool {
-  resolution_obligation_count() == 4
-    && list_length(items: ilm4926_resolution_obligations) == 4
-    && resolution_obligations_include_axis(axis: VendorIdentity)
-    && resolution_obligations_include_axis(axis: OrderablePartNumber)
-    && resolution_obligations_include_axis(axis: BoardLandPattern)
-    && resolution_obligations_include_axis(axis: LoadingMechanismIdentity)
+  let o = ilm4926_resolution_obligations
+  !((o.vendor_identity as String) == "")
+    && !((o.orderable_part_number as String) == "")
+    && !((o.board_land_pattern as String) == "")
+    && !((o.loading_mechanism_identity as String) == "")
     && !designation_referent_is_resolved(referent: ilm4926_referent)
 }
