@@ -546,7 +546,6 @@ fn falsifier_witness_row_with(index: Nat, mode: NonEmptyStr, detail: NonEmptyStr
     run_id: "witness" as NonEmptyStr,
     index: index,
     label: "discovery-corpus[2 root(s)+0 explicit, adaptive width]" as NonEmptyStr,
-    selection_tag: "applied" as NonEmptyStr,
     witnesses: 0,
     failure_mode: mode,
     detail: detail,

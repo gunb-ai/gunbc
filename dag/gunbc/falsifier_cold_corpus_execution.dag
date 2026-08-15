@@ -174,14 +174,12 @@ fn cold_corpus_execution_receipt_json(c: ColdCorpusExecution) -> String {
 
 fn cadence_verdict_should_fail(
   build: GithubJobOutcome,
-  selection: GithubJobOutcome,
   cold: GithubJobOutcome,
   floor_receipt_present: Bool
 ) -> Bool {
   match classify_cold_corpus_execution(build: build, cold: cold, floor_receipt_present: floor_receipt_present) {
     CorpusNotRun { cause: _ } => true
-    CorpusExecuted { receipt_path: _ } =>
-      selection != JobOutcomeSuccess || cold != JobOutcomeSuccess
+    CorpusExecuted { receipt_path: _ } => cold != JobOutcomeSuccess
   }
 }
 
