@@ -28,8 +28,8 @@
 //!
 //! **Executed receipt (BuildBuddy remote, release, 2026-08-15):**
 //!
-//! - `json_unescape_modeled_copy_terms_scale_quadratically`: PASS — doubling n quadruples
-//!   modeled total copy bytes (~4.0×); parameter-binding term is ~2× the concat term.
+//! - `json_unescape_modeled_copy_terms_scale_quadratically`: PASS — model-arithmetic only
+//!   (n² + n(n−1)/2 quadruples when n doubles); not executed cost-shape evidence.
 //! - Term separation 10 KiB (C): production wall 8.092µs vs linear Rust shadow 13.581µs
 //!   (ratio 0.6×) — **wall-time inconclusive at this size** on BuildBuddy remote; does not
 //!   refute the hypothesis (OOM below is stronger signal).
@@ -275,6 +275,8 @@ fn json_unescape_decode_sanity() {
 }
 
 #[test]
+// Model documentation only: asserts the hypothesized copy-byte formulas scale quadratically.
+// Does not execute json_unescape_from; discriminating cost-shape evidence is #[ignore]d below.
 fn json_unescape_modeled_copy_terms_scale_quadratically() {
     let n = 10_000usize;
     let param = modeled_parameter_binding_copy_bytes(n);

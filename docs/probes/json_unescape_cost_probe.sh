@@ -4,8 +4,8 @@
 # src/v1/stage0/tests/json_unescape_cost_receipt.rs deletes with the measurement-complete fix PR.
 # Authority: extdeps.languages.json.parse json_unescape_cost_receipt_seed_growth_mark (subject module)
 # and src/v1/stage0/tests/json_unescape_cost_receipt.rs (ignored benchmark receipt).
-# Witness: json_unescape_modeled_copy_terms_scale_quadratically (gating); length-sweep / escape-density /
-# term-separation probes are #[ignore]d and run via this script on srv1 under MemoryMax.
+# Witness: json_unescape_decode_sanity (correctness); modeled-copy arithmetic (model doc only);
+# length-sweep / escape-density / term-separation probes are #[ignore]d and run via this script on srv1 under MemoryMax.
 #
 # Operator brief: capped runs only — systemd-run --user --scope -p MemoryMax=NG.
 # Poll and kill by scope name; `timeout` does not tear down a scope.
