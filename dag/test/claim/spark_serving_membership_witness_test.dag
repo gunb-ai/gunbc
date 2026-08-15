@@ -36,7 +36,8 @@ import gunbc.spark_serving_desired {
   spark_serving_occurrence,
   spark_serving_desired_model_artifact,
 }
-import gunbc.spark_serving_install_paths { spark_serving_user_unit_path, spark_serving_unit_name }
+import gunbc.spark_serving_install_paths { spark_serving_user_unit_path }
+import gunbc.spark_serving_runtime_receipt { spark_serving_unit_name }
 import gunbc.spark_serving_membership {
   SparkServingMember,
   SparkServingMemberKind,
@@ -279,7 +280,7 @@ test fn w_spark_serving_enable_refuses_without_runtime_root() -> Bool {
   }
 }
 
-test fn w_spark_serving_user_unit_path_uses_install_paths_unit_name_authority() -> Bool {
+test fn w_spark_serving_user_unit_path_uses_runtime_receipt_unit_name_authority() -> Bool {
   string_contains(s: spark_serving_user_unit_path() as String, pattern: spark_serving_unit_name)
 }
 

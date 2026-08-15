@@ -39,9 +39,8 @@ import gunbc.spark_serving_release {
   SparkServingObserved,
   SparkServingObservationRefused,
 }
-import gunbc.spark_serving_install_paths { spark_serving_unit_name }
-import gunbc.spark_serving_runtime_admission { spark_serving_parse_nvidia_driver_version }
 import gunbc.spark_serving_runtime_receipt {
+  spark_serving_unit_name,
   spark_serving_runtime_receipt_probe_words,
   spark_serving_runtime_receipt_field_from_probe,
 }
