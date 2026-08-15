@@ -279,9 +279,9 @@ test fn w_the_altra_pcb_world_constructs_as_a_partial_preview() -> Bool {
 // THE SOCKET LEFT THE MISSING-DOCUMENT POPULATION AND HAS ITS OWN. It used to be counted as a
 // missing document naming "ILM4926", which told a reader to go and find a document by that name.
 // ILM4926 is not a document; it is a designation whose vendor and orderable part are unresolved,
-// so it is its own cause and its own count. The missing-document population for COMPONENTS is now
-// zero, which is the honest number: the one live missing document is the board land pattern, and
-// that is an ATTACHMENT obligation, counted separately.
+// so it is its own cause and its own count. Component missing-document is zero. The board land
+// pattern is a commercial-access ATTACHMENT obligation (Customer Connect); attachment causes are
+// not folded into pcb_cause_counts or the legend population string.
 test fn w_the_world_carries_two_established_eleven_unselected_and_one_attachment_part_unresolved() -> Bool {
   match world_or_empty() {
     Absent => false
@@ -292,7 +292,7 @@ test fn w_the_world_carries_two_established_eleven_unselected_and_one_attachment
         && pcb_unselected_part_count(p: p) == 11
         && pcb_named_attachment_part_unresolved_count(p: p) == 1
         && pcb_missing_document_count(p: p) == 0
-        && pcb_commercial_access_count(p: p) == 1
+        && pcb_commercial_access_count(p: p) == 0
         && pcb_legal_carriage_count(p: p) == 0
         && pcb_population_count(p: p) == 14
   }
@@ -458,7 +458,7 @@ test fn w_subset_bodies_are_not_drawn_as_checked() -> Bool {
 test fn w_the_legend_states_the_cause_populations() -> Bool {
   match scene_or_empty() {
     Absent => false
-    Present { value: s } => string_contains(s: s, pattern: "2 established / 11 unselected / 0 missing-document / 1 commercial-access / 0 legal-carriage / 0 drawing-must-be-read / 1 attachment-part-unresolved / 2 unrealized-function — body layout admitted over established subset only; 12 parts owed")
+    Present { value: s } => string_contains(s: s, pattern: "2 established / 11 unselected / 0 missing-document / 0 commercial-access / 0 legal-carriage / 0 drawing-must-be-read / 1 attachment-part-unresolved / 2 unrealized-function — body layout admitted over established subset only; 12 parts owed")
   }
 }
 
