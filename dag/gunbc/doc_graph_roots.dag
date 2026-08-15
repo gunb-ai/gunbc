@@ -518,6 +518,16 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
+    slug: "keying-relation-design",
+    primary_work: DeclarationRef { module_path: "std.change", decl_name: "keyed_two_way_diff", field: WholeDeclaration },
+    additional_works: [
+      DeclarationRef { module_path: "std.effects", decl_name: "KeySource", field: WholeDeclaration },
+      DeclarationRef { module_path: "gunbc.membership_reconcile", decl_name: "membership_reconcile", field: WholeDeclaration },
+    ],
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject keyed_two_way_diff describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+  },
+  HandAuthoredDocBind {
+    home: PlanDoc,
     slug: "language-support-completion-design",
     primary_work: DeclarationRef { module_path: "gunbc.ci_layer_roots", decl_name: "falsifier_substrate_long_lane_rows", field: WholeDeclaration },
     additional_works: [
