@@ -1,0 +1,61 @@
+module test.claim.free_monoid_bodies_witness_test
+
+import std.types { Bool, Int, List }
+import std.algebra {
+  FreeMonoid, Empty, Cons,
+  free_monoid_fold, free_monoid_reverse, free_monoid_map,
+  free_monoid_filter, free_monoid_length, free_monoid_concat, free_monoid_first,
+  FreeMonoidFirst, FirstFound, FirstAbsent
+}
+
+data free_monoid_bodies_witness_note: String = "Executes the substrate bodies of the free-monoid operations, which is the whole point: a body that only typechecks is specification without execution, and these replace behaviour that lived in Rust. Each claim is a different structural decision rather than the same one restated -- fold accumulates, reverse inverts order (asserted by reading the head, not by length, since length cannot tell a reversed list from an unreversed one), map changes the element, filter changes the population, concat joins two, first distinguishes an inhabited list from an empty one, and the empty list is exercised on every operation because Empty is the arm a fold reaches last and the one an off-by-one drops."
+
+fn sample() -> FreeMonoid<Int> {
+  Cons { head: 1, tail: Cons { head: 2, tail: Cons { head: 3, tail: Empty } } }
+}
+
+fn empty_sample() -> FreeMonoid<Int> {
+  Empty
+}
+
+fn head_or(xs: FreeMonoid<Int>, fallback: Int) -> Int {
+  match free_monoid_first(xs: xs) {
+    FirstAbsent => fallback
+    FirstFound { value: v } => v
+  }
+}
+
+test fn free_monoid_fold_accumulates() -> Bool {
+  (free_monoid_fold(xs: sample(), init: 0, step: fn(acc, x) { acc + x }) == 6)
+    && (free_monoid_fold(xs: empty_sample(), init: 0, step: fn(acc, x) { acc + x }) == 0)
+}
+
+test fn free_monoid_reverse_inverts_order() -> Bool {
+  (head_or(xs: sample(), fallback: 0) == 1)
+    && (head_or(xs: free_monoid_reverse(xs: sample()), fallback: 0) == 3)
+    && (free_monoid_length(xs: free_monoid_reverse(xs: empty_sample())) == 0)
+}
+
+test fn free_monoid_map_changes_the_element() -> Bool {
+  (head_or(xs: free_monoid_map(xs: sample(), f: fn(x) { x * 10 }), fallback: 0) == 10)
+    && (free_monoid_length(xs: free_monoid_map(xs: sample(), f: fn(x) { x * 10 })) == 3)
+    && (free_monoid_length(xs: free_monoid_map(xs: empty_sample(), f: fn(x) { x * 10 })) == 0)
+}
+
+test fn free_monoid_filter_changes_the_population() -> Bool {
+  (free_monoid_length(xs: free_monoid_filter(xs: sample(), keep: fn(x) { x > 1 })) == 2)
+    && (head_or(xs: free_monoid_filter(xs: sample(), keep: fn(x) { x > 1 }), fallback: 0) == 2)
+    && (free_monoid_length(xs: free_monoid_filter(xs: sample(), keep: fn(x) { x > 99 })) == 0)
+}
+
+test fn free_monoid_concat_joins_and_preserves_order() -> Bool {
+  (free_monoid_length(xs: free_monoid_concat(left: sample(), right: sample())) == 6)
+    && (head_or(xs: free_monoid_concat(left: sample(), right: sample()), fallback: 0) == 1)
+    && (free_monoid_length(xs: free_monoid_concat(left: empty_sample(), right: sample())) == 3)
+    && (head_or(xs: free_monoid_concat(left: empty_sample(), right: sample()), fallback: 0) == 1)
+}
+
+test fn free_monoid_first_distinguishes_empty() -> Bool {
+  (head_or(xs: sample(), fallback: 999) == 1)
+    && (head_or(xs: empty_sample(), fallback: 999) == 999)
+}

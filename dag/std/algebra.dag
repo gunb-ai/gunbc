@@ -426,3 +426,51 @@ data trim_free_function_authority_note: String = "trim is the importable free-fu
 fn trim(s: String) -> String {
   if s == s { from_code_point(1 / 0) } else { from_code_point(1 / 0) }
 }
+
+data free_monoid_bodies_note: String = "REAL BODIES FOR THE FREE-MONOID OPERATIONS THIS MODULE ALREADY DECLARES. free_monoid_collection_templates has always said what fold, map, filter, first, reverse, concat and length ARE -- their parameters, return type and cost shape -- while the behaviour lived in Rust and no .dag body existed at all. These are those bodies, and each is the ordinary structural program the declaration implies: fold is the catamorphism over Empty and Cons, and every other operation is one fold. Nothing here is a new concept; the template row was the declaration and this is its realization in the substrate rather than beside it. WHY THE FOLD IS THE ONLY RECURSION: an operation that recurses independently is a second traversal to keep correct, so map, filter, length and concat all route through free_monoid_fold and inherit its termination. WHAT THIS DOES NOT YET DO: it does not rebind the bare spellings the corpus calls today -- those still reach host free-calls, and redirecting them is the naming lane's work, not a body's."
+
+fn free_monoid_fold<T, A>(xs: FreeMonoid<T>, init: A, step: fn(A, T) -> A) -> A {
+  match xs {
+    Empty => init
+    Cons { head: h, tail: t } => free_monoid_fold(xs: t, init: step(init, h), step: step)
+  }
+}
+
+fn free_monoid_reverse<T>(xs: FreeMonoid<T>) -> FreeMonoid<T> {
+  free_monoid_fold(xs: xs, init: Empty, step: fn(acc, item) { Cons { head: item, tail: acc } })
+}
+
+fn free_monoid_map<T, U>(xs: FreeMonoid<T>, f: fn(T) -> U) -> FreeMonoid<U> {
+  free_monoid_reverse(xs: free_monoid_fold(xs: xs, init: Empty, step: fn(acc, item) {
+    Cons { head: f(item), tail: acc }
+  }))
+}
+
+fn free_monoid_filter<T>(xs: FreeMonoid<T>, keep: fn(T) -> Bool) -> FreeMonoid<T> {
+  free_monoid_reverse(xs: free_monoid_fold(xs: xs, init: Empty, step: fn(acc, item) {
+    if keep(item) { Cons { head: item, tail: acc } } else { acc }
+  }))
+}
+
+fn free_monoid_length<T>(xs: FreeMonoid<T>) -> Int {
+  free_monoid_fold(xs: xs, init: 0, step: fn(acc, item) { acc + 1 })
+}
+
+fn free_monoid_concat<T>(left: FreeMonoid<T>, right: FreeMonoid<T>) -> FreeMonoid<T> {
+  free_monoid_fold(xs: free_monoid_reverse(xs: left), init: right, step: fn(acc, item) {
+    Cons { head: item, tail: acc }
+  })
+}
+
+data free_monoid_first_result_note: String = "first returns a NAMED COPRODUCT rather than Optional<T>, and the reason is measured rather than stylistic: the first draft returned T? and its empty case failed at runtime with non-exhaustive pattern match on null, because an absent Optional bottoms out in the overloaded Value::Null sentinel that DESIGN carries as an open thread. src/v2/std/algebra already reached the same conclusion independently -- list_head returns ListHeadResult with HeadFound and HeadAbsent -- so this follows the substrate's own grounded pattern instead of re-deriving it. NOTE THE TENSION, rather than hiding it: the free_monoid_collection_templates row for first declares OptionalOf, so the declared type and the realizable type disagree until the Value::Null split lands. That disagreement is a fact about the substrate, not about this body."
+
+type FreeMonoidFirst<T>
+  = FirstFound { value: T }
+  | FirstAbsent
+
+fn free_monoid_first<T>(xs: FreeMonoid<T>) -> FreeMonoidFirst<T> {
+  match xs {
+    Empty => FirstAbsent
+    Cons { head: h, tail: _ } => FirstFound { value: h }
+  }
+}
