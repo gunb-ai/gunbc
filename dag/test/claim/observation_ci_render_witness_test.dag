@@ -6,6 +6,16 @@ import std.nat { Nat }
 import std.symbols { Tier, Emoji, Unicode, Ascii, StatusPulse, StatusDwell, StatusBlocked, StatusRefused, NodeFailed, NodeCompleted }
 import std.measure { nanosecond, millisecond, millisecond_to_nanosecond, byte_size, basis_point }
 import std.observation {
+  observation_subject_contains,
+  Skipped,
+  ObservationGrain,
+  BatchGrain,
+  ModuleGrain,
+  ObservationRollup,
+  observation_rollup_open,
+  observation_rollup_accept,
+  RollupAccepted,
+  RollupSubjectOutOfScope,
   ObservationSubject,
   RunSegment,
   BatchSegment,
@@ -31,7 +41,25 @@ import std.observation {
   observation_durations_wall,
   observation_durations_wall_unavailable,
 }
+import gunbc.output_policy {
+  concluded_outcome_folds,
+  routine_rollup_folds,
+  routine_rollup_grain_for,
+  resolve_verbosity,
+  VerbosityEnv,
+}
 import gunbc.observation_ci_render {
+  ci_batch_summary_text,
+  ci_batch_summary_line,
+  ci_routine_projection,
+  RoutineProjection,
+  FoldedIntoRollup,
+  EmittedAtLeaf,
+  LeafEmissionReason,
+  AnomalyPierces,
+  LeafGrainRequested,
+  NoAncestorAtGrain,
+  RunSummaryShown,
   RenderedLine,
   LinePlacement,
   InsideCollapsedGroup,
@@ -279,4 +307,288 @@ test fn w_unmeasured_duration_names_its_cause_rather_than_vanishing() -> Bool {
   }
   let line = ci_event_line(event: event, basis: crawl_basis())
   string_contains(s: line.text, pattern: "duration unmeasured: clock unavailable in this leg")
+}
+
+
+// ---------------------------------------------------------------------------
+// Batch-grain projection
+// ---------------------------------------------------------------------------
+
+fn proj_batch_subject() -> ObservationSubject {
+  ObservationSubject {
+    segments: [
+      RunSegment { id: "run-proj" },
+      BatchSegment { index: 3, label: "witness discovery" },
+    ],
+  }
+}
+
+fn proj_leaf_subject(entry: NonEmptyStr) -> ObservationSubject {
+  ObservationSubject {
+    segments: [
+      RunSegment { id: "run-proj" },
+      BatchSegment { index: 3, label: "witness discovery" },
+      EntrySegment { source_path: entry },
+    ],
+  }
+}
+
+fn proj_event(subject: ObservationSubject, transition: ObservationTransition) -> ObservationEvent {
+  ObservationEvent {
+    subject: subject,
+    transition: transition,
+    durations: observation_durations_wall(elapsed: nanosecond(count: 1500000)),
+    rss: MeasuredValue { value: byte_size(count: 4096) },
+  }
+}
+
+test fn w_a_passing_witness_folds_into_its_batch_and_emits_nothing() -> Bool {
+  match ci_routine_projection(
+    event: proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: Concluded { outcome: Done }),
+    grain: Present { value: BatchGrain },
+  ) {
+    FoldedIntoRollup { at: a } => observation_subject_contains(ancestor: a, descendant: proj_leaf_subject(entry: "dag/a.dag"))
+    EmittedAtLeaf { reason: _ } => false
+  }
+}
+
+test fn w_RED_a_failure_pierces_the_fold_at_its_exact_leaf() -> Bool {
+  match ci_routine_projection(
+    event: proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: Concluded { outcome: Failed { error: "witness red", output: "" } }),
+    grain: Present { value: BatchGrain },
+  ) {
+    FoldedIntoRollup { at: _ } => false
+    EmittedAtLeaf { reason: r } => match r {
+      AnomalyPierces => true
+      _ => false
+    }
+  }
+}
+
+test fn w_RED_a_refusal_pierces_the_fold_too() -> Bool {
+  match ci_routine_projection(
+    event: proj_event(subject: proj_leaf_subject(entry: "dag/c.dag"), transition: Concluded { outcome: Refused { diagnostic: "admission refused" } }),
+    grain: Present { value: BatchGrain },
+  ) {
+    FoldedIntoRollup { at: _ } => false
+    EmittedAtLeaf { reason: r } => match r { AnomalyPierces => true, _ => false }
+  }
+}
+
+test fn w_verbose_leaf_grain_emits_every_routine_event() -> Bool {
+  match ci_routine_projection(
+    event: proj_event(subject: proj_leaf_subject(entry: "dag/d.dag"), transition: Concluded { outcome: Done }),
+    grain: none,
+  ) {
+    FoldedIntoRollup { at: _ } => false
+    EmittedAtLeaf { reason: r } => match r { LeafGrainRequested => true, _ => false }
+  }
+}
+
+test fn w_RED_an_event_with_no_ancestor_at_the_grain_is_emitted_not_dropped() -> Bool {
+  match ci_routine_projection(
+    event: proj_event(subject: proj_batch_subject(), transition: Concluded { outcome: Done }),
+    grain: Present { value: ModuleGrain },
+  ) {
+    FoldedIntoRollup { at: _ } => false
+    EmittedAtLeaf { reason: r } => match r { NoAncestorAtGrain => true, _ => false }
+  }
+}
+
+test fn w_batch_summary_reports_the_folded_counts() -> Bool {
+  let folded = fold(
+    [
+      proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: Concluded { outcome: Done }),
+      proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: Concluded { outcome: Done }),
+      proj_event(subject: proj_leaf_subject(entry: "dag/c.dag"), transition: Concluded { outcome: Skipped { reason: "unaffected" } }),
+    ],
+    init: observation_rollup_open(subject: proj_batch_subject()),
+    f: (acc, e) => match observation_rollup_accept(rollup: acc, event: e) {
+      RollupAccepted { rollup: r } => r
+      RollupSubjectOutOfScope { subject: _ } => acc
+    }
+  )
+  let line = ci_batch_summary_line(rollup: folded)
+  string_contains(s: line.text, pattern: "2 passed")
+    && string_contains(s: line.text, pattern: "1 skipped")
+    && string_contains(s: line.text, pattern: "0 failed")
+    && match line.attention { Ambient => true, _ => false }
+}
+
+test fn w_RED_a_batch_carrying_a_failure_summarises_as_an_anomaly() -> Bool {
+  let folded = fold(
+    [
+      proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: Concluded { outcome: Done }),
+      proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: Concluded { outcome: Failed { error: "red", output: "" } }),
+    ],
+    init: observation_rollup_open(subject: proj_batch_subject()),
+    f: (acc, e) => match observation_rollup_accept(rollup: acc, event: e) {
+      RollupAccepted { rollup: r } => r
+      RollupSubjectOutOfScope { subject: _ } => acc
+    }
+  )
+  let line = ci_batch_summary_line(rollup: folded)
+  string_contains(s: line.text, pattern: "1 failed")
+    && match line.attention { Anomaly => true, _ => false }
+}
+
+// The seed seam, exercised the way the seed uses it: scalars in, one finished ASCII line out. The
+// two REDs below are the pair that keeps it honest — an all-green batch must not carry an anomaly
+// glyph, and an absent memory reading must not print as a measurement of zero.
+test fn w_the_seed_seam_renders_one_ascii_line_from_scalars() -> Bool {
+  let line = ci_batch_summary_text(
+    batch_index: 2, batch_label: "witness discovery" as NonEmptyStr,
+    declared_population: 9015, passed: 5319, unaffected: 3731, deferred: 1078,
+    failed: 0, work: nanosecond(count: 105994413000),
+  )
+  string_contains(s: line, pattern: "witness discovery")
+    && string_contains(s: line, pattern: "5319 passed")
+    && string_contains(s: line, pattern: "3731 unaffected")
+    && string_contains(s: line, pattern: "1078 deferred")
+    && !string_contains(s: line, pattern: "[0m")
+}
+
+// The review that produced this asserted only that the green and red lines DIFFER and that the red
+// one says `1 failed` — which stays green if the green line renders the failure glyph, because the
+// texts differ anyway. Assert the exact leading token in both directions instead.
+test fn w_RED_the_green_and_failed_summaries_carry_exactly_their_own_status_token() -> Bool {
+  let green = ci_batch_summary_text(
+    batch_index: 1, batch_label: "b" as NonEmptyStr,
+    declared_population: 3, passed: 3, unaffected: 0, deferred: 0,
+    failed: 0, work: nanosecond(count: 1000),
+  )
+  let red = ci_batch_summary_text(
+    batch_index: 1, batch_label: "b" as NonEmptyStr,
+    declared_population: 3, passed: 2, unaffected: 0, deferred: 0,
+    failed: 1, work: nanosecond(count: 1000),
+  )
+  green.starts_with(prefix: "[x] ")
+    && !string_contains(s: green, pattern: "[!]")
+    && red.starts_with(prefix: "[!] ")
+}
+
+// A partition that does not add up to the population is DISCLOSED, never absorbed into an arm. The
+// shipped version reported `0 refused` while 1,078 rows sat deferred in a category it did not carry.
+test fn w_RED_a_partition_that_misses_rows_says_so() -> Bool {
+  let short = ci_batch_summary_text(
+    batch_index: 1, batch_label: "b" as NonEmptyStr,
+    declared_population: 10, passed: 4, unaffected: 0, deferred: 0,
+    failed: 0, work: nanosecond(count: 1000),
+  )
+  let exact = ci_batch_summary_text(
+    batch_index: 1, batch_label: "b" as NonEmptyStr,
+    declared_population: 4, passed: 4, unaffected: 0, deferred: 0,
+    failed: 0, work: nanosecond(count: 1000),
+  )
+  string_contains(s: short, pattern: "6 of 10 unclassified")
+    && !string_contains(s: exact, pattern: "unclassified")
+}
+
+test fn w_RED_the_seed_summary_claims_no_peak_because_it_has_no_batch_scoped_one() -> Bool {
+  let line = ci_batch_summary_text(
+    batch_index: 1, batch_label: "b" as NonEmptyStr,
+    declared_population: 1, passed: 1, unaffected: 0, deferred: 0,
+    failed: 0, work: nanosecond(count: 1000),
+  )
+  !string_contains(s: line, pattern: "peak")
+}
+
+// The seed supplies no refusal count, so a displayed `0 refused` would be a claim the fold looked.
+test fn w_RED_the_summary_does_not_claim_zero_refused_it_cannot_verify() -> Bool {
+  let line = ci_batch_summary_text(
+    batch_index: 1, batch_label: "b" as NonEmptyStr,
+    declared_population: 1, passed: 1, unaffected: 0, deferred: 0,
+    failed: 0, work: nanosecond(count: 1000),
+  )
+  !string_contains(s: line, pattern: "refused")
+}
+
+test fn w_RED_the_summary_duration_is_labelled_work_not_elapsed_wall() -> Bool {
+  let line = ci_batch_summary_text(
+    batch_index: 1, batch_label: "b" as NonEmptyStr,
+    declared_population: 2, passed: 2, unaffected: 0, deferred: 0,
+    failed: 0, work: nanosecond(count: 5000000),
+  )
+  string_contains(s: line, pattern: "work")
+}
+
+// The seed reads `routine_rollup_folds`, not the Optional it derives from, so this is the pair that
+// keeps the two from drifting apart: the Bool must agree with the grain at every verbosity. A
+// witness on the Optional alone would have stayed green through the defect that shipped — the seed
+// was calling a function with the wrong parameter and reading the resulting error as `false`.
+fn proj_grain_says_fold(verbose: Bool, quiet: Bool) -> Bool {
+  match routine_rollup_grain_for(
+    verbosity: resolve_verbosity(env: VerbosityEnv { verbose: verbose, quiet: quiet })
+  ) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn w_the_bool_seam_agrees_with_the_grain_at_every_verbosity() -> Bool {
+  (routine_rollup_folds(verbose: false, quiet: false) == proj_grain_says_fold(verbose: false, quiet: false))
+    && (routine_rollup_folds(verbose: true, quiet: false) == proj_grain_says_fold(verbose: true, quiet: false))
+    && (routine_rollup_folds(verbose: false, quiet: true) == proj_grain_says_fold(verbose: false, quiet: true))
+}
+
+test fn w_RED_verbose_does_not_fold_but_normal_and_quiet_do() -> Bool {
+  routine_rollup_folds(verbose: false, quiet: false)
+    && routine_rollup_folds(verbose: false, quiet: true)
+    && !routine_rollup_folds(verbose: true, quiet: false)
+}
+
+fn proj_folds_at_batch(e: ObservationEvent) -> Bool {
+  match ci_routine_projection(event: e, grain: Present { value: BatchGrain }) {
+    FoldedIntoRollup { at: _ } => true
+    EmittedAtLeaf { reason: _ } => false
+  }
+}
+
+// The seed transports this verdict instead of restating the rule, so it has to AGREE with the
+// projection it stands in for — that agreement is the whole reason the Rust arm stopped being a
+// second representation. Asserted in both directions against ci_routine_projection itself.
+test fn w_the_transported_fold_verdict_agrees_with_the_projection() -> Bool {
+  let pass_event = proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: Concluded { outcome: Done })
+  let fail_event = proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: Concluded { outcome: Failed { error: "x", output: "" } })
+  let pass_agrees = concluded_outcome_folds(passed: true) == proj_folds_at_batch(e: pass_event)
+  let fail_agrees = concluded_outcome_folds(passed: false) == proj_folds_at_batch(e: fail_event)
+  pass_agrees && fail_agrees
+}
+
+test fn w_RED_a_pass_folds_and_a_failure_does_not() -> Bool {
+  concluded_outcome_folds(passed: true) && !concluded_outcome_folds(passed: false)
+}
+
+// The deferred population sits BESIDE the declared one, so a run that defers rows and disposes of
+// every declared row reconciles clean. Summing deferred in reported a false over-count on a healthy
+// floor run — 9478 declared, 9478 passed, 1084 deferred — and this pins that reading.
+test fn w_RED_deferred_rows_do_not_over_count_against_the_declared_population() -> Bool {
+  let text = ci_batch_summary_text(
+    batch_index: 0,
+    batch_label: "witness discovery" as NonEmptyStr,
+    declared_population: 9478,
+    passed: 9478,
+    unaffected: 0,
+    deferred: 1084,
+    failed: 0,
+    work: nanosecond(count: 120000000000)
+  )
+  string_contains(s: text, pattern: "1084 deferred")
+    && !string_contains(s: text, pattern: "over-counted")
+    && !string_contains(s: text, pattern: "unclassified")
+}
+
+// And a genuine gap still reports: 10 declared, 6 disposed of, deferred irrelevant to that fact.
+test fn w_RED_a_real_partition_gap_still_reports_with_deferred_rows_present() -> Bool {
+  let text = ci_batch_summary_text(
+    batch_index: 0,
+    batch_label: "witness discovery" as NonEmptyStr,
+    declared_population: 10,
+    passed: 4,
+    unaffected: 1,
+    deferred: 99,
+    failed: 1,
+    work: nanosecond(count: 1000)
+  )
+  string_contains(s: text, pattern: "unclassified")
 }

@@ -1,6 +1,18 @@
 module gunbc.output_policy
 
 import extdeps.github.log_annotations { neutralize_workflow_commands, subject_text_line_guard }
+import std.observation {
+  ObservationGrain,
+  BatchGrain,
+  ObservationEventClass,
+  ClassDone,
+  ClassFailed,
+  ObservationDensity,
+  RoutineCollapsible,
+  SummaryAlwaysShown,
+  AnomalyExpanded,
+  observation_class_density,
+}
 
 type Verbosity = Quiet | Normal | Verbose
 
@@ -70,6 +82,44 @@ type ChannelPolicy {
   progress: OutputDecision
   shell_trace: OutputDecision
   instrumentation: OutputDecision
+  routine_rollup_grain: ObservationGrain?
+}
+
+// The display grain, and the reason it is NOT another OutputDecision variant.
+// Suppressed | Condensed | Full are per-line formatting verdicts: each says what becomes of ONE
+// line. The defect they cannot describe is that 4110 passing witnesses became 4110 lines at all, and
+// no shorter spelling of a line fixes that — accumulating a batch's routine descendants into one
+// conclusion is a fold over the stream, so the policy states the GRAIN to fold to and the fold lives
+// in std.observation where the containment path already is.
+// Absent means render at leaf grain, which is what Verbose asks for: the operator has explicitly
+// asked to see the individual work. Present{BatchGrain} is Normal and Quiet, where the leaf
+// identities live in the receipt artifact and the console carries batch conclusions, dwell
+// heartbeats, and anomalies at their exact leaf subject.
+// No new grain taxonomy is minted: BatchSegment and the floor plan already name the high-level work,
+// and a second phase enum beside them would be the nickname DESIGN section 3 forbids.
+fn routine_rollup_grain_for(verbosity: Verbosity) -> ObservationGrain? {
+  match verbosity {
+    Quiet => Present { value: BatchGrain }
+    Normal => Present { value: BatchGrain }
+    Verbose => none
+  }
+}
+
+// The seed's decodable form of the question above. It exists because a `T?` has no representation
+// the seed can read without guessing — Absent, a null sentinel and a bare payload are all plausible
+// encodings — and a decoder that guesses wrong answers "do not fold", which is silence wearing a
+// safe default. A Bool has exactly two readings and no third.
+//
+// DERIVED from routine_rollup_grain_for rather than restating its table: two functions answering
+// the same question from two hand-written matches is the dual representation this repository keeps
+// removing, and the failure mode is that the seed folds while the policy says leaf.
+fn routine_rollup_folds(verbose: Bool, quiet: Bool) -> Bool {
+  match routine_rollup_grain_for(
+    verbosity: resolve_verbosity(env: VerbosityEnv { verbose: verbose, quiet: quiet })
+  ) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
 fn channel_policy(verbosity: Verbosity) -> ChannelPolicy {
@@ -79,6 +129,7 @@ fn channel_policy(verbosity: Verbosity) -> ChannelPolicy {
     progress: channel_decision(channel: Progress, verbosity: verbosity)
     shell_trace: channel_decision(channel: ShellTrace, verbosity: verbosity)
     instrumentation: channel_decision(channel: Instrumentation, verbosity: verbosity)
+    routine_rollup_grain: routine_rollup_grain_for(verbosity: verbosity)
   }
 }
 
@@ -219,3 +270,22 @@ fn resolve_shell_trace_stream_policy(verbose: Bool, quiet: Bool) -> EffectStream
 }
 
 data shell_trace_observation_convergence_note: String = "DISSOLVED (operator live-log 2026-07-25, run 30142403230): shell host-effects now emit as ObservationEvents with named-intent subjects (service.op); Ambient Begin/Done are ShellTrace-gated (Suppressed at Normal — silent scaffolding); Anomaly Failed surfaces from divergence disposition alone (channel Suppressed no longer forces StreamSuppressed). Derived attention + ci_line_placement supersede the dual-class conflation. Keep this note as the dissolve receipt; delete when a later census no longer needs the history."
+
+// HOMED BESIDE routine_rollup_folds, NOT BESIDE THE RENDERER, and the reason is a measured one: the
+// seed resolves both verdicts by name in one entry context, and gunbc.observation_ci_render is not
+// in that entry's closure while gunbc.output_policy is. Living in the renderer, this resolved to
+// "no such function" on every real CI run, so per-witness folding was DISABLED and all 9478 witness
+// lines printed — the exact output this lane exists to remove, silently restored by a module
+// placement. A policy question consumed by the process belongs with the process's other policy
+// questions; the renderer consumes the density for its own projection and does not own the verdict.
+//
+// The verdict is still DERIVED from std.observation's density rather than restated: a concluded
+// outcome folds exactly when its class is routine, so a class that becomes an anomaly stops folding
+// without an edit here.
+fn concluded_outcome_folds(passed: Bool) -> Bool {
+  match observation_class_density(c: if passed { ClassDone } else { ClassFailed }) {
+    RoutineCollapsible => true
+    SummaryAlwaysShown => false
+    AnomalyExpanded => false
+  }
+}

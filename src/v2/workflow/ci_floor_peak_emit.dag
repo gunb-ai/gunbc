@@ -80,9 +80,9 @@ data ci_floor_phase_journal_artifact_name: String = "floor-phase-journal"
 
 data ci_floor_phase_journal_present_command: String = "[ -f \"$GUNBC_FLOOR_PHASE_JOURNAL\" ]"
 
-data ci_floor_phase_journal_header_command: String = "echo \"[floor-phase-journal] unix_millis pid phase state detail\""
+data ci_floor_phase_journal_header_command: String = "echo \"[floor-phase-journal] columns: unix_millis pid phase state detail\""
 
-data ci_floor_phase_journal_read_command: String = "sed 's/^/[floor-phase-journal] /' \"$GUNBC_FLOOR_PHASE_JOURNAL\""
+data ci_floor_phase_journal_read_command: String = "echo \"[floor-phase-journal] $(wc -l < $GUNBC_FLOOR_PHASE_JOURNAL) rows retained; full journal in the floor-phase-journal artifact\""
 
 data ci_floor_phase_journal_absent_command: String = "echo \"[floor-phase-journal] absent\""
 
@@ -90,9 +90,9 @@ data ci_floor_wet_witness_row_outcome_receipt_path: String = "target/floor-wet-w
 
 data ci_floor_wet_witness_row_outcome_receipt_present_command: String = "[ -f \"target/floor-wet-witness-row-outcome-receipt.tsv\" ]"
 
-data ci_floor_wet_witness_row_outcome_receipt_header_command: String = "echo \"[wet-witness-row-outcome-receipt] batch entry function outcome detail\""
+data ci_floor_wet_witness_row_outcome_receipt_header_command: String = "echo \"[wet-witness-row-outcome-receipt] columns: batch entry function outcome detail\""
 
-data ci_floor_wet_witness_row_outcome_receipt_read_command: String = "sed 's/^/[wet-witness-row-outcome-receipt] /' \"target/floor-wet-witness-row-outcome-receipt.tsv\""
+data ci_floor_wet_witness_row_outcome_receipt_read_command: String = "echo \"[wet-witness-row-outcome-receipt] $(wc -l < target/floor-wet-witness-row-outcome-receipt.tsv) rows; full receipt in the floor-component-receipt artifact\""
 
 data ci_floor_wet_witness_row_outcome_receipt_absent_command: String = "echo \"[wet-witness-row-outcome-receipt] absent\""
 
@@ -105,7 +105,7 @@ data ci_floor_wet_witness_row_outcome_receipt_shell_emit_scaffold: Disposition =
   }
 }
 
-data ci_floor_wet_witness_row_outcome_receipt_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_floor_wet_witness_row_outcome_receipt_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four receipt leaves: FileExists, header log, prefixed file read, and absent log. DISSOLVES WHEN bash-emit (#5828 / ROADMAP shell-effectplan-to-bash / shell→intent Phase 2) binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_wet_witness_row_outcome_receipt_if contains no opaque shell command text.")
+data ci_floor_wet_witness_row_outcome_receipt_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_floor_wet_witness_row_outcome_receipt_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four receipt leaves: FileExists, column-name log, row-count summary log, and absent log. DISSOLVES WHEN bash-emit (#5828 / ROADMAP shell-effectplan-to-bash / shell→intent Phase 2) binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_wet_witness_row_outcome_receipt_if contains no opaque shell command text.")
 
 data ci_floor_wet_witness_row_outcome_receipt_runner_scaffold_comment: String = concat("# ", dissolution_description(condition: ci_floor_wet_witness_row_outcome_receipt_shell_emit_dissolution_trigger))
 
@@ -118,7 +118,7 @@ data ci_floor_phase_journal_shell_emit_scaffold: Disposition = Scaffold {
   }
 }
 
-data ci_floor_phase_journal_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_floor_phase_journal_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four journal leaves: FileExists, header log, prefixed file read, and absent log. If/else control flow is already v2.std.orchestration intent; only those leaves remain medium-as-string Run.command values. DISSOLVES WHEN bash-emit (#5828 / ROADMAP shell-effectplan-to-bash / shell→intent Phase 2) binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_phase_journal_if contains no opaque shell command text.")
+data ci_floor_phase_journal_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_floor_phase_journal_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four journal leaves: FileExists, column-name log, row-count summary log, and absent log. If/else control flow is already v2.std.orchestration intent; only those leaves remain medium-as-string Run.command values. DISSOLVES WHEN bash-emit (#5828 / ROADMAP shell-effectplan-to-bash / shell→intent Phase 2) binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_phase_journal_if contains no opaque shell command text.")
 
 data ci_floor_phase_journal_roadmap_citation_note: String = "The symbolic ROADMAP row `shell-effectplan-to-bash` above is intentional. Neighboring shell-emission dissolve markers still carry the pre-existing stale pointer `6-shell-slice0`, which names no roadmap_authority row and is tracked for a separate shell-lane correction; do not normalize this live citation back to that spelling."
 

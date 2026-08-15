@@ -140,6 +140,7 @@ pub mod v1_rt;
 pub mod v1_std_core;
 pub mod v1_test_non_ascii_perf_fixture;
 pub mod v1_tests_claim_caret_parse_smoke_test;
+pub mod v1_tests_claim_dag_parse_continuation_operator_witness_test;
 pub mod v1_tests_claim_import_deletion_bridge_witness;
 pub mod v1_tests_claim_namespace_reference_derived_closure_production_admissions_witness_test;
 pub mod v1_tests_claim_occurrence_binding_parser_walk_witness_test;
