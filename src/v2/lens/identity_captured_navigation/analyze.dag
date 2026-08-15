@@ -159,7 +159,7 @@ fn arg_value_symbol(arg_capture: Node, span_index: SpanIndex, source_text: Strin
 }
 
 fn call_args_in_order(call_capture: Node) -> List<Node> {
-  list_reverse(xs: collect_direct_captures(n: call_capture, emitted: ^dag_surface_arg, acc: Empty))
+  list_reverse(xs: collect_direct_captures(n: call_capture, emitted: ^dag_surface_arg, acc: std.algebra.Empty))
 }
 
 fn arg_nth_value_symbol(
@@ -239,7 +239,7 @@ fn count_symbol(xs: List<Symbol>, needle: Symbol) -> Int {
 
 // Name-agnostic shape check (see identity_captured_navigation_wall_note): mentions is every value-reference identifier inside the guarding match's arm region. Removing every ^Absent (the legitimate empty-Optional literal a Rejected arm returns) and exactly one ^node_atom_identity_optional (the sanctioned reduction) should leave EXACTLY one mention - the binder passed as that reduction's sole argument. Zero reductions with a non-Absent mention present means the raw identity node was referenced without ever being reduced (the bare-return escape shape); more than one leftover mention after one reduction means something besides the reduction's own argument escaped; more than one reduction is an ambiguous shape this lens refuses rather than guesses at.
 fn empty_symbol_list() -> List<Symbol> {
-  Empty
+  std.algebra.Empty
 }
 
 fn no_identity_navigation_finding() -> Optional<Finding> {
@@ -331,10 +331,10 @@ fn identity_navigation_findings_at(node: Node, span_index: SpanIndex, source_tex
                         match classify_identity_match(
                           source_node: source_call,
                           match_node: node,
-                          mentions: collect_value_identifiers_into(n: arms, acc: Empty)
+                          mentions: collect_value_identifiers_into(n: arms, acc: std.algebra.Empty)
                         ) {
-                          Present { value: f } => Cons { head: f, tail: Empty }
-                          Absent => Empty
+                          Present { value: f } => Cons { head: f, tail: std.algebra.Empty }
+                          Absent => std.algebra.Empty
                         }
                       Absent =>
                         Cons {
@@ -342,19 +342,19 @@ fn identity_navigation_findings_at(node: Node, span_index: SpanIndex, source_tex
                             at: node,
                             cause: ^identity_navigation_arms_unresolved
                           },
-                          tail: Empty
+                          tail: std.algebra.Empty
                         }
                     }
-                  Absent => Empty
+                  Absent => std.algebra.Empty
                 }
-              Absent => Empty
+              Absent => std.algebra.Empty
             }
-          Absent => Empty
+          Absent => std.algebra.Empty
         }
       } else {
-        Empty
+        std.algebra.Empty
       }
-    Absent => Empty
+    Absent => std.algebra.Empty
   }
 }
 
@@ -369,7 +369,7 @@ fn identity_navigation_scan(node: Node, span_index: SpanIndex, source_text: Stri
 }
 
 fn identity_captured_navigation_findings(root: Node, span_index: SpanIndex, source_text: String) -> List<Finding> {
-  identity_navigation_scan(node: root, span_index: span_index, source_text: source_text, acc: Empty)
+  identity_navigation_scan(node: root, span_index: span_index, source_text: source_text, acc: std.algebra.Empty)
 }
 
 fn finding_is_suspect(f: Finding) -> Bool {

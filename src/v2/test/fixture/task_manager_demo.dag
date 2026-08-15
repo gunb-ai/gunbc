@@ -160,7 +160,7 @@ fn task_manager_task_fields_to_sql_columns(
 ) -> Outcome<List<SqlColumnDefinition>> {
   fold(
     fields,
-    init: outcome_accepted(value: Empty),
+    init: outcome_accepted(value: std.algebra.Empty),
     f: fn(acc, field) {
       append_outcome_value(
         acc: acc,

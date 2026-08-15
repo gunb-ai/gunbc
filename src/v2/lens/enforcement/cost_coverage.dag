@@ -168,7 +168,7 @@ fn cost_coverage_fn_receipts_for_module(
   let fn_decls = cost_coverage_collect_fn_decls(root: module_root, acc: Empty)
   fold_list(
     xs: fn_decls,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, fn_decl) {
       cost_coverage_fn_receipt_step(
         acc: acc,

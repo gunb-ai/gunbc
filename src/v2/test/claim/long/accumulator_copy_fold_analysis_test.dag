@@ -174,7 +174,7 @@ fn edge_list_prepend(item: Edge, xs: List<Edge>) -> List<Edge> {
 }
 
 fn no_edges() -> List<Edge> {
-  Empty
+  std.algebra.Empty
 }
 
 fn opaque_head_node() -> Node {

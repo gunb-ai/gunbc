@@ -10,14 +10,14 @@ fn finding_as_fidelity_discrepancy(f: Finding) -> List<FidelityDiscrepancy> {
         IdentityNodeEscapesAsValue { source: s, at: a, reduction_count: _, extraneous_mentions: _ } =>
           list_snoc_item(xs: Empty, item: UnderClaimedEdge { source: s, dependent: a })
       }
-    Unclassifiable { at: _, cause: _ } => Empty
+    Unclassifiable { at: _, cause: _ } => std.algebra.Empty
   }
 }
 
 fn identity_captured_navigation_as_fidelity_discrepancies(
   findings: List<Finding>
 ) -> List<FidelityDiscrepancy> {
-  fold(findings, init: Empty, f: fn(acc, finding) {
+  fold(findings, init: std.algebra.Empty, f: fn(acc, finding) {
     fold(finding_as_fidelity_discrepancy(f: finding), init: acc, f: fn(inner_acc, d) {
       list_snoc_item(xs: inner_acc, item: d)
     })
