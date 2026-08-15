@@ -79,8 +79,8 @@ fn spark_serving_provision_managed_leg(
 fn spark_serving_provision_apply_with_context(
   context: FleetSshExecutionContext,
   host: String,
+  script: String,
 ) -> ProcessExit {
-  let script = spark_serving_provision_script_body()
   if spark_serving_provision_managed_leg(context: context, host: host, script: script) {
     ExitSuccess
   } else {
@@ -88,7 +88,11 @@ fn spark_serving_provision_apply_with_context(
   }
 }
 
-func spark_serving_provision_apply_for_host(attempt_raw: String, host: String) -> ProcessExit
+func spark_serving_provision_apply_for_host(
+  attempt_raw: String,
+  host: String,
+  script: String,
+) -> ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()
@@ -106,7 +110,11 @@ func spark_serving_provision_apply_for_host(attempt_raw: String, host: String) -
                 reason: known_hosts_materialization_receipt(outcome: materialization),
               )
             Present { value: context } => {
-              let exit = spark_serving_provision_apply_with_context(context: context, host: host)
+              let exit = spark_serving_provision_apply_with_context(
+                context: context,
+                host: host,
+                script: script,
+              )
               let body = join([
                 "spark serving provision host=", host,
                 " endpoint=", fleet_probe_endpoint_for(host: host),
@@ -135,7 +143,11 @@ func spark_serving_provision_apply_wet(host: String) -> ProcessExit
         reason: "spark_serving_provision_apply_wet requires GUNBC_FLEET_SSH_ATTEMPT_RAW or GitHub GITHUB_RUN_ID+GITHUB_RUN_ATTEMPT env",
       )
     Present { value: attempt_raw } =>
-      spark_serving_provision_apply_for_host(attempt_raw: attempt_raw, host: host)
+      spark_serving_provision_apply_for_host(
+        attempt_raw: attempt_raw,
+        host: host,
+        script: spark_serving_provision_script_body(),
+      )
   }
 }
 

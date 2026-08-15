@@ -15,7 +15,11 @@ import gunbc.host_spark_serving_provision_script { spark_serving_provision_scrip
 import gunbc.spark_serving_provision_apply { spark_serving_provision_apply_for_host }
 import gunbc.fleet_multi_principal_probe { fleet_ssh_attempt_raw_from_env }
 
-data spark_serving_plan_apply_note: String = "Spark serving plan/apply (#8230 pattern at Spark grain). Plan materializes the provision script body and its content hash; apply refuses unless the on-disk plan matches the hash, then runs spark_serving_provision_apply_for_host over FleetSsh. Interim wet entrypoints (spark_serving_plan_apply_srv5/_srv6) delegate to the provision apply transport — not gunbc#8073 GHA sidecars; blocked from host_effect_apply until ProvisionSparkServing lands."
+data spark_serving_plan_apply_note: String = "Spark serving plan/apply (#8230 pattern at Spark grain). Plan materializes the provision script body and its content hash; apply refuses unless the on-disk plan matches the hash AND still equals the current derived body, then executes the frozen plan bytes via spark_serving_provision_apply_for_host(script: read_body.content). Interim wet entrypoints (spark_serving_plan_apply_srv5/_srv6) delegate to the provision apply transport — not gunbc#8073 GHA sidecars; blocked from host_effect_apply until ProvisionSparkServing lands."
+
+fn spark_serving_plan_script_body_still_current(plan_body: String) -> Bool {
+  plan_body == spark_serving_provision_script_body()
+}
 
 data spark_serving_plan_body_path: String = "/tmp/spark-serving-plan/install.sh"
 
@@ -79,6 +83,10 @@ func spark_serving_apply_wet(host: String) -> ProcessExit
         Present { value: recorded } =>
           if spark_serving_plan_bundle_matches(plan_body: read_body.content, recorded_hash: recorded) == false {
             exit_failure(reason: "spark_serving_apply: plan body drifted from recorded hash — refuse")
+          } else if spark_serving_plan_script_body_still_current(plan_body: read_body.content) == false {
+            exit_failure(
+              reason: "spark_serving_apply: planned script stale relative to current derived body — rerun plan",
+            )
           } else {
             match fleet_ssh_attempt_raw_from_env() {
               Absent =>
@@ -86,7 +94,11 @@ func spark_serving_apply_wet(host: String) -> ProcessExit
                   reason: "spark_serving_apply: GUNBC_FLEET_SSH_ATTEMPT_RAW or GitHub env required",
                 )
               Present { value: attempt_raw } =>
-                spark_serving_provision_apply_for_host(attempt_raw: attempt_raw, host: host)
+                spark_serving_provision_apply_for_host(
+                  attempt_raw: attempt_raw,
+                  host: host,
+                  script: read_body.content,
+                )
             }
           }
       }
