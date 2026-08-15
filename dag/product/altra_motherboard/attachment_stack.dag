@@ -189,33 +189,20 @@ data socket_board_termination_standing: AttachmentLayerStanding = AttachmentLaye
 
 // THE ONE THAT MATTERS MOST, and the one that looks most available. The board land pattern is the
 // SOCKET vendor's recommended pad array, not the processor's underside.
-// WHY THIS IS ACCESS-GATED, AND WHY IT WAS NEITHER OF THE TWO STATES IT PREVIOUSLY HELD.
-// It was FactStatedOnlyInFigure, citing the platform specification's Figure 3. That was wrong:
-// Figure 3 is the package outline and pad array -- the underside of the PART, the other surface
-// entirely -- so it dispatched a person to open a drawing and find nothing. It was then corrected
-// to FactUnresolved, "no document consulted so far states one", which was true when written and
-// is now false.
-//
-// The platform specification was read end to end on 2026-08-15. It contains no board-side land
-// pattern anywhere, AND it names the document that does: sections 4.2.2 and 4.3.2 both say to
-// refer to "Altra PCB Layout Guidelines" on Ampere's Customer Connect portal. So a PUBLIC document
-// names the authority, and the named authority is gated. That is a third thing from both prior
-// states and it routes to a third actor: not someone who reads a drawing, not someone who searches
-// for a document, but someone who obtains portal access. The search is over, and recording it as
-// unresolved would keep sending people to repeat it.
-//
-// The package-versus-board distinction is unchanged and still load bearing. Independent
-// corroboration that this is the only route: the socket vendor's public product pages carry the
-// plate and mount hardware and no land pattern either, so both paths to board copper terminate at
-// the same gate.
+// WHY THIS IS UNRESOLVED RATHER THAN STATED-ONLY-IN-A-FIGURE. FactStatedOnlyInFigure asserts the
+// fact IS drawn in a named figure and merely needs a human to read it, and nothing establishes
+// that here. The platform specification's Figure 3 is the package outline and pad array -- the
+// underside of the PART, the other surface entirely -- so citing it routed the blocker to a
+// person who would open the drawing and find nothing, which is a worse answer than saying the
+// document has not been found. The package-versus-board distinction is unchanged and still load
+// bearing; what changed is the claim about where the board-side fact is written down.
 data board_land_pattern_standing: AttachmentLayerStanding = AttachmentLayerStanding {
   layer: BoardLandPatternLayer,
-  fact: FactAccessGated {
-    subject: "Altra PCB Layout Guidelines — the board-side reference layout, named by the public platform specification as the authority for it",
-    access_route: ampere_customer_reference_boards_authority,
+  fact: FactUnresolved {
+    what_is_missing: "the socket vendor's recommended board-side land pattern; no document consulted so far states one, in text or in a figure",
   },
   carriage: CarriageNotApplicable {
-    because: "the fact is behind commercial access, so its carriage is governed by the access terms and is not a decision this repository takes separately; the prior row reached the same arm by the wrong route, reasoning that the naming document is public — which is true of the wrong document",
+    because: "no fact is established for this layer yet, so there is nothing to decide carriage for; the document itself is public and permitted, so nothing legal blocks this layer",
   },
 }
 

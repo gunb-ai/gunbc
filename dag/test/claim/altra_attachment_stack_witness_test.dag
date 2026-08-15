@@ -32,7 +32,6 @@ import product.altra_motherboard.attachment_stack {
   layer_blocker,
   open_blockers,
   processor_package_standing,
-  socket_standing,
   reference_board_collateral_standing,
   fact_is_established,
   CarriageNotApplicable,
@@ -95,10 +94,10 @@ test fn w_a_public_package_does_not_establish_the_board_land_pattern() -> Bool {
   fact_is_established(f: processor_package_standing.fact)
     && !fact_is_established(f: board_land_pattern_standing.fact)
     && match board_land_pattern_standing.fact {
-      FactAccessGated { subject: _, access_route: _ } => true
-      FactUnresolved { what_is_missing: _ } => false
+      FactUnresolved { what_is_missing: _ } => true
       FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => false
       FactEstablished { authority: _, subject: _ } => false
+      FactAccessGated { subject: _, access_route: _ } => false
     }
 }
 
@@ -119,35 +118,14 @@ test fn w_an_established_fact_and_a_decided_carriage_coexist() -> Bool {
 // AND AN UNRESOLVED FACT HAS NO CARRIAGE QUESTION YET. Carriage asks what may be copied; with
 // nothing established there is nothing to copy, so the arm says so rather than defaulting to a
 // permission or a prohibition nobody decided.
-//
-// THE SUBJECT MOVED AND THE CLAIM DID NOT. This asserted over the land-pattern row until that row
-// became access-gated with a carriage decision genuinely owed. Retargeting it to the socket layer
-// keeps the property under execution; deleting it because its old subject changed state would have
-// retired a live law on an accident of which row happened to illustrate it.
 test fn w_an_unresolved_fact_carries_no_carriage_decision() -> Bool {
-  !fact_is_established(f: socket_standing.fact)
-    && match socket_standing.fact {
-      FactUnresolved { what_is_missing: _ } => true
-      FactAccessGated { subject: _, access_route: _ } => false
-      FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => false
-      FactEstablished { authority: _, subject: _ } => false
-    }
-    && match socket_standing.carriage {
+  !fact_is_established(f: board_land_pattern_standing.fact)
+    && match board_land_pattern_standing.carriage {
       CarriageNotApplicable { because: _ } => true
       NormalizedFactsMayBeCarried => false
       CarriageDecisionRequired { reason: _ } => false
     }
 }
-
-// WHY THERE IS NO CLAIM HERE THAT A GATED FACT OWES A CARRIAGE DECISION, recorded because one was
-// written and deleted the same hour. Moving the land pattern to FactAccessGated, it looked obvious
-// that carriage became a live undecided question — the document exists, we cannot reach it, so
-// surely someone must later rule on whether its facts may be carried. That is wrong, and
-// authority_standing_refusal already said so: the terms gating the access ARE the terms governing
-// the carriage, so deciding them separately is deciding one of them wrongly. The pairing is
-// refused by AccessGatedFactHasIndependentCarriageDecision, w_every_layer_standing_is_a_coherent_pair
-// went red on it immediately, and the claim asserting the opposite is gone rather than weakened.
-// The coherent arm is asserted by w_an_access_gated_fact_gets_no_independent_carriage_decision.
 
 // THREE CATEGORIES, DISTINGUISHED BY WHO ACTS. An unresolved authority is someone reading a
 // datasheet, a redistribution question is a legal decision, an NDA gate is a commercial
@@ -169,7 +147,7 @@ test fn w_the_three_blocker_kinds_are_distinct() -> Bool {
     Present { value: b } => blocker_kind(b: b)
   }
   package_blocker == "none"
-    && land_blocker == "commercial"
+    && land_blocker == "find-document"
     && undecided_carriage_blocker() == "redistribution"
     && match reference_board_collateral_standing() {
       FactAccessGated { subject: sub, access_route: route } =>
@@ -201,20 +179,7 @@ fn undecided_carriage_blocker() -> String {
 // THE NDA BOUNDARY IS THE REFERENCE BOARDS, NOT THE PACKAGE. Stated as an executed comparison
 // rather than as prose, because the prose version of this claim was already believed once while
 // being false.
-//
-// AND THE BOUNDARY MOVED, WHICH IS WHY THIS COUNT IS ONE AND NOT ZERO. It asserted zero until
-// 2026-08-15 and that was correct: every gated subject sat OUTSIDE the attachment stack, in the
-// reference-board collateral, and the six layers were blocked only by work nobody had done yet.
-// Reading the platform specification end to end moved a layer across the line. The board land
-// pattern is not missing and not undiscovered — it is written in a document Ampere names publicly
-// and publishes only behind Customer Connect, so the commercial gate now reaches a layer this
-// board must have to exist.
-//
-// The count is asserted rather than the layer name, and both directions matter: it must not drift
-// upward silently as other layers get filed as gated when they are merely unfound, and if the gate
-// is ever cleared it must drop. Which layer it is, is pinned separately by the blocker-kind claim
-// above, so this row measures the boundary's EXTENT and that one measures its LOCATION.
-test fn w_exactly_one_attachment_layer_is_behind_the_nda_boundary() -> Bool {
+test fn w_the_nda_boundary_covers_board_collateral_only() -> Bool {
   let nda_layers = fold(attachment_stack, init: 0, f: fn(acc, row) {
     match row.fact {
       FactAccessGated { subject: _, access_route: _ } => acc + 1
@@ -223,13 +188,7 @@ test fn w_exactly_one_attachment_layer_is_behind_the_nda_boundary() -> Bool {
       FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => acc
     }
   })
-  nda_layers == 1
-    && match board_land_pattern_standing.fact {
-      FactAccessGated { subject: _, access_route: _ } => true
-      FactEstablished { authority: _, subject: _ } => false
-      FactUnresolved { what_is_missing: _ } => false
-      FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => false
-    }
+  nda_layers == 0
 }
 
 // SIX LAYERS, SIX BLOCKERS, NONE ESTABLISHED — and this is the honest state of the attachment
