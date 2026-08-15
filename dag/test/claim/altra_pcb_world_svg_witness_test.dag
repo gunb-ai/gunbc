@@ -465,11 +465,7 @@ test fn w_subset_bodies_are_not_drawn_as_checked() -> Bool {
 test fn w_the_legend_states_the_cause_populations() -> Bool {
   match scene_or_empty() {
     Absent => false
-<<<<<<< HEAD
     Present { value: s } => string_contains(s: s, pattern: "5 established / 11 unselected / 0 missing-document / 0 commercial-access / 0 legal-carriage / 0 drawing-must-be-read / 1 attachment-part-unresolved / 7 unrealized-function — body layout admitted over established subset only; 12 parts owed")
-=======
-    Present { value: s } => string_contains(s: s, pattern: "5 established / 10 unselected / 0 missing-document / 0 commercial-access / 0 legal-carriage / 0 drawing-must-be-read / 1 attachment-part-unresolved / 7 unrealized-function — body layout admitted over established subset only; 12 parts owed")
->>>>>>> e8f36edb70 (Project physical-population realization gaps into PCB functional obligations.)
   }
 }
 
