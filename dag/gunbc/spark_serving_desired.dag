@@ -184,6 +184,10 @@ fn spark_serving_terminal_intent() -> SparkServingIntent {
   }
 }
 
+fn spark_serving_automation_principal_login() -> NonEmptyStr {
+  "gunbc-automation" as NonEmptyStr
+}
+
 fn spark_serving_automation_principal() -> NamedPrincipal {
-  NamedPrincipal { login: "gunbc-automation" as NonEmptyStr }
+  NamedPrincipal { login: spark_serving_automation_principal_login() }
 }

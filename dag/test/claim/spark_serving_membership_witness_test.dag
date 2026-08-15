@@ -2,7 +2,7 @@ module test.claim.spark_serving_membership_witness
 
 import std.types { String, List, Bool, Int, NonEmptyStr }
 import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv5 }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.membership_reconcile {
   MembershipPlan,
@@ -22,11 +22,6 @@ import gunbc.membership_reconcile {
   EffectAdd,
   EffectReplace,
   EffectRemove,
-}
-import gunbc.spark_serving_release {
-  SparkServingRelease,
-  RuntimeArtifactIdentity,
-  spark_serving_release_identity,
 }
 import gunbc.spark_serving_desired {
   spark_serving_desired_release_admission,
@@ -60,13 +55,6 @@ import gunbc.spark_serving_membership {
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-fn w_fixture_release() -> SparkServingRelease {
-  SparkServingRelease {
-    runtime: RuntimeArtifactIdentity { closure_digest: "witness-fixture-closure" as NonEmptyStr },
-    model: spark_serving_desired_model_artifact(),
-  }
-}
 
 fn w_host() -> HostIdentity {
   operator_host_srv5
@@ -261,9 +249,28 @@ test fn w_spark_serving_key_is_host_principal_address_not_value() -> Bool {
   spark_serving_member_key(member: a) == spark_serving_member_key(member: b)
     && string_contains(
       s: spark_serving_member_key(member: a),
-      pattern: spark_serving_automation_principal().login as String,
+      pattern: spark_serving_serving_principal() as String,
     )
     && string_contains(s: spark_serving_member_key(member: a), pattern: "runtime-root")
+}
+
+test fn w_spark_serving_key_differs_when_host_changes() -> Bool {
+  let shared = "same-content" as NonEmptyStr
+  let a = spark_serving_member(
+    host: operator_host_srv5,
+    principal: w_principal(),
+    address: SparkServingRuntimeRootAddress,
+    state_digest: shared,
+    ownership: Owned,
+  )
+  let b = spark_serving_member(
+    host: operator_host_srv6,
+    principal: w_principal(),
+    address: SparkServingRuntimeRootAddress,
+    state_digest: shared,
+    ownership: Owned,
+  )
+  spark_serving_member_key(member: a) != spark_serving_member_key(member: b)
 }
 
 test fn w_spark_serving_user_unit_path_uses_unit_identity_authority() -> Bool {

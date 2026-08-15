@@ -25,7 +25,7 @@ import gunbc.spark_serving_install_paths {
 }
 import gunbc.spark_serving_desired {
   spark_serving_desired_bind_host_port,
-  spark_serving_automation_principal,
+  spark_serving_automation_principal_login,
 }
 import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
 
@@ -86,7 +86,7 @@ fn spark_serving_member_ownership(member: SparkServingMember) -> Ownership? {
 }
 
 fn spark_serving_serving_principal() -> NonEmptyStr {
-  spark_serving_automation_principal().login
+  spark_serving_automation_principal_login()
 }
 
 fn spark_serving_user_unit_state_digest() -> NonEmptyStr {
