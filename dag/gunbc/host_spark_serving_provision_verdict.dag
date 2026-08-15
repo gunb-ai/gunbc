@@ -1,0 +1,138 @@
+module gunbc.host_spark_serving_provision_verdict
+
+import std.types { String, NonEmptyStr, Bool }
+
+data host_spark_serving_provision_verdict_authority_note: String = "Verdict fold and shell-output classification for Spark serving provision — mirrors host_codex_runtime_provision_verdict. Consumed by spark_serving_provision_apply so observe=ok short-circuit on a converged host classifies as ProvisionConverged (idempotent re-apply), not as failure for lacking read_back=ok."
+
+type SparkServingProvisionRefusal
+  = RefusalMaterializationFailed
+  | RefusalReadBackFailed
+  | RefusalRuntimeAbsent
+  | RefusalShellOutputUnrecognized
+
+type SparkServingProvisionVerdict
+  = ProvisionConverged
+  | ProvisionRefused { cause: SparkServingProvisionRefusal, reason: NonEmptyStr }
+
+fn spark_serving_shell_combined_output(stdout: String, stderr: String) -> String {
+  if stderr == "" {
+    stdout
+  } else if stdout == "" {
+    stderr
+  } else {
+    concat(concat(stdout, "\n"), stderr)
+  }
+}
+
+fn spark_serving_provision_converged(combined_output: String, success: Bool) -> Bool {
+  success
+    && (
+      string_contains(s: combined_output, pattern: "SparkServingProvisionReceipt: read_back=ok")
+        || string_contains(s: combined_output, pattern: "SparkServingProvisionReceipt: observe=ok")
+    )
+}
+
+fn provision_spark_serving_verdict_from_shell(
+  success: Bool,
+  stdout: String,
+  stderr: String,
+) -> SparkServingProvisionVerdict {
+  let combined_output = spark_serving_shell_combined_output(stdout: stdout, stderr: stderr)
+  if spark_serving_provision_converged(combined_output: combined_output, success: success) {
+    ProvisionConverged
+  } else if string_contains(s: combined_output, pattern: "ensure=FAILED") {
+    ProvisionRefused {
+      cause: RefusalMaterializationFailed,
+      reason: concat(
+        "spark_serving_provision: materialization failed during ensure; observed: ",
+        combined_output,
+      ) as NonEmptyStr,
+    }
+  } else if string_contains(s: combined_output, pattern: "read_back=FAILED") {
+    ProvisionRefused {
+      cause: RefusalReadBackFailed,
+      reason: concat(
+        "spark_serving_provision: read-back did not confirm desired model; observed: ",
+        combined_output,
+      ) as NonEmptyStr,
+    }
+  } else if string_contains(s: combined_output, pattern: "observe=absent") {
+    ProvisionRefused {
+      cause: RefusalRuntimeAbsent,
+      reason: concat(
+        "spark_serving_provision: runtime absent at observe; observed: ",
+        combined_output,
+      ) as NonEmptyStr,
+    }
+  } else {
+    ProvisionRefused {
+      cause: RefusalShellOutputUnrecognized,
+      reason: concat(
+        "spark_serving_provision: shell output did not match any known provision receipt shape; observed: ",
+        combined_output,
+      ) as NonEmptyStr,
+    }
+  }
+}
+
+fn spark_serving_observe_ok_converges_idempotent() -> Bool {
+  match provision_spark_serving_verdict_from_shell(
+    success: true,
+    stdout: "SparkServingProvisionReceipt: observe=ok" as String,
+    stderr: "",
+  ) {
+    ProvisionConverged => true
+    ProvisionRefused { cause: _, reason: _ } => false
+  }
+}
+
+fn spark_serving_read_back_ok_converges() -> Bool {
+  match provision_spark_serving_verdict_from_shell(
+    success: true,
+    stdout: "SparkServingProvisionReceipt: read_back=ok" as String,
+    stderr: "",
+  ) {
+    ProvisionConverged => true
+    ProvisionRefused { cause: _, reason: _ } => false
+  }
+}
+
+fn spark_serving_materialization_failed_refuses_fail_closed() -> Bool {
+  match provision_spark_serving_verdict_from_shell(
+    success: false,
+    stdout: join(
+      [
+        "SparkServingProvisionReceipt: observe=absent",
+        "SparkServingProvisionReceipt: ensure=starting",
+        "SparkServingProvisionReceipt: ensure=FAILED",
+      ],
+      "\n",
+    ),
+    stderr: "",
+  ) {
+    ProvisionRefused { cause: RefusalMaterializationFailed, reason: _ } => true
+    ProvisionConverged => false
+  }
+}
+
+fn spark_serving_read_back_failed_refuses_fail_closed() -> Bool {
+  match provision_spark_serving_verdict_from_shell(
+    success: false,
+    stdout: "SparkServingProvisionReceipt: read_back=FAILED" as String,
+    stderr: "",
+  ) {
+    ProvisionRefused { cause: RefusalReadBackFailed, reason: _ } => true
+    ProvisionConverged => false
+  }
+}
+
+fn spark_serving_shell_output_unrecognized_refuses_fail_closed() -> Bool {
+  match provision_spark_serving_verdict_from_shell(
+    success: false,
+    stdout: "ssh: connection timed out" as String,
+    stderr: "",
+  ) {
+    ProvisionRefused { cause: RefusalShellOutputUnrecognized, reason: _ } => true
+    ProvisionConverged => false
+  }
+}

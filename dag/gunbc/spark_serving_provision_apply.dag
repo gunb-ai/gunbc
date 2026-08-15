@@ -23,14 +23,29 @@ import gunbc.spark_credential_workflow { run_with_materialized_fleet_ssh_binding
 import gunbc.auth.access_token_source { GcloudPrintToken }
 import gunbc.spark_serving_install_paths { spark_serving_automation_login }
 import gunbc.host_spark_serving_provision_script { spark_serving_provision_script_body }
+import gunbc.host_spark_serving_provision_verdict {
+  provision_spark_serving_verdict_from_shell,
+  ProvisionConverged,
+}
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 
 data spark_serving_provision_apply_note: String = "Wet Spark serving provision apply (#8225 runtime-bundle + FleetSsh transport). Runs host_spark_serving_provision_script observe/ensure/read-back on the target host as gunbc-automation via ExecPortableWordsWithStdin (sh -s) — the same credential binding as spark_serving_observe, not a hardcoded local key parallel route. Plan/apply CAS is spark_serving_plan_apply (#8230 pattern at Spark grain)."
 
 data spark_serving_provision_apply_receipt_path: String = "target/spark-serving-provision-apply-receipt.txt"
 
-fn spark_serving_provision_apply_succeeded(stdout: String) -> Bool {
-  string_contains(s: stdout, pattern: "SparkServingProvisionReceipt: read_back=ok")
+fn spark_serving_provision_apply_converged(
+  success: Bool,
+  stdout: String,
+  stderr: String,
+) -> Bool {
+  match provision_spark_serving_verdict_from_shell(
+    success: success,
+    stdout: stdout,
+    stderr: stderr,
+  ) {
+    ProvisionConverged => true
+    ProvisionRefused { cause: _, reason: _ } => false
+  }
 }
 
 fn spark_serving_provision_managed_leg(
@@ -52,7 +67,11 @@ fn spark_serving_provision_managed_leg(
         ),
         stdin_payload: join([script, "\n"], ""),
       )
-      r.success && spark_serving_provision_apply_succeeded(stdout: r.stdout)
+      spark_serving_provision_apply_converged(
+        success: r.success,
+        stdout: r.stdout,
+        stderr: r.stderr,
+      )
     }
   }
 }

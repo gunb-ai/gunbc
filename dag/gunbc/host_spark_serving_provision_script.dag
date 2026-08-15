@@ -7,12 +7,19 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.exec.command { shell_quote }
 import extdeps.ollama.api { ollama_default_port }
 import gunbc.shell_bash_runner { shell_exec_via_bash }
+import gunbc.host_layout {
+  srv1_gunbc_repo_root,
+  srv1_gunbc_serve_binary,
+}
 import gunbc.spark_serving_install_paths {
   spark_serving_runtime_executable,
   spark_serving_desired_model_wire,
-  spark_gunbc_repo_root,
-  spark_gunbc_serve_binary,
-  spark_gunbc_src_v2_root,
+}
+
+data host_spark_serving_gunbc_layout_note: String = "Remote ensure delegates to gunbc run materialize_spark_serving_on_local_host using gunbc.host_layout srv1_gunbc_* rows — fleet-constant /opt/gunbc paths on Spark hosts (codex precedent at host_codex_runtime_provision_script). Observed 2026-08-15 on srv5/srv6: /opt/gunbc/bin/gunbc absent; ensure fails closed until live_deploy carries this member."
+
+fn spark_serving_gunbc_src_v2_root(gunbc_repo: String) -> String {
+  concat(gunbc_repo, "/src/v2")
 }
 
 data host_spark_serving_provision_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: host_spark_serving_provision_script — observe/read-back concat shell plus ensure transport that delegates to gunbc run materialize_spark_serving_on_local_host; DISSOLVES WHEN ProvisionSparkServing reaches host_effect_apply as typed argv rather than a script body (same class as host_codex_runtime_provision_script).")
@@ -52,7 +59,7 @@ fn spark_serving_ensure_body(
 ) -> String {
   let gunbc_binary_q = shell_quote(arg: gunbc_binary)
   let gunbc_repo_q = shell_quote(arg: gunbc_repo)
-  let gunbc_src_v2_q = shell_quote(arg: spark_gunbc_src_v2_root(gunbc_repo: gunbc_repo))
+  let gunbc_src_v2_q = shell_quote(arg: spark_serving_gunbc_src_v2_root(gunbc_repo: gunbc_repo))
   join([
     join([
       "if ! ",
@@ -95,8 +102,8 @@ fn spark_serving_provision_script_body() -> String {
     spark_serving_observe_body(executable: executable, model_wire: model_wire),
     "printf '%s\\n' \"SparkServingProvisionReceipt: ensure=starting\"",
     spark_serving_ensure_body(
-      gunbc_binary: spark_gunbc_serve_binary as String,
-      gunbc_repo: spark_gunbc_repo_root as String,
+      gunbc_binary: srv1_gunbc_serve_binary as String,
+      gunbc_repo: srv1_gunbc_repo_root as String,
     ),
     spark_serving_read_back_body(executable: executable, model_wire: model_wire),
   ], "\n")
@@ -117,8 +124,8 @@ fn spark_serving_provision_read_back_fails_closed() -> Bool {
 
 fn spark_serving_provision_ensure_delegates_to_materializer() -> Bool {
   let body = spark_serving_ensure_body(
-    gunbc_binary: spark_gunbc_serve_binary as String,
-    gunbc_repo: spark_gunbc_repo_root as String,
+    gunbc_binary: srv1_gunbc_serve_binary as String,
+    gunbc_repo: srv1_gunbc_repo_root as String,
   )
   string_contains(s: body, pattern: "materialize_spark_serving_on_local_host")
     && string_contains(s: body, pattern: "host_spark_serving_provision.dag")
@@ -128,6 +135,6 @@ fn spark_serving_provision_ensure_delegates_to_materializer() -> Bool {
 
 fn spark_serving_provision_shell_uses_shell_quote_authority() -> Bool {
   let body = spark_serving_provision_script_body()
-  string_contains(s: body, pattern: shell_quote(arg: spark_gunbc_serve_binary as String))
-    && string_contains(s: body, pattern: shell_quote(arg: spark_gunbc_repo_root as String))
+  string_contains(s: body, pattern: shell_quote(arg: srv1_gunbc_serve_binary as String))
+    && string_contains(s: body, pattern: shell_quote(arg: srv1_gunbc_repo_root as String))
 }

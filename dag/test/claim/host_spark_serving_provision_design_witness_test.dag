@@ -8,6 +8,18 @@ import gunbc.host_spark_serving_provision_script {
   spark_serving_provision_shell_uses_shell_quote_authority,
   host_spark_serving_provision_script_scaffold,
 }
+import gunbc.host_spark_serving_provision_verdict {
+  spark_serving_observe_ok_converges_idempotent,
+  spark_serving_read_back_ok_converges,
+  spark_serving_materialization_failed_refuses_fail_closed,
+  spark_serving_read_back_failed_refuses_fail_closed,
+  spark_serving_shell_output_unrecognized_refuses_fail_closed,
+  provision_spark_serving_verdict_from_shell,
+  ProvisionConverged,
+  ProvisionRefused,
+  RefusalMaterializationFailed,
+  RefusalReadBackFailed,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -32,5 +44,37 @@ test fn design_witness_provision_script_carries_scaffold() -> Bool {
       m == "gunbc.host_spark_serving_provision_script"
         && n == "host_spark_serving_provision_script_dissolution_trigger"
     Terminal { reason: _ } => false
+  }
+}
+
+test fn design_witness_observe_ok_converges_idempotent() -> Bool {
+  spark_serving_observe_ok_converges_idempotent()
+}
+
+test fn design_witness_read_back_ok_converges() -> Bool {
+  spark_serving_read_back_ok_converges()
+}
+
+test fn design_witness_materialization_failed_refuses_fail_closed() -> Bool {
+  spark_serving_materialization_failed_refuses_fail_closed()
+}
+
+test fn design_witness_read_back_failed_refuses_fail_closed() -> Bool {
+  spark_serving_read_back_failed_refuses_fail_closed()
+}
+
+test fn design_witness_shell_output_unrecognized_refuses_fail_closed() -> Bool {
+  spark_serving_shell_output_unrecognized_refuses_fail_closed()
+}
+
+test fn design_witness_shell_verdict_observe_ok_not_read_back_failed() -> Bool {
+  match provision_spark_serving_verdict_from_shell(
+    success: true,
+    stdout: "SparkServingProvisionReceipt: observe=ok",
+    stderr: "",
+  ) {
+    ProvisionConverged => true
+    ProvisionRefused { cause: RefusalReadBackFailed, reason: _ } => false
+    ProvisionRefused { cause: RefusalMaterializationFailed, reason: _ } => false
   }
 }

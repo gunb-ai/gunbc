@@ -9,20 +9,9 @@ import gunbc.spark_serving_desired {
 }
 import gunbc.spark_serving_release { spark_serving_target }
 import gunbc.spark_serving_realization { NamedPrincipal }
+import gunbc.spark_serving_runtime_receipt { spark_serving_executor_home }
 
-data spark_serving_install_paths_note: String = "Owned-runtime layout for UserUnitRealization + InstallOwnedRuntimeClosure on Spark hosts. Paths are fleet-constant under gunbc-automation; the executor home is the authority, not per-host variation."
-
-data spark_gunbc_layout_note: String = "Declared gunbc layout for remote ensure delegation (#8225 codex precedent). host_spark_serving_provision_script ensure invokes gunbc run materialize_spark_serving_on_local_host on the target host — not a re-encoded install pipeline. Observed 2026-08-15 on srv5/srv6: /opt/gunbc/bin/gunbc absent; ensure fails closed until live_deploy carries this member."
-
-data spark_gunbc_repo_root: FilePath = "/opt/gunbc/gunbc" as FilePath
-
-data spark_gunbc_serve_binary: FilePath = "/opt/gunbc/bin/gunbc" as FilePath
-
-fn spark_gunbc_src_v2_root(gunbc_repo: String) -> String {
-  concat(gunbc_repo, "/src/v2")
-}
-
-data spark_serving_executor_home: FilePath = "/home/gunbc-automation" as FilePath
+data spark_serving_install_paths_note: String = "Owned-runtime layout for UserUnitRealization + InstallOwnedRuntimeClosure on Spark hosts. Executor home is spark_serving_runtime_receipt.spark_serving_executor_home; gunbc host paths are gunbc.host_layout (host_spark_serving_provision_script imports srv1_gunbc_repo_root and srv1_gunbc_serve_binary — fleet-constant /opt/gunbc layout on Spark hosts, same codex precedent)."
 
 data spark_serving_runtime_root_rel: String = ".local/share/gunbc/spark-serving/ollama"
 
@@ -105,9 +94,9 @@ fn spark_serving_user_unit_contents() -> String {
     "[Service]\n",
     "Type=simple\n",
     join(["Environment=OLLAMA_HOST=", spark_serving_bind_host_port(), "\n"], ""),
-    "Environment=OLLAMA_MODELS=%h/.local/share/gunbc/spark-serving/models\n",
+    join(["Environment=OLLAMA_MODELS=%h/", spark_serving_models_root_rel, "\n"], ""),
     "Environment=HOME=%h\n",
-    "ExecStart=%h/.local/share/gunbc/spark-serving/ollama/bin/ollama serve\n",
+    join(["ExecStart=%h/", spark_serving_runtime_root_rel, "/bin/ollama serve\n"], ""),
     "Restart=on-failure\n",
     "\n",
     "[Install]\n",
