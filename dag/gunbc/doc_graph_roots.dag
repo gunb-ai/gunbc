@@ -128,15 +128,6 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
-    slug: "affected-set-precompute-pruning",
-    primary_work: DeclarationRef { module_path: "v2.workflow.affected_set_floor_runner", decl_name: "floor_witness_run_disposition", field: WholeDeclaration },
-    additional_works: [
-      DeclarationRef { module_path: "v2.workflow.affected_set_floor_runner", decl_name: "floor_test_fn_declaration_edited", field: WholeDeclaration },
-    ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject floor_witness_run_disposition describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
     slug: "algebra-grounding-unification-design",
     primary_work: DeclarationRef { module_path: "std.algebra", decl_name: "FreeMonoid", field: WholeDeclaration },
     additional_works: [
@@ -1025,7 +1016,6 @@ data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
     additional_works: [
       DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "five_minute_ci_gate_program_note", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.roadmap_authority", decl_name: "roadmap_authority_for", field: WholeDeclaration },
-      DeclarationRef { module_path: "gunbc.selection_degradation_receipt", decl_name: "selection_degradation_receipt_note", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.p1_retention_cohort_receipt", decl_name: "p1_retention_cohort_receipt_verdict", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.ci_cost_arc_closeout_receipt", decl_name: "end_to_end_residual", field: WholeDeclaration },
       DeclarationRef { module_path: "gunbc.ci_cost_arc_closeout_receipt", decl_name: "retention_settle", field: WholeDeclaration },

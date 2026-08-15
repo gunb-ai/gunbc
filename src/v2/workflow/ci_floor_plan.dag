@@ -34,7 +34,6 @@ import gunbc.ci_spec {
 import gunbc.falsifier_workflow { falsifier_plan_function, gunbc_falsifier_soft_deadline_minutes }
 import gunbc.falsifier_lane {
   FalsifierLane,
-  LanePredictOnly,
   LaneSelfHostWet,
   LaneSelfHostWetKnownRed,
   LaneKnownRedProbe,
@@ -75,16 +74,11 @@ import std.nat { Nat }
 import std.measure { Second, second, second_count, millisecond_count, minute_to_millisecond }
 import std.realization_width { width_fold_objective_goals }
 import std.realization_schedule {
-  SelectionApplied,
-  SelectionPredictOnly,
-  SelectionOff,
   RealizationPlan,
   RealizationObjective,
   Runnable,
   RunnableSingleClaim,
   RunnableDiscoveryBatch,
-  RunnableScopedWitnessBatch,
-  ScopedWitnessBatch,
   RunnableUsesFloorPositionalClamp,
   RunnableOwnsBatchClamp,
   runnable_batch_clamp_source,
@@ -433,7 +427,7 @@ fn gunbc_ci_floor_enrolled_runnable_labels_for(spec: CiSpec) -> List<String> {
   let corpus_labels = list_map(xs: corpus_plan_nodes(spec: spec), f: fn(node) {
     runnable_single_claim_function(r: runnable_for_node(node: node, spec: spec))
   })
-  let spec_labels = concat(concat(gate_labels, corpus_labels), map(scoped_witness_batches, batch => "__scoped_witness_batch__"))
+  let spec_labels = concat(gate_labels, corpus_labels)
   if gunbc_pr_native_batch_enrolled() {
     list_snoc_item(xs: spec_labels, item: runnable_single_claim_function(r: gunbc_pr_native_batch()))
   } else {
@@ -451,8 +445,7 @@ fn gunbc_ci_floor_schedule_runnable_labels(batches: List<List<Runnable>>) -> Lis
 
 fn runnable_is_discovery_batch(r: Runnable) -> Bool {
   match r {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => true
-    RunnableScopedWitnessBatch { batch: _ } => true
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => true
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
     RunnableKernelWorkload { fused_op_count: _ } => false
   }
@@ -633,25 +626,27 @@ fn gunbc_falsifier_soft_deadline_ms() -> Int {
   gunbc_falsifier_soft_deadline_minutes() * 60 * 1000
 }
 
-// THE THREE ORDINARY-FLOOR WITNESS BATCHES RUN THEIR WHOLE ROSTER (operator directive
-// 2026-08-13: "just run all the witnesses unconditionally, since they don't actually take
-// very long anyway"). This batch, execution_corpus_runnable_for and
-// bin_witness_corpus_runnable_for carry SelectionOff; the falsifier cadence lanes, the
-// expect-red quarantine probes and the v1 scoped batch are deliberately unchanged and
-// named in corpus_selection_off_note below.
+// EVERY WITNESS BATCH RUNS ITS WHOLE ROSTER, and there is no longer a mechanism that
+// could do otherwise (operator directive 2026-08-13, "just run all the witnesses
+// unconditionally"; affected-set selection deleted outright 2026-08-15). The selection
+// axis is gone from Runnable itself, so an unrun roster row is a defect rather than a
+// policy — which is the point: while the field existed, layers unrelated to scheduling
+// read it and DECIDED from it.
 //
-// WHY THE PREMISE HOLDS, measured rather than assumed: on the last main run to complete
-// (31672107941) the corpus node reported resolve 931.0s against evalu 96.1s across 9024
-// discovered witnesses, of which 4840 were skipped. Evaluation is ~9% of the node and the
-// preparation it gates is the other ~91%, so selection was buying avoided PREPARATION,
-// not avoided checking -- and that preparation is the entry-major defect the floor
-// program exists to remove, not a cost worth building a second mechanism to dodge.
+// WHY THE PREMISE HOLDS, measured rather than assumed: on run 31672107941 the corpus node
+// reported resolve 931.0s against evalu 96.1s across 9024 discovered witnesses, of which
+// 4840 were skipped. Evaluation is ~9% of the node and the preparation it gates is the
+// other ~91%, so selection was buying avoided PREPARATION, not avoided checking -- and
+// that preparation is the entry-major defect the floor program exists to remove, not a
+// cost worth a second mechanism to dodge. Run 31745991795 then measured the flip itself:
+// 64m32s over 9267 witnesses with selection off, against selection-on runs spanning
+// 47-74m, so the added cost was not separable from run-to-run noise on this fleet.
+//
 fn corpus_runnable_for(spec: CiSpec) -> Runnable {
   RunnableDiscoveryBatch {
     source_roots: corpus_source_roots(),
     scan_dirs: spec.discovery_scan_dirs,
     explicit_entries: corpus_witness_entries(spec: spec),
-    node_frontier_selection: SelectionOff,
     exclude_substrings: witness_exclusion_substrings(),
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
@@ -674,7 +669,6 @@ fn execution_corpus_runnable_for(spec: CiSpec) -> Runnable {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
     explicit_entries: execution_witness_entries(spec: spec),
-    node_frontier_selection: SelectionOff,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
@@ -699,7 +693,6 @@ fn bin_witness_corpus_runnable_for() -> Runnable {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
     explicit_entries: bin_witness_wet_entries,
-    node_frontier_selection: SelectionOff,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
@@ -984,23 +977,6 @@ fn gunbc_ci_floor_realization_plan() -> RealizationPlan {
   }
 }
 
-fn gunbc_falsifier_predict_only_batch() -> Runnable {
-  RunnableDiscoveryBatch {
-    source_roots: corpus_source_roots(),
-    scan_dirs: gunbc_ci_spec.discovery_scan_dirs,
-    explicit_entries: [],
-    node_frontier_selection: SelectionPredictOnly,
-    exclude_substrings: witness_exclusion_substrings(),
-    discovery_scope_dirs: [],
-    profile: runnable_resource_profile(
-      heavy_whole_tree_resolve: true,
-      spawns_host_compiler: false,
-      memory: runnable_memory_substantial(),
-      execution_mode: Hermetic
-    )
-  }
-}
-
 data falsifier_self_host_wet_batch_note: String = "Nightly falsifier batch 2 (Wave 2 CI substrate): the declared Wet lane for emit->compile->run->equals-seed self-host behavioral receipts (v2.compiler.self_host.wet_receipt_enrollment falsifier_self_host_wet_entries — template + frontier-flipped SelfEmitted bindings only; see falsifier_self_host_wet_note in gunbc.ci_layer_roots). Gate-4 std/logic is the inaugural green template; compiler modules enroll when frontier rows flip SelfEmitted with a declared binding — never known-red. Whole-receipt wall budget: gunbc_falsifier_self_host_wet_receipt_wall_budget. Runs SelectionApplied after the hermetic predict-only affected-set sweep; claim_executor halts batch 2 if batch 1 fails (fail-closed). REHOME 2026-07-25: enrollment gated on falsifier_self_host_wet_cadence_is_active (active since 2026-08-06 Lane D); roster retained for local recipe."
 
 fn falsifier_self_host_wet_batch_enrolled() -> Bool {
@@ -1025,7 +1001,6 @@ fn gunbc_falsifier_silent_pick_gate_batch() -> Runnable {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
     explicit_entries: falsifier_silent_pick_gate_entries,
-    node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
@@ -1044,7 +1019,6 @@ fn gunbc_falsifier_self_host_wet_known_red_batch() -> Runnable {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
     explicit_entries: falsifier_self_host_wet_known_red_entries,
-    node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
@@ -1065,7 +1039,6 @@ fn gunbc_falsifier_known_red_probe_batch_over(
     source_roots: corpus_source_roots(),
     scan_dirs: [],
     explicit_entries: entries,
-    node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
@@ -1111,7 +1084,6 @@ fn gunbc_falsifier_self_host_wet_batch() -> Runnable {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
     explicit_entries: falsifier_self_host_wet_entries(),
-    node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
@@ -1130,7 +1102,6 @@ fn gunbc_falsifier_native_cache_cold_batch() -> Runnable {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
     explicit_entries: falsifier_native_cache_cold_roster(),
-    node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
@@ -1182,7 +1153,6 @@ fn gunbc_falsifier_rehomed_bin_wet_batch() -> Runnable {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
     explicit_entries: falsifier_rehomed_bin_wet_entries(),
-    node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
@@ -1205,7 +1175,6 @@ fn gunbc_falsifier_substrate_long_lane_batch() -> Runnable {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
     explicit_entries: falsifier_substrate_long_lane_entries(),
-    node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
@@ -1227,11 +1196,6 @@ type FalsifierLaneBatch {
 
 fn gunbc_falsifier_lane_batches() -> List<FalsifierLaneBatch> {
   [
-    FalsifierLaneBatch {
-      lane: LanePredictOnly,
-      enrolled: true,
-      batch: [gunbc_falsifier_predict_only_batch()]
-    },
     FalsifierLaneBatch {
       lane: LaneSelfHostWet,
       enrolled: falsifier_self_host_wet_batch_enrolled(),
@@ -1303,7 +1267,6 @@ fn gunbc_falsifier_cadence_witness_batch() -> Runnable {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
     explicit_entries: falsifier_cadence_witness_entries(),
-    node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
@@ -1334,7 +1297,6 @@ fn gunbc_pr_native_batch() -> Runnable {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
     explicit_entries: gunbc_pr_native_entries(),
-    node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(
@@ -1352,40 +1314,10 @@ fn gunbc_ci_floor_ordinary_batches() -> List<List<Runnable>> {
     enrolled: gunbc_pr_native_batch_enrolled(),
     batch: gunbc_pr_native_batch()
   )
-  let with_scoped = fold(scoped_witness_batches, init: ordinary, f: fn(acc, batch) {
-    list_snoc_item(xs: acc, item: [RunnableScopedWitnessBatch { batch: batch }])
-  })
-  falsifier_batches_append_if_enrolled(
-    acc: with_scoped,
-    enrolled: v1_claim_scoped_known_red_probe_batch_enrolled(),
-    batch: gunbc_v1_claim_scoped_known_red_probe_batch()
-  )
+  ordinary
 }
 
-data v1_claim_scoped_known_red_probe_batch_note: String = "Per-PR Hermetic expect_red lane for known-red CorpusWitnessKind rows whose subject needs the dag plus src/v1 envelope (gunbc.explicit_witness_admission known_red_probe_v1_envelope_roster: src/v1 paths plus dag witnesses that import v1.*). The falsifier's corpus-root probe batch cannot resolve these entries; running them there would treat resolve-refuse as expect-red success without executing the predicate (DESIGN section 5 specification-without-execution). This batch mirrors v1_claim_scoped_witness_batch's dag plus src/v1 source-root envelope and runs SelectionApplied on the ordinary floor. ENROLLMENT COUPLING: enrolling this batch (known_red_probe_v1_envelope_roster becomes non-empty) requires adding its companion positional row to gunbc.ci_spec gunbc_ci_floor_batch_clamp_params in the same change — the clamp table is unconditional data while this batch is conditionally enrolled, so a roster-only edit that enrolls the batch without the clamp row fails with floor batch clamp params must cover N scheduled batches."
-
-fn v1_claim_scoped_known_red_probe_batch_enrolled() -> Bool {
-  length(xs: known_red_probe_v1_envelope_roster()) > 0
-}
-
-fn gunbc_v1_claim_scoped_known_red_probe_batch() -> Runnable {
-  RunnableDiscoveryBatch {
-    source_roots: ["dag", "src/v1"],
-    scan_dirs: [],
-    explicit_entries: known_red_probe_v1_envelope_roster(),
-    node_frontier_selection: SelectionApplied,
-    exclude_substrings: [],
-    discovery_scope_dirs: [],
-    profile: runnable_resource_profile(
-      heavy_whole_tree_resolve: false,
-      spawns_host_compiler: false,
-      memory: runnable_memory_substantial(),
-      execution_mode: Hermetic
-    )
-  }
-}
-
-data corpus_selection_off_note: String = "EXACTLY WHAT STILL SELECTS, so the scope of this change is read off one row rather than inferred from a diff. FLIPPED TO SelectionOff (the ordinary merge-critical witness batches, whole roster every run): corpus_runnable_for, execution_corpus_runnable_for, bin_witness_corpus_runnable_for.\n\nDELIBERATELY UNCHANGED, each with its reason:\n- the falsifier cadence lanes (self-host wet, rehomed bin wet, substrate long, cadence witnesses) keep SelectionApplied — they are a 4-hourly cadence, not the merge-critical path, and retiring them belongs with the Runnable field removal rather than here;\n- the falsifier's SelectionPredictOnly sweep keeps its arm — it is the affected-set cold control, and with the floor no longer predicting it now measures a mechanism nothing on the required path consumes. That is a real loss of subject, declared here rather than discovered later, and it is the first thing the follow-on should retire;\n- the expect-red quarantine probe batches keep SelectionApplied — they invert their verdict, so widening them changes what greening means;\n- v1_claim_scoped_witness_batch keeps SelectionApplied — its 480-second clamp basis was measured on the assumption that unrelated PRs skip it (v1_claim_scoped_witness_batch_note), so flipping it without re-deriving that clamp would red the floor with FLOOR-BATCH-OVER-BUDGET for a reason unrelated to the question this change asks.\n\nTHE COST IS MEASURED, AND THE ESTIMATE WAS WRONG IN THE DIRECTION THAT MATTERS. The estimate that motivated the flip was ~10 minutes on a 57-minute step, from an assumed distribution of the 4840 skipped witnesses across entry files. Measured on run 31745991795: the ci step ran 64m32s evaluating 9267 discovery witnesses with selection off, against selection-on baselines of 65m on main and 47/60/65/65/74m across five PR branches. The added cost is smaller than the spread between two consecutive selection-on runs, so it is not separable from run-to-run noise on this fleet and no smaller claim than that is supportable from one run.\n\nWHY THAT IS THE EXPECTED SHAPE RATHER THAN A SURPRISE, stated so the number is not read as luck: the floor's wall is PREPARATION, not CHECKING. The same run measured resolve at 931.0s against eval at 96.1s, and selection removes checking while leaving preparation in place. Skipping half the roster was therefore avoiding the cheap phase. A future change that moves preparation off the per-entry key invalidates this measurement in the favourable direction and does not restore the case for selection.\n\nWHAT THE RUN DID NOT MEASURE: it refused at the end of batch 3, so the scoped workers never ran and their cost is not in the 64m32s figure. Of 9267 witnesses 3 failed, all three in this plan's own witness file and all three the same defect — a selection value pinned as part of a claim about a different axis — none of them a previously-skipped corpus witness."
+data affected_set_selection_deleted_note: String = "AFFECTED-SET SELECTION IS DELETED, not disabled (2026-08-15), and this row is the record of what that removed. The 2026-08-13 directive flipped the three ordinary witness batches to SelectionOff and left the mechanism standing under the cadence lanes, the expect-red probes and the v1 scoped batch. That state was unstable in a specific way: NodeFrontierSelection sat on the generic Runnable type, so layers with no scheduling responsibility read the field and decided from it, and the arm that survived on the required path was the one that meant `do not select`.\n\nWHAT WAS DELETED WITH IT: the selection kernel (v2.workflow.affected_set_floor_runner and its disposition fold), the SelectionPredictOnly cold sweep and its falsifier lane, the divergence receipt (gunbc.selection_degradation_receipt), the skip-proof plan, the floor_skip control fixtures, and the floor_skip_discovery_witness / selection_control_skip_witness seed binaries. ScopedWitnessSelectionSkipped went with them: a scheduled roster entry now either executes, is refused, or is killed, so an absent receipt row is a defect rather than a declared nonexecution.\n\nWHAT WAS NOT DELETED, because it is a different mechanism sharing a word: diff observation (v2.workflow.floor_diff_observe), the compile-clean import-closure scope (tools.dag_compile_clean_scope), the regen input-closure skip, and the dependency-closure lens family under v2.lens.affected_set. Those answer `which closure does this diff touch` for a specific consumer that still has one; selection answered `may this witness go unrun`, and nothing asks that now.\n\nTWO CONSEQUENCES, DECLARED RATHER THAN DISCOVERED. (a) The 4-hourly cold corpus sweep is gone. Its unique product was the prediction comparison, and with nothing predicting, the sweep duplicated what every PR and every main push already run whole. (b) v1_claim_scoped_witness_batch selected, and its 720-second clamp was derived on the assumption that unrelated PRs skip it; it moves to the falsifier cadence rather than becoming an unconditional ~565s per-PR cost under a clamp basis that no longer describes it. Its per-PR coverage of the dag plus src/v1 envelope is therefore NARROWED to a 4-hourly cadence — a real narrowing, restored when one prepared subject spans dag, src/v1 and src/v2 and the separate envelope stops existing."
 
 data gunbc_ci_witness_corpus_only_batches_note: String = "ITS CONSUMER IS ON-DEMAND, NOT AUTOMATIC — and this row has now been wrong in BOTH directions, so it states the mechanism instead of a summary. Before 2026-08-13 it read 'The pre-push local test gate (consumer: dag/gunbc/githooks_pre_push_emit.dag NEED_WITNESS)', which was stale: that hook has been fmt-only since the operator ruling of 2026-07-25 recorded in pre_push_fmt_only_note, so no git push invokes this. The SelectionOff flip then over-corrected it to 'nothing local reads this', which is FALSE and was caught by review 51807 — proving the hook does not call it is not proving nothing calls it, and generalizing from the first to the second is the same §3 class the correction was written to close.\n\nWHAT ACTUALLY REACHES IT, by symbol: claim_batch --pre-push (the flag is live in the seed's argument parser) runs pre_push.rs, which resolves pre_push_witness_corpus_plan_entry / pre_push_witness_corpus_plan_fn from gunbc.githooks_pre_push_plan, and that function row names this projection. So the path is real, manually invoked, and on no automatic path.\n\nBLAST RADIUS OF THE FLIP ON THAT PATH, stated because it is a behaviour change and not only a prose fix: corpus_runnable_for now carries SelectionOff, so claim_batch --pre-push runs the WHOLE witness roster rather than the diff's affected slice. That is the operator's directive applied consistently — a local command is not exempt from 'run all the witnesses unconditionally' — but whoever runs it pays corpus cost rather than diff cost, and should know that before invoking it rather than after.\n\nWHAT IT IS: the witness corpus CI runs (corpus_runnable_for(gunbc_ci_spec), now SelectionOff — whole roster, no affected-set shrink), MINUS two lanes on purpose: (1) the whole-tree --target dag compile-clean gate (the compile-clean anchor batch of gunbc_ci_floor_plan, after the cheap-gate early batch) - infeasible per-push (~72min emit), CI-owned; and (2) the Wet execution + bin-witness lanes (execution_corpus_node / bin_witness_corpus_node) - they need prebuilt release witness bins and spawn a host compiler, so they stay CI-owned. This is a DECLARED scope narrowing, not a silent one (the enforcement-intent rule): the hermetic discovery corpus catches the resolve / typecheck / witness-logic red class, and CI remains the whole wall. The former closing clause described selection's fail-closed refusal behaviour on this path; with SelectionOff there is no diff observation on these batches to refuse, so the clause is deleted rather than left describing a mechanism the batch no longer reaches. The fail-closed refusal itself is untouched where selection still runs (ci_spec_discovery_flip_note; compile_door_ledger; cli_run AFFECTED-SET REFUSAL)."
 
@@ -1395,8 +1327,7 @@ fn gunbc_ci_witness_corpus_only_batches() -> List<List<Runnable>> {
 
 fn runnable_scan_dir_count(r: Runnable) -> Int {
   match r {
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => length(xs: dirs)
-    RunnableScopedWitnessBatch { batch: batch } => length(xs: batch.scan_dirs)
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => length(xs: dirs)
     RunnableSingleClaim { entry: _, function: _, profile: _ } => 0 - 1
     RunnableKernelWorkload { fused_op_count: _ } => 0 - 1
   }
@@ -1453,8 +1384,7 @@ fn gunbc_ci_regen_floor_ordinary_batches() -> List<List<Runnable>> {
 fn runnable_single_claim_function(r: Runnable) -> String {
   match r {
     RunnableSingleClaim { entry: _, function: f, profile: _ } => f
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => "__discovery_corpus__"
-    RunnableScopedWitnessBatch { batch: _ } => "__scoped_witness_batch__"
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => "__discovery_corpus__"
     RunnableKernelWorkload { fused_op_count: _ } => "__kernel_workload__"
   }
 }
@@ -1578,8 +1508,7 @@ fn gunbc_ci_floor_breadth() -> Int {
 fn floor_batch_heavy_gate_resolve_count(batch: List<Runnable>) -> Int {
   fold(batch, init: 0, f: fn(acc, r) {
     match r {
-      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => acc
-      RunnableScopedWitnessBatch { batch: _ } => acc
+      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => acc
       RunnableKernelWorkload { fused_op_count: _ } => acc
       RunnableSingleClaim { entry: _, function: f, profile: p } =>
         if f == ci_floor_compile_gate_fn {

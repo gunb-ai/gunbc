@@ -42,12 +42,9 @@ fn gate_consumer_site(g: Gate) -> String {
   }
 }
 
-data floor_prelude_consumer_sites_note: String = "The two fixed prelude entries every floor process resolves against the shared index (mirrors the Rust FLOOR_RUNNER_ENTRY / ENTRY_SELECTION_ENTRY constants in cli_run.rs). Not a fixture roster copy — a genuinely fixed pair, per merry-moth's 'plus your two prelude entries'. 🟡 dissolve-on: floor_prelude_entries_single_authority — this List<String> is a §3 parallel representation of the host's FLOOR_RUNNER_ENTRY / ENTRY_SELECTION_ENTRY constants (cli_run.rs:5351-5352), consumed here as authoritative by reader_count and the enrolled witness; it already DRIFTED once (entry #2 was v2.workflow.affected_set_selection, not the host's v2.lens.affected_set.entry_selection; corrected in #6432 review, 2026-07-10). DISSOLVES WHEN the floor prelude entries are declared once in .dag and consumed by BOTH the host (via resolve) and this row, making the hand-copy — and its drift — unwritable (§3 single authority)."
+data floor_prelude_consumer_sites_note: String = "EMPTY, and that is a measured state rather than an unfilled roster. The floor once resolved two fixed prelude entries against the shared index before any batch ran — the affected-set floor runner and the entry-selection lens — mirroring the host's FLOOR_RUNNER_ENTRY / ENTRY_SELECTION_ENTRY constants. Both existed only to answer the selection question, and both were deleted with affected-set selection (2026-08-15), so the floor now has no prelude entry at all and reader_count over this list is zero by construction rather than by omission.\n\nThe drift this row was written to record still stands as history: entry #2 was once v2.workflow.affected_set_selection rather than the host's v2.lens.affected_set.entry_selection, corrected in #6432 review — a hand-copy of a host constant disagreeing with the constant. 🟡 dissolve-on: the list stays empty through the floor rebuild, at which point this carrier and its witness delete together rather than being repopulated; if a prelude entry is ever needed again it is declared once in .dag and consumed by BOTH the host and this row, never hand-copied."
 
-data floor_prelude_consumer_sites: List<String> = [
-  "src/v2/workflow/affected_set_floor_runner.dag",
-  "src/v2/lens/affected_set/entry_selection.dag"
-]
+data floor_prelude_consumer_sites: List<String> = []
 
 fn floor_index_build_consumer_sites(gates: List<Gate>, witnesses: List<ScheduleWitnessEntry>) -> List<String> {
   concat(

@@ -22,8 +22,7 @@ data falsifier_lane_note: String = "The falsifier's per-component LANE identity,
 data falsifier_lane_index_join_note: String = "The join key is the 1-based batch INDEX, and that is not in tension with floor_component_receipt_role_note's rule against keying on indices. That rule forbids treating an index as a STABLE NAME across runs — 'batch 4 is the silent-pick gate' relocates a hardcoded assumption, because gunbc_falsifier_ordinary_batches composes conditionally on enrollment flags and one flip shifts every later index. Here the index is used only WITHIN ONE RUN, to join a receipt against the very plan that produced it: both sides are projections of the same enrollment state, evaluated for the same run, so the correspondence is exact by construction rather than assumed. What crosses runs is the LANE, which is a name and stays one. The index is the join; the lane is the identity."
 
 type FalsifierLane
-  = LanePredictOnly
-  | LaneSelfHostWet
+  = LaneSelfHostWet
   | LaneSelfHostWetKnownRed
   | LaneKnownRedProbe
   | LaneSilentPickGate
@@ -34,7 +33,6 @@ type FalsifierLane
 
 fn falsifier_lane_name(l: FalsifierLane) -> String {
   match l {
-    LanePredictOnly => "predict_only"
     LaneSelfHostWet => "self_host_wet"
     LaneSelfHostWetKnownRed => "self_host_wet_known_red"
     LaneKnownRedProbe => "known_red_probe"
@@ -98,7 +96,7 @@ fn duplicated_indices(xs: List<Nat>) -> List<Nat> {
 
 data falsifier_run_standing_scope_note: String = "SCOPE, and the boundary that keeps this from being a second representation. This answers ONE question — did the falsifier job execute the components it planned — at BATCH grain. It does NOT answer whether any witness inside a component produced a verdict; that is the pending/current semantic evidence lifecycle signed on the witness-evidence-lifecycle model (docs/plans/witness-evidence-lifecycle-design.md, PR #7778), which is function-grain and is the single authority for enrollment-versus-execution. Nothing here may be read as evidence. The two are composed, never merged: run standing is a NECESSARY condition for the run having observed anything, and it is emphatically not a sufficient one — a component can report Done while every witness inside it was Interrupted and produced no verdict at all. falsifier_observed_health below is what enforces that composition structurally rather than by this note asking readers to remember it. Citation caveat carried per the coordinating directive: the FalsifierSubstrateLongLane cadence that model cites as its live specimen is currently dark."
 
-data falsifier_run_standing_axes_note: String = "Three defect axes, each an exact index SET and each required to be explicitly empty — never a count equality between planned and reported (DESIGN section 5: completeness is an identity join, and count(planned) == count(reported) is satisfied by one missing component alongside one surplus one; witness_standing_reds_when_counts_agree_but_identities_do_not is the discriminating red for exactly that). MISSING is the axis the receipt cannot currently express on its own: the seed pads batches the stop policy never reached with an explicit not_reached Skipped row, so a gap in the reported set is not an unreached batch — it is the executor and the plan disagreeing about what the run consisted of, which is precisely the state no existing check can see. SURPLUS is its mirror. DUPLICATE catches two rows claiming one component, which would make attribution ambiguous rather than merely incomplete. StandingPlanEmpty fails closed rather than reporting a vacuous completeness: the falsifier always plans at least the predict-only sweep, so an empty planned roster means the projection did not run, not that there was nothing to run."
+data falsifier_run_standing_axes_note: String = "Three defect axes, each an exact index SET and each required to be explicitly empty — never a count equality between planned and reported (DESIGN section 5: completeness is an identity join, and count(planned) == count(reported) is satisfied by one missing component alongside one surplus one; witness_standing_reds_when_counts_agree_but_identities_do_not is the discriminating red for exactly that). MISSING is the axis the receipt cannot currently express on its own: the seed pads batches the stop policy never reached with an explicit not_reached Skipped row, so a gap in the reported set is not an unreached batch — it is the executor and the plan disagreeing about what the run consisted of, which is precisely the state no existing check can see. SURPLUS is its mirror. DUPLICATE catches two rows claiming one component, which would make attribution ambiguous rather than merely incomplete. StandingPlanEmpty fails closed rather than reporting a vacuous completeness: an empty planned roster means the projection did not run, not that there was nothing to run. (Until 2026-08-15 the guarantee that the roster is never legitimately empty rested on the predict-only sweep, which was unconditionally enrolled; that lane is deleted with affected-set selection, so every remaining lane is conditionally enrolled and an all-unenrolled plan is now reachable in principle. The arm is unchanged and still correct — it refuses — but it now refuses a state the enrollment flags can actually produce, rather than one they could not.)"
 
 type FalsifierRunStanding
   = StandingComplete { component_count: Nat }
@@ -343,7 +341,7 @@ fn falsifier_witness_row(index: Nat, done: Bool) -> FloorComponentRow {
 
 fn falsifier_witness_planned_three() -> List<FalsifierPlannedComponent> {
   falsifier_planned_components(enrollments: [
-    FalsifierLaneEnrollment { lane: LanePredictOnly, enrolled: true },
+    FalsifierLaneEnrollment { lane: LaneSelfHostWetKnownRed, enrolled: true },
     FalsifierLaneEnrollment { lane: LaneKnownRedProbe, enrolled: true },
     FalsifierLaneEnrollment { lane: LaneSilentPickGate, enrolled: true }
   ])
@@ -351,13 +349,13 @@ fn falsifier_witness_planned_three() -> List<FalsifierPlannedComponent> {
 
 fn witness_planned_components_skip_unenrolled_and_renumber() -> Bool {
   let planned = falsifier_planned_components(enrollments: [
-    FalsifierLaneEnrollment { lane: LanePredictOnly, enrolled: true },
+    FalsifierLaneEnrollment { lane: LaneSelfHostWetKnownRed, enrolled: true },
     FalsifierLaneEnrollment { lane: LaneSelfHostWet, enrolled: false },
     FalsifierLaneEnrollment { lane: LaneKnownRedProbe, enrolled: true }
   ])
   (list_length(items: planned) == 2)
     && match falsifier_lane_of_index(planned: planned, index: 1) {
-         Present { value: l } => falsifier_lane_eq(left: l, right: LanePredictOnly)
+         Present { value: l } => falsifier_lane_eq(left: l, right: LaneSelfHostWetKnownRed)
          Absent => false
        }
     && match falsifier_lane_of_index(planned: planned, index: 2) {
@@ -398,7 +396,7 @@ fn witness_standing_reds_on_missing_component() -> Bool {
 
 fn witness_standing_reds_on_surplus_component() -> Bool {
   let planned = falsifier_planned_components(enrollments: [
-    FalsifierLaneEnrollment { lane: LanePredictOnly, enrolled: true },
+    FalsifierLaneEnrollment { lane: LaneSelfHostWetKnownRed, enrolled: true },
     FalsifierLaneEnrollment { lane: LaneKnownRedProbe, enrolled: true }
   ])
   let verdict = falsifier_run_standing_from(
@@ -418,7 +416,7 @@ fn witness_standing_reds_on_surplus_component() -> Bool {
 
 fn witness_standing_reds_on_duplicate_component() -> Bool {
   let planned = falsifier_planned_components(enrollments: [
-    FalsifierLaneEnrollment { lane: LanePredictOnly, enrolled: true },
+    FalsifierLaneEnrollment { lane: LaneSelfHostWetKnownRed, enrolled: true },
     FalsifierLaneEnrollment { lane: LaneKnownRedProbe, enrolled: true }
   ])
   let verdict = falsifier_run_standing_from(
@@ -676,7 +674,6 @@ fn witness_incomplete_standing_refuses_observed() -> Bool {
 
 fn witness_lane_names_are_distinct() -> Bool {
   let names = [
-    falsifier_lane_name(l: LanePredictOnly),
     falsifier_lane_name(l: LaneSelfHostWet),
     falsifier_lane_name(l: LaneSelfHostWetKnownRed),
     falsifier_lane_name(l: LaneKnownRedProbe),
