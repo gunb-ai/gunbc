@@ -725,11 +725,24 @@ test fn declared_plan_targets_are_walk_plan_shaped() -> Bool {
 data plan_roster_control_placement_note: String = "THERE IS DELIBERATELY NO RUNTIME RED CONTROL FOR THE ROSTER ROW, and writing one would have been a lie worth naming. The obvious candidate — fold a deliberately-short target list and assert it refuses — is a tautology: every variant in the roster IS correctly shaped, so a short list returns true and the assertion would pass for the wrong reason, reporting coverage while discriminating nothing.\n\nThe compile-time half likewise has no Bool control: its failure mode is a build error, not a false value, so its control is a compile failure. Note the bound plan_roster_exhaustiveness_note states — that half forces an arm to exist, not to be executed — so neither the runtime nor the compile-time half is a universal-coverage claim, and this row must not be read as one.\n\nWhat DOES carry runtime teeth is per-variant and already enrolled: forked_declared_count_is_refused_by_the_same_predicate forks the floor declared count and requires the same predicate to refuse, and the three no-finalization rows carry the substitution control floor_finalization_witness_note describes. no_emitted_plan_target_retains_the_batches_shape is the regression control for THIS incident — it goes red if the pre-repair literal returns to either emitted artifact, and stays enrolled permanently rather than retiring now that the wall landed (4b: dissolution deletes the obsoleted production machinery, never the evidence)."
 
 test fn every_emitted_plan_target_names_its_variant() -> Bool {
-  string_contains(s: expected_ci_yml(), pattern: concat("--plan-function ", plan_function_name(p: CiFloorPlan)))
-    && string_contains(s: expected_ci_yml(), pattern: concat("--plan-function ", plan_function_name(p: CiRegenFloorPlan)))
+  string_contains(s: expected_ci_yml(), pattern: concat("--plan-function ", plan_function_name(p: CiRegenFloorPlan)))
     && string_contains(s: expected_falsifier_yml(), pattern: concat("--plan-function ", plan_function_name(p: FalsifierPlan)))
     && string_contains(s: expected_falsifier_yml(), pattern: concat("--plan-function ", plan_function_name(p: CiPlanArtifactPlan)))
     && string_contains(s: expected_falsifier_yml(), pattern: concat("--plan-function ", plan_function_name(p: FalsifierNativeCacheColdPlan)))
+}
+
+// CiFloorPlan IS EMITTED BY NO WORKFLOW as of the FLOOR2 cutover, and that is asserted rather
+// than dropped. The conjunct requiring it in expected_ci_yml() stood above and went red on the
+// first complete run (v2.test.claim.ci_floor_plan_witness, 2026-08-15) because the required job
+// now invokes claim_executor --required-floor; deleting the conjunct alone would leave the
+// target unmentioned, so a silent RETURN of the floor step would restore a second required
+// witness path with nothing observing it. The absence is the claim now.
+test fn ci_floor_plan_target_is_emitted_by_no_workflow() -> Bool {
+  !string_contains(s: expected_ci_yml(), pattern: concat("--plan-function ", plan_function_name(p: CiFloorPlan)))
+    && !string_contains(
+      s: expected_falsifier_yml(),
+      pattern: concat("--plan-function ", plan_function_name(p: CiFloorPlan))
+    )
 }
 
 test fn no_emitted_plan_target_retains_the_batches_shape() -> Bool {
