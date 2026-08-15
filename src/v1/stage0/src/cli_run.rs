@@ -24807,23 +24807,11 @@ fn run_discovery_rows(
         selected_entry_groups: 0,
         selection_categorization_reason: None,
     };
-    let skip_enabled = selection != NodeFrontierSelectionMode::Off;
-    // This shard's SUBJECT union closure, accumulated from the graphs it resolves. An ordinary
-    // batch's floor-runner prefix shares that subject universe and is included; a scoped batch's
-    // inherited selector authority is deliberately excluded from the subject digest/clamp grain.
-    // Row closures fold in below as each entry resolves.
+    // This shard's SUBJECT union closure, accumulated from the graphs it resolves as each
+    // entry is loaded. It once also folded in a floor-runner prefix context, resolved before the
+    // roster so the affected-set machinery was available to every row; that prefix is gone with
+    // selection, so the closure is exactly the rows' own graphs.
     let mut closure_modules: HashSet<String> = HashSet::new();
-    for prefix_ctx in [floor_runner_ctx]
-        .into_iter()
-        .flatten()
-        .filter(|_| execution_authority_is_subject)
-    {
-        collect_typed_module_names(
-            prefix_ctx.modules.iter().cloned(),
-            &prefix_ctx.source_indices,
-            &mut closure_modules,
-        );
-    }
     // Existence set for the entry_file_touched refuse-vs-answer decision, built once per shard.
     let module_graph_declared_paths = index.module_graph_facts.declared_repo_paths();
     // Schedule-derived retention is armed by the CALLER over the WHOLE batch schedule
@@ -24846,27 +24834,8 @@ fn run_discovery_rows(
     let mut current_entry_frontier_nodes: Vec<v1_interpreter::Value> = Vec::new();
     let mut current_entry_file_touched = true;
     let mut current_entry_runtime_dependency_touched = true;
-    let touched_entry_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
     let pool_roots = witness_layer_roots();
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
-    let entry_fast_skip = if selection == NodeFrontierSelectionMode::Applied {
-        discovery_entry_fast_skip_without_resolve(
-            rows,
-            &index.module_graph_facts,
-            &module_graph_declared_paths,
-            &touched_entry_paths,
-            changed_paths,
-            diff_edits,
-        )?
-    } else {
-        HashSet::new()
-    };
-    if !entry_fast_skip.is_empty() && floor_verbose() {
-        eprintln!(
-            "run_discovery_corpus: skip-before-resolve fast path for {} entr(y/ies) (import-closure unaffected, no declaration edits, no data-item edits in closure, no host-scaffold)",
-            entry_fast_skip.len()
-        );
-    }
     for row in rows {
         // Schedule-derived eviction: when the entry advances, the previous entry's
         // rows are all behind us (rows are sorted by entry), so its per-module state
@@ -24882,77 +24851,13 @@ fn run_discovery_rows(
             }
             schedule_prev_entry = Some(row.entry.clone());
         }
-        // Applied only: PredictOnly must resolve + run cold and record via the post-resolve
-        // would_skip path (falsifier semantics — docs/plans/affected-set-differential-falsifier.md).
-        if selection == NodeFrontierSelectionMode::Applied && entry_fast_skip.contains(&row.entry) {
-            refuse_reads_live_tree_selection_skip(&row, "skip-before-resolve-fast-path")?;
-            if current_entry.as_deref() != Some(row.entry.as_str()) {
-                augment_closure_modules_from_import_facts(
-                    &index,
-                    &row.entry,
-                    &mut closure_modules,
-                )?;
-                current_entry = Some(row.entry.clone());
-                current_entry_touches = false;
-                current_entry_file_touched = false;
-                current_entry_runtime_dependency_touched = false;
-                current_entry_frontier_nodes.clear();
-                current_closure_subject = None;
-                ctx = None;
-            }
-            summary.skipped += 1;
-            summary
-                .selection_skipped_rows
-                .push(SelectionSkippedDiscoveryRow {
-                    entry: row.entry.clone(),
-                    function: row.function.clone(),
-                    provenance: "skip-before-resolve-fast-path".to_string(),
-                });
-            if floor_verbose() {
-                eprintln!(
-                    "SKIP [assumed-green node-frontier] {} ({})",
-                    row.function, row.entry
-                );
-            }
-            continue;
-        }
         if current_entry.as_deref() != Some(row.entry.as_str()) {
-            if entry_eligible_for_discovery_skip_before_resolve(
-                skip_enabled,
-                row.reads_live_tree,
-                &row.entry,
-                &index.module_graph_facts,
-                &module_graph_declared_paths,
-                changed_paths,
-                diff_edits,
-            )? {
-                if floor_verbose() {
-                    eprintln!(
-                        "SKIP-RESOLVE [unaffected import-closure] {} (cold entry resolve elided)",
-                        row.entry
-                    );
-                }
-                collect_import_closure_module_names_from_facts(
-                    &index,
-                    &row.entry,
-                    &mut closure_modules,
-                )?;
-                ctx = None;
-                current_closure_subject = None;
-                current_entry_frontier_nodes.clear();
-                current_entry_touches = false;
-                current_entry_file_touched = false;
-                current_entry_runtime_dependency_touched = false;
-                current_entry = Some(row.entry.clone());
-            } else {
+            {
                 let resolved = resolve_discovery_entry_for_corpus_row(
                     index,
                     &row.entry,
                     execution_mode,
                     whole_tree_published_keys.clone(),
-                    skip_enabled,
-                    diff_edits,
-                    &touched_entry_paths,
                     &module_graph_declared_paths,
                     &mut closure_modules,
                 )?;
@@ -24978,88 +24883,12 @@ fn run_discovery_rows(
                 current_entry = Some(row.entry.clone());
             }
         }
-        let function_edited = skip_enabled
-            && diff_edits.edited_test_fns.iter().any(|(file, func)| {
-                diff_file_matches_entry(file, &row.entry) && func == &row.function
-            });
-        let entry_file_touched = skip_enabled && current_entry_file_touched;
-        let runtime_data_dependency_touched =
-            skip_enabled && current_entry_runtime_dependency_touched;
-        let would_skip = if skip_enabled {
-            match floor_runner_ctx {
-                Some(runner_ctx) => {
-                    let skip = call_floor_row_would_skip(
-                        runner_ctx,
-                        row.reads_live_tree,
-                        changed_paths,
-                        &current_entry_frontier_nodes,
-                        current_entry_touches,
-                        function_edited,
-                        entry_file_touched,
-                        runtime_data_dependency_touched,
-                    );
-                    match skip {
-                        Ok(skip) => skip,
-                        Err(msg) => {
-                            return Err(format!(
-                                "floor would_skip failed for {} ({}): {msg} — declared \
-                                 selection machinery must evaluate; no silent \
-                                 run-everything fallback",
-                                row.function, row.entry
-                            ));
-                        }
-                    }
-                }
-                None => false,
-            }
-        } else {
-            false
-        };
-        if would_skip {
-            refuse_reads_live_tree_selection_skip(&row, "node-frontier-selection")?;
-            match selection {
-                NodeFrontierSelectionMode::Applied => {
-                    summary.skipped += 1;
-                    summary
-                        .selection_skipped_rows
-                        .push(SelectionSkippedDiscoveryRow {
-                            entry: row.entry.clone(),
-                            function: row.function.clone(),
-                            provenance: "node-frontier-selection".to_string(),
-                        });
-                    if floor_verbose() {
-                        eprintln!(
-                            "SKIP [assumed-green node-frontier] {} ({})",
-                            row.function, row.entry
-                        );
-                    }
-                    continue;
-                }
-                NodeFrontierSelectionMode::PredictOnly => {
-                    // Falsifier semantics: record the prediction and run the row cold anyway.
-                    summary
-                        .predicted_unaffected
-                        .push((row.entry.clone(), row.function.clone()));
-                    if floor_verbose() {
-                        eprintln!(
-                            "PREDICT [unaffected node-frontier] {} ({})",
-                            row.function, row.entry
-                        );
-                    }
-                }
-                // would_skip is only computed when selection is enabled.
-                NodeFrontierSelectionMode::Off => {}
-            }
-        }
         if ctx.is_none() {
             let resolved = resolve_discovery_entry_for_corpus_row(
                 index,
                 &row.entry,
                 execution_mode,
                 whole_tree_published_keys.clone(),
-                skip_enabled,
-                diff_edits,
-                &touched_entry_paths,
                 &module_graph_declared_paths,
                 &mut closure_modules,
             )?;
