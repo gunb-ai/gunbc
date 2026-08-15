@@ -12,9 +12,9 @@ import extdeps.cpu.ampere_altra_package {
   altra_declared_contact_count,
   altra_fclga_socket,
   altra_reference_board_collateral_standing,
-  ampere_customer_reference_boards_authority,
   extdeps_external_authority_anchor,
 }
+import extdeps.vendor.ampere { ampere_customer_reference_boards_authority }
 
 data attachment_stack_note: String = "SIX THINGS BETWEEN A PROCESSOR DIE AND A BOARD, AND THEY ARE NOT ONE THING. The processor package, the socket, the socket's own board termination, the motherboard land pattern that termination solders to, the loading mechanism that clamps the processor into the socket, and the mounting that carries the load are six independently governed identities with six different authorities — one vendor publishes the package, another manufactures the socket, and the motherboard designer owns neither. THE ERROR THIS MODULE EXISTS TO MAKE UNWRITABLE is deriving the board land pattern from the processor package's bottom-land geometry. Both are grids of lands with 4926 members and the same pitch, so they LOOK like the same fact, and the datasheet's mechanical section is right there. They are not the same fact: one is the package's underside, the other is the pad array the SOCKET solders to, and the socket sits between them adding its own tolerance, termination style and keepout. A board built on the first is a board where nothing solders. The identical category error was already made one layer down in this repository, where a package body envelope was called a footprint and approved by review before it was caught."
 

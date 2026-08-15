@@ -1,0 +1,354 @@
+module extdeps.ocp.mt_jade.platform
+
+import std.types { String, Bool, NonEmptyStr, List }
+import std.integer { Int }
+import std.measure { Hertz, Microsecond, Micrometer, hertz, microsecond, micrometer, micrometer_count }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope }
+import extdeps.ocp.mt_jade.subject {
+  mt_jade_subject_authority_anchor,
+  mt_jade_model_scope,
+  mt_jade_reference_platform,
+  MtJadeReferencePlatform,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = mt_jade_subject_authority_anchor
+
+data platform_subject_edge_note: String = "PLATFORM FACTS MUST JOIN THE ENTITY THEY DESCRIBE IN THE GRAPH, NOT ONLY THE SHARED OCP LOCATOR. extdeps.ocp.mt_jade.subject owns mt_jade_reference_platform; this row is the typed subject edge that binds every mechanical, sequencing, CPLD, clock and reference-part fact in this module to that declaration — the same pattern as extdeps.sec.issuer.gitlab_facts gitlab_facts_subject."
+
+data mt_jade_platform_subject: MtJadeReferencePlatform = mt_jade_reference_platform
+
+data platform_note: String = "PLATFORM FACTS FROM THE PUBLIC OCP MT. JADE SPECIFICATION, REV 1.0 (2021-09-17). Section 7.2 carries the motherboard outline; section 7.3 names the ILM4926 socket; section 7.10 carries clocks, reset and power-on sequence; sections 7.6–7.8 carry BMC, I2C, JTAG and GPIO facts that define the board CPLD's role. Nothing here transcribes pin tables or Appendix A/B content."
+
+// SECTION 7.2 AND 7.3 CARRY THE BOARD ENVELOPE AND SOCKET DESIGNATION. Micrometres are used so
+// 479.36 mm is exact rather than rounded — the specification quotes 428 mm by 479.36 mm.
+type MtJadeMotherboardMechanical {
+  outline_width: Micrometer
+  outline_depth: Micrometer
+  cpu_socket_designation: NonEmptyStr
+  processor_socket_count: Int
+  ddr4_dimms_total: Int
+}
+
+data mt_jade_motherboard_mechanical: MtJadeMotherboardMechanical = MtJadeMotherboardMechanical {
+  outline_width: micrometer(count: 428000),
+  outline_depth: micrometer(count: 479360),
+  cpu_socket_designation: "ILM4926",
+  processor_socket_count: 2,
+  ddr4_dimms_total: 32,
+}
+
+// THE SOCKET ROLES ARE NAMED IN THE SPEC'S POWER-ON NARRATIVE. Socket 0 is the master socket
+// whose firmware must start first; socket 1 is the slave socket whose reset release is gated
+// through the board CPLD after master-socket firmware asserts ALERT9_N and pulses ALERT3_N.
+type ProcessorSocketRole
+  = MasterSocket
+  | SlaveSocket
+
+fn processor_socket_role_name(role: ProcessorSocketRole) -> NonEmptyStr {
+  match role {
+    MasterSocket => "socket0 master"
+    SlaveSocket => "socket1 slave"
+  }
+}
+
+// THE PER-SOCKET RAIL ORDER IS CITED VERBATIM FROM SECTION 7.10.3. It is a closed ordered list
+// rather than a free-form string because the specification gives an explicit enable sequence and
+// a design that reorders rails is not implementing the same platform even if the rail names look
+// similar.
+type ProcessorPowerRail
+  = VddSoc
+  | VddRcax
+  | Vdd1v8Soc
+  | VddhRcax
+  | VddhRcbx
+  | VddqDdr0123_4567
+  | Vdd3v3Soc
+
+fn processor_power_rail_name(rail: ProcessorPowerRail) -> NonEmptyStr {
+  match rail {
+    VddSoc => "VDD_SOC"
+    VddRcax => "VDD_RCAx"
+    Vdd1v8Soc => "VDD1V8_SOC"
+    VddhRcax => "VDDH_RCAx"
+    VddhRcbx => "VDDH_RCBx"
+    VddqDdr0123_4567 => "VDDQ_DDR0123/4567"
+    Vdd3v3Soc => "VDD3V3_SOC"
+  }
+}
+
+data processor_power_rail_enable_order: List<ProcessorPowerRail> = [
+  VddSoc,
+  VddRcax,
+  Vdd1v8Soc,
+  VddhRcax,
+  VddhRcbx,
+  VddqDdr0123_4567,
+  Vdd3v3Soc,
+]
+
+// SOC_PWRGD must be asserted for more than thirty-two system clock cycles before the reset
+// release chain continues. The count is carried as an Int from the cited text rather than as a
+// duration because the specification states a cycle count against the system clock, not a time.
+data soc_pwrgd_minimum_system_clock_cycles: Int = 32
+
+// THE RESET AND FIRMWARE-HANDSHAKE CHAIN AFTER POWER GOOD. These are separate named steps
+// rather than one "booted" Bool because each step has a different owner and a different remedy
+// when it fails.
+type PlatformSequencingHandshake
+  = SocPwrgdObserved { socket: ProcessorSocketRole }
+  | SysResetReleased { socket: ProcessorSocketRole }
+  | TimerResetReleased { socket: ProcessorSocketRole }
+  | PcpRailEnabled { socket: ProcessorSocketRole }
+  | PcpPwrgdObserved { socket: ProcessorSocketRole }
+  | SlaveStartHandshake {
+      alert9_asserted: Bool,
+      alert3_one_microsecond_pulse: Bool,
+      cpld_releases_slave_sys_reset: Bool,
+    }
+
+// THE SLAVE-SOCKET START PULSE IS A TYPED DURATION, not prose beside a Bool. Section 7.10.3
+// names a one-microsecond delay on ALERT3_N; carrying it as Microsecond makes the unit part of
+// the fact rather than a comment that a reader could misread as a cycle count or an arbitrary
+// delay.
+data slave_socket_alert3_pulse_width: Microsecond = microsecond(count: 1)
+
+data platform_sequencing_handshake_chain: List<PlatformSequencingHandshake> = [
+  SocPwrgdObserved { socket: MasterSocket },
+  SysResetReleased { socket: MasterSocket },
+  TimerResetReleased { socket: MasterSocket },
+  TimerResetReleased { socket: SlaveSocket },
+  PcpRailEnabled { socket: MasterSocket },
+  PcpPwrgdObserved { socket: MasterSocket },
+  SlaveStartHandshake {
+    alert9_asserted: true,
+    alert3_one_microsecond_pulse: true,
+    cpld_releases_slave_sys_reset: true,
+  },
+  PcpRailEnabled { socket: SlaveSocket },
+]
+
+// THE BOARD CPLD IS NOT A FOURTH FIRMWARE STACK — it is glue logic between processors, BMC and
+// PCIe devices. The specification spreads the facts across GPIO, JTAG, reset and clock sections;
+// this coproduct is the single authority for what the CPLD DOES so product layers do not re-list
+// responsibilities in prose.
+type MtJadeBoardCpldResponsibility
+  = CpuBmcGpioVoltageIsolation
+  | CpuJtagDaisyChainMux
+  | BmcJtagMasterProgramsCpld
+  | PciePerstDecodeFromCpuGpio
+  | GlobalTimerClockGeneration
+  | SlaveSocketSysResetReleaseGating
+  | SysResetPathWithBmc
+
+fn mt_jade_board_cpld_responsibility_name(r: MtJadeBoardCpldResponsibility) -> NonEmptyStr {
+  match r {
+    CpuBmcGpioVoltageIsolation => "CPU/BMC GPIO voltage isolation"
+    CpuJtagDaisyChainMux => "CPU JTAG daisy-chain mux and single-socket bypass"
+    BmcJtagMasterProgramsCpld => "BMC JTAG master programs CPLD image"
+    PciePerstDecodeFromCpuGpio => "PCIe PERST decode from six CPU GPIO bits per socket"
+    GlobalTimerClockGeneration => "50 MHz oscillator to dual 25 MHz processor timer clocks"
+    SlaveSocketSysResetReleaseGating => "slave socket SYS_RESET release after ALERT9/ALERT3 handshake"
+    SysResetPathWithBmc => "SYS_RESET_L orchestration with BMC GPIO"
+  }
+}
+
+data mt_jade_board_cpld_responsibilities: List<MtJadeBoardCpldResponsibility> = [
+  CpuBmcGpioVoltageIsolation,
+  CpuJtagDaisyChainMux,
+  BmcJtagMasterProgramsCpld,
+  PciePerstDecodeFromCpuGpio,
+  GlobalTimerClockGeneration,
+  SlaveSocketSysResetReleaseGating,
+  SysResetPathWithBmc,
+]
+
+// CLOCK TREE ROWS NAME THE PART, THE FREQUENCY WHERE THE SPEC DOES, AND THE CONSUMERS. The
+// specification sometimes groups a generator and buffer sentence; here each cited part number is
+// its own row so a future board that swaps one generator does not fork the entire tree.
+type ClockTreeNodeRole
+  = ProcessorPcieReferenceClock
+  | ProcessorSerdesReferenceClock
+  | PcieFanoutClock
+  | BmcAndNicProgrammableClock
+  | ProcessorUartBaudClock
+  | CrystalReferenceInput
+
+type ClockTreeNode {
+  ordering_part_number: NonEmptyStr
+  vendor_label: NonEmptyStr
+  role: ClockTreeNodeRole
+  output_frequency: Hertz?
+  consumers: List<NonEmptyStr>
+}
+
+// THE CPLD'S TIMER CLOCKS ARE NOT A PURCHASED PART ROW. Section 7.10.1 states the CPLD divides a
+// board 50 MHz oscillator into two 25 MHz synchronous processor timer clocks; modelling that as
+// an ordering part number would invent a component the specification does not name.
+type CpldDerivedClock {
+  input_frequency: Hertz
+  output_frequency: Hertz
+  consumers: List<NonEmptyStr>
+}
+
+data mt_jade_cpld_timer_clock: CpldDerivedClock = CpldDerivedClock {
+  input_frequency: hertz(count: 50000000),
+  output_frequency: hertz(count: 25000000),
+  consumers: [
+    "master socket global timer clock",
+    "slave socket global timer clock",
+  ],
+}
+
+data mt_jade_clock_tree: List<ClockTreeNode> = [
+  ClockTreeNode {
+    ordering_part_number: "9FGV1006B",
+    vendor_label: "Renesas (IDT)",
+    role: ProcessorPcieReferenceClock,
+    output_frequency: hertz(count: 100000000),
+    consumers: [
+      "Altra/AltraMax processor system reference clock",
+      "25G CCIX 2P serdes reference clock",
+    ],
+  },
+  ClockTreeNode {
+    ordering_part_number: "9FGL0841",
+    vendor_label: "Renesas (IDT)",
+    role: PcieFanoutClock,
+    output_frequency: hertz(count: 100000000),
+    consumers: [
+      "Altra/AltraMax processors",
+      "onboard PCIe devices",
+      "PCIe riser cards",
+      "OCPv3 NIC connector",
+      "Sliver NVMe connectors",
+    ],
+  },
+  ClockTreeNode {
+    ordering_part_number: "92XL1231",
+    vendor_label: "Renesas (IDT)",
+    role: PcieFanoutClock,
+    output_frequency: hertz(count: 100000000),
+    consumers: [
+      "PCIe reference clock buffer downstream of 9FGL0841",
+    ],
+  },
+  ClockTreeNode {
+    ordering_part_number: "5P35023",
+    vendor_label: "Renesas (IDT)",
+    role: BmcAndNicProgrammableClock,
+    output_frequency: none,
+    consumers: [
+      "BMC reference clocks 50 MHz / 24 MHz / 125 MHz",
+      "OCPv3 NIC connector 50 MHz",
+    ],
+  },
+  ClockTreeNode {
+    ordering_part_number: "1.8432 MHz oscillator",
+    vendor_label: "unspecified in OCP Rev 1.0",
+    role: ProcessorUartBaudClock,
+    output_frequency: hertz(count: 1843200),
+    consumers: [
+      "Altra/AltraMax UART baud reference for 115200 bps",
+    ],
+  },
+  ClockTreeNode {
+    ordering_part_number: "25 MHz crystal",
+    vendor_label: "unspecified in OCP Rev 1.0",
+    role: CrystalReferenceInput,
+    output_frequency: hertz(count: 25000000),
+    consumers: [
+      "5P35023 input",
+      "9FGL0841 input",
+      "RTL8211E BMC Ethernet PHY input",
+    ],
+  },
+]
+
+// REFERENCE PART PRECEDENT — the OCP spec names specific orderable parts for several platform
+// roles. This is the pattern later board articles should cite rather than retyping part numbers
+// in product-layer prose.
+type ReferencePartRole
+  = BaseboardManagementController
+  | BootI2cEeprom
+  | HostQspiFlash
+  | BmcSpiFlash
+  | BmcEthernetPhy
+  | PcieClockGenerator
+  | PcieClockBuffer
+  | ProgrammableClockGenerator
+
+type MtJadeReferencePartRow {
+  ordering_part_number: NonEmptyStr
+  vendor_label: NonEmptyStr
+  role: ReferencePartRole
+  authority: ExternalAuthority
+}
+
+data mt_jade_reference_parts: List<MtJadeReferencePartRow> = [
+  MtJadeReferencePartRow {
+    ordering_part_number: "AST2500",
+    vendor_label: "ASPEED",
+    role: BaseboardManagementController,
+    authority: extdeps_external_authority_anchor,
+  },
+  MtJadeReferencePartRow {
+    ordering_part_number: "AT24CM02",
+    vendor_label: "Microchip",
+    role: BootI2cEeprom,
+    authority: extdeps_external_authority_anchor,
+  },
+  MtJadeReferencePartRow {
+    ordering_part_number: "MX25L25673G",
+    vendor_label: "Macronix",
+    role: HostQspiFlash,
+    authority: extdeps_external_authority_anchor,
+  },
+  MtJadeReferencePartRow {
+    ordering_part_number: "MX66L51235FMI-10G",
+    vendor_label: "Macronix",
+    role: BmcSpiFlash,
+    authority: extdeps_external_authority_anchor,
+  },
+  MtJadeReferencePartRow {
+    ordering_part_number: "RTL8211E",
+    vendor_label: "Realtek",
+    role: BmcEthernetPhy,
+    authority: extdeps_external_authority_anchor,
+  },
+  MtJadeReferencePartRow {
+    ordering_part_number: "9FGV1006B",
+    vendor_label: "Renesas (IDT)",
+    role: PcieClockGenerator,
+    authority: extdeps_external_authority_anchor,
+  },
+  MtJadeReferencePartRow {
+    ordering_part_number: "9FGL0841",
+    vendor_label: "Renesas (IDT)",
+    role: PcieClockBuffer,
+    authority: extdeps_external_authority_anchor,
+  },
+  MtJadeReferencePartRow {
+    ordering_part_number: "92XL1231",
+    vendor_label: "Renesas (IDT)",
+    role: PcieClockBuffer,
+    authority: extdeps_external_authority_anchor,
+  },
+  MtJadeReferencePartRow {
+    ordering_part_number: "5P35023",
+    vendor_label: "Renesas (IDT)",
+    role: ProgrammableClockGenerator,
+    authority: extdeps_external_authority_anchor,
+  },
+]
+
+fn clock_tree_contains_part_number(nodes: List<ClockTreeNode>, part: NonEmptyStr) -> Bool {
+  fold(nodes, init: false, f: fn(acc, n) {
+    acc || ((n.ordering_part_number as String) == (part as String))
+  })
+}
+
+fn reference_part_roles_include(rows: List<MtJadeReferencePartRow>, wanted: ReferencePartRole) -> Bool {
+  fold(rows, init: false, f: fn(acc, r) { acc || r.role == wanted })
+}
+
+data extdeps_model_scope: ExternalModelScope = mt_jade_model_scope

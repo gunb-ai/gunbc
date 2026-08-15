@@ -1,0 +1,92 @@
+module extdeps.ocp.mt_jade.subject
+
+import std.types { String, NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.ampere { ampere_vendor }
+import extdeps.publication { SpecificationDocumentDate }
+import extdeps.ocp.publication {
+  OcpSpecificationLicense,
+  OcpContributionLicense,
+  Owfa1_0FinalSpecificationAgreement,
+  OcpContributionLicenseAgreement,
+  ExcludedNonNormativeAppendix,
+  AppendixA,
+  AppendixB,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
+  }
+}
+
+data mt_jade_subject_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "www.opencompute.org/documents/open-compute-specification-mt-jade-rev-1-0-pdf-1"
+  }
+}
+
+data mt_jade_subject_note: String = "MT. JADE AS AN OCP-ACCEPTED REFERENCE PLATFORM, NOT AS A PACKAGE FACT. extdeps.cpu.ampere_altra_package correctly separates the public Altra package datasheet from the NDA reference-board collateral listing Mt. Jade among four Ampere boards. This module is the third axis: the OCP-published motherboard specification, which names platform architecture facts without being the full Customer Connect design-file drop. THE PUBLISHER LOCATOR REMAINS THE CITATION EVEN WHEN UNREACHABLE. HOW THIS REPOSITORY READ OR FAILED TO READ THAT LOCATOR IS RECORDED AS A GUNBC RECEIPT WITH A DeclarationRef TO mt_jade_reference_platform, NOT AS A FIELD ON THIS RECORD. THE LICENCE IS WHAT MAKES PUBLIC MODELLING ADMISSIBLE: usage is under OWFa 1.0 (Open Web Foundation Final Specification Agreement), contributions are under the OCP Contribution License Agreement, and the licence explicitly does NOT apply to the Appendices — they are reference-only and non-normative, so no fact in this repository may be attributed to Appendix A or Appendix B."
+
+type MtJadeRev1_0 {}
+
+type MtJadeSpecificationRevision = MtJadeRev1_0
+
+data mt_jade_specification_version_label: NonEmptyStr = "v1.0"
+
+data mt_jade_specification_publication_date: SpecificationDocumentDate = SpecificationDocumentDate {
+  year: 2021,
+  month: 9,
+  day: 17,
+}
+
+data mt_jade_specification_license: OcpSpecificationLicense = Owfa1_0FinalSpecificationAgreement {}
+
+data mt_jade_contribution_license: OcpContributionLicense = OcpContributionLicenseAgreement {}
+
+data mt_jade_excluded_non_normative_appendices: List<ExcludedNonNormativeAppendix> = [
+  AppendixA {},
+  AppendixB {},
+]
+
+type MtJadeReferencePlatform {
+  marketing_name: NonEmptyStr
+  revision: MtJadeSpecificationRevision
+  version_label: NonEmptyStr
+  publication_date: SpecificationDocumentDate
+  contributor: Vendor<Hardware>
+  specification_license: OcpSpecificationLicense
+  contribution_license: OcpContributionLicense
+  excluded_appendices: List<ExcludedNonNormativeAppendix>
+}
+
+data mt_jade_reference_platform: MtJadeReferencePlatform = MtJadeReferencePlatform {
+  marketing_name: "Mt. Jade",
+  revision: MtJadeRev1_0 {},
+  version_label: mt_jade_specification_version_label,
+  publication_date: mt_jade_specification_publication_date,
+  contributor: ampere_vendor,
+  specification_license: mt_jade_specification_license,
+  contribution_license: mt_jade_contribution_license,
+  excluded_appendices: mt_jade_excluded_non_normative_appendices,
+}
+
+data mt_jade_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.ocp.mt_jade.subject",
+      decl_name: "mt_jade_reference_platform",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+data extdeps_model_scope: ExternalModelScope = mt_jade_model_scope
