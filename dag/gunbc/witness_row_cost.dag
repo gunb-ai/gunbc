@@ -11,6 +11,9 @@ import std.measure {
   millisecond,
   millisecond_count,
   nanosecond_to_millisecond_floor,
+  Second,
+  second,
+  second_count,
 }
 import v2.std.algebra { filter, length }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -59,7 +62,6 @@ import std.observation {
 }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.text { String }
-import v2.workflow.ci_floor_plan { gunbc_ci_fast_lane_eval_budget_ms }
 
 data witness_row_cost_spine_note: String = "Per-witness cost receipts (placement workstream #5 spine). THE RECORD is std.observation.ObservationEvent (progress-observation-design §2/§3c) — not a TSV schema and not WitnessTimingRow. Production shape is N+1 per entry: exactly ONE entry resolve-phase Concluded event (entry-level/shared resolve wall) plus one declaration-grain Concluded event per witness (eval wall + actual outcome; Refused distinct from Failed). RSS is MeasuredUnavailable with an explicit cause. The canonical event and joined receipt retain exact Nanosecond eval, resolve, and warm values; histogram, ordering, and attribution consume those exact values. The TSV/drift/placement wires are named Millisecond presentation and policy boundaries and may floor only there. The resolve column repeats the observed full entry resolve for each child — never divided across witnesses and never summed N times into a corpus total. W2 filters the SAME events via AttentionLevel/ObservationDensity (Ambient may suppress a render line while the complete receipt still retains the row). Basis values MUST cite an arm64 srv-fleet run id (never local x86). A row with no dated basis is BasisAbsent. Drift is falsifier-cadence counted, not merge-refusing. Executing consumers: dag/test/claim/witness_row_cost_drift_witness_test.dag and dag/test/claim/witness_row_cost_projection_witness_test.dag."
 
@@ -127,7 +129,7 @@ fn witness_row_cost_migration_threshold_order_of_magnitude() -> Nat {
 }
 
 fn witness_row_cost_migration_threshold_ms() -> Nat {
-  gunbc_ci_fast_lane_eval_budget_ms() / witness_row_cost_migration_threshold_order_of_magnitude()
+  witness_row_fast_lane_eval_budget_ms() / witness_row_cost_migration_threshold_order_of_magnitude()
 }
 
 type MigrationDisclosureVerdict
@@ -654,4 +656,15 @@ fn witness_cost_seed_timed_out_event(
     eval: eval,
     outcome: TimedOut { basis: basis, budget: budget, elapsed: elapsed }
   )
+}
+
+// Re-homed here from v2.workflow.ci_floor_plan when the CI wipe (2026-08-15) deleted that module.
+// The five-second fast-lane budget is a fact about what a witness row may cost, which is this
+// module's subject; it sat in the floor plan only because the floor plan was what armed it. No
+// consumer arms it today -- the executor that did is deleted -- so this is the threshold's
+// declaration, not a claim that anything enforces it.
+data witness_row_fast_lane_witness_eval_budget: Second = second(count: 5)
+
+fn witness_row_fast_lane_eval_budget_ms() -> v2.std.nat.Nat {
+  second_count(s: witness_row_fast_lane_witness_eval_budget) * 1000
 }

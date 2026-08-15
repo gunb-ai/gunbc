@@ -7,9 +7,7 @@ import gunbc.plan_registry { all_plans }
 import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_script_path }
 
 type GeneratedArtifact
-  = CiYamlArtifact
-  | FalsifierYamlArtifact
-  | FleetConvergeYamlArtifact
+  = FleetConvergeYamlArtifact
   | GitignoreArtifact
   | GitattributesArtifact
   | RoadmapArtifact
@@ -30,7 +28,7 @@ type GeneratedArtifact
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [CiYamlArtifact, FalsifierYamlArtifact, FleetConvergeYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact],
+      [FleetConvergeYamlArtifact, GitignoreArtifact, GitattributesArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, GeneratedArtifactMergeDriverArtifact, RunnerDeployArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, Stage0EmitPlanGeneratedDagArtifact, V1InterpreterDispatchGeneratedRsArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_install_server_specs, s => ProxyDhcpDnsmasqArtifact { spec: s })
@@ -50,8 +48,6 @@ type CommitPolicy
 
 fn artifact_path(a: GeneratedArtifact) -> String {
   match a {
-    CiYamlArtifact => ".github/workflows/ci.yml"
-    FalsifierYamlArtifact => ".github/workflows/falsifier.yml"
     FleetConvergeYamlArtifact => ".github/workflows/fleet-converge.yml"
     GitignoreArtifact => ".gitignore"
     GitattributesArtifact => ".gitattributes"
@@ -79,8 +75,6 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     GithooksPrePushArtifact => CommitRequired { consumer: GitProtocol }
     GithooksPreCommitArtifact => CommitRequired { consumer: GitProtocol }
     GeneratedArtifactMergeDriverArtifact => CommitRequired { consumer: GitProtocol }
-    CiYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
-    FalsifierYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     FleetConvergeYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     RoadmapArtifact => CommitRequired { consumer: ProjectDocumentation }
     DesignArtifact => CommitRequired { consumer: ProjectDocumentation }
@@ -115,8 +109,6 @@ data artifact_eq_disposition_reference_note: String = "Disposition authority (re
 
 fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
   match a {
-    CiYamlArtifact => match b { CiYamlArtifact => true  _ => false }
-    FalsifierYamlArtifact => match b { FalsifierYamlArtifact => true  _ => false }
     FleetConvergeYamlArtifact => match b { FleetConvergeYamlArtifact => true  _ => false }
     GitignoreArtifact => match b { GitignoreArtifact => true  _ => false }
     GitattributesArtifact => match b { GitattributesArtifact => true  _ => false }
