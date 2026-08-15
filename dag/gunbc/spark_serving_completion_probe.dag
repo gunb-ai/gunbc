@@ -9,6 +9,7 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.ssh.session { ssh_session_exec_portable_words_with_stdin }
+import extdeps.exec.command { shell_quote }
 import extdeps.ollama.api { ollama_default_port }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
@@ -42,16 +43,22 @@ data spark_serving_completion_probe_scaffold: Disposition = Scaffold {
   }
 }
 
-data spark_serving_completion_probe_note: String = "Acceptance probe for SPARK-SERVE-INSTALL-0: a real /api/generate completion from each Spark host over FleetSsh. This is the finish line — not a converged plan receipt. Interim concat shell; scaffold registered above."
+data spark_serving_completion_probe_note: String = "Acceptance probe for SPARK-SERVE-INSTALL-0: POST /api/generate over FleetSsh sh -s. Interim concat shell (scaffold registered above); not routed through host_effect_apply because FleetSsh refuses script bodies at run_shell_transport — same interim transport class as spark_serving_observe_wet, not the deleted gunbc#8073 GHA workflow sidecars. Does not install; path inoperative on srv5/srv6 until gunbc lands on target."
 
 data spark_serving_completion_probe_receipt_path: String = "target/spark-serving-completion-probe-receipt.txt"
 
 fn spark_serving_generate_probe_script() -> String {
-  let model_q = spark_serving_desired_model_wire()
+  let model_wire = spark_serving_desired_model_wire()
   let api_port = to_string(ollama_default_port)
+  let generate_body = join(
+    ["{\"model\":\"", model_wire, "\",\"prompt\":\"Reply with exactly: pong\",\"stream\":false}"],
+    "",
+  )
+  let generate_body_q = shell_quote(arg: generate_body)
   join([
     "set -eu\n",
-    "resp=$(curl -sf http://127.0.0.1:", api_port, "/api/generate -d '{\"model\":\"", model_q, "\",\"prompt\":\"Reply with exactly: pong\",\"stream\":false}')\n",
+    join(["resp=$(curl -sf http://127.0.0.1:", api_port, "/api/generate -d ", generate_body_q, ")"], ""),
+    "\n",
     "printf '%s\\n' \"$resp\" | grep -F '\"response\"' >/dev/null\n",
     "printf '%s\\n' \"SparkServingCompletionReceipt: generate=ok\"\n",
     "printf '%s\\n' \"$resp\"\n",
