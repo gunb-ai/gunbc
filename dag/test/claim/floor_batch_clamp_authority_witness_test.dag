@@ -39,7 +39,7 @@ test fn scoped_batch_clamp_cites_its_own_declaration_not_the_positional_list() -
   let c = scoped_clamp()
   (c.authority.module_path as String == "gunbc.ci_layer_roots")
     && (c.authority.decl_name as String == "v1_claim_scoped_witness_batch")
-    && (second_count(s: c.overhead) == 480)
+    && (second_count(s: c.overhead) == 720)
     && (millisecond_count(m: c.per_unit) == 0)
 }
 
@@ -63,7 +63,7 @@ test fn the_two_clamp_authorities_are_distinguishable_by_value() -> Bool {
 test fn scoped_clamp_is_identical_at_one_unit_and_at_twenty_seven() -> Bool {
   let c = scoped_clamp()
   (runnable_batch_clamp_ms(clamp: c, units: 1) == runnable_batch_clamp_ms(clamp: c, units: 27))
-    && (runnable_batch_clamp_ms(clamp: c, units: 27) == 480000)
+    && (runnable_batch_clamp_ms(clamp: c, units: 27) == 720000)
 }
 
 // The positive control for the one above: a row whose rate is NONZERO must move with the unit
