@@ -57,6 +57,27 @@ type CliVerb
   | Converge { host: NonEmptyStr }
   | Serve { selection: SourceSelection, function: NonEmptyStr, bind: ServeBinding }
 
+// DISPOSITION — the Converge/Serve split is INHERITED, not decided (2026-08-15).
+//
+// Recorded plainly because "decided deliberately" and "inherited" look identical in source, and
+// only one of them survives review. These two arms mirror the deleted CLI's subcommand list: I
+// modelled CliVerb from main.rs's `enum Commands`, and the grounding I claimed for this module —
+// that it is the forward reading of the argv relation gunbc.cli_invoke reads backward — justifies
+// the argv SHAPE and says nothing about the verb DECOMPOSITION. So this is a candidate for the
+// failure DESIGN names for replacement migrations: X's decomposition rebuilding itself inside Y
+// one convenience at a time.
+//
+// THE OPEN QUESTION, stated so a later reader can settle it rather than re-derive it: if terminal
+// gunbc converges a desired SERVING OCCURRENCE (host, release identity, route table, bind
+// endpoint, health contract, budget), then everything in ServeBinding is desired-state that merely
+// arrived through a command, and this record is the shape of the old command rather than the shape
+// of the new state — at which point Serve folds into convergence and these arms delete. If instead
+// a long-running listener is genuinely its own lifecycle authority beside convergence, the split is
+// right as it stands.
+//
+// I have not decided it, and the operator has ruled converge/serve minor, so it is not being
+// decided under a cut that has no consumer for either arm yet. What is NOT deferred is the fact of
+// the inheritance, which is what this note exists to prevent going silent.
 type ServeEvaluationBudget {
   cpu_limit_ms: Int?
   wall_limit_ms: Int?
