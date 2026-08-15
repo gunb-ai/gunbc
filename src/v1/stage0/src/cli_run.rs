@@ -2393,12 +2393,6 @@ pub fn whole_tree_resolve_exclusion_substrings() -> Vec<String> {
     excludes
 }
 
-/// Whole-tree strict-walk probe exclusion authority — pattern rows ∪ derived module-path
-/// closure (`census_exclude_derive`). Replaces hand-pinned `--exclude-subpath` lists.
-pub fn whole_tree_probe_exclusion_substrings() -> Vec<String> {
-    census_exclude_derive::whole_tree_probe_exclusion_substrings()
-}
-
 /// Live compile-clean pipeline module paths for census exclusion silent-loss checks.
 /// Shard entry paths plus their import closures — modules the compile-clean gate may touch.
 pub fn compile_clean_live_pipeline_module_paths() -> Vec<String> {
@@ -16882,15 +16876,6 @@ pub fn handle_converge(host: String) {
     if !converged {
         std::process::exit(1);
     }
-}
-
-#[path = "pre_push.rs"]
-mod pre_push;
-
-/// Thin CLI transport handler for `claim_batch --pre-push`: stdin parse and gate
-/// orchestration live in `pre_push`; disposition receipt in `gunbc.githooks_pre_push_cli`.
-pub fn handle_pre_push() -> std::process::ExitCode {
-    pre_push::run()
 }
 
 pub fn handle_run(
@@ -43100,9 +43085,6 @@ mod selected_entry_closure_overlap_arithmetic {
         assert!(json.contains("\"max\":null"));
     }
 }
-
-#[path = "census_exclude_derive.rs"]
-pub mod census_exclude_derive;
 
 #[cfg(test)]
 mod annotation_erased_scan_projection {

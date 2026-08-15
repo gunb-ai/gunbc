@@ -95,7 +95,6 @@ pub mod v1_compiler_closure_stub_v2_std_integer_rust;
 pub mod v1_compiler_closure_stub_v2_std_text_rust;
 pub mod v1_compiler_coercion;
 pub mod v1_compiler_compile;
-pub mod v1_compiler_compiler_tests_rust;
 pub mod v1_compiler_complexity;
 pub mod v1_compiler_dag_collect;
 pub mod v1_compiler_dag_collect_support;
@@ -224,6 +223,3 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         self.0
     }
 }
-
-#[cfg(test)]
-mod compiler_tests;

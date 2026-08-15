@@ -8,8 +8,6 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "shared_typecheck_store.rs",
     "main.rs",
     "phase_profile.rs",
-    "pre_push.rs",
-    "census_exclude_derive.rs",
     "memory_governor.rs",
     "std_lens_verdict.rs",
     "v2_compiler_body_producer.rs",
