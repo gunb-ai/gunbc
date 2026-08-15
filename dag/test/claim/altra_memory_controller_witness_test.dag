@@ -16,7 +16,8 @@ import extdeps.memory.types {
   dram_module_class_eq,
 }
 import extdeps.cpu.ampere { ampere_lga4926_socket, altra_max_m12830_catalog, altra_q6430_catalog }
-import extdeps.cpu.ampere_altra_package { altra_fclga_socket, altra_declared_contact_count }
+import extdeps.cpu.ampere_altra_package { altra_fclga_socket, altra_declared_contact_count, altra_ddr4_channel_count }
+import extdeps.cpu.ampere_altra_platform_hw_design.platform { dimms_per_channel_count }
 import extdeps.cpu.ampere_altra_memory_controller {
   ActiveChannelsProductionAdmitted,
   ActiveChannelsBringUpOnly,
@@ -35,9 +36,8 @@ import extdeps.cpu.ampere_altra_memory_controller {
   altra_admitted_device_widths,
   altra_admitted_module_classes,
   altra_board_down_dram_standing,
-  altra_memory_channel_count,
   altra_memory_channel_width,
-  altra_memory_max_dimms_per_channel,
+  altra_memory_max_dimms_per_channel_topology,
   altra_total_memory_data_width,
   altra_udimm_withdrawal,
 }
@@ -147,10 +147,10 @@ test fn w_device_organization_matches_the_datasheet() -> Bool {
 
 // The channel facts, and the aggregate DERIVED from them rather than authored beside them.
 test fn w_channel_geometry_derives_the_total_width() -> Bool {
-  altra_memory_channel_count == 8
+  altra_ddr4_channel_count == 8
     && bit_width_count(b: altra_memory_channel_width) == 72
-    && altra_memory_max_dimms_per_channel == 2
-    && altra_total_memory_data_width() == 576
+    && dimms_per_channel_count(topology: altra_memory_max_dimms_per_channel_topology) == 2
+    && bit_width_count(b: altra_total_memory_data_width()) == 576
 }
 
 // THE DE-FORK, ASSERTED IN THE DIRECTION THAT WOULD HAVE CAUGHT IT. Both product rows and the

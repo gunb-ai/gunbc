@@ -18,6 +18,12 @@ import extdeps.memory.types {
   dram_module_class_eq,
 }
 import extdeps.cpu.ampere { ampere_altra_classic_rev_a1_datasheet_authority }
+import extdeps.cpu.ampere_altra_package { altra_ddr4_channel_count }
+import extdeps.cpu.ampere_altra_platform_hw_design.platform {
+  DimmsPerChannelTopology,
+  TwoDimmsPerChannel,
+  dimms_per_channel_count,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ampere_altra_classic_rev_a1_datasheet_authority
 
@@ -38,11 +44,12 @@ data altra_memory_controller_ingestion_note: String = "Section 2.10 only. Delibe
 
 data altra_memory_generation: DramGeneration = dram_generation_ddr4
 
-data altra_memory_channel_count: Int = 8
-
 data altra_memory_channel_width: BitWidth = bit_width(count: 72)
 
-data altra_memory_max_dimms_per_channel: Int = 2
+// DPC IS CONSUMED AS THE CLOSED TOPOLOGY, not as a bare 2. The platform authority already models
+// this as a coproduct rather than a count, which is the stronger shape: "up to 2 DPC" names an
+// admitted set of arrangements, and an Int lets a 3 be written that no authority admits.
+data altra_memory_max_dimms_per_channel_topology: DimmsPerChannelTopology = TwoDimmsPerChannel
 
 // Four terabytes, as the datasheet states it for the whole processor rather than per channel.
 data altra_memory_max_capacity: ByteSize = byte_size(count: 4398046511104)
@@ -144,9 +151,18 @@ fn altra_active_channel_standing(count: Int) -> ActiveChannelStanding {
 data altra_memory_interleave_note: String = "Section 2.10 states hashed memory interleave across active channels."
 
 // The full-population data width, DERIVED from the channel facts rather than authored beside
-// them, so a corrected channel count cannot leave a stale aggregate behind.
-fn altra_total_memory_data_width() -> Int {
-  altra_memory_channel_count * bit_width_count(b: altra_memory_channel_width)
+// them, so a corrected channel count cannot leave a stale aggregate behind. It returns BitWidth
+// rather than Int: both inputs carry the unit, and dropping it at the aggregate would make the
+// one row a consumer actually reads the only one whose unit is implicit.
+//
+// CHANNEL COUNT IS CONSUMED HERE, NOT RE-MINTED. Eight DDR4 channels is a family fact already
+// owned by the package authority, which grounds it on the Altra family product brief; section
+// 2.10 states the same number for classic Altra, and a second literal in this module would be two
+// rows free to drift with no join between them. The classic-vs-Max separation this module insists
+// on is about facts the two documents state DIFFERENTLY -- the UDIMM withdrawal -- not about
+// every number they happen to share.
+fn altra_total_memory_data_width() -> BitWidth {
+  bit_width(count: altra_ddr4_channel_count * bit_width_count(b: altra_memory_channel_width))
 }
 
 // WHETHER THIS CONTROLLER ADMITS DRAM SOLDERED DIRECTLY TO THE BOARD, answered from the admitted
