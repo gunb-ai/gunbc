@@ -29,13 +29,21 @@ module test.claim.emitted_lib_rs_module_declaration_witness_test
 //
 // THE SECOND DIMENSION, ORDER, is covered below, and the first revision of this
 // file was wrong about who covered it: it deferred the ordering constraint to the
-// stage0 regen drift gate. Stage0 takes the OTHER branch — it has compiler tests,
-// so it calls order_lib_rs_mod_names and gets the dispatch declaration from the
-// admitted hand block — so that gate never reaches the partial-crate ordering at
-// all, and order_partial_lib_rs_mod_names could have been replaced by the identity
-// function with every check in this repository still green. The claim was caught by
-// review (gunbc#8222), not by execution, which is the point: a deferral naming the
-// wrong consumer reads exactly like coverage.
+// stage0 regen drift gate, which takes the OTHER branch and so never reaches the
+// partial-crate ordering at all. The claim was caught by review (gunbc#8222), not by
+// execution, which is the point: a deferral naming the wrong consumer reads exactly
+// like coverage.
+//
+// UPDATED 2026-08-15 (interpreter cut). This paragraph used to recite HOW the two
+// branches ordered their module names, naming the ordering functions and observing
+// that the partial-crate one could be replaced by the identity function with every
+// check in this repository still green. That prediction was correct and has now been
+// executed: both ordering functions WERE identity and are deleted, along with the
+// compiler-tests branch that selected between them. The ROLE this probe covers is
+// unchanged — the partial-crate ordering constraint has no other consumer — which is
+// why the probe below stands untouched while the sentence describing the mechanism
+// did not. A row naming what a thing is FOR survives a change of mechanism; a row
+// reciting how it currently decides has a clock on it.
 //
 // The ordering probe below therefore emits a crate that GENUINELY materializes the
 // macro provider, so the provider partition is non-empty. Position is expressible in
