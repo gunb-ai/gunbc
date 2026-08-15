@@ -2,6 +2,7 @@ module gunbc.spark_serving_observe
 
 import std.types { String, List, NonEmptyStr }
 import std.algebra { trim }
+import v2.std.algebra { fold_list }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import product.placement_supply { HostIdentity }
@@ -370,9 +371,29 @@ fn spark_serving_observation_report_text(
   }
 }
 
+fn spark_serving_observation_succeeded(observation: SparkServingObservation) -> Bool {
+  match observation {
+    SparkServingObserved { host: _, loaded_release: _ } => true
+    SparkServingAbsent { host: _ } => false
+    SparkServingObservationRefused { host: _, cause: _ } => false
+  }
+}
+
+fn spark_serving_all_observations_succeeded(observations: List<SparkServingObservation>) -> Bool {
+  fold_list(
+    xs: observations,
+    empty: true,
+    cons: fn(acc, obs) {
+      acc && spark_serving_observation_succeeded(observation: obs)
+    },
+  )
+}
+
 fn spark_serving_observation_report_succeeded(report: SparkServingObservationReport) -> Bool {
   match report {
-    SparkServingObservationsProduced { first: _, more: _ } => true
+    SparkServingObservationsProduced { first: f, more: m } =>
+      spark_serving_observation_succeeded(observation: f)
+        && spark_serving_all_observations_succeeded(observations: m)
     SparkServingObservationReportRefused { cause: _ } => false
   }
 }

@@ -1,6 +1,7 @@
 module v2.lens.mandatory_tag.corpus_scan
 
 import std.algebra { Cons, Empty }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.qualified_name { QualifiedName }
@@ -47,5 +48,37 @@ data extdeps_color_srgb_module: QualifiedName = Cons {
   tail: Cons {
     head: ^color,
     tail: Cons { head: ^srgb, tail: Empty }
+  }
+}
+
+data extdeps_archive_format_module: QualifiedName = Cons {
+  head: ^extdeps,
+  tail: Cons {
+    head: ^archive,
+    tail: Cons { head: symbol_intern_lexeme(lexeme: "format"), tail: Empty }
+  }
+}
+
+data extdeps_ollama_binary_release_module: QualifiedName = Cons {
+  head: ^extdeps,
+  tail: Cons {
+    head: ^ollama,
+    tail: Cons { head: symbol_intern_lexeme(lexeme: "binary_release"), tail: Empty }
+  }
+}
+
+data extdeps_ollama_capability_module: QualifiedName = Cons {
+  head: ^extdeps,
+  tail: Cons {
+    head: ^ollama,
+    tail: Cons { head: symbol_intern_lexeme(lexeme: "capability"), tail: Empty }
+  }
+}
+
+data extdeps_ollama_gpu_support_module: QualifiedName = Cons {
+  head: ^extdeps,
+  tail: Cons {
+    head: ^ollama,
+    tail: Cons { head: symbol_intern_lexeme(lexeme: "gpu_support"), tail: Empty }
   }
 }

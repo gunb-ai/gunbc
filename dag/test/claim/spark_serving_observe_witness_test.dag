@@ -25,6 +25,7 @@ import gunbc.spark_serving_readback_parse {
 import gunbc.spark_serving_observe {
   spark_serving_unit_outcome_from_probe_results,
   SparkServingObservationReportRefused,
+  SparkServingObservationsProduced,
   spark_serving_observation_report_succeeded,
 }
 
@@ -305,6 +306,25 @@ test fn observation_report_refused_is_not_success() -> Bool {
   )
 }
 
+test fn per_host_refusal_report_is_not_success() -> Bool {
+  match derive_spark_serving_observation(readback: readback_active_complete()) {
+    SparkServingObserved { host: _, loaded_release: loaded } =>
+      !spark_serving_observation_report_succeeded(
+        report: SparkServingObservationsProduced {
+          first: SparkServingObserved { host: "srv5", loaded_release: loaded },
+          more: [
+            SparkServingObservationRefused {
+              host: "srv6",
+              cause: "gunbc-spark-serving.service is inactive" as NonEmptyStr,
+            },
+          ],
+        },
+      )
+    SparkServingAbsent { host: _ } => false
+    SparkServingObservationRefused { host: _, cause: _ } => false
+  }
+}
+
 test fn unobserved_nvidia_driver_refuses_active_observation() -> Bool {
   match derive_spark_serving_observation(readback: SparkServingReadback {
     host: "srv5",
@@ -336,6 +356,29 @@ test fn driver_too_old_refuses_active_observation() -> Bool {
   }) {
     SparkServingObservationRefused { host: _, cause: c } =>
       string_contains(s: c as String, pattern: "below minimum")
+    SparkServingObserved { host: _, loaded_release: _ } => false
+    SparkServingAbsent { host: _ } => false
+  }
+}
+
+test fn driver_too_old_report_is_not_success() -> Bool {
+  match derive_spark_serving_observation(readback: SparkServingReadback {
+    host: "srv5",
+    unit_outcome: SparkServingUnitActive,
+    runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
+    model_name: SparkServingReadbackPresent { value: "gpt-oss" },
+    model_tag: SparkServingReadbackPresent { value: "20b" },
+    model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_too_old_wire),
+    bind_address: SparkServingReadbackAbsent,
+  }) {
+    SparkServingObservationRefused { host: h, cause: c } =>
+      !spark_serving_observation_report_succeeded(
+        report: SparkServingObservationsProduced {
+          first: SparkServingObservationRefused { host: h, cause: c },
+          more: [],
+        },
+      )
     SparkServingObserved { host: _, loaded_release: _ } => false
     SparkServingAbsent { host: _ } => false
   }
