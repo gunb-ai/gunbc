@@ -1,7 +1,7 @@
 module gunbc.spark_serving_membership
 
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
-import std.content_hash { serialize_content_hash }
+import std.content_hash { content_hash_atom, serialize_content_hash }
 import product.placement_supply { HostIdentity }
 import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.spark_serving_release {
@@ -97,8 +97,24 @@ fn spark_serving_user_unit_state_digest() -> NonEmptyStr {
   ).digest as NonEmptyStr
 }
 
+type SparkServingExecutorLingerState = ExecutorLingerEnabled
+
+fn spark_serving_executor_linger_state_label(state: SparkServingExecutorLingerState) -> NonEmptyStr {
+  match state {
+    ExecutorLingerEnabled => "enabled" as NonEmptyStr
+  }
+}
+
+fn spark_serving_desired_executor_linger_state() -> SparkServingExecutorLingerState {
+  ExecutorLingerEnabled
+}
+
 fn spark_serving_executor_linger_state_digest() -> NonEmptyStr {
-  "linger=enabled" as NonEmptyStr
+  content_hash_atom(
+    value: spark_serving_executor_linger_state_label(
+      state: spark_serving_desired_executor_linger_state(),
+    ),
+  ).digest as NonEmptyStr
 }
 
 fn spark_serving_user_unit_file_write_intent() -> SparkServingUserUnitWriteIntent {
