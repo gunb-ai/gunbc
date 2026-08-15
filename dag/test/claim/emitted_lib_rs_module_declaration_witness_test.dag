@@ -39,11 +39,24 @@ module test.claim.emitted_lib_rs_module_declaration_witness_test
 // that the partial-crate one could be replaced by the identity function with every
 // check in this repository still green. That prediction was correct and has now been
 // executed: both ordering functions WERE identity and are deleted, along with the
-// compiler-tests branch that selected between them. The ROLE this probe covers is
-// unchanged — the partial-crate ordering constraint has no other consumer — which is
-// why the probe below stands untouched while the sentence describing the mechanism
-// did not. A row naming what a thing is FOR survives a change of mechanism; a row
-// reciting how it currently decides has a clock on it.
+// compiler-tests branch that selected between them.
+//
+// CORRECTED, SAME DAY, BY READING THE PROBE INSTEAD OF ASSERTING ABOUT IT. The first
+// version of this paragraph said the probe's ROLE was unchanged and it therefore stood
+// untouched. That was wrong, and wrong in the reassuring direction. The ordering the
+// probe asserts is macro-provider-first, and the classifier that decided which module
+// was a macro provider had EXACTLY ONE INHABITANT — v1_interpreter_dispatch_generated —
+// which the interpreter cut deletes along with the classifier. So this probe's expected
+// bytes name a module that no longer exists, and the distinction it guards has no
+// remaining inhabitant to arise from. It is not a mechanism change under a stable role;
+// THE SUBJECT IS GONE.
+//
+// Left standing rather than deleted, deliberately and with the rung named: the verdict
+// above is READ, NOT EXECUTED — no witness runs on this branch, there is no claim_batch
+// binary — so whether this probe now fails or passes on its synthetic fixture is
+// unobserved. Deleting an enrolled check on an unexecuted reading would be the worse
+// error, and a witness whose only subject is behaviour that no longer exists is retired
+// WITH a receipt by whoever can run it, not quietly by the lane that orphaned it.
 //
 // The ordering probe below therefore emits a crate that GENUINELY materializes the
 // macro provider, so the provider partition is non-empty. Position is expressible in
