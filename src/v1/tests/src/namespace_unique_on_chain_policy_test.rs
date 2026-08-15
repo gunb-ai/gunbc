@@ -81,7 +81,7 @@ fn homonym_fixture() -> Vec<Rc<SourceFile>> {
         ),
         src(
             "leaf.dag",
-            "module fixchain.mid.leaf\nimport fixfns.one\nimport fixfns.two\nfn use_homonym(x: Homonym) -> Homonym { x }\nfn call_pick() -> Int { pick() }\n",
+            "module fixchain.mid.leaf\nfn use_homonym(x: Homonym) -> Homonym { x }\nfn call_pick() -> Int { pick() }\n",
         ),
     ]
 }

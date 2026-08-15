@@ -1,3 +1,2 @@
 module v2.extdeps.languages.rust_pool_perturb_ambient
-import v2.extdeps.languages.rust { rust_selection_policy_node }
 data ambient_anchor: Int = 1

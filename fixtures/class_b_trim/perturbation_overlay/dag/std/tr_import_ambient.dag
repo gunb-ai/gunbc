@@ -1,5 +1,4 @@
 module std.trim_import_closure_ambient
 
-import std.algebra { FreeMonoid }
 
 data trim_pool_ambient_anchor: Int = 1

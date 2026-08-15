@@ -454,8 +454,6 @@ mod tests {
         let entry_source = "\
 module ephemeral.entry
 
-import generated.method_template_projection { generated_answer }
-
 fn main() -> Int { generated_answer() }
 ";
         let result = compile_dag_named_with_source_roots(

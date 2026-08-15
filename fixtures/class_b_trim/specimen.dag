@@ -1,7 +1,5 @@
 module test.claim.class_b_trim_specimen
 
-import std.algebra { trim }
-import std.types { String, Bool }
 
 data class_b_trim_specimen_note: String = "Class B trim fix specimen: trim binds via explicit import std.algebra { trim } — ListedImport closure, not pool-membership coincidence. Narrow pool overlay removes std.types transitive algebra import; trim still compiles when std.algebra is in the import closure. Coincidence regression lives in coincidence_specimen.dag. Executing receipt: v1-compiler-tests class_b_trim_specimen_test."
 
