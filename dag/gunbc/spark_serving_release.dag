@@ -16,7 +16,7 @@ import gunbc.spark_serving_realization {
   ObservedGrantPopulation, escalation_shortfall, applicable_without_administrator,
   ServingEndpointIntent, UnauthenticatedEndpoint, AuthenticatedEndpoint,
 }
-import gunbc.spark_serving_runtime_receipt { spark_serving_unit_name }
+import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
 
 // THE SPARK SERVING RELEASE — one content-addressed identity over everything that must be
 // identical on both replicas.

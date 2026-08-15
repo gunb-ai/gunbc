@@ -39,8 +39,8 @@ import gunbc.spark_serving_release {
   SparkServingObserved,
   SparkServingObservationRefused,
 }
+import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
 import gunbc.spark_serving_runtime_receipt {
-  spark_serving_unit_name,
   spark_serving_runtime_receipt_probe_words,
   spark_serving_runtime_receipt_field_from_probe,
 }

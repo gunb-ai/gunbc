@@ -32,13 +32,11 @@ type SparkServingRuntimeArchiveAdmissionReceipt {
 
 data spark_serving_executor_home: FilePath = "/home/gunbc-automation" as FilePath
 
-data spark_serving_unit_name: String = "gunbc-spark-serving.service"
-
 data spark_serving_runtime_receipt_rel: String = ".local/share/gunbc/spark-serving/ollama-runtime-receipt.json"
 
 data spark_serving_runtime_receipt_release_asset_digest_member: String = "release_asset_digest_hex"
 
-data spark_serving_runtime_receipt_path_note: String = "Receipt path is fleet-constant under gunbc-automation on every Spark host (/home/gunbc-automation/.local/share/gunbc/spark-serving/ollama-runtime-receipt.json). Wet SSH probe selects which machine to read; the path string does not vary because srv5 and srv6 share the same executor home layout. The receipt record carries only the admitted release-asset digest — not which host was probed or which host ran the writer. spark_serving_unit_name lives here beside spark_serving_executor_home — single authority for fleet-constant executor layout facts consumed by install_paths, observe, and release."
+data spark_serving_runtime_receipt_path_note: String = "Receipt path is fleet-constant under gunbc-automation on every Spark host (/home/gunbc-automation/.local/share/gunbc/spark-serving/ollama-runtime-receipt.json). Wet SSH probe selects which machine to read; the path string does not vary because srv5 and srv6 share the same executor home layout. The receipt record carries only the admitted release-asset digest — not which host was probed or which host ran the writer. Unit basename is gunbc.spark_serving_unit_identity spark_serving_unit_name."
 
 fn spark_serving_runtime_receipt_wire_path() -> FilePath {
   spark_serving_runtime_receipt_path()
