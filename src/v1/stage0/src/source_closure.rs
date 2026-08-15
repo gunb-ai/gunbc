@@ -246,8 +246,22 @@ fn collect_references(node: &Rc<Node>, in_type_position: bool, out: &mut HashSet
     for child in node.children.iter() {
         collect_references(child, in_type_position, out);
     }
+    // A parameter's own name is a binder, but its CHILDREN carry its declared
+    // type -- parsed params hold the type there rather than in type_annotation,
+    // which is measured, not assumed: `fn f(x: T)` parses to a param named `x`
+    // with type_annotation None and one child. Walking those children in
+    // expression position (the earlier shape) collected nothing, so every
+    // parameter-type dependency was silently missing from the closure.
     for param in node.params.iter() {
-        collect_references(param, in_type_position, out);
+        for declared_type in param.children.iter() {
+            collect_references(declared_type, true, out);
+        }
+        if let Some(annotation) = param.type_annotation.as_ref() {
+            collect_references(annotation, true, out);
+        }
+        for nested in param.params.iter() {
+            collect_references(nested, in_type_position, out);
+        }
     }
     for used in node.uses.iter() {
         collect_references(used, in_type_position, out);

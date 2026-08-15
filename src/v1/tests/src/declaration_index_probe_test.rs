@@ -266,3 +266,71 @@ fn malformed_module_is_returned_as_unparsed_not_panicked() {
         "the malformed module must be REPORTED, not silently skipped: {unparsed:?}"
     );
 }
+
+/// Cross-lane control: a name mentioned inside a STRING LITERAL must not pull
+/// the module declaring it.
+///
+/// The trap is real for grep-based joins — .dag modules carry long §4c
+/// rationale strings that name exactly what a cut is searching for, so six
+/// apparent hits on a sibling lane were prose discussing the interpreter rather
+/// than references to it. This walk reads parsed `Node` structure rather than
+/// text, so it should be immune by construction; that is an assertion until it
+/// is executed, and assertions have not fared well in this lane.
+///
+/// Plants a module whose only mention of a declared name is inside a string.
+#[test]
+fn a_name_inside_a_string_literal_is_not_a_reference() {
+    let dir = std::env::temp_dir().join(format!("gunbc_strlit_probe_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp root");
+
+    std::fs::write(
+        dir.join("provider.dag"),
+        "module probe.provider\ntype PulledIfReferenced { v: Int }\n",
+    )
+    .expect("write provider");
+    // The mention is prose inside a rationale string, exactly the §4c shape.
+    std::fs::write(
+        dir.join("prose.dag"),
+        "module probe.prose\ndata note: String = \"discusses PulledIfReferenced at length\"\n",
+    )
+    .expect("write prose");
+    // Positive control: the same name in a real reference position MUST pull.
+    std::fs::write(
+        dir.join("real.dag"),
+        "module probe.real\nfn use_it(x: PulledIfReferenced) -> Int { x.v }\n",
+    )
+    .expect("write real");
+
+    let (index, unparsed) =
+        v1_compiler::source_closure::build_declaration_index(&[dir.clone()], &dir);
+    assert!(unparsed.is_empty(), "fixtures must parse: {unparsed:?}");
+
+    let prose = std::fs::read_to_string(dir.join("prose.dag")).unwrap();
+    let real = std::fs::read_to_string(dir.join("real.dag")).unwrap();
+    let from_prose = v1_compiler::source_closure::closure_for_entry("prose.dag", &prose, &index);
+    let from_real = v1_compiler::source_closure::closure_for_entry("real.dag", &real, &index);
+
+    let pulled = |c: &Vec<std::rc::Rc<v1_compiler::v1_compiler_compile::SourceFile>>| {
+        c.iter().any(|s| s.path.ends_with("provider.dag"))
+    };
+    eprintln!(
+        "[string-literal] prose pulls provider: {} | real pulls provider: {}",
+        pulled(&from_prose),
+        pulled(&from_real)
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+
+    // The positive control comes first: if a genuine reference does not pull,
+    // the negative result below would be meaningless.
+    assert!(
+        pulled(&from_real),
+        "a genuine reference must pull the declaring module, or this test proves nothing"
+    );
+    assert!(
+        !pulled(&from_prose),
+        "a name inside a string literal pulled its declaring module: the walk is \
+         reading text, not structure"
+    );
+}
