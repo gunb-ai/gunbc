@@ -781,6 +781,13 @@ fn main() {
 /// projection owning a compiler invocation. The base predicate already answers `false`
 /// for that variant, and import-list enforcement is being deleted at its root, so the
 /// override has no referent in the terminal model.
+/// A NOTE ON THE PARAMETER TYPE, because I got it wrong in both directions before the
+/// compiler could speak. `PipelineResult.diagnostics` is declared `Rc<Vec<Rc<ErrorNode>>>`
+/// — but `v1_compiler_compile.rs` opens with `use im::{.., Vector as Vec}`, so inside that
+/// file `Vec` MEANS `im::Vector`, and the field is an `im::Vector`. Reading the struct
+/// declaration is not enough; the imports of the file it lives in are part of the type.
+/// The deleted helpers' `compile_clean_im_vector_*` name was accurate, and I "corrected"
+/// my signatures away from it on the strength of a declaration that reads as std `Vec`.
 enum DiagnosticSeverity {
     Blocking,
     Advisory,
@@ -794,14 +801,18 @@ fn classify_diagnostic(d: &Rc<v1_compiler::v1_std_core::ErrorNode>) -> Diagnosti
     }
 }
 
-fn blocking_diagnostic_count(diagnostics: &Vec<Rc<v1_compiler::v1_std_core::ErrorNode>>) -> usize {
+fn blocking_diagnostic_count(
+    diagnostics: &im::Vector<Rc<v1_compiler::v1_std_core::ErrorNode>>,
+) -> usize {
     diagnostics
         .iter()
         .filter(|d| matches!(classify_diagnostic(d), DiagnosticSeverity::Blocking))
         .count()
 }
 
-fn has_blocking_diagnostics(diagnostics: &Vec<Rc<v1_compiler::v1_std_core::ErrorNode>>) -> bool {
+fn has_blocking_diagnostics(
+    diagnostics: &im::Vector<Rc<v1_compiler::v1_std_core::ErrorNode>>,
+) -> bool {
     diagnostics
         .iter()
         .any(|d| matches!(classify_diagnostic(d), DiagnosticSeverity::Blocking))
