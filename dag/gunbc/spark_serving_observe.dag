@@ -56,7 +56,7 @@ import gunbc.spark_serving_readback_parse {
 
 data spark_serving_observe_transport_note: String = "OBSERVATION PRODUCER (SPARK-SERVE-BIND-0 item B) over FleetSsh — callers supply a sealed FleetSshExecutionContext rather than hardcoding one credential route."
 
-data spark_serving_observe_note: String = "Wet observation only; a green witness over fixture strings is not proof gpt-oss:20b is serving. Runtime closure identity requires the install receipt gunbc-automation owns under ~/.local/share/gunbc/spark-serving/ — written by #8225 package_delivery materialization, read here — plus independent /api/version and /api/tags probes."
+data spark_serving_observe_note: String = "Wet observation only; a green witness over fixture strings is not proof gpt-oss:20b is serving. Runtime closure identity requires the install receipt gunbc-automation owns under ~/.local/share/gunbc/spark-serving/ — written by gunbc.package_delivery.materialize_spark_serving_ollama_runtime_bundle via write_spark_serving_runtime_install_receipt, read here — plus independent /api/version and /api/tags probes."
 
 data spark_serving_observe_receipt_path: String = "target/spark-serving-observe-receipt.txt"
 

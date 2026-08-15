@@ -8,6 +8,7 @@ import extdeps.ollama.api {
   ollama_model_ref_wire,
   ollama_model_digest_from_wire,
 }
+import extdeps.ollama.capability { ollama_gpt_oss_20b_model_ref }
 import gunbc.model_artifact {
   ModelArtifact,
   model_artifact_from_observed_digest,
@@ -22,7 +23,7 @@ import gunbc.model_artifact {
 }
 
 fn gpt_oss_20b() -> OllamaModelRef {
-  OllamaModelRef { name: "gpt-oss" as NonEmptyStr, tag: "20b" as NonEmptyStr }
+  ollama_gpt_oss_20b_model_ref
 }
 
 // Two DIFFERENT digests carrying the SAME reference -- which is exactly what upstream repointing a

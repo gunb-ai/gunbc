@@ -73,6 +73,24 @@ import extdeps.languages.json.emit {
 }
 import extdeps.languages.json.parse { parse_json }
 import gunbc.retained_shell_script { retained_foreign }
+import extdeps.ollama.binary_release {
+  OllamaBinaryRelease,
+  ollama_required_release,
+  ollama_binary_release_download_locator,
+  ollama_binary_release_asset_name,
+}
+import extdeps.tools.sha256sum {
+  sha256sum_verify_via_shell,
+  Sha256Matches,
+  Sha256Mismatch,
+  Sha256VerifyInfraFailure,
+}
+import gunbc.spark_serving_runtime_receipt {
+  SparkServingRuntimeInstallReceipt,
+  write_spark_serving_runtime_install_receipt,
+  spark_serving_runtime_receipt_wire_path,
+}
+import product.placement_supply { HostIdentity }
 
 
 data package_delivery_placement_note: String = "FIRST CONSUMED package materializer for gunbc. Lives here — not in std — until a second real consumer proves a shared abstraction. Owns Codex (and later other) product policy over upstream package facts from extdeps.npm / extdeps.package. Every production effect boundary RE-ADJUDICATES raw graphs via package_lock_admit_graph — never trusts a freely constructed PackageLockGraphAdmitted. Decoding lock SRI text is NOT artifact verification."
@@ -2370,5 +2388,113 @@ fn materialize_codex_runtime_bundle(
       }
     other => CodexRuntimeLockRefused { admission: other }
       }
+  }
+}
+
+data spark_serving_ollama_runtime_materialization_note: String = "Ollama runtime materialization for Spark serving: download the cited extdeps.ollama.binary_release archive, admit its SHA-256 digest, then write gunbc.spark_serving_runtime_receipt at spark_serving_runtime_receipt_wire_path for gunbc-automation. Full extract/systemd install remains #8225 follow-on; this path closes the install-receipt writer the wet observer requires."
+
+type SparkServingOllamaArchiveAdmission
+  = SparkServingOllamaArchiveAdmitted {
+      local_path: FilePath
+      digest_hex: NonEmptyStr
+    }
+  | SparkServingOllamaArchiveDownloadRefused {
+      locator: NonEmptyStr
+    }
+  | SparkServingOllamaArchiveIntegrityRefused {
+      cause: NonEmptyStr
+    }
+
+type SparkServingOllamaRuntimeMaterialization
+  = SparkServingOllamaRuntimeMaterialized {
+      receipt: SparkServingRuntimeInstallReceipt
+    }
+  | SparkServingOllamaRuntimeDownloadRefused {
+      locator: NonEmptyStr
+    }
+  | SparkServingOllamaRuntimeIntegrityRefused {
+      cause: NonEmptyStr
+    }
+  | SparkServingOllamaRuntimeReceiptWriteRefused {
+      cause: NonEmptyStr
+    }
+  | SparkServingOllamaRuntimeWorkspaceRefused {
+      cause: NonEmptyStr
+    }
+
+fn spark_serving_ollama_runtime_materialization_receipt_write_path(
+  host: HostIdentity,
+) -> FilePath {
+  spark_serving_runtime_receipt_wire_path(host: host)
+}
+
+fn acquire_and_admit_ollama_release_archive(
+  binary_release: OllamaBinaryRelease,
+  dest_dir: FilePath,
+) -> SparkServingOllamaArchiveAdmission {
+  let locator = ollama_binary_release_download_locator(binary_release: binary_release)
+  let dest = concat(
+    dest_dir as String,
+    concat("/", ollama_binary_release_asset_name(binary_release: binary_release) as String),
+  ) as FilePath
+  let downloaded = http.Client.DownloadToFile(
+    url: locator,
+    destination: dest as NonEmptyStr,
+  )
+  if downloaded.success == false {
+    SparkServingOllamaArchiveDownloadRefused { locator: locator }
+  } else {
+    match sha256sum_verify_via_shell(
+      path: dest as NonEmptyStr,
+      expected_digest: binary_release.digest.hex,
+    ) {
+      Sha256Matches =>
+        SparkServingOllamaArchiveAdmitted {
+          local_path: dest,
+          digest_hex: binary_release.digest.hex,
+        }
+      Sha256Mismatch =>
+        SparkServingOllamaArchiveIntegrityRefused {
+          cause: "ollama release archive sha256 mismatch" as NonEmptyStr,
+        }
+      Sha256VerifyInfraFailure { reason } =>
+        SparkServingOllamaArchiveIntegrityRefused { cause: reason }
+    }
+  }
+}
+
+fn materialize_spark_serving_ollama_runtime_bundle(
+  host: HostIdentity,
+) -> SparkServingOllamaRuntimeMaterialization {
+  let staging = shell.Mktemp.Dir()
+  if staging.success == false {
+    SparkServingOllamaRuntimeWorkspaceRefused {
+      cause: "staging mktemp failed" as NonEmptyStr,
+    }
+  } else {
+    match acquire_and_admit_ollama_release_archive(
+      binary_release: ollama_required_release,
+      dest_dir: staging.path,
+    ) {
+      SparkServingOllamaArchiveDownloadRefused { locator } =>
+        SparkServingOllamaRuntimeDownloadRefused { locator: locator }
+      SparkServingOllamaArchiveIntegrityRefused { cause } =>
+        SparkServingOllamaRuntimeIntegrityRefused { cause: cause }
+      SparkServingOllamaArchiveAdmitted { local_path: _, digest_hex } => {
+        let receipt = SparkServingRuntimeInstallReceipt {
+          host: host,
+          release_asset_digest_hex: digest_hex,
+        }
+        if write_spark_serving_runtime_install_receipt(receipt: receipt) {
+          let _ = shell.Remove.RecursiveForce(path: staging.path)
+          SparkServingOllamaRuntimeMaterialized { receipt: receipt }
+        } else {
+          let _ = shell.Remove.RecursiveForce(path: staging.path)
+          SparkServingOllamaRuntimeReceiptWriteRefused {
+            cause: "install receipt write refused" as NonEmptyStr,
+          }
+        }
+      }
+    }
   }
 }

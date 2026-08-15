@@ -66,8 +66,13 @@ type OllamaModelSupportRow {
   introduction_citation: NonEmptyStr
 }
 
+data ollama_gpt_oss_20b_model_ref: OllamaModelRef = OllamaModelRef {
+  name: "gpt-oss" as NonEmptyStr,
+  tag: "20b" as NonEmptyStr,
+}
+
 data ollama_gpt_oss_20b_support_row: OllamaModelSupportRow = OllamaModelSupportRow {
-  model: OllamaModelRef { name: "gpt-oss" as NonEmptyStr, tag: "20b" as NonEmptyStr },
+  model: ollama_gpt_oss_20b_model_ref,
   minimum_runtime: ollama_gpt_oss_feature_introduction_floor,
   introduction_citation: ollama_gpt_oss_feature_introduction_citation,
 }

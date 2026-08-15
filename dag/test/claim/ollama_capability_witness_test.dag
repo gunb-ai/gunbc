@@ -39,6 +39,7 @@ import extdeps.ollama.capability {
   ollama_runtime_admission_verdict,
   ollama_v0_9_6_semantic_version,
   ollama_gpt_oss_feature_introduction_floor,
+  ollama_gpt_oss_20b_model_ref,
 }
 import gunbc.spark_serving_desired {
   spark_serving_desired_admission,
@@ -49,10 +50,7 @@ import gunbc.spark_serving_desired {
   SparkServingFleetDesiredRefused,
 }
 
-data witness_gpt_oss_ref: OllamaModelRef = OllamaModelRef {
-  name: "gpt-oss" as NonEmptyStr,
-  tag: "20b" as NonEmptyStr,
-}
+data witness_gpt_oss_ref: OllamaModelRef = ollama_gpt_oss_20b_model_ref
 
 data witness_v0_11_0_catalog_probe_release: OllamaBinaryRelease = OllamaBinaryRelease {
   version: "v0.11.0" as NonEmptyStr,

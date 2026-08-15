@@ -1,12 +1,21 @@
 module gunbc.spark_serving_runtime_receipt
 
-import std.types { String, List, NonEmptyStr, FilePath }
+import std.types { String, List, NonEmptyStr, FilePath, Bool }
+import std.algebra { trim }
 import product.placement_supply { HostIdentity }
 import extdeps.ssh.session { SshSessionExecResult }
 import extdeps.languages.json.parse {
   json_object_unique_member,
   parse_json,
 }
+import extdeps.languages.json.emit {
+  JsonString,
+  JsonObject,
+  JsonKeyValue,
+  serialize_json,
+}
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
 import gunbc.spark_serving_readback_parse {
   SparkServingReadbackField,
   SparkServingReadbackPresent,
@@ -14,9 +23,9 @@ import gunbc.spark_serving_readback_parse {
   spark_serving_readback_field_from_member_lookup,
 }
 
-data spark_serving_runtime_install_receipt_provenance_note: String = "INSTALL PROVENANCE, not running-process attestation. Records which cited release-asset row gunbc.package_delivery (#8225) materialized on this host. Out-of-band binary replacement leaves the receipt stale while /api/version may still answer — wet observation joins receipt digest with the independently probed version wire via ollama_runtime_closure_digest_for_observed_release. It does not hash the on-disk executable: upstream publishes archive digests, and extracted-binary hashing would require per-variant expected values recorded at install time anyway."
+data spark_serving_runtime_install_receipt_provenance_note: String = "INSTALL PROVENANCE, not running-process attestation. Records which cited release-asset row gunbc.package_delivery.materialize_spark_serving_ollama_runtime_bundle admitted on this host. Out-of-band binary replacement leaves the receipt stale while /api/version may still answer — wet observation joins receipt digest with the independently probed version wire via ollama_runtime_closure_digest_for_observed_release. It does not hash the on-disk executable: upstream publishes archive digests, and extracted-binary hashing would require per-variant expected values recorded at install time anyway."
 
-data spark_serving_runtime_receipt_note: String = "Install receipt authority for Ollama runtime closure identity on Spark hosts. #8225 package_delivery materialization writes spark_serving_runtime_receipt_wire_path as gunbc-automation; wet observation reads it via spark_serving_runtime_receipt_probe_words — never re-derives the cited release-asset digest from desired state or /api/version alone. Missing or unreadable receipt on an active unit refuses rather than collapsing to SparkServingReadbackAbsent."
+data spark_serving_runtime_receipt_note: String = "Install receipt authority for Ollama runtime closure identity on Spark hosts. gunbc.package_delivery.materialize_spark_serving_ollama_runtime_bundle writes via write_spark_serving_runtime_install_receipt after archive digest admission; wet observation reads spark_serving_runtime_receipt_wire_path via spark_serving_runtime_receipt_probe_words — never re-derives the cited release-asset digest from desired state or /api/version alone. Missing or unreadable receipt on an active unit refuses rather than collapsing to SparkServingReadbackAbsent."
 
 type SparkServingRuntimeInstallReceipt {
   host: HostIdentity
@@ -81,4 +90,71 @@ fn spark_serving_runtime_receipt_field_from_probe(
         }
       }
   }
+}
+
+fn spark_serving_runtime_receipt_parent_path() -> FilePath {
+  concat(
+    spark_serving_executor_home as String,
+    "/.local/share/gunbc/spark-serving",
+  ) as FilePath
+}
+
+fn ensure_spark_serving_runtime_receipt_parent_dir() -> Bool {
+  shell.Mkdir.Parents(path: spark_serving_runtime_receipt_parent_path()).success
+}
+
+fn spark_serving_runtime_install_receipt_json(
+  receipt: SparkServingRuntimeInstallReceipt,
+) -> String {
+  serialize_json(v: JsonObject {
+    members: [
+      JsonKeyValue {
+        key: spark_serving_runtime_receipt_release_asset_digest_member,
+        value: JsonString { value: receipt.release_asset_digest_hex as String },
+      },
+    ],
+  })
+}
+
+fn write_spark_serving_runtime_install_receipt_at_path(
+  path: FilePath,
+  receipt: SparkServingRuntimeInstallReceipt,
+) -> Bool {
+  Filesystem.Write(
+    path: path as String,
+    content: spark_serving_runtime_install_receipt_json(receipt: receipt),
+  ).success
+}
+
+fn write_spark_serving_runtime_install_receipt(
+  receipt: SparkServingRuntimeInstallReceipt,
+) -> Bool {
+  if ensure_spark_serving_runtime_receipt_parent_dir() == false {
+    false
+  } else {
+    write_spark_serving_runtime_install_receipt_at_path(
+      path: spark_serving_runtime_receipt_wire_path(host: receipt.host),
+      receipt: receipt,
+    )
+  }
+}
+
+fn read_spark_serving_runtime_install_receipt_bytes_at_path(path: FilePath) -> String? {
+  let read = Filesystem.Read(path: path as String)
+  if read.success == false {
+    none
+  } else {
+    let trimmed = (read.content as String).trim()
+    if trimmed == "" {
+      none
+    } else {
+      Present { value: trimmed }
+    }
+  }
+}
+
+fn read_spark_serving_runtime_install_receipt_bytes(host: HostIdentity) -> String? {
+  read_spark_serving_runtime_install_receipt_bytes_at_path(
+    path: spark_serving_runtime_receipt_wire_path(host: host),
+  )
 }

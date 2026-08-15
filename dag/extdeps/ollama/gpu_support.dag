@@ -9,13 +9,6 @@ import extdeps.gpu.types { GpuComputeCapability }
 import extdeps.vendor.nvidia { nvidia }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-data ollama_gpu_support_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
-    locator: "docs.ollama.com/gpu"
-  }
-}
-
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
