@@ -190,18 +190,3 @@ data ilm4926_resolution_obligations: DesignationResolutionObligations = Designat
     next_authority_to_consult: none,
   },
 }
-
-fn designation_resolution_is_established(standing: DesignationResolutionStanding) -> Bool {
-  match standing {
-    DesignationFactEstablished { value: _, authority: _ } => true
-    DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => false
-  }
-}
-
-fn all_designation_resolution_obligations_unresolved() -> Bool {
-  let o = ilm4926_resolution_obligations
-  !designation_resolution_is_established(standing: o.vendor_identity)
-    && !designation_resolution_is_established(standing: o.orderable_part_number)
-    && !designation_resolution_is_established(standing: o.board_land_pattern)
-    && !designation_resolution_is_established(standing: o.loading_mechanism_identity)
-}

@@ -18,6 +18,7 @@ import extdeps.cpu.ampere_altra_package {
 import extdeps.cpu_attachment.ilm4926 {
   DesignationFactEstablished,
   DesignationFactUnresolved,
+  DesignationResolutionStanding,
   ilm4926,
   ilm4926_resolution_obligations,
 }
@@ -204,9 +205,8 @@ data socket_board_termination_standing: AttachmentLayerStanding = AttachmentLaye
 // the public platform specification found no board-side land pattern in any section, and sections
 // 4.2.2 and 4.3.2 name Altra PCB Layout Guidelines on Customer Connect as the authority — access-
 // gated, not a drawing to read in the public document.
-data board_land_pattern_standing: AttachmentLayerStanding = AttachmentLayerStanding {
-  layer: BoardLandPatternLayer,
-  fact: match ilm4926_resolution_obligations.board_land_pattern {
+fn board_land_pattern_fact_from_obligation(standing: DesignationResolutionStanding) -> FactAuthorityStanding {
+  match standing {
     DesignationFactEstablished { value: _, authority: a } =>
       FactEstablished {
         authority: a,
@@ -230,11 +230,40 @@ data board_land_pattern_standing: AttachmentLayerStanding = AttachmentLayerStand
         none =>
           FactUnresolved { what_is_missing: r }
       }
-  },
-  carriage: CarriageNotApplicable {
-    because: "the fact is behind commercial access, so its carriage is governed by the access terms and is not a decision this repository takes separately",
-  },
+  }
 }
+
+fn carriage_for_board_land_pattern_fact(fact: FactAuthorityStanding) -> RepositoryCarriageStanding {
+  match fact {
+    FactAccessGated { subject: _, access_route: _ } =>
+      CarriageNotApplicable {
+        because: "the fact is behind commercial access, so its carriage is governed by the access terms and is not a decision this repository takes separately",
+      }
+    FactEstablished { authority: _, subject: _ } =>
+      CarriageNotApplicable {
+        because: "no carriage question is modeled separately once a land pattern is established from a cited authority",
+      }
+    FactUnresolved { what_is_missing: _ } =>
+      CarriageNotApplicable {
+        because: "no fact is established for this layer, so there is nothing to decide carriage for",
+      }
+    FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } =>
+      CarriageNotApplicable {
+        because: "no fact is established for this layer, so there is nothing to decide carriage for",
+      }
+  }
+}
+
+fn board_land_pattern_standing_row() -> AttachmentLayerStanding {
+  let fact = board_land_pattern_fact_from_obligation(standing: ilm4926_resolution_obligations.board_land_pattern)
+  AttachmentLayerStanding {
+    layer: BoardLandPatternLayer,
+    fact: fact,
+    carriage: carriage_for_board_land_pattern_fact(fact: fact),
+  }
+}
+
+data board_land_pattern_standing: AttachmentLayerStanding = board_land_pattern_standing_row()
 
 data loading_mechanism_standing: AttachmentLayerStanding = AttachmentLayerStanding {
   layer: LoadingMechanismLayer,
