@@ -510,6 +510,7 @@ fn altra_board_outline() -> OrthogonalConstruction<AxisAlignedRectangle2> {
   )
 }
 
+// Vendor body length is the drawing major axis; map it to board X (body_width) and width to Y (body_height).
 fn envelope_from_package_body(b: PackageBodyDimensions, source: DeclarationRef) -> ComponentEnvelopeStanding {
   EnvelopeEstablished {
     envelope: PackageBodyEnvelope {
