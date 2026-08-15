@@ -222,37 +222,44 @@ fn floor_execution_key(
   }
 }
 
-// A DECLARED RUNG REGRESSION, measured on this change rather than discovered after it.
+// A DECLARED RUNG CHANGE, and its DIRECTION WAS REVERSED BY MEASUREMENT (2026-08-15).
 //
-// Under one prepared subject every module of the tree is present at once, which is the most
-// permissive name pool that can exist. An authored probe -- a provider, a control module that
-// declares the import, and a module reaching the same symbol with none -- showed the
-// undeclared reference BINDS. So the required floor no longer refuses a cross-module
-// reference whose module is not imported.
+// WHAT THIS ROW SAID FIRST, and why it is retracted rather than edited quietly: it declared a
+// REGRESSION on the ground that "under one prepared subject every module of the tree is present
+// at once, which is the most permissive name pool that can exist", so an undeclared cross-module
+// reference would bind and the floor could no longer see the ambient-pool class. That described
+// a FLAT whole-subject frame. The seed no longer evaluates in one: `claim_scope_for` projects
+// each claim's own module plus the compiler's transitive import closure (`func_env.parents`),
+// and a fresh frame is built per claim over exactly that population. The note was written
+// against an earlier shape of this change and kept asserting it afterwards -- the §3 stale-claim
+// class, in a row whose whole subject is rung honesty, and a review has already cited it as
+// discharging §4b(3) that it no longer discharges.
 //
-// WHAT THE PREVIOUS RUNG ACTUALLY WAS, stated carefully because the obvious reading inflates
-// it. The entry-major path was not strict either: DESIGN's Class B records that a stripped
-// file's bare references resolved exactly when some unrelated import elsewhere in the
-// assembled closure had already dragged the target into the pool -- binding by pool
-// coincidence, described there as accidental coverage rather than a per-file property. So
-// this is not strict becoming permissive. It is a NARROW accidental pool becoming a WIDE
-// deliberate one, and one thing genuinely improves: binding no longer depends on which
-// unrelated entries happen to share a closure, so the same module binds the same way on
-// every run.
+// WHAT THE FIRST COMPLETE RUN MEASURED. 9,649 claims, 1,973 failures, and 1,901 of those are
+// `no such function: <name>` -- 792 distinct names across 431 witness modules. The scoped frame
+// is STRICTER than the entry-major pool, not looser: DESIGN's Class B records that a module's
+// bare cross-module references bound exactly when some unrelated import elsewhere in the
+// assembled closure had already dragged the target into the pool, and a per-claim closure has
+// no unrelated entries in it. So the ambient-pool class is not newly invisible here; it is
+// newly LOUD, at a scale nothing had counted before.
 //
-// WHAT GETS WORSE, and it is the reason this row exists: the ambient-pool class is now
-// undetectable by the floor, where before it was detectable by accident. A module that
-// declares no import for a symbol it uses will never red here.
+// SO THE ROW IS NOT A REGRESSION AND MUST NOT BE READ AS ONE. Binding got stricter and
+// deterministic -- it no longer depends on which unrelated entries happen to share a closure,
+// so a module binds the same way on every run. What that strictness EXPOSES is the open
+// question, and it is not a rung this change lowers: 431 modules use symbols they never
+// declare. Whether each is an under-declared module or a legitimately bare reference the
+// resolver bound from provenance the closure does not carry is exactly what the namespace-only
+// lane decides, and DESIGN already treats this class as blocking further import-stripping until
+// a closure-independent binding fix lands.
 //
-// POPULATION: cross-module references not covered by a declared import. Bounded and already
-// under repair -- gunbc#8268 declares direct imports for the UriScheme consumers.
+// POPULATION: 792 distinct unresolved names across 431 modules, measured, not estimated.
 //
-// RESTORATION TRIGGER, and it is NOT that repair. Emptying the population does not raise the
-// rung, because the floor would still accept a newly written undeclared reference. The rung
-// is restored when resolution enforces declared-import narrowing independently of pool
-// breadth -- the namespace-only lane's terminal step, where import becomes a parse error and
-// dependencies derive from container.member references. Until then this class sits at
-// mitigatable and the exact-entry check is the only thing that sees it.
+// TRIGGER: the floor is green on this path only when each claim's scope is derived from what
+// the resolver ACTUALLY bound for that module, or the 431 modules declare what they use. The
+// first is the construction answer -- the compiler resolves every reference already, so
+// recording what it bound turns a coincidence into a fact -- and the second is only correct
+// once the first says those references were genuinely undeclared.
+
 type FloorBindingStrictnessRegression {
   previous: Symbol
   current: Symbol
@@ -262,7 +269,7 @@ type FloorBindingStrictnessRegression {
 
 data floor2_binding_strictness_regression: FloorBindingStrictnessRegression = FloorBindingStrictnessRegression {
     previous: ^narrow_accidental_pool_binding,
-    current: ^whole_subject_pool_binding,
-    population: ^cross_module_references_without_a_declared_import,
-    restoration_trigger: ^resolution_enforces_declared_import_narrowing
+    current: ^per_claim_declared_import_closure_binding,
+    population: ^seven_hundred_ninety_two_names_across_four_hundred_thirty_one_modules,
+    restoration_trigger: ^scope_derived_from_resolver_binding_provenance
   }
