@@ -45,6 +45,7 @@ import extdeps.package {
 }
 import extdeps.version { VersionIdentity }
 import extdeps.http.client
+import extdeps.exec.command { shell_quote }
 import extdeps.shell
 import extdeps.shell.exec
 import extdeps.filesystem.filesystem_io
@@ -2458,14 +2459,16 @@ fn spark_serving_prepare_runtime_dirs() -> Bool {
 fn spark_serving_extract_admitted_archive(
   archive_path: FilePath,
 ) -> Bool {
+  let archive_path_q = shell_quote(arg: archive_path as String)
+  let runtime_root_q = shell_quote(arg: spark_serving_runtime_root() as String)
   shell.Remove.RecursiveForce(path: spark_serving_runtime_root()).success
     && shell.Mkdir.Parents(path: spark_serving_runtime_root()).success
     && shell.Exec.Run(
       script: join([
         "tar -I zstd -xf ",
-        archive_path as String,
+        archive_path_q,
         " -C ",
-        spark_serving_runtime_root() as String,
+        runtime_root_q,
       ], "") as NonEmptyStr,
     ).success
 }
