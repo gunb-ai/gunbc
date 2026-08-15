@@ -1,5 +1,7 @@
 module v2.test.rung_3_4_common
 
+import v2.std.witness { Holds, Violates, Witness }
+
 data rung34_emit_host_rust_target_model: TargetModel = rust_target_model_staging()
 
 fn rung34_algebra_evidence_node() -> Node {
