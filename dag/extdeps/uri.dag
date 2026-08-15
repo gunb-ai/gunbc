@@ -25,6 +25,13 @@ type Uri {
   locator: NonEmptyStr
 }
 
+fn uri_https(locator: NonEmptyStr) -> Uri {
+  Uri {
+    scheme: Https
+    locator: locator
+  }
+}
+
 fn uri_scheme_is_http(s: UriScheme) -> Bool {
   match s {
     Http => true
