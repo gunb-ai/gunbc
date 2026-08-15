@@ -29,7 +29,7 @@ test fn witness_selected_native_bundle_enrolled() -> Bool {
 }
 
 test fn witness_floor_appends_one_selected_native_batch() -> Bool {
-  length(xs: gunbc_ci_floor_ordinary_batches()) == length(xs: gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_spec).schedule) + length(xs: scoped_witness_batches) + 1
+  length(xs: gunbc_ci_floor_ordinary_batches()) == length(xs: gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_spec).schedule) + length(xs: scoped_witness_batches) + 2
 }
 
 fn native_transition_receipt_fixture(selected: Int, native: Int, interpreted: Int, unavailable: Int, diverged: Int, fallback: Int, verdict: NativeProductionTransitionVerdict) -> NativeWitnessProductionTransitionReceipt {

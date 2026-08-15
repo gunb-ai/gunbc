@@ -1,0 +1,24 @@
+module test.claim.full_ci_green_cross_module_witness
+
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.types { String, Bool }
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_rows_of_class,
+  census_total_count,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// compile_dag_diagnostic_census resolves synthetic forge sources against the live module index (ReadsLiveTree), proving cross-module FullCiGreenReceipt record literals refuse SoleConstructorViolation and cross-module mint_full_ci_green_receipt_from_observed_ci_floor calls refuse ConstructorCallAdmissionRefused.
+data full_ci_green_forged_both_source: String = "module probe_full_ci_green_forged_both\nimport std.types { CommitSha, NonEmptyStr }\nimport gunbc.full_ci_green_receipt { FullCiGreenReceipt, mint_full_ci_green_receipt_from_observed_ci_floor }\nimport gunbc.merge_admission { current_gate_roster_hash }\nfn forged_literal() -> FullCiGreenReceipt {\n  FullCiGreenReceipt {\n    head_sha: \"abcdef0123456789abcdef0123456789abcdef01\" as CommitSha,\n    workflow_run_id: \"1\" as NonEmptyStr,\n    gate_roster_hash: current_gate_roster_hash,\n  }\n}\nfn forged_mint() -> FullCiGreenReceipt {\n  mint_full_ci_green_receipt_from_observed_ci_floor(\n    head_sha: \"abcdef0123456789abcdef0123456789abcdef01\" as CommitSha,\n    workflow_run_id: \"1\" as NonEmptyStr,\n    gate_roster_hash: current_gate_roster_hash,\n  )\n}\n"
+
+test fn witness_cross_module_full_ci_green_forgeries_refuse() -> Bool {
+  match compile_dag_diagnostic_census(source: full_ci_green_forged_both_source) {
+    CensusObserved { rows: rows } =>
+      (census_total_count(rows: census_rows_of_class(rows: rows, wanted: "SoleConstructorViolation")) >= 1)
+        && (census_total_count(rows: census_rows_of_class(rows: rows, wanted: "ConstructorCallAdmissionRefused")) >= 1)
+    CensusNotRunnable { cause: _ } => false
+  }
+}

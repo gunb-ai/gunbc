@@ -39,16 +39,10 @@ import gunbc.merge_admission_subject {
   TestedSubject,
 }
 import extdeps.git.object_store { GitObjectId }
-import gunbc.compile_diagnostic_census {
-  CensusObserved,
-  CensusNotRunnable,
-  census_rows_of_class,
-  census_total_count,
-}
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// compile_dag_diagnostic_census resolves synthetic forge sources against the live module index (ReadsLiveTree), proving cross-module FullCiGreenReceipt record literals refuse SoleConstructorViolation and cross-module mint_full_ci_green_receipt_from_observed_ci_floor calls refuse ConstructorCallAdmissionRefused.
+// Cross-module construction-wall witnesses live in full_ci_green_cross_module_witness_test.dag (substrate-long eval budget lane).
 // Discriminating witnesses: only a concluded ci-job floor-component receipt mints FullCiGreenReceipt; build/regen/falsifier-alert partial greens do not; manual merge admits only on FullCiGreen plus MergeAdmitted.
 data witness_run_id: NonEmptyStr = "31672107941" as NonEmptyStr
 
@@ -63,10 +57,6 @@ data witness_ci_workflow: NonEmptyStr = "ci" as NonEmptyStr
 data witness_falsifier_workflow: NonEmptyStr = "affected-set-falsifier" as NonEmptyStr
 
 data witness_other_head_sha: CommitSha = "0000000000000000000000000000000000000000" as CommitSha
-
-data full_ci_green_forged_literal_source: String = "module probe_full_ci_green_forged\nimport std.types { CommitSha, NonEmptyStr }\nimport gunbc.full_ci_green_receipt { FullCiGreenReceipt }\nimport gunbc.merge_admission { current_gate_roster_hash }\nfn forged() -> FullCiGreenReceipt {\n  FullCiGreenReceipt {\n    head_sha: \"abcdef0123456789abcdef0123456789abcdef01\" as CommitSha,\n    workflow_run_id: \"1\" as NonEmptyStr,\n    gate_roster_hash: current_gate_roster_hash,\n  }\n}\n"
-
-data full_ci_green_forged_mint_source: String = "module probe_full_ci_green_mint_forge\nimport std.types { CommitSha, NonEmptyStr }\nimport gunbc.full_ci_green_receipt { mint_full_ci_green_receipt_from_observed_ci_floor, FullCiGreenReceipt }\nimport gunbc.merge_admission { current_gate_roster_hash }\nfn forged() -> FullCiGreenReceipt {\n  mint_full_ci_green_receipt_from_observed_ci_floor(\n    head_sha: \"abcdef0123456789abcdef0123456789abcdef01\" as CommitSha,\n    workflow_run_id: \"1\" as NonEmptyStr,\n    gate_roster_hash: current_gate_roster_hash,\n  )\n}\n"
 
 fn witness_green_row() -> FloorComponentRow? {
   floor_component_row(
@@ -151,22 +141,6 @@ fn witness_digit_prefix_run_ci_green_receipt_text() -> String {
         head_sha: witness_head_sha,
         rows: [row],
       )
-  }
-}
-
-test fn witness_cross_module_full_ci_green_literal_refuses() -> Bool {
-  match compile_dag_diagnostic_census(source: full_ci_green_forged_literal_source) {
-    CensusObserved { rows: rows } =>
-      census_total_count(rows: census_rows_of_class(rows: rows, wanted: "SoleConstructorViolation")) >= 1
-    CensusNotRunnable { cause: _ } => false
-  }
-}
-
-test fn witness_cross_module_mint_fn_refuses() -> Bool {
-  match compile_dag_diagnostic_census(source: full_ci_green_forged_mint_source) {
-    CensusObserved { rows: rows } =>
-      census_total_count(rows: census_rows_of_class(rows: rows, wanted: "ConstructorCallAdmissionRefused")) >= 1
-    CensusNotRunnable { cause: _ } => false
   }
 }
 
