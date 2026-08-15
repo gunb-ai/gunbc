@@ -127,30 +127,21 @@ fn typed_remote_file_write_over_fleet_ssh(
   admission: TypedRemoteFileWriteAdmitted,
 ) -> TypedRemoteFileWriteOutcome {
   let write = admission.write
-  match typed_remote_file_write_execute_preflight_outcome(target: target, write: write) {
-    Present { value: refused } => refused
-    Absent => {
-      let words = portable_remote_words(
-        raws: typed_remote_file_write_remote_argv(write: write),
-      )
-      match words {
-        Absent =>
-          TypedRemoteFileWriteOutcomeRefused {
-            reason: concat(
-              "typed_remote_file_write: remote argv refused as non-portable for ",
-              target.endpoint as String,
-            ),
-          }
-        Present { value: words } => {
-          typed_remote_file_write_outcome_after_ssh_exec(
-            write: write,
-            result: ssh_session_exec_portable_words_with_stdin(
-              client_args: shape_fleet_ssh_exec(context: context, target: target, words: words),
-              stdin_payload: typed_remote_file_write_stdin_payload(write: write),
-            ),
-          )
-        }
+  match portable_remote_words(raws: typed_remote_file_write_remote_argv(write: write)) {
+    Absent =>
+      TypedRemoteFileWriteOutcomeRefused {
+        reason: concat(
+          "typed_remote_file_write: remote argv refused as non-portable for ",
+          target.endpoint as String,
+        ),
       }
-    }
+    Present { value: words } =>
+      typed_remote_file_write_outcome_after_ssh_exec(
+        write: write,
+        result: ssh_session_exec_portable_words_with_stdin(
+          client_args: shape_fleet_ssh_exec(context: context, target: target, words: words),
+          stdin_payload: typed_remote_file_write_stdin_payload(write: write),
+        ),
+      )
   }
 }
