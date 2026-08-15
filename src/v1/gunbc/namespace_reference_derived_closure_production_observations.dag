@@ -1,35 +1,5 @@
 module v1.gunbc.namespace_reference_derived_closure_production_observations
 
-import std.occurrence_identity { OccurrenceTransport, OccurrenceId }
-import std.occurrence_binding_candidates {
-  OccurrenceBindingCandidateInputs,
-}
-import std.reference_binding_observation {
-  ReferenceBindingObservation,
-  StructuralBindingProductionRefused,
-  ReferenceBindingParserTransportRefused,
-  ReferenceBindingNamedReferenceAbsent,
-  ReferenceBindingNamedDeclarationAbsent,
-  SameFileNeighbourObservation,
-  SameFileNeighbourProductionRefused,
-  SiblingBranchObservation,
-  SiblingBranchProductionRefused,
-  LaterDeclarationObservation,
-  LaterDeclarationProductionRefused,
-  DistinctHomonymObservation,
-  DistinctHomonymProductionRefused,
-  structural_binding_resolution_from_candidates,
-}
-import std.types { List, String }
-import v1.gunbc.occurrence_binding_parser_walk {
-  ParsedOccurrenceBindingSourceReady,
-  ParsedOccurrenceBindingSourceRefused,
-  parse_authored_occurrence_binding_source,
-  occurrence_binding_inputs_from_transport,
-  reference_named,
-  declarations_named,
-  references_named,
-}
 
 data namespace_reference_derived_closure_production_observations_note: String = "N3-A production observers for namespace-reference-derived-closure clauses (a-d). Returns neutral std.reference_binding_observation.ReferenceBindingObservation carriers only — no roadmap capability vocabulary and no assessment at this seam. namespace_structural_binding_observations_a_through_d is the sole export; capability projection lives in dag witnesses."
 

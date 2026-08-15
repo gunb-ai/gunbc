@@ -1,19 +1,5 @@
 module v1.compiler.infer_method
 
-import std.types { SourceSpan }
-import v1.std.core {
-  Node, TypeVariable, Resolved,
-  NoConnective,
-  Required,
-  NoExprData,
-  ErrorNode,
-  make_span, with_optional_cardinality,
-  unit_type, bool_type, string_type, hash_type, int_type
-}
-import v1.compiler.infer_types {
-  make_container_type, make_map_type,
-  make_kernel_record_type, make_kernel_record_field
-}
 
 data filesystem_read_result_type_note: String = "filesystem_read was registered as a bare type_variable_node, so `filesystem_read(path: p).content` established no type at all: the field lookup found nothing to look in, and the result was a fabricated Primitive() carrying no name. Downstream `.split` on that value was then accepted with no judgment behind it, which is #7479's shape one layer down — and it survived because the runtime dispatches split on the native String regardless, so nothing ever failed loudly enough to be found. The return type was never unknown; runtime_rust.dag rt_filesystem already emits `pub struct FilesystemReadResult { pub content: String }`. Declaring it here makes the seed's Rust struct and the compiler's type ONE fact rather than two (DESIGN §3), so the field's type is read from the declaration instead of invented. Any future builtin returning a product declares it the same way; a bare type variable is correct only where the result genuinely IS parametric."
 

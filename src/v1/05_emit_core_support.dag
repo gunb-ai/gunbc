@@ -1,23 +1,10 @@
 module v1.compiler.emit_core_support
 
-import v1.std.core {
-  Node, ErrorNode, TextFile, NewlineIndex,
-  authored_name_at, field_init_node_name_at,
-  Connective, NoConnective
-}
 
-import v1.compiler.artifact { RenderTarget }
 
-import v1.compiler.infer_items { ResolvedGraph }
 
-import v1.compiler.infer_service { UniqueAccum }
 
-import v1.compiler.infer_types { resolved_type, emit_map_has }
 
-import v1.compiler.languages {
-  LanguageSpec, SnakeCaseTestNames, PascalCaseTestNames,
-  language_spec_for_target, test_conventions_for_target
-}
 
 
 type EmitResult {

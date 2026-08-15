@@ -1,33 +1,5 @@
 module v1.tests.claim.dag_parse_continuation_operator_witness_test
 
-import extdeps.languages.dag.syntax { dag_operators }
-import v1.std.core {
-  Node,
-  NewlineIndex,
-  ExprLet,
-  ExprVar,
-  ExprUnaryOp,
-  ExprBlock,
-  Neg,
-  build_newline_index,
-  empty_intern_table,
-  module_items,
-  let_value,
-  let_binding_name_at,
-  expr_var_name_at,
-  expr_call_func_at,
-}
-import v1.compiler.dag_collect_support { expr_data_variant }
-import v1.compiler.tokenize { tokenize }
-import v1.compiler.parse {
-  ParseContext,
-  TokenStream,
-  token_stream_new,
-  find_operator_bp,
-  operator_continuation_dual_role_excluded_symbols,
-  parse_with_table,
-  parse_module,
-}
 
 data dag_parse_continuation_operator_witness_note: String = "Hermetic parse witnesses for operator-table-derived newline continuations (snappy-moth-736). Continuation-leading tokens are every dag_syntax_spec.operators infix symbol except prefix/infix dual-role exclusions documented in operator_continuation_dual_role_exclusion_note. Covers comparison and arithmetic families — not a remembered four-shape allowlist."
 

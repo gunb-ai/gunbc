@@ -1,6 +1,5 @@
 module v1.compiler.artifact
 
-import v1.std.core { TextFile, SourceSpan }
 
 
 type RenderTarget = Rust | Python | Go | Dag

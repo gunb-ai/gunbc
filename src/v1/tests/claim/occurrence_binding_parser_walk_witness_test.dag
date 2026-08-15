@@ -1,51 +1,6 @@
 module v1.tests.claim.occurrence_binding_parser_walk_witness_test
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.types { Bool, String, List, NonEmptyStr }
-import std.occurrence_identity {
-  OccurrenceId,
-  OccurrenceIndexEntry,
-  OccurrenceTransport,
-  DeclarationOccurrence,
-  ReferenceOccurrence,
-  AuthoredTokenOrdinal,
-}
-import std.occurrence_binding_candidates {
-  OccurrenceBindingCandidateInputs,
-  DeclarationExposureRow,
-  LexicalExposure,
-  AuthoredOrderRow,
-  AllReferencesBound,
-  BoundReferenceProvider,
-  ReferenceBindingProjectionBound,
-  ReferenceBindingProjectionUnbound,
-  ReferenceBindingProjectionAmbiguous,
-  ReferenceBindingProjectionTransportRefused,
-  ReferenceBindingProjectionExposureRefused,
-  ReferenceBindingProjectionAuthoredOrderRefused,
-  DirectModuleDependencyListReady,
-  MissingDeclarationExposure,
-  MissingAuthoredOrderRow,
-  OccurrenceCandidateIndexReady,
-  resolve_reference_binding_via_structural_candidates,
-  direct_module_dependencies_from_bound_population,
-  occurrence_candidate_index_build,
-  candidate_occurrence_ids_for_reference,
-  structural_binding_walk,
-  StructuralBindingWalkReady,
-  StructuralBindingWalkRefused,
-  StructuralBindingExposureRefusal,
-  StructuralBindingAuthoredOrderRefusal,
-}
-import v1.gunbc.occurrence_binding_parser_walk {
-  ParsedOccurrenceBindingSourceRefused,
-  ParsedOccurrenceBindingSourceReady,
-  parse_authored_occurrence_binding_source,
-  occurrence_binding_inputs_from_transport,
-  reference_named,
-  occurrence_id_for_authored_name,
-}
 
 data occurrence_binding_parser_walk_witness_note: String = "Parser integration witness (namespace-reference-derived-closure merge bar): every case begins at authored source, reaches the P2 structural walk through v1.compiler.parse.parse_with_table transport only — no hand-constructed OccurrenceTransport. Case 6 discharges projection law (A) only: repeated bound-reference providers for one declaration project to one DirectModuleDependency edge — not identity collapse, collector deduplication, or section-13 repeated-discovery collapse. Collector re-observation dedup (B) stays a distinct deferred debt on ProductionOccurrenceCollectorMissing. Case 7 parses once in one graph scope, preserves the parser-minted reference occurrence on the positive arm, and substitutes an occurrence id unknown within that same transport on the negative arm — never comparing allocator-local OccurrenceId values across standalone parses."
 

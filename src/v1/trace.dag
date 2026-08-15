@@ -1,6 +1,5 @@
 module v1.compiler.trace
 
-import v1.std.core { SourceSpan }
 
 
 type SpanMapping {

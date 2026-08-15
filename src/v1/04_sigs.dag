@@ -1,24 +1,8 @@
 module v1.compiler.infer_sigs
 
-import v1.std.core {
-  Node,
-  ExprData, ExprCall, expr_call_func_at,
-  ErrorNode, make_error_node,
-  MissingAnnotation, no_span,
-  DeclaredFuncSig,
-  NewlineIndex,
-  authored_name_at
-}
 
-import v1.compiler.infer_types { emit_map_has }
 
-import v1.compiler.infer_occurrence_binding {
-  ambiguity_labels_from_decide,
-  module_path_owner_binding_decide,
-  ModulePathBindingProjection,
-}
 
-import std.induction { SubValueRelation }
 
 
 type ResolvedFuncSig {

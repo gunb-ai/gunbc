@@ -1,10 +1,5 @@
 module v1.tests.claim.ordinary_frontend_observation_test
 
-import v1.compiler.compile { SourceFile }
-import v1.compiler.frontend_observation {
-  OrdinaryFrontendObservation,
-  observe_ordinary_frontend
-}
 
 // Enrollment: the v1_claim_scoped_witness_entries roster (dag + src/v1), the
 // same scoped batch caret_parse_smoke_test rides. The roster module is named

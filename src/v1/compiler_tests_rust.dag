@@ -1,10 +1,5 @@
 module v1.compiler.compiler_tests_rust
 
-import v1.compiler.artifact { RenderTarget, Rust, Python, Go }
-import v1.compiler.coercion {
-  extract_coercion_tests, CoercionTestEntry, CoercionAssertion,
-  CheckpointAssertion, ContainerAssertion, CopyAssertion, TemplateAssertion
-}
 
 fn ct_module_header() -> String {
   concat(

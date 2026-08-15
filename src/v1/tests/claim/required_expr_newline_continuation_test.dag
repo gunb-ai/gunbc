@@ -1,17 +1,6 @@
 module v1.tests.claim.required_expr_newline_continuation_test
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import v1.std.core {
-  NewlineIndex,
-  build_newline_index,
-  empty_intern_table,
-}
-import v1.compiler.tokenize { tokenize }
-import v1.compiler.parse {
-  ParseContext,
-  parse_with_table,
-}
 
 data required_expr_newline_continuation_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/required_expr_newline_continuation_test.dag --functions w_untyped_let_newline_before_initializer,w_typed_let_newline_before_initializer,w_return_newline_before_expression,w_for_newline_before_collection,w_statement_boundary_after_complete_initializer,w_untyped_let_newline_then_rbrace_refuses,w_return_newline_then_rbrace_refuses,w_for_newline_then_block_without_collection_refuses"
 

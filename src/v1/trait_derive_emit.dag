@@ -1,37 +1,6 @@
 module v1.compiler.trait_derive_emit
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import v1.compiler.emit { to_pascal }
-import v1.compiler.infer_types { child_type_node, is_coproduct_type }
-import v1.std.core {
-  Node, NewlineIndex, authored_name_at, generic_param_name_at, param_node_type_expr,
-  NoConnective
-}
-import std.trait_derive_shape {
-  ReprGroundingDeriveElemShape,
-  ReprDeriveElemNullaryEnumCopy,
-  ReprDeriveElemPayloadCoproduct,
-  ReprDeriveElemSymbolWrappedOrdCarrier,
-  ReprDeriveElemUnknown,
-  repr_grounding_derive_completeness_predicate,
-  record_derive_traits_heap,
-  record_derive_traits_copy,
-  nullary_coproduct_derive_traits,
-  symbol_wrapped_ord_carrier_derive_traits,
-  payload_coproduct_derive_traits,
-  fn_field_derive_traits,
-  kernel_int_arithmetic_traits,
-  ReprDeriveElemKernelInt,
-  repr_grounding_group_completion_carrier,
-  repr_grounding_supplemental_bool_host_bridge_target
-}
-import extdeps.languages.rust.emit {
-  rust_trait_derive_attr_from_traits,
-  rust_supplemental_impls_group_completion,
-  rust_supplemental_impls_bool_coproduct
-}
-import std.types { is_container_type }
 
 data trait_derive_emit_scope_note: String = "Root-4 arm (b): v1 seed emit selects trait surface from the capability table — #[derive] attrs for shape-eligible traits, and (for GroupCompletion) pair-completion impl bodies as the realization of KernelInt arithmetic traits that cannot be #[derive]. Bool↔bool host bridge remains a separate enum-arm door (see bool dissolve-on). Also: (a) clone bounds on generic params; (c) serde/Debug/Ord #[derive] on named structs/enums."
 

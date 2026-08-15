@@ -1,16 +1,7 @@
 module v1.compiler.normalize
 
-import v1.std.core {
-  Node, ErrorNode, NewlineIndex,
-  InferredNode, Resolved, CompilerError,
-  ExprData, NoExprData,
-  make_error_node, module_items, authored_name_at,
-  NoConnective, ArityMismatch
-}
 
-import v1.compiler.resolve { ModuleGraph, ResolvedModule }
 
-import std.types { container_expected_arity }
 
 
 type NormalizeResult {

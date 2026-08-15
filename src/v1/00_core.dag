@@ -1,28 +1,5 @@
 module v1.std.core
 
-import std.source_annotation { AnnotationAttachmentRefusal, annotation_attachment_refusal_origin, annotation_attachment_refusal_message }
-import std.types { FilePath, NonEmptyStr, SourceSpan, kernel_type_set, is_kernel_type, container_type_arity, is_container_type, container_expected_arity }
-import std.syntax {
-  BinOp, Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
-  LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull, LitSymbol,
-  AlgebraFieldKind, AlgAdd, AlgMul, AlgReciprocal, AlgQuotient, AlgRemainder, AlgCompare, AlgMeet, AlgJoin
-}
-import std.algebra { CollectionSizeEffect, CostShape, AlgebraFieldTemplate }
-import std.induction { SubValueRelation }
-import std.occurrence_identity {
-  AuthoredTokenOrdinalSpace,
-  authored_token_ordinal_space_initial,
-  authored_token_ordinal_space_from_allocator,
-  occurrence_id_allocator_advance_to,
-  OccurrenceIdAllocator,
-  OccurrenceTransportRefusal,
-  MissingAuthoredOccurrenceIdentity,
-  DuplicateAuthoredOccurrenceIdentity,
-  DuplicateSuppliedCandidateIdentity,
-  InconsistentOccurrenceContainment,
-  WrongOccurrenceRole,
-  UnknownOccurrenceIdentity,
-}
 
 type Token {
   text: String

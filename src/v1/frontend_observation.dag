@@ -1,8 +1,5 @@
 module v1.compiler.frontend_observation
 
-import v1.std.core { ErrorNode }
-import std.occurrence_identity { OccurrenceTransport }
-import v1.compiler.compile { SourceFile, FrontendResult, front_end_sources }
 
 // The receipt is DERIVED from the carrier the front end returns, never authored
 // beside it. Every field here is a byproduct of work that actually happened:

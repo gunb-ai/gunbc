@@ -1,26 +1,6 @@
 module v1.compiler.ownership
 
-import v1.std.core {
-  Node,
-  ExprData, NoExprData, ExprError,
-  ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
-  ExprMatch, ExprIf, ExprLet, ExprBlock, ExprReturn, ExprLambda, ExprForEach,
-  ExprRecordLit,
-  VarBindingKind, LocalValueBinding, FunctionValueBinding,
-  InferredNode, Resolved,
-  Cardinality, Required,
-  arg_value, arm_body,
-  field_access_base,
-  if_condition, if_then_branch, if_else_branch,
-  let_value, let_body, lambda_body, lambda_param_names_at,
-  match_scrutinee, match_arm_nodes,
-  method_receiver, method_arg_nodes,
-  foreach_collection, foreach_body,
-  expr_var_name_at, expr_call_func_at, expr_method_name_at, field_access_field_at, authored_name_at,
-  NewlineIndex
-}
 
-import v1.compiler.emit_core_support { to_string }
 
 
 type EdgeKind = Consumed | Read | Threaded | Projected

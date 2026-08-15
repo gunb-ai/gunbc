@@ -1,32 +1,5 @@
 module v1.gunbc.occurrence_binding_parser_walk
 
-import std.types { String, List, NonEmptyStr }
-import std.occurrence_identity {
-  OccurrenceId,
-  OccurrenceIndexEntry,
-  OccurrenceTransport,
-  ReferenceOccurrence,
-  DeclarationOccurrence,
-  AuthoredTokenOrdinal,
-}
-import std.occurrence_binding_candidates {
-  OccurrenceModulePathRow,
-  DeclarationExposureRow,
-  AuthoredOrderRow,
-  OccurrenceBindingCandidateInputs,
-  ModuleLocalMemberExposure,
-  declaration_exposure_from_containment,
-}
-import v1.compiler.tokenize { tokenize }
-import v1.compiler.parse {
-  parse_with_table,
-  parse_with_table_ready_module_path,
-}
-import v1.std.core {
-  build_newline_index,
-  empty_intern_table,
-  NewlineIndex,
-}
 
 data occurrence_binding_parser_walk_authority_note: String = "Parser-to-P2-walk bridge (namespace-reference-derived-closure slice B): authored source is parsed through v1.compiler.parse.parse_with_table; OccurrenceTransport and module path come from the parser only. OccurrenceBindingCandidateInputs are projected from parser facts — module paths for every indexed occurrence, authored order from diagnostic_span.start (never OccurrenceId.value), and DeclarationExposure from containment shape (empty / single-ancestor => ModuleExposure, else LexicalExposure with parent scope). Category is never read for exposure. Index-build refusals are carried intact as StructuralBindingWalkRefused — never coarsened to a unit variant (blocker 6)."
 

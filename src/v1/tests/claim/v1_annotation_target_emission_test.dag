@@ -1,14 +1,5 @@
 module v1.tests.claim.v1_annotation_target_emission_test
 
-import std.types { Bool, Int, String }
-import std.source_annotation {
-  annotation_attachment_result_graph,
-  source_annotation_graph_rows
-}
-import v1.compiler.annotation_bind { bind_annotations }
-import v1.compiler.tokenize { tokenize_artifact }
-import v1.compiler.parse { parse_with_table }
-import v1.std.core { build_newline_index, empty_intern_table, NewlineIndex }
 
 data v1_annotation_target_emission_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/v1_annotation_target_emission_test.dag --functions w_the_annotated_source_still_produces_annotation_rows"
 

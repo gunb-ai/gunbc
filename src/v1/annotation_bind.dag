@@ -3,30 +3,6 @@ module v1.compiler.annotation_bind
 //
 // It is a PURE DOWNSTREAM READER of the occurrence transport. No allocator is in scope, so the identities it reads were all minted by the semantic parser before it ran, and no edit to a comment can shift one.
 
-import std.types { Bool, Int, String, SourceSpan, List }
-import std.occurrence_identity {
-  OccurrenceId,
-  OccurrenceIndexEntry,
-  OccurrenceTransport
-}
-import std.source_annotation {
-  AnnotationAttachmentRefusal,
-  AnnotationAttachmentResult,
-  AnnotationSubject,
-  AnnotationsAdmitted,
-  AnnotationsRefused,
-  NormalizedAnnotationCapture,
-  SourceAnnotationGraph,
-  KeyedAnnotationRow,
-  SourceAnnotationDebt,
-  UnboundAnnotationCapture,
-  admit_annotations,
-  attach_annotations,
-  non_empty_refusals_all,
-  source_annotation_graph_empty,
-  source_annotation_graph_rows
-}
-import v1.std.core { CompilerDiagnostic, SourceAnnotationRefused }
 
 
 

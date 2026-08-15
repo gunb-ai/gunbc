@@ -1,105 +1,22 @@
 module v1.compiler.emit
 
-import std.syntax { LiteralValue, BinOp, AlgebraFieldKind }
-import v1.std.core {
-  Node, ErrorNode, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
-  module_imports, module_items, param_node_name_at, param_node_type_expr,
-  param_node_default_value, NewlineIndex, authored_name_at, empty_intern_table,
-  expr_var_name_at, expr_call_func_at, let_binding_name_at, field_access_field_at, ExprData,
-  NoExprData, VarBindingKind, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
-  ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda,
-  ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprError,
-  ExprReturn, StringPart, Text, Interpolation, TextFile, SourceSpan, UnaryOpKind, NullCoalesce,
-  DeclaredFuncSig, MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
-  ServiceMethodSemantics, MatchPattern, Wildcard, Bind, LitPattern, VariantPattern,
-  field_binding_name_at, field_binding_pattern, FieldSummary, TupleFirst, TupleSecond,
-  expr_method_name_at, method_arg_nodes, expr_method_call_semantics, expr_field_access_summary,
-  lambda_param_names_at, record_lit_type_name_at, arm_body, arm_pattern, arm_guard,
-  arg_name_at, arg_value, field_init_node_name_at, field_init_node_value, if_condition,
-  if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body,
-  field_access_base, method_receiver, lambda_body, cast_expr, cast_target, return_value,
-  binop_left, binop_right, foreach_variable_at, foreach_collection, foreach_body, index_base,
-  index_expr, slice_base, slice_start, slice_end, unaryop_operand, expr_has_self_call,
-  expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport,
-  is_file_transport, is_local_transport, transport_has_auth, field_init_operation_modifier,
-  operation_modifier_name, with_required_cardinality, tuple_type_name, find_child_named,
-  Connective, Conj, Disj, NoConnective, Arrow, CardOptional
-}
 
-import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, GlobalBareLookupState, empty_symbol_index }
 
-import std.induction { InductiveField, SubValueUnknown }
 
-import v1.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node, is_unit_like, is_declared_container_alias_spelling }
 
-import std.types { is_container_type, container_template_algebra }
 
-import v1.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix }
 
-import v1.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 
-import v1.compiler.infer_items {
-  TypedModule, ResolvedGraph, ItemInfo
-}
 
-import v1.compiler.infer_service { UniqueAccum, OpEntry, is_typed_service_call_receiver, extract_typed_service_name }
 
-import v1.compiler.infer_lookup { lookup_func_sig, func_sig_if_resolved }
 
-import v1.compiler.infer {
-  InferScope,
-  build_params_scope, extend_scope
-}
 
-import v1.compiler.infer_emit_info { TypeSummary, EmitGraphInfo }
 
-import v1.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
 
-import v1.compiler.emit_core_support {
-  EmitResult, TestProjection,
-  escape_json_string, module_to_filename, make_indent,
-  to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
-  sanitize_service_name, capitalize_first, service_var_name, to_pascal,
-  escape_string_literal_body, unique_strings, to_string, to_string_helper,
-  test_function_name,
-  apply_type_template1, apply_type_template2, apply_type_template3,
-  apply_named_template, apply_named_template_nested,
-  language_spec,
-  has_mock_prefix, extract_test_projections,
-  is_type_alias_return_node, is_service_item,
-  is_type_def_item, is_type_alias_item, is_type_decl_item,
-  is_function_item, is_data_def_item, is_service_def_item,
-  is_resource_def_item
-}
 
-import v1.compiler.languages {
-  SnakeCaseTestNames, PascalCaseTestNames,
-  LanguageSpec, TestConventions, ServiceFieldTemplates,
-  BlockSyntax, TcoSyntax, ExpressionSemantics, VariantPatternSyntax,
-  IfValueForm, IfExpression, ConditionalTernary, IfStatement,
-  MatchValueForm, MatchExpression, MatchStatementArmReturn,
-  VisibilitySpec, KeywordVisibility, CaseVisibility,
-  NamingCase, PascalCase, SnakeCase, CamelCase, AsAuthored,
-  ReservedWordStrategy, PrefixEscape, SuffixEscape, NoEscape,
-  StringInterpSyntax, InterpStyle, FormatArgs, InlineExpr, EscapePair,
-  CharSanitization, EmojiEscape, NoCharSanitization, canonical_emoji_char_escape,
-  RecordLitSyntax,
-  ImportRule,
-  TypeUsageTrigger, TraitImplTrigger, DeriveMacroTrigger,
-  ContainerUsageTrigger, AsyncUsageTrigger,
-  language_spec_for_target, is_string_like,
-  test_conventions_for_target,
-  target_keyword, binop_symbol,
-  wrap_shared_type,
-  service_self_param, service_receiver_str, service_method_depth,
-  service_methods_inside_class, service_return_str
-}
 
-import extdeps.languages.rust.emit { rust_method_templates }
 
-import extdeps.languages.python.emit { python_method_templates_flat }
 
-import extdeps.languages.go.emit { go_method_templates_flat }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {

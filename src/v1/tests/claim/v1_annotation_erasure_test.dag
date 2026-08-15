@@ -1,16 +1,5 @@
 module v1.tests.claim.v1_annotation_erasure_test
 
-import std.types { Bool, Int, String, List }
-import std.occurrence_identity { OccurrenceIdAllocator, OccurrenceIndexEntry, OccurrenceTransport, occurrence_id_allocator_initial }
-import std.source_annotation {
-  annotation_attachment_result_graph,
-  source_annotation_graph_rows
-}
-import v1.compiler.annotation_bind { bind_annotations }
-import v1.compiler.tokenize { tokenize_artifact }
-import v1.compiler.parse { parse_with_table_in_occurrence_scope, ParseWithTableResult }
-import v1.std.core { build_newline_index, empty_intern_table, InternTable, NewlineIndex }
-import v1.compiler.dag_collect_support { dag_node_surface_fingerprint }
 
 data v1_annotation_erasure_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/debug/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/v1_annotation_erasure_test.dag --functions w_occurrence_identities_equal_in_the_annotated_module,w_occurrence_identities_equal_in_a_later_module,w_later_module_control_shifts_when_a_declaration_is_added,w_annotation_graph_differs_between_the_two_sources,w_declaration_provenance_still_reads_correctly_after_byte_shift,w_bare_source_provenance_control"
 

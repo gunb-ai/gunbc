@@ -1,37 +1,5 @@
 module v1.tests.claim.occurrence_identity_debt_receipt_test
 
-import std.types { Bool, String }
-import std.occurrence_binding {
-  OccurrenceBound,
-  OccurrenceUnbound,
-}
-import std.occurrence_binding_resolve {
-  OccurrenceReferenceBindingDecided,
-  resolve_reference_occurrence_binding,
-}
-import std.occurrence_identity {
-  OccurrenceId,
-  OccurrenceIdAllocator,
-  OccurrenceContainmentPath,
-  OccurrenceIndex,
-  OccurrenceTransport,
-  DeclarationOccurrence,
-  ReferenceOccurrence,
-  LexicalValueOccurrence,
-  occurrence_containment_paths_equal,
-  occurrence_id_allocator_initial,
-}
-import v1.std.core {
-  Node,
-  NewlineIndex,
-  build_newline_index,
-  empty_intern_table,
-}
-import v1.compiler.tokenize { tokenize }
-import v1.compiler.parse {
-  ParseWithTableResult,
-  parse_with_table_in_occurrence_scope,
-}
 
 data occurrence_identity_debt_receipt_offline_recipe: String = "LOCAL CONTROL RECIPE: target/release/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/occurrence_identity_debt_receipt_test.dag --functions w_rebuilt_reference_identity_preservation_executes_holds,w_structurally_equal_distinct_occurrences_execute_holds,w_pattern_declaration_reachability_executes_holds,w_same_spelling_parser_declaration_isolation_executes_holds"
 

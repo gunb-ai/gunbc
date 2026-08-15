@@ -1,14 +1,5 @@
 module v1.tests.claim.v1_match_pattern_identity_test
 
-import v1.std.core {
-  Node, MatchPattern, LitPattern, VariantPattern, Wildcard,
-  ExprLiteral,
-  make_span, make_arm_node, make_field_binding_node, make_expr_node
-}
-import std.types { SourceSpan }
-import std.syntax { LitInt, LitStr }
-import v1.compiler.dag_collect_support { dag_node_surface_fingerprint, DagCollectSlot }
-import v1.compiler.dag_collect { dag_collect_insert_slots, dag_node_key }
 
 data v1_match_pattern_identity_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/debug/claim_batch --source-root dag --source-root src/v1 --entry src/v1/tests/claim/v1_match_pattern_identity_test.dag --functions w_match_arms_differing_only_by_literal_pattern_get_distinct_fingerprints,w_match_arms_with_identical_literal_patterns_get_equal_fingerprints,w_match_arms_differing_only_by_variant_name_get_distinct_fingerprints,w_variant_pattern_field_bindings_are_registered_as_dag_artifacts,w_unrelated_field_binding_is_not_registered"
 

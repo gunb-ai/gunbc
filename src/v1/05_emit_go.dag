@@ -1,111 +1,19 @@
 module v1.compiler.emit_go
 
-import std.syntax { LiteralValue, BinOp }
-import v1.std.core {
-  Node, InferredNode, Resolved, CompilerError, VarBindingKind, FunctionValueBinding,
-  import_is_all, module_imports, module_items, param_node_type_expr, authored_name_at,
-  NewlineIndex, expr_var_name_at, expr_call_func_at, expr_method_name_at, let_binding_name_at,
-  param_node_name_at, resource_use_name_at, MatchPattern, TextFile, SourceSpan,
-  resource_use_resource, NullCoalesce, UnaryOpKind, StringPart, DeclaredFuncSig,
-  transport_has_auth, transport_auth_header_name, transport_headers, transport_env, ExprData,
-  NoExprData, ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
-  ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda,
-  ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
-  make_expr_node, MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
-  ServiceMethodSemantics, Text, Interpolation, FieldSummary, FieldAccessStyle, StoredField,
-  EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond, arg_value, arm_body, arm_pattern,
-  arm_guard, field_init_node_name_at, field_init_node_value, if_condition, if_then_branch,
-  if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body, field_access_base,
-  field_access_field_at, method_receiver, expr_field_access_summary,
-  expr_method_call_semantics, record_lit_type_name_at, lambda_body, cast_expr, cast_target,
-  return_value, foreach_variable_at, foreach_collection, foreach_body, method_arg_nodes,
-  index_base, index_expr, slice_base, slice_start, slice_end, with_required_cardinality,
-  Connective, Conj, Disj, CardOptional, is_rest_transport, is_shell_transport,
-  is_file_transport
-}
 
-import v1.compiler.artifact { RenderTarget, Go }
 
-import extdeps.languages.go.emit { go_reserved, go_reserved_escape_suffix }
 
-import v1.compiler.languages {
-  scaffold_for_target, TestConventions, ItemKeywords, test_conventions_for_target,
-  is_string_like, CaseVisibility
-}
 
-import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
 
-import v1.compiler.infer_types { resolved_type, normalize_access_type_node, node_is_keyed_collection }
 
-import v1.compiler.infer_method {
-}
 
-import v1.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
 
-import v1.compiler.infer_items {
-  ResolvedGraph, TypedModule,
-  ItemInfo
-}
 
-import v1.compiler.infer_service {
-  is_typed_service_call_receiver, extract_typed_service_name
-}
 
-import v1.compiler.infer {
-  InferScope,
-  build_params_scope, extend_scope,
-  expr_span
-}
 
-import std.induction { SubValueUnknown }
 
-import v1.compiler.runtime_go { go_runtime_source }
 
-import v1.compiler.emit {
-  BlockEmitState, InterpPart,
-  emit_literal, emit_bin_op_symbol, emit_keyword, emit_container, emit_map_type,
-  emit_node_type, emit_ident, emit_let_binding, emit_simple_expr,
-  emit_unary_op, emit_lambda, emit_error_expr, emit_return, emit_lambda_params, emit_list_lit_expr, emit_shared_expr, emit_default_bin_op,
-  emit_string_literal, escape_go_interp_text,
-  empty_emit_scope, module_emit_scope,
-  scope_after_expr,
-  lookup_item,
-  is_null_coalesce, emit_null_coalesce,
-  has_nested_records_node,
-  typed_named_arg_matches, order_typed_call_args,
-  is_tco_eligible,
-  service_fallback_transport, effective_operation_transport,
-  ServiceFieldSet, compute_service_fields, service_field_decls,
-  seed_bindings,
-  emit_expr_var_shared, emit_expr_field_access_shared, extract_string_interp_parts,
-  emit_typed_cast_shared, emit_typed_for_each_shared, emit_typed_index_shared, emit_typed_slice_shared,
-  emit_unified_init_block_stmts,
-  emit_typed_if_shared, emit_typed_let_shared, emit_param_shared, emit_params_shared, apply_naming_case,
-  emit_inferred_shared, emit_typed_block_join,
-  emit_typed_first_arg_shared,
-  emit_algebra_method_template,
-  emit_typed_string_interp_unified, emit_typed_record_lit_unified,
-  emit_typed_call_unified, emit_typed_method_call_unified,
-  emit_typed_match_unified,
-  emit_unified_typed_expr,
-  emit_tco_unified, emit_unified_pattern, test_file_path, emit_unified_typed_func_body,
-  emit_unified_service_def, emit_unified_operation_method, emit_unified_transport_dispatch
-}
 
-import v1.compiler.emit_core_support {
-  EmitResult, TestProjection,
-  escape_json_string, module_to_filename, make_indent,
-  to_snake, to_screaming_snake, is_upper, to_lower_char, to_upper_char,
-  sanitize_service_name, capitalize_first, service_var_name,
-  escape_string_literal_body, unique_strings, to_string, to_string_helper,
-  test_function_name,
-  apply_type_template1, apply_type_template2, apply_type_template3,
-  apply_named_template, language_spec,
-  is_type_alias_return_node, is_service_item,
-  is_type_def_item, is_type_alias_item, is_type_decl_item,
-  is_function_item, is_data_def_item, is_service_def_item,
-  is_resource_def_item, extract_test_projections
-}
 
 
 

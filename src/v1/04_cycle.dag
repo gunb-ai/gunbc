@@ -1,6 +1,5 @@
 module v1.compiler.infer_cycle
 
-import v1.compiler.infer_env { TypeBinding }
 
 
 fn compute_in_graph_deps(
