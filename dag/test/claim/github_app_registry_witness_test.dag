@@ -7,6 +7,7 @@ import gunbc.ci_heal_credential {
   live_heal_push_binding_resolution,
 }
 import gunbc.repository { gunbc_repository }
+import extdeps.uri { Uri, Https }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
