@@ -15,6 +15,7 @@
 
 use im::{OrdSet as BTreeSet, Vector as Vec};
 
+pub mod cli_run;
 pub mod extdeps_cargo;
 pub mod extdeps_cargo_version;
 pub mod extdeps_container_oci_digest;
@@ -44,6 +45,10 @@ pub mod gunbc_namespace_reference_derived_closure_contract;
 pub mod gunbc_rust_decl_type_overlay;
 pub mod gunbc_stage0_crate_layout_generated;
 pub mod gunbc_stage0_crate_partition_generated;
+pub mod memory_governor;
+pub mod module_path_index;
+pub mod resolved_graph_cache;
+pub mod shared_typecheck_store;
 pub mod std_algebra;
 pub mod std_checked_arithmetic;
 pub mod std_coercion;
@@ -89,6 +94,9 @@ pub mod std_trait_derive_shape;
 pub mod std_types;
 pub mod std_unicode_types;
 pub mod std_witness_admission;
+pub mod usv_pilot_v2_std_algebra;
+pub mod usv_pilot_v2_std_collection;
+pub mod usv_pilot_v2_std_node;
 pub mod v1_compiler_annotation_bind;
 pub mod v1_compiler_artifact;
 pub mod v1_compiler_closure_stub_v2_std_integer_rust;
@@ -152,22 +160,13 @@ pub mod v1_tests_claim_v1_annotation_round_trip_test;
 pub mod v1_tests_claim_v1_annotation_target_emission_test;
 pub mod v1_tests_claim_v1_complexity_eviction_hazard_test;
 pub mod v1_tests_claim_v1_match_pattern_identity_test;
-pub mod wt_a;
-pub mod wt_b;
-pub mod wt_common;
-#[macro_use]
-pub mod cli_run;
-pub mod memory_governor;
-pub mod module_path_index;
-pub mod resolved_graph_cache;
-pub mod shared_typecheck_store;
-pub mod usv_pilot_v2_std_algebra;
-pub mod usv_pilot_v2_std_collection;
-pub mod usv_pilot_v2_std_node;
 pub mod v2_compiler_infer;
 pub mod v2_compiler_program_partition;
 pub mod v2_compiler_resolve;
 pub mod v2_compiler_tokenize;
+pub mod wt_a;
+pub mod wt_b;
+pub mod wt_common;
 
 pub struct NonEmptyVec<T>(Vec<T>);
 
