@@ -1,0 +1,518 @@
+module gunbc.replacement_cut
+
+import std.types { String, NonEmptyStr, Bool, Int, List, list_length }
+import std.content_hash {
+  Fnv1a64Structural,
+  content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural,
+  content_hash_eq_structural,
+}
+
+data replacement_cut_model_note: String = "THE MECHANICAL PLANNING CARRIER FOR REPLACEMENT MIGRATIONS (DESIGN section 3 standing rule, operator-directed 2026-08-15; hardened per the 2026-08-15 planning-thread review). A ReplacementCut names one consumer-relative boundary: the exact old root consumer, subject population and semantic contract; the Y authority proposed at that boundary; the X region deleted at cutover; the boundary-consumer census with every consumer's earned disposition; X's permitted external roles from a CLOSED vocabulary (a forbidden role -- fallback, internal resolver, production second opinion -- has no constructor); and the evidence dispositions. Construction encodes the greedy root-first search: why_not_higher is a required field, so a cut cannot be authored without stating either that its boundary is outermost or which parent cut's refusal pushed it down -- the descended arm names the parent by ReplacementCutId, a joinable typed reference, never prose alone.\n\nADMISSION IS PLAN ADMISSION, and the vocabulary says so: admit_replacement_cut_plan judges the AUTHORED PLAN's completeness and internal coherence, not the world. It refuses, all causes counted, on: any undecided consumer or evidence row; any surviving consumer without a named coverage authority; coverage or replacement naming the old root itself (fallback wearing a disposition); an empty covered region; old and new root identical; a census enumerated yet empty (the bottom-as-answer conflation -- a genuinely consumer-free boundary is declared with BoundaryDeclaredEmpty and a basis, never left as an ambiguous empty list); an ExternalXRoles list enumerated yet empty (the same conflation on the oracle axis -- no-oracle-needed is the justified NoExternalOracleRequired arm, never an empty list); a self-referential descent; and any duplicated consumer, evidence subject, or region member (one subject, one disposition -- a duplicate is a fork whether or not the copies agree). The verdict is SEALED AND BOUND twice over: AdmittedReplacementCutPlan is a sole_constructor record only this module can build -- a cross-module construction or cast refuses at compile time (04_infer sole_constructor_construction_diags) -- and its one in-module mint, mint_admitted, is admit_callers-sealed to admit_replacement_cut_plan alone, so no importer can reach a verdict except through the checks. The digest binds the verdict to the exact plan it judged: an edited plan stops matching, and admitted_matches_plan is the recompute check.\n\nWHAT PLAN ADMISSION DOES NOT ESTABLISH, stated per DESIGN 4b rung honesty: the authored census is not proven equal to the real boundary population -- an omitted consumer cannot be detected at this grain, because no independently produced consumer/obligation/evidence/region observation exists yet to join against; coverage authorities are named, not proven to cover; OutermostBoundary is an authored claim pending a boundary-census receipt; a descended cut's parent refusal is a typed reference pending executed refusal receipts; retirement names its reason pending a retirement-receipt authority. Those two-way exact identity joins, the attempt layer (backedge, parity, refusal preservation, executed deletion), derived cut standing, the outcome ledger, and the roadmap projection are the migration-cut authority program -- the named next layer, deliberately not pre-built as string-shaped promises. NO ROADMAP NODE IS STRUCTURALLY REGISTERED TO A CUT YET: RoadmapNode carries no cut field, and the typed projection in which a lane's contract, shadow, parity and cutover-plus-deletion nodes derive from ONE admitted plan -- cutover and deletion one accepted state, a deeper cut addable only under an exact parent refusal, unregistered migration work red -- is a future obligation of that program, not a present fact."
+
+type ReplacementCutId = NonEmptyStr where brand("ReplacementCutId")
+
+type CoverageClaim
+  = Covered { by: NonEmptyStr }
+  | CoverageOpen
+
+type ConsumerDisposition
+  = RetainSameContract { justification: NonEmptyStr, coverage: CoverageClaim }
+  | RetainChangedContract { terminal_contract: NonEmptyStr, justification: NonEmptyStr, coverage: CoverageClaim }
+  | ReplacedByY { new_authority: NonEmptyStr }
+  | EvidenceOnly { surviving_claim: NonEmptyStr, reenrolled_witness: NonEmptyStr }
+  | Retire { reason: NonEmptyStr }
+  | Undecided
+
+type BoundaryConsumer { consumer: NonEmptyStr, disposition: ConsumerDisposition }
+
+type BoundaryCensus
+  = ConsumersEnumerated { consumers: List<BoundaryConsumer> }
+  | BoundaryDeclaredEmpty { basis: NonEmptyStr }
+
+type HigherBoundaryAnswer
+  = OutermostBoundary
+  | DescendedFromRefusedCut { parent_cut: ReplacementCutId, refusal_summary: NonEmptyStr }
+
+type EvidenceDisposition
+  = ReenrollAgainstY { evidence: NonEmptyStr, surviving_claim: NonEmptyStr }
+  | ReplaceEvidence { old_evidence: NonEmptyStr, new_evidence: NonEmptyStr }
+  | RetireEvidence { evidence: NonEmptyStr, retired_subject: NonEmptyStr, retirement_reason: NonEmptyStr }
+  | EvidenceUndecided { evidence: NonEmptyStr }
+
+type ExternalXRole
+  = BootstrapProducer
+  | ExternalDifferentialOracle
+  | MechanicalCorpusRewriter
+  | HistoricalMeasurementSource
+
+type ExternalXAnswer
+  = ExternalXRoles { roles: List<ExternalXRole> }
+  | NoExternalOracleRequired { justification: NonEmptyStr }
+
+type ReplacementCut {
+  identity: ReplacementCutId
+  old_root_consumer: NonEmptyStr
+  subject: NonEmptyStr
+  contract: NonEmptyStr
+  new_root: NonEmptyStr
+  why_not_higher: HigherBoundaryAnswer
+  covered_region: List<NonEmptyStr>
+  boundary_census: BoundaryCensus
+  external_x: ExternalXAnswer
+  evidence_dispositions: List<EvidenceDisposition>
+}
+
+type CutRefusalCause
+  = UndispositionedConsumer { consumer: NonEmptyStr }
+  | UncoveredSurvivingConsumer { consumer: NonEmptyStr }
+  | UndispositionedEvidence { evidence: NonEmptyStr }
+  | CoveredByOldRoot { consumer: NonEmptyStr }
+  | ReplacementNamesOldRoot { consumer: NonEmptyStr }
+  | ConsumerDuplicated { consumer: NonEmptyStr }
+  | EvidenceDuplicated { evidence: NonEmptyStr }
+  | RegionMemberDuplicated { member: NonEmptyStr }
+  | EnumeratedCensusEmpty
+  | ExternalRolesEnumeratedEmpty
+  | EmptyCoveredRegion
+  | NewRootEqualsOldRoot
+  | SelfReferentialDescent
+
+type AdmittedReplacementCutPlan sole_constructor {
+  cut_identity: ReplacementCutId
+  criteria_digest: Fnv1a64Structural
+  retained_count: Int
+  replaced_count: Int
+  evidence_only_count: Int
+  retired_count: Int
+  covered_region_count: Int
+}
+
+type PlanAdmission
+  = PlanAdmitted { admitted: AdmittedReplacementCutPlan }
+  | PlanRefused { causes: List<CutRefusalCause> }
+
+type CountStanding = CountZero | CountPositive
+
+fn count_standing(count: Int) -> CountStanding {
+  if count == 0 { CountZero } else { CountPositive }
+}
+
+fn nes_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+  (a as String) == (b as String)
+}
+
+fn nes_seen(xs: List<NonEmptyStr>, x: NonEmptyStr) -> Bool {
+  fold(xs, init: false, f: fn(acc, item) { acc || nes_eq(a: item, b: x) })
+}
+
+fn coverage_causes(
+  acc: List<CutRefusalCause>,
+  consumer: NonEmptyStr,
+  old_root_consumer: NonEmptyStr,
+  cov: CoverageClaim,
+) -> List<CutRefusalCause> {
+  match cov {
+    CoverageOpen => Cons { head: UncoveredSurvivingConsumer { consumer: consumer }, tail: acc }
+    Covered { by: authority } =>
+      match nes_eq(a: authority, b: old_root_consumer) {
+        true => Cons { head: CoveredByOldRoot { consumer: consumer }, tail: acc }
+        false => acc
+      }
+  }
+}
+
+fn consumer_causes(
+  acc: List<CutRefusalCause>,
+  old_root_consumer: NonEmptyStr,
+  c: BoundaryConsumer,
+) -> List<CutRefusalCause> {
+  match c.disposition {
+    Undecided => Cons { head: UndispositionedConsumer { consumer: c.consumer }, tail: acc }
+    RetainSameContract { justification: _, coverage: cov } =>
+      coverage_causes(acc: acc, consumer: c.consumer, old_root_consumer: old_root_consumer, cov: cov)
+    RetainChangedContract { terminal_contract: _, justification: _, coverage: cov } =>
+      coverage_causes(acc: acc, consumer: c.consumer, old_root_consumer: old_root_consumer, cov: cov)
+    ReplacedByY { new_authority: authority } =>
+      match nes_eq(a: authority, b: old_root_consumer) {
+        true => Cons { head: ReplacementNamesOldRoot { consumer: c.consumer }, tail: acc }
+        false => acc
+      }
+    EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } => acc
+    Retire { reason: _ } => acc
+  }
+}
+
+fn evidence_causes(acc: List<CutRefusalCause>, e: EvidenceDisposition) -> List<CutRefusalCause> {
+  match e {
+    EvidenceUndecided { evidence: w } => Cons { head: UndispositionedEvidence { evidence: w }, tail: acc }
+    ReenrollAgainstY { evidence: _, surviving_claim: _ } => acc
+    ReplaceEvidence { old_evidence: _, new_evidence: _ } => acc
+    RetireEvidence { evidence: _, retired_subject: _, retirement_reason: _ } => acc
+  }
+}
+
+fn evidence_key(e: EvidenceDisposition) -> NonEmptyStr {
+  match e {
+    ReenrollAgainstY { evidence: w, surviving_claim: _ } => w
+    ReplaceEvidence { old_evidence: w, new_evidence: _ } => w
+    RetireEvidence { evidence: w, retired_subject: _, retirement_reason: _ } => w
+    EvidenceUndecided { evidence: w } => w
+  }
+}
+
+type ConsumerDupState { seen: List<NonEmptyStr>, causes: List<CutRefusalCause> }
+
+fn consumer_duplicate_causes(
+  acc: List<CutRefusalCause>,
+  consumers: List<BoundaryConsumer>,
+) -> List<CutRefusalCause> {
+  let end_state = fold(
+    consumers,
+    init: ConsumerDupState { seen: [], causes: acc },
+    f: fn(state, c) {
+      match nes_seen(xs: state.seen, x: c.consumer) {
+        true => ConsumerDupState {
+          seen: state.seen,
+          causes: Cons { head: ConsumerDuplicated { consumer: c.consumer }, tail: state.causes },
+        }
+        false => ConsumerDupState {
+          seen: Cons { head: c.consumer, tail: state.seen },
+          causes: state.causes,
+        }
+      }
+    },
+  )
+  end_state.causes
+}
+
+fn evidence_dup_step(state: ConsumerDupState, key: NonEmptyStr) -> ConsumerDupState {
+  match nes_seen(xs: state.seen, x: key) {
+    true => ConsumerDupState {
+      seen: state.seen,
+      causes: Cons { head: EvidenceDuplicated { evidence: key }, tail: state.causes },
+    }
+    false => ConsumerDupState {
+      seen: Cons { head: key, tail: state.seen },
+      causes: state.causes,
+    }
+  }
+}
+
+fn evidence_duplicate_causes(
+  acc: List<CutRefusalCause>,
+  rows: List<EvidenceDisposition>,
+) -> List<CutRefusalCause> {
+  let end_state = fold(
+    rows,
+    init: ConsumerDupState { seen: [], causes: acc },
+    f: fn(state, e) { evidence_dup_step(state: state, key: evidence_key(e: e)) },
+  )
+  end_state.causes
+}
+
+fn region_causes(acc: List<CutRefusalCause>, region: List<NonEmptyStr>) -> List<CutRefusalCause> {
+  let dup_state = fold(
+    region,
+    init: ConsumerDupState { seen: [], causes: acc },
+    f: fn(state, member) {
+      match nes_seen(xs: state.seen, x: member) {
+        true => ConsumerDupState {
+          seen: state.seen,
+          causes: Cons { head: RegionMemberDuplicated { member: member }, tail: state.causes },
+        }
+        false => ConsumerDupState {
+          seen: Cons { head: member, tail: state.seen },
+          causes: state.causes,
+        }
+      }
+    },
+  )
+  match count_standing(count: list_length(items: region)) {
+    CountZero => Cons { head: EmptyCoveredRegion, tail: dup_state.causes }
+    CountPositive => dup_state.causes
+  }
+}
+
+fn enumerated_consumer_causes(
+  acc: List<CutRefusalCause>,
+  old_root_consumer: NonEmptyStr,
+  rows: List<BoundaryConsumer>,
+) -> List<CutRefusalCause> {
+  let disposition_acc = fold(
+    rows,
+    init: acc,
+    f: fn(inner, c) { consumer_causes(acc: inner, old_root_consumer: old_root_consumer, c: c) },
+  )
+  consumer_duplicate_causes(acc: disposition_acc, consumers: rows)
+}
+
+fn census_causes(
+  acc: List<CutRefusalCause>,
+  old_root_consumer: NonEmptyStr,
+  census: BoundaryCensus,
+) -> List<CutRefusalCause> {
+  match census {
+    BoundaryDeclaredEmpty { basis: _ } => acc
+    ConsumersEnumerated { consumers: rows } =>
+      match count_standing(count: list_length(items: rows)) {
+        CountZero => Cons { head: EnumeratedCensusEmpty, tail: acc }
+        CountPositive => enumerated_consumer_causes(acc: acc, old_root_consumer: old_root_consumer, rows: rows)
+      }
+  }
+}
+
+fn external_x_causes(acc: List<CutRefusalCause>, x: ExternalXAnswer) -> List<CutRefusalCause> {
+  match x {
+    NoExternalOracleRequired { justification: _ } => acc
+    ExternalXRoles { roles: rs } =>
+      match count_standing(count: list_length(items: rs)) {
+        CountZero => Cons { head: ExternalRolesEnumeratedEmpty, tail: acc }
+        CountPositive => acc
+      }
+  }
+}
+
+fn root_identity_causes(acc: List<CutRefusalCause>, cut: ReplacementCut) -> List<CutRefusalCause> {
+  let after_root = match nes_eq(a: cut.new_root, b: cut.old_root_consumer) {
+    true => Cons { head: NewRootEqualsOldRoot, tail: acc }
+    false => acc
+  }
+  match cut.why_not_higher {
+    OutermostBoundary => after_root
+    DescendedFromRefusedCut { parent_cut: parent, refusal_summary: _ } =>
+      match nes_eq(a: parent as NonEmptyStr, b: cut.identity as NonEmptyStr) {
+        true => Cons { head: SelfReferentialDescent, tail: after_root }
+        false => after_root
+      }
+  }
+}
+
+type DispositionCounts {
+  retained: Int
+  replaced: Int
+  evidence_only: Int
+  retired: Int
+  undecided: Int
+}
+
+fn census_consumers(census: BoundaryCensus) -> List<BoundaryConsumer> {
+  match census {
+    ConsumersEnumerated { consumers: rows } => rows
+    BoundaryDeclaredEmpty { basis: _ } => []
+  }
+}
+
+fn count_dispositions(consumers: List<BoundaryConsumer>) -> DispositionCounts {
+  fold(
+    consumers,
+    init: DispositionCounts { retained: 0, replaced: 0, evidence_only: 0, retired: 0, undecided: 0 },
+    f: fn(acc, c) {
+      match c.disposition {
+        RetainSameContract { justification: _, coverage: _ } =>
+          DispositionCounts { retained: acc.retained + 1, replaced: acc.replaced, evidence_only: acc.evidence_only, retired: acc.retired, undecided: acc.undecided }
+        RetainChangedContract { terminal_contract: _, justification: _, coverage: _ } =>
+          DispositionCounts { retained: acc.retained + 1, replaced: acc.replaced, evidence_only: acc.evidence_only, retired: acc.retired, undecided: acc.undecided }
+        ReplacedByY { new_authority: _ } =>
+          DispositionCounts { retained: acc.retained, replaced: acc.replaced + 1, evidence_only: acc.evidence_only, retired: acc.retired, undecided: acc.undecided }
+        EvidenceOnly { surviving_claim: _, reenrolled_witness: _ } =>
+          DispositionCounts { retained: acc.retained, replaced: acc.replaced, evidence_only: acc.evidence_only + 1, retired: acc.retired, undecided: acc.undecided }
+        Retire { reason: _ } =>
+          DispositionCounts { retained: acc.retained, replaced: acc.replaced, evidence_only: acc.evidence_only, retired: acc.retired + 1, undecided: acc.undecided }
+        Undecided =>
+          DispositionCounts { retained: acc.retained, replaced: acc.replaced, evidence_only: acc.evidence_only, retired: acc.retired, undecided: acc.undecided + 1 }
+      }
+    },
+  )
+}
+
+fn nes_digest(value: NonEmptyStr) -> Fnv1a64Structural {
+  content_hash_atom(value: value)
+}
+
+fn tag_digest(tag: NonEmptyStr) -> Fnv1a64Structural {
+  content_hash_atom(value: tag)
+}
+
+fn nes_list_digest(tag: NonEmptyStr, items: List<NonEmptyStr>) -> Fnv1a64Structural {
+  fold(
+    items,
+    init: tag_digest(tag: tag),
+    f: fn(acc, item) { content_hash_combine_structural(left: acc, right: nes_digest(value: item)) },
+  )
+}
+
+fn coverage_digest(cov: CoverageClaim) -> Fnv1a64Structural {
+  match cov {
+    Covered { by: authority } => content_hash_tagged_structural(tag: "covered" as NonEmptyStr, payload: nes_digest(value: authority))
+    CoverageOpen => tag_digest(tag: "coverage-open" as NonEmptyStr)
+  }
+}
+
+fn disposition_digest(d: ConsumerDisposition) -> Fnv1a64Structural {
+  match d {
+    RetainSameContract { justification: j, coverage: cov } =>
+      content_hash_tagged_structural(
+        tag: "retain-same" as NonEmptyStr,
+        payload: content_hash_combine_structural(left: nes_digest(value: j), right: coverage_digest(cov: cov)),
+      )
+    RetainChangedContract { terminal_contract: t, justification: j, coverage: cov } =>
+      content_hash_tagged_structural(
+        tag: "retain-changed" as NonEmptyStr,
+        payload: content_hash_combine_structural(
+          left: content_hash_combine_structural(left: nes_digest(value: t), right: nes_digest(value: j)),
+          right: coverage_digest(cov: cov),
+        ),
+      )
+    ReplacedByY { new_authority: a } =>
+      content_hash_tagged_structural(tag: "replaced-by-y" as NonEmptyStr, payload: nes_digest(value: a))
+    EvidenceOnly { surviving_claim: sc, reenrolled_witness: w } =>
+      content_hash_tagged_structural(
+        tag: "evidence-only" as NonEmptyStr,
+        payload: content_hash_combine_structural(left: nes_digest(value: sc), right: nes_digest(value: w)),
+      )
+    Retire { reason: r } =>
+      content_hash_tagged_structural(tag: "retire" as NonEmptyStr, payload: nes_digest(value: r))
+    Undecided => tag_digest(tag: "undecided" as NonEmptyStr)
+  }
+}
+
+fn census_digest(census: BoundaryCensus) -> Fnv1a64Structural {
+  match census {
+    BoundaryDeclaredEmpty { basis: b } =>
+      content_hash_tagged_structural(tag: "boundary-declared-empty" as NonEmptyStr, payload: nes_digest(value: b))
+    ConsumersEnumerated { consumers: rows } =>
+      fold(
+        rows,
+        init: tag_digest(tag: "consumers-enumerated" as NonEmptyStr),
+        f: fn(acc, c) {
+          content_hash_combine_structural(
+            left: acc,
+            right: content_hash_combine_structural(left: nes_digest(value: c.consumer), right: disposition_digest(d: c.disposition)),
+          )
+        },
+      )
+  }
+}
+
+fn evidence_row_digest(e: EvidenceDisposition) -> Fnv1a64Structural {
+  match e {
+    ReenrollAgainstY { evidence: w, surviving_claim: sc } =>
+      content_hash_tagged_structural(
+        tag: "reenroll" as NonEmptyStr,
+        payload: content_hash_combine_structural(left: nes_digest(value: w), right: nes_digest(value: sc)),
+      )
+    ReplaceEvidence { old_evidence: o, new_evidence: n } =>
+      content_hash_tagged_structural(
+        tag: "replace-evidence" as NonEmptyStr,
+        payload: content_hash_combine_structural(left: nes_digest(value: o), right: nes_digest(value: n)),
+      )
+    RetireEvidence { evidence: w, retired_subject: s, retirement_reason: r } =>
+      content_hash_tagged_structural(
+        tag: "retire-evidence" as NonEmptyStr,
+        payload: content_hash_combine_structural(
+          left: content_hash_combine_structural(left: nes_digest(value: w), right: nes_digest(value: s)),
+          right: nes_digest(value: r),
+        ),
+      )
+    EvidenceUndecided { evidence: w } =>
+      content_hash_tagged_structural(tag: "evidence-undecided" as NonEmptyStr, payload: nes_digest(value: w))
+  }
+}
+
+fn higher_boundary_digest(h: HigherBoundaryAnswer) -> Fnv1a64Structural {
+  match h {
+    OutermostBoundary => tag_digest(tag: "outermost" as NonEmptyStr)
+    DescendedFromRefusedCut { parent_cut: parent, refusal_summary: r } =>
+      content_hash_tagged_structural(
+        tag: "descended" as NonEmptyStr,
+        payload: content_hash_combine_structural(left: nes_digest(value: parent as NonEmptyStr), right: nes_digest(value: r)),
+      )
+  }
+}
+
+fn external_x_role_digest(r: ExternalXRole) -> Fnv1a64Structural {
+  match r {
+    BootstrapProducer => tag_digest(tag: "bootstrap-producer" as NonEmptyStr)
+    ExternalDifferentialOracle => tag_digest(tag: "external-differential-oracle" as NonEmptyStr)
+    MechanicalCorpusRewriter => tag_digest(tag: "mechanical-corpus-rewriter" as NonEmptyStr)
+    HistoricalMeasurementSource => tag_digest(tag: "historical-measurement-source" as NonEmptyStr)
+  }
+}
+
+fn external_x_digest(a: ExternalXAnswer) -> Fnv1a64Structural {
+  match a {
+    NoExternalOracleRequired { justification: j } =>
+      content_hash_tagged_structural(tag: "no-external-oracle" as NonEmptyStr, payload: nes_digest(value: j))
+    ExternalXRoles { roles: rs } =>
+      fold(
+        rs,
+        init: tag_digest(tag: "external-x-roles" as NonEmptyStr),
+        f: fn(acc, r) { content_hash_combine_structural(left: acc, right: external_x_role_digest(r: r)) },
+      )
+  }
+}
+
+fn replacement_cut_plan_digest(cut: ReplacementCut) -> Fnv1a64Structural {
+  let identity_part = content_hash_combine_structural(
+    left: nes_digest(value: cut.identity as NonEmptyStr),
+    right: nes_digest(value: cut.old_root_consumer),
+  )
+  let contract_part = content_hash_combine_structural(
+    left: nes_digest(value: cut.subject),
+    right: content_hash_combine_structural(left: nes_digest(value: cut.contract), right: nes_digest(value: cut.new_root)),
+  )
+  let structure_part = content_hash_combine_structural(
+    left: higher_boundary_digest(h: cut.why_not_higher),
+    right: nes_list_digest(tag: "covered-region" as NonEmptyStr, items: cut.covered_region),
+  )
+  let population_part = content_hash_combine_structural(
+    left: census_digest(census: cut.boundary_census),
+    right: fold(
+      cut.evidence_dispositions,
+      init: external_x_digest(a: cut.external_x),
+      f: fn(acc, e) { content_hash_combine_structural(left: acc, right: evidence_row_digest(e: e)) },
+    ),
+  )
+  content_hash_combine_structural(
+    left: content_hash_combine_structural(left: identity_part, right: contract_part),
+    right: content_hash_combine_structural(left: structure_part, right: population_part),
+  )
+}
+
+fn mint_admitted(cut: ReplacementCut, counts: DispositionCounts) -> PlanAdmission
+  admit_callers: [
+    decl_ref(module_path: "gunbc.replacement_cut", decl_name: "admit_replacement_cut_plan"),
+  ]
+  = PlanAdmitted {
+    admitted: AdmittedReplacementCutPlan {
+      cut_identity: cut.identity,
+      criteria_digest: replacement_cut_plan_digest(cut: cut),
+      retained_count: counts.retained,
+      replaced_count: counts.replaced,
+      evidence_only_count: counts.evidence_only,
+      retired_count: counts.retired,
+      covered_region_count: list_length(items: cut.covered_region),
+    },
+  }
+
+fn admit_replacement_cut_plan(cut: ReplacementCut) -> PlanAdmission {
+  let root_acc = root_identity_causes(acc: [], cut: cut)
+  let census_acc = census_causes(acc: root_acc, old_root_consumer: cut.old_root_consumer, census: cut.boundary_census)
+  let oracle_acc = external_x_causes(acc: census_acc, x: cut.external_x)
+  let evidence_disposition_acc = fold(
+    cut.evidence_dispositions,
+    init: oracle_acc,
+    f: fn(acc, e) { evidence_causes(acc: acc, e: e) },
+  )
+  let evidence_acc = evidence_duplicate_causes(acc: evidence_disposition_acc, rows: cut.evidence_dispositions)
+  let all_causes = region_causes(acc: evidence_acc, region: cut.covered_region)
+  match count_standing(count: list_length(items: all_causes)) {
+    CountZero => mint_admitted(cut: cut, counts: count_dispositions(consumers: census_consumers(census: cut.boundary_census)))
+    CountPositive => PlanRefused { causes: all_causes }
+  }
+}
+
+fn admitted_matches_plan(admitted: AdmittedReplacementCutPlan, cut: ReplacementCut) -> Bool {
+  nes_eq(a: admitted.cut_identity as NonEmptyStr, b: cut.identity as NonEmptyStr)
+    && content_hash_eq_structural(left: admitted.criteria_digest, right: replacement_cut_plan_digest(cut: cut))
+}
