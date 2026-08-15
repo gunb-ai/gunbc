@@ -97,6 +97,7 @@ type ContactElectricalFunction
   | SignalReferenceContact
   | SingleEndedSignalContact
   | DifferentialPairMemberContact { pair: NonEmptyStr }
+  | IncompleteDifferentialPolarityContact { pair: NonEmptyStr }
   | NoConnectContact
   | ReservedContact
   | FunctionUnstated
@@ -151,6 +152,7 @@ fn signal_has_positive_polarity_suffix(signal: NonEmptyStr) -> Bool {
 
 fn signal_has_negative_polarity_suffix(signal: NonEmptyStr) -> Bool {
   ends_with(s: signal as String, suffix: "_N")
+    || ends_with(s: signal as String, suffix: "_M")
 }
 
 fn differential_pair_base_name(signal: NonEmptyStr) -> NonEmptyStr? {
@@ -222,10 +224,13 @@ fn classify_table4_signal(
         Present { value: scan } =>
           if differential_pair_is_complete(scan: scan) {
             DifferentialPairMemberContact { pair: base }
-          } else {
+          } else if scan.has_negative && !scan.has_positive {
+            // Active-low and other single-ended _N/_M names (WE_N, RAS_N, …) with no _P mate.
             SingleEndedSignalContact
+          } else {
+            IncompleteDifferentialPolarityContact { pair: base }
           }
-        Absent => SingleEndedSignalContact
+        Absent => IncompleteDifferentialPolarityContact { pair: base }
       }
     }
   }
@@ -262,6 +267,7 @@ type PackageContactMapStanding
   | ContactMapPubliclyAvailableNotIngested { document: NonEmptyStr, authority: ExternalAuthority }
   | ContactPopulationIncomplete { expected: Int, resolved: Int }
   | DuplicateContactDesignator { designator: NonEmptyStr }
+  | IncompleteDifferentialPolarity { pair: NonEmptyStr }
 
 fn contact_designators(map: PackageContactMap) -> List<NonEmptyStr> {
   map.contacts |> map(c => c.designator)
@@ -303,8 +309,8 @@ fn classified_reserved_pin_count(contacts: List<PackageContact>) -> Int {
 
 // A differential pair is COMPLETE when its pair name names exactly two member contacts in the
 // map — one for each polarity the datasheet assigns. Members are classified as differential
-// only when BOTH polarities exist under the same base name, so a singleton _N active-low signal
-// never enters this population.
+// only when BOTH polarities exist under the same base name. Active-low _N names with no _P mate
+// (WE_N, RAS_N, …) stay single-ended; PCIe lanes use _M as the negative leg beside _P.
 type DifferentialPairPopulationScan {
   counts: Map<NonEmptyStr, Int>
 }
@@ -330,27 +336,44 @@ type DifferentialPairStanding
   = AllDifferentialPairsComplete
   | IncompleteDifferentialPair { pair: NonEmptyStr, member_count: Int }
 
-fn differential_pair_standing(contacts: List<PackageContact>) -> DifferentialPairStanding {
-  let scan = scan_differential_pair_population(contacts: contacts)
-  fold(contacts, init: AllDifferentialPairsComplete, f: fn(acc, c) {
+fn first_incomplete_polarity_pair(contacts: List<PackageContact>) -> NonEmptyStr? {
+  fold(contacts, init: none, f: fn(acc, c) {
     match acc {
-      IncompleteDifferentialPair { pair: _, member_count: _ } => acc
-      AllDifferentialPairsComplete => match c.function {
-        DifferentialPairMemberContact { pair: p } => {
-          let members = match map_get(scan.counts, p) {
-            Present { value: n } => n
-            Absent => 0
-          }
-          if members == 2 {
-            AllDifferentialPairsComplete
-          } else {
-            IncompleteDifferentialPair { pair: p, member_count: members }
-          }
-        }
-        _ => AllDifferentialPairsComplete
+      Present { value: _ } => acc
+      Absent => match c.function {
+        IncompleteDifferentialPolarityContact { pair: p } => Present { value: p }
+        _ => none
       }
     }
   })
+}
+
+fn differential_pair_standing(contacts: List<PackageContact>) -> DifferentialPairStanding {
+  match first_incomplete_polarity_pair(contacts: contacts) {
+    Present { value: pair } => IncompleteDifferentialPair { pair: pair, member_count: 1 }
+    Absent => {
+      let scan = scan_differential_pair_population(contacts: contacts)
+      fold(contacts, init: AllDifferentialPairsComplete, f: fn(acc, c) {
+        match acc {
+          IncompleteDifferentialPair { pair: _, member_count: _ } => acc
+          AllDifferentialPairsComplete => match c.function {
+            DifferentialPairMemberContact { pair: p } => {
+              let members = match map_get(scan.counts, p) {
+                Present { value: n } => n
+                Absent => 0
+              }
+              if members == 2 {
+                AllDifferentialPairsComplete
+              } else {
+                IncompleteDifferentialPair { pair: p, member_count: members }
+              }
+            }
+            _ => AllDifferentialPairsComplete
+          }
+        }
+      })
+    }
+  }
 }
 
 // TWO LINEAR PASSES, NOT A QUADRATIC ONE. An earlier revision re-counted the whole designator
@@ -400,14 +423,17 @@ fn first_duplicate_designator(designators: List<NonEmptyStr>) -> NonEmptyStr? {
 // party asserting it, which is the same unforgeable-construction frontier DESIGN names, and
 // it is stated rather than papered over.
 fn admit_package_contact_map(map: PackageContactMap, expected: Int) -> PackageContactMapStanding {
-  match first_duplicate_designator(designators: contact_designators(map: map)) {
-    Present { value: dup } => DuplicateContactDesignator { designator: dup }
-    Absent => {
-      let resolved = contact_count(map: map)
-      if resolved == expected {
-        PackageContactMapAdmitted { resolved: resolved }
-      } else {
-        ContactPopulationIncomplete { expected: expected, resolved: resolved }
+  match first_incomplete_polarity_pair(contacts: map.contacts) {
+    Present { value: pair } => IncompleteDifferentialPolarity { pair: pair }
+    Absent => match first_duplicate_designator(designators: contact_designators(map: map)) {
+      Present { value: dup } => DuplicateContactDesignator { designator: dup }
+      Absent => {
+        let resolved = contact_count(map: map)
+        if resolved == expected {
+          PackageContactMapAdmitted { resolved: resolved }
+        } else {
+          ContactPopulationIncomplete { expected: expected, resolved: resolved }
+        }
       }
     }
   }

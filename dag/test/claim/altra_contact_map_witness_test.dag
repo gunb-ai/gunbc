@@ -1,9 +1,11 @@
 module test.claim.altra_contact_map_witness
 
-import std.types { Bool }
+import std.types { Bool, List }
 import extdeps.cpu.ampere_altra_package {
   AllDifferentialPairsComplete,
   IncompleteDifferentialPair,
+  SingleEndedSignalContact,
+  Table4PinRow,
   PackageContactMapAdmitted,
   altra_declared_contact_count,
   altra_pin_summary_total,
@@ -13,6 +15,7 @@ import extdeps.cpu.ampere_altra_package {
   classified_power_and_ground_pin_count,
   classified_reserved_pin_count,
   classified_signal_pin_count,
+  contacts_from_table4,
   differential_pair_standing,
 }
 import extdeps.cpu.ampere_altra_package_contact_map {
@@ -41,12 +44,37 @@ test fn w_classified_population_cross_foots_pin_summary() -> Bool {
     && altra_pin_summary_total() == altra_declared_contact_count()
 }
 
-// RED CONTROL: differential-pair membership is a law on the ingested map, not a naming guess at
-// transcription time — dropping one leg of a pair must refuse here even when the population
-// count still reads 4926.
 test fn w_differential_pairs_are_complete_in_the_ingested_map() -> Bool {
   match differential_pair_standing(contacts: altra_package_contact_map().contacts) {
     AllDifferentialPairsComplete => true
+    IncompleteDifferentialPair { pair: _, member_count: _ } => false
+  }
+}
+
+// RED CONTROL: a dropped _N/_M mate must refuse classification, not downgrade to single-ended.
+test fn w_dropped_differential_leg_surfaces_incomplete_polarity() -> Bool {
+  let rows: List<Table4PinRow> = [
+    Table4PinRow { designator: "Z1", signal_name: "DDR4_CLK_0_P" },
+  ]
+  match differential_pair_standing(contacts: contacts_from_table4(rows: rows)) {
+    IncompleteDifferentialPair { pair: _, member_count: _ } => true
+    AllDifferentialPairsComplete => false
+  }
+}
+
+// Positive control: active-low _N names with no _P mate remain single-ended, not incomplete.
+test fn w_active_low_n_suffix_stays_single_ended() -> Bool {
+  let rows: List<Table4PinRow> = [
+    Table4PinRow { designator: "Z2", signal_name: "DDR4_ADDR_14_WE_N" },
+  ]
+  let contacts = contacts_from_table4(rows: rows)
+  match differential_pair_standing(contacts: contacts) {
+    AllDifferentialPairsComplete => fold(contacts, init: true, f: fn(ok, c) {
+      ok && match c.function {
+        SingleEndedSignalContact => true
+        _ => false
+      }
+    })
     IncompleteDifferentialPair { pair: _, member_count: _ } => false
   }
 }
