@@ -1,0 +1,48 @@
+module gunbc.plans.interpreter_cut_replacement
+
+import std.dissolution { unbound_dissolution }
+import std.types { List }
+import gunbc.plan { Plan, PlanRetiresWhen }
+import std.markdown { MarkdownBlock }
+import gunbc.plans.md_helpers { h2, p, li, ul }
+
+fn interpreter_cut_replacement_body() -> List<MarkdownBlock> {
+  [
+    p(text: "**Status:** first commit landed on `integration/interpreter-cut` — `v1_interpreter.rs` (14,910 lines) and `v1_interpreter_dispatch_generated.rs` (749) deleted, with the three producer layers that would have regrown them. Delete-first doctrine (operator ruling 2026-08-15, DESIGN §3 via gunbc#8276): the deletion IS the census, and fix-forward proceeds one operator-gated class at a time. The branch is red on main's terms by construction; the seed crate does not link without an execution path, and that is the finding, not a defect to patch."),
+
+    h2(text: "Why the pre-existing designs did not defer this"),
+    p(text: "`gunbc.plans.interpreter_kernel_d` ruled that host-physics inside the interpreter was the **terminal irreducible bootstrap kernel** and that dissolution was explicitly not a file delete. Under the 2026-08-15 ruling that plan is QUARRY: its area map (pure-eval vs host-physics vs CLI render) is valid evidence and was used here, but its sequencing was authored while the interpreter lived and is premise-contaminated. The divergence, stated rather than deferred to: there is no irreducible kernel to preserve, because the host-physics arms are reachable only THROUGH interpretation. Delete the reachability and the arms are unreachable code, not a kernel."),
+
+    h2(text: "The regrowth trap — three layers, all cut in the deleting commit"),
+    ul(items: [
+      li(text: "**Producer.** `gunbc.v1_interpreter_dispatch_emit` (402 lines) folding the 1,972-line roster `gunbc.v1_interpreter_primitive_surface`. Deleting only the emitted artifact leaves the press running."),
+      li(text: "**Regen driver.** `gunbc.generated_artifact` carried `V1InterpreterDispatchGeneratedRsArtifact` as a registry variant with artifact path, commit policy and eq arm; `gunbc.generated_artifact_emit` held the producer import plus the generate and extra-valid dispatch arms. The registry alone would have rebuilt the corpse on the next regen, with no reference to the deleted source."),
+      li(text: "**A predicate with exactly one inhabitant.** `v1.05_emit_rust` `is_lib_rs_macro_provider` tested for the generated dispatch module by name, and drove BOTH a `#[macro_use]` rendering special case and an ordering special case in `lib.rs` emission — so the emitter would keep printing a declaration for a module that no longer exists. The role is now uninhabited and deleted outright; `lib.rs` declarations are uniform. Cut in the `.dag` authority and its emitted Rust twin together."),
+    ]),
+
+    h2(text: "Census — cargo's refusals at identity grain"),
+    p(text: "`cargo check --workspace --all-targets`, exit 101, 105 errors, single root `crate::v1_interpreter` absent: E0433 ×44, E0432 ×28, E0282 ×32 (inference cascade off the unresolved imports — not an independent class), E0277 ×1. The lib crate fails first, so bins and tests were never compiled: this is wave one, and a second wave follows once the lib links."),
+    p(text: "**The load-bearing finding.** Outside `cli_run` there is ONE class, not several. All seven non-`cli_run` consumers — `coproduct_reflection`, `compiler_tests`, `data_initializer_identity`, `recorded_fixture`, `ci_control_plane`, `pre_push`, `census_exclude_derive` — need the identical quartet: `Value`, `InterpContext`, `ExecutionMode`, and a run entry. Nothing outside `cli_run` reaches the builtin dispatch at all. Corpus reference weight: `Value` 256, `InterpContext` 127, `ExecutionMode` 73, `run_in_context_with_args` 54, `run_in_context` 37, `run` 4."),
+
+    h2(text: "Class one — the eval-entry quartet (WITH THE OPERATOR, analysis only)"),
+    p(text: "The class is *call a `.dag` function from Rust and receive a dynamic `Value`*. Its native answer is the emitted-and-compiled path calling a real typed function: the dynamic `Value` universal is the interpreter's own artifact — the single dynamic type every modeled type collapses into so one evaluator can walk them all — and it does not survive into native execution, where each modeled type is its own Rust type. No mini-interpreter, no wholesale restoration. `coproduct_reflection` and `recorded_fixture` may genuinely need name-indexed dispatch; its native form is generated typed wrappers, still not an interpreter. No building before the operator's go."),
+
+    h2(text: "Retirement receipts — granted 2026-08-15"),
+    ul(items: [
+      li(text: "**Eval profiling — RETIRED, need does not survive.** Its subject was the interpreter's own evaluation; the subject is deleted, so this is a retired need rather than a port. Native profiling, if ever wanted, is a NEW need designed natively. Identity grain: `PerformanceReceipt`, `performance_receipt_from_witness`, `EvalRecomputeTotals`, `take_process_eval_recompute_totals`, `refresh_eval_recompute_trace_enabled_cache_for_tests`, `print_eval_recompute_trace`, `eval_profile_reset`, `eval_call_memo_counters`, `eval_call_memo_frame_exit`, `eval_subject_set`, `eval_subject_clear`, `thread_cpu_nanos`, `WITNESS_COST_CLOCK_BASIS_NOTE`, `map_budget_error_to_witness_refusal`, `untraced_expectation_frontier`, and the snapshot readers `flatten_counters_snapshot`, `flatten_by_site_snapshot`, `dag_fn_self_time_snapshot`, `call_frequency_snapshot`, `builtin_time_snapshot`, `big_fold_by_dag_site_snapshot`, `fold_caller_snapshot`, `list_cons_tail_split_snapshot`, `parse_memo_global_snapshot`."),
+      li(text: "**CLI output policy — MISPLACED, not dying; interpreter-side residence deleted, nothing rebuilt.** Terminal rendering was parked inside the interpreter and is not interpretation. A modeled authority already exists at `gunbc.output_policy`, so the native answer DERIVES from that model rather than porting the Rust. Assigned to the `cli_run` cut (tidy-gull-813) as a fix-forward class. Identity grain: `Verbosity`, `cli_verbosity`, `OutputDecision`, `output_decision`, `set_output_policy`, `group_begin`, `group_end`, `set_group_syntax`, `InstalledGroupSyntax`, `host_trace_grouping_active`, `StreamDisposition`, `InstalledEffectStreamPolicy`, `set_effect_stream_policy`, `render_shell_effect_failed_line_mirror`."),
+      li(text: "**`bounded_shell_host_drain.rs` — DELETED WITH RECEIPT.** Genuine host physics (bounded child-stderr drain), but its only declaration was a `#[path]` module inside the deleted interpreter, and retention without a consumer is speculative. **Restoration trigger:** the native shell-effect realization — `gunbc.host_effect_realize` `host_effect_apply`'s shell transport — when it needs a bounded stderr drain. Quarry keeps the implementation and its test `bounded_shell_stream_capture_replay.rs` at the pre-cut history."),
+    ]),
+
+    h2(text: "Shared seam with the cli_run cut — ruled, not a blocker"),
+    p(text: "56 of the 105 errors are `cli_run.rs` (48) plus `materialization_provider_consumer` (5), `test_module_hygiene_bridge` (3), `roadmap_acceptance_history_carrier` (3). Roughly 38 of the interpreter's 125 host builtins were implemented inside `cli_run.rs`, which tidy-gull-813 is deleting on its own branch: the builtin bridge **dies from both sides** — no host feed survives on either branch. This cut does not expand into `cli_run.rs`; bridge errors are triaged and reported, never rebuilt. The per-lens question (each census feed's lens either is already dead per DESIGN §6's 2026-08-11 deletions, or migrates to reading the `Node` tree) is DEMAND-DEFERRED: it becomes live only when each lens re-establishes on the native execution path."),
+  ]
+}
+
+data interpreter_cut_replacement_plan: Plan = Plan {
+  slug: "interpreter-cut-replacement",
+  title: "Plan — interpreter cut replacement (delete-first)",
+  body: interpreter_cut_replacement_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Every census class is backed out or retired with a receipt and the workspace links without an interpreter: the eval-entry quartet answered by emitted-and-compiled typed calls, the eval-profiling and CLI-output-policy retirements discharged, and the cli_run builtin-bridge seam closed from both sides. At that point the seed carries no dynamic Value universal and this plan is redundant.")
+  }
+}
