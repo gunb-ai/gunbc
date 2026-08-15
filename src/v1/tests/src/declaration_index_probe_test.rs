@@ -169,3 +169,100 @@ fn homonym_census_over_the_flat_namespace() {
     eprintln!("[homonyms] worst: {worst:?}");
     assert!(total > 1000, "census must run over a real namespace");
 }
+
+/// Parse-checks the `.dag` files that the corpus roots do NOT cover.
+///
+/// Asked from the other side, per the census rule: the main gate reports 3711
+/// modules, but the repository holds 3786 `.dag` files, so "0 unparsed" was
+/// only ever a statement about the population that gate was pointed at. This
+/// enumerates the remainder and checks it, rather than trusting that the roots
+/// are the whole tree.
+///
+/// `src/v1/**` is deliberately excluded: its `.dag` authority is deleted on the
+/// v1 cut, so those files are moot at integration rather than unchecked. What
+/// this covers is the residue that survives -- notably `fixtures/`, which this
+/// lane stripped imports from and which no other gate parses.
+#[test]
+fn dag_files_outside_the_corpus_roots_also_parse() {
+    let ws = workspace_root();
+    let roots = vec![ws.join("fixtures"), ws.join("test")];
+    let present: Vec<PathBuf> = roots.iter().filter(|r| r.exists()).cloned().collect();
+    assert!(
+        !present.is_empty(),
+        "no auxiliary roots found; this check would pass vacuously"
+    );
+
+    let (index, unparsed) = v1_compiler::source_closure::build_declaration_index(&present, &ws);
+    eprintln!(
+        "[aux-roots] {} modules, {} unparsed, roots {:?}",
+        index.module_count(),
+        unparsed.len(),
+        present
+    );
+    assert!(
+        index.module_count() > 0,
+        "auxiliary roots yielded no modules; the check would prove nothing"
+    );
+    assert!(
+        unparsed.is_empty(),
+        "{} auxiliary source file(s) failed to parse: {:?}",
+        unparsed.len(),
+        unparsed
+    );
+}
+
+/// Discriminating control for the instrument itself: what does the walk DO when
+/// a file is malformed?
+///
+/// Routed obligation: the whole-source-root parse walk in cli_run refuses by
+/// PANIC rather than by a typed located diagnostic. It is fail-closed in effect
+/// but the wrong shape for DESIGN §5, and since this module performs the same
+/// walk it is the likeliest terminal home for that obligation. I asserted
+/// earlier that a panicking parser would make the index panic too; that was an
+/// assertion, so this measures it instead.
+///
+/// Plants a malformed module in a temp root and records the observed behavior.
+/// If this test PASSES, the index refuses by returning the file in `unparsed`,
+/// which is the typed-and-located shape the obligation wants. If it panics
+/// instead, the panic IS the finding and the obligation is inherited.
+#[test]
+fn malformed_module_is_returned_as_unparsed_not_panicked() {
+    let dir = std::env::temp_dir().join(format!("gunbc_malformed_probe_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp root");
+
+    // A well-formed control, so a vacuous empty root cannot pass this test.
+    std::fs::write(
+        dir.join("good.dag"),
+        "module probe.good\ntype Ok { v: Int }\n",
+    )
+    .expect("write good");
+    // The planted defect: a list literal whose closing bracket is missing, which
+    // is the exact shape a variant deletion left behind on a sibling branch.
+    std::fs::write(
+        dir.join("bad.dag"),
+        "module probe.bad\nfn rows() -> List<Int> { [1, 2,\n",
+    )
+    .expect("write bad");
+
+    let (index, unparsed) =
+        v1_compiler::source_closure::build_declaration_index(&[dir.clone()], &dir);
+    eprintln!(
+        "[malformed-probe] {} modules indexed, unparsed: {:?}",
+        index.module_count(),
+        unparsed
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(
+        index.module_count(),
+        1,
+        "the well-formed control must still index, or this proves nothing"
+    );
+    assert_eq!(
+        unparsed.len(),
+        1,
+        "the malformed module must be REPORTED, not silently skipped: {unparsed:?}"
+    );
+}

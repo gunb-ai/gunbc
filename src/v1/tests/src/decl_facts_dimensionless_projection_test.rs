@@ -8,7 +8,6 @@ use std::rc::Rc;
 
 use im::HashMap;
 
-use v1_compiler::data_initializer_identity::marshal_data_initializer_projection;
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext, Value};
 
@@ -148,6 +147,7 @@ fn constructor_parent_qualified_name(ctx: &InterpContext, projection: &Value) ->
 
 #[test]
 fn marshal_identity_is_invariant_under_reversed_source_order() {
+    use v1_compiler::data_initializer_identity::marshal_data_initializer_projection;
     let forward = specimens_ctx_with_source_order(false);
     let reversed = specimens_ctx_with_source_order(true);
     for qn in [DISPOSITION_SCAFFOLD_QN, LOCAL_A_SCAFFOLD_QN] {
