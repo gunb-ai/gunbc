@@ -45,6 +45,19 @@ fn declaration_index_binds_bare_empty_to_its_single_declaring_module() {
         elapsed
     );
 
+    // THE PARSE GATE. cargo does not read .dag, so a cut branch's cargo runs
+    // are green on .dag edits by not looking at them. Building this index
+    // parses every .dag file under the roots, which makes it a whole-corpus
+    // parse check as a side effect -- but only if the result is ASSERTED.
+    // Printing the count and passing anyway is how a malformed literal rides
+    // four green pushes.
+    assert!(
+        unparsed.is_empty(),
+        "{} source file(s) failed to parse: {:?}",
+        unparsed.len(),
+        unparsed.iter().take(10).collect::<Vec<_>>()
+    );
+
     // The index must be built over a whole corpus, not a fragment: a small
     // module count would make every assertion below vacuously easy.
     assert!(
