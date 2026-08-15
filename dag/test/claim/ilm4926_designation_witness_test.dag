@@ -3,22 +3,25 @@ module test.claim.ilm4926_designation_witness
 import std.logic { Bool }
 import std.types { list_length }
 import extdeps.cpu_attachment.ilm4926 {
+  DesignationFactEstablished,
+  DesignationFactUnresolved,
   IndependentLoadingMechanismOnly,
   ReferentUnresolvedByCitedDocuments,
   SocketAssemblyIncludingLoadingMechanism,
   SocketBodyOnly,
   altra_classic_datasheet_authority,
+  all_designation_resolution_obligations_unresolved,
   attestation_count,
   attested_by_ampere_datasheets,
   attested_by_independent_publishers,
   attested_by_ocp_specification,
   attestations_from_authority,
   designation_referent_is_resolved,
+  designation_resolution_is_established,
   extdeps_external_authority_anchor,
   ilm4926,
   ilm4926_attestations,
   ilm4926_referent,
-  ilm4926_resolution_obligations,
   ocp_mt_jade_specification_authority,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -76,12 +79,20 @@ test fn w_red_one_publisher_twice_is_not_independent_attestation() -> Bool {
     && list_length(items: ocp_only) != list_length(items: ilm4926_attestations)
 }
 
-// THE FOUR BOARD-DESIGN AXES ARE STRUCTURAL FIELDS; each must carry a reason.
-test fn w_four_resolution_obligations_name_vendor_part_land_pattern_and_loading() -> Bool {
-  let o = ilm4926_resolution_obligations
-  !((o.vendor_identity as String) == "")
-    && !((o.orderable_part_number as String) == "")
-    && !((o.board_land_pattern as String) == "")
-    && !((o.loading_mechanism_identity as String) == "")
+// THE FOUR BOARD-DESIGN AXES ARE UNRESOLVED SUMS, NOT NONEMPTY STRINGS.
+test fn w_four_resolution_obligations_are_unresolved_on_each_axis() -> Bool {
+  all_designation_resolution_obligations_unresolved()
     && !designation_referent_is_resolved(referent: ilm4926_referent)
+}
+
+// RED control: a cited value on the established arm is what resolution means.
+test fn w_red_a_cited_value_would_establish_a_resolution_axis() -> Bool {
+  designation_resolution_is_established(standing: DesignationFactEstablished {
+    value: "Lotes",
+    authority: extdeps_external_authority_anchor,
+  })
+    && !designation_resolution_is_established(standing: DesignationFactUnresolved {
+      reason: "any reason at all",
+      next_authority_to_consult: none,
+    })
 }
