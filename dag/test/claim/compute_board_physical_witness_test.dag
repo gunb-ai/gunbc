@@ -18,9 +18,10 @@ import std.orthogonal_geometry {
   OrthogonalRefused,
   axis_aligned_rectangle2,
 }
-import product.compute_board.physical {
+import product.pcb.physical {
   BoardFrameIsNotSubMillimetre,
   BoardFrameUnregistered,
+  BoardFrameRegistrationRefused,
   BoardPhysicalArticle,
   PackageBodyEnvelope,
   ComponentPlacement,
@@ -108,6 +109,7 @@ fn admits(placements: List<ComponentPlacement>) -> Bool {
 fn refusal_is(r: PhysicalRefusal, wanted: String) -> Bool {
   match r {
     BoardFrameUnregistered { frame: _ } => wanted == "BoardFrameUnregistered"
+    BoardFrameRegistrationRefused { cause: _ } => wanted == "BoardFrameRegistrationRefused"
     BoardFrameIsNotSubMillimetre { frame: _ } => wanted == "BoardFrameIsNotSubMillimetre"
     PlacementFrameDiffersFromBoard { placement: _ } => wanted == "PlacementFrameDiffersFromBoard"
     PlacementExtentNotPositive { placement: _ } => wanted == "PlacementExtentNotPositive"
