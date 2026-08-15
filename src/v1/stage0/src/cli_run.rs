@@ -24543,7 +24543,7 @@ fn floor_color_enabled() -> bool {
 }
 
 #[derive(Clone, Copy)]
-struct ShardStyle {
+pub struct ShardStyle {
     shard_id: usize,
     /// Number of concurrent shards in this run. When it is 1 there is no parallelism to
     /// distinguish, so the `s{id}` shard tag is dropped (it only reads as noise — the reason the
