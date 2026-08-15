@@ -436,6 +436,13 @@ fn free_monoid_fold<T, A>(xs: FreeMonoid<T>, init: A, step: fn(A, T) -> A) -> A 
   }
 }
 
+fn free_monoid_fold_right<T, A>(xs: FreeMonoid<T>, init: A, step: fn(A, T) -> A) -> A {
+  match xs {
+    Empty => init
+    Cons { head: h, tail: t } => step(free_monoid_fold_right(xs: t, init: init, step: step), h)
+  }
+}
+
 fn free_monoid_reverse<T>(xs: FreeMonoid<T>) -> FreeMonoid<T> {
   free_monoid_fold(xs: xs, init: Empty, step: fn(acc, item) { Cons { head: item, tail: acc } })
 }

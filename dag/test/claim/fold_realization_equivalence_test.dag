@@ -1,0 +1,41 @@
+module test.claim.fold_realization_equivalence_test
+
+import std.types { Bool, Int }
+import std.algebra { FreeMonoid, Empty, Cons, free_monoid_fold, free_monoid_fold_right }
+import v2.std.algebra { fold_list, fold_list_right }
+
+data fold_realization_equivalence_note: String = "THE NATIVE ARM IS A REALIZATION OF THE SUBSTRATE BODY, AND THIS IS THE RECEIPT THAT SAYS SO. v1_interpreter intercepts fold_list and fold_list_right BEFORE free-call dispatch, so v2.std.algebra's own .dag bodies for those two names do not execute -- a substrate program exists and Rust runs instead. That is only safe if the two agree, and nothing asserted that they did: the shadowing was accidental rather than declared. These claims run the intercepted spelling and the un-intercepted substrate body (std.algebra free_monoid_fold / free_monoid_fold_right, which no arm intercepts) over the same inputs and require the same answer. THE ORDER-SENSITIVE CASE IS THE POINT: a step function that is commutative and associative -- counting, summing -- cannot tell a left fold from a right one, so an equivalence built only on those is satisfied by any traversal whatsoever. Subtraction looks like it discriminates and DOES NOT: the step (a, x) => a - x accumulates the negated sum whatever order the elements arrive in, so a left and a right fold return the identical scalar. That was asserted here as a control, it failed, and the failure was in the reasoning rather than in the code -- recorded because a control chosen for the wrong reason is exactly the tautological control this repository warns about, and it only surfaced by being run. String append is the step that genuinely pins visit ORDER, so it is what the direction control and the order claim both use. The empty list is asserted separately because it is the arm a fold reaches last and the one an off-by-one drops."
+
+fn build(n: Int, acc: FreeMonoid<Int>) -> FreeMonoid<Int> {
+  if n <= 0 { acc } else { build(n: n - 1, acc: Cons { head: n, tail: acc }) }
+}
+
+test fn left_fold_realization_matches_substrate_body() -> Bool {
+  let xs = build(n: 200, acc: Empty)
+  (fold_list(xs: xs, empty: 0, cons: fn(a, x) { a - x })
+     == free_monoid_fold(xs: xs, init: 0, step: fn(a, x) { a - x }))
+    && (fold_list(xs: Empty, empty: 7, cons: fn(a, x) { a - x })
+     == free_monoid_fold(xs: Empty, init: 7, step: fn(a, x) { a - x }))
+}
+
+test fn right_fold_realization_matches_substrate_body() -> Bool {
+  let xs = build(n: 200, acc: Empty)
+  (fold_list_right(xs: xs, empty: 0, snoc: fn(a, x) { a - x })
+     == free_monoid_fold_right(xs: xs, init: 0, step: fn(a, x) { a - x }))
+    && (fold_list_right(xs: Empty, empty: 7, snoc: fn(a, x) { a - x })
+     == free_monoid_fold_right(xs: Empty, init: 7, step: fn(a, x) { a - x }))
+}
+
+test fn left_and_right_folds_are_distinguishable() -> Bool {
+  let xs = build(n: 40, acc: Empty)
+  fold_list(xs: xs, empty: "", cons: fn(a, x) { concat(a, to_string(x)) })
+    != fold_list_right(xs: xs, empty: "", snoc: fn(a, x) { concat(a, to_string(x)) })
+}
+
+test fn visit_order_matches_not_just_the_scalar() -> Bool {
+  let xs = build(n: 40, acc: Empty)
+  (fold_list(xs: xs, empty: "", cons: fn(a, x) { concat(a, to_string(x)) })
+     == free_monoid_fold(xs: xs, init: "", step: fn(a, x) { concat(a, to_string(x)) }))
+    && (fold_list_right(xs: xs, empty: "", snoc: fn(a, x) { concat(a, to_string(x)) })
+     == free_monoid_fold_right(xs: xs, init: "", step: fn(a, x) { concat(a, to_string(x)) }))
+}
