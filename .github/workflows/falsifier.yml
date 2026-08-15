@@ -1,0 +1,382 @@
+name: affected-set-falsifier
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: 0 0,4,8,12,16,20 * * *
+permissions:
+  contents: read
+concurrency:
+  group: affected-set-falsifier
+  cancel-in-progress: false
+env:
+  CARGO_TERM_COLOR: always
+jobs:
+  falsifier-build:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 65
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Isolate toolchain dirs
+        run: |
+          rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
+          echo "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+          echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+          echo "MAKEFLAGS=" >> "$GITHUB_ENV"
+          echo "CARGO_BUILD_JOBS=3" >> "$GITHUB_ENV"
+          if sccache --show-stats >/dev/null 2>&1; then
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+          printf '%s\n' "CiSccacheProviderReceipt: provider=bound catalog=sccache_local"
+          else
+          printf '%s\n' "CiSccacheProviderReceipt: provider=SKIPPED catalog=sccache_local host=$(hostname) cause=daemon-unavailable; the release build runs UNCACHED — a counted degradation, not a supported mode (host_build_cache_provision P1b should have converged this host)"
+          fi
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+        with:
+          components: rustfmt
+          cache: false
+          rustflags: ''
+        env:
+          HOME: ${{ runner.temp }}
+      - name: Derive native-cache root (rustc-version segment; after setup-rust-toolchain)
+        run: |
+          # 🟡 dissolve-on: ci_native_cache_root_script — orch-emitted foreign-executor prelude step deriving GUNBC_NATIVE_CACHE_ROOT from rustc -V after setup-rust-toolchain; leaf rustc/tr/mkdir/echo strings remain until typed toolchain probe lands on host_effect_apply (#5828 / shell→intent Phase 2)
+          if ! GUNBC_TOOLCHAIN_SEG_RAW=$(rustc -V 2>/dev/null); then echo "::error::rustc -V failed after setup-rust-toolchain: cannot derive native-cache toolchain segment"; exit 1; fi
+          GUNBC_TOOLCHAIN_SEG=$(echo "$GUNBC_TOOLCHAIN_SEG_RAW" | tr ' ' '-')
+          if [ -z "$GUNBC_TOOLCHAIN_SEG" ]; then echo "::error::rustc -V produced an empty native-cache toolchain segment after setup-rust-toolchain"; exit 1; fi
+          mkdir -p "$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG"
+          echo "GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG" >> "$GITHUB_ENV"
+      - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
+        run: |
+          rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+          if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
+          if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
+          echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
+      - name: Cache Cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ${{ runner.temp }}/cargo/registry/index/
+            ${{ runner.temp }}/cargo/registry/cache/
+            ${{ runner.temp }}/cargo/git/db/
+            target/
+          key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            cargo-ci-${{ runner.os }}-${{ runner.arch }}-
+      - name: Build release bins (claim_executor + gunbc)
+        id: release_build
+        run: |
+          # 🟡 dissolve-on: ci_release_build_script — concat-built foreign-executor (GitHub Actions run:) release-build runner (ROOT stamp + verify-artifacts + sccache stats wrapping the orch-emitted EAGAIN retry core); membership of --bin / verify paths is derived from gunbc.ci_release_bins, but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the release-build runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          set -o pipefail
+          BUILD_LOG=$(mktemp)
+          if ! ("$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter,interp_test_witness,test_hooks --bin claim_executor --bin gunbc --bin regen_floor_skip_witness --bin floor_skip_discovery_witness --bin selection_control_skip_witness --bin claim_batch --bin regen_stage0 --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin infer_semantics_witness --bin parse_witness --bin cssl_assemble --bin namespace_structural_root_exposure_generated_witness) 2>&1 | tee "$BUILD_LOG"; then
+            if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$BUILD_LOG"; then
+              echo "::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
+              CARGO_BUILD_JOBS=1 "$CARGO_BIN" build -p v1-compiler --release --features text_lookup_work_counter,interp_test_witness,test_hooks --bin claim_executor --bin gunbc --bin regen_floor_skip_witness --bin floor_skip_discovery_witness --bin selection_control_skip_witness --bin claim_batch --bin regen_stage0 --bin interp_recorded_fixture_witness --bin v1_src_dag_parse --bin auth_declared_but_unwired_witness --bin bootstrap_witness --bin dag_collect_fingerprint_witness --bin diagnostics_witness --bin infer_semantics_witness --bin parse_witness --bin cssl_assemble --bin namespace_structural_root_exposure_generated_witness
+            else
+              exit 1
+            fi
+          fi
+          rm -f "$BUILD_LOG"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/regen_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/selection_control_skip_witness" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness"
+          sccache --show-stats 2>/dev/null || true
+        timeout-minutes: 45
+      - name: Pack release bins for cross-job handoff (tar keeps exec bits)
+        run: |
+          # 🟡 dissolve-on: ci_release_bins_pack_script — concat-built foreign-executor (GitHub Actions run:) release-bins tar pack runner; membership of archived bin names is derived from gunbc.ci_release_bins, but the pack transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the pack runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          tar -czf "$ROOT/release-bins.tgz" -C "$ROOT/target/release" "claim_executor" "gunbc" "regen_floor_skip_witness" "floor_skip_discovery_witness" "selection_control_skip_witness" "claim_batch" "regen_stage0" "interp_recorded_fixture_witness" "v1_src_dag_parse" "auth_declared_but_unwired_witness" "bootstrap_witness" "dag_collect_fingerprint_witness" "diagnostics_witness" "infer_semantics_witness" "parse_witness" "cssl_assemble" "namespace_structural_root_exposure_generated_witness"
+        timeout-minutes: 5
+      - name: Upload release-bins artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-bins
+          path: release-bins.tgz
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+        timeout-minutes: 10
+  selection-control:
+    runs-on: [self-hosted, linux, arm64]
+    needs: [falsifier-build]
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.expected_healed_sha || github.sha }}
+      - name: Refuse a heal revalidation whose run subject or checkout does not name the expected healed SHA
+        run: |
+          EXPECTED_HEALED_SHA="${{ inputs.expected_healed_sha }}"
+          RUN_SUBJECT_HEAD="${{ github.sha }}"
+          if [ -n "$EXPECTED_HEALED_SHA" ]; then
+          ACTUAL_HEAD="$(git rev-parse HEAD)"
+          if ! [ "$RUN_SUBJECT_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: workflow run subject $RUN_SUBJECT_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          if ! [ "$ACTUAL_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: checkout head $ACTUAL_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          echo "heal revalidation preflight: checkout names expected healed head $EXPECTED_HEALED_SHA"
+          fi
+      - name: Setup Rust (floor gate toolchain — batch-4 emit_host/self_host gates need cargo/rustfmt; no isolated rustup)
+        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+        with:
+          components: rustfmt
+          cache: false
+          rustflags: ''
+      - name: Derive native-cache root (rustc-version segment; after setup-rust-toolchain)
+        run: |
+          # 🟡 dissolve-on: ci_native_cache_root_script — orch-emitted foreign-executor prelude step deriving GUNBC_NATIVE_CACHE_ROOT from rustc -V after setup-rust-toolchain; leaf rustc/tr/mkdir/echo strings remain until typed toolchain probe lands on host_effect_apply (#5828 / shell→intent Phase 2)
+          if ! GUNBC_TOOLCHAIN_SEG_RAW=$(rustc -V 2>/dev/null); then echo "::error::rustc -V failed after setup-rust-toolchain: cannot derive native-cache toolchain segment"; exit 1; fi
+          GUNBC_TOOLCHAIN_SEG=$(echo "$GUNBC_TOOLCHAIN_SEG_RAW" | tr ' ' '-')
+          if [ -z "$GUNBC_TOOLCHAIN_SEG" ]; then echo "::error::rustc -V produced an empty native-cache toolchain segment after setup-rust-toolchain"; exit 1; fi
+          mkdir -p "$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG"
+          echo "GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG" >> "$GITHUB_ENV"
+      - name: Download release-bins artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-bins
+        timeout-minutes: 10
+      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
+        id: release_bins
+        run: |
+          # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          mkdir -p "$ROOT/target/release"
+          tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
+          rm -f "$ROOT/release-bins.tgz"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/regen_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/selection_control_skip_witness" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness"
+        timeout-minutes: 5
+      - name: Affected-set selection control (floor_skip_discovery_witness)
+        run: |
+          # Affected-set-scoped selection-control admission (pull_request only) — the selection mechanism applied to itself. selection_control_skip_witness intersects the merge-base diff with the control suite's input closure (cli_run::selection_control_input_sources: the suite's declared .dag entries plus their import closure through [src/v2, dag], the src/v1/** prefix covering the selection implementation and the witness bin, the Cargo/toolchain build config, and EVERY markdown path). The markdown arm is not incidental: the suite's declared entry dag/test/claim/doc_reachability_witness_test.dag declares LiveTreeDisposition = ReadsLiveTree and folds the live doc graph (gunbc.doc_graph_roots.doc_graph_roots_all) to decide doc_graph_has_no_orphan_docs, asserting the orphan wall green against the REAL tree — so a .md add/edit/delete genuinely changes this suite's verdict, and a live-tree read is not an import edge, so no closure walk can discover that reach. It is a structural over-approximation computed AS the answer (DESIGN §5: a closure superset is the precision frontier), not a widening failure arm. Found by review 44682 on this PR, whose first draft skipped docs-only diffs while its green control asserted that skip. A PR diff touching none of those provably cannot change the suite's verdict, so the step exits 0 immediately. NOT circular: the skip decision is a coarse path/import-closure intersection, never the node-frontier selector the suite verifies, so a broken selector cannot suppress its own control. TWO KINDS OF ARM, and the difference is the whole fail-closed story. STRUCTURAL arms — empty diff, ANY departed path (no docs carve-out — deleting a doc is the direction the orphan/dangling wall is most sensitive to, and regen's/compile-clean's docs exemption is correct only because markdown is outside THEIR closures), any markdown path, and any closure intersection — are label-valued: the diff WAS observed, so the answer is computed, and the witness exits 0 printing run_selection_control. REFUSAL arms — diff-observation failure and input-closure failure — do NOT run the suite and do NOT print a label: they STOP THE LINE. The witness prints a typed, located, countable diagnostic (SELECTION_CONTROL_REFUSED cause=DiffObservationFailed or cause=InputClosureFailed) to stderr and exits NON-ZERO, so the step goes RED. That is DESIGN §5's rule that a failure arm must refuse, never widen: 'can't compute the affected set → rerun everything' is the named absorbing fallback, conflating ⊤-as-ignorance with ⊤-as-answer, and it fails open twice — the deficit's frequency is zeroed by construction so it never ranks for fixing, and the cost is denominated in the corpus rather than the change. It is also the ruling already recorded in floor_diff_baseline_law (src/v2/workflow/floor_diff_observe.dag): a BaselineRefused → NameStatusDiffFail HALTS with a typed AFFECTED-SET REFUSAL, refusing every enrolled row rather than widening to a full-corpus run (operator ruling 2026-07-05). Corrected here after review 44768 caught this note still claiming the failure arms ran the suite — a §3 single-authority violation, since the note is emitted into ci.yml and would have been the authoritative description of the opposite behaviour. TWO DISTINCT fail-closed mechanisms sit outside that, and they are not the same arm: (a) the witness exits 0 but prints anything other than the skip label — the string comparison fails and the suite runs; (b) the witness exits NON-zero — either a deliberate typed REFUSAL (the two computation-failure arms above) or a panic (e.g. the workspace chdir failing) — GitHub runs this step under bash -e, so the command substitution's failure aborts the step RED rather than falling through. (b) is deliberately unlike the regen precedent, which suppresses stderr and defaults with a shell fallback; here a crashing skip witness stops the line loudly instead of being papered over, and stderr is left unredirected so the witness's own typed explanation of WHICH arm fired lands in the job log. COLD CONTROL: the skip is gated to pull_request events via GITHUB_EVENT_NAME, so push-to-main and workflow_dispatch run the suite UNCONDITIONALLY. A wrong closure that lets a PR wrongly skip therefore surfaces on the very next merge to main (the one-merge acceptance window, the regen-skip shape). MEASURED BASIS, including the part that makes this a trade rather than a free win. The step costs 9m02s per PR (run 30482171871, job 90679506428) against the 80s local basis gunbc.ci_workflow's step note declares. The skip witness itself costs ~100s per invocation (three local runs: 100.0s, 100.3s, 103.1s), because selection_control_skip_label_for_ci observes the diff through cli_run::floor_git_diff_name_status_range, which resolves floor_diff_observe.dag with a COLD whole-pool index — that observation, not the closure walk, is essentially the whole 100s. So: a skipping PR pays ~100s instead of 542s (saves ~7m22s); a NON-skipping PR pays 542s + ~100s (a ~100s REGRESSION, stated because it is real). SKIP RATE, MEASURED AGAINST THE REAL CLOSURE (corrected 2026-07-29, third revision — read the correction history, it is the point): over the last 100 origin/main commits, 35 touch src/v1/**, 36 touch markdown, 1 touches Cargo/toolchain, and of the 36 that survive those arms, 13 intersect the suite's actual 391-file import closure. TRUE SKIP RATE 23 of 100, so expected value is about -25s/PR (0.23 x -442s + 0.77 x +100s) — roughly 1.2 percent of a 33.6-minute ci job. Two earlier claims in this note were WRONG and are superseded: -7.7 min/PR from an unmeasured 85 percent skip rate, then -4.3 min/PR from a partially-measured <=66 percent ceiling that extrapolated the src/v1/** prefix alone and had not yet counted markdown or the closure. Each is recorded rather than quietly replaced, because the drift this very note documents (an 80s basis left standing against a 542s reality) is the same failure mode. CONSEQUENCE, stated plainly: the cost win alone does NOT justify this scaffold's hand-Rust under DESIGN §6 (denominate the benefit in displaced cost). What ruins the mean is the ~100s cold diff observation — the 🟡 deficit below, paid twice per PR — not the mechanism; dissolve that and the same code is about -102s/PR at near-zero cost. The teardown removal (-11.2s every PR) and this note's own measured corrections stand independently of the skip. 🟡 dissolve-on: the ~100s diff observation is now paid TWICE per PR, once here and once by regen_floor_skip_witness in the regen job, and both pay it as a cold whole-pool index build in a fresh process. It dissolves with the same persistent content-keyed node store gunbc.ci_materialization's resolve-receipt note names as the terminal condition for the per-entry cold resolve class; until then the double payment is counted here rather than hidden, and the non-skipping regression above is its visible cost.
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+          _ci_selection_skip="$("$ROOT/target/release/selection_control_skip_witness" )"
+          if [ "$_ci_selection_skip" = selection_control_not_affected_skip ]; then
+          echo "gunbc ci selection control: pull_request diff does not intersect the control suite's input closure — its verdict is provably unchanged; skipping (push-to-main runs it unconditionally as the cold control)"
+          exit 0
+          fi
+          fi
+          "$ROOT/target/release/floor_skip_discovery_witness"
+        timeout-minutes: 15
+  cold-corpus:
+    runs-on: [self-hosted, linux, arm64]
+    needs: [falsifier-build]
+    timeout-minutes: 285
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.expected_healed_sha || github.sha }}
+      - name: Refuse a heal revalidation whose run subject or checkout does not name the expected healed SHA
+        run: |
+          EXPECTED_HEALED_SHA="${{ inputs.expected_healed_sha }}"
+          RUN_SUBJECT_HEAD="${{ github.sha }}"
+          if [ -n "$EXPECTED_HEALED_SHA" ]; then
+          ACTUAL_HEAD="$(git rev-parse HEAD)"
+          if ! [ "$RUN_SUBJECT_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: workflow run subject $RUN_SUBJECT_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          if ! [ "$ACTUAL_HEAD" = "$EXPECTED_HEALED_SHA" ]; then
+          echo "::error::heal revalidation refused: checkout head $ACTUAL_HEAD does not equal expected healed head $EXPECTED_HEALED_SHA"
+          exit 1
+          fi
+          echo "heal revalidation preflight: checkout names expected healed head $EXPECTED_HEALED_SHA"
+          fi
+      - name: Setup Rust (floor gate toolchain — batch-4 emit_host/self_host gates need cargo/rustfmt; no isolated rustup)
+        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+        with:
+          components: rustfmt
+          cache: false
+          rustflags: ''
+      - name: Derive native-cache root (rustc-version segment; after setup-rust-toolchain)
+        run: |
+          # 🟡 dissolve-on: ci_native_cache_root_script — orch-emitted foreign-executor prelude step deriving GUNBC_NATIVE_CACHE_ROOT from rustc -V after setup-rust-toolchain; leaf rustc/tr/mkdir/echo strings remain until typed toolchain probe lands on host_effect_apply (#5828 / shell→intent Phase 2)
+          if ! GUNBC_TOOLCHAIN_SEG_RAW=$(rustc -V 2>/dev/null); then echo "::error::rustc -V failed after setup-rust-toolchain: cannot derive native-cache toolchain segment"; exit 1; fi
+          GUNBC_TOOLCHAIN_SEG=$(echo "$GUNBC_TOOLCHAIN_SEG_RAW" | tr ' ' '-')
+          if [ -z "$GUNBC_TOOLCHAIN_SEG" ]; then echo "::error::rustc -V produced an empty native-cache toolchain segment after setup-rust-toolchain"; exit 1; fi
+          mkdir -p "$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG"
+          echo "GUNBC_NATIVE_CACHE_ROOT=$RUNNER_TOOL_CACHE/gunbc-native/$GUNBC_TOOLCHAIN_SEG" >> "$GITHUB_ENV"
+      - name: Download release-bins artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-bins
+        timeout-minutes: 10
+      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
+        id: release_bins
+        run: |
+          # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          mkdir -p "$ROOT/target/release"
+          tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
+          rm -f "$ROOT/release-bins.tgz"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/regen_floor_skip_witness" "$ROOT/target/release/floor_skip_discovery_witness" "$ROOT/target/release/selection_control_skip_witness" "$ROOT/target/release/claim_batch" "$ROOT/target/release/regen_stage0" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness"
+        timeout-minutes: 5
+      - name: Floor cgroup peak pre-read (calibration; reset if permitted)
+        run: |
+          # 🟡 dissolve-on: ci_cgroup_peak_locate_shell — foreign-executor (GitHub Actions run:) shell transport composing extdeps.linux.proc_self_cgroup unified-hierarchy membership (v2.extdeps.languages.bash_proc_self_cgroup) with std.path_intent NearestAncestorContaining dirname ascent (bash_orch_if). Procfs path is extdeps.linux.procfs ProcSelfCgroup. DISSOLVES WHEN shell→intent Phase 2 realizes cgroup membership plus path ascent on host_effect_apply / orchestration path arms without medium-as-string Run.command concat.
+          { _cg_bad=0; _cg_n=0; _cg_rel=""; while IFS= read -r _cg_line || [ -n "$_cg_line" ]; do _cg_trim=$(echo "$_cg_line" | sed -e 's/^ //' -e 's/ $//'); [ -z "$_cg_trim" ] && continue; case "$_cg_trim" in *:*:*) ;; *) _cg_bad=1; continue ;; esac; _cg_h=$(echo "$_cg_trim" | cut -d: -f1); _cg_ctl=$(echo "$_cg_trim" | cut -d: -f2); _cg_path=$(echo "$_cg_trim" | cut -d: -f3-); [ -z "$_cg_h" ] && _cg_bad=1; [ -z "$_cg_path" ] && _cg_bad=1; if [ "$_cg_h" = "0" ] && [ -z "$_cg_ctl" ]; then _cg_n=$((_cg_n + 1)); _cg_rel="$_cg_path"; fi; done < /proc/self/cgroup; [ "$_cg_bad" -eq 1 ] && { echo "[calibration] cgroup_membership=malformed" >&2; exit 1; }; [ "$_cg_n" -eq 0 ] && { echo "[calibration] cgroup_membership=missing" >&2; exit 1; }; [ "$_cg_n" -gt 1 ] && { echo "[calibration] cgroup_membership=ambiguous" >&2; exit 1; }; d="/sys/fs/cgroup$_cg_rel"; } || exit 1
+          while [ -n "$d" ] && [ "$d" != "/sys/fs/cgroup" ] && ! [ -f "$d/memory.peak" ]; do d=$(dirname "$d"); done
+          if [ -f "$d/memory.peak" ]; then if echo reset > "$d/memory.peak" 2>/dev/null; then echo "[calibration] floor_peak_pre reset=ok scope=floor cgroup=$d"; else echo "[calibration] floor_peak_pre reset=unsupported pre_peak=$(cat "$d/memory.peak") scope=span cgroup=$d (post>pre attributes the peak to the floor exactly; post==pre means floor peak <= pre, a job-scoped upper bound)"; fi; else echo "[calibration] floor_peak_pre scope=unavailable (no memory.peak ancestor)"; fi
+        timeout-minutes: 5
+      - name: affected-set falsifier (predict-only cold run)
+        id: floor
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/claim_executor" --source-root dag --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_falsifier_plan
+        env:
+          GUNBC_CI_DIFF_BASE: HEAD~20
+          GUNBC_CI_DIFF_HEAD: HEAD
+          GUNBC_FLOOR_PHASE_JOURNAL: target/floor-phase-journal.tsv
+        timeout-minutes: 170
+      - name: Upload floor component receipt (read by falsifier-alert)
+        uses: actions/upload-artifact@v4
+        with:
+          name: floor-component-receipt
+          path: target/floor-component-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+        if: always()
+        timeout-minutes: 10
+      - name: Upload floor phase journal (survives killed floor)
+        uses: actions/upload-artifact@v4
+        with:
+          name: floor-phase-journal
+          path: target/floor-phase-journal.tsv
+          if-no-files-found: warn
+          retention-days: 30
+          compression-level: 0
+        if: always()
+        timeout-minutes: 10
+      - name: Upload floor receipts (TSV authority for cost/drift rows)
+        uses: actions/upload-artifact@v4
+        with:
+          name: floor-receipts
+          path: target/floor-*
+          if-no-files-found: warn
+          retention-days: 14
+        if: always()
+        timeout-minutes: 5
+      - name: compile-clean whole-tree cold control (scoped-PR admission counterpart)
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/claim_executor" --source-root dag --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_plan_artifact_plan
+        env:
+          GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL: 1
+        if: always() && !cancelled() && steps.release_bins.outcome == 'success'
+        timeout-minutes: 30
+      - name: native-cache cold control (warm-tier admission counterpart)
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/claim_executor" --source-root dag --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_falsifier_native_cache_cold_plan
+        env:
+          GUNBC_CI_NATIVE_CACHE_COLD_CONTROL: 1
+        if: always() && !cancelled() && steps.release_bins.outcome == 'success'
+        timeout-minutes: 30
+      - name: Floor cgroup peak post-read (calibration; survives a killed floor)
+        run: |
+          # 🟡 dissolve-on: ci_floor_phase_journal_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four journal leaves: FileExists, column-name log, row-count summary log, and absent log. If/else control flow is already v2.std.orchestration intent; only those leaves remain medium-as-string Run.command values. DISSOLVES WHEN bash-emit (#5828 / ROADMAP shell-effectplan-to-bash / shell→intent Phase 2) binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_phase_journal_if contains no opaque shell command text.
+          if [ -f "$GUNBC_FLOOR_PHASE_JOURNAL" ]; then
+          echo "[floor-phase-journal] columns: unix_millis pid phase state detail"
+          echo "[floor-phase-journal] $(wc -l < $GUNBC_FLOOR_PHASE_JOURNAL) rows retained; full journal in the floor-phase-journal artifact"
+          else
+          echo "[floor-phase-journal] absent"
+          fi
+          # 🟡 dissolve-on: ci_floor_wet_witness_row_outcome_receipt_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four receipt leaves: FileExists, column-name log, row-count summary log, and absent log. DISSOLVES WHEN bash-emit (#5828 / ROADMAP shell-effectplan-to-bash / shell→intent Phase 2) binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_wet_witness_row_outcome_receipt_if contains no opaque shell command text.
+          if [ -f "target/floor-wet-witness-row-outcome-receipt.tsv" ]; then
+          echo "[wet-witness-row-outcome-receipt] columns: batch entry function outcome detail"
+          echo "[wet-witness-row-outcome-receipt] $(wc -l < target/floor-wet-witness-row-outcome-receipt.tsv) rows; full receipt in the floor-component-receipt artifact"
+          else
+          echo "[wet-witness-row-outcome-receipt] absent"
+          fi
+          # 🟡 dissolve-on: ci_cgroup_peak_locate_shell — foreign-executor (GitHub Actions run:) shell transport composing extdeps.linux.proc_self_cgroup unified-hierarchy membership (v2.extdeps.languages.bash_proc_self_cgroup) with std.path_intent NearestAncestorContaining dirname ascent (bash_orch_if). Procfs path is extdeps.linux.procfs ProcSelfCgroup. DISSOLVES WHEN shell→intent Phase 2 realizes cgroup membership plus path ascent on host_effect_apply / orchestration path arms without medium-as-string Run.command concat.
+          { _cg_bad=0; _cg_n=0; _cg_rel=""; while IFS= read -r _cg_line || [ -n "$_cg_line" ]; do _cg_trim=$(echo "$_cg_line" | sed -e 's/^ //' -e 's/ $//'); [ -z "$_cg_trim" ] && continue; case "$_cg_trim" in *:*:*) ;; *) _cg_bad=1; continue ;; esac; _cg_h=$(echo "$_cg_trim" | cut -d: -f1); _cg_ctl=$(echo "$_cg_trim" | cut -d: -f2); _cg_path=$(echo "$_cg_trim" | cut -d: -f3-); [ -z "$_cg_h" ] && _cg_bad=1; [ -z "$_cg_path" ] && _cg_bad=1; if [ "$_cg_h" = "0" ] && [ -z "$_cg_ctl" ]; then _cg_n=$((_cg_n + 1)); _cg_rel="$_cg_path"; fi; done < /proc/self/cgroup; [ "$_cg_bad" -eq 1 ] && { echo "[calibration] cgroup_membership=malformed" >&2; exit 1; }; [ "$_cg_n" -eq 0 ] && { echo "[calibration] cgroup_membership=missing" >&2; exit 1; }; [ "$_cg_n" -gt 1 ] && { echo "[calibration] cgroup_membership=ambiguous" >&2; exit 1; }; d="/sys/fs/cgroup$_cg_rel"; } || exit 1
+          while [ -n "$d" ] && [ "$d" != "/sys/fs/cgroup" ] && ! [ -f "$d/memory.peak" ]; do d=$(dirname "$d"); done
+          if [ -f "$d/memory.peak" ]; then echo "[calibration] floor_peak_post=$(cat "$d/memory.peak") floor_outcome=${{ steps.floor.outcome }} cgroup=$d (observation label: floor_outcome=success is an EXACT point; any other outcome is a CENSORED lower bound - the process was killed while exceeding the read, so true demand is strictly greater. scope per the floor_peak_pre line: reset=ok means this IS the floor peak; scope=span compares against pre_peak)"; else echo "[calibration] floor_peak_post floor_outcome=${{ steps.floor.outcome }} scope=unavailable (no memory.peak ancestor)"; fi
+        env:
+          GUNBC_FLOOR_PHASE_JOURNAL: target/floor-phase-journal.tsv
+        if: always()
+        timeout-minutes: 5
+  aggregate-verdict:
+    runs-on: [self-hosted, linux, arm64]
+    needs: [falsifier-build, selection-control, cold-corpus]
+    timeout-minutes: 20
+    if: always() && !cancelled()
+    steps:
+      - name: Download floor component receipt (cold-corpus execution witness)
+        id: floor_component_receipt_download
+        uses: actions/download-artifact@v4
+        with:
+          name: floor-component-receipt
+          path: target
+        continue-on-error: true
+        timeout-minutes: 10
+      - name: Aggregate falsifier cadence verdict (typed cold-corpus execution)
+        id: aggregate_verdict
+        run: |
+          # 🟡 dissolve-on: falsifier_aggregate_verdict_script — concat-built foreign-executor (GitHub Actions run:) aggregate cadence verdict shell; receipt JSON literals are derived from gunbc.falsifier_cold_corpus_execution classify_cold_corpus_execution / cold_corpus_execution_receipt_json, but the transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the aggregate verdict step through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
+          set -euo pipefail
+          mkdir -p target
+          BUILD_RESULT="${{ needs.falsifier-build.result }}"
+          SELECTION_RESULT="${{ needs.selection-control.result }}"
+          COLD_RESULT="${{ needs.cold-corpus.result }}"
+          if [ "${BUILD_RESULT}" = "cancelled" ]; then
+          printf '%s\n' "{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"build-job-cancelled\"}" > target/falsifier-cold-corpus-execution.json
+            printf '%s\n' "::error::Cold corpus did not run — build cancelled; infrastructure, not a falsifier regression finding"
+            exit 1
+          fi
+          if [ "${BUILD_RESULT}" = "skipped" ]; then
+          printf '%s\n' "{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"build-job-skipped\"}" > target/falsifier-cold-corpus-execution.json
+            printf '%s\n' "::error::Cold corpus did not run — build skipped; infrastructure, not a falsifier regression finding"
+            exit 1
+          fi
+          if [ "${BUILD_RESULT}" != "success" ]; then
+          printf '%s\n' "{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"build-job-failed\"}" > target/falsifier-cold-corpus-execution.json
+            printf '%s\n' "::error::Cold corpus did not run — build unavailable (${BUILD_RESULT}); infrastructure, not a falsifier regression finding"
+            exit 1
+          fi
+          if [ "${COLD_RESULT}" = "skipped" ]; then
+          printf '%s\n' "{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"cold-corpus-job-skipped\",\"blocking_job\":\"cold-corpus\"}" > target/falsifier-cold-corpus-execution.json
+            printf '%s\n' "::error::Cold corpus skipped despite successful build — topology violation"
+            exit 1
+          fi
+          if [ "${COLD_RESULT}" = "cancelled" ]; then
+          printf '%s\n' "{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"cold-corpus-job-cancelled\"}" > target/falsifier-cold-corpus-execution.json
+            printf '%s\n' "::error::Cold corpus cancelled — environment unavailability"
+            exit 1
+          fi
+          FLOOR_RECEIPT_PRESENT=false
+          if [ -f target/floor-component-receipt.json ] && grep -q floor-component-receipt/v1 target/floor-component-receipt.json; then
+            FLOOR_RECEIPT_PRESENT=true
+          fi
+          if [ "${FLOOR_RECEIPT_PRESENT}" != true ]; then
+            if [ "${COLD_RESULT}" = "success" ]; then
+              printf '%s\n' "{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"cold-corpus-receipt-artifact-absent\"}" > target/falsifier-cold-corpus-execution.json
+              printf '%s\n' "::error::Cold corpus succeeded but floor-component receipt artifact absent — transport or emit failure, not a falsifier regression finding"
+              exit 1
+            fi
+            printf '%s\n' "{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-not-run\",\"cause\":\"cold-corpus-failed-before-receipt\"}" > target/falsifier-cold-corpus-execution.json
+            printf '%s\n' "::error::Cold corpus did not produce floor-component receipt (cold=${COLD_RESULT}) — infrastructure, not a falsifier regression finding"
+            exit 1
+          fi
+            printf '%s\n' "{\"schema\":\"falsifier-cold-corpus-execution/v1\",\"execution\":\"corpus-executed\",\"receipt_path\":\"target/floor-component-receipt.json\"}" > target/falsifier-cold-corpus-execution.json
+          if [ "${SELECTION_RESULT}" != "success" ] || [ "${COLD_RESULT}" != "success" ]; then
+            printf '%s\n' "::error::Falsifier cadence red — selection=${SELECTION_RESULT} cold=${COLD_RESULT} (corpus executed; see target/falsifier-cold-corpus-execution.json)"
+            exit 1
+          fi
+          printf '%s\n' "FalsifierCadenceVerdict: cadence-green"
+        timeout-minutes: 5
+

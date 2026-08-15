@@ -1,0 +1,500 @@
+# HAND-MAINTAINED INTERIM (unlike ci.yml/falsifier.yml, which are generated and
+# drift-gated — gunbc.generated_artifact enumerates exactly those two artifacts).
+# Purpose: the falsifier is the whole-corpus cold control — the only executor of
+# the Gate-1 emit receipts and the verifier of per-PR affected-set selection —
+# and it ran RED for 29 consecutive scheduled runs (2026-07-16..07-21) without
+# any human noticing, because nothing consumed its conclusion (operator: "totally
+# ambient/gets ignored unless a human literally goes to look at it"). This
+# workflow makes falsifier state non-ambient: transition-to-red opens a labeled
+# issue (notifying watchers), sustained red heartbeats at most daily, and
+# transition-to-green closes it with a receipt.
+#
+# Every one of those is a COMMENT carrying the owner mention, because a mention
+# notifies only when it is created and only an issue's first body write is a
+# creation — see ALERT_MENTION below for the receipt on why the body alone was
+# not enough.
+#
+# THAT PROPERTY HAS NO EXECUTING CONSUMER, and the gap is named rather than left
+# implied. "Every notifying artifact carries the mention" is invisible to yaml
+# linting and to this workflow's own green conclusion — the alert ran successfully
+# for two days while notifying nobody — so it is exactly the class that wants a
+# check. A hand-authored JS harness beside this file was written and then REMOVED
+# (operator, 2026-08-06): every foreign-language artifact in this tree is emitted
+# from .dag (.github/live-deploy-srv1-apply.sh is the pattern), so hand-authoring
+# a second one here would add a hand-maintained realization rather than a scaffold
+# — and the substrate route is not merely inconvenient, it is blocked at the same
+# seam this file's own dissolve-on names: there is no workflow_run TRIGGER model
+# (extdeps.github.workflow_runs models runs as an API resource, not a trigger) and
+# gunbc.falsifier_workflow declares issues: none, so the alert's notifying
+# artifacts are not substrate objects and no lens has a Node tree to read.
+# The evidence the current shape is correct is therefore an unenrolled execution
+# receipt, not a live control: run at authoring against 70b422f3c, the heartbeat,
+# failing-set-changed, green-close and throttle-pagination scenarios all went RED
+# and the open-issue-body scenario stayed green. Next-rung trigger: the dissolve-on
+# below. When the alert becomes a typed effect row, these scenarios become ordinary
+# .dag witnesses under dag/test/claim and the property stops being unenforced.
+#
+# The open issue describes the CURRENT failure, not the first one. Earlier this
+# workflow wrote the body once at first red and thereafter only appended a
+# throttled heartbeat comment, so the body — the thing a human actually reads —
+# froze while the failure changed underneath it. Receipt: #7737 sat open for ~30h
+# with a body describing a BudgetExceeded kill on witness_committed_is_fixed_point
+# that had stopped occurring at 2026-08-03T17:53, while the live failure was
+# WitnessRed on entirely different witnesses. Precisely: the alerting MECHANISM was
+# working — the 2026-08-04T12:31 heartbeat comment does name the current failing set
+# — so this is not missed alerting. What failed is that the two things a reader
+# meets first, the title and the body, described a resolved failure, while the
+# current one was only in a comment that may be up to 20h old and sits below the
+# fold. Worse, the class transition itself never announced anything: BudgetExceeded
+# -> WitnessRed is a different incident with a different remedy, and it was absorbed
+# into an unchanged "Still red". An open issue reads as an accurate live description
+# of the current state, so a stale one is worse than
+# none. The body is therefore rewritten every red window (body edits do not
+# notify, so this costs no noise), and the failing component/class set plus its
+# failure class is carried as a signature: a red that CHANGES CLASS is a different incident from a
+# red that persists, and it bypasses the comment throttle rather than being
+# suppressed by it.
+#
+# It reports PER-COMPONENT state read from the floor's own receipt
+# (gunbc.floor_component_receipt, uploaded by the falsifier job as
+# floor-component-receipt), never inferred from the overall workflow conclusion.
+# The earlier version read only run.conclusion and hardcoded one causal story for
+# every failure — "affected-set cold control is dark, per-PR selection UNVERIFIED,
+# Gate-1 receipts do not execute". On run 30509024051 all three clauses were false:
+# the predict-only control concluded Done over 5217 witnesses and only the
+# silent-pick gate failed. An overall-red composite that erases the green state of
+# its completed children is a state-space conflation, and it misdirected triage
+# every time it fired. A missing or unparseable receipt is reported as an explicit
+# unknown; it never re-widens into the old claim.
+# 🟡 dissolve-on: fold into gunbc.falsifier_workflow (dag/gunbc/falsifier_workflow.dag)
+# when the workflow emit seam models workflow_run triggers + issue effects; the
+# alert then becomes a typed effect row beside the batches it observes.
+#
+# THE ALERT DESCRIBES MAIN, AND ONLY MAIN. The issue is a live description of the
+# corpus's state at the tip of main, so the run it reads must be a run OF main.
+# The trigger carried no branch or event restriction and the job carried no guard,
+# so any session branch could dispatch affected-set-falsifier by hand and its
+# completion would rewrite the body, flip the signature, comment, or CLOSE the
+# issue as green — reporting a branch's state as main's. That is not a noisy
+# alert, it is a false one, and the failure is silent: nothing in the rendered
+# body said which ref produced it, so a reader could not tell an overwritten
+# window from a real transition. Receipt: three branch dispatches appeared among
+# the last twelve runs of the observed window.
+#
+# The restriction is stated TWICE on purpose, and the two are not redundant.
+# `branches:` filters delivery — the alert job never starts for a non-main run.
+# The `if:` is the fail-closed backstop at the consuming end: if the trigger
+# filter is ever widened, or a future trigger type is added beside workflow_run,
+# the guard still refuses rather than letting a foreign ref reach the issue. The
+# event allowlist is part of it — a schedule or a MAIN manual dispatch is the
+# cadence this alert reports; a pull_request-driven run is a different subject.
+#
+# Both conditions are on the TRIGGERING run's own fields, never on the alert
+# run's context: github.ref here is the default branch on every workflow_run
+# delivery regardless of what ran, so guarding on it would pass unconditionally
+# and read as a check while being none.
+name: falsifier-alert
+on:
+  workflow_run:
+    workflows: ["affected-set-falsifier"]
+    types: [completed]
+    branches: [main]
+permissions:
+  issues: write
+  actions: read
+  contents: read
+jobs:
+  alert:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 5
+    if: >-
+      github.event.workflow_run.head_branch == 'main' &&
+      (github.event.workflow_run.event == 'schedule' ||
+       github.event.workflow_run.event == 'workflow_dispatch')
+    steps:
+      - name: Download floor component receipt (from the triggering run)
+        id: receipt
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: floor-component-receipt
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: receipt
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const run = context.payload.workflow_run;
+            const conclusion = run.conclusion; // success | failure | cancelled | ...
+            if (conclusion !== 'success' && conclusion !== 'failure') {
+              core.info(`conclusion=${conclusion} — no alert action`);
+              return;
+            }
+            const label = 'falsifier-alert';
+            // The single interim owner handle. It is deliberately ONE constant used
+            // by every notifying artifact rather than a literal repeated per call
+            // site: gunbc.falsifier_lane falsifier_lane_owner_roster_note records
+            // this mention as the only owner fact in the tree, and a second copy of
+            // it would be a second authority for that one fact.
+            //
+            // WHY IT IS ON THE COMMENTS AND NOT ONLY THE BODY: an @mention notifies
+            // when it is CREATED, and only the issue body's first write is a
+            // creation. Body edits send nothing (that is exactly why the rewrite
+            // above is safe to run every window), so an alert whose only mention
+            // lives in the body pings its recipient exactly once — at issue open —
+            // and then goes silent for the entire incident however long it runs and
+            // however many times the failing component/class set changes underneath
+            // it. Receipt: issue #7737 opened 2026-08-03 and carried four github-actions comments
+            // across the next two days (one heartbeat, three failing-set-changed);
+            // none of them contained a mention, so the sustained-red heartbeat this
+            // workflow's header describes as its whole purpose delivered no
+            // notification after the first one. The mention therefore belongs on
+            // every artifact that notifies, which is every comment.
+            const ALERT_MENTION = '@briansrls';
+            // The provenance of the run is rendered, not assumed. The trigger
+            // filter and the job guard above already make a non-main run
+            // undeliverable, so these fields are not the check — they are what
+            // lets a READER verify the check held, and what makes the ref and
+            // head of any given window recoverable from the issue itself rather
+            // than by opening the run. head_sha is the one that carries triage
+            // weight: a red window is only comparable to another red window at a
+            // known head, and the issue previously recorded none.
+            const runLine = `[run ${run.id}](${run.html_url}) · \`${run.head_branch}\` @ \`${(run.head_sha || '').slice(0, 10)}\` · event \`${run.event}\` · started ${run.run_started_at} · conclusion **${conclusion}**`;
+
+            // ---- read the floor's own per-component receipt -------------------
+            // Absence is a NAMED state carrying its cause. It never becomes a
+            // claim about any component's state.
+            const EXPECTED_SCHEMA = 'floor-component-receipt/v1';
+            function readReceipt() {
+              const path = 'receipt/floor-component-receipt.json';
+              let raw;
+              try {
+                raw = fs.readFileSync(path, 'utf8');
+              } catch (e) {
+                return { ok: false, cause: `receipt artifact not present (${e.code || e.message})` };
+              }
+              let doc;
+              try {
+                doc = JSON.parse(raw);
+              } catch (e) {
+                return { ok: false, cause: `receipt present but unparseable (${e.message})` };
+              }
+              if (doc.schema !== EXPECTED_SCHEMA) {
+                return { ok: false, cause: `receipt schema ${JSON.stringify(doc.schema)} != ${EXPECTED_SCHEMA}` };
+              }
+              return { ok: true, doc };
+            }
+
+            function describeOutcome(c) {
+              if (c.outcome === 'timed_out') {
+                return `TimedOut (budget ${c.budget_ms}ms, elapsed ${c.elapsed_ms}ms)`;
+              }
+              if (c.outcome === 'refused') return `Refused — ${c.diagnostic}`;
+              if (c.outcome === 'failed') return `Failed — ${c.error}`;
+              if (c.outcome === 'skipped') return `Skipped — ${c.reason}`;
+              if (c.outcome === 'done') return 'Done';
+              // The receipt's own arm for a component that reached no conclusion.
+              if (c.outcome === 'not_concluded') return 'reached no conclusion';
+              return String(c.outcome);
+            }
+
+            function componentReport(r) {
+              if (!r.ok) {
+                return [
+                  '**Per-component state: UNKNOWN.**',
+                  '',
+                  `Cause: ${r.cause}.`,
+                  '',
+                  'No claim is made here about the affected-set cold control, the',
+                  'Gate-1 emit receipts, or the known-red accounting: without the',
+                  'receipt this alert cannot tell which component failed. Read the',
+                  'run log directly, and treat a persistently missing receipt as its',
+                  'own defect (the floor is meant to write one on every exit path).',
+                ].join('\n');
+              }
+              const doc = r.doc;
+              const ctl = doc.affected_set_cold_control || {};
+              // "unsuccessful" is not "failed": a Skipped batch never ran and a Refused
+              // one stopped deliberately. The receipt keeps those distinct, so the
+              // rendering must too.
+              const bad = Array.isArray(doc.unsuccessful_components) ? doc.unsuccessful_components : [];
+              const lines = [];
+
+              if (ctl.state === 'present' && ctl.verified === true) {
+                const c = ctl.component || {};
+                const n = typeof c.witnesses === 'number' ? c.witnesses.toLocaleString() : 'an unreported number of';
+                lines.push(`**Affected-set cold control: GREEN** — concluded Done over ${n} witnesses.`);
+                lines.push('Per-PR affected-set selection IS verified by this run.');
+              } else if (ctl.state === 'present') {
+                // A control that DID NOT RUN is not a control that FAILED. Both leave
+                // selection unverified — that stays fail-closed either way — but they
+                // have different remedies (restore the enrollment vs. fix the control),
+                // so labelling a Skipped control "RED" is a state-space conflation of
+                // exactly the kind this receipt exists to prevent. This arm sees Skipped
+                // once unreached components keep their planned identity (#7818): they
+                // resolve to present/unverified rather than collapsing to absent.
+                const c = ctl.component || {};
+                const didNotRun = c.outcome === 'skipped' || c.outcome === 'not_concluded';
+                lines.push(didNotRun
+                  ? `**Affected-set cold control: DID NOT RUN** — ${describeOutcome(c)}.`
+                  : `**Affected-set cold control: RED** — ${describeOutcome(c)}.`);
+                lines.push('Per-PR affected-set selection runs UNVERIFIED while this stands.');
+              } else {
+                lines.push(`**Affected-set cold control: ${String(ctl.state || 'unknown').toUpperCase()}** — ${ctl.cause || 'no cause recorded'}.`);
+                lines.push('Per-PR affected-set selection is NOT verified by this run.');
+              }
+
+              lines.push('');
+              if (bad.length === 0) {
+                lines.push('Every component concluded Done.');
+              } else {
+                lines.push(`Component(s) that did not conclude Done — ${bad.length} of ${doc.component_count}:`);
+                for (const c of bad) {
+                  lines.push(`- batch ${c.index} \`${c.label}\` — ${describeOutcome(c)}`);
+                }
+              }
+              const passed = (doc.component_count || 0) - bad.length;
+              lines.push('');
+              lines.push(`Components that concluded Done: ${passed} of ${doc.component_count}.`);
+              return lines.join('\n');
+            }
+
+            // ---- failing component/class signature ------------------------------
+            // The signature is what makes a red that CHANGED CLASS distinguishable
+            // from a red that merely persists. They are different incidents with
+            // different remedies (re-basis a dated ceiling vs. fix a witness vs.
+            // repair a runner), and the 20h heartbeat throttle below is keyed on it
+            // so a transition is never suppressed as "still red".
+            //
+            // IT IS NOT A FAILING *SET* AND NO LONGER CLAIMS TO BE. Its members are
+            // COMPONENTS — batch-grain rows — so two different witnesses failing
+            // inside one component are one member, and the prose says "failing
+            // component/class set" everywhere for that reason. Exact failing-witness
+            // identities are deliberately absent rather than approximated: the
+            // receipt does not carry them, and recovering them by parsing a
+            // component's diagnostic prose is the string-classification the receipt
+            // module already refuses at its seed boundary. That waits for typed
+            // witness identities on the receipt, not for a regex here.
+            //
+            // FAILURE_MODE IS PART OF THE KEY, and its absence was a real hole. The
+            // outcome tag alone is many-to-one over the floor's failure vocabulary:
+            // floor_component_outcome_of_failure_mode maps BOTH Infra and WitnessRed
+            // to `failed` (gunbc.floor_component_receipt records why — one is the
+            // fleet's fault, one is the witness owner's, and they route to different
+            // people). So an Infra -> WitnessRed transition — a change of owner, not
+            // just of symptom — produced a byte-identical signature and was absorbed
+            // into "still red, unchanged". The mode already rides on every emitted
+            // row, so keying on it costs nothing and closes that arm.
+            //
+            // Every part is derived from the receipt's own identities — never from
+            // rendered prose. An unreadable receipt gets its own signature carrying
+            // the cause: it is an unknown, never folded into any known failing
+            // component/class set.
+            function signatureOf(r) {
+              if (!r.ok) return `receipt-unavailable:${r.cause}`;
+              const bad = Array.isArray(r.doc.unsuccessful_components)
+                ? r.doc.unsuccessful_components : [];
+              if (bad.length === 0) return 'no-unsuccessful-components';
+              return bad
+                .map((c) => {
+                  // A row written before failure_mode was emitted, or one built
+                  // through the tag constructor that genuinely never saw a mode,
+                  // reads as an explicit unknown rather than being silently dropped
+                  // from the key — dropping it would recreate the collapse above.
+                  const mode = typeof c.failure_mode === 'string' && c.failure_mode !== ''
+                    ? c.failure_mode
+                    : 'mode-unrecorded';
+                  return `${c.index}:${c.label}:${mode}:${c.outcome}`;
+                })
+                .sort()
+                .join('|');
+            }
+
+            // Prior state rides in the issue body as a marker, so no external store
+            // is needed and the issue stays the single authority for its own state.
+            // A body with no marker (an issue opened by the previous version of this
+            // workflow) yields null — an explicit unknown, which compares unequal to
+            // every real signature, so the first run after this lands rewrites the
+            // stale body instead of silently keeping it.
+            const STATE_RE = /<!-- falsifier-alert-state: (.*?) -->/;
+            // Legacy recovery: issues opened before the marker existed still carry a
+            // rendered "First red: ..." line, and that line is the ONLY record of when
+            // the incident started. Recovering it is not cosmetic — without it the
+            // rewrite below would stamp the CURRENT run as "First red", asserting
+            // something false in the body, which is the same class of defect this
+            // change exists to remove. If neither the marker nor the legacy line is
+            // present, the first red is reported as not recorded; it is never guessed.
+            const LEGACY_FIRST_RED_RE = /^First red: (.+)$/m;
+            function readState(body) {
+              const text = body || '';
+              const m = STATE_RE.exec(text);
+              if (!m) {
+                const legacy = LEGACY_FIRST_RED_RE.exec(text);
+                return { first_red: legacy ? legacy[1].trim() : null, signature: null };
+              }
+              try {
+                const s = JSON.parse(m[1]);
+                return {
+                  first_red: typeof s.first_red === 'string' ? s.first_red : null,
+                  signature: typeof s.signature === 'string' ? s.signature : null,
+                };
+              } catch (e) {
+                const legacy = LEGACY_FIRST_RED_RE.exec(text);
+                return { first_red: legacy ? legacy[1].trim() : null, signature: null };
+              }
+            }
+
+            // Owner routing is REFUSED, not guessed. gunbc.falsifier_lane derives a
+            // lane for a failing component but its owner roster is honestly empty,
+            // and minting a @mention from a string in this file would fabricate a
+            // routing fact that no carrier grounds — a second authority for
+            // ownership living in workflow YAML.
+            // 🟡 dissolve-on: the owner grounding carrier lands; this block then
+            // renders the routed owner (or that carrier's own typed refusal).
+            const ROUTING = [
+              '**Owner routing: REFUSED — no grounding carrier.**',
+              '',
+              'The failing component(s) above are named, but no declared roster maps a',
+              'falsifier lane to an owner, so this alert routes to nobody rather than',
+              'guessing. Treat the missing roster as its own obligation.',
+            ].join('\n');
+
+            const receipt = readReceipt();
+            const report = componentReport(receipt);
+            const signature = signatureOf(receipt);
+
+            let titleSuffix;
+            if (!receipt.ok) {
+              titleSuffix = 'component receipt unavailable';
+            } else {
+              const bad = receipt.doc.unsuccessful_components || [];
+              titleSuffix = bad.length === 1
+                ? `${bad[0].label} (batch ${bad[0].index})`
+                : `${bad.length} of ${receipt.doc.component_count} components not Done`;
+            }
+            const title = `falsifier is RED — ${titleSuffix}`;
+
+            const { data: open } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: label, per_page: 1,
+            });
+            const existing = open[0];
+
+            if (conclusion === 'failure') {
+              const prior = readState(existing ? existing.body : null);
+              // The first-red line is a SNAPSHOT and is preserved verbatim across
+              // rewrites; "Current" is re-derived every window. Losing the former
+              // would discard when the incident started, keeping only the latter
+              // would leave the body describing a failure that no longer occurs —
+              // which is exactly the defect this fixes (#7737 sat for ~30h showing a
+              // BudgetExceeded story while the actual failure was five red witnesses).
+              // For a NEW issue this run genuinely is the first red. For an existing
+              // one it is not, so an unrecoverable first red is reported as unknown
+              // rather than back-filled with the current run.
+              const firstRed = existing
+                ? (prior.first_red || 'not recorded (issue predates state tracking)')
+                : runLine;
+              const state = JSON.stringify({ first_red: firstRed, signature });
+              const body = [
+                `${ALERT_MENTION} — the scheduled affected-set falsifier is RED.`,
+                '',
+                `First red: ${firstRed}`,
+                `Current: ${runLine}`,
+                '',
+                '## Current failing component/class set',
+                '',
+                report,
+                '',
+                '## Routing',
+                '',
+                ROUTING,
+                '',
+                'This issue auto-closes when a scheduled run goes green. The body above',
+                'is REWRITTEN every red window, so it always describes the current',
+                'failure rather than the first one. Comments are throttled to at most',
+                'every 20h while the failing component/class set and its failure class are',
+                'unchanged; a',
+                'change in either is a different incident and comments immediately.',
+                '',
+                `<!-- falsifier-alert-state: ${state} -->`,
+              ].join('\n');
+              if (!existing) {
+                await github.rest.issues.create({
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  title, labels: [label], body,
+                });
+                core.notice(`falsifier alert issue opened — signature ${signature}`);
+              } else {
+                // The body and title are rewritten on EVERY red window. Editing an
+                // issue body sends no notification, so this costs no noise and is
+                // deliberately not rate-limited: a stale-but-open issue reads as an
+                // accurate live description of the current failure, which is worse
+                // than no description at all.
+                await github.rest.issues.update({
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  issue_number: existing.number, title, body,
+                });
+
+                // Comments DO notify, so they stay throttled — except across a
+                // transition, which the throttle must not swallow.
+                const changed = prior.signature !== signature;
+                // Paginated deliberately. This endpoint returns comments oldest-first
+                // and accepts no sort/direction, so a single per_page=100 request
+                // returns the FIRST hundred: past that boundary `comments.length - 1`
+                // is the 100th comment, not the newest, and its age only grows — so
+                // the 20h throttle would silently invert into "heartbeat every run",
+                // turning the fix for a silent alert into an alert that spams. The
+                // throttle must read the actual newest comment or it is not a
+                // throttle.
+                const comments = await github.paginate(github.rest.issues.listComments, {
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  issue_number: existing.number, per_page: 100,
+                });
+                const last = comments[comments.length - 1];
+                const lastTs = new Date(last ? last.created_at : existing.created_at).getTime();
+                const heartbeatDue = Date.now() - lastTs > 20 * 3600 * 1000;
+                if (changed) {
+                  const priorLine = prior.signature === null
+                    ? 'not recorded (issue predates signature tracking)'
+                    : `\`${prior.signature}\``;
+                  await github.rest.issues.createComment({
+                    owner: context.repo.owner, repo: context.repo.repo,
+                    issue_number: existing.number,
+                    body: [
+                      `${ALERT_MENTION} — **the failing component/class set changed**; this is a different incident from the one first reported.`,
+                      '',
+                      `Previous: ${priorLine}`,
+                      `Now: \`${signature}\``,
+                      '',
+                      `Latest: ${runLine}`,
+                      '',
+                      report,
+                    ].join('\n'),
+                  });
+                  core.notice(`falsifier failing component/class set changed: ${prior.signature} -> ${signature}`);
+                } else if (heartbeatDue) {
+                  await github.rest.issues.createComment({
+                    owner: context.repo.owner, repo: context.repo.repo,
+                    issue_number: existing.number,
+                    body: `${ALERT_MENTION} — still red, unchanged failing component/class set. Latest: ${runLine}\n\n${report}`,
+                  });
+                } else {
+                  core.info(`red, signature unchanged (${signature}) — body refreshed, comment throttled`);
+                }
+              }
+            } else if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: existing.number,
+                // The clear is mentioned too. An incident that stops paging without
+                // saying it cleared leaves the recipient unable to tell "fixed" from
+                // "the alerting broke again" — the same ambiguity, one level up.
+                body: `${ALERT_MENTION} — GREEN again: ${runLine} — cold control restored; closing.\n\n${report}`,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: existing.number, state: 'closed',
+              });
+              core.notice('falsifier alert issue closed (green)');
+            }
