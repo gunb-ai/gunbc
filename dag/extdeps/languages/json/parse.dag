@@ -84,7 +84,11 @@ fn json_unescape_from(s: String, i: Int, acc: String) -> String {
 }
 
 fn json_unescape(s: String) -> String {
-  json_unescape_from(s: s, i: 0, acc: "")
+  if string_contains(s: s, pattern: "\\") {
+    json_unescape_from(s: s, i: 0, acc: "")
+  } else {
+    s
+  }
 }
 
 fn parse_json_string_at(s: String, i: Int) -> JsonParse {
