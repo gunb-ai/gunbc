@@ -100,7 +100,7 @@ fn spark_serving_member_kind_wire(kind: SparkServingMemberKind) -> String {
 }
 
 fn spark_serving_release_identity_wire(identity: SparkServingReleaseIdentity) -> String {
-  serialize_content_hash(hash: identity.digest) as String
+  identity.digest.digest as String
 }
 
 fn spark_serving_member_key(member: SparkServingMember) -> String {
