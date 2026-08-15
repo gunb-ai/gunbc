@@ -26,11 +26,11 @@ type TypedRemoteFileWrite sole_constructor {
 
 type TypedRemoteFileWriteAdmission
   = TypedRemoteFileWriteAdmitted { write: TypedRemoteFileWrite }
-  | TypedRemoteFileWriteRefused { cause: NonEmptyStr }
+  | TypedRemoteFileWriteAdmissionRefused { cause: NonEmptyStr }
 
 type TypedRemoteFileWriteOutcome
   = TypedRemoteFileWriteConverged { result: SshSessionExecResult }
-  | TypedRemoteFileWriteRefused { reason: String }
+  | TypedRemoteFileWriteOutcomeRefused { reason: String }
 
 data typed_remote_file_write_tee_command: String = "tee"
 
@@ -44,7 +44,7 @@ fn typed_remote_file_write_seal(
   allowed_scope: FileTreeScope,
 ) -> TypedRemoteFileWriteAdmission {
   if !path_within_file_tree_scope(scope: allowed_scope, path: path as NonEmptyStr) {
-    TypedRemoteFileWriteRefused {
+    TypedRemoteFileWriteAdmissionRefused {
       cause: join(
         [
           "typed_remote_file_write: path ",
@@ -57,7 +57,7 @@ fn typed_remote_file_write_seal(
     }
   } else {
     if !typed_remote_file_write_path_portable(path: path) {
-      TypedRemoteFileWriteRefused {
+      TypedRemoteFileWriteAdmissionRefused {
         cause: join(
           [
             "typed_remote_file_write: path ",
@@ -107,7 +107,7 @@ fn typed_remote_file_write_over_fleet_ssh(
   let write = admission.write
   match portable_remote_words(raws: typed_remote_file_write_remote_argv(write: write)) {
     Absent =>
-      TypedRemoteFileWriteRefused {
+      TypedRemoteFileWriteOutcomeRefused {
         reason: concat(
           "typed_remote_file_write: remote argv refused as non-portable for ",
           target.endpoint as String,
@@ -117,7 +117,7 @@ fn typed_remote_file_write_over_fleet_ssh(
       if !typed_remote_file_write_argv_has_no_shell_body(
         argv: typed_remote_file_write_remote_argv(write: write),
       ) {
-        TypedRemoteFileWriteRefused {
+        TypedRemoteFileWriteOutcomeRefused {
           reason: "typed_remote_file_write: remote argv must be tee+path only — shell body tokens forbidden",
         }
       } else {
@@ -128,7 +128,7 @@ fn typed_remote_file_write_over_fleet_ssh(
         if result.success {
           TypedRemoteFileWriteConverged { result: result }
         } else {
-          TypedRemoteFileWriteRefused {
+          TypedRemoteFileWriteOutcomeRefused {
             reason: concat(
               "typed_remote_file_write: tee remote write failed for ",
               write.path as String,

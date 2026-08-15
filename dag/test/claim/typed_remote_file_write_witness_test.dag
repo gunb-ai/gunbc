@@ -6,7 +6,7 @@ import gunbc.file_access { FileTreeScope, path_within_file_tree_scope }
 import gunbc.typed_remote_file_write {
   TypedRemoteFileWrite,
   TypedRemoteFileWriteAdmitted,
-  TypedRemoteFileWriteRefused,
+  TypedRemoteFileWriteAdmissionRefused,
   typed_remote_file_write_seal,
   typed_remote_file_write_stdin_payload,
   typed_remote_file_write_remote_argv,
@@ -43,7 +43,7 @@ test fn w_path_outside_prefix_refused() -> Bool {
     content: "payload" as String,
     allowed_scope: witness_tmp_scope,
   ) {
-    TypedRemoteFileWriteRefused { cause: _ } => true
+    TypedRemoteFileWriteAdmissionRefused { cause: _ } => true
     TypedRemoteFileWriteAdmitted { write: _ } => false
   }
 }
@@ -58,7 +58,7 @@ test fn w_dotdot_escape_refused() -> Bool {
       content: "payload" as String,
       allowed_scope: witness_tmp_scope,
     ) {
-      TypedRemoteFileWriteRefused { cause: _ } => true
+      TypedRemoteFileWriteAdmissionRefused { cause: _ } => true
       TypedRemoteFileWriteAdmitted { write: _ } => false
     }
 }
@@ -73,7 +73,7 @@ test fn w_executor_home_substring_trap_refused() -> Bool {
       content: "payload" as String,
       allowed_scope: witness_executor_home_scope,
     ) {
-      TypedRemoteFileWriteRefused { cause: _ } => true
+      TypedRemoteFileWriteAdmissionRefused { cause: _ } => true
       TypedRemoteFileWriteAdmitted { write: _ } => false
     }
 }
@@ -84,7 +84,7 @@ test fn w_non_portable_path_refused() -> Bool {
     content: "payload" as String,
     allowed_scope: witness_tmp_scope,
   ) {
-    TypedRemoteFileWriteRefused { cause: _ } => true
+    TypedRemoteFileWriteAdmissionRefused { cause: _ } => true
     TypedRemoteFileWriteAdmitted { write: _ } => false
   }
 }
@@ -96,7 +96,7 @@ test fn w_metachar_payload_seals_without_interpretation() -> Bool {
     allowed_scope: witness_tmp_scope,
   ) {
     TypedRemoteFileWriteAdmitted { write: w } => w.content == witness_metachar_payload
-    TypedRemoteFileWriteRefused { cause: _ } => false
+    TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
   }
 }
 
@@ -112,7 +112,7 @@ test fn w_remote_argv_is_tee_and_path_only() -> Bool {
         && typed_remote_file_write_argv_has_no_shell_body(
           argv: typed_remote_file_write_remote_argv(write: w),
         )
-    TypedRemoteFileWriteRefused { cause: _ } => false
+    TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
   }
 }
 
@@ -124,7 +124,7 @@ test fn w_stdin_payload_is_exact_content_not_transformed() -> Bool {
   ) {
     TypedRemoteFileWriteAdmitted { write: w } =>
       typed_remote_file_write_stdin_payload(write: w) == witness_metachar_payload
-    TypedRemoteFileWriteRefused { cause: _ } => false
+    TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
   }
 }
 
@@ -143,9 +143,9 @@ test fn w_content_digest_stable_for_same_bytes() -> Bool {
         TypedRemoteFileWriteAdmitted { write: b } =>
           typed_remote_file_write_content_digest_hex(write: a)
             == typed_remote_file_write_content_digest_hex(write: b)
-        TypedRemoteFileWriteRefused { cause: _ } => false
+        TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
       }
-    TypedRemoteFileWriteRefused { cause: _ } => false
+    TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
   }
 }
 
@@ -159,7 +159,7 @@ test fn w_executor_home_unit_path_seals_for_spark_layout() -> Bool {
     allowed_scope: witness_executor_home_scope,
   ) {
     TypedRemoteFileWriteAdmitted { write: _ } => true
-    TypedRemoteFileWriteRefused { cause: _ } => false
+    TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
   }
 }
 
@@ -170,7 +170,7 @@ func w_local_filesystem_roundtrip_preserves_bytes() -> Bool {
     content: witness_metachar_payload,
     allowed_scope: witness_tmp_scope,
   ) {
-    TypedRemoteFileWriteRefused { cause: _ } => false
+    TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
     TypedRemoteFileWriteAdmitted { write: w } => {
       let w_out = Filesystem.Write(path: dest as String, content: w.content)
       if !w_out.success {
