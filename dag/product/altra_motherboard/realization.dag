@@ -1,11 +1,11 @@
 module product.altra_motherboard.realization
 
-import std.types { Bool, NonEmptyStr, List, String, list_length, concat }
+import std.types { Bool, NonEmptyStr, List, String, list_length }
 import std.integer { Int }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.ocp.mt_jade.platform {
-  extdeps_external_authority_anchor as mt_jade_platform_authority,
+  extdeps_external_authority_anchor,
   processor_power_rail_enable_order,
 }
 import product.altra_motherboard.minimal_design {
@@ -147,7 +147,7 @@ data altra_1p_requirement_part_realizations: List<RequirementPartRealization> = 
     providers: ["mgmt_net"],
     justification: ReferenceDesignPrecedent {
       reference_design: mt_jade_reference_platform_ref(),
-      authority: mt_jade_platform_authority,
+      authority: extdeps_external_authority_anchor,
     },
   },
   RequirementPartRealization {

@@ -1,6 +1,6 @@
 module test.claim.altra_realization_witness
 
-import std.types { Bool, String, NonEmptyStr, List, list_length, concat }
+import std.types { Bool, String, NonEmptyStr, List, list_length }
 import std.integer { Int }
 import std.decl_ref { DeclarationRef, declaration_ref_eq, decl_ref }
 import product.altra_motherboard.realization {
@@ -42,6 +42,7 @@ import product.altra_motherboard.realization {
 }
 import product.altra_motherboard.placement {
   altra_reference_plan,
+  altra_1p_minimum_ref,
   RequiredFunctionWithoutJustifiedPartOnBoard,
   ComponentEnvelopeNotEstablished,
   RequiredRoleUnfilled,
@@ -51,7 +52,7 @@ import product.altra_motherboard.placement {
   PlanWasBuiltFromADifferentDesign,
   placement_causes,
 }
-import product.altra_motherboard.minimal_design { altra_1p_minimum, altra_1p_minimum_ref }
+import product.altra_motherboard.minimal_design { altra_1p_minimum }
 import std.orthogonal_geometry { OrthogonalReady, OrthogonalRefused }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
