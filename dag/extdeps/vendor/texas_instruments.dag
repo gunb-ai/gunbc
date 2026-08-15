@@ -1,0 +1,37 @@
+module extdeps.vendor.texas_instruments
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+
+// THE LEGAL NAME IS TAKEN FROM THE COMPANY'S OWN TERMS OF USE, NOT FROM AN ENCYCLOPAEDIA AND NOT
+// FROM MEMORY. The sibling Lattice row prefers EDGAR for exactly this fact, and EDGAR is the
+// better authority for a registrant name, so the departure is recorded rather than silently made:
+// data.sec.gov and the EDGAR browse endpoint both answered 403 to the fetch performed while
+// authoring this module, so the name here comes from the entity's own published terms, where it
+// appears in the scope clause together with its registered address. Pulled 2026-08-14.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.ti.com/legal/terms-conditions/terms-of-use.html"
+  }
+}
+
+data texas_instruments_registrant_note: String = "extdeps.vendor.texas_instruments cites the vendor's own terms of use, whose scope clause reads 'Texas Instruments Incorporated, 12500 TI Boulevard, Dallas, Texas 75243, USA and its subsidiaries'. The stronger authority for a registrant's legal name is its own filing, and this repository already reaches EDGAR directly for the SCM issuer rows; both data.sec.gov and the EDGAR browse endpoint refused the fetch performed while authoring this module with HTTP 403, so the weaker-but-read authority is cited rather than a stronger one asserted unread."
+
+data texas_instruments: Vendor<Hardware> = Vendor { legal_name: "Texas Instruments Incorporated" }
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.texas_instruments",
+      decl_name: "texas_instruments",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

@@ -1,5 +1,6 @@
 module v2.test.manual.resolve_compile_anchor
 
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_roots }
 import v2.compiler.name_resolve {
   Admission,
   Import,
@@ -17,7 +18,12 @@ import v2.extdeps.languages.dag {
 }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list_node }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.diagnostic {
+  Accepted,
+  None,
+  Outcome,
+  Rejected
+}
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
@@ -271,14 +277,17 @@ fn resolve_subject_name() -> QualifiedName {
   Cons { head: ^anchor_subject_path_segment, tail: Empty }
 }
 
-fn resolve_roots_single_import() -> FreeMonoid<Node> {
-  Cons {
+fn resolve_roots_single_import() -> Outcome<FreeMonoid<NormalizedTree>> {
+  admit_normalized_roots(
+    roots: Cons {
     head: resolve_subject_module_root_with_import_use(),
     tail: Cons {
       head: resolve_imported_module_root(),
       tail: Empty
     }
-  }
+  },
+    diagnostics: None
+  )
 }
 
 fn resolve_imported_use_tree() -> Node {
@@ -294,27 +303,31 @@ fn resolve_import_target() -> QualifiedName {
 }
 
 fn resolve_with_admission_imported_binding_accepts() -> Bool {
-  match resolve_with_admission_policy(
-    lm: dag_language_model_surface_empty_prelude(),
-    roots: resolve_roots_single_import(),
-    admission: Admission {
-      subject: ResolutionSubject {
-        name: resolve_subject_name()
-      },
-      imports: Cons {
-        head: Import {
-          target: resolve_import_target(),
-          visibility: ImportVisible
-        },
-        tail: Empty
-      }
-    },
-    index: source_root_index_empty(),
-    active_roots: Empty,
-    policy: ImportScoped
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
+  match resolve_roots_single_import() {
     Rejected { diagnostics: _ } => false
+    Accepted { value: admitted, diagnostics: _ } =>
+    match resolve_with_admission_policy(
+      lm: dag_language_model_surface_empty_prelude(),
+      roots: admitted,
+      admission: Admission {
+        subject: ResolutionSubject {
+          name: resolve_subject_name()
+        },
+        imports: Cons {
+          head: Import {
+            target: resolve_import_target(),
+            visibility: ImportVisible
+          },
+          tail: Empty
+        }
+      },
+      index: source_root_index_empty(),
+      active_roots: Empty,
+      policy: ImportScoped
+    ) {
+      Accepted { value: _, diagnostics: _ } => true
+      Rejected { diagnostics: _ } => false
+    }
   }
 }
 

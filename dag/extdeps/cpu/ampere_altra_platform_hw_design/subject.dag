@@ -1,0 +1,101 @@
+module extdeps.cpu.ampere_altra_platform_hw_design.subject
+
+import std.types { String, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.ampere { ampere_vendor }
+import extdeps.publication { SpecificationDocumentDate }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "d1o0i0v5q5lp8h.cloudfront.net/ampere/live/assets/processor_families/design_specifications/Altra_Platform_HW_Design_Specification_v1.00_20210120.pdf",
+  }
+}
+
+data altra_platform_hw_design_subject_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "d1o0i0v5q5lp8h.cloudfront.net/ampere/live/assets/processor_families/design_specifications/Altra_Platform_HW_Design_Specification_v1.00_20210120.pdf",
+  }
+}
+
+data ampere_technical_document_index_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "amperecomputing.com/products/processors/altra",
+  }
+}
+
+data altra_platform_hw_design_subject_note: String = "THE HIGHEST-VALUE PUBLIC DOCUMENT THIS MOTHERBOARD LANE HAS FOUND. extdeps.cpu.ampere_altra_package carries the processor package pinout; extdeps.ocp.mt_jade carries one OCP reference-board specification; this module is the third axis — the vendor's platform hardware design guide for boards built around Altra rather than around a named reference platform. THE ANCHOR CITES THE PUBLIC CDN v1.00 COPY; AMPERE'S TECHNICAL-DOCUMENT INDEX LISTS A NEWER v1.20 REVISION DATED 2025-07-15 THAT THIS REPOSITORY HAS NOT RETRIEVED. HOW THIS REPOSITORY READ THAT LOCATOR IS RECORDED AS A GUNBC RECEIPT WITH A DeclarationRef TO altra_platform_hw_design_specification, NOT AS A FIELD ON THIS RECORD. THIS MODULE IS THE SUBJECT ANCHOR ONLY; PLATFORM FACTS ARE OWNED BY extdeps.cpu.ampere_altra_platform_hw_design.platform AND LAND IN #8260."
+
+type AltraPlatformHwDesignRev1_00 {}
+
+type AltraPlatformHwDesignRevision = AltraPlatformHwDesignRev1_00
+
+type HeldSpecificationSupersessionStanding
+  = HeldRevisionIsCurrentPublicCopy
+  | NewerRevisionExistsUnretrieved {
+      newer_version_label: NonEmptyStr,
+      newer_publication_date: SpecificationDocumentDate,
+      index_authority: ExternalAuthority,
+      held_version_label: NonEmptyStr,
+      detail: NonEmptyStr,
+    }
+
+data altra_platform_hw_design_title: NonEmptyStr = "Ampere Altra Platform Hardware Design Specification"
+
+data altra_platform_hw_design_version_label: NonEmptyStr = "v1.00"
+
+data altra_platform_hw_design_publication_date: SpecificationDocumentDate = SpecificationDocumentDate {
+  year: 2021,
+  month: 1,
+  day: 20,
+}
+
+data altra_platform_hw_design_supersession_standing: HeldSpecificationSupersessionStanding = NewerRevisionExistsUnretrieved {
+  newer_version_label: "v1.20",
+  newer_publication_date: SpecificationDocumentDate {
+    year: 2025,
+    month: 7,
+    day: 15,
+  },
+  index_authority: ampere_technical_document_index_authority,
+  held_version_label: altra_platform_hw_design_version_label,
+  detail: "Ampere technical-document index lists revision 1.20 dated 2025-07-15; the public CDN locator cited here still serves v1.00 dated 2021-01-20",
+}
+
+type AltraPlatformHwDesignSpecification {
+  title: NonEmptyStr
+  revision: AltraPlatformHwDesignRevision
+  version_label: NonEmptyStr
+  publication_date: SpecificationDocumentDate
+  publisher: Vendor<Hardware>
+  supersession_standing: HeldSpecificationSupersessionStanding
+}
+
+data altra_platform_hw_design_specification: AltraPlatformHwDesignSpecification = AltraPlatformHwDesignSpecification {
+  title: altra_platform_hw_design_title,
+  revision: AltraPlatformHwDesignRev1_00 {},
+  version_label: altra_platform_hw_design_version_label,
+  publication_date: altra_platform_hw_design_publication_date,
+  publisher: ampere_vendor,
+  supersession_standing: altra_platform_hw_design_supersession_standing,
+}
+
+data altra_platform_hw_design_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.cpu.ampere_altra_platform_hw_design.subject",
+      decl_name: "altra_platform_hw_design_specification",
+      field: WholeDeclaration,
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [],
+}
+
+data extdeps_model_scope: ExternalModelScope = altra_platform_hw_design_model_scope

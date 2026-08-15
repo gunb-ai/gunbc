@@ -1,0 +1,79 @@
+module extdeps.clock.ti_cdce913
+
+import std.types { String }
+import std.measure { micrometer }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.texas_instruments { texas_instruments }
+import extdeps.land_pattern.types {
+  DualRowLandGeometry,
+  PartMechanicalCandidate,
+  TerminalIndexingObligation,
+  PackageDrawingRef,
+  PackageBodyDimensions,
+  VendorRecommendedLandPattern,
+}
+
+// The CDCE913 datasheet, read 2026-08-14 for its mechanical pages only. The package drawing it
+// reprints is PW0014A, stamped 4220202/B, 12/2023.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.ti.com/lit/ds/symlink/cdce913.pdf"
+  }
+}
+
+data ti_cdce913_note: String = "THIS ROW IS A MECHANICAL CANDIDATE AND NOT A SELECTED PART. Nothing here says the device suits any board role; a selection is a functional-compatibility join done at the product layer, and this row supplies only the package authority that join consumes. MECHANICAL FACTS ONLY, FROM ONE DOCUMENT. The CDCE913 is a programmable clock generator and none of that is modelled here — no output count, no frequency range, no PLL fact. The package body dimensions and the vendor's recommended land pattern are what the drawing states and what were read. The document also carries the sibling part CDCEL913 on the same pages; the ordering part number recorded here is the one whose package this drawing describes, and a reader wanting the low-voltage sibling adds a row rather than editing this one, because they are separately ordered parts even where they share a drawing."
+
+data cdce913_pw0014a_drawing: PackageDrawingRef = PackageDrawingRef {
+  drawing_number: "4220202/B",
+  revision_date: "12/2023",
+  reprinted_in: extdeps_external_authority_anchor,
+}
+
+data cdce913_pw0014a_body: PackageBodyDimensions = PackageBodyDimensions {
+  designator: "PW0014A",
+  drawing: cdce913_pw0014a_drawing,
+  terminal_count: 14,
+  terminal_pitch: micrometer(count: 650),
+  body_length_min: micrometer(count: 4900),
+  body_length_max: micrometer(count: 5100),
+  body_width_min: micrometer(count: 4300),
+  body_width_max: micrometer(count: 4500),
+  height_max: micrometer(count: 1200),
+}
+
+data cdce913_pw0014a_land_pattern: VendorRecommendedLandPattern = VendorRecommendedLandPattern {
+  package_designator: "PW0014A",
+  drawing: cdce913_pw0014a_drawing,
+  geometry: DualRowLandGeometry {
+    lands_per_row: 7,
+    pitch: micrometer(count: 650),
+    row_span_centre_to_centre: micrometer(count: 5800),
+    land_length: micrometer(count: 1500),
+    land_width: micrometer(count: 450),
+  },
+}
+
+data cdce913pwr: PartMechanicalCandidate = PartMechanicalCandidate {
+  ordering_part_number: "CDCE913PWR",
+  vendor: texas_instruments,
+  body: cdce913_pw0014a_body,
+  land_pattern: cdce913_pw0014a_land_pattern,
+  terminal_indexing: TerminalIndexingObligation {
+    what_is_missing: "the pin-one location, the numbering direction, the top-versus-bottom view convention the drawing is stated in, the terminal-to-land identity relation and the electrical role of any exposed pad, for package PW0014A. None of those were transcribed and this repository carries no pin-map model to receive them, so this candidate cannot be admitted for footprint realization and a consumer cannot mistake matching counts and pitch for a known pin map",
+  },
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.clock.ti_cdce913",
+      decl_name: "cdce913pwr",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

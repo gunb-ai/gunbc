@@ -101,6 +101,7 @@ fn cld_projection_with(conditional_form: TargetConditionalShape) -> TargetValueE
     record_construct_form: rust_value_expression_projection().record_construct_form,
     field_access_form: rust_value_expression_projection().field_access_form,
     match_form: rust_value_expression_projection().match_form,
+    bool_literal_form: rust_value_expression_projection().bool_literal_form,
     block_evaluation_mode: rust_value_expression_projection().block_evaluation_mode
   }
 }

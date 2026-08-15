@@ -8,6 +8,10 @@ import v2.std.collection {
   list_at_optional,
   map_insert
 }
+import v2.std.compilers.target_model {
+  canonical_operation_op_add,
+  canonical_operation_wire_matches_operation
+}
 import v2.extdeps.languages.dag {
   dag_int_literal_magnitude_int_from_node,
   dag_node_is_eval_literal_atom,
@@ -321,59 +325,59 @@ fn v2_eval_nth_child_target(node: Node, wanted: Int) -> Outcome<Node> {
   }
 }
 
-fn v2_eval_transform_operator_symbol(node: Node) -> Outcome<Symbol> {
+fn v2_eval_transform_is_int_add(node: Node) -> Bool {
   match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
     Present { value: op_node } =>
       match op_node.kind {
         TypeNode { connective: Atom { identity: id } } =>
-          outcome_accepted(value: id)
-        _ => outcome_rejected(d: v2_eval_runtime_diagnostic(node: op_node))
+          id == ^dag_token_plus
+            || canonical_operation_wire_matches_operation(
+              wire: op_node,
+              operation: canonical_operation_op_add()
+            )
+        _ => false
       }
-    Absent => outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+    Absent => false
   }
 }
+
 
 fn v2_eval_call_primitive(
   node: Node,
   args: List<RuntimeValue>,
   _env: EvaluationEnvironment
 ) -> Outcome<RuntimeValue> {
-  bind_outcome(
-    o: v2_eval_transform_operator_symbol(node: node),
-    f: fn(op) {
-      if op == ^dag_token_plus {
-        if count(args) == 2 {
-          match list_at_optional(xs: args, index: 0) {
-            Present { value: left } =>
-              match list_at_optional(xs: args, index: 1) {
-                Present { value: right } =>
+  if v2_eval_transform_is_int_add(node: node) {
+    if count(args) == 2 {
+      match list_at_optional(xs: args, index: 0) {
+        Present { value: left } =>
+          match list_at_optional(xs: args, index: 1) {
+            Present { value: right } =>
+              bind_outcome(
+                o: v2_eval_runtime_value_as_int(value: left),
+                f: fn(l) {
                   bind_outcome(
-                    o: v2_eval_runtime_value_as_int(value: left),
-                    f: fn(l) {
-                      bind_outcome(
-                        o: v2_eval_runtime_value_as_int(value: right),
-                        f: fn(r) {
-                          outcome_accepted(
-                            value: v2_eval_int_runtime_value(value: int_add(a: l, b: r))
-                          )
-                        }
+                    o: v2_eval_runtime_value_as_int(value: right),
+                    f: fn(r) {
+                      outcome_accepted(
+                        value: v2_eval_int_runtime_value(value: int_add(a: l, b: r))
                       )
                     }
                   )
-                Absent =>
-                  outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
-              }
+                }
+              )
             Absent =>
               outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
           }
-        } else {
+        Absent =>
           outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
-        }
-      } else {
-        outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
       }
+    } else {
+      outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
     }
-  )
+  } else {
+    outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+  }
 }
 
 fn v2_eval_choose_branch(

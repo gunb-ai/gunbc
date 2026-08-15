@@ -8,6 +8,7 @@ import v2.compiler.body_lowering_fold {
   body_lower_try_infix_transform,
   body_lower_unwrap_captured
 }
+import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree }
 import v2.compiler.normalize { normalize }
 import v2.compiler.resolve { resolve }
 import v2.compiler.parse { parse_module }
@@ -30,7 +31,7 @@ import v2.std.optional {
   Optional,
   Present
 }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, None, Rejected }
 import v2.std.logic { Bool }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.node {
@@ -70,7 +71,7 @@ fn body_lowering_bool_node(pass: Bool) -> Node {
   }
 }
 
-fn body_lowering_normalized_module() -> Optional<Node> {
+fn body_lowering_normalized_module() -> Optional<NormalizedTree> {
   let lm = dag_language_model()
   match tokenize(
     text: body_lowering_add_module_source,
@@ -340,7 +341,7 @@ fn body_lowering_arrow_direct_well_formed() -> Bool {
 fn body_lowering_module_well_formed() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
-    Present { value: tree } => well_formed(n: tree)
+    Present { value: tree } => well_formed(n: tree.root)
   }
 }
 
@@ -383,9 +384,13 @@ fn body_lowering_tree_contains_atom(root: Node, wanted: Symbol) -> Bool {
 
 fn body_lowering_fixture_resolves() -> Bool {
   let lm = dag_language_model()
-  match resolve(tree: dag_add_arrow_with_body_fixture, lm: lm) {
-    Accepted { value: _, diagnostics: _ } => true
+  match admit_normalized_tree(root: dag_add_arrow_with_body_fixture, diagnostics: None) {
     Rejected { diagnostics: _ } => false
+    Accepted { value: admitted, diagnostics: _ } =>
+      match resolve(tree: admitted, lm: lm) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
   }
 }
 
@@ -418,7 +423,7 @@ fn body_lowering_normalized_operator_is_plus() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
-      match body_lower_find_arrow_in_module(root: tree) {
+      match body_lower_find_arrow_in_module(root: tree.root) {
         Absent => false
         Present { value: arrow } =>
           match find_arrow_body_child(root: arrow) {
@@ -477,7 +482,7 @@ fn body_lowering_normalized_domain_has_two_params() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
-      match body_lower_find_arrow_in_module(root: tree) {
+      match body_lower_find_arrow_in_module(root: tree.root) {
         Absent => false
         Present { value: arrow } =>
           body_lowering_domain_named_count(arrow: arrow) == 2
@@ -489,7 +494,7 @@ fn body_lowering_normalized_operand2_lexeme_is_y() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
-      match body_lower_find_arrow_in_module(root: tree) {
+      match body_lower_find_arrow_in_module(root: tree.root) {
         Absent => false
         Present { value: arrow } =>
           match body_lower_arrow_operand_identity(arrow: arrow, index: 2) {
@@ -504,7 +509,7 @@ fn body_lowering_normalized_operands_swapped() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
-      match body_lower_find_arrow_in_module(root: tree) {
+      match body_lower_find_arrow_in_module(root: tree.root) {
         Absent => false
         Present { value: arrow } =>
           match body_lower_arrow_operand_identity(arrow: arrow, index: 1) {
@@ -555,7 +560,7 @@ fn body_lowering_normalized_transform_has_three_children() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
-      match body_lower_find_arrow_in_module(root: tree) {
+      match body_lower_find_arrow_in_module(root: tree.root) {
         Absent => false
         Present { value: arrow } =>
           body_lowering_transform_child_count(arrow: arrow) == 3
@@ -567,7 +572,7 @@ fn body_lowering_domain_operand2_match() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
-      match body_lower_find_arrow_in_module(root: tree) {
+      match body_lower_find_arrow_in_module(root: tree.root) {
         Absent => false
         Present { value: arrow } =>
           if count(arrow.children) >= 1 {
@@ -619,7 +624,7 @@ fn body_lowering_domain_operand1_match() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
-      match body_lower_find_arrow_in_module(root: tree) {
+      match body_lower_find_arrow_in_module(root: tree.root) {
         Absent => false
         Present { value: arrow } =>
           match body_lower_arrow_domain_first_binding(arrow: arrow) {
@@ -647,7 +652,7 @@ fn body_lowering_normalized_operand1_lexeme_is_x() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
-      match body_lower_find_arrow_in_module(root: tree) {
+      match body_lower_find_arrow_in_module(root: tree.root) {
         Absent => false
         Present { value: arrow } =>
           match body_lower_arrow_operand_identity(arrow: arrow, index: 1) {
@@ -669,7 +674,7 @@ fn body_lowering_normalized_left_is_param_x() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
-      match body_lower_find_arrow_in_module(root: tree) {
+      match body_lower_find_arrow_in_module(root: tree.root) {
         Absent => false
         Present { value: arrow } =>
           body_lowering_operand_equals(arrow: arrow, index: 1, wanted: ^dag_binding_param_x)
@@ -681,7 +686,7 @@ fn body_lowering_normalized_right_is_param_y() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
-      match body_lower_find_arrow_in_module(root: tree) {
+      match body_lower_find_arrow_in_module(root: tree.root) {
         Absent => false
         Present { value: arrow } =>
           body_lowering_operand_equals(arrow: arrow, index: 2, wanted: ^dag_binding_param_y)
@@ -693,7 +698,7 @@ fn body_lowering_normalized_matches_fixture_operands() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
-      match body_lower_find_arrow_in_module(root: tree) {
+      match body_lower_find_arrow_in_module(root: tree.root) {
         Absent => false
         Present { value: normalized_arrow } =>
           match body_lower_arrow_operand_identity(arrow: normalized_arrow, index: 1) {
@@ -721,7 +726,7 @@ fn body_lowering_normalized_left_operand_is_atom() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
-      match body_lower_find_arrow_in_module(root: tree) {
+      match body_lower_find_arrow_in_module(root: tree.root) {
         Absent => false
         Present { value: arrow } =>
           match body_lower_arrow_operand_identity(arrow: arrow, index: 1) {
@@ -736,8 +741,8 @@ fn body_lowering_left_operand_is_param_x() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
-      body_lowering_tree_contains_atom(root: tree, wanted: ^dag_binding_param_x)
-        && body_lowering_tree_contains_atom(root: tree, wanted: ^dag_binding_param_y)
+      body_lowering_tree_contains_atom(root: tree.root, wanted: ^dag_binding_param_x)
+        && body_lowering_tree_contains_atom(root: tree.root, wanted: ^dag_binding_param_y)
   }
 }
 
@@ -746,12 +751,16 @@ fn body_lowering_normalized_arrow_root_resolves() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
-      match body_lower_find_arrow_in_module(root: tree) {
+      match body_lower_find_arrow_in_module(root: tree.root) {
         Absent => false
         Present { value: arrow } =>
-          match resolve(tree: arrow, lm: lm) {
-            Accepted { value: _, diagnostics: _ } => true
+          match admit_normalized_tree(root: arrow, diagnostics: None) {
             Rejected { diagnostics: _ } => false
+            Accepted { value: admitted_arrow, diagnostics: _ } =>
+              match resolve(tree: admitted_arrow, lm: lm) {
+                Accepted { value: _, diagnostics: _ } => true
+                Rejected { diagnostics: _ } => false
+              }
           }
       }
   }
@@ -761,7 +770,7 @@ fn body_lowering_normalize_yields_arrow() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
-      match body_lower_find_arrow_in_module(root: tree) {
+      match body_lower_find_arrow_in_module(root: tree.root) {
         Absent => false
         Present { value: arrow } =>
           well_formed(n: arrow)

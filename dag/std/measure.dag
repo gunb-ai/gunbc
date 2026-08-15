@@ -1000,3 +1000,62 @@ fn signed_square_millimeter_count(m: SignedSquareMillimeter) -> Int {
 data amortization_months_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: ground as calendar-month Duration sibling to billing_month_as_hour_count (one month-count authority for billing amortization + hourly divisor), or fold into extdeps.forex/pricing month facts when a second consumer appears — do not mint a third month wrapper.")
 
 data basis_point_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: Ratio<Scale> carrier unifying Percent and BasisPoint as two scales of one Dimensionless authority, with bp_to_percent/percent_to_bp derive relations enforced at call sites — else a third dimensionless-ratio use-case mints a third nickname.")
+
+// WHICH ORIGIN a reading was taken against, and it is a DIFFERENT axis from ClockBasis rather than a
+// finer spelling of it. ClockBasis says which KIND of clock produced a duration (cpu or wall);
+// ClockDomain says which ORIGIN two instants share, and therefore whether subtracting them means
+// anything. Both are needed and neither implies the other: two wall readings from independently
+// started monotonic clocks are the same basis and still not comparable.
+//
+// This axis exists because the floor's records cross processes. A coordinator and its worker each
+// hold their own monotonic origin, so a Rust `Instant` from one is not orderable against an
+// `Instant` from the other — the type permits the subtraction and the answer is meaningless. A
+// console timestamp is not a substitute either: it is formatted wall time, reordered by buffering
+// and rounded to the millisecond.
+type ClockDomain
+  = ProcessMonotonic { process: NonEmptyStr }
+  | SharedMonotonic { origin: NonEmptyStr }
+
+fn clock_domain_eq(a: ClockDomain, b: ClockDomain) -> Bool {
+  match a {
+    ProcessMonotonic { process: p } =>
+      match b {
+        ProcessMonotonic { process: q } => (p as String) == (q as String)
+        SharedMonotonic { origin: _ } => false
+      }
+    SharedMonotonic { origin: o } =>
+      match b {
+        ProcessMonotonic { process: _ } => false
+        SharedMonotonic { origin: p } => (o as String) == (p as String)
+      }
+  }
+}
+
+type ObservationInstant {
+  domain: ClockDomain
+  basis: ClockBasis
+  since_origin: Nanosecond
+}
+
+// Ordering is only defined WITHIN a domain, so the answer is three-valued rather than a Bool. A
+// Bool would have to pick a side for the incomparable case, and both sides are wrong: `false` for
+// "a is not before b" reads as "b is at or before a", which is a claim about an order that does not
+// exist. This is the same shape as compare_content_hash returning a cross-family arm rather than
+// collapsing to false.
+type InstantOrder
+  = InstantBefore
+  | InstantSame
+  | InstantAfter
+  | InstantIncomparable { left: ClockDomain, right: ClockDomain }
+
+fn compare_instants(a: ObservationInstant, b: ObservationInstant) -> InstantOrder {
+  if !clock_domain_eq(a: a.domain, b: b.domain) {
+    InstantIncomparable { left: a.domain, right: b.domain }
+  } else if !clock_basis_eq(a: a.basis, b: b.basis) {
+    InstantIncomparable { left: a.domain, right: b.domain }
+  } else {
+    let x = nanosecond_count(n: a.since_origin)
+    let y = nanosecond_count(n: b.since_origin)
+    if x < y { InstantBefore } else if x == y { InstantSame } else { InstantAfter }
+  }
+}

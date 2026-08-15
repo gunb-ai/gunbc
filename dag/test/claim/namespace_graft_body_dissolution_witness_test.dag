@@ -90,7 +90,7 @@ fn normalized_tree_optional(source: String) -> Node? {
 }
 
 fn normalized_root_node(t: v2.compiler.normalized_tree.NormalizedTree) -> Node {
-  t
+  t.root
 }
 
 fn tree_contains_atom(n: Node, sym: Symbol) -> Bool {

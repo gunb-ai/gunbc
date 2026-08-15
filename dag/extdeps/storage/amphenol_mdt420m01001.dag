@@ -1,0 +1,39 @@
+module extdeps.storage.amphenol_mdt420m01001
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor.amphenol { amphenol }
+import extdeps.land_pattern.types { CatalogPartIdentity, MountingPatternObligation }
+
+// The publisher's own product page for this part. The anchor records where this part's mechanical
+// authority lives; the document's geometry is not transcribed in this module.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.amphenol-cs.com/product/mdt420m01001.html"
+  }
+}
+
+data mdt420m01001_note: String = "THE CONTACT COUNT IS DELIBERATELY ABSENT AND IS AN OPEN QUESTION. Ampere's Mt. Jade reference describes a 75-pin M.2 NGFF connector; distributor listings for this part number describe 67 contacts. Those are very likely one connector counted two ways — M.2 numbers pin positions to 75 while the connector carries 67 physical contacts, the difference being the key — but a contact population is load-bearing, and reconciling it by reasoning is exactly how a plausible wrong number enters a repository. Neither number is recorded until a drawing states one. The sibling row extdeps.storage.te_m2_ngff_connector carries 67 positions from a specification that was read, so a disagreement between the two would be a real finding rather than a rounding. Distributor listings also describe key M, 0.50 mm pitch and 4.2 mm height; none of that is recorded, for the same reason. WHY THIS ROW IS NOT A SELECTION: that Mt. Jade names this connector is a reference-design precedent, which is a relation between a part and a particular board and therefore a product-layer fact, not a property of the part."
+
+data mdt420m01001: CatalogPartIdentity = CatalogPartIdentity {
+  ordering_part_number: "MDT420M01001",
+  vendor: amphenol,
+  board_pattern: MountingPatternObligation {
+    what_is_missing: "the vendor's mechanical drawing and recommended PCB layout for MDT420M01001, which the publisher holds and this row does not transcribe. The contact population is owed with the geometry, since the reference board's description and the distributor listings disagree at 75 against 67",
+  },
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.storage.amphenol_mdt420m01001",
+      decl_name: "mdt420m01001",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

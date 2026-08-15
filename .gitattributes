@@ -13,6 +13,7 @@
 .githooks/pre-push merge=generated-artifact
 .github/workflows/ci.yml merge=generated-artifact
 .github/workflows/falsifier.yml merge=generated-artifact
+.github/workflows/fleet-converge.yml merge=generated-artifact
 .gitignore merge=generated-artifact
 DESIGN.md merge=generated-artifact
 ROADMAP.md merge=generated-artifact
@@ -203,6 +204,7 @@ src/v1/stage0/src/v1_rt.rs merge=generated-artifact
 src/v1/stage0/src/v1_std_core.rs merge=generated-artifact
 src/v1/stage0/src/v1_test_non_ascii_perf_fixture.rs merge=generated-artifact
 src/v1/stage0/src/v1_tests_claim_caret_parse_smoke_test.rs merge=generated-artifact
+src/v1/stage0/src/v1_tests_claim_dag_parse_continuation_operator_witness_test.rs merge=generated-artifact
 src/v1/stage0/src/v1_tests_claim_namespace_reference_derived_closure_production_admissions_witness_test.rs merge=generated-artifact
 src/v1/stage0/src/v1_tests_claim_occurrence_binding_parser_walk_witness_test.rs merge=generated-artifact
 src/v1/stage0/src/v1_tests_claim_occurrence_identity_debt_receipt_test.rs merge=generated-artifact

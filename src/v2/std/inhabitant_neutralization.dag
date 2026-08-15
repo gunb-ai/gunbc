@@ -210,11 +210,11 @@ fn inhabitant_aligns_with_selection_policy(candidate: Node, selection: Node) -> 
 }
 
 fn target_inhabitant_selection_policy_fold_step(
-  acc: PassingCandidateFold,
+  acc: PassingCandidateFold<Node>,
   candidate: Node,
   std_projection: Symbol,
   selection_policy: Node
-) -> PassingCandidateFold {
+) -> PassingCandidateFold<Node> {
   match inhabitant_std_projection_symbol(inhabitant: candidate) {
     Accepted { value: proj, diagnostics: _ } =>
       if (proj == std_projection)
@@ -268,10 +268,10 @@ fn target_inhabitant_for_std_projection_with_selection_policy(
 }
 
 fn target_inhabitant_fold_step(
-  acc: PassingCandidateFold,
+  acc: PassingCandidateFold<Node>,
   candidate: Node,
   std_projection: Symbol
-) -> PassingCandidateFold {
+) -> PassingCandidateFold<Node> {
   match inhabitant_std_projection_symbol(inhabitant: candidate) {
     Accepted { value: proj, diagnostics: _ } =>
       if proj == std_projection {

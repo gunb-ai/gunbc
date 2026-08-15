@@ -1,0 +1,33 @@
+module extdeps.vendor.amphenol
+
+import std.types { String }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+
+// Read 2026-08-14. The vendor's own legal pages were not reached; the encyclopaedia entry is the
+// weaker authority this corpus already accepts for several vendor rows (intel, samsung, ampere).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Amphenol"
+  }
+}
+
+data amphenol_registrant_note: String = "ONE ENTITY, SEVERAL BRANDS, AND THE BRANDS DO NOT GET THEIR OWN ROWS. Distributors list the M.2 connector under Amphenol ICC, Amphenol FCI and Amphenol Communications Solutions, and the lane that dispatched this work named the vendor as Amphenol Communications Solutions. Those are business-unit brands rather than independently governed entities, and the read authority describes one corporation. So this row is the corporation and the brands are not modelled - which is the MIRROR of the Tyco decision in this same tree, where two rows were minted BECAUSE two documents named two entities with two registered addresses. The rule is the same in both directions: the entity count follows what the documents establish, not what the branding suggests. WHAT IS NOT ESTABLISHED: whether Amphenol Communications Solutions is a distinct legal entity from Amphenol Corporation. No document read here says so, and asserting either way would invent a corporate structure. A filing that establishes it would split this row exactly as Tyco split."
+
+data amphenol: Vendor<Hardware> = Vendor { legal_name: "Amphenol Corporation" }
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vendor.amphenol",
+      decl_name: "amphenol",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
