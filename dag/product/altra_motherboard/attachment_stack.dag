@@ -221,14 +221,18 @@ data board_land_pattern_standing: AttachmentLayerStanding = AttachmentLayerStand
       }
     DesignationFactUnresolved { reason: r, next_authority_to_consult: next } =>
       match next {
-        Present { value: altra_platform_hw_design_subject_authority_anchor } =>
-          FactStatedOnlyInFigure {
-            figure: "Figure 3",
-            what_is_drawn: concat(
-              "socket board-side land pattern for the ",
-              ilm4926.designator as String,
-              " attachment; the platform specification cites separate package-outline and socket drawings on this figure and neither geometry is transcribed in this repository",
-            ),
+        Present { value: a } =>
+          if a.uri.locator == altra_platform_hw_design_subject_authority_anchor.uri.locator {
+            FactStatedOnlyInFigure {
+              figure: "Figure 3",
+              what_is_drawn: concat(
+                "socket board-side land pattern for the ",
+                ilm4926.designator as String,
+                " attachment; the platform specification cites separate package-outline and socket drawings on this figure and neither geometry is transcribed in this repository",
+              ),
+            }
+          } else {
+            FactUnresolved { what_is_missing: r }
           }
         none =>
           FactUnresolved { what_is_missing: r }
