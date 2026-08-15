@@ -44,6 +44,7 @@ import gunbc.spark_serving_runtime_receipt {
   spark_serving_runtime_receipt_probe_words,
   spark_serving_runtime_receipt_field_from_probe,
 }
+import gunbc.spark_serving_runtime_admission { spark_serving_parse_nvidia_driver_version }
 import gunbc.spark_serving_desired { spark_serving_desired_hosts }
 import gunbc.spark_serving_readback_parse {
   SparkServingReadbackField,
