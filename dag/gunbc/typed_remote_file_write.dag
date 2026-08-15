@@ -17,7 +17,7 @@ import gunbc.file_access { FileTreeScope, path_within_file_tree_scope }
 
 data typed_remote_file_write_authority_note: String = "Typed remote file-bytes write at the FleetSsh seam (SPARK-SERVE-INSTALL-0 substrate). TypedRemoteFileWrite is sole_constructor: the ONLY representable meaning is write these exact bytes to this exact path. Remote realization is portable argv [tee, path] with content on stdin — bytes are DATA, never interpreted as shell. No script body arm, no sh -c, no command string constructor. Path containment uses gunbc.file_access path_within_file_tree_scope (exact root, root/…, .. rejected); portable-word allowlist uses gunbc.fleet_known_hosts_anchor portable_remote_word at seal and portable_remote_words at execute (one authority, no typed_argv fork). typed_remote_file_write_over_fleet_ssh accepts only TypedRemoteFileWriteAdmitted."
 
-data typed_remote_file_write_wet_fleet_ssh_execute_deferred_note: String = "SPARK-SERVE-INSTALL-0 substrate defers wet FleetSsh tee+stdin roundtrip and SSH failure handling to Phase 2 fleet-converge integration: this PR witnesses seal, argv projection, execute preflight (portable_remote_words + shell-body guard), and local Filesystem.Write byte preservation; typed_remote_file_write_over_fleet_ssh Converged/SSH-failure arms execute in the consumer witness enrolled on fleet converge apply."
+data typed_remote_file_write_wet_fleet_ssh_execute_deferred_note: String = "SPARK-SERVE-INSTALL-0 substrate defers wet FleetSsh tee+stdin roundtrip and SSH failure handling to Phase 2 fleet-converge integration: this PR witnesses seal, argv projection, execute preflight (portable_remote_words), and local Filesystem.Write byte preservation; typed_remote_file_write_over_fleet_ssh Converged/SSH-failure arms execute in the consumer witness enrolled on fleet converge apply."
 
 data typed_remote_file_write_substrate_gap_closed_note: String = "Substrate PR closes spark_serving_membership CONDITION 1 FINDING for unit delivery: consumers seal path+content here; fleet execution routes through typed_remote_file_write_over_fleet_ssh."
 
@@ -84,20 +84,9 @@ fn typed_remote_file_write_stdin_payload(write: TypedRemoteFileWrite) -> String 
   write.content
 }
 
+// Remote argv is ONLY [tee, path] — no sh/bash/-c arm exists; bytes ride stdin, not argv.
 fn typed_remote_file_write_remote_argv(write: TypedRemoteFileWrite) -> List<String> {
   [typed_remote_file_write_tee_command, write.path as String]
-}
-
-fn typed_remote_file_write_argv_has_no_shell_body(argv: List<String>) -> Bool {
-  !any(
-    argv,
-    token =>
-      token == "sh"
-        || token == "bash"
-        || token == "-c"
-        || token == "-s"
-        || token == "exec",
-  )
 }
 
 fn typed_remote_file_write_content_digest_hex(write: TypedRemoteFileWrite) -> String {
@@ -118,18 +107,7 @@ fn typed_remote_file_write_execute_preflight_outcome(
           ),
         },
       }
-    Present { value: _ } =>
-      if !typed_remote_file_write_argv_has_no_shell_body(
-        argv: typed_remote_file_write_remote_argv(write: write),
-      ) {
-        Present {
-          value: TypedRemoteFileWriteOutcomeRefused {
-            reason: "typed_remote_file_write: remote argv must be tee+path only — shell body tokens forbidden",
-          },
-        }
-      } else {
-        none
-      }
+    Present { value: _ } => none
   }
 }
 

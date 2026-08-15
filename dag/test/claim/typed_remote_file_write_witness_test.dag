@@ -11,7 +11,6 @@ import gunbc.typed_remote_file_write {
   typed_remote_file_write_seal,
   typed_remote_file_write_stdin_payload,
   typed_remote_file_write_remote_argv,
-  typed_remote_file_write_argv_has_no_shell_body,
   typed_remote_file_write_content_digest_hex,
   typed_remote_file_write_tee_command,
   typed_remote_file_write_execute_preflight_outcome,
@@ -116,9 +115,6 @@ test fn w_remote_argv_is_tee_and_path_only() -> Bool {
     TypedRemoteFileWriteAdmitted { write: w } =>
       typed_remote_file_write_remote_argv(write: w)
         == [typed_remote_file_write_tee_command, "/tmp/gunbc-trfw-argv"]
-        && typed_remote_file_write_argv_has_no_shell_body(
-          argv: typed_remote_file_write_remote_argv(write: w),
-        )
         && match portable_remote_words(raws: typed_remote_file_write_remote_argv(write: w)) {
           Present { value: _ } => true
           Absent => false
