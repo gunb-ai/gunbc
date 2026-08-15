@@ -2474,10 +2474,14 @@ fn materialize_spark_serving_ollama_runtime_bundle(
       binary_release: ollama_required_release,
       dest_dir: staging.path,
     ) {
-      SparkServingOllamaArchiveDownloadRefused { locator } =>
+      SparkServingOllamaArchiveDownloadRefused { locator } => {
+        let _ = shell.Remove.RecursiveForce(path: staging.path)
         SparkServingOllamaRuntimeDownloadRefused { locator: locator }
-      SparkServingOllamaArchiveIntegrityRefused { cause } =>
+      }
+      SparkServingOllamaArchiveIntegrityRefused { cause } => {
+        let _ = shell.Remove.RecursiveForce(path: staging.path)
         SparkServingOllamaRuntimeIntegrityRefused { cause: cause }
+      }
       SparkServingOllamaArchiveAdmitted { local_path: _, digest_hex } => {
         let receipt = SparkServingRuntimeInstallReceipt {
           host: host,

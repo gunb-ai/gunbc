@@ -44,6 +44,7 @@ import gunbc.spark_serving_runtime_receipt {
   spark_serving_runtime_receipt_probe_words,
   spark_serving_runtime_receipt_field_from_probe,
 }
+import gunbc.spark_serving_desired { spark_serving_desired_hosts }
 import gunbc.spark_serving_readback_parse {
   SparkServingReadbackField,
   SparkServingReadbackAbsent,
@@ -61,8 +62,6 @@ data spark_serving_observe_note: String = "Wet observation only; a green witness
 data spark_serving_observe_receipt_path: String = "target/spark-serving-observe-receipt.txt"
 
 data spark_serving_probe_principal: String = "gunbc-automation"
-
-data spark_serving_probe_hosts: List<String> = ["srv5", "srv6"]
 
 data spark_serving_unit_name: String = "gunbc-spark-serving.service"
 
@@ -95,7 +94,7 @@ type SparkServingObservationReport
 
 fn spark_serving_probe_leg(
   context: FleetSshExecutionContext,
-  host: String,
+  host: HostIdentity,
   raw_words: List<String>,
 ) -> SshSessionExecResult? {
   match portable_remote_words(raws: raw_words) {
@@ -105,7 +104,7 @@ fn spark_serving_probe_leg(
         client_args: shape_fleet_ssh_exec(
           context: context,
           target: SshTarget {
-            endpoint: fleet_probe_endpoint_for(host: host) as NonEmptyStr,
+            endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
             principal: spark_serving_probe_principal as NonEmptyStr,
           },
           words: words,
@@ -300,7 +299,7 @@ fn spark_serving_observation_line(observation: SparkServingObservation) -> Strin
 
 fn spark_serving_observe_host(
   context: FleetSshExecutionContext,
-  host: String,
+  host: HostIdentity,
 ) -> SparkServingObservation {
   let load_state = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_load_state_probe_words)
   let is_active = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_active_probe_words)
@@ -310,10 +309,10 @@ fn spark_serving_observe_host(
   let runtime_receipt = spark_serving_probe_leg(
     context: context,
     host: host,
-    raw_words: spark_serving_runtime_receipt_probe_words(host: host as HostIdentity),
+    raw_words: spark_serving_runtime_receipt_probe_words(host: host),
   )
   let readback = spark_serving_readback_from_probe_results(
-    host: host as HostIdentity,
+    host: host,
     load_state: load_state,
     is_active: is_active,
     version: version,
@@ -326,7 +325,7 @@ fn spark_serving_observe_host(
 
 fn spark_serving_observations_from_hosts(
   context: FleetSshExecutionContext,
-  hosts: List<String>,
+  hosts: List<HostIdentity>,
 ) -> List<SparkServingObservation> {
   map(hosts, h => spark_serving_observe_host(context: context, host: h))
 }
@@ -348,7 +347,7 @@ fn spark_serving_observation_report_from_observations(
 
 fn spark_serving_observe_with_context(
   context: FleetSshExecutionContext,
-  hosts: List<String>,
+  hosts: List<HostIdentity>,
 ) -> SparkServingObservationReport {
   match spark_serving_observation_report_from_observations(
     observations: spark_serving_observations_from_hosts(context: context, hosts: hosts),
@@ -447,7 +446,7 @@ func spark_serving_observe_with_attempt(attempt_raw: String) -> ProcessExit
             Present { value: context } =>
               spark_serving_observe_with_context(
                 context: context,
-                hosts: spark_serving_probe_hosts,
+                hosts: spark_serving_desired_hosts,
               )
           }
         }

@@ -51,6 +51,11 @@ import gunbc.spark_serving_realization {
   ServingEndpointIntent,
 }
 
+data spark_serving_desired_hosts: List<HostIdentity> = [
+  operator_host_srv5,
+  operator_host_srv6,
+]
+
 data spark_serving_desired_note: String = "OPERATOR DECLARATION (2026-08-12): LAN boundary, ollama runtime, gpt-oss:20b model, executor-owned serving process under gunbc-automation. Runtime closure identity derives from extdeps.ollama.binary_release cited digest — materialization binds through gunbc.package_delivery (#8225), not a parallel install path. Model identity is the manifest digest from /api/tags, not the serving label."
 
 data spark_serving_configuration_digest_note: String = "ServingConfigurationIdentity.configuration_digest is derived by spark_serving_configuration_identity from typed policy fields — never authored as a parallel literal."
@@ -133,10 +138,10 @@ fn spark_serving_fleet_desired_from_admission() -> SparkServingFleetDesired {
   match spark_serving_desired_admission {
     SparkServingDesiredAdmitted { serving_release: r } =>
       SparkServingFleetDesiredReady {
-        occurrences: [
-          spark_serving_occurrence(host: operator_host_srv5, serving_release: r),
-          spark_serving_occurrence(host: operator_host_srv6, serving_release: r),
-        ],
+        occurrences: map(
+          spark_serving_desired_hosts,
+          h => spark_serving_occurrence(host: h, serving_release: r),
+        ),
       }
     SparkServingDesiredRefused { cause: c } =>
       SparkServingFleetDesiredRefused { cause: c }

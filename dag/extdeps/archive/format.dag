@@ -78,5 +78,5 @@ fn archive_format_distribution_suffix(
 }
 
 fn archive_format_eq(a: ArchiveFormat, b: ArchiveFormat) -> Bool {
-  a.codec == b.codec
+  a.container == b.container && a.codec == b.codec
 }
