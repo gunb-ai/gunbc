@@ -26,7 +26,7 @@ import v2.compiler.self_host.frontier_probe_types {
   frontier_probe_receipt_located_reason,
   frontier_probe_receipt_module_path
 }
-import std.realization_schedule { scoped_witness_exact_head_text_holds }
+import std.types { commit_sha_text_holds }
 import std.content_hash { ContentHash, compare_content_hash, ContentHashEqual }
 import v2.compiler.name_resolve { Admission }
 import v2.compiler.source_authority { SourceRootIngest }
@@ -181,7 +181,7 @@ fn frontier_survey_probe_policy_revision_holds(revision: ContentHash) -> Bool {
 }
 
 fn frontier_survey_subject_well_formed_holds(subject: FrontierSurveySubject) -> Bool {
-  scoped_witness_exact_head_text_holds(head: subject.source_commit)
+  commit_sha_text_holds(head: subject.source_commit)
     && frontier_survey_executable_sha256_holds(digest: subject.survey_executable)
     && frontier_survey_source_roots_digest_holds(digest: subject.source_roots_digest)
     && frontier_survey_probe_policy_revision_holds(revision: subject.probe_policy_revision)

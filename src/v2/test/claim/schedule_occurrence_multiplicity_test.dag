@@ -5,7 +5,6 @@ import std.realization_schedule {
   Runnable,
   RunnableDiscoveryBatch,
   RunnableKernelWorkload,
-  RunnableScopedWitnessBatch,
   RunnableSingleClaim,
   runnable_resource_profile_negligible,
   ScheduleWitnessEntry,
@@ -46,13 +45,10 @@ fn runnable_subject_occurrences(runnable: Runnable, subject: ScheduleWitnessEntr
       source_roots: _,
       scan_dirs: _,
       explicit_entries: explicit_entries,
-      node_frontier_selection: _,
       exclude_substrings: _,
       discovery_scope_dirs: _,
       profile: _
     } => schedule_entry_occurrences(entries: explicit_entries, subject: subject)
-    RunnableScopedWitnessBatch { batch: batch } =>
-      schedule_entry_occurrences(entries: batch.entries, subject: subject)
     RunnableKernelWorkload { fused_op_count: _ } => 0
   }
 }

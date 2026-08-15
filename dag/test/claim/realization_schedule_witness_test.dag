@@ -25,7 +25,6 @@ fn synthetic_correct_schedule() -> List<List<Runnable>> {
         source_roots: ["dag"]
         scan_dirs: []
         explicit_entries: []
-        node_frontier_selection: SelectionOff
         profile: runnable_resource_profile_negligible()
         exclude_substrings: []
         discovery_scope_dirs: []
