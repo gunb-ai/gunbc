@@ -95,13 +95,11 @@ data nfr_reason_arrow_body_form_eval_runtime_equals: String = "arrow_body_form_e
 
 data nfr_dissolve_arrow_body_form_eval_runtime_equals: DissolutionCondition = unbound_dissolution(description: "RuntimeValue projection for eval witnesses becomes a total match over inhabited primitive carriers and the wildcard arm deletes with that fold")
 
-data nfr_reason_class_b_binding_projection: String = "Class B declared-import-closure observation projection (match on DeclaredImportClosureBindingObservation with off-variant wildcard refusal arms) landed with #7835 observe_declared_import_closure_symbol_binding builtin; callers judge ListedImport vs PoolCoincidence vs refusal — the match is the typed verdict fold over the host observation carrier, not business policy; declared at landing so the ratchet re-arms"
 
 data nfr_reason_release_identity_absent_split: String = "one-special-variant split over RunningReleaseUnidentifiedCause: ReleaseRevisionAbsent answers ProcessIdentityAbsent because a process predating the identity channel is a MIGRATION state, and the other nine causes answer ProcessIdentityMalformed because a live channel carrying something that is not an identity is a DEFECT in the deploying machinery. The nine share one arm because they already differ where it matters — running_release_unidentified_detail names each cause before the match runs, so the arm carries the distinction rather than erasing it, and enumerating the nine would clone one arm nine times (the DESIGN §2 redundancy, not the DESIGN §4 totality). Landed with Phase A release-identity readiness; declared at landing so the ratchet arms with the code."
 
 data nfr_dissolve_release_identity_absent_split: DissolutionCondition = unbound_dissolution(description: "the migration arm becomes unreachable once the identity-publishing release is deployed everywhere routed, at which point ReleaseRevisionAbsent is the executing RED control rather than a live arm; the split then folds into a derived migration-vs-defect partition over RunningReleaseUnidentifiedCause (the same derived-from-inhabitance move that clears the terminal-absorption rows) and this row deletes with it.")
 
-data nfr_dissolve_class_b_binding_projection: DissolutionCondition = unbound_dissolution(description: "the observation carrier's verdict partition becomes derived from inhabitance (total match over BindingObserved vs BindingNotRunnable and over UnlistedImportBindingSource) and the wildcard arms delete with their rows")
 
 data nfr_reason_pool_independence_projection: String = "ReferenceDerivedDependencyProjection pool-independence comparison harness (match on Ready vs BindingRefused vs FileRefused with off-variant wildcard arms returning RefusalOutcomeMismatch or false) landed with N3-C #7996; the outer match partitions the clause-(e) carrier for baseline-vs-perturbed equality, not business policy; declared at landing so the ratchet re-arms"
 
@@ -901,21 +899,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/host_standup.dag::assimilation_complete_input_eq" },
     reason: nfr_reason_structural_eq_backfill,
     dissolution: nfr_dissolve_derived_equality,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_source_is_listed_import" },
-    reason: nfr_reason_class_b_binding_projection,
-    dissolution: nfr_dissolve_class_b_binding_projection,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_source_is_pool_coincidence" },
-    reason: nfr_reason_class_b_binding_projection,
-    dissolution: nfr_dissolve_class_b_binding_projection,
-  },
-  FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/declared_import_closure_binding.dag::binding_refused_at_intended_seam" },
-    reason: nfr_reason_class_b_binding_projection,
-    dissolution: nfr_dissolve_class_b_binding_projection,
   },
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/codex_app_server_press.dag::rate_limit_buckets_from_by_limit_id" },

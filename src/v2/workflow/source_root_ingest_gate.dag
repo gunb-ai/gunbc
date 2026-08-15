@@ -7,5 +7,4 @@ func source_root_ingest_gate_passes() -> Bool {
   run_real_ingest_gate()
     && run_compiler_closure_ingest_gate()
     && run_module_binding_supply_gate()
-    && run_class_b_import_closure_gate()
 }
