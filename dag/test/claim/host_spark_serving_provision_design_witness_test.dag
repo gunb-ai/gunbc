@@ -1,5 +1,8 @@
 module test.claim.host_spark_serving_provision_design
 
+import std.disposition { Scaffold, SingleAuthority, Terminal }
+import std.decl_ref { DeclarationRef }
+import gunbc.package_delivery { spark_serving_local_materialization_shell_scaffold }
 import gunbc.host_spark_serving_provision_verdict {
   spark_serving_observe_ok_converges_idempotent,
   spark_serving_read_back_ok_converges,
@@ -17,6 +20,18 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data host_spark_serving_provision_design_witness_note: String = "Shell script / plan-apply / completion-probe witnesses retired with Phase 1 membership model (SPARK-SERVE-INSTALL-0). Verdict fold controls remain until Phase 2 structured ProvisionSparkServing receipts replace shell classification."
+
+test fn design_witness_local_materialization_shell_carries_scaffold() -> Bool {
+  match spark_serving_local_materialization_shell_scaffold {
+    Scaffold {
+      dissolves_to: SingleAuthority,
+      bind: DeclarationRef { module_path: m, decl_name: n, field: _ },
+    } =>
+      m == "gunbc.package_delivery"
+        && n == "spark_serving_local_materialization_shell_dissolution_trigger"
+    Terminal { reason: _ } => false
+  }
+}
 
 test fn design_witness_observe_ok_converges_idempotent() -> Bool {
   spark_serving_observe_ok_converges_idempotent()

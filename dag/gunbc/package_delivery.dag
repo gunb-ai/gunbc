@@ -1,6 +1,9 @@
 module gunbc.package_delivery
 
 import std.types { String, NonEmptyStr, List, FilePath, Bool, Int }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.algebra { trim }
 import std.content_hash {
   Sha512Digest,
@@ -2405,7 +2408,18 @@ fn materialize_codex_runtime_bundle(
 
 data spark_serving_ollama_runtime_materialization_note: String = "Local-host Spark serving runtime materialization carrier (#8225 runtime-bundle follow-on). When gunbc is present on the invoking host, downloads the cited extdeps.ollama.binary_release archive, admits SHA-256, extracts into the owned runtime root under gunbc-automation, writes the executor-local receipt, installs the gunbc-spark-serving user unit, enables the service, and pulls the declared gpt-oss:20b model. Remote converge is member-grain membership reconcile (gunbc.spark_serving_membership) over typed argv via ProvisionSparkServing — Phase 2; P2 gunbc-on-target ensure dropped."
 
-data spark_serving_local_materialization_shell_note: String = "LOCAL-HOST REALIZATION DEBT — finish_spark_serving_runtime_materialization and helpers (spark_serving_extract_admitted_archive, spark_serving_enable_user_unit, spark_serving_wait_for_api, spark_serving_pull_desired_model) route extract/systemd/curl/ollama pull through extdeps.shell.Exec.Run on the invoking host. Same grain as materialize_codex_runtime_bundle npm/symlink shell in this module — local materializer realization, not a second remote install authority. Remote shell script / plan-apply modules deleted Phase 1; dissolve when local steps become typed host-effect argv on materialize_spark_serving_on_local_host."
+data spark_serving_local_materialization_shell_note: String = "LOCAL-HOST REALIZATION DEBT — finish_spark_serving_runtime_materialization and helpers (spark_serving_extract_admitted_archive, spark_serving_enable_user_unit, spark_serving_wait_for_api, spark_serving_pull_desired_model) route extract/systemd/curl/ollama pull through extdeps.shell.Exec.Run on the invoking host. Same grain as materialize_codex_runtime_bundle npm/symlink shell in this module — local materializer realization, not a second remote install authority. Remote shell script / plan-apply modules deleted Phase 1. Marked transient on spark_serving_local_materialization_shell_scaffold; dissolve when local steps become typed host-effect argv on materialize_spark_serving_on_local_host."
+
+data spark_serving_local_materialization_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: spark_serving_local_materialization_shell — finish_spark_serving_runtime_materialization helpers route extract/systemd/curl/ollama pull through extdeps.shell.Exec.Run on the invoking host; DISSOLVES WHEN ProvisionSparkServing + realize_provision_spark_serving retire these concat-built shell steps in favor of typed host-effect argv (fleet-converge apply on srv5|srv6, typed_remote_file_write for unit bytes, typed HTTP for acceptance).")
+
+data spark_serving_local_materialization_shell_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.package_delivery",
+    decl_name: "spark_serving_local_materialization_shell_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
 
 type SparkServingOllamaArchiveAdmission
   = SparkServingOllamaArchiveAdmitted {
