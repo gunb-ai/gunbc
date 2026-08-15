@@ -1,6 +1,7 @@
 module test.claim.tailscale_serve_route_key_witness
 
 import std.types { Bool, NonEmptyStr, String, List }
+import std.key_relation { KeyRelation, KeyExactlyOne, GlobalKeyScope, key_relation_global }
 import extdeps.tailscale.serve {
   TailscaleServeEndpoint,
   ServeRootMount,
@@ -8,25 +9,144 @@ import extdeps.tailscale.serve {
   tailscale_serve_route_key,
   tailscale_serve_route_key_eq,
   tailscale_serve_route_key_label,
+  tailscale_serve_route_key_relation,
   tailscale_serve_endpoint_flags,
+  tailscale_serve_mount_eq,
+  tailscale_serve_enable_argv,
 }
+import gunbc.membership_reconcile {
+  MembershipPlan,
+  MemberAction,
+  MemberAdded,
+  MemberChanged,
+  MemberRemoved,
+  membership_reconcile,
+  membership_change_count,
+  membership_added_count,
+  membership_removal_count,
+}
+import gunbc.ownership { Ownership, Owned }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data tailscale_route_key_witness_note: String = "Discriminating controls for extdeps.tailscale.serve TailscaleServeRouteKey: backend drift must not change identity; distinct listener x mount pairs must not compare equal; and the membership label must not be the rendered argv string the design note retires."
+data tailscale_route_key_witness_note: String = "Step-1 discriminating controls for extdeps.tailscale.serve TailscaleServeRouteKey. The load-bearing law: same listener x mount + different backend is a re-point (Modified), never Remove+Add. A key that embeds backend classifies that drift as different keys and produces teardown+reinstall — the membership_reconcile failure mode the design note names."
+
+fn tailscale_endpoint_value_eq(a: TailscaleServeEndpoint, b: TailscaleServeEndpoint) -> Bool {
+  a.https_port == b.https_port
+    && tailscale_serve_mount_eq(a: a.mount, b: b.mount)
+    && a.backend as String == b.backend as String
+}
+
+fn tailscale_endpoint_ownership(_: TailscaleServeEndpoint) -> Ownership? {
+  Present { value: Owned }
+}
+
+fn retired_flattened_serve_flags_key(endpoint: TailscaleServeEndpoint) -> NonEmptyStr {
+  join(tailscale_serve_endpoint_flags(endpoint: endpoint), " ") as NonEmptyStr
+}
+
+fn retired_flattened_serve_flags_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+  a as String == b as String
+}
+
+data retired_flattened_serve_flags_key_relation: KeyRelation<TailscaleServeEndpoint, GlobalKeyScope, NonEmptyStr> = key_relation_global(
+  key_of: retired_flattened_serve_flags_key,
+  key_eq: retired_flattened_serve_flags_key_eq,
+  multiplicity: KeyExactlyOne,
+)
+
+fn tailscale_enable_argv_identity_key(endpoint: TailscaleServeEndpoint) -> NonEmptyStr {
+  join(tailscale_serve_enable_argv(endpoint: endpoint), " ") as NonEmptyStr
+}
+
+fn tailscale_enable_argv_identity_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool {
+  a as String == b as String
+}
+
+data tailscale_enable_argv_identity_key_relation: KeyRelation<TailscaleServeEndpoint, GlobalKeyScope, NonEmptyStr> = key_relation_global(
+  key_of: tailscale_enable_argv_identity_key,
+  key_eq: tailscale_enable_argv_identity_key_eq,
+  multiplicity: KeyExactlyOne,
+)
+
+fn plan_has_change_between_backends(
+  plan: MembershipPlan<TailscaleServeEndpoint>,
+  from_backend: String,
+  to_backend: String,
+) -> Bool {
+  any(plan.actions, a =>
+    match a {
+      MemberChanged { from: f, to: t } =>
+        f.backend as String == from_backend && t.backend as String == to_backend
+      _ => false
+    }
+  )
+}
+
+fn plan_has_remove_add_not_change(plan: MembershipPlan<TailscaleServeEndpoint>) -> Bool {
+  let has_remove = any(plan.actions, a => match a { MemberRemoved { from: _ } => true  _ => false })
+  let has_add = any(plan.actions, a => match a { MemberAdded { to: _ } => true  _ => false })
+  let has_change = any(plan.actions, a => match a { MemberChanged { from: _, to: _ } => true  _ => false })
+  has_remove && has_add && !has_change
+}
+
+fn root_endpoint(backend: String) -> TailscaleServeEndpoint {
+  TailscaleServeEndpoint {
+    https_port: 443,
+    mount: ServeRootMount,
+    backend: backend as NonEmptyStr,
+  }
+}
+
+data w_route_key_backend_repoint_note: String = "THE STEP-1 POSITIVE CONTROL. Same listener x mount, different backend: TailscaleServeRouteKey is unchanged, so membership_reconcile must emit exactly one MemberChanged carrying both sides — a re-point, not teardown+reinstall."
+
+test fn w_route_key_backend_repoint_is_modified_not_remove_add() -> Bool {
+  let observed = [root_endpoint(backend: "8080")]
+  let desired = [root_endpoint(backend: "18081")]
+  let plan = membership_reconcile(
+    desired: desired,
+    observed: observed,
+    relation: tailscale_serve_route_key_relation,
+    value_eq: tailscale_endpoint_value_eq,
+    ownership_of: tailscale_endpoint_ownership,
+  )
+  plan_has_change_between_backends(plan: plan, from_backend: "8080", to_backend: "18081")
+    && membership_change_count(plan: plan) == 1
+    && membership_added_count(plan: plan) == 0
+    && membership_removal_count(plan: plan) == 0
+}
+
+data w_enable_argv_key_backend_repoint_red_note: String = "RED CONTROL for the Remove+Add failure class. Using the rendered enable argv (which includes backend) as identity makes a backend re-point look like two different members — Remove+Add with zero MemberChanged. This is the discriminating half the step-1 witness must pin; a key-equality test alone cannot catch it."
+
+test fn w_enable_argv_key_backend_repoint_is_remove_add_not_modified() -> Bool {
+  let observed = [root_endpoint(backend: "8080")]
+  let desired = [root_endpoint(backend: "18081")]
+  let plan = membership_reconcile(
+    desired: desired,
+    observed: observed,
+    relation: tailscale_enable_argv_identity_key_relation,
+    value_eq: tailscale_endpoint_value_eq,
+    ownership_of: tailscale_endpoint_ownership,
+  )
+  plan_has_remove_add_not_change(plan: plan)
+    && membership_change_count(plan: plan) == 0
+    && membership_added_count(plan: plan) == 1
+    && membership_removal_count(plan: plan) == 1
+}
+
+data w_retired_flags_key_same_route_note: String = "The deleted tailscale_serve_endpoint_key joined endpoint FLAGS only (listener + mount argv), so it did NOT trigger Remove+Add on backend drift — it shares the route key's listener x mount axis. Its defect class is argv-as-locator/path (design note 3a), not backend-as-identity. This row pins that the retired carrier is route-stable across backend re-point, so the step-1 Modified law is about structured route keys vs keys that embed mutable content (enable argv), not about flags-only flattening alone."
+
+test fn w_retired_flags_key_is_route_stable_across_backend_repoint() -> Bool {
+  let a = root_endpoint(backend: "8080")
+  let b = root_endpoint(backend: "18081")
+  retired_flattened_serve_flags_key(endpoint: a) as String
+    == retired_flattened_serve_flags_key(endpoint: b) as String
+}
 
 test fn backend_change_preserves_route_key() -> Bool {
-  let root = TailscaleServeEndpoint {
-    https_port: 443,
-    mount: ServeRootMount,
-    backend: "8080" as NonEmptyStr,
-  }
-  let repointed = TailscaleServeEndpoint {
-    https_port: 443,
-    mount: ServeRootMount,
-    backend: "18081" as NonEmptyStr,
-  }
+  let root = root_endpoint(backend: "8080")
+  let repointed = root_endpoint(backend: "18081")
   tailscale_serve_route_key_eq(
     a: tailscale_serve_route_key(endpoint: root),
     b: tailscale_serve_route_key(endpoint: repointed),
@@ -34,11 +154,7 @@ test fn backend_change_preserves_route_key() -> Bool {
 }
 
 test fn distinct_mounts_have_distinct_keys() -> Bool {
-  let root = tailscale_serve_route_key(endpoint: TailscaleServeEndpoint {
-    https_port: 443,
-    mount: ServeRootMount,
-    backend: "8080" as NonEmptyStr,
-  })
+  let root = tailscale_serve_route_key(endpoint: root_endpoint(backend: "8080"))
   let lab = tailscale_serve_route_key(endpoint: TailscaleServeEndpoint {
     https_port: 443,
     mount: ServeSetPath { path: "/srv1-lab" as NonEmptyStr },
