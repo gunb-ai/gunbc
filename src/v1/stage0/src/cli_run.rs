@@ -15694,8 +15694,18 @@ pub fn evaluation_frame(
 ///
 /// This is the shape `claim_scope_for` exists to replace, and it is kept rather than deleted so
 /// the collision stays reproducible: a control that can no longer construct the broken state
-/// proves nothing about why the scope is needed. It is NOT reachable from the required floor —
-/// its callers are `claim_batch --one-prepared-subject` and the collision controls.
+/// proves nothing about why the scope is needed.
+///
+/// It is NOT reachable from the required floor. It IS still reachable from three other places,
+/// and an earlier revision of this comment listed only two — omitting the one that matters
+/// (review 52338). The callers are `claim_batch --one-prepared-subject`, the collision controls,
+/// and `run_discovery_rows_against_prepared_subject`, which is the falsifier cadence and local
+/// tree-wide discovery path. That third caller evaluates every claim in ONE flat repository
+/// frame, so the bare-name collision documented above is reachable there — on cadence and local
+/// consumers, never on the merge-critical path. Naming it here is the point: a comment that
+/// listed the harmless callers and skipped the live one read as though the class were closed.
+/// Dissolve-on: that path takes its frames from `claim_scope_for` too, at which point this
+/// function retains only its controls.
 pub fn prepare_whole_tree_subject(
     source_roots: &[String],
     exclude_substrings: &[String],
