@@ -1,0 +1,32 @@
+name: witnesses
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+permissions:
+  contents: read
+concurrency:
+  group: witness-floor-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+env:
+  CARGO_TERM_COLOR: always
+jobs:
+  witnesses:
+    runs-on: [self-hosted, linux, arm64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      - name: Build the witness fold
+        run: |
+          cargo build --release -p v1-compiler --bin claim_executor --bin gunbc
+      - name: All witnesses (one prepared subject, one fold)
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/claim_executor" --required-floor --source-root "$ROOT/dag" --source-root "$ROOT/src/v2"

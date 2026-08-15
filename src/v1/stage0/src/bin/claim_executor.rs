@@ -10256,6 +10256,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut verify_artifacts_mode = false;
     let mut floor_worker_role: Option<FloorWorkerRole> = None;
     let mut scoped_batch_id: Option<String> = None;
+    let mut required_floor_mode = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -10273,6 +10274,9 @@ fn run() -> Result<ExitCode, ExitCode> {
             "--source-root" => {
                 i += 1;
                 source_roots.push(require_path_value(&args, i, "--source-root")?);
+            }
+            "--required-floor" => {
+                required_floor_mode = true;
             }
             "--plan-entry" => {
                 i += 1;
@@ -10350,6 +10354,49 @@ fn run() -> Result<ExitCode, ExitCode> {
         return Err(ExitCode::from(2));
     }
     let _phase_profile = PhaseProfile::install_from_env();
+
+    // THE REQUIRED WITNESS FLOOR: one repository preparation, one immutable scope per distinct
+    // claim scope, one cheap mutable frame per claim, one linear fold over every witness in the
+    // tree. It takes no plan, so it short-circuits before the plan-arg requirement — there is no
+    // schedule to resolve, no batch to assign, no worker to spawn and no selection to compute,
+    // and the absence of those flags is the point rather than an omission. `run_required_floor`
+    // refuses when planned, executed and terminal identity counts disagree, so a silently short
+    // roster cannot report as a pass.
+    if required_floor_mode {
+        let commit = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
+        return match v1_compiler::cli_run::run_required_floor(
+            &source_roots,
+            &commit,
+            v1_compiler::cli_run::ShardStyle::single_shard(),
+        ) {
+            Ok(outcome) => {
+                eprintln!(
+                    "required-floor: subject={} modules_resolved={} modules_excluded={}",
+                    outcome.subject_digest, outcome.modules_resolved, outcome.modules_excluded
+                );
+                eprintln!(
+                    "required-floor: planned={} executed={} terminal={} passed={} failed={}",
+                    outcome.claims_planned,
+                    outcome.claims_executed,
+                    outcome.receipt_identities,
+                    outcome.passed,
+                    outcome.failures.len()
+                );
+                for failure in &outcome.failures {
+                    eprintln!("required-floor: FAIL {failure}");
+                }
+                if outcome.failures.is_empty() {
+                    Ok(ExitCode::SUCCESS)
+                } else {
+                    Err(ExitCode::from(1))
+                }
+            }
+            Err(e) => {
+                eprintln!("required-floor: refused: {e}");
+                Err(ExitCode::from(1))
+            }
+        };
+    }
     let plan_entry = match plan_entry {
         Some(e) => e,
         None => {

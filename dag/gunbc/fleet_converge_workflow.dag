@@ -8,7 +8,7 @@ import extdeps.github.actions {
   upload_artifact_action, download_artifact_action,
   RunnerSpec, RunsOnExpression,
 }
-import gunbc.ci_workflow {
+import gunbc.fleet_workflow_steps {
   ci_prelude_steps,
   ci_checkout_step,
   ci_release_build_step,

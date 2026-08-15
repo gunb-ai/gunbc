@@ -1,0 +1,412 @@
+module v2.workflow.required_floor
+
+import v2.std.algebra { contains, fold_list, length, list_append, list_map, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import std.execution_mode { ExecutionMode, Hermetic, Record, Wet, execution_mode_eq }
+import v2.workflow.floor2_prepared_subject {
+  ResolvedWitness,
+  WitnessIdentified,
+  WitnessIdentity,
+  WitnessIdentityRefusal,
+  WitnessIdentityRefused,
+  WitnessSite,
+  ModulePathNotUnique,
+  QualifiedIdentityClaimedByManySites,
+  witness_identity_qualified_name
+}
+
+// THE REQUIRED FLOOR IS ONE ATTEMPT: read the sources once, prepare one subject, fold one
+// exact claim manifest, reduce one receipt. This module is that program.
+//
+// It deliberately does NOT reach the generic schedule vocabulary. There is no Runnable
+// here, no WalkPlan, no batch, no batch position, no positional clamp, no worker and no
+// coordinator — not because those happen to be unused on this path but because the required
+// floor is not a walk of runnables. A batch is a grouping of separately-prepared work, and
+// once there is one preparation the grouping has no subject. Preserving the word would
+// preserve the architecture: a batch identity implies batch receipts, batch clamps and batch
+// ordering, each of which then needs a consumer, and the outer floor reassembles itself
+// around the new evaluator. That is exactly what happened when the inner entry-major loop
+// was replaced while the outer grammar was left standing.
+//
+// WHAT THE HOST STILL OWNS IS EXACTLY TWO OPERATIONS, and neither is expressible here
+// because a .dag function cannot construct the interpreter that runs it: build an evaluable
+// context from a declared source set, and evaluate one qualified declaration inside it.
+// Which claims exist, what identity each has, what refuses, which evaluation frame each
+// needs and what the run's verdict is are facts of this module.
+
+// THE SUBJECT AS THE RUN OBSERVED IT, which is deliberately NOT `v2.workflow.ci_attempt`
+// `CiAttemptRequest`.
+//
+// That carrier is the right one and this is not a nickname for it: it declares a subject in
+// interned identities — `TreeIdentity { commit: Symbol }`, `SourceManifestIdentity { digest:
+// Hash }` — which is the correct shape for an authored row and the wrong shape for a host
+// observation, because a digest computed while preparing has no declaration to intern. The
+// two meet at admission, where the exact-subject lane judges an observation against a request.
+// This carries what one preparation measured, and nothing it did not.
+//
+// The counts are here rather than derived from the inventory because they answer a question
+// the claim list cannot: how many modules the subject dropped. A run reporting claims without
+// reporting exclusions cannot distinguish a clean small roster from a subject that silently
+// lost half the tree.
+type ObservedSubjectIdentity {
+  commit: String
+  source_digest: String
+  modules_resolved: Int
+  modules_excluded: Int
+}
+
+type RequiredFloorAttempt {
+  subject: ObservedSubjectIdentity
+  claims: List<RequiredFloorClaim>
+}
+
+// EXECUTION MODE IS DECLARED ON THE CLAIM, and it is deliberately NOT derived from
+// `reads_live_tree`. Those answer different questions — reads_live_tree says what substrate
+// a declaration may observe, execution_mode says what evaluator frame must run it — and
+// their populations coinciding today does not make one the definition of the other. Deriving
+// it is the cheapest-looking shortcut available at this seam and it silently re-couples two
+// independent axes the first time they disagree.
+//
+// There is no enrollment-origin field. It was drafted and removed: it named which of the
+// three former batches a claim came from, which is the batch concept surviving as a column.
+// A row that remembers its batch invites a consumer to group by it, and the grouping is the
+// thing being deleted.
+//
+// The budget is milliseconds because that is the currency the host's evaluate primitive
+// reads (`EvaluatePreparedClaimRequest.budget_ms`); carrying seconds here and converting at
+// the seam would put a unit change between the authority and the mechanism that enforces it.
+type RequiredFloorClaim {
+  declaration: WitnessIdentity
+  execution_mode: ExecutionMode
+  budget_ms: Int
+}
+
+// THE DISPOSITION OF EVERY DECLARED WITNESS, total by construction.
+//
+// There is no `Deferred` arm, and its absence is the point. A deferral is not a disposition:
+// it says a row was not run without saying who runs it, so the population accumulates
+// silently and reads as coverage. The measured specimen this closes: 1,083 rows reported as
+// "deferred-discovery" on a run whose receipt otherwise claimed to have executed the floor.
+//
+// `ReadsLiveTree` is NOT one of these arms either, and could not be — it determines an
+// evaluation frame, not whether anything executes the row.
+type WitnessDisposition
+  = RequiredFloor
+  | ScheduledWet
+  | ScheduledLong
+  | KnownRedQuarantine
+  | DeletedNotAWitness
+
+fn disposition_is_required_floor(d: WitnessDisposition) -> Bool {
+  match d {
+    RequiredFloor => true
+    ScheduledWet => false
+    ScheduledLong => false
+    KnownRedQuarantine => false
+    DeletedNotAWitness => false
+  }
+}
+
+// A file's module path, observed once from the one source inventory.
+//
+// This is a HOST OBSERVATION, not a declared binding: the host parsed every admitted file to
+// prepare the subject, so it already knows each file's module and reports what it read. The
+// alternative — declaring the module path beside the entry path in .dag — is the second
+// representation of the path/module binding that DESIGN's module-identity-vs-storage thread
+// exists to remove, and it decays exactly the way a positional citation does.
+type ModulePathBinding {
+  entry: String
+  module_path: String
+}
+
+// The manifest refuses rather than deduplicating. Silently merging populations is how a
+// declaration enrolled twice under conflicting modes becomes one arbitrary winner — and the
+// losing mode is precisely the fact worth having. Each arm names the exact qualified
+// declaration, so the refusal is located rather than counted.
+type ManifestRefusal
+  = DeclarationEnrolledTwice { qualified: String }
+  | DeclarationEnrolledWithConflictingModes { qualified: String }
+  | DeclarationIdentityAmbiguous { refusal: WitnessIdentityRefusal }
+
+// ADMISSION IS ALL-OR-NOTHING. A manifest carrying any refusal does not run its clean subset
+// and report on the rest: a narrowed roster presented as a roster is the silent narrowing
+// every other wall on this path exists to prevent.
+type RequiredFloorAdmission
+  = RequiredFloorRunnable { attempt: RequiredFloorAttempt }
+  | RequiredFloorRefused { refusals: List<ManifestRefusal> }
+
+data no_required_floor_claims: List<RequiredFloorClaim> = []
+
+data no_manifest_refusals: List<ManifestRefusal> = []
+
+data no_seen_qualified_names: List<String> = []
+
+data no_module_paths: List<String> = []
+
+// The evaluation deadline for one claim, at ONE authority for the whole manifest.
+//
+// It is stated here rather than imported from the fast-lane rule because the fast lane is a
+// PLACEMENT question — which checks may ride the PR path — and this is an EXECUTION question:
+// how long a single claim may run before the frame refuses. They agree on 5 seconds today,
+// and reusing one for the other would make that coincidence load-bearing.
+fn required_floor_claim_budget_ms() -> Int {
+  5000
+}
+
+fn required_floor_claim_qualified(claim: RequiredFloorClaim) -> String {
+  witness_identity_qualified_name(identity: claim.declaration)
+}
+
+// IDENTITY DERIVATION IS A JOIN AGAINST THE OBSERVED BINDINGS, not a lookup with a fallback.
+//
+// A site whose entry appears in no binding has no identity, and the honest answer is the
+// refusal the carrier already models. Substituting the bare function name — the shape that
+// works per-entry and silently collapses under a shared subject — is the exact failure
+// `WitnessIdentity` exists to make unwritable.
+fn module_path_for_entry(bindings: List<ModulePathBinding>, entry: String) -> List<String> {
+  fold_list(xs: bindings, empty: no_module_paths, cons: fn(acc, b) {
+    if b.entry == entry {
+      list_snoc_item(xs: acc, item: b.module_path)
+    } else {
+      acc
+    }
+  })
+}
+
+// Exactly one binding identifies; zero and many both refuse, and they refuse through the same
+// arm because both mean the same thing to a consumer: this entry does not name one module.
+fn resolve_site(bindings: List<ModulePathBinding>, site: WitnessSite) -> ResolvedWitness {
+  let paths = module_path_for_entry(bindings: bindings, entry: site.entry)
+  if length(xs: paths) == 1 {
+    WitnessIdentified {
+      identity: WitnessIdentity { module_path: paths.first(), function: site.function },
+      site: site
+    }
+  } else {
+    WitnessIdentityRefused { refusal: ModulePathNotUnique { site: site } }
+  }
+}
+
+fn resolve_sites(
+  bindings: List<ModulePathBinding>,
+  sites: List<WitnessSite>
+) -> List<ResolvedWitness> {
+  list_map(xs: sites, f: fn(s) { resolve_site(bindings: bindings, site: s) })
+}
+
+// A resolved witness becomes a claim, or contributes its refusal. Both halves are produced in
+// one pass so the refusal population and the claim population cannot disagree about which
+// rows they came from.
+type ClaimScan {
+  claims: List<RequiredFloorClaim>
+  refusals: List<ManifestRefusal>
+}
+
+data claim_scan_empty: ClaimScan = ClaimScan {
+    claims: no_required_floor_claims,
+    refusals: no_manifest_refusals
+  }
+
+fn scan_resolved(
+  acc: ClaimScan,
+  resolved: ResolvedWitness,
+  mode: ExecutionMode
+) -> ClaimScan {
+  match resolved {
+    WitnessIdentified { identity: id, site: _ } => ClaimScan {
+      claims: list_snoc_item(
+        xs: acc.claims,
+        item: RequiredFloorClaim {
+          declaration: id,
+          execution_mode: mode,
+          budget_ms: required_floor_claim_budget_ms()
+        }
+      ),
+      refusals: acc.refusals
+    }
+    WitnessIdentityRefused { refusal: r } => ClaimScan {
+      claims: acc.claims,
+      refusals: list_snoc_item(
+        xs: acc.refusals,
+        item: DeclarationIdentityAmbiguous { refusal: r }
+      )
+    }
+  }
+}
+
+fn scan_resolved_list(
+  acc: ClaimScan,
+  resolved: List<ResolvedWitness>,
+  mode: ExecutionMode
+) -> ClaimScan {
+  fold_list(xs: resolved, empty: acc, cons: fn(inner, r) {
+    scan_resolved(acc: inner, resolved: r, mode: mode)
+  })
+}
+
+// COMPLETENESS IS AN IDENTITY JOIN, NEVER A COUNT. Two populations of equal size can name
+// different declarations, and a count comparison reports that as clean. So the duplicate
+// check below groups by qualified name and asks about the group's members, never about how
+// many rows exist.
+fn claims_named(claims: List<RequiredFloorClaim>, qualified: String) -> List<RequiredFloorClaim> {
+  fold_list(xs: claims, empty: no_required_floor_claims, cons: fn(acc, c) {
+    if required_floor_claim_qualified(claim: c) == qualified {
+      list_snoc_item(xs: acc, item: c)
+    } else {
+      acc
+    }
+  })
+}
+
+fn claim_group_modes_agree(group: List<RequiredFloorClaim>, mode: ExecutionMode) -> Bool {
+  fold_list(xs: group, empty: true, cons: fn(agree, c) {
+    agree && execution_mode_eq(left: c.execution_mode, right: mode)
+  })
+}
+
+// The two duplicate arms are kept APART on purpose. The same declaration twice under one mode
+// is a roster defect: it would run twice and the receipt would carry two rows for one
+// subject. The same declaration under two modes is a contradiction about how it must execute,
+// and the tempting repair — pick one — discards the fact worth knowing. Both refuse; only the
+// second is unrecoverable without a decision.
+fn claim_group_refusal(
+  acc: List<ManifestRefusal>,
+  group: List<RequiredFloorClaim>,
+  qualified: String,
+  reference_mode: ExecutionMode
+) -> List<ManifestRefusal> {
+  if length(xs: group) < 2 {
+    acc
+  } else if claim_group_modes_agree(group: group, mode: reference_mode) {
+    list_snoc_item(xs: acc, item: DeclarationEnrolledTwice { qualified: qualified })
+  } else {
+    list_snoc_item(
+      xs: acc,
+      item: DeclarationEnrolledWithConflictingModes { qualified: qualified }
+    )
+  }
+}
+
+type ManifestScan {
+  seen: List<String>
+  refusals: List<ManifestRefusal>
+}
+
+data manifest_scan_empty: ManifestScan = ManifestScan {
+    seen: no_seen_qualified_names,
+    refusals: no_manifest_refusals
+  }
+
+// The whole claim list is captured by the closure rather than threaded through the
+// accumulator: the group for a name is a question about the WHOLE manifest, and an
+// accumulator carrying only what the fold has seen so far would answer it against a prefix —
+// a duplicate whose second occurrence comes later would read as unique. The `seen` list is
+// what makes it ONE refusal per distinct duplicated declaration rather than one per group
+// member; without it a declaration enrolled three times reports three refusals about itself
+// and a reader counting refusals sees three defects.
+fn duplicate_refusals(claims: List<RequiredFloorClaim>) -> List<ManifestRefusal> {
+  let scan = fold_list(xs: claims, empty: manifest_scan_empty, cons: fn(acc, c) {
+    let qualified = required_floor_claim_qualified(claim: c)
+    if contains(xs: acc.seen, item: qualified, eq: fn(l, r) { l == r }) {
+      acc
+    } else {
+      ManifestScan {
+        seen: list_snoc_item(xs: acc.seen, item: qualified),
+        refusals: claim_group_refusal(
+          acc: acc.refusals,
+          group: claims_named(claims: claims, qualified: qualified),
+          qualified: qualified,
+          reference_mode: c.execution_mode
+        )
+      }
+    }
+  })
+  scan.refusals
+}
+
+// THE MANIFEST. One fold over the observed populations, producing one claim list and the
+// refusals that make it inadmissible.
+//
+// `hermetic_sites` are the discovered witnesses; `wet_sites` are the rows whose subject IS a
+// live effect and which therefore need a dispatching frame. They arrive as separate lists
+// rather than one list with a flag because the flag would have to be derived from something,
+// and the only available something is `reads_live_tree` — the derivation this module refuses
+// to make.
+fn required_floor_manifest(
+  bindings: List<ModulePathBinding>,
+  hermetic_sites: List<WitnessSite>,
+  wet_sites: List<WitnessSite>
+) -> ClaimScan {
+  let after_hermetic = scan_resolved_list(
+    acc: claim_scan_empty,
+    resolved: resolve_sites(bindings: bindings, sites: hermetic_sites),
+    mode: Hermetic
+  )
+  let after_wet = scan_resolved_list(
+    acc: after_hermetic,
+    resolved: resolve_sites(bindings: bindings, sites: wet_sites),
+    mode: Wet
+  )
+  ClaimScan {
+    claims: after_wet.claims,
+    refusals: list_append(
+      left: after_wet.refusals,
+      right: duplicate_refusals(claims: after_wet.claims)
+    )
+  }
+}
+
+fn required_floor_attempt(
+  subject: ObservedSubjectIdentity,
+  bindings: List<ModulePathBinding>,
+  hermetic_sites: List<WitnessSite>,
+  wet_sites: List<WitnessSite>
+) -> RequiredFloorAdmission {
+  let scan = required_floor_manifest(
+    bindings: bindings,
+    hermetic_sites: hermetic_sites,
+    wet_sites: wet_sites
+  )
+  if length(xs: scan.refusals) == 0 {
+    RequiredFloorRunnable {
+      attempt: RequiredFloorAttempt { subject: subject, claims: scan.claims }
+    }
+  } else {
+    RequiredFloorRefused { refusals: scan.refusals }
+  }
+}
+
+// ONE PREPARATION PER ATTEMPT, and it holds by SHAPE rather than by counting. An attempt
+// names exactly one subject, and a claim carries only an identity — no source root, no
+// index, no resolver, no entry path — so nothing a consumer of this model holds can name a
+// second compiler world. An entry-private preparation is unrepresentable here, not merely
+// absent, and that is why there is no cache to look in and no memo to hide repeated demands.
+fn required_floor_preparation_count(attempt: RequiredFloorAttempt) -> Int {
+  1
+}
+
+fn required_floor_claim_count(attempt: RequiredFloorAttempt) -> Int {
+  length(xs: attempt.claims)
+}
+
+// The attempt's effect envelope, derived from its claims rather than declared beside them. A
+// separately declared envelope drifts: a manifest gains a Wet row while a hand-written
+// Hermetic declaration keeps saying the run reaches no live effects. It widens rather than
+// narrows, which is the fail-closed direction — an envelope narrower than some claim would
+// let a consumer treat a live-effect run as inert. Record is widest because it dispatches AND
+// captures.
+fn required_floor_effect_envelope(attempt: RequiredFloorAttempt) -> ExecutionMode {
+  fold_list(xs: attempt.claims, empty: Hermetic, cons: fn(acc, c) {
+    match acc {
+      Record => Record
+      Wet => match c.execution_mode {
+        Record => Record
+        Wet => Wet
+        Hermetic => Wet
+      }
+      Hermetic => c.execution_mode
+    }
+  })
+}

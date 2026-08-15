@@ -14776,20 +14776,35 @@ fn render_batch_summary_line(
 }
 
 pub fn install_output_policy(source_roots: &[String]) {
-    use v1_interpreter::{OutputDecision, Value};
-    let (verbose, quiet) = match v1_interpreter::cli_verbosity() {
-        v1_interpreter::Verbosity::Verbose => (true, false),
-        v1_interpreter::Verbosity::Quiet => (false, true),
-        v1_interpreter::Verbosity::Normal => (false, false),
-    };
     let entry = "dag/gunbc/output_policy.dag";
     let (graph, indices) = match resolve_entry_graph_shared(source_roots, entry) {
         Ok(g) => g,
         Err(_) => return,
     };
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    install_output_policy_in(&ctx, source_roots);
+}
+
+/// INSTALL THE POLICY FROM AN ALREADY-PREPARED CONTEXT.
+///
+/// `install_output_policy` above resolves `dag/gunbc/output_policy.dag` on its own, which on
+/// the floor cost a separate whole-entry resolve to read five channel decisions out of a world
+/// the run was about to build anyway. The required floor calls this form with the one prepared
+/// repository instead: the policy module is already in the subject, so reading it is an
+/// evaluation and nothing more.
+///
+/// The two forms share every decision below deliberately — a second copy of the decode would be
+/// a second policy, and the divergence would show up as two runs disagreeing about what
+/// "Normal" prints.
+pub fn install_output_policy_in(ctx: &v1_interpreter::InterpContext, source_roots: &[String]) {
+    use v1_interpreter::{OutputDecision, Value};
+    let (verbose, quiet) = match v1_interpreter::cli_verbosity() {
+        v1_interpreter::Verbosity::Verbose => (true, false),
+        v1_interpreter::Verbosity::Quiet => (false, true),
+        v1_interpreter::Verbosity::Normal => (false, false),
+    };
     let policy = match v1_interpreter::run_in_context_with_args(
-        &ctx,
+        ctx,
         "resolve_channel_policy",
         &[
             (Some("verbose".to_string()), Value::Bool(verbose)),
@@ -14841,7 +14856,7 @@ pub fn install_output_policy(source_roots: &[String]) {
     // with 5,310 per-witness lines and every witness green, because a policy read that fails
     // closed to the OLD behaviour is indistinguishable from a policy that chose it.
     let folds = match v1_interpreter::run_in_context_with_args(
-        &ctx,
+        ctx,
         "routine_rollup_folds",
         &[
             (Some("verbose".to_string()), Value::Bool(verbose)),
@@ -14876,7 +14891,7 @@ pub fn install_output_policy(source_roots: &[String]) {
     // is not loaded here" have different remedies, and only the first is drift.
     let ask_fold = |passed: bool| -> Result<bool, String> {
         match v1_interpreter::run_in_context_with_args(
-            &ctx,
+            ctx,
             "concluded_outcome_folds",
             &[(Some("passed".to_string()), Value::Bool(passed))],
             false,
@@ -14901,7 +14916,7 @@ pub fn install_output_policy(source_roots: &[String]) {
         }
     }
 
-    install_effect_stream_policy(&ctx, verbose, quiet);
+    install_effect_stream_policy(ctx, verbose, quiet);
 }
 
 /// Evaluate `gunbc.output_policy.resolve_shell_trace_stream_policy` from the same
@@ -24539,6 +24554,20 @@ struct ShardStyle {
 }
 
 impl ShardStyle {
+    /// The style the required witness floor runs under. It is a single shard by construction —
+    /// there is no sharding to describe, so the `s{id}` tag is absent rather than set to a
+    /// constant — and colour/streaming come from the same environment the rest of the floor
+    /// reads. This exists because the fields are private to this module and the floor's CLI
+    /// entry lives in a binary; it is a constructor, not a policy.
+    pub fn single_shard() -> Self {
+        ShardStyle {
+            shard_id: 0,
+            shard_count: 1,
+            color: floor_color_enabled(),
+            stream: floor_stream_enabled(),
+        }
+    }
+
     /// Distinct hue per concurrent shard so the interleaved stream reads as parallelism. Green
     /// and red are reserved for the pass/fail glyph, so the label palette avoids them.
     fn shard_color_code(self) -> &'static str {
@@ -41810,4 +41839,716 @@ mod union_dedup_import_facts_law {
     fn empty_inputs_produce_an_empty_population() {
         assert!(union_dedup_import_facts_reference_first(vec![], vec![]).is_empty());
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// THE REQUIRED WITNESS FLOOR
+//
+// Ported 2026-08-15 from session/vivid-bear-458-floor2 b19a3e2942 as re-add #1 after the
+// CI wipe. Only the preparation/scope/fold stack came across: the quarry's plan, batch,
+// worker and coordinator surfaces are not re-added and are not migration subjects.
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+pub fn floor_prepared_subject_exclusions() -> Vec<String> {
+    vec![
+        "test/fixture/meta_exec_confinement_scan/".to_string(),
+        "test/manual/ownership_movable_test.dag".to_string(),
+    ]
+}
+
+/// ONE PREPARATION, N FRAMES — and the distinction is what deleted the memo.
+///
+/// The load-bearing observation is that `ExecutionMode` is NOT an input to resolution. It
+/// reaches only `InterpContext::with_runtime_options`, so a Hermetic claim and a Wet claim
+/// over the same tree are two CONTEXTS over one graph, not two subjects. That fact used to be
+/// spent on a thread-local cache: three plan-driven batches each *demanded* a prepared
+/// subject, and the memo made the second and third demands cheap. The demands were the
+/// defect. One required-floor process prepares once and hands the same `PreparedRepository`
+/// to every frame it builds, so there is no repeated demand to absorb, no key to get wrong,
+/// and no cache whose hit rate could silently become the thing being measured.
+///
+/// A cache that is never consulted twice is not an optimisation, it is a claim about the
+/// call graph written in the wrong place — and one that a reader can only check by counting
+/// callers. Direct value flow states it structurally: `prepare_repository_once` is called at
+/// one site, and every frame is derived from what it returned.
+///
+/// THE INVENTORY IS RETAINED, and that is the second half of the deletion. Preparation
+/// already walked and read every admitted file; a later consumer that walks again to ask what
+/// modules exist, which files declare witnesses, or what a module's path is, is re-acquiring
+/// the repository to learn something the preparation already knows. The naming-hygiene walk
+/// cost ~6 minutes of every floor run for exactly that reason. Consumers fold over this
+/// inventory instead.
+pub struct PreparedRepository {
+    pub graph: Rc<v1_compiler_compile::ResolvedGraph>,
+    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub subject_digest: String,
+    pub modules_resolved: usize,
+    pub modules_excluded: usize,
+    pub inventory: Vec<InventoryEntry>,
+}
+
+/// One admitted source file, as preparation read it: its module path, its repository path,
+/// and the bytes. The module path is carried here rather than re-derived because the index
+/// that produced it is the same one preparation resolved from — re-deriving it later is the
+/// second representation of the path/module binding, and it is the representation that rots.
+pub struct InventoryEntry {
+    pub module_path: String,
+    pub path: String,
+    pub content: String,
+}
+
+/// THE ONE PREPARATION. Reads the active sources once, resolves them once under the strict
+/// typecheck gate, and returns everything a later consumer could want to know about the
+/// subject so that none of them reaches for the repository again.
+pub fn prepare_repository_once(
+    source_roots: &[String],
+    exclude_substrings: &[String],
+) -> Result<PreparedRepository, String> {
+    let index = build_module_index(source_roots);
+    let total = index.len();
+    let mut inventory: Vec<InventoryEntry> = Vec::with_capacity(total);
+    let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::with_capacity(total);
+    for (module_path, sf) in index.iter() {
+        let p = sf.path.replace('\\', "/");
+        if exclude_substrings
+            .iter()
+            .any(|sub| p.contains(sub.as_str()) || module_path.contains(sub.as_str()))
+        {
+            continue;
+        }
+        inventory.push(InventoryEntry {
+            module_path: module_path.clone(),
+            path: sf.path.clone(),
+            content: sf.content.clone(),
+        });
+        sources.push(sf.clone());
+    }
+    if sources.is_empty() {
+        return Err("whole-tree corpus is empty (no .dag modules under source roots)".to_string());
+    }
+    let modules_excluded = total - sources.len();
+    let subject_digest = subject_digest_for_closure(&sources);
+    let (graph, source_indices) =
+        resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)?;
+    Ok(PreparedRepository {
+        graph,
+        source_indices,
+        subject_digest,
+        modules_resolved: total - modules_excluded,
+        modules_excluded,
+        inventory,
+    })
+}
+
+/// THE EXACT SCOPE ONE CLAIM EVALUATES IN — a projection of the one preparation, never a
+/// second one.
+///
+/// `PreparedRepository` is deliberately NOT evaluable. A repository-wide `InterpContext` is
+/// the flat namespace that produced the mass red: `with_runtime_options` inserts every
+/// declaration under BOTH its bare and its qualified name, bare insertion overwrites, and
+/// `lookup_fn` is a plain map get that never consults `ambiguous_bare_function_names`. Over an
+/// entry closure that is safe; over 3,662 modules it is not. Measured on the corpus, 549
+/// function names and 812 top-level declaration names are declared in more than one file.
+/// Executed specimen: `altra_minimal_design_witness_test` `w_the_selected_minimum_is_admitted`
+/// passes entry-major and fails in 1ms under a repository-wide frame with `call contract
+/// mismatch calling 'admits': no parameter named 'd' (declared: [coverage])` — six files
+/// declare `fn admits`, and `check_coverage_admission_witness_test`'s won the map.
+///
+/// So the wrong state has no API rather than a warning beside it: there is no function that
+/// turns a `PreparedRepository` into an evaluable context, and the only route to evaluation is
+/// through a scope.
+///
+/// WHAT THE SCOPE REPRODUCES IS THE OLD ENTRY CLOSURE, deliberately — NOT strict module-local
+/// binding. The entry-major evaluator flattened the selected entry's whole closure into one
+/// context, so a witness legitimately calls helpers declared in modules it imports. A strict
+/// module-local view would be narrower than what the corpus was written against, and adopting
+/// it here would fuse the floor cutover with namespace hardening and undeclared-import
+/// enforcement — which would also destroy the exact old/new parity this cutover is judged by.
+/// Narrowing to a true module-bound environment belongs to the namespace lane, after declared
+/// imports are authoritative.
+///
+/// CONSTRUCTION IS PROJECTION ONLY: no source read, no parse, no resolve, no typecheck. The
+/// module population is selected from what preparation already resolved and the item registry
+/// is filtered by `ItemInfo.module_name` to the same population.
+pub struct PreparedClaimScope {
+    /// THE IMMUTABLE INTERPRETER INDEXES FOR THIS SCOPE, built ONCE here rather than once per
+    /// claim. `InterpContext::with_runtime_options` walks every module and every item to build
+    /// them, so calling it per claim would rebuild 1,155 scopes' worth of maps 9,573 times —
+    /// the entry-major cost shape reproduced one layer below the compiler, immediately after
+    /// the compiler's own copy of it was deleted.
+    indexes: Rc<v1_interpreter::PreparedScopeIndexes>,
+    /// Digest of the ORDERED module identities in this scope. Ordered because the defect being
+    /// fixed is last-writer-wins over an unordered flattening: two scopes holding the same
+    /// module set in different orders can bind a colliding bare name differently, so a
+    /// set-digest would call them identical when they are not.
+    pub scope_identity: String,
+    pub module_count: usize,
+}
+
+/// Project the exact scope for one entry file out of the prepared repository.
+///
+/// The closure is the transitive declared-import closure of the entry's module, which is the
+/// population the entry-major path placed in that claim's context. A module the closure names
+/// but the subject does not contain is a REFUSAL rather than a silent omission: evaluating
+/// against a scope that quietly lost a module reproduces, one level down, exactly the missing
+/// binding this scope exists to prevent.
+pub fn claim_scope_for(
+    prepared: &PreparedRepository,
+    entry_module_path: &str,
+) -> Result<PreparedClaimScope, String> {
+    // THE CLOSURE COMES FROM THE COMPILER, NOT FROM A SECOND IMPORT SCAN.
+    //
+    // `TypedModule.func_env` is the module's `ResolvedFuncEnv`, and its `parents` field is —
+    // per that carrier's own note — "the module's transitive import closure held FLAT,
+    // precedence-ordered (first = highest precedence: the last direct import's closure first,
+    // then earlier imports'; own local always wins before any parent), deduped by env name
+    // keeping the first occurrence", with the old deep-first walk's shadowing "preserved
+    // exactly".
+    //
+    // That is the population the entry-major path bound against, computed by the compiler that
+    // resolved it. An earlier revision re-derived it here by scanning `import` lines out of the
+    // retained inventory, which was a SECOND answer to a question the prepared artifacts had
+    // already answered — and one that could differ from the first, in the direction that
+    // silently narrows: the old closure also admitted modules reached by bare reference, which
+    // no scan of import lines can see.
+    let entry_module = prepared
+        .graph
+        .modules
+        .iter()
+        .find(|m| m.func_env.name == entry_module_path)
+        .ok_or_else(|| {
+            format!(
+                "CLAIM-SCOPE REFUSAL cause=EntryModuleOutsidePreparedSubject \
+                 module={entry_module_path} — the manifest named this module and the prepared \
+                 subject does not contain it"
+            )
+        })?;
+    // Own module first, then its closure in the compiler's own precedence order. Order is part
+    // of the scope's identity (see `scope_identity`), so it is taken from the ordered carrier
+    // rather than from a hash map's iteration.
+    let mut order: Vec<String> = vec![entry_module.func_env.name.clone()];
+    let mut seen: HashSet<String> = HashSet::new();
+    seen.insert(entry_module.func_env.name.clone());
+    for parent in entry_module.func_env.parents.iter() {
+        if seen.insert(parent.name.clone()) {
+            order.push(parent.name.clone());
+        }
+    }
+    let in_scope: HashSet<&str> = order.iter().map(|s| s.as_str()).collect();
+    // Module selection keys on `func_env.name` too, so the population and the closure that
+    // produced it are read off ONE field. Deriving the population from the authored module node
+    // while deriving the closure from `func_env` would be two spellings of a module identity,
+    // and a scope whose members disagree with its own closure is the defect one level up.
+    let modules: Vec<Rc<v1_compiler_compile::TypedModule>> = prepared
+        .graph
+        .modules
+        .iter()
+        .filter(|m| in_scope.contains(m.func_env.name.as_str()))
+        .cloned()
+        .collect();
+    // The item registry is projected from the SAME module population, by UNIONING each scoped
+    // module's own registry rather than filtering the global one on `ItemInfo.module_name`.
+    //
+    // The filtering form was written first and the data-collision control caught it:
+    // `scope.alpha.reads_datum` answered `NoSuchVariable { name: "shared_datum" }` because
+    // `module_name` is not the module-path spelling the inventory carries, so the predicate
+    // matched nothing and every data declaration was dropped. Functions still worked — they
+    // come from `fn_nodes`, built off the module list — so a function-only control would have
+    // passed while `build_initial_env` bound nothing at all. Each module's own registry needs
+    // no name comparison to be correct, which is why it is the projection used.
+    let mut item_registry: HashMap<String, Rc<crate::v1_compiler_infer_items::ItemInfo>> =
+        HashMap::new();
+    for module in &modules {
+        for (name, info) in module.item_registry.iter() {
+            item_registry.insert(name.clone(), info.clone());
+        }
+    }
+    // Folded left over the ORDERED identities with `hash_combine`, which is not commutative —
+    // so two scopes holding the same modules in different orders get different identities. A
+    // set digest would call them equal, and order is exactly what decides which declaration
+    // wins a colliding bare name.
+    let scope_identity = order.iter().fold(
+        v1_rt::atom_identity_hash(entry_module_path.to_string()),
+        |acc, module| v1_rt::hash_combine(acc, v1_rt::atom_identity_hash(module.clone())),
+    );
+    let module_count = modules.len();
+    let scoped_graph = v1_compiler_compile::ResolvedGraph {
+        modules: Rc::new(modules.into_iter().collect()),
+        item_registry: Rc::new(item_registry),
+        diagnostics: prepared.graph.diagnostics.clone(),
+        emit_graph_info: prepared.graph.emit_graph_info.clone(),
+    };
+    Ok(PreparedClaimScope {
+        indexes: v1_interpreter::InterpContext::build_scope_indexes(
+            &scoped_graph,
+            prepared.source_indices.clone(),
+        ),
+        module_count,
+        scope_identity,
+    })
+}
+
+/// A fresh evaluation frame over one exact scope. The only route from a prepared repository to
+/// something that can run a claim.
+///
+/// FRESH PER CLAIM rather than shared per scope: the context owns mutable evaluation caches
+/// (call memo, data cache, param/var/callee name caches), and claims that share an immutable
+/// scope must not be able to contaminate one another through them.
+pub fn evaluation_frame(
+    scope: &PreparedClaimScope,
+    execution_mode: v1_interpreter::ExecutionMode,
+    fixture_store: Option<std::rc::Rc<crate::recorded_fixture::RecordedFixtureStore>>,
+    published_mocks: Option<std::rc::Rc<std::collections::HashSet<String>>>,
+) -> v1_interpreter::InterpContext {
+    v1_interpreter::InterpContext::over_scope_indexes(
+        scope.indexes.clone(),
+        execution_mode,
+        fixture_store,
+        published_mocks,
+    )
+}
+
+pub struct RequiredFloorClaim {
+    pub module_path: String,
+    pub function: String,
+    pub qualified: String,
+    pub execution_mode: v1_interpreter::ExecutionMode,
+    pub budget_ms: u64,
+}
+
+/// What one required-floor attempt did. The three identity counts are separate fields rather
+/// than one `total` because the operator's acceptance census asks them to be EQUAL, and a
+/// single number cannot be compared with itself: a run that planned 9,267 claims, executed
+/// 8,184 and receipted 8,184 reports a healthy-looking pair unless the planned count is
+/// carried beside them.
+pub struct RequiredFloorOutcome {
+    pub subject_digest: String,
+    pub modules_resolved: usize,
+    pub modules_excluded: usize,
+    pub claims_planned: usize,
+    pub claims_executed: usize,
+    pub receipt_identities: usize,
+    pub passed: usize,
+    pub failures: Vec<String>,
+}
+
+/// A witness site as the inventory reports it — the file's path, its module, and the `test fn`
+/// names it declares. Produced by folding over bytes preparation already read.
+pub struct InventoryWitnessFile {
+    pub path: String,
+    pub module_path: String,
+    pub functions: Vec<String>,
+}
+
+/// Fold the one inventory into witness sites. NO FILESYSTEM ACCESS: preparation read every
+/// admitted file, so asking which of them declare witnesses is a scan of bytes already in
+/// hand. The walk this replaces cost ~6 minutes of every floor run, acquired the repository a
+/// second time, and additionally built a whole-corpus module graph to answer a question about
+/// one file at a time.
+///
+/// A `test fn` is recognised at column zero only, which is the same rule the parser applies to
+/// a top-level declaration: an indented occurrence is inside a body and is not a declaration.
+pub fn inventory_witness_files(prepared: &PreparedRepository) -> Vec<InventoryWitnessFile> {
+    let mut out: Vec<InventoryWitnessFile> = Vec::new();
+    for entry in &prepared.inventory {
+        let mut functions: Vec<String> = Vec::new();
+        for line in entry.content.lines() {
+            let Some(rest) = line.strip_prefix("test fn ") else {
+                continue;
+            };
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if !name.is_empty() {
+                functions.push(name);
+            }
+        }
+        if !functions.is_empty() {
+            out.push(InventoryWitnessFile {
+                path: entry.path.replace('\\', "/"),
+                module_path: entry.module_path.clone(),
+                functions,
+            });
+        }
+    }
+    out.sort_by(|a, b| a.path.cmp(&b.path));
+    out
+}
+
+fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
+    v1_interpreter::Value::List(Rc::new(
+        items
+            .into_iter()
+            .map(v1_interpreter::Value::Str)
+            .collect::<Vec<_>>()
+            .into(),
+    ))
+}
+
+fn record_value(
+    ctx: &v1_interpreter::InterpContext,
+    type_name: &str,
+    fields: Vec<(&str, v1_interpreter::Value)>,
+) -> v1_interpreter::Value {
+    v1_interpreter::Value::Record {
+        type_name: ctx.sym(type_name),
+        fields: Rc::new(
+            fields
+                .into_iter()
+                .map(|(n, v)| (ctx.sym(n), v))
+                .collect::<Vec<_>>(),
+        ),
+    }
+}
+
+/// The module whose `required_floor_attempt` folds the manifest. Named once: the manifest is
+/// evaluated in its OWN exact scope, exactly as every claim is, so the program that decides
+/// which claims exist is not itself privileged with a wider namespace than the claims it
+/// admits.
+const REQUIRED_FLOOR_MANIFEST_MODULE: &str = "v2.workflow.required_floor";
+
+/// THE REQUIRED FLOOR, AS ONE ATTEMPT.
+///
+/// Read the active sources once, strict-prepare one subject once, evaluate the manifest inside
+/// that subject, fold the manifest once, reduce one receipt. There is no plan resolve, no
+/// policy resolve, no compile-clean resolve, no discovery-producer resolve, no batch, no
+/// positional clamp, no worker, no coordinator, no child process and no prepared-subject
+/// cache — not because they are switched off on this path but because this function does not
+/// contain them and nothing it calls reaches them.
+///
+/// WHY IT IS ONE FUNCTION rather than a pipeline of stages with a shared context object: every
+/// stage boundary this path used to have was a place where a consumer re-asked for the
+/// repository. The prepared value is a local, so a second acquisition would have to be written
+/// as a second call to `prepare_repository_once` — visible in one screen rather than hidden
+/// behind a cache hit.
+pub fn run_required_floor(
+    source_roots: &[String],
+    commit: &str,
+    style: ShardStyle,
+) -> Result<RequiredFloorOutcome, String> {
+    // ── 1. read once, prepare once ────────────────────────────────────────────────────────
+    set_phase(FloorPhase::Resolve, "required-floor preparation");
+    let prepare_started = std::time::Instant::now();
+    let prepared = prepare_repository_once(source_roots, &floor_prepared_subject_exclusions())?;
+    let prepare_ms = prepare_started.elapsed().as_millis();
+    eprintln!(
+        "floor: active sources = {}",
+        prepared.modules_resolved + prepared.modules_excluded
+    );
+    eprintln!(
+        "floor: strict preparation complete in {}ms ({} module(s) resolved, {} excluded, \
+         digest={})",
+        prepare_ms, prepared.modules_resolved, prepared.modules_excluded, prepared.subject_digest
+    );
+
+    // ── 2. the evaluation frames ──────────────────────────────────────────────────────────
+    //
+    // The published-mock corpus is part of the ENVELOPE and therefore part of every frame.
+    // Preparing without it produced a world in which every claim reading a published mock
+    // resolved against nothing: 9,057 of 9,317 witnesses could not find their own code, at a
+    // digest that claimed to name the same subject.
+    let published = match precompute_whole_tree_published_mock_keys(source_roots) {
+        Ok(keys) if keys.is_empty() => None,
+        Ok(keys) => Some(Rc::new(keys)),
+        Err(e) => return Err(format!("published mock corpus precompute failed: {e}")),
+    };
+    let manifest_scope = claim_scope_for(&prepared, REQUIRED_FLOOR_MANIFEST_MODULE)?;
+    let hermetic = evaluation_frame(
+        &manifest_scope,
+        v1_interpreter::ExecutionMode::Hermetic,
+        None,
+        published.clone(),
+    );
+    // The output policy is installed FROM the prepared subject. Resolving
+    // `dag/gunbc/output_policy.dag` on its own cost a separate whole-entry resolve to read
+    // five channel decisions out of a world this function had already built.
+    install_output_policy_in(&hermetic, source_roots);
+
+    // ── 3. the manifest, folded in .dag ───────────────────────────────────────────────────
+    let files = inventory_witness_files(&prepared);
+    let bindings: Vec<v1_interpreter::Value> = prepared
+        .inventory
+        .iter()
+        .map(|e| {
+            record_value(
+                &hermetic,
+                "ModulePathBinding",
+                vec![
+                    (
+                        "entry",
+                        v1_interpreter::Value::Str(e.path.replace('\\', "/")),
+                    ),
+                    (
+                        "module_path",
+                        v1_interpreter::Value::Str(e.module_path.clone()),
+                    ),
+                ],
+            )
+        })
+        .collect();
+    let mut sites: Vec<v1_interpreter::Value> = Vec::new();
+    for file in &files {
+        for function in &file.functions {
+            sites.push(record_value(
+                &hermetic,
+                "WitnessSite",
+                vec![
+                    ("entry", v1_interpreter::Value::Str(file.path.clone())),
+                    ("function", v1_interpreter::Value::Str(function.clone())),
+                ],
+            ));
+        }
+    }
+    let subject = record_value(
+        &hermetic,
+        "ObservedSubjectIdentity",
+        vec![
+            ("commit", v1_interpreter::Value::Str(commit.to_string())),
+            (
+                "source_digest",
+                v1_interpreter::Value::Str(prepared.subject_digest.clone()),
+            ),
+            (
+                "modules_resolved",
+                v1_interpreter::Value::Int(prepared.modules_resolved as i64),
+            ),
+            (
+                "modules_excluded",
+                v1_interpreter::Value::Int(prepared.modules_excluded as i64),
+            ),
+        ],
+    );
+    let empty_sites =
+        v1_interpreter::Value::List(Rc::new(Vec::<v1_interpreter::Value>::new().into()));
+    let admission = v1_interpreter::run_in_context_with_args(
+        &hermetic,
+        "required_floor_attempt",
+        &[
+            (Some("subject".to_string()), subject),
+            (
+                Some("bindings".to_string()),
+                v1_interpreter::Value::List(Rc::new(bindings.into())),
+            ),
+            (
+                Some("hermetic_sites".to_string()),
+                v1_interpreter::Value::List(Rc::new(sites.into())),
+            ),
+            (Some("wet_sites".to_string()), empty_sites),
+        ],
+        false,
+    )
+    .map_err(|e| format!("required_floor_attempt: {e}"))?;
+    let claims = required_floor_claims_from_admission(&hermetic, &admission)?;
+
+    // ── 4. fold the manifest ──────────────────────────────────────────────────────────────
+    eprintln!("floor: claims = {}", claims.len());
+    let claims_planned = claims.len();
+    let mut outcome = RequiredFloorOutcome {
+        subject_digest: prepared.subject_digest.clone(),
+        modules_resolved: prepared.modules_resolved,
+        modules_excluded: prepared.modules_excluded,
+        claims_planned,
+        claims_executed: 0,
+        receipt_identities: 0,
+        passed: 0,
+        failures: Vec::new(),
+    };
+    let mut receipted: HashSet<String> = HashSet::new();
+
+    // SCOPES ARE DERIVED ONCE FROM THE EXACT MANIFEST, as an explicit table rather than a lazy
+    // cache filled during the fold. A lazy cache would make "how many scopes exist" a question
+    // about execution history instead of about the manifest, and the acceptance census asks for
+    // distinct scopes constructed to EQUAL the manifest's distinct scope identities — which is
+    // only checkable if the table is built before anything runs.
+    let scope_start = std::time::Instant::now();
+    let mut scopes: std::collections::HashMap<String, PreparedClaimScope> =
+        std::collections::HashMap::new();
+    for claim in &claims {
+        if !scopes.contains_key(&claim.module_path) {
+            scopes.insert(
+                claim.module_path.clone(),
+                claim_scope_for(&prepared, &claim.module_path)?,
+            );
+        }
+    }
+    eprintln!(
+        "floor: {} distinct claim scope(s) projected in {}ms (0 reads, 0 parses, 0 resolves)",
+        scopes.len(),
+        scope_start.elapsed().as_millis()
+    );
+
+    let eval_started = std::time::Instant::now();
+    for (index, claim) in claims.iter().enumerate() {
+        if index % 1000 == 0 {
+            eprintln!("floor: evaluating {index} / {claims_planned}");
+        }
+        let scope = scopes
+            .get(&claim.module_path)
+            .expect("every claim's scope was projected above");
+        // FRESH PER CLAIM. Claims sharing one immutable scope must not share the mutable
+        // evaluation caches a context owns, or one witness contaminates the next through a
+        // memo rather than through anything it declared.
+        let frame = evaluation_frame(scope, claim.execution_mode, None, published.clone());
+        frame.set_witness_eval_budget(Some(claim.budget_ms));
+        set_phase(FloorPhase::Eval, &claim.qualified);
+        let (result, receipt) =
+            run_claim_measured(&frame, &prepared.subject_digest, &claim.qualified);
+        outcome.claims_executed += 1;
+        receipted.insert(claim.qualified.clone());
+        style.stream_witness(
+            &claim.function,
+            &claim.module_path,
+            "PreparedSubject",
+            receipt.wall_nanos,
+            matches!(result, ClaimOutcome::Pass),
+        );
+        match result {
+            ClaimOutcome::Pass => outcome.passed += 1,
+            ClaimOutcome::Fail => outcome
+                .failures
+                .push(format!("{} returned Bool(false)", claim.qualified)),
+            // Every non-pass arm is reported with the fact that distinguishes it. A
+            // collapsed "failed" would make a budget refusal, a runtime error and a
+            // witness that answered false read alike, and those three have different
+            // remedies.
+            ClaimOutcome::NotBool { got } => outcome
+                .failures
+                .push(format!("{} answered {got}, not a Bool", claim.qualified)),
+            ClaimOutcome::RuntimeError { message } => outcome
+                .failures
+                .push(format!("{} errored: {message}", claim.qualified)),
+            ClaimOutcome::TimedOut {
+                elapsed_ms,
+                budget_ms,
+                kind,
+            } => outcome.failures.push(format!(
+                "{} exceeded its {kind:?} budget ({elapsed_ms}ms elapsed against {budget_ms}ms)",
+                claim.qualified
+            )),
+        }
+    }
+    outcome.receipt_identities = receipted.len();
+    eprintln!(
+        "floor: evaluating {claims_planned} / {claims_planned} ({}ms)",
+        eval_started.elapsed().as_millis()
+    );
+    // THE THREE IDENTITY COUNTS MUST AGREE, and they are compared here rather than reported
+    // for a reader to compare. A run that planned more claims than it executed has silently
+    // narrowed, which is the failure this whole path exists to make unwritable; reporting the
+    // pair and letting a human notice is exactly how the deferred bucket survived.
+    if outcome.claims_planned != outcome.claims_executed
+        || outcome.claims_executed != outcome.receipt_identities
+    {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=ClaimIdentityCountsDisagree planned={} executed={} \
+             receipted={} — every planned claim must execute and every execution must land one \
+             receipt identity; a gap here is a narrowed roster reported as a roster",
+            outcome.claims_planned, outcome.claims_executed, outcome.receipt_identities
+        ));
+    }
+    Ok(outcome)
+}
+
+/// Read the `.dag` admission. A refusal is reported with every offending row rather than the
+/// first, because a manifest with three conflicting declarations should take one round-trip to
+
+fn required_floor_claims_from_admission(
+    ctx: &v1_interpreter::InterpContext,
+    admission: &v1_interpreter::Value,
+) -> Result<Vec<RequiredFloorClaim>, String> {
+    let v1_interpreter::Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = admission
+    else {
+        return Err(
+            "required_floor_attempt did not answer a RequiredFloorAdmission variant".to_string(),
+        );
+    };
+    if ctx.sym_eq(*variant_name, "RequiredFloorRefused") {
+        let rendered = match ctx.field(fields, "refusals") {
+            Some(v1_interpreter::Value::List(items)) => items
+                .iter()
+                .map(|r| format!("{r:?}"))
+                .collect::<Vec<_>>()
+                .join("\n  "),
+            _ => "<refusal list unreadable>".to_string(),
+        };
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=ManifestInadmissible — the claim manifest carries \
+             refusals, so the floor does not run its clean subset and report on the rest:\n  \
+             {rendered}"
+        ));
+    }
+    if !ctx.sym_eq(*variant_name, "RequiredFloorRunnable") {
+        return Err("required_floor_attempt answered an unknown admission arm".to_string());
+    }
+    let Some(v1_interpreter::Value::Record { fields: af, .. }) = ctx.field(fields, "attempt")
+    else {
+        return Err("RequiredFloorRunnable carries no attempt record".to_string());
+    };
+    let Some(v1_interpreter::Value::List(rows)) = ctx.field(af, "claims") else {
+        return Err("the attempt carries no claim list".to_string());
+    };
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows.iter() {
+        let v1_interpreter::Value::Record { fields: cf, .. } = row else {
+            return Err("a manifest claim is not a record".to_string());
+        };
+        let Some(v1_interpreter::Value::Record { fields: df, .. }) = ctx.field(cf, "declaration")
+        else {
+            return Err("a manifest claim carries no declaration identity".to_string());
+        };
+        let module_path = match ctx.field(df, "module_path") {
+            Some(v1_interpreter::Value::Str(s)) => s.clone(),
+            _ => return Err("a claim identity carries no module path".to_string()),
+        };
+        let function = match ctx.field(df, "function") {
+            Some(v1_interpreter::Value::Str(s)) => s.clone(),
+            _ => return Err("a claim identity carries no function name".to_string()),
+        };
+        let budget_ms = match ctx.field(cf, "budget_ms") {
+            Some(v1_interpreter::Value::Int(n)) if *n > 0 => *n as u64,
+            // A non-positive budget is refused rather than defaulted: a zero deadline that
+            // reads as "no limit" is the absorbing fallback, and one that reads as "refuse
+            // instantly" fails every claim for a reason unrelated to the claim.
+            other => {
+                return Err(format!(
+                    "claim {module_path}.{function} carries a non-positive budget ({other:?})"
+                ))
+            }
+        };
+        let execution_mode = match ctx.field(cf, "execution_mode") {
+            Some(v1_interpreter::Value::Variant {
+                variant_name: m, ..
+            }) => {
+                if ctx.sym_eq(*m, "Hermetic") {
+                    v1_interpreter::ExecutionMode::Hermetic
+                } else if ctx.sym_eq(*m, "Wet") {
+                    v1_interpreter::ExecutionMode::Wet
+                } else if ctx.sym_eq(*m, "Record") {
+                    v1_interpreter::ExecutionMode::Record
+                } else {
+                    return Err(format!(
+                        "claim {module_path}.{function} names an unknown execution mode"
+                    ));
+                }
+            }
+            _ => {
+                return Err(format!(
+                    "claim {module_path}.{function} carries no execution mode"
+                ))
+            }
+        };
+        out.push(RequiredFloorClaim {
+            qualified: format!("{module_path}.{function}"),
+            module_path,
+            function,
+            execution_mode,
+            budget_ms,
+        });
+    }
+    Ok(out)
 }
