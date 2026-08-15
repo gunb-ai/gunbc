@@ -188,7 +188,7 @@ fn cost_coverage_count_fn_verdict(
     xs: rows,
     empty: 0,
     cons: fn(acc, row) {
-      if predicate(verdict: row.verdict) { acc + 1 } else { acc }
+      if predicate(row.verdict) { acc + 1 } else { acc }
     }
   )
 }
