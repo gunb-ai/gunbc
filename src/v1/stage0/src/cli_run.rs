@@ -24771,6 +24771,24 @@ const REQUIRED_FLOOR_MANIFEST_MODULE: &str = "v2.workflow.required_floor";
 /// repository. The prepared value is a local, so a second acquisition would have to be written
 /// as a second call to `prepare_repository_once` — visible in one screen rather than hidden
 /// behind a cache hit.
+/// Resident set of this process, read from `/proc/self/statm` (pages), for run narration only.
+/// An unreadable procfs answers `-1` rather than `0`: zero is a plausible measurement and would
+/// read as "this run held nothing", which is the fabricated-plausible-output failure applied to
+/// the diagnostic that exists to find a retention defect.
+fn process_resident_mib() -> i64 {
+    let Ok(statm) = std::fs::read_to_string("/proc/self/statm") else {
+        return -1;
+    };
+    let Some(resident_pages) = statm
+        .split_whitespace()
+        .nth(1)
+        .and_then(|p| p.parse::<i64>().ok())
+    else {
+        return -1;
+    };
+    resident_pages * 4096 / (1024 * 1024)
+}
+
 pub fn run_required_floor(
     source_roots: &[String],
     commit: &str,
@@ -24944,15 +24962,19 @@ pub fn run_required_floor(
         }
     }
     eprintln!(
-        "floor: {} distinct claim scope(s) projected in {}ms (0 reads, 0 parses, 0 resolves)",
+        "floor: {} distinct claim scope(s) projected in {}ms (0 reads, 0 parses, 0 resolves) (rss {}MiB)",
         scopes.len(),
-        scope_start.elapsed().as_millis()
+        scope_start.elapsed().as_millis(),
+        process_resident_mib()
     );
 
     let eval_started = std::time::Instant::now();
     for (index, claim) in claims.iter().enumerate() {
         if index % 1000 == 0 {
-            eprintln!("floor: evaluating {index} / {claims_planned}");
+            eprintln!(
+                "floor: evaluating {index} / {claims_planned} (rss {}MiB)",
+                process_resident_mib()
+            );
         }
         let scope = scopes
             .get(&claim.module_path)

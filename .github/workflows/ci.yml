@@ -596,9 +596,9 @@ jobs:
         timeout-minutes: 10
   fleet:
     runs-on: [self-hosted, linux, arm64, srv1]
-    needs: [ci]
+    needs: [ci, witnesses]
     timeout-minutes: 70
-    if: "!cancelled() && ((github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.ci.result == 'success') || github.event_name == 'workflow_dispatch')"
+    if: "!cancelled() && ((github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.ci.result == 'success' && needs.witnesses.result == 'success') || github.event_name == 'workflow_dispatch')"
     permissions:
       contents: write
       id-token: write

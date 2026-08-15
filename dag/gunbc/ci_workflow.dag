@@ -697,7 +697,7 @@ fn ci_fleet_job() -> Job {
         concat(ci_fleet_dispatch_steps(), [ci_fleet_key_agent_cleanup_step()])
       )
     ),
-    needs: ["ci"],
+    needs: ["ci", "witnesses"],
     env: none,
     outputs: none,
     if_condition: Present { value: ci_fleet_job_if },

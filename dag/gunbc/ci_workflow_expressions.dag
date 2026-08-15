@@ -127,7 +127,12 @@ data ci_workflow_expression_templates: List<ExpressionTemplate> = [
 // rendered as 'condition false'). The push arm therefore carries its own status guard
 // explicitly. The RED control for this class lives in test.claim.ci_workflow_witness
 // push_to_main_family_carries_explicit_status_guard, which now reads this expression.
-data ci_fleet_job_if: String = "!cancelled() && ((github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.ci.result == 'success') || github.event_name == 'workflow_dispatch')"
+// Witness execution moved out of the `ci` job into `witnesses` (FLOOR2). A main-push deploy must
+// not proceed on a green `ci` alone once `ci` no longer executes any witness: that would let
+// "floor-green" silently mean "the bins unpacked". Both results are named here rather than only in
+// `needs`, because the job condition is `!cancelled()`, under which a FAILED need still runs the
+// job — so `needs` alone orders fleet after witnesses without gating it on the verdict.
+data ci_fleet_job_if: String = "!cancelled() && ((github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.ci.result == 'success' && needs.witnesses.result == 'success') || github.event_name == 'workflow_dispatch')"
 
 data ci_floor_runs_unless_cancelled_if: String = "!cancelled()"
 
