@@ -2,7 +2,6 @@ module gunbc.spark_serving_runtime_receipt
 
 import std.types { String, List, NonEmptyStr, FilePath, Bool }
 import std.algebra { trim }
-import product.placement_supply { HostIdentity }
 import extdeps.ssh.session { SshSessionExecResult }
 import extdeps.languages.json.parse {
   json_object_unique_member,
@@ -23,12 +22,11 @@ import gunbc.spark_serving_readback_parse {
   spark_serving_readback_field_from_member_lookup,
 }
 
-data spark_serving_runtime_install_receipt_provenance_note: String = "RELEASE-ARCHIVE ADMISSION PROVENANCE — not running-process attestation and not proof of completed runtime install. Records which cited release-asset row gunbc.package_delivery.materialize_spark_serving_ollama_runtime_bundle admitted (DownloadToFile + SHA-256 verify) on this host. Extraction, executable placement, systemd enable, and model pull are separate #8225 follow-on; this receipt must not be read as claiming they happened. Out-of-band binary replacement leaves the receipt stale while /api/version may still answer — wet observation joins receipt digest with the independently probed version wire via ollama_runtime_closure_digest_for_observed_release."
+data spark_serving_runtime_install_receipt_provenance_note: String = "RELEASE-ARCHIVE ADMISSION PROVENANCE — not running-process attestation and not proof of completed runtime install. Records which cited release-asset row the invoking executor admitted via DownloadToFile + SHA-256 verify. Extraction, executable placement, systemd enable, model pull, and per-host delivery are separate #8225 follow-on; this receipt must not be read as claiming they happened. Out-of-band binary replacement leaves the receipt stale while /api/version may still answer — wet observation joins receipt digest with the independently probed version wire via ollama_runtime_closure_digest_for_observed_release."
 
-data spark_serving_runtime_receipt_note: String = "Release-archive admission receipt authority for Ollama runtime closure identity on Spark hosts (carrier name SparkServingRuntimeInstallReceipt is legacy — the write path records archive digest admission only). gunbc.package_delivery.materialize_spark_serving_ollama_runtime_bundle writes via write_spark_serving_runtime_install_receipt after digest admission; wet observation reads spark_serving_runtime_receipt_wire_path via spark_serving_runtime_receipt_probe_words and still requires independent /api/version agreement — never re-derives the cited release-asset digest from desired state alone. Missing or unreadable receipt on an active unit refuses rather than collapsing to SparkServingReadbackAbsent."
+data spark_serving_runtime_receipt_note: String = "Executor-local release-archive admission receipt (carrier name SparkServingRuntimeInstallReceipt is legacy — the write path records archive digest admission only, with no host field because the local write does not establish facts on a remote Spark host). gunbc.package_delivery.materialize_spark_serving_ollama_runtime_bundle writes via write_spark_serving_runtime_install_receipt after digest admission; wet observation reads spark_serving_runtime_receipt_wire_path via spark_serving_runtime_receipt_probe_words over SSH and still requires independent /api/version agreement — never re-derives the cited release-asset digest from desired state alone. Missing or unreadable receipt on an active unit refuses rather than collapsing to SparkServingReadbackAbsent."
 
 type SparkServingRuntimeInstallReceipt {
-  host: HostIdentity
   release_asset_digest_hex: NonEmptyStr
 }
 
@@ -38,7 +36,7 @@ data spark_serving_runtime_receipt_rel: String = ".local/share/gunbc/spark-servi
 
 data spark_serving_runtime_receipt_release_asset_digest_member: String = "release_asset_digest_hex"
 
-data spark_serving_runtime_receipt_path_note: String = "Receipt path is fleet-constant under gunbc-automation on every Spark host (/home/gunbc-automation/.local/share/gunbc/spark-serving/ollama-runtime-receipt.json). HostIdentity on the receipt record and wet SSH probe selects which machine to read; it does not vary the on-host path string because srv5 and srv6 share the same executor home layout."
+data spark_serving_runtime_receipt_path_note: String = "Receipt path is fleet-constant under gunbc-automation on every Spark host (/home/gunbc-automation/.local/share/gunbc/spark-serving/ollama-runtime-receipt.json). Wet SSH probe selects which machine to read; the path string does not vary because srv5 and srv6 share the same executor home layout. The receipt record carries only the admitted release-asset digest — not which host was probed or which host ran the writer."
 
 fn spark_serving_runtime_receipt_wire_path() -> FilePath {
   spark_serving_runtime_receipt_path()
