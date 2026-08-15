@@ -1,9 +1,5 @@
 module test.claim.uri_grounding_witness
 
-import extdeps.uri { Https, Uri, uri_is_url, uri_wire }
-import std.types { Bool }
-import test.claim.falsifier_workflow_witness_test { string_contains }
-import v2.std.live_tree { LiveTreeDisposition }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn w_uri_requires_scheme_and_locator() -> Bool {

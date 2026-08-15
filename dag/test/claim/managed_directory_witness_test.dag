@@ -1,23 +1,5 @@
 module test.claim.managed_directory_witness
 
-import std.types { String, Bool, List }
-import extdeps.access.posix {
-  PosixUser,
-  PermissionBits,
-  FileMode,
-  file_mode_octal,
-}
-import std.effect_grant { Read, Write, Execute }
-import gunbc.ownership { Owned }
-import gunbc.managed_directory {
-  DirectoryDependent,
-  ManagedDirectory,
-  DependentClass, OwnerClass, GroupClass, OtherClass,
-  dependent_class_of,
-  managed_directory_permissions,
-  managed_directory_mode_octal,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

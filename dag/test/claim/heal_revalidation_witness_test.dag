@@ -1,27 +1,5 @@
 module test.claim.heal_revalidation_witness
 
-import std.content_hash { Fnv1a64Structural, content_hash_atom }
-import std.types { CommitSha }
-import extdeps.github.checks { Success }
-import gunbc.merge_admission {
-  CheckCoverageComplete,
-  CoveredGateConclusion
-}
-import gunbc.heal_revalidation {
-  HealOutcome, HealNoChange, HealProduced, HealAuthorCommitRequired,
-  HealDispatchPending, HealDispatchAccepted, HealDispatchRefused,
-  HealRevalidationNotRequired, HealRevalidationRequired, HealRevalidationCoverageObserved,
-  PriorRunStillCurrent, SupersededByHealedHead,
-  OrdinaryWorkflowDispatch, HealWorkflowDispatchSubjectMatched,
-  HealWorkflowDispatchCheckoutMismatch, HealWorkflowDispatchRunSubjectMismatch,
-  HealRevalidationAdmittedNoChange, HealRevalidationAdmittedExactCoverage,
-  HealRevalidationDeniedRequired, HealRevalidationDeniedCoverage,
-  heal_revalidation_initial,
-  prior_run_disposition,
-  classify_workflow_dispatch_preflight,
-  classify_heal_revalidation_admission,
-  heal_revalidation_admits
-}
 
 data prior_head: CommitSha = "1111111111111111111111111111111111111111"
 data healed_head: CommitSha = "2222222222222222222222222222222222222222"

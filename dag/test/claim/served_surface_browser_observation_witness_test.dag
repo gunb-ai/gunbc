@@ -1,48 +1,5 @@
 module test.claim.served_surface_browser_observation_witness
 
-import std.types { NonEmptyStr, FilePath }
-import std.measure { byte_size }
-import extdeps.time.rfc3339 { Rfc3339Timestamp }
-import extdeps.toolchain.types { Aarch64 }
-import extdeps.browser.chromium {
-  ChromiumErrConnectionRefused,
-  ChromiumErrHttpResponseCodeFailure,
-  ChromiumWebDataErrorDocument,
-  ChromiumWebDataErrorUrl,
-  ChromiumSourceRevisionUnobserved,
-  chromium_151_0_7922_34,
-}
-import extdeps.automation.playwright {
-  PlaywrightManagedChromiumDownload,
-  playwright_1_62_1,
-}
-import extdeps.os.debian { Debian12Bookworm }
-import gunbc.served_surface_browser_observation {
-  TcpConnectionRefusedStimulus,
-  HttpResponseStimulus,
-  EmptyNavigationResponseBody,
-  Utf8NavigationResponseBody,
-  ContentLengthHeader,
-  TextPlainUtf8ContentTypeHeader,
-  Empty502SpecimenHeader,
-  Sentinel502SpecimenHeader,
-  LocalSyntheticHarness,
-  ChromiumNavigationFailed,
-  NavigationReturnedHttpResponse,
-  ChromiumInternalPresentedDocument,
-  NetworkResponsePresentedDocument,
-  ExplicitReload,
-  HealthyResponseDocumentObserved,
-  PlaywrightDefaultChromiumLaunch,
-  HeadlessPresentation,
-  ContainerVisibleHostKernel,
-  LinuxKernelRelease,
-  playwright_chromium_151_linux_arm64_headless_navigation_run,
-  local_http_url,
-  connection_refused_presentation,
-  empty_body_502_presentation,
-  sentinel_body_502_presentation,
-}
 
 test fn witness_run_owns_one_execution_identity() -> Bool {
   let run = playwright_chromium_151_linux_arm64_headless_navigation_run

@@ -1,7 +1,5 @@
 module std.dissolution
 
-import std.decl_ref { DeclarationRef, declaration_ref_in_list, declaration_ref_display_key }
-import std.types { NonEmptyStr }
 
 type DissolutionTrigger
   = DeclarationAppears { ref: DeclarationRef }

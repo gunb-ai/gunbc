@@ -1,52 +1,5 @@
 module test.claim.scm_compatibility_shape_witness
 
-import std.types { Bool, NonEmptyStr }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.scm_compatibility_shape {
-  CompatibilityProjectionReceipt,
-  CompatibilityProjectionHandler,
-  CompatibilityFidelityProfile,
-  CompatibilityFidelityPreserved,
-  CompatibilityFidelityUnavailable,
-  CompatibilityAdvanceUnavailable,
-  compatibility_projection_from_handler,
-}
-import gunbc.native_scm_interaction_contract {
-  native_scm_primary_label,
-  native_scm_attach_projection,
-}
-import test.claim.native_scm_interaction_scenario_fixture {
-  TwoIndependentChangesLand,
-  native_scm_receipt_for,
-}
-import gunbc.scm_compatibility.git {
-  GitCompatibilityBound,
-  GitCompatibilityBindingRefused,
-  git_compatibility_projection_handler,
-}
-import gunbc.scm_compatibility.mercurial {
-  MercurialCompatibilityBound,
-  MercurialCompatibilityBindingRefused,
-  mercurial_compatibility_projection_handler,
-}
-import gunbc.scm_compatibility.pijul {
-  PijulCompatibilityBound,
-  PijulCompatibilityBindingRefused,
-  pijul_compatibility_projection_handler,
-}
-import test.claim.scm_compatibility_git_witness {
-  git_fixture_binding,
-  witness_git_modeled_advance_refuses_different_guarantee,
-  witness_git_readback_mismatch_refuses_binding,
-}
-import test.claim.scm_compatibility_mercurial_witness {
-  mercurial_fixture_binding,
-  witness_mercurial_missing_advance_refuses_required_capability,
-}
-import test.claim.scm_compatibility_pijul_witness {
-  pijul_fixture_binding,
-  witness_pijul_missing_advance_refuses_required_capability,
-}
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type SyntheticFourthReceipt {

@@ -1,6 +1,5 @@
 module gunbc.language_source_scaffold_index
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 data language_source_scaffold_index_note: String = "B2 inventory for hand-authored target-language semantics in language files. Every blob of hand-written target source carries a row here whose disposition is a std.disposition Scaffold naming the construction that subsumes it, or a Terminal stating why it is irreducible. No string-content classifier is involved: the mark is a typed value, not prose to be parsed."
 

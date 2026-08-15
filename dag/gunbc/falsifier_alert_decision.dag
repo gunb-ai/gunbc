@@ -1,43 +1,5 @@
 module gunbc.falsifier_alert_decision
 
-import std.types { NonEmptyStr, String, EpochMs }
-import std.measure { Millisecond, millisecond, millisecond_count }
-import extdeps.github.workflow_run_event { WorkflowRunEvent }
-import extdeps.github.workflow_runs {
-  WorkflowRunConclusion,
-  Success, Failure, Cancelled, Neutral, Skipped, TimedOut, ActionRequired, StartupFailure
-}
-import gunbc.falsifier_alert_admission {
-  FalsifierAlertAdmission,
-  AlertAdmitted,
-  AlertRefusedWorkflowNotObserved,
-  AlertRefusedWorkflowPathNotObserved,
-  AlertRefusedRepositoryNotOwned,
-  AlertRefusedHeadBranchNotMain,
-  AlertRefusedOriginatingEventNotAdmitted,
-  AlertRefusedActivityNotCompleted,
-  AlertRefusedEventUnreadable
-}
-import gunbc.falsifier_alert_state {
-  FirstRedStanding, FirstRedObserved, FirstRedUnknownBeforeTracking,
-  FalsifierAlertState,
-  FalsifierAlertStateDecoding,
-  CurrentState, LegacyStateWithoutLastNotification, StateAbsent, StateMalformed,
-  falsifier_alert_heartbeat_window
-}
-import gunbc.floor_component_receipt_document {
-  FloorComponentReceiptDocument,
-  FloorComponentReceiptDecoding,
-  ReceiptSubjectMatch,
-  ComponentAlertSummary,
-  FloorComponentFailureMode, floor_component_failure_mode_tag,
-  ComponentOutcomeRead, floor_component_outcome_wire_tag,
-  strict_natural_of_lexeme
-}
-import extdeps.github.issues { Issue }
-import gunbc.falsifier_lane {
-  FalsifierRouting, RoutedToOwner, RoutingLaneUndetermined, RoutingOwnerUndeclared
-}
 
 data falsifier_alert_decision_purpose_note: String = "ALERT-4. THE WHOLE DECISION, AS A PURE FUNCTION, PERFORMING NO GITHUB CALLS. alert_decision takes an admission outcome, a receipt outcome, the issue's own decoded state, the current instant, the escalation recipient and the lane routings, and returns one terminal AlertDecision. It opens nothing, comments nothing, closes nothing and reads nothing: the effect plan realizes the decision, and this module only decides.\\n\\nWHY THE PURITY IS THE POINT AND NOT A STYLE PREFERENCE. The moment the core reads the world it stops being testable by fixtures — every property below would need a live issue, a live run and a live clock to exercise, which means the properties that matter most (a heartbeat fires at exactly the window boundary; a malformed marker never opens a new incident; every notifying artifact carries the escalation mention) would be checked by nobody. Every fact this function needs arrives as a parameter, so each property is a fixture and a comparison, and the arms that are hardest to reach in production are the cheapest to prove here."
 

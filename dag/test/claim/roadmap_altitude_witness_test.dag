@@ -1,19 +1,5 @@
 module test.claim.roadmap_altitude_witness
 
-import gunbc.roadmap_altitude {
-  RowAttention, RowRoutine, RowWorking, RowAnomaly,
-  RowDensity, RowCollapses, RowHolds, RowExpands,
-  status_attention, attention_density, band_attention, band_expands,
-  SectionCounts, section_counts, section_counts_wire, statuses_all_routine,
-}
-import gunbc.roadmap_component { dispatch_expand_band_keys, dispatch_client_js_source }
-import gunbc.roadmap_page { roadmap_page }
-import gunbc.roadmap_model { RoadmapNode, section_group }
-import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
-import gunbc.roadmap_authority { authored, signed }
-import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
-import gunbc.roadmap_status { RedControlExecuted, HandbackDelivered }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

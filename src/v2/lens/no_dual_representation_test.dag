@@ -1,24 +1,5 @@
 module v2.lens.no_dual_representation_test
 
-import gunbc.ci_layer_roots { witness_layer_roots }
-import std.disposition { RealizationDispatch }
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import v2.lens.module_graph { module_declaration_facts_live }
-import v2.lens.no_dual_representation_test.scan {
-  DualRepModuleRef,
-  DualRepModuleScan,
-  dual_rep_clean_holds_for_scans,
-  dual_rep_coverage_honesty_holds,
-  dual_rep_eq_site_count_from_scans,
-  dual_rep_module_scans_from_fn_index,
-  dual_rep_test_file_count_from_scans,
-  dual_rep_violation_count_from_scans,
-  empty_dual_rep_module_refs
-}
-import v2.std.algebra { fold_list, list_snoc_item }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

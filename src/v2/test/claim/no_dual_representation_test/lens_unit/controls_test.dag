@@ -1,22 +1,5 @@
 module v2.test.no_dual_representation_test.lens_unit.controls
 
-import v2.std.algebra { length }
-import v2.lens.no_dual_representation_test.scan {
-  dual_rep_clean_holds_for_scans,
-  dual_rep_coverage_honesty_holds,
-  dual_rep_eq_site_count_from_scans,
-  dual_rep_violation_count_from_scans,
-  dual_rep_violations_from_module,
-  parse_path_helper_tautology_scan,
-  synthetic_body_mirror_scan,
-  synthetic_bool_literal_mirror_scan,
-  synthetic_distinct_symbol_scan,
-  synthetic_independent_oracle_scan,
-  synthetic_literal_mirror_scan,
-  synthetic_same_symbol_scan
-}
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

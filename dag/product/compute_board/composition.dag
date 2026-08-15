@@ -1,36 +1,5 @@
 module product.compute_board.composition
 
-import std.types { String, NonEmptyStr, List }
-import std.nat { Nat }
-import extdeps.external_authority { ExternalAuthority }
-import std.measure { ByteSize, HardwareThreadCount, byte_size_count, hardware_thread_count, hardware_thread_count_value }
-import extdeps.cpu.ampere_altra_package {
-  ContactMapPubliclyAvailableNotIngested,
-  ContactPopulationIncomplete,
-  DuplicateContactDesignator,
-  PackageContactMapAdmitted,
-  PackageContactMapStanding,
-  ReferenceBoardCollateralAvailable,
-  ReferenceBoardCollateralStanding,
-  ReferenceBoardCollateralUnderNda,
-}
-import product.compute_board.intent {
-  BoardCapability,
-  BootStoragePaths,
-  CapabilityRequirement,
-  ComputeBoardIntent,
-  ComputeCores,
-  CoolingBoundary,
-  FirmwareInterfaceSurface,
-  ManufactureAndBringUp,
-  MechanicalEnvelope,
-  MemoryCapacity,
-  NetworkPaths,
-  PowerInputBoundary,
-  RemoteManagement,
-  capability_eq,
-  requirement_capability,
-}
 
 data composition_note: String = "THE EARNED-ELEMENT FOLD: given a contract and a set of selected components, which required capabilities are unsatisfied, and which components are unearned. THE ASYMMETRY IS THE POINT AND IT IS EASY TO GET WRONG: an unsatisfied capability is a hole in the design, and an unearned component is a part nobody can justify — they are not two readings of one number, and a board that satisfies every capability can still carry parts that discharge nothing. A COMPONENT MAY DISCHARGE MORE THAN ONE OBLIGATION, and may also be earned by another component's imposed constraint rather than by a contract capability directly: a decoupling network is required by the device it serves, not by 'serve web workloads'. That second route is modelled as ImposedByComponent so the derivation stays a real chain back to the contract, rather than becoming an escape hatch that launders any part as necessary."
 

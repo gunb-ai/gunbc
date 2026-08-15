@@ -1,29 +1,5 @@
 module v2.test.manual.body_lowering_variants
 
-import v2.std.node {
-  Atom,
-  Node,
-  TypeNode,
-  node_synthetic
-}
-import v2.std.compilers.body_lowering { lower_bind, lower_branch, lower_loop }
-import v2.extdeps.languages.dag {
-  dag_bind_let_body_node,
-  dag_loop_body_node,
-  dag_loop_measure_node,
-  dag_pick_if_body_node,
-  dag_type_atom_node
-}
-import v2.std.logic { Bool }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 fn body_lowering_variant_bool_node(pass: Bool) -> Node {
   if pass {

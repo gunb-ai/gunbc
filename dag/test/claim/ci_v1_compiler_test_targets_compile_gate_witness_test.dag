@@ -1,32 +1,5 @@
 module test.claim.ci_v1_compiler_test_targets_compile_gate_witness
 
-import gunbc.ci_workflow { ci_build_job }
-import extdeps.github.actions { RunStep, UsesStep }
-import v2.std.effect_plan { Do, EffectPlan }
-import v2.std.operation_argv {
-  OperationRef,
-  operation_argv_bind_text_list
-}
-import v2.std.orchestration { FailFast }
-import v2.workflow.ci_v1_compiler_test_targets_compile_gate_emit {
-  ci_v1_compiler_test_targets_compile_gate_extra_args,
-  ci_v1_compiler_test_targets_compile_gate_intent,
-  ci_v1_compiler_test_targets_compile_gate_package,
-  ci_v1_compiler_test_targets_compile_gate_refusal_prefix,
-  ci_v1_compiler_test_targets_compile_gate_render,
-  ci_v1_compiler_test_targets_compile_gate_script,
-  ci_v1_compiler_test_targets_compile_gate_shell_emit_dissolution_trigger,
-  ci_v1_compiler_test_targets_compile_gate_shell_emit_scaffold,
-}
-import v2.workflow.effect_plan_bash_materialize {
-  BashBoundOperationInvocation,
-  EffectPlanBashMaterializationRefused,
-  EffectPlanBashMaterialized,
-  bash_bind_operation_invocation,
-  effect_plan_bash_materialize
-}
-import std.disposition { Scaffold }
-import std.dissolution { dissolution_description }
 
 data witness_subject_note: String = "Pins the v1-compiler test-targets compile gate the way its siblings are pinned (test.claim.ci_stage0_partition_compile_gate_witness, test.claim.ci_v1_compiler_tests_compile_gate_witness): the emitted argv, the scaffold disposition, the dissolve marker, the exact plan-plus-marker composition, build-job enrollment, and a RED refusal. Added on review of gunbc#8191, which enrolled the gate while pinning only the backstop sum — a new enrolled gate whose emitted script nothing asserts is DESIGN 5 specification-without-execution, and the reviewer was right that the sum alone does not establish the gate emits what it claims.
 

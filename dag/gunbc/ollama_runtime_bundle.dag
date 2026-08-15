@@ -1,15 +1,5 @@
 module gunbc.ollama_runtime_bundle
 
-import std.types { NonEmptyStr, String }
-import std.content_hash { Fnv1a64Structural, content_hash_atom }
-import extdeps.ollama.binary_release {
-  OllamaBinaryRelease,
-  ollama_required_release,
-  ollama_linux_arch_key,
-  ollama_linux_asset_variant_closure_key,
-  ollama_reported_version_matches_release,
-  ollama_binary_release_for_observed_asset_digest,
-}
 
 data ollama_runtime_bundle_note: String = "Release-bundled Ollama runtime closure identity at ollama_required_release (extdeps.ollama.binary_release). Produces the RuntimeArtifactIdentity.closure_digest consumed by gunbc.spark_serving_release. Materialization binds through gunbc.package_delivery per #8225 — this module derives identity only; it does not install."
 

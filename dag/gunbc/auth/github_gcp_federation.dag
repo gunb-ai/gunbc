@@ -1,11 +1,5 @@
 module gunbc.auth.github_gcp_federation
 
-import std.types { String, NonEmptyStr, Map }
-import gunbc.repository { gunbc_repository }
-import extdeps.cloud.gcp.gcp {
-  ServiceAccountEmail, GcpProjectId, WifPool, WifProvider,
-  wif_provider_resource, wif_principal_set_for_repo
-}
 
 // The repository-level GitHub-to-GCP workload identity federation, as one authority consumed by
 // every domain that federates, rather than a set of facts each domain carries its own copy of.

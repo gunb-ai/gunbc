@@ -1,12 +1,5 @@
 module tools.dag_compile_clean_partition
 
-import gunbc.ci_layer_roots { witness_layer_roots, compile_clean_source_roots }
-import std.types { List }
-import std.types { String, Bool }
-import std.reducible {
-  ReduceVerdict, Reduced, Irreducible, Unknown,
-  reduce_verdicts_located, verdict_eq
-}
 
 data compile_clean_partition_boundary_note: String = "The shard roster's entry roots are ALL of witness_layer_roots — exactly the tree the whole-tree gate compiles — never a subset. The prior boundary took witness_layer_roots.first() ('dag' only), so the roster was a strict subset of the compiled tree: a diff touching only src/v2 .dag files intersected no roster entry and fell to the 'no shard intersection' whole-tree baseline where compiling its own entry closures was admissible (the 2026-07-23 floor redundant-work ledger, lever 8; run 29976989996), and — the fail-open direction of the same asymmetry — a dag-rooted touch could select only dag importers while affected src/v2 importers went uncompiled on a scoped run, covered only by the falsifier's whole-tree cold control. Deriving the boundary from the same ci_layer_roots authority the gate compiles closes both directions at once: roster ⊇ every compiled module entry, so scoped selection is closure-complete over the compiled universe, and 'no shard intersection' shrinks to its honest residue (touched .dag files that declare no module and are imported by none)."
 

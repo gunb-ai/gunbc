@@ -1,52 +1,5 @@
 module v2.test.workflow.affected_set_floor_runner
 
-import v2.std.algebra { count_equal, length }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.text { String }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  ManualAnchorAbsent,
-  Tier1,
-  Unit,
-  manual_claim_anchor,
-  test_claim_evaluation_nodes,
-  test_claim_evaluation_touches_rerun_frontier
-}
-import v2.std.integer { Int }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
-import v2.workflow.affected_set_floor_runner {
-  DiffObservationFailClosed,
-  DiffPathsProduced,
-  FloorDiffLineTouch,
-  FloorDiffObservation,
-  FloorRerunFrontier,
-  FloorWitnessRow,
-  FrontierFailClosed,
-  FrontierProduced,
-  RunWitness,
-  SkipAssumedGreen,
-  Refused,
-  DiffObservationRefusal,
-  FrontierQueryRefusal,
-  floor_any_claim_touches_rerun_frontier,
-  floor_claim_touches_rerun_frontier,
-  floor_row_would_skip,
-  floor_row_precompute_would_skip,
-  floor_kernel_would_skip,
-  floor_kernel_precompute_would_skip,
-  floor_precompute_would_skip,
-  floor_rust_run_implies_dag_run,
-  floor_skip_git_diff_policy,
-  floor_test_fn_declaration_edited,
-  floor_witness_eval_nodes_from_claims,
-  floor_witness_nodes_touch_frontier,
-  floor_witness_run_disposition
-}
-import gunbc.ci_spec { DiffMergeBase }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

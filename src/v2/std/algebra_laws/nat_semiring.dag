@@ -1,36 +1,6 @@
 module v2.test.algebra_laws.nat_semiring
 
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  node_locus,
-  None,
-  Outcome,
-  Rejected,
-  Suggested,
-  diagnostics_singleton
-}
 
-import v2.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, SyntheticOccurrence }
-import v2.std.text { String }
-import v2.std.verification {ManualAnchorAbsent,
-  ManualNatAddAssociativity,
-  ManualNatAddLeftIdentity,
-  ManualNatAddRightIdentity,
-  ManualNatMulAnnihilator,
-  ManualNatMulAssociativity,
-  ManualNatMulLeftIdentity,
-  ManualAnchorKey,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  CompilesClaim,
-  DiagnosticClaim,
-  EqualsClaim,
-  RoundTripClaim,
-  manual_claim_anchor
-}
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence

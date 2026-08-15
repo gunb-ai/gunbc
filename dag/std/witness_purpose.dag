@@ -1,8 +1,5 @@
 module std.witness_purpose
 
-import std.decl_ref { DeclarationRef }
-import std.content_hash { ContentHash }
-import std.measure { Millisecond, ByteSize }
 
 type WitnessResourceBound
   = EvalWallTimeBound { bound: Millisecond }

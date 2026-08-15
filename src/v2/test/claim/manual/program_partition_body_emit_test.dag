@@ -1,42 +1,5 @@
 module v2.test.manual.program_partition_body_emit
 
-import v2.compiler.program_partition {
-  emit_for_target,
-  facts_closure_fold,
-  program_segment_from_section_unavailable,
-  resolve_program_partition
-}
-import v2.extdeps.languages.typescript {
-  ts_source_text,
-  ts_target_model
-}
-import std.algebra { Empty }
-import v2.std.algebra { any, fold_list, list_snoc_item }
-import v2.std.collection { List }
-import v2.std.diagnostic {
-  Accepted,
-  None,
-  Rejected
-}
-import v2.std.logic { Bool }
-import v2.std.node { Node, node_subtree_nodes }
-import v2.std.node_query { find_arrow_body_child }
-import v2.std.program_segment {
-  partition_boundary_ambient_context,
-  partition_boundary_fail_closed,
-  program_segment_subtree_root,
-  program_segment_whole_program
-}
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
-import v2.test.manual.add_body_emit_typescript {
-  add_body_ts_emit_from_producer_tree,
-  add_body_ts_producer_inferred_tree
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,29 +1,5 @@
 module gunbc.served_surface_browser_observation
 
-import std.types { NonEmptyStr, List, BinaryFilePath, FilePath, HttpStatus }
-import std.measure { ByteSize, byte_size }
-import extdeps.uri { Uri, Http }
-import extdeps.time.rfc3339 { Rfc3339Timestamp }
-import extdeps.crypto.hash { Digest, sha256_digest }
-import extdeps.toolchain.types { Architecture, Aarch64 }
-import extdeps.os.debian { DebianRelease, Debian12Bookworm }
-import extdeps.browser.chromium {
-  ChromiumBuild,
-  ChromiumNavigationError,
-  ChromiumErrConnectionRefused,
-  ChromiumErrHttpResponseCodeFailure,
-  ChromiumInternalDocument,
-  ChromiumWebDataErrorDocument,
-  ChromiumInternalUrl,
-  ChromiumWebDataErrorUrl,
-  chromium_151_0_7922_34,
-}
-import extdeps.automation.playwright {
-  PlaywrightBuild,
-  PlaywrightBrowserBinaryProvenance,
-  PlaywrightManagedChromiumDownload,
-  playwright_1_62_1,
-}
 
 type LinuxKernelRelease = NonEmptyStr where brand("LinuxKernelRelease")
 

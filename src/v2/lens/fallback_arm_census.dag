@@ -1,33 +1,5 @@
 module v2.lens.fallback_arm_census
 
-import v2.lens.common.construction_justification {
-  ConstructionJustification,
-  WallAfterGrounding
-}
-import std.disposition { RealizationDispatch }
-import std.algebra { Empty }
-import v2.std.algebra { fold_list, list_snoc_item, list_tail, length, TailFound, TailAbsent }
-import v2.std.collection { Absent, List, Optional, Present }
-import v2.std.logic { Bool }
-import v2.std.integer { Int }
-import v2.std.text { String }
-import v2.std.node {
-  ComputationNode,
-  Match,
-  Node,
-  Symbol,
-  TypeNode,
-  match_arm_body,
-  match_arm_pattern
-}
-import v2.std.node_query { find_named_child, node_positional_child_targets }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.extdeps.languages.dag {
-  dag_match_arm_node,
-  dag_match_body_from_arms,
-  dag_type_atom_node
-}
-import v2.std.grammar { node_atom_identity_optional }
 
 data fallback_arm_census_law: String = "W2 fallback-arm census (docs/plans/fallback-arm-census.md; DESIGN §5 absorbing fallback): every match wildcard arm (_ => / MatchPattern::Wildcard) lands in exactly one FallbackArmClass. AnswersOnOpen is the defect (success-shaped body over an open unmatched space — exemplar: wrap-decision Instantiation bypass). CompletesClosedTotal is healthy-but-counted (forfeits exhaustiveness). ClassifierUnknown is counted, never silently binned healthy. The classifier's own matches are total — no answering _. Corpus walk is host-seamed until #5364 exposes MatchPattern to .dag; substrate planted fixtures classify here without the host. Zero production behavior change — register and route only. Dissolves when W3 promotes this lens to a compile refusal (zero-false-positive corpus-wide)."
 

@@ -1,22 +1,5 @@
 module gunbc.stage0_rust_product_reachability
 
-import gunbc.stage0_rust_host_observation {
-  GitObservationRefused,
-  RustManifestObserved,
-  RustManifestParseRefused,
-  RustManifestReadRefused,
-  RustSourceHostObservation
-}
-import gunbc.stage0_rust_source_lifecycle_scaffold {
-  rust_source_path_has_prefix,
-  path_in_list,
-  rust_source_prefix_stage0_test,
-  rust_source_prefix_test_harness
-}
-import std.content_hash { Fnv1a64Structural }
-import v2.std.algebra { fold_list, list_map, list_snoc_item }
-import v2.std.collection { List }
-import v2.std.text { String }
 
 data stage0_rust_product_reachability_note: String = "C2 carrier (Lane C / v1-honest-frontier): product reachability from observed shipping Cargo bin roots only. A path being tracked, generated, test-imported, or textually referenced is NOT proof of product reachability. Module-dependency closure is not modeled yet — every non-root, non-test-harness path refuses with ReachabilityRefused naming the missing edge. Path location or directory prefix does NOT prove non-reachability. exact_*_paths helpers return ProductReachabilityExactPathsRefused on observation refusal — never an empty list."
 

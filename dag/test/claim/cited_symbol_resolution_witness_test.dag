@@ -1,10 +1,5 @@
 module test.claim.cited_symbol_resolution_witness_test
 
-import gunbc.doc_graph_roots {
-  hand_authored_cited_symbol_control_declaration_refs,
-  hand_authored_doc_declaration_refs,
-  hand_authored_production_doc_declaration_refs,
-}
 
 data cited_symbol_resolution_witness_note: String = "G1 feature:cited-symbol-resolution — fast per-PR structural enrollment checks only (no witness-layer decl_facts scan). Five-arm resolver RED controls, planted mutation witnesses, and corpus census live in test.claim.long.cited_symbol_resolution_witness_test (operator 5s fast-lane rule 2026-07-12; OfflineLocalRecipe exclusion row dag/gunbc/ci_layer_roots WitnessExclusionRow long/cited_symbol_resolution_witness_test.dag)."
 

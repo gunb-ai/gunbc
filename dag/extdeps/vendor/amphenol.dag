@@ -1,11 +1,5 @@
 module extdeps.vendor.amphenol
 
-import std.types { String }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import extdeps.vendor { Vendor }
-import extdeps.hardware { Hardware }
 
 // Read 2026-08-14. The vendor's own legal pages were not reached; the encyclopaedia entry is the
 // weaker authority this corpus already accepts for several vendor rows (intel, samsung, ampere).

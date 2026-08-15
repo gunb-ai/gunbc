@@ -1,32 +1,5 @@
 module test.claim.spatial_edit_witness
 
-import std.types { Bool, Int, List }
-import std.algebra { Empty, Cons }
-import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
-import std.affine_space { point2 }
-import std.measure { cubic_millimeter_count }
-import std.orthogonal_geometry { OrthogonalReady, OrthogonalRefused, orthogonal_loop2, orthogonal_prism3, SpacesInterpenetrate }
-import std.orthogonal_topology { EnclosedSpace, enclosed_space, closed_shell_of_prism, space_volume }
-import product.placement_supply { RoomIdentity }
-import product.spatial_world {
-  World, PlacedSpace, world, WorldReady, WorldRefused, world_rooms, world_room_count,
-  WorldGeometryRefused, DuplicateRoomIdentity, VariantTargetMissing,
-  VariantTargetAlreadyPresent, VariantBaseChanged,
-}
-import product.spatial_edit {
-  RoomEdit, AddRoom, RemoveRoom, MoveRoom, SetCeilingHeight,
-  EditReady, EditRefused, EditRefusal,
-  EditTargetMissing, EditTargetAlreadyPresent, RoomEditedTwiceInOneBatch,
-  EditGeometryRefused, EditArithmeticRefused, EditFrameRefused,
-  edits_to_patch, apply_edits, EditNotCompiled, EditRealized,
-}
-import v2.std.optional { Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.spatial_frame {
-  SpatialFrameRegistry, empty_frame_registry, register_frame, registry_with,
-  FrameRegistered, FrameRegistrationRefused
-}
-import std.measure { Milli }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

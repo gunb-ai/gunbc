@@ -1,26 +1,6 @@
 module std.citation
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.types { NonEmptyStr, String, List, Bool, EpochMs, HttpStatus }
-import std.integer { NonNegativeInt }
-import std.nat { nat_compare }
-import std.algebra { Less, Equal, Greater }
-import std.measure { Second }
-import std.content_hash {
-  Sha256Digest,
-  Sha256Hash,
-  as_content_hash_cryptographic,
-  content_hash_eq_cryptographic,
-}
-import std.claim_evidence { RecordedFact, RecordedFactId }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.disposition { Disposition, RealizationDispatch }
-import extdeps.external_authority { ExternalAuthority, ExternalSubjectRef, external_subject_ref_eq }
-import extdeps.uri { Uri }
-import extdeps.pin { Pin, ExactPin }
-import extdeps.version { VersionIdentity }
-import extdeps.http.server { MediaType }
 
 data citation_cit0_note: String = "CIT-0 neutral citation target (operator mandate 2026-08-04). Three carriers: CitationTarget (expected_pin + selector — no embedded observation), CitationRetrievalObservation (dated request receipt), CitationVerificationReceipt (exact join of target + observation + reconciliation verdict). Pin.subject is CitedRepresentationIdentity { source: ExternalSubjectRef, access_route, byte_domain }. verify_citation_representation binds observation.request.locator to target pin access_route before reconcile. citation_exact_pin accepts Sha256Digest only at an admission boundary, not a construction wall."
 

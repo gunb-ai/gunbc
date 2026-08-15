@@ -1,21 +1,5 @@
 module v2.test.realization_vocabulary_containment.lens_unit.discriminators
 
-import v2.std.layer { LayerImportFact }
-import v2.lens.realization_vocabulary_containment {
-  realization_vocab_grandfathered_edge_keys,
-  realization_vocab_grandfathered_edges,
-  realization_vocab_leak_count,
-  realization_vocab_leak_count_canonical,
-  realization_vocab_leak_count_with_edge_prefixes,
-  realization_edge_path_prefixes_without,
-  realization_vocab_import_edge_eq,
-  RealizationVocabImportEdge
-}
-import v2.std.collection { List }
-import v2.std.layer { LayerPrefixStd, LayerPrefixExtdeps, LayerPrefixWorkflow }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

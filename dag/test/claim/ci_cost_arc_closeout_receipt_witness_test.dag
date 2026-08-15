@@ -1,52 +1,5 @@
 module test.claim.ci_cost_arc_closeout_receipt_witness
 
-import std.types { Bool }
-import std.measure { millisecond_count, byte_size_count }
-import gunbc.ci_cost_arc_closeout_receipt {
-  SkipProofWithdrawn,
-  HandHarvestedDatedAudit,
-  SelectionApplied,
-  NotHarvested,
-  CaptureMeasuredNetOpen,
-  EnrollmentLandedFleetRateOpen,
-  ClosedSkipProofLanded,
-  ClosedReject,
-  ClosedNoRepeatedTypecheck,
-  Landed,
-  UnattributedCiJobWall,
-  PerEntryAssembly,
-  affected_ci_cost_audit_subject,
-  full_corpus_subject_harvest,
-  build_wall,
-  regen_wall,
-  ci_job_wall,
-  pipeline_sum_wall,
-  capture_wall,
-  discovery_resolve_wall,
-  discovery_eval_wall,
-  classified_ci_wall,
-  unattributed_ci_wall,
-  cold_admission_baseline_wall,
-  selected_entry_groups,
-  total_entry_groups,
-  discovery_witness_total,
-  discovery_witness_skipped,
-  discovery_witness_deferred,
-  floor_drain_peak_rss,
-  calibration_floor_peak_rss,
-  capture_swap_after,
-  admission_settle,
-  native_fleet_settle,
-  warm_hit_settle,
-  retention_settle,
-  union_settle,
-  selection_honesty_settle,
-  end_to_end_residual,
-  compiler_next_measured_target,
-  ci_job_wall_reconciles,
-  pipeline_sum_reconciles,
-  classified_equals_capture_resolve_eval,
-}
 
 test fn witness_subject_is_hand_harvested_affected() -> Bool {
   let s = affected_ci_cost_audit_subject()

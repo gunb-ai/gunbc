@@ -1,26 +1,5 @@
 module test.claim.ilm4926_designation_witness
 
-import std.logic { Bool }
-import std.types { list_length }
-import extdeps.cpu_attachment.ilm4926 {
-  IndependentLoadingMechanismOnly,
-  ReferentUnresolvedByCitedDocuments,
-  SocketAssemblyIncludingLoadingMechanism,
-  SocketBodyOnly,
-  altra_classic_datasheet_authority,
-  attestation_count,
-  attested_by_ampere_datasheets,
-  attested_by_independent_publishers,
-  attested_by_ocp_specification,
-  attestations_from_authority,
-  designation_referent_is_resolved,
-  extdeps_external_authority_anchor,
-  ilm4926,
-  ilm4926_attestations,
-  ilm4926_referent,
-  ocp_mt_jade_specification_authority,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

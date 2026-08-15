@@ -1,23 +1,6 @@
 module test.claim.resolved_graph_cache_hand_rust_witness
 
-import std.dissolution { dissolution_description }
 
-import gunbc.resolved_graph_cache_hand_rust_scaffold {
-  resolved_graph_cache_hand_rust_scaffold,
-  resolved_graph_cache_hand_rust_dissolve_trigger,
-  resolved_graph_cache_hand_rust_loc_delta_net,
-  resolved_graph_cache_hand_rust_path_loc_deltas_net,
-  resolved_graph_cache_hand_rust_paths,
-  resolved_graph_cache_hand_rust_deferred_consumer_scaffold_module,
-  resolved_graph_cache_hand_rust_deferred_consumer_witness_entry,
-  resolved_graph_cache_hand_rust_receipt_plan_anchor,
-  resolved_graph_cache_hand_rust_receipt_witness_entry,
-  resolved_graph_cache_hand_rust_roadmap_lane_anchor,
-}
-import std.disposition { Scaffold, SingleAuthority }
-import std.types { Bool, String }
-import v2.std.algebra { length }
-import extdeps.filesystem.filesystem_io
 
 data resolved_graph_cache_hand_rust_witness_note: String = "HAND-RUST checkable receipt (reviews 46781/46990): scaffold bind on lookup_verified_probe; full #7534 Rust census (four paths after the #8146 test-suite cutover removed three; per-path net deltas summing to loc_delta_net); consumer bridge defers to materialization_provider_consumer_hand_rust_witness_test.dag. Discriminator rows deleted 2026-08-11 (review 51152) — the module they named was removed by the test-suite cutover and a substring check over the constants proved nothing."
 

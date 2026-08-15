@@ -1,21 +1,5 @@
 module extdeps.w3c.svg
 
-import std.types { String, List, Int }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.markup {
-  Fragment,
-  Element,
-  FragmentText,
-  Attribute,
-  attr,
-  MarkupMedium,
-  MarkupBracket,
-  EscapeHtml,
-  SelfClose,
-  serialize_fragment_with,
-}
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

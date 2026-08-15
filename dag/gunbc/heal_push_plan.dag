@@ -1,44 +1,5 @@
 module gunbc.heal_push_plan
 
-import std.types { NonEmptyStr, String, List }
-import std.decl_ref { DeclarationRef }
-import extdeps.languages.yaml.types { YamlValueKind }
-import extdeps.github.app { GitHubPermissionAxis, permission_name_eq }
-import extdeps.github.effect {
-  RepositoryPath,
-  advance_branch_required_permissions,
-  is_workflow_projection_path
-}
-import extdeps.github.actions_token { workflows_permission_name }
-import gunbc.auth.github_apps { GitHubAppControlPlaneState }
-import gunbc.auth.github_credential {
-  GitHubCredentialAuthority,
-  CredentialCapability,
-  CredentialGrants,
-  CredentialKindCannotSatisfy,
-  CredentialScopeNotGranted,
-  CredentialForkPolicyUnobserved,
-  CredentialAxisNotModeled,
-  CredentialDeclaredAccessInvalid,
-  CredentialGrantNotObserved,
-  CredentialSubjectMismatch,
-  credential_authorizes_required,
-  unsatisfied_capabilities_for_required,
-  PushBindingResolution,
-  PushBindingResolved,
-  PushCredentialBindingMissing,
-  PushCredentialLeaseUnresolved,
-  PushBindingStepKindUnsupported,
-  PushBindingActionMismatch,
-  PushBindingInputDuplicated,
-  PushBindingInputUnsupported
-}
-import gunbc.ci_heal_credential { live_heal_push_binding_resolution, live_heal_control_plane }
-import gunbc.generated_artifact {
-  GeneratedArtifact,
-  artifact_path,
-  committed_generated_artifacts
-}
 
 fn artifact_repository_path(a: GeneratedArtifact) -> RepositoryPath {
   RepositoryPath { value: artifact_path(a: a) }

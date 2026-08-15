@@ -1,36 +1,5 @@
 module v2.test.manual.structured_body_subsumption_set
 
-import v2.std.node {
-  Arrow,
-  Atom,
-  Edge,
-  Node,
-  Positional,
-  TypeNode,
-  node_synthetic
-}
-import v2.compiler.body_producer { produce_arrow_with_structured_body }
-import v2.extdeps.languages.dag {
-  dag_bind_arrow_with_body_node,
-  dag_bind_let_body_node,
-  dag_loop_arrow_with_body_node,
-  dag_loop_body_node,
-  dag_pick_arrow_domain_conj_node,
-  dag_pick_arrow_with_body_node,
-  dag_pick_if_body_node,
-  dag_type_atom_node
-}
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 fn subsumption_bool_node(pass: Bool) -> Node {
   if pass {

@@ -1,22 +1,6 @@
 module extdeps.render.terminal
 
-import extdeps.render.glyphs { resolve_symbol }
-import extdeps.render.ansi {
-  ansi_code,
-  ansi_carriage_return,
-  ansi_line_feed,
-  ansi_erase_entire_line,
-  ansi_text_contains_cursor_control,
-  ansi_text_contains_line_feed,
-}
-import std.render { RenderFrame, Line, RenderCapability, Span, Viewport, CursorAction, Overwrite, Append, Clear, cursor_action_under }
-import std.types { String, NonEmptyStr }
-import std.render_repeat_string_bootstrap { repeat_string }
-import std.symbols { Tier }
-import extdeps.unicode.display { string_display_width, truncate_text }
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

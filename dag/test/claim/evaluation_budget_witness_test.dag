@@ -1,27 +1,5 @@
 module test.claim.evaluation_budget
 
-import std.types { NonEmptyStr, Bool, Int, String }
-import std.measure {
-  nanosecond,
-  positive_millisecond,
-  positive_measure_count,
-}
-import std.evaluation_budget {
-  EvaluationClock,
-  ThreadCpu,
-  MonotonicWall,
-  evaluation_clock_key,
-  EvaluationEntryIdentity,
-  EvaluationLimit,
-  LimitUnset,
-  LimitSet,
-  EvaluationBudgetVerdict,
-  EvaluationWithinBudget,
-  EvaluationBudgetExceeded,
-  evaluation_budget_verdict,
-  effective_nested_limit_nanos,
-  evaluation_budget_refusal_code,
-}
 
 data witness_entry: EvaluationEntryIdentity = EvaluationEntryIdentity {
   entry: "roadmap_serve_handle" as NonEmptyStr,

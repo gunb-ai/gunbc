@@ -1,30 +1,5 @@
 module gunbc.roadmap_site_surface_witness
 
-import gunbc.roadmap_site_surface_observe { live_roadmap_site_surface_bundle }
-import gunbc.roadmap_site_surface_expect {
-  healthz_round_trip_receipt_holds,
-  fresh_surface_read_grounds,
-  stale_surface_read_does_not_ground,
-  healthz_surface_tolerates_transport_trailing_lf,
-  healthz_route_json_ok,
-}
-import std.realization_reconcile {
-  reconciliation_converged,
-}
-import gunbc.live_deploy.readiness {
-  HealthzEffectiveRead,
-  reconcile_service_ready_read_for_bundle,
-  live_deploy_service_ready_once_for_bundle,
-  show_healthz_read_fixture_healthy,
-  service_ready_apply_effect,
-  ground_service_ready_from_healthz_with_bundle,
-  Grounds,
-  DoesNotGround,
-}
-import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, RoadmapSiteSurfaceArtifact }
-import gunbc.roadmap_site_surface_render { healthz_body_with_release_identity }
-import std.content_hash { Fnv1a64Structural }
-import std.types { Bool, String, CommitSha, NonEmptyStr }
 
 // The digest the stale fixture substitutes for the roadmap artifact's real one. It is sixteen zeros
 // rather than a word like `stale-digest` because Fnv1a64Structural.digest is `String where lower_hex_16`:

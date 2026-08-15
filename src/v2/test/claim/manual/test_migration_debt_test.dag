@@ -1,22 +1,5 @@
 module v2.test.lens_test_migration_debt.test_migration_debt_test
 
-import v2.lens.test_migration_debt {
-  retained_rust_kernel_wall_holds_live,
-  retained_declared_source_files,
-  discovered_rust_test_modules,
-  discovered_legacy_behavior_ids,
-  names_are_duplicate_free,
-  list_contains_name,
-  retained_module_has_a_discovered_test,
-  module_body_has_no_skip_attribute,
-  manifest_uses_default_harness,
-  no_retained_module_is_skipped,
-  retained_kernel_uses_default_harness,
-}
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.collection { List }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

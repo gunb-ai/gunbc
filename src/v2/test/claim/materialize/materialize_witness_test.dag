@@ -1,25 +1,5 @@
 module v2.test.materialize.materialize_witness
 
-import v2.std.materialize {
-  materialize_redundant_computation_count,
-  materialize_has_duplicate_computation,
-  materialize_distinct_computation_count,
-  materialize_node_count,
-  distinct_hashes,
-  hashes_contain
-}
-import v2.std.node { Node, Edge, Named, TypeNode, Atom, Conj, Symbol, node_synthetic, content_hash }
-import std.realization_schedule {
-  RealizationPlan,
-  RealizationObjective,
-  Runnable,
-  RunnableSingleClaim,
-  cost_account_predicted_zero,
-  runnable_resource_profile_negligible
-}
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

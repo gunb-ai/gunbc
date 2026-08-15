@@ -1,12 +1,5 @@
 module test.claim.long.generated_artifact_drift_fixed_point_witness
 
-import gunbc.generated_artifact {
-  GeneratedArtifact, CiYamlArtifact,
-  committed_generated_artifacts, artifact_path,
-}
-import gunbc.generated_artifact_emit { ArtifactGenerated, ArtifactGenerationRefused, artifact_generate }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

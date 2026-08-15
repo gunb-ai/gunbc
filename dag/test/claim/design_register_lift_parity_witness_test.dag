@@ -1,11 +1,5 @@
 module test.claim.design_register_lift_parity_witness
 
-import std.content_hash { content_hash_atom }
-import std.types { NonEmptyStr, Bool, String }
-import gunbc.site.moodboard { moodboard_css, moodboard_html, moodboard_digest }
-import gunbc.site.accent_study { accent_study_html }
-import gunbc.roadmap_style { roadmap_css }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

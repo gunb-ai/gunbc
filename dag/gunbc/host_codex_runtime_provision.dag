@@ -1,27 +1,5 @@
 module gunbc.host_codex_runtime_provision
 
-import std.types { String, NonEmptyStr, Bool, FilePath }
-import std.disposition { Disposition, Scaffold, RealizationDispatch, Terminal, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
-import extdeps.filesystem.filesystem_io
-import product.placement_supply { HostIdentity }
-import gunbc.host_toolchain_ensure { host_toolchain_ensure, CodexRuntime }
-import gunbc.host_effect { HostEffect, ProvisionCodexRuntime }
-import gunbc.host_layout {
-  provider_runtime_placement_for_host,
-  srv1_gunbc_repo_root,
-  srv1_gunbc_serve_binary,
-}
-import gunbc.package_delivery {
-  codex_runtime_manifest_path,
-  codex_runtime_lock_path,
-  codex_runtime_materialization_refusal_reason,
-  materialize_codex_runtime_bundle,
-  AdmittedCodexRuntimeSource,
-  CodexRuntimeMaterialized,
-}
 
 data host_codex_runtime_provision_scope_disposition: Disposition = SingleAuthority
 

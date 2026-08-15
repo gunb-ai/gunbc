@@ -1,21 +1,5 @@
 module std.temporal_effect
 
-import std.types { String, NonEmptyStr, Int, Bool, Timestamp, List }
-import std.content_hash { ContentHash }
-import std.measure { Millisecond, measure_le, millisecond_count }
-import std.upsert_decision {
-  ObservationVerdict,
-  Converged,
-  Absent,
-  Drifted,
-  Conflict,
-  Inaccessible,
-  UnknownRefused,
-  UpsertDecision,
-  Noop,
-  Apply,
-  Refuse,
-}
 
 type EffectAttemptIntent {
   attempt_id: NonEmptyStr

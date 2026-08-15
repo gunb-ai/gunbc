@@ -1,16 +1,5 @@
 module gunbc.build_cache_instance
 
-import std.types { String, NonEmptyStr, Bool, List }
-import std.nat { Nat }
-import std.measure { ByteSize, Gibibyte, gibibyte, gibibyte_to_byte_size }
-import std.cache_identity { CacheInterfaceId }
-import std.disposition { Disposition, SingleAuthority }
-import product.placement_supply { HostIdentity }
-import extdeps.cache.sccache { SccacheServerEndpoint, SccacheServerUnixSocket, sccache_local_id }
-import gunbc.fleet_intent_network {
-  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
-}
-import gunbc.host_layout { gunbc_managed_compile_pool_slice }
 
 data build_cache_instance_scope_disposition: Disposition = SingleAuthority
 

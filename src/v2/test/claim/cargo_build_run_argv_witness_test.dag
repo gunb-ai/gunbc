@@ -1,10 +1,5 @@
 module v2.test.claim.cargo_build_run_argv_witness
 
-import v2.std.operation_argv {
-  operation_argv_bind_text,
-  operation_argv_bind_text_list,
-  operation_argv_tokens_or_refusal_label,
-}
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

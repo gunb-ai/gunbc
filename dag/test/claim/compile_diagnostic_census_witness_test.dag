@@ -1,20 +1,6 @@
 module test.claim.compile_diagnostic_census_witness
 
-import std.dissolution { dissolution_description }
 
-import gunbc.compile_diagnostic_census {
-  compile_diagnostic_census_hand_rust_dissolve_trigger,
-  CompileDiagnosticCensus,
-  CompileDiagnosticCensusRow,
-  CensusObserved,
-  CensusNotRunnable,
-  census_blocking_rows,
-  census_advisory_rows,
-  census_rows_of_class,
-  census_total_count
-}
-import std.types { String, NonEmptyStr, Bool }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

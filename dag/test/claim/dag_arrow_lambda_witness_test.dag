@@ -1,18 +1,5 @@
 module gunbc.test.claim.dag_arrow_lambda_witness_test
 
-import v2.std.text { String }
-import v2.std.logic { Bool }
-import v2.std.algebra { fold_list }
-import v2.std.grammar { GrammarRoot, GrammarProduction, GrammarExpr, ParseGrammar, ModeledGrammar, VoidGrammar }
-import v2.std.compilers.lexing { lex_artifact_semantic_tokens }
-import v2.compiler.tokenize { lex_walk_artifact }
-import v2.compiler.parse { parse_module }
-import v2.extdeps.languages.dag {
-  dag_lex_rules,
-  dag_grammar,
-  dag_grammar_choice,
-  dag_grammar_nonterminal
-}
 
 data arrow_lambda_witness_note: String = "CI2-0 grammar-extension proof obligation (operator repair sequencing msg_7152180b item a; premise corrected by direct probe 2026-08-10): the v2 grammar already admits |> — the measured corpus-wide parse wall in dag/std/algebra.dag, a dependency the v2 compiler itself imports, is the ARROW LAMBDA, v1-only surface syntax. This witness admits it parse-only, mirroring the v1 frontend's exact admission (single bare ident, or parenthesized >=2 idents; () and (x) are NOT lambdas in v1 and stay refused). The rule-removed RED rebuilds the grammar with the EXPR production's expression swapped back to the pre-repair shape, selected by DECLARED production identity with the replacement count asserted, so the discrimination is single-variable at the production grain. Non-interference rows pin the neighbors that share tokens with the new arm: match-arm fat arrows, named args, parenthesized arithmetic, and the recently-landed leading-pipe sum admission."
 

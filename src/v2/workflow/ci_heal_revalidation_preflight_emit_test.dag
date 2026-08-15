@@ -1,9 +1,5 @@
 module v2.workflow.ci_heal_revalidation_preflight_emit_test
 
-import v2.workflow.ci_heal_revalidation_preflight_emit {
-  ci_heal_revalidation_preflight_script,
-  ci_heal_revalidation_preflight_refused_poison
-}
 
 test fn preflight_is_exact_head_and_precedes_any_witness() -> Bool {
   let script = ci_heal_revalidation_preflight_script()

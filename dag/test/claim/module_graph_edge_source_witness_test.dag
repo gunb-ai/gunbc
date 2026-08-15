@@ -1,12 +1,5 @@
 module test.claim.module_graph_edge_source_witness
 
-import std.types { Bool, String, List, Int }
-import v2.lens.module_graph {
-  ModuleDependencyEdge, ImportResolutionFact,
-  dependency_resolution_facts_live,
-  import_resolution_facts_live,
-  reference_derived_import_resolution_facts_live,
-}
 
 data witness_subject_note: String = "THE EDGE SOURCE IS A UNION OF TWO PRODUCERS, AND UNTIL NOW NOTHING EXECUTED THAT. dependency_resolution_facts_live unions explicit-import facts with reference-derived facts, and the two producers share a signature — so a call site that passed the SAME producer into both arms kept compiling, kept returning well-formed edges, and silently dropped every dependency that only a bare reference establishes. That is exactly what happened during this lane's homonym rename (review 50749); the compiler could not see it and no witness covered the seam.
 

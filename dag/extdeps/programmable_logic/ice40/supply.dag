@@ -1,12 +1,5 @@
 module extdeps.programmable_logic.ice40.supply
 
-import std.types { String, Bool, NonEmptyStr, List }
-import std.integer { Int }
-import std.nat { Nat }
-import std.measure { Millivolt, millivolt, millivolt_count }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.uri { Uri, Https }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 
 
 data ice40_supply_note: String = "THE SUPPLY RAILS THE DEVICE REQUIRES, from Table 4.2 Recommended Operating Conditions and Table 4.12 sysI/O Recommended Operating Conditions of iCE40 LP/HX Family Data Sheet FPGA-DS-02029, Version 4.3, February 2025. It shares the subject module's citation anchor rather than minting a second one: these are rows of the same document about the same device, and a second anchor would be a second name for one authority. WHY THIS IS NOT A LIST OF VOLTAGES. Three facts in this table have shapes that a min/max pair cannot hold, and each was a fabrication waiting to happen. VPP_2V5's window DEPENDS ON THE CONFIGURATION MODE the board selects — 1.71 V to 3.46 V under slave SPI, but 2.30 V to 3.46 V under master SPI or NVCM configuration, and a narrower 2.30 V to 3.00 V while NVCM is being programmed — so a design that has not declared its configuration mode has not established what this rail must supply, and a single stored window would answer the question anyway. VPP_FAST has NO window at all: the document says leave it unconnected, which is not a voltage and must not be rendered as one. And two of the notes are constraints BETWEEN rails rather than properties of any one of them — like supplies at the same voltage must be the same supply, and an unused bank's VCCIO goes to VCC — which no per-rail record can carry."

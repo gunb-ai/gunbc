@@ -1,12 +1,5 @@
 module gunbc.codex_provider_runtime_receipt
 
-import std.types { String, NonEmptyStr, FilePath, Bool }
-import product.placement_supply { HostIdentity }
-import gunbc.host_layout {
-  ProviderRuntimePlacement,
-  provider_runtime_placement_for_host,
-}
-import gunbc.package_delivery { codex_runtime_version_identity_marker }
 
 data codex_provider_runtime_receipt_authority_note: String = "ONE authority for the Codex provider-runtime receipt #8224 consumes. Placement (all three ProviderRuntimePlacement roots), bundled executable path, exact bundle identity (receipt_identity hex from the materialized release sidecar), and process fingerprint are derived from what converge installed — never hand-authored literals agreeing across branches (operator ruling 2026-08-13). Process fingerprint is CodexProcessFingerprintUnobserved until a wet tmux observation on the bundled binary lands; dispatch must not treat the legacy dispatch_codex_process_fingerprint literal as evidence. Publication target: ProviderRuntimePlacement.wire_evidence_root/codex-provider-runtime/HOST.json — written when converge succeeds; absent until first successful fleet execution (#8226 prerequisite). srv2/srv3/srv4 standing is unobserved from the operator key; do not claim observed placement beyond what a host receipt proves."
 

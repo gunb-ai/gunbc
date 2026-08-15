@@ -1,9 +1,5 @@
 module gunbc.plans.emission_ingestion_inverse
 
-import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
-import std.markdown { MarkdownBlock, TableBlock, AlignNone }
-import gunbc.plans.md_helpers { h2, h3, p, li, ul, quote, cell, row }
 
 fn emission_ingestion_inverse_body() -> List<MarkdownBlock> {
   [

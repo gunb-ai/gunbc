@@ -1,20 +1,5 @@
 module gunbc.falsifier_alert_admission
 
-import std.types { NonEmptyStr, String }
-import extdeps.github.actions { github_event_name_schedule, github_event_name_workflow_dispatch, workflow_run_activity_completed }
-import extdeps.github.expressions {
-  Expression, ContextAccess, StringLiteral, LogicalOr, LogicalAnd, Equals,
-  Github, serialize_expression
-}
-import extdeps.github.workflow_run_event {
-  WorkflowRunEvent,
-  WorkflowRunEventObservation,
-  WorkflowRunEventObserved,
-  WorkflowRunEventMemberAbsent,
-  WorkflowRunEventMemberMalformed,
-  WorkflowRunEventMalformed,
-  WorkflowRunEventPayloadReadRefused
-}
 
 data falsifier_alert_admission_purpose_note: String = "ALERT-1(c). THE PRE-EXECUTION TRUST WALL. This alert holds issues: write, so before it reads or acts on ANY content originating from an observed run it must establish that the run is the one it exists to observe. The threat is not exotic: workflow_run fires for runs of the named workflow on any branch and from any originating event, including one produced by a fork's pull request or an unapproved dispatch, and the alert then downloads an artifact from that run and renders its contents into an issue it has write access to. Without this wall, the content of an attacker-influenced run reaches a privileged writer.\n\nADMISSION IS THE CONJUNCTION OF FIVE FACTS, all of which must hold: the workflow is affected-set-falsifier, the repository is gunb-ai/gunbc, the head branch is main, the originating event is a schedule or an approved workflow_dispatch, and the activity is completed. Each is a separate coordinate and each refusal names which one failed — a single boolean 'not trusted' would tell an operator nothing about whether they are looking at a misconfiguration or an attack.\n\nIT IS TO BE ENFORCED TWICE, AND THAT IS NOT REDUNDANCY IN THE DESIGN §2 SENSE. NEITHER POINT IS WIRED YET: this change is ALERT-0..3 modeling and moves no behavior, so the live workflow still carries no job-level `if` and its embedded program does not call falsifier_alert_admit. Saying otherwise in the present tense is the rung inflation DESIGN §4b names — a carrier described by the guarantee it is designed to reach rather than the one it holds — and review 49460 caught this sentence doing exactly that. At cutover the generated workflow carries a job-level `if` derived from falsifier_alert_job_condition so the job does not start, and this program re-evaluates the same facts from the payload it reads itself. They are different mechanisms against different failure modes: the job-level guard is cheap and stops the runner from ever holding the token, but it is written in a foreign expression language and can be silently weakened by an edit to the workflow; the in-program check reads the payload the alert is actually about to act on, and so cannot be bypassed by a workflow edit. Neither subsumes the other, so neither is a second representation of the other — the shared authority is this module's predicate, which the workflow's condition is derived from."
 

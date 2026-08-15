@@ -1,6 +1,5 @@
 module v2.compiler.parse_engine_hooks
 
-import v2.std.node { Symbol }
 
 data parse_engine_match_arm_body_production: Symbol = ^dag_production_match_arm_body
 data parse_engine_match_arm_stmt_body_production: Symbol = ^dag_production_match_arm_stmt_body

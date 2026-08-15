@@ -1,8 +1,5 @@
 module gunbc.ci_yaml_emit
 
-import extdeps.languages.yaml.emit { serialize_yaml }
-import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
-import gunbc.ci_workflow { ci_workflow }
 
 fn expected_ci_yml() -> String {
   serialize_yaml(v: project_workflow_to_yaml(workflow: ci_workflow))

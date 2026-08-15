@@ -1,43 +1,5 @@
 module test.claim.fleet_runner_connectivity_witness
 
-import std.logic { Bool }
-import std.types { String, List }
-import std.nat { Nat }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet_intent_network {
-  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
-}
-import gunbc.fleet_runner_connectivity {
-  organization_runner_roster_evidence,
-  runner_slot_connectivity_verdict,
-  runner_slot_connectivity_verdict_for_incarnation,
-  connectivity_verdicts_for_active_incarnations,
-  connectivity_verdict_is_healthy,
-  connectivity_verdict_is_detached,
-  connectivity_verdict_is_orphaned,
-  connectivity_verdict_is_unknown,
-  roster_unavailable_yields_unknown_not_detached,
-  fleet_runner_capacity_width_snapshot,
-  fleet_runner_capacity_width_snapshot_from_roster,
-  fleet_achieved_runner_widths_from_roster,
-  local_runner_slot_incarnations,
-  runner_slot_incarnation,
-  incident_2026_08_06_registrations,
-  RosterObserved,
-  RosterReadUnavailable,
-  AchievedWidthsObserved,
-  AchievedWidthsUnobserved,
-  SlotConnectivityHealthy,
-  SlotConnectivityDetached,
-  SlotConnectivityOrphaned,
-  SlotConnectivityUnknown,
-  FleetRunnerCapacityWidthSnapshot,
-}
-import extdeps.github.ci_runner {
-  GitHubRunnerOnline,
-  GitHubRunnerOffline,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

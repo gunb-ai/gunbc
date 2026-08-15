@@ -1,39 +1,5 @@
 module gunbc.dgx_spark_procurement
 
-import std.types { NonEmptyStr, String, List, Int, Bool }
-import gunbc.fleet_lifecycle_observation {
-  FleetLifecycleObservation,
-  ObservationSelection,
-  ObservationMissing,
-  ObservationUnique,
-  ObservationAmbiguous,
-  DeviceHardwareIdentity,
-  HardwareIdentityDistinctness,
-  HardwareIdentitiesDistinct,
-  HardwareIdentitiesSame,
-  HardwareIdentitiesIncomparable,
-  compare_hardware_identity,
-  execution_evidence_agrees,
-  envelope_host_presentation_evidence,
-  EnvelopeHostPresentationEvidence,
-  select_observation_for_subject,
-}
-import product.placement_supply { HostIdentity }
-import extdeps.systems.types { IntegratedComputeSystemCatalogRow }
-import extdeps.systems.nvidia_fleet_lifecycle {
-  FleetLifecycleEnvelope,
-  FleetLifecycleStatus,
-  StatusOk,
-  StatusWarning,
-  StatusError,
-  DeviceIdentity,
-  fleet_lifecycle_operation_tool_name,
-}
-import extdeps.systems.nvidia { nvidia_dgx_spark_4tb_catalog }
-import extdeps.dhcp.v4 { MacAddress, StaticDhcpReservation, Active }
-import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
-import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseRow }
-import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 
 // SPARK-0 (2026-08-05). Three deliberately separate fact classes: (1) the vendor catalog (extdeps.systems.nvidia) -- what NVIDIA documents the product to be; (2) operator procurement intent (this module) -- that two units were ordered and that srv5/srv6 are RESERVED identities for them; (3) deployment observation -- physical binding evidence that must never be fabricated. A reserved identity is explicitly NOT enrollment: srv5/srv6 do not appear in gunbc.fleet_intent_network's endpoint list, gunbc.fleet_intent's ComputeHost list, or any phase matrix/compute offer.
 // SPARK-LANE-A (2026-08-06) moved the identities to gunbc.fleet_intent_network, the single authority for a host's fleet identity (§3 -- SPARK-0 forked them privately here only because that file was mid-refactor at the time).

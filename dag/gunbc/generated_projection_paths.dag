@@ -1,15 +1,5 @@
 module gunbc.generated_projection_paths
 
-import gunbc.generated_artifact { committed_generated_artifact_paths }
-import gunbc.stage0_emit_plan {
-  Stage0EmissionPlanAccepted,
-  Stage0EmissionPlanOutcome,
-  Stage0EmissionPlanRefusalCause,
-  Stage0EmissionPlanRefused,
-  generated_stage0_paths_from_plan_rows,
-  stage0_emission_plan
-}
-import std.types { List, String }
 
 type GeneratedProjectionPathSource
   = CommittedGeneratedArtifact

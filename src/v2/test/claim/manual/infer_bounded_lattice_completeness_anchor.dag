@@ -1,35 +1,5 @@
 module v2.test.manual.infer_bounded_lattice_completeness_anchor
 
-import v2.compiler.infer {
-  InferredTree,
-  infer
-}
-import v2.std.bounded_lattice_completeness {
-  infer_bounded_lattice_consumer_gate,
-  infer_bounded_lattice_instance_gate,
-  partial_bounded_lattice_instances_in_tree
-}
-import v2.std.algebra {
-  BoundedLatticeComplete,
-  BoundedLatticePartial,
-  MissingMeet,
-  MissingLatticeField,
-  NotBoundedLatticeInstance,
-  length
-}
-import v2.std.bounded_lattice_completeness { bounded_lattice_instance_completeness }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Arrow, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  CompilesClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 fn anchor_atom_node(s: Symbol) -> Node {
   Node {

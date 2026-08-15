@@ -1,46 +1,5 @@
 module test.claim.diff_baseline_witness
 
-import std.logic { Bool }
-import std.types { String, GitRef }
-import gunbc.diff_baseline {
-  CiDiffEvent,
-  DiffBaseline,
-  DiffBaselineResolution,
-  MergeTarget,
-  ExactReplayBoundary,
-  PushBefore,
-  PushParent,
-  OperatorOverride,
-  PushBeforeInput,
-  PushBeforeSha,
-  PushBeforeZeroShaInput,
-  PushBeforeInputRefused,
-  BaselineSelected,
-  BaselineRefused,
-  BaselineSourceConflict,
-  resolve_diff_baseline,
-  diff_baseline_ref,
-  diff_baseline_diff_base,
-  diff_baseline_diff_head,
-  diff_baseline_is_exact_replay
-}
-import gunbc.git_diff_change_window {
-  GitDiffWindowObservation,
-  GitDiffWindowObserved,
-  git_exact_diff_window_for_verification,
-}
-import std.types { GitRef }
-import extdeps.git.object_store {
-  git_sha1_object_id,
-  git_object_id_wire_hex,
-  GitObjectId,
-  GitSha1ObjectId,
-  Sha1Digest,
-  Sha1DigestHex
-}
-import gunbc.repo_identity { gunbc_merge_target_ref, gunbc_default_remote_name }
-import extdeps.git.hooks { zero_sha }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

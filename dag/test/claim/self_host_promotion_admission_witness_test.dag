@@ -1,48 +1,5 @@
 module test.claim.self_host_promotion_admission_witness
 
-import v2.compiler.self_host.generation {
-  GeneratedArtifactIdentity,
-  ArtifactMaterialized,
-  ArtifactNotMaterialized,
-  observed_artifact_digest,
-  CandidateGeneration,
-  GenerationIdentity,
-  SeedGeneration,
-  SuccessorGeneration
-}
-import v2.compiler.self_host.promotion_admission {
-  BehaviorAgrees,
-  BehaviorDiverges,
-  BehavioralComparisonObservation,
-  BehavioralCorpus,
-  BehavioralEquivalenceReceipt,
-  BuildFailed,
-  BuildGreen,
-  BuildOutcome,
-  BuildReceipt,
-  DiscriminatingFaultReceipt,
-  EquivalenceOutcome,
-  FaultCaught,
-  FaultNotCaught,
-  FaultOutcome,
-  GenerationProvenanceReceipt,
-  Observed,
-  ObservationUnavailable,
-  ObservedVerdict,
-  PromotionOutcome,
-  SelfHostCandidate,
-  admit_promotion,
-  build_receipt_from_observation,
-  equivalence_receipt_from_observation,
-  fault_receipt_from_observation,
-  Promoted,
-  PromotionRefused,
-  promotion_refusal_carries
-}
-import v2.std.logic { Bool }
-import v2.std.node { Hash, symbol_identity_digest }
-import v2.std.optional { Absent, Present }
-import std.content_hash { sha512_hex_digest }
 
 // Test-side projection. The authority carrier deliberately exposes no is_* Bool over
 // PromotionOutcome (review 51217, predicate-dissolution): a witness must return Bool,

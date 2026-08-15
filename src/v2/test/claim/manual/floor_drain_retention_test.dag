@@ -1,28 +1,5 @@
 module v2.test.manual.floor_drain_retention
 
-import std.logic { Bool }
-import std.types { String }
-import std.cache_interface {
-  InProcess,
-  ReleasedAtProviderScopeExit,
-  CapacityBounded,
-  EntryCountCapacity,
-  RuntimeDerivedLimit,
-  NativeInternalHash,
-}
-import std.materialization_ladder { empty_frame_path, CoversAllComputations }
-import extdeps.cache { cache_interface_facts_from_catalog }
-import extdeps.cache.types { catalog_key_derivation_classification }
-import extdeps.cache.materialization {
-  provider_from_catalog,
-  provider_for_capacity_bounded_role,
-  provider_for_exact_byte_budget_role,
-  ProviderEligible,
-  ProviderIneligible,
-  CapacityUnitMismatchForRole,
-}
-import extdeps.realization.reconcile_in_process { typed_module_cache_facts }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

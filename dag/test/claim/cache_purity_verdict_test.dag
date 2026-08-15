@@ -1,18 +1,5 @@
 module test.claim.cache_purity_verdict
 
-import std.content_hash {
-  ContentHash,
-  Fnv1a64StructuralDigestHex,
-  as_content_hash_structural,
-  structural_content_hash,
-}
-import extdeps.realization.cache_purity {
-  CachePurityViolation,
-  Impure,
-  Pure,
-  cache_purity_verdict,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

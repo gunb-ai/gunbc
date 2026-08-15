@@ -1,18 +1,5 @@
 module test.claim.falsifier_run_control_witness_test
 
-import std.types { Bool, String, Int }
-import gunbc.falsifier_run_control {
-  falsifier_required_control_roles,
-  falsifier_control_prerequisite_if,
-  falsifier_control_prerequisite_execution_proof_note,
-  compile_clean_cold_control_step,
-  native_cache_cold_control_step,
-  AffectedSetPredictOnlyCold,
-  CompileCleanWholeTreeCold,
-  NativeCacheCold,
-}
-import gunbc.falsifier_workflow { expected_falsifier_yml }
-import extdeps.github.actions { RunStep }
 
 data falsifier_run_control_witness_note: String = "F0 executing consumer (operator mandate 2026-08-04): cold controls must use always()+release_build prerequisite, not default success(). Verified defect on run 30935833427 where steps 13-14 were SKIPPED while step 12 receipt upload PASSED. The closed control-role roster must enumerate exactly three roles so a control cannot silently vanish."
 

@@ -1,24 +1,5 @@
 module gunbc.owned_ci
 
-import std.types { String, Int, CommitSha, NonEmptyStr, Bool, path_segment_is_safe }
-import std.disposition { Disposition, Terminal }
-import std.measure { Second, second, second_count }
-import extdeps.auth.jwt {
-  NumericDate,
-  NumericDateWholeSeconds,
-  NumericDateFractionalSeconds,
-}
-import extdeps.github.checks {
-  CheckConclusion,
-  CheckStatus,
-  Queued,
-  InProgress,
-  Completed,
-  Failure,
-  check_conclusion_is_success,
-}
-import extdeps.filesystem.filesystem_io { Filesystem }
-import v2.std.collection { Absent, Present }
 
 data owned_ci_authority_note: String = "Owned CI control plane v0 state carriers (docs/plans/owned-ci-control-plane-design.md). Poll-first subject discovery, durable filesystem queue with expiring lease, one local executor, Checks projection honesty boundary."
 

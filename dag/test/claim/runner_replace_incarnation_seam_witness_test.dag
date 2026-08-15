@@ -1,34 +1,5 @@
 module test.claim.runner_replace_incarnation_seam_witness
 
-import std.logic { Bool }
-import std.types { String }
-import gunbc.fleet_intent { srv3_host }
-import gunbc.fleet_intent_network { operator_host_srv3 }
-import gunbc.runner_incarnation {
-  LocalRunnerSlotIncarnation,
-  runner_slot_incarnation,
-  local_runner_slot_incarnation_fields_match,
-}
-import gunbc.runner_lifecycle {
-  RunnerReplacementCause,
-  ReplacementCauseConnectivityDetached,
-  ReplacementCauseOrphanedRegistration,
-  ReplacementCauseWedgedBroker,
-  ReplacementCauseOperatorForced,
-}
-import gunbc.host_effect {
-  HostEffect,
-  ReplaceRunnerIncarnation,
-  HostOs,
-  NodeControlPlane,
-  LocalShell,
-  host_effect_identity_evidence,
-  HostEffectIntent,
-}
-import gunbc.host_effect_realize { resolve_host_effect_cell, host_effect_apply, ReplaceRunnerIncarnationOnHost, ShellOnHost, IncompatibleCell }
-import gunbc.runner_lifecycle_realize { runner_lifecycle_realize_replace_runner_incarnation }
-import std.realization_reconcile { Converged, NotConverged }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

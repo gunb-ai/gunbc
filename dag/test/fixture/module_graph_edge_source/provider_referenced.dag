@@ -1,5 +1,4 @@
 module test.fixture.module_graph_edge_source.provider_referenced
 
-import std.types { Int }
 
 fn edge_source_only_referenced_value() -> Int { 2 }

@@ -1,15 +1,5 @@
 module tools.proactive_verification_ledger_transport
 
-import gunbc.ci_layer_roots { witness_layer_roots }
-import gunbc.proactive_verification_ledger {
-  FamilyVerificationLedgerRow,
-  VerificationExecutionShape,
-  ClaimWitness,
-  ledger_executable_family_rows
-}
-import tools.host_prelude { ClaimRun, run_gunbc_claims }
-import v2.std.algebra { fold_list }
-import v2.std.logic { Bool }
 
 fn run_family_ledger_row(row: FamilyVerificationLedgerRow) -> Bool {
   match row.execution {

@@ -1,14 +1,5 @@
 module gunbc.build_cache_unit
 
-import std.types { String, NonEmptyStr, Bool, List }
-import std.measure { ByteSize, byte_size_count }
-import std.disposition { Disposition, SingleAuthority }
-import gunbc.build_cache_instance { BuildCacheInstance }
-import extdeps.cache.sccache {
-  SccacheServerTcpPort, SccacheServerUnixSocket, sccache_installed_binary_path,
-  sccache_start_server_env_assignment, sccache_no_daemon_env_assignment,
-  sccache_idle_timeout_never_env_assignment,
-}
 
 data build_cache_unit_scope_disposition: Disposition = SingleAuthority
 

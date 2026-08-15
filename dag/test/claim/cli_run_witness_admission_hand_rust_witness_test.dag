@@ -1,15 +1,6 @@
 module test.claim.cli_run_witness_admission_hand_rust_witness
 
-import std.dissolution { dissolution_description }
 
-import gunbc.cli_run_witness_admission_scaffold {
-  cli_run_witness_admission_hand_rust_loc_delta_net,
-  cli_run_witness_admission_hand_rust_receipt_plan_anchor,
-  cli_run_witness_admission_source_scan_dissolve_trigger,
-  cli_run_witness_admission_source_scan_scaffold,
-  cli_run_witness_admission_test_discriminator_file_grain_expand,
-  cli_run_witness_admission_test_discriminator_known_red_authority,
-}
 
 
 test fn witness_admission_source_scan_is_declared_scaffold() -> Bool {

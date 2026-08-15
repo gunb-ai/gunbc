@@ -1,8 +1,5 @@
 module tools.resolution_divergence_silent_pick_gate_witness_transport
 
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.types { String }
 
 data resolution_divergence_in_process_seed_receipt: String = "DESIGN section 7 HAND-RUST receipt for the in-process resolution-divergence census cut. WHAT GREW: the kill-safe phase writer and parent-plan telemetry handoff in cli_run.rs; the claim_executor plan hooks; the in-process builtin registration/projection; and the standalone resolution_divergence_census adapter. The census judgment remains the existing resolution-divergence join and refusal policy; this seed surface realizes its observation and transport and adds no second silent-pick policy. RUST CENSUS against the landing base: 765 lines added and 30 removed across the five touched .rs files, net +735. This is counted seed growth, not a claimed shrink. CHECKABLE RECEIPTS: this module's falsifier keystone asserts the Scaffold shape and concrete roadmap trigger on every execution; cli_run shared_index_cut_preserves_frozen_census_output_and_verdict asserts byte-identical census output, identical verdict, and Rc pointer identity for the parent-owned source set."
 

@@ -1,39 +1,5 @@
 module test.claim.compute_board_spice_projection_witness
 
-import std.types { String, NonEmptyStr, List }
-import std.measure { Measure }
-import product.compute_board.analog {
-  AnalogCircuitIntent,
-  CapacitorInstance,
-  ComponentInstanceIdentity,
-  ComponentModelBinding,
-  ElectricalComponentInstance,
-  ElectricalModelAbsent,
-  ElectricalModelCited,
-  ElectricalNet,
-  IdealLumped,
-  IndependentVoltageSourceInstance,
-  NetIdentity,
-  ResistorInstance,
-  TerminalIdentity,
-  VendorSubcircuit,
-  terminal_ref,
-}
-import product.compute_board.spice_projection {
-  ComponentModelBindingMissing,
-  ElectricalModelUnavailable,
-  ModelFidelityNotEmittable,
-  SpiceProjection,
-  SpiceSliceProjected,
-  SpiceSliceRefused,
-  TerminalOnNoNet,
-  TerminalOnMultipleNets,
-  DuplicateModelBinding,
-  IdentityNotSpellableInTarget,
-  NetNotSpellableInTarget,
-  project_analog_to_spice,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

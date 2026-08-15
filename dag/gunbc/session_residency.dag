@@ -1,18 +1,5 @@
 module gunbc.session_residency
 
-import std.types { NonEmptyStr, String, Bool, Int, List }
-import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network {
-  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
-}
-import gunbc.fleet_shell_transport_observation {
-  fleet_shell_transport_observation,
-  ShellTransportSucceeded,
-  ShellTransportReachRefused,
-  ShellTransportUnobserved,
-}
 
 data session_residency_authority_disposition: Disposition = Terminal {
   reason: "Single authority for WHICH FLEET HOSTS RUN INTERACTIVE AGENT SESSIONS. It is a fleet-topology fact — where session containers are placed — and it is the fact that justifies charging a host a sessions reservation out of its RAM budget. Nothing declared it before; consumers inferred it from whatever nearby row happened to correlate."

@@ -1,6 +1,5 @@
 module gunbc.ci_build_job_v1_compiler_unit_receipt
 
-import std.types { String }
 
 data ci_build_job_v1_compiler_unit_receipt_note: String = "CI-performance authority for the A2 build-job lane (operator ruling smart-badger-549, 2026-08-06). Corrects rung inflation from #7868: ordering landed but the one-compiler-unit claim was not fleet-delivered (run 31062435170 showed a second Compiling v1-compiler on the gate step). Status lines below are the honest program reading; execution evidence for the fix lives in PR #7910 and its fleet run. Wall-clock benefit is NOT claimed until a controlled measurement lands; unit-reuse evidence is a cargo fingerprint fact (second invocation omits Compiling for a fresh unit)."
 

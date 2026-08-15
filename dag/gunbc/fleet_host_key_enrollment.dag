@@ -1,18 +1,5 @@
 module gunbc.fleet_host_key_enrollment
 
-import std.types { String, Bool, List, NonEmptyStr }
-import std.algebra { trim }
-import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import std.resources { Network }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.exec.command { ArgvCommand, LocalExec }
-import extdeps.ssh { ssh_public_key_line }
-import gunbc.command_runner { run_shell_commands, run_shell_command_capture, ShellCaptureResult }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for, fleet_reach_probe_targets }
-import gunbc.fleet_ssh_access { fleet_automation_ssh_key, fleet_automation_privkey_version_segment, fleet_automation_ssh_privkey_secret }
 
 // CONVERGE acceptance item 4 (operator directive C, 2026-08-09): the host-key
 // fingerprint ENROLLMENT registry. The executed reach probe landed every fleet host at

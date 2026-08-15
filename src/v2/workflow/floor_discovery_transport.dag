@@ -1,16 +1,5 @@
 module v2.workflow.floor_discovery_transport
 
-import std.types { List, String }
-import std.content_hash { Fnv1a64Structural }
-import extdeps.git.object_store { git_object_id_eq }
-import v2.workflow.floor_discovery {
-  FloorDiscoveryCommitId,
-  FloorDiscoveryTreeId,
-  FloorDiscoveryRequest,
-  FloorDiscoverySubjectMismatch,
-  floor_discovery_request_identity,
-}
-import v2.std.optional { Absent, Present }
 
 data floor_discovery_transport_authority_note: String = "The transport is a host-effect boundary, not a second discovery implementation. It sequences the existing typed Git/filesystem observations and hands their results to v2.workflow.floor_discovery; it owns neither request identity nor snapshot semantics. A missing, mismatched, or damaged observation stops the transport with a located refusal. There is deliberately no recompute arm. The current Rust snapshot module is the transitional realization of this state machine; generated host-effect transport dissolves that mirror when this state machine is generated and its verified artifact is consumed directly."
 

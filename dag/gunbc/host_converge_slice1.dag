@@ -1,54 +1,5 @@
 module gunbc.host_converge_slice1
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.disposition { Disposition, Terminal }
-import product.placement_supply { HostIdentity }
-import extdeps.systemd {
-  systemd_memory_max_property,
-  MemoryMax,
-  systemd_tasks_max_property,
-  TasksMax,
-  TasksCurrent,
-  SystemdCgroupTaskLimit,
-  parse_systemd_task_limit_show,
-  TaskLimitCount,
-  TaskLimitUnbounded,
-  TaskLimitAbsent,
-}
-import gunbc.systemctl_show_read {
-  systemctl_show_property_read_local,
-  SystemdPropertyCaptured,
-  SystemdPropertyCaptureRefused,
-}
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
-import gunbc.fleet_host_budget { declared_runner_count_for }
-import gunbc.host_converge {
-  ConvergeKnob,
-  ConvergeVerdict,
-  VerdictConverged,
-  Drifted,
-  ConvergePolicy,
-  ConvergePolicyDerived,
-  ConvergePolicyUnsound,
-  HostConverge,
-  PerSlotMemoryCap,
-  fleet_converge_policy,
-  find_by_identity,
-  runner_instance_glob,
-}
-import gunbc.runner_unit_live_read {
-  RunnerUnitLiveReadRow,
-  RunnerUnitMemoryLiveRead,
-  gunbc_srv1_runner_unit_live_read_fixture,
-  runner_unit_live_read_typed,
-}
-import gunbc.fleet_show_effective_read {
-  per_slot_memory_cap_verdict_from_unit_read,
-}
-import gunbc.clock_read { clock_now_probed_at }
-import gunbc.systemctl_set_property { systemctl_set_property_local }
-import gunbc.systemctl_list_units { systemctl_list_units_active_services }
-import gunbc.host_axis_caps { control_shadow_unit, control_shadow_revert_script, control_shadow_revert_script_matches_extdeps_argv }
 
 data gunbc_host_converge_slice1_scope_disposition: Disposition = Terminal {
   reason: "Host-converge realized knob: per_slot_tasks_max from fleet_converge_policy through typed systemctl show/set-property/list-units and clock_now_probed_at (LocalShell on-host, operator principal briansrls on srv1). MemoryMax/MemoryHigh drop-in authoring and system.control shadow teardown are deploy-time only (gunbc.host_axis_caps at live_deploy apply under ghrunner sudo) — convergence does NOT write /etc/systemd drop-ins, daemon-reload, set-property MemoryMax, or systemctl revert on the operator principal (operator privilege hold 2026-08-13). Ordering invariant (author derived drop-ins before shadow revert) is modeled in host_axis_caps for the deploy path. srv1 TasksMax on probe unit; srv3 multi-unit enumerated via runner_instance_glob. Per-unit outcomes are independent (DESIGN section 5 per-cause refusal / siblings continue). srv2 and other knobs stay on host_converge_realize frontier."

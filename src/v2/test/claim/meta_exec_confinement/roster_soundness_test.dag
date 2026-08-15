@@ -1,14 +1,5 @@
 module v2.test.meta_exec_confinement.roster_soundness
 
-import v2.lens.meta_exec_confinement {
-  meta_exec_confinement_exception_paths,
-  meta_exec_roster_sound
-}
-import v2.std.algebra { is_empty, list_append }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

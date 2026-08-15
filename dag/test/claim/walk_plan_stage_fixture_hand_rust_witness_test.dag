@@ -1,24 +1,6 @@
 module test.claim.walk_plan_stage_fixture_hand_rust_witness
 
-import std.dissolution { dissolution_description }
 
-import gunbc.walk_plan_stage_fixture_scaffold {
-  walk_plan_stage_fixture_hand_rust_scaffold,
-  walk_plan_stage_fixture_hand_rust_dissolve_trigger,
-  walk_plan_stage_fixture_hand_rust_loc_delta_net,
-  walk_plan_stage_fixture_hand_rust_paths,
-  walk_plan_stage_fixture_hand_rust_receipt_plan_anchor,
-  walk_plan_stage_fixture_hand_rust_receipt_witness_entry,
-  walk_plan_stage_fixture_hand_rust_roadmap_lane_anchor
-}
-import v2.test.fixture.walk_plan_stage.common {
-  walk_plan_stage_attempt_id,
-  walk_plan_stage_stage1_receipt_path
-}
-import v2.test.fixture.walk_plan_stage.plan { walk_plan_stage_overlap_barrier_recipe }
-import std.disposition { Scaffold, SingleAuthority }
-import std.types { Bool }
-import v2.std.algebra { length }
 
 test fn walk_plan_stage_fixture_hand_rust_scaffold_is_seed_retained() -> Bool {
   match walk_plan_stage_fixture_hand_rust_scaffold {

@@ -1,50 +1,5 @@
 module test.claim.roadmap_verification_receipt_witness_test
 
-import std.types { Bool, String, NonEmptyStr, FilePath, CommitSha }
-import std.content_hash {
-  Fnv1a64Structural,
-  content_hash_of_value,
-  content_hash_atom,
-}
-import gunbc.roadmap_model { RoadmapNodeIdentity, RoadmapNodeId }
-import gunbc.roadmap_execution_contract {
-  GunbcClaimValidation,
-  ModeledValidationCommand,
-}
-import gunbc.roadmap_validation_oracle {
-  ValidationPassed,
-  ValidationRefused,
-  ValidationChangeWindowRefused,
-  validation_refusal_cause_key,
-}
-import gunbc.roadmap_verification_receipt {
-  VerificationSubject,
-  ValidationExecution,
-  VerificationReceipt,
-  VerificationSubjectMatches,
-  VerificationSubjectDiffers,
-  ExactHeadVerificationReceipt,
-  LegacyAttemptValidationReceipt,
-  VerificationEvidenceForSubject,
-  VerificationEvidenceForAnotherSubject,
-  VerificationEvidenceLegacyAttemptLevel,
-  verification_subject_match,
-  verification_evidence_for,
-  verification_evidence_moves_lamp,
-  verification_receipt_json,
-  verification_receipt_decode,
-  VerificationReceiptDecoded,
-  VerificationReceiptUndecodable,
-  verification_receipt_schema,
-}
-import gunbc.git_diff_change_window {
-  git_diff_window_absent_identity,
-  ChangeWindowPersistenceRefused,
-}
-import gunbc.roadmap_dashboard_instance { srv2_lab_dashboard_instance }
-import gunbc.roadmap_dispatch_actuator {
-  dispatch_attempt_verification_receipt_path_for_instance,
-}
 
 data verification_receipt_witness_note: String = "GREEN-BY-CONSTRUCTION witness for the exact-head verification model. The fixture supplies every required subject field, one structural validation operation, one realized program-plus-argv command, and separated exit/stdout/stderr evidence. The discriminating RED changes only head_sha: the old receipt remains readable and passed, but verification_evidence_moves_lamp refuses it for the new head. The legacy control supplies the old decoder's most favourable value, passed, and still cannot move the lamp because no subject can be recovered from it."
 

@@ -1,53 +1,5 @@
 module gunbc.runner_connectivity_recovery
 
-import std.types { String, NonEmptyStr, Int, Bool, List, Timestamp, Duration, list_length }
-import std.disposition { Disposition, SingleAuthority, Scaffold }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import product.placement_supply { HostIdentity }
-import gunbc.build_cache_instance {
-  RunnerSlotIdentity,
-  ProcessIdentity,
-}
-import gunbc.fleet_intent_network {
-  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
-}
-import gunbc.runner_broker_progress_watchdog {
-  RunnerRemoteRegistration,
-  RunnerRemoteOnline,
-  RunnerRemoteOffline,
-  RunnerRemoteAbsent,
-  RunnerRemoteBusy,
-  HostReachAdmission,
-  HostReachAdmitted,
-  HostReachRefused,
-  RunnerWatchdogInputs,
-  RunnerWatchdogVerdict,
-  WatchdogHealthy,
-  WatchdogRetrying,
-  WatchdogWedged,
-  WatchdogBusy,
-  WatchdogRefused,
-  RemoteRegistrationEvidence,
-  RemoteRegistrationObserved,
-  RemoteRegistrationRefused,
-  RemoteRegistrationUnobserved,
-  RemoteRegistrationOperatorDeclared,
-  BrokerProgressObservation,
-  BrokerProgressSilent,
-  RunnerWorkerObservation,
-  RunnerWorkerAbsent,
-  RunnerWorkerAlive,
-  ObservedEvidence,
-  classify_runner_watchdog_verdict,
-  watchdog_replace_predicate_holds,
-  reobservation_refuses_mutation,
-  RunnerRepairDecisionReceipt,
-  remote_evidence_registration,
-  remote_registration_is_connected,
-  remote_registration_needs_repair,
-  remote_registration_is_busy,
-  runner_broker_progress_silence_bound_seconds,
-}
 
 data runner_connectivity_recovery_scope_disposition: Disposition = SingleAuthority
 

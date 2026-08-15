@@ -1,14 +1,5 @@
 module test.claim.expectation_frontier_witness
 
-import extdeps.git
-import extdeps.git.inspect
-import extdeps.gunbc
-import gunbc.ci_layer_roots { witness_layer_roots }
-import gunbc.output_policy { ExpectSuccess }
-import std.logic { Bool }
-import std.types { String }
-import tools.host_prelude { ClaimRun, claim_batch_claims_argv, witness_bin_release_path }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

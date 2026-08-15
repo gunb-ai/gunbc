@@ -1,26 +1,5 @@
 module gunbc.claim_evidence_probe_rule
 
-import std.types { NonEmptyStr }
-import std.claim_evidence {
-  RecordedFact,
-  InferenceRuleId,
-  EvidenceProvenance,
-  EvidenceFreshness,
-  EvidenceFidelity,
-  EvidenceDirection,
-  EvidenceDirectionFold,
-  EvidenceLink,
-  EvidenceInsufficiency,
-  EvidenceInference,
-  evidence_direction_fold,
-  applicable_evidence_inference,
-  insufficient_evidence_inference,
-}
-import gunbc.readback_independence {
-  ReadBackProbe,
-  ProbeEffectOnSubjectFold,
-  probe_effect_on_subject_fold,
-}
 
 fn infer_probe_evidence<F, C, A, FidelityBoundary>(
   fact: RecordedFact<F>,

@@ -1,20 +1,5 @@
 module v2.test.lens_cost.copied_port_derivation
 
-import v2.lens.cost.copied_port_citations {
-  copied_port_citation_list_append,
-  copied_port_citation_list_snoc_item,
-  copied_port_citation_map_merge,
-  copied_port_citation_retained_count,
-  copied_port_index_of,
-  citation_arrow_multi_linear_ambiguous
-}
-import v2.lens.cost.copied_port_derivation { derive_copied_port_index_from_arrow }
-import v2.test.claim.body_lowering.wave1_gate1_c1_copied_port_helpers {
-  wave1_gate1_c1_unregistered_combiner_lookup_refuses_holds
-}
-import v2.std.collection { Absent, Present }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

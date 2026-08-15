@@ -1,28 +1,5 @@
 module v2.workflow.ci_floor_peak_emit_test
 
-import v2.workflow.ci_floor_peak_emit {
-  ci_cgroup_peak_locate_shell,
-  ci_floor_peak_pre_script,
-  ci_floor_peak_post_script,
-  ci_floor_peak_pre_pipeline,
-  ci_floor_peak_post_pipeline,
-  ci_floor_peak_pre_reset_ok_command,
-  ci_floor_peak_echo_reset_redirect_command
-}
-import v2.compiler.emit_orchestration { orch_emit_pipeline }
-import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
-import v2.std.orchestration {
-  Do,
-  ExitZero,
-  FailFast,
-  If,
-  Pipeline,
-  PipelineStep,
-  Run
-}
-import v2.std.collection { Absent, Present }
-import v2.std.diagnostic { Accepted, None, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,29 +1,5 @@
 module gunbc.tools.body_lowering_population_probe
 
-import gunbc.tools.frontier_ingestion_probe {
-  CensusRefusedAtReconciliation,
-  CensusRefusedAtWorld,
-  CensusTaken,
-  FrontendCensusReceipt,
-  FrontierMember,
-  FrontendStage,
-  frontend_stage_label,
-  LexRefused,
-  MemberObservation,
-  NormalizeAccepted,
-  NormalizeGraftRefused,
-  NormalizeOther,
-  NormalizeRetained,
-  ParseRefused,
-  take_census_over
-}
-import v2.std.algebra { fold_list }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.compilers.lexing { symbol_lexeme }
-import v2.std.node { Symbol }
-import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

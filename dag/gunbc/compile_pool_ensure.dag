@@ -1,35 +1,5 @@
 module gunbc.compile_pool_ensure
 
-import std.types { String, NonEmptyStr, Bool, List }
-import std.measure { ByteSize, byte_size_count }
-import std.disposition { Disposition, SingleAuthority }
-import gunbc.host_layout { gunbc_managed_compile_pool_slice }
-import gunbc.build_cache_unit { render_compile_pool_slice }
-import gunbc.host_compile_pool {
-  CompilePoolObservation,
-  CompilePoolSliceObserved,
-  CompilePoolSliceAbsent,
-  CompilePoolObservationUnavailable,
-}
-import gunbc.fleet_host_budget {
-  CompilePoolPlacement,
-  CompilePoolSliceDeclared,
-  CompilePoolInRunnerSlots,
-  CompilePoolResolution,
-  CompilePoolDerived,
-  CompilePoolUnresolved,
-}
-import gunbc.build_cache_instance {
-  BuildCacheServerPlacement,
-  ServerManagedUnitOwned,
-  ServerRunnerOwned,
-  ServerUnsupervised,
-  ServerPlacementAbsent,
-  ServerPlacementUnknown,
-  CgroupMemoryLimits,
-  EndpointObservationUnavailableReason,
-  unavailable_reason_detail,
-}
 
 data compile_pool_ensure_scope_disposition: Disposition = SingleAuthority
 

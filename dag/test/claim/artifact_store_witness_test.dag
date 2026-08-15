@@ -1,53 +1,5 @@
 module test.claim.artifact_store_witness
 
-import std.logic { Bool }
-import std.types { List }
-import std.content_hash {
-  ContentHash,
-  Fnv1a64Structural,
-  Sha256Family,
-  content_hash_atom,
-  content_hash_combine_structural,
-  content_hash_family,
-  as_content_hash_structural,
-  as_content_hash_cryptographic,
-  sha256_hex_digest,
-}
-import std.measure { ByteSize, byte_size, measure_count }
-import std.cache_interface {
-  CapacityUnbounded, CapacityBounded,
-  ByteCapacity, EntryCountCapacity, ExactLimit, EffectiveLimitUnobserved,
-  ReplaceExisting, RefuseNewStore, LeastRecentlyUsed,
-}
-import std.materialization_ladder {
-  CacheProvider, CoversAllComputations, ReferenceTier, ArtifactTier, ContentKeyed,
-  provider_row, scope_released_retention, persistent_retention,
-}
-import std.artifact_store {
-  ArtifactKey, ArtifactRealizationInput, artifact_key_hash, artifact_realization_digest,
-  ArtifactStore, StoreReady, StoreRefusedRetention, store_over_provider,
-  ProviderScopeReleased, CapacityUnitMismatch, CapacityValueUnobserved,
-  RefuseNewStoreUnsupported,
-  StoreHit, StoreMiss, store_get,
-  StorePutReceipt, StorePutOutcome, StorePutAdmitted, StorePutDidNotFit,
-  store_put, store_put_fold, store_put_is_admitted, store_put_evicted_keys, store_bytes_used,
-}
-import extdeps.realization.emit_on_demand_host {
-  ObservedToolIdentity,
-  ObservedToolIdentityLookup,
-  ResolvedBuildContext,
-  native_cache_realization_workspace_root,
-  native_cache_resolved_build_context_workspace_root,
-  observed_tool_identity,
-  resolved_build_context_identity_outcome,
-  ResolvedBuildContextIdentityPresent,
-  ResolvedBuildContextIdentityRefusedCrypto,
-  toolchain_identity_outcome,
-  ToolchainIdentityPresent,
-  ToolchainIdentityRefusedCrypto,
-}
-import v2.std.optional { Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

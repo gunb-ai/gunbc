@@ -1,21 +1,5 @@
 module test.claim.keyed_roster_witness
 
-import std.keyed_row { KeyedRow }
-import std.change { keyed_merge_row_lists }
-import std.keyed_roster {
-  KeyedRosterBuildDuplicateKey,
-  KeyedRosterBuilt,
-  KeyedRosterDuplicateKey,
-  KeyedRosterInserted,
-  KeyedRosterInvalidRoster,
-  keyed_roster_build,
-  keyed_roster_insert,
-  keyed_roster_union,
-}
-import std.roster_frontier { FrontierRow, PathSubject, decl_field_ref, decl_ref, frontier_row_decl, frontier_rows_keyed_roster_build, frontier_rows_well_formed }
-import std.dissolution { unbound_dissolution }
-import std.types { Bool, String, List }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

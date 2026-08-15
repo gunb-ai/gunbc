@@ -1,30 +1,5 @@
 module v2.test.claim.walk_plan_schedule_lens
 
-import std.execution_mode { Hermetic }
-import std.realization_schedule {
-  RealizationObjective,
-  RealizationPlan,
-  Runnable,
-  RunnableSingleClaim,
-  RunnableDiscoveryBatch,
-  RunnableKernelWorkload,
-  SelectionOff,
-  WalkPlan,
-  NoWalkFinalization,
-  NoFinalizationDeclared,
-  NoPreWalkExecution,
-  cost_account_predicted_zero,
-  runnable_memory_negligible,
-  runnable_memory_substantial,
-  runnable_resource_profile,
-  runnable_resource_profile_negligible,
-}
-import std.content_hash { ContentHash, content_hash_of_value }
-import v2.lens.schedule_lens { walk_plan_schedule_lens_verdict_for_ci_floor }
-import v2.std.collection { List }
-import v2.std.lens_verdict { Holds, LensVerdict, Violation, NotApplicable, Unrealized }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.workflow.ci_floor_plan { gunbc_ci_floor_schedule_lens_holds }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

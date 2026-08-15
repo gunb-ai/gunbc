@@ -1,25 +1,5 @@
 module test.claim.typed_module_cache_capacity_witness
 
-import std.logic { Bool }
-import std.types { String, Int }
-import std.measure { byte_size }
-import gunbc.host_budget_source {
-  HostBudgetResolution,
-  HostBudgetResolved,
-  HostBudgetUnreadable,
-  BudgetSourceCgroupMemoryMax,
-  BudgetSourceMemTotal,
-}
-import gunbc.typed_module_cache_capacity {
-  TypedModuleCacheCap,
-  CapEntries,
-  CapEntryRefused,
-  typed_module_cache_entry_cap,
-  typed_module_cache_entry_cap_with_override,
-  typed_module_cache_entries_floor,
-  typed_module_cache_entries_ceiling,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

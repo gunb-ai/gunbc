@@ -1,16 +1,6 @@
 module v2.workflow.floor_naming_hygiene
 
-import std.algebra { trim }
 
-import std.types { String, Bool, List }
-import v2.std.optional {
-  Absent,
-  Optional,
-  Present,
-  optional_absent,
-  optional_present
-}
-import v2.std.algebra { fold_list }
 
 data floor_test_sidecar_suffix: String = "_test.dag"
 data floor_wire_contract_sidecar_suffix: String = "_contracts.dag"

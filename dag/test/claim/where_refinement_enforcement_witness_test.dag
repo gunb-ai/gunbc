@@ -1,6 +1,5 @@
 module test.claim.where_refinement_enforcement_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

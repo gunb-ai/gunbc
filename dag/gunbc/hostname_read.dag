@@ -1,23 +1,6 @@
 module gunbc.hostname_read
 
-import std.algebra { trim }
 
-import std.types { String, NonEmptyStr, List, Bool }
-import extdeps.tools.hostname
-import gunbc.host_effect { fleet_ssh_leaf_unmigrated_refused, HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
-import v2.std.operation_argv {
-  ArgvMaterialization,
-  ArgvMaterialized,
-  ArgvMaterializationRefused,
-  operation_argv_cause_label,
-}
-import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
-import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh,
-  typed_argv_exec_over_ssh,
-  typed_argv_shell_safe_refusal_argv,
-  TypedArgvExecConverged,
-  TypedArgvExecRefused,
-}
 
 data hostname_short_capture_note: String = "The read answers a two-armed capture, never a bare String?: an argv materialization that REFUSES is a typed, located fact about the declaration, and collapsing it into the same `none` that means empty stdout, a failed exec, or an unsupported transport is the state-space conflation DESIGN 5 names (review 42946). Every non-value arm carries WHY, mirroring gunbc.systemctl_status_read's UnitStatusCapture."
 

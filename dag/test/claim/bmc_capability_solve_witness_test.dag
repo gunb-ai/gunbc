@@ -1,48 +1,5 @@
 module test.claim.bmc_capability_solve
 
-import extdeps.bmc.capability {
-  BmcFirmwareCapabilityRow,
-  BmcFirmwareIntentMismatch,
-  BmcFirmwareIntentSatisfied,
-  BmcFirmwareObservation,
-  BmcFirmwareTrackRequired,
-  BmcFirmwareTrack,
-  BmcFirmwareVersion,
-  BmcFirmwareVersionParsed,
-  BmcFirmwareVersionRefused,
-  CurrentEvidenceUnclaimed,
-  CapabilityAccountManagement,
-  CapabilityBiosAttributeConfig,
-  CapabilityBootSourceOverride,
-  CapabilityFirmwareUpdate,
-  CapabilityNbdProxyVirtualMedia,
-  CapabilityPowerControl,
-  CapabilityVirtualMedia,
-  catalog_has_vm_capable_firmware,
-  bmc_firmware_observation_intent_verdict,
-  bmc_firmware_version_from_wire,
-  bmc_firmware_version_matches_track,
-  firmware_has_capability,
-}
-import extdeps.boards.asrock_rack {
-  asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog,
-  asrock_altrad8ud_openbmc_2_07_00_capabilities,
-  asrock_altrad8ud_openbmc_3_06_00_capabilities,
-  asrock_altrad8ud_openbmc_3_22_00_capabilities,
-}
-import gunbc.os_install_mechanism {
-  FirmwareUpdateThenVirtualMedia,
-  NbdProxyVirtualMediaInstall,
-  PxeHttpInstall,
-  VirtualMediaInstall,
-  solve_install_mechanism,
-  srv3_firmware_catalog,
-  srv3_install_mechanism,
-}
-import std.bmc { BmcEndpoint, OpenBmc, Redfish }
-import std.types { Bool, list_length }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.firmware.types { firmware_semantic_version }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

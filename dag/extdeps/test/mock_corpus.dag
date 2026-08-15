@@ -1,6 +1,5 @@
 module extdeps.test.mock_corpus
 
-import std.hermetic_replay { PublishedMockCase }
 
 data http_pilot_mock_case_get_post: PublishedMockCase = PublishedMockCase {
   operation_key: "test.HttpPilot.GetPost",

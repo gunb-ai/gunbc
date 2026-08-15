@@ -1,20 +1,5 @@
 module test.claim.scaffold_disposition_census_fixture_witness_test
 
-import v2.std.decl_index { DeclFact, DataItem, FnItem, decl_facts }
-import v2.std.decl_facts_skeleton { decl_facts_matching_qualified_name }
-import test.fixture.scaffold_disposition_census.expected_classification {
-  scaffold_disposition_census_fixture_pool_roots,
-  scaffold_disposition_census_expected_rows,
-  scaffold_census_identity_adversarial_controls,
-  scaffold_census_planted_ambiguous_qualified_name,
-  scaffold_census_planted_ambiguous_control_facts,
-  scaffold_census_planted_missing_qualified_name,
-  ExpectedScaffoldCensusRow,
-  NonDisposition,
-  Terminal,
-  ScaffoldDecoded,
-  ScaffoldDecodeRefused,
-}
 
 data scaffold_disposition_census_fixture_witness_note: String = "Fixture-and-oracle witness for the exact scaffold disposition census (adhoc-220d7fd9-374, dashboard node). Proves only what is decidable TODAY, without the blocked exact constructor/variant-value identity prerequisite (owned elsewhere): the fixture pool and its independently authored oracle agree by identity join in both directions (not count equality alone, per DESIGN 'completeness is an identity join'), the oracle is duplicate-free and exhausts all four states with Terminal kept distinct from ScaffoldDecodeRefused, kind-based exclusion of fn declarations is real, and the two identity-adversarial controls (ambiguous / missing subject identity) genuinely exhibit the property they claim. It does NOT assert that a census classifies each specimen into its expected state -- that consumer does not exist yet; this witness proves the fixtures and oracle it will consume are well-formed and non-vacuous, so the oracle counts are a true oracle rather than a measurement copied from the tree."
 

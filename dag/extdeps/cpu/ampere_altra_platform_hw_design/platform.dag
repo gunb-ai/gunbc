@@ -1,30 +1,5 @@
 module extdeps.cpu.ampere_altra_platform_hw_design.platform
 
-import std.types { Bool, List, NonEmptyStr, String }
-import std.integer { Int }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.measure { Hertz, Micrometer, hertz, micrometer }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import extdeps.memory.types { DramGeneration, dram_generation_ddr4 }
-import extdeps.publication { DocumentPublicationStatus, PubliclyPublishedWithRestrictiveMarking }
-import extdeps.cpu.ampere_altra_package {
-  altra_package_body_width,
-  altra_package_body_height,
-  altra_package_pad_pitch_dx,
-  altra_package_pad_pitch_dy,
-  altra_declared_contact_count,
-  altra_ddr4_channel_count,
-  altra_max_dimms_per_socket,
-  altra_pcie_gen4_lane_count,
-}
-import extdeps.cpu.ampere_altra_platform_hw_design.subject {
-  AltraPlatformHwDesignSpecification,
-  HeldRevisionIsCurrentPublicCopy,
-  NewerRevisionExistsUnretrieved,
-  altra_platform_hw_design_specification,
-  altra_platform_hw_design_subject_authority_anchor,
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = altra_platform_hw_design_subject_authority_anchor
 

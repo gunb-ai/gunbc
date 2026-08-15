@@ -1,29 +1,7 @@
 module v2.extdeps.languages.bash_proc_self_cgroup
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.algebra { trim }
 
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import extdeps.linux.proc_self_cgroup {
-  read_unified_cgroup_membership,
-  ProcPidCgroupMembershipRecord,
-  CurrentCgroupObserved,
-  MembershipMissing,
-  MembershipAmbiguous,
-  MembershipMalformed,
-  UnifiedMembershipOutcomeTag,
-  OutcomeTagMissing,
-  OutcomeTagAmbiguous,
-  OutcomeTagMalformed,
-  OutcomeTagObserved,
-  unified_membership_outcome_tag,
-  unified_membership_outcome_tag_eq,
-  proc_self_cgroup_mount_root_text,
-  proc_self_cgroup_absolute_path_from_relative,
-}
-import std.types { FilePathParts, NonEmptyStr, String }
 
 data bash_membership_refuse_malformed_body: String = "echo \"[calibration] cgroup_membership=malformed\" >&2; exit 1"
 

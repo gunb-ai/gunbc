@@ -1,57 +1,5 @@
 module test.claim.owned_ci_witness
 
-import gunbc.ci_execution_plan {
-  CiExecutionSubject,
-  PushToMain, PullRequestToMain, OperatorRerun, ForkPullRequestRefused,
-  ci_subject_identity_key,
-  ci_subject_head_sha,
-  ci_pull_request_is_same_repo,
-  ci_pull_request_targets_merge_branch,
-  ci_execution_plan_for_subject,
-  ci_execution_default_stages,
-  owned_ci_executor_stage_labels,
-  ci_execution_stage_wire,
-  CiBuildStage, CiRegenStage, CiFloorStage,
-}
-import gunbc.owned_ci {
-  QueueLease,
-  CheckPublicationState,
-  CheckPublicationCompleted, CheckPublicationPending,
-  CheckPublicationNotStarted, CheckPublicationQueued, CheckPublicationInProgress,
-  CiRunQueueState, QueueCompleted, QueueRefused,
-  queue_lease_reclaim_decision,
-  queue_lease_validity,
-  ReclaimExpiredLease,
-  RetainActiveLease,
-  LeaseReclaimRefused,
-  LeaseValidForHolder,
-  LeaseInvalidHolder,
-  LeaseExpiredForHolder,
-  LeaseValidityRefused,
-  owned_ci_pr_poll_github_read_admission,
-  owned_ci_pr_poll_missing_github_token_cause,
-  owned_ci_pr_poll_empty_github_token_cause,
-  PrPollGithubReadAdmitted,
-  PrPollGithubReadRefused,
-  owned_ci_check_conclusion_for_queue,
-  check_publication_reports_github_success,
-  check_publication_is_pending_honest,
-  owned_ci_check_name,
-  owned_ci_run_id_admits,
-}
-import extdeps.auth.jwt { NumericDateWholeSeconds, NumericDateFractionalSeconds }
-import extdeps.github.checks { Success, Failure }
-import extdeps.git.object_store {
-  GitObjectId,
-  GitSha1ObjectId,
-  git_sha1_object_id,
-  Sha1Digest,
-  Sha1DigestHex,
-}
-import std.types { String, Bool, NonEmptyStr }
-import v2.std.collection { Absent, Present }
-import gunbc.repository { gunbc_repository }
-import gunbc.repo_identity { gunbc_default_branch_name }
 
 data owned_ci_witness_note: String = "Owned CI v0 decision-procedure witnesses: lease expiry, fork refusal, publication honesty, subject identity, execution plan shape."
 

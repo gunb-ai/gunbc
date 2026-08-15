@@ -1,17 +1,5 @@
 module gunbc.provider_wire_evidence
 
-import std.types { String, NonEmptyStr, FilePath, Bool, Int }
-import std.content_hash { ContentHash, as_content_hash_sha512 }
-import std.measure { ByteSize, byte_size }
-import extdeps.shell
-import extdeps.shell.exec
-import extdeps.filesystem.filesystem_io
-import extdeps.tools.sha512sum {
-  sha512sum_observe_file,
-  Sha512FileObserved,
-  Sha512FileObservationRefused,
-}
-import gunbc.retained_shell_script { retained_foreign }
 
 data provider_wire_evidence_note: String = "Durable private wire evidence for provider account-standing captures. Publication is exclusive under an evidence root: 0700 directory → unique same-directory temporary file → write raw bytes → SHA-512 → hardlink to content-addressed name (fails closed if a concurrent writer already published a different object at that hex) → independent digest read-back → 0600 retained object → remove temporary. byte_count is ByteSize (std.measure) over the UTF-8 code-unit length of the retained String carrier (substrate String length), not a separate host byte-count observation."
 

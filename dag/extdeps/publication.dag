@@ -1,8 +1,5 @@
 module extdeps.publication
 
-import std.integer { Int }
-import std.logic { Bool }
-import std.types { NonEmptyStr, String }
 
 data publication_status_axis_note: String = "PURE PUBLICATION VOCABULARY — no upstream document subject of its own (same class as extdeps.external_authority and extdeps.uri). SpecificationDocumentDate and DocumentPublicationStatus are shared types. Document rows, anchors, and status values live on per-document modules. Machinery admission is via external_authority_machinery_exempt_module_paths in cli_run.rs. Read observations live in gunbc.specification_citation_read_provenance; the carriage rule lives in gunbc.upstream_document_carriage."
 

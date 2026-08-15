@@ -1,11 +1,5 @@
 module test.claim.cli_run_hand_rust_area_ledger_witness
 
-import gunbc.cli_run_hand_rust_area_ledger {
-  cli_run_hand_rust_area_ledger_covers_sixteen_areas,
-  cli_run_hand_rust_area_ledger_note,
-  cli_run_live_scale_receipt
-}
-import v2.std.text { String }
 
 test fn cli_run_area_ledger_covers_sixteen_areas() -> Bool {
   cli_run_hand_rust_area_ledger_covers_sixteen_areas()

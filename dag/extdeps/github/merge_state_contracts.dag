@@ -1,8 +1,5 @@
 module extdeps.github.merge_state_contracts
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import std.serialization { CoproductWireContract, StringVariant, ScreamingSnakeCase }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

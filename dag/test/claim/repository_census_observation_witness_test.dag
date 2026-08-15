@@ -1,32 +1,5 @@
 module test.claim.repository_census_observation_witness
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
-import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_eq_structural }
-import gunbc.repository_census_observation {
-  RepositoryIdentity,
-  SourceRootIdentity,
-  CensusSubjectKey,
-  RepositoryPopulation,
-  CensusMethodRunIdentity,
-  CensusObservedRow,
-  RepositoryCensusObservation,
-  census_observed_row,
-  census_rows_identity,
-  census_method_run_identity,
-  census_declaration_ref_identity,
-  census_revision_identity,
-  repository_census_observation,
-  repository_census_source_roots,
-  repository_census_source_root_count,
-  repository_census_population_identity,
-  repository_census_row_count,
-  repository_census_subject_keys,
-  repository_census_observation_identity,
-  repository_census_observation_identity_eq,
-}
-import gunbc.guarantee_measurement { MeasurementRevision, GitRevision, ContentFingerprint }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

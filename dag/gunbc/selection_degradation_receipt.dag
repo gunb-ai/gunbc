@@ -1,18 +1,5 @@
 module gunbc.selection_degradation_receipt
 
-import std.types { String, Bool, NonEmptyStr }
-import std.nat { Nat }
-import std.measure { BasisPoint, basis_point, basis_point_count }
-import std.decimal { zero_pad_left }
-import extdeps.languages.json.emit {
-  JsonValue,
-  JsonKeyValue,
-  json_string,
-  json_int,
-  json_bool,
-  json_object,
-  json_kv,
-}
 
 data selection_degradation_receipt_path: String = "target/floor-selection-degradation-receipt.txt"
 

@@ -1,6 +1,5 @@
 module gunbc.design.principles
 
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data register_principles_note: String = "The base layer of the gunb.ai site stack (docs/plans/gunb-ai-site-subsumption-design.md sections 4k/4l). Each principle is a signed register law. enforced_by points at the carrier whose CONSTRUCTION enforces it — the principle is data; the wall is the type or refusing constructor it names. A principle with no carrier is a review vibe, which is exactly what this layer exists to eliminate."
 

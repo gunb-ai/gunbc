@@ -3,11 +3,6 @@ module gunbc.assimilate.bmc_wif_canary_bootstrap
 // The IAM reconciliation authority is named explicitly rather than reached as bare references:
 // policy assembly now comes from the IAM authority, and a bare reference to it would resolve only
 // when some unrelated module in the closure happened to drag that definer into the pool.
-import extdeps.cloud.gcp.iam {
-  GcpPolicy, GcpBinding, GcpIamBindingCell, GcpIamOwnedCellUniverse,
-  GcpPolicyReconciliation, GcpPolicyAlreadyConverged, GcpPolicyDeltaRequired,
-  reconcile_gcp_policy, gcp_binding_cells, no_gcp_cells
-}
 
 
 data bmc_wif_bootstrap_service_deps: List<GcpService> = [

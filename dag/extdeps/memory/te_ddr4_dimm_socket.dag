@@ -1,19 +1,5 @@
 module extdeps.memory.te_ddr4_dimm_socket
 
-import std.types { String, NonEmptyStr }
-import std.nat { Nat }
-import std.measure { Micrometer, micrometer }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import extdeps.vendor { Vendor }
-import extdeps.hardware { Hardware }
-import extdeps.vendor.tyco_electronics { tyco_electronics }
-import extdeps.land_pattern.types {
-  BoardAttachmentStyle,
-  MountingPatternObligation,
-  ThroughHoleSolderTail,
-}
 
 // Application Specification 114-115012 Rev A, "DDR4 DIMM Socket Solder Tail", dated Nov 24 2016,
 // read 2026-08-14. It covers the 288-position solder-tail DDR4 DIMM socket and names 2308107 as

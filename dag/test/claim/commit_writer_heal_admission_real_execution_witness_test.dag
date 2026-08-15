@@ -1,26 +1,5 @@
 module test.claim.commit_writer_heal_admission_real_execution
 
-import std.logic { Bool }
-import std.types { String, FilePath, GitRef, List }
-import std.algebra { Empty, Cons }
-import extdeps.git
-import gunbc.output_policy { ExpectFailure }
-import extdeps.shell
-import extdeps.filesystem.filesystem_io
-import gunbc.commit_workflow {
-  commit_writer_heal_admission_gate,
-  observe_complete_staged_commit,
-  admit_commit_writer,
-  HealAutocommit,
-  CommitWriterTransportObserved,
-  CommitWriterTransportRefused,
-  CommitWriterAdmitted,
-  CommitWriterRefused,
-  CommitWriterUnmergedIndexRefusal,
-  CommitWriterConflictMarkerTextRefusal,
-}
-import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

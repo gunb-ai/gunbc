@@ -1,48 +1,5 @@
 module test.claim.proc_self_cgroup_witness
 
-import extdeps.linux.proc_self_cgroup {
-  read_unified_cgroup_membership,
-  proc_self_cgroup_line_from_wire,
-  proc_self_cgroup_is_unified_v2_line,
-  CurrentCgroupObserved,
-  MembershipMissing,
-  MembershipAmbiguous,
-  MembershipMalformed,
-  ProcSelfCgroupLineParsed,
-  ProcSelfCgroupLineRefused,
-  ProcSelfCgroupLineMissingColon,
-  UnifiedMembershipOutcomeTag,
-  OutcomeTagMissing,
-  OutcomeTagAmbiguous,
-  OutcomeTagMalformed,
-  OutcomeTagObserved,
-  unified_membership_outcome_tag_from_content,
-  unified_membership_outcome_tag_eq,
-  read_unified_cgroup_membership_drift_sketch,
-  unified_membership_outcome_tag,
-}
-import v2.extdeps.languages.bash_proc_self_cgroup {
-  bash_membership_assign_from_content,
-  bash_membership_assign_from_source,
-  bash_membership_assign_from_record,
-  bash_membership_runtime_scan_loop,
-  bash_membership_runtime_scan_loop_drift_sketch,
-}
-import v2.extdeps.languages.bash_orch_if {
-  bash_nearest_ancestor_locate_assign_command,
-  bash_nearest_ancestor_locate_cond_command,
-  bash_nearest_ancestor_locate_body_command,
-}
-import std.path_intent {
-  NearestAncestorContaining,
-  PathRefStart,
-  And,
-  Not,
-  nearest_ancestor_while_predicate,
-}
-import std.filesystem.types { RegularFile }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { FilePathParts, NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

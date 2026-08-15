@@ -1,6 +1,5 @@
 module gunbc.affected_set_stop_line
 
-import v2.std.text { String }
 
 data affected_set_stop_line_note: String = "7933A temporary safety stop-line (operator recut calm-fox-44, 2026-08-06): when merge-base diff contains any non-docs .dag path, discovery skip admission must NOT skip dag_compile_clean_shard_a_witness_test.dag or dag_compile_clean_scope_witness_test.dag. This is a BROAD interim rule — not precise self-confirmation. It closes the #7915 failure mode (repair touched only dag/extdeps/systems/nvidia.dag and dag/test/claim/generated_artifact_drift_test.dag; import-closure never reached ci_layer_roots; shard_a was selection-skipped). Executable authority is ONE hand-Rust bridge in cli_run.rs (`cli_run_affected_set_stop_line_bridge` / `COMPILE_CLEAN_*_VALIDATING_ENTRY` consts) until 7933B lands (`gunbc.plans.affected_set_self_confirmation`). This carrier holds rationale and cost receipt only — no independently writable path rows (7933B introduces symbolic mechanism/check refs and host projection)."
 

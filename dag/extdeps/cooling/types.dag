@@ -1,14 +1,5 @@
 module extdeps.cooling.types
 
-import std.types { NonEmptyStr, Int, Bool, List }
-import std.measure { Watt, watt, RackUnit }
-import extdeps.vendor { Vendor }
-import extdeps.hardware { Hardware }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.uri { Uri, Https }
-import extdeps.cpu.types { CpuSocket }
-import extdeps.boards.types { BaseboardModel }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

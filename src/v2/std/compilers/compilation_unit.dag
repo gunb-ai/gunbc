@@ -1,36 +1,6 @@
 module v2.std.compilers.compilation_unit
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.algebra { Empty }
-import std.types { NonEmptyStr, List, Bool, String, Int }
-import std.content_hash { Fnv1a64Structural }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.disposition { SingleAuthority }
-import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
-import v2.std.algebra { any, fold_list, length }
-import v2.std.collection {
-  map_get
-}
-import v2.std.optional {
-  Absent,
-  Optional,
-  Present,
-  optional_present
-}
-import v2.std.diagnostic { Accepted, Rejected, Outcome, outcome_accepted, outcome_rejected }
-import v2.std.node {
-  Atom,
-  Conj,
-  Edge,
-  Named,
-  Node,
-  Symbol,
-  TypeNode,
-  content_hash,
-  node_subtree_nodes,
-  node_synthetic,
-}
 
 type ModuleId = NonEmptyStr where brand("ModuleId")
 type CompilationUnitId = NonEmptyStr where brand("CompilationUnitId")

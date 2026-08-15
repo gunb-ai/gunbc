@@ -1,9 +1,5 @@
 module gunbc.plans.resolver_pathology_profile_receipt
 
-import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
-import std.markdown { MarkdownBlock, CodeBlock, TableBlock, AlignNone }
-import gunbc.plans.md_helpers { h2, h3, p, li, ul, cell, row, hr }
 
 fn resolver_pathology_profile_receipt_body() -> List<MarkdownBlock> {
   [

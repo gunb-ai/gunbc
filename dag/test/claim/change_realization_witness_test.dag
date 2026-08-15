@@ -1,24 +1,5 @@
 module test.claim.change_realization_witness
 
-import std.types { String, List, Bool, Int, NonEmptyStr }
-import gunbc.change_realization {
-  ChangeSubject, ScmRefSubject, SourceDeclarationSubject, HostResourceSubject,
-  AddressContinuity, AddressPreserved, AddressChanged, address_continuity,
-  StagedIntermediate, RetirePriorEndpoint, UnlinkStalePath, StopPriorUnit, DrainPriorConsumers,
-  StagedIntermediates, staged_intermediates_all, staged_intermediates_count,
-  ChangeRealization, AtomicCompareAndSwap, AtomicTreeTransformation, InPlaceUpdate, StagedReplacement,
-  ChangeRealizationClassification, ChangeRealized, ChangeRefused,
-  ChangeRefusalCause, StagedReplacementIntermediatesUndeclared,
-  classify_change,
-}
-import gunbc.host_resource {
-  ResourceOccurrenceId, ResourceOccurrenceAllocator, ResourceOccurrenceAllocResult,
-  resource_occurrence_allocator_initial, alloc_resource_occurrence, resource_occurrence_eq,
-  HostResourceIdentity, host_resource_identity_eq,
-  HostResource, host_resource_same_occurrence,
-}
-import product.placement_supply { HostIdentity }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

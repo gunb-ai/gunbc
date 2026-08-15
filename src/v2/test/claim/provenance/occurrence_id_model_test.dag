@@ -1,45 +1,5 @@
 module v2.test.provenance.occurrence_id_model
 
-import v2.std.diagnostic { ByteRange, NodeLocus, PortLocus, Textual, WholeFile }
-import v2.std.exact_structural_equality_zip_fold_predicate {
-  exact_structural_equality_zip_fold
-}
-import v2.std.node {
-  Atom,
-  Conj,
-  Edge,
-  Node,
-  Positional,
-  Symbol,
-  TypeNode,
-  node_for_structural_equality,
-  node_occurrence_minted,
-  node_synthetic,
-  node_with_occurrence_id
-}
-import v2.std.occurrence_id {
-  alloc_occurrence_id,
-  occurrence_id_allocator_initial,
-  occurrence_id_eq
-}
-import v2.std.provenance {
-  DerivedBy,
-  FromSource,
-  SpanIndex,
-  origin_event_from_source,
-  span_index_empty,
-  span_index_lookup,
-  span_index_merge,
-  span_index_record,
-  span_index_resolve_textual_locus
-}
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
-import v2.std.witness { Holds, Violates }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,24 +1,5 @@
 module v2.compiler.self_host.direct_rust_door_observation
 
-import v2.compiler.self_host.candidate_generation {
-  ArtifactProduced,
-  AssemblyRejected,
-  EmissionRejected,
-  InferenceRejected,
-  ProducerReceiptRejected,
-}
-import v2.compiler.self_host.v2_emitter_direct_rust_door_contract {
-  ArtifactLeafEstablished,
-  ArtifactLeafRefused,
-  DirectRustDoorProductionGroup,
-  direct_rust_door_producer_identity_assessment,
-  direct_rust_door_seed_emitter_absence_assessment,
-  direct_rust_door_source_fidelity_assessment,
-  direct_rust_door_source_produced_assessment,
-}
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
-import v2.std.text { String }
 
 data direct_rust_door_observation_note: String = "PURE FIRST-FAILURE PROJECTION of the canonical direct-door production group. This module used to run its own ingest-assemble-infer-mint composition, which made it a SECOND production authority answering the same question as the group — two folds, two schedule occurrences, one fact. It now takes an ALREADY-BUILT group and computes nothing expensive: there is deliberately no zero-argument entrypoint here, because one would recompute the group and silently reopen the duplicate walk this consolidation closed. A caller that wants this vocabulary supplies the group it already holds. The nine DirectRustDoorObservation variants are preserved verbatim so no consumer had to change."
 

@@ -1,16 +1,5 @@
 module extdeps.languages.rust.syntax
 
-import std.syntax {
-  ItemForm, ItemFormKind, FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm,
-  BodyKind,
-  ExprBody, BlockBody, TypeBody, NoBody,
-  OperatorSpec, SyntaxSpec,
-  BinOp, Add, Sub, Mul, Div, Mod,
-  Eq, Ne, Lt, Gt, Le, Ge, And, Or,
-  LiteralValue, LitBool
-}
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -1,21 +1,5 @@
 module extdeps.github.workflow_run_event
 
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.languages.json.emit { JsonValue, JsonString, JsonNumber }
-import extdeps.languages.json.parse {
-  parse_json,
-  json_object_unique_member,
-  JsonMemberFound,
-  JsonMemberAbsent,
-  JsonMemberDuplicated,
-  JsonMemberNotAnObject
-}
-import extdeps.github.actions { github_event_path_env }
-import extdeps.github.workflow_runs { WorkflowRunConclusion, parse_workflow_run_conclusion }
-import std.types { CommitSha, NonEmptyStr, String }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

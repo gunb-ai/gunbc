@@ -1,51 +1,5 @@
 module v2.compiler.self_host.frontier_probe_assemble_detail
 
-import std.algebra { FreeMonoid }
-import v2.std.algebra {
-  Empty,
-  HeadAbsent,
-  HeadFound,
-  TailAbsent,
-  TailFound,
-  fold_list,
-  is_empty,
-  list_head,
-  list_snoc_item,
-  list_tail
-}
-import v2.compiler.parse_diagnostic {
-  NoParseDiagnosticEvidence,
-  NonEmptyParseStageDiagnostics,
-  ParseStageDiagnostic,
-  grammar_choice_ambiguity_rows_from_non_empty_parse_stage,
-  list_head_value_or_self_parse_stage,
-  list_tail_or_empty_parse_stage,
-  non_empty_grammar_choice_ambiguity_rows_from_parse_stage,
-  parse_overlap_residue_stage_diagnostic_at,
-  parse_stage_diagnostic_from_diagnostic_only
-}
-import v2.std.grammar_choice_ambiguity { GrammarChoiceAmbiguityRow }
-import v2.compiler.self_host.frontier_probe_types {
-  AssembleMissingModule,
-  AssembleRejectionCause,
-  AssembleRejectionDetail,
-  FrontierProbeAssembleDetail,
-  FrontierProbeDetail,
-  FrontierProbeReceipt,
-  GrammarChoiceOverlap,
-  MaskedAssembleRefusal,
-  MaskedAssembleRefusalWithoutEvidence,
-  MissingModuleIdentityUnavailable,
-  NonEmptySymbolChain,
-  OtherAssembleRefusal,
-  frontier_classify_rejection_reason,
-  frontier_probe_cause_location_from_locus,
-  ProbeStageAssemble
-}
-import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.qualified_name { QualifiedName }
-import v2.std.text { String }
 
 fn non_empty_symbol_chain_from_non_empty_parse_stage(
   d: NonEmptyParseStageDiagnostics

@@ -1,40 +1,5 @@
 module v2.test.claim.body_lowering.atom_body_discriminator_helpers
 
-import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse_module }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.algebra { any, list_snoc_item }
-import v2.std.compilers.lexing { symbol_lexeme }
-import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Arrow,
-  ArrowBodyForm,
-  ComputationBody,
-  Conj,
-  DirectAtomBody,
-  Edge,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  Transform,
-  TypeNode,
-  UnsupportedArrowBody,
-  classify_arrow_body_form
-}
-import v2.test.claim.body_lowering.arrow_body_form_semantic_helpers {
-  classify_arrow_body_form_red_no_computation_body,
-  classify_arrow_body_form_red_no_direct_atom
-}
-import v2.std.node_query {
-  find_arrow_body_child,
-  find_named_child,
-  node_positional_child_targets
-}
-import v2.std.collection { list_at_optional }
-import v2.std.optional { Absent, Optional, Present, optional_present }
 
 data atom_body_discriminator_module_source: String = "module atom_body_discriminator\n\nfn id(x: Int) -> Int { x }\nfn zero() -> Int { 0 }\nfn add(x: Int, y: Int) -> Int { x + y }\nfn zero_binary() -> Int { 1 + 1 }\n"
 

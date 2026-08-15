@@ -1,45 +1,5 @@
 module test.claim.serving_privilege_derivation_witness_test
 
-import std.types { String, Bool, List, NonEmptyStr, Int }
-import std.content_hash { content_hash_of_value }
-import product.placement_supply { HostIdentity }
-import gunbc.spark_serving_realization {
-  ServingInstallEffect,
-  WriteSystemUnitFile,
-  ReloadSystemManager,
-  EnableSystemUnit,
-  WriteUserUnitFile,
-  ReloadUserManager,
-  EnableUserUnit,
-  EnableLingerForOwnAccount,
-  InstallRuntimePackage,
-  InstallOwnedRuntimeClosure,
-  UserUnitRealization,
-  escalation_shortfall,
-  applicable_without_administrator,
-  ObservedGrantPopulation,
-  GrantPopulationObserved,
-  GrantPopulationUnobserved,
-  PullModelArtifact,
-  GrantContainerRuntimeAccess,
-  RunContainerAsOwnUser,
-  SystemPrincipal,
-  RootPrincipal,
-  NamedPrincipal,
-  MutationSubject,
-  subject_owner,
-  effect_mutation_subject,
-  effect_requires_escalation,
-  ServingDeploymentTarget,
-  effect_actuation,
-  ActuatedByEscalation,
-  ActuatedByOwnerDirectly,
-  realization_escalated_commands,
-  realization_sudoers_grant_lines,
-  SparkServingRealization,
-  SystemUnitRealization,
-  RootlessContainerRealization,
-}
 
 fn automation() -> SystemPrincipal {
   NamedPrincipal { login: "gunbc-automation" as NonEmptyStr }

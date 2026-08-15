@@ -1,7 +1,5 @@
 module tools.dag_compile_clean_gate
 
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import tools.dag_compile_clean_transport { run_clean_tree_compile }
 
 data dag_compile_clean_failure_receipt_note: String = "The loudness half: the floor witness collapses this gate's ProcessExit to Bool via tools.ci_gates.exit_ok, so compile-clean reds reported only returned Bool(false). The gate consumes the executor's one in-run compile receipt; the failure-receipt companion projects the same receipt's located diagnostic without a second compile."
 

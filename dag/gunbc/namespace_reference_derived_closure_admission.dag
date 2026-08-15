@@ -1,31 +1,5 @@
 module gunbc.namespace_reference_derived_closure_admission
 
-import std.algebra { Empty }
-import std.occurrence_binding {
-  OccurrenceBound,
-  OccurrenceUnbound,
-  OccurrenceAmbiguous,
-}
-import std.occurrence_binding_resolve {
-  OccurrenceReferenceBindingOutcome,
-  OccurrenceReferenceBindingDecided,
-}
-import std.reference_binding_observation {
-  ReferenceBindingObservation,
-  StructuralBindingResolution,
-  StructuralBindingResolved,
-  SameFileNeighbourObservation,
-  SameFileNeighbourProductionRefused,
-  SiblingBranchObservation,
-  SiblingBranchProductionRefused,
-  LaterDeclarationObservation,
-  LaterDeclarationProductionRefused,
-  DistinctHomonymObservation,
-  DistinctHomonymProductionRefused,
-  RepeatedMentionDependencyObservation,
-  UnrelatedLoadedFileObservation,
-}
-import std.types { Bool, FilePath, Int, List, String }
 
 type ReferenceDerivedClosureCapability
   = SameFileEarlierNeighbourVisible

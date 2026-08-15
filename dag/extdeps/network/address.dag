@@ -1,10 +1,5 @@
 module extdeps.network.address
 
-import std.types { String, Bool, NonEmptyStr }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
-import extdeps.network.ipv6 { Ipv6Address, ipv6_is_loopback }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

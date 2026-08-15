@@ -1,19 +1,5 @@
 module extdeps.ollama.binary_release
 
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import extdeps.crypto.hash { Digest, sha256_digest }
-import extdeps.archive.format {
-  ArchiveFormat,
-  ArchiveDistributionSuffixStyle,
-  TarDotCodec,
-  archive_format_tar_zstd,
-  archive_format_distribution_suffix,
-  archive_format_eq,
-}
-import std.types { NonEmptyStr, String, List }
-import std.measure { ByteSize, byte_size }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_ollama_binary_release_note: String = "CITED UPSTREAM FACTS ONLY. Install and extract live in gunbc.package_delivery once #8225 lands (Ollama as the second runtime-bundle consumer beside Codex). This module owns the pinned release row the closure digest derives from — never a shell leaf that would fork a parallel install path. Asset filenames derive from version x os x arch x variant x archive format — never stored as hand-authored literals."
 

@@ -1,8 +1,5 @@
 module v2.extdeps.typecheckers.pyright
 
-import v2.std.collection { List }
-import v2.std.node { Symbol }
-import v2.std.text { String }
 
 type PyrightTypeCheckingMode
   = PyrightModeOff

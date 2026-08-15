@@ -1,6 +1,5 @@
 module v2.workflow.ci_materialization_emit_test
 
-import v2.workflow.ci_materialization_emit { ci_sccache_provider_shell_injection }
 
 data ci_sccache_provider_emit_golden_note: String = "Hand-authored golden independent of grammar row spellings; byte test compares emit output against this literal (#6467 pattern). Block-bodied if_else (#7277) emits multi-line then/else arms for the three-step bound branch."
 

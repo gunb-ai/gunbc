@@ -1,33 +1,5 @@
 module v2.compiler.self_host.emitter_producer_provenance
 
-import std.content_hash { content_hash_atom }
-import v2.compiler.self_host.frontier_probe_types {
-  FrontierProbeDetailAbsent,
-  NoFrontierProbeDetail,
-  FrontierProbeReceipt,
-  FrontierProbeStage,
-  ProbeStageEmit,
-  SelfEmitReady
-}
-import tools.self_host_module_behavioral_transport_roster {
-  module_behavioral_transport_config_for
-}
-import v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries {
-  schedule_witness_entry_cited,
-  seed_emitter_behavioral_wet_known_red_entries
-}
-import v2.std.algebra { any, fold_list, length }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.node { Hash, Symbol, combine_hash, symbol_identity_digest }
-import v2.std.optional {
-  Absent,
-  Optional,
-  Present,
-  optional_absent,
-  optional_present
-}
-import v2.std.text { String }
 
 data emitter_producer_provenance_note: String = "CompilerFixedPoint producer/qualification authority (session valiant-crab-382, calm-badger-682 ruling 2026-07-29): replaces SelfEmitted state-space conflation with orthogonal EmitterProducer x EmissionQualification axes. A frontier EmitterProduced row is reachable ONLY from a ProducerEmissionReceipt minted through mint_producer_emission_receipt — never from a hand-authored ProducerEmissionReceipt literal in a data row (review 44333). Static oracle derivation never mints BuildGreen (reviews 44441/44455/44460/44468). producer_emission_canonical_receipt_for_executed_verdict is unwritable at baseline (always Absent) until witness-realization + frontier_probe_survey bind execution-measured verdict digests. Wet execution proof: each enrolled probe witness runs tools.self_host_module_behavioral_transport_roster.compiler_module_behavioral_receipt_for. Structural wall: V2Emitter* is unwritable when v1.compiler.emit_rust is in the realized closure."
 

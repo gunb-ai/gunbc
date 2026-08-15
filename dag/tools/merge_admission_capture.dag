@@ -1,25 +1,6 @@
 module tools.merge_admission_capture
 
-import std.algebra { trim }
 
-import std.types { FilePath, GitRef, NonEmptyStr, String, Bool }
-import extdeps.git.inspect
-import extdeps.git.object_store {
-  GitObjectId,
-  git_object_id_from_untagged_hex,
-}
-import extdeps.shell
-import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.merge_admission_subject {
-  TestedSubject,
-  WalkAttemptId,
-  compose_explicit_walk_attempt_id,
-  compose_walk_attempt_id,
-  merge_admission_attempt_dir,
-  merge_admission_merge_base_ref,
-  merge_admission_tested_subject_path,
-  render_tested_subject_wire,
-}
 
 data merge_admission_capture_profile_note: String = "This wet capture entry imports only the walk-attempt/tested-subject identity carrier plus typed git/filesystem services. Merge classification, commit-roster hashing, and CI failure taxonomy are deliberately downstream and absent from this closure. The entry runs in the plan's typed pre-walk claim_batch subprocess, so its evaluator arena dies before the ordinary floor and discovery cannot retain it."
 

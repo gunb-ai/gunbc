@@ -1,9 +1,5 @@
 module std.bytes
 
-import std.types { Bytes }
-import std.integer { UInt8 }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 fn pure_dag_seam_unreachable() -> Int {
   1 / 0

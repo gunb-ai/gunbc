@@ -1,54 +1,6 @@
 module test.claim.roadmap_presentation_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-import gunbc.roadmap_model {
-  RoadmapNode, RoadmapEdge,
-  IntricacyLow, VolumeSmall,
-}
-import gunbc.roadmap_status {
-  AuthoredLine,
-  RedControlExecuted, HandbackDelivered,
-}
-import gunbc.roadmap_workflow_stage {
-  WorkflowSegment, WorkflowSegmentState,
-  WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
-  WorkflowSegmentFailed, WorkflowSegmentRefused,
-  EnvironmentWorkflowSegment, WorkspaceWorkflowSegment, AgentWorkflowSegment,
-  VerificationWorkflowSegment, PublicationWorkflowSegment, ReviewWorkflowSegment,
-  GoalAuditWorkflowSegment,
-}
-import gunbc.worker_lifecycle {
-  WorkerProcessEvidence, WorkerProcessExited, WorkerProcessRunning,
-}
-import gunbc.roadmap_presentation {
-  ActivityView, NoActiveWork, ActiveWork, ActiveWorkRefused, LegacySupersedableAttempt,
-  CompletedWork, ActivityUnobservable,
-  WorkAttemptFacts, NoActiveAttempt, AttemptUnobservable,
-  activity_view_of,
-  ActivityAttention, ActivityRoutine, ActivityAnomalous,
-  ActionAvailability, ActionUnavailable, AvailableAsOverride, ActionAvailable,
-  ActionPriority, PrimaryAction, SecondaryAction, DiagnosticAction,
-  WorkActionKind, DispatchAction, ClearSessionAction,
-  WorkAction, ActionView,
-  WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle, SupersededLifecycle,
-  work_lifecycle, work_lifecycle_key,
-  WorkScheduling, SchedulingReady, SchedulingUpcoming, SchedulingDone, SchedulingSuperseded, SchedulingUnplanned,
-  work_scheduling, work_scheduling_key, scheduling_dependency_line,
-  row_headline, row_summary, legacy_lead,
-  dispatch_action, action_view,
-  activity_view_from_parts, activity_summary_line,
-  WorkRowView, work_row_view, row_supporting_facts,
-  DisclosureView, NoDisclosure, TicketDisclosure, LegacyBodyDisclosure,
-  SessionActionView, NoSessionAction, SessionAction,
-  SessionFactsView, session_facts_view, session_action_view,
-  DailyWorkspaceView, daily_workspace_view, row_is_active_work,
-  ObservationImpactView, ObservationsNominal, WorkspaceObservationImpact,
-  observation_impact_view, workspace_covers_row_activity,
-  lifecycle_chip_renders,
-  WorkFamilyDecl, WorkFamilyMemberFact, WorkFamilyView,
-  WorkBandEntry, BandRow, BandFamily,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

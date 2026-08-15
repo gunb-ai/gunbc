@@ -1,19 +1,5 @@
 module gunbc.v1_interpreter_dispatch_emit
 
-import gunbc.v1_interpreter_primitive_surface {
-  AuthoredInRoster,
-  EvalBuiltinInnerSite,
-  FreeCall,
-  InterpreterDispatchEmitSite,
-  InterpreterPrimitiveArmId,
-  InterpreterPrimitiveDispatchArm,
-  v1_interpreter_authored_roster_arms,
-}
-import v2.std.algebra { fold_list }
-import v2.std.collection { List }
-import v2.std.optional { Absent, Present }
-import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
-import v2.std.text { String }
 
 fn escape_rust_string_literal_body(s: String) -> String {
   replace(replace(replace(s, "\\", "\\\\"), "\"", "\\\""), "\n", "\\n")

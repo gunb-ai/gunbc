@@ -1,31 +1,6 @@
 module gunbc.source_admission_selection
 // Compile-clean's source-transition selection, independent of tools.dag_compile_clean_scope (the import-closure SemanticEntrySelection). The two join only at the final verdict. This landing does not wire the axis into production compile-clean and does not delete compile_clean_census_fill_hard_diagnostics.
 
-import std.types { String, Bool, List, Int, NonEmptyStr }
-import std.content_hash {
-  Fnv1a64Structural,
-  Sha1Digest,
-  Sha1DigestHex,
-  content_hash_atom,
-  content_hash_eq_structural,
-}
-import std.keyed_row { KeyedRow }
-import std.change {
-  KeyedDiffHunk,
-  KeyedDiffAddedHunk,
-  KeyedDiffRemovedHunk,
-  KeyedDiffModifiedHunk,
-  keyed_two_way_diff,
-}
-import extdeps.git.object_store {
-  GitObjectId,
-  GitSha1ObjectId,
-  git_object_id_eq,
-}
-import gunbc.namespace_reference_derived_closure_admission {
-  ReferenceDerivedClosureTrigger,
-  P2aStructuralCandidateProducer7515,
-}
 
 type AdmissionMechanismRoot {
   realization_file: NonEmptyStr

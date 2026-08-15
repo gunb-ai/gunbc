@@ -1,26 +1,5 @@
 module tools.interpreter_dispatch_bijection_real_roster_transport
 
-import extdeps.git.inspect
-import extdeps.shell
-import gunbc.retained_shell_script { retained_foreign }
-import gunbc.cargo_execution_placement {
-  CargoPlacement,
-  LocalRunner,
-  CargoSubjectPlacementRequirement,
-  RequiresLocalWorkspace,
-  CargoPlacementDecision,
-  PlacementAdmitted,
-  PlacementRefused,
-  CargoInvocationOutcome,
-  CargoInvocationPassed,
-  CargoInvocationFailed,
-  CargoInvocationNotAttempted,
-  CargoExecutableUnobserved,
-  decide_cargo_placement,
-  cargo_outcome_holds
-}
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.logic { Bool }
 
 data interpreter_dispatch_bijection_real_roster_transport_note: String = "R1 closeout item TWO real-crate bijection receipt (gunbc#7825): executes the two #[ignore] integration tests in src/v1/stage0/tests/interpreter_dispatch_bijection_real_roster_red.rs via shell.Exec.Run with RUSTC_WRAPPER cleared — real git clone, real gunbc run main_wet regen, real cargo build -p v1-compiler on the clone. cargo.Build.Test routes through ctrl-build remote in this environment and is intentionally not used here. Claim-A compile-red siblings stay in the default local cargo test run; this transport is the falsifier_self_host_wet enrollment path for claim-B."
 

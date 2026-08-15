@@ -1,8 +1,5 @@
 module gunbc.witness_execution_class
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
-import v2.std.optional { Optional, Present, Absent }
 
 data witness_execution_class_note: NonEmptyStr = "CI-0 commit 3 (operator recut 2026-08-08): the complete enrolled witness roster is classified EXACTLY ONCE, BEFORE execution — an execution plan, never try-native-then-silently-reinterpret (the fallback shape this PR deletes). Classification is derived from standing facts the corpus already declares, never from a failed native attempt: the file-grain live_tree_disposition row (the same row floor discovery reads, undeclared = ReadsLiveTree per the producer's fail-closed default), the effect requirement, the interpreter-subject axis, and membership in the population the current emitter faithfully carries. There is NO runtime reclassification arm: a NativeRequired witness whose native execution fails REFUSES — no function here can return a different class for the same facts after a failure, because failure is not an input. Honest standing (review 50546/50550 class): the executing consumers today are the witness controls and the commit-3 census receipt (docs/plans/ci0-witness-execution-census.md) — no floor-plan caller classifies the roster in production yet, because the census itself falsified the whole-corpus emission this classifier was to schedule (3 of 8,828 identities emitter-carriable; Outcome C). Dissolve-on / enroll-on: the general witness→TargetModel producer lands (body-lowering keystone), at which point the floor plan derives its execution schedule through classify_witness and this note's standing sentence deletes."
 

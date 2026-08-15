@@ -1,39 +1,5 @@
 module v2.test.manual.v2_evaluator_runtime_anchor
 
-import v2.extdeps.runtimes.v2_evaluator {
-  V4EvaluatorRuntime,
-  v2_eval_call_primitive,
-  v2_eval_empty_environment,
-  v2_eval_empty_frame,
-  v2_eval_transfer,
-  v2_eval_unit_type_node,
-  v2_evaluator_boundary,
-  v2_evaluator_execution,
-  v2_evaluator_interpretation,
-  v2_evaluator_model_core,
-  v2_evaluator_runtime,
-  v2_evaluator_value_representation
-}
-import v2.std.collection { List }
-import v2.std.diagnostic { Rejected }
-import v2.std.model_core { ModelCore, bool_model_core }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.runtime {
-  ExecutionSemantics,
-  InterpretationAlgebra,
-  ResourceEffectBoundary,
-  Suspend,
-  ValueRepresentationModel
-}
-import v2.std.verification {
-  CompilesClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 type v2_evaluator_anchor_runtime_type = V4EvaluatorRuntime
 

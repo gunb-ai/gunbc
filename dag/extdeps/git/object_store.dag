@@ -1,31 +1,6 @@
 module extdeps.git.object_store
 
-import std.algebra { trim }
 
-import std.types { NonEmptyStr, Bytes, Map }
-import std.content_hash {
-  ContentHash,
-  Sha1Digest,
-  Sha1DigestHex,
-  Sha256Digest,
-  Sha256DigestHex,
-  as_content_hash_sha1,
-  as_content_hash_cryptographic,
-  sha1_hex_digest,
-  sha256_hex_digest,
-  content_hash_eq_sha1,
-  content_hash_eq_cryptographic,
-}
-import std.integer { UInt8, NonNegativeInt, PositiveInt }
-import std.render_repeat_string_bootstrap { repeat_string }
-import std.measure { ByteSize, byte_size, byte_size_count }
-import std.bytes { bytes_octets, octets_bytes, utf8_encode_bytes }
-import std.cache_interface { ContentAddressedByValue, WriteOnce }
-import extdeps.git { GitAuthor, ObjectType, BlobObj, TreeObj, CommitObj, TagObj }
-import extdeps.object_storage { ObjectContainer }
-import extdeps.object_storage.content_addressed { CasAddressingConfig }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

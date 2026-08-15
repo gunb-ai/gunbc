@@ -1,10 +1,5 @@
 module gunbc.fleet_converge_timer
 
-import std.types { String, NonEmptyStr, Bool, Int }
-import std.nat { Nat }
-import std.measure { Second, second, second_count }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // Arc item 4 (timer / anti-entropy, operator directive 2026-08-08): the steady-state
 // enforcement loop is a PER-HOST systemd timer executing the converge circuit against

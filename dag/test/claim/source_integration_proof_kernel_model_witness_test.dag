@@ -1,43 +1,5 @@
 module test.claim.source_integration_proof_kernel_model_witness
 
-import std.types { Bool, Int, List }
-import std.claim_evidence { Claim }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.source_integration_landing_spine { LandingGuaranteeProposition }
-import test.claim.source_integration_landing_spine_witness {
-  p0_proposal,
-  p0_ready_evidence,
-  p0_builds_claim,
-}
-import gunbc.source_integration_proof_kernel {
-  KernelFact,
-  KernelGroundedDelta,
-  KernelDirectAuthoredTransformation,
-  KernelInferenceProcedure,
-  KernelInferenceRound,
-  KernelInvariant,
-  KernelFiniteBounds,
-  KernelCandidateGenerationSpec,
-  KernelCandidateGenerationAssessment,
-  KernelProposalBoundExceeded,
-  KernelDeltaOutsideFrame,
-  KernelDeltaUngrounded,
-  KernelInferenceRoundBoundExceeded,
-  KernelCandidateClassBoundExceeded,
-  KernelBoundedCandidateGenerationModeled,
-  KernelAcceptanceAdmission,
-  KernelAcceptanceEstablished,
-  KernelAcceptanceRefused,
-  kernel_transformations,
-  assess_bounded_candidate_generation,
-  assess_bounded_candidate_generation_acceptance,
-  kernel_candidate_generation_admitted,
-  kernel_refusal_occurrences,
-  kernel_required_acceptance_capabilities,
-  kernel_missing_acceptance_capabilities,
-  kernel_closing_frontier_count,
-  kernel_closing_contract_holds,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

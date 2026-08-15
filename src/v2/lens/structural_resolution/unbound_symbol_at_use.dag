@@ -1,6 +1,4 @@
 module v2.test.lens_structural_resolution.unbound_symbol_at_use
-import v2.std.collection { Map, optional_absent, optional_present }
-import v2.std.optional { Optional, Absent, Present }
 
 data sr_unbound_claim_hash: Hash = sr_unbound_claim_hash
 

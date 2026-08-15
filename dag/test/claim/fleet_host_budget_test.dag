@@ -1,57 +1,5 @@
 module test.claim.fleet_host_budget
 
-import std.types { Int, List, String, Bool }
-import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
-import product.budget_tree { BudgetNode, node_conserves }
-import extdeps.jobserver {
-  JobserverConfig,
-  JobserverCitation,
-  JobserverCited,
-  JobserverAbsent,
-  jobserver_config,
-  derive_jobserver_tokens,
-}
-import gunbc.fleet_container {
-  FleetContainerType,
-  GhaRunnerContainer,
-  ContainerBaseline,
-  ContainerBaselineMeasured,
-  ContainerBaselineUnmeasured,
-  BaselineResolution,
-  BaselineResolved,
-  BaselineUnmeasured,
-  container_baseline_bytes,
-  idle_memory_envelope,
-  gha_runner_container,
-}
-import gunbc.fleet_host_budget {
-  HeadroomPolicy,
-  HeadroomSet,
-  HeadroomUnset,
-  HeadroomResolution,
-  HeadroomResolved,
-  HeadroomUnsound,
-  resolve_headroom,
-  oomd_actuation_floor,
-  FleetHostPlan,
-  FleetHostPlanDerived,
-  FleetHostPlanUnsound,
-  fleet_host_plan,
-  fleet_host_plan_for,
-  fleet_host_budget_tree,
-  runner_slice_cap,
-  runner_slice_cap_drifted,
-  gunbc_fleet_oomd_floor_basis,
-}
-import gunbc.ci_floor_measurement {
-  OomdEnforcementEvidence,
-  OomdEnforced,
-  OomdUnverified,
-  RunnerSliceCapEffectiveness,
-  CapEffective,
-  CapUnbounded,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

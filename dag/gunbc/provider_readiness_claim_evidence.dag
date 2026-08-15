@@ -1,40 +1,5 @@
 module gunbc.provider_readiness_claim_evidence
 
-import std.types { Bool, NonEmptyStr, RunKey }
-import std.claim_evidence {
-  RecordedFact,
-  Claim,
-  InferenceRuleId,
-  EvidenceProvenance,
-  EvidenceFreshness,
-  EvidenceFidelity,
-  EvidenceDirection,
-  EvidenceSupports,
-  EvidenceChallenges,
-  EvidenceDirectionFold,
-  evidence_direction_fold,
-  EvidenceLink,
-  EvidenceInsufficiency,
-  EvidenceInference,
-  EvidenceAdmissionPolicy,
-  insufficient_evidence_inference,
-}
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.llm.cli_lifecycle {
-  ProviderInstance,
-  ProviderKind,
-  ProviderReadiness,
-  ProviderCredentialsRecordedUnverified,
-  ProviderRefreshFailed,
-  ProviderAuthenticated,
-  codex_cli_auth_external_authority,
-}
-import gunbc.readback_independence {
-  ReadBackProbe,
-  ProbeInert,
-  readback_probe_is_independent,
-}
-import gunbc.claim_evidence_probe_rule { infer_probe_evidence }
 
 type ProviderReadinessClaim = Claim<ProviderInstance, ProviderInstance, ProviderReadiness, ProviderKind, RunKey>
 

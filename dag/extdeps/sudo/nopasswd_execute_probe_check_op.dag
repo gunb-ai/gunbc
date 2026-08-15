@@ -1,13 +1,5 @@
 module extdeps.sudo.nopasswd_execute_probe_check_op
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
-import extdeps.sudo.nopasswd_execute_probe {
-  SudoNopasswdExecuteProbeShape,
-  SudoNopasswdGrantListProbeShape,
-}
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import v2.std.algebra { any, length }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

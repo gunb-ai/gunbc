@@ -1,42 +1,6 @@
 module gunbc.host_reach_identity_probe
 
-import extdeps.filesystem.filesystem_io { Filesystem }
-import std.algebra { trim }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.typed_argv_exec {
-  typed_argv_probe_over_ssh,
-  TypedArgvExecOutcome,
-  TypedArgvExecConverged,
-  TypedArgvExecRefused,
-}
-import gunbc.clock_read { clock_now_probed_at }
-import gunbc.fleet_reach_endpoint {
-  fleet_probe_endpoint_for,
-  fleet_reach_probe_targets,
-  fleet_probe_target_for,
-  fleet_probe_ready_ssh_target,
-  FleetProbeTarget,
-  ProbeTargetReady,
-  ProbeTargetRefused,
-  ProbeTargetRefusalCause,
-  PrincipalUnobserved,
-  EndpointUnobserved,
-}
-import gunbc.fleet_host_key_enrollment { enrolled_fingerprint_for, fleet_host_key_enroll_apply }
 
-import std.types { String, NonEmptyStr, Bool, List, Int }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import product.placement_supply { HostIdentity }
-import std.upsert_decision {
-  ObservationVerdict,
-  Converged,
-  Absent,
-  Drifted,
-  Conflict,
-  Inaccessible,
-  UnknownRefused,
-}
 
 // ONE wet probe, two phase cells (DESIGN §2: one observation, N consumers). An
 // authenticated short-hostname read over the host's management transport is

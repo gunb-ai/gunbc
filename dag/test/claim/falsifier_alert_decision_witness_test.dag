@@ -1,59 +1,5 @@
 module test.claim.falsifier_alert_decision_witness_test
 
-import std.types { Bool, Int, String, NonEmptyStr, EpochMs }
-import std.measure { millisecond_count }
-import extdeps.github.workflow_run_event { workflow_run_event_from_json }
-import gunbc.falsifier_alert_admission {
-  FalsifierAlertAdmission, AlertRefusedHeadBranchNotMain,
-  falsifier_alert_admit
-}
-import gunbc.falsifier_alert_state {
-  FirstRedStanding, FirstRedObserved, FirstRedUnknownBeforeTracking,
-  FalsifierAlertState,
-  FalsifierAlertStateDecoding,
-  CurrentState, LegacyStateWithoutLastNotification, StateAbsent, StateMalformed,
-  falsifier_alert_heartbeat_window,
-  falsifier_alert_state_from_payload,
-  falsifier_alert_state_json
-}
-import gunbc.floor_component_receipt_document {
-  ReceiptDecoded, ReceiptNotJson,
-  ReceiptSubjectRunIdMismatch,
-  floor_component_receipt_decode_with
-}
-import gunbc.falsifier_lane {
-  FalsifierRouting, RoutedToOwner, RoutingOwnerUndeclared,
-  LaneOwnerHandle, LaneSubstrateLongLane
-}
-import std.types { Timestamp }
-import extdeps.languages.json.emit { serialize_json }
-import extdeps.github.issues { Issue, IssueState, Open }
-import gunbc.falsifier_alert_decision {
-  AlertDecision,
-  AlertIssueObservation, NoOpenAlertIssue, OneOpenAlertIssue, MultipleOpenAlertIssues, AlertIssueLookupRefused,
-  IncidentSignature, ComponentIncidentIdentity,
-  RefuseEscalationRecipientUndeclared,
-  OpenObserverIncident, RefreshObserverIncident, RefreshObserverIncidentWithoutNotification,
-  NotifyAlertControllerUnavailable,
-  ControllerReceiptMalformed, ControllerReceiptMismatch, ControllerMarkerMalformed, ControllerRoutingJoinRefused,
-  ControllerIssueLookupRefused, ControllerMultipleOpenIssues, ControllerIssueObserved, ControllerIssueUntouched,
-  ConclusionDecidedBeforeReceipt,
-  RunPreventedByConfiguration, CancellationUnexplained,
-  RoutingsMissingForComponents, RoutingsForNonFailingComponents, RoutingsDuplicated,
-  incident_signature_eq, incident_signature_render, alert_signature_of_marker,
-  NoAction, OpenIssue, RefreshIssueWithoutNotification,
-  RefreshAndNotifyChangedClass, RefreshAndNotifyHeartbeat,
-  NotifyGreenAndClose, NotifyLegacyStateMigration,
-  RefuseUntrustedEvent,
-  GreenWithNoOpenIncident,
-  AlertReceiptInput, ReceiptAdmitted, ReceiptSubjectRejected, ReceiptUndecodable,
-  EscalationRecipient, EscalationDeclared, EscalationUndeclared,
-  AlertNotification,
-  alert_decision, alert_decision_notifies, alert_decision_notification,
-  notification_escalates, notification_has_unowned_routing,
-  alert_signature_of
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

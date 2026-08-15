@@ -1,12 +1,5 @@
 module v2.compiler.self_host.frontier_probe_semantic_family_receipt
 
-import std.content_hash { Fnv1a64Structural }
-import v2.std.algebra { fold_list }
-import v2.std.collection { List }
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
-import v2.std.text { String }
 
 data semantic_family_receipt_note: String = "SH-D D1: what the five semantic-pipeline shards MEASURE at the v2 direct Rust door, as executed observations rather than expectations. Each row is one shard, and the two dispositions are not two flavours of the same answer: a shard whose closure fits the manifest transport produces a detailed cause, and a shard whose closure exceeds the inline row cap produces nothing at all — the manifest emits zero rows and an empty ingest, so there is no observation to record. Recording the second as a measurement with absent fields would make the cap look like a property of the module. The rows carry no verdict about the frontier roster; frontier.dag is the program lead's authority and this module supplies it evidence, never a correction."
 

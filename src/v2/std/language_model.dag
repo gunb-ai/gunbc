@@ -1,20 +1,5 @@
 module v2.std.language_model
 
-import v2.std.collection { Set }
-import v2.std.grammar {
-  ParseGrammar,
-  VoidGrammar,
-  grammar_atom,
-  grammar_empty_node,
-  grammar_to_node
-}
-import v2.std.compilers.lexing { LexRules, VoidLexRules, lex_rules_to_node }
-import v2.std.model_core {
-  ModelCore,
-  model_core_first_primitive_substrate,
-  bool_model_core
-}
-import v2.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 
 type LanguageModel {
   lex: LexRules

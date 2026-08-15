@@ -1,33 +1,5 @@
 module std.attribution
 
-import std.types { Bool, NonEmptyStr, String, List }
-import std.nat { Nat }
-import std.interval {
-  OrderedClosedInterval,
-  IntervalConstruction,
-  IntervalReady,
-  IntervalRefused,
-  closed_interval,
-  interval_low,
-  interval_high,
-}
-import std.measure {
-  Nanosecond,
-  nanosecond,
-  nanosecond_count,
-  ClockBasis,
-  clock_basis_eq,
-  ClockDomain,
-  clock_domain_eq,
-  ObservationInstant,
-  InstantOrder,
-  InstantBefore,
-  InstantSame,
-  InstantAfter,
-  InstantIncomparable,
-  compare_instants,
-}
-import std.observation { OccurrenceId }
 
 // TIME NOT ACCOUNTED FOR IS A SET COMPLEMENT, NEVER A SUBTRACTION. The tempting reduction is
 // parent_total minus the sum of the children, which produces a number under every input and is

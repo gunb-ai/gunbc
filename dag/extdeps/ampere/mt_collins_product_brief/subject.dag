@@ -1,12 +1,5 @@
 module extdeps.ampere.mt_collins_product_brief.subject
 
-import std.types { String, NonEmptyStr }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import extdeps.vendor { Vendor }
-import extdeps.hardware { Hardware }
-import extdeps.vendor.ampere { ampere_vendor, ampere_customer_reference_boards_authority }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

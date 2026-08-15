@@ -1,8 +1,5 @@
 module gunbc.devboot.transport
 
-import std.types { String, NonEmptyStr, List, Bool, Int }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.gunbc
 
 data devboot_shell_transport_note: String = "Counted retained-transport roster for gunbc.devboot.build and gunbc.devboot.produce WitnessBin.Run sites. Runtime-present devboot modules are not yet on host_effect_apply typed effects; every raw argv site names a RetainedWitnessRun row with reason + dissolve-on = shell→intent Phase 2 (gunbc.host_effect_realize host_effect_apply). No unmarked WitnessBin.Run calls survive review."
 

@@ -1,45 +1,5 @@
 module gunbc.roadmap_instrument_motion
 
-import std.types { Int, String, Bool, List, Milliseconds }
-import std.markup { Fragment, Element, Attribute, attr }
-import gunbc.site.markup { txt, el, el_class, el_attrs }
-import extdeps.languages.css.properties {
-  Display, Gap, Padding, Border, BorderRadius, Background, Color, Cursor, FontFamily, FontSize,
-}
-import extdeps.languages.css.selectors { SelectorSubject, ClassSelector }
-import gunbc.design.material { BuildRule, StaticRule, CssDecl, decl, serialize_rules }
-import gunbc.roadmap_instrument_sandbox { instrument_css, instrument_note }
-import gunbc.design.theme { role_var, SurfaceRole, BorderRole, TextRole, FocusRole }
-import gunbc.design.scale { scale_var, space_2, space_4, space_6, radius_3, text_12, font_mono }
-import gunbc.roadmap_component {
-  instrument_motion_asset_path,
-  motion_plate_class, motion_tap_btn_class, motion_receipt_class,
-  motion_frame_data_attr, motion_reduced_frame_data_attr, motion_frame_interval_attr,
-  motion_plate_id, motion_receipt_id, motion_probe_run_id,
-  instrument_sandbox_page_path, instrument_tuner_page_path,
-}
-import gunbc.capability_binding {
-  SyntheticTapStrength, SyntheticTapLight, SyntheticTapFirm, SyntheticTapKnock,
-  synthetic_tap_strength_key, synthetic_tap_magnitude_milli, synthetic_tap_impulse,
-  synthetic_tap_clears_requirement, bob_impulse_requirement_candidate,
-  AuditionProvisional, RequirementSigned,
-  BindingCoverageTarget, coverage_state_key, coverage_targets,
-  CoverageProvider, ProviderModelled, ProviderNotYetModelled,
-}
-import gunbc.design.instrument_bob {
-  BobFrame, MotionPreference, MotionFull, MotionReduced,
-  BobSequence, BobSequenceSettled, BobSequenceRefused, bob_sequence, bob_sequence_refusal_key,
-  BobSequenceRefusal,
-  bob_max_travel_px, bob_half_life_ms, max_settle_time_ms,
-}
-import extdeps.w3c.device_orientation_and_motion {
-  devicemotion_event_type, device_motion_event_interface,
-  device_motion_accelerometer_permission_name, gyroscope_permission_name,
-}
-import extdeps.w3c.accelerometer {
-  AccelerometerInterface, LinearAccelerationSensor, accelerometer_interface_name,
-  upstream_recommends_device_orientation_for_new_projects,
-}
 
 data instrument_motion_note: String = "THE MOTION LAB, at /sandbox/instrument/motion. Its first job is to let a person hit the SYNTHETIC TAP button and watch the inner plate ride and settle, on any machine, with no sensor involved and nothing to grant. That is deliberate: the synthetic source is a first-class input rather than a fallback, so the response is judgeable before any hardware question is answered, and a viewer can tell whether the bob feels right independently of whether their laptop can produce one.
 

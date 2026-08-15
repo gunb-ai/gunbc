@@ -1,40 +1,5 @@
 module v2.test.manual.model_core_anchor
 
-import v2.std.algebra { length }
-import v2.std.logic {
-  Bool,
-  bool_encoding_fact_node,
-  bool_node,
-  bool_primitive_facts,
-  bool_primitive_facts_node,
-  bool_width_fact_node
-}
-import v2.std.model_core {
-  ModelCoreFactAxisEncoding,
-  ModelCoreFactAxisSignedness,
-  ModelCoreFactAxisWidth,
-  ModelCoreBoolBoundedLatticeIdentities,
-  ModelCoreBoolComplementBounds,
-  ModelCoreBoolComplementInvolution,
-  ModelCoreBoolDistributivity,
-  model_core_bool_fact_lookup,
-  model_core_bool_inhabitance,
-  model_core_bool_law_obligation,
-  model_core_bool_primitive_bundle,
-  bool_model_core,
-  bool_model_core
-}
-import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  CompilesClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
-import v2.std.witness { Holds, Violates }
 
 fn model_core_payload_fail_node() -> Node {
   Node {

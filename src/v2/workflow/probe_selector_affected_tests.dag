@@ -1,27 +1,5 @@
 module v2.workflow.probe_selector_affected_tests
 
-import v2.std.algebra { count_equal, length }
-import v2.std.change { AffectedSet }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.probe_selector {
-  CostBudget,
-  DiagnosticCapabilityFacts,
-  SuspectedCausePrior,
-  diagnostic_capability_ci_in_repo,
-  host_health_hypothesis_reachability,
-  probe_ci_unbounded_budget,
-  probe_select_affected_test_claims,
-  probe_select_host_health
-}
-import v2.std.verification { TestClaim }
-import v2.test.workflow.affected_set_ci_runner {
-  ci_runner_claim_touched,
-  ci_runner_fail_closed_affected,
-  ci_runner_fixture_roster,
-  ci_runner_narrow_rerun_nodes
-}
-import v2.workflow.affected_set_selection { ci_select_from_rerun_nodes }
 
 fn wf_affected_tests_enumerate_available() -> DiagnosticCapabilityFacts {
   diagnostic_capability_ci_in_repo()

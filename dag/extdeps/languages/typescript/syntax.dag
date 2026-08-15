@@ -1,15 +1,5 @@
 module extdeps.languages.typescript.syntax
 
-import std.syntax {
-  ItemForm, ItemFormKind, FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm,
-  BodyKind, BlockBody, TypeBody, NoBody,
-  OperatorSpec,
-  BinOp, Add, Sub, Mul, Div, Mod,
-  Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
-  LiteralValue, LitBool
-}
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

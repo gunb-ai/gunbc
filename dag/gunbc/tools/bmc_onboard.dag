@@ -1,54 +1,5 @@
 module gunbc.tools.bmc_onboard
 
-import extdeps.bmc.http
-import extdeps.filesystem.filesystem_io
-import extdeps.entropy
-import extdeps.cloud.gcp.secret_manager {
-  decode_sm_access_version_payload_wire,
-  decode_sm_resolved_version_identity_wire,
-  decode_sm_access_version_secret_wire,
-  encode_sm_access_version_payload_wire,
-  SmAccessVersionPayloadDecoded,
-  SmAccessVersionPayloadDecodeRefused,
-  SmAccessVersionSecretDecoded,
-  SmAccessVersionSecretDecodeRefused,
-  SmResolvedVersionIdentityDecoded,
-  SmResolvedVersionIdentityDecodeRefused,
-}
-import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
-import gunbc.bmc_onboarding {
-  BmcOnboardingPlan,
-  srv3_onboarding_plan,
-  srv4_onboarding_plan,
-  BmcCredentialProbeResult,
-  FactoryCredentialActive,
-  RotatedCredentialActive,
-  CredentialAccessUpsertRequired,
-  CredentialEnsureRefused,
-  CredentialStateUnknown,
-}
-import gunbc.auth.access_token_source {
-  AccessTokenSource,
-  AccessTokenEnsureRefused,
-  AccessTokenReady,
-  AccessTokenUpsertRequired,
-  GcloudPrintToken,
-  access_token_upsert_required_reason,
-  ensure_access_token,
-}
-import std.types { NonEmptyStr, Secret, String }
-import std.logic { Bool }
-import std.resources { Network }
-import std.bytes { utf8_encode_bytes }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.languages.json.emit {
-  serialize_json,
-  json_object,
-  json_kv,
-  json_string,
-}
 
 data bmc_onboard_netrc_path: String = "/tmp/bmc_onboard_netrc"
 data bmc_onboard_pwbody_path: String = "/tmp/bmc_onboard_pwbody.json"

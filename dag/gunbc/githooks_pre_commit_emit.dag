@@ -1,15 +1,5 @@
 module gunbc.githooks_pre_commit_emit
 
-import gunbc.local_tidy_spec {
-  local_tidy_trigger_globs,
-  LocalTidyCargoFmtCheck,
-  FmtDrift,
-  FmtToolUnavailable,
-  local_tidy_fmt_outcome_recipe,
-  local_tidy_fmt_pre_commit_drift_recipe,
-}
-import extdeps.git { git_toplevel_shell_subexpr }
-import gunbc.githooks_repo_local_git_config_emit { emit_repo_local_git_config_converge_shell }
 
 fn emit_glob_case_arms(globs: List<String>) -> String {
   fold(globs, init: "", f: fn(acc, g) {

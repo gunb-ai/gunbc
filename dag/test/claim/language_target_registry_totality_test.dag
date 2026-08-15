@@ -1,52 +1,5 @@
 module test.claim.language_target_registry_totality
 
-import std.types { Bool, Int }
-import std.roster_frontier { declaration_ref_eq }
-import std.language_target_identity {
-  LanguageTargetSurfaceLocus,
-  SurfaceModule,
-  LanguageTargetResolution,
-  TargetResolved,
-  TargetSurfaceUnregistered,
-  TargetSurfaceAmbiguous,
-  TargetNotRegistered,
-  resolve_target_for_surface,
-}
-import std.language_target_identity {
-  ExternalGrounding,
-  ProjectGrounding,
-  registration_subject,
-  LanguageIdLookup,
-  LanguageIdResolved,
-  LanguageIdUnregistered,
-  LanguageIdAmbiguous,
-}
-import std.language_target_identity {
-  ExternalGrounding,
-  ProjectGrounding,
-}
-import gunbc.language_target_registry {
-  registered_language_targets,
-  dag_subject_ref,
-  typescript_language_subject_ref,
-  rust_language_subject_ref,
-  english_subject_ref,
-  registered_target_count,
-  bash_display_name,
-  dag_display_name,
-  english_display_name,
-  lookup_language_id,
-  every_projection_subject_is_registered,
-  gnu_bash_subject_ref,
-  registered_language_targets,
-  language_target_surface_census,
-  surface_census_row_count,
-  identified_surface_count,
-  unidentified_surface_count,
-  registry_integrity_violation_count,
-  registry_accounting_total,
-  registry_integrity_holds,
-}
 
 data registry_totality_witness_note: String = "Controls for the registry ACCOUNTING ratchet and the separate INTEGRITY wall — the no-invisible-remainder property, not a completion claim. The ratchet's whole content is that every declared surface is either joined to a registered subject or reported as an exact unidentified row, as an EXACT equality; the wall's is that malformed join input is exactly zero. They are asserted separately because summing them is precisely what made the predecessor undiscriminating: it compared total violations to census rows with a <=, which held for any census and would have held against an empty violation list. WHAT NO ASSERTION HERE ESTABLISHES, restated from the registry's own maximum-conclusion row because a witness is exactly where that gets forgotten: the DECLARED population is not proven complete against the repository, and a declared row is not proven to name a real surface — three census rows were found on 2026-08-04 to be file paths transcribed as module paths. All six authorities are hand-declared, so a target-bearing surface nobody wrote a row for is invisible here. These are ratchet controls; none of them is completion evidence for any target."
 

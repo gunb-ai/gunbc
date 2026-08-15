@@ -1,22 +1,5 @@
 module tools.direct_rust_door_transport
 
-import extdeps.cargo_build
-import extdeps.shell
-import v2.compiler.self_host.fixture_synthetic_emission {
-  advance_written_synthetic_emitted_artifact_cargo_green,
-  mint_written_synthetic_emitted_artifact_from_fixture_inferred,
-  written_synthetic_emitted_artifact_has_fixture_cargo_green_qualification,
-  written_synthetic_emitted_artifact_ok
-}
-import v2.compiler.self_host.direct_rust_door_fixture {
-  direct_rust_door_inferred_tree,
-  direct_rust_door_module_path,
-  direct_rust_door_target_model
-}
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.optional { Absent, Present }
-import v2.std.text { String }
 
 data direct_rust_door_fixture_lane_tag: String = "direct_rust_door_fixture_containment"
 

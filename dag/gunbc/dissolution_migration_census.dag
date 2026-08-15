@@ -1,7 +1,5 @@
 module gunbc.dissolution_migration_census
 
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
-import std.types { NonEmptyStr }
 
 // Narrative prose about dissolution that is NOT a lifecycle carrier, at declaration
 // identity, classified by why it stays prose.

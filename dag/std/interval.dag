@@ -1,6 +1,5 @@
 module std.interval
 
-import std.types { Bool, NonEmptyStr }
 
 // An ordered closed interval over a totally ordered carrier. It exists because an uncertainty
 // region needs a representation whose endpoints CANNOT be reversed: a `{low, high}` record written

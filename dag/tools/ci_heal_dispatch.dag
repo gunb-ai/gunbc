@@ -1,12 +1,6 @@
 module tools.ci_heal_dispatch
 
-import std.algebra { trim }
 
-import gunbc.repository { gunbc_repository }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.types { CommitSha, NonEmptyStr }
-import extdeps.shell
-import extdeps.github.workflows
 
 data ci_heal_dispatch_owner: String = gunbc_repository.owner
 data ci_heal_dispatch_repo: String = gunbc_repository.name

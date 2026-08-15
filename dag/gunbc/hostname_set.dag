@@ -1,22 +1,5 @@
 module gunbc.hostname_set
 
-import std.types { String, NonEmptyStr, List, Bool }
-import extdeps.dns.domain_name { DnsLabel }
-import extdeps.tools.hostname
-import gunbc.hostname_read {
-  hostname_short_read,
-  HostnameShortCaptured,
-  HostnameShortCaptureRefused,
-}
-import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
-import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh }
-import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
-import gunbc.typed_argv_exec {
-  typed_argv_exec_over_ssh,
-  typed_argv_shell_safe_refusal_argv,
-  TypedArgvExecConverged,
-  TypedArgvExecRefused,
-}
 
 type HostnameSetCasOutcome
   = HostnameSetCasApplied

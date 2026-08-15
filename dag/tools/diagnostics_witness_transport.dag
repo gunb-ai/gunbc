@@ -1,7 +1,5 @@
 module tools.diagnostics_witness_transport
 
-import tools.host_prelude { run_witness_bin }
-import std.logic { Bool }
 
 data diagnostics_import_resolution_suite: String = "import_resolution"
 data diagnostics_reexport_surface_suite: String = "reexport_surface"

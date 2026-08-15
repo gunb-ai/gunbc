@@ -1,11 +1,5 @@
 module v2.std.logic
 
-import std.algebra { BooleanAlgebra, BoundedLattice, Lattice }
-import v2.std.algebra {
-  boolean_algebra_node,
-  boolean_algebra_type_node
-}
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 
 type Bool = True | False
 type BoolWidthFact {}

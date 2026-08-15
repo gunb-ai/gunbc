@@ -1,11 +1,5 @@
 module extdeps.tcgplayer.pricing
 
-import std.types { NonEmptyStr, HttpMethod, AuthScheme }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.tcgplayer.tcgplayer { production_api_base, TcgplayerErrorEnvelope }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

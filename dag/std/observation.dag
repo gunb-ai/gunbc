@@ -1,53 +1,5 @@
 module std.observation
 
-import std.types { String, NonEmptyStr, Bool, List }
-import std.nat { Nat }
-import std.measure { ClockBasis, CpuClock, WallClock, clock_basis_eq, clock_basis_label }
-import std.measure { ObservationInstant, ClockDomain, clock_domain_eq }
-import std.measure {
-  Nanosecond,
-  Millisecond,
-  ByteSize,
-  BasisPoint,
-  measure_le,
-  measure_add,
-  millisecond,
-  millisecond_count,
-  millisecond_to_nanosecond,
-}
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField }
-import std.symbols {
-  SymbolId,
-  NodeRunning,
-  NodeCompleted,
-  NodeFailed,
-  NodeSkipped,
-  StatusInfo,
-  StatusWarning,
-  StatusRefused,
-  StatusBlocked,
-  StatusTimedOut,
-  StatusDwell,
-  StatusFinal,
-  ChangeAdded,
-  ChangeModified,
-  ChangeRemoved,
-}
-import std.change {
-  KeyedDiffHunk,
-  KeyedDiffAddedHunk,
-  KeyedDiffRemovedHunk,
-  KeyedDiffModifiedHunk,
-}
-import std.effect_grant { path_is_prefix }
-import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
-import std.temporal_effect {
-  EffectStallBudget,
-  StallBudgetVerdict,
-  StallWithinBudget,
-  StallBudgetExceeded,
-  stall_budget_verdict,
-}
 
 data observation_module_note: String = "P0 of the progress-and-observation lane (docs/plans/progress-observation-design.md, operator-signed 2026-07-23; CI-rework delta in that doc section 6b). One event vocabulary emitted by the process and consumed by every renderer — a progress line is a PROJECTION of a fact the process already has, never a hand-authored string with a hand-chosen level. This module carries the model, the five laws as rows, and the derived attention/presentation assignment; it renders nothing (renderers are P1 and later). Displaced cost priced in the design doc: the 10-minute silent crawl window of run 30044816605, a 55-minute triage cycle burned on a receipt that only wrote at walk end, and workers hand-rolling the discipline ad hoc."
 

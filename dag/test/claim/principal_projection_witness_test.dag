@@ -1,25 +1,5 @@
 module test.claim.principal_projection_witness_test
 
-import std.types { Bool, NonEmptyStr }
-import extdeps.auth.jwt {
-  NumericDateWholeSeconds, JwtBareString, JwtUriString, JwtAudienceSingle,
-}
-import extdeps.auth.oidc { OidcStandardClaims, OidcIdTokenClaims }
-import extdeps.access.posix_effective_principal {
-  EffectivePosixPrincipalRead,
-  EffectivePosixPrincipalReadOutcome,
-  EffectivePosixPrincipalObserved, EffectivePosixPrincipalObservationRefused,
-  effective_posix_principal_observation, effective_posix_principal_name,
-}
-import extdeps.access.posix_effective_principal_read_op {
-  effective_posix_principal_read,
-}
-import gunbc.principal_projection {
-  OidcPrincipal, PosixPrincipal,
-  OidcProjection, PosixProjection,
-  oidc_principal_projection, posix_principal_projection, projected_principal,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

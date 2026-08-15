@@ -1,37 +1,5 @@
 module test.claim.memory_part_selection_witness_test
 
-import std.types { Bool, List, list_length }
-import std.currency { CurrencyCode, Eur, Usd }
-import std.measure { ByteSize, MoneyAmountMicro, byte_size, money_amount_micro }
-import extdeps.vendor.samsung { samsung }
-import extdeps.boards.types { AsrockRackAltrad8ud1l2t }
-import extdeps.memory.types {
-  DramModuleCatalogRow,
-  LoadReduced,
-  Registered,
-  bit_width,
-  dram_generation_ddr4,
-}
-import extdeps.memory.training { LrdimmDataBufferMrep, module_executes_step }
-import gunbc.host_memory_qualification { PartQualificationUnobserved }
-import gunbc.memory_part_selection {
-  CandidateAdmissible,
-  CandidateCurrencyMismatch,
-  CandidateImplicated,
-  CandidateSampleRequired,
-  DecodedFromPlatformSyndrome,
-  EvidenceUnobserved,
-  PartCandidate,
-  PartImplicatedByFailingStep,
-  PartNotImplicated,
-  PartSampleQualificationRequired,
-  PlatformTrainingFailure,
-  altrad8ud_mrep_failure_observation,
-  candidate_admission,
-  pareto_frontier,
-  part_implication,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

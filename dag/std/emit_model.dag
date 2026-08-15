@@ -1,6 +1,5 @@
 module std.emit_model
 
-import std.decl_ref { DeclarationRef }
 
 
 type PlaceholderConvention

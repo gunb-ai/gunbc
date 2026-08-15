@@ -1,7 +1,5 @@
 module gunbc.install_transport_qualification
 
-import std.types { Bool, EpochMs, List, NonEmptyStr, list_length }
-import product.placement_supply { HostIdentity }
 
 // WHY THIS MODULE EXISTS, in one sentence: an omitted capability was being read
 // as an observed absence, and the two are different facts with different

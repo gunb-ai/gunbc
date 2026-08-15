@@ -1,35 +1,6 @@
 module gunbc.roadmap_publish
 
-import std.algebra { trim }
 
-import std.types { String, NonEmptyStr, Int, Bool, List, CommitSha, HttpStatus }
-import extdeps.github.pulls {
-  PullRequest,
-  PullRequestState, Open,
-}
-import v2.std.operation_argv { OperationRef, operation_ref_label }
-import extdeps.languages.json.emit {
-  JsonValue,
-  JsonString,
-  JsonNumber,
-  JsonBool,
-  json_string,
-  json_int,
-  json_bool,
-  json_array,
-  json_object,
-  json_kv,
-  serialize_json,
-}
-import extdeps.github.github { Repository, github_https_clone_url }
-import extdeps.languages.json.parse {
-  parse_json,
-  json_object_unique_member,
-  JsonMemberFound,
-  JsonMemberAbsent,
-  JsonMemberDuplicated,
-  JsonMemberNotAnObject,
-}
 
 data publish_producer_note: String = "PUBLICATION IS ADJUDICATED AGAINST AN EXACT HEAD, NOT LOOKED UP BY BRANCH (operator ruling, 2026-07-31). An earlier cut of this module answered 'which pull request belongs to this branch', which is a lookup rather than a judgment: it reported whatever head that pull request happened to carry and left the caller to compare. Every downstream obligation — verify, review, audit, acceptance — is about one exact commit, so the question Publication has to answer is whether THIS commit is the one on offer.\\n\\nThe branch is a lookup and publication handle. A completed judgment belongs to a head sha.\\n\\nTHE ARM THAT MOTIVATES THE REWRITE is PublicationHeadDiverged. A pull request exists, its branch matches, and its head is NOT the commit under judgment — the ordinary state after a worker pushes a revision while a review is in flight. Under a branch lookup that reads as a successful publication, and every later receipt binds to a commit nobody assessed. It is the one outcome a lookup cannot express and the one most likely to occur."
 

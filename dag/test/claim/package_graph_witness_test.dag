@@ -1,17 +1,5 @@
 module test.claim.package_graph_witness_test
 
-import std.types { NonEmptyStr, String, Bool, List }
-import extdeps.package {
-  PackageLockNode, PackageDependencyEdge, PackageLockGraph,
-  package_lock_lookup_node, package_lock_admit_graph,
-  PackageLockNodeUnique, PackageLockNodeAbsent, PackageLockNodeDuplicate,
-  PackageLockGraphAdmitted, PackageLockGraphDuplicateNode,
-  PackageLockGraphMissingEdgeDependency, PackageLockGraphLookupInconsistency,
-  PackageLockGraphMissingRoot,
-}
-import gunbc.package_delivery {
-  admit_codex_package_lock_graph,
-}
 
 type ProbeSelection {
   name: NonEmptyStr

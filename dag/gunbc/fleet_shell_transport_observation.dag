@@ -1,14 +1,5 @@
 module gunbc.fleet_shell_transport_observation
 
-import std.types { String, NonEmptyStr, Bool, List }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network {
-  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
-}
-import gunbc.fleet_reach { srv3_reach_is_realizable }
-import gunbc.host_phase_status { fleet_subsumption_hosts }
 
 data fleet_shell_transport_authority_disposition: Disposition = SingleAuthority
 

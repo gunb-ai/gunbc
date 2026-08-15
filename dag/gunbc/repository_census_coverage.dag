@@ -1,30 +1,6 @@
 module gunbc.repository_census_coverage
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.decl_ref { DeclarationRef }
-import std.content_hash {
-  Fnv1a64Structural,
-  content_hash_atom,
-  content_hash_eq_structural,
-  content_hash_combine_structural,
-  content_hash_tagged_structural,
-}
-import gunbc.repository_census_observation {
-  CensusSubjectKey,
-  RepositoryPopulation,
-  CensusMethodRunIdentity,
-  RepositoryCensusObservation,
-  census_tagged_identity,
-  census_declaration_ref_identity,
-  census_revision_identity,
-  census_method_run_identity,
-  repository_census_population_identity,
-  repository_census_observation_identity,
-  repository_census_subject_keys,
-}
-import gunbc.guarantee_measurement { MeasurementRevision }
 
 data repository_census_coverage_authority_note: String = "CENSUS-0B, the coverage and inference-ceiling stage (operator-directed 2026-08-04). 0A carries the observation FACT and deliberately says nothing about how much of the population was covered or what may be concluded. This module supplies exactly those two, and supplies them as RECEIPTS PRODUCED BY EXECUTED JOINS rather than as fields a caller fills in. What it does not supply is any domain claim: the strongest thing a carrier generic over rows can produce is a BOUND on what could be concluded, never the conclusion, which is why the output is named a ceiling."
 

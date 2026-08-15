@@ -1,36 +1,5 @@
 module test.claim.gitattributes_emit_witness
 
-import gunbc.generated_artifact {
-  GitattributesArtifact,
-  committed_generated_artifact_paths,
-  artifact_path
-}
-import gunbc.gitattributes_emit {
-  GitattributesGenerated,
-  GitattributesGenerationRefused,
-  expected_gitattributes,
-  dag_linguist_presentation_policy_pattern,
-  dag_linguist_presentation_policy_attribute,
-  generated_projection_merge_attribute
-}
-import gunbc.generated_projection_paths {
-  CommittedGeneratedArtifact,
-  GeneratedProjectionPathCollision,
-  GeneratedProjectionPathRow,
-  GeneratedProjectionStage0PlanRefused,
-  GeneratedProjectionPathsAccepted,
-  GeneratedProjectionPathsRefused,
-  Stage0EmittedRust,
-  deterministic_generated_projection_paths,
-  deterministic_generated_projection_paths_from_stage0_plan,
-  deterministic_generated_projection_paths_from_rows
-}
-import gunbc.stage0_emit_plan {
-  SourceIdentitySupplyUnavailableRefusal,
-  Stage0EmissionPlanRefused
-}
-import extdeps.filesystem.filesystem_io { Filesystem }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

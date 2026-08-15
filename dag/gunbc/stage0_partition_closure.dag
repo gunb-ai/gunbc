@@ -1,24 +1,5 @@
 module gunbc.stage0_partition_closure
 
-import std.types { Bool, String, NonEmptyStr, List }
-import std.integer { Int }
-import gunbc.stage0_crate_partition_generated {
-  GeneratedPartitionCrateRow,
-  generated_partition_crate_rows,
-}
-import gunbc.stage0_emit_plan { stage0_module_emit_basename }
-import gunbc.stage0_emit_plan_generated { generated_stage0_files }
-import std.algebra { Cons }
-import extdeps.filesystem.filesystem_io
-import v2.std.collection { Map, empty_map, map_insert, map_get }
-import v2.std.optional { Optional, Present, Absent }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.lens.module_graph {
-  ModuleDependencyEdge,
-  ModuleDeclarationFact,
-  dependency_resolution_facts_live,
-  module_declaration_facts_live,
-}
 
 // WHY THIS EXISTS: a gate reported ZERO DRIFT on a tree whose partition crates would not
 // compile. It was not missing drift - within its registered roster it regenerates every

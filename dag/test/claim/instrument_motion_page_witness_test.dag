@@ -1,32 +1,5 @@
 module test.claim.instrument_motion_page_witness
 
-import gunbc.roadmap_serve {
-  RoadmapServeHandler, InstrumentMotionPageHandler, InstrumentMotionAssetHandler,
-  roadmap_serve_invoke,
-}
-import gunbc.roadmap_component {
-  instrument_motion_asset_path, instrument_motion_page_path,
-  instrument_motion_client_js_source,
-  motion_plate_class, motion_tap_btn_class, motion_receipt_class,
-  motion_frame_data_attr, motion_reduced_frame_data_attr, motion_frame_interval_attr,
-  motion_plate_id, motion_receipt_id, motion_probe_run_id,
-}
-import gunbc.roadmap_instrument_motion {
-  frames_wire, sequence_for, motion_frame_interval_ms,
-}
-import gunbc.roadmap_instrument_sandbox { instrument_css, instrument_note_class }
-import gunbc.capability_binding {
-  SyntheticTapStrength, SyntheticTapLight, SyntheticTapFirm, SyntheticTapKnock,
-}
-import gunbc.design.instrument_bob {
-  BobFrame, MotionFull, MotionReduced, bob_max_travel_px, max_settle_time_ms,
-  BobSequence, BobSequenceSettled, BobSequenceRefused,
-  frames_visit_an_intermediate_position, frames_max_abs_between, frames_last_displacement,
-  frames_cross_rest, frames_terminate_exactly_once, bob_phase_key,
-}
-import extdeps.http.server { ServeHttpRequest, ServeHttpResponse }
-import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
-import std.types { String, Int, Bool, List, HttpMethod, GET }
 
 data witness_subject_note: String = "THE MOTION LAB'S VERTICAL SLICE, exercised through the route rather than through the page function, because the thing that can break in production is the composition — a handler arm that renders the wrong page, an asset route serving the wrong body, a page whose attributes and whose client program have drifted apart. Calling instrument_motion_page() directly would prove the fragment and leave every seam above it untested.
 

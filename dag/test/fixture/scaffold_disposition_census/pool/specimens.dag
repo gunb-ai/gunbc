@@ -1,7 +1,5 @@
 module test.fixture.scaffold_disposition_census.pool.specimens
 
-import std.disposition { Disposition, Terminal, Scaffold, ConstructionMechanism, SingleAuthority, RealizationDispatch, SubstrateMandatoryTag }
-import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
 
 data plain_int_specimen: Int = 7
 

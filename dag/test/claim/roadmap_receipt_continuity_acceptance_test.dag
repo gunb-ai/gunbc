@@ -1,51 +1,5 @@
 module test.claim.roadmap_receipt_continuity_acceptance
 
-import std.types { NonEmptyStr }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.roadmap_authority {
-  declared_roadmap_nodes,
-  nid,
-  roadmap_acceptance_receipts_from_carrier_text,
-  RoadmapAcceptanceReceiptsProjected,
-  RoadmapAcceptanceReceiptsProjectionRefused,
-  accepted_roadmap_node_ids_projection_from_carrier_text,
-  AcceptedRoadmapNodeIdsProjected,
-  AcceptedRoadmapNodeIdsProjectionRefused,
-  roadmap_authority_projection_from_carrier_text,
-  RoadmapAuthorityProjected,
-  RoadmapAuthorityProjectionRefused,
-}
-import gunbc.roadmap_acceptance_history_carrier {
-  load_roadmap_acceptance_event_history_from_carrier_text,
-  RoadmapAcceptanceEventHistoryLoaded,
-  RoadmapAcceptanceEventHistoryLoadRefused,
-}
-import test.claim.roadmap_receipt_continuity_acceptance_fixture {
-  receipt_continuity_acceptance_carrier_fixture_text,
-}
-import gunbc.roadmap_acceptance_history_observation {
-  PriorHistoryGitObservationRefused,
-  PriorHistoryObserved,
-  prior_history_from_carrier_text,
-  acceptance_history_integrity_holds_from_prior_observation_with_prior,
-  git_show_path_absent_at_ref,
-}
-import gunbc.roadmap_spawner {
-  doc_all_nodes,
-  roadmap_dispatch_file_content_for_projection,
-}
-import gunbc.roadmap_model {
-  acceptance_history_integrity_holds,
-  acceptance_history_extends_prior,
-  project_live_acceptance_receipts,
-  drop_first_acceptance_event,
-  node_accepted,
-  AcceptanceRecorded,
-  AcceptanceRevoked,
-  AcceptanceNodeReopensActiveFrontier,
-  RoadmapAcceptanceEvent,
-  RoadmapAcceptanceReceipt,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

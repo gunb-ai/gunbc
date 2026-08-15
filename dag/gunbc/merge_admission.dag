@@ -1,68 +1,6 @@
 module gunbc.merge_admission
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.types { NonEmptyStr, CommitSha, String, List, Bool, Int }
-import std.content_hash {
-  ContentHash,
-  Fnv1a64Structural,
-  content_hash_atom,
-  content_hash_combine_structural,
-  content_hash_tagged,
-  content_hash_tagged_structural,
-  content_hash_eq_structural,
-  as_content_hash_structural,
-}
-import std.decimal { zero_pad_left }
-import extdeps.git.object_store {
-  GitObjectId,
-  GitSha1ObjectId,
-  git_sha1_object_id,
-  git_object_id_eq,
-  git_object_id_wire_hex,
-}
-import std.content_hash { Sha1Digest, Sha1DigestHex }
-import extdeps.github.checks {
-  CheckConclusion,
-  check_conclusion_is_success,
-  Success, Failure, Cancelled, Skipped, Stale, Neutral, TimedOut, ActionRequired,
-}
-import gunbc.commit_workflow {
-  commit_gate_roster,
-  CommitCheckEnrollment, CommitCheckKind,
-  CommitSpecGate, CommitWitnessClaim, CommitCargoFmtCheck,
-}
-import std.measure { millisecond_count, ClockBasis, CpuClock, WallClock }
-import std.realization_schedule {
-  WitnessKind, CorpusWitnessKind, ExecutionWitnessKind, NativeBundleWitnessKind,
-  WitnessSeam, WitnessSpan, SpanUndeclared, SpanSeams, SpanEnrolled,
-  WitnessCostBasis,
-  MeasuredAtExactSubject, EstimatedFromSiblingClass,
-  ScheduledWitnessEnvelope,
-}
-import std.witness_admission {
-  WitnessConsumerCadence,
-  DiscoverySelection, FalsifierSelfHostWet, FalsifierRehomedBinWet,
-  FalsifierSubstrateLongLane, BinWitnessWet, QuarantineProbeExpectRed,
-  OfflineLocalRecipe, FixtureExplicitRoster, NoConsumer,
-  witness_consumer_cadence_content_hash_structural,
-}
-import gunbc.ci_gate {
-  Gate,
-  EmitHostGate, CheapClaimPoolGate,
-  ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
-  ProseRowIntroductionGate,
-  SourceRootIngestGate, RegenVerifyGate,
-  SelfHostReadsRealBytesGate, SelfHostStalenessGate,
-}
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.repo_identity { gunbc_default_branch_name }
-import gunbc.merge_admission_subject {
-  WalkAttemptId,
-  TestedSubject,
-  walk_attempt_id_eq,
-}
 
 type MergeStrategy
   = SquashMerge

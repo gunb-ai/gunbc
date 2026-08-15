@@ -1,19 +1,5 @@
 module v2.test.duplicate_computation.duplicate_computation
 
-import v2.lens.duplicate_computation {
-  ComputationDemandFact,
-  UnguardedDemand, GuardedFallbackDemand,
-  ReplicationIntent, SingleRun, ReplicatedOracle,
-  TypedArgvInvocation,
-  typed_argv_computation_demands,
-  duplicate_computation_violation_count,
-  duplicate_computation_clean_holds
-}
-import v2.std.algebra { list_append, length }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

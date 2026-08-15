@@ -1,16 +1,5 @@
 module extdeps.llm.cursor_sdk
 
-import std.types { String, NonEmptyStr, FilePath, List }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.cloud.gcp.secret_ref { SecretRef }
-import extdeps.llm.cursor_cli {
-  CursorModelId,
-  cursor_api_key_env_var,
-  CursorEnvBinding,
-  cursor_argv_contains,
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

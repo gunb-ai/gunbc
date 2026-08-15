@@ -1,9 +1,5 @@
 module extdeps.systems.nvidia_dgx_spark_setup
 
-import std.types { NonEmptyStr, Bool, List, String }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
 
 // SPARK-PROVISION-0 (2026-08-06). What NVIDIA DOCUMENTS about bringing a DGX Spark
 // from the factory to a usable OS. Separate module from extdeps.systems.nvidia because

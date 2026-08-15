@@ -1,7 +1,5 @@
 module gunbc.v1_complexity_decl_classification_roster
 
-import gunbc.v1_complexity_decl_classification { V1ComplexityDeclClassification }
-import std.types { NonEmptyStr }
 
 data v1_complexity_decl_class_SizeExpr: V1ComplexityDeclClassification = V1ComplexityDeclClassification {
   decl_name: "SizeExpr",

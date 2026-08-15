@@ -1,29 +1,5 @@
 module test.claim.commit_writer_index_selection_witness
 
-import std.types { String, Bool, Int, List, NonEmptyStr }
-import std.integer { UInt8 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.content_hash { Sha1Digest, Sha1DigestHex }
-import extdeps.git.object_store {
-  GitPath,
-  GitPathDecoded,
-  GitPathDecodeRefused,
-  GitTreeEntryName,
-  GitTreeEntryNameOctetAfterSlash,
-  GitTreeEntryNameAfterSlashValue,
-  GitIndexEntry,
-  GitIndexStage,
-  GitIndexStageNormal,
-  GitIndexStageBase,
-  GitIndexStageOurs,
-  GitIndexStageTheirs,
-  GitObjectId,
-  GitSha1ObjectId,
-  GitRegularBlobMode,
-  git_decode_path_octets,
-  git_object_id_wire_hex,
-}
-import gunbc.commit_workflow { commit_writer_index_entries_for_path }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

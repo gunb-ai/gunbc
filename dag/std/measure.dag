@@ -1,23 +1,6 @@
 module std.measure
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.currency { CurrencyCode }
-import std.nat { Nat }
-import std.types { Int, Bool, String, NonEmptyStr }
-import extdeps.units.iec_80000_13 { iec_kibi_factor, octet_bit_count }
-import extdeps.units.iso8601 { iso8601_seconds_per_minute, iso8601_minutes_per_hour }
-import extdeps.units.iso_80000_3 {
-  square_millimetres_per_square_metre,
-  cubic_millimetres_per_cubic_metre,
-  arcseconds_per_turn,
-  degrees_per_turn,
-  arcseconds_per_degree_derived,
-}
-import extdeps.units.dimensionless {
-  parts_per_ten_thousand_unity_count,
-  percent_unity_hundred_count,
-}
 
 type Quantity =
     Time

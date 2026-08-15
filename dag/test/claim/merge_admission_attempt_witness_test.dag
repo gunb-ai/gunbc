@@ -1,53 +1,5 @@
 module test.claim.merge_admission_attempt_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { NonEmptyStr, CommitSha, String }
-import extdeps.git.object_store { GitObjectId, git_object_id_eq, git_object_id_wire_hex, git_sha1_object_id }
-import extdeps.github.checks { Success, Failure }
-import tools.merge_admission_walk { merge_admission_fetch_stall_deadline_seconds }
-import gunbc.merge_admission_subject {
-  TestedSubject,
-  WalkAttemptId,
-  walk_attempt_id,
-  merge_admission_tested_subject_schema,
-  merge_admission_tested_subject_path,
-  merge_admission_floor_receipt_path,
-  compose_walk_attempt_id,
-  compose_explicit_walk_attempt_id,
-  render_tested_subject_wire,
-  parse_tested_subject_wire,
-  render_git_object_id_wire,
-  parse_git_object_id_wire,
-}
-import gunbc.merge_admission {
-  MergeAdmissionReceiptV2,
-  MergeAdmissionVerdict,
-  MergeAdmitted,
-  MergeDeniedStaleBase,
-  MergeDeniedStaleRoster,
-  MergeDeniedNotSuccess,
-  MergeDeniedWrongAttempt,
-  MergeDeniedSubjectMismatch,
-  classify_merge_admission_verdict_v2,
-  merge_admission_verdict_would_block,
-  merge_admission_witness_git_tree,
-  merge_admission_witness_gate_roster,
-  GateRosterHash,
-  gate_roster_content_hash,
-  current_gate_roster_hash,
-}
-import gunbc.commit_workflow {
-  commit_gate_roster,
-}
-import gunbc.merge_admission_produce {
-  merge_admission_receipt_schema_v2,
-  render_receipt_wire_v2,
-  parse_receipt_wire_v2,
-  render_receipt_wire,
-  render_gate_roster_hash_wire,
-  parse_gate_roster_hash_wire,
-  stamp_floor_receipt_with_conclusion,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,48 +1,5 @@
 module gunbc.host_assimilation_program
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
-import gunbc.host_standup {
-  HostStandupStep,
-  HostStandupPhase,
-  Prefix,
-  Assimilation,
-  HostStandupPrefixPhase,
-  HostStandupAssimilationPhase,
-  BmcCredentialConverge,
-  OsInstallMechanismResolved,
-  OsInstallActuated,
-  HostConvergePolicyDerived,
-  HostIdentityConverge,
-  ReachSecretsNetwork,
-  RunnerDeploySlot,
-  BuildCacheProvision,
-  CodexRuntimeProvision,
-  ComputeFabricEnroll,
-  GreenPlaceReadiness,
-  SessionPlacementEnrollment,
-  StandupAssimilationComplete,
-  host_standup_spine,
-  AssimilationCompleteInput,
-  NodeRegistered,
-  ResourcesPresent,
-  GreenPlacePinCoherent,
-  RunnerSlotHealthy,
-  AssimilationInputWitness,
-  InputSatisfied,
-  InputGap,
-  AssimilationObligation,
-  AssimilationCompleteGate,
-  AssimilationCompleteVerdict,
-  AssimilationIncomplete,
-  AssimilationComplete,
-  host_standup_p3_green_place_input_witness,
-  assimilation_input_witness_from_green_place,
-  assimilation_complete,
-  host_standup_p3_gunbc_pinned_tree_landed,
-  assimilation_complete_input_eq,
-  assimilation_input_is_required,
-}
-import product.placement_supply { HostIdentity }
 
 data host_assimilation_program_note: String = "WHY THIS EXISTS: host_standup_spine is ONE universal list, and gunbc.host_phase_status crossed every enrolled host with all of it. That was correct while every enrolled host was the same kind of thing -- srv1 through srv4 are Ampere Altra CI runner hosts, provisioned through BMC and virtual media, hosting GitHub Actions runner slots and a build cache. It stops being correct the moment a host of a DIFFERENT KIND is enrolled: two NVIDIA DGX Spark inference appliances (srv5, srv6) have no BMC to converge, no virtual-media OS install, no runner user, no Actions slots and no build cache, so crossing them with the universal spine would manufacture obligations that can never be satisfied and can never honestly be marked converged. A fleet-completeness number computed over invented obligations is worse than no number. THE CORRECTION IS PROGRAM SCOPING, NOT AN APPLICABILITY VERDICT: an Applicable-or-NotApplicable arm on the cell would keep the false cells and label them, which is the parallel-representation shape (DESIGN section 3) and leaves every consumer to remember to filter. A host's participation instead SELECTS which obligations exist at all, so an obligation that does not apply is not a cell with a label -- it is not a cell."
 

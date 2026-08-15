@@ -1,25 +1,5 @@
 module extdeps.rust.target_triple
 
-import std.types { String, List, NonEmptyStr }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import extdeps.toolchain.types {
-  TargetTriple,
-  Architecture,
-  X86_64,
-  Aarch64,
-  TripleVendor,
-  UnknownVendor,
-  Apple,
-  Pc,
-  Os,
-  Linux,
-  Macos,
-  AbiEnv,
-  Gnu,
-  Musl,
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

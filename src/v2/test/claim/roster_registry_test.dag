@@ -1,28 +1,7 @@
 module v2.test.claim.roster_registry_test
 
-import std.types { NonEmptyStr }
 
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
-import gunbc.roster_registry {
-  GroupMembership,
-  ByContainment,
-  ByDerivation,
-  DeclaredFrontier,
-  RosterRegistration,
-  roster_registry,
-  roster_decl
-}
-import v2.lens.roster_registry {
-  roster_registry_nonstandard_count,
-  roster_registry_nonstandard_count_from,
-  roster_registry_standard_holds,
-  nonstandard_registrations_from
-}
-import v2.std.algebra { length }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 
 // Constructs the empty condition through the NON-LITERAL path deliberately.

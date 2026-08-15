@@ -1,49 +1,6 @@
 module test.claim.npm_sri_witness_test
 
-import std.types { NonEmptyStr, Bool, String }
-import std.content_hash {
-  ContentHash,
-  Sha512Digest,
-  compare_content_hash,
-  ContentHashEqual,
-  ContentHashDifferent,
-  ContentHashCrossFamilyIncomparable,
-  content_hash_of_value,
-  as_content_hash_sha512,
-}
 
-import extdeps.npm {
-  npm_decode_integrity,
-  npm_decode_package_lock_format,
-  npm_decode_package_lock_text,
-  npm_json_boolean_member,
-  npm_json_string_list_member_observation,
-  NpmBooleanMemberAbsent,
-  NpmBooleanMemberObserved,
-  NpmBooleanMemberWrongType,
-  NpmBooleanMemberDuplicate,
-  NpmStringListMemberAbsent,
-  NpmStringListMemberObserved,
-  NpmStringListMemberWrongType,
-  NpmSingleSha512Integrity,
-  NpmSingleSha1Integrity,
-  NpmIntegrityUnsupportedAlgorithm,
-  NpmIntegrityMultipleExpressionsUnsupported,
-  NpmIntegrityOptionsUnsupported,
-  NpmIntegrityMalformed,
-  NpmPackageLockFormatDecoded,
-  NpmPackageLockFormatUnsupported,
-  NpmPackageLockV3,
-  NpmPackageLockParsed,
-  NpmPackageLockParseRefused,
-}
-import extdeps.languages.json.emit {
-  JsonObject,
-  JsonKeyValue,
-  JsonBool,
-  JsonString,
-  JsonArray,
-}
 
 data witness_note: String = "Measured npm SRI from docs/probes/provider_interface_acquisition_2026-08-03.json @anthropic-ai/claude-agent-sdk — not a tree-copied oracle. Exact hex is the discriminating oracle for the decoder; same-input roundtrip alone is not. Overpadding RED proves noncanonical base64 refuses even when shared base64_decode would accept trailing '='."
 

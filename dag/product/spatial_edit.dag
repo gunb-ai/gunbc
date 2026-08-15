@@ -1,26 +1,5 @@
 module product.spatial_edit
 
-import std.types { Bool, List }
-import std.integer { Int }
-import std.affine_space {
-  Point2, point2, Vector2, vector2,
-  SpatialReady, SpatialArithmeticRefused, SpatialFrameRefused, SpatialFrameRefusal,
-  translate_point2,
-  signed_frame_component_count
-}
-import std.checked_arithmetic { IntegerOverflow, CheckedIntReady, CheckedIntOverflow, checked_int_add }
-import std.change { KeyedPatch, KeyedDiffHunk, KeyedDiffAddedHunk, KeyedDiffRemovedHunk, KeyedDiffModifiedHunk }
-import std.orthogonal_geometry {
-  OrthogonalRefusal, OrthogonalReady, OrthogonalRefused,
-  orthogonal_loop2, orthogonal_prism3, loop2_vertices, prism3_low, prism3_high,
-}
-import std.orthogonal_topology { EnclosedSpace, enclosed_space, closed_shell_of_prism, space_shell, shell_prism, space_footprint }
-import product.placement_supply { RoomIdentity }
-import product.spatial_world {
-  World, PlacedSpace, world_rooms, WorldVariant, world_variant,
-  WorldConstruction, WorldReady, WorldRefused, realize_variant,
-}
-import v2.std.optional { Present, Absent }
 
 // SPATIAL-5B: EDITING, AND EVERY EDIT IS A DELTA BY CONSTRUCTION.
 //

@@ -1,7 +1,5 @@
 module gunbc.roadmap_execution_contract
 
-import std.types { String, NonEmptyStr, List, FilePath, Bool }
-import gunbc.ensure { EnsurePolicy }
 
 type ExecutionCapability
   = GitWorkspaceCapability

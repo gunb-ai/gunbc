@@ -1,37 +1,5 @@
 module v2.test.emit.conditional_delimiting
 
-import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source_string }
-import v2.extdeps.languages.rust {
-  rust_lex_rule,
-  rust_fn_add_lex_rules,
-  rust_operator_realizations_catalog_node,
-  rust_target_model,
-  rust_value_expression_projection
-}
-import v2.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules }
-import v2.std.compilers.target_model {
-  ConditionalClosedByToken,
-  ConditionalDelimiting,
-  ConditionalSelfDelimiting,
-  TargetConditionalShape,
-  TargetModel,
-  TargetValueExpression,
-  TargetValueExpressionProjection,
-  decode_conditional_shape_bundle,
-  render_target_text,
-  target_model_named_edge,
-  target_model_type_atom_node,
-  target_model_type_conj_node,
-  target_value_expression_binding_ref,
-  target_value_expression_conditional,
-  target_value_expression_to_concrete_tokens
-}
-import v2.std.algebra { list_append }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

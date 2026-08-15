@@ -1,29 +1,5 @@
 module v2.test.claim.module_storage_binding
 
-import v2.compiler.source_authority {
-  ModuleStorageBinding,
-  ModuleStorageIndex,
-  module_storage_binding_file_path,
-  module_storage_binding_module_dotted,
-  module_storage_index_insert,
-  module_storage_module_for_path,
-  module_storage_produced_binding,
-  module_storage_parsed_binding,
-  ModuleStorageAgrees,
-  ModuleStorageDivergent,
-  ModuleStorageUncovered,
-  module_storage_host_agrees_with_oracle
-}
-import v2.std.artifact { Artifact, SourceFile }
-import v2.std.collection { Absent, Present }
-import v2.std.cross_tree.import_model { V2Tree }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import v2.std.provenance { span_index_empty }
-import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
-import v2.std.text { String }
-import std.algebra { Cons, Empty }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,37 +1,5 @@
 module product.compute_board.emission_entry
 
-import std.types { String, List }
-import product.compute_board.admission {
-  BoardArticleAdmitted,
-  BoardArticleRefused,
-  BoardArticleRefusalSet,
-  admit_board_article,
-}
-import product.compute_board.article { BoardPowerInterfaceArticle, power_interlock_article }
-import product.compute_board.device_binding {
-  DevicePinAssignment,
-  PinChainRefusalSet,
-  PinConstraintsEmitted,
-  PinConstraintsRefused,
-  ProgrammableDeviceRealization,
-  interlock_device_realization,
-  interlock_pin_assignments,
-  project_article_to_pin_constraints,
-}
-import product.compute_board.spice_projection {
-  SpiceProjectionRefusal,
-  SpiceSliceProjected,
-  SpiceSliceRefused,
-  project_article_to_spice,
-  project_article_to_ngspice_run,
-}
-import product.compute_board.verilog_projection {
-  VerilogModuleEmitted,
-  VerilogProjectionRefused,
-  VerilogProjectionRefusal,
-  project_article_to_verilog,
-  power_interlock_verilog_bindings,
-}
 
 data emission_entry_note: String = "THE ENTRY POINTS THAT ACTUALLY PRODUCE THE ARTIFACTS, AND THE REFUSAL THEY USED TO SWALLOW. Everything else in this product returns a typed projection that a witness inspects; these are the host boundary, where bytes leave. An earlier revision returned a bare String and answered a refusal with the literal 'REFUSED: article not admitted' — which is the fabricated plausible output DESIGN section 5 forbids, at the one seam where a caller is furthest from the model and least able to tell. It is also the identical defect this same lane had just fixed one layer down, where a String-returning ngspice entry bypassed the projection gate for exactly the same reason: a String has nowhere to put a refusal, so a refusal becomes prose that reads like a result. THE SHAPE: BoardEmission is parameterized by the target's own refusal type rather than fusing SPICE and Verilog causes into one coproduct, so adding a third target is an instantiation and not a widened enum. Admission refusal and projection refusal stay separate arms because they have different remedies — one means the board is incoherent, the other means this target cannot render a coherent board."
 

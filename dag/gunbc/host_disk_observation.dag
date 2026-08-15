@@ -1,17 +1,5 @@
 module gunbc.host_disk_observation
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.measure { ByteSize, byte_size, byte_size_count }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_shell_transport_observation {
-  fleet_shell_transport_observation,
-  ShellTransportSucceeded,
-  ShellTransportReachRefused,
-  ShellTransportUnobserved,
-}
-import gunbc.host_phase_status { fleet_subsumption_hosts }
 
 data host_disk_observation_authority_disposition: Disposition = SingleAuthority
 

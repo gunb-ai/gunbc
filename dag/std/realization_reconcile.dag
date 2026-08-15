@@ -1,14 +1,5 @@
 module std.realization_reconcile
 
-import std.types { String, Bool }
-import std.disposition { Disposition, Terminal }
-import std.state_durability {
-  StateDurabilityQualification,
-  StateDurabilityRefusal,
-  StateDurabilityQualified,
-  StateDurabilityRefused,
-  StateDurabilityVerdict,
-}
 
 type ShowEffectiveRead<R>
   = ReadObserved { value: R }

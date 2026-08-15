@@ -1,11 +1,5 @@
 module test.claim.namespace_reference_derived_closure_acceptance
 
-import gunbc.namespace_reference_derived_closure_contract {
-  namespace_reference_derived_closure_acceptance_admissions,
-  reference_derived_closure_closing_contract_holds,
-}
-import std.types { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,7 +1,5 @@
 module gunbc.cli_run_hand_rust_area_ledger
 
-import gunbc.plans.cli_run_hollowing_plan { cli_run_hollowing_plan }
-import std.types { Int, List, String }
 
 data cli_run_hand_rust_area_ledger_note: String = "LIVE ITEM-GRAIN ledger for cli_run.rs hand Rust (Lane swift-lynx-164). Supersedes cli_run_hollowing_plan §0 stale prose (26,773 LOC / 976 fns dated 2026-07-23). Live scale is measured at execution by scripts/rust_item_census.py — this note does NOT pin numeric literals (DESIGN §3 stale-citation class). Area grain follows the 16 functional areas in gunbc.plans.cli_run_hollowing_plan §2.1–2.16. NOT a per-function ledger (#7074 closed). NOT a deletion plan — instrument only."
 

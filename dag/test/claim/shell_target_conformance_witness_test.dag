@@ -1,20 +1,5 @@
 module test.claim.shell_target_conformance_witness
 
-import std.types { Bool, Int }
-import std.roster_frontier { declaration_ref_eq }
-import extdeps.languages.bash.subject { gnu_bash_model_scope }
-import extdeps.posix.shell_command_language { posix_shell_model_scope }
-import gunbc.shell_target_conformance {
-  ShellConformanceFact,
-  ShellConformanceDegree,
-  ConformantSupersetWithStrictMode,
-  ConformanceUnstated,
-  shell_conformance_facts,
-  gnu_bash_subject_ref,
-  posix_shell_subject_ref,
-  conformance_for_implementation,
-  implementation_and_specification_are_distinct_subjects,
-}
 
 data conformance_witness_note: String = "Controls for the Bash/POSIX decomposition (DESIGN section 3, external upstream decomposition; review relayed through the operator 2026-08-04). The defect these pin: the POSIX Shell Command Language was stored as a further_citation on GNU Bash's ExternalModelScope, so one independently governed subject was recorded as a source ABOUT another. The rule is that multiple citations may ground one subject while a second governed subject is never a citation of the first. The discriminating assertion is the citation count — under the old shape Bash carried two citations and POSIX had no subject of its own, so asserting that Bash's further_citations is EMPTY goes red against the previous tree and green against this one. The rest pin the replacement: POSIX is a subject with its own scope and its own citation, and the conformance relation is a product-layer fact naming two DISTINCT subjects."
 

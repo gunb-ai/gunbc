@@ -1,35 +1,5 @@
 module v2.lens.module_impact_query
 
-import v2.std.algebra {
-  any,
-  contains,
-  fold_list,
-  list_reverse,
-  list_snoc_item,
-}
-import std.algebra { Cons }
-import v2.std.collection { List, Map, empty_map, map_insert }
-import v2.std.optional { Absent, Optional, Present, optional_present }
-import v2.std.text { String }
-import v2.lens.common.construction_justification {
-  ConstructionJustification,
-  WallAfterGrounding,
-}
-import std.disposition { SingleAuthority }
-import gunbc.namespace_reference_derived_closure_admission {
-  ReferenceDerivedClosureAdmission,
-  ReferenceDerivedClosureEstablished,
-  ReferenceDerivedClosureRefused,
-  ReferenceDerivedClosureUnavailable,
-  ReferenceDerivedClosureTrigger,
-  UnrelatedLoadedFileExcluded,
-}
-import v2.lens.module_graph {
-  ModuleDeclarationFact,
-  ModuleDependencyEdge,
-  ImportResolutionFact,
-  map_lookup_where_rejected_unreachable,
-}
 
 data module_impact_query_subject_note: String = "CONFIDENCE-0. THE direction-typed reading over the module-graph edge population. It adds NO edge producer: it consumes v2.lens.module_graph's ModuleDependencyEdge and ModuleDeclarationFact rows as data, exactly as dependency_closure does, honouring the 2026-07-10 operator constraint in dependency_edge_source_migration_note. What is new is DIRECTION: before this module every closure in the corpus was forward, and any consumer wanting dependents simulated it with N forward closures."
 

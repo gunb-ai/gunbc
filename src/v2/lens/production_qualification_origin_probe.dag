@@ -1,46 +1,5 @@
 module v2.lens.production_qualification_origin_probe
 
-import v2.compiler.self_host.emitter_producer_provenance {
-  CargoGreen,
-  EmissionQualification,
-  SourceProduced,
-  emission_qualification_eq
-}
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SingleAuthority }
-import v2.std.algebra {
-  any,
-  contains,
-  fold_list,
-  list_snoc_item
-}
-import v2.std.collection {
-  Absent,
-  List,
-  Present
-}
-import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
-import v2.std.grammar { node_atom_identity_optional }
-import v2.std.node_query {
-  call_callee_target,
-  node_is_call
-}
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Edge,
-  Node,
-  NodeFold,
-  Positional,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode,
-  fold_node
-}
-import v2.std.text { String }
 
 data production_qualification_origin_probe_law: String = "Production-qualification origin PROBE (session keen-lark-681, wise-ram-22 recut): NOT a repository-wide census. fn_arrow_decl_facts_live() scope is entry-closure today; repository-wide frequency is unknown. This carrier reports fixture-origin mint surfaces discovered by STRUCTURAL skeleton rules (mint/advance callee atoms + direct_rust_door_inferred_tree fixture-tree marker only — never target-model proxy, never declaration-name recognition). Origin vocabulary: ProductionQualificationOrigin = CompilerDerived | FixtureDerived | UnknownOrigin only — ExecutionMeasured is ProductionEvidenceGrounding, not an origin (a fixture-derived artifact may also be execution-measured). Known direct-door fixture-origin mint surfaces detected in live scope: see known_fixture_origin_mint_surface_count_in_scope() (honest live-read; zero today per production_qualification_live_scope_fixture_origin_policy_note while G2 marshal prunes callee atoms). Classifier proof uses planted_fixture_origin_mint_site_count() against production_qualification_planted_fixture_origin_oracle_count. Repository-wide frequency: unknown. Dissolve-on: derive every resolved call occurrence capable of constructing or advancing a production qualification (effect_reach / call-occurrence substrate), classify origins with call/dataflow evidence, attach ProductionEvidenceGrounding orthogonally, and retire name/closure pins."
 

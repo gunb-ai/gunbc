@@ -1,31 +1,5 @@
 module gunbc.runner_slot_provision
 
-import std.types { NonEmptyStr, String, List, Bool, Int }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.membership_reconcile {
-  MembershipPlan,
-  MemberAdded,
-  MemberChanged,
-  MemberRemoved,
-  MemberRemovalRefused,
-  membership_reconcile,
-  membership_added_count,
-}
-import gunbc.ownership { Ownership }
-import gunbc.runner_host_deploy {
-  RunnerHostDeploy,
-  runner_instance_names,
-}
-import extdeps.github.actions_runner {
-  ActionsRunnerBinaryArtifact,
-  actions_runner_release_2_334_0,
-  actions_runner_base_dir,
-  actions_runner_base_dir_ensure_script,
-  actions_runner_slot_extract_script,
-}
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_host_budget { declared_runner_count_for }
 
 // RunnerSlotProvision owns runner installation end-to-end in gunbc (operator ruling 2026-08-06:
 // ctrl is a dead repo; prior ctrl:install-actions-runner citations are void legacy pointers).

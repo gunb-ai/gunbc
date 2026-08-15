@@ -1,55 +1,5 @@
 module test.claim.roadmap_publish_witness_test
 
-import std.types { Bool, String, NonEmptyStr, Int, CommitSha, List, HttpStatus }
-import extdeps.github.pulls { PullRequest, PullRequestRef, PullRequestState, Open }
-import extdeps.github.github { GitHubUser, UserType, User }
-import gunbc.roadmap_publish {
-  RemoteBranch,
-  PullRequestObservation, PullRequestsRead, PullRequestsUnreadable,
-  RemoteBranchObservation, RemoteBranchesRead, RemoteBranchesUnreadable,
-  RemoteBranchReadFailure, RefAdvertisementRefused,
-  PullRequestReadFailure, render_pull_request_read_failure,
-  PullRequestCredentialUnavailable, PullRequestStatusRefused,
-  PullRequestTransportRefused, PullRequestBodyUndecodable,
-  PublicationOutcome,
-  PublicationBound, PublicationHeadDiverged, PublicationBindingAmbiguous,
-  RemoteBranchAtExpectedHeadWithoutPullRequest, RemoteBranchHeadDiverged,
-  RemoteBranchBindingAmbiguous,
-  BranchNotPublished, PublicationObservationRefused,
-  adjudicate_publication,
-  publication_detail,
-  publication_offers_the_expected_head,
-  RoadmapPublicationSubject,
-  PublicationReceipt,
-  PublicationReceiptOutcome,
-  ReceiptBound, ReceiptHeadDiverged, ReceiptBindingAmbiguous,
-  ReceiptRemoteBranchAtHeadWithoutPullRequest, ReceiptRemoteBranchHeadDiverged,
-  ReceiptRemoteBranchBindingAmbiguous, ReceiptBranchNotPublished,
-  ReceiptObservationRefused,
-  publication_receipt_of,
-  publication_receipt_outcome_key,
-  publication_receipt_json,
-  publication_subject_json,
-  publication_receipt_decode,
-  publication_receipt_schema,
-  PublicationReceiptDecode,
-  ReceiptDecoded, ReceiptUndecodable,
-  PublicationEvidence,
-  EvidenceForSubject, EvidenceAbsent, EvidenceUnreadable, EvidenceForAnotherSubject,
-  PublicationReceiptSource,
-  ReceiptSourceAbsent, ReceiptSourcePresent, ReceiptSourceUnreadable,
-  publication_evidence_for,
-}
-import extdeps.github.github { Repository, github_https_clone_url }
-import extdeps.languages.json.emit {
-  JsonValue,
-  json_string,
-  json_int,
-  json_bool,
-  json_object,
-  json_kv,
-  serialize_json,
-}
 
 data witness_scope_note: String = "What is claimed is the ADJUDICATION, not the fetch. adjudicate_publication is pure and total over observations the caller already holds, so every arm is reachable with no network and no token.\\n\\nWhat is NOT claimed, stated so the bound is visible: nothing here executes github.Pulls or git. A change that broke the reads while leaving the adjudication intact would keep these green. What the coproduct inputs buy is that a broken read is now REPRESENTABLE — the caller reports it and the refusal arm is exercised here — where an earlier cut could only raise."
 

@@ -1,59 +1,8 @@
 module v2.test.manual.cross_language_add_python_to_typescript
 
-import v2.test.manual.python_grammar_claim {
-  python_grammar_parse_fixture
-}
-import v2.test.manual.typescript_effect_io_emit {
-  ts_effect_io_emit_holds
-}
-import v2.test.manual.ingest_bridge {
-  ingest_bridge_realized
-}
 
-import v2.std.text { string_is_empty }
-import std.algebra { Cons, Empty }
-import v2.compiler.ingest {
-  cross_language_compile,
-  parse_tree_to_emitted_node,
-  parse_tree_to_target_model_bridge
-}
 
-import v2.compiler.infer { infer }
-import v2.std.inhabitant_neutralization { neutralize_core_for_target }
-import v2.compiler.emit { emit }
-import v2.extdeps.languages.python {
-  python_emitted_add_fn_node,
-  python_target_model
-}
-import v2.extdeps.languages.typescript { ts_target_model }
 
-import v2.std.grammar { ParseTree }
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  Rejected,
-  Unavailable,
-  port_locus
-}
-import v2.std.witness { Holds, Violates, Witness }
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  CompilesClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Integration,
-  Unit,
-  UnifiedTestClaim,
-  manual_claim_anchor
-}
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.effects { atom_node }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

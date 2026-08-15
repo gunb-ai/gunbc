@@ -1,11 +1,5 @@
 module v2.std.leaf_model_verification
 
-import v2.std.collection { List }
-import v2.std.host_run { ValueDiff }
-import v2.std.nat { Nat }
-import v2.std.node { Node, Symbol }
-import v2.std.text { String }
-import v2.std.verdict { Verdict, verdict_combine }
 
 type LeafModelClaim<M, Subject, Expectation> {
   model: M

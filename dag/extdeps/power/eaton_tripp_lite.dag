@@ -1,12 +1,5 @@
 module extdeps.power.eaton_tripp_lite
 
-import std.types { NonEmptyStr, String }
-import std.measure { volt, ampere, millimeter, rack_unit }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.power.types { PduCatalogRow }
-import extdeps.vendor.eaton { eaton }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

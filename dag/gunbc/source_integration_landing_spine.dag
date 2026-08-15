@@ -1,53 +1,5 @@
 module gunbc.source_integration_landing_spine
 
-import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp }
-import std.content_hash { ContentHash }
-import std.integer { PositiveInt }
-import std.measure { Minute, minute }
-import v2.std.optional { Optional, Present, Absent }
-import v2.std.collection { list_at_optional }
-import v2.std.algebra { list_head, HeadFound, HeadAbsent }
-import std.claim_evidence {
-  Claim,
-  EvidenceAdmissionPolicy,
-  EvidenceAdmissionRefusal,
-  EvidenceLink,
-  ClaimReadinessPolicy,
-  ClaimReadinessReceipt,
-  ClaimRequirementReadiness,
-  ClaimRequirementReadinessFold,
-  ClaimRequirementReady,
-  ClaimRequirementMissing,
-  ClaimRequirementChallenged,
-  ClaimRequirementConflicted,
-  ClaimRequirementEvidenceRefused,
-  claim_readiness_receipt,
-  claim_requirement_readiness_fold,
-}
-import gunbc.native_scm_interaction_contract {
-  NativeScmProposalIdentity,
-  NativeScmContinuation,
-  NativeScmContinuationOption,
-  NativeScmContinuationOptions,
-  NativeScmContinuationChoice,
-  NativeScmFirstContinuationOption,
-  NativeScmSecondContinuationOption,
-  NativeScmAdditionalContinuationOption,
-  NativeScmContinuationChoiceMatched,
-  NativeScmContinuationChoiceNotOffered,
-  NativeScmSelectedContinuationOption,
-  NativeScmRefusal,
-  NativeScmTerminalOutcome,
-  NativeScmTerminalLanded,
-  NativeScmTerminalChoiceRequired,
-  NativeScmTerminalCouldNotLand,
-  native_scm_resolve_choice,
-}
-import gunbc.scm_compatibility_shape {
-  CompatibilityProjectionReceipt,
-  CompatibilityRealizationHandle,
-  CompatibilityTargetHandle,
-}
 
 data source_integration_landing_spine_note: NonEmptyStr = "P0 landing spine. Full P−1 claims and admitted evidence flow into one readiness receipt; the proposal guarantee population is the readiness policy population by construction. Support-only, challenge-only, conflict, missing evidence, admission refusal, and duplicate requirements remain distinct. One closed-space receipt owns ready evidence, admission contract, equivalence, candidate population, and seven semantic closure axes; zero, one, and many are projections of that receipt, never caller labels. Admission nests the exact closed-one receipt. A transition nests the exact admission, independent read-back nests that transition, and each compatibility projection names the same accepted transition through a typed semantic-to-native target binding. Only a matched read-back can project Landed. Normative options own their material result or proposal amendment, and the selected structural position remains in the resume identity; a free token is only a transport hint. Audience-projected text is distinct from internal cause and locus. The terminal surface is exactly Landed | ChoiceRequired | CouldNotLand; unfinished work is a separate machine-owned arm. Commit freshness is a transition-time exact-parent precondition, not an early semantic closure certificate. This is P0 construction, not the P1 proof kernel, P2 capture, P3 effect transport, or a CLI."
 

@@ -1,12 +1,5 @@
 module gunbc.upstream_document_carriage
 
-import std.types { Bool, NonEmptyStr, String }
-import extdeps.publication {
-  AccessGatedNotPubliclyPublished,
-  DocumentPublicationStatus,
-  PubliclyPublishedUnderOpenLicense,
-  PubliclyPublishedWithRestrictiveMarking,
-}
 
 data upstream_document_carriage_law: String = "WHETHER THIS REPOSITORY MAY CARRY AN UPSTREAM DOCUMENT'S FACTS IS OUR POLICY, NOT AN UPSTREAM FACT (operator ruling, 2026-08-14, relayed through the mobo-design lane). Ampere did not decide what a public gunbc repository may contain; the operator did. So the rule lives in the gunbc layer and the STATUS it reads lives on each document's own module — recording that one Ampere specification is publicly published must not require editing a file every other module imports, and a gunbc decision must not sit inside the modules that model other people's authorities. THE AXIS IS PUBLIC AVAILABILITY. A restrictive marking is a recorded attribute that decides nothing: the Ampere Altra platform specification is footed 'Ampere Computing Proprietary' on every page and its facts are carriable because the document is published publicly. The Customer Connect board collateral is barred on the SAME axis rather than a different one — it is access-gated, so it is not public. The prior repository position, that transcription from a proprietary-marked document was an open licensing question, is SUPERSEDED by this ruling."
 

@@ -1,17 +1,5 @@
 module test.claim.materialization_kernel_closing_frontier_audit_witness
 
-import v2.std.optional { optional_absent, optional_present }
-import gunbc.materialization_kernel_closing_frontier_audit {
-  ClauseVerdict,
-  FrontierClause,
-  closing_frontier_clauses,
-  clause_delivered,
-  materialization_kernel_clause_count,
-  materialization_kernel_all_clauses_delivered,
-  materialization_kernel_progress_count,
-}
-import std.types { Bool }
-import v2.std.algebra { length }
 
 data materialization_kernel_closing_frontier_audit_witness_note: String = "Discriminating RED for the v1-materialization-kernel closing-frontier audit (brief origin: parent session still-bat-561, Lane F; RENAMED from materialization_kernel_closing_contract_witness per still-bat-561 operator ruling 2026-08-02, msg_9609b3a3 — this module audits the frontier, it is not the roadmap node's closing contract). materialization_kernel_audit_not_all_delivered_today is an EXPECT-RED control (DESIGN §4b): it asserts the AND-fold is false over the seven audited clauses, proving the audit summary can genuinely read false rather than being a vacuous always-true wrapper. It stays enrolled after any clause climbs to Delivered — a later regression that silently reverts a clause to NotDelivered is caught by this same assertion flipping true, not by a fresh test someone forgot to add."
 

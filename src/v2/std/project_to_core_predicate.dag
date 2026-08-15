@@ -1,12 +1,5 @@
 module v2.std.project_to_core_predicate
 
-import v2.std.algebra { list_snoc_item }
-import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
-import v2.std.model_core {
-  model_core_primitive_fact_axis_is_core,
-  model_core_primitive_fact_axis_is_surface
-}
-import v2.std.node { Conj, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node, node_rebuild, well_formed }
 
 fn project_to_core_axis_is_core(name: Symbol) -> Bool {
   model_core_primitive_fact_axis_is_core(axis: name)

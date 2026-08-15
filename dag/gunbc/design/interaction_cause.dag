@@ -1,6 +1,5 @@
 module gunbc.design.interaction_cause
 
-import std.types { String, Bool }
 
 data interaction_cause_note: String = "WHAT CAUSED THE RESPONSE, SAID WITHOUT NAMING A RENDERER (F2, review call 2026-08-04). The register's motion vocabulary was MotionTrigger — OnHover, OnFocusVisible, OnActive, OnStateClass — whose variants are named for CSS pseudo-class spellings and whose only projection maps them to selector text. That fuses the interaction MEANING ('the pointer approached this subject') with one realization's SPELLING (':hover'), which is the DESIGN section 3 interface/transport fusion in the exact shape extdeps.browser.browser was condemned for on gunbc#7556. A desktop, native, or canvas renderer has pointer-approach, focus and press; it has no ':hover' to import.
 

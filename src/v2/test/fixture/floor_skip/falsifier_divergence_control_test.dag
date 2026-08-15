@@ -1,7 +1,5 @@
 module v2.test.fixture.floor_skip.falsifier_divergence_control
 
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

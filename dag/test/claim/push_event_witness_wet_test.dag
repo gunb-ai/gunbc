@@ -1,16 +1,5 @@
 module test.claim.push_event_witness_wet
 
-import std.logic { Bool }
-import extdeps.filesystem.filesystem_io
-import extdeps.github.push_event {
-  push_before_from_event_path,
-  PushBeforeObserved,
-  PushBeforeAbsent,
-  PushBeforeZeroSha,
-  PushBeforeMalformed,
-  PushEventPayloadReadRefused
-}
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

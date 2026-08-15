@@ -1,21 +1,6 @@
 module gunbc.roadmap_provider_events
 
-import std.algebra { trim }
 
-import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
-import std.measure {
-  CharacterCount,
-  character_count,
-  character_count_value,
-  measure_le,
-}
-import extdeps.languages.json.grammar {
-  JsonTextParseResult, JsonTextParseOk, JsonTextParseFail,
-  json_text_parse_string,
-  json_text_skip_ws,
-  json_text_starts_with_at,
-}
-import extdeps.languages.json.parse { json_text_parseable }
 
 type CodexItemActivity
   = CodexRunningCommand

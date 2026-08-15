@@ -1,41 +1,6 @@
 module gunbc.git_diff_change_window
 
-import std.algebra { trim }
 
-import extdeps.git.object_store {
-  GitObjectId,
-  git_object_id_from_untagged_hex,
-  git_object_id_wire_hex
-}
-import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.languages.json.emit {
-  JsonValue,
-  JsonString,
-  JsonNull,
-  JsonBool,
-  JsonNumber,
-  JsonArray,
-  JsonObject,
-  serialize_json,
-  json_string,
-  json_kv,
-  json_object
-}
-import extdeps.languages.json.parse {
-  parse_json,
-  json_object_unique_member,
-  JsonMemberFound,
-  JsonMemberAbsent,
-  JsonMemberDuplicated,
-  JsonMemberNotAnObject
-}
-import std.types { String, NonEmptyStr, GitRef, Int }
-import std.content_hash {
-  Fnv1a64Structural,
-  content_hash_atom,
-  content_hash_combine_structural,
-  content_hash_eq_structural,
-}
 data git_diff_change_window_note: String = "Git realization of an exact affected-set comparison window. Producers observe merge-base(head, target_generation) in a Git worktree and persist a head- and window-identity-addressed receipt; consumers (gunbc.diff_baseline, floor_diff_observe) read the path named by GUNBC_DIFF_WINDOW_PATH. This module is Git-specific — other SCM realizations carry their own native receipts beneath a future compatibility envelope."
 
 data gunbc_diff_window_path_env: NonEmptyStr = "GUNBC_DIFF_WINDOW_PATH"

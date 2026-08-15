@@ -1,8 +1,5 @@
 module std.human_intervention
 
-import std.types { NonEmptyStr, Int, List, Bool }
-import std.decl_ref { DeclarationRef }
-import std.algebra { Ordering, Less, Equal, Greater }
 
 // Human burden is a FREQUENCY, never a scalar. "This strategy needs 3 manual steps" is
 // the state-space conflation DESIGN's failure-mode list names: a step performed once for

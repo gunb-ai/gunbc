@@ -1,20 +1,5 @@
 module v2.test.long.inhabitant_neutralization_e2e_witness
 
-import v2.compiler.emit { emit }
-import v2.compiler.ingest { cross_language_compile }
-import v2.compiler.infer { infer }
-import v2.compiler.translate { translate }
-import v2.extdeps.languages.go { go_source_text, go_target_model }
-import v2.extdeps.languages.python {
-  python_emitted_add_fn_node,
-  python_target_model
-}
-import v2.extdeps.languages.typescript { ts_source_text, ts_target_model }
-import v2.std.inhabitant_neutralization { neutralize_core_for_target }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.test.manual.python_grammar_claim { python_grammar_parse_fixture }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

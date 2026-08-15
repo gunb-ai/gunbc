@@ -1,9 +1,5 @@
 module extdeps.probes.provider_interface_acquisition
 
-import std.types { String, NonEmptyStr, Int }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -1,10 +1,5 @@
 module gunbc.plans.affected_set_self_confirmation
 
-import std.dissolution { unbound_dissolution }
-import std.types { List }
-import gunbc.plan { Plan, PlanRetiresWhen }
-import std.markdown { MarkdownBlock }
-import gunbc.plans.md_helpers { h2, p, li, ul }
 
 fn affected_set_self_confirmation_body() -> List<MarkdownBlock> {
   [

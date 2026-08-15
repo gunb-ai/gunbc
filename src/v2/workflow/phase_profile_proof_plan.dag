@@ -1,11 +1,5 @@
 module v2.workflow.phase_profile_proof_plan
 
-import std.realization_schedule {
-  Runnable,
-  RunnableSingleClaim,
-  runnable_resource_profile_negligible
-}
-import std.types { List }
 
 data phase_profile_gate_entry: String = "dag/tools/floor_effect_gate_witness.dag"
 

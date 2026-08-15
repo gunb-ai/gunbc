@@ -1,20 +1,5 @@
 module gunbc.fleet_desired_observe
 
-import std.types { String, Bool, FilePath, GitRef }
-import std.algebra { trim }
-import extdeps.git
-import extdeps.git.object_store {
-  GitObjectId,
-  git_object_id_from_untagged_hex,
-  git_object_id_eq,
-}
-import gunbc.fleet_main_revision {
-  fleet_desired_ref_name,
-  FleetDesiredRevision,
-  FleetDesiredAdmitted,
-  FleetDesiredUnobserved,
-  converge_target_revision,
-}
 
 // Operator verdict join 1 (2026-08-09): the LIVE half of gunbc.fleet_main_revision.
 // That module models what the desired ref MEANS; until this module landed, nothing on

@@ -1,27 +1,5 @@
 module test.claim.fleet_converge_privilege_hold_witness
 
-import std.types { Bool, Int, list_length }
-import gunbc.fleet_posix_accounts {
-  fleet_posix_operator_sudo_grants,
-  fleet_posix_ci_runner_sudo_grants,
-  fleet_posix_operator_sudo_grant_is_hostnamectl_only,
-}
-import gunbc.fleet_converge_cli {
-  converge_cli_receipt_owner_readback_required,
-  converge_cli_expected_receipt_owner_name,
-}
-import gunbc.host_converge_slice1 {
-  host_converge_slice1_memory_max_converge_apply_suppressed,
-  host_converge_slice1_memory_cap_live_pipeline_on_converge_suppressed,
-  host_converge_slice1_shadow_revert_script_matches_authority,
-  host_converge_slice1_probe_unit,
-  host_converge_slice1_cap_author_before_shadow_revert_enforced,
-}
-import gunbc.host_axis_caps {
-  runner_memory_cap_author_ready_for_shadow_revert,
-  derived_runner_memory_cap_members,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

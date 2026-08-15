@@ -1,27 +1,5 @@
 module gunbc.repo_atlas_projection
 
-import std.content_hash { content_hash_atom }
-import v2.lens.module_graph { ModuleDeclarationFact, map_lookup_where_rejected_unreachable }
-import v2.std.collection { Map, empty_map, map_insert }
-import v2.std.optional { Optional, Present, Absent }
-import v2.lens.module_impact_query {
-  ModuleIdentity,
-  ImpactReading,
-  ImpactStanding,
-  impact_module_eq,
-  impact_seeds_for_path
-}
-import extdeps.git {
-  GitDiffStatusEntry,
-  GitDiffChangeStatus,
-  GitDiffNameStatusParseOutcome,
-  GitDiffRange,
-  DiffAddedStatus, DiffCopiedStatus, DiffDeletedStatus, DiffModifiedStatus,
-  DiffPairingBrokenStatus, DiffRenamedStatus, DiffTypeChangedStatus,
-  DiffUnmergedStatus, DiffUnknownGitStatus
-}
-import v2.std.algebra { list_reverse }
-import extdeps.git.object_store { GitObjectId }
 
 data repo_atlas_subject_note: String = "THE ATLAS IS A PROJECTION, NOT A SECOND MODEL. It mints exactly one new concept — a renderer-neutral ADDRESS for a semantic subject — and consumes module identity, module declaration facts, Git change status, and the reverse-impact reading from their existing single authorities. It re-declares none of them. The renderer receives addresses and roles; it never receives Git logic, graph traversal, or pixel positions.
 

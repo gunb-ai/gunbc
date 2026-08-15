@@ -1,31 +1,6 @@
 module v2.test.claim.build_transport_admission_witness
 
-import std.dissolution { dissolution_description }
 
-import std.types { Bool, String, List }
-import std.effect_grant {
-  FilesystemPathTree,
-  NamespacePosition, position_under,
-}
-import std.access { AccessDecision, Permit, Deny }
-import std.disposition { Scaffold }
-import v2.compiler.emit_host {
-  emit_host_access_decision_seed_transport_scaffold,
-  emit_host_access_decision_seed_transport_receipt,
-  emit_host_access_decision_seed_transport_dissolve_trigger,
-}
-import v2.std.host_transport {
-  HostTransportDescriptor, WorkspaceFile, WorkspaceContent, EmittedSource,
-  ProcessInvocation, HostToolProgram, ProducedProgram,
-  InvocationArg, WorkspacePath,
-  RuntimeValueCodec, SignedI32Le,
-}
-import v2.compiler.build_transport_admission {
-  build_transport_admissible,
-  build_transport_rel_position,
-  rel_path_is_workspace_contained,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

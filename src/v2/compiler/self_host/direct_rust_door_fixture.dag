@@ -1,55 +1,5 @@
 module v2.compiler.self_host.direct_rust_door_fixture
 
-import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.infer { DerivedGrounding, InferredFacts, InferredTree }
-import v2.extdeps.languages.rust {
-  Bits32,
-  PanicOnOverflow,
-  Signed,
-  TwoComplementWrap,
-  rust_facts_i32,
-  rust_fixture_emitted_add_fn,
-  rust_fixture_i32_inhabitant,
-  rust_inhabitant_atom,
-  rust_int_kind_node,
-  rust_int_width_node,
-  rust_integer_facts_node,
-  rust_i32_overflow_disposition_node,
-  rust_i32_scalar_node,
-  rust_overflow_node,
-  rust_source_text,
-  rust_target_model
-}
-import v2.compiler.name_resolve { Admission, ResolutionSubject }
-import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import std.algebra { Cons, Empty }
-import v2.std.artifact { Artifact, SourceFile }
-import v2.std.cardinality { termination_proof_witness_for_node }
-import v2.std.collection { Map }
-import v2.std.compilers.target_model { TargetModel }
-import v2.std.constraints {
-  CanonicalGrounding,
-  CanonicalGroundingWitness
-}
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  Unavailable,
-  node_locus
-}
-import v2.std.optional {
-  Optional,
-  optional_absent,
-  optional_present
-}
-import v2.std.node { Node }
-import v2.std.text { String }
-import v2.std.witness {
-  Holds,
-  StructuralPropertyWitness,
-  Violates,
-  Witness
-}
 
 data direct_rust_door_fixture_note: String = "Self-host fixture for v2-emitter-direct-rust-door: rust add inferred tree lives in compiler self_host (not v2.test) so closing-contract admission can execute without layer inversion."
 

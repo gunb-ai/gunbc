@@ -1,30 +1,5 @@
 module v2.test.long.self_host_module_emit_derisk
 
-import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.name_resolve {
-  Admission,
-  ResolutionSubject
-}
-import v2.compiler.self_host.compiler_closure_emit {
-  CompilerClosureEmitReceipt,
-  emit_compiler_import_closure_from_ingest
-}
-import v2.compiler.program_assembly { assemble_program_from_ingest }
-import v2.compiler.infer { InferredTree, infer }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.compiler.source_authority {
-  DagSourceReadWitness,
-  SourceRootIngest
-}
-import v2.extdeps.languages.rust { rust_target_model }
-import std.algebra { Cons, Empty }
-import v2.std.cross_tree.import_model { V2Tree }
-import v2.std.artifact { Artifact, SourceFile }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

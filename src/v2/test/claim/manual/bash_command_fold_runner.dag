@@ -1,7 +1,5 @@
 module v2.test.manual.bash_command_fold_runner
 
-import std.realization_schedule { Runnable, RunnableSingleClaim, runnable_resource_profile_negligible }
-import v2.std.collection { List }
 
 data bash_fold_test_entry: String = "src/v2/test/claim/bash_command_fold_test.dag"
 

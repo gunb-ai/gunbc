@@ -1,20 +1,5 @@
 module test.claim.served_surface_browser_artifact_integrity_witness
 
-import std.types { FilePath, NonEmptyStr, String }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import extdeps.tools.sha256sum {
-  Sha256Matches,
-  sha256sum_verify_via_shell,
-}
-import extdeps.tools.wc {
-  FileByteCountMatches,
-  file_byte_count_via_wc,
-  verify_file_byte_count,
-}
-import gunbc.served_surface_browser_observation {
-  ScreenshotArtifact,
-  playwright_chromium_151_linux_arm64_headless_navigation_run,
-}
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

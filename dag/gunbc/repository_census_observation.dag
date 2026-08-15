@@ -1,15 +1,5 @@
 module gunbc.repository_census_observation
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField }
-import std.content_hash {
-  Fnv1a64Structural,
-  content_hash_atom,
-  content_hash_tagged_structural,
-  content_hash_combine_structural,
-  content_hash_eq_structural,
-}
-import gunbc.guarantee_measurement { MeasurementRevision, GitRevision, ContentFingerprint }
 
 data repository_census_authority_note: String = "CENSUS-0A, the repository census observation FACT (operator-directed 2026-08-04). It exists because five measurement errors landed across four sessions in one day, each producing a number that LOOKED precise: a readiness census keyed on a name suffix (17 claimed, 10 real); a concat census keyed on a binder name (117 against a real 204, so a PR body was honestly wrong); a corpus count reported dag-only as if repo-wide; a per-root count whose glob missed the files at the root; and a PR reported open that was closed. Each number was constructible WITHOUT its population, its revision and the identity of the method that produced it, so nothing could refuse it. THIS STAGE CARRIES THE FACT ONLY: population, subject revision, method EXECUTION identity, intrinsically identified rows, one content identity, and a derived row count. What it deliberately does NOT carry is any statement about how much of the population was covered or what may be concluded from the rows — coverage receipts, the duplicate-free denominator join and the inference ceiling are CENSUS-0B, and the first actual DOMAIN claim belongs to a real consuming census after that. Splitting there is not sequencing convenience: a conclusion is exactly the thing this repository keeps getting wrong, so it does not land until the receipts it must be derived FROM exist."
 

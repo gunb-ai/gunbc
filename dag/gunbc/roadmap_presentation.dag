@@ -1,47 +1,5 @@
 module gunbc.roadmap_presentation
 
-import gunbc.roadmap_model {
-  RoadmapNode, RoadmapEdge, Pointer,
-  roadmap_parent_ids,
-  NodeSizing, Unsized, Sized,
-  Intricacy, IntricacyLow, IntricacyMedium, IntricacyHigh,
-  Volume, VolumeSmall, VolumeMedium, VolumeLarge,
-}
-import gunbc.roadmap_status {
-  RoadmapItem, DerivableLine, AuthoredLine, PlainLine, SupersededLine, TicketLine,
-  item_superseded_by, item_is_done, signoff_accepts,
-  line_ticket, TicketFields, TicketUpdate,
-}
-import gunbc.roadmap_spawner {
-  node_is_spawnable, node_is_upcoming, node_is_frontier_done, node_closes_dependency,
-}
-import gunbc.roadmap_provider_events {
-  provider_execution_activity,
-  ProviderEventsRefused,
-}
-import gunbc.roadmap_workflow_stage {
-  WorkflowSegmentKind, WorkflowSegment, WorkflowSegmentState,
-  WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
-  WorkflowSegmentFailed, WorkflowSegmentRefused,
-  EnvironmentWorkflowSegment, WorkspaceWorkflowSegment, AgentWorkflowSegment,
-  VerificationWorkflowSegment, PublicationWorkflowSegment, ReviewWorkflowSegment,
-  GoalAuditWorkflowSegment,
-  workflow_segment_kind_label,
-}
-import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
-import gunbc.roadmap_workflow_command {
-  legacy_attempt_supersedable_label,
-  attempt_key_short_form,
-}
-import gunbc.workflow_reconcile { WorkflowReconcileReport }
-import extdeps.languages.json.emit {
-  JsonValue, json_object, json_kv, json_string, json_int, json_array,
-}
-import gunbc.worker_lifecycle {
-  WorkerProcessEvidence, WorkerProcessUnobserved, WorkerProcessAbsent,
-  WorkerProcessRunning, WorkerProcessExited,
-  worker_process_evidence_label,
-}
 
 data roadmap_presentation_note: String = "THE PRESENTATION SEAM (A2, operator-directed 2026-08-01; docs/plans/roadmap-presentation-seam-design.md). One projection layer between the roadmap/workflow authorities and every renderer: the renderer receives an ALREADY-DECIDED presentation — no punctuation splitting, no title reconstruction, no policy on string content, no availability-implies-emphasis, no evidence smuggled into an actuator region. The governing law: a stronger interface makes fewer claims, makes each claim at the right altitude, and shows the evidence or consequence that makes the claim matter — and truthful atoms do not automatically compose into a truthful presentation, so hierarchy, causality, and relevance are modeled HERE rather than improvised per renderer. Regions: Primary (what this work is), Activity (what is happening to it), Action (what the user can do), Evidence (why the activity claim is believed), Disclosure (complete detail). ActivityRegion is NOT a kind of ActuatorRegion — the A1-era fusion of process evidence into the actuator cell is the falsifier specimen this module dissolves. DELIBERATE ABSENCE: there is no progress_percent field and none may be added — the seven obligations are independently evidenced facts, not percentage increments, and a scalar appears only if the graph ever establishes one (making the false scalar UNWRITABLE is the §5 construction form of the rule)."
 

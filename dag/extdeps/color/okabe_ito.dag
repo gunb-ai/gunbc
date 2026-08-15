@@ -1,9 +1,5 @@
 module extdeps.color.okabe_ito
 
-import std.types { Int, String, Bool }
-import extdeps.color.srgb { Srgb8, CitedColorRow }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

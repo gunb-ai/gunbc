@@ -1,44 +1,5 @@
 module test.claim.provider_standing_probe_bridge_witness
 
-import std.types { Bool, String, NonEmptyStr }
-import v2.std.algebra { list_head, HeadFound, HeadAbsent }
-import extdeps.llm.cli_lifecycle {
-  CodexCliProvider,
-  ProviderInstance,
-  ProviderInstanceFieldUnobserved,
-}
-import gunbc.provider_standing {
-  ProviderStandingFromFact,
-  ProviderStandingUnobserved,
-  AuthenticationAuthenticated,
-  AuthenticationCredentialsAbsent,
-  AuthenticationProfilePresentTokenAbsent,
-  EntitlementObservationUnobserved,
-  LimitObservationUnobserved,
-  InstallationStandingUnobserved,
-  ToolEnvironmentStandingUnobserved,
-  InstallationReady,
-  ToolEnvironmentReady,
-  LimitDispatchDrawAutomatic,
-  provider_standing_is_selection_eligible,
-  provider_standing_from_observed_bundle,
-  selection_fixture_standing_fact_id,
-}
-import gunbc.dispatch_selection {
-  dispatch_codex_default_model,
-}
-import gunbc.provider_standing_probe_bridge {
-  CodexProviderDashboardProbeObservation,
-  CodexStateRootPresent,
-  ClaudeCredentialControlProbeObservation,
-  ProviderDashboardExecProbeReported,
-  provider_standing_bundle_from_codex_dashboard_probes,
-  provider_standing_bundle_from_claude_credential_control_probe,
-  provider_standing_probe_bridge_limit_unobserved_reason,
-  provider_standing_probe_bridge_entitlement_unobserved_reason,
-  provider_standing_probe_bridge_claude_installation_unobserved_reason,
-  provider_standing_probe_bridge_claude_tool_environment_unobserved_reason,
-}
 
 fn fixture_codex_provider_instance() -> ProviderInstance {
   ProviderInstance {

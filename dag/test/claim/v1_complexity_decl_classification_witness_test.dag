@@ -1,17 +1,5 @@
 module test.claim.v1_complexity_decl_classification_witness_test
 
-import std.types { String, Bool, List }
-import v2.std.decl_index { DeclFact, DataItem }
-import v2.lens.enforcement.receipts { enforcement_red_probe_body_leaf }
-import gunbc.v1_complexity_decl_classification {
-  roster_names_distinct,
-  every_semantic_capability_has_authority,
-  every_inventory_authority_carrier_classified,
-  v1_complexity_decl_classification_roster_count,
-  population_names_distinct,
-}
-import gunbc.v1_complexity_decl_classification_roster { v1_complexity_decl_classification_roster }
-import gunbc.v1_complexity_capability_census { v1_complexity_inventory_roster }
 
 data witness_note: String = "FAST-LANE structural hygiene for C0(b2): the declaration classification roster is internally consistent — distinct names, every semantic capability has an authority declaration, and every inventory authority carrier is classified as AuthorityOf at the matching decl_name. The decl_facts population join is deliberately in the long-lane companion because it pays a full witness-layer scan over a pool including src/v1."
 

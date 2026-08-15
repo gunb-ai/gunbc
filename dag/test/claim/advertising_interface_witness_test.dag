@@ -1,25 +1,5 @@
 module test.claim.advertising_interface_witness
 
-import extdeps.advertising.google_ads {
-  google_ads_bid_strategy_wire_labels,
-  google_ads_billable_unit_catalog,
-  google_ads_media_rate,
-  google_cpc_unit,
-  google_vcpm_unit,
-}
-import extdeps.advertising.meta_ads {
-  meta_ads_media_rate,
-  meta_ads_minimum_daily_budget_rate,
-  meta_bid_strategy_catalog,
-  meta_bill_clicks,
-  meta_bill_thruplay,
-  meta_billing_event_catalog,
-  meta_optimization_goal_wire_values,
-  meta_strategy_cost_cap,
-}
-import extdeps.advertising.types { AdPriceDetermination, AuctionDetermined, RateUnavailable }
-import std.types { list_length }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

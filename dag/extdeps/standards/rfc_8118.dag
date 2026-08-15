@@ -1,27 +1,6 @@
 module extdeps.standards.rfc_8118
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.types { NonEmptyStr, String, List, Bool }
-import std.integer { PositiveInt }
-import std.citation {
-  CitationSelector,
-  CitationSelectorConstructed,
-  CitationSelectorRefused,
-  SelectorRefusalCause,
-  fragment_selector,
-}
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri {
-  Uri,
-  Https,
-  uri_percent_encode_component,
-  uri_percent_encode_code_points,
-  UriPercentComponentEncoded,
-  UriPercentComponentRefused,
-  UriPercentEncodeRefusalCause,
-}
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -1,37 +1,5 @@
 module test.claim.instrument_camera_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { String, Bool, Int, List }
-import gunbc.design.instrument_camera {
-  StateOwner, AuthoritativeProgramView, LocalInstrumentState, InstrumentObservation,
-  RendererEphemera, state_owner_key, owner_may_write_domain_fact,
-  ProgramDepth, DepthProgram, DepthOutcome, DepthFront, DepthNode, DepthEvidence,
-  program_depth_key, program_depth_index, DepthStep, Inward, Outward, step_depth,
-  ProgramMode, ModeStatus, ModeRemaining, ModeWhy, program_mode_key,
-  FocusSubject, NoSubjectSelected, FinishLineFocused, focus_subject_key,
-  focus_finish_line, focus_subject_eq,
-  ProgramCamera, camera_initial, camera_step_depth, camera_set_mode, camera_select,
-  camera_seek_depth,
-  camera_preserves_subject_across_depth, camera_preserves_subject_across_mode,
-  camera_wire, camera_from_wire, camera_wire_valid, camera_storage_key,
-  wheel_detent_threshold_px, WheelIntegrator, wheel_integrator_initial,
-  wheel_integrator_absorb, wheel_integrator_steps_available, wheel_integrator_consume_one_step,
-  wheel_normalized_delta, wheel_owns_scroll_at_clamp,
-}
-import gunbc.design.instrument_projection {
-  SubjectPlacement, RefusalAggregate, NoActiveRefusal, ActiveRefusals, refusal_count,
-  refusal_subject_key, finish_line_region, finish_line_placements,
-  project_salience, project_finish_line_salience, project_admission,
-  assignment_role_for,
-}
-import gunbc.design.salience {
-  SalienceRole, SalienceGround, SalienceSupporting, SalienceFocal, SalienceCritical,
-  salience_key, SalienceAssignment, FocalAdmission, FocalAdmitted, FocalBudgetExceeded,
-}
-import gunbc.v1_deletion_plan {
-  V1FinishLine, CompilerFixedPoint, InterpreterDeleted, ProductsV1Free,
-  ZeroHandMaintainedRust, v1_exit_finish_lines, v1_finish_line_key,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

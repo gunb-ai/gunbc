@@ -1,11 +1,5 @@
 module gunbc.design.state_response
 
-import std.decl_ref { DeclarationRef }
-import extdeps.languages.css.properties { CssPropertyName, css_property_wire }
-import gunbc.design.material {
-  BuildRule, StaticRule, ResponseRule, SelfResponse,
-  MotionTrigger, TimingToken, CssDecl, decl,
-}
 
 data state_response_note: String = "The interaction-totality law's construction half (composition slice 1; operator question round 5: how do we prevent the flash class?). The defect's mechanism: a response row's decls are CONSTANTS, so a state-dependent channel is either hand-multiplied across state selectors or accidentally constant-ized — the press fill was authored in the one channel that bypassed the detent-table pattern. This module is the detent table generalized past transforms: a component declares its STATE FAMILY once (members = binding x family key, the single authority for the state-class-to-band mapping that was previously spelled at three sites), declares each stateful CHANNEL once as a function of state (a var role, never a literal), and the realize fold multiplies the channel across every member — a missing family member is unwritable by totality of the fold, exactly as a detent edge cannot skip the table.
 

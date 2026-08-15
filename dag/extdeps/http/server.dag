@@ -1,13 +1,5 @@
 module extdeps.http.server
 
-import std.http_path { PathTemplate, PathParamBinding }
-import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, HttpStatus, Port }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.uri_path {
-  PathTemplateMatch, PathMatched, PathNotMatched,
-  match_path_template,
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

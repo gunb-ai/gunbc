@@ -1,6 +1,5 @@
 module gunbc.site.markup
 
-import std.markup { Fragment, Element, FragmentText, Attribute, attr }
 
 fn txt(s: String) -> Fragment {
   FragmentText { content: s }

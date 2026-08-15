@@ -1,20 +1,5 @@
 module std.primitive_identity
 
-import std.algebra {
-  CostShape,
-  ShapeIterateBody,
-  ShapeLinearScan,
-  all_algebra_field_templates,
-  all_algebra_template_names,
-}
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, decl_ref, decl_field_ref }
-import std.primitives { primitive_contract_roster, builtin_registry_surface_names }
-import std.types { Bool, Int, List, NonEmptyStr, String }
-import extdeps.languages.rust.emit { rt_function_registry }
-import gunbc.v1_interpreter_primitive_surface {
-  v1_interpreter_primitive_arms,
-  v1_interpreter_row_count,
-}
 
 data primitive_identity_d0_scope_note: String = "D0 is NOT terminal acceptance and does NOT close the subject universe. Landed and executing: join mechanism across five carriers, five refusal variants typed, three refusal detectors executing with witnesses (see primitive_d0_refusal_execution_note), derived census across all five surfaces including InterpreterDispatch from gunbc.v1_interpreter_primitive_surface. D1 (interpreter-primitive-roster consumption): measurement scaffold deleted; primitive_surface_census_derived reads the roster authority. Population-wide identity join closure remains the terminal acceptance bar."
 

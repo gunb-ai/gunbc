@@ -1,20 +1,5 @@
 module product.spatial_world
 
-import std.types { Bool, List }
-import std.integer { Int }
-import std.measure { CubicMillimeter }
-import std.change {
-  KeyedDiffHunk, KeyedDiffAddedHunk, KeyedDiffRemovedHunk, KeyedDiffModifiedHunk,
-  KeyedPatch,
-}
-import std.orthogonal_geometry { OrthogonalRefusal, OrthogonalReady, OrthogonalRefused }
-import std.orthogonal_topology {
-  EnclosedSpace, space_eq, space_volume,
-  SpaceComplex, space_complex, complex_total_volume,
-}
-import product.placement_supply { RoomIdentity }
-import v2.std.optional { Present, Absent }
-import std.spatial_frame { SpatialFrameRegistry }
 
 // SPATIAL-4A: WORLD STATE, AND VARIANTS AS DELTAS.
 //

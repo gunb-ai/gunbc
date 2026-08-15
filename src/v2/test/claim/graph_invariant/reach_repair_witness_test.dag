@@ -1,47 +1,5 @@
 module v2.test.graph_invariant.reach_repair_witness_test
 
-import v2.compiler.translate { target_serialize_source_from_model }
-import v2.extdeps.languages.dag {
-  dag_fixture_emitted_loop_fn,
-  dag_loop_arrow_with_body_wrong_value_fixture,
-  dag_loop_body_node,
-  dag_loop_target_model
-}
-import v2.lens.application { apply_diff }
-import v2.lens.application_serializer { serialize_diff_as_source_patch }
-import v2.std.lens_verdict { Holds, LensVerdict, Violation }
-import v2.lens.common.graph_invariant {
-  GraphReachProjection,
-  graph_invariant_reach_verdict,
-  graph_invariant_reaches,
-  graph_reach_add_edge_repair,
-  graph_reach_apply_diagnostic_correction,
-  graph_reach_root_replacement_edit,
-  graph_reach_unreachable_diagnostic
-}
-import v2.std.collection { List }
-import v2.std.dependency { Contains, DependencyView, dependency_lens }
-import v2.std.diagnostic {
-  Accepted,
-  Correction,
-  Diagnostic,
-  Rejected,
-  Suggested,
-  Unavailable,
-  correction_eq
-}
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Diff,
-  Edit,
-  Node,
-  Path,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

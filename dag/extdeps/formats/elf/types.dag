@@ -1,11 +1,5 @@
 module extdeps.formats.elf.types
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.formats.elf.primitives { ElfClass, ElfDataEncoding, ElfFileType, ElfMachine }
-import std.exec_format { EntryPoint }
-import std.types { Bool, Int, List }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

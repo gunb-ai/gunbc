@@ -1,19 +1,7 @@
 module std.interface_summary
 
-import std.types { NonEmptyStr, List }
-import std.content_hash {
-  ContentHash,
-  Fnv1a64Structural,
-  content_hash_atom,
-  content_hash_combine_structural,
-  content_hash_tagged,
-  content_hash_tagged_structural,
-  as_content_hash_structural,
-}
 
-import std.disposition { Disposition, Scaffold, SingleAuthority }
 
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 
 type InterfaceHash = Fnv1a64Structural where brand("InterfaceHash")

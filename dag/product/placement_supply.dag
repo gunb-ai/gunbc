@@ -1,9 +1,5 @@
 module product.placement_supply
 
-import std.types { NonEmptyStr, Bool, List, String, Int }
-import std.measure { RackUnit }
-import std.decl_ref { DeclarationRef }
-import extdeps.dhcp.v4 { MacAddress }
 
 type HostIdentity = NonEmptyStr where brand("HostIdentity")
 type PhysicalAssetIdentity = NonEmptyStr where brand("PhysicalAssetIdentity")

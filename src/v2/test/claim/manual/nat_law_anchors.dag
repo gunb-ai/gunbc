@@ -1,23 +1,5 @@
 module v2.test.manual.nat_law_anchors
 
-import v2.std.verification {TestClaim,
-TestClassification,
-  Tier1,
-  Unit,
-  ManualNatAddLeftIdentity,
-  ManualNatAddRightIdentity,
-  ManualNatAddAssociativity,
-  ManualNatMulLeftIdentity,
-  ManualNatMulAnnihilator,
-  ManualNatMulAssociativity,
-  CompilesClaim,
-  DiagnosticClaim,
-  EqualsClaim,
-  RoundTripClaim,
-  manual_claim_anchor
-}
-import v2.std.diagnostic { Accepted, None, Outcome }
-import v2.test.manual.connective_anchors { stub_empty_conj }
 
 data claim_nat_add_left_identity: TestClaim = CompilesClaim {
   label: "manual/nat: monoid left identity nat_add(v2.std.nat.Zero,a)=a (law)",

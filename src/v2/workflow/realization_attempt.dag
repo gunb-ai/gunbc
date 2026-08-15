@@ -1,25 +1,5 @@
 module v2.workflow.realization_attempt
 
-import v2.compiler.ingested_fixture_arrows { ingested_resolved_module_from_source }
-import v2.compiler.program_assembly { assemble_program_from_ingest }
-import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
-import v2.compiler.name_resolve { Admission, ResolutionSubject, Import, ImportVisible }
-import v2.compiler.infer { infer, InferredTree }
-import v2.compiler.compile { compile_inferred, TranslateTo, TranslateResult, EvalResult, CompileMode }
-import v2.compiler.emit_produced { emit_produced_module }
-import v2.extdeps.languages.rust { rust_target_model_staging }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.collection { list_at_optional }
-import v2.std.compilers.lexing { symbol_lexeme }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.communication.medium { Medium }
-import v2.std.diagnostic { Accepted, Rejected, Outcome, Diagnostic, NonEmptyDiagnostics, Textual }
-import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Named, Symbol, node_synthetic }
-import v2.std.optional { Optional, Present, Absent }
-import v2.std.algebra { fold_list, length }
-import std.algebra { Cons, Empty }
-import v2.std.logic { Bool }
-import std.types { Int, List, NonEmptyStr, String }
 
 data realization_attempt_note: String = "CI2-0 Commit B (operator mandate 2026-08-08): the ACTUAL canonical v2 realization attempt per identity — replacing the circular census whose capability verdict was bundle membership. One entry attempt runs the mandated pipeline over the entry's real authored source: Filesystem.Read -> tokenize -> parse_module -> normalize -> resolve (ingested_resolved_module_from_source, the SAME general ingest the wave1 census fixtures ride — not a witness-specific converter) -> Arrow extraction per declaration -> emit_produced_module against rust_target_model_staging (the one general Rust TargetModel). The result is a typed standing per phase: the FIRST refusing phase is recorded with its exact diagnostic, and a green traversal is V2TranslateSerialized (RustCompile/NativeExecute are the transport stages, attempted by the bundle leg, not here). Bundle membership appears nowhere in this computation."
 

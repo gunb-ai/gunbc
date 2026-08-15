@@ -1,28 +1,5 @@
 module v2.test.impossible_bug.unhandled_diagnostic_paths
 
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  node_locus,
-  None,
-  Outcome,
-  Rejected,
-  Suggested,
-  diagnostics_singleton
-}
-import v2.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, SyntheticOccurrence }
-import v2.std.verification {
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier2,
-  Unit,
-  CompilesClaim,
-  DiagnosticClaim,
-  EqualsClaim,
-  RoundTripClaim,
-  manual_claim_anchor
-}
 
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],

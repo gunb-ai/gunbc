@@ -1,33 +1,5 @@
 module gunbc.citation.pdf_safe_profile
 
-import std.types { NonEmptyStr, List, Bool }
-import std.integer { PositiveInt }
-import extdeps.uri { Uri, UriPercentEncodeRefusalCause }
-import extdeps.standards.rfc_8118 {
-  PdfProfileParameter,
-  PdfProfileParameterConstruction,
-  PdfOpenParameterSequence,
-  PdfOpenPage,
-  PdfOpenNamedDest,
-  PdfOpenStructElem,
-  ParameterConstructed,
-  OpenPage,
-  OpenNamedDest,
-  OpenStructElem,
-  OpenZoom,
-  OpenComment,
-  OpenView,
-  OpenViewRect,
-  OpenHighlight,
-  OpenSearch,
-  OpenFdf,
-  NavigableUriProjection,
-  NavigableUriProjected,
-  NavigableUriRefused,
-  BaseLocatorAlreadyCarriesFragment,
-  PdfOpenParameterPercentEncodeRefused,
-  project_navigable_uri,
-}
 
 data pdf_safe_profile_note: String = "gunbc bounded admission policy for RFC 8118 PDF open parameters — NOT upstream semantics. extdeps.standards.rfc_8118 owns the full RFC vocabulary; this module declines parameters gunbc has not yet admitted for citation use."
 

@@ -1,20 +1,5 @@
 module test.claim.markup_serializer_witness
 
-import std.markup {
-  Fragment,
-  FragmentText,
-  Element,
-  Attribute,
-  AttributeContext,
-  UrlContext,
-  escape_text,
-  escape_attribute,
-  escape_url,
-  unescape_text,
-  unescape_attribute,
-  unescape_url,
-}
-import extdeps.languages.html_fragment { serialize_fragment }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

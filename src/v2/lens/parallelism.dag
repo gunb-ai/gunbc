@@ -1,47 +1,5 @@
 module v2.lens.parallelism
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import v2.lens.common.algebraic_composition {
-  BarrierCoupled,
-  DataDependent,
-  EffectCoupled,
-  KnownParallelismRelation,
-  ParallelismKindPolicy,
-  ParallelismRelation,
-  ReadsParallelismFacts,
-  UnresolvedCoupling,
-  parallelism_classifier
-}
-import std.disposition { SingleAuthority }
 
-import v2.compiler.infer { InferredFacts, InferredTree, inferred_facts_descent, inferred_facts_subject_node, infer_facts_lookup_miss_diagnostic }
-import v2.std.algebra { bag_eq, list_snoc_item }
-import v2.std.collection {
-  List,
-  optional_present_witness
-}
-import v2.std.optional {
-  Optional,
-  optional_absent,
-  optional_prefer_first_present,
-  optional_present
-}
-import v2.std.dependency {
-  ClassifiedDependencyView,
-  DependencyView,
-  classify_dependency_kind,
-  classified_dependency_view_eq
-}
-import v2.std.diagnostic {
-  AmbiguousIntent,
-  Diagnostic,
-  Textual,
-  Unavailable,
-  WholeFile,
-  node_locus
-}
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
-import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
 
 type ParallelismFact {
   dependencies: List<ClassifiedDependencyView<ParallelismRelation>>

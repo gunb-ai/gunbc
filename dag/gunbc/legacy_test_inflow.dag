@@ -1,12 +1,6 @@
 module gunbc.legacy_test_inflow
 
-import std.algebra { trim }
 
-import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
-import gunbc.legacy_test_behavior_disposition {
-  LegacyTestBehavior,
-  legacy_test_behavior_id,
-}
 
 data legacy_test_inflow_authority_note: String = "WHY THIS EXISTS: THE MECHANISM IS ABSENT, NOT THE RATIO. The v1-test-migration roadmap node declares in its own out_of_scope that adding a test written only in Rust, with no authority the substrate owns, 'counts against the finish line rather than toward it' because it grows the very population the node exists to drain. Nothing in the repository observes that inflow. The declared rule and the enforced rule differ, and the difference is invisible: the disposition graph measures the population and the frontier, both of which a steady arrival of new legacy tests moves without anyone deciding to move them. This carrier makes arrivals observable at the grain the rule is stated in. It is deliberately NOT justified by any measured arrival rate — a rate is one window's sample, and a mechanism argued from a sample invites deletion the first window the sample inverts. The rate is what this measures, never what establishes it."
 

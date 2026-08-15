@@ -1,13 +1,5 @@
 module extdeps.llm.codex_auth
 
-import std.types { String, NonEmptyStr, Int, Bool, List }
-import std.measure { Second, second, second_count }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.uuid { Uuid }
-import extdeps.time.rfc3339 { Rfc3339Timestamp }
-import extdeps.auth.jwt { JwtCompactSerialization, NumericDate }
-import extdeps.auth.oidc { OidcIdTokenClaims }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

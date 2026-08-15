@@ -1,34 +1,6 @@
 module test.claim.roadmap_page_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 
-import std.markup { Fragment, Element, FragmentText, attr }
-import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
-import gunbc.roadmap_focus { RoadmapFocus, NoFocus }
-import gunbc.roadmap_page {
-  roadmap_page_for_authority,
-  roadmap_page_for_doc,
-  roadmap_page,
-  roadmap_daily_workspace_page,
-  nodes_ul,
-  page_script_census,
-  dispatch_client_script,
-  finish_line_row,
-}
-import gunbc.v1_deletion_plan { v1_exit_finish_lines }
-import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
-import gunbc.roadmap_model {
-  RoadmapNode,
-  RoadmapEdge,
-  IntricacyLow,
-  VolumeSmall,
-  section_group,
-}
-import gunbc.roadmap_component { dispatch_client_js_source }
-import gunbc.roadmap_style { roadmap_css }
-import gunbc.roadmap_belt_actuate { belt_dispatch_all_status_labels }
-import extdeps.languages.json.emit { serialize_json }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

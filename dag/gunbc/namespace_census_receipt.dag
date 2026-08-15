@@ -1,10 +1,6 @@
 module gunbc.namespace_census_receipt
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.types { String, List }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 type NamespaceCensusCompilerBinding {
   summary_sha256_key: String,

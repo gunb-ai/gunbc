@@ -1,22 +1,5 @@
 module v2.test.lens_cost.expr_refusal
 
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.lens.cost { LinearCost, LogCost, SizeVariable, UnknownCost }
-import v2.lens.cost.expr {
-  CostEffect,
-  cost_log_expr,
-  normalize_cost_expr_to_symbolic,
-  size_of
-}
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.nat { Nat, Succ, Zero }
-import v2.std.node {
-  Atom,
-  Node,
-  TypeNode,
-  SyntheticOccurrence
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,21 +1,5 @@
 module gunbc.public_projection
 
-import std.types { CommitSha, FilePath, List, NonEmptyStr }
-import std.content_hash {
-  ContentHash,
-  content_hash_atom,
-  content_hash_combine_structural,
-  content_hash_tagged,
-  serialize_content_hash,
-  as_content_hash_structural,
-}
-import gunbc.publication_policy {
-  AdmittedPublicationPolicy,
-  PublicationDisposition,
-  PublishPublic,
-  WithholdPrivate,
-  resolve_disposition_for_path,
-}
 
 data public_projection_note: String = "Derived public projection plan over authored subjects. Requires AdmittedPublicationPolicy from admit_publication_policy — illegal policies are unrepresentable on this path. Never the unrestricted authored tree and never a pathname census: policy resolves each subject's disposition, included_subjects carries only PublishPublic rows, omitted_subjects carries WithholdPrivate rows, and projection_digest fingerprints the admitted set."
 

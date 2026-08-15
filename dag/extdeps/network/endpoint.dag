@@ -1,11 +1,5 @@
 module extdeps.network.endpoint
 
-import std.types { String, Bool, NonEmptyStr, Port }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.dns.domain_name { HostName, DomainName, domain_name_wire }
-import extdeps.network.address { IpAddress, render_ip_address, ip_v4 }
-import extdeps.network.ipv4 { Ipv4Address }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

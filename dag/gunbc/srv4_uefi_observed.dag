@@ -1,14 +1,5 @@
 module gunbc.srv4_uefi_observed
 
-import std.types { List }
-import extdeps.firmware.uefi_shell {
-  UefiShellEnvironment,
-  UefiNetworkInterface,
-  UefiBootOption,
-  UefiDeviceMapping,
-  MediaPresent,
-  MediaDisconnected,
-}
 
 data srv4_uefi_observed_environment: UefiShellEnvironment = UefiShellEnvironment {
   mappings: [

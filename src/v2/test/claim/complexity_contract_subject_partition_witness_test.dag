@@ -1,26 +1,5 @@
 module v2.test.claim.complexity_contract_subject_partition_witness
 
-import v2.lens.enforcement.complexity_contract_subject {
-  AsymptoticCostProjection,
-  BoundedSummation,
-  ComplexityContractSubject,
-  DerivedClaim,
-  DerivedKernel,
-  GlobalOptimality,
-  OptimalityClaim,
-  OptimalityResidue,
-  complexity_contract_subjects_partition_legacy_mixed_row,
-  complexity_derived_kernel_boundary_is_wall_after_grounding,
-  complexity_mixed_row_claim_belongs_to_subject,
-  complexity_optimality_boundary_is_ratchet_forever,
-  complexity_scope_roster_has_no_duplicates
-}
-import v2.lens.enforcement.contract {
-  lens_contract_complexity_derived_kernel,
-  lens_contract_complexity_optimality
-}
-import v2.lens.common.construction_justification { WallAfterGrounding, RatchetForever }
-import std.disposition { SingleAuthority }
 
 // C0(c) discriminating controls: the legacy mixed lens_contract_complexity row partitions into derived-kernel (WallAfterGrounding / SingleAuthority) and optimality (RatchetForever). Positive: every legacy claim maps to exactly one subject roster and both contract rows carry the matching boundary class. RED: a derived claim classified under OptimalityResidue fails; a planted duplicate in a synthetic roster fails the no-duplicates check.
 test fn complexity_contract_subjects_partition_legacy_mixed_row_holds() -> Bool {

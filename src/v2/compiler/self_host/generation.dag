@@ -1,17 +1,5 @@
 module v2.compiler.self_host.generation
 
-import v2.std.algebra { fold_list, for_all, freemonoid_empty, list_snoc_item }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  Unavailable,
-  port_locus
-}
-import v2.std.node { combine_hash, Hash, Symbol, symbol_identity_digest }
-import v2.std.text { String, string_is_empty }
-import std.content_hash { Sha512Digest, content_hash_eq_sha512 }
 
 // Generation identity is SIX independent axes, never one scalar. A single opaque
 // compiler_identity digest can report THAT a generation went stale and cannot report

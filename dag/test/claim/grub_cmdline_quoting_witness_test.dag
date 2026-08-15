@@ -1,8 +1,5 @@
 module test.claim.grub_cmdline_quoting
 
-import std.logic { Bool }
-import extdeps.bootloader.grub { GrubMenuEntry, grub_menuentry_render }
-import extdeps.firmware.kernel_cmdline { KernelKeyValue, KernelFlag }
 
 test fn grub_quotes_semicolon_cmdline_args_only() -> Bool {
   let entry = GrubMenuEntry {

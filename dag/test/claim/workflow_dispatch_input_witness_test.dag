@@ -1,14 +1,5 @@
 module test.claim.workflow_dispatch_input_witness
 
-import extdeps.github.actions {
-  WorkflowDispatch, DispatchInput, InputString, InputChoice
-}
-import gunbc.fleet_converge_workflow { fleet_converge_workflow, expected_fleet_converge_yml }
-import gunbc.ci_spec { gunbc_ci_fleet_converge_apply_invoke }
-import extdeps.languages.yaml.gha_workflow { workflow_trigger_entry }
-import extdeps.languages.yaml.types {
-  YamlValue, YamlNull, YamlBool, YamlString, YamlInt, YamlFloat, YamlSequence, YamlMapping
-}
 
 fn value_is_expected_input(v: YamlValue) -> Bool {
   match v {

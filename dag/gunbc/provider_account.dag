@@ -1,16 +1,5 @@
 module gunbc.provider_account
 
-import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
-import extdeps.llm.codex_auth {
-  CodexStateRoot,
-  CodexRefreshPersistence,
-  CodexPersistenceUnobserved,
-  CodexPersistenceObservedLoginOnly,
-  CodexPersistsOnRefresh,
-  codex_state_root_default_relative,
-  codex_observed_refresh_persistence,
-  codex_observed_concurrent_sessions_per_root,
-}
 
 data provider_account_naming_note: String = "THE SUFFIX CONVENTION IS OURS; THE ISOLATION IS CODEX'S. extdeps.llm.codex_auth records that CODEX_HOME selects an independent credential store — that is the CLI's capability and exists regardless of what anyone names the directories. What lives here is the choice to name them ~/.codex@<label>, which is a gunbc fact and must not be written into the extdeps module, or a reader would take our policy for the tool's requirement.\\n\\nIT WAS ALREADY IN USE BEFORE IT WAS MODELED, which is why this cites rather than invents. Observed on srv2, 2026-07-30: ~/.codex (the default), ~/.codex@briansrls-gunb.ai, and ~/.codex@gunbc-roadmap coexisting under one user. Minting a different scheme — accounts/<label>/codex, or a flat registry — would have forked a convention with three live instances and forced a migration to satisfy a model nobody needed.\\n\\nThe default root is deliberately representable. ~/.codex has no label and holds the seventeen-session personal account; a model that could only express labelled roots would have been unable to describe the account carrying nearly all the current load."
 

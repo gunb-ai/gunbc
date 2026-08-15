@@ -1,12 +1,6 @@
 module extdeps.gpu.apple
 
-import extdeps.gpu.types { GpuModelCatalogRow, GpuRuntime, Metal }
-import extdeps.memory.types { MemoryFacts, UnifiedShared }
-import extdeps.vendor.apple { apple }
-import std.measure { hardware_thread_count, bandwidth, gibibyte, gibibyte_to_byte_size }
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

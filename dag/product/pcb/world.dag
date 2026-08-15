@@ -1,12 +1,5 @@
 module product.pcb.world
 
-import std.types { String, NonEmptyStr, List }
-import std.integer { Int }
-import std.decl_ref { DeclarationRef, declaration_ref_eq }
-import std.coordinate_frame { CoordinateFrameIdentity }
-import std.affine_space { Point2 }
-import std.orthogonal_geometry { AxisAlignedRectangle2, OrthogonalRefusal }
-import product.pcb.physical { ComponentPlacement, PhysicalRefusalSet }
 
 // ONE PCB WORLD, AND EMPTY IS NOT A DEFAULT. Established body envelopes occupy components. Every
 // other planned identity is an obligation that carries a typed cause — missing document,

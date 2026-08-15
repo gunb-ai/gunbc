@@ -1,14 +1,5 @@
 module gunbc.self_host_promotion_obligations
 
-import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
-import std.dissolution {
-  DissolutionCondition,
-  bound_dissolution,
-  dissolution_description,
-  dissolution_is_bound,
-  unbound_dissolution
-}
-import std.types { Bool, List, NonEmptyStr, String }
 
 // THESE ARE ACKNOWLEDGED PREEXISTING DEBT, NOT NEW SCAFFOLDS (DESIGN §5). Neither
 // obligation was created by the change that registers it: the artifact-axis

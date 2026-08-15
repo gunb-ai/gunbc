@@ -1,31 +1,5 @@
 module test.claim.v1_interpreter_primitive_dispatch_authority_acceptance
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.qualified_name { qualified_name_from_dotted_string, qualified_name_to_dotted_string }
-import gunbc.v1_interpreter_dispatch_emit {
-  any_roster_site_has_rust_variant_collision,
-  any_roster_site_has_spelling_collision,
-  dispatch_emit_site_key,
-  distinct_strings,
-  expected_v1_interpreter_dispatch_generated_rs,
-  rust_variant_collision_synthetic_red_control,
-  spelling_collision_synthetic_red_control,
-  V1InterpreterDispatchGenerated,
-  V1InterpreterDispatchGenerationRefused,
-}
-import gunbc.v1_interpreter_primitive_surface {
-  AuthoredInRoster,
-  DeclaredHere,
-  EvalCallBridgeFamilySite,
-  FreeCall,
-  MethodCall,
-  ServiceDispatch,
-  arm_is_declared_here,
-  v1_interpreter_authored_roster_arms,
-  v1_interpreter_declared_arms,
-  v1_interpreter_free_call_arms,
-  v1_interpreter_roster_seed_scaffold,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

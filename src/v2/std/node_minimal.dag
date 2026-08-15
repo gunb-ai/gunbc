@@ -1,18 +1,5 @@
 module v2.std.node_minimal
 
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import v2.std.algebra { any }
-import v2.std.collection { List }
-import v2.std.integer { UInt32 }
-import v2.std.node {
-  Connective,
-  Edge,
-  Node,
-  NodeKind,
-  NodeOccurrenceId,
-  Symbol
-}
 
 type NodeSupersetField
   = NsfName

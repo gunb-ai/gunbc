@@ -1,23 +1,5 @@
 module gunbc.fleet_bmc_firmware_evidence
 
-import std.bmc { BmcEndpoint, OpenBmc }
-import std.types { EpochMs, Int, List, NonEmptyStr, String }
-import extdeps.bmc.capability {
-  BmcFirmwareCapabilityAmbiguous,
-  BmcFirmwareCapabilityKnown,
-  BmcFirmwareCapabilityLookup,
-  BmcFirmwareCapabilityRow,
-  BmcFirmwareCapabilityUncatalogued,
-  BmcFirmwareObservation,
-  BmcFirmwareVersion,
-  bmc_firmware_capability_row_for,
-}
-import gunbc.fleet_intent { srv1_baseboard, srv2_baseboard }
-import extdeps.firmware.types { firmware_semantic_version }
-import gunbc.fleet_bmc_observation {
-  srv3_bmc_firmware_observation,
-  srv4_bmc_firmware_observation,
-}
 
 // An operator statement of a host's BMC firmware version. This is NOT an observation and is
 // deliberately a distinct carrier rather than a BmcEvidenceTemporalScope arm: the scope axis

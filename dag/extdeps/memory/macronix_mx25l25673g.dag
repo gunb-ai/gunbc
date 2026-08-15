@@ -1,11 +1,5 @@
 module extdeps.memory.macronix_mx25l25673g
 
-import std.types { String }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import extdeps.vendor.macronix { macronix }
-import extdeps.land_pattern.types { CatalogPartIdentity, MountingPatternObligation }
 
 // The publisher's own datasheet attachment. The anchor records where this part's mechanical
 // authority lives; the document's geometry is not transcribed in this module.

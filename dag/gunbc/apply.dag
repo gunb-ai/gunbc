@@ -1,17 +1,5 @@
 module gunbc.apply
 
-import std.types { String, Bool, List }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.live_deploy.apply { live_deploy_apply_srv1_wet }
-import gunbc.runner_capacity_plan {
-  RunnerCapacityPlan,
-  PlanReady,
-  PlanRefused,
-  parse_positive_width,
-  runner_capacity_plan,
-}
-import gunbc.fleet_runner_connectivity { organization_runner_roster_evidence }
-import gunbc.runner_capacity_realize { runner_capacity_apply_wet_exit }
 
 data apply_dispatcher_note: String = "TOP-LEVEL gunbc.apply dispatcher. gunbc.live_deploy.apply remains the srv1 dashboard child workflow only. RunnerCapacity plan half is PR A (#7939 runner_capacity_plan); ADD execution routes through gunbc.runner_capacity_realize (PR C) into shared HostEffect arms from PR B (#7946)."
 

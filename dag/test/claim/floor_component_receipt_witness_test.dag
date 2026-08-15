@@ -1,32 +1,5 @@
 module test.claim.floor_component_receipt_witness_test
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { NonEmptyStr, String, Bool, List, Int, CommitSha }
-import gunbc.floor_component_receipt_document {
-  FloorComponentReceiptDecoding, ReceiptDecoded,
-  floor_component_receipt_decode_with,
-  floor_component_receipt_document_text
-}
-import std.nat { Nat }
-import std.measure { Millisecond, millisecond }
-import std.measure { ClockBasis, CpuClock, WallClock }
-import gunbc.floor_component_receipt {
-  FloorComponentRow,
-  FloorControlState,
-  ControlConcluded,
-  ControlAbsent,
-  ControlAmbiguous,
-  floor_component_row,
-  floor_component_row_of_failure_mode,
-  floor_component_row_not_concluded,
-  floor_component_row_is_done,
-  floor_affected_set_control_state,
-  floor_unsuccessful_component_rows,
-  floor_component_receipt_document,
-  floor_component_receipt_document_incomplete,
-  floor_component_receipt_schema,
-  floor_component_failure_mode_tag,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,12 +1,5 @@
 module gunbc.capability_binding
 
-import std.types { String, Bool, Int, List, Milliseconds }
-import std.integer { Nat }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.host_realization {
-  HostRealization, ApplicationContainerKind, RendererKind, HostRole,
-  container_kind_key, renderer_kind_key, host_identity_is_exact,
-}
 
 data capability_binding_note: String = "SUPPORT IS NEVER AN OPERATING-SYSTEM BOOLEAN (operator ruling, 2026-08-06). WindowsSupported = true is not a fact anyone can act on: support depends on the operating system product AND build, the device model, the application container, the runtime build, the capability binding, the policy and permission, the hardware and driver, the observed stream, and finally the FITNESS of that stream for the interaction it is meant to serve. A Windows desktop with no integrated motion sensor runs the whole instrument perfectly and cannot satisfy 'smack the chassis'; a phone satisfies motion and has no hover at all. Those are differences in capability coverage, not in whether the product works.
 

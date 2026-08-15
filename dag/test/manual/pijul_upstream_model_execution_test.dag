@@ -1,36 +1,6 @@
 module test.manual.pijul_upstream_model_execution
 
-import std.algebra { trim }
 
-import extdeps.shell
-import extdeps.filesystem.filesystem_io
-import extdeps.gunbc
-import extdeps.pijul {
-  PijulChangeHash,
-  PijulStateHash,
-  PijulPath,
-  PijulLogStateObserved,
-  PijulChannelStateIdentity,
-  PijulChannelLogObserved,
-  PijulChannelLogInvalid,
-  PijulChannelLogReadBackMatches,
-  PijulChannelLogReadBackMismatch,
-  PijulRenderedOrderConflictObservation,
-  PijulRenderedOrderConflictGrounded,
-  PijulRenderedConflictNotGrounded,
-  PijulDependencyTextObservation,
-  PijulDependencyMentionGrounded,
-  PijulDependencyMentionNotGrounded,
-  pijul_upstream_version,
-  pijul_upstream_cli_version,
-  pijul_decode_channel_log_observation,
-  pijul_assess_channel_log_read_back,
-  pijul_assess_rendered_order_conflict,
-  pijul_assess_dependency_text,
-  pijul_hash_count,
-}
-import gunbc.output_policy { ExpectSuccess }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

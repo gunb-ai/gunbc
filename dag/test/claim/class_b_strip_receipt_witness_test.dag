@@ -1,11 +1,5 @@
 module test.claim.class_b_strip_receipt_witness
 
-import gunbc.class_b_import_closure_overlay {
-  strip_rust_test_fixtures_import_block,
-  StripImportValid,
-  StripImportRefused
-}
-import std.types { Bool }
 
 data class_b_strip_receipt_note: String = "Per-PR discovery-admitted unit controls for gunbc.class_b_import_closure_overlay strip receipt (#7835 P1). Pure string-literal folds — not path-excluded and not explicit_witness_admission enrolled."
 

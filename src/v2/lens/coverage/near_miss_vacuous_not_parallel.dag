@@ -1,20 +1,5 @@
 module v2.test.lens_coverage.near_miss_vacuous_not_parallel
 
-import v2.lens.coverage {
-  coverage_defect_parallel_authority,
-  coverage_defect_vacuous_arm
-}
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  ManualAnchorAbsent,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 data near_miss_vacuous_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^near_miss_vacuous_symbol } },

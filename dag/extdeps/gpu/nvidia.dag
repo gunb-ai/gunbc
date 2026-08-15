@@ -1,14 +1,6 @@
 module extdeps.gpu.nvidia
 
-import extdeps.gpu.types { GpuModelCatalogRow, GpuComputeCapability, GpuRuntime, GpuSmCacheGeometry, Cuda, cuda_compute_capabilities_authority }
-import extdeps.memory.types { MemoryFacts, Dram }
-import extdeps.storage.types { PcieLink, PcieGeneration }
-import extdeps.cpu.types { CacheGeometryCitation }
-import extdeps.vendor.nvidia { nvidia }
-import std.measure { ByteSize, byte_size, hardware_thread_count, bandwidth, hertz, watt, gibibyte, gibibyte_to_byte_size }
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

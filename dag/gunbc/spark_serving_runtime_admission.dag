@@ -1,31 +1,5 @@
 module gunbc.spark_serving_runtime_admission
 
-import std.types { String, NonEmptyStr }
-import std.algebra { trim }
-import extdeps.ollama.api { OllamaModelRef }
-import extdeps.ollama.binary_release {
-  ollama_required_release,
-  OllamaLinuxArm64,
-}
-import extdeps.ollama.capability {
-  OllamaNvidiaGb10Spark,
-  OllamaRuntimeAdmissionApplicable,
-  OllamaRuntimeAdmissionUnmet,
-  OllamaRuntimeAdmissionUnobserved,
-  OllamaRuntimeAdmissionUncatalogued,
-  ollama_runtime_admission_verdict,
-}
-import extdeps.ollama.gpu_support {
-  OllamaNvidiaDriverVersion,
-  ollama_nvidia_driver_version_from_wire_text,
-}
-import gunbc.spark_serving_readback_parse {
-  SparkServingReadbackField,
-  SparkServingReadbackPresent,
-  SparkServingReadbackRefused,
-  SparkServingReadbackAbsent,
-}
-import gunbc.spark_serving_desired { spark_serving_desired_model_ref }
 
 data spark_serving_runtime_admission_note: String = "HOST RUNTIME ADMISSION (SPARK-SERVE-BIND-0 driver axis). GB10 requires NVIDIA driver 550 or newer per docs.ollama.com/gpu. Ollama falls back to CPU when the driver is too old rather than refusing install, so admission must observe the host driver and route through ollama_runtime_admission_verdict — unobserved refuses rather than passing."
 

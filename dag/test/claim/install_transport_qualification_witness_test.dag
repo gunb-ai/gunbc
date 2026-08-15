@@ -1,36 +1,5 @@
 module test.claim.install_transport_qualification_witness_test
 
-import std.types { Bool, List, list_length }
-import gunbc.fleet_intent_network { operator_host_srv3 }
-import gunbc.install_transport_qualification {
-  BootOverrideNamesGadgetDevice,
-  ConfigfsMounted,
-  ConfigfsTransportRequirement,
-  InstalledOsRunning,
-  MassStorageFunctionAvailable,
-  NbdClientPresent,
-  NbdServerReachableFromBmc,
-  NoForeignGadgetOrNbdAttachment,
-  ProbeFoundAbsent,
-  ProbeFoundPresent,
-  TransportProbeOutcome,
-  ReinstallPathEstablished,
-  ReinstallPathRefused,
-  ReinstallPathUnestablished,
-  RequirementObservedPresent,
-  RequirementUnobserved,
-  TransportProbeObservation,
-  UdcPresent,
-  UsbGadgetFrameworkPresent,
-  configfs_reinstall_path_standing,
-  installed_os_is_running,
-  transport_requirement_standing,
-}
-import gunbc.fleet_install_transport_observations {
-  srv3_configfs_reinstall_path_standing,
-  srv3_configfs_transport_observations,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

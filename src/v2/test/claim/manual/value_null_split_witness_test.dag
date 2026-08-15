@@ -1,17 +1,5 @@
 module v2.test.manual.value_null_split_witness
 
-import v2.std.collection { empty_map, map_insert }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.optional {
-  Absent,
-  Present,
-  optional_absent,
-  optional_present
-}
-import v2.std.witness { Holds, Violates }
-import v2.test.generated.cross_representation_equality {
-  witness_cross_representation_equality_covers_optional_null
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

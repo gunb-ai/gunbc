@@ -1,28 +1,5 @@
 module v2.lens.cost.expr
 
-import std.decl_ref { DeclarationRef }
-import v2.lens.cost {
-  ConstantCost,
-  LinearCost,
-  LogCost,
-  SizeVariable,
-  SymbolicCost,
-  UnknownCost,
-  constant_cost,
-  symbolic_max,
-  symbolic_product,
-  symbolic_sequential,
-  unit_cost,
-  zero_cost
-}
-import v2.std.diagnostic {
-  AmbiguousIntent,
-  Diagnostic,
-  Locus,
-  Unavailable,
-  textual_whole_file_locus
-}
-import v2.std.nat { Nat, Succ, Zero, nat_lte }
 
 type SizeExpr
   = SizeConst { value: Nat }

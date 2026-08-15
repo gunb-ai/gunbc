@@ -1,12 +1,7 @@
 module gunbc.devboot.outcome
 
-import std.types { String, Bool, NonEmptyStr }
-import std.measure { ByteSize }
-import std.content_hash { ContentHash, Sha256Digest }
 
-import extdeps.git.object_store { GitObjectId }
 
-import gunbc.devboot.subject { BuildSubject, build_subject_digest, build_subject_equal }
 
 // The identity of a REQUEST, kept distinct from the identity of what it asks for. Two requesters naming one subject share a subject digest and must share a producer; they do not share a work id, because each still needs to learn its own request's fate. Collapsing the two would make an attach unrepresentable -- the second requester would have nothing of its own to be told about.
 type DevbootWorkId = NonEmptyStr where brand("DevbootWorkId")

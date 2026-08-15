@@ -1,40 +1,5 @@
 module gunbc.os_install_mechanism
 
-import std.bmc { BmcEndpoint }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.types { EpochMs, Int, List, String }
-import extdeps.bmc.types {
-  RedfishBootSourceOverrideTarget,
-  BootTargetPxe,
-  BootTargetCd,
-}
-import extdeps.bmc.capability {
-  BmcCapability,
-  BmcFirmwareCapabilityRow,
-  BmcFirmwareVersion,
-  CapabilityBootSourceOverride,
-  CapabilityVirtualMedia,
-  CapabilityNbdProxyVirtualMedia,
-  CapabilityFirmwareUpdate,
-  firmware_has_capability,
-  catalog_has_vm_capable_firmware,
-}
-import extdeps.boards.asrock_rack {
-  asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog,
-  asrock_altrad8ud_shipped_bmc_firmware_capabilities,
-}
-import gunbc.fleet_bmc_firmware_evidence {
-  BmcFirmwareCapabilityEvidenceAbsent,
-  BmcFirmwareCapabilityResolved,
-  BmcFirmwareCapabilityVersionAmbiguous,
-  BmcFirmwareCapabilityVersionUncatalogued,
-  BmcFirmwareEvidence,
-  bmc_firmware_capability_standing,
-  srv1_bmc_firmware_evidence,
-  srv2_bmc_firmware_evidence,
-  srv3_bmc_firmware_evidence,
-  srv4_bmc_firmware_evidence,
-}
 
 type OsInstallMechanism
   = VirtualMediaInstall

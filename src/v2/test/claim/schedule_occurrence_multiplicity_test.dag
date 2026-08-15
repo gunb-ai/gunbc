@@ -1,23 +1,5 @@
 module v2.test.claim.schedule_occurrence_multiplicity_test
 
-import std.realization_schedule {
-  CorpusWitnessKind,
-  Runnable,
-  RunnableDiscoveryBatch,
-  RunnableKernelWorkload,
-  RunnableScopedWitnessBatch,
-  RunnableSingleClaim,
-  runnable_resource_profile_negligible,
-  ScheduleWitnessEntry,
-  schedule_witness_entry_eq
-}
-import v2.std.algebra { filter, fold_list, length }
-import v2.std.collection { List }
-import v2.std.integer { Int }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.workflow.ci_floor_plan { gunbc_falsifier_ordinary_batches }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

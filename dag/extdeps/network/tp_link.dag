@@ -1,12 +1,5 @@
 module extdeps.network.tp_link
 
-import std.types { NonEmptyStr }
-import std.measure { milliwatt, bandwidth }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.network.switch_types { NetworkSwitchCatalogRow }
-import extdeps.vendor.tp_link { tp_link }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -1,24 +1,5 @@
 module tools.extdeps_scope_placement_gate
 
-import std.types { GitRef, List, String }
-import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import extdeps.filesystem.filesystem_io
-import extdeps.git {
-  DiffAddedStatus, DiffCopiedStatus, DiffRenamedStatus,
-  GitDiffNameStatusComplete, GitDiffNameStatusTruncated,
-  TwoDot, ThreeDot, git_diff_name_status_parse,
-}
-import extdeps.git
-import gunbc.language_module_home { added_language_paths_refused }
-import gunbc.extdeps_scope_frontier {
-  scope_carrier_paths, scope_machinery_exempt_paths,
-  legacy_extdeps_scope_frontier_manifest_path, parse_frontier_manifest,
-  legacy_manifest_freeze_sha,
-  scope_placement_refused_paths, manifest_freeze_holds,
-  manifest_line_observation,
-  ManifestLineObservation, ManifestUntouched, ManifestIntroduced, ManifestLinesAdded, ManifestDiffUnreadable,
-  DiffAddedObservation, AddedPathsObserved, DiffObserveFailed, DiffParseTruncated,
-}
 
 data extdeps_scope_placement_gate_note: String = "Server-side per-PR wall for the ExternalModelScope disk-to-roster direction (codex review 46281; modeled on the publication placement gate pattern, whose own gate was deleted by operator ruling in #7591 — this gate is independent and remains). It collects Added/Copied/Renamed paths with git.Core.DiffNameStatus at TWO bases, one per question (scope_placement_base_split_note), and refuses when (a) a dag/extdeps .dag file added by THIS CHANGE — the merge base origin/main...HEAD — is in neither scope_carrier_paths nor scope_machinery_exempt_paths (scope_placement_refused_paths — the frozen manifest is deliberately NOT an admission channel for a new file), (b) any frozen-manifest row names a file added after the freeze anchor, read over the whole post-freeze population at legacy_manifest_freeze_sha..HEAD (manifest_freeze_holds — the smuggling channel), or (c) the change itself ADDS a line to the manifest (manifest_line_observation folded to a verdict by manifest_remove_only_exit, over git.Core.DiffUnified0 against origin/main merge-base — the remove-only lifecycle made mechanical, codex review 46378; the sole admitted arm is the manifest file absent at the merge base, i.e. the PR that first introduces it, unforgeable once it exists on main). Diff failure and parse truncation are refusals, never skips. Merge-base grain on the membership arm is what makes the refusal attributable: only paths the change itself introduces are judged there, so this gate neither retroactively reds the frozen manifest population nor blocks a lane for a file some other lane landed. The wet live-cover witness (dag/test/claim/external_model_scope_live_cover_witness_test.dag) remains the whole-population re-verification. This gate dissolves with the whole storage-grain frontier into the v2.lens.mandatory_tag region promotion (compile-grain, module-name grain)."
 

@@ -1,46 +1,5 @@
 module test.claim.roadmap_repo_atlas_sandbox_witness
 
-import std.types { Bool, String, Int }
-import std.markup { Fragment }
-import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
-import gunbc.roadmap_repo_atlas_sandbox {
-  repo_atlas_document,
-  repo_atlas_page,
-  repo_atlas_css,
-  repo_atlas_page_title,
-  atlas_millidegrees_text,
-  atlas_cell_transform,
-  atlas_ring_radius,
-  atlas_ring_slot_count,
-  atlas_slot_angle_millidegrees
-}
-import gunbc.repo_atlas_projection {
-  AtlasAddress,
-  AtlasComparison,
-  AtlasChangesNotObserved,
-  AtlasComparisonObserved,
-  atlas_ring_slot_counts,
-  RepoAtlasSnapshot,
-  repo_atlas_snapshot,
-  AtlasSubjectUnobserved,
-  AtlasImpactNotComputed,
-  atlas_impact_from_reading
-}
-import v2.lens.module_impact_query {
-  ModuleIdentity,
-  ImpactReading,
-  DependentsOf,
-  ExactForGraphSubject,
-  ProvisionalForObservedPool
-}
-import v2.lens.module_graph { ModuleDeclarationFact }
-import extdeps.git {
-  GitDiffStatusEntry,
-  TwoDot,
-  DiffModifiedStatus,
-  DiffUnmergedStatus,
-  GitDiffNameStatusComplete
-}
 
 data repo_atlas_served_shape_witness_note: String = "EVERY PAGE CLAIM BELOW SERIALIZES repo_atlas_document — THE SHAPE THE ROUTE ACTUALLY SERVES. The first revision serialized repo_atlas_section instead, so the twelve claims covered a fragment the handler never returns and a headless, unstyled page stayed green through all of them (review 50752). A claim aimed at the wrong subject is not a weak claim, it is not a claim about the product at all."
 

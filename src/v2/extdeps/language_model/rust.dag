@@ -1,42 +1,5 @@
 module v2.test.language_model.rust
-import v2.std.language_model { LanguageModel }
 
-import v2.extdeps.languages.rust {
-  rust_integer_algebra_inhabitance_rust_facts_i32,
-  rust_fn_add_language_model,
-  rust_leaf_model_fact_id_node_algebra_inhabitance_rust_facts_i32,
-  rust_atom_realization_symbol_node,
-  rust_leaf_model_fact_id_node_atom_realization_symbol,
-  rust_leaf_model_fact_id_node_rust_facts_i32
-}
-import v2.std.collection { List }
-import v2.std.diagnostic { Outcome }
-import v2.std.leaf_model_verification {
-  FalsificationCase,
-  LeafModelClaim,
-  TargetInvocation
-}
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
-import v2.std.runtime { Panic, RuntimeOutcome, Wrap }
-import v2.std.rust_leaf_model_claim {
-  Rustc_ErrorCode_Phase1,
-  RustAlgebraInhabitanceSubject,
-  RustAtomRealizationProjectionMismatchSubject,
-  RustAtomRealizationSubject,
-  RustClaimExpectation,
-  RustClaimSubject,
-  RustEmitProjectionEqualityExpectation,
-  rust_leaf_phase1_algebra_carrier_ordered_ring,
-  rust_leaf_phase1_primitive_i32,
-  rust_leaf_phase1_err_e0308,
-  rust_leaf_phase1_err_e0423,
-  rust_leaf_phase1_err_e0599,
-  RustPrimitiveTypeSubject,
-  RustRuntimeBehaviorExpectation,
-  RustcAcceptsExpectation,
-  RustcRejectsExpectation
-}
 
 type RustLeafModelClaim = LeafModelClaim<Outcome<LanguageModel>, RustClaimSubject, RustClaimExpectation>
 

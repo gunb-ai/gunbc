@@ -1,48 +1,8 @@
 module v2.extdeps.languages.rust_test
 
-import std.algebra { Cons, Empty }
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-import v2.extdeps.languages.dag { dag_bind_arrow_with_body_fixture }
 
-import v2.extdeps.languages.rust {
-  rust_add_declared_inhabitants_root,
-  rust_binding_spellings,
-  rust_collection_realization_catalog_node,
-  rust_concrete_token_node,
-  rust_declared_inhabitants_root,
-  rust_emit_host_cargo_manifest,
-  rust_emit_host_runtime_primitive_type_node,
-  rust_emit_host_toolchain_pin,
-  rust_fn_add_lex,
-  rust_fn_add_lex_rules,
-  rust_formal_production_fn_add,
-  rust_formal_rhs_from_tokens,
-  rust_grammar_atom,
-  rust_grammar_relation_row_node,
-  rust_grammar_sequence_from_concrete_tokens,
-  rust_grammar_terminal,
-  rust_ident_lex_rule,
-  rust_inhabitant_atom,
-  rust_int_literal_lex_rule,
-  rust_lex_rule,
-  rust_named_edge,
-  rust_operator_realizations_catalog_node,
-  rust_reference_layer_tokens,
-  rust_runtime_row,
-  rust_selection_policy_node,
-  rust_sg_rc_use_site_ownership_catalog,
-  rust_source_text_authority,
-  rust_staging_lex,
-  rust_target_model_bundle_core,
-  rust_target_model_core_edges_with_operators,
-  rust_type_expression_projection_bundle_node,
-  rust_value_expression_projection,
-  rust_value_expression_family_lex_rules,
-  rust_value_semantics_carrier_atoms,
-  rust_whitespace_trivia_rule
-}
 
 data rust_test_fixtures_rust_import_unstrip_note: String = "Class B un-strip (2026-08-04, #7772): this module previously carried zero import statements and resolved v2.extdeps.languages.rust symbols only by pool-membership coincidence — an unrelated import elsewhere in the assembled closure dragged rust.dag in. Enrollment changes on the N3-A branch collapsed that accidental coverage; thirty-one discovery witnesses then failed at runtime with no such function on rust_selection_policy_node, rust_operator_realizations_catalog_node, rust_grammar_terminal, and rust_inhabitant_atom. The explicit import block above is the closure-independent binding fix DESIGN's import-strip Class B blocker requires; dissolve-on when bare-reference closure binding is construction-backed repo-wide."
 

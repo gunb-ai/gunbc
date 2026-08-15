@@ -1,8 +1,5 @@
 module gunbc.host_realization
 
-import std.types { String, Bool, Int, List }
-import std.decl_ref { DeclarationRef }
-import extdeps.external_authority { ExternalSubjectRef }
 
 data host_realization_note: String = "CONTAINER IS NOT RENDERER IS NOT OPERATING SYSTEM IS NOT CAPABILITY PROVIDER (operator ruling, 2026-08-06). Four things get fused into the word 'platform' and every fusion costs a real distinction: a native desktop application can render the very same DOM surface a website renders; a website can render through DOM or through WebGPU; a native shell can host today's instrument unchanged while adding typed platform capability bindings underneath it; and the same operating system can appear under several containers at once. So this module carries the axes separately and NONE of them is the product's semantics — a finish line, a camera, a detent and a physical impulse mean the same thing in Chrome, in a Windows shell, on a phone, and in an engine scene.
 

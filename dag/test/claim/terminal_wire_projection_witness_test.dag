@@ -1,31 +1,5 @@
 module test.claim.terminal_wire_projection_witness_test
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { String, Bool }
-import std.symbols { Ascii }
-import std.render { RenderCapability, Overwrite, Append, Clear }
-import std.perturbation { BackwardDiffInDiffOut, perturbation_consistent }
-import extdeps.render.ansi {
-  ansi_c0_controls,
-  ansi_c1_controls,
-  ansi_terminal_controls,
-  ansi_escape,
-  ansi_carriage_return,
-  ansi_line_feed,
-  ansi_horizontal_tab,
-  ansi_erase_entire_line,
-  ansi_control_is_content_admissible,
-  ansi_text_contains_cursor_control,
-}
-import extdeps.render.terminal {
-  DynamicLineState,
-  DynamicLineClosed,
-  DynamicLineOpen,
-  TerminalWriteProjection,
-  TerminalWriteProjected,
-  TerminalWriteRefused,
-  project_terminal_write,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

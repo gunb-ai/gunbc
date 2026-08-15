@@ -1,21 +1,5 @@
 module product.altra_motherboard.attachment_stack
 
-import std.types { String, Bool, NonEmptyStr, List }
-import std.integer { Int }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.cpu.types { CpuSocket }
-import extdeps.cpu.ampere_altra_package {
-  ReferenceBoardCollateralStanding,
-  ReferenceBoardCollateralAvailable,
-  ReferenceBoardCollateralUnderNda,
-  altra_declared_contact_count,
-  altra_fclga_socket,
-  altra_reference_board_collateral_standing,
-  extdeps_external_authority_anchor,
-}
-import extdeps.vendor.ampere { ampere_customer_reference_boards_authority }
 
 // SIX THINGS BETWEEN A PROCESSOR DIE AND A BOARD, AND THEY ARE NOT ONE THING. The processor
 // package, the socket, the socket's own board termination, the motherboard land pattern that

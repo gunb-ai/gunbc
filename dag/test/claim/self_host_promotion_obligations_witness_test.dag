@@ -1,12 +1,5 @@
 module test.claim.self_host_promotion_obligations_witness
 
-import gunbc.self_host_promotion_obligations {
-  artifact_axis_omits_build_path,
-  frontier_numerator_admits_seed_evidence,
-  obligation_is_registered,
-  obligation_reports_itself_fired
-}
-import std.types { Bool }
 
 // Each registered obligation carries a condition, a claim it puts at risk, and a
 // subject declaration. Asserted per row by name rather than as a count over the roster:

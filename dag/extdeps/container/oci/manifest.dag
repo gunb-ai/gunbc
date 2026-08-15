@@ -1,11 +1,6 @@
 module extdeps.container.oci.manifest
 
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.container.oci.descriptor { DescriptorRejectReason, DescriptorRejected, OciDescriptor, accept_descriptor }
-import extdeps.container.oci.types { OciMediaType }
-import std.types { Int, List, String }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https

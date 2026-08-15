@@ -1,6 +1,5 @@
 module gunbc.host_identity_observation
 
-import std.algebra { trim }
 
 
 type HostIdentityObservationRow {

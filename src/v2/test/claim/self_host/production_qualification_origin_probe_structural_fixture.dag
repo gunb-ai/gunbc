@@ -1,14 +1,5 @@
 module v2.test.claim.self_host.production_qualification_origin_probe_structural_fixture
 
-import v2.compiler.self_host.candidate_generation { mint_written_provenanced_rust_artifact }
-import v2.compiler.self_host.direct_rust_door_fixture {
-  direct_rust_door_inferred_tree,
-  direct_rust_door_module_path,
-  direct_rust_door_target_model
-}
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 data structural_red_control_fixture_note: String = "Test-only structural RED-control specimen (wise-ram-22): executable mint path lives under test/claim/self_host/, not v2.lens.*. G2 fn-arrow marshal currently yields an empty skeleton for this body; live discovery is frontiered by witness_live_structural_fixture_mint_site_discovered_reds until marshal exposes the mint callee and fixture marker."
 

@@ -1,21 +1,6 @@
 module gunbc.host_build_cache_provision_script
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.types { String, NonEmptyStr, Bool, List }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.crypto.hash { Digest }
-import gunbc.shell_bash_runner { shell_exec_via_bash }
-import extdeps.cache.sccache {
-  sccache_misconfigured_log_fragments,
-  sccache_installed_binary_path,
-  sccache_install_script,
-  sccache_release_0_15_0,
-  sccache_start_server_env_assignment,
-  sccache_no_daemon_env_assignment,
-  sccache_idle_timeout_never_env_assignment,
-}
 
 data host_build_cache_provision_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: host_build_cache_provision_script — concat-built systemd/sccache ensure shell; DISSOLVES WHEN bash-emit (#5828) realizes ProvisionBuildCache observe/ensure/read-back as typed host-effect argv and realize_provision_build_cache retires shell_exec_via_bash transport.")
 

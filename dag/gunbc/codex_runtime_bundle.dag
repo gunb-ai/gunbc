@@ -1,16 +1,5 @@
 module gunbc.codex_runtime_bundle
 
-import std.types { NonEmptyStr, FilePath, String, List }
-import std.content_hash { ContentHash }
-import gunbc.package_delivery {
-  CodexRuntimeBundle,
-  CodexRuntimeMaterialization,
-  materialize_codex_runtime_bundle,
-  CodexRuntimeMaterialized,
-  AdmittedPackageArtifactReceipt,
-  codex_runtime_lock_path,
-  codex_runtime_manifest_path,
-}
 
 data codex_runtime_bundle_note: String = "Release-bundled Codex runtime at codex_required_package_version (gunbc.package_delivery). Built via materialize_codex_runtime_bundle (exact wrapper+platform lock-nodes → admit HTTPS registry archives → isolated npm cache → offline ci → installed-tree+toolchain+canonical protocol-schema receipt → content-addressed release with current symlink read-back). ONE exact runtime produces ALL protocol facts cited in extdeps.llm.codex_app_server — never /usr/bin/codex npm shim, never ambient PATH. Prefer the platform-native Codex binary for app-server --stdio; Node is not the runtime entry."
 

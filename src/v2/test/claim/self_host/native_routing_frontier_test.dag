@@ -1,32 +1,5 @@
 module v2.test.claim.self_host.native_routing_frontier_test
 
-import v2.compiler.self_host.native_routing_frontier {
-  native_routing_frontier_roster,
-  native_routed_rows,
-  interpreted_retained_rows,
-  routing_frontier_row_for_subject,
-  routing_frontier_total_holds,
-  routing_row_is_native,
-  family_subject,
-  NativeRoutingFrontierRow,
-  NativeRouted
-}
-import v2.compiler.self_host.parity_window {
-  ParityWindowReceipt,
-  ParityObservation,
-  WindowObserved,
-  ParityMonitorVerdict,
-  ParityHolding,
-  ParityRevertRequired,
-  ParityUnobserved,
-  ParityEvidenceRefused,
-  parity_monitor_verdict,
-  parity_routing_admitted
-}
-import v2.compiler.self_host.parity_receipts_local { meet_join_local_observations, complement_local_observations }
-import v2.std.algebra { length }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 fn synthetic_routed_row(
   observation_family: String,

@@ -1,23 +1,5 @@
 module test.claim.stage0_rust_honest_frontier_integration_witness
 
-import gunbc.stage0_rust_honest_frontier_integration {
-  HonestFrontierIntegrationDerived,
-  HonestFrontierIntegrationRefused,
-  honest_frontier_decision_complete,
-  honest_frontier_discovery_complete,
-  honest_frontier_integration_receipt,
-  stage0_rust_honest_frontier_integration_note
-}
-import gunbc.stage0_rust_host_observation { RustManifestObserved }
-import gunbc.stage0_rust_lifecycle_totality { lifecycle_totality_witness_observation }
-import gunbc.stage0_rust_source_lifecycle_scaffold {
-  derived_hand_maintained_disposition_repo_paths,
-  derived_hand_maintained_stage0_repo_paths,
-  path_in_list,
-  v1_interpreter_dispatch_generated_repo_path
-}
-import std.content_hash { Fnv1a64Structural }
-import v2.std.algebra { length }
 
 test fn honest_frontier_integration_note_cites_hand_queue_drain() -> Bool {
   string_contains(s: stage0_rust_honest_frontier_integration_note, pattern: "v1-hand-queue-drain")

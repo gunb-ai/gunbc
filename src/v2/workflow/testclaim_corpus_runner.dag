@@ -1,43 +1,5 @@
 module v2.test.workflow.testclaim_corpus_runner
 
-import v2.compiler.eval {
-  TestClaimEvalSubject,
-  TestClaimRun,
-  run_test_claim,
-  test_claim_run_claim,
-  test_claim_run_verdict
-}
-import v2.std.collection { List }
-import v2.std.algebra { Equal, Greater, Less, length, list_append }
-import v2.std.logic { Bool }
-import v2.std.nat { Nat, Succ, Zero, nat_compare }
-import v2.std.node { Node, Symbol }
-import v2.std.runtime { RuntimeValue }
-import v2.std.verdict {
-  Pass,
-  VerdictTally,
-  verdict_tally_add,
-  verdict_tally_empty,
-  verdict_tally_total
-}
-import v2.std.compilers.target_model { TargetModel }
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  EmitVsEval,
-  EvalOnly,
-  NodeCorpus,
-  TestClaim,
-  TestClaimTransportMode,
-  UnifiedTestClaim,
-  test_claim_label,
-  unified_test_claim_modality,
-  UnifiedBoolWitnessModality,
-  UnifiedNodeCorpusModality
-}
-import v2.test.manual.manual_corpus_roster {
-  manual_corpus_node_subject_rows
-}
 
 type BoolWitnessRun
   = BoolWitnessRuntimeVerdict { witness: BoolWitness, result: Bool }

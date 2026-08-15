@@ -1,14 +1,5 @@
 module v2.test.long.fallback_arm_census_witness
 
-import v2.lens.fallback_arm_census {
-  fallback_arm_census_class_count_live,
-  fallback_arm_census_lens_path_has_no_answers_on_open,
-  fallback_arm_census_reconciliation_holds_live,
-  fallback_arm_census_total_live,
-  fallback_arm_seed_inventory_count_is_24_holds
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

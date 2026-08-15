@@ -1,15 +1,5 @@
 module gunbc.occurrence_identity_acceptance_closure
 
-import std.types { Bool, String, List }
-import std.occurrence_identity {
-  occurrence_identity_acceptance_law_rebuilt_reference,
-  occurrence_identity_acceptance_law_collector_dedupe,
-  occurrence_identity_acceptance_law_distinct_occurrences,
-  occurrence_identity_acceptance_law_pattern_reachability,
-  occurrence_identity_acceptance_law_parser_isolation,
-  occurrence_identity_acceptance_laws,
-}
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 type OccurrenceIdentityConsumerRedDebt {
   id: String

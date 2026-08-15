@@ -1,6 +1,5 @@
 module test.claim.m4_governed_service_witness
 
-import std.hermetic_replay { PublishedMockCase }
 
 service GovernedProbe {
 

@@ -1,29 +1,5 @@
 module gunbc.econ.knowable_wedge
 
-import extdeps.pricing.github_actions { GithubActionsRunnerPriceRow }
-import extdeps.pricing.hetzner_dedicated {
-  HetznerDedicatedServerPriceRow,
-  hetzner_dedicated_server_threads,
-  hetzner_dedicated_setup_fee_micros,
-}
-import std.currency { Eur, Usd }
-import std.measure {
-  AmortizationMonths,
-  BasisPoint,
-  HardwareThreadCount,
-  MoneyPerMinute,
-  MoneyPerMonth,
-  amortization_months_count,
-  basis_point_count,
-  basis_point_unity_count,
-  billing_month_as_hour_count,
-  hardware_thread_count_value,
-  minutes_per_hour,
-  money_amount_micro,
-  money_per_minute_micros,
-  money_per_month_micros,
-}
-import std.nat { Nat }
 
 data knowable_wedge_note: String = "Knowable wedge = publicly cited umbrella price minus a cost floor derivable from cited hardware rows, given explicitly declared utilization/amortization/exchange-rate assumptions. Opaque inputs refuse — never estimate around Unknown."
 

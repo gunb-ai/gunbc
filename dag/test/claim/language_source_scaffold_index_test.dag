@@ -1,19 +1,6 @@
 module test.claim.language_source_scaffold_index_test
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.types { Bool, String, Int }
-import std.disposition { Disposition, Scaffold, Terminal }
-import extdeps.filesystem.filesystem_io
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import gunbc.language_source_scaffold_index {
-  LanguageSourceScaffoldRow,
-  language_source_scaffold_roster,
-  language_source_scaffold_roster_size,
-  language_source_scaffold_roster_all_dispositioned,
-  language_source_scaffold_row_is_dispositioned,
-  rust_pair_completion_spelling_scaffold_trigger
-}
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

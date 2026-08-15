@@ -1,25 +1,5 @@
 module gunbc.econ.scm_serving_model
 
-import extdeps.pricing.object_storage {
-  BinaryGibibyte,
-  ByteBasis,
-  ByteBasisUnstated,
-  DecimalGigabyte,
-  ObjectStorageClassRow,
-  ObjectStorageEgressRow,
-  ObjectStorageRequestRow,
-  egress_rate_micros,
-  storage_rate_micros,
-  storage_vendor_eq,
-}
-import std.measure {
-  ByteSize,
-  byte_size,
-  byte_size_count,
-  money_rate_micros,
-}
-import std.nat { Nat, nat_max, nat_min }
-import std.types { Bool, List, NonEmptyStr, list_length }
 
 data scm_serving_model_note: String = "How to compute an SCM's serving bill from workload primitives instead of guessing at a monthly number. Four axes, each derived from the profile and each priced by its own cited vendor row (extdeps.pricing.object_storage): CAPACITY held (stored bytes after dedup, times a billing month), NETWORK moved (egress bytes -- clones and fetches leaving the network), OPERATIONS counted (object reads and writes, the axis most models forget entirely), and COMPUTE, which is deliberately NOT modeled here because it already has carriers: gunbc.econ.knowable_wedge prices CI minutes against cited runner rows and gunbc.econ.free_tier_serving prices self-managed boxes. Storing a second compute model here would be the dual representation DESIGN section 3 forbids."
 

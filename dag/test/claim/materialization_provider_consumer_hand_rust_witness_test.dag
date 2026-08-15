@@ -1,23 +1,6 @@
 module test.claim.materialization_provider_consumer_hand_rust_witness
 
-import std.dissolution { dissolution_description }
 
-import gunbc.materialization_provider_consumer_scaffold {
-  materialization_provider_consumer_hand_rust_scaffold,
-  materialization_provider_consumer_dissolve_trigger,
-  materialization_provider_consumer_hand_rust_loc_delta_net,
-  materialization_provider_consumer_hand_rust_paths,
-  materialization_provider_consumer_receipt_plan_anchor,
-  materialization_provider_consumer_roadmap_lane_anchor,
-  materialization_provider_consumer_witness_entry,
-}
-import test.claim.materialization_provider_witness {
-  incomplete_v1_shape_artifact_refuses_naming_the_diagnostic_union,
-  red_declared_input_miss_stale_artifact_refuses_as_wrong_artifact
-}
-import std.disposition { Scaffold, SingleAuthority }
-import std.types { Bool }
-import v2.std.algebra { length }
 
 // Model-layer control only: these imported witnesses are already on main, so this row does not exercise the Rust bridge.
 test fn materialization_provider_consumer_hand_rust_scaffold_is_seed_retained() -> Bool {

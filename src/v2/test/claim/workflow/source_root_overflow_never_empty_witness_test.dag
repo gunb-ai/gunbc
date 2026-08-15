@@ -1,16 +1,5 @@
 module v2.test.workflow.source_root_overflow_never_empty_witness
 
-import v2.compiler.source_authority {
-  SourceRootManifestElided,
-  SourceRootProvenanceCoverageReceipt,
-  DiscoveredSourceRefsDigestUnavailable,
-  DiscoveredSourceRefsDigestNoRefList,
-  manifest_inline_list_max,
-  source_root_overflow_never_empty_population_holds
-}
-import v2.std.algebra { Empty }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

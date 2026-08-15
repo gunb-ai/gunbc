@@ -1,10 +1,5 @@
 module test.claim.tailscale_serve_status_witness
 
-import std.types { Bool }
-import extdeps.tailscale.serve {
-  ServeRootMount,
-  tailscale_serve_status_proxy_targets,
-}
 
 test fn tailscale_serve_status_root_proxy_is_structurally_projected() -> Bool {
   tailscale_serve_status_proxy_targets(

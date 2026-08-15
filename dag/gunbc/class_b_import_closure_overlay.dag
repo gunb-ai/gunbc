@@ -1,11 +1,5 @@
 module gunbc.class_b_import_closure_overlay
 
-import extdeps.filesystem.filesystem_io
-import extdeps.shell
-import std.types { String, Bool, Int, List, NonEmptyStr }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.seed_growth { SeedGrowthJustification }
-import gunbc.roadmap_model { RoadmapNodeId }
 
 data class_b_overlay_note: String = "Derives the Class B stripped entry overlay from the live rust_test_fixtures.dag at execution time (#7817 strip_import_block property, moved to the executing transport/witness path). No checked-in copy of the live corpus file — the overlay is read from disk, the declared rust import block removed under a typed strip receipt, and written under a caller-supplied overlay root so pool-membership coincidence cannot drift silently."
 

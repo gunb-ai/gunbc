@@ -1,12 +1,5 @@
 module v2.std.rust_leaf_model_claim
 
-import v2.std.grammar { GrammarProduction }
-import v2.std.leaf_model_verification { TargetInvocation }
-import v2.std.compilers.lexing { LexRule }
-import v2.std.logic { Bool }
-import v2.std.model_core { AlgebraInhabitanceDecl }
-import v2.std.node { Node, Symbol }
-import v2.std.runtime { RuntimeOutcome }
 
 type RustPrimitive
   = RustPrimitiveI32 {}

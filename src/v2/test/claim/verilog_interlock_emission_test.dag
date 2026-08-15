@@ -1,29 +1,5 @@
 module v2.test.claim.verilog_interlock_emission_test
 
-import v2.std.node { Node, Symbol }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.grammar { FormalProduction, Holds, Violates }
-import v2.extdeps.languages.verilog {
-  verilog_ansi_port,
-  verilog_assign_list_one,
-  verilog_binary_application,
-  verilog_continuous_assign,
-  verilog_target_model_with_single_row,
-  verilog_interlock_emitted,
-  verilog_module_declaration,
-  verilog_port_list_cons,
-  verilog_port_list_one,
-  verilog_relation_row_for,
-  verilog_signal_reference,
-  verilog_unary_application,
-  verilog_emission_formal_productions_reversed,
-  verilog_relation_row_for_productions,
-  verilog_emission_rules_for_row,
-  verilog_conj,
-}
-import v2.compiler.translate { target_serialize_relation_row_from_model_bounded }
-import v2.compiler.ingest { row_token_spine_tokens, grammar_relation_row_forward_token_selection }
-import v2.std.compilers.target_model { render_target_text }
 
 data verilog_emission_note: String = "THE PROOF THAT TARGET EMISSION COMPOSES. These bytes are produced by the GENERIC serializer walking derived relation rows — no Verilog branch exists in the compiler and no Verilog spelling is authored here. The module frame, the recursive port list, the nested expressions and every space and newline come from the target's productions and layout profile. The oracle is the exact source product.compute_board.verilog_projection prints today by hand, which is what makes this a replacement rather than a second implementation."
 

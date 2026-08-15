@@ -3,37 +3,6 @@ module test.claim.realize_kernel
 // This witness stayed green under the partial import list its two siblings went red under, which
 // is the point: green is not evidence that the remaining bare references are bound, only that the
 // closure this run happened to assemble contained them.
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.content_hash { ContentHash, content_hash_of_value }
-import std.cache_identity {
-  CacheInterfaceId,
-  resolved_graph_artifact_kind,
-  ExecutionReceiptDigest,
-  execution_receipt_digest_of_value,
-}
-import std.cache_interface {
-  ArtifactIdentity,
-  CachedArtifactReceipt,
-  BackendCacheKey,
-  CasContentDigest,
-  ExecutionReceiptRef,
-  InternalExecution,
-  realize_route,
-  classify_write,
-  Hit,
-  Miss,
-  RejectedHit,
-  Reuse,
-  Recompute,
-  SubjectAbsent,
-  HitRefused,
-  ContentDigestMismatch,
-  Written,
-  WriteSkippedIdempotent,
-  WriteRejected,
-  WriteOnceConflict,
-  BackendWriteRejected,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

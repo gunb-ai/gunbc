@@ -1,50 +1,5 @@
 module test.claim.altra_attachment_stack_witness
 
-import std.types { Bool, String, NonEmptyStr, List }
-import std.integer { Int }
-import product.altra_motherboard.attachment_stack {
-  AccessGatedFactHasIndependentCarriageDecision,
-  AuthorityStandingRefusal,
-  EstablishedFactHasInapplicableCarriage,
-  UnestablishedFactClaimsNormalizedCarriage,
-  authority_standing_refusal,
-  standing_pair_is_admitted,
-  AttachmentLayer,
-  AttachmentLayerStanding,
-  BoardLandPatternLayer,
-  LayerBlocker,
-  FactAccessGated,
-  NeedsARedistributionDecision,
-  NeedsAHumanToReadTheDrawing,
-  NeedsTheStandingItselfRepaired,
-  NeedsCommercialAccess,
-  NeedsSomeoneToFindTheDocument,
-  ProcessorPackageLayer,
-  FactEstablished,
-  FactStatedOnlyInFigure,
-  FactUnresolved,
-  SocketLayer,
-  attachment_layer_name,
-  CarriageDecisionRequired,
-  attachment_stack,
-  board_land_pattern_standing,
-  board_side_termination_population,
-  layer_blocker,
-  open_blockers,
-  processor_package_standing,
-  reference_board_collateral_standing,
-  fact_is_established,
-  CarriageNotApplicable,
-  NormalizedFactsMayBeCarried,
-}
-import extdeps.cpu.ampere_altra_package {
-  altra_pin_summary_total,
-  altra_declared_contact_count,
-  altra_signal_pin_count,
-  altra_power_and_ground_pin_count,
-  altra_reserved_pin_count,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

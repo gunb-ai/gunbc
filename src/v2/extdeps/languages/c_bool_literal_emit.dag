@@ -1,8 +1,5 @@
 module v2.extdeps.languages.c_bool_literal_emit
 
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 data c_bool_literal_stdbool_preamble_emit_disposition: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,

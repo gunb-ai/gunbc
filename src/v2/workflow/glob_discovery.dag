@@ -1,14 +1,5 @@
 module v2.test.workflow.glob_discovery
 
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.test.workflow.glob_discovery_law {
-  discovered_contains_bool_witness_decl_by_name
-}
-import v2.test.workflow.host_discovered_owned_data_manifest {
-  host_discovered_owned_decls,
-  host_owned_data_discovery_receipt
-}
 
 fn glob_discovery_smoke_set_is_nonempty() -> Bool {
   host_owned_data_discovery_receipt.unified_claim_arm_count > 0

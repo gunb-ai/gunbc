@@ -1,26 +1,5 @@
 module test.claim.witness_row_cost_migration_disclosure
 
-import gunbc.witness_row_cost {
-  BelowMigrationThreshold,
-  MandatoryMigration,
-  WitnessCostReceiptRow,
-  witness_row_cost_migration_threshold_ms,
-  witness_row_cost_migration_verdict,
-  witness_row_cost_mandatory_migration_rows,
-  witness_row_cost_mandatory_migration_count,
-}
-import std.logic { Bool }
-import std.nat { Nat }
-import std.types { NonEmptyStr, List, Int }
-import std.measure {
-  millisecond,
-  millisecond_count,
-  millisecond_to_nanosecond,
-}
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.observation { Done, observation_durations_wall }
-import v2.std.algebra { count_where, for_all }
-import v2.std.text { String }
 
 // Executing consumer for the mandatory-migration disclosure (gunbc.witness_row_cost). THE PAIR IS THE PROOF, per the drift comparator's own discipline: a synthetic row at-or-above the derived threshold MUST produce MandatoryMigration, and a row comfortably below MUST NOT — either alone is satisfiable by a broken comparator. The derivation itself is pinned so the 500ms figure can never silently drift from the fast-lane authority: this test asserts the threshold IS gunbc_ci_fast_lane_eval_budget_ms()/10, never a hand-typed 500 literal.
 fn derived_threshold_is_500ms_holds() -> Bool {

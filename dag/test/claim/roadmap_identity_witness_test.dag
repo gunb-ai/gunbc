@@ -1,29 +1,5 @@
 module test.claim.roadmap_identity_witness_test
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
-import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, RoadmapNodeIdentity }
-import gunbc.roadmap_authority { declared_roadmap_nodes }
-import gunbc.roadmap_identity {
-  RoadmapIdentityRecord,
-  ActiveIdentity,
-  TombstonedIdentity,
-  RoadmapIdentityResolution,
-  IdentityResolved,
-  IdentityUnknown,
-  IdentityAmbiguous,
-  roadmap_identity_registry,
-  roadmap_active_identities,
-  roadmap_tombstoned_identities,
-  record_identity,
-  record_slug,
-  record_is_active,
-  resolve_slug,
-  identity_count,
-  distinct_identity_count,
-  distinct_active_slug_count,
-  active_identity_count,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,20 +1,5 @@
 module v2.test.emit.semantic_decl_lookup_receipt_test
 
-import v2.extdeps.languages.rust {
-  rust_decl_derive_binding_spellings,
-  rust_decl_derive_lex_spelling,
-  rust_target_model
-}
-import extdeps.languages.rust.emit { rust_enum_derives_copy }
-import v2.std.compilers.semantic_decl_emission {
-  semantic_decl_binding_spelling_lookup,
-  semantic_decl_emission_from_target,
-  semantic_decl_profile_binding_spellings
-}
-import v2.std.compilers.target_model { bound_spelling_from_map }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 data expected_derive_spelling: String = rust_decl_derive_lex_spelling(text: rust_enum_derives_copy)
 

@@ -1,9 +1,5 @@
 module gunbc.plans.cli_run_hollowing_plan
 
-import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
-import std.markdown { MarkdownBlock, TableBlock, AlignNone, ThematicBreak }
-import gunbc.plans.md_helpers { h2, h3, p, li, ul, quote, row, cell }
 
 fn cli_run_hollowing_plan_body() -> List<MarkdownBlock> {
   [

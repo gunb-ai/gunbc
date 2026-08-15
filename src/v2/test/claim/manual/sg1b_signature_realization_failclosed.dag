@@ -1,24 +1,5 @@
 module v2.test.manual.sg1b_signature_realization_failclosed
 
-import v2.extdeps.languages.rust { rust_sg2_type_expr_target_model }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Edge, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.compilers.target_model {
-  FunctionBoundaryParam,
-  target_atom_realization_lookup_in_catalog_node,
-  target_function_boundary_site_from_node,
-  target_function_signature_realization_lookup_in_catalog_node,
-}
-import v2.std.verification {
-  CompilesClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 fn sg1b_fc_pass_node() -> Node {
   Node {

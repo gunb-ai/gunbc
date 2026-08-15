@@ -1,22 +1,5 @@
 module test.claim.self_host_artifact_materialization_real_execution_witness
 
-import std.types { Bool, FilePath, String }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import extdeps.filesystem.filesystem_io
-import extdeps.shell
-import extdeps.cargo_build
-import gunbc.self_host_artifact_materialization
-import v2.compiler.self_host.generation {
-  GeneratedArtifactIdentity,
-  ArtifactMaterialized,
-  ArtifactNotMaterialized,
-  GenerationIdentity,
-  MaterializedArtifactAxis,
-  generation_axis_symbol,
-  generation_identity_mismatched_axes
-}
-import v2.std.algebra { for_all, length }
-import v2.std.node { symbol_identity_digest }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

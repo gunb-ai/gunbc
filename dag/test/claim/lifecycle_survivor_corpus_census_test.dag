@@ -1,13 +1,5 @@
 module dag.test.claim.lifecycle_survivor_corpus_census
 
-import gunbc.lifecycle_survivor_scan {
-  no_raw_lifecycle_string_survivors,
-  scan_projects_every_declared_type,
-  scan_reaches_test_modules,
-  scan_reads_a_real_corpus,
-  scan_sees_bare_string_declarations,
-}
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 // The irreducible half of the lifecycle-carrier census: its subject IS the breadth of the
 // live corpus, so it walks all ~16,975 data declarations under both roots and cannot be made

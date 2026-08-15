@@ -1,16 +1,5 @@
 module gunbc.design.instrument_projection
 
-import std.types { String, Bool, Int, List }
-import std.integer { PositiveInt }
-import gunbc.design.salience {
-  SalienceRole, SalienceAssignment, SalienceGround, SalienceSupporting,
-  SalienceFocal, SalienceCritical, FocalAdmission, region_focal_admission,
-}
-import gunbc.design.instrument_camera {
-  ProgramCamera, FocusSubject, NoSubjectSelected, FinishLineFocused,
-  focus_subject_key, focus_finish_line,
-}
-import gunbc.v1_deletion_plan { V1FinishLineSpec, v1_exit_finish_lines, v1_finish_line_key }
 
 data projection_note: String = "THE PROJECTION THAT DECIDES A ROLE FROM REAL FACTS, firing gunbc.design.salience salience_note's declared dissolve-on. Until this landed, every SalienceRole in the corpus arrived as a hand-supplied input, so the budget table, the focal-admission fold, and the emission envelope were all lawful over roles NOBODY DERIVED — the section 6 coverage-by-illusion tier, one layer up from an inert lens. What decides a role here is the camera's selection and the region a subject sits in, and nothing else: there is no per-subject importance field, no authored priority, and no way for a caller to hand a role in. The four rules are exactly the operator's: the selected subject is Focal, the subjects sharing its region are Supporting, everything outside that region is Ground, and an active refusal needing action is Critical."
 

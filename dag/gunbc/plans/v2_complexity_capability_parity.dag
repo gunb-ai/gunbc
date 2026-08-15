@@ -1,9 +1,5 @@
 module gunbc.plans.v2_complexity_capability_parity
 
-import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
-import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, BlockquoteBlock, CodeBlock, AlignNone }
-import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 
 fn v2_complexity_capability_parity_body() -> List<MarkdownBlock> {
   [

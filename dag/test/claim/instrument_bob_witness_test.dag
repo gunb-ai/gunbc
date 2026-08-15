@@ -1,35 +1,5 @@
 module test.claim.instrument_bob_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { String, Bool, Int, List }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.termination { DescentEvidence, Strict, NonIncreasing, DescentUnknown, evidence_rank }
-import gunbc.design.salience { attraction_travel_max_px }
-import gunbc.design.instrument_physical { instrument_displacement_max_px }
-import gunbc.capability_binding {
-  PhysicalImpulse, ImpulseDown, ImpulseUp,
-  SyntheticTapStrength, SyntheticTapLight, SyntheticTapFirm, SyntheticTapKnock,
-  synthetic_tap_impulse, synthetic_tap_provider, impulse_is_synthetic,
-}
-import gunbc.design.instrument_bob {
-  BobPhase, BobAtRest, BobRinging, BobSettled, bob_phase_key,
-  BobState, bob_at_rest,
-  bob_max_travel_px, bob_idle_character_px, bob_half_life_ms, bob_visibility_floor_milli_px,
-  impulse_reference_magnitude_milli,
-  clamp_amplitude, amplitude_for_impulse,
-  MotionPreference, MotionFull, MotionReduced, motion_preference_key,
-  apply_impulse, halve_n_times, amplitude_at, bob_amplitude_milli, advance, advance_descent_evidence,
-  half_lives_to_settle, settle_time_ms, max_settle_time_ms,
-  bob_is_within_register_bound, bob_carries_no_domain_fact, bob_displacement_px,
-  bob_half_period_ms, bob_quarter_period_ms, oscillation_milli, oscillation_unit_milli,
-  signed_displacement_px,
-  BobFrame, max_frame_count, frames_are_within_bound, frame_is_within_bound,
-  settled_frame_count, frames_terminate_exactly_once, frames_cross_rest,
-  BobSequence, BobSequenceSettled, BobSequenceRefused, BobSequenceRefusal,
-  BudgetExhaustedBeforeSettling, NonPositiveFrameInterval,
-  bob_sequence, bob_sequence_refusal_key, bob_frames_from,
-  frames_visit_an_intermediate_position, frames_max_abs_between, frames_last_displacement,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

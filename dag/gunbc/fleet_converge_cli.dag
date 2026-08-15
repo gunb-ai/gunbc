@@ -1,55 +1,6 @@
 module gunbc.fleet_converge_cli
 
-import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.shell
-import std.algebra { trim }
-import gunbc.command_runner { stat_owner_name_capture }
-import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
 
-import gunbc.hostname_read {
-  HostnameShortCaptured,
-  HostnameShortCaptureRefused,
-  hostname_short_read_local,
-}
-import gunbc.fleet_converge_apply { converge_apply_for_host, fleet_compute_host_for_identity }
-import gunbc.host_layout { fleet_converge_receipt_dir, srv1_gunbc_repo_root }
-import gunbc.fleet_desired_observe {
-  FleetRevisionStanding,
-  RevisionConverged,
-  RevisionDrifted,
-  RevisionUnobserved,
-  fleet_revision_standing,
-}
-import extdeps.git.object_store { git_object_id_wire_hex }
-import gunbc.host_converge_slice1 {
-  host_converge_slice1_converge_loop,
-  host_converge_slice1_receipt_is_valid,
-  host_converge_slice1_tasks_receipt_is_valid,
-  host_converge_slice1_converge_srv3,
-  host_converge_slice1_host_result_all_valid,
-  host_converge_slice1_host_result_applied_count,
-  host_converge_slice1_host_result_refusal_reason,
-}
-import gunbc.host_runner_memory_provision { runner_memory_host_converge }
-import gunbc.host_runner_memory_cap_verify { runner_memory_cap_verify_run }
-import gunbc.host_converge { fleet_converge_policy, find_by_identity, converge_verdict, converge_verdict_label, converge_verdict_meet, codex_runtime_bundle_knob }
-import gunbc.host_effect {
-  HostOs,
-  ProvisionCodexRuntime,
-  host_effect_identity_evidence,
-  LocalShell,
-}
-import gunbc.host_effect_realize { host_effect_apply }
-import std.realization_reconcile { Converged, NotConverged }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network {
-  operator_host_srv1,
-  operator_host_srv2,
-  operator_host_srv3,
-  operator_host_srv4,
-  operator_host_srv5,
-  operator_host_srv6,
-}
 
 data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {
   reason: "stage0's `gunbc converge --host <h>` argv dispatch (src/v1/stage0/src/cli_run.rs::handle_converge) is the CLI transport handler for this .dag interface (DESIGN §3 transport-is-a-handler): argv parse -> resolve_entry_graph_shared -> run_in_context_with_args(converge_cli_output) -> stdout/exit-code projection, nothing else. All interpretation, the byte-locked receipt grammar, and typed refusal causes are modeled here (gunbc.fleet_converge_cli) and in gunbc.host_converge/gunbc.fleet_converge_apply; the Rust side carries no converge logic and is not scaffold pending dissolution."

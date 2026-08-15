@@ -1,20 +1,5 @@
 module gunbc.econ.free_tier_serving
 
-import extdeps.pricing.hetzner_dedicated { HetznerDedicatedServerPriceRow }
-import extdeps.sec.facts {
-  FiledMonetaryFact,
-  filed_amount,
-  usd_whole_dollars_count,
-}
-import extdeps.sec.operating_metrics { RegisteredUserCountRow }
-import std.measure {
-  ByteSize,
-  MoneyPerMonth,
-  byte_size_count,
-  money_amount_micro,
-  money_per_month_micros,
-}
-import std.nat { Nat, nat_max }
 
 data free_tier_serving_derive_not_store_note: String = "Both reads here are DERIVED at read time from cited rows (DESIGN section 2): the bottom-up floor prices a declared per-user resource envelope against a cited infrastructure price row, and the top-down glean divides a filed cost-of-revenue fact by a filed registered-user floor. Nothing about serving cost is stored as a fact of its own."
 

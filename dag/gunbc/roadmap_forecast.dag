@@ -1,56 +1,5 @@
 module gunbc.roadmap_forecast
 
-import std.types { EpochMs, NonEmptyStr }
-import std.measure {
-  Millisecond,
-  PositiveMeasureCount,
-  millisecond,
-  millisecond_count,
-}
-import std.graph { GraphEdge, CallGraph, graph_cycle_members }
-import std.algebra { FieldOfFractions }
-import extdeps.project_schedule.cpm_pert {
-  CriticalPathMethod,
-  ThreePointEstimateMethod,
-  ResourceCapacityLowerBoundMethod,
-  critical_path_method,
-  three_point_estimate_method,
-  resource_capacity_lower_bound_method,
-}
-import extdeps.github.pulls {
-  PullTimingObservation,
-  gunbc_pr_7393_timing,
-  gunbc_pr_7405_timing,
-  gunbc_pr_7429_timing,
-  gunbc_pr_7431_timing,
-  gunbc_pr_7441_timing,
-  gunbc_pr_7542_timing,
-}
-import gunbc.roadmap_model {
-  RoadmapNodeId,
-  RoadmapNode,
-  RoadmapEdge,
-  RoadmapAcceptanceReceipt,
-  Intricacy,
-  Volume,
-  NodeSizing,
-  Unsized,
-  Sized,
-  node_accepted,
-}
-import gunbc.roadmap_belt { BeltCapacity }
-import gunbc.roadmap_authority {
-  declared_roadmap_nodes,
-  active_roadmap_nodes_for_accepted,
-  active_roadmap_edges_for_accepted,
-  roadmap_authority_projection,
-  RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
-  accepted_roadmap_node_ids_projection,
-  AcceptedRoadmapNodeIdsProjected, AcceptedRoadmapNodeIdsProjectionRefused,
-  roadmap_acceptance_receipts,
-  RoadmapAcceptanceReceiptsProjected,
-  RoadmapAcceptanceReceiptsProjectionRefused,
-}
 
 data forecast_is_projection_not_observation_note: String = "A forecast projects what may happen; a CycleTimeObservation records what did happen. They are separate nominal record types with no conversion in either direction. ScheduleForecast exposes ForecastInstant and ForecastLowerBoundInterval; its epoch value is sealed inside ForecastInstant and never appears as a bare Timestamp/EpochMs observation, RoadmapAcceptanceReceipt, Signoff, or done/accepted stage. schedule_forecast derives only ScheduleForecastResult, and its refusal arm is exhaustive. Therefore a date can neither accept a roadmap node nor inhabit the observation input used to calibrate later forecasts. Estimates project; only evidence promotes."
 

@@ -1,14 +1,7 @@
 module extdeps.crm.hubspot_lifecycle
 
-import std.nat { Nat }
-import std.types { List, NonEmptyStr }
 
-import extdeps.securities { Securities }
-import extdeps.vendor { Vendor }
-import extdeps.vendor.hubspot { hubspot }
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -1,25 +1,5 @@
 module v2.test.manual.nodefold_topdown_inline_algebra
 
-import v2.std.node {
-  Atom,
-  Conj,
-  Edge,
-  Named,
-  Node,
-  NodeFoldTopDown,
-  TypeNode,
-  SyntheticOccurrence,
-  fold_node_topdown
-}
-import v2.std.verification {
-  CompilesClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 type MyFold {
   origin: Int

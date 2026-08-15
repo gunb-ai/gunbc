@@ -1,11 +1,5 @@
 module extdeps.tools.node
 
-import std.types { NonEmptyStr, String, Bool }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import extdeps.tools { CliTool, SourceApt }
-import extdeps.apt { package_nodejs }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

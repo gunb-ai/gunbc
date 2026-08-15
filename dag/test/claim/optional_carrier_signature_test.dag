@@ -1,6 +1,5 @@
 module test.claim.optional_carrier_signature_test
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

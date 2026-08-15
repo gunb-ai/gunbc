@@ -1,6 +1,5 @@
 module v2.lens.non_fold_residue
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 
 fn non_fold_residue_clean_holds() -> Bool {

@@ -1,39 +1,5 @@
 module test.claim.type_reference_binding_context_witness_test
 
-import std.types { Bool, String, NonEmptyStr, SourceSpan }
-import std.occurrence_identity {
-  OccurrenceId,
-  OccurrenceContainmentPath,
-  OccurrenceProjection,
-  OccurrenceIndexEntry,
-  OccurrenceIndex,
-  OccurrenceTransport,
-  DeclarationOccurrence,
-  ReferenceOccurrence,
-  OccurrenceCategory,
-  TypeOccurrence,
-  CallableOccurrence,
-}
-import std.occurrence_binding_candidates {
-  DeclarationExposureRow,
-  LexicalExposure,
-  ModuleExposure,
-  RootExposure,
-  OccurrenceBindingCandidateInputs,
-  ReferenceBindingProjectionBound,
-  ReferenceBindingProjectionUnbound,
-  resolve_type_reference_containment_binding,
-  DeclarationExposureGrounding,
-  NamespaceStructuralRootExposure,
-  declaration_exposure_from_containment,
-}
-import gunbc.type_reference_binding_context {
-  ModuleOccurrenceBindingSource,
-  merge_occurrence_binding_input_rows,
-  occurrence_binding_inputs_from_module_transport,
-  build_graph_type_reference_binding_inputs,
-  build_type_reference_binding_context,
-}
 
 data type_reference_binding_context_witness_note: String = "N2 slice 2 PR-A builder witnesses (quiet-hawk-219): RESOLVE-path only — see gunbc.type_reference_binding_context type_reference_binding_context_path_scope_note (emit-side #7705 RED control is LIVE, separate instance, warm-wolf-814). TypeReferenceBindingContext input projection + containment-tree exposure derivation for the v1 typecheck masked-leaf changeover. Cross-module kernel bind uses builder-produced inputs with RootExposure from module-root containment. Pool-coincidence refusal uses explicit ModuleExposure override on slice-1 control-3. PR-B wires resolve_node_bounded after 7515."
 

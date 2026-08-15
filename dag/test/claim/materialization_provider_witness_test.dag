@@ -1,55 +1,5 @@
 module test.claim.materialization_provider_witness
 
-import std.types { Bool, Int, List, String }
-import std.content_hash {
-  ContentHash,
-  content_hash_atom,
-  as_content_hash_cryptographic,
-  sha256_hex_digest,
-}
-import std.interface_summary { InterfaceHash, module_key, typed_module_key }
-import std.cache_identity {
-  parse_source_artifact_kind,
-  typed_module_artifact_kind,
-  resolved_graph_artifact_kind
-}
-import std.computation_identity {
-  ComputationIdentity, StructurallyIdentical, IdentityUnknown, MissingEnforcement, MissingConcept,
-  identity_grade_is_known
-}
-import std.artifact_store { ArtifactStore }
-import std.materialization_provider {
-  DeclaredInput, ArtifactRequest, MaterializedArtifact,
-  ArtifactOutputId, CarriedOutput, ArtifactPart,
-  ParsedArtifact, TypedModuleArtifact, ResolvedGraphArtifact, LegacyIncompleteArtifact,
-  artifact_content_digest, artifact_bytes, artifact_carried_outputs, artifact_kind,
-  ProviderProbe, ProbeAbsent, ProbeFound,
-  ParseModuleRequest, TypecheckModuleRequest, ResolveClosureRequest,
-  request_key, request_kind, request_required_outputs,
-  provider_serve, provider_admit, artifact_completeness, admission_fold,
-  compiler_identity_input,
-  output_parse_tree, output_typed_module_interface,
-  output_resolved_graph, output_source_indices, output_compile_clean_diagnostic_union,
-  output_list_contains,
-  lookup_is_hit, lookup_is_miss,
-  lookup_is_refused_kind_mismatch,
-  lookup_is_refused_wrong_artifact, lookup_is_refused_wrong_content,
-  lookup_is_refused_cross_family_content_hash,
-  lookup_refused_incomplete_missing, lookup_served_identity,
-  serve_resolved_graph_stored_disk_probe,
-  admission_is_admitted, admission_evicted_keys,
-  admission_is_budget_exhausted, admission_refused_incomplete_missing,
-  admission_is_refused_incomplete_write, admission_is_refused_kind_mismatch_write,
-  admission_is_refused_wrong_artifact_write, admission_is_refused_wrong_content_write,
-  completeness_is_complete
-}
-import extdeps.realization.resolved_graph { resolved_graph_cache_id }
-import gunbc.materialization_provider_targets {
-  materialization_provider_target_count,
-  materialization_provider_targets_contain,
-  materialization_provider_targets_all_bound
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

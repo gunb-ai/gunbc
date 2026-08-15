@@ -1,8 +1,5 @@
 module std.shell_stream_capture
 
-import std.types { String, Bool }
-import std.measure { byte_size, byte_size_count, measure_le, ByteSize }
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 data seed_host_shell_stream_bounded_drain_scaffold_note: String = "INTERIM v1_interpreter seed host-effect only (operator ruling #8087, 2026-08-09): dispatch_shell drains child stdout/stderr concurrently while the child runs — never wait_with_output-then-truncate. Enforcement constants and CapturedStreamEvidence (total_bytes, retained_bytes, truncated, digest_hex, retained_text) live ONLY in v1_interpreter bounded_shell_host_drain / shell_result_from_capture. This module records scaffold prose and pure predicate helpers for witness tests — NOT a parallel constant authority."
 

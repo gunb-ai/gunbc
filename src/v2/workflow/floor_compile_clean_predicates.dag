@@ -1,6 +1,5 @@
 module v2.workflow.floor_compile_clean_predicates
 
-import std.types { String, Bool, List, list_length }
 
 fn compile_clean_touched_path_norm(path: String) -> String {
   if starts_with(s: path, prefix: "./") {

@@ -1,35 +1,5 @@
 module test.claim.compute_board_verilog_projection_witness
 
-import std.types { String, NonEmptyStr, List }
-import product.compute_board.digital_control {
-  Conjunction,
-  DigitalControlIntent,
-  DigitalEquation,
-  DigitalInput,
-  DigitalOutput,
-  DigitalSignal,
-  Negation,
-  SignalName,
-  SignalRef,
-  board_power_interlock_intent,
-  conditioned_good_signal,
-  fault_signal,
-  power_permit_signal,
-  reset_release_signal,
-}
-import product.compute_board.verilog_projection {
-  SignalSpellingNotAdmissible,
-  DuplicateSignalBinding,
-  TargetEmissionRefused,
-  SignalSpellingUnbound,
-  VerilogBinding,
-  VerilogModuleEmitted,
-  VerilogProjection,
-  VerilogProjectionRefused,
-  project_intent_to_verilog,
-  power_interlock_verilog_bindings,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

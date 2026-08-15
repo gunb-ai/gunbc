@@ -1,7 +1,5 @@
 module product.compute_board.simulation_receipt
 
-import std.types { String, NonEmptyStr, List }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data simulation_receipt_note: String = "EXECUTED RECEIPTS, AND EXACTLY WHAT THEY DO AND DO NOT CLAIM. Every prior claim about these two emissions was that the bytes matched a golden authored in the same repository — which establishes that the projection is stable, and nothing whatever about whether a real tool accepts them. These rows record that the emitted artifacts were run: Icarus Verilog compiled the module and simulated its four-row truth table, and ngspice solved the operating point of the deck. WHAT THIS IS NOT: it is not a re-execution. Nothing in an Accepted program here runs a simulator; the observation happened once, at a named tool version, and is recorded. THE JOIN THAT KEEPS IT HONEST is the enrolled witness beside it: it asserts that the artifact recorded in each receipt is byte-identical to what the projection emits TODAY. So the receipt cannot quietly describe an emission the product no longer produces — the moment the projection's bytes move, the receipt is stale and says so by failing, rather than by continuing to vouch for an artifact nobody emits any more. Re-executing on a cadence is the next rung and is not claimed here."
 

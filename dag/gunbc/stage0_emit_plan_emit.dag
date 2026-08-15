@@ -1,15 +1,5 @@
 module gunbc.stage0_emit_plan_emit
 
-import gunbc.stage0_emit_plan {
-  Stage0EmissionPlanAccepted,
-  Stage0EmissionPlanOutcome,
-  Stage0EmissionPlanRow,
-  Stage0EmissionPlanRefused,
-  generated_stage0_files_from_plan_rows,
-  generated_stage0_paths_from_plan_rows,
-  stage0_emission_plan
-}
-import std.types { List, String }
 
 type Stage0EmitPlanGenerationOutcome
   = Stage0EmitPlanGenerated { content: String }

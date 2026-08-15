@@ -1,18 +1,5 @@
 module gunbc.provider_interface_binding
 
-import std.types { NonEmptyStr, String, FilePath, Bool }
-import std.content_hash { ContentHash }
-import extdeps.llm.codex_app_server {
-  CodexAppServerTransport,
-  CodexAppServerStdio,
-  CodexAppServerExecutable,
-}
-import gunbc.package_delivery { CodexRuntimeBundle }
-import gunbc.codex_runtime_bundle {
-  codex_bundle_executable_path,
-  codex_bundle_identity,
-}
-import extdeps.shell
 
 data provider_interface_binding_note: String = "ONE nested ProviderInterfaceBinding. Provider identity is derived from the realization closure (runtime bundle + transport + lifecycle + protocol schema identity), never a writable sibling enum. project_codex_app_server_stdio_binding is hermetic path projection only. Live initialize authority lives in gunbc.codex_app_server_press.observe_codex_account_preflight — observe_bind_codex_app_server_stdio is demoted to projection plus executable presence check only."
 

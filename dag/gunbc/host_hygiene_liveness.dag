@@ -1,20 +1,5 @@
 module gunbc.host_hygiene_liveness
 
-import std.types { String, NonEmptyStr, Bool, List }
-import std.disposition { Disposition, Terminal }
-import std.measure { Second, second, second_count, measure_le }
-import std.realization_reconcile {
-  ShowEffectiveRead,
-  ReadObserved,
-  ReadAbsent,
-  Grounding,
-  Grounds,
-  DoesNotGround,
-  Reconciliation,
-  Converged,
-  NotConverged,
-  reconcile_grounded,
-}
 
 data gunbc_host_hygiene_liveness_scope_disposition: Disposition = Terminal {
   reason: "Brief 4 deliverable (b): registration liveness. NRestarts is useless as slot health (it counts jobs-served under the ephemeral restart-per-job runner design, 400-950 across slots at diagnosis time, not failure). Real liveness mines the 'Listening for Jobs' journal line per slot and compares its age against a bound; zero-occupancy outages (a 2.5h-class incident) had no liveness signal before this. RED: a stopped listener on one slot must flip the fleet verdict within one cadence — fleet_green_from_listening is any-stale-fails, not majority-fails."

@@ -1,59 +1,5 @@
 module gunbc.spark_serving_observe
 
-import std.types { String, List, NonEmptyStr }
-import std.algebra { trim }
-import v2.std.algebra { fold_list }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
-import product.placement_supply { HostIdentity }
-import extdeps.ssh.session { ssh_session_exec_portable_words, SshSessionExecResult }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.systemd { systemd_unit_load_state_not_found_wire }
-import gunbc.clock_read { clock_now_probed_at }
-import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
-import gunbc.fleet_known_hosts_anchor {
-  FleetSshExecutionContext,
-  fleet_ssh_execution_context_of,
-  materialize_fleet_known_hosts_anchor,
-  known_hosts_materialization_receipt,
-  fleet_ssh_attempt_identity,
-  SshTarget,
-  portable_remote_words,
-  shape_fleet_ssh_exec,
-}
-import gunbc.fleet_multi_principal_probe { fleet_ssh_attempt_raw_from_env }
-import gunbc.spark_credential_workflow { run_with_materialized_fleet_ssh_binding }
-import gunbc.auth.access_token_source { GcloudPrintToken }
-import gunbc.spark_serving_loaded_release {
-  SparkServingReadback,
-  SparkServingUnitProbeOutcome,
-  SparkServingUnitActive,
-  SparkServingUnitInactive,
-  SparkServingUnitAbsent,
-  SparkServingUnitObservationRefused,
-  derive_spark_serving_observation,
-}
-import gunbc.spark_serving_release {
-  SparkServingObservation,
-  SparkServingAbsent,
-  SparkServingObserved,
-  SparkServingObservationRefused,
-}
-import gunbc.spark_serving_runtime_admission { spark_serving_parse_nvidia_driver_version }
-import gunbc.spark_serving_runtime_receipt {
-  spark_serving_runtime_receipt_probe_words,
-  spark_serving_runtime_receipt_field_from_probe,
-}
-import gunbc.spark_serving_desired { spark_serving_desired_hosts }
-import gunbc.spark_serving_readback_parse {
-  SparkServingReadbackField,
-  SparkServingReadbackAbsent,
-  SparkServingReadbackRefused,
-  SparkServingTagsReadbackFields,
-  spark_serving_parse_version_json,
-  spark_serving_parse_tags_json,
-  spark_serving_readback_field_label,
-}
 
 data spark_serving_observe_transport_note: String = "OBSERVATION PRODUCER (SPARK-SERVE-BIND-0 item B) over FleetSsh — callers supply a sealed FleetSshExecutionContext rather than hardcoding one credential route."
 

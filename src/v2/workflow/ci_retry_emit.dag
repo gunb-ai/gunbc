@@ -1,9 +1,5 @@
 module v2.workflow.ci_retry_emit
 
-import gunbc.ci_spec { ci_cargo_eagain_retry_intent }
-import v2.compiler.emit_orchestration { orch_emit_step }
-import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
-import v2.std.diagnostic { Accepted, Rejected, None, Some }
 
 data ci_retry_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ retry-intent emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate and the yaml parse gate both go red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen - the String-typed seam cannot carry the diagnostics, so it carries a loud poison instead)\n"
 

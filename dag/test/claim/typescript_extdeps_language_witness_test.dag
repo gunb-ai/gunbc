@@ -1,30 +1,5 @@
 module test.claim.typescript_extdeps_language_witness
 
-import std.logic { Bool }
-import extdeps.languages.typescript.emit {
-  ts_func_keyword,
-  ts_param_type_sep,
-  ts_return_arrow,
-  ts_param_separator,
-  ts_source_extension,
-  ts_null_coalesce_template,
-  ts_list_literal_empty,
-  ts_list_literal_template,
-  ts_struct_keyword,
-  ts_type_arg_open,
-  ts_type_arg_close,
-  ts_container_templates,
-  ts_simple_method_specs,
-  ts_method_templates
-}
-import extdeps.languages.typescript.syntax {
-  ts_operators
-}
-import extdeps.languages.typescript.types {
-  ts_type_checkpoints,
-  ts_algebra_inhabitants
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

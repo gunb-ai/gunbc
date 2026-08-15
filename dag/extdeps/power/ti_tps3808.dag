@@ -1,19 +1,5 @@
 module extdeps.power.ti_tps3808
 
-import std.types { String }
-import std.measure { micrometer }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import extdeps.vendor.texas_instruments { texas_instruments }
-import extdeps.land_pattern.types {
-  DualRowLandGeometry,
-  PartMechanicalCandidate,
-  TerminalIndexingObligation,
-  PackageDrawingRef,
-  PackageBodyDimensions,
-  VendorRecommendedLandPattern,
-}
 
 // The TPS3808 datasheet, read 2026-08-14 for its mechanical pages only. The package drawing it
 // reprints is DBV0006A, stamped 4214840/G, 08/2024.

@@ -1,36 +1,5 @@
 module test.claim.spark_serving_realization_witness_test
 
-import std.types { String, Bool, List, NonEmptyStr }
-import gunbc.spark_serving_realization {
-  SparkServingIntent,
-  SparkHostCapabilityObservation,
-  SparkServingRealization,
-  UserUnitRealization,
-  SystemUnitRealization,
-  RootlessContainerRealization,
-  CapabilityObservation,
-  CapabilityPresent,
-  CapabilityRefused,
-  CapabilityUnobserved,
-  SurvivesReboot,
-  SessionScoped,
-  RestartsOnFailure,
-  ManagedConvergenceOwned,
-  NoLoginNoSudoIdentity,
-  UnauthenticatedEndpoint,
-  IndependentlyObservable,
-  SparkServingRealizationPolicy,
-  LeastRequiredEffects,
-  select_spark_serving_realization,
-  identity_contract_refusal,
-  realization_privileged_effect_count,
-  realization_effect_weight,
-  ExecutorOwnedIdentity,
-  SparkServingRealizationSelection,
-  RealizationSelected,
-  NoRealizationAdmitted,
-  RealizationChoiceRequired,
-}
 
 // The terminal Spark intent, named in one place so every control varies ONE axis against it.
 //

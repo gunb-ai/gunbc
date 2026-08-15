@@ -1,9 +1,5 @@
 module test.claim.observation_raw_print_retirement_acceptance_test
 
-import std.types { Bool }
-import std.nat { Nat }
-import gunbc.observation_emit_census { observation_emit_frontier_count }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,29 +1,5 @@
 module test.claim.native_scm_interaction_scenario_fixture
 
-import std.types { Int, List, String }
-import v2.std.optional { Optional, Present, optional_present }
-import gunbc.native_scm_interaction_contract {
-  NativeScmProposalIdentity,
-  NativeScmCommitTransition,
-  NativeScmCommitTransitionUncommitted,
-  NativeScmCommitTransitionCommitted,
-  NativeScmLifecycle,
-  NativeScmLifecyclePending,
-  NativeScmLifecycleReady,
-  NativeScmOperationalState,
-  NativeScmOperationalReady,
-  NativeScmProjectionRepairPending,
-  NativeScmInternalWorkPending,
-  NativeScmProjection,
-  NativeScmContinuationOption,
-  NativeScmContinuationOptions,
-  NativeScmContinuation,
-  NativeScmPrimaryOutcome,
-  NativeScmReceipt,
-  Landed,
-  ChoiceRequired,
-  InProgress,
-}
 
 type NativeScmScenario
   = TwoIndependentChangesLand

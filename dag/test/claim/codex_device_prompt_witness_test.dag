@@ -1,23 +1,5 @@
 module test.claim.codex_device_prompt_witness
 
-import std.types { Bool, String, NonEmptyStr, RenderedTerminalText }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.tmux {
-  TmuxCaptureFidelity,
-  CapturePlainText,
-  CaptureWithEscapes,
-  TmuxCaptureRendering,
-  TmuxPaneRendered,
-  TmuxCaptureRetainedEscapes,
-  tmux_captured_pane_rendering,
-}
-import extdeps.llm.cli {
-  CodexDeviceLoginPrompt,
-  CodexDeviceLoginReady,
-  CodexDeviceLoginPromptUnavailable,
-  codex_device_prompt_parse,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

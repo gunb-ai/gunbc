@@ -1,8 +1,5 @@
 module product.compute_board.analog
 
-import std.types { String, NonEmptyStr, List }
-import std.nat { Nat }
-import std.measure { Measure, Resistance, Capacitance, Volt, Kilo, Nano }
 
 data analog_note: String = "THE ANALOG CIRCUIT INTENT, LANGUAGE-NEUTRAL. This replaces a BoardSlice that the board article used to hold directly — a type imported from the SPICE projection, carrying SPICE NodeRefs, substrate Symbols and value_lexeme strings. The dependency ran article to projection, which is backwards: the supposed authority was shaped by one of its targets, so 'the article feeds every interface' was true only in the sense that one interface had already decided what the article looked like. WHAT CHANGED, CONCRETELY: component values are typed magnitudes on std.measure's existing Resistance, Capacitance and ElectricPotentialDifference quantities — which were already in the corpus, so this needed no new authority and was never blocked on one. '10k' and '100n' are gone from the model; the SPICE projection now derives those spellings, including the scale suffix, because a suffix is target syntax and belongs where the target lives. TERMINALS AND NETS ARE IDENTITIES, not strings: a net references terminals by component and terminal identity, so 'is this terminal on that net' is a decidable join rather than a spelling coincidence between two prose fields."
 

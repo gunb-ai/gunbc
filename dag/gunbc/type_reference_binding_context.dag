@@ -1,20 +1,5 @@
 module gunbc.type_reference_binding_context
 
-import std.types { String, List, NonEmptyStr }
-import std.occurrence_identity {
-  OccurrenceIndexEntry,
-  OccurrenceTransport,
-  AuthoredTokenOrdinal,
-}
-import std.occurrence_binding_candidates {
-  OccurrenceModulePathRow,
-  DeclarationExposureRow,
-  AuthoredOrderRow,
-  OccurrenceBindingCandidateInputs,
-  DeclarationExposureGrounding,
-  NamespaceStructuralRootExposure,
-  declaration_exposure_from_containment,
-}
 
 data type_reference_binding_context_path_scope_note: String = "PATH SCOPE (quiet-hawk-219 / calm-badger-682, DESIGN 4b): the coincidence-binding defect class exists on TWO structurally distinct paths. THIS slice closes the RESOLVE path only — v1 typecheck pool-membership coincidence where flat symbol_index_lookup / lookup_type_for hits masquerade as binding (Class B, section 14.1). EMIT-SIDE LIVE INSTANCE (explicitly OUT OF SLICE; fix owned by warm-wolf-814 — cite, do not fix): emit_var_ref / emit_value_ref_ident key the flat item_registry on LEAF NAME ONLY, so module_a.homonym_value can bind module_b's ItemInfo when both declare the same leaf. #7685 did not repair the cross-module same-leaf case; the collision is LIVE on main. #7705's detector cross_module_same_leaf_emits_qualifier_module_not_registry_winner is RED on main (run 30769280389 at 2383069da) — bottom rung: invalid state occurs, detector exists, detection is not prevention. Emit maintains its own registry key and never consults this containment authority. Second grounded specimen of binding-by-insufficient-key on an independent stage; unlike resolve, not instrument-relative (one reproducible witness, positive and negative arms). Any claim that 'binding is now decided by containment' without 'on the resolve path' is rung inflation. Whether emit later consumes containment authority is a follow-on question, not N2."
 

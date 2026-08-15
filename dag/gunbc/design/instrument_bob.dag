@@ -1,13 +1,5 @@
 module gunbc.design.instrument_bob
 
-import std.types { String, Bool, Int, List, Milliseconds }
-import std.termination { DescentEvidence, Strict, NonIncreasing, DescentUnknown, evidence_rank }
-import gunbc.design.salience { attraction_travel_max_px }
-import gunbc.design.instrument_physical {
-  InstrumentChannel, ChannelImpulseGlitch, channel_may_carry_domain_fact,
-  instrument_displacement_max_px,
-}
-import gunbc.capability_binding { PhysicalImpulse, ImpulseDirection, ImpulseUp, ImpulseDown }
 
 data instrument_bob_note: String = "THE FISHING-BOBBER RESPONSE: the inner display takes a knock, rides up and down, and settles. Three properties make it a modelled behaviour rather than an animation, and each is checkable rather than asserted. It is BOUNDED — the envelope can never carry the plate past the register's existing attraction travel, so instrument character still cannot move a subject as far as a real response does. It SETTLES — the amplitude decays geometrically, so the return to rest carries Strict descent evidence and a derived finite settle time instead of a hope. And it is INERT — the bob is a renderer-local displacement that changes no roadmap fact, no acceptance, no focus and no operation state, which is the same law every other instrument channel already obeys.
 

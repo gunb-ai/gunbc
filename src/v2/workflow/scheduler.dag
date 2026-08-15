@@ -1,24 +1,5 @@
 module v2.workflow.scheduler
 
-import v2.std.collection { List, list_at_optional, optional_present_witness }
-import v2.std.algebra {
-  contains,
-  filter,
-  for_all,
-  is_empty,
-  list_append,
-  list_snoc_item,
-  non_empty
-}
-import v2.std.dependency {
-  DependencyKindClassifier,
-  DependencyView,
-  ReadinessLayer,
-  classify_dependency_kind,
-  topological_layers
-}
-import v2.std.node { Node }
-import v2.std.witness { Holds, Violates, Witness }
 
 type RunnableFrontier {
   ready: List<Node>

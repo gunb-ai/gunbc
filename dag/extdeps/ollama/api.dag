@@ -1,10 +1,5 @@
 module extdeps.ollama.api
 
-import std.types { String, Bool, List, NonEmptyStr, Port }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import std.content_hash { ContentHash, Sha256Digest, sha256_hex_digest, as_content_hash_cryptographic }
 
 // OLLAMA AS ITS OWN UPSTREAM AUTHORITY, per the external-upstream-decomposition rule: an
 // independently versioned product gets its own extdeps module rather than a variant in a generic

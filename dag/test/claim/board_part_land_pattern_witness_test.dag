@@ -1,46 +1,5 @@
 module test.claim.board_part_land_pattern_witness
 
-import std.types { Bool, String, List }
-import std.integer { Int }
-import std.measure { micrometer, micrometer_count }
-import extdeps.land_pattern.types {
-  AdmittedMountablePart,
-  CandidateRefusal,
-  CatalogPartIdentity,
-  LandCountDiffersFromTerminalCount,
-  LandPitchDiffersFromTerminalPitch,
-  LandPatternDisagreement,
-  MechanicalDisagreement,
-  MountingPatternObligation,
-  PartAdmission,
-  PartMechanicalCandidate,
-  PartRefused,
-  PatternDesignatorDiffersFromPackage,
-  QuadRowLandGeometry,
-  SurfaceMountPatternEstablished,
-  SurfaceMountPatternNotEstablished,
-  SurfaceMountPatternStanding,
-  SurfaceMountTerminals,
-  TerminalIndexingObligation,
-  TerminalIndexingUnestablished,
-  ThroughHoleSolderTail,
-  VendorRecommendedLandPattern,
-  admit_part_candidate,
-  land_pattern_disagreements,
-  land_pattern_pitch,
-  peripheral_land_count,
-}
-import extdeps.power.ti_tps3808 { tps3808g01dbvr, tps3808_dbv0006a_body }
-import extdeps.power.ti_tps53688 { tps53688rsbr }
-import extdeps.clock.ti_cdce913 { cdce913pwr, cdce913_pw0014a_land_pattern }
-import extdeps.network.ti_dp83867 { dp83867irrgz, dp83867_rgz0048b_body }
-import extdeps.memory.te_ddr4_dimm_socket { ddr4_dimm_socket_solder_tail_288_family }
-import extdeps.storage.te_m2_ngff_connector { m2_ngff_minicard_67_position }
-import extdeps.storage.amphenol_mdt420m01001 { mdt420m01001 }
-import extdeps.memory.microchip_at24cm02 { at24cm02 }
-import extdeps.memory.macronix_mx25l25673g { mx25l25673g }
-import extdeps.connector.samtec_ftsh_105_01_l_dv { ftsh_105_01_l_dv }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,40 +1,5 @@
 module test.claim.commit_check_demand_witness
 
-import gunbc.commit_workflow {
-  CommitCheckKind,
-  CommitSpecGate,
-  CommitWitnessClaim,
-  CommitCargoFmtCheck,
-  CommitCheckEnrollment,
-  EntryDeclarationDiscovery,
-  DiscoveryComplete,
-  DiscoveryIncomplete,
-  EnrollmentWitnessDemand,
-  DemandQualified,
-  DemandMissing,
-  DemandAmbiguous,
-  DemandIncomplete,
-  DemandRosterAmbiguous,
-  commit_gate_roster,
-  commit_check_kind_eq,
-  demand_rows_match_roster,
-  declaration_ref_lists_eq,
-  project_enrollment_witness_demands,
-  project_enrollment_witness_demands_unchecked,
-  first_duplicate_commit_check,
-  DuplicateCommitCheckFound,
-  NoDuplicateCommitCheck,
-}
-import gunbc.ci_gate { EmitHostGate }
-import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
-import std.realization_schedule {
-  CorpusWitnessKind,
-  ExecutionWitnessKind,
-  SpanUndeclared,
-}
-import std.types { NonEmptyStr }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.optional { Present, Absent }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

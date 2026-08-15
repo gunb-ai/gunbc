@@ -1,15 +1,5 @@
 module test.claim.roadmap_program_view_live_corpus_receipt
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.roadmap_program_view {
-  V1ProgramViewResult, ProgramViewDerived, ProgramViewRefused, v1_program_view,
-  v1_convergence_fronts,
-}
-import gunbc.v1_deletion_plan { v1_exit_finish_lines }
-import gunbc.roadmap_authority {
-  declared_roadmap_nodes, declared_roadmap_edges, roadmap_acceptance_receipts,
-  RoadmapAcceptanceReceiptsProjected, RoadmapAcceptanceReceiptsProjectionRefused,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,22 +1,5 @@
 module v2.test.manual.outcome_diagnostics_eq
 
-import v2.std.diagnostic {
-  Diagnostic,
-  node_locus,
-  Unavailable,
-  ExternalContractUnknown,
-  NonEmptyDiagnostics,
-  Outcome,
-  Accepted,
-  Rejected,
-  None,
-  Some,
-  diagnostics_merge,
-  non_empty_diagnostics_eq,
-  outcome_node_eq
-}
-import v2.std.node { Node, Symbol }
-import v2.test.manual.connective_anchors { stub_empty_conj }
 
 fn diag_eq_x() -> Diagnostic {
   Diagnostic {

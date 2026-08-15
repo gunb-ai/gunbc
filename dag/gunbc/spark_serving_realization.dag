@@ -1,12 +1,5 @@
 module gunbc.spark_serving_realization
 
-import std.types { String, Bool, List, Int, NonEmptyStr }
-import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
-import product.placement_supply { HostIdentity }
-import std.content_hash {
-  ContentHash, compare_content_hash, ContentHashEqual, ContentHashDifferent,
-  ContentHashCrossFamilyIncomparable,
-}
 
 // SERVING REALIZATION IS DERIVED, NOT OBSERVED AND NOT ASKED.
 //

@@ -1,6 +1,5 @@
 module gunbc.claim_executor_hand_rust_boundary
 
-import std.types { Int, List, String }
 
 data claim_executor_hand_rust_boundary_note: String = "TERMINAL BOUNDARY ledger for claim_executor.rs hand Rust (Lane swift-lynx-164). Live scale is measured at execution by scripts/rust_item_census.py — this note does NOT pin numeric literals (DESIGN §3 stale-citation class). CONTRACT: .dag owns plans, admission, scheduling, selection, outcome, and receipt semantics; Rust owns spawn, observe (time/memory/move bytes), and persist. Anything else in this file needs an explicit SeedGrowthJustification row. NOT a deletion plan — instrument only. Sibling cli_run.rs ledger: gunbc.cli_run_hand_rust_area_ledger."
 

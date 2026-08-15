@@ -1,57 +1,5 @@
 module v2.compiler.self_host.v2_emitter_direct_rust_door_contract
 
-import v2.compiler.self_host.candidate_generation {
-  ArtifactProduced,
-  AssemblyRejected,
-  EmissionRejected,
-  InferenceRejected,
-  ProducerReceiptRejected,
-  ProvenancedRustArtifact,
-  ProvenancedRustEmissionObservation,
-  provenanced_rust_artifact_producer_is_v2_interpreted,
-  provenanced_rust_artifact_seed_emitter_unreachable,
-  observe_provenanced_rust_emission_from_ingest,
-}
-import v2.compiler.self_host.direct_rust_door_fixture {
-  direct_rust_door_admission,
-  direct_rust_door_expected_source,
-  direct_rust_door_ingest,
-  direct_rust_door_module_path,
-  direct_rust_door_target_model
-}
-import v2.compiler.self_host.emitter_producer_provenance {
-  emission_qualifications_list_contains,
-  SourceProduced
-}
-import v2.compiler.translate {
-  target_serialize_source_from_model,
-  translate_diagnostic_reason_from_symbol,
-  TargetBundleMalformed,
-}
-import v2.extdeps.languages.rust {
-  rust_fixture_emitted_add_fn,
-  rust_fn_add_lex,
-}
-import v2.std.algebra { any }
-import v2.std.collection { empty_map, List }
-import v2.std.compilers.target_model {
-  ProducedDeclUnwired,
-  TargetModel,
-  target_model_emit_transforms_empty,
-}
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Conj,
-  Node,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode,
-}
-import v2.std.optional { Absent, Present }
-import v2.std.text { String }
 
 data v2_emitter_direct_rust_door_contract_note: String = "THE CLOSING CONDITION for roadmap node v2-emitter-direct-rust-door. MissingTranslationRuleRefuses: a deliberately incomplete Rust TargetModel must refuse through target_serialize_source_from_model with TargetBundleMalformed rather than accepting guessed source — it is the one direct-door leaf OBSERVED independently of the production emission walk. The former second capability, WrittenSourceIndependentOfSeedEmitter, is DELETED with its fold: it named a single admission whose refusal arm answered for both a rejected pipeline and a seed-dependent artifact, and the fact it tried to carry is now the declared-producer-closure leaf projected from ProvenancedRustEmissionObservation, where a stop before the artifact reports LeafNotReached with its stage instead of a refusal."
 

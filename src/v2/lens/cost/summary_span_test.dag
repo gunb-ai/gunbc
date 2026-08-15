@@ -1,14 +1,5 @@
 module v2.test.lens_cost.summary_span
 
-import v2.lens.cost.expr { CostAdd, CostConst, CostExpr, CostMax, cost_const }
-import v2.lens.cost.summary {
-  ComplexitySummary,
-  summary_parallel,
-  summary_sequential
-}
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.nat { Succ, Zero }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

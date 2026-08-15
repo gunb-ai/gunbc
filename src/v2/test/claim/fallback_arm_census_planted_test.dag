@@ -1,24 +1,5 @@
 module v2.test.claim.fallback_arm_census_planted
 
-import v2.lens.fallback_arm_census {
-  AnswersOnOpen,
-  ClassifierUnknown,
-  CompletesClosedTotal,
-  DeclaredInterim,
-  Refuses,
-  classify_fallback_arm,
-  classify_last_arm_of_planted_match,
-  fallback_arm_class_eq,
-  fallback_arm_class_is_defect,
-  fallback_arm_class_is_unknown,
-  fallback_unknown_undecidable_body,
-  planted_match_with_wildcard_answers,
-  planted_match_with_wildcard_opaque,
-  planted_match_with_wildcard_refuses,
-  FallbackArmClassifyInput
-}
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,9 +1,5 @@
 module v2.test.long.door_real_module_probe
 
-import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_roots }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.compiler.name_resolve { resolve_with_admission_policy }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -1,21 +1,5 @@
 module v2.test.tokenize.annotation_channel
 
-import v2.std.text { String }
-import v2.std.logic { Bool }
-import v2.std.algebra { fold_list, length }
-import std.source_annotation { LeadingAfterLineIndent, TrailingAfterSemanticToken }
-import v2.std.compilers.lexing {
-  AnnotationRule, TokenRule, TriviaRule, LexPattern,
-  LexRuleSet, LexArtifact,
-  CharClassPattern, LiteralPattern, OneOrMorePattern, RepeatPattern, SequencePattern, EmptyPattern,
-  IdentContinueChar, LineCommentTextChar, WhitespaceChar,
-  lex_artifact_annotations, lex_artifact_semantic_tokens, UnboundSourceAnnotation, symbol_lexeme,
-  token_stream_all
-}
-import v2.compiler.tokenize {
-  LexRuleAnnotation, LexRuleToken, LexRuleTrivia, LexRuleNoMatch,
-  lex_try_rule, lex_walk, lex_walk_artifact
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

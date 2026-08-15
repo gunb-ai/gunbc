@@ -1,15 +1,5 @@
 module test.claim.fleet_converge_timer_witness
 
-import std.types { Bool, String }
-import gunbc.fleet_converge_timer {
-  fleet_converge_service_unit_name,
-  fleet_converge_timer_unit_name,
-  fleet_converge_timer_on_calendar,
-  fleet_converge_service_content,
-  fleet_converge_service_content_self,
-  fleet_converge_timer_content,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

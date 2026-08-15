@@ -1,14 +1,5 @@
 module gunbc.econ.regional_compute_premium
 
-import extdeps.pricing.regional_compute {
-  ComputeProvider,
-  Geography,
-  RegionalComputeRow,
-  compute_provider_eq,
-  hourly_micros,
-}
-import std.measure { basis_point, BasisPoint, hardware_thread_count_value }
-import std.nat { Nat }
 
 data regional_premium_note: String = "The read the regional rows exist for: what does the SAME machine cost in region X versus a baseline region, expressed as a basis-point premium. Derived at read time from cited rows, never stored (DESIGN section 2). The comparison is only meaningful when the two rows hold the hardware fixed, so the derivation refuses across providers -- an AWS m7i.large against an Azure D2s_v5 is a vendor comparison wearing a region comparison's clothes, and the two vendors price their generations differently even where the vCPU and memory match."
 

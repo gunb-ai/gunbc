@@ -1,20 +1,5 @@
 module gunbc.runner_activation
 
-import std.types { String, NonEmptyStr, Bool, List }
-import std.disposition { Disposition, SingleAuthority }
-import product.placement_supply { HostIdentity }
-import extdeps.exec.command { ArgvCommand }
-import gunbc.runner_host_deploy {
-  RunnerHostDeploy, RunnerHostAdmission, RunnerHostEnrolled, RunnerHostUnenrolled,
-  RunnerCommandOrRefusal, RunnerCommandReady, RunnerCommandRefused,
-  runner_enable_command_argv, runner_instance_names,
-}
-import gunbc.build_cache_instance {
-  BuildCacheInstance, BuildCacheServerPlacement,
-  ServerManagedUnitOwned, ServerRunnerOwned, ServerUnsupervised,
-  ServerPlacementAbsent, ServerPlacementUnknown,
-  ProcessIdentity, BuildCacheEndpointObservation, placement_of_endpoint_observation,
-}
 
 data runner_activation_scope_disposition: Disposition = SingleAuthority
 

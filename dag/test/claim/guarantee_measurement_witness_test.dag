@@ -1,24 +1,5 @@
 module test.claim.guarantee_measurement_witness_test
 
-import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha }
-import gunbc.guarantee_measurement {
-  GuaranteeClassId, GuaranteePathId, GuaranteeProbeId, GuaranteeTargetName,
-  SubjectGrain, SyntheticProgram,
-  AcceptanceBoundary, CompileAccept, RuntimeRun, InferToEval, InferToTranslate,
-  PathRealization, InterpreterRealization, EmittedTarget,
-  GuaranteePath,
-  ProbeObservation, RefusedTyped, AcceptedClean, AcceptedCounted, ExecutionDiverged, ProbeNotRunnable,
-  ProbeObservationFold, probe_observation_fold,
-  observed_is_verdict,
-  GuaranteeMeasurementReceipt,
-  MeasurementRevision, GitRevision,
-  GuaranteePathResolution, PathResolved, PathUnknown, PathDuplicate,
-  resolve_guarantee_path,
-  ReceiptJoin, ReceiptJoined, ReceiptPathUnknown, ReceiptPathDuplicate,
-  join_receipt_to_path,
-  guarantee_class_ids_unique, guarantee_path_ids_unique,
-  probe_set_digest,
-}
 
 data guarantee_measurement_witness_scope_note: String = "SYNTHETIC ROWS ONLY, by the Stage 0 charter: these witnesses prove the protocol - construction, exactly-one resolution, the refusing joins, digest determinism, and the verdict/ignorance separation - against rows invented here. No probe executes, no real class population exists yet, and nothing below says anything about the compiler. When ladder-probe-corpus lands real rows, its receipts execute through THIS vocabulary and these synthetic witnesses stay as the protocol's regression controls. The unwritability half of the node's red_control (a receipt missing an identity component) is construction-by-required-fields: it cannot be witnessed from inside a compiling program, and its corpus-wide enforcement measurement belongs to the record-construction census class, stated in the module's receipt_identity_note rather than faked here."
 

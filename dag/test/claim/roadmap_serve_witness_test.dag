@@ -1,52 +1,5 @@
 module test.claim.roadmap_serve_witness
 
-import gunbc.roadmap_serve {
-  RoadmapServeHandler,
-  RoadmapDailyPageHandler, RoadmapFullPageHandler, RoadmapMdHandler,
-  DispatchJsonHandler, HealthzHandler, DashboardInstanceHandler,
-  BeltDispatchHandler, DispatchAssetHandler,
-  SandboxPageHandler, InstrumentSandboxPageHandler, InstrumentTunerPageHandler,
-  InstrumentTunerAssetHandler, InstrumentMotionPageHandler, InstrumentMotionAssetHandler,
-  SandboxAssetHandler, SandboxEchoHandler,
-  SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
-  BeltPublishHandler,
-  CiRunsPageHandler, CiRunDetailPageHandler, CiRunsJsonHandler,
-  RoadmapServeRouteSpec,
-  RoadmapServeTableBuild, RoadmapServeTable, RoadmapServeTableRefused,
-  roadmap_serve_route_table_build,
-  roadmap_serve_route_specs,
-  roadmap_serve_build_from_specs,
-  roadmap_serve_selection_response,
-  roadmap_serve_invoke,
-  roadmap_serve_respond,
-  roadmap_serve_respond_for_instance,
-  belt_dispatch_status,
-}
-import gunbc.roadmap_belt_actuate {
-  BeltDispatchResult,
-  DispatchSpawned, DispatchAlreadyLive, DispatchNodeNotFound,
-  DispatchDisabled, DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchAuthorityRefused, DispatchSpawnFailed,
-  DispatchStaleSession, DispatchSessionLivenessUnobserved,
-  DispatchRevisionDrifted, DispatchRevisionUnobserved,
-  DispatchSessionMultiplicityConflict,
-}
-import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
-import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
-import gunbc.roadmap_component { instrument_tuner_asset_path }
-import gunbc.roadmap_component { instrument_motion_asset_path, instrument_motion_page_path }
-import gunbc.roadmap_component { instrument_lab_links }
-import gunbc.roadmap_component { roadmap_dispatch_asset_path, dispatch_client_js_source, sandbox_asset_path }
-import extdeps.http.server {
-  ServeHttpRequest, ServeHttpResponse,
-  ServedRouteTable,
-  RouteSelection, SelectedStatic, SelectedDynamic, MethodNotAllowed, NoRouteMatched,
-  serve_select_route,
-  HttpMethodParse, KnownMethod, UnknownMethod,
-  parse_http_method_label,
-  media_type_wire_label,
-}
-import std.http_path { PathParamBinding, path_param_value }
-import std.types { String, Int, Bool, List, HttpMethod, GET, POST, PUT }
 
 data live_table_or_empty_note: String = "Test-local extraction: a Refused build yields the EMPTY table, so every selection witness below goes RED (nothing selects) — the discriminating direction; the production path never does this (roadmap_serve_respond answers 500 on Refused)."
 

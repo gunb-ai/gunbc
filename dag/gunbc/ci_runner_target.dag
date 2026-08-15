@@ -1,13 +1,5 @@
 module gunbc.ci_runner_target
 
-import extdeps.cloud.ubicloud { UbicloudRunnerCatalogRow, ubicloud_standard_16_arm_catalog }
-import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner }
-import extdeps.github.hosted_runners { GithubHostedRunnerCatalogRow }
-import gunbc.ci_fleet { gunbc_ci_fleet_offer }
-import gunbc.runner_slot_allocation { RunnerSlotDesired, gunbc_runner_slot_desired }
-import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_ram_speed_ceiling }
-import gunbc.runner_spec_from_offer { runner_spec_from_offer }
-import std.measure { ByteSize }
 
 data ci_runner_target_mapping_note: String = "The single seam the 2026-07-11 ubicloud iteration window proved missing: 'which machine runs CI' was modeled as a label, so switching runners propagated nothing (CARGO_BUILD_JOBS stayed fleet-derived, the toolchain-image assumption stayed baked, the memory regime stayed invisible). This module makes the selection one fact with N projections: selected_ci_runner_target() is the authority; the runs-on spec and the memory regime PROJECT from it; a runner switch is a one-row edit here and every derivation follows (DESIGN 2, model-local/derive-global). Fleet labels stay DERIVED from the fleet offer (gunbc.runner_spec_from_offer, unchanged authority); cloud rows carry the provider's cited runs-on token (extdeps catalog rows), not a re-derivation. Consumers migrate to the projections as they need them - ci_workflow reads the spec projection now; the floor budget's regime read (gunbc.ci_floor_measurement live rows) is the declared convergence successor: once a completed fleet floor readback proves live == declared, the budget reads ci_runner_target_memory_regime and the live rows collapse (their own dissolve-on)."
 

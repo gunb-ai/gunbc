@@ -1,22 +1,5 @@
 module v2.test.workflow.host_source_root_ingest_manifest
 
-import v2.compiler.name_resolve {
-  Admission,
-  ResolutionSubject,
-}
-import v2.compiler.source_authority {
-  DiscoveredSourceRefsDigestNoRefList,
-  DiscoveredSourceRefsDigestUnavailable,
-  SourceRef,
-  SourceRootIngest,
-  SourceRootManifestAbsent,
-  SourceRootProvenanceCoverageReceipt,
-}
-import std.algebra { Cons, Empty }
-import std.content_hash { Fnv1a64, Fnv1a64Structural }
-import v2.std.collection { List }
-import v2.std.cross_tree.import_model { DagTree }
-import v2.std.text { String }
 
 data host_source_root_ingest_content_hash: String = ""
 

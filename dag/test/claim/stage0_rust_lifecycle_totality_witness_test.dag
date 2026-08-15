@@ -1,18 +1,5 @@
 module test.claim.stage0_rust_lifecycle_totality_witness
 
-import gunbc.stage0_rust_lifecycle_totality {
-  LifecycleTotalityDerived,
-  exact_unclassified_tracked_paths,
-  lifecycle_decision_complete,
-  lifecycle_discovery_complete,
-  lifecycle_totality_receipt,
-  lifecycle_totality_witness_observation,
-  lifecycle_totality_retirement_trigger_underived_reason,
-  stage0_rust_lifecycle_totality_note,
-  stage0_rust_lifecycle_totality_underived_axes
-}
-import gunbc.stage0_rust_source_lifecycle_scaffold { path_in_list }
-import v2.std.algebra { length }
 
 test fn lifecycle_totality_note_cites_identity_join() -> Bool {
   string_contains(s: stage0_rust_lifecycle_totality_note, pattern: "identity join")

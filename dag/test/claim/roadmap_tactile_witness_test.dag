@@ -1,52 +1,5 @@
 module test.claim.roadmap_tactile_witness
 
-import std.types { Int, String, Bool }
-import std.markup { Fragment, Element, FragmentText, RawNode, Attribute, attr }
-import gunbc.design.material {
-  TimingToken, timing_scale, respond_fast, reveal_deliberate, restore_gentle, settle_spring,
-  BuildRule, StaticRule, ResponseRule, SelfResponse,
-  MotionTrigger, OnHover, OnActive, OnStateClass,
-  trigger_selector_suffix, trigger_is_state_class,
-  transition_carrier_selector, all_transition_carriers, TransitionCarrier, TransitionItem,
-  serialize_rules, reduced_motion_block,
-  rest_scale_per_mille, press_scale_per_mille, hold_scale_per_mille,
-  compression_wire, scale_transform_wire,
-  CssDecl, decl,
-}
-import gunbc.design.interaction {
-  Detent, DetentEdge, DetentEdgeDefect, DetentEdgeFault, EndpointUndeclared, PositionsCoincide,
-  AtRest, ByTrigger, NoTravel, Travel,
-  detent_named, detent_transform_wire, detent_edge_defects, detent_edges_all_beat,
-  BehaviorRow, coverage_complete,
-  Lift, Depress, Settle, Approach, Dispatch, Await, Accept,
-  DispatchBtnElement, SoundToggleElement,
-}
-import gunbc.design.scale { travel_lift, travel_press, scale_var }
-import gunbc.design.sound {
-  SoundSpec, engage_detent_click, sound_specs,
-  operation_sound_envelope, every_declared_sound_admissible,
-  notification_chime_negative_control,
-  sound_spec_frequency_wire, sound_spec_decay_seconds_wire,
-  sound_spec_peak_gain_wire, sound_spec_timbre_wire,
-  sound_mute_storage_key, sound_default_sounding,
-  operation_sound_max_decay_ms,
-}
-import gunbc.roadmap_interaction {
-  roadmap_elements, roadmap_behaviors,
-  roadmap_dispatch_detents, roadmap_sound_toggle_detents, roadmap_detent_edges,
-  roadmap_dispatch_detent_defects, roadmap_behavior_rules,
-  detent_rest, detent_hover, detent_pressed, detent_requested, detent_accepted,
-}
-import gunbc.roadmap_style { roadmap_css, roadmap_rules }
-import gunbc.roadmap_component {
-  dispatch_client_js_source, sound_toggle_class,
-  dispatch_class_requested, dispatch_class_ok,
-  dispatch_ack_prefix, dispatch_ack_word,
-  sound_toggle_label_on, sound_toggle_label_off,
-}
-import gunbc.roadmap_page { roadmap_header, roadmap_page_for_authority }
-import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

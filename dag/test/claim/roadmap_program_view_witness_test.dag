@@ -1,32 +1,5 @@
 module test.claim.roadmap_program_view_witness
 
-import std.types { Int, String, Bool, List, NonEmptyStr }
-import gunbc.roadmap_model {
-  RoadmapNode, RoadmapEdge, RoadmapNodeId, RoadmapNodeIdentity, RoadmapAcceptanceReceipt,
-  roadmap_criteria_digest,
-  NodeSizing, Sized, Unsized, IntricacyLow, VolumeSmall, ManualAcceptance, PrsMerged,
-}
-import gunbc.roadmap_status {
-  TicketLine, DerivableLine, TicketFields,
-  RedControlExecuted, HandbackDelivered, Signoff, Unsigned,
-}
-import gunbc.roadmap_execution_contract {
-  ExecutionContractUnspecified, ExecutionContract,
-  CargoFmtValidation,
-}
-import gunbc.v1_deletion_plan { V1FinishLineSpec, CompilerFixedPoint }
-import gunbc.roadmap_program_view {
-  V1ConvergenceFront, NamespacePDeriveFront, V2GenerationFront,
-  ConvergenceFrontSpec, program_front_key,
-  RemainingShape, ConstraintView, ConstraintKind,
-  ImplementationConstraint, ContractConstraint,
-  ProposedPlane, ProposedCarrierAbsent,
-  FinishLineView, V1DeletionProgramView,
-  V1ProgramViewResult, ProgramViewDerived, ProgramViewRefused,
-  ProgramViewRefusalCause, FinishLineNodeUnresolved, FrontGateUnresolved,
-  DuplicateAcceptanceReceipt, DuplicateProgramNodeId,
-  program_view,
-}
 
 data roadmap_program_view_witness_note: String = "SMALL SYNTHETIC BUSINESS WITNESSES for gunbc.roadmap_program_view (operator verdict 2026-08-05): every oracle is PLANTED on a hand-authored fixture graph — never copied from the live roadmap tree (DESIGN section 5). Covers acceptance algebra (receipt moves primary constraint; accepted mid-chain collapses depth), dependency hold (unmet parents block startability), duplicate receipt and duplicate node identity refusal, in-flight overlay, merged-PR and contract non-acceptance, misspelled finish-line/gate refusal, proposed-plane absence, and derived front/constraint facts on the fixture. Live-corpus wiring — that the real roadmap authority projects and every finish line and gate resolves — is ONE separately classified receipt in test.claim.roadmap_program_view_live_corpus_receipt (falsifier substrate long lane), not counted here."
 

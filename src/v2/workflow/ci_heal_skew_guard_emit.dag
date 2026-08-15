@@ -1,48 +1,5 @@
 module v2.workflow.ci_heal_skew_guard_emit
 
-import v2.workflow.orchestration_bash_emit_support {
-  orch_bash_emit_pipeline
-}
-import v2.std.orchestration {
-  DiscardErr,
-  DiscardOut,
-  Do,
-  Exit,
-  ExitZero,
-  ExprCmdSubst,
-  ExprLit,
-  FailFast,
-  If,
-  Let,
-  Not,
-  Or,
-  Pipeline,
-  PipelineStep,
-  Predicate,
-  RedirectSpec,
-  Run,
-  StdoutAndStderr,
-  StrNonempty
-}
-import v2.std.collection { Absent, Present }
-import extdeps.exec.xargs { shape_xargs_null_delimited_argv }
-import extdeps.git {
-  shape_git_add_argv,
-  shape_git_checkout_ours_argv,
-  shape_git_commit_no_verify_no_edit_argv,
-  shape_git_config_argv,
-  git_pathspec_exclude,
-  shape_git_diff_unmerged_args,
-  shape_git_diff_unmerged_nul_argv,
-  shape_git_diff_unmerged_pathspec_args,
-  shape_git_rev_list_ahead_path_limited_args,
-  shape_git_merge_abort_argv,
-  shape_git_merge_no_edit_argv,
-  shape_git_rev_parse_verify_quiet_argv
-}
-import gunbc.generated_artifact { committed_generated_artifact_paths }
-import gunbc.stage0_emit_plan { stage0_canonical_repo_path }
-import gunbc.stage0_emit_plan_generated { generated_stage0_files }
 
 data ci_heal_skew_guard_emit_authority_note: String = "FOREIGN-EXECUTOR SHELL EMISSION FOR THE HEAL JOB'S BINARY/SOURCE SKEW GUARD AND ITS AUTO-REMEDY. Control flow is a v2.std.orchestration Pipeline of If / Not / Or / StrNonempty / Let / Exit nodes — orchestration, not bash-in-String — and every git leaf derives its argv from an extdeps.git shape declaration rather than a hand-spelled command. This module replaces the 55-line join([...]) that formerly lived at gunbc.ci_spec.gunbc_ci_heal_binary_source_skew_guard_script, whose Scaffold and dissolution-trigger rows are deleted by the same change (the receipt: the scaffold is gone, not reworded). Kept in v2.workflow beside ci_regen_rustfmt_path_emit — the same placement, and for the same reason — so gunbc.ci_spec can import the rendered script without the ci_materialization <-> ci_spec cycle."
 

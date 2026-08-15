@@ -1,32 +1,5 @@
 module gunbc.runner_capacity_realize
 
-import std.types { String, Int, List }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.runner_capacity_plan {
-  RunnerCapacityPlan,
-  PlanReady,
-  PlanRefused,
-  RunnerCapacityHostPlan,
-  RunnerCapacityAction,
-  RunnerSlotAdd,
-  RunnerSlotChange,
-  RunnerSlotRemove,
-  RunnerIncarnationReplace,
-  WidthAdmitted,
-  runner_capacity_plan,
-  runner_capacity_add_count,
-  addition_actions,
-}
-import gunbc.fleet_runner_connectivity { organization_runner_roster_evidence }
-import gunbc.runner_lifecycle {
-  runner_width_disk_preflight,
-  DiskHeadroomSufficient,
-  DiskHeadroomInsufficient,
-  DiskHeadroomUnobserved,
-}
-import gunbc.host_disk_observation { host_disk_observation }
-import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
-import product.placement_supply { HostIdentity }
 
 data runner_capacity_realize_authority_note: String = "PR C seam: wires gunbc.apply mode=apply to runner_capacity_plan + per-host disk preflight + ADD-only dispatch. Does NOT provision runners — all nine runner_lifecycle_realize_* arms return NotConverged (honest scaffold; dissolve-on runner_lifecycle_realize_wet_transport_dissolve_on: LocalShell in-band transport + enumerated sudo grants + HostEffectTransport). Runner-capacity apply executes RunnerSlotAdd only; Change/Remove/IncarnationReplace refuse per host (repair is #7940). Per-host outcomes are independent: srv4 disk/refusal does not discard srv3's receipt. No ctrl in this closure. Disk unobservable REFUSES per host (never width-5 fallback). Live width authority is unit/process state, not directory count (runner_capacity_width_authority_note)."
 

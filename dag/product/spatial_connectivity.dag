@@ -1,15 +1,5 @@
 module product.spatial_connectivity
 
-import std.types { Bool, List, NonEmptyStr }
-import std.algebra { Empty, Cons }
-import std.integer { Int }
-import std.orthogonal_topology {
-  EnclosedSpace, space_walls,
-  WallOverlap, shared_wall_region,
-}
-import product.placement_supply { RoomIdentity }
-import product.spatial_world { World, PlacedSpace, world_rooms }
-import v2.std.optional { Present, Absent }
 
 // SPATIAL-4C: OPENINGS, AND WHAT THEY MAKE REACHABLE.
 //

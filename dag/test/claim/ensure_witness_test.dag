@@ -1,19 +1,5 @@
 module test.claim.ensure_witness
 
-import std.types { Bool }
-import std.upsert_decision { Noop, Apply, Refuse }
-import std.realization_reconcile { Converged, NotConverged }
-import gunbc.ensure {
-  EnsureObserveOnly,
-  EnsureMayApply,
-  EnsureObserved,
-  EnsureAbsent,
-  EnsureInaccessible,
-  EnsurePlanAvailable,
-  EnsurePlanUnavailable,
-  ensure_decide,
-  ensure_readback,
-}
 
 test fn ensure_satisfied_is_noop_for_every_policy() -> Bool {
   match ensure_decide(

@@ -1,44 +1,5 @@
 module v2.extdeps.languages.verilog
 
-import v2.std.nat { Nat }
-import std.integer { Signedness }
-import v2.std.node {
-  Atom,
-  Conj,
-  Edge,
-  Node,
-  Named,
-  Positional,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode,
-}
-import v2.std.collection { List, Map, empty_map, map_insert }
-import v2.std.compilers.target_model { TargetModel, ProducedDeclUnwired, render_target_text }
-import v2.compiler.translate { target_serialize_relation_row_from_model_bounded }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.grammar {
-  StampClass,
-  StampBinding, FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_nonterminal_occurrence, grammar_formal_production, grammar_formal_terminal, grammar_formal_terminal_bound, grammar_formal_terminal_free, formal_production_for_lhs_exact, derive_grammar_relation_row_node }
-import v2.std.compilers.lexing {
-  CharClassPattern,
-  IdentContinueChar,
-  IdentStartChar,
-  ChoicePattern,
-  KeywordPattern,
-  LexPattern,
-  LexRule,
-  LexRuleSet,
-  LexRules,
-  LiteralPattern,
-  ModeledLexRules,
-  OneOrMorePattern,
-  RepeatPattern,
-  SequencePattern,
-  TokenRule,
-  TriviaRule,
-  WhitespaceChar
-}
 
 data verilog_std_integer_signedness_migration_note: String = "Signedness consumer migration: verilog imports std.integer.Signedness. Semantic equivalence: verilog signed/unsigned on net, port, and parameter declarations is the same interpretive axis as std.integer Signed/Unsigned — whether a bit pattern is read as two's-complement signed range or unsigned modular arithmetic; no Verilog-specific signedness semantics beyond this axis are modeled on these fields."
 

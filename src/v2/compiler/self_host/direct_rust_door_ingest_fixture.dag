@@ -1,5 +1,4 @@
 module direct_rust_door_ingest_fixture
 
-import v2.std.text { String }
 
 data direct_rust_door_ingest_fixture_note: String = "Lane B ingest anchor file for direct_rust_door_fixture DagSourceReadWitness provenance; the add_probe module source is carried inline in direct_rust_door_fixture."

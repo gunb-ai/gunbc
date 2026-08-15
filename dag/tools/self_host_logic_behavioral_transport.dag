@@ -1,29 +1,7 @@
 module tools.self_host_logic_behavioral_transport
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 
-import extdeps.shell
-import extdeps.filesystem.filesystem_io
-import extdeps.cargo_build
-import extdeps.git
-import extdeps.git.inspect
-import extdeps.gunbc
-import std.logic { Bool }
-import std.integer { Int }
-import v2.compiler.self_host.promotion_admission {
-  BehavioralComparisonObservation,
-  BehavioralCorpus,
-  BehaviorAgrees,
-  BehaviorDiverges,
-  BuildFailed,
-  BuildGreen,
-  FaultCaught,
-  FaultNotCaught,
-  Observed,
-  ObservationUnavailable
-}
-import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
 
 
 

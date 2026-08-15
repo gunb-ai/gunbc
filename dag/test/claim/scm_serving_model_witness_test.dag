@@ -1,40 +1,5 @@
 module test.claim.scm_serving_model_witness
 
-import extdeps.pricing.object_storage {
-  BinaryGibibyte,
-  DecimalGigabyte,
-  durability_nines,
-  gcs_default_replication,
-  r2_class_a_operations,
-  r2_class_b_operations,
-  r2_egress_free,
-  r2_standard,
-  s3_egress_first_10tb,
-  s3_standard_first_50tb,
-  s3_standard_infrequent_access,
-  s3_tier1_requests,
-  s3_tier2_requests,
-  storage_rate_micros,
-  b2_storage_rate_unavailable,
-  hetzner_object_storage_rate_unavailable,
-}
-import gunbc.econ.scm_serving_model {
-  BasisAssumed,
-  BasisContradictsCitedRow,
-  BasisUnknown,
-  ScmMonthlyCostDerived,
-  ScmMonthlyCostRefused,
-  ScmUsageDerived,
-  ScmUsageRefused,
-  ScmWorkloadProfile,
-  StorageRateUnavailable,
-  UserCountZero,
-  VendorMismatchAcrossRows,
-  derive_scm_monthly_cost,
-  derive_scm_usage,
-}
-import std.measure { byte_size }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

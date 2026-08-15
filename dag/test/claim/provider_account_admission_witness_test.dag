@@ -1,55 +1,5 @@
 module test.claim.provider_account_admission_witness_test
 
-import std.types { Bool, String, NonEmptyStr, Int, List, FilePath }
-import gunbc.provider_account {
-  CodexAccountSelection,
-  CodexDefaultAccount,
-  CodexLabelledAccount,
-  ProviderAccountLabel,
-  SessionConcurrency,
-  SingleSession,
-  ManySessions,
-  SessionConcurrencyDecode,
-  ConcurrencyDecoded,
-  ConcurrencyRefused,
-  session_concurrency_of_count,
-  session_concurrency_total,
-  CredentialSharingDiscipline,
-  SharingDisciplineUnknown,
-  ExclusiveBinding,
-  ConcurrentBindingObservedUpTo,
-  ConcurrentBindingSafe,
-  codex_sharing_discipline,
-  codex_current_sharing_discipline,
-  AdmittedAccountBinding,
-  AccountBindingAdmission,
-  BindingAdmitted,
-  BindingRefusedUnknownDiscipline,
-  BindingRefusedExclusiveOverbound,
-  BindingRefusedBeyondObservedEvidence,
-  admit_account_binding,
-  EvidencedSharingDiscipline,
-  EvidencedExclusive,
-  EvidencedObservedUpTo,
-  EvidencedConcurrentSafe,
-  admitted_single_session_binding,
-  codex_roadmap_account_evidence,
-  codex_roadmap_account_selection,
-}
-import extdeps.llm.codex_auth {
-  CodexPersistenceUnobserved,
-  CodexPersistenceObservedLoginOnly,
-  CodexPersistsOnRefresh,
-  codex_observed_refresh_persistence,
-  codex_observed_concurrent_sessions_per_root,
-}
-import gunbc.roadmap_dashboard_instance {
-  HostDashboardInstance,
-  DashboardExistingProviderState,
-  srv1_lab_dashboard_instance,
-  srv2_lab_dashboard_instance,
-  srv1_live_dashboard_instance,
-}
 
 data witness_purpose_note: String = "THE ADMISSION USED TO HAVE NO CONSUMER, so every claim its note made about unwritability was unfalsifiable. admit_account_binding returned a value nothing received while instance construction wrote DashboardExistingProviderState directly, which meant the wall and the traffic were in different places. These claims exist to make both halves checkable: that the admission actually decides, and that a provider state cannot exist without one."
 

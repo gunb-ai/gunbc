@@ -1,15 +1,5 @@
 module product.altra_motherboard.scene_emission
 
-import product.altra_motherboard.pcb_world { altra_pcb_world }
-import product.pcb.world { PartialPcbWorldReady, AdmittedPcbWorld, PcbWorldRefused }
-import product.pcb.plan_view {
-  PcbSceneEmission,
-  PcbSceneEmitted,
-  PcbSceneEmissionRefused,
-  PcbSceneWorldRefused,
-  project_pcb_world,
-  emit_pcb_plan_view,
-}
 
 // Production entry for the Altra reference board plan view. The world is minted once through
 // product.altra_motherboard.pcb_world as a partial preview and realized through

@@ -1,15 +1,5 @@
 module v2.lens.enforcement.complexity_contract_subject
 
-import v2.lens.common.construction_justification {
-  ConstructionJustification,
-  WallAfterGrounding,
-  RatchetForever
-}
-import std.disposition { SingleAuthority }
-import v2.std.collection { List }
-import v2.std.algebra { contains, for_all, fold_list, length }
-import v2.std.logic { Bool }
-import v2.std.integer { Int }
 
 data complexity_contract_subject_split_note: String = "C0(c) of the v2 complexity capability parity program (operator-ruled 2026-08-05). The former single lens_contract_complexity row carried RatchetForever over a MIXED population — decidable derived-kernel capability beside genuinely undecidable optimality residue. This module is the scope authority: two disjoint contract subjects with typed claim rosters forming ComplexityMixedRowClaim. What partition totality does and does not prove is stated in complexity_contract_subject_scope_note — read that note before quoting this carrier. The split is NOT an in-place class flip; each subject has its own LensContract row and LensIdV0. Dissolution for derived-kernel: ParityC2 ComplexitySummary restored on v2.lens.cost (SingleAuthority wall once the summary carrier exists and a live consumer is enrolled). Optimality stays permanent AuditOnly / RatchetForever."
 

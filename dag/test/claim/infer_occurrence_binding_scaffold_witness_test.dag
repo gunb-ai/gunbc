@@ -1,13 +1,5 @@
 module test.claim.infer_occurrence_binding_scaffold_witness_test
 
-import std.disposition { Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.infer_occurrence_binding_scaffold {
-  infer_occurrence_binding_v1_adapter_scaffold,
-  infer_occurrence_binding_v1_adapter_dissolve_trigger,
-  infer_occurrence_binding_v1_adapter_receipt_plan_anchor,
-}
-import std.dissolution { dissolution_description }
 
 test fn infer_occurrence_binding_v1_adapter_scaffold_is_seed_retained() -> Bool {
   match infer_occurrence_binding_v1_adapter_scaffold {

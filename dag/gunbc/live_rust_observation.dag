@@ -1,28 +1,5 @@
 module gunbc.live_rust_observation
 
-import extdeps.github.actions_environment {
-  ActionsShaObservation,
-  ActionsShaObserved,
-  ActionsShaMissing,
-  ActionsShaEmpty,
-  github_sha_variable_name
-}
-import extdeps.shell
-import gunbc.stage0_rust_host_observation {
-  RustSourceHostObservation,
-  RustManifestObserved,
-  RustManifestReadRefused,
-  RustManifestParseRefused,
-  GitObservationRefused,
-  current_stage0_rust_source_observation
-}
-import gunbc.stage0_rust_source_lifecycle_scaffold {
-  RustSourceManifestStateVerdict,
-  rust_source_manifest_state_verdict
-}
-import std.types { CommitSha, Int, NonEmptyStr, String }
-import std.content_hash { Fnv1a64Structural }
-import v2.std.algebra { length }
 
 data live_rust_observation_note: String = "THE CLOSING CONTRACT FOR THE RUST-SOURCE OBSERVATION: proof that a run observed the exact subject it claims to have tested, rather than proof that an observation function is callable.\n\nWHAT MAKES THIS EVIDENCE RATHER THAN A GREEN LIGHT. The expected revision is supplied by the workflow runner (extdeps.github.actions_environment GITHUB_SHA), NOT derived from the repository the observation reads. Deriving both sides with git would compare git to itself -- true by construction, incapable of failing, and exactly the reflection-evidence-for-structural-proof failure DESIGN names. Because the two sides have independent origins, a mismatch is reachable, and a reachable mismatch is what makes the match meaningful.\n\nLAYERING. extdeps.github.actions_environment owns what GITHUB_SHA means; extdeps.shell shell.Env.Get owns reading a process environment variable. This module only projects that existing operation into the GitHub-owned observation type. It adds no GitHub-specific environment transport and no new Rust realization.\n\nWHY THE FOLD TAKES THE OBSERVATION AS A PARAMETER. admit_live_rust_observation is pure: it decides an outcome from a request and an observation it is handed. Only live_rust_observation_wet calls the host. That split is deliberate and load-bearing -- it means every control except the revision match can execute HERMETICALLY against constructed observations, at no host cost and with no Git mock anywhere, while the single genuinely-live claim stays in the one wet entry. A contract whose controls all required the host would have to be trusted; this one is mostly decidable.\n\nNO MOCKS, STATED SO IT IS NOT ADDED LATER AS A CONVENIENCE. Publishing static Git mock responses to make the live witness green would let a witness named for liveness pass against a constant sha. The hermetic controls below use constructed RustSourceHostObservation values, which is a different thing: they exercise the FOLD, and none of them claims to have observed anything.\n\nEVERY REFUSAL IS TYPED AND DISTINCT. The three host refusals stay separable (a Git failure is not a manifest read failure is not a TOML parse failure), missing and present-but-empty runner expectations are different arms, an empty population is its own cause rather than a quiet success, and a revision mismatch names both sides. A failure arm refuses and never widens (DESIGN 5): there is no arm that accepts a partial population, and no arm that treats an unavailable expectation as satisfied.\n\nCOST. The closing contract is enrolled in gunbc.ci_layer_roots bin_witness_wet_entries for the per-PR wet corpora batch (bin_witness_corpus_node), where GitHub supplies GITHUB_SHA. Its per_unit_ms is currently 0 under the declared D2 calibration gap, so this unit is honestly unpriced rather than free; the batch's fixed overhead remains the active backstop until that calibration lands.\n\nACCEPTANCE OBSERVATION. Roadmap node v1-rust-source-observation closes only on a grep-visible executed pass line for live_rust_observation_matches_actions_subject in a real CI job log with independently sourced GITHUB_SHA — not on enrollment alone. Per-row wet-batch execution is currently unobservable in Actions job logs after discovery corpus completes (gunbc.ci_layer_roots bin_witness_wet_per_row_actions_log_observation_gap_note); dissolve-on is coordinator replay of per-row outcomes."
 

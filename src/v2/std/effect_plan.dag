@@ -1,25 +1,6 @@
 module v2.std.effect_plan
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import v2.std.text { String }
-import v2.std.algebra { FreeMonoid }
-import v2.std.collection {
-  List
-}
-import v2.std.optional {
-  Optional
-}
-import v2.std.diagnostic { EmitDirective }
-import v2.std.node { Symbol }
-import v2.std.orchestration {
-  Predicate,
-  FailurePolicy,
-  EscalationLevel,
-  ValueSource,
-  Expr,
-  EnvBinding,
-}
 
 type EffectPlanStep<E>
   = Do { effect: E }

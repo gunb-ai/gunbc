@@ -1,6 +1,5 @@
 module std.unicode.types
 
-import std.types { Char, Int }
 
 data unicode_scalar_max_code_point: Int = 1114111
 data unicode_surrogate_first_code_point: Int = 55296

@@ -1,28 +1,5 @@
 module test.claim.runner_capacity_realize_witness
 
-import std.logic { Bool }
-import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
-import gunbc.runner_capacity_plan {
-  runner_capacity_plan,
-  runner_capacity_add_count,
-  PlanReady,
-  PlanRefused,
-}
-import gunbc.fleet_runner_connectivity {
-  organization_runner_roster_evidence,
-  organization_runner_roster_converged_seven_evidence,
-  organization_runner_roster_materialized_slots_online_evidence,
-}
-import gunbc.runner_capacity_realize {
-  runner_capacity_apply_plan,
-  runner_capacity_reapply_plans_zero_additions,
-  runner_capacity_host_apply_receipt,
-  RunnerCapacityApplyRefused,
-  RunnerCapacityApplyCompleted,
-  HostApplyRefused,
-  HostApplySucceeded,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

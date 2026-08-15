@@ -1,21 +1,5 @@
 module test.claim.bmc_netboot_serve
 
-import std.logic { Bool }
-import std.types { list_length, NonEmptyStr }
-import extdeps.firmware.uefi_http_boot { uefi_http_boot_uri_wire }
-import extdeps.exec.command { shell_command_render, scp_command }
-import gunbc.bmc_netboot_serve {
-  srv4_bmc_netboot_serve_plan,
-  bmc_netboot_grub_cfg_text,
-  bmc_netboot_http_boot_entry,
-  bmc_netboot_nocloud_user_data,
-  bmc_netboot_staging_manifest,
-  bmc_netboot_serve_command_local,
-  bmc_netboot_serve_command_text,
-  InlineText,
-  LocalArtifact,
-  FetchFromUri,
-}
 
 test fn srv4_grub_cfg_boots_mirror_bulk_with_bmc_seed() -> Bool {
   let cfg = bmc_netboot_grub_cfg_text(plan: srv4_bmc_netboot_serve_plan)

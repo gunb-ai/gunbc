@@ -1,9 +1,6 @@
 module gunbc.githooks_pre_push_fmt_transport_scaffold
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data githooks_pre_push_fmt_transport_hand_rust_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,

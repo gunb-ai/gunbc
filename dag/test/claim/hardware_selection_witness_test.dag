@@ -1,37 +1,5 @@
 module test.claim.hardware_selection
 
-import extdeps.vendor.ampere { ampere_vendor }
-import extdeps.vendor.sk_hynix { sk_hynix }
-import extdeps.memory.types {
-  DramModuleCatalogRow, Registered, dram_generation_ddr4, bit_width,
-  dram_module_is_realizable, dram_module_required_die_density,
-}
-import extdeps.memory.jedec { ddr4_generation_catalog }
-import extdeps.cpu.ampere {
-  ampere_altra_l1_cache_geometry,
-  ampere_altra_l1_cache_citations,
-  ampere_altra_l2_cache_geometry,
-  ampere_altra_l2_cache_citations,
-  ampere_altra_max_l3_cache_geometry,
-  ampere_altra_max_l3_cache_citations,
-}
-import extdeps.cpu.types {
-  CpuModelCatalogRow, CpuSocket, LandGridArray,
-}
-import extdeps.toolchain.types { Aarch64 }
-import product.hardware_selection {
-  Platform, MemoryConfig, CpuCandidate, Motherboard, PsuModel, SystemConfig, HardwareAxes,
-  Gold,
-  effective_data_rate_mts, config_axes, dominates, axes_on_front,
-  psu_is_adequate, wall_draw_watts, config_is_realizable,
-  cost_micros_per_gib, bandwidth_per_watt,
-}
-import std.pareto { verdict_is_incomparable, verdict_dominates }
-import std.measure {
-  watt, watt_count, byte_size, byte_size_count,
-  hertz, hardware_thread_count, money_amount_micro,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,6 +1,5 @@
 module gunbc.stage0_crate_partition_generated
 
-import std.types { Bool, List, String }
 
 type GeneratedPartitionCrateKind
   = GeneratedFoundationCrate

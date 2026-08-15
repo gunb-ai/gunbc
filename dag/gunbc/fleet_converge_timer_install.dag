@@ -1,31 +1,5 @@
 module gunbc.fleet_converge_timer_install
 
-import std.types { String, Bool, List, NonEmptyStr }
-import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import std.algebra { trim }
-import std.resources { Network }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.exec.command { ArgvCommand, LocalExec }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.command_runner { run_shell_commands, run_shell_command_capture }
-import gunbc.fleet_converge_timer {
-  fleet_converge_service_unit_name,
-  fleet_converge_timer_unit_name,
-  fleet_converge_service_content_self,
-  fleet_converge_timer_content,
-}
-import gunbc.fleet_converge_cli {
-  FleetConvergeApplicability,
-  ConvergeSparkRoute,
-  SparkManagedAccessUnobserved,
-  SparkManagedAccessAbsent,
-  SparkManagedAccessGrounded,
-  ConvergeSlice1Route,
-  ConvergeKnobFrontier,
-  ConvergeOutsideFleet,
-  fleet_converge_applicability,
-}
 
 // Operator verdict join 2 (2026-08-09): the timer previously installed through
 // deployment_spec_srv1 ONLY — srv2–srv6 had no route, so "per-host timer" was a

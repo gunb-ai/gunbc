@@ -1,41 +1,5 @@
 module gunbc.roadmap_instrument_tuner
 
-import std.types { Int, String, Bool, List }
-import std.markup { Fragment, Element, Attribute, attr }
-import gunbc.site.markup { txt, el, el_class, el_attrs }
-import extdeps.languages.css.properties {
-  Display, Gap, Padding, Border, BorderRadius, Background, Color, Cursor, FontFamily, FontSize,
-}
-import extdeps.languages.css.selectors { SelectorSubject, ClassSelector }
-import gunbc.design.material { BuildRule, StaticRule, CssDecl, decl, serialize_rules }
-import gunbc.design.theme { role_var, SurfaceRole, BorderRole, TextRole, FocusRole }
-import gunbc.design.scale { scale_var, space_2, space_4, space_6, radius_3, text_12, font_mono }
-import gunbc.roadmap_component {
-  instrument_tuner_asset_path, instrument_tuner_root_class, instrument_motion_page_path,
-  instrument_subject_class, instrument_reading_class,
-  instrument_depth_btn_class, instrument_mode_btn_class,
-}
-import gunbc.design.instrument_camera {
-  ProgramCamera, ProgramDepth, ProgramMode,
-  DepthProgram, DepthOutcome, DepthFront, DepthNode, DepthEvidence,
-  ModeStatus, ModeRemaining, ModeWhy,
-  program_depth_key, program_mode_key, program_depth_index,
-  program_depths, program_modes, instrument_user_depths,
-  camera_initial, camera_wire, focus_finish_line,
-  FocusSubject, NoSubjectSelected,
-}
-import gunbc.design.instrument_audition {
-  ProgramReading, ReadingNoSubject, ReadingProgramShape, ReadingOutcomeStatus,
-  ReadingOutcomeRemaining, ReadingConstraint, ReadingNoConstraint, ReadingFront,
-  ReadingUnavailable, read_camera,
-}
-import gunbc.roadmap_instrument_sandbox {
-  instrument_css, instrument_refusal_class,
-  instrument_row_class, live_program_view_result, LiveViewDerived, LiveViewRefused,
-  fragment_cell, fragment_row, instrument_note,
-}
-import gunbc.roadmap_program_view { V1DeletionProgramView, RemainingShape }
-import gunbc.v1_deletion_plan { v1_exit_finish_lines, v1_finish_line_key, V1FinishLineSpec }
 
 data instrument_tuner_note: String = "THE OPERABLE V1-DELETION TUNER at /sandbox/instrument/tuner — the declared follow-on to the static study. The study at /sandbox/instrument renders one server-side camera state with no client program; this page loads the modeled client asset from gunbc.roadmap_component so the camera persists in localStorage, finish-line selection follows the production roadmap's parity rule, wheel and arrow keys admit one detent per admitted threshold (distant depth labels decompose into adjacent steps), and the depth/mode controls actually drive the pre-rendered reading rows. The world is still V0's live derived program view; only the camera is local instrument state."
 

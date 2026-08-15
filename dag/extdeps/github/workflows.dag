@@ -1,11 +1,5 @@
 module extdeps.github.workflows
 
-import extdeps.github.github { default_api_base }
-import extdeps.github.errors { GitHubErrorShape }
-import std.credentials { EnvVar }
-import std.types { CommitSha, NonEmptyStr }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

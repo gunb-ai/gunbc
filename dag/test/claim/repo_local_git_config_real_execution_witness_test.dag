@@ -1,19 +1,5 @@
 module test.claim.repo_local_git_config_real_execution
 
-import std.logic { Bool }
-import extdeps.git
-import extdeps.shell
-import gunbc.repo_local_git_config {
-  RepoLocalGitConfigBinding,
-  repo_local_git_config_converge_actuate_at,
-  observe_repo_local_git_config_bindings_at_repo,
-  generated_artifact_merge_driver_key,
-  generated_artifact_merge_driver_value,
-  core_hooks_path_key,
-  core_hooks_path_value,
-}
-import std.realization_reconcile { Converged, NotConverged }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

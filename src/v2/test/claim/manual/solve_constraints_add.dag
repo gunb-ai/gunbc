@@ -1,31 +1,5 @@
 module v2.test.manual.solve_constraints_add
 
-import v2.std.constraints {
-  CanonicalGrounding,
-  ConstraintGraph,
-  ConstraintSolvePolicy,
-  solve_constraints
-}
-import v2.std.diagnostic {
-  Accepted,
-  None,
-  Outcome,
-  Rejected
-}
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.test.manual.infer_ground_add {
-  fixture_add_resolved_node,
-  fixture_add_resolved_tree
-}
-import v2.std.verification {
-  CompilesClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 fn fixture_add_constraint_graph() -> ConstraintGraph {
   ConstraintGraph { root: fixture_add_resolved_tree() }

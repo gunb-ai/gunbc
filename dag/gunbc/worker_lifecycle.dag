@@ -1,14 +1,5 @@
 module gunbc.worker_lifecycle
 
-import std.types { String, NonEmptyStr, Timestamp, Int }
-import std.integer { PositiveInt }
-import extdeps.llm.cli_lifecycle {
-  ProviderInstance,
-  ProviderReadiness,
-  ProviderReadinessUnobserved,
-  ToolExecutionReadiness,
-  ToolExecutionReadinessUnobserved,
-}
 
 type WorkerTerminalOutcome
   = WorkerTerminalCompleted

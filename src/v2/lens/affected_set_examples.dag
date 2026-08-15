@@ -1,47 +1,6 @@
 module v2.lens.affected_set_examples
 
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SingleAuthority }
 
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  None,
-  Rejected,
-  node_locus,
-  Unavailable,
-  ExternalContractUnknown,
-  diagnostics_singleton
-}
-import v2.std.node { Atom, Conj, Diff, Edit, Hash, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
-import v2.lens.affected_set {
-  AffectedBoundaryRead,
-  AffectedFrontierRead,
-  AffectedPostEditDagRead,
-  AffectedSetRead,
-  ChangedDimensions,
-  ChangedDimensionReceipt,
-  Dag,
-  EditDimension,
-  FrontierProduced,
-  FrontierReceipt,
-  HashChanged,
-  HashReceipt,
-  Propagates,
-  PropagationReceipt,
-  ReExecFrontier,
-  ChangedSubgraphFrontier,
-  BoundaryExclusion,
-  UnchangedPureBoundary,
-  ExclusionKey,
-  Rerun,
-  Excluded,
-  DimensionNotRead,
-  FailClosed,
-  ReasonSymbol,
-  ReasonDiagnostics
-}
-import v2.std.dependency { DependencyView }
 
 data affected_set_example_hash: Hash = affected_set_example_hash
 

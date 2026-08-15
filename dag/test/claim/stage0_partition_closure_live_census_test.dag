@@ -1,12 +1,5 @@
 module test.claim.stage0_partition_closure_live_census_test
 
-import std.types { Bool }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import gunbc.stage0_partition_closure {
-  PartitionClosureHolds,
-  PartitionClosureRefused,
-  partition_closure_verdict,
-}
 
 data witness_live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

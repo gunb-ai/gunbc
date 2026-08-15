@@ -1,28 +1,5 @@
 module test.claim.long.v1_complexity_capability_census_resolution_test
 
-import gunbc.ci_layer_roots { witness_layer_roots }
-import v2.lens.complexity { complexity_variables_admits, complexity_variables_vacuous_validation }
-import v2.std.refinement { VacuousValidation, VacuousAdmits, vacuous_admits_marker }
-import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
-import std.types { String, NonEmptyStr, Bool, List }
-import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_live }
-import v2.std.decl_index { DeclFact, decl_facts }
-import v2.std.decl_ref_resolution {
-  resolve_declaration_ref,
-  declaration_ref_resolves,
-  cited_declaration_ref_refusal_count,
-  DeclarationRefResolved,
-  DeclarationRefModuleAbsent,
-  DeclarationRefDeclarationAbsent,
-  DeclarationRefAmbiguous,
-}
-import gunbc.v1_complexity_capability_census {
-  v1_complexity_inventory_roster,
-  capability_all_declaration_refs,
-  capability_cited_carrier,
-  call_graph_and_scc,
-  asymptotic_class_and_dominance,
-}
 
 data resolution_witness_note: String = "The exact half of C0(b1) citation hygiene, in the long lane because each witness pays a full witness-layer decl_facts scan — the same reason test.claim.long.cited_symbol_resolution_witness_test lives here (operator 5s fast-lane rule). This replaces the previous revision's string_contains check, which could green when a name survived only inside a note, appeared as a substring of another declaration, was ambiguous across modules, or named a declaration of the wrong kind. Resolution here is the repository's single resolution authority: a typed DeclarationRef resolves to exactly one declaration_identity or refuses with one of five typed arms."
 

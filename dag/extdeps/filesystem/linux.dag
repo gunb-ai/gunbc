@@ -1,12 +1,7 @@
 module extdeps.filesystem.linux
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.algebra { trim }
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Https, Uri }
-import std.types { Bool, Int, List, NonEmptyStr, String }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

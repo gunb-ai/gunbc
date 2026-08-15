@@ -1,6 +1,5 @@
 module test.fixture.sole_constructor_sealed.admitted_caller
 
-import test.fixture.sole_constructor_sealed.definer { LocalValidated, mint_sealed_local }
 
 // The one decl named in mint_sealed_local's admit_callers list. It is the GREEN half of the pair: the
 // admission wall is only evidence if the admitted caller compiles clean while an identical call from an

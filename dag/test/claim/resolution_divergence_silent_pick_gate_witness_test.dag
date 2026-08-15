@@ -1,14 +1,5 @@
 module test.claim.resolution_divergence_silent_pick_gate_witness_test
 
-import std.disposition { Scaffold, SingleAuthority }
-import std.types { Bool, String }
-import tools.resolution_divergence_silent_pick_gate_witness_transport {
-  resolution_divergence_in_process_seed_deferral,
-  resolution_divergence_in_process_seed_receipt,
-  resolution_divergence_in_process_seed_scaffold,
-  run_resolution_divergence_silent_pick_gate_witness,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

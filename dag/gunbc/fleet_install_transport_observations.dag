@@ -1,17 +1,5 @@
 module gunbc.fleet_install_transport_observations
 
-import std.types { List }
-import gunbc.fleet_intent_network { operator_host_srv3 }
-import gunbc.install_transport_qualification {
-  ConfigfsMounted,
-  NbdClientPresent,
-  ProbeFoundPresent,
-  ReinstallPathStanding,
-  TransportProbeObservation,
-  UdcPresent,
-  UsbGadgetFrameworkPresent,
-  configfs_reinstall_path_standing,
-}
 
 // LIVE PROBES, srv3 on OpenBMC 3.22.00, 2026-08-13, authenticated BMC SSH.
 // Four of the eight configfs requirements were observed present. The other four

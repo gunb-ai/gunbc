@@ -1,19 +1,5 @@
 module test.claim.runner_capacity_plan_witness
 
-import std.logic { Bool }
-import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
-import gunbc.runner_capacity_plan {
-  runner_capacity_plan,
-  runner_capacity_add_count,
-  addition_actions,
-  PlanReady,
-  PlanRefused,
-}
-import gunbc.fleet_runner_connectivity {
-  organization_runner_roster_evidence,
-  RosterReadUnavailable,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

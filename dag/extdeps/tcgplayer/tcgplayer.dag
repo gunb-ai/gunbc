@@ -1,9 +1,5 @@
 module extdeps.tcgplayer.tcgplayer
 
-import std.types { NonEmptyStr, HttpMethod, AuthScheme, Secret }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

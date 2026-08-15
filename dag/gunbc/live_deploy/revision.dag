@@ -1,8 +1,5 @@
 module gunbc.live_deploy.revision
 
-import std.types { NonEmptyStr, FilePath, CommitSha }
-import gunbc.fleet_intent { srv1_host }
-import product.placement_supply { HostIdentity }
 
 data deploy_revision_authority_note: String = "DEPLOY ORDERING IS A SEPARATE DEFECT FROM DEPLOY INTERLEAVING, AND ONLY THIS MODULE ADDRESSES THE FIRST. Serialization (one deploy at a time per target) stops two deploys from rsyncing into the same tree concurrently; it does NOT make the sequence monotonic, because main-push runs are deliberately not cancelled (operator ruling 2026-07-23: the per-commit verdict history is bisection evidence) and GitHub orders queued jobs by when they began waiting, never by commit ancestry. srv1-deploy-serialization-and-false-greens.md §2.3 carries the receipt that arrival order is ALREADY inverted relative to commit order — the earlier commit's deploy started 12 seconds later — and its §6 concludes that serialization ALONE is strictly worse than today's honest red, because an older deploy running second rsyncs its older tree, converges, and greens, silently regressing the live dashboard. The missing half is a freshness precondition, which is what classify_deploy_revision is."
 

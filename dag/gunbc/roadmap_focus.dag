@@ -1,8 +1,5 @@
 module gunbc.roadmap_focus
 
-import std.types { String, Bool, Int, List }
-import std.graph { GraphEdge, CallGraph, graph_reverse_reachable_members }
-import gunbc.roadmap_model { RoadmapNode, RoadmapEdge }
 
 data roadmap_focus_note: String = "A VIEW policy over the roadmap, never an edit to it. When one lane is being worked, the other lanes are noise on the page — but deleting or parking them to get quiet would destroy work, and a roadmap that forgets a deliverable because someone wanted a shorter page is the worst possible failure for a queue. So focus filters the PROJECTION and leaves the authority whole: every node stays declared, every edge stays declared, and clearing the focus restores the full page with no recovery step. The mechanism is one row (roadmap_focus_selection) and reverting it is one edit.\n\nSelection is by OWNER rather than by a list of node ids. An id list would silently stop covering the lane the moment a new node joined it — the focus would look right and quietly understate, which is the same class of failure as a hand-maintained count. Owner is the lane's own identity and a new node in the lane inherits the focus by construction."
 

@@ -1,14 +1,5 @@
 module extdeps.firmware.types
 
-import std.nat { Nat }
-import std.measure { ByteSize, byte_size }
-import std.types { EpochMs, NonEmptyStr, List, list_length }
-import v2.std.optional { Present, Absent }
-import extdeps.crypto.hash { Digest }
-import extdeps.boards.types { BaseboardModel }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef, ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

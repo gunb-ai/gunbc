@@ -1,8 +1,5 @@
 module std.change
 
-import std.types { List, Bool, list_length }
-import std.algebra { Monoid }
-import std.keyed_row { KeyedRow, keyed_row_find }
 
 type KeyedDiffHunk<K, V>
   = KeyedDiffAddedHunk { hunk_key: K, to: V }

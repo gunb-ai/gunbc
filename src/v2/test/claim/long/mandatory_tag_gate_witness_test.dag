@@ -1,21 +1,5 @@
 module v2.test.long.mandatory_tag_gate_witness
 
-import v2.compiler.tokenize { tokenize }
-import v2.compiler.parse { parse_module }
-import v2.compiler.normalize { normalize }
-import v2.compiler.compile { CompileLens, always_required_root_lenses }
-import v2.compiler.infer { InferredTree }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.lens.mandatory_tag { mandatory_tag_compile_gate }
-import std.algebra { Cons, Empty }
-import v2.std.collection { empty_map, List }
-import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.witness { Witness }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,21 +1,5 @@
 module test.claim.dag_compile_clean_shard_totality_witness
 
-import tools.dag_compile_clean_shard_roster {
-  witness_shard_roster_boundary_is_witness_layer_roots,
-  witness_roster_nonempty_on_fixture_facts,
-  witness_roster_build_admits_on_fixture_facts,
-  witness_roster_build_refuses_synthetic_duplicate_facts,
-  witness_roster_empty_facts_are_not_nonempty,
-}
-import tools.dag_compile_clean_shard_totality {
-  witness_totality_holds_on_live_tree,
-  witness_totality_reds_on_synthetic_orphan,
-  witness_totality_reds_on_synthetic_double_claim,
-  witness_totality_reds_on_synthetic_surplus,
-  witness_totality_fails_closed_on_glob_failure,
-  witness_totality_green_when_glob_matches_roster
-}
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

@@ -1,8 +1,5 @@
 module test.claim.direct_rust_door_write_compile_witness_test
 
-import tools.direct_rust_door_transport { run_direct_rust_door_emit_write_compile_smoke }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.logic { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

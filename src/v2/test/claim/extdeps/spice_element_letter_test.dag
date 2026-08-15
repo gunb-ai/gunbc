@@ -1,24 +1,5 @@
 module v2.test.extdeps.spice_element_letter
 
-import std.algebra { Cons, Empty }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.extdeps.formats.spice {
-  Capacitor,
-  DeckComponent,
-  Ground,
-  Named,
-  NamedNode,
-  Resistor,
-  SpiceNetlist,
-  SpiceValue,
-  VoltageSource,
-  spice_emit,
-  spice_identifier,
-  spice_identifier_is_admissible,
-}
-import v2.std.optional { Absent, Present }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,36 +1,5 @@
 module gunbc.roadmap_site_surface_observe
 
-import std.types { String, NonEmptyStr, List }
-import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural }
-import gunbc.roadmap_authority {
-  roadmap_authority_projection,
-  RoadmapAuthorityProjection,
-  RoadmapAuthorityProjected,
-  RoadmapAuthorityProjectionRefused,
-  expected_roadmap_md_for_projection,
-}
-import gunbc.roadmap_spawner { roadmap_dispatch_file_content_for_projection }
-import gunbc.roadmap_page {
-  roadmap_page_for_projection,
-  roadmap_daily_workspace_page_for_projection_observed,
-}
-import gunbc.roadmap_component { dispatch_client_js_source, roadmap_dispatch_asset_path }
-import gunbc.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap_site_surface_types {
-  RoadmapSiteSurfaceArtifact,
-  RoadmapSiteSurfaceBundle,
-  LiveRoadmapSiteSurfaceBundle,
-  roadmap_site_surface_subject,
-}
-import gunbc.roadmap_site_surface_render {
-  roadmap_site_roadmap_url_path,
-  roadmap_site_dispatch_url_path,
-  roadmap_site_daily_url_path,
-  roadmap_site_full_url_path,
-  site_artifact_digest,
-  served_page_body,
-  healthz_body_from_surface_artifacts,
-}
 
 data roadmap_site_surface_observe_note: String = "THE SOLE LIVE OBSERVATION AUTHORITY for roadmap served-surface materialization. materialize_live_roadmap_site_surface_bundle is the only entry that loads acceptance history and projects roadmap authority for site-surface rendering; downstream consumers evaluate gunbc.roadmap_site_surface_expect predicates over the retained bundle."
 

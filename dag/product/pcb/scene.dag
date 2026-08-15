@@ -1,32 +1,5 @@
 module product.pcb.scene
 
-import std.types { Bool, String, NonEmptyStr, List }
-import std.integer { Int }
-import std.decl_ref { DeclarationRef, declaration_ref_display_key }
-import std.measure { Micrometer }
-import std.affine_space { Point2 }
-import std.orthogonal_geometry { AxisAlignedRectangle2 }
-import product.pcb.world {
-  PcbWorld,
-  PcbPhysicalWorld,
-  PcbBodyLayoutStanding,
-  PcbObligationCause,
-  MissingDocument,
-  CommercialAccess,
-  LegalCarriage,
-  UnselectedPart,
-  DrawingMustBeRead,
-  StandingIsSelfContradictory,
-  NamedAttachmentTypePartUnresolved,
-  pcb_world_physical,
-  pcb_world_design,
-  pcb_body_layout,
-  pcb_component_count,
-  pcb_cause_counts,
-  pcb_functional_obligation_count,
-  pcb_envelope_reads,
-  EstablishedEnvelopeRead,
-}
 
 // A TARGET-NEUTRAL ENGINEERING SCENE. The world is projected into elements that name geometry and
 // typed causes, not a drawing medium. SVG is one realization of this scene; a second target must

@@ -1,7 +1,5 @@
 module tools.readme
 
-import std.patterns { content_upsert }
-import std.resources { Filesystem }
 
 type ReadmeTool {
   name: String

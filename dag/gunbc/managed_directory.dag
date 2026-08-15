@@ -1,18 +1,5 @@
 module gunbc.managed_directory
 
-import std.types { String, NonEmptyStr, List, Bool, Int, FilePath }
-import extdeps.access.posix {
-  PosixUser,
-  PermissionBits,
-  FileMode,
-  FileOwnership,
-  FilePermissions,
-  file_mode_octal,
-}
-import std.effect_grant { Verb, Read, Write, Execute, verb_eq }
-import gunbc.ownership { Ownership, Owned }
-import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
-import gunbc.host_layout { srv1_dispatch_attempt_state_root }
 
 data managed_directory_note: String = "A host directory the fleet owns, carried as WHO NEEDS WHAT rather than as a mode. The mode is DERIVED (managed_directory_permissions below), which is the whole point: gunbc.live_deploy.emit's install_d_owned_command hard-codes 0755 for every owned directory, so /opt/gunbc/attempt-state converged world-readable while the per-attempt directories beneath it are 0700 — the leaf could state its requirement and the root could not. Replacing that constant with a tighter constant would have moved the same undeclared number; a member whose dependents genuinely need traversal would then break with no statement of why. So a member declares its dependents and the permission is computed from them (operator direction 2026-07-30: precise, and derived from the needs/dependents).\\n\\nNOTHING HERE IS NEW VOCABULARY, deliberately. The verbs are std.effect_grant.Verb — the same Read/Write/Execute the deploy-preflight already admits against, read here to CONSTRUCT a permission instead of to authorize an action, which is the same relation emit and ingest have to one grammar. The permission carrier is extdeps.access.posix.FilePermissions, cited to Open Group sys/stat.h, which until now was defined, self-tested, and consumed by nothing — it is named on the inert-carrier roster (v2.lens.inert_carrier) for exactly that reason, and this module is the live consumer that takes it off, the same way RbacPolicy came off when extdeps/bmc/access.dag started using it. Principals are PosixUser rows from the closed gunbc.fleet_posix_accounts roster. Lifecycle is gunbc.ownership.Ownership. The only thing this module adds is the JOIN.\\n\\nCLASS ASSIGNMENT IS DERIVED, NOT DECLARED, which is what stops the dependent list from being the answer written twice: a dependent lands in the owner, group, or other class by comparing its uid and gid against the owner's, so a row cannot claim 'group' for a principal that shares no gid. Declaring the class directly would let the mode be whatever the author wanted while still looking computed.\\n\\nSCOPE (a counted frontier, not a sweep): only the attempt-state root consumes this today. The other owned directories keep the shared constant until each one's dependents are established by evidence rather than by assumption — /opt/gunbc/gunbc is written by the tree-sync unit AS the service user and read by the serve process, and getting that wrong tightens a live host out of service on the next deploy. A blanket re-derivation is a host-behaviour change disguised as a refactor. dissolve-on = every member in gunbc.live_deploy.spec deployment_owned_steps carries a ManagedDirectory, at which point install_d_owned_command loses its mode argument entirely and this frontier note is deleted."
 

@@ -1,25 +1,6 @@
 module test.claim.dag_compile_clean_scope_witness
 
-import std.dissolution { dissolution_description }
 
-import tools.dag_compile_clean_scope {
-  witness_empty_touched_requires_whole_tree,
-  touched_path_disposition_matches,
-  scope_disposition_rows,
-  ScopeDispositionRow,
-  ExpectSkip,
-  ExpectScopedContaining,
-  ExpectWholeTree,
-  witness_entry_roots_are_witness_layer_roots,
-  witness_pool_roots_match_witness_layer_roots,
-  witness_mixed_rs_and_dag_requires_whole_tree,
-  witness_departed_dag_path_requires_whole_tree,
-  witness_docs_only_departure_still_skips,
-  witness_shard_roster_duplicate_refuses_at_scope_admission,
-  witness_empty_touched_duplicate_roster_refuses_at_admission,
-  compile_clean_docs_universe_path_grain_dissolve_trigger
-}
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

@@ -1,49 +1,5 @@
 module v2.test.claim.trait_derive_completeness_predicate
 
-import v2.compiler.trait_derive_completeness {
-  TraitDeriveCompletenessIncomplete,
-  TraitDeriveCompletenessSatisfied,
-  repr_grounding_derive_completeness_predicate_for_elem,
-  repr_grounding_derive_elem_shape,
-  repr_grounding_derive_trait_satisfied,
-  trait_derive_completeness_gate_for_collection_witness,
-  trait_derive_int_kernel_type_node
-}
-import std.trait_derive_shape {
-  ReprDeriveAdd,
-  ReprDeriveClone,
-  ReprDeriveElemKernelString,
-  ReprDeriveElemNullaryEnumCopy,
-  ReprDeriveElemPayloadCoproduct,
-  ReprDeriveElemUnknown,
-  ReprDeriveOrd,
-  ReprDeriveSerialize,
-  payload_coproduct_derive_traits,
-  repr_grounding_derive_completeness_predicate
-}
-import v2.extdeps.languages.rust {
-  rust_trait_derive_surface_binding_for_coproduct,
-  rust_trait_derive_surface_binding_for_record
-}
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.compilers.target_model {
-  RequiredTraitWitness,
-  TargetCollectionWitnessOrd,
-  symbol_kernel_type_node
-}
-import v2.std.algebra { Cons, Empty }
-import v2.std.collection { List, Symbol }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Conj,
-  Disj,
-  Edge,
-  Node,
-  Positional,
-  SyntheticOccurrence,
-  TypeNode
-}
 
 data trait_derive_completeness_predicate_note: String = "Derisk witnesses for Gate-1 sub-wall #2: trait_derive_completeness.dag is the agnostic predicate authority; rust.dag owns surface-binding rows. RED: Int kernel must satisfy Add but not vice versa for String; unknown atom refuses Ord; nullary enum selects copy derive binding."
 

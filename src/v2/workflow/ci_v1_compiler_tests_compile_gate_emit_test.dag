@@ -1,31 +1,5 @@
 module v2.workflow.ci_v1_compiler_tests_compile_gate_emit_test
 
-import v2.std.effect_plan { Do, EffectPlan }
-import v2.std.operation_argv {
-  OperationRef,
-  operation_argv_bind_text_list
-}
-import v2.std.orchestration { Continue, FailFast }
-import v2.workflow.ci_v1_compiler_tests_compile_gate_emit {
-  ci_v1_compiler_tests_compile_gate_check_step,
-  ci_v1_compiler_tests_compile_gate_command,
-  ci_v1_compiler_tests_compile_gate_extra_args,
-  ci_v1_compiler_tests_compile_gate_intent,
-  ci_v1_compiler_tests_compile_gate_refusal_prefix,
-  ci_v1_compiler_tests_compile_gate_render,
-  ci_v1_compiler_tests_compile_gate_script,
-  ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger,
-  ci_v1_compiler_tests_compile_gate_shell_emit_scaffold,
-}
-import v2.workflow.effect_plan_bash_materialize {
-  BashBoundOperationInvocation,
-  EffectPlanBashMaterializationRefused,
-  EffectPlanBashMaterialized,
-  bash_bind_operation_invocation,
-  effect_plan_bash_materialize
-}
-import std.disposition { Scaffold }
-import std.dissolution { dissolution_description }
 
 fn gate_materialized_render(plan: EffectPlan<BashBoundOperationInvocation>) -> String {
   ci_v1_compiler_tests_compile_gate_render(plan: plan)

@@ -1,29 +1,5 @@
 module v2.test.claim.module_resolution_plan_witness
 
-import v2.lens.module_graph { ImportResolutionFact, ModuleDeclarationFact }
-import v2.std.algebra { length }
-import v2.std.collection { List }
-import v2.std.dependency { DependencyView }
-import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
-import v2.std.text { String }
-import v2.workflow.executor { ExecutorBatch, executor_job_for_node }
-import v2.workflow.realization_runner {
-  RunnerScheduleBlocked,
-  RunnerScheduleComplete,
-  node_keyed_store_node_count,
-  runner_schedule_batch_count,
-  runner_schedule_contains_batch,
-  runner_schedule_store_covers_nodes
-}
-import v2.workflow.module_resolution_plan {
-  ModuleDependencyViews,
-  ModuleImportEdge,
-  ModuleNodeBinding,
-  ModuleNodeBindingMissing,
-  module_dependency_views,
-  module_import_edges,
-  module_resolution_schedule
-}
 
 data module_fixture_a_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^module_fixture_a } },

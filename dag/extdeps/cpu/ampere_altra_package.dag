@@ -1,13 +1,5 @@
 module extdeps.cpu.ampere_altra_package
 
-import std.types { String, NonEmptyStr, List, Map }
-import std.measure { Micrometer, micrometer }
-import extdeps.cpu.types { CpuSocket }
-import extdeps.cpu.ampere { altra_max_m12830_catalog, ampere_altra_rev_a1_datasheet_authority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import extdeps.vendor.ampere { ampere_customer_reference_boards_authority }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

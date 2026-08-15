@@ -1,17 +1,5 @@
 module test.claim.long.v1_complexity_decl_classification_totality_test
 
-import std.types { String, Bool, List }
-import v2.std.decl_index { DeclFact, decl_facts }
-import gunbc.v1_complexity_decl_classification {
-  v1_complexity_decl_population,
-  v1_complexity_decl_population_count,
-  population_matches_roster_count,
-  every_population_fact_classified,
-  every_roster_row_matches_population,
-  roster_names_distinct,
-  population_names_distinct,
-}
-import gunbc.v1_complexity_decl_classification_roster { v1_complexity_decl_classification_roster }
 
 data totality_witness_note: String = "The exact half of C0(b2) totality: derive the v1.compiler.complexity declaration population from decl_facts and prove bijection with the classification roster. In the long lane because each witness pays a full witness-layer decl_facts scan over a pool including src/v1 — the same envelope as test.claim.long.v1_complexity_capability_census_resolution_test."
 

@@ -1,28 +1,5 @@
 module v2.test.lens_affected_set.fail_closed_pending_escalation
 
-import v2.lens.affected_set {
-  AffectedFoldAcc,
-  empty_frontier,
-  frontier_from_fold_acc
-}
-import v2.lens.affected_set_examples {
-  affected_set_claim_failure_node,
-  affected_set_example_invalid_edit_diagnostic,
-  affected_set_example_node,
-  expected_affected_set_rejected_edit_fail_closed
-}
-import v2.std.diagnostic { Some, diagnostics_singleton }
-import v2.std.logic { Bool }
-import v2.std.node { Conj, Node, TypeNode }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  ManualAnchorAbsent,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 fn fail_closed_pending_escalation_claim_holds() -> Bool {
   frontier_from_fold_acc(

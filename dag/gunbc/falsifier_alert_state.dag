@@ -1,20 +1,5 @@
 module gunbc.falsifier_alert_state
 
-import std.types { NonEmptyStr, String, EpochMs }
-import std.measure { Millisecond, millisecond }
-import extdeps.languages.json.emit {
-  JsonValue, JsonString, JsonNumber,
-  json_object, json_kv, json_string, json_int, JsonKeyValue,
-  serialize_json
-}
-import extdeps.languages.json.parse {
-  parse_json,
-  json_object_unique_member,
-  JsonMemberFound,
-  JsonMemberAbsent,
-  JsonMemberDuplicated,
-  JsonMemberNotAnObject
-}
 
 data falsifier_alert_state_purpose_note: String = "ALERT-2's state half. The alert's own state — when the incident started, what is currently failing, and when it last NOTIFIED — rides in the issue body as a typed marker, so the issue remains the single authority for its own state and no external store exists. This module owns the marker's shape and both directions across it.\n\nlast_notification_at IS THE POINT OF THIS CARRIER. It replaces recovering the throttle's input by listing the issue's comments and reading the newest one's timestamp, which failed three separate ways: it read comments[length-1] from a single per_page=100 page, and since the endpoint returns oldest-first and accepts no sort parameter, past 100 comments that index is the 100th and only gets older — so the throttle inverted from at-most-every-20h into every-run, turning a silent alert into a spamming one. It also broke if anyone else commented on the issue, and it made a fact the alert itself produced depend on an API call that could fail. The alert knows when it last notified because it did the notifying; that fact is now written where it is produced and read back with no API call at all."
 

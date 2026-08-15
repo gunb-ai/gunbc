@@ -1,10 +1,5 @@
 module v2.workflow.ci_regen_rustfmt_path_emit_test
 
-import v2.workflow.ci_regen_rustfmt_path_emit {
-  ci_regen_ensure_rustfmt_path_script,
-  ci_regen_ensure_rustfmt_path_shell_emit_scaffold,
-}
-import std.disposition { Scaffold }
 
 data ci_regen_ensure_rustfmt_path_golden: String = concat(
   concat("# 🟡 dissolve-on: ci_regen_ensure_rustfmt_path_script — foreign-executor PATH ensure for regen_stage0 on hosts with a cargo shim and no CARGO_HOME/bin (receipt CI #7290 srv3-03); control flow is If/Predicate/Exit/Let via orch bash-emit; leaf test -x / command -v / export PATH / dirname strings remain until FileExists + session-EnvExport (PR2b) or the regen job shares isolate+pin by construction; DISSOLVES WHEN rustfmt resolution is a typed toolchain probe on host_effect_apply rather than emitted bash (#5828 / ROADMAP 6-shell-slice0)\n"),

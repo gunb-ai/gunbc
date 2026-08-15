@@ -1,25 +1,5 @@
 module test.claim.roadmap_provider_events_witness_test
 
-import std.types { Bool, String, Int }
-import std.measure { character_count, character_count_value }
-import gunbc.roadmap_provider_events {
-  CodexEventsParsed,
-  CodexEventsRefused,
-  ProviderRunning,
-  ProviderCompleted,
-  ProviderFailed,
-  ProviderEventsRefused,
-  parse_codex_jsonl,
-  parse_codex_jsonl_with_line_budget,
-  codex_provider_event_line_observation_budget,
-  codex_provider_projection_type_budget,
-  codex_provider_projection_detail_budget,
-  codex_provider_projection_message_budget,
-  codex_provider_event_projection_filter,
-  provider_execution_state,
-  provider_execution_state_label,
-  provider_execution_detail,
-}
 
 data successful_codex_jsonl: String = "{\"type\":\"thread.started\",\"thread_id\":\"thread-1\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.started\",\"item\":{\"id\":\"item-1\",\"type\":\"file_change\",\"status\":\"in_progress\"}}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item-1\",\"type\":\"file_change\",\"status\":\"completed\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":3}}\n"
 

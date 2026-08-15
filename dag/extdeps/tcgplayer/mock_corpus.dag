@@ -1,6 +1,5 @@
 module extdeps.tcgplayer.mock_corpus
 
-import std.hermetic_replay { PublishedMockCase }
 
 data tcgplayer_auth_mock_case_mint_bearer_token: PublishedMockCase = PublishedMockCase {
   operation_key: "tcgplayer.Auth.MintBearerToken",

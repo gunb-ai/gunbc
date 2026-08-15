@@ -1,25 +1,5 @@
 module v2.test.claim.declared_source_ref_selection_test
 
-import v2.compiler.source_authority {
-  ModuleStorageIndex,
-  SourceRef,
-  module_storage_parsed_binding,
-  source_ref_for_storage_path
-}
-import v2.lens.affected_set.declared_source_ref_selection {
-  DeclaredSourceRefsTouched,
-  DeclaredSourceRefsUntouched,
-  DeclaredSourceRefsUnresolved,
-  NoDeclaredSourceRefs,
-  declared_source_refs_selection_axis
-}
-import v2.std.artifact { Artifact, SourceFile }
-import v2.std.collection { List }
-import v2.std.cross_tree.import_model { V2Tree }
-import v2.std.logic { Bool }
-import v2.std.provenance { span_index_empty }
-import v2.std.qualified_name { qualified_name_from_string_segments }
-import std.algebra { Cons, Empty }
 
 data dsr_fixture_index: ModuleStorageIndex = Cons {
   head: module_storage_parsed_binding(

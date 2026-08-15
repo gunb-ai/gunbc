@@ -1,29 +1,5 @@
 module v2.test.manual.python_grammar_claim
 
-import v2.compiler.parse {
-  grammar_validate_for_parse,
-  parse_production_tree,
-}
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.python {
-  python_source_text,
-  python_grammar_root,
-  python_lex
-}
-import v2.std.compilers.lexing { token_stream_remaining }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, port_locus }
-import v2.std.grammar { ParseTree }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.logic { Bool }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 fn python_claim_bool_atom(b: Bool) -> Node {
   match b {

@@ -1,46 +1,5 @@
 module test.claim.regional_compute_witness
 
-import extdeps.pricing.regional_compute {
-  Africa,
-  MiddleEast,
-  SouthAmerica,
-  SouthAsia,
-  afrihost_south_africa,
-  alibaba_cloud_asia,
-  aws_af_south_1,
-  aws_ap_east_1,
-  aws_ap_northeast_1,
-  aws_ap_south_1,
-  aws_ap_southeast_1,
-  aws_eu_central_1,
-  aws_me_central_1,
-  aws_me_south_1,
-  aws_sa_east_1,
-  aws_us_east_1,
-  azure_brazilsouth,
-  azure_centralindia,
-  azure_eastus,
-  azure_southafricanorth,
-  azure_southindia,
-  azure_uaenorth,
-  contabo_global,
-  e2e_networks_india,
-  geography_eq,
-  hourly_micros,
-  magalu_cloud_brazil,
-  sakura_japan_vps,
-}
-import gunbc.econ.regional_compute_premium {
-  ProviderMismatch,
-  RegionalPremiumDerived,
-  RegionalPremiumRefused,
-  BaselineRateUnavailable,
-  derive_regional_premium,
-  per_vcpu_month_micros,
-}
-import std.measure { basis_point_count }
-import std.nat { Nat }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

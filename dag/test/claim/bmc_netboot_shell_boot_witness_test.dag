@@ -1,14 +1,5 @@
 module test.claim.bmc_netboot_shell_boot
 
-import std.logic { Bool }
-import std.types { list_length }
-import extdeps.firmware.uefi_shell { uefi_shell_command_line }
-import extdeps.exec.command { shell_command_render }
-import gunbc.bmc_netboot_shell_boot {
-  srv4_shell_boot_commands,
-  bmc_tftpd_serve_command,
-}
-import gunbc.bmc_netboot_serve { srv4_bmc_netboot_serve_plan }
 
 test fn srv4_shell_boot_sequence_direct_kernel() -> Bool {
   let all = fold(srv4_shell_boot_commands, init: "", f: (acc, c) => join([acc, uefi_shell_command_line(cmd: c), "\n"], ""))

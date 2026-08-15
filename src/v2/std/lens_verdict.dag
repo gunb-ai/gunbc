@@ -1,17 +1,5 @@
 module v2.std.lens_verdict
 
-import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
-import v2.std.diagnostic {
-  CorrectionNotModeled,
-  Diagnostic,
-  NodeLocus,
-  PortLocus,
-  Textual,
-  Unavailable,
-  textual_whole_file_diagnostic,
-}
-import v2.std.node { Symbol }
-import v2.std.text { String }
 
 data lens_verdict_home_note: String = "LensVerdict is the shared fail-closed lattice for lenses that have not yet specialized to a mechanism-specific verdict authority (LadderVerdict, VacuityEvidence, …). Diagnostics ground on v2.std.diagnostic — the retired LensVerdictDiagnostic/LensVerdictLocus fork is dissolved (W1.2)."
 

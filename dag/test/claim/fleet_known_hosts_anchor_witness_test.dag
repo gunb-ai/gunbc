@@ -1,21 +1,5 @@
 module test.claim.fleet_known_hosts_anchor_witness_test
 
-import std.types { String, Bool, List, NonEmptyStr }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_host_key_enrollment {
-  KnownHostKeyRow,
-  HostKeyEnrollmentProvenance,
-  ScannedFirstContact,
-}
-import gunbc.fleet_known_hosts_anchor {
-  canonical_known_hosts_fragment,
-  canonical_known_hosts_identity,
-  known_hosts_endpoint_conflict,
-  FleetSshAttemptIdentity,
-  fleet_ssh_attempt_identity,
-  fleet_known_hosts_anchor_path,
-}
-import std.content_hash { compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 
 // The constructor is partial, so a fixture must decide what an unsafe id means. Refusing to a
 // distinguishable sentinel rather than a plausible-looking default keeps a construction failure from

@@ -1,37 +1,6 @@
 module test.claim.spark_serving_release_witness_test
 
-import std.types { String, Bool, List, Int, NonEmptyStr }
-import std.measure { byte_size }
-import std.content_hash { content_hash_of_value, ContentHash }
-import product.placement_supply { HostIdentity }
-import gunbc.spark_serving_realization {
-  SystemPrincipal, NamedPrincipal, ObservedGrantPopulation, GrantPopulationObserved,
-  GrantPopulationUnobserved,
-  SparkServingIntent, SurvivesReboot, RestartsOnFailure, ManagedConvergenceOwned,
-  NoLoginNoSudoIdentity, ExecutorOwnedIdentity, UnauthenticatedEndpoint, IndependentlyObservable,
-  SparkServingRealization, UserUnitRealization, SystemUnitRealization,
-}
-import gunbc.spark_serving_release {
-  SparkServingReleaseIdentity, SparkServingOccurrence,
-  SparkServingRelease, RuntimeArtifactIdentity,
-  ServingConfigurationIdentity, InferenceCapacityPolicy,
-  SparkServingServingPolicy,
-  spark_serving_release_identity,
-  SparkServingReconciliation, SparkServingAlreadyConverged, SparkServingDeltaRequired,
-  SparkServingInstallRequired,
-  SparkServingRefused, SparkServingRefusal,
-  SparkServingObservation, SparkServingObserved, SparkServingObservationRefused,
-  SparkServingAbsent,
-  SparkServingPrerequisite, PrerequisiteAbsent, HostIdentityBindingAdmitted, ManagedHostAccessGrounded,
-  reconcile_spark_serving,
-  SparkServingPlanRow, spark_serving_plan_row, plan_row_verdict, plan_verdict_label,
-  plan_row_applicable, spark_serving_target,
-  spark_serving_may_actuate, spark_occurrences_share_release,
-}
 
-import gunbc.model_artifact { ModelArtifact, model_artifact_from_observed_digest }
-import std.content_hash { sha256_hex_digest }
-import extdeps.ollama.api { OllamaModelRef, OllamaModelDigest, ollama_model_digest_from_wire }
 
 data witness_model_digest_a: String = "aaaaaaaabbbbbbbbccccccccddddddddeeeeeeeeffffffff0000000011111111"
 data witness_model_digest_b: String = "ffffffffeeeeeeeeddddddddccccccccbbbbbbbbaaaaaaaa9999999988888888"

@@ -1,26 +1,5 @@
 module tools.publication_publisher
 
-import std.types { Bool, List, NonEmptyStr, String }
-import std.content_hash { serialize_content_hash }
-import extdeps.git.hooks { PrePushStdinRow }
-import gunbc.public_projection { PublicProjectionPlan, PublicProjectionSubject }
-import gunbc.publication_admission_delta {
-  ChangeLocalAdmissionRequest,
-  ChangeLocalAdmissionOutcome,
-  ChangeLocalAdmitted,
-  ChangeLocalRefused,
-  CandidateDigestInconsistent,
-  WholeProjectionAuditRequired,
-  ProjectionDeltaClass,
-  NewlyPublic,
-  admit_change_local_projection,
-}
-import gunbc.publication_decision {
-  PublicationDecisionReceipt,
-  PublicationAuthorityId,
-  publication_decision_binds_content,
-  publication_decision_authorizes_newly_public,
-}
 
 data publication_publisher_note: String = "Slice-1 sole modeled publisher (model + shadow only). Ordinary ModeledSessionId values are OrdinarySession and carry no PublicationAuthority. Exactly one sole_modeled_publisher_session may consume a change-locally admitted PublicProjectionPlan derived from PublicationPolicy — never a pathname census or placement-gate roster. Ordinary sessions do NOT yet lose live public-write capability in this slice; credentials and push machinery are unchanged."
 

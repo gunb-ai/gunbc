@@ -1,24 +1,5 @@
 module v2.workflow.ci_v1_compiler_test_targets_compile_gate_emit
 
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.types { List }
-import v2.std.effect_plan { Do, EffectPlan, EffectPlanStep }
-import v2.std.operation_argv {
-  OperationRef,
-  operation_argv_bind_text_list
-}
-import v2.std.orchestration { FailFast }
-import v2.std.text { String }
-import v2.workflow.effect_plan_bash_materialize {
-  BashBoundOperationInvocation,
-  EffectPlanBashMaterializationRefused,
-  EffectPlanBashMaterialized,
-  bash_bind_operation_invocation_host_env_executable,
-  effect_plan_bash_materialize,
-  effect_plan_bash_refusal_label
-}
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 data ci_v1_compiler_test_targets_compile_gate_cargo_path: String = "dag/extdeps/rust/cargo_build.dag"
 data ci_v1_compiler_test_targets_compile_gate_cargo_service: String = "cargo.Build"

@@ -1,40 +1,5 @@
 module std.occurrence_binding_resolve
 
-import std.algebra { FreeMonoid, Empty }
-import std.types { String, List, Int }
-import std.occurrence_binding {
-  ContainmentPath,
-  BindingOccurrence,
-  BindingCandidate,
-  OccurrenceBindingResult,
-  occurrence_binding_from_candidates,
-}
-import std.occurrence_identity {
-  OccurrenceId,
-  OccurrenceContainmentPath,
-  OccurrenceTransport,
-  OccurrenceTransportRefusal,
-  OccurrenceTransportValidated,
-  OccurrenceTransportRefused,
-  MissingAuthoredOccurrenceIdentity,
-  UnknownOccurrenceIdentity,
-  ValidatedOccurrenceTransport,
-  DeclarationOccurrence,
-  ReferenceOccurrence,
-  OccurrenceCategory,
-  LexicalValueOccurrence,
-  TypeOccurrence,
-  CallableOccurrence,
-  ConstructorOccurrence,
-  NamespaceSegmentOccurrence,
-  FieldOccurrence,
-  MethodOccurrence,
-  DeclarationRole,
-  ReferenceRole,
-  DuplicateSuppliedCandidateIdentity,
-  WrongOccurrenceRole,
-  occurrence_transport_validate,
-}
 
 data occurrence_binding_resolve_authority_note: String = "THE one exact name-binding decision for a supplied candidate population. P1 validates transport and exact reference/declaration identities, excludes category-inadmissible declarations, converts the remaining exact declarations to BindingCandidate<OccurrenceId>, and calls std.occurrence_binding.occurrence_binding_from_candidates exactly once. It does not derive visibility, source order, spelling equivalence, or a candidate catalogue: those are the downstream structural-candidate producer's responsibility."
 

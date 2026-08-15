@@ -1,17 +1,5 @@
 module std.planar_projection
 
-import std.types { Bool }
-import std.integer { Int }
-import std.checked_arithmetic {
-  IntegerOverflow, CheckedInt, CheckedIntReady, CheckedIntOverflow,
-  checked_int_multiply, checked_add_results, checked_subtract_results,
-}
-import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity_eq }
-import std.affine_space {
-  Point2, point2, Point3,
-  SpatialFrameRefusal, OpProjectPoint3, ProjectionSourceFrameRequired,
-  signed_frame_component_count
-}
 
 
 // SPATIAL-5A: EXACT PARALLEL PROJECTION ONTO A VIEW PLANE, READ-ONLY.

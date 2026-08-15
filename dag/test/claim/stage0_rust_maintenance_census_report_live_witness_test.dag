@@ -1,12 +1,5 @@
 module test.claim.stage0_rust_maintenance_census_report_live_witness
 
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import gunbc.stage0_rust_maintenance_census_report {
-  RustMaintenanceCensusDerived,
-  RustMaintenanceCensusObservationRefused,
-  current_rust_maintenance_census_report
-}
-import v2.std.algebra { length }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

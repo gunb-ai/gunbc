@@ -1,30 +1,5 @@
 module gunbc.provider_standing_probe_bridge
 
-import std.types { String, NonEmptyStr, Bool, List }
-import gunbc.provider_standing {
-  ProviderStandingBundle,
-  ProviderInstallationStanding,
-  ProviderAuthenticationStanding,
-  ProviderEntitlementObservation,
-  ProviderLimitObservation,
-  ProviderTurnOutcome,
-  ProviderToolEnvironmentStanding,
-  ProviderAccountLimit,
-  LimitCredentialUnspecified,
-  InstallationStandingUnobserved,
-  InstallationExecutableMissing,
-  InstallationReady,
-  AuthenticationStandingUnobserved,
-  AuthenticationCredentialsAbsent,
-  AuthenticationProfilePresentTokenAbsent,
-  AuthenticationAuthenticated,
-  EntitlementObservationUnobserved,
-  LimitObservationUnobserved,
-  TurnNotStarted,
-  ToolEnvironmentStandingUnobserved,
-  ToolEnvironmentUnavailable,
-  ToolEnvironmentReady,
-}
 
 data provider_standing_probe_bridge_authority_note: String = "OBSERVATION BRIDGE (deep-raven-684 msg_a203fe4d): factors dashboard Codex probes into a six-axis ProviderStandingBundle without inferring limit capacity or entitlement availability from authentication. Login-status and version probes ground installation and authentication only. Entitlement and account-limit axes stay honestly unobserved at this boundary unless a dedicated observation path supplies them. DISSOLVES ON: the first RecordedFact<ProviderStandingObservationFact> standing-observation path supersedes probe-derived inventory standing (nimble-owl-833)."
 

@@ -1,5 +1,4 @@
 module test.fixture.leaf_key_collision.module_b
 
-import std.types { Int }
 
 data homonym_value: Int = 22

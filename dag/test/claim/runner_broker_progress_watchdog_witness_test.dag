@@ -1,45 +1,5 @@
 module test.claim.runner_broker_progress_watchdog_witness
 
-import std.types { String, Bool, Timestamp }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.build_cache_instance { RunnerSlotIdentity, ProcessIdentity }
-import gunbc.fleet_intent_network { operator_host_srv1 }
-import gunbc.runner_broker_progress_watchdog {
-  RemoteRegistrationEvidence,
-  RemoteRegistrationObserved,
-  RemoteRegistrationRefused,
-  RemoteRegistrationUnobserved,
-  ObservedEvidence,
-  BrokerProgressSilent,
-  BrokerProgressObserved,
-  BrokerProgressUnobserved,
-  RunnerWorkerUnobserved,
-  AcquireAttempt,
-  ConnectionError,
-  Reconnection,
-  MessageReceived,
-  SessionCreation,
-  RunnerWorkerAbsent,
-  RunnerWorkerAlive,
-  RunnerRemoteOffline,
-  RunnerRemoteOnline,
-  WatchdogHealthy,
-  WatchdogRetrying,
-  WatchdogWedged,
-  WatchdogBusy,
-  WatchdogRefused,
-  runner_broker_progress_silence_bound_seconds,
-  runner_watchdog_arm_reachability_stale_seconds,
-  runner_watchdog_incident_wedge_41_minutes_seconds,
-  runner_watchdog_incident_wedge_77_minutes_seconds,
-  broker_progress_event_resets_silence,
-  classify_runner_watchdog_verdict,
-  watchdog_replace_predicate_holds,
-  reobservation_refuses_mutation,
-  RunnerRepairDecisionReceipt,
-  refuses_shell_pipeline_diagnostic_read,
-  DiagnosticShellPipelineRefused,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

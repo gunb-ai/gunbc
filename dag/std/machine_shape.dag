@@ -1,12 +1,5 @@
 module std.machine_shape
 
-import std.types { NonEmptyStr, Bool, List, Map, list_length }
-import std.measure {
-  ByteSize,
-  Bandwidth,
-  Nanosecond,
-  HardwareThreadCount,
-}
 
 type DomainId = NonEmptyStr where brand("DomainId")
 type LevelId = NonEmptyStr where brand("LevelId")

@@ -1,52 +1,5 @@
 module v2.test.lens_cost.valuation
 
-import std.algebra { Empty }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.lens.cost { ConstantCost, SizeVariable, SymbolicCost, UnknownCost, symbolic_product, unit_cost, zero_cost }
-import v2.lens.cost.expr {
-  CostAdd,
-  CostConst,
-  CostEffect,
-  CostExpr,
-  CostLog,
-  CostMul,
-  CostSum,
-  InvalidLogBase,
-  SizeConst,
-  normalize_cost_expr_to_symbolic,
-  size_of
-}
-import v2.lens.cost.valuation {
-  CostEvaluation,
-  CostEvaluationRefused,
-  CostValuationBinding,
-  DuplicateSizeBinding,
-  ExactCost,
-  ExpressionRefused,
-  IntegerLogarithmUnavailable,
-  MissingSizeBinding,
-  UnmodeledEffectCost,
-  evaluate_cost_expr
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import v2.std.nat { Nat, Succ, Zero }
-import v2.std.node {
-  Atom,
-  Node,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode
-}
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,57 +1,5 @@
 module test.claim.codex_package_lock_parse_witness_test
 
-import extdeps.filesystem.filesystem_io
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import std.types { Bool, String, NonEmptyStr }
-import std.content_hash { Sha512Hash, sha512_hex_digest }
-import extdeps.npm {
-  npm_decode_package_lock_text,
-  NpmPackageLockParsed,
-  NpmPackageLockParseRefused,
-  NpmRootLockPath,
-  NpmRelativeLockPath,
-  NpmRegistrySelected,
-  NpmRootProject,
-  npm_registry_artifact_pin,
-  NpmLockNodeMetadata,
-  NpmLockNodeFlags,
-  NpmRegistryArtifact,
-}
-import extdeps.pin { ExactPin }
-import gunbc.package_delivery {
-  codex_runtime_lock_path,
-  admit_codex_package_lock_text,
-  CodexPackageLockAdmitted,
-  CodexPackageLockParseFailed,
-  CodexPackageLockUnsupportedNodes,
-  CodexPackageLockGraphRefused,
-  CodexPackageLockNode,
-  codex_wrapper_lookup,
-  CodexWrapperUnique,
-  codex_admit_npm_integrity,
-  CodexNpmIntegrityAdmitted,
-  admit_observed_archive_digest,
-  PackageArchiveDigestObserved,
-  PackageArchiveDigestMatched,
-  PackageArchiveDigestMismatch,
-  codex_map_uname_to_npm_target,
-  CodexNpmRuntimeTargetObserved,
-  select_codex_exact_target_closure,
-  CodexExactTargetClosureSelected,
-  admit_codex_selected_node,
-  CodexSelectedNodeInstallScriptRefused,
-  CodexSelectedNodeIdentityRefused,
-  CodexSelectedNodeAdmitted,
-  admit_codex_registry_artifact_locator,
-  CodexRegistryLocatorAdmitted,
-  CodexRegistryLocatorRefused,
-  admitted_and_executed_lock_bytes_agree,
-  codex_required_package_version,
-  codex_runtime_version_identity_marker,
-  codex_runtime_version_identity_satisfied,
-  codex_bundled_executable_for_srv1,
-}
-import gunbc.host_layout { srv1_codex_bundled_executable }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

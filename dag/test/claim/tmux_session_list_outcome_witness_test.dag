@@ -1,19 +1,5 @@
 module test.claim.tmux_session_list_outcome_witness
 
-import std.types { Bool, String }
-import extdeps.tmux {
-  classify_tmux_session_list,
-  parse_tmux_ls_output,
-  parse_tmux_attempt_panes_output,
-  TmuxSessionsListed,
-  TmuxNoServer,
-  TmuxListUnknowable,
-  TmuxListStdoutRefused,
-  TmuxLsParsed,
-  TmuxLsParseRefused,
-  AttemptPanesParsed,
-  AttemptPanesParseRefused,
-}
 
 test fn witness_no_server_running_classifies_empty() -> Bool {
   match classify_tmux_session_list(

@@ -1,32 +1,5 @@
 module v2.workflow.floor_discovery
 
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
-import std.execution_mode { ExecutionMode, Hermetic, Wet, Record, execution_mode_eq }
-import std.content_hash {
-  Fnv1a64Structural,
-  content_hash_atom,
-  content_hash_combine_structural,
-}
-import extdeps.git.object_store {
-  GitObjectId,
-  GitSha1ObjectId,
-  GitSha256ObjectId,
-  git_object_id_eq,
-}
-import v2.workflow.floor_naming_hygiene {
-  floor_test_marked_decl_allowed_in_entry,
-  floor_wire_contract_decl_allowed_in_entry,
-  floor_test_sidecar_suffix,
-  floor_wire_contract_sidecar_suffix
-}
-import std.types { String, Bool, List }
-import v2.std.optional {
-  Absent,
-  Optional,
-  Present,
-  optional_absent,
-  optional_present
-}
 
 data floor_discovery_exact_subject_note: String = "The exact subject for the cross-worker discovery result. `tested_commit` and `tested_tree` are two different Git facts: the commit names the revision selected for execution, while the GitObjectId is that commit's tree object. The seed formerly stored `git rev-parse HEAD` in a String field named tested_tree, so a commit id inhabited a tree-named coordinate and a consumer could not distinguish same commit/different tree metadata from an exact source-tree binding. Source roots and execution-authority roots remain ordered semantic lists here; a digest is DERIVED only for the storage/request identity and is never carried beside the lists as a caller-asserted duplicate. Naming-authority and tool identities use the existing Fnv1a64Structural family, matching the floor snapshot's current byte/structural identity realization. This is deliberately floor-discovery grain, not a new generic compute subject beside the execution-spine lane and not the gated WalkPlan executor state machine."
 

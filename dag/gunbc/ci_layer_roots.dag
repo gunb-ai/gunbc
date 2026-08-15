@@ -1,45 +1,5 @@
 module gunbc.ci_layer_roots
 
-import std.realization_schedule {
-  ScheduleWitnessEntry, ExecutionWitnessKind, CorpusWitnessKind, schedule_witness_entry_eq,
-  schedule_witness_entry_roster_contains,
-  ScopedWitnessBatch, ScopedWitnessBatchId, ScopedWitnessBatchResourceProfile,
-  RunnableBatchClamp, SequentialChildProcess, SelectionApplied,
-  scoped_witness_batch, runnable_resource_profile, runnable_memory_substantial,
-}
-import std.execution_mode { Hermetic }
-import std.measure { second, millisecond }
-import std.decl_ref { decl_ref }
-import gunbc.cli_invoke {
-  source_roots_shell_flags,
-  SourceRootBare,
-  SourceRootRooted
-}
-import gunbc.explicit_witness_admission {
-  ExplicitWitnessAdmission,
-  explicit_witness_admissions,
-  explicit_witness_admission_covers,
-  explicit_witness_admission_covers_entry,
-  explicit_witness_admissions_well_formed,
-  explicit_witness_admission_duplicate_count,
-  known_red_probe_corpus_roster,
-  known_red_probe_v1_envelope_roster,
-  known_red_probe_execution_roster,
-  witness_long_eval_budget_roster
-}
-import std.witness_admission {
-  WitnessConsumerCadence,
-  DiscoverySelection,
-  FalsifierSelfHostWet,
-  FalsifierRehomedBinWet,
-  FalsifierSubstrateLongLane,
-  BinWitnessWet,
-  QuarantineProbeExpectRed,
-  OfflineLocalRecipe,
-  FixtureExplicitRoster,
-  NoConsumer
-}
-import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 
 data witness_layer_roots: List<String> = ["dag", "src/v2"]
 

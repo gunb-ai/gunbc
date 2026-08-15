@@ -1,11 +1,5 @@
 module gunbc.deployed_intent_v1
 
-import std.disposition { Disposition, Terminal }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent { ComputeHost, srv1_host, srv2_host, srv3_host, srv4_host }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-import extdeps.dns.domain_name { DnsLabel }
-import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 
 type DeployedIntentV1 {
   fleet_slot: HostIdentity

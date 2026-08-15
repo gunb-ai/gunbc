@@ -1,6 +1,5 @@
 module v2.std.staging
 
-import v2.std.diagnostic { Outcome, bind_outcome, outcome_accepted }
 
 fn then_outcome<A, B, C>(
   f: fn(A) -> Outcome<B>,

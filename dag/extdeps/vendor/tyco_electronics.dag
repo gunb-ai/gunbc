@@ -1,11 +1,5 @@
 module extdeps.vendor.tyco_electronics
 
-import std.types { String }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import extdeps.vendor { Vendor }
-import extdeps.hardware { Hardware }
 
 // The name comes from the copyright line of the application specification this repository read
 // (114-115012 Rev A, DDR4 DIMM Socket Solder Tail): "Tyco Electronics Corporation, Harrisburg, PA".

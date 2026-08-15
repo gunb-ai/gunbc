@@ -1,32 +1,5 @@
 module v2.compiler.emit_semantic_decl
 
-import v2.compiler.translate {
-  grammar_relation_row_for_emitted,
-  grammar_relation_row_tokens_root,
-  serialize_concrete_syntax_tokens_to_source
-}
-import v2.std.compilers.semantic_decl_emission {
-  TargetSemanticDeclSerializeProfile,
-  semantic_decl_emission_from_target,
-  semantic_decl_serialize_target,
-  target_semantic_enum_surface_from_coproduct,
-  target_semantic_struct_surface_from_record
-}
-import v2.std.collection { List }
-import v2.std.compilers.target_model { TargetModel, concrete_syntax_token_list_from_node }
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Unavailable,
-  bind_outcome,
-  node_locus,
-  outcome_rejected
-}
-import v2.std.node { Disj, Conj, Node, Symbol, TypeNode }
-import extdeps.communication.medium { Medium }
-import v2.std.text { String }
-import std.algebra { Empty }
 
 fn emit_semantic_decl_unsupported_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {

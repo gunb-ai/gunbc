@@ -1,39 +1,5 @@
 module test.claim.dispatch_stop_witness
 
-import extdeps.tmux { TmuxLsEntry }
-import gunbc.roadmap_dispatch_actuator {
-  TmuxSessionScope, TmuxPaneEntry,
-  parse_tmux_pane_line, parse_tmux_panes_output, tmux_list_panes_argv,
-  tmux_session_observation_with_panes, dispatch_tmux_session_scope,
-  DispatchStopGate, StopPermitted, StopRefused, dispatch_stop_gate,
-  DispatchLiveSession,
-  CodexDispatchProvider,
-  dispatch_provider_instance_for,
-  DispatchStopRunningProcess,
-  DispatchClearRetainedSession,
-  DispatchCleanupRefused,
-  dispatch_session_cleanup,
-  dispatch_tmux_process_fingerprint_observation_dissolution_trigger,
-}
-import gunbc.dispatch_selection { dispatch_codex_process_fingerprint }
-import gunbc.roadmap_belt_actuate {
-  BeltStopResult, StopProcessStopped, StopRetainedSessionCleared,
-  StopDisabled, StopRefusedResult, StopObserveRefused, StopTeardownFailed,
-  belt_stop_result_json_value, belt_stop_http_status,
-}
-import gunbc.worker_lifecycle {
-  WorkerProcessEvidence,
-  WorkerProcessRunning,
-  WorkerProcessExited,
-  worker_observation_without_provider_probe_for_process,
-}
-import gunbc.roadmap_component { dispatch_client_js_source }
-import gunbc.roadmap_style { roadmap_css }
-import std.disposition { Disposition, Scaffold, Terminal }
-import std.types { NonEmptyStr }
-import std.upsert_decision { Converged }
-import extdeps.languages.json.emit { serialize_json }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

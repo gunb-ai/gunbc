@@ -1,14 +1,5 @@
 module v2.test.claim.self_host.v2_emitter_direct_rust_door_contract
 
-import v2.compiler.self_host.v2_emitter_direct_rust_door_contract {
-  DirectRustDoorEstablished,
-  DirectRustDoorRefused,
-  MissingRuleAcceptedDespiteGap,
-  assess_missing_translation_rule_refuses,
-  refused,
-}
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 data v2_emitter_direct_rust_door_contract_witness_note: String = "Fast per-PR controls for the INDEPENDENT missing-rule leaf — the one direct-door leaf not derived from the production emission observation, so it is observed and discriminated on its own here. The two claims this file used to carry over the closing-frontier fold (required-capability population, duplicate-established-cannot-erase-unavailable) are DELETED rather than relocated: that fold and its capability roster WERE the old two-clause acceptance algebra, superseded by the production group whose parent expectation folds leaves directly and needs no capability-completeness count. The group's own algebra is discriminated over planted observations in direct_rust_door_group_algebra_test.dag at zero production cost; its single production walk lives in long/direct_rust_door_production_group_test.dag."
 

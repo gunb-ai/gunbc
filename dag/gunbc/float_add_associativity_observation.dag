@@ -1,14 +1,5 @@
 module gunbc.float_add_associativity_observation
 
-import std.types { Float }
-import std.algebra_law {
-  AssociativityCounterexampleWitness,
-  AssociativityOperationSubject,
-  AssociativityRefutationReceipt,
-  AssociativityFloatAdd,
-  associativity_refutation_holds_for_float_add,
-}
-import extdeps.standards.ieee_754_2019 { Ieee754Standard, ieee_754_2019 }
 
 data float_add_associativity_cited_standard: Ieee754Standard = ieee_754_2019
 

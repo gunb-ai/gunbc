@@ -1,20 +1,5 @@
 module v2.test.long.a4_opacity
 
-import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.compile { compile_ingest_staging }
-import v2.extdeps.languages.rust {
-  rust_binding_spellings,
-  rust_fn_add_lex,
-  rust_target_model_node
-}
-import v2.std.compilers.target_model {
-  ProducedDeclUnwired,
-  TargetModel,
-  target_model_emit_transforms_empty
-}
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
-import v2.std.logic { Bool }
 
 data a4_opacity_authority_source_text: String = "a4_opacity_test"
 

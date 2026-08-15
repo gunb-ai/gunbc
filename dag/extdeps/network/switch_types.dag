@@ -1,12 +1,5 @@
 module extdeps.network.switch_types
 
-import std.types { NonEmptyStr, Int, Bool }
-import std.measure { Milliwatt, milliwatt, Bandwidth, bandwidth }
-import extdeps.vendor { Vendor }
-import extdeps.hardware { Hardware }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

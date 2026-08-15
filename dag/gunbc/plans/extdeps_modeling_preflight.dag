@@ -1,10 +1,5 @@
 module gunbc.plans.extdeps_modeling_preflight
 
-import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
-import std.types { NonEmptyStr }
-import std.markdown { MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone }
-import gunbc.plans.md_helpers { h2, p, li, ul, cell, row }
 
 data extdeps_modeling_preflight_law: String = "Normative authority rows for the extdeps modeling preflight (operator verdict on gunbc#7556; DESIGN §3 'External upstream decomposition'): before any new extdeps work, the agent returns this table, and no implementation starts until the table is coherent. The typed rows below are the single authority; the registered plan doc renders its table FROM these rows (derive, never a second copy)."
 

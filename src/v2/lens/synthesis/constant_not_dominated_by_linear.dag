@@ -1,17 +1,5 @@
 module v2.test.lens_synthesis.constant_not_dominated_by_linear
 
-import v2.lens.cost { LinearCost, SizeVariable, symbolic_cost_dominates, unit_cost }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  ManualAnchorAbsent,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 data synthesis_const_x: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_const_x_symbol } },

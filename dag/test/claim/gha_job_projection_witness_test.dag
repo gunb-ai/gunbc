@@ -1,18 +1,5 @@
 module test.claim.gha_job_projection_witness_test
 
-import std.types { Bool, Int, String }
-import extdeps.languages.yaml.types { yaml_string, kv }
-import extdeps.languages.yaml.emit { serialize_yaml }
-import extdeps.languages.yaml.gha_workflow { job_yaml }
-import extdeps.github.actions {
-  Job, Step, RunStep,
-  RunnerSpec, HostedRunner, UbuntuLatest,
-  WorkflowPermissions, PermRead,
-  ConcurrencySpec, ConcurrencyScalar, ConcurrencyMappingQueueMax, ConcurrencyMappingQueueNotMax,
-  CancelInProgressBool,
-  CancelInProgressWhenQueueMax, QueueMaxCancelInProgressFalse
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

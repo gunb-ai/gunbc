@@ -1,42 +1,5 @@
 module v2.compiler.trait_derive_completeness
 
-import std.trait_derive_shape {
-  ReprDeriveClone,
-  ReprDerivePartialEq,
-  ReprDeriveEq,
-  ReprDerivePartialOrd,
-  ReprDeriveOrd,
-  ReprGroundingDeriveTrait,
-  ReprGroundingDeriveElemShape,
-  ReprDeriveElemKernelInt,
-  ReprDeriveElemKernelString,
-  ReprDeriveElemKernelBool,
-  ReprDeriveElemKernelUnit,
-  ReprDeriveElemNullaryEnumCopy,
-  ReprDeriveElemPayloadCoproduct,
-  ReprDeriveElemUnknown,
-  repr_grounding_derive_shape_has_trait,
-  repr_grounding_derive_completeness_predicate
-}
-import v2.std.algebra { Cons, Empty }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Conj,
-  Disj,
-  Edge,
-  Node,
-  SyntheticOccurrence,
-  TypeNode
-}
-import v2.std.compilers.coproduct_variant_shape { coproduct_all_variants_nullary }
-import v2.std.compilers.target_model {
-  RequiredTraitWitness,
-  TargetCollectionWitnessEq,
-  TargetCollectionWitnessHash,
-  TargetCollectionWitnessOrd
-}
 
 data trait_derive_completeness_note: String = "Gate-1 sub-wall #2 (#7174 narrowed 2026-07-25): v2 Node elem-shape classifier + collection-witness gate over std.trait_derive_shape. v1 emit wires (a) clone bounds on generic params, (b) coproduct-native supplemental impl blocks, and (c) serde/Debug/Ord #[derive] on named structs/enums — arm (b) detail in std.trait_derive_shape.trait_derive_shape_grounding_lane_handoff. Fail-closed: unknown shapes refuse. Dissolve-on: those three v1 emit arms + layer-boundary mock test wire through this module."
 

@@ -1,26 +1,5 @@
 module v2.test.lens_fact_density.conj_positional_only_no_fact
 
-import v2.lens.fact_density { NoFact, carrier_spec_fact }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Conj,
-  Edge,
-  Node,
-  Positional,
-  Symbol,
-  TypeNode,
-  SyntheticOccurrence
-}
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  ManualAnchorAbsent,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 data conj_positional_only_child: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^conj_positional_only_child_symbol } },

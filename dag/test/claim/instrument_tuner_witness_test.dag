@@ -1,27 +1,5 @@
 module test.claim.instrument_tuner_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { String, Bool, Int, List }
-import gunbc.roadmap_component {
-  instrument_tuner_asset_path, instrument_tuner_client_js_source,
-  instrument_tuner_root_class, instrument_reading_class, instrument_depth_btn_class,
-  instrument_mode_btn_class, instrument_subject_class, js_instrument_step_depth_fn,
-  js_instrument_save_fn, js_instrument_seek_depth_fn, js_instrument_handle_wheel_fn,
-  js_instrument_wheel_threshold_const, js_tick_fn,
-}
-import gunbc.design.instrument_camera {
-  camera_storage_key, camera_wire, camera_initial, camera_wire_sep,
-  ProgramCamera, DepthFront,
-  wheel_detent_threshold_px, wheel_gesture_reset_interval,
-  instrument_user_depths, instrument_user_depth_keys, program_depth_key,
-}
-import std.measure { millisecond_count }
-import gunbc.roadmap_instrument_tuner {
-  instrument_tuner_css, instrument_tuner_camera_population_joined,
-  reading_row,
-}
-import gunbc.roadmap_program_view { V1DeletionProgramView, RemainingShape, ProposedCarrierAbsent }
-import extdeps.languages.html_fragment { serialize_fragment }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,9 +1,5 @@
 module extdeps.ebay.oauth
 
-import std.types { NonEmptyStr, HttpMethod, AuthScheme }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.ebay.ebay { production_api_base }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

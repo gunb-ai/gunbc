@@ -1,20 +1,5 @@
 module gunbc.runner_host_deploy
 
-import std.types { NonEmptyStr, String, Int, List }
-import extdeps.exec.command { ArgvCommand, shell_command_render }
-import extdeps.cloud.gcp.secret_ref { SecretRef }
-import extdeps.github.app { GitHubAppInstallationId }
-import gunbc.auth.github_apps {
-  DeclaredGitHubApp,
-  gunbai_ci_declared,
-  gunbai_ci_declared_installation_id,
-  gunbai_ci_app_pem_secret
-}
-import extdeps.cache.sccache { SccacheBinaryRelease, sccache_release_0_15_0, sccache_install_script }
-import extdeps.crypto.hash { Digest, sha256_digest }
-import extdeps.container.docker_ce { docker_ce_apt_repo_noble_arm64, docker_ce_packages, docker_ce_repo_install_script }
-import gunbc.fleet_intent { fleet_intent_known_hosts }
-import product.placement_supply { HostIdentity }
 
 data runner_host_deploy_citation: String = "VOID CITATION RETIRED (operator ruling 2026-08-06): ctrl:scripts/session-dashboard/host/* path literals and void_note twins were deleted — ctrl is a dead repo, not a live upstream. Runner slot materialization is owned in gunbc.runner_slot_provision / gunbc.runner_lifecycle on host_effect_apply. runner_host_installer_command_argv remains a legacy argv builder taking installer_path as a parameter; it is not an authority row citing ctrl."
 

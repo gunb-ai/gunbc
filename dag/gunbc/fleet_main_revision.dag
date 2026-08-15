@@ -1,7 +1,5 @@
 module gunbc.fleet_main_revision
 
-import std.types { String, NonEmptyStr, Bool }
-import extdeps.git.object_store { GitObjectId }
 
 // fleet-main-revision-authority (arc item 3, operator directive 2026-08-08): the fleet's
 // desired revision derives from MERGED, FLOOR-GREEN main — never from a CLI argument, a

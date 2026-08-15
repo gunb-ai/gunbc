@@ -1,7 +1,5 @@
 module gunbc.session_auto_publish_ctrl_ingest
 
-import std.types { CommitSha, String }
-import v2.std.optional { Absent, Present }
 
 data ctrl_publication_ingest_note: String = "The sole authenticated bridge from ctrl publishSessionWorktree into gunbc.session_auto_publish. PublicationRequest is sole_constructor here — this module is the ONLY place that may construct one. A free mint_publication_request in the authority module would recreate the unsealed-door hole (TransportScript wall shape). Production ctrl and harness witnesses alike route through ingest_publication_request_from_ctrl after authenticate_ctrl_publication_ingest."
 

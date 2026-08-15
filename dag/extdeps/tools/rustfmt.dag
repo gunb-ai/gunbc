@@ -1,8 +1,5 @@
 module extdeps.tools.rustfmt
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.tools { CliTool, SourceRustup }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

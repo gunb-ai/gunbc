@@ -1,11 +1,5 @@
 module gunbc.heal_revalidation
 
-import std.content_hash { Fnv1a64Structural }
-import std.types { CommitSha, NonEmptyStr }
-import gunbc.merge_admission {
-  CheckCoverage,
-  check_coverage_admits
-}
 
 type HealOutcome
   = HealNoChange { head: CommitSha }

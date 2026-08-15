@@ -1,16 +1,5 @@
 module gunbc.falsifier_run_control
 
-import std.types { String, NonEmptyStr, List, Int }
-import extdeps.languages.yaml.types { yaml_string, kv }
-import extdeps.github.actions { Step, RunStep }
-import gunbc.ci_layer_roots { witness_layer_roots }
-import gunbc.cli_invoke {
-  CiPlanArtifactPlan,
-  FalsifierNativeCacheColdPlan,
-  claim_executor_run_plan_shell,
-}
-import gunbc.merge_admission_produce { ci_repo_root_shell }
-import v2.std.collection { Absent }
 
 type FalsifierControlRole
   = AffectedSetPredictOnlyCold

@@ -1,14 +1,5 @@
 module gunbc.roadmap_program_view
 
-import gunbc.roadmap_model {
-  RoadmapNode, RoadmapEdge, RoadmapNodeId, RoadmapAcceptanceReceipt,
-  receipt_matches_node,
-}
-import gunbc.roadmap_execution_contract { contract_has_closing_validation }
-import gunbc.roadmap_focus { roadmap_dependency_graph }
-import gunbc.roadmap_status { line_ticket }
-import gunbc.v1_deletion_plan { V1FinishLine, V1FinishLineSpec, v1_exit_finish_lines, v1_finish_line_key }
-import std.graph { reverse_adjacency, dfs_collect_component, SccComponentAcc }
 
 data roadmap_program_view_doc: String = "THE PROGRAM-NAVIGATION PROJECTION AUTHORITY, V0 (operator requirements 2026-08-02): the derived model that answers, for one program, what are we doing / where are we exactly / how much remains / why is it taking this long — before any renderer exists. Every fact here is DERIVED: topology from the roadmap authority's RoadmapEdge rows, acceptance from RoadmapAcceptanceReceipt rows only (a merged pull request accepts nothing — gunbc.roadmap_model receipt_matches_node is the single matching wall; duplicate live receipts refuse as DuplicateAcceptanceReceipt before derivation), startability from parents x acceptance, in-flight from caller-supplied observations, and the proposed plane from a carrier that does not exist yet and is therefore typed absent rather than scraped from planning prose. The module is PURE and parameterized — it imports no live authority data — so every derivation is provable on planted fixtures and the six red controls from the requirements execute against synthetic graphs instead of pinning tree-copied measurements (the DESIGN section 5 oracle rule). The one heuristic-shaped choice, tie-breaking the primary constraint, is declared: ties resolve to declaration order, which is the authority's own authored order, never a hidden score. What this V0 deliberately does not model, each with its trigger: decision-held work (needs a typed operator-decision marker on the node; today a decision node is only prose), evidence-refusal constraints (needs the verification-receipt join — gunbc.roadmap_verification_receipt is test-only until the belt wiring seam lands), and proposed-graph overlays (needs a typed proposal carrier; see proposed_plane_note). The camera layers — depth, mode, tuning — are the V1 interaction seam and are deliberately absent here: this module is the world those cameras look at, per the presentation seam design's law that the graph is the world and the UI is a camera."
 

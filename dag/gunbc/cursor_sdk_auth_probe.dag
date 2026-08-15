@@ -1,22 +1,5 @@
 module gunbc.cursor_sdk_auth_probe
 
-import std.types { NonEmptyStr, String }
-import extdeps.llm.cursor_stream {
-  CursorSdkStreamTerminalReconcile,
-  CursorSdkStreamTerminalsReconciled,
-  CursorSdkStreamTerminalsUnclassified,
-  CursorSdkTerminalFinished,
-  CursorSdkTerminalError,
-  CursorSdkTerminalErrorObserved,
-  CursorSdkTerminalErrorAbsent,
-  cursor_sdk_stream_reconcile_run_result,
-}
-import extdeps.llm.cursor_sdk_errors {
-  CursorSdkErrorCode,
-  CursorSdkAuthenticationError,
-  cursor_sdk_error_code_is_authentication_failure,
-  cursor_sdk_error_code_label,
-}
 
 data cursor_sdk_auth_probe_note: String = "Modeled SDK auth probe: classifies a terminal RunResult reconcile into authentication standing inputs only. authentication_error is the sole credential-rejection code; rate_limit_error and other terminal codes are auth-axis-neutral (credentials may still be valid — limits/turn axes own those failures). No live SDK call in this slice — witnesses supply fixture JSON. Never mints ProviderAuthenticated literals; AuthenticationAuthenticated is derived only from CursorSdkAuthProbeAuthenticated or auth-neutral terminal errors."
 

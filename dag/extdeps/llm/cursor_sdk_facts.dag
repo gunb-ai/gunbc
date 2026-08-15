@@ -1,13 +1,5 @@
 module extdeps.llm.cursor_sdk_facts
 
-import std.types { String, NonEmptyStr, Int }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.probes.provider_interface_acquisition {
-  provider_interface_acquisition_cursor_sdk_closure_receipt,
-  provider_interface_acquisition_cursor_sdk_package_name,
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

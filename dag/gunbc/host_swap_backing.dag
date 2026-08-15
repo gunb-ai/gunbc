@@ -1,15 +1,5 @@
 module gunbc.host_swap_backing
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.measure { ByteSize, byte_size, byte_size_count }
-import std.upsert_decision { ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.tools.free { SwapStats }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
-import gunbc.host_phase_status { observation_verdict_eq, fleet_subsumption_hosts }
-import gunbc.readback_independence { readback_evidence_verdict, proc_swaps_read_probe }
-import product.placement_supply { HostIdentity }
 
 data host_swap_backing_authority_note: String = "THE host swap-BACKING axis, and it exists because the corpus already converges a swap CAP over a resource whose existence nothing models. gunbc.runner_slot_allocation declares memory_swap_max = 34359738368 (32 GiB) per runner slot; gunbc.host_converge drives it onto every host as MemorySwapMax through the per-slot drop-in at gunbc_runner_per_slot_swap_dropin_path, and gunbc.runner_unit_live_read reads it back and reports Converged when the cgroup property matches. Every one of those steps is correct in isolation and the composition still proves nothing, because MemorySwapMax is a CEILING: systemd accepts it, reports it, and matches it byte-for-byte on a host with zero swap devices. The knob converges green over a resource that does not exist. That is the presupposition failure this module makes representable — a cap is evidence about a resource only once the resource is observed present — and it is the shape DESIGN §5 calls a fabricated plausible output: not a wrong value, a value whose meaning was assumed. What is NOT minted here: no swap-specific verdict enum (std.upsert_decision.ObservationVerdict already spans Converged/Absent/Drifted/Conflict/Inaccessible/UnknownRefused) and no swap observation carrier (extdeps.tools.free.SwapStats is the cited one, grounded on the free(1) man page, and it is reused verbatim rather than re-decomposed here)."
 

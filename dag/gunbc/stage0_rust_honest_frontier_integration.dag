@@ -1,36 +1,5 @@
 module gunbc.stage0_rust_honest_frontier_integration
 
-import gunbc.stage0_rust_host_observation {
-  GitObservationRefused,
-  RustManifestObserved,
-  RustManifestParseRefused,
-  RustManifestReadRefused,
-  RustSourceHostObservation
-}
-import gunbc.stage0_rust_lifecycle_totality {
-  LifecycleTotalityDerived,
-  LifecycleTotalityObservationRefused,
-  LifecycleTotalityReceipt,
-  lifecycle_decision_complete,
-  lifecycle_discovery_complete,
-  lifecycle_totality_receipt
-}
-import gunbc.stage0_rust_product_reachability {
-  ProductReachabilityDerived,
-  ProductReachabilityObservationRefused,
-  ProductReachabilityReceipt,
-  RustProductReachabilityVerdict,
-  exact_product_reachable_paths_from_verdicts,
-  exact_reachability_refused_paths_from_verdicts,
-  product_reachability_receipt
-}
-import gunbc.stage0_rust_source_lifecycle_scaffold {
-  derived_hand_maintained_disposition_repo_paths,
-  path_in_list
-}
-import v2.std.algebra { filter }
-import v2.std.collection { List }
-import v2.std.text { String }
 
 data stage0_rust_honest_frontier_integration_note: String = "Lane C integration join: composes C1 lifecycle_totality_receipt and C2 product_reachability_receipt over the same RustManifestObserved subject. Answers v1-hand-queue-drain: which remaining hand-written paths shipping products actually reach — exact path identity join of derived_hand_maintained_disposition_repo_paths with product-reachable verdicts, never a count oracle. derived_hand_maintained_disposition_repo_paths is layout membership (derived_hand_maintained_stage0_repo_paths) minus generated_artifact_stage0_src_repo_paths: a path can be a legitimate crate-layout member (SeedRetainedScaffoldRegistration) while its content is DERIVED as Generated/EmitFrom by an identity join against gunbc.generated_artifact's closed registry, e.g. v1_interpreter_dispatch_generated.rs matching V1InterpreterDispatchGeneratedRsArtifact's artifact_path and so EmitFrom gunbc.generated_artifact_emit — never a hand-picked filename exception, and never inferred from one list. Layout membership and maintenance disposition are independent axes. Discovery completeness and disposition decision stay separate reports."
 

@@ -1,30 +1,5 @@
 module test.claim.codex_package_delivery_wet_witness_test
 
-import extdeps.filesystem.filesystem_io
-import extdeps.shell
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import std.types { Bool, String, NonEmptyStr, FilePath }
-import std.content_hash { Sha512Hash }
-import gunbc.package_delivery {
-  codex_runtime_lock_path,
-  codex_runtime_manifest_path,
-  admit_codex_package_lock_text,
-  CodexPackageLockAdmitted,
-  codex_wrapper_lookup,
-  CodexWrapperUnique,
-  acquire_and_admit_registry_artifact,
-  RegistryArtifactAdmitted,
-  materialize_codex_runtime_bundle,
-  AdmittedCodexRuntimeSource,
-  CodexRuntimeMaterialized,
-  codex_runtime_materialization_failure_receipt,
-  observe_codex_npm_runtime_target,
-  CodexNpmRuntimeTargetObserved,
-  select_codex_exact_target_closure,
-  CodexExactTargetClosureSelected,
-  acquire_and_admit_selected_pair,
-  TargetClosureAcquisitionOk,
-}
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

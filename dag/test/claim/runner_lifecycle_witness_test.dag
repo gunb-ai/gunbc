@@ -1,37 +1,5 @@
 module test.claim.runner_lifecycle
 
-import std.logic { Bool }
-import std.types { list_length, NonEmptyStr }
-import std.measure { byte_size, byte_size_count }
-import gunbc.runner_lifecycle {
-  runner_slot_add_steps_ordered,
-  runner_slot_caps_precede_start,
-  runner_slot_add_step_index,
-  AddStepMemoryCaps,
-  AddStepStartUnit,
-  AddStepDaemonReload,
-  runner_width_disk_preflight,
-  runner_width_disk_required,
-  DiskHeadroomSufficient,
-  DiskHeadroomInsufficient,
-  DiskHeadroomUnobserved,
-  host_runner_capacity_converged,
-  HostRunnerCapacityReceipt,
-  runner_slot_instance_name,
-  runner_slot_unit_name,
-}
-import gunbc.host_disk_observation {
-  DiskObserved,
-  DiskUnobserved,
-  DiskObservationRefused,
-}
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_slot_allocation {
-  gunbc_runner_slot_allocation_srv3,
-  gunbc_runner_slot_allocation_srv4,
-  gunbc_runner_slots_per_host,
-}
-import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 
 test fn witness_add_sequence_caps_before_start() -> Bool {
   runner_slot_caps_precede_start()

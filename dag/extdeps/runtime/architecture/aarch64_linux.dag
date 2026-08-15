@@ -1,25 +1,6 @@
 module extdeps.runtime.architecture.aarch64_linux
 
-import extdeps.runtime.abi.aapcs64 {
-  aarch64_inhabitant_x0,
-  aarch64_inhabitant_x1,
-  aarch64_inhabitant_x2,
-  aarch64_inhabitant_x3,
-  aarch64_inhabitant_x4,
-  aarch64_inhabitant_x5,
-  aarch64_inhabitant_x8,
-  aapcs64_linux_syscall_convention,
-}
-import extdeps.runtime.syscalls.linux { linux_aarch64_syscall_abi }
-import extdeps.toolchain.types { Aarch64 }
-import std.abi { ArchitecturalRegister, StackLayout }
-import extdeps.toolchain.architecture_profile { ArchitectureProfile, DeploymentTarget, Endianness }
-import std.os.invocation { SyscallAbiSurface }
-import std.measure { bit_width, bit_width_count, byte_size, byte_size_count }
-import std.types { Bool }
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

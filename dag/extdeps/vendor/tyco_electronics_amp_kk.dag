@@ -1,11 +1,5 @@
 module extdeps.vendor.tyco_electronics_amp_kk
 
-import std.types { String }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import extdeps.vendor { Vendor }
-import extdeps.hardware { Hardware }
 
 // From the header of application specification 114-115006 Rev C, read 2026-08-14: "Tyco
 // Electronics AMP K.K. (3-5-8 Hisamoto Takatsu-ku Kawasaki, 213-8535)".

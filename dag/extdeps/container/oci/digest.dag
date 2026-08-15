@@ -1,15 +1,5 @@
 module extdeps.container.oci.digest
 
-import std.types { NonEmptyStr, String }
-import std.content_hash {
-  Sha256Digest,
-  Sha512Digest,
-  sha256_hex_digest,
-  sha512_hex_digest,
-}
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

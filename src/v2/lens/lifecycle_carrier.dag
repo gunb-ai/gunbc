@@ -1,44 +1,5 @@
 module v2.lens.lifecycle_carrier
 
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Rejected,
-  Unavailable,
-  node_locus,
-  outcome_accepted,
-  outcome_rejected
-}
-import v2.std.witness { Holds, Witness }
-import v2.std.node {
-  ComputationNode,
-  Edge,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  TypeNode
-}
-import v2.std.node_query { edge_field_type_name }
-import v2.std.compilers.lexing { symbol_lexeme }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.optional {
-  Absent,
-  Optional,
-  Present,
-  optional_absent,
-  optional_present,
-  optional_prefer_first_present
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.lens.common.construction_justification {
-  ConstructionJustification,
-  WallAfterGrounding
-}
-import std.disposition { SubstrateMandatoryTag }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,48 +1,5 @@
 module test.claim.scm_agentic_stress_witness
 
-import extdeps.pricing.object_storage {
-  AwsS3,
-  CloudflareR2,
-  Storj,
-  Wasabi,
-  ByteBasisUnstated,
-  DecimalGigabyte,
-  r2_class_a_operations,
-  r2_class_b_operations,
-  r2_egress_free,
-  r2_standard,
-  s3_egress_first_10tb,
-  s3_egress_next_100tb,
-  s3_egress_next_40tb,
-  s3_egress_over_150tb,
-  s3_standard_first_50tb,
-  s3_standard_next_450tb,
-  s3_standard_over_500tb,
-  s3_tier1_requests,
-  s3_tier2_requests,
-  storj_egress,
-  storj_standard_storage,
-  wasabi_egress_free,
-  wasabi_hot_storage,
-}
-import gunbc.econ.scm_serving_model {
-  BasisAssumed,
-  PackedObjects,
-  ProviderQuote,
-  RequestsBilled,
-  RequestsIncludedAtNoCharge,
-  ScmWorkloadProfile,
-  UnpackedNodeGrain,
-  packed_object_count,
-  profile_at_user_count,
-  profile_with_packed_ops,
-  quote_operations_micros,
-  quote_provider_monthly,
-  quote_total_micros,
-}
-import std.measure { byte_size }
-import std.nat { Nat }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

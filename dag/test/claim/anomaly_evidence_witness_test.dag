@@ -1,8 +1,5 @@
 module test.claim.anomaly_evidence_witness
 
-import gunbc.roadmap_component { dispatch_client_js_source }
-import gunbc.roadmap_style { roadmap_css }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

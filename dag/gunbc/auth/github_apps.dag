@@ -1,36 +1,5 @@
 module gunbc.auth.github_apps
 
-import std.types { NonEmptyStr }
-import std.content_hash { ContentHash }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
-import extdeps.uri { Uri, uri_https }
-import extdeps.github.app {
-  GitHubAppId,
-  GitHubAppInstallationId,
-  GitHubAppInstallation,
-  GitHubAppPermission,
-  ObservedGitHubPermission,
-  ObservedGitHubPermissionName,
-  observed_access_for,
-  observed_permission_name,
-  first_duplicated_observed_permission,
-  as_observed_permission,
-  GitHubPermissionAxis,
-  GitHubAppPermissionAccess,
-  AppAccessRead,
-  AppAccessWrite,
-  GitHubAppPublicKeyFingerprint,
-  GitHubAppPermissionSetAdmission,
-  PermissionSetAdmitted,
-  PermissionSetDuplicateName,
-  admit_permission_set,
-  sha256_base64_key_fingerprint,
-  key_fingerprint_eq,
-  permission_access_at_least,
-  permission_access_in
-}
-import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
 
 type DeclaredGitHubApp {
   owner_login: NonEmptyStr

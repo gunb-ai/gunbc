@@ -1,33 +1,5 @@
 module gunbc.roadmap_publish_observe
 
-import std.types { String, NonEmptyStr, Int, Bool, List, CommitSha }
-import std.credentials { CredentialSource }
-import extdeps.git
-import extdeps.git {
-  AdvertisedRef,
-  AdvertisedRefScan, AdvertisedRefsRead, AdvertisedRefLineUnparsed,
-  scan_advertised_refs,
-  advertised_ref_branch_name,
-}
-import gunbc.roadmap_publish {
-  RemoteBranch,
-  RemoteBranchObservation, RemoteBranchesRead, RemoteBranchesUnreadable,
-  RemoteBranchReadFailure,
-  RefAdvertisementRefused, AdvertisedLineUnparsed, AdvertisedRefProjectsEmptyBranch,
-  PullRequestObservation, PullRequestsRead, PullRequestsUnreadable,
-  PullRequestReadFailure,
-  PullRequestCredentialUnavailable, PullRequestStatusRefused,
-  PullRequestTransportRefused, PullRequestBodyUndecodable,
-  PublicationOutcome,
-  RoadmapPublicationSubject,
-  publication_subject_remote,
-  adjudicate_publication,
-}
-import extdeps.github.github { Repository, github_https_clone_url }
-import extdeps.github.pulls { PullRequestState, Open }
-import extdeps.transports.rest {
-  RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
-}
 
 data observer_role_note: String = "THIS IS THE HALF THAT TOUCHES THE NETWORK, SEPARATED FROM THE HALF THAT JUDGES. gunbc.roadmap_publish adjudicates observations a caller already holds, which is what makes every one of its arms reachable from constructed values in a witness. That property is worth keeping, so the reading lives here instead: this module calls the transport, decides what was learned, and hands back an ordinary value. The split is the reason the refusal arms are constructible at all - a function that called the service itself could not build them, because a transport failure there is not a value.\\n\\nWhat this module must never become is a second adjudicator. It reports what it saw and refuses when it could not see; which outcome that implies is roadmap_publish's business."
 

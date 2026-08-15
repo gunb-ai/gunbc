@@ -1,45 +1,6 @@
 module tools.merge_admission_current_context
 
-import std.algebra { trim }
 
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.types { NonEmptyStr, GitRef }
-import extdeps.git { git_remote_ref_parts }
-import extdeps.git.inspect
-import extdeps.git.object_store {
-  GitObjectIdTextDecoded,
-  GitObjectIdTextRefused,
-  git_decode_object_id_text,
-  git_object_id_format,
-}
-import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.shell
-import tools.merge_admission_walk { merge_admission_fetch_stall_deadline_seconds }
-import gunbc.merge_admission {
-  MergeAdmissionVerdict,
-  MergeAdmitted,
-  MergeDeniedStaleBase,
-  MergeDeniedStaleRoster,
-  MergeDeniedNotSuccess,
-  MergeDeniedWrongAttempt,
-  MergeDeniedSubjectMismatch,
-  classify_merge_admission_verdict_v2,
-  current_gate_roster_hash,
-  merge_admission_verdict_label,
-}
-import gunbc.merge_admission_subject {
-  WalkAttemptId,
-  compose_walk_attempt_id,
-  compose_explicit_walk_attempt_id,
-  merge_admission_tested_subject_path,
-  merge_admission_floor_receipt_path,
-  parse_tested_subject_wire,
-  merge_admission_merge_base_ref,
-}
-import gunbc.merge_admission_produce {
-  parse_receipt_wire_v2,
-  shell_stdout_line,
-}
 
 fn optional_env(name: NonEmptyStr) -> String? {
   let observed = shell.Env.Get(name: name)

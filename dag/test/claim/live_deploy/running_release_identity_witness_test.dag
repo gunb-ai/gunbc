@@ -1,35 +1,5 @@
 module test.claim.live_deploy.running_release_identity_witness_test
 
-import std.content_hash { Fnv1a64Structural }
-import std.types { Bool, String, CommitSha, NonEmptyStr }
-import std.realization_reconcile { Grounding, Grounds, DoesNotGround }
-import test.claim.live_deploy.deploy_release_fixture {
-  deploy_witness_release_revision,
-  deploy_witness_other_release_revision,
-  deploy_witness_third_release_revision,
-}
-import gunbc.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
-import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, HealthzEffectiveRead }
-import gunbc.roadmap_site_surface_render { healthz_body_with_release_identity }
-import gunbc.roadmap_site_surface_expect {
-  roadmap_site_healthz_surface_is_current,
-  healthz_surface_projection,
-}
-import gunbc.running_release_identity {
-  RunningReleaseIdentity,
-  RunningReleaseIdentified,
-  RunningReleaseUnidentified,
-  ReleaseIdentityBodyUnparseable,
-  ReleaseRevisionAbsent,
-  ReleaseRevisionDuplicated,
-  ReleaseRevisionMalformed,
-  SurfaceBundleIdentityAbsent,
-  observe_running_release_identity,
-  running_release_revision_equals,
-  running_release_surface_equals,
-  release_revision_text_valid,
-}
-import gunbc.live_deploy.readiness { ground_service_ready_from_healthz_with_bundle, ServiceReadyEvidence }
 
 data witness_subject_note: String = "THE PROPERTY UNDER TEST IS THAT A DEPLOY CANNOT GREEN AGAINST A PROCESS IT DID NOT INSTALL, and every witness here is written to fail if that stops holding. The mechanism is small — the running process states which release it was launched as, and readiness compares that statement against the release this invocation admitted — so the witnesses are correspondingly small and each isolates one way the comparison could go wrong.\\n\\nWhat makes them discriminating rather than decorative: the healthy case and every refusal case are built from the SAME producer (healthz_body_with_release_identity) differing in exactly one input. A refusal that fired because the fixture was malformed in some incidental way would also fire on the healthy fixture, and the healthy fixture is asserted to ground. So each red is attributable to the one axis it varies."
 

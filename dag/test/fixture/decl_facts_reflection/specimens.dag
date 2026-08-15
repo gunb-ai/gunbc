@@ -1,15 +1,5 @@
 module test.fixture.decl_facts_reflection.specimens
 
-import std.types { String, Int }
-import std.disposition {
-  Disposition,
-  Terminal,
-  Scaffold,
-  SingleAuthority,
-  RealizationDispatch,
-  ConstructionMechanism,
-}
-import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
 
 type LocalCarrierA
   = TaggedA { tag: String }

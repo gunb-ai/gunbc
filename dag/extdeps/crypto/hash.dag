@@ -1,16 +1,6 @@
 module extdeps.crypto.hash
 
-import std.types { NonEmptyStr, String }
-import std.content_hash {
-  as_content_hash_cryptographic,
-  as_content_hash_sha512,
-  ContentHash,
-  sha256_hex_digest,
-  sha512_hex_digest,
-}
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

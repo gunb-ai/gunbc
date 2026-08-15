@@ -1,38 +1,5 @@
 module gunbc.fleet_converge_plan_cli
 
-import std.types { String, List, Bool, NonEmptyStr, Int }
-import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import std.resources { Network }
-import std.algebra { trim }
-import std.content_hash { serialize_content_hash }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.exec.command { ArgvCommand, LocalExec }
-import gunbc.command_runner { run_shell_command_capture, run_shell_commands }
-import gunbc.host_axis_caps { CapMember, caps_managed_dropin_paths }
-import gunbc.fleet_converge_plan {
-  TimerRetirementMember,
-  fleet_converge_plan_artifact,
-  fleet_converge_plan_body_path,
-  fleet_converge_plan_baseline_hex_path,
-  fleet_converge_plan_apply_shell_path,
-  fleet_converge_plan_content_hash_path,
-  fleet_converge_plan_subject_host_path,
-  fleet_converge_plan_generation_path,
-  fleet_converge_plan_prior_generation_path,
-  fleet_converge_plan_member_set_fp_path,
-  fleet_converge_plan_artifact_dir,
-  fleet_converge_plan_content_hash,
-  fleet_converge_observed_baseline_matches,
-  fleet_converge_member_set_fingerprint_matches,
-  timer_retirement_observed_legacy_srv1,
-  fleet_converge_generation_store_path,
-  fleet_converge_locked_apply_script,
-  fleet_converge_parse_nonneg_generation_text,
-  fleet_converge_generation_from_store_content,
-  fleet_converge_plan_bundle_digest_hex,
-  fleet_converge_plan_bundle_matches,
-  fleet_converge_plan_content_hash_path,
-}
 
 data fleet_converge_plan_cli_note: String = "Wet CLI for on-demand fleet converge plan/apply (sleek-heron-218). Plan observes the host, runs membership_reconcile once, names the subject (host + member-set fingerprint), mints a std.temporal_effect HeldLease generation in the artifact, and writes the human-readable plan plus apply.sh. plan_content.hex is the Fnv1a64Structural bundle digest of plan.txt + apply.sh; on success plan_wet prints plan.txt then that digest for workflow_dispatch plan_artifact_hash. Apply re-observes subject identity and observed-baseline fingerprint in .dag, refuses unless on-disk plan.txt + apply.sh match plan_content.hex, then runs fleet_converge_locked_apply_script under flock. Generation store reads refuse corrupt or negative values; a missing store file is generation 0."
 

@@ -1,17 +1,5 @@
 module gunbc.design.theme
 
-import extdeps.accessibility.wcag_contrast {
-  hsl_contrast_at_least,
-  wcag_aa_normal_text_hundredths,
-  wcag_aa_large_text_and_graphics_hundredths,
-}
-import gunbc.design.material {
-  Material, AreaClass, PointArea, HairlineArea, TextArea, FieldArea, DataVizArea,
-  chroma_admissible, area_key,
-  paint, paint_alpha,
-  decl, css_block, CssDecl,
-}
-import extdeps.languages.css.properties { CssPropertyName }
 
 data theme_note: String = "Layer 2 theme machinery: total role-to-material binding, WCAG contrast law, night/day atlas rows. Lifted from gunbc.site.tokens (design-register-library.md Phase A)."
 type ThemeRole

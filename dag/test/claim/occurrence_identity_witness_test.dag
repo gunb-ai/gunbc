@@ -1,33 +1,5 @@
 module test.claim.occurrence_identity_witness_test
 
-import std.types { Bool }
-import std.occurrence_identity {
-  OccurrenceId,
-  OccurrenceIdAllocator,
-  OccurrenceIdAllocResult,
-  NodeOccurrenceIdentity,
-  OccurrenceSynthetic,
-  OccurrenceMinted,
-  authored_token_ordinal_space_from_allocator,
-  occurrence_id_allocator_initial,
-  alloc_occurrence_id,
-  occurrence_id_eq,
-  occurrence_id_allocator_advance_to,
-  node_occurrence_identity_minted,
-  occurrence_identity_acceptance_law_rebuilt_reference,
-  occurrence_identity_acceptance_law_collector_dedupe,
-  occurrence_identity_acceptance_law_distinct_occurrences,
-  occurrence_identity_acceptance_law_pattern_reachability,
-  occurrence_identity_acceptance_law_parser_isolation,
-  occurrence_identity_acceptance_laws,
-}
-import v2.std.node {
-  NodeOccurrenceId,
-  SyntheticOccurrence,
-  MintedOccurrence,
-  node_occurrence_id_to_shared,
-  node_occurrence_id_from_shared,
-}
 
 test fn occurrence_identity_initial_allocator_starts_at_zero_holds() -> Bool {
   occurrence_id_allocator_initial().next_id == 0

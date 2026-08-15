@@ -1,10 +1,5 @@
 module test.claim.long.dag_compile_clean_perturb_corpus
 
-import tools.dag_compile_clean_transport {
-  run_cross_tree_import_green_receipt,
-  run_dag_shell_primary_precedence_receipt,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

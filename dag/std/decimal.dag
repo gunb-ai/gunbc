@@ -1,7 +1,5 @@
 module std.decimal
 
-import std.types { String, Int, Bool }
-import std.render_repeat_string_bootstrap { repeat_string }
 
 data decimal_note: String = "Positional decimal notation for a FIXED-POINT magnitude: an integer paired with the power of ten it is scaled by. It exists because two unrelated boundaries needed the identical projection and neither is the right owner of it — WebAudio's gain and time arguments are decimal seconds and a linear amplitude in [0, 1], and CSS transform scale factors are decimal ratios. Each carried its magnitude integrally upstream (a fractional literal in a .dag row would be a second representation of the same number), so each needed to divide exactly once, at its own wire. Giving each boundary its own formatter would have put the same numeral logic in two places for no reason other than that the two consumers are far apart in the layer graph, which is the horizontal redundancy DESIGN section 2 names — the concept is one, so it is modeled once and both uses derive.
 

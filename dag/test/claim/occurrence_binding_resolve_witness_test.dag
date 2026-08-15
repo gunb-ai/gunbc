@@ -1,39 +1,5 @@
 module test.claim.occurrence_binding_resolve_witness_test
 
-import std.types { Bool }
-import std.algebra { Empty }
-import std.occurrence_identity {
-  OccurrenceContainmentPath,
-  OccurrenceProjection,
-  OccurrenceIndexEntry,
-  OccurrenceIndex,
-  OccurrenceTransport,
-  DeclarationOccurrence,
-  ReferenceOccurrence,
-  LexicalValueOccurrence,
-  TypeOccurrence,
-  DuplicateAuthoredOccurrenceIdentity,
-  DuplicateSuppliedCandidateIdentity,
-  MissingAuthoredOccurrenceIdentity,
-  UnknownOccurrenceIdentity,
-  WrongOccurrenceRole,
-  DeclarationRole,
-  ReferenceRole,
-}
-import std.occurrence_binding {
-  occurrence_binding_from_candidates,
-  OccurrenceBound,
-  OccurrenceUnbound,
-  OccurrenceAmbiguous,
-  AmbiguousBindingCandidates,
-}
-import std.occurrence_binding_resolve {
-  binding_occurrence_from_reference,
-  binding_candidate_from_declaration,
-  resolve_reference_occurrence_binding,
-  OccurrenceReferenceBindingDecided,
-  OccurrenceReferenceBindingTransportRefused,
-}
 
 fn obr_fixture_span(file: String, start: Int, end: Int) -> std.types.SourceSpan {
   std.types.SourceSpan { file: file, start: start, end: end }

@@ -1,18 +1,5 @@
 module gunbc.spark_serving_readback_parse
 
-import std.types { String, Int, NonEmptyStr }
-import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
-import extdeps.languages.json.parse {
-  JsonMemberLookup,
-  JsonMemberFound,
-  JsonMemberAbsent,
-  JsonMemberDuplicated,
-  JsonMemberNotAnObject,
-  json_object_unique_member,
-  parse_json,
-}
-import extdeps.ollama.api { OllamaModelRef, ollama_model_ref_wire }
-import gunbc.spark_serving_desired { spark_serving_desired_model_ref }
 
 data spark_serving_readback_parse_note: String = "Grammar-owned readback decoders for ollama /api/version and /api/tags. parse_json plus json_object_unique_member are the single authority — never string_contains and never substitute the desired version or a placeholder digest."
 

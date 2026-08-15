@@ -1,18 +1,5 @@
 module v2.test.fixture.frontier_probe_cause_location_manifest_fixture
 
-import v2.compiler.self_host.frontier_probe_types {
-  AssembleRejectionDetail,
-  CauseLocationTextual,
-  FrontierProbeReceipt,
-  FrontierProbeDetailAbsent,
-  NonEmptySymbolChain,
-  OtherAssembleRefusal,
-  ProbeStageAssemble,
-  UnknownProbeCause
-}
-import std.algebra { Empty }
-import v2.std.diagnostic { ByteRange }
-import v2.std.text { String }
 
 data frontier_probe_cause_location_manifest_fixture_note: String = "REAL EMITTED BYTES, not hand-authored. The receipt below is copied verbatim out of a host_frontier_probe_survey_manifest.dag produced by the frontier_probe_survey bin at source_commit 2880549bab4f6baeef0df09739f3bdc198efe0ed, source_tree 932acf8e6f39a71b52f4d1e5853383408a15ea1f, survey_executable sha256 677c1bf0673c70ef1e1a369a8fe39744e1b494e5800fef0fd0f7098e537d77fb, over module src/v2/compiler/use_site_verdict.dag. It exists so the RELOAD half of the round-trip is checkable in CI without running a survey: the emitter can only be proven to produce parseable, typecheckable, field-preserving text by feeding its actual output back through the front end. A hand-written approximation would test the fixture author's idea of the format instead of the emitter's, which is the failure this fixture is here to prevent. Regenerate by rerunning the bin from a clean detached worktree and copying the receipt verbatim; if the emitter's rendering changes, this fixture must be regenerated rather than edited by hand."
 

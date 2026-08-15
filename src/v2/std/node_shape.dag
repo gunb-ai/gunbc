@@ -1,27 +1,5 @@
 module v2.std.node_shape
 
-import std.algebra { Empty }
-import v2.std.algebra { fold_list, list_snoc_item }
-import v2.std.collection { List }
-import v2.std.node {
-  Atom,
-  Behavior,
-  ComputationNode,
-  Connective,
-  Edge,
-  EdgeLabel,
-  EdgeShape,
-  Named,
-  Node,
-  NodeKind,
-  NodeOccurrenceId,
-  NodeShape,
-  Positional,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode,
-  node_with_occurrence_id
-}
 
 fn edge_shape(label: EdgeLabel, target: NodeShape) -> EdgeShape {
   EdgeShape { label: label, target: target }

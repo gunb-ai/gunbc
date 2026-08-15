@@ -1,10 +1,6 @@
 module gunbc.compile_diagnostic_census
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data compile_diagnostic_census_charter_note: String = "THE PROBE OBSERVATION SURFACE for the v1 compile path (roadmap node ladder-probe-corpus; gap analysis sec 12 Stage 1a). The probe corpus needs to observe WHICH judgment a synthetic source provoked, not merely that something refused: the Stage-0 receipt vocabulary gunbc.guarantee_measurement carries RefusedTyped \{diagnostic_class, count} and AcceptedCounted \{diagnostic_class, count}, and neither is inhabitable from a Bool. Before this surface the only .dag-callable v1 compile was compile_dag_rust_emit_check, which counts diagnostics passing compile_clean_diagnostic_is_hard and returns false when that count is nonzero - so class identity, severity, and every advisory were discarded inside the host. Three things that costs, each measured on the tests this corpus migrates: a probe refusing for ANY hard reason (including a typo in the probe source itself) reads as the wall firing; demoting a landed wall from blocking to advisory turns its RED silently GREEN, because the filter IS the severity predicate; and a positive control cannot state zero-diagnostics-of-ANY-severity, which is the assertion codex review 45357 added after an advisory MethodExistenceUndecided passed unnoticed as a green control. MEASUREMENT ONLY: no arm here judges acceptance. The rows carry what the compile decided, severity included AS DATA, and callers filter."
 

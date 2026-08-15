@@ -1,13 +1,5 @@
 module v2.lens.duplicate_computation
 
-import std.disposition { RealizationDispatch }
-import std.materialization_ladder { LadderVerdict, AuthoredDuplication, Frame, SharedStateFrame }
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import v2.std.algebra { any, fold_list, length, list_snoc_item }
-import v2.std.collection { List }
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 type DemandGuard
   = UnguardedDemand

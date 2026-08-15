@@ -1,6 +1,5 @@
 module tools.namespace_structural_root_exposure_generated_witness_transport
 
-import tools.host_prelude { WitnessBin, run_witness_bin_program }
 
 fn namespace_structural_root_exposure_generated_witness_bin() -> WitnessBin {
   WitnessBin {

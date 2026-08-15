@@ -1,31 +1,5 @@
 module v2.lens.no_dual_representation_test.scan
 
-import std.algebra { Cons, Empty }
-import v2.std.algebra { TailAbsent, TailFound, fold_list, is_empty, is_prefix_of, length, list_append, list_snoc_item, list_tail }
-import v2.std.collection { Absent, List, Present, list_at_optional }
-import v2.std.data_index {
-  DataInitDecl,
-  data_init_decl_facts_live,
-  lexeme_matches_literal_fp,
-  literal_fingerprint_bool_lexeme,
-  literal_fingerprint_num_lexeme
-}
-import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Conj,
-  Edge,
-  Node,
-  NodeFold,
-  Positional,
-  Symbol,
-  TypeNode,
-  fold_node,
-  node_synthetic
-}
-import v2.std.node_query { node_positional_child_targets }
-import v2.std.text { Char, String }
 
 type DualRepViolationKind
   = SameSymbolEquality

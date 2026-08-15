@@ -1,22 +1,5 @@
 module test.claim.long.instrument_sandbox_live_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { String, Bool, Int, List }
-import gunbc.roadmap_serve {
-  InstrumentSandboxPageHandler, roadmap_serve_invoke_for_instance,
-}
-import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
-import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
-import gunbc.roadmap_instrument_sandbox {
-  instrument_sandbox_page, instrument_css, live_program_view_result,
-  LiveProgramView, LiveViewDerived, LiveViewRefused,
-}
-import gunbc.v1_deletion_plan { v1_exit_finish_lines }
-import gunbc.design.instrument_physical { preference_default, instrument_displacement_px }
-import gunbc.roadmap_program_view {
-  V1ProgramViewResult, ProgramViewDerived, ProgramViewRefused, V1DeletionProgramView,
-}
-import extdeps.http.server { ServeHttpRequest, ServeHttpResponse, GET, media_type_wire_label }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

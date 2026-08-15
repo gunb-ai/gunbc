@@ -1,35 +1,5 @@
 module gunbc.fleet_known_hosts_anchor
 
-import std.types { String, Bool, List, NonEmptyStr, PathSegment, path_segment_is_safe }
-import std.measure { second }
-import std.algebra { trim }
-import std.resources { Network }
-import std.content_hash {
-  ContentHash,
-  content_hash_of_value,
-  serialize_content_hash,
-  compare_content_hash,
-  ContentHashComparison,
-  ContentHashEqual,
-  ContentHashDifferent,
-  ContentHashCrossFamilyIncomparable,
-}
-import std.decl_ref { decl_ref }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
-import std.types { Int }
-import extdeps.ssh.client_options {
-  SshClientOption,
-  openssh_exclusive_known_hosts_trust_options,
-  openssh_suppress_ambient_configuration_options,
-  openssh_exact_credential_options,
-  serialize_ssh_client_options,
-  serialize_ssh_config_file_flag,
-  User,
-  BatchMode,
-  ConnectTimeout,
-}
-import gunbc.fleet_host_key_enrollment { KnownHostKeyRow, fleet_host_key_enrollments, known_hosts_line, host_key_provenance_label }
 
 // THE TRUST ANCHOR AN SSH INVOCATION IS VERIFIED AGAINST, carried as a value rather than left as
 // ambient host state.

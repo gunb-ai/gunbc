@@ -1,9 +1,5 @@
 module gunbc.econ.llm_attempt_receipt
 
-import std.algebra { FieldOfFractions }
-import std.measure { TokenCount, Nanosecond, Joule, nanosecond_count, token_count, token_count_value }
-import std.nat { Nat }
-import std.types { Bool, List, NonEmptyStr }
 
 data llm_attempt_receipt_note: String = "Typed receipt for one LLM attempt against gunbc work, sibling to gunbc.econ.knowable_wedge and gunbc.econ.scm_serving_model. This is a RECEIPT in the observing product layer, never a fact owned by an upstream provider (DESIGN external-upstream-decomposition rule): extdeps.llm.anthropic owns the provider wire contract, this module owns what WE observed when we ran something. It carries counts, durations and outcomes only -- no throughput, no cost, no tokens-per-second field exists anywhere in the record, so a transcribed rate is unrepresentable rather than lens-caught (same move as the guarantee-recovery claims carrier, which stores no rung). Every rate below is DERIVED from the stored pair and refuses when the pair cannot support it."
 

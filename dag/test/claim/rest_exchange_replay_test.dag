@@ -1,28 +1,5 @@
 module test.claim.rest_exchange_replay_test
 
-import std.types { Bool, String, List, GET }
-import std.content_hash { Fnv1a64Structural }
-import std.materialization_ladder { Frame, SharedStateFrame }
-import std.effect_grant {
-  Read, ServiceOpTree, NamespacePosition,
-  Replay, LifecycleByConstruction, Grant, Envelope,
-}
-import extdeps.uri { Uri, Https }
-import extdeps.transports.rest {
-  RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
-  RestUnauthenticated,
-  RestBodyRead, RestBodyReadRefused,
-  RestResponseObserved, RestExchangeRefused,
-  RestBoundOperationInvocation, RestExchangeObservation, RestExchangeFixture,
-}
-import v2.std.operation_argv { OperationRef }
-import v2.std.witness_evaluation {
-  WitnessEvaluationFrame, WitnessReturned, WitnessRefused,
-  evaluate_in_witness_frame, witness_evaluation_frame_active,
-  witness_diagnostic_rendered_reason,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import test.fixture.rest_exchange_replay_probe
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

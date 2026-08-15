@@ -1,13 +1,5 @@
 module v2.test.claim.self_host.witness_entry_eligibility_census_classification_test
 
-import v2.compiler.self_host.witness_entry_eligibility_census {
-  census_disposition_column_for_entry,
-  census_reason_column_for_entry,
-  census_execution_leg_label,
-  census_native_family_crate_leg_label,
-  census_emit_on_demand_family_grain_leg_label,
-  census_default_interpreted_leg_label
-}
 
 test fn census_long_lane_row_holds() -> Bool {
   census_disposition_column_for_entry(

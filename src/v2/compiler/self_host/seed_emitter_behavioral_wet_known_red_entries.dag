@@ -1,15 +1,5 @@
 module v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries
 
-import gunbc.explicit_witness_admission { known_red_probe_execution_roster }
-import std.realization_schedule {
-  ScheduleWitnessEntry,
-  ExecutionWitnessKind,
-  schedule_witness_entry_eq
-}
-import v2.std.algebra { any, fold_list, length }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 data seed_emitter_behavioral_wet_known_red_entries_note: String = "The six V1SeedEmitter behavioral wet expect_red quarantine receipts (review #7199, re-homed under emitter_producer_provenance 2026-07-29), DERIVED as of 2026-08-03 from the one function-grain admission authority gunbc.explicit_witness_admission: they are its ExecutionWitnessKind known-red rows, the same rows the hermetic probe roster projects at CorpusWitnessKind, so a quarantine is authored once whatever cadence executes it. Hand rows previously lived here beside a paired QuarantineProbeExpectRed path pattern in gunbc.ci_layer_roots; both are gone. Consumed by v2.compiler.self_host.wet_receipt_enrollment (falsifier batch enrollment) and v2.compiler.self_host.emitter_producer_provenance (producer receipt citation gate); this decl keeps its name so neither consumer changed. Cycle-free leaf: neither consumer is imported here."
 

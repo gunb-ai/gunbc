@@ -1,16 +1,5 @@
 module test.claim.cursor_sdk_model_witness_test
 
-import std.types { Bool, String }
-import extdeps.llm.cursor_sdk_facts {
-  cursor_sdk_local_package_closure,
-  cursor_sdk_local_account_usage_unobservable,
-  cursor_sdk_local_usage_missing_capability,
-  cursor_sdk_local_package_unprovisioned_on_deployed_host,
-  cursor_sdk_local_provision_missing_capability,
-}
-import extdeps.probes.provider_interface_acquisition {
-  provider_interface_acquisition_cursor_sdk_closure_receipt,
-}
 
 test fn local_usage_standing_is_typed_capability_gap() -> Bool {
   let gap = cursor_sdk_local_account_usage_unobservable()

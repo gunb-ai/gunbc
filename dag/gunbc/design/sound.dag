@@ -1,12 +1,5 @@
 module gunbc.design.sound
 
-import std.types { String, Int, Bool, Milliseconds }
-import std.measure { Hertz, hertz, hertz_count }
-import extdeps.web_audio {
-  OscillatorType, Sine, Square, Sawtooth, Triangle,
-  oscillator_type_wire,
-  micros_decimal_wire,
-}
 
 data design_sound_note: String = "The register's aural axis, and it is governed by the SAME root principle as the visual one: simulate real analog behavior in a digital space. That principle decides everything here, so almost nothing is a taste call. A real control makes noise when it ENGAGES — the detent catching, the spring returning — and is silent the rest of the time, so sound is emitted on TRANSITIONS only and a steady state is silent exactly as it is still. This is why SoundOccasion enumerates mechanical events (engage, settle, blocked travel) rather than application events (success, error, complete): a notification chime is a message ABOUT the machine, an operation sound is the machine, and the analog law admits only the second. It is also why hovering is not an occasion — waving your hand at a switch does not click it.
 

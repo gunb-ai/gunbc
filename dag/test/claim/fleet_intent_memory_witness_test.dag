@@ -1,37 +1,5 @@
 module test.claim.fleet_intent_memory
 
-import std.logic { Bool }
-import std.types { list_length }
-import std.measure {
-  byte_size_count,
-  gibibyte,
-  gibibyte_to_byte_size,
-  Gibibyte,
-  byte_size,
-}
-import gunbc.fleet_intent {
-  srv1_host,
-  srv2_host,
-  srv3_host,
-  srv1_memory_population,
-  srv2_memory_population,
-  srv3_memory_population,
-  srv1_memory_population_observation_note,
-  srv2_memory_population_observation_note,
-  srv3_memory_population_observation_note,
-  compute_host_ram_bytes_total,
-  fleet_host_memory_nominal_vs_usable_note,
-}
-import gunbc.ci_fleet { gunbc_ci_host, gunbc_ci_host_memory_deferral_note }
-import extdeps.memory {
-  host_memory_population_nominal_bytes,
-  memory_population_row_bytes,
-}
-import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog, hma82gr7afr8n_vk_catalog }
-import extdeps.memory.types { MemoryPopulationRow, HostMemoryPopulation, dram_module_is_realizable }
-import extdeps.memory.jedec { ddr4_generation_catalog }
-import extdeps.bmc.redfish { redfish_memory_summary_from_gib }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

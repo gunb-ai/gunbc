@@ -1,14 +1,5 @@
 module test.claim.rust_stage0_gates_witness
 
-import tools.rust_stage0_gates {
-  path_is_rust_monolith,
-  should_run_gates,
-  unit_must_run,
-  witness_dag_only_gates_when_substrate_ready,
-  witness_empty_paths_gates_when_substrate_ready,
-  witness_declared_unit_unaffected_by_other_dag_when_substrate_ready
-}
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

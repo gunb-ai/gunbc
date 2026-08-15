@@ -1,15 +1,5 @@
 module test.claim.roadmap_row_witness
 
-import gunbc.roadmap_style { roadmap_css }
-import gunbc.roadmap_page { roadmap_page_for_authority }
-import gunbc.roadmap_component {
-  roadmap_row_archetype, roadmap_row_grid_template,
-  RoadmapRowRegion, RowPlacement, HeadTrack, InTitleFlow, UnderHead,
-  node_mid_class, dispatch_reserved_width, workflow_controls_class,
-  roadmap_row_head_column, row_region_key,
-  RowRegion, StatusChipRegion, TitleRegion, ActuatorRegion,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

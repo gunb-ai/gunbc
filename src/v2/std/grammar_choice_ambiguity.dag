@@ -1,10 +1,6 @@
 module v2.std.grammar_choice_ambiguity
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.algebra { FreeMonoid }
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
 
 data grammar_choice_ambiguity_row_authority_note: String = "GrammarChoiceAmbiguityRow is the grammar-analysis authority for FIRST-set choice overlap facts. Compiler parse stage and frontier probe receipts import this module — not v2.compiler.parse — so probe instrumentation does not pull the parse implementation into generic receipt consumers."
 

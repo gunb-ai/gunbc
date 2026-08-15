@@ -1,25 +1,5 @@
 module gunbc.install_server_emit
 
-import std.types { String, NonEmptyStr, List }
-import gunbc.os_install {
-  InstallServerSpec,
-  Srv3OsInstallPlan,
-  OsInstallDelivery,
-  NetworkBoot,
-  VirtualMediaIso,
-}
-import extdeps.provisioning.network_boot { NetworkBootChain, network_uefi_bootloader_artifact }
-import extdeps.provisioning.dhcp_client_arch {
-  dhcp_client_processor_architecture,
-  dhcp_processor_architecture_code,
-}
-import extdeps.uri { uri_wire }
-import extdeps.formats.dnsmasq {
-  DnsmasqDirective,
-  DnsmasqComment, DnsmasqPort, DnsmasqDhcpRangeProxy,
-  DnsmasqDhcpMatchSet, DnsmasqDhcpOptionForceTag, DnsmasqDhcpBootTag,
-  serialize_dnsmasq,
-}
 
 data install_server_boot_tag: String = "efihttp"
 

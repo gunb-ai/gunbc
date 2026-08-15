@@ -1,11 +1,5 @@
 module test.fixture.decl_facts_reflection.witness_support
 
-import std.types { List }
-import v2.std.decl_facts_skeleton {
-  decl_fact_skeleton_for_resolution,
-  resolve_decl_fact_by_qualified_name,
-}
-import v2.std.decl_index { DeclFact, decl_facts }
 
 // Single authority: specimen rows, duplicate_qn oracle (both roots), dimensionless positive-control deps.
 data decl_facts_reflection_fixture_pool_roots: List<String> = [

@@ -1,46 +1,5 @@
 module gunbc.spark_provisioning
 
-import std.types { NonEmptyStr, String, Bool, List, Int }
-import std.algebra { Ordering, Less, Equal, Greater }
-import std.human_intervention {
-  HumanIntervention,
-  HumanInterventionIdentity,
-  HumanInterventionFrequency,
-  ProvisioningHumanBurden,
-  FleetOnce,
-  DeviceOnce,
-  EveryProvision,
-  BreakGlassOnly,
-  human_intervention_count_at,
-  compare_routine_human_burden,
-  NoDischargeSiteModeled,
-}
-import product.placement_supply { HostIdentity }
-import extdeps.access.posix { PosixUser }
-import extdeps.network.ipv4 { Ipv4Address }
-import extdeps.systems.nvidia_dgx_spark_setup {
-  InitialUpdateDisposition,
-  InitialUpdateBehaviorUnobserved,
-  InitialUpdateAppliedDuringSetup,
-  InitialUpdateDeferredToOperator,
-  DgxSparkPxeInstallParameters,
-  OobeSetupField,
-  OobeLanguage,
-  OobeTimeZone,
-  OobeTermsAndConditions,
-  OobeUserAccount,
-  OobeAnalytics,
-  dgx_spark_oobe_offers_field,
-}
-import gunbc.fleet_posix_accounts { fleet_posix_operator_user }
-import gunbc.spark_bootstrap_credential {
-  SparkFactoryBootstrap,
-  SparkProvisioningCredentials,
-  BootstrapCredentialStanding,
-  BootstrapCredentialsMaterialized,
-  BootstrapCredentialsNotMaterialized,
-  spark_credentials_standing,
-}
 
 // SPARK-PROVISION-0. ONE provisioning INTERFACE for the DGX Spark units, with TWO
 // realizations of it. The interface is what a provisioning intent MEANS; the strategy is

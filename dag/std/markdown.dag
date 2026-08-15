@@ -1,14 +1,5 @@
 module std.markdown
 
-import std.markup {
-  Fragment,
-  Element,
-  FragmentText,
-  Attribute,
-  AttributeContext,
-  UrlContext,
-
-}
 type HeadingLevel = H1 | H2 | H3 | H4 | H5 | H6
 
 type MarkdownInline

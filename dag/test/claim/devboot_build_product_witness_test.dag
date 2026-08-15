@@ -1,52 +1,6 @@
 module test.claim.devboot_build_product_witness
 
-import std.types { String, Bool, NonEmptyStr }
-import std.measure { second }
 
-import gunbc.devboot.program {
-  ProgramSelected,
-  ProgramNotOffered,
-  select_program,
-  offered_programs_rendering,
-}
-import std.content_hash { Sha256Digest, sha256_hex_digest, Sha256DigestHex }
-import gunbc.devboot.build {
-  BuildOutcome,
-  Built,
-  BuildRefused,
-  BuiltArtifact,
-  BuildReceipt,
-  BuildRefusal,
-  ProgramNotBuildable,
-  WorktreeNotSnapshotted,
-  ToolchainNotObserved,
-  SourceTreeOidUnusable,
-  SubjectNotAdmitted,
-  ProducerUnreachable,
-  ProducerDidNotAnswer,
-  ProducerRefusedRequest,
-  SubjectMismatch,
-  ArtifactNotRetrievable,
-  ArtifactDigestMismatch,
-  build_refusal_sentence,
-  outcome_delivers_executable,
-  PollState,
-  PollAnswered,
-  PollWaiting,
-  PollUnreachable,
-  poll_settled,
-  request_ref_of,
-  produced_ref_of,
-}
-import gunbc.devboot.produce { SnapshotRefused, ToolchainObservationRefused }
-import gunbc.devboot.subject { FeatureNameEmpty, BuildSubjectRefusalCause }
-import gunbc.devboot.lease { request_ref_namespace, produced_ref_namespace }
-import extdeps.gnu.libc {
-  PlatformCLibrary,
-  GnuLibc,
-  LibcUnobserved,
-  platform_c_library_identity_tag,
-}
 
 // WHAT THE PRODUCT PROMISES, PINNED. The operation's promise is that a caller receives an exact executable or a reason, and the decisions that keep that promise are ordinary functions over ordinary values -- so they are witnessed here rather than being demonstrated once by a live run against one producer on one afternoon. The live run proves the vertical exists; these prove the arms that keep it honest still discriminate.
 

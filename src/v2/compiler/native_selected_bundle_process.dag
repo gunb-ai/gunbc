@@ -1,9 +1,5 @@
 module v2.compiler.native_selected_bundle_process
 
-import v2.std.collection { List }
-import v2.std.host_transport { MaterializedWorkspaceFile }
-import v2.std.integer { Int }
-import v2.std.text { String }
 
 data native_selected_bundle_process_note: String = "Pure selector-to-executor carrier for a content-addressed selected-witness bundle. The .dag selector owns the complete materialized file set, build/run argv, artifact identity, bounded population counts, and expected direct-call stdout. The seed executor may realize exactly this value; it must not infer a missing field or reinterpret an unknown execution kind. HONEST SCOPE (review 47480): today there is a single production spec, and the planted-red twin plus the two oracle fn names are bound by seed convention in run_native_bundle_unit rather than declared on this carrier — slice-1 scaffold coupling that dissolves with the seed deferral below (the executor walk emitting from .dag), or earlier by widening the carrier to declare the twin/oracle references."
 

@@ -1,14 +1,5 @@
 module test.claim.test_module_hygiene_hand_rust_equivalence_witness
 
-import gunbc.test_module_hygiene {
-  is_file_grain_function,
-  ExplicitExpandInput,
-  expand_explicit_pairs_or_refuse,
-  failure_receipt_companion,
-}
-import v2.std.optional { Present, Absent }
-import std.types { Bool, String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

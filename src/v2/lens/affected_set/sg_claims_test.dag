@@ -1,31 +1,5 @@
 module v2.test.lens_affected_set.sg_claims
 
-import v2.std.logic { Bool }
-import v2.test.lens_affected_set.fail_closed_pending_escalation {
-  fail_closed_pending_escalation_claim_holds
-}
-import v2.test.lens_affected_set.irt1_boundary_prune_receipt {
-  irt1_boundary_prune_receipt_claim_holds
-}
-import v2.test.lens_affected_set.irt1_empty_diff_frontier_receipt {
-  irt1_empty_diff_frontier_receipt_claim_holds,
-  irt1_public_changed_dimension_receipt_classifies_union,
-  irt1_dimension_classification_conservative_discriminates,
-  irt1_public_affected_set_changed_edit_yields_changed_subgraph
-}
-import v2.test.lens_affected_set.irt1_fail_closed_absorption_receipt {
-  irt1_fail_closed_absorption_receipt_claim_holds
-}
-import v2.test.lens_affected_set.closure_deep_chain {
-  closure_deep_chain_claim_holds
-}
-import v2.test.lens_affected_set.closure_superset_safe {
-  closure_superset_safe_claim_holds
-}
-import v2.test.lens_affected_set.provenance_producer {
-  provenance_producer_selectivity_superset_discriminates_holds,
-  provenance_producer_selectivity_superset_holds
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 test fn lens_affected_set_irt1_boundary_prune_holds() -> Bool {

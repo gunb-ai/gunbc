@@ -1,16 +1,5 @@
 module tools.prose_row_introduction_gate
 
-import std.types { GitRef, List, String }
-import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import extdeps.filesystem.filesystem_io
-import extdeps.git { ThreeDot }
-import extdeps.git
-import gunbc.prose_row_frontier {
-  ProseRowRef,
-  ProseRowDiffObservation, ProseRowsObserved, ProseRowDiffUnreadable,
-  prose_row_diff_observation, prose_rows_introduced,
-  prose_rows_refused, prose_rows_out_of_scope, prose_rows_render,
-}
 
 // THE PER-PR WALL over newly introduced prose-only `data NAME_note: String` rows, at the merge base so
 // the refusal is attributable to the change that caused it. DESIGN 4c makes the class debt; the kernel

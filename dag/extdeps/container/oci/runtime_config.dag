@@ -1,11 +1,6 @@
 module extdeps.container.oci.runtime_config
 
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.container.oci.linux { LinuxPlatform, LinuxPlatformRejected, accept_linux_platform }
-import extdeps.container.oci.types { OciRuntimeVersion, RuntimeMountKind, RuntimeMountSource }
-import std.types { Bool, FilePath, Int, List, String }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https

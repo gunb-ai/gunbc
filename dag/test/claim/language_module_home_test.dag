@@ -1,17 +1,5 @@
 module test.claim.language_module_home_test
 
-import std.types { String, Bool, List }
-import gunbc.language_module_home {
-  legacy_language_module_homes,
-  language_target_homes,
-  legacy_flat_module_count,
-  flat_module_admitted,
-  classify_flat_module,
-  every_flat_module_is_on_the_frontier,
-  added_language_paths_refused,
-  FlatModuleOnFrontier,
-  FlatModuleRefused
-}
 
 data witness_note: String = "The pure decision half of the language-module homing wall. These execute against the declared frontier and never touch the disk; the live walk that produces a real flat-path list is the wet half, per language_module_home_maximum_conclusion. The RED controls below are the reason this file is worth its lines: an exact-membership wall is trivially green if the membership test is wrong in the permissive direction, so each admitting assertion is paired with one that must refuse."
 

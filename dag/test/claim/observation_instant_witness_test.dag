@@ -1,26 +1,5 @@
 module test.claim.observation_instant_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { NonEmptyStr, Bool }
-import std.nat { Nat }
-import std.measure {
-  Nanosecond,
-  nanosecond,
-  ClockBasis,
-  CpuClock,
-  WallClock,
-  ClockDomain,
-  ProcessMonotonic,
-  SharedMonotonic,
-  clock_domain_eq,
-  ObservationInstant,
-  InstantOrder,
-  InstantBefore,
-  InstantSame,
-  InstantAfter,
-  InstantIncomparable,
-  compare_instants,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

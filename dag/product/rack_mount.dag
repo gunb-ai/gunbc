@@ -1,12 +1,5 @@
 module product.rack_mount
 
-import std.types { Bool, List, NonEmptyStr }
-import std.integer { Int }
-import std.measure { Micrometer, micrometer, micrometer_count, RackUnit, rack_unit, rack_unit_count, measure_add, measure_le, micrometers_per_rack_unit }
-import product.placement_supply { RackIdentity, PhysicalAssetIdentity, RackUnitPosition }
-import extdeps.rack.types { RackCatalogRow }
-import extdeps.chassis.types { ChassisCatalogRow }
-import v2.std.optional { Present, Absent }
 
 // SPATIAL-4B: RACK-UNIT OCCUPANCY OVER CITED HARDWARE. A chassis from extdeps.chassis occupying
 // rack units in a rack from extdeps.rack. Every dimension below is either a cited vendor fact or

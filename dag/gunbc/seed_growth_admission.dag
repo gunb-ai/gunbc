@@ -1,17 +1,5 @@
 module gunbc.seed_growth_admission
 
-import gunbc.roadmap_authority { observation_scoped_run_seed_growth_justification }
-import gunbc.seed_growth { SeedGrowthJustification }
-import gunbc.stage0_rust_host_observation { stage0_rust_observation_seed_growth_justification }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAuthority }
-import std.keyed_roster { path_occurrence_count }
-import std.roster_frontier {
-  declaration_ref_display_key,
-  declaration_ref_in_list
-}
-import std.types { Bool, Int, List, String }
-import v2.std.algebra { any, filter, fold_list, length, list_append }
 
 data seed_growth_admission_note: String = "ITEM-GRAIN admission authority for hand-authored Rust growth (Lane swift-lynx-164). TARGET: compare every newly authored or modified hand Rust item in a change against SeedGrowthJustification.hand_authored_declarations and refuse on the difference (gunbc.seed_growth.seed_growth_note completeness join). PATH-GRAIN census (sibling proud-owl-773 PR #7894) answers which files lack disposition; THIS MODULE answers which ITEMS within files lack justification. NOT IN SCOPE: deleting existing Rust. NOT IN SCOPE: netting deletions against additions. G0 HOST: scripts/rust_item_census.py is SCAFFOLD-MARKED (seed_growth_g0_census_host_scaffold); classification derived from .dag authorities today, item extraction is regex until rust_item_host_observation lands. ENROLLED TODAY: seed_growth_roster_well_formed_gate_holds — roster well-formedness only (non-empty closed roster, well-formed rows, no duplicate DeclarationRef keys). NOT ENROLLED: seed_growth_join_declarations as admission — diff candidates absent until rust_item_host_observation; seed_growth_admission_join_scaffold marks that boundary."
 

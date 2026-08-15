@@ -1,41 +1,6 @@
 module test.claim.instrument_physical_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { String, Bool, Int, List }
-import gunbc.design.instrument_physical {
-  InstrumentChannel, ChannelOpticalJitter, ChannelVerticalShift, ChannelBuoyantDrift, ChannelImpulseGlitch,
-  channel_key, channel_may_carry_domain_fact,
-  ImpulseGlitchDuration, ImpulseOff, ImpulseBrief, ImpulseLong,
-  glitch_duration_key, glitch_is_armed, glitch_settle,
-  ChannelAmplitude, ChannelDisabled, ChannelAmplitudePx, amplitude_px,
-  InstrumentPreference, preference_still, preference_default, channel_amplitude,
-  instrument_displacement_px, instrument_displacement_max_px,
-  ComposedVisualDisplacement, compose_displacement, admit_composed_displacement,
-  composed_total_px, focal_attraction_headroom_px,
-  DisplacementAdmission, DisplacementAdmitted, DisplacementOverBudget,
-  EnclosureCharacterReachesResponseTravel, displacement_admission,
-  channel_behaviour_axis, channel_provenance, channel_is_cited_precedent,
-  PhysicalImpulseSource, SyntheticImpulse, HostAccelerometer, HostDeviceMotion,
-  impulse_source_key,
-  SensorAvailability, SensorPresent, SensorAbsent, SensorPermissionNotRequested,
-  SensorPermissionDenied, SensorAvailabilityUnknown,
-  sensor_availability_key, sensor_may_deliver_impulses,
-  ImpulseAdmission, ImpulseAdmitted, ImpulseSourceUnavailable, ImpulseChannelDisabled,
-  admit_impulse,
-}
-import gunbc.design.reference_instrument { behaviour_axis_key }
-import gunbc.design.instrument_audition {
-  AuditionIntensity, AuditionRestrained, AuditionExpressive, AuditionHero,
-  audition_intensity_key, audition_intensities,
-  AuditionEmission, AuditionNoEmission, AuditionEmits, audition_emission,
-  AuditionAttraction, AuditionNoAttraction, AuditionAttracts, audition_attraction,
-  AuditionAdmission, AuditionAdmitted, AuditionEmissionRefused,
-  AuditionAttractionOutsideEnvelope, AuditionDisplacementOverBudget, admit_audition,
-}
 
-import gunbc.design.salience {
-  SalienceRole, SalienceFocal, SalienceSupporting, attraction_travel_max_px,
-}
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

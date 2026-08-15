@@ -1,13 +1,5 @@
 module dag.test.claim.lifecycle_survivor_scan_witness
 
-import gunbc.lifecycle_survivor_scan {
-  fact_is_raw_lifecycle_survivor,
-  planted_migrated_control,
-  planted_nonempty_str_survivor,
-  planted_ordinary_string_note,
-  planted_raw_survivor,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // The per-PR half of the lifecycle-carrier census: the selection MECHANISM, exercised on
 // synthetic rows, at zero corpus cost. The corpus half -- whose subject is the live tree's

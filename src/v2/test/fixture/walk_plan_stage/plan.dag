@@ -1,23 +1,5 @@
 module v2.test.fixture.walk_plan_stage.plan
 
-import std.realization_schedule {
-  WalkPlan,
-  NoWalkFinalization,
-  NoFinalizationDeclared,
-  NoPreWalkExecution
-}
-import v2.test.fixture.walk_plan_stage.common {
-  walk_plan_stage_fixture_note,
-  walk_plan_stage_green_floor_claim,
-  walk_plan_stage_cleanup_claim,
-  walk_plan_stage_overlap_peer_a_claim,
-  walk_plan_stage_overlap_peer_b_claim,
-  walk_plan_stage_barrier_witness_claim,
-  walk_plan_stage_failure_red_member_claim,
-  walk_plan_stage_recursion_refusal_member_claim,
-  walk_plan_stage_receipt_refusal_poison_claim,
-  walk_plan_stage_stage2_marker_claim
-}
 
 data walk_plan_stage_overlap_barrier_recipe: String = "GREEN overlap+barrier: GUNBC_WALK_ATTEMPT_ID=walk-plan-stage-fixture target/release/claim_executor --source-root dag --source-root src/v2 --plan-entry src/v2/test/fixture/walk_plan_stage/plan.dag --plan-function walk_plan_stage_overlap_barrier_plan. Must print on-success stage progress, PASS both overlap peers (independent markers — no guaranteed sibling order or concurrent admission per walk_plan_note), write target/floor-attempt-walk-plan-stage-fixture/on-success-stage-1-receipt.tsv, then PASS barrier witness, exit 0. RED if stage-1 omits a peer or stage 2 runs before stage-1 receipt finalization."
 

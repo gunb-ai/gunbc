@@ -1,44 +1,5 @@
 module test.claim.host_budget_source_witness
 
-import std.logic { Bool }
-import std.types { String, List }
-import std.measure { byte_size, byte_size_count }
-import std.os.types { KernelFamily, Linux, Darwin, WindowsNt, LinuxGuestOnWindows }
-import extdeps.linux.procfs {
-  ProcfsPath,
-  ProcMeminfo,
-  ProcSelfStatus,
-  ProcSelfCgroup,
-  ProcSwaps,
-  ProcfsAvailable,
-  ProcfsAbsentOnKernel,
-  kernel_provides_procfs,
-  procfs_availability,
-  procfs_availability_is_available,
-  procfs_paths_read_by_this_repository,
-  procfs_path_literal,
-}
-import gunbc.host_budget_source {
-  HostBudgetSource,
-  BudgetSourceEnvOverride,
-  BudgetSourceCgroupMemoryHigh,
-  BudgetSourceCgroupMemoryMax,
-  BudgetSourceMemAvailableCappedAtDeclaredHigh,
-  BudgetSourceMemAvailable,
-  BudgetSourceMemTotal,
-  BudgetSourceDarwinPhysicalMemory,
-  HostBudgetResolution,
-  HostBudgetResolved,
-  HostBudgetUnreadable,
-  host_budget_source_is_degraded,
-  host_budget_source_reads_procfs,
-  host_budget_source_admissible_on_kernel,
-  host_budget_source_for_kernel,
-  host_budget_resolution_bytes,
-  host_budget_unreadable_on_kernel,
-  host_budget_source_label,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

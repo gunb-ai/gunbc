@@ -1,8 +1,5 @@
 module test.claim.eval_cast_identity
 
-import std.logic { Bool }
-import std.types { List }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

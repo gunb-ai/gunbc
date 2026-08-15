@@ -1,19 +1,5 @@
 module test.claim.host_run_boundary_admission_witness_test
 
-import std.types { Bool, String, List }
-import std.effect_grant {
-  NamespaceTree, UriTree, FilesystemPathTree,
-  LifecycleByConstruction, LifecycleByConvention,
-  namespace_tree_eq,
-}
-import std.frame_boundary { BoundaryClosure, BoundaryMaterialization }
-import extdeps.realization.frame_boundary_simulated { simulated_boundary }
-import v2.compiler.host_run_boundary_admission {
-  HostRunBoundaryAdmission,
-  HostRunBoundaryAdmitted, HostRunBoundaryUnderConstructed, HostRunBoundaryRefused,
-  host_run_network_boundary_admits,
-  host_run_boundary_is_admitted,
-}
 
 data host_run_boundary_admission_witness_note: String = "Discriminating witnesses for the hermetic-native host-run network-boundary precondition (v2.compiler.host_run_boundary_admission). The admit path EXISTS and is reachable -- a boundary that closes the UriTree layer at LifecycleByConstruction (as a netns/container handler would) is HostRunBoundaryAdmitted (the GREEN control). The in-container reality is the RED: the always-available Simulated handler closes UriTree only at LifecycleByConvention (offline flag, not a kernel wall), so it is HostRunBoundaryUnderConstructed -- REFUSED for a native run, never laundered into Admitted (operator Option 1 fail-closed 2026-07-20); if grade_is_construction accepted convention, admits_construction_only would flip. A boundary that does not cover the network layer at all is HostRunBoundaryRefused naming UriTree -- located, distinct from the under-constructed state (DESIGN 5: three states, not a conflated 2-valued pass/fail)."
 

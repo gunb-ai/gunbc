@@ -1,19 +1,5 @@
 module test.claim.materialized_ssh_key_file_real_execution_witness
 
-import std.algebra { trim }
-import std.types { String, NonEmptyStr, Secret, FilePath, Bool }
-import gunbc.output_policy { OutcomeIsData }
-import extdeps.shell
-import extdeps.filesystem.filesystem_io
-import gunbc.retained_shell_script { retained_runtime }
-import gunbc.auth.materialized_secret {
-  with_materialized_ssh_key_file,
-  gunbc_private_materialization_dir,
-  ensure_gunbc_private_materialization_dir,
-  MaterializedSshKeyFileBracketCompleted,
-  MaterializedSshKeyFileBracketRefused,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

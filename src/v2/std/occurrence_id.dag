@@ -1,17 +1,6 @@
 module v2.std.occurrence_id
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import v2.std.node { OccurrenceId }
-import std.occurrence_identity {
-  OccurrenceIdAllocator,
-  OccurrenceIdAllocResult,
-  authored_token_ordinal_space_from_allocator,
-  occurrence_id_allocator_initial,
-  alloc_occurrence_id,
-  occurrence_id_eq,
-  occurrence_id_allocator_advance_to,
-}
 
 data occurrence_identity_v2_facade_note: String = "Source-compatible v2 facade over std.occurrence_identity while existing v2 consumers still import v2.std.occurrence_id. It contains no allocator body or identity rule."
 

@@ -1,22 +1,5 @@
 module v2.compiler.use_site_verdict
 
-import v2.std.algebra { list_snoc_item }
-import v2.std.collection { List }
-import v2.std.node {
-  Absent,
-  Ambiguous,
-  Atom,
-  Edge,
-  Found,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  TypeNode,
-  named_edge_target_lookup,
-  node_rebuild,
-  node_synthetic
-}
 
 type UseSiteVerdict
   = MoveWhole

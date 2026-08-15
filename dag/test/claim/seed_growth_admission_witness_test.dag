@@ -1,24 +1,5 @@
 module test.claim.seed_growth_admission_witness
 
-import gunbc.roadmap_authority { observation_scoped_run_seed_growth_justification }
-import gunbc.seed_growth_admission {
-  SeedGrowthAdmissionComplete,
-  SeedGrowthAdmissionRefused,
-  seed_growth_admission_g0_population_note,
-  seed_growth_admission_join_scaffold,
-  seed_growth_g0_census_host_scaffold,
-  seed_growth_forward_freeze_policy_note,
-  seed_growth_join_declarations,
-  seed_growth_roster_all_declarations,
-  seed_growth_roster_mechanical_checks_holds,
-  seed_growth_roster_well_formed_gate_holds
-}
-import gunbc.stage0_rust_host_observation { stage0_rust_observation_seed_growth_justification }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.disposition { Scaffold }
-import std.roster_frontier { declaration_ref_display_key }
-import v2.std.algebra { any, length }
-import v2.std.text { String }
 
 test fn seed_growth_roster_mechanical_checks_hold() -> Bool {
   seed_growth_roster_mechanical_checks_holds()

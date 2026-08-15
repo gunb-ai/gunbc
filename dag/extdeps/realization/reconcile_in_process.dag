@@ -1,42 +1,6 @@
 module extdeps.realization.reconcile_in_process
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
-import extdeps.cache.types {
-  CacheInterfaceCatalogFacts,
-  HandAuthored,
-  NativeInternal,
-  FilePaths,
-  UpsertSubject,
-  ToolchainSpec,
-  CatalogOpaqueStringEncoding,
-}
-import std.cache_identity { CacheInterfaceId }
-import std.decl_ref { WholeDeclaration }
-import std.cache_interface {
-  ExactKeyOnly,
-  OverwriteAllowed,
-  MissThenCreate,
-  StructuredArtifact,
-  InProcess,
-  PerFile,
-  None,
-  InProcessNs,
-  Strong,
-  OperatorObserved,
-  ManualPurge,
-  DependencyChange,
-  ToolchainChange,
-  Repo,
-  CapacityBounded,
-  CapacityUnbounded,
-  EntryCountCapacity,
-  ProviderNativeReplacement,
-  ReleasedAtProviderScopeExit,
-  ReplaceExisting,
-  RuntimeDerivedLimit,
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

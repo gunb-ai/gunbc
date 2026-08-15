@@ -1,19 +1,5 @@
 module test.claim.state_response_totality_witness
 
-import gunbc.roadmap_style { roadmap_css, band_root_css }
-import gunbc.roadmap_interaction {
-  dispatch_state_family, dispatch_stateful_channels, dispatch_btn_receipt_rules,
-}
-import gunbc.design.state_response {
-  StateFamily, StateFamilyMember, StateBinding, RestBinding, StateClassBinding,
-  ChannelScope, PerStateFamily, ConstantByLaw,
-  FamilyCensusDefect, FamilyCensusFault, FamilyVarUndefined, ChannelValueMissing, CrossFamilyValue,
-  family_census_defects, family_census_cell_count, family_census_clean,
-  constant_by_law_rulings, constant_rulings_all_located,
-  state_paint_rules, family_response_rules,
-}
-import gunbc.design.material { serialize_rules, respond_fast }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,6 +1,5 @@
 module gunbc.witness_deferral_freeze
 
-import std.types { NonEmptyStr, String, List, Bool, Int }
 
 data witness_deferral_freeze_authority_note: String = "THE FROZEN LEGACY POPULATION OF PATH-POLICY DEFERRALS, and the escape hatch it exists to close. A witness leaves per-PR discovery for one of two reasons (v2.workflow.witness_admission witness_row_excluded_two_kinds_note): an exact function-grain admission naming the cadence that executes it, or a broad path policy row in gunbc.ci_layer_roots witness_exclusion_frontier. The admission side is already correct — explicit_witness_admission_cadence_executes REFUSES OfflineLocalRecipe on an admission row, precisely so that an admission cannot satisfy the has-a-consumer wall while executing nowhere. The path side had no such wall: a row whose entry matched an OfflineLocalRecipe pattern was admitted unconditionally, because the deferred-row refusal fired only on NoConsumer. So a directory decided an admission question, and the answer was always yes.
 

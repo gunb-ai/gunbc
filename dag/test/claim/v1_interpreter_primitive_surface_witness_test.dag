@@ -1,26 +1,5 @@
 module test.claim.v1_interpreter_primitive_surface_witness_test
 
-import gunbc.v1_interpreter_primitive_surface {
-  AuthoredInRoster,
-  EvalBuiltinInnerSite,
-  FreeCall,
-  InterpreterPrimitiveArmId,
-  InterpreterPrimitiveDispatchArm,
-  MethodCall,
-  NativeSpecial,
-  decode_dispatch_form,
-  duplicate_row_keys,
-  form_has_no_shadowed_spelling,
-  form_is_unknown,
-  shadowed_spellings,
-  v1_interpreter_cross_form_spellings,
-  v1_interpreter_declared_arms,
-  v1_interpreter_authored_roster_arms,
-  v1_interpreter_free_call_arms,
-  v1_interpreter_method_call_arms,
-  v1_interpreter_primitive_arms,
-  v1_interpreter_unknown_form_arms,
-}
 
 fn planted_row(identity: String, spelling: String, symbol: String) -> InterpreterPrimitiveDispatchArm {
   InterpreterPrimitiveDispatchArm {

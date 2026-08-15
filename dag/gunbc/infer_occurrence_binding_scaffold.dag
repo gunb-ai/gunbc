@@ -1,8 +1,5 @@
 module gunbc.infer_occurrence_binding_scaffold
 
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 data infer_occurrence_binding_v1_adapter_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

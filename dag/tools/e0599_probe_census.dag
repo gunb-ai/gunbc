@@ -1,9 +1,5 @@
 module tools.e0599_probe_census
 
-import std.types { Bool, Int, String, list_length }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.error_primitives { Result, Ok, Err }
-import extdeps.filesystem.filesystem_io { Filesystem }
 
 type E0599LogShapeParseError
   = UnknownFailureShapeLabel { label: String }

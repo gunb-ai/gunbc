@@ -1,14 +1,5 @@
 module extdeps.programmable_logic.ice40.subject
 
-import std.types { String, NonEmptyStr, List }
-import std.nat { Nat }
-import std.measure { Micrometer, micrometer, micrometer_count }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import extdeps.vendor { Vendor }
-import extdeps.hardware { Hardware }
-import extdeps.vendor.lattice_semiconductor { lattice_semiconductor_vendor }
 
 // THE CITATION IS PER MODULE AND IT IS A LITERAL, which is a fact about the mechanism rather than
 // a preference. The corpus wall reads each extdeps module's extdeps_external_authority_anchor

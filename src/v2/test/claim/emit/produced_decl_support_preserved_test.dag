@@ -1,27 +1,5 @@
 module v2.test.emit.produced_decl_support_preserved
 
-import v2.extdeps.languages.rust { rust_target_model }
-import v2.std.compilers.target_model {
-  FixedToken,
-  OwnershipAtFunctionReturn,
-  ProducedDeclSupport,
-  ProducedDeclUnwired,
-  ProducedDeclWired,
-  ReferenceLayerOwned,
-  TargetBodiedArrowStatementScaffold,
-  TargetModel,
-  TargetUseSiteOwnershipRealization,
-  UseSiteOwnershipExactCarrier,
-  target_model_augment_use_site_ownership_catalog,
-  target_model_augment_value_semantics_carriers,
-  target_model_type_atom_node
-}
-import v2.std.collection { List, list_at_optional, Absent, Present }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

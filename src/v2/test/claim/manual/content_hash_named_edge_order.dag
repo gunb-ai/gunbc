@@ -1,25 +1,5 @@
 module v2.test.manual.content_hash_named_edge_order
 
-import v2.std.node {
-  Atom,
-  Conj,
-  Edge,
-  Named,
-  Node,
-  Symbol,
-  TypeNode,
-  content_hash,
-  SyntheticOccurrence
-}
-import v2.std.verification {
-  CompilesClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 fn content_hash_order_leaf() -> Node {
   Node {

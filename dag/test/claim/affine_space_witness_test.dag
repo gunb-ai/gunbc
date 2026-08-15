@@ -1,41 +1,5 @@
 module test.claim.affine_space_witness
 
-import std.types { Bool }
-import std.integer { Int }
-import std.nat { Nat }
-import std.checked_arithmetic {
-  IntegerOverflow,
-  IntegerArithmeticOperation, IntegerAdd, IntegerSubtract, IntegerMultiply, IntegerNegate,
-  CheckedIntOperands, UnaryOperand, BinaryOperands,
-  int_inclusive_max, int_inclusive_min,
-}
-import std.measure {
-  millimeter_count,
-  square_millimeter_count, signed_square_millimeter_count,
-}
-import std.affine_space {
-  signed_frame_component_count,
-  Vector3, Point3, vector3, point3, zero_vector3,
-  translate_point3, displacement_between3, add_vector3, subtract_vector3,
-  negate_vector3, scale_vector3, rotate_quarter_turns_about_z,
-  QuarterTurns, NoTurn, OneQuarter, TwoQuarters, ThreeQuarters,
-  ZQuarterTurnTransform3, apply_z_quarter_turn_transform3,
-  SpatialResult, SpatialReady, SpatialArithmeticRefused, SpatialFrameRefused,
-  SpatialFrameRefusal, SpatialOperationIdentity,
-  SpatialFrameRelation, SameFrameOperandsRequired,
-  TransformSourceFrameRequired, TransformTranslationInDestinationRequired,
-  ProjectionSourceFrameRequired,
-}
-import std.spatial_frame { SpatialFrameRegistry, empty_frame_registry, register_frame, registry_with, FrameRegistered, FrameRegistrationRefused }
-import std.measure { Milli, Micro }
-import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity, coordinate_frame_identity_eq }
-import std.euclidean_geometry {
-  ExactLength, LengthExact, LengthRootUnresolvedInExactKernel,
-  Direction3Result, DirectionExact, DirectionZeroVectorHasNone, DirectionUnresolvedInAxisKernel,
-  AxisDirection3, PositiveX, NegativeX, PositiveY, NegativeY, PositiveZ, NegativeZ,
-  AreaVector3,
-  dot3, cross3, norm_squared3, norm3, distance3, distance_squared3, closer_than3, normalize3,
-}
 
 // TWO DISTINCT FRAMES, AS MINTED IDENTITIES THE VALUES CARRY. They were type-level tags, and the
 // witness said the cross-frame error was unwritable; measured on the production compile-and-run

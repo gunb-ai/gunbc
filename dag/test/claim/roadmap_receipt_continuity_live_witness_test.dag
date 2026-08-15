@@ -1,11 +1,5 @@
 module test.claim.roadmap_receipt_continuity_live_witness
 
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import gunbc.roadmap_authority {
-  roadmap_acceptance_history_integrity_holds,
-  roadmap_acceptance_history_integrity_verdict_on_authority,
-}
-import gunbc.roadmap_model { acceptance_history_integrity_verdict_detail }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

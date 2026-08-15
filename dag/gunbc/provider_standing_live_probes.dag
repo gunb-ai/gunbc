@@ -1,48 +1,5 @@
 module gunbc.provider_standing_live_probes
 
-import std.types { String, NonEmptyStr, List, FilePath }
-import extdeps.llm.cli {
-  shape_codex_login_status_env_args_for_program,
-  shape_codex_version_env_args_for_program,
-}
-import gunbc.package_delivery { codex_runtime_version_identity_satisfied }
-import extdeps.llm.cli_lifecycle {
-  ProviderInstance,
-  ProviderInstanceFieldUnobserved,
-  CodexCliProvider,
-}
-import gunbc.roadmap_dashboard_instance {
-  HostDashboardInstance,
-  dashboard_instance_provider_state_root,
-  dashboard_instance_provider_executable,
-}
-import gunbc.roadmap_dashboard_instance_apply {
-  DashboardExecResult,
-  dashboard_target_path_observe,
-  dashboard_target_probe,
-  dashboard_probe_refused,
-  dashboard_environment_binding_executable,
-  PathObservedPresent,
-  PathObservedAbsent,
-  PathObservationRefused,
-}
-import gunbc.provider_standing {
-  ProviderStanding,
-  ProviderStandingBundle,
-  provider_standing_from_observed_bundle,
-  provider_standing_live_probe_fact_id,
-}
-import gunbc.provider_standing_probe_bridge {
-  CodexProviderDashboardProbeObservation,
-  CodexProviderStateRootProbe,
-  CodexStateRootProbeRefused,
-  CodexStateRootAbsent,
-  CodexStateRootPresent,
-  ProviderDashboardExecProbe,
-  provider_dashboard_exec_probe_transport_refused,
-  provider_dashboard_exec_probe_reported,
-  provider_standing_bundle_from_codex_dashboard_probes,
-}
 
 data provider_standing_live_probes_note: String = "Wet observation bridge: runs the same dashboard Codex probes as /provider.json readiness and projects the receipts into ProviderStanding. Not called from hermetic provider_inventory_for_instance — inventory keeps declared unobserved standing so substrate witnesses do not require Run mock_response. Superseded when nimble-owl-833 lands RecordedFact standing observations on inventory rows."
 

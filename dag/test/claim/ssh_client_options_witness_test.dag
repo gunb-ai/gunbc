@@ -1,21 +1,5 @@
 module test.claim.ssh_client_options_witness_test
 
-import std.types { String, Bool, List, NonEmptyStr }
-import std.measure { second }
-import extdeps.ssh.client_options {
-  SshClientOption,
-  StrictHostKeyChecking,
-  UserKnownHostsFile,
-  BatchMode,
-  ConnectTimeout,
-  StrictHostKeyCheckingValue,
-  StrictYes,
-  StrictNo,
-  StrictAcceptNew,
-  serialize_ssh_client_option,
-  serialize_ssh_client_options,
-  openssh_exclusive_known_hosts_trust_options,
-}
 
 // Serialization is asserted by EXECUTION against exact argv, not by reading the function. The
 // whole argument for this module is that options inside a transport literal are unreachable by any

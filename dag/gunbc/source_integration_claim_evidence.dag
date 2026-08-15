@@ -1,27 +1,5 @@
 module gunbc.source_integration_claim_evidence
 
-import std.types { NonEmptyStr, RunKey }
-import std.syntax { SyntaxSpec }
-import std.occurrence_binding { OccurrenceBinding }
-import std.occurrence_identity { OccurrenceId }
-import std.claim_evidence {
-  RecordedFactId,
-  RecordedFact,
-  Claim,
-  EvidenceProvenance,
-  EvidenceFreshness,
-  EvidenceFidelity,
-  EvidenceSupports,
-  EvidenceLink,
-  EvidenceInference,
-}
-import extdeps.languages.dag.syntax { dag_syntax_spec }
-import gunbc.readback_independence {
-  ReadBackProbe,
-  ProbeInert,
-}
-import gunbc.claim_evidence_probe_rule { infer_probe_evidence }
-import v2.compiler.source_authority { DagSourceReadWitness }
 
 type SourceBindingFact {
   bound: RunKey

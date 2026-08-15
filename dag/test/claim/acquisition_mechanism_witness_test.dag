@@ -1,27 +1,5 @@
 module test.claim.acquisition_mechanism_witness
 
-import gunbc.econ.acquisition {
-  AcquisitionCostForecast,
-  AcquisitionForecastDerived,
-  AcquisitionForecastRefused,
-  AcquisitionScenario,
-  AcquisitionScenarioDeclared,
-  AcquisitionScenarioUnknown,
-  AcquisitionStageStep,
-  ConversionRate,
-  ConversionRateExceedsUnity,
-  EmptyFunnel,
-  ScenarioUnknown,
-  ZeroConversionCohort,
-  ZeroConversionNumerator,
-  ZeroEntryUnitCost,
-  acquisition_forecast_cost_floor_micros,
-  derive_acquisition_cost_forecast,
-}
-import std.currency { Usd }
-import std.measure { MoneyOnce, money_amount_micro, money_once_micros }
-import std.nat { Nat }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

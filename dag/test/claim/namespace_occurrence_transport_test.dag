@@ -1,32 +1,6 @@
 module test.claim.namespace_occurrence_transport_test
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.algebra { Empty }
-import std.occurrence_identity {
-  OccurrenceContainmentPath,
-  OccurrenceProjection,
-  OccurrenceIndexEntry,
-  OccurrenceIndex,
-  OccurrenceTransport,
-  OccurrenceCategory,
-  DeclarationOccurrence,
-  ReferenceOccurrence,
-  LexicalValueOccurrence,
-  CallableOccurrence,
-  FieldOccurrence,
-  MissingAuthoredOccurrenceIdentity,
-  DuplicateAuthoredOccurrenceIdentity,
-  InconsistentOccurrenceContainment,
-  WrongOccurrenceRole,
-  DeclarationRole,
-  ReferenceRole,
-  occurrence_id_allocator_initial,
-  occurrence_id_allocator_advance_to,
-  authored_token_ordinal_space_from_allocator,
-  alloc_occurrence_id,
-  occurrence_transport_refusal,
-}
 
 data namespace_occurrence_transport_shared_witness_note: String = "Shared-authority claims only: this normal dag/src-v2 witness proves graph-scoped allocation, equal-text identity independence, typed occurrence categories and roles, and missing/duplicate/wrong-role refusal. Parser, inference, ModuleGraph-to-TypedModule preservation, serde, and linear resource receipts live in the v1 Rust production-path test."
 

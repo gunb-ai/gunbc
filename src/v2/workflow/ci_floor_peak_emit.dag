@@ -1,32 +1,6 @@
 module v2.workflow.ci_floor_peak_emit
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import v2.compiler.emit_orchestration { orch_emit_pipeline }
-import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
-import v2.std.orchestration {
-  Do,
-  ExitZero,
-  FailFast,
-  If,
-  Pipeline,
-  PipelineStep,
-  Predicate,
-  Run,
-  While
-}
-import v2.std.collection { Absent, Present }
-import v2.std.diagnostic { Accepted, Rejected, None, Some }
-import v2.extdeps.languages.bash_orch_if {
-  bash_nearest_ancestor_locate_assign_command,
-  bash_nearest_ancestor_locate_cond_command,
-  bash_nearest_ancestor_locate_body_command,
-}
-import std.path_intent { NearestAncestorContaining, PathRefStart }
-import std.filesystem.types { RegularFile }
-import std.types { FilePathParts, NonEmptyStr }
 
 data ci_floor_peak_path_predicate_qualification_note: String = "PathPredicate IS DELIBERATELY ABSENT FROM THE std.path_intent IMPORT LIST ABOVE, and And / Not are written std.path_intent.And / std.path_intent.Not at their construction sites. v2.std.orchestration's Predicate and std.path_intent's PathPredicate both carry variants named And, Not and Or, and bringing both TYPES into one module is a hard typecheck refusal — 'variant And appears in both Predicate and PathPredicate' — never a shadowing warning. WHAT THE COLLISION IS ACTUALLY KEYED ON was established by execution rather than read off the message, because the message points somewhere else: the refusal is reported at std.path_intent's own declaration line, a file this module merely imports, so the obvious first repair — dropping And, Not and Or from the import list and qualifying every construction — CHANGES NOTHING and the identical three errors reappear. What clears it is dropping the TYPE NAME PathPredicate from the import list and annotating the declaration std.path_intent.PathPredicate, which is exactly the shape the v2.workflow.orchestration_while_emit witness already used and the reason that file compiles while a naive port of it does not. Two consequences worth separating. The refusal itself is CORRECT and wanted (the namespace lane's no-ambiguity-at-any-layer rule), and qualifying is the containment tree answering the question it exists to answer, so renaming either coproduct's boolean connectives to dodge it would be the nickname this repo forbids — a conjunction over path predicates and a conjunction over exit-status predicates are both correctly called And. But its LOCUS is wrong: the conflict is created by the importer that brings both types into scope, and blaming the imported declaration sends the reader to a shared std file that is not at fault and cannot be fixed there. Reported as a diagnostic-locus finding on the namespace lane rather than repaired here; std.path_intent and the resolver are load-bearing and this is a leaf-adoption PR."
 

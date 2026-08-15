@@ -1,26 +1,5 @@
 module test.claim.roadmap_publish_observe_witness_test
 
-import std.types { Bool, String, NonEmptyStr, Int, List, CommitSha }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.roadmap_publish_observe {
-  WorktreeBoundToRepository, WorktreeBoundElsewhere, WorktreeRemoteUnreadable,
-  worktree_repository_binding_of,
-  remote_branch_observation_of,
-  advertised_refs_projecting_empty_branch,
-}
-import gunbc.roadmap_publish {
-  RemoteBranch,
-  RemoteBranchObservation, RemoteBranchesRead, RemoteBranchesUnreadable,
-  RemoteBranchReadFailure,
-  RefAdvertisementRefused, AdvertisedLineUnparsed, AdvertisedRefProjectsEmptyBranch,
-  render_remote_branch_read_failure,
-  adjudicate_remote_branch,
-  PublicationOutcome,
-  RemoteBranchAtExpectedHeadWithoutPullRequest,
-  RemoteBranchHeadDiverged,
-  BranchNotPublished,
-}
-import extdeps.git { AdvertisedRef }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

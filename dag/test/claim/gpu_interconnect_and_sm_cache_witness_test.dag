@@ -1,19 +1,5 @@
 module test.claim.gpu_interconnect_and_sm_cache_witness
 
-import extdeps.gpu.nvidia {
-  nvidia_rtx_5090_catalog,
-  rtx_5090_interconnect,
-  rtx_5090_sm_cache_citations,
-  rtx_5090_sm_cache_geometry,
-}
-import extdeps.gpu.types { cuda_compute_capabilities_authority }
-import extdeps.gpu.apple { apple_m5_gpu_catalog }
-import extdeps.storage.types { PcieGeneration, pcie_link_bandwidth }
-import std.logic { Bool }
-import std.nat { Nat }
-import std.measure { bandwidth_count, byte_size_count }
-import std.types { list_length }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

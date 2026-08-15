@@ -1,6 +1,5 @@
 module std.computation_identity
 
-import std.types { String, Bool }
 
 data computation_identity_note: String = "The computation-identity lattice (census R1, landed 2026-07-22; formerly prose in docs/plans/duplicate-work-graph-lens-design.md section 4, cited by v2.std.materialize, std.interface_summary, gunbc.design_document, and the cross-entry memo sketch as the authority they defer to). One vocabulary for what 'identical computation' means, at every grain: StructurallyIdentical (equal content hash over canonicalized structure — the corner v2.std.materialize implements), NormalizedIdentical (equal after a NAMED normalizer), ExtensionallyIdentical (equal observable behavior within a declared bound), IdentityUnknown (a typed, located debt — never permanent, never treated as identical or as distinct-by-default; the cause names the missing work). Mirrors DescentEvidence: evidence-graded, fail-closed at the bottom."
 

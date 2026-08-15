@@ -1,24 +1,5 @@
 module v2.test.claim.self_host.parity_window_test
 
-import v2.compiler.self_host.parity_window {
-  ParityWindowReceipt,
-  ParityObservation,
-  WindowObserved,
-  RevertAcknowledged,
-  ParityEvidenceRefusal,
-  MixedFamilyReceipt,
-  CadenceOrderViolation,
-  ParityMonitorVerdict,
-  ParityHolding,
-  ParityRevertRequired,
-  ParityUnobserved,
-  ParityEvidenceRefused,
-  parity_monitor_verdict,
-  parity_routing_admitted
-}
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 fn verdict_is_revert_required(v: ParityMonitorVerdict) -> Bool {
   match v {

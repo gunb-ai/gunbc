@@ -1,13 +1,4 @@
 module gunbc.site.interaction
 
-import gunbc.design.interaction {
-  InteractionVerb, Approach, Enter, StepBack, Copy, Traverse, Dispatch,
-  Response, Brighten, Reveal, CounterpartHighlight, Receipt,
-  verb_key, response_key,
-  ElementId, StarElement, HashElement, SwatchElement, DispatchBtnElement, element_id_key, element_id_eq,
-  BehaviorRow, InteractiveElement, CoverageGap,
-  interaction_verb_eq, row_covers, element_gaps, coverage_gaps, coverage_complete,
-  interaction_note,
-}
 
 data site_interaction_facade_note: String = "L5 instance façade — authority is gunbc.design.interaction (Phase-A lift). Import gunbc.design.interaction directly."

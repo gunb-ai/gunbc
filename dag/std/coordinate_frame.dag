@@ -1,7 +1,5 @@
 module std.coordinate_frame
 
-import std.integer { Int }
-import std.types { Bool }
 
 // A COORDINATE FRAME'S IDENTITY, CARRIED BY THE VALUES THAT LIVE IN IT.
 //

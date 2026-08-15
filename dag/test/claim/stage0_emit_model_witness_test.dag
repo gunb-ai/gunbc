@@ -1,37 +1,5 @@
 module test.claim.stage0_emit_model_witness
 
-import gunbc.stage0_emit_model {
-  is_generated_stage0_file,
-  stage0_module_emit_basename,
-  stage0_module_emit_filename
-}
-import gunbc.stage0_emit_plan {
-  GeneratedStage0FilesAvailable,
-  GeneratedStage0FilesRefused,
-  HandMaintainedCandidate,
-  ParsedFromRegenSourceClosure,
-  SourceIdentityUnavailable,
-  SourceIdentityUnavailableRefusal,
-  Stage0OutputPathCollision,
-  Stage0EmissionPlanAccepted,
-  Stage0EmissionPlanRefused,
-  SourceIdentitySupplyUnavailableRefusal,
-  Stage0SourceModuleIdentity,
-  Stage0SourceIdentitySupplyUnavailable,
-  V1SourceTree,
-  generated_stage0_files_from_plan_rows,
-  generated_stage0_files_from_emission_plan,
-  stage0_emission_plan_from_source,
-  stage0_emission_plan_from_supply,
-  stage0_generated_output_sets_agree
-}
-import gunbc.stage0_emit_plan_generated { generated_stage0_files }
-import gunbc.stage0_emit_plan_emit {
-  Stage0EmitPlanGenerationRefused,
-  stage0_emit_plan_generation_from_outcome
-}
-import std.types { List, String }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

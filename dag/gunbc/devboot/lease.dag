@@ -1,32 +1,7 @@
 module gunbc.devboot.lease
 
-import std.types { String, Bool, List, NonEmptyStr }
-import std.content_hash {
-  ContentHash,
-  Fnv1a64,
-  Sha256Hash,
-  Sha1Hash,
-  Sha512Hash,
-}
 
-import extdeps.git.object_store {
-  GitObjectId,
-  GitRefName,
-  GitRepositoryState,
-  GitUpdateRefOutcome,
-  GitRefTransitionModeled,
-  GitRefAdvanceRepositoryInvalid,
-  GitRefAdvanceStale,
-  GitRefAdvanceMissing,
-  GitRefAdvanceDuplicate,
-  GitRefAdvanceSymbolicCycle,
-  GitRefAdvanceFormatMismatch,
-  GitRefAdvanceTargetUnavailable,
-  GitRefAdvanceTargetKindRefused,
-  git_model_update_ref_exact,
-}
 
-import gunbc.devboot.subject { BuildSubject, build_subject_digest }
 
 // WHY THERE IS NO DATABASE HERE, and why that is a correction rather than a shortcut. The dispatch that opened this vertical named durable state as SQLite plus a content-addressed artifact directory. Re-observing before building found no SQLite store realization anywhere in the tree -- extdeps.sql.migration models schema change and extdeps.formats.sql models the language, and neither is a store -- while the artifact store this service already needs is a bare Git repository, whose object database IS the content-addressed directory and whose refs ARE durable named state.
 //

@@ -1,10 +1,5 @@
 module test.claim.legacy_test_behavior_disposition_acceptance_test
 
-import std.types { Bool, String }
-import gunbc.legacy_test_behavior_disposition {
-  legacy_test_behavior_closing_contract_holds,
-}
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

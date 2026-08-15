@@ -1,18 +1,5 @@
 module v2.test.manual.fold_source
 
-import std.algebra { Cons, Empty }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode }
-import v2.std.text { SourceFold, String, fold_source }
-import v2.std.verification {
-  CompilesClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 type CountAcc {
   count: Int

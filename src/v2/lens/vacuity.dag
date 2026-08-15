@@ -1,53 +1,6 @@
 module v2.lens.vacuity
 
-import v2.compiler.normalized_tree { NormalizedTree }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import extdeps.filesystem.filesystem_io { Filesystem }
-import v2.compiler.body_lowering_fold {
-  body_lower_fn_decl_ident_from_captured,
-  body_lower_try_infix_transform,
-  body_lower_unwrap_captured
-}
-import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse_module }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag {
-  ParseSubtreeAbsent,
-  ParseSubtreeFound,
-  dag_canonical_literal_from_node,
-  dag_language_model,
-  dag_node_is_fn_decl,
-  parse_subtree_find_production_captured
-}
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { RealizationDispatch }
-import v2.std.algebra { count_where, Empty, length, list_append }
-import v2.std.collection { List, list_at_optional }
-import v2.std.compilers.sugar { sugar_sequence_pair_optional }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.optional { Absent, optional_absent, optional_present, Present }
-import v2.std.exact_structural_equality_zip_fold_predicate {
-  exact_structural_equality_zip_fold
-}
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, Symbol, TypeNode, is_empty_conj_root }
-import v2.std.node_query { node_positional_child_targets }
-import v2.std.text { String }
-import v2.std.verification {
-  BoolWitnessClaim,
-  CompilesClaim,
-  DiagnosticClaim,
-  EmitVsEval,
-  EqualsClaim,
-  EvalOnly,
-  NodeCorpus,
-  RoundTripClaim,
-  StructuralEqualsClaim,
-  TestClaim,
-  TestClaimTransportMode,
-  UnifiedTestClaim
-}
 
 data vacuity_lens_home_note: String = "VacuityEvidence is the fail-closed oracle-provenance verdict for test claims (ProvenDuplicate | ProvenIndependent | Unknown). VacuityEvidenceRecord carries TestClaimTransportMode directly — the consumer/observation dimension (rung_5 EmitVsEval counterexample: distinct execution paths, not operand syntax). Advisory census only until provenance edges ground ProvenDuplicate classes (W2.2); only ProvenDuplicate may gate (W3). W3 LANDED: classify_vacuity_same_eval_record's deepest else now returns Unknown for structurally-unequal operands with no independent oracle, rather than fabricating a positive ProvenIndependent claim from an absence of counter-evidence — the fail-open the note used to flag is fixed, and this sentence records that the marked defect DID survive a full audit cycle undetected until an executing consumer (lens_contract_vacuity.consumer_witness) was bound, because AuditOnly + NoConsumerWitness meant nothing ever ran the classifier to observe it. classify_test_claim_vacuity's DiagnosticClaim/RoundTripClaim arms were the same fail-open a second time (unconditional ProvenIndependent, ignoring the supplied operand_provenance) and are fixed the same way: threaded through operand_provenance_is_independent_oracle, Unknown otherwise. LiveSurfaceSnapshot (a snapshot value copied from live/corpus-derived state) is a non-independent-oracle provenance class: paired with LiteralOracle, itself, or HelperAlias with no independent oracle present, it classifies ProvenDuplicate — the PR #7614 shape (a literal changed to track a live count with no independent check). classify_unified_test_claim_vacuity's BoolWitnessClaim arm now reads the real parsed corpus (filesystem_read + tokenize/parse_module, the sanctioned reference_deps.dag pipeline — never a second producer) to locate the named test fn, and classifies it only when its body reduces to a single top-level equality; anything else (loops, multiple statements, effects, a body the modeled dag.dag grammar cannot parse — a real, open gap documented in grammar_coverage.dag) stays Unknown, never fabricated."
 

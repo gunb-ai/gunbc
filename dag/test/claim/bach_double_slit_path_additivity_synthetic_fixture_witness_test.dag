@@ -1,44 +1,5 @@
 module test.claim.bach_double_slit_path_additivity_synthetic_fixture_witness_test
 
-import std.types { Bool }
-import std.algebra { Less, Greater, Equal }
-import gunbc.physics.bach_double_slit_path_additivity {
-  PathAdditivityRefutationReceipt,
-  PathAdditivitySyntheticFixture,
-  PathAdditivityCounterexampleWitness,
-  path_additivity_refutation_holds_for_synthetic_fixture,
-  path_additivity_compare_observed_to_prediction,
-  path_additivity_witness_observed_vs_prediction,
-  path_additivity_witness_classical_additive_prediction,
-  path_additivity_refutation_receipt_resolution_from_resolved_counts,
-  PathAdditivityRefutationAtBand,
-  PathAdditivityHeldAtBand,
-  PathAdditivityUndecidedAtBand,
-  AdditivityInputFailure,
-  AdditivityInputMissing,
-  RefutationReceiptResolved,
-  RefutationNotEstablished,
-  AdditivityHeld,
-  AdditivityUndecided,
-  refutation_receipt_resolution_from_band_verdict,
-  SyntheticMatchedExposureOne,
-  FirstMinimumBand,
-}
-import gunbc.bach_double_slit_path_additivity_synthetic_fixture {
-  synthetic_path_additivity_receipt_matches_fold_kernel,
-  bach_double_slit_path_additivity_refutation_holds,
-  bach_double_slit_path_additivity_first_minimum_verdict,
-  path_additivity_subject,
-  bach_double_slit_path_additivity_central_band_refutation_holds,
-  synthetic_blocked_count_is_resolved_zero_not_missing,
-  synthetic_missing_row_yields_incomplete_inputs,
-  synthetic_derive_first_minimum_verdict_from_partial_rows,
-  synthetic_central_band_verdict,
-  synthetic_first_minimum_verdict,
-  synthetic_fold_receipt_resolution_matches_kernel_counts,
-}
-import extdeps.physics.bach_et_al_2013_double_slit { SlitTwoOpen }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

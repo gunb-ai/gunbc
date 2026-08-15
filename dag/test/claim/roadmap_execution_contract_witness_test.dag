@@ -1,25 +1,5 @@
 module test.claim.roadmap_execution_contract_witness_test
 
-import std.types { Bool, String, NonEmptyStr, FilePath }
-import gunbc.ensure { EnsureObserveOnly }
-import gunbc.roadmap_execution_contract {
-  GitWorkspaceCapability,
-  GunbcClaimRunnerCapability,
-  CargoCapability,
-  CargoFmtValidation,
-  GunbcClaimValidation,
-  CargoTestValidation,
-  ExecutionContract,
-  ExecutionContractUnspecified,
-  CapabilityRealization,
-  DispatchHostEnvironment,
-  execution_capability_label,
-  execution_contract_required_capabilities,
-  dispatch_platform_required_capabilities,
-  dispatch_required_capabilities,
-  gunbc_claim_execution_contract,
-  validation_operation_command,
-}
 
 fn claim_runner_environment() -> DispatchHostEnvironment {
   DispatchHostEnvironment {

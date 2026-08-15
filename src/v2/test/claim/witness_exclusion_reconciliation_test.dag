@@ -1,41 +1,6 @@
 module v2.test.claim.witness_exclusion_reconciliation_test
 
-import std.types { NonEmptyStr }
 
-import std.witness_admission { DiscoverySelection }
-import gunbc.ci_layer_roots {
-  WitnessExclusionRow,
-  BinWitnessWet,
-  QuarantineProbeExpectRed,
-  FalsifierRehomedBinWet,
-  FalsifierSubstrateLongLane,
-  NoConsumer,
-  OfflineLocalRecipe,
-  falsifier_self_host_wet_dark_lane_unclassified_rows,
-  falsifier_self_host_wet_dark_lane_population,
-  falsifier_self_host_wet_dark_lane_waiting_rows,
-  falsifier_self_host_wet_dark_lane_waiting_patterns,
-  witness_exclusion_row_mentions_wet_lane_dark_state,
-  witness_exclusion_row_waits_on_wet_lane_undarken
-}
-import v2.compiler.self_host.wet_receipt_enrollment {
-  falsifier_self_host_wet_cadence_is_active,
-  dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet
-}
-import v2.workflow.witness_admission {
-  witness_exclusion_rows_well_formed,
-  witness_exclusion_rows_well_formed_holds,
-  witness_exclusion_explicit_roster_rows_consistent,
-  witness_exclusion_explicit_roster_rows_consistent_holds,
-  witness_exclusion_falsifier_rows_consistent_holds,
-  witness_whole_tree_resolve_exclusion_concat_authority_holds,
-  witness_exclusion_frontier_carries_no_admission_holds
-}
-import std.realization_schedule { ScheduleWitnessEntry, CorpusWitnessKind }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 data witness_exclusion_reconciliation_note: String = "Executable reconciliation for gunbc.ci_layer_roots.witness_exclusion_frontier, which is a PATH POLICY carrier as of 2026-08-03: every row is well-formed (never DiscoverySelection, never QuarantineProbeExpectRed, NoConsumer only for the synthetic admission RED-control path, nonempty reason and dissolve_on), the remaining explicit-roster classifications name files those rosters actually run, and the whole-tree probe policy is exactly concat(discovery, strict-resolve). The known-red arm is GONE from this reconciliation rather than strengthened: exact admission moved to gunbc.explicit_witness_admission, so there is no pattern row left to reconcile against a probe roster and the containment check that stood in for identity has nothing to check. What replaces it is a refusal — witness_exclusion_frontier_carries_no_admission_holds, with a synthetic QuarantineProbeExpectRed row as its RED control. RED controls: a DiscoverySelection row, a bare-nickname row, an unbacked BinWitnessWet row, an unbacked rehomed row, an unbacked substrate-long-lane row, and a quarantine row in the path carrier."
 

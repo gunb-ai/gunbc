@@ -1,15 +1,5 @@
 module gunbc.host_compile_pool
 
-import std.types { String, NonEmptyStr, Bool }
-import std.measure { ByteSize, byte_size_count }
-import std.disposition { Disposition, SingleAuthority }
-import gunbc.build_cache_instance { CgroupMemoryLimits, EndpointObservationUnavailableReason, unavailable_reason_detail }
-import gunbc.fleet_host_budget {
-  CompilePoolPlacement, CompilePoolSliceDeclared, CompilePoolInRunnerSlots,
-  CompilePoolResolution, CompilePoolDerived, CompilePoolUnresolved,
-}
-import gunbc.runner_activation { HostCompilePoolReady }
-import product.placement_supply { HostIdentity }
 
 data host_compile_pool_scope_disposition: Disposition = SingleAuthority
 

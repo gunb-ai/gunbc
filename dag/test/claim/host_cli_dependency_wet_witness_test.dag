@@ -1,14 +1,5 @@
 module test.claim.host_cli_dependency_wet_witness_test
 
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import std.types { Bool, NonEmptyStr }
-import extdeps.tools { CliTool, SourceCoreutils }
-import extdeps.tools.npm { npm_cli_tool }
-import gunbc.host_cli_dependency {
-  observe_host_cli_dependency,
-  HostCliDependencyPresent,
-  HostCliDependencyAbsent,
-}
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

@@ -1,12 +1,5 @@
 module tools.dag_compile_clean_seam_transport
 
-import extdeps.shell
-import extdeps.filesystem.filesystem_io
-import extdeps.git
-import extdeps.git.inspect
-import extdeps.gunbc
-import std.types { String, Bool }
-import tools.dag_compile_clean_transport { dcc_gunbc_path, dcc_gunbc_ready }
 
 data cross_shard_seam_fixture_note: String = "Dedicated fixture pair (2026-07-25 falsifier green): the prior live-corpus seam (dag/std/bit.dag importing Classical from dag/std/logic.dag) went stale when bit.dag stopped importing std.logic — importer shard passed after the Classical rename, so shard_x_reds_with_seam_attribution went false. Fixture is owned by this witness; dissolve-on when a live import edge is re-selected with a RED proving the importer actually depends on the broken symbol."
 data cross_shard_seam_importer_entry_path: String = "dag/test/fixture/cross_shard_seam/importer.dag"

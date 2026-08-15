@@ -1,8 +1,5 @@
 module v2.test.claim.body_lowering.atom_body_discriminator_witness
 
-import v2.test.claim.body_lowering.atom_body_discriminator_helpers {
-  atom_body_discriminator_batched_receipt_holds
-}
 
 // Atom-body vs arity discriminator: one tokenize→parse→normalize pass over the
 // four-declaration module, then exact top-level Arrow identity join plus

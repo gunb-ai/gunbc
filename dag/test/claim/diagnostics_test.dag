@@ -1,15 +1,5 @@
 module test.claim.diagnostics_test
 
-import tools.diagnostics_witness_transport {
-  run_diagnostics_import_resolution_witness,
-  run_diagnostics_reexport_surface_witness,
-  run_diagnostics_type_and_arity_witness,
-  run_diagnostics_empty_list_context_witness,
-  run_diagnostics_constructor_owner_witness,
-  run_diagnostics_record_field_walls_witness,
-}
-import std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

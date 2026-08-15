@@ -1,20 +1,5 @@
 module extdeps.github.actions
 
-import extdeps.cron.schedule_model { CronSchedule }
-import extdeps.github.log_annotations {
-  LogAnnotation,
-  AnnotationError, AnnotationWarning, AnnotationNotice,
-  AnnotationGroup, AnnotationEndGroup,
-  SetOutput, AddMask, StopCommands,
-  annotation_error_prefix, annotation_warning_prefix, annotation_notice_prefix,
-  annotation_group_prefix, annotation_endgroup,
-  annotation_set_output_prefix, annotation_add_mask_prefix,
-  annotation_stop_commands_prefix
-}
-import extdeps.languages.yaml.types { YamlValue, YamlKeyValue }
-import std.types { NonEmptyStr, SecretName, Unit }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

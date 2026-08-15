@@ -1,11 +1,6 @@
 module gunbc.repo_local_git_config_clone_bootstrap
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import gunbc.repo_local_git_config {
-  repo_local_git_config_converge_entry,
-  repo_local_git_config_converge_function,
-}
 
 data repo_local_git_config_clone_bootstrap_authority_note: String = "Countable rollout carrier for repository-local Git config convergence on supported clone-creation paths (generated-file conflict policy charter, lane 2 operator second-pass 2026-08-01). Operator guidance alone ('run converge once per clone') is not deployment — this row tracks population coverage until every enrolled path invokes the modeled actuator. Population: session worktrees and the dev clone setup surface (DESIGN Building & checks core.hooksPath seed + gunbc run … converge). Session worktrees remain explicitly missing: no worktree-creation path invokes converge yet, so the population row must stay false until that execution carrier and receipt exist. Dissolve-on: every supported clone-creation path invokes repo_local_git_config converge and observed_missing_count stays zero."
 

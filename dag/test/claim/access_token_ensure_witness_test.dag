@@ -1,13 +1,5 @@
 module test.claim.access_token_ensure_witness
 
-import gunbc.auth.access_token_source {
-  AccessTokenEnsureRefused,
-  AccessTokenReady,
-  AccessTokenUpsertRequired,
-  GoogleCloudInteractiveAuthenticationRequired,
-  gcloud_access_token_resolution,
-}
-import std.types { Secret }
 
 test fn auth_deficit_failure_classifies_interactive_upsert() -> Bool {
   match gcloud_access_token_resolution(

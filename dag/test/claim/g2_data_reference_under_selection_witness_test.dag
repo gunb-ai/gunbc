@@ -22,30 +22,6 @@ module test.claim.g2_data_reference_under_selection_witness_test
 // QuarantineProbeExpectRed row deletes in the same change (un-quarantine); the
 // unchanged witness remains as the permanent regression control (DESIGN §4b(4)).
 
-import v2.lens.live_read_classification {
-  LiveReadSelectionRequest,
-  LiveReadSelectionManifestRow,
-  live_read_selection_manifest_live,
-  classification_has_runtime_read
-}
-import v2.std.algebra {
-  list_head,
-  HeadFound,
-  HeadAbsent
-}
-import v2.std.collection { List }
-import v2.std.live_read {
-  LiveReadSelectionProjection,
-  LiveReadSelectionClassified,
-  LiveReadSelectionRefused,
-  LocalRead,
-  RuntimeRead
-}
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import test.claim.scaffold_disposition_census_fixture_witness_test {
-  scaffold_disposition_census_pool_facts
-}
 
 data g2_data_reference_under_selection_note: String = "Asserts the DESIRED classification: the specimen is a runtime/live read because its body reaches decl_facts through a data initializer. Observed on 341d3203bc2 (includes #8140): LiveReadSelectionClassified { LocalRead } via live_read_selection_manifest_live — not Refused. That LocalRead licenses a skip today; this witness therefore fails until the traversal repair lands, and is admitted QuarantineProbeExpectRed / ExpectAssertionFalse so the red is agreement rather than ambient discovery failure.
 

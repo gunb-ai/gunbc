@@ -1,33 +1,5 @@
 module test.claim.cooling_qualification_witness
 
-import std.types { Bool, List, String }
-import std.measure { watt }
-import extdeps.cooling.dynatron { dynatron_w1_catalog }
-import extdeps.cooling.types { CpuCoolerCatalogRow }
-import extdeps.cpu.ampere { altra_max_m12830_catalog }
-import extdeps.cpu.types { CpuSocket, LandGridArray }
-import extdeps.boards.types { AsrockRackAltrad8ud1l2t }
-import gunbc.fleet_physical_inventory {
-  cooler_srv3,
-  host_srv1,
-  host_srv3,
-  installed_cooling_realizations,
-}
-import product.cooling_qualification {
-  CoolingCatalogCompatible,
-  CoolingCatalogRefused,
-  CoolerDesignPowerBelowProcessorTdp,
-  CoolerSocketDoesNotMatchProcessorSocket,
-  BaseboardNotInCoolerSupportedPopulation,
-  InstalledCoolingRealization,
-  InstalledCoolingUnobserved,
-  InstalledCoolingAmbiguous,
-  CoolingCatalogVerdict,
-  installed_cooling_verdict_for_host,
-  cooling_catalog_verdict,
-  cooling_catalog_verdict_admits_qualification,
-  installed_cooling_verdict_for_host,
-}
 
 // The live srv3 realization, rebuilt here from the same cited catalog rows the fleet binds, so
 // each mutation below perturbs exactly one field and leaves the rest at their real values.

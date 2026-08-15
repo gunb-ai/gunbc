@@ -1,10 +1,5 @@
 module extdeps.tailscale.acl
 
-import std.types { String, NonEmptyStr, List, Bool }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https, uri_wire }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

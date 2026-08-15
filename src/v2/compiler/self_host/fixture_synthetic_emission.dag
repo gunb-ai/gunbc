@@ -1,29 +1,6 @@
 module v2.compiler.self_host.fixture_synthetic_emission
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.content_hash { content_hash_atom }
-import extdeps.communication.medium { Medium }
-import v2.compiler.infer { InferredTree }
-import v2.compiler.self_host.candidate_generation {
-  generate_rust_emission_candidate,
-  RustWorkspaceWriteReceipt,
-  write_rust_workspace
-}
-import v2.std.algebra { any }
-import v2.std.collection { List }
-import v2.std.compilers.target_model { TargetModel }
-import v2.std.diagnostic {
-  Accepted,
-  Outcome,
-  Rejected,
-  bind_outcome,
-  outcome_accepted
-}
-import v2.std.logic { Bool }
-import v2.std.node { Hash, Node, combine_hash, symbol_identity_digest }
-import v2.std.optional { Absent, Present, optional_absent, optional_present }
-import v2.std.text { String }
 
 data fixture_synthetic_emission_note: String = "Parallel fixture-scoped emission authority (wise-ram-22 disposition PR1 containment): SyntheticEmittedArtifact / FixtureBehaviorReceipt carry FixtureEmissionQualification only — no constructor into ProducerEmissionReceipt or production EmissionQualification."
 

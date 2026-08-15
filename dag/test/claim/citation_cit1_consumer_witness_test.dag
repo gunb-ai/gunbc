@@ -1,47 +1,5 @@
 module test.claim.citation_cit1_consumer_witness
 
-import extdeps.runtime.abi.sysv_amd64 {
-  x86_64_abi_pdf_draft_version,
-  x86_64_abi_syscall_convention_authoritative_page,
-}
-import gunbc.citation.x86_64_abi_pdf_consumer {
-  x86_64_abi_pdf_pin_construction,
-  x86_64_abi_syscall_convention_citation_fact_construction,
-  x86_64_abi_pdf_syscall_fragment_selector,
-  x86_64_abi_pdf_version_navigable_uri_projection,
-  x86_64_abi_pdf_syscall_navigable_uri_projection,
-  x86_64_abi_pdf_navigable_uri_from_nameddest_scalar_code_points,
-  x86_64_abi_syscall_evidence_link_construction,
-  x86_64_abi_syscall_citation_rung_disposition,
-  x86_64_abi_syscall_citation_page_is_authoritative,
-  x86_64_abi_pdf_fragment_selector_from_page,
-  x86_64_abi_pdf_retrieval_observation_from_hex,
-  x86_64_abi_pdf_base_locator_probe,
-  witness_syscall_citation_below_digest_matched_rung,
-  X86_64AbiPdfCitationSelectorConstructed,
-  X86_64AbiPdfNavigableUriProjected,
-  X86_64AbiPdfNavigableUriRefused,
-  X86_64AbiPdfPinRefused,
-  X86_64AbiCitationFactConstructed,
-  X86_64AbiCitationFactRefused,
-  X86_64AbiEvidenceLinkConstructed,
-  X86_64AbiEvidenceLinkRefused,
-  X86_64AbiPdfRetrievalObserved,
-  X86_64AbiPdfRetrievalDigestHexRefused,
-  BelowDigestMatchedRung,
-  IndependentExpectedPinUnavailable,
-  WetReceiptHexMalformed,
-}
-import std.citation {
-  FragmentSelectorVariant,
-  CitationAccessRefused,
-  HttpAccessRefused,
-}
-import extdeps.version { VersionIdentity }
-import std.types { Bool, NonEmptyStr, List, String }
-import gunbc.citation.pdf_safe_profile { PdfOpenParameterPercentEncodeRefusedFromSafe }
-import extdeps.uri { UriPercentEncodeUnicodeScalarOutOfRangeRefused }
-import extdeps.standards.rfc_8118 { OpenNamedDest, extdeps_external_authority_anchor }
 
 data witness_unencodable_scalar_code_points: List<Int> = [1114112]
 

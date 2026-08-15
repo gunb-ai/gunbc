@@ -1,20 +1,5 @@
 module test.claim.selection_degradation_receipt_witness_test
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { String, Bool, NonEmptyStr }
-import std.nat { Nat }
-import gunbc.selection_degradation_receipt {
-  SelectionDegradationReceipt,
-  SelectionDegradationApplied,
-  SelectionDegradationSuperset,
-  SelectionDegradationOff,
-  selection_degradation_receipt_of,
-  selection_degradation_receipt_line,
-  selection_degradation_receipt_body,
-  selection_degradation_is_superset,
-  selection_degradation_is_applied_narrowed,
-  selection_degradation_state_tag,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

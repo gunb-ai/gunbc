@@ -1,52 +1,5 @@
 module v2.test.manual.find_witness_distinct_node_zip_fold
 
-import v2.std.coercion {
-  CoercionCandidateSet,
-  Exact,
-  Identity,
-  CoercionQuality,
-  coercion_fold
-}
-import v2.std.constraints {
-  CanonicalGrounding,
-  CanonicalGroundingWitness
-}
-import v2.std.diagnostic {
-  Accepted,
-  Outcome,
-  Rejected
-}
-import v2.std.find_witness {
-  CandidateSet,
-  FindWitnessResult,
-  PreservationPredicate,
-  TargetDeclaredPriority,
-  UniqueOnly,
-  find_witness,
-  verify_witness
-}
-import v2.std.node {
-  Atom,
-  Arrow,
-  Conj,
-  Edge,
-  Node,
-  Positional,
-  Symbol,
-  TypeNode,
-  SyntheticOccurrence
-}
-import v2.std.verification {
-  CompilesClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
-import v2.std.witness { StructuralPropertyWitness }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn distinct_source_leaf() -> Node {

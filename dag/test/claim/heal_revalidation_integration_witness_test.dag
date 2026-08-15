@@ -1,30 +1,5 @@
 module test.claim.heal_revalidation_integration_witness
 
-import test.claim.heal_revalidation_witness {
-  heal_no_change_creates_no_revalidation_obligation,
-  heal_produced_is_immediately_revalidation_required,
-  produced_head_supersedes_prior_run,
-  accepted_dispatch_is_not_revalidation,
-  refused_dispatch_stays_required_and_located,
-  only_exact_healed_head_complete_coverage_admits,
-  manual_dispatch_without_expected_sha_cannot_masquerade_as_heal_revalidation,
-  expected_sha_preflight_binds_run_subject_and_checkout_exactly
-}
-import test.claim.workflow_dispatch_input_witness {
-  workflow_dispatch_nonempty_inputs_are_realized_not_dropped,
-  workflow_dispatch_empty_inputs_preserve_null_projection
-}
-import test.claim.ci_heal_job_witness {
-  actions_write_is_scoped_to_heal_only,
-  workflow_dispatch_carries_optional_exact_healed_sha_input,
-  heal_produced_dispatches_and_supersedes_old_run,
-  dispatch_failure_is_loud_and_has_no_push_event_fallback,
-  heal_dispatch_step_exports_github_token_authority
-}
-import v2.workflow.ci_heal_revalidation_preflight_emit_test {
-  preflight_is_exact_head_and_precedes_any_witness,
-  preflight_absent_input_is_ordinary_manual_ci
-}
 
 test fn heal_revalidation_integration_witnesses_hold() -> Bool {
   heal_no_change_creates_no_revalidation_obligation()

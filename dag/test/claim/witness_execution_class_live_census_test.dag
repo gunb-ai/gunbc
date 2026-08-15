@@ -1,47 +1,5 @@
 module gunbc.test.claim.witness_execution_class_live_census_test
 
-import v2.workflow.floor_discovery_producer {
-  FloorDiscoveryWalkState,
-  floor_discovery_walk_state_zero,
-  floor_discovery_walk_dir,
-  floor_discovery_resolve_entry_live_tree,
-  EntryLiveTreeResolved,
-  EntryLiveTreeDispositionRefused
-}
-import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.ci_layer_roots { witness_discovery_scan_dirs }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.optional { Optional, Present, Absent }
-import v2.std.algebra { fold_list, length, any }
-import std.types { Bool, Int, List, String }
-import std.selected_witness_bundle {
-  SelectedWitnessPlan,
-  SelectedWitnessMember,
-  NativeSelected,
-  InterpreterFrontier
-}
-import v2.test.execution.native_selected_witness_bundle {
-  selected_logic_primary_plan
-}
-import gunbc.witness_execution_class {
-  WitnessExecutionClass,
-  NativeRequired,
-  NativeLiveObservation,
-  EffectObligation,
-  InterpreterSubjectTest,
-  NativeBlocked,
-  NativeBlockedCause,
-  GeneralWitnessTargetModelUnavailable,
-  EmitterCarriage,
-  CarriedInEnrolledBundle,
-  NoEmitterCarriage,
-  WitnessClassRow,
-  classify_witness,
-  census_of,
-  census_accounts_for_every_row,
-  every_identity_classified_exactly_once,
-  row_identity
-}
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

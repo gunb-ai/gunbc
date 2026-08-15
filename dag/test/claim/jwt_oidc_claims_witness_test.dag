@@ -1,52 +1,5 @@
 module test.claim.jwt_oidc_claims_witness_test
 
-import std.types { Bool, String, NonEmptyStr, Int, List }
-import extdeps.auth.jwt {
-  NumericDate,
-  NumericDateWholeSeconds,
-  NumericDateFractionalSeconds,
-  NumericDateLifetime,
-  LifetimeWholeSeconds,
-  LifetimeNotWholeSeconds,
-  LifetimeExpiryPrecedesIssuance,
-  numeric_date_lifetime,
-  JwtStringOrUri,
-  JwtBareString,
-  JwtUriString,
-  JwtStringOrUriDecode,
-  StringOrUriDecoded,
-  StringOrUriRefused,
-  jwt_string_or_uri_of_wire,
-  jwt_string_or_uri_wire,
-  JwtAudience,
-  JwtAudienceSingle,
-  JwtAudienceMultiple,
-  jwt_audience_values,
-  JwtRegisteredClaims,
-}
-import extdeps.auth.oidc {
-  OidcStandardClaims,
-  OidcIdTokenClaims,
-  OidcAuthMethodReference,
-  AmrProofOfPossession,
-  AmrMultiFactor,
-  AmrPassword,
-  AmrOneTimePassword,
-  AmrUnregisteredName,
-  AmrUriValuedMethod,
-  OidcAmrDecode,
-  AmrDecoded,
-  AmrRefused,
-  oidc_amr_of_wire,
-  oidc_id_token_registered_claims,
-}
-import std.measure { Second, second, second_count }
-import extdeps.llm.codex_auth {
-  CodexObservedClaimPresence,
-  codex_observed_id_token_claim_profile,
-  codex_observed_id_token_amr_wire,
-  codex_id_token_observed_lifetime,
-}
 
 data witness_purpose_note: String = "THESE MODULES HAD NO CONSUMER AT ALL, which is why their claims went unchecked long enough to encode one token as a specification. extdeps.auth.jwt, extdeps.auth.oidc and their codex composition typechecked, cited real RFCs, and were never executed by anything — the specification-without-execution tier exactly. A grep would have found the RFC numbers and concluded the modeling was grounded.\\n\\nSo this file is the first consumer, and it is written to go RED on the specific overclaims that were there rather than to restate the types. Each claim below names the wrong behaviour it discriminates against: mandatory registered claims, a normalized audience, an integer-only NumericDate, an unenforced colon rule, a provenance inference from URI shape, and required OIDC optional claims. Reverting any one of those corrections fails a claim here."
 

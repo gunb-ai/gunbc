@@ -1,8 +1,6 @@
 module gunbc.roadmap_status
 
-import extdeps.github.pulls { PullRequest }
 
-import std.types { NonEmptyStr }
 
 data ticket_line_note: String = "The ticket decomposition (remodel W2, operator direction 2026-07-24; the model half of ts-wf-node-schema): an AuthoredLine's single content String fuses headline, brief, workflow fields, references, and the item's whole history — so the page can only dump it, the dispatch brief can only stub its slots with the title, and every update concatenates into the blob because no time axis exists (ts-dispatch-elevate was the live specimen). TicketLine carries the fields as fields. The field set is the union of ts-wf-node-schema's list and the dispatch_brief_template slots — the template was always the spec of what dispatch needs — plus the updates thread. References reuse the node's carriers (Pointer is the existing ref concept; a ticket-local refs list would be a second one). AuthoredLine survives as the counted LEGACY frontier: every remaining prose row is burn-down for the mechanical migration (W2-bulk), and a new prose row where a ticket was possible is the review reject."
 

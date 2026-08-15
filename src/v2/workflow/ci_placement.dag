@@ -1,18 +1,5 @@
 module v2.workflow.ci_placement
 
-import std.logic { Bool }
-import std.nat { Nat }
-import v2.std.text { String }
-import v2.std.collection { List }
-import v2.std.algebra { any, filter, length }
-import v2.workflow.ci_floor_plan { gunbc_ci_fast_lane_eval_budget_ms }
-import gunbc.commit_workflow {
-  CommitCheckEnrollment,
-  CommitWorkflowSurface,
-  commit_gate_roster,
-  commit_workflow_surface_eq,
-  commit_check_kind_eq
-}
 
 data ci_placement_law_note: String = "The two-tier placement axis (ci-two-tier-placement-redesign.md D3, operator 2026-07-24): a check rides the PR path iff its measured warm cost is within the fast-lane budget OR its cost is proportional to the diff; everything else is a Gauntlet row (main pushes + the 4h falsifier cadence). Placement is DATA (PrTier | Gauntlet), never per-site prose. Admission is FAIL-CLOSED by construction: PrTier is admissible ONLY with (a) a measured warm-cost receipt within the fast-lane budget and (b) a hermetic/ephemeral classification; an unmeasured or unclassified check is inadmissible as PrTier and its only valid placement is Gauntlet — no row rides the fast path by taste. The 5s threshold is REUSED from the single fast-lane authority (gunbc_ci_fast_lane_eval_budget_ms, v2.workflow.ci_floor_plan gunbc_ci_fast_lane_rule_note), never a second 5s definition. The roster of real checks and their PrTier flips are FILLED from the D2 warm-cost probe on fleet srv hardware; until a check has a measured receipt it stays Gauntlet, so this mechanism is correct-by-construction with an empty PrTier set. Wiring the placement onto the live check rows (gates, ci-job steps, floor batches) and the Gauntlet workflow split ride PR-1 (D3b)."
 

@@ -1,19 +1,5 @@
 module gunbc.tools.roadmap_spawn_request
 
-import extdeps.git.inspect
-import extdeps.languages.json.emit {
-  serialize_json,
-  json_object,
-  json_kv,
-  json_string,
-  json_array,
-}
-import gunbc.roadmap_authority {
-  roadmap_authority_projection,
-  RoadmapAuthorityProjected, RoadmapAuthorityProjectionRefused,
-  authored_merged_prs,
-}
-import gunbc.roadmap_spawner { roadmap_spawn_request_json }
 
 func roadmap_next_spawnable() -> String {
   match roadmap_authority_projection() {

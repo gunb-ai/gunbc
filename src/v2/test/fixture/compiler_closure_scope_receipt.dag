@@ -1,10 +1,5 @@
 module v2.test.fixture.compiler_closure_scope_receipt
 
-import v2.std.algebra { length }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
-import v2.std.text { String }
 
 type ClosureScopeCountAuthority
   = DerivedFromModulePathRoster

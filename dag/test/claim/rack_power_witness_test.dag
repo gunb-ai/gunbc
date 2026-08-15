@@ -1,23 +1,5 @@
 module test.claim.rack_power_witness
 
-import std.types { Bool, Int, List }
-import std.measure { watt, volt_ampere, watt_count, volt_ampere_count }
-import product.placement_supply { RackIdentity, PhysicalAssetIdentity }
-import product.rack_mount { ChassisMount, RackInstance, rack_instance, MountReady, MountRefused }
-import product.rack_power {
-  DeclaredPowerFactor, declared_power_factor,
-  AssetLoad, ObservedRealPower, DeclaredApparentPower, LoadUnobserved,
-  PowerFeed, power_feed, feed_capacity,
-  PowerBudget, rack_power_budget, budget_real_load, budget_apparent_load, budget_outlets_used, budget_capacity,
-  PowerReady, PowerRefused, PowerRefusal,
-  PowerFactorOutOfRange, LoadNotObserved, LoadDeclaredTwice,
-  LoadDeclaredForUnmountedAsset, MountedAssetHasNoLoad, OutletsExhausted, FeedCapacityExceeded,
-}
-import extdeps.rack.navepoint { navepoint_18u_open_frame_catalog }
-import extdeps.chassis.rosewill { rosewill_rsv_r4000u_catalog }
-import extdeps.power.eaton_tripp_lite { eaton_tripp_lite_rs_1215_family_catalog }
-import v2.std.optional { Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

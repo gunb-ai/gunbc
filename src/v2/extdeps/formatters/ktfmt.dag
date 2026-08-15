@@ -1,13 +1,5 @@
 module v2.extdeps.formatters.ktfmt
 
-import v2.std.diagnostic { Locus, Outcome }
-import v2.std.node { Symbol }
-import v2.std.refinement {
-  PositiveInt,
-  make_positive_int,
-  positive_int_authoritative_literal
-}
-import v2.std.patch { ConfigPatchRecord, config_patch_layer }
 
 type KtfmtStyle
   = KtfmtMetaStyle

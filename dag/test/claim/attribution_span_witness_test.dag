@@ -1,41 +1,5 @@
 module test.claim.attribution_span_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { NonEmptyStr, String, Bool, List }
-import std.nat { Nat }
-import std.interval { OrderedClosedInterval, interval_low, interval_high }
-import std.measure {
-  Nanosecond,
-  nanosecond,
-  nanosecond_count,
-  CpuClock,
-  WallClock,
-  ClockDomain,
-  ProcessMonotonic,
-  ObservationInstant,
-}
-import std.observation { OccurrenceId }
-import std.attribution {
-  ClockFrame,
-  clock_frame_eq,
-  OccurrenceExtent,
-  ExtentConstruction,
-  ExtentReady,
-  ExtentRefused,
-  occurrence_extent,
-  ExtentInFrame,
-  ExtentSpec,
-  attribute_specs,
-  AttributionRefusedImpossibleInterval,
-  AttributionSpan,
-  Attributed,
-  Unattributed,
-  AttributionResult,
-  AttributionComputed,
-  AttributionRefusedForeignClock,
-  AttributionRefusedChildOutsideParent,
-  attribute_within,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

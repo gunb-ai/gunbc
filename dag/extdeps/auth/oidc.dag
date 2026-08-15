@@ -1,20 +1,5 @@
 module extdeps.auth.oidc
 
-import std.types { String, NonEmptyStr, Bool, List, Email }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.auth.jwt {
-  NumericDate,
-  JwtStringOrUri,
-  JwtAudience,
-  JwtRegisteredClaims,
-  JwtStringOrUriDecode,
-  StringOrUriDecoded,
-  StringOrUriRefused,
-  JwtBareString,
-  JwtUriString,
-  jwt_string_or_uri_of_wire,
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

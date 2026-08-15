@@ -1,18 +1,5 @@
 module std.orthogonal_geometry
 
-import std.types { Bool, NonEmptyStr, List }
-import std.integer { Int }
-import std.nat { Nat }
-import std.measure { Millimeter, millimeter }
-import std.checked_arithmetic { IntegerOverflow }
-import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity_eq }
-import std.spatial_frame { FrameExtent, SpatialFrameRegistry, extent_in_frame }
-import std.affine_space { Point2, Point3, point2, point3, SignedFrameComponent, signed_frame_component, signed_frame_component_count }
-import std.euclidean_geometry {
-  AxisDirection3, PositiveX, NegativeX, PositiveY, NegativeY, PositiveZ, NegativeZ,
-  axis_direction_axis, axis_direction_is_negative, axis_direction_of,
-  Axis3, Axis3X, Axis3Y, Axis3Z, axis3_index, axis3_eq,
-}
 
 // SPATIAL-3A: EXACT ORTHOGONAL GEOMETRY. Everything here is closed under integer millimetre
 // arithmetic - no square roots, no trigonometry, no rounding policy - which is the whole reason the

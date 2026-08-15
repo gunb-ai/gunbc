@@ -1,18 +1,6 @@
 module extdeps.pricing.ubicloud
 
-import extdeps.cloud.ubicloud {
-  UbicloudRunnerCatalogRow,
-  ubicloud_standard_2_catalog,
-  ubicloud_standard_16_catalog,
-  ubicloud_standard_2_arm_catalog,
-  ubicloud_standard_16_arm_catalog,
-}
-import std.currency { Usd }
-import std.measure { MoneyPerMinute, money_amount_micro }
-import std.types { NonEmptyStr, List }
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

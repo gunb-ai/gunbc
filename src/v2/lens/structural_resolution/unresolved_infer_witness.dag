@@ -1,6 +1,4 @@
 module v2.test.lens_structural_resolution.unresolved_infer_witness
-import v2.std.collection { Map, optional_absent, optional_present }
-import v2.std.optional { Optional, Absent, Present }
 
 
 data sr_infer_claim_hash: Hash = sr_infer_claim_hash

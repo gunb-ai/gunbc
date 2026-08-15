@@ -1,6 +1,5 @@
 module v2.extdeps.formats.json
 
-import v2.std.grammar { GrammarSchema }
 
 data json_schema_carrier_homonym_note: String = "Renamed from JsonValue (P3a-1 self-fork collapse): extdeps.languages.json.emit owns JsonValue for production JSON emission. This v2-tree grammar-schema witness carrier keeps a distinct name until format-unification lands."
 

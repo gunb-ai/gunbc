@@ -1,17 +1,5 @@
 module gunbc.stage0_rust_honest_frontier_projection
 
-import gunbc.stage0_rust_honest_frontier_integration {
-  honest_frontier_decision_complete,
-  honest_frontier_discovery_complete,
-  tracked_rust_unclassified_projection
-}
-import gunbc.stage0_rust_host_observation {
-  RustManifestObserved,
-  RustSourceHostObservation
-}
-import gunbc.stage0_rust_lifecycle_totality { lifecycle_totality_witness_observation }
-import v2.std.collection { List }
-import v2.std.text { String }
 
 data stage0_rust_honest_frontier_projection_note: String = "Lane C projection surface (first slice — NOT terminal v1-honest-frontier): re-exports gunbc.stage0_rust_honest_frontier_integration tracked_rust_unclassified_projection. C1 lifecycle sets live in gunbc.stage0_rust_lifecycle_totality; C2 product reachability in gunbc.stage0_rust_product_reachability; the integration join answers v1-hand-queue-drain. stage0_rust_honest_frontier_deferred_axes counts axes the frontier does not derive yet (HandAuthoredLOC, HandCapability, RetirementTrigger)."
 

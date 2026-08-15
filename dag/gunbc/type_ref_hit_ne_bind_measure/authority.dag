@@ -1,10 +1,6 @@
 module gunbc.type_ref_hit_ne_bind_measure
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.types { String, NonEmptyStr }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data type_ref_hit_ne_bind_measure_charter_note: String = "N1a (swift-fox-347 extraction; quiet-hawk-219 / operator 2026-08-02): EXECUTING DISCRIMINATOR for the type-ref fail-open class — pool-present lookup hit is not binding authority. Under measurement mode only, a masked leaf use-site without measure-authority emits typed UnresolvedType (same construction as absent-from-pool) instead of fabricating Product(<anon>). This is NOT a corpus refusal wall, NOT construction, and NOT an admission/compatibility layer. Default compile-clean / resolve / run / emit stay on main's fail-open path (measure off). Arming surface: compile_dag_diagnostic_census sets v1_rt::type_ref_hit_ne_bind_measure (host bracket, same shape as name_resolution_policy) for the nested synthetic compile only."
 

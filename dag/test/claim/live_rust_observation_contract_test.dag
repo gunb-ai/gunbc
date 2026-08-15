@@ -1,36 +1,5 @@
 module test.claim.live_rust_observation_contract
 
-import gunbc.live_rust_observation {
-  LiveRustObservationRequest,
-  LiveObservationAdmitted,
-  LiveObservationRefused,
-  LiveGitRefused,
-  LiveManifestReadRefused,
-  LiveManifestParseRefused,
-  LiveRevisionMismatch,
-  LiveExpectationEmpty,
-  LiveExpectationMissing,
-  LiveTrackedPopulationEmpty,
-  LivePriorPopulationEmpty,
-  LiveCargoTargetsEmpty,
-  admit_live_rust_observation,
-  admit_current_actions_rust_observation
-}
-import extdeps.github.actions_environment { ActionsShaMissing, ActionsShaEmpty }
-import gunbc.stage0_rust_host_observation {
-  RustSourceHostObservation,
-  RustManifestObserved,
-  RustManifestReadRefused,
-  RustManifestParseRefused,
-  GitObservationRefused
-}
-import gunbc.stage0_rust_source_lifecycle_scaffold {
-  ManifestStateScaffoldOk,
-  ManifestStateScaffoldRefused,
-  rust_source_manifest_state_verdict
-}
-import std.types { CommitSha, List, String }
-import std.content_hash { Fnv1a64Structural }
 
 // Controls 2 through 7 of the live observation closing contract, executed HERMETICALLY against constructed observations. This file publishes no Git mock and claims no liveness: it exercises the pure fold admit_live_rust_observation, which is why it can run in the ordinary discovery corpus at no host cost.
 //

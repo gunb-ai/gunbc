@@ -1,14 +1,5 @@
 module extdeps.formats.dnsmasq
 
-import std.types { Int, String, List }
-import extdeps.uri { Uri, Https }
-import extdeps.external_authority { ExternalAuthority }
-import std.layout {
-  Doc,
-  LayoutProtocol,
-  doc_concat, doc_line_of,
-  render
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

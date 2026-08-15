@@ -1,24 +1,5 @@
 module gunbc.namespace_clause_e_projection_law
 
-import std.types { Int, List }
-import std.occurrence_binding_candidates {
-  ReferenceDerivedClauseEProduction,
-  ReferenceDerivedClauseEProductionReady,
-  ReferenceDerivedClauseEProductionRefused,
-  ReferenceDerivedClauseEProductionRefusal,
-  ReferenceDerivedDependencyProjection,
-  ReferenceDerivedDependencyProjectionReady,
-  ReferenceDerivedDependencyProjectionBindingRefused,
-  ReferenceDerivedDependencyProjectionFileRefused,
-  CrossFileBindingProvenanceProjection,
-  CrossFileBindingProvenance,
-  DirectFileDependency,
-  BoundReferenceProvider,
-  BoundReferencePopulation,
-  AllReferencesBound,
-  ReferencePopulationRefused,
-  direct_file_dependencies_from_provenances,
-}
 
 data namespace_clause_e_projection_law_note: String = "Clause-(e) projection law carrier (N3-B1): assess_controlled_two_mention_provenance_projection proves the controlled two-mention / one-declaration / one-file-dependency projection law on hand-built ReferenceDerivedClauseEProduction carriers. Returns NamespaceClauseEProjectionVerdict over the neutral ReferenceDerivedDependencyProjection seam — never the parent ReferenceDerivedClosureAdmission ontology (N3-D translates child evidence into RepeatedMentionsCollapseDependency). Row closure over OrdinaryLoadedCompilationClosure is B2's axis and is excluded from this module."
 

@@ -1,7 +1,5 @@
 module gunbc.devboot.program
 
-import std.types { String, Bool, List }
-import extdeps.cargo { CargoTarget, Bin }
 
 // WHAT `gunbc build <program>` MEANS BY A PROGRAM. The public operation takes a name, and a name that reaches cargo unchecked fails at the far end of the pipeline: after a snapshot, after a push to another host, after a producer materializes a tree, cargo reports that it matched no target and the caller learns their typo minutes later and one host away. The roster is what turns that into an immediate, local, typed refusal.
 //

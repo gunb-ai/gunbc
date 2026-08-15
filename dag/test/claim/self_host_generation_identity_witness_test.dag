@@ -1,40 +1,5 @@
 module test.claim.self_host_generation_identity_witness
 
-import v2.compiler.self_host.generation {
-  GeneratedArtifactIdentity,
-  ArtifactMaterialized,
-  ArtifactNotMaterialized,
-  observed_artifact_digest,
-  BuildConfigurationAxis,
-  GenerationAxis,
-  GenerationIdentity,
-  MaterializedArtifactAxis,
-  ProducerCompilerAxis,
-  RosterCanonicallyOrdered,
-  RosterDuplicateMember,
-  RosterMemberIdentityEmpty,
-  RosterNotAscending,
-  SourceClosureAxis,
-  SourceClosureAxisDigest,
-  SourceClosureAxisRefused,
-  SourceClosureMember,
-  SourceClosureRoster,
-  TargetModelAxis,
-  ToolchainAxis,
-  generation_axes,
-  generation_axis_agrees,
-  generation_axis_symbol,
-  generation_identity_agrees,
-  generation_identity_mismatched_axes,
-  roster_order_verdict,
-  source_closure_axis_digest
-}
-import v2.std.algebra { fold_list, for_all, length }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.node { Hash, symbol_identity_digest }
-import v2.std.optional { Absent, Present }
-import std.content_hash { sha512_hex_digest }
 
 data gi_artifact_baseline_hex: String = "8f31919534d1585a005d999df89eea61ae2aee36ed7f943b768f251bc38c7cbdd927d3dd88c1a1b9322552ee85bf2f866acfc2e9e9d718a6b4195e86b0943316"
 

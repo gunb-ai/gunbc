@@ -1,46 +1,5 @@
 module product.pcb.plan_view
 
-import std.types { String, NonEmptyStr, List }
-import std.integer { Int }
-import std.measure { Micrometer, micrometer, micrometer_count }
-import std.decl_ref { DeclarationRef, declaration_ref_display_key }
-import std.markup { Fragment, FragmentText, Element, RawNode }
-import std.affine_space { signed_frame_component_count }
-import std.orthogonal_geometry {
-  AxisAlignedRectangle2,
-  rectangle2_min,
-  rectangle2_max,
-}
-import extdeps.w3c.svg {
-  svg_document,
-  svg_rect,
-  svg_text,
-  serialize_svg_document,
-}
-import product.pcb.world {
-  PcbWorld,
-  PcbWorldRefusal,
-  PcbBodyLayoutStanding,
-  PcbBodyLayoutAdmittedOverEveryRequiredPart,
-  PcbBodyLayoutAdmittedOverEstablishedSubsetOnly,
-  PcbBodyLayoutRefusedOverEstablishedSubset,
-  PcbBodyLayoutRefusedOverCompletePopulation,
-  obligation_cause_tag,
-}
-import product.pcb.scene {
-  PcbEngineeringScene,
-  PcbSceneElement,
-  PcbSceneLegend,
-  SceneBoardOutline,
-  SceneEstablishedBody,
-  SceneObligationMarker,
-  SceneAttachmentMarker,
-  SceneFunctionalMarker,
-  SceneLegend,
-  project_engineering_scene,
-  first_unrepresented_scene_identity,
-  obligation_cause_label,
-}
 
 // THE SVG TARGET REALIZES THE ENGINEERING SCENE. It does not fold the world: a new drawing medium
 // is a new realization of the same scene elements. The complete body-layout arm is the only

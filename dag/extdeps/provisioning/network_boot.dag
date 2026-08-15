@@ -1,22 +1,5 @@
 module extdeps.provisioning.network_boot
 
-import std.types { NonEmptyStr }
-import extdeps.toolchain.types {
-  Architecture,
-  X86_64,
-  X86,
-  Aarch64,
-  Arm,
-  Armv7,
-  Mips,
-  Mipsel,
-  Mips64,
-  Mips64el,
-  Riscv64,
-  Wasm32,
-}
-import extdeps.uri { Uri, Https }
-import extdeps.external_authority { ExternalAuthority }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

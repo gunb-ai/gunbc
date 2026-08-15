@@ -1,17 +1,5 @@
 module gunbc.live_deploy.candidate
 
-import extdeps.git
-import gunbc.output_policy { ExpectSuccess }
-import std.types { Bool, CommitSha, String, List, Int }
-import gunbc.live_deploy.deployed_tree_scope { path_is_deployed }
-import std.content_hash { Fnv1a64Structural }
-import gunbc.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
-import gunbc.running_release_identity {
-  RunningReleaseIdentity,
-  release_revision_text_valid,
-  running_release_revision_equals,
-  running_release_surface_equals,
-}
 
 data candidate_release_note: String = "THE PER-INVOCATION RELEASE, WHICH THE SLOT SPEC IS NOT. DeploymentSpec answers WHERE a deployment is placed — which instance root, which port, which unit name, which host — and every one of those facts is stable across deploys of blue or of green. CandidateRelease answers WHAT is being installed on this invocation, and every one of ITS facts changes on every deploy. Fusing them would put a mutable revision inside the static slot topology, which is why deployment_spec_srv1 takes the revision as a parameter rather than owning it: the slot identity stays a constant of the fleet model and the release travels beside it.\\n\\nTWO MEMBERS BECAUSE THE PROCESS REPORTS TWO. RunningReleaseObservation carries revision and surface_bundle_identity as separate wire members precisely because they fail independently, and a candidate that carried only one of them could not be compared against the half it omitted. So the candidate is the EXPECTATION and the observation is the READING, member for member, and readiness is the equality between them."
 

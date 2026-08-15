@@ -1,45 +1,5 @@
 module test.claim.namespace_pool_independence_witness_test
 
-import gunbc.namespace_pool_independence {
-  assess_pool_independent_projection_equality,
-  assess_file_dependencies_only_equality,
-  PoolIndependenceEstablished,
-  PoolIndependenceRefused,
-  SourceSubjectConsumerFileMismatch,
-  RefusalOutcomeMismatch,
-  BoundReferencePopulationMismatch,
-  ReferenceOccurrenceIdentityMismatch,
-  DeclarationOccurrenceIdentityMismatch,
-  BindingProvenanceMismatch,
-  FileDependencyMismatch,
-}
-import std.types { Bool, FilePath, List }
-import std.occurrence_identity { OccurrenceId, ReferenceOccurrence }
-import std.occurrence_binding_candidates {
-  ReferenceDerivedDependencyProjection,
-  ReferenceDerivedDependencyProjectionReady,
-  ReferenceDerivedDependencyProjectionBindingRefused,
-  CrossFileBindingProvenance,
-  DirectFileDependency,
-  BoundReferenceProvider,
-  AllReferencesBound,
-  ReferencePopulationRefused,
-  ReferenceBindingProjectionUnbound,
-  ReferenceBindingProjectionAmbiguous,
-  AssembledCrossFileBindingClosure,
-  AssembledCrossFileBindingClosureReady,
-  AssembledClosureDependencyProjectionReady,
-  AssembledClosureDependencyProjectionRefused,
-  AssembledClosureDependencyProjectionBindingRefused,
-  CrossFileBindingClosureRow,
-  reference_derived_dependency_projection_for_assembled_closure,
-}
-import test.fixture.cross_file_clause_e_fixture {
-  cross_file_clause_e_fixture_baseline_assembled_closure,
-  cross_file_clause_e_fixture_perturbed_assembled_closure,
-  cross_file_clause_e_fixture_unrelated_loaded_provider_row,
-  cross_file_clause_e_fixture_provider_file,
-}
 
 data namespace_pool_independence_witness_note: String = "N3-C witnesses for gunbc.namespace_pool_independence. Pool independence proper: unrelated_loaded_unrelated_spellings_preserves_full_carrier_holds assembles baseline vs perturbed (+unrelated loaded file, different spelling) via B0+B1 and compares full carriers. Class B silent-reselection discriminator: colliding_root_exported_homonym_refuses_ambiguity_holds — adding a colliding root-exported homonym must typed-refuse (ReferenceBindingProjectionAmbiguous on both consumer references), never produce Ready, never alternate-select, never add a dependency edge. Load-bearing RED: same-file reselection with unchanged file-deps. Per-clause RED controls exercise each PoolIndependenceFailure arm."
 

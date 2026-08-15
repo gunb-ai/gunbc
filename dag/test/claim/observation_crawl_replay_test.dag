@@ -1,41 +1,5 @@
 module test.claim.observation_crawl_replay_test
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { String, NonEmptyStr, Bool, List }
-import std.measure { millisecond, millisecond_to_nanosecond, byte_size, basis_point }
-import std.symbols { Emoji }
-import std.observation {
-  ObservationSubject,
-  RunSegment,
-  BatchSegment,
-  EntrySegment,
-  ModuleSegment,
-  PhaseSegment,
-  MeasuredValue,
-  MeasuredUnavailable,
-  ObservationEvent,
-  Concluded,
-  Done,
-  AttentionBasis,
-  observation_dwell_threshold,
-  PsiPressure,
-  observation_durations_wall,
-}
-import gunbc.observation_ci_render {
-  RenderedLine,
-  ci_render_line,
-  ci_event_line,
-  ci_heartbeat_line,
-  ci_escalation_line,
-  ci_escalation_blocked_line,
-  ci_refusal_restate_line,
-  ci_run_summary_line,
-  ci_group_open,
-  ci_group_close,
-  ci_collapsed_summary,
-  HeartbeatSample,
-  FloorRunSummary,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

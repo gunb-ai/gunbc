@@ -1,45 +1,5 @@
 module std.euclidean_geometry
 
-import std.types { Bool, NonEmptyStr }
-import std.integer { Int }
-import std.nat { Nat }
-import std.measure {
-  Scale, Milli,
-  Millimeter,
-  SignedSquareMillimeter,
-  signed_square_millimeter,
-  SquareMillimeter,
-  millimeter,
-  square_millimeter,
-  square_millimeter_count,
-}
-import std.checked_arithmetic {
-  CheckedInt,
-  CheckedIntReady,
-  CheckedIntOverflow,
-  CheckedNat,
-  CheckedNatReady,
-  CheckedNatOverflow,
-  IntegerOverflow,
-  checked_int_multiply,
-  checked_int_magnitude,
-  checked_add_results,
-  checked_subtract_results,
-}
-import std.affine_space {
-  Vector3,
-  Point3,
-  displacement_between3,
-  SpatialResult,
-  SpatialReady,
-  SpatialArithmeticRefused,
-  SpatialFrameRefused,
-  SpatialFrameRefusal,
-  SpatialOperationIdentity, OpDot3, OpCross3,
-  SpatialFrameRelation, SameFrameOperandsRequired, MillimetreFrameRequired,
-  OpNormSquared3, OpNorm3, signed_frame_component_count }
-import std.spatial_frame { SpatialFrameRegistry, frame_length_scale, scales_agree }
-import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity_eq }
 
 // SPATIAL-2, metric half. This is where integer millimetres stop being sufficient, so it is where
 // the numeric policy has to become structural.

@@ -1,23 +1,5 @@
 module gunbc.fleet_convergence_verdict
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
-import product.placement_supply { HostIdentity }
-import std.upsert_decision {
-  ObservationVerdict,
-  Converged,
-  Absent,
-  Drifted,
-  Conflict,
-  Inaccessible,
-  UnknownRefused,
-}
-import gunbc.host_phase_status {
-  HostPhaseCellStatus,
-  host_phase_cells_for_enrollment,
-  host_phase_cell_verdict,
-}
-import gunbc.host_assimilation_program { HostEnrollmentIntent }
-import gunbc.fleet_converge_cli { ConvergeCliReceipt, converge_cli_receipt_converged }
 
 // THE fleet-atomic-convergence-verdict fold (operator directive 2026-08-08): ONE verdict
 // over the whole fleet, joining the knob-grain converge receipts (the slice1 circuit's

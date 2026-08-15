@@ -1,45 +1,5 @@
 module v2.test.execution.emit_ingest_grammar_relation_round_trip
 
-import v2.compiler.ingest {
-  grammar_relation_row_forward_selection,
-  parse_tree_to_emitted_node
-}
-import v2.compiler.ingested_fixture_arrows { ingested_add_module_source }
-import v2.compiler.parse { parse_module }
-import v2.compiler.tokenize { tokenize }
-import v2.compiler.translate { grammar_relation_row_for_emitted }
-import v2.extdeps.languages.dag {
-  dag_language_model,
-  dag_fixture_emitted_add_fn,
-  dag_add_grammar_relation_row_node,
-  dag_target_model,
-  dag_translation_rules_node
-}
-import std.algebra { Empty }
-import v2.std.algebra { list_append }
-import v2.std.collection { List }
-import v2.std.compilers.lexing { TokenStream }
-import v2.std.compilers.target_model {
-  concrete_syntax_token_class,
-  concrete_syntax_token_list_from_node,
-}
-import v2.std.diagnostic {
-  Accepted,
-  Outcome,
-  Rejected,
-  bind_outcome,
-  outcome_accepted
-}
-import v2.std.grammar { ParseTree }
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
-import v2.std.node_query { find_named_child }
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

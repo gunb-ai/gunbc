@@ -1,25 +1,6 @@
 
 module tools.generated_artifact_gate
 
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.generated_artifact {
-  GeneratedArtifact,
-  committed_generated_artifacts,
-  artifact_path
-}
-import gunbc.generated_artifact_emit {
-  ArtifactGenerated,
-  ArtifactGenerationRefused,
-  artifact_generate
-}
-import gunbc.generated_artifact_observation {
-  observe_generated_artifact_population
-}
-import gunbc.generated_artifact_assessment {
-  assess_generated_artifact_population,
-  first_failing_diagnostic_path
-}
 
 fn exit_ok(e: ProcessExit) -> Bool {
   match e { ExitSuccess => true  _ => false }

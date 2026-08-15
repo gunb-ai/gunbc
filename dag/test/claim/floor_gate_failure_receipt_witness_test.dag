@@ -1,16 +1,5 @@
 module test.claim.floor_gate_failure_receipt_witness
 
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.test_module_hygiene { failure_receipt_companion, Optional, Present }
-import gunbc.generated_artifact_assessment {
-  GeneratedArtifactObservation, GeneratedArtifactObserved, assess_generated_artifact_population,
-  first_failing_diagnostic_path
-}
-import gunbc.generated_artifact { CiYamlArtifact, GitignoreArtifact }
-import tools.dag_compile_clean_gate { dag_compile_clean_failure_reason }
-import tools.generated_artifact_gate { generated_artifact_drift_failure_reason }
-import tools.regen_verify_transport { regen_verify_failure_detail }
-import tools.regen_verify_gate { regen_verify_failure_reason }
 
 data witness_note: String = "Floor gate failure-receipt companions must name located reasons on Bool(false), not only returned Bool(false). Controls pin the naming convention via gunbc.test_module_hygiene.failure_receipt_companion and the reason projection helpers without re-running the expensive live gates."
 

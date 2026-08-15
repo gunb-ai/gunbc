@@ -1,23 +1,5 @@
 module v2.test.manual.dependency_recompute_plan
 
-import v2.std.change {
-  AffectedDependency,
-  AffectedSet,
-  AffectedSetProduced,
-  Change,
-  ChangeSet,
-  DependencyDependent,
-  NodeChanged,
-  RecomputePlan
-}
-import v2.std.dependency {
-  DependencyView,
-  ProjectionDependsOn,
-  VerifiedBy,
-  topological_layers
-}
-import v2.std.diagnostic { Accepted, None }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
 
 data refinement_subject_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^refinement_subject_symbol } },

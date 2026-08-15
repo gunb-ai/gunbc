@@ -1,13 +1,5 @@
 module v2.test.emit.semantic_decl_emit_substrings_test
 
-import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
-import v2.extdeps.languages.rust { rust_target_model }
-import extdeps.languages.rust.emit { rust_enum_derives_copy }
-import v2.std.diagnostic { Accepted, Rejected, Outcome, None }
-import v2.std.logic { Bool }
-import v2.std.node { Conj, Disj, Edge, Named, Node, SyntheticOccurrence, Symbol, TypeNode }
-import v2.std.text { String }
-import std.algebra { Empty }
 
 fn sdr_empty_conj() -> Node {
   Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }

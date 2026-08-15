@@ -1,11 +1,5 @@
 module gunbc.bash_materialized_transport
 
-import extdeps.shell.exec { TransportScript, transport_script_seal }
-import v2.workflow.effect_plan_bash_materialize {
-  EffectPlanBashMaterialization,
-  EffectPlanBashMaterialized,
-  EffectPlanBashMaterializationRefused,
-}
 
 // THE EMITTED-BASH ROUTE to a TransportScript, and the second of the two decls named in
 // extdeps.shell.exec.transport_script_seal's admit_callers.

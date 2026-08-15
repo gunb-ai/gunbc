@@ -1,6 +1,5 @@
 module gunbc.change_realization
 
-import std.types { String, List, Bool, Int, NonEmptyStr }
 
 data change_realization_authority_note: String = "THE classification a MemberChanged\{from,to} carries into apply: given that an occurrence survived and only its value moved, HOW is that move realized? This is the table that makes MemberChanged useful rather than merely more faithful — without it, every change is an undifferentiated overwrite and the only available realization is the most dangerous one. The four rows are not four conveniences: they are four DIFFERENT atomicity guarantees, and picking the wrong row is how a safe transformation acquires an unsafe realization."
 

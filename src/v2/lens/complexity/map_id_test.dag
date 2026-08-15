@@ -1,29 +1,5 @@
 module v2.test.lens_complexity.map_id
 
-import v2.lens.complexity { ComplexityBound, complexity_lens, linear_complexity }
-import v2.lens.cost { LinearCost, SizeVariable, SymbolicCost, cost_lens }
-import v2.std.logic { Bool }
-import v2.std.diagnostic {
-  AmbiguousIntent,
-  Diagnostic,
-  Textual,
-  Unavailable,
-  WholeFile
-}
-import v2.std.node {
-  Atom,
-  Cardinality,
-  ComputationNode,
-  Edge,
-  Node,
-  Positional,
-  Symbol,
-  Transform,
-  TypeNode,
-  SyntheticOccurrence
-}
-import v2.std.witness { Holds, Violates, Witness }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 type LensComplexityClaim {

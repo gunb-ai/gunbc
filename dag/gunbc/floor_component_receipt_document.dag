@@ -1,21 +1,5 @@
 module gunbc.floor_component_receipt_document
 
-import std.types { NonEmptyStr, String, CommitSha }
-import extdeps.languages.json.emit {
-  JsonValue, JsonString, JsonNumber,
-  json_object, json_kv, json_string, json_int, json_array, json_null,
-  serialize_json
-}
-import extdeps.languages.json.parse {
-  parse_json,
-  json_object_unique_member,
-  JsonMemberFound,
-  JsonMemberAbsent,
-  JsonMemberDuplicated,
-  JsonMemberNotAnObject
-}
-import extdeps.github.workflow_run_event { WorkflowRunEvent }
-import std.observation { ObservationOutcome, Done, Refused, Failed, TimedOut, Skipped, Final }
 
 data floor_component_receipt_document_purpose_note: String = "ALERT-3. The floor writes a per-component receipt as JSON built directly from typed rows, and until now there was no carrier for the DOCUMENT itself and no way back: the receipt could be produced but not read, so its only consumer decoded it by hand in another language and every field access was an unchecked guess about a shape nothing declared. This module gives the document a type and derives BOTH directions across it — document to JSON, and JSON to document or a typed, located refusal.\n\nWHY BOTH DIRECTIONS MATTER HERE and not just the writing one: the receipt crosses a real trust boundary. It is uploaded by one workflow run, downloaded by another, and rendered by a program holding issues: write. A decoder that cannot refuse is a decoder that will render whatever it is handed, and the failure mode is not a crash — it is a confident, wrong issue body describing a state that no run was ever in. Refusal is the point of the return direction, which is why every arm of the decoding names what did not decode rather than substituting a default."
 

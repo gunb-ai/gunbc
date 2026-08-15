@@ -1,31 +1,5 @@
 module extdeps.ollama.capability
 
-import std.types { String, Bool, List, Int, NonEmptyStr }
-import std.nat { Nat }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.ollama.api { OllamaModelRef, ollama_model_ref_wire }
-import extdeps.ollama.binary_release {
-  OllamaBinaryRelease,
-  OllamaLinuxArchitecture,
-  OllamaLinuxArm64,
-  OllamaLinuxAssetVariant,
-  OllamaLinuxGenericCuda,
-  ollama_binary_release_eq,
-  ollama_required_release,
-}
-import extdeps.ollama.gpu_support {
-  OllamaGpuSupportRow,
-  ollama_gb10_gpu_support_row,
-  OllamaNvidiaDriverVersion,
-  ollama_gb10_minimum_nvidia_driver,
-  OllamaNvidiaDriverRequirementVerdict,
-  OllamaNvidiaDriverRequirementSatisfied,
-  OllamaNvidiaDriverRequirementUnmet,
-  OllamaNvidiaDriverRequirementUnobserved,
-  ollama_nvidia_driver_requirement_verdict,
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

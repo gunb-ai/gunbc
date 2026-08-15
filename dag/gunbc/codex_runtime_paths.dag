@@ -1,6 +1,5 @@
 module gunbc.codex_runtime_paths
 
-import std.types { String, NonEmptyStr, FilePath }
 
 data codex_runtime_paths_note: String = "Path composition for the Codex provider-runtime release tree — link name, current symlink path, and bundled-native executable path under a release parent. Lives below gunbc.host_layout and gunbc.package_delivery so both can import without a cycle: package_delivery owns materialization/version facts; host_layout owns host records; this module owns only shared path algebra."
 

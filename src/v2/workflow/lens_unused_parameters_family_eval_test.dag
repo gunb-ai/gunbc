@@ -1,16 +1,5 @@
 module v2.test.workflow.lens_unused_parameters_family_eval
 
-import v2.std.logic { Bool }
-import v2.test.lens_unused_parameters.binds_to_edge {
-  unused_parameters_binds_to_edge_claim_passes
-}
-import v2.test.lens_unused_parameters.non_use_edges {
-  unused_parameters_non_use_edges_claim_passes
-}
-import v2.test.lens_unused_parameters.rollup_unused_declaration {
-  unused_parameters_rollup_claim_passes
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

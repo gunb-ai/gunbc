@@ -1,8 +1,5 @@
 module gunbc.devboot.vertical_receipt
 
-import std.types { String, CommitSha, NonEmptyStr }
-import std.content_hash { Sha256Digest, sha256_hex_digest }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // THE EXECUTION EVIDENCE FOR THE DEVBOOT VERTICAL, IN ONE TYPED HOME RATHER THAN IN A PULL REQUEST BODY. What ran, at which head, which subject it produced and which bytes came back are facts about an execution; a review comment is not a carrier, and a rendered receipt file committed as text would be prose the substrate cannot read. This module follows gunbc.native_witness_transition_receipt, which exists for the same reason and whose exclusions are copied here deliberately.
 //

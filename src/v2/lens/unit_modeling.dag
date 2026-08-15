@@ -1,9 +1,5 @@
 module v2.lens.unit_modeling
 
-import v2.std.witness { Holds }
-import v2.std.node_query { edge_field_type_name }
-import v2.std.diagnostic { node_locus, outcome_accepted, outcome_rejected }
-import v2.std.optional { optional_absent, optional_present, optional_prefer_first_present }
 
 
 type UnitFieldRow {

@@ -1,52 +1,6 @@
 module std.occurrence_binding_candidates
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.types { String, Int, Bool, List, NonEmptyStr, CommitSha, FilePath }
-import std.algebra { FreeMonoid, Empty, Cons }
-import std.occurrence_binding {
-  OccurrenceBound,
-  OccurrenceUnbound,
-  OccurrenceAmbiguous,
-}
-import std.occurrence_identity {
-  OccurrenceId,
-  OccurrenceIndexEntry,
-  OccurrenceIndex,
-  OccurrenceProjection,
-  OccurrenceTransport,
-  OccurrenceTransportRefusal,
-  OccurrenceTransportValidated,
-  OccurrenceTransportRefused,
-  UnknownOccurrenceIdentity,
-  DeclarationOccurrence,
-  ReferenceOccurrence,
-  OccurrenceCategory,
-  TypeOccurrence,
-  occurrence_category_clause_e_dependency_inducing_verdict,
-  OccurrenceCategoryClauseEDependencyInducing,
-  OccurrenceCategoryClauseEDependencyNotInducing,
-  OccurrenceContainmentPath,
-  occurrence_containment_path_is_prefix_of,
-  occurrence_containment_paths_equal,
-  ValidatedOccurrenceTransport,
-  occurrence_transport_validate,
-  AuthoredTokenOrdinal,
-  authored_token_ordinal_before,
-  authored_token_ordinal_eq,
-  OccurrenceIdAllocator,
-  OccurrenceIdAllocResult,
-  alloc_occurrence_id,
-  occurrence_id_allocator_initial,
-}
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.roster_frontier { declaration_ref_eq }
-import std.occurrence_binding_resolve {
-  resolve_reference_occurrence_binding,
-  OccurrenceReferenceBindingOutcome,
-  OccurrenceReferenceBindingDecided,
-  OccurrenceReferenceBindingTransportRefused,
-}
 
 data occurrence_binding_candidates_authority_note: String = "P2a: THE structural candidate producer that hands supplied candidates to std.occurrence_binding_resolve.resolve_reference_occurrence_binding (P1). P1 owns exact-identity transport validation, category admissibility, and the single occurrence_binding_from_candidates cardinality fold; it decides nothing about which declarations are structurally exposed to a reference. This module owns exactly that: exposure (namespace-resolution-design.md 13 / namespace-unique-on-chain-operational-plan.md 2), deterministic source-order gating, an indexed candidate catalogue (declarations bucketed by authored spelling, so per-reference lookup is not an O(declarations) rescan), and the BoundReferenceProvider / DirectModuleDependency projections of an accepted P1 decision. It never folds cardinality itself and never treats an authored import list as visibility evidence. ROADMAP lane: namespace-reference-derived-closure."
 

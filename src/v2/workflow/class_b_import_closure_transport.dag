@@ -1,28 +1,5 @@
 module v2.workflow.class_b_import_closure_transport
 
-import extdeps.git
-import extdeps.git.inspect
-import extdeps.shell
-import gunbc.ci_layer_roots { witness_layer_roots }
-import gunbc.class_b_import_closure_overlay {
-  class_b_entry_rel,
-  class_b_materialize_stripped_entry_overlay,
-  class_b_declared_import_pool_roots,
-  OverlayMaterialized,
-  OverlayMaterializationRefused
-}
-import gunbc.declared_import_closure_binding {
-  DeclaredImportClosureBindingObservation,
-  DeclaredImportClosureBindingObservationOutcome,
-  BindingNotRunnable,
-  ObservationProduced,
-  ObservationProductionRefused,
-  binding_source_is_listed_import,
-  row3_stripped_refuses_binding,
-  row4_stripped_pool_coincidence_or_refuse
-}
-import std.logic { Bool }
-import std.types { String, List, NonEmptyStr }
 
 data class_b_transport_note: String = "Executing consumer for the Class B import-closure witness (#6985). All four rows are ordinary funcs on this module; run_class_b_import_closure_gate is the per-PR merge-blocking consumer on source_root_ingest_gate. Rows 1-2 use class_b_declared_import_pool_roots (minimal declared-import footprint). Rows 3-4 use witness_layer_roots for stripped-entry pool-coincidence pressure. Rows 3-4 accept ONLY ObservationProduced carrying a successfully ingested BindingObserved outcome; every ObservationProductionRefused (overlay read/strip/mkdir/mktemp/write/cleanup/compile) reds the gate — compile graph:None is P1(b), not a seam refusal. Discovery long-lane enrollment (FalsifierSubstrateLongLane) replays rows 1-2 on the falsifier cold-control cadence — same cold-control pattern as compile-clean/regen, not duplicate authority. Affected-set skip: class_b_import_closure_gate_not_affected_skip (cli_run::class_b_import_closure_gate_skip_label_for_ci) skips the ~2.3min gate on pull_request when the merge-base diff is provably disjoint from the gate input closure; empty diff / departed non-docs / observation or closure failure runs the full gate (fail-closed); push-to-main always runs the full gate as cold control."
 

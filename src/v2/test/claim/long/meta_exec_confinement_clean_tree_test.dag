@@ -1,19 +1,5 @@
 module v2.test.long.meta_exec_confinement_clean_tree
 
-import v2.lens.meta_exec_confinement {
-  meta_exec_confinement_exception_paths,
-  meta_exec_consumer_scan_roots,
-  meta_exec_leak_count_live,
-  meta_exec_live_leak_candidate_paths,
-  meta_exec_roster_sound,
-  meta_exec_roster_stale_count_live
-}
-import v2.std.layer { layer_import_facts_live }
-import v2.std.algebra { is_empty, list_append }
-import v2.std.collection { List }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

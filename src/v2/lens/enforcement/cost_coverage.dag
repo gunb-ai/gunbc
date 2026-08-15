@@ -1,6 +1,5 @@
 module v2.lens.enforcement.cost_coverage
 
-import v2.compiler.normalized_tree { NormalizedTree }
 
 
 type CostCoverageIngestVerdict

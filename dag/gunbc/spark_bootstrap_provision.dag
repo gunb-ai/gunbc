@@ -1,30 +1,9 @@
 module gunbc.spark_bootstrap_provision
 
-import extdeps.cloud.gcp.iam {
-  GcpIamBindingCell, IamCondition, GcpIamOwnedCellUniverse,
-  gcp_condition_eq, gcp_cell_eq, gcp_cell_in, reconcile_gcp_policy
-}
 
-import extdeps.cloud.gcp.secret_manager {
-  SecretManagerEffect,
-  SmAccessVersionEffect, SmAddVersionEffect, SmGetSecretEffect,
-  SmGetSecretIamPolicyEffect, SmSetSecretIamPolicyEffect,
-  SmDisableVersionEffect, SmDestroyVersionEffect,
-  secret_manager_effect_operation, secret_manager_effect_resource,
-  secret_manager_effect_required_permissions
-}
 
-import product.placement_supply { HostIdentity }
-import v2.std.operation_argv { OperationRef }
 
-import std.authorization_profile { EffectRequest, EffectAuthorizationAction, effect_access_request }
 
-import std.access {
-  AccessRequest, AccessContext, AccessEvidence,
-  AccessDecision, Permit, Deny, decision_meet,
-  AccessRefusal, AccessRefusalLocation,
-  AccessActionNotGranted, AccessObjectNotGranted, AccessEvidenceAbsent, AccessSubjectNotRecognized
-}
 
 // The Spark bootstrap credential population, as convergence subjects rather than as callable
 // mutation tools. An earlier revision of this module carried two patterns that dispatched

@@ -1,44 +1,5 @@
 module test.claim.compute_board_power_distribution_witness
 
-import std.types { Bool, String, List }
-import std.integer { Int }
-import std.measure { millivolt, millivolt_count }
-import product.compute_board.power_distribution {
-  BankAssignment,
-  BankDrivesStandard,
-  BankStandardOutsideRailWindow,
-  BankSuppliedByNoDeclaredRail,
-  BankUnused,
-  BoardPowerIntent,
-  BoardSupplyRail,
-  LikeVoltageRailsOnSeparateSupplies,
-  PowerAdmission,
-  PowerIntentAdmitted,
-  PowerIntentRefused,
-  PowerRefusal,
-  RailBuiltForAnUnconnectedPin,
-  RailOutsideDeviceWindow,
-  RequiredRailNotBuilt,
-  UnusedBankCoreRailNotBuilt,
-  UnusedBankNotTiedToCore,
-  admit_power_intent,
-  power_causes,
-  power_refusal_count,
-  reference_power_intent,
-}
-import extdeps.programmable_logic.ice40.supply {
-  BankIoSupply,
-  ConfigurationBankSupply,
-  CoreSupply,
-  FastProgrammingSupply,
-  MasterSpiConfiguration,
-  NvcmProgrammingSupply,
-  PllSupply,
-  SlaveSpiConfiguration,
-  ice40_lvcmos18_supply,
-  ice40_lvcmos33_supply,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

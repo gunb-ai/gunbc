@@ -1,26 +1,5 @@
 module v2.test.claim.pr_native_batch_test
 
-import v2.workflow.ci_floor_plan {
-  gunbc_pr_native_entries,
-  gunbc_pr_native_batch_enrolled,
-  gunbc_ci_floor_ordinary_batches,
-  gunbc_ci_floor_realization_plan_for
-}
-import gunbc.ci_layer_roots { scoped_witness_batches }
-import gunbc.ci_spec { gunbc_ci_spec }
-import v2.std.algebra { length }
-import v2.std.logic { Bool }
-import std.realization_schedule { NativeBundleWitnessKind }
-import std.selected_witness_bundle {
-  NativeWitnessProductionTransitionReceipt,
-  NativeProductionTransitionVerdict,
-  NativeProductionTransitionAccepted,
-  NativeProductionTransitionRefused,
-  native_production_transition_population_holds
-}
-import std.verification { nanosecond_duration }
-import std.measure { byte_size }
-import std.types { Int }
 
 test fn witness_selected_native_bundle_enrolled() -> Bool {
   gunbc_pr_native_batch_enrolled()

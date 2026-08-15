@@ -1,8 +1,5 @@
 module v2.workflow.realize_advisory_soundness
 
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 data realize_advisory_soundness_note: String = "P4 consumption gate (2026-07-22): the realize_pack advisory logger emits per-subject pairs (derived space bound vs governor-observed peak) as receipt lines every corpus run — computed since #6855 but consumed by nothing. This module is the soundness LAW those pairs are judged by: a derived bound is sound iff observed peak <= derived bytes; an observed exceedance is BoundUnsound (the P4 cutover blocker signal), and a missing derived bound is BoundUnknown — a typed state, never treated as sound (no fabricated plausible output, DESIGN section 5). Receipt rows are authored from falsifier run observations, the parity-window pattern; the P4 governor demotion is gated on a window of BoundSound rows the same way routing flips gate on parity."
 

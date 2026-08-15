@@ -1,41 +1,5 @@
 module test.claim.diff_window_cross_seam_witness_test
 
-import std.logic { Bool }
-import std.types { String, GitRef }
-import extdeps.git.object_store { git_object_id_wire_hex, git_sha1_object_id, GitObjectId, GitSha1ObjectId, Sha1Digest, Sha1DigestHex }
-import gunbc.git_diff_change_window {
-  GitExactDiffWindow,
-  GitDiffWindowObservation,
-  GitDiffWindowObserved,
-  GitDiffWindowMalformed,
-  GitObservedMergeBase,
-  git_exact_diff_window_for_verification,
-  git_diff_window_json,
-  git_diff_window_from_json,
-  git_diff_window_env_assignment,
-  git_diff_window_identity_hex,
-  gunbc_diff_window_path_env,
-}
-import gunbc.diff_baseline {
-  CiDiffEvent,
-  DiffBaselineResolution,
-  BaselineSelected,
-  BaselineRefused,
-  BaselineSourceConflict,
-  ExactReplayBoundary,
-  resolve_diff_baseline,
-  diff_baseline_diff_base,
-  diff_baseline_diff_head,
-  diff_baseline_is_exact_replay
-}
-import gunbc.repo_identity { gunbc_merge_target_ref, gunbc_default_remote_name }
-import gunbc.ci_spec { DiffTwoDot, gunbc_ci_spec }
-import v2.workflow.floor_diff_observe {
-  floor_diff_mode_for_baseline,
-  floor_git_diff_range_of_mode,
-}
-import extdeps.git { TwoDot }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

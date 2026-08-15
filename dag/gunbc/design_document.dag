@@ -1,19 +1,6 @@
 
 module gunbc.design_document
 
-import std.markdown {
-  MarkdownDocument, MarkdownBlock,
-  HeadingBlock, TextInline, H1, CodeBlock,
-}
-import gunbc.plans.md_helpers { h2, h3, p, li, li_blocks, ul, hr }
-import extdeps.languages.markdown { serialize_markdown_source }
-import gunbc.documentary_refs {
-  body_lowering_symbol_index_ref,
-  body_lowering_lexical_lookup_ref,
-  body_lowering_production_consumer_ref,
-  documentary_ref_symbol_text,
-  five_minute_ci_gate_authority_ref,
-}
 
 fn h1(text: String) -> MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
 

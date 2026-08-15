@@ -1,10 +1,5 @@
 module gunbc.gitattributes_emit
 
-import gunbc.generated_projection_paths {
-  GeneratedProjectionPathsAccepted,
-  GeneratedProjectionPathsRefused,
-  deterministic_generated_projection_paths
-}
 
 type GitattributesGenerationOutcome
   = GitattributesGenerated { content: String }

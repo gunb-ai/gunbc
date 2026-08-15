@@ -1,21 +1,5 @@
 module test.claim.http_serve_route_witness
 
-import extdeps.http.server {
-  text_html_utf8,
-  ServedStaticRoute,
-  ServedRoute, StaticRoute, DynamicRoute,
-  ServedRouteTable,
-  RouteSelection, SelectedStatic, SelectedDynamic, MethodNotAllowed, NoRouteMatched,
-  serve_select_route,
-}
-import extdeps.uri_path {
-  ParsedPathTemplate,
-  MalformedPathTemplate,
-  parse_path_template,
-}
-import std.http_path { PathTemplate, PathParamBinding }
-import gunbc.node_http_server_emit { emit_path_template_regex_source }
-import std.types { String, Bool, List, Int, HttpMethod, GET, POST }
 
 type ProbeHandler
   = ProbePage

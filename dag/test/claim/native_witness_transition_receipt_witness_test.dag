@@ -1,20 +1,5 @@
 module test.claim.native_witness_transition_receipt_witness
 
-import std.decl_ref { decl_ref }
-import std.types { Bool, Int, String }
-import gunbc.roadmap_authority { declared_roadmap_nodes }
-import gunbc.roadmap_model { RoadmapNodeIdentity }
-import gunbc.native_witness_transition_receipt {
-  NativeSelectedWitnessTransitionReceipt,
-  TransitionEvidenceStanding,
-  EvidenceExecutedAtLandedCommit,
-  EvidenceExecutedBeforeLanding,
-  transition_evidence_standing,
-  native_at_small_scale_transition_receipt,
-}
-import v2.test.execution.native_selected_witness_bundle {
-  native_selected_witness_bundle_cutover_evidence_holds,
-}
 
 data native_witness_transition_witness_note: String = "THE TWO STANDING ARMS ARE ASSERTED TOGETHER ON PURPOSE. Either arm alone would pass against a fold that ignored its inputs and returned a constant; asserting both means no constant implementation survives, which is what makes the pair discriminating rather than decorative. The subject join is the second independent question -- a receipt naming a node identity nothing declares is evidence about nobody -- and its RED plants a fabricated identity so the join is proven capable of returning zero. That control is not hypothetical: drafting this receipt first transcribed the node identity as rn_2I5K7M9O1Q3S5T8V0W2X4Y7Z9A1C, one character off the declared rn_2I5K7M9O1Q3R6T8V0W2X4Y7Z9A1C, and the join is what catches that class."
 

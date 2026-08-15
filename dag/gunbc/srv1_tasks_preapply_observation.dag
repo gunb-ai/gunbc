@@ -1,23 +1,5 @@
 module gunbc.srv1_tasks_preapply_observation
 
-import extdeps.filesystem.filesystem_io { Filesystem }
-import std.types { String, NonEmptyStr, Bool, List }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.host_converge { runner_instance_glob }
-import gunbc.host_converge_slice1 {
-  host_converge_slice1_enumerate_units,
-  host_converge_slice1_read_tasks_max_raw,
-  host_converge_slice1_read_tasks_current_raw,
-}
-import gunbc.systemctl_show_read {
-  systemctl_show_property_read_local,
-  SystemdPropertyCapture,
-  SystemdPropertyCaptured,
-  SystemdPropertyCaptureRefused,
-}
-import extdeps.systemd { ControlGroup }
-import extdeps.linux.procfs { ProcSelfCgroup, procfs_path_literal }
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 
 // STRICTLY READ-ONLY pre-apply observation for the PR 8045 supervised TasksMax apply
 // (operator ruling 2026-08-09: before the apply, re-observe and reduce to ONE exact

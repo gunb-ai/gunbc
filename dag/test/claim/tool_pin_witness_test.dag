@@ -1,32 +1,5 @@
 module test.claim.tool_pin_witness
 
-import std.types { NonEmptyStr, String, Bool, Int }
-import std.content_hash { ContentHash, content_hash_of_value }
-import extdeps.version { VersionIdentity, VersionConstraint }
-import extdeps.tools { CliTool, SourceApt }
-import extdeps.pin {
-  Pin,
-  PinSelection,
-  ExactPin,
-  TrackedChannel,
-  CurrencyGap,
-  AuthoredPinHasNoReviewDate,
-  TrackedPinHasNoResolutionDate,
-  PinAdmission,
-  PinIntegrityAdmitted,
-  PinRefused,
-  PinRefusalCause,
-  ConstraintIsNotIdentity,
-  PinAbsent,
-  TrackedResolutionUnrecorded,
-  ObservedIdentityMismatch,
-  pin_currency_gap,
-  admit_pin_integrity,
-  pin_value_eq,
-}
-import extdeps.tools.pin { admit_legacy_cli_tool, cli_tool_pin_key_of }
-import extdeps.github.actions { ActionRef, checkout_action }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

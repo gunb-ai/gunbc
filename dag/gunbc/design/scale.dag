@@ -1,13 +1,5 @@
 module gunbc.design.scale
 
-import std.types { Int, String, Bool }
-import gunbc.design.material { CssDecl, decl, css_block }
-import extdeps.languages.css.values {
-  CssLength, css_px, css_length_wire,
-  CssFontStack, CssFontFamily, NamedFamily, GenericFamily,
-  CssGenericFamily, GenericSansSerif, GenericMonospace, GenericSystemUi,
-  css_font_stack_wire,
-}
 
 data design_scale_note: String = "Layer 2 token axes (design-register-library.md, the sibling axes to material/theme): spacing, type, font stack, plus the dimension tokens (radius, border width, measure, fixed element extents) the roadmap surface consumes. THE single authority for every length/font literal the register emits — the whole point is that a page rule references a token (var(--space-8)), never a raw pixel, so the untokened-length census (gunbc.design.theme_transition.untokened_length_decls) has exactly one place to exclude by scope (this :root block, the analog of the theme var block the unthemed-color census excludes). D3 grounding: a token's value is a TYPED CssLength (magnitude x unit, extdeps.languages.css.values, cited CSS Values and Units) or a typed CssFontStack (a list of families) — the fused \"4px\"/'Noto Sans, ...' strings are decompressed (DESIGN section 2), and the value-encoded token NAME is DERIVED from the magnitude by the length_token constructor (space-4 from px 4), so name and value can no longer diverge — the fork is UNWRITABLE by construction, not caught by a witness (DESIGN section 5). A semantic re-tuning of the step values (a rhythm, not a per-value alias) is a named follow-on; today the axis's job is DRY (each value lives once) + census-ability + no magnitude-vs-name fork, all served now. Spacing/type/font are the three axes the brief names; dimension_scale is their companion so 'no raw px' is total, not partial."
 

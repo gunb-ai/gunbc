@@ -1,18 +1,5 @@
 module v2.test.fixture.floor_skip.node_precise_discriminator
 
-import v2.std.node { Atom, Conj, Edge, Node, Positional, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  ManualAnchorAbsent,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
-import v2.test.fixture.floor_skip.floor_disc_shared_helper { floor_disc_shared_helper }
-import v2.workflow.affected_set_floor_runner { floor_claim_touches_rerun_frontier }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

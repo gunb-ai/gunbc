@@ -1,34 +1,5 @@
 module test.claim.bach_double_slit_observation_witness_test
 
-import std.types { Bool, List }
-import gunbc.bach_double_slit_observation {
-  bach_cited_buildup_progression_holds,
-  bach_cited_distribution_observations_match_canonical_sequence,
-  bach_double_slit_interference_evidence_holds,
-  bach_buildup_progression_rejects_non_increasing_counts,
-  bach_buildup_progression_rejects_status_regression,
-  bach_buildup_progression_rejects_missing_discernible_before_clearly_visible,
-  bach_buildup_progression_rejects_final_not_clearly_visible,
-  bach_buildup_progression_rejects_wrong_panel_order,
-  bach_double_slit_interference_evidence_rejects_for_distribution,
-}
-import extdeps.physics.bach_et_al_2013_double_slit {
-  bach_et_al_2013_double_slit,
-  BachBuildupObservationRow,
-  bach_buildup_2_electrons,
-  bach_buildup_7_electrons,
-  bach_buildup_209_electrons,
-  bach_buildup_1004_electrons,
-  bach_buildup_6235_electrons,
-  Figure3PanelC,
-  Figure3PanelE,
-  PatternClearlyVisible,
-  PatternNotYetDiscernible,
-  SlitOneSingleSlitDiffractionObserved,
-  SlitTwoSingleSlitDiffractionObserved,
-  BothSlitsDoubleSlitDiffractionObserved,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

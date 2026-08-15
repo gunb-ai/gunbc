@@ -1,49 +1,5 @@
 module test.claim.floor_preparation_witness
 
-import std.types { Bool, List, String }
-import std.content_hash { Fnv1a64Structural, Sha1Digest, content_hash_atom }
-import std.execution_mode { Hermetic }
-import std.measure { byte_size }
-import extdeps.git.object_store { GitObjectId, GitSha1ObjectId }
-import std.realization_schedule {
-  ScheduleWitnessEntry,
-  CorpusWitnessKind,
-  ExecutionWitnessKind,
-}
-import std.materialization_provider {
-  ArtifactPart,
-  MaterializedArtifact,
-  ResolvedGraphArtifact,
-  ProviderProbe,
-  ProbeAbsent,
-  ProbeFound,
-  ProviderMiss,
-  ProviderRefusedWrongArtifact,
-  artifact_content_digest,
-  request_key,
-}
-import v2.workflow.floor_discovery {
-  FloorDiscoverySubject,
-  FloorDiscoveryRequest,
-  floor_discovery_commit_id,
-  floor_discovery_tree_id,
-}
-import v2.workflow.floor_preparation {
-  ResolveSelectedClosuresV1,
-  PreparedFloorEntryRequest,
-  PreparedFloorSubjectRequest,
-  PreparedFloorEntryProbe,
-  PreparedFloorSubjectReady,
-  PreparedFloorSubjectRefused,
-  PreparedFloorDuplicateSelectedIdentities,
-  PreparedFloorDuplicateProbeIdentities,
-  PreparedFloorMissingProbeIdentities,
-  PreparedFloorUnexpectedProbeIdentities,
-  PreparedFloorProviderRefused,
-  prepared_floor_entry_artifact_request,
-  prepared_claim_subject_identity,
-  prepared_floor_subject_serve,
-}
 
 data tested_commit: GitObjectId = GitSha1ObjectId {
   digest: Sha1Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }

@@ -1,28 +1,6 @@
 module extdeps.sec.issuer.microsoft_facts
 
-import extdeps.sec.facts {
-  FiledFactCitation,
-  FiledMonetaryFact,
-  FiledSignedMonetaryFact,
-  signed_usd_non_negative,
-  usd_whole_dollars,
-}
-import extdeps.sec.issuer.microsoft { microsoft_issuer_catalog }
-import extdeps.sec.types { AnnualReport, IssuerCatalogRow }
-import extdeps.sec.us_gaap {
-  us_gaap_cost_of_goods_and_services_sold,
-  us_gaap_general_and_administrative_expense,
-  us_gaap_gross_profit,
-  us_gaap_net_income_loss,
-  us_gaap_operating_expenses,
-  us_gaap_operating_income_loss,
-  us_gaap_research_and_development_expense,
-  us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
-  us_gaap_selling_and_marketing_expense,
-}
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

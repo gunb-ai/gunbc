@@ -1,18 +1,5 @@
 module std.state_durability
 
-import extdeps.crypto.hash { Digest }
-import std.disposition { Disposition, Terminal }
-import std.measure { PositiveMillisecond, positive_millisecond_count }
-import std.types {
-  Bool,
-  EpochMs,
-  Int,
-  List,
-  NonEmptyStr,
-  String,
-  list_length,
-}
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 data state_durability_boundary_contract: Disposition = Terminal {
   reason: "Desired world-state lifetime is explicit before realization: RuntimeLifetimeOnly or DurableAcross named lifecycle boundaries. The closed boundary coproduct prevents a generic Persistent label from standing in for service restart, control-plane restart, host restart, power loss, software replacement, or factory reset."

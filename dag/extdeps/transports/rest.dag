@@ -1,16 +1,6 @@
 module extdeps.transports.rest
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, FermiDepth, NonEmptyStr, HttpStatus, Bool, String, Int, List }
-import std.content_hash { Fnv1a64Structural }
-import std.serialization { WireFormat }
-import std.fidelity { TransportFidelity }
-import std.effect_grant { Envelope, HandlerBinding, Read, Write, CoveredBy, NoCoveringGrant, covering_grant, NamespacePosition, ServiceOpTree }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, UriScheme, Http, Https, Tftp, File, Ftp, Javascript, Data, Vbscript, Mailto }
-import v2.std.operation_argv { OperationRef }
-import v2.std.optional { Absent, Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

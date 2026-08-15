@@ -1,24 +1,5 @@
 module v2.test.claim.self_host.wet_receipt_enrollment_witness_test
 
-import v2.compiler.self_host.frontier {
-  compiler_frontier_row_03_body_producer,
-  compiler_frontier_row_06_translate,
-  compiler_frontier_row_07_target_carriers,
-  compiler_frontier_row_parse_engine_hooks,
-  compiler_frontier_row_discovery_enumeration,
-  compiler_frontier_row_use_site_verdict,
-}
-import v2.compiler.self_host.wet_receipt_enrollment {
-  falsifier_self_host_wet_entries,
-  falsifier_self_host_wet_template_entries,
-  falsifier_self_host_wet_frontier_enrolled_entries,
-  frontier_row_wet_entries_if_enrolled,
-  find_wet_receipt_binding
-}
-import v2.std.algebra { length }
-import v2.std.collection { Absent, Present }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 data wet_binding_revocation_witness_note: String = "2026-07-25: module wet bindings revoked (empty list) after cadence run 30126573464 showed the six SelfEmitted wet receipts RED. Witnesses below pin the revoked state — rows enroll nothing without a binding; nightly = template-only. Review 44453: enrollment keys on binding presence, not EmitterProduced disposition. Re-arm each binding witness when that module's wet receipt greens."
 

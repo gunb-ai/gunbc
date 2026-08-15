@@ -1,11 +1,5 @@
 module extdeps.connector.samtec_ftsh_105_01_l_dv
 
-import std.types { String }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import extdeps.vendor.samtec { samtec }
-import extdeps.land_pattern.types { CatalogPartIdentity, MountingPatternObligation }
 
 // THE LOCATOR IS THE SERIES FOOTPRINT PRINT FOR A DIFFERENT VARIANT, AND THAT IS DELIBERATE. The
 // -DH print is the one observed to exist at this path, so the anchor names the publisher and the

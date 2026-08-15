@@ -1,37 +1,5 @@
 module test.claim.decl_facts_initializer_projection_witness_test
 
-import test.fixture.decl_facts_reflection.ambiguous_shared_a
-import test.fixture.decl_facts_reflection.ambiguous_specimen
-import test.fixture.decl_facts_reflection.ambiguous_b_specimen
-import test.claim.decl_facts_reflection_witness_support {
-  decl_facts_reflection_constructor_parent,
-  decl_facts_reflection_constructor_variant,
-  decl_facts_reflection_field_projection,
-  decl_facts_reflection_fact_node,
-  decl_facts_reflection_lookup,
-  duplicate_qualified_identity_lookup_names_primary_and_shadow,
-  duplicate_qn_pool_declaration_lookup_per_candidate_is_unique,
-  decl_facts_reflection_value_identity_projection,
-  decl_facts_reflection_projection_variant_label_optional,
-  decl_facts_reflection_resolved_nullary_parent,
-  decl_facts_reflection_resolved_nullary_variant_name,
-  decl_facts_reflection_nullary_value_projection,
-  decl_facts_reflection_plain_record_parent,
-}
-import v2.std.data_initializer_identity {
-  data_initializer_is_constructor_resolution_refused_projection,
-  data_initializer_is_typechecked_subject_absent_projection,
-  record_field_projection_optional,
-  resolved_variant_name_optional,
-  resolved_variant_parent_qualified_name_optional,
-  value_projection_is_missing,
-  value_projection_is_not_variant_value,
-  value_projection_is_resolved_variant,
-  decl_fact_lookup_is_missing,
-}
-import test.claim.decl_facts_reflection_witness_support {
-  decl_facts_reflection_fact_node,
-}
 
 data disposition_scaffold_qn: String = "test.fixture.decl_facts_reflection.specimens.disposition_scaffold"
 data local_a_scaffold_qn: String = "test.fixture.decl_facts_reflection.specimens.local_a_scaffold"

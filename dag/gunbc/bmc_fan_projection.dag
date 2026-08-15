@@ -1,39 +1,5 @@
 module gunbc.bmc_fan_projection
 
-import extdeps.bmc.capability { BmcFirmwareVersion }
-import extdeps.bmc.types {
-  BmcFanAggregatedControllerTopology,
-  BmcFanCurve,
-  BmcFanCurveStep,
-  BmcFanPolicyObservation,
-  bmc_fan_controller_shape_aggregated_topology,
-}
-import extdeps.boards.types { BaseboardModel }
-import extdeps.crypto.hash { Digest, sha256_digest }
-import std.measure {
-  celsius,
-  percent,
-  positive_celsius_delta,
-  positive_measure_count,
-}
-import extdeps.filesystem.linux {
-  LinuxFilePublicationProtocol,
-  LinuxFilePublicationProtocolUnsynchronized,
-  LinuxSynchronizedRenameReplacePublication,
-}
-import product.placement_supply { HostIdentity }
-import std.state_durability {
-  NoDurabilityCommitBarrier,
-  StateDurabilityAdmission,
-  StateDurabilityBoundary,
-  StateDurabilityCapability,
-  StateDurabilityCapabilityVersion,
-  StateDurabilityEvidence,
-  StatePerturbationGeneration,
-  StateRealizationIdentity,
-  SynchronizedCommit,
-}
-import std.types { Bool, List, NonEmptyStr }
 
 type BmcFanProjectionApplyRefusalCause
   = BmcFanProjectionBoardMismatch

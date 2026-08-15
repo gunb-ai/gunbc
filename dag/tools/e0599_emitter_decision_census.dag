@@ -1,18 +1,5 @@
 module tools.e0599_emitter_decision_census
 
-import std.types { Bool, Int, String, list_length }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.error_primitives { Result, Ok, Err }
-import v2.std.optional { Optional, Present, Absent }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.languages.rust.derive_contracts { im_15_1_0_vector_clone_impl_authority }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import tools.e0599_probe_census {
-  e0599_message_pattern_rows_blob,
-  e0599_canonical_seven_module_log_labels_blob,
-  e0599_mechanistic_root_family_labels_blob,
-  e0599_canonical_seven_module_count,
-}
 
 data e0599_measured_producer: String = "V1SeedEmitter"
 

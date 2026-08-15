@@ -1,20 +1,6 @@
 module gunbc.live_deploy.intent
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.types { String, NonEmptyStr, Int }
-import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.measure { Second }
-import gunbc.live_deploy.service_ready {
-  ServiceNotReady,
-  live_deploy_service_ready_poll_bound,
-  live_deploy_service_ready_unit_authority,
-  live_deploy_service_ready_endpoint_authority,
-  UnitDiagnosisUnavailable,
-}
-import gunbc.roadmap_static_site { roadmap_site_health_path }
-import gunbc.live_deploy.spec { DeploymentSpec, deployment_plan_listen_port }
 
 type TransportCurlHealthzProbe {
   health_url: NonEmptyStr

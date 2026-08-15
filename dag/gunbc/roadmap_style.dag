@@ -1,55 +1,5 @@
 module gunbc.roadmap_style
 
-import gunbc.design.material {
-  BuildRule, StaticRule, CssDecl, decl, css_block,
-  serialize_rules, reduced_motion_block,
-}
-import extdeps.languages.css.properties { Cursor, CustomProperty, BorderStyle, Opacity, GridColumn, Outline }
-import extdeps.languages.css.values { CssLength, css_px, css_length_wire }
-import gunbc.design.scale {
-  scale_var, scale_pair, scale_triple, scale_border, scale_root_css,
-  space_0, space_1, space_2, space_3, space_4, space_6, space_8, space_12, space_16, space_20, space_24,
-  text_10, text_11, text_12, text_13, text_14, text_15, text_18,
-  font_sans, font_mono,
-  radius_3, radius_999, border_1, border_2, measure_page, height_control, width_status,
-}
-import gunbc.design.theme {
-  Theme, day_theme, night_theme, theme_root_css, theme_scoped_blocks, role_decl,
-  CanvasRole, SurfaceRole, BorderRole, TextRole, TextDimRole,
-  FigureRole, FocusRole, BoundaryRole,
-}
-import gunbc.site.moodboard { figure_rules }
-import gunbc.roadmap_interaction {
-  roadmap_behavior_rules, roadmap_behaviors,
-  dispatch_state_family, dispatch_stateful_channels,
-}
-import gunbc.design.state_response {
-  StateVarRole, FillVar, InkVar, PressedVar,
-  state_var_name, state_var_ref, state_rest_decl, state_paint_rules,
-  RestBinding, StateClassBinding,
-}
-import gunbc.roadmap_component {
-  dispatch_reserved_width, theme_toggle_class, theme_toggle_reserved_width,
-  sound_toggle_class, sound_toggle_reserved_width,
-  disclosure_mark_class, swatch_toggle_class, swatch_toggle_reserved_width,
-  roadmap_row_grid_template, roadmap_row_height, roadmap_row_gutter, roadmap_row_column_gutter, node_mid_class,
-  roadmap_row_head_column, row_region_key,
-  RowRegion, StatusChipRegion, TitleRegion, ActuatorRegion,
-  workflow_controls_class,
-  node_activity_class, activity_summary_class, activity_detail_class,
-  activity_ledger_class, activity_obligation_class,
-  activity_evidence_class, activity_evidence_row_class,
-  activity_located_reason_class, session_facts_class,
-  dashboard_instance_class,
-}
-import extdeps.color.srgb { Srgb8 }
-import std.integer { uint8_channel_inclusive_max_value_derived }
-import extdeps.accessibility.wcag_contrast { srgb8_contrast_ratio_x100_for_max }
-import gunbc.design.palette { Swatch, SwatchSet, SwatchSetForUse, swatch_filed, swatch_paint, swatches_of, for_use_combined_set }
-import gunbc.design.catalog {
-  island_pastel, island_mint, island_aqua, island_ivory, island_butter, island_loam,
-  okabe_ito, solarized,
-}
 
 data roadmap_style_note: String = "The srv1 roadmap dashboard re-grounded on the register (operator, tenth pass 2026-07-21: refactor the roadmap visualization to the visual themes). This makes the dashboard the SECOND CONSUMER of gunbc.design.material and gunbc.design.theme — the design-library lift's own justification bar (a layer earns extraction when its second consumer arrives). Day atlas is the base projection (an operational tool read in daylight), night via prefers-color-scheme — same Theme rows as the public site, zero new colors. The old hand-hex stylesheet (traffic-light status chips, #0969da links, #2da44e progress bar) is deleted: status is conveyed by the state WORD plus quiet material differences — done recedes to text-dim, review carries a brass BORDER mark (brass is never a text material — review finding 2: day brass is 3.96:1, clears the 3:1 graphical bar, fails the 4.5:1 text bar); the progress bar fill is the figure role (progress = derived fact, lit). This dissolves the css_rule props-as-String scaffold that lived here (css_rule_props_scaffold): the stylesheet is now typed CssDecl rows on the shared BuildRule machinery. Figure-class styling (.mark-point/.mark-sink/.mark-edge and friends) is IMPORTED from moodboard.figure_rules — the single authority for figure role rows, accent_study precedent — never re-minted here (review 40756); roadmap_rules() is the full serialized set (instance rules + figure rules + behavior rules) so the unthemed-color census and the brass-never-text check see exactly what the page ships. P2 (token migration): every length/font literal now routes through a gunbc.design.scale token var (spacing/type/font + dimension), with scale_root_css() emitted in :root alongside the theme vars — proven visually-neutral (resolving the tokens reproduces the pre-migration CSS byte-for-byte) and gated by the untokened-length census over roadmap_instance_rules(). Residue named: gunbc.site.moodboard.figure_rules (imported here) still carries raw border/radius px — its dimension-token lift is moodboard's own follow-on, the sibling of the color lift, so the length census scopes to this module's authored rules."
 

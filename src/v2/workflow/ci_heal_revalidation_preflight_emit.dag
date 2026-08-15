@@ -1,22 +1,5 @@
 module v2.workflow.ci_heal_revalidation_preflight_emit
 
-import v2.workflow.orchestration_bash_emit_support { orch_bash_emit_pipeline }
-import v2.std.orchestration {
-  Do,
-  Exit,
-  ExprCmdSubst,
-  ExprLit,
-  FailFast,
-  If,
-  Let,
-  Not,
-  Pipeline,
-  PipelineStep,
-  Run,
-  StrEq,
-  StrNonempty
-}
-import extdeps.git { shape_git_rev_parse_head_args }
 
 data ci_heal_expected_head_input_expr: String = "\"${{ inputs.expected_healed_sha }}\""
 data ci_heal_run_subject_head_expr: String = "\"${{ github.sha }}\""

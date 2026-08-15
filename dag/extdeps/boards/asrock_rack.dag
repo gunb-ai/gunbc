@@ -1,43 +1,5 @@
 module extdeps.boards.asrock_rack
 
-import extdeps.boards.types { BaseboardCatalogRow, DimmPopulation }
-import extdeps.vendor.asrock_rack { asrock_rack }
-import extdeps.bmc.webui.nbd_proxy { BmcwebNbdProxyEndpointVariant, VmSlotIndexEndpoint, NbdSlotEndpoint }
-import extdeps.bmc.types {
-  BmcRedfishSurfaceRow,
-  BmcRedfishSurfaceShape,
-  RedfishFanControlResourceAbsent,
-  RedfishInitialDutyControlResource,
-  RedfishLegacyChassisThermal,
-  RedfishThermalSubsystemSensorCollection,
-  BmcFanControllerShape,
-  BmcFanCurve,
-  BmcFanCurveStep,
-  BmcFanPolicyObservation,
-  FanPidAggregatedEntry,
-  FanPidIndependentEntries,
-}
-import extdeps.bmc.capability { BmcCapability, BmcFirmwareCapabilityRow, BmcFirmwareVersion, HistoricalEvidenceSnapshot }
-import extdeps.firmware.types {
-  FirmwarePrerequisiteObservation,
-  PushAcceptedByTarget,
-  PushRefusedByTarget,
-  BmcController,
-  NoFirmwarePrerequisite,
-  RequiresMinimumTargetFirmware,
-  FirmwareReleaseRow,
-  FirmwareSemanticVersion,
-  HostBios,
-  InstantFlashRom,
-  firmware_semantic_version,
-}
-import std.measure { ByteSize, byte_size, celsius, percent, positive_celsius_delta, positive_measure_count }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.crypto.hash { Digest, sha256_digest }
-import std.nat { Nat }
-import std.types { Bool, List, NonEmptyStr, String }
-import v2.std.optional { Present, Absent }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

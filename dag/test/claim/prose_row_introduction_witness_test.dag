@@ -1,15 +1,5 @@
 module test.claim.prose_row_introduction_witness
 
-import std.types { Bool, Int, String, List }
-import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import gunbc.prose_row_frontier {
-  ProseRowRef,
-  ProseRowDiffObservation, ProseRowsObserved, ProseRowDiffUnreadable,
-  prose_row_diff_observation, prose_rows_introduced,
-  prose_rows_refused, prose_rows_out_of_scope, prose_rows_render,
-  prose_row_decl_name,
-}
-import tools.prose_row_introduction_gate { prose_row_introduction_verdict }
 
 // The discriminating controls for the prose-row introduction wall, run against the REAL kernel and the
 // REAL verdict on synthetic diffs. Nothing here reads git: the gate keeps its decision pure precisely

@@ -1,20 +1,5 @@
 module extdeps.llm.cursor_stream
 
-import std.types { String, NonEmptyStr }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.languages.json.parse {
-  parse_json,
-  json_object_unique_member,
-  json_string_value_or_empty,
-  JsonMemberFound,
-  JsonMemberAbsent,
-  JsonMemberDuplicated,
-  JsonMemberNotAnObject,
-}
-import extdeps.languages.json.emit { JsonValue }
-import extdeps.llm.cursor_sdk_errors { parse_cursor_sdk_error_code, CursorSdkErrorCode }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

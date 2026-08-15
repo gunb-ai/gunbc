@@ -1,8 +1,5 @@
 module test.claim.shell_bash_runner
 
-import std.dissolution { dissolution_description }
-import gunbc.shell_bash_runner { gunbc_bash_heredoc_delimiter, shell_bash_runner_dissolution_trigger, shell_exec_via_bash, shell_printf_line }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

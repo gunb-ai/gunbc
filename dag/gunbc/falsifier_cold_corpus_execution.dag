@@ -1,11 +1,5 @@
 module gunbc.falsifier_cold_corpus_execution
 
-import std.types { String, Bool }
-import gunbc.floor_component_receipt {
-  floor_component_receipt_path,
-  floor_component_receipt_schema,
-  floor_component_receipt_artifact_name,
-}
 
 data falsifier_cold_corpus_execution_note: String = "NARROW CARRIER (operator ruling proud-bear-834 msg_4657b662, adhoc-8b992195-d13; receipt-backed correction msg_bc390264): whether the falsifier cold corpus EXECUTED, distinct from whether witnesses inside it produced verdicts. CorpusExecuted is emitted only when the floor-component receipt artifact is present and parses — never inferred from a job status code alone (a cold-corpus failure before upload used to read as corpus-executed, which is fabricated plausible output). A generic workflow failure must NEVER be read as evidence the falsifier found a regression; CorpusNotRun arms name infrastructure, not witness redness. The four-job split is pre-authorized in gunbc.falsifier_run_control falsifier_control_prerequisite_note."
 

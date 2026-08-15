@@ -1,6 +1,5 @@
 module std.checked_arithmetic
 
-import std.nat { Nat }
 
 // THE FINITE-MACHINE INTEGER BOUNDARY, in one place.
 //

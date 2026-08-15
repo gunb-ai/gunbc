@@ -1,41 +1,5 @@
 module test.claim.host_axis_caps
 
-import std.logic { Bool }
-import std.types { NonEmptyStr, String, List, list_length }
-import gunbc.host_axis_caps {
-  CapMember,
-  ControlShadowUnit,
-  control_shadow_unit,
-  control_shadow_revert_script,
-  control_shadow_revert_script_matches_extdeps_argv,
-  desired_cap_member,
-  cap_dropin_content,
-  caps_effects,
-  caps_upsert_count,
-  caps_teardown_count,
-  caps_refusal_count,
-  control_shadow_effects,
-  control_shadow_teardown_count,
-  control_shadow_refusal_count,
-  derived_runner_memory_max_cap_member,
-  derived_runner_memory_high_cap_member,
-  derived_runner_memory_cap_members,
-  runner_memory_cap_author_script,
-  runner_memory_cap_author_ready_for_shadow_revert,
-  host_axis_caps_author_before_revert_enforced,
-  deploy_memory_cap_apply_script_ordered,
-  deploy_memory_cap_script_author_precedes_shadow_revert,
-  deploy_memory_cap_script_matches_ordered_composition,
-  deploy_memory_cap_shadow_revert_script,
-  deploy_runner_memory_cap_author_script,
-}
-import gunbc.membership_reconcile { EffectsReady, ApplyRefused }
-import gunbc.host_converge {
-  gunbc_runner_per_slot_dropin_path,
-  gunbc_runner_per_slot_swap_dropin_path,
-}
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
-import std.measure { byte_size_count }
 
 data path20: NonEmptyStr = gunbc_runner_per_slot_dropin_path as NonEmptyStr
 data path30: NonEmptyStr = gunbc_runner_per_slot_swap_dropin_path as NonEmptyStr

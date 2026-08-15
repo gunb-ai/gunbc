@@ -1,27 +1,6 @@
 module test.claim.planar_projection_witness
 
-import std.types { Bool, Int }
-import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
-import std.affine_space { Point2, Point3, point3,
-  signed_frame_component_count
-}
 
-import std.planar_projection {
-  ViewAxisTriple, view_axis_triple,
-  ProjectionView, ProjectionMap, ViewPoint2,
-  ProjectionReady, ProjectionRefused,
-  ProjectionArithmeticRefused, ProjectionFrameRefused,
-  ViewDirectionParallelToUpReference, ViewDirectionIsZero, ViewUnitsAreNotMillimetres,
-  ProjectionKind, PlanFromAbove, ElevationFromSouth, ElevationFromWest,
-  Dimetric2To1FromAboveEastNorth,
-  projection_view, named_projection_view, view_map,
-  project_point, projection_depth,
-  view_units_are_millimetres, view_point_millimetres,
-  axis_image_u, axis_image_v,
-}
-import std.checked_arithmetic { int_inclusive_max }
-import v2.std.optional { Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

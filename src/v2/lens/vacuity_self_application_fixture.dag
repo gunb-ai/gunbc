@@ -1,6 +1,5 @@
 module v2.lens.vacuity_self_application_fixture
 
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }

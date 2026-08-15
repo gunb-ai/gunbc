@@ -1,9 +1,5 @@
 module gunbc.model_artifact
 
-import std.types { String, Bool, List, NonEmptyStr, Int }
-import std.content_hash { ContentHash, Sha256Digest, as_content_hash_cryptographic, serialize_content_hash, compare_content_hash, ContentHashComparison, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
-import std.decl_ref { decl_ref }
-import extdeps.ollama.api { OllamaModelRef, OllamaModelDigest, ollama_model_ref_wire, ollama_model_content_hash }
 
 // WHAT A SERVED MODEL IS, modeled before anything serves one, because the alternative is retrofitting
 // identity onto a deployment that already pinned a name.

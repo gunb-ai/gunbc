@@ -1,15 +1,6 @@
 module extdeps.sec.issuer.rollins
 
-import extdeps.sec.types {
-  Cik,
-  IssuerCatalogRow,
-  Nyse,
-  StockTicker,
-}
-import extdeps.vendor.rollins { rollins }
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

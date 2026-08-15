@@ -1,18 +1,5 @@
 module v2.test.realization_vocabulary_containment.no_new_debt_gate
 
-import v2.std.layer { LayerImportFact, LayerPrefixStd, LayerPrefixWorkflow }
-import v2.lens.realization_vocabulary_containment {
-  realization_vocab_grandfathered_edge_keys,
-  realization_vocab_grandfathered_edges,
-  realization_vocab_import_edge_eq,
-  realization_vocab_leak_count_canonical,
-  realization_vocab_containment_holds_canonical,
-  RealizationVocabImportEdge
-}
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

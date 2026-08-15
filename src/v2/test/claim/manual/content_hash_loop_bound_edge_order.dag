@@ -1,28 +1,5 @@
 module v2.test.manual.content_hash_loop_bound_edge_order
 
-import v2.std.node {
-  Atom,
-  ComputationNode,
-  Edge,
-  Loop,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  Transform,
-  TypeNode,
-  content_hash,
-  SyntheticOccurrence
-}
-import v2.std.verification {
-  CompilesClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 fn content_hash_loop_body_leaf() -> Node {
   Node {

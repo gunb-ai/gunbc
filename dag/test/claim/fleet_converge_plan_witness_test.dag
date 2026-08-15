@@ -1,31 +1,5 @@
 module test.claim.fleet_converge_plan_witness
 
-import std.types { Bool, String, NonEmptyStr, Int }
-import std.content_hash { serialize_content_hash }
-import gunbc.membership_reconcile { MemberRemoved }
-import gunbc.host_axis_caps { CapMember }
-import gunbc.host_converge { gunbc_runner_per_slot_dropin_path }
-import gunbc.fleet_converge_plan {
-  TimerRetirementMember,
-  FleetConvergePlanSubject,
-  fleet_converge_plan_artifact,
-  fleet_converge_plan_artifact_hash,
-  fleet_converge_observed_baseline_matches,
-  fleet_converge_apply_subject_admits,
-  fleet_converge_apply_generation_admits,
-  fleet_converge_apply_generation_stale,
-  fleet_converge_member_set_fingerprint_matches,
-  timer_retirement_plan,
-  fleet_converge_locked_apply_script,
-  fleet_converge_plan_apply_shell_path,
-  fleet_converge_parse_nonneg_generation_text,
-  fleet_converge_generation_from_store_content,
-  fleet_converge_plan_content_hash_path,
-  fleet_converge_plan_bundle_digest_hex,
-  fleet_converge_plan_bundle_matches,
-}
-import gunbc.fleet_converge_plan_cli { fleet_converge_plan_cli_note }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,33 +1,5 @@
 module v2.lens.cost.valuation
 
-import std.algebra { Cons, Empty, FreeSemigroup }
-import std.decl_ref { DeclarationRef }
-import v2.lens.cost { SizeVariable }
-import v2.lens.cost.expr {
-  CostAdd,
-  CostConst,
-  CostEffect,
-  CostExpr,
-  CostExprRefusalCause,
-  CostLog,
-  CostMax,
-  CostMul,
-  CostRefused,
-  CostSum,
-  InvalidLogBase,
-  SizeAdd,
-  SizeConst,
-  SizeExpr,
-  SizeLength,
-  SizeMax,
-  SizeOf
-}
-import v2.std.algebra { fold_list, non_empty_append, non_empty_singleton }
-import v2.std.collection { List }
-import v2.std.diagnostic { Locus, textual_whole_file_locus }
-import v2.std.logic { Bool }
-import v2.std.nat { Nat, Succ, Zero, nat_add, nat_cata, nat_lte, nat_mul }
-import v2.std.optional { Absent, Optional, Present, optional_present }
 
 data cost_valuation_subject_note: String = "The subject of this module is SEMANTIC work, not hardware time: a CostExpr together with a COMPLETE valuation of its size variables yields how much modelled work the expression denotes. Cycles, nanoseconds and machine calibration belong to the parity plan's C5 realization bridge and are deliberately absent here, so nothing in this module may acquire a duration, a rate or a calibration constant."
 

@@ -1,16 +1,5 @@
 module test.claim.push_event_witness
 
-import std.logic { Bool }
-import extdeps.github.push_event {
-  push_before_from_event_json,
-  PushBeforeObserved,
-  PushBeforeAbsent,
-  PushBeforeZeroSha,
-  PushBeforeMalformed,
-  PushEventPayloadReadRefused
-}
-import extdeps.git.hooks { zero_sha }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

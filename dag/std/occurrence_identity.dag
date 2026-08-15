@@ -1,9 +1,6 @@
 module std.occurrence_identity
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.algebra { FreeMonoid }
-import std.types { Bool, Int, String, SourceSpan }
 
 data occurrence_identity_scope_law: String = "OccurrenceId values are unique only inside one explicit graph-scoped OccurrenceIdAllocator. A production source graph threads one allocator across every parsed source; a standalone parse creates one isolated allocator scope. Filename, SourceSpan, authored name, structural Node equality, content hash, and module-local allocator reset are forbidden identity inputs."
 

@@ -1,25 +1,5 @@
 module test.claim.effects_witness_test
 
-import std.types { HttpMethod, GET, POST, PUT, DELETE, String, List, Bool }
-import std.http_path { PathTemplate, has_path_params, last_path_param }
-import extdeps.uri_path {
-  parse_path_template,
-  ParsedPathTemplate,
-  MalformedPathTemplate,
-}
-import std.effects {
-  EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect,
-  CreateCause, PostAlways, CreateIfAbsent, KeylessFallback,
-  KeySource, PathParam, InputField,
-  DerivedOpEffect, DeriveOpEffectResult, DerivedEffect, MalformedPathInput,
-  derive_op_effect, check_modifier_vs_derivation,
-  compose_effects, OperationEffect, CompositionVerdict,
-  IdempotentComposition, BrokenBy,
-  IdempotencyEvidence, LatticeEffect, NonIdempotent,
-  ModifierAgreement, Agrees, Disagrees, DerivationUnknown,
-  is_idempotent_effect, create_effect_is_dedupable, create_double_init_collapsible,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

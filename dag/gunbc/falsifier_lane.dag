@@ -1,21 +1,6 @@
 module gunbc.falsifier_lane
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.types { String, NonEmptyStr, Bool, List, list_length }
-import std.nat { Nat }
-import gunbc.floor_component_receipt {
-  FloorComponentRow,
-  ModeUnrecorded,
-  floor_component_row_index,
-  floor_component_row_is_done,
-  floor_component_row_of,
-  floor_component_row_of_failure_mode,
-  floor_component_transition_outcome
-}
-import std.realization_schedule { SelectionApplied }
-import std.observation { Done, Refused, Failed, TimedOut, Skipped, Final }
-import std.measure { millisecond }
 
 data falsifier_lane_note: String = "The falsifier's per-component LANE identity, and the two things derived from it: a totality receipt (did every planned component report?) and a routing verdict (which lane owns a failing component?). WHY IT EXISTS, priced: gunbc.floor_component_receipt made the alert read per-component state instead of inferring one causal story from the overall conclusion, but it left the component ANONYMOUS. The label the seed stamps on a discovery batch is generated from the runnable's shape — claim_executor formats 'discovery-corpus[N root(s)+M explicit, adaptive width]' — so two lanes with the same root/entry arithmetic are indistinguishable in the receipt, and no label names the roster that failed. Triage therefore still ends at 'a batch was red', which is the same blindness one level down. THE FIX IS ATTRIBUTION, NOT A SECOND LABEL: the plan already knows which lane each batch is, because each batch is built by a named function over a named roster; that fact is simply discarded when the schedule flattens to List<List<Runnable>>. This module carries the lane vocabulary and the enrollment-ordered projection, and ci_floor_plan derives BOTH the batch schedule and the planned-component roster from one enrollment list — so an added lane cannot appear in the schedule without appearing in the attribution (DESIGN section 3: one authority, no fork to drift)."
 

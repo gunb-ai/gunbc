@@ -1,35 +1,5 @@
 module gunbc.fleet_physical_inventory
 
-import std.types { NonEmptyStr, String, List, Int }
-import std.measure { RackUnit, rack_unit, measure_add }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import product.placement_supply {
-  HostIdentity,
-  PhysicalAssetIdentity,
-  SiteIdentity,
-  RackIdentity,
-  RackResidence,
-  RackResidenceUnobserved,
-  PhysicalAsset,
-  PhysicalContainment,
-  HostContainsComponent,
-  PhysicalSite,
-  HostSpatialFacts,
-  WirelessAdapterAbsent,
-  WirelessAdapterUnobserved,
-  RelayIncapable,
-  RelayUnprovisioned,
-  BootstrapNeeded,
-  BootstrapNotNeeded,
-}
-import extdeps.chassis.rosewill { rosewill_rsv_r4000u_catalog, rosewill_rsv_z2600u_catalog }
-import extdeps.network.tp_link { tp_link_tl_sg1024s_catalog }
-import extdeps.rack.navepoint { navepoint_18u_open_frame_catalog }
-import extdeps.power.eaton_tripp_lite { eaton_tripp_lite_rs_1215_family_catalog }
-import extdeps.cooling.dynatron { dynatron_w1_catalog }
-import extdeps.cpu.ampere { altra_max_m12830_catalog }
-import gunbc.fleet_intent { srv3_baseboard, srv4_baseboard }
-import product.cooling_qualification { InstalledCoolingRealization }
 
 // SPATIAL-0 owned inventory bindings: extdeps rows cite vendor facts; this module binds allocated
 // PhysicalAssetIdentity and HostIdentity instances to catalog declarations and rack residence.

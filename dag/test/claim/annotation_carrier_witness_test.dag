@@ -1,17 +1,5 @@
 module test.claim.annotation_carrier
 
-import std.roster_frontier { fold_frontier_expiry, frontier_expiry_clean, frontier_rows_well_formed }
-import std.decl_ref { decl_ref }
-import std.dissolution {
-  DissolutionUnbound,
-  DissolutionPending,
-  DissolutionFired,
-  dissolution_status,
-  bound_dissolution,
-  unbound_dissolution,
-}
-import gunbc.census_closure_frontier { census_closure_frontier_rows }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

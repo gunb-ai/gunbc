@@ -1,20 +1,5 @@
 module product.spatial_projection
 
-import std.types { Bool, List }
-import std.integer { Int }
-import std.affine_space { Point3, point3,
-  signed_frame_component_count
-}
-import std.orthogonal_geometry { loop2_vertices, prism3_low, prism3_high }
-import std.orthogonal_topology { EnclosedSpace, space_shell, shell_prism, space_footprint, space_frame }
-import std.planar_projection {
-  ProjectionView, ViewPoint2, ProjectionRefusal,
-  ProjectionReady, ProjectionRefused,
-  project_point, projection_depth,
-}
-import product.placement_supply { RoomIdentity }
-import product.spatial_world { World, PlacedSpace, world_rooms }
-import v2.std.optional { Present, Absent }
 
 // SPATIAL-5A CONSUMER: A WORLD, SEEN. This is the read-only half of the projection band - it takes
 // the identity-bearing world SPATIAL-4A admitted and a camera std.planar_projection admitted, and

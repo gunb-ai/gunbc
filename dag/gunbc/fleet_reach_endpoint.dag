@@ -1,14 +1,5 @@
 module gunbc.fleet_reach_endpoint
 
-import std.types { String, NonEmptyStr, Bool, List }
-import product.placement_supply { HostIdentity }
-import gunbc.dgx_spark_procurement {
-  DgxSparkRouterBinding,
-  SlotAssigned,
-  SlotUnassigned,
-  dgx_spark_router_bindings,
-}
-import extdeps.network.ipv4 { render_ipv4_address }
 
 // Probe-endpoint resolution (bold-eagle-107's projection, offered via witty-raven
 // msg_1c4e0bce; homed HERE — downstream of both gunbc.dgx_spark_procurement and the

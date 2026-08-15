@@ -1,16 +1,5 @@
 module test.claim.dissolution_census_witness_test
 
-import std.decl_ref { decl_ref }
-import std.roster_frontier { fold_frontier_expiry, frontier_expiry_clean, frontier_rows_well_formed }
-import gunbc.census_closure_frontier { census_closure_frontier_rows }
-import gunbc.dissolution_census {
-  dissolution_census_report,
-  dissolution_census_report_against,
-  dissolution_census_holds,
-  dissolution_census_total,
-  frontier_rows_bound_count,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

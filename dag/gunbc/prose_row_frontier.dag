@@ -1,7 +1,5 @@
 module gunbc.prose_row_frontier
 
-import std.types { Bool, Int, String, List }
-import v2.std.optional { Optional }
 
 // THE MIGRATION SCOPE, AND IT IS THE DISSOLUTION LEDGER RATHER THAN A CONFIGURATION KNOB.
 //

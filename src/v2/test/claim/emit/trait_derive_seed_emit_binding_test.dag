@@ -1,26 +1,5 @@
 module v2.test.emit.trait_derive_seed_emit_binding_test
 
-import std.trait_derive_shape {
-  ReprDeriveElemNullaryEnumCopy,
-  ReprDeriveElemPayloadCoproduct,
-  ReprDeriveElemSymbolWrappedOrdCarrier,
-  ReprDeriveElemKernelInt,
-  nullary_coproduct_derive_traits,
-  payload_coproduct_derive_traits,
-  symbol_wrapped_ord_carrier_derive_traits,
-  record_derive_traits_heap,
-  record_derive_traits_copy,
-  repr_grounding_derive_completeness_predicate,
-  repr_grounding_group_completion_carrier,
-  repr_grounding_supplemental_bool_host_bridge_target,
-  kernel_int_arithmetic_traits
-}
-import extdeps.languages.rust.emit {
-  rust_trait_derive_attr_from_traits,
-  rust_supplemental_impls_group_completion,
-  rust_supplemental_impls_bool_coproduct
-}
-import v2.std.logic { Bool }
 
 data trait_derive_seed_emit_binding_note: String = "Layer-boundary mock: std.trait_derive_shape trait lists + supplemental target predicates → extdeps.languages.rust.emit spellings (same authorities v1.compiler.trait_derive_emit composes for seed emit; v1 module not importable from v2 claim closure)."
 

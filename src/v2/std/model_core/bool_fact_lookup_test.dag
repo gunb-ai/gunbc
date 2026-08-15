@@ -1,26 +1,6 @@
 module v2.test.std_model_core.bool_fact_lookup
 
-import v2.std.logic {
-  Bool,
-  bool_encoding_fact_node,
-  bool_primitive_facts,
-  bool_width_fact_node
-}
-import v2.std.node { Node, content_hash }
-import v2.std.witness { Holds, Violates, Witness }
-import v2.std.model_core {
-  ModelCoreFactAxisEncoding,
-  ModelCoreFactAxisSignedness,
-  ModelCoreFactAxisWidth,
-  model_core_bool_fact_lookup
-}
 
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn bool_lookup_width_ok(vw: Node) -> Bool {

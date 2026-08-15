@@ -1,32 +1,5 @@
 module v2.test.claim.self_host.production_qualification_origin_probe_witness_test
 
-import v2.compiler.self_host.emitter_producer_provenance {
-  SourceProduced,
-  emission_qualification_eq
-}
-import v2.lens.production_qualification_origin_probe {
-  FixtureDerived,
-  UnknownOrigin,
-  count_derived_mint_sites_with_origin,
-  derived_sites_for_decl,
-  empty_site_list,
-  parameter_borne_fixture_mint_planted_decl,
-  planted_fixture_origin_mint_site_count,
-  production_qualification_origin_eq,
-  production_qualification_origin_probe_admission_holds_for_decls,
-  production_qualification_planted_fixture_origin_oracle_count,
-  structural_red_control_planted_decl,
-  structural_red_control_planted_qualified_name,
-  target_without_fixture_tree_red_control_planted_decl,
-  unknown_origin_red_control_planted_decl
-}
-import v2.test.claim.self_host.production_qualification_origin_probe_structural_fixture {
-  structural_red_control_mint_site_qualified_name
-}
-import v2.std.algebra { any }
-import v2.std.integer { int_eq }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 data production_qualification_origin_probe_witness_note: String = "Production-qualification origin PROBE witnesses (wise-ram-22 recut): per-PR discovery carries planted closed-subject checks only (DESIGN §5). Live fn_arrow_decl_facts_live() walks (admission, policy-oracle count, frontier RED probes) are long-lane in test/claim/long/production_qualification_origin_probe_witness_test.dag."
 

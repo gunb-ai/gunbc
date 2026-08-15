@@ -1,17 +1,5 @@
 module std.affine_space
 
-import std.integer { Int }
-import std.checked_arithmetic {
-  CheckedInt,
-  CheckedIntReady,
-  CheckedIntOverflow,
-  IntegerOverflow,
-  checked_int_add,
-  checked_int_subtract,
-  checked_int_negate,
-  checked_int_multiply,
-}
-import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity_eq }
 
 // THE COMPONENT CARRIES NO UNIT, BECAUSE THE FRAME OWNS THE QUANTUM. An earlier revision typed
 // these fields SignedMillimeterComponent — Measure<Length, Milli, Int> — while std.spatial_frame

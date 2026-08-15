@@ -1,25 +1,5 @@
 module test.claim.dissolution_migration_census
 
-import std.decl_ref { decl_ref, declaration_ref_display_key }
-import gunbc.dissolution_migration_census {
-  LifecycleResidueRow,
-  HistoricalReceipt,
-  DissolvesByGreening,
-  RefusalOrReasonCarrier,
-  NotALifecycleCarrier,
-  NarrativeOnly,
-  lifecycle_residue_rows,
-  historical_receipt_rows,
-  dissolves_by_greening_rows,
-  refusal_or_reason_rows,
-  not_a_lifecycle_carrier_rows,
-  narrative_only_rows,
-  residue_row_key,
-  residue_row_keys,
-  residue_keys_are_unique,
-  dedup_keys,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

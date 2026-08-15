@@ -1,10 +1,6 @@
 module gunbc.cli_run_witness_deferral_freeze_scaffold
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.types { String, Int }
 
 data cli_run_witness_deferral_freeze_scaffold_note: String = "THE REALIZATION IS SCAFFOLD EVEN THOUGH THE POLICY ABOVE IT IS MODELED, and that distinction is the whole reason this row exists (operator ruling on gunbc#7804, 2026-08-04). gunbc.witness_deferral_freeze and v2.workflow.witness_admission are the authority: the frozen population, the two standing axes and both gates are .dag facts. What lands in cli_run.rs is one REALIZATION of them — a text scan over three .dag authorities, a git baseline reader, and the enforcement path the floor calls — and the .dag side being correct does not exempt it. cli_run.rs is the largest hand-maintained Rust wall in the program and it is already growing against its own hollowing plan, so several hundred more lines may not enter unaccounted merely because the policy above them is modeled well.
 

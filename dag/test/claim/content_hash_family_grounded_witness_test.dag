@@ -1,55 +1,5 @@
 module test.claim.content_hash_family_grounded_witness
 
-import std.types { NonEmptyStr, Bool, String }
-import std.content_hash {
-  ContentHash,
-  Fnv1a64Structural,
-  Sha256Digest,
-  Sha256DigestHex,
-  Sha1Digest,
-  Sha1DigestHex,
-  Sha512Digest,
-  Sha512DigestHex,
-  content_hash_of_value,
-  content_hash_from_structural_digest,
-  content_hash_eq_structural,
-  content_hash_eq_cryptographic,
-  content_hash_eq_sha512,
-  content_hash_eq_sha1,
-  sha256_hex_digest,
-  sha1_hex_digest,
-  sha512_hex_digest,
-  as_content_hash_cryptographic,
-  as_content_hash_sha1,
-  as_content_hash_sha512,
-  content_hash_family,
-  compare_content_hash,
-  ContentHashEqual,
-  ContentHashDifferent,
-  ContentHashCrossFamilyIncomparable,
-  Fnv1a64StructuralFamily,
-  Sha256Family,
-  Sha1Family,
-  Sha512Family,
-  serialize_content_hash,
-}
-import extdeps.git.object_store { git_sha1_object_id, git_object_id_content_hash, GitSha1ObjectId }
-import extdeps.crypto.hash { sha256_digest, sha256_digest_content_hash }
-import extdeps.pin { Pin, ExactPin, admit_pin_integrity, PinIntegrityAdmitted }
-import extdeps.tools { CliTool, SourceApt }
-import extdeps.version { VersionIdentity }
-import extdeps.container.oci.descriptor { OciDescriptor, accept_descriptor, DescriptorAccepted }
-import extdeps.container.oci.digest {
-  OciContentDigest,
-  OciSha256Digest,
-  OciSha512Digest,
-  OciOtherDigest,
-  oci_content_digest_from_validated_sha256,
-  oci_sha256_content_digest,
-  parse_oci_content_digest_wire,
-  render_oci_content_digest_wire,
-}
-import extdeps.container.oci.media_types { media_type_oci_image_layer_v1_tar_gzip }
 
 data witness_note: String = "feature:content-hash-family-grounded Phase A — family coproduct, per-family eq, carrier construction walls (OciContentDigest/ GateRosterHash/ GitObjectId/ pin CrossFamilyIdentityIncomparable). Phase B (union `==` typecheck refusal) is dissolve-on remainder; R0 interpreter backstop receipted in content_hash_cross_family_eq_v1_seed_bridge_note."
 

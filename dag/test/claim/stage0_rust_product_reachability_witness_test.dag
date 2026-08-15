@@ -1,21 +1,5 @@
 module test.claim.stage0_rust_product_reachability_witness
 
-import gunbc.stage0_rust_product_reachability {
-  ProductReachabilityDerived,
-  ProductReachabilityExactPathsDerived,
-  ProductReachabilityExactPathsRefused,
-  ProductReachabilityObservationRefused,
-  ProductReachable,
-  ReachabilityRefused,
-  TestOnlyReachable,
-  exact_product_reachable_paths,
-  exact_reachability_refused_paths,
-  product_reachability_receipt,
-  product_reachability_verdict_for_path,
-  product_reachability_witness_observation,
-  stage0_rust_product_reachability_note
-}
-import v2.std.algebra { length }
 
 test fn product_reachability_note_forbids_tracking_as_proof() -> Bool {
   string_contains(s: stage0_rust_product_reachability_note, pattern: "NOT proof")

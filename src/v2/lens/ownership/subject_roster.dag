@@ -1,26 +1,5 @@
 module v2.test.lens_ownership.subject_roster
 
-import v2.compiler.eval {
-  TestClaimEvalSubject,
-  eval_context_v4_evaluator,
-  eval_test_claim_subject
-}
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
-import v2.test.lens_ownership.resource_dependency {
-  ownership_claim_tree,
-  ownership_resource_dependency_claim_passes
-}
 
 fn ownership_claim_pass_node() -> Node {
   Node {

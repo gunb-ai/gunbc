@@ -1,7 +1,5 @@
 module std.path_intent
 
-import std.filesystem.types { EntryKind }
-import std.types { FilePathParts, NonEmptyStr, String }
 
 type PathIntent
   = PathRef { name: NonEmptyStr }

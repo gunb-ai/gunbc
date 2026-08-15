@@ -1,14 +1,5 @@
 module test.claim.host_cli_dependency_witness_test
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.optional { Absent, Present }
-import std.types { Bool, String, NonEmptyStr }
-import gunbc.host_cli_dependency {
-  host_dependency_absent_wire,
-  host_cli_dependency_failure_receipt,
-  HostCliDependencyPresent,
-  HostCliDependencyAbsent,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

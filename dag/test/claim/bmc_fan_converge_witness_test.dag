@@ -1,50 +1,5 @@
 module test.claim.bmc_fan_converge_witness
 
-import extdeps.bmc.openbmc_fan_control {
-  OpenBmcTachAtOrAboveThreshold,
-  OpenBmcTachBelowThreshold,
-  OpenBmcWarningLowThreshold,
-}
-import extdeps.crypto.hash { Digest, sha256_digest }
-import extdeps.bmc.capability {
-  BmcFirmwareVersion,
-}
-import extdeps.boards.asrock_rack {
-  asrock_altrad8ud_openbmc_3_22_00_capabilities,
-}
-import extdeps.bmc.types {
-  BmcFanCurve,
-  BmcFanCurveInvalid,
-  BmcFanCurveStep,
-  validate_bmc_fan_curve,
-}
-import std.measure { celsius, celsius_delta, percent, rpm, second, second_count }
-import gunbc.bmc_fan_converge {
-  BmcFanAppliedReceipt,
-  BmcFanAppliedAndVerified,
-  BmcFanAppliedWithCleanupDebt,
-  BmcFanBackupManifest,
-  CurveStepsParseRefused,
-  bmc_fan_build_curve_steps,
-  bmc_fan_backup_manifest,
-  bmc_fan_backup_manifest_identity,
-  bmc_fan_backup_manifest_matches_request,
-  bmc_fan_exact_target_admission_matches,
-  bmc_fan_first_unhealthy_tach,
-  bmc_fan_live_digest_matches,
-  bmc_fan_record_cleanup_debt,
-}
-import gunbc.bmc_fan_monitor {
-  BmcFanMonitoringCompleted,
-  BmcFanMonitoringReceipt,
-  BmcFanMonitoringRefused,
-  BmcFanMonitoringSample,
-  bmc_fan_assess_monitoring_samples,
-}
-import gunbc.fleet_intent { srv3_host, srv4_host }
-import std.bmc { OpenBmc }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.firmware.types { firmware_semantic_version }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

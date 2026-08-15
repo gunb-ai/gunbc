@@ -1,37 +1,5 @@
 module test.claim.type_reference_containment_binding_witness_test
 
-import std.types { Bool, SourceSpan, NonEmptyStr, String }
-import std.occurrence_identity {
-  OccurrenceId,
-  OccurrenceContainmentPath,
-  OccurrenceProjection,
-  OccurrenceIndexEntry,
-  OccurrenceIndex,
-  OccurrenceTransport,
-  DeclarationOccurrence,
-  ReferenceOccurrence,
-  OccurrenceCategory,
-  TypeOccurrence,
-  CallableOccurrence,
-}
-import std.occurrence_binding_candidates {
-  OccurrenceModulePathRow,
-  DeclarationExposureRow,
-  DeclarationExposure,
-  ModuleExposure,
-  RootExposure,
-  AuthoredOrderRow,
-  AuthoredTokenOrdinal,
-  OccurrenceBindingCandidateInputs,
-  ReferenceBindingProjectionBound,
-  ReferenceBindingProjectionUnbound,
-  ReferenceBindingProjectionWrongCategory,
-  resolve_type_reference_containment_binding,
-}
-import gunbc.type_reference_containment_binding {
-  type_reference_containment_binding_authority_note,
-  type_reference_containment_binding_slice1_scope_note,
-}
 
 // N2 slice 1 — THREE discriminating controls modeled on the N1a import-strip section 14.1 matrix at fixture grain, plus one API-boundary control for category inadmissibility. The kernel is resolve_type_reference_containment_binding → P2a candidate population → resolve_reference_occurrence_binding → occurrence_binding_from_candidates (OccurrenceBindingResult). No parallel fold, no production lookup_type_by_name changeover, N1a discriminator untouched. Matrix controls: (1) binds when containment exposes the type; (2) refuses when no declaration exists (row 3); (3) pool-coincidence must not bind (row 4). API control: non-TypeOccurrence reference → ReferenceBindingProjectionWrongCategory before candidate enumeration.
 fn trcb_module_path(dotted: String) -> NonEmptyStr {

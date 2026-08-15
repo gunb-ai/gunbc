@@ -1,22 +1,6 @@
 module gunbc.command_runner
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.types { List, String, NonEmptyStr }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
-import extdeps.exec.command {
-  ArgvCommand,
-  CommandTransport,
-  LocalExec,
-  command_over_transport,
-  shell_command_render,
-}
-import extdeps.shell
-import gunbc.shell_bash_runner { shell_exec_via_bash }
-import gunbc.retained_shell_script { retained_runtime }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data command_runner_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,

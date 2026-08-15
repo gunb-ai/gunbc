@@ -1,47 +1,5 @@
 module test.claim.spark_serving_observe_witness_test
 
-import std.types { String, NonEmptyStr }
-import extdeps.ssh.session { SshSessionExecResult }
-import gunbc.spark_serving_release {
-  SparkServingObservation, SparkServingAbsent, SparkServingObserved,
-  SparkServingObservationRefused,
-}
-import gunbc.spark_serving_loaded_release {
-  SparkServingReadback,
-  SparkServingUnitActive,
-  SparkServingUnitInactive,
-  SparkServingUnitAbsent,
-  SparkServingUnitObservationRefused,
-  derive_spark_serving_observation,
-  derive_loaded_spark_serving_release_identity,
-}
-import gunbc.spark_serving_readback_parse {
-  SparkServingReadbackAbsent,
-  SparkServingReadbackPresent,
-  SparkServingReadbackRefused,
-  spark_serving_parse_version_json,
-  spark_serving_parse_tags_json,
-}
-import extdeps.ollama.binary_release {
-  ollama_required_release,
-  ollama_v0_32_9_jetpack5_release,
-}
-import gunbc.ollama_runtime_bundle {
-  ollama_runtime_closure_digest,
-  ollama_runtime_closure_digest_for_observed_release,
-  ollama_runtime_closure_digest_for_required_release,
-}
-import gunbc.spark_serving_observe {
-  spark_serving_unit_outcome_from_probe_results,
-  SparkServingObservationReportRefused,
-  SparkServingObservationsProduced,
-  spark_serving_observation_report_succeeded,
-}
-import gunbc.spark_serving_runtime_receipt {
-  spark_serving_parse_runtime_receipt_json,
-  spark_serving_runtime_receipt_field_from_probe,
-  spark_serving_runtime_receipt_probe_words,
-}
 
 data witness_required_release_asset_digest_hex: String = "79617139521db251c716d6229505d7530171ff4d68e476d0c22dabc15726a237"
 

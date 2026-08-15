@@ -1,41 +1,5 @@
 module test.claim.bmc_typed_operations_witness
 
-import extdeps.bmc.openbmc_fan_control {
-  OpenBmcCollectionMany,
-  OpenBmcCollectionOne,
-  OpenBmcCollectionZero,
-  OpenBmcBoolObserved,
-  OpenBmcBoolRefused,
-  OpenBmcByteSizeObserved,
-  OpenBmcByteSizeRefused,
-  OpenBmcInstantObserved,
-  OpenBmcInstantRefused,
-  OpenBmcPathObserved,
-  OpenBmcPathRefused,
-  OpenBmcSensorServicesObserved,
-  OpenBmcSensorValueAbsent,
-  OpenBmcSensorValueRefused,
-  OpenBmcTachAtOrAboveThreshold,
-  OpenBmcTachBelowThreshold,
-  OpenBmcTachHealthObserved,
-  OpenBmcTachThresholdUnstated,
-  OpenBmcWarningLowThreshold,
-  openbmc_collection_from_values,
-  openbmc_disk_usage_result,
-  openbmc_epoch_result,
-  openbmc_object_mapper_services_rec,
-  openbmc_sensor_integer_projection_result,
-  openbmc_sensor_threshold_result,
-  openbmc_tach_health_from_floor,
-  openbmc_tach_health_sensor,
-  openbmc_path_result,
-  openbmc_path_probe_result,
-  openbmc_service_active_result,
-  openbmc_zone_failsafe_result,
-}
-import extdeps.ssh.password_session { PasswordSshExecResult }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.measure { byte_size_count, rpm, rpm_count }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

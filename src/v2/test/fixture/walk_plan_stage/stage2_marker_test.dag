@@ -1,8 +1,6 @@
 module v2.test.fixture.walk_plan_stage.stage2_marker
 
-import extdeps.filesystem.filesystem_io { Filesystem }
 
-import v2.test.fixture.walk_plan_stage.common { walk_plan_stage_stage2_marker_path }
 
 test fn walk_plan_stage_stage2_marker_holds() -> Bool {
   Filesystem.Write(path: walk_plan_stage_stage2_marker_path, content: "").success

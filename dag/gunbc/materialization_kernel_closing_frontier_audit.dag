@@ -1,6 +1,5 @@
 module gunbc.materialization_kernel_closing_frontier_audit
 
-import std.types { Bool, Int, List, NonEmptyStr }
 
 data materialization_kernel_closing_frontier_audit_note: String = "RENAMED from gunbc.materialization_kernel_closing_contract (still-bat-561 operator ruling, 2026-08-02, msg_9609b3a3): this module is an AUDIT of the v1-materialization-kernel roadmap node's closing frontier, not the closing contract itself. The original framing was a DESIGN §5 violation at the architectural level — verdicts were AUTHORED (hand-written Delivered/PartiallyDelivered/NotDelivered rows with prose evidence) rather than DERIVED from executed observations, so editing a row from NotDelivered to Delivered would green the file without executing any operation the evidence string names. That is exactly the named anti-pattern: 'a check satisfiable by editing the declaration while the realizer still lies.' A genuine closing contract would need each clause to carry a typed OBSERVATION (ExecutedPass / ExecutedRefusal / Unavailable) with the verdict DERIVED from it, not authored beside it — that machinery does not exist here and this file does not claim to be that.
 

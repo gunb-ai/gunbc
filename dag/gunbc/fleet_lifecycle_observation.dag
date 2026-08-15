@@ -1,11 +1,5 @@
 module gunbc.fleet_lifecycle_observation
 
-import std.types { NonEmptyStr, String, List, Int, Bool }
-import std.content_hash { ContentHash, Fnv1a64Structural, content_hash_atom, content_hash_eq_structural }
-import product.placement_supply { HostIdentity }
-import extdeps.network.ipv4 { Ipv4Address }
-import extdeps.uuid { Uuid }
-import extdeps.systems.nvidia_fleet_lifecycle { FleetLifecycleEnvelope }
 
 // SPARK-LANE-A (operator refinement, 2026-08-07). THE SUBJECT IS BOUND AT DISPATCH TIME.
 // A fleet-lifecycle collector runs because something decided to run it against a particular fleet

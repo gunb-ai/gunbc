@@ -1,36 +1,5 @@
 module gunbc.census_closure_frontier
 
-import std.roster_frontier { FrontierRow, concat_frontier_row_groups, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
-import std.decl_ref { decl_ref }
-import extdeps.cloud.hetzner { hetzner_money_rate_frontier_rows }
-import extdeps.dhcp.v4 { mac_address_anemic_brand_frontier_rows }
-import extdeps.docker.container_inspect {
-  container_state_detail_redundant_bools_frontier_rows,
-  memory_swap_unlimited_convention_frontier_rows,
-  hostconfig_containerconfig_anemic_leaves_frontier_rows,
-  network_settings_bare_strings_frontier_rows,
-  container_inspect_error_closure_frontier_rows,
-}
-import extdeps.docker.container_stats {
-  cpu_percent_ratio_carrier_frontier_rows,
-  container_stats_error_closure_frontier_rows,
-  memory_stats_working_set_frontier_rows,
-  blkio_value_unit_ambiguity_frontier_rows,
-}
-import extdeps.docker.endpoint { endpoint_string_type_frontier_rows }
-import extdeps.github.merge_state { merge_state_graphql_transport_frontier_rows }
-import extdeps.github.workflow_runs { conclusion_authority_consolidation_frontier_rows }
-import extdeps.network.ipv6 { ipv6_text_codec_staged_frontier_rows }
-import extdeps.pin { pin_frontier_rows }
-import extdeps.pricing.hetzner_dedicated { cpu_description_string_leaf_frontier_rows }
-import extdeps.router.verizon_cr1000a {
-  cr1000a_dhcp_lease_transport_frontier_rows,
-  cr1000a_host_name_raw_parse_frontier_rows,
-  cr1000a_delegated_prefix_length_scalar_frontier_rows,
-  cr1000a_expires_in_ui_text_frontier_rows,
-}
-import extdeps.tools.sha256sum { sha256_verify_native_transport_frontier_rows }
 
 data census_closure_count_witness_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(

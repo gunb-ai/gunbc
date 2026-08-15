@@ -1,26 +1,5 @@
 module v2.test.self_host.compiler_frontier_upstream_semantic_probe
 
-import v2.compiler.self_host.frontier {
-  compiler_frontier_roster_stale_located_reason_count_holds
-}
-import v2.compiler.self_host.frontier_probe_survey {
-  frontier_probe_survey_blocker_partition_totality_holds
-}
-import v2.compiler.self_host.frontier_probe_types {
-  EmitSurfaceGap,
-  NameResolutionGap,
-  ProbeStageAssemble,
-  ProbeStageEmit,
-  ProbeStageSemanticDerivation,
-  UpstreamSemanticRefusal,
-  UnknownProbeCause,
-  gate_a_flip_probe_unresolved_compiler_error_reason,
-  frontier_classify_rejection_reason,
-  frontier_probe_located_stage_for_assemble_outcome,
-  frontier_probe_located_stage_for_blocker,
-  frontier_probe_located_stage_for_emit_outcome,
-  upstream_semantic_compiler_error_class
-}
 
 data compiler_frontier_upstream_semantic_probe_note: String = "Lane E vocabulary + receipt-totality wall witnesses (still-dove-191): UpstreamSemanticRefusal is NOT EmitSurfaceGap; UNRESOLVED marker classifies to semantic derivation stage. Stale located_reason wall is merge-blocking via compiler_frontier_roster_stale_located_reason_count_holds."
 

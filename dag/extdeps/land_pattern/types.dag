@@ -1,13 +1,5 @@
 module extdeps.land_pattern.types
 
-import std.types { String, Bool, NonEmptyStr, List }
-import std.nat { Nat }
-import std.measure { Micrometer, micrometer_count }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import extdeps.vendor { Vendor }
-import extdeps.hardware { Hardware }
 
 // THE STANDARD IS CITED FOR THE CONCEPT AND ITS CONTENT IS DELIBERATELY NOT MODELLED. IPC-7351
 // is the intersubjective authority for what a land pattern IS, and every vendor drawing this

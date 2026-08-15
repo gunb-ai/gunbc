@@ -1,20 +1,6 @@
 module extdeps.cache.key_completeness
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
-import extdeps.cache.types {
-  CatalogKeyDerivationFacts,
-  CacheInterfaceCatalogFacts,
-  CatalogKeyInputs,
-  ContentAddressed,
-  NativeInternal,
-  HandAuthored,
-  catalog_has_vendor_only_key_inputs,
-  invalidation_triggers_on_toolchain_change,
-}
-import std.types { Bool }
-import std.types { List }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

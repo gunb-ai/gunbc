@@ -1,13 +1,5 @@
 module gunbc.fleet_probe_identity_observe
 
-import std.types { String, Bool, List }
-import std.algebra { trim }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.exec.command { ArgvCommand, LocalExec }
-import gunbc.command_runner { run_shell_command_capture }
-import gunbc.fleet_ssh_access { fleet_automation_ssh_key }
 
 // Observe-first for the probe-identity decision (parent msg_156e62bd): READ-ONLY
 // observation of (a) whether the fleet automation PUBLIC key is present in the

@@ -1,14 +1,5 @@
 module v2.extdeps.formatters.rustfmt
 
-import v2.std.collection { List }
-import v2.std.diagnostic { Outcome }
-import v2.std.patch { ConfigPatchRecord, config_patch_layer }
-import v2.std.refinement {
-  NonNegativeInt,
-  PositiveInt,
-  non_negative_int_authoritative_literal,
-  positive_int_authoritative_literal,
-}
 
 type RustfmtIndentStyle
   = RustfmtIndentBlock

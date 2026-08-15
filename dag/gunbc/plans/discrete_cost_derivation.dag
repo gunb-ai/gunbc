@@ -1,9 +1,5 @@
 module gunbc.plans.discrete_cost_derivation
 
-import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
-import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, BlockquoteBlock, CodeBlock, AlignNone }
-import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 
 fn discrete_cost_derivation_body() -> List<MarkdownBlock> {
   [

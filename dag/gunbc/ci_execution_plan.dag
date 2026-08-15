@@ -1,13 +1,5 @@
 module gunbc.ci_execution_plan
 
-import std.types { CommitSha, String, NonEmptyStr, Int, List, Bool }
-import extdeps.git.object_store { GitObjectId }
-import gunbc.repository { gunbc_repository }
-import gunbc.repo_identity { gunbc_default_branch_name }
-import gunbc.owned_ci { owned_ci_check_name }
-import gunbc.ci_spec { floor_plan_entry, floor_plan_function }
-import gunbc.cli_invoke { CiFloorPlan, plan_function_name }
-import v2.std.collection { Absent, Present }
 
 data ci_execution_plan_note: String = "Medium-neutral CI execution plan derived from gunbc.ci_spec gates and stages — NEVER from ci.yml parsing (owned CI control plane v0, docs/plans/owned-ci-control-plane-design.md). GitHub Actions YAML is a temporary sibling projection; this carrier is the scheduling authority for the local executor."
 

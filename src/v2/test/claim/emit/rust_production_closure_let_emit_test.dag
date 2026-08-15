@@ -1,26 +1,5 @@
 module v2.test.emit.rust_production_closure_let_emit
 
-import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source_string }
-import v2.extdeps.languages.rust {
-  rust_operator_realizations_catalog_node,
-  rust_target_model,
-  rust_value_expression_projection
-}
-import v2.std.compilers.target_model {
-  FixedToken,
-  TargetModel,
-  TargetValueExpression,
-  render_target_text,
-  target_value_expression_bind_let,
-  target_value_expression_binding_ref,
-  target_value_expression_closure,
-  target_value_expression_to_concrete_tokens
-}
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

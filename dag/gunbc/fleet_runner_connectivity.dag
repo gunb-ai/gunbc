@@ -1,27 +1,5 @@
 module gunbc.fleet_runner_connectivity
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.nat { Nat }
-import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.realization_reconcile { ShowEffectiveRead, ReadAbsent }
-import product.placement_supply { HostIdentity }
-import extdeps.github.ci_runner {
-  GitHubSelfHostedRunnerRegistration,
-  GitHubRunnerRegistrationStatus,
-  GitHubRunnerOnline,
-  GitHubRunnerOffline,
-  github_runner_registration_is_online,
-  github_runner_registration_is_schedulable,
-}
-import extdeps.github.effect { GitHubOrganizationRef }
-import gunbc.auth.github_apps { gunbai_ci_declared }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet_intent_network {
-  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
-}
-import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
-import gunbc.runner_incarnation { LocalRunnerSlotIncarnation, runner_slot_incarnation }
 
 data fleet_runner_connectivity_authority_disposition: Disposition = Terminal {
   reason: "Single authority for GITHUB REGISTRATION CONNECTIVITY versus LOCAL RUNNER INCARNATIONS. It joins one org-level registration roster (remote ground truth from the GitHub Actions runners API) to per-slot stable identities (host, index) and their local systemd incarnations. It does NOT repair wedged runners — that is PR B. It refuses to fold connected width into desired width, and it refuses to treat a roster read failure as 'everything detached' (empty-observation narrow)."

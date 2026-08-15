@@ -1,21 +1,5 @@
 module gunbc.memory_part_selection
 
-import std.types { Bool, EpochMs, List, NonEmptyStr }
-import std.nat { Nat }
-import std.currency { CurrencyCode }
-import std.measure { ByteSize, MoneyAmountMicro, byte_size_count, money_amount_micro_count }
-import extdeps.boards.types { AsrockRackAltrad8ud1l2t, BaseboardModel }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.memory.types { DramModuleCatalogRow, JedecDdrGenerationCatalogRow }
-import extdeps.boards.asrock_rack { asrock_altrad8ud_download_authority }
-import extdeps.memory.training {
-  LrdimmDataBufferMrep,
-  MemoryTrainingStep,
-  capacity_reachable_as_dual_rank_registered,
-  module_executes_step,
-  training_steps_required,
-}
-import gunbc.host_memory_qualification { SpecificPartQualification }
 
 // HOW WE KNOW A STEP FAILS. Not all evidence is equal, and a selection model
 // that flattens these would let the weakest link carry the strongest verdict.

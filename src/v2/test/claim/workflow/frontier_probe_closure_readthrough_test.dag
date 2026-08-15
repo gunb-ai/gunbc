@@ -1,33 +1,5 @@
 module v2.test.workflow.frontier_probe_closure_readthrough
 
-import v2.compiler.self_host.frontier_probe {
-  FrontierProbeCoveragePermitted,
-  FrontierProbeIngestSubject,
-  frontier_probe_coverage_gate,
-  frontier_probe_discovered_closure_subject_for_matrix,
-  frontier_probe_receipt_for_subject
-}
-import v2.compiler.self_host.frontier_probe_types {
-  SourceRefContentHashMismatch,
-  SourceRefReadRefused
-}
-import v2.compiler.source_authority {
-  SourceRef,
-  SourceRootCoverageComplete,
-  SourceRootManifestElided,
-  content_hash_of_value,
-  frontier_probe_discovered_closure_seal
-}
-import v2.test.fixture.frontier_probe_elision_boundary_overlay {
-  frontier_probe_elision_boundary_closure_refs,
-  frontier_probe_elision_boundary_coverage_receipt
-}
-import v2.std.algebra { length }
-import v2.std.cross_tree.import_model { DagTree }
-import std.algebra { Cons, Empty }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

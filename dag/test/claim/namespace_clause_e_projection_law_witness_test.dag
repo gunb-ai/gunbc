@@ -1,33 +1,5 @@
 module test.claim.namespace_clause_e_projection_law_witness_test
 
-import gunbc.namespace_clause_e_projection_law {
-  assess_controlled_two_mention_provenance_projection,
-  NamespaceClauseEProjectionEstablished,
-  NamespaceClauseEProjectionRefused,
-  BindingProvenanceCountWrong,
-  FileDependencyCountWrong,
-  DeclarationOccurrencesNotShared,
-  ReferenceOccurrencesNotDistinct,
-  ProvenanceProjectionInconsistent,
-  BoundPopulationInconsistentWithProvenance,
-  ProjectionBindingRefused,
-  ProjectionFileRefused,
-}
-import std.occurrence_identity { OccurrenceId }
-import std.occurrence_binding_candidates {
-  ReferenceDerivedClauseEProduction,
-  ReferenceDerivedClauseEProductionReady,
-  ReferenceDerivedDependencyProjectionReady,
-  ReferenceDerivedDependencyProjectionFileRefused,
-  CrossFileBindingProvenance,
-  CrossFileBindingProvenanceProjectionFilePathMissing,
-  DirectFileDependency,
-  BoundReferenceProvider,
-  AllReferencesBound,
-  ReferencePopulationRefused,
-  ReferenceBindingProjectionUnbound,
-}
-import std.types { Bool, FilePath, List, NonEmptyStr }
 
 data namespace_clause_e_projection_law_witness_note: String = "Planted controls for gunbc.namespace_clause_e_projection_law assess_controlled_two_mention_provenance_projection. Each NamespaceClauseEProjectionFailure variant is exercised on a hand-built ReferenceDerivedClauseEProductionReady carrier using the full projection fields. B2 row-closure over OrdinaryLoadedCompilationClosure is excluded from this witness file."
 

@@ -1,31 +1,6 @@
 module v2.test.claim.lean_overflow_semantics_witness
 
 
-import v2.extdeps.languages.lean {
-  lean_admit_fixed_width_overflow_semantics,
-  lean_catalog_fixed_width_overflow,
-  lean_facts_int32,
-  lean_overflow_semantics_arm_tag,
-  lean_overflow_semantics_node,
-  LeanIntegerScalar,
-  LeanAdmittedOverflowSemantics,
-  LeanOverflowAccepted,
-  LeanOverflowPanics,
-  LeanOverflowRaiseEffect,
-  LeanOverflowRefused,
-  LeanOverflowTraps
-}
-import std.integer {
-  IntegerOverflowSemantics,
-  OverflowRaises,
-  OverflowReturns,
-  OverflowUndefined,
-  ReturnSaturating,
-  ReturnWrapping
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import v2.std.node { content_hash }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

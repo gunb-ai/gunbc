@@ -1,15 +1,5 @@
 module tools.dag_compile_clean_shard_transport
 
-import extdeps.shell
-import extdeps.git
-import extdeps.git.inspect
-import extdeps.gunbc
-import std.logic { Bool }
-import tools.dag_compile_clean_transport {
-  dcc_fixture_only_compile_args,
-  dcc_gunbc_path,
-  dcc_gunbc_ready
-}
 
 data shard_a_exemplar_entry_path: String = "dag/std/logic.dag"
 

@@ -1,35 +1,5 @@
 module gunbc.web_motion_binding
 
-import std.types { String, Bool, Int, List, Milliseconds }
-import std.decl_ref { DeclarationRef }
-import gunbc.host_realization { HostRealization, ResolvedRef, ref_is_resolved, host_identity_is_exact }
-import extdeps.w3c.accelerometer {
-  AccelerometerInterface, AccelerometerSensor, LinearAccelerationSensor, GravitySensor,
-  accelerometer_interface_name, interface_suits_a_knock_detector,
-}
-import gunbc.capability_binding {
-  BindingStreamState, InterfaceUnavailable, PolicyRefused, PermissionRefused,
-  BackendConnectionRefused, NoSamplesObserved, HollowSamplesObserved, SamplesObserved,
-  BindingStreamUnobserved,
-  SampleLifecycle, LifecycleActivated, LifecycleActivationUnobserved,
-  SampleReceipt, FrequencyObservation, FrequencyObserved, FrequencyUnobserved,
-  NoiseFloorObservation, NoiseFloorObserved, NoiseFloorUnobserved,
-  AxisCountObservation, AxisCountObserved, AxisCountUnobserved,
-  GravityNormalization, GravityNormalized, GravityNotNormalized, GravityNormalizationUnobserved,
-  LatencyObservation, LatencyObserved, LatencyUnobserved,
-  NegativeControl, NegativeControlNotRun,
-}
-import extdeps.w3c.device_orientation_and_motion {
-  PermissionState, PermissionGranted, PermissionDenied, PermissionPrompt,
-  permission_state_wire,
-}
-import extdeps.w3c.generic_sensor {
-  SensorAccessOutcome, sensor_access_outcome_key,
-}
-import gunbc.design.instrument_physical {
-  SensorAvailability, SensorPresent, SensorAbsent, SensorPermissionNotRequested,
-  SensorPermissionDenied, SensorAvailabilityUnknown, sensor_availability_key,
-}
 
 data motion_binding_note: String = "AN OBSERVATION IS A RECEIPT IN THE OBSERVING LAYER, NEVER A PROPERTY OF THE OBSERVED UPSTREAM (DESIGN §3 external upstream decomposition). The two W3C contracts live in extdeps.w3c.*; what a particular browser build on a particular machine did with those contracts is produced HERE, by this repository, and is a fact about an execution rather than about the standard. This module carries the axes independently because they fail independently: a frame can be embedded, a policy can block, a permission can be denied, an interface can be exposed but never started, a sensor can activate and never read, and events can arrive carrying nothing. Every one of those is a different remedy, so none of them may collapse into a single sensor_available flag.
 

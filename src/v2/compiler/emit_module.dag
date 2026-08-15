@@ -1,21 +1,5 @@
 module v2.compiler.emit_module
 
-import v2.compiler.emit { emit }
-import v2.compiler.infer { InferredTree }
-import v2.compiler.target_carriers { target_source_medium }
-import v2.std.compilers.target_model { TargetModel }
-import extdeps.communication.medium { Medium }
-import v2.std.collection { List }
-import v2.std.diagnostic {
-  Accepted,
-  None,
-  Outcome,
-  bind_outcome,
-  outcome_accepted
-}
-import v2.std.text { String }
-import std.algebra { Empty }
-import v2.std.algebra { fold_list, list_append }
 
 data emit_module_decl_separator: String = "\n\n"
 

@@ -1,33 +1,5 @@
 module test.claim.observation_emit_census_witness_test
 
-import extdeps.filesystem.filesystem_io
-import std.dissolution { DissolutionCondition, unbound_dissolution }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import std.types { String, NonEmptyStr, Bool, List }
-import std.nat { Nat }
-import gunbc.observation_emit_census {
-  CensusedEmitSite,
-  EmitSiteDisposition,
-  MigratedToObservation,
-  CountedFrontierSite,
-  observation_emit_roster,
-  emit_site_is_frontier,
-  emit_site_dissolve_on,
-  floor_memory_site,
-  gantt_site,
-  governor_site,
-  typecheck_attribution_site,
-  measurement_site,
-  shell_site,
-  floor_drain_site,
-  receipt_site,
-  file_trace_site,
-  resolve_split_site,
-  assembly_split_site,
-  witness_row_cost_site,
-  witness_row_cost_migration_disclosure_site,
-  selection_degradation_site,
-}
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

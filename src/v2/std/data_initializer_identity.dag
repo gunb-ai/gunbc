@@ -1,9 +1,5 @@
 module v2.std.data_initializer_identity
 
-import v2.std.grammar { node_atom_identity_optional }
-import v2.std.compilers.lexing { symbol_lexeme }
-import v2.std.decl_index { DeclFact }
-import v2.std.optional { optional_present, optional_absent }
 
 data data_initializer_identity_authority_note: String = "Resolved parent/arm projection for DataItem rows — qualified_name, module_path, rel_path, and name locator grain (not occurrence identity). Host bridge marshals projection Node trees from typechecked subjects; parse-pool decl_facts rows use PoolDeclarationIdentity only."
 

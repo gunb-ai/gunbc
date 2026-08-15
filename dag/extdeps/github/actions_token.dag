@@ -1,22 +1,5 @@
 module extdeps.github.actions_token
 
-import std.types { NonEmptyStr }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import extdeps.github.actions { WorkflowPermissions, PermissionLevel, PermRead, PermWrite, PermNone }
-import extdeps.github.app {
-  GitHubPermissionAxis,
-  ActionsAxis, ArtifactMetadataAxis, AttestationsAxis, ChecksAxis, CodeQualityAxis,
-  ContentsAxis, DeploymentsAxis, DiscussionsAxis, IdTokenAxis, IssuesAxis,
-  MetadataAxis, ModelsAxis, PackagesAxis, PagesAxis, PullRequestsAxis,
-  RepositoryProjectsAxis, SecurityEventsAxis, StatusesAxis, VulnerabilityAlertsAxis,
-  WorkflowsAxis, AdministrationAxis, OrganizationSelfHostedRunnersAxis,
-  GitHubAppPermissionAccess,
-  AppAccessRead,
-  AppAccessWrite,
-  permission_access_at_least
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -1,23 +1,5 @@
 module v2.test.claim.self_host.frontier_gap_clustering_measured
 
-import v2.compiler.self_host.frontier_probe_survey {
-  CommonRoot,
-  HeterogeneousGaps,
-  frontier_gap_clustering_from_receipts
-}
-import v2.compiler.self_host.frontier_probe_types {
-  FrontierProbeDetailAbsent,
-  FrontierProbeReceipt,
-  NoFrontierProbeDetail,
-  ProbeStageAssemble,
-  RealizationGap,
-  UnknownProbeCause
-}
-import v2.std.algebra { Cons, Empty }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
-import v2.std.text { String }
 
 data frontier_gap_clustering_measured_note: String = "Discriminating controls for the clustering verdict's dominant reason. The verdict used to count blocker CLASSES and then write a hardcoded reason literal into the arm that fired, so a survey of modules refusing for ^tokenize_lex_e1_unrecognized_char — the reason the one real survey to date actually measured — would have reported ^parse_grammar_choice_overlap_residue, a symbol no receipt carried. These fixtures pin the reason to what the receipts say: a unanimous survey reports THAT reason and counts it, and a mixed survey reports its true distinct count rather than the module count. Fixtures, not a pipeline walk, so they cost milliseconds. RED: asserting the previously hardcoded literal on the unanimous case fails, which is the exact substitution these claims exist to catch."
 

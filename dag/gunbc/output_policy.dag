@@ -1,18 +1,5 @@
 module gunbc.output_policy
 
-import extdeps.github.log_annotations { neutralize_workflow_commands, subject_text_line_guard }
-import std.observation {
-  ObservationGrain,
-  BatchGrain,
-  ObservationEventClass,
-  ClassDone,
-  ClassFailed,
-  ObservationDensity,
-  RoutineCollapsible,
-  SummaryAlwaysShown,
-  AnomalyExpanded,
-  observation_class_density,
-}
 
 type Verbosity = Quiet | Normal | Verbose
 

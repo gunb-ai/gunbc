@@ -1,8 +1,5 @@
 module gunbc.design.instrument_camera
 
-import std.types { String, Bool, Int, List }
-import std.measure { Millisecond, millisecond, millisecond_count }
-import gunbc.v1_deletion_plan { V1FinishLine, v1_finish_line_key, v1_exit_finish_lines }
 
 data state_ownership_note: String = "FOUR OWNERS, AND THE SPLIT IS THE WHOLE POINT (instrument wave, operator directive 2026-08-04). Before physical-device input can drive presentation, it has to be impossible for it to drive anything else. The authoritative program view is V0's derived v1-deletion facts and this module NEVER writes it — no fn here returns a finish line, an acceptance, or a roadmap edge. Local instrument state is what the person operating the instrument chose: which subject is selected, how deep the camera sits, which mode it reads. Instrument observation is what the world told us: whether a sensor exists, whether permission was granted, whether an impulse arrived. Renderer ephemera is plate position, velocity, glow interpolation, glitch phase — none of it modelled here at all, because it is per-frame and belongs to the realization. The law that makes the split real rather than a naming convention: a ProgramCamera carries only a depth, a mode, and a focus KEY, so it structurally cannot hold a program fact to corrupt."
 

@@ -1,39 +1,5 @@
 module gunbc.host_axis_caps
 
-import std.types { String, NonEmptyStr, List, Bool, Int, list_length }
-import std.algebra { trim }
-import gunbc.ownership { Ownership, Owned, Ensured }
-import gunbc.membership_reconcile {
-  MembershipPlan,
-  membership_reconcile,
-  membership_effects,
-  EffectsOrRefusal,
-  EffectsReady,
-  ApplyRefused,
-  membership_write_count,
-  membership_removal_count,
-  membership_refusal_count,
-}
-import gunbc.host_converge {
-  gunbc_runner_per_slot_dropin_path,
-  gunbc_runner_per_slot_swap_dropin_path,
-  gunbc_runner_per_slot_high_dropin_path,
-  gunbc_runner_per_slot_tasks_dropin_path,
-  gunbc_runner_control_dropin_dir_prefix,
-}
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired, gunbc_runner_slots_per_host }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner_lifecycle { runner_slot_unit_name }
-import gunbc.live_deploy.operations { systemctl_daemon_reload_command, privileged_command }
-import product.placement_supply { HostIdentity }
-import extdeps.systemd {
-  MemoryMax,
-  MemoryHigh,
-  systemd_memory_max_property,
-  systemd_memory_high_property,
-}
-import extdeps.systemd.systemctl { systemctl_revert_memory_caps_argv }
-import std.measure { byte_size_count }
 
 data host_axis_caps_note: String = "PerSlotMemoryCap axis, closed vertically on the membership_reconcile spine — the first non-degenerate reconcile in the repo (desired vs a real OBSERVED set, not observed=[]). MemoryMax SINGLE AUTHORITY: drop-in content authored here and applied at live_deploy under the deploy principal (ghrunner sudo) — gunbc converge on the operator principal does NOT write drop-ins, daemon-reload, set-property MemoryMax, or systemctl revert (operator privilege hold 2026-08-13). system.control set-property RESIDUE is a separate reconcile axis: stale 50-MemoryMax.conf / 50-MemoryHigh.conf shadow deploy drop-ins until teardown via deploy apply (author derived drop-ins before revert). A CapMember is a per-slot systemd drop-in keyed by its file path (stable IDENTITY, so a content drift is Modified->MemberChanged, never Remove+Add). The interference domain is the drop-in directory itself: ownership is DERIVED from the path (managed set -> Owned; anything else -> a foreign occupant, Ensured), never stored, so a Removed foreign file yields MemberRemovalRefused (R5, no effect arm, never deleted). Idempotence = zero hunks (Unchanged); perturb = Modified->MemberChanged of exactly the drifted row; foreign occupant = ApplyRefused wholesale. Live apply/observe are host_effect_apply typed transports (operator one-liners for the go-live receipts); this module is the pure, hermetically-witnessed fold."
 

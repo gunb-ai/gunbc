@@ -1,18 +1,5 @@
 module test.claim.rack_mount_witness
 
-import std.types { Bool, Int, List }
-import std.measure { millimeter_count, micrometer_count, rack_unit, rack_unit_count }
-import product.placement_supply { RackIdentity, PhysicalAssetIdentity, RackUnitPosition }
-import product.rack_mount {
-  MountReady, MountRefused,
-  MountBelowFirstUnit, MountExceedsRackHeight, MountsCollide, AssetMountedTwice, OccupancyExceedsCapacity,
-  ChassisMount, mount_top_unit,
-  RackInstance, rack_instance, rack_units_free, rack_mounting_aperture_height,
-}
-import extdeps.rack.navepoint { navepoint_18u_open_frame_catalog }
-import extdeps.chassis.rosewill { rosewill_rsv_r4000u_catalog, rosewill_rsv_z2600u_catalog }
-import v2.std.optional { Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

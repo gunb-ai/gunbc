@@ -1,35 +1,5 @@
 module test.claim.reference_instrument_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.design.reference_instrument {
-  InstrumentBehaviourAxis, OpticalInstability, RestingOffsetCalibration,
-  ImpulseGlitch, ImpulseThreshold, TiltDerivedReadout, BuoyantDrift,
-  pip_boy_3000_subject, pip_boy_mk_v_subject,
-  axis_is_cited_on, subject_covers_axes, directive_requested_axes,
-  named_referent, named_referent_covers_directive, mk_v_covers_directive,
-  axis_is_originated, axis_has_any_evidence,
-  all_evidence_is_contained, all_sources_read_directly,
-  InstrumentCitation, citation_is_contained, pip_boy_3000_citation,
-  AxisProvenance, CitedOn, OriginatedHere, axis_provenance, axis_citations,
-}
-import extdeps.external_authority { external_subject_ref_eq }
-import std.decl_ref { DeclarationRef, decl_ref }
-import extdeps.instrument.pip_boy_3000 {
-  pip_boy_3000_manufacturer,
-  PipBoy3000Setting, DisplayTimeout, GlitchOnTap, TapThreshold, CrtJitter,
-  VerticalShift, ShowDebugInfo, SoundEffectsVolume, MuteSpeakerWhenHeadphonesConnected,
-  PipBoy3000SettingRow, pip_boy_3000_settings, pip_boy_3000_setting_label,
-  PipBoy3000GlitchMode, GlitchOff, GlitchShort, GlitchPersistent,
-  pip_boy_3000_glitch_modes, pip_boy_3000_glitch_mode_label,
-  pip_boy_3000_licensing_statement,
-}
-import extdeps.instrument.pip_boy_3000_mk_v {
-  pip_boy_mk_v_manufacturer,
-  PipBoyMkVCapability, DisplayColourSelection, DisplayBrightness,
-  QuickNightViewBrightness, DemoMode, MkVClock, Alarm, AlarmSnooze, FmRadio,
-  pip_boy_mk_v_capabilities, pip_boy_mk_v_capability_label,
-  pip_boy_mk_v_licensing_statement,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

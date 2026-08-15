@@ -1,6 +1,5 @@
 module test.fixture.rest_exchange_replay_probe
 
-import extdeps.transports.rest { RestOutcome }
 
 service test.RestReplay {
   config { endpoint: "https://rest-replay.invalid" }

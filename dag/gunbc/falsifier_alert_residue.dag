@@ -1,8 +1,5 @@
 module gunbc.falsifier_alert_residue
 
-import std.types { NonEmptyStr, String }
-import std.content_hash { Sha256Digest }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
 data falsifier_alert_residue_purpose_note: String = "ALERT-0. This module DECLARES the falsifier alert's residue and the laws its migration must satisfy. IT MOVES NO BEHAVIOR. The embedded program still runs exactly where it ran before; what changes is that it is now a counted row with a named disposition and a dissolution trigger rather than an undeclared fact of the tree. That ordering is deliberate — a residue that is not declared cannot be shown to have shrunk, and a migration that starts by moving behavior has no baseline to measure against."
 

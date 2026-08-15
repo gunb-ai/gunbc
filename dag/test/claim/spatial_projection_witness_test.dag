@@ -1,24 +1,5 @@
 module test.claim.spatial_projection_witness
 
-import std.types { Bool, Int, List }
-import std.algebra { Empty, Cons }
-import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
-import std.affine_space { point2 }
-import std.orthogonal_geometry { OrthogonalReady, OrthogonalRefused, orthogonal_loop2, orthogonal_prism3 }
-import std.orthogonal_topology { EnclosedSpace, enclosed_space, closed_shell_of_prism }
-import std.planar_projection {
-  ProjectionView, ProjectionKind, PlanFromAbove, ElevationFromSouth,
-  ProjectionReady, ProjectionRefused, named_projection_view,
-}
-import product.placement_supply { RoomIdentity }
-import product.spatial_world { World, PlacedSpace, world, WorldReady, WorldRefused }
-import product.spatial_projection {
-  ProjectedRoom, ProjectedScene, SceneReady, SceneRefused,
-  SceneProjectionRefused, DepthOrderAmbiguous,
-  project_world, scene_rooms, painter_order,
-}
-import v2.std.optional { Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

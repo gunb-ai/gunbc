@@ -1,21 +1,5 @@
 module gunbc.roadmap_site_surface_expect
 
-import std.types { String, Bool, Int, List, NonEmptyStr }
-import std.content_hash { Fnv1a64Structural, content_hash_atom }
-import extdeps.languages.json.grammar { json_text_trim_trailing_lf }
-import extdeps.languages.json.parse {
-  json_text_parseable,
-  parse_json,
-  json_object_unique_member,
-  JsonMemberFound,
-  JsonMemberAbsent,
-  JsonMemberDuplicated,
-  JsonMemberNotAnObject,
-}
-import v2.std.collection { Absent, Present }
-import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_object, serialize_json }
-import extdeps.http.server { media_type_wire_label, application_json_utf8 }
-import gunbc.roadmap_site_surface_types { RoadmapSiteSurfaceBundle, RoadmapSiteSurfaceArtifact, HealthzEffectiveRead }
 
 data roadmap_site_surface_expect_note: String = "PURE bundle predicates for roadmap served-surface witnesses. Every function here takes an already-materialized RoadmapSiteSurfaceBundle (or a typed HTTP read) and performs no filesystem, Git, authority, or rendering observation."
 

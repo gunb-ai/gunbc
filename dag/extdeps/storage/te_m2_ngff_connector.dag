@@ -1,20 +1,5 @@
 module extdeps.storage.te_m2_ngff_connector
 
-import std.types { String, NonEmptyStr }
-import std.nat { Nat }
-import std.measure { Micrometer, micrometer }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import extdeps.vendor { Vendor }
-import extdeps.hardware { Hardware }
-import extdeps.vendor.tyco_electronics_amp_kk { tyco_electronics_amp_kk }
-import extdeps.land_pattern.types {
-  BoardAttachmentStyle,
-  SurfaceMountPatternNotEstablished,
-  SurfaceMountPatternStanding,
-  SurfaceMountTerminals,
-}
 
 // Application Specification 114-115006, "67 Positions 0.5 Pitch M.2(NGFF) MINICARD", Rev C dated
 // 04JAN23, read 2026-08-14. The fetched file is the Rev B delivery URL and its content is Rev C;

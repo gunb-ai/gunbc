@@ -1,22 +1,5 @@
 module test.claim.spatial_connectivity_witness
 
-import std.types { Bool, Int, List }
-import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
-import std.affine_space { point2 }
-import std.orthogonal_geometry { OrthogonalReady, OrthogonalRefused, orthogonal_loop2, orthogonal_prism3 }
-import std.orthogonal_topology { EnclosedSpace, enclosed_space, closed_shell_of_prism }
-import product.placement_supply { RoomIdentity }
-import product.spatial_world { World, PlacedSpace, world, WorldReady, WorldRefused }
-import product.spatial_connectivity {
-  OpeningIdentity, Opening, OpeningPlan, opening_plan, plan_openings,
-  ConnectivityReady, ConnectivityRefused, ConnectivityRefusal,
-  OpeningRoomMissing, OpeningJoinsRoomToItself, OpeningRoomsShareNoWall,
-  OpeningOutsideSharedWall, OpeningHasNoArea, OpeningDeclaredTwice,
-  ReachabilityEndpointMissing, ReachabilityEndpoint, TraversalStart, TraversalTarget,
-  reachable_from, rooms_are_connected, world_is_connected, unreachable_room,
-}
-import v2.std.optional { Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

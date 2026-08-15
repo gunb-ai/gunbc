@@ -1,32 +1,6 @@
 module test.claim.reconcile_in_process_cache
 
 // Same repair as hermetic_fixture_realization_test: the partial import list is the defect.
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.content_hash { ContentHash, content_hash_of_value }
-import std.cache_identity {
-  parse_source_artifact_kind,
-  typed_module_artifact_kind,
-  resolved_graph_artifact_kind,
-}
-import std.cache_interface {
-  ArtifactIdentity,
-  PerHostFilesystem,
-  InProcess,
-  StructuredArtifact,
-  MissThenCreate,
-  ContentAddressedByValue,
-  HandAuthoredString,
-  NativeInternalHash,
-}
-import extdeps.cache { cache_interface_facts_from_catalog, cache_key_projection_transport }
-import extdeps.cache.types { catalog_key_derivation_classification }
-import extdeps.realization.reconcile_in_process {
-  parse_cache_facts,
-  typed_module_cache_facts,
-  parse_cache_id,
-  typed_module_cache_id,
-}
-import extdeps.realization.resolved_graph { resolved_graph_cache_facts, resolved_graph_cache_id }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

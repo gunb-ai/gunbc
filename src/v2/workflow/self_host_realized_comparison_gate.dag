@@ -1,13 +1,5 @@
 module v2.workflow.self_host_realized_comparison_gate
 
-import gunbc.ci_layer_roots { witness_layer_roots }
-import std.logic { Bool }
-import tools.host_prelude { ClaimRun, run_gunbc_claims, run_witness_bin_program }
-import tools.self_host_realized_comparison_transport {
-  realized_comparison_args,
-  realized_comparison_invoke,
-  realized_comparison_verify_args
-}
 
 data srfc_gate_test_entry: String = "src/v2/workflow/self_host_realized_comparison_claims.dag"
 data srfc_staleness_gate_witness: String = "self_host_realized_comparison_staleness_gate_holds"

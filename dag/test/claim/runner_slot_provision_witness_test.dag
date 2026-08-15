@@ -1,33 +1,5 @@
 module test.claim.runner_slot_provision
 
-import std.logic { Bool }
-import std.types { list_length, NonEmptyStr, List }
-import extdeps.toolchain.types { Aarch64 }
-import extdeps.github.actions_runner {
-  actions_runner_release_2_334_0,
-  actions_runner_binary_artifact_for_arch,
-  actions_runner_download_url,
-}
-import gunbc.runner_host_deploy {
-  srv3_runner_host_deploy,
-  srv4_runner_host_deploy,
-  runner_host_installer_command_argv,
-  runner_instance_names,
-}
-import gunbc.runner_slot_provision {
-  desired_runner_slot_members,
-  runner_slot_membership_reconcile,
-  runner_slot_provision_plan,
-  runner_slot_enumeration_postcondition,
-  RunnerSlotEnumerationMatched,
-  RunnerSlotEnumerationMismatch,
-  RunnerSlotMember,
-  runner_slot_provision_has_width_increase,
-}
-import gunbc.membership_reconcile { membership_added_count }
-import gunbc.fleet_host_budget { declared_runner_count_for }
-import gunbc.fleet_intent_network { operator_host_srv3 }
-import extdeps.exec.command { shell_command_render }
 
 test fn witness_actions_runner_release_cites_github_digest() -> Bool {
   match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_334_0, arch: Aarch64) {

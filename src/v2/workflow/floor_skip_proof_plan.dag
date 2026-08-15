@@ -1,15 +1,5 @@
 module v2.workflow.floor_skip_proof_plan
 
-import gunbc.ci_layer_roots { witness_layer_roots }
-import std.realization_schedule {
-  SelectionApplied,
-  Runnable,
-  RunnableDiscoveryBatch,
-  ScheduleWitnessEntry,
-  CorpusWitnessKind,
-  runnable_resource_profile_negligible
-}
-import std.types { List }
 
 data floor_skip_disc_entry: String = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag"
 

@@ -1,35 +1,5 @@
 module test.claim.codex_app_server_press_wet_witness_test
 
-import extdeps.filesystem.filesystem_io
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import std.types { Bool, String, FilePath, NonEmptyStr }
-import gunbc.package_delivery {
-  codex_runtime_lock_path,
-  codex_runtime_manifest_path,
-  materialize_codex_runtime_bundle,
-  AdmittedCodexRuntimeSource,
-  CodexRuntimeMaterialized,
-  codex_runtime_materialization_failure_receipt,
-}
-import gunbc.codex_app_server_press {
-  observe_codex_account_preflight,
-  ProviderProbeKey,
-  codex_press_outcome_wire_status,
-  codex_press_outcome_operator_caption,
-  account_standing_projection,
-  standing_is_redacted_projection,
-  CodexPressAccountReady,
-  CodexPressLoginRequired,
-  CodexPressUnavailable,
-  CodexPressRefused,
-  AccountStandingAuthenticatedRateLimitsReadable,
-  AccountStandingLoginRequired,
-  AccountStandingQuotaReached,
-  AccountStandingIncomplete,
-  AccountStandingInitializeMissing,
-}
-import gunbc.codex_runtime_bundle { codex_bundle_executable_path }
-import extdeps.shell
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

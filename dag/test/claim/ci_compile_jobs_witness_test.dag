@@ -1,19 +1,5 @@
 module test.claim.ci_compile_jobs_witness
 
-import std.types { Int, Bool, String, List }
-import std.measure { hardware_thread_count, ByteSize, byte_size, byte_size_count }
-import gunbc.ci_compile_measurement {
-  CompileJobMeasurement, CompileJobMeasured, CompileJobUnmeasured,
-  gunbc_ci_compile_measurement
-}
-import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_memory_max_live }
-import gunbc.ci_compile_jobs {
-  DerivedCompileJobs, CompileJobs, CompileJobsRefuse,
-  ci_compile_jobs, ci_compile_jobs_for, compile_jobs_count_or_serial
-}
-import extdeps.cargo_build { cargo_nextest_build_jobs_flag, cargo_build_jobs_flag }
-import tools.rust_gates_ci { rust_gate_build_jobs_args }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

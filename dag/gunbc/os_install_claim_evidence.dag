@@ -1,33 +1,5 @@
 module gunbc.os_install_claim_evidence
 
-import std.types { NonEmptyStr, RunKey }
-import std.claim_evidence {
-  RecordedFactId,
-  RecordedFact,
-  Claim,
-  EvidenceProvenance,
-  ProvAgentId,
-  EvidenceFreshness,
-  EvidenceFidelity,
-  EvidenceSupports,
-  EvidenceLink,
-  EvidenceInference,
-}
-import gunbc.os_install_deduction {
-  OsInstallPreflightVerdict,
-  OsInstallRuntimeDiagnosticVerdict,
-  KvmOperatorAttestation,
-  KvmObservedScreen,
-  KvmSuggestsOsBooted,
-  RuntimeOsInstalled,
-  runtime_verdict_from_kvm_attestation,
-}
-import product.placement_supply { HostIdentity }
-import gunbc.readback_independence {
-  ReadBackProbe,
-  ProbeInert,
-}
-import gunbc.claim_evidence_probe_rule { infer_probe_evidence }
 
 type OsInstallEvidenceClaim = Claim<HostIdentity, HostIdentity, OsInstallRuntimeDiagnosticVerdict, OsInstallPreflightVerdict, RunKey>
 

@@ -1,41 +1,5 @@
 module test.claim.roadmap_dispatch_environment_witness_test
 
-import std.types { Bool, String, NonEmptyStr, FilePath }
-import gunbc.ensure {
-  EnsureObserveOnly,
-  EnsureMayApply,
-  EnsureObserved,
-  EnsureAbsent,
-}
-import gunbc.roadmap_execution_contract {
-  GitWorkspaceCapability,
-  TmuxSessionCapability,
-  TmuxPipeShellCapability,
-  TeeEventCaptureCapability,
-  ProviderEventProjectionCapability,
-  EnvironmentBindingCapability,
-  AttemptStateDirectoryCapability,
-  AttemptCurrentPointerCapability,
-  GunbcClaimRunnerCapability,
-  CargoCapability,
-  ExecutionCapability,
-  GunbcClaimValidation,
-  ExecutionContract,
-  ExecutionContractUnspecified,
-  CapabilityRealization,
-  execution_capability_label,
-}
-import std.upsert_decision { Noop, upsert_decision_label }
-import gunbc.roadmap_dispatch_environment {
-  CapabilityEnsureReceipt,
-  DispatchEnvironmentAdmission,
-  EnvironmentAdmitted,
-  EnvironmentRefused,
-  capability_ensure_receipt,
-  missing_capability_receipt,
-  dispatch_environment_admission_decision,
-  dispatch_environment_admission_json,
-}
 
 fn git_realization() -> CapabilityRealization {
   CapabilityRealization {

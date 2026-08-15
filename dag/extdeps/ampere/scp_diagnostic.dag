@@ -1,10 +1,5 @@
 module extdeps.ampere.scp_diagnostic
 
-import std.types { EpochMs, List, NonEmptyStr }
-import std.nat { Nat }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef, ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -1,17 +1,5 @@
 module gunbc.roadmap_model
 
-import std.types { NonEmptyStr }
-import std.content_hash { Fnv1a64Structural }
-import std.content_hash { content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural, content_hash_eq_structural }
-import gunbc.roadmap_status {
-  RoadmapItem, DriftVerdict, Signoff, signoff_accepts, signoff_drift,
-  TicketFields, line_ticket,
-  RedControlEvidence, HandbackEvidence,
-  RedControlNotRun, RedControlExecuted,
-  HandbackNotDelivered, HandbackDelivered,
-  red_control_evidence_satisfied, handback_evidence_satisfied,
-}
-import gunbc.roadmap_execution_contract { WorkItemExecutionContract }
 
 type RoadmapNodeId = NonEmptyStr where brand("RoadmapNodeId")
 

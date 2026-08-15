@@ -1,28 +1,5 @@
 module v2.test.claim.enforcement.lens_module_gate_witness
 
-import v2.lens.module_graph { ModuleDeclarationFact }
-import v2.lens.enforcement.lens_module_gate {
-  LensInvariantSurface, LensInvariantProjection, LensVerdictAuthority, LensInvariantRemedy,
-  LensModuleAdmission, GenuinelyNewInvariant, HandlerOnKernel,
-  ProjectionNodeDag, VerdictLensVerdict, VerdictFidelityVerdict, VerdictVacuityEvidence,
-  RemedyShare, RemedyReport, RemedyIndependentOracle,
-  lens_module_gate_blocking_holds, lens_module_gate_holds,
-  lens_module_gate_unenrolled_count_from_facts,
-  lens_module_gate_unjustified_count_from_facts,
-  lens_module_gate_redundant_blocking_count_from_surfaces,
-  lens_module_gate_audit_residue_count_from_surfaces,
-  lens_module_gate_surfaces
-}
-import v2.lens.enforcement.gate {
-  leg_holds, leg_fails, question_zero_verdict_holds,
-  lens_closure_question_zero_verdict, lens_closure_question_zero_holds
-}
-import v2.lens.enforcement.standing_intent { standing_intent_lens_closure_question_zero }
-import v2.lens.registry.completeness { lens_registry_completeness_bound_module_paths }
-import v2.workflow.enforcement_live { lens_closure_question_zero_holds_live }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

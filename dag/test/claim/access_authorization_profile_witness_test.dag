@@ -1,20 +1,5 @@
 module test.claim.access_authorization_profile_witness_test
 
-import std.types { Bool, Set, String }
-import std.access {
-  AccessDecision, Permit, Deny,
-  access_policy_refusal, decision_meet,
-}
-import std.authorization_profile {
-  AudienceSet, UniversalAudience, EnumeratedAudience,
-  audience_subset, audience_join,
-  EffectRequest, effect_access_request,
-  ReferenceRequest, reference_access_request,
-  PublicationAdmissionRequest, publication_access_request,
-  DisclosureRequest, disclosure_access_request,
-  SealedExecutionRequest, sealed_execution_access_request,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

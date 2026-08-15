@@ -1,17 +1,5 @@
 module gunbc.test.claim.namespace_graft_body_dissolution_witness_test
 
-import v2.std.text { String }
-import v2.std.logic { Bool }
-import v2.std.algebra { fold_list }
-import v2.std.collection { Absent, List, Present, optional_absent, optional_present }
-import v2.std.node { Node, Symbol }
-import v2.std.grammar { ParseTree, node_atom_identity_optional }
-import v2.std.diagnostic { Diagnostic, NonEmptyDiagnostics }
-import v2.std.compilers.lexing { lex_artifact_semantic_tokens }
-import v2.compiler.tokenize { lex_walk_artifact }
-import v2.compiler.parse { parse_module, ParseArtifact }
-import v2.compiler.normalize { normalize }
-import v2.extdeps.languages.dag { dag_lex_rules, dag_grammar }
 
 data namespace_graft_body_dissolution_witness_note: String = "The empty-observation narrow refused at the graft (operator ruling msg_d18a55de, 2026-08-10): namespace_graft's body collector dissolved every declaration of a type-decl-carrying module into childless atoms and reported the module as declaration-free — normalize then ACCEPTED a hollow module shell, so a loud sugar refusal two commits earlier had become a silent drop (the §4b(3) rung demotion declared in gunbc#8080's body). module_header_containment_graft now REFUSES (namespace_graft_body_dissolved_refused) when the collected body is empty while the pre-graft tree carries top-level declarations. The discriminant is declaration PRESENCE, so a genuinely declaration-free module keeps its legitimate empty body. This guard covers total dissolution only; partial-drop fidelity belongs to the deeper graft repair. Controls: the formerly-hollow shapes now refuse WITH THE EXACT GUARD REASON asserted (discriminating them from the well_formed rejection class), a lowered-body module still grafts and its normalized tree still carries its declarations (asserted non-vacuously), and a header-only module still accepts."
 

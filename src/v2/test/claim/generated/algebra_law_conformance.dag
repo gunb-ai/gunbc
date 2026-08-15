@@ -1,29 +1,5 @@
 module v2.test.generated.algebra_law_conformance
 
-import v2.lens.testgen {
-  testgen_emit_algebra_law_claim
-}
-import v2.std.algebra { length }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.nat {
-  Nat,
-  Succ,
-  Zero,
-  nat_add,
-  nat_mul
-}
-import v2.std.verification {
-  TestClaim,
-  TestClassification,
-  ManualNatAddAssociativity,
-  ManualNatAddLeftIdentity,
-  ManualNatMulAnnihilator,
-  Tier1,
-  Unit
-}
-import v2.std.diagnostic { Outcome }
 
 fn algebra_law_generated_atom(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],

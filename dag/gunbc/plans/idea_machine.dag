@@ -1,9 +1,5 @@
 module gunbc.plans.idea_machine
 
-import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
-import std.markdown { MarkdownBlock }
-import gunbc.plans.md_helpers { h2, p, li, ul, ol }
 
 fn idea_machine_body() -> List<MarkdownBlock> {
   [

@@ -1,13 +1,5 @@
 module gunbc.plan
 
-import std.markdown {
-  MarkdownDocument, MarkdownBlock,
-  HeadingBlock, ParagraphBlock,
-  TextInline, H1, H2,
-}
-import extdeps.languages.markdown { serialize_markdown_source }
-import std.types { NonEmptyStr }
-import std.dissolution { DissolutionCondition, dissolution_description }
 
 type PlanRetirement
   = PlanRetiresWhen { condition: DissolutionCondition }

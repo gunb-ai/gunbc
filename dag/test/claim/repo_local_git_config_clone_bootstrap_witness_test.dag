@@ -1,11 +1,5 @@
 module test.claim.repo_local_git_config_clone_bootstrap
 
-import gunbc.repo_local_git_config_clone_bootstrap {
-  repo_local_git_config_clone_bootstrap_population,
-  repo_local_git_config_clone_bootstrap_converge_invoke_entry,
-  repo_local_git_config_clone_bootstrap_converge_invoke_function,
-  repo_local_git_config_clone_bootstrap_enrolled_path_count,
-}
 
 test fn clone_bootstrap_population_records_missing_session_worktree_enrollment() -> Bool {
   !repo_local_git_config_clone_bootstrap_population.session_worktrees

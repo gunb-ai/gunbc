@@ -1,15 +1,5 @@
 module test.claim.githooks_pre_push_plan
 
-import gunbc.githooks_pre_push_plan {
-  pre_push_all_bindings,
-  pre_push_active_kinds,
-  pre_push_zero_sha_authority,
-  pre_push_check_only_note,
-  pre_push_witness_corpus_plan_fn_authority,
-}
-import gunbc.local_tidy_spec { local_tidy_path_matches_glob }
-import tools.rust_stage0_gates { path_is_rust_monolith }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

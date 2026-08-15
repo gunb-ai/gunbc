@@ -1,21 +1,5 @@
 module test.claim.membership_reconcile_witness
 
-import std.types { String, List, Bool, Int }
-import gunbc.ownership { Ownership, Owned, Ensured }
-import gunbc.membership_reconcile {
-  MembershipPlan, MemberAction,
-  MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused,
-  TeardownRefusalCause, MemberNotOwned, OwnershipUnknown,
-  membership_reconcile,
-  membership_write_count, membership_removal_count, membership_refusal_count,
-  MemberEffect, EffectAdd, EffectReplace, EffectRemove,
-  membership_added_count, membership_change_count,
-  MemberRefusal,
-  EffectsOrRefusal, EffectsReady, ApplyRefused,
-  membership_effects,
-  MembershipTally, membership_tally,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

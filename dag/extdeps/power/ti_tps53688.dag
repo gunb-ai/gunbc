@@ -1,19 +1,5 @@
 module extdeps.power.ti_tps53688
 
-import std.types { String }
-import std.measure { micrometer }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import extdeps.vendor.texas_instruments { texas_instruments }
-import extdeps.land_pattern.types {
-  PartMechanicalCandidate,
-  TerminalIndexingObligation,
-  PackageDrawingRef,
-  PackageBodyDimensions,
-  QuadRowLandGeometry,
-  VendorRecommendedLandPattern,
-}
 
 // The TPS53688 datasheet, read 2026-08-14 for its mechanical pages only. The package drawing it
 // reprints is RSB0040A, stamped 4215000/A, 08/2016.

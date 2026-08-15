@@ -1,22 +1,5 @@
 module test.claim.source_annotation_attachment_witness
 
-import std.types { Bool, Int, String, SourceSpan, List }
-import std.occurrence_identity { OccurrenceId }
-import std.source_annotation {
-  AnnotationSubject,
-  AnnotationAttachmentRefusal,
-  BodyGrainNotModeled,
-  LeadingAfterLineIndent,
-  NormalizedAnnotationCapture,
-  SourceAnnotationGraph,
-  TrailingAfterSemanticToken,
-  TrailingNotModeled,
-  UnattachedAtScopeEnd,
-  attach_annotations,
-  annotation_attachment_result_graph,
-  annotation_attachment_result_refusals,
-  source_annotation_graph_rows
-}
 
 data source_annotation_attachment_offline_recipe: String = "OFFLINE LOCAL RECIPE: target/debug/claim_batch --source-root dag --entry dag/test/claim/source_annotation_attachment_witness_test.dag --functions w_leading_block_attaches_to_the_following_subject,w_consecutive_leading_captures_merge_into_one_block,w_distinct_subjects_produce_distinct_rows,w_body_grain_capture_refuses_rather_than_attaching_to_the_next_subject,w_body_grain_capture_would_otherwise_have_attached,w_trailing_capture_refuses_and_lands_no_row,w_capture_after_the_last_subject_refuses_unattached,w_attachment_refers_to_supplied_identities_and_mints_none,w_no_captures_yields_an_empty_graph_and_no_refusals"
 

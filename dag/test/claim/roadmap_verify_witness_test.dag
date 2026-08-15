@@ -1,51 +1,5 @@
 module test.claim.roadmap_verify_witness_test
 
-import std.types { Bool, String, NonEmptyStr, Int, List, FilePath }
-import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import gunbc.roadmap_execution_contract {
-  WorkItemExecutionContract,
-  ExecutionContractUnspecified,
-  ExecutionContract,
-  ValidationOperation,
-  GunbcClaimValidation,
-  ContractClosure,
-  ContractDeclaresNoValidation,
-  ContractClosesNothing,
-  ContractCloses,
-  contract_closure,
-  contract_has_closing_validation,
-  gunbc_claim_execution_contract,
-}
-import gunbc.roadmap_dashboard_instance {
-  HostDashboardInstance,
-  DashboardProvisionTransport,
-  DashboardLocalProvision,
-  DashboardSshProvision,
-  srv1_lab_dashboard_instance,
-  srv2_lab_dashboard_instance,
-}
-import gunbc.roadmap_verify {
-  VerificationOutcome,
-  VerificationUnbound,
-  VerificationPassed,
-  VerificationFailed,
-  VerificationRefused,
-  VerificationNodeNotFound,
-  VerificationExit,
-  ExitObserved,
-  ExitNotObserved,
-  LegacySingleValidationVerificationReceipt,
-  legacy_single_validation_verification_receipt_json,
-  verification_execution_host,
-  verification_process_exit,
-  verification_outcome_label,
-  dispatch_disposition_for,
-  VerifiedDispatchDisposition,
-  ReadyForAcceptance,
-  DispatchWarranted,
-  ContractNeededFirst,
-  EnvironmentBlocked,
-}
 
 // THE DEFECT, STATED AS A CLAIM. verify_node called belt_exec — a local WitnessBin.Run — and never read instance.provision_transport, so selecting srv1_lab changed every path the command was built from and did not change which machine ran it. Verification of an srv1 instance executed on srv2.\n\nThis asserts the routing fact directly: the host a verification executes on is derived from the TRANSPORT, and srv1_lab's transport is ssh to srv1 while srv2_lab's is local. A verifier that ignored the transport would answer the same host for both, which is exactly what the old one did — so this claim goes red against the previous behaviour rather than merely describing the new one.\n\nThe two instances are chosen because they straddle the split: one remote, one local, both actuating. A claim written against only the local instance would pass under the broken code, since a locally-provisioned instance's correct host and the controller happen to coincide — which is precisely why the bug survived on srv2 and surfaced on srv1.
 test fn verification_host_follows_the_transport_not_the_controller() -> Bool {

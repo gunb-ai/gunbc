@@ -1,15 +1,5 @@
 module test.claim.operation_argv_binding_wall_witness
 
-import std.types { String, List, Bool }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.operation_argv {
-  ArgvMaterialization,
-  OperationInputBinding,
-  operation_argv_bind_text,
-  operation_argv_bind_text_list,
-  operation_argv_refusal_label,
-  operation_argv_tokens_or_refusal_label,
-}
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

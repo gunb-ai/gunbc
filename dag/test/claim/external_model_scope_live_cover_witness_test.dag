@@ -1,14 +1,5 @@
 module test.claim.external_model_scope_live_cover_witness
 
-import extdeps.filesystem.filesystem_io
-import tools.extdeps_scope_placement_gate { scope_placement_added_paths }
-import gunbc.extdeps_scope_frontier {
-  scope_carrier_paths, scope_machinery_exempt_paths,
-  legacy_extdeps_scope_frontier_manifest_path, parse_frontier_manifest,
-  scope_cover_holds, manifest_freeze_holds,
-}
-import std.types { String, Bool, Int, List }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

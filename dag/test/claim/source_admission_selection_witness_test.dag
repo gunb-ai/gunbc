@@ -1,53 +1,5 @@
 module test.claim.source_admission_selection_witness
 
-import std.types { String, Bool, List }
-import extdeps.git.object_store { GitObjectId, git_object_id_eq, git_sha1_object_id }
-import gunbc.source_admission_selection {
-  ActiveSourceIdentity,
-  ActiveSourceManifest,
-  AnnotationCorpusAdmitted,
-  AnnotationMechanismIdentity,
-  AwaitingAdmittedSourceJoin,
-  AwaitingComputedMechanismIdentity,
-  BaseReceiptAbsent,
-  BaseReceiptTreeMismatch,
-  ComputedMechanismIdentity,
-  CorpusAdmitted,
-  DuplicateModulePath,
-  EmptyUniverse,
-  IncompleteWalk,
-  IncrementalSources,
-  ManifestObserved,
-  ManifestUnobservable,
-  MechanismIdentityComputed,
-  MechanismIdentityUnobservable,
-  NotMergeTree,
-  SeedRustExecuting,
-  SelfEmittedExecuting,
-  SourceAdmissionSelection,
-  SourcePoolFile,
-  SourceTransitionRefusalCause,
-  TransitionManifestUnobservable,
-  TransitionMechanismIdentityUnobservable,
-  admit_active_source_manifest,
-  active_source_lists_identity_join,
-  admission_mechanism_seed_roots,
-  annotation_corpus_induction_base_tree,
-  annotation_corpus_induction_standing,
-  fixture_computed_mechanism,
-  fixture_source,
-  incremental_changed_module_paths,
-  mint_annotation_corpus_admitted,
-  nonempty_active_sources_all,
-  production_annotation_mechanism_identity,
-  project_active_source_rows,
-  select_source_admission,
-  source_admission_is_entire_head,
-  source_admission_is_incremental,
-  source_admission_is_unchanged_noop,
-  source_admission_refusal_cause,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

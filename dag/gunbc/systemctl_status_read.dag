@@ -1,24 +1,6 @@
 module gunbc.systemctl_status_read
 
-import std.algebra { trim }
 
-import std.types { String, NonEmptyStr, List }
-import extdeps.systemd.systemctl
-import gunbc.host_effect { fleet_ssh_leaf_unmigrated_refused, HostEffectTransport, LocalShell, SshShell, EmitArtifactThenThinRun }
-import v2.std.operation_argv {
-  ArgvMaterialization,
-  ArgvMaterialized,
-  ArgvMaterializationRefused,
-  operation_argv_bind_text,
-  operation_argv_cause_label,
-}
-import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
-import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh,
-  typed_argv_exec_over_ssh,
-  typed_argv_shell_safe_refusal_argv,
-  TypedArgvExecConverged,
-  TypedArgvExecRefused,
-}
 
 data systemctl_status_path: String = "dag/extdeps/systemd/systemctl.dag"
 data systemctl_status_service: String = "systemd.Systemctl"

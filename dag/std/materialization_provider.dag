@@ -1,36 +1,5 @@
 module std.materialization_provider
 
-import std.types { Bool, Int, List, String, NonEmptyStr }
-import std.content_hash {
-  ContentHash,
-  Fnv1a64Structural,
-  Fnv1a64StructuralDigestHex,
-  HashFamily,
-  Sha256Family,
-  Sha1Family,
-  Sha512Family,
-  content_hash_atom,
-  content_hash_combine_structural,
-  content_hash_tagged,
-  content_hash_tagged_structural,
-  as_content_hash_structural,
-  structural_content_hash,
-  serialize_content_hash,
-}
-import std.interface_summary { InterfaceHash, ModuleKey, TypedModuleKey, module_key, typed_module_key }
-import std.cache_identity {
-  ArtifactKindId,
-  parse_source_artifact_kind,
-  typed_module_artifact_kind,
-  resolved_graph_artifact_kind
-}
-import std.computation_identity {
-  ComputationIdentity, StructurallyIdentical, IdentityUnknown,
-  IdentityUnknownCause, MissingConcept, MissingEnforcement
-}
-import std.artifact_store { ArtifactStore, store_put, store_put_fold }
-import std.disposition { Disposition, Terminal }
-import std.measure { ByteSize, byte_size }
 
 data materialization_provider_note: String = "The typed materialization-provider CONTRACT (parent mandate 6B, model-only, 2026-07-28): the one interface cli_run's ad-hoc caches consume when they flip — consumers ask for an ARTIFACT by typed request and receive a TYPED result; no map is exposed, and the anti-pattern of replacing seven maps with one struct of seven maps is ruled out by construction: there is ONE keyed store model (std.artifact_store) and the request KIND lives inside the content key, so a new request family is a new constructor row, never a new carrier. A request is keyed by content + declared-input identity: subject_digest (what is transformed) plus every other read the transform performs as a DeclaredInput (ref + digest) — the typed_module_key precedent (extdeps.realization.reconcile_in_process: module source hash + direct-import interface hashes + compiler-binary identity) generalized to the contract grain. Outcomes are total and typed: hit, miss, kind-mismatch refusal, wrong-artifact refusal, wrong-content refusal, incomplete-artifact refusal, identity refusals on lookup; admitted-with-counted-evictions, the mirrored write refusals, budget-exhausted on admission. Every refusal names what it knows (section 5: refuse, never widen; no absorbing fallback arm exists in this vocabulary). Grounding, not minting (section 3): request kinds are the EXISTING std.cache_identity ArtifactKindId rows; placement/locality is NOT restated here — a provider realization binds this contract to a cited extdeps CacheInterfaceCatalogFacts row whose PersistenceLocality (std.cache_interface) says where the bytes live; the packed-store semantics reuse std.artifact_store verbatim (store_put, counted evictions)."
 

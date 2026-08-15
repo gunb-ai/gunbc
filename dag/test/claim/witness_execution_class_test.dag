@@ -1,35 +1,5 @@
 module gunbc.test.claim.witness_execution_class_test
 
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree, SubstrateInputsOnly }
-import v2.std.optional { Optional, Present, Absent }
-import std.types { Bool, List }
-import gunbc.witness_execution_class {
-  NativeBlockedCause,
-  EmitterCarriage,
-  CarriedInEnrolledBundle,
-  NoEmitterCarriage,
-  GeneralWitnessTargetModelUnavailable,
-  HostCapabilityUnavailable,
-  WitnessExecutionClass,
-  NativeRequired,
-  NativeLiveObservation,
-  EffectObligation,
-  InterpreterSubjectTest,
-  NativeBlocked,
-  WitnessClassRow,
-  classify_witness,
-  census_of,
-  census_accounts_for_every_row,
-  every_identity_classified_exactly_once,
-  ClassificationAxis,
-  EffectAxis,
-  InterpreterSubjectAxis,
-  LiveObservationAxis,
-  CarriageAxis,
-  declared_class_precedence,
-  axis_rank,
-  axis_of_class
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

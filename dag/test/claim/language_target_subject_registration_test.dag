@@ -1,43 +1,5 @@
 module test.claim.language_target_subject_registration
 
-import std.types { Bool, Int, List, String }
-import extdeps.external_authority {
-  ExternalAuthority,
-  ExternalModelScope,
-  ExternalSubjectRef,
-  external_model_scope_citations,
-  external_subject_ref_eq,
-}
-import std.language_target_identity {
-  ExternalGrounding,
-  ProjectGrounding,
-  LanguageTargetRegistration,
-  registration_subject,
-  TargetActive,
-  TargetParked,
-  TargetDecisionPending,
-  TargetMaintenanceOnly,
-  TargetGovernedByContracts,
-}
-import std.roster_frontier { declaration_ref_eq }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.language_target_registry {
-  registered_language_targets,
-  language_target_projections,
-  unregistered_target_findings,
-  unregistered_target_finding_count,
-  legacy_frontier_label_findings,
-  UnregisteredTargetFinding,
-  TargetNonRegistrationCause,
-  UpstreamAuthorityUnreadable,
-  SurfaceFusesIndependentSubjects,
-  rust_language_subject_ref,
-  spice_netlist_language_subject_ref,
-  ngspice_simulator_subject_ref,
-  target_runtime_bindings,
-  commonmark_format_subject_ref,
-}
-import gunbc.extdeps_scope_frontier { scope_carrier_paths, scope_frontier_strings_contain }
 
 data subject_registration_witness_note: String = "D0's executed evidence: the ~20 external language-target subjects exist as CITED scope carriers and are registered. The assertions below are deliberately about STRUCTURAL properties that a hand-authored row cannot fake into truth — every grounding carries at least one citation, every registration's subject is DERIVED from its grounding rather than authored beside it, no subject is registered twice, and every carrier path is enrolled in the roster the placement gate reads. WHAT NO ASSERTION HERE ESTABLISHES, stated because a witness is where this gets forgotten: that a cited locator is the CORRECT authority for its subject is not machine-checkable — it was established by fetching each locator live on 2026-08-04 and confirming its title and publisher, and it is recorded in each carrier's subject note. A test can prove a citation EXISTS; only that fetch could prove it is the right one. The three targets whose upstreams could not be read are asserted ABSENT from the registry and PRESENT in the findings, which is the executable half of verify-or-refuse."
 

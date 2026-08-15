@@ -1,21 +1,5 @@
 module v2.compiler.self_host.promotion_admission
 
-import v2.compiler.self_host.generation {
-  ArtifactMaterialized,
-  ArtifactNotMaterialized,
-  CandidateGeneration,
-  GenerationAxis,
-  GenerationIdentity,
-  SuccessorGeneration,
-  generation_axis_symbol,
-  generation_identity_mismatched_axes
-}
-import v2.std.algebra { fold_list, freemonoid_empty, length, list_snoc_item }
-import v2.std.collection { List }
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
-import v2.std.text { String }
 
 // WHAT THIS MODULE DELIBERATELY CANNOT DO.
 //

@@ -1,7 +1,5 @@
 module gunbc.legacy_test_behavior_disposition
 
-import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
-import std.dissolution { DissolutionCondition }
 
 type LegacyTestBehavior {
   source_file: FilePath

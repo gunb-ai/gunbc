@@ -1,15 +1,5 @@
 module v2.test.workflow.lens_subsumption_family_eval
 
-import v2.std.logic { Bool }
-import v2.lens.subsumption {
-  DiffId,
-  DissolutionSubsumption,
-  MechanicalReverification,
-  ProducerStageDerivation,
-  affected_set_irt1_subsumption,
-  rust_language_model_emit_subsumption
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

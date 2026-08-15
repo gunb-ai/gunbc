@@ -1,20 +1,5 @@
 module test.claim.fleet_main_revision_witness
 
-import std.types { Bool, String }
-import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
-import gunbc.fleet_main_revision {
-  fleet_desired_ref_name,
-  FleetDesiredRevision,
-  FleetDesiredAdmitted,
-  FleetDesiredUnobserved,
-  fleet_desired_revision_target,
-  FleetDesiredAdvance,
-  AdvanceAdmitted,
-  AdvanceRefused,
-  admit_fleet_desired_advance,
-  converge_target_revision,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

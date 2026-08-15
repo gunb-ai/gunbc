@@ -1,14 +1,5 @@
 module gunbc.publication_admission_delta
 
-import std.types { List, NonEmptyStr }
-import std.content_hash { ContentHash }
-import gunbc.public_projection {
-  PublicProjectionSubject,
-  PublicProjectionPlan,
-  public_projection_includes_subject,
-  public_projection_omits_subject,
-  projection_digest_from_subjects,
-}
 
 // Change-local publication admission compares current published projection vs candidate derived projection. Slice-1 classifies NewlyPublic, NewlyWithheld, and PolicyChanged only. Audience widenings and private-to-public references defer until audience/reference carriers land; digest mismatch refuses at admission via CandidateDigestInconsistent, not a delta class. Whole-projection audit is a separate centrally-owned main-health job, never inherited by unrelated PRs.
 type ProjectionDeltaClass

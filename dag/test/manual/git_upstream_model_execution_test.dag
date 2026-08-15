@@ -1,64 +1,6 @@
 module test.manual.git_upstream_model_execution
 
-import std.algebra { trim }
 
-import extdeps.shell
-import extdeps.filesystem.filesystem_io
-import extdeps.gunbc
-import std.content_hash { Sha1Digest, Sha1DigestHex }
-import extdeps.git.object_store {
-  GitObjectId,
-  GitSha1ObjectId,
-  GitObjectFormatSha1,
-  GitRepositoryState,
-  GitTreeWireEntry,
-  GitRefRecord,
-  DirectTarget,
-  SymbolicTarget,
-  GitWorktreeRegular,
-  GitWorktreeSymlink,
-  GitR0ReadBackObservation,
-  GitReadBackOutcome,
-  GitReadBackVerified,
-  GitLsTreeZDecoded,
-  GitLsTreeZRefused,
-  GitLsFilesStageZDecoded,
-  GitLsFilesStageZRefused,
-  GitProjected,
-  GitProjectionRefused,
-  GitRefTransitionModeled,
-  git_object_id_wire_hex,
-  git_decode_ls_tree_z,
-  git_decode_ls_files_stage_z,
-  git_model_update_ref_exact,
-  git_project_repository,
-  git_verify_independent_read_back,
-}
-import gunbc.output_policy { ExpectSuccess, ExpectFailure }
-import test.claim.git_upstream_model_witness {
-  sha1_blob_regular,
-  sha1_blob_executable,
-  sha1_blob_symlink,
-  sha1_empty_blob,
-  sha1_empty_tree,
-  sha1_subtree,
-  sha1_gitlink,
-  sha1_root_tree,
-  sha1_parent_commit,
-  sha1_next_commit,
-  sha1_tag,
-  sha256_object,
-  path_regular,
-  path_executable,
-  path_symlink,
-  path_subtree,
-  path_subtree_member,
-  path_gitlink,
-  path_non_ascii,
-  git_fixture_repository,
-}
-import std.bytes { utf8_encode_bytes }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

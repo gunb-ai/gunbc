@@ -1,19 +1,5 @@
 module v2.workflow.ci_materialization_emit
 
-import gunbc.ci_materialization { ci_sccache_provider_skip_is_counted_note }
-import v2.workflow.orchestration_bash_emit_support {
-  orch_bash_do,
-  orch_bash_emit_pipeline
-}
-import v2.std.orchestration {
-  FailFast,
-  If,
-  Pipeline,
-  Run,
-  ExitZero,
-  DiscardAll
-}
-import v2.std.collection { Absent, Present }
 
 // Foreign-executor shell emission for gunbc.ci_materialization script surfaces (bucket D). Intent stays out of dag/gunbc/ci_materialization; bash medium binding lives here per shell→intent routing.
 data ci_sccache_provider_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ sccache provider shell injection was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen)\n"

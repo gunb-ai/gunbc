@@ -1,46 +1,5 @@
 module test.claim.floor_discovery_exact_subject_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { List, String }
-import std.execution_mode { ExecutionMode, Hermetic, Wet }
-import std.content_hash { Fnv1a64Structural, Sha1Digest, content_hash_atom }
-import extdeps.git.object_store { GitObjectId, GitSha1ObjectId }
-import v2.workflow.floor_discovery {
-  FloorDiscoverySubject,
-  FloorDiscoveryRequest,
-  FloorDiscoverySubjectBound,
-  FloorDiscoverySubjectRefused,
-  FloorDiscoveryTestedCommitMismatch,
-  FloorDiscoveryTestedTreeMismatch,
-  FloorDiscoverySourceRootsMismatch,
-  FloorDiscoveryRequestBound,
-  FloorDiscoveryRequestRefused,
-  FloorDiscoveryRequestSubjectMismatch,
-  FloorDiscoveryScopeMismatch,
-  FloorDiscoveryExecutionModeMismatch,
-  floor_discovery_subject_bind,
-  floor_discovery_request_bind,
-  floor_discovery_request_identity,
-  floor_discovery_commit_id,
-  floor_discovery_tree_id,
-}
-import v2.workflow.floor_discovery_transport {
-  TransportNeedsTree,
-  TransportNeedsTrackedWorktree,
-  TransportNeedsUntrackedWorktree,
-  TransportNeedsPublication,
-  TransportRefused,
-  TransportReady,
-  CommitObserved,
-  TreeObserved,
-  TrackedWorktreeObserved,
-  UntrackedWorktreeObserved,
-  SnapshotPublished,
-  FloorDiscoverySnapshotArtifact,
-  FloorDiscoverySnapshotWriteReceipt,
-  floor_discovery_transport_initialize,
-  floor_discovery_transport_observe,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

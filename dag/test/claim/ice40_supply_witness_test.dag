@@ -1,43 +1,5 @@
 module test.claim.ice40_supply_witness
 
-import std.types { Bool, String, List }
-import std.integer { Int }
-import std.measure { Millivolt, millivolt, millivolt_count }
-import extdeps.programmable_logic.ice40.supply {
-  BankIoSupply,
-  ConfigurationBankSupply,
-  CoreSupply,
-  FastProgrammingSupply,
-  Ice40ConfigurationMode,
-  Ice40InterRailConstraint,
-  Ice40SupplyRail,
-  LikeVoltageRailsShareOneSupply,
-  MasterSpiConfiguration,
-  MustBeLeftUnconnected,
-  NvcmConfiguration,
-  NvcmProgramming,
-  NvcmProgrammingSupply,
-  OperatingWindow,
-  PinLeftUnconnected,
-  PllSupply,
-  RailRequirement,
-  SlaveSpiConfiguration,
-  UnusedBankSupplyGoesToCore,
-  ice40_inter_rail_constraints,
-  ice40_lvcmos18_supply,
-  ice40_lvcmos33_supply,
-  nvcm_supply_requirement,
-  rail_requirement,
-  requirement_admits,
-  supply_rail_symbol,
-  supply_rails_equal,
-  supply_rail_tag,
-  configuration_modes_equal,
-  configuration_mode_tag,
-  all_supply_rails,
-  all_configuration_modes,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

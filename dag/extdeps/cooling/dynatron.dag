@@ -1,14 +1,5 @@
 module extdeps.cooling.dynatron
 
-import std.types { NonEmptyStr, List }
-import std.measure { watt, rack_unit }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.cooling.types { CpuCoolerCatalogRow }
-import extdeps.cpu.types { CpuSocket, LandGridArray }
-import extdeps.boards.types { AsrockRackAltrad8ud1l2t }
-import extdeps.vendor.dynatron { dynatron }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -1,9 +1,6 @@
 module gunbc.compile_clean_diagnostic_policy
 
-import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 type UnlistedImportUseEnforcement
   = FloorNotYet

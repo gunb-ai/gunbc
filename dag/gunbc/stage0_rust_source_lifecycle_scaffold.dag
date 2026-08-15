@@ -1,32 +1,6 @@
 module gunbc.stage0_rust_source_lifecycle_scaffold
 
 
-import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
-import gunbc.stage0_cargo_manifest {
-  stage0_cargo_bin_paths_observation_ref
-}
-import gunbc.stage0_rust_host_observation {
-  GitObservationRefused,
-  RustManifestObserved,
-  RustManifestParseRefused,
-  RustManifestReadRefused,
-  RustSourceHostObservation,
-  current_stage0_rust_source_observation
-}
-import gunbc.generated_artifact { GeneratedArtifact, artifact_path, generated_artifact_registry }
-import gunbc.stage0_emit_model { is_generated_stage0_file }
-import gunbc.stage0_emit_plan_generated { generated_stage0_files }
-import gunbc.seed_growth_admission { seed_growth_roster_well_formed_gate_holds }
-import std.content_hash { Fnv1a64Structural }
-import std.keyed_roster { path_occurrence_count }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import gunbc.roadmap_model { RoadmapNodeId }
-import v2.compiler.self_host.frontier { hand_maintained_stage0_filenames }
-import v2.std.algebra { any, filter, fold_list, length, list_map, list_snoc_item }
-import v2.std.collection { List }
-import v2.std.text { String }
-import v2.workflow.rust_crate_partition { stage0_partition_crate_rows }
 
 data stage0_rust_source_lifecycle_scaffold_note: String = "SCAFFOLD — NOT the live ZeroHandMaintainedRust instrument. gunbc.stage0_rust_host_observation supplies the exact tracked-Rust subject plus Cargo target ROLE facts. This module keeps role and maintenance disposition independent: CargoBin never classifies a path as Generated, DeleteWith, RetainedKernel, or HandScaffold. A Cargo target with no maintenance disposition refuses as CargoTargetMissingLifecycleDisposition. Product reachability and LOC/capability ratchets remain explicit v1-honest-frontier follow-on work; this observation prerequisite does not claim those finish lines."
 

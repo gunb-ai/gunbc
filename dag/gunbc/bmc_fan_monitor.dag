@@ -1,7 +1,5 @@
 module gunbc.bmc_fan_monitor
 
-import std.measure { Second, second, second_count }
-import std.types { Int, List, String }
 
 type BmcFanMonitoringSample {
   elapsed: Second

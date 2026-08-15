@@ -1,37 +1,5 @@
 module test.claim.instrument_sandbox_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { String, Bool, Int, List }
-import gunbc.roadmap_instrument_sandbox {
-  instrument_css, instrument_css_at_role,
-  instrument_emission_root_css_for, audition_emission_var,
-  audition_subject_key, audition_subject_role,
-}
-import gunbc.design.instrument_audition {
-  AuditionIntensity, AuditionRestrained, AuditionExpressive, AuditionHero,
-  AuditionAdmission, AuditionAdmitted, AuditionEmissionRefused,
-  AuditionAttractionOutsideEnvelope, AuditionDisplacementOverBudget, admit_audition,
-}
-import gunbc.design.instrument_physical { preference_default, instrument_displacement_px }
-import gunbc.design.salience {
-  SalienceRole, SalienceFocal, SalienceSupporting, SalienceGround, salience_key,
-}
-import gunbc.design.instrument_audition {
-  ProgramReading, ReadingNoSubject, ReadingProgramShape, ReadingOutcomeStatus,
-  ReadingOutcomeRemaining, ReadingConstraint, ReadingNoConstraint, ReadingFront,
-  ReadingUnavailable, read_camera,
-}
-import gunbc.design.instrument_camera {
-  ProgramCamera, ProgramDepth, ProgramMode, DepthProgram, DepthOutcome,
-  ModeStatus, ModeRemaining, FinishLineFocused,
-}
-import gunbc.roadmap_program_view {
-  V1DeletionProgramView, FinishLineView, RemainingShape, ProposedCarrierAbsent,
-  V1ConvergenceFront, NamespacePDeriveFront,
-}
-import gunbc.v1_deletion_plan { V1FinishLine, CompilerFixedPoint }
-import gunbc.roadmap_model { RoadmapNodeId }
-import v2.std.optional { Absent }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

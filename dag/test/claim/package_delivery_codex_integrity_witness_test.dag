@@ -1,27 +1,5 @@
 module test.claim.package_delivery_codex_integrity_witness_test
 
-import std.types { Bool, String, NonEmptyStr }
-import std.content_hash { Sha512Hash }
-import extdeps.pin { ExactPin }
-import extdeps.package { PackageCoordinate }
-import extdeps.npm {
-  npm_decode_integrity,
-  npm_registry_integrity_from_decode,
-  npm_registry_artifact_pin,
-  NpmSingleSha512Integrity,
-  NpmSingleSha1Integrity,
-  NpmRegistryIntegrityAdmitted,
-  NpmRegistryIntegrityWireRefused,
-  NpmIntegrityMalformed,
-  NpmRegistry,
-  NpmRegistryArtifact,
-  NpmResolvedRegistryArtifact,
-}
-import gunbc.package_delivery {
-  codex_admit_npm_integrity,
-  CodexNpmIntegrityAdmitted,
-  CodexNpmIntegritySha1Unsupported,
-}
 
 data witness_note: String = "THREE STAGES. Wire decode → npm_registry_integrity_from_decode → codex_admit_npm_integrity(NpmRegistryIntegrity). Malformed wire never reaches Codex policy. Upstream may admit SHA-1; Codex refuses it. Pin is DERIVED from NpmRegistryArtifact — one exact-identity authority."
 

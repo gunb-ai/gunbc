@@ -1,17 +1,5 @@
 module gunbc.host_codex_runtime_provision_script
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.types { String, NonEmptyStr, Bool }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.exec.command { shell_quote }
-import gunbc.shell_bash_runner { shell_exec_via_bash }
-import gunbc.package_delivery { codex_runtime_version_identity_marker }
-import gunbc.host_layout {
-  srv1_codex_runtime_release_root,
-  srv1_gunbc_repo_root,
-  srv1_gunbc_serve_binary,
-}
 
 data host_codex_runtime_provision_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: host_codex_runtime_provision_script — concat-built observe/ensure/read-back shell; DISSOLVES WHEN bash-emit (#5828) realizes ProvisionCodexRuntime as typed host-effect argv and realize_provision_codex_runtime retires shell_exec_via_bash transport.")
 

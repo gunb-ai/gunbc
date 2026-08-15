@@ -1,19 +1,5 @@
 module test.claim.codex_provider_runtime_receipt_witness
 
-import std.types { FilePath, NonEmptyStr }
-import product.placement_supply { HostIdentity }
-import gunbc.codex_provider_runtime_receipt {
-  derive_codex_provider_runtime_receipt,
-  codex_provider_runtime_receipt_converges_three_roots,
-  codex_provider_runtime_receipt_process_fingerprint_observed,
-  codex_provider_runtime_receipt_wire_path,
-  CodexProcessFingerprintUnobserved,
-}
-import gunbc.host_layout { srv1_provider_runtime_placement }
-import gunbc.package_delivery {
-  codex_runtime_version_identity_marker,
-  codex_bundled_executable_for_srv1,
-}
 
 test fn witness_runtime_receipt_derives_three_roots_and_honest_fingerprint() -> Bool {
   let host = "srv1" as HostIdentity

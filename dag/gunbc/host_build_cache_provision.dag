@@ -1,33 +1,5 @@
 module gunbc.host_build_cache_provision
 
-import std.types { String, NonEmptyStr, Bool }
-import std.cache_identity { CacheInterfaceId }
-import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch, Terminal }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.process { ProcessExit, exit_failure }
-import std.resources { Network }
-import extdeps.cache.sccache { sccache_local_id, sccache_fatal_error_log_fragment }
-import gunbc.host_build_cache_catalog_gate {
-  provision_build_cache_catalog_gate_verdict,
-  ProvisionBuildCacheCatalogRealizable,
-  ProvisionBuildCacheCatalogRefused,
-}
-import gunbc.host_effect { HostEffect, ProvisionBuildCache }
-import gunbc.host_toolchain_ensure { host_toolchain_ensure, BuildCache }
-import product.placement_supply { HostIdentity }
-import gunbc.host_layout { gunbc_managed_compile_pool_slice }
-import gunbc.build_cache_instance {
-  RunnerSlotLifecycle,
-  DesiredRunnerSlot,
-  BuildCacheServerPlacement,
-  ServerManagedUnitOwned,
-  ServerRunnerOwned,
-  ServerUnsupervised,
-  ServerPlacementAbsent,
-  ServerPlacementUnknown,
-  RunnerSlotIdentity,
-  RetiredRunnerSlot,
-}
 
 data provision_build_cache_widen_sketch_note: String = "RED-control fixture modeling TWO forbidden widens; it must never ship as the authority verdict fold. (1) The absorbing fallback (the -u RUSTC_WRAPPER cache-drop): the live instance ci_retry_escalation_level2 was REMOVED 2026-07-23 (STEP 2) — the eagain retry now escalates to CARGO_BUILD_JOBS=1 (keep sccache) only, then fails loud via verify-build-artifacts, so no cache-drop widen remains and this fixture guards the fold against its re-introduction. (2) The PLACEMENT widen: its DaemonStatsOk arm discards the placement field, i.e. 'responsive implies converged'. That is precisely the behavior that shipped on srv1 — a lazily auto-spawned server in dead slot srv1-10's cgroup accumulated 229780 memory.max breach events and 12 oom_kills while every provision read reported converged. Re-confirmed live 2026-08-01: pid 3975946, age 31.2d, cgroup actions-runner@srv1-10.service (unit inactive+disabled, slots 01-05 are the live ones), holding LISTEN on /var/lib/ctrl/sccache-ci/server.sock, resident beside an active runner's rustc. INCIDENT CLEARED 2026-08-07 (lane_e_srv1_ci_noncompletion_root_cause_receipt): pid 3975946 no longer exists and srv1-10 is inactive+disabled; the stranded-server symptom is gone but the defect CLASS is live — srv1 now carries a young runner-owned server on an ACTIVE slot (srv1-02, ~2026-08-07), which is exactly the ServerRunnerOwned arm this fold must refuse ProvisionConverged on until ServerManagedUnitOwned lands."
 

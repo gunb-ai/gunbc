@@ -1,18 +1,6 @@
 module gunbc.runner_lifecycle_realize
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import gunbc.host_effect {
-  HostEffectIntent,
-  HostEffectEvidence,
-  HostEffectTransport,
-}
-import std.realization_reconcile { Reconciliation, NotConverged }
-import gunbc.runner_lifecycle { RunnerSlotIdentity }
-import extdeps.github.actions_runner { ActionsRunnerBinaryArtifact }
-import std.types { NonEmptyStr, String }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // All nine runner_lifecycle HostEffect realize arms delegate here until wet transport lands.
 // Honest scaffold: typed, located NotConverged — not an absorbing fallback and not a converged receipt.

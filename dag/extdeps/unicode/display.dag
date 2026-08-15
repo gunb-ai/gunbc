@@ -1,18 +1,6 @@
 module extdeps.unicode.display
 
-import extdeps.unicode.blocks { zero_width_blocks, zero_width_codepoints, wide_blocks }
-import std.unicode.types {
-  DisplayWidth,
-  UnicodeBlock,
-  display_width_columns,
-  in_block,
-  ZeroWidth,
-  Narrow,
-  Wide,
-}
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

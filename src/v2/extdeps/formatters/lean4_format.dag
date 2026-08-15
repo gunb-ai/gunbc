@@ -1,20 +1,5 @@
 module v2.extdeps.formatters.lean4_format
 
-import v2.std.diagnostic {
-  Locus,
-  Outcome,
-  Accepted,
-  Rejected,
-  None,
-  Diagnostic,
-  Unavailable,
-  UserInputBoundary,
-  diagnostics_singleton,
-  port_locus
-}
-import v2.std.nat { Nat, Succ, Zero }
-import v2.std.node { Symbol }
-import v2.std.patch { ConfigPatchRecord, config_patch_layer }
 
 type Lean4NameValue
 type Lean4SyntaxValue

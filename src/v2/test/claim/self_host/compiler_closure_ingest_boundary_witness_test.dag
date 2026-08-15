@@ -1,18 +1,5 @@
 module v2.test.self_host.compiler_closure_ingest_boundary_witness
 
-import v2.compiler.source_authority {
-  SourceRootCoverageComplete,
-  manifest_inline_list_max,
-  source_root_closure_ref_transport_complete,
-  source_root_overflow_never_empty_population_holds
-}
-import v2.std.algebra { length }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.test.workflow.host_source_root_ingest_manifest {
-  host_source_root_closure_refs,
-  host_source_root_ingest_coverage_receipt
-}
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

@@ -1,51 +1,5 @@
 module v2.extdeps.formats.spice
 
-import std.algebra { Cons, Empty }
-import v2.std.algebra { fold_list, list_append, list_snoc_item }
-import v2.std.collection {
-  List
-}
-import v2.std.optional {
-  Optional,
-  Absent,
-  Present,
-  optional_present,
-  optional_absent
-}
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  None,
-  Outcome,
-  Textual,
-  Unavailable,
-  WholeFile,
-  diagnostics_singleton,
-  outcome_accepted,
-  outcome_rejected
-}
-import v2.std.logic { Bool }
-import v2.std.grammar {
-  StampClass,
-  StampBinding, FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
-import v2.std.compilers.lexing {
-  CharClassPattern,
-  DigitChar,
-  IdentContinueChar,
-  IdentStartChar,
-  LexPattern,
-  LexRule,
-  LexRuleSet,
-  LexRules,
-  ModeledLexRules,
-  OneOrMorePattern,
-  RepeatPattern,
-  SequencePattern,
-  TokenRule,
-  TriviaRule,
-  WhitespaceChar
-}
-import v2.std.node { Symbol }
 
 // A SPICE IDENTIFIER CARRIES ITS OWN SPELLING. It was a substrate Symbol, and the only route
 // from a Symbol to text in this module was a five-entry table covering r1/c1/v1/n1/n2 — so a deck

@@ -1,28 +1,6 @@
 module v2.test.lens_fact_density.hollow_alias_blocked_in_run_gates
 
-import v2.compiler.compile {
-  fact_density_lens,
-  run_required_lens_gates
-}
-import v2.compiler.infer { InferredTree }
 
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  ManualAnchorAbsent,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
-import v2.test.lens_common.infer_fixture {
-  claim_atom_node,
-  claim_inferred_facts,
-  claim_inferred_tree
-}
 
 data hollow_alias_run_gates_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^hollow_alias_run_gates_subject } },

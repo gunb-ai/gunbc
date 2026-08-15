@@ -1,20 +1,5 @@
 module gunbc.ensure
 
-import std.types { String, Bool, NonEmptyStr }
-import std.upsert_decision {
-  UpsertDecision,
-  Noop,
-  Apply,
-  Refuse,
-}
-import std.realization_reconcile {
-  Reconciliation,
-  ReadObserved,
-  ReadAbsent,
-  Grounds,
-  DoesNotGround,
-  reconcile_grounded,
-}
 
 type EnsurePolicy
   = EnsureObserveOnly

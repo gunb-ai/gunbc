@@ -1,11 +1,5 @@
 module test.claim.shell_dag_census_5a_typed_ops_witness
 
-import std.types { Bool, List, NonEmptyStr, String }
-import extdeps.dns.domain_name { DnsLabel }
-import extdeps.tools.hostname { hostname_set_argv }
-import extdeps.systemd.systemctl
-import extdeps.tools.id
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

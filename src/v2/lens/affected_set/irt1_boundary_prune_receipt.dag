@@ -1,28 +1,5 @@
 module v2.test.lens_affected_set.irt1_boundary_prune_receipt
 
-import v2.lens.affected_set {
-  UnchangedPureBoundary,
-  empty_frontier,
-  mark_boundary_excluded
-}
-import v2.lens.affected_set_examples {
-  affected_set_claim_failure_node,
-  affected_set_example_edit,
-  affected_set_example_hash,
-  affected_set_example_node,
-  expected_affected_set_boundary_prune
-}
-import v2.std.logic { Bool }
-import v2.std.node { Node }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  ManualAnchorAbsent,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 fn irt1_boundary_prune_receipt_claim_holds() -> Bool {
   mark_boundary_excluded(

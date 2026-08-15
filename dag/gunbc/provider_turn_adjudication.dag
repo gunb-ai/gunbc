@@ -1,6 +1,5 @@
 module gunbc.provider_turn_adjudication
 
-import std.types { Bool, NonEmptyStr, String }
 
 data provider_turn_adjudication_note: String = "Terminal disposition and native cause are distinct axes (provider-control-interface-audit §3.2). A turn may be terminally failed while its cause stays unclassified. Automatic recovery is OUT OF SCOPE for this press specimen: no native decoder, retry budget, retry-after, previous-attempt set, or loop control exists yet — classified RetryableTransient MUST NOT authorize recovery. Cross-provider recovery is explicitly deferred."
 

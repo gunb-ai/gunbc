@@ -1,27 +1,5 @@
 module test.claim.crm_stage_vocabulary_witness
 
-import extdeps.crm.hubspot_lifecycle {
-  hubspot_lifecycle_stage_catalog,
-  hubspot_stage_marketing_qualified_lead,
-  hubspot_stage_other,
-  hubspot_stage_sales_qualified_lead,
-  hubspot_stage_subscriber,
-}
-import extdeps.crm.salesforce_opportunity {
-  DefaultStageRosterCited,
-  DefaultStageRosterUnavailable,
-  SalesforceDefaultStageRoster,
-  SalesforceForecastPipeline,
-  SalesforceOpportunityStageRow,
-  salesforce_default_stage_roster,
-  salesforce_forecast_best_case,
-  salesforce_forecast_category_catalog,
-  salesforce_forecast_pipeline,
-}
-import std.measure { basis_point }
-import std.nat { Nat }
-import std.types { list_length }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

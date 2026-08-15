@@ -1,29 +1,6 @@
 module v2.test.extdeps.coordination_claims
 
-import v2.std.logic { Bool }
-import v2.extdeps.coordination {
-  ExchangePattern,
-  FireAndForget,
-  Http,
-  ImmediateSettlement,
-  PubSub,
-  PublishSubscribe,
-  Queue,
-  RequiredSettleBound,
-  RequestReply,
-  SettlementGuarantee,
-  SettlesWithin,
-  Stream,
-  StreamExchange,
-  coordination_effect_obligation
-}
 
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn coord_not(b: Bool) -> Bool {

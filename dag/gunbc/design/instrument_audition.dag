@@ -1,29 +1,5 @@
 module gunbc.design.instrument_audition
 
-import std.types { String, Bool, Int, List }
-import extdeps.languages.css.values { css_px }
-import gunbc.design.salience {
-  SalienceRole, EmissionSpec, EmissionGrant, emission_for,
-  EmissionGranted, EmissionRefusedForRole, EmissionOutsideEnvelope,
-  EmissionUnitNotComparable, EmissionSoleDiscriminatorRefused,
-  AttractionField, attraction_envelope, focal_attraction,
-  attraction_travel_max_px, attraction_activation_min_px,
-}
-import gunbc.design.instrument_camera {
-  ProgramCamera, ProgramMode, ModeStatus, ModeRemaining, ModeWhy,
-  ProgramDepth, DepthProgram, DepthOutcome, DepthFront, DepthNode, DepthEvidence,
-  NoSubjectSelected, FinishLineFocused, program_mode_key,
-}
-import gunbc.design.instrument_physical {
-  InstrumentPreference, preference_still, preference_default,
-  compose_displacement, admit_composed_displacement, focal_attraction_headroom_px,
-  DisplacementAdmitted, DisplacementOverBudget, EnclosureCharacterReachesResponseTravel,
-}
-import gunbc.roadmap_program_view {
-  V1DeletionProgramView, FinishLineView, FrontView, RemainingShape,
-  ConstraintView, ConstraintKind, ImplementationConstraint, ContractConstraint,
-  program_front_key,
-}
 
 data audition_note: String = "THE AUDITION IS A COMPARISON, NOT A DEMO. Its purpose is to let one focal control be seen at three energies on the SAME real subject, so the choice between restrained, expressive and hero is made by looking rather than by argument — which is the only way the selective-spectacle amendment can be calibrated without re-litigating it in prose every time. Two properties make it an audition rather than a mock-up: the subject is a real v1-deletion finish line carrying V0's own name, claim and roadmap node, so what the control says is true; and every intensity is admitted through the register's OWN gates (emission_for, attraction_envelope, displacement_admission) rather than through audition-local bounds, so a variant that looks good but breaks the register cannot be rendered at all. The hero variant deliberately sits at the envelope's admissible maximum: an audition whose loudest option is comfortably inside the bound tells you nothing about where the bound is."
 

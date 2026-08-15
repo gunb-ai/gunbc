@@ -1,20 +1,5 @@
 module test.claim.virtual_media_unification
 
-import std.logic { Bool }
-import std.types { String }
-import extdeps.bmc.virtual_media {
-  VirtualMediaIntent,
-  NbdProxyWebsocatParams,
-  NbdProxyWebsocatTransport,
-  virtual_media_transport_kind,
-}
-import gunbc.bmc_virtual_media {
-  srv4_virtual_media_intent,
-  srv4_configfs_transport,
-  srv4_configfs_params,
-  bmc_virtual_media_plan_of,
-}
-import extdeps.bmc.webui.nbd_proxy_serve { nbd_proxy_serve_intent_of_virtual_media }
 
 test fn one_intent_two_transports_single_authority() -> Bool {
   let intent = srv4_virtual_media_intent

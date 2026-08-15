@@ -1,39 +1,5 @@
 module gunbc.spark_managed_access_apply
 
-import std.types { String, Bool, List, NonEmptyStr, Int }
-import std.algebra { trim }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.resources { Network }
-import std.content_hash { ContentHash, serialize_content_hash }
-import product.placement_supply { HostIdentity }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.exec.command { shell_quote }
-import extdeps.ssh { ssh_public_key_line }
-import extdeps.ssh.session { ssh_session_exec_portable_words_with_stdin, SshSessionExecResult }
-import gunbc.clock_read { clock_now_probed_at }
-import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
-import gunbc.fleet_known_hosts_anchor {
-  FleetSshExecutionContext,
-  FleetSshAttemptIdentity,
-  fleet_ssh_attempt_identity,
-  FleetSshCredentialBinding,
-  fleet_ssh_execution_context_of,
-  materialize_fleet_known_hosts_anchor,
-  known_hosts_materialization_receipt,
-  SshTarget,
-  portable_remote_word,
-  PortableRemoteWord,
-  portable_remote_words,
-  shape_fleet_ssh_exec,
-}
-import gunbc.spark_managed_access_bootstrap { spark_operator_bootstrap_login }
-import gunbc.auth.access_token_source { GcloudPrintToken }
-import gunbc.spark_credential_workflow {
-  SparkAdministratorCredentialRefused,
-  SparkAdministratorCredentialResolved,
-  resolve_spark_administrator_credential,
-  run_with_materialized_fleet_ssh_binding,
-}
 
 // APPLYING THE PRIVILEGED BOOTSTRAP EFFECTS, over the same bound-credential context the standing
 // derivation used. The Sparks have no BMC, so SSH is the only transport and the admin principal is

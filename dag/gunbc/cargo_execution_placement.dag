@@ -1,7 +1,5 @@
 module gunbc.cargo_execution_placement
 
-import std.types { String, NonEmptyStr, Bool, Int }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 // WHAT THIS SEPARATES, and why the fusion was not cosmetic.
 //

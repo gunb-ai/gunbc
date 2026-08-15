@@ -1,30 +1,5 @@
 module std.reference_binding_observation
 
-import std.occurrence_identity {
-  OccurrenceId,
-  OccurrenceTransportRefusal,
-  ReferenceOccurrence,
-  OccurrenceTransport,
-}
-import std.occurrence_binding_candidates {
-  OccurrenceModulePathIndexRefusal,
-  DeclarationExposureIndexRefusal,
-  AuthoredOrderIndexRefusal,
-  OccurrenceBindingCandidateInputs,
-  occurrence_candidate_index_build,
-  candidate_occurrence_ids_for_reference,
-  OccurrenceCandidateIndexReady,
-  OccurrenceCandidateIndexTransportRefused,
-  OccurrenceCandidateIndexModulePathRefused,
-  OccurrenceCandidateIndexExposureRefused,
-  OccurrenceCandidateIndexAuthoredOrderRefused,
-  OccurrenceCandidateIndexDeclarationBucketRefused,
-}
-import std.occurrence_binding_resolve {
-  OccurrenceReferenceBindingOutcome,
-  resolve_reference_occurrence_binding,
-}
-import std.types { Bool, FilePath, Int, List, String }
 
 data reference_binding_observation_note: String = "Neutral structural-binding observation carrier (N3-A). Carries reference occurrence, P2a+P1 resolution (including typed index-build refusals — never collapsed to UnknownOccurrenceIdentity), and clause-local containment anchors. Carries NO ReferenceDerivedClosureCapability, ScenarioFailure, or roadmap trigger vocabulary — capability projection lives in gunbc.namespace_reference_derived_closure_admission."
 

@@ -1,13 +1,5 @@
 module v2.extdeps.formatters.clang_format
 
-import v2.std.diagnostic { Outcome }
-import v2.std.patch { ConfigPatchRecord, config_patch_layer }
-import v2.std.refinement {
-  AtLeastMinusOneInt,
-  NonNegativeInt,
-  at_least_minus_one_int_authoritative_literal,
-  non_negative_int_authoritative_literal,
-}
 
 type ClangFormatStyle
   = ClangFormatStyleLLVM

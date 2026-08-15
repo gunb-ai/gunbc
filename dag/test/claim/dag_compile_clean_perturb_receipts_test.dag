@@ -1,11 +1,5 @@
 module test.claim.dag_compile_clean_perturb_receipts
 
-import tools.dag_compile_clean_transport {
-  run_perturb_optional_skew_fixture_red_receipt,
-  run_perturb_unresolved_import_fixture_red_receipt,
-  run_perturb_fixture_green_receipt,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

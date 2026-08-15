@@ -1,35 +1,6 @@
 module gunbc.roadmap_acceptance_history_observation
 
-import std.algebra { trim }
 
-import extdeps.git.inspect
-import extdeps.git
-import gunbc.output_policy { ExpectSuccess }
-import gunbc.repo_identity { gunbc_merge_target_ref }
-import gunbc.roadmap_acceptance_history_carrier {
-  roadmap_acceptance_event_history_carrier_repo_path,
-  parse_roadmap_acceptance_event_history_carrier,
-  RoadmapAcceptanceEventHistoryParsed,
-  RoadmapAcceptanceEventHistoryParseRefused,
-}
-import gunbc.roadmap_acceptance_history_projection {
-  project_roadmap_acceptance_event_history_from_authority_text,
-  RoadmapAcceptanceHistoryProjected,
-  RoadmapAcceptanceHistoryProjectionRefused,
-}
-import gunbc.roadmap_model {
-  RoadmapAcceptanceEvent,
-  AcceptanceHistoryIntegrityVerdict,
-  AcceptanceHistoryIntegrityHolds,
-  AcceptanceHistoryIntegrityRefusedReplay,
-  AcceptanceHistoryIntegrityRefusedVanishedWithoutRevocation,
-  AcceptanceHistoryIntegrityRefusedPriorPrefix,
-  AcceptanceHistoryIntegrityRefusedPriorHistoryObservation,
-  acceptance_history_integrity_verdict,
-}
-import std.content_hash { content_hash_atom, content_hash_eq_structural, Fnv1a64Structural }
-import std.types { CommitSha, GitRef, Int, String }
-import v2.std.collection { List }
 
 data roadmap_acceptance_history_authority_repo_path: String = "dag/gunbc/roadmap_authority.dag"
 

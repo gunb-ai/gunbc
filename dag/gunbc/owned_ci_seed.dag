@@ -1,23 +1,5 @@
 module gunbc.owned_ci_seed
 
-import std.types { String, List, Int }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.repository { gunbc_repository }
-import gunbc.owned_ci {
-  owned_ci_check_name,
-  owned_ci_state_root_rel,
-  owned_ci_default_lease_seconds_count,
-  owned_ci_pr_poll_missing_github_token_cause,
-  owned_ci_pr_poll_empty_github_token_cause,
-}
-import gunbc.ci_execution_plan {
-  ci_execution_default_stages,
-  ci_execution_stage_wire,
-  owned_ci_executor_stage_labels,
-}
-import gunbc.ci_spec { floor_plan_entry, floor_plan_function }
-import gunbc.repo_identity { gunbc_default_branch_name }
 
 data owned_ci_control_plane_seed_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,

@@ -1,50 +1,5 @@
 module v2.test.claim.ci_placement_witness
 
-import std.logic { Bool }
-import std.realization_schedule {
-  CorpusWitnessKind,
-  ExecutionWitnessKind,
-  SpanUndeclared
-}
-import gunbc.ci_gate {
-  EmitHostGate,
-  CheapClaimPoolGate,
-  ExtdepsExternalAuthorityGate,
-  DagCompileCleanGate,
-  GeneratedArtifactDriftGate,
-  SourceRootIngestGate,
-  RegenVerifyGate,
-  SelfHostReadsRealBytesGate,
-  SelfHostStalenessGate
-}
-import gunbc.commit_workflow {
-  CommitCheckEnrollment,
-  CommitSpecGate,
-  CommitWitnessClaim,
-  CommitCargoFmtCheck,
-  GithubActionsCiJob,
-  GithubActionsCiRegenJob,
-  GitPrePushHook,
-  FalsifierCadenceJob,
-  commit_gate_roster
-}
-import v2.workflow.ci_placement {
-  Placement, PrTier, Gauntlet,
-  PlacementClassification, Hermetic, Unclassified,
-  WarmCostReceipt,
-  PlacementShadowDatedReceipt,
-  PlacementShadowSignedBasis,
-  PlacementShadowOutcome,
-  PlacementShadowRowReport,
-  PlacementShadowReport,
-  PlacementShadowWarmState,
-  PlacementShadowCacheState,
-  PlacementShadowWarmCostEvidence,
-  placement_is_admissible,
-  placement_shadow_report,
-  placement_shadow_row_report,
-  placement_shadow_report_matches_roster
-}
 
 test fn ci_placement_gauntlet_always_admissible_holds() -> Bool {
   placement_is_admissible(p: Gauntlet { reason: "awaiting D2 warm-cost measurement" })

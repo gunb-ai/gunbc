@@ -1,30 +1,6 @@
 module gunbc.bach_double_slit_observation
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.types { Bool, Int, List }
-import std.integer { NonNegativeInt }
-import extdeps.physics.bach_et_al_2013_double_slit {
-  BachEtAl2013DoubleSlitExperiment,
-  bach_et_al_2013_double_slit,
-  BachDistributionObservation,
-  bach_distribution_observations,
-  BachBuildupObservationRow,
-  bach_buildup_observations,
-  Figure3BuildupPanel,
-  Figure3PanelA,
-  Figure3PanelB,
-  Figure3PanelC,
-  Figure3PanelD,
-  Figure3PanelE,
-  PatternStatus,
-  PatternNotYetDiscernible,
-  PatternDiscernible,
-  PatternClearlyVisible,
-  SlitOneSingleSlitDiffractionObserved,
-  SlitTwoSingleSlitDiffractionObserved,
-  BothSlitsDoubleSlitDiffractionObserved,
-}
 
 data bach_observation_layer_note: String = "Observing-layer receipts for Bach et al. 2013. Buildup progression derives structural properties from extdeps.physics.bach_et_al_2013_double_slit.bach_buildup_observations — sole population authority, no parallel copy."
 

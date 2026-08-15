@@ -1,39 +1,5 @@
 module gunbc.self_host_artifact_materialization
 
-import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
-import extdeps.cargo_build
-import std.content_hash { Sha512Digest }
-import extdeps.cargo_message {
-  CargoArtifactSelection,
-  CargoArtifactSelected,
-  CargoArtifactAbsent,
-  CargoArtifactAmbiguous,
-  CargoArtifactWithoutExecutable,
-  CargoArtifactExecutablePathEmpty,
-  CargoArtifactExecutableNotAString,
-  CargoMessageExecutableAbsent,
-  CargoMessageLineUnparseable,
-  CargoMessageLineNotAnObject,
-  CargoMessageReasonAbsent,
-  CargoMessageReasonNotAString,
-  CargoMessageMemberDuplicated,
-  CargoMessageTargetNotAnObject,
-  CargoMessageTargetNameAbsent,
-  CargoMessageTargetNameNotAString,
-  cargo_select_artifact_executable
-}
-import extdeps.tools.sha512sum {
-  Sha512FileObservation,
-  Sha512FileObserved,
-  Sha512FileObservationRefused,
-  sha512sum_observe_file
-}
-import v2.compiler.self_host.generation {
-  GeneratedArtifactIdentity,
-  ArtifactMaterialized,
-  ArtifactNotMaterialized,
-  observed_artifact_digest
-}
 
 data artifact_materialization_subject_note: String = "SH-C: turning a cargo build into the artifact axis of a compiler generation, with no step that predicts a path instead of observing one. The chain is build -> the path cargo NAMED -> a digest of THAT path -> GeneratedArtifactIdentity. The load-bearing property is that the digest and every later execution consume ONE path value, produced by extdeps.cargo_message from cargo's own --message-format=json output. A convention-derived path breaks that at both ends simultaneously: it digests one file while executing another, with each operation individually honest and the composition silently wrong, and it also makes the artifact axis a FUNCTION of the build-configuration axis, collapsing two of the six independent axes v2.compiler.self_host.generation keeps apart."
 

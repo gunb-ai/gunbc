@@ -1,38 +1,5 @@
 module test.claim.runner_connectivity_repair_plan_witness
 
-import std.types { String, Bool, List, Timestamp, list_length }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.fleet_intent_network { operator_host_srv1 }
-import gunbc.build_cache_instance { RunnerSlotIdentity, ProcessIdentity }
-import gunbc.runner_broker_progress_watchdog {
-  RemoteRegistrationEvidence,
-  RemoteRegistrationObserved,
-  ObservedEvidence,
-  BrokerProgressSilent,
-  RunnerWorkerAbsent,
-  RunnerRemoteOffline,
-  RunnerRemoteOnline,
-  runner_broker_progress_silence_bound_seconds,
-}
-import gunbc.runner_connectivity_recovery {
-  RunnerSlotConnectivitySnapshot,
-  RunnerLocalObservation,
-  RunnerRemoteObservation,
-  RunnerLocalIncarnation,
-  HostReachAdmitted,
-  decide_runner_connectivity_action_for_snapshot,
-}
-import gunbc.runner_connectivity_repair_plan {
-  RepairExecute,
-  RepairNoop,
-  RepairRefusedPlan,
-  ObserveRunnerLocalState,
-  ObserveGitHubRunnerRegistration,
-  ReplaceRunnerIncarnation,
-  project_connectivity_action_to_repair_plan,
-  repair_plan_is_execute,
-  repair_execute_step_count,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

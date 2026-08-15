@@ -1,25 +1,5 @@
 module v2.test.long.compiler_frontier_probe_entry
 
-import v2.compiler.self_host.frontier_probe {
-  FrontierProbeFixture,
-  frontier_probe_receipt_for_host_manifest_entry,
-  frontier_probe_receipt_for_subject
-}
-import v2.compiler.self_host.frontier_probe_types {
-  EmitSurfaceGap,
-  FrontierProbeReceipt,
-  ProbeStageEmit
-}
-import v2.test.workflow.host_source_root_ingest_manifest {
-  frontier_probe_entry_module_path,
-  frontier_probe_entry_source_ref,
-  host_compiler_closure_admission,
-  host_source_root_closure_refs,
-  host_source_root_ingest,
-  host_source_root_ingest_coverage_receipt
-}
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

@@ -1,87 +1,8 @@
 module gunbc.ci_spec
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.realization_schedule { RunnableBatchClamp }
-import std.decl_ref { decl_ref }
-import std.measure { second, millisecond, Minute, minute, minute_count }
 
-import gunbc.fleet_ssh_access { fleet_automation_ssh_key_fingerprint, fleet_automation_privkey_sm_access_url, fleet_automation_privkey_version_segment }
-import gunbc.ci_release_bins {
-  ci_floor_required_artifact_names
-}
 
-import gunbc.ci_gate {
-  Gate,
-  EmitHostGate, CheapClaimPoolGate,
-  ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
-  ProseRowIntroductionGate,
-  SourceRootIngestGate, RegenVerifyGate,
-  SelfHostReadsRealBytesGate, SelfHostStalenessGate
-}
-import gunbc.ci_layer_roots {
-  witness_layer_roots,
-  witness_discovery_scan_dirs
-}
-import gunbc.cli_invoke {
-  claim_executor_run_plan_shell,
-  PlanFunction,
-  CiFloorPlan,
-  CiRegenFloorPlan,
-  CiPlanArtifactPlan,
-  plan_function_name,
-  claim_executor_verify_artifacts_shell,
-  gunbc_run_shell
-}
-import gunbc.commit_workflow {
-  commit_gate_roster,
-  project_ci_floor_gates,
-  project_ci_regen_job_gates,
-  project_falsifier_gates,
-  project_ci_floor_witness_entries
-}
-import std.realization_schedule { ScheduleWitnessEntry }
-import gunbc.repo_identity { gunbc_merge_target_ref }
-import gunbc.heal_push_plan {
-  auto_push_eligible_committed_artifact_paths,
-  author_commit_required_committed_artifact_paths,
-  live_heal_push_refusal_cause_token
-}
-import gunbc.ci_failure_class { infra_retry_grep_alternation }
-import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
-import gunbc.fleet_main_revision { fleet_desired_ref_name }
-import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
-import gunbc.merge_admission_produce {
-  ci_repo_root_shell,
-}
-import v2.workflow.ci_regen_rustfmt_path_emit {
-  ci_regen_ensure_rustfmt_path_script,
-}
-import v2.workflow.ci_heal_skew_guard_emit {
-  ci_heal_binary_source_skew_guard_script,
-}
-import extdeps.git {
-  git_remote_ref_parts,
-  git_fetch_no_tags_shell,
-}
-import std.types { GitRef }
-import extdeps.github.actions { RunnerSpec }
-import v2.std.orchestration {
-  Do,
-  EnvSet,
-  EnvUnset,
-  EscalationLevel,
-  FailFast,
-  LogMatches,
-  Pipeline,
-  PipelineStep,
-  Retry,
-  Run
-}
-import v2.std.collection { Absent, Present }
-import v2.std.diagnostic { EmitDirective, SeverityWarning }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 type DiffMode = DiffMergeBase | DiffTwoDot
 

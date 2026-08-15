@@ -1,10 +1,5 @@
 module gunbc.host_cli_dependency
 
-import extdeps.tools { CliTool, install_hint }
-import extdeps.tools.npm { npm_cli_tool }
-import extdeps.shell
-import std.types { String, NonEmptyStr }
-import v2.std.optional { Optional, Present, Absent, optional_absent, optional_present }
 
 data host_cli_dependency_authority_note: String = "Host CLI placement for wet witnesses: observe whether an executable is on PATH before attempting shell transport. A missing npm on the falsifier runner surfaced as runtime error: failed to execute npm (os error 2) and classified as WitnessRed — indistinguishable from a subject failure. This module refuses BEFORE execution with a typed wire HostDependencyAbsent with tool and hint fields that claim_executor reads structurally (falsifier recovery PR D, run 31685755058 component 6). ENROLLMENT ANSWER: codex_wet_materialization_host_cli_requirements on this module; absent npm stops as HostDependencyAbsent, never auto-install inside the witness."
 

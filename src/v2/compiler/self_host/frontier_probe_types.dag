@@ -1,50 +1,6 @@
 module v2.compiler.self_host.frontier_probe_types
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import extdeps.git.inspect
-import extdeps.git.object_store {
-  GitObjectId,
-  git_object_id_eq,
-  git_object_id_from_untagged_hex
-}
-import v2.compiler.source_authority {
-  SourceRef,
-  SourceRootCoverage,
-  SourceRootCoverageComplete,
-  SourceRootManifestAbsent,
-  SourceRootManifestElided,
-  SourceRootRowsMissing
-}
-import std.algebra { FreeMonoid }
-import std.content_hash {
-  ContentHash,
-  ContentHashComparison,
-  ContentHashEqual,
-  Fnv1a64,
-  Fnv1a64Structural,
-  Sha256Digest,
-  as_content_hash_structural,
-  compare_content_hash,
-  content_hash_atom,
-  content_hash_combine_structural,
-  content_hash_validate_lower_hex_length
-}
-import std.types { CommitSha, GitRef }
-import v2.std.algebra { fold_list }
-import v2.std.collection { List }
-import v2.std.grammar_choice_ambiguity {
-  GrammarChoiceAmbiguityRow,
-  NonEmptyGrammarChoiceAmbiguityRows
-}
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.compilers.lexing { symbol_lexeme }
-import v2.std.diagnostic { Extent, Locus, NodeLocus, PortLocus, Textual }
-import v2.std.node { Symbol }
-import v2.std.optional { Absent, Optional, Present }
-import v2.std.qualified_name { QualifiedName }
-import v2.std.text { String }
 
 data frontier_nonempty_carrier_pattern_note: String = "NonEmptySymbolChain and NonEmptyGrammarChoiceAmbiguityRows join NonEmptyDiagnostics, NonEmptyProcessNodeIds and v2.std.collection FiniteSet as hand-rolled nonempty carriers. The generic carrier is NO LONGER fixture-only: std.algebra FreeSemigroup is a real construction wall in the tree, so this count is now migration debt with a reachable destination rather than a pattern with nowhere to go. Counted here so the pattern is visible rather than silently repeated. Dissolve triggers: non_empty_symbol_chain_dissolve_trigger (this module); NonEmptyGrammarChoiceAmbiguityRows trigger on v2.std.grammar_choice_ambiguity. NonEmptyDiagnostics, NonEmptyProcessNodeIds and FiniteSet carry NO trigger and are untracked stalls owed one - see std.algebra free_semigroup_grounding_note, which names them at the grain a grep decides."
 

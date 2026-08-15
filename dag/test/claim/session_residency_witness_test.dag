@@ -1,27 +1,5 @@
 module test.claim.session_residency_witness
 
-import std.logic { Bool }
-import std.types { String, List }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network {
-  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
-}
-import gunbc.session_residency {
-  SessionResidency,
-  HostsInteractiveSessions,
-  NoInteractiveSessions,
-  host_session_residency,
-  host_carries_interactive_sessions,
-  SessionResidencyEvidence,
-  SessionsObservedPresent,
-  SessionsObservedAbsent,
-  SessionsOperatorDeclaredAbsent,
-  SessionsUnobserved,
-  host_session_evidence,
-  host_absence_is_operator_declared,
-  operator_declared_absent_host_count,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

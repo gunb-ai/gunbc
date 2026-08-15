@@ -1,44 +1,5 @@
 module test.claim.compute_board_physical_witness
 
-import std.types { Bool, String, Int, NonEmptyStr, List }
-import std.measure { Micro, Milli, micrometer_count }
-import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity }
-import std.affine_space { Point2, point2 }
-import std.spatial_frame {
-  FrameRegistered,
-  FrameRegistrationRefused,
-  SpatialFrameRegistry,
-  empty_frame_registry,
-  register_frame,
-  registry_with,
-}
-import std.orthogonal_geometry {
-  AxisAlignedRectangle2,
-  OrthogonalReady,
-  OrthogonalRefused,
-  axis_aligned_rectangle2,
-}
-import product.pcb.physical {
-  BoardFrameIsNotSubMillimetre,
-  BoardFrameUnregistered,
-  BoardFrameRegistrationRefused,
-  BoardPhysicalArticle,
-  PackageBodyEnvelope,
-  ComponentPlacement,
-  PhysicalRefusal,
-  BodyEnvelopesAdmitted,
-  PhysicallyRefused,
-  PlacementExtentNotPositive,
-  PlacementFrameDiffersFromBoard,
-  PlacementIdentityRepeated,
-  PlacementNotWithinOutline,
-  PlacementsOverlap,
-  admit_body_envelopes,
-  body_envelope_of_ice40_package,
-  physical_refusal_count,
-}
-import extdeps.programmable_logic.ice40.subject { ice40_tq144_package }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

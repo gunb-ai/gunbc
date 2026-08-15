@@ -1,45 +1,5 @@
 module v2.extdeps.languages.bash_orch_if
 
-import v2.std.compilers.lexing { LexRules, phrase, phrase_to_lex_rules, span }
-import v2.std.compilers.target_model {
-  BoundToken,
-  ConcreteSyntaxToken,
-  FixedToken,
-  TargetModel,
-  bound_tokens_source_text,
-  render_target_text
-}
-import v2.std.collection { List, Map, empty_map, map_insert }
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Unavailable,
-  bind_outcome,
-  outcome_accepted,
-  outcome_rejected,
-  port_locus
-}
-import std.filesystem.types { EntryKind }
-import v2.std.node { Node, Symbol }
-import std.path_intent { PathIntent, PathPredicate, DirnameAscent, PathRef, PathLiteral, PathJoin, PathNonempty, PathNotEq, PathEntryKind, Not, And, Or, NearestAncestorContaining, nearest_ancestor_while_predicate, nearest_ancestor_while_ascent, nearest_ancestor_walk_target }
-import extdeps.linux.procfs { ProcSelfCgroup, procfs_path_literal }
-import v2.extdeps.languages.bash_proc_self_cgroup { bash_membership_assign_from_source }
-import std.types { FilePathParts }
-import v2.std.text { String }
-import v2.extdeps.languages.bash {
-  bash_conj_emitted_from_tokens,
-  bash_relation_translation_rules_node,
-  bash_make_bound_tokens_target_model,
-  bash_stmt_assign_target_model,
-  bash_stmt_if_target_model,
-  bash_stmt_if_block_target_model,
-  bash_stmt_negation_target_model,
-  bash_stmt_andor_target_model,
-}
-import v2.extdeps.languages.bash_orch_tier2 {
-  orch_cmdsubst_assign_call_target_model
-}
 
 data bash_path_operand_unquoted_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./-@"
 data bash_path_ident_start_alphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_"

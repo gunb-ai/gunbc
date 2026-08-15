@@ -1,10 +1,5 @@
 module extdeps.ssh.client_options
 
-import std.types { NonEmptyStr, String, Bool, List }
-import std.measure { Second, second, second_count }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
 
 // The OpenSSH CLIENT option vocabulary, modeled once.
 //

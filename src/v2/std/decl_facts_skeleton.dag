@@ -1,23 +1,6 @@
 module v2.std.decl_facts_skeleton
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.types { List, String }
-import v2.std.algebra {
-  Empty,
-  HeadAbsent,
-  HeadFound,
-  count_where,
-  fold_list_right,
-  length,
-  list_head,
-  list_reverse,
-}
-import v2.std.collection { Absent, Present }
-import v2.std.compilers.lexing { symbol_lexeme }
-import v2.std.decl_index { DeclFact }
-import v2.std.node { Node, TypeNode, Atom, Conj }
-import v2.std.node_query { node_positional_child_targets }
 
 type OuterRecordConstructorLexeme = String
 

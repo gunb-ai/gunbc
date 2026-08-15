@@ -1,17 +1,5 @@
 module v2.test.algebra_laws.zip_eq_list_equality
 
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { zip_eq }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  CompilesClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 fn zip_sym_eq(a: Symbol, b: Symbol) -> Bool { a == b }
 fn sym_list_empty() -> FreeMonoid<Symbol> { Empty }
 fn sym_list_a() -> FreeMonoid<Symbol> { Cons { head: ^zip_eq_sym_a, tail: Empty } }

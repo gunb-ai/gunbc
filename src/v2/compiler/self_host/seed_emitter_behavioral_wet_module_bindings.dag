@@ -1,15 +1,5 @@
 module v2.compiler.self_host.seed_emitter_behavioral_wet_module_bindings
 
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.optional {
-  Absent,
-  Optional,
-  Present,
-  optional_absent,
-  optional_present
-}
-import v2.std.text { String }
 
 data seed_emitter_behavioral_wet_module_bindings_note: String = "Cycle-free leaf for restored SelfHostWetReceiptBinding rows (review 44453/44455/44460/44468): shared by wet_receipt_enrollment for nightly green wet roster enrollment only. Authorization does NOT derive from this list — producer_emission_canonical_receipt_for_executed_verdict is unwritable at baseline until witness-realization + frontier_probe_survey."
 

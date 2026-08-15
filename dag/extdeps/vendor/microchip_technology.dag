@@ -1,11 +1,5 @@
 module extdeps.vendor.microchip_technology
 
-import std.types { String }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import extdeps.vendor { Vendor }
-import extdeps.hardware { Hardware }
 
 // Read 2026-08-14. Both the vendor's legal page and EDGAR refused this session's fetches.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {

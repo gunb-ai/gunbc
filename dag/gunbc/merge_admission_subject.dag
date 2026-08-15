@@ -1,15 +1,5 @@
 module gunbc.merge_admission_subject
 
-import std.types { CommitSha, String, List, PathSegment, path_segment_is_safe }
-import extdeps.git.object_store {
-  GitObjectId,
-  GitSha1ObjectId,
-  GitSha256ObjectId,
-  git_sha1_object_id,
-  git_sha256_object_id,
-  git_object_id_wire_hex,
-}
-import gunbc.repo_identity { gunbc_merge_target_ref }
 
 data merge_admission_subject_defusion_note: String = "WalkAttemptId, TestedSubject, and their path/wire identity live here because capture and admission classification both consume them. This is a MOVE from gunbc.merge_admission and gunbc.merge_admission_produce, not a second representation: the domain modules import this carrier home. Keeping the checkout capture out of the classifier's commit-roster closure makes its declared Negligible profile measurable at the realization boundary."
 

@@ -1,32 +1,5 @@
 module v2.compiler.parse_diagnostic
 
-import std.algebra { FreeMonoid }
-import v2.std.algebra {
-  Cons,
-  Empty,
-  HeadAbsent,
-  HeadFound,
-  TailAbsent,
-  TailFound,
-  fold_list,
-  list_head,
-  list_snoc_item,
-  list_tail
-}
-import v2.std.collection { List }
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  Locus,
-  NonEmptyDiagnostics,
-  Unavailable,
-  port_locus
-}
-import v2.std.grammar_choice_ambiguity {
-  GrammarChoiceAmbiguityRow,
-  NonEmptyGrammarChoiceAmbiguityRows
-}
-import v2.std.optional { Optional, Present, optional_absent, optional_present }
 
 // ParseDiagnosticEvidence is parse-stage evidence orthogonal to the universal Diagnostic carrier. Grammar-choice overlap rows live here — never on Correction, Locus, or Diagnostic itself.
 type ParseDiagnosticEvidence

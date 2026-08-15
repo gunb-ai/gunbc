@@ -1,12 +1,5 @@
 module test.claim.branded_list_first_optional_witness
 
-import std.types { List, String }
-import std.content_hash {
-  ContentHash,
-  content_hash_of_value,
-  content_hash_eq_structural,
-}
-import v2.std.collection { Present, Absent }
 
 fn hash_list() -> List<ContentHash> {
   [content_hash_of_value(value: "a" as NonEmptyStr)]

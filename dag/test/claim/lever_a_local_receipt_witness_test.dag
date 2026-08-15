@@ -1,7 +1,5 @@
 module test.claim.lever_a_local_receipt_witness
 
-import tools.dag_compile_clean_scope { lever_a_local_receipts_hold }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

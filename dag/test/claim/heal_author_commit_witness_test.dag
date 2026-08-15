@@ -1,22 +1,6 @@
 
 module test.claim.heal_author_commit_witness
 
-import gunbc.generated_artifact {
-  CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, DesignArtifact,
-  artifact_path
-}
-import gunbc.heal_push_plan {
-  classify_heal_repair_paths,
-  HealRepairNoDrift,
-  HealRepairAutoPushEligibleOnly,
-  HealRepairAuthorCommitRequired,
-  HealRepairMixed,
-  path_requires_author_commit
-}
-import gunbc.ci_spec {
-  ci_heal_author_commit_regen_command,
-  gunbc_ci_heal_commit_push_script
-}
 
 data heal_author_commit_witness_note: String = "Synthetic executing controls for the two repair dispositions (operator brief 2026-08-02). Control 1: non-workflow generated drift classifies as AutoPushEligibleOnly — the heal shell stages auto_push_eligible paths and retains git push for that population. Control 2: workflow-only drift classifies as AuthorCommitRequired — the shell detects workflow paths, packages heal-author-commit-required/, emits HealAuthorCommitRequired with every affected path and the local regen command, and never git-adds workflow paths. RED controls flip the classification or shell structure."
 

@@ -1,14 +1,5 @@
 module extdeps.runtime.abi.sysv_amd64
 
-import std.abi { ArchitecturalRegister, CallingConvention }
-import std.types { Bool, NonEmptyStr, String }
-import std.citation { CitedRepresentationIdentity, RawResponseBody, cited_representation_identity }
-import extdeps.external_authority { ExternalAuthority, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import extdeps.version { VersionIdentity }
-import extdeps.http.server { MediaType, TopLevelApplication }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.integer { PositiveInt }
 
 // Upstream System V AMD64 ABI authority: cited PDF document identity, edition, and
 // register/syscall calling-convention facts. Citation consumer receipts (pin, selector,

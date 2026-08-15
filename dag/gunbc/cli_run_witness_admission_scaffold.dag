@@ -1,9 +1,6 @@
 module gunbc.cli_run_witness_admission_scaffold
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data cli_run_witness_admission_source_scan_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

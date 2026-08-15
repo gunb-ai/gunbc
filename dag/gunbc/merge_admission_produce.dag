@@ -1,41 +1,6 @@
 module gunbc.merge_admission_produce
 
-import std.algebra { trim }
 
-import std.types { NonEmptyStr, CommitSha, String, Int, List, Bool, GitRef }
-import std.content_hash {
-  serialize_content_hash,
-  as_content_hash_structural,
-  fnv1a64_structural_hex_digest,
-}
-import extdeps.git
-import extdeps.git.inspect
-import extdeps.git.object_store {
-  GitObjectId,
-  git_object_id_from_untagged_hex,
-  git_object_id_wire_hex,
-}
-import extdeps.github.checks {
-  CheckConclusion,
-  check_conclusion_wire_label,
-  parse_check_conclusion,
-  Success,
-  Failure,
-}
-import gunbc.merge_admission {
-  MergeAdmissionReceiptV2,
-  MergeAdmissionReceipt,
-  mint_merge_admission_receipt,
-  current_gate_roster_hash,
-  GateRosterHash,
-  gate_roster_hash_from_structural,
-}
-import gunbc.merge_admission_subject {
-  walk_attempt_id,
-  render_git_object_id_wire,
-  parse_git_object_id_wire,
-  receipt_wire_lines,
-}
 
 data merge_admission_receipt_schema: String = "gunbc.merge_admission_receipt.v1"
 

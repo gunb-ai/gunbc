@@ -1,38 +1,5 @@
 module gunbc.dgx_spark_pxe_boot
 
-import std.types { NonEmptyStr, String, List, Bool }
-import std.decl_ref { DeclarationRef }
-import std.human_intervention {
-  HumanIntervention,
-  HumanInterventionIdentity,
-  DeviceOnce,
-  NoDischargeSiteModeled,
-}
-import extdeps.uri { Uri }
-import extdeps.provisioning.network_boot {
-  NetworkBootChain,
-  DhcpBootDirection,
-  NativeDhcpBootOptions,
-  ProxyDhcp,
-}
-import extdeps.systems.nvidia_dgx_spark_pxe {
-  SparkPxeBootImageKind,
-  FastOsRecoveryTarball,
-  DgxOsIsoImage,
-  TftpBootloader,
-  TftpGrubConfig,
-  TftpKernelImage,
-  TftpInitrdImage,
-  spark_pxe_bootloader_filename,
-  spark_pxe_tftp_relative_path,
-  spark_pxe_http_install_image_path,
-  spark_fastos_unattended_kernel_cmdline,
-  spark_dgx_os_unattended_kernel_cmdline,
-  spark_pxe_client_boot_mode,
-  SparkPxeSecureBootPrerequisite,
-  SecureBootDisabledForPxe,
-  BootloaderEnrolledForPxe,
-}
 
 type PxeNetworkObservation {
   dhcp_offers_bootloader: Bool

@@ -1,12 +1,5 @@
 module gunbc.host_codex_runtime_provision_verdict
 
-import std.types { String, NonEmptyStr, Bool, FilePath }
-import product.placement_supply { HostIdentity }
-import gunbc.host_layout { codex_bundled_executable_for_host }
-import gunbc.package_delivery {
-  codex_runtime_version_identity_marker,
-  codex_runtime_version_identity_satisfied,
-}
 
 data host_codex_runtime_provision_verdict_authority_note: String = "Verdict fold and shell-output classification live here — not in gunbc.host_codex_runtime_provision — so gunbc.host_effect_realize can consume provision_codex_runtime_verdict_from_shell without importing host_toolchain_ensure (host_codex_runtime_provision -> host_toolchain_ensure -> host_effect_realize would cycle). Mirrors host_build_cache_catalog_gate beside host_build_cache_provision."
 

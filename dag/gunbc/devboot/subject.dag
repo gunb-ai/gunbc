@@ -1,64 +1,6 @@
 module gunbc.devboot.subject
 
-import std.types { String, Bool, List, NonEmptyStr }
-import std.content_hash {
-  ContentHash,
-  Fnv1a64Structural,
-  content_hash_atom,
-  content_hash_combine_structural,
-  content_hash_tagged,
-  content_hash_tagged_structural,
-}
 
-import extdeps.git.object_store {
-  GitObjectId,
-  GitObjectFormat,
-  GitObjectFormatSha1,
-  GitObjectFormatSha256,
-  git_object_id_wire_hex,
-  git_object_id_format,
-}
-import extdeps.toolchain.types {
-  TargetTriple,
-  ToolchainRequirement,
-  Architecture,
-  X86_64,
-  X86,
-  Aarch64,
-  Arm,
-  Armv7,
-  Mips,
-  Mipsel,
-  Mips64,
-  Mips64el,
-  Riscv64,
-  Wasm32,
-  TripleVendor,
-  UnknownVendor,
-  Pc,
-  Apple,
-  W64,
-  Os,
-  Linux,
-  Macos,
-  Windows,
-  Freebsd,
-  Android,
-  Ios,
-  Wasi,
-  AbiEnv,
-  NoneAbi,
-  Gnu,
-  GnuEabi,
-  GnuEabihf,
-  Musl,
-  Msvc,
-  AndroidAbi,
-  Eabi,
-  Eabihf,
-}
-import extdeps.gnu.libc { PlatformCLibrary, GnuLibc, LibcUnobserved, platform_c_library_identity_tag, render_platform_c_library }
-import extdeps.cargo { CargoTarget, Lib, Bin, CargoTest, Example, Bench }
 
 // WHAT A BUILD IS OF, carried so that two requests naming the same thing are the same request and two requests naming different things never collide. Every field is a fact about the COMPUTATION; nothing here can be a fact about the requester.
 //

@@ -1,35 +1,6 @@
 module test.claim.roadmap_focus_witness_test
 
-import std.types { Bool, String, Int, List }
-import gunbc.roadmap_model {
-  RoadmapNodeIdentity,
-  RoadmapNode, RoadmapEdge, Pointer, Sized, IntricacyMedium, VolumeMedium, ManualAcceptance,
-}
-import gunbc.roadmap_status { TicketLine, TicketFields, Unsigned }
-import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
 
-import gunbc.roadmap_authority {
-  active_roadmap_nodes_for_accepted,
-  active_roadmap_edges_for_accepted,
-  accepted_roadmap_node_ids_projection,
-  AcceptedRoadmapNodeIdsProjected,
-  AcceptedRoadmapNodeIdsProjectionRefused,
-  roadmap_focus_selection,
-}
-import gunbc.roadmap_focus {
-  RoadmapFocus,
-  NoFocus,
-  FocusOnOwners,
-  focus_visible_nodes,
-  focus_visible_edges,
-  focus_hidden_node_count,
-  focus_prerequisite_ids,
-  focus_lane_nodes,
-  focus_prerequisite_ids,
-  focus_is_active,
-  focus_notice,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

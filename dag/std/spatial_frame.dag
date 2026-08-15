@@ -1,15 +1,5 @@
 module std.spatial_frame
 
-import std.types { String, Bool, List }
-import std.integer { Int }
-import std.nat { Nat }
-import std.measure {
-  Scale, Measure, Millimeter, Micrometer, measure_count, scale_exponent,
-  Atto, Femto, Pico, Nano, Micro, Milli, One, Kilo, Mega, Giga, Tera, Peta, Exa,
-  Kibi, Mebi, Gibi, Tebi,
-  ArcsecondAngle, DegreeAngle, TurnAngle, Sixty, RackUnitHeight,
-}
-import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity_eq }
 
 // THE REGISTRAR std.coordinate_frame DEFERS TO, and it lands because a board cannot be drawn
 // without it. That module mints a frame identity and deliberately carries nothing else — "a

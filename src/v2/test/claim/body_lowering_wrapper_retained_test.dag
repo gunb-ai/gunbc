@@ -1,9 +1,5 @@
 module v2.test.claim.body_lowering_wrapper_retained
 
-import v2.compiler.body_lowering_fold { body_lower_wrapper_retained_shell }
-import v2.std.diagnostic { Accepted, Rejected, Some }
-import v2.std.logic { Bool }
-import v2.std.node { Conj, TypeNode, node_synthetic }
 
 data wrapper_retained_diagnostics_shape_note: String = "Discriminating witness for the 2026-07-11 s1_closure floor panic: body_lower_wrapper_retained_shell constructed Accepted whose diagnostics field held a RAW NonEmptyDiagnostics where the Diagnostics coproduct (None | Some) is declared - the first downstream match over Diagnostics (diagnostics_merge in the normalize child fold) then panicked non-exhaustive on every file with a wrapper-retained fn body. This witness pins the SHAPE: the wrapper-retained outcome's diagnostics must inhabit the Some arm of Diagnostics and carry the typed wrapper-retained reason. Pre-fix it returns false (the Some pattern cannot match a raw record); post-fix true. Reproduced red/green by execution on dag/std/error_primitives.dag via s1_file_parses."
 

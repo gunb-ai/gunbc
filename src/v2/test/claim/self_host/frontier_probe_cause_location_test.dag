@@ -1,34 +1,5 @@
 module v2.test.claim.self_host.frontier_probe_cause_location
 
-import v2.compiler.parse_diagnostic {
-  NonEmptyParseStageDiagnostics,
-  parse_stage_diagnostic_from_diagnostic_only
-}
-import v2.compiler.self_host.frontier_probe_assemble_detail {
-  frontier_probe_assemble_detail_from_parse_stage
-}
-import v2.compiler.self_host.frontier_probe_types {
-  AssembleRejectionDetail,
-  NonEmptySymbolChain,
-  CauseLocationNodeNotSerializable,
-  CauseLocationPort,
-  CauseLocationTextual,
-  NoFrontierProbeDetail
-}
-import std.algebra { Cons, Empty }
-import v2.std.diagnostic {
-  ByteRange,
-  Diagnostic,
-  Textual,
-  Unavailable,
-  UserInputBoundary,
-  WholeFile,
-  node_locus,
-  port_locus
-}
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
-import v2.std.text { String }
 
 data frontier_probe_cause_location_test_note: String = "Discriminating controls for the refusal location on AssembleRejectionDetail. The location exists because a reason symbol alone does not say WHICH file refused: recovering that previously meant folding tokenize over an entire import closure by hand. These are FIXTURES, not a pipeline walk, so they cost milliseconds. The byte range is asserted EXACTLY rather than for presence — an implementation that kept the file but substituted WholeFile would pass a presence check while destroying the position that makes the field worth carrying, and that substitution is the executed RED for these claims. All three Locus arms are exercised: a port is real serializable data and keeps its symbol, and only a Node, which has no manifest rendering, reaches the not-serializable arm. A two-diagnostic control pins the PAIRING: with a second diagnostic carrying a different reason at a different position, the reason and the location must both come from the head, so neither field can be drawn from a diagnostic the other did not come from. The location is asserted on the DETAIL and never inside the cause, because a clustering key reads the cause and two modules refusing for the same reason at different positions are the same detailed cause."
 

@@ -1,32 +1,5 @@
 module test.claim.fleet_convergence_verdict_witness
 
-import std.types { Bool, String, NonEmptyStr, List, Int }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv1 }
-import gunbc.host_phase_status { fleet_subsumption_enrollments }
-import gunbc.host_assimilation_program { HostEnrollmentIntent }
-import gunbc.fleet_converge_cli { ConvergeCliReceipt, ConvergeCliRefusalCause, KnobFrontier }
-import gunbc.host_converge { VerdictConverged, Absent, Drifted }
-import gunbc.fleet_convergence_verdict {
-  fleet_convergence_verdict,
-  FleetConvergenceVerdict,
-  FleetConverged,
-  FleetNotConverged,
-  fleet_unobserved_cell_count,
-  host_knob_standing,
-  HostKnobStanding,
-  KnobConverged,
-  KnobNotConverged,
-  KnobUnobserved,
-  RequiredCellStanding,
-  CellConverged,
-  CellUnobserved,
-  CellUnreachable,
-  CellDrifted,
-  CellConflict,
-  cell_standing_is_converged,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

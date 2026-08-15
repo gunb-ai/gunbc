@@ -1,30 +1,5 @@
 module test.claim.occurrence_identity_acceptance_closure_witness_test
 
-import std.types { Bool, String, List }
-import std.occurrence_identity {
-  OccurrenceIdentityAcceptanceLaw,
-  occurrence_identity_acceptance_laws,
-}
-import gunbc.occurrence_identity_acceptance_closure {
-  OccurrenceIdentityReceiptEnrollmentDebt,
-  occurrence_identity_consumer_red_debts,
-  occurrence_identity_receipt_enrollment_debts,
-  OccurrenceIdentityExecutingReceipt,
-  OccurrenceIdentityReceiptPassed,
-  OccurrenceIdentityReceiptFailed,
-  OccurrenceIdentityAdmittedDeferral,
-  OccurrenceIdentityClosingCovered,
-  OccurrenceIdentityClosingOpen,
-  OccurrenceIdentityClosingRefused,
-  UnknownReceiptLaw,
-  DuplicateReceiptLaw,
-  StaleReceiptLaw,
-  ReceiptDidNotPass,
-  ReceiptDeferralOverlap,
-  occurrence_identity_closing_verdict,
-  occurrence_identity_closing_complete,
-}
-import std.dissolution { unbound_dissolution }
 
 data occurrence_identity_consumer_red_debt_witness_note: String = "The expected owner and required receipt are PARAMETERS, not shared constants. Four receipts are green by local execution but retain consumer debt until parser_transport_witness_entries exists on main and executes them per PR. The census pins all six debts to their distinct acceptance nodes and exact required_receipt text, preventing a row from staying counted while silently weakening what execution must make RED."
 

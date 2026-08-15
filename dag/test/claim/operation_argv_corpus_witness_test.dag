@@ -1,23 +1,5 @@
 module test.claim.operation_argv_corpus_witness
 
-import std.types { String, List, Bool, Int }
-import v2.std.algebra { fold_list, any, length, list_head, HeadFound, HeadAbsent }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.operation_argv {
-  ArgvMaterialization,
-  ArgvMaterialized,
-  ArgvMaterializationRefused,
-  ArgvRowClassification,
-  ArgvRowMaterialized,
-  ArgvRowExpressionResidue,
-  ArgvRowExecutablePositionRefused,
-  ArgvRowOtherRefusal,
-  ShellTransportOperationRow,
-  operation_argv_bind_text,
-  operation_argv_classify,
-  operation_argv_refusal_label,
-  operation_argv_row_bindings,
-}
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

@@ -1,11 +1,5 @@
 module gunbc.accelerator_demo_program
 
-import extdeps.languages.simd.kernel {
-  relu_mul_add_wire_op_codes,
-  elemwise_mul_wire_op_code,
-  elemwise_add_wire_op_code,
-  elemwise_relu_wire_op_code,
-}
 
 type ElementwiseArrayOp
   = ElemwiseMul

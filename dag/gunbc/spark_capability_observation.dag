@@ -1,9 +1,5 @@
 module gunbc.spark_capability_observation
 
-import std.types { String, Bool, List, NonEmptyStr, Int }
-import std.content_hash { ContentHash, serialize_content_hash }
-import product.placement_supply { HostIdentity }
-import gunbc.readback_independence { ProbeEffectOnSubject, ProbeInert, ProbeMayEstablish, ProbeAnswersWithoutSubject, ProbeEffectUnknown }
 
 // CAPABILITY OBSERVATION AT PRINCIPAL GRAIN, which is the correction the whole Spark lane turned on.
 //

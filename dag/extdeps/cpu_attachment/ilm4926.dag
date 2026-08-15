@@ -1,13 +1,5 @@
 module extdeps.cpu_attachment.ilm4926
 
-import std.types { Bool, List, NonEmptyStr }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.cpu.ampere {
-  ampere_altra_classic_rev_a1_datasheet_authority,
-  ampere_altra_rev_a1_datasheet_authority,
-}
-import extdeps.uri { Uri, Https }
 
 // THE DATASHEET LOCATORS ARE CONSUMED, NOT RE-AUTHORED (review 52024). Both
 // Ampere datasheet anchors already exist in extdeps.cpu.ampere, so these are

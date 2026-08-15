@@ -1,28 +1,5 @@
 module v2.std.collection
 
-import std.algebra { FreeMonoid }
-import std.primitives { empty_map_contract, map_insert_contract, PrimitiveContract }
-import v2.std.algebra { fold_list, is_empty }
-import std.types { Set, Map }
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Unavailable,
-  outcome_accepted,
-  outcome_rejected,
-  port_locus
-}
-import v2.std.node { Symbol }
-import v2.std.optional {
-  Absent,
-  Optional,
-  Present,
-  optional_absent,
-  optional_present,
-  optional_prefer_first_present
-}
-import v2.std.witness { Holds, Violates, Witness, witness_from_optional }
 
 fn optional_absent_unwrap_diagnostic() -> Diagnostic {
   Diagnostic {

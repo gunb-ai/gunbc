@@ -1,18 +1,5 @@
 module extdeps.memory.jedec
 
-import std.measure { byte_size }
-import extdeps.memory.types {
-  DoubleDataRate,
-  DramGeneration,
-  JedecDdrGenerationCatalogRow,
-  dram_generation_ddr4,
-  dram_generation_ddr5,
-  dram_generation_unknown,
-  dram_generation_number,
-  dram_generation_signaling_family,
-}
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

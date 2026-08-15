@@ -1,20 +1,5 @@
 module gunbc.githooks_pre_push_emit
 
-import extdeps.git { git_toplevel_shell_subexpr }
-import gunbc.githooks_repo_local_git_config_emit { emit_repo_local_git_config_converge_shell }
-import gunbc.commit_workflow {
-  commit_gate_roster,
-  project_local_tidy_checks,
-  LocalTidyCheck,
-  LocalTidyWitnessCheck,
-  LocalTidyCargoFmtCheck,
-}
-import gunbc.local_tidy_spec {
-  FmtDrift,
-  FmtToolUnavailable,
-  local_tidy_fmt_outcome_recipe,
-  local_tidy_fmt_pre_push_drift_recipe,
-}
 
 data pre_push_fmt_only_note: String = "The pre-push hook is fmt-only, restored to CLAUDE.md's documented contract ('pre-push runs cargo fmt') by operator ruling 2026-07-25. It was previously a shim that exec'd `claim_batch --pre-push`, which ran the affected-set witness corpus and would cargo-build claim_batch from inside the push when the binary was missing. That weight bought ZERO enforcement: a git hook is opt-in per clone (core.hooksPath), bypassable with --no-verify, and absent in container worktrees, and gunbc.commit_workflow's own commit_gate_rust_suite_removed_disposition already records it PROVEN ineffective (#6658 landed an unformatted .rs on main and no hook caught it). That is the worst of both worlds by construction — no enforcement, but enough weight to make a legitimately-red mid-lane branch feel unpushable, which is the pressure that converts honest reds into workaround greens (priced receipt: three rounds of hand-import workarounds and one decorative gate on the namespace type-binding lane, 2026-07-25). A check that cannot enforce should at least be instant. CI loses nothing: cargo fmt is a required-path build step (gunbc.ci_spec ci_fmt_gate_note) and the witness corpus is the required `ci` floor, which also stamps the merge-admission receipt. The hook body is DERIVED from commit_gate_roster's GitPrePushHook enrollments via project_local_tidy_checks, so the roster stays the single authority (DESIGN section 3) — re-heavying the hook requires a roster edit that githooks_pre_push_emit_test catches, never a silent drift."
 

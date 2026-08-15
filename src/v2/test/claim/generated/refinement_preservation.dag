@@ -1,32 +1,5 @@
 module v2.test.generated.refinement_preservation
 
-import v2.lens.testgen {
-  Generator,
-  RefinementPreservationSubject,
-  TestgenConcept,
-  refinement_preservation_list_node,
-  refinement_preservation_subject_nonempty_list_base,
-  refinement_label_nonempty_list_base,
-  testgen_emit_refinement_preservation_claim,
-  testgen_scheduled_refinement_preservation_generators
-}
-import v2.std.algebra { length }
-import v2.std.collection { List }
-import v2.std.diagnostic {
-  Accepted,
-  None,
-  Outcome,
-  Rejected
-}
-import v2.std.node { Node }
-import v2.std.refinement { refined_base }
-import v2.std.verification {
-  TestClaim,
-  ManualRefinementNonEmptyListBase
-}
-import v2.test.manual.connective_anchors {
-  stub_empty_conj
-}
 
 fn refinement_preservation_claim_from_testgen_emit(
   subject: RefinementPreservationSubject

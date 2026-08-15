@@ -1,22 +1,5 @@
 module gunbc.host_layout
 
-import std.types { String, NonEmptyStr, FilePath }
-import product.placement_supply { HostIdentity }
-import gunbc.provider_account {
-  codex_account_state_root,
-  codex_roadmap_account_selection,
-}
-import gunbc.fleet_intent_network {
-  operator_host_srv1,
-  operator_host_srv2,
-  operator_host_srv3,
-  operator_host_srv4,
-}
-import gunbc.codex_runtime_paths {
-  srv1_codex_runtime_release_root,
-  codex_bundled_executable_at_current_link,
-}
-import gunbc.package_delivery { codex_linux_arm64_native_executable_rel }
 
 data host_layout_note: String = "The ONE authority for the srv1 gunbc host paths (docs/plans/gunbc-served-dashboard-design.md section 5; lane agreement with royal-carp-451, 2026-07-20). Five facts must agree with their consumers or in-process dispatch breaks: srv1_gunbc_repo_root is BOTH the tree `gunbc serve` loads AND the repo the belt runs `git worktree add` from; srv1_dispatch_worktree_root is where those worktrees land; srv1_dispatch_attempt_state_root is where the belt publishes attempt evidence before it launches a provider; srv1_gunbc_serve_binary is the deployed seed binary; srv1_roadmap_codex_home is the dedicated Codex state root whose auth/config/session state the Codex provider preflights and invokes through CODEX_HOME. gunbc.roadmap_belt_actuate and gunbc.roadmap_dispatch_actuator project these rows, while gunbc.live_deploy.spec owns convergence of the filesystem/runtime membership. Interim: the parent lane hand-provisions srv1 to these exact paths; that hand-provisioning dissolves when live_deploy formally carries every member, including the provider state-root existence/ownership check (credentials themselves remain user-authored secret state, never deployment payload)."
 

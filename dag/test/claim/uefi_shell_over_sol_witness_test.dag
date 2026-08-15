@@ -1,11 +1,5 @@
 module test.claim.uefi_shell_over_sol
 
-import std.logic { Bool }
-import gunbc.uefi_shell_over_sol {
-  srv4_uefi_boot_config_sol_send_intent,
-  uefi_boot_config_sol_send_script,
-}
-import gunbc.uefi_boot_config { srv4_uefi_install_boot }
 
 test fn srv4_sol_send_carries_bcfg_over_serial() -> Bool {
   let intent = srv4_uefi_boot_config_sol_send_intent

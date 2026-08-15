@@ -1,6 +1,5 @@
 module gunbc.p1_retention_cohort_receipt
 
-import std.types { String }
 
 data p1_retention_cohort_receipt_reproduction_steps: String = "git checkout the commit where p1_cohort_probe.rs first lands; ctrl-build --local -- cargo build -p v1-compiler --bin p1_cohort_probe --release; run twice over the fixed 50-entry cohort in p1_cohort_roster.txt — Mode A with GUNBC_FLOOR_DRAIN_RETENTION=1 GUNBC_P1_COHORT_RECEIPT=1 (default eviction ON), Mode B additionally with GUNBC_SCHEDULE_RETENTION_EVICT=0 (retain-all pole); compare [p1-cohort] wall_ms/resolve_ms per entry over the valid overlapping range. Full receipt: docs/plans/p1-retention-vs-drain-cohort-receipt.md."
 

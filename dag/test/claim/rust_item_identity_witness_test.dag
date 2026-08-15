@@ -1,20 +1,5 @@
 module test.claim.rust_item_identity_witness
 
-import gunbc.rust_item_identity {
-  RustFunction,
-  RustImplMethod,
-  RustItemIdentity,
-  rust_item_host_observation_scaffold_note,
-  rust_item_identity_key,
-  rust_item_identity_extension_proposal_note,
-  rust_item_identity_note
-}
-import gunbc.seed_growth_admission {
-  seed_growth_admission_g0_population_note,
-  seed_growth_admission_note,
-  seed_growth_justification_roster_note
-}
-import v2.std.text { String }
 
 test fn rust_item_identity_note_cites_impl_method_gap() -> Bool {
   string_contains(s: rust_item_identity_note, pattern: "impl-block method")

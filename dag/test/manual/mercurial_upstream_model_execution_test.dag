@@ -1,54 +1,6 @@
 module test.manual.mercurial_upstream_model_execution
 
-import std.algebra { trim }
 
-import extdeps.shell
-import extdeps.filesystem.filesystem_io
-import extdeps.gunbc
-import gunbc.output_policy { ExpectSuccess }
-import extdeps.mercurial {
-  MercurialNodeId,
-  MercurialNodeIdentityRole,
-  MercurialNodeIdentityObservation,
-  MercurialChangesetNodeIdentity,
-  MercurialManifestNodeIdentity,
-  MercurialFileRevisionNodeIdentity,
-  MercurialNodeIdentityDecoded,
-  mercurial_decode_node_identity,
-  MercurialPath,
-  MercurialNotCopied,
-  MercurialCopiedFrom,
-  MercurialNoParents,
-  MercurialOneParent,
-  MercurialFileRevision,
-  MercurialManifestWire,
-  MercurialManifestWireEntry,
-  MercurialBranchRemainsOpen,
-  MercurialChangeset,
-  MercurialLocalRevision,
-  MercurialLocalRevisionEntry,
-  MercurialHead,
-  MercurialBookmark,
-  MercurialTag,
-  MercurialLocalTag,
-  MercurialPhaseWireEntry,
-  MercurialNonPublishingServer,
-  MercurialEvolutionNotEnabled,
-  MercurialRepositoryRequirements,
-  MercurialRepositoryProjectionContents,
-  MercurialCompleteProjection,
-  MercurialRegularFile,
-  MercurialExecutableFile,
-  MercurialSymlink,
-  MercurialDecoded,
-  mercurial_decode_projection,
-}
-import test.claim.mercurial_upstream_model_witness {
-  mercurial_r0_fixture_expected_execution_receipt,
-}
-import std.bytes { octets_bytes }
-import std.types { NonEmptyStr }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

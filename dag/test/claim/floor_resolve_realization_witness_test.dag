@@ -1,33 +1,5 @@
 module test.claim.floor_resolve_realization_witness
 
-import gunbc.ci_materialization {
-  ResolveObligation,
-  ResolveObligationSubject,
-  ResolveRealization,
-  ColdResolvePerformed,
-  SatisfiedFromSharedPool,
-  ResolveColdReceipt,
-  ResolveSharedPoolProvider,
-  ResolveSharedPoolReceipt,
-  CompileAnchorWholeTree,
-  NativeBundleEscapingEntry,
-  expected_obligation,
-  resolve_realization_finalization_holds,
-  cold_realization,
-  warm_realization,
-  cold_resolves_performed,
-  native_obligation_absent,
-  unknown_obligation_appeared,
-  same_obligation_realized_twice,
-  warm_without_provider_receipt,
-  cold_without_resolve_receipt,
-  ci_floor_expected_resolve_obligation_count,
-  ci_floor_declared_resolve_count,
-}
-import gunbc.floor_materialization { floor_entry_walk_memo_provider_id }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import std.measure { nanosecond }
 
 data floor_resolve_realization_witness_note: String = "Eight required controls for 0B resolve realization (operator ruling 2026-08-04). ADMIT: anchor cold + native cold; anchor cold + native warm. REFUSE: native absent; unknown third obligation; duplicate identity; warm without provider receipt; cold without resolve receipt; unattributed physical resolve. Authority: gunbc.ci_materialization; claim_executor observes; ci_floor_plan transports only."
 

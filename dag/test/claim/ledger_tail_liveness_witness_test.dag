@@ -1,25 +1,5 @@
 module test.claim.ledger_tail_liveness_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { NonEmptyStr, String, Bool }
-import std.nat { Nat }
-import std.observation {
-  ProducerLiveness,
-  ProducerState,
-  probe_liveness_for,
-  ProducerLive,
-  ProducerDead,
-  ProducerLivenessUnknown,
-  LedgerTail,
-  TailComplete,
-  TailIncomplete,
-  LedgerTailVerdict,
-  TailRecordsComplete,
-  TailTorn,
-  TailPending,
-  TailIndeterminate,
-  classify_ledger_tail,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,22 +1,5 @@
 module test.claim.salience_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.design.salience {
-  SalienceRole, SalienceGround, SalienceSupporting, SalienceFocal, SalienceCritical,
-  salience_key, SalienceBudget, salience_budget, chroma_key, motion_key,
-  EmissionSpec, emission_envelope, emission_corona_alpha_max_pct, emission_corona_radius_max_px,
-  EmissionGrant, EmissionGranted, EmissionRefusedForRole, EmissionOutsideEnvelope,
-  EmissionUnitNotComparable, EmissionSoleDiscriminatorRefused, emission_for,
-  SalienceAssignment, FocalAdmission, FocalAdmitted, FocalBudgetExceeded, region_focal_admission,
-  AttractionField, attraction_envelope, focal_attraction,
-  attraction_travel_max_px, attraction_activation_min_px, attraction_activation_max_px,
-}
-import gunbc.design.principles {
-  register_thesis, register_principles, principles_all_carried, principle_keys,
-  principle_keys_distinct, contains_key,
-}
-import gunbc.design.material { settle_spring }
-import extdeps.languages.css.values { css_px, CssLength, Rem }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

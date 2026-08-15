@@ -1,22 +1,5 @@
 module test.claim.stage0_rust_maintenance_census_report_witness
 
-import gunbc.stage0_rust_maintenance_census_report {
-  RustMaintenanceCensusDerived,
-  RustMaintenanceCensusObservationRefused,
-  disposition_category_paths,
-  is_delete_with_disposition,
-  is_emit_from_disposition,
-  is_hand_scaffold_disposition,
-  is_retained_kernel_disposition,
-  rust_maintenance_census_report_over,
-  stage0_rust_maintenance_census_report_note
-}
-import gunbc.stage0_rust_lifecycle_totality { lifecycle_totality_witness_observation }
-import gunbc.stage0_rust_source_lifecycle_scaffold {
-  disposition_authority_rows,
-  path_in_list
-}
-import v2.std.algebra { any, length }
 
 data maintenance_census_report_live_split_note: String = "maintenance_census_report_positive_control_derives_from_current_head moved to stage0_rust_maintenance_census_report_live_witness_test.dag (found 2026-08-06, PR #7894 CI red, batch=3 discovery-corpus): it calls current_rust_maintenance_census_report(), which reaches current_stage0_rust_source_observation() and therefore git.Inspect.HeadCommit without mock_response — the exact class stage0_rust_host_observation.dag host_observation_invocation_note and ci_layer_roots.dag's stage0_rust_host_observation_live_witness_test.dag / roadmap_receipt_continuity_live_witness_test.dag rows already document and exclude. A refusing hermetic discovery member fails its whole batch (CI receipt: batch 3 discovery-corpus, 7298-row corpus, PR #7894 run 31069215347). This file's remaining three witnesses only construct observations by hand (lifecycle_totality_witness_observation, disposition_authority_rows) or assert on the note string, so they stay hermetic."
 

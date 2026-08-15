@@ -1,11 +1,5 @@
 module gunbc.runner_incarnation
 
-import std.types { String, NonEmptyStr, Bool }
-import std.nat { Nat }
-import std.disposition { Disposition, SingleAuthority, Terminal }
-import product.placement_supply { HostIdentity }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
 
 data runner_incarnation_authority_disposition: Disposition = SingleAuthority
 

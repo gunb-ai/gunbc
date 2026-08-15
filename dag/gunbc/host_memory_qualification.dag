@@ -1,10 +1,5 @@
 module gunbc.host_memory_qualification
 
-import std.types { Bool, EpochMs, List, NonEmptyStr }
-import std.nat { Nat }
-import product.placement_supply { HostIdentity }
-import extdeps.boards.types { BaseboardModel, DimmPopulation }
-import extdeps.external_authority { ExternalAuthority }
 
 // FOUR INDEPENDENT STANDINGS. None derives another, and that independence is
 // the whole content of this module.

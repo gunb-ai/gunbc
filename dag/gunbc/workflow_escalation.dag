@@ -1,6 +1,5 @@
 module gunbc.workflow_escalation
 
-import std.types { NonEmptyStr, String, Bool }
 
 type WorkflowEscalation {
   escalation_id: NonEmptyStr

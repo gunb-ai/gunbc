@@ -1,11 +1,5 @@
 module test.claim.source_integration_proof_kernel_acceptance
 
-import std.types { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.source_integration_proof_kernel { kernel_closing_contract_holds }
-import test.claim.source_integration_proof_kernel_model_witness {
-  p1_first_slice_acceptance_admissions,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,6 +1,5 @@
 module std.spatial_knowledge
 
-import std.types { Bool, NonEmptyStr }
 
 // SPATIAL-1: the epistemic layer for physical quantities, landed before any geometry carrier per
 // the spatial-world-kernel directive's ordering. It exists because the opposite was measured: a

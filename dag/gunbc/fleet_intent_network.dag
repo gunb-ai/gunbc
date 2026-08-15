@@ -1,21 +1,5 @@
 module gunbc.fleet_intent_network
 
-import product.network_topology {
-  NetworkAttachmentRole,
-  NetworkEndpoint,
-  NetworkSegment,
-  NetworkTopology,
-  HostOperatingSystem,
-  BmcOutOfBand,
-  ContainerBridgeDefault,
-  ContainerBridgeSecondary,
-  TailscaleEndpoint,
-  LanGateway,
-  Lan,
-  DockerBridge,
-  TailscaleOverlay,
-}
-import product.placement_supply { HostIdentity }
 
 data operator_host_srv1: HostIdentity = "srv1"
 data operator_host_srv2: HostIdentity = "srv2"

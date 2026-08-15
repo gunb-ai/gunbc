@@ -1,14 +1,5 @@
 module gunbc.design.interaction
 
-import gunbc.design.material {
-  TimingToken, respond_fast, reveal_deliberate,
-  scale_transform_wire, travel_scale_transform_wire,
-  rest_scale_per_mille, press_scale_per_mille,
-}
-import gunbc.design.scale { ScaleToken, scale_var, travel_lift, travel_press }
-import gunbc.design.interaction_cause {
-  InteractionCause, PointerApproach, FocusAcquired, PressEngaged, ObservedStateEntered,
-}
 
 data interaction_note: String = "Layer 2 interaction machinery (lifted from gunbc.site.interaction). Verbs x Responses x TimingToken, held as rows. ElementId is a closed enum — coverage_gaps is total by construction (design-register-library.md sect 10 Class 3, A.0)."
 

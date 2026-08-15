@@ -1,34 +1,5 @@
 module test.claim.sccache_pin_witness
 
-import std.types { NonEmptyStr, String, Bool }
-import std.content_hash { ContentHash, content_hash_atom, as_content_hash_structural }
-import extdeps.pin {
-  SubjectProjectedPin,
-  SubjectProjectedPinAdmission,
-  SubjectProjectedPinIntegrityAdmitted,
-  SubjectProjectedPinRefused,
-  ObservedIdentityMismatch,
-  CitedDigestIdentityUnprojectable,
-}
-import extdeps.crypto.hash { sha256_digest }
-import extdeps.cache.sccache {
-  SccacheBinaryArtifact,
-  SccacheBinaryRelease,
-  SccacheMuslAarch64,
-  SccacheMuslX86_64,
-  Riscv64,
-  sccache_release_0_15_0,
-  sccache_binary_artifact_content_identity,
-  sccache_binary_artifact_for_arch,
-  sccache_published_musl_arch_of,
-}
-import extdeps.cache.pin {
-  sccache_binary_artifact_pin,
-  admit_sccache_binary_artifact_pin_integrity,
-  sccache_binary_artifact_subject_projected_pin_as_pin,
-  sccache_binary_artifact_pin_key_of,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

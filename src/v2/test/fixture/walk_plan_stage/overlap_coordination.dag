@@ -1,7 +1,5 @@
 module v2.test.fixture.walk_plan_stage.overlap_coordination
 
-import extdeps.shell
-import extdeps.filesystem.filesystem_io { Filesystem }
 
 type OverlapPeer =
     OverlapPeerA

@@ -1,6 +1,5 @@
 module v2.extdeps.formats.yaml
 
-import v2.std.grammar { GrammarSchema }
 
 data yaml_schema_carrier_homonym_note: String = "Renamed from YamlValue (P3a-1 self-fork collapse): extdeps.languages.yaml.types owns YamlValue for production workflow YAML. This v2-tree grammar-schema witness carrier keeps a distinct name until format-unification lands."
 

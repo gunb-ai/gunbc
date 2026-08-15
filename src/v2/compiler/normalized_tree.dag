@@ -1,22 +1,5 @@
 module v2.compiler.normalized_tree
 
-import v2.compiler.body_lowering_fold { body_lowering_diagnostics_carry_wrapper_retention }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  Diagnostics,
-  ExternalContractUnknown,
-  Outcome,
-  Rejected,
-  bind_outcome,
-  diagnostics_singleton,
-  Unavailable,
-  node_locus,
-  rejected_with_pending
-}
-import std.algebra { Empty, FreeMonoid }
-import v2.std.algebra { fold_list, list_snoc_item }
-import v2.std.node { Node }
 
 // A NormalizedTree is the ADMITTED product of normalize: a root whose own
 // lowering left no wrapper behind. It was an alias for Node until BL-1; the

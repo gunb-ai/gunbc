@@ -1,30 +1,5 @@
 module v2.test.claim.namespace_graft.collapsed_reader_test
 
-import std.algebra { Cons, Empty }
-import v2.extdeps.languages.dag {
-  dag_grammar_atom,
-  dag_named_edge,
-  qualified_name_from_graft_spine,
-  qualified_name_from_module_node
-}
-import v2.std.algebra { fold_list_node }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.logic { Bool }
-import v2.compiler.namespace_graft { module_header_containment_graft }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, SyntheticOccurrence, TypeNode }
-import v2.std.qualified_name {
-  QualifiedName,
-  qualified_name_from_dotted_string
-}
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 data collapsed_reader_witness_note: String = "Additive-equivalence witness for the QN-reader collapse (namespace-resolution-design.md section 10 dissolve 1): the SINGLE collapsed reader qualified_name_from_module_node must agree with the graft-spine walk on grafted input (discriminates against an unwired collapse — the pre-graft header arms cannot read a grafted tree, so an unwired reader Rejects here) AND with the header-path read on pre-graft input (discriminates against an always-spine mis-wiring — the spine walk rejects a header-bearing tree). The RED control: a bare Conj that is neither grafted nor header-bearing refuses — graft-awareness must not widen acceptance to arbitrary trees."
 

@@ -1,17 +1,5 @@
 module extdeps.languages.json.parse
 
-import std.types { String, Int, List, Bool }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.languages.json.emit {
-  JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject,
-  JsonKeyValue, json_kv,
-}
-import extdeps.languages.json.grammar {
-  JsonTextParseResult, JsonTextParseOk, JsonTextParseFail,
-  json_text_skip_ws, json_text_parse_string, json_text_parse_number,
-  json_number_lexeme_unchecked, is_json_digit_char,
-}
 
 data json_parse_note: String = "parse_json is the FORWARD reading of RFC 8259: text -> JsonValue, the inverse of extdeps.languages.json.emit.serialize_json. It reuses the recursive-descent span scanner in extdeps.languages.json.grammar (json_text_parse_string / json_text_parse_number / json_text_skip_ws) to find value boundaries, and builds the JsonValue at each span. Interim standalone parser (a second reading alongside emit); DISSOLVES WHEN json_production_rows are wired into the general GrammarRelationRow ingest machinery (src/v2/compiler/03_ingest) so parse is a witnessed instance of emit^-1 (DESIGN 4). Escapes: the span scanner in grammar.dag decides the escape SET (json_text_escape_end, RFC 8259 section 7), so an unknown escape or a short \\u refuses the parse before a value is built and never reaches the unescaper below - see json_escape_production_note for why that refusal lives at the scan and what it prevents (review 45642). The unknown-escape arm in json_unescape_from is therefore unreachable for any span this parser accepts; it is retained as a total fallback because json_unescape is exported and a caller could hand it an unvalidated span. \\uXXXX IS decoded to its code point, which is what makes the round-trip total against escape_json_string: that emitter maps code points 0-31 other than the six with short escapes to \\uXXXX, so a parser that passed \\u through would silently corrupt every control character a receipt detail field can carry. Surrogate PAIRS are not recombined - serialize_json never emits one (it escapes only 0-31), so a lone \\uXXXX decode is exact over this emitter's output; foreign JSON carrying an astral character as a surrogate pair is outside the declared fragment. A malformed \\u (fewer than four hex digits, or a non-hex digit) refuses at the scanner, so json_hex4_at's negative arm is likewise unreachable from parse_json and kept only for the exported-caller case."
 

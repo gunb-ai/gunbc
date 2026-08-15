@@ -1,10 +1,5 @@
 module gunbc.hostname_allocation
 
-import std.types { List, Bool, String, Map }
-import std.disposition { Disposition, Terminal }
-import product.placement_supply { HostIdentity }
-import extdeps.dns.domain_name { DnsLabel }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
 
 type HostnameAllocation {
   fleet_slot: HostIdentity

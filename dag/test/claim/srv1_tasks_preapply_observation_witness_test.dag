@@ -1,8 +1,5 @@
 module test.claim.srv1_tasks_preapply_observation_witness
 
-import std.types { Bool, String }
-import gunbc.srv1_tasks_preapply_observation { cgroup_parent_dir }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

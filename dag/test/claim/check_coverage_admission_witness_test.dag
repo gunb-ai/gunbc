@@ -1,26 +1,5 @@
 module test.claim.check_coverage_admission_witness
 
-import gunbc.merge_admission {
-  CoveredGateConclusion,
-  CheckCoverage,
-  CheckCoverageAbsent, CheckCoverageRunning, CheckCoverageStopped,
-  CheckCoverageComplete, CheckCoverageStale,
-  CheckCoverageAdmissionVerdict,
-  CheckCoverageAdmitted,
-  CheckCoverageDeniedAbsent, CheckCoverageDeniedRunning,
-  CheckCoverageDeniedStopped, CheckCoverageDeniedStale,
-  CheckCoverageDeniedHeadMismatch, CheckCoverageDeniedRosterMismatch,
-  CheckCoverageDeniedEmptyRequiredPopulation,
-  CheckCoverageDeniedDuplicateRequiredGate,
-  CheckCoverageDeniedExecutionCardinality,
-  CheckCoverageDeniedGateFailed,
-  classify_check_coverage_admission,
-  check_coverage_admits,
-}
-import extdeps.github.checks { Success, Failure }
-import std.types { CommitSha, Bool }
-import std.content_hash { ContentHash, content_hash_of_value }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

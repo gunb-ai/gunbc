@@ -1,11 +1,5 @@
 module extdeps.vendor.texas_instruments
 
-import std.types { String }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import extdeps.vendor { Vendor }
-import extdeps.hardware { Hardware }
 
 // THE LEGAL NAME IS TAKEN FROM THE COMPANY'S OWN TERMS OF USE, NOT FROM AN ENCYCLOPAEDIA AND NOT
 // FROM MEMORY. The sibling Lattice row prefers EDGAR for exactly this fact, and EDGAR is the

@@ -1,9 +1,5 @@
 module v2.std.witness_evaluation
 
-import std.types { Bool, List }
-import std.effect_grant { Envelope }
-import extdeps.transports.rest { RestExchangeFixture }
-import v2.std.diagnostic { Diagnostic, Textual, WholeFile, Unavailable, AmbiguousIntent }
 
 data witness_evaluation_frame_note: String = "A witness evaluation is an ordinary scoped evaluation whose effects are supplied by an existing Envelope. Envelope already owns its Frame, so this carrier does not duplicate a separately writable frame field. The REST fixtures are temporary realization inputs selected through the envelope's HandlerBinding; they are not global interpreter state and must disappear when subject evaluation returns or refuses. This frame is deliberately not REST-specific in its result or control semantics: later deterministic environment and filesystem replay bindings extend the same carrier rather than minting another catch primitive."
 

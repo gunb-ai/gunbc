@@ -1,31 +1,5 @@
 module test.claim.cargo_execution_placement_witness_test
 
-import gunbc.cargo_execution_placement {
-  CargoPlacement,
-  LocalRunner,
-  RemoteBuilder,
-  CargoSubjectPlacementRequirement,
-  RequiresLocalWorkspace,
-  RelocatableSubject,
-  CargoPlacementDecision,
-  PlacementAdmitted,
-  PlacementRefused,
-  CargoPlacementRefusalCause,
-  RemoteBuilderCannotServeLocalWorkspace,
-  RemoteBuilderRealizationUnbound,
-  CargoExecutableUnobserved,
-  CargoInvocationOutcome,
-  CargoInvocationPassed,
-  CargoInvocationFailed,
-  CargoInvocationNotAttempted,
-  decide_cargo_placement,
-  cargo_outcome_holds,
-  cargo_outcome_diagnostic,
-  cargo_placement_refused_for_absent_executable,
-  cargo_placement_refusal_text
-}
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.types { Bool, String }
 
 // Controls for the placement axis extracted in gunbc.cargo_execution_placement.
 //

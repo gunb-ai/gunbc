@@ -1,6 +1,5 @@
 module test.claim.qualified_declaration_reference_emit_cross_module_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

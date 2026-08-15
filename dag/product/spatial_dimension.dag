@@ -1,38 +1,5 @@
 module product.spatial_dimension
 
-import std.types { Bool, NonEmptyStr }
-import std.nat { Nat }
-import std.measure { Millimeter, millimeter_count }
-import std.interval {
-  OrderedClosedInterval,
-  IntervalConstruction,
-  IntervalReady,
-  IntervalRefused,
-  closed_interval,
-  interval_low,
-  interval_high,
-}
-import std.claim_evidence { EvidenceLink, InferenceRuleId }
-import product.placement_supply { RoomIdentity }
-import std.spatial_knowledge {
-  SpatialKnowledge,
-  SpatialMeasured,
-  SpatialEstimated,
-  SpatialHypothesis,
-  SpatialUnknown,
-  SpatialRequirement,
-  MinimumSpatialStanding,
-  MeasuredOnly,
-  MeasuredOrEstimated,
-  SpatialAdmission,
-  SpatialRenderProjection,
-  RenderMeasured,
-  RenderEstimated,
-  RenderHypothesis,
-  RenderUnknown,
-  project_spatial_rendering,
-  admit_spatial_decision_input,
-}
 
 // The first product-layer binding of SPATIAL-1, and the reason it is not an unconsumed generic
 // guard. It supplies the four things std cannot: the room IDENTITY (from placement_supply, the

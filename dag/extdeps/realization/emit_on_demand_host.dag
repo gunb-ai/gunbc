@@ -1,19 +1,5 @@
 module extdeps.realization.emit_on_demand_host
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import std.types { String, NonEmptyStr, List }
-import std.content_hash {
-  ContentHash,
-  Fnv1a64Structural,
-  content_hash_atom,
-  content_hash_combine_structural,
-  as_content_hash_structural,
-  serialize_content_hash,
-}
-import std.integer { NonNegativeInt }
-import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
-import v2.std.optional { Present, Absent }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

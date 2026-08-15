@@ -1,26 +1,5 @@
 module test.claim.decl_facts_reflection_witness_test
 
-import v2.std.decl_facts_skeleton {
-  decl_facts_nullary_variant_value_identity_gap_note,
-  decl_facts_outer_record_constructor_lexeme_authority_note,
-  skeleton_contains_marshal_atom_lexeme,
-  skeleton_contains_outer_record_constructor_lexeme,
-}
-import test.claim.decl_facts_reflection_witness_support {
-  decl_fact_projection_node_for_qualified_name,
-  decl_facts_reflection_bind_is_declaration_ref_projection,
-  decl_facts_reflection_constructor_variant,
-  decl_facts_reflection_field_projection,
-  decl_facts_reflection_witness_support_facts,
-  decl_facts_reflection_named_field_projection_surfaces,
-  decl_facts_reflection_nullary_value_projection,
-  decl_facts_reflection_resolved_nullary_variant_name,
-}
-import v2.std.data_initializer_identity {
-  resolved_variant_name_optional,
-  value_projection_is_resolved_variant,
-}
-import v2.std.algebra { length }
 
 data decl_facts_reflection_witness_note: String = "Step-1 prerequisite (#7796), PARTIAL: outer record-constructor SPELLING (OuterRecordConstructorLexeme) is reflected and tested via executing witnesses. Nullary variant VALUE parent/arm identity is exercised through decl_facts() on the lookup_fn_node marshal seam (w_nullary_variant_value_absent_without_infer_stamping_top_level, w_nullary_variant_value_absent_without_infer_stamping_nested, and decl_facts_initializer_projection_witness_test explicit-import rows). Exact parent-variant occurrence identity remains open — see decl_facts_nullary_variant_value_identity_gap_note. Rust tests in v1-compiler-tests are developer convenience only (compile-only in CI; nextest retired 2026-07-11)."
 

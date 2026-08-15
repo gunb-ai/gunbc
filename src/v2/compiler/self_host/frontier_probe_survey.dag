@@ -1,40 +1,6 @@
 module v2.compiler.self_host.frontier_probe_survey
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import v2.compiler.self_host.frontier_probe {
-  frontier_probe_emit_from_ingest
-}
-import v2.compiler.self_host.frontier_probe_types {
-  EmitSurfaceGap,
-  FrontierBlockerClass,
-  FrontierProbeReceipt,
-  FrontierSurveyManifest,
-  FrontierSurveySubject,
-  NameResolutionGap,
-  RealizationGap,
-  SelfEmitReady,
-  UnknownProbeCause,
-  FixtureCemented,
-  UpstreamSemanticRefusal,
-  frontier_blocker_class_matches,
-  frontier_survey_commit_tree_binding_holds,
-  frontier_survey_executable_sha256_holds,
-  frontier_survey_source_roots_digest_holds,
-  frontier_probe_policy_revision,
-  frontier_probe_receipt_blocker_class,
-  frontier_probe_receipt_located_reason,
-  frontier_probe_receipt_module_path
-}
-import std.realization_schedule { scoped_witness_exact_head_text_holds }
-import std.content_hash { ContentHash, compare_content_hash, ContentHashEqual }
-import v2.compiler.name_resolve { Admission }
-import v2.compiler.source_authority { SourceRootIngest }
-import v2.std.algebra { Cons, Empty, fold_list, length }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
-import v2.std.text { String }
 
 type FrontierGapClusterVerdict
   = CommonRoot {

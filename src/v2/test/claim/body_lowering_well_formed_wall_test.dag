@@ -1,21 +1,5 @@
 module v2.test.claim.body_lowering_well_formed_wall
 
-import v2.std.node {
-  Arrow,
-  Atom,
-  ComputationNode,
-  Conj,
-  Disj,
-  Edge,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  TypeNode,
-  Value,
-  node_synthetic,
-  well_formed
-}
 
 // Discriminating RED control for body-lowering-is-TOTAL: malformed arrow bodies
 // still reject well_formed. After ArrowBodyForm, bare Atom bodies are valid

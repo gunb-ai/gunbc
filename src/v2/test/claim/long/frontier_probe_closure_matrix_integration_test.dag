@@ -1,26 +1,5 @@
 module v2.test.long.frontier_probe_closure_matrix_integration
 
-import v2.compiler.self_host.frontier_probe {
-  FrontierProbeIngestSubject,
-  frontier_probe_discovered_closure_subject_for_matrix,
-  frontier_probe_receipt_for_subject
-}
-import v2.compiler.self_host.frontier_probe_types {
-  FrontierProbeClosurePopulationRefused,
-  FrontierProbeCoverageRefused,
-  FrontierProbeDetail
-}
-import v2.compiler.source_authority {
-  SourceRef,
-  SourceRootCoverage,
-  SourceRootCoverageComplete,
-  frontier_probe_discovered_closure_seal,
-  source_ref_for_observed_storage_path
-}
-import std.algebra { Cons, Empty }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

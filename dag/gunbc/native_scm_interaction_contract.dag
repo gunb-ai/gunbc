@@ -1,13 +1,5 @@
 module gunbc.native_scm_interaction_contract
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.integer { NonNegativeInt }
-import v2.std.optional { Optional, Present, Absent, optional_present, optional_absent }
-import v2.std.collection { list_at_optional }
-import gunbc.scm_compatibility_shape {
-  CompatibilityProjectionReceipt,
-  compatibility_projection_upsert,
-}
 
 data native_scm_interaction_contract_note: String = "Model-first contract carrier for the native SCM interaction slice. The model stays on the presentation side of the split: a proposal has a stable identity, every displayed label is backed by a stored resumable option, and selection uses the option's structural position rather than caller-authored display text. Equal labels therefore cannot collapse two resume tokens into an ambiguous identity, and selection returns the stored option for resumption rather than fabricating Landed before semantic admission, transition, and independent read-back. The user-facing terminal outcome is Landed | ChoiceRequired | CouldNotLand, review/access/check/operational remain orthogonal fields, operational pending causes distinguish projection repair from unrelated internal work, workspace/target context stays optional, and compatibility projections are indexed by realization and target rather than a Git-only slot. No engine, semantic admission, transport, or CLI lives here; the witnesses exercise the contract as a black-box surface."
 

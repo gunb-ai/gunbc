@@ -1,12 +1,5 @@
 module test.claim.claude_sdk_parser_drop_live_witness
 
-import std.types { Bool }
-import extdeps.llm.claude_agent_sdk_stream {
-  claude_sdk_parser_drop_receipt_holds,
-  claude_sdk_parser_drop_receipt_path,
-}
-import extdeps.filesystem.filesystem_io
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

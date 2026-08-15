@@ -1,18 +1,5 @@
 module v2.test.std.reducible
 
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import std.reducible {
-  Irreducible,
-  Reduced,
-  Unknown,
-  ReduceVerdict,
-  classify_leaf,
-  reduce_verdicts_located,
-  verdict_eq,
-}
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

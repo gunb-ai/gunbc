@@ -1,26 +1,5 @@
 module test.claim.observation_rollup_witness
 
-import std.logic { Bool }
-import std.types { String, NonEmptyStr, List }
-import std.nat { Nat }
-import std.observation {
-  ObservationSegment, RunSegment, BatchSegment, EntrySegment, ModuleSegment,
-  ObservationSubject,
-  ObservationGrain, RunGrain, BatchGrain, EntryGrain, ModuleGrain,
-  ObservationEvent, ObservationTransition, Begin, Step, Concluded,
-  ObservationOutcome, Done, Refused, Failed, Skipped, TimedOut,
-  ObservationCounts, observation_counts_zero, observation_counts_anomalies,
-  ObservationRollup, observation_rollup_open,
-  ObservationRollupAccept, RollupAccepted, RollupSubjectOutOfScope,
-  observation_rollup_accept,
-  observation_subject_prefix_at_grain,
-  observation_durations_wall,
-  observation_durations_wall_unavailable,
-  Measured, MeasuredUnavailable, MeasuredValue,
-  observation_subject_contains,
-}
-import std.measure { Nanosecond, ByteSize, nanosecond, nanosecond_count, byte_size, byte_size_count }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

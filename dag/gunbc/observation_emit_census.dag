@@ -1,10 +1,5 @@
 module gunbc.observation_emit_census
 
-import std.types { String, NonEmptyStr, Bool, List }
-import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
-import std.nat { Nat }
-import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data observation_emit_census_note: String = "P3 of the progress-and-observation lane: the census wall. Every place the floor emits a progress line today is either a PROJECTION of the observation event stream (migrated, P1/P2) or a COUNTED FRONTIER ROW carrying a reason and a dissolve-on — the same discipline the site subsumption lane uses for unthemed colours. This module is the census authority: the classification is a closed sum, so a site cannot be half-classified, and the roster below names the structured-tag emit families that exist in the seed today. The executable hygiene witness is bidirectional: it reds when a rostered marker vanishes AND when a known live tag family is missing from the roster, so growth after the snapshot cannot silently understate."
 

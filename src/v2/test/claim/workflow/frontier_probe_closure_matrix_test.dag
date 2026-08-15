@@ -1,39 +1,5 @@
 module v2.test.workflow.frontier_probe_closure_matrix
 
-import v2.compiler.self_host.frontier_probe {
-  FrontierProbeCoveragePermitted,
-  FrontierProbeIngestSubject,
-  frontier_probe_closure_count_mismatch_reason,
-  frontier_probe_closure_refs_digest_mismatch_reason,
-  frontier_probe_closure_storage_hash_conflict_reason,
-  frontier_probe_coverage_gate,
-  frontier_probe_discovered_closure_subject_for_matrix,
-  frontier_probe_entry_binding_refused_reason,
-  frontier_probe_receipt_for_subject
-}
-import v2.compiler.self_host.frontier_probe_types {
-  FrontierProbeClosurePopulationRefused,
-  FrontierProbeCoverageRefused
-}
-import v2.compiler.source_authority {
-  DiscoveredSourceRefsDigest,
-  FrontierProbeDiscoveredClosure,
-  SourceRef,
-  SourceRootCoverage,
-  SourceRootCoverageComplete,
-  SourceRootManifestAbsent,
-  SourceRootManifestElided,
-  SourceRootRowsMissing,
-  content_hash_of_value,
-  discovered_source_refs_digest_for_refs,
-  frontier_probe_discovered_closure_seal
-}
-import v2.std.cross_tree.import_model { DagTree }
-import std.algebra { Cons, Empty }
-import v2.std.algebra { length, list_map }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

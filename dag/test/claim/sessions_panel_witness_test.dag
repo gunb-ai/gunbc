@@ -1,27 +1,5 @@
 module test.claim.sessions_panel_witness
 
-import gunbc.roadmap_belt_actuate {
-  BeltObserve, Observed, ObserveRefused,
-  belt_sessions_json_value, belt_sessions_observed_json, belt_sessions_http_status,
-}
-import gunbc.roadmap_dispatch_actuator {
-  DispatchLiveSession,
-  CodexDispatchProvider,
-  dispatch_provider_instance_for,
-  dispatch_live_sessions_from_entries,
-  fixture_projection_standing_refusal_tmux_entry,
-}
-import gunbc.worker_lifecycle {
-  WorkerProcessExited,
-  worker_observation_without_provider_probe,
-  worker_observation_without_provider_probe_for_process,
-}
-import gunbc.roadmap_component {
-  dispatch_client_js_source, sessions_route_path,
-}
-import gunbc.roadmap_style { roadmap_css }
-import std.upsert_decision { ObservationVerdict, Converged }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

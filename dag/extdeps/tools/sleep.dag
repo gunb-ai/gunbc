@@ -1,12 +1,5 @@
 module extdeps.tools.sleep
 
-import std.types { NonEmptyStr, Bool }
-import std.measure { Second, second_count }
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.tools { CliTool, SourceCoreutils }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

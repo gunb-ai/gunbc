@@ -1,24 +1,5 @@
 module test.claim.stage0_rust_host_observation_live_witness
 
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import gunbc.stage0_rust_source_lifecycle_scaffold {
-  CargoTargetMissingLifecycleDisposition,
-  DerivedUnclassifiedTracked,
-  ManifestStateScaffoldOk,
-  ManifestStateScaffoldRefused,
-  manifest_state_verdict_scaffold_holds,
-  rust_source_manifest_state_verdict,
-  stage0_rust_lifecycle_scaffold_mechanical_checks_holds
-}
-import gunbc.stage0_rust_host_observation {
-  RustManifestObserved,
-  current_stage0_rust_source_observation
-}
-import gunbc.live_rust_observation {
-  LiveObservationAdmitted,
-  LiveObservationRefused,
-  live_rust_observation_wet
-}
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

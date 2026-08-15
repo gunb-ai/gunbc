@@ -1,15 +1,5 @@
 module test.claim.ci_floor_measurement
 
-import std.logic { Bool }
-import std.measure { byte_size_count }
-import gunbc.ci_floor_measurement {
-  gunbc_ci_runner_slot_memory_max_live,
-  gunbc_ci_runner_slot_memory_high_live,
-  gunbc_ci_runner_slot_ram_speed_ceiling,
-  witness_runner_cgroup_cap_lt_dashboard_session_cap,
-  witness_live_caps_derive_from_allocation_authority,
-  witness_floor_run_peak_receipts_at_throttle_line,
-}
 
 fn witness_runner_cap_lt_session_cap() -> Bool {
   witness_runner_cgroup_cap_lt_dashboard_session_cap()

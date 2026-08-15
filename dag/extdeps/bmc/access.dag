@@ -1,11 +1,6 @@
 module extdeps.bmc.access
 
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.access.rbac { Permission, PermissionAssignment, RbacPolicy }
-import extdeps.bmc.types { AccountRoleOperator, AccountRoleReadOnly, PrivilegeConfigureComponents, PrivilegeConfigureManager, PrivilegeConfigureSelf, PrivilegeConfigureUsers, RedfishAccountRole, RedfishPrivilege, redfish_account_role_wire, redfish_privilege_wire }
-import std.types { NonEmptyStr }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https

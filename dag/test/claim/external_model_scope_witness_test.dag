@@ -1,36 +1,5 @@
 module test.claim.external_model_scope_witness
 
-import extdeps.filesystem.filesystem_io
-import extdeps.external_authority {
-  ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
-  DeclaredScopeFacts, DownstreamSupportRoster,
-  ScopeDecision, ScopeCoherent, ScopeIncoherent,
-  ScopeFinding, ForeignSubjectRow, ConsumerCoverageInUpstream,
-  external_model_scope_decision, external_model_scope_portfolio_decision,
-  external_model_scope_citations, external_subject_ref_eq,
-}
-import extdeps.uri { Uri, Https }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.extdeps_scope_frontier {
-  scope_carrier_paths, scope_machinery_exempt_paths,
-  legacy_extdeps_scope_frontier_manifest_path, parse_frontier_manifest,
-  scope_cover_holds, manifest_freeze_holds, carrier_content_declares_scope,
-  scope_placement_refused_paths,
-  manifest_line_observation,
-  ManifestLineObservation, ManifestUntouched, ManifestIntroduced, ManifestLinesAdded, ManifestDiffUnreadable,
-  DiffAddedObservation, AddedPathsObserved, DiffObserveFailed, DiffParseTruncated,
-}
-import gunbc.plans.extdeps_modeling_preflight { extdeps_modeling_preflight_rows }
-import tools.extdeps_scope_placement_gate {
-  manifest_remove_only_exit,
-  scope_placement_membership_verdict, scope_placement_freeze_verdict,
-  scope_placement_failure_reason,
-}
-import std.process { ProcessExit, ExitSuccess }
-import extdeps.vendor.microsoft
-import extdeps.vendor.atlassian
-import std.types { String, Bool, Int, List }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

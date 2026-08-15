@@ -1,34 +1,5 @@
 module gunbc.stage0_rust_maintenance_census_report
 
-import gunbc.stage0_rust_host_observation {
-  GitObservationRefused,
-  RustManifestObserved,
-  RustManifestParseRefused,
-  RustManifestReadRefused,
-  RustSourceHostObservation,
-  current_stage0_rust_source_observation
-}
-import gunbc.stage0_rust_lifecycle_totality {
-  LifecycleTotalityDerived,
-  LifecycleTotalityObservationRefused,
-  LifecycleTotalityReceipt,
-  lifecycle_totality_receipt
-}
-import gunbc.stage0_rust_source_lifecycle_scaffold {
-  DeleteWith,
-  EmitFrom,
-  Generated,
-  HandScaffold,
-  RetainedKernel,
-  RustMaintenanceDisposition,
-  RustSourceLifecycleRow,
-  disposition_authority_rows,
-  list_concat_unique,
-  path_in_list
-}
-import v2.std.algebra { any, filter, list_map }
-import v2.std.collection { List }
-import v2.std.text { String }
 
 data stage0_rust_maintenance_census_report_note: String = "Lane F (dashboard node adhoc-8ddc666b-e43): the CURRENT hand-Rust denominator, replacing the stale 109-of-175 figure. Adds NO classification logic and NO filename literal — it is a pure projection over the already-derived gunbc.stage0_rust_lifecycle_totality LifecycleTotalityReceipt (itself computed from the repo-wide gunbc.stage0_rust_host_observation RustManifestObserved subject, i.e. every .rs path git tracks at HEAD, not a stage0-scoped subset) plus a per-RustMaintenanceDisposition-variant breakdown of gunbc.stage0_rust_source_lifecycle_scaffold disposition_authority_rows, restricted by identity join to paths the receipt actually classified. The mandate's seven categories map onto this record: Tracked Rust population = tracked_rust_paths; Generated = generated_paths (the receipt's own derived_generated_stage0_repo_paths join against gunbc.generated_artifact, distinct from a disposition row merely tagged with the Generated disposition variant on an EmitFrom/RetainedKernel/HandScaffold path); EmitFrom/RetainedKernel/DeleteWithV1/HandScaffold = the four disposition_category_paths breakdowns; Unknown or refused = unknown_or_refused_paths, the union of unclassified_paths (a tracked path with no disposition at all) and ill_formed_maintenance_disposition_paths (a disposition row whose payload fails rust_maintenance_disposition_well_formed) — the honest 'resists classification' population, never patched with a filename exception. The four DESIGN section 5 invariants beyond the population itself: extra_disposition_paths = stale_disposition_paths (a disposition/generated authority naming a path git no longer tracks); duplicate_disposition_paths = duplicate_disposition_paths ++ duplicate_generated_paths ++ duplicate_role_paths (any authority listing one path more than once); unknown_or_refused_paths doubles as the 'unknown dispositions' invariant; missing paths is the same unclassified_paths axis folded into unknown_or_refused_paths rather than reported twice under two names. cross_axis_overlap_paths and role_without_disposition_paths are carried through unfiltered because they are additional receipt-native defect axes the mandate did not name but DESIGN section 5 forbids rounding off. Every list here is an identity-join result, never a count: two runs against the same pinned revision must return the same paths, not merely the same length."
 

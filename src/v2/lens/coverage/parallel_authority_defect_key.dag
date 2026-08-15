@@ -1,22 +1,5 @@
 module v2.test.lens_coverage.parallel_authority_defect_key
 
-import v2.lens.coverage {
-  CoverageDefectAcceptance,
-  CoverageDefectAcceptanceKey,
-  ParallelAuthority,
-  coverage_defect_parallel_authority
-}
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  ManualAnchorAbsent,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 data parallel_authority_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^parallel_authority_symbol } },

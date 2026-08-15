@@ -1,24 +1,5 @@
 module test.claim.extdeps_scope_placement_gate_loudness_witness
 
-import extdeps.filesystem.filesystem_io
-import gunbc.extdeps_scope_frontier {
-  legacy_extdeps_scope_frontier_manifest_path, parse_frontier_manifest,
-  manifest_line_observation,
-  ManifestLinesAdded, ManifestDiffUnreadable,
-  AddedPathsObserved,
-}
-import tools.extdeps_scope_placement_gate {
-  scope_placement_failure_reason,
-  scope_placement_membership_verdict,
-  scope_placement_freeze_verdict,
-  manifest_remove_only_exit,
-}
-import tools.floor_effect_gate_witness {
-  extdeps_scope_placement_gate_failure_receipt_companion_name,
-  scope_placement_gate_loudness_seed_probe_passes_name,
-}
-import std.process { ProcessExit, ExitSuccess }
-import std.types { String, Bool, List }
 
 data loudness_witness_note: String = "Floor loudness for tools.extdeps_scope_placement_gate (gunbc#7644): lands the seed-runner loudness path + extdeps_scope_placement_gate production companion only; six other production _passes gates remain mute (counted frontier in tools.floor_effect_gate_witness floor_gate_failure_receipt_note). Per-arm fixtures exercise gate REASON GENERATION with synthetic observations (supporting evidence). Executed RED: red_seed_runner_failure_detail_projects_located_receipt calls production seed_runner_bool_false_failure_detail against scope_placement_gate_loudness_seed_probe_passes on tools.floor_effect_gate_witness. Mutation control executed 2026-08-05 at b0a17f608a: disposable detached worktree, removed _passes handling from production failure_receipt_companion (holds-only), rebuilt claim_batch, re-ran witness — FAIL red_seed_runner_failure_detail_projects_located_receipt (eval_self 0ms, resolved; not resolution); detail collapsed to bare returned Bool(false) without THIS CHANGE or dag/extdeps/browser/opera.dag. Current head PASS; head detail includes returned Bool(false) | extdeps scope placement gate: THIS CHANGE ... dag/extdeps/browser/opera.dag. Guarantee rung: observed validation on the production seed_runner path; no construction wall claimed for seed/.dag mirror parity (DESIGN section 7 seed retention)."
 

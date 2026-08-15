@@ -1,9 +1,5 @@
 module extdeps.languages.rust.derive_contracts
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Https, Uri }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

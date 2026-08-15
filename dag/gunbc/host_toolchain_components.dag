@@ -1,20 +1,5 @@
 module gunbc.host_toolchain_components
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.upsert_decision { ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.rustup { RustupComponent, Rustfmt, Clippy, rustup_component_name, rustup_component_eq }
-import gunbc.readback_independence {
-  ReadBackProbe,
-  ProbeInert,
-  ProbeMayEstablish,
-  readback_evidence_verdict,
-  readback_probe_is_independent,
-}
-import gunbc.host_phase_status { observation_verdict_eq, host_phase_verdict_from, fleet_subsumption_hosts }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
-import product.placement_supply { HostIdentity }
 
 data toolchain_completeness_authority_note: String = "B3's toolchain-completeness axis, and it is keyed on a RESOLVED TOOLCHAIN rather than on a host, because the host-shaped question is the one that produces a true-sounding wrong answer. The incident that grounds it, read live on srv2 2026-07-25: floor gates died with `spawn rustfmt: No such file or directory` across two hosts in two days, and the natural reading — rustfmt is missing from the machine — was wrong. rustfmt WAS on srv2. The job principal ghrunner carried two rustup toolchains, 1.93.0 with rustfmt and stable WITHOUT it, ~/.cargo/bin/rustfmt was a shim, and ghrunner's default was stable. So a completeness check keyed on 'is rustfmt installed on this host' answers yes, converges green, and the gate keeps failing — the same presupposition failure gunbc.host_swap_backing found in a MemorySwapMax over absent swap, and gunbc.auth.materialized_secret found in an SmEnabled version upstream had revoked. Three incidents, one shape: a value reported green because the condition under which it would MEAN something was assumed instead of observed. The cell therefore names the toolchain it resolved and the component set THAT toolchain carries, and a requirement is satisfied only by the components of the ACTIVE toolchain."
 

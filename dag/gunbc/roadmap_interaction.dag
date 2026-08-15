@@ -1,45 +1,5 @@
 module gunbc.roadmap_interaction
 
-import std.types { Int, String, Bool }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.design.material {
-  TimingToken, respond_fast, reveal_deliberate, settle_spring,
-  MotionTrigger, OnHover, OnActive, OnStateClass, css_trigger_for,
-  BuildRule, StaticRule, ResponseRule, SelfResponse,
-  CssDecl, decl,
-  rest_scale_per_mille, press_scale_per_mille, hold_scale_per_mille,
-}
-import gunbc.design.state_response {
-  StateFamily, StateFamilyMember, StateBinding, RestBinding, StateClassBinding,
-  StateChannel, RestChannel, ResponseChannel, ChannelScope, PerStateFamily, ConstantByLaw,
-  StateVarRole, FillVar, InkVar, PressedVar,
-  family_response_rules,
-}
-import gunbc.design.interaction_cause {
-  InteractionCause, PointerApproach, FocusAcquired, PressEngaged, ObservedStateEntered,
-}
-import gunbc.design.interaction {
-  InteractionVerb, Approach, Dispatch, Await, Accept, Enter,
-  Response, Brighten, Receipt, Lift, Depress, Settle, Turn,
-  BehaviorRow, InteractiveElement,
-  ElementId, DispatchBtnElement, SoundToggleElement, DisclosureElement, element_id_key, element_id_eq,
-  verb_key, response_key,
-  coverage_gaps, coverage_complete, CoverageGap,
-  Detent, DetentReach, AtRest, ByTrigger, DetentTravel, NoTravel, Travel,
-  DetentEdge, DetentEdgeDefect, DetentEdgeFault, EndpointUndeclared, PositionsCoincide,
-  detent_named, detent_transform_wire, detent_edge_defects, detent_edges_all_beat,
-  house_pointer_detents,
-}
-import gunbc.design.scale { travel_lift, travel_press, scale_var }
-import gunbc.roadmap_component {
-  dispatch_class_requested, dispatch_class_ok, dispatch_class_refused, dispatch_class_loud,
-  sound_toggle_class,
-  disclosure_mark_class, disclosure_open_class,
-}
-import gunbc.site.moodboard {
-  RealizedBehavior, RealizedRules, UnrealizedBehavior,
-  approach_triggers,
-}
 
 data roadmap_interaction_note: String = "The roadmap dashboard's interaction rows (slice 2 of roadmap-onto-register, manager-signed): the dispatch button declares Approach and Dispatch, and its stylesheet responses are DERIVED from these rows through roadmap_realize_behavior — the register law (no dead hovers; responses derived) applied to the second site. Approach realizes as the border brighten over the shared approach_triggers (hover + focus-visible, one authority with the site pages); Dispatch realizes as the OnActive press receipt — the fill deepens one press stop (band-invite-pressed, in-family; formerly the border material, retargeted with the W1c fills) for the pressed frame, the CSS-layer receipt; the belt-side dispatch receipt is the served effect (belt_dispatch_node, serving layer) and never this module's concern. The realize fold mirrors moodboard's shape (RealizedRules | UnrealizedBehavior, unrealized countable); the Phase-A lift unifies the two folds behind a realize-parametric L2 carrier — declared convergence, not a silent fork. Known residue, named: the roadmap's a:hover underline is a hand StaticRule with no declared element (links are unmodeled site-wide today); it joins the element roster when the site models link elements, and the stray-response census belongs to the lift."
 

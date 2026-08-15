@@ -1,45 +1,5 @@
 module v2.test.workflow.affected_testgen_ci_runner
 
-import v2.compiler.eval {
-  TestClaimRun,
-  run_test_claim,
-  test_claim_run_verdict
-}
-import v2.compiler.infer { InferredTree }
-import v2.lens.affected_set { AffectedSetReading }
-import v2.lens.edit_locus {
-  GitDiffNameOnly,
-  RepoPath,
-  affected_set_reading_from_git_diff_provenance
-}
-import v2.std.algebra { fold_list, length }
-import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
-import v2.std.collection { List }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.runtime { RuntimeValue }
-import v2.std.text { String }
-import v2.std.verdict { Deferred, Pass, SemanticMismatch, BuildFailed, RunFailed }
-import v2.std.verification {
-  RoundTripClaim,
-  TestClaim,
-  test_claim_evaluation_touches_rerun_frontier,
-  test_claim_input
-}
-import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
-import v2.std.find_witness {
-  PreservationPredicate,
-}
-import v2.lens.testgen {
-  testgen_emit_witness_validity_claim
-}
-import v2.test.manual.connective_anchors { stub_empty_conj }
-import v2.test.rung_3_4_common { rung34_test_claim_subject }
-import v2.test.lens_common.infer_fixture {
-  claim_inferred_facts,
-  claim_inferred_tree
-}
 
 data affected_testgen_path_witness_validity: RepoPath = "src/v2/test/claim/generated/witness_validity.dag"
 data affected_testgen_path_source_dependency: RepoPath = "src/v2/test/claim/manual/connective_anchors.dag"

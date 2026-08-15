@@ -1,8 +1,5 @@
 module gunbc.stage0_cargo_manifest
 
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.collection { List }
-import v2.std.text { String }
 
 // Cargo [[bin]] targets are NOT hand-listed here. stage0_cargo_toml_repo_path names the manifest file and CargoManifestBinParse owns the typed parser boundary. The temporary host parser returns authored relative path facts only; gunbc.stage0_rust_host_observation owns repository-path normalization and the join to revision-addressed Git facts. CargoBin is a source role, never a maintenance disposition.
 type CargoManifestBinParse

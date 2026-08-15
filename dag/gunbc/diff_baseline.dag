@@ -1,24 +1,5 @@
 module gunbc.diff_baseline
 
-import std.types { String, GitRef }
-import std.logic { Bool }
-import extdeps.git { GitRemoteRefParts, git_remote_ref }
-import extdeps.git.hooks { zero_sha }
-import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
-import gunbc.git_diff_change_window {
-  GitDiffWindowObservation,
-  GitDiffWindowObserved,
-  GitDiffWindowMalformed,
-  GitDiffWindowReadRefused,
-  GitObservedMergeBase,
-}
-import extdeps.github.actions {
-  github_event_name_pull_request,
-  github_event_name_push,
-  github_event_name_workflow_dispatch,
-  github_event_name_merge_group,
-  github_event_name_schedule
-}
 
 data diff_baseline_law: String = "DiffBaseline is the typed answer to 'what does the affected-set diff observe HEAD against?' — the de-fork of the origin/main policy-as-literal (DESIGN §3(c)). Arms: MergeTarget (pull_request GITHUB_BASE_REF branch name only → origin/<branch>, merge-base/triple-dot), ExactReplayBoundary (GUNBC_DIFF_WINDOW_PATH exact base/head GitObjectIds, direct/two-dot), PushBefore (push payload before SHA), PushParent (default branch for non-PR CI events), OperatorOverride (GUNBC_CI_DIFF_BASE). resolve_diff_baseline is PURE over CiDiffEvent; env reads live in v2.workflow.floor_diff_observe.floor_observe_ci_diff_event."
 

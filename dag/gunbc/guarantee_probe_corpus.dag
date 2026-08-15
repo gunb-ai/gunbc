@@ -1,44 +1,5 @@
 module gunbc.guarantee_probe_corpus
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.content_hash {
-  Fnv1a64Structural,
-  Fnv1a64StructuralDigestHex,
-  content_hash_atom,
-  content_hash_tagged_structural,
-  content_hash_combine_structural,
-  structural_content_hash,
-}
-import std.string_type { string_is_lexicographically_before }
-import std.nat { Nat }
-import gunbc.guarantee_measurement {
-  GuaranteeClassId, GuaranteePathId, GuaranteeProbeId, GuaranteeTargetName,
-  SubjectGrain, SyntheticProgram,
-  AcceptanceBoundary, CompileAccept, RuntimeRun, InferToEval,
-  PathRealization, InterpreterRealization, EmittedTarget,
-  GuaranteePath,
-  ProbeObservation, RefusedTyped, AcceptedClean, AcceptedCounted, ProbeNotRunnable,
-  ProbeObservationFold, probe_observation_fold, observed_is_verdict,
-  GuaranteeMeasurementReceipt,
-  MeasurementRevision, ContentFingerprint,
-  probe_set_digest,
-  guarantee_class_ids_unique, guarantee_path_ids_unique, guarantee_probe_ids_unique,
-  join_receipt_to_path, ReceiptJoined, ReceiptPathUnknown, ReceiptPathDuplicate,
-}
-import v2.std.optional { Present, Absent }
-import v2.std.diagnostic { Diagnostics, None, Some, NonEmptyDiagnostics }
-import v2.std.algebra { fold_list }
-import v2.std.node { Symbol, Node, content_hash }
-import gunbc.compile_diagnostic_census {
-  CompileDiagnosticCensus,
-  CompileDiagnosticCensusRow,
-  CensusObserved,
-  CensusNotRunnable,
-  census_blocking_rows,
-  census_advisory_rows,
-  census_rows_of_class,
-  census_total_count,
-}
 
 data guarantee_probe_corpus_charter_note: String = "STAGE 1a SLICE 1 OF THE GUARANTEE SPINE (roadmap node ladder-probe-corpus): the landed wall controls from the THREE MERGED PRs gunbc#7519 (call-label-and-surplus), gunbc#7484 (method-established-surface + declared-conformance-ground-fragment), and gunbc#7485 (InferToEval self-grounding frontier) migrated onto gunbc.guarantee_measurement identities — MIGRATE, never duplicate beside the dark-suite originals. gunbc#7555 (InferToTranslate underived-refusal) is OPEN on main and introduces NO path/class/probe identities here — that lane lands its own registry rows with executing evidence when it merges. Each migrated row carries a GuaranteeClassId, GuaranteePathId, and GuaranteeProbeId; receipts name subject_revision, harness_revision, and probe_set_digest per the Stage-0 schema. guarantee_probe_dark_suite_dispositions names each Rust dark-suite witness retained until gap-analysis sec 11 item 9 finite classification — enrolled .dag probes are the floor authority; Rust copies are explicitly dispositioned, not silently parallel. This slice owns the identity registry, canonical probe ordering, and the census-to-observation bridge for the v1 compile path. v2 InferToEval executing evidence joins the registry from src/v2/test/claim/infer_self_grounding_wall_test.dag (frontier value-red and derived-green receipt joins). No disposition, no rung, no claims carrier — those arrive with ladder-claims-carrier. gunbc#7847 (call-missing-and-duplicate-wall, roadmap node rn_EXUHLON5V24YU7Z4XLJFWEZO33, duplicate-label slice) added call_duplicate_red_probe/call_duplicate_green_probe to the SAME call_label_surplus_class as #7519's mislabel/surplus rows — one seam (direct_call_shape_diags), a third refusal mode on it, not a new class. Its Rust dark-suite original is call_shape_duplicate_wall_witness, dispositioned below alongside call_shape_wall_witness."
 

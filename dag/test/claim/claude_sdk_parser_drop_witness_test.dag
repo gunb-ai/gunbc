@@ -1,14 +1,5 @@
 module test.claim.claude_sdk_parser_drop_witness
 
-import std.types { Bool }
-import extdeps.llm.claude_agent_sdk_stream {
-  claude_sdk_control_response_parser_drop_holds,
-  claude_sdk_parser_drop_receipt_holds,
-  parser_drop_fixture_subprocess_raw_types,
-  parser_drop_fixture_sdk_parsed_types,
-  parser_drop_red_control_parsed_types,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

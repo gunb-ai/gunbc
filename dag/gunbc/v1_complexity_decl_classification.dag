@@ -1,19 +1,5 @@
 module gunbc.v1_complexity_decl_classification
 
-import std.types { String, NonEmptyStr, Bool, List }
-import std.nat { Nat }
-import v2.std.algebra { filter, length }
-import v2.std.decl_index { DeclFact, decl_facts }
-import gunbc.v1_complexity_capability_census {
-  ComplexityCapabilityId,
-  V1ComplexityInventoryRow,
-  inventory_row_semantic_capability,
-}
-import gunbc.v1_complexity_decl_classification_types {
-  V1ComplexityDeclRole,
-  V1ComplexityDeclClassification,
-  AuthorityOf,
-}
 
 data v1_complexity_decl_classification_note: String = "C0(b2) of the v2 complexity capability parity program: derive the v1.compiler.complexity declaration population from DeclFact and classify every declaration exactly once. The population is OBSERVED from decl_facts over a pool that includes src/v1; the classification roster is the authored join keyed by decl_name. Witnesses prove bijection between population and roster, authority alignment with the C0(b1) inventory carriers, and that every semantic capability has at least one authority declaration."
 

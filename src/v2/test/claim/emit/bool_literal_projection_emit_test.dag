@@ -1,56 +1,5 @@
 module v2.test.emit.bool_literal_projection
 
-import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source_string }
-import v2.extdeps.languages.c {
-  CStage0EmitStandardC17,
-  CValueExpressionEmitValidityUnderStandard,
-  KnownInvalidUnderDeclaredStandard,
-  MissingStdboolInclude,
-  c_bool_literal_emit_validity_under_declared_standard,
-  c_operator_realizations_catalog_node,
-  c_target_model,
-  c_value_expression_projection
-}
-import v2.extdeps.languages.c_bool_literal_emit {
-  c_bool_literal_stdbool_preamble_emit_disposition
-}
-import std.disposition { RealizationDispatch, Scaffold }
-import v2.extdeps.languages.dag { dag_value_expression_projection }
-import v2.extdeps.languages.rust {
-  rust_lex_rule,
-  rust_fn_add_lex_rules,
-  rust_operator_realizations_catalog_node,
-  rust_target_model,
-  rust_value_expression_projection
-}
-import v2.extdeps.languages.typescript {
-  ts_operator_realizations_catalog_node,
-  ts_target_model,
-  ts_value_expression_projection
-}
-import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.eval { Inputs, inputs_root_only }
-import v2.std.compilers.lexing { LexRuleSet, LexRules, ModeledLexRules }
-import v2.std.compilers.target_model {
-  TargetBoolLiteralShape,
-  TargetModel,
-  TargetValueExpression,
-  TargetValueExpressionProjection,
-  TargetValueExprBoolLiteral,
-  render_target_text,
-  target_value_expression_bool_literal,
-  target_value_expr_bool_literal_value_from_source_symbol,
-  target_value_expr_is_bool_literal_expression,
-  target_value_expr_project_pick_literal_atom,
-  target_value_expression_to_concrete_tokens
-}
-import v2.std.algebra { list_append }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Node, SyntheticOccurrence, TypeNode, Atom }
-import v2.std.optional { Optional, Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

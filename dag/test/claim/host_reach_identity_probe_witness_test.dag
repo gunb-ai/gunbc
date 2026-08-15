@@ -1,35 +1,5 @@
 module test.claim.host_reach_identity_probe_witness
 
-import std.types { Bool, String, NonEmptyStr, List }
-import std.upsert_decision { ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
-import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
-import gunbc.host_reach_identity_probe {
-  ReachProbeOutcome,
-  ProbeReachable,
-  ProbeTransportUnavailable,
-  ProbeAuthenticationRefused,
-  ProbeHostKeyMismatch,
-  ProbeHostKeyUnenrolled,
-  ProbeTargetUnobserved,
-  HostReachIdentityProbeReceipt,
-  host_reach_identity_probe_receipt_for,
-  classify_reach_probe_wire,
-  classify_reach_probe_wire_with_expectation,
-  reach_verdict_from_outcome,
-  identity_verdict_from_outcome,
-  observe_reach_secrets_network,
-  observe_host_identity_converge,
-  host_identity_desired_short_hostname,
-}
-import gunbc.host_phase_status {
-  observe_host_phase,
-  fleet_subsumption_enrollments,
-  host_phase_observation_coverage_count,
-}
-import gunbc.host_assimilation_program { HostEnrollmentIntent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

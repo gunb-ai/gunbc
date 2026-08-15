@@ -1,10 +1,5 @@
 module v2.std.network
 
-import v2.std.optional {
-  Optional
-}
-import v2.std.text { String }
-import v2.std.nat { Nat }
 
 type HttpMethod
   = GET

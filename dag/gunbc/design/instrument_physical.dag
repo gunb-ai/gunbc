@@ -1,13 +1,5 @@
 module gunbc.design.instrument_physical
 
-import std.types { String, Bool, Int, List }
-import std.integer { Nat }
-import gunbc.design.material { TimingToken, respond_fast, restore_gentle }
-import gunbc.design.salience { attraction_travel_max_px }
-import gunbc.design.reference_instrument {
-  InstrumentBehaviourAxis, OpticalInstability, RestingOffsetCalibration,
-  ImpulseGlitch, BuoyantDrift, AxisProvenance, axis_provenance, axis_is_originated,
-}
 
 data physical_character_note: String = "THE ENCLOSING INSTRUMENT MAY HAVE PHYSICAL CHARACTER; THE CAUSAL WORLD MAY NOT. This is the register amendment the audition needs, and the line it draws is the whole content: still-until-touched governs the SUBJECTS — a roadmap node, a finish line, an operation never moves without a cause — while the instrument ENCLOSING them is a physical object whose glass, phosphor and chassis have their own idle behaviour. A CRT that sits perfectly still is not restraint, it is a picture of a CRT. So drift, jitter, vertical shift and impulse glitch are admitted HERE and nowhere else, under three conditions that make them incapable of lying: every effect displaces or perturbs the instrument's own presentation layer and can carry no domain fact; every effect is preference-controlled and its off position is total; and the composed displacement is bounded below the register's existing attraction travel, so instrument character can never move a subject as far as a real response does. The reference precedent travels as a typed edge into gunbc.design.reference_instrument rather than as prose here — see provenance_edge_note and channel_behaviour_axis below."
 

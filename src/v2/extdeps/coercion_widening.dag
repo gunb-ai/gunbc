@@ -1,25 +1,5 @@
 module v2.extdeps.coercion_widening
 
-import v2.extdeps.languages.python { python_int_inhabitant_node }
-import v2.extdeps.languages.rust { rust_inhabitant_i32_node }
-import v2.std.coercion {
-  CoercionCandidateSet,
-  CoercionResult,
-  coercion_fold_refinement_widening
-}
-import v2.std.constraints { CanonicalGrounding }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.find_witness {
-  PreservationPredicate,
-  TargetDeclaredPriority,
-}
-import v2.std.integer_value_set {
-  integer_interval_value_set_node,
-  integer_unbounded_value_set_node
-}
-import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
-import v2.std.node_query { find_named_child }
-import v2.std.refinement_widening_predicate { refinement_widening_predicate_algebra_for_value_sets }
 
 fn coercion_widening_unknown_value_set_node() -> Node {
   Node {

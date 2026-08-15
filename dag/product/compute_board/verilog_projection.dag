@@ -1,57 +1,5 @@
 module product.compute_board.verilog_projection
 
-import std.types { String, NonEmptyStr, List, list_length }
-import v2.std.node { Node, Symbol }
-import v2.std.collection { Map, map_insert }
-import v2.extdeps.languages.verilog {
-  VerilogEmission,
-  VerilogEmitted,
-  VerilogEmissionRefused,
-  verilog_ansi_port,
-  verilog_assign_list_cons,
-  verilog_assign_list_one,
-  verilog_base_spellings,
-  verilog_binary_application,
-  verilog_conj,
-  verilog_continuous_assign,
-  verilog_emit_module,
-  verilog_identifier_is_admissible,
-  verilog_module_declaration,
-  verilog_port_list_cons,
-  verilog_port_list_one,
-  verilog_signal_reference,
-  verilog_unary_application,
-}
-import std.nat { Nat }
-import product.compute_board.digital_control {
-  board_power_interlock_intent,
-  conditioned_good_signal,
-  fault_signal,
-  power_permit_signal,
-  reset_release_signal,
-  Conjunction,
-  DigitalControlIntent,
-  DigitalEquation,
-  DigitalExpr,
-  DigitalInput,
-  DigitalOutput,
-  DigitalSignal,
-  Disjunction,
-  Negation,
-  SignalName,
-  SignalRef,
-  expr_references_undeclared,
-  intent_declares_signal,
-  signal_direction_is_output,
-}
-import product.compute_board.admission {
-  AdmittedBoardPowerInterfaceArticle,
-  admitted_article,
-}
-import product.compute_board.article {
-  BoardArticleIdentity,
-  BoardPowerInterfaceArticle,
-}
 
 data verilog_projection_note: String = "THE VERILOG PROJECTION, NOW A MAPPING RATHER THAN A PRINTER. This module names no Verilog keyword, no punctuation and no layout: it folds board vocabulary onto the target AST and v2.extdeps.languages.verilog renders it through the generic serializer. An earlier revision of this note said ALL Verilog spelling lived here and explained why routing through the target AST was blocked on a general Symbol-to-text projection. That premise was wrong twice over. No such projection is needed — a target resolves a Symbol through its own binding spellings, which is why VerilogBinding now carries the symbol beside the spelling — and the emitter was never the obstacle: relation rows derive from formal productions, and emission is their backward reading. WHAT THIS MODULE STILL OWNS is the semantics the intent can still get wrong: a driven signal that is not an output, a reference to a signal never declared, a signal with no binding or two, and a spelling the target refuses. Those are facts about the BOARD and its binding table. Identifier admissibility moved to the target, because what may be a Verilog identifier is a fact about Verilog. WHAT IT DOES NOT COVER remains a bound rather than a gap: sequential behaviour has no constructor in DigitalControlIntent, so an always block cannot be requested here and quietly emitted as combinational logic."
 

@@ -1,12 +1,5 @@
 module gunbc.srv3_os_install_actuator_toolchain_ensure
 
-import gunbc.host_toolchain_ensure { host_toolchain_ensure, OsInstallActuator }
-import gunbc.fleet_intent_network { operator_host_srv3 }
-import std.process { ProcessExit }
-import std.resources { Network }
-import std.types { Bool }
-import std.disposition { Disposition, Scaffold, RealizationDispatch, Terminal }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data srv3_os_install_actuator_toolchain_ensure_scaffold: Disposition = Terminal {
   reason: "Thin caller of host_toolchain_ensure(host: srv3, kind: OsInstallActuator) — srv3 behavioral fork dissolved (P-D)."

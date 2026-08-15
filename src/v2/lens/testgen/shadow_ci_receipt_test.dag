@@ -1,12 +1,5 @@
 module v2.test.lens_testgen.shadow_ci_receipt
 
-import v2.lens.testgen {
-  testgen_run_receipt_outcome,
-  testgen_run_receipt_carries_profile_roster
-}
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

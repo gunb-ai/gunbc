@@ -1,57 +1,6 @@
 module gunbc.roadmap_verify
 
-import std.algebra { trim }
 
-import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.roadmap_model { RoadmapNode }
-import gunbc.roadmap_execution_contract {
-  WorkItemExecutionContract,
-  ExecutionContractUnspecified,
-  ExecutionContract,
-  ValidationOperation,
-  ModeledValidationCommand,
-  validation_operation_command,
-  modeled_validation_command_wire,
-  ContractClosure,
-  ContractDeclaresNoValidation,
-  ContractClosesNothing,
-  ContractCloses,
-  contract_closure,
-}
-import gunbc.roadmap_dashboard_instance {
-  HostDashboardInstance,
-  DashboardProvisionTransport,
-  DashboardLocalProvision,
-  DashboardSshProvision,
-  srv1_lab_dashboard_instance,
-  srv2_lab_dashboard_instance,
-}
-import gunbc.typed_argv_exec {
-  typed_argv_exec_over_ssh,
-  TypedArgvExecOutcome,
-  TypedArgvExecConverged,
-  TypedArgvExecRefused,
-}
-import gunbc.output_policy { OutcomeIsData }
-import gunbc.roadmap_belt_actuate {
-  BeltNodeLookup,
-  NodeFound,
-  NodeMissing,
-  belt_lookup_node,
-}
-import gunbc.roadmap_dispatch_actuator {
-  dispatch_attempt_verification_path_for_instance,
-}
-import extdeps.filesystem.filesystem_io
-import extdeps.languages.json.emit {
-  JsonValue,
-  serialize_json,
-  json_string,
-  json_int,
-  json_object,
-  json_kv,
-}
 
 data verification_producer_note: String = "THE SEGMENT THAT WAS DECLARED AND NEVER GROUNDED. roadmap_attempt_workflow_stage_note states it plainly: Environment, Workspace and Agent are grounded execution facts while Verification, Publication, Review and Goal Audit 'remain desired obligations until independent producers ground them'. This is Verification's producer.\\n\\nWhy it matters more than the ordering suggests: without it a dispatch ends at 'agent turn completed' and a human goes and checks by hand, which is the loop the belt exists to close. The page renders a desired obligation identically to a grounded one, so an unimplemented stage reads as a stalled one — the operator sees a row stuck on Agent and cannot tell whether the work is incomplete or the mechanism is.\\n\\nTHE CASE THAT PROVED IT, 2026-07-30. The first srv2 dispatch spent a full provider turn to report that its node was 'already implemented in ancestor commit f67a0c644ea; no new edits were needed'. That conclusion is exactly what this node's declared validation decides, deterministically, in one command, with no provider involved. An agent was spent discovering something a claim run establishes."
 

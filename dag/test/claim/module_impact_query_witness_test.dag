@@ -1,55 +1,5 @@
 module test.claim.module_impact_query_witness_test
 
-import v2.std.algebra { any, contains, count_where }
-import v2.std.collection { List }
-import v2.std.text { String }
-import gunbc.namespace_reference_derived_closure_admission {
-  ReferenceDerivedClosureAdmission,
-  ReferenceDerivedClosureUnavailable,
-  established,
-  UnrelatedLoadedFileExcluded,
-  RepeatedMentionsCollapseDependency,
-  P2aPoolIndependentDependencyProjection7515,
-  P2aReferenceDependencyProjection7515,
-}
-import v2.lens.module_graph {
-  ModuleDeclarationFact,
-  ModuleDependencyEdge,
-  ImportResolutionFact,
-}
-import v2.lens.module_impact_query {
-  DeclaredTargetAbsentFromPool,
-  DependenciesOf,
-  DependentsOf,
-  ExactForGraphSubject,
-  ImpactCycle,
-  ImpactCycleReferenceAdmissible,
-  ImpactImportAcyclicityViolation,
-  ImpactReading,
-  Incomplete,
-  ModuleIdentity,
-  PoolIndependentProjectionUnavailable,
-  ProvisionalForObservedPool,
-  UndeclaredTargetModule,
-  impact_paths_for_module,
-  impact_seeds_for_path,
-  module_impact_reading,
-  ChangedSurfaceImpactOutcome,
-  ChangedSurfaceComplete,
-  ChangedSurfacePartial,
-  ChangedSurfaceRefused,
-  UnresolvedSubject,
-  NoModuleDeclaredAtPath,
-  BaseGraphUnavailable,
-  SkipAuthorityGranted,
-  SkipAuthorityWithheld,
-  SkipWithheldUnresolvedSubjects,
-  SkipWithheldObservationRefused,
-  SkipWithheldStandingNotExact,
-  module_cycle_analysis,
-  changed_surface_impact_outcome,
-  changed_surface_skip_authority,
-}
 
 data module_impact_query_witness_note: String = "Controlled fixtures: every input population and every expected population is authored here, so no assertion is a measurement of the current tree copied back onto itself (DESIGN 5 oracle rule). Three discriminating families. (1) The cycle pair - all_import vs mixed - has identical topology and different provenance, so a union-grain classifier reds on one while passing the other. (2) The two-disjoint-cycles fixture is the regression control for review 50459: the pre-fix union-level verdict greened its own suite while suppressing a real violation. (3) The pool-mismatch fixture is the control for the operator's F3 finding: an edge whose target is declared-but-absent from the pool used to vanish silently while the reading still answered complete."
 

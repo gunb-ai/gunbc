@@ -1,23 +1,6 @@
 module test.claim.type_ref_hit_ne_bind_measure_witness
 
-import std.dissolution { dissolution_description }
 
-import gunbc.compile_diagnostic_census {
-  CompileDiagnosticCensus,
-  CensusObserved,
-  CensusNotRunnable,
-  census_blocking_rows,
-  census_rows_of_class,
-  census_total_count
-}
-import gunbc.type_ref_hit_ne_bind_measure {
-  type_ref_hit_ne_bind_measure_charter_note,
-  type_ref_measure_binding_authority_note,
-  type_ref_hit_ne_bind_measure_dissolve_trigger,
-  type_ref_hit_ne_bind_measure_rung_note
-}
-import std.types { String, Bool }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

@@ -1,7 +1,5 @@
 module tools.regen_verify_gate
 
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import tools.regen_verify_transport { run_regen_verify_verdict }
 
 data regen_verify_failure_receipt_note: String = "The loudness half (gunbc#7644 diagnosis): the floor witness collapses this gate's ProcessExit to Bool via tools.ci_gates.exit_ok, so regen-verify reds reported only returned Bool(false). The gate body records the located reason from the single regen_stage0 capture; the failure-receipt companion consumes that retained detail instead of re-running regen."
 

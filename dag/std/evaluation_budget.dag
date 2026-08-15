@@ -1,13 +1,5 @@
 module std.evaluation_budget
 
-import std.types { NonEmptyStr, Bool, Int, String }
-import std.measure {
-  Nanosecond,
-  nanosecond_count,
-  PositiveMillisecond,
-  positive_millisecond_count,
-  nanoseconds_per_millisecond,
-}
 
 data evaluation_budget_neutrality_note: String = "THIS CARRIER IS DELIBERATELY CALLER-AGNOSTIC, AND THAT IS THE WHOLE REASON IT EXISTS. The interpreter already enforced two cooperative deadlines, but the only results it could raise were named for one caller — EvalBudgetExceeded carried the fast-lane witness ruling in its message and WitnessWallBudgetExceeded carried the falsifier lane's. A served HTTP request is not a witness, so raising either at a serve route would make the kernel manufacture a witness concept for a non-witness caller (operator review 2026-08-09) — the DESIGN section 3 nickname failure, one concept wearing another domain's name. The kernel raises THIS result; each caller maps it into its own refusal vocabulary at its own boundary, so witness guidance stays with the witness lane and route guidance stays with the route."
 

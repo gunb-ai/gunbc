@@ -1,35 +1,5 @@
 module test.claim.repo_local_git_config_witness
 
-import gunbc.repo_local_git_config {
-  RepoLocalGitConfigBinding,
-  desired_repo_local_git_config_bindings,
-  repo_local_git_config_reconcile,
-  repo_local_git_config_converged,
-  all_desired_bindings_read_back,
-  observed_binding,
-  reconcile_install_argv,
-  reconcile_read_back_argv,
-  generated_artifact_merge_driver_key,
-  generated_artifact_merge_driver_value,
-  core_hooks_path_key,
-  core_hooks_path_value,
-  repo_local_git_config_converge_entry,
-  repo_local_git_config_converge_function,
-}
-import gunbc.membership_reconcile {
-  membership_write_count,
-  membership_removal_count,
-  membership_refusal_count,
-}
-import extdeps.git {
-  shape_git_config_local_argv,
-  shape_git_config_local_get_argv,
-  shape_git_config_local_in_repo_argv,
-  shape_git_config_local_get_in_repo_argv,
-  shape_git_config_get_argv,
-}
-import std.types { FilePath }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

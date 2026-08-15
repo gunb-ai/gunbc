@@ -1,50 +1,5 @@
 module test.claim.tool_readiness_witness
 
-import std.types { Bool, String }
-import std.content_hash { ContentHash, content_hash_of_value }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.version { VersionIdentity }
-import extdeps.tools { CliTool, SourceRustup }
-import extdeps.tools.rustfmt { rustfmt_cli_tool }
-import extdeps.pin {
-  Pin,
-  ExactPin,
-  TrackedChannel,
-  PinIntegrityAdmitted,
-  PinRefused,
-  TrackedResolutionUnrecorded,
-  ObservedIdentityMismatch,
-}
-import extdeps.realization.emit_on_demand_host {
-  ObservedToolIdentity,
-  ResolvedBuildContext,
-}
-import gunbc.membership_reconcile {
-  membership_write_count,
-  membership_refusal_count,
-}
-import gunbc.tool_readiness {
-  UnpinnedToolFrontierRow,
-  ToolReadiness,
-  PinnedToolReadinessRequest,
-  UnpinnedToolReadinessRequest,
-  PinnedAdmitted,
-  PinnedRefused,
-  UnpinnedFrontier,
-  ToolObservationMissing,
-  ToolObservationDuplicate,
-  ToolMembershipNotConverged,
-  ToolPinIntegrityRefused,
-  UnpinnedToolUndeclared,
-  UnpinnedToolFrontierDuplicate,
-  tool_pin_reconcile,
-  tool_readiness,
-  tool_readiness_refusal_count,
-}
-import v2.workflow.ci_regen_rustfmt_path_emit {
-  ci_regen_rustfmt_unpinned_frontier,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

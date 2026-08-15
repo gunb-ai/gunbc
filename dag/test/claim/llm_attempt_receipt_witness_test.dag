@@ -1,47 +1,5 @@
 module test.claim.llm_attempt_receipt_witness
 
-import gunbc.econ.llm_attempt_receipt {
-  AcceptedGoodputDerived,
-  AcceptedGoodputRefused,
-  ArchitectureJudgment,
-  AttemptPhaseDurations,
-  ConcurrencyObservation,
-  DagReview,
-  DecodeDurationUnobserved,
-  DecodeThroughputDerived,
-  DecodeThroughputRefused,
-  EmptyAttemptRoster,
-  EscalationFractionDerived,
-  EscalationFractionRefused,
-  LlmAttemptReceipt,
-  LlmTokenUsage,
-  LlmUsageObservation,
-  LlmUsageObserved,
-  LlmUsageUnobserved,
-  PrefixCacheHit,
-  PrefixCacheMiss,
-  ResolvedModelIdentity,
-  RequestedModelIdentity,
-  ReviewAccepted,
-  ReviewDisposition,
-  ReviewEscalated,
-  ReviewRejected,
-  SubstrateIdentity,
-  ThroughputUsageUnobserved,
-  ZeroDecodeDuration,
-  ZeroObservationWindow,
-  accepted_attempt_count,
-  attempt_is_accepted,
-  derive_accepted_goodput,
-  derive_decode_throughput,
-  derive_escalation_fraction,
-  escalated_attempt_count,
-  throughput_per_second_floor,
-}
-import std.algebra { FieldOfFractions }
-import std.measure { nanosecond, token_count, token_count_value }
-import std.types { Bool, List, NonEmptyStr }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

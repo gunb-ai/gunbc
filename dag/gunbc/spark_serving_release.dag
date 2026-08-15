@@ -1,21 +1,5 @@
 module gunbc.spark_serving_release
 
-import std.types { String, Bool, List, Int, NonEmptyStr, Port }
-import product.placement_supply { HostIdentity }
-import std.content_hash { Fnv1a64Structural, content_hash_atom, ContentHash, serialize_content_hash }
-import gunbc.model_artifact { ModelArtifact }
-import extdeps.ollama.api { OllamaModelRef, ollama_model_ref_wire, ollama_default_port }
-import v2.std.algebra { fold_list }
-import std.nat { Nat }
-import std.measure { ByteSize }
-import gunbc.spark_serving_realization {
-  SystemPrincipal, ServingDeploymentTarget, UserUnitRealization,
-  EscalationShortfall, NoNewPrivilegeRequired, NewPrivilegeRequired, ShortfallUndecidable,
-  ShortfallEvidenceMismatch,
-  SparkServingIntent, SparkServingRealization, ServingRequirementRefusal, identity_contract_refusal,
-  ObservedGrantPopulation, escalation_shortfall, applicable_without_administrator,
-  ServingEndpointIntent, UnauthenticatedEndpoint, AuthenticatedEndpoint,
-}
 
 // THE SPARK SERVING RELEASE — one content-addressed identity over everything that must be
 // identical on both replicas.

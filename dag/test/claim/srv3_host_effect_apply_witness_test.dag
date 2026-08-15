@@ -1,6 +1,5 @@
 module test.claim.srv3_host_effect_apply_witness
 
-import std.dissolution { dissolution_description }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

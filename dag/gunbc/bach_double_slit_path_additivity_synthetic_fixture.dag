@@ -1,55 +1,5 @@
 module gunbc.bach_double_slit_path_additivity_synthetic_fixture
 
-import std.types { Bool, Int, List }
-import extdeps.physics.bach_et_al_2013_double_slit {
-  SlitMaskConfiguration,
-  BothSlitsOpen,
-  SlitOneOpen,
-  SlitTwoOpen,
-  BothSlitsBlocked,
-}
-import gunbc.physics.bach_double_slit_path_additivity {
-  SyntheticDoubleSlitFixture,
-  SyntheticDoubleSlitFixtureOne,
-  ScreenBand,
-  CentralBand,
-  FirstMinimumBand,
-  SyntheticMatchedExposureSession,
-  SyntheticMatchedExposureOne,
-  SyntheticArrivalCountObservationRow,
-  PathAdditivitySubject,
-  PathAdditivitySyntheticFixture,
-  PathAdditivityRefutationReceipt,
-  ArrivalCountResolution,
-  ArrivalCountResolved,
-  ArrivalCountMissing,
-  ArrivalCountAmbiguous,
-  AdditivityInputResolution,
-  AdditivityInputsResolved,
-  AdditivityInputsIncomplete,
-  AdditivityInputsAmbiguous,
-  AdditivityInputFailure,
-  AdditivityInputMissing,
-  AdditivityInputAmbiguous,
-  resolve_arrival_count_at,
-  resolve_additivity_inputs,
-  derive_path_additivity_refutation_at_band,
-  path_additivity_refutation_holds_for_synthetic_fixture,
-  path_additivity_refutation_receipt_resolution_from_resolved_counts,
-  path_additivity_witness_is_counterexample,
-  path_additivity_witness_observed_vs_prediction,
-  PathAdditivityBandVerdict,
-  PathAdditivityRefutationAtBand,
-  PathAdditivityHeldAtBand,
-  PathAdditivityUndecidedAtBand,
-  RefutationReceiptResolution,
-  RefutationReceiptResolved,
-  RefutationNotEstablished,
-  AdditivityHeld,
-  AdditivityUndecided,
-  refutation_receipt_resolution_from_band_verdict,
-}
-import std.algebra { Greater }
 
 data synthetic_fixture_note: String = "SYNTHETIC MECHANISM FIXTURE — NOT Bach et al. 2013 provenance. Rows exercise gunbc.physics.bach_double_slit_path_additivity with equal declared exposure identity; classical mechanism adds raw counts."
 

@@ -1,8 +1,5 @@
 module gunbc.host_diagnostic_channel
 
-import std.types { Bool, EpochMs, List, NonEmptyStr }
-import std.nat { Nat }
-import product.placement_supply { HostIdentity }
 
 // WHOSE ERROR IS THIS? Five distinct authorities emitted diagnostics during
 // the 2026-08-11 fleet incident, and they were being read as one

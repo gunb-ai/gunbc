@@ -1,7 +1,5 @@
 module gunbc.tools.review
 
-import extdeps.git
-import std.types { GitRef, FilePath, Seconds }
 
 data default_model: String = "claude-sonnet-4-6-20250929"
 

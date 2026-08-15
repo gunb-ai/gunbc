@@ -1,23 +1,5 @@
 module test.claim.documentary_refs_witness
 
-import std.types { Bool, String }
-import v2.std.algebra { length, contains }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.lens.module_graph { ModuleDeclarationFact }
-import v2.std.decl_index { DeclFact, FnItem, TypeItem }
-import v2.lens.enforcement.receipts { enforcement_red_probe_body_leaf }
-import v2.std.decl_ref_resolution { cited_declaration_ref_refusal_count }
-import gunbc.documentary_refs {
-  all_documentary_declaration_refs,
-  body_lowering_symbol_index_ref,
-  body_lowering_lexical_lookup_ref,
-  body_lowering_production_consumer_ref,
-  documentary_ref_symbol_text,
-  five_minute_ci_gate_authority_ref,
-  generated_document_declaration_refs,
-}
-import gunbc.doc_graph_roots { hand_authored_doc_declaration_refs }
-import gunbc.design_document { expected_design_md }
 
 data documentary_refs_witness_note: String = "THE PERTURBATIONS ARE THE POINT, AND EACH RUNS AGAINST THE SAME RESOLVER PRODUCTION USES. cited_declaration_ref_refusal_count is v2.std.decl_ref_resolution's own counter -- the one the required cited-symbol gate calls -- so a refusal proved here is a refusal on the real acceptance path rather than a second algorithm agreeing with it. The fact populations below are planted rather than live because the SUBJECT of these claims is the mechanism: that a reference which cannot resolve refuses, and that the same reference against an intact population does not. The smallest crossing specimen is the requirement plus one."
 

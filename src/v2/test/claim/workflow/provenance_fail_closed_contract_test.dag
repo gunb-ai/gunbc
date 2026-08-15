@@ -1,39 +1,6 @@
 module v2.test.claim.workflow.provenance_fail_closed_contract
-import v2.compiler.source_authority { source_root_coverage_is_complete }
 
-import v2.compiler.source_authority { source_root_coverage_is_complete }
 
-import v2.std.algebra { length }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  ManualAnchorAbsent,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
-import v2.test.workflow.host_source_root_ingest_manifest {
-  host_source_root_ingest,
-  host_source_root_ingest_coverage_receipt
-}
-import v2.workflow.affected_set_floor_runner {
-  DiffPathsProduced,
-  FloorDiffObservation,
-  FloorRerunFrontier,
-  FrontierFailClosed,
-  FrontierProduced,
-  RunWitness,
-  SkipAssumedGreen,
-  Refused,
-  DiffObservationRefusal,
-  FrontierQueryRefusal,
-  floor_precompute_would_skip,
-  floor_witness_run_disposition
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

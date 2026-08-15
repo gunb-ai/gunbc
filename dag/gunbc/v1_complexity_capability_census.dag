@@ -1,11 +1,6 @@
 module gunbc.v1_complexity_capability_census
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.types { String, NonEmptyStr, Bool, List }
-import std.nat { Nat }
-import v2.std.algebra { length }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, decl_ref }
 
 data v1_complexity_capability_census_note: String = "C0(b1) of the v2 complexity capability parity program: a REVIEWED capability roster over src/v1/complexity.dag, with every citation carried as a typed DeclarationRef that resolves through the single resolution authority rather than as a name matched by substring. It is deliberately NOT the closed capability denominator — that is C0(b2), the declaration-to-capability totality slice, which derives the population from DeclFact instead of authoring it. This module states the difference rather than blurring it (operator review, 2026-08-05): what is proven here is that the authored rows are well-formed, exactly cited, and disposition-partitioned; what is NOT proven here is that no capability is missing."
 

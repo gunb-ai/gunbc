@@ -1,13 +1,5 @@
 module v2.lens.registry.completeness_test
 
-import v2.lens.module_graph { ModuleDeclarationFact }
-import v2.lens.registry.completeness {
-  lens_registry_completeness_holds,
-  lens_registry_completeness_unenrolled_count_from_facts
-}
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

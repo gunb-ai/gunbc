@@ -1,28 +1,5 @@
 module test.claim.firmware_applicability_and_loop_cause_witness_test
 
-import std.types { Bool }
-import v2.std.optional { Present, Absent }
-import extdeps.firmware.types {
-  BmcController,
-  FirmwareApplicable,
-  FirmwarePrerequisiteUnmet,
-  FirmwarePrerequisiteUnobserved,
-  firmware_release_applicability,
-  firmware_semantic_version,
-}
-import extdeps.boards.asrock_rack {
-  asrock_altrad8ud_bios_3_10_instant_flash_release,
-  asrock_altrad8ud_bios_3_10_openbmc_release,
-}
-import gunbc.host_boot_supervision {
-  HostBootStallSignature,
-  HostSelfResetOnError,
-  LoopCauseConfounded,
-  LoopCauseUnobserved,
-  SupervisorForcedReset,
-  host_boot_loop_cause,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,13 +1,5 @@
 module test.claim.stage0_crate_layout_witness
 
-import gunbc.stage0_crate_layout_generated { generated_stage0_dirs, generated_stage0_filenames }
-import v2.compiler.self_host.frontier {
-  hand_maintained_stage0_dirs,
-  hand_maintained_stage0_filenames,
-  compiler_frontier_emitter_produced_count,
-  compiler_frontier_emitter_produced_stage0_mod_basenames
-}
-import std.types { Bool, Int }
 
 test fn w_hand_maintained_stage0_filenames_include_self_emitted() -> Bool {
   if compiler_frontier_emitter_produced_count() == 0 {

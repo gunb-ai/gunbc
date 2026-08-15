@@ -1,17 +1,5 @@
 module gunbc.running_release_identity
 
-import std.types { Bool, CommitSha, Int, NonEmptyStr, String }
-import std.content_hash { Fnv1a64Structural, content_hash_validate_lower_hex_length }
-import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_object, json_string }
-import extdeps.languages.json.parse {
-  JsonMemberLookup,
-  JsonMemberFound,
-  JsonMemberAbsent,
-  JsonMemberDuplicated,
-  JsonMemberNotAnObject,
-  json_object_unique_member,
-  parse_json,
-}
 
 data running_release_identity_note: String = "THE PROCESS IS THE AUTHORITY FOR WHAT IS DEPLOYED, AND THIS MODULE IS THAT AUTHORITY'S WIRE FORM. `gunbc serve` binds its compiled graph ONCE at process start, so the only fact that answers 'what revision is the public route serving' is one the RUNNING PROCESS reports about itself. A file on disk describes what some previous writer INTENDED; a git HEAD in the slot tree describes the DISK, which diverges from the process exactly when a sync is interrupted or lands out of order. Both are weaker than the process, and grounding deployment ordering on either re-admits the backward move the ordering exists to forbid (operator ruling 2026-08-05; docs/plans/srv1-deploy-serialization-and-false-greens.md section 11).\\n\\nTWO FACTS, DELIBERATELY NOT FUSED. `revision` answers deployment ORDERING (is the candidate a descendant of what is running). `surface_bundle_identity` answers WHAT IS ACTUALLY SERVED (does the running process render this tree's five artifacts). They are separate members because they fail independently and their remedies differ: a correct revision with a stale surface means the graph did not rebind; a fresh surface at an unexpected revision means the wrong candidate won the route. A single fused digest could not tell an operator which of those happened, and could not be compared against the two different authorities that decide them (git ancestry for the first, this tree's rendered bundle for the second). The verified release artifact remains the separate binary-provenance fact and is deliberately not collapsed in here either."
 

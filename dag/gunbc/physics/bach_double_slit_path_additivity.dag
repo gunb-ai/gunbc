@@ -1,15 +1,5 @@
 module gunbc.physics.bach_double_slit_path_additivity
 
-import std.types { Bool, Int, List, NonEmptyStr }
-import std.algebra { Ordering, Less, Equal, Greater }
-import std.integer { NonNegativeInt }
-import extdeps.physics.bach_et_al_2013_double_slit {
-  SlitMaskConfiguration,
-  BothSlitsOpen,
-  SlitOneOpen,
-  SlitTwoOpen,
-  BothSlitsBlocked,
-}
 
 data bach_double_slit_path_additivity_note: String = "Bach et al. 2013 double-slit scoped path-additivity model: exclusive-alternative raw-count additivity N_both = N_left + N_right over Bach slit-mask configurations. Not std.algebra_law — not a generic classical-additivity hub until a second experiment consumer lands."
 

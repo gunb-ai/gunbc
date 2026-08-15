@@ -1,26 +1,5 @@
 module extdeps.cache.pin
 
-import std.types { NonEmptyStr, String }
-import std.content_hash { ContentHash }
-import extdeps.version { VersionIdentity }
-import extdeps.pin {
-  Pin,
-  ExactPin,
-  SubjectProjectedPin,
-  SubjectProjectedPinAdmission,
-  SubjectProjectedPinRefused,
-  CitedDigestIdentityUnprojectable,
-  subject_projected_pin_as_pin,
-  admit_subject_projected_pin_integrity,
-  subject_projected_pin_value_eq,
-}
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.cache.sccache {
-  SccacheBinaryArtifact,
-  sccache_binary_artifact_content_identity,
-  sccache_published_musl_arch_key_of,
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri { scheme: Https, locator: "github.com/mozilla/sccache/releases" }

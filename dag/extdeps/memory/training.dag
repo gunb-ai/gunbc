@@ -1,21 +1,5 @@
 module extdeps.memory.training
 
-import std.types { Bool, Int, List, NonEmptyStr }
-import std.measure { ByteSize, BitWidth, bit_width, byte_size, byte_size_count, bit_width_count }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef, ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.memory.types {
-  DimmBuffering,
-  DramGeneration,
-  DramModuleCatalogRow,
-  JedecDdrGenerationCatalogRow,
-  LoadReduced,
-  Registered,
-  Unbuffered,
-  dram_data_chips_per_rank,
-  dram_module_is_realizable,
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

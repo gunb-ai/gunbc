@@ -1,26 +1,5 @@
 module test.claim.floor_materialization_witness
 
-import std.types { Bool, Int, List, String }
-import std.realization_schedule { ScheduleWitnessEntry }
-import gunbc.ci_gate { Gate }
-import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates, project_ci_floor_witness_entries }
-import gunbc.floor_materialization {
-  floor_index_build_identity,
-  floor_index_build_share_provider_id,
-  floor_index_build_materialization,
-  floor_index_build_materialization_without_provider,
-  floor_index_build_reader_count,
-  floor_typecheck_store_identity,
-  floor_typecheck_store_share_provider_id,
-  floor_typecheck_store_materialization,
-  floor_typecheck_store_materialization_without_provider,
-  floor_typecheck_store_reader_count
-}
-import std.materialization_ladder {
-  value_verdict_is_shared_by_reference,
-  value_verdict_is_refused_needing_reference
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

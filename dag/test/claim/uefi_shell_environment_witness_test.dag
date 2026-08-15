@@ -1,19 +1,5 @@
 module test.claim.uefi_shell_environment
 
-import std.logic { Bool }
-import std.types { List }
-import extdeps.firmware.uefi_shell {
-  UefiShellCommand,
-  UefiNetworkInterface,
-  MediaPresent,
-  MediaDisconnected,
-  uefi_shell_command_line,
-  ConnectRecursive,
-  Ifconfig,
-  IfconfigSetDhcp,
-  UefiShellEnvironment,
-}
-import gunbc.srv4_uefi_observed { srv4_uefi_observed_environment }
 
 test fn new_shell_commands_render() -> Bool {
   uefi_shell_command_line(cmd: ConnectRecursive) == "connect -r"

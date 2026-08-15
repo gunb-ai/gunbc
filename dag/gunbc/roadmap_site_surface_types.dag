@@ -1,8 +1,5 @@
 module gunbc.roadmap_site_surface_types
 
-import std.types { String, NonEmptyStr }
-import std.content_hash { Fnv1a64Structural }
-import gunbc.roadmap_model { RoadmapNodeId }
 
 type HealthzEffectiveRead {
   body: String

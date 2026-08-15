@@ -1,37 +1,6 @@
 module v2.workflow.ci_regen_rustfmt_path_emit
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import v2.workflow.orchestration_bash_emit_support {
-  orch_bash_comment_line,
-  orch_bash_do,
-  orch_bash_emit_pipeline,
-  orch_bash_run
-}
-import v2.std.orchestration {
-  And,
-  DiscardAll,
-  DiscardErr,
-  Do,
-  Exit,
-  ExitZero,
-  ExprCmdSubst,
-  FailFast,
-  If,
-  IgnoreFail,
-  Let,
-  Not,
-  Pipeline,
-  PipelineStep,
-  Predicate,
-  Run,
-  StrNonempty
-}
-import v2.std.collection { Absent, Present }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.tools.rustfmt { rustfmt_cli_tool }
-import gunbc.tool_readiness { UnpinnedToolFrontierRow }
 
 data ci_regen_rustfmt_path_emit_authority_note: String = "Foreign-executor shell emission for the regen-job rustfmt PATH ensure (bucket D). Intent is a Pipeline of If/Predicate/Exit/Let nodes — control flow is orchestration, not bash-in-String (review 43658). Leaf Run.command / export spellings are the irreducible kernel (test -x / command -v / export PATH / dirname) until FileExists + session-EnvExport carriers land (PR2b residue named beside ci_floor_stamp). Kept out of ci_workflow_run_emit so gunbc.ci_spec can import this surface without the ci_materialization ↔ ci_spec cycle."
 

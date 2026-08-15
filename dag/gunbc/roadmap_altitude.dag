@@ -1,6 +1,5 @@
 module gunbc.roadmap_altitude
 
-import std.types { Int, String, Bool }
 
 data roadmap_altitude_note: String = "Page altitude from the attention law (composition slice 3): the workspace becomes the THIRD renderer of the observation model's 'routine collapses, anomaly expands' — sections render as bands with counts, anomaly rows auto-expand, routine folds — DERIVED from node status and band key, never hand-curated. No per-section flag and no per-node curation input exists in any signature here; the only inputs are the status and band vocabularies other authorities own, which is what makes hand-curation unwritable rather than merely discouraged."
 

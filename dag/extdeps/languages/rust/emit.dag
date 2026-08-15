@@ -1,48 +1,6 @@
 module extdeps.languages.rust.emit
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.emit_model { SimpleMethodSpec }
-import std.trait_derive_shape {
-  ReprGroundingDeriveTrait,
-  ReprDeriveDebug,
-  ReprDeriveClone,
-  ReprDeriveCopy,
-  ReprDerivePartialEq,
-  ReprDeriveEq,
-  ReprDerivePartialOrd,
-  ReprDeriveOrd,
-  ReprDeriveSerialize,
-  ReprDeriveDeserialize,
-  ReprDeriveAdd,
-  ReprDeriveSub,
-  ReprDeriveMul,
-  ReprDeriveDiv,
-  ReprDeriveRem,
-  ReprDeriveNeg,
-  record_derive_traits_heap,
-  record_derive_traits_copy,
-  payload_coproduct_derive_traits,
-  nullary_coproduct_derive_traits,
-  PairCompletionOperand,
-  PairCompletionSelf,
-  PairCompletionRhs,
-  PairCompletionComponent,
-  PairCompletionPos,
-  PairCompletionNeg,
-  PairCompletionFactor,
-  PairCompletionTerm,
-  PairCompletionArm,
-  PairCompletionBody,
-  PairCompletionSumOfProducts,
-  PairCompletionNegatedAddend,
-  PairCompletionCanonicalQuotient,
-  PairCompletionOpRow,
-  pair_completion_op_rows,
-  pair_completion_body_uses_rhs
-}
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

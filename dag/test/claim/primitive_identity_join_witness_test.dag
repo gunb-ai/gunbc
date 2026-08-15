@@ -1,55 +1,5 @@
 module test.claim.primitive_identity_join_witness_test
 
-import std.primitive_identity {
-  BuiltinRegistry,
-  DuplicateSemanticDefinition,
-  InterpreterDispatch,
-  IncompatibleInvocationAssignment,
-  PrimitiveContractRow,
-  RealizationNamesUnknownPrimitive,
-  SurfaceJoinsTwoIdentities,
-  SurfaceMissingPrimitiveIdentity,
-  primitive_d0_definitions,
-  primitive_d0_derived_rows_missing_identity_count,
-  primitive_d0_derived_surface_authority_count,
-  primitive_d0_fold_list_registry_gap_holds,
-  primitive_d0_fold_list_spelling_fork_holds,
-  primitive_d0_derived_rows_are_from_authority,
-  primitive_d0_host_unspecified_traversal_classified,
-  primitive_d0_index_by_registry_algebra_gap_holds,
-  primitive_d0_interpreter_rows_are_from_authority,
-  primitive_d0_interpreter_census_matches_roster,
-  primitive_d0_interpreter_surface_row_count,
-  primitive_d0_map_keys_five_surface_join_holds,
-  primitive_d0_open_denominator_receipt_holds,
-  primitive_d0_open_surface_authority_count,
-  primitive_d0_parallel_roster_surface_authority_count,
-  primitive_d0_surface_census,
-  primitive_d0_surface_census_derived_row_count,
-  primitive_d0_traversal_facts,
-  primitive_fold_list,
-  primitive_duplicate_semantic_definition_violation,
-  primitive_identity_eq,
-  primitive_incompatible_invocation_assignment_violation,
-  primitive_map_keys,
-  primitive_map_keys_definition,
-  primitive_map_values,
-  primitive_realization_unknown_primitive_violation,
-  primitive_surface_joins_two_identities_violation,
-  primitive_surface_missing_identity_violation,
-  PrimitiveRealization,
-  EmitRust,
-  MeasurementOnly,
-  surface_row,
-}
-import std.decl_ref { decl_ref }
-import gunbc.v1_interpreter_primitive_surface {
-  authored_spelling_count,
-  distinct_arm_identity_count,
-  v1_interpreter_row_count,
-}
-import std.primitives { builtin_registry_surface_names }
-import std.types { Bool, List, String }
 
 data primitive_identity_join_witness_note: String = "D0/D1 slice (NOT closing contract): join mechanism + five refusal variants typed, three detectors executing on census plus two scaffold detectors on planted RED inputs (primitive_d0_refusal_execution_note); subject universe derived across all five surfaces including InterpreterDispatch from gunbc.v1_interpreter_primitive_surface. D1: measurement scaffold deleted, primitive_surface_census_derived absorbs interpreter roster. Open denominator counted by primitive_d0_open_denominator_receipt_holds and primitive_d0_derived_rows_missing_identity_count."
 

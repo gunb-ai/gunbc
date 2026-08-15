@@ -1,5 +1,4 @@
 module test.fixture.leaf_key_collision.cross_kind_data_fn.module_b
 
-import std.types { Int }
 
 fn result() -> Int { 22 }

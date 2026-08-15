@@ -1,43 +1,5 @@
 module extdeps.npm
 
-import std.types { NonEmptyStr, String, Bool, List, Int }
-import std.integer { UInt8 }
-import std.encoding { base64_decode, base64_encode, Standard }
-import std.content_hash {
-  ContentHash,
-  Sha512Digest,
-  Sha1Digest,
-  sha512_hex_digest,
-  sha1_hex_digest,
-  as_content_hash_sha512,
-  as_content_hash_sha1,
-  content_hash_of_value,
-}
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import extdeps.numeric.base16 { byte_hex_lower }
-import extdeps.version { VersionIdentity }
-import extdeps.pin { Pin, ExactPin }
-import extdeps.package { PackageCoordinate, PackageLockNode, PackageLockGraph }
-import extdeps.languages.json.emit {
-  JsonValue,
-  JsonObject,
-  JsonString,
-  JsonNumber,
-  JsonBool,
-  JsonArray,
-  JsonNull,
-  JsonKeyValue,
-}
-import extdeps.languages.json.parse {
-  parse_json,
-  json_object_unique_member,
-  JsonMemberFound,
-  JsonMemberAbsent,
-  JsonMemberDuplicated,
-  JsonMemberNotAnObject,
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

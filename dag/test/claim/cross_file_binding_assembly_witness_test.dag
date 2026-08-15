@@ -1,51 +1,5 @@
 module test.claim.cross_file_binding_assembly_witness_test
 
-import extdeps.filesystem.filesystem_io
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import std.types { Bool, String, Int, NonEmptyStr, SourceSpan, FilePath }
-import std.occurrence_identity {
-  OccurrenceId,
-  OccurrenceContainmentPath,
-  OccurrenceProjection,
-  OccurrenceIndexEntry,
-  OccurrenceIndex,
-  OccurrenceTransport,
-  DeclarationOccurrence,
-  ReferenceOccurrence,
-  OccurrenceCategory,
-  TypeOccurrence,
-  CallableOccurrence,
-}
-import std.occurrence_binding_candidates {
-  DeclarationExposure,
-  LexicalExposure,
-  ModuleExposure,
-  RootExposure,
-  DeclarationExposureRow,
-  AuthoredOrderRow,
-  AuthoredTokenOrdinal,
-  OccurrenceModulePathRow,
-  OccurrenceBindingCandidateInputs,
-  DeclarationExposureGrounding,
-  NamespaceStructuralRootExposure,
-  ModuleLocalMemberExposure,
-  CrossFileProviderExportedExposure,
-  declaration_exposure_from_containment,
-  ModulePathFileRow,
-  ModulePathFileIndex,
-  ModulePathFileIndexReady,
-  ModulePathFileIndexRefused,
-  ModulePathFileIndexRefusal,
-  ModulePathFileDuplicateSame,
-  ModulePathFileConflict,
-  module_path_file_index_from_rows,
-  CrossFileBindingClosureRow,
-  AssembledCrossFileBindingClosure,
-  AssembledCrossFileBindingClosureReady,
-  AssembledCrossFileBindingClosureRefused,
-  AssembledCrossFileBindingClosureModulePathFileRefused,
-  assemble_cross_file_binding_closure,
-}
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

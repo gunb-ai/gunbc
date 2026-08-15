@@ -1,24 +1,5 @@
 module test.claim.v1_interpreter_primitive_roster_acceptance
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.v1_interpreter_primitive_surface {
-  arm_declares_dissolution_trigger,
-  AuthoredInRoster,
-  EvalBuiltinInnerSite,
-  FreeCall,
-  InterpreterPrimitiveArmId,
-  InterpreterPrimitiveDispatchArm,
-  MethodCall,
-  decode_dispatch_form,
-  duplicate_row_keys,
-  form_has_no_shadowed_spelling,
-  form_is_unknown,
-  shadowed_spellings,
-  v1_interpreter_declared_arms,
-  v1_interpreter_authored_roster_arms,
-  v1_interpreter_primitive_arms,
-  v1_interpreter_unknown_form_arms,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

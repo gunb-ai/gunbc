@@ -1,7 +1,5 @@
 module v2.lens.disposition_redundancy
 
-import std.decl_ref { DeclarationRef, declaration_ref_eq }
-import std.disposition { Disposition, Scaffold, Terminal }
 
 fn disposition_binds_present(d: Disposition, present: List<DeclarationRef>) -> Bool {
   match d {

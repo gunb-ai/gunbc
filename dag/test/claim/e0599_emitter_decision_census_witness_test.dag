@@ -1,27 +1,5 @@
 module test.claim.e0599_emitter_decision_census_witness_test
 
-import std.types { list_length }
-import tools.e0599_emitter_decision_census {
-  TargetApiRequirement,
-  OwnedDeconstructionRequirement,
-  CloneSharedRequirement,
-  FreeMonoidEmptyTest,
-  FreeMonoidTailIterate,
-  FreeMonoidHeadExtract,
-  FreeMonoidCatchallBind,
-  DerefCloneWholeValue,
-  IdentReferenceClone,
-  FieldAccessClone,
-  LoweringUnidentified,
-  e0599_cause_for,
-  e0599_classification_line,
-  e0599_lowering_operation_for,
-  e0599_lowering_operation_label,
-  e0599_requirement_cause_label,
-  e0599_row_for_operation,
-  e0599_rollup_cause_labels_blob,
-}
-import tools.e0599_probe_census { e0599_mechanistic_root_family_labels_blob }
 
 data e0599_emitter_decision_census_witness_note: String = "Witness for tools.e0599_emitter_decision_census: the operation selection and the operation->cause decision that docs/probes/e0599_emitter_decision_census.sh (SCAFFOLD realization) consumes over the real compilation path. Each GREEN pins one measured (method, receiver_expr) shape observed in the P-fn Phase B0 census to the lowering operation and typed cause it must select. The REDs are the load-bearing half: they hold the fail-closed arm open, so a future row that widens the classifier into a catch-all is caught. RED family 1 — an out-of-scope method (as_deref, root family R5) must NOT acquire a cause. RED family 2 — a receiver shape no lowering row names must NOT acquire a cause. RED family 3 (ROUTING, added 2026-07-29 on warm-dove-316 / calm-badger-682 review) — a tuple projection is a structurally distinct emitter shape from a named field access: v1.compiler.emit_rust emit_typed_field_access applies clone_value unconditionally in its TupleFirst, TupleSecond, and anonymous-record projection arms, while its StoredField arm gates clone_value by base_is_owned, so they differ on the ownership axis. These controls perturb the ROUTING rather than the destination: the absorbing-default control below proves the fail-closed arm CAN fire, but only a routing control proves an unclassifiable shape REACHES it. RED family 4 — the three causes must stay distinct, so a collapse of the TargetApi/OwnedDeconstruction/CloneShared split (the whole point of the B0 measurement) reds here."
 

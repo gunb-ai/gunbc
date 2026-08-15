@@ -1,28 +1,6 @@
 module gunbc.stage0_rust_lifecycle_totality
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import gunbc.stage0_rust_host_observation {
-  GitObservationRefused,
-  RustManifestObserved,
-  RustManifestParseRefused,
-  RustManifestReadRefused,
-  RustSourceHostObservation
-}
-import gunbc.stage0_rust_source_lifecycle_scaffold {
-  derived_generated_stage0_repo_paths,
-  disposition_authority_rows,
-  lifecycle_row_well_formed,
-  list_concat_unique,
-  path_in_list,
-  rust_maintenance_disposition_well_formed,
-  RustSourceLifecycleRow
-}
-import std.keyed_roster { path_occurrence_count }
-import std.content_hash { Fnv1a64Structural }
-import v2.std.algebra { any, filter, fold_list, length, list_map, list_snoc_item }
-import v2.std.collection { List }
-import v2.std.text { String }
 
 data stage0_rust_lifecycle_totality_note: String = "C1 carrier (Lane C / v1-honest-frontier): derives exact path sets from gunbc.stage0_rust_host_observation RustManifestObserved — tracked, generated, well-formed maintenance-disposition, unclassified, stale, duplicate-within-authority (generated, disposition, role rows BEFORE deduplication), cross-axis overlap (generated ∩ disposition), role-without-disposition, ill-formed maintenance-disposition shape. stage0_rust_lifecycle_totality_underived_axes names C1 axes the brief requires but this carrier cannot derive yet (counted, not silent). Completeness is an identity join over exact paths, never a count oracle (DESIGN section 5). Discovery and decision each require every reported defect dimension to be explicitly zero — not incidental implication."
 

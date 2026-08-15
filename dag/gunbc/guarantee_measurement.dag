@@ -1,8 +1,5 @@
 module gunbc.guarantee_measurement
 
-import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha }
-import std.nat { Nat }
-import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural, content_hash_combine_structural }
 
 data guarantee_measurement_charter_note: String = "STAGE 0 OF THE GUARANTEE SPINE: the vocabulary probes and claims meet through, and nothing else (operator spine verdict 2026-08-01; roadmap node ladder-measurement-schema; gap analysis sec 12 Stage 0). Without this stage the probe corpus and the claims carrier each invent the receipt shape and meet in a protocol cycle - probes cannot emit rows the carrier has not defined, the carrier cannot derive dispositions from receipts that do not exist. So this module carries identity brands, the path row, the receipt row, and the joins that make a receipt REFUSE when it names an unknown subject - and deliberately nothing that claims anything about the compiler: no class population, no probe executes here, no disposition, no rung. Those arrive with ladder-probe-corpus and ladder-claims-carrier, which consume this vocabulary instead of minting temporary string keys."
 

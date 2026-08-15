@@ -1,27 +1,5 @@
 module extdeps.llm.claude_agent_sdk_stream
 
-import std.types { String, List, Bool, NonEmptyStr }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
-import extdeps.languages.json.parse {
-  parse_json,
-  json_object_unique_member,
-  JsonMemberFound,
-  JsonMemberAbsent,
-  JsonMemberDuplicated,
-  JsonMemberNotAnObject,
-}
-import extdeps.languages.json.emit {
-  JsonValue,
-  JsonString,
-  JsonArray,
-  JsonNull,
-  JsonBool,
-  JsonNumber,
-  JsonObject,
-}
-import v2.std.algebra { list_snoc_item }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -1,26 +1,5 @@
 module test.claim.cursor_sdk_auth_standing_witness_test
 
-import std.types { Bool, NonEmptyStr }
-import gunbc.cursor_sdk_auth_probe {
-  CursorSdkAuthProbeAuthenticated,
-  CursorSdkAuthProbeCredentialsRejected,
-  CursorSdkAuthProbeTerminalNonAuthenticationError,
-  CursorSdkAuthProbeUnclassified,
-  cursor_sdk_auth_probe_from_run_result,
-}
-import gunbc.cursor_sdk_provider_standing {
-  cursor_sdk_local_provider_standing_from_auth_probe,
-  cursor_sdk_local_provider_standing_has_usage_capability_gap,
-}
-import gunbc.provider_standing {
-  AuthenticationAuthenticated,
-  AuthenticationCredentialsAbsent,
-  AuthenticationStandingUnobserved,
-}
-import extdeps.llm.cursor_sdk_errors {
-  CursorSdkAuthenticationError,
-  CursorSdkRateLimitError,
-}
 
 test fn auth_probe_authenticated_on_finished_result() -> Bool {
   match cursor_sdk_auth_probe_from_run_result(

@@ -1,15 +1,6 @@
 module test.claim.cli_run_floor_lens_oracle_witness
 
-import std.dissolution { dissolution_description }
 
-import v2.lens.disposition_redundancy { disposition_is_terminal }
-import gunbc.cli_run_floor_lens_oracle_scaffold {
-  cli_run_floor_lens_read_refusal_hand_rust_scaffold,
-  cli_run_floor_lens_observation_hand_rust_scaffold,
-  cli_run_floor_lens_scaffold_shape_red_control,
-  cli_run_floor_lens_hand_rust_dissolve_trigger,
-  cli_run_floor_lens_oracle_read_refusal_receipt_test,
-}
 
 
 test fn floor_lens_hand_rust_production_arms_are_declared_scaffolds() -> Bool {

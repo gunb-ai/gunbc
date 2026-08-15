@@ -1,15 +1,5 @@
 module test.claim.floor_batch_clamp_authority_witness
 
-import std.realization_schedule {
-  RunnableBatchClamp,
-  runnable_batch_clamp_ms,
-}
-import std.decl_ref { decl_ref }
-import std.measure { second, millisecond, second_count, millisecond_count }
-import std.types { NonEmptyStr }
-import gunbc.ci_spec { gunbc_ci_floor_batch_clamp_params, gunbc_ci_compile_clean_clamp }
-import gunbc.ci_layer_roots { v1_claim_scoped_witness_batch }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

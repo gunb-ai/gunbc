@@ -1,17 +1,5 @@
 module gunbc.uefi_shell_over_sol
 
-import std.types { NonEmptyStr, String, Int, List }
-import extdeps.bmc.serial_console {
-  SolConsoleSendIntent,
-  IpmiSol,
-  sol_console_send_script,
-}
-import extdeps.firmware.uefi_shell { UefiShellCommand, uefi_shell_command_line }
-import gunbc.uefi_boot_config {
-  DesiredBootSource,
-  uefi_boot_config_commands,
-  srv4_uefi_install_boot,
-}
 
 fn uefi_shell_serial_input(commands: List<UefiShellCommand>) -> String {
   fold(

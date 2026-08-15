@@ -1,19 +1,5 @@
 module v2.test.claim.falsifier_lane_plan_agreement_test
 
-import v2.workflow.ci_floor_plan {
-  gunbc_falsifier_lane_batches,
-  gunbc_falsifier_ordinary_batches,
-  gunbc_falsifier_planned_components
-}
-import gunbc.falsifier_lane {
-  FalsifierPlannedComponent,
-  falsifier_lane_eq,
-  falsifier_planned_indices
-}
-import v2.std.algebra { length, filter, fold_list, list_map }
-import v2.std.collection { list_at_optional }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

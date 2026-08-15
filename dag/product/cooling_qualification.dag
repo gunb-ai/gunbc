@@ -1,11 +1,5 @@
 module product.cooling_qualification
 
-import std.types { Bool, List, String, Int }
-import std.measure { Watt, measure_le }
-import product.placement_supply { HostIdentity, PhysicalAssetIdentity }
-import extdeps.cooling.types { CpuCoolerCatalogRow }
-import extdeps.cpu.types { CpuSocket, CpuModelCatalogRow }
-import extdeps.boards.types { BaseboardModel }
 
 // A CPU cooler is the heat-pickup realization of an installed processor. WHICH cooler is
 // installed on which host is a fleet fact (gunbc.fleet_physical_inventory); whether that

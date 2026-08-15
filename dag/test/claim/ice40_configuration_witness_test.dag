@@ -1,43 +1,5 @@
 module test.claim.ice40_configuration_witness
 
-import std.types { Bool, String, List }
-import std.integer { Int }
-import std.nat { Nat }
-import std.measure { hertz_count, microsecond_count, millisecond_count, nanosecond_count }
-import extdeps.programmable_logic.ice40.configuration {
-  AllConfigurationModes,
-  ConfigurationDone,
-  ConfigurationReset,
-  ConfigurationTimeTypical,
-  ConfigurationTimeWithdrawnByVendor,
-  ConfigurationTiming,
-  HighFrequency,
-  LowFrequencyDefault,
-  BoundInClockCycles,
-  BoundInHertz,
-  BoundInMicroseconds,
-  BoundInNanoseconds,
-  MaximumColumn,
-  MediumFrequency,
-  MinimumColumn,
-  OnlyUnderMode,
-  SpiSlaveSelect,
-  TypicalColumn,
-  configuration_signal_name,
-  hx1k_configuration_time,
-  ice40_configuration_timings,
-  ice40_creset_b_low_pulse,
-  ice40_done_to_io_active,
-  ice40_hx1k_creset_to_first_sck,
-  ice40_cclk_write_maximum,
-  scope_admits,
-  timings_for_mode,
-}
-import extdeps.programmable_logic.ice40.supply {
-  MasterSpiConfiguration,
-  SlaveSpiConfiguration,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,18 +1,5 @@
 module test.claim.generated_artifact_merge_driver_real_execution
 
-import std.logic { Bool }
-import gunbc.output_policy { OutcomeIsData }
-import std.types { String, FilePath, GitRef }
-import extdeps.git
-import extdeps.shell
-import extdeps.filesystem.filesystem_io
-import gunbc.generated_artifact_merge_driver {
-  expected_generated_artifact_merge_driver_sh,
-  generated_artifact_merge_driver_config_value_at,
-}
-import gunbc.repo_local_git_config { generated_artifact_merge_driver_key }
-import gunbc.ci_spec { ci_heal_author_commit_regen_command }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

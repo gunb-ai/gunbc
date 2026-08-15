@@ -1,14 +1,5 @@
 module gunbc.stage0_emit_plan
 
-import gunbc.stage0_crate_layout_generated { generated_stage0_filenames }
-import extdeps.languages.rust.emit {
-  rust_qualified_module_mod_basename,
-  rust_qualified_module_mod_filename
-}
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.disposition { Disposition, RealizationDispatch, Scaffold }
-import std.types { List, String }
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 type Stage0SourceTree
   = V1SourceTree

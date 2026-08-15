@@ -1,24 +1,5 @@
 module v2.workflow.self_host_realized_comparison_claims
 
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Node,
-  TypeNode,
-  SyntheticOccurrence
-}
-import v2.compiler.self_host {
-  fold_side_bytes,
-  self_host_fixed_point_validate,
-  source_models_from_manifest_and_roots
-}
-import tools.self_host_realized_comparison_transport {
-  realized_comparison_committed_src_root,
-  realized_comparison_emitted_src_root,
-  realized_comparison_roster_manifest_path,
-  run_self_host_realized_comparison_emit
-}
 
 fn realized_comparison_fixture_leaf() -> Node {
   Node {

@@ -1,59 +1,5 @@
 module gunbc.claude_setup_token_enrollment
 
-import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, list_length }
-import std.measure { CharacterCount, character_count }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.optional { Present, Absent }
-import extdeps.llm.claude_setup_token_cli {
-  ClaudeSetupTokenFormatObservation,
-  SetupTokenFormatUnobserved,
-  SetupTokenFormatMeasured,
-  ClaudeSetupTokenFormatMeasured,
-  ClaudeSetupTokenBrowserChallenge,
-  claude_code_oauth_token_env_var,
-  claude_config_dir_env_var,
-  count_setup_token_candidates,
-  extract_setup_token_candidate,
-  setup_token_candidate_length_ok,
-}
-import gunbc.provider_standing {
-  ProviderStanding,
-  ProviderStandingBundle,
-  ProviderInstallationStanding,
-  ProviderAuthenticationStanding,
-  ProviderEntitlementObservation,
-  ProviderLimitObservation,
-  ProviderTurnOutcome,
-  ProviderToolEnvironmentStanding,
-  InstallationReady,
-  InstallationStandingUnobserved,
-  AuthenticationCredentialsAbsent,
-  AuthenticationAuthenticated,
-  AuthenticationRefreshFailed,
-  AuthenticationStandingUnobserved,
-  EntitlementObservationUnobserved,
-  LimitObservationUnobserved,
-  TurnNotStarted,
-  TurnFailed,
-  ToolEnvironmentReady,
-  ToolEnvironmentStandingUnobserved,
-  ProviderLimitSubject,
-  ProviderNativeLimitBucket,
-  LimitCredentialLabel,
-  LimitObservedAvailable,
-  EntitlementObservedAvailable,
-  provider_standing_from_observed_bundle,
-}
-import extdeps.llm.claude_sdk {
-  claude_native_limit_token_to_model_gap_note,
-}
-import extdeps.llm.cli_lifecycle {
-  ProviderInstance,
-  ProviderInstanceFieldObserved,
-  ClaudeCliProvider,
-}
-import std.claim_evidence { RecordedFactId }
 
 data claude_setup_token_enrollment_authority_note: String = "Claude Code enrollment station workflow (operator direction 2026-08-07; revised msg_3b291a6a). The enrollment host is where the irreducible browser gesture happens — NOT the roadmap worker host. Enrollment INITIATES ONLY through the pinned Claude CLI setup-token path. This module is a STANDING PRODUCER: it emits ProviderStanding from managed enrollment; it does NOT wire OfferClaude into production dispatch inventory (WorkerTurn PR). NO WorkerTurn and NO UI workflow progress in this slice."
 

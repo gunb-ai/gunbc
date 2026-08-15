@@ -1,6 +1,5 @@
 module tools.parse_witness_transport
 
-import tools.host_prelude { WitnessBin, run_witness_bin_program }
 
 fn parse_witness_bin() -> WitnessBin {
   WitnessBin {

@@ -1,12 +1,5 @@
 module product.altra_motherboard.minimal_design
 
-import std.types { list_length, String, Bool, NonEmptyStr, List }
-import std.integer { Int }
-import extdeps.cpu.ampere_altra_package {
-  altra_ddr4_channel_count,
-  altra_declared_contact_count,
-  altra_pcie_gen4_lane_count,
-}
 
 // THE SMALLEST ALTRA MOTHERBOARD THAT IS A SERVER RATHER THAN A BRING-UP FIXTURE, and the
 // distinction is the vendor's own rather than ours. The datasheet admits 1, 2, 4, 6 or 8 active

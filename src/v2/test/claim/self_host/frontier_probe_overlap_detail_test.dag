@@ -1,43 +1,5 @@
 module v2.test.self_host.frontier_probe_overlap_detail
 
-import v2.compiler.parse_diagnostic {
-  NoParseDiagnosticEvidence,
-  NonEmptyParseStageDiagnostics,
-  ParseStageDiagnostic,
-  non_empty_diagnostics_from_parse_stage,
-  parse_overlap_residue_stage_diagnostic_at
-}
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  NonEmptyDiagnostics,
-  Unavailable,
-  port_locus
-}
-import v2.std.grammar_choice_ambiguity {
-  GrammarChoiceAmbiguityRow,
-  NonEmptyGrammarChoiceAmbiguityRows
-}
-import v2.compiler.self_host.frontier_probe_assemble_detail {
-  assemble_rejection_cause_from_parse_stage,
-  frontier_probe_assemble_detail_from_parse_stage,
-  frontier_probe_assemble_detail_from_rejection_with_overlap_stage,
-  frontier_probe_assemble_located_reason_from_diagnostics,
-  frontier_probe_receipt_from_assemble_rejection
-}
-import v2.compiler.self_host.frontier_probe_types {
-  AssembleRejectionDetail,
-  FrontierProbeDetailAbsent,
-  GrammarChoiceOverlap,
-  MaskedAssembleRefusal,
-  NoFrontierProbeDetail,
-  ProbeStageEmit,
-  frontier_probe_receipt_without_assemble_detail,
-  RealizationGap
-}
-import v2.std.optional { Absent, Present, optional_absent, optional_present }
-import v2.std.algebra { Cons, Empty, length }
-import v2.std.logic { Bool }
 
 fn sample_overlap_row() -> GrammarChoiceAmbiguityRow {
   GrammarChoiceAmbiguityRow {

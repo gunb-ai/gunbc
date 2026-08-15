@@ -1,12 +1,5 @@
 module gunbc.scm_compatibility_shape
 
-import std.types { Bool, List, NonEmptyStr, String }
-import std.content_hash {
-  Fnv1a64Structural,
-  content_hash_atom,
-  content_hash_combine_structural,
-  content_hash_tagged_structural,
-}
 
 data scm_compatibility_shape_note: NonEmptyStr = "R1 compatibility-realization shape extracted from the independently executing Git, Mercurial, and Pijul R0 boundaries. The shared carrier owns only roles demonstrated by the landed R0s: an opaque realization and target handle, a handle to native generation evidence, honest capture fidelity, realization-specific preservation/loss facts, projection plus independent read-back, and an explicit modeled-or-unavailable conditional-advance capability. Native evidence remains in adapter-specific typed receipts; this presentation projection is not a semantic, policy, repair, execution, commit, or Applied receipt. A failed projection may later be replaced idempotently by realization and target only after some external operation supplies a new independently read-back receipt. Dispatch is a generic handler value, never ScmKind or a vendor switch. A fourth realization supplies one handler and does not edit this module or the native interaction contract."
 

@@ -1,7 +1,5 @@
 module v2.extdeps.formats.toml
 
-import v2.std.grammar { GrammarSchema }
-import v2.std.datetime { LocalDate, LocalDateTime, LocalTime, OffsetDateTime }
 
 type TomlSign
   = TomlSignAbsent

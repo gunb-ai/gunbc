@@ -1,45 +1,5 @@
 module test.claim.fleet_observation_producers_witness
 
-import gunbc.fleet_shell_transport_observation {
-  fleet_shell_transport_observation,
-  fleet_shell_transport_unobserved_count,
-  still_ram_738_session_shell_transport_receipt_note,
-  ShellTransportReachRefused,
-  ShellTransportSucceeded,
-  ShellTransportUnobserved,
-}
-import gunbc.session_residency {
-  session_residency_shell_gated_census,
-  SessionsUnobserved,
-  SessionsObservedAbsent,
-  SessionsObservedPresent,
-  SessionsOperatorDeclaredAbsent,
-}
-import gunbc.host_disk_observation {
-  host_disk_fleet_unobserved_count,
-  host_disk_observation,
-  DiskUnobserved,
-  DiskObservationRefused,
-}
-import gunbc.host_swap_backing {
-  host_swap_backing_fleet_unobserved_count,
-  host_swap_backing_host_verdict,
-}
-import gunbc.build_cache_endpoint_observation {
-  build_cache_ci_endpoint_fleet_unavailable_count,
-  build_cache_ci_placement_observation,
-  build_cache_ci_endpoint_observation,
-}
-import gunbc.build_cache_instance {
-  EndpointObservationUnavailable,
-  ServerPlacementUnknown,
-}
-import gunbc.fleet_intent_network {
-  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
-}
-import gunbc.host_phase_status { fleet_subsumption_hosts }
-import std.upsert_decision { UnknownRefused }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

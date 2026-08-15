@@ -1,29 +1,6 @@
 module gunbc.os_install_actuator_selection
 
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-import gunbc.fleet_intent { srv1_host, srv2_host, ComputeHost }
-import gunbc.fleet_intent_network {
-  operator_host_srv1,
-  operator_host_srv2,
-  srv3_bmc_endpoint,
-  operator_lan_segment,
-}
-import product.network_topology {
-  HostLan,
-  BmcManagement,
-  network_reachability,
-  Lan,
-}
-import product.placement_supply { HostIdentity }
-import extdeps.bmc.os_install_actuator_toolchain {
-  ActuatorToolchainRequirement,
-  os_install_actuator_toolchain_requirement,
-  actuator_toolchain_requirement_is_complete,
-}
-import extdeps.boards.asrock_rack { asrock_srv3_live_bmc_host }
-import std.types { List, NonEmptyStr, Bool, Int, String }
 
 type OsInstallActuatorRequirementKind
   = BmcNetworkReach

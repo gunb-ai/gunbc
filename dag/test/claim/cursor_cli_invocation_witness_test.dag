@@ -1,28 +1,5 @@
 module test.claim.cursor_cli_invocation_witness_test
 
-import std.types { Bool, String, NonEmptyStr, List, FilePath }
-import extdeps.llm.cursor_cli {
-  CursorAuth,
-  CursorApiKeyArgument,
-  CursorApiKeyEnvironment,
-  CursorInvocation,
-  CursorProcessInvocation,
-  CursorEnvBinding,
-  CursorModelId,
-  CursorExecutionMode,
-  CursorDefaultEditMode,
-  CursorSandboxChoice,
-  CursorSandboxEnabled,
-  CursorOutputFormat,
-  CursorStreamJson,
-  cursor_api_key_env_var,
-  cursor_cli_program,
-  cursor_model_auto,
-  shape_cursor_invocation,
-  cursor_automation_invocation,
-  cursor_argv_contains,
-  cursor_invocation_binds_env,
-}
 
 data witness_purpose_note: String = "THE AUTH FIELD WAS NEVER READ, so these two invocations used to be the same value. shape_cursor_agent_argv took a CursorInvocation, ignored inv.auth, and returned an argv — which meant the environment arm bound nothing and the argument arm leaked nothing, and the module's note explaining why the key stays out of argv described a property that held because the key went nowhere at all.\\n\\nThese claims are written so that reverting to an auth-blind shaper fails them in both directions: the environment arm must actually bind CURSOR_API_KEY, and the argument arm must actually put the key in argv. A shaper that ignores auth cannot satisfy both, and one that ignores auth while omitting the key entirely — the previous behaviour — fails the first."
 

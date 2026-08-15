@@ -1,18 +1,6 @@
 module test.claim.proc_self_cgroup_real_execution_witness
 
-import std.algebra { trim }
 
-import v2.extdeps.languages.bash_proc_self_cgroup {
-  bash_membership_assign_from_source,
-  bash_membership_cross_realization_law_holds,
-}
-import gunbc.output_policy { OutcomeIsData }
-import extdeps.shell
-import gunbc.retained_shell_script { retained_runtime }
-import extdeps.filesystem.filesystem_io
-import gunbc.shell_bash_runner { shell_exec_via_bash }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { FilePathParts, NonEmptyStr, String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,33 +1,6 @@
 module test.claim.local_tidy_fmt_outcome
 
-import std.dissolution { dissolution_description }
 
-import gunbc.local_tidy_spec {
-  LocalTidyFmtOutcome,
-  FmtClean,
-  FmtDrift,
-  FmtToolUnavailable,
-  local_tidy_fmt_outcome_recipe,
-  local_tidy_fmt_outcome_of_exit_status,
-  local_tidy_fmt_outcome_blocks,
-  local_tidy_fmt_pre_push_drift_recipe,
-  local_tidy_fmt_pre_commit_drift_recipe,
-}
-import gunbc.githooks_pre_push_plan {
-  pre_push_fmt_outcome_recipe,
-  pre_push_fmt_outcome_blocks,
-  pre_push_fmt_spawn_refusal_recipe,
-}
-import gunbc.githooks_pre_push_emit {
-  expected_githooks_pre_push_sh,
-  githooks_pre_push_emit_medium_disposition_note,
-}
-import gunbc.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
-import gunbc.githooks_pre_push_fmt_transport_scaffold {
-  githooks_pre_push_fmt_transport_hand_rust_dissolve_trigger,
-  githooks_pre_push_fmt_transport_hand_rust_loc_delta_net,
-  githooks_pre_push_fmt_transport_test_discriminator,
-}
 
 data local_tidy_fmt_outcome_test_note: String = "The defect under witness: a tool that COULD NOT RUN was reported as a negative finding about the work, so a missing cargo printed 'rustfmt drift — run: cargo fmt --all' — a remedy that runs the very binary whose absence produced the message. The discriminating controls are the ones that go RED if the arms are collapsed back together: witness_unavailable_recipe_never_says_drift and witness_unavailable_recipe_proposes_no_cargo_remedy fail the moment FmtToolUnavailable can reach a drift recipe, and the emitted-hook witnesses fail if either hook stops branching on the exit status."
 

@@ -1,25 +1,5 @@
 module test.claim.long.gauntlet_lane_enrollment_witness
 
-import gunbc.ci_layer_roots { SubstrateLongLaneRow, falsifier_substrate_long_lane_rows }
-import gunbc.ci_gate { Gate, CheapClaimPoolGate, RegenVerifyGate }
-import gunbc.commit_workflow {
-  CommitCheckEnrollment, CommitCheckKind, CommitWitnessClaim, CommitCargoFmtCheck,
-  CommitSpecGate,
-  CommitWorkflowSurface, GithubActionsCiJob, GithubActionsCiRegenJob,
-  GitPrePushHook, FalsifierCadenceJob,
-  roster_has_no_bare_deenrolled_witness,
-  live_roster_has_no_bare_deenrolled_witness,
-  live_roster_falsifier_witness_entries,
-  roster_has_no_bare_deenrolled_gate,
-  live_roster_has_no_bare_deenrolled_gate
-}
-import std.realization_schedule {
-  ScheduleWitnessEntry, ExecutionWitnessKind, SpanUndeclared
-}
-import v2.std.algebra { any, length }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 data gauntlet_lane_enrollment_note: String = "Executing consumer for the FalsifierCadenceJob lane (gunbc.commit_workflow falsifier_cadence_surface_note / bare_deenrollment_wall_note). It exists because the lane's whole value is the difference between 're-homed' and 'dropped', and that difference is invisible in a diff: both look like a surface list edit. Three claims, the third a RED control so the first two cannot pass vacuously. This file lives under test/claim/long/ for HOMING consistency with the rows it guards, but is enrolled per-PR on GithubActionsCiJob deliberately — it is a pure roster fold with no live-tree read and no host effect, measured well inside the fast-lane budget, and its whole point is to red on the PR that de-enrolls something rather than up to 4 hours later."
 

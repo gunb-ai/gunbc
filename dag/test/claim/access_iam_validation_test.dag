@@ -1,9 +1,5 @@
 module test.claim.access_iam_validation
 
-import std.types { Bool }
-import std.access
-import product.network_topology
-import v2.std.live_tree
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 

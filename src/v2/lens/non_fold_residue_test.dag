@@ -1,7 +1,5 @@
 module v2.test.lens_non_fold_residue.non_fold_residue_test
 
-import v2.lens.non_fold_residue { nfr_roster_receipt_holds }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

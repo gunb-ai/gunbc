@@ -1,57 +1,5 @@
 module test.claim.ollama_capability_witness_test
 
-import std.types { Bool, NonEmptyStr, Int, String }
-import std.measure { byte_size }
-import extdeps.crypto.hash { sha256_digest }
-import extdeps.archive.format { archive_format_tar_gzip, TgzShort }
-import extdeps.ollama.api { OllamaModelRef }
-import extdeps.ollama.binary_release {
-  ollama_required_release,
-  OllamaBinaryRelease,
-  OllamaLinuxArchitecture,
-  OllamaLinuxArm64,
-  OllamaLinuxGenericCuda,
-  ollama_v0_32_9_release,
-  ollama_v0_32_9_jetpack5_release,
-  ollama_v0_32_9_jetpack6_release,
-  ollama_binary_release_asset_name,
-  ollama_binary_release_download_locator,
-}
-import extdeps.ollama.gpu_support {
-  ollama_gb10_gpu_support_row,
-  ollama_gb10_minimum_nvidia_driver,
-  OllamaNvidiaDriverVersion,
-  OllamaNvidiaDriverRequirementUnobserved,
-  ollama_nvidia_driver_requirement_verdict,
-}
-import extdeps.ollama.capability {
-  OllamaNvidiaGb10Spark,
-  OllamaModelSupportApplicable,
-  OllamaModelSupportUnmet,
-  OllamaModelSupportUncatalogued,
-  OllamaPlatformSupportApplicable,
-  OllamaPlatformSupportUncatalogued,
-  OllamaRuntimeAdmissionApplicable,
-  OllamaRuntimeAdmissionUnobserved,
-  OllamaRuntimeAdmissionUnmet,
-  ollama_model_support_verdict,
-  ollama_runtime_model_compatibility_verdict,
-  ollama_runtime_admission_verdict,
-  ollama_v0_9_6_semantic_version,
-  ollama_gpt_oss_feature_introduction_floor,
-  ollama_gpt_oss_20b_model_ref,
-  ollama_semantic_version,
-  ollama_semantic_version_cmp,
-  ollama_semantic_version_at_least,
-}
-import gunbc.spark_serving_desired {
-  spark_serving_desired_admission,
-  spark_serving_fleet_desired,
-  SparkServingDesiredAdmitted,
-  SparkServingDesiredRefused,
-  SparkServingFleetDesiredReady,
-  SparkServingFleetDesiredRefused,
-}
 
 data witness_gpt_oss_ref: OllamaModelRef = ollama_gpt_oss_20b_model_ref
 

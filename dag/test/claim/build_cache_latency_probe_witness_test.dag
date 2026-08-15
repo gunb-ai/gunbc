@@ -1,26 +1,5 @@
 module test.claim.build_cache_latency_probe_witness
 
-import std.logic { Bool }
-import std.types { String, List, Int }
-import std.measure { Millisecond, millisecond, measure_count }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
-import gunbc.build_cache_latency_probe {
-  BuildLatencyPopulation,
-  BuildLatencyDivergencePolicy,
-  BuildLatencyVerdict,
-  BuildLatencyConverged,
-  BuildLatencyDiverged,
-  BuildLatencyUnmeasured,
-  population_median,
-  build_latency_verdict,
-  build_latency_verdict_is_diverged,
-  srv1_build_latency,
-  srv1_verdict_2026_08_05,
-  peer_combined_median,
-  gunbc_build_latency_divergence_policy,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

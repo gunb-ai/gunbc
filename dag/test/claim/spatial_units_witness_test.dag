@@ -1,20 +1,5 @@
 module test.claim.spatial_units_witness
 
-import std.types { Bool, Int }
-import std.nat { Nat }
-import std.measure {
-  Arcsecond, SquareMillimeter, CubicMillimeter,
-  arcsecond_count, square_millimeter_count, cubic_millimeter_count,
-  square_meter, cubic_meter, degree, turn,
-  square_metres_to_square_millimetres, cubic_metres_to_cubic_millimetres,
-  full_turn_arcseconds, quarter_turn_arcseconds, degrees_to_arcseconds, turns_to_arcseconds,
-}
-import extdeps.units.iso_80000_3 {
-  degrees_per_turn, arcminutes_per_degree, arcseconds_per_arcminute,
-  arcseconds_per_turn, arcseconds_per_degree_derived,
-  square_millimetres_per_square_metre, cubic_millimetres_per_cubic_metre,
-}
-import extdeps.color.srgb { hsl_to_rgb_scaled, RgbScaled }
 
 // The wiring these witnesses exist for: the carriers in std.measure now DERIVE from the cited
 // ISO 80000-3 factors through a real import edge. A prose citation cannot be executed, so before

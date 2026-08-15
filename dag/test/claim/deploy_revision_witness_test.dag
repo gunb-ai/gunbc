@@ -1,29 +1,5 @@
 module test.claim.deploy_revision_witness
 
-import gunbc.live_deploy.revision {
-  DeployTargetId,
-  DeployRevisionRelation,
-  SameRevision,
-  DeployedIsAncestor,
-  CandidateIsAncestor,
-  UnrelatedHistories,
-  RelationUnverifiable,
-  DeployRevisionVerdict,
-  RevisionAlreadyConverged,
-  RevisionAdvance,
-  RevisionSupersededNoOp,
-  RevisionRefused,
-  classify_deploy_revision,
-  deploy_revision_proceeds,
-  deploy_revision_terminal_success,
-  deploy_revision_refuses,
-  deploy_revision_relation_from_probes,
-  deploy_revision_state_path,
-  deploy_target_mutex_group,
-  srv1_dashboard_target,
-}
-import std.types { NonEmptyStr, CommitSha }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

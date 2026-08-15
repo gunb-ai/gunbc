@@ -1,54 +1,5 @@
 module gunbc.roadmap_dashboard_instance
 
-import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port }
-import extdeps.tmux { TmuxServerScope, DefaultTmuxServer, NamedTmuxServer }
-import gunbc.ensure { EnsureObserveOnly }
-import gunbc.provider_account {
-  AdmittedAccountBinding,
-  CodexAccountSelection,
-  CodexDefaultAccount,
-  CodexLabelledAccount,
-  ProviderAccountLabel,
-  EvidencedSharingDiscipline,
-  codex_roadmap_account_evidence,
-  codex_roadmap_account_selection,
-  admitted_single_session_binding,
-}
-import extdeps.languages.json.emit {
-  json_kv,
-  json_string,
-  serialize_json_object_prefix,
-}
-import gunbc.roadmap_execution_contract {
-  GitWorkspaceCapability,
-  TmuxSessionCapability,
-  TmuxPipeShellCapability,
-  TeeEventCaptureCapability,
-  ProviderEventProjectionCapability,
-  EnvironmentBindingCapability,
-  AttemptStateDirectoryCapability,
-  AttemptCurrentPointerCapability,
-  GunbcClaimRunnerCapability,
-  CargoCapability,
-  RustcCapability,
-  RustfmtCapability,
-  ExecutionCapability,
-  CapabilityRealization,
-  DispatchHostEnvironment,
-  dispatch_host_realization,
-  dispatch_platform_required_capabilities,
-}
-import gunbc.host_layout {
-  srv1_gunbc_repo_root,
-  srv1_gunbc_serve_binary,
-  srv1_dispatch_worktree_root,
-  srv1_dispatch_attempt_state_root,
-  srv1_roadmap_codex_home,
-  srv1_codex_bundled_executable,
-  GunbcHostLayout,
-  srv1_host_layout,
-  srv2_host_layout,
-}
 
 type DashboardActuationPosture
   = DashboardObserveOnly

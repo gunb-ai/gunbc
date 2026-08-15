@@ -1,10 +1,6 @@
 module gunbc.walk_plan_stage_fixture_scaffold
 
-import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.types { Int, List, String }
 
 data walk_plan_stage_fixture_hand_rust_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

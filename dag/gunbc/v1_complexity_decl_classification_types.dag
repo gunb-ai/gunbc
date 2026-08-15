@@ -1,7 +1,5 @@
 module gunbc.v1_complexity_decl_classification_types
 
-import std.types { String, NonEmptyStr }
-import gunbc.v1_complexity_capability_census { ComplexityCapabilityId, V1ComplexityResidueId }
 
 type V1ComplexityDeclRole
   = AuthorityOf { capability: ComplexityCapabilityId }

@@ -1,16 +1,5 @@
 module v2.test.fixture.frontier_probe_elision_boundary_overlay
 
-import v2.compiler.source_authority {
-  SourceRef,
-  SourceRootCoverageComplete,
-  SourceRootManifestElided,
-  SourceRootProvenanceCoverageReceipt,
-  DiscoveredSourceRefsDigestFromList,
-}
-import std.content_hash { Fnv1a64, Fnv1a64Structural }
-import std.algebra { Cons, Empty }
-import v2.std.collection { List }
-import v2.std.cross_tree.import_model { DagTree }
 
 data frontier_probe_elision_boundary_overlay_note: String = "Committed overlay for frontier_probe_ninety_one_read_compiler_closure_elision_integrates_holds (PR #7762, updated PR #8210): production-scale 165-read / cap-64 elision boundary without a runtime discover_source_root_ingest overlay source root. Post-capless-ref-transport semantics: produced_row_count and closure-ref population equal ingest_read_count; SourceRootManifestElided documents inline-carrier refusal past cap — never zero rows with a positive read count."
 

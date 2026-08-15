@@ -1,44 +1,5 @@
 module v2.test.claim.body_lowering.arrow_body_form_semantic_helpers
 
-import v2.compiler.eval { eval, inputs_root_only }
-import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.extdeps.languages.dag {
-  dag_int_literal_node_from_lexeme,
-  dag_int_type_binding,
-  dag_type_atom_node
-}
-import v2.extdeps.runtimes.v2_evaluator { v2_evaluator_interpretation }
-import v2.std.cardinality { termination_proof_witness_for_node }
-import v2.std.collection { Map }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.integer {
-  Int,
-  integer_signed_i32_le_bytes_to_int
-}
-import v2.std.node {
-  ArrowBodyForm,
-  Atom,
-  ComputationBody,
-  ComputationNode,
-  Conj,
-  DirectAtomBody,
-  Edge,
-  Node,
-  Positional,
-  RecordConstructBody,
-  Symbol,
-  SyntheticOccurrence,
-  Transform,
-  TypeNode,
-  UnsupportedArrowBody,
-  arrow_body_record_construct_conforms,
-  arrow_body_target_is_valid_realization,
-  classify_arrow_body_form
-}
-import v2.std.node_query { find_arrow_body_child }
-import v2.std.optional { Optional, Present, optional_absent, optional_present }
-import v2.std.runtime { RuntimePrimitive, RuntimeValue }
-import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 
 // Semantic eval helpers for ArrowBodyForm acceptance witnesses: ingested arrows
 // cross normalize through ingested_fixture_arrows, then execute through

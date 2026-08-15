@@ -1,26 +1,5 @@
 module v2.workflow.orchestration_while_emit
 
-import v2.compiler.emit_orchestration { orch_emit_step, orch_emit_pipeline }
-import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
-import v2.extdeps.languages.bash_orch_if {
-  bash_path_predicate_target_model,
-  bash_dirname_ascent_target_model
-}
-import v2.std.orchestration {
-  Do,
-  ExitZero,
-  FailFast,
-  Pipeline,
-  PipelineStep,
-  Run,
-  While
-}
-import std.path_intent { And, DirnameAscent, Not, PathEntryKind, PathIntent, PathJoin, PathLiteral, PathNonempty, PathNotEq, PathRef }
-import v2.std.collection { Absent }
-import v2.std.diagnostic { Accepted, None, Rejected }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.filesystem.types { RegularFile, Directory, Missing }
-import std.types { FilePathParts, NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

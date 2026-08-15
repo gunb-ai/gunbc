@@ -1,29 +1,5 @@
 module test.claim.observation_seed_scoped_run_witness
 
-import std.types { Bool }
-import std.measure { nanosecond, millisecond, nanosecond_count }
-import std.measure { CpuClock }
-import extdeps.render.ansi {
-  ansi_carriage_return,
-  ansi_line_feed,
-  ansi_erase_entire_line,
-}
-import gunbc.observation_seed_render {
-  ScopedRunWriteProjected,
-  ScopedRunWriteRefused,
-  ScopedRunMeasuredProjected,
-  ScopedRunMeasuredRefused,
-  ScopedRunTimingProjected,
-  scoped_run_begin_write,
-  scoped_run_refused_write_measured,
-  scoped_run_final_write,
-  scoped_run_refused_write,
-  scoped_run_failed_write,
-  scoped_run_timed_out_write,
-  scoped_run_routine_measured_without_basis,
-  scoped_run_close_before_deferred_write,
-  scoped_run_timing_receipt,
-}
 
 fn entry() -> NonEmptyStr {
   "dag/example/scoped_run.dag" as NonEmptyStr

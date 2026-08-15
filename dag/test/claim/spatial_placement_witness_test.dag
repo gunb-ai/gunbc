@@ -1,54 +1,5 @@
 module test.claim.spatial_placement
 
-import product.placement_supply {
-  HostIdentity,
-  PhysicalAssetIdentity,
-  SiteIdentity,
-  RackIdentity,
-  RackResidence,
-  RackMounted,
-  RackShelfResident,
-  RackPositionUnobserved,
-  RackResidenceUnobserved,
-  PhysicalSite,
-  HostSpatialFacts,
-  WirelessAdapterStanding,
-  WirelessAdapterPresent,
-  WirelessAdapterAbsent,
-  WirelessAdapterUnobserved,
-  StationModeUnobserved,
-  WirelessReachStanding,
-  TargetAssociationObserved,
-  RelayProvisioned,
-  RelayIncapable,
-  BootstrapNeeded,
-  BootstrapNotNeeded,
-  WifiBootstrapStep,
-  WifiBootstrapChain,
-  WifiBootstrapAdmissible,
-  WifiBootstrapRefused,
-  site_contains_rack,
-  same_rack,
-  wireless_adapter_can_associate,
-  wifi_target_needs_bootstrap,
-  BootstrapNeedUnobserved,
-  wifi_relay_can_bootstrap,
-  wifi_probe_is_candidate,
-  wireless_reach_established,
-  wifi_bootstrap_step_admissible,
-  wifi_bootstrap_chain_admissible,
-  host_spatial_facts_for,
-}
-import std.types { NonEmptyStr, List }
-import gunbc.fleet_physical_inventory {
-  operator_physical_site,
-  rack_01,
-  host_srv1,
-  fleet_host_spatial_facts,
-  fleet_nominal_rackmount_arithmetic_holds,
-  srv1_measured_wireless_note,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

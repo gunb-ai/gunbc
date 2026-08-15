@@ -1,27 +1,5 @@
 module v2.test.lens_wiring_liveness.wiring_liveness_preflight_test
 
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, Symbol, SyntheticOccurrence, TypeNode }
-import v2.std.dependency { Contains, DependencyView }
-import v2.lens.affected_set {
-  ChangedSubgraphFrontier,
-  DependencyDependent,
-  FailClosed,
-  FrontierDependency,
-  ReExecFrontier,
-  ReasonDiagnostics,
-  ReasonSymbol,
-  empty_frontier
-}
-import v2.lens.common.graph_invariant { graph_reach_add_edge_repair }
-import v2.lens.wiring_liveness_preflight {
-  FrontierWiringObligation,
-  dead_wire_reason,
-  preflight_reexec_frontier
-}
-import v2.std.diagnostic { Suggested, correction_eq }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

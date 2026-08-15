@@ -1,27 +1,5 @@
 module test.claim.push_before_main_push_selection_witness_test
 
-import std.logic { Bool }
-import std.types { String, NonEmptyStr, list_length, List }
-import std.nat { Nat }
-import gunbc.diff_baseline {
-  CiDiffEvent,
-  DiffBaseline,
-  DiffBaselineResolution,
-  PushBefore,
-  PushBeforeSha,
-  BaselineSelected,
-  BaselineRefused,
-  BaselineSourceConflict,
-  resolve_diff_baseline
-}
-import gunbc.repo_identity { gunbc_merge_target_ref, gunbc_default_remote_name }
-import gunbc.selection_degradation_receipt {
-  selection_degradation_receipt_of,
-  selection_degradation_receipt_line,
-  selection_degradation_is_applied_narrowed,
-  selection_degradation_state_tag
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

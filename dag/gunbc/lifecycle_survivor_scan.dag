@@ -1,8 +1,5 @@
 module gunbc.lifecycle_survivor_scan
 
-import v2.std.decl_index { DataDeclTypeFact, data_decl_type_facts }
-import v2.lens.lifecycle_carrier { decl_name_is_lifecycle_carrier }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 
 // The live lifecycle-carrier population, derived from the corpus rather than remembered.
 //

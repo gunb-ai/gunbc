@@ -1,42 +1,5 @@
 module test.claim.roadmap_workflow_command_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.roadmap_workflow_command {
-  Supersedes,
-  WorkerTurn,
-  WorkflowCommandAdmitted,
-  WorkflowCommandRefused,
-  admit_start_new_attempt,
-  admit_resume_attempt,
-  admit_retry_mechanism,
-  legacy_attempt_cannot_satisfy_obligations,
-  legacy_attempt_supersedable_label,
-  attempt_lineage_row_label,
-  worker_turn_row_label,
-  attempt_key_short_form,
-}
-import gunbc.roadmap_workflow_progress {
-  WorkflowAttemptEvidence,
-  workflow_attempt_progress,
-}
-import gunbc.roadmap_verification_receipt {
-  VerificationSubjectUnobserved,
-  VerificationReceiptAbsent,
-  SelectionAbsent,
-}
-import gunbc.roadmap_presentation {
-  activity_view_from_progress,
-  LegacySupersedableAttempt,
-  ActiveWorkRefused,
-}
-import gunbc.roadmap_publish {
-  PublicationSubjectUnobserved,
-  ReceiptSourceAbsent,
-}
-import gunbc.worker_lifecycle { WorkerProcessAbsent }
-import gunbc.roadmap_provider_events {
-  ProviderEventsRefused,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

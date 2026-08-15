@@ -1,38 +1,5 @@
 module v2.test.resolve.qualified_module_projection_resolve
 
-import v2.compiler.resolve {
-  Namespace,
-  ResolveContext,
-  empty_canonical_symbol_set,
-  resolve_node,
-  scope_from_namespace
-}
-import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
-import v2.extdeps.languages.dag {
-  dag_grammar_atom,
-  dag_language_model,
-  dag_named_edge
-}
-import v2.std.algebra { fold_list_node }
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.collection { empty_map }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Conj,
-  Disj,
-  Edge,
-  Named,
-  Node,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode
-}
-import v2.std.qualified_name { qualified_name_from_dotted_string, qualified_name_snoc }
-import v2.std.resolution_policy { NamespaceOnlyY }
-import v2.std.symbol_index { empty_symbol_index, SymbolIndex }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

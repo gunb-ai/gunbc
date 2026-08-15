@@ -1,20 +1,5 @@
 module extdeps.llm.anthropic
 
-import std.types { NonEmptyStr }
-import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
-import extdeps.llm.anthropic_contracts {
-  wire_contract,
-  anthropic_chat_message_wire_contract,
-  anthropic_user_content_block_wire_contract,
-  anthropic_assistant_content_block_wire_contract,
-  anthropic_messages_200_content_block_wire_contract,
-  anthropic_tool_result_content_wire_contract,
-  anthropic_tool_result_block_wire_contract
-}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

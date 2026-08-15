@@ -6,25 +6,6 @@ module test.claim.hermetic_fixture_realization
 // went red on a diff that only added an import. The repair is the whole list, not the retraction:
 // a module that names some of its dependencies and leans on coincidence for the rest is in the
 // worst of both states.
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.content_hash { ContentHash, content_hash_of_value }
-import std.cache_identity { hermetic_fixture_artifact_kind }
-import std.cache_interface {
-  ArtifactIdentity,
-  PerHostFilesystem,
-  InProcess,
-  StructuredArtifact,
-  MissIsDiagnostic,
-  ContentAddressedByValue,
-}
-import extdeps.cache { cache_interface_facts_from_catalog, cache_key_projection_transport }
-import extdeps.cache.types { catalog_key_derivation_classification }
-import extdeps.realization.hermetic_fixture {
-  hermetic_fixture_file_facts,
-  hermetic_fixture_in_process_facts,
-  hermetic_fixture_file_store_id,
-  hermetic_fixture_in_process_id,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

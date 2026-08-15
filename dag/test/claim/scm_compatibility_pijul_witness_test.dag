@@ -1,48 +1,5 @@
 module test.claim.scm_compatibility_pijul_witness
 
-import std.types { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.pijul {
-  PijulUpstreamVersion,
-  PijulChannel,
-  PijulChannelStateIdentity,
-  PijulReadBackObservation,
-  PijulInaccessibleProjection,
-  pijul_upstream_version,
-}
-import test.claim.pijul_upstream_model_witness {
-  pijul_r0_fixture_projection,
-  pijul_r0_fixture_repository,
-  pijul_state_partial,
-  projection_with_channels,
-}
-import gunbc.scm_compatibility.pijul {
-  PijulCompatibilityBindingOutcome,
-  PijulCompatibilityBound,
-  PijulCompatibilityBindingRefused,
-  pijul_compatibility_bind,
-  pijul_compatibility_projection_handler,
-  pijul_compatibility_projection_receipt,
-}
-import gunbc.scm_compatibility_shape {
-  CompatibilityFidelityPreserved,
-  CompatibilityAdvanceUnavailable,
-  CompatibilityObservationOnly,
-  CompatibilityModeledAdvanceRequired,
-  CompatibilityExactCompareAndAdvance,
-  CompatibilityCapabilitySatisfied,
-  CompatibilityCapabilityRefused,
-  compatibility_projection_from_handler,
-  compatibility_check_advance_requirement,
-}
-import gunbc.native_scm_interaction_contract {
-  native_scm_primary_label,
-  native_scm_attach_projection,
-}
-import test.claim.native_scm_interaction_scenario_fixture {
-  TwoIndependentChangesLand,
-  native_scm_receipt_for,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,8 +1,5 @@
 module gunbc.v1_interpreter_primitive_surface
 
-import std.types { NonEmptyStr }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
-import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 
 data v1_interpreter_source_path: String = "src/v1/stage0/src/v1_interpreter.rs"
 

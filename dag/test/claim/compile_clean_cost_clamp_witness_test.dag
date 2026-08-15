@@ -1,14 +1,5 @@
 module test.claim.compile_clean_cost_clamp_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.workflow.ci_floor_plan {
-  gunbc_ci_compile_clean_clamp_ms,
-  gunbc_ci_compile_clean_clamp_overhead_seconds,
-  gunbc_ci_compile_clean_clamp_rate_per_unit_ms,
-  gunbc_ci_compile_clean_wall_exceeds_clamp,
-}
-import std.logic { Bool }
-import std.types { Int, String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

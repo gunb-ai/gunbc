@@ -1,27 +1,5 @@
 module v2.compiler.self_host.wet_receipt_enrollment
 
-import std.realization_schedule { ScheduleWitnessEntry, ExecutionWitnessKind }
-import v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries {
-  seed_emitter_behavioral_wet_known_red_entries
-}
-import v2.compiler.self_host.seed_emitter_behavioral_wet_module_bindings {
-  SelfHostWetReceiptBinding,
-  find_wet_receipt_binding
-}
-import v2.compiler.self_host.frontier {
-  CompilerModuleFrontierRow,
-  compiler_frontier_roster
-}
-import v2.std.algebra { length }
-import v2.std.collection {
-  List
-}
-import v2.std.optional {
-  Absent,
-  Present
-}
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 data falsifier_self_host_wet_enrollment_note: String = "Nightly falsifier Wet batch enrollment authority (Wave 2 CI substrate, 2026-07-15; review 44453): falsifier_self_host_wet_entries = template rows (always enrolled when green) PLUS module rows with a restored SelfHostWetReceiptBinding (seed_emitter_behavioral_wet_module_bindings) — disposition-independent so executed wet receipts can re-enroll on the green nightly roster while frontier rows remain SeedRetained until BuildGreen authorization. No binding ⇒ no green wet enrollment. Quarantine expect_red receipts stay on falsifier_self_host_wet_known_red_entries until local wet greens and the binding restores."
 

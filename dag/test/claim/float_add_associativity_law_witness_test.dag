@@ -1,19 +1,5 @@
 module test.claim.float_add_associativity_law_witness_test
 
-import std.types { Bool, Float }
-import std.algebra_law {
-  AssociativityCounterexampleWitness,
-  AssociativityRefutationReceipt,
-  AssociativityFloatAdd,
-  float_kernel_type_in_authority_roster,
-  associativity_refutation_holds_for_float_add,
-}
-import gunbc.float_add_associativity_observation {
-  float_add_associativity_refutation_holds,
-  float_add_associativity_refuted,
-  float_add_associativity_subject,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,44 +1,6 @@
 module v2.test.manual.typescript_derive_grammar_relation_row_round_trip
 
-import v2.extdeps.languages.typescript {
-  ts_eager_grammar_relation_row_witness,
-  ts_exemplar_emitted_for_lhs,
-  ts_formal_production_fn_add,
-  ts_grammar_relation_row_node,
-  ts_inhabitant_atom,
-  ts_emitted_add_fn_node,
-  ts_fn_add_scaffold_relation_row_node,
-  ts_grammar_relation_row,
-  ts_canonical_add_fn_tokens,
-  ts_concrete_token_node,
-  ts_pr3_identity_relation_row_witness,
-  ts_pr3_identity_typed_fn_emitted,
-  ts_task_formal_productions,
-  ts_task_type_alias_emitted,
-  ts_task_type_alias_relation_row_witness,
-  ts_type_annotation_task_record_emitted
-}
-import v2.std.grammar {
-  derive_grammar_relation_row,
-  derive_grammar_relation_row_node,
-  formal_production_for_lhs_exact,
-  grammar_relation_row_to_node,
-  grammar_relation_tokens_node
-}
 
-import v2.std.logic { Bool }
-import v2.std.witness { Holds, Violates, Witness }
-import v2.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, content_hash, SyntheticOccurrence }
-import v2.std.verification {
-  CompilesClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
-import v2.test.fixture.task_manager_demo { Task, create_task }
 
 fn ts_grammar_relation_round_trip_pass_node() -> Node {
   Node {

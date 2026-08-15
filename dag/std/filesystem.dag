@@ -1,10 +1,6 @@
 module std.filesystem
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.encoding { Encoding, is_text_encoding }
-import std.types { FilePath, MimeType }
-import std.filesystem.types { EntryKind, SymlinkTarget }
 
 type FileEntry {
   path: FilePath

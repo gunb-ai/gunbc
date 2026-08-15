@@ -1,16 +1,5 @@
 module gunbc.typed_module_cache_capacity
 
-import std.types { NonEmptyStr, Int, String }
-import std.logic { Bool }
-import std.measure { ByteSize, byte_size, byte_size_count }
-import std.realization_width { int_min, int_max }
-import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.host_budget_source {
-  HostBudgetResolution,
-  HostBudgetResolved,
-  HostBudgetUnreadable,
-}
 
 // WHY THIS MODULE EXISTS. extdeps.realization.reconcile_in_process declares the
 // typed module cache's ceiling as RuntimeDerivedLimit { authority: ... }, and

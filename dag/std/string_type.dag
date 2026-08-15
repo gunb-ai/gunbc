@@ -1,7 +1,5 @@
 module std.string_type
 
-import std.algebra { FreeMonoid, Ordering, Less, Equal, Greater, ordering_is_less }
-import std.types { Char }
 
 type String = FreeMonoid<Char>
 

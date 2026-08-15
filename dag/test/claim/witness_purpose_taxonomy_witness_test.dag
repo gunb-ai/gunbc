@@ -1,28 +1,5 @@
 module test.claim.witness_purpose_taxonomy_witness
 
-import std.decl_ref { decl_ref, DeclarationRef }
-import std.content_hash {
-  ContentHash,
-  Fnv1a64,
-  Fnv1a64StructuralDigestHex,
-  structural_content_hash,
-}
-import std.measure { millisecond, byte_size, millisecond_count, byte_size_count }
-import std.witness_purpose {
-  WitnessPurpose,
-  WitnessResourceBound,
-  BehavioralDiscriminator,
-  BoundaryCrossing,
-  PopulationTotality,
-  ExternalFidelity,
-  ResourceContract,
-  EvalWallTimeBound,
-  EvalThreadCpuBound,
-  PeakMemoryBound,
-  TerminatingOneShotFrontier,
-  TerminatingOneShotUnavailableDeadlineSubstrateAbsent,
-  TerminatingOneShotUnavailableCompletionSubstrateAbsent,
-}
 
 data witness_purpose_taxonomy_witness_note: String = "Slice C-a: stable WitnessPurpose vocabulary only — BehavioralDiscriminator, BoundaryCrossing, PopulationTotality, ExternalFidelity, ResourceContract. TerminatingOneShot is NOT a WitnessPurpose arm; TerminatingOneShotFrontier records honest deferral (deadline and completion substrates absent) until typed carriers land. No placement, envelope, or cadence logic — those are C-b/C-c slices."
 

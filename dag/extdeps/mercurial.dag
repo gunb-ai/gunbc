@@ -1,16 +1,5 @@
 module extdeps.mercurial
 
-import std.types { NonEmptyStr, Bytes, Timestamp }
-import std.integer { NonNegativeInt, UInt8 }
-import std.graph {
-  GraphEdge,
-  CallGraph,
-  graph_cycle_members,
-  graph_reverse_reachable_members,
-}
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.numeric.base16 { byte_hex_lower }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

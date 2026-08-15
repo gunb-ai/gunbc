@@ -1,56 +1,5 @@
 module gunbc.realization_vocab_confinement_census
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.decl_ref { DeclarationRef, decl_ref }
-import std.content_hash { Fnv1a64Structural, content_hash_atom }
-import gunbc.repository_census_observation {
-  RepositoryIdentity,
-  SourceRootIdentity,
-  CensusSubjectKey,
-  RepositoryPopulation,
-  CensusMethodRunIdentity,
-  CensusObservedRow,
-  RepositoryCensusObservation,
-  census_observed_row,
-  repository_census_observation,
-  repository_census_row_count,
-  repository_census_subject_keys,
-}
-import gunbc.repository_census_coverage {
-  CensusDenominatorObservation,
-  CensusCoverageOutcome,
-  CoverageEstablished,
-  CoverageRefused,
-  CensusMethodCapability,
-  ClassifiesDeclaredStructure,
-  CensusControlPair,
-  CensusConformanceOutcome,
-  CensusConformanceEstablished,
-  CensusConformanceControlOutcomesUnjoined,
-  CensusConformanceControlNotDistinctFromMeasurement,
-  CensusConformanceControlsDidNotDiscriminate,
-  CensusMethodConformanceReceipt,
-  CensusMethodCapabilityReceipt,
-  CensusInferenceCeiling,
-  CensusInferenceCeilingOutcome,
-  CensusCeilingDerived,
-  CensusCeilingRefusedRunMismatch,
-  census_denominator_observation,
-  census_establish_coverage,
-  census_method_conformance_receipt,
-  census_conformance_receipt_of,
-  census_method_capability_receipt,
-  census_inference_ceiling,
-  census_ceiling_supports_semantic_subject_claim,
-  census_ceiling_supports_semantic_absence,
-}
-import gunbc.guarantee_measurement { MeasurementRevision, GitRevision }
-import v2.lens.realization_vocabulary_containment {
-  target_ast_vocab_modules,
-  target_ast_vocab_module_prefixes,
-  realization_edge_path_prefixes,
-  realization_vocab_grandfathered_edge_keys,
-}
 
 data confinement_census_consumer_note: String = "THE FIRST DOMAIN CLAIM CARRIED END TO END ON THE CENSUS CARRIER, and the reason this module exists at all rather than another synthetic fixture. Blocker 8 asked for a real consumer, and a carrier tested only against rows it authored itself proves nothing about whether real data can inhabit it. The subject here is the confinement surface of the realization-vocabulary containment lens (v2.lens.realization_vocabulary_containment): the four declared rosters by which that lens decides what counts as target-AST vocabulary and where it is allowed to appear. Those rosters are ordinary declared data on main, so this census is substrate-only — it reads no live tree, and its row set is a function of the pinned revision rather than of whenever CI happens to run."
 

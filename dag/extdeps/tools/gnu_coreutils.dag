@@ -1,11 +1,6 @@
 module extdeps.tools.gnu_coreutils
 
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.types { NonEmptyStr, FilePath }
-import extdeps.version { VersionConstraint }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

@@ -1,42 +1,5 @@
 module gunbc.host_phase_status
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.upsert_decision { ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.host_standup {
-  HostStandupStep,
-  PhaseDisposition,
-  ModeledCompose,
-  DeclaredGap,
-  host_standup_spine,
-}
-import gunbc.host_assimilation_program {
-  FleetParticipation,
-  HostEnrollmentIntent,
-  assimilation_program_for,
-  ci_runner_enrollment_participation,
-  inference_serving_enrollment_participation,
-}
-import gunbc.host_standup_assimilation_deduction { srv3_post_install_actuation_verdict }
-import gunbc.host_reach_identity_probe {
-  observe_host_identity_converge,
-  observe_reach_secrets_network,
-}
-import gunbc.membership_reconcile {
-  MembershipPlan,
-  MemberAction,
-  MemberAdded,
-  MemberChanged,
-  MemberRemoved,
-  MemberRemovalRefused,
-  membership_reconcile,
-  membership_write_count,
-}
-import gunbc.ownership { Ownership, Owned }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv5, operator_host_srv6 }
-import product.placement_supply { HostIdentity }
-import std.measure { millisecond }
 
 data host_phase_status_authority_note: String = "THE per-(host x phase) status axis for the host-standup spine. It exists because the spine could describe itself but not its RELATIONSHIP TO THE LIVE FLEET: every phase carried a PhaseDisposition (is there a modeled authority?) and nothing carried an observation (does this host actually agree with it?). Answering 'where does subsumption stand' therefore meant a session reconstruction — hand ssh probes, prose transcription — and the answer went stale the moment it was written. Two axes, kept ORTHOGONAL on purpose, because collapsing them is the state-space conflation this lane keeps paying for: the MODELED axis is PhaseDisposition, a property of the phase, the same for every host; the LIVE axis is std.upsert_decision.ObservationVerdict, a property of the (host, phase) CELL. A phase can be fully modeled AND Inaccessible on a given host — that is exactly srv1/srv2 for the build-cache phase today — and a single fused enum could not say it. Note what is NOT minted here: no Converged|Diverged|Unreachable|Unmodeled verdict of our own. ObservationVerdict already carries Converged/Absent/Drifted/Conflict/Inaccessible/UnknownRefused, which is STRICTLY FINER on the diverged and unreachable axes, and it is already consumed by twelve modules including host_standup itself; a parallel four-arm verdict beside it would be the §3 nickname, duplicated again in everything derived from it. 'Unmodeled' is likewise not an observation and does not become a verdict arm — it stays on PhaseDisposition, carried on the cell beside the observation and derived from the spine, never authored. CORRECTION, found by execution 2026-07-25: the cell was FIRST written as a SUM (StatusUnmodeled | StatusObserved), which forced the two axes to be mutually exclusive and made the fold discard the observation on any DeclaredGap phase. The witness caught it immediately, because the single cell that CARRIES AN OBSERVATION today is (srv3, prefix:os-install-actuated) — a DeclaredGap phase — so live-observation coverage computed as 0 while a real Converged verdict sat one branch away. The sum was the very conflation this note claims to avoid, written into the type by the same hand that wrote the warning. The cell is now a PRODUCT of both axes, which also gives the lane a state it could not previously say: observed Converged on an unmodeled phase means the host is in the desired condition by means the model cannot reproduce — true of srv3's OS install, and exactly the kind of fact that should never round to either 'modeled' or 'gap'."
 

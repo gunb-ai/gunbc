@@ -1,54 +1,5 @@
 module test.claim.native_scm_interaction_contract_witness
 
-import std.types { Bool, String }
-import v2.std.optional { Present, Absent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.native_scm_interaction_contract {
-  NativeScmReceipt,
-  NativeScmContinuation,
-  NativeScmContinuationOption,
-  NativeScmContinuationOptions,
-  NativeScmFirstContinuationOption,
-  NativeScmSecondContinuationOption,
-  NativeScmContinuationChoiceMatched,
-  NativeScmContinuationChoiceNotOffered,
-  NativeScmProjectionRepaired,
-  NativeScmProjectionRepairBlockedByInternalWork,
-  NativeScmOperationalReady,
-  NativeScmInternalWorkPending,
-  NativeScmLifecyclePending,
-  native_scm_primary_label,
-  native_scm_choice_previews,
-  native_scm_resolve_choice,
-  native_scm_record_repaired_projection,
-  native_scm_inspect_receipt,
-}
-import test.claim.native_scm_interaction_scenario_fixture {
-  NativeScmScenario,
-  TwoIndependentChangesLand,
-  StaleTargetAutoResync,
-  DuplicateSubmissionAppliesOnce,
-  RenameReferenceUniqueMeaning,
-  TwoLegitimateMeaningsNeedChoice,
-  IncompatibleGoalsNeedAuthorizedDecider,
-  EvidenceGatheredInternally,
-  ToolModelProofDeficitRoutesInternally,
-  ProjectionFailureRepairsWithoutReinterpretation,
-  ConventionalScmImportWithoutManualRewrite,
-  VisibilityAuthorizedDetails,
-  native_scm_receipt_for,
-  native_scm_submission_ledger,
-  native_scm_apply_once,
-  native_scm_applied_count,
-  native_scm_rekey_receipt,
-}
-import gunbc.scm_compatibility_shape {
-  CompatibilityProjectionReceipt,
-  CompatibilityFidelityProfile,
-  CompatibilityFidelityPreserved,
-  CompatibilityFidelityUnavailable,
-  CompatibilityAdvanceUnavailable,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

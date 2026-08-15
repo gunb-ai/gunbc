@@ -1,48 +1,5 @@
 module test.claim.compute_board_emission_entry_witness
 
-import std.types { String, NonEmptyStr, List }
-import std.integer { Int }
-import product.compute_board.analog {
-  AnalogCircuitIntent,
-  ElectricalNet,
-}
-import product.compute_board.digital_control {
-  DigitalControlIntent,
-  DigitalEquation,
-  DigitalSignal,
-  SignalName,
-  SignalRef,
-}
-import product.compute_board.article {
-  BoardPowerInterfaceArticle,
-  power_interlock_article,
-}
-import product.compute_board.admission { refusal_set_count }
-import product.compute_board.device_binding {
-  DevicePinAssignment,
-  interlock_device_realization,
-  pin_refusal_set_count,
-}
-import product.compute_board.spice_projection { SpiceProjectionRefusal }
-import product.compute_board.emission_entry {
-  BoardArticleNotAdmitted,
-  BoardEmission,
-  BoardEmitted,
-  BoardTargetRefused,
-  emit_ngspice_run,
-  emit_ngspice_run_for,
-  emit_spice,
-  emit_spice_for,
-  emit_verilog,
-  emit_verilog_for,
-  emit_pin_constraints_for,
-}
-import product.compute_board.digital_control {
-  conditioned_good_signal,
-  fault_signal,
-  power_permit_signal,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

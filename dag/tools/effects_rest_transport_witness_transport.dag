@@ -1,6 +1,5 @@
 module tools.effects_rest_transport_witness_transport
 
-import tools.host_prelude { run_witness_bin }
 
 fn run_effects_rest_transport_witness() -> Bool {
   run_witness_bin(

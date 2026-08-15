@@ -1,9 +1,5 @@
 module gunbc.plans.ci_process_end_to_end
 
-import std.dissolution { unbound_dissolution }
-import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen }
-import std.markdown { MarkdownBlock, TableBlock, AlignNone }
-import gunbc.plans.md_helpers { h2, p, li, ul, ol, hr, quote, cell, row }
 
 fn ci_process_end_to_end_body() -> List<MarkdownBlock> {
   [

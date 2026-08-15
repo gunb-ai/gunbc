@@ -1,35 +1,5 @@
 module v2.test.claim.bash_program_fold_support
 
-import tools.build_step { BuildArtifact, emit_verifications }
-import v2.extdeps.languages.bash_build {
-  bash_build_and_then,
-  bash_build_assign,
-  bash_build_assign_lit,
-  bash_build_command_from_lits,
-  bash_build_command_from_word_nodes,
-  bash_build_command_words_pair,
-  bash_build_command_words_single,
-  bash_build_exit,
-  bash_build_if_from_stmts,
-  bash_build_or_else,
-  bash_build_subshell_from_stmts,
-  bash_build_with_redir,
-  bash_build_word_cmdsubst,
-  bash_build_word_concat,
-  bash_build_word_concat_from_nodes,
-  bash_build_word_lit,
-  bash_build_word_var
-}
-import v2.workflow.bash_emit {
-  BashEmitSpecial,
-  BashEmitStmt,
-  BashEmitTagged
-}
-import v2.std.algebra { list_append, list_map }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
-import v2.std.text { String }
 
 data bash_program_fold_support_note: String = "Shared bash fold tag helpers + real-program fixture builders for long/bash_program_real_probes_witness_test (review 43557 orphan fallout). Not a *_test.dag — module-local orphan hygiene would false-red cross-module-only helpers. Dissolve-on: rename remains honest as long as long/ is the consumer."
 

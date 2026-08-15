@@ -1,35 +1,5 @@
 module gunbc.bmc_intent
 
-import extdeps.bmc.capability {
-  BmcFirmwareIntent,
-  BmcFirmwareUnpinned,
-}
-import extdeps.bmc.types {
-  BmcFanCurve,
-  BmcFanCurveStep,
-}
-import extdeps.cpu.ampere { ampere_altra_max_m12830_thermal_limits }
-import extdeps.cpu.types { ProcessorThermalLimits }
-import std.measure {
-  Celsius,
-  Percent,
-  celsius,
-  celsius_count,
-  percent,
-  percent_count,
-  positive_celsius_delta,
-  positive_celsius_delta_count,
-  positive_measure_count,
-}
-import std.state_durability {
-  ControlPlaneRestartBoundary,
-  DurableAcross,
-  LifecycleGracefulRestart,
-  StateDurabilityBoundary,
-  StateDurabilityIntent,
-  state_durability_boundary_requirements,
-}
-import std.types { List, NonEmptyStr, String }
 
 type BmcFanAcousticPolicy {
   cooling_engaged_by_temperature: Celsius

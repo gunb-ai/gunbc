@@ -1,9 +1,5 @@
 module v2.extdeps.coordination
 
-import v2.std.collection { List }
-import v2.std.nat { Nat }
-import v2.std.network { NetworkAddress }
-import v2.std.node { Symbol }
 
 type LanguageRef {
   identity: Symbol

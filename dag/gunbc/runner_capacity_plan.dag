@@ -1,25 +1,5 @@
 module gunbc.runner_capacity_plan
 
-import std.types { String, NonEmptyStr, Bool, Int, List }
-import std.nat { Nat }
-import product.placement_supply { HostIdentity }
-import gunbc.build_cache_instance { RunnerSlotIdentity }
-import gunbc.fleet_intent_network {
-  operator_host_srv3, operator_host_srv4,
-}
-import gunbc.fleet_runner_connectivity {
-  OrganizationRunnerRosterEvidence,
-  RosterObserved,
-  RosterReadUnavailable,
-  runner_slot_connectivity_verdict_for_incarnation,
-  materialized_width_for_host,
-  local_incarnations_for_host,
-  roster_is_converged_seven_fixture,
-  SlotConnectivityDetached,
-  SlotConnectivityOrphaned,
-  SlotConnectivityUnknown,
-}
-import gunbc.runner_incarnation { LocalRunnerSlotIncarnation }
 
 data runner_capacity_plan_authority_note: String = "SINGLE AUTHORITY for RunnerCapacity plan actions and stable slot identities. requested_width, admission, and observed_width are SEPARATE facts — count equality is a POSTCONDITION, never a refusal. Five observed against seven requested yields EXACTLY two RunnerSlotAdd actions (06 and 07), not a circular controller that waits for a receipt before planning actuation. Connectivity repair folds into the same plan: active+offline or active+absent becomes RunnerIncarnationReplace; roster unavailable refuses destructive actions."
 

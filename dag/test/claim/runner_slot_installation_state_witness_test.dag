@@ -1,24 +1,5 @@
 module test.claim.runner_slot_installation_state_witness
 
-import std.logic { Bool }
-import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
-import gunbc.runner_incarnation {
-  RunnerSlotInstallationState,
-  RunnerSlotInstallationObservation,
-  SlotAbsent,
-  SlotMaterializedNotActive,
-  SlotCurrentlyActive,
-  SlotInstallationObserved,
-  SlotInstallationReachRefused,
-  runner_slot_add_requires_incarnation_replace,
-  runner_slot_installation_is_ready_to_activate,
-  runner_slot_installation_is_converged,
-  runner_slot_installation_must_not_reextract,
-  runner_slot_installation_observation_blocks_add,
-  runner_slot_installation_observation_must_not_reextract,
-  vivid_eagle_srv3_slot_installation_observation,
-  srv4_slot_installation_observation,
-}
 
 test fn witness_never_activated_materialized_is_ready() -> Bool {
   runner_slot_installation_is_ready_to_activate(
