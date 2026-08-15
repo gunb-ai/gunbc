@@ -13295,10 +13295,26 @@ pub(crate) fn native_len(val: &Value) -> Option<i64> {
 
 #[track_caller]
 pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
+    free_monoid_to_vec_with_ctx(active_ctx(), val)
+}
+
+/// The same walk, for a caller that HOLDS a context rather than running inside one.
+///
+/// The names `Cons`, `Empty`, `head` and `tail` have to be interned somewhere, and taking them
+/// from the thread-local ACTIVE context silently binds this function to being called during
+/// evaluation. A host that reads a value AFTER the evaluation that produced it — which is what
+/// every `.dag`-answers-the-host seam is — finds no active context, gets `None` for the symbols,
+/// and therefore `None` for the whole walk: a well-formed sequence reported as unreadable, with
+/// the failure indistinguishable from a wrong shape. The context is a parameter here so the
+/// caller's own context answers, and there is ONE walk rather than two.
+pub(crate) fn free_monoid_to_vec_with_ctx(
+    ctx: Option<&InterpContext>,
+    val: &Value,
+) -> Option<Vec<Value>> {
     let site = std::panic::Location::caller();
     let mut out = Vec::new();
     let mut cur = val.clone();
-    let monoid_syms = active_ctx().map(|ctx| {
+    let monoid_syms = ctx.map(|ctx| {
         (
             ctx.sym("Empty"),
             ctx.sym("Cons"),

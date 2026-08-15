@@ -7,6 +7,7 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import std.measure { Millisecond, millisecond }
 import std.execution_mode { ExecutionMode, Hermetic, Record, Wet, execution_mode_eq }
 import v2.workflow.floor2_prepared_subject {
   ResolvedWitness,
@@ -77,13 +78,16 @@ type RequiredFloorAttempt {
 // A row that remembers its batch invites a consumer to group by it, and the grouping is the
 // thing being deleted.
 //
-// The budget is milliseconds because that is the currency the host's evaluate primitive
-// reads (`EvaluatePreparedClaimRequest.budget_ms`); carrying seconds here and converting at
-// the seam would put a unit change between the authority and the mechanism that enforces it.
+// THE BUDGET IS A MEASURE, not a bare count of milliseconds. A field named for its unit is
+// the unit living in a name rather than in the type: nothing stops a seconds figure being
+// written into it, and the host that reads it cannot tell which it got. `std.measure`
+// `Millisecond` is `Measure<Time, Milli, Nat>` — the existing authority for this magnitude,
+// reused rather than re-coined (DESIGN section 2) — and the scale travels with the value, so
+// the host seam converts at ONE named place instead of trusting a field name.
 type RequiredFloorClaim {
   declaration: WitnessIdentity
   execution_mode: ExecutionMode
-  budget_ms: Int
+  budget: Millisecond
 }
 
 // THE DISPOSITION OF EVERY DECLARED WITNESS, total by construction.
@@ -152,8 +156,8 @@ data no_seen_qualified_names: List<String> = []
 // PLACEMENT question — which checks may ride the PR path — and this is an EXECUTION question:
 // how long a single claim may run before the frame refuses. They agree on 5 seconds today,
 // and reusing one for the other would make that coincidence load-bearing.
-fn required_floor_claim_budget_ms() -> Int {
-  5000
+fn required_floor_claim_budget() -> Millisecond {
+  millisecond(count: 5000)
 }
 
 fn required_floor_claim_qualified(claim: RequiredFloorClaim) -> String {
@@ -264,7 +268,7 @@ fn scan_resolved(
         head: RequiredFloorClaim {
           declaration: id,
           execution_mode: mode,
-          budget_ms: required_floor_claim_budget_ms()
+          budget: required_floor_claim_budget()
         },
         tail: acc.claims
       },

@@ -25041,7 +25041,7 @@ fn required_floor_claims_from_admission(
     if ctx.sym_eq(*variant_name, "RequiredFloorRefused") {
         let rendered = match ctx
             .field(fields, "refusals")
-            .and_then(v1_interpreter::free_monoid_to_vec)
+            .and_then(|v| v1_interpreter::free_monoid_to_vec_with_ctx(Some(ctx), v))
         {
             Some(items) => items
                 .iter()
@@ -25074,14 +25074,16 @@ fn required_floor_claims_from_admission(
     // walker taught the same two shapes.
     let Some(rows) = ctx
         .field(af, "claims")
-        .and_then(v1_interpreter::free_monoid_to_vec)
+        .and_then(|v| v1_interpreter::free_monoid_to_vec_with_ctx(Some(ctx), v))
     else {
         // The refusal names the SHAPE it received. "carries no claim list" read as an empty
         // roster and cost two full eight-minute runs to distinguish from a value the walker
         // declined to walk; those are different facts with different fixes.
         return Err(format!(
-            "the attempt's claim list is not a readable sequence (got {:?})",
+            "the attempt's claim list is not a readable sequence (got {})",
             ctx.field(af, "claims")
+                .map(|v| v.type_label_public())
+                .unwrap_or("no such field")
         ));
     };
     let mut out = Vec::with_capacity(rows.len());
@@ -25101,8 +25103,19 @@ fn required_floor_claims_from_admission(
             Some(v1_interpreter::Value::Str(s)) => s.clone(),
             _ => return Err("a claim identity carries no function name".to_string()),
         };
-        let budget_ms = match ctx.field(cf, "budget_ms") {
-            Some(v1_interpreter::Value::Int(n)) if *n > 0 => *n as u64,
+        // The claim carries `std.measure` `Millisecond`, so the scale is part of the value and
+        // this is the ONE place it is opened. `Measure` is a record with a `count`, so the
+        // read is that field -- not a bare `Int` whose unit lived in a field name the host had
+        // to trust.
+        let budget_count = ctx
+            .field(cf, "budget")
+            .and_then(|b| match b {
+                v1_interpreter::Value::Record { fields, .. } => ctx.field(fields, "count").cloned(),
+                other => Some(other.clone()),
+            })
+            .unwrap_or(v1_interpreter::Value::Null);
+        let budget_ms = match &budget_count {
+            v1_interpreter::Value::Int(n) if *n > 0 => *n as u64,
             // A non-positive budget is refused rather than defaulted: a zero deadline that
             // reads as "no limit" is the absorbing fallback, and one that reads as "refuse
             // instantly" fails every claim for a reason unrelated to the claim.
