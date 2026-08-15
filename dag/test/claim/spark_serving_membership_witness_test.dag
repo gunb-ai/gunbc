@@ -29,7 +29,6 @@ import gunbc.spark_serving_release {
   RuntimeArtifactIdentity,
   spark_serving_release_identity,
 }
-import std.dissolution { dissolution_description }
 import gunbc.spark_serving_desired {
   spark_serving_desired_release_admission,
   SparkServingDesiredAdmitted,
@@ -37,8 +36,7 @@ import gunbc.spark_serving_desired {
   spark_serving_occurrence,
   spark_serving_desired_model_artifact,
 }
-import gunbc.spark_serving_install_paths { spark_serving_user_unit_path }
-import gunbc.spark_serving_observe { spark_serving_unit_name }
+import gunbc.spark_serving_install_paths { spark_serving_user_unit_path, spark_serving_unit_name }
 import gunbc.spark_serving_membership {
   SparkServingMember,
   SparkServingMemberKind,
@@ -63,12 +61,10 @@ import gunbc.spark_serving_membership {
   spark_serving_user_unit_file_write_intent,
   spark_serving_phase1_transport_gaps,
   spark_serving_phase1_transport_gap_count,
-  spark_serving_phase1_gap_dissolution_trigger,
   SparkServingPhase1TransportGap,
   SparkServingRemoteFileWriteTransportGap,
   SparkServingGenerateAcceptanceTransportGap,
   SparkServingCrossStepRemoteContextGap,
-  SparkServingSystemdUnitCompositionGap,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -151,7 +147,7 @@ fn plan_has_refused_kind(plan: MembershipPlan<SparkServingMember>, kind: SparkSe
 data w_noop_note: String = "Already-correct host converging to ZERO effects is the claim most likely to be quietly false — reinstall-every-time is indistinguishable from correct from the outside. Asserts plan AND membership_effects both empty."
 
 test fn w_spark_serving_phase1_transport_gaps_enrolled() -> Bool {
-  spark_serving_phase1_transport_gap_count() == 4
+  spark_serving_phase1_transport_gap_count() == 3
     && any(
       spark_serving_phase1_transport_gaps(),
       gap => gap == SparkServingRemoteFileWriteTransportGap,
@@ -164,24 +160,6 @@ test fn w_spark_serving_phase1_transport_gaps_enrolled() -> Bool {
       spark_serving_phase1_transport_gaps(),
       gap => gap == SparkServingCrossStepRemoteContextGap,
     )
-    && any(
-      spark_serving_phase1_transport_gaps(),
-      gap => gap == SparkServingSystemdUnitCompositionGap,
-    )
-}
-
-test fn w_spark_serving_phase1_gap_dissolution_triggers_are_typed() -> Bool {
-  fold(
-    spark_serving_phase1_transport_gaps(),
-    init: true,
-    f: (acc, gap) =>
-      acc
-        && string_length(
-          s: dissolution_description(
-            condition: spark_serving_phase1_gap_dissolution_trigger(gap: gap),
-          ),
-        ) > 0,
-  )
 }
 
 test fn w_spark_serving_desired_release_admits_for_admission_backed_witnesses() -> Bool {
@@ -301,14 +279,16 @@ test fn w_spark_serving_enable_refuses_without_runtime_root() -> Bool {
   }
 }
 
-test fn w_spark_serving_user_unit_path_uses_observe_unit_name_authority() -> Bool {
+test fn w_spark_serving_user_unit_path_uses_install_paths_unit_name_authority() -> Bool {
   string_contains(s: spark_serving_user_unit_path() as String, pattern: spark_serving_unit_name)
 }
 
-test fn w_spark_serving_unit_write_intent_carries_modeled_contents() -> Bool {
+test fn w_spark_serving_unit_write_intent_carries_typed_spec() -> Bool {
   let intent = spark_serving_user_unit_file_write_intent()
-  string_contains(s: intent.content, pattern: "[Service]")
-    && intent.path == spark_serving_user_unit_path()
+  intent.path == spark_serving_user_unit_path()
+    && intent.spec.service_type == ("simple" as NonEmptyStr)
+    && intent.spec.exec_subcommand == ("serve" as NonEmptyStr)
+    && string_contains(s: intent.spec.bind_host_port as String, pattern: ":")
 }
 
 test fn w_spark_serving_change_projects_effect_replace() -> Bool {
