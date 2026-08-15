@@ -2463,15 +2463,206 @@ pub fn reference_path_segments_from_dotted(
     })
 }
 
-pub fn reference_path_from_dotted_name(
+pub fn reference_path_module_prefix_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE HEAD OF A DOTTED PATH IS A MODULE PATH, NOT A SEGMENT, and an earlier revision of this producer got that wrong in a way worth recording because it looked correct against the corpus. It split at EVERY dot and took the FIRST segment as the head, which happens to work for the import-era spelling live_tree.LiveTreeDisposition -- one qualifier segment, one member -- and fails for every other shape. A fully qualified std.types.NonEmptyStr yields head std, which names no module, so it refused at the head; and a three-segment live_tree.LiveTreeDisposition.ReadsLiveTree refused the same way, which would have read as multi-segment descent being unimplemented when the real defect was the split. The rule is instead the LONGEST PREFIX that names a module: segments are consumed into the head while they still name one, and everything after is descent. That serves both spellings from one rule -- the exact-path match answers a fully qualified reference and the suffix match answers a shortest-qualifier one, because module_named_by_qualifier already admits both -- so the qualification policy is a corpus-migration question rather than a producer question, which is the opposite of what a one-segment split implied.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn module_declaration_named_by_qualifier(
+    index: Rc<OccurrenceCandidateIndex>,
+    declaration: Rc<DeclarationOccurrence>,
+    qualifier: String,
+) -> bool {
+    match v1_rt::map_get(
+        &index.entries_by_id.clone(),
+        declaration.occurrence.clone().value.clone(),
+    ) {
+        None => false,
+        Some(entry) => {
+            ((entry.projection.clone().authored_name.clone() == qualifier.clone())
+                || v1_rt::ends_with(
+                    entry.projection.clone().authored_name.clone(),
+                    v1_rt::concat(".".to_string(), qualifier.clone()),
+                ))
+        }
+    }
+}
+
+pub fn module_declared_by_qualifier(
+    index: Rc<OccurrenceCandidateIndex>,
+    qualifier: String,
+) -> bool {
+    match v1_rt::map_get(
+        &index.module_declarations_by_segment.clone(),
+        module_declaration_last_segment(qualifier.clone()),
+    ) {
+        None => false,
+        Some(modules) => modules.clone().iter().cloned().fold(
+            false,
+            |found: bool, declaration: Rc<DeclarationOccurrence>| {
+                (found
+                    || module_declaration_named_by_qualifier(
+                        index.clone(),
+                        declaration.clone(),
+                        qualifier.clone(),
+                    ))
+            },
+        ),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ModulePrefixScan {
+    pub taken: i64,
+    pub prefix: String,
+    pub best: i64,
+}
+
+pub fn module_prefix_scan_step(
+    index: Rc<OccurrenceCandidateIndex>,
+    acc: Rc<ModulePrefixScan>,
+    segment: String,
+) -> Rc<ModulePrefixScan> {
+    {
+        let grown = prefix_append(acc.prefix.clone(), acc.taken.clone(), segment.clone());
+        let taken = (acc.taken.clone() + 1);
+        match module_declared_by_qualifier(index.clone(), grown.clone()) {
+            true => Rc::new(ModulePrefixScan {
+                taken: taken.clone(),
+                prefix: grown.clone(),
+                best: taken.clone(),
+            }),
+            false => Rc::new(ModulePrefixScan {
+                taken: taken.clone(),
+                prefix: grown.clone(),
+                best: acc.best.clone(),
+            }),
+        }
+    }
+}
+
+pub fn module_prefix_match_length(
+    index: Rc<OccurrenceCandidateIndex>,
+    segments: Rc<Vec<String>>,
+) -> i64 {
+    segments
+        .clone()
+        .iter()
+        .cloned()
+        .fold(
+            Rc::new(ModulePrefixScan {
+                taken: 0,
+                prefix: "".to_string(),
+                best: 0,
+            }),
+            |acc: Rc<ModulePrefixScan>, segment: String| {
+                module_prefix_scan_step(index.clone(), acc, segment.clone())
+            },
+        )
+        .best
+        .clone()
+}
+
+pub fn joined_prefix_step(acc: Rc<ModulePrefixScan>, segment: String) -> Rc<ModulePrefixScan> {
+    match (acc.taken.clone() >= acc.best.clone()) {
+        true => Rc::new(ModulePrefixScan {
+            taken: (acc.taken.clone() + 1),
+            prefix: acc.prefix.clone(),
+            best: acc.best.clone(),
+        }),
+        false => Rc::new(ModulePrefixScan {
+            taken: (acc.taken.clone() + 1),
+            prefix: prefix_append(acc.prefix.clone(), acc.taken.clone(), segment.clone()),
+            best: acc.best.clone(),
+        }),
+    }
+}
+
+pub fn prefix_append(prefix: String, taken: i64, segment: String) -> String {
+    match (taken.clone() == 0) {
+        true => segment,
+        false => v1_rt::concat(prefix.clone(), v1_rt::concat(".".to_string(), segment)),
+    }
+}
+
+pub fn joined_prefix(segments: Rc<Vec<String>>, count: i64) -> String {
+    segments
+        .clone()
+        .iter()
+        .cloned()
+        .fold(
+            Rc::new(ModulePrefixScan {
+                taken: 0,
+                prefix: "".to_string(),
+                best: count.clone(),
+            }),
+            joined_prefix_step,
+        )
+        .prefix
+        .clone()
+}
+
+pub fn reference_path_segment_of(name: String, span: Rc<SourceSpan>) -> Rc<ReferencePathSegment> {
+    Rc::new(ReferencePathSegment {
+        name: name.clone(),
+        diagnostic_span: span.clone(),
+        occurrence: None,
+    })
+}
+
+pub fn reference_path_tail_segments(
+    segments: Rc<Vec<String>>,
+    head_len: i64,
+    span: Rc<SourceSpan>,
+) -> Rc<Vec<Rc<ReferencePathSegment>>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for segment in Rc::new(
+            segments
+                .clone()
+                .iter()
+                .cloned()
+                .skip(head_len.clone() as usize)
+                .collect::<Vec<_>>(),
+        )
+        .iter()
+        .cloned()
+        {
+            __result.push(reference_path_segment_of(segment.clone(), span.clone()));
+        }
+        __result
+    })
+}
+
+pub fn reference_path_with_module_head(
     reference: Rc<ReferenceOccurrence>,
-    name: String,
+    segments: Rc<Vec<String>>,
+    head_len: i64,
+) -> Rc<ReferencePathBuild> {
+    Rc::new(ReferencePathBuild::ReferencePathBuilt {
+        path: Rc::new(ReferencePath {
+            head_name: joined_prefix(segments.clone(), head_len.clone()),
+            head_span: reference.diagnostic_span.clone(),
+            head_occurrence: reference.occurrence.clone(),
+            segments: reference_path_tail_segments(
+                segments.clone(),
+                head_len.clone(),
+                reference.diagnostic_span.clone(),
+            ),
+        }),
+    })
+}
+
+pub fn reference_path_with_first_segment_head(
+    reference: Rc<ReferenceOccurrence>,
+    segments: Rc<Vec<String>>,
 ) -> Rc<ReferencePathBuild> {
     {
-        let __fm = v1_rt::reverse(reference_path_segments_from_dotted(
-            name.clone(),
-            reference.diagnostic_span.clone(),
-        ));
+        let __fm = segments.clone();
         if __fm.is_empty() {
             Rc::new(ReferencePathBuild::ReferencePathRefused {
                 reason: Rc::new(ReferencePathRefusal::ReferencePathEmptySegmentText {
@@ -2479,23 +2670,32 @@ pub fn reference_path_from_dotted_name(
                 }),
             })
         } else {
-            let head_segment = (*__fm)[0].clone();
-            let rest: Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect());
-            match (head_segment.name.clone() == "".to_string()) {
-                true => Rc::new(ReferencePathBuild::ReferencePathRefused {
-                    reason: Rc::new(ReferencePathRefusal::ReferencePathEmptySegmentText {
-                        occurrence: reference.occurrence.clone(),
-                    }),
-                }),
-                false => Rc::new(ReferencePathBuild::ReferencePathBuilt {
-                    path: Rc::new(ReferencePath {
-                        head_name: head_segment.name.clone(),
-                        head_span: reference.diagnostic_span.clone(),
-                        head_occurrence: reference.occurrence.clone(),
-                        segments: rest.clone(),
-                    }),
-                }),
-            }
+            let first_segment = (*__fm)[0].clone();
+            reference_path_with_module_head(reference.clone(), segments.clone(), 1)
+        }
+    }
+}
+
+pub fn reference_path_from_dotted_name(
+    index: Rc<OccurrenceCandidateIndex>,
+    reference: Rc<ReferenceOccurrence>,
+    name: String,
+) -> Rc<ReferencePathBuild> {
+    {
+        let segments = Rc::new(
+            name.clone()
+                .split(&".".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        );
+        let head_len = module_prefix_match_length(index.clone(), segments.clone());
+        match (head_len.clone() == 0) {
+            true => reference_path_with_first_segment_head(reference.clone(), segments.clone()),
+            false => reference_path_with_module_head(
+                reference.clone(),
+                segments.clone(),
+                head_len.clone(),
+            ),
         }
     }
 }
@@ -2593,7 +2793,7 @@ pub fn reference_path_of(
             }),
         }),
         Some(name) => match v1_rt::string_contains(&name, ".".to_string()) {
-            true => reference_path_from_dotted_name(reference.clone(), name.clone()),
+            true => reference_path_from_dotted_name(index.clone(), reference.clone(), name.clone()),
             false => reference_path_descend(
                 index.clone(),
                 references.clone(),
@@ -2695,10 +2895,22 @@ pub fn head_candidate_declarations(
         };
         let named_modules = match v1_rt::map_get(
             &index.module_declarations_by_segment.clone(),
-            head_name.clone(),
+            module_declaration_last_segment(head_name.clone()),
         ) {
             None => Rc::new(vec![]),
-            Some(modules) => v1_rt::reverse(modules.clone()),
+            Some(modules) => Rc::new({
+                let mut __result = Vec::new();
+                for declaration in v1_rt::reverse(modules.clone()).iter().cloned() {
+                    if module_declaration_named_by_qualifier(
+                        index.clone(),
+                        declaration.clone(),
+                        head_name.clone(),
+                    ) {
+                        __result.push(declaration);
+                    }
+                }
+                __result
+            }),
         };
         v1_rt::concat(on_chain.clone(), named_modules.clone())
     }

@@ -1773,24 +1773,139 @@ fn reference_path_segments_from_dotted(
     Cons { head: ReferencePathSegment { name: segment, diagnostic_span: span, occurrence: none }, tail: acc })
 }
 
+data reference_path_module_prefix_note: String = "THE HEAD OF A DOTTED PATH IS A MODULE PATH, NOT A SEGMENT, and an earlier revision of this producer got that wrong in a way worth recording because it looked correct against the corpus. It split at EVERY dot and took the FIRST segment as the head, which happens to work for the import-era spelling live_tree.LiveTreeDisposition -- one qualifier segment, one member -- and fails for every other shape. A fully qualified std.types.NonEmptyStr yields head std, which names no module, so it refused at the head; and a three-segment live_tree.LiveTreeDisposition.ReadsLiveTree refused the same way, which would have read as multi-segment descent being unimplemented when the real defect was the split. The rule is instead the LONGEST PREFIX that names a module: segments are consumed into the head while they still name one, and everything after is descent. That serves both spellings from one rule -- the exact-path match answers a fully qualified reference and the suffix match answers a shortest-qualifier one, because module_named_by_qualifier already admits both -- so the qualification policy is a corpus-migration question rather than a producer question, which is the opposite of what a one-segment split implied."
+
+fn module_declaration_named_by_qualifier(
+  index: OccurrenceCandidateIndex,
+  declaration: DeclarationOccurrence,
+  qualifier: String
+) -> Bool {
+  match map_get(index.entries_by_id, declaration.occurrence.value) {
+    Absent => false
+    Present { value: entry } =>
+      (entry.projection.authored_name == qualifier)
+        || ends_with(s: entry.projection.authored_name, suffix: concat(".", qualifier))
+  }
+}
+
+fn module_declared_by_qualifier(index: OccurrenceCandidateIndex, qualifier: String) -> Bool {
+  match map_get(
+    index.module_declarations_by_segment,
+    module_declaration_last_segment(authored_name: qualifier),
+  ) {
+    Absent => false
+    Present { value: modules } =>
+      fold(modules, init: false, f: (found, declaration) =>
+        found || module_declaration_named_by_qualifier(
+          index: index,
+          declaration: declaration,
+          qualifier: qualifier,
+        ))
+  }
+}
+
+type ModulePrefixScan {
+  taken: Int
+  prefix: String
+  best: Int
+}
+
+fn module_prefix_scan_step(
+  index: OccurrenceCandidateIndex,
+  acc: ModulePrefixScan,
+  segment: String
+) -> ModulePrefixScan {
+  let grown = prefix_append(prefix: acc.prefix, taken: acc.taken, segment: segment)
+  let taken = acc.taken + 1
+  match module_declared_by_qualifier(index: index, qualifier: grown) {
+    true => ModulePrefixScan { taken: taken, prefix: grown, best: taken }
+    false => ModulePrefixScan { taken: taken, prefix: grown, best: acc.best }
+  }
+}
+
+fn module_prefix_match_length(index: OccurrenceCandidateIndex, segments: List<String>) -> Int {
+  fold(segments, init: ModulePrefixScan { taken: 0, prefix: "", best: 0 }, f: (acc, segment) =>
+    module_prefix_scan_step(index: index, acc: acc, segment: segment)).best
+}
+
+fn joined_prefix_step(acc: ModulePrefixScan, segment: String) -> ModulePrefixScan {
+  match acc.taken >= acc.best {
+    true => ModulePrefixScan { taken: acc.taken + 1, prefix: acc.prefix, best: acc.best }
+    false => ModulePrefixScan {
+      taken: acc.taken + 1,
+      prefix: prefix_append(prefix: acc.prefix, taken: acc.taken, segment: segment),
+      best: acc.best,
+    }
+  }
+}
+
+fn prefix_append(prefix: String, taken: Int, segment: String) -> String {
+  match taken == 0 {
+    true => segment
+    false => concat(prefix, concat(".", segment))
+  }
+}
+
+fn joined_prefix(segments: List<String>, count: Int) -> String {
+  fold(
+    segments,
+    init: ModulePrefixScan { taken: 0, prefix: "", best: count },
+    f: joined_prefix_step
+  ).prefix
+}
+
+fn reference_path_segment_of(name: String, span: SourceSpan) -> ReferencePathSegment {
+  ReferencePathSegment { name: name, diagnostic_span: span, occurrence: none }
+}
+
+fn reference_path_tail_segments(
+  segments: List<String>,
+  head_len: Int,
+  span: SourceSpan
+) -> List<ReferencePathSegment> {
+  segments |> skip(n: head_len) |> map(segment => reference_path_segment_of(name: segment, span: span))
+}
+
+fn reference_path_with_module_head(
+  reference: ReferenceOccurrence,
+  segments: List<String>,
+  head_len: Int
+) -> ReferencePathBuild {
+  ReferencePathBuilt {
+    path: ReferencePath {
+      head_name: joined_prefix(segments: segments, count: head_len),
+      head_span: reference.diagnostic_span,
+      head_occurrence: reference.occurrence,
+      segments: reference_path_tail_segments(
+        segments: segments,
+        head_len: head_len,
+        span: reference.diagnostic_span,
+      ),
+    }
+  }
+}
+
+fn reference_path_with_first_segment_head(
+  reference: ReferenceOccurrence,
+  segments: List<String>
+) -> ReferencePathBuild {
+  match segments {
+    Empty => ReferencePathRefused { reason: ReferencePathEmptySegmentText { occurrence: reference.occurrence } }
+    Cons { head: first_segment, tail: _ } =>
+      reference_path_with_module_head(reference: reference, segments: segments, head_len: 1)
+  }
+}
+
 fn reference_path_from_dotted_name(
+  index: OccurrenceCandidateIndex,
   reference: ReferenceOccurrence,
   name: String
 ) -> ReferencePathBuild {
-  match reverse(reference_path_segments_from_dotted(name: name, span: reference.diagnostic_span)) {
-    Empty => ReferencePathRefused { reason: ReferencePathEmptySegmentText { occurrence: reference.occurrence } }
-    Cons { head: head_segment, tail: rest } =>
-      match head_segment.name == "" {
-        true => ReferencePathRefused { reason: ReferencePathEmptySegmentText { occurrence: reference.occurrence } }
-        false => ReferencePathBuilt {
-          path: ReferencePath {
-            head_name: head_segment.name,
-            head_span: reference.diagnostic_span,
-            head_occurrence: reference.occurrence,
-            segments: rest,
-          }
-        }
-      }
+  let segments = name |> split(delimiter: ".")
+  let head_len = module_prefix_match_length(index: index, segments: segments)
+  match head_len == 0 {
+    true => reference_path_with_first_segment_head(reference: reference, segments: segments)
+    false => reference_path_with_module_head(reference: reference, segments: segments, head_len: head_len)
   }
 }
 
@@ -1854,7 +1969,7 @@ fn reference_path_of(
     Absent => ReferencePathRefused { reason: ReferencePathOccurrenceNotIndexed { occurrence: reference.occurrence } }
     Present { value: name } =>
       match string_contains(name, ".") {
-        true => reference_path_from_dotted_name(reference: reference, name: name)
+        true => reference_path_from_dotted_name(index: index, reference: reference, name: name)
         false => reference_path_descend(
           index: index,
           references: references,
@@ -1903,9 +2018,18 @@ fn head_candidate_declarations(
           ))
     }
   let named_modules =
-    match map_get(index.module_declarations_by_segment, head_name) {
+    match map_get(
+      index.module_declarations_by_segment,
+      module_declaration_last_segment(authored_name: head_name),
+    ) {
       Absent => []
-      Present { value: modules } => reverse(modules)
+      Present { value: modules } =>
+        reverse(modules)
+          |> filter(declaration => module_declaration_named_by_qualifier(
+            index: index,
+            declaration: declaration,
+            qualifier: head_name,
+          ))
     }
   concat(on_chain, named_modules)
 }

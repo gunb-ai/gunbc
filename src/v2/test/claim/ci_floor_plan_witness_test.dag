@@ -380,7 +380,7 @@ fn v1_claim_scoped_known_red_probe_batch_holds(r: Runnable) -> Bool {
       (roots == ["dag", "src/v1"])
         && (length(xs: dirs) == 0)
         && (length(xs: entries) == length(xs: known_red_probe_v1_envelope_roster()))
-        && (mode == SelectionApplied)
+        && (mode == SelectionOff)
         && discovery_batch_declares_hermetic(r: r)
         && (p.spawns_host_compiler == false)
     RunnableScopedWitnessBatch { batch: _ } => false

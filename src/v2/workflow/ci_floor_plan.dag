@@ -1374,6 +1374,8 @@ fn gunbc_ci_floor_ordinary_batches() -> List<List<Runnable>> {
   )
 }
 
+data v1_claim_scoped_known_red_probe_selection_note: String = "SELECTION IS OFF HERE, and the reason is a property of this batch's envelope rather than a preference. Affected-set selection resolves its own machinery -- v2.workflow.affected_set_floor_runner among others -- from the batch's source roots, and this batch's roots are exactly dag plus src/v1 because that is the envelope its subject needs. Under SelectionApplied the run therefore refused fail-closed with the runner having no provenance in the module-graph pool, which is the selection machinery correctly reporting that it is outside every root rather than a defect in the roster. The sibling v1_claim_scoped_witness_batch avoids this only because it is a RunnableScopedWitnessBatch carrying InheritedWalkSourceRoots, so its worker resolves that machinery from the ENCLOSING walk; a plain discovery batch has no such authority. Widening the roots to src/v2 was rejected for the reason that batch's own note gives -- it moves the subject envelope and invalidates the measured clamp basis. Selection buys nothing here regardless: the roster is a handful of explicit expect-red entries, so there is no unrelated population to skip."
+
 data v1_claim_scoped_known_red_probe_batch_note: String = "Per-PR Hermetic expect_red lane for known-red CorpusWitnessKind rows whose subject needs the dag plus src/v1 envelope (gunbc.explicit_witness_admission known_red_probe_v1_envelope_roster: src/v1 paths plus dag witnesses that import v1.*). The falsifier's corpus-root probe batch cannot resolve these entries; running them there would treat resolve-refuse as expect-red success without executing the predicate (DESIGN section 5 specification-without-execution). This batch mirrors v1_claim_scoped_witness_batch's dag plus src/v1 source-root envelope and runs SelectionApplied on the ordinary floor. ENROLLMENT COUPLING: enrolling this batch (known_red_probe_v1_envelope_roster becomes non-empty) requires adding its companion positional row to gunbc.ci_spec gunbc_ci_floor_batch_clamp_params in the same change — the clamp table is unconditional data while this batch is conditionally enrolled, so a roster-only edit that enrolls the batch without the clamp row fails with floor batch clamp params must cover N scheduled batches."
 
 fn v1_claim_scoped_known_red_probe_batch_enrolled() -> Bool {
@@ -1385,7 +1387,7 @@ fn gunbc_v1_claim_scoped_known_red_probe_batch() -> Runnable {
     source_roots: ["dag", "src/v1"],
     scan_dirs: [],
     explicit_entries: known_red_probe_v1_envelope_roster(),
-    node_frontier_selection: SelectionApplied,
+    node_frontier_selection: SelectionOff,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     profile: runnable_resource_profile(

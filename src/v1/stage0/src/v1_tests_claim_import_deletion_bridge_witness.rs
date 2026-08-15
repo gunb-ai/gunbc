@@ -268,7 +268,7 @@ pub fn idb_path_consumer_source_note() -> String {
 }
 
 pub fn idb_path_consumer_source() -> String {
-    (((((((((((((((((((("module test.fixture.import_deletion_bridge.path_controls_consumer\n".to_string() + &"\n".to_string()) + &"fn reads_good(d: live_tree.LiveTreeDisposition) -> live_tree.LiveTreeDisposition {\n".to_string()) + &"  d\n".to_string()) + &"}\n".to_string()) + &"\n".to_string()) + &"fn reads_missing_member(d: live_tree.NoSuchMember) -> live_tree.NoSuchMember {\n".to_string()) + &"  d\n".to_string()) + &"}\n".to_string()) + &"\n".to_string()) + &"fn reads_missing_head(d: no_such_module.Anything) -> no_such_module.Anything {\n".to_string()) + &"  d\n".to_string()) + &"}\n".to_string()) + &"\n".to_string()) + &"fn reads_ordinary_field(d: live_tree.LiveTreeDisposition) -> live_tree.LiveTreeDisposition {\n".to_string()) + &"  d.ordinary_field\n".to_string()) + &"}\n".to_string()) + &"\n".to_string()) + &"fn reads_duplicated(t: duplicated.Twice) -> duplicated.Twice {\n".to_string()) + &"  t\n".to_string()) + &"}\n".to_string())
+    "module test.fixture.import_deletion_bridge.path_controls_consumer\n\nfn reads_good(d: live_tree.LiveTreeDisposition) -> live_tree.LiveTreeDisposition {\n  d\n}\n\nfn reads_missing_member(d: live_tree.NoSuchMember) -> live_tree.NoSuchMember {\n  d\n}\n\nfn reads_missing_head(d: no_such_module.Anything) -> no_such_module.Anything {\n  d\n}\n\nfn reads_ordinary_field(d: live_tree.LiveTreeDisposition) -> live_tree.LiveTreeDisposition {\n  d.ordinary_field\n}\n\nfn reads_duplicated(t: duplicated.Twice) -> duplicated.Twice {\n  t\n}\n\nfn reads_three_segments(d: live_tree.LiveTreeDisposition.ReadsLiveTree) -> live_tree.LiveTreeDisposition.ReadsLiveTree {\n  d\n}\n\nfn reads_fully_qualified(d: v2.std.live_tree.LiveTreeDisposition) -> v2.std.live_tree.LiveTreeDisposition {\n  d\n}\n".to_string()
 }
 
 pub fn idb_unrelated_source_path() -> String {
@@ -1829,5 +1829,28 @@ pub fn reference_path_duplicated_member_refuses_at_the_segment() -> bool {
                 && ((candidates.clone().len() as i64) == 2))
         }
         _ => false,
+    }
+}
+
+pub fn idb_multi_segment_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "MULTI-SEGMENT DESCENT, and the shape that makes it constructible from ordinary .dag source. Modules are flat per file, so a.b.c cannot be module-inside-module; but a module member CAN have members -- live_tree.LiveTreeDisposition.ReadsLiveTree is module, then type, then variant -- so three segments is two real containment steps rather than a synthetic nesting. The fully qualified spelling is asserted beside it because both are answered by ONE rule, the longest prefix naming a module: the exact-path match serves v2.std.live_tree and the suffix match serves live_tree, so neither spelling needs its own resolution route.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn reference_path_descends_three_segments_to_the_variant() -> bool {
+    match idb_resolved_terminal_name("live_tree.LiveTreeDisposition.ReadsLiveTree".to_string()) {
+        Some(spelled) => (spelled.clone() == "ReadsLiveTree".to_string()),
+        None => false,
+    }
+}
+
+pub fn reference_path_resolves_the_fully_qualified_spelling() -> bool {
+    match idb_resolved_terminal_name("v2.std.live_tree.LiveTreeDisposition".to_string()) {
+        Some(spelled) => (spelled.clone() == idb_subject_leaf_name()),
+        None => false,
     }
 }
