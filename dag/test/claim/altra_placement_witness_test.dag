@@ -226,12 +226,21 @@ test fn w_only_established_components_reach_the_geometry_bridge() -> Bool {
   match plan_or_empty() {
     Absent => false
     Present { value: p } =>
-      fold(placeable_components(plan: p), init: 0, f: fn(acc, _c) { acc + 1 }) == 2
+      fold(placeable_components(plan: p), init: 0, f: fn(acc, _c) { acc + 1 }) == 5
         && fold(placeable_components(plan: p), init: false, f: fn(acc, c) {
           acc || (c.identity as String) == "board_control_cpld"
         })
         && fold(placeable_components(plan: p), init: false, f: fn(acc, c) {
           acc || (c.identity as String) == "processor_package"
+        })
+        && fold(placeable_components(plan: p), init: false, f: fn(acc, c) {
+          acc || (c.identity as String) == "host_phy"
+        })
+        && fold(placeable_components(plan: p), init: false, f: fn(acc, c) {
+          acc || (c.identity as String) == "power_stage"
+        })
+        && fold(placeable_components(plan: p), init: false, f: fn(acc, c) {
+          acc || (c.identity as String) == "power_good"
         })
         && fold(placeable_components(plan: p), init: true, f: fn(acc, c) {
           acc && (c.identity as String) != "cpu_socket"
@@ -324,7 +333,7 @@ test fn w_memory_slots_are_distinguished_on_both_coordinates() -> Bool {
     && roles_equal(a: DebugConnector, b: DebugConnector)
 }
 
-// THE DISCRIMINATING RED FOR THE POPULATION JOIN. A plan holding only the CPLD is missing fourteen
+// THE DISCRIMINATING RED FOR THE POPULATION JOIN. A plan holding only the CPLD is missing sixteen
 // roles, and the join reports them — so the completeness check is an identity join and not a
 // count that happens to agree.
 fn plan_with_only(cs: List<PlannedComponent>, template: BoardPlacementPlan) -> BoardPlacementPlan {
@@ -343,7 +352,7 @@ test fn w_a_plan_missing_roles_names_every_one_of_them() -> Bool {
           origin: point2(frame: altra_board_frame(), x: 240000, y: 200000),
         }], template: p)),
         wanted: "RoleUnfilled"
-      ) == 13
+      ) == 16
   }
 }
 
