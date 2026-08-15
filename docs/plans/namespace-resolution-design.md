@@ -154,6 +154,52 @@ actually forces to qualify:
 | — shared-prefix subtree split | 107 | |
 | — disjoint top-level (ambiguous only from a high ancestor) | 49 | |
 
+### 5b. Reference-side re-measurement (2026-08-15) — the residue is a different KIND
+
+The census above counts **distinct declared names** over 942 files. Measured from
+the **reference side** over 3713 files, at the type-argument position, 9027
+occurrences:
+
+| | occurrences | distinct names |
+|---|---|---|
+| unique (exactly one declarer) | 6269 | 1172 |
+| homonym (2+ declarers) | 1949 | 37 |
+| **undeclared (NO declarer anywhere)** | **760** | **86** |
+
+**These are corpus facts, not branch observations.** They were measured on the
+import-cut branch, but an import brings a module into an assembled pool — it
+declares no name — so deleting every import line removes no declaration and
+these counts read identically on main today.
+
+Three corrections, in increasing severity:
+
+1. **Degree.** By distinct referenced name the unique share is 90.5%, not 98%;
+   by occurrence it is 69%. The residue is not a rounding error.
+
+2. **A structural blind spot, not a disagreement.** A census over *declared*
+   names **cannot see a name that is referenced and declared nowhere.** The 86
+   are invisible to §5's method by construction, at any sample size. This is why
+   the two censuses do not contradict each other and the earlier one is still
+   wrong about the remedy.
+
+3. **The residue's character, which invalidates the licensed remedy.** §5 reads
+   the residue as v1-seed forks and github-style variants — things you fix by
+   deleting a fork or by context-resolving. Measured, the dominant class is
+   neither. Some names are declared by **every module in a family, as a
+   convention**: `extdeps_external_authority_anchor` has **551 declarers**,
+   `live_tree_disposition` has **1097**. Each declarer's value is deliberately
+   different, so there is no intended referent to qualify *toward*. Picking a
+   winner yields a well-typed value carrying the **wrong citation** — a
+   fabricated plausible output where a refusal was owed (§5 of DESIGN).
+
+"always bare, qualify the rare fork" has no answer for a name whose 551
+declarers are all correct. Whether this resolves by qualifying every reference to
+its own module, or by changing the convention so the name is not re-minted per
+module, is an **open modeling decision** and is deliberately not settled here.
+
+**Deliberately not recorded:** closure width figures. Those are conditional on
+both the cut and the closure implementation, and move silently if either changes.
+
 The 2% decomposes into four kinds, and only a sliver is genuine forced verbosity:
 
 - **§3 forks — Rule 2 is a Rule-1 detector.** `Deterministic`/`NonDeterministic`
