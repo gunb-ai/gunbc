@@ -1,10 +1,9 @@
 module gunbc.spark_serving_install_paths
 
 import std.types { String, FilePath, NonEmptyStr }
-import gunbc.spark_serving_desired { spark_serving_desired_bind_listen }
 import gunbc.spark_serving_runtime_receipt { spark_serving_executor_home }
 
-data spark_serving_install_paths_note: String = "Owned-runtime layout for UserUnitRealization + InstallOwnedRuntimeClosure on Spark hosts. Executor home and receipt path are gunbc.spark_serving_runtime_receipt. User unit basename is spark_serving_unit_name in this module — gunbc.spark_serving_observe still hardcodes the same string in probe argv until a follow-on imports this authority. Unit desired state is SparkServingUserUnitSpec (typed fields, not systemd INI syntax); gunbc.spark_serving_membership spark_serving_user_unit_file_write_intent carries path+spec for Phase 2 typed delivery."
+data spark_serving_install_paths_note: String = "Owned-runtime layout for UserUnitRealization + InstallOwnedRuntimeClosure on Spark hosts. Executor home and receipt path are gunbc.spark_serving_runtime_receipt. spark_serving_unit_name is the single authority for the systemd unit basename — gunbc.spark_serving_observe and gunbc.spark_serving_release import it. Unit desired state is SparkServingUserUnitSpec (typed fields, not systemd INI syntax); gunbc.spark_serving_membership spark_serving_user_unit_file_write_intent carries path+spec for Phase 2 typed delivery."
 
 data spark_serving_unit_name: String = "gunbc-spark-serving.service"
 
@@ -51,20 +50,12 @@ fn spark_serving_user_unit_path() -> FilePath {
   ) as FilePath
 }
 
-fn spark_serving_bind_host_port() -> String {
-  join([
-    spark_serving_desired_bind_listen.host as String,
-    ":",
-    to_string(spark_serving_desired_bind_listen.port),
-  ], "")
-}
-
-fn spark_serving_user_unit_spec() -> SparkServingUserUnitSpec {
+fn spark_serving_user_unit_spec(bind_host_port: NonEmptyStr) -> SparkServingUserUnitSpec {
   SparkServingUserUnitSpec {
     description: "gunbc Spark serving (Ollama gpt-oss:20b)" as NonEmptyStr,
     after: "network-online.target" as NonEmptyStr,
     service_type: "simple" as NonEmptyStr,
-    bind_host_port: spark_serving_bind_host_port() as NonEmptyStr,
+    bind_host_port: bind_host_port,
     models_root_rel: spark_serving_models_root_rel,
     runtime_root_rel: spark_serving_runtime_root_rel,
     exec_subcommand: "serve" as NonEmptyStr,

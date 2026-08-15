@@ -39,6 +39,7 @@ import gunbc.spark_serving_release {
   SparkServingObserved,
   SparkServingObservationRefused,
 }
+import gunbc.spark_serving_install_paths { spark_serving_unit_name }
 import gunbc.spark_serving_runtime_admission { spark_serving_parse_nvidia_driver_version }
 import gunbc.spark_serving_runtime_receipt {
   spark_serving_runtime_receipt_probe_words,
@@ -63,15 +64,17 @@ data spark_serving_observe_receipt_path: String = "target/spark-serving-observe-
 
 data spark_serving_probe_principal: String = "gunbc-automation"
 
-data spark_serving_unit_name: String = "gunbc-spark-serving.service"
+fn spark_serving_load_state_probe_words() -> List<String> {
+  [
+    "systemctl", "--user", "show", spark_serving_unit_name, "--property=LoadState", "--value",
+  ]
+}
 
-data spark_serving_load_state_probe_words: List<String> = [
-  "systemctl", "--user", "show", "gunbc-spark-serving.service", "--property=LoadState", "--value",
-]
-
-data spark_serving_active_probe_words: List<String> = [
-  "systemctl", "--user", "is-active", "gunbc-spark-serving.service",
-]
+fn spark_serving_active_probe_words() -> List<String> {
+  [
+    "systemctl", "--user", "is-active", spark_serving_unit_name,
+  ]
+}
 
 data spark_serving_version_probe_words: List<String> = [
   "curl", "-sf", "http://127.0.0.1:11434/api/version",
@@ -301,8 +304,8 @@ fn spark_serving_observe_host(
   context: FleetSshExecutionContext,
   host: HostIdentity,
 ) -> SparkServingObservation {
-  let load_state = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_load_state_probe_words)
-  let is_active = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_active_probe_words)
+  let load_state = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_load_state_probe_words())
+  let is_active = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_active_probe_words())
   let version = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_version_probe_words)
   let tags = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_tags_probe_words)
   let nvidia_driver = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_nvidia_driver_probe_words)

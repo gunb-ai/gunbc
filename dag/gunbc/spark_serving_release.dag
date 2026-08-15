@@ -16,6 +16,7 @@ import gunbc.spark_serving_realization {
   ObservedGrantPopulation, escalation_shortfall, applicable_without_administrator,
   ServingEndpointIntent, UnauthenticatedEndpoint, AuthenticatedEndpoint,
 }
+import gunbc.spark_serving_install_paths { spark_serving_unit_name }
 
 // THE SPARK SERVING RELEASE — one content-addressed identity over everything that must be
 // identical on both replicas.
@@ -380,9 +381,9 @@ type SparkServingPlan
 fn spark_serving_target(actor: SystemPrincipal) -> ServingDeploymentTarget {
   ServingDeploymentTarget {
     actor: actor,
-    unit_name: "gunbc-spark-serving.service" as NonEmptyStr,
-    unit_path: "/etc/systemd/system/gunbc-spark-serving.service" as NonEmptyStr,
-    staged_unit_path: "/var/lib/gunbc/staged/gunbc-spark-serving.service" as NonEmptyStr,
+    unit_name: spark_serving_unit_name as NonEmptyStr,
+    unit_path: join(["/etc/systemd/system/", spark_serving_unit_name], "") as NonEmptyStr,
+    staged_unit_path: join(["/var/lib/gunbc/staged/", spark_serving_unit_name], "") as NonEmptyStr,
     runtime_package: "ollama" as NonEmptyStr,
   }
 }

@@ -67,6 +67,14 @@ data spark_serving_desired_bind_listen: SparkServingBindListen = SparkServingBin
   port: ollama_default_port,
 }
 
+fn spark_serving_desired_bind_host_port() -> String {
+  join([
+    spark_serving_desired_bind_listen.host as String,
+    ":",
+    to_string(spark_serving_desired_bind_listen.port),
+  ], "")
+}
+
 data spark_serving_desired_endpoint_intent: ServingEndpointIntent = UnauthenticatedEndpoint
 
 data spark_serving_desired_model_ref: OllamaModelRef = ollama_gpt_oss_20b_model_ref

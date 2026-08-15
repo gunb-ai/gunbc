@@ -26,6 +26,7 @@ import gunbc.spark_serving_install_paths {
   spark_serving_user_unit_spec,
   spark_serving_user_unit_spec_identity,
 }
+import gunbc.spark_serving_desired { spark_serving_desired_bind_host_port }
 import gunbc.spark_serving_runtime_receipt { spark_serving_runtime_receipt_path }
 
 data spark_serving_membership_authority_note: String = "Member-grain membership reconcile for Spark serving install (SPARK-SERVE-INSTALL-0 Phase 1). key_of is host × release identity × member kind — explicitly NOT content- or path-derived. value_eq compares state_digest only. Ensured members converge on drift; non-owned removal refuses with no effect arm (R5). Unchanged → zero effects must witness hard."
@@ -127,7 +128,9 @@ fn spark_serving_member_ownership(member: SparkServingMember) -> Ownership? {
 fn spark_serving_user_unit_state_digest() -> NonEmptyStr {
   content_hash_atom(
     value: spark_serving_user_unit_spec_identity(
-      spec: spark_serving_user_unit_spec(),
+      spec: spark_serving_user_unit_spec(
+        bind_host_port: spark_serving_desired_bind_host_port() as NonEmptyStr,
+      ),
     ) as NonEmptyStr,
   ).digest as NonEmptyStr
 }
@@ -154,7 +157,9 @@ fn spark_serving_remote_operation_context(host: HostIdentity) -> SparkServingRem
 fn spark_serving_user_unit_file_write_intent() -> SparkServingUserUnitWriteIntent {
   SparkServingUserUnitWriteIntent {
     path: spark_serving_user_unit_path(),
-    spec: spark_serving_user_unit_spec(),
+    spec: spark_serving_user_unit_spec(
+      bind_host_port: spark_serving_desired_bind_host_port() as NonEmptyStr,
+    ),
   }
 }
 
