@@ -20,7 +20,7 @@ import gunbc.replacement_cut {
   UndispositionedConsumer, UncoveredSurvivingConsumer, UndispositionedEvidence,
   CoveredByOldRoot, ReplacementNamesOldRoot,
   ConsumerDuplicated, EvidenceDuplicated, RegionMemberDuplicated,
-  EnumeratedCensusEmpty, EmptyCoveredRegion, NewRootEqualsOldRoot, SelfReferentialDescent,
+  EnumeratedCensusEmpty, ExternalRolesEnumeratedEmpty, EmptyCoveredRegion, NewRootEqualsOldRoot, SelfReferentialDescent,
   AdmittedReplacementCutPlan,
   PlanAdmission, PlanAdmitted, PlanRefused,
   admit_replacement_cut_plan, admitted_matches_plan,
@@ -144,6 +144,7 @@ fn cause_matches(c: CutRefusalCause, tag: String, subject: String) -> Bool {
     EvidenceDuplicated { evidence: w } => tag == "evidence-duplicated" && (w as String) == subject
     RegionMemberDuplicated { member: w } => tag == "region-member-duplicated" && (w as String) == subject
     EnumeratedCensusEmpty => tag == "enumerated-census-empty" && subject == ""
+    ExternalRolesEnumeratedEmpty => tag == "external-roles-enumerated-empty" && subject == ""
     EmptyCoveredRegion => tag == "empty-covered-region" && subject == ""
     NewRootEqualsOldRoot => tag == "new-root-equals-old-root" && subject == ""
     SelfReferentialDescent => tag == "self-referential-descent" && subject == ""
@@ -352,6 +353,29 @@ test fn enumerated_empty_census_refuses_but_declared_empty_admits() -> Bool {
   causes_include(causes: causes_of(admission: ambiguous), tag: "enumerated-census-empty", subject: "")
     && (match admit_replacement_cut_plan(cut: declared) {
       PlanAdmitted { admitted: a } => a.retained_count == 0 && a.covered_region_count == 2
+      PlanRefused { causes: _ } => false
+    })
+}
+
+test fn empty_external_role_list_refuses_but_justified_no_oracle_admits() -> Bool {
+  let ambiguous = admit_replacement_cut_plan(cut: cut_full(
+    consumers: [covered_consumer()],
+    region: two_region(),
+    evidence: dispositioned_evidence(),
+    new_root: "new fold root",
+    oracle: ExternalXRoles { roles: [] },
+  ))
+  let justified = admit_replacement_cut_plan(cut: cut_full(
+    consumers: [covered_consumer()],
+    region: two_region(),
+    evidence: dispositioned_evidence(),
+    new_root: "new fold root",
+    oracle: NoExternalOracleRequired { justification: nes(s: "boundary compared by construction, no differential run") },
+  ))
+  causes_include(causes: causes_of(admission: ambiguous), tag: "external-roles-enumerated-empty", subject: "")
+    && list_length(items: causes_of(admission: ambiguous)) == 1
+    && (match justified {
+      PlanAdmitted { admitted: a } => a.covered_region_count == 2
       PlanRefused { causes: _ } => false
     })
 }
