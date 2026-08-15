@@ -85,6 +85,20 @@ test fn parse_supports_null_coalesce() -> Bool {
   src_has(parse_path, "NullCoalesce")
 }
 
+test fn parse_continuation_derives_from_operator_table_not_shape_allowlist() -> Bool {
+  src_lacks(parse_path, "fn is_continuation_shape(")
+    && src_lacks(parse_path, "is_pipe_arrow_shape(shape: shape) || is_dot_shape(shape: shape)")
+    && src_has(parse_path, "is_operator_continuation_token")
+    && src_has(parse_path, "find_operator_bp(ops: dag_syntax_spec.operators")
+}
+
+test fn parse_prefix_emits_only_not_and_neg_unary_ops() -> Bool {
+  src_has(parse_path, "ExprUnaryOp { op: Not }")
+    && src_has(parse_path, "ExprUnaryOp { op: Neg }")
+    && src_lacks(parse_path, "ExprUnaryOp { op: Add }")
+    && src_lacks(parse_path, "ExprUnaryOp { op: Sub }")
+}
+
 test fn parser_uses_expected_token_api_for_control_flow() -> Bool {
   src_has(parse_path, "type ExpectedToken")
     && src_has(parse_path, "fn token_matches_expected(")
