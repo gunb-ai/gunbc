@@ -1,8 +1,11 @@
 module std.key_relation
 
 import std.types { Bool }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-data key_relation_authority_note: String = "Keying is a named relation, not an anonymous key_of/key_eq pair passed by each consumer. ScopedKey names (scope, key); KeyMultiplicity declares whether a key may denote zero, one, or many values; KeyRelation bundles scope_of, key_of, scope_eq, key_eq, and multiplicity so the identity law is stated once per concept rather than as prose beside membership_reconcile. GlobalKeyScope is the degenerate scope for populations reconciled without an explicit ambient axis."
+data key_relation_authority_note: String = "NAMING MOVE, NOT A WALL (honest rung, DESIGN §4b). KeyRelation packages scope_of, key_of, scope_eq, key_eq, and a KeyMultiplicity label so each consumer names the relation under which its population reconciles — a real §3 improvement over anonymous key_of/key_eq pairs passed at every call site. It does NOT enforce the load-bearing identity law: any content-derived key_of still typechecks and still inhabits a KeyRelation unchanged. GlobalKeyScope is an empty record today, so the scope axis does no work — every migrated relation is GlobalKeyScope + KeyExactlyOne as a declared 1:1 policy, not a proved property. Multiplicity is prose attached to the record until membership paths consult it with a typed refusal (key_relation_supports_membership_reconcile exists but is not yet a production gate). Rung today: mitigatable — the law is stated once beside the named authority; witnesses discriminate failure classes by execution. Ceiling: structural impossibility — key_of returns SubjectKey only, and ContentIdentity (and other impostor carriers) cannot inhabit SubjectKey, per the impostor separation in docs/plans/keying-relation-design.md §4. Whether an arbitrary fn returns identity vs content is undecidable in general; the decidable wall is that carrier constraint, not a linter over fn bodies."
+
+data key_relation_identity_wall_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: key_relation_identity_wall — introduce SubjectKey<K> / ResourceLocator<L> / ContentIdentity<H> impostor carriers (keying-relation-design.md Separating the impostors) and constrain production key_of projections to return SubjectKey only, so a content-derived key stops compiling. Until then KeyRelation remains a naming authority only; identity-not-content stays an author/review obligation, not a construction refusal.")
 
 type ScopedKey<Scope, Key> {
   scope: Scope
