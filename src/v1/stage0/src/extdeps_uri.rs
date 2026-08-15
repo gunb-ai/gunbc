@@ -48,6 +48,13 @@ pub struct Uri {
     pub locator: NonEmptyStr,
 }
 
+pub fn uri_https(locator: String) -> Rc<Uri> {
+    Rc::new(Uri {
+        scheme: UriScheme::Https,
+        locator: locator.clone(),
+    })
+}
+
 pub fn uri_scheme_is_http(s: UriScheme) -> bool {
     match s.clone() {
         UriScheme::Http => true,

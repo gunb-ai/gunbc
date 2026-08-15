@@ -24797,11 +24797,20 @@ pub fn run_required_floor(
     // Preparing without it produced a world in which every claim reading a published mock
     // resolved against nothing: 9,057 of 9,317 witnesses could not find their own code, at a
     // digest that claimed to name the same subject.
+    // EVERY TERM BETWEEN PREPARATION AND EVALUATION IS NARRATED SEPARATELY. The first run of
+    // this path reported preparation and then nothing for eleven minutes, so scope projection,
+    // the published-mock precompute and the manifest fold were indistinguishable — a wall-clock
+    // number with no term is not a measurement of anything.
+    let published_started = std::time::Instant::now();
     let published = match precompute_whole_tree_published_mock_keys(source_roots) {
         Ok(keys) if keys.is_empty() => None,
         Ok(keys) => Some(Rc::new(keys)),
         Err(e) => return Err(format!("published mock corpus precompute failed: {e}")),
     };
+    eprintln!(
+        "floor: published-mock precompute in {}ms",
+        published_started.elapsed().as_millis()
+    );
     let manifest_scope = claim_scope_for(&prepared, REQUIRED_FLOOR_MANIFEST_MODULE)?;
     let hermetic = evaluation_frame(
         &manifest_scope,
@@ -24815,6 +24824,7 @@ pub fn run_required_floor(
     install_output_policy_in(&hermetic, source_roots);
 
     // ── 3. the manifest, folded in .dag ───────────────────────────────────────────────────
+    let manifest_started = std::time::Instant::now();
     let files = inventory_witness_files(&prepared);
     let bindings: Vec<v1_interpreter::Value> = prepared
         .inventory
@@ -24849,6 +24859,7 @@ pub fn run_required_floor(
             ));
         }
     }
+    let sites_count = sites.len();
     let subject = record_value(
         &hermetic,
         "ObservedSubjectIdentity",
@@ -24870,6 +24881,13 @@ pub fn run_required_floor(
     );
     let empty_sites =
         v1_interpreter::Value::List(Rc::new(Vec::<v1_interpreter::Value>::new().into()));
+    eprintln!(
+        "floor: manifest inputs built in {}ms ({} binding(s), {} site(s))",
+        manifest_started.elapsed().as_millis(),
+        prepared.inventory.len(),
+        sites_count
+    );
+    let attempt_started = std::time::Instant::now();
     let admission = v1_interpreter::run_in_context_with_args(
         &hermetic,
         "required_floor_attempt",
@@ -24888,6 +24906,10 @@ pub fn run_required_floor(
         false,
     )
     .map_err(|e| format!("required_floor_attempt: {e}"))?;
+    eprintln!(
+        "floor: manifest folded in {}ms",
+        attempt_started.elapsed().as_millis()
+    );
     let claims = required_floor_claims_from_admission(&hermetic, &admission)?;
 
     // ── 4. fold the manifest ──────────────────────────────────────────────────────────────

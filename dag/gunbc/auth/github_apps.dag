@@ -4,7 +4,7 @@ import std.types { NonEmptyStr }
 import std.content_hash { ContentHash }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
-import extdeps.uri { Uri, Https }
+import extdeps.uri { Uri, uri_https }
 import extdeps.github.app {
   GitHubAppId,
   GitHubAppInstallationId,
@@ -77,13 +77,12 @@ data gunbai_bot_declared_key: ManagedGitHubAppKey = ManagedGitHubAppKey {
 }
 
 fn app_settings_permissions_locator(app: DeclaredGitHubApp) -> Uri {
-  Uri {
-    scheme: Https
+  uri_https(
     locator: concat(
       concat(concat("github.com/organizations/", app.owner_login), "/settings/apps/"),
       concat(app.slug, "/permissions")
     )
-  }
+  )
 }
 
 type ObservedGitHubAppSigner {
@@ -112,13 +111,12 @@ type SignerCustody
   | SignerReadbackFailed { cause: SignerSealFailure }
 
 fn app_key_settings_locator(app: DeclaredGitHubApp) -> Uri {
-  Uri {
-    scheme: Https
+  uri_https(
     locator: concat(
       concat(concat("github.com/organizations/", app.owner_login), "/settings/apps/"),
       app.slug
     )
-  }
+  )
 }
 
 data gunbai_bot_signer_custody: SignerCustody = SignerMaterialAvailabilityUnobserved

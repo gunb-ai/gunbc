@@ -1,7 +1,10 @@
 module v2.workflow.required_floor
 
-import v2.std.algebra { contains, fold_list, length, list_append, list_map, list_snoc_item }
-import v2.std.collection { List }
+import std.algebra { Cons }
+import v2.std.algebra { fold_list, length, list_append, list_reverse }
+import v2.std.collection { List, Map, empty_map, map_get, map_insert }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.optional { Absent, Optional, Present }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import std.execution_mode { ExecutionMode, Hermetic, Record, Wet, execution_mode_eq }
@@ -143,8 +146,6 @@ data no_manifest_refusals: List<ManifestRefusal> = []
 
 data no_seen_qualified_names: List<String> = []
 
-data no_module_paths: List<String> = []
-
 // The evaluation deadline for one claim, at ONE authority for the whole manifest.
 //
 // It is stated here rather than imported from the fast-lane rule because the fast lane is a
@@ -165,35 +166,71 @@ fn required_floor_claim_qualified(claim: RequiredFloorClaim) -> String {
 // refusal the carrier already models. Substituting the bare function name — the shape that
 // works per-entry and silently collapses under a shared subject — is the exact failure
 // `WitnessIdentity` exists to make unwritable.
-fn module_path_for_entry(bindings: List<ModulePathBinding>, entry: String) -> List<String> {
-  fold_list(xs: bindings, empty: no_module_paths, cons: fn(acc, b) {
-    if b.entry == entry {
-      list_snoc_item(xs: acc, item: b.module_path)
-    } else {
-      acc
+// THE JOIN IS AN INDEX, NOT A RESCAN. One binding-shaped question is asked once per site, and
+// the population it is asked against is the whole binding list — so answering it by folding
+// the bindings is quadratic in (sites x bindings) by construction. Measured on the live
+// corpus that is 9,573 sites against 1,155 bindings: eleven million interpreted comparisons
+// to answer nine thousand lookups, in a fold that reports nothing while it runs.
+//
+// Two maps rather than one, because the join has THREE answers and a `Map<String, String>`
+// can only carry two. Overwriting on insert would make a doubly-bound entry indistinguishable
+// from a singly-bound one — the last writer would simply win, which is the silent-narrowing
+// arm `ModulePathNotUnique` exists to refuse. The count is what keeps zero, one and many
+// distinguishable after the fold has collapsed the rows.
+type EntryModuleIndex {
+  path_of: Map<String, String>
+  count_of: Map<String, Int>
+}
+
+data empty_entry_module_index: EntryModuleIndex = EntryModuleIndex {
+    path_of: empty_map(),
+    count_of: empty_map()
+  }
+
+// A refused lookup and an absent key are the same fact to every consumer here: this index does
+// not answer for that entry. Neither may be reported as a binding.
+fn index_lookup<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
+  match map_get(m: m, key: key) {
+    Accepted { value: v, diagnostics: _ } => v
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn entry_binding_count(index: EntryModuleIndex, entry: String) -> Int {
+  match index_lookup(m: index.count_of, key: entry) {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
+
+fn build_entry_module_index(bindings: List<ModulePathBinding>) -> EntryModuleIndex {
+  fold_list(xs: bindings, empty: empty_entry_module_index, cons: fn(acc, b) {
+    EntryModuleIndex {
+      path_of: map_insert(m: acc.path_of, key: b.entry, value: b.module_path),
+      count_of: map_insert(
+        m: acc.count_of,
+        key: b.entry,
+        value: entry_binding_count(index: acc, entry: b.entry) + 1
+      )
     }
   })
 }
 
 // Exactly one binding identifies; zero and many both refuse, and they refuse through the same
 // arm because both mean the same thing to a consumer: this entry does not name one module.
-fn resolve_site(bindings: List<ModulePathBinding>, site: WitnessSite) -> ResolvedWitness {
-  let paths = module_path_for_entry(bindings: bindings, entry: site.entry)
-  if length(xs: paths) == 1 {
-    WitnessIdentified {
-      identity: WitnessIdentity { module_path: paths.first(), function: site.function },
-      site: site
-    }
-  } else {
-    WitnessIdentityRefused { refusal: ModulePathNotUnique { site: site } }
+fn resolve_site(index: EntryModuleIndex, site: WitnessSite) -> ResolvedWitness {
+  match index_lookup(m: index.path_of, key: site.entry) {
+    Present { value: module_path } =>
+      if entry_binding_count(index: index, entry: site.entry) == 1 {
+        WitnessIdentified {
+          identity: WitnessIdentity { module_path: module_path, function: site.function },
+          site: site
+        }
+      } else {
+        WitnessIdentityRefused { refusal: ModulePathNotUnique { site: site } }
+      }
+    Absent => WitnessIdentityRefused { refusal: ModulePathNotUnique { site: site } }
   }
-}
-
-fn resolve_sites(
-  bindings: List<ModulePathBinding>,
-  sites: List<WitnessSite>
-) -> List<ResolvedWitness> {
-  list_map(xs: sites, f: fn(s) { resolve_site(bindings: bindings, site: s) })
 }
 
 // A resolved witness becomes a claim, or contributes its refusal. Both halves are produced in
@@ -209,6 +246,11 @@ data claim_scan_empty: ClaimScan = ClaimScan {
     refusals: no_manifest_refusals
   }
 
+// BOTH HALVES ACCUMULATE BY PREPEND, and the one reversal that restores authored order is
+// taken once, in `required_floor_manifest`. Appending an item to the end of a linked list
+// copies the list, so a snoc-per-row fold copies the accumulator 9,573 times — forty-five
+// million element copies to build one nine-thousand-row list. The scan is a private
+// accumulator, so the reversed intermediate is never observable outside this module.
 fn scan_resolved(
   acc: ClaimScan,
   resolved: ResolvedWitness,
@@ -216,33 +258,34 @@ fn scan_resolved(
 ) -> ClaimScan {
   match resolved {
     WitnessIdentified { identity: id, site: _ } => ClaimScan {
-      claims: list_snoc_item(
-        xs: acc.claims,
-        item: RequiredFloorClaim {
+      claims: Cons {
+        head: RequiredFloorClaim {
           declaration: id,
           execution_mode: mode,
           budget_ms: required_floor_claim_budget_ms()
-        }
-      ),
+        },
+        tail: acc.claims
+      },
       refusals: acc.refusals
     }
     WitnessIdentityRefused { refusal: r } => ClaimScan {
       claims: acc.claims,
-      refusals: list_snoc_item(
-        xs: acc.refusals,
-        item: DeclarationIdentityAmbiguous { refusal: r }
-      )
+      refusals: Cons {
+        head: DeclarationIdentityAmbiguous { refusal: r },
+        tail: acc.refusals
+      }
     }
   }
 }
 
-fn scan_resolved_list(
+fn scan_sites(
   acc: ClaimScan,
-  resolved: List<ResolvedWitness>,
+  index: EntryModuleIndex,
+  sites: List<WitnessSite>,
   mode: ExecutionMode
 ) -> ClaimScan {
-  fold_list(xs: resolved, empty: acc, cons: fn(inner, r) {
-    scan_resolved(acc: inner, resolved: r, mode: mode)
+  fold_list(xs: sites, empty: acc, cons: fn(inner, s) {
+    scan_resolved(acc: inner, resolved: resolve_site(index: index, site: s), mode: mode)
   })
 }
 
@@ -250,20 +293,23 @@ fn scan_resolved_list(
 // different declarations, and a count comparison reports that as clean. So the duplicate
 // check below groups by qualified name and asks about the group's members, never about how
 // many rows exist.
-fn claims_named(claims: List<RequiredFloorClaim>, qualified: String) -> List<RequiredFloorClaim> {
-  fold_list(xs: claims, empty: no_required_floor_claims, cons: fn(acc, c) {
-    if required_floor_claim_qualified(claim: c) == qualified {
-      list_snoc_item(xs: acc, item: c)
-    } else {
-      acc
-    }
-  })
+// WHAT ONE QUALIFIED NAME'S GROUP AMOUNTS TO, carried as the group's summary rather than as
+// the group. The two questions asked of a group are how many members it has and whether they
+// agree on a mode, and both are foldable — so the members themselves never need to be
+// collected, and collecting them is what made this quadratic. `first_mode` is the reference
+// mode the second and later members are compared against.
+type ClaimNameGroup {
+  count: Int
+  first_mode: ExecutionMode
+  modes_agree: Bool
 }
 
-fn claim_group_modes_agree(group: List<RequiredFloorClaim>, mode: ExecutionMode) -> Bool {
-  fold_list(xs: group, empty: true, cons: fn(agree, c) {
-    agree && execution_mode_eq(left: c.execution_mode, right: mode)
-  })
+fn extend_claim_name_group(group: ClaimNameGroup, mode: ExecutionMode) -> ClaimNameGroup {
+  ClaimNameGroup {
+    count: group.count + 1,
+    first_mode: group.first_mode,
+    modes_agree: group.modes_agree && execution_mode_eq(left: group.first_mode, right: mode)
+  }
 }
 
 // The two duplicate arms are kept APART on purpose. The same declaration twice under one mode
@@ -273,57 +319,88 @@ fn claim_group_modes_agree(group: List<RequiredFloorClaim>, mode: ExecutionMode)
 // second is unrecoverable without a decision.
 fn claim_group_refusal(
   acc: List<ManifestRefusal>,
-  group: List<RequiredFloorClaim>,
-  qualified: String,
-  reference_mode: ExecutionMode
+  group: ClaimNameGroup,
+  qualified: String
 ) -> List<ManifestRefusal> {
-  if length(xs: group) < 2 {
+  if group.count < 2 {
     acc
-  } else if claim_group_modes_agree(group: group, mode: reference_mode) {
-    list_snoc_item(xs: acc, item: DeclarationEnrolledTwice { qualified: qualified })
+  } else if group.modes_agree {
+    Cons { head: DeclarationEnrolledTwice { qualified: qualified }, tail: acc }
   } else {
-    list_snoc_item(
-      xs: acc,
-      item: DeclarationEnrolledWithConflictingModes { qualified: qualified }
-    )
+    Cons { head: DeclarationEnrolledWithConflictingModes { qualified: qualified }, tail: acc }
   }
 }
 
+// `seen` is the FIRST-SEEN ORDER of the distinct qualified names, and `groups` is what each
+// name's members amount to. The order list is kept beside the map rather than recovered from
+// it because a map's key order is host traversal order, which `v2.std.determinism` refuses to
+// treat as a fact — the refusal population would then be ordered differently on two runs over
+// one manifest.
 type ManifestScan {
   seen: List<String>
-  refusals: List<ManifestRefusal>
+  groups: Map<String, ClaimNameGroup>
 }
 
 data manifest_scan_empty: ManifestScan = ManifestScan {
     seen: no_seen_qualified_names,
-    refusals: no_manifest_refusals
+    groups: empty_map()
   }
 
-// The whole claim list is captured by the closure rather than threaded through the
-// accumulator: the group for a name is a question about the WHOLE manifest, and an
-// accumulator carrying only what the fold has seen so far would answer it against a prefix —
-// a duplicate whose second occurrence comes later would read as unique. The `seen` list is
-// what makes it ONE refusal per distinct duplicated declaration rather than one per group
-// member; without it a declaration enrolled three times reports three refusals about itself
-// and a reader counting refusals sees three defects.
+// ONE PASS OVER THE MANIFEST, then one pass over the distinct names it found.
+//
+// The question — does this declaration appear more than once, and do its occurrences agree on
+// a mode — is a question about the WHOLE manifest, and the previous form answered it by
+// re-scanning the whole claim list once per distinct name while testing membership against a
+// linearly-searched `seen` list built by append. On the live roster that is 9,573 rows: about
+// ninety million interpreted comparisons for the rescan and forty-five million more for the
+// membership test, to answer a question a single grouping pass answers exactly.
+//
+// It is still not a prefix answer, and that is the property to preserve: the grouping fold
+// completes BEFORE any refusal is derived, so a duplicate whose second occurrence comes last
+// is seen by the refusal pass exactly as one whose occurrences are adjacent. One refusal per
+// distinct duplicated declaration, never one per group member.
 fn duplicate_refusals(claims: List<RequiredFloorClaim>) -> List<ManifestRefusal> {
   let scan = fold_list(xs: claims, empty: manifest_scan_empty, cons: fn(acc, c) {
     let qualified = required_floor_claim_qualified(claim: c)
-    if contains(xs: acc.seen, item: qualified, eq: fn(l, r) { l == r }) {
-      acc
-    } else {
-      ManifestScan {
-        seen: list_snoc_item(xs: acc.seen, item: qualified),
-        refusals: claim_group_refusal(
-          acc: acc.refusals,
-          group: claims_named(claims: claims, qualified: qualified),
-          qualified: qualified,
-          reference_mode: c.execution_mode
+    match index_lookup(m: acc.groups, key: qualified) {
+      Present { value: group } => ManifestScan {
+        seen: acc.seen,
+        groups: map_insert(
+          m: acc.groups,
+          key: qualified,
+          value: extend_claim_name_group(group: group, mode: c.execution_mode)
+        )
+      }
+      Absent => ManifestScan {
+        seen: Cons { head: qualified, tail: acc.seen },
+        groups: map_insert(
+          m: acc.groups,
+          key: qualified,
+          value: ClaimNameGroup {
+            count: 1,
+            first_mode: c.execution_mode,
+            modes_agree: true
+          }
         )
       }
     }
   })
-  scan.refusals
+  // `seen` is newest-first, and the fold prepends — so the refusals come out in the order the
+  // names were first encountered, which is the order the previous append-based form produced.
+  fold_list(
+    xs: scan.seen,
+    empty: no_manifest_refusals,
+    cons: fn(acc, qualified) {
+      match index_lookup(m: scan.groups, key: qualified) {
+        // Unreachable by construction — every name in `seen` was inserted into `groups` in the
+        // same step — and it refuses rather than skipping, because a name whose group cannot be
+        // read is a name whose duplicate status is unknown, not one that is known clean.
+        Absent => Cons { head: DeclarationEnrolledTwice { qualified: qualified }, tail: acc }
+        Present { value: group } =>
+          claim_group_refusal(acc: acc, group: group, qualified: qualified)
+      }
+    }
+  )
 }
 
 // THE MANIFEST. One fold over the observed populations, producing one claim list and the
@@ -339,16 +416,24 @@ fn required_floor_manifest(
   hermetic_sites: List<WitnessSite>,
   wet_sites: List<WitnessSite>
 ) -> ClaimScan {
-  let after_hermetic = scan_resolved_list(
+  let index = build_entry_module_index(bindings: bindings)
+  let after_hermetic = scan_sites(
     acc: claim_scan_empty,
-    resolved: resolve_sites(bindings: bindings, sites: hermetic_sites),
+    index: index,
+    sites: hermetic_sites,
     mode: Hermetic
   )
-  let after_wet = scan_resolved_list(
+  let scanned = scan_sites(
     acc: after_hermetic,
-    resolved: resolve_sites(bindings: bindings, sites: wet_sites),
+    index: index,
+    sites: wet_sites,
     mode: Wet
   )
+  // The one reversal that restores authored order, taken after both populations are scanned.
+  let after_wet = ClaimScan {
+    claims: list_reverse(xs: scanned.claims),
+    refusals: list_reverse(xs: scanned.refusals)
+  }
   ClaimScan {
     claims: after_wet.claims,
     refusals: list_append(
