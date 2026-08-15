@@ -24,7 +24,7 @@ import gunbc.spark_serving_install_paths {
 
 data host_spark_serving_provision_scope_disposition: Disposition = SingleAuthority
 
-data host_spark_serving_provision_note: String = "Local-host Spark serving runtime materialization (#8225 runtime-bundle follow-on). Runs package_delivery.materialize_spark_serving_ollama_runtime_bundle on the invoking host as gunbc-automation — extract, place owned closure, write receipt, install user unit, enable service, pull gpt-oss:20b. Remote ensure delegates to this entry via gunbc run on the target host (host_spark_serving_provision_script); plan/apply CAS is spark_serving_plan_apply."
+data host_spark_serving_provision_note: String = "Local-host Spark serving runtime materialization entry (#8225 runtime-bundle follow-on). Runs package_delivery.materialize_spark_serving_ollama_runtime_bundle on the invoking host as gunbc-automation — extract, place owned closure, write receipt, install user unit, enable service, pull gpt-oss:20b. Operative only when gunbc is present on that host; observed absent on srv5/srv6 2026-08-15 (host_spark_serving_gunbc_layout_note). Remote ensure delegates to this entry via gunbc run on the target (host_spark_serving_provision_script); plan/apply CAS is spark_serving_plan_apply."
 
 data host_spark_serving_provision_realize_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,

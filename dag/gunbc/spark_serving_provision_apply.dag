@@ -29,7 +29,7 @@ import gunbc.host_spark_serving_provision_verdict {
 }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 
-data spark_serving_provision_apply_note: String = "Wet Spark serving provision apply (#8225 runtime-bundle + FleetSsh transport). Runs host_spark_serving_provision_script observe/ensure/read-back on the target host as gunbc-automation via ExecPortableWordsWithStdin (sh -s) — the same credential binding as spark_serving_observe, not a hardcoded local key parallel route. Plan/apply CAS is spark_serving_plan_apply (#8230 pattern at Spark grain)."
+data spark_serving_provision_apply_note: String = "Wet Spark serving provision apply (#8225 runtime-bundle + FleetSsh transport). Runs host_spark_serving_provision_script observe/ensure/read-back on the target host as gunbc-automation via ExecPortableWordsWithStdin (sh -s). Structurally refused on srv5/srv6 today when ensure runs: /opt/gunbc/bin/gunbc absent (host_spark_serving_gunbc_layout_note). Plan/apply CAS is spark_serving_plan_apply (#8230 pattern at Spark grain)."
 
 data spark_serving_provision_apply_receipt_path: String = "target/spark-serving-provision-apply-receipt.txt"
 
