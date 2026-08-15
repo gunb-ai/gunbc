@@ -91,3 +91,5 @@ data eval_memo_facts: CacheInterfaceCatalogFacts = {
     },
   ]
 }
+
+data json_parse_eval_memo_ab_receipt_seed_growth_mark: String = "🟡 Seed-growth mark (v1-test class): src/v1/stage0/tests/json_parse_eval_memo_ab_receipt.rs measures EvalCallMemo A/B (GUNBC_EVAL_MEMO=1 vs 0) on parse_json before any json_unescape_from fix. Wall-clock/RSS probe is #[ignore]d; json_parse_eval_memo_ab_decode_sanity is correctness only. docs/probes/json_parse_eval_memo_ab_probe.sh is the srv1 MemoryMax A/B runner with typed process termination (exit 127=CommandNotFound, 137=SigKill/OOM). DISSOLVES ON eval-memo byte-budget admission lands OR the A/B shows memo-off does not collapse peak and this receipt hands off to the json_unescape length-sweep probes."
