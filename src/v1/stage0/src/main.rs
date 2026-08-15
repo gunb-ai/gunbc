@@ -159,6 +159,40 @@ fn extract_module_path(content: &str) -> Option<String> {
     None
 }
 
+/// Report `.dag` files dropped from the compile entry set for carrying no `module`
+/// declaration — counted, and each one located by path.
+///
+/// The deleted `cli_run` pair split this across `moduleless_dag_entry_paths` (a filter)
+/// and `report_moduleless_dag_entry_skips` (a printer), and the filter carried its own
+/// private copy of `extract_module_path` — a second implementation of the concept this
+/// file already owns above. Two copies of one rule is the §3 fork, and it decides which
+/// files get compiled, so a divergence between them would silently change the compiled
+/// population. One function reading the one local authority.
+///
+/// OBSERVED, NOT CHANGED: a skip here does not affect the exit code, so a tree containing
+/// a `.dag` with no `module` declaration compiles green while that file is silently
+/// absent from the compiled set. It is counted and located on stderr rather than truly
+/// silent, which is why this is an observation and not a repair — turning it into a
+/// refusal is a behavior change beyond this cut, and it belongs to whoever owns the
+/// compile entry policy rather than to the driver deletion.
+fn report_moduleless_dag_entry_skips(entry_files: &[(String, String)]) {
+    let skipped: Vec<&String> = entry_files
+        .iter()
+        .filter(|(_, content)| extract_module_path(content).is_none())
+        .map(|(path, _)| path)
+        .collect();
+    if skipped.is_empty() {
+        return;
+    }
+    eprintln!(
+        "skipped {} module-less .dag file(s) from compile entry set (no `module` declaration):",
+        skipped.len()
+    );
+    for path in skipped {
+        eprintln!("  {path}");
+    }
+}
+
 /// Extract import module paths from a .dag file's import declarations.
 fn extract_import_paths(content: &str) -> Vec<String> {
     let mut imports = Vec::new();
@@ -435,8 +469,7 @@ fn main() {
                         }
                     }
                 }
-                let skipped_moduleless = cli_run::moduleless_dag_entry_paths(&entry_files);
-                cli_run::report_moduleless_dag_entry_skips(&skipped_moduleless);
+                report_moduleless_dag_entry_skips(&entry_files);
 
                 // Namespace Rule-1 (emit_import_closure_root): with imports
                 // stripped, a namespace-only module's cross-module deps are
