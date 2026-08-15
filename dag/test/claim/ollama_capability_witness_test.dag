@@ -40,6 +40,9 @@ import extdeps.ollama.capability {
   ollama_v0_9_6_semantic_version,
   ollama_gpt_oss_feature_introduction_floor,
   ollama_gpt_oss_20b_model_ref,
+  ollama_semantic_version,
+  ollama_semantic_version_cmp,
+  ollama_semantic_version_at_least,
 }
 import gunbc.spark_serving_desired {
   spark_serving_desired_admission,
@@ -76,6 +79,13 @@ test fn v0_9_6_gpt_oss_support_refuses_as_too_old() -> Bool {
     OllamaModelSupportUncatalogued { model_wire: _ } => false
     _ => false
   }
+}
+
+test fn semantic_version_cmp_pins_observed_below_minimum() -> Bool {
+  let observed = ollama_semantic_version(major: 0, minor: 10, patch: 0)
+  let minimum = ollama_semantic_version(major: 0, minor: 11, patch: 0)
+  ollama_semantic_version_cmp(a: observed, b: minimum) == -1
+    && ollama_semantic_version_at_least(observed: observed, minimum: minimum) == false
 }
 
 test fn v0_11_0_floor_satisfies_gpt_oss_support() -> Bool {

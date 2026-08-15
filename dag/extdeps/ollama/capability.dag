@@ -1,8 +1,7 @@
 module extdeps.ollama.capability
 
 import std.types { String, Bool, List, Int, NonEmptyStr }
-import std.nat { Nat, nat_compare }
-import std.algebra { Less, Equal, Greater }
+import std.nat { Nat }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -95,21 +94,9 @@ fn ollama_model_ref_eq(a: OllamaModelRef, b: OllamaModelRef) -> Bool {
 }
 
 fn ollama_semantic_version_cmp(a: OllamaSemanticVersion, b: OllamaSemanticVersion) -> Int {
-  match nat_compare(a: a.major, b: b.major) {
-    Less => -1
-    Greater => 1
-    Equal =>
-      match nat_compare(a: a.minor, b: b.minor) {
-        Less => -1
-        Greater => 1
-        Equal =>
-          match nat_compare(a: a.patch, b: b.patch) {
-            Less => -1
-            Greater => 1
-            Equal => 0
-          }
-      }
-  }
+  if a.major != b.major { a.major - b.major }
+  else if a.minor != b.minor { a.minor - b.minor }
+  else { a.patch - b.patch }
 }
 
 fn ollama_semantic_version_at_least(observed: OllamaSemanticVersion, minimum: OllamaSemanticVersion) -> Bool {
