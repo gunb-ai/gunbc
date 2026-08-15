@@ -95,8 +95,6 @@ fn cause_tag(r: PlacementRefusal) -> NonEmptyStr {
     RoleFilledMoreThanOnce { role: _, fills: _ } => "RoleFilledTwice"
     PlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => "DesignMismatch"
     RequiredFunctionWithoutJustifiedPartOnBoard { requirement: _ } => "FunctionMissing"
-    FunctionCarrierWithoutPopulationJustification { component: _ } => "FunctionCarrierUnjustified"
-    FunctionCarrierRealizesNoDeclaredFunctionOnBoard { component: _ } => "FunctionCarrierUnrealized"
   }
 }
 

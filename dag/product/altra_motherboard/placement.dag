@@ -46,8 +46,6 @@ import product.altra_motherboard.minimal_design {
 import product.altra_motherboard.realization {
   BoardRequirementIdentity,
   RequiredFunctionWithoutJustifiedPart,
-  FunctionCarrierWithoutJustification,
-  FunctionCarrierRealizesNoDeclaredFunction,
   altra_1p_requirement_part_realizations,
   population_realization_refusals,
 }
@@ -258,8 +256,6 @@ type PlacementRefusal
   | RoleFilledMoreThanOnce { role: BoardComponentRole, fills: Int }
   | PlanWasBuiltFromADifferentDesign { plan_design: DeclarationRef, admitted_against: DeclarationRef }
   | RequiredFunctionWithoutJustifiedPartOnBoard { requirement: BoardRequirementIdentity }
-  | FunctionCarrierWithoutPopulationJustification { component: NonEmptyStr }
-  | FunctionCarrierRealizesNoDeclaredFunctionOnBoard { component: NonEmptyStr }
 
 // WHICH DESIGN THIS PLAN WAS BUILT FROM, carried so that a projection cannot mix two boards. A
 // plan is derived from a design, and once several projections exist -- a scene, a fabrication
@@ -315,10 +311,6 @@ fn realization_placement_refusals(plan: BoardPlacementPlan) -> List<PlacementRef
       match r {
         RequiredFunctionWithoutJustifiedPart { requirement: req } =>
           concat(acc, [RequiredFunctionWithoutJustifiedPartOnBoard { requirement: req }])
-        FunctionCarrierWithoutJustification { component: c } =>
-          concat(acc, [FunctionCarrierWithoutPopulationJustification { component: c }])
-        FunctionCarrierRealizesNoDeclaredFunction { component: c } =>
-          concat(acc, [FunctionCarrierRealizesNoDeclaredFunctionOnBoard { component: c }])
       }
     }
   )
@@ -739,8 +731,6 @@ fn parts_not_geometrically_checked(d: AltraMinimalMotherboard, d_ref: Declaratio
       RoleFilledMoreThanOnce { role: _, fills: _ } => acc
       PlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => acc
       RequiredFunctionWithoutJustifiedPartOnBoard { requirement: _ } => acc
-      FunctionCarrierWithoutPopulationJustification { component: _ } => acc
-      FunctionCarrierRealizesNoDeclaredFunctionOnBoard { component: _ } => acc
     }
   })
 }

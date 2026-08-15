@@ -26,7 +26,7 @@ import product.altra_motherboard.realization {
   MemoryModuleSocketPopulation,
   RequirementPartRealization,
   altra_1p_requirement_part_realizations,
-  realization_carrier_identities,
+  altra_1p_realization_provider_identities,
   population_realization_refusals,
   population_realization_refusal_count,
   requirement_name,
@@ -38,8 +38,6 @@ import product.altra_motherboard.realization {
   mt_jade_reference_platform_ref,
   processor_power_rail_order_ref,
   RequiredFunctionWithoutJustifiedPart,
-  FunctionCarrierWithoutJustification,
-  FunctionCarrierRealizesNoDeclaredFunction,
 }
 import product.altra_motherboard.placement {
   altra_reference_plan,
@@ -50,8 +48,6 @@ import product.altra_motherboard.placement {
   PlannedIdentityRepeated,
   RoleFilledMoreThanOnce,
   PlanWasBuiltFromADifferentDesign,
-  FunctionCarrierWithoutPopulationJustification,
-  FunctionCarrierRealizesNoDeclaredFunctionOnBoard,
   placement_causes,
 }
 import product.altra_motherboard.minimal_design { altra_1p_minimum, altra_1p_minimum_ref }
@@ -230,9 +226,9 @@ test fn w_clock_requirements_have_no_physical_providers() -> Bool {
   })
 }
 
-test fn w_the_reference_plan_carries_all_realization_carriers() -> Bool {
+test fn w_the_reference_plan_carries_all_realization_providers() -> Bool {
   let ids = plan_identities_from_reference()
-  fold(realization_carrier_identities, init: true, f: fn(acc, id) {
+  fold(altra_1p_realization_provider_identities(), init: true, f: fn(acc, id) {
     acc && fold(ids, init: false, f: fn(seen, x) { seen || (x as String) == (id as String) })
   })
 }
@@ -278,8 +274,6 @@ test fn w_removing_host_phy_refuses_host_network_requirement() -> Bool {
             ProcessorPackageFit => false
             MemoryModuleSocketPopulation { slot: _ } => false
           }
-        FunctionCarrierWithoutJustification { component: _ } => false
-        FunctionCarrierRealizesNoDeclaredFunction { component: _ } => false
       }
     }
   )
@@ -349,8 +343,6 @@ test fn w_realization_refusals_surface_through_placement_admission() -> Bool {
             PlannedIdentityRepeated { component: _ } => true
             RoleFilledMoreThanOnce { role: _, fills: _ } => true
             PlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => true
-            FunctionCarrierWithoutPopulationJustification { component: _ } => true
-            FunctionCarrierRealizesNoDeclaredFunctionOnBoard { component: _ } => true
           }
         }
       )

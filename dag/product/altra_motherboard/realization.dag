@@ -111,8 +111,6 @@ type RequirementPartRealization {
 
 type PopulationRealizationRefusal
   = RequiredFunctionWithoutJustifiedPart { requirement: BoardRequirementIdentity }
-  | FunctionCarrierWithoutJustification { component: NonEmptyStr }
-  | FunctionCarrierRealizesNoDeclaredFunction { component: NonEmptyStr }
 
 fn mt_jade_reference_platform_ref() -> DeclarationRef {
   decl_ref(module_path: "extdeps.ocp.mt_jade.subject", decl_name: "mt_jade_reference_platform")
@@ -203,6 +201,10 @@ data altra_1p_requirement_part_realizations: List<RequirementPartRealization> = 
   },
 ]
 
+fn altra_1p_realization_provider_identities() -> List<NonEmptyStr> {
+  provider_identities_from_roster(roster: altra_1p_requirement_part_realizations)
+}
+
 fn board_clock_functional_obligations() -> List<BoardRequirementIdentity> {
   [ClockReferenceGeneration, ClockReferenceDistribution]
 }
@@ -229,14 +231,6 @@ fn physical_population_requirements() -> List<BoardRequirementIdentity> {
   ]
 }
 
-data realization_carrier_identities: List<NonEmptyStr> = [
-  "mgmt_net",
-  "host_phy",
-  "power_seq",
-  "power_stage",
-  "power_good",
-]
-
 fn identity_matches(id: NonEmptyStr, wanted: NonEmptyStr) -> Bool {
   (id as String) == (wanted as String)
 }
@@ -245,11 +239,9 @@ fn plan_contains_identity(plan: List<NonEmptyStr>, id: NonEmptyStr) -> Bool {
   fold(plan, init: false, f: fn(acc, x) { acc || identity_matches(id: x, wanted: id) })
 }
 
-fn identity_in_list(ids: List<NonEmptyStr>, id: NonEmptyStr) -> Bool {
-  fold(ids, init: false, f: fn(acc, x) { acc || identity_matches(id: x, wanted: id) })
-}
-
 fn requirement_eq(a: BoardRequirementIdentity, b: BoardRequirementIdentity) -> Bool {
+  // ROW COVERAGE ONLY. Dissolution-on: substrate closed-coproduct structural equality replaces
+  // this nested match when the carrier lands.
   match a {
     HostNetworkConnectivity => match b { HostNetworkConnectivity => true ManagementNetworkConnectivity => false ProcessorRailEnableSequencing => false ProcessorPowerStageControl => false ProcessorPowerGoodSupervision => false ClockReferenceGeneration => false ClockReferenceDistribution => false BootFirmwareRetention => false HostFirmwareStorage => false ResetSupervision => false NvmeConnectorPopulation => false BoardControlLogic => false DebugAccess => false ProcessorSocketMount => false ProcessorPackageFit => false MemoryModuleSocketPopulation { slot: _ } => false }
     ManagementNetworkConnectivity => match b { ManagementNetworkConnectivity => true HostNetworkConnectivity => false ProcessorRailEnableSequencing => false ProcessorPowerStageControl => false ProcessorPowerGoodSupervision => false ClockReferenceGeneration => false ClockReferenceDistribution => false BootFirmwareRetention => false HostFirmwareStorage => false ResetSupervision => false NvmeConnectorPopulation => false BoardControlLogic => false DebugAccess => false ProcessorSocketMount => false ProcessorPackageFit => false MemoryModuleSocketPopulation { slot: _ } => false }
@@ -321,23 +313,13 @@ fn population_realization_refusals(
   roster: List<RequirementPartRealization>,
   plan_identities: List<NonEmptyStr>,
 ) -> List<PopulationRealizationRefusal> {
-  let missing = fold(physical_population_requirements(), init: [], f: fn(acc, req) {
+  fold(physical_population_requirements(), init: [], f: fn(acc, req) {
     if requirement_has_providers_on_plan(roster: roster, plan: plan_identities, req: req) {
       acc
     } else {
       concat(acc, [RequiredFunctionWithoutJustifiedPart { requirement: req }])
     }
   })
-  let roster_providers = provider_identities_from_roster(roster: roster)
-  let unjustified_carriers = fold(realization_carrier_identities, init: [], f: fn(acc, id) {
-    if identity_in_list(ids: plan_identities, id: id)
-      && !identity_in_list(ids: roster_providers, id: id) {
-      concat(acc, [FunctionCarrierWithoutJustification { component: id }])
-    } else {
-      acc
-    }
-  })
-  concat(missing, unjustified_carriers)
 }
 
 fn population_realization_refusal_count(cs: List<PopulationRealizationRefusal>) -> Int {

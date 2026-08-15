@@ -363,8 +363,6 @@ fn design_mismatch_from_causes(cs: List<PlacementRefusal>) -> PcbWorldRefusal? {
           PlannedIdentityRepeated { component: _ } => none
           RoleFilledMoreThanOnce { role: _, fills: _ } => none
           RequiredFunctionWithoutJustifiedPartOnBoard { requirement: _ } => none
-          FunctionCarrierWithoutPopulationJustification { component: _ } => none
-          FunctionCarrierRealizesNoDeclaredFunctionOnBoard { component: _ } => none
         }
     }
   })
