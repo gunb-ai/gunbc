@@ -3,20 +3,29 @@ module test.claim.altra_attachment_stack_witness
 import std.types { Bool, String, NonEmptyStr, List }
 import std.integer { Int }
 import product.altra_motherboard.attachment_stack {
+  AccessGatedFactHasIndependentCarriageDecision,
+  AuthorityStandingRefusal,
+  EstablishedFactHasInapplicableCarriage,
+  UnestablishedFactClaimsNormalizedCarriage,
+  authority_standing_refusal,
+  standing_pair_is_admitted,
   AttachmentLayer,
   AttachmentLayerStanding,
   BoardLandPatternLayer,
   LayerBlocker,
-  NdaGated,
+  FactAccessGated,
   NeedsARedistributionDecision,
+  NeedsAHumanToReadTheDrawing,
+  NeedsTheStandingItselfRepaired,
   NeedsCommercialAccess,
   NeedsSomeoneToFindTheDocument,
   ProcessorPackageLayer,
-  PubliclyCited,
-  PublicButRedistributionUndecided,
+  FactEstablished,
+  FactStatedOnlyInFigure,
+  FactUnresolved,
   SocketLayer,
-  Unresolved,
   attachment_layer_name,
+  CarriageDecisionRequired,
   attachment_stack,
   board_land_pattern_standing,
   board_side_termination_population,
@@ -24,7 +33,9 @@ import product.altra_motherboard.attachment_stack {
   open_blockers,
   processor_package_standing,
   reference_board_collateral_standing,
-  standing_is_established,
+  fact_is_established,
+  CarriageNotApplicable,
+  NormalizedFactsMayBeCarried,
 }
 import extdeps.cpu.ampere_altra_package {
   altra_pin_summary_total,
@@ -38,19 +49,17 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn blocker_kind(b: LayerBlocker) -> String {
-  match b {
-    NeedsSomeoneToFindTheDocument { layer: _, what_is_missing: _ } => "find-document"
-    NeedsARedistributionDecision { layer: _, footer: _ } => "redistribution"
-    NeedsCommercialAccess { layer: _, subject: _, access_route: _ } => "commercial"
+  match b.blocker {
+    NeedsSomeoneToFindTheDocument { what_is_missing: _ } => "find-document"
+    NeedsARedistributionDecision { reason: _ } => "redistribution"
+    NeedsCommercialAccess { subject: _, access_route: _ } => "commercial"
+    NeedsAHumanToReadTheDrawing { figure: _, what_is_drawn: _ } => "read-drawing"
+    NeedsTheStandingItselfRepaired { refusal: _ } => "standing-self-contradictory"
   }
 }
 
 fn blocker_layer(b: LayerBlocker) -> AttachmentLayer {
-  match b {
-    NeedsSomeoneToFindTheDocument { layer: l, what_is_missing: _ } => l
-    NeedsARedistributionDecision { layer: l, footer: _ } => l
-    NeedsCommercialAccess { layer: l, subject: _, access_route: _ } => l
-  }
+  b.layer
 }
 
 fn count_of(xs: List<LayerBlocker>) -> Int {
@@ -74,18 +83,47 @@ test fn w_the_board_side_termination_population_follows_the_package() -> Bool {
   board_side_termination_population() == 4926
 }
 
-// THE CENTRAL CLAIM. The board land pattern is NOT established, and specifically it is not
-// established by the processor package being public. Those are different layers with different
-// authorities, and the package drawing sitting in an already-cited datasheet is exactly what
-// makes the conflation tempting.
+// THE CENTRAL CLAIM, AND THE SPLIT MADE IT SHARPER RATHER THAN WEAKER. It used to read that
+// NEITHER the package nor the land pattern was established, which was true only because the fused
+// type filed a publicly documented dimension under "redistribution undecided" and called that not
+// established. Now the package IS established and the land pattern still is not — which is the
+// claim this test was always trying to make. The package sitting in an already-cited datasheet is
+// exactly what makes the conflation tempting, and asserting it from the established side is a
+// stronger statement than asserting it from two unknowns.
 test fn w_a_public_package_does_not_establish_the_board_land_pattern() -> Bool {
-  !standing_is_established(s: processor_package_standing.standing)
-    && !standing_is_established(s: board_land_pattern_standing.standing)
-    && match board_land_pattern_standing.standing {
-      Unresolved { what_is_missing: _ } => true
-      PubliclyCited { authority: _ } => false
-      PublicButRedistributionUndecided { authority: _, footer: _ } => false
-      NdaGated { subject: _, access_route: _ } => false
+  fact_is_established(f: processor_package_standing.fact)
+    && !fact_is_established(f: board_land_pattern_standing.fact)
+    && match board_land_pattern_standing.fact {
+      FactUnresolved { what_is_missing: _ } => true
+      FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => false
+      FactEstablished { authority: _, subject: _ } => false
+      FactAccessGated { subject: _, access_route: _ } => false
+    }
+}
+
+// THE TWO AXES ARE INDEPENDENT, asserted on the one row where both are decided. The package's
+// fact is established AND its carriage admits normalized facts — a pair the earlier type could
+// not represent at all, since it required choosing between "publicly cited" and "redistribution
+// undecided". This is the regression control for the fusion: if the axes are ever collapsed
+// again, one of these two conjuncts becomes unsayable.
+test fn w_an_established_fact_and_a_decided_carriage_coexist() -> Bool {
+  fact_is_established(f: processor_package_standing.fact)
+    && match processor_package_standing.carriage {
+      NormalizedFactsMayBeCarried => true
+      CarriageNotApplicable { because: _ } => false
+      CarriageDecisionRequired { reason: _ } => false
+    }
+}
+
+// AND AN UNRESOLVED FACT HAS NO CARRIAGE QUESTION YET. Carriage asks what may be copied; with
+// nothing established there is nothing to copy, so the arm says so rather than defaulting to a
+// permission or a prohibition nobody decided.
+test fn w_an_unresolved_fact_carries_no_carriage_decision() -> Bool {
+  !fact_is_established(f: board_land_pattern_standing.fact)
+    && match board_land_pattern_standing.carriage {
+      CarriageNotApplicable { because: _ } => true
+      NormalizedFactsMayBeCarried => false
+      CarriageDecisionRequired { reason: _ } => false
     }
 }
 
@@ -108,16 +146,34 @@ test fn w_the_three_blocker_kinds_are_distinct() -> Bool {
     Absent => "none"
     Present { value: b } => blocker_kind(b: b)
   }
-  package_blocker == "redistribution"
+  package_blocker == "none"
     && land_blocker == "find-document"
+    && undecided_carriage_blocker() == "redistribution"
     && match reference_board_collateral_standing() {
-      NdaGated { subject: sub, access_route: route } =>
+      FactAccessGated { subject: sub, access_route: route } =>
         list_length(items: split(s: sub as String, delimiter: "Mt. Jade")) > 1
           && (route.uri.locator as String) == "amperecomputing.com/home/customer-reference-boards"
-      PubliclyCited { authority: _ } => false
-      PublicButRedistributionUndecided { authority: _, footer: _ } => false
-      Unresolved { what_is_missing: _ } => false
+      FactEstablished { authority: _, subject: _ } => false
+      FactUnresolved { what_is_missing: _ } => false
+      FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => false
     }
+}
+
+// THE REDISTRIBUTION BLOCKER NEEDS A CONTROLLED FIXTURE NOW, and that is a improvement rather
+// than a workaround. It used to be demonstrated by the processor package row, whose carriage the
+// legal ruling has since decided — so the production row stopped being a specimen of the blocker
+// and the test would have quietly measured nothing. A planted row keeps the arm executed and
+// keeps it independent of any decision made about a real subject.
+fn undecided_carriage_blocker() -> String {
+  let planted = AttachmentLayerStanding {
+    layer: board_land_pattern_standing.layer,
+    fact: processor_package_standing.fact,
+    carriage: CarriageDecisionRequired { reason: "planted: carriage undecided for this subject" },
+  }
+  match layer_blocker(row: planted) {
+    Absent => "none"
+    Present { value: b } => blocker_kind(b: b)
+  }
 }
 
 // THE NDA BOUNDARY IS THE REFERENCE BOARDS, NOT THE PACKAGE. Stated as an executed comparison
@@ -125,11 +181,11 @@ test fn w_the_three_blocker_kinds_are_distinct() -> Bool {
 // being false.
 test fn w_the_nda_boundary_covers_board_collateral_only() -> Bool {
   let nda_layers = fold(attachment_stack, init: 0, f: fn(acc, row) {
-    match row.standing {
-      NdaGated { subject: _, access_route: _ } => acc + 1
-      PubliclyCited { authority: _ } => acc
-      PublicButRedistributionUndecided { authority: _, footer: _ } => acc
-      Unresolved { what_is_missing: _ } => acc
+    match row.fact {
+      FactAccessGated { subject: _, access_route: _ } => acc + 1
+      FactEstablished { authority: _, subject: _ } => acc
+      FactUnresolved { what_is_missing: _ } => acc
+      FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => acc
     }
   })
   nda_layers == 0
@@ -140,7 +196,21 @@ test fn w_the_nda_boundary_covers_board_collateral_only() -> Bool {
 // the number instead of silently satisfying a name.
 test fn w_every_attachment_layer_is_open_and_says_why() -> Bool {
   let layers = fold(attachment_stack, init: 0, f: fn(acc, _r) { acc + 1 })
-  layers == 6 && count_of(xs: open_blockers()) == 6
+  let package_resolved = match layer_blocker(row: processor_package_standing) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  let others_blocked = fold(attachment_stack, init: true, f: fn(acc, row) {
+    if fact_is_established(f: row.fact) {
+      acc
+    } else {
+      acc && match layer_blocker(row: row) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    }
+  })
+  layers == 6 && count_of(xs: open_blockers()) == 5 && package_resolved && others_blocked
 }
 
 // The layers are distinguishable rather than six spellings of one thing.
@@ -149,4 +219,89 @@ test fn w_the_layers_are_named_distinctly() -> Bool {
     && (attachment_layer_name(l: SocketLayer) as String) == "socket"
     && (attachment_layer_name(l: BoardLandPatternLayer) as String) == "board land pattern"
     && (attachment_layer_name(l: ProcessorPackageLayer) as String) != (attachment_layer_name(l: BoardLandPatternLayer) as String)
+}
+
+// EVERY LAYER THIS BOARD CARRIES IS A COHERENT PAIR. This runs over the live population rather than
+// a fixture, so it is the claim that the six standings authored in this module actually mean
+// something -- and it is the one that would have caught the defect if it had existed when the axes
+// were split.
+test fn w_every_layer_standing_is_a_coherent_pair() -> Bool {
+  fold(attachment_stack, init: true, f: fn(acc, st) {
+    acc && standing_pair_is_admitted(fact: st.fact, carriage: st.carriage)
+  })
+}
+
+// THE THREE DISCRIMINATING REDS, one per incoherent combination, each authored here rather than
+// found in the tree. Without these the claim above is satisfied by a refusal function that never
+// fires -- which is exactly what subject_blocker was doing before this change: answering an
+// established fact with inapplicable carriage as though nothing blocked it.
+test fn w_an_established_fact_cannot_have_inapplicable_carriage() -> Bool {
+  match authority_standing_refusal(
+    fact: processor_package_standing.fact,
+    carriage: CarriageNotApplicable { because: "planted: carriage moot for a fact that exists" }
+  ) {
+    Present { value: EstablishedFactHasInapplicableCarriage } => true
+    Present { value: _ } => false
+    Absent => false
+  }
+}
+
+test fn w_an_unestablished_fact_cannot_claim_carriage_permission() -> Bool {
+  match authority_standing_refusal(
+    fact: FactUnresolved { what_is_missing: "planted: nobody has found this document" },
+    carriage: NormalizedFactsMayBeCarried
+  ) {
+    Present { value: UnestablishedFactClaimsNormalizedCarriage } => true
+    Present { value: _ } => false
+    Absent => false
+  }
+}
+
+test fn w_an_access_gated_fact_gets_no_independent_carriage_decision() -> Bool {
+  match authority_standing_refusal(
+    fact: reference_board_collateral_standing(),
+    carriage: CarriageDecisionRequired { reason: "planted: decided separately from the access terms" }
+  ) {
+    Present { value: AccessGatedFactHasIndependentCarriageDecision } => true
+    Present { value: _ } => false
+    Absent => false
+  }
+}
+
+// AND THE COHERENT PAIRS ARE NOT REFUSED, so the admission is not simply rejecting everything --
+// a refusal function that never admits passes every red above and blocks the whole board.
+test fn w_the_coherent_pairs_are_admitted() -> Bool {
+  standing_pair_is_admitted(
+    fact: processor_package_standing.fact,
+    carriage: NormalizedFactsMayBeCarried
+  )
+    && standing_pair_is_admitted(
+      fact: FactUnresolved { what_is_missing: "planted" },
+      carriage: CarriageNotApplicable { because: "planted" }
+    )
+}
+
+// THE DISCRIMINATING CONTROL FOR THE JOINT CHECK. This row is planted, not live: an established
+// fact whose carriage says the question does not apply, which is precisely the pair
+// authority_standing_refusal names EstablishedFactHasInapplicableCarriage. Before the projection
+// consulted that refusal, the coherence check called this row refused while layer_blocker answered
+// Absent, so a consumer reading the blockers saw a settled layer -- two answers about one row,
+// disagreeing, with the reassuring one on the path everything downstream reads. Both directions
+// are asserted here so neither half can quietly stop firing.
+fn incoherent_row() -> AttachmentLayerStanding {
+  AttachmentLayerStanding {
+    layer: BoardLandPatternLayer,
+    fact: processor_package_standing.fact,
+    carriage: CarriageNotApplicable {
+      because: "planted: an established fact may not also declare carriage inapplicable",
+    },
+  }
+}
+
+test fn w_an_incoherent_standing_is_reported_as_a_blocker_not_as_settled() -> Bool {
+  !standing_pair_is_admitted(fact: incoherent_row().fact, carriage: incoherent_row().carriage)
+    && match layer_blocker(row: incoherent_row()) {
+         Absent => false
+         Present { value: b } => blocker_kind(b: b) == "standing-self-contradictory"
+       }
 }
