@@ -356,7 +356,7 @@ test fn w_clock_obligations_name_outstanding_compatibility_not_selection() -> Bo
 }
 
 test fn w_board_functional_requirements_include_physical_population_gaps() -> Bool {
-  list_length(xs: board_functional_requirements()) == 7
+  list_length(items: board_functional_requirements()) == 7
     && fold(board_functional_requirements(), init: true, f: fn(acc, r) {
       acc && match r {
         HostNetworkConnectivity => true

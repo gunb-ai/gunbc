@@ -10,7 +10,6 @@ import extdeps.ocp.mt_jade.platform {
 }
 import product.altra_motherboard.minimal_design {
   DdrSlotIdentity,
-  ddr_slot_identity_eq,
 }
 
 // WHAT THE BOARD MUST ACCOMPLISH, NAMED ONCE. These are requirement identities, not placement
@@ -243,50 +242,8 @@ fn plan_contains_identity(plan: List<NonEmptyStr>, id: NonEmptyStr) -> Bool {
   fold(plan, init: false, f: fn(acc, x) { acc || identity_matches(id: x, wanted: id) })
 }
 
-fn requirement_eq(a: BoardRequirementIdentity, b: BoardRequirementIdentity) -> Bool {
-  // ROW COVERAGE ONLY. Dissolution-on: substrate closed-coproduct structural equality replaces
-  // this nested match when the carrier lands.
-  match a {
-    HostNetworkConnectivity => match b { HostNetworkConnectivity => true ManagementNetworkConnectivity => false ProcessorRailEnableSequencing => false ProcessorPowerStageControl => false ProcessorPowerGoodSupervision => false ClockReferenceGeneration => false ClockReferenceDistribution => false BootFirmwareRetention => false HostFirmwareStorage => false ResetSupervision => false NvmeConnectorPopulation => false BoardControlLogic => false DebugAccess => false ProcessorSocketMount => false ProcessorPackageFit => false MemoryModuleSocketPopulation { slot: _ } => false }
-    ManagementNetworkConnectivity => match b { ManagementNetworkConnectivity => true HostNetworkConnectivity => false ProcessorRailEnableSequencing => false ProcessorPowerStageControl => false ProcessorPowerGoodSupervision => false ClockReferenceGeneration => false ClockReferenceDistribution => false BootFirmwareRetention => false HostFirmwareStorage => false ResetSupervision => false NvmeConnectorPopulation => false BoardControlLogic => false DebugAccess => false ProcessorSocketMount => false ProcessorPackageFit => false MemoryModuleSocketPopulation { slot: _ } => false }
-    ProcessorRailEnableSequencing => match b { ProcessorRailEnableSequencing => true HostNetworkConnectivity => false ManagementNetworkConnectivity => false ProcessorPowerStageControl => false ProcessorPowerGoodSupervision => false ClockReferenceGeneration => false ClockReferenceDistribution => false BootFirmwareRetention => false HostFirmwareStorage => false ResetSupervision => false NvmeConnectorPopulation => false BoardControlLogic => false DebugAccess => false ProcessorSocketMount => false ProcessorPackageFit => false MemoryModuleSocketPopulation { slot: _ } => false }
-    ProcessorPowerStageControl => match b { ProcessorPowerStageControl => true HostNetworkConnectivity => false ManagementNetworkConnectivity => false ProcessorRailEnableSequencing => false ProcessorPowerGoodSupervision => false ClockReferenceGeneration => false ClockReferenceDistribution => false BootFirmwareRetention => false HostFirmwareStorage => false ResetSupervision => false NvmeConnectorPopulation => false BoardControlLogic => false DebugAccess => false ProcessorSocketMount => false ProcessorPackageFit => false MemoryModuleSocketPopulation { slot: _ } => false }
-    ProcessorPowerGoodSupervision => match b { ProcessorPowerGoodSupervision => true HostNetworkConnectivity => false ManagementNetworkConnectivity => false ProcessorRailEnableSequencing => false ProcessorPowerStageControl => false ClockReferenceGeneration => false ClockReferenceDistribution => false BootFirmwareRetention => false HostFirmwareStorage => false ResetSupervision => false NvmeConnectorPopulation => false BoardControlLogic => false DebugAccess => false ProcessorSocketMount => false ProcessorPackageFit => false MemoryModuleSocketPopulation { slot: _ } => false }
-    ClockReferenceGeneration => match b { ClockReferenceGeneration => true HostNetworkConnectivity => false ManagementNetworkConnectivity => false ProcessorRailEnableSequencing => false ProcessorPowerStageControl => false ProcessorPowerGoodSupervision => false ClockReferenceDistribution => false BootFirmwareRetention => false HostFirmwareStorage => false ResetSupervision => false NvmeConnectorPopulation => false BoardControlLogic => false DebugAccess => false ProcessorSocketMount => false ProcessorPackageFit => false MemoryModuleSocketPopulation { slot: _ } => false }
-    ClockReferenceDistribution => match b { ClockReferenceDistribution => true HostNetworkConnectivity => false ManagementNetworkConnectivity => false ProcessorRailEnableSequencing => false ProcessorPowerStageControl => false ProcessorPowerGoodSupervision => false ClockReferenceGeneration => false BootFirmwareRetention => false HostFirmwareStorage => false ResetSupervision => false NvmeConnectorPopulation => false BoardControlLogic => false DebugAccess => false ProcessorSocketMount => false ProcessorPackageFit => false MemoryModuleSocketPopulation { slot: _ } => false }
-    BootFirmwareRetention => match b { BootFirmwareRetention => true HostNetworkConnectivity => false ManagementNetworkConnectivity => false ProcessorRailEnableSequencing => false ProcessorPowerStageControl => false ProcessorPowerGoodSupervision => false ClockReferenceGeneration => false ClockReferenceDistribution => false HostFirmwareStorage => false ResetSupervision => false NvmeConnectorPopulation => false BoardControlLogic => false DebugAccess => false ProcessorSocketMount => false ProcessorPackageFit => false MemoryModuleSocketPopulation { slot: _ } => false }
-    HostFirmwareStorage => match b { HostFirmwareStorage => true HostNetworkConnectivity => false ManagementNetworkConnectivity => false ProcessorRailEnableSequencing => false ProcessorPowerStageControl => false ProcessorPowerGoodSupervision => false ClockReferenceGeneration => false ClockReferenceDistribution => false BootFirmwareRetention => false ResetSupervision => false NvmeConnectorPopulation => false BoardControlLogic => false DebugAccess => false ProcessorSocketMount => false ProcessorPackageFit => false MemoryModuleSocketPopulation { slot: _ } => false }
-    ResetSupervision => match b { ResetSupervision => true HostNetworkConnectivity => false ManagementNetworkConnectivity => false ProcessorRailEnableSequencing => false ProcessorPowerStageControl => false ProcessorPowerGoodSupervision => false ClockReferenceGeneration => false ClockReferenceDistribution => false BootFirmwareRetention => false HostFirmwareStorage => false NvmeConnectorPopulation => false BoardControlLogic => false DebugAccess => false ProcessorSocketMount => false ProcessorPackageFit => false MemoryModuleSocketPopulation { slot: _ } => false }
-    NvmeConnectorPopulation => match b { NvmeConnectorPopulation => true HostNetworkConnectivity => false ManagementNetworkConnectivity => false ProcessorRailEnableSequencing => false ProcessorPowerStageControl => false ProcessorPowerGoodSupervision => false ClockReferenceGeneration => false ClockReferenceDistribution => false BootFirmwareRetention => false HostFirmwareStorage => false ResetSupervision => false BoardControlLogic => false DebugAccess => false ProcessorSocketMount => false ProcessorPackageFit => false MemoryModuleSocketPopulation { slot: _ } => false }
-    BoardControlLogic => match b { BoardControlLogic => true HostNetworkConnectivity => false ManagementNetworkConnectivity => false ProcessorRailEnableSequencing => false ProcessorPowerStageControl => false ProcessorPowerGoodSupervision => false ClockReferenceGeneration => false ClockReferenceDistribution => false BootFirmwareRetention => false HostFirmwareStorage => false ResetSupervision => false NvmeConnectorPopulation => false DebugAccess => false ProcessorSocketMount => false ProcessorPackageFit => false MemoryModuleSocketPopulation { slot: _ } => false }
-    DebugAccess => match b { DebugAccess => true HostNetworkConnectivity => false ManagementNetworkConnectivity => false ProcessorRailEnableSequencing => false ProcessorPowerStageControl => false ProcessorPowerGoodSupervision => false ClockReferenceGeneration => false ClockReferenceDistribution => false BootFirmwareRetention => false HostFirmwareStorage => false ResetSupervision => false NvmeConnectorPopulation => false BoardControlLogic => false ProcessorSocketMount => false ProcessorPackageFit => false MemoryModuleSocketPopulation { slot: _ } => false }
-    ProcessorSocketMount => match b { ProcessorSocketMount => true HostNetworkConnectivity => false ManagementNetworkConnectivity => false ProcessorRailEnableSequencing => false ProcessorPowerStageControl => false ProcessorPowerGoodSupervision => false ClockReferenceGeneration => false ClockReferenceDistribution => false BootFirmwareRetention => false HostFirmwareStorage => false ResetSupervision => false NvmeConnectorPopulation => false BoardControlLogic => false DebugAccess => false ProcessorPackageFit => false MemoryModuleSocketPopulation { slot: _ } => false }
-    ProcessorPackageFit => match b { ProcessorPackageFit => true HostNetworkConnectivity => false ManagementNetworkConnectivity => false ProcessorRailEnableSequencing => false ProcessorPowerStageControl => false ProcessorPowerGoodSupervision => false ClockReferenceGeneration => false ClockReferenceDistribution => false BootFirmwareRetention => false HostFirmwareStorage => false ResetSupervision => false NvmeConnectorPopulation => false BoardControlLogic => false DebugAccess => false ProcessorSocketMount => false MemoryModuleSocketPopulation { slot: _ } => false }
-    MemoryModuleSocketPopulation { slot: sa } =>
-      match b {
-        MemoryModuleSocketPopulation { slot: sb } =>
-          ddr_slot_identity_eq(a: sa, b: sb)
-        HostNetworkConnectivity => false
-        ManagementNetworkConnectivity => false
-        ProcessorRailEnableSequencing => false
-        ProcessorPowerStageControl => false
-        ProcessorPowerGoodSupervision => false
-        ClockReferenceGeneration => false
-        ClockReferenceDistribution => false
-        BootFirmwareRetention => false
-        HostFirmwareStorage => false
-        ResetSupervision => false
-        NvmeConnectorPopulation => false
-        BoardControlLogic => false
-        DebugAccess => false
-        ProcessorSocketMount => false
-        ProcessorPackageFit => false
-      }
-  }
-}
-
 fn row_covers_requirement(row: RequirementPartRealization, req: BoardRequirementIdentity) -> Bool {
-  requirement_eq(a: row.requirement, b: req)
+  row.requirement == req
 }
 
 fn provider_identities_from_roster(roster: List<RequirementPartRealization>) -> List<NonEmptyStr> {
