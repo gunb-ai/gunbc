@@ -10,6 +10,7 @@ import gunbc.model_artifact { ModelArtifact, model_artifact_from_observed_digest
 import extdeps.ollama.api {
   OllamaModelRef,
   OllamaModelDigest,
+  ollama_default_port,
 }
 import extdeps.ollama.binary_release {
   ollama_required_release,
@@ -32,6 +33,10 @@ import gunbc.spark_serving_release {
   ServingConfigurationIdentity,
   InferenceCapacityPolicy,
   spark_serving_release_identity,
+  SparkServingRuntimeKind,
+  OllamaRuntime,
+  SparkServingBindListen,
+  spark_serving_configuration_identity,
 }
 import gunbc.spark_serving_realization {
   SparkServingIntent,
@@ -43,11 +48,21 @@ import gunbc.spark_serving_realization {
   UnauthenticatedEndpoint,
   IndependentlyObservable,
   NamedPrincipal,
+  ServingEndpointIntent,
 }
 
 data spark_serving_desired_note: String = "OPERATOR DECLARATION (2026-08-12): LAN boundary, ollama runtime, gpt-oss:20b model, executor-owned serving process under gunbc-automation. Runtime closure identity derives from extdeps.ollama.binary_release cited digest — materialization binds through gunbc.package_delivery (#8225), not a parallel install path. Model identity is the manifest digest from /api/tags, not the serving label."
 
-data spark_serving_configuration_digest: NonEmptyStr = "spark-serving|runtime=ollama|model=gpt-oss:20b|bind=0.0.0.0:11434|endpoint=lan-unauthenticated" as NonEmptyStr
+data spark_serving_configuration_digest_note: String = "ServingConfigurationIdentity.configuration_digest is derived by spark_serving_configuration_identity from typed policy fields — never authored as a parallel literal."
+
+data spark_serving_desired_runtime: SparkServingRuntimeKind = OllamaRuntime {}
+
+data spark_serving_desired_bind_listen: SparkServingBindListen = SparkServingBindListen {
+  host: "0.0.0.0" as NonEmptyStr,
+  port: ollama_default_port,
+}
+
+data spark_serving_desired_endpoint_intent: ServingEndpointIntent = UnauthenticatedEndpoint
 
 data spark_serving_desired_model_ref: OllamaModelRef = ollama_gpt_oss_20b_model_ref
 
@@ -132,9 +147,12 @@ data spark_serving_fleet_desired: SparkServingFleetDesired = spark_serving_fleet
 
 fn spark_serving_desired_serving_policy() -> SparkServingServingPolicy {
   SparkServingServingPolicy {
-    serving_configuration: ServingConfigurationIdentity {
-      configuration_digest: spark_serving_configuration_digest,
-    },
+    serving_configuration: spark_serving_configuration_identity(
+      runtime: spark_serving_desired_runtime,
+      model_ref: spark_serving_desired_model_ref,
+      bind: spark_serving_desired_bind_listen,
+      endpoint: spark_serving_desired_endpoint_intent,
+    ),
     capacity: InferenceCapacityPolicy {
       max_model_len: 8192,
       shared_memory_budget_bytes: byte_size(120000000000),
@@ -148,7 +166,7 @@ fn spark_serving_terminal_intent() -> SparkServingIntent {
     availability: RestartsOnFailure,
     authority: ManagedConvergenceOwned,
     service_identity: ExecutorOwnedIdentity,
-    endpoint: UnauthenticatedEndpoint,
+    endpoint: spark_serving_desired_endpoint_intent,
     observability: IndependentlyObservable,
   }
 }

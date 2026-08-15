@@ -2422,10 +2422,8 @@ type SparkServingOllamaRuntimeMaterialization
       cause: NonEmptyStr
     }
 
-fn spark_serving_ollama_runtime_materialization_receipt_write_path(
-  host: HostIdentity,
-) -> FilePath {
-  spark_serving_runtime_receipt_wire_path(host: host)
+fn spark_serving_ollama_runtime_materialization_receipt_write_path() -> FilePath {
+  spark_serving_runtime_receipt_wire_path()
 }
 
 fn acquire_and_admit_ollama_release_archive(

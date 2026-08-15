@@ -38,11 +38,13 @@ data spark_serving_runtime_receipt_rel: String = ".local/share/gunbc/spark-servi
 
 data spark_serving_runtime_receipt_release_asset_digest_member: String = "release_asset_digest_hex"
 
-fn spark_serving_runtime_receipt_wire_path(host: HostIdentity) -> FilePath {
-  spark_serving_runtime_receipt_path(host: host)
+data spark_serving_runtime_receipt_path_note: String = "Receipt path is fleet-constant under gunbc-automation on every Spark host (/home/gunbc-automation/.local/share/gunbc/spark-serving/ollama-runtime-receipt.json). HostIdentity on the receipt record and wet SSH probe selects which machine to read; it does not vary the on-host path string because srv5 and srv6 share the same executor home layout."
+
+fn spark_serving_runtime_receipt_wire_path() -> FilePath {
+  spark_serving_runtime_receipt_path()
 }
 
-fn spark_serving_runtime_receipt_path(host: HostIdentity) -> FilePath {
+fn spark_serving_runtime_receipt_path() -> FilePath {
   concat(
     spark_serving_executor_home as String,
     concat("/", spark_serving_runtime_receipt_rel),
@@ -50,7 +52,7 @@ fn spark_serving_runtime_receipt_path(host: HostIdentity) -> FilePath {
 }
 
 fn spark_serving_runtime_receipt_probe_words(host: HostIdentity) -> List<String> {
-  ["cat", spark_serving_runtime_receipt_wire_path(host: host) as String]
+  ["cat", spark_serving_runtime_receipt_wire_path() as String]
 }
 
 fn spark_serving_parse_runtime_receipt_json(stdout: String) -> SparkServingReadbackField {
@@ -133,7 +135,7 @@ fn write_spark_serving_runtime_install_receipt(
     false
   } else {
     write_spark_serving_runtime_install_receipt_at_path(
-      path: spark_serving_runtime_receipt_wire_path(host: receipt.host),
+      path: spark_serving_runtime_receipt_wire_path(),
       receipt: receipt,
     )
   }
@@ -155,6 +157,6 @@ fn read_spark_serving_runtime_install_receipt_bytes_at_path(path: FilePath) -> S
 
 fn read_spark_serving_runtime_install_receipt_bytes(host: HostIdentity) -> String? {
   read_spark_serving_runtime_install_receipt_bytes_at_path(
-    path: spark_serving_runtime_receipt_wire_path(host: host),
+    path: spark_serving_runtime_receipt_wire_path(),
   )
 }

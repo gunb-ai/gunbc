@@ -25,10 +25,8 @@ data witness_required_release_asset_digest_hex: String = "79617139521db251c716d6
 data witness_spark_host: HostIdentity = "srv5" as HostIdentity
 
 test fn witness_materialization_writer_targets_reader_wire_path() -> Bool {
-  (spark_serving_ollama_runtime_materialization_receipt_write_path(
-    host: witness_spark_host,
-  ) as String)
-    == (spark_serving_runtime_receipt_wire_path(host: witness_spark_host) as String)
+  (spark_serving_ollama_runtime_materialization_receipt_write_path() as String)
+    == (spark_serving_runtime_receipt_wire_path() as String)
 }
 
 test fn witness_runtime_install_receipt_json_round_trips_digest() -> Bool {
