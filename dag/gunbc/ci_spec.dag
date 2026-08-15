@@ -26,7 +26,6 @@ import gunbc.cli_invoke {
   claim_executor_run_plan_shell,
   PlanFunction,
   CiFloorPlan,
-  CiRegenFloorPlan,
   CiPlanArtifactPlan,
   plan_function_name,
   claim_executor_verify_artifacts_shell,

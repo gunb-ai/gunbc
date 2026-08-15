@@ -21,7 +21,7 @@ import v2.compiler.self_host.wet_receipt_enrollment {
 }
 import gunbc.ci_materialization { ci_floor_expected_resolve_obligations, FloorFinalization }
 import gunbc.ci_spec {
-  gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
+  gunbc_ci_spec, CiSpec,
   ci_spec_with_discovery_scan_dirs,
   floor_plan_function,
   plan_artifact_plan_function,
@@ -52,8 +52,7 @@ import gunbc.ci_gate {
   Gate, EmitHostGate, CheapClaimPoolGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
   ProseRowIntroductionGate,
-  SourceRootIngestGate, RegenVerifyGate,
-  SelfHostReadsRealBytesGate, SelfHostStalenessGate
+  SourceRootIngestGate
 }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -211,9 +210,6 @@ fn spec_enrolls_gate(spec: CiSpec, g: Gate) -> Bool {
       DagCompileCleanGate => match g { DagCompileCleanGate => true  _ => found }
       EmitHostGate => match g { EmitHostGate => true  _ => found }
       SourceRootIngestGate => match g { SourceRootIngestGate => true  _ => found }
-      RegenVerifyGate => match g { RegenVerifyGate => true  _ => found }
-      SelfHostReadsRealBytesGate => match g { SelfHostReadsRealBytesGate => true  _ => found }
-      SelfHostStalenessGate => match g { SelfHostStalenessGate => true  _ => found }
     }
   })
 }
@@ -287,9 +283,6 @@ fn gate_node(g: Gate) -> Node {
     ExtdepsScopePlacementGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_extdeps_scope_placement } }, children: [], occurrence_id: SyntheticOccurrence }
     ProseRowIntroductionGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_prose_row_introduction } }, children: [], occurrence_id: SyntheticOccurrence }
     SourceRootIngestGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_sourceingest } }, children: [], occurrence_id: SyntheticOccurrence }
-    RegenVerifyGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_regen_verify } }, children: [], occurrence_id: SyntheticOccurrence }
-    SelfHostReadsRealBytesGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_self_host_reads_real_bytes } }, children: [], occurrence_id: SyntheticOccurrence }
-    SelfHostStalenessGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_self_host_staleness } }, children: [], occurrence_id: SyntheticOccurrence }
   }
 }
 
@@ -323,27 +316,6 @@ fn gate_runnable_profile(g: Gate) -> RunnableResourceProfile {
       runnable_resource_profile(
         heavy_whole_tree_resolve: true,
         spawns_host_compiler: false,
-        memory: substantial,
-        execution_mode: Wet
-      )
-    RegenVerifyGate =>
-      runnable_resource_profile(
-        heavy_whole_tree_resolve: true,
-        spawns_host_compiler: true,
-        memory: substantial,
-        execution_mode: Wet
-      )
-    SelfHostReadsRealBytesGate =>
-      runnable_resource_profile(
-        heavy_whole_tree_resolve: true,
-        spawns_host_compiler: true,
-        memory: substantial,
-        execution_mode: Wet
-      )
-    SelfHostStalenessGate =>
-      runnable_resource_profile(
-        heavy_whole_tree_resolve: true,
-        spawns_host_compiler: true,
         memory: substantial,
         execution_mode: Wet
       )
@@ -386,17 +358,6 @@ fn gate_runnable(g: Gate) -> Runnable {
     SourceRootIngestGate => RunnableSingleClaim {
       entry: floor_source_root_ingest_gate_entry,
       function: "source_root_ingest_gate_passes",
-      profile: profile
-    }
-    RegenVerifyGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "regen_verify_gate_passes", profile: profile }
-    SelfHostReadsRealBytesGate => RunnableSingleClaim {
-      entry: floor_self_host_realized_comparison_gate_entry,
-      function: "self_host_realized_comparison_reads_real_bytes_gate_holds",
-      profile: profile
-    }
-    SelfHostStalenessGate => RunnableSingleClaim {
-      entry: floor_self_host_realized_comparison_gate_entry,
-      function: "self_host_realized_comparison_staleness_gate_holds",
       profile: profile
     }
   }
@@ -827,30 +788,6 @@ fn floor_data_dependencies(spec: CiSpec) -> List<DependencyView> {
   }
 }
 
-fn floor_regen_emit_artifact_resource_edges(spec: CiSpec) -> List<DependencyView> {
-  let has_staleness = fold(spec.gates, init: false, f: fn(acc, g) {
-    match g {
-      SelfHostStalenessGate => true
-      _ => acc
-    }
-  })
-  let has_regen = fold(spec.gates, init: false, f: fn(acc, g) {
-    match g {
-      RegenVerifyGate => true
-      _ => acc
-    }
-  })
-  if has_staleness && has_regen {
-    [
-      floor_resource_depends_on(
-        source: gate_node(g: RegenVerifyGate),
-        dependent: gate_node(g: SelfHostStalenessGate)
-      )
-    ]
-  } else {
-    []
-  }
-}
 
 data gunbc_ci_corpus_discovery_batch_isolation_note: String = "Discovery-flip batch isolation under cheap-gate-early ordering (operator ruling 2026-07-22, fail-fast lane; run 29120615071 receipt retained under adaptive width): when discovery_scan_dirs is non-empty, resource edges from every enrolled corpus plan node (floor_corpus_node, execution_corpus_node when ExecutionWitnessKind rows exist, bin_witness_corpus_node when enrolled) to every non-anchor gate still isolate corpus batches from gates so gates start only after discovery completes and walk_memo holds the shared index. Cheap gates are floor_resource_anchor nodes and are EXCLUDED from corpus→gate serialization (the anchor carve-out): cheap→compile data deps require cheap first; corpus→cheap would deadlock with compile→corpus data order; anchors break the cycle by letting cheap gates run without waiting behind corpus while still feeding walk_memo to later gates. Dissolve-on: when per-gate cost attribution lands, derive from measurement."
 
@@ -890,10 +827,7 @@ fn floor_resource_dependencies(spec: CiSpec) -> List<DependencyView> {
     floor_discovery_flip_corpus_serializes_before_gates_edges(spec: spec),
     concat(
       floor_corpus_exclusion_resource_edges(spec: spec),
-      concat(
-        floor_heavy_resolve_chain_resource_edges(spec: spec),
-        floor_regen_emit_artifact_resource_edges(spec: spec)
-      )
+      floor_heavy_resolve_chain_resource_edges(spec: spec)
     )
   )
 }
@@ -1442,14 +1376,6 @@ fn witness_floor_discovery_flip_no_corpus_edge_to_compile_anchor(spec: CiSpec) -
   })
 }
 
-fn witness_regen_spec_carries_no_witness_corpus() -> Bool {
-  length(xs: corpus_plan_nodes(spec: gunbc_ci_regen_spec)) == 0
-}
-
-fn gunbc_ci_regen_floor_ordinary_batches() -> List<List<Runnable>> {
-  gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_regen_spec).schedule
-}
-
 fn runnable_single_claim_function(r: Runnable) -> String {
   match r {
     RunnableSingleClaim { entry: _, function: f, profile: _ } => f
@@ -1523,16 +1449,6 @@ fn gunbc_ci_floor_plan() -> WalkPlan<FloorFinalization> {
   }
 }
 
-fn gunbc_ci_regen_floor_plan() -> WalkPlan<NoWalkFinalization> {
-  WalkPlan {
-    pre_walk_execution: NoPreWalkExecution {},
-    batches: gunbc_ci_regen_floor_ordinary_batches(),
-    finalization: NoFinalizationDeclared {},
-    on_success_stages: [],
-    ordinary_budget: none,
-    on_success_budget: none,
-  }
-}
 
 fn gunbc_ci_plan_artifact_plan() -> WalkPlan<NoWalkFinalization> {
   WalkPlan {

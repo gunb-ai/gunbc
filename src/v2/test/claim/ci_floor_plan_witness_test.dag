@@ -3,7 +3,6 @@ module v2.test.claim.ci_floor_plan_witness
 import gunbc.cli_invoke {
   PlanFunction,
   CiFloorPlan,
-  CiRegenFloorPlan,
   CiPlanArtifactPlan,
   FalsifierPlan,
   FalsifierNativeCacheColdPlan,
@@ -15,7 +14,6 @@ import v2.workflow.ci_floor_plan {
   gunbc_falsifier_ordinary_batches,
   gunbc_ci_floor_ordinary_batches,
   gunbc_ci_floor_plan,
-  gunbc_ci_regen_floor_plan,
   gunbc_ci_plan_artifact_plan,
   gunbc_falsifier_plan,
   gunbc_falsifier_native_cache_cold_plan,
@@ -41,7 +39,6 @@ import v2.workflow.ci_floor_plan {
   witness_ci_corpus_discovery_flip_authored,
   witness_floor_discovery_flip_serializes_gates_after_corpus,
   witness_floor_discovery_flip_no_corpus_edge_to_compile_anchor,
-  witness_regen_spec_carries_no_witness_corpus,
   gunbc_floor_arm_time_budget_refusal_applies,
   witness_floor_arm_time_budget_refusal_plan_roster_authority,
   witness_floor_arm_time_budget_refusal_materialized_roster_matches_seed,
@@ -158,20 +155,15 @@ data corpus_only_spec: CiSpec = ci_spec_with_witness_entries(
   entries: [synthetic_corpus_row]
 )
 
-data heavy_pair_spec_note: String = "Phase D (2026-07-14) DELETED EmitDeterminismGate along with its x2 sampling oracle (tools.emit_determinism_gate/_transport) and the GithubActionsEmitDeterminismJob surface. DagCompileCleanGate remains the production floor heavy-whole-tree-resolve runnable, so the production spec cannot exhibit the two-heavies-co-batch violation the serialize-heavy red control discriminates on. heavy_pair_spec restores the discriminating pair synthetically (optin_spec + RegenVerifyGate as a second heavy row — heavy_whole_tree_resolve, host-compiler-spawning, off the ci-floor surface: the faithful analog of the removed EmitDeterminismGate, preserving the exact heavy count the deleted gate contributed): the property under witness is the scheduler serialize-heavy behavior, which must stay pinned green-and-red regardless of which gates the production roster currently routes through the floor."
+data heavy_pair_spec_note: String = "Phase D (2026-07-14) DELETED EmitDeterminismGate along with its x2 sampling oracle and the GithubActionsEmitDeterminismJob surface. DagCompileCleanGate remains the production floor heavy-whole-tree-resolve runnable, so the production spec cannot exhibit the two-heavies-co-batch violation the serialize-heavy red control discriminates on. heavy_pair_spec restores the discriminating pair synthetically: the property under witness is the scheduler serialize-heavy behavior, which must stay pinned green-and-red regardless of which gates the production roster currently routes through the floor.
 
-fn ci_spec_with_extra_heavy_gate(spec: CiSpec) -> CiSpec {
-  CiSpec {
-    gates: concat(spec.gates, [RegenVerifyGate]),
-    witness_entries: spec.witness_entries,
-    discovery_scan_dirs: spec.discovery_scan_dirs,
-    diff_policy: spec.diff_policy,
-    notice_title: spec.notice_title,
-    deploy_stages: spec.deploy_stages,
-  }
-}
+THE SYNTHETIC SECOND HEAVY WAS RegenVerifyGate AND IS NOW SourceRootIngestGate (v1 cut). The regen gate was retired with the self-host fixed point, and it was only ever incidental here -- this witness's subject is the scheduler, not the gate. SourceRootIngestGate carries the two properties the pair actually needs: heavy_whole_tree_resolve, and off the ci-floor surface (its commit enrollment names FalsifierCadenceJob), so adding it to the base spec genuinely produces a second heavy rather than duplicating one already there.
 
-data heavy_pair_spec: CiSpec = ci_spec_with_extra_heavy_gate(spec: optin_spec)
+ONE ATTRIBUTE IS NOT PRESERVED, said rather than glossed: the retired gate also spawned a host compiler and this one does not. That was fidelity to the deleted EmitDeterminismGate, not a requirement of the claim -- serialize-heavy keys on heavy_whole_tree_resolve alone, which is why the red control still discriminates. If a future scheduler property keys on host-compiler spawning, this fixture needs a different second heavy and this paragraph is the notice.
+
+IT ALSO REUSES ci_spec_with_source_ingest_gate RATHER THAN KEEPING ITS OWN ADDER. The first cut of this repair wrote a second function that appended the same gate to a spec, which is one concept spelled twice in one file -- and the sibling already existed for source_ingest_ordering_spec, added for the same reason when that gate left the per-PR floor. Two fixtures now share one adder, so the two synthetic specs cannot drift apart."
+
+data heavy_pair_spec: CiSpec = ci_spec_with_source_ingest_gate(spec: optin_spec)
 
 data zero_roster_spec: CiSpec = ci_spec_with_witness_entries(
   spec: discovery_free_base_spec,
@@ -994,7 +986,6 @@ test fn ci_corpus_discovery_flip_witnesses() -> Bool {
     && witness_floor_discovery_flip_serializes_gates_after_corpus(spec: gunbc_ci_spec)
     && witness_floor_discovery_flip_no_corpus_edge_to_compile_anchor(spec: gunbc_ci_spec)
     && witness_floor_discovery_flip_gates_isolated_from_corpus()
-    && witness_regen_spec_carries_no_witness_corpus()
     && schedule_discovery_batch_count(batches: floor_schedule_for(spec: zero_roster_spec, serialize_heavy: true)) == 0
 }
 
@@ -1062,9 +1053,6 @@ fn plan_carries_no_finalization(plan: WalkPlan<NoWalkFinalization>) -> Bool {
   }
 }
 
-test fn regen_plan_carries_no_finalization() -> Bool {
-  plan_carries_no_finalization(plan: gunbc_ci_regen_floor_plan())
-}
 
 test fn plan_artifact_plan_carries_no_finalization() -> Bool {
   plan_carries_no_finalization(plan: gunbc_ci_plan_artifact_plan())
@@ -1085,7 +1073,6 @@ data plan_roster_exhaustiveness_note: String = "WHAT THIS ROW ENFORCES, AND WHAT
 fn plan_variant_is_walk_plan_shaped(p: PlanFunction) -> Bool {
   match p {
     CiFloorPlan => plan_transports_authority_obligations(p: gunbc_ci_floor_plan())
-    CiRegenFloorPlan => plan_carries_no_finalization(plan: gunbc_ci_regen_floor_plan())
     CiPlanArtifactPlan => plan_carries_no_finalization(plan: gunbc_ci_plan_artifact_plan())
     FalsifierPlan => plan_carries_no_finalization(plan: gunbc_falsifier_plan())
     FalsifierNativeCacheColdPlan => plan_carries_no_finalization(plan: gunbc_falsifier_native_cache_cold_plan())
@@ -1094,7 +1081,6 @@ fn plan_variant_is_walk_plan_shaped(p: PlanFunction) -> Bool {
 
 data plan_target_roster: List<PlanFunction> = [
   CiFloorPlan,
-  CiRegenFloorPlan,
   CiPlanArtifactPlan,
   FalsifierPlan,
   FalsifierNativeCacheColdPlan
@@ -1112,7 +1098,6 @@ data plan_roster_control_placement_note: String = "THERE IS DELIBERATELY NO RUNT
 
 test fn every_emitted_plan_target_names_its_variant() -> Bool {
   string_contains(s: expected_ci_yml(), pattern: concat("--plan-function ", plan_function_name(p: CiFloorPlan)))
-    && string_contains(s: expected_ci_yml(), pattern: concat("--plan-function ", plan_function_name(p: CiRegenFloorPlan)))
     && string_contains(s: expected_falsifier_yml(), pattern: concat("--plan-function ", plan_function_name(p: FalsifierPlan)))
     && string_contains(s: expected_falsifier_yml(), pattern: concat("--plan-function ", plan_function_name(p: CiPlanArtifactPlan)))
     && string_contains(s: expected_falsifier_yml(), pattern: concat("--plan-function ", plan_function_name(p: FalsifierNativeCacheColdPlan)))

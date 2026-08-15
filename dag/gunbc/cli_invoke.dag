@@ -57,7 +57,6 @@ fn claim_executor_notice_title_normalized(notice_title: String?) -> String? {
 
 type PlanFunction
   = CiFloorPlan
-  | CiRegenFloorPlan
   | CiPlanArtifactPlan
   | FalsifierPlan
   | FalsifierNativeCacheColdPlan
@@ -67,7 +66,6 @@ data plan_function_closed_roster_note: String = "THE CLOSED ROSTER OF PRODUCTION
 fn plan_function_name(p: PlanFunction) -> String {
   match p {
     CiFloorPlan => "gunbc_ci_floor_plan"
-    CiRegenFloorPlan => "gunbc_ci_regen_floor_plan"
     CiPlanArtifactPlan => "gunbc_ci_plan_artifact_plan"
     FalsifierPlan => "gunbc_falsifier_plan"
     FalsifierNativeCacheColdPlan => "gunbc_falsifier_native_cache_cold_plan"
