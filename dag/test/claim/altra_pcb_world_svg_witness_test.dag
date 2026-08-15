@@ -315,15 +315,20 @@ test fn w_unselected_roles_render_as_unselected_part() -> Bool {
   }
 }
 
+// COUNTED ON THE CLASS ATTRIBUTE, NOT THE BARE NAME. These counts previously matched the class
+// name anywhere in the document, which was an accurate element count only because nothing else
+// mentioned those names. The emitted stylesheet mentions every one of them, so the old needle
+// started counting its own selectors -- a proxy that silently stopped measuring elements. The
+// attribute form counts elements, which is what the claim was always about.
 test fn w_subset_bodies_are_not_drawn_as_checked() -> Bool {
   match scene_or_empty() {
     Absent => false
     Present { value: s } =>
-      count_substring(haystack: s, needle: "pcb-component-established") == 0
-        && count_substring(haystack: s, needle: "pcb-component-subset-body") == 2
-        && count_substring(haystack: s, needle: "pcb-component-unselected-part") == 11
-        && count_substring(haystack: s, needle: "pcb-component-named-attachment-type-part-unresolved") == 1
-        && count_substring(haystack: s, needle: "pcb-component-missing-document") == 0
+      count_substring(haystack: s, needle: "class=\"pcb-component-established\"") == 0
+        && count_substring(haystack: s, needle: "class=\"pcb-component-subset-body\"") == 2
+        && count_substring(haystack: s, needle: "class=\"pcb-component-unselected-part\"") == 11
+        && count_substring(haystack: s, needle: "class=\"pcb-component-named-attachment-type-part-unresolved\"") == 1
+        && count_substring(haystack: s, needle: "class=\"pcb-component-missing-document\"") == 0
         && string_contains(s: s, pattern: "body layout admitted over established subset only; 12 parts owed")
         && !string_contains(s: s, pattern: "body layout checked over established subset only")
   }
@@ -360,7 +365,7 @@ test fn w_mounting_and_socket_attachment_obligations_appear() -> Bool {
       match scene_or_empty() {
         Absent => false
         Present { value: s } =>
-          string_contains(s: s, pattern: "attachment: mounting") && string_contains(s: s, pattern: "attachment: socket") && string_contains(s: s, pattern: "attachment: board land pattern") && count_substring(haystack: s, needle: "pcb-label-attachment-obligation") == pcb_attachment_obligation_count(p: pcb_world_physical(w: w))
+          string_contains(s: s, pattern: "attachment: mounting") && string_contains(s: s, pattern: "attachment: socket") && string_contains(s: s, pattern: "attachment: board land pattern") && count_substring(haystack: s, needle: "class=\"pcb-label-attachment-obligation\"") == pcb_attachment_obligation_count(p: pcb_world_physical(w: w))
       }
   }
 }
@@ -401,7 +406,7 @@ test fn w_plan_view_unselected_marker_count_follows_population() -> Bool {
       match projected_document(ids: ["m0", "m1", "m2", "m3", "m4", "m5"]) {
         Absent => false
         Present { value: six_doc } =>
-          count_substring(haystack: four_doc, needle: "pcb-component-unselected-part") == 4 && count_substring(haystack: six_doc, needle: "pcb-component-unselected-part") == 6
+          count_substring(haystack: four_doc, needle: "class=\"pcb-component-unselected-part\"") == 4 && count_substring(haystack: six_doc, needle: "class=\"pcb-component-unselected-part\"") == 6
       }
   }
 }
@@ -413,8 +418,8 @@ test fn w_plan_view_missing_document_count_follows_population() -> Bool {
       match projected_missing_document(ids: ["p0", "p1", "p2"]) {
         Absent => false
         Present { value: three_doc } =>
-          count_substring(haystack: two_doc, needle: "pcb-component-missing-document") == 2
-            && count_substring(haystack: three_doc, needle: "pcb-component-missing-document") == 3
+          count_substring(haystack: two_doc, needle: "class=\"pcb-component-missing-document\"") == 2
+            && count_substring(haystack: three_doc, needle: "class=\"pcb-component-missing-document\"") == 3
       }
   }
 }
@@ -731,5 +736,62 @@ test fn w_no_clock_device_appears_in_the_physical_population() -> Bool {
       !string_contains(s: s, pattern: "clock_gen")
         && !string_contains(s: s, pattern: "clock_source<")
         && !string_contains(s: s, pattern: "clock_fanout<")
+  }
+}
+
+// THE DOCUMENT CARRIES ITS OWN PRESENTATION. Without this the emitted SVG was semantically
+// complete and visually unreadable: class names with no sizes, rendered at a user agent default
+// inside a coordinate space measured in micrometres. A viewer had to supply a stylesheet from
+// outside, which means the artifact was not self-contained and two people looking at the same
+// emission could see different things. The sizes are asserted against the typed rows rather than
+// spelled again here, so editing a size cannot leave this witness agreeing with a stale number.
+test fn w_the_emitted_document_carries_its_own_type_sizing() -> Bool {
+  match scene_or_empty() {
+    Absent => false
+    Present { value: s } =>
+      string_contains(s: s, pattern: "<style>")
+        && string_contains(s: s, pattern: concat("font-size:", concat(to_string(micrometer_count(m: label_type_size)), "px")))
+        && string_contains(s: s, pattern: concat("font-size:", concat(to_string(micrometer_count(m: cause_type_size)), "px")))
+        && string_contains(s: s, pattern: ".pcb-obligation-cause")
+  }
+}
+
+// AND NO SELECTOR SURVIVED THE TEXT ESCAPE MANGLED. The style content is emitted through the
+// medium's ordinary escape, so a child combinator or an ampersand would arrive as an entity and
+// the rule would be silently dropped -- present in the document, matching nothing. This asserts
+// the escape did not fire, which is the failure that looks like success.
+test fn w_no_style_selector_was_escaped() -> Bool {
+  match scene_or_empty() {
+    Absent => false
+    Present { value: s } =>
+      !string_contains(s: s, pattern: "&gt;")
+        && !string_contains(s: s, pattern: "&amp;")
+        && !string_contains(s: s, pattern: "&lt;/style")
+  }
+}
+
+// THE SECOND UNREALIZED FUNCTION SITS BELOW THE FIRST ONE'S REASON LINE, asserted on the emitted
+// coordinate rather than on the constants. An earlier version of this witness compared the label
+// step against the cause drop, which is a fact about two data rows and stays true no matter what
+// the fold does with them -- it passed with the defect reinstated, which makes it evidence that
+// cannot fail. This derives the expected y for the second functional label from the same rows the
+// emitter uses and looks for it attached to that label in the document, so reverting the fold to
+// advance by one moves the label to a different coordinate and turns this red.
+fn expected_second_function_label() -> String {
+  match world_or_empty() {
+    Absent => ""
+    Present { value: w } =>
+      let attachments = pcb_attachment_obligation_count(p: pcb_world_physical(w: w))
+      let y = micrometer_count(m: attachment_label_base) + ((attachments + 2) * micrometer_count(m: attachment_label_step))
+      concat("y=\"", concat(to_string(y), "\" class=\"pcb-label-functional-obligation\">function unrealized: clock fanout"))
+  }
+}
+
+test fn w_the_second_function_label_clears_the_first_ones_cause_line() -> Bool {
+  match scene_or_empty() {
+    Absent => false
+    Present { value: s } =>
+      expected_second_function_label() != ""
+        && string_contains(s: s, pattern: expected_second_function_label())
   }
 }

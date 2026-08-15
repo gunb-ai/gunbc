@@ -17,6 +17,15 @@ data legend_origin_y: Micrometer = micrometer(count: 12000)
 data established_label_lift: Micrometer = micrometer(count: 1200)
 data established_source_lift: Micrometer = micrometer(count: 2400)
 data obligation_cause_drop: Micrometer = micrometer(count: 1800)
+
+// TYPE SIZES IN THE BOARD'S OWN UNITS, because the coordinate space IS micrometres and a font size
+// expressed in it is a length like any other. Without these the document carried semantic class
+// names and no presentation, so every label rendered at the user agent's default size inside a
+// 305 millimetre wide viewBox and was effectively invisible; the artifact was only readable
+// through a stylesheet somebody wrote by hand outside it, which is not a self-contained emission.
+data label_type_size: Micrometer = micrometer(count: 4400)
+data cause_type_size: Micrometer = micrometer(count: 2600)
+data legend_type_size: Micrometer = micrometer(count: 3000)
 data legend_design_drop: Micrometer = micrometer(count: 2400)
 
 type OutlineExtent {
@@ -253,12 +262,17 @@ fn element_fragments(e: PcbSceneElement, attachment_index: Int, body_layout: Pcb
   }
 }
 
+// A FUNCTIONAL MARKER CONSUMES TWO LABEL SLOTS, because unlike an attachment marker it emits a
+// cause line beneath its label. Advancing by one put the next label 2400 below while the cause sat
+// 1800 below, so consecutive functional markers overlapped their own reasons. The defect arrived
+// with the clock functions when they moved off the physical roster and was visible in the first
+// emitted document anybody looked at.
 fn fold_scene_fragments(scene: PcbEngineeringScene) -> List<Fragment> {
   let body_layout = scene.world.physical.body_layout
   let acc = fold(scene.elements, init: AttachmentLabelAcc { index: 0, fragments: [] }, f: fn(state, e) {
     let next_index = match e {
       SceneAttachmentMarker { layer: _, cause: _ } => state.index + 1
-      SceneFunctionalMarker { function: _, cause: _ } => state.index + 1
+      SceneFunctionalMarker { function: _, cause: _ } => state.index + 2
       SceneBoardOutline { outline: _ } => state.index
       SceneEstablishedBody { identity: _, origin: _, body_width: _, body_height: _, source: _ } => state.index
       SceneObligationMarker { identity: _, origin: _, cause: _ } => state.index
@@ -331,13 +345,33 @@ fn project_pcb_world(w: PcbWorld) -> PcbSceneConstruction<PcbPlanViewScene> {
                   view_box: concat("0 0 ", concat(to_string(width), concat(" ", to_string(height)))),
                   class_name: "pcb-world-scene",
                   aria_label: "PCB plan view",
-                  children: fragments,
+                  children: concat([svg_style(css: plan_view_stylesheet())], fragments),
                 )
               ),
             )
           }
       }
   }
+}
+
+// THE EMITTED STYLESHEET. Selectors are descendant-only and carry no ampersand, because the style
+// text goes through the medium's ordinary escape; a child combinator would be escaped and the rule
+// silently lost. Sizes come from the typed rows above rather than being spelled here twice.
+fn plan_view_stylesheet() -> String {
+  concat(
+    concat("svg.pcb-world-scene text\{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}",
+    concat(".pcb-legend\{font-size:", concat(to_string(micrometer_count(m: legend_type_size)), "px;fill:#1a2744}"))),
+    concat(
+      concat(".pcb-legend-design\{font-size:", concat(to_string(micrometer_count(m: cause_type_size)), "px;fill:#5a6472}")),
+      concat(
+        concat(".pcb-label-subset-body,.pcb-label-established\{font-size:", concat(to_string(micrometer_count(m: label_type_size)), "px;fill:#1a2744}")),
+        concat(
+          concat(".pcb-component-unselected-part,.pcb-component-missing-document,.pcb-component-named-attachment-type-part-unresolved,.pcb-label-attachment-obligation,.pcb-label-functional-obligation\{font-size:", concat(to_string(micrometer_count(m: label_type_size)), "px;fill:#8a4a4a}")),
+          concat(".pcb-obligation-cause\{font-size:", concat(to_string(micrometer_count(m: cause_type_size)), "px;fill:#6b5a4a}"))
+        )
+      )
+    )
+  )
 }
 
 type PcbSceneEmission
