@@ -174,14 +174,23 @@ type ResourceClaim
 // then width — and modeling this as an exclusive claim rather than a hidden Rust loop
 // means every witness keeps its own identity and receipt in the meantime, and the day
 // the evaluator becomes shareable this is one row here rather than a new runner.
-fn resource_claim_is_exclusive(claim: ResourceClaim) -> Bool {
+// HOW A CLAIM IS HELD, as its own two-state fact rather than a Bool. The predicate this
+// replaces answered "is it exclusive" -- a coproduct read through a truth value, so the one
+// consumer had to know that `false` meant "may be co-held" rather than "not applicable" or
+// "unknown". Naming the two holds makes the conflict fold match on the fact it acts on
+// (review 52335, the same class as the two predicates deleted in 5e71a20).
+type ClaimSharing
+  = ExclusiveHold
+  | SharedHold
+
+fn resource_claim_sharing(claim: ResourceClaim) -> ClaimSharing {
   match claim {
-    ReadOnlyRepository => false
-    CargoTargetWrite { target: _ } => true
-    PreparedContextAccess => true
-    LiveHostMutation { target: _ } => true
-    NetworkAccess => false
-    ResidentBytes { amount: _ } => false
+    ReadOnlyRepository => SharedHold
+    CargoTargetWrite { target: _ } => ExclusiveHold
+    PreparedContextAccess => ExclusiveHold
+    LiveHostMutation { target: _ } => ExclusiveHold
+    NetworkAccess => SharedHold
+    ResidentBytes { amount: _ } => SharedHold
   }
 }
 
@@ -380,8 +389,10 @@ fn claims_conflict(left: CiNode, right: CiNode) -> Bool {
     empty: false,
     cons: fn(acc, c) {
       acc
-        || (resource_claim_is_exclusive(claim: c)
-          && contains(xs: right.claims, item: c, eq: resource_claim_eq))
+        || match resource_claim_sharing(claim: c) {
+          ExclusiveHold => contains(xs: right.claims, item: c, eq: resource_claim_eq)
+          SharedHold => false
+        }
     }
   )
 }

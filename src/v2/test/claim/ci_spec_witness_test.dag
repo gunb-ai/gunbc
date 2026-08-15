@@ -282,7 +282,7 @@ test fn witness_receipt_gate_steps_absent_from_workflow() -> Bool {
     !string_contains(s: yaml, pattern: "Floor materialization receipt gate")
 }
 
-data merge_admission_cold_processes_deleted_note: String = "The live merge-admission claims execute inside gunbc_ci_floor_plan. The former floor-tail stamp and separate gate step are deleted, not merely unwired: retaining either would be a second representation and would keep paying a cold gunbc resolve. This live generated-workflow witness pins both absences at the consumer boundary."
+data merge_admission_cold_processes_deleted_note: String = "CORRECTED 2026-08-15 (review 52335): this row read \"the live merge-admission claims execute inside gunbc_ci_floor_plan\", and the required witness job no longer runs that plan -- it runs claim_executor --required-floor, which reaches no merge-admission stage at all. The sentence described a consumer boundary the same change had moved, which is the stale-authority class in a note whose whole job is pinning that boundary. WHAT THE WITNESS BELOW STILL PROVES, unchanged and still worth pinning: the emitted workflow carries no floor-tail stamp step and no separate cold gate step, so neither can return as a second representation paying its own cold gunbc resolve. WHAT IT DOES NOT PROVE, and what an absence witness structurally cannot: that the claims execute anywhere. Capture, stamp and gate are currently unreached on the required path; restoring them onto the prepared subject is tracked as an open restoration beside the wet execution corpus and the compile-clean receipt, and this note stops asserting a live consumer until one exists."
 
 test fn witness_merge_admission_cold_processes_absent_from_workflow() -> Bool {
   let yaml = expected_ci_yml()

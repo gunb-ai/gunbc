@@ -357,7 +357,7 @@ test fn a_cyclic_plan_refuses_rather_than_scheduling_a_prefix() -> Bool {
 
 // The witness pair is the honest statement about today's evaluator: both claim
 // PreparedContextAccess, so they conflict and serialize. When the Arc-safe store
-// lands, resource_claim_is_exclusive flips one row and this witness is what tells us
+// lands, resource_claim_sharing flips one row and this witness is what tells us
 // the change took effect.
 test fn witness_nodes_conflict_on_the_prepared_context() -> Bool {
   claims_conflict(left: n_claim_a, right: n_claim_b)
