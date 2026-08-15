@@ -47,7 +47,7 @@ fn anchor_infer_rejects() -> Outcome<InferredTree> {
 }
 
 fn anchor_emit_rejects() -> Outcome<Medium<String>> {
-  emit(
+  v2.compiler.emit.emit(
     tree: anchor_stub_inferred_tree,
     target: anchor_stub_target_model
   )

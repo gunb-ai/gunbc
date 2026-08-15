@@ -214,8 +214,8 @@ data runtime_rust_filesystem_row: LanguageSourceScaffoldRow = LanguageSourceScaf
 data compiler_tests_harness_trigger: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "v2.test.workflow.claim_witness_corpus_ci_runner",
-    decl_name: "ClaimWitnessCorpusClaimRunRow",
+    module_path: "v2.workflow.required_floor",
+    decl_name: "RequiredFloorClaim",
     field: WholeDeclaration
   }
 }

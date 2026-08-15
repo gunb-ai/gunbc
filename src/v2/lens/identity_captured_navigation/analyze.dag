@@ -266,7 +266,7 @@ fn suspect_identity_navigation_finding(
 
 fn unclassifiable_identity_navigation_finding(match_node: Node, cause: Symbol) -> Optional<Finding> {
   Present {
-    value: Unclassifiable { at: match_node, cause: cause }
+    value: v2.lens.identity_captured_navigation.Unclassifiable { at: match_node, cause: cause }
   }
 }
 
@@ -338,7 +338,7 @@ fn identity_navigation_findings_at(node: Node, span_index: SpanIndex, source_tex
                         }
                       Absent =>
                         Cons {
-                          head: Unclassifiable {
+                          head: v2.lens.identity_captured_navigation.Unclassifiable {
                             at: node,
                             cause: ^identity_navigation_arms_unresolved
                           },
@@ -375,20 +375,20 @@ fn identity_captured_navigation_findings(root: Node, span_index: SpanIndex, sour
 fn finding_is_suspect(f: Finding) -> Bool {
   match f {
     Suspect { violation: _ } => true
-    Unclassifiable { at: _, cause: _ } => false
+    v2.lens.identity_captured_navigation.Unclassifiable { at: _, cause: _ } => false
   }
 }
 
 fn finding_is_refusal(f: Finding) -> Bool {
   match f {
     Suspect { violation: _ } => false
-    Unclassifiable { at: _, cause: _ } => true
+    v2.lens.identity_captured_navigation.Unclassifiable { at: _, cause: _ } => true
   }
 }
 
 fn finding_refusal_cause(f: Finding) -> Optional<Symbol> {
   match f {
     Suspect { violation: _ } => Absent
-    Unclassifiable { at: _, cause: c } => Present { value: c }
+    v2.lens.identity_captured_navigation.Unclassifiable { at: _, cause: c } => Present { value: c }
   }
 }

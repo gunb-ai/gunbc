@@ -12,8 +12,8 @@ fn ready_instance_fixture(host: HostIdentity) -> BuildCacheInstance {
   ci_cache_instance(host: host)
 }
 
-fn owner_fixture() -> ProcessIdentity {
-  ProcessIdentity {
+fn owner_fixture() -> gunbc.build_cache_instance.ProcessIdentity {
+  gunbc.build_cache_instance.ProcessIdentity {
     boot_id: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as NonEmptyStr,
     pid: 4242,
     start_time: "80000000" as NonEmptyStr,

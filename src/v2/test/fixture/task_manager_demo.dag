@@ -84,7 +84,7 @@ data create_task_facts: WireContractFacts = WireContractFacts {
   consistency: NoReplicaConvergence
 }
 
-data create_task_contract: WireContract = WireContract {
+data create_task_contract: v2.extdeps.coordination.WireContract = v2.extdeps.coordination.WireContract {
   facts: create_task_facts,
   bind: CoordinationBind {
     bind: BindRef { identity: create_task },
@@ -100,7 +100,7 @@ data update_status_facts: WireContractFacts = WireContractFacts {
   consistency: NoReplicaConvergence
 }
 
-data update_status_contract: WireContract = WireContract {
+data update_status_contract: v2.extdeps.coordination.WireContract = v2.extdeps.coordination.WireContract {
   facts: update_status_facts,
   bind: CoordinationBind {
     bind: BindRef { identity: update_status },
@@ -116,7 +116,7 @@ data list_tasks_facts: WireContractFacts = WireContractFacts {
   consistency: NoReplicaConvergence
 }
 
-data list_tasks_contract: WireContract = WireContract {
+data list_tasks_contract: v2.extdeps.coordination.WireContract = v2.extdeps.coordination.WireContract {
   facts: list_tasks_facts,
   bind: CoordinationBind {
     bind: BindRef { identity: list_tasks },
