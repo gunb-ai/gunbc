@@ -1,0 +1,61 @@
+module gunbc.host_spark_serving_provision
+
+import std.types { String, NonEmptyStr, Bool, FilePath }
+import std.disposition { Disposition, Scaffold, RealizationDispatch, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import product.placement_supply { HostIdentity }
+import extdeps.shell
+import gunbc.package_delivery {
+  materialize_spark_serving_ollama_runtime_bundle,
+  SparkServingOllamaRuntimeMaterialized,
+  SparkServingOllamaRuntimeDownloadRefused,
+  SparkServingOllamaRuntimeIntegrityRefused,
+  SparkServingOllamaRuntimeReceiptWriteRefused,
+  SparkServingOllamaRuntimeWorkspaceRefused,
+  SparkServingOllamaRuntimeInstallRefused,
+}
+import gunbc.spark_serving_install_paths {
+  spark_serving_runtime_executable,
+  spark_serving_user_unit_path,
+  spark_serving_models_root,
+}
+
+data host_spark_serving_provision_scope_disposition: Disposition = SingleAuthority
+
+data host_spark_serving_provision_note: String = "Local-host Spark serving runtime materialization (#8225 runtime-bundle follow-on). Runs package_delivery.materialize_spark_serving_ollama_runtime_bundle on the invoking host as gunbc-automation — extract, place owned closure, write receipt, install user unit, enable service, pull gpt-oss:20b. Remote per-host delivery uses spark_serving_provision_apply over FleetSsh; plan/apply CAS is spark_serving_plan_apply."
+
+data host_spark_serving_provision_realize_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.spark_serving_provision_apply",
+    decl_name: "spark_serving_provision_apply_for_host",
+    field: WholeDeclaration,
+  }
+}
+
+fn materialize_spark_serving_on_local_host_refusal(
+  outcome: SparkServingOllamaRuntimeMaterialization,
+) -> String {
+  match outcome {
+    SparkServingOllamaRuntimeDownloadRefused { locator: l } =>
+      join(["ollama archive download refused: ", l as String], "")
+    SparkServingOllamaRuntimeIntegrityRefused { cause: c } => c as String
+    SparkServingOllamaRuntimeReceiptWriteRefused { cause: c } => c as String
+    SparkServingOllamaRuntimeWorkspaceRefused { cause: c } => c as String
+    SparkServingOllamaRuntimeInstallRefused { cause: c } => c as String
+    SparkServingOllamaRuntimeMaterialized { receipt: _ } =>
+      "host_spark_serving_provision: unexpected materialized outcome in refusal fold"
+  }
+}
+
+func materialize_spark_serving_on_local_host() -> ProcessExit
+  uses net: Network
+{
+  match materialize_spark_serving_ollama_runtime_bundle() {
+    SparkServingOllamaRuntimeMaterialized { receipt: _ } => ExitSuccess
+    other =>
+      exit_failure(reason: materialize_spark_serving_on_local_host_refusal(outcome: other))
+  }
+}

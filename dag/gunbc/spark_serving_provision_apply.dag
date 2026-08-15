@@ -1,0 +1,133 @@
+module gunbc.spark_serving_provision_apply
+
+import std.types { String, NonEmptyStr, Bool }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.ssh.session { ssh_session_exec_portable_words_with_stdin }
+import gunbc.clock_read { clock_now_probed_at }
+import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet_known_hosts_anchor {
+  FleetSshExecutionContext,
+  fleet_ssh_attempt_identity,
+  fleet_ssh_execution_context_of,
+  materialize_fleet_known_hosts_anchor,
+  known_hosts_materialization_receipt,
+  SshTarget,
+  portable_remote_words,
+  shape_fleet_ssh_exec,
+}
+import gunbc.fleet_multi_principal_probe { fleet_ssh_attempt_raw_from_env }
+import gunbc.spark_credential_workflow { run_with_materialized_fleet_ssh_binding }
+import gunbc.auth.access_token_source { GcloudPrintToken }
+import gunbc.spark_serving_install_paths { spark_serving_automation_login }
+import gunbc.host_spark_serving_provision_script { spark_serving_provision_script_body }
+import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
+
+data spark_serving_provision_apply_note: String = "Wet Spark serving provision apply (#8225 runtime-bundle + FleetSsh transport). Runs host_spark_serving_provision_script observe/ensure/read-back on the target host as gunbc-automation via ExecPortableWordsWithStdin (sh -s) — the same credential binding as spark_serving_observe, not a hardcoded local key parallel route. Plan/apply CAS is spark_serving_plan_apply (#8230 pattern at Spark grain)."
+
+data spark_serving_provision_apply_receipt_path: String = "target/spark-serving-provision-apply-receipt.txt"
+
+fn spark_serving_provision_apply_succeeded(stdout: String) -> Bool {
+  string_contains(s: stdout, pattern: "SparkServingProvisionReceipt: read_back=ok")
+}
+
+fn spark_serving_provision_managed_leg(
+  context: FleetSshExecutionContext,
+  host: String,
+  script: String,
+) -> Bool {
+  match portable_remote_words(raws: ["sh", "-s"]) {
+    Absent => false
+    Present { value: words } => {
+      let r = ssh_session_exec_portable_words_with_stdin(
+        client_args: shape_fleet_ssh_exec(
+          context: context,
+          target: SshTarget {
+            endpoint: fleet_probe_endpoint_for(host: host) as NonEmptyStr,
+            principal: spark_serving_automation_login() as NonEmptyStr,
+          },
+          words: words,
+        ),
+        stdin_payload: join([script, "\n"], ""),
+      )
+      r.success && spark_serving_provision_apply_succeeded(stdout: r.stdout)
+    }
+  }
+}
+
+fn spark_serving_provision_apply_with_context(
+  context: FleetSshExecutionContext,
+  host: String,
+) -> ProcessExit {
+  let script = spark_serving_provision_script_body()
+  if spark_serving_provision_managed_leg(context: context, host: host, script: script) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: join(["spark serving provision apply failed on host=", host], ""))
+  }
+}
+
+func spark_serving_provision_apply_for_host(attempt_raw: String, host: String) -> ProcessExit
+  uses net: Network
+{
+  let now = clock_now_probed_at()
+  run_with_materialized_fleet_ssh_binding(
+    attempt_raw: attempt_raw,
+    token_source: GcloudPrintToken,
+    body: fn(binding) {
+      match fleet_ssh_attempt_identity(raw: attempt_raw) {
+        Absent => exit_failure(reason: "attempt identity is not a safe path segment")
+        Present { value: attempt } => {
+          let materialization = materialize_fleet_known_hosts_anchor(attempt: attempt)
+          match fleet_ssh_execution_context_of(outcome: materialization, credential: binding) {
+            Absent =>
+              exit_failure(
+                reason: known_hosts_materialization_receipt(outcome: materialization),
+              )
+            Present { value: context } => {
+              let exit = spark_serving_provision_apply_with_context(context: context, host: host)
+              let body = join([
+                "spark serving provision host=", host,
+                " endpoint=", fleet_probe_endpoint_for(host: host),
+                " at=", now as String, "\n",
+              ], "")
+              let w = Filesystem.Write(path: spark_serving_provision_apply_receipt_path, content: body)
+              if w.success {
+                exit
+              } else {
+                exit_failure(reason: join(["spark serving provision receipt write failed: ", w.error], ""))
+              }
+            }
+          }
+        }
+      }
+    },
+  )
+}
+
+func spark_serving_provision_apply_wet(host: String) -> ProcessExit
+  uses net: Network
+{
+  match fleet_ssh_attempt_raw_from_env() {
+    Absent =>
+      exit_failure(
+        reason: "spark_serving_provision_apply_wet requires GUNBC_FLEET_SSH_ATTEMPT_RAW or GitHub GITHUB_RUN_ID+GITHUB_RUN_ATTEMPT env",
+      )
+    Present { value: attempt_raw } =>
+      spark_serving_provision_apply_for_host(attempt_raw: attempt_raw, host: host)
+  }
+}
+
+func spark_serving_provision_apply_srv5() -> ProcessExit
+  uses net: Network
+{
+  spark_serving_provision_apply_wet(host: operator_host_srv5 as String)
+}
+
+func spark_serving_provision_apply_srv6() -> ProcessExit
+  uses net: Network
+{
+  spark_serving_provision_apply_wet(host: operator_host_srv6 as String)
+}

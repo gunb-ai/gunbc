@@ -1,0 +1,162 @@
+module gunbc.host_spark_serving_provision_script
+
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.types { String, NonEmptyStr, Bool }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.exec.command { shell_quote }
+import extdeps.ollama.api { ollama_default_port }
+import extdeps.ollama.binary_release {
+  ollama_required_release,
+  ollama_binary_release_download_locator,
+  ollama_binary_release_asset_name,
+}
+import gunbc.shell_bash_runner { shell_exec_via_bash }
+import gunbc.spark_serving_install_paths {
+  spark_serving_runtime_root,
+  spark_serving_runtime_executable,
+  spark_serving_models_root,
+  spark_serving_user_unit_path,
+  spark_serving_runtime_receipt_path,
+  spark_serving_desired_model_wire,
+  spark_serving_automation_login,
+  spark_serving_linger_command,
+  spark_serving_unit_name,
+  spark_serving_user_unit_contents,
+}
+import gunbc.spark_serving_runtime_receipt {
+  spark_serving_runtime_archive_admission_receipt_json,
+  SparkServingRuntimeArchiveAdmissionReceipt,
+}
+
+data host_spark_serving_provision_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: host_spark_serving_provision_script — concat-built observe/ensure/read-back shell consumed by spark_serving_provision_apply over FleetSsh stdin transport; DISSOLVES WHEN ProvisionSparkServing reaches host_effect_apply as typed argv rather than a script body (same class as host_codex_runtime_provision_script).")
+
+data host_spark_serving_provision_script_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_spark_serving_provision_script",
+    decl_name: "host_spark_serving_provision_script_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+data host_spark_serving_provision_script_note: String = "Observe/ensure/read-back shell for Spark serving runtime install (#8225 runtime-bundle follow-on). Derived from extdeps.ollama.binary_release + spark_serving_install_paths. Consumed by spark_serving_provision_apply via FleetSsh ExecPortableWordsWithStdin (sh -s), not a parallel install route."
+
+fn spark_serving_runtime_receipt_json() -> String {
+  spark_serving_runtime_archive_admission_receipt_json(
+    receipt: SparkServingRuntimeArchiveAdmissionReceipt {
+      release_asset_digest_hex: ollama_required_release.digest.hex,
+    },
+  )
+}
+
+fn spark_serving_observe_body(executable: String, model_wire: String) -> String {
+  let executable_q = shell_quote(arg: executable)
+  let model_q = shell_quote(arg: model_wire)
+  let api_port = to_string(ollama_default_port)
+  join([
+    "observe_rc=0",
+    join(["if [ -x ", executable_q, " ]; then"], " "),
+    join(["  if curl -sf http://127.0.0.1:", api_port, "/api/tags | grep -F ", model_q, " >/dev/null; then"], " "),
+    "    printf '%s\\n' \"SparkServingProvisionReceipt: observe=ok\"",
+    "    exit 0",
+    "  fi",
+    "fi",
+    "printf '%s\\n' \"SparkServingProvisionReceipt: observe=absent\"",
+    "observe_rc=127",
+    "",
+  ], "\n")
+}
+
+fn spark_serving_ensure_body() -> String {
+  let runtime_root_q = shell_quote(arg: spark_serving_runtime_root() as String)
+  let executable_q = shell_quote(arg: spark_serving_runtime_executable() as String)
+  let models_root_q = shell_quote(arg: spark_serving_models_root() as String)
+  let receipt_path_q = shell_quote(arg: spark_serving_runtime_receipt_path() as String)
+  let unit_path_q = shell_quote(arg: spark_serving_user_unit_path() as String)
+  let unit_name_q = shell_quote(arg: spark_serving_unit_name())
+  let archive_url_q = shell_quote(arg: ollama_binary_release_download_locator(binary_release: ollama_required_release) as String)
+  let archive_name = ollama_binary_release_asset_name(binary_release: ollama_required_release) as String
+  let digest_q = shell_quote(arg: ollama_required_release.digest.hex as String)
+  let model_q = shell_quote(arg: spark_serving_desired_model_wire())
+  let login_q = shell_quote(arg: spark_serving_automation_login())
+  let linger_q = shell_quote(arg: spark_serving_linger_command() as String)
+  let receipt_json_q = shell_quote(arg: spark_serving_runtime_receipt_json())
+  let api_port = to_string(ollama_default_port)
+  join([
+    join(["mkdir -p ", runtime_root_q, " ", models_root_q], " "),
+    "STAGING=$(mktemp -d)",
+    "trap 'rm -rf \"$STAGING\"' EXIT",
+    join(["curl -fsSL -o \"$STAGING/", archive_name, "\" ", archive_url_q], ""),
+    join(["printf '%s  %s\\n' ", digest_q, "\"$STAGING/", archive_name, "\" | sha256sum -c -"], ""),
+    join(["if [ ! -x ", executable_q, " ]; then"], " "),
+    join(["  rm -rf ", runtime_root_q, "/*"], " "),
+    join(["  tar -I zstd -xf \"$STAGING/", archive_name, "\" -C ", runtime_root_q], ""),
+    "fi",
+    join(["printf '%s\\n' ", receipt_json_q, " > ", receipt_path_q], ""),
+    join(["cat > ", unit_path_q, " <<'EOF'\n", spark_serving_user_unit_contents(), "EOF"], ""),
+    join(["if ! loginctl show-user ", login_q, " -p Linger --value 2>/dev/null | grep -qx yes; then"], " "),
+    join(["  sudo -n ", linger_q], ""),
+    "fi",
+    "systemctl --user daemon-reload",
+    join(["systemctl --user enable --now ", unit_name_q], " "),
+    "ready=0",
+    "i=0",
+    join(["while [ \"$i\" -lt 90 ]; do"], ""),
+    join(["  if curl -sf http://127.0.0.1:", api_port, "/api/version >/dev/null 2>&1; then"], ""),
+    "    ready=1",
+    "    break",
+    "  fi",
+    "  i=$((i+1))",
+    "  sleep 2",
+    "done",
+    "if [ \"$ready\" -ne 1 ]; then",
+    "  printf '%s\\n' \"SparkServingProvisionReceipt: ensure=FAILED api\"",
+    "  exit 1",
+    "fi",
+    join([executable_q, " pull ", model_q], " "),
+    "",
+  ], "\n")
+}
+
+fn spark_serving_read_back_body(executable: String, model_wire: String) -> String {
+  let executable_q = shell_quote(arg: executable)
+  let model_q = shell_quote(arg: model_wire)
+  let api_port = to_string(ollama_default_port)
+  join([
+    join(["if [ -x ", executable_q, " ]; then"], " "),
+    join(["  if curl -sf http://127.0.0.1:", api_port, "/api/tags | grep -F ", model_q, " >/dev/null; then"], " "),
+    "    printf '%s\\n' \"SparkServingProvisionReceipt: read_back=ok\"",
+    "    exit 0",
+    "  fi",
+    "fi",
+    "printf '%s\\n' \"SparkServingProvisionReceipt: read_back=FAILED\"",
+    "exit 1",
+    "",
+  ], "\n")
+}
+
+fn spark_serving_provision_script_body() -> String {
+  let executable = spark_serving_runtime_executable() as String
+  let model_wire = spark_serving_desired_model_wire()
+  join([
+    "set -euo pipefail",
+    spark_serving_observe_body(executable: executable, model_wire: model_wire),
+    "printf '%s\\n' \"SparkServingProvisionReceipt: ensure=starting\"",
+    spark_serving_ensure_body(),
+    spark_serving_read_back_body(executable: executable, model_wire: model_wire),
+  ], "\n")
+}
+
+fn spark_serving_provision_shell_script() -> String {
+  shell_exec_via_bash(body: spark_serving_provision_script_body())
+}
+
+fn spark_serving_provision_read_back_fails_closed() -> Bool {
+  let body = spark_serving_read_back_body(
+    executable: spark_serving_runtime_executable() as String,
+    model_wire: spark_serving_desired_model_wire(),
+  )
+  string_contains(s: body, pattern: "read_back=FAILED")
+    && string_contains(s: body, pattern: "exit 1")
+}

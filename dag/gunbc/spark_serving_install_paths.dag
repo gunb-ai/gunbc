@@ -1,0 +1,113 @@
+module gunbc.spark_serving_install_paths
+
+import std.types { String, NonEmptyStr, FilePath }
+import extdeps.ollama.api { ollama_model_ref_wire }
+import extdeps.ollama.capability { ollama_gpt_oss_20b_model_ref }
+import gunbc.spark_serving_desired {
+  spark_serving_desired_bind_listen,
+  spark_serving_automation_principal,
+}
+import gunbc.spark_serving_release { spark_serving_target }
+import gunbc.spark_serving_realization { NamedPrincipal }
+
+data spark_serving_install_paths_note: String = "Owned-runtime layout for UserUnitRealization + InstallOwnedRuntimeClosure on Spark hosts. Paths are fleet-constant under gunbc-automation; the executor home is the authority, not per-host variation."
+
+data spark_serving_executor_home: FilePath = "/home/gunbc-automation" as FilePath
+
+data spark_serving_runtime_root_rel: String = ".local/share/gunbc/spark-serving/ollama"
+
+data spark_serving_models_root_rel: String = ".local/share/gunbc/spark-serving/models"
+
+data spark_serving_runtime_receipt_parent_rel: String = ".local/share/gunbc/spark-serving"
+
+data spark_serving_runtime_receipt_filename: String = "ollama-runtime-receipt.json"
+
+data spark_serving_user_unit_rel: String = ".config/systemd/user/gunbc-spark-serving.service"
+
+fn spark_serving_runtime_root() -> FilePath {
+  concat(
+    spark_serving_executor_home as String,
+    concat("/", spark_serving_runtime_root_rel),
+  ) as FilePath
+}
+
+fn spark_serving_runtime_executable() -> FilePath {
+  concat(spark_serving_runtime_root() as String, "/bin/ollama") as FilePath
+}
+
+fn spark_serving_models_root() -> FilePath {
+  concat(
+    spark_serving_executor_home as String,
+    concat("/", spark_serving_models_root_rel),
+  ) as FilePath
+}
+
+fn spark_serving_user_unit_path() -> FilePath {
+  concat(
+    spark_serving_executor_home as String,
+    concat("/", spark_serving_user_unit_rel),
+  ) as FilePath
+}
+
+fn spark_serving_runtime_receipt_path() -> FilePath {
+  concat(
+    spark_serving_executor_home as String,
+    concat(
+      "/",
+      concat(
+        spark_serving_runtime_receipt_parent_rel,
+        concat("/", spark_serving_runtime_receipt_filename),
+      ),
+    ),
+  ) as FilePath
+}
+
+fn spark_serving_desired_model_wire() -> String {
+  ollama_model_ref_wire(ref: ollama_gpt_oss_20b_model_ref)
+}
+
+fn spark_serving_bind_host_port() -> String {
+  join([
+    spark_serving_desired_bind_listen.host as String,
+    ":",
+    to_string(spark_serving_desired_bind_listen.port),
+  ], "")
+}
+
+fn spark_serving_automation_login() -> String {
+  match spark_serving_automation_principal() {
+    NamedPrincipal { login: l } => l as String
+  }
+}
+
+fn spark_serving_unit_name() -> String {
+  match spark_serving_target(actor: spark_serving_automation_principal()) {
+    t => t.unit_name as String
+  }
+}
+
+fn spark_serving_user_unit_contents() -> String {
+  join([
+    "[Unit]\n",
+    "Description=gunbc Spark serving (Ollama gpt-oss:20b)\n",
+    "After=network-online.target\n",
+    "\n",
+    "[Service]\n",
+    "Type=simple\n",
+    join(["Environment=OLLAMA_HOST=", spark_serving_bind_host_port(), "\n"], ""),
+    "Environment=OLLAMA_MODELS=%h/.local/share/gunbc/spark-serving/models\n",
+    "Environment=HOME=%h\n",
+    "ExecStart=%h/.local/share/gunbc/spark-serving/ollama/bin/ollama serve\n",
+    "Restart=on-failure\n",
+    "\n",
+    "[Install]\n",
+    "WantedBy=default.target\n",
+  ], "")
+}
+
+fn spark_serving_linger_command() -> NonEmptyStr {
+  join([
+    "/usr/bin/loginctl enable-linger ",
+    spark_serving_automation_login(),
+  ], "") as NonEmptyStr
+}
