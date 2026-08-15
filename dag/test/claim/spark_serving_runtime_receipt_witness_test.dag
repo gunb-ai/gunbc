@@ -1,7 +1,6 @@
 module test.claim.spark_serving_runtime_receipt_witness_test
 
-import std.types { String, NonEmptyStr, FilePath, Bool }
-import extdeps.shell
+import std.types { String, NonEmptyStr, Bool }
 import gunbc.spark_serving_readback_parse {
   SparkServingReadbackPresent,
   SparkServingReadbackAbsent,
@@ -9,8 +8,6 @@ import gunbc.spark_serving_readback_parse {
 }
 import gunbc.spark_serving_runtime_receipt {
   SparkServingRuntimeArchiveAdmissionReceipt,
-  write_spark_serving_runtime_archive_admission_receipt_at_path,
-  read_spark_serving_runtime_archive_admission_receipt_bytes_at_path,
   spark_serving_runtime_archive_admission_receipt_json,
   spark_serving_parse_runtime_receipt_json,
   spark_serving_runtime_receipt_wire_path,
@@ -18,6 +15,8 @@ import gunbc.spark_serving_runtime_receipt {
 import gunbc.package_delivery {
   spark_serving_ollama_runtime_materialization_receipt_write_path,
 }
+
+data witness_real_execution_split_note: String = "Filesystem write/read round-trip for the receipt is not witnessed here: shell.Mktemp.Dir and Filesystem.Write/Read have no mock_response in hermetic discovery (dag/extdeps/shell/shell.dag). JSON serialize/parse and writer/reader path identity are witnessed hermetically below; wet filesystem integration belongs in a follow-on real-execution witness if needed."
 
 data witness_required_release_asset_digest_hex: String = "79617139521db251c716d6229505d7530171ff4d68e476d0c22dabc15726a237"
 
@@ -38,31 +37,5 @@ test fn witness_runtime_archive_admission_receipt_json_round_trips_digest() -> B
       hex == witness_required_release_asset_digest_hex
     SparkServingReadbackAbsent => false
     SparkServingReadbackRefused { cause: _ } => false
-  }
-}
-
-test fn witness_runtime_archive_admission_receipt_write_read_round_trips_digest() -> Bool {
-  let staging = shell.Mktemp.Dir()
-  if staging.success == false {
-    false
-  } else {
-    let path = concat(staging.path as String, "/ollama-runtime-receipt.json") as FilePath
-    let receipt = SparkServingRuntimeArchiveAdmissionReceipt {
-      release_asset_digest_hex: witness_required_release_asset_digest_hex as NonEmptyStr,
-    }
-    if write_spark_serving_runtime_archive_admission_receipt_at_path(path: path, receipt: receipt) == false {
-      false
-    } else {
-      match read_spark_serving_runtime_archive_admission_receipt_bytes_at_path(path: path) {
-        Absent => false
-        Present { value: bytes } =>
-          match spark_serving_parse_runtime_receipt_json(stdout: bytes) {
-            SparkServingReadbackPresent { value: hex } =>
-              hex == witness_required_release_asset_digest_hex
-            SparkServingReadbackAbsent => false
-            SparkServingReadbackRefused { cause: _ } => false
-          }
-      }
-    }
   }
 }
