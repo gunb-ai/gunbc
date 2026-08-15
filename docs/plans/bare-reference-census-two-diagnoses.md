@@ -157,3 +157,53 @@ synthesize, because "another tree" is a property of corpus source roots and
 supplying them would put ~3700 modules in the pool, making it a corpus
 measurement rather than a controlled one. Reproducing it needs a different
 harness: two synthetic source roots.
+
+---
+
+## What the cut's own test suite reported (measured 2026-08-15, head 19ae8362f3c)
+
+The `v1-compiler-tests` gate timed out at 15 minutes on CI with only
+`running 20 tests` in the log. **That log cannot establish how many tests
+completed**: the step pipes cargo through `tee`, so stdout is block-buffered,
+and the SIGKILL at the timeout discards any completed-test output under the
+buffer size. Reading "zero tests completed" from the absence of `ok` lines is
+the false-absence class.
+
+Measured directly instead, running the seventeen non-corpus tests alone:
+
+    12 passed; 5 failed; 3 filtered out; finished in 286.14s
+
+So the timeout was concealing **five real regressions**, not merely three slow
+tests. This is the deletion's second census — what X was hiding — arriving on
+schedule.
+
+### The five share one root
+
+| test | surface |
+|---|---|
+| `namespace_only_refuses_fn_parent_homonym_at_call_site` | asserts a typed `AmbiguousReference`; the refusal IS produced correctly, and the test fails on a *third* diagnostic, `function 'pick' not found in scope` |
+| 4 × `materialization_provider_resolved_graph_consumer_*` | request-key/semantic-digest failures whose payload is hundreds of `dag/extdeps/**` diagnostics: `unresolved type 'Nat'`, `'FilePath'`, `'NonNegativeInt'`, `undefined variable 'ApiKey'` |
+
+The materialization tests are **self-contained** — three fixture files in a temp
+dir, that dir as the only source root. The corpus diagnostics reach them through
+the compiler-identity path (`transform_content_digest` feeding
+`resolve_closure_request_key_from_digests`), not through their own subject.
+
+So these are not four independent failures and not a digest defect. All five
+report the same fact: **bare cross-module names no longer resolve.** The three
+timing-out tests are very likely the same root expressed as cost rather than as
+a refusal — closure width is driven by the diagnosis-B convention class above.
+
+### Attribution, checked rather than assumed
+
+`build` succeeded on main at `0ed10d7de`, so all twenty pass there. The one red
+recent main run (`4b72f9445`) failed on `ci`, a different job — `build` passed.
+The five failures and the timeout are this branch's.
+
+### Not established
+
+That qualification alone makes them green. The convention class has no referent
+to qualify *toward*; whether it resolves by qualifying 551 references or by
+changing the convention is the open modeling question this note already declines
+to settle, and any statement about the post-fix corpus is a prediction until
+that is decided.
