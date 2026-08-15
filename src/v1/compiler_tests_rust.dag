@@ -1466,7 +1466,6 @@ fn ct_profile_reconcile_test() -> String {
     "                        typed_path,\n",
     "                        crate::v1_compiler_infer::build_variant_export_surface(\n",
     "                            typed.clone(),\n",
-    "                            variant_surfaces.clone(),\n",
     "                            source_indices.clone(),\n",
     "                        ),\n",
     "                    );\n",

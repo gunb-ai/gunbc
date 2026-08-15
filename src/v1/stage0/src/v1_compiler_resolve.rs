@@ -59,12 +59,6 @@ pub struct ResolvedModule {
     pub occurrence_transport: Rc<OccurrenceTransport>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DepEdge {
-    pub from_module: String,
-    pub to_module: String,
-}
-
 pub fn map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
     match v1_rt::map_get(&m, key.clone()) {
         Some(_) => true,
@@ -331,24 +325,6 @@ pub struct TopoResult {
     pub cycle_error: Option<Rc<ErrorNode>>,
 }
 
-pub fn adjacency_add_edge(
-    adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
-    from_module: String,
-    to_module: String,
-) -> Rc<HashMap<String, Rc<Vec<String>>>> {
-    {
-        let existing = match v1_rt::map_get(&adjacency, from_module.clone()) {
-            Some(lst) => lst.clone(),
-            None => Rc::new(vec![]),
-        };
-        v1_rt::rc_map_insert(
-            adjacency.clone(),
-            from_module.clone(),
-            v1_rt::rc_list_push(existing.clone(), to_module.clone()),
-        )
-    }
-}
-
 pub fn topo_sort_key(name: String) -> String {
     if (name.clone() == "std.types".to_string()) {
         "".to_string()
@@ -369,91 +345,8 @@ pub fn topological_sort(
             }
             __result
         });
-        let module_name_set = module_names.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, name: String| {
-                v1_rt::rc_map_insert(acc, name.clone(), true)
-            },
-        );
-        let explicit_edges = Rc::new({
-            let mut __result = Vec::new();
-            for m in modules.clone().iter().cloned() {
-                __result.extend(
-                    (*Rc::new({
-                        let mut __result = Vec::new();
-                        for imp in Rc::new({
-                            let mut __result = Vec::new();
-                            for imp in module_imports(m.clone()).iter().cloned() {
-                                if v1_rt::map_has(
-                                    &module_name_set,
-                                    authored_name_at(source_indices.clone(), imp.clone()),
-                                ) {
-                                    __result.push(imp);
-                                }
-                            }
-                            __result
-                        })
-                        .iter()
-                        .cloned()
-                        {
-                            __result.push(Rc::new(DepEdge {
-                                from_module: authored_name_at(source_indices.clone(), imp.clone()),
-                                to_module: authored_name_at(source_indices.clone(), m.clone()),
-                            }));
-                        }
-                        __result
-                    }))
-                    .iter()
-                    .cloned(),
-                );
-            }
-            __result
-        });
-        let adjacency = explicit_edges.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
-            |acc: Rc<HashMap<String, Rc<Vec<String>>>>, edge: Rc<DepEdge>| {
-                adjacency_add_edge(acc, edge.from_module.clone(), edge.to_module.clone())
-            },
-        );
-        let in_degree_map = modules.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, i64>(),
-            |acc: Rc<HashMap<String, i64>>, m: Rc<Node>| {
-                let m_name = authored_name_at(source_indices.clone(), m.clone());
-                v1_rt::rc_map_insert(
-                    acc,
-                    m_name.clone(),
-                    (Rc::new({
-                        let mut __result = Vec::new();
-                        for imp in module_imports(m.clone()).iter().cloned() {
-                            if v1_rt::map_has(
-                                &module_name_set,
-                                authored_name_at(source_indices.clone(), imp.clone()),
-                            ) {
-                                __result.push(imp);
-                            }
-                        }
-                        __result
-                    })
-                    .len() as i64),
-                )
-            },
-        );
-        let initial_queue = Rc::new({
-            let mut __sorted: Vec<_> = Rc::new({
-                let mut __result = Vec::new();
-                for name in module_names.clone().iter().cloned() {
-                    if match v1_rt::map_get(&in_degree_map, name.clone()) {
-                        Some(0) => true,
-                        _ => false,
-                    } {
-                        __result.push(name);
-                    }
-                }
-                __result
-            })
-            .iter()
-            .cloned()
-            .collect();
+        let sorted_names = Rc::new({
+            let mut __sorted: Vec<_> = module_names.clone().iter().cloned().collect();
             __sorted.sort_by(|a: &String, b: &String| {
                 let __ka = (|name: String| topo_sort_key(name.clone()))(a.clone());
                 let __kb = (|name: String| topo_sort_key(name.clone()))(b.clone());
@@ -461,164 +354,9 @@ pub fn topological_sort(
             });
             __sorted
         });
-        let module_count = (modules.clone().len() as i64);
-        let result = kahn_drain(
-            initial_queue.clone(),
-            Rc::new(vec![]),
-            in_degree_map.clone(),
-            adjacency.clone(),
-            module_count.clone(),
-        );
-        if ((result.sorted.clone().len() as i64) == module_count.clone()) {
-            Rc::new(TopoResult {
-                sorted: result.sorted.clone(),
-                cycle_error: None,
-            })
-        } else {
-            {
-                let sorted_set = result.sorted.clone().iter().cloned().fold(
-                    v1_rt::rc_empty_map::<String, bool>(),
-                    |acc: Rc<HashMap<String, bool>>, name: String| {
-                        v1_rt::rc_map_insert(acc, name.clone(), true)
-                    },
-                );
-                let cycle_members = Rc::new({
-                    let mut __result = Vec::new();
-                    for name in module_names.clone().iter().cloned() {
-                        if (v1_rt::map_has(&sorted_set, name.clone()) == false) {
-                            __result.push(name);
-                        }
-                    }
-                    __result
-                });
-                let cycle_desc = cycle_members.clone().join(&" -> ".to_string());
-                Rc::new(TopoResult {
-                    sorted: result.sorted.clone(),
-                    cycle_error: Some(make_error_node(
-                        Rc::new(CompilerDiagnostic::CircularDependency {
-                            modules: cycle_members.clone(),
-                            span: no_span(),
-                        }),
-                        "".to_string(),
-                    )),
-                })
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct KahnDrainState {
-    pub sorted: Rc<Vec<String>>,
-    pub in_degree_map: Rc<HashMap<String, i64>>,
-}
-
-pub fn kahn_drain(
-    mut queue: Rc<Vec<String>>,
-    mut sorted: Rc<Vec<String>>,
-    mut in_degree_map: Rc<HashMap<String, i64>>,
-    mut adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
-    mut fuel: i64,
-) -> Rc<KahnDrainState> {
-    loop {
-        if ((queue.clone().len() as i64) == 0) {
-            return Rc::new(KahnDrainState {
-                sorted: sorted.clone(),
-                in_degree_map: in_degree_map.clone(),
-            });
-        }
-        let batch_result = queue.clone().iter().cloned().fold(
-            Rc::new(KahnDrainState {
-                sorted: sorted.clone(),
-                in_degree_map: in_degree_map.clone(),
-            }),
-            |state: Rc<KahnDrainState>, node: String| {
-                let state = v1_rt::take_owned(state);
-                {
-                    let new_sorted = v1_rt::rc_list_push(state.sorted, node.clone());
-                    let neighbors = match v1_rt::map_get(&adjacency, node.clone()) {
-                        Some(ns) => ns.clone(),
-                        None => Rc::new(vec![]),
-                    };
-                    let new_degrees = neighbors.clone().iter().cloned().fold(
-                        state.in_degree_map,
-                        |deg_map: Rc<HashMap<String, i64>>, neighbor: String| {
-                            let current = match v1_rt::map_get(&deg_map, neighbor.clone()) {
-                                Some(d) => d.clone(),
-                                None => 0,
-                            };
-                            v1_rt::rc_map_insert(
-                                deg_map.clone(),
-                                neighbor.clone(),
-                                (current.clone() - 1),
-                            )
-                        },
-                    );
-                    Rc::new(KahnDrainState {
-                        sorted: new_sorted.clone(),
-                        in_degree_map: new_degrees.clone(),
-                    })
-                }
-            },
-        );
-        let new_zero_set = Rc::new({
-            let mut __result = Vec::new();
-            for neighbor in Rc::new({
-                let mut __result = Vec::new();
-                for node in queue.clone().iter().cloned() {
-                    __result.extend(
-                        (*match v1_rt::map_get(&adjacency, node.clone()) {
-                            Some(ns) => ns.clone(),
-                            None => Rc::new(vec![]),
-                        })
-                        .iter()
-                        .cloned(),
-                    );
-                }
-                __result
-            })
-            .iter()
-            .cloned()
-            {
-                if match v1_rt::map_get(&batch_result.in_degree_map.clone(), neighbor.clone()) {
-                    Some(0) => true,
-                    _ => false,
-                } {
-                    __result.push(neighbor);
-                }
-            }
-            __result
+        Rc::new(TopoResult {
+            sorted: sorted_names.clone(),
+            cycle_error: None,
         })
-        .iter()
-        .cloned()
-        .fold(
-            v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, name: String| {
-                v1_rt::rc_map_insert(acc, name.clone(), true)
-            },
-        );
-        let new_zero = Rc::new({
-            let mut __sorted: Vec<_> = Rc::new(v1_rt::map_keys(&new_zero_set))
-                .iter()
-                .cloned()
-                .collect();
-            __sorted.sort_by(|a: &String, b: &String| {
-                let __ka = (|name: String| name.clone())(a.clone());
-                let __kb = (|name: String| name.clone())(b.clone());
-                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
-            });
-            __sorted
-        });
-        {
-            let __tco_0 = new_zero.clone();
-            let __tco_1 = batch_result.sorted.clone();
-            let __tco_2 = batch_result.in_degree_map.clone();
-            let __tco_3 = (fuel - 1);
-            queue = __tco_0;
-            sorted = __tco_1;
-            in_degree_map = __tco_2;
-            fuel = __tco_3;
-            continue;
-        }
     }
 }

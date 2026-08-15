@@ -14996,7 +14996,6 @@ fn reconcile_with_typed_cache(
                 let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
                 let variant_surface = v1_compiler_infer::build_variant_export_surface(
                     typed.clone(),
-                    variant_surfaces.clone(),
                     source_indices.clone(),
                 );
                 variant_surfaces =

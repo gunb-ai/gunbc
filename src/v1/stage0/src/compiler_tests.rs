@@ -3119,7 +3119,6 @@ mod compiler_tests {
                         typed_path,
                         crate::v1_compiler_infer::build_variant_export_surface(
                             typed.clone(),
-                            variant_surfaces.clone(),
                             source_indices.clone(),
                         ),
                     );

@@ -8405,50 +8405,8 @@ fn collect_own_variant_export_surface(items: List<Node>, source_indices: Map<Str
   )
 }
 
-fn merge_name_from_proxy_surface(acc: VariantExportSurface, proxy: VariantExportSurface, name: String) -> VariantExportSurface {
-  let with_arm = match map_get(proxy.arm_owners, name) {
-    Present { value: owner } => VariantExportSurface { arm_owners: map_insert(acc.arm_owners, name, owner), enum_items: acc.enum_items }
-    Absent => acc
-  }
-  match map_get(proxy.enum_items, name) {
-    Present { value: item } => VariantExportSurface { arm_owners: with_arm.arm_owners, enum_items: map_insert(with_arm.enum_items, name, item) }
-    Absent => with_arm
-  }
-}
-
-fn reexport_variant_surface_fragment(imp: Node, surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>) -> VariantExportSurface {
-  let proxy_path = import_module_path_at(imp: imp, source_indices: source_indices)
-  match map_get(surfaces, proxy_path) {
-    Absent => empty_variant_export_surface()
-    Present { value: proxy } =>
-      fold(import_specific_names_at(n: imp, source_indices: source_indices), init: empty_variant_export_surface(), f: (acc, name) =>
-        merge_name_from_proxy_surface(acc: acc, proxy: proxy, name: name)
-      )
-  }
-}
-
-fn merge_variant_surface_fragments(acc: VariantExportSurface, frag: VariantExportSurface) -> VariantExportSurface {
-  VariantExportSurface {
-    arm_owners: map_merge(acc.arm_owners, frag.arm_owners),
-    enum_items: map_merge(acc.enum_items, frag.enum_items)
-  }
-}
-
-fn build_variant_export_surface(tm: TypedModule, surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>) -> VariantExportSurface {
-  let own = collect_own_variant_export_surface(items: tm.items, source_indices: source_indices)
-  let reexports = fold(
-    module_imports(n: tm.module) |> filter(imp => !import_is_all(n: imp)),
-    init: empty_variant_export_surface(),
-    f: (acc, imp) =>
-      merge_variant_surface_fragments(
-        acc: acc,
-        frag: reexport_variant_surface_fragment(imp: imp, surfaces: surfaces, source_indices: source_indices)
-      )
-  )
-  VariantExportSurface {
-    arm_owners: map_merge(reexports.arm_owners, own.arm_owners),
-    enum_items: map_merge(reexports.enum_items, own.enum_items)
-  }
+fn build_variant_export_surface(tm: TypedModule, source_indices: Map<String, NewlineIndex>) -> VariantExportSurface {
+  collect_own_variant_export_surface(items: tm.items, source_indices: source_indices)
 }
 
 fn build_module_context(contributions: List<ItemContribution>,
@@ -8624,7 +8582,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       }
     } else { item }
   )
-  let typed_base = module_node(name: resolved_module_name, imports: module_imports(n: resolved.module), items: ctx.resolved_items, span: resolved.module.span)
+  let typed_base = module_node(name: resolved_module_name, imports: [], items: ctx.resolved_items, span: resolved.module.span)
   let typed_module = with(typed_base, { ident_span: resolved.module.ident_span })
 
   TypecheckModuleResult {
@@ -8949,71 +8907,13 @@ fn realize_module(
             variant_surfaces: map_insert(
               dep_state.variant_surfaces,
               typed_path,
-              build_variant_export_surface(tm: typed, surfaces: dep_state.variant_surfaces, source_indices: source_indices)
+              build_variant_export_surface(tm: typed, source_indices: source_indices)
             ),
             item_registry: map_merge(dep_state.item_registry, typed.item_registry),
             diags_by_name: map_insert(dep_state.diags_by_name, typed_path, concat(parent_result.diagnostics, tc_result.diagnostics))
           }
       }
   }
-}
-
-type StrBindingsRewireAccum {
-  str_bindings: Map<String, TypeBinding>
-  ancestry_str_bindings: Map<String, TypeBinding>
-}
-
-fn import_module_path_at(imp: Node, source_indices: Map<String, NewlineIndex>) -> String {
-  authored_name_at(source_indices: source_indices, node: imp)
-}
-
-// ONE PASS OVER THE IMPORT SETS, NOT ONE PASS PER CANDIDATE NAME. `direct_import_exporter_count`
-// answered "how many direct imports export this name" by scanning every direct import's export set
-// — and allocating a fresh list of the matching sets to take its length — once per inherited key.
-// The question is asked for every key in the module's inherited keyspace, so the pass cost
-// K x I set probes plus K list allocations, where K is that keyspace and I the direct-import count,
-// to compute a relation whose whole content is one traversal of the same sets: O(sum |S_i| + K).
-// The counts are accumulated here once per module and read by key.
-//
-// Equivalence is by counting, not by argument: each occurrence in `import_export_names` contributes
-// exactly 1 to each of its names, which is what the filter-and-count did per name. A path listed
-// twice among a module's imports therefore still counts twice, exactly as before — the reason this
-// keeps the count rather than deriving the ">1" verdict from `TypeNameExportFacts.exporter_count`,
-// which counts distinct closure modules and would silently disagree on that duplicate.
-fn direct_import_exporter_count_of(exporter_counts: Map<String, Int>, name: String) -> Int {
-  match map_get(exporter_counts, name) {
-    Present { value: n } => n
-    Absent => 0
-  }
-}
-
-// THE DECISION, separated from the writing. Each name's verdict depends only on the two indexes,
-// the module's own export set and its direct imports — never on what earlier names decided — so the
-// per-name fold that used to thread both binding maps through every iteration was carrying state
-// nothing read. What that threading costs is a count, and the count is what changes here: the old
-// shape performed one insert into each FULL binding map per inherited name; the new shape performs
-// one insert per name into a rewrites map holding only the names actually rewritten, then one
-// merge per binding map. Whether each of those inserts also deep-copied its map is UNPROVEN here
-// — the emitted `Rc::make_mut` copies only when the handle is shared, and no control in this
-// change measures it — so the claim made is the structural one about how many writes reach the
-// large maps, not a claim about the copy mechanism.
-//
-// Two facts make the restructure exactly equivalent rather than approximately so, and both are
-// properties of the old code rather than assumptions about it: the verdict reads none of the
-// accumulated bindings, and the str_bindings arm only ever OVERWRITES a key it already found
-// present, so the key set of str_bindings is invariant across the fold and a later name's
-// `map_get(str_bindings, name)` cannot observe an earlier iteration's insert.
-fn rewire_str_binding_overlay(str_bindings: Map<String, TypeBinding>, rewrites: Map<String, TypeBinding>) -> Map<String, TypeBinding> {
-  fold(rewrites |> map_keys, init: empty_map(), f: (acc, name) =>
-    match map_get(str_bindings, name) {
-      Present { value: _ } =>
-        match map_get(rewrites, name) {
-          Present { value: canonical } => map_insert(acc, name, canonical)
-          Absent => acc
-        }
-      Absent => acc
-    }
-  )
 }
 
 fn compiler_kernel_type_env(source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypeEnv {
@@ -9091,13 +8991,7 @@ fn rewire_func_env_parent_links(modules: List<TypedModule>, source_indices: Map<
     map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m)
   )
   map(modules, m =>
-    let parents = flat_map(module_imports(n: m.module), imp =>
-      let path = import_module_path_at(imp: imp, source_indices: source_indices)
-      match map_get(index, path) {
-        Present { value: parent } => [parent.func_env]
-        Absent => []
-      }
-    )
+    let parents = []
     TypedModule {
       module: m.module,
       items: m.items,

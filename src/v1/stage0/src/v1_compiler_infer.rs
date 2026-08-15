@@ -18112,105 +18112,11 @@ pub fn collect_own_variant_export_surface(
     )
 }
 
-pub fn merge_name_from_proxy_surface(
-    acc: Rc<VariantExportSurface>,
-    proxy: Rc<VariantExportSurface>,
-    name: String,
-) -> Rc<VariantExportSurface> {
-    {
-        let with_arm = match v1_rt::map_get(&proxy.arm_owners.clone(), name.clone()) {
-            Some(owner) => Rc::new(VariantExportSurface {
-                arm_owners: v1_rt::rc_map_insert(
-                    acc.arm_owners.clone(),
-                    name.clone(),
-                    owner.clone(),
-                ),
-                enum_items: acc.enum_items.clone(),
-            }),
-            None => acc.clone(),
-        };
-        match v1_rt::map_get(&proxy.enum_items.clone(), name.clone()) {
-            Some(item) => Rc::new(VariantExportSurface {
-                arm_owners: with_arm.arm_owners.clone(),
-                enum_items: v1_rt::rc_map_insert(
-                    with_arm.enum_items.clone(),
-                    name.clone(),
-                    item.clone(),
-                ),
-            }),
-            None => with_arm.clone(),
-        }
-    }
-}
-
-pub fn reexport_variant_surface_fragment(
-    imp: Rc<Node>,
-    surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<VariantExportSurface> {
-    {
-        let proxy_path = import_module_path_at(imp.clone(), source_indices.clone());
-        match v1_rt::map_get(&surfaces, proxy_path.clone()) {
-            None => empty_variant_export_surface(),
-            Some(proxy) => import_specific_names_at(imp.clone(), source_indices.clone())
-                .iter()
-                .cloned()
-                .fold(
-                    empty_variant_export_surface(),
-                    |acc: Rc<VariantExportSurface>, name: String| {
-                        merge_name_from_proxy_surface(acc, proxy.clone(), name.clone())
-                    },
-                ),
-        }
-    }
-}
-
-pub fn merge_variant_surface_fragments(
-    acc: Rc<VariantExportSurface>,
-    frag: Rc<VariantExportSurface>,
-) -> Rc<VariantExportSurface> {
-    Rc::new(VariantExportSurface {
-        arm_owners: v1_rt::rc_map_merge(acc.arm_owners.clone(), frag.arm_owners.clone()),
-        enum_items: v1_rt::rc_map_merge(acc.enum_items.clone(), frag.enum_items.clone()),
-    })
-}
-
 pub fn build_variant_export_surface(
     tm: Rc<TypedModule>,
-    surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<VariantExportSurface> {
-    {
-        let own = collect_own_variant_export_surface(tm.items.clone(), source_indices.clone());
-        let reexports = Rc::new({
-            let mut __result = Vec::new();
-            for imp in module_imports(tm.module.clone()).iter().cloned() {
-                if !import_is_all(imp.clone()) {
-                    __result.push(imp);
-                }
-            }
-            __result
-        })
-        .iter()
-        .cloned()
-        .fold(
-            empty_variant_export_surface(),
-            |acc: Rc<VariantExportSurface>, imp: Rc<Node>| {
-                merge_variant_surface_fragments(
-                    acc,
-                    reexport_variant_surface_fragment(
-                        imp.clone(),
-                        surfaces.clone(),
-                        source_indices.clone(),
-                    ),
-                )
-            },
-        );
-        Rc::new(VariantExportSurface {
-            arm_owners: v1_rt::rc_map_merge(reexports.arm_owners.clone(), own.arm_owners.clone()),
-            enum_items: v1_rt::rc_map_merge(reexports.enum_items.clone(), own.enum_items.clone()),
-        })
-    }
+    collect_own_variant_export_surface(tm.items.clone(), source_indices.clone())
 }
 
 pub fn build_module_context(
@@ -19267,11 +19173,7 @@ pub fn realize_module(
                         variant_surfaces: v1_rt::rc_map_insert(
                             dep_state.variant_surfaces.clone(),
                             typed_path.clone(),
-                            build_variant_export_surface(
-                                typed.clone(),
-                                dep_state.variant_surfaces.clone(),
-                                source_indices.clone(),
-                            ),
+                            build_variant_export_surface(typed.clone(), source_indices.clone()),
                         ),
                         item_registry: v1_rt::rc_map_merge(
                             dep_state.item_registry.clone(),
@@ -19290,50 +19192,6 @@ pub fn realize_module(
             },
         }
     })
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct StrBindingsRewireAccum {
-    pub str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
-    pub ancestry_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
-}
-
-pub fn import_module_path_at(
-    imp: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    authored_name_at(source_indices.clone(), imp.clone())
-}
-
-pub fn direct_import_exporter_count_of(
-    exporter_counts: Rc<HashMap<String, i64>>,
-    name: String,
-) -> i64 {
-    match v1_rt::map_get(&exporter_counts, name.clone()) {
-        Some(n) => n.clone(),
-        None => 0,
-    }
-}
-
-pub fn rewire_str_binding_overlay(
-    str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
-    rewrites: Rc<HashMap<String, Rc<TypeBinding>>>,
-) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    Rc::new(v1_rt::map_keys(&rewrites)).iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| match v1_rt::map_get(
-            &str_bindings,
-            name.clone(),
-        ) {
-            Some(_) => match v1_rt::map_get(&rewrites, name.clone()) {
-                Some(canonical) => {
-                    v1_rt::rc_map_insert(acc.clone(), name.clone(), canonical.clone())
-                }
-                None => acc.clone(),
-            },
-            None => acc.clone(),
-        },
-    )
 }
 
 pub fn compiler_kernel_type_env(
@@ -19640,24 +19498,7 @@ pub fn rewire_func_env_parent_links(
             let mut __result = Vec::new();
             for m in modules.clone().iter().cloned() {
                 __result.push({
-                    let parents = Rc::new({
-                        let mut __result = Vec::new();
-                        for imp in module_imports(m.module.clone()).iter().cloned() {
-                            __result.extend(
-                                (*{
-                                    let path =
-                                        import_module_path_at(imp.clone(), source_indices.clone());
-                                    match v1_rt::map_get(&index, path.clone()) {
-                                        Some(parent) => Rc::new(vec![parent.func_env.clone()]),
-                                        None => Rc::new(vec![]),
-                                    }
-                                })
-                                .iter()
-                                .cloned(),
-                            );
-                        }
-                        __result
-                    });
+                    let parents = Rc::new(vec![]);
                     Rc::new(TypedModule {
                         module: m.module.clone(),
                         items: m.items.clone(),
