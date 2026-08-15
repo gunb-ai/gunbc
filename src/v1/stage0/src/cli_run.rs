@@ -1773,199 +1773,6 @@ pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
     )
 }
 
-/// One symbol's binding observation on a declared-import-closure-only compile.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DeclaredImportClosureBindingObserved {
-    pub binding_source: Option<UnlistedImportBindingSource>,
-    pub definer_module: Option<String>,
-    pub symbol_resolves: bool,
-    pub blocking_hard_diagnostic_count: i64,
-}
-
-/// Result of [`observe_declared_import_closure_symbol_binding`]. `NotRunnable` is distinct from
-/// an observed refusal so could-not-measure never reads as the subject passing (DESIGN §5).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DeclaredImportClosureBindingObservation {
-    Observed(DeclaredImportClosureBindingObserved),
-    NotRunnable(String),
-}
-
-/// The ONE named accidental-coverage exception for the Class B declared-import-closure
-/// observation (operator ruling 2026-08-09, via the parent lane).
-///
-/// `src/v2/std/grounding.dag` carries ZERO imports and reaches these types by dotted path,
-/// so they bind only when some unrelated importer has already pulled `v2.std.host_run` /
-/// `v2.std.verdict` into the assembled closure — a live Class B pool-membership-coincidence
-/// specimen, the class the import-strip cascade diagnosis says blocks further `dag/**`
-/// stripping. Three options were weighed and two rejected: widening
-/// `class_b_declared_import_pool_roots` is pool-coincidence promoted to gate policy and
-/// would blind the gate to the very class it exists to observe; restoring the module's
-/// import closure UN-STRIPS an already-stripped module, which is motion against the
-/// namespace lane whose terminal state is deleting the import grammar outright — paid now
-/// and unwound later.
-///
-/// So this file becomes a COUNTED member of the accidental-coverage population instead of
-/// an invisible one. That is strictly more honest than the prior state, where it sat in
-/// exactly the same condition with nobody counting it.
-///
-/// This is deliberately a roster of EXACT (file, type name) pairs and never a pattern: it
-/// must not weaken the observation for any other file, and a new unresolved type in this
-/// same file still refuses. Adding a row here is a visible edit, not a policy that silently
-/// absorbs future breakage.
-///
-/// 🟡 dissolve-on: the closure-independent binding fix, or the provable-coverage
-/// construction check, that the import-strip witness-discovery cascade diagnosis names as
-/// the condition for unblocking `dag/**` stripping. When either lands, `grounding.dag`
-/// binds from its own declared closure and this roster goes to zero rows.
-const CLASS_B_ACCIDENTAL_COVERAGE_EXCEPTIONS: &[(&str, &str)] = &[
-    (
-        "src/v2/std/grounding.dag",
-        "v2.std.host_run.EmitHostRunReceipt",
-    ),
-    ("src/v2/std/grounding.dag", "v2.std.verdict.VerdictTally"),
-];
-
-/// True when this diagnostic is an exact named row above — same file AND same unresolved
-/// type. Any other diagnostic, including a different unresolved type in the same file,
-/// is not exempt.
-fn class_b_diagnostic_is_named_exception(d: &Rc<ErrorNode>) -> bool {
-    use crate::v1_std_core::CompilerDiagnostic;
-    let CompilerDiagnostic::UnresolvedType { name, span } = d.diagnostic.as_ref() else {
-        return false;
-    };
-    CLASS_B_ACCIDENTAL_COVERAGE_EXCEPTIONS
-        .iter()
-        .any(|(file, ty)| span.file == *file && name == ty)
-}
-
-fn declared_import_closure_hard_diagnostic_count(
-    resolved: &v1_compiler_compile::ResolvedPipelineResult,
-) -> i64 {
-    resolved
-        .diagnostics
-        .iter()
-        .filter(|d| compile_clean_diagnostic_is_hard(d))
-        .filter(|d| !class_b_diagnostic_is_named_exception(d))
-        .count() as i64
-}
-
-/// How many hard diagnostics were exempted by the named roster. Reported beside the
-/// observation rather than dropped: an exemption that leaves no trace is indistinguishable
-/// from a clean compile, and the whole point of the roster is that this population is
-/// COUNTED instead of invisible.
-fn declared_import_closure_exempted_diagnostic_count(
-    resolved: &v1_compiler_compile::ResolvedPipelineResult,
-) -> i64 {
-    resolved
-        .diagnostics
-        .iter()
-        .filter(|d| compile_clean_diagnostic_is_hard(d))
-        .filter(|d| class_b_diagnostic_is_named_exception(d))
-        .count() as i64
-}
-
-/// Classify binding on an already-resolved declared-import-closure compile. `graph: None` is not
-/// an observed refusal — the module never ingested — so it returns `NotRunnable` (P1(b), #7835).
-/// Any hard diagnostic on the compile also refuses observation: a graph with hard errors did not
-/// produce a trustworthy binding observation (#7835 producer control).
-pub fn declared_import_closure_binding_observation_from_resolved(
-    resolved: &v1_compiler_compile::ResolvedPipelineResult,
-    consumer_module: &str,
-    symbol: &str,
-) -> DeclaredImportClosureBindingObservation {
-    let graph = match resolved.graph.as_ref() {
-        Some(g) => g.as_ref(),
-        None => {
-            return DeclaredImportClosureBindingObservation::NotRunnable(
-                "declared-import-closure compile produced no graph (parse/frontend refusal)"
-                    .to_string(),
-            );
-        }
-    };
-    let exempted = declared_import_closure_exempted_diagnostic_count(resolved);
-    if exempted > 0 {
-        eprintln!(
-            "[class-b-accidental-coverage] {exempted} hard diagnostic(s) exempted by the \
-             named roster (import-free modules binding by pool membership); \
-             dissolve-on: closure-independent binding or the provable-coverage check"
-        );
-    }
-    let hard_count = declared_import_closure_hard_diagnostic_count(resolved);
-    if hard_count > 0 {
-        // NAME THE DIAGNOSTICS, do not merely count them. A bare count cannot tell a
-        // consumer "all of these are the one known accidental-coverage specimen" from
-        // "a new regression is hiding among them", so every downstream row had to treat
-        // the two identically — the state-space conflation DESIGN names. The identities
-        // are what a counted exception row must join against, so the refusal carries them.
-        let mut named: Vec<String> = resolved
-            .diagnostics
-            .iter()
-            .filter(|d| compile_clean_diagnostic_is_hard(d))
-            .map(|d| format!("{:?}", d.diagnostic))
-            .collect();
-        named.sort();
-        named.dedup();
-        let cause = format!(
-            "declared-import-closure compile produced {hard_count} hard diagnostic(s); \
-             binding observation refused; identities: {}",
-            named.join(" | ")
-        );
-        // Stopped-line audit read: the gate's Bool collapses refused and genuinely-unlisted
-        // into one false, so without this the cause is unobservable from outside.
-        if std::env::var("GUNBC_CLASS_B_REFUSAL_TRACE").as_deref() == Ok("1") {
-            eprintln!("[class-b-refusal] {cause}");
-        }
-        return DeclaredImportClosureBindingObservation::NotRunnable(cause);
-    }
-    let definer = definer_module_for_name(graph, symbol);
-    let symbol_resolves = definer.is_some();
-    let binding_source = if symbol_resolves {
-        Some(classify_unlisted_import_binding_source(graph, consumer_module, symbol).0)
-    } else {
-        None
-    };
-    DeclaredImportClosureBindingObservation::Observed(DeclaredImportClosureBindingObserved {
-        binding_source,
-        definer_module: definer,
-        symbol_resolves,
-        blocking_hard_diagnostic_count: 0,
-    })
-}
-
-/// Host realization backing the `observe_declared_import_closure_symbol_binding` builtin:
-/// compile an entry's **declared import-edge closure only** (no reference-derived widening) under
-/// primary-precedence `pool_roots`, then classify how `consumer_module` binds `symbol`.
-///
-/// MEASUREMENT ONLY — binding-source classification (`ListedImport` vs `PoolCoincidence`) is
-/// carried as data for Class B (#6985) controls; callers judge acceptance.
-pub fn observe_declared_import_closure_symbol_binding(
-    pool_roots: &[String],
-    entry_path: &str,
-    consumer_module: &str,
-    symbol: &str,
-) -> DeclaredImportClosureBindingObservation {
-    let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        compile_declared_import_closure_only_with_pool(pool_roots, entry_path, None)
-    }));
-    let resolved = match compiled {
-        Ok(Ok(r)) => r,
-        Ok(Err(cause)) => {
-            return DeclaredImportClosureBindingObservation::NotRunnable(cause);
-        }
-        Err(_) => {
-            return DeclaredImportClosureBindingObservation::NotRunnable(
-                "observe_declared_import_closure_symbol_binding: compile panicked before producing a graph"
-                    .to_string(),
-            );
-        }
-    };
-    declared_import_closure_binding_observation_from_resolved(
-        resolved.as_ref(),
-        consumer_module,
-        symbol,
-    )
-}
-
 /// Host realization backing the `compile_dag_rust_emit_check` builtin: compile an in-memory
 /// `.dag` program to Rust and check that the named emitted file contains every string in
 /// `includes` and none of `excludes`, with zero **compile-clean hard** diagnostics
@@ -2930,19 +2737,13 @@ fn compile_clean_policy_read_refuses_gate() -> bool {
 }
 
 /// Single authority (DESIGN.md §3/§7): whether a diagnostic blocks compile-clean.
-/// `UnlistedImportUse` is governed by `gunbc.compile_clean_diagnostic_policy` (issue 11);
-/// all other classes delegate to `00_core.dag` `is_interpreter_blocking_diagnostic`.
+///
+/// The `UnlistedImportUse` arm and the `gunbc.compile_clean_diagnostic_policy` row
+/// that governed it are DELETED with import-list enforcement (operator authorization,
+/// 2026-08-15). Every class now delegates to the one `00_core.dag` authority, so this
+/// is a plain projection rather than a policy seam with one special case.
 pub fn compile_clean_diagnostic_is_hard(d: &Rc<ErrorNode>) -> bool {
-    use crate::v1_std_core::CompilerDiagnostic;
-    match d.diagnostic.as_ref() {
-        CompilerDiagnostic::UnlistedImportUse { .. } => {
-            match compile_clean_unlisted_import_use_blocks_cached() {
-                Ok(blocks) => blocks,
-                Err(_) => true,
-            }
-        }
-        _ => crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()),
-    }
+    crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())
 }
 
 /// Advisory (non-blocking per current policy) diagnostics for compile-clean — the
@@ -2952,8 +2753,7 @@ pub fn compile_clean_diagnostic_is_advisory(d: &Rc<ErrorNode>) -> bool {
     !compile_clean_diagnostic_is_hard(d)
         && matches!(
             d.diagnostic.as_ref(),
-            crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse { .. }
-                | crate::v1_std_core::CompilerDiagnostic::ComplexityUnknown { .. }
+            crate::v1_std_core::CompilerDiagnostic::ComplexityUnknown { .. }
                 | crate::v1_std_core::CompilerDiagnostic::WhereRefinementUnenforced { .. }
                 // A non-blocking variant that is absent from this list is counted by
                 // NEITHER predicate: `..._is_hard` rejects it and this allowlist does
@@ -4192,265 +3992,6 @@ pub fn selection_control_skip_label_for_ci() -> Result<String, SelectionControlS
 // ---------------------------------------------------------------------------
 
 pub const CLASS_B_ENTRY_REL: &str = "src/v2/extdeps/languages/rust_test_fixtures.dag";
-pub const CLASS_B_TRANSPORT_REL: &str = "src/v2/workflow/class_b_import_closure_transport.dag";
-pub const CLASS_B_BINDING_REL: &str = "dag/gunbc/declared_import_closure_binding.dag";
-pub const CLASS_B_OVERLAY_REL: &str = "dag/gunbc/class_b_import_closure_overlay.dag";
-pub const CLASS_B_FIXTURES_PREFIX: &str = "fixtures/class_b_import_closure";
-const CLASS_B_DECLARED_POOL_ROOTS_DATA_NAME: &str = "class_b_declared_import_pool_roots";
-
-pub const CLASS_B_GATE_INPUT_ENTRIES: &[&str] = &[
-    CLASS_B_ENTRY_REL,
-    CLASS_B_TRANSPORT_REL,
-    CLASS_B_BINDING_REL,
-    CLASS_B_OVERLAY_REL,
-];
-
-pub const CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL: &str = "class_b_gate_not_affected_skip";
-pub const RUN_CLASS_B_GATE_LABEL: &str = "run_class_b_gate";
-/// Grep-countable run-arm markers for failure paths that still execute the gate (regen shape:
-/// fail-closed by running, not by widening). Distinct from structural `run_class_b_gate` arms
-/// so routine closure/diff failures are observable in job logs (loyal-ram-550 #7835).
-pub const RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL: &str =
-    "run_class_b_gate:diff_observation_failed";
-pub const RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL: &str =
-    "run_class_b_gate:input_closure_failed";
-
-fn class_b_overlay_authority_content() -> &'static str {
-    static CONTENT: OnceLock<String> = OnceLock::new();
-    CONTENT
-        .get_or_init(|| {
-            let path = process_workspace_root().join(CLASS_B_OVERLAY_REL);
-            std::fs::read_to_string(&path).unwrap_or_else(|e| {
-                panic!(
-                    "class_b overlay authority: failed to read {}: {e}",
-                    path.display()
-                )
-            })
-        })
-        .as_str()
-}
-
-/// Project `class_b_declared_import_pool_roots` out of the overlay authority source text.
-pub(crate) fn class_b_declared_import_pool_roots_from_source(content: &str) -> Vec<String> {
-    string_list_data_from_module_source(
-        CLASS_B_OVERLAY_REL,
-        content,
-        CLASS_B_DECLARED_POOL_ROOTS_DATA_NAME,
-        false,
-    )
-}
-
-/// The Class B rows 1–2 declared-import pool roots, read live from the single `.dag` authority.
-pub(crate) fn class_b_declared_import_pool_roots() -> Vec<String> {
-    static ROOTS: OnceLock<Vec<String>> = OnceLock::new();
-    ROOTS
-        .get_or_init(|| {
-            class_b_declared_import_pool_roots_from_source(class_b_overlay_authority_content())
-        })
-        .clone()
-}
-
-fn class_b_pool_source_roots(workspace: &Path, pool_roots: &[String]) -> Vec<PathBuf> {
-    pool_roots.iter().map(|rel| workspace.join(rel)).collect()
-}
-
-fn import_closure_dag_files(
-    workspace: &Path,
-    source_roots: &[PathBuf],
-    seed_entries: &[&str],
-) -> Result<HashSet<String>, String> {
-    let index = selection_control_module_index(source_roots)?;
-    let mut seen: HashSet<String> = HashSet::new();
-    let mut queue: Vec<String> = Vec::new();
-    for rel in seed_entries {
-        let path = workspace.join(rel);
-        let content = std::fs::read_to_string(&path)
-            .map_err(|e| format!("read declared Class B gate entry {rel}: {e}"))?;
-        seen.insert(normalize_repo_path(rel));
-        queue.push(content);
-    }
-    while let Some(content) = queue.pop() {
-        for module_path in extract_import_paths(&content) {
-            let Some(candidates) = index.get(&module_path) else {
-                continue;
-            };
-            for path in candidates {
-                let rel = normalize_repo_path(&regen_workspace_relpath(path, workspace));
-                if !seen.insert(rel) {
-                    continue;
-                }
-                let file_content = std::fs::read_to_string(path)
-                    .map_err(|e| format!("read imported module {}: {e}", path.display()))?;
-                queue.push(file_content);
-            }
-        }
-    }
-    Ok(seen)
-}
-
-fn collect_repo_files_under_prefix(
-    workspace: &Path,
-    prefix: &str,
-    seen: &mut HashSet<String>,
-) -> Result<(), String> {
-    let root = workspace.join(prefix);
-    if !root.exists() {
-        return Err(format!("Class B fixture prefix does not exist: {prefix}"));
-    }
-    fn walk(dir: &Path, workspace: &Path, seen: &mut HashSet<String>) -> Result<(), String> {
-        for entry in
-            std::fs::read_dir(dir).map_err(|e| format!("read_dir {}: {e}", dir.display()))?
-        {
-            let entry = entry.map_err(|e| format!("read_dir entry: {e}"))?;
-            let path = entry.path();
-            if path.is_dir() {
-                walk(&path, workspace, seen)?;
-            } else if path.is_file() {
-                seen.insert(normalize_repo_path(&regen_workspace_relpath(
-                    &path, workspace,
-                )));
-            }
-        }
-        Ok(())
-    }
-    walk(&root, workspace, seen)
-}
-
-/// Every workspace-relative path whose content can change `run_class_b_import_closure_gate`'s
-/// verdict: witness-layer import closure of the gate transport modules (rows 3–4 wide pool),
-/// declared-import-pool closure of the subject entry (rows 1–2 minimal pool), perturbation
-/// fixtures, sorted.
-///
-/// 🟡 dissolve-on (two triggers, near then terminal):
-///
-/// NEAR — the import walk here duplicates the shape of `selection_control_input_sources` and
-/// `regen_input_sources`. They are NOT unified yet because regen's closure is guarded by a
-/// byte-identical oracle (`regen_stage0 --verify`) that this change is not in a position to
-/// re-verify, and the three differ in duplicate policy (refuse vs. superset) and entry
-/// selection (whole-root walk vs. declared list). DISSOLVES WHEN the walk is lifted to one
-/// parameterized helper (duplicate policy + entry source as arguments) and regen's byte oracle
-/// re-greens on it.
-///
-/// TERMINAL — owning lane: `docs/plans/affected-set-precompute-pruning.md`, whose **Step 5
-/// "delete Rust parallel"** (NOT STARTED, gated on Step 4) is what retires host-side selection
-/// Rust in favour of the `.dag` authority. This fn and
-/// `class_b_import_closure_gate_skip_label_for_ci` are new members of exactly that Rust-parallel
-/// set — a path/import-closure skip decision living in the seed rather than in `.dag` — so they
-/// inherit Step 5's terminal condition. They are ENUMERATED on that roster as an explicit
-/// deferral (the "Step 5 roster — CI skip-decision surfaces" row, extended by PR #7835), which
-/// is what makes this a declared, countable seed-retained surface rather than a silent escape
-/// hatch (DESIGN §7). Why deferred rather than modeled now: the decision must run BEFORE the
-/// floor resolves anything — that is its entire purpose — so a `.dag` consumer would pay the
-/// ~100s cold whole-pool resolve the skip exists to avoid; it therefore dissolves with the
-/// persistent content-keyed node store, not on its own schedule. Declared pool roots are NOT
-/// forked here: they are projected live from
-/// `gunbc.class_b_import_closure_overlay.class_b_declared_import_pool_roots` (same authority the
-/// transport and witnesses read).
-///
-/// Receipt bar, per DESIGN §5: this is a scaffold because the decision is *checkable* by
-/// execution — skip/run label arms (structural + 2 refusal), discriminating in both directions,
-/// plus bin unit tests and a live authority identity join for the declared pool roots.
-pub fn class_b_import_closure_input_sources(workspace: &Path) -> Result<Vec<String>, String> {
-    let witness_roots = class_b_pool_source_roots(workspace, &witness_layer_roots());
-    let pool_roots = class_b_pool_source_roots(workspace, &class_b_declared_import_pool_roots());
-    let mut seen = import_closure_dag_files(workspace, &witness_roots, CLASS_B_GATE_INPUT_ENTRIES)?;
-    seen.extend(import_closure_dag_files(
-        workspace,
-        &pool_roots,
-        &[CLASS_B_ENTRY_REL],
-    )?);
-    collect_repo_files_under_prefix(workspace, CLASS_B_FIXTURES_PREFIX, &mut seen)?;
-    let mut result: Vec<String> = seen.into_iter().collect();
-    result.sort();
-    Ok(result)
-}
-
-fn class_b_path_affects_gate(changed: &str, dag_closure: &HashSet<String>) -> bool {
-    let p = normalize_repo_path(changed);
-    if p.starts_with("src/v1/") {
-        return true;
-    }
-    if p.starts_with("fixtures/class_b_import_closure/") || p == "fixtures/class_b_import_closure" {
-        return true;
-    }
-    if p == "Cargo.lock"
-        || p == "Cargo.toml"
-        || p.ends_with("/Cargo.toml")
-        || p == "rust-toolchain.toml"
-        || p == "rust-toolchain"
-        || p == ".cargo/config.toml"
-        || p == ".cargo/config"
-    {
-        return true;
-    }
-    dag_closure.contains(&p)
-}
-
-/// CI skip label for the Class B gate inside `source_root_ingest_gate_passes`.
-pub fn class_b_import_closure_gate_skip_label_for_ci() -> String {
-    if std::env::var("GITHUB_EVENT_NAME").ok().as_deref() != Some("pull_request") {
-        eprintln!("class B gate skip: not pull_request — run gate (cold control)");
-        return RUN_CLASS_B_GATE_LABEL.to_string();
-    }
-    let (changed_paths, departed_paths) = match floor_git_diff_name_status_range() {
-        Ok(v) => v,
-        Err(msg) => {
-            eprintln!(
-                "[{RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL}] class B gate skip: diff observation failed ({msg}) — run gate"
-            );
-            return RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL.to_string();
-        }
-    };
-    if changed_paths.is_empty() {
-        eprintln!("class B gate skip: empty diff — run gate (fail-closed cold control)");
-        return RUN_CLASS_B_GATE_LABEL.to_string();
-    }
-    if let Some(gone) = departed_paths.iter().find(|p| {
-        let n = normalize_repo_path(p);
-        !n.starts_with("docs/")
-    }) {
-        eprintln!(
-            "class B gate skip: departed non-docs path in diff ({}) — run gate (current-tree closure cannot see deletions)",
-            normalize_repo_path(gone)
-        );
-        return RUN_CLASS_B_GATE_LABEL.to_string();
-    }
-    let workspace = workspace_root();
-    let dag_closure: HashSet<String> = match class_b_import_closure_input_sources(&workspace) {
-        Ok(sources) => sources.into_iter().collect(),
-        Err(msg) => {
-            eprintln!(
-                "[{RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL}] class B gate skip: input-closure computation failed ({msg}) — run gate"
-            );
-            return RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL.to_string();
-        }
-    };
-    match changed_paths
-        .iter()
-        .find(|p| class_b_path_affects_gate(p, &dag_closure))
-    {
-        Some(example) => {
-            eprintln!(
-                "class B gate skip: diff intersects Class B gate inputs (e.g. {}) — run gate",
-                normalize_repo_path(example)
-            );
-            RUN_CLASS_B_GATE_LABEL.to_string()
-        }
-        None => {
-            eprintln!(
-                "class B gate skip: {} changed path(s), none intersect the Class B gate input closure (declared-import pool ∪ witness layer ∪ fixtures ∪ src/v1/** ∪ Cargo/toolchain) — gate verdict provably unchanged (push-to-main runs gate unconditionally as cold control)",
-                changed_paths.len()
-            );
-            CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL.to_string()
-        }
-    }
-}
-
-/// Builtin backing `class_b_import_closure_gate_not_affected_skip` in the transport gate.
-pub fn class_b_import_closure_gate_not_affected_skip_for_ci() -> bool {
-    class_b_import_closure_gate_skip_label_for_ci() == CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL
-}
-
 fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
     // Falsifier cold-control arm: force the whole-tree compile before any diff observation.
     // Widen-to-more-checking only — this env can never skip or narrow the gate, so it is a
@@ -5058,34 +4599,6 @@ pub(crate) const CLI_RUN_COMPILE_CLEAN_UNLISTED_IMPORT_CENSUS_SCAFFOLD_MARKER: &
 // INTERIM hand-Rust scaffold (issue 11 / §7): dispatch input for the namespace flip.
 // DISSOLVES WHEN import grammar deleted and binding-source modeled in substrate.
 
-/// Binding-source attribution for the UnlistedImportUse census (issue 11).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum UnlistedImportBindingSource {
-    ListedImport,
-    PoolCoincidence,
-    DefinerResolvable,
-}
-
-impl UnlistedImportBindingSource {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::ListedImport => "listed-import",
-            Self::PoolCoincidence => "pool-coincidence",
-            Self::DefinerResolvable => "definer-resolvable",
-        }
-    }
-}
-
-/// One attributed row of the UnlistedImportUse census.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UnlistedImportCensusRow {
-    pub file: String,
-    pub referenced_name: String,
-    pub referencing_module: String,
-    pub definer_module: Option<String>,
-    pub binding_source: UnlistedImportBindingSource,
-}
-
 fn compile_clean_whole_tree_resolved(
 ) -> Result<Rc<v1_compiler_compile::ResolvedPipelineResult>, String> {
     let plan = CompileCleanScopePlan::WholeTree;
@@ -5096,101 +4609,6 @@ fn compile_clean_whole_tree_resolved(
     Ok(v1_compiler_compile::compile_to_resolved(Rc::new(
         sources.into(),
     )))
-}
-
-fn import_module_paths_for_typed_module(tm: &Rc<TypedModule>) -> HashSet<String> {
-    use crate::v1_std_core::module_imports;
-    module_imports(tm.module.clone())
-        .iter()
-        .map(|imp: &Rc<Node>| imp.name.clone())
-        .collect()
-}
-
-fn definer_module_for_name(graph: &ResolvedGraph, name: &str) -> Option<String> {
-    if let Some(info) = graph.item_registry.get(name) {
-        return Some(info.module_name.clone());
-    }
-    if name.contains('.') {
-        let base = name.rsplit('.').next().unwrap_or(name);
-        if let Some(info) = graph.item_registry.get(base) {
-            return Some(info.module_name.clone());
-        }
-    }
-    None
-}
-
-/// Classify how a single `UnlistedImportUse` site obtained its binding.
-pub fn classify_unlisted_import_binding_source(
-    graph: &ResolvedGraph,
-    referencing_module: &str,
-    referenced_name: &str,
-) -> (UnlistedImportBindingSource, Option<String>) {
-    let definer = definer_module_for_name(graph, referenced_name);
-    let tm = graph
-        .modules
-        .iter()
-        .find(|m| m.type_env.module_path == referencing_module);
-    let imports: HashSet<String> = tm
-        .map(import_module_paths_for_typed_module)
-        .unwrap_or_default();
-    if let Some(ref def_mod) = definer {
-        if imports.contains(def_mod) {
-            return (UnlistedImportBindingSource::ListedImport, definer);
-        }
-    }
-    if referenced_name.contains('.') {
-        return (UnlistedImportBindingSource::DefinerResolvable, definer);
-    }
-    (UnlistedImportBindingSource::PoolCoincidence, definer)
-}
-
-fn diagnostic_decl_file_for_census(d: &Rc<ErrorNode>) -> String {
-    let raw = diagnostic_to_span(d.diagnostic.clone()).file.clone();
-    normalize_repo_relative_path_for_census(&raw)
-}
-
-fn normalize_repo_relative_path_for_census(path: &str) -> String {
-    let p = path.replace('\\', "/");
-    if let Ok(root) = workspace_root().canonicalize() {
-        if let Ok(abs) = std::path::Path::new(&p).canonicalize() {
-            if let Ok(rel) = abs.strip_prefix(&root) {
-                return rel.to_string_lossy().replace('\\', "/");
-            }
-        }
-    }
-    p
-}
-
-/// Whole-tree UnlistedImportUse census with binding-source attribution (issue 11).
-pub fn compile_clean_unlisted_import_census() -> Result<Vec<UnlistedImportCensusRow>, String> {
-    use crate::v1_std_core::CompilerDiagnostic;
-    let result = compile_clean_whole_tree_resolved()?;
-    let graph = result
-        .graph
-        .clone()
-        .ok_or_else(|| "compile-clean census: compilation produced no graph".to_string())?;
-    let mut rows = Vec::new();
-    for d in result.diagnostics.iter() {
-        let CompilerDiagnostic::UnlistedImportUse { name, .. } = d.diagnostic.as_ref() else {
-            continue;
-        };
-        let (binding_source, definer_module) =
-            classify_unlisted_import_binding_source(&graph, &d.module_name, name);
-        rows.push(UnlistedImportCensusRow {
-            file: diagnostic_decl_file_for_census(d),
-            referenced_name: name.clone(),
-            referencing_module: d.module_name.clone(),
-            definer_module,
-            binding_source,
-        });
-    }
-    rows.sort_by(|a, b| {
-        a.file
-            .cmp(&b.file)
-            .then_with(|| a.referenced_name.cmp(&b.referenced_name))
-            .then_with(|| a.referencing_module.cmp(&b.referencing_module))
-    });
-    Ok(rows)
 }
 
 /// Floor compile-clean verdict over the whole-tree closure (shared-index receipt semantics).
@@ -5270,7 +4688,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::ConstructorCallAdmissionRefused { .. } => {
             "ConstructorCallAdmissionRefused"
         }
-        CompilerDiagnostic::UnlistedImportUse { .. } => "UnlistedImportUse",
         CompilerDiagnostic::AmbiguousReference { .. } => "AmbiguousReference",
         CompilerDiagnostic::CallArgumentNameUnknown { .. } => "CallArgumentNameUnknown",
         CompilerDiagnostic::CallPositionalSurplus { .. } => "CallPositionalSurplus",
@@ -5311,7 +4728,6 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
             constructor_decl_name,
             ..
         } => constructor_decl_name.clone(),
-        CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
         CompilerDiagnostic::AmbiguousReference { name, .. } => name.clone(),
         CompilerDiagnostic::CallArgumentNameUnknown { argument, .. } => argument.clone(),
         CompilerDiagnostic::CallPositionalSurplus { callee, .. } => callee.clone(),
@@ -16013,7 +15429,6 @@ pub fn whole_tree_ancestry_retention_probe(
         FieldTally::new("te.str_bindings"),
         FieldTally::new("te.ancestry_str_bindings"),
         FieldTally::new("te.bindings"),
-        FieldTally::new("te.source_visible_names"),
         FieldTally::new("te.inductive_fields.keys"),
         FieldTally::new("te.recursive_type_set"),
     ];
@@ -16048,14 +15463,10 @@ pub fn whole_tree_ancestry_retention_probe(
         );
         tallies[6].add(Rc::as_ptr(&te.bindings) as usize, te.bindings.len());
         tallies[7].add(
-            Rc::as_ptr(&te.source_visible_names) as usize,
-            te.source_visible_names.len(),
-        );
-        tallies[8].add(
             Rc::as_ptr(&te.inductive_fields) as usize,
             te.inductive_fields.len(),
         );
-        tallies[9].add(
+        tallies[8].add(
             Rc::as_ptr(&te.recursive_type_set) as usize,
             te.recursive_type_set.len(),
         );
@@ -38498,208 +37909,16 @@ mod witness_layer_roots_compile_clean_tests {
     }
 
     /// Class B gate skip: unrelated path outside the gate input closure skips on pull_request.
-    #[test]
-    fn class_b_gate_skip_skips_on_unrelated_path() {
-        const UNRELATED: &str = "src/v2/lens/machine_shape.dag";
-        let closure = class_b_import_closure_input_sources(&workspace_root())
-            .expect("Class B gate closure must compute");
-        assert!(
-            !closure.iter().any(|p| p == UNRELATED),
-            "{UNRELATED} entered the Class B gate input closure — choose a new skip subject"
-        );
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "pull_request");
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    &format!("M\\000{UNRELATED}\\000"),
-                );
-                assert_eq!(
-                    class_b_import_closure_gate_skip_label_for_ci(),
-                    CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL
-                );
-            });
-        });
-    }
-
     /// Class B gate skip: touching the subject entry runs the gate.
-    #[test]
-    fn class_b_gate_skip_runs_on_subject_entry() {
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "pull_request");
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    &format!("M\\000{CLASS_B_ENTRY_REL}\\000"),
-                );
-                assert_eq!(
-                    class_b_import_closure_gate_skip_label_for_ci(),
-                    RUN_CLASS_B_GATE_LABEL
-                );
-            });
-        });
-    }
-
     /// Class B gate skip: departed non-docs path runs the gate.
-    #[test]
-    fn class_b_gate_skip_runs_on_departed_dag_path() {
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "pull_request");
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    "D\\000src/v2/lens/machine_shape.dag\\000",
-                );
-                assert_eq!(
-                    class_b_import_closure_gate_skip_label_for_ci(),
-                    RUN_CLASS_B_GATE_LABEL
-                );
-            });
-        });
-    }
-
     /// Class B gate skip: non-pull_request always runs (cold control).
-    #[test]
-    fn class_b_gate_skip_runs_on_push_event() {
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "push");
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    "M\\000src/v2/lens/machine_shape.dag\\000",
-                );
-                assert_eq!(
-                    class_b_import_closure_gate_skip_label_for_ci(),
-                    RUN_CLASS_B_GATE_LABEL
-                );
-            });
-        });
-    }
-
     /// Failure arm — diff observation failed still RUNs the gate (regen shape), but carries a
     /// grep-countable label distinct from structural `run_class_b_gate` so routine observation
     /// failures are observable in job logs without widening to skip.
-    #[test]
-    fn class_b_gate_skip_runs_with_countable_label_when_diff_observation_fails() {
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _event = EnvGuard::set("GITHUB_EVENT_NAME", "pull_request");
-                let _ns =
-                    EnvGuard::set("GUNBC_CI_DIFF_NAME_STATUS", "Z\\000src/v1/whatever.rs\\000");
-                assert_eq!(
-                    class_b_import_closure_gate_skip_label_for_ci(),
-                    RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL
-                );
-                assert!(
-                    !class_b_import_closure_gate_not_affected_skip_for_ci(),
-                    "a failure arm must still run the gate, never skip"
-                );
-            });
-        });
-    }
-
     /// The two failure run labels must stay distinguishable from each other and from the
     /// structural run / skip labels so each deficit is separately countable in job logs.
-    #[test]
-    fn class_b_gate_skip_labels_are_distinct_and_countable() {
-        assert_ne!(
-            RUN_CLASS_B_GATE_LABEL,
-            RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL
-        );
-        assert_ne!(
-            RUN_CLASS_B_GATE_LABEL,
-            RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL
-        );
-        assert_ne!(
-            RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL,
-            RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL
-        );
-        assert_ne!(
-            CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL,
-            RUN_CLASS_B_GATE_DIFF_OBSERVATION_FAILED_LABEL
-        );
-        assert_ne!(
-            CLASS_B_GATE_NOT_AFFECTED_SKIP_LABEL,
-            RUN_CLASS_B_GATE_INPUT_CLOSURE_FAILED_LABEL
-        );
-    }
-
-    #[test]
-    fn class_b_declared_pool_roots_reader_follows_synthetic_authority() {
-        let synthetic = "module gunbc.class_b_import_closure_overlay\n\n\
-             data class_b_declared_import_pool_roots: List<String> = [\"alpha\", \"beta\"]\n";
-        assert_eq!(
-            class_b_declared_import_pool_roots_from_source(synthetic),
-            vec!["alpha".to_string(), "beta".to_string()],
-            "the Class B pool-roots reader must FOLLOW the overlay authority, not a hardcoded copy"
-        );
-    }
-
-    #[test]
-    fn class_b_declared_pool_roots_matches_overlay_authority() {
-        let overlay = std::fs::read_to_string(workspace_root().join(CLASS_B_OVERLAY_REL))
-            .expect("read class_b overlay authority");
-        assert_eq!(
-            class_b_declared_import_pool_roots(),
-            class_b_declared_import_pool_roots_from_source(&overlay),
-            "live memoized pool roots must match the overlay authority on disk (identity join)"
-        );
-    }
-
     /// P1(b) discriminating control: `graph: None` must NOT read as
     /// `symbol_resolves: false` with zero blocking diagnostics — that vacuously passes row 3.
-    #[test]
-    fn parse_failure_observation_is_not_runnable_not_seam_refusal() {
-        use crate::v1_compiler_complexity::empty_complexity_report;
-        let resolved = Rc::new(v1_compiler_compile::ResolvedPipelineResult {
-            graph: None,
-            diagnostics: Rc::new(im::Vector::new()),
-            source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-            complexity: empty_complexity_report(),
-            ownership: Rc::new(im::Vector::new()),
-            newline_indices: Rc::new(im::Vector::new()),
-        });
-        let observation = declared_import_closure_binding_observation_from_resolved(
-            resolved.as_ref(),
-            "v2.extdeps.languages.rust_test",
-            "rust_selection_policy_node",
-        );
-        assert!(
-            matches!(
-                observation,
-                DeclaredImportClosureBindingObservation::NotRunnable(_)
-            ),
-            "graph:None must be NotRunnable, not an observed seam refusal; got {observation:?}"
-        );
-        with_workspace_cwd(|| {
-            let malformed = "module broken.syntax\n@@@ not valid dag\n";
-            let compiled = compile_declared_import_closure_only_with_pool(
-                &class_b_declared_import_pool_roots(),
-                "broken/syntax.dag",
-                Some(malformed),
-            )
-            .expect("content override bypasses pool load");
-            if compiled.graph.is_none() {
-                let live = declared_import_closure_binding_observation_from_resolved(
-                    compiled.as_ref(),
-                    "broken.syntax",
-                    "rust_selection_policy_node",
-                );
-                assert!(
-                    matches!(
-                        live,
-                        DeclaredImportClosureBindingObservation::NotRunnable(_)
-                    ),
-                    "live malformed compile with graph:None must also be NotRunnable; got {live:?}"
-                );
-            } else {
-                panic!(
-                    "malformed source unexpectedly produced a graph — this control no longer proves that a parse failure reaches the graph:None path"
-                );
-            }
-        });
-    }
-
     /// The accidental-coverage roster's EXECUTING evidence, positive control and
     /// discriminating REDs together (review 50728).
     ///
@@ -38714,129 +37933,8 @@ mod witness_layer_roots_compile_clean_tests {
     /// Three cases, because the roster is a pair and either half can fail independently:
     /// the named pair is exempt; a DIFFERENT type in the SAME file is not; the SAME type in
     /// a DIFFERENT file is not.
-    #[test]
-    fn class_b_accidental_coverage_exemption_is_exactly_the_named_pairs() {
-        use crate::v1_std_core::{make_error_node, CompilerDiagnostic};
-        let unresolved_at = |name: &str, file: &str| {
-            make_error_node(
-                Rc::new(CompilerDiagnostic::UnresolvedType {
-                    name: name.to_string(),
-                    span: Rc::new(SourceSpan {
-                        file: file.to_string(),
-                        start: 0,
-                        end: 1,
-                    }),
-                }),
-                "v2.std.grounding".to_string(),
-            )
-        };
-
-        // Positive control: both named rows are exempt, or the roster does nothing.
-        for (file, ty) in CLASS_B_ACCIDENTAL_COVERAGE_EXCEPTIONS {
-            assert!(
-                class_b_diagnostic_is_named_exception(&unresolved_at(ty, file)),
-                "named roster row ({file}, {ty}) must be exempt"
-            );
-        }
-
-        // Discriminating RED 1: a different unresolved type in the SAME file still refuses.
-        // This is the one that separates a named row from a per-file pattern.
-        assert!(
-            !class_b_diagnostic_is_named_exception(&unresolved_at(
-                "v2.std.host_run.NotARealTypeControl",
-                "src/v2/std/grounding.dag",
-            )),
-            "an unnamed type in the exempted file must NOT be exempt — otherwise the roster \
-             is a file pattern that would absorb any future breakage in that file"
-        );
-
-        // Discriminating RED 2: the same type in a DIFFERENT file still refuses, so the
-        // exemption cannot leak to another module that happens to name the same type.
-        assert!(
-            !class_b_diagnostic_is_named_exception(&unresolved_at(
-                "v2.std.host_run.EmitHostRunReceipt",
-                "src/v2/std/some_other_module.dag",
-            )),
-            "a named type in an unnamed file must NOT be exempt"
-        );
-
-        // A non-UnresolvedType hard diagnostic is never exempt, whatever its file.
-        assert!(
-            !class_b_diagnostic_is_named_exception(&make_error_node(
-                Rc::new(CompilerDiagnostic::InternalError {
-                    message: "control".to_string(),
-                    span: Rc::new(SourceSpan {
-                        file: "src/v2/std/grounding.dag".to_string(),
-                        start: 0,
-                        end: 1,
-                    }),
-                }),
-                "v2.std.grounding".to_string(),
-            )),
-            "only UnresolvedType is exemptible; another hard diagnostic class must refuse"
-        );
-    }
-
     /// Producer control: graph-present compile with an unrelated hard diagnostic must refuse
     /// observation — not populate `blocking_hard_diagnostic_count: 0` on an unresolved symbol.
-    #[test]
-    fn unrelated_hard_diagnostic_observation_is_not_runnable_at_producer() {
-        use crate::v1_std_core::{make_error_node, CompilerDiagnostic};
-        const CONSUMER: &str = "v2.extdeps.languages.rust_test";
-        const SYMBOL: &str = "rust_selection_policy_node";
-        with_workspace_cwd(|| {
-            let valid = "module v2.extdeps.languages.rust_test\n\nimport std.types { Bool }\n\ndata probe: Bool = true\n";
-            let compiled = compile_declared_import_closure_only_with_pool(
-                &class_b_declared_import_pool_roots(),
-                "src/v2/extdeps/languages/rust_test_fixtures.dag",
-                Some(valid),
-            )
-            .expect("content override bypasses pool load");
-            assert!(
-                compiled.graph.is_some(),
-                "valid fixture must produce a graph so this control exercises the hard-diagnostic refusal path"
-            );
-            let mut diagnostics = compiled.diagnostics.iter().cloned().collect::<Vec<_>>();
-            diagnostics.push(make_error_node(
-                Rc::new(CompilerDiagnostic::InternalError {
-                    message: "producer control unrelated hard diagnostic".to_string(),
-                    span: Rc::new(SourceSpan {
-                        file: "src/v2/extdeps/languages/rust_test_fixtures.dag".to_string(),
-                        start: 0,
-                        end: 1,
-                    }),
-                }),
-                CONSUMER.to_string(),
-            ));
-            let resolved = Rc::new(v1_compiler_compile::ResolvedPipelineResult {
-                graph: compiled.graph.clone(),
-                diagnostics: Rc::new(diagnostics.into()),
-                source_indices: compiled.source_indices.clone(),
-                complexity: compiled.complexity.clone(),
-                ownership: compiled.ownership.clone(),
-                newline_indices: compiled.newline_indices.clone(),
-            });
-            let observation = declared_import_closure_binding_observation_from_resolved(
-                resolved.as_ref(),
-                CONSUMER,
-                SYMBOL,
-            );
-            assert!(
-                matches!(
-                    observation,
-                    DeclaredImportClosureBindingObservation::NotRunnable(_)
-                ),
-                "unrelated hard diagnostic must refuse observation at producer; got {observation:?}"
-            );
-            if let DeclaredImportClosureBindingObservation::Observed(observed) = observation {
-                assert!(
-                    !observed.symbol_resolves || observed.blocking_hard_diagnostic_count == 0,
-                    "would have vacuously passed row 3: {observed:?}"
-                );
-            }
-        });
-    }
-
     /// Selection-control skip, the GREEN arm: a diff that touches nothing in the control
     /// suite's closure skips. Paired with the RUN arms below — that pair is what makes
     /// this a decision rather than a constant.
@@ -42350,7 +41448,6 @@ mod peel_alias_fixpoint_termination {
                 inductive_fields: crate::v1_rt::rc_empty_map(),
                 source_indices: crate::v1_rt::rc_empty_map(),
                 intern_table: crate::v1_std_core::empty_intern_table(),
-                source_visible_names: crate::v1_rt::rc_empty_map(),
                 symbol_index,
             });
             // The pre-fix firing set: the old peel called this same resolver,

@@ -49,7 +49,6 @@ pub struct TypeEnv {
     pub inductive_fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
-    pub source_visible_names: Rc<HashMap<String, bool>>,
     pub symbol_index: Rc<SymbolIndex>,
     pub module_path: String,
 }
@@ -148,7 +147,6 @@ pub fn empty_type_env() -> Rc<TypeEnv> {
         inductive_fields: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
         source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
         intern_table: empty_intern_table(),
-        source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
         symbol_index: empty_symbol_index(),
     })
 }
@@ -1935,11 +1933,6 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                 inductive_fields: e.inductive_fields.clone(),
                 source_indices: e.source_indices.clone(),
                 intern_table: e.intern_table.clone(),
-                source_visible_names: v1_rt::rc_map_insert(
-                    e.source_visible_names.clone(),
-                    tp_name.clone(),
-                    true,
-                ),
                 symbol_index: e.symbol_index.clone(),
             })
         })

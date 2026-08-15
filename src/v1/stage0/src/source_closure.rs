@@ -292,7 +292,7 @@ fn collect_param_binders(node: &Rc<Node>, binders: &mut HashSet<String>) {
     }
 }
 
-fn parse_file(path: &str, content: &str) -> Option<Rc<Node>> {
+pub fn parse_file(path: &str, content: &str) -> Option<Rc<Node>> {
     let tokens = crate::v1_compiler_tokenize::tokenize(content.to_string(), path.to_string());
     let source_index =
         crate::v1_std_core::build_newline_index(path.to_string(), content.to_string());

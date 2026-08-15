@@ -116,7 +116,7 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
-use crate::v1_std_core::CompilerDiagnostic::{InternalError, UnlistedImportUse};
+use crate::v1_std_core::CompilerDiagnostic::InternalError;
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
@@ -4951,32 +4951,6 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
     }
 }
 
-pub fn group_unlisted_type_names(
-    diags: Rc<Vec<Rc<ErrorNode>>>,
-) -> Rc<HashMap<String, Rc<Vec<String>>>> {
-    diags.clone().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
-        |acc: Rc<HashMap<String, Rc<Vec<String>>>>, en: Rc<ErrorNode>| match (*en
-            .diagnostic
-            .clone())
-        .clone()
-        {
-            CompilerDiagnostic::UnlistedImportUse { name: nm, .. } => {
-                let existing = match v1_rt::map_get(&acc, en.module_name.clone()) {
-                    Some(v) => v.clone(),
-                    None => Rc::new(vec![]),
-                };
-                v1_rt::rc_map_insert(
-                    acc.clone(),
-                    en.module_name.clone(),
-                    v1_rt::concat(existing.clone(), Rc::new(vec![nm.clone()])),
-                )
-            }
-            _ => acc.clone(),
-        },
-    )
-}
-
 pub fn merged_module_source_indices(
     modules: Rc<Vec<Rc<TypedModule>>>,
 ) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
@@ -5073,7 +5047,6 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         let test_projections = extract_test_projections(typed.clone());
         let export_sets = build_module_export_sets(typed.modules.clone());
         let module_index = build_module_index(typed.modules.clone());
-        let unlisted_type_names_by_module = group_unlisted_type_names(typed.diagnostics.clone());
         let module_files = Rc::new({
             let mut __result = Vec::new();
             for tm in typed.modules.clone().iter().cloned() {
@@ -5087,16 +5060,6 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                     export_sets.clone(),
                     typed.modules.clone(),
                     module_index.clone(),
-                    match v1_rt::map_get(
-                        &unlisted_type_names_by_module,
-                        authored_name_at(
-                            tm.type_env.clone().source_indices.clone(),
-                            tm.module.clone(),
-                        ),
-                    ) {
-                        Some(v) => v.clone(),
-                        None => Rc::new(vec![]),
-                    },
                 ));
             }
             __result
@@ -5496,7 +5459,6 @@ pub fn emit_module(
             export_sets.clone(),
             Rc::new(vec![typed_module.clone()]),
             module_index.clone(),
-            Rc::new(vec![]),
         )
     }
 }
@@ -6767,7 +6729,6 @@ pub fn reference_derived_candidate_spelled_in_module(module_source: String, name
 
 pub fn reference_derived_use_lines(
     items: Rc<Vec<Rc<Node>>>,
-    unlisted_type_names: Rc<Vec<String>>,
     this_module_name: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,
@@ -6841,10 +6802,7 @@ pub fn reference_derived_use_lines(
             let mut __result = Vec::new();
             for name in unique_strings(v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(unlisted_type_names.clone(), value_names.clone()),
-                        type_surface_names.clone(),
-                    ),
+                    v1_rt::concat(value_names.clone(), type_surface_names.clone()),
                     field_surface_names.clone(),
                 ),
                 variant_payload_structs.clone(),
@@ -7066,7 +7024,6 @@ pub fn emit_module_full(
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     module_index: Rc<ModuleIndex>,
-    unlisted_type_names: Rc<Vec<String>>,
 ) -> Rc<TextFile> {
     {
         let m = typed_module.module.clone();
@@ -7194,7 +7151,6 @@ pub fn emit_module_full(
         let reference_use_lines = if ((module_imports(m.clone()).len() as i64) == 0) {
             reference_derived_use_lines(
                 typed_module.items.clone(),
-                unlisted_type_names.clone(),
                 authored_name(scope.type_env.clone(), m.clone()),
                 registry.clone(),
                 emit_info.clone(),
@@ -7209,7 +7165,6 @@ pub fn emit_module_full(
             if corpus_repr_is_faithful(emit_info.corpus_repr.clone()) {
                 reference_derived_use_lines(
                     typed_module.items.clone(),
-                    unlisted_type_names.clone(),
                     authored_name(scope.type_env.clone(), m.clone()),
                     registry.clone(),
                     emit_info.clone(),
@@ -12724,7 +12679,6 @@ pub fn render_rust_type_with_applied_binding(
                                         ),
                                         source_indices: source_indices.clone(),
                                         intern_table: empty_intern_table(),
-                                        source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
                                         symbol_index: empty_symbol_index(),
                                     }),
                                 )
@@ -12754,7 +12708,6 @@ pub fn render_rust_type_with_applied_binding(
                                     >(),
                                     source_indices: source_indices.clone(),
                                     intern_table: empty_intern_table(),
-                                    source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
                                     symbol_index: empty_symbol_index(),
                                 }),
                             )
@@ -29654,7 +29607,6 @@ pub fn rust_test_signature_comment(
             inductive_fields: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
             source_indices: projection.source_indices.clone(),
             intern_table: empty_intern_table(),
-            source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
             symbol_index: empty_symbol_index(),
         });
         let params_str = Rc::new({

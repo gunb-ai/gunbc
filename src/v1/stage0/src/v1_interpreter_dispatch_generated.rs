@@ -93,8 +93,6 @@ pub enum EvalBuiltinArm {
     FreeCallDocGraphDocCount,
     FreeCallCompileDagRustEmitCheck,
     FreeCallCompileDagDiagnosticCensus,
-    FreeCallObserveDeclaredImportClosureSymbolBinding,
-    FreeCallClassBImportClosureGateNotAffectedSkip,
     FreeCallWitnessLayerRootsCompileCleanCheck,
     FreeCallWitnessLayerRootsCompileCleanEmitCheck,
     FreeCallConsumeFloorCompileCleanGateVerdict,
@@ -226,8 +224,6 @@ pub fn lookup_eval_builtin_inner(spelling: &str) -> Option<EvalBuiltinArm> {
         "doc_graph_doc_count" => Some(EvalBuiltinArm::FreeCallDocGraphDocCount),
         "compile_dag_rust_emit_check" => Some(EvalBuiltinArm::FreeCallCompileDagRustEmitCheck),
         "compile_dag_diagnostic_census" => Some(EvalBuiltinArm::FreeCallCompileDagDiagnosticCensus),
-        "observe_declared_import_closure_symbol_binding" => Some(EvalBuiltinArm::FreeCallObserveDeclaredImportClosureSymbolBinding),
-        "class_b_import_closure_gate_not_affected_skip" => Some(EvalBuiltinArm::FreeCallClassBImportClosureGateNotAffectedSkip),
         "witness_layer_roots_compile_clean_check" => Some(EvalBuiltinArm::FreeCallWitnessLayerRootsCompileCleanCheck),
         "witness_layer_roots_compile_clean_emit_check" => Some(EvalBuiltinArm::FreeCallWitnessLayerRootsCompileCleanEmitCheck),
         "consume_floor_compile_clean_gate_verdict" => Some(EvalBuiltinArm::FreeCallConsumeFloorCompileCleanGateVerdict),
@@ -357,8 +353,6 @@ macro_rules! eval_builtin_inner_arm {
     ("free_call.doc_graph_doc_count") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallDocGraphDocCount };
     ("free_call.compile_dag_rust_emit_check") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagRustEmitCheck };
     ("free_call.compile_dag_diagnostic_census") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallCompileDagDiagnosticCensus };
-    ("free_call.observe_declared_import_closure_symbol_binding") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallObserveDeclaredImportClosureSymbolBinding };
-    ("free_call.class_b_import_closure_gate_not_affected_skip") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallClassBImportClosureGateNotAffectedSkip };
     ("free_call.witness_layer_roots_compile_clean_check") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallWitnessLayerRootsCompileCleanCheck };
     ("free_call.witness_layer_roots_compile_clean_emit_check") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallWitnessLayerRootsCompileCleanEmitCheck };
     ("free_call.consume_floor_compile_clean_gate_verdict") => { $crate::v1_interpreter_dispatch_generated::EvalBuiltinArm::FreeCallConsumeFloorCompileCleanGateVerdict };
