@@ -6,6 +6,7 @@ use self::AlgebraTypeTemplate::*;
 use self::CollectionSizeEffect::*;
 use self::ContainerSource::*;
 use self::CostShape::*;
+use self::FreeMonoidFirst::*;
 use self::Ordering::*;
 use crate::std_error_primitives::DivError::*;
 use crate::std_error_primitives::Result::*;
@@ -1689,6 +1690,156 @@ pub fn trim_free_function_authority_note() -> String {
 
 pub fn trim(s: String) -> String {
     v1_rt::trim(s)
+}
+
+pub fn free_monoid_bodies_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "REAL BODIES FOR THE FREE-MONOID OPERATIONS THIS MODULE ALREADY DECLARES. free_monoid_collection_templates has always said what fold, map, filter, first, reverse, concat and length ARE -- their parameters, return type and cost shape -- while the behaviour lived in Rust and no .dag body existed at all. These are those bodies, and each is the ordinary structural program the declaration implies: fold is the catamorphism over Empty and Cons, and every other operation is one fold. Nothing here is a new concept; the template row was the declaration and this is its realization in the substrate rather than beside it. WHY THE FOLD IS THE ONLY RECURSION: an operation that recurses independently is a second traversal to keep correct, so map, filter, length and concat all route through free_monoid_fold and inherit its termination. WHAT THIS DOES NOT YET DO: it does not rebind the bare spellings the corpus calls today -- those still reach host free-calls, and redirecting them is the naming lane's work, not a body's.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn free_monoid_fold<T, A: Clone>(
+    mut xs: Rc<Vec<T>>,
+    mut init: A,
+    mut step: impl Fn(A, T) -> A + Clone,
+) -> A {
+    loop {
+        {
+            let __fm = xs.clone();
+            if __fm.is_empty() {
+                break init;
+            } else {
+                let h = (*__fm)[0].clone();
+                let t: Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect());
+                {
+                    let __tco_0 = t.clone();
+                    let __tco_1 = step(init, h.clone());
+                    xs = __tco_0;
+                    init = __tco_1;
+                    continue;
+                }
+            }
+        }
+    }
+}
+
+pub fn free_monoid_fold_right<T, A: Clone>(
+    xs: Rc<Vec<T>>,
+    init: A,
+    step: impl Fn(A, T) -> A + Clone,
+) -> A {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let __fm = xs.clone();
+        if __fm.is_empty() {
+            init
+        } else {
+            let h = (*__fm)[0].clone();
+            let t: Rc<Vec<_>> = Rc::new((*__fm).iter().skip(1).cloned().collect());
+            step.clone()(
+                free_monoid_fold_right(t.clone(), init, step.clone()),
+                h.clone(),
+            )
+        }
+    })
+}
+
+pub fn free_monoid_reverse<T>(xs: Rc<Vec<T>>) -> Rc<Vec<T>> {
+    free_monoid_fold(xs.clone(), Rc::new(vec![]), |acc, item| {
+        Rc::new({
+            let mut __cons_v = (*acc.clone()).clone();
+            __cons_v.insert(0, item.clone());
+            __cons_v
+        })
+    })
+}
+
+pub fn free_monoid_map<T, U>(xs: Rc<Vec<T>>, f: impl Fn(T) -> U + Clone) -> Rc<Vec<U>> {
+    free_monoid_reverse(free_monoid_fold(
+        xs.clone(),
+        Rc::new(vec![]),
+        |acc, item| {
+            Rc::new({
+                let mut __cons_v = (*acc.clone()).clone();
+                __cons_v.insert(0, f(item.clone()));
+                __cons_v
+            })
+        },
+    ))
+}
+
+pub fn free_monoid_filter<T>(xs: Rc<Vec<T>>, keep: impl Fn(T) -> bool + Clone) -> Rc<Vec<T>> {
+    free_monoid_reverse(free_monoid_fold(
+        xs.clone(),
+        Rc::new(vec![]),
+        |acc, item| {
+            if keep(item.clone()) {
+                Rc::new({
+                    let mut __cons_v = (*acc.clone()).clone();
+                    __cons_v.insert(0, item.clone());
+                    __cons_v
+                })
+            } else {
+                acc.clone()
+            }
+        },
+    ))
+}
+
+pub fn free_monoid_length<T>(xs: Rc<Vec<T>>) -> i64 {
+    free_monoid_fold(xs.clone(), 0, |acc, item| (acc.clone() + 1))
+}
+
+pub fn free_monoid_concat<T>(left: Rc<Vec<T>>, right: Rc<Vec<T>>) -> Rc<Vec<T>> {
+    free_monoid_fold(
+        free_monoid_reverse(left.clone()),
+        right.clone(),
+        |acc, item| {
+            Rc::new({
+                let mut __cons_v = (*acc.clone()).clone();
+                __cons_v.insert(0, item.clone());
+                __cons_v
+            })
+        },
+    )
+}
+
+pub fn free_monoid_first_result_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "first returns a NAMED COPRODUCT rather than Optional<T>, and the reason is measured rather than stylistic: the first draft returned T? and its empty case failed at runtime with non-exhaustive pattern match on null, because an absent Optional bottoms out in the overloaded Value::Null sentinel that DESIGN carries as an open thread. src/v2/std/algebra already reached the same conclusion independently -- list_head returns ListHeadResult with HeadFound and HeadAbsent -- so this follows the substrate's own grounded pattern instead of re-deriving it. NOTE THE TENSION, rather than hiding it: the free_monoid_collection_templates row for first declares OptionalOf, so the declared type and the realizable type disagree until the Value::Null split lands. That disagreement is a fact about the substrate, not about this body.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum FreeMonoidFirst<T> {
+    FirstFound { value: T },
+    FirstAbsent,
+}
+impl<T> FreeMonoidFirst<T> {
+    pub fn value(&self) -> T {
+        match self {
+            FreeMonoidFirst::FirstFound { value: __val, .. } => __val.clone(),
+            FreeMonoidFirst::FirstAbsent => panic!("no value on unit variant"),
+        }
+    }
+}
+
+pub fn free_monoid_first<T>(xs: Rc<Vec<T>>) -> Rc<FreeMonoidFirst<T>> {
+    {
+        let __fm = xs.clone();
+        if __fm.is_empty() {
+            Rc::new(FreeMonoidFirst::FirstAbsent)
+        } else {
+            let h = (*__fm)[0].clone();
+            Rc::new(FreeMonoidFirst::FirstFound { value: h.clone() })
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
