@@ -32,6 +32,7 @@ type SparkServingPhase1TransportGap
   = SparkServingRemoteFileWriteTransportGap
   | SparkServingGenerateAcceptanceTransportGap
   | SparkServingCrossStepRemoteContextGap
+  | SparkServingSystemdUnitCompositionGap
 
 data spark_serving_remote_file_write_transport_gap_note: String = "CONDITION 1 — unit file write: spark_serving_user_unit_contents is modeled DATA; delivery MUST be a file-content effect with bytes on stdin (receipt-write precedent), never unit text composed into a remote command string. Typed gap: SparkServingRemoteFileWriteTransportGap in spark_serving_phase1_transport_gaps."
 
@@ -39,11 +40,14 @@ data spark_serving_generate_acceptance_transport_gap_note: String = "CONDITION 2
 
 data spark_serving_remote_operation_context_note: String = "CONDITION 3 — cross-invocation state: download, verify, and extract are separate typed argv operations with NO shared shell state. Staging paths are modeled values in SparkServingRemoteOperationContext carried across steps; a step whose predecessor side effect is absent MUST fail closed via spark_serving_admit_* helpers. Typed gap: SparkServingCrossStepRemoteContextGap in spark_serving_phase1_transport_gaps."
 
+data spark_serving_systemd_unit_composition_gap_note: String = "CONDITION 4 — unit syntax composition: spark_serving_user_unit_contents hand-joins systemd INI sections as a string literal (medium-as-string). DISSOLVE-ON: modeled systemd-user-unit grammar rows emit unit bytes from typed fields, same pattern as bash grammar rows. Typed gap: SparkServingSystemdUnitCompositionGap in spark_serving_phase1_transport_gaps."
+
 fn spark_serving_phase1_transport_gaps() -> List<SparkServingPhase1TransportGap> {
   [
     SparkServingRemoteFileWriteTransportGap,
     SparkServingGenerateAcceptanceTransportGap,
     SparkServingCrossStepRemoteContextGap,
+    SparkServingSystemdUnitCompositionGap,
   ]
 }
 

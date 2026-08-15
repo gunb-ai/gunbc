@@ -65,6 +65,7 @@ import gunbc.spark_serving_membership {
   SparkServingRemoteFileWriteTransportGap,
   SparkServingGenerateAcceptanceTransportGap,
   SparkServingCrossStepRemoteContextGap,
+  SparkServingSystemdUnitCompositionGap,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -147,7 +148,7 @@ fn plan_has_refused_kind(plan: MembershipPlan<SparkServingMember>, kind: SparkSe
 data w_noop_note: String = "Already-correct host converging to ZERO effects is the claim most likely to be quietly false — reinstall-every-time is indistinguishable from correct from the outside. Asserts plan AND membership_effects both empty."
 
 test fn w_spark_serving_phase1_transport_gaps_enrolled() -> Bool {
-  spark_serving_phase1_transport_gap_count() == 3
+  spark_serving_phase1_transport_gap_count() == 4
     && any(
       spark_serving_phase1_transport_gaps(),
       gap => gap == SparkServingRemoteFileWriteTransportGap,
@@ -159,6 +160,10 @@ test fn w_spark_serving_phase1_transport_gaps_enrolled() -> Bool {
     && any(
       spark_serving_phase1_transport_gaps(),
       gap => gap == SparkServingCrossStepRemoteContextGap,
+    )
+    && any(
+      spark_serving_phase1_transport_gaps(),
+      gap => gap == SparkServingSystemdUnitCompositionGap,
     )
 }
 

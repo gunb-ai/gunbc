@@ -4,7 +4,7 @@ import std.types { String, FilePath }
 import gunbc.spark_serving_desired { spark_serving_desired_bind_listen }
 import gunbc.spark_serving_runtime_receipt { spark_serving_executor_home }
 
-data spark_serving_install_paths_note: String = "Owned-runtime layout for UserUnitRealization + InstallOwnedRuntimeClosure on Spark hosts. Executor home and receipt path are gunbc.spark_serving_runtime_receipt. Unit contents are modeled DATA consumed by gunbc.spark_serving_membership spark_serving_user_unit_file_write_intent — remote delivery is stdin-bytes file-content effect in Phase 2, never composed shell text."
+data spark_serving_install_paths_note: String = "Owned-runtime layout for UserUnitRealization + InstallOwnedRuntimeClosure on Spark hosts. Executor home and receipt path are gunbc.spark_serving_runtime_receipt. Unit contents are modeled DATA consumed by gunbc.spark_serving_membership spark_serving_user_unit_file_write_intent — remote delivery is stdin-bytes file-content effect in Phase 2 (SparkServingRemoteFileWriteTransportGap); INI composition debt is SparkServingSystemdUnitCompositionGap."
 
 data spark_serving_runtime_root_rel: String = ".local/share/gunbc/spark-serving/ollama"
 
