@@ -14721,20 +14721,35 @@ fn render_batch_summary_line(
 }
 
 pub fn install_output_policy(source_roots: &[String]) {
-    use v1_interpreter::{OutputDecision, Value};
-    let (verbose, quiet) = match v1_interpreter::cli_verbosity() {
-        v1_interpreter::Verbosity::Verbose => (true, false),
-        v1_interpreter::Verbosity::Quiet => (false, true),
-        v1_interpreter::Verbosity::Normal => (false, false),
-    };
     let entry = "dag/gunbc/output_policy.dag";
     let (graph, indices) = match resolve_entry_graph_shared(source_roots, entry) {
         Ok(g) => g,
         Err(_) => return,
     };
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    install_output_policy_in(&ctx, source_roots);
+}
+
+/// INSTALL THE POLICY FROM AN ALREADY-PREPARED CONTEXT.
+///
+/// `install_output_policy` above resolves `dag/gunbc/output_policy.dag` on its own, which on
+/// the floor cost a separate whole-entry resolve (76 seconds, measured) to read five channel
+/// decisions out of a world the run was about to build anyway. The required floor calls this
+/// form with the one prepared repository instead: the policy module is already in the subject,
+/// so reading it is an evaluation and nothing more.
+///
+/// The two forms share every decision below deliberately — a second copy of the decode would
+/// be a second policy, and the divergence would show up as two runs disagreeing about what
+/// "Normal" prints.
+pub fn install_output_policy_in(ctx: &v1_interpreter::InterpContext, source_roots: &[String]) {
+    use v1_interpreter::{OutputDecision, Value};
+    let (verbose, quiet) = match v1_interpreter::cli_verbosity() {
+        v1_interpreter::Verbosity::Verbose => (true, false),
+        v1_interpreter::Verbosity::Quiet => (false, true),
+        v1_interpreter::Verbosity::Normal => (false, false),
+    };
     let policy = match v1_interpreter::run_in_context_with_args(
-        &ctx,
+        ctx,
         "resolve_channel_policy",
         &[
             (Some("verbose".to_string()), Value::Bool(verbose)),
@@ -14786,7 +14801,7 @@ pub fn install_output_policy(source_roots: &[String]) {
     // with 5,310 per-witness lines and every witness green, because a policy read that fails
     // closed to the OLD behaviour is indistinguishable from a policy that chose it.
     let folds = match v1_interpreter::run_in_context_with_args(
-        &ctx,
+        ctx,
         "routine_rollup_folds",
         &[
             (Some("verbose".to_string()), Value::Bool(verbose)),
@@ -14830,7 +14845,7 @@ pub fn install_output_policy(source_roots: &[String]) {
     // is not loaded here" have different remedies, and only the first is drift.
     let ask_fold = |passed: bool| -> Result<bool, String> {
         match v1_interpreter::run_in_context_with_args(
-            &ctx,
+            ctx,
             "concluded_outcome_folds",
             &[(Some("passed".to_string()), Value::Bool(passed))],
             false,
@@ -14857,7 +14872,7 @@ pub fn install_output_policy(source_roots: &[String]) {
         }
     }
 
-    install_effect_stream_policy(&ctx, verbose, quiet);
+    install_effect_stream_policy(ctx, verbose, quiet);
 }
 
 /// Evaluate `gunbc.output_policy.resolve_shell_trace_stream_policy` from the same
@@ -15423,37 +15438,107 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
 /// two different runs and reported disagreement it could not explain. Measured
 /// consequence when the harness supplied neither: 9,057 of 9,317 witnesses could not
 /// find their own code.
-/// ONE RESOLVE, N CONSUMERS — the resolved graph memoized by the digest of the sources
-/// that produced it.
+/// ONE PREPARATION, N FRAMES — and the distinction is what deleted the memo.
 ///
 /// The load-bearing observation is that `ExecutionMode` is NOT an input to resolution. It
-/// reaches only `InterpContext::with_runtime_options`, so a Hermetic batch and a Wet batch
-/// over the same tree are two CONTEXTS over one graph, not two subjects. Without this memo
-/// every consumer that wanted a prepared world paid a full whole-tree resolve, which is why
-/// the explicit-entry lanes had to stay entry-major: a whole-tree preparation to serve ten
-/// named entries is the entry-major cost-shape defect pointing the other way. Memoized, the
-/// second consumer pays a file walk and nothing else, and that objection dissolves.
+/// reaches only `InterpContext::with_runtime_options`, so a Hermetic claim and a Wet claim
+/// over the same tree are two CONTEXTS over one graph, not two subjects. That fact used to be
+/// spent on a thread-local cache: three plan-driven batches each *demanded* a prepared
+/// subject, and the memo made the second and third demands cheap. The demands were the
+/// defect. One required-floor process prepares once and hands the same `PreparedRepository`
+/// to every frame it builds, so there is no repeated demand to absorb, no key to get wrong,
+/// and no cache whose hit rate could silently become the thing being measured.
 ///
-/// THE KEY IS CONTENT, NOT THE ROOTS. Keying on `(roots, exclusions)` would be a cache whose
-/// key omits an input — the sources themselves — so an edited tree would serve a stale graph
-/// under a digest claiming to name the current one. Walking and digesting is the cheap half
-/// of preparation (reads, no parse or typecheck); resolve and typecheck are the expensive
-/// half, and only that half is reused.
+/// A cache that is never consulted twice is not an optimisation, it is a claim about the
+/// call graph written in the wrong place — and one that a reader can only check by counting
+/// callers. Direct value flow states it structurally: `prepare_repository_once` is called at
+/// one site, and every frame is derived from what it returned.
 ///
-/// ONE SLOT, so retention is bounded to a single whole-tree graph rather than growing per
-/// distinct subject. A different digest evicts rather than accumulating: the floor prepares
-/// one subject at a time and co-resident whole-tree graphs are exactly the retention that
-/// produced the 2026-07-21 exit-137 kills.
-struct PreparedWholeTreeResolve {
-    graph: Rc<v1_compiler_compile::ResolvedGraph>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    modules_resolved: usize,
-    modules_excluded: usize,
+/// THE INVENTORY IS RETAINED, and that is the second half of the deletion. Preparation
+/// already walked and read every admitted file; a later consumer that walks again to ask what
+/// modules exist, which files declare witnesses, or what a module's path is, is re-acquiring
+/// the repository to learn something the preparation already knows. The naming-hygiene walk
+/// cost ~6 minutes of every floor run for exactly that reason. Consumers fold over this
+/// inventory instead.
+pub struct PreparedRepository {
+    pub graph: Rc<v1_compiler_compile::ResolvedGraph>,
+    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub subject_digest: String,
+    pub modules_resolved: usize,
+    pub modules_excluded: usize,
+    pub inventory: Vec<InventoryEntry>,
 }
 
-thread_local! {
-    static PREPARED_WHOLE_TREE_RESOLVE: std::cell::RefCell<Option<(String, Rc<PreparedWholeTreeResolve>)>> =
-        const { std::cell::RefCell::new(None) };
+/// One admitted source file, as preparation read it: its module path, its repository path,
+/// and the bytes. The module path is carried here rather than re-derived because the index
+/// that produced it is the same one preparation resolved from — re-deriving it later is the
+/// second representation of the path/module binding, and it is the representation that rots.
+pub struct InventoryEntry {
+    pub module_path: String,
+    pub path: String,
+    pub content: String,
+}
+
+/// THE ONE PREPARATION. Reads the active sources once, resolves them once under the strict
+/// typecheck gate, and returns everything a later consumer could want to know about the
+/// subject so that none of them reaches for the repository again.
+pub fn prepare_repository_once(
+    source_roots: &[String],
+    exclude_substrings: &[String],
+) -> Result<PreparedRepository, String> {
+    let index = build_module_index(source_roots);
+    let total = index.len();
+    let mut inventory: Vec<InventoryEntry> = Vec::with_capacity(total);
+    let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::with_capacity(total);
+    for (module_path, sf) in index.iter() {
+        let p = sf.path.replace('\\', "/");
+        if exclude_substrings
+            .iter()
+            .any(|sub| p.contains(sub.as_str()) || module_path.contains(sub.as_str()))
+        {
+            continue;
+        }
+        inventory.push(InventoryEntry {
+            module_path: module_path.clone(),
+            path: sf.path.clone(),
+            content: sf.content.clone(),
+        });
+        sources.push(sf.clone());
+    }
+    if sources.is_empty() {
+        return Err("whole-tree corpus is empty (no .dag modules under source roots)".to_string());
+    }
+    let modules_excluded = total - sources.len();
+    let subject_digest = subject_digest_for_closure(&sources);
+    let (graph, source_indices) =
+        resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)?;
+    Ok(PreparedRepository {
+        graph,
+        source_indices,
+        subject_digest,
+        modules_resolved: total - modules_excluded,
+        modules_excluded,
+        inventory,
+    })
+}
+
+/// A frame over the one preparation. Cheap by construction: no walk, no parse, no resolve —
+/// `with_runtime_options` binds an execution mode and an effect envelope to an already
+/// resolved graph. This is the operator's `make_evaluation_frame`, and its cost is what makes
+/// per-claim mode selection affordable without a second subject.
+pub fn repository_frame(
+    prepared: &PreparedRepository,
+    execution_mode: v1_interpreter::ExecutionMode,
+    fixture_store: Option<std::rc::Rc<crate::recorded_fixture::RecordedFixtureStore>>,
+    whole_tree_published_keys: Option<std::rc::Rc<std::collections::HashSet<String>>>,
+) -> v1_interpreter::InterpContext {
+    v1_interpreter::InterpContext::with_runtime_options(
+        prepared.graph.as_ref(),
+        prepared.source_indices.clone(),
+        execution_mode,
+        fixture_store,
+        whole_tree_published_keys,
+    )
 }
 
 pub fn prepare_whole_tree_subject(
@@ -15463,48 +15548,17 @@ pub fn prepare_whole_tree_subject(
     fixture_store: Option<std::rc::Rc<crate::recorded_fixture::RecordedFixtureStore>>,
     whole_tree_published_keys: Option<std::rc::Rc<std::collections::HashSet<String>>>,
 ) -> Result<PreparedWholeTreeSubject, String> {
-    let picked = whole_tree_strict_sources(source_roots, exclude_substrings)?;
-    let subject_digest = subject_digest_for_closure(&picked.sources);
-    let hit = PREPARED_WHOLE_TREE_RESOLVE.with(|slot| {
-        slot.borrow()
-            .as_ref()
-            .filter(|(digest, _)| digest == &subject_digest)
-            .map(|(_, resolved)| resolved.clone())
-    });
-    let resolved = match hit {
-        Some(resolved) => {
-            eprintln!(
-                "[one-prepared-subject] reusing the resolved graph for digest={subject_digest} (execution mode is not an input to resolution; this consumer builds its own context)"
-            );
-            resolved
-        }
-        None => {
-            let modules_resolved = picked.modules_resolved;
-            let modules_excluded = picked.modules_excluded;
-            let (graph, source_indices) =
-                resolved_graph_from_sources(picked.sources, ResolveTypecheckGate::Strict)?;
-            let resolved = Rc::new(PreparedWholeTreeResolve {
-                graph,
-                source_indices,
-                modules_resolved,
-                modules_excluded,
-            });
-            PREPARED_WHOLE_TREE_RESOLVE
-                .with(|slot| *slot.borrow_mut() = Some((subject_digest.clone(), resolved.clone())));
-            resolved
-        }
-    };
+    let prepared = prepare_repository_once(source_roots, exclude_substrings)?;
     Ok(PreparedWholeTreeSubject {
-        ctx: v1_interpreter::InterpContext::with_runtime_options(
-            resolved.graph.as_ref(),
-            resolved.source_indices.clone(),
+        ctx: repository_frame(
+            &prepared,
             execution_mode,
             fixture_store,
             whole_tree_published_keys,
         ),
-        subject_digest,
-        modules_resolved: resolved.modules_resolved,
-        modules_excluded: resolved.modules_excluded,
+        subject_digest: prepared.subject_digest,
+        modules_resolved: prepared.modules_resolved,
+        modules_excluded: prepared.modules_excluded,
     })
 }
 
@@ -24073,7 +24127,7 @@ fn floor_color_enabled() -> bool {
 }
 
 #[derive(Clone, Copy)]
-struct ShardStyle {
+pub struct ShardStyle {
     shard_id: usize,
     /// Number of concurrent shards in this run. When it is 1 there is no parallelism to
     /// distinguish, so the `s{id}` shard tag is dropped (it only reads as noise — the reason the
@@ -24432,106 +24486,525 @@ fn run_discovery_rows_against_prepared_subject(
     Ok(summary)
 }
 
+/// One claim of the required floor, as the `.dag` manifest declared it.
+pub struct RequiredFloorClaim {
+    pub module_path: String,
+    pub function: String,
+    pub qualified: String,
+    pub execution_mode: v1_interpreter::ExecutionMode,
+    pub budget_ms: u64,
+}
+
+/// What one required-floor attempt did. The three identity counts are separate fields rather
+/// than one `total` because the operator's acceptance census asks them to be EQUAL, and a
+/// single number cannot be compared with itself: a run that planned 9,267 claims, executed
+/// 8,184 and receipted 8,184 reports a healthy-looking pair unless the planned count is
+/// carried beside them.
+pub struct RequiredFloorOutcome {
+    pub subject_digest: String,
+    pub modules_resolved: usize,
+    pub modules_excluded: usize,
+    pub claims_planned: usize,
+    pub claims_executed: usize,
+    pub receipt_identities: usize,
+    pub passed: usize,
+    pub failures: Vec<String>,
+}
+
+/// A witness site as the inventory reports it — the file's path, its module, and the `test fn`
+/// names it declares. Produced by folding over bytes preparation already read.
+pub struct InventoryWitnessFile {
+    pub path: String,
+    pub module_path: String,
+    pub functions: Vec<String>,
+}
+
+/// Fold the one inventory into witness sites. NO FILESYSTEM ACCESS: preparation read every
+/// admitted file, so asking which of them declare witnesses is a scan of bytes already in
+/// hand. The walk this replaces cost ~6 minutes of every floor run, acquired the repository a
+/// second time, and additionally built a whole-corpus module graph to answer a question about
+/// one file at a time.
+///
+/// A `test fn` is recognised at column zero only, which is the same rule the parser applies to
+/// a top-level declaration: an indented occurrence is inside a body and is not a declaration.
+pub fn inventory_witness_files(prepared: &PreparedRepository) -> Vec<InventoryWitnessFile> {
+    let mut out: Vec<InventoryWitnessFile> = Vec::new();
+    for entry in &prepared.inventory {
+        let mut functions: Vec<String> = Vec::new();
+        for line in entry.content.lines() {
+            let Some(rest) = line.strip_prefix("test fn ") else {
+                continue;
+            };
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if !name.is_empty() {
+                functions.push(name);
+            }
+        }
+        if !functions.is_empty() {
+            out.push(InventoryWitnessFile {
+                path: entry.path.replace('\\', "/"),
+                module_path: entry.module_path.clone(),
+                functions,
+            });
+        }
+    }
+    out.sort_by(|a, b| a.path.cmp(&b.path));
+    out
+}
+
+fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
+    v1_interpreter::Value::List(Rc::new(
+        items
+            .into_iter()
+            .map(v1_interpreter::Value::Str)
+            .collect::<Vec<_>>()
+            .into(),
+    ))
+}
+
+fn record_value(
+    ctx: &v1_interpreter::InterpContext,
+    type_name: &str,
+    fields: Vec<(&str, v1_interpreter::Value)>,
+) -> v1_interpreter::Value {
+    v1_interpreter::Value::Record {
+        type_name: ctx.sym(type_name),
+        fields: Rc::new(
+            fields
+                .into_iter()
+                .map(|(n, v)| (ctx.sym(n), v))
+                .collect::<Vec<_>>(),
+        ),
+    }
+}
+
+/// THE REQUIRED FLOOR, AS ONE ATTEMPT.
+///
+/// Read the active sources once, strict-prepare one subject once, evaluate the manifest inside
+/// that subject, fold the manifest once, reduce one receipt. There is no plan resolve, no
+/// policy resolve, no compile-clean resolve, no discovery-producer resolve, no batch, no
+/// positional clamp, no worker, no coordinator, no child process and no prepared-subject
+/// cache — not because they are switched off on this path but because this function does not
+/// contain them and nothing it calls reaches them.
+///
+/// WHY IT IS ONE FUNCTION rather than a pipeline of stages with a shared context object: every
+/// stage boundary this path used to have was a place where a consumer re-asked for the
+/// repository. The prepared value is a local, so a second acquisition would have to be written
+/// as a second call to `prepare_repository_once` — visible in one screen rather than hidden
+/// behind a cache hit.
+pub fn run_required_floor(
+    source_roots: &[String],
+    commit: &str,
+    style: ShardStyle,
+) -> Result<RequiredFloorOutcome, String> {
+    // ── 1. read once, prepare once ────────────────────────────────────────────────────────
+    set_phase(FloorPhase::Resolve, "required-floor preparation");
+    let prepare_started = std::time::Instant::now();
+    let prepared = prepare_repository_once(source_roots, &floor_prepared_subject_exclusions())?;
+    let prepare_ms = prepare_started.elapsed().as_millis();
+    eprintln!(
+        "floor: active sources = {}",
+        prepared.modules_resolved + prepared.modules_excluded
+    );
+    eprintln!(
+        "floor: strict preparation complete in {}ms ({} module(s) resolved, {} excluded, \
+         digest={})",
+        prepare_ms, prepared.modules_resolved, prepared.modules_excluded, prepared.subject_digest
+    );
+
+    // ── 2. the evaluation frames ──────────────────────────────────────────────────────────
+    //
+    // The published-mock corpus is part of the ENVELOPE and therefore part of every frame.
+    // Preparing without it produced a world in which every claim reading a published mock
+    // resolved against nothing: 9,057 of 9,317 witnesses could not find their own code, at a
+    // digest that claimed to name the same subject.
+    let published = match precompute_whole_tree_published_mock_keys(source_roots) {
+        Ok(keys) if keys.is_empty() => None,
+        Ok(keys) => Some(Rc::new(keys)),
+        Err(e) => return Err(format!("published mock corpus precompute failed: {e}")),
+    };
+    let hermetic = repository_frame(
+        &prepared,
+        v1_interpreter::ExecutionMode::Hermetic,
+        None,
+        published.clone(),
+    );
+    // The output policy is installed FROM the prepared subject. Resolving
+    // `dag/gunbc/output_policy.dag` on its own cost a separate whole-entry resolve to read
+    // five channel decisions out of a world this function had already built.
+    install_output_policy_in(&hermetic, source_roots);
+
+    // ── 3. the manifest, folded in .dag ───────────────────────────────────────────────────
+    let files = inventory_witness_files(&prepared);
+    let bindings: Vec<v1_interpreter::Value> = prepared
+        .inventory
+        .iter()
+        .map(|e| {
+            record_value(
+                &hermetic,
+                "ModulePathBinding",
+                vec![
+                    (
+                        "entry",
+                        v1_interpreter::Value::Str(e.path.replace('\\', "/")),
+                    ),
+                    (
+                        "module_path",
+                        v1_interpreter::Value::Str(e.module_path.clone()),
+                    ),
+                ],
+            )
+        })
+        .collect();
+    let mut sites: Vec<v1_interpreter::Value> = Vec::new();
+    for file in &files {
+        for function in &file.functions {
+            sites.push(record_value(
+                &hermetic,
+                "WitnessSite",
+                vec![
+                    ("entry", v1_interpreter::Value::Str(file.path.clone())),
+                    ("function", v1_interpreter::Value::Str(function.clone())),
+                ],
+            ));
+        }
+    }
+    let subject = record_value(
+        &hermetic,
+        "ObservedSubjectIdentity",
+        vec![
+            ("commit", v1_interpreter::Value::Str(commit.to_string())),
+            (
+                "source_digest",
+                v1_interpreter::Value::Str(prepared.subject_digest.clone()),
+            ),
+            (
+                "modules_resolved",
+                v1_interpreter::Value::Int(prepared.modules_resolved as i64),
+            ),
+            (
+                "modules_excluded",
+                v1_interpreter::Value::Int(prepared.modules_excluded as i64),
+            ),
+        ],
+    );
+    let empty_sites =
+        v1_interpreter::Value::List(Rc::new(Vec::<v1_interpreter::Value>::new().into()));
+    let admission = v1_interpreter::run_in_context_with_args(
+        &hermetic,
+        "required_floor_attempt",
+        &[
+            (Some("subject".to_string()), subject),
+            (
+                Some("bindings".to_string()),
+                v1_interpreter::Value::List(Rc::new(bindings.into())),
+            ),
+            (
+                Some("hermetic_sites".to_string()),
+                v1_interpreter::Value::List(Rc::new(sites.into())),
+            ),
+            (Some("wet_sites".to_string()), empty_sites),
+        ],
+        false,
+    )
+    .map_err(|e| format!("required_floor_attempt: {e}"))?;
+    let claims = required_floor_claims_from_admission(&hermetic, &admission)?;
+
+    // ── 4. fold the manifest ──────────────────────────────────────────────────────────────
+    eprintln!("floor: claims = {}", claims.len());
+    let claims_planned = claims.len();
+    let mut wet: Option<v1_interpreter::InterpContext> = None;
+    let mut outcome = RequiredFloorOutcome {
+        subject_digest: prepared.subject_digest.clone(),
+        modules_resolved: prepared.modules_resolved,
+        modules_excluded: prepared.modules_excluded,
+        claims_planned,
+        claims_executed: 0,
+        receipt_identities: 0,
+        passed: 0,
+        failures: Vec::new(),
+    };
+    let mut receipted: HashSet<String> = HashSet::new();
+    let eval_started = std::time::Instant::now();
+    for (index, claim) in claims.iter().enumerate() {
+        if index % 1000 == 0 {
+            eprintln!("floor: evaluating {index} / {claims_planned}");
+        }
+        let frame = match claim.execution_mode {
+            v1_interpreter::ExecutionMode::Hermetic => &hermetic,
+            _ => {
+                if wet.is_none() {
+                    wet = Some(repository_frame(
+                        &prepared,
+                        claim.execution_mode,
+                        None,
+                        published.clone(),
+                    ));
+                }
+                wet.as_ref().expect("wet frame just built")
+            }
+        };
+        frame.set_witness_eval_budget(Some(claim.budget_ms));
+        set_phase(FloorPhase::Eval, &claim.qualified);
+        let (result, receipt) =
+            run_claim_measured(frame, &prepared.subject_digest, &claim.qualified);
+        v1_interpreter::eval_call_memo_frame_exit(frame);
+        outcome.claims_executed += 1;
+        receipted.insert(claim.qualified.clone());
+        style.stream_witness(
+            &claim.function,
+            &claim.module_path,
+            "PreparedSubject",
+            receipt.wall_nanos,
+            matches!(result, ClaimOutcome::Pass),
+        );
+        match result {
+            ClaimOutcome::Pass => outcome.passed += 1,
+            ClaimOutcome::Fail => outcome
+                .failures
+                .push(format!("{} returned Bool(false)", claim.qualified)),
+            // Every non-pass arm is reported with the fact that distinguishes it. A
+            // collapsed "failed" would make a budget refusal, a runtime error and a
+            // witness that answered false read alike, and those three have different
+            // remedies.
+            ClaimOutcome::NotBool { got } => outcome
+                .failures
+                .push(format!("{} answered {got}, not a Bool", claim.qualified)),
+            ClaimOutcome::RuntimeError { message } => outcome
+                .failures
+                .push(format!("{} errored: {message}", claim.qualified)),
+            ClaimOutcome::TimedOut {
+                elapsed_ms,
+                budget_ms,
+                kind,
+            } => outcome.failures.push(format!(
+                "{} exceeded its {kind:?} budget ({elapsed_ms}ms elapsed against {budget_ms}ms)",
+                claim.qualified
+            )),
+        }
+    }
+    outcome.receipt_identities = receipted.len();
+    eprintln!(
+        "floor: evaluating {claims_planned} / {claims_planned} ({}ms)",
+        eval_started.elapsed().as_millis()
+    );
+    // THE THREE IDENTITY COUNTS MUST AGREE, and they are compared here rather than reported
+    // for a reader to compare. A run that planned more claims than it executed has silently
+    // narrowed, which is the failure this whole path exists to make unwritable; reporting the
+    // pair and letting a human notice is exactly how the deferred bucket survived.
+    if outcome.claims_planned != outcome.claims_executed
+        || outcome.claims_executed != outcome.receipt_identities
+    {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=ClaimIdentityCountsDisagree planned={} executed={} \
+             receipted={} — every planned claim must execute and every execution must land one \
+             receipt identity; a gap here is a narrowed roster reported as a roster",
+            outcome.claims_planned, outcome.claims_executed, outcome.receipt_identities
+        ));
+    }
+    Ok(outcome)
+}
+
+/// Read the `.dag` admission. A refusal is reported with every offending row rather than the
+/// first, because a manifest with three conflicting declarations should take one round-trip to
+/// fix rather than three.
+fn required_floor_claims_from_admission(
+    ctx: &v1_interpreter::InterpContext,
+    admission: &v1_interpreter::Value,
+) -> Result<Vec<RequiredFloorClaim>, String> {
+    let v1_interpreter::Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = admission
+    else {
+        return Err(
+            "required_floor_attempt did not answer a RequiredFloorAdmission variant".to_string(),
+        );
+    };
+    if ctx.sym_eq(*variant_name, "RequiredFloorRefused") {
+        let rendered = match ctx.field(fields, "refusals") {
+            Some(v1_interpreter::Value::List(items)) => items
+                .iter()
+                .map(|r| format!("{r:?}"))
+                .collect::<Vec<_>>()
+                .join("\n  "),
+            _ => "<refusal list unreadable>".to_string(),
+        };
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=ManifestInadmissible — the claim manifest carries \
+             refusals, so the floor does not run its clean subset and report on the rest:\n  \
+             {rendered}"
+        ));
+    }
+    if !ctx.sym_eq(*variant_name, "RequiredFloorRunnable") {
+        return Err("required_floor_attempt answered an unknown admission arm".to_string());
+    }
+    let Some(v1_interpreter::Value::Record { fields: af, .. }) = ctx.field(fields, "attempt")
+    else {
+        return Err("RequiredFloorRunnable carries no attempt record".to_string());
+    };
+    let Some(v1_interpreter::Value::List(rows)) = ctx.field(af, "claims") else {
+        return Err("the attempt carries no claim list".to_string());
+    };
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows.iter() {
+        let v1_interpreter::Value::Record { fields: cf, .. } = row else {
+            return Err("a manifest claim is not a record".to_string());
+        };
+        let Some(v1_interpreter::Value::Record { fields: df, .. }) = ctx.field(cf, "declaration")
+        else {
+            return Err("a manifest claim carries no declaration identity".to_string());
+        };
+        let module_path = match ctx.field(df, "module_path") {
+            Some(v1_interpreter::Value::Str(s)) => s.clone(),
+            _ => return Err("a claim identity carries no module path".to_string()),
+        };
+        let function = match ctx.field(df, "function") {
+            Some(v1_interpreter::Value::Str(s)) => s.clone(),
+            _ => return Err("a claim identity carries no function name".to_string()),
+        };
+        let budget_ms = match ctx.field(cf, "budget_ms") {
+            Some(v1_interpreter::Value::Int(n)) if *n > 0 => *n as u64,
+            // A non-positive budget is refused rather than defaulted: a zero deadline that
+            // reads as "no limit" is the absorbing fallback, and one that reads as "refuse
+            // instantly" fails every claim for a reason unrelated to the claim.
+            other => {
+                return Err(format!(
+                    "claim {module_path}.{function} carries a non-positive budget ({other:?})"
+                ))
+            }
+        };
+        let execution_mode = match ctx.field(cf, "execution_mode") {
+            Some(v1_interpreter::Value::Variant {
+                variant_name: m, ..
+            }) => {
+                if ctx.sym_eq(*m, "Hermetic") {
+                    v1_interpreter::ExecutionMode::Hermetic
+                } else if ctx.sym_eq(*m, "Wet") {
+                    v1_interpreter::ExecutionMode::Wet
+                } else if ctx.sym_eq(*m, "Record") {
+                    v1_interpreter::ExecutionMode::Record
+                } else {
+                    return Err(format!(
+                        "claim {module_path}.{function} names an unknown execution mode"
+                    ));
+                }
+            }
+            _ => {
+                return Err(format!(
+                    "claim {module_path}.{function} carries no execution mode"
+                ))
+            }
+        };
+        out.push(RequiredFloorClaim {
+            qualified: format!("{module_path}.{function}"),
+            module_path,
+            function,
+            execution_mode,
+            budget_ms,
+        });
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
-mod prepared_whole_tree_resolve_memo_tests {
+mod prepared_repository_tests {
     use super::*;
 
-    /// A source root the test authors itself, so the subject is controlled rather than
-    /// borrowed from the live tree: a memo test whose input is the repository would have its
-    /// oracle move underneath it, and "the digest changed" would stop discriminating.
-    fn write_root(dir: &std::path::Path, module: &str, body: &str) {
+    /// Source roots the test authors itself, so the subject is controlled rather than borrowed
+    /// from the live tree: a test whose input is the repository would have its oracle move
+    /// underneath it, and "the digest changed" would stop discriminating.
+    fn write_module(dir: &std::path::Path, file: &str, module: &str, body: &str) {
         std::fs::create_dir_all(dir).expect("create root");
         std::fs::write(
-            dir.join("m.dag"),
+            dir.join(file),
             format!("module {module}\n\nfn probe() -> Int {{\n  {body}\n}}\n"),
         )
         .expect("write module");
     }
 
-    /// Read the graph the memo is currently holding. Pointer identity is the oracle here,
-    /// so the test needs the stored `Rc` itself rather than anything derived from it.
-    fn memoized_graph() -> Option<Rc<v1_compiler_compile::ResolvedGraph>> {
-        PREPARED_WHOLE_TREE_RESOLVE
-            .with(|slot| slot.borrow().as_ref().map(|(_, r)| r.graph.clone()))
-    }
-
-    /// THE MEMO IS A CACHE ON THE HOT PATH, and it is proven by POINTER IDENTITY rather than
-    /// by a clock or a counter.
+    /// THE INVENTORY IS THE SUBJECT, AND COMPLETENESS IS AN IDENTITY JOIN.
     ///
-    /// A clock would make a loaded host look like a miss and a warm allocator look like a hit.
-    /// A counter was tried first and is the wrong instrument for a different reason worth
-    /// recording: `typecheck_compute_count` counts misses on the ENTRY-keyed typecheck cache,
-    /// and this path compiles through `resolved_graph_from_sources`, which never touches it —
-    /// a cold whole-tree preparation leaves it at zero, so "unchanged after the second call"
-    /// would have held vacuously and the test would have proven nothing while passing.
+    /// Preparation reads every admitted file, and every later consumer — witness discovery,
+    /// module-path binding, naming hygiene — folds over what it read instead of walking again.
+    /// The failure that makes that dangerous is the empty-observation narrow: an inventory
+    /// that silently drops a file does not report a smaller number anyone reads, it reports a
+    /// roster that is missing rows, and a missing witness is indistinguishable from a witness
+    /// that passed.
     ///
-    /// `resolved_graph_from_sources` allocates a fresh `Rc` on every call, so the SAME pointer
-    /// after a second preparation is direct evidence that it was not called. That cannot be
-    /// satisfied by a re-resolve that happens to produce an equal graph.
-    ///
-    /// Both arms are asserted because either alone is satisfied by a broken cache: a memo that
-    /// never hits passes "changed content recomputes", and a memo keyed on the roots instead
-    /// of the content passes "unchanged content reuses" while serving a stale graph under a
-    /// digest that names the current tree. That second failure is what this design is most
-    /// exposed to, and the changed-content arm is what catches it.
+    /// So the assertion is per-module identity, not a count. A count-only check is satisfied
+    /// by an inventory that dropped one file and duplicated another, which is precisely the
+    /// shape a buggy filter produces.
     #[test]
-    fn resolve_memo_reuses_on_identical_content_and_recomputes_on_changed_content() {
-        let base = std::env::temp_dir().join(format!("gunbc-memo-{}", std::process::id()));
+    fn preparation_inventory_names_every_admitted_module_and_no_excluded_one() {
+        let base = std::env::temp_dir().join(format!("gunbc-prepared-{}", std::process::id()));
         let root = base.join("root");
-        write_root(&root, "memo.probe", "1");
+        write_module(&root, "kept.dag", "prep.kept", "1");
+        write_module(&root, "dropped.dag", "prep.dropped", "2");
         let roots = vec![root.to_string_lossy().into_owned()];
-        let excludes: Vec<String> = Vec::new();
 
-        let first = prepare_whole_tree_subject(
-            &roots,
-            &excludes,
-            v1_interpreter::ExecutionMode::Hermetic,
-            None,
-            None,
-        )
-        .expect("first preparation");
-        let cold_graph = memoized_graph().expect("a preparation must populate the memo");
+        let prepared = prepare_repository_once(&roots, &["dropped.dag".to_string()])
+            .expect("preparation over a controlled root");
 
-        // Second consumer, DIFFERENT execution mode. That is the fact the memo rests on: mode
-        // reaches only the context, never resolution. If resolution ever became mode-dependent
-        // this reuse would be the lie, and this is where it would surface.
-        let second = prepare_whole_tree_subject(
-            &roots,
-            &excludes,
-            v1_interpreter::ExecutionMode::Wet,
-            None,
-            None,
-        )
-        .expect("second preparation");
-        let warm_graph = memoized_graph().expect("memo still populated");
-        assert!(
-            Rc::ptr_eq(&cold_graph, &warm_graph),
-            "identical content must hand the second consumer the SAME resolved graph; a new \
-             allocation here means the tree was resolved twice"
-        );
+        let names: Vec<&str> = prepared
+            .inventory
+            .iter()
+            .map(|e| e.module_path.as_str())
+            .collect();
         assert_eq!(
-            first.subject_digest, second.subject_digest,
-            "identical content must produce one subject identity"
+            names,
+            vec!["prep.kept"],
+            "the inventory must name exactly the admitted modules; an extra name means the \
+             exclusion did not apply, a missing one means a later fold would silently narrow"
         );
-        assert_eq!(first.modules_resolved, second.modules_resolved);
+        assert_eq!(prepared.modules_resolved, 1);
+        assert_eq!(prepared.modules_excluded, 1);
+        assert_eq!(
+            prepared.inventory.len(),
+            prepared.modules_resolved,
+            "the retained inventory and the resolved count must describe one population; two \
+             numbers that can disagree is a second representation of the subject"
+        );
 
-        // Same roots, different CONTENT. A memo keyed on the roots returns the stale graph here.
-        write_root(&root, "memo.probe", "2");
-        let third = prepare_whole_tree_subject(
-            &roots,
-            &excludes,
+        // The bytes are retained, not just the names: a consumer scanning for witness
+        // declarations reads them from here rather than re-opening the file.
+        assert!(
+            prepared.inventory[0].content.contains("fn probe()"),
+            "the inventory must carry the source it read, or every consumer walks again"
+        );
+
+        // THE FRAME IS NOT A SECOND PREPARATION. Two frames at different execution modes are
+        // built from the one resolved graph — the fact that made the deleted memo possible,
+        // now used directly instead of cached. `Rc::strong_count` is the discriminating
+        // reading: a frame that re-resolved would allocate its own graph and leave this
+        // pointer's count untouched by the borrow.
+        let before = Rc::strong_count(&prepared.graph);
+        let hermetic = repository_frame(
+            &prepared,
             v1_interpreter::ExecutionMode::Hermetic,
             None,
             None,
-        )
-        .expect("third preparation");
-        let recomputed = memoized_graph().expect("memo repopulated");
-        assert!(
-            !Rc::ptr_eq(&cold_graph, &recomputed),
-            "changed content must resolve again; a roots-keyed memo would have reused"
         );
+        let wet = repository_frame(&prepared, v1_interpreter::ExecutionMode::Wet, None, None);
+        assert_eq!(
+            Rc::strong_count(&prepared.graph),
+            before,
+            "a frame must borrow the prepared graph, never clone or rebuild it"
+        );
+        drop(hermetic);
+        drop(wet);
+
+        // Same roots, different CONTENT: the subject identity must move with the sources it
+        // names, or a receipt could claim a subject the run did not have.
+        write_module(&root, "kept.dag", "prep.kept", "2");
+        let changed = prepare_repository_once(&roots, &["dropped.dag".to_string()])
+            .expect("preparation after an edit");
         assert_ne!(
-            third.subject_digest, first.subject_digest,
+            changed.subject_digest, prepared.subject_digest,
             "changed content must change the subject identity"
         );
 
