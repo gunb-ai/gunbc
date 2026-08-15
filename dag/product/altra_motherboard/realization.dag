@@ -329,14 +329,6 @@ fn population_realization_refusals(
     }
   })
   let roster_providers = provider_identities_from_roster(roster: roster)
-  let orphan_carriers = fold(plan_identities, init: [], f: fn(acc, id) {
-    if identity_in_list(ids: realization_carrier_identities, id: id)
-      && !identity_in_list(ids: roster_providers, id: id) {
-      concat(acc, [FunctionCarrierRealizesNoDeclaredFunction { component: id }])
-    } else {
-      acc
-    }
-  })
   let unjustified_carriers = fold(realization_carrier_identities, init: [], f: fn(acc, id) {
     if identity_in_list(ids: plan_identities, id: id)
       && !identity_in_list(ids: roster_providers, id: id) {
@@ -345,7 +337,7 @@ fn population_realization_refusals(
       acc
     }
   })
-  concat(concat(missing, orphan_carriers), unjustified_carriers)
+  concat(missing, unjustified_carriers)
 }
 
 fn population_realization_refusal_count(cs: List<PopulationRealizationRefusal>) -> Int {
