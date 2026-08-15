@@ -107,7 +107,8 @@ fn one_half() -> FieldOfFractions<Int> { FieldOfFractions { num: 1, denom: 2 } }
 "#;
     let (index, _unparsed, index_elapsed) = build();
     let started = std::time::Instant::now();
-    let closure = v1_compiler::source_closure::closure_for_entry("test.dag", ENTRY, &index);
+    let (closure, pulls) =
+        v1_compiler::source_closure::closure_for_entry_attributed("test.dag", ENTRY, &index);
     let closure_elapsed = started.elapsed();
 
     let paths: Vec<&str> = closure.iter().map(|s| s.path.as_str()).collect();
@@ -118,6 +119,7 @@ fn one_half() -> FieldOfFractions<Int> { FieldOfFractions { num: 1, denom: 2 } }
         closure_elapsed,
         index_elapsed
     );
+    eprintln!("[closure] top pulling names: {pulls:?}");
     if closure.len() <= 40 {
         eprintln!("[closure] members: {paths:?}");
     }
@@ -136,4 +138,21 @@ fn one_half() -> FieldOfFractions<Int> { FieldOfFractions { num: 1, denom: 2 } }
         closure.len(),
         index.module_count()
     );
+}
+
+/// Quantifies the cause the width probe could not distinguish by itself.
+///
+/// A bare reference to a name declared by N modules pulls all N, so homonyms
+/// multiply closure width by construction rather than by defect. This reports
+/// how much of the flat namespace is homonymous.
+#[test]
+fn homonym_census_over_the_flat_namespace() {
+    let (index, _unparsed, _elapsed) = build();
+    let (multi, total, worst) = index.homonym_stats();
+    eprintln!(
+        "[homonyms] {multi} of {total} names declared by >1 module ({:.1}%)",
+        (multi as f64 / total as f64) * 100.0
+    );
+    eprintln!("[homonyms] worst: {worst:?}");
+    assert!(total > 1000, "census must run over a real namespace");
 }

@@ -43,7 +43,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use crate::v1_compiler_compile::SourceFile;
-use crate::v1_std_core::{module_items, Connective, Node};
+use crate::v1_std_core::{module_items, Connective, ExprData, Node};
 
 /// Maps every declared name to the module declaring it, and every module to its
 /// file. Built once over a set of source roots; the expensive half (parsing
@@ -73,6 +73,24 @@ impl DeclarationIndex {
 
     pub fn name_count(&self) -> usize {
         self.by_name.len()
+    }
+
+    /// How many distinct names are declared by more than one module, and the
+    /// worst case. A bare reference to such a name pulls EVERY declarer,
+    /// because this layer must not pick a winner, so these are what multiply
+    /// closure width.
+    pub fn homonym_stats(&self) -> (usize, usize, Vec<(String, usize)>) {
+        let mut multi = 0usize;
+        let mut worst: Vec<(String, usize)> = Vec::new();
+        for (name, mods) in self.by_name.iter() {
+            if mods.len() > 1 {
+                multi += 1;
+                worst.push((name.clone(), mods.len()));
+            }
+        }
+        worst.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        worst.truncate(15);
+        (multi, self.by_name.len(), worst)
     }
 }
 
@@ -161,32 +179,88 @@ pub fn declared_names(module: &Rc<Node>) -> Vec<String> {
     out
 }
 
-/// Every name a parsed tree references FREELY: occurring names minus the names
-/// the tree itself binds.
+/// Every name a parsed tree references, collected from REFERENCE POSITIONS
+/// only.
 ///
-/// This is the difference between a closure and the corpus. Pulling on every
-/// occurring name means a parameter, a `let` binder, or a record-literal field
-/// label that happens to share a declaration's name drags that declaration's
-/// module in, and because the corpus is densely interconnected the result
-/// closes over nearly all of it. Measured before this narrowing: a five-line
-/// entry produced a closure wide enough that compiling it was a whole-corpus
-/// typecheck.
+/// This is the difference between a closure and the corpus. The first version
+/// collected every name occurring anywhere, so a `let` binder, a parameter, or
+/// a record-literal FIELD LABEL that happened to share a declaration's name
+/// dragged that declaration's module in; because the corpus is densely
+/// interconnected the result closed over nearly all of it. Subtracting binders
+/// afterwards was a blunter form of the same idea and still left 1503 of 3711
+/// modules for a five-line entry.
 ///
-/// Binders subtracted here: the module's own declarations (including coproduct
-/// variant arms) and every parameter name at any depth. Names bound inside
-/// bodies by other forms are NOT yet subtracted, so this remains an
-/// over-approximation — a narrower one, computed as the answer, never widened
+/// `ExprData` already discriminates what each node IS, so the precise question
+/// is answerable directly: a name is a reference when it appears as a variable,
+/// a call or method-call callee, or a record-literal type name, or anywhere
+/// inside a type annotation. It is NOT a reference when it is a `let` binder or
+/// a field-access label -- those name something bound or projected here, not a
+/// declaration elsewhere.
+///
+/// Still an over-approximation, and deliberately so: a bare `ExprVar` that
+/// resolves to a local binding is indistinguishable from one that resolves
+/// cross-module without doing resolution, and resolution needs the closure.
+/// The residue is bounded by names in reference position and is never widened
 /// on failure.
 pub fn referenced_names(module: &Rc<Node>) -> HashSet<String> {
-    let mut occurring = HashSet::new();
-    names_in_tree(module, &mut occurring);
+    let mut out = HashSet::new();
+    collect_references(module, false, &mut out);
 
     let mut binders: HashSet<String> = declared_names(module).into_iter().collect();
     collect_param_binders(module, &mut binders);
     binders.insert(module.name.clone());
 
-    occurring.retain(|name| !binders.contains(name));
-    occurring
+    out.retain(|name| !binders.contains(name));
+    out
+}
+
+fn name_is_reference_position(node: &Rc<Node>, in_type_position: bool) -> bool {
+    if in_type_position {
+        return true;
+    }
+    matches!(
+        &*node.expr_data,
+        ExprData::ExprVar { .. }
+            | ExprData::ExprCall { .. }
+            | ExprData::ExprMethodCall { .. }
+            | ExprData::ExprRecordLit { .. }
+    )
+}
+
+fn collect_references(node: &Rc<Node>, in_type_position: bool, out: &mut HashSet<String>) {
+    if !node.name.is_empty() && name_is_reference_position(node, in_type_position) {
+        out.insert(node.name.clone());
+    }
+    if let ExprData::ExprRecordLit {
+        parent_enum: Some(parent),
+    } = &*node.expr_data
+    {
+        out.insert(parent.clone());
+    }
+
+    // A type annotation subtree is entirely type references.
+    if let Some(annotation) = node.type_annotation.as_ref() {
+        collect_references(annotation, true, out);
+    }
+
+    for child in node.children.iter() {
+        collect_references(child, in_type_position, out);
+    }
+    for param in node.params.iter() {
+        collect_references(param, in_type_position, out);
+    }
+    for used in node.uses.iter() {
+        collect_references(used, in_type_position, out);
+    }
+    for prop in node.properties.iter() {
+        collect_references(prop, in_type_position, out);
+    }
+    if let Some(body) = node.body.as_ref() {
+        collect_references(body, false, out);
+    }
+    if let Some(transport) = node.transport.as_ref() {
+        collect_references(transport, in_type_position, out);
+    }
 }
 
 fn collect_param_binders(node: &Rc<Node>, binders: &mut HashSet<String>) {
@@ -263,10 +337,39 @@ pub fn build_declaration_index(
 /// references, pull in every module declaring one of those names, repeat. A
 /// name declared by several modules pulls ALL of them, so the resolver sees the
 /// genuine ambiguity and can refuse, rather than this layer picking a winner.
+/// Same fixpoint, but reporting which NAMES pulled how many modules.
+///
+/// Width alone cannot say whether a wide closure is a genuine dependency fan-out
+/// or one boilerplate name dragging hundreds of modules in a single step. This
+/// attributes each pull to the name responsible, so the answer is measured
+/// rather than inferred.
+pub fn closure_for_entry_attributed(
+    entry_path: &str,
+    entry_content: &str,
+    index: &DeclarationIndex,
+) -> (Vec<Rc<SourceFile>>, Vec<(String, usize)>) {
+    let mut attribution: HashMap<String, usize> = HashMap::new();
+    let sources = closure_inner(entry_path, entry_content, index, &mut attribution);
+    let mut ranked: Vec<(String, usize)> = attribution.into_iter().collect();
+    ranked.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    ranked.truncate(15);
+    (sources, ranked)
+}
+
 pub fn closure_for_entry(
     entry_path: &str,
     entry_content: &str,
     index: &DeclarationIndex,
+) -> Vec<Rc<SourceFile>> {
+    let mut attribution = HashMap::new();
+    closure_inner(entry_path, entry_content, index, &mut attribution)
+}
+
+fn closure_inner(
+    entry_path: &str,
+    entry_content: &str,
+    index: &DeclarationIndex,
+    attribution: &mut HashMap<String, usize>,
 ) -> Vec<Rc<SourceFile>> {
     let entry_source = Rc::new(SourceFile {
         path: entry_path.to_string(),
@@ -299,6 +402,7 @@ pub fn closure_for_entry(
                     continue;
                 };
                 in_closure.insert(module_path.clone(), dep.clone());
+                *attribution.entry(name.clone()).or_insert(0) += 1;
                 frontier.push(dep.clone());
             }
         }
