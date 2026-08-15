@@ -61,7 +61,7 @@ fn class_needs(
   flat_map(
     filter(
       xs: dependents,
-      f: d => dependent_class_eq(
+      predicate: d => dependent_class_eq(
         a: dependent_class_of(owner: owner, who: d.who),
         b: cls,
       ),

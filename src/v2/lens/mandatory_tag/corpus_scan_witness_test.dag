@@ -4,9 +4,13 @@ import v2.lens.mandatory_tag.corpus_scan {
   corpus_anchor_facts,
   corpus_live_clean_tree_holds,
   corpus_live_roster_module_count,
+  extdeps_archive_format_module,
   extdeps_color_srgb_module,
   extdeps_fixture_file_anchor_module,
-  extdeps_fixture_missing_anchor_module
+  extdeps_fixture_missing_anchor_module,
+  extdeps_ollama_binary_release_module,
+  extdeps_ollama_capability_module,
+  extdeps_ollama_gpu_support_module,
 }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -30,5 +34,25 @@ test fn corpus_projection_file_plant_reads_non_external_scheme() -> Bool {
 
 test fn corpus_projection_real_anchor_reads_https() -> Bool {
   let facts = corpus_anchor_facts(module: extdeps_color_srgb_module)
+  facts.anchor_kind == "present" && facts.scheme_identity == "Https"
+}
+
+test fn archive_format_anchor_projects_https() -> Bool {
+  let facts = corpus_anchor_facts(module: extdeps_archive_format_module)
+  facts.anchor_kind == "present" && facts.scheme_identity == "Https"
+}
+
+test fn ollama_binary_release_anchor_projects_https() -> Bool {
+  let facts = corpus_anchor_facts(module: extdeps_ollama_binary_release_module)
+  facts.anchor_kind == "present" && facts.scheme_identity == "Https"
+}
+
+test fn ollama_capability_anchor_projects_https() -> Bool {
+  let facts = corpus_anchor_facts(module: extdeps_ollama_capability_module)
+  facts.anchor_kind == "present" && facts.scheme_identity == "Https"
+}
+
+test fn ollama_gpu_support_anchor_projects_https() -> Bool {
+  let facts = corpus_anchor_facts(module: extdeps_ollama_gpu_support_module)
   facts.anchor_kind == "present" && facts.scheme_identity == "Https"
 }

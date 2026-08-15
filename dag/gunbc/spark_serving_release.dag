@@ -1,17 +1,20 @@
 module gunbc.spark_serving_release
 
-import std.types { String, Bool, List, Int, NonEmptyStr }
+import std.types { String, Bool, List, Int, NonEmptyStr, Port }
 import product.placement_supply { HostIdentity }
-import std.content_hash { Fnv1a64Structural, content_hash_atom, ContentHash }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, ContentHash, serialize_content_hash }
+import gunbc.model_artifact { ModelArtifact }
+import extdeps.ollama.api { OllamaModelRef, ollama_model_ref_wire, ollama_default_port }
 import v2.std.algebra { fold_list }
 import std.nat { Nat }
-import std.measure { ByteSize, byte_size_count }
+import std.measure { ByteSize }
 import gunbc.spark_serving_realization {
   SystemPrincipal, ServingDeploymentTarget, UserUnitRealization,
   EscalationShortfall, NoNewPrivilegeRequired, NewPrivilegeRequired, ShortfallUndecidable,
   ShortfallEvidenceMismatch,
   SparkServingIntent, SparkServingRealization, ServingRequirementRefusal, identity_contract_refusal,
   ObservedGrantPopulation, escalation_shortfall, applicable_without_administrator,
+  ServingEndpointIntent, UnauthenticatedEndpoint, AuthenticatedEndpoint,
 }
 
 // THE SPARK SERVING RELEASE — one content-addressed identity over everything that must be
@@ -31,16 +34,65 @@ import gunbc.spark_serving_realization {
 // a time.
 type RuntimeArtifactIdentity { closure_digest: NonEmptyStr }
 
-// The model artifact is pinned by EXACT REVISION, never a tag. A moving tag makes the identity
-// claim unfalsifiable and could differ between the two hosts, silently breaking exact replay.
-type ModelArtifactIdentity { repository: NonEmptyStr  revision: NonEmptyStr }
-
 type ServingConfigurationIdentity { configuration_digest: NonEmptyStr }
 
-// The credential belongs to the OCCURRENCE, not the release. It sat inside SparkServingRelease
-// while the comment below said prerequisites stay outside precisely so a rotation cannot change
-// the release identity -- a self-contradiction ten lines apart, and the same defect class as prose
-// asserting a guarantee the mechanism does not implement. Rotating an endpoint credential now
+type OllamaRuntime {}
+
+type SparkServingRuntimeKind = OllamaRuntime
+
+type SparkServingBindListen {
+  host: NonEmptyStr
+  port: Port
+}
+
+fn spark_serving_runtime_kind_wire(runtime: SparkServingRuntimeKind) -> String {
+  match runtime {
+    OllamaRuntime => "ollama"
+  }
+}
+
+fn spark_serving_endpoint_intent_wire(intent: ServingEndpointIntent) -> String {
+  match intent {
+    UnauthenticatedEndpoint => "lan-unauthenticated"
+    AuthenticatedEndpoint => "authenticated"
+  }
+}
+
+fn spark_serving_bind_listen_wire(bind: SparkServingBindListen) -> String {
+  join([bind.host as String, ":", to_string(bind.port)], "")
+}
+
+fn spark_serving_configuration_seed(
+  runtime: SparkServingRuntimeKind,
+  model_ref: OllamaModelRef,
+  bind: SparkServingBindListen,
+  endpoint: ServingEndpointIntent,
+) -> NonEmptyStr {
+  join([
+    "spark-serving|runtime=", spark_serving_runtime_kind_wire(runtime: runtime),
+    "|model=", ollama_model_ref_wire(ref: model_ref),
+    "|bind=", spark_serving_bind_listen_wire(bind: bind),
+    "|endpoint=", spark_serving_endpoint_intent_wire(intent: endpoint),
+  ], "") as NonEmptyStr
+}
+
+fn spark_serving_configuration_identity(
+  runtime: SparkServingRuntimeKind,
+  model_ref: OllamaModelRef,
+  bind: SparkServingBindListen,
+  endpoint: ServingEndpointIntent,
+) -> ServingConfigurationIdentity {
+  ServingConfigurationIdentity {
+    configuration_digest: content_hash_atom(
+      value: spark_serving_configuration_seed(
+        runtime: runtime,
+        model_ref: model_ref,
+        bind: bind,
+        endpoint: endpoint,
+      ),
+    ).digest as NonEmptyStr,
+  }
+}
 
 // Unified memory is SHARED between CPU and GPU on GB10, which is why the accelerator reports no
 // separate device total. Admission is against the shared pool; budgeting as though a private
@@ -55,7 +107,10 @@ type InferenceCapacityPolicy { max_model_len: Nat  shared_memory_budget_bytes: B
 
 type SparkServingRelease {
   runtime: RuntimeArtifactIdentity
-  model: ModelArtifactIdentity
+  model: ModelArtifact
+}
+
+type SparkServingServingPolicy {
   serving_configuration: ServingConfigurationIdentity
   capacity: InferenceCapacityPolicy
 }
@@ -77,7 +132,11 @@ type SparkServingReleaseIdentity { digest: Fnv1a64Structural }
 // therefore a different digest -- which is what makes the identity a function of the release
 // rather than a label beside it.
 fn spark_serving_release_seed(spec: SparkServingRelease) -> NonEmptyStr {
-  "spark-serving-release|runtime={spec.runtime.closure_digest}|repo={spec.model.repository}|rev={spec.model.revision}|config={spec.serving_configuration.configuration_digest}|max_len={spec.capacity.max_model_len}|mem={byte_size_count(b: spec.capacity.shared_memory_budget_bytes)}" as NonEmptyStr
+  join([
+    "spark-serving-release|runtime=", spec.runtime.closure_digest as String,
+    "|model=", serialize_content_hash(hash: spec.model.identity) as String,
+    "|serving_label=", spec.model.serving_label as String,
+  ], "") as NonEmptyStr
 }
 
 fn spark_serving_release_identity(spec: SparkServingRelease) -> SparkServingReleaseIdentity {
@@ -101,9 +160,14 @@ fn spark_serving_release_identity(spec: SparkServingRelease) -> SparkServingRele
 // needs wiring, so it goes. Authenticating the endpoint later is a real change -- an intent arm, a
 // credential resolution path, and a consumer that presents it -- and it should land as that change
 // rather than being pre-declared by an unread field.
+//
+// Serving policy (configuration digest and capacity) lives on the OCCURRENCE beside release identity.
+// It is desired state compared separately from the loaded runtime+model fingerprint — configuration
+// and capacity are not imported into observations.
 type SparkServingOccurrence {
   host: HostIdentity
   release_identity: SparkServingReleaseIdentity
+  serving_policy: SparkServingServingPolicy
 }
 
 // Prerequisites are ADMITTED DEPENDENCIES, not booleans and not release fields. Each names what

@@ -73,7 +73,23 @@ import extdeps.languages.json.emit {
 }
 import extdeps.languages.json.parse { parse_json }
 import gunbc.retained_shell_script { retained_foreign }
-
+import extdeps.ollama.binary_release {
+  OllamaBinaryRelease,
+  ollama_required_release,
+  ollama_binary_release_download_locator,
+  ollama_binary_release_asset_name,
+}
+import extdeps.tools.sha256sum {
+  sha256sum_verify_via_shell,
+  Sha256Matches,
+  Sha256Mismatch,
+  Sha256VerifyInfraFailure,
+}
+import gunbc.spark_serving_runtime_receipt {
+  SparkServingRuntimeArchiveAdmissionReceipt,
+  write_spark_serving_runtime_archive_admission_receipt,
+  spark_serving_runtime_receipt_wire_path,
+}
 
 data package_delivery_placement_note: String = "FIRST CONSUMED package materializer for gunbc. Lives here — not in std — until a second real consumer proves a shared abstraction. Owns Codex (and later other) product policy over upstream package facts from extdeps.npm / extdeps.package. Every production effect boundary RE-ADJUDICATES raw graphs via package_lock_admit_graph — never trusts a freely constructed PackageLockGraphAdmitted. Decoding lock SRI text is NOT artifact verification."
 
@@ -2370,5 +2386,112 @@ fn materialize_codex_runtime_bundle(
       }
     other => CodexRuntimeLockRefused { admission: other }
       }
+  }
+}
+
+data spark_serving_ollama_runtime_materialization_note: String = "Archive admission only — NOT runtime install. Downloads the cited extdeps.ollama.binary_release archive, admits SHA-256, writes an executor-local gunbc.spark_serving_runtime_receipt (release-asset digest only — no host claim), then deletes the staging copy (local_path is not consumed downstream because nothing extracts). Does not extract, place bin/ollama, enable gunbc-spark-serving.service, or pull gpt-oss:20b. This PR cannot make srv5/srv6 answer — wet observation is a separate SSH read path. Full per-host install is #8225 follow-on; fleet registration is #8230."
+
+type SparkServingOllamaArchiveAdmission
+  = SparkServingOllamaArchiveAdmitted {
+      local_path: FilePath
+      digest_hex: NonEmptyStr
+    }
+  | SparkServingOllamaArchiveDownloadRefused {
+      locator: NonEmptyStr
+    }
+  | SparkServingOllamaArchiveIntegrityRefused {
+      cause: NonEmptyStr
+    }
+
+type SparkServingOllamaRuntimeMaterialization
+  = SparkServingOllamaRuntimeMaterialized {
+      receipt: SparkServingRuntimeArchiveAdmissionReceipt
+    }
+  | SparkServingOllamaRuntimeDownloadRefused {
+      locator: NonEmptyStr
+    }
+  | SparkServingOllamaRuntimeIntegrityRefused {
+      cause: NonEmptyStr
+    }
+  | SparkServingOllamaRuntimeReceiptWriteRefused {
+      cause: NonEmptyStr
+    }
+  | SparkServingOllamaRuntimeWorkspaceRefused {
+      cause: NonEmptyStr
+    }
+
+fn spark_serving_ollama_runtime_materialization_receipt_write_path() -> FilePath {
+  spark_serving_runtime_receipt_wire_path()
+}
+
+fn acquire_and_admit_ollama_release_archive(
+  binary_release: OllamaBinaryRelease,
+  dest_dir: FilePath,
+) -> SparkServingOllamaArchiveAdmission {
+  let locator = ollama_binary_release_download_locator(binary_release: binary_release)
+  let dest = concat(
+    dest_dir as String,
+    concat("/", ollama_binary_release_asset_name(binary_release: binary_release) as String),
+  ) as FilePath
+  let downloaded = http.Client.DownloadToFile(
+    url: locator,
+    destination: dest as NonEmptyStr,
+  )
+  if downloaded.success == false {
+    SparkServingOllamaArchiveDownloadRefused { locator: locator }
+  } else {
+    match sha256sum_verify_via_shell(
+      path: dest as NonEmptyStr,
+      expected_digest: binary_release.digest.hex,
+    ) {
+      Sha256Matches =>
+        SparkServingOllamaArchiveAdmitted {
+          local_path: dest,
+          digest_hex: binary_release.digest.hex,
+        }
+      Sha256Mismatch =>
+        SparkServingOllamaArchiveIntegrityRefused {
+          cause: "ollama release archive sha256 mismatch" as NonEmptyStr,
+        }
+      Sha256VerifyInfraFailure { reason } =>
+        SparkServingOllamaArchiveIntegrityRefused { cause: reason }
+    }
+  }
+}
+
+fn materialize_spark_serving_ollama_runtime_bundle() -> SparkServingOllamaRuntimeMaterialization {
+  let staging = shell.Mktemp.Dir()
+  if staging.success == false {
+    SparkServingOllamaRuntimeWorkspaceRefused {
+      cause: "staging mktemp failed" as NonEmptyStr,
+    }
+  } else {
+    match acquire_and_admit_ollama_release_archive(
+      binary_release: ollama_required_release,
+      dest_dir: staging.path,
+    ) {
+      SparkServingOllamaArchiveDownloadRefused { locator } => {
+        let _ = shell.Remove.RecursiveForce(path: staging.path)
+        SparkServingOllamaRuntimeDownloadRefused { locator: locator }
+      }
+      SparkServingOllamaArchiveIntegrityRefused { cause } => {
+        let _ = shell.Remove.RecursiveForce(path: staging.path)
+        SparkServingOllamaRuntimeIntegrityRefused { cause: cause }
+      }
+      SparkServingOllamaArchiveAdmitted { local_path: _, digest_hex } => {
+        let receipt = SparkServingRuntimeArchiveAdmissionReceipt {
+          release_asset_digest_hex: digest_hex,
+        }
+        if write_spark_serving_runtime_archive_admission_receipt(receipt: receipt) {
+          let _ = shell.Remove.RecursiveForce(path: staging.path)
+          SparkServingOllamaRuntimeMaterialized { receipt: receipt }
+        } else {
+          let _ = shell.Remove.RecursiveForce(path: staging.path)
+          SparkServingOllamaRuntimeReceiptWriteRefused {
+            cause: "install receipt write refused" as NonEmptyStr,
+          }
+        }
+      }
+    }
   }
 }
