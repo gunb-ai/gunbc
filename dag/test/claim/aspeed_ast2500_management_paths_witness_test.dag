@@ -15,8 +15,6 @@ import extdeps.bmc.aspeed_ast2500 {
   aspeed_ast2500_catalog,
   ast2500_hardwired_trip_line_path_count,
   ast2500_management_acquisition_mode,
-  ast2500_management_acquisition_path_is_hardwired_trip_line,
-  ast2500_management_acquisition_path_is_pollable_sensor_reading,
   ast2500_management_acquisition_paths,
   ast2500_pollable_sensor_reading_path_count,
 }
@@ -81,18 +79,25 @@ test fn w_six_management_acquisition_paths_split_two_hardwired_and_four_pollable
     && ast2500_pollable_sensor_reading_path_count(paths: ast2500_management_acquisition_paths) == 4
 }
 
-// EACH PATH CLASSIFIES EXACTLY ONE WAY.
-test fn w_mode_projection_matches_the_two_predicates() -> Bool {
+// EACH PATH CLASSIFIES THROUGH THE CANONICAL MODE PROJECTION.
+test fn w_mode_projection_classifies_each_path() -> Bool {
   fold(ast2500_management_acquisition_paths, init: true, f: fn(acc, p) {
-    acc
-      && ast2500_management_acquisition_path_is_hardwired_trip_line(path: p)
-        != ast2500_management_acquisition_path_is_pollable_sensor_reading(path: p)
-      && match ast2500_management_acquisition_mode(path: p) {
-        HardwiredTripLine =>
-          ast2500_management_acquisition_path_is_hardwired_trip_line(path: p)
-        PollableSensorReading =>
-          ast2500_management_acquisition_path_is_pollable_sensor_reading(path: p)
-      }
+    acc && match ast2500_management_acquisition_mode(path: p) {
+      HardwiredTripLine =>
+        match p {
+          GpioDigitalTripInput { gpio_pin_count: _ } => true
+          SgpioShiftRegisterTripInput { sgpio_input_port_count: _ } => true
+          _ => false
+        }
+      PollableSensorReading =>
+        match p {
+          I2cSmbusSensorBus { controller_count: _ } => true
+          AdcAnalogInput { channel_count: _ } => true
+          PeciProcessorTelemetry { max_cpu_count: _, max_domain_per_cpu: _ } => true
+          FanTachPulseCounter { tach_input_count: _ } => true
+          _ => false
+        }
+    }
   })
 }
 

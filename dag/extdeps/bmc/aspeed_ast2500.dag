@@ -1,6 +1,6 @@
 module extdeps.bmc.aspeed_ast2500
 
-import std.types { String, Bool, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List }
 import std.integer { Int }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -48,24 +48,6 @@ fn ast2500_management_acquisition_mode(
     PeciProcessorTelemetry { max_cpu_count: _, max_domain_per_cpu: _ } =>
       PollableSensorReading
     FanTachPulseCounter { tach_input_count: _ } => PollableSensorReading
-  }
-}
-
-fn ast2500_management_acquisition_path_is_hardwired_trip_line(
-  path: Ast2500ManagementAcquisitionPath,
-) -> Bool {
-  match ast2500_management_acquisition_mode(path: path) {
-    HardwiredTripLine => true
-    PollableSensorReading => false
-  }
-}
-
-fn ast2500_management_acquisition_path_is_pollable_sensor_reading(
-  path: Ast2500ManagementAcquisitionPath,
-) -> Bool {
-  match ast2500_management_acquisition_mode(path: path) {
-    HardwiredTripLine => false
-    PollableSensorReading => true
   }
 }
 
