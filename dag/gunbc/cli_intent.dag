@@ -121,18 +121,14 @@ data intent_validation_phase_note: String = "Two orderings the deleted handlers 
 // recurring failure mode, in miniature.
 fn admit_run_arg(token: String) -> IntentRefusal? {
   let parts = token |> split(delimiter: "=")
+  let missing_equals: IntentRefusal = RunArgMissingEquals { token: token }
+  let empty_name: IntentRefusal = RunArgEmptyName { token: token }
   if (parts |> count) < 2 {
-    Present { value: RunArgMissingEquals { token: token } }
+    Present { value: missing_equals }
+  } else if starts_with(s: token, prefix: "=") {
+    Present { value: empty_name }
   } else {
-    match parts |> first {
-      Present { value: name } =>
-        if name == "" {
-          Present { value: RunArgEmptyName { token: token } }
-        } else {
-          Absent
-        }
-      Absent => Present { value: RunArgMissingEquals { token: token } }
-    }
+    none
   }
 }
 
