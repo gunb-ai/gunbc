@@ -128,7 +128,7 @@ fn codex_app_server_rate_limits_read_request_line() -> NonEmptyStr {
   )
 }
 
-data codex_supervised_session_rpc_id_note: String = "Supervised turn session ids: initialize=1, thread/start=4, turn/start=5. account/read and account/rateLimits/read are omitted when standing is carried on CodexSupervisedTurnBinding.standing_receipt. turn/start json-rpc id is fixed at 5; client_command_id on CodexRunnerTurnTerminalReceipt is the attempt/turn identity string for exactly-once correlation, not necessarily equal to the wire id."
+data codex_supervised_session_rpc_id_note: String = "Supervised turn session ids: initialize=1, account/read=2, account/rateLimits/read=3, thread/start=4, turn/start=5. account/read and account/rateLimits/read run in the same app-server occurrence as turn/start; standing is parsed from that session stdout, not from a prior preflight receipt. turn/start json-rpc id is fixed at 5; client_command_id on CodexRunnerTurnTerminalReceipt is the attempt/turn identity string for exactly-once correlation, not necessarily equal to the wire id."
 
 data codex_supervised_thread_start_id: Int = 4
 data codex_supervised_turn_start_wire_id: Int = 5

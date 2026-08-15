@@ -6,6 +6,7 @@ import gunbc.codex_app_server_press { AmbientCodexCredentialContext }
 import gunbc.provider_turn_adjudication {
   ProviderTurnCompleted,
   ProviderTurnFailed,
+  ProviderTurnNotObserved,
   press_display_finished,
 }
 import gunbc.codex_supervised_turn {
@@ -55,6 +56,7 @@ test fn witness_supervised_binding_uses_held_session_lease_policy() -> Bool {
   let binding = codex_supervised_turn_binding(
     turn: fixture_turn(),
     credential: fixture_credential(),
+    prior_generation: 0,
     observed: LeaseAbsent,
     standing_receipt: none,
   )
@@ -89,6 +91,7 @@ test fn witness_running_lease_observation_is_expected_not_absent() -> Bool {
   let binding = codex_supervised_turn_binding(
     turn: fixture_turn(),
     credential: fixture_credential(),
+    prior_generation: 0,
     observed: LeaseRunningExpected,
     standing_receipt: none,
   )
@@ -123,6 +126,7 @@ test fn witness_terminal_receipt_carries_client_command_id() -> Bool {
   let binding = codex_supervised_turn_binding(
     turn: fixture_turn(),
     credential: fixture_credential(),
+    prior_generation: 0,
     observed: LeaseAbsent,
     standing_receipt: none,
   )
@@ -143,6 +147,16 @@ test fn witness_parse_turn_failed_notification_disposition() -> Bool {
   let parse = parse_supervised_turn_stdout(stdout: stdout)
   match disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 0 }) {
     ProviderTurnFailed { cause: _ } => true
+    _ => false
+  }
+}
+
+test fn witness_exit_zero_without_terminal_is_not_observed() -> Bool {
+  let stdout =
+    "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"thread\":{\"id\":\"t1\"}}}\n{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{\"turn\":{\"id\":\"u1\"}}}\n"
+  let parse = parse_supervised_turn_stdout(stdout: stdout)
+  match disposition_from_supervised_parse(parse: parse, exit_code: Present { value: 0 }) {
+    ProviderTurnNotObserved => true
     _ => false
   }
 }

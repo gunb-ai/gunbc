@@ -1,6 +1,7 @@
 module gunbc.codex_supervised_turn
 
 import std.types { String, NonEmptyStr, Int, Bool, FilePath, List }
+import std.algebra { trim }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.temporal_effect {
   HeldLease,
@@ -28,7 +29,16 @@ import gunbc.codex_app_server_press {
   split_gunbc_stdio_capture,
   ProviderProcessReceipt,
   ProviderProcessObservationFailed,
+  parse_account_trip_session,
+  AccountTripDigestRetainPrivateSha512,
+  AccountStandingClassification,
+  AccountStandingAuthenticatedRateLimitsReadable,
+  AccountStandingLoginRequired,
+  AccountStandingQuotaReached,
+  AccountStandingInitializeMissing,
+  AccountStandingIncomplete,
 }
+import extdeps.filesystem.filesystem_io
 import gunbc.provider_interface_binding {
   project_codex_app_server_stdio_binding,
   ProviderInterfaceResolved,
@@ -51,6 +61,8 @@ import extdeps.shell.exec
 import extdeps.llm.codex_app_server {
   codex_app_server_initialize_request_line,
   codex_app_server_initialized_notification_line,
+  codex_app_server_account_read_request_line,
+  codex_app_server_rate_limits_read_request_line,
   codex_app_server_thread_start_request_line,
   codex_supervised_thread_start_id,
   codex_supervised_turn_start_wire_id,
@@ -83,6 +95,12 @@ data codex_supervised_process_supervision_note: String = "PROCESS SUPERVISION (s
 data codex_supervised_lease_selection_receipt_note: String = "OPERATOR RULING #8166 (2026-08-13). Disconnect branch settled by srv1 execution, not argument: killing the real app-server binary mid-turn stopped work at 2 of 8 files; the thread survived and thread/resume is the recovery path. Detached reconciliation is refuted; supervised HeldLease over the app-server process is the selected realization. Stay draft until a bounded wet turn returns CodexRunnerTurnTerminalReceipt — the admission fold alone is not mergeable. Wet access is a bounded srv1 execution grant, not a standing child credential."
 
 data codex_supervised_turn_wet_handoff_note: String = "BOUNDED WET HANDOFF — BISECT FIRST (srv1 OOM receipt 2026-08-14). Bisect entrypoints in dag/test/claim/codex_supervised_turn_wet_witness_test.dag are plain fn (NOT enrolled witnesses — admission gate refuses enrolled-with-zero-consumers). Operator runs under MemoryMax caps on srv1 only. Step 1: wet_committed_admitted_source_lock_admits (2G). Step 2b: wet_select_codex_exact_target_closure_only (2G). Step 2: wet_materialize_codex_runtime_bundle_only (8G). Full chain after materialize_codex_runtime_bundle fixed; then enroll via gunbc.explicit_witness_admission."
+
+data codex_supervised_client_command_id_file_name: String = "/codex_supervised_client_command_id"
+
+data codex_supervised_turn_generation_file_name: String = "/codex_supervised_turn_generation"
+
+data codex_supervised_python_extract_thread_id: String = "import sys,json; o=json.loads(sys.stdin.read()); r=o.get('result',dict()); t=r.get('thread',dict()); print(t.get('id',''))"
 
 type CodexThreadActivity
   = CodexThreadAbsent
@@ -146,8 +164,10 @@ fn codex_supervised_turn_resource_fingerprint(
   )
 }
 
-fn codex_supervised_turn_owner_fingerprint(turn_key: String) -> ContentHash {
-  content_hash_of_value(value: turn_key)
+fn codex_supervised_turn_owner_fingerprint(turn: WorkerTurn) -> ContentHash {
+  content_hash_of_value(
+    value: codex_supervised_turn_client_command_id(turn: turn) as String,
+  )
 }
 
 fn codex_supervised_turn_session_policy(lease_key: NonEmptyStr) -> TemporalEffectPolicy {
@@ -161,6 +181,7 @@ fn codex_supervised_turn_client_command_id(turn: WorkerTurn) -> NonEmptyStr {
 fn codex_supervised_turn_binding(
   turn: WorkerTurn,
   credential: AmbientCodexCredentialContext,
+  prior_generation: Int,
   observed: HeldLeaseObservedState,
   standing_receipt: CodexAccountStandingReceipt?,
 ) -> CodexSupervisedTurnBinding {
@@ -176,8 +197,8 @@ fn codex_supervised_turn_binding(
         credential: credential,
         attempt_key: turn.attempt_key,
       ),
-      owner_fingerprint: codex_supervised_turn_owner_fingerprint(turn_key: turn.turn_key),
-      generation: 0,
+      owner_fingerprint: codex_supervised_turn_owner_fingerprint(turn: turn),
+      generation: prior_generation + 1,
       observed: observed,
     },
     execution_policy: codex_supervised_turn_session_policy(lease_key: lease_key),
@@ -200,6 +221,96 @@ fn codex_supervised_turn_binding_with_observed(
     },
     execution_policy: binding.execution_policy,
     standing_receipt: binding.standing_receipt,
+  }
+}
+
+fn codex_supervised_turn_client_command_id_store_path(evidence_root: FilePath) -> String {
+  concat(evidence_root as String, codex_supervised_client_command_id_file_name)
+}
+
+fn codex_supervised_turn_generation_store_path(evidence_root: FilePath) -> String {
+  concat(evidence_root as String, codex_supervised_turn_generation_file_name)
+}
+
+fn codex_supervised_parse_nonneg_generation_text(content: String) -> Int? {
+  let trimmed = trim(s: content)
+  if trimmed == "" {
+    none
+  } else {
+    match parse_int(s: trimmed) {
+      Present { value: n } =>
+        if n >= 0 {
+          Present { value: n }
+        } else {
+          none
+        }
+      Absent => none
+    }
+  }
+}
+
+fn read_codex_supervised_turn_prior_generation(evidence_root: FilePath) -> Int {
+  let path = codex_supervised_turn_generation_store_path(evidence_root: evidence_root)
+  if shell.Test.IsFile(path: path as FilePath).is_file == false {
+    0
+  } else {
+    match codex_supervised_parse_nonneg_generation_text(
+      content: filesystem_read(path: path).content,
+    ) {
+      Present { value: n } => n
+      Absent => 0
+    }
+  }
+}
+
+fn persist_codex_supervised_turn_generation(
+  evidence_root: FilePath,
+  generation: Int,
+) -> Bool {
+  Filesystem.Write(
+    path: codex_supervised_turn_generation_store_path(evidence_root: evidence_root),
+    content: to_string(n: generation),
+  ).success
+}
+
+fn persist_codex_supervised_turn_client_command_id(
+  evidence_root: FilePath,
+  client_command_id: NonEmptyStr,
+) -> Bool {
+  Filesystem.Write(
+    path: codex_supervised_turn_client_command_id_store_path(evidence_root: evidence_root),
+    content: client_command_id as String,
+  ).success
+}
+
+fn prepare_codex_supervised_turn_binding(
+  turn: WorkerTurn,
+  credential: AmbientCodexCredentialContext,
+  evidence_root: FilePath,
+  observed: HeldLeaseObservedState,
+  standing_receipt: CodexAccountStandingReceipt?,
+) -> CodexSupervisedTurnBinding {
+  let prior_generation = read_codex_supervised_turn_prior_generation(
+    evidence_root: evidence_root,
+  )
+  codex_supervised_turn_binding(
+    turn: turn,
+    credential: credential,
+    prior_generation: prior_generation,
+    observed: observed,
+    standing_receipt: standing_receipt,
+  )
+}
+
+fn codex_supervised_turn_session_standing_admits(
+  classification: AccountStandingClassification,
+) -> Bool {
+  match classification {
+    AccountStandingAuthenticatedRateLimitsReadable => true
+    AccountStandingLoginRequired => false
+    AccountStandingQuotaReached => false
+    AccountStandingInitializeMissing => false
+    AccountStandingIncomplete => false
   }
 }
 
@@ -272,8 +383,14 @@ fn codex_supervised_turn_script(
   codex_home: FilePath,
   cwd: FilePath,
   user_input: String,
+  client_command_id: NonEmptyStr,
+  evidence_root: FilePath,
 ) -> String {
   let escaped_input = bash_single_quote_escape(s: user_input)
+  let escaped_cmd_id = bash_single_quote_escape(s: client_command_id as String)
+  let cmd_id_path = bash_single_quote_escape(
+    s: codex_supervised_turn_client_command_id_store_path(evidence_root: evidence_root),
+  )
   concat(
     "export CODEX_HOME='",
     concat(
@@ -281,7 +398,7 @@ fn codex_supervised_turn_script(
       concat(
         "'; FIFO=$(mktemp -u); OUT=$(mktemp); ERR=$(mktemp); mkfifo \"$FIFO\"; ",
         concat(
-          "'",
+          "setsid '",
           concat(
             executable as String,
             concat(
@@ -297,34 +414,80 @@ fn codex_supervised_turn_script(
                       concat(
                         "' >&3; printf '%s\\n' '",
                         concat(
-                          codex_app_server_thread_start_request_line(cwd: cwd) as String,
+                          codex_app_server_account_read_request_line() as String,
                           concat(
-                            "' >&3; THREAD_ID=''; for _ in $(seq 1 600); do ",
+                            "' >&3; printf '%s\\n' '",
                             concat(
-                              "if [ -f \"$OUT\" ]; then LINE=$(grep '\"id\":",
+                              codex_app_server_rate_limits_read_request_line() as String,
                               concat(
-                                to_string(n: codex_supervised_thread_start_id),
+                                "' >&3; printf '%s\\n' '",
                                 concat(
-                                  "' \"$OUT\" | tail -1); if [ -n \"$LINE\" ]; then ",
-                                  "THREAD_ID=$(printf '%s' \"$LINE\" | sed -n 's/.*\"thread\"[^}]*\"id\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p'); fi; fi; ",
+                                  codex_app_server_thread_start_request_line(cwd: cwd) as String,
                                   concat(
-                                    "[ -n \"$THREAD_ID\" ] && break; sleep 0.05; done; ",
+                                    "' >&3; THREAD_ID=''; for _ in $(seq 1 600); do ",
                                     concat(
-                                      "if [ -z \"$THREAD_ID\" ]; then EC=97; else ",
+                                      "if [ -f \"$OUT\" ]; then LINE=$(grep '\"id\":",
                                       concat(
-                                        "TURN_LINE=$(printf '{\"jsonrpc\":\"2.0\",\"id\":",
+                                        to_string(n: codex_supervised_thread_start_id),
                                         concat(
-                                          to_string(n: codex_supervised_turn_start_wire_id),
+                                          "' \"$OUT\" | tail -1); if [ -n \"$LINE\" ]; then ",
+                                          "THREAD_ID=$(printf '%s' \"$LINE\" | python3 -c '",
                                           concat(
-                                            ",\"method\":\"turn/start\",\"params\":{\"threadId\":\"%s\",\"input\":[{\"type\":\"text\",\"text\":\"",
+                                            codex_supervised_python_extract_thread_id,
                                             concat(
-                                              escaped_input,
+                                              "'); fi; fi; ",
                                               concat(
-                                                "\"}]}}' \"$THREAD_ID\"); printf '%s\\n' \"$TURN_LINE\" >&3; ",
-                                                "exec 3>&-; wait \"$APID\"; EC=$?; fi; ",
+                                                "[ -n \"$THREAD_ID\" ] && break; sleep 0.05; done; ",
                                                 concat(
-                                                  "echo \"---GUNBC_EXIT---$EC---\"; echo '---GUNBC_STDOUT---'; cat \"$OUT\"; ",
-                                                  "echo '---GUNBC_STDERR---'; cat \"$ERR\"; rm -f \"$FIFO\" \"$OUT\" \"$ERR\"; exit \"$EC\"",
+                                                  "if [ -z \"$THREAD_ID\" ]; then EC=97; else ",
+                                                  concat(
+                                                    "printf '%s' '",
+                                                    concat(
+                                                      escaped_cmd_id,
+                                                      concat(
+                                                        "' >'",
+                                                        concat(
+                                                          cmd_id_path,
+                                                          concat(
+                                                            "'; TURN_LINE=$(printf '{\"jsonrpc\":\"2.0\",\"id\":",
+                                                            concat(
+                                                              to_string(
+                                                                n: codex_supervised_turn_start_wire_id,
+                                                              ),
+                                                              concat(
+                                                                ",\"method\":\"turn/start\",\"params\":{\"threadId\":\"%s\",\"input\":[{\"type\":\"text\",\"text\":\"",
+                                                                concat(
+                                                                  escaped_input,
+                                                                  concat(
+                                                                    "\"}]}}' \"$THREAD_ID\"); printf '%s\\n' \"$TURN_LINE\" >&3; ",
+                                                                    "TERMINAL=0; for _ in $(seq 1 600); do ",
+                                                                    concat(
+                                                                      "if grep -q 'turn/completed' \"$OUT\" || grep -q 'turn/failed' \"$OUT\"; then TERMINAL=1; break; fi; ",
+                                                                      concat(
+                                                                        "sleep 0.05; done; exec 3>&-; ",
+                                                                        "wait \"$APID\"; EC=$?; ",
+                                                                        concat(
+                                                                          "if [ \"$TERMINAL\" -eq 0 ]; then EC=98; fi; ",
+                                                                          "fi; ",
+                                                                          concat(
+                                                                            "kill -TERM -$APID 2>/dev/null || true; wait \"$APID\" 2>/dev/null || true; ",
+                                                                            concat(
+                                                                              "echo \"---GUNBC_EXIT---$EC---\"; echo '---GUNBC_STDOUT---'; cat \"$OUT\"; ",
+                                                                              "echo '---GUNBC_STDERR---'; cat \"$ERR\"; rm -f \"$FIFO\" \"$OUT\" \"$ERR\"; exit \"$EC\"",
+                                                                            ),
+                                                                          ),
+                                                                        ),
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
                                                 ),
                                               ),
                                             ),
@@ -579,10 +742,7 @@ fn disposition_from_supervised_parse(
       match exit_code {
         Present { value: code } =>
           if code == 0 {
-            match parse.turn_start {
-              SupervisedRpcOk { native_id: _ } => ProviderTurnCompleted
-              _ => ProviderTurnNotObserved
-            }
+            ProviderTurnNotObserved
           } else {
             ProviderTurnFailed {
               cause: ProviderNativeCauseUnknown {
@@ -621,6 +781,50 @@ fn codex_runner_turn_terminal_receipt(
   }
 }
 
+fn codex_supervised_turn_outcome_from_capture(
+  running_binding: CodexSupervisedTurnBinding,
+  stdout: String,
+  stderr: String,
+  exit_code: Int?,
+  wire: ProviderWireEvidenceReceipt?,
+  evidence_root: FilePath,
+) -> CodexSupervisedTurnOutcome {
+  let session_standing = parse_account_trip_session(
+    stdout: stdout,
+    stderr: stderr,
+    evidence_root: evidence_root,
+    mode: AccountTripDigestRetainPrivateSha512,
+  )
+  if codex_supervised_turn_session_standing_admits(
+    classification: session_standing.classification,
+  ) == false {
+    CodexSupervisedTurnRefused {
+      reason: "in-session account/rateLimits standing not readable" as NonEmptyStr,
+    }
+  } else {
+    let parse = parse_supervised_turn_stdout(stdout: stdout)
+    let disposition = disposition_from_supervised_parse(
+      parse: parse,
+      exit_code: exit_code,
+    )
+    let terminal_binding = codex_supervised_turn_binding_with_observed(
+      binding: running_binding,
+      observed: LeaseAbsent,
+    )
+    persist_codex_supervised_turn_generation(
+      evidence_root: evidence_root,
+      generation: terminal_binding.lease.generation,
+    )
+    let receipt = codex_runner_turn_terminal_receipt(
+      binding: terminal_binding,
+      parse: parse,
+      disposition: disposition,
+      wire: wire,
+    )
+    CodexSupervisedTurnOk { receipt: receipt }
+  }
+}
+
 fn run_codex_supervised_turn(
   bundle: CodexRuntimeBundle,
   credential: AmbientCodexCredentialContext,
@@ -648,51 +852,55 @@ fn run_codex_supervised_turn(
           },
         }
       } else {
-        let running_binding = codex_supervised_turn_binding_with_observed(
-          binding: binding,
-          observed: LeaseRunningExpected,
-        )
-        let script = retained_foreign(
-          body: codex_supervised_turn_script(
-            executable: projected.executable.path,
-            codex_home: codex_supervised_turn_codex_home(
-              credential: credential,
-              standing_receipt: running_binding.standing_receipt,
-            ),
-            cwd: cwd,
-            user_input: codex_supervised_turn_user_input(turn: running_binding.turn),
-          ),
-          reason: "Codex supervised turn: bundled native app-server held open through thread/start then turn/start; stdout/stderr captured until process exit" as NonEmptyStr,
-        )
-        let run = shell.Exec.Run(script: script)
-        let capture = split_gunbc_stdio_capture(combined: run.stdout)
-        let wire_capture = retain_provider_wire_capture(
+        let cmd_id = codex_supervised_turn_client_command_id(turn: binding.turn)
+        if persist_codex_supervised_turn_client_command_id(
           evidence_root: evidence_root,
-          stdout: capture.stdout,
-          stderr: capture.stderr,
-          success: run.success,
-          exit_code: capture.exit_code,
-        )
-        let wire = match wire_capture {
-          ProviderWireCaptureOk { receipt: w } => Present { value: w }
-          ProviderWireCaptureRefused { cause: _ } => none
+          client_command_id: cmd_id,
+        ) == false {
+          CodexSupervisedTurnRefused {
+            reason: "failed to persist client_command_id before turn/start" as NonEmptyStr,
+          }
+        } else {
+          let running_binding = codex_supervised_turn_binding_with_observed(
+            binding: binding,
+            observed: LeaseRunningExpected,
+          )
+          let script = retained_foreign(
+            body: codex_supervised_turn_script(
+              executable: projected.executable.path,
+              codex_home: codex_supervised_turn_codex_home(
+                credential: credential,
+                standing_receipt: running_binding.standing_receipt,
+              ),
+              cwd: cwd,
+              user_input: codex_supervised_turn_user_input(turn: running_binding.turn),
+              client_command_id: cmd_id,
+              evidence_root: evidence_root,
+            ),
+            reason: "Codex supervised turn: bundled native app-server held open through thread/start then turn/start; stdout/stderr captured until turn terminal notification" as NonEmptyStr,
+          )
+          let run = shell.Exec.Run(script: script)
+          let capture = split_gunbc_stdio_capture(combined: run.stdout)
+          let wire_capture = retain_provider_wire_capture(
+            evidence_root: evidence_root,
+            stdout: capture.stdout,
+            stderr: capture.stderr,
+            success: run.success,
+            exit_code: capture.exit_code,
+          )
+          let wire = match wire_capture {
+            ProviderWireCaptureOk { receipt: w } => Present { value: w }
+            ProviderWireCaptureRefused { cause: _ } => none
+          }
+          codex_supervised_turn_outcome_from_capture(
+            running_binding: running_binding,
+            stdout: capture.stdout,
+            stderr: capture.stderr,
+            exit_code: capture.exit_code,
+            wire: wire,
+            evidence_root: evidence_root,
+          )
         }
-        let parse = parse_supervised_turn_stdout(stdout: capture.stdout)
-        let disposition = disposition_from_supervised_parse(
-          parse: parse,
-          exit_code: capture.exit_code,
-        )
-        let terminal_binding = codex_supervised_turn_binding_with_observed(
-          binding: running_binding,
-          observed: LeaseAbsent,
-        )
-        let receipt = codex_runner_turn_terminal_receipt(
-          binding: terminal_binding,
-          parse: parse,
-          disposition: disposition,
-          wire: wire,
-        )
-        CodexSupervisedTurnOk { receipt: receipt }
       }
     }
   }

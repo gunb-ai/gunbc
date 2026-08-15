@@ -54,6 +54,7 @@ import gunbc.codex_supervised_turn {
   CodexRunnerTurnTerminalReceipt,
   codex_supervised_turn_binding,
   codex_supervised_turn_client_command_id,
+  prepare_codex_supervised_turn_binding,
   run_codex_supervised_turn,
 }
 import gunbc.provider_turn_adjudication { press_display_finished }
@@ -384,11 +385,12 @@ fn supervised_turn_materialized_bundle_writes_terminal_receipt() -> Bool {
               )
               match credential {
                 CodexPressAccountReady { receipt } => {
-                  let binding = codex_supervised_turn_binding(
+                  let binding = prepare_codex_supervised_turn_binding(
                     turn: turn,
                     credential: receipt.subject.credential,
+                    evidence_root: evidence.path,
                     observed: LeaseAbsent,
-                    standing_receipt: Present { value: receipt },
+                    standing_receipt: none,
                   )
                   match run_codex_supervised_turn(
                     bundle: bundle,
