@@ -95,7 +95,7 @@ test fn w_a_public_package_does_not_establish_the_board_land_pattern() -> Bool {
     && !fact_is_established(f: board_land_pattern_standing.fact)
     && match board_land_pattern_standing.fact {
       FactUnresolved { what_is_missing: _ } => true
-      FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => false
+      FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } => true
       FactEstablished { authority: _, subject: _ } => false
       FactAccessGated { subject: _, access_route: _ } => false
     }
@@ -147,7 +147,7 @@ test fn w_the_three_blocker_kinds_are_distinct() -> Bool {
     Present { value: b } => blocker_kind(b: b)
   }
   package_blocker == "none"
-    && land_blocker == "find-document"
+    && land_blocker == "read-drawing"
     && undecided_carriage_blocker() == "redistribution"
     && match reference_board_collateral_standing() {
       FactAccessGated { subject: sub, access_route: route } =>

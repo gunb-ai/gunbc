@@ -15,7 +15,15 @@ import extdeps.cpu.ampere_altra_package {
   altra_reference_board_collateral_standing,
   extdeps_external_authority_anchor,
 }
-import extdeps.cpu_attachment.ilm4926 { ilm4926 }
+import extdeps.cpu_attachment.ilm4926 {
+  DesignationFactEstablished,
+  DesignationFactUnresolved,
+  ilm4926,
+  ilm4926_resolution_obligations,
+}
+import extdeps.cpu.ampere_altra_platform_hw_design.subject {
+  altra_platform_hw_design_subject_authority_anchor,
+}
 import extdeps.vendor.ampere { ampere_customer_reference_boards_authority }
 
 // SIX THINGS BETWEEN A PROCESSOR DIE AND A BOARD, AND THEY ARE NOT ONE THING. The processor
@@ -194,18 +202,37 @@ data socket_board_termination_standing: AttachmentLayerStanding = AttachmentLaye
 }
 
 // THE ONE THAT MATTERS MOST, and the one that looks most available. The board land pattern is the
-// SOCKET vendor's recommended pad array, not the processor's underside.
-// WHY THIS IS UNRESOLVED RATHER THAN STATED-ONLY-IN-A-FIGURE. FactStatedOnlyInFigure asserts the
-// fact IS drawn in a named figure and merely needs a human to read it, and nothing establishes
-// that here. The platform specification's Figure 3 is the package outline and pad array -- the
-// underside of the PART, the other surface entirely -- so citing it routed the blocker to a
-// person who would open the drawing and find nothing, which is a worse answer than saying the
-// document has not been found. The package-versus-board distinction is unchanged and still load
-// bearing; what changed is the claim about where the board-side fact is written down.
+// SOCKET vendor's recommended pad array, not the processor's underside. THE FIGURE 3 ACCOUNT IS
+// PROJECTED FROM extdeps.cpu_attachment.ilm4926 ilm4926_resolution_obligations.board_land_pattern
+// rather than restated here: the platform specification cites separate package-outline and socket
+// drawings on Figure 3, the socket land pattern is drawn rather than written in running text, and
+// neither geometry is transcribed in this repository yet.
 data board_land_pattern_standing: AttachmentLayerStanding = AttachmentLayerStanding {
   layer: BoardLandPatternLayer,
-  fact: FactUnresolved {
-    what_is_missing: "the socket vendor's recommended board-side land pattern; no document consulted so far states one, in text or in a figure",
+  fact: match ilm4926_resolution_obligations.board_land_pattern {
+    DesignationFactEstablished { value: _, authority: a } =>
+      FactEstablished {
+        authority: a,
+        subject: DeclarationRef {
+          module_path: "extdeps.cpu_attachment.ilm4926",
+          decl_name: "ilm4926_resolution_obligations",
+          field: WholeDeclaration
+        },
+      }
+    DesignationFactUnresolved { reason: r, next_authority_to_consult: next } =>
+      match next {
+        Present { value: altra_platform_hw_design_subject_authority_anchor } =>
+          FactStatedOnlyInFigure {
+            figure: "Figure 3",
+            what_is_drawn: concat(
+              "socket board-side land pattern for the ",
+              ilm4926.designator as String,
+              " attachment; the platform specification cites separate package-outline and socket drawings on this figure and neither geometry is transcribed in this repository",
+            ),
+          }
+        none =>
+          FactUnresolved { what_is_missing: r }
+      }
   },
   carriage: CarriageNotApplicable {
     because: "no fact is established for this layer yet, so there is nothing to decide carriage for; the document itself is public and permitted, so nothing legal blocks this layer",
