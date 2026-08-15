@@ -1,24 +1,33 @@
 module test.claim.typed_remote_file_write_witness
 
 import std.types { Bool, String, NonEmptyStr, FilePath }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.file_access { FileTreeScope, path_within_file_tree_scope }
-import gunbc.fleet_known_hosts_anchor { SshTarget, portable_remote_words }
+import gunbc.fleet_known_hosts_anchor {
+  SshTarget,
+  portable_remote_words,
+  fleet_ssh_execution_context_hermetic_witness_fixture,
+}
 import gunbc.typed_remote_file_write {
-  TypedRemoteFileWrite,
   TypedRemoteFileWriteAdmitted,
   TypedRemoteFileWriteAdmissionRefused,
+  TypedRemoteFileWriteConverged,
+  TypedRemoteFileWriteOutcomeRefused,
   typed_remote_file_write_seal,
   typed_remote_file_write_stdin_payload,
   typed_remote_file_write_remote_argv,
   typed_remote_file_write_content_digest_hex,
   typed_remote_file_write_tee_command,
   typed_remote_file_write_execute_preflight_outcome,
+  typed_remote_file_write_outcome_after_ssh_exec,
+  typed_remote_file_write_over_fleet_ssh,
 }
 import gunbc.spark_serving_runtime_receipt { spark_serving_executor_home }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_hermetic_execution_split_note: String = "Filesystem write/read round-trip is not witnessed here: Filesystem.Write/Read have no mock_response in hermetic discovery (dag/extdeps/filesystem/filesystem_io.dag). Byte preservation at the substrate seam is witnessed via stdin_payload equality and typed_remote_file_write_over_fleet_ssh hermetic SSH mock routing below; wet remote byte landing belongs on fleet converge apply."
 
 data witness_tmp_scope: FileTreeScope = FileTreeScope {
   root_path: "/tmp" as NonEmptyStr,
@@ -197,26 +206,48 @@ test fn w_executor_home_unit_path_seals_for_spark_layout() -> Bool {
   }
 }
 
-func w_local_filesystem_roundtrip_preserves_bytes() -> Bool {
-  let dest = "/tmp/gunbc-trfw-roundtrip-bytes" as FilePath
+test fn w_over_fleet_ssh_hermetic_mock_converges() -> Bool {
   match typed_remote_file_write_seal(
-    path: dest,
+    path: "/tmp/gunbc-trfw-over-fleet-ssh" as FilePath,
     content: witness_metachar_payload,
     allowed_scope: witness_tmp_scope,
   ) {
-    TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
-    TypedRemoteFileWriteAdmitted { write: w } => {
-      let w_out = Filesystem.Write(path: dest as String, content: w.content)
-      if !w_out.success {
-        false
-      } else {
-        let read = Filesystem.Read(path: dest as String)
-        read.success && read.content == witness_metachar_payload
+    TypedRemoteFileWriteAdmitted { write: w } =>
+      match typed_remote_file_write_over_fleet_ssh(
+        target: witness_preflight_ssh_target,
+        context: fleet_ssh_execution_context_hermetic_witness_fixture(),
+        admission: TypedRemoteFileWriteAdmitted { write: w },
+      ) {
+        TypedRemoteFileWriteConverged { result: r } =>
+          r.success
+            && r.stdout == "mock-ssh-portable-words-stdin"
+            && typed_remote_file_write_stdin_payload(write: w) == witness_metachar_payload
+        TypedRemoteFileWriteOutcomeRefused { reason: _ } => false
       }
-    }
+    TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
   }
 }
 
-test fn w_local_filesystem_roundtrip_preserves_bytes_holds() -> Bool {
-  w_local_filesystem_roundtrip_preserves_bytes()
+test fn w_ssh_exec_failure_routes_to_outcome_refused() -> Bool {
+  match typed_remote_file_write_seal(
+    path: "/tmp/gunbc-trfw-ssh-failure" as FilePath,
+    content: "payload" as String,
+    allowed_scope: witness_tmp_scope,
+  ) {
+    TypedRemoteFileWriteAdmitted { write: w } =>
+      match typed_remote_file_write_outcome_after_ssh_exec(
+        write: w,
+        result: SshSessionExecResult {
+          exit_code: 1,
+          success: false,
+          stdout: "",
+          stderr: "mock tee failed",
+        },
+      ) {
+        TypedRemoteFileWriteOutcomeRefused { reason: r } =>
+          string_contains(s: r, pattern: "/tmp/gunbc-trfw-ssh-failure")
+        TypedRemoteFileWriteConverged { result: _ } => false
+      }
+    TypedRemoteFileWriteAdmissionRefused { cause: _ } => false
+  }
 }

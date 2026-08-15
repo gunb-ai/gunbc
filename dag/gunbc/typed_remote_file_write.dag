@@ -17,7 +17,7 @@ import gunbc.file_access { FileTreeScope, path_within_file_tree_scope }
 
 data typed_remote_file_write_authority_note: String = "Typed remote file-bytes write at the FleetSsh seam (SPARK-SERVE-INSTALL-0 substrate). TypedRemoteFileWrite is sole_constructor: the ONLY representable meaning is write these exact bytes to this exact path. Remote realization is portable argv [tee, path] with content on stdin — bytes are DATA, never interpreted as shell. No script body arm, no sh -c, no command string constructor. Path containment uses gunbc.file_access path_within_file_tree_scope (exact root, root/…, .. rejected); portable-word allowlist uses gunbc.fleet_known_hosts_anchor portable_remote_word at seal and portable_remote_words at execute (one authority, no typed_argv fork). typed_remote_file_write_over_fleet_ssh accepts only TypedRemoteFileWriteAdmitted."
 
-data typed_remote_file_write_wet_fleet_ssh_execute_deferred_note: String = "SPARK-SERVE-INSTALL-0 substrate defers wet FleetSsh tee+stdin roundtrip and SSH failure handling to Phase 2 fleet-converge integration: this PR witnesses seal, argv projection, execute preflight (portable_remote_words), and local Filesystem.Write byte preservation; typed_remote_file_write_over_fleet_ssh Converged/SSH-failure arms execute in the consumer witness enrolled on fleet converge apply."
+data typed_remote_file_write_wet_fleet_ssh_execute_deferred_note: String = "SPARK-SERVE-INSTALL-0 substrate defers wet FleetSsh tee+stdin roundtrip to Phase 2 fleet-converge integration: hermetic witnesses exercise seal, argv, execute preflight, and typed_remote_file_write_over_fleet_ssh Converged/OutcomeRefused routing via ssh.Session.ExecPortableWordsWithStdin mock_response; end-to-end remote byte landing on disk remains the consumer witness on fleet converge apply."
 
 data typed_remote_file_write_substrate_gap_closed_note: String = "Substrate PR closes spark_serving_membership CONDITION 1 FINDING for unit delivery: consumers seal path+content here; fleet execution routes through typed_remote_file_write_over_fleet_ssh."
 
@@ -111,6 +111,22 @@ fn typed_remote_file_write_execute_preflight_outcome(
   }
 }
 
+fn typed_remote_file_write_outcome_after_ssh_exec(
+  write: TypedRemoteFileWrite,
+  result: SshSessionExecResult,
+) -> TypedRemoteFileWriteOutcome {
+  if result.success {
+    TypedRemoteFileWriteConverged { result: result }
+  } else {
+    TypedRemoteFileWriteOutcomeRefused {
+      reason: concat(
+        "typed_remote_file_write: tee remote write failed for ",
+        write.path as String,
+      ),
+    }
+  }
+}
+
 fn typed_remote_file_write_over_fleet_ssh(
   target: SshTarget,
   context: FleetSshExecutionContext,
@@ -132,20 +148,13 @@ fn typed_remote_file_write_over_fleet_ssh(
             ),
           }
         Present { value: words } => {
-          let result = ssh_session_exec_portable_words_with_stdin(
-            client_args: shape_fleet_ssh_exec(context: context, target: target, words: words),
-            stdin_payload: typed_remote_file_write_stdin_payload(write: write),
+          typed_remote_file_write_outcome_after_ssh_exec(
+            write: write,
+            result: ssh_session_exec_portable_words_with_stdin(
+              client_args: shape_fleet_ssh_exec(context: context, target: target, words: words),
+              stdin_payload: typed_remote_file_write_stdin_payload(write: write),
+            ),
           )
-          if result.success {
-            TypedRemoteFileWriteConverged { result: result }
-          } else {
-            TypedRemoteFileWriteOutcomeRefused {
-              reason: concat(
-                "typed_remote_file_write: tee remote write failed for ",
-                write.path as String,
-              ),
-            }
-          }
         }
       }
     }
