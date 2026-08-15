@@ -2,10 +2,6 @@ module extdeps.tailscale.serve
 
 import std.types { NonEmptyStr, Port, String, List, Bool }
 import std.key_relation { KeyRelation, GlobalKeyScope, key_relation_global }
-
-type TailscaleServeRouteKeyRelation
-
-data tailscale_serve_route_key_relation_brand_note: String = "Phantom relation brand (std.key_relation key_relation_brand_type_tag_note): keeps Tailscale serve route membership distinct from other TailscaleServeEndpoint x GlobalKeyScope x TailscaleServeRouteKey relations."
 import std.algebra { Less, Equal, Greater }
 import extdeps.version.semver { SemVerVersion, semver_compare, semver_version_label }
 
@@ -22,6 +18,10 @@ import extdeps.languages.json.parse {
   JsonMemberDuplicated,
   JsonMemberNotAnObject,
 }
+
+type TailscaleServeRouteKeyRelation
+
+data tailscale_serve_route_key_relation_brand_note: String = "Phantom relation brand (std.key_relation key_relation_brand_type_tag_note): keeps Tailscale serve route membership distinct from other TailscaleServeEndpoint x GlobalKeyScope x TailscaleServeRouteKey relations."
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
