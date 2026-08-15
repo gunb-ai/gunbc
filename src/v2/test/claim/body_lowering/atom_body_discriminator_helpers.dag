@@ -1,0 +1,466 @@
+module v2.test.claim.body_lowering.atom_body_discriminator_helpers
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.algebra { any, list_snoc_item }
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  ArrowBodyForm,
+  ComputationBody,
+  Conj,
+  DirectAtomBody,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  UnsupportedArrowBody,
+  classify_arrow_body_form
+}
+import v2.test.claim.body_lowering.arrow_body_form_semantic_helpers {
+  classify_arrow_body_form_red_no_computation_body,
+  classify_arrow_body_form_red_no_direct_atom
+}
+import v2.std.node_query {
+  find_arrow_body_child,
+  find_named_child,
+  node_positional_child_targets
+}
+import v2.std.collection { list_at_optional }
+import v2.std.optional { Absent, Optional, Present, optional_present }
+
+data atom_body_discriminator_module_source: String = "module atom_body_discriminator\n\nfn id(x: Int) -> Int { x }\nfn zero() -> Int { 0 }\nfn add(x: Int, y: Int) -> Int { x + y }\nfn zero_binary() -> Int { 1 + 1 }\n"
+
+data atom_body_discriminator_expected_arrow_identities: List<String> = [
+  "id",
+  "zero",
+  "add",
+  "zero_binary",
+]
+
+type AtomBodyDiscriminatorMirror
+  = AtomBodyDiscriminatorProduction
+  | AtomBodyDiscriminatorRedNoDirectAtom
+  | AtomBodyDiscriminatorRedNoComputationBody
+
+type AtomBodyDiscriminatorObservedRows {
+  id: Node
+  zero: Node
+  add: Node
+  zero_binary: Node
+}
+
+type TopLevelIdentityJoinRefusal {
+  expected: List<String>
+  observed: List<String>
+  missing: List<String>
+  extra: List<String>
+  duplicates: List<String>
+}
+
+type AtomBodyDiscriminatorObservation
+  = TokenizeRejected { diagnostics: NonEmptyDiagnostics }
+  | ParseRejected { diagnostics: NonEmptyDiagnostics }
+  | NormalizeRejected { diagnostics: NonEmptyDiagnostics }
+  | TopLevelIdentityJoinRefused { refusal: TopLevelIdentityJoinRefusal }
+  | DiscriminatorObserved { tree: Node, rows: AtomBodyDiscriminatorObservedRows }
+
+fn atom_body_discriminator_string_count_eq(items: List<String>, wanted: String) -> Int {
+  fold(items, init: 0, f: fn(n, item) {
+    if item == wanted {
+      n + 1
+    } else {
+      n
+    }
+  })
+}
+
+fn atom_body_discriminator_string_list_has_duplicate(items: List<String>) -> Bool {
+  items |> any(item => atom_body_discriminator_string_count_eq(items: items, wanted: item) > 1)
+}
+
+fn atom_body_discriminator_string_in_list(items: List<String>, wanted: String) -> Bool {
+  items |> any(item => item == wanted)
+}
+
+fn atom_body_discriminator_top_level_arrow_lexemes_identity_join(
+  expected: List<String>,
+  observed: List<String>
+) -> Bool {
+  !(atom_body_discriminator_string_list_has_duplicate(items: expected))
+    && !(atom_body_discriminator_string_list_has_duplicate(items: observed))
+    && expected |> all(e => atom_body_discriminator_string_in_list(items: observed, wanted: e))
+    && observed |> all(o => atom_body_discriminator_string_in_list(items: expected, wanted: o))
+}
+
+fn atom_body_discriminator_strings_in_first_not_in_second(
+  first: List<String>,
+  second: List<String>
+) -> List<String> {
+  fold(first, init: [], f: fn(acc, item) {
+    if atom_body_discriminator_string_in_list(items: second, wanted: item) {
+      acc
+    } else {
+      list_snoc_item(xs: acc, item: item)
+    }
+  })
+}
+
+fn atom_body_discriminator_duplicate_strings(items: List<String>) -> List<String> {
+  fold(items, init: [], f: fn(acc, item) {
+    if atom_body_discriminator_string_count_eq(items: items, wanted: item) > 1
+      && !(atom_body_discriminator_string_in_list(items: acc, wanted: item)) {
+      list_snoc_item(xs: acc, item: item)
+    } else {
+      acc
+    }
+  })
+}
+
+fn atom_body_discriminator_top_level_identity_join_refusal(
+  expected: List<String>,
+  observed: List<String>
+) -> TopLevelIdentityJoinRefusal {
+  TopLevelIdentityJoinRefusal {
+    expected: expected,
+    observed: observed,
+    missing: atom_body_discriminator_strings_in_first_not_in_second(first: expected, second: observed),
+    extra: atom_body_discriminator_strings_in_first_not_in_second(first: observed, second: expected),
+    duplicates: atom_body_discriminator_duplicate_strings(items: observed),
+  }
+}
+
+fn atom_body_discriminator_walk_spine_to_body(captured: Node) -> Node {
+  match captured.kind {
+    TypeNode { connective: Conj } =>
+      if count(captured.children) == 1 {
+        match list_at_optional(xs: captured.children, index: 0) {
+          Present { value: edge } =>
+            match edge.label {
+              Named { name: _ } => atom_body_discriminator_walk_spine_to_body(captured: edge.target)
+              Positional => captured
+            }
+          Absent => captured
+        }
+      } else {
+        captured
+      }
+    _ => captured
+  }
+}
+
+fn atom_body_discriminator_module_scope_body(root: Node) -> Optional<Node> {
+  match find_named_child(root: root, name: ^grammar_production_captured_node_projection) {
+    Accepted { value: captured, diagnostics: _ } =>
+      optional_present(
+        value: atom_body_discriminator_walk_spine_to_body(captured: captured)
+      )
+    Rejected { diagnostics: _ } => optional_present(value: root)
+  }
+}
+
+fn atom_body_discriminator_top_level_arrow_lexeme_optional(edge: Edge) -> Optional<String> {
+  match edge.label {
+    Named { name: sym } =>
+      match edge.target.kind {
+        TypeNode { connective: Arrow } =>
+          optional_present(value: symbol_lexeme(sym: sym))
+        _ => Absent
+      }
+    Positional => Absent
+  }
+}
+
+fn atom_body_discriminator_observed_top_level_arrow_lexemes(root: Node) -> List<String> {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      fold(root.children, init: [], f: fn(acc, edge) {
+        match atom_body_discriminator_top_level_arrow_lexeme_optional(edge: edge) {
+          Absent => acc
+          Present { value: lexeme } => list_snoc_item(xs: acc, item: lexeme)
+        }
+      })
+    _ => []
+  }
+}
+
+fn atom_body_discriminator_top_level_named_arrow(root: Node, fn_lexeme: String) -> Optional<Node> {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      fold(root.children, init: Absent, f: fn(acc, edge) {
+        match acc {
+          Present { value: _ } => acc
+          Absent =>
+            match edge.label {
+              Named { name: sym } =>
+                match symbol_lexeme(sym: sym) == fn_lexeme {
+                  true =>
+                    match edge.target.kind {
+                      TypeNode { connective: Arrow } => optional_present(value: edge.target)
+                      _ => Absent
+                    }
+                  false => Absent
+                }
+              Positional => Absent
+            }
+        }
+      })
+    _ => Absent
+  }
+}
+
+fn atom_body_discriminator_observed_rows(scope: Node) -> Optional<AtomBodyDiscriminatorObservedRows> {
+  match atom_body_discriminator_top_level_named_arrow(root: scope, fn_lexeme: "id") {
+    Absent => Absent
+    Present { value: id } =>
+      match atom_body_discriminator_top_level_named_arrow(root: scope, fn_lexeme: "zero") {
+        Absent => Absent
+        Present { value: zero } =>
+          match atom_body_discriminator_top_level_named_arrow(root: scope, fn_lexeme: "add") {
+            Absent => Absent
+            Present { value: add } =>
+              match atom_body_discriminator_top_level_named_arrow(
+                root: scope,
+                fn_lexeme: "zero_binary"
+              ) {
+                Absent => Absent
+                Present { value: zero_binary } =>
+                  optional_present(
+                    value: AtomBodyDiscriminatorObservedRows {
+                      id: id,
+                      zero: zero,
+                      add: add,
+                      zero_binary: zero_binary,
+                    }
+                  )
+              }
+          }
+      }
+  }
+}
+
+fn atom_body_discriminator_observe() -> AtomBodyDiscriminatorObservation {
+  let lm = dag_language_model()
+  match tokenize(
+    text: atom_body_discriminator_module_source,
+    file: ^atom_body_discriminator_file,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: d } => TokenizeRejected { diagnostics: d }
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: d } => ParseRejected { diagnostics: d }
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: d } => NormalizeRejected { diagnostics: d }
+            Accepted { value: normalized, diagnostics: _ } =>
+              let root = normalized.root
+              match atom_body_discriminator_module_scope_body(root: root) {
+                Absent =>
+                  TopLevelIdentityJoinRefused {
+                    refusal: atom_body_discriminator_top_level_identity_join_refusal(
+                      expected: atom_body_discriminator_expected_arrow_identities,
+                      observed: []
+                    )
+                  }
+                Present { value: scope } =>
+                  let observed =
+                    atom_body_discriminator_observed_top_level_arrow_lexemes(root: scope)
+                  if atom_body_discriminator_top_level_arrow_lexemes_identity_join(
+                    expected: atom_body_discriminator_expected_arrow_identities,
+                    observed: observed
+                  ) {
+                    match atom_body_discriminator_observed_rows(scope: scope) {
+                      Absent =>
+                        TopLevelIdentityJoinRefused {
+                          refusal: atom_body_discriminator_top_level_identity_join_refusal(
+                            expected: atom_body_discriminator_expected_arrow_identities,
+                            observed: observed
+                          )
+                        }
+                      Present { value: rows } =>
+                        DiscriminatorObserved { tree: root, rows: rows }
+                    }
+                  } else {
+                    TopLevelIdentityJoinRefused {
+                      refusal: atom_body_discriminator_top_level_identity_join_refusal(
+                        expected: atom_body_discriminator_expected_arrow_identities,
+                        observed: observed
+                      )
+                    }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn atom_body_discriminator_arrow_body_optional(arrow: Node) -> Optional<Node> {
+  match find_arrow_body_child(root: arrow) {
+    Accepted { value: body, diagnostics: _ } => optional_present(value: body)
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+fn atom_body_discriminator_named_binding_count(domain: Node) -> Int {
+  match domain.kind {
+    TypeNode { connective: Conj } =>
+      fold(domain.children, init: 0, f: fn(count, edge) {
+        match edge.label {
+          Named { name: _ } => count + 1
+          Positional => count
+        }
+      })
+    _ => 0
+  }
+}
+
+fn atom_body_discriminator_parameter_count(arrow: Node) -> Optional<Int> {
+  match arrow.kind {
+    TypeNode { connective: Arrow } =>
+      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
+        Present { value: domain } =>
+          optional_present(value: atom_body_discriminator_named_binding_count(domain: domain))
+        Absent => Absent
+      }
+    _ => Absent
+  }
+}
+
+fn atom_body_discriminator_classify_body(target: Node, mirror: AtomBodyDiscriminatorMirror) -> ArrowBodyForm {
+  match mirror {
+    AtomBodyDiscriminatorProduction => classify_arrow_body_form(target: target)
+    AtomBodyDiscriminatorRedNoDirectAtom =>
+      classify_arrow_body_form_red_no_direct_atom(target: target)
+    AtomBodyDiscriminatorRedNoComputationBody =>
+      classify_arrow_body_form_red_no_computation_body(target: target)
+  }
+}
+
+fn atom_body_discriminator_arrow_row_holds(
+  arrow: Node,
+  expected_param_count: Int,
+  expected_form: ArrowBodyForm,
+  mirror: AtomBodyDiscriminatorMirror
+) -> Bool {
+  match atom_body_discriminator_parameter_count(arrow: arrow) {
+    Absent => false
+    Present { value: param_count } =>
+      match atom_body_discriminator_arrow_body_optional(arrow: arrow) {
+        Absent => false
+        Present { value: body } =>
+          param_count == expected_param_count
+            && atom_body_discriminator_classify_body(target: body, mirror: mirror) == expected_form
+      }
+  }
+}
+
+fn atom_body_discriminator_arrow_classifies(
+  arrow: Node,
+  mirror: AtomBodyDiscriminatorMirror
+) -> Optional<ArrowBodyForm> {
+  match atom_body_discriminator_arrow_body_optional(arrow: arrow) {
+    Absent => Absent
+    Present { value: body } =>
+      optional_present(
+        value: atom_body_discriminator_classify_body(target: body, mirror: mirror)
+      )
+  }
+}
+
+fn atom_body_discriminator_batched_receipt_holds() -> Bool {
+  match atom_body_discriminator_observe() {
+    TokenizeRejected { diagnostics: _ } => false
+    ParseRejected { diagnostics: _ } => false
+    NormalizeRejected { diagnostics: _ } => false
+    TopLevelIdentityJoinRefused { refusal: _ } => false
+    DiscriminatorObserved { tree: _, rows: rows } =>
+      atom_body_discriminator_arrow_row_holds(
+        arrow: rows.id,
+        expected_param_count: 1,
+        expected_form: DirectAtomBody,
+        mirror: AtomBodyDiscriminatorProduction
+      )
+        && atom_body_discriminator_arrow_row_holds(
+          arrow: rows.zero,
+          expected_param_count: 0,
+          expected_form: DirectAtomBody,
+          mirror: AtomBodyDiscriminatorProduction
+        )
+        && atom_body_discriminator_arrow_row_holds(
+          arrow: rows.add,
+          expected_param_count: 2,
+          expected_form: ComputationBody { behavior: Transform },
+          mirror: AtomBodyDiscriminatorProduction
+        )
+        && atom_body_discriminator_arrow_row_holds(
+          arrow: rows.zero_binary,
+          expected_param_count: 0,
+          expected_form: ComputationBody { behavior: Transform },
+          mirror: AtomBodyDiscriminatorProduction
+        )
+        && match atom_body_discriminator_arrow_classifies(
+          arrow: rows.id,
+          mirror: AtomBodyDiscriminatorRedNoDirectAtom
+        ) {
+          Present { value: form } => form == UnsupportedArrowBody
+          Absent => false
+        }
+        && match atom_body_discriminator_arrow_classifies(
+          arrow: rows.zero,
+          mirror: AtomBodyDiscriminatorRedNoDirectAtom
+        ) {
+          Present { value: form } => form == UnsupportedArrowBody
+          Absent => false
+        }
+        && match atom_body_discriminator_arrow_classifies(
+          arrow: rows.add,
+          mirror: AtomBodyDiscriminatorRedNoDirectAtom
+        ) {
+          Present { value: form } => form != UnsupportedArrowBody
+          Absent => false
+        }
+        && match atom_body_discriminator_arrow_classifies(
+          arrow: rows.zero_binary,
+          mirror: AtomBodyDiscriminatorRedNoDirectAtom
+        ) {
+          Present { value: form } => form != UnsupportedArrowBody
+          Absent => false
+        }
+        && match atom_body_discriminator_arrow_classifies(
+          arrow: rows.id,
+          mirror: AtomBodyDiscriminatorRedNoComputationBody
+        ) {
+          Present { value: form } => form == DirectAtomBody
+          Absent => false
+        }
+        && match atom_body_discriminator_arrow_classifies(
+          arrow: rows.zero,
+          mirror: AtomBodyDiscriminatorRedNoComputationBody
+        ) {
+          Present { value: form } => form == DirectAtomBody
+          Absent => false
+        }
+        && match atom_body_discriminator_arrow_classifies(
+          arrow: rows.add,
+          mirror: AtomBodyDiscriminatorRedNoComputationBody
+        ) {
+          Present { value: form } => form == UnsupportedArrowBody
+          Absent => false
+        }
+        && match atom_body_discriminator_arrow_classifies(
+          arrow: rows.zero_binary,
+          mirror: AtomBodyDiscriminatorRedNoComputationBody
+        ) {
+          Present { value: form } => form == UnsupportedArrowBody
+          Absent => false
+        }
+  }
+}
