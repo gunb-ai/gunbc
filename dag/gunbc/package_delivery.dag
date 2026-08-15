@@ -1,9 +1,6 @@
 module gunbc.package_delivery
 
 import std.types { String, NonEmptyStr, List, FilePath, Bool, Int }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.algebra { trim }
 import std.content_hash {
   Sha512Digest,
@@ -48,7 +45,6 @@ import extdeps.package {
 }
 import extdeps.version { VersionIdentity }
 import extdeps.http.client
-import extdeps.exec.command { shell_quote }
 import extdeps.shell
 import extdeps.shell.exec
 import extdeps.filesystem.filesystem_io
@@ -94,19 +90,6 @@ import gunbc.spark_serving_runtime_receipt {
   write_spark_serving_runtime_archive_admission_receipt,
   spark_serving_runtime_receipt_wire_path,
 }
-import gunbc.spark_serving_install_paths {
-  spark_serving_runtime_root,
-  spark_serving_runtime_executable,
-  spark_serving_models_root,
-  spark_serving_user_unit_path,
-  spark_serving_user_unit_parent_path,
-  spark_serving_user_unit_contents,
-  spark_serving_desired_model_wire,
-  spark_serving_unit_name,
-  spark_serving_linger_command,
-  spark_serving_automation_login,
-}
-import extdeps.ollama.api { ollama_default_port }
 
 data package_delivery_placement_note: String = "FIRST CONSUMED package materializer for gunbc. Lives here — not in std — until a second real consumer proves a shared abstraction. Owns Codex (and later other) product policy over upstream package facts from extdeps.npm / extdeps.package. Every production effect boundary RE-ADJUDICATES raw graphs via package_lock_admit_graph — never trusts a freely constructed PackageLockGraphAdmitted. Decoding lock SRI text is NOT artifact verification."
 
@@ -2406,20 +2389,7 @@ fn materialize_codex_runtime_bundle(
   }
 }
 
-data spark_serving_ollama_runtime_materialization_note: String = "Local-host Spark serving runtime materialization carrier (#8225 runtime-bundle follow-on). When gunbc is present on the invoking host, downloads the cited extdeps.ollama.binary_release archive, admits SHA-256, extracts into the owned runtime root under gunbc-automation, writes the executor-local receipt, installs the gunbc-spark-serving user unit, enables the service, and pulls the declared gpt-oss:20b model. Remote converge is member-grain membership reconcile (gunbc.spark_serving_membership) over typed argv via ProvisionSparkServing — Phase 2; P2 gunbc-on-target ensure dropped."
-
-data spark_serving_local_materialization_shell_note: String = "LOCAL-HOST REALIZATION DEBT — finish_spark_serving_runtime_materialization and helpers (spark_serving_extract_admitted_archive, spark_serving_enable_user_unit, spark_serving_wait_for_api, spark_serving_pull_desired_model) route extract/systemd/curl/ollama pull through extdeps.shell.Exec.Run on the invoking host. Same grain as materialize_codex_runtime_bundle npm/symlink shell in this module — local materializer realization, not a second remote install authority. Remote shell script / plan-apply modules deleted Phase 1. Marked transient on spark_serving_local_materialization_shell_scaffold; dissolve when local steps become typed host-effect argv on materialize_spark_serving_on_local_host."
-
-data spark_serving_local_materialization_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: spark_serving_local_materialization_shell — finish_spark_serving_runtime_materialization helpers route extract/systemd/curl/ollama pull through extdeps.shell.Exec.Run on the invoking host; DISSOLVES WHEN ProvisionSparkServing + realize_provision_spark_serving retire these concat-built shell steps in favor of typed host-effect argv (fleet-converge apply on srv5|srv6, typed_remote_file_write for unit bytes, typed HTTP for acceptance).")
-
-data spark_serving_local_materialization_shell_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.package_delivery",
-    decl_name: "spark_serving_local_materialization_shell_dissolution_trigger",
-    field: WholeDeclaration,
-  }
-}
+data spark_serving_ollama_runtime_materialization_note: String = "Archive admission only — NOT runtime install. Downloads the cited extdeps.ollama.binary_release archive, admits SHA-256, writes an executor-local gunbc.spark_serving_runtime_receipt (release-asset digest only — no host claim), then deletes the staging copy (local_path is not consumed downstream because nothing extracts). Does not extract, place bin/ollama, enable gunbc-spark-serving.service, or pull gpt-oss:20b. This PR cannot make srv5/srv6 answer — wet observation is a separate SSH read path. Full per-host install is #8225 follow-on; fleet registration is #8230."
 
 type SparkServingOllamaArchiveAdmission
   = SparkServingOllamaArchiveAdmitted {
@@ -2449,147 +2419,6 @@ type SparkServingOllamaRuntimeMaterialization
   | SparkServingOllamaRuntimeWorkspaceRefused {
       cause: NonEmptyStr
     }
-  | SparkServingOllamaRuntimeArchiveExtractRefused {
-      cause: NonEmptyStr
-    }
-  | SparkServingOllamaRuntimeUnitWriteRefused {
-      cause: NonEmptyStr
-    }
-  | SparkServingOllamaRuntimeUnitEnableRefused {
-      cause: NonEmptyStr
-    }
-  | SparkServingOllamaRuntimeApiReadyRefused {
-      cause: NonEmptyStr
-    }
-  | SparkServingOllamaRuntimeModelPullRefused {
-      cause: NonEmptyStr
-    }
-
-fn spark_serving_prepare_runtime_dirs() -> Bool {
-  shell.Mkdir.Parents(path: spark_serving_runtime_root()).success
-    && shell.Mkdir.Parents(path: spark_serving_models_root()).success
-    && shell.Mkdir.Parents(path: spark_serving_user_unit_parent_path()).success
-}
-
-fn spark_serving_extract_admitted_archive(
-  archive_path: FilePath,
-) -> Bool {
-  let archive_path_q = shell_quote(arg: archive_path as String)
-  let runtime_root_q = shell_quote(arg: spark_serving_runtime_root() as String)
-  shell.Remove.RecursiveForce(path: spark_serving_runtime_root()).success
-    && shell.Mkdir.Parents(path: spark_serving_runtime_root()).success
-    && shell.Exec.Run(
-      script: join([
-        "tar -I zstd -xf ",
-        archive_path_q,
-        " -C ",
-        runtime_root_q,
-      ], "") as NonEmptyStr,
-    ).success
-}
-
-fn spark_serving_install_user_unit() -> Bool {
-  Filesystem.Write(
-    path: spark_serving_user_unit_path() as String,
-    content: spark_serving_user_unit_contents(),
-  ).success
-}
-
-fn spark_serving_enable_user_unit() -> Bool {
-  let login_q = shell_quote(arg: spark_serving_automation_login())
-  let linger_cmd_q = shell_quote(arg: spark_serving_linger_command() as String)
-  let unit_name_q = shell_quote(arg: spark_serving_unit_name())
-  let script = join([
-    "set -eu\n",
-    "if ! loginctl show-user ", login_q,
-    " -p Linger --value 2>/dev/null | grep -qx yes; then\n",
-    "  sudo -n ", linger_cmd_q, "\n",
-    "fi\n",
-    "systemctl --user daemon-reload\n",
-    "systemctl --user enable --now ", unit_name_q, "\n",
-  ], "")
-  shell.Exec.Run(script: script as NonEmptyStr).success
-}
-
-fn spark_serving_wait_for_api() -> Bool {
-  let script = join([
-    "set -eu\n",
-    "ready=0\n",
-    "i=0\n",
-    "while [ \"$i\" -lt 90 ]; do\n",
-    "  if curl -sf http://127.0.0.1:", to_string(ollama_default_port),
-    "/api/version >/dev/null 2>&1; then\n",
-    "    ready=1\n",
-    "    break\n",
-    "  fi\n",
-    "  i=$((i+1))\n",
-    "  sleep 2\n",
-    "done\n",
-    "[ \"$ready\" -eq 1 ]\n",
-  ], "")
-  shell.Exec.Run(script: script as NonEmptyStr).success
-}
-
-fn spark_serving_pull_desired_model() -> Bool {
-  let executable_q = shell_quote(arg: spark_serving_runtime_executable() as String)
-  let model_q = shell_quote(arg: spark_serving_desired_model_wire())
-  shell.Exec.Run(
-    script: join([
-      executable_q,
-      " pull ",
-      model_q,
-    ], "") as NonEmptyStr,
-  ).success
-}
-
-fn finish_spark_serving_runtime_materialization(
-  receipt: SparkServingRuntimeArchiveAdmissionReceipt,
-  archive_path: FilePath,
-) -> SparkServingOllamaRuntimeMaterialization {
-  if spark_serving_prepare_runtime_dirs() == false {
-    SparkServingOllamaRuntimeWorkspaceRefused {
-      cause: "runtime layout directories refused" as NonEmptyStr,
-    }
-  } else {
-    if spark_serving_extract_admitted_archive(archive_path: archive_path) == false {
-      SparkServingOllamaRuntimeArchiveExtractRefused {
-        cause: "ollama archive extraction refused" as NonEmptyStr,
-      }
-    } else {
-      if write_spark_serving_runtime_archive_admission_receipt(receipt: receipt) == false {
-        SparkServingOllamaRuntimeReceiptWriteRefused {
-          cause: "install receipt write refused" as NonEmptyStr,
-        }
-      } else {
-        if spark_serving_install_user_unit() == false {
-          SparkServingOllamaRuntimeUnitWriteRefused {
-            cause: "systemd user unit write refused" as NonEmptyStr,
-          }
-        } else {
-          if spark_serving_enable_user_unit() == false {
-            SparkServingOllamaRuntimeUnitEnableRefused {
-              cause: "systemd user unit enable refused" as NonEmptyStr,
-            }
-          } else {
-            if spark_serving_wait_for_api() == false {
-              SparkServingOllamaRuntimeApiReadyRefused {
-                cause: "ollama api did not become ready" as NonEmptyStr,
-              }
-            } else {
-              if spark_serving_pull_desired_model() == false {
-                SparkServingOllamaRuntimeModelPullRefused {
-                  cause: "ollama model pull refused" as NonEmptyStr,
-                }
-              } else {
-                SparkServingOllamaRuntimeMaterialized { receipt: receipt }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
 
 fn spark_serving_ollama_runtime_materialization_receipt_write_path() -> FilePath {
   spark_serving_runtime_receipt_wire_path()
@@ -2649,16 +2478,19 @@ fn materialize_spark_serving_ollama_runtime_bundle() -> SparkServingOllamaRuntim
         let _ = shell.Remove.RecursiveForce(path: staging.path)
         SparkServingOllamaRuntimeIntegrityRefused { cause: cause }
       }
-      SparkServingOllamaArchiveAdmitted { local_path: archive_path, digest_hex } => {
+      SparkServingOllamaArchiveAdmitted { local_path: _, digest_hex } => {
         let receipt = SparkServingRuntimeArchiveAdmissionReceipt {
           release_asset_digest_hex: digest_hex,
         }
-        let outcome = finish_spark_serving_runtime_materialization(
-          receipt: receipt,
-          archive_path: archive_path,
-        )
-        let _ = shell.Remove.RecursiveForce(path: staging.path)
-        outcome
+        if write_spark_serving_runtime_archive_admission_receipt(receipt: receipt) {
+          let _ = shell.Remove.RecursiveForce(path: staging.path)
+          SparkServingOllamaRuntimeMaterialized { receipt: receipt }
+        } else {
+          let _ = shell.Remove.RecursiveForce(path: staging.path)
+          SparkServingOllamaRuntimeReceiptWriteRefused {
+            cause: "install receipt write refused" as NonEmptyStr,
+          }
+        }
       }
     }
   }
