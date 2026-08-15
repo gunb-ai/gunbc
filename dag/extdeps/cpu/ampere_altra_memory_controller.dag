@@ -52,17 +52,27 @@ data altra_memory_max_capacity: ByteSize = byte_size(count: 4398046511104)
 // that carrier.
 data altra_admitted_device_widths: List<BitWidth> = [bit_width(count: 4), bit_width(count: 8)]
 
-// DENSITY, WITH ITS QUOTED UNIT RECORDED. The datasheet says "8 Gb and 16 Gb" — gigaBITS, which
-// for DRAM density is 2^30 bits by JEDEC convention, so 8 Gb is exactly 2^30 bytes and 16 Gb is
-// exactly 2^31. The conversion is exact and stated rather than left implicit, because a density
-// silently re-denominated into bytes is the unit trap the storage-pricing carriers already
-// record: the unit word is not the unit.
-data altra_admitted_device_densities: List<ByteSize> = [
-  byte_size(count: 1073741824),
-  byte_size(count: 2147483648),
-]
+// DENSITY, CARRIED IN THE UNIT THE SOURCE QUOTES. The datasheet says "8 Gb and 16 Gb" — gigaBITS.
+// The source quantity is therefore the primary row and the byte figure is DERIVED from it, rather
+// than a hand-computed byte literal sitting beside a sentence claiming what it was converted
+// from: a conversion stated in prose is a second representation of an arithmetic the model can
+// perform, and only the derived form stays correct if the quoted density ever changes.
+//
+// The conversion factor is the JEDEC 2^30-bits-per-Gb convention for DRAM density, which the
+// Ampere citation uses but does not itself state — so it is named here as a convention this
+// module applies, not as a fact the cited authority supplies.
+data altra_admitted_device_densities_gigabits: List<Int> = [8, 16]
 
-data altra_device_density_quoted_unit: NonEmptyStr = "gigabits (8 Gb, 16 Gb), converted at 2^30 bits per Gb"
+data altra_device_density_conversion_basis: NonEmptyStr = "JEDEC DRAM density convention: 1 Gb = 2^30 bits = 134217728 bytes. Applied by this module; not stated by the Ampere citation."
+
+fn gigabits_to_byte_size(gb: Int) -> ByteSize {
+  byte_size(count: gb * 134217728)
+}
+
+data altra_admitted_device_densities: List<ByteSize> = [
+  gigabits_to_byte_size(gb: 8),
+  gigabits_to_byte_size(gb: 16),
+]
 
 // THE ADMITTED MODULE CLASSES, AND THE ONE THAT WAS TAKEN AWAY. All three admitted classes carry
 // a register or a buffer; none is unbuffered. That is the fact a board-down DRAM proposal must
@@ -140,24 +150,40 @@ fn altra_total_memory_data_width() -> Int {
 }
 
 // WHETHER THIS CONTROLLER ADMITS DRAM SOLDERED DIRECTLY TO THE BOARD, answered from the admitted
-// classes rather than asserted. Every admitted class is a MODULE class carrying a register or
-// buffer, and a board-down topology has neither, so the controller authority does not admit it.
+// classes rather than asserted — and answered PER TOPOLOGY, because "board-down" is not one
+// arrangement. An earlier revision of this module reasoned that every admitted class carries a
+// register or buffer while "a board-down topology has neither", and concluded the withdrawal
+// answered for all soldered DRAM. That premise is false: nothing prevents a board from mounting
+// the register or data buffer itself, and such a design presents the controller with the same
+// buffered load a module would. The withdrawal is evidence about UNBUFFERED devices on the bus,
+// so it answers only the topology that is actually unbuffered.
 //
-// The three states are kept apart because they route differently. Unestablished invites someone
-// to find a document. NotAdmitted says the authority was read and does not permit it. Withdrawn
-// says the authority once permitted the nearest thing and stopped — which is the state Altra is
-// actually in, and it is the one that should stop a board-down proposal rather than start a test
-// campaign.
+// The distinction is load-bearing rather than pedantic. Collapsing it makes the model report a
+// buffered soldered design as refused on evidence that never examined it — foreclosing, by an
+// over-broad reading of one revision-history line, exactly the arrangement a design might choose.
+//
+// The states are kept apart because they route differently. Unestablished invites someone to find
+// a document. NotAdmitted says the authority was read and does not permit it. Withdrawn says the
+// authority once permitted the nearest thing and stopped — the state Altra is in for the
+// unbuffered case, and the one that should stop such a proposal rather than start a test campaign.
+type BoardDownBuffering
+  = BoardProvidesNoRegisterOrBuffer
+  | BoardProvidesRegisterOrBuffer
 type BoardDownDramStanding
   = BoardDownAdmitted { authority: ExternalAuthority }
   | BoardDownNotAdmittedByController { authority: ExternalAuthority, because: NonEmptyStr }
   | BoardDownNearestClassWithdrawn { authority: ExternalAuthority, withdrawal: ModuleClassWithdrawal }
   | BoardDownSupportUnestablished { required_authority: NonEmptyStr }
 
-fn altra_board_down_dram_standing() -> BoardDownDramStanding {
-  BoardDownNearestClassWithdrawn {
-    authority: ampere_altra_classic_rev_a1_datasheet_authority,
-    withdrawal: altra_udimm_withdrawal,
+fn altra_board_down_dram_standing(topology: BoardDownBuffering) -> BoardDownDramStanding {
+  match topology {
+    BoardProvidesNoRegisterOrBuffer => BoardDownNearestClassWithdrawn {
+      authority: ampere_altra_classic_rev_a1_datasheet_authority,
+      withdrawal: altra_udimm_withdrawal,
+    }
+    BoardProvidesRegisterOrBuffer => BoardDownSupportUnestablished {
+      required_authority: "An Ampere authority addressing DRAM soldered to the board behind a board-mounted register or data buffer. The UDIMM withdrawal does not answer this: it is evidence about unbuffered devices on the bus, and this topology is buffered. No document read so far admits or refuses it.",
+    }
   }
 }
 
