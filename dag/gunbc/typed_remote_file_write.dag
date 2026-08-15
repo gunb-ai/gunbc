@@ -1,6 +1,6 @@
 module gunbc.typed_remote_file_write
 
-import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
+import std.types { String, Bool, List, NonEmptyStr, FilePath }
 import std.content_hash { content_hash_atom }
 import extdeps.ssh.session {
   ssh_session_exec_portable_words_with_stdin,
@@ -12,9 +12,10 @@ import gunbc.fleet_known_hosts_anchor {
   portable_remote_words,
   shape_fleet_ssh_exec,
 }
+import gunbc.file_access { FileTreeScope, path_within_file_tree_scope }
 import gunbc.typed_argv_exec { typed_argv_portable_argv_token }
 
-data typed_remote_file_write_authority_note: String = "Typed remote file-bytes write at the FleetSsh seam (SPARK-SERVE-INSTALL-0 substrate). TypedRemoteFileWrite is sole_constructor: the ONLY representable meaning is write these exact bytes to this exact path. Remote realization is portable argv [tee, path] with content on stdin — bytes are DATA, never interpreted as shell. No script body arm, no sh -c, no command string constructor. Path must be within a declared allowed prefix and pass the portable-word allowlist."
+data typed_remote_file_write_authority_note: String = "Typed remote file-bytes write at the FleetSsh seam (SPARK-SERVE-INSTALL-0 substrate). TypedRemoteFileWrite is sole_constructor: the ONLY representable meaning is write these exact bytes to this exact path. Remote realization is portable argv [tee, path] with content on stdin — bytes are DATA, never interpreted as shell. No script body arm, no sh -c, no command string constructor. Path containment uses gunbc.file_access path_within_file_tree_scope (exact root, root/…, .. rejected); portable-word allowlist is checked at seal. typed_remote_file_write_over_fleet_ssh accepts only TypedRemoteFileWriteAdmitted."
 
 data typed_remote_file_write_substrate_gap_closed_note: String = "Substrate PR closes spark_serving_membership CONDITION 1 FINDING for unit delivery: consumers seal path+content here; fleet execution routes through typed_remote_file_write_over_fleet_ssh."
 
@@ -33,45 +34,6 @@ type TypedRemoteFileWriteOutcome
 
 data typed_remote_file_write_tee_command: String = "tee"
 
-fn typed_remote_file_write_prefix_matches_at(
-  path: String,
-  prefix: String,
-  i: Int,
-  prefix_len: Int,
-) -> Bool {
-  if i >= prefix_len {
-    true
-  } else {
-    if char_at(s: path, i: i) != char_at(s: prefix, i: i) {
-      false
-    } else {
-      typed_remote_file_write_prefix_matches_at(
-        path: path,
-        prefix: prefix,
-        i: i + 1,
-        prefix_len: prefix_len,
-      )
-    }
-  }
-}
-
-fn typed_remote_file_write_path_within_prefix(path: FilePath, allowed_prefix: NonEmptyStr) -> Bool {
-  let p = path as String
-  let pref = allowed_prefix as String
-  let prefix_len = string_length(s: pref)
-  let path_len = string_length(s: p)
-  if path_len < prefix_len {
-    false
-  } else {
-    typed_remote_file_write_prefix_matches_at(
-      path: p,
-      prefix: pref,
-      i: 0,
-      prefix_len: prefix_len,
-    )
-  }
-}
-
 fn typed_remote_file_write_path_portable(path: FilePath) -> Bool {
   typed_argv_portable_argv_token(token: path as String)
 }
@@ -79,16 +41,16 @@ fn typed_remote_file_write_path_portable(path: FilePath) -> Bool {
 fn typed_remote_file_write_seal(
   path: FilePath,
   content: String,
-  allowed_prefix: NonEmptyStr,
+  allowed_scope: FileTreeScope,
 ) -> TypedRemoteFileWriteAdmission {
-  if !typed_remote_file_write_path_within_prefix(path: path, allowed_prefix: allowed_prefix) {
+  if !path_within_file_tree_scope(scope: allowed_scope, path: path as NonEmptyStr) {
     TypedRemoteFileWriteRefused {
       cause: join(
         [
           "typed_remote_file_write: path ",
           path as String,
-          " outside allowed prefix ",
-          allowed_prefix as String,
+          " outside file tree scope rooted at ",
+          allowed_scope.root_path as String,
         ],
         "",
       ) as NonEmptyStr,
@@ -140,8 +102,9 @@ fn typed_remote_file_write_content_digest_hex(write: TypedRemoteFileWrite) -> St
 fn typed_remote_file_write_over_fleet_ssh(
   target: SshTarget,
   context: FleetSshExecutionContext,
-  write: TypedRemoteFileWrite,
+  admission: TypedRemoteFileWriteAdmitted,
 ) -> TypedRemoteFileWriteOutcome {
+  let write = admission.write
   match portable_remote_words(raws: typed_remote_file_write_remote_argv(write: write)) {
     Absent =>
       TypedRemoteFileWriteRefused {
