@@ -8,10 +8,10 @@ import gunbc.spark_serving_readback_parse {
   SparkServingReadbackRefused,
 }
 import gunbc.spark_serving_runtime_receipt {
-  SparkServingRuntimeInstallReceipt,
-  write_spark_serving_runtime_install_receipt_at_path,
-  read_spark_serving_runtime_install_receipt_bytes_at_path,
-  spark_serving_runtime_install_receipt_json,
+  SparkServingRuntimeArchiveAdmissionReceipt,
+  write_spark_serving_runtime_archive_admission_receipt_at_path,
+  read_spark_serving_runtime_archive_admission_receipt_bytes_at_path,
+  spark_serving_runtime_archive_admission_receipt_json,
   spark_serving_parse_runtime_receipt_json,
   spark_serving_runtime_receipt_wire_path,
 }
@@ -27,9 +27,9 @@ test fn witness_materialization_writer_targets_reader_wire_path() -> Bool {
   written == read_back
 }
 
-test fn witness_runtime_install_receipt_json_round_trips_digest() -> Bool {
-  let json = spark_serving_runtime_install_receipt_json(
-    receipt: SparkServingRuntimeInstallReceipt {
+test fn witness_runtime_archive_admission_receipt_json_round_trips_digest() -> Bool {
+  let json = spark_serving_runtime_archive_admission_receipt_json(
+    receipt: SparkServingRuntimeArchiveAdmissionReceipt {
       release_asset_digest_hex: witness_required_release_asset_digest_hex as NonEmptyStr,
     },
   )
@@ -41,19 +41,19 @@ test fn witness_runtime_install_receipt_json_round_trips_digest() -> Bool {
   }
 }
 
-test fn witness_runtime_install_receipt_write_read_round_trips_digest() -> Bool {
+test fn witness_runtime_archive_admission_receipt_write_read_round_trips_digest() -> Bool {
   let staging = shell.Mktemp.Dir()
   if staging.success == false {
     false
   } else {
     let path = concat(staging.path as String, "/ollama-runtime-receipt.json") as FilePath
-    let receipt = SparkServingRuntimeInstallReceipt {
+    let receipt = SparkServingRuntimeArchiveAdmissionReceipt {
       release_asset_digest_hex: witness_required_release_asset_digest_hex as NonEmptyStr,
     }
-    if write_spark_serving_runtime_install_receipt_at_path(path: path, receipt: receipt) == false {
+    if write_spark_serving_runtime_archive_admission_receipt_at_path(path: path, receipt: receipt) == false {
       false
     } else {
-      match read_spark_serving_runtime_install_receipt_bytes_at_path(path: path) {
+      match read_spark_serving_runtime_archive_admission_receipt_bytes_at_path(path: path) {
         Absent => false
         Present { value: bytes } =>
           match spark_serving_parse_runtime_receipt_json(stdout: bytes) {

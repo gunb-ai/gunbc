@@ -11,7 +11,7 @@ import extdeps.archive.format {
   archive_format_distribution_suffix,
   archive_format_eq,
 }
-import std.types { NonEmptyStr, String }
+import std.types { NonEmptyStr, String, List }
 import std.measure { ByteSize, byte_size }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -85,18 +85,6 @@ fn ollama_reported_version_matches_release(version: String, rel: OllamaBinaryRel
     cited
   }
   version == cited || version == cited_bare
-}
-
-fn ollama_binary_release_for_observed_asset_digest(digest_hex: String) -> OllamaBinaryRelease? {
-  if (ollama_v0_32_9_release.digest.hex as String) == digest_hex {
-    Present { value: ollama_v0_32_9_release }
-  } else if (ollama_v0_32_9_jetpack5_release.digest.hex as String) == digest_hex {
-    Present { value: ollama_v0_32_9_jetpack5_release }
-  } else if (ollama_v0_32_9_jetpack6_release.digest.hex as String) == digest_hex {
-    Present { value: ollama_v0_32_9_jetpack6_release }
-  } else {
-    none
-  }
 }
 
 fn ollama_binary_release_asset_name(binary_release: OllamaBinaryRelease) -> NonEmptyStr {
@@ -178,6 +166,30 @@ data ollama_v0_32_9_jetpack6_release: OllamaBinaryRelease = OllamaBinaryRelease 
   digest: sha256_digest(hex: "1176de03b95800a985598386c18746f7a7fab29ac42a972da68ca33a5aa0e14d" as NonEmptyStr),
   published_at: "2026-08-11T13:23:33Z" as NonEmptyStr,
   byte_size: byte_size(268497998),
+}
+
+data ollama_release_catalog: List<OllamaBinaryRelease> = [
+  ollama_v0_32_9_release,
+  ollama_v0_32_9_jetpack5_release,
+  ollama_v0_32_9_jetpack6_release,
+]
+
+fn ollama_binary_release_for_observed_asset_digest(digest_hex: String) -> OllamaBinaryRelease? {
+  fold(
+    ollama_release_catalog,
+    init: none,
+    f: (acc, rel) => {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if (rel.digest.hex as String) == digest_hex {
+            Present { value: rel }
+          } else {
+            none
+          }
+      }
+    },
+  )
 }
 
 data ollama_required_release: OllamaBinaryRelease = ollama_v0_32_9_release

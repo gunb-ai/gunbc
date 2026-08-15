@@ -86,8 +86,8 @@ import extdeps.tools.sha256sum {
   Sha256VerifyInfraFailure,
 }
 import gunbc.spark_serving_runtime_receipt {
-  SparkServingRuntimeInstallReceipt,
-  write_spark_serving_runtime_install_receipt,
+  SparkServingRuntimeArchiveAdmissionReceipt,
+  write_spark_serving_runtime_archive_admission_receipt,
   spark_serving_runtime_receipt_wire_path,
 }
 
@@ -2405,7 +2405,7 @@ type SparkServingOllamaArchiveAdmission
 
 type SparkServingOllamaRuntimeMaterialization
   = SparkServingOllamaRuntimeMaterialized {
-      receipt: SparkServingRuntimeInstallReceipt
+      receipt: SparkServingRuntimeArchiveAdmissionReceipt
     }
   | SparkServingOllamaRuntimeDownloadRefused {
       locator: NonEmptyStr
@@ -2479,10 +2479,10 @@ fn materialize_spark_serving_ollama_runtime_bundle() -> SparkServingOllamaRuntim
         SparkServingOllamaRuntimeIntegrityRefused { cause: cause }
       }
       SparkServingOllamaArchiveAdmitted { local_path: _, digest_hex } => {
-        let receipt = SparkServingRuntimeInstallReceipt {
+        let receipt = SparkServingRuntimeArchiveAdmissionReceipt {
           release_asset_digest_hex: digest_hex,
         }
-        if write_spark_serving_runtime_install_receipt(receipt: receipt) {
+        if write_spark_serving_runtime_archive_admission_receipt(receipt: receipt) {
           let _ = shell.Remove.RecursiveForce(path: staging.path)
           SparkServingOllamaRuntimeMaterialized { receipt: receipt }
         } else {

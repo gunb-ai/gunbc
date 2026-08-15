@@ -22,11 +22,11 @@ import gunbc.spark_serving_readback_parse {
   spark_serving_readback_field_from_member_lookup,
 }
 
-data spark_serving_runtime_install_receipt_provenance_note: String = "RELEASE-ARCHIVE ADMISSION PROVENANCE — not running-process attestation and not proof of completed runtime install. Records which cited release-asset row the invoking executor admitted via DownloadToFile + SHA-256 verify. Extraction, executable placement, systemd enable, model pull, and per-host delivery are separate #8225 follow-on; this receipt must not be read as claiming they happened. Out-of-band binary replacement leaves the receipt stale while /api/version may still answer — wet observation joins receipt digest with the independently probed version wire via ollama_runtime_closure_digest_for_observed_release."
+data spark_serving_runtime_archive_admission_receipt_provenance_note: String = "RELEASE-ARCHIVE ADMISSION PROVENANCE — not running-process attestation and not proof of completed runtime install. Records which cited release-asset row the invoking executor admitted via DownloadToFile + SHA-256 verify. Extraction, executable placement, systemd enable, model pull, and per-host delivery are separate #8225 follow-on; this receipt must not be read as claiming they happened. Out-of-band binary replacement leaves the receipt stale while /api/version may still answer — wet observation joins receipt digest with the independently probed version wire via ollama_runtime_closure_digest_for_observed_release."
 
-data spark_serving_runtime_receipt_note: String = "Executor-local release-archive admission receipt (carrier name SparkServingRuntimeInstallReceipt is legacy — the write path records archive digest admission only, with no host field because the local write does not establish facts on a remote Spark host). gunbc.package_delivery.materialize_spark_serving_ollama_runtime_bundle writes via write_spark_serving_runtime_install_receipt after digest admission; wet observation reads spark_serving_runtime_receipt_wire_path via spark_serving_runtime_receipt_probe_words over SSH and still requires independent /api/version agreement — never re-derives the cited release-asset digest from desired state alone. Missing or unreadable receipt on an active unit refuses rather than collapsing to SparkServingReadbackAbsent."
+data spark_serving_runtime_archive_admission_receipt_note: String = "Executor-local release-archive admission receipt. gunbc.package_delivery.materialize_spark_serving_ollama_runtime_bundle writes via write_spark_serving_runtime_archive_admission_receipt after digest admission; wet observation reads spark_serving_runtime_receipt_wire_path via spark_serving_runtime_receipt_probe_words over SSH and still requires independent /api/version agreement — never re-derives the cited release-asset digest from desired state alone. Missing or unreadable receipt on an active unit refuses rather than collapsing to SparkServingReadbackAbsent."
 
-type SparkServingRuntimeInstallReceipt {
+type SparkServingRuntimeArchiveAdmissionReceipt {
   release_asset_digest_hex: NonEmptyStr
 }
 
@@ -57,7 +57,7 @@ fn spark_serving_parse_runtime_receipt_json(stdout: String) -> SparkServingReadb
   match parse_json(s: stdout) {
     Absent =>
       SparkServingReadbackRefused {
-        cause: "ollama runtime install receipt is not parseable JSON" as NonEmptyStr,
+        cause: "ollama runtime archive admission receipt is not parseable JSON" as NonEmptyStr,
       }
     Present { value: doc } =>
       spark_serving_readback_field_from_member_lookup(
@@ -76,7 +76,7 @@ fn spark_serving_runtime_receipt_field_from_probe(
   match probe {
     Absent =>
       SparkServingReadbackRefused {
-        cause: "runtime install receipt probe leg did not run" as NonEmptyStr,
+        cause: "runtime archive admission receipt probe leg did not run" as NonEmptyStr,
       }
     Present { value: r } =>
       if r.success {
@@ -84,7 +84,7 @@ fn spark_serving_runtime_receipt_field_from_probe(
       } else {
         SparkServingReadbackRefused {
           cause: join([
-            "runtime install receipt probe failed exit=", to_string(r.exit_code),
+            "runtime archive admission receipt probe failed exit=", to_string(r.exit_code),
             " stderr=", r.stderr,
           ], "") as NonEmptyStr,
         }
@@ -103,8 +103,8 @@ fn ensure_spark_serving_runtime_receipt_parent_dir() -> Bool {
   shell.Mkdir.Parents(path: spark_serving_runtime_receipt_parent_path()).success
 }
 
-fn spark_serving_runtime_install_receipt_json(
-  receipt: SparkServingRuntimeInstallReceipt,
+fn spark_serving_runtime_archive_admission_receipt_json(
+  receipt: SparkServingRuntimeArchiveAdmissionReceipt,
 ) -> String {
   serialize_json(v: JsonObject {
     members: [
@@ -116,30 +116,30 @@ fn spark_serving_runtime_install_receipt_json(
   })
 }
 
-fn write_spark_serving_runtime_install_receipt_at_path(
+fn write_spark_serving_runtime_archive_admission_receipt_at_path(
   path: FilePath,
-  receipt: SparkServingRuntimeInstallReceipt,
+  receipt: SparkServingRuntimeArchiveAdmissionReceipt,
 ) -> Bool {
   Filesystem.Write(
     path: path as String,
-    content: spark_serving_runtime_install_receipt_json(receipt: receipt),
+    content: spark_serving_runtime_archive_admission_receipt_json(receipt: receipt),
   ).success
 }
 
-fn write_spark_serving_runtime_install_receipt(
-  receipt: SparkServingRuntimeInstallReceipt,
+fn write_spark_serving_runtime_archive_admission_receipt(
+  receipt: SparkServingRuntimeArchiveAdmissionReceipt,
 ) -> Bool {
   if ensure_spark_serving_runtime_receipt_parent_dir() == false {
     false
   } else {
-    write_spark_serving_runtime_install_receipt_at_path(
+    write_spark_serving_runtime_archive_admission_receipt_at_path(
       path: spark_serving_runtime_receipt_wire_path(),
       receipt: receipt,
     )
   }
 }
 
-fn read_spark_serving_runtime_install_receipt_bytes_at_path(path: FilePath) -> String? {
+fn read_spark_serving_runtime_archive_admission_receipt_bytes_at_path(path: FilePath) -> String? {
   let read = Filesystem.Read(path: path as String)
   if read.success == false {
     none
@@ -153,8 +153,8 @@ fn read_spark_serving_runtime_install_receipt_bytes_at_path(path: FilePath) -> S
   }
 }
 
-fn read_spark_serving_runtime_install_receipt_bytes() -> String? {
-  read_spark_serving_runtime_install_receipt_bytes_at_path(
+fn read_spark_serving_runtime_archive_admission_receipt_bytes() -> String? {
+  read_spark_serving_runtime_archive_admission_receipt_bytes_at_path(
     path: spark_serving_runtime_receipt_wire_path(),
   )
 }
