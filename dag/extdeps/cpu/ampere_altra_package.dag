@@ -106,9 +106,145 @@ type PackageContact {
   function: ContactElectricalFunction
 }
 
-// ProcessorContact is the motherboard-lane name for a package land row; the electrical
-// classification lives on PackageContact because the socket/package authority owns the map.
-type ProcessorContact = PackageContact
+// One Table 4 row before classification: the datasheet names a land and its default signal.
+type Table4PinRow {
+  designator: NonEmptyStr
+  signal_name: NonEmptyStr
+}
+
+data power_supply_signal_prefixes: List<NonEmptyStr> = [
+  "VDD",
+  "VCC",
+  "VPP",
+  "VREF",
+  "VTT",
+  "VREG",
+  "PVDD",
+  "AVDD",
+  "DVDD",
+  "VDDQ",
+  "VDD18",
+  "VDDH",
+  "VDDP",
+  "VDD_",
+]
+
+fn signal_has_power_supply_prefix(signal: NonEmptyStr) -> Bool {
+  fold(power_supply_signal_prefixes, init: false, f: fn(acc, prefix) {
+    acc || starts_with(s: signal as String, prefix: prefix as String)
+  })
+}
+
+fn signal_is_reserved_name(signal: NonEmptyStr) -> Bool {
+  starts_with(s: signal as String, prefix: "RESERVED")
+    || starts_with(s: signal as String, prefix: "RFU")
+}
+
+fn signal_is_power_return_name(signal: NonEmptyStr) -> Bool {
+  (signal as String) == "VSS"
+    || (signal as String) == "GND"
+    || starts_with(s: signal as String, prefix: "VSS_")
+}
+
+fn signal_is_reference_name(signal: NonEmptyStr) -> Bool {
+  (signal as String) == "AGND" || (signal as String) == "DGND"
+}
+
+fn signal_has_positive_polarity_suffix(signal: NonEmptyStr) -> Bool {
+  ends_with(s: signal as String, suffix: "_P")
+}
+
+fn signal_has_negative_polarity_suffix(signal: NonEmptyStr) -> Bool {
+  ends_with(s: signal as String, suffix: "_N")
+}
+
+fn differential_pair_base_name(signal: NonEmptyStr) -> NonEmptyStr? {
+  if signal_has_positive_polarity_suffix(signal: signal) || signal_has_negative_polarity_suffix(signal: signal) {
+    Present {
+      value: substring(
+        s: signal as String,
+        start: 0,
+        end: (signal as String).length() - 2,
+      ) as NonEmptyStr,
+    }
+  } else {
+    none
+  }
+}
+
+type DifferentialPolarityScan {
+  has_positive: Bool
+  has_negative: Bool
+}
+
+fn scan_table4_differential_polarities(rows: List<Table4PinRow>) -> Map<NonEmptyStr, DifferentialPolarityScan> {
+  fold(rows, init: empty_map(), f: fn(acc, row) {
+    match differential_pair_base_name(signal: row.signal_name) {
+      Absent => acc
+      Present { value: base } => {
+        let prior = match map_get(acc, base) {
+          Present { value: scan } => scan
+          Absent => DifferentialPolarityScan { has_positive: false, has_negative: false }
+        }
+        let updated = if signal_has_positive_polarity_suffix(signal: row.signal_name) {
+          DifferentialPolarityScan { has_positive: true, has_negative: prior.has_negative }
+        } else {
+          DifferentialPolarityScan { has_positive: prior.has_positive, has_negative: true }
+        }
+        map_insert(acc, base, updated)
+      }
+    }
+  })
+}
+
+fn differential_pair_is_complete(scan: DifferentialPolarityScan) -> Bool {
+  scan.has_positive && scan.has_negative
+}
+
+fn classify_table4_signal(
+  signal: NonEmptyStr,
+  polarities: Map<NonEmptyStr, DifferentialPolarityScan>
+) -> ContactElectricalFunction {
+  if signal_is_reserved_name(signal: signal) {
+    ReservedContact
+  } else if (signal as String) == "NC" {
+    NoConnectContact
+  } else if signal_is_power_return_name(signal: signal) {
+    PowerReturnContact
+  } else if signal_is_reference_name(signal: signal) {
+    SignalReferenceContact
+  } else if signal_has_power_supply_prefix(signal: signal) {
+    PowerSupplyContact
+  } else {
+    match differential_pair_base_name(signal: signal) {
+      Absent => SingleEndedSignalContact
+      Present { value: base } => match map_get(polarities, base) {
+        Present { value: scan } =>
+          if differential_pair_is_complete(scan: scan) {
+            DifferentialPairMemberContact { pair: base }
+          } else {
+            SingleEndedSignalContact
+          }
+        Absent => SingleEndedSignalContact
+      }
+    }
+  }
+}
+
+fn table4_row_to_contact(
+  row: Table4PinRow,
+  polarities: Map<NonEmptyStr, DifferentialPolarityScan>
+) -> PackageContact {
+  PackageContact {
+    designator: row.designator,
+    function: classify_table4_signal(signal: row.signal_name, polarities: polarities),
+  }
+}
+
+fn contacts_from_table4(rows: List<Table4PinRow>) -> List<PackageContact> {
+  let polarities = scan_table4_differential_polarities(rows: rows)
+  rows |> map(row => table4_row_to_contact(row: row, polarities: polarities))
+}
 
 type PackageContactMap {
   socket: CpuSocket

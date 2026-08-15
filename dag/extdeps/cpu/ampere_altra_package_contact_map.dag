@@ -10,15 +10,17 @@ import extdeps.cpu.ampere_altra_package {
 }
 import extdeps.cpu.ampere_altra_package_contacts { altra_package_contacts }
 
-data altra_package_contact_map: PackageContactMap = PackageContactMap {
-  socket: altra_fclga_socket,
-  contacts: altra_package_contacts,
-  authority: ampere_altra_rev_a1_datasheet_authority,
+fn altra_package_contact_map() -> PackageContactMap {
+  PackageContactMap {
+    socket: altra_fclga_socket,
+    contacts: altra_package_contacts(),
+    authority: ampere_altra_rev_a1_datasheet_authority,
+  }
 }
 
 fn altra_contact_map_standing() -> PackageContactMapStanding {
   admit_package_contact_map(
-    map: altra_package_contact_map,
+    map: altra_package_contact_map(),
     expected: altra_declared_contact_count()
   )
 }
