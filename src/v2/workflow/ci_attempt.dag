@@ -1,12 +1,22 @@
 module v2.workflow.ci_attempt
 
 import std.measure { ByteSize, Millisecond, byte_size }
-import v2.std.algebra { contains, fold_list, length, list_snoc_item }
+import std.algebra { Cons }
+import v2.std.algebra { contains, fold_list, length, list_append, list_reverse }
 import v2.std.collection { List }
 import v2.std.dependency { BarrierBefore, DependencyView, ResourceDependsOn }
 import v2.std.logic { Bool }
 import std.computation_identity { ComputationIdentity, identity_permits_share }
-import v2.std.node { combine_hash, Hash, Node, Symbol, symbol_identity_digest }
+import v2.std.node {
+  Atom,
+  combine_hash,
+  Hash,
+  Node,
+  Symbol,
+  symbol_identity_digest,
+  SyntheticOccurrence,
+  TypeNode
+}
 import v2.std.text { String }
 import v2.workflow.executor {
   ExecutorBatch,
@@ -301,11 +311,17 @@ fn ci_node_to_node(node: CiNode) -> Node {
   }
 }
 
+fn prepend_node(acc: List<Node>, item: Node) -> List<Node> {
+  Cons { head: item, tail: acc }
+}
+
 fn ci_nodes_to_nodes(nodes: List<CiNode>) -> List<Node> {
-  fold_list(
-    xs: nodes,
-    empty: ci_no_nodes,
-    cons: fn(acc, n) { list_snoc_item(xs: acc, item: ci_node_to_node(node: n)) }
+  list_reverse(
+    xs: fold_list(
+      xs: nodes,
+      empty: ci_no_nodes,
+      cons: fn(acc, n) { prepend_node(acc: acc, item: ci_node_to_node(node: n)) }
+    )
   )
 }
 
@@ -393,19 +409,31 @@ type PairScan {
   later: List<CiNode>
 }
 
+// Both folds below accumulate by PREPEND with one reversal at the end. Appending an item to
+// the end of a linked list copies the list, so a snoc-per-row fold is quadratic in the row
+// count -- the cost shape DESIGN section 6 says is always fixed regardless of the realized n,
+// and the same shape this change removed from the sibling manifest fold, where it was fatal.
+fn prepend_ci_node(acc: List<CiNode>, item: CiNode) -> List<CiNode> {
+  Cons { head: item, tail: acc }
+}
+
+fn prepend_dependency(acc: List<DependencyView>, item: DependencyView) -> List<DependencyView> {
+  Cons { head: item, tail: acc }
+}
+
 fn nodes_after(nodes: List<CiNode>, after: Symbol) -> List<CiNode> {
   let scan = fold_list(
     xs: nodes,
     empty: PairScan { seen: false, later: ci_no_ci_nodes },
     cons: fn(acc, n) {
       if acc.seen {
-        PairScan { seen: true, later: list_snoc_item(xs: acc.later, item: n) }
+        PairScan { seen: true, later: prepend_ci_node(acc: acc.later, item: n) }
       } else {
         PairScan { seen: n.identity == after, later: acc.later }
       }
     }
   )
-  scan.later
+  list_reverse(xs: scan.later)
 }
 
 fn conflict_edges_for(
@@ -418,7 +446,7 @@ fn conflict_edges_for(
     empty: acc,
     cons: fn(edges, right) {
       if claims_conflict(left: left, right: right) {
-        list_snoc_item(xs: edges, item: ci_dependency(source: left, dependent: right))
+        prepend_dependency(acc: edges, item: ci_dependency(source: left, dependent: right))
       } else {
         edges
       }
@@ -459,7 +487,10 @@ fn ci_schedule(
 ) -> CiScheduleStanding {
   match parallel_executor_plan_from_dependencies(
     nodes: ci_plan_nodes(plan_nodes: plan_nodes),
-    dependencies: concat(dependencies, derived_conflict_edges(plan_nodes: plan_nodes)),
+    dependencies: list_append(
+      left: dependencies,
+      right: derived_conflict_edges(plan_nodes: plan_nodes)
+    ),
     scheduled: ci_no_nodes
   ) {
     ExecutorRunComplete { batches: bs, scheduled: _ } => CiScheduleComplete { batches: bs }
@@ -572,13 +603,23 @@ fn admit_materialization(
   }
 }
 
+// The arms of this match answer either the accumulator or a prepend, and a bare `Cons` does
+// not unify with a `List<T>`-typed arm -- so the construction is named once, where the declared
+// return type is what the literal is checked against.
+fn prepend_materialized(
+  acc: List<MaterializedKey>,
+  item: MaterializedKey
+) -> List<MaterializedKey> {
+  Cons { head: item, tail: acc }
+}
+
 fn record_materialization(
   live: List<MaterializedKey>,
   standing: MaterializationStanding
 ) -> List<MaterializedKey> {
   match standing {
     MaterializedOnce { key: k, producer: p } =>
-      list_snoc_item(xs: live, item: MaterializedKey { key: k, producer: p })
+      prepend_materialized(acc: live, item: MaterializedKey { key: k, producer: p })
     SharedFrom { key: _, producer: _, consumer: _ } => live
     RefusedDuplicateRecompute {
       key: _,
@@ -611,11 +652,17 @@ type LedgerReconciliation
   | LedgerSurplus { node_identity: Symbol }
   | LedgerDuplicate { node_identity: Symbol }
 
+fn prepend_symbol(acc: List<Symbol>, item: Symbol) -> List<Symbol> {
+  Cons { head: item, tail: acc }
+}
+
 fn receipt_identities(receipts: List<CiNodeReceipt>) -> List<Symbol> {
-  fold_list(
-    xs: receipts,
-    empty: ci_no_symbols,
-    cons: fn(acc, r) { list_snoc_item(xs: acc, item: r.node_identity) }
+  list_reverse(
+    xs: fold_list(
+      xs: receipts,
+      empty: ci_no_symbols,
+      cons: fn(acc, r) { prepend_symbol(acc: acc, item: r.node_identity) }
+    )
   )
 }
 
