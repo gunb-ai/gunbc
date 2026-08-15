@@ -21,9 +21,6 @@ import extdeps.cpu_attachment.ilm4926 {
   ilm4926,
   ilm4926_resolution_obligations,
 }
-import extdeps.cpu.ampere_altra_platform_hw_design.subject {
-  altra_platform_hw_design_subject_authority_anchor,
-}
 import extdeps.vendor.ampere { ampere_customer_reference_boards_authority }
 
 // SIX THINGS BETWEEN A PROCESSOR DIE AND A BOARD, AND THEY ARE NOT ONE THING. The processor
@@ -201,12 +198,12 @@ data socket_board_termination_standing: AttachmentLayerStanding = AttachmentLaye
   },
 }
 
-// THE ONE THAT MATTERS MOST, and the one that looks most available. The board land pattern is the
-// SOCKET vendor's recommended pad array, not the processor's underside. THE FIGURE 3 ACCOUNT IS
-// PROJECTED FROM extdeps.cpu_attachment.ilm4926 ilm4926_resolution_obligations.board_land_pattern
-// rather than restated here: the platform specification cites separate package-outline and socket
-// drawings on Figure 3, the socket land pattern is drawn rather than written in running text, and
-// neither geometry is transcribed in this repository yet.
+// THE ONE THAT MATTERS MOST. The board land pattern is the SOCKET vendor's recommended pad array,
+// not the processor's underside. PROJECTED FROM extdeps.cpu_attachment.ilm4926
+// ilm4926_resolution_obligations.board_land_pattern rather than restated here: a complete read of
+// the public platform specification found no board-side land pattern in any section, and sections
+// 4.2.2 and 4.3.2 name Altra PCB Layout Guidelines on Customer Connect as the authority — access-
+// gated, not a drawing to read in the public document.
 data board_land_pattern_standing: AttachmentLayerStanding = AttachmentLayerStanding {
   layer: BoardLandPatternLayer,
   fact: match ilm4926_resolution_obligations.board_land_pattern {
@@ -222,14 +219,10 @@ data board_land_pattern_standing: AttachmentLayerStanding = AttachmentLayerStand
     DesignationFactUnresolved { reason: r, next_authority_to_consult: next } =>
       match next {
         Present { value: a } =>
-          if a.uri.locator == altra_platform_hw_design_subject_authority_anchor.uri.locator {
-            FactStatedOnlyInFigure {
-              figure: "Figure 3",
-              what_is_drawn: concat(
-                "socket board-side land pattern for the ",
-                ilm4926.designator as String,
-                " attachment; the platform specification cites separate package-outline and socket drawings on this figure and neither geometry is transcribed in this repository",
-              ),
+          if a.uri.locator == ampere_customer_reference_boards_authority.uri.locator {
+            FactAccessGated {
+              subject: "Altra PCB Layout Guidelines — the board-side reference layout, named by the public platform specification sections 4.2.2 and 4.3.2 as the authority for it",
+              access_route: ampere_customer_reference_boards_authority,
             }
           } else {
             FactUnresolved { what_is_missing: r }
@@ -239,7 +232,7 @@ data board_land_pattern_standing: AttachmentLayerStanding = AttachmentLayerStand
       }
   },
   carriage: CarriageNotApplicable {
-    because: "no fact is established for this layer yet, so there is nothing to decide carriage for; the document itself is public and permitted, so nothing legal blocks this layer",
+    because: "the fact is behind commercial access, so its carriage is governed by the access terms and is not a decision this repository takes separately",
   },
 }
 

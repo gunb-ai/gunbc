@@ -8,9 +8,7 @@ import extdeps.cpu.ampere {
   ampere_altra_rev_a1_datasheet_authority,
 }
 import extdeps.ocp.mt_jade.subject { mt_jade_subject_authority_anchor }
-import extdeps.cpu.ampere_altra_platform_hw_design.subject {
-  altra_platform_hw_design_subject_authority_anchor,
-}
+import extdeps.vendor.ampere { ampere_customer_reference_boards_authority }
 
 // THE DATASHEET LOCATORS ARE CONSUMED, NOT RE-AUTHORED (review 52024). Both
 // Ampere datasheet anchors already exist in extdeps.cpu.ampere, so these are
@@ -184,8 +182,8 @@ data ilm4926_resolution_obligations: DesignationResolutionObligations = Designat
     next_authority_to_consult: none,
   },
   board_land_pattern: DesignationFactUnresolved {
-    reason: "no cited document states the board-side land pattern for the attachment named ILM4926; the Altra platform hardware design specification cites Figure 3 as carrying both package and socket drawings but neither geometry is transcribed here",
-    next_authority_to_consult: Present { value: altra_platform_hw_design_subject_authority_anchor },
+    reason: "the board-side land pattern for the attachment named ILM4926 is stated in no public document consulted; the Altra platform hardware design specification sections 4.2.2 and 4.3.2 name Altra PCB Layout Guidelines on Ampere Customer Connect as the reference layout authority, and that document is access-gated rather than publicly fetchable — the search for a public land pattern is closed",
+    next_authority_to_consult: Present { value: ampere_customer_reference_boards_authority },
   },
   loading_mechanism_identity: DesignationFactUnresolved {
     reason: "no cited document states whether ILM4926 names the socket body, the independent loading mechanism, or the assembly of both; Ampere datasheets say device seated in ILM4926 socket in a thermal note while ILM plausibly expands to Independent Loading Mechanism",

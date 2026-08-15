@@ -292,7 +292,7 @@ test fn w_the_world_carries_two_established_eleven_unselected_and_one_attachment
         && pcb_unselected_part_count(p: p) == 11
         && pcb_named_attachment_part_unresolved_count(p: p) == 1
         && pcb_missing_document_count(p: p) == 0
-        && pcb_commercial_access_count(p: p) == 0
+        && pcb_commercial_access_count(p: p) == 1
         && pcb_legal_carriage_count(p: p) == 0
         && pcb_population_count(p: p) == 14
   }
@@ -458,7 +458,7 @@ test fn w_subset_bodies_are_not_drawn_as_checked() -> Bool {
 test fn w_the_legend_states_the_cause_populations() -> Bool {
   match scene_or_empty() {
     Absent => false
-    Present { value: s } => string_contains(s: s, pattern: "2 established / 11 unselected / 0 missing-document / 0 commercial-access / 0 legal-carriage / 0 drawing-must-be-read / 1 attachment-part-unresolved / 2 unrealized-function — body layout admitted over established subset only; 12 parts owed")
+    Present { value: s } => string_contains(s: s, pattern: "2 established / 11 unselected / 0 missing-document / 1 commercial-access / 0 legal-carriage / 0 drawing-must-be-read / 1 attachment-part-unresolved / 2 unrealized-function — body layout admitted over established subset only; 12 parts owed")
   }
 }
 
@@ -491,22 +491,19 @@ test fn w_mounting_and_socket_attachment_obligations_appear() -> Bool {
   }
 }
 
-// THE BOARD LAND PATTERN IS FILED AS A DRAWING THAT MUST BE READ. The standing is projected
-// from extdeps.cpu_attachment.ilm4926 ilm4926_resolution_obligations.board_land_pattern, which
-// names the Altra platform hardware design specification Figure 3 as carrying separate package
-// and socket drawings; the socket land pattern is on that figure and is not transcribed here.
-test fn w_the_board_land_pattern_requires_reading_figure_3() -> Bool {
+// THE BOARD LAND PATTERN IS BEHIND A COMMERCIAL GATE. The standing is projected from
+// extdeps.cpu_attachment.ilm4926 ilm4926_resolution_obligations.board_land_pattern, which names
+// Altra PCB Layout Guidelines on Customer Connect as the authority (platform spec §4.2.2/4.3.2).
+test fn w_the_board_land_pattern_is_behind_a_commercial_gate() -> Bool {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
       fold(pcb_world_physical(w: w).attachment_obligations, init: false, f: fn(acc, a) {
         acc || match a.cause {
-          DrawingMustBeRead { figure: f, what_is_drawn: d } =>
-            (a.layer as String) == "board land pattern"
-              && (f as String) == "Figure 3"
-              && string_contains(s: d as String, pattern: ilm4926.designator as String)
+          CommercialAccess { subject: sub } =>
+            (a.layer as String) == "board land pattern" && (sub as String) != ""
+          DrawingMustBeRead { figure: _, what_is_drawn: _ } => false
           MissingDocument { what_is_missing: _ } => false
-          CommercialAccess { subject: _ } => false
           LegalCarriage { reason: _ } => false
           UnselectedPart { because: _ } => false
           StandingIsSelfContradictory { what_is_wrong: _ } => false
