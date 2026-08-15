@@ -1,0 +1,51 @@
+module test.claim.altra_contact_map_witness
+
+import std.types { Bool }
+import extdeps.cpu.ampere_altra_package {
+  AllDifferentialPairsComplete,
+  IncompleteDifferentialPair,
+  PackageContactMapAdmitted,
+  altra_declared_contact_count,
+  altra_pin_summary_total,
+  altra_power_and_ground_pin_count,
+  altra_reserved_pin_count,
+  altra_signal_pin_count,
+  classified_power_and_ground_pin_count,
+  classified_reserved_pin_count,
+  classified_signal_pin_count,
+  differential_pair_standing,
+}
+import extdeps.cpu.ampere_altra_package_contact_map {
+  altra_contact_map_standing,
+  altra_package_contact_map,
+}
+import extdeps.cpu.ampere_altra_package_contacts { altra_package_contacts }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn w_ingested_contact_map_admits_at_declared_population() -> Bool {
+  match altra_contact_map_standing() {
+    PackageContactMapAdmitted { resolved: n } => n == altra_declared_contact_count()
+    _ => false
+  }
+}
+
+// THE TABLE-5 JOIN: classified rows from the ingested map must cross-foot the pin-summary
+// authority carried beside them, not merely share the same total.
+test fn w_classified_population_cross_foots_pin_summary() -> Bool {
+  classified_signal_pin_count(contacts: altra_package_contacts) == altra_signal_pin_count
+    && classified_power_and_ground_pin_count(contacts: altra_package_contacts) == altra_power_and_ground_pin_count
+    && classified_reserved_pin_count(contacts: altra_package_contacts) == altra_reserved_pin_count
+    && altra_pin_summary_total() == altra_declared_contact_count()
+}
+
+// RED CONTROL: differential-pair membership is a law on the ingested map, not a naming guess at
+// transcription time — dropping one leg of a pair must refuse here even when the population
+// count still reads 4926.
+test fn w_differential_pairs_are_complete_in_the_ingested_map() -> Bool {
+  match differential_pair_standing(contacts: altra_package_contact_map.contacts) {
+    AllDifferentialPairsComplete => true
+    IncompleteDifferentialPair { pair: _, member_count: _ } => false
+  }
+}

@@ -106,6 +106,10 @@ type PackageContact {
   function: ContactElectricalFunction
 }
 
+// ProcessorContact is the motherboard-lane name for a package land row; the electrical
+// classification lives on PackageContact because the socket/package authority owns the map.
+type ProcessorContact = PackageContact
+
 type PackageContactMap {
   socket: CpuSocket
   contacts: List<PackageContact>
@@ -129,6 +133,88 @@ fn contact_designators(map: PackageContactMap) -> List<NonEmptyStr> {
 
 fn contact_count(map: PackageContactMap) -> Int {
   fold(map.contacts, init: 0, f: (acc, _) => acc + 1)
+}
+
+fn classified_signal_pin_count(contacts: List<PackageContact>) -> Int {
+  fold(contacts, init: 0, f: fn(acc, c) {
+    match c.function {
+      SingleEndedSignalContact => acc + 1
+      DifferentialPairMemberContact { pair: _ } => acc + 1
+      _ => acc
+    }
+  })
+}
+
+fn classified_power_and_ground_pin_count(contacts: List<PackageContact>) -> Int {
+  fold(contacts, init: 0, f: fn(acc, c) {
+    match c.function {
+      PowerSupplyContact => acc + 1
+      PowerReturnContact => acc + 1
+      SignalReferenceContact => acc + 1
+      _ => acc
+    }
+  })
+}
+
+fn classified_reserved_pin_count(contacts: List<PackageContact>) -> Int {
+  fold(contacts, init: 0, f: fn(acc, c) {
+    match c.function {
+      ReservedContact => acc + 1
+      _ => acc
+    }
+  })
+}
+
+// A differential pair is COMPLETE when its pair name names exactly two member contacts in the
+// map — one for each polarity the datasheet assigns. Members are classified as differential
+// only when BOTH polarities exist under the same base name, so a singleton _N active-low signal
+// never enters this population.
+type DifferentialPairPopulationScan {
+  counts: Map<NonEmptyStr, Int>
+}
+
+fn scan_differential_pair_population(contacts: List<PackageContact>) -> DifferentialPairPopulationScan {
+  fold(contacts, init: DifferentialPairPopulationScan { counts: empty_map() }, f: fn(acc, c) {
+    match c.function {
+      DifferentialPairMemberContact { pair: p } => {
+        let prior = match map_get(acc.counts, p) {
+          Present { value: n } => n
+          Absent => 0
+        }
+        DifferentialPairPopulationScan {
+          counts: map_insert(acc.counts, p, prior + 1),
+        }
+      }
+      _ => acc
+    }
+  })
+}
+
+type DifferentialPairStanding
+  = AllDifferentialPairsComplete
+  | IncompleteDifferentialPair { pair: NonEmptyStr, member_count: Int }
+
+fn differential_pair_standing(contacts: List<PackageContact>) -> DifferentialPairStanding {
+  let scan = scan_differential_pair_population(contacts: contacts)
+  fold(contacts, init: AllDifferentialPairsComplete, f: fn(acc, c) {
+    match acc {
+      IncompleteDifferentialPair { pair: _, member_count: _ } => acc
+      AllDifferentialPairsComplete => match c.function {
+        DifferentialPairMemberContact { pair: p } => {
+          let members = match map_get(scan.counts, p) {
+            Present { value: n } => n
+            Absent => 0
+          }
+          if members == 2 {
+            AllDifferentialPairsComplete
+          } else {
+            IncompleteDifferentialPair { pair: p, member_count: members }
+          }
+        }
+        _ => AllDifferentialPairsComplete
+      }
+    }
+  })
 }
 
 // TWO LINEAR PASSES, NOT A QUADRATIC ONE. An earlier revision re-counted the whole designator
@@ -188,18 +274,6 @@ fn admit_package_contact_map(map: PackageContactMap, expected: Int) -> PackageCo
         ContactPopulationIncomplete { expected: expected, resolved: resolved }
       }
     }
-  }
-}
-
-// The live standing of the Altra package in THIS repository, today. It still refuses, but for
-// the correct reason and to the correct owner: the map is published and this repository has
-// not ingested it. That is OUR unfinished work, not a business prerequisite, and the two route
-// to different people — which is exactly the distinction the three refusal families exist to
-// preserve, and exactly the one the previous revision got backwards.
-fn altra_contact_map_standing() -> PackageContactMapStanding {
-  ContactMapPubliclyAvailableNotIngested {
-    document: "Ampere Altra Max Rev A1 datasheet Issue 1.15, section 5 Table 4 (pin assignment), section 6 Table 6 (signal descriptions), Table 5 (pin summary)",
-    authority: ampere_altra_rev_a1_datasheet_authority,
   }
 }
 
