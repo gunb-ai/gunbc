@@ -3769,422 +3769,12 @@ pub fn regen_floor_skip_label_for_ci() -> String {
 }
 
 // ---------------------------------------------------------------------------
-// Affected-set SELECTION-CONTROL skip — the selection mechanism applied to itself.
-//
-// `floor_skip_discovery_witness` is the per-PR control suite for affected-set selection:
-// the skip / refuse / divergence arms, the declared-live-tree pin, and the node-frontier
-// precision cases. It ran UNCONDITIONALLY on every PR — 9m02s measured (run 30482171871,
-// job 90679506428, step "Affected-set selection control") against the 80s local basis
-// declared in `gunbc.ci_workflow` `gunbc_ci_selection_control_step_note` — because it is a
-// Rust bin rather than a `.dag` witness and therefore sat outside the very affected-set
-// corpus its own subject matter governs.
-//
-// The suite's verdict is a function of exactly one input set: every `src/v1/**` source (the
-// selection implementation in this file, the witness bin, and the committed stage0 outputs
-// the release binary is built from), the suite's declared `.dag` entries plus their
-// transitive `import` closure through `[src/v2, dag]`, and the Cargo/toolchain build
-// config. A PR touching none of those provably cannot change the suite's verdict.
-//
-// NOT circular. The skip decision is a coarse path / import-closure intersection — the same
-// authority SHAPE `regen_floor_skip_label_for_ci` uses — and never the node-frontier
-// selector the suite exists to verify. A broken selector therefore cannot suppress its own
-// control.
-//
-// Fail-closed on every arm, in TWO different ways — the distinction is load-bearing:
-//   - STRUCTURAL arms (empty diff, ANY departed path, ANY markdown path, any closure
-//     intersection) RUN the suite. The diff was observed, so the answer is computed.
-//   - REFUSAL arms (diff-observation failure, input-closure failure) REFUSE: typed, located,
-//     countable, non-zero exit, no label. They do NOT run the suite, because "I could not
-//     compute what is affected" is a different state from "everything is affected" and has a
-//     different remedy (DESIGN §5 absorbing fallback; the ruling recorded in
-//     `floor_diff_baseline_law`, operator 2026-07-05).
-// Corrected after review 44778 caught this comment still claiming the failure arms RUN — the
-// same Rust-side single-authority drift review 44768 fixed in the emitted policy note.
-//
-// RESIDUAL, stated rather than elided, and mirroring the regen precedent's accepted trade
-// exactly: the suite builds its resolve index over the WHOLE of `[src/v2, dag]`, so an
-// unrelated file that breaks index construction is outside this import closure. The
-// mitigation is regen's: the CI shell gates the skip to pull_request events, so push-to-main
-// runs the suite unconditionally and a wrong closure surfaces as a red main within one
-// merge (the one-merge acceptance window, the discovery-flip shape).
-// ---------------------------------------------------------------------------
-
-pub const SELECTION_CONTROL_NOT_AFFECTED_SKIP_LABEL: &str = "selection_control_not_affected_skip";
-pub const RUN_SELECTION_CONTROL_LABEL: &str = "run_selection_control";
-
-// The suite's declared `.dag` surface, one named const per entry. These are the SINGLE
-// authority: `floor_skip_discovery_witness` builds its rosters from them, and the closure
-// below decides whether a diff can affect them. Declaring them here rather than in the bin
-// is what keeps the two from forking — a fixture added to the suite with its own private
-// path literal would be invisible to the skip decision, which is precisely the silent
-// under-run this whole mechanism exists to prevent.
-pub const SELECTION_CONTROL_REALIZATION_SCHEDULE_REL: &str = "dag/std/realization_schedule.dag";
-pub const SELECTION_CONTROL_DOC_REACHABILITY_REL: &str =
-    "dag/test/claim/doc_reachability_witness_test.dag";
-pub const SELECTION_CONTROL_BUDGET_ROSTER_REL: &str =
-    "src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag";
-pub const SELECTION_CONTROL_FALSIFIER_CONTROL_REL: &str =
-    "src/v2/test/fixture/floor_skip/falsifier_divergence_control_test.dag";
-pub const SELECTION_CONTROL_SHARED_HELPER_REL: &str =
-    "src/v2/test/fixture/floor_skip/floor_disc_shared_helper.dag";
-pub const SELECTION_CONTROL_LIVE_TREE_DECLARED_REL: &str =
-    "src/v2/test/fixture/floor_skip/live_tree_declared_test.dag";
-pub const SELECTION_CONTROL_NODE_PRECISE_REL: &str =
-    "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
-pub const SELECTION_CONTROL_FLOOR_RUNNER_REL: &str =
-    "src/v2/workflow/affected_set_floor_runner.dag";
-pub const SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL: &str =
-    "src/v2/workflow/affected_set_floor_runner_test.dag";
-pub const SELECTION_CONTROL_CI_FLOOR_PLAN_REL: &str = "src/v2/workflow/ci_floor_plan.dag";
-
-pub const SELECTION_CONTROL_DECLARED_ENTRIES: &[&str] = &[
-    SELECTION_CONTROL_REALIZATION_SCHEDULE_REL,
-    SELECTION_CONTROL_DOC_REACHABILITY_REL,
-    SELECTION_CONTROL_BUDGET_ROSTER_REL,
-    SELECTION_CONTROL_FALSIFIER_CONTROL_REL,
-    SELECTION_CONTROL_SHARED_HELPER_REL,
-    SELECTION_CONTROL_LIVE_TREE_DECLARED_REL,
-    SELECTION_CONTROL_NODE_PRECISE_REL,
-    SELECTION_CONTROL_FLOOR_RUNNER_REL,
-    SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL,
-    SELECTION_CONTROL_CI_FLOOR_PLAN_REL,
-];
-
-/// The two-entry incident subject for live-read selection controls and P3 A/B parity.
-///
-/// A = the node-precise discriminator fixture (the entry the diff touches).
-/// B = the affected-set floor runner test (the unrelated entry whose closure reaches a
-/// live-read carrier home). B is what the retired predicate made unskippable on any nonempty
-/// `.dag` diff, which is the `2 selected / 1 expected` incident.
-pub fn selection_control_incident_subject_roster() -> Vec<(String, String)> {
-    let ws = workspace_root();
-    vec![
-        (
-            ws.join(SELECTION_CONTROL_NODE_PRECISE_REL)
-                .to_string_lossy()
-                .into_owned(),
-            "floor_disc_witness_a_only_holds".to_string(),
-        ),
-        (
-            ws.join(SELECTION_CONTROL_FLOOR_RUNNER_TEST_REL)
-                .to_string_lossy()
-                .into_owned(),
-            "floor_test_untouched_skips_assumed_green_holds".to_string(),
-        ),
-    ]
-}
-
-/// The suite's source roots — `[src/v2, dag]`, the roots its rosters resolve against.
-/// Single authority for the same reason as the entry consts above.
-pub fn selection_control_source_roots(workspace: &Path) -> Vec<PathBuf> {
-    vec![workspace.join("src/v2"), workspace.join("dag")]
-}
-
-/// Module-path -> every candidate file, over the suite's roots.
-///
-/// Deliberately unlike `regen_build_module_index`, which REFUSES on a duplicate module
-/// path: this keeps all candidates so the closure below is a superset. For a SKIP closure a
-/// superset is the fail-closed direction (more paths in the closure = more PRs run the
-/// suite), whereas regen's error arm is the correct one for regen, whose emit must be
-/// single-valued.
-fn selection_control_module_index(
-    roots: &[PathBuf],
-) -> Result<std::collections::HashMap<String, Vec<PathBuf>>, String> {
-    let mut index: std::collections::HashMap<String, Vec<PathBuf>> =
-        std::collections::HashMap::new();
-    for root in roots {
-        if !root.exists() {
-            return Err(format!("source root does not exist: {}", root.display()));
-        }
-        let mut dag_paths = Vec::new();
-        regen_collect_dag_files(root, &mut dag_paths)?;
-        for path in dag_paths {
-            let content = std::fs::read_to_string(&path)
-                .map_err(|e| format!("read {}: {e}", path.display()))?;
-            if let Some(module_path) = extract_module_path(&content) {
-                index.entry(module_path).or_default().push(path);
-            }
-        }
-    }
-    Ok(index)
-}
-
-/// Every workspace-relative `.dag` path whose content can change the selection-control
-/// suite's verdict: the declared entries plus their transitive `import` closure through
-/// `[src/v2, dag]`, sorted.
-///
-/// 🟡 dissolve-on (two triggers, near then terminal):
-///
-/// NEAR — the import walk here duplicates the shape of `regen_input_sources`'s
-/// walk. They are NOT unified yet because regen's closure is guarded by a byte-identical
-/// oracle (`regen_stage0 --verify`) that this change is not in a position to re-verify, and
-/// the two differ in duplicate policy (refuse vs. superset) and entry selection (whole-root
-/// walk vs. declared list). DISSOLVES WHEN the walk is lifted to one parameterized helper
-/// (duplicate policy + entry source as arguments) and regen's byte oracle re-greens on it.
-///
-/// TERMINAL — owning lane: `docs/plans/affected-set-precompute-pruning.md`, whose **Step 5
-/// "delete Rust parallel"** (NOT STARTED, gated on Step 4) is what retires host-side
-/// selection Rust in favour of the `.dag` authority. This fn and
-/// `selection_control_skip_label_for_ci` are new members of exactly that Rust-parallel set —
-/// a path/import-closure selection decision living in the seed rather than in
-/// `.dag` — so they inherit Step 5's terminal condition. They are ENUMERATED on that roster as
-/// an explicit deferral (the "Step 5 roster — CI skip-decision surfaces" row, added by this
-/// change), which is what makes this a declared, countable seed-retained surface rather than a
-/// silent escape hatch (DESIGN §7). Why deferred rather than modeled now: the decision must run
-/// BEFORE the floor resolves anything — that is its entire purpose — so a `.dag` consumer would
-/// pay the ~100s cold whole-pool resolve the skip exists to avoid; it therefore dissolves with
-/// the persistent content-keyed node store, not on its own schedule.
-///
-/// Receipt bar, per DESIGN §5: this is a scaffold because the decision is *checkable* by
-/// execution — 9 label arms below (7 structural + 2 refusal), discriminating in both
-/// directions, plus 3 bin unit tests.
-pub fn selection_control_input_sources(workspace: &Path) -> Result<Vec<String>, String> {
-    let roots = selection_control_source_roots(workspace);
-    let index = selection_control_module_index(&roots)?;
-    let mut seen: HashSet<String> = HashSet::new();
-    let mut queue: Vec<String> = Vec::new();
-    for rel in SELECTION_CONTROL_DECLARED_ENTRIES {
-        let path = workspace.join(rel);
-        let content = std::fs::read_to_string(&path)
-            .map_err(|e| format!("read declared selection-control entry {rel}: {e}"))?;
-        seen.insert(normalize_repo_path(rel));
-        queue.push(content);
-    }
-    while let Some(content) = queue.pop() {
-        for module_path in extract_import_paths(&content) {
-            let Some(candidates) = index.get(&module_path) else {
-                continue;
-            };
-            for path in candidates {
-                let rel = normalize_repo_path(&regen_workspace_relpath(path, workspace));
-                if !seen.insert(rel) {
-                    continue;
-                }
-                let file_content = std::fs::read_to_string(path)
-                    .map_err(|e| format!("read imported module {}: {e}", path.display()))?;
-                queue.push(file_content);
-            }
-        }
-    }
-    let mut result: Vec<String> = seen.into_iter().collect();
-    result.sort();
-    Ok(result)
-}
-
-/// Does a diff-changed path belong to the selection-control input surface?
-fn selection_control_path_affects_suite(changed: &str, dag_closure: &HashSet<String>) -> bool {
-    let p = normalize_repo_path(changed);
-    // src/v1/** = the selection implementation (this file's discovery / affected-set /
-    // node-frontier paths), the witness bin itself, and every committed stage0 output the
-    // release binary is built from.
-    if p.starts_with("src/v1/") {
-        return true;
-    }
-    // Cargo/toolchain build config: the witness binary is built from these (whole-file
-    // matches, no substring), same fail-closed arm as regen's.
-    if p == "Cargo.lock"
-        || p == "Cargo.toml"
-        || p.ends_with("/Cargo.toml")
-        || p == "rust-toolchain.toml"
-        || p == "rust-toolchain"
-        || p == ".cargo/config.toml"
-        || p == ".cargo/config"
-    {
-        return true;
-    }
-    // Markdown: the doc-reachability declared entry (`SELECTION_CONTROL_DOC_REACHABILITY_REL`)
-    // declares `LiveTreeDisposition = ReadsLiveTree` and folds the whole markdown doc graph
-    // (`gunbc.doc_graph_roots.doc_graph_roots_all` — registered plan docs ∪ hand-authored
-    // binds) to decide `doc_graph_has_no_orphan_docs` / `doc_graph_has_no_dangling_links`.
-    // A `.md` add/edit/delete can therefore flip this suite's verdict, and that reach is NOT
-    // discoverable through the `.dag` import walk above — a live-tree read is not an import
-    // edge. So every markdown path runs the suite.
-    //
-    // This is a structural over-approximation computed AS the answer (DESIGN §5: "a
-    // dependency-closure superset is the model's precision frontier, not an absorption"),
-    // not a failure arm that widens — the entry really does read every markdown root, so no
-    // `.md` diff can be proven irrelevant by path.
-    //
-    // FOUND BY REVIEW (review 44682, this PR): the first draft bounded inputs by
-    // `src/v1/**` ∪ dag-import-closure ∪ Cargo config and skipped docs-only diffs, while its
-    // own green control asserted that skip on `docs/plans/example.md` — enshrining the
-    // suppression of exactly the docs-only orphan regression this suite carries per-PR.
-    if p.ends_with(".md") {
-        return true;
-    }
-    dag_closure.contains(&p)
-}
-
-/// Typed cause for a selection-control REFUSAL — the arms where the affected set could not be
-/// computed at all.
-///
-/// DESIGN §5: "can't compute the affected set → rerun the entire suite" is the named absorbing
-/// fallback — ⊤-as-ignorance conflated with ⊤-as-answer. It fails open twice: the deficit's
-/// frequency is zeroed by construction (so it never ranks for fixing), and the cost is
-/// denominated in the corpus rather than the change. The repo already ruled on exactly this
-/// arm: `floor_diff_baseline_law` (src/v2/workflow/floor_diff_observe.dag) records that a
-/// `BaselineRefused` → `NameStatusDiffFail` "HALTS the floor with a typed AFFECTED-SET REFUSAL
-/// (refuses every enrolled row, never widens to a full-corpus run; operator ruling
-/// 2026-07-05)". This enum is that ruling applied to the selection-control step's own skip
-/// decision — FOUND BY REVIEW (review 44745), whose first draft returned the RUN label from
-/// both failure arms and stayed green.
-///
-/// `token()` is the stable, greppable discriminator that makes each refusal COUNTABLE in the
-/// job log, so its frequency is observable and prioritizable rather than absorbed.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SelectionControlRefusalCause {
-    /// The merge-base diff could not be observed (`floor_git_diff_name_status_range` failed).
-    DiffObservationFailed,
-    /// The suite's input closure could not be computed (entry unreadable, import walk failed).
-    InputClosureFailed,
-}
-
-impl SelectionControlRefusalCause {
-    pub fn token(&self) -> &'static str {
-        match self {
-            Self::DiffObservationFailed => "DiffObservationFailed",
-            Self::InputClosureFailed => "InputClosureFailed",
-        }
-    }
-}
-
-/// A typed, located, countable refusal. Carries the cause, the mechanism that could not answer
-/// (`located`), and the underlying detail — everything analysis needs before the line restarts.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SelectionControlSkipRefusal {
-    pub cause: SelectionControlRefusalCause,
-    pub located: &'static str,
-    pub detail: String,
-}
-
-impl SelectionControlSkipRefusal {
-    /// The single-line diagnostic. Stable prefix + `cause=` token so occurrences are countable.
-    pub fn diagnostic(&self) -> String {
-        format!(
-            "SELECTION_CONTROL_REFUSED cause={} at={} detail={} \
-             — the affected set could not be computed, so this step REFUSES rather than \
-             widening to a full run (DESIGN §5 absorbing fallback; operator ruling 2026-07-05, \
-             floor_diff_baseline_law). Analyse the cause before restarting the line.",
-            self.cause.token(),
-            self.located,
-            self.detail
-        )
-    }
-}
-
-/// CI label for the affected-set selection-control step's skip arm.
-///
-/// `Ok(selection_control_not_affected_skip)` iff the merge-base diff touches no input of the
-/// control suite; `Ok(run_selection_control)` on any intersection, empty diff, or ANY departed
-/// path — those are STRUCTURAL answers, computed from an observed diff.
-///
-/// `Err(SelectionControlSkipRefusal)` when the affected set could not be computed at all
-/// (diff observation or closure failure). Those arms REFUSE rather than widening to a run:
-/// see `SelectionControlRefusalCause` for the §5 reasoning and the 2026-07-05 ruling. The
-/// distinction is the whole point — "everything is affected" and "I could not compute what is
-/// affected" are different states with different remedies, and only the first may be answered
-/// with a label.
-///
-/// This computes the decision only; the CI shell gates the skip to pull_request events, so
-/// push-to-main runs the suite unconditionally as the cold control.
-pub fn selection_control_skip_label_for_ci() -> Result<String, SelectionControlSkipRefusal> {
-    let (changed_paths, departed_paths) = match floor_git_diff_name_status_range() {
-        Ok(v) => v,
-        Err(detail) => {
-            // REFUSE, never widen: "diff unavailable → run everything" is the §5 absorbing
-            // fallback. Returning the RUN label here would keep CI green and zero this
-            // deficit's observed frequency, which is exactly how it never gets fixed.
-            return Err(SelectionControlSkipRefusal {
-                cause: SelectionControlRefusalCause::DiffObservationFailed,
-                located: "cli_run::floor_git_diff_name_status_range \
-                          (src/v2/workflow/floor_diff_observe.dag \
-                          floor_observe_git_diff_name_status_for_ci)",
-                detail,
-            });
-        }
-    };
-    // Empty diff is a STRUCTURAL state, not a failure arm: the observation succeeded and
-    // reported zero changed paths. It is therefore answerable with a label, unlike the
-    // refusals above. It answers RUN (conservative) rather than SKIP because an empty
-    // merge-base diff on a pull_request is degenerate — a PR changes something by definition —
-    // so the honest reading is "this observation tells us nothing useful about THIS PR".
-    //
-    // Noted for the record, because it is adjacent to a ruling: DESIGN's floor-runner receipt
-    // has the empty diff "dissolved into the general disposition, never a special arm"
-    // (operator rulings 2026-07-05). Dissolving it here would make it SKIP (no changed path
-    // can intersect the closure). That is a live question about THIS step rather than the
-    // floor runner, and it moves in the less-checking direction, so it is deliberately not
-    // decided here — flagged for the operator instead of quietly picked.
-    if changed_paths.is_empty() {
-        eprintln!(
-            "selection-control skip: empty diff — run the control suite (degenerate observation \
-             for a pull_request; structural arm, not a refusal)"
-        );
-        return Ok(RUN_SELECTION_CONTROL_LABEL.to_string());
-    }
-    // Departed (deleted / renamed-from) paths: NO carve-out. Two independent causes, which
-    // together leave no departed path provably irrelevant:
-    //   - non-docs: the closure is computed from the CURRENT tree, so a deleted `.dag` file
-    //     that WAS in the suite's closure is invisible to the intersection below;
-    //   - markdown: a deleted doc changes the live doc graph the `ReadsLiveTree`
-    //     doc-reachability entry folds — removing a link target creates a dangling link,
-    //     removing a linker orphans its target. Either flips the suite red.
-    // The regen/compile-clean departed arms exempt `docs/` because markdown is genuinely
-    // outside THEIR closures; it is inside this one (see the `.md` arm in
-    // `selection_control_path_affects_suite`), so copying their carve-out here was the bug.
-    // `min()` rather than `iter().next()`: the set's iteration order is not stable, and this
-    // path is printed into the CI log as the reason. A nondeterministic diagnostic is the
-    // determinism class `v2.lens.determinism` gates on — the arm fires on ANY departed path,
-    // so which one it names must not vary run to run.
-    if let Some(gone) = departed_paths.iter().min() {
-        eprintln!(
-            "selection-control skip: departed path in diff ({}) — run the control suite (current-tree closure cannot see deletions; a departed doc changes the live doc graph)",
-            normalize_repo_path(gone)
-        );
-        return Ok(RUN_SELECTION_CONTROL_LABEL.to_string());
-    }
-    let workspace = workspace_root();
-    let dag_closure: HashSet<String> = match selection_control_input_sources(&workspace) {
-        Ok(sources) => sources.into_iter().collect(),
-        Err(detail) => {
-            // REFUSE, never widen — same §5 arm as the diff-observation failure above. An
-            // unreadable entry or a dead import walk means the input set is UNKNOWN, which is
-            // a different state from "everything is affected" and has a different remedy.
-            return Err(SelectionControlSkipRefusal {
-                cause: SelectionControlRefusalCause::InputClosureFailed,
-                located: "cli_run::selection_control_input_sources",
-                detail,
-            });
-        }
-    };
-    match changed_paths
-        .iter()
-        .find(|p| selection_control_path_affects_suite(p, &dag_closure))
-    {
-        Some(example) => {
-            eprintln!(
-                "selection-control skip: diff intersects the control suite's inputs (e.g. {}) — run the control suite",
-                normalize_repo_path(example)
-            );
-            Ok(RUN_SELECTION_CONTROL_LABEL.to_string())
-        }
-        None => {
-            eprintln!(
-                "selection-control skip: {} changed path(s), none intersect the control suite's input closure (src/v1/** ∪ declared-entry dag import-closure ∪ every .md ∪ Cargo/toolchain config) — the suite's verdict is provably unchanged (push-to-main runs it unconditionally as the cold control)",
-                changed_paths.len()
-            );
-            Ok(SELECTION_CONTROL_NOT_AFFECTED_SKIP_LABEL.to_string())
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Class B import-closure gate affected-set skip (#7835).
 //
 // `run_class_b_import_closure_gate` costs ~2.3 min wall per cold run; skip when the
 // merge-base diff is provably disjoint from the gate's input closure (declared-import
 // pool ∪ witness layer ∪ perturbation fixtures ∪ gate transport modules). Same shape as
-// regen_floor_skip_label_for_ci / selection_control_skip_label_for_ci: skip only on a
+// regen_floor_skip_label_for_ci: skip only on a
 // non-empty diff proven disjoint; run on empty diff, departed non-docs paths, and any
 // observation/closure failure (fail-closed — regen shape: still RUN the gate, but the two
 // failure arms carry grep-countable labels distinct from structural run_class_b_gate).
@@ -4254,12 +3844,41 @@ fn class_b_pool_source_roots(workspace: &Path, pool_roots: &[String]) -> Vec<Pat
     pool_roots.iter().map(|rel| workspace.join(rel)).collect()
 }
 
+/// Module-path -> source-file index over a set of `.dag` source roots.
+///
+/// Named for what it computes rather than for its first caller: it was previously
+/// `selection_control_module_index`, homed with the affected-set selection-control suite that
+/// happened to reach it first, while the Class B import-closure gate below already depended on
+/// it across that seam. The suite is deleted; the index is not, because the question it answers
+/// -- which file declares this module -- is what any import walk needs.
+fn dag_module_index(
+    roots: &[PathBuf],
+) -> Result<std::collections::HashMap<String, Vec<PathBuf>>, String> {
+    let mut index: std::collections::HashMap<String, Vec<PathBuf>> =
+        std::collections::HashMap::new();
+    for root in roots {
+        if !root.exists() {
+            return Err(format!("source root does not exist: {}", root.display()));
+        }
+        let mut dag_paths = Vec::new();
+        regen_collect_dag_files(root, &mut dag_paths)?;
+        for path in dag_paths {
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("read {}: {e}", path.display()))?;
+            if let Some(module_path) = extract_module_path(&content) {
+                index.entry(module_path).or_default().push(path);
+            }
+        }
+    }
+    Ok(index)
+}
+
 fn import_closure_dag_files(
     workspace: &Path,
     source_roots: &[PathBuf],
     seed_entries: &[&str],
 ) -> Result<HashSet<String>, String> {
-    let index = selection_control_module_index(source_roots)?;
+    let index = dag_module_index(source_roots)?;
     let mut seen: HashSet<String> = HashSet::new();
     let mut queue: Vec<String> = Vec::new();
     for rel in seed_entries {
@@ -4323,7 +3942,7 @@ fn collect_repo_files_under_prefix(
 ///
 /// 🟡 dissolve-on (two triggers, near then terminal):
 ///
-/// NEAR — the import walk here duplicates the shape of `selection_control_input_sources` and
+/// NEAR — the import walk here duplicates the shape the deleted selection-control suite used, and
 /// `regen_input_sources`. They are NOT unified yet because regen's closure is guarded by a
 /// byte-identical oracle (`regen_stage0 --verify`) that this change is not in a position to
 /// re-verify, and the three differ in duplicate policy (refuse vs. superset) and entry
@@ -11882,146 +11501,6 @@ fn emit_floor_drain_receipt(
     );
 }
 
-const SELECTION_DEGRADATION_RECEIPT_ENTRY: &str = "dag/gunbc/selection_degradation_receipt.dag";
-
-/// Kept so `gunbc.observation_emit_census` roster hygiene cannot go stale after the
-/// raw `[selection-degradation]` receipt line dissolves into the observation projection.
-#[allow(dead_code)]
-pub const SELECTION_DEGRADATION_CENSUS_MARKER: &str = "[selection-degradation]";
-
-fn node_frontier_selection_mode_tag(mode: NodeFrontierSelectionMode) -> &'static str {
-    match mode {
-        NodeFrontierSelectionMode::Off => "off",
-        NodeFrontierSelectionMode::Applied => "applied",
-        NodeFrontierSelectionMode::PredictOnly => "predict_only",
-    }
-}
-
-/// Measured selection-degradation facts finalized at discovery completion.
-#[derive(Debug, Clone)]
-pub struct SelectionDegradationSnapshot {
-    pub selection_mode_tag: String,
-    pub selected_entry_groups: usize,
-    pub total_entry_groups: usize,
-    pub categorization_unavailable: bool,
-    pub categorization_reason: String,
-}
-
-impl SelectionDegradationSnapshot {
-    pub fn from_summary(selection: NodeFrontierSelectionMode, summary: &DiscoverySummary) -> Self {
-        Self {
-            selection_mode_tag: node_frontier_selection_mode_tag(selection).to_string(),
-            selected_entry_groups: summary.selected_entry_groups,
-            total_entry_groups: summary.total_entry_groups,
-            categorization_unavailable: summary.selection_categorization_reason.is_some(),
-            categorization_reason: summary
-                .selection_categorization_reason
-                .clone()
-                .unwrap_or_default(),
-        }
-    }
-}
-
-fn selection_degradation_interp_ctx(
-    source_roots: &[String],
-) -> Result<(v1_interpreter::InterpContext, String), String> {
-    let entry = resolve_entry_file_under_roots(source_roots, SELECTION_DEGRADATION_RECEIPT_ENTRY)
-        .map_err(|_| {
-        format!(
-            "selection-degradation receipt REFUSED — {SELECTION_DEGRADATION_RECEIPT_ENTRY} \
-                 not found under source roots"
-        )
-    })?;
-    let (graph, indices) = resolve_entry_graph_shared(source_roots, &entry)
-        .map_err(|e| format!("selection-degradation receipt REFUSED — resolve {entry}: {e}"))?;
-    Ok((
-        make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic),
-        entry,
-    ))
-}
-
-fn selection_degradation_dag_args(
-    snapshot: &SelectionDegradationSnapshot,
-) -> Vec<(Option<String>, v1_interpreter::Value)> {
-    vec![
-        (
-            Some("selection_mode_tag".to_string()),
-            v1_interpreter::Value::Str(snapshot.selection_mode_tag.clone()),
-        ),
-        (
-            Some("selected".to_string()),
-            v1_interpreter::Value::Int(snapshot.selected_entry_groups as i64),
-        ),
-        (
-            Some("total".to_string()),
-            v1_interpreter::Value::Int(snapshot.total_entry_groups as i64),
-        ),
-        (
-            Some("categorization_unavailable".to_string()),
-            v1_interpreter::Value::Bool(snapshot.categorization_unavailable),
-        ),
-        (
-            Some("categorization_reason".to_string()),
-            v1_interpreter::Value::Str(snapshot.categorization_reason.clone()),
-        ),
-    ]
-}
-
-fn eval_selection_degradation_fn(
-    source_roots: &[String],
-    fn_name: &str,
-    snapshot: &SelectionDegradationSnapshot,
-) -> Result<String, String> {
-    let (ctx, entry) = selection_degradation_interp_ctx(source_roots)?;
-    match v1_interpreter::run_in_context_with_args(
-        &ctx,
-        fn_name,
-        &selection_degradation_dag_args(snapshot),
-        false,
-    ) {
-        Ok(v1_interpreter::Value::Str(line)) => Ok(line),
-        Ok(other) => Err(format!(
-            "selection-degradation receipt REFUSED — {fn_name} returned `{}`, expected Str \
-             (entry {entry})",
-            ctx.format_value(&other)
-        )),
-        Err(e) => Err(format!(
-            "selection-degradation receipt REFUSED — {fn_name} eval: {e}"
-        )),
-    }
-}
-
-/// Bracket-tagged stderr line for discovery completion (also embedded in `[measurement]`).
-pub fn render_selection_degradation_receipt_line(
-    source_roots: &[String],
-    snapshot: &SelectionDegradationSnapshot,
-) -> Result<String, String> {
-    eval_selection_degradation_fn(source_roots, "selection_degradation_receipt_line", snapshot)
-}
-
-/// Key=value body written to `target/floor-selection-degradation-receipt.txt` and appended to
-/// `floor-resolve-receipt.txt`.
-pub fn render_selection_degradation_receipt_body(
-    source_roots: &[String],
-    snapshot: &SelectionDegradationSnapshot,
-) -> Result<String, String> {
-    eval_selection_degradation_fn(source_roots, "selection_degradation_receipt_body", snapshot)
-}
-
-/// P2 floor prep-tax receipt on stderr after every discovery completion.
-pub fn emit_selection_degradation_receipt(
-    source_roots: &[String],
-    selection: NodeFrontierSelectionMode,
-    summary: &DiscoverySummary,
-) {
-    let _ = SELECTION_DEGRADATION_CENSUS_MARKER;
-    let snapshot = SelectionDegradationSnapshot::from_summary(selection, summary);
-    match render_selection_degradation_receipt_line(source_roots, &snapshot) {
-        Ok(line) => eprintln!("{line}"),
-        Err(msg) => eprintln!("{msg}"),
-    }
-}
-
 /// Enforce the host-budget-derived entry cap on the private typed cache. Evictions
 /// are counted and logged — a typed, located diagnostic, never a silent widen.
 /// Victim selection is arbitrary (first `HashMap` key), not LRU or load-aware:
@@ -19180,13 +18659,6 @@ pub struct DiscoveryWitnessOutcome {
     pub execution_leg: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SelectionSkippedDiscoveryRow {
-    pub entry: String,
-    pub function: String,
-    pub provenance: String,
-}
-
 /// A witness row excluded from discovery enrollment (exclusion substring, long lane, …).
 /// Counted and logged at roster build — never a silent skip (§5 deferred-and-detected).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21090,23 +20562,6 @@ fn eprintln_deferred_discovery_rows(rows: &[DeferredDiscoveryRow]) {
     }
 }
 
-/// §5 never-skip tooth: a `ReadsLiveTree` row must never take node-frontier selection skip.
-fn refuse_reads_live_tree_selection_skip(
-    row: &DiscoveryRow,
-    skip_kind: &str,
-) -> Result<(), String> {
-    if row.reads_live_tree {
-        return Err(format!(
-            "NEVER-SKIP REFUSAL cause=ReadsLiveTreeSelectionSkip rows=1 — \
-             `{skip_kind}` would skip {} ({}) but the entry declares (or fail-closed \
-             defaults to) ReadsLiveTree; a live-tree witness must run or refuse loudly, \
-             never be silently selected out (§5; masks memo-wedge class defects when skipped)",
-            row.function, row.entry
-        ));
-    }
-    Ok(())
-}
-
 pub(crate) fn collect_dag_files_tolerant(dir: &Path, out: &mut Vec<PathBuf>) {
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
@@ -22021,17 +21476,6 @@ pub(crate) fn refuse_on_module_graph_read_refusals(
     ))
 }
 
-/// Host realization of std.realization_schedule.NodeFrontierSelection (signed design:
-/// docs/plans/affected-set-differential-falsifier.md). PredictOnly computes would-skip
-/// per row, RECORDS the prediction, and runs the row anyway — the falsifier cadence
-/// compares predictions against cold verdicts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum NodeFrontierSelectionMode {
-    Off,
-    Applied,
-    PredictOnly,
-}
-
 pub struct DiscoveryCorpusOptions {
     pub node_frontier_selection: NodeFrontierSelectionMode,
     /// Module universe that owns executor decisions such as affected-set selection and witness
@@ -22698,7 +22142,6 @@ struct FloorDiffEdits {
     touched_entry_files: HashSet<String>,
 }
 
-const FLOOR_RUNNER_ENTRY: &str = "src/v2/workflow/affected_set_floor_runner.dag";
 const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
 
 // `entry_file_touched_via_dependency_view` (the fn-arrow DependencyView wrapper) was
@@ -24354,7 +23797,6 @@ fn run_discovery_corpus_with_options_inner(
     }
     eprintln_deferred_discovery_rows(&deferred_rows);
     set_phase(FloorPhase::Discovery, "discovery-roster");
-    let selection_enabled = options.node_frontier_selection != NodeFrontierSelectionMode::Off;
     if options.execution_authority_source_roots.is_empty() {
         return Err(
             "discovery execution requires an explicit executor-authority source-root universe"
@@ -24362,57 +23804,6 @@ fn run_discovery_corpus_with_options_inner(
         );
     }
     let execution_authority_is_subject = options.execution_authority_source_roots == source_roots;
-    // No degradation arm: a non-Off node_frontier_selection is a DECLARED capability,
-    // so every input it needs (the git-diff observation, the frontier attribution, the
-    // affected-set runner) must be present — a failure is a loud typed error, never a
-    // silent run-everything fallback. To run without selection, declare the flag false.
-    let diff_observe_started = std::time::Instant::now();
-    let diff_text = if selection_enabled {
-        floor_git_diff_range().map_err(|msg| {
-            format!(
-                "AFFECTED-SET REFUSAL cause=DiffObservationRefusal rows={} — git diff \
-                 observation failed ({msg}); observation failure is the only ignorance \
-                 state (operator ruling 2026-07-05) and refuses every enrolled row rather \
-                 than widening to a full-corpus run (declare node_frontier_selection: \
-                 SelectionOff to run without selection)",
-                rows.len()
-            )
-        })?
-    } else {
-        String::new()
-    };
-    // Path grain (changed_paths, departed_paths) is observed via the typed
-    // `git diff --name-status -z` interface (extdeps.git), not scraped from the
-    // unified diff's `diff --git a/OLD b/NEW` header: name-status is git's own
-    // machine surface for path identity/rename, so it is the single authority —
-    // the unified diff below stays scoped to LINE grain (hunk ranges) only.
-    let (name_status_changed_paths, name_status_departed_paths) =
-        if options.node_frontier_selection != NodeFrontierSelectionMode::Off {
-            floor_git_diff_name_status_range().map_err(|msg| {
-                format!(
-                    "AFFECTED-SET REFUSAL cause=DiffObservationRefusal rows={} — git \
-                     diff --name-status observation failed ({msg}); observation failure \
-                     is the only ignorance state (operator ruling 2026-07-05) and \
-                     refuses every enrolled row rather than widening to a full-corpus \
-                     run (declare node_frontier_selection: SelectionOff to run without \
-                     selection)",
-                    rows.len()
-                )
-            })?
-        } else {
-            (Vec::new(), HashSet::new())
-        };
-    let mut line_ranges_by_file = parse_unified_diff_line_ranges(&diff_text);
-    for path in &name_status_changed_paths {
-        line_ranges_by_file.entry(path.clone()).or_default();
-    }
-    let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
-    let added_paths = parse_unified_diff_added_paths(&diff_text);
-    let changed_paths: Vec<String> = name_status_changed_paths;
-    discovery_phase_totals::add(
-        &discovery_phase_totals::DIFF_OBSERVE_MS,
-        diff_observe_started.elapsed(),
-    );
     // Union-resolve S1 (resolver-graph-major-design.md §7): ONE index for the whole
     // process step on the pump thread — prelude-warmed parse/typed caches instead of a
     // private cold build per consumer. S2a increment C (cross-worker-typecheck-share-
@@ -24443,12 +23834,7 @@ fn run_discovery_corpus_with_options_inner(
     // the post-resolve union so this pre-resolve count stays paired with calibration.
     let preresolve_calibration_started = std::time::Instant::now();
     let pre_resolve_closure_nodes = {
-        let prefix_entries: &[&str] = if selection_enabled && execution_authority_is_subject {
-            &[FLOOR_RUNNER_ENTRY]
-        } else {
-            &[]
-        };
-        let n = roster_import_closure_nodes_pre_resolve(&rows, prefix_entries, &index)?;
+        let n = roster_import_closure_nodes_pre_resolve(&rows, &[], &index)?;
         eprintln!(
             "[calibration] roster_import_closure_nodes={} rows={} (loader both-closure union, pre-resolve, no resolve/typecheck; pairs with the floor cgroup memory.peak steps — on a killed run this line plus the last [gantt] rss_mib sample are the lower-bound receipt)",
             n,
@@ -24460,103 +23846,6 @@ fn run_discovery_corpus_with_options_inner(
         &discovery_phase_totals::PRERESOLVE_CALIBRATION_MS,
         preresolve_calibration_started.elapsed(),
     );
-    // Empty diff is not a state (operator ruling 2026-07-05): an empty touched-path
-    // set flows through the general selection machinery — empty frontier, zero edited
-    // fns — so every row takes the normal not-affected skip. Disabling selection here
-    // was the run-everything absorbing arm.
-    let frontier_attribution_started = std::time::Instant::now();
-    let (skip_enabled, diff_edits) = if selection_enabled {
-        match floor_diff_edits_from_line_ranges(
-            &index,
-            &line_ranges_by_file,
-            &changed_new_lines_by_file,
-            &name_status_departed_paths,
-            &added_paths,
-        ) {
-            Ok(edits) => (true, edits),
-            Err(msg) => {
-                return Err(format!(
-                    "node-frontier population failed ({msg}) — the diff-to-declaration \
-                     attribution is declared selection machinery; no silent full-corpus \
-                     fallback"
-                ));
-            }
-        }
-    } else {
-        (false, FloorDiffEdits::default())
-    };
-    discovery_phase_totals::add(
-        &discovery_phase_totals::FRONTIER_ATTRIBUTION_MS,
-        frontier_attribution_started.elapsed(),
-    );
-    let runner_resolve_started = std::time::Instant::now();
-    let floor_runner_ctx = if selection_enabled {
-        let resolved = if execution_authority_is_subject {
-            // Ordinary discovery consumes one source-root authority, so preserve the shared
-            // prefix resolve and its measured retention behavior.
-            resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY)
-        } else {
-            // Scoped discovery keeps its subject universe narrow. The selector is an enclosing
-            // walk authority and resolves against that walk's roots without entering the subject
-            // index, digest, or clamp population.
-            resolve_entry_graph(
-                &options.execution_authority_source_roots,
-                FLOOR_RUNNER_ENTRY,
-            )
-        };
-        match resolved {
-            Ok((graph, source_indices)) => {
-                Some(make_eval_context(&graph, source_indices, execution_mode))
-            }
-            Err(msg) => {
-                return Err(format!(
-                    "floor runner resolve failed ({msg}) — a non-Off node_frontier_selection \
-                     declares the affected-set machinery ({FLOOR_RUNNER_ENTRY}) and it \
-                     must resolve; no silent full-corpus fallback"
-                ));
-            }
-        }
-    } else {
-        None
-    };
-    discovery_phase_totals::add(
-        &discovery_phase_totals::RUNNER_RESOLVE_MS,
-        runner_resolve_started.elapsed(),
-    );
-    let skip_precompute = if skip_enabled {
-        let live_row_count = discovery_rows_live_tree_count(&rows);
-        match floor_runner_ctx.as_ref() {
-            Some(ctx) => {
-                let touched_runtime_dependency_entry_count =
-                    discovery_rows_runtime_dependency_touched_count(
-                        &rows,
-                        &index.module_graph_facts,
-                        &changed_paths,
-                    );
-                let precompute = call_floor_row_precompute_would_skip(
-                    ctx,
-                    live_row_count,
-                    &changed_paths,
-                    diff_edits.overlapping_data_items.len(),
-                    diff_edits.edited_test_fns.len(),
-                    diff_edits.touched_entry_files.len(),
-                    touched_runtime_dependency_entry_count,
-                );
-                match precompute {
-                    Ok(skip) => skip,
-                    Err(msg) => {
-                        return Err(format!(
-                            "floor precompute_would_skip failed ({msg}) — declared selection \
-                             machinery must evaluate; no silent fallback"
-                        ));
-                    }
-                }
-            }
-            None => false,
-        }
-    } else {
-        false
-    };
     let whole_tree_published_keys = if skip_precompute {
         eprintln!(
             "run_discovery_corpus: skipping whole-tree published-mock precompute (scoped diff, empty node frontier, no edited test fns, no entry-file fn edits)"
@@ -24573,31 +23862,6 @@ fn run_discovery_corpus_with_options_inner(
             }
         }
     };
-    eprintln_affected_set_categorization(
-        options.node_frontier_selection,
-        &rows,
-        &index,
-        &diff_edits,
-        &changed_paths,
-    );
-    let selection_categorization_reason =
-        if options.node_frontier_selection == NodeFrontierSelectionMode::Applied {
-            let declared_paths = index.module_graph_facts.declared_repo_paths();
-            let touched: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
-            match discovery_entry_fast_skip_without_resolve(
-                &rows,
-                &index.module_graph_facts,
-                &declared_paths,
-                &touched,
-                &changed_paths,
-                &diff_edits,
-            ) {
-                Ok(_) => None,
-                Err(e) => Some(e),
-            }
-        } else {
-            None
-        };
     // Derive every leg for the WHOLE roster here, above the width dispatch, while this
     // thread's shared index is warm. At width > 1 the pool hands each worker its own chunk
     // of rows, so priming inside `run_discovery_rows` would build one interpreter context
@@ -24627,11 +23891,6 @@ fn run_discovery_corpus_with_options_inner(
                 &rows,
                 &index,
                 execution_mode,
-                options.node_frontier_selection,
-                &changed_paths,
-                &diff_edits,
-                floor_runner_ctx.as_ref(),
-                execution_authority_is_subject,
                 whole_tree_published_keys.clone(),
                 options.witness_budget_policy(),
                 ShardStyle {
@@ -24704,18 +23963,12 @@ fn run_discovery_corpus_with_options_inner(
                 ));
             let abort = std::sync::Arc::new(AtomicBool::new(false));
             let source_roots_owned = source_roots.to_vec();
-            let execution_authority_roots_owned = options.execution_authority_source_roots.clone();
-            let execution_authority_is_subject_for_workers = execution_authority_is_subject;
-            let selection_for_workers = options.node_frontier_selection;
             let budget_policy_for_workers = options.witness_budget_policy();
             let mut handles = Vec::with_capacity(CONTROLLED_WIDTH);
             for worker_ordinal in 0..CONTROLLED_WIDTH {
                 let queue_for_worker = queue.clone();
                 let abort_for_worker = abort.clone();
                 let roots = source_roots_owned.clone();
-                let execution_authority_roots = execution_authority_roots_owned.clone();
-                let seeds = diff_edits.clone();
-                let paths = changed_paths.clone();
                 let keys = whole_tree_published_keys.clone();
                 let store = cross_worker_store.clone();
                 let arm_shared_for_worker = arm_shared_store;
@@ -24728,32 +23981,11 @@ fn run_discovery_corpus_with_options_inner(
                 handles.push(std::thread::spawn(
                     move || -> Result<Vec<DiscoverySummary>, String> {
                         let index = if arm_shared_for_worker {
-                            let store = store.expect(
-                                "shared typed store armed but cross_worker_store missing",
-                            );
+                            let store = store
+                                .expect("shared typed store armed but cross_worker_store missing");
                             build_multi_entry_index_with_shared_caches(&roots, store)
                         } else {
                             build_multi_entry_index(&roots)
-                        };
-                        let runner = if selection_for_workers != NodeFrontierSelectionMode::Off {
-                            let resolved = if execution_authority_is_subject_for_workers {
-                                resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY)
-                            } else {
-                                resolve_entry_graph(&execution_authority_roots, FLOOR_RUNNER_ENTRY)
-                            };
-                            match resolved {
-                                Ok((graph, source_indices)) => {
-                                    Some(make_eval_context(&graph, source_indices, execution_mode))
-                                }
-                                Err(msg) => {
-                                    abort_for_worker.store(true, Ordering::SeqCst);
-                                    return Err(format!(
-                                        "floor runner resolve failed in controlled-width worker ({msg})"
-                                    ));
-                                }
-                            }
-                        } else {
-                            None
                         };
                         let mut worker_summaries = Vec::new();
                         loop {
@@ -24768,11 +24000,6 @@ fn run_discovery_corpus_with_options_inner(
                                 &group_rows,
                                 &index,
                                 execution_mode,
-                                selection_for_workers,
-                                &paths,
-                                &seeds,
-                                runner.as_ref(),
-                                execution_authority_is_subject_for_workers,
                                 keys.clone(),
                                 budget_policy_for_workers,
                                 style,
@@ -24900,11 +24127,6 @@ fn run_discovery_corpus_with_options_inner(
                         &group_rows,
                         &index,
                         execution_mode,
-                        options.node_frontier_selection,
-                        &changed_paths,
-                        &diff_edits,
-                        floor_runner_ctx.as_ref(),
-                        execution_authority_is_subject,
                         whole_tree_published_keys.clone(),
                         options.witness_budget_policy(),
                         style,
@@ -25007,9 +24229,6 @@ fn run_discovery_corpus_with_options_inner(
                 ));
             let abort = std::sync::Arc::new(AtomicBool::new(false));
             let source_roots_owned = source_roots.to_vec();
-            let execution_authority_roots_owned = options.execution_authority_source_roots.clone();
-            let execution_authority_is_subject_for_workers = execution_authority_is_subject;
-            let selection_for_workers = options.node_frontier_selection;
             let budget_policy_for_workers = options.witness_budget_policy();
             let mut handles = Vec::new();
             let mut worker_ordinal: usize = 0;
@@ -25028,9 +24247,6 @@ fn run_discovery_corpus_with_options_inner(
                 let abort_for_worker = abort.clone();
                 let governor_for_worker = governor.clone();
                 let roots = source_roots_owned.clone();
-                let execution_authority_roots = execution_authority_roots_owned.clone();
-                let seeds = diff_edits.clone();
-                let paths = changed_paths.clone();
                 let keys = whole_tree_published_keys.clone();
                 let spawn_target_width = governor.current_target_width();
                 let cross_worker_store_for_worker = if spawn_target_width > 1 {
@@ -25068,28 +24284,6 @@ fn run_discovery_corpus_with_options_inner(
                             }
                             None => build_multi_entry_index(&roots),
                         };
-                        let runner = if selection_for_workers != NodeFrontierSelectionMode::Off {
-                            let resolved = if execution_authority_is_subject_for_workers {
-                                resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY)
-                            } else {
-                                resolve_entry_graph(&execution_authority_roots, FLOOR_RUNNER_ENTRY)
-                            };
-                            match resolved {
-                                Ok((graph, source_indices)) => {
-                                    Some(make_eval_context(&graph, source_indices, execution_mode))
-                                }
-                                Err(msg) => {
-                                    abort_for_worker.store(true, Ordering::SeqCst);
-                                    return Err(format!(
-                                        "floor runner resolve failed in worker ({msg}) — declared \
-                                 affected-set machinery must resolve; no silent \
-                                 run-everything fallback"
-                                    ));
-                                }
-                            }
-                        } else {
-                            None
-                        };
                         // The front-loaded admission cost (index build + runner resolve) has
                         // landed and is visible to the creep signals: unblock admission pacing.
                         slot.note_first_cost_paid();
@@ -25110,11 +24304,6 @@ fn run_discovery_corpus_with_options_inner(
                                 &group_rows,
                                 &index,
                                 execution_mode,
-                                selection_for_workers,
-                                &paths,
-                                &seeds,
-                                runner.as_ref(),
-                                execution_authority_is_subject_for_workers,
                                 keys.clone(),
                                 budget_policy_for_workers,
                                 style,
@@ -25594,11 +24783,6 @@ fn run_discovery_rows(
     rows: &[DiscoveryRow],
     index: &MultiEntryIndex,
     execution_mode: v1_interpreter::ExecutionMode,
-    selection: NodeFrontierSelectionMode,
-    changed_paths: &[String],
-    diff_edits: &FloorDiffEdits,
-    floor_runner_ctx: Option<&v1_interpreter::InterpContext>,
-    execution_authority_is_subject: bool,
     whole_tree_published_keys: Option<std::collections::HashSet<String>>,
     budgets: WitnessBudgetPolicy,
     style: ShardStyle,
@@ -38876,225 +38060,6 @@ mod witness_layer_roots_compile_clean_tests {
                 );
             }
         });
-    }
-
-    /// Selection-control skip, the GREEN arm: a diff that touches nothing in the control
-    /// suite's closure skips. Paired with the RUN arms below — that pair is what makes
-    /// this a decision rather than a constant.
-    ///
-    /// The subject is ASSERTED outside the closure rather than assumed: if a new import edge
-    /// or declared entry ever pulls it in, this test panics instead of quietly passing for
-    /// the wrong reason. It is deliberately NOT a `.md` path — markdown is an input through
-    /// the `ReadsLiveTree` doc-reachability entry. The first draft of this test used
-    /// `docs/plans/example.md`, i.e. it asserted the very suppression review 44682 caught.
-    #[test]
-    fn selection_control_skip_skips_on_unrelated_path() {
-        const UNRELATED: &str = "src/v2/lens/machine_shape.dag";
-        let closure = selection_control_input_sources(&workspace_root())
-            .expect("selection-control closure must compute");
-        assert!(
-            !closure.iter().any(|p| p == UNRELATED),
-            "{UNRELATED} entered the suite's input closure — choose a new skip subject; \
-             do not weaken this arm to keep it green"
-        );
-        assert!(
-            !UNRELATED.ends_with(".md"),
-            "the skip subject must not be markdown (markdown always runs the suite)"
-        );
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    &format!("M\\000{UNRELATED}\\000"),
-                );
-                assert_eq!(
-                    selection_control_skip_label_for_ci()
-                        .expect("structural arm must answer with a label, not refuse"),
-                    SELECTION_CONTROL_NOT_AFFECTED_SKIP_LABEL
-                );
-            });
-        });
-    }
-
-    /// RUN arm 1 — a declared entry of the suite is touched.
-    #[test]
-    fn selection_control_skip_runs_on_declared_entry() {
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    "M\\000src/v2/workflow/affected_set_floor_runner.dag\\000",
-                );
-                assert_eq!(
-                    selection_control_skip_label_for_ci()
-                        .expect("structural arm must answer with a label, not refuse"),
-                    RUN_SELECTION_CONTROL_LABEL
-                );
-            });
-        });
-    }
-
-    /// RUN arm 2 — a TRANSITIVELY imported module, not a declared entry. This is the arm
-    /// that proves the import walk is load-bearing: the path is chosen from the computed
-    /// closure at test time, so if the walk ever stopped at the declared entries this test
-    /// would fail to find a subject and panic rather than silently weaken.
-    #[test]
-    fn selection_control_skip_runs_on_transitively_imported_module() {
-        let closure = selection_control_input_sources(&workspace_root())
-            .expect("selection-control closure must compute");
-        let transitive = closure
-            .iter()
-            .find(|p| !SELECTION_CONTROL_DECLARED_ENTRIES.contains(&p.as_str()))
-            .expect("closure must reach past the declared entries (import walk is dead)")
-            .clone();
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    &format!("M\\000{transitive}\\000"),
-                );
-                assert_eq!(
-                    selection_control_skip_label_for_ci()
-                        .expect("structural arm must answer with a label, not refuse"),
-                    RUN_SELECTION_CONTROL_LABEL,
-                    "a transitively imported closure member ({transitive}) must run the suite"
-                );
-            });
-        });
-    }
-
-    /// RUN arm 3 — the `src/v1/**` prefix: the selection implementation and the witness bin
-    /// live there, and neither is reachable through the `.dag` import walk.
-    #[test]
-    fn selection_control_skip_runs_on_src_v1_path() {
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    "M\\000src/v1/stage0/src/cli_run.rs\\000",
-                );
-                assert_eq!(
-                    selection_control_skip_label_for_ci()
-                        .expect("structural arm must answer with a label, not refuse"),
-                    RUN_SELECTION_CONTROL_LABEL
-                );
-            });
-        });
-    }
-
-    /// RUN arm 4 — departed path. The closure is computed from the CURRENT tree, so a
-    /// deletion is invisible to the intersection; the guard discriminates on D, not on
-    /// path. The subject is the SAME path the skip control above modifies, so the pair
-    /// isolates the D/M axis: modified → skip, departed → run.
-    #[test]
-    fn selection_control_skip_runs_on_departed_path() {
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    "D\\000src/v2/lens/machine_shape.dag\\000",
-                );
-                assert_eq!(
-                    selection_control_skip_label_for_ci()
-                        .expect("structural arm must answer with a label, not refuse"),
-                    RUN_SELECTION_CONTROL_LABEL
-                );
-            });
-        });
-    }
-
-    /// RUN arm 5 — a docs-only diff. THE REGRESSION CONTROL for review 44682: the suite's
-    /// `dag/test/claim/doc_reachability_witness_test.dag` entry declares
-    /// `LiveTreeDisposition = ReadsLiveTree` and folds the live markdown doc graph, and the
-    /// suite's own `doc_reachability_runs_on_docs_only_diff` scenario asserts the orphan wall
-    /// is green against the real tree. So a docs-only PR that orphans a doc flips this suite
-    /// red — and the first draft skipped it. Markdown is an input; it runs.
-    #[test]
-    fn selection_control_skip_runs_on_docs_only_diff() {
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    "M\\000docs/plans/example.md\\000",
-                );
-                assert_eq!(
-                    selection_control_skip_label_for_ci()
-                        .expect("structural arm must answer with a label, not refuse"),
-                    RUN_SELECTION_CONTROL_LABEL,
-                    "a docs-only diff must RUN the control suite: its doc-reachability entry \
-                     reads the live doc graph, so markdown changes its verdict"
-                );
-            });
-        });
-    }
-
-    /// RUN arm 6 — a DEPARTED doc. Deletion is the direction the orphan/dangling wall is
-    /// most sensitive to (removing a link target creates a dangling link; removing a linker
-    /// orphans its target), and it is the arm the copied `!starts_with("docs/")` carve-out
-    /// from regen/compile-clean would have skipped.
-    #[test]
-    fn selection_control_skip_runs_on_departed_doc() {
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _ns = EnvGuard::set(
-                    "GUNBC_CI_DIFF_NAME_STATUS",
-                    "D\\000docs/plans/example.md\\000",
-                );
-                assert_eq!(
-                    selection_control_skip_label_for_ci()
-                        .expect("structural arm must answer with a label, not refuse"),
-                    RUN_SELECTION_CONTROL_LABEL,
-                    "a departed doc must RUN the control suite (it changes the live doc graph)"
-                );
-            });
-        });
-    }
-
-    /// REFUSAL arm — the discriminating control for review 44745. An unrecognized git
-    /// `--name-status` status letter makes the modeled observation answer `NameStatusDiffFail`,
-    /// i.e. the affected set is UNKNOWN. The step must REFUSE (typed, located, countable), not
-    /// widen to a run: "can't compute the affected set → rerun everything" is DESIGN §5's named
-    /// absorbing fallback, and `floor_diff_baseline_law` already records the 2026-07-05 ruling
-    /// that this arm HALTS rather than widening.
-    ///
-    /// This is the RED that would go green again if anyone reinstated the old widening arm:
-    /// with the fail-open version, this returned `Ok(run_selection_control)` and CI stayed green.
-    #[test]
-    fn selection_control_skip_refuses_when_diff_observation_fails() {
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                // 'Z' is not a status letter git emits; the modeled observation rejects it.
-                let _ns =
-                    EnvGuard::set("GUNBC_CI_DIFF_NAME_STATUS", "Z\\000src/v1/whatever.rs\\000");
-                let refusal = selection_control_skip_label_for_ci()
-                    .expect_err("an unobservable diff must REFUSE, never widen to a run");
-                assert_eq!(
-                    refusal.cause,
-                    SelectionControlRefusalCause::DiffObservationFailed
-                );
-                let d = refusal.diagnostic();
-                assert!(
-                    d.contains("SELECTION_CONTROL_REFUSED")
-                        && d.contains("cause=DiffObservationFailed"),
-                    "the refusal must be countable by a stable token: {d}"
-                );
-                assert!(
-                    !d.contains(RUN_SELECTION_CONTROL_LABEL)
-                        && !d.contains(SELECTION_CONTROL_NOT_AFFECTED_SKIP_LABEL),
-                    "a refusal must not carry a label — ignorance is not an answer: {d}"
-                );
-            });
-        });
-    }
-
-    /// The two refusal causes must stay distinguishable, so each is separately countable in the
-    /// job log. A single fused cause would re-absorb the deficits into one unprioritizable bucket.
-    #[test]
-    fn selection_control_refusal_causes_are_distinct_and_countable() {
-        assert_ne!(
-            SelectionControlRefusalCause::DiffObservationFailed.token(),
-            SelectionControlRefusalCause::InputClosureFailed.token()
-        );
     }
 
     fn repair_receipt_touched_paths() -> Vec<String> {
