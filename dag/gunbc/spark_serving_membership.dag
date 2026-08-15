@@ -7,7 +7,6 @@ import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.spark_serving_release {
   SparkServingOccurrence,
   SparkServingRelease,
-  SparkServingReleaseIdentity,
 }
 import gunbc.membership_reconcile {
   MembershipPlan,
@@ -20,62 +19,32 @@ import gunbc.membership_reconcile {
 }
 import gunbc.spark_serving_install_paths {
   SparkServingUserUnitSpec,
-  spark_serving_runtime_root,
-  spark_serving_models_root,
   spark_serving_user_unit_path,
   spark_serving_user_unit_spec,
   spark_serving_user_unit_spec_identity,
 }
-import gunbc.spark_serving_desired { spark_serving_desired_bind_host_port }
-import gunbc.spark_serving_runtime_receipt { spark_serving_runtime_receipt_path }
-
-data spark_serving_membership_authority_note: String = "Member-grain membership reconcile for Spark serving install (SPARK-SERVE-INSTALL-0 Phase 1). key_of is host × release identity × member kind — explicitly NOT content- or path-derived. value_eq compares state_digest only. Ensured members converge on drift; non-owned removal refuses with no effect arm (R5). Unchanged → zero effects must witness hard."
-
-type SparkServingPhase1TransportGap
-  = SparkServingRemoteFileWriteTransportGap
-  | SparkServingGenerateAcceptanceTransportGap
-  | SparkServingCrossStepRemoteContextGap
-
-data spark_serving_remote_file_write_transport_gap_note: String = "Phase 2 register — SparkServingRemoteFileWriteTransportGap: spark_serving_user_unit_file_write_intent carries typed SparkServingUserUnitSpec at path; fleet-converge apply must route unit delivery through a sole_constructor remote write-bytes carrier (not shell-embedded unit text)."
-
-data spark_serving_generate_acceptance_transport_gap_note: String = "Phase 2 register — SparkServingGenerateAcceptanceTransportGap: POST /api/generate acceptance requires a typed HTTP client or modeled service op with parsed JSON response — not shell_quote on JSON for curl argv."
-
-data spark_serving_remote_operation_context_note: String = "Phase 2 register — SparkServingCrossStepRemoteContextGap: download, verify, and extract are separate typed argv operations; spark_serving_admit_* refusals gate predecessor absence on the fleet-converge apply path."
-
-fn spark_serving_phase1_transport_gaps() -> List<SparkServingPhase1TransportGap> {
-  [
-    SparkServingRemoteFileWriteTransportGap,
-    SparkServingGenerateAcceptanceTransportGap,
-    SparkServingCrossStepRemoteContextGap,
-  ]
+import gunbc.spark_serving_desired {
+  spark_serving_desired_bind_host_port,
+  spark_serving_automation_principal,
 }
+import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
 
-fn spark_serving_phase1_transport_gap_count() -> Int {
-  count(spark_serving_phase1_transport_gaps())
-}
+data spark_serving_membership_authority_note: String = "Member-grain membership reconcile for Spark serving install. key_of is host × principal × resource address — stable identity for the managed resource, never release/model/unit content. state_digest is the value at that address (runtime closure, model manifest, unit spec, linger). Ollama upgrade or model drift is MemberChanged on the same address, never Remove+Add. Ensured linger converges on drift; non-owned removal refuses with no effect arm (R5)."
 
-type SparkServingMemberKind
-  = SparkServingRuntimeClosureMember
-  | SparkServingUserUnitMember
-  | SparkServingPulledModelMember
-  | SparkServingArchiveReceiptMember
-  | SparkServingExecutorLingerMember
+data spark_serving_primary_model_slot: NonEmptyStr = "primary" as NonEmptyStr
+
+type SparkServingResourceAddress
+  = SparkServingRuntimeRootAddress
+  | SparkServingUserUnitAddress
+  | SparkServingModelSlotAddress { slot: NonEmptyStr }
+  | SparkServingLingerAddress
 
 type SparkServingMember {
   host: HostIdentity
-  release_identity: SparkServingReleaseIdentity
-  kind: SparkServingMemberKind
+  principal: NonEmptyStr
+  address: SparkServingResourceAddress
   state_digest: NonEmptyStr
   ownership: Ownership
-}
-
-type SparkServingRemoteOperationContext {
-  host: HostIdentity
-  archive_download_staging_path: FilePath
-  runtime_root: FilePath
-  models_root: FilePath
-  user_unit_path: FilePath
-  runtime_receipt_path: FilePath
 }
 
 type SparkServingUserUnitWriteIntent {
@@ -83,33 +52,24 @@ type SparkServingUserUnitWriteIntent {
   spec: SparkServingUserUnitSpec
 }
 
-type SparkServingRemoteStepAdmission
-  = SparkServingRemoteStepAdmitted
-  | SparkServingRemoteStepRefused { step: NonEmptyStr, cause: NonEmptyStr }
-
-data spark_serving_archive_staging_basename: String = "gunbc-spark-serving-archive.tgz"
-
-fn spark_serving_member_kind_wire(kind: SparkServingMemberKind) -> String {
-  match kind {
-    SparkServingRuntimeClosureMember => "runtime-closure"
-    SparkServingUserUnitMember => "user-unit"
-    SparkServingPulledModelMember => "pulled-model"
-    SparkServingArchiveReceiptMember => "archive-receipt"
-    SparkServingExecutorLingerMember => "executor-linger"
+fn spark_serving_resource_address_wire(address: SparkServingResourceAddress) -> String {
+  match address {
+    SparkServingRuntimeRootAddress => "runtime-root"
+    SparkServingUserUnitAddress =>
+      join(["user-unit:", spark_serving_unit_name], "")
+    SparkServingModelSlotAddress { slot: slot } =>
+      join(["model-slot:", slot as String], "")
+    SparkServingLingerAddress => "linger"
   }
-}
-
-fn spark_serving_release_identity_wire(identity: SparkServingReleaseIdentity) -> String {
-  identity.digest.digest as String
 }
 
 fn spark_serving_member_key(member: SparkServingMember) -> String {
   join([
     member.host as String,
     "|",
-    spark_serving_release_identity_wire(identity: member.release_identity),
+    member.principal as String,
     "|",
-    spark_serving_member_kind_wire(kind: member.kind),
+    spark_serving_resource_address_wire(address: member.address),
   ], "")
 }
 
@@ -123,6 +83,10 @@ fn spark_serving_member_value_eq(a: SparkServingMember, b: SparkServingMember) -
 
 fn spark_serving_member_ownership(member: SparkServingMember) -> Ownership? {
   Present { value: member.ownership }
+}
+
+fn spark_serving_serving_principal() -> NonEmptyStr {
+  spark_serving_automation_principal().login
 }
 
 fn spark_serving_user_unit_state_digest() -> NonEmptyStr {
@@ -139,21 +103,6 @@ fn spark_serving_executor_linger_state_digest() -> NonEmptyStr {
   "linger=enabled" as NonEmptyStr
 }
 
-fn spark_serving_archive_staging_path() -> FilePath {
-  concat("/tmp/", spark_serving_archive_staging_basename) as FilePath
-}
-
-fn spark_serving_remote_operation_context(host: HostIdentity) -> SparkServingRemoteOperationContext {
-  SparkServingRemoteOperationContext {
-    host: host,
-    archive_download_staging_path: spark_serving_archive_staging_path(),
-    runtime_root: spark_serving_runtime_root(),
-    models_root: spark_serving_models_root(),
-    user_unit_path: spark_serving_user_unit_path(),
-    runtime_receipt_path: spark_serving_runtime_receipt_path(),
-  }
-}
-
 fn spark_serving_user_unit_file_write_intent() -> SparkServingUserUnitWriteIntent {
   SparkServingUserUnitWriteIntent {
     path: spark_serving_user_unit_path(),
@@ -163,59 +112,17 @@ fn spark_serving_user_unit_file_write_intent() -> SparkServingUserUnitWriteInten
   }
 }
 
-fn spark_serving_admit_staging_present(
-  context: SparkServingRemoteOperationContext,
-  staging_present: Bool,
-) -> SparkServingRemoteStepAdmission {
-  if staging_present {
-    SparkServingRemoteStepAdmitted
-  } else {
-    SparkServingRemoteStepRefused {
-      step: "extract-admitted-archive" as NonEmptyStr,
-      cause: join(
-        [
-          "modeled staging artifact absent at ",
-          context.archive_download_staging_path as String,
-          "; separate remote invocations share no shell variable — predecessor download side effect required",
-        ],
-        "",
-      ) as NonEmptyStr,
-    }
-  }
-}
-
-fn spark_serving_admit_runtime_root_present(
-  context: SparkServingRemoteOperationContext,
-  runtime_root_present: Bool,
-) -> SparkServingRemoteStepAdmission {
-  if runtime_root_present {
-    SparkServingRemoteStepAdmitted
-  } else {
-    SparkServingRemoteStepRefused {
-      step: "enable-user-unit" as NonEmptyStr,
-      cause: join(
-        [
-          "modeled runtime root absent at ",
-          context.runtime_root as String,
-          "; extract predecessor must have placed the owned closure",
-        ],
-        "",
-      ) as NonEmptyStr,
-    }
-  }
-}
-
 fn spark_serving_member(
   host: HostIdentity,
-  release_identity: SparkServingReleaseIdentity,
-  kind: SparkServingMemberKind,
+  principal: NonEmptyStr,
+  address: SparkServingResourceAddress,
   state_digest: NonEmptyStr,
   ownership: Ownership,
 ) -> SparkServingMember {
   SparkServingMember {
     host: host,
-    release_identity: release_identity,
-    kind: kind,
+    principal: principal,
+    address: address,
     state_digest: state_digest,
     ownership: ownership,
   }
@@ -225,43 +132,36 @@ fn spark_serving_desired_members(
   occurrence: SparkServingOccurrence,
   serving_release: SparkServingRelease,
 ) -> List<SparkServingMember> {
-  let rid = occurrence.release_identity
   let host = occurrence.host
+  let principal = spark_serving_serving_principal()
   let closure_digest = serving_release.runtime.closure_digest
   let model_digest = serialize_content_hash(hash: serving_release.model.identity) as NonEmptyStr
   [
     spark_serving_member(
       host: host,
-      release_identity: rid,
-      kind: SparkServingRuntimeClosureMember,
+      principal: principal,
+      address: SparkServingRuntimeRootAddress,
       state_digest: closure_digest,
       ownership: Owned,
     ),
     spark_serving_member(
       host: host,
-      release_identity: rid,
-      kind: SparkServingArchiveReceiptMember,
-      state_digest: closure_digest,
-      ownership: Owned,
-    ),
-    spark_serving_member(
-      host: host,
-      release_identity: rid,
-      kind: SparkServingUserUnitMember,
+      principal: principal,
+      address: SparkServingUserUnitAddress,
       state_digest: spark_serving_user_unit_state_digest(),
       ownership: Owned,
     ),
     spark_serving_member(
       host: host,
-      release_identity: rid,
-      kind: SparkServingPulledModelMember,
+      principal: principal,
+      address: SparkServingModelSlotAddress { slot: spark_serving_primary_model_slot },
       state_digest: model_digest,
       ownership: Owned,
     ),
     spark_serving_member(
       host: host,
-      release_identity: rid,
-      kind: SparkServingExecutorLingerMember,
+      principal: principal,
+      address: SparkServingLingerAddress,
       state_digest: spark_serving_executor_linger_state_digest(),
       ownership: Ensured,
     ),
