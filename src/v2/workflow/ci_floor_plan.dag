@@ -434,10 +434,26 @@ fn gunbc_ci_floor_enrolled_runnable_labels_for(spec: CiSpec) -> List<String> {
     runnable_single_claim_function(r: runnable_for_node(node: node, spec: spec))
   })
   let spec_labels = concat(concat(gate_labels, corpus_labels), map(scoped_witness_batches, batch => "__scoped_witness_batch__"))
-  if gunbc_pr_native_batch_enrolled() {
+  let with_pr_native = if gunbc_pr_native_batch_enrolled() {
     list_snoc_item(xs: spec_labels, item: runnable_single_claim_function(r: gunbc_pr_native_batch()))
   } else {
     spec_labels
+  }
+  let with_long_budget = if gunbc_full_ci_green_cross_module_long_budget_batch_enrolled() {
+    list_snoc_item(
+      xs: with_pr_native,
+      item: runnable_single_claim_function(r: gunbc_full_ci_green_cross_module_long_budget_batch())
+    )
+  } else {
+    with_pr_native
+  }
+  if v1_claim_scoped_known_red_probe_batch_enrolled() {
+    list_snoc_item(
+      xs: with_long_budget,
+      item: runnable_single_claim_function(r: gunbc_v1_claim_scoped_known_red_probe_batch())
+    )
+  } else {
+    with_long_budget
   }
 }
 
