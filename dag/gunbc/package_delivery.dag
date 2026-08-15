@@ -2,6 +2,8 @@ module gunbc.package_delivery
 
 import std.types { String, NonEmptyStr, List, FilePath, Bool, Int }
 import std.algebra { trim }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.content_hash {
   Sha512Digest,
   Sha1Digest,
@@ -2392,6 +2394,17 @@ fn materialize_codex_runtime_bundle(
 }
 
 data spark_serving_ollama_runtime_materialization_note: String = "Archive admission only — NOT runtime install. Downloads the cited extdeps.ollama.binary_release archive, admits SHA-256, writes gunbc.spark_serving_runtime_receipt, then deletes the staging copy (local_path is not consumed downstream because nothing extracts). Does not extract, place bin/ollama, enable gunbc-spark-serving.service, or pull gpt-oss:20b. This PR cannot make srv5/srv6 answer — it pairs the receipt writer with the wet observer. Full install is #8225 follow-on; fleet registration is #8230."
+
+data spark_serving_ollama_runtime_materialization_local_writer_gap_note: String = "LOCAL WRITER / REMOTE READER GAP — materialize_spark_serving_ollama_runtime_bundle uses local shell.Mktemp, http.Client.DownloadToFile, and Filesystem.Write on whichever host runs the entry; wet observation reads the same fleet-constant receipt path via SSH from srv5/srv6. Until #8225 actuates archive admission per Spark host through gunbc.host_effect_realize, receipt bytes written on a developer workstation do not satisfy fleet observation."
+
+data spark_serving_ollama_runtime_materialization_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.package_delivery",
+    decl_name: "materialize_spark_serving_ollama_runtime_bundle",
+    field: WholeDeclaration,
+  }
+}
 
 type SparkServingOllamaArchiveAdmission
   = SparkServingOllamaArchiveAdmitted {

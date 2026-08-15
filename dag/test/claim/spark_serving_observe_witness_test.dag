@@ -222,7 +222,7 @@ test fn runtime_receipt_probe_success_populates_digest_field() -> Bool {
 }
 
 test fn runtime_receipt_probe_words_target_executor_receipt_path() -> Bool {
-  let words = spark_serving_runtime_receipt_probe_words(host: "srv5")
+  let words = spark_serving_runtime_receipt_probe_words()
   words.length() == 2
     && words.first() == "cat"
     && string_contains(
