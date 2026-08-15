@@ -127,8 +127,35 @@ enum Commands {
     },
 }
 
+/// cargo's build-output dir (a `target` dir beside a `Cargo.toml`) is realization
+/// output, not source: a corpus copy materialized under it must never enter a module
+/// index alongside the tree it was copied from. A source root passed FROM inside
+/// `target/` is still walked — only DESCENT into the output dir is refused.
+fn is_cargo_target_output_dir(parent: &std::path::Path, child: &std::path::Path) -> bool {
+    child.file_name().and_then(|n| n.to_str()) == Some("target")
+        && parent.join("Cargo.toml").is_file()
+}
+
 /// Recursively find all .dag files under a directory.
 /// Fail-closed: panics on unreadable directory entries.
+///
+/// THE GUARD BELOW IS RESTORED FROM THE COPY THIS CUT DELETES, and the direction is
+/// the point: `cli_run` carried its own `collect_dag_files` WITH the target-dir refusal
+/// while this one has always lacked it, so the dying copy was the SAFER one. Deleting
+/// `cli_run` without moving the guard here would have made the cut silently lower
+/// safety — a regression introduced by a deletion, which is the one outcome delete-first
+/// must not produce. This is not porting `cli_run`; it is refusing to drop a rule while
+/// keeping the branch that needs it.
+///
+/// Without it, a whole-root compile (the no-`--entry` branch, which is what calls this)
+/// walks into `target/` and ingests emitted or materialized `.dag` as SOURCE, alongside
+/// the tree it was copied from — duplicate module paths, resolved by collision panic or
+/// by silent shadowing depending on which the index hits first.
+///
+/// RUNG, HONESTLY: this restores a guard, it does not prove a live bug. `find target
+/// -name '*.dag'` returns 0 in this worktree today, so I cannot exhibit the failure. The
+/// hazard is evidenced by the deleted code's own comment naming a concrete case it was
+/// written for — a corpus copy under `target/func_env_semantic_baseline_corpus/dag/**`.
 fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
     let mut entries: Vec<_> = std::fs::read_dir(dir)
         .unwrap_or_else(|e| panic!("failed to read dir {:?}: {}", dir, e))
@@ -138,6 +165,9 @@ fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>)
     for entry in entries {
         let path = entry.path();
         if path.is_dir() {
+            if is_cargo_target_output_dir(dir, &path) {
+                continue;
+            }
             collect_dag_files(&path, files);
         } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
             files.push(path);
