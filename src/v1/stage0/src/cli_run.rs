@@ -2349,7 +2349,16 @@ pub fn resolution_divergence_module_path_roster_excluded(module_path: &str) -> b
 }
 
 /// The witness layer roots, read live from the single .dag authority and memoized.
-pub(crate) fn witness_layer_roots() -> Vec<String> {
+///
+/// VISIBILITY WIDENED `pub(crate)` -> `pub` by the cli-run cut, and the reason is a §3 one
+/// rather than a convenience. The driver seam in `main.rs` is a separate crate, so it could
+/// not see this; the alternative was to spell `["dag", "src/v2"]` as a literal beside the
+/// `ci` verb, which forks a live authority that is READ FROM `.dag` at runtime into a
+/// hand-written constant that cannot track it. Exposing the existing single authority is
+/// not new investment in the frozen engine — nothing here is re-homed, reshaped, or
+/// reimplemented, and the body is untouched. `gunbc.cli_intent` imports the same
+/// `witness_layer_roots` on the `.dag` side, so both halves of the seam cite one row.
+pub fn witness_layer_roots() -> Vec<String> {
     static ROOTS: OnceLock<Vec<String>> = OnceLock::new();
     ROOTS
         .get_or_init(|| witness_layer_roots_from_source(ci_layer_roots_authority_content()))
@@ -17107,13 +17116,20 @@ pub struct ServeEvaluationBudget {
 /// Read back the .dag handler's ServeWireResponse record. None = wrong shape
 /// (surfaced as a typed 500 by the caller, never a fabricated response).
 
-enum ExitClass {
+/// VISIBILITY WIDENED by the cli-run cut for the same §3 reason as `witness_layer_roots`:
+/// this is the SINGLE AUTHORITY for reading a `.dag` `ProcessExit` value, and the driver
+/// seam in `main.rs` must map that value to a process exit code. Reimplementing the match
+/// in the driver would fork the one place that knows the variant shape. Body untouched.
+pub enum ExitClass {
     Success,
     Failure { code: i32, reason: Option<String> },
     NotProcessExit { type_name: String },
 }
 
-fn classify_exit(val: &v1_interpreter::Value, ctx: &v1_interpreter::InterpContext) -> ExitClass {
+pub fn classify_exit(
+    val: &v1_interpreter::Value,
+    ctx: &v1_interpreter::InterpContext,
+) -> ExitClass {
     match val {
         v1_interpreter::Value::Variant {
             type_name,

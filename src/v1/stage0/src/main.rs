@@ -728,16 +728,36 @@ fn main() {
         // NOT a scaffold with a trigger standing in for a decision: the terminal
         // construction is named, its two halves exist, and the missing piece is the
         // wiring between them.
-        Commands::Ci {}
-        | Commands::Run { .. }
-        | Commands::Converge { .. }
-        | Commands::Serve { .. } => {
+        Commands::Run {
+            source_roots,
+            function,
+            entry,
+            claim_run,
+            args,
+        } => run_verb(&source_roots, &function, entry.as_deref(), claim_run, &args),
+        // `ci` is NOT a second verb to wire: the deleted handler was `run` with fixed
+        // arguments, so it is a PARAMETERIZATION of the same seam. Wiring it as its own
+        // path would fork one route into two that must then be kept equal by hand.
+        // The roots come from `cli_run::witness_layer_roots`, which reads the single
+        // `.dag` authority live — the same row `gunbc.cli_intent` imports — rather than
+        // a literal spelled here.
+        Commands::Ci {} => run_verb(
+            &cli_run::witness_layer_roots(),
+            "main",
+            Some("dag/tools/gunbc_ci.dag"),
+            false,
+            &[],
+        ),
+        Commands::Converge { .. } | Commands::Serve { .. } => {
             eprintln!(
-                "error: this verb is not available on integration/cli-run-cut.\n  \
-                 cause: the cli_run verb handlers are deleted; their replacement \
-                 (gunbc.cli_intent) decodes argv into a RunIntent but is not yet wired to \
-                 the retained resolve/eval engine.\n  \
-                 status: declared Y-incomplete, not a runtime failure — see PR #8286."
+                "error: `converge` and `serve` are not available on integration/cli-run-cut.\n  \
+                 cause: their cli_run handlers are deleted. `run` and `ci` are wired to the \
+                 retained resolve/eval engine through run_verb; these two are not, because \
+                 converge carries a byte-locked receipt grammar and serve owns an accept \
+                 loop — neither is a parameterization of `run`, so neither is wired by the \
+                 same seam.\n  \
+                 status: declared Y-incomplete for these two verbs, not a runtime failure \
+                 — see PR #8286."
             );
             std::process::exit(2);
         }
@@ -901,5 +921,153 @@ mod tests {
             extract_module_path("module v1.test.fixture\n"),
             Some("v1.test.fixture".to_string())
         );
+    }
+}
+
+/// Decode `--arg name=value` into the interpreter's named-argument shape.
+///
+/// This is DRIVER work and lives here rather than in the retained engine: argv is the
+/// driver's subject, and `gunbc.cli_intent` models the same decode on the `.dag` side.
+/// A missing `=` REFUSES with the offending spec rather than guessing a positional —
+/// the deleted handler's own rule, kept because it is right, not because it was there.
+fn decode_run_args(
+    raw: &[String],
+) -> Result<Vec<(Option<String>, v1_compiler::v1_interpreter::Value)>, String> {
+    raw.iter()
+        .map(|spec| match spec.split_once('=') {
+            Some((name, value)) if !name.is_empty() => Ok((
+                Some(name.to_string()),
+                v1_compiler::v1_interpreter::Value::Str(value.to_string()),
+            )),
+            _ => Err(format!(
+                "--arg expects name=value, got `{spec}` (a missing `=` is refused, not \
+                 interpreted as a positional argument)"
+            )),
+        })
+        .collect()
+}
+
+/// `gunbc run` — argv → modeled intent → the RETAINED resolve/eval engine → exit code.
+///
+/// This is the seam the cut's declared boundary was missing. It calls the engine
+/// (`cli_run::resolve_entry_graph`, `cli_run::make_eval_context`) and the interpreter
+/// (`run_in_context_with_args`); it does not re-home either, and it adds no policy of
+/// its own beyond decoding argv and mapping an outcome to a status.
+///
+/// Every failure arm REFUSES with a typed, located reason and a nonzero status. There is
+/// no arm that widens, defaults, or prints a plausible success — including the
+/// whole-tree case, which is declared unsupported here rather than silently approximated
+/// by loading everything under `--source-root`.
+fn run_verb(
+    source_roots: &[String],
+    function: &str,
+    entry: Option<&str>,
+    claim_run: bool,
+    args: &[String],
+) -> () {
+    if source_roots.is_empty() {
+        eprintln!("error: provide at least one --source-root");
+        std::process::exit(1);
+    }
+
+    // Refuse a malformed --arg BEFORE the compile, so the diagnostic is the first thing
+    // printed rather than the last thing after a minute of resolution.
+    let run_args = match decode_run_args(args) {
+        Ok(parsed) => parsed,
+        Err(message) => {
+            eprintln!("error: {message}");
+            std::process::exit(2);
+        }
+    };
+
+    let Some(entry_file) = entry else {
+        eprintln!(
+            "error: --entry <file.dag> is required.\n  \
+             cause: this seam resolves an entry's import closure; the whole-tree run the \
+             deleted handler also served is not implemented here.\n  \
+             status: refused rather than approximated — loading every file under \
+             --source-root would answer a different question with the same exit code."
+        );
+        std::process::exit(2);
+    };
+
+    if claim_run && entry.is_none() {
+        eprintln!("error: --claim-run requires --entry <file.dag>");
+        std::process::exit(2);
+    }
+
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(source_roots, entry_file) {
+        Ok(resolved) => resolved,
+        Err(cause) => {
+            eprintln!("error: resolve failed for {entry_file}\n  cause: {cause}");
+            std::process::exit(1);
+        }
+    };
+
+    // The SAME total classification the compile path uses — blocking vs advisory, with
+    // advisory derived as (total - blocking) so no diagnostic is counted by neither.
+    if has_blocking_diagnostics(graph.diagnostics.as_ref()) {
+        let blocking = blocking_diagnostic_count(graph.diagnostics.as_ref());
+        let advisory = graph.diagnostics.len() - blocking;
+        eprintln!(
+            "error: {entry_file} has {blocking} blocking diagnostic(s) ({advisory} advisory); \
+             refusing to evaluate"
+        );
+        std::process::exit(1);
+    }
+
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        v1_compiler::v1_interpreter::ExecutionMode::Wet,
+    );
+
+    match v1_compiler::v1_interpreter::run_in_context_with_args(
+        &ctx, function, &run_args, !claim_run,
+    ) {
+        // A claim run's Bool is the verdict: false is a FAILED claim, exit 1. Outside a
+        // claim run a Bool is an ordinary value and says nothing about success.
+        Ok(v1_compiler::v1_interpreter::Value::Bool(false)) if claim_run => {
+            eprintln!("FAIL {function}");
+            std::process::exit(1);
+        }
+        Ok(v1_compiler::v1_interpreter::Value::Bool(true)) if claim_run => {
+            println!("PASS {function}");
+        }
+        // THE PLANTED RED CAUGHT THIS ARM RETURNING 0 ON A FAILURE, and the failure it
+        // returned 0 on was a real generated-artifact drift the gate had already located
+        // by name. Printing a `ProcessExit` and exiting 0 turns EVERY consumer of this verb
+        // green regardless of content — the absorbing fallback at the largest scale this
+        // tree offers, and invisible, because everything looks like it is passing.
+        //
+        // A `.dag` entry invoked here returns `std.process.ProcessExit`; that value IS the
+        // verdict, so it maps to the process status. `cli_run::classify_exit` is the single
+        // authority for reading the variant and is called rather than re-matched here.
+        // A non-`ProcessExit` return REFUSES (exit 2) rather than being printed and called
+        // success — the host cannot derive a status from a value that does not carry one,
+        // and guessing 0 is the same fabrication one type over.
+        Ok(value) => match cli_run::classify_exit(&value, &ctx) {
+            cli_run::ExitClass::Success => {}
+            cli_run::ExitClass::Failure { code, reason } => {
+                if let Some(reason) = reason {
+                    eprintln!("{reason}");
+                }
+                std::process::exit(code);
+            }
+            cli_run::ExitClass::NotProcessExit { type_name } => {
+                eprintln!(
+                    "error: function `{function}` returned `{type_name}`, not `ProcessExit`.\n  \
+                     cause: the host maps a run's verdict to an exit code, and only ProcessExit \
+                     carries one. Wrap the result in ExitSuccess / ExitFailure.\n  \
+                     status: refused — printing the value and exiting 0 would report success \
+                     for a run whose outcome is unknown."
+                );
+                std::process::exit(2);
+            }
+        },
+        Err(err) => {
+            eprintln!("error: evaluating {function} in {entry_file}\n  cause: {err:?}");
+            std::process::exit(1);
+        }
     }
 }
