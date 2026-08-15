@@ -114,6 +114,10 @@ data nfr_reason_floor_component_receipt_validation: String = "receipt alert vali
 
 data nfr_dissolve_floor_component_receipt_validation: DissolutionCondition = unbound_dissolution(description: "the writer-side pair projection becomes derived from inhabitance (total match over the NOT-CONCLUDED × failure-mode combinations the receipt can actually carry) and the wildcard arm deletes with its row")
 
+data nfr_reason_floor_component_run_terminal_concluded: String = "run_terminal concluded projection over JsonValue wire (JsonNull arm means legacy-absent or explicit null concluded; outer wildcard arm delegates to disposition-member lookup; inner wildcard returns false for non-string disposition values) landed with FullCiGreenReceipt slice-0 classify_full_ci_green_from_document gate on concluded ci-workflow floor walks (#8271); declared at landing so the ratchet re-arms"
+
+data nfr_dissolve_floor_component_run_terminal_concluded: DissolutionCondition = unbound_dissolution(description: "run_terminal wire shape is modeled as a closed receipt-member union or the projection derives from inhabitance over the document carrier's terminal-state fact and the wildcard arms delete with this row")
+
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/dispatch_selection.dag::offer_matches_request_shape" },
@@ -949,6 +953,11 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     subject: PathSubject { path: "dag/gunbc/floor_component_receipt_document.dag::component_outcome_agrees_with_failure_mode" },
     reason: nfr_reason_floor_component_receipt_validation,
     dissolution: nfr_dissolve_floor_component_receipt_validation,
+  },
+  FrontierRow {
+    subject: PathSubject { path: "dag/gunbc/floor_component_receipt_document.dag::floor_component_receipt_run_terminal_is_concluded" },
+    reason: nfr_reason_floor_component_run_terminal_concluded,
+    dissolution: nfr_dissolve_floor_component_run_terminal_concluded,
   },
   FrontierRow {
     subject: PathSubject { path: "dag/gunbc/live_deploy/readiness.dag::healthz_release_identity_refusal" },
