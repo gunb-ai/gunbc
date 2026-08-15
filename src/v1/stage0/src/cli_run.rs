@@ -15522,25 +15522,185 @@ pub fn prepare_repository_once(
     })
 }
 
-/// A frame over the one preparation. Cheap by construction: no walk, no parse, no resolve —
-/// `with_runtime_options` binds an execution mode and an effect envelope to an already
-/// resolved graph. This is the operator's `make_evaluation_frame`, and its cost is what makes
-/// per-claim mode selection affordable without a second subject.
-pub fn repository_frame(
+/// THE EXACT SCOPE ONE CLAIM EVALUATES IN — a projection of the one preparation, never a
+/// second one.
+///
+/// `PreparedRepository` is deliberately NOT evaluable. A repository-wide `InterpContext` is
+/// the flat namespace that produced the mass red: `with_runtime_options` inserts every
+/// declaration under BOTH its bare and its qualified name, bare insertion overwrites, and
+/// `lookup_fn` is a plain map get that never consults `ambiguous_bare_function_names`. Over an
+/// entry closure that is safe; over 3,662 modules it is not. Measured on the corpus, 549
+/// function names and 812 top-level declaration names are declared in more than one file.
+/// Executed specimen: `altra_minimal_design_witness_test` `w_the_selected_minimum_is_admitted`
+/// passes entry-major and fails in 1ms under a repository-wide frame with `call contract
+/// mismatch calling 'admits': no parameter named 'd' (declared: [coverage])` — six files
+/// declare `fn admits`, and `check_coverage_admission_witness_test`'s won the map.
+///
+/// So the wrong state has no API rather than a warning beside it: there is no function that
+/// turns a `PreparedRepository` into an evaluable context, and the only route to evaluation is
+/// through a scope.
+///
+/// WHAT THE SCOPE REPRODUCES IS THE OLD ENTRY CLOSURE, deliberately — NOT strict module-local
+/// binding. The entry-major evaluator flattened the selected entry's whole closure into one
+/// context, so a witness legitimately calls helpers declared in modules it imports. A strict
+/// module-local view would be narrower than what the corpus was written against, and adopting
+/// it here would fuse the floor cutover with namespace hardening and undeclared-import
+/// enforcement — which would also destroy the exact old/new parity this cutover is judged by.
+/// Narrowing to a true module-bound environment belongs to the namespace lane, after declared
+/// imports are authoritative.
+///
+/// CONSTRUCTION IS PROJECTION ONLY: no source read, no parse, no resolve, no typecheck. The
+/// module population is selected from what preparation already resolved and the item registry
+/// is filtered by `ItemInfo.module_name` to the same population.
+pub struct PreparedClaimScope {
+    graph: v1_compiler_compile::ResolvedGraph,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    /// Digest of the ORDERED module identities in this scope. Ordered because the defect being
+    /// fixed is last-writer-wins over an unordered flattening: two scopes holding the same
+    /// module set in different orders can bind a colliding bare name differently, so a
+    /// set-digest would call them identical when they are not.
+    pub scope_identity: String,
+    pub module_count: usize,
+}
+
+/// The module paths a file imports, read from the bytes preparation already holds.
+///
+/// This is a scan of retained content, not a parse and not a file read: `import <path> {…}` is
+/// recognised at column zero, which is where a top-level import may appear.
+fn declared_imports_in(content: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in content.lines() {
+        let Some(rest) = line.strip_prefix("import ") else {
+            continue;
+        };
+        let path: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '.')
+            .collect();
+        if !path.is_empty() {
+            out.push(path);
+        }
+    }
+    out
+}
+
+/// Project the exact scope for one entry file out of the prepared repository.
+///
+/// The closure is the transitive declared-import closure of the entry's module, which is the
+/// population the entry-major path placed in that claim's context. A module the closure names
+/// but the subject does not contain is a REFUSAL rather than a silent omission: evaluating
+/// against a scope that quietly lost a module reproduces, one level down, exactly the missing
+/// binding this scope exists to prevent.
+pub fn claim_scope_for(
     prepared: &PreparedRepository,
+    entry_module_path: &str,
+) -> Result<PreparedClaimScope, String> {
+    let by_module: std::collections::HashMap<&str, &InventoryEntry> = prepared
+        .inventory
+        .iter()
+        .map(|e| (e.module_path.as_str(), e))
+        .collect();
+    if !by_module.contains_key(entry_module_path) {
+        return Err(format!(
+            "CLAIM-SCOPE REFUSAL cause=EntryModuleOutsidePreparedSubject module={entry_module_path} \
+             — the manifest named this module and the prepared subject does not contain it"
+        ));
+    }
+    // Breadth-first over declared imports, retaining FIRST-REACHED order. Order is part of the
+    // scope's identity (see `scope_identity`), so it is produced deterministically here rather
+    // than left to a hash map's iteration.
+    let mut order: Vec<String> = vec![entry_module_path.to_string()];
+    let mut seen: HashSet<String> = HashSet::new();
+    seen.insert(entry_module_path.to_string());
+    let mut head = 0usize;
+    while head < order.len() {
+        let current = order[head].clone();
+        head += 1;
+        let Some(entry) = by_module.get(current.as_str()) else {
+            continue;
+        };
+        for imported in declared_imports_in(&entry.content) {
+            if by_module.contains_key(imported.as_str()) && seen.insert(imported.clone()) {
+                order.push(imported);
+            }
+        }
+    }
+    let in_scope: HashSet<&str> = order.iter().map(|s| s.as_str()).collect();
+    let modules: Vec<Rc<v1_compiler_compile::TypedModule>> = prepared
+        .graph
+        .modules
+        .iter()
+        .filter(|m| {
+            let path = authored_name_at(prepared.source_indices.clone(), m.module.clone());
+            in_scope.contains(path.as_str())
+        })
+        .cloned()
+        .collect();
+    // The item registry is projected from the SAME module population, by UNIONING each scoped
+    // module's own registry rather than filtering the global one on `ItemInfo.module_name`.
+    //
+    // The filtering form was written first and the data-collision control caught it:
+    // `scope.alpha.reads_datum` answered `NoSuchVariable { name: "shared_datum" }` because
+    // `module_name` is not the module-path spelling the inventory carries, so the predicate
+    // matched nothing and every data declaration was dropped. Functions still worked — they
+    // come from `fn_nodes`, built off the module list — so a function-only control would have
+    // passed while `build_initial_env` bound nothing at all. Each module's own registry needs
+    // no name comparison to be correct, which is why it is the projection used.
+    let mut item_registry: HashMap<String, Rc<crate::v1_compiler_infer_items::ItemInfo>> =
+        HashMap::new();
+    for module in &modules {
+        for (name, info) in module.item_registry.iter() {
+            item_registry.insert(name.clone(), info.clone());
+        }
+    }
+    // Folded left over the ORDERED identities with `hash_combine`, which is not commutative —
+    // so two scopes holding the same modules in different orders get different identities. A
+    // set digest would call them equal, and order is exactly what decides which declaration
+    // wins a colliding bare name.
+    let scope_identity = order.iter().fold(
+        v1_rt::atom_identity_hash(entry_module_path.to_string()),
+        |acc, module| v1_rt::hash_combine(acc, v1_rt::atom_identity_hash(module.clone())),
+    );
+    Ok(PreparedClaimScope {
+        module_count: modules.len(),
+        graph: v1_compiler_compile::ResolvedGraph {
+            modules: Rc::new(modules.into_iter().collect()),
+            item_registry: Rc::new(item_registry),
+            diagnostics: prepared.graph.diagnostics.clone(),
+            emit_graph_info: prepared.graph.emit_graph_info.clone(),
+        },
+        source_indices: prepared.source_indices.clone(),
+        scope_identity,
+    })
+}
+
+/// A fresh evaluation frame over one exact scope. The only route from a prepared repository to
+/// something that can run a claim.
+///
+/// FRESH PER CLAIM rather than shared per scope: the context owns mutable evaluation caches
+/// (call memo, data cache, param/var/callee name caches), and claims that share an immutable
+/// scope must not be able to contaminate one another through them.
+pub fn evaluation_frame(
+    scope: &PreparedClaimScope,
     execution_mode: v1_interpreter::ExecutionMode,
     fixture_store: Option<std::rc::Rc<crate::recorded_fixture::RecordedFixtureStore>>,
-    whole_tree_published_keys: Option<std::rc::Rc<std::collections::HashSet<String>>>,
+    published_mocks: Option<std::rc::Rc<std::collections::HashSet<String>>>,
 ) -> v1_interpreter::InterpContext {
     v1_interpreter::InterpContext::with_runtime_options(
-        prepared.graph.as_ref(),
-        prepared.source_indices.clone(),
+        &scope.graph,
+        scope.source_indices.clone(),
         execution_mode,
         fixture_store,
-        whole_tree_published_keys,
+        published_mocks,
     )
 }
 
+/// THE FLAT WHOLE-REPOSITORY FRAME, retained ONLY as the discriminating RED specimen.
+///
+/// This is the shape `claim_scope_for` exists to replace, and it is kept rather than deleted so
+/// the collision stays reproducible: a control that can no longer construct the broken state
+/// proves nothing about why the scope is needed. It is NOT reachable from the required floor —
+/// its callers are `claim_batch --one-prepared-subject` and the collision controls.
 pub fn prepare_whole_tree_subject(
     source_roots: &[String],
     exclude_substrings: &[String],
@@ -15550,8 +15710,9 @@ pub fn prepare_whole_tree_subject(
 ) -> Result<PreparedWholeTreeSubject, String> {
     let prepared = prepare_repository_once(source_roots, exclude_substrings)?;
     Ok(PreparedWholeTreeSubject {
-        ctx: repository_frame(
-            &prepared,
+        ctx: v1_interpreter::InterpContext::with_runtime_options(
+            &prepared.graph,
+            prepared.source_indices.clone(),
             execution_mode,
             fixture_store,
             whole_tree_published_keys,
@@ -24581,6 +24742,12 @@ fn record_value(
     }
 }
 
+/// The module whose `required_floor_attempt` folds the manifest. Named once: the manifest is
+/// evaluated in its OWN exact scope, exactly as every claim is, so the program that decides
+/// which claims exist is not itself privileged with a wider namespace than the claims it
+/// admits.
+const REQUIRED_FLOOR_MANIFEST_MODULE: &str = "v2.workflow.required_floor";
+
 /// THE REQUIRED FLOOR, AS ONE ATTEMPT.
 ///
 /// Read the active sources once, strict-prepare one subject once, evaluate the manifest inside
@@ -24626,8 +24793,9 @@ pub fn run_required_floor(
         Ok(keys) => Some(Rc::new(keys)),
         Err(e) => return Err(format!("published mock corpus precompute failed: {e}")),
     };
-    let hermetic = repository_frame(
-        &prepared,
+    let manifest_scope = claim_scope_for(&prepared, REQUIRED_FLOOR_MANIFEST_MODULE)?;
+    let hermetic = evaluation_frame(
+        &manifest_scope,
         v1_interpreter::ExecutionMode::Hermetic,
         None,
         published.clone(),
@@ -24716,7 +24884,6 @@ pub fn run_required_floor(
     // ── 4. fold the manifest ──────────────────────────────────────────────────────────────
     eprintln!("floor: claims = {}", claims.len());
     let claims_planned = claims.len();
-    let mut wet: Option<v1_interpreter::InterpContext> = None;
     let mut outcome = RequiredFloorOutcome {
         subject_digest: prepared.subject_digest.clone(),
         modules_resolved: prepared.modules_resolved,
@@ -24728,30 +24895,45 @@ pub fn run_required_floor(
         failures: Vec::new(),
     };
     let mut receipted: HashSet<String> = HashSet::new();
+
+    // SCOPES ARE DERIVED ONCE FROM THE EXACT MANIFEST, as an explicit table rather than a lazy
+    // cache filled during the fold. A lazy cache would make "how many scopes exist" a question
+    // about execution history instead of about the manifest, and the acceptance census asks for
+    // distinct scopes constructed to EQUAL the manifest's distinct scope identities — which is
+    // only checkable if the table is built before anything runs.
+    let scope_start = std::time::Instant::now();
+    let mut scopes: std::collections::HashMap<String, PreparedClaimScope> =
+        std::collections::HashMap::new();
+    for claim in &claims {
+        if !scopes.contains_key(&claim.module_path) {
+            scopes.insert(
+                claim.module_path.clone(),
+                claim_scope_for(&prepared, &claim.module_path)?,
+            );
+        }
+    }
+    eprintln!(
+        "floor: {} distinct claim scope(s) projected in {}ms (0 reads, 0 parses, 0 resolves)",
+        scopes.len(),
+        scope_start.elapsed().as_millis()
+    );
+
     let eval_started = std::time::Instant::now();
     for (index, claim) in claims.iter().enumerate() {
         if index % 1000 == 0 {
             eprintln!("floor: evaluating {index} / {claims_planned}");
         }
-        let frame = match claim.execution_mode {
-            v1_interpreter::ExecutionMode::Hermetic => &hermetic,
-            _ => {
-                if wet.is_none() {
-                    wet = Some(repository_frame(
-                        &prepared,
-                        claim.execution_mode,
-                        None,
-                        published.clone(),
-                    ));
-                }
-                wet.as_ref().expect("wet frame just built")
-            }
-        };
+        let scope = scopes
+            .get(&claim.module_path)
+            .expect("every claim's scope was projected above");
+        // FRESH PER CLAIM. Claims sharing one immutable scope must not share the mutable
+        // evaluation caches a context owns, or one witness contaminates the next through a
+        // memo rather than through anything it declared.
+        let frame = evaluation_frame(scope, claim.execution_mode, None, published.clone());
         frame.set_witness_eval_budget(Some(claim.budget_ms));
         set_phase(FloorPhase::Eval, &claim.qualified);
         let (result, receipt) =
-            run_claim_measured(frame, &prepared.subject_digest, &claim.qualified);
-        v1_interpreter::eval_call_memo_frame_exit(frame);
+            run_claim_measured(&frame, &prepared.subject_digest, &claim.qualified);
         outcome.claims_executed += 1;
         receipted.insert(claim.qualified.clone());
         style.stream_witness(
@@ -24927,6 +25109,145 @@ mod prepared_repository_tests {
         .expect("write module");
     }
 
+    /// Two modules declaring the same helper and the same datum, plus a third pair proving an
+    /// IMPORTED helper still resolves. The subject is authored here rather than sampled from
+    /// the corpus because the property under test is about collisions, and a corpus specimen's
+    /// collisions move when someone renames a function.
+    fn write_collision_root(root: &std::path::Path) {
+        std::fs::create_dir_all(root).expect("create root");
+        let write = |name: &str, body: String| {
+            std::fs::write(root.join(name), body).expect("write module");
+        };
+        for (file, module, n) in [
+            ("alpha.dag", "scope.alpha", 1),
+            ("beta.dag", "scope.beta", 2),
+        ] {
+            write(
+                file,
+                format!(
+                    "module {module}\n\n\
+                     fn helper() -> Int {{\n  {n}\n}}\n\n\
+                     data shared_datum: Int = {}\n\n\
+                     fn calls_helper() -> Int {{\n  helper()\n}}\n\n\
+                     fn reads_datum() -> Int {{\n  shared_datum\n}}\n",
+                    n * 10
+                ),
+            );
+        }
+        write(
+            "lib.dag",
+            "module scope.lib\n\nfn lib_helper() -> Int {\n  7\n}\n".to_string(),
+        );
+        write(
+            "gamma.dag",
+            "module scope.gamma\n\nimport scope.lib { lib_helper }\n\n\
+             fn calls_imported() -> Int {\n  lib_helper()\n}\n"
+                .to_string(),
+        );
+    }
+
+    fn eval_int(ctx: &v1_interpreter::InterpContext, qualified: &str) -> i64 {
+        match v1_interpreter::run_in_context_with_args(ctx, qualified, &[], false) {
+            Ok(v1_interpreter::Value::Int(n)) => n,
+            other => panic!("{qualified} did not answer an Int: {other:?}"),
+        }
+    }
+
+    /// THE SCOPE IS WHAT MAKES A SHARED SUBJECT CORRECT, and this proves it on all three
+    /// name-keyed surfaces at once — functions, imported functions, and top-level data.
+    ///
+    /// The data arm is not redundant with the function arm. A repair that scopes `fn_nodes` and
+    /// leaves `item_registry` globally flat passes the function arm and fails here, because
+    /// `build_initial_env` iterates the registry to bind top-level data. That is the same
+    /// collision one surface over, and it is the one a function-only fix silently leaves open.
+    ///
+    /// The imported arm guards the opposite error: a view narrowed to a module's OWN
+    /// declarations is not the environment the corpus was written against, and would break
+    /// every witness that calls a helper it imported.
+    #[test]
+    fn claim_scopes_bind_each_module_its_own_helper_datum_and_imports() {
+        let base = std::env::temp_dir().join(format!("gunbc-scope-{}", std::process::id()));
+        let root = base.join("root");
+        write_collision_root(&root);
+        let roots = vec![root.to_string_lossy().into_owned()];
+        let prepared =
+            prepare_repository_once(&roots, &[]).expect("preparation over the collision root");
+
+        let alpha = claim_scope_for(&prepared, "scope.alpha").expect("alpha scope");
+        let beta = claim_scope_for(&prepared, "scope.beta").expect("beta scope");
+        let gamma = claim_scope_for(&prepared, "scope.gamma").expect("gamma scope");
+        assert_ne!(
+            alpha.scope_identity, beta.scope_identity,
+            "two modules with identical shape must still be two scopes; equal identities here \
+             mean the digest is not a function of the module population"
+        );
+
+        let a = evaluation_frame(&alpha, v1_interpreter::ExecutionMode::Hermetic, None, None);
+        let b = evaluation_frame(&beta, v1_interpreter::ExecutionMode::Hermetic, None, None);
+        let g = evaluation_frame(&gamma, v1_interpreter::ExecutionMode::Hermetic, None, None);
+
+        // Local-helper collision: a bare `helper()` must reach the caller's own.
+        assert_eq!(eval_int(&a, "scope.alpha.calls_helper"), 1);
+        assert_eq!(eval_int(&b, "scope.beta.calls_helper"), 2);
+        // Top-level data collision: the initial environment must carry the caller's own datum.
+        assert_eq!(eval_int(&a, "scope.alpha.reads_datum"), 10);
+        assert_eq!(eval_int(&b, "scope.beta.reads_datum"), 20);
+        // Imported helper: the scope is the entry's CLOSURE, not its own declarations.
+        assert_eq!(eval_int(&g, "scope.gamma.calls_imported"), 7);
+        assert!(
+            gamma.module_count >= 2,
+            "gamma's scope must contain the module it imports; a single-module scope is the \
+             too-narrow view that would break every importing witness"
+        );
+
+        // A module the subject does not contain REFUSES rather than projecting an empty scope:
+        // a scope that quietly lost its entry reproduces the missing binding one level down.
+        assert!(
+            claim_scope_for(&prepared, "scope.absent").is_err(),
+            "an entry outside the prepared subject must refuse, not project"
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// THE DISCRIMINATING RED, kept as evidence for why the scope exists.
+    ///
+    /// The whole-repository flat frame is retained precisely so this stays reproducible: a
+    /// control that can no longer construct the broken state proves nothing. Here both modules
+    /// see ONE `helper`, so at least one of them reads the other's — the last-writer-wins
+    /// binding that made 549 corpus-wide function-name collisions into silent wrong answers.
+    ///
+    /// The assertion is deliberately "they cannot both be right" rather than naming which one
+    /// wins: which declaration survives is an artifact of module iteration order, so pinning it
+    /// would be pinning the defect's incidental shape instead of its presence.
+    #[test]
+    fn the_flat_whole_repository_frame_still_reproduces_the_collision() {
+        let base = std::env::temp_dir().join(format!("gunbc-flat-{}", std::process::id()));
+        let root = base.join("root");
+        write_collision_root(&root);
+        let roots = vec![root.to_string_lossy().into_owned()];
+
+        let flat = prepare_whole_tree_subject(
+            &roots,
+            &[],
+            v1_interpreter::ExecutionMode::Hermetic,
+            None,
+            None,
+        )
+        .expect("flat whole-repository frame");
+
+        let a = eval_int(&flat.ctx, "scope.alpha.calls_helper");
+        let b = eval_int(&flat.ctx, "scope.beta.calls_helper");
+        assert!(
+            !(a == 1 && b == 2),
+            "the flat frame must still exhibit the collision it is retained to demonstrate; if \
+             both modules now read their own helper, the whole-repository lookup has been fixed \
+             and this control has no subject left"
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     /// THE INVENTORY IS THE SUBJECT, AND COMPLETENESS IS AN IDENTITY JOIN.
     ///
     /// Preparation reads every admitted file, and every later consumer — witness discovery,
@@ -24977,24 +25298,32 @@ mod prepared_repository_tests {
             "the inventory must carry the source it read, or every consumer walks again"
         );
 
-        // THE FRAME IS NOT A SECOND PREPARATION. Two frames at different execution modes are
-        // built from the one resolved graph — the fact that made the deleted memo possible,
-        // now used directly instead of cached. `Rc::strong_count` is the discriminating
-        // reading: a frame that re-resolved would allocate its own graph and leave this
-        // pointer's count untouched by the borrow.
-        let before = Rc::strong_count(&prepared.graph);
-        let hermetic = repository_frame(
-            &prepared,
-            v1_interpreter::ExecutionMode::Hermetic,
-            None,
-            None,
+        // A SCOPE IS A PROJECTION, NOT A SECOND PREPARATION — proven by POINTER IDENTITY on the
+        // typed modules rather than by a clock or a phase counter.
+        //
+        // A clock would make a loaded host look like a re-resolve and a warm one look like a
+        // projection. `resolved_graph_from_sources` allocates fresh `Rc<TypedModule>`s, so a
+        // scope holding the SAME pointers as the prepared graph is direct evidence that nothing
+        // was parsed, resolved or typechecked again. That cannot be satisfied by a re-resolve
+        // that happens to produce an equal module.
+        let scope = claim_scope_for(&prepared, "prep.kept").expect("scope for the kept module");
+        let prepared_module = prepared.graph.modules[0].clone();
+        assert!(
+            scope
+                .graph
+                .modules
+                .iter()
+                .any(|m| Rc::ptr_eq(m, &prepared_module)),
+            "the scope must carry the prepared graph's own typed module; a fresh allocation here \
+             means scope construction resolved again"
         );
-        let wet = repository_frame(&prepared, v1_interpreter::ExecutionMode::Wet, None, None);
-        assert_eq!(
-            Rc::strong_count(&prepared.graph),
-            before,
-            "a frame must borrow the prepared graph, never clone or rebuild it"
-        );
+
+        // Two frames at different execution modes over one scope. Mode reaches only the
+        // context, never resolution — the fact the deleted memo used to trade on, now used
+        // directly.
+        let hermetic =
+            evaluation_frame(&scope, v1_interpreter::ExecutionMode::Hermetic, None, None);
+        let wet = evaluation_frame(&scope, v1_interpreter::ExecutionMode::Wet, None, None);
         drop(hermetic);
         drop(wet);
 
