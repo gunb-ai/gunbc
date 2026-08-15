@@ -88,7 +88,7 @@ import product.altra_motherboard.placement {
   admit_placement,
 }
 import product.altra_motherboard.realization {
-  board_functional_requirements,
+  board_functional_obligations,
   functional_requirement_name,
   functional_requirement_reason,
 }
@@ -293,7 +293,7 @@ fn envelope_reads_from_plan(plan: BoardPlacementPlan) -> List<EstablishedEnvelop
 // plan must not read as functional establishment; dropping the obligation would be the exact
 // failure this board's projection is supposed to make impossible.
 fn functional_obligations() -> List<PcbFunctionalObligation> {
-  fold(board_functional_requirements(), init: [], f: fn(acc, f) {
+  fold(board_functional_obligations(), init: [], f: fn(acc, f) {
     concat(acc, [PcbFunctionalObligation {
       function: functional_requirement_name(f: f),
       cause: UnselectedPart { because: functional_requirement_reason(f: f) },

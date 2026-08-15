@@ -29,7 +29,8 @@ import product.altra_motherboard.realization {
   altra_1p_realization_provider_identities,
   population_realization_refusals,
   population_realization_refusal_count,
-  board_functional_requirements,
+  board_functional_obligations,
+  row_covers_requirement,
   requirement_name,
   functional_obligation_text,
   dp83867_candidate_ref,
@@ -66,90 +67,6 @@ fn plan_identities_from_reference() -> List<NonEmptyStr> {
   }
 }
 
-fn row_is_management_network(row: RequirementPartRealization) -> Bool {
-  match row.requirement {
-    ManagementNetworkConnectivity => true
-    HostNetworkConnectivity => false
-    ProcessorRailEnableSequencing => false
-    ProcessorPowerStageControl => false
-    ProcessorPowerGoodSupervision => false
-    ClockReferenceGeneration => false
-    ClockReferenceDistribution => false
-    BootFirmwareRetention => false
-    HostFirmwareStorage => false
-    ResetSupervision => false
-    NvmeConnectorPopulation => false
-    BoardControlLogic => false
-    DebugAccess => false
-    ProcessorSocketMount => false
-    ProcessorPackageFit => false
-    MemoryModuleSocketPopulation { slot: _ } => false
-  }
-}
-
-fn row_is_host_network(row: RequirementPartRealization) -> Bool {
-  match row.requirement {
-    HostNetworkConnectivity => true
-    ManagementNetworkConnectivity => false
-    ProcessorRailEnableSequencing => false
-    ProcessorPowerStageControl => false
-    ProcessorPowerGoodSupervision => false
-    ClockReferenceGeneration => false
-    ClockReferenceDistribution => false
-    BootFirmwareRetention => false
-    HostFirmwareStorage => false
-    ResetSupervision => false
-    NvmeConnectorPopulation => false
-    BoardControlLogic => false
-    DebugAccess => false
-    ProcessorSocketMount => false
-    ProcessorPackageFit => false
-    MemoryModuleSocketPopulation { slot: _ } => false
-  }
-}
-
-fn row_is_rail_sequencing(row: RequirementPartRealization) -> Bool {
-  match row.requirement {
-    ProcessorRailEnableSequencing => true
-    HostNetworkConnectivity => false
-    ManagementNetworkConnectivity => false
-    ProcessorPowerStageControl => false
-    ProcessorPowerGoodSupervision => false
-    ClockReferenceGeneration => false
-    ClockReferenceDistribution => false
-    BootFirmwareRetention => false
-    HostFirmwareStorage => false
-    ResetSupervision => false
-    NvmeConnectorPopulation => false
-    BoardControlLogic => false
-    DebugAccess => false
-    ProcessorSocketMount => false
-    ProcessorPackageFit => false
-    MemoryModuleSocketPopulation { slot: _ } => false
-  }
-}
-
-fn row_is_clock_requirement(row: RequirementPartRealization) -> Bool {
-  match row.requirement {
-    ClockReferenceGeneration => true
-    ClockReferenceDistribution => true
-    HostNetworkConnectivity => false
-    ManagementNetworkConnectivity => false
-    ProcessorRailEnableSequencing => false
-    ProcessorPowerStageControl => false
-    ProcessorPowerGoodSupervision => false
-    BootFirmwareRetention => false
-    HostFirmwareStorage => false
-    ResetSupervision => false
-    NvmeConnectorPopulation => false
-    BoardControlLogic => false
-    DebugAccess => false
-    ProcessorSocketMount => false
-    ProcessorPackageFit => false
-    MemoryModuleSocketPopulation { slot: _ } => false
-  }
-}
-
 test fn w_realization_roster_has_three_distinct_justification_arms() -> Bool {
   let roster = altra_1p_requirement_part_realizations
   let has_precedent = fold(roster, init: false, f: fn(acc, row) {
@@ -181,7 +98,7 @@ test fn w_management_network_cites_reference_design_not_part_selection() -> Bool
     if acc {
       true
     } else {
-      if row_is_management_network(row: row) {
+      if row_covers_requirement(row: row, req: ManagementNetworkConnectivity) {
         match row.justification {
           ReferenceDesignPrecedent { reference_design: d, authority: _ } =>
             declaration_ref_eq(a: d, b: mt_jade_reference_platform_ref())
@@ -200,7 +117,7 @@ test fn w_host_network_phy_is_candidate_only_not_reference_selection() -> Bool {
     if acc {
       true
     } else {
-      if row_is_host_network(row: row) {
+      if row_covers_requirement(row: row, req: HostNetworkConnectivity) {
         match row.justification {
           CandidateCompatibilityOnly { candidate: c, obligations: _ } =>
             declaration_ref_eq(a: c, b: dp83867_candidate_ref())
@@ -219,7 +136,8 @@ test fn w_clock_requirements_have_no_physical_providers() -> Bool {
     if !acc {
       false
     } else {
-      if row_is_clock_requirement(row: row) {
+      if row_covers_requirement(row: row, req: ClockReferenceGeneration)
+        || row_covers_requirement(row: row, req: ClockReferenceDistribution) {
         list_length(items: row.providers) == 0
       } else {
         true
@@ -337,7 +255,7 @@ test fn w_rail_sequencing_derives_from_cited_enable_order() -> Bool {
     if acc {
       true
     } else {
-      if row_is_rail_sequencing(row: row) {
+      if row_covers_requirement(row: row, req: ProcessorRailEnableSequencing) {
         match row.justification {
           RequirementsDerived { requirements: r, evidence: _ } =>
             declaration_ref_eq(a: r, b: processor_power_rail_order_ref())
@@ -396,9 +314,9 @@ test fn w_clock_obligations_name_outstanding_compatibility_not_selection() -> Bo
     != (functional_obligation_text(r: ClockReferenceDistribution) as String)
 }
 
-test fn w_board_functional_requirements_include_physical_population_gaps() -> Bool {
-  list_length(items: board_functional_requirements()) == 7
-    && fold(board_functional_requirements(), init: true, f: fn(acc, r) {
+test fn w_board_functional_obligations_include_physical_population_gaps() -> Bool {
+  list_length(items: board_functional_obligations()) == 7
+    && fold(board_functional_obligations(), init: true, f: fn(acc, r) {
       acc && match r {
         HostNetworkConnectivity => true
         ManagementNetworkConnectivity => true
