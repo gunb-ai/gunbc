@@ -1069,14 +1069,6 @@ mod process_workspace_root_tests {
     }
 
     #[test]
-    fn compile_clean_unlisted_import_census_scaffold_marker_is_declared() {
-        assert_eq!(
-            super::CLI_RUN_COMPILE_CLEAN_UNLISTED_IMPORT_CENSUS_SCAFFOLD_MARKER,
-            "cli_run_compile_clean_unlisted_import_census"
-        );
-    }
-
-    #[test]
     fn compile_clean_shard_entry_paths_fast_scaffold_marker_is_declared() {
         assert_eq!(
             super::CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER,
@@ -4588,14 +4580,6 @@ pub fn compile_clean_whole_tree_hard_diagnostics() -> Result<im::Vector<Rc<Error
         .collect())
 }
 
-// DELETE WHEN dissolved: `compile_clean_unlisted_import_census` bin,
-// `UnlistedImportBindingSource`, `classify_unlisted_import_binding_source`,
-// `compile_clean_unlisted_import_census`, and related census helpers (~150 LOC).
-// Receipt: `rg cli_run_compile_clean_unlisted_import_census src/v1/stage0` == 1 until deletion;
-// namespace-only lane (docs/plans/namespace-resolution-design.md).
-pub(crate) const CLI_RUN_COMPILE_CLEAN_UNLISTED_IMPORT_CENSUS_SCAFFOLD_MARKER: &str =
-    "cli_run_compile_clean_unlisted_import_census";
-
 // INTERIM hand-Rust scaffold (issue 11 / §7): dispatch input for the namespace flip.
 // DISSOLVES WHEN import grammar deleted and binding-source modeled in substrate.
 
@@ -6579,42 +6563,6 @@ pub fn compile_declared_import_closure_only_with_pool(
     Ok(v1_compiler_compile::compile_to_resolved(Rc::new(
         sources.into(),
     )))
-}
-
-/// Declaration identity + binding-source receipt for one cross-module symbol site.
-#[cfg(feature = "test_hooks")]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CrossModuleBindingReceipt {
-    pub definer_module: Option<String>,
-    pub binding_source: Option<UnlistedImportBindingSource>,
-}
-
-/// Extract per-symbol binding receipts for a consumer module against a resolved graph.
-#[cfg(feature = "test_hooks")]
-pub fn cross_module_binding_receipts_for_symbols(
-    graph: &ResolvedGraph,
-    consumer_module: &str,
-    symbols: &[&str],
-) -> std::collections::BTreeMap<String, CrossModuleBindingReceipt> {
-    use std::collections::BTreeMap;
-    symbols
-        .iter()
-        .map(|sym| {
-            let definer = definer_module_for_name(graph, sym);
-            let binding_source = if definer.is_some() {
-                Some(classify_unlisted_import_binding_source(graph, consumer_module, sym).0)
-            } else {
-                None
-            };
-            (
-                (*sym).to_string(),
-                CrossModuleBindingReceipt {
-                    definer_module: definer,
-                    binding_source,
-                },
-            )
-        })
-        .collect::<BTreeMap<_, _>>()
 }
 
 /// Builtins that REQUIRE a service registration to dispatch, paired with the
