@@ -36,9 +36,6 @@ fn gate_consumer_site(g: Gate) -> String {
     ExtdepsScopePlacementGate => "gate:ExtdepsScopePlacementGate"
     ProseRowIntroductionGate => "gate:ProseRowIntroductionGate"
     SourceRootIngestGate => "gate:SourceRootIngestGate"
-    RegenVerifyGate => "gate:RegenVerifyGate"
-    SelfHostReadsRealBytesGate => "gate:SelfHostReadsRealBytesGate"
-    SelfHostStalenessGate => "gate:SelfHostStalenessGate"
   }
 }
 

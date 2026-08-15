@@ -1,11 +1,11 @@
 module test.claim.long.gauntlet_lane_enrollment_witness
 
 import gunbc.ci_layer_roots { SubstrateLongLaneRow, falsifier_substrate_long_lane_rows }
-import gunbc.ci_gate { Gate, CheapClaimPoolGate, RegenVerifyGate }
+import gunbc.ci_gate { Gate, CheapClaimPoolGate, SourceRootIngestGate }
 import gunbc.commit_workflow {
   CommitCheckEnrollment, CommitCheckKind, CommitWitnessClaim, CommitCargoFmtCheck,
   CommitSpecGate,
-  CommitWorkflowSurface, GithubActionsCiJob, GithubActionsCiRegenJob,
+  CommitWorkflowSurface, GithubActionsCiJob,
   GitPrePushHook, FalsifierCadenceJob,
   roster_has_no_bare_deenrolled_witness,
   live_roster_has_no_bare_deenrolled_witness,
@@ -55,7 +55,7 @@ fn synthetic_bare_deenrolled_row() -> CommitCheckEnrollment {
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
     },
-    surfaces: [GitPrePushHook, GithubActionsCiRegenJob]
+    surfaces: [GitPrePushHook, GithubActionsCiJob]
   }
 }
 
@@ -108,10 +108,14 @@ fn synthetic_cadence_gate_row() -> CommitCheckEnrollment {
   }
 }
 
-fn synthetic_regen_gate_row() -> CommitCheckEnrollment {
+// The row's subject is a gate enrolled on a CI-job surface rather than only on the
+// cadence, which is what distinguishes a re-home from a bare de-enrollment. It carried
+// RegenVerifyGate until the v1 cut retired that variant; the gate here was always
+// incidental to the claim, so it is swapped rather than the witness deleted.
+fn synthetic_ci_job_gate_row() -> CommitCheckEnrollment {
   CommitCheckEnrollment {
-    check: CommitSpecGate { gate: RegenVerifyGate },
-    surfaces: [GithubActionsCiRegenJob]
+    check: CommitSpecGate { gate: SourceRootIngestGate },
+    surfaces: [GithubActionsCiJob]
   }
 }
 
@@ -125,7 +129,7 @@ fn synthetic_bare_deenrolled_gate_row() -> CommitCheckEnrollment {
 test fn gauntlet_lane_gate_rehome_is_never_bare_deenrollment_holds() -> Bool {
   live_roster_has_no_bare_deenrolled_gate()
     && roster_has_no_bare_deenrolled_gate(
-         roster: [synthetic_cadence_gate_row(), synthetic_regen_gate_row()]
+         roster: [synthetic_cadence_gate_row(), synthetic_ci_job_gate_row()]
        )
 }
 

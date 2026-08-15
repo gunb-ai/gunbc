@@ -16,8 +16,7 @@ import gunbc.ci_gate {
   EmitHostGate, CheapClaimPoolGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
   ProseRowIntroductionGate,
-  SourceRootIngestGate, RegenVerifyGate,
-  SelfHostReadsRealBytesGate, SelfHostStalenessGate
+  SourceRootIngestGate
 }
 import gunbc.ci_layer_roots {
   witness_layer_roots,
@@ -36,7 +35,6 @@ import gunbc.cli_invoke {
 import gunbc.commit_workflow {
   commit_gate_roster,
   project_ci_floor_gates,
-  project_ci_regen_job_gates,
   project_falsifier_gates,
   project_ci_floor_witness_entries
 }
@@ -53,9 +51,6 @@ import gunbc.fleet_main_revision { fleet_desired_ref_name }
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.merge_admission_produce {
   ci_repo_root_shell,
-}
-import v2.workflow.ci_regen_rustfmt_path_emit {
-  ci_regen_ensure_rustfmt_path_script,
 }
 import v2.workflow.ci_heal_skew_guard_emit {
   ci_heal_binary_source_skew_guard_script,
@@ -157,8 +152,6 @@ type CiSpec {
 
 data gunbc_ci_floor_gates: List<Gate> = project_ci_floor_gates(roster: commit_gate_roster)
 
-data gunbc_ci_regen_floor_gates: List<Gate> = project_ci_regen_job_gates(roster: commit_gate_roster)
-
 data gunbc_ci_falsifier_gates_note: String = "The THIRD executing gate surface, projected here beside the floor and regen lists so the coproduct-totality witness can see it. It is not decoration: v2.test.claim.ci_spec_witness witness_gate_roster_matches_coproduct_arms asserts BAG-EQUALITY between the enrolled gates and every arm of the Gate coproduct, which is the construction-shaped form of 'no gate is unenrolled' — strictly stronger than the per-row detection wall in gunbc.commit_workflow, because it reds when a gate is enrolled NOWHERE even if no roster row was edited (a newly added Gate arm, for instance). When the cadence lane gained gates on 2026-07-26 that witness went red for exactly the right reason: its universe of executing surfaces was two, and there were now three. Adding this projection to the bag EXTENDS the totality check to the new surface — it does not relax it. The distinction matters because the tempting alternative, dropping the two flipped arms from the comparison or slackening bag-equality to subset, would have silenced the wall in the same motion that made it informative, which is the absorbing-fallback shape DESIGN §5 forbids."
 
 data gunbc_ci_falsifier_gates: List<Gate> = project_falsifier_gates(roster: commit_gate_roster)
@@ -195,18 +188,6 @@ data gunbc_ci_spec: CiSpec = {
   deploy_stages: gunbc_ci_deploy_stages,
 }
 
-data gunbc_ci_regen_spec: CiSpec = {
-  gates: gunbc_ci_regen_floor_gates,
-  witness_entries: [],
-  discovery_scan_dirs: [],
-  diff_policy: {
-    base: gunbc_merge_target_ref as String,
-    head: "HEAD",
-    mode: DiffMergeBase
-  },
-  notice_title: "self-host fixed-point (regen + staleness) — required; own regen job upstream of ci",
-  deploy_stages: [],
-}
 
 fn ci_spec_with_witness_entries(spec: CiSpec, entries: List<ScheduleWitnessEntry>) -> CiSpec {
   CiSpec {
@@ -456,48 +437,10 @@ fn gunbc_ci_floor_only_script(spec: CiSpec) -> String {
   )
 }
 
-data regen_floor_skip_witness_bin: String = "regen_floor_skip_witness"
+data ci_regen_surface_retirement_note: String = "THE REGEN JOB'S ENTIRE SPEC SURFACE IS RETIRED WITH THE LOOP IT DROVE (v1 cut). Removed here: regen_floor_skip_witness_bin, ci_regen_floor_skip_policy_note, ci_regen_floor_skip_shortcut_script, gunbc_ci_regen_floor_only_script and gunbc_ci_regen_floor_run -- an affected-set admission policy, its shell shortcut, and the scheduler invocation, all of whose subject was whether re-running regen_stage0 could change the self-host fixed point. With the emitter authority and the binary deleted there is no fixed point to recompute, so the policy is not merely unused, its question is void. The rustfmt PATH ensure went with it for the same reason: it existed only to put rustfmt where regen_stage0's standalone spawn could find it.
 
-data ci_regen_floor_skip_policy_note: String = "Affected-set-scoped regen admission (pull_request only): on a pull_request event, regen_floor_skip_witness intersects the merge-base diff with the [src/v1, dag] regen input closure (shared authority cli_run::regen_input_sources — the exact set regen_stage0 compiles; both the RegenVerifyGate and the SelfHostStalenessGate invoke regen_stage0, so the closure covers both). A PR diff touching none of src/v1/** (emitter source + committed stage0 outputs), v1's transitive dag import-closure, or the Cargo/toolchain build config cannot change the self-host fixed-point, so the regen step exits 0 immediately (a required step that passes because the self-host fixed-point is provably unchanged — regen runs before the floor so emitter drift fails fast, with no floor or merge-admission dependency). Empty diff / diff failure / closure failure runs regen (fail-closed). COLD CONTROL: the skip is gated to pull_request events via GITHUB_EVENT_NAME, so push-to-main and workflow_dispatch run regen UNCONDITIONALLY (no witness). A wrong closure that lets a PR wrongly skip therefore surfaces as a counted divergence on the very next merge to main — the squash-merge main-push run has an empty diff and runs regen cold, reding main if the seed is stale (a one-merge acceptance window, the discovery-flip shape). The 4-hourly falsifier does NOT run regen_stage0; the unconditional main-push regen is the cold control."
+WHY THIS IS A RETIREMENT AND NOT A COVERAGE LOSS BEING QUIETLY TAKEN: the regen job could never go green again on this branch, and the ci job's preflight FAILS (never skips) when an upstream job is non-success -- correctly, because a skipped job reports success to a required check. Left standing, a permanently-red regen job would have kept the floor from running at all for the remainder of the cut: a real coverage gap produced by a dead consumer rather than by any decision. Retiring the job restores floor coverage. The preflight itself is untouched; the defect was upstream of it, and softening a fail-closed arm to route around a dead producer is the inversion DESIGN section 5 forbids."
 
-fn ci_regen_floor_skip_shortcut_script() -> String {
-  concat(
-    concat("# ", concat(ci_regen_floor_skip_policy_note, "\n")),
-    concat(
-      "if [ \"$GITHUB_EVENT_NAME\" = \"pull_request\" ]; then\n",
-      concat(
-        concat(
-          concat("  _ci_regen_skip=$(", concat(artifact_shell_path(name: regen_floor_skip_witness_bin), " 2>/dev/null || echo run_regen)")),
-          "\n  if [ \"$_ci_regen_skip\" = \"regen_not_affected_skip\" ]; then\n"
-        ),
-        concat(
-          "      echo \"gunbc ci regen: pull_request diff does not intersect the [src/v1, dag] regen input closure — self-host fixed-point provably unchanged; skipping (push-to-main runs regen unconditionally as the cold control)\"\n",
-          concat("      exit 0\n", concat("  fi\n", "fi\n"))
-        )
-      )
-    )
-  )
-}
-
-fn gunbc_ci_regen_floor_only_script(spec: CiSpec) -> String {
-  concat(
-    concat(ci_regen_ensure_rustfmt_path_script(), "\n"),
-    concat(
-      concat("ROOT=", ci_repo_root_shell(), "\n"),
-      concat(
-        concat(git_fetch_script(policy: spec.diff_policy), "\n"),
-        concat(
-          concat(ci_regen_floor_skip_shortcut_script(), "\n"),
-          concat(scheduler_invoke_with(spec: spec, plan_function: CiRegenFloorPlan), "\n")
-        )
-      )
-    )
-  )
-}
-
-fn gunbc_ci_regen_floor_run(spec: CiSpec) -> String {
-  gunbc_ci_regen_floor_only_script(spec: spec)
-}
 
 fn gunbc_ci_workflow_run(spec: CiSpec) -> String {
   gunbc_ci_floor_only_script(spec: spec)

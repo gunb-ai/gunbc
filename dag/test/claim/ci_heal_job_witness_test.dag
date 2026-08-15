@@ -6,7 +6,6 @@ import v2.std.algebra { list_head, HeadFound, HeadAbsent }
 import gunbc.ci_workflow {
   ci_workflow,
   ci_floor_job_prelude_steps,
-  ci_regen_job,
   ci_heal_generated_artifacts_job,
   ci_heal_author_commit_upload_step,
   ci_build_job,
@@ -162,15 +161,13 @@ test fn floor_refusal_is_exactly_the_first_step() -> Bool {
 test fn floor_refuses_an_already_red_branch_before_its_expensive_steps() -> Bool {
   fold(ci_job().steps, init: false, f: (found, s) => found || step_is_the_upstream_red_refusal(s: s))
     && string_contains(s: ci_floor_upstream_red_refusal_script, pattern: "needs.build.result")
-    && string_contains(s: ci_floor_upstream_red_refusal_script, pattern: "needs.regen.result")
     && string_contains(s: ci_floor_upstream_red_refusal_script, pattern: "needs.heal_generated_artifacts.result")
     && string_contains(s: ci_floor_upstream_red_refusal_script, pattern: "FloorUpstreamAlreadyRed")
     && string_contains(s: ci_floor_upstream_red_refusal_script, pattern: "exit 1")
 }
 
 test fn floor_refusal_reaches_only_the_job_whose_needs_it_names() -> Bool {
-  !fold(ci_regen_job().steps, init: false, f: (found, s) => found || step_is_the_upstream_red_refusal(s: s))
-    && !fold(ci_build_job().steps, init: false, f: (found, s) => found || step_is_the_upstream_red_refusal(s: s))
+  !fold(ci_build_job().steps, init: false, f: (found, s) => found || step_is_the_upstream_red_refusal(s: s))
     && !fold(ci_heal_generated_artifacts_job().steps, init: false, f: (found, s) => found || step_is_the_upstream_red_refusal(s: s))
     && !fold(ci_floor_job_prelude_steps(), init: false, f: (found, s) => found || step_is_the_upstream_red_refusal(s: s))
 }

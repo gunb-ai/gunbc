@@ -5,8 +5,7 @@ import gunbc.ci_gate {
   EmitHostGate, CheapClaimPoolGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
   ProseRowIntroductionGate,
-  SourceRootIngestGate, RegenVerifyGate,
-  SelfHostReadsRealBytesGate, SelfHostStalenessGate
+  SourceRootIngestGate
 }
 import gunbc.generated_artifact {
   GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, GithooksPrePushArtifact, artifact_path
@@ -1037,7 +1036,6 @@ type LocalTidyCheck
 
 type CommitWorkflowSurface
   = GithubActionsCiJob
-  | GithubActionsCiRegenJob
   | GitPrePushHook
   | FalsifierCadenceJob
 
@@ -1140,18 +1138,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitSpecGate { gate: SourceRootIngestGate },
     surfaces: [FalsifierCadenceJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitSpecGate { gate: RegenVerifyGate },
-    surfaces: [GithubActionsCiRegenJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitSpecGate { gate: SelfHostReadsRealBytesGate },
-    surfaces: [FalsifierCadenceJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitSpecGate { gate: SelfHostStalenessGate },
-    surfaces: [GithubActionsCiRegenJob]
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
@@ -1855,8 +1841,6 @@ fn commit_workflow_surface_eq(a: CommitWorkflowSurface, b: CommitWorkflowSurface
   match a {
     GithubActionsCiJob =>
       match b { GithubActionsCiJob => true  _ => false }
-    GithubActionsCiRegenJob =>
-      match b { GithubActionsCiRegenJob => true  _ => false }
     GitPrePushHook =>
       match b { GitPrePushHook => true  _ => false }
     FalsifierCadenceJob =>
@@ -1882,9 +1866,6 @@ fn gate_eq(a: Gate, b: Gate) -> Bool {
     ExtdepsScopePlacementGate => match b { ExtdepsScopePlacementGate => true  _ => false }
     ProseRowIntroductionGate => match b { ProseRowIntroductionGate => true  _ => false }
     SourceRootIngestGate => match b { SourceRootIngestGate => true  _ => false }
-    RegenVerifyGate => match b { RegenVerifyGate => true  _ => false }
-    SelfHostReadsRealBytesGate => match b { SelfHostReadsRealBytesGate => true  _ => false }
-    SelfHostStalenessGate => match b { SelfHostStalenessGate => true  _ => false }
   }
 }
 
@@ -1901,12 +1882,6 @@ fn gates_from_enrollments(rows: List<CommitCheckEnrollment>) -> List<Gate> {
 fn project_ci_floor_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
   gates_from_enrollments(
     rows: filter(roster, e => enrollment_has_surface(e: e, surface: GithubActionsCiJob))
-  )
-}
-
-fn project_ci_regen_job_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
-  gates_from_enrollments(
-    rows: filter(roster, e => enrollment_has_surface(e: e, surface: GithubActionsCiRegenJob))
   )
 }
 
@@ -1980,11 +1955,12 @@ fn enrollment_is_spec_gate(e: CommitCheckEnrollment) -> Bool {
   }
 }
 
-data gate_enrollment_surface_asymmetry_note: String = "WHY GATES NEED THEIR OWN SCHEDULED-SURFACE PREDICATE rather than reusing witness_enrollment_is_scheduled: the two row kinds disagree about ONE surface, and the disagreement is a fact about which projector executes which kind, not a policy preference. GithubActionsCiRegenJob EXECUTES gates — project_ci_regen_job_gates reads it, and RegenVerifyGate/SelfHostStalenessGate ride it as their only surface — so for a gate it is a genuine enforcement authority. For a WITNESS it is not, and bare_deenrollment_wall_note says exactly why: 'the regen job projects GATES only', so a witness parked there executes nowhere. Folding both kinds into one predicate would therefore have to either wrongly credit witnesses on the regen job (re-opening the hole that note closed) or wrongly deny gates their real home (redding RegenVerifyGate, a correctly-enrolled row). GitPrePushHook counts for NEITHER, for the reason the standing ruling already gives: opt-in per clone, bypassable with --no-verify, absent in container worktrees, and PROVEN ineffective by #6658. So the shared law is 'a declared row must ride a surface that executes ITS kind', and the two predicates are that one law read against two projector sets — not two policies."
+data gate_enrollment_surface_asymmetry_note: String = "WHY GATES NEED THEIR OWN SCHEDULED-SURFACE PREDICATE rather than reusing witness_enrollment_is_scheduled. The law is 'a declared row must ride a surface that executes ITS kind', and the two predicates are that one law read against two projector sets. GitPrePushHook counts for NEITHER kind, for the reason the standing ruling gives: opt-in per clone, bypassable with --no-verify, absent in container worktrees, and PROVEN ineffective by #6658.
+
+HISTORICAL, AND THE REASON THIS NOTE SHRANK (v1 cut): the asymmetry used to have a second instance. GithubActionsCiRegenJob executed GATES but not WITNESSES -- project_ci_regen_job_gates read it, RegenVerifyGate and SelfHostStalenessGate rode it as their only surface, and a witness parked there executed nowhere. That surface, its projector, and those gates are all retired with the regen loop, so the divergence they illustrated no longer exists in the tree. The predicate stays split because the LAW is what justifies it, not the number of surfaces that currently disagree -- collapsing it now would have to be re-derived the next time a surface executes one kind and not the other."
 
 fn gate_enrollment_is_scheduled(e: CommitCheckEnrollment) -> Bool {
   enrollment_has_surface(e: e, surface: GithubActionsCiJob)
-    || enrollment_has_surface(e: e, surface: GithubActionsCiRegenJob)
     || enrollment_has_surface(e: e, surface: FalsifierCadenceJob)
 }
 
@@ -2607,7 +2583,6 @@ fn ci_floor_commit_witness_claim_schedule() -> List<ScheduleWitnessEntry> {
 fn realization_artifact_path(surface: CommitWorkflowSurface) -> String {
   match surface {
     GithubActionsCiJob => artifact_path(a: CiYamlArtifact)
-    GithubActionsCiRegenJob => artifact_path(a: CiYamlArtifact)
     GitPrePushHook => artifact_path(a: GithooksPrePushArtifact)
     FalsifierCadenceJob => artifact_path(a: FalsifierYamlArtifact)
   }
@@ -2616,7 +2591,6 @@ fn realization_artifact_path(surface: CommitWorkflowSurface) -> String {
 fn realization_handler_for_surface(surface: CommitWorkflowSurface) -> CommitWorkflowRealizationKind {
   match surface {
     GithubActionsCiJob => CiYamlHandler
-    GithubActionsCiRegenJob => CiYamlHandler
     GitPrePushHook => GitPrePushScriptHandler
     FalsifierCadenceJob => CiYamlHandler
   }
@@ -2625,7 +2599,6 @@ fn realization_handler_for_surface(surface: CommitWorkflowSurface) -> CommitWork
 fn realization_artifact_for_surface(surface: CommitWorkflowSurface) -> GeneratedArtifact {
   match surface {
     GithubActionsCiJob => CiYamlArtifact
-    GithubActionsCiRegenJob => CiYamlArtifact
     GitPrePushHook => GithooksPrePushArtifact
     FalsifierCadenceJob => FalsifierYamlArtifact
   }

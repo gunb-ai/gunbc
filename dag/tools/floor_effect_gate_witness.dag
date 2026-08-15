@@ -4,7 +4,6 @@ import gunbc.ci_gate { EmitHostGate, CheapClaimPoolGate }
 import gunbc.ci_spec {
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
   ProseRowIntroductionGate,
-  RegenVerifyGate
 }
 import tools.ci_gates { exit_ok, run_spec_gate }
 import tools.extdeps_scope_placement_gate {
@@ -15,7 +14,6 @@ import tools.extdeps_scope_placement_gate {
 import tools.prose_row_introduction_gate { prose_row_gate_failure_receipt }
 import tools.dag_compile_clean_gate { dag_compile_clean_failure_receipt }
 import tools.generated_artifact_gate { generated_artifact_drift_failure_receipt }
-import tools.regen_verify_gate { regen_verify_failure_receipt }
 import gunbc.test_module_hygiene {
   failure_receipt_companion,
 }
@@ -92,10 +90,3 @@ func generated_artifact_drift_gate_failure_receipt() -> String {
   generated_artifact_drift_failure_receipt()
 }
 
-func regen_verify_gate_passes() -> Bool {
-  tools.ci_gates.exit_ok(e: run_spec_gate(g: RegenVerifyGate))
-}
-
-func regen_verify_gate_failure_receipt() -> String {
-  regen_verify_failure_receipt()
-}

@@ -12,13 +12,11 @@ data proactive_verification_ledger_law: String = "The PROACTIVE VERIFICATION LED
 type VerificationReceiptKind
   = WholeCorpusWitnessParityCold
   | CompileCleanParity
-  | RegenBehavioralFixedPoint
 
 type VerificationExecutionShape
   = ClaimWitness { entry: String, function: String }
   | FalsifierPredictOnlyBatch
   | CompileCleanGate
-  | RegenVerifyGate
 
 type VerificationDisposition
   = ExecutableNow
@@ -50,7 +48,7 @@ data spine_witness_parity_recipe: String = "claim_executor --source-root dag --s
 
 data spine_compile_clean_recipe: String = "claim_executor batch-1 dag_compile_clean_gate (--target dag whole-tree; same authority as gunbc_ci_floor_plan)"
 
-data spine_regen_recipe: String = "regen_stage0 --emit-fresh target/v2-emit-fresh-realize --write-manifest target/v2-emit-fresh-realize/roster_manifest.txt --verify (RegenVerifyGate transport)"
+data spine_regen_row_retirement_note: String = "THE REGEN BEHAVIORAL FIXED-POINT ROW IS RETIRED, NOT MARKED BLOCKED. It claimed two-generation equivalence -- re-emit the seed, emit again, prove the output stable -- via `regen_stage0 --verify`, and its disposition was BlockedOnCiFloorCutover with dissolution 'emitter_fixed_point + ci_floor_cutover'. The v1 cut deleted both the emitter authority and the regen binary, so the row's dissolution trigger can never fire and its subject cannot be observed: this is not a verification still owed, it is a verification whose object no longer exists. Leaving it as Blocked would have been the inert-row lie -- a ledger entry that reads as pending work while nothing could ever execute it. The remaining two spine rows are untouched and still Blocked, which is what makes the difference visible: this ledger distinguishes 'not yet' from 'never again', and only the regen row moved."
 
 data family_partition_note: String = "Nine witness-realization families (#6879 kernel partition): add (serial kernel), match+loop+fold_closure (lane 3), field_access+complement (lane 2), meet_join+variant_construct+classical_not_ingested (lane 4). Emitter clean across all nine — eval/harness gaps closed by #6912 and #6917. Family KnownRed disposition = exact (entry, function) projection of known_red_probe_roster; un-quarantine deletes the probe row."
 
@@ -70,14 +68,6 @@ data proactive_verification_spine_rows: List<SpineVerificationLedgerRow> = [
     execution: CompileCleanGate,
     disposition: BlockedOnCiFloorCutover,
     dissolution: unbound_dissolution(description: "ci_floor_cutover; whole-tree compile-clean gate green on v2-emitted execution path")
-  },
-  SpineVerificationLedgerRow {
-    id: ^regen_behavioral_fixed_point,
-    kind: RegenBehavioralFixedPoint,
-    title: "Regen behavioral fixed point (regen_stage0 --verify two-generation equivalence)",
-    execution: RegenVerifyGate,
-    disposition: BlockedOnCiFloorCutover,
-    dissolution: unbound_dissolution(description: "emitter_fixed_point + ci_floor_cutover; regen_verify gate green by execution")
   }
 ]
 
@@ -199,7 +189,6 @@ fn family_row_has_live_probe_red(row: FamilyVerificationLedgerRow) -> Bool {
       schedule_contains_entry(xs: known_red_probe_roster(), entry: e, function: f)
     FalsifierPredictOnlyBatch => false
     CompileCleanGate => false
-    RegenVerifyGate => false
   }
 }
 
@@ -267,7 +256,6 @@ fn ledger_has_spine_kind(kind: VerificationReceiptKind) -> Bool {
 fn ledger_all_spine_kinds_present() -> Bool {
   ledger_has_spine_kind(kind: WholeCorpusWitnessParityCold)
     && ledger_has_spine_kind(kind: CompileCleanParity)
-    && ledger_has_spine_kind(kind: RegenBehavioralFixedPoint)
 }
 
 fn ledger_executable_family_rows() -> List<FamilyVerificationLedgerRow> {
