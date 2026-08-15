@@ -1,8 +1,7 @@
 module gunbc.host_spark_serving_provision
 
 import std.types { String, NonEmptyStr, Bool, FilePath }
-import std.disposition { Disposition, Scaffold, RealizationDispatch, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, SingleAuthority }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import product.placement_supply { HostIdentity }
@@ -26,14 +25,7 @@ data host_spark_serving_provision_scope_disposition: Disposition = SingleAuthori
 
 data host_spark_serving_provision_note: String = "Local-host Spark serving runtime materialization entry (#8225 runtime-bundle follow-on). Runs package_delivery.materialize_spark_serving_ollama_runtime_bundle on the invoking host as gunbc-automation — extract, place owned closure, write receipt, install user unit, enable service, pull gpt-oss:20b. Operative only when gunbc is present on that host; observed absent on srv5/srv6 2026-08-15 (host_spark_serving_gunbc_layout_note). Remote ensure delegates to this entry via gunbc run on the target (host_spark_serving_provision_script); plan/apply CAS is spark_serving_plan_apply."
 
-data host_spark_serving_provision_realize_scaffold: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.spark_serving_provision_apply",
-    decl_name: "spark_serving_provision_apply_for_host",
-    field: WholeDeclaration,
-  }
-}
+data host_spark_serving_provision_realize_dispatch_note: String = "RealizationDispatch scaffold withheld until ProvisionSparkServing lands in gunbc.host_effect_realize as realize_provision_spark_serving (codex precedent: host_codex_runtime_provision_realize_scaffold binds realize_provision_codex_runtime). Interim remote actuation is spark_serving_provision_apply FleetSsh transport only — not realization dispatch; binding that interim path as RealizationDispatch was rung inflation (review 52354)."
 
 fn materialize_spark_serving_on_local_host_refusal(
   outcome: SparkServingOllamaRuntimeMaterialization,
