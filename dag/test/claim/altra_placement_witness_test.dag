@@ -12,8 +12,6 @@ import product.altra_motherboard.placement {
   FrameRegistryRefused,
   altra_frame_registry,
   BoardPlacementPlan,
-  ClockSource,
-  ClockFanout,
   ComponentEnvelopeNotEstablished,
   ComponentFillsNoRequiredRole,
   DebugConnector,
@@ -148,7 +146,7 @@ test fn w_the_outstanding_obligations_are_counted_exactly() -> Bool {
     Absent => false
     Present { value: p } =>
       established_envelope_count(plan: p) == 2
-        && outstanding_obligation_count(plan: p) == 14
+        && outstanding_obligation_count(plan: p) == 12
   }
 }
 
@@ -344,7 +342,7 @@ test fn w_a_plan_missing_roles_names_every_one_of_them() -> Bool {
           origin: point2(frame: altra_board_frame(), x: 240000, y: 200000),
         }], template: p)),
         wanted: "RoleUnfilled"
-      ) == 15
+      ) == 13
   }
 }
 
@@ -393,7 +391,7 @@ test fn w_two_components_sharing_an_identity_refuse_once() -> Bool {
             origin: point2(frame: altra_board_frame(), x: 10000, y: 10000),
           },
           PlannedComponent {
-            identity: "collides", role: ClockSource, envelope: board_control_envelope,
+            identity: "collides", role: ResetController, envelope: board_control_envelope,
             origin: point2(frame: altra_board_frame(), x: 20000, y: 20000),
           },
         ], template: p)),
@@ -405,7 +403,7 @@ test fn w_two_components_sharing_an_identity_refuse_once() -> Bool {
 // THE BOARD AS IT STANDS TODAY REPORTS THE SUBSET ARM, and that is the whole point of the arm
 // existing. Two of fifteen parts have an established envelope, so the body-envelope check ran over
 // two rectangles and found nothing wrong -- and reporting that as a clean board would be a
-// finished-looking answer about a board that is fourteen parts short. The count of unchecked parts
+// finished-looking answer about a board that is twelve parts short. The count of unchecked parts
 // travels with the answer so a consumer cannot read the geometry verdict without it.
 test fn w_a_partial_board_reports_the_subset_arm_carrying_what_it_did_not_check() -> Bool {
   match plan_or_empty() {
@@ -413,7 +411,7 @@ test fn w_a_partial_board_reports_the_subset_arm_carrying_what_it_did_not_check(
     Present { value: p } =>
       match board_body_layout_standing(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: p) {
         BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: n, geometry: _ } =>
-          n == 14 && n == parts_not_geometrically_checked(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: p)
+          n == 12 && n == parts_not_geometrically_checked(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: p)
         BodyLayoutAdmittedOverEveryRequiredPart { article: _ } => false
         BodyLayoutRefused { causes: _ } => false
       }
@@ -436,7 +434,7 @@ test fn w_a_present_but_unjustified_part_is_not_counted_as_unchecked() -> Bool {
           envelope: board_control_envelope,
           origin: point2(frame: altra_board_frame(), x: 10000, y: 10000),
         }]), template: p)
-      ) == 14
+      ) == 12
   }
 }
 

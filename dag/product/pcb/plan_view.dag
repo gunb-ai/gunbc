@@ -35,6 +35,7 @@ import product.pcb.scene {
   SceneEstablishedBody,
   SceneObligationMarker,
   SceneAttachmentMarker,
+  SceneFunctionalMarker,
   SceneLegend,
   project_engineering_scene,
   first_unrepresented_scene_identity,
@@ -229,10 +230,11 @@ fn legend_text(c: PcbSceneLegend) -> String {
     concat(to_string(c.commercial_access), concat(" commercial-access / ",
     concat(to_string(c.legal_carriage), concat(" legal-carriage / ",
     concat(to_string(c.drawing_must_be_read), concat(" drawing-must-be-read / ",
-    concat(to_string(c.named_attachment_part_unresolved), concat(" attachment-part-unresolved — ",
+    concat(to_string(c.named_attachment_part_unresolved), concat(" attachment-part-unresolved / ",
+    concat(to_string(c.functional_obligation), concat(" unrealized-function — ",
     concat(body_layout_legend(s: c.body_layout), concat(" — design identity: ",
     concat(declaration_ref_display_key(ref: c.design), concat(" — ",
-    envelope_reads_legend(xs: c.envelope_reads)))))))))))))))))))
+    envelope_reads_legend(xs: c.envelope_reads)))))))))))))))))))))
   )
 }
 
@@ -277,6 +279,18 @@ fn element_fragments(e: PcbSceneElement, attachment_index: Int, body_layout: Pcb
         label: concat("attachment: ", layer as String),
         class_name: "pcb-label-attachment-obligation",
       )]
+    SceneFunctionalMarker { function: f, cause: cause } =>
+      [svg_text(
+        x: micrometer_count(m: attachment_label_x),
+        y: micrometer_count(m: attachment_label_base) + (attachment_index * micrometer_count(m: attachment_label_step)),
+        label: concat("function unrealized: ", f as String),
+        class_name: "pcb-label-functional-obligation",
+      ), svg_text(
+        x: micrometer_count(m: attachment_label_x),
+        y: micrometer_count(m: attachment_label_base) + (attachment_index * micrometer_count(m: attachment_label_step)) + micrometer_count(m: obligation_cause_drop),
+        label: concat("(", concat(obligation_cause_label(c: cause), ")")),
+        class_name: "pcb-obligation-cause",
+      )]
   }
 }
 
@@ -285,6 +299,7 @@ fn fold_scene_fragments(scene: PcbEngineeringScene) -> List<Fragment> {
   let acc = fold(scene.elements, init: AttachmentLabelAcc { index: 0, fragments: [] }, f: fn(state, e) {
     let next_index = match e {
       SceneAttachmentMarker { layer: _, cause: _ } => state.index + 1
+      SceneFunctionalMarker { function: _, cause: _ } => state.index + 1
       SceneBoardOutline { outline: _ } => state.index
       SceneEstablishedBody { identity: _, origin: _, body_width: _, body_height: _, source: _ } => state.index
       SceneObligationMarker { identity: _, origin: _, cause: _ } => state.index
@@ -335,6 +350,7 @@ fn project_pcb_world(w: PcbWorld) -> PcbSceneConstruction<PcbPlanViewScene> {
           SceneEstablishedBody { identity: _, origin: _, body_width: _, body_height: _, source: _ } => none
           SceneObligationMarker { identity: _, origin: _, cause: _ } => none
           SceneAttachmentMarker { layer: _, cause: _ } => none
+          SceneFunctionalMarker { function: _, cause: _ } => none
           SceneLegend { counts: _ } => none
         }
     }

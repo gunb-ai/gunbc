@@ -33,6 +33,7 @@ import product.pcb.world {
   PcbManufacturingWorld,
   PcbComponentObligation,
   PcbAttachmentObligation,
+  PcbFunctionalObligation,
   PcbObligationCause,
   MissingDocument,
   CommercialAccess,
@@ -48,12 +49,13 @@ import product.pcb.world {
   EstablishedEnvelopeRead,
 }
 import product.altra_motherboard.placement {
+  board_functional_requirements,
+  functional_requirement_name,
+  functional_requirement_reason,
   BoardComponentRole,
   BoardControlCpld,
   BoardPlacementPlan,
   BootFirmwareEeprom,
-  ClockSource,
-  ClockFanout,
   DebugConnector,
   EnvelopeEstablished,
   EnvelopeNotEstablished,
@@ -182,8 +184,6 @@ fn cause_from_unresolved_role(r: BoardComponentRole, w: NonEmptyStr) -> PcbOblig
     MemoryModuleSlot { slot: _ } => UnselectedPart { because: w }
     BootFirmwareEeprom => UnselectedPart { because: w }
     FirmwareFlash => UnselectedPart { because: w }
-    ClockSource => UnselectedPart { because: w }
-    ClockFanout => UnselectedPart { because: w }
     ResetController => UnselectedPart { because: w }
     PowerController => UnselectedPart { because: w }
     NetworkEndpoint => UnselectedPart { because: w }
@@ -279,6 +279,19 @@ fn envelope_reads_from_plan(plan: BoardPlacementPlan) -> List<EstablishedEnvelop
   })
 }
 
+// EVERY REQUIRED FUNCTION WITH NO REALIZATION REACHES THE WORLD, so that moving the clock
+// requirements off the physical roster reported them differently rather than stopped reporting
+// them. Dropping an obligation while relocating it would be the exact failure this board's
+// projection is supposed to make impossible.
+fn functional_obligations() -> List<PcbFunctionalObligation> {
+  fold(board_functional_requirements(), init: [], f: fn(acc, f) {
+    concat(acc, [PcbFunctionalObligation {
+      function: functional_requirement_name(f: f),
+      cause: UnselectedPart { because: functional_requirement_reason(f: f) },
+    }])
+  })
+}
+
 fn physical_world_from_plan(d: AltraMinimalMotherboard, d_ref: DeclarationRef, plan: BoardPlacementPlan) -> PcbPhysicalWorld {
   PcbPhysicalWorld {
     board: PcbBoard { frame: plan.frame, outline: plan.outline },
@@ -286,6 +299,7 @@ fn physical_world_from_plan(d: AltraMinimalMotherboard, d_ref: DeclarationRef, p
     envelope_reads: envelope_reads_from_plan(plan: plan),
     obligations: obligations_from_plan(plan: plan),
     attachment_obligations: attachment_obligations(),
+    functional_obligations: functional_obligations(),
     body_layout: project_body_layout(s: board_body_layout_standing(d: d, d_ref: d_ref, plan: plan)),
     stackup: capability_pending(what_is_owed: "a cited dielectric stackup for this board; no fabricator profile has been joined"),
     footprints: capability_pending(what_is_owed: "vendor land patterns placed on this board; body envelopes are not footprints"),

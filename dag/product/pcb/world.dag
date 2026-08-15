@@ -53,6 +53,15 @@ type PcbAttachmentObligation {
   cause: PcbObligationCause
 }
 
+// A REQUIRED FUNCTION WITH NO REALIZATION YET, carried without geometry on purpose: it has no
+// identity, no origin and no extent, because how many parts provide it is exactly what is not
+// known. Reporting it here is what keeps it from being dropped between the design's requirement
+// and the physical roster.
+type PcbFunctionalObligation {
+  function: NonEmptyStr
+  cause: PcbObligationCause
+}
+
 type PcbCapabilityObligation {
   what_is_owed: NonEmptyStr
 }
@@ -90,6 +99,7 @@ type PcbPhysicalWorld {
   envelope_reads: List<EstablishedEnvelopeRead>
   obligations: List<PcbComponentObligation>
   attachment_obligations: List<PcbAttachmentObligation>
+  functional_obligations: List<PcbFunctionalObligation>
   body_layout: PcbBodyLayoutStanding
   stackup: PcbCapabilityStanding
   footprints: PcbCapabilityStanding
@@ -175,6 +185,10 @@ fn pcb_component_count(p: PcbPhysicalWorld) -> Int {
 
 fn pcb_obligation_count(p: PcbPhysicalWorld) -> Int {
   fold(p.obligations, init: 0, f: fn(acc, _o) { acc + 1 })
+}
+
+fn pcb_functional_obligation_count(p: PcbPhysicalWorld) -> Int {
+  fold(p.functional_obligations, init: 0, f: fn(acc, _f) { acc + 1 })
 }
 
 fn pcb_attachment_obligation_count(p: PcbPhysicalWorld) -> Int {

@@ -23,6 +23,7 @@ import product.pcb.world {
   pcb_body_layout,
   pcb_component_count,
   pcb_cause_counts,
+  pcb_functional_obligation_count,
   pcb_envelope_reads,
   EstablishedEnvelopeRead,
 }
@@ -45,6 +46,7 @@ type PcbSceneLegend {
   unselected_part: Int
   drawing_must_be_read: Int
   named_attachment_part_unresolved: Int
+  functional_obligation: Int
   body_layout: PcbBodyLayoutStanding
   design: DeclarationRef
   envelope_reads: List<DeclarationRef>
@@ -66,6 +68,10 @@ type PcbSceneElement
     }
   | SceneAttachmentMarker {
       layer: NonEmptyStr
+      cause: PcbObligationCause
+    }
+  | SceneFunctionalMarker {
+      function: NonEmptyStr
       cause: PcbObligationCause
     }
   | SceneLegend { counts: PcbSceneLegend }
@@ -90,6 +96,7 @@ fn legend_of(w: PcbWorld) -> PcbSceneLegend {
     unselected_part: causes.unselected_part,
     drawing_must_be_read: causes.drawing_must_be_read,
     named_attachment_part_unresolved: causes.named_attachment_part_unresolved,
+    functional_obligation: pcb_functional_obligation_count(p: pcb_world_physical(w: w)),
     body_layout: pcb_body_layout(p: p),
     design: pcb_world_design(w: w),
     envelope_reads: fold(pcb_envelope_reads(p: p), init: [], f: fn(acc, r) {
@@ -134,6 +141,15 @@ fn obligation_elements(p: PcbPhysicalWorld) -> List<PcbSceneElement> {
   })
 }
 
+fn functional_elements(p: PcbPhysicalWorld) -> List<PcbSceneElement> {
+  fold(p.functional_obligations, init: [], f: fn(acc, f) {
+    concat(acc, [SceneFunctionalMarker {
+      function: f.function,
+      cause: f.cause,
+    }])
+  })
+}
+
 fn attachment_elements(p: PcbPhysicalWorld) -> List<PcbSceneElement> {
   fold(p.attachment_obligations, init: [], f: fn(acc, a) {
     concat(acc, [SceneAttachmentMarker {
@@ -151,7 +167,7 @@ fn project_engineering_scene(w: PcbWorld) -> PcbEngineeringScene {
     world: w,
     elements: concat(
       concat(outline, legend),
-      concat(established_elements(p: p), concat(obligation_elements(p: p), attachment_elements(p: p)))
+      concat(established_elements(p: p), concat(obligation_elements(p: p), concat(attachment_elements(p: p), functional_elements(p: p))))
     ),
   )
 }
@@ -166,6 +182,7 @@ fn scene_element_identities(e: PcbSceneElement) -> List<NonEmptyStr> {
       }
     SceneObligationMarker { identity: id, origin: _, cause: _ } => [id]
     SceneAttachmentMarker { layer: layer, cause: _ } => [concat("attachment: ", layer as String) as NonEmptyStr]
+    SceneFunctionalMarker { function: f, cause: _ } => [concat("function unrealized: ", f as String) as NonEmptyStr]
     SceneLegend { counts: c } =>
       concat(
         [declaration_ref_display_key(ref: c.design) as NonEmptyStr],

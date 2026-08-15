@@ -54,6 +54,7 @@ import product.pcb.world {
   pcb_attachment_obligation_count,
   pcb_unselected_part_count,
   pcb_missing_document_count,
+  pcb_functional_obligation_count,
   pcb_named_attachment_part_unresolved_count,
   pcb_commercial_access_count,
   pcb_legal_carriage_count,
@@ -205,6 +206,7 @@ fn world_with_obligations(obs: List<PcbComponentObligation>) -> PcbWorld? {
             envelope_reads: [],
             obligations: obs,
             attachment_obligations: [],
+            functional_obligations: [],
             body_layout: PcbBodyLayoutAdmittedOverEstablishedSubsetOnly {
               parts_still_owed: list_length(items: obs),
             },
@@ -280,29 +282,29 @@ test fn w_the_altra_pcb_world_constructs_as_a_partial_preview() -> Bool {
 // so it is its own cause and its own count. The missing-document population for COMPONENTS is now
 // zero, which is the honest number: the one live missing document is the board land pattern, and
 // that is an ATTACHMENT obligation, counted separately.
-test fn w_the_world_carries_two_established_thirteen_unselected_and_one_attachment_part_unresolved() -> Bool {
+test fn w_the_world_carries_two_established_eleven_unselected_and_one_attachment_part_unresolved() -> Bool {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
       let p = pcb_world_physical(w: w)
       pcb_component_count(p: p) == 2
-        && pcb_obligation_count(p: p) == 14
-        && pcb_unselected_part_count(p: p) == 13
+        && pcb_obligation_count(p: p) == 12
+        && pcb_unselected_part_count(p: p) == 11
         && pcb_named_attachment_part_unresolved_count(p: p) == 1
         && pcb_missing_document_count(p: p) == 0
         && pcb_commercial_access_count(p: p) == 0
         && pcb_legal_carriage_count(p: p) == 0
-        && pcb_population_count(p: p) == 16
+        && pcb_population_count(p: p) == 14
   }
 }
 
-test fn w_the_reference_board_body_layout_is_the_established_subset_with_fourteen_parts_owed() -> Bool {
+test fn w_the_reference_board_body_layout_is_the_established_subset_with_twelve_parts_owed() -> Bool {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
       match pcb_body_layout(p: pcb_world_physical(w: w)) {
         PcbBodyLayoutAdmittedOverEveryRequiredPart => false
-        PcbBodyLayoutAdmittedOverEstablishedSubsetOnly { parts_still_owed: n } => n == 14
+        PcbBodyLayoutAdmittedOverEstablishedSubsetOnly { parts_still_owed: n } => n == 12
         PcbBodyLayoutRefusedOverEstablishedSubset { parts_still_owed: _, causes: _ } => false
         PcbBodyLayoutRefusedOverCompletePopulation { causes: _ } => false
       }
@@ -445,10 +447,10 @@ test fn w_subset_bodies_are_not_drawn_as_checked() -> Bool {
     Present { value: s } =>
       count_substring(haystack: s, needle: "pcb-component-established") == 0
         && count_substring(haystack: s, needle: "pcb-component-subset-body") == 2
-        && count_substring(haystack: s, needle: "pcb-component-unselected-part") == 13
+        && count_substring(haystack: s, needle: "pcb-component-unselected-part") == 11
         && count_substring(haystack: s, needle: "pcb-component-named-attachment-type-part-unresolved") == 1
         && count_substring(haystack: s, needle: "pcb-component-missing-document") == 0
-        && string_contains(s: s, pattern: "body layout admitted over established subset only; 14 parts owed")
+        && string_contains(s: s, pattern: "body layout admitted over established subset only; 12 parts owed")
         && !string_contains(s: s, pattern: "body layout checked over established subset only")
   }
 }
@@ -456,7 +458,7 @@ test fn w_subset_bodies_are_not_drawn_as_checked() -> Bool {
 test fn w_the_legend_states_the_cause_populations() -> Bool {
   match scene_or_empty() {
     Absent => false
-    Present { value: s } => string_contains(s: s, pattern: "2 established / 13 unselected / 0 missing-document / 0 commercial-access / 0 legal-carriage / 0 drawing-must-be-read / 1 attachment-part-unresolved — body layout admitted over established subset only; 14 parts owed")
+    Present { value: s } => string_contains(s: s, pattern: "2 established / 11 unselected / 0 missing-document / 0 commercial-access / 0 legal-carriage / 0 drawing-must-be-read / 1 attachment-part-unresolved / 2 unrealized-function — body layout admitted over established subset only; 12 parts owed")
   }
 }
 
@@ -670,10 +672,10 @@ test fn w_the_engineering_scene_is_projected_from_the_world() -> Bool {
   }
 }
 
-test fn w_mutation_control_obligation_count_must_be_fourteen() -> Bool {
+test fn w_mutation_control_obligation_count_must_be_twelve() -> Bool {
   match world_or_empty() {
     Absent => false
-    Present { value: w } => pcb_obligation_count(p: pcb_world_physical(w: w)) == 14
+    Present { value: w } => pcb_obligation_count(p: pcb_world_physical(w: w)) == 12
   }
 }
 
@@ -684,12 +686,12 @@ test fn w_mutation_control_established_count_must_be_two() -> Bool {
   }
 }
 
-test fn w_mutation_control_unselected_thirteen_and_attachment_part_unresolved_one() -> Bool {
+test fn w_mutation_control_unselected_eleven_and_attachment_part_unresolved_one() -> Bool {
   match world_or_empty() {
     Absent => false
     Present { value: w } =>
       let p = pcb_world_physical(w: w)
-      pcb_unselected_part_count(p: p) == 13
+      pcb_unselected_part_count(p: p) == 11
         && pcb_named_attachment_part_unresolved_count(p: p) == 1
         && pcb_missing_document_count(p: p) == 0
         && pcb_drawing_must_be_read_count(p: p) == 0
@@ -728,6 +730,7 @@ fn all_capabilities_refused(w: PcbWorld) -> PcbWorld {
       envelope_reads: p.envelope_reads,
       obligations: p.obligations,
       attachment_obligations: p.attachment_obligations,
+      functional_obligations: p.functional_obligations,
       body_layout: p.body_layout,
       stackup: CapabilityRefused { cause: "planted refusal: stackup" },
       footprints: CapabilityRefused { cause: "planted refusal: footprints" },
@@ -820,5 +823,39 @@ test fn w_a_refused_subset_does_not_project_as_a_checked_subset() -> Bool {
     PcbBodyLayoutAdmittedOverEstablishedSubsetOnly { parts_still_owed: _ } => false
     PcbBodyLayoutAdmittedOverEveryRequiredPart => false
     PcbBodyLayoutRefusedOverCompletePopulation { causes: _ } => false
+  }
+}
+
+// MOVING THE CLOCK REQUIREMENTS OFF THE PHYSICAL ROSTER DID NOT STOP REPORTING THEM. They were
+// briefly BoardComponentRole variants, which made the exactly-one population join decide that one
+// device provides each function -- a decision the annotation beside it explicitly disclaimed, and
+// one the Mt. Jade reference contradicts with four parts across the two jobs. They are now
+// functional obligations with no identity, origin or envelope, because the multiplicity is what is
+// unknown. The failure mode of that relocation is silent disappearance, so this asserts both that
+// the count survived and that each function reaches the emitted document by name.
+test fn w_the_unrealized_clock_functions_are_still_reported() -> Bool {
+  match world_or_empty() {
+    Absent => false
+    Present { value: w } =>
+      pcb_functional_obligation_count(p: pcb_world_physical(w: w)) == 2
+        && match scene_or_empty() {
+             Absent => false
+             Present { value: s } =>
+               string_contains(s: s, pattern: "function unrealized: clock source")
+                 && string_contains(s: s, pattern: "function unrealized: clock fanout")
+           }
+  }
+}
+
+// AND THEY ARE NOT COMPONENTS, which is the half that would silently come back if someone later
+// "fixed" the missing clock parts by re-adding the roles. No planned component fills a clock
+// function, so nothing in the geometric population claims a clock device exists.
+test fn w_no_clock_device_appears_in_the_physical_population() -> Bool {
+  match scene_or_empty() {
+    Absent => false
+    Present { value: s } =>
+      !string_contains(s: s, pattern: "clock_gen")
+        && !string_contains(s: s, pattern: "clock_source<")
+        && !string_contains(s: s, pattern: "clock_fanout<")
   }
 }
