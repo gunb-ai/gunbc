@@ -67,7 +67,6 @@ import product.pcb.plan_view {
   label_type_size,
   cause_type_size,
   attachment_label_step,
-  obligation_cause_drop,
   PcbSceneEmitted,
   PcbSceneEmissionRefused,
   PcbSceneReady,
@@ -76,7 +75,6 @@ import product.pcb.plan_view {
   emit_pcb_plan_view,
   represented_scene_labels,
   attachment_label_base,
-  attachment_label_step,
 }
 import product.pcb.scene {
   project_engineering_scene,
