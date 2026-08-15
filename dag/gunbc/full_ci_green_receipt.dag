@@ -1,7 +1,7 @@
 module gunbc.full_ci_green_receipt
 
 import std.types { NonEmptyStr, String, CommitSha, Bool, List, Int }
-import extdeps.github.checks { Success, CheckConclusion }
+import extdeps.github.checks { Success }
 import gunbc.floor_component_receipt {
   floor_component_receipt_schema,
 }
