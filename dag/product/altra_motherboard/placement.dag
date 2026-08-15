@@ -732,6 +732,7 @@ fn parts_not_geometrically_checked(d: AltraMinimalMotherboard, d_ref: Declaratio
       PlannedIdentityRepeated { component: _ } => acc
       RoleFilledMoreThanOnce { role: _, fills: _ } => acc
       PlanWasBuiltFromADifferentDesign { plan_design: _, admitted_against: _ } => acc
+      RequiredFunctionWithoutJustifiedPartOnBoard { requirement: _ } => acc
     }
   })
 }
