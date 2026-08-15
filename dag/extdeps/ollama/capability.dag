@@ -184,7 +184,7 @@ type OllamaPlatformSupportRow {
 data ollama_gb10_linux_arm64_support_row: OllamaPlatformSupportRow = OllamaPlatformSupportRow {
   platform: OllamaNvidiaGb10Spark,
   architecture: OllamaLinuxArm64,
-  required_variant: OllamaLinuxAssetVariant,
+  required_variant: OllamaLinuxGenericCuda,
   gpu_support: ollama_gb10_gpu_support_row,
   minimum_nvidia_driver: ollama_gb10_minimum_nvidia_driver,
   binary_release: ollama_required_release,

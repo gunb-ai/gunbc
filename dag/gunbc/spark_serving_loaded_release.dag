@@ -10,6 +10,7 @@ import gunbc.spark_serving_readback_parse {
   spark_serving_readback_field_present_value,
   spark_serving_first_readback_refusal,
 }
+import gunbc.spark_serving_runtime_admission { spark_serving_runtime_admission_refusal_cause }
 import gunbc.spark_serving_release {
   SparkServingObservation,
   SparkServingObserved,
@@ -38,6 +39,7 @@ type SparkServingReadback {
   model_name: SparkServingReadbackField
   model_tag: SparkServingReadbackField
   model_manifest_digest: SparkServingReadbackField
+  nvidia_driver: SparkServingReadbackField
   bind_address: SparkServingReadbackField
 }
 
@@ -130,18 +132,24 @@ fn derive_spark_serving_observation(readback: SparkServingReadback) -> SparkServ
         readback.model_name,
         readback.model_tag,
         readback.model_manifest_digest,
+        readback.nvidia_driver,
       ]) {
         Present { value: cause } =>
           SparkServingObservationRefused { host: readback.host, cause: cause }
         Absent =>
-          match derive_loaded_spark_serving_release_identity(readback: readback) {
+          match spark_serving_runtime_admission_refusal_cause(nvidia_driver: readback.nvidia_driver) {
+            Present { value: admission_cause } =>
+              SparkServingObservationRefused { host: readback.host, cause: admission_cause }
             Absent =>
-              SparkServingObservationRefused {
-                host: readback.host,
-                cause: "serving unit is active but loaded-release fingerprint could not be derived from independent readback" as NonEmptyStr,
+              match derive_loaded_spark_serving_release_identity(readback: readback) {
+                Absent =>
+                  SparkServingObservationRefused {
+                    host: readback.host,
+                    cause: "serving unit is active but loaded-release fingerprint could not be derived from independent readback" as NonEmptyStr,
+                  }
+                Present { value: loaded } =>
+                  SparkServingObserved { host: readback.host, loaded_release: loaded }
               }
-            Present { value: loaded } =>
-              SparkServingObserved { host: readback.host, loaded_release: loaded }
           }
       }
   }

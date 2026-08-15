@@ -36,6 +36,14 @@ data witness_version_json_positive: String = "{\"version\":\"0.32.9\"}"
 
 data witness_tags_json_positive: String = "{\"models\":[{\"name\":\"gpt-oss:20b\",\"model\":\"gpt-oss:20b\",\"digest\":\"sha256:49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05\"}]}"
 
+data witness_nvidia_driver_satisfied_wire: String = "550.90.07"
+
+data witness_nvidia_driver_too_old_wire: String = "549.12.01"
+
+fn witness_nvidia_driver_present(wire: String) -> SparkServingReadbackPresent {
+  SparkServingReadbackPresent { value: wire }
+}
+
 fn readback_absent() -> SparkServingReadback {
   SparkServingReadback {
     host: "srv5",
@@ -44,6 +52,7 @@ fn readback_absent() -> SparkServingReadback {
     model_name: SparkServingReadbackAbsent,
     model_tag: SparkServingReadbackAbsent,
     model_manifest_digest: SparkServingReadbackAbsent,
+    nvidia_driver: SparkServingReadbackAbsent,
     bind_address: SparkServingReadbackAbsent,
   }
 }
@@ -58,6 +67,7 @@ fn readback_unreachable() -> SparkServingReadback {
     model_name: SparkServingReadbackAbsent,
     model_tag: SparkServingReadbackAbsent,
     model_manifest_digest: SparkServingReadbackAbsent,
+    nvidia_driver: SparkServingReadbackAbsent,
     bind_address: SparkServingReadbackAbsent,
   }
 }
@@ -70,6 +80,7 @@ fn readback_active_incomplete() -> SparkServingReadback {
     model_name: SparkServingReadbackAbsent,
     model_tag: SparkServingReadbackAbsent,
     model_manifest_digest: SparkServingReadbackAbsent,
+    nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
     bind_address: SparkServingReadbackAbsent,
   }
 }
@@ -82,6 +93,7 @@ fn readback_active_complete() -> SparkServingReadback {
     model_name: SparkServingReadbackPresent { value: "gpt-oss" },
     model_tag: SparkServingReadbackPresent { value: "20b" },
     model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
     bind_address: SparkServingReadbackAbsent,
   }
 }
@@ -173,6 +185,7 @@ test fn different_runtime_version_refuses_loaded_identity() -> Bool {
     model_name: SparkServingReadbackPresent { value: "gpt-oss" },
     model_tag: SparkServingReadbackPresent { value: "20b" },
     model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
     bind_address: SparkServingReadbackAbsent,
   }) {
     Absent => true
@@ -188,6 +201,7 @@ test fn different_runtime_version_refuses_observation() -> Bool {
     model_name: SparkServingReadbackPresent { value: "gpt-oss" },
     model_tag: SparkServingReadbackPresent { value: "20b" },
     model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_satisfied_wire),
     bind_address: SparkServingReadbackAbsent,
   }) {
     SparkServingObservationRefused { host: _, cause: _ } => true
@@ -253,6 +267,7 @@ test fn inactive_unit_readback_refuses_observation() -> Bool {
     model_name: SparkServingReadbackAbsent,
     model_tag: SparkServingReadbackAbsent,
     model_manifest_digest: SparkServingReadbackAbsent,
+    nvidia_driver: SparkServingReadbackAbsent,
     bind_address: SparkServingReadbackAbsent,
   }) {
     SparkServingObservationRefused { host: h, cause: c } =>
@@ -272,6 +287,7 @@ test fn api_field_refusal_surfaces_before_fingerprint_refusal() -> Bool {
     model_name: SparkServingReadbackAbsent,
     model_tag: SparkServingReadbackAbsent,
     model_manifest_digest: SparkServingReadbackAbsent,
+    nvidia_driver: SparkServingReadbackAbsent,
     bind_address: SparkServingReadbackAbsent,
   }) {
     SparkServingObservationRefused { host: _, cause: c } =>
@@ -287,4 +303,49 @@ test fn observation_report_refused_is_not_success() -> Bool {
       cause: "attempt identity is not a safe path segment" as NonEmptyStr,
     },
   )
+}
+
+test fn unobserved_nvidia_driver_refuses_active_observation() -> Bool {
+  match derive_spark_serving_observation(readback: SparkServingReadback {
+    host: "srv5",
+    unit_outcome: SparkServingUnitActive,
+    runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
+    model_name: SparkServingReadbackPresent { value: "gpt-oss" },
+    model_tag: SparkServingReadbackPresent { value: "20b" },
+    model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    nvidia_driver: SparkServingReadbackAbsent,
+    bind_address: SparkServingReadbackAbsent,
+  }) {
+    SparkServingObservationRefused { host: _, cause: c } =>
+      string_contains(s: c as String, pattern: "unobserved")
+    SparkServingObserved { host: _, loaded_release: _ } => false
+    SparkServingAbsent { host: _ } => false
+  }
+}
+
+test fn driver_too_old_refuses_active_observation() -> Bool {
+  match derive_spark_serving_observation(readback: SparkServingReadback {
+    host: "srv5",
+    unit_outcome: SparkServingUnitActive,
+    runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
+    model_name: SparkServingReadbackPresent { value: "gpt-oss" },
+    model_tag: SparkServingReadbackPresent { value: "20b" },
+    model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
+    nvidia_driver: witness_nvidia_driver_present(wire: witness_nvidia_driver_too_old_wire),
+    bind_address: SparkServingReadbackAbsent,
+  }) {
+    SparkServingObservationRefused { host: _, cause: c } =>
+      string_contains(s: c as String, pattern: "below minimum")
+    SparkServingObserved { host: _, loaded_release: _ } => false
+    SparkServingAbsent { host: _ } => false
+  }
+}
+
+data p0_6_loaded_release_note: String = "P0-6: SparkServingReadback carries no configuration_digest or capacity fields; derive_loaded_spark_serving_release builds SparkServingRelease from runtime closure + model only."
+
+test fn loaded_release_derivation_excludes_desired_policy_fields() -> Bool {
+  match derive_loaded_spark_serving_release_identity(readback: readback_active_complete()) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }

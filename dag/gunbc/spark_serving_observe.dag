@@ -38,6 +38,7 @@ import gunbc.spark_serving_release {
   SparkServingObserved,
   SparkServingObservationRefused,
 }
+import gunbc.spark_serving_runtime_admission { spark_serving_parse_nvidia_driver_version }
 import gunbc.spark_serving_readback_parse {
   SparkServingReadbackField,
   SparkServingReadbackAbsent,
@@ -74,6 +75,10 @@ data spark_serving_version_probe_words: List<String> = [
 
 data spark_serving_tags_probe_words: List<String> = [
   "curl", "-sf", "http://127.0.0.1:11434/api/tags",
+]
+
+data spark_serving_nvidia_driver_probe_words: List<String> = [
+  "nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader",
 ]
 
 type SparkServingObservationReport
@@ -219,12 +224,32 @@ fn spark_serving_unit_outcome_label(outcome: SparkServingUnitProbeOutcome) -> St
   }
 }
 
+fn spark_serving_nvidia_driver_field_from_probe(probe: SshSessionExecResult?) -> SparkServingReadbackField {
+  match probe {
+    Absent =>
+      SparkServingReadbackRefused {
+        cause: "probe leg did not run" as NonEmptyStr,
+      }
+    Present { value: r } =>
+      if r.success {
+        spark_serving_parse_nvidia_driver_version(stdout: r.stdout)
+      } else {
+        SparkServingReadbackRefused {
+          cause: join([
+            "probe failed exit=", to_string(r.exit_code), " stderr=", r.stderr,
+          ], "") as NonEmptyStr,
+        }
+      }
+  }
+}
+
 fn spark_serving_readback_from_probe_results(
   host: HostIdentity,
   load_state: SshSessionExecResult?,
   is_active: SshSessionExecResult?,
   version: SshSessionExecResult?,
   tags: SshSessionExecResult?,
+  nvidia_driver: SshSessionExecResult?,
 ) -> SparkServingReadback {
   let tags_fields = spark_serving_tags_fields_from_probe(probe: tags)
   SparkServingReadback {
@@ -237,6 +262,7 @@ fn spark_serving_readback_from_probe_results(
     model_name: tags_fields.model_name,
     model_tag: tags_fields.model_tag,
     model_manifest_digest: tags_fields.model_manifest_digest,
+    nvidia_driver: spark_serving_nvidia_driver_field_from_probe(probe: nvidia_driver),
     bind_address: SparkServingReadbackAbsent,
   }
 }
@@ -249,6 +275,7 @@ fn spark_serving_readback_line(readback: SparkServingReadback) -> String {
     " model_name=", spark_serving_readback_field_label(field: readback.model_name),
     " model_tag=", spark_serving_readback_field_label(field: readback.model_tag),
     " model_digest=", spark_serving_readback_field_label(field: readback.model_manifest_digest),
+    " nvidia_driver=", spark_serving_readback_field_label(field: readback.nvidia_driver),
     "\n",
   ], "")
 }
@@ -271,12 +298,14 @@ fn spark_serving_observe_host(
   let is_active = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_active_probe_words)
   let version = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_version_probe_words)
   let tags = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_tags_probe_words)
+  let nvidia_driver = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_nvidia_driver_probe_words)
   let readback = spark_serving_readback_from_probe_results(
     host: host as HostIdentity,
     load_state: load_state,
     is_active: is_active,
     version: version,
     tags: tags,
+    nvidia_driver: nvidia_driver,
   )
   derive_spark_serving_observation(readback: readback)
 }
