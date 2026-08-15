@@ -1,6 +1,12 @@
 module gunbc.spark_serving_install_paths
 
 import std.types { String, FilePath, NonEmptyStr }
+import std.content_hash {
+  Fnv1a64Structural,
+  content_hash_atom,
+  content_hash_combine_structural,
+  content_hash_tagged_structural,
+}
 import gunbc.spark_serving_runtime_receipt { spark_serving_executor_home }
 import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
 
@@ -63,16 +69,67 @@ fn spark_serving_user_unit_spec(bind_host_port: NonEmptyStr) -> SparkServingUser
   }
 }
 
-fn spark_serving_user_unit_spec_identity(spec: SparkServingUserUnitSpec) -> String {
-  join([
-    "description=", spec.description as String,
-    "|after=", spec.after as String,
-    "|service_type=", spec.service_type as String,
-    "|bind_host_port=", spec.bind_host_port as String,
-    "|models_root_rel=", spec.models_root_rel,
-    "|runtime_root_rel=", spec.runtime_root_rel,
-    "|exec_subcommand=", spec.exec_subcommand as String,
-    "|restart=", spec.restart as String,
-    "|wanted_by=", spec.wanted_by as String,
-  ], "")
+fn spark_serving_user_unit_spec_field_hash(
+  tag: NonEmptyStr,
+  value: NonEmptyStr,
+) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
+    tag: tag,
+    payload: content_hash_atom(value: value),
+  )
+}
+
+fn spark_serving_user_unit_spec_structural_hash(spec: SparkServingUserUnitSpec) -> Fnv1a64Structural {
+  content_hash_combine_structural(
+    left: content_hash_combine_structural(
+      left: content_hash_combine_structural(
+        left: spark_serving_user_unit_spec_field_hash(
+          tag: "description" as NonEmptyStr,
+          value: spec.description,
+        ),
+        right: spark_serving_user_unit_spec_field_hash(
+          tag: "after" as NonEmptyStr,
+          value: spec.after,
+        ),
+      ),
+      right: content_hash_combine_structural(
+        left: spark_serving_user_unit_spec_field_hash(
+          tag: "service_type" as NonEmptyStr,
+          value: spec.service_type,
+        ),
+        right: spark_serving_user_unit_spec_field_hash(
+          tag: "bind_host_port" as NonEmptyStr,
+          value: spec.bind_host_port,
+        ),
+      ),
+    ),
+    right: content_hash_combine_structural(
+      left: content_hash_combine_structural(
+        left: spark_serving_user_unit_spec_field_hash(
+          tag: "models_root_rel" as NonEmptyStr,
+          value: spec.models_root_rel as NonEmptyStr,
+        ),
+        right: spark_serving_user_unit_spec_field_hash(
+          tag: "runtime_root_rel" as NonEmptyStr,
+          value: spec.runtime_root_rel as NonEmptyStr,
+        ),
+      ),
+      right: content_hash_combine_structural(
+        left: spark_serving_user_unit_spec_field_hash(
+          tag: "exec_subcommand" as NonEmptyStr,
+          value: spec.exec_subcommand,
+        ),
+        right: content_hash_combine_structural(
+          left: spark_serving_user_unit_spec_field_hash(
+            tag: "restart" as NonEmptyStr,
+            value: spec.restart,
+          ),
+          right: spark_serving_user_unit_spec_field_hash(
+            tag: "wanted_by" as NonEmptyStr,
+            value: spec.wanted_by,
+          ),
+        ),
+      ),
+    ),
+  )
 }

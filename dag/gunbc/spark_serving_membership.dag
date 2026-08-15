@@ -1,7 +1,7 @@
 module gunbc.spark_serving_membership
 
 import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
-import std.content_hash { content_hash_atom, serialize_content_hash }
+import std.content_hash { serialize_content_hash }
 import product.placement_supply { HostIdentity }
 import gunbc.ownership { Ownership, Owned, Ensured }
 import gunbc.spark_serving_release {
@@ -21,7 +21,7 @@ import gunbc.spark_serving_install_paths {
   SparkServingUserUnitSpec,
   spark_serving_user_unit_path,
   spark_serving_user_unit_spec,
-  spark_serving_user_unit_spec_identity,
+  spark_serving_user_unit_spec_structural_hash,
 }
 import gunbc.spark_serving_desired {
   spark_serving_desired_bind_host_port,
@@ -90,12 +90,10 @@ fn spark_serving_serving_principal() -> NonEmptyStr {
 }
 
 fn spark_serving_user_unit_state_digest() -> NonEmptyStr {
-  content_hash_atom(
-    value: spark_serving_user_unit_spec_identity(
-      spec: spark_serving_user_unit_spec(
-        bind_host_port: spark_serving_desired_bind_host_port() as NonEmptyStr,
-      ),
-    ) as NonEmptyStr,
+  spark_serving_user_unit_spec_structural_hash(
+    spec: spark_serving_user_unit_spec(
+      bind_host_port: spark_serving_desired_bind_host_port() as NonEmptyStr,
+    ),
   ).digest as NonEmptyStr
 }
 
