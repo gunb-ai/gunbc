@@ -734,7 +734,7 @@ fn main() {
             entry,
             claim_run,
             args,
-        } => run_verb(&source_roots, &function, entry.as_deref(), claim_run, &args),
+        } => run_verb(&source_roots, &function, entry.as_deref(), claim_run, &args).apply(),
         // `ci` is NOT a second verb to wire: the deleted handler was `run` with fixed
         // arguments, so it is a PARAMETERIZATION of the same seam. Wiring it as its own
         // path would fork one route into two that must then be kept equal by hand.
@@ -747,7 +747,8 @@ fn main() {
             Some("dag/tools/gunbc_ci.dag"),
             false,
             &[],
-        ),
+        )
+        .apply(),
         Commands::Converge { .. } | Commands::Serve { .. } => {
             eprintln!(
                 "error: `converge` and `serve` are not available on integration/cli-run-cut.\n  \
@@ -958,16 +959,44 @@ fn decode_run_args(
 /// no arm that widens, defaults, or prints a plausible success — including the
 /// whole-tree case, which is declared unsupported here rather than silently approximated
 /// by loading everything under `--source-root`.
+/// A verb's OUTCOME, returned rather than acted on.
+///
+/// This is the construction half, and it exists because a pure mapping function was not
+/// enough: the defect a planted-drift control caught was an arm that PRINTED AND FELL
+/// THROUGH — it never called any mapping, so no amount of totality in the mapping could
+/// have stopped it. A driver can always decline to call a function.
+///
+/// Making the verdict the RETURN TYPE removes the ability to decide at all. Every arm of
+/// `run_verb` must produce a `Verdict`, one place maps it to a process status, and an arm
+/// that forgets to report a failure is a TYPE ERROR rather than a silent zero exit.
+struct Verdict {
+    status: i32,
+    message: Option<String>,
+}
+
+impl Verdict {
+    /// The ONE place a verdict becomes a process status. Nothing else in this file calls
+    /// `std::process::exit` for a verb outcome.
+    fn apply(self) -> ! {
+        if let Some(message) = self.message {
+            eprintln!("{message}");
+        }
+        std::process::exit(self.status);
+    }
+}
+
 fn run_verb(
     source_roots: &[String],
     function: &str,
     entry: Option<&str>,
     claim_run: bool,
     args: &[String],
-) -> () {
+) -> Verdict {
     if source_roots.is_empty() {
-        eprintln!("error: provide at least one --source-root");
-        std::process::exit(1);
+        return Verdict {
+            status: 1,
+            message: Some(format!("error: provide at least one --source-root")),
+        };
     }
 
     // Refuse a malformed --arg BEFORE the compile, so the diagnostic is the first thing
@@ -975,32 +1004,42 @@ fn run_verb(
     let run_args = match decode_run_args(args) {
         Ok(parsed) => parsed,
         Err(message) => {
-            eprintln!("error: {message}");
-            std::process::exit(2);
+            return Verdict {
+                status: 2,
+                message: Some(format!("error: {message}")),
+            };
         }
     };
 
     let Some(entry_file) = entry else {
-        eprintln!(
-            "error: --entry <file.dag> is required.\n  \
+        return Verdict {
+            status: 2,
+            message: Some(format!(
+                "error: --entry <file.dag> is required.\n  \
              cause: this seam resolves an entry's import closure; the whole-tree run the \
              deleted handler also served is not implemented here.\n  \
              status: refused rather than approximated — loading every file under \
              --source-root would answer a different question with the same exit code."
-        );
-        std::process::exit(2);
+            )),
+        };
     };
 
     if claim_run && entry.is_none() {
-        eprintln!("error: --claim-run requires --entry <file.dag>");
-        std::process::exit(2);
+        return Verdict {
+            status: 2,
+            message: Some(format!("error: --claim-run requires --entry <file.dag>")),
+        };
     }
 
     let (graph, source_indices) = match cli_run::resolve_entry_graph(source_roots, entry_file) {
         Ok(resolved) => resolved,
         Err(cause) => {
-            eprintln!("error: resolve failed for {entry_file}\n  cause: {cause}");
-            std::process::exit(1);
+            return Verdict {
+                status: 1,
+                message: Some(format!(
+                    "error: resolve failed for {entry_file}\n  cause: {cause}"
+                )),
+            };
         }
     };
 
@@ -1009,11 +1048,13 @@ fn run_verb(
     if has_blocking_diagnostics(graph.diagnostics.as_ref()) {
         let blocking = blocking_diagnostic_count(graph.diagnostics.as_ref());
         let advisory = graph.diagnostics.len() - blocking;
-        eprintln!(
-            "error: {entry_file} has {blocking} blocking diagnostic(s) ({advisory} advisory); \
+        return Verdict {
+            status: 1,
+            message: Some(format!(
+                "error: {entry_file} has {blocking} blocking diagnostic(s) ({advisory} advisory); \
              refusing to evaluate"
-        );
-        std::process::exit(1);
+            )),
+        };
     }
 
     let ctx = cli_run::make_eval_context(
@@ -1027,47 +1068,145 @@ fn run_verb(
     ) {
         // A claim run's Bool is the verdict: false is a FAILED claim, exit 1. Outside a
         // claim run a Bool is an ordinary value and says nothing about success.
-        Ok(v1_compiler::v1_interpreter::Value::Bool(false)) if claim_run => {
-            eprintln!("FAIL {function}");
-            std::process::exit(1);
-        }
+        Ok(v1_compiler::v1_interpreter::Value::Bool(false)) if claim_run => Verdict {
+            status: 1,
+            message: Some(format!("FAIL {function}")),
+        },
         Ok(v1_compiler::v1_interpreter::Value::Bool(true)) if claim_run => {
             println!("PASS {function}");
+            Verdict {
+                status: 0,
+                message: None,
+            }
         }
-        // THE PLANTED RED CAUGHT THIS ARM RETURNING 0 ON A FAILURE, and the failure it
-        // returned 0 on was a real generated-artifact drift the gate had already located
-        // by name. Printing a `ProcessExit` and exiting 0 turns EVERY consumer of this verb
-        // green regardless of content — the absorbing fallback at the largest scale this
-        // tree offers, and invisible, because everything looks like it is passing.
-        //
-        // A `.dag` entry invoked here returns `std.process.ProcessExit`; that value IS the
-        // verdict, so it maps to the process status. `cli_run::classify_exit` is the single
-        // authority for reading the variant and is called rather than re-matched here.
-        // A non-`ProcessExit` return REFUSES (exit 2) rather than being printed and called
-        // success — the host cannot derive a status from a value that does not carry one,
-        // and guessing 0 is the same fabrication one type over.
-        Ok(value) => match cli_run::classify_exit(&value, &ctx) {
-            cli_run::ExitClass::Success => {}
-            cli_run::ExitClass::Failure { code, reason } => {
-                if let Some(reason) = reason {
-                    eprintln!("{reason}");
-                }
-                std::process::exit(code);
-            }
-            cli_run::ExitClass::NotProcessExit { type_name } => {
-                eprintln!(
-                    "error: function `{function}` returned `{type_name}`, not `ProcessExit`.\n  \
-                     cause: the host maps a run's verdict to an exit code, and only ProcessExit \
-                     carries one. Wrap the result in ExitSuccess / ExitFailure.\n  \
-                     status: refused — printing the value and exiting 0 would report success \
-                     for a run whose outcome is unknown."
-                );
-                std::process::exit(2);
-            }
+        // The verdict a `.dag` entry returns IS the run's outcome. `cli_run::classify_exit`
+        // is the single authority for reading the ProcessExit variant; `exit_status_for`
+        // is the total map from that class to a status.
+        Ok(value) => {
+            let (status, message) = exit_status_for(cli_run::classify_exit(&value, &ctx), function);
+            Verdict { status, message }
+        }
+        Err(err) => Verdict {
+            status: 1,
+            message: Some(format!(
+                "error: evaluating {function} in {entry_file}\n  cause: {err:?}"
+            )),
         },
-        Err(err) => {
-            eprintln!("error: evaluating {function} in {entry_file}\n  cause: {err:?}");
-            std::process::exit(1);
+    }
+}
+
+/// TOTAL map from a run's verdict to a process status, plus the message that explains it.
+///
+/// This is a pure function on purpose, and the purpose is §5 construction-over-validation.
+/// The first version of the seam inlined this decision in a `match` arm and DROPPED the
+/// failure case — it printed `ExitFailure { code: 1, reason: "…drift…" }` and exited 0,
+/// which would have reported green for every consumer of `gunbc run` regardless of content.
+/// A planted-drift control caught it; nothing else could have, because a clean run and a
+/// malformed-argv refusal are both satisfiable by a seam that always exits 0.
+///
+/// Made total and pure, the arm has nowhere to drop a verdict: every `ExitClass` yields a
+/// status, `Failure` cannot yield 0 (its own code is the status, and the .dag side cannot
+/// construct `ExitFailure` with code 0 — see the assertion below), and the only way to
+/// re-introduce the defect is to edit THIS function rather than to forget a case.
+///
+/// RUNG, HONESTLY: this is a construction, not an enrolled check. The tests below are Rust,
+/// and CI on this repository runs no Rust suite (removed 2026-07-11, operator ruling,
+/// local-only). So the class is `mechanically preventable` ONLY where the suite is run by
+/// hand; in CI it rests on the totality above. The planted-drift control is the executed
+/// evidence and it is a manual procedure, recorded in the PR rather than enrolled.
+fn exit_status_for(class: cli_run::ExitClass, function: &str) -> (i32, Option<String>) {
+    match class {
+        cli_run::ExitClass::Success => (0, None),
+        // A `Failure` carrying code 0 would say "failed" and report success. Refuse rather
+        // than pass it through: the .dag authority cannot express it, so reaching here means
+        // the classifier changed, and the safe reading of an impossible verdict is not 0.
+        cli_run::ExitClass::Failure { code: 0, reason } => (
+            1,
+            Some(format!(
+                "error: `{function}` returned ExitFailure with code 0, which claims failure \
+                 and reports success.\n  status: refused — exiting 1 rather than honoring a \
+                 status that contradicts its own variant.{}",
+                reason
+                    .map(|r| format!("\n  reason: {r}"))
+                    .unwrap_or_default()
+            )),
+        ),
+        cli_run::ExitClass::Failure { code, reason } => (code, reason),
+        cli_run::ExitClass::NotProcessExit { type_name } => (
+            2,
+            Some(format!(
+                "error: function `{function}` returned `{type_name}`, not `ProcessExit`.\n  \
+                 cause: the host maps a run's verdict to an exit code, and only ProcessExit \
+                 carries one. Wrap the result in ExitSuccess / ExitFailure.\n  \
+                 status: refused — printing the value and exiting 0 would report success for \
+                 a run whose outcome is unknown."
+            )),
+        ),
+    }
+}
+
+#[cfg(test)]
+mod exit_status_tests {
+    use super::*;
+
+    #[test]
+    fn success_is_zero() {
+        assert_eq!(exit_status_for(cli_run::ExitClass::Success, "main").0, 0);
+    }
+
+    /// THE REGRESSION CONTROL for the defect the planted-drift run caught. If this ever
+    /// returns 0, every consumer of `gunbc run` reports green regardless of content.
+    #[test]
+    fn failure_is_never_zero() {
+        for code in [1, 2, 42, 127] {
+            let (status, _) = exit_status_for(
+                cli_run::ExitClass::Failure {
+                    code,
+                    reason: Some("drift".to_string()),
+                },
+                "main",
+            );
+            assert_eq!(status, code);
+            assert_ne!(status, 0, "a Failure verdict must never exit 0");
         }
+    }
+
+    #[test]
+    fn failure_with_zero_code_refuses_rather_than_reporting_success() {
+        let (status, message) = exit_status_for(
+            cli_run::ExitClass::Failure {
+                code: 0,
+                reason: None,
+            },
+            "main",
+        );
+        assert_eq!(status, 1);
+        assert!(message.unwrap().contains("contradicts its own variant"));
+    }
+
+    #[test]
+    fn non_process_exit_refuses_rather_than_printing_and_succeeding() {
+        let (status, message) = exit_status_for(
+            cli_run::ExitClass::NotProcessExit {
+                type_name: "Bool".to_string(),
+            },
+            "main",
+        );
+        assert_eq!(status, 2);
+        assert!(message.unwrap().contains("not `ProcessExit`"));
+    }
+
+    /// The failure's own reason must SURVIVE to the message — a located diagnostic that the
+    /// driver swallows is the same silence as a wrong exit code, one channel over.
+    #[test]
+    fn failure_reason_is_carried_not_dropped() {
+        let (_, message) = exit_status_for(
+            cli_run::ExitClass::Failure {
+                code: 1,
+                reason: Some("drift: docs/plans/x.md".to_string()),
+            },
+            "main",
+        );
+        assert_eq!(message.as_deref(), Some("drift: docs/plans/x.md"));
     }
 }
