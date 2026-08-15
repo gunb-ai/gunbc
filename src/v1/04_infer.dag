@@ -2977,18 +2977,14 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             Absent => call_fold_acc_type
           }
         } else { call_fold_acc_type }
-        let method_resolution = if listed_import_required_bare_call_blocked(env: scope.type_env, name: func_name) {
-          KnownMethodResolution { semantics: none, result_type: none, diagnostics: [] }
-        } else {
-          resolve_known_method_node(
-            receiver: method_receiver,
-            receiver_type: resolve_method_receiver_type(receiver_type: first_arg_type, env: scope.type_env),
-            method_name: func_name,
-            fold_accumulator_type: if call_fold_info != none { Present { value: refined_call_fold_acc_type } } else { none },
-            service_registry: scope.service_registry,
-            source_indices: scope.type_env.source_indices
-          )
-        }
+        let method_resolution = resolve_known_method_node(
+          receiver: method_receiver,
+          receiver_type: resolve_method_receiver_type(receiver_type: first_arg_type, env: scope.type_env),
+          method_name: func_name,
+          fold_accumulator_type: if call_fold_info != none { Present { value: refined_call_fold_acc_type } } else { none },
+          service_registry: scope.service_registry,
+          source_indices: scope.type_env.source_indices
+        )
         let is_known_method = method_resolution.result_type != none
         if is_known_method && typed_args |> count > 0 {
           let receiver = method_receiver

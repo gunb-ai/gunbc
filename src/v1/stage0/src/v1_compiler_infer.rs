@@ -67,13 +67,13 @@ pub use crate::v1_compiler_infer_env::{
     bare_name_miss_diagnostic, binding_declares_name, empty_symbol_index, empty_type_env_cache,
     env_with_type_variable_bindings, global_bare_is_ambiguous,
     global_bare_strict_ambiguity_candidates, inductive_fields_for, inductive_fields_list_to_map,
-    is_recursive_type, is_recursive_type_by_name, listed_import_required_bare_call_blocked,
-    lookup_binding_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
-    merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded, node_with_children,
-    node_with_inferred, put_inductive_field, put_inductive_field_cross, qualified_all_but_last,
-    qualify_borrowed_inferred, qualify_borrowed_type_names, qualify_decl_reference_positions,
-    str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl,
-    symbol_index_insert_service, symbol_index_lookup,
+    is_recursive_type, is_recursive_type_by_name, lookup_binding_by_name, lookup_type,
+    lookup_type_by_name, lookup_type_for, merge_inductive_fields, merge_type_env_cache,
+    merge_type_env_cache_guarded, node_with_children, node_with_inferred, put_inductive_field,
+    put_inductive_field_cross, qualified_all_but_last, qualify_borrowed_inferred,
+    qualify_borrowed_type_names, qualify_decl_reference_positions, str_bindings_from_bindings,
+    symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service,
+    symbol_index_lookup,
 };
 pub use crate::v1_compiler_infer_env::{
     GlobalBareCandidate, GlobalBareLookupState, GuardedTypeEnvCacheMerge, ServiceCensusEntry,
@@ -5883,33 +5883,21 @@ pub fn infer_expr_body(
                                     } else {
                                         call_fold_acc_type.clone()
                                     };
-                                    let method_resolution =
-                                        if listed_import_required_bare_call_blocked(
+                                    let method_resolution = resolve_known_method_node(
+                                        method_receiver.clone(),
+                                        resolve_method_receiver_type(
+                                            first_arg_type.clone(),
                                             scope.type_env.clone(),
-                                            func_name.clone(),
-                                        ) {
-                                            Rc::new(KnownMethodResolution {
-                                                semantics: None,
-                                                result_type: None,
-                                                diagnostics: Rc::new(vec![]),
-                                            })
+                                        ),
+                                        func_name.clone(),
+                                        if (call_fold_info.clone() != None) {
+                                            Some(refined_call_fold_acc_type.clone())
                                         } else {
-                                            resolve_known_method_node(
-                                                method_receiver.clone(),
-                                                resolve_method_receiver_type(
-                                                    first_arg_type.clone(),
-                                                    scope.type_env.clone(),
-                                                ),
-                                                func_name.clone(),
-                                                if (call_fold_info.clone() != None) {
-                                                    Some(refined_call_fold_acc_type.clone())
-                                                } else {
-                                                    None
-                                                },
-                                                scope.service_registry.clone(),
-                                                scope.type_env.clone().source_indices.clone(),
-                                            )
-                                        };
+                                            None
+                                        },
+                                        scope.service_registry.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    );
                                     let is_known_method =
                                         (method_resolution.result_type.clone() != None);
                                     if (is_known_method.clone()

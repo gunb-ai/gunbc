@@ -817,13 +817,7 @@ pub fn lookup_binding_by_name_local(env: Rc<TypeEnv>, name: String) -> Option<Rc
 
 pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
     match lookup_binding_by_name_local(env.clone(), name.clone()) {
-        Some(binding) => {
-            if listed_import_required_bare_call_blocked(env.clone(), name.clone()) {
-                None
-            } else {
-                Some(binding.clone())
-            }
-        }
+        Some(binding) => Some(binding.clone()),
         None => lookup_binding_after_global_bare(env.clone(), name.clone()),
     }
 }
@@ -837,34 +831,10 @@ pub fn closure_independent_bare_free_call_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn bare_free_call_requires_listed_import(name: String) -> bool {
-    (name.clone() == "trim".to_string())
-}
-
-pub fn import_visible_name(env: Rc<TypeEnv>, name: String) -> bool {
-    match v1_rt::map_get(&env.source_visible_names.clone(), name.clone()) {
-        Some(vis) => vis.clone(),
-        None => false,
-    }
-}
-
-pub fn global_bare_blocked_by_listed_import_requirement(env: Rc<TypeEnv>, name: String) -> bool {
-    (bare_free_call_requires_listed_import(name.clone())
-        && !import_visible_name(env.clone(), name.clone()))
-}
-
-pub fn listed_import_required_bare_call_blocked(env: Rc<TypeEnv>, name: String) -> bool {
-    global_bare_blocked_by_listed_import_requirement(env.clone(), name.clone())
-}
-
 pub fn lookup_binding_after_global_bare(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
-    if global_bare_blocked_by_listed_import_requirement(env.clone(), name.clone()) {
-        None
-    } else {
-        match global_bare_lookup(env.clone(), name.clone()) {
-            Some(binding) => Some(binding.clone()),
-            None => lookup_qualified_module_projection(env.clone(), name.clone()),
-        }
+    match global_bare_lookup(env.clone(), name.clone()) {
+        Some(binding) => Some(binding.clone()),
+        None => lookup_qualified_module_projection(env.clone(), name.clone()),
     }
 }
 
