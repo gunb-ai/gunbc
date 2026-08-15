@@ -1,0 +1,227 @@
+module test.claim.altra_realization_witness
+
+import std.types { Bool, String, NonEmptyStr, List, list_length, concat }
+import std.integer { Int }
+import std.decl_ref { DeclarationRef, declaration_ref_eq, decl_ref }
+import product.altra_motherboard.realization {
+  BoardRequirementIdentity,
+  HostNetworkConnectivity,
+  ManagementNetworkConnectivity,
+  ProcessorRailEnableSequencing,
+  ProcessorPowerStageControl,
+  ProcessorPowerGoodSupervision,
+  ClockReferenceGeneration,
+  ClockReferenceDistribution,
+  CandidateCompatibilityOnly,
+  ReferenceDesignPrecedent,
+  RequirementsDerived,
+  altra_1p_requirement_part_realizations,
+  realization_carrier_identities,
+  population_realization_refusals,
+  population_realization_refusal_count,
+  requirement_name,
+  functional_obligation_text,
+  dp83867_candidate_ref,
+  tps53688_candidate_ref,
+  tps3808_candidate_ref,
+  cdce913_candidate_ref,
+  mt_jade_reference_platform_ref,
+  processor_power_rail_order_ref,
+  RequiredFunctionWithoutJustifiedPart,
+}
+import product.altra_motherboard.placement {
+  altra_reference_plan,
+  RequiredFunctionWithoutJustifiedPartOnBoard,
+  placement_causes,
+}
+import product.altra_motherboard.minimal_design { altra_1p_minimum, altra_1p_minimum_ref }
+import std.orthogonal_geometry { OrthogonalReady, OrthogonalRefused }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn plan_identities_from_reference() -> List<NonEmptyStr> {
+  match altra_reference_plan() {
+    OrthogonalReady { value: p } =>
+      fold(p.components, init: [], f: fn(acc, c) { concat(acc, [c.identity]) })
+    OrthogonalRefused { cause: _ } => []
+  }
+}
+
+test fn w_realization_roster_has_three_distinct_justification_arms() -> Bool {
+  let roster = altra_1p_requirement_part_realizations
+  let has_precedent = fold(roster, init: false, f: fn(acc, row) {
+    acc || match row.justification {
+      ReferenceDesignPrecedent { reference_design: _, authority: _ } => true
+      RequirementsDerived { requirements: _, evidence: _ } => false
+      CandidateCompatibilityOnly { candidate: _, obligations: _ } => false
+    }
+  })
+  let has_derived = fold(roster, init: false, f: fn(acc, row) {
+    acc || match row.justification {
+      ReferenceDesignPrecedent { reference_design: _, authority: _ } => false
+      RequirementsDerived { requirements: _, evidence: _ } => true
+      CandidateCompatibilityOnly { candidate: _, obligations: _ } => false
+    }
+  })
+  let has_candidate = fold(roster, init: false, f: fn(acc, row) {
+    acc || match row.justification {
+      ReferenceDesignPrecedent { reference_design: _, authority: _ } => false
+      RequirementsDerived { requirements: _, evidence: _ } => false
+      CandidateCompatibilityOnly { candidate: _, obligations: _ } => true
+    }
+  })
+  has_precedent && has_derived && has_candidate
+}
+
+test fn w_management_network_cites_reference_design_not_part_selection() -> Bool {
+  fold(altra_1p_requirement_part_realizations, init: false, f: fn(acc, row) {
+    if acc {
+      true
+    } else if row.requirement != ManagementNetworkConnectivity {
+      false
+    } else {
+      match row.justification {
+        ReferenceDesignPrecedent { reference_design: d, authority: _ } =>
+          declaration_ref_eq(a: d, b: mt_jade_reference_platform_ref())
+        RequirementsDerived { requirements: _, evidence: _ } => false
+        CandidateCompatibilityOnly { candidate: _, obligations: _ } => false
+      }
+    }
+  })
+}
+
+test fn w_host_network_phy_is_candidate_only_not_reference_selection() -> Bool {
+  fold(altra_1p_requirement_part_realizations, init: false, f: fn(acc, row) {
+    if acc {
+      true
+    } else if row.requirement != HostNetworkConnectivity {
+      false
+    } else {
+      match row.justification {
+        CandidateCompatibilityOnly { candidate: c, obligations: _ } =>
+          declaration_ref_eq(a: c, b: dp83867_candidate_ref())
+        ReferenceDesignPrecedent { reference_design: _, authority: _ } => false
+        RequirementsDerived { requirements: _, evidence: _ } => false
+      }
+    }
+  })
+}
+
+test fn w_clock_requirements_have_no_physical_providers() -> Bool {
+  fold(altra_1p_requirement_part_realizations, init: true, f: fn(acc, row) {
+    if !acc {
+      false
+    } else if row.requirement == ClockReferenceGeneration || row.requirement == ClockReferenceDistribution {
+      list_length(items: row.providers) == 0
+    } else {
+      true
+    }
+  })
+}
+
+test fn w_the_reference_plan_carries_all_realization_carriers() -> Bool {
+  let ids = plan_identities_from_reference()
+  fold(realization_carrier_identities, init: true, f: fn(acc, id) {
+    acc && fold(ids, init: false, f: fn(seen, x) { seen || (x as String) == (id as String) })
+  })
+}
+
+test fn w_every_physical_population_requirement_has_providers_on_the_plan() -> Bool {
+  population_realization_refusal_count(
+    cs: population_realization_refusals(
+      roster: altra_1p_requirement_part_realizations,
+      plan_identities: plan_identities_from_reference(),
+    )
+  ) == 0
+}
+
+test fn w_removing_host_phy_refuses_host_network_requirement() -> Bool {
+  let ids = fold(plan_identities_from_reference(), init: [], f: fn(acc, id) {
+    if (id as String) == "host_phy" {
+      acc
+    } else {
+      concat(acc, [id])
+    }
+  })
+  fold(
+    population_realization_refusals(roster: altra_1p_requirement_part_realizations, plan_identities: ids),
+    init: false,
+    f: fn(acc, r) {
+      acc || match r {
+        RequiredFunctionWithoutJustifiedPart { requirement: req } =>
+          req == HostNetworkConnectivity
+        FunctionCarrierWithoutJustification { component: _ } => false
+        FunctionCarrierRealizesNoDeclaredFunction { component: _ } => false
+      }
+    }
+  )
+}
+
+test fn w_host_and_management_network_are_separate_requirements() -> Bool {
+  (requirement_name(r: HostNetworkConnectivity) as String) == "host network connectivity"
+    && (requirement_name(r: ManagementNetworkConnectivity) as String) == "management network connectivity"
+}
+
+test fn w_power_is_decomposed_into_rail_stage_and_supervisor_requirements() -> Bool {
+  (requirement_name(r: ProcessorRailEnableSequencing) as String) == "processor rail enable sequencing"
+    && (requirement_name(r: ProcessorPowerStageControl) as String) == "processor power stage control"
+    && (requirement_name(r: ProcessorPowerGoodSupervision) as String) == "processor power good supervision"
+}
+
+test fn w_candidate_justifications_name_ti_mechanical_rows() -> Bool {
+  fold(altra_1p_requirement_part_realizations, init: true, f: fn(acc, row) {
+    if !acc {
+      false
+    } else {
+      match row.justification {
+        CandidateCompatibilityOnly { candidate: c, obligations: _ } =>
+          declaration_ref_eq(a: c, b: dp83867_candidate_ref())
+            || declaration_ref_eq(a: c, b: tps53688_candidate_ref())
+            || declaration_ref_eq(a: c, b: tps3808_candidate_ref())
+            || declaration_ref_eq(a: c, b: cdce913_candidate_ref())
+        ReferenceDesignPrecedent { reference_design: _, authority: _ } => true
+        RequirementsDerived { requirements: _, evidence: _ } => true
+      }
+    }
+  })
+}
+
+test fn w_rail_sequencing_derives_from_cited_enable_order() -> Bool {
+  fold(altra_1p_requirement_part_realizations, init: false, f: fn(acc, row) {
+    if acc {
+      true
+    } else if row.requirement != ProcessorRailEnableSequencing {
+      false
+    } else {
+      match row.justification {
+        RequirementsDerived { requirements: r, evidence: _ } =>
+          declaration_ref_eq(a: r, b: processor_power_rail_order_ref())
+        ReferenceDesignPrecedent { reference_design: _, authority: _ } => false
+        CandidateCompatibilityOnly { candidate: _, obligations: _ } => false
+      }
+    }
+  })
+}
+
+test fn w_realization_refusals_surface_through_placement_admission() -> Bool {
+  match altra_reference_plan() {
+    OrthogonalRefused { cause: _ } => false
+    OrthogonalReady { value: p } =>
+      fold(
+        placement_causes(d: altra_1p_minimum, d_ref: altra_1p_minimum_ref(), plan: p),
+        init: true,
+        f: fn(acc, r) {
+          acc && match r {
+            RequiredFunctionWithoutJustifiedPartOnBoard { requirement: _ } => false
+            _ => true
+          }
+        }
+      )
+  }
+}
+
+test fn w_clock_obligations_name_outstanding_compatibility_not_selection() -> Bool {
+  (functional_obligation_text(r: ClockReferenceGeneration) as String)
+    != (functional_obligation_text(r: ClockReferenceDistribution) as String)
+}
