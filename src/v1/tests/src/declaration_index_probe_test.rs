@@ -541,6 +541,10 @@ fn dotted_type_argument_experiment_with_axis_controls() {
                 content: PROVIDER.1.to_string(),
             }),
             Rc::new(SourceFile {
+                path: REMOTE_ALIAS.0.to_string(),
+                content: REMOTE_ALIAS.1.to_string(),
+            }),
+            Rc::new(SourceFile {
                 path: "cell.dag".to_string(),
                 content: cell.to_string(),
             }),
@@ -568,6 +572,26 @@ fn dotted_type_argument_experiment_with_axis_controls() {
          type Sack<t> = Bag<t>\n",
     );
 
+    // A SECOND alias, declared in a module SEPARATE from its target coproduct.
+    // This is the factor tidy-pike-117 relayed from sleek-moth-351 as
+    // "alias chain across trees": the corpus specimen's List aliases a
+    // FreeMonoid that lives in ANOTHER module in ANOTHER tree, whereas cells
+    // A-E alias a coproduct declared beside them.
+    //
+    // The two halves of that description are SEPARABLE and only one is
+    // reproducible here: "another module" is structural and synthesizable;
+    // "another tree" is a property of the corpus source roots, which this
+    // harness deliberately does not use (it compiles the fixture modules
+    // alone). So cell F tests the module-separation half ONLY, and a clean
+    // result narrows the corpus factor to tree-separation rather than
+    // clearing the hypothesis.
+    const REMOTE_ALIAS: (&str, &str) = (
+        "remote_alias.dag",
+        "module probe.remote\n\
+         \n\
+         type RemoteSack<t> = Bag<t>\n",
+    );
+
     let cells: Vec<(&str, &str)> = vec![
         (
             "A bare arg, alias, match",
@@ -584,6 +608,14 @@ fn dotted_type_argument_experiment_with_axis_controls() {
         (
             "D dotted arg, alias, no match",
             "module probe.cell\n\nfn f(xs: Sack<probe.provider.Finding>) -> Int { 0 }\n",
+        ),
+        (
+            "F dotted arg, alias in ANOTHER module, match",
+            "module probe.cell\n\nfn f(xs: RemoteSack<probe.provider.Finding>) -> Int {\n  match xs {\n    BagEmpty => 0,\n    BagCons { head: h, tail: t } => 1,\n  }\n}\n",
+        ),
+        (
+            "G bare arg, alias in ANOTHER module, match",
+            "module probe.cell\n\nfn f(xs: RemoteSack<Finding>) -> Int {\n  match xs {\n    BagEmpty => 0,\n    BagCons { head: h, tail: t } => 1,\n  }\n}\n",
         ),
         (
             "E dotted arg, DIRECT type, match",
@@ -608,12 +640,17 @@ fn dotted_type_argument_experiment_with_axis_controls() {
 
     let clean = |i: usize| verdicts[i].1.is_empty();
     eprintln!(
-        "[axis] A={} B={} C={} D={} E={}   (clean=true)",
-        clean(0),
-        clean(1),
-        clean(2),
-        clean(3),
-        clean(4)
+        "[axis] {}   (clean=true)",
+        verdicts
+            .iter()
+            .enumerate()
+            .map(|(i, (label, _))| format!(
+                "{}={}",
+                label.split_whitespace().next().unwrap_or("?"),
+                clean(i)
+            ))
+            .collect::<Vec<_>>()
+            .join(" ")
     );
 
     // THE POSITIVE CONTROL, and it is the one that matters. Cell A contains no

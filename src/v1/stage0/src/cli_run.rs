@@ -2672,62 +2672,6 @@ fn compile_clean_resolve_has_hard_errors(
     compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref())
 }
 
-const COMPILE_CLEAN_DIAGNOSTIC_POLICY_ENTRY: &str = "dag/gunbc/compile_clean_diagnostic_policy.dag";
-
-/// Whether `UnlistedImportUse` blocks compile-clean per the single policy row
-/// (`compile_clean_unlisted_import_use_enforcement` in `gunbc.compile_clean_diagnostic_policy`).
-/// Both the floor receipt path and the CLI transport must read this — never restate the predicate.
-pub fn compile_clean_unlisted_import_use_blocks_from_policy() -> Result<bool, String> {
-    let roots = default_source_roots();
-    let entry = resolve_entry_file_under_roots(&roots, COMPILE_CLEAN_DIAGNOSTIC_POLICY_ENTRY)
-        .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
-    let (graph, indices) = resolve_entry_graph_shared(&roots, &entry)
-        .map_err(|e| format!("compile_clean_diagnostic_policy resolve: {e}"))?;
-    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic);
-    match v1_interpreter::run_in_context_with_args(
-        &ctx,
-        "compile_clean_unlisted_import_use_blocks",
-        &[],
-        false,
-    ) {
-        Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
-        Ok(other) => Err(format!(
-            "compile_clean_unlisted_import_use_blocks returned `{}`, expected Bool",
-            ctx.format_value(&other)
-        )),
-        Err(e) => Err(format!("compile_clean_unlisted_import_use_blocks: {e}")),
-    }
-}
-
-fn compile_clean_unlisted_import_use_blocks_cached() -> Result<bool, String> {
-    thread_local! {
-        static CACHED: RefCell<Option<Result<bool, String>>> = const { RefCell::new(None) };
-        static LOGGED_REFUSAL: Cell<bool> = const { Cell::new(false) };
-    }
-    CACHED.with(|c| {
-        if let Some(v) = c.borrow().clone() {
-            return v;
-        }
-        let v = compile_clean_unlisted_import_use_blocks_from_policy();
-        if let Err(ref e) = v {
-            LOGGED_REFUSAL.with(|logged| {
-                if !logged.get() {
-                    eprintln!(
-                        "compile-clean policy: refused to read disposition row ({e}); failing gate"
-                    );
-                    logged.set(true);
-                }
-            });
-        }
-        *c.borrow_mut() = Some(v.clone());
-        v
-    })
-}
-
-fn compile_clean_policy_read_refuses_gate() -> bool {
-    compile_clean_unlisted_import_use_blocks_cached().is_err()
-}
-
 /// Single authority (DESIGN.md §3/§7): whether a diagnostic blocks compile-clean.
 ///
 /// The `UnlistedImportUse` arm and the `gunbc.compile_clean_diagnostic_policy` row
@@ -2743,42 +2687,19 @@ pub fn compile_clean_diagnostic_is_hard(d: &Rc<ErrorNode>) -> bool {
 /// does not print advisories as hard errors when the policy row says FloorNotYet.
 pub fn compile_clean_diagnostic_is_advisory(d: &Rc<ErrorNode>) -> bool {
     !compile_clean_diagnostic_is_hard(d)
-        && matches!(
-            d.diagnostic.as_ref(),
-            crate::v1_std_core::CompilerDiagnostic::ComplexityUnknown { .. }
-                | crate::v1_std_core::CompilerDiagnostic::WhereRefinementUnenforced { .. }
-                // A non-blocking variant that is absent from this list is counted by
-                // NEITHER predicate: `..._is_hard` rejects it and this allowlist does
-                // not admit it, so it renders to the terminal while every count the
-                // gate reports reads zero for it. That is a frontier claiming to be
-                // counted while nothing counts it. The three variants below are the
-                // method/conformance walls' non-blocking residue and belong here for
-                // the same reason WhereRefinementUnenforced does.
-                | crate::v1_std_core::CompilerDiagnostic::MethodExistenceFrontierAdmitted { .. }
-                | crate::v1_std_core::CompilerDiagnostic::ReceiverTypeUnestablished { .. }
-        )
 }
 
 pub fn compile_clean_pipeline_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorNode>>) -> bool {
-    if compile_clean_policy_read_refuses_gate() {
-        return true;
-    }
     diagnostics.iter().any(compile_clean_diagnostic_is_hard)
 }
 
 /// `PipelineResult` adapter for the compile CLI transport.
 pub fn compile_clean_vec_has_hard_errors(diagnostics: &Rc<Vec<Rc<ErrorNode>>>) -> bool {
-    if compile_clean_policy_read_refuses_gate() {
-        return true;
-    }
     diagnostics.iter().any(compile_clean_diagnostic_is_hard)
 }
 
 /// `ResolvedPipelineResult` / `im::Vector` adapter for compile-clean checks.
 pub fn compile_clean_im_vector_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorNode>>) -> bool {
-    if compile_clean_policy_read_refuses_gate() {
-        return true;
-    }
     diagnostics.iter().any(compile_clean_diagnostic_is_hard)
 }
 
