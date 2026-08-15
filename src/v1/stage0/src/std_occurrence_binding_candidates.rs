@@ -2605,6 +2605,15 @@ pub fn reference_path_of(
     }
 }
 
+pub fn reference_path_not_a_namespace_projection_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "A DOT IS NOT ALWAYS A NAMESPACE STEP, and the difference is a THIRD STATE rather than a refusal. x.field on an ordinary record binder is a field access: it induces no cross-file dependency of its own (the dependency was already induced by the reference to x's TYPE), and its member is a field of a type rather than a member of a module. Answering it with SegmentUnbound would be the fabricated-plausible-output failure pointed at a well-formed program -- a correct field access reported as an unresolved name. Answering it with a resolved path would be worse, since it would attribute a dependency to whatever declaration happened to match the field spelling. So the head's own category decides: only a NamespaceSegmentOccurrence head descends, and any other head with segments present returns NotANamespaceProjection carrying the head declaration, which tells the caller this reference is somebody else's question. It is deliberately NOT an error arm and deliberately NOT success: the caller must handle three outcomes, because there are three.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn reference_path_resolution_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -2640,6 +2649,9 @@ pub enum ReferencePathResolution {
     },
     ReferencePathBuildRefused {
         reason: Rc<ReferencePathRefusal>,
+    },
+    ReferencePathNotANamespaceProjection {
+        head: Rc<DeclarationOccurrence>,
     },
 }
 
@@ -2826,12 +2838,21 @@ pub fn resolve_reference_path(
                 {
                     let __fm = others.clone();
                     if __fm.is_empty() {
-                        reference_path_descend_segments(
-                            transport.clone(),
-                            index.clone(),
-                            only.clone(),
-                            path.segments.clone(),
-                        )
+                        {
+                            let __fm = path.segments.clone();
+                            if __fm.is_empty() {
+                                Rc::new(ReferencePathResolution::ReferencePathResolved {
+                                    terminal: only.clone(),
+                                })
+                            } else {
+                                match only.category.clone() {
+    OccurrenceCategory::NamespaceSegmentOccurrence => reference_path_descend_segments(transport.clone(), index.clone(), only.clone(), path.segments.clone()),
+    _ => Rc::new(ReferencePathResolution::ReferencePathNotANamespaceProjection {
+    head: only.clone(),
+}),
+}
+                            }
+                        }
                     } else {
                         Rc::new(ReferencePathResolution::ReferencePathHeadAmbiguous {
                             head_name: path.head_name.clone(),

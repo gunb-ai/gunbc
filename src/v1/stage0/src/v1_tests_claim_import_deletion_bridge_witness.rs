@@ -34,7 +34,8 @@ use crate::std_occurrence_binding_candidates::ReferenceDerivedDependencyProjecti
 };
 use crate::std_occurrence_binding_candidates::ReferencePathResolution::{
     ReferencePathBuildRefused, ReferencePathHeadAmbiguous, ReferencePathHeadUnbound,
-    ReferencePathResolved, ReferencePathSegmentAmbiguous, ReferencePathSegmentUnbound,
+    ReferencePathNotANamespaceProjection, ReferencePathResolved, ReferencePathSegmentAmbiguous,
+    ReferencePathSegmentUnbound,
 };
 use crate::std_occurrence_binding_candidates::StructuralBindingIndexRefusal::*;
 use crate::std_occurrence_binding_candidates::StructuralBindingWalk::{
@@ -241,6 +242,10 @@ pub fn idb_candidates() -> Rc<Vec<Rc<IdbCandidate>>> {
             file: idb_path_consumer_source_path(),
             source: idb_path_consumer_source(),
         }),
+        Rc::new(IdbCandidate {
+            file: idb_duplicate_member_source_path(),
+            source: idb_duplicate_member_source(),
+        }),
     ])
 }
 
@@ -263,21 +268,7 @@ pub fn idb_path_consumer_source_note() -> String {
 }
 
 pub fn idb_path_consumer_source() -> String {
-    (((((((((((("module test.fixture.import_deletion_bridge.path_controls_consumer\n".to_string()
-        + &"\n".to_string())
-        + &"fn reads_good(d: live_tree.LiveTreeDisposition) -> live_tree.LiveTreeDisposition {\n"
-            .to_string()) + &"  d\n".to_string())
-        + &"}\n".to_string())
-        + &"\n".to_string())
-        + &"fn reads_missing_member(d: live_tree.NoSuchMember) -> live_tree.NoSuchMember {\n"
-            .to_string())
-        + &"  d\n".to_string())
-        + &"}\n".to_string())
-        + &"\n".to_string())
-        + &"fn reads_missing_head(d: no_such_module.Anything) -> no_such_module.Anything {\n"
-            .to_string())
-        + &"  d\n".to_string())
-        + &"}\n".to_string())
+    (((((((((((((((((((("module test.fixture.import_deletion_bridge.path_controls_consumer\n".to_string() + &"\n".to_string()) + &"fn reads_good(d: live_tree.LiveTreeDisposition) -> live_tree.LiveTreeDisposition {\n".to_string()) + &"  d\n".to_string()) + &"}\n".to_string()) + &"\n".to_string()) + &"fn reads_missing_member(d: live_tree.NoSuchMember) -> live_tree.NoSuchMember {\n".to_string()) + &"  d\n".to_string()) + &"}\n".to_string()) + &"\n".to_string()) + &"fn reads_missing_head(d: no_such_module.Anything) -> no_such_module.Anything {\n".to_string()) + &"  d\n".to_string()) + &"}\n".to_string()) + &"\n".to_string()) + &"fn reads_ordinary_field(d: live_tree.LiveTreeDisposition) -> live_tree.LiveTreeDisposition {\n".to_string()) + &"  d.ordinary_field\n".to_string()) + &"}\n".to_string()) + &"\n".to_string()) + &"fn reads_duplicated(t: duplicated.Twice) -> duplicated.Twice {\n".to_string()) + &"  t\n".to_string()) + &"}\n".to_string())
 }
 
 pub fn idb_unrelated_source_path() -> String {
@@ -1605,6 +1596,21 @@ pub fn idb_reference_path_controls_note() -> String {
 }
 
 pub fn idb_reference_path_closure() -> Option<Rc<AssembledCrossFileBindingClosure>> {
+    idb_reference_path_closure_with(Rc::new(vec![idb_live_tree_source_path()]))
+}
+
+pub fn idb_reference_path_provider_choice_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The provider SET is a parameter because two of these controls are about cardinality, and cardinality is a property of the assembled population rather than of the reference. Head ambiguity needs two modules whose last segment is live_tree; segment ambiguity needs one module declaring the member twice. Neither is expressible by changing the consumer text, which is why the closure takes its providers rather than naming one.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn idb_reference_path_closure_with(
+    providers: Rc<Vec<String>>,
+) -> Option<Rc<AssembledCrossFileBindingClosure>> {
     match idb_closure_row_for(
         idb_path_consumer_source_path(),
         DeclarationExposureGrounding::ModuleLocalMemberExposure,
@@ -1615,16 +1621,34 @@ pub fn idb_reference_path_closure() -> Option<Rc<AssembledCrossFileBindingClosur
         None => None,
         Some(consumer_row) => Some(assemble_cross_file_binding_closure(
             consumer_row.clone(),
-            idb_closure_row_for(
-                idb_live_tree_source_path(),
-                DeclarationExposureGrounding::ModuleLocalMemberExposure,
+            providers.clone().iter().cloned().fold(
+                idb_no_closure_rows(),
+                |acc: Rc<Vec<Rc<CrossFileBindingClosureRow>>>, path: String| {
+                    v1_rt::concat(
+                        acc,
+                        idb_closure_row_for(
+                            path.clone(),
+                            DeclarationExposureGrounding::ModuleLocalMemberExposure,
+                        ),
+                    )
+                },
             ),
         )),
     }
 }
 
 pub fn idb_reference_path_resolution_for(name: String) -> Option<Rc<ReferencePathResolution>> {
-    match idb_reference_path_closure().as_deref().cloned() {
+    idb_reference_path_resolution_in(name.clone(), Rc::new(vec![idb_live_tree_source_path()]))
+}
+
+pub fn idb_reference_path_resolution_in(
+    name: String,
+    providers: Rc<Vec<String>>,
+) -> Option<Rc<ReferencePathResolution>> {
+    match idb_reference_path_closure_with(providers.clone())
+        .as_deref()
+        .cloned()
+    {
         None => None,
         Some(AssembledCrossFileBindingClosure::AssembledCrossFileBindingClosureRefused {
             refusal: _,
@@ -1722,6 +1746,88 @@ pub fn reference_path_missing_head_refuses_before_descent() -> bool {
         Some(ReferencePathResolution::ReferencePathHeadUnbound {
             head_name: head, ..
         }) => (head.clone() == "no_such_module".to_string()),
+        _ => false,
+    }
+}
+
+pub fn idb_duplicate_member_source_path() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "dag/test/fixture/import_deletion_bridge/duplicate_member_live_tree.dag".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn idb_duplicate_member_source_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "One module declaring the SAME member spelling twice. This is not a well-formed program and is not meant to be: the subject is what the path resolver does when a segment has two candidates, and the answer must be a refusal naming both rather than a first-wins pick. Authored as its own fixture so no well-formed provider has to be corrupted to ask the question.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn idb_duplicate_member_source() -> String {
+    "module v2.std.duplicated\n\ntype Twice\n  = TwiceOne\n  | TwiceTwo\n\ntype Twice\n  = TwiceThree\n  | TwiceFour\n".to_string()
+}
+
+pub fn reference_path_two_modules_named_alike_refuse_at_the_head() -> bool {
+    match idb_reference_path_resolution_in(
+        idb_subject_name(),
+        Rc::new(vec![
+            idb_live_tree_source_path(),
+            idb_second_provider_source_path(),
+        ]),
+    )
+    .as_deref()
+    .cloned()
+    {
+        Some(ReferencePathResolution::ReferencePathHeadAmbiguous {
+            head_name: head,
+            candidates,
+            ..
+        }) => {
+            ((head.clone() == "live_tree".to_string()) && ((candidates.clone().len() as i64) == 2))
+        }
+        _ => false,
+    }
+}
+
+pub fn reference_path_ordinary_record_field_is_not_a_namespace_projection() -> bool {
+    match idb_reference_path_resolution_for("ordinary_field".to_string())
+        .as_deref()
+        .cloned()
+    {
+        Some(ReferencePathResolution::ReferencePathNotANamespaceProjection {
+            head: head, ..
+        }) => match head.category.clone() {
+            OccurrenceCategory::NamespaceSegmentOccurrence => false,
+            _ => true,
+        },
+        _ => false,
+    }
+}
+
+pub fn reference_path_duplicated_member_refuses_at_the_segment() -> bool {
+    match idb_reference_path_resolution_in(
+        "duplicated.Twice".to_string(),
+        Rc::new(vec![
+            idb_live_tree_source_path(),
+            idb_duplicate_member_source_path(),
+        ]),
+    )
+    .as_deref()
+    .cloned()
+    {
+        Some(ReferencePathResolution::ReferencePathSegmentAmbiguous {
+            segment,
+            candidates,
+            ..
+        }) => {
+            ((segment.name.clone() == "Twice".to_string())
+                && ((candidates.clone().len() as i64) == 2))
+        }
         _ => false,
     }
 }

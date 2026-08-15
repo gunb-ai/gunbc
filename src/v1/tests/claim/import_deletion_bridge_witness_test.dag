@@ -73,6 +73,7 @@ import std.occurrence_binding_candidates {
   ReferencePathSegmentUnbound,
   ReferencePathSegmentAmbiguous,
   ReferencePathBuildRefused,
+  ReferencePathNotANamespaceProjection,
 }
 import std.occurrence_binding {
   AmbiguousBindingCandidates,
@@ -169,6 +170,7 @@ fn idb_candidates() -> List<IdbCandidate> {
     IdbCandidate { file: idb_conflicting_source_path, source: idb_conflicting_source() },
     IdbCandidate { file: idb_type_consumer_source_path(), source: idb_type_consumer_source() },
     IdbCandidate { file: idb_path_consumer_source_path, source: idb_path_consumer_source() },
+    IdbCandidate { file: idb_duplicate_member_source_path, source: idb_duplicate_member_source() },
   ]
 }
 
@@ -189,6 +191,14 @@ fn idb_path_consumer_source() -> String {
     "\n" +
     "fn reads_missing_head(d: no_such_module.Anything) -> no_such_module.Anything {\n" +
     "  d\n" +
+    "}\n" +
+    "\n" +
+    "fn reads_ordinary_field(d: live_tree.LiveTreeDisposition) -> live_tree.LiveTreeDisposition {\n" +
+    "  d.ordinary_field\n" +
+    "}\n" +
+    "\n" +
+    "fn reads_duplicated(t: duplicated.Twice) -> duplicated.Twice {\n" +
+    "  t\n" +
     "}\n"
 }
 
@@ -1113,20 +1123,31 @@ fn idb_all_refs_for(path: String) -> List<ReferenceOccurrence> {
 data idb_reference_path_controls_note: String = "REFERENCE-PATH CONTROLS, on real parsed source rather than hand-built values. Each asserts a DIFFERENT decision of resolve_reference_path, which is what keeps them from being one claim written four ways: a path whose head and terminal both bind resolves to the TERMINAL declaration (not the module head, so the assertion names the terminal's own authored spelling); a path whose head binds and whose segment names nothing refuses AT THE SEGMENT, which is the discriminating red for the head-only widen this carrier deletes -- under that widen this case produced a ready dependency; a path whose head names nothing refuses at the HEAD, before any descent, so head and segment failures are distinguishable rather than one Unbound; and a head naming two modules refuses as head ambiguity BEFORE descent, so a nearest-match never gets the chance to pick. The resolved case is the positive control the three refusals are read against: without it, four refusals would be satisfiable by a resolver that refuses everything."
 
 fn idb_reference_path_closure() -> AssembledCrossFileBindingClosure? {
+  idb_reference_path_closure_with(providers: [idb_live_tree_source_path])
+}
+
+data idb_reference_path_provider_choice_note: String = "The provider SET is a parameter because two of these controls are about cardinality, and cardinality is a property of the assembled population rather than of the reference. Head ambiguity needs two modules whose last segment is live_tree; segment ambiguity needs one module declaring the member twice. Neither is expressible by changing the consumer text, which is why the closure takes its providers rather than naming one."
+
+fn idb_reference_path_closure_with(providers: List<String>) -> AssembledCrossFileBindingClosure? {
   match first(idb_closure_row_for(path: idb_path_consumer_source_path, grounding: ModuleLocalMemberExposure)) {
     Absent => none
     Present { value: consumer_row } =>
       Present {
         value: assemble_cross_file_binding_closure(
           consumer: consumer_row,
-          providers: idb_closure_row_for(path: idb_live_tree_source_path, grounding: ModuleLocalMemberExposure),
+          providers: fold(providers, init: idb_no_closure_rows(), f: (acc, path) =>
+            concat(acc, idb_closure_row_for(path: path, grounding: ModuleLocalMemberExposure))),
         ),
       }
   }
 }
 
 fn idb_reference_path_resolution_for(name: String) -> ReferencePathResolution? {
-  match idb_reference_path_closure() {
+  idb_reference_path_resolution_in(name: name, providers: [idb_live_tree_source_path])
+}
+
+fn idb_reference_path_resolution_in(name: String, providers: List<String>) -> ReferencePathResolution? {
+  match idb_reference_path_closure_with(providers: providers) {
     Absent => none
     Present { value: AssembledCrossFileBindingClosureRefused { refusal: _ } } => none
     Present { value: AssembledCrossFileBindingClosureReady { transport: t, inputs: i, module_files: _, consumer_file: _ } } =>
@@ -1195,6 +1216,47 @@ test fn reference_path_missing_head_refuses_before_descent() -> Bool {
   match idb_reference_path_resolution_for(name: "no_such_module.Anything") {
     Present { value: ReferencePathHeadUnbound { head_name: head, span: _ } } =>
       head == "no_such_module"
+    _ => false
+  }
+}
+
+data idb_duplicate_member_source_path: String = "dag/test/fixture/import_deletion_bridge/duplicate_member_live_tree.dag"
+
+data idb_duplicate_member_source_note: String = "One module declaring the SAME member spelling twice. This is not a well-formed program and is not meant to be: the subject is what the path resolver does when a segment has two candidates, and the answer must be a refusal naming both rather than a first-wins pick. Authored as its own fixture so no well-formed provider has to be corrupted to ask the question."
+
+fn idb_duplicate_member_source() -> String {
+  "module v2.std.duplicated\n\ntype Twice\n  = TwiceOne\n  | TwiceTwo\n\ntype Twice\n  = TwiceThree\n  | TwiceFour\n"
+}
+
+test fn reference_path_two_modules_named_alike_refuse_at_the_head() -> Bool {
+  match idb_reference_path_resolution_in(
+    name: idb_subject_name,
+    providers: [idb_live_tree_source_path, idb_second_provider_source_path],
+  ) {
+    Present { value: ReferencePathHeadAmbiguous { head_name: head, span: _, candidates: candidates } } =>
+      (head == "live_tree") && (length(candidates) == 2)
+    _ => false
+  }
+}
+
+test fn reference_path_ordinary_record_field_is_not_a_namespace_projection() -> Bool {
+  match idb_reference_path_resolution_for(name: "ordinary_field") {
+    Present { value: ReferencePathNotANamespaceProjection { head: head } } =>
+      match head.category {
+        NamespaceSegmentOccurrence => false
+        _ => true
+      }
+    _ => false
+  }
+}
+
+test fn reference_path_duplicated_member_refuses_at_the_segment() -> Bool {
+  match idb_reference_path_resolution_in(
+    name: "duplicated.Twice",
+    providers: [idb_live_tree_source_path, idb_duplicate_member_source_path],
+  ) {
+    Present { value: ReferencePathSegmentAmbiguous { segment: segment, parent: _, candidates: candidates } } =>
+      (segment.name == "Twice") && (length(candidates) == 2)
     _ => false
   }
 }
