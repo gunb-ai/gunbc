@@ -29,7 +29,7 @@ data floor_gate_component_requirements: List<ToolchainComponentRequirement> = [
   ToolchainComponentRequirement {
     component: Rustfmt,
     required_by: DeclarationRef {
-      module_path: "v2.workflow.ci_floor_plan",
+      module_path: "v2.workflow.floor_gate_claim_site",
       decl_name: "floor_self_host_realized_comparison_gate_entry",
       field: WholeDeclaration,
     },

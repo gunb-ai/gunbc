@@ -1,7 +1,7 @@
 module v2.workflow.required_floor
 
 import std.algebra { Cons }
-import v2.std.algebra { fold_list, length, list_append, list_reverse }
+import v2.std.algebra { fold_list, length, list_append, list_map, list_reverse }
 import v2.std.collection { List, Map, empty_map, map_get, map_insert }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.optional { Absent, Optional, Present }
@@ -9,6 +9,8 @@ import v2.std.logic { Bool }
 import v2.std.text { String }
 import std.measure { Millisecond, millisecond }
 import std.execution_mode { ExecutionMode, Hermetic, Record, Wet, execution_mode_eq }
+import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates }
+import v2.workflow.floor_gate_claim_site { gate_witness_site }
 import v2.workflow.floor2_prepared_subject {
   ResolvedWitness,
   WitnessIdentified,
@@ -160,6 +162,40 @@ fn required_floor_claim_budget() -> Millisecond {
   millisecond(count: 5000)
 }
 
+// A GATE'S DEADLINE IS ITS OWN, and it is stated as a separate row rather than as a multiple
+// of the hermetic one. The two bound different things: 5 seconds bounds a pure witness whose
+// only cost is evaluation, while a gate SPAWNS work -- a compiler, a regeneration, a corpus
+// scan -- and the measured warm costs of the enrolled rows run to 427s (source-root ingest)
+// and 223s (self-host realized comparison), per `gunbc.commit_workflow`
+// `gate_gauntlet_flip_basis_note`. Applying the witness budget to them would refuse every
+// gate on time and report it as a gate failure, which is a fabricated verdict about the gate.
+fn required_floor_gate_budget() -> Millisecond {
+  millisecond(count: 900000)
+}
+
+// The deadline is DERIVED from the claim's own mode, never passed alongside it. A budget
+// argument beside a mode is two facts that can disagree, and the disagreeing pair is exactly
+// how a gate acquires a witness's deadline.
+fn required_floor_budget_for(mode: ExecutionMode) -> Millisecond {
+  match mode {
+    Hermetic => required_floor_claim_budget()
+    Record => required_floor_claim_budget()
+    Wet => required_floor_gate_budget()
+  }
+}
+
+// THE WET POPULATION IS THE DECLARED GATE ROSTER, read through the same projection the CI
+// job's own surface reads (`project_ci_floor_gates` over `commit_gate_roster`), so a gate
+// re-homed to another lane leaves this floor by editing its enrollment and nothing else. The
+// (entry, function) pair comes from `gate_witness_site`, the single authority the plan's
+// `gate_runnable` also reads -- not a second table listing the same eleven rows.
+fn required_floor_wet_sites() -> List<WitnessSite> {
+  list_map(
+    xs: project_ci_floor_gates(roster: commit_gate_roster),
+    f: fn(g) { gate_witness_site(g: g) }
+  )
+}
+
 fn required_floor_claim_qualified(claim: RequiredFloorClaim) -> String {
   witness_identity_qualified_name(identity: claim.declaration)
 }
@@ -268,7 +304,7 @@ fn scan_resolved(
         head: RequiredFloorClaim {
           declaration: id,
           execution_mode: mode,
-          budget: required_floor_claim_budget()
+          budget: required_floor_budget_for(mode: mode)
         },
         tail: acc.claims
       },
@@ -430,16 +466,23 @@ fn duplicate_refusals(claims: List<RequiredFloorClaim>) -> List<ManifestRefusal>
 // The one reversal that restores authored order is taken here, after both populations are
 // scanned, rather than per row.
 //
-// `hermetic_sites` are the discovered witnesses; `wet_sites` are the rows whose subject IS a
-// live effect and which therefore need a dispatching frame. They arrive as separate lists
-// rather than one list with a flag because the flag would have to be derived from something,
-// and the only available something is `reads_live_tree` — the derivation this module refuses
-// to make.
+// `hermetic_sites` are the discovered witnesses, which only a filesystem walk can observe, so
+// they are an input. The WET population is not observed and is therefore NOT an input: it is
+// the declared gate roster, derived here from its own authority. That asymmetry is the whole
+// point. While the wet rows were a parameter, the host passed an empty list and every effect
+// gate in the repository silently stopped running -- the manifest reported a complete roster,
+// because an empty list is exactly what a subject with no wet rows looks like. Deriving them
+// makes that state unrepresentable rather than merely unlikely (DESIGN section 5, construction
+// over validation): there is no argument left for a caller to get wrong.
+//
+// They stay two populations rather than one list with a flag because the flag would have to be
+// derived from something, and the only available something is `reads_live_tree` — the
+// derivation this module refuses to make.
 fn required_floor_manifest(
   bindings: List<ModulePathBinding>,
-  hermetic_sites: List<WitnessSite>,
-  wet_sites: List<WitnessSite>
+  hermetic_sites: List<WitnessSite>
 ) -> ClaimScan {
+  let wet_sites = required_floor_wet_sites()
   let index = build_entry_module_index(bindings: bindings)
   let after_hermetic = scan_sites(
     acc: claim_scan_empty,
@@ -469,13 +512,11 @@ fn required_floor_manifest(
 fn required_floor_attempt(
   subject: ObservedSubjectIdentity,
   bindings: List<ModulePathBinding>,
-  hermetic_sites: List<WitnessSite>,
-  wet_sites: List<WitnessSite>
+  hermetic_sites: List<WitnessSite>
 ) -> RequiredFloorAdmission {
   let scan = required_floor_manifest(
     bindings: bindings,
-    hermetic_sites: hermetic_sites,
-    wet_sites: wet_sites
+    hermetic_sites: hermetic_sites
   )
   if length(xs: scan.refusals) == 0 {
     RequiredFloorRunnable {

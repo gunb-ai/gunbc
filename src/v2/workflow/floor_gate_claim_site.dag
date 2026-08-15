@@ -1,0 +1,52 @@
+module v2.workflow.floor_gate_claim_site
+
+import gunbc.ci_gate {
+  Gate, EmitHostGate, CheapClaimPoolGate,
+  ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
+  ProseRowIntroductionGate,
+  SourceRootIngestGate, RegenVerifyGate,
+  SelfHostReadsRealBytesGate, SelfHostStalenessGate
+}
+import v2.std.text { String }
+import v2.workflow.floor2_prepared_subject { WitnessSite }
+
+// WHERE EACH GATE'S CODE LIVES, at one authority read by both consumers.
+//
+// A gate is a declaration like any other -- an entry file and a function name -- and two
+// separate consumers need that pair: the plan builds a `RunnableSingleClaim` from it, and the
+// required floor evaluates it as a Wet claim against the one prepared subject. Before this
+// module the pair existed only inside `gate_runnable`'s match arms, so the second consumer
+// could only obtain it by writing the same eleven rows again. That second copy is the §3
+// nicknaming failure in its most damaging form: the two tables would disagree by one row
+// exactly when a gate was added, and the arm that disagrees is the one that RUNS the gate.
+//
+// The site is a `WitnessSite` rather than a fresh record. A gate's (entry, function) is the
+// same fact a discovered witness's (entry, function) is, and minting a parallel type for it
+// would be a second name for one concept.
+data floor_gate_witness_entry: String = "dag/tools/floor_effect_gate_witness.dag"
+
+data floor_source_root_ingest_gate_entry: String = "src/v2/workflow/source_root_ingest_gate.dag"
+
+data floor_self_host_realized_comparison_gate_entry: String = "src/v2/workflow/self_host_realized_comparison_gate.dag"
+
+fn gate_witness_site(g: Gate) -> WitnessSite {
+  match g {
+    EmitHostGate => WitnessSite { entry: floor_gate_witness_entry, function: "emit_host_gate_passes" }
+    CheapClaimPoolGate => WitnessSite { entry: floor_gate_witness_entry, function: "cheap_claim_pool_gate_passes" }
+    ExtdepsExternalAuthorityGate => WitnessSite { entry: floor_gate_witness_entry, function: "extdeps_external_authority_gate_passes" }
+    DagCompileCleanGate => WitnessSite { entry: floor_gate_witness_entry, function: "dag_compile_clean_gate_passes" }
+    GeneratedArtifactDriftGate => WitnessSite { entry: floor_gate_witness_entry, function: "generated_artifact_drift_gate_passes" }
+    ExtdepsScopePlacementGate => WitnessSite { entry: floor_gate_witness_entry, function: "extdeps_scope_placement_gate_passes" }
+    ProseRowIntroductionGate => WitnessSite { entry: floor_gate_witness_entry, function: "prose_row_introduction_gate_passes" }
+    SourceRootIngestGate => WitnessSite { entry: floor_source_root_ingest_gate_entry, function: "source_root_ingest_gate_passes" }
+    RegenVerifyGate => WitnessSite { entry: floor_gate_witness_entry, function: "regen_verify_gate_passes" }
+    SelfHostReadsRealBytesGate => WitnessSite {
+      entry: floor_self_host_realized_comparison_gate_entry,
+      function: "self_host_realized_comparison_reads_real_bytes_gate_holds"
+    }
+    SelfHostStalenessGate => WitnessSite {
+      entry: floor_self_host_realized_comparison_gate_entry,
+      function: "self_host_realized_comparison_staleness_gate_holds"
+    }
+  }
+}

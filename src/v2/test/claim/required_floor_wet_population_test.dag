@@ -1,0 +1,66 @@
+module v2.test.claim.required_floor_wet_population_test
+
+import gunbc.ci_gate { DagCompileCleanGate, GeneratedArtifactDriftGate }
+import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates }
+import std.execution_mode { Hermetic, Record, Wet }
+import v2.std.algebra { fold_list, length, list_map }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.workflow.floor_gate_claim_site { gate_witness_site }
+import v2.workflow.floor2_prepared_subject { WitnessSite }
+import v2.workflow.required_floor {
+  required_floor_budget_for,
+  required_floor_claim_budget,
+  required_floor_gate_budget,
+  required_floor_wet_sites
+}
+import std.measure { millisecond_count }
+
+fn site_functions(sites: List<WitnessSite>) -> List<String> {
+  list_map(xs: sites, f: fn(s) { s.function })
+}
+
+fn contains_function(sites: List<WitnessSite>, name: String) -> Bool {
+  fold_list(xs: site_functions(sites: sites), empty: false, cons: fn(found, f) { found || f == name })
+}
+
+// THE POPULATION IS AN IDENTITY JOIN AGAINST THE ROSTER, never a count against a literal. A
+// count pinned to a number measured from this same tree would answer `true` for any roster of
+// the same size, including one that dropped the compile-clean gate and gained an unrelated row.
+test fn required_floor_wet_population_is_the_enrolled_ci_gate_roster() -> Bool {
+  let enrolled = project_ci_floor_gates(roster: commit_gate_roster)
+  let expected = list_map(xs: enrolled, f: fn(g) { gate_witness_site(g: g) })
+  let derived = required_floor_wet_sites()
+  length(xs: derived) == length(xs: expected)
+    && fold_list(
+      xs: expected,
+      empty: true,
+      cons: fn(ok, e) { ok && contains_function(sites: derived, name: e.function) }
+    )
+}
+
+// The discriminating half. The defect this derivation replaces was an EMPTY wet population
+// reported as a complete manifest, so a witness that only compared two derivations of the same
+// expression would have passed against it too -- both sides empty. This one names two gates
+// that must be present by their own function identity.
+test fn required_floor_wet_population_carries_the_named_effect_gates() -> Bool {
+  let derived = required_floor_wet_sites()
+  length(xs: derived) > 0
+    && contains_function(sites: derived, name: gate_witness_site(g: DagCompileCleanGate).function)
+    && contains_function(sites: derived, name: gate_witness_site(g: GeneratedArtifactDriftGate).function)
+}
+
+// A gate reached with the witness deadline is a gate refused on time and reported as a gate
+// failure -- a fabricated verdict about the gate. The budget is derived from the mode, so the
+// two populations cannot share one deadline by accident.
+test fn required_floor_gate_budget_exceeds_the_witness_budget() -> Bool {
+  millisecond_count(required_floor_budget_for(mode: Wet))
+    > millisecond_count(required_floor_budget_for(mode: Hermetic))
+    && millisecond_count(required_floor_budget_for(mode: Hermetic))
+      == millisecond_count(required_floor_claim_budget())
+    && millisecond_count(required_floor_budget_for(mode: Record))
+      == millisecond_count(required_floor_claim_budget())
+    && millisecond_count(required_floor_budget_for(mode: Wet))
+      == millisecond_count(required_floor_gate_budget())
+}

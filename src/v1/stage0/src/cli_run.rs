@@ -24819,12 +24819,29 @@ pub fn run_required_floor(
     // this path reported preparation and then nothing for eleven minutes, so scope projection,
     // the published-mock precompute and the manifest fold were indistinguishable — a wall-clock
     // number with no term is not a measurement of anything.
+    // THE KEYS COME FROM THE PREPARED SUBJECT, not from a second acquisition of the repository.
+    // `precompute_whole_tree_published_mock_keys` answers the same question by building its own
+    // module index, parsing every candidate file again and strict-resolving the declarers'
+    // closure — measured at 44-50s on this path, beside a prepared subject that already contains
+    // every one of those modules. Two resolves of one tree is the entry-major cost shape this
+    // function exists to delete, and it is also a second answer that could disagree with the
+    // first: the keys installed in every frame would have come from a different resolve than the
+    // graph those frames evaluate against. The item registry the reader scans is the prepared
+    // subject's own, so the population is the subject's by construction.
     let published_started = std::time::Instant::now();
-    let published = match precompute_whole_tree_published_mock_keys(source_roots) {
+    let published_ctx = v1_interpreter::InterpContext::with_runtime_options(
+        &prepared.graph,
+        prepared.source_indices.clone(),
+        v1_interpreter::ExecutionMode::Wet,
+        None,
+        None,
+    );
+    let published = match v1_interpreter::resolve_published_mock_keys(&published_ctx) {
         Ok(keys) if keys.is_empty() => None,
         Ok(keys) => Some(Rc::new(keys)),
         Err(e) => return Err(format!("published mock corpus precompute failed: {e}")),
     };
+    drop(published_ctx);
     eprintln!(
         "floor: published-mock precompute in {}ms",
         published_started.elapsed().as_millis()
@@ -24897,8 +24914,6 @@ pub fn run_required_floor(
             ),
         ],
     );
-    let empty_sites =
-        v1_interpreter::Value::List(Rc::new(Vec::<v1_interpreter::Value>::new().into()));
     eprintln!(
         "floor: manifest inputs built in {}ms ({} binding(s), {} site(s))",
         manifest_started.elapsed().as_millis(),
@@ -24919,7 +24934,6 @@ pub fn run_required_floor(
                 Some("hermetic_sites".to_string()),
                 v1_interpreter::Value::List(Rc::new(sites.into())),
             ),
-            (Some("wet_sites".to_string()), empty_sites),
         ],
         false,
     )

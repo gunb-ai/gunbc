@@ -105,6 +105,7 @@ import std.realization_schedule {
 }
 import v2.lens.schedule_lens { walk_plan_schedule_lens_verdict_for_ci_floor, schedule_lens_batch_has_any_cheap_gate }
 import v2.std.lens_verdict { Holds, NotApplicable, Unrealized, Violation }
+import v2.workflow.floor_gate_claim_site { gate_witness_site }
 import v2.workflow.executor {
   ExecutorBatch
 }
@@ -121,11 +122,8 @@ data ci_floor_plan_resolve_finalization_transport_note: String = "0B AUTHORITY S
 data ci_floor_target_digest: ContentHash = content_hash_of_value(value: "gunbc-ci-floor-v1")
 data ci_floor_compile_gate_fn: String = "dag_compile_clean_gate_passes"
 
-data floor_gate_witness_entry: String = "dag/tools/floor_effect_gate_witness.dag"
 
-data floor_source_root_ingest_gate_entry: String = "src/v2/workflow/source_root_ingest_gate.dag"
 
-data floor_self_host_realized_comparison_gate_entry: String = "src/v2/workflow/self_host_realized_comparison_gate.dag"
 
 data floor_self_host_realized_comparison_claims_entry: String = "src/v2/workflow/self_host_realized_comparison_claims.dag"
 
@@ -371,31 +369,11 @@ fn gate_profile_negligible_wet_declared() -> RunnableResourceProfile {
 }
 
 fn gate_runnable(g: Gate) -> Runnable {
-  let profile = gate_runnable_profile(g: g)
-  match g {
-    EmitHostGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "emit_host_gate_passes", profile: profile }
-    CheapClaimPoolGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "cheap_claim_pool_gate_passes", profile: profile }
-    ExtdepsExternalAuthorityGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "extdeps_external_authority_gate_passes", profile: profile }
-    DagCompileCleanGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "dag_compile_clean_gate_passes", profile: profile }
-    GeneratedArtifactDriftGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "generated_artifact_drift_gate_passes", profile: profile }
-    ExtdepsScopePlacementGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "extdeps_scope_placement_gate_passes", profile: profile }
-    ProseRowIntroductionGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "prose_row_introduction_gate_passes", profile: profile }
-    SourceRootIngestGate => RunnableSingleClaim {
-      entry: floor_source_root_ingest_gate_entry,
-      function: "source_root_ingest_gate_passes",
-      profile: profile
-    }
-    RegenVerifyGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "regen_verify_gate_passes", profile: profile }
-    SelfHostReadsRealBytesGate => RunnableSingleClaim {
-      entry: floor_self_host_realized_comparison_gate_entry,
-      function: "self_host_realized_comparison_reads_real_bytes_gate_holds",
-      profile: profile
-    }
-    SelfHostStalenessGate => RunnableSingleClaim {
-      entry: floor_self_host_realized_comparison_gate_entry,
-      function: "self_host_realized_comparison_staleness_gate_holds",
-      profile: profile
-    }
+  let site = gate_witness_site(g: g)
+  RunnableSingleClaim {
+    entry: site.entry,
+    function: site.function,
+    profile: gate_runnable_profile(g: g)
   }
 }
 
