@@ -6,8 +6,9 @@
 # src/v1/stage0/tests/json_parse_eval_memo_ab_receipt.rs.
 # Witness: json_parse_eval_memo_ab_decode_sanity (correctness); A/B probe is #[ignore]d here.
 #
-# Varies only GUNBC_EVAL_MEMO (1 vs 0). Same binary, fixture, cap, harness.
-# Records typed process termination — exit 127 is CommandNotFound (probe never started), not OOM.
+# Varies only GUNBC_EVAL_MEMO (1 vs 0). Separate scoped processes per arm (VmHWM resets).
+# MemoryMax cap required — do not run uncapped on shared srv1.
+# `timeout N systemd-run --scope` does NOT kill the scoped process; poll/stop by scope name.
 set -euo pipefail
 
 MEMORY_MAX_GIB="${1:-4}"
@@ -42,6 +43,7 @@ run_arm() {
   local run_cmd="JSON_PARSE_AB_DECODED_LEN=${DECODED_LEN} GUNBC_EVAL_MEMO=${memo_val} cargo test -p v1-compiler --release --test json_parse_eval_memo_ab_receipt json_parse_eval_memo_ab_probe -- --ignored --nocapture"
 
   echo "=== arm GUNBC_EVAL_MEMO=${memo_val} MemoryMax=${MEMORY_MAX_GIB}G decoded_len=${DECODED_LEN} ==="
+  echo "prediction: memo_on shows near-zero hits + large misses; high hit_rate refutes hypothesis"
   echo "log: ${log}"
 
   set +e
@@ -63,7 +65,11 @@ run_arm() {
   echo
 }
 
+echo "EvalCallMemo A/B — compare parse_phase_vhwm_increase_bytes between arms, not setup-dominated process peak"
+echo
+
 run_arm 1
 run_arm 0
 
 echo "A/B complete — logs under ${LOG_DIR}/"
+echo "Compare: parse_phase_vhwm_increase_bytes, memo_hits/misses/overflow, setup_dominates_discriminator"
