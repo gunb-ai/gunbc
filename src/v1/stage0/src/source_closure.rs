@@ -105,8 +105,8 @@ fn collect_dag_files(dir: &Path, out: &mut Vec<PathBuf>) {
 /// Collect every name occurring anywhere in a parsed tree.
 ///
 /// Walks all structural positions rather than a hand-picked subset, so a new
-/// `Node` field cannot silently drop references. Includes declaration names —
-/// they are filtered out by the caller, which knows the entry's own module.
+/// `Node` field cannot silently drop references. Includes binder and
+/// declaration names; `referenced_names` is what subtracts them.
 pub fn names_in_tree(node: &Rc<Node>, out: &mut HashSet<String>) {
     if !node.name.is_empty() {
         out.insert(node.name.clone());
@@ -159,6 +159,49 @@ pub fn declared_names(module: &Rc<Node>) -> Vec<String> {
         }
     }
     out
+}
+
+/// Every name a parsed tree references FREELY: occurring names minus the names
+/// the tree itself binds.
+///
+/// This is the difference between a closure and the corpus. Pulling on every
+/// occurring name means a parameter, a `let` binder, or a record-literal field
+/// label that happens to share a declaration's name drags that declaration's
+/// module in, and because the corpus is densely interconnected the result
+/// closes over nearly all of it. Measured before this narrowing: a five-line
+/// entry produced a closure wide enough that compiling it was a whole-corpus
+/// typecheck.
+///
+/// Binders subtracted here: the module's own declarations (including coproduct
+/// variant arms) and every parameter name at any depth. Names bound inside
+/// bodies by other forms are NOT yet subtracted, so this remains an
+/// over-approximation — a narrower one, computed as the answer, never widened
+/// on failure.
+pub fn referenced_names(module: &Rc<Node>) -> HashSet<String> {
+    let mut occurring = HashSet::new();
+    names_in_tree(module, &mut occurring);
+
+    let mut binders: HashSet<String> = declared_names(module).into_iter().collect();
+    collect_param_binders(module, &mut binders);
+    binders.insert(module.name.clone());
+
+    occurring.retain(|name| !binders.contains(name));
+    occurring
+}
+
+fn collect_param_binders(node: &Rc<Node>, binders: &mut HashSet<String>) {
+    for param in node.params.iter() {
+        if !param.name.is_empty() {
+            binders.insert(param.name.clone());
+        }
+        collect_param_binders(param, binders);
+    }
+    for child in node.children.iter() {
+        collect_param_binders(child, binders);
+    }
+    if let Some(body) = node.body.as_ref() {
+        collect_param_binders(body, binders);
+    }
 }
 
 fn parse_file(path: &str, content: &str) -> Option<Rc<Node>> {
@@ -244,10 +287,7 @@ pub fn closure_for_entry(
         };
         own_modules.insert(tree.name.clone());
 
-        let mut referenced = HashSet::new();
-        names_in_tree(&tree, &mut referenced);
-
-        for name in referenced {
+        for name in referenced_names(&tree) {
             let Some(declaring) = index.modules_declaring(&name) else {
                 continue;
             };

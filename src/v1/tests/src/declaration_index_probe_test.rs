@@ -91,3 +91,49 @@ fn declaration_index_reports_the_nat_compare_homonym_rather_than_picking_one() {
          surfaces the ambiguity instead of picking a winner; got {found:?}"
     );
 }
+
+/// The number that decides whether closure assembly is usable at all.
+///
+/// A five-line entry referencing one std type must produce a SMALL closure. If
+/// it closes over most of the corpus, every consumer pays a whole-corpus
+/// typecheck to compile five lines, which is what the over-approximation cost
+/// before free-name narrowing.
+#[test]
+fn small_entry_produces_a_small_closure() {
+    const ENTRY: &str = r#"
+module test.closure_width_probe
+
+fn one_half() -> FieldOfFractions<Int> { FieldOfFractions { num: 1, denom: 2 } }
+"#;
+    let (index, _unparsed, index_elapsed) = build();
+    let started = std::time::Instant::now();
+    let closure = v1_compiler::source_closure::closure_for_entry("test.dag", ENTRY, &index);
+    let closure_elapsed = started.elapsed();
+
+    let paths: Vec<&str> = closure.iter().map(|s| s.path.as_str()).collect();
+    eprintln!(
+        "[closure] {} of {} modules in {:?} (index {:?})",
+        closure.len(),
+        index.module_count(),
+        closure_elapsed,
+        index_elapsed
+    );
+    if closure.len() <= 40 {
+        eprintln!("[closure] members: {paths:?}");
+    }
+
+    assert!(
+        closure.iter().any(|s| s.path.ends_with("std/algebra.dag")),
+        "closure must contain the module declaring FieldOfFractions; got {} members",
+        closure.len()
+    );
+
+    // The bar is deliberately far below the corpus rather than at some tuned
+    // value: this asserts the closure is a CLOSURE, not that it is optimal.
+    assert!(
+        closure.len() < index.module_count() / 4,
+        "closure over-approximates: {} of {} modules for a five-line entry",
+        closure.len(),
+        index.module_count()
+    );
+}
