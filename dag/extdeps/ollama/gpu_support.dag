@@ -16,7 +16,12 @@ data ollama_gpu_support_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ollama_gpu_support_authority
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.ollama.com/gpu"
+  }
+}
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {

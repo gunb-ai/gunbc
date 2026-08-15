@@ -26,7 +26,12 @@ data zstd_rfc_8878_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data extdeps_external_authority_anchor: ExternalAuthority = posix_pax_ustar_authority
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/tar.html"
+  }
+}
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
