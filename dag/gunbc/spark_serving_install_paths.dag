@@ -11,15 +11,11 @@ import gunbc.spark_serving_release { spark_serving_target }
 import gunbc.spark_serving_realization { NamedPrincipal }
 import gunbc.spark_serving_runtime_receipt { spark_serving_executor_home }
 
-data spark_serving_install_paths_note: String = "Owned-runtime layout for UserUnitRealization + InstallOwnedRuntimeClosure on Spark hosts. Executor home is spark_serving_runtime_receipt.spark_serving_executor_home; gunbc host paths are gunbc.host_layout (host_spark_serving_provision_script imports srv1_gunbc_repo_root and srv1_gunbc_serve_binary — fleet-constant /opt/gunbc layout on Spark hosts, same codex precedent)."
+data spark_serving_install_paths_note: String = "Owned-runtime layout for UserUnitRealization + InstallOwnedRuntimeClosure on Spark hosts. Executor home and receipt path are gunbc.spark_serving_runtime_receipt; gunbc host paths are gunbc.host_layout (host_spark_serving_provision_script imports srv1_gunbc_repo_root and srv1_gunbc_serve_binary — fleet-constant /opt/gunbc layout on Spark hosts, same codex precedent)."
 
 data spark_serving_runtime_root_rel: String = ".local/share/gunbc/spark-serving/ollama"
 
 data spark_serving_models_root_rel: String = ".local/share/gunbc/spark-serving/models"
-
-data spark_serving_runtime_receipt_parent_rel: String = ".local/share/gunbc/spark-serving"
-
-data spark_serving_runtime_receipt_filename: String = "ollama-runtime-receipt.json"
 
 data spark_serving_user_unit_rel: String = ".config/systemd/user/gunbc-spark-serving.service"
 
@@ -45,19 +41,6 @@ fn spark_serving_user_unit_path() -> FilePath {
   concat(
     spark_serving_executor_home as String,
     concat("/", spark_serving_user_unit_rel),
-  ) as FilePath
-}
-
-fn spark_serving_runtime_receipt_path() -> FilePath {
-  concat(
-    spark_serving_executor_home as String,
-    concat(
-      "/",
-      concat(
-        spark_serving_runtime_receipt_parent_rel,
-        concat("/", spark_serving_runtime_receipt_filename),
-      ),
-    ),
   ) as FilePath
 }
 
