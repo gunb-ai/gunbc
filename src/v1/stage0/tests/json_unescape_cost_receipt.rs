@@ -30,17 +30,17 @@
 //!
 //! - `json_unescape_modeled_copy_terms_scale_quadratically`: PASS — doubling n quadruples
 //!   modeled total copy bytes (~4.0×); parameter-binding term is ~2× the concat term.
-//! - Length sweep 10 KiB: `json_unescape` wall reported 7.721µs on BuildBuddy remote
-//!   (suspiciously fast — re-verify on srv1; output length verified in-test). Peak RSS
-//!   ~1.6 GiB is dominated by one-time `parse.dag` resolve, not the timed call alone.
-//! - Length sweep 50 KiB and escape-density 50 KiB: **SIGKILL (OOM)** on BuildBuddy remote
-//!   before completing the timed section — consistent with superlinear allocation, not a
-//!   declared MemoryMax cap (that host path had no scope limit).
-//!
-//! srv1 authoritative RSS runs: `docs/probes/json_unescape_cost_probe.sh`.
+//! - Term separation 10 KiB (C): production wall 8.092µs vs linear Rust shadow 13.581µs
+//!   (ratio 0.6×) — **wall-time inconclusive at this size** on BuildBuddy remote; does not
+//!   refute the hypothesis (OOM below is stronger signal).
+//! - Length sweep 50 KiB: **SIGKILL (OOM)** on BuildBuddy remote before completing.
+//! - srv1 authoritative capped runs: `docs/probes/json_unescape_cost_probe.sh` (not executed
+//!   from this session — no SSH).
 //!
 //! Wall-clock and RSS benchmarks are **`#[ignore]`d — not gates** (tokenize_escape_receipt
-//! precedent, review 45416). Run deliberately:
+//! precedent, review 45416). The seed-growth mark lives on the subject carrier
+//! `extdeps.languages.json.parse` `json_unescape_cost_receipt_seed_growth_mark`, not authored here.
+//! Run deliberately:
 //!
 //!   cargo test -p v1-compiler --release --test json_unescape_cost_receipt -- --ignored --nocapture
 
@@ -50,7 +50,6 @@ use std::time::{Duration, Instant};
 use v1_compiler::cli_run::{self, make_eval_context, peak_rss_vhwm_bytes};
 use v1_compiler::v1_interpreter::{self, ExecutionMode, Value};
 
-const LENGTH_SWEEP_DECODED_BYTES: [usize; 3] = [10 * 1024, 50 * 1024, 200 * 1024];
 const DENSITY_CONTROL_DECODED_BYTES: usize = 50 * 1024;
 
 fn workspace_root() -> PathBuf {
@@ -371,4 +370,9 @@ fn json_unescape_cost_term_separation_10kib() {
         "  modeled_binding_bytes={param} modeled_concat_bytes={concat} binding_share={:.1}%",
         100.0 * param as f64 / (param + concat) as f64
     );
+    if ratio < 2.0 {
+        println!(
+            "  NOTE: wall-time inconclusive at this size — OOM at 50 KiB is the stronger signal; re-run on srv1"
+        );
+    }
 }

@@ -298,3 +298,5 @@ fn json_text_parseable(s: String) -> Bool {
     Absent => false
   }
 }
+
+data json_unescape_cost_receipt_seed_growth_mark: String = "🟡 Seed-growth mark (v1-test class): src/v1/stage0/tests/json_unescape_cost_receipt.rs is hand-written Rust measuring json_unescape_from cost shape before fixing the quadratic copied-accumulator plus owned-String parameter re-passing in this module. Wall-clock and RSS probes stay #[ignore]d (tokenize_escape_receipt precedent); the non-ignored gate is modeled copy-byte arithmetic only. docs/probes/json_unescape_cost_probe.sh is the srv1 MemoryMax wrapper for those ignored probes. DISSOLVES ON json_unescape_from fix (index-only walk, linear accumulator) lands and this receipt plus the probe script delete with the measurement-complete fix PR."
