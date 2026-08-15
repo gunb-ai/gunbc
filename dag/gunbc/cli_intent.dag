@@ -102,6 +102,7 @@ type IntentRefusal
   | ClaimRunWithoutEntry
   | ReleaseRevisionMalformed { text: String }
   | ServePortOutOfRange { text: String }
+  | UnknownVerb { token: String }
 
 type IntentAdmission
   = IntentAdmitted { intent: RunIntent }
@@ -142,3 +143,276 @@ fn admit_release_revision(text: String) -> GitObjectId? {
 
 data ci_preset_entry: NonEmptyStr = "dag/tools/gunbc_ci.dag"
 data ci_preset_function: NonEmptyStr = "main"
+
+// ---------------------------------------------------------------------------
+// 5. argv decode — one fold
+// ---------------------------------------------------------------------------
+
+// A finished stage is one fold (DESIGN section 6), and argv is no exception: the whole command
+// line becomes a flag/value roster in a single pass with no per-verb parser. Boolean flags need no
+// special case in the scanner — a flag arriving while another is pending simply closes the pending
+// one with an empty value, and so does the end of the token list. That is why `--dry-run --entry x`
+// and `--entry x --dry-run` decode identically without either spelling being enumerated.
+type FlagValue {
+  flag: String
+  value: String
+}
+
+type ArgvScan {
+  pending: String?
+  values: List<FlagValue>
+  bare: List<String>
+}
+
+data argv_scan_empty: ArgvScan = ArgvScan { pending: none, values: [], bare: [] }
+
+fn argv_scan_close_pending(scan: ArgvScan) -> List<FlagValue> {
+  match scan.pending {
+    Present { value: flag } => scan.values |> list_push(FlagValue { flag: flag, value: "" })
+    Absent => scan.values
+  }
+}
+
+fn argv_scan_step(scan: ArgvScan, token: String) -> ArgvScan {
+  if starts_with(s: token, prefix: "--") {
+    ArgvScan {
+      pending: Present { value: token },
+      values: argv_scan_close_pending(scan: scan),
+      bare: scan.bare,
+    }
+  } else {
+    match scan.pending {
+      Present { value: flag } =>
+        ArgvScan {
+          pending: none,
+          values: scan.values |> list_push(FlagValue { flag: flag, value: token }),
+          bare: scan.bare,
+        }
+      Absent =>
+        ArgvScan { pending: none, values: scan.values, bare: scan.bare |> list_push(token) }
+    }
+  }
+}
+
+fn scan_argv(tokens: List<String>) -> ArgvScan {
+  let scanned = tokens |> fold(init: argv_scan_empty, f: (acc, t) => argv_scan_step(scan: acc, token: t))
+  ArgvScan { pending: none, values: argv_scan_close_pending(scan: scanned), bare: scanned.bare }
+}
+
+fn flag_values(scan: ArgvScan, flag: String) -> List<String> {
+  scan.values |> filter(v => v.flag == flag) |> map(v => v.value)
+}
+
+fn flag_present(scan: ArgvScan, flag: String) -> Bool {
+  scan.values |> any(v => v.flag == flag)
+}
+
+fn flag_value(scan: ArgvScan, flag: String) -> String? {
+  flag_values(scan: scan, flag: flag) |> first
+}
+
+// ---------------------------------------------------------------------------
+// 6. Admission — the only route to a RunIntent
+// ---------------------------------------------------------------------------
+
+data source_root_flag: String = "--source-root"
+data entry_flag: String = "--entry"
+data function_flag: String = "--function"
+data arg_flag: String = "--arg"
+data claim_run_flag: String = "--claim-run"
+data dry_run_flag: String = "--dry-run"
+data host_flag: String = "--host"
+data port_flag: String = "--port"
+data release_revision_flag: String = "--release-revision"
+data output_dir_flag: String = "--output-dir"
+data target_flag: String = "--target"
+
+fn first_run_arg_refusal(tokens: List<String>) -> IntentRefusal? {
+  tokens |> fold(
+    init: none,
+    f: (acc, t) => match acc {
+      Present { value: r } => Present { value: r }
+      Absent => admit_run_arg(token: t)
+    }
+  )
+}
+
+// Optional has no unwrap-with-default in this corpus — every consumer matches — so these two
+// helpers exist rather than the same match being written out at each of the four use sites.
+fn optional_string_or(v: String?, fallback: String) -> String {
+  match v {
+    Present { value: s } => s
+    Absent => fallback
+  }
+}
+
+fn optional_string_missing(v: String?) -> Bool {
+  match v {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+fn run_arg_of(token: String) -> RunArg {
+  let parts = token |> split(delimiter: "=")
+  RunArg {
+    name: optional_string_or(v: parts |> first, fallback: "") as NonEmptyStr,
+    value: parts |> skip(1) |> join(separator: "="),
+  }
+}
+
+fn selection_of(scan: ArgvScan) -> SourceSelection {
+  SourceSelection {
+    source_roots: flag_values(scan: scan, flag: source_root_flag),
+    entry: flag_value(scan: scan, flag: entry_flag),
+  }
+}
+
+// The ordering the seed held as a comment ("refuse a malformed --arg before the compile") is here a
+// consequence of where the refusals sit: every one of them is decided on the SCAN, which is pure
+// text, and a RunIntent is the only thing this module hands onward. Nothing downstream can run
+// before the refusals have been passed, because there is nothing to hand it.
+fn admit_run(scan: ArgvScan) -> IntentAdmission {
+  let roots = flag_values(scan: scan, flag: source_root_flag)
+  let entry = flag_value(scan: scan, flag: entry_flag)
+  let claim_run = flag_present(scan: scan, flag: claim_run_flag)
+  let arg_tokens = flag_values(scan: scan, flag: arg_flag)
+  if (roots |> count) == 0 {
+    IntentRefused { refusal: NoSourceRoot }
+  } else if claim_run && optional_string_missing(v: entry) {
+    IntentRefused { refusal: ClaimRunWithoutEntry }
+  } else {
+    match first_run_arg_refusal(tokens: arg_tokens) {
+      Present { value: r } => IntentRefused { refusal: r }
+      Absent =>
+        IntentAdmitted {
+          intent: RunIntent {
+            verb: Run {
+              selection: selection_of(scan: scan),
+              function: optional_string_or(v: flag_value(scan: scan, flag: function_flag), fallback: "main") as NonEmptyStr,
+              claim_run: claim_run,
+              args: arg_tokens |> map(t => run_arg_of(token: t)),
+            },
+            dry_run: flag_present(scan: scan, flag: dry_run_flag),
+          },
+        }
+    }
+  }
+}
+
+// `Port` is `Int where range(min: 1, max: 65535)`, but a value arriving from argv is a non-literal
+// at a refined position, which this compiler counts as an advisory rather than enforcing (DESIGN's
+// wall-after-grounding residue). So the range is ALSO refused explicitly here. That is not a second
+// representation of the bound — it is the honest admission that the carrier's wall does not yet
+// fire at this position, and the refusal deletes when refinement evidence at non-literal positions
+// lands. A type name without an enforced construction is not safety, and pretending otherwise is
+// the exact failure DESIGN warns about.
+fn admit_port(text: String) -> Int? {
+  match parse_int(s: text) {
+    Present { value: n } => if n >= 1 && n <= 65535 { Present { value: n } } else { none }
+    Absent => none
+  }
+}
+
+fn admit_serve(scan: ArgvScan) -> IntentAdmission {
+  let roots = flag_values(scan: scan, flag: source_root_flag)
+  let revision_text = optional_string_or(v: flag_value(scan: scan, flag: release_revision_flag), fallback: "")
+  let port_text = optional_string_or(v: flag_value(scan: scan, flag: port_flag), fallback: "8080")
+  if (roots |> count) == 0 {
+    IntentRefused { refusal: NoSourceRoot }
+  } else {
+    match admit_release_revision(text: revision_text) {
+      Absent => IntentRefused { refusal: ReleaseRevisionMalformed { text: revision_text } }
+      Present { value: oid } =>
+        match admit_port(text: port_text) {
+          Absent => IntentRefused { refusal: ServePortOutOfRange { text: port_text } }
+          Present { value: p } =>
+            IntentAdmitted {
+              intent: RunIntent {
+                verb: Serve {
+                  selection: selection_of(scan: scan),
+                  function: optional_string_or(v: flag_value(scan: scan, flag: function_flag), fallback: "main") as NonEmptyStr,
+                  bind: ServeBinding {
+                    host: optional_string_or(v: flag_value(scan: scan, flag: host_flag), fallback: "127.0.0.1") as NonEmptyStr,
+                    port: p as Port,
+                    revision: oid,
+                    budget: ServeEvaluationBudget { cpu_limit_ms: none, wall_limit_ms: none },
+                  },
+                },
+                dry_run: flag_present(scan: scan, flag: dry_run_flag),
+              },
+            }
+        }
+    }
+  }
+}
+
+fn admit_compile(scan: ArgvScan) -> IntentAdmission {
+  let roots = flag_values(scan: scan, flag: source_root_flag)
+  if (roots |> count) == 0 {
+    IntentRefused { refusal: NoSourceRoot }
+  } else {
+    IntentAdmitted {
+      intent: RunIntent {
+        verb: Compile {
+          selection: selection_of(scan: scan),
+          output_dir: optional_string_or(v: flag_value(scan: scan, flag: output_dir_flag), fallback: "out") as NonEmptyStr,
+          target: optional_string_or(v: flag_value(scan: scan, flag: target_flag), fallback: "rust") as NonEmptyStr,
+        },
+        dry_run: flag_present(scan: scan, flag: dry_run_flag),
+      },
+    }
+  }
+}
+
+fn admit_converge(scan: ArgvScan) -> IntentAdmission {
+  IntentAdmitted {
+    intent: RunIntent {
+      verb: Converge {
+        host: optional_string_or(v: flag_value(scan: scan, flag: host_flag), fallback: "self") as NonEmptyStr,
+      },
+      dry_run: flag_present(scan: scan, flag: dry_run_flag),
+    },
+  }
+}
+
+// `ci` is a PRESET, not a verb: it admits the same Run intent every time, from rows. In the deleted
+// seed this was an eleven-line function whose whole body was one call with three literals baked in;
+// as data the preset can be read, diffed and re-pointed without opening a handler.
+data ci_preset_source_roots: List<String> = ["dag", "src/v2"]
+
+fn ci_preset_intent() -> RunIntent {
+  RunIntent {
+    verb: Run {
+      selection: SourceSelection {
+        source_roots: ci_preset_source_roots,
+        entry: Present { value: ci_preset_entry as String },
+      },
+      function: ci_preset_function,
+      claim_run: false,
+      args: [],
+    },
+    dry_run: false,
+  }
+}
+
+// One dispatch over the bare verb token. An unrecognised verb is NOT admitted with a guessed
+// reading and NOT widened to a default verb — it refuses, which is why UnknownVerb carries the
+// token that produced it.
+fn admit_argv(tokens: List<String>) -> IntentAdmission {
+  let scan = scan_argv(tokens: tokens)
+  let verb = optional_string_or(v: scan.bare |> first, fallback: "")
+  if verb == "run" {
+    admit_run(scan: scan)
+  } else if verb == "serve" {
+    admit_serve(scan: scan)
+  } else if verb == "compile" {
+    admit_compile(scan: scan)
+  } else if verb == "converge" {
+    admit_converge(scan: scan)
+  } else if verb == "ci" {
+    IntentAdmitted { intent: ci_preset_intent() }
+  } else {
+    IntentRefused { refusal: UnknownVerb { token: verb } }
+  }
+}
