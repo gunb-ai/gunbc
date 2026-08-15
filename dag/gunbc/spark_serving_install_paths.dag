@@ -1,14 +1,7 @@
 module gunbc.spark_serving_install_paths
 
-import std.types { String, NonEmptyStr, FilePath }
-import extdeps.ollama.api { ollama_model_ref_wire }
-import extdeps.ollama.capability { ollama_gpt_oss_20b_model_ref }
-import gunbc.spark_serving_desired {
-  spark_serving_desired_bind_listen,
-  spark_serving_automation_principal,
-}
-import gunbc.spark_serving_release { spark_serving_target }
-import gunbc.spark_serving_realization { principal_label }
+import std.types { String, FilePath }
+import gunbc.spark_serving_desired { spark_serving_desired_bind_listen }
 import gunbc.spark_serving_runtime_receipt { spark_serving_executor_home }
 
 data spark_serving_install_paths_note: String = "Owned-runtime layout for UserUnitRealization + InstallOwnedRuntimeClosure on Spark hosts. Executor home and receipt path are gunbc.spark_serving_runtime_receipt. Unit contents are modeled DATA consumed by gunbc.spark_serving_membership spark_serving_user_unit_file_write_intent — remote delivery is stdin-bytes file-content effect in Phase 2, never composed shell text."
@@ -19,24 +12,11 @@ data spark_serving_models_root_rel: String = ".local/share/gunbc/spark-serving/m
 
 data spark_serving_user_unit_rel: String = ".config/systemd/user/gunbc-spark-serving.service"
 
-data spark_serving_user_unit_parent_rel: String = ".config/systemd/user"
-
-fn spark_serving_user_unit_parent_path() -> FilePath {
-  concat(
-    spark_serving_executor_home as String,
-    concat("/", spark_serving_user_unit_parent_rel),
-  ) as FilePath
-}
-
 fn spark_serving_runtime_root() -> FilePath {
   concat(
     spark_serving_executor_home as String,
     concat("/", spark_serving_runtime_root_rel),
   ) as FilePath
-}
-
-fn spark_serving_runtime_executable() -> FilePath {
-  concat(spark_serving_runtime_root() as String, "/bin/ollama") as FilePath
 }
 
 fn spark_serving_models_root() -> FilePath {
@@ -53,26 +33,12 @@ fn spark_serving_user_unit_path() -> FilePath {
   ) as FilePath
 }
 
-fn spark_serving_desired_model_wire() -> String {
-  ollama_model_ref_wire(ref: ollama_gpt_oss_20b_model_ref)
-}
-
 fn spark_serving_bind_host_port() -> String {
   join([
     spark_serving_desired_bind_listen.host as String,
     ":",
     to_string(spark_serving_desired_bind_listen.port),
   ], "")
-}
-
-fn spark_serving_automation_login() -> String {
-  principal_label(p: spark_serving_automation_principal())
-}
-
-fn spark_serving_unit_name() -> String {
-  match spark_serving_target(actor: spark_serving_automation_principal()) {
-    t => t.unit_name as String
-  }
 }
 
 fn spark_serving_user_unit_contents() -> String {
@@ -92,11 +58,4 @@ fn spark_serving_user_unit_contents() -> String {
     "[Install]\n",
     "WantedBy=default.target\n",
   ], "")
-}
-
-fn spark_serving_linger_command() -> NonEmptyStr {
-  join([
-    "/usr/bin/loginctl enable-linger ",
-    spark_serving_automation_login(),
-  ], "") as NonEmptyStr
 }
