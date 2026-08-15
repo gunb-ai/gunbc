@@ -97,7 +97,8 @@ fn spark_serving_user_unit_state_digest() -> NonEmptyStr {
   ).digest as NonEmptyStr
 }
 
-type SparkServingExecutorLingerState = ExecutorLingerEnabled
+type SparkServingExecutorLingerState
+  = ExecutorLingerEnabled
 
 fn spark_serving_executor_linger_state_label(state: SparkServingExecutorLingerState) -> NonEmptyStr {
   match state {
