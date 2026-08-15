@@ -15563,27 +15563,6 @@ pub struct PreparedClaimScope {
     pub module_count: usize,
 }
 
-/// The module paths a file imports, read from the bytes preparation already holds.
-///
-/// This is a scan of retained content, not a parse and not a file read: `import <path> {…}` is
-/// recognised at column zero, which is where a top-level import may appear.
-fn declared_imports_in(content: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    for line in content.lines() {
-        let Some(rest) = line.strip_prefix("import ") else {
-            continue;
-        };
-        let path: String = rest
-            .chars()
-            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '.')
-            .collect();
-        if !path.is_empty() {
-            out.push(path);
-        }
-    }
-    out
-}
-
 /// Project the exact scope for one entry file out of the prepared repository.
 ///
 /// The closure is the transitive declared-import closure of the entry's module, which is the
@@ -15595,45 +15574,54 @@ pub fn claim_scope_for(
     prepared: &PreparedRepository,
     entry_module_path: &str,
 ) -> Result<PreparedClaimScope, String> {
-    let by_module: std::collections::HashMap<&str, &InventoryEntry> = prepared
-        .inventory
+    // THE CLOSURE COMES FROM THE COMPILER, NOT FROM A SECOND IMPORT SCAN.
+    //
+    // `TypedModule.func_env` is the module's `ResolvedFuncEnv`, and its `parents` field is —
+    // per that carrier's own note — "the module's transitive import closure held FLAT,
+    // precedence-ordered (first = highest precedence: the last direct import's closure first,
+    // then earlier imports'; own local always wins before any parent), deduped by env name
+    // keeping the first occurrence", with the old deep-first walk's shadowing "preserved
+    // exactly".
+    //
+    // That is the population the entry-major path bound against, computed by the compiler that
+    // resolved it. An earlier revision re-derived it here by scanning `import` lines out of the
+    // retained inventory, which was a SECOND answer to a question the prepared artifacts had
+    // already answered — and one that could differ from the first, in the direction that
+    // silently narrows: the old closure also admitted modules reached by bare reference, which
+    // no scan of import lines can see.
+    let entry_module = prepared
+        .graph
+        .modules
         .iter()
-        .map(|e| (e.module_path.as_str(), e))
-        .collect();
-    if !by_module.contains_key(entry_module_path) {
-        return Err(format!(
-            "CLAIM-SCOPE REFUSAL cause=EntryModuleOutsidePreparedSubject module={entry_module_path} \
-             — the manifest named this module and the prepared subject does not contain it"
-        ));
-    }
-    // Breadth-first over declared imports, retaining FIRST-REACHED order. Order is part of the
-    // scope's identity (see `scope_identity`), so it is produced deterministically here rather
-    // than left to a hash map's iteration.
-    let mut order: Vec<String> = vec![entry_module_path.to_string()];
+        .find(|m| m.func_env.name == entry_module_path)
+        .ok_or_else(|| {
+            format!(
+                "CLAIM-SCOPE REFUSAL cause=EntryModuleOutsidePreparedSubject \
+                 module={entry_module_path} — the manifest named this module and the prepared \
+                 subject does not contain it"
+            )
+        })?;
+    // Own module first, then its closure in the compiler's own precedence order. Order is part
+    // of the scope's identity (see `scope_identity`), so it is taken from the ordered carrier
+    // rather than from a hash map's iteration.
+    let mut order: Vec<String> = vec![entry_module.func_env.name.clone()];
     let mut seen: HashSet<String> = HashSet::new();
-    seen.insert(entry_module_path.to_string());
-    let mut head = 0usize;
-    while head < order.len() {
-        let current = order[head].clone();
-        head += 1;
-        let Some(entry) = by_module.get(current.as_str()) else {
-            continue;
-        };
-        for imported in declared_imports_in(&entry.content) {
-            if by_module.contains_key(imported.as_str()) && seen.insert(imported.clone()) {
-                order.push(imported);
-            }
+    seen.insert(entry_module.func_env.name.clone());
+    for parent in entry_module.func_env.parents.iter() {
+        if seen.insert(parent.name.clone()) {
+            order.push(parent.name.clone());
         }
     }
     let in_scope: HashSet<&str> = order.iter().map(|s| s.as_str()).collect();
+    // Module selection keys on `func_env.name` too, so the population and the closure that
+    // produced it are read off ONE field. Deriving the population from the authored module node
+    // while deriving the closure from `func_env` would be two spellings of a module identity,
+    // and a scope whose members disagree with its own closure is the defect one level up.
     let modules: Vec<Rc<v1_compiler_compile::TypedModule>> = prepared
         .graph
         .modules
         .iter()
-        .filter(|m| {
-            let path = authored_name_at(prepared.source_indices.clone(), m.module.clone());
-            in_scope.contains(path.as_str())
-        })
+        .filter(|m| in_scope.contains(m.func_env.name.as_str()))
         .cloned()
         .collect();
     // The item registry is projected from the SAME module population, by UNIONING each scoped
@@ -25118,19 +25106,24 @@ mod prepared_repository_tests {
         let write = |name: &str, body: String| {
             std::fs::write(root.join(name), body).expect("write module");
         };
-        for (file, module, n) in [
-            ("alpha.dag", "scope.alpha", 1),
-            ("beta.dag", "scope.beta", 2),
+        for (file, module, n, field) in [
+            ("alpha.dag", "scope.alpha", 1, "a"),
+            ("beta.dag", "scope.beta", 2, "b"),
         ] {
             write(
                 file,
                 format!(
                     "module {module}\n\n\
                      fn helper() -> Int {{\n  {n}\n}}\n\n\
-                     data shared_datum: Int = {}\n\n\
+                     fn same_sig(x: Int) -> Int {{\n  x + {n}\n}}\n\n\
+                     type Box {{\n  {field}: Int\n}}\n\n\
+                     data shared_datum: Int = {datum}\n\n\
                      fn calls_helper() -> Int {{\n  helper()\n}}\n\n\
-                     fn reads_datum() -> Int {{\n  shared_datum\n}}\n",
-                    n * 10
+                     fn calls_same_sig() -> Int {{\n  same_sig(x: 10)\n}}\n\n\
+                     fn reads_datum() -> Int {{\n  shared_datum\n}}\n\n\
+                     fn makes_box() -> Int {{\n  Box {{ {field}: {boxed} }}.{field}\n}}\n",
+                    datum = n * 10,
+                    boxed = n * 100
                 ),
             );
         }
@@ -25189,6 +25182,21 @@ mod prepared_repository_tests {
         // Local-helper collision: a bare `helper()` must reach the caller's own.
         assert_eq!(eval_int(&a, "scope.alpha.calls_helper"), 1);
         assert_eq!(eval_int(&b, "scope.beta.calls_helper"), 2);
+        // MATCHING-SIGNATURE COLLISION — the silent half, and the stronger control.
+        //
+        // `admits` was caught in CI only because the two declarations disagree about a
+        // parameter name, so the wrong binding raised a contract mismatch. Two declarations
+        // with the SAME signature and different bodies produce no diagnostic at all: the call
+        // succeeds and returns another module's answer. That is the failure this whole scope
+        // exists to prevent, and a control cohort without it proves only that loud collisions
+        // are loud.
+        assert_eq!(eval_int(&a, "scope.alpha.calls_same_sig"), 11);
+        assert_eq!(eval_int(&b, "scope.beta.calls_same_sig"), 12);
+        // TYPE COLLISION: construction must reach the caller's own `Box`. Two same-named
+        // records with different fields make a wrong type binding observable — the other
+        // module's shape has no field to read.
+        assert_eq!(eval_int(&a, "scope.alpha.makes_box"), 100);
+        assert_eq!(eval_int(&b, "scope.beta.makes_box"), 200);
         // Top-level data collision: the initial environment must carry the caller's own datum.
         assert_eq!(eval_int(&a, "scope.alpha.reads_datum"), 10);
         assert_eq!(eval_int(&b, "scope.beta.reads_datum"), 20);
@@ -25243,6 +25251,16 @@ mod prepared_repository_tests {
             "the flat frame must still exhibit the collision it is retained to demonstrate; if \
              both modules now read their own helper, the whole-repository lookup has been fixed \
              and this control has no subject left"
+        );
+        // And the same on the SILENT surface, recorded separately because the two failures do
+        // not look alike to a reader: the helper arm above can raise a contract mismatch, while
+        // matching signatures simply return the other module's number with nothing to notice.
+        let sa = eval_int(&flat.ctx, "scope.alpha.calls_same_sig");
+        let sb = eval_int(&flat.ctx, "scope.beta.calls_same_sig");
+        assert!(
+            !(sa == 11 && sb == 12),
+            "matching-signature declarations must still collide silently under the flat frame; \
+             this arm is what shows the CI failure population was the smaller, louder half"
         );
 
         let _ = std::fs::remove_dir_all(&base);
