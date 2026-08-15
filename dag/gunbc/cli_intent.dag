@@ -3,6 +3,7 @@ module gunbc.cli_intent
 import std.types { Bool, Int, NonEmptyStr, Port, String }
 import extdeps.git.object_store { GitObjectId, git_sha1_object_id }
 import gunbc.output_policy { ChannelPolicy, resolve_channel_policy }
+import gunbc.ci_layer_roots { witness_layer_roots }
 
 // WHY THIS MODULE EXISTS, and what it deliberately is not.
 //
@@ -401,13 +402,23 @@ fn admit_converge(scan: ArgvScan) -> IntentAdmission {
 // `ci` is a PRESET, not a verb: it admits the same Run intent every time, from rows. In the deleted
 // seed this was an eleven-line function whose whole body was one call with three literals baked in;
 // as data the preset can be read, diffed and re-pointed without opening a handler.
-data ci_preset_source_roots: List<String> = ["dag", "src/v2"]
-
+//
+// THE SOURCE ROOTS ARE IMPORTED, NOT RESTATED, and an earlier revision of this module got that
+// wrong. It declared `ci_preset_source_roots = ["dag", "src/v2"]` -- byte-identical to
+// `gunbc.ci_layer_roots` `witness_layer_roots`, which is the single authority for that list and is
+// consumed by the witness roster, the compile-clean closure and the divergence census. The deleted
+// Rust read that authority LIVE off disk, so the hand-copied row was a REGRESSION dressed as a
+// migration: it would have gone stale silently the first time the roots moved, and the CI preset
+// would have quietly compiled a different corpus than every other consumer of the same list.
+//
+// Worth stating because the mistake was mine, made while auditing this exact class elsewhere in the
+// cut: replacing a live read with a literal is the §3 fork in its cheapest form, and a migration is
+// the moment it is easiest to commit -- the value is right in front of you and copying it typechecks.
 fn ci_preset_intent() -> RunIntent {
   RunIntent {
     verb: Run {
       selection: SourceSelection {
-        source_roots: ci_preset_source_roots,
+        source_roots: witness_layer_roots,
         entry: Present { value: ci_preset_entry as String },
       },
       function: ci_preset_function,
