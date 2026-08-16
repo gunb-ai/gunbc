@@ -3,6 +3,8 @@ module test.claim.ilm4926_designation_witness
 import std.logic { Bool }
 import std.types { list_length }
 import extdeps.cpu_attachment.ilm4926 {
+  DesignationFactEstablished,
+  DesignationFactUnresolved,
   IndependentLoadingMechanismOnly,
   ReferentUnresolvedByCitedDocuments,
   SocketAssemblyIncludingLoadingMechanism,
@@ -18,6 +20,7 @@ import extdeps.cpu_attachment.ilm4926 {
   ilm4926,
   ilm4926_attestations,
   ilm4926_referent,
+  ilm4926_resolution_obligations,
   ocp_mt_jade_specification_authority,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -73,4 +76,47 @@ test fn w_red_one_publisher_twice_is_not_independent_attestation() -> Bool {
   let ocp_only = attestations_from_authority(authority: ocp_mt_jade_specification_authority)
   list_length(items: ampere_only) != list_length(items: ilm4926_attestations)
     && list_length(items: ocp_only) != list_length(items: ilm4926_attestations)
+}
+
+// THE FOUR BOARD-DESIGN AXES ARE UNRESOLVED SUMS, NOT NONEMPTY STRINGS — read by
+// match on each field rather than a Bool predicate over the coproduct.
+test fn w_four_resolution_obligations_are_unresolved_on_each_axis() -> Bool {
+  let o = ilm4926_resolution_obligations
+  match o.vendor_identity {
+    DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => true
+    DesignationFactEstablished { value: _, authority: _ } => false
+  }
+    && match o.orderable_part_number {
+      DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => true
+      DesignationFactEstablished { value: _, authority: _ } => false
+    }
+    && match o.board_land_pattern {
+      DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => true
+      DesignationFactEstablished { value: _, authority: _ } => false
+    }
+    && match o.loading_mechanism_identity {
+      DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => true
+      DesignationFactEstablished { value: _, authority: _ } => false
+    }
+    && !designation_referent_is_resolved(referent: ilm4926_referent)
+}
+
+// RED control: the established arm is reachable only by inhabiting DesignationFactEstablished.
+test fn w_red_a_cited_value_would_establish_a_resolution_axis() -> Bool {
+  let established = DesignationFactEstablished {
+    value: "Lotes",
+    authority: extdeps_external_authority_anchor,
+  }
+  let unresolved = DesignationFactUnresolved {
+    reason: "any reason at all",
+    next_authority_to_consult: none,
+  }
+  match established {
+    DesignationFactEstablished { value: _, authority: _ } => true
+    DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => false
+  }
+    && match unresolved {
+      DesignationFactEstablished { value: _, authority: _ } => false
+      DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => true
+    }
 }

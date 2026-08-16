@@ -64,7 +64,13 @@ import gunbc.roadmap_program_view {
   FinishLineNodeUnresolved, FrontGateUnresolved, v1_program_view,
 }
 import gunbc.roadmap_authority {
-  declared_roadmap_nodes, declared_roadmap_edges, roadmap_acceptance_receipts,
+  declared_roadmap_nodes,
+  projected_roadmap_dependency_edges_projection,
+  ProjectedRoadmapDependencyEdgesProjected,
+  ProjectedRoadmapDependencyEdgesProjectionRefused,
+  roadmap_acceptance_receipts,
+  RoadmapAcceptanceReceiptsProjected,
+  RoadmapAcceptanceReceiptsProjectionRefused,
 }
 import gunbc.v1_deletion_plan {
   V1FinishLine, V1FinishLineSpec, CompilerFixedPoint, v1_exit_finish_lines, v1_finish_line_key,
@@ -266,15 +272,20 @@ fn live_program_view_result() -> LiveProgramView {
     RoadmapAcceptanceReceiptsProjectionRefused { detail } =>
       LiveViewRefused { causes: [join(["acceptance receipts unavailable: ", detail], "")] }
     RoadmapAcceptanceReceiptsProjected { receipts } =>
-      match v1_program_view(
-        nodes: declared_roadmap_nodes(),
-        edges: declared_roadmap_edges(),
-        receipts: receipts,
-        in_flight: [],
-      ) {
-        ProgramViewDerived { view } => LiveViewDerived { view: view }
-        ProgramViewRefused { causes } =>
-          LiveViewRefused { causes: map(causes, c => refusal_cause_text(c: c)) }
+      match projected_roadmap_dependency_edges_projection() {
+        ProjectedRoadmapDependencyEdgesProjectionRefused { detail } =>
+          LiveViewRefused { causes: [join(["dependency edges unavailable: ", detail], "")] }
+        ProjectedRoadmapDependencyEdgesProjected { edges } =>
+          match v1_program_view(
+            nodes: declared_roadmap_nodes(),
+            edges: edges,
+            receipts: receipts,
+            in_flight: [],
+          ) {
+            ProgramViewDerived { view } => LiveViewDerived { view: view }
+            ProgramViewRefused { causes } =>
+              LiveViewRefused { causes: map(causes, c => refusal_cause_text(c: c)) }
+          }
       }
   }
 }

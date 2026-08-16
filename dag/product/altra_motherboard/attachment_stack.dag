@@ -15,6 +15,13 @@ import extdeps.cpu.ampere_altra_package {
   altra_reference_board_collateral_standing,
   extdeps_external_authority_anchor,
 }
+import extdeps.cpu_attachment.ilm4926 {
+  DesignationFactEstablished,
+  DesignationFactUnresolved,
+  DesignationResolutionStanding,
+  ilm4926,
+  ilm4926_resolution_obligations,
+}
 import extdeps.vendor.ampere { ampere_customer_reference_boards_authority }
 
 // SIX THINGS BETWEEN A PROCESSOR DIE AND A BOARD, AND THEY ARE NOT ONE THING. The processor
@@ -167,12 +174,17 @@ data processor_package_standing: AttachmentLayerStanding = AttachmentLayerStandi
 // The layer stays unresolved because what is still missing narrowed rather than cleared: a
 // designation is not a vendor part number, and which physical part the designation names -- the
 // socket body or the retention hardware, plausibly different vendors -- is unsettled. The
-// designation itself is not repeated here; it lives in one authority and this layer will reference
-// it rather than carry a second spelling.
+// designation and its four resolution obligations live in extdeps.cpu_attachment.ilm4926;
+// this layer consumes ilm4926.designator rather than repeating the spelling.
 data socket_standing: AttachmentLayerStanding = AttachmentLayerStanding {
   layer: SocketLayer,
   fact: FactUnresolved {
-    what_is_missing: "the socket vendor and part number, and which physical part the shared designation names; a designation appearing in two independent documents establishes the name, not the part",},
+    what_is_missing: concat(
+      "the socket vendor and part number for the ",
+      ilm4926.designator as String,
+      " designation, and which physical part that designation names; see extdeps.cpu_attachment.ilm4926 ilm4926_resolution_obligations",
+    ),
+  },
   carriage: CarriageNotApplicable {
     because: "no fact is established for this layer, so there is nothing to decide carriage for",
   },
@@ -187,24 +199,71 @@ data socket_board_termination_standing: AttachmentLayerStanding = AttachmentLaye
   },
 }
 
-// THE ONE THAT MATTERS MOST, and the one that looks most available. The board land pattern is the
-// SOCKET vendor's recommended pad array, not the processor's underside.
-// WHY THIS IS UNRESOLVED RATHER THAN STATED-ONLY-IN-A-FIGURE. FactStatedOnlyInFigure asserts the
-// fact IS drawn in a named figure and merely needs a human to read it, and nothing establishes
-// that here. The platform specification's Figure 3 is the package outline and pad array -- the
-// underside of the PART, the other surface entirely -- so citing it routed the blocker to a
-// person who would open the drawing and find nothing, which is a worse answer than saying the
-// document has not been found. The package-versus-board distinction is unchanged and still load
-// bearing; what changed is the claim about where the board-side fact is written down.
-data board_land_pattern_standing: AttachmentLayerStanding = AttachmentLayerStanding {
-  layer: BoardLandPatternLayer,
-  fact: FactUnresolved {
-    what_is_missing: "the socket vendor's recommended board-side land pattern; no document consulted so far states one, in text or in a figure",
-  },
-  carriage: CarriageNotApplicable {
-    because: "no fact is established for this layer yet, so there is nothing to decide carriage for; the document itself is public and permitted, so nothing legal blocks this layer",
-  },
+// THE ONE THAT MATTERS MOST. The board land pattern is the SOCKET vendor's recommended pad array,
+// not the processor's underside. PROJECTED FROM extdeps.cpu_attachment.ilm4926
+// ilm4926_resolution_obligations.board_land_pattern rather than restated here: a complete read of
+// the public platform specification found no board-side land pattern in any section, and sections
+// 4.2.2 and 4.3.2 name Altra PCB Layout Guidelines on Customer Connect as the authority — access-
+// gated, not a drawing to read in the public document.
+fn board_land_pattern_fact_from_obligation(standing: DesignationResolutionStanding) -> FactAuthorityStanding {
+  match standing {
+    DesignationFactEstablished { value: _, authority: a } =>
+      FactEstablished {
+        authority: a,
+        subject: DeclarationRef {
+          module_path: "extdeps.cpu_attachment.ilm4926",
+          decl_name: "ilm4926_resolution_obligations",
+          field: WholeDeclaration
+        },
+      }
+    DesignationFactUnresolved { reason: r, next_authority_to_consult: next } =>
+      match next {
+        Present { value: a } =>
+          if a == ampere_customer_reference_boards_authority {
+            FactAccessGated {
+              subject: "Altra PCB Layout Guidelines — the board-side reference layout, named by the public platform specification sections 4.2.2 and 4.3.2 as the authority for it",
+              access_route: ampere_customer_reference_boards_authority,
+            }
+          } else {
+            FactUnresolved { what_is_missing: r }
+          }
+        none =>
+          FactUnresolved { what_is_missing: r }
+      }
+  }
 }
+
+fn carriage_for_board_land_pattern_fact(fact: FactAuthorityStanding) -> RepositoryCarriageStanding {
+  match fact {
+    FactAccessGated { subject: _, access_route: _ } =>
+      CarriageNotApplicable {
+        because: "the fact is behind commercial access, so its carriage is governed by the access terms and is not a decision this repository takes separately",
+      }
+    FactEstablished { authority: _, subject: _ } =>
+      CarriageNotApplicable {
+        because: "no carriage question is modeled separately once a land pattern is established from a cited authority",
+      }
+    FactUnresolved { what_is_missing: _ } =>
+      CarriageNotApplicable {
+        because: "no fact is established for this layer, so there is nothing to decide carriage for",
+      }
+    FactStatedOnlyInFigure { figure: _, what_is_drawn: _ } =>
+      CarriageNotApplicable {
+        because: "no fact is established for this layer, so there is nothing to decide carriage for",
+      }
+  }
+}
+
+fn board_land_pattern_standing_row() -> AttachmentLayerStanding {
+  let fact = board_land_pattern_fact_from_obligation(standing: ilm4926_resolution_obligations.board_land_pattern)
+  AttachmentLayerStanding {
+    layer: BoardLandPatternLayer,
+    fact: fact,
+    carriage: carriage_for_board_land_pattern_fact(fact: fact),
+  }
+}
+
+data board_land_pattern_standing: AttachmentLayerStanding = board_land_pattern_standing_row()
 
 data loading_mechanism_standing: AttachmentLayerStanding = AttachmentLayerStanding {
   layer: LoadingMechanismLayer,

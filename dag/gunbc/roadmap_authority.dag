@@ -2797,6 +2797,23 @@ fn closing_contract_task_edges_projection() -> ClosingContractTaskEdgesProjectio
   }
 }
 
+type ProjectedRoadmapDependencyEdgesProjection
+  = ProjectedRoadmapDependencyEdgesProjected { edges: List<RoadmapEdge> }
+  | ProjectedRoadmapDependencyEdgesProjectionRefused { detail: String }
+
+data projected_roadmap_dependency_edges_note: String = "Machine-consumed dependency edges for dispatch, program view, and frontier startability: declared active edges plus derived closing-contract task edges. Consumers must read this projection rather than declared_roadmap_edges alone — hand-maintained declared edges omit closing-contract dependencies that the authority derives from acceptance state."
+
+fn projected_roadmap_dependency_edges_projection() -> ProjectedRoadmapDependencyEdgesProjection {
+  match accepted_roadmap_node_ids_projection() {
+    AcceptedRoadmapNodeIdsProjectionRefused { detail: detail } =>
+      ProjectedRoadmapDependencyEdgesProjectionRefused { detail: detail }
+    AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
+      ProjectedRoadmapDependencyEdgesProjected {
+        edges: projected_roadmap_edges_for_accepted(accepted: accepted),
+      }
+  }
+}
+
 fn closing_contract_task_edges_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapEdge> {
   startable_nodes_missing_closing_contract_for_accepted(accepted: accepted)
     |> map(n => RoadmapEdge {
