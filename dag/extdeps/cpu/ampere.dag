@@ -6,7 +6,8 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.toolchain.types { Aarch64 }
 import extdeps.vendor.ampere { ampere_vendor }
-import extdeps.cpu.types { CacheGeometryCitation, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, ProcessorThermalLimits, SocketFactCitation }
+import extdeps.cpu.types {
+  SocketedLandGrid, CacheGeometryCitation, CpuL1CacheGeometry, CpuL2CacheGeometry, CpuL3CacheGeometry, CpuModelCatalogRow, CpuSocket, LandGridArray, ProcessorThermalLimits, SocketFactCitation }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -135,7 +136,7 @@ data ampere_altra_classic_l3_cache_citations: List<CacheGeometryCitation> = [
 // alone does not identify a socket.
 data ampere_lga4926_socket: CpuSocket = CpuSocket {
   platform_owner: ampere_vendor,
-  package: LandGridArray,
+  termination: SocketedLandGrid,
   contact_count: 4926,
 }
 
