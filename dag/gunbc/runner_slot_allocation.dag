@@ -174,13 +174,30 @@ type RunnerSlotEffectiveCapObservation
     }
   | RunnerSlotEffectiveCapUnmeasured
 
-data gunbc_runner_slot_effective_readback_refusal_note: String = "EFFECTIVE KERNEL CAPS ARE NOT THIS MODULE'S INPUT. gunbc_runner_slot_desired is the single authority for the fleet per-slot row; per-axis targets are operator-set and never reconciled toward live readback — live is not automatically truth, and the 32-vs-0 swap fork existed precisely because apply was assumed rather than readback-proven.\n\nTHE 14GiB/13GiB ROW IS OBSERVATION-DERIVED FROM A DIFFERENT SUBJECT: the 2026-08-05 floor_peak_post calibration in gunbc_runner_slot_memory_max_ruling_note (186 cgroup peaks, p50 10.32GiB, max 10.96GiB). That derivation is complete; a per-slot systemctl show on an unconverged host is evidence of CONVERGENCE DEBT, not a second numeric source for the declaration.\n\nsrv2-03 (gunbc_srv2_03_effective_cap_observation) is the discriminating specimen: effective MemoryMax/MemoryHigh still read 16GiB/15GiB while the declared row is 14GiB/13GiB. runner_slot_effective_cap_drifts_from_declaration is true; gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation is true — the repair is host_axis_caps deploy apply (author derived drop-ins, shadow revert), never editing gunbc_runner_slot_desired toward the observation. Until apply lands, memory_governor arms against the live cgroup on that slot (15GiB throttle), while placement and ci_budget_tree size against the declared 13GiB — the honest residual in gunbc_ci_runner_slot_memory_max_live_source."
+data gunbc_runner_slot_effective_readback_refusal_note: String = "EFFECTIVE KERNEL CAPS ARE NOT THIS MODULE'S INPUT. gunbc_runner_slot_desired is the single authority for the fleet per-slot row; per-axis targets are operator-set and never reconciled toward live readback — live is not automatically truth, and the 32-vs-0 swap fork existed precisely because apply was assumed rather than readback-proven.\n\nTHE 14GiB/13GiB ROW IS OBSERVATION-DERIVED FROM A DIFFERENT SUBJECT: the 2026-08-05 floor_peak_post calibration in gunbc_runner_slot_memory_max_ruling_note (186 cgroup peaks, p50 10.32GiB, max 10.96GiB). That derivation is complete; a per-slot systemctl show on an unconverged host is evidence of CONVERGENCE DEBT, not a second numeric source for the declaration.\n\nsrv2-03 (gunbc_srv2_03_effective_cap_observation) is the discriminating specimen: effective MemoryMax/MemoryHigh still read 16GiB/15GiB while the declared row is 14GiB/13GiB. runner_slot_effective_cap_drifts_from_declaration is true; gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation is true — the repair is host_axis_caps deploy apply (author derived drop-ins, shadow revert), never editing gunbc_runner_slot_desired toward the observation. Until apply lands, memory_governor arms against the live cgroup on that slot (15GiB throttle), while placement and ci_budget_tree size against the declared 13GiB — the honest residual in gunbc_ci_runner_slot_memory_max_live_source. APPLY HAS A LIVE CONSUMER THAT DOES NOT FIT: gunbc_srv2_03_converge_floor_fit_note — floor T5 entry RSS on srv2-03 exceeds both declared caps, so blind converge OOM-kills the floor walk; coordinate with the floor lane before apply on that host."
 
 data gunbc_srv2_03_effective_cap_observation: RunnerSlotEffectiveCapObservation = RunnerSlotEffectiveCapMeasured {
   runner_unit: "actions-runner@srv2-03.service",
   memory_max: byte_size(17179869184),
   memory_high: byte_size(16106127360),
   probed_at: "2026-08-16",
+}
+
+data gunbc_srv2_03_floor_t5_entry_rss: ByteSize = byte_size(15773273292)
+
+data gunbc_srv2_03_converge_floor_fit_note: String = "CONVERGING srv2-03 TO THE DECLARED ROW WOULD OOM-KILL THE CI FLOOR ON THAT HOST. The slot survives today only because it is drifted upward to 16GiB/15GiB effective (gunbc_srv2_03_effective_cap_observation); applying host_axis_caps deploy converge to the declared 14GiB/13GiB row restores the envelope the 2026-08-05 floor_peak calibration sized, but the floor itself no longer fits it on srv2-03. Measured floor RSS at T5 entry on this host: 14.69GiB (gunbc_srv2_03_floor_t5_entry_rss = 15773273292 bytes) — 0.69GiB above declared memory.max (15032385536) and 1.69GiB above declared memory.high (13958643712), so memory.max would OOM-kill the floor walk the moment the host converges. This is NOT a reason to soften gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation: the declaration is derived from 186 floor-job cgroup peaks and the floor is over budget, which is the floor lane's problem (sleek-moth-351 / PR 8283: fit in 14GiB), not the row's. It IS a reason whoever lands the apply must not be surprised by immediate floor OOM — coordinate with the floor lane before blind converge on srv2-03."
+
+fn srv2_03_floor_t5_entry_exceeds_declared_memory_max() -> Bool {
+  byte_size_count(b: gunbc_srv2_03_floor_t5_entry_rss) > byte_size_count(b: gunbc_runner_slot_desired().memory_max)
+}
+
+fn srv2_03_floor_t5_entry_exceeds_declared_memory_high() -> Bool {
+  byte_size_count(b: gunbc_srv2_03_floor_t5_entry_rss) > byte_size_count(b: gunbc_runner_slot_desired().memory_high)
+}
+
+fn srv2_03_converge_would_oom_floor_at_declared_cap() -> Bool {
+  srv2_03_floor_t5_entry_exceeds_declared_memory_max()
+    && srv2_03_floor_t5_entry_exceeds_declared_memory_high()
 }
 
 fn runner_slot_effective_memory_max_drifts_from_declaration(effective: ByteSize) -> Bool {
