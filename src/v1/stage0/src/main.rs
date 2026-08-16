@@ -9,6 +9,7 @@ use std::rc::Rc;
 use v1_compiler::cli_run;
 use v1_compiler::v1_compiler_compile;
 use v1_compiler::v1_compiler_compile::PipelineResult;
+use v1_compiler::v1_interpreter;
 use v1_compiler::v1_rt;
 use v1_compiler::v1_std_core::{
     byte_to_line_col, diagnostic_to_message, diagnostic_to_span, source_line_at, NewlineIndex,
@@ -431,6 +432,7 @@ fn write_output_files(output_dir: &str, result: &v1_compiler::v1_compiler_compil
 
 fn main() {
     let cli = Cli::parse();
+    let dry_run = cli.dry_run;
     let _result = match cli.command {
         Commands::Compile {
             source_roots,
@@ -734,34 +736,57 @@ fn main() {
             entry,
             claim_run,
             args,
-        } => run_verb(&source_roots, &function, entry.as_deref(), claim_run, &args).apply(),
+        } => run_verb(
+            &source_roots,
+            &function,
+            entry.as_deref(),
+            dry_run,
+            claim_run,
+            &args,
+        )
+        .apply(),
         // `ci` is NOT a second verb to wire: the deleted handler was `run` with fixed
         // arguments, so it is a PARAMETERIZATION of the same seam. Wiring it as its own
         // path would fork one route into two that must then be kept equal by hand.
         // The roots come from `cli_run::witness_layer_roots`, which reads the single
         // `.dag` authority live — the same row `gunbc.cli_intent` imports — rather than
         // a literal spelled here.
+        // `ci` passes dry_run: false DELIBERATELY, matching the deleted `handle_ci`,
+        // which took no dry-run parameter and always evaluated Wet. `--dry-run` is a
+        // global flag, so it is ACCEPTED here and ignored — a pre-existing hazard on the
+        // base, not one this seam introduces, and changing it would alter a verb's
+        // semantics under cover of a restoration.
         Commands::Ci {} => run_verb(
             &cli_run::witness_layer_roots(),
             "main",
             Some("dag/tools/gunbc_ci.dag"),
             false,
+            false,
             &[],
         )
         .apply(),
-        Commands::Converge { .. } | Commands::Serve { .. } => {
-            eprintln!(
-                "error: `converge` and `serve` are not available on integration/cli-run-cut.\n  \
-                 cause: their cli_run handlers are deleted. `run` and `ci` are wired to the \
-                 retained resolve/eval engine through run_verb; these two are not, because \
-                 converge carries a byte-locked receipt grammar and serve owns an accept \
-                 loop — neither is a parameterization of `run`, so neither is wired by the \
-                 same seam.\n  \
-                 status: declared Y-incomplete for these two verbs, not a runtime failure \
-                 — see PR #8286."
-            );
-            std::process::exit(2);
+        Commands::Converge { host } => converge_verb(&host).apply(),
+        // The refusal names a CONDITION, not a branch. An earlier revision said "not
+        // available on integration/cli-run-cut", which the merge itself would have
+        // falsified — the code would keep naming a branch it no longer ran on, the §3
+        // stale-citation decay that needs no edit to break. The PR reference stays: a PR
+        // is historical after merge, not false.
+        Commands::Serve { .. } => Verdict {
+            status: 2,
+            message: Some(
+                "error: `serve` is not wired to the retained engine.\n  \
+                 cause: its cli_run handler is deleted. `run`, `ci` and `converge` reach \
+                 the retained resolve/eval engine through run_verb; serve does not, \
+                 because it owns a long-running accept loop rather than a single \
+                 resolve-and-evaluate — it is not a parameterization of `run`, so the same \
+                 seam does not carry it.\n  \
+                 status: declared Y-incomplete for this verb, not a runtime failure — \
+                 hand-authoring the accept loop would be a net-new scaffold, which does \
+                 not land by author declaration. See PR #8286."
+                    .to_string(),
+            ),
         }
+        .apply(),
     };
 }
 
@@ -985,10 +1010,112 @@ impl Verdict {
     }
 }
 
+/// `gunbc converge --host <h>`: the SAME resolve/eval seam `run_verb` uses, with a
+/// DIFFERENT verdict projection.
+///
+/// It is deliberately not a parameterization of `run` the way `ci` is. `ci` is `run` with
+/// fixed arguments and its outcome is the entry's own `ProcessExit`; converge's outcome is
+/// a byte-locked receipt record whose `converged` field decides the status, so the
+/// projection IS the difference. Folding it into `exit_status_for` would put receipt
+/// grammar in the general verdict map, where every other verb would have to ignore it.
+fn converge_verb(host: &str) -> Verdict {
+    let roots = cli_run::witness_layer_roots();
+    let (graph, indices) =
+        match cli_run::resolve_entry_graph_shared(&roots, "dag/gunbc/fleet_converge_cli.dag") {
+            Ok(resolved) => resolved,
+            Err(cause) => {
+                return Verdict {
+                    status: 1,
+                    message: Some(format!("error: {cause}")),
+                }
+            }
+        };
+
+    let ctx = cli_run::make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let args = [(
+        Some("host".to_string()),
+        v1_interpreter::Value::Str(host.to_string()),
+    )];
+
+    let result =
+        match v1_interpreter::run_in_context_with_args(&ctx, "converge_cli_output", &args, false) {
+            Ok(value) => value,
+            Err(cause) => {
+                return Verdict {
+                    status: 1,
+                    message: Some(format!("runtime error: {cause}")),
+                }
+            }
+        };
+
+    // A non-record result REFUSES rather than being rendered some other way: the receipt
+    // grammar is byte-locked, so printing a plausible receipt line for a value that is not
+    // a receipt is the fabricated plausible output §5 forbids. The observed value is
+    // CARRIED — a typed refusal that cannot say what it saw is less located than the
+    // `{:?}` diagnostic it replaces, and a rewrite that becomes more principled while
+    // becoming less informative has regressed.
+    let v1_interpreter::Value::Record { fields, .. } = &result else {
+        return Verdict {
+            status: 1,
+            message: Some(format!(
+                "error: converge_cli_output did not return a receipt record.\n  \
+                 observed: {result:?}\n  \
+                 status: refused — the converge receipt grammar is byte-locked, so a value \
+                 that is not a record cannot be projected onto it."
+            )),
+        };
+    };
+
+    let Some(v1_interpreter::Value::Str(line)) = ctx.field(fields, "line") else {
+        return Verdict {
+            status: 1,
+            message: Some("error: converge_cli_output.line was not a String".to_string()),
+        };
+    };
+    let line = line.clone();
+
+    // Absent or non-Bool reads as NOT converged. The safe reading of a missing convergence
+    // verdict is not "converged".
+    let converged = matches!(
+        ctx.field(fields, "converged"),
+        Some(v1_interpreter::Value::Bool(true))
+    );
+
+    let reason = match ctx.field(fields, "reason") {
+        Some(v1_interpreter::Value::Variant {
+            variant_name,
+            fields: variant_fields,
+            ..
+        }) if ctx.sym_eq(*variant_name, "Present") => match ctx.field(variant_fields, "value") {
+            Some(v1_interpreter::Value::Str(text)) => Some(text.clone()),
+            _ => None,
+        },
+        _ => None,
+    };
+
+    // The receipt line goes to stdout on BOTH paths — it is the receipt, not a success
+    // message, and withholding it on failure would lose the record of what was observed.
+    println!("{line}");
+
+    Verdict {
+        status: if converged { 0 } else { 1 },
+        message: reason,
+    }
+}
+
+/// `dry_run` selects the EXECUTION MODE and must be threaded, not defaulted.
+///
+/// An earlier revision of this seam omitted the parameter entirely and hardcoded `Wet`.
+/// `--dry-run` is a global flag documented as "mock all service calls", so it kept being
+/// ACCEPTED and silently did nothing: a caller asking for mocked service calls got real
+/// host effects. That is the fail-open §5 forbids, in the direction that costs the most —
+/// the flag exists precisely because the wet path is dangerous. Caught by running the
+/// binary, not by reading it; nothing in the tree refuses it.
 fn run_verb(
     source_roots: &[String],
     function: &str,
     entry: Option<&str>,
+    dry_run: bool,
     claim_run: bool,
     args: &[String],
 ) -> Verdict {
@@ -1057,11 +1184,14 @@ fn run_verb(
         };
     }
 
-    let ctx = cli_run::make_eval_context(
-        graph.as_ref(),
-        source_indices,
-        v1_compiler::v1_interpreter::ExecutionMode::Wet,
-    );
+    // Exactly the deleted handler's selection: `--dry-run` means Hermetic, which REFUSES
+    // host operations rather than mocking them silently, and absence means Wet.
+    let execution_mode = if dry_run {
+        v1_compiler::v1_interpreter::ExecutionMode::Hermetic
+    } else {
+        v1_compiler::v1_interpreter::ExecutionMode::Wet
+    };
+    let ctx = cli_run::make_eval_context(graph.as_ref(), source_indices, execution_mode);
 
     match v1_compiler::v1_interpreter::run_in_context_with_args(
         &ctx, function, &run_args, !claim_run,
