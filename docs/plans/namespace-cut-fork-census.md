@@ -633,3 +633,38 @@ to license a refusal.**
 
 The guards are now in the file as `declaration_census`, asserting
 `(declarations, on_chain)` per fixture.
+
+## Fork: the v1 parser cannot read a qualified match-arm pattern
+
+The cut's first genuine *seed obstruction* -- not a corpus defect, and not the
+freeze's business either, since the freeze forbids growth on X and does not
+grant X a veto over the terminal form.
+
+`src/v1/02_parse.dag` `looks_like_arm_start` decided whether a multi-statement
+arm body had ended by asking whether the next token starts a new arm. It
+recognized `_` and an UPPERCASE-start identifier. A qualified variant pattern
+begins with a LOWERCASE module segment, so it fell through to `else { false }`,
+the arm body kept consuming, and the parse died at the following `=>` with
+`expected expression, found FatArrow` -- a message pointing at a line several
+arms downstream of the real cause.
+
+Two facts made this a one-branch fix rather than a parser project: `parse_pattern`
+already admits the qualified form via `parse_dotted_ident`, and
+`is_variant_pattern_start` already calls a dotted name a variant. **Only the
+lookahead was untaught.** The rest of the parser had known about qualified
+patterns all along, which is why the corpus contained working examples and every
+structural hypothesis drawn from them was refuted in turn: they were all
+*single*-statement arms, where this lookahead is never consulted.
+
+> A defect reachable only through one predicate produces counter-examples
+> everywhere the predicate is not on the path. Nine refutations "main already
+> does this" were all true and all irrelevant.
+
+The fix requires the final segment to be uppercase, so a lowercase projection
+such as `plan.actions` is still not a pattern.
+
+**Why the count of affected files was never knowable from CI.** The walk
+(`cli_run.rs` `for_each_parsed_module_binding`) `panic!`s on the first parse
+error, so "1 failing file" is a bound imposed by the instrument, not a fact
+about the corpus -- the same right-censoring shape as a `>=2400s` timing floor.
+The uncensored count is now simply whether the floor goes green.
