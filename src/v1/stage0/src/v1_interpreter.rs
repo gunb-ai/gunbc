@@ -14911,3 +14911,102 @@ mod process_termination_tests {
         );
     }
 }
+
+/// Semantic parity receipts for `Value::Str(Rc<str>)` — equality, hashing, map/set
+/// keys, clone sharing, and display. Guards against mechanical migration regressions.
+#[cfg(test)]
+mod value_str_rc_semantic_parity_tests {
+    use super::*;
+    use im::{HashMap as HamtMap, OrdSet};
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    use std::rc::Rc;
+
+    #[test]
+    fn str_eq_compares_by_content_not_pointer() {
+        let a = str_value("hello");
+        let b = str_value("hello");
+        let c = str_value("world");
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+        if let (Value::Str(ra), Value::Str(rb)) = (&a, &b) {
+            assert!(
+                !Rc::ptr_eq(ra, rb),
+                "distinct Rc allocations must still compare equal by content"
+            );
+        }
+    }
+
+    #[test]
+    fn str_hash_stable_for_equal_content() {
+        let a = str_value("key");
+        let b = str_value("key");
+        assert_eq!(value_hash_public(&a), value_hash_public(&b));
+    }
+
+    #[test]
+    fn canon_key_map_lookup_uses_content_equality() {
+        let k1 = str_value("alpha");
+        let k2 = str_value("alpha");
+        let ck1 = CanonKey::new(k1.clone()).expect("string keys are valid CanonKey");
+        let ck2 = CanonKey::new(k2.clone()).expect("string keys are valid CanonKey");
+        assert_eq!(ck1, ck2);
+
+        let mut entries = HamtMap::new();
+        entries = entries.update(ck1, str_value("v"));
+        let map = map_value(entries);
+
+        let Value::Map(stored) = map else {
+            panic!("expected Map");
+        };
+        let ck = CanonKey::new(k2).expect("lookup key");
+        assert_eq!(stored.get(&ck), Some(&str_value("v")));
+    }
+
+    #[test]
+    fn set_membership_uses_decoded_string_content() {
+        let mut members = OrdSet::new();
+        members.insert("x".to_string());
+        let set = Value::Set(Rc::new(members));
+        let probe = match str_value("x") {
+            Value::Str(s) => s.to_string(),
+            _ => panic!("expected Str"),
+        };
+        let Value::Set(members) = set else {
+            panic!("expected Set");
+        };
+        assert!(members.contains(&probe));
+        assert_eq!(members.len(), 1);
+    }
+
+    #[test]
+    fn value_clone_shares_str_rc_allocation() {
+        let v = str_value("shared");
+        let cloned = v.clone();
+        if let (Value::Str(a), Value::Str(b)) = (&v, &cloned) {
+            assert!(Rc::ptr_eq(a, b));
+        } else {
+            panic!("expected Str");
+        }
+    }
+
+    #[test]
+    fn str_display_and_as_ref_interpolation() {
+        let v = str_value("roadmap-7");
+        assert_eq!(format!("{v}"), "roadmap-7");
+        if let Value::Str(s) = &v {
+            assert_eq!(s.as_ref(), "roadmap-7");
+        }
+    }
+
+    #[test]
+    fn canon_key_hash_stable_for_equal_keys() {
+        let ck1 = CanonKey::new(str_value("map-key")).expect("CanonKey");
+        let ck2 = CanonKey::new(str_value("map-key")).expect("CanonKey");
+        let mut h1 = DefaultHasher::new();
+        let mut h2 = DefaultHasher::new();
+        ck1.hash(&mut h1);
+        ck2.hash(&mut h2);
+        assert_eq!(h1.finish(), h2.finish());
+    }
+}
