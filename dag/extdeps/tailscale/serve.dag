@@ -19,9 +19,8 @@ import extdeps.languages.json.parse {
   JsonMemberNotAnObject,
 }
 
+// Phantom relation brand (std.key_relation key_relation_brand_type_tag_note): keeps Tailscale serve route membership distinct from other TailscaleServeEndpoint x GlobalKeyScope x TailscaleServeRouteKey relations.
 type TailscaleServeRouteKeyRelation
-
-data tailscale_serve_route_key_relation_brand_note: String = "Phantom relation brand (std.key_relation key_relation_brand_type_tag_note): keeps Tailscale serve route membership distinct from other TailscaleServeEndpoint x GlobalKeyScope x TailscaleServeRouteKey relations."
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -161,12 +160,11 @@ fn tailscale_scoped_removal_capability(observed: SemVerVersion) -> TailscaleServ
   }
 }
 
+// THE UPSTREAM KEY IS LISTENER x MOUNT, NOT BACKEND AND NOT A RENDERED ARGV STRING. tailscale_serve_route_key projects the two discriminants the `off` form requires; backend changes are re-points of the same route, which is why it is excluded from the key. tailscale_serve_route_key_label is a display locator for membership carriers that still spell a NonEmptyStr path — it is NOT the identity and must not be confused with tailscale_serve_endpoint_flags.
 type TailscaleServeRouteKey {
   https_port: Port
   mount: TailscaleServeMount
 }
-
-data tailscale_route_key_is_listener_x_mount_note: String = "THE UPSTREAM KEY IS LISTENER x MOUNT, NOT BACKEND AND NOT A RENDERED ARGV STRING. tailscale_serve_route_key projects the two discriminants the `off` form requires; backend changes are re-points of the same route, which is why it is excluded from the key. tailscale_serve_route_key_label is a display locator for membership carriers that still spell a NonEmptyStr path — it is NOT the identity and must not be confused with tailscale_serve_endpoint_flags."
 
 fn tailscale_serve_route_key(endpoint: TailscaleServeEndpoint) -> TailscaleServeRouteKey {
   TailscaleServeRouteKey {

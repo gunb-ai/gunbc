@@ -111,9 +111,8 @@ import gunbc.ci_deploy_access {
 }
 import gunbc.ci_deploy_sudoers { deploy_sudoers_install_shell }
 
+// Phantom relation brand (std.key_relation key_relation_brand_type_tag_note): deployment-step membership identity under live_deploy.
 type DeploymentStepMembershipKeyRelation
-
-data deployment_step_membership_key_relation_brand_note: String = "Phantom relation brand (std.key_relation key_relation_brand_type_tag_note): deployment-step membership identity under live_deploy."
 
 data live_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
