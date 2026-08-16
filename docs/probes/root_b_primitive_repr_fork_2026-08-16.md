@@ -243,3 +243,55 @@ than beside it.
   instrument, so its `emit_fail` verdict is unattributable — it contradicts the banked receipt
   that this module emits 621 diagnostics, and a contaminated run is not evidence against a clean
   one. It needs re-running on a stable binary.
+
+## 8. The discriminating control for identity-keying — executed, and RED
+
+`smart-ram-730` conditioned any identity-keying work on a control that proves *disambiguation*
+rather than merely that the algebra carrier goes to zero: two types with the **same authored name
+from different declaring modules**, rendered in one closure, each getting its own realization.
+Without it, a green B1 is equally consistent with "the flag stopped firing".
+
+The fixture is three lines, using the `Bool` pair already identified in §5:
+
+```
+module probe.bool_identity_collision
+
+fn takes_std_bool(b: std.types.Bool) -> std.types.Bool { b }
+fn takes_v2_bool(b: v2.std.logic.Bool) -> v2.std.logic.Bool { b }
+```
+
+Emitted to Rust today (`--source-root dag --source-root src/v2`, clean binary), **verbatim**:
+
+```rust
+pub fn takes_std_bool(b: bool) -> bool {
+    b
+}
+
+pub fn takes_v2_bool(b: bool) -> bool {
+    b
+}
+```
+
+**Both render as native `bool`.** Two distinct declarations, in two distinct modules, fully
+qualified at the reference site — and the emitter produces byte-identical signatures. `emit`
+returned 0 blocking errors, so this is not a refusal: it is silent, confident, wrong output.
+
+This is the thesis reduced to its smallest executable form. It is not that realization is *missing*
+information — the reference is written `v2.std.logic.Bool`, the qualification survives to the
+`Node`, and `Node.inferred`'s `Resolved` node carries an `ident_span` naming the declaring module.
+It is that `render_named_type_base` throws that away by keying `coerce_primitive_type` on
+`authored_name_at`, which reads **the source text at the identifier span**. A token cannot
+distinguish two declarations; the identity sitting on the same node can.
+
+**As a control it is discriminating in both directions**, which is what makes it worth landing
+ahead of any fix: it is RED now for a reason that has nothing to do with `corpus_repr` (the flag
+does not gate `Bool` at all — §6.2 measured `expected bool found Bool` at 11 → 11 under the flip),
+and it can only go green if realization actually consults declaration identity. "The flag stopped
+firing" cannot turn it green.
+
+**Scope caution, from the §10 instrumentation.** Identity-keying disambiguates two same-named
+*types*. It does **not** obviously repair a *variant* name arriving where a type was expected —
+28 of the 34 `type_leaf_is_unbound_in_closure_scope` misses are the variant name `Absent`, and
+`gentle-dove-833`'s independent sentinel set contains it too. Two of my three miss names are in
+their six-name sentinel set (32 of my 34 firings), so those populations are entangled and neither
+is downstream of the checkpoint keying. The identity fix must not be sized as if it covers them.
