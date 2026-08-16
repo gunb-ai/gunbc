@@ -128,6 +128,49 @@ module (the index deliberately refuses to pick a winner), which in a densely
 interconnected corpus multiplies closure width — the runtime cost and the crash
 are that width, not stack tuning.
 
+## The segfault: stack exhaustion, and a PRE-REGISTERED remedy decision
+
+Two v1 tests exit `rc=139` after ~12 minutes on a parse-clean tree. Measured,
+release binary, changing only the spawned-thread stack size:
+
+```
+2 MiB  (cargo test default)   rc=139 SEGFAULT   739s
+64 MiB                        rc=124 TIMEOUT   1500s   <- my timeout, not a crash
+```
+
+One variable, crash gone. It is stack exhaustion, not a memory-safety fault.
+The 64 MiB arm is NOT evidence the recursion is bounded: under linear scaling it
+would not be predicted to crash until ~6.6 hours, so stopping at 1500s reached
+6.3% of its own predicted failure and cannot distinguish the hypotheses.
+
+A null control (same arm twice, same host) gives 845s / 834s — 1.3% spread, so
+the runtime is reproducible and cross-arm comparison is legitimate.
+
+**The discriminator is a 1 MiB arm, and the remedy is written down BEFORE it
+reports so the result cannot be read to license the more convenient fix:**
+
+| 1 MiB outcome | what it means | remedy |
+|---|---|---|
+| crashes at **~370s** (half of 739s) | depth GROWS WITH WORK — stack consumed progressively, unbounded in practice | `stacker` is "raise the stack" wearing a library; it converts a 12-min segfault into a long run ending in heap exhaustion. Remedy is an explicit worklist that **refuses with a located diagnostic**. |
+| crashes at **~739s** (unchanged) | recursion reaches a FIXED depth exceeding both sizes; stack size decided only whether it survived, not when it died | bounded-deep; `stacker::maybe_grow` is the codebase's own idiom (151 existing sites) and using it is consistent, not evasive. |
+
+**Why the arm must precede the fix:** adding `stacker` to `source_closure.rs`
+makes the symptom disappear under *both* hypotheses, destroying the ability to
+tell which one held.
+
+**A finding worth stating regardless of the outcome:** the seed uses
+`stacker::maybe_grow` at 151 sites as its established idiom for deep structural
+recursion. `source_closure.rs` — the 429-line file this cut introduced — uses it
+zero times while performing recursive tree walks.
+
+**Owed, and not answered by any clock:** whether the dependencies the closure fix
+newly loads are ones the tests actually need. The fix demonstrably does more work
+(748s → 803/845/834s, outside the 1.3% floor), but more work is equally
+consistent with correctly loading required modules and with over-collecting. The
+instrument is a set diff of closure MEMBERSHIP before and after, checking each
+added module against the test's reachable references — a correctness question the
+timing cannot answer at any precision.
+
 **Next-rung trigger for the `continue`.** It is repaired for qualified names and
 still silent for genuinely unknown ones, so the class sits at *mitigatable*. It
 should become a refusal — but not before the tree's remaining unresolved
