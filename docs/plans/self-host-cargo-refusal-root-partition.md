@@ -164,14 +164,67 @@ currently blocked behind defects that are not eval's and cannot be fixed from in
 Consequence: **neither session fixes this per-module.** Root ownership is assigned here once the
 partition is confirmed, so the two lanes work disjoint roots rather than the same wall twice.
 
-| root | share | owner | status |
+| root | July size | owner | status |
 |---|---:|---|---|
-| **A — generic trait bounds not emitted** | ~590 | smart-ram-730 | taking now |
-| **B — primitive representation fork** | ~196 | unassigned | |
-| **C — Optional collapses to `()` in nested type-arg position** | ~169 | gentle-dove-833 | emitter already instrumented |
-| **D — generic argument count** | ~76 | unassigned | |
-| **E — unreachable patterns** | 126 | unassigned | lint-class, lowest value |
-| **F — E0282 type annotations needed** | 55 | unassigned | may dissolve with A |
+| **A — generic trait bounds not emitted** | ~590 | `smart-ram-730` | ROOT-CAUSED, fix in progress |
+| **B — primitive representation fork** | ~196 | new child | dispatched 2026-08-16 |
+| **C — Optional collapses to `()` nested** | ~169 | `gentle-dove-833` | first fix refuted; upstream seam next |
+| **D — generic argument count** | ~76 | new child | dispatched 2026-08-16 |
+| **E — unreachable patterns** | 126 | — | lint-class, lowest value |
+| **F — E0282 type annotations needed** | 55 | — | do NOT start; likely dissolves with A |
+| **the unclassified ~64%** | — | new child | dispatched 2026-08-16 |
+
+### Root A — ROOT-CAUSED (smart-ram-730, 2026-08-16)
+
+Live size, measured today on `05_emit` by `gentle-dove-833`: **~105** in one module
+(24 `no method clone on type parameter` · 32 `bound …: Clone not satisfied` ·
+49 `exists but its trait bounds were not satisfied`; the first two are E0599 subsets summing
+under the E0599 total of 80, so read 105 as a tight upper bound and 73 as the E0599-only floor).
+July was ~84/module, so **the family did not collapse** and gunbc#7691 did not reach these sites.
+
+**Why it did not.** `v1.trait_derive_emit` `v1_clone_bound_seed_for_item` opens with
+`if is_coproduct_type(n: item) { round }` — the derive trigger is **struct-only**. Its note
+justifies that as "derive emits per-impl bounds," which is true for `derive(Clone)` on an enum
+(that does add `T: Clone`) and **false for `Debug`/`Serialize`/`Deserialize`**, which add only
+their own bound and never the supplemental `Clone` a container field's conditional impls need.
+The second trigger cannot cover it either: well-formedness propagation fires only on naming a
+type that already carries a declaration bound, and that same note records — checked against
+`im-15.1.0` — that `im::Vector<A>` carries **no** declaration bound, so a container field is
+"a derive-trigger fact only."
+
+**So: a generic coproduct with a container field earns no Clone bound from either trigger.**
+`Outcome<T>` is exactly that shape and is the receiver in the largest single signature.
+
+This is also why an item-level bound structurally cannot close the population, however good its
+fixpoint: the requirement is **per-derive-impl**, which is what v2's supplemental contracts
+already encode with cited authorities. The fix is the wire-through, not a better v1 predicate.
+
+## 9. Working agreements for this surface
+
+Read before starting. These are all paid-for lessons from 2026-08-16.
+
+1. **Nothing in this document is current unless it names today's measurement.** The July TSVs
+   were DELETED (operator: delete anything not actively derived). The numbers transcribed here
+   are a surviving record of a snapshot, which is the same staleness one level up — they are
+   kept only because they are all we have, and every one of them is superseded the moment you
+   measure live. Root A's ~590 was already wrong when this document quoted it.
+2. **The instrument is `gunbc compile --entry <mod> --target rust` then `cargo check` on the
+   emitted crate.** It produces error TEXTS. Do NOT use `frontier_probe_survey` — zero receipts
+   on any host, including a dedicated runner.
+3. **Own your root by generated FILE, not by entry module.** The floor files
+   (`v2_std_algebra.rs`, `std_measure.rs`, `v2_std_compilers_target_model.rs`) sit in every
+   closure. "05_eval's errors" is not a unit of work.
+4. **The emitter is generated.** Authority is `src/v1/05_emit_rust.dag`; `v1_compiler_emit_rust.rs`
+   is its output and is listed in `gunbc.stage0_emit_plan_generated`. Probe the `.rs` for fast
+   feedback if you like, but revert it — real fixes land in the `.dag` and regenerate.
+5. **Measure before/after in your own worktree.** Concurrent fixes to a shared tree make every
+   before/after unattributable, which is the failure this whole document exists to prevent.
+6. **Null-control your fix.** `gentle-dove-833` suppressed the Optional collapse, confirmed the
+   arm was live (3 files differed), and got `|acc: Option<Absent>|` — `Absent` is not a Rust
+   type. The rule had been HIDING a bad node, not creating it. A fix that changes one wrong
+   output into a different wrong output is not a fix; check what your change actually produced.
+7. **Prefer construction to validation.** If your root's bad node arrives already wrong, patching
+   the consumer is validation. Find what produced it.
 
 ## 8. The partition, from cause signatures (this supersedes the by-error-code view)
 
