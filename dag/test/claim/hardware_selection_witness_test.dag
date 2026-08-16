@@ -110,7 +110,7 @@ data cpu_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   cores: 64,
   threads: hardware_thread_count(64),
   nominal_sustained_per_thread_hz: hertz(3000000000),
-  socket: CpuSocket { package: LandGridArray, contact_count: 4926 },
+  socket: CpuSocket { platform_owner: ampere_vendor, package: LandGridArray, contact_count: 4926 },
   tdp_watts: watt(250),
   l1_cache: ampere_altra_l1_cache_geometry,
   l1_cache_citations: ampere_altra_l1_cache_citations,
@@ -129,7 +129,7 @@ data cpu_slow: CpuCandidate = CpuCandidate {
 
 data board1: Motherboard = Motherboard {
   label: "GENERIC-8CH-BOARD",
-  socket: CpuSocket { package: LandGridArray, contact_count: 4926 },
+  socket: CpuSocket { platform_owner: ampere_vendor, package: LandGridArray, contact_count: 4926 },
   memory_channels: 8,
   max_dimms_per_channel: 2,
   idle_draw: watt(count: 30),

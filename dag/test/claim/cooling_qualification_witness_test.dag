@@ -1,5 +1,6 @@
 module test.claim.cooling_qualification_witness
 
+import extdeps.vendor.ampere { ampere_vendor }
 import std.types { Bool, List, String }
 import std.measure { watt }
 import extdeps.cooling.dynatron { dynatron_w1_catalog }
@@ -57,7 +58,7 @@ test fn cooler_socket_mismatch_is_a_discriminating_refusal() -> Bool {
   let wrong_socket_cooler: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
     model: dynatron_w1_catalog.model,
     manufacturer: dynatron_w1_catalog.manufacturer,
-    socket: CpuSocket { package: LandGridArray, contact_count: 4189 },
+    socket: CpuSocket { platform_owner: ampere_vendor, package: LandGridArray, contact_count: 4189 },
     active_passive_switchable: dynatron_w1_catalog.active_passive_switchable,
     minimum_rack_units: dynatron_w1_catalog.minimum_rack_units,
     max_design_power: dynatron_w1_catalog.max_design_power,
