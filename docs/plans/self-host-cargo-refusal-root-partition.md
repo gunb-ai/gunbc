@@ -1631,3 +1631,115 @@ the rest), and "clones it" is `<param>.clone()` textually. That proxy is exact f
 question — a derive-generated `Clone` for `C<T>` is `impl<T: Clone> Clone for C<T>`, so cloning the
 carrier *is* what requires `T: Clone`. One closure, not eleven: a carrier named only in a module
 outside `03_ingest`'s closure is not counted, and the check is cheap to repeat elsewhere.
+
+### 14.6 A's enclosing-item split, and the discriminator that confirms the mechanism from outside
+
+`smart-ibex-716` walked each A site up to its enclosing item (121 sites, 03_ingest closure):
+
+| enclosing item | count | share |
+|---|---|---|
+| fn whose generic parameter list carries NO bound | 91 | 75% |
+| fn whose generic parameter list carries SOME bound | 13 | 11% |
+| fn with no generic parameters (the concrete-receiver residue) | 9 | 7% |
+| struct / enum declaration | 6 | 5% |
+
+**104 of 121 are fn signatures. Six are type declarations.** So the refuted fix in §14.2 was aimed
+at 5% of its own population — a sharper statement than "two witnesses killed it", and true
+independently of the witnesses.
+
+**The 13 partially-bounded signatures are the discriminator.** The mechanism does not fail
+wholesale; it bounds *some* parameters of a signature and misses others, and the missed one always
+flows through a carrier with no bound to propagate:
+
+```
+fold_list<T, A: Clone>                      fails on T   via Rc<im::Vector<T>>
+fold_list_right<T, A: Clone>                fails on T   via Rc<im::Vector<T>>
+resolve_probe<A: Clone, B>                  fails on B   via CacheProbe<B>
+reconcile_grounded<A: Clone, R, E>          fails on R   via ShowEffectiveRead<R>
+grounding_qualified_by_durability<E, Target: Clone, ReadbackSubject: Clone>
+                                            fails on E   via Grounding<E>
+```
+
+Every parameter that DID earn its bound flows through something that has one. `CacheProbe`,
+`ShowEffectiveRead`, `Grounding` and `Outcome` are generic coproducts the seed skips; `im::Vector`
+is upstream with no declaration bound at all. A wholesale failure is consistent with half a dozen
+causes; **a per-signature partial failure along exactly this line is consistent with one** — and
+it was produced from outside the fixpoint, by someone who could not read the predicates.
+
+**A's acceptance test, recorded before the fix so it cannot be retrofitted** (theirs). Seeding
+coproducts into the propagation record should:
+
+- **move** the parameters flowing into `CacheProbe` / `ShowEffectiveRead` / `Grounding` / `Outcome`
+- **leave** the `im::Vector<T>` ones standing — no corpus declaration to seed from
+
+Both moving refutes the seeding gap. Neither moving means the fix never reached fn signatures.
+Three distinguishable outcomes from one run at M=11.
+
+**§14.5's objection is downgraded from a blocker to a measurement.** The reasoning stands — the
+well-formedness justification does not transfer to a coproduct that declares no bound, so bounding
+a fn that never clones fabricates a requirement. But the 13 show the mechanism *already*
+over-bounds in this shape for carriers that do have bounds. So the open question is not whether
+over-bounding occurs (it does, today, by design) but **how many fns name these carriers without
+cloning them.** That is countable. Small → the split lands and the usage gate is a later
+refinement; large → the gate is a prerequisite. Treating it as a blocker was treating an unmeasured
+quantity as a decided one.
+
+## 15. MEASUREMENT RULES FOR THIS PROGRAM (adopted 2026-08-16)
+
+Three rules, each derived from a measurement rather than a preference, each already having caught
+a wrong number today.
+
+**15.1 — Quote distinct sites at a fixed published M, and state M IN THE FIGURE.** Diagnostic
+inflation is a function of how many entries were probed, because every entry re-counts the same
+shared floor: 2.75x at M=7, 4.17x at M=11. So "N diagnostics across M modules" is mostly a
+statement about M, and it cuts both ways — a wall that shrank after a fix is not evidence of the
+fix if M fell, and one that grew is not a regression if M rose. `smart-ibex-716`'s addition is the
+operative half: the failure mode is not people omitting M, it is two figures read side by side that
+each mentioned M *somewhere*. **"1,883 sites at M=11" survives being quoted out of context;
+"1,883 sites" does not.** The program's fixed denominator is the eleven-module census.
+
+**15.2 — Across a wave boundary there is no honest delta at all** (`tidy-gull-813`, the harder
+case). Where 15.1 says M drifts if you are careless, a delete-first cut in a compiled language
+cannot hold M fixed *even in principle*: wave one is measured over the lib because that is all
+cargo can reach, wave two over lib plus 35 bins **because fixing wave one is what made them
+reachable**. Changing M is what advancing the work does. So a wave-two total exceeding wave one is
+not a regression and not a measure of the fix — it is targets becoming visible. Comparison is valid
+only *within* a wave, and a cross-wave before/after must not be published with a caveat; it must
+not be published.
+
+**15.3 — Net, never gross, and name the unmasked population before it appears.** Every root
+measured so far fires in front of another it was hiding, so its frequency was zero by construction.
+Algebra carrier → 125 `Rc<i64>` sites appear and `Measure` rises 9→37. Variant unit-collapse → 25
+new E0425. Hash substitution → the where-refinement population. A reviewer who sees new sites
+appear will otherwise read the fix as their cause.
+
+### 15.4 Two testing traps and one diagnostic instruction
+
+**Reverting the generated `.rs` is a false green** (`gentle-dove-833`). `claim_batch` interprets the
+`.dag`, so perturbing the emitted artifact perturbs what the witness never reads: four rows stayed
+green against a reverted projection, while reverting the AUTHORITY flipped exactly one. Two
+verifications through two execution paths, one measuring nothing.
+
+**A count is worth what its author's checking is worth.** `tidy-gull-813`'s data-reference sweep
+nearly reported nine instead of seven, because `v1_interpreter_dispatch_generated` contains the
+deleted name as a prefix — the substring trap, running the opposite direction from the same trap
+corrected that morning. They reported the near-miss unasked, which is the only reason the seven is
+usable.
+
+**A reader looking for a wrong line will not find one.** Every root on this wall is a *correct local
+answer to a question nobody asked at that site*. The checkpoint row is not wrong about the seed's
+`Hash`. The closure switch is not wrong about a seed corpus. The variant sentinel correctly records
+an ambiguity. The derive trigger is not wrong about enum declarations, and the well-formedness axis
+is not wrong to ignore a bare parameter. The defect lives in the *relation* between two sites that
+are each individually right — which is why they survived review, and why reading each predicate in
+isolation keeps producing "this looks correct". **Ask which question each site is answering, and
+whether anyone asked it there.**
+
+Corroborated from a second corpus and a different activity (`tidy-gull-813`, deletion census rather
+than diagnostic partition): two crate-layout emitters carry the module list as TEXT, so a regen
+would emit a layout declaring a file that does not exist. The emitter is correct about the list it
+was given; `lib.rs` was correct about the module it declared; the deletion is correct. Their
+operational form of it is worth quoting exactly — **the silent residue of a deletion is exactly the
+set of sites that reference the deleted thing as DATA rather than as CODE**: enumerable by grep,
+invisible to every compiler, and the named specimen DESIGN's "what cannot break loudly" clause was
+missing.
