@@ -99,6 +99,31 @@ census run decides both. Note that bare `row` was only ever resolving through th
 import list; under namespace-only resolution a sibling's member was always going to
 need a projection, so this is the cut exposing a form the corpus never had to state.
 
+## `OccurrenceId` — the 347 sites resolve by file, and only 3 cross subjects
+
+The ruling says qualify per-site to the subject the site is about. Measured, that is
+far more tractable than the count suggests: **17 distinct files carry all 347**, and
+scoring each for source-occurrence vocabulary (`occurrence_binding`, `OccurrenceCategory`,
+`ContainmentPath`, `AuthoredTokenOrdinal`) against observation vocabulary (`attempt`,
+`ObservationProducer`, `std.observation`) separates them cleanly:
+
+```
+168  occurrence_binding_candidates_witness_test   src=30  obs=0
+ 29  occurrence_binding_resolve                   src=38  obs=0
+ 25  occurrence_binding_candidates                src=46  obs=2
+ 19  type_reference_binding_context_witness_test  src=10  obs=0
+ …   (namespace / source-annotation / attribution files, all source-domain)
+  3  recorded_observation_envelope_witness_test   src=0   obs=33   <- the only observation subject
+```
+
+**344 → `std.occurrence_identity`, 3 → `std.observation`.** No file mixes the two
+subjects in a way that makes a site undecidable, so the wild instance of the defect
+DESIGN warns about does **not** appear here — which is itself worth recording, because
+"we looked for ambiguous sites and found none" is a different claim from "we did not
+look". The neutral-scoring files (`attribution`, `source_annotation`,
+`namespace_clause_e_projection_law`) are source-domain by their subject matter, not by
+keyword count, and were classified by reading rather than by the score.
+
 ## Diagnostic spans do not reliably locate the failing reference
 
 Discovered while building the repair, and it constrains how any mechanical pass can
