@@ -167,19 +167,39 @@ tell which one held.
 "overflowed its stack" in the test's own stdout:  0 occurrences
 ```
 
-**Halving the stack made it crash LATER.** Not merely off the prediction — on
-the wrong side of the baseline. Stack size does not monotonically determine
-time-to-death, so the linear-exhaustion model is dead, and with it the
-conclusion "it is stack exhaustion" that had been drawn from the 64 MiB arm
-alone. That arm is a single censored observation that had not reached its own
-predicted failure under any model; it was over-read because it agreed with the
-hypothesis just adopted.
+**The arm was uninformative, and the first version of this section over-read it
+in the opposite direction.** It initially concluded "halving the stack made it
+crash later, so the exhaustion model is dead and a memory-safety fault is live."
+That is circular, because the non-monotonicity and the cross-job variance are
+*the same two numbers*:
 
-The missing overflow message is now a **real** absence rather than a false one:
-the check was run against the test's own stdout, where the string would appear.
-`rc=139` with no such message is consistent with an overflow the handler could
-not report, and equally with an ordinary memory-safety segfault — which has a
-different owner.
+```
+as a STACK effect     2 MiB 739s (job B) -> 1 MiB 980s (job D)   +32.6%
+as CROSS-JOB noise    739s (job B)       vs        980s (job D)   +32.6%
+```
+
+Identical pair, identical delta. The ~32% noise figure was *derived from* the
+comparison then used to judge it. One observation pair cannot be both the
+measurement of the noise and a signal assessed against that noise.
+
+The honest reading: **the 1/2/64 MiB comparison is entirely cross-job and carries
+no information about stack size.** Stack exhaustion is therefore neither
+established nor refuted — both hypotheses sit exactly where they were before the
+arm ran. Retracting "it IS stack exhaustion" was correct (it was never
+established); asserting the model was dead was the same over-read pointed the
+other way.
+
+**The missing overflow message is a WEAK absence, not a real one.** `cargo test`
+captures test output by default, and this suite is already known to lose buffered
+output when a process dies mid-crash. Rust prints `has overflowed its stack` to
+the crashing thread's stderr — exactly the buffer that gets lost. Zero
+occurrences is consistent with *no overflow* and with *an overflow whose message
+died with the process*. `--nocapture` makes the string stream instead of
+buffering, which converts it into a real absence either way.
+
+**The usable cross-job floor is 3.9–5.2%**, from `field_of_fractions` at fixed
+stack size (803s vs 845s/834s) — not the 32%, which is contaminated by the stack
+variable.
 
 **A method error found in the same round, recorded because it invalidates a
 second claim.** The null control measured the same arm twice *within one remote
@@ -199,9 +219,11 @@ its own subject, and its subject was narrower than the comparisons it was used
 to license.
 
 **Standing after this round:** the crash is deterministic and reproducible
-(`rc=139`, four runs, two tests). Stack exhaustion is *not* established. That the
-closure fix increases work is *not* established. Neither is refuted — both need a
-within-job A/B, the only comparison the control licenses.
+(`rc=139`, four runs, two tests). Everything else is open. Stack exhaustion is
+neither established nor refuted — the arm built to decide it was confounded.
+That the closure fix increases work is likewise neither, for the same reason.
+The pre-registered table is INTACT with its question still open: an uninformative
+arm does not observe a third row, it observes nothing.
 
 **Next instrument:** ONE job performing the whole comparison — same runner, same
 build, 1/2/64 MiB back to back — plus the closure-membership set diff, which
