@@ -459,7 +459,7 @@ starting.
   exist in the tree).
 
 
-## 10. THE CLOSURE-SHAPE FORK — THREE confirmed instances (2026-08-16)
+## 10. CLOSURE-SHAPE FORKS — restated after its own falsifier fired (2026-08-16)
 
 Two lanes independently hit the same underlying fact from different roots, and it may explain
 why "the seed compiles and v2 modules do not" better than any per-root mechanism.
@@ -506,21 +506,48 @@ closure,"** and two independent places change behaviour silently when it is.
 If that holds, several roots are downstream projections of one fact, and the per-root sizes are
 measuring symptoms of it.
 
-**THIRD INSTANCE — confirmed, and it has its own full entry below** (`### §10 — the third
-branch`, written by `gentle-dove-833`, who measured it). Not restated here: two accounts of one
-finding in one document is the dual authority this surface exists to prevent, and we produced
-one by both writing it up. Theirs is the authority.
+**THIRD INSTANCE — confirmed as a mechanism, and it FALSIFIED this section's directional
+claim.** It has its own full entry below (`### §10 — the third branch`), written by
+`gentle-dove-833` who measured it; not restated here, because two accounts of one finding is the
+dual authority this surface exists to prevent and its own authors produced one within minutes.
 
-What this section adds, and only this: the mechanism was **independently verified in tree** by
-`smart-ram-730` (the sentinel insert in `derive_variant_to_enum`, the value-ignoring
-`map_contains_key` read in `is_value_variant_type_arg`), and it is DESIGN's **state-space
-conflation** by name — the map's value carries three states (absent / a real owner / ambiguous)
-and the consumer collapses every present case into one. That framing is what makes it a
-closure-shape branch nobody authored as one, and it is why the meta-root is promoted from
-hypothesis to three confirmed instances.
+**What the falsifier was, and that it fired.** This section named its falsifier as *a third
+closure-shape branch that does NOT correlate*. `gentle-dove-833` then instrumented the sentinel
+insert and dumped the ambiguous set per closure, under identical source roots:
 
-**Not claimed:** that the seed closure lacks these collisions. That is the next measurement and
-it would make this instance structurally identical to Root B rather than merely analogous.
+```
+05_emit.dag       6 ambiguous names   Absent Named Optional Repeat Terminal TypeExprKindAuthorityInvalid
+05_emit_rust.dag  6 ambiguous names   Absent AsAuthored Bind Named SnakeCase Text
+```
+
+**The seed closure is not protected.** It carries ambiguous names too — six, including the same
+`Absent` — and the emitter collapses them by the same predicate. So the mechanism IS
+closure-shaped (the SET is a function of closure membership, and the two sets genuinely differ),
+but there is **no favourable seed arm**. Both closures take the same branch; the v2 closure
+merely has ambiguous names sitting in far more type-argument positions.
+
+**So the meta-root is restated, narrower and better supported:** several independent decisions
+are keyed off **under-modeled closure facts**. That is what the three instances share. What they
+do NOT share — and what I asserted prematurely — is the direction: "the seed is the exercised
+configuration and pure-v2 is the untested one" holds for Root B's path-substring switch, which
+really is seed-versus-v2, and does not hold for this one.
+
+**A correction to my own framing, from the same message.** I called this a DESIGN state-space
+conflation and put that in this section under my name. Reading every consumer says otherwise:
+the other six read sites **already guard the sentinel** with an explicit non-empty check. Only
+the `map_contains_key` site does not, because that call cannot see the value. So it is **one
+consumer diverging from a convention its six siblings already follow** — not a design-wide gap.
+That makes the finding smaller and much more actionable: the minimal correct change restores the
+authority's own convention rather than inventing a rule. The §2 residue is real and stays — a
+guard hand-repeated at six sites is what let the seventh omit it, so the terminal shape is still
+a coproduct with no constructor for the conflated read.
+
+**Cancelled, with a receipt:** the three-run overlap partition between this instance and
+`eager-deer-389`'s candidate. They retracted the shared-name premise — theirs is an `Option`'s
+absent arm from `lookup_type_by_name`, not a corpus name, so the two never shared a subject and
+there is no overlap to measure. Their inverted question survives and is cheap: instrument
+`lookup_type_by_name` misses on `05_emit` and see whether `Absent` or `Optional` appear.
+
 
 **Two further facts from the same run, recorded because they cut against tidy stories:**
 
