@@ -123,12 +123,16 @@ the resolver, and it was two things:
    short. Since qualification is what this cut substitutes for `import`, the
    closure builder had no way to follow the edge the cut creates.
 
-The failure shape is worth keeping: bare cross-file names match EVERY declaring
-module (the index deliberately refuses to pick a winner), which in a densely
-interconnected corpus multiplies closure width — the runtime cost and the crash
-are that width, not stack tuning.
+A mechanism worth keeping in mind, though it is NOT established as the cause of
+anything below: bare cross-file names match EVERY declaring module (the index
+deliberately refuses to pick a winner), which in a densely interconnected corpus
+multiplies closure width. An earlier revision of this paragraph asserted that the
+runtime cost and the crash "are that width". That was refuted by execution — the
+closure fix landed and both tests still crash — and the sentence is corrected
+here rather than deleted, because the same over-reach was then repeated twice
+more in the section below.
 
-## The segfault: stack exhaustion, and a PRE-REGISTERED remedy decision
+## The segfault: cause UNRESOLVED, with a pre-registered remedy decision
 
 Two v1 tests exit `rc=139` after ~12 minutes on a parse-clean tree. Measured,
 release binary, changing only the spawned-thread stack size:
@@ -138,13 +142,15 @@ release binary, changing only the spawned-thread stack size:
 64 MiB                        rc=124 TIMEOUT   1500s   <- my timeout, not a crash
 ```
 
-One variable, crash gone. It is stack exhaustion, not a memory-safety fault.
-The 64 MiB arm is NOT evidence the recursion is bounded: under linear scaling it
-would not be predicted to crash until ~6.6 hours, so stopping at 1500s reached
-6.3% of its own predicted failure and cannot distinguish the hypotheses.
+Those two rows are from DIFFERENT remote jobs, which is the flaw that runs
+through everything below: at the time this was written it read "one variable,
+crash gone — it is stack exhaustion." Two variables changed, not one. The 64 MiB
+arm is also censored: under linear scaling it would not be predicted to crash
+until ~6.6 hours, so stopping at 1500s reached 6.3% of its own predicted failure.
 
-A null control (same arm twice, same host) gives 845s / 834s — 1.3% spread, so
-the runtime is reproducible and cross-arm comparison is legitimate.
+A null control (same arm twice, **same job**) gives 845s / 834s — 1.3% spread.
+That floor licenses WITHIN-job comparison only, and was wrongly used below to
+license cross-job ones.
 
 **The discriminator is a 1 MiB arm, and the remedy is written down BEFORE it
 reports so the result cannot be read to license the more convenient fix:**
