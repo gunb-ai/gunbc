@@ -197,7 +197,7 @@ fn host_phase_desired(enrollments: List<HostEnrollmentIntent>) -> List<HostPhase
     c => HostPhaseCellStatus {
       cell: c.cell,
       disposition: host_phase_desired_disposition(),
-      observation: Present { value: Converged },
+      observation: Present { value: std.upsert_decision.Converged },
     },
   )
 }

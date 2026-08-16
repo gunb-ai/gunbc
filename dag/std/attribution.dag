@@ -44,7 +44,7 @@ fn nanosecond_le(a: Nanosecond, b: Nanosecond) -> Bool {
 // a begin and an end that never belonged to the same clock: incomparable endpoints refuse here
 // rather than producing a width.
 fn occurrence_extent(
-  occurrence: OccurrenceId,
+  occurrence: std.observation.OccurrenceId,
   begin: ObservationInstant,
   end: ObservationInstant,
 ) -> ExtentConstruction {
@@ -59,7 +59,7 @@ fn occurrence_extent(
 }
 
 fn extent_from_ordered(
-  occurrence: OccurrenceId,
+  occurrence: std.observation.OccurrenceId,
   begin: ObservationInstant,
   end: ObservationInstant,
 ) -> ExtentConstruction {
@@ -116,7 +116,7 @@ type GapConstruction
   | GapReady { span: AttributionSpan }
   | GapRefused { cause: NonEmptyStr }
 
-fn gap_span(parent: OccurrenceId, from: std.nat.Nat, to: std.nat.Nat) -> GapConstruction {
+fn gap_span(parent: std.observation.OccurrenceId, from: std.nat.Nat, to: std.nat.Nat) -> GapConstruction {
   if to > from {
     match closed_interval(low: nanosecond(count: from), high: nanosecond(count: to), le: nanosecond_le) {
       IntervalRefused { reason: r } => GapRefused { cause: r }

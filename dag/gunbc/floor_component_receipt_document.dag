@@ -440,17 +440,17 @@ data floor_component_host_dependency_absent_mode_note: String = "ModeHostDepende
 
 fn floor_component_outcome_of_mode(m: FloorComponentFailureMode, detail: NonEmptyStr) -> ObservationOutcome? {
   match m {
-    ModeNoFailure => Present { value: Done }
-    ModeBudgetExceeded => Present { value: Refused { diagnostic: detail } }
-    ModeInfra => Present { value: Failed { error: detail, output: "" } }
-    ModeWitnessRed => Present { value: Failed { error: detail, output: "" } }
-    ModeStaleKnownRed => Present { value: Refused { diagnostic: detail } }
-    ModeExpectedRedEvidenceAbsent => Present { value: Refused { diagnostic: detail } }
-    ModeExpectedRedPreVerdictUnverified => Present { value: Refused { diagnostic: detail } }
-    ModeHostDependencyAbsent => Present { value: Refused { diagnostic: detail } }
-    ModeNotReached => Present { value: Skipped { reason: detail } }
+    ModeNoFailure => Present { value: std.observation.Done }
+    ModeBudgetExceeded => Present { value: std.observation.Refused { diagnostic: detail } }
+    ModeInfra => Present { value: std.observation.Failed { error: detail, output: "" } }
+    ModeWitnessRed => Present { value: std.observation.Failed { error: detail, output: "" } }
+    ModeStaleKnownRed => Present { value: std.observation.Refused { diagnostic: detail } }
+    ModeExpectedRedEvidenceAbsent => Present { value: std.observation.Refused { diagnostic: detail } }
+    ModeExpectedRedPreVerdictUnverified => Present { value: std.observation.Refused { diagnostic: detail } }
+    ModeHostDependencyAbsent => Present { value: std.observation.Refused { diagnostic: detail } }
+    ModeNotReached => Present { value: std.observation.Skipped { reason: detail } }
     ModeRunIncomplete => none
-    ModeDeadlineReached => Present { value: Refused { diagnostic: detail } }
+    ModeDeadlineReached => Present { value: std.observation.Refused { diagnostic: detail } }
     ModeUnrecorded => none
   }
 }
