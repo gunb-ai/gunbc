@@ -298,13 +298,24 @@ type DesignationResolutionObligations {
   loading_mechanism_identity: DesignationResolutionStanding
 }
 
+// THE OBLIGATION GRAIN IS WRONG, AND THE LOTES RESOLUTION IS WHAT PROVED IT. Each field below is
+// singular -- one vendor_identity, one orderable_part_number -- but the attachment named LGA4926
+// is an assembly of at least three separately sourced items: the socket body, the loading
+// mechanism, and the backplate. Establishing Lotes as the vendor of ONE of them produced a state
+// the record cannot express: vendor known for the retention, unknown for the socket. The fields
+// are therefore held against the socket body, which is the layer the land pattern hangs off, and
+// the retention layer is recorded separately in loading_mechanism_identity. That is a workable
+// reading, not a correct model -- the correct model indexes obligations BY LAYER, so a per-layer
+// resolution has somewhere to land instead of contending for one field.
+data ilm4926_obligation_grain_note: String = "DesignationResolutionObligations carries one vendor_identity and one orderable_part_number, but LGA4926 attachment is a multi-part assembly whose parts resolve independently. Lotes is established for the loading mechanism and unattributed for the socket body; the singular fields are read as the socket body's, with the retention layer held in loading_mechanism_identity. Restructuring the obligations per layer is the outstanding modelling work."
+
 data ilm4926_resolution_obligations: DesignationResolutionObligations = DesignationResolutionObligations {
   vendor_identity: DesignationFactUnresolved {
-    reason: "no PUBLISHER OF RECORD attributes ILM4926 to a manufacturer; Ampere and OCP name the designator only. A community thread on Ampere's developer forum names Lotes and is carried in lotes_part_attestations, which is a lead worth pursuing rather than an attribution -- the claimant is a forum member and no Ampere staff response appears in the thread. Resolving this means a Lotes drawing or an Ampere document naming the vendor.",
+    reason: "no publisher of record attributes the SOCKET BODY to a manufacturer; Ampere and OCP name the designator ILM4926 only. Lotes is established as the vendor of the loading mechanism by its own catalogue page, but a vendor attested for one layer of the attachment is not thereby the vendor of another -- the socket body is a separate unnamed part and its maker is unattributed. That this field cannot say Lotes-for-one-layer-and-unknown-for-another is the singular-field defect recorded in ilm4926_obligation_grain_note.",
     next_authority_to_consult: Present { value: ampere_community_lga4926_thread_authority },
   },
   orderable_part_number: DesignationFactUnresolved {
-    reason: "no publisher of record attaches a catalog or ordering part number to ILM4926. Two candidate numbers, SKT 4926 ILM and AZIF0222-P002C56, are carried in lotes_part_attestations from a community thread, and which one names the socket body versus the loading mechanism is itself disputed between two readings of that same thread -- so even taking the numbers at face value would not say what to order for which layer.",
+    reason: "no publisher of record attaches a catalog or ordering part number to the SOCKET BODY. Lotes attests AZIF0222 as its own part, but that part is the loading mechanism with backplate, recorded in loading_mechanism_identity; it is not the item that receives the processor and solders to the board. The socket body remains unnamed by every consulted source (socket_body_part_is_unnamed_note), so there is no number to order for the layer this obligation is about.",
     next_authority_to_consult: Present { value: ampere_community_lga4926_thread_authority },
   },
   board_land_pattern: DesignationFactUnresolved {

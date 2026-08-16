@@ -97,7 +97,10 @@ test fn w_red_one_publisher_twice_is_not_independent_attestation() -> Bool {
 
 // THE FOUR BOARD-DESIGN AXES ARE UNRESOLVED SUMS, NOT NONEMPTY STRINGS — read by
 // match on each field rather than a Bool predicate over the coproduct.
-test fn w_four_resolution_obligations_are_unresolved_on_each_axis() -> Bool {
+// THREE axes, not four: loading_mechanism_identity is established against the Lotes catalogue
+// page and is asserted separately by w_the_retention_assembly_resolves_without_touching_the_land_pattern.
+// The name once said four and the body always checked three.
+test fn w_three_resolution_obligations_remain_unresolved() -> Bool {
   let o = ilm4926_resolution_obligations
   match o.vendor_identity {
       DesignationFactUnresolved { reason: _, next_authority_to_consult: _ } => true
