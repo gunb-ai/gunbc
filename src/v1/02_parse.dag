@@ -4580,10 +4580,56 @@ fn looks_like_arm_start(tokens: TokenStream) -> Bool {
           false
         }
       } else {
-        false
+        looks_like_qualified_arm_start(tokens: tokens)
       }
     }
     _ => false
+  }
+}
+
+// A QUALIFIED variant pattern begins with a LOWERCASE module segment --
+// `gunbc.membership_reconcile.ApplyRefused { refusals: _ } =>` -- so the
+// uppercase-start test above rejects it and a multi-statement arm body keeps
+// consuming until it meets the `=>` with no expression in hand. parse_pattern
+// already admits the qualified form via parse_dotted_ident, and
+// is_variant_pattern_start already calls a dotted name a variant; only this
+// lookahead was never taught. The final segment must still be uppercase, so a
+// lowercase projection such as `plan.actions` is not mistaken for a pattern.
+fn looks_like_qualified_arm_start(tokens: TokenStream) -> Bool {
+  let len = dotted_path_token_count(tokens: tokens, offset: 0)
+  if len > 1 && is_uppercase_start(name: peek_ident_text_at(tokens: tokens, offset: len - 1)) {
+    if peek_is_fat_arrow_at(tokens: tokens, offset: len) {
+      true
+    } else if peek_is_expected_at(tokens: tokens, offset: len, expected: ExpectLBrace) {
+      scan_for_fat_arrow_after_braces(remaining: token_stream_advance(stream: tokens, n: len + 1), depth: 1)
+    } else {
+      false
+    }
+  } else {
+    false
+  }
+}
+
+// Token count of `ident ( . ident )*` starting at `offset`; 1 for a bare ident.
+fn dotted_path_token_count(tokens: TokenStream, offset: Int) -> Int {
+  if peek_is_expected_at(tokens: tokens, offset: offset + 1, expected: ExpectDot) && peek_is_ident_at(tokens: tokens, offset: offset + 2) {
+    dotted_path_token_count(tokens: tokens, offset: offset + 2)
+  } else {
+    offset + 1
+  }
+}
+
+fn peek_is_ident_at(tokens: TokenStream, offset: Int) -> Bool {
+  match token_stream_first(stream: token_stream_advance(stream: tokens, n: offset)) {
+    Present { value: t } => match t.shape { ShIdent => true  _ => false }
+    Absent => false
+  }
+}
+
+fn peek_ident_text_at(tokens: TokenStream, offset: Int) -> String {
+  match token_stream_first(stream: token_stream_advance(stream: tokens, n: offset)) {
+    Present { value: t } => t.text
+    Absent => ""
   }
 }
 

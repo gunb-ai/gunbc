@@ -13113,11 +13113,75 @@ pub fn looks_like_arm_start(tokens: Rc<TokenStream>) -> bool {
                             }
                         }
                     } else {
-                        false
+                        looks_like_qualified_arm_start(tokens.clone())
                     }
                 }
             }
             _ => false,
+        }
+    }
+}
+
+pub fn looks_like_qualified_arm_start(tokens: Rc<TokenStream>) -> bool {
+    {
+        let len = dotted_path_token_count(tokens.clone(), 0);
+        if ((len.clone() > 1)
+            && is_uppercase_start(peek_ident_text_at(tokens.clone(), (len.clone() - 1))))
+        {
+            if peek_is_fat_arrow_at(tokens.clone(), len.clone()) {
+                true
+            } else {
+                if peek_is_expected_at(
+                    tokens.clone(),
+                    len.clone(),
+                    Rc::new(ExpectedToken::ExpectLBrace),
+                ) {
+                    scan_for_fat_arrow_after_braces(
+                        token_stream_advance(tokens.clone(), (len.clone() + 1)),
+                        1,
+                    )
+                } else {
+                    false
+                }
+            }
+        } else {
+            false
+        }
+    }
+}
+
+pub fn dotted_path_token_count(tokens: Rc<TokenStream>, offset: i64) -> i64 {
+    {
+        if (peek_is_expected_at(
+            tokens.clone(),
+            (offset.clone() + 1),
+            Rc::new(ExpectedToken::ExpectDot),
+        ) && peek_is_ident_at(tokens.clone(), (offset.clone() + 2)))
+        {
+            dotted_path_token_count(tokens.clone(), (offset.clone() + 2))
+        } else {
+            (offset.clone() + 1)
+        }
+    }
+}
+
+pub fn peek_is_ident_at(tokens: Rc<TokenStream>, offset: i64) -> bool {
+    {
+        match token_stream_first(token_stream_advance(tokens.clone(), offset.clone())) {
+            Some(t) => match t.shape.clone() {
+                TokenShape::ShIdent => true,
+                _ => false,
+            },
+            None => false,
+        }
+    }
+}
+
+pub fn peek_ident_text_at(tokens: Rc<TokenStream>, offset: i64) -> String {
+    {
+        match token_stream_first(token_stream_advance(tokens.clone(), offset.clone())) {
+            Some(t) => t.text.clone(),
+            None => "".to_string(),
         }
     }
 }
